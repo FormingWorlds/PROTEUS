@@ -578,3 +578,51 @@ def test_an_update_that_starts_the_inner_core_counts_its_entropy_of_fusion():
     assert 1.0 < t_new - t_old * 1.010031 < 4.0
     assert aragog_core._inner_core_mass(old, t_old) == 0.0
     assert aragog_core._inner_core_mass(new, t_new) > 1.0e21
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('override', 'expected'), [(5100.0, 5100.0), (None, 4999.0)], ids=['set_start', 'solution']
+)
+def test_the_core_state_before_a_reset_is_what_the_next_solve_would_start_from(
+    override, expected
+):
+    """The core temperature read before a reset is the set start when one is set (a resume,
+    a re-melt, a carry of a skipped step) and else the end of the last solution, together
+    with the budget of that state; a solver without a budget gives none."""
+    from proteus.interior_energetics.aragog_core import core_state
+
+    budget = object()
+    solver = SimpleNamespace(
+        _T_core_init=override,
+        _core_module_budget=budget,
+        get_current_core_temperature=lambda: 4999.0,
+    )
+    assert core_state(solver) == (budget, expected)
+    del solver._core_module_budget
+    assert core_state(solver) == (None, expected)
+
+
+@pytest.mark.unit
+def test_a_heat_change_that_is_not_a_number_stops_the_carry_before_the_solver_changes(
+    monkeypatch,
+):
+    """A candidate budget whose heat content is not a number raises with the value named,
+    and the solver keeps its profile, its core temperature and its budget."""
+    from proteus.interior_energetics import aragog_core
+
+    solver, interior_o = _core_solver()
+    fit = aragog_core.fitted_core_budget
+
+    def broken(*args):
+        budget, profile = fit(*args)
+        return SimpleNamespace(
+            profiles=budget.profiles, t_onset=budget.t_onset, heat_content=lambda t: np.nan
+        ), profile
+
+    monkeypatch.setattr(aragog_core, 'fitted_core_budget', broken)
+    kept = dict(solver.parameters.boundary_conditions.core_module_params)
+    with pytest.raises(ValueError, match='is not finite: nan'):
+        _update(solver, interior_o, 1, 6053.74)
+    assert solver.parameters.boundary_conditions.core_module_params == kept
+    assert solver._T_core_init is None and not hasattr(interior_o, '_core_struct_booked')
