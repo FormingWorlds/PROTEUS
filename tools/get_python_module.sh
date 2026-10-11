@@ -1,7 +1,7 @@
 #!/bin/bash
-# Usage: get_python_module.sh <RepoName> [--force]. Clones FormingWorlds/<RepoName> into ./<RepoName>/
-# at the release tag of its fwl-<lowercase name> floor in pyproject.toml and installs it editable. A
-# set PROTEUS_MODULE_GIT_BASE (such as https://github.com/) is the URL prefix, in place of the SSH probe.
+# Usage: get_python_module.sh <RepoName> [--force] | --list. Clones FormingWorlds/<RepoName> into
+# ./<RepoName>/ at the release tag of its fwl-<lowercase name> floor and installs it editable. A set
+# PROTEUS_MODULE_GIT_BASE (such as https://github.com/) is the URL prefix, in place of the SSH probe.
 
 set -euo pipefail
 
@@ -11,16 +11,30 @@ source "$(dirname "${BASH_SOURCE[0]}")/_get_common.sh" || exit 1
 # The modules without a setup script of their own; each installs as fwl-<lowercase name>.
 modules="MORS JANUS CALLIOPE ZEPHYRUS"
 
+if [ "$#" -eq 1 ] && [ "$1" = "--list" ]; then
+    for name in $modules; do
+        echo "$name"
+    done
+    exit 0
+fi
+
 get_parse_args "$@"
 repo="$get_install_path"
+names=0
+for arg in "$@"; do
+    if [ "$arg" != "--force" ]; then
+        names=$((names + 1))
+    fi
+done
 dist=""
 for name in $modules; do
     if [ "$name" = "$repo" ]; then
         dist="fwl-$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]')"
     fi
 done
-if [ -z "$dist" ]; then
+if [ -z "$dist" ] || [ "$names" -ne 1 ]; then
     echo "usage: bash tools/get_python_module.sh <RepoName> [--force]" >&2
+    echo "       bash tools/get_python_module.sh --list" >&2
     echo "       RepoName is one of: $modules" >&2
     exit 2
 fi
@@ -29,8 +43,10 @@ echo "Set up $repo..."
 workpath="$proteus_root/$repo"
 guard_dirty_checkout "$workpath" "get_python_module.sh $repo"
 
-# Make room
-rm -rf "$workpath"
+# The new clone replaces the checkout only once it is at the release tag.
+tmp_clone="$workpath.tmp.$$"
+rm -rf "$tmp_clone"
+trap 'rm -rf "$tmp_clone"' EXIT
 
 base="${PROTEUS_MODULE_GIT_BASE:-}"
 if [ -z "$base" ]; then
@@ -41,19 +57,13 @@ if [ -z "$base" ]; then
     fi
 fi
 uri="${base}FormingWorlds/$repo.git"
-echo "Cloning $uri -> $workpath"
-if ! git clone "$uri" "$workpath"; then
-    rm -rf "$workpath"
-    echo "ERROR: git clone failed" >&2
-    exit 1
-fi
+echo "Cloning $uri -> $tmp_clone"
+git clone "$uri" "$tmp_clone" || { echo "ERROR: git clone failed; $workpath is unchanged" >&2; exit 1; }
+checkout_floor_tag "$dist" "$tmp_clone"
 
-# The subshell takes the helper's exit, so a clone left on the default branch is removed.
-if ! (checkout_floor_tag "$dist" "$workpath"); then
-    rm -rf "$workpath"
-    echo "ERROR: removed the new $repo clone, which is not at the $dist release tag" >&2
-    exit 1
-fi
+rm -rf "$workpath"
+mv "$tmp_clone" "$workpath"
+trap - EXIT
 
 pip install -U -e "$workpath" || { echo "ERROR: editable install failed" >&2; exit 1; }
 

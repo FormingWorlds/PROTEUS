@@ -35,16 +35,7 @@ fi
 echo "    $uri -> $tmp_clone"
 git clone "$uri" "$tmp_clone" || { echo "ERROR: git clone failed" >&2; exit 1; }
 
-# Pin checkout to the fwl-morrigan version floor from pyproject.toml.
-# Strip comments before extracting to match the active dependency specification.
-floor=$(sed 's/#.*//' "$root/pyproject.toml" \
-    | grep -oE 'fwl-morrigan>=[0-9][0-9.]*' | head -1 | sed 's/.*>=//' || true)
-if [ -n "$floor" ]; then
-    echo "Pinning to fwl-morrigan floor: $floor"
-    checkout_floor_tag fwl-morrigan "$tmp_clone"
-else
-    echo "WARNING: could not read fwl-morrigan floor from pyproject.toml; using HEAD" >&2
-fi
+checkout_floor_tag fwl-morrigan "$tmp_clone"
 
 # Replace existing checkout only after clone and tag checkout succeed
 rm -rf "$workpath"

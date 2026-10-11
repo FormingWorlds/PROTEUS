@@ -205,7 +205,7 @@ def check_module_dependencies(instance, attribute, value):
             instance.outgas.module == 'calliope',
             'calliope',
             'outgas.module = "calliope" requires the calliope package. '
-            'Install with: git clone git@github.com:FormingWorlds/CALLIOPE && pip install -e CALLIOPE/.',
+            'Install with: bash tools/get_python_module.sh CALLIOPE',
         ),
         'atmodeller': (
             instance.outgas.module == 'atmodeller',
