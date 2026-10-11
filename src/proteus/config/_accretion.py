@@ -415,13 +415,48 @@ class Accretion:
         atmosphere loss at all: the target keeps its atmosphere and a
         volatile-bearing impactor delivers its whole content), "constant"
         (the fixed fraction below), "zephyrus" (the giant-impact erosion
-        scaling law of Kegerreis et al. 2020, evaluated by
-        ``zephyrus.collision.mass_loss`` from each impact's collision
-        parameters). One fraction governs both bodies at each impact: the
-        target loses that fraction of its atmosphere, and a
+        scaling laws evaluated by ``zephyrus.collision.impact_loss`` from each
+        impact's collision parameters). One fraction governs both bodies at
+        each impact: the target loses that fraction of its atmosphere, and a
         volatile-bearing impactor loses the same fraction of its
         atmospheric part and delivers the remainder. PROTEUS itself ships
         no impact loss physics.
+    atmloss_law: str
+        Which erosion scaling law to evaluate when ``atmloss_module = 'zephyrus'``.
+        Choices: "roche2026" (Roche et al. 2026, arXiv:2610.06077,
+        parameterized by impact angle, mass ratio, contact velocity, target
+        mass, radius ratio, and target atmospheric fraction), "kegerreis2020"
+        (Kegerreis et al. 2020, doi:10.3847/2041-8213/abb5fb, parameterized by
+        impact angle, contact velocity, mass ratio, radii, and bulk densities).
+        The default is "roche2026". Both laws are calibrated on H2-He
+        atmospheres (Kegerreis et al. 2020 used the HM80 equation of state;
+        Roche et al. 2026, Sect. 2.1). For atmospheres of higher mean
+        molecular weight (H2O, CO2, O2), the shock-driven loss is an upper
+        limit for a given envelope mass (Roche et al. 2026, Sect. 4.3).
+        The law covers the immediate shock- and vapour-plume-driven loss
+        only; it neglects later thermally driven loss (an outflow driven by
+        heat from the post-impact interior, Biersteker & Schlichting 2021),
+        so for primordial H2-He envelopes the total loss can be higher
+        (Roche et al. 2026, Sect. 4.1); that later loss becomes negligible
+        for envelopes of higher mean molecular weight. Conversely, envelope
+        miscibility may lead to overestimating loss from massive young
+        envelopes (Roche et al. 2026, Sect. 4.1). The atmospheric mass
+        fraction f_atm is computed from the running planet state as the sum
+        of ``<e>_kg_atm`` over ``M_planet`` across all elements including
+        rock vapour. Rock vapour adds to the
+        envelope mass the scaling law sees, but PROTEUS does not debit stripped
+        rock vapour because its inventory re-equilibrates with the magma ocean
+        at each step. With ``roche2026``, an airless target (m_atm = 0) returns
+        f_loss = 0 so an impactor delivers its full volatile content. An
+        atmosphere with f_atm between 1e-6 and below 0.0099 (1 % tolerance)
+        is flagged and extrapolated without a clamp; f_atm below the 1e-6
+        stability bound is evaluated at 1e-6, and the resulting fraction depends
+        on the collision parameters. When parameters are clamped, only the fit
+        terms use the clamped value while v_esc, Q'_R, and the mass ratio use
+        the raw collision state. When the far-field term predicts loss without
+        impact energy, the 'X_FF_zero_energy' flag is set; this flag can fire
+        inside the fitted range (for high gamma at f_atm 0.01 to 0.1) and is
+        common below f_atm 0.01.
     atmloss_frac: float
         Fraction of the atmosphere removed by each impact when
         ``atmloss_module = "constant"`` [0-1]. Applies to the target's
@@ -464,12 +499,16 @@ class Accretion:
     )
 
     # Impact atmosphere loss. Disabled by default; the constant module
-    # applies a fixed fraction, the zephyrus module the Kegerreis et al.
-    # (2020) scaling law from each impact's collision parameters.
+    # applies a fixed fraction, the zephyrus module evaluates scaling laws
+    # from each impact's collision parameters.
     atmloss_module: str | None = field(
         default='none',
         validator=in_((None, 'constant', 'zephyrus')),
         converter=none_if_none,
+    )
+    atmloss_law: str = field(
+        default='roche2026',
+        validator=in_(('kegerreis2020', 'roche2026')),
     )
     atmloss_frac: float = field(default=0.0, validator=[ge(0), le(1)])
 
