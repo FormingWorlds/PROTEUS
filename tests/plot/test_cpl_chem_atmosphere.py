@@ -16,7 +16,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-from proteus.plot.cpl_chem_atmosphere import _aerosol_species, plot_chem_atmosphere
+from proteus.plot.cpl_chem_atmosphere import _aerosol_gas, plot_chem_atmosphere
 from proteus.utils.plot import _preset_colours, latexify
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
@@ -457,17 +457,17 @@ def test_plot_chem_atmosphere_no_aerosols_key(mock_glob, mock_read, mock_subplot
 def test_agni_aerosols_take_the_colour_and_name_of_their_gas(
     mock_glob, mock_read, mock_subplots, caplog
 ):
-    """Aerosols that AGNI names in lower case are drawn as their gas, with no fall-back."""
+    """An aerosol named as a gas, in any case, is drawn as that gas, with no fall-back."""
     gases = ('Fe', 'FeO', 'MgO', 'NH3', 'SiO', 'SiO2')
     profile = {
         'pl': np.array([1e8, 1e7, 1e6, 1e5]),
         'tmpl': np.array([3000, 2000, 1000, 500]),
-        'aerosols': np.array([g.lower() for g in gases] + ['dustdiv1']),
+        'aerosols': np.array([g.lower() for g in gases[:-1]] + ['SiO2', 'dustdiv1']),
     }
     profile['dustdiv1_mmr'] = np.array([1e-8, 5e-8, 1e-9])
     for g in gases:
         profile[g + '_vmr'] = np.array([1e-3, 1e-4, 1e-5])
-        profile[g.lower() + '_mmr'] = np.array([1e-8, 5e-8, 1e-9])
+        profile[g.lower() + '_mmr'] = profile[g + '_mmr'] = np.array([1e-8, 5e-8, 1e-9])
     mock_glob.return_value = ['output_dir/data/1000_atm.nc']
     mock_read.return_value = profile
     ax1, ax2 = MagicMock(), MagicMock()
@@ -487,11 +487,10 @@ def test_agni_aerosols_take_the_colour_and_name_of_their_gas(
 
 
 @pytest.mark.unit
-def test_an_aerosol_name_without_one_matching_gas_is_kept():
-    """Two gases that differ only in case, or no gas, leave the aerosol name as it is."""
-    assert _aerosol_species('co', ['CO', 'Co', 'H2O']) == 'co'
-    assert _aerosol_species('co', ['CO', 'H2O']) == 'CO'
-    assert _aerosol_species('Feo', ['CO', 'FeO']) == 'FeO'
-    assert _aerosol_species('Co', ['CO', 'Co']) == 'Co'
-    assert _aerosol_species('soot', ['CO', 'H2O']) == 'soot'
-    assert _aerosol_species('soot', []) == 'soot'
+def test_an_aerosol_matches_one_gas_apart_from_case_or_none():
+    """Two gases that differ only in case, or no gas, give no match."""
+    assert _aerosol_gas('co', ['CO', 'Co', 'H2O']) is None
+    assert _aerosol_gas('co', ['CO', 'H2O']) == 'CO'
+    assert _aerosol_gas('Feo', ['CO', 'FeO']) == 'FeO'
+    assert _aerosol_gas('soot', ['CO', 'H2O']) is None
+    assert _aerosol_gas('soot', []) is None

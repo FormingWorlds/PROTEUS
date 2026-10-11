@@ -76,11 +76,10 @@ GASES_STANDARD = (
 REFRACTORY_GASES = tuple(vap_list)
 
 
-def _aerosol_species(name: str, gases: list) -> str:
-    """Name an aerosol by the gas it condenses from.
+def _aerosol_gas(name: str, gases: list[str]) -> str | None:
+    """Match an aerosol name to a gas name of the same atmosphere file.
 
-    AGNI writes an aerosol as the name of its gas in lower case ('feo' for 'FeO');
-    the AGNI wrapper ties an aerosol to its condensate by the same lower-case rule.
+    AGNI writes an aerosol as the name of its gas in lower case ('feo' for 'FeO').
 
     Parameters
     ----------
@@ -91,12 +90,12 @@ def _aerosol_species(name: str, gases: list) -> str:
 
     Returns
     -------
-    str
-        The one gas whose name equals ``name`` apart from case; ``name`` itself when
-        no gas or more than one gas matches ('co' with both 'CO' and 'Co').
+    str or None
+        The one gas whose name equals ``name`` apart from case; None when no gas
+        or more than one gas matches ('co' with both 'CO' and 'Co').
     """
     match = [g for g in gases if g.lower() == name.lower()]
-    return match[0] if len(match) == 1 else name
+    return match[0] if len(match) == 1 else None
 
 
 def plot_chem_atmosphere(
@@ -271,7 +270,7 @@ def plot_chem_atmosphere(
         gases = [k[:-4] for k in atm_profile if k.endswith('_vmr')]
         for aer_name in atm_profile['aerosols']:
             num_aerosols += 1
-            species = _aerosol_species(aer_name, gases)
+            gas = _aerosol_gas(aer_name, gases)
             aer_mmr = atm_profile[f'{aer_name}_mmr']
             aer_arr = [aer_mmr[0]] + list(aer_mmr)
             n = min(len(aer_arr), len(parr))
@@ -281,8 +280,8 @@ def plot_chem_atmosphere(
                 ls='solid',
                 lw=1.5,
                 alpha=0.7,
-                color=get_colour(species),
-                label=latexify(species) if species != aer_name else aer_name,
+                color=get_colour(gas or aer_name),
+                label=latexify(gas) if gas else aer_name,
             )
 
     # Add temperature profile to Panel 2 (secondary x-axis at top)
