@@ -25,6 +25,8 @@ if [ "$_get_common_dir" = "${BASH_SOURCE[0]}" ]; then
 fi
 proteus_tools_dir=$(portable_realpath "$_get_common_dir")
 proteus_root=$(portable_realpath "$proteus_tools_dir/..")
+# Each git call must answer for the folder its -C names, not for a repository these variables name.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_NAMESPACE
 
 # Split the script's arguments into the --force switch and an optional
 # install-path positional, reported as get_force (true / false) and
@@ -196,14 +198,6 @@ record_clone_stays() {
     fi
 }
 
-# Usage: report_clone_stays <distribution> <clone-dir> <found> <summary> <expected>. Prints the one
-# line that says a module clone stays as it is, and records it (record_clone_stays).
-report_clone_stays() {
-    local dir="${2%/}"
-    echo "$1: $dir stays as it is: $3; $5"
-    record_clone_stays "$dir" "$4"
-}
-
 # Usage: _relation_to_tag <clone-dir> <head> <tag-commit>. Prints where HEAD lies against the tag,
 # read with merge-base only; prints nothing when git cannot compare the two.
 _relation_to_tag() {
@@ -223,8 +217,8 @@ _relation_to_tag() {
     fi
 }
 
-# Usage: _clone_advice <distribution> <clone-dir> <script-label> <tag> <readable>. Prints the
-# commands that move a readable clone to the release tag by hand, and the one that replaces it.
+# Usage: _clone_advice <distribution> <clone-dir> <script-label> <tag> <readable>. Prints the commands
+# that move a readable clone to the release tag by hand and reinstall it, and the one that replaces it.
 _clone_advice() {
     local dir tag
     dir=$(printf '%q' "${2%/}")
@@ -234,11 +228,12 @@ _clone_advice() {
         echo "        git -C $dir fetch --tags"
         if [ -n "$4" ]; then
             tag=$(printf '%q' "$4")
-            echo "        git -C $dir checkout $tag"
+            echo "        git -C $dir checkout tags/$tag"
         else
-            echo "        git -C $dir checkout \"\$(git -C $dir tag -l |" \
+            echo "        git -C $dir checkout \"tags/\$(git -C $dir tag -l |" \
                 "python tools/_module_pins.py $1 floor-tag)\""
         fi
+        echo "        pip install -e $dir"
         how="Or replace"
     fi
     echo "    $how it with a new clone, which deletes everything in it, with:"
@@ -289,16 +284,26 @@ report_clone_state() {
             esac
         fi
     fi
-    report_clone_stays "$dist" "$dir" "$found" "$summary" "$(expected_text "$dist" "$tag")"
+    echo "$dist: $dir stays as it is: $found; $(expected_text "$dist" "$tag")"
+    record_clone_stays "$dir" "$summary"
     _clone_advice "$dist" "$dir" "$label" "$tag" "$readable"
 }
 
+# Usage: is_empty_dir <path>. Succeeds when <path> is a directory, not a symlink, without any entry.
+is_empty_dir() {
+    local entries
+    { [ -d "$1" ] && [ ! -L "$1" ]; } || return 1
+    entries=$(ls -A "$1" 2>/dev/null) || return 1
+    [ -z "$entries" ]
+}
+
 # Usage: install_existing_clone <distribution> <clone-dir> <script-label> [prepare-function]. Returns
-# under --force or with nothing at <clone-dir>; else reports what is there, runs the prepare function
-# on it, installs it editable as it is and exits 0. No git call writes to it.
+# under --force or with nothing or an empty folder at <clone-dir>; else reports what is there, runs the
+# prepare function on it, installs it editable as it is and exits 0. No git call writes to it.
 install_existing_clone() {
     local dist="$1" dir="${2%/}" label="$3" prepare="${4:-}"
-    if [ "${get_force:-false}" = true ] || { [ ! -e "$dir" ] && [ ! -L "$dir" ]; }; then
+    if [ "${get_force:-false}" = true ] || { [ ! -e "$dir" ] && [ ! -L "$dir" ]; } ||
+        is_empty_dir "$dir"; then
         return 0
     fi
     report_clone_state "$dist" "$dir" "$label"
@@ -306,16 +311,25 @@ install_existing_clone() {
         "$prepare" "$dir" || exit 1
         echo "$dist: the build step ran in the existing folder $dir"
     fi
-    pip install -U -e "$dir" || { echo "ERROR: editable install failed" >&2; exit 1; }
+    if ! pip install -U -e "$dir"; then
+        echo "ERROR: editable install of $dir failed; to replace it with a new clone, run" >&2
+        echo "       bash tools/$label --force  from the PROTEUS folder" >&2
+        exit 1
+    fi
     echo "Done!"
     exit 0
 }
 
-# Usage: swap_in_checkout <new-dir> <workpath>. Moves an existing <workpath> aside, <new-dir> into its
-# place, and only then removes the old copy; a copy that will not go is a warning. Returns 1, with
-# the old checkout back at <workpath>, when <new-dir> cannot be moved there.
+# Usage: swap_in_checkout <new-dir> <workpath>. Moves an existing <workpath> aside (without --force only
+# an empty folder), <new-dir> into its place, then removes the old copy; a copy that will not go is a
+# warning. Returns 1, with what was at <workpath> back there, when <new-dir> may not or cannot go there.
 swap_in_checkout() {
     local new="${1%/}" dest="${2%/}" old="" n=0 back
+    if [ "${get_force:-false}" != true ] && { [ -e "$dest" ] || [ -L "$dest" ]; } &&
+        ! is_empty_dir "$dest"; then
+        echo "ERROR: $dest appeared while the new clone was made; it is unchanged" >&2
+        return 1
+    fi
     if [ -e "$dest" ] || [ -L "$dest" ]; then
         old="$dest.old.$$"
         while [ -e "$old" ] || [ -L "$old" ]; do

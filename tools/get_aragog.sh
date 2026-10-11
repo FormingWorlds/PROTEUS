@@ -45,8 +45,6 @@ echo "    $uri -> $tmp_clone"
 git clone "$uri" "$tmp_clone" ||
     { echo "ERROR: git clone failed$(unchanged_note "$workpath")" >&2; exit 1; }
 
-cd "$tmp_clone" || { echo "ERROR: cannot enter $tmp_clone" >&2; exit 1; }
-
 # If PROTEUS is on a feature branch that aragog also has, install that branch;
 # otherwise pin to the fwl-aragog version floor declared in PROTEUS's
 # pyproject.toml, so main/tag builds are reproducible and unaffected. The full
@@ -57,32 +55,30 @@ case "$proteus_branch" in
     '' | HEAD | main | master)
         : ;;  # default branch or detached HEAD never pairs
     *)
-        if git rev-parse --verify --quiet "refs/remotes/origin/$proteus_branch" >/dev/null; then
+        if git -C "$tmp_clone" rev-parse --verify --quiet "refs/remotes/origin/$proteus_branch" \
+            >/dev/null; then
             match_branch="$proteus_branch"
         fi
         ;;
 esac
 
 if [ -n "$match_branch" ]; then
-    git checkout "$match_branch" || { echo "ERROR: cannot checkout aragog branch $match_branch" >&2; exit 1; }
-    echo "PROTEUS is on branch '$proteus_branch'; installed paired aragog branch at $(git rev-parse --short HEAD)"
+    git -C "$tmp_clone" checkout "$match_branch" ||
+        { echo "ERROR: cannot checkout aragog branch $match_branch" >&2; exit 1; }
+    echo "PROTEUS is on branch '$proteus_branch'; installed paired aragog branch at" \
+        "$(git -C "$tmp_clone" rev-parse --short HEAD)"
 else
     checkout_floor_tag fwl-aragog "$tmp_clone"
 fi
 
-cd "$root" || exit 1
 swap_in_checkout "$tmp_clone" "$workpath" || exit 1
 trap - EXIT
 if [ -n "$match_branch" ]; then
     record_clone_stays "$workpath" "paired branch $match_branch"
 fi
-cd "$workpath" || { echo "ERROR: cannot enter $workpath" >&2; exit 1; }
 
 # Install aragog package as editable
-pip install -U -e . || { echo "ERROR: editable install failed" >&2; exit 1; }
-
-# Back to old folder
-cd "$root"
+pip install -U -e "${workpath%/}" || { echo "ERROR: editable install failed" >&2; exit 1; }
 
 # Done
 echo "Done!"

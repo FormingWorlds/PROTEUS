@@ -176,10 +176,11 @@ This lists the fixable issues and their commands but does not execute anything.
   configured, activate the correct environment first:
   `conda activate proteus`.
 - **An outdated editable module clone that a setup script makes** (MORS,
-  JANUS, CALLIOPE, ZEPHYRUS, Aragog, Zalmoxis): no fix changes such a clone.
-  The doctor shows as its fix the commands that fetch the tags, check out
-  the release tag of the minimum version and reinstall the clone, and the
-  setup script with `--force` (for example
+  JANUS, CALLIOPE, ZEPHYRUS, Aragog, Zalmoxis, VULCAN, Morrigan): no fix
+  changes such a clone. The doctor shows as its fix the commands that fetch
+  the tags, check out the release tag of the minimum version and reinstall
+  the clone, and, for the clone in the module's folder of the PROTEUS root,
+  the setup script with `--force` (for example
   `bash tools/get_python_module.sh MORS --force`), which replaces the clone
   with a new one. Run the one you want by hand.
 
@@ -201,10 +202,13 @@ proteus update-all
 It updates the PROTEUS Python package, recompiles SOCRATES, pulls the latest
 AGNI, and refreshes the reference data, verifying environment variables and disk
 space before proceeding. Pass `--export-env` to re-export the environment
-variables to your shell rc file. It does not change the Python module clones
-(MORS, JANUS, CALLIOPE, ZEPHYRUS, Aragog, Zalmoxis): to move one to its release tag after a version change,
-run the two `git` commands that `bash install.sh` prints for a clone that is not at its tag, or the module's
-setup script with `--force`. Use this after pulling new code when several
+variables to your shell rc file. It runs no git command in the Python module
+clones (MORS, JANUS, CALLIOPE, ZEPHYRUS, Aragog, Zalmoxis, VULCAN, Morrigan); as
+with `bash install.sh`, its pip step installs the PyPI release in place of a
+clone that is older than the minimum version. To move a clone to its release
+tag after a version change, run the commands that `bash install.sh` prints for
+a clone that is not at its tag, or the module's setup script with `--force`.
+Use this after pulling new code when several
 components may have moved at once; use `proteus update` when you want to apply
 only the fixes the doctor has flagged.
 
@@ -236,9 +240,9 @@ proteus update
 
 This updates any submodules whose installed version no longer satisfies the
 new bounds. It does not change an editable module clone that a setup script
-makes (MORS, JANUS, CALLIOPE, ZEPHYRUS, Aragog, Zalmoxis): for one below its
-minimum version it lists the commands that move it to the release tag by
-hand or replace it with `--force`. For other editable checkouts it runs
+makes (MORS, JANUS, CALLIOPE, ZEPHYRUS, Aragog, Zalmoxis, VULCAN, Morrigan):
+for one below its minimum version it lists the commands that move it to the
+release tag by hand or replace it with `--force`. For other editable checkouts it runs
 `git pull && pip install -e .` in the checkout directory.
 
 ### Before submitting a simulation

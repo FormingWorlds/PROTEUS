@@ -174,7 +174,7 @@ without asking.
 The setup scripts of the Python modules (MORS, JANUS, CALLIOPE, ZEPHYRUS,
 Aragog, Zalmoxis, VULCAN and Morrigan) never stop here: without `--force` they
 install a module folder that is already there as it is and print the commands
-that move it to its release tag or replace it.
+that move it to its release tag or replace it; an empty folder gets a new clone.
 
 ### Data download errors or slow Zenodo downloads {#data-download-errors-or-slow-zenodo-downloads}
 

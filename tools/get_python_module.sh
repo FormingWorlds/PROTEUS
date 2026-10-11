@@ -14,16 +14,10 @@ modules="MORS JANUS CALLIOPE ZEPHYRUS"
 get_parse_args "$@"
 repo="$get_install_path"
 names=0
-for arg in "$@"; do
-    if [ "$arg" != "--force" ]; then
-        names=$((names + 1))
-    fi
-done
+for arg in "$@"; do [ "$arg" = --force ] || names=$((names + 1)); done
 dist=""
 for name in $modules; do
-    if [ "$name" = "$repo" ]; then
-        dist="fwl-$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]')"
-    fi
+    [ "$name" != "$repo" ] || dist="fwl-$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]')"
 done
 if [ -z "$dist" ] || [ "$names" -ne 1 ]; then
     echo "usage: bash tools/get_python_module.sh <RepoName> [--force]" >&2

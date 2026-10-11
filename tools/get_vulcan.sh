@@ -50,16 +50,11 @@ checkout_floor_tag fwl-vulcan "$tmp_clone"
 
 build_fastchem "$tmp_clone" "$(unchanged_note "$workpath")" || exit 1
 
-cd "$root"
 swap_in_checkout "$tmp_clone" "$workpath" || exit 1
 trap - EXIT
-cd "$workpath"
 
 # Install vulcan package as editable
-pip install -U -e . || { echo "ERROR: editable install failed" >&2; exit 1; }
-
-# Back to old folder
-cd "$root"
+pip install -U -e "${workpath%/}" || { echo "ERROR: editable install failed" >&2; exit 1; }
 
 # Done
 echo "Done!"

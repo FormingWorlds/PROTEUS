@@ -125,7 +125,7 @@ The installer runs through the following phases automatically:
 7. Reference data downloads (by default the essential set: the default-config and tutorial k-tables, stellar spectra and tracks, the PHOENIX grid of the default star, and the interior tables)
 8. Verification via `proteus doctor`
 
-A new Python module clone (MORS, JANUS, CALLIOPE, ZEPHYRUS, Aragog and Zalmoxis) is at the release tag of the module's minimum version in `pyproject.toml`; a new Aragog or Zalmoxis clone takes the branch of the same name instead when PROTEUS is on a feature branch that the module also has. Running the installer again does not update a module clone that is already there: it installs the clone as it is and names each one that is not at its tag, with the two `git` commands that move it to the tag and the command that replaces it with a new clone, for example `bash tools/get_python_module.sh MORS --force`. If such a clone is older than the minimum version, the PROTEUS install that follows replaces its editable install with the release from PyPI: PROTEUS then imports that release, not the clone, and `proteus doctor` shows the version without the `[editable @ ...]` mark.
+A new Python module clone (MORS, JANUS, CALLIOPE, ZEPHYRUS, Aragog and Zalmoxis) is at the release tag of the module's minimum version in `pyproject.toml`; a new Aragog or Zalmoxis clone takes the branch of the same name instead when PROTEUS is on a feature branch that the module also has. Running the installer again does not update a module clone that is already there: it installs the clone as it is and names each one that is not at its tag, with the commands that move it to the tag and reinstall it, and the command that replaces it with a new clone, for example `bash tools/get_python_module.sh MORS --force`. If such a clone is older than the minimum version, the PROTEUS install that follows replaces its editable install with the release from PyPI: PROTEUS then imports that release, not the clone, and `proteus doctor` shows the version without the `[editable @ ...]` mark.
 
 !!! note "Developing a module"
     To develop a module, switch its clone to a branch and install it again, for example:
@@ -164,7 +164,7 @@ phases.
     disk space, creates `FWL_DATA` if needed, and sets the environment variables. 
 
     - Pass `--export-env` to write the environment variables to your shell rc file. 
-    - To refresh an existing installation later, use `proteus update-all` (see [Diagnose and update](doctor.md)). It does not change the Python module clones: to move one to its release tag after a version change, run the two `git` commands that `bash install.sh` prints for a clone that is not at its tag, or the module's setup script with `--force`.
+    - To refresh an existing installation later, use `proteus update-all` (see [Diagnose and update](doctor.md)). It runs no git command in the Python module clones; as with `bash install.sh`, its pip step installs the PyPI release in place of a clone that is older than the minimum version. To move a clone to its release tag after a version change, run the commands that `bash install.sh` prints for a clone that is not at its tag, or the module's setup script with `--force`.
     
     Both commands operate on the PROTEUS source tree, which they locate from the
     installed package (editable installs) or, for a plain wheel install, from

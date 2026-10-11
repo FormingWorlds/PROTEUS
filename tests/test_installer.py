@@ -10,9 +10,9 @@ their version floor: ``checkout_floor_tag`` (``tools/_get_common.sh``) and
 ``clone_and_install`` (lifted from install.sh at run time) run against
 local scratch repositories and a recording ``pip`` stub, without network.
 The module lines of the Python phase run whole, with the setup scripts of
-Aragog and Zalmoxis and a git wrapper that refuses every write to a module
-clone, to pin that an existing clone is installed as it is and the one line
-that names each clone that is not at its release tag.
+Aragog and Zalmoxis and a git wrapper that lets only read-only calls reach a
+module clone, to pin that an existing clone is installed as it is and the one
+line that names each clone that is not at its release tag.
 
 Testing standards:
   - docs/How-to/testing.md
@@ -815,7 +815,7 @@ class TestCloneAndInstall:
             ' PROTEUS expects the release tag 26.10.06'
         )
         assert lines.count(line) == 1
-        assert lines[lines.index(line) + 3] == f'        git -C {real} checkout 26.10.06'
+        assert lines[lines.index(line) + 3] == f'        git -C {real} checkout tags/26.10.06'
         assert 'checked out release tag' not in result.stdout
         assert 'is at the release tag' not in result.stdout
         assert site['log'].read_text().splitlines()[1:] == [f'install -U -e {real}']
@@ -979,8 +979,8 @@ class TestModulePhaseSummary:
     def site(self, tmp_path):
         """A PROTEUS copy with the six module scripts, a local remote per module with the tag
         26.10.06 on the second of 3 commits, stubs for pip and ssh, git URLs rewritten to the
-        local remotes, and a git wrapper first on PATH that refuses every write subcommand on
-        a module folder or the PROTEUS root."""
+        local remotes, and a git wrapper first on PATH that lets only read-only calls reach a
+        module folder or the PROTEUS root."""
         repos = {r: f'fwl-{r.lower()}' for r in self.REPOS}
         root = scratch_proteus_root(
             tmp_path / 'proteus', [f'{d}>=26.10.6' for d in repos.values()]
@@ -1136,12 +1136,19 @@ class TestModulePhaseSummary:
         assert list(Path(site['env']['TMPDIR']).iterdir()) == []
 
     def test_no_summary_when_every_clone_is_new(self, site):
-        """With no module cloned yet, each is cloned at its tag and no summary line follows."""
+        """With no module cloned yet, each is cloned detached at the tag of its floor and no
+        summary line follows. Every remote also has the newer tag 26.11.01 on its tip, so a
+        choice of the newest tag lands on the tip."""
+        for repo in self.REPOS:
+            git(site['remotes'] / f'{repo}.git', 'tag', '26.11.01', 'main')
         result = self._run_phase(site)
         assert result.returncode == 0, result.stdout + result.stderr
         output = result.stdout + result.stderr
         assert 'Not at their release tag' not in output
         assert output.count('checked out release tag 26.10.06') == 6
+        heads = {repo: git(site['root'] / repo, 'rev-parse', 'HEAD') for repo in self.REPOS}
+        assert heads == {repo: site['shas'][repo][0] for repo in self.REPOS}
+        assert all(heads[repo] != site['shas'][repo][1] for repo in self.REPOS)
         assert list(Path(site['env']['TMPDIR']).iterdir()) == []
 
     def test_new_aragog_clone_on_a_paired_branch_is_named(self, site):
