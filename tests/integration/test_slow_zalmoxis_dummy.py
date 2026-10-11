@@ -251,20 +251,25 @@ def test_zalmoxis_dummy_two_timesteps(proteus_multi_timestep_run):
         f'mass fraction regardless of core_frac_mode)'
     )
 
-    # The core follows its target: the boundary is the first node at or above core_frac of
-    # the converged mass (within solver_tol_outer of the target), and the shell below node i
-    # holds less than 3 / i of the core, since its density is below the mean core density.
-    zal = runner.config.interior_struct.zalmoxis
+    # The core target is core_frac of the planet without its kept volatiles. With the dummy
+    # outgassing every volatile inventory is an input, oxygen too, so all of them are kept.
+    from proteus.utils.constants import M_earth, noble_gases, vol_element_list
+
+    cfg = runner.config
+    kept = sum(float(final.get(f'{e}_kg_total', 0.0)) for e in vol_element_list + noble_gases)
+    planet = cfg.planet.mass_tot * M_earth + float(final['M_volatile_change'])
     core_target = float(final['M_core_target'])
-    node = r_core / float(final['R_int']) * (zal.num_levels - 1)
-    assert node == pytest.approx(round(node), abs=1e-6), f'R_core is not on a node: {node}'
-    assert core_target > 0, f'M_core_target not written: {core_target:.3e}'
+    assert kept > 1.0e-3 * planet, f'kept volatiles too small to test the rule: {kept:.3e} kg'
+    assert core_target == pytest.approx(
+        cfg.interior_struct.core_frac * (planet - kept), rel=1e-9
+    )
+    # M_core is the mass inside the first node at or above the boundary: below the target by
+    # the mass tolerance at most, above it by one mantle shell at most (about 1.6 % of the
+    # core at 150 levels; 2 % leaves a margin).
+    tol = cfg.interior_struct.zalmoxis.solver_tol_outer
     snap = float(final['M_core']) / core_target
-    assert (
-        1.0 - zal.solver_tol_outer <= snap <= (1.0 + zal.solver_tol_outer) * (1.0 + 3.0 / node)
-    ), (
-        f'M_core / M_core_target = {snap:.5f} outside the mass tolerance plus one shell '
-        f'(boundary at node {node:.0f} of {zal.num_levels})'
+    assert 1.0 - tol <= snap <= 1.0 + tol + 0.02, (
+        f'M_core / M_core_target = {snap:.5f} outside the mass tolerance plus one mantle shell'
     )
 
     # P_center, P_cmb positive and bounded. Earth: P_center ~ 3.6e11
