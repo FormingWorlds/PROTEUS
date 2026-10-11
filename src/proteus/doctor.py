@@ -153,8 +153,8 @@ def _get_script_for_package(dist_name: str) -> str | None:
     without a script of their own (MORS, JANUS, CALLIOPE, ZEPHYRUS) are cloned
     by ``tools/get_python_module.sh`` at the release tag of their floor, also a
     detached HEAD, or by a developer on a branch; with None, the caller picks
-    the fix from the git state and location of the checkout
-    (``_git_detached``, ``_detached_clone_fix``).
+    the fix from the git state of the checkout (``_git_detached``,
+    ``_detached_clone_fix``).
     """
     short = dist_name.lower()
     prefix = 'fwl-'
@@ -289,22 +289,20 @@ def _git_detached(path: str) -> bool | None:
     return {0: False, 1: True}.get(rc)
 
 
-# The module names tools/get_python_module.sh accepts; its --list option prints the same.
-_PYTHON_MODULE_SCRIPT_NAMES = ('MORS', 'JANUS', 'CALLIOPE', 'ZEPHYRUS')
-
-# The files of the PROTEUS source tree that the fixes of a detached clone run.
-_DETACHED_CLONE_FIX_TOOLS = ('_get_common.sh', '_module_pins.py', 'get_python_module.sh')
+# The files of the PROTEUS source tree that the fix of a detached clone runs.
+_DETACHED_CLONE_FIX_TOOLS = ('_get_common.sh', '_module_pins.py')
 
 
 def _floor_tag_fix(dist_name: str, checkout: str) -> str:
-    """Return the shell command that puts a checkout on the release tag of its floor.
+    """Return the shell command that moves a clone in place to the release tag of its floor.
 
-    The command fetches the tags, refuses a checkout holding local work
-    through ``guard_dirty_checkout`` of ``tools/_get_common.sh``, checks out
-    the tag whose version equals the floor in ``pyproject.toml`` through
-    ``checkout_floor_tag``, and reinstalls the checkout editable. Every path
-    is absolute and shell-quoted, so the command runs from any working
-    directory under ``/bin/sh``.
+    The command sources ``tools/_get_common.sh`` and runs
+    ``move_clone_to_floor_tag``, which refuses a clone holding local work,
+    fetches the tags, checks out the tag whose version equals the floor in
+    ``pyproject.toml`` when HEAD is behind it and leaves a newer HEAD as it
+    is; then it reinstalls the clone editable. Untracked files and stash
+    entries stay. Every path is absolute and shell-quoted, so the command
+    runs from any working directory under ``/bin/sh``.
 
     Parameters
     ----------
@@ -316,16 +314,15 @@ def _floor_tag_fix(dist_name: str, checkout: str) -> str:
     Returns
     -------
     str
-        The command, for example ``git -C /p/MORS fetch --tags --quiet &&
-        bash -c '...' _ /p/tools/_get_common.sh fwl-mors /p/MORS && pip
-        install -e /p/MORS``.
+        The command, for example ``bash -c 'source "$1" &&
+        move_clone_to_floor_tag "$2" "$3"' _ /p/tools/_get_common.sh fwl-mors
+        /p/MORS && pip install -e /p/MORS``.
     """
     path = shlex.quote(os.path.abspath(checkout))
     common = shlex.quote(str(_repo_root() / 'tools' / '_get_common.sh'))
-    checkout_tag = 'source "$1" && guard_dirty_checkout "$3" "" && checkout_floor_tag "$2" "$3"'
+    move = 'source "$1" && move_clone_to_floor_tag "$2" "$3"'
     return (
-        f'git -C {path} fetch --tags --quiet'
-        f' && bash -c {shlex.quote(checkout_tag)} _ {common} {shlex.quote(dist_name)} {path}'
+        f'bash -c {shlex.quote(move)} _ {common} {shlex.quote(dist_name)} {path}'
         f' && pip install -e {path}'
     )
 
@@ -333,13 +330,10 @@ def _floor_tag_fix(dist_name: str, checkout: str) -> str:
 def _detached_clone_fix(dist_name: str, checkout: str, requirement: str) -> tuple[str, bool]:
     """Return the fix for a detached editable clone of a module without its own script.
 
-    A clone at ``<PROTEUS root>/<RepoName>``, where ``install.sh`` and
-    ``tools/get_python_module.sh`` put it, is set up again by that script
-    when the script accepts the name; it refuses a checkout holding local
-    work. Any other clone is moved to the floor tag in place
-    (``_floor_tag_fix``) rather than replaced by a second clone. Both fixes
-    run files of the PROTEUS source tree, so without them (a wheel install)
-    the fix is advice, as ``proteus update`` needs a source install.
+    Every such clone, in the PROTEUS folder or elsewhere, is moved to the
+    floor tag in place (``_floor_tag_fix``), never replaced. The fix runs
+    files of the PROTEUS source tree, so without them (a wheel install) it
+    is advice, as ``proteus update`` needs a source install.
 
     Parameters
     ----------
@@ -355,9 +349,8 @@ def _detached_clone_fix(dist_name: str, checkout: str, requirement: str) -> tupl
     -------
     tuple of (str, bool)
         The fix, and whether it is a command that ``proteus update`` may
-        run: ``bash tools/get_python_module.sh MORS`` for the clone the
-        script manages, the command of ``_floor_tag_fix`` for another clone,
-        and advice (False) when the source tree is missing.
+        run: the command of ``_floor_tag_fix``, or advice (False) when the
+        source tree is missing.
     """
     root = _repo_root()
     if not all((root / 'tools' / name).is_file() for name in _DETACHED_CLONE_FIX_TOOLS):
@@ -367,11 +360,6 @@ def _detached_clone_fix(dist_name: str, checkout: str, requirement: str) -> tupl
             '  # the scripted fix needs the PROTEUS source tree (git clone), not a wheel install',
             False,
         )
-    repo = dist_name.lower().removeprefix('fwl-').upper()
-    if repo in _PYTHON_MODULE_SCRIPT_NAMES and os.path.realpath(checkout) == os.path.realpath(
-        root / repo
-    ):
-        return f'bash tools/get_python_module.sh {repo}', True
     return _floor_tag_fix(dist_name, checkout), True
 
 

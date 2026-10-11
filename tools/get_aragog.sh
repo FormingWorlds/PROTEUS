@@ -25,9 +25,15 @@ fi
 get_parse_args "$@"
 workpath="$root/aragog/"
 guard_dirty_checkout "$workpath" get_aragog.sh
+unchanged=""
+if [ -e "$workpath" ]; then
+    unchanged="; $workpath is unchanged"
+fi
 
-# Make room
-rm -rf "$workpath"
+# The new clone replaces the checkout only once it is on its branch or release tag.
+tmp_clone="${workpath%/}.tmp.$$"
+rm -rf "$tmp_clone"
+trap 'rm -rf "$tmp_clone"' EXIT
 
 # Check SSH access to GitHub
 use_ssh=$(github_use_ssh)
@@ -39,10 +45,10 @@ if [ "$use_ssh" = true ]; then
 else
     uri="https://github.com/FormingWorlds/aragog.git"
 fi
-echo "    $uri -> $workpath"
-git clone "$uri" "$workpath" || { echo "ERROR: git clone failed" >&2; exit 1; }
+echo "    $uri -> $tmp_clone"
+git clone "$uri" "$tmp_clone" || { echo "ERROR: git clone failed$unchanged" >&2; exit 1; }
 
-cd "$workpath" || { echo "ERROR: cannot enter $workpath" >&2; exit 1; }
+cd "$tmp_clone" || { echo "ERROR: cannot enter $tmp_clone" >&2; exit 1; }
 
 # If PROTEUS is on a feature branch that aragog also has, install that branch;
 # otherwise pin to the fwl-aragog version floor declared in PROTEUS's
@@ -64,8 +70,13 @@ if [ -n "$match_branch" ]; then
     git checkout "$match_branch" || { echo "ERROR: cannot checkout aragog branch $match_branch" >&2; exit 1; }
     echo "PROTEUS is on branch '$proteus_branch'; installed paired aragog branch at $(git rev-parse --short HEAD)"
 else
-    checkout_floor_tag fwl-aragog "$workpath"
+    checkout_floor_tag fwl-aragog "$tmp_clone"
 fi
+
+cd "$root" || exit 1
+swap_in_checkout "$tmp_clone" "$workpath" || exit 1
+trap - EXIT
+cd "$workpath" || { echo "ERROR: cannot enter $workpath" >&2; exit 1; }
 
 # Install aragog package as editable
 pip install -U -e . || { echo "ERROR: editable install failed" >&2; exit 1; }

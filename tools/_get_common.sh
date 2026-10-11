@@ -44,9 +44,22 @@ get_parse_args() {
     done
 }
 
-# Usage: guard_dirty_checkout <checkout-path> <script-name> [git pathspec...]. Exits 1, unless
-# --force, when the checkout has modified tracked files or commits on no remote; pathspecs go to
-# git status. An empty script name marks a clone no script manages, for advice to keep the work.
+# Print the first commit of the given refs of <checkout> that is on no remote branch and below no
+# tag that a remote lists; a tag of the user's own stays local work. Usage: <checkout> <refs...>.
+_first_local_commit() {
+    local workpath="$1" remote listed excluded=""
+    shift
+    for remote in $(git -C "$workpath" remote); do
+        listed=$(git -C "$workpath" ls-remote --tags "$remote" 2>/dev/null) || continue
+        excluded="$excluded $(printf '%s\n' "$listed" | awk '{print "^" $1}')"
+    done
+    # shellcheck disable=SC2086
+    git -C "$workpath" log --ignore-missing "$@" $excluded --not --remotes --oneline -1
+}
+
+# Usage: guard_dirty_checkout <checkout-path> <script-name> [git pathspec...]. Exits 1, unless --force,
+# on a path that is neither a git clone nor an empty directory, and on a clone with modified tracked
+# files or local commits; pathspecs go to git status. An empty script name marks an unmanaged clone.
 guard_dirty_checkout() {
     local workpath="$1"
     local script="$2"
@@ -57,18 +70,30 @@ guard_dirty_checkout() {
     fi
     # A worktree or a submodule has a .git file, not a directory.
     if [ ! -e "$workpath/.git" ]; then
-        return 0
+        if [ ! -e "$workpath" ] || { [ -d "$workpath" ] && [ -r "$workpath" ] &&
+            [ -z "$(ls -A "$workpath" 2>/dev/null)" ]; }; then
+            return 0
+        fi
+        echo "ERROR: $workpath is not a git clone, so it is not replaced." >&2
+        if [ -n "$script" ]; then
+            echo "       Move it away, or run  bash tools/$script --force  to discard it." >&2
+        else
+            echo "       Move it away first." >&2
+        fi
+        exit 1
     fi
 
-    # Branches, and HEAD when it resolves (a clone killed before its first commit has none);
-    # tags stay out, since their commits come from the upstream. The probes are not piped,
-    # because a pipeline reports git's status only under pipefail.
+    # Branches, and HEAD when it resolves (a clone killed before its first commit has none). The
+    # probes are not piped, because a pipeline reports git's status only under pipefail.
     local dirty unpushed refs='--branches' rc=0 action='delete it'
     dirty=$(git -C "$workpath" status --porcelain --untracked-files=no "$@" 2>/dev/null) || rc=$?
     if git -C "$workpath" rev-parse --verify --quiet HEAD >/dev/null 2>&1; then
         refs='--branches HEAD'
     fi
     unpushed=$(git -C "$workpath" log $refs --not --remotes --oneline -1 2>/dev/null) || rc=$?
+    if [ "$rc" -eq 0 ] && [ -n "$unpushed" ]; then
+        unpushed=$(_first_local_commit "$workpath" $refs 2>/dev/null) || rc=$?
+    fi
     if [ -z "$script" ]; then
         action='move it to another commit'
     fi
@@ -137,24 +162,31 @@ resolve_module_pin() {
     fi
 }
 
+# Print the one tag of <checkout-dir> whose version equals the floor of <distribution> in
+# pyproject.toml; returns 1, with the cause on stderr, otherwise. Usage: <distribution> <checkout-dir>.
+_floor_tag_of() {
+    local dist="$1" dir="$2" tags
+    if ! command -v python >/dev/null 2>&1; then
+        echo "ERROR: python is not on PATH, so the $dist floor in pyproject.toml cannot be read;" >&2
+        echo "       activate the PROTEUS Python environment first" >&2
+        return 1
+    fi
+    if ! tags=$(git -C "$dir" tag -l); then
+        echo "ERROR: git cannot list the tags of $dir; see the git message above" >&2
+        return 1
+    fi
+    if ! printf '%s\n' "$tags" | python "$proteus_tools_dir/_module_pins.py" "$dist" floor-tag; then
+        echo "ERROR: cannot choose the $dist release tag in $dir; see the message above" >&2
+        return 1
+    fi
+}
+
 # Usage: checkout_floor_tag <distribution> <checkout-dir>. Checks out the one tag whose
 # version equals the distribution's floor in pyproject.toml (detached HEAD) and prints it.
 # Exits 1, with the cause on stderr, when that fails, so call it as a plain command.
 checkout_floor_tag() {
-    local dist="$1" dir="$2" tags tag commit
-    if ! command -v python >/dev/null 2>&1; then
-        echo "ERROR: python is not on PATH, so the $dist floor in pyproject.toml cannot be read;" >&2
-        echo "       activate the PROTEUS Python environment first" >&2
-        exit 1
-    fi
-    if ! tags=$(git -C "$dir" tag -l); then
-        echo "ERROR: git cannot list the tags of $dir; see the git message above" >&2
-        exit 1
-    fi
-    if ! tag=$(printf '%s\n' "$tags" | python "$proteus_tools_dir/_module_pins.py" "$dist" floor-tag); then
-        echo "ERROR: cannot choose the $dist release tag in $dir; see the message above" >&2
-        exit 1
-    fi
+    local dist="$1" dir="$2" tag commit
+    tag=$(_floor_tag_of "$dist" "$dir") || exit 1
     # Without --quiet, git warns when the move leaves commits of a detached HEAD behind.
     if ! git -C "$dir" -c advice.detachedHead=false checkout "tags/$tag"; then
         echo "ERROR: cannot check out tag $tag of $dist in $dir" >&2
@@ -162,6 +194,78 @@ checkout_floor_tag() {
     fi
     commit=$(git -C "$dir" rev-parse --short HEAD)
     echo "$dist: checked out release tag $tag at $commit"
+}
+
+# Usage: swap_in_checkout <new-dir> <workpath>. Moves an existing <workpath> aside, <new-dir> into its
+# place, and only then removes the old copy; a copy that will not go is a warning. Returns 1, with
+# the old checkout back at <workpath>, when <new-dir> cannot be moved there.
+swap_in_checkout() {
+    local new="${1%/}" dest="${2%/}" old="" n=0
+    if [ -e "$dest" ] || [ -L "$dest" ]; then
+        old="$dest.old.$$"
+        while [ -e "$old" ] || [ -L "$old" ]; do
+            n=$((n + 1))
+            old="$dest.old.$$.$n"
+        done
+        if ! mv "$dest" "$old"; then
+            echo "ERROR: cannot move $dest aside to put the new checkout there; it is unchanged" >&2
+            return 1
+        fi
+    fi
+    if ! mv "$new" "$dest"; then
+        if [ -z "$old" ]; then
+            echo "ERROR: cannot move the new checkout $new to $dest" >&2
+        elif mv "$old" "$dest"; then
+            echo "ERROR: cannot move the new checkout $new to $dest; $dest is unchanged" >&2
+        else
+            echo "ERROR: cannot move the new checkout $new to $dest; the old one is at $old" >&2
+        fi
+        return 1
+    fi
+    if [ -n "$old" ] && ! rm -rf "$old" 2>/dev/null; then
+        echo "WARNING: the old checkout could not be removed completely; delete $old by hand" >&2
+    fi
+    return 0
+}
+
+# Usage: move_clone_to_floor_tag <distribution> <clone-dir> [script-label]. Moves a clone in place to
+# the floor release tag when its HEAD is behind it, and leaves a clone on a branch or at or past the
+# tag as it is. Exits 1 on local work or a failure; the label names the script that replaces it.
+move_clone_to_floor_tag() {
+    local dist="$1" dir="$2" label="${3:-}" branch tag tag_commit head rc=0
+    if ! (guard_dirty_checkout "$dir" ""); then
+        if [ -n "$label" ]; then
+            echo "       To replace the clone with a new one instead, run  bash tools/$label --force" >&2
+        fi
+        exit 1
+    fi
+    if branch=$(git -C "$dir" symbolic-ref -q --short HEAD 2>/dev/null); then
+        echo "$dist: $dir is on branch $branch; it stays as it is"
+        return 0
+    fi
+    if ! git -C "$dir" fetch --tags --quiet; then
+        echo "WARNING: cannot fetch the tags of $dir; going on with the tags it has" >&2
+    fi
+    tag=$(_floor_tag_of "$dist" "$dir") || exit 1
+    if ! tag_commit=$(git -C "$dir" rev-parse --verify --quiet "refs/tags/$tag^{commit}") ||
+        ! head=$(git -C "$dir" rev-parse --verify --quiet HEAD); then
+        echo "ERROR: git cannot resolve HEAD and the tag $tag in $dir" >&2
+        exit 1
+    fi
+    if [ "$head" = "$tag_commit" ]; then
+        echo "$dist: $dir is at the release tag $tag"
+        return 0
+    fi
+    git -C "$dir" merge-base --is-ancestor "$head" "$tag_commit" || rc=$?
+    if [ "$rc" -eq 0 ]; then
+        checkout_floor_tag "$dist" "$dir"
+        return 0
+    elif [ "$rc" -ne 1 ]; then
+        echo "ERROR: git cannot compare HEAD of $dir with the tag $tag" >&2
+        exit 1
+    fi
+    echo "$dist: $dir is not behind the release tag $tag; it stays as it is at ${head:0:7}"
+    return 0
 }
 
 # Download <dest> from the first of the urls that serves a file with the given

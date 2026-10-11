@@ -1,7 +1,7 @@
 #!/bin/bash
-# Usage: get_python_module.sh <RepoName> [--force] | --list. Clones FormingWorlds/<RepoName> into
-# ./<RepoName>/ at the release tag of its fwl-<lowercase name> floor and installs it editable. A set
-# PROTEUS_MODULE_GIT_BASE (such as https://github.com/) is the URL prefix, in place of the SSH probe.
+# Usage: get_python_module.sh <RepoName> [--force]. Clones FormingWorlds/<RepoName> into ./<RepoName>/
+# at the release tag of its fwl-<lowercase name> floor, or moves an existing clone there in place, and
+# installs it editable. --force replaces the clone; PROTEUS_MODULE_GIT_BASE sets the URL prefix.
 
 set -euo pipefail
 
@@ -10,13 +10,6 @@ source "$(dirname "${BASH_SOURCE[0]}")/_get_common.sh" || exit 1
 
 # The modules without a setup script of their own; each installs as fwl-<lowercase name>.
 modules="MORS JANUS CALLIOPE ZEPHYRUS"
-
-if [ "$#" -eq 1 ] && [ "$1" = "--list" ]; then
-    for name in $modules; do
-        echo "$name"
-    done
-    exit 0
-fi
 
 get_parse_args "$@"
 repo="$get_install_path"
@@ -34,14 +27,25 @@ for name in $modules; do
 done
 if [ -z "$dist" ] || [ "$names" -ne 1 ]; then
     echo "usage: bash tools/get_python_module.sh <RepoName> [--force]" >&2
-    echo "       bash tools/get_python_module.sh --list" >&2
     echo "       RepoName is one of: $modules" >&2
     exit 2
 fi
 
 echo "Set up $repo..."
 workpath="$proteus_root/$repo"
+
+if [ "$get_force" != true ] && [ -e "$workpath/.git" ]; then
+    move_clone_to_floor_tag "$dist" "$workpath" "get_python_module.sh $repo"
+    pip install -U -e "$workpath" || { echo "ERROR: editable install failed" >&2; exit 1; }
+    echo "Done!"
+    exit 0
+fi
+
 guard_dirty_checkout "$workpath" "get_python_module.sh $repo"
+unchanged=""
+if [ -e "$workpath" ]; then
+    unchanged="; $workpath is unchanged"
+fi
 
 # The new clone replaces the checkout only once it is at the release tag.
 tmp_clone="$workpath.tmp.$$"
@@ -58,11 +62,10 @@ if [ -z "$base" ]; then
 fi
 uri="${base}FormingWorlds/$repo.git"
 echo "Cloning $uri -> $tmp_clone"
-git clone "$uri" "$tmp_clone" || { echo "ERROR: git clone failed; $workpath is unchanged" >&2; exit 1; }
+git clone "$uri" "$tmp_clone" || { echo "ERROR: git clone failed$unchanged" >&2; exit 1; }
 checkout_floor_tag "$dist" "$tmp_clone"
 
-rm -rf "$workpath"
-mv "$tmp_clone" "$workpath"
+swap_in_checkout "$tmp_clone" "$workpath" || exit 1
 trap - EXIT
 
 pip install -U -e "$workpath" || { echo "ERROR: editable install failed" >&2; exit 1; }

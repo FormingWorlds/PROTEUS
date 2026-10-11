@@ -14,8 +14,10 @@ These tests cover the two distribution fields the installer reads:
 
 that the ``<module> <field>`` lookup of ``[tool.proteus.modules]`` keeps
 working and names the distribution fields for a distribution, and that a
-``pyproject.toml`` that is not valid TOML is reported in one line. The command-line cases run a copy of the tool beside a
-fixture ``pyproject.toml``, which it finds by walking up from its own file.
+``pyproject.toml`` that cannot be read, is not valid TOML, or holds a
+dependency table of the wrong shape is reported in one line. The
+command-line cases run a copy of the tool beside a fixture
+``pyproject.toml``, which it finds by walking up from its own file.
 
 See ``docs/How-to/testing.md`` and ``docs/Explanations/test_framework.md``
 for the test framework.
@@ -24,6 +26,7 @@ for the test framework.
 from __future__ import annotations
 
 import importlib.util
+import os
 import shutil
 import subprocess
 import sys
@@ -203,6 +206,67 @@ class TestFloor:
             assert len(result.stderr.splitlines()) == 1
             assert result.stderr.startswith(f'cannot parse {pyproject}: ')
             assert 'line 1' in result.stderr
+
+    @pytest.mark.parametrize(
+        'state',
+        ['not utf-8', 'unreadable'],
+        ids=['bytes that are not utf-8', 'no read permission'],
+    )
+    def test_pyproject_that_cannot_be_read_exits_1_in_one_line(self, tool_copy, state):
+        """A pyproject.toml that cannot be read is reported in one line naming the file,
+        with exit 1 and no traceback, for a floor and for a module field."""
+        pyproject = tool_copy.parents[1] / 'pyproject.toml'
+        if state == 'not utf-8':
+            pyproject.write_bytes(b'[project]\nname = "\xff\xfe"\n')
+        else:
+            if os.geteuid() == 0:
+                pytest.skip('root reads a file without read permission')
+            pyproject.chmod(0o000)
+        try:
+            for args in (('fwl-mors', 'floor'), ('agni', 'ref')):
+                result = _run(tool_copy, *args)
+                assert result.returncode == 1
+                assert result.stdout == ''
+                assert 'Traceback' not in result.stderr
+                assert len(result.stderr.splitlines()) == 1
+                assert result.stderr.startswith(f'cannot read {pyproject}: ')
+        finally:
+            pyproject.chmod(0o644)
+
+    @pytest.mark.parametrize(
+        ('table', 'cause'),
+        [
+            ('optional-dependencies = ["fwl-vulcan>=26.4.22"]', 'is not a table of lists'),
+            (
+                'optional-dependencies = {vulcan = "fwl-vulcan>=26.4.22"}',
+                'optional-dependencies.vulcan in pyproject.toml is not a list of strings',
+            ),
+            (
+                'dependencies = "fwl-mors>=26.10.6"',
+                'dependencies in pyproject.toml is not a list',
+            ),
+        ],
+        ids=['extras as a list', 'extra as a string', 'dependencies as a string'],
+    )
+    def test_dependency_table_of_the_wrong_shape_exits_1_in_one_line(
+        self, tool_copy, table, cause
+    ):
+        """A dependency table of the wrong shape names the table in one line with exit 1.
+
+        An extra written as a string would otherwise be read character by
+        character, and a list of extras fails with a traceback.
+        """
+        pyproject = tool_copy.parents[1] / 'pyproject.toml'
+        deps = (
+            '' if table.startswith('dependencies') else 'dependencies = ["fwl-mors>=26.10.6"]\n'
+        )
+        pyproject.write_text(f'[project]\nname = "fixture"\n{deps}{table}\n')
+        result = _run(tool_copy, 'fwl-mors', 'floor')
+        assert result.returncode == 1
+        assert result.stdout == ''
+        assert 'Traceback' not in result.stderr
+        assert len(result.stderr.splitlines()) == 1
+        assert cause in result.stderr
 
     def test_wrong_argument_count_prints_usage(self, tool_copy):
         """A wrong argument count exits 2 with usage naming both field kinds."""

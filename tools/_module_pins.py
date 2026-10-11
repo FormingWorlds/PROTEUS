@@ -28,9 +28,10 @@ Requirements are parsed with a small regex rather than ``packaging``:
 the tool runs before PROTEUS is installed, and an environment holding
 only python and pip has no importable ``packaging``.
 
-Exits non-zero with a clear message if the module or distribution is
-unknown, the requested field is missing, the distribution has no ``>=``
-floor, or not exactly one tag matches the floor.
+Exits non-zero with a one-line message if ``pyproject.toml`` cannot be
+read or parsed or holds a dependency table of the wrong shape, the module
+or distribution is unknown, the requested field is missing, the
+distribution has no ``>=`` floor, or not exactly one tag matches the floor.
 """
 
 from __future__ import annotations
@@ -129,11 +130,28 @@ def _requirements_by_name(data: dict) -> dict[str, list[str]]:
     dict of str to list of str
         The entries of ``dependencies`` and of every list in
         ``optional-dependencies``, under their normalised name.
+
+    Raises
+    ------
+    LookupError
+        If ``[project]`` is not a table, ``dependencies`` or an extra is not
+        a list of strings, or ``optional-dependencies`` is not a table.
     """
     project = data.get('project', {})
-    texts = list(project.get('dependencies', []))
-    for extra in project.get('optional-dependencies', {}).values():
-        texts.extend(extra)
+    if not isinstance(project, dict):
+        raise LookupError('[project] in pyproject.toml is not a table')
+    lists = {'dependencies': project.get('dependencies', [])}
+    extras = project.get('optional-dependencies', {})
+    if not isinstance(extras, dict):
+        raise LookupError(
+            '[project] optional-dependencies in pyproject.toml is not a table of lists'
+        )
+    lists.update({f'optional-dependencies.{key}': value for key, value in extras.items()})
+    texts = []
+    for where, entries in lists.items():
+        if not isinstance(entries, list) or not all(isinstance(t, str) for t in entries):
+            raise LookupError(f'[project] {where} in pyproject.toml is not a list of strings')
+        texts.extend(entries)
     found = {}
     for text in texts:
         match = _REQUIREMENT.match(text)
@@ -318,7 +336,12 @@ def main(argv: list[str]) -> int:
     _, name, field = argv
     path = _repo_root() / 'pyproject.toml'
     try:
-        data = tomllib.loads(path.read_text())
+        text = path.read_text(encoding='utf-8')
+    except (OSError, UnicodeDecodeError) as err:
+        print(f'cannot read {path}: {err}', file=sys.stderr)
+        return 1
+    try:
+        data = tomllib.loads(text)
         if field == 'floor':
             value = find_floor(data, name)
         elif field == 'floor-tag':

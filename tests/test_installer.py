@@ -676,7 +676,7 @@ def _clone_and_install_calls() -> list[list[str]]:
 
 
 class TestCloneAndInstall:
-    """clone_and_install pins a new clone to the floor tag and leaves an old one alone."""
+    """clone_and_install pins a new clone to the floor tag and never replaces an existing one."""
 
     @pytest.fixture
     def site(self, tmp_path):
@@ -782,25 +782,26 @@ class TestCloneAndInstall:
         assert f'MORS at {clone} is on branch main; installing it as it is' in result.stdout
         assert site['log'].read_text().splitlines()[1:] == [f'install -e {clone}/.']
 
-    def test_detached_clone_at_an_older_tag_moves_to_the_floor_tag(self, site):
-        """A clone the installer left at the tag of an older floor (26.10.05) is moved
-        to the tag of the current floor (26.10.06), detached, and installed.
+    def test_detached_clone_at_an_older_tag_moves_in_place_to_the_floor_tag(self, site):
+        """A clone the installer left at the tag of an older floor (26.10.05) moves in place
+        to the tag of the current floor (26.10.06) and is installed; its untracked
+        file stays, so no new clone replaced it.
 
         A function that leaves every existing clone alone keeps it at the
         first commit, and one that pulls lands on the tip.
         """
         tagged, tip = site['shas']['MORS']
         clone, first = self._detached_at_old_tag(site)
+        (clone / 'notes.txt').write_text('kept\n')
         result = self._call(site, 'MORS', 'fwl-mors')
         assert result.returncode == 0, result.stdout + result.stderr
         head = git(clone, 'rev-parse', 'HEAD')
         assert head == tagged
         assert head not in (first, tip)
-        assert 'on a detached HEAD away from the fwl-mors release tag' in result.stdout
+        assert (clone / 'notes.txt').read_text() == 'kept\n'
         assert 'fwl-mors: checked out release tag 26.10.06' in result.stdout
-        assert site['log'].read_text().splitlines() == [
-            f'install -U -e {os.path.realpath(clone)}'
-        ]
+        assert 'Cloning' not in result.stdout
+        assert site['log'].read_text().splitlines() == [f'install -e {clone}/.']
 
     def test_detached_clone_at_the_floor_tag_is_not_cloned_again(self, site):
         """A clone already at the floor tag is installed in place: an untracked marker
@@ -813,9 +814,66 @@ class TestCloneAndInstall:
         assert result.returncode == 0, result.stdout + result.stderr
         assert (clone / 'marker.txt').read_text() == 'kept\n'
         assert git(clone, 'rev-parse', 'HEAD') == tagged
-        assert 'MORS is at the fwl-mors release tag 26.10.06' in result.stdout
+        assert f'fwl-mors: {clone} is at the release tag 26.10.06' in result.stdout
         assert 'Cloning' not in result.stdout
         assert site['log'].read_text().splitlines()[1:] == [f'install -e {clone}/.']
+
+    def test_detached_clone_ahead_of_the_floor_tag_stays(self, site):
+        """A detached clone that the user put on the tip, past the floor tag, stays there with
+        a line that says so and is installed; the installer does not move it back."""
+        tagged, tip = site['shas']['MORS']
+        clone, _ = self._detached_at_old_tag(site)
+        git(clone, 'checkout', '-q', '--detach', tip)
+        result = self._call(site, 'MORS', 'fwl-mors')
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert git(clone, 'rev-parse', 'HEAD') == tip != tagged
+        assert 'is not behind the release tag 26.10.06; it stays as it is' in result.stdout
+        assert site['log'].read_text().splitlines() == [f'install -e {clone}/.']
+
+    def test_detached_clone_with_an_unreachable_remote_warns_and_moves(self, site):
+        """With the remote gone the tag fetch fails with a warning, the clone still moves to
+        the floor tag it already carries, and it is installed; nothing is cloned."""
+        tagged, _ = site['shas']['MORS']
+        clone, _ = self._detached_at_old_tag(site)
+        remote = site['root'].parent / 'remotes' / 'FormingWorlds' / 'MORS.git'
+        remote.rename(remote.with_name('MORS.moved'))
+        result = self._call(site, 'MORS', 'fwl-mors')
+        assert result.returncode == 0, result.stdout + result.stderr
+        # The installer sends the helper's stderr to its log with stdout (2>&1).
+        assert f'WARNING: cannot fetch the tags of {clone}' in result.stdout
+        assert git(clone, 'rev-parse', 'HEAD') == tagged
+        assert site['log'].read_text().splitlines() == [f'install -e {clone}/.']
+
+    def test_folder_that_is_not_a_git_clone_is_installed_as_it_is(self, site):
+        """A MORS folder without .git is installed as it is, with its info line, and keeps its
+        file; the installer never replaces an existing folder."""
+        plain = site['root'] / 'MORS'
+        plain.mkdir()
+        (plain / 'setup.py').write_text('# mine\n')
+        result = self._call(site, 'MORS', 'fwl-mors')
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert f'MORS at {plain} is not a git clone; installing it as it is' in result.stdout
+        assert sorted(p.name for p in plain.iterdir()) == ['setup.py']
+        assert site['log'].read_text().splitlines() == [f'install -e {plain}/.']
+
+    def test_clone_git_cannot_read_is_installed_with_a_warning(self, site):
+        """A MORS folder whose .git git cannot read (symbolic-ref exits 128) is installed as
+        it is with a warning, and nothing is cloned over it."""
+        broken = site['root'] / 'MORS'
+        (broken / '.git').mkdir(parents=True)
+        site['env']['GIT_CEILING_DIRECTORIES'] = str(site['root'].parent)
+        rc = subprocess.run(
+            ['git', '-C', str(broken), 'symbolic-ref', '-q', 'HEAD'],
+            capture_output=True,
+            env=site['env'],
+            timeout=10,
+        ).returncode
+        assert rc == 128
+        result = self._call(site, 'MORS', 'fwl-mors')
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert f'git cannot read the clone at {broken}; installing it as it is' in result.stderr
+        assert sorted(p.name for p in broken.iterdir()) == ['.git']
+        assert site['log'].read_text().splitlines() == [f'install -e {broken}/.']
 
     def test_detached_clone_with_a_local_commit_stops_the_installer(self, site):
         """A detached clone holding a commit that is on no remote stops the installer
@@ -829,7 +887,7 @@ class TestCloneAndInstall:
         output = result.stdout + result.stderr
         assert result.returncode == 1
         assert 'bash tools/get_python_module.sh MORS --force' in output
-        assert 'Could not check out the fwl-mors release tag for MORS' in output
+        assert 'Could not move MORS to the fwl-mors release tag' in output
         assert git(clone, 'rev-parse', 'HEAD') == local
         assert (clone / 'version.txt').read_text() == 'local work\n'
         assert site['log'].read_text() == ''

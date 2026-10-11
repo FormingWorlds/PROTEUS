@@ -16,9 +16,12 @@ root="$proteus_root"
 get_parse_args "$@"
 workpath="$root/Morrigan/"
 guard_dirty_checkout "$workpath" get_morrigan.sh
+unchanged=""
+if [ -e "$workpath" ]; then
+    unchanged="; $workpath is unchanged"
+fi
 
-# Clone to a temporary directory first so a failed clone does not destroy
-# the existing checkout.
+# The new clone replaces the checkout only once it is at the release tag.
 tmp_clone="${workpath%/}.tmp.$$"
 rm -rf "$tmp_clone"
 trap 'rm -rf "$tmp_clone"' EXIT
@@ -33,13 +36,11 @@ else
     uri="https://github.com/FormingWorlds/Morrigan.git"
 fi
 echo "    $uri -> $tmp_clone"
-git clone "$uri" "$tmp_clone" || { echo "ERROR: git clone failed" >&2; exit 1; }
+git clone "$uri" "$tmp_clone" || { echo "ERROR: git clone failed$unchanged" >&2; exit 1; }
 
 checkout_floor_tag fwl-morrigan "$tmp_clone"
 
-# Replace existing checkout only after clone and tag checkout succeed
-rm -rf "$workpath"
-mv "$tmp_clone" "$workpath"
+swap_in_checkout "$tmp_clone" "$workpath" || exit 1
 trap - EXIT
 
 # Install morrigan package as editable

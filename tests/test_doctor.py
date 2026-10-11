@@ -20,7 +20,7 @@ import sys
 from unittest.mock import Mock, patch
 
 import pytest
-from helpers import PROTEUS_ROOT, git, scratch_proteus_root
+from helpers import git, scratch_proteus_root
 
 from proteus.doctor import (
     _SUPPORT_EMAIL,
@@ -458,8 +458,8 @@ class TestCheckPythonPackage:
 
     def test_below_spec_editable_detached_checkout_moves_to_floor_tag(self, tmp_path):
         """A MORS clone that install.sh left on a detached release tag has no
-        setup script, so the fix fetches the tags, checks out the floor tag
-        through checkout_floor_tag and reinstalls; `git pull` fails there."""
+        setup script, so the fix moves it to the floor tag in place through
+        move_clone_to_floor_tag and reinstalls; `git pull` fails there."""
         from packaging.requirements import Requirement
 
         # A space in the path checks that the checkout is shell-quoted.
@@ -482,9 +482,9 @@ class TestCheckPythonPackage:
         assert quoted.startswith("'")
         assert r.status == FAIL
         assert 'git pull' not in r.fix_cmd
-        assert r.fix_cmd.startswith(f'git -C {quoted} fetch --tags --quiet && bash -c ')
+        assert r.fix_cmd.startswith('bash -c ')
         assert f' fwl-mors {quoted} && pip install -e {quoted}' in r.fix_cmd
-        assert 'checkout_floor_tag "$2" "$3"' in r.fix_cmd
+        assert 'move_clone_to_floor_tag "$2" "$3"' in r.fix_cmd
 
     def test_below_spec_editable_non_git_checkout_keeps_git_pull(self, tmp_path):
         """When git cannot read the checkout (not a repository), the git state is
@@ -1937,24 +1937,16 @@ class TestRunFixCommand:
         assert not pip_log.exists()
 
     @staticmethod
-    def _root_clone_fix(tmp_path, monkeypatch) -> tuple:
-        """A detached MORS clone at <root>/MORS below its floor, and the fix doctor offers.
+    def _clone_fix(tmp_path, where: str) -> tuple:
+        """A detached MORS clone below its floor, in the PROTEUS root or elsewhere, and its fix.
 
-        The remote is published as ``<base>/FormingWorlds/MORS.git`` and the
-        setup script reads ``<base>`` from PROTEUS_MODULE_GIT_BASE, so no
-        network is touched. Returns the root, the checkout, the 3 commits,
-        the pip log and the check result.
+        Returns the root, the checkout, the 3 commits and the check result.
         """
-        root = scratch_proteus_root(tmp_path / 'PROTEUS root', ['fwl-mors>=26.10.6'])
-        checkout = root / 'MORS'
-        commits = _detached_clone(tmp_path, checkout, late_tag='26.10.06')
-        base = tmp_path / 'gh'
-        (base / 'FormingWorlds').mkdir(parents=True)
-        (base / 'FormingWorlds' / 'MORS.git').symlink_to(tmp_path / 'MORS.git')
-        monkeypatch.setenv('PROTEUS_MODULE_GIT_BASE', f'{base}/')
-        pip_log = _stub_pip(tmp_path, monkeypatch)
         from packaging.requirements import Requirement
 
+        root = scratch_proteus_root(tmp_path / 'PROTEUS root', ['fwl-mors>=26.10.6'])
+        checkout = root / 'MORS' if where == 'root' else tmp_path / 'my clones' / 'MORS'
+        commits = _detached_clone(tmp_path, checkout, late_tag='26.10.06')
         with (
             patch('proteus.doctor._repo_root', return_value=root),
             patch('proteus.doctor.importlib.metadata.version', return_value='26.10.5'),
@@ -1962,42 +1954,62 @@ class TestRunFixCommand:
             patch('proteus.doctor._imported_package_dir', return_value=None),
         ):
             r = check_python_package('fwl-mors', Requirement('fwl-mors>=26.10.6'))
-        return root, checkout, commits, pip_log, r
+        return root, checkout, commits, r
 
-    def test_detached_clone_in_the_root_reruns_the_setup_script(
-        self, tmp_path, monkeypatch, capsys
-    ):
-        """A detached MORS clone where install.sh puts it gets the setup script as its fix,
-        and running it leaves HEAD at the floor tag, as the in-place fix does.
-
-        The clone sits at tag 26.10.05 on the first of 3 commits; the floor
-        26.10.6 matches the tag 26.10.06 on the second, and the tip is the third.
-        """
-        root, checkout, commits, pip_log, r = self._root_clone_fix(tmp_path, monkeypatch)
+    @pytest.mark.parametrize('where', ['root', 'elsewhere'], ids=['in the root', 'elsewhere'])
+    def test_detached_clone_gets_the_one_in_place_fix(self, tmp_path, where):
+        """A detached clone below its floor gets the same in-place command wherever it is:
+        the helper run on that checkout, then pip; no setup script replaces it."""
+        root, checkout, _, r = self._clone_fix(tmp_path, where)
+        path = shlex.quote(str(checkout))
+        common = shlex.quote(str(root / 'tools' / '_get_common.sh'))
+        move = shlex.quote('source "$1" && move_clone_to_floor_tag "$2" "$3"')
         assert r.status == FAIL
-        assert r.fix_cmd == 'bash tools/get_python_module.sh MORS'
+        assert r.auto_fixable is True
+        assert r.fix_cmd == (
+            f'bash -c {move} _ {common} fwl-mors {path} && pip install -e {path}'
+        )
+        assert 'get_python_module.sh' not in r.fix_cmd
+        assert 'git pull' not in r.fix_cmd
+
+    @pytest.mark.parametrize('where', ['root', 'elsewhere'], ids=['in the root', 'elsewhere'])
+    def test_fix_moves_a_clone_behind_the_tag_and_keeps_its_untracked_file(
+        self, tmp_path, monkeypatch, capsys, where
+    ):
+        """Run through _run_fix_command, the fix moves the clone from 26.10.05 to the floor
+        tag 26.10.06, which it has to fetch, keeps an untracked file and reinstalls
+        it; a fix that clones anew deletes the file, and one that pulls fails."""
+        root, checkout, commits, r = self._clone_fix(tmp_path, where)
+        (checkout / 'notes.txt').write_text('kept\n')
+        pip_log = _stub_pip(tmp_path, monkeypatch)
+        # A fix that clones anew gets a missing local base, never the network.
+        monkeypatch.setenv('PROTEUS_MODULE_GIT_BASE', f'{tmp_path / "no-remote"}/')
         code = _run_fix_command(r.fix_cmd, root)
         out = capsys.readouterr().out
         assert code == 0, out
-        head = git(checkout, 'rev-parse', 'HEAD')
-        assert head == commits[1]
-        assert head not in (commits[0], commits[2])
+        assert git(checkout, 'rev-parse', 'HEAD') == commits[1]
+        assert (checkout / 'notes.txt').read_text() == 'kept\n'
         assert f'fwl-mors: checked out release tag 26.10.06 at {commits[1][:7]}' in out
-        assert pip_log.read_text() == f'install -U -e {os.path.realpath(checkout)}\n'
+        assert pip_log.read_text() == f'install -e {checkout}\n'
 
-    def test_detached_clone_in_the_root_with_local_work_is_kept(
+    def test_fix_refuses_a_clone_with_a_local_commit_and_changes_nothing(
         self, tmp_path, monkeypatch, capsys
     ):
-        """The setup-script fix refuses a clone with a modified tracked file: it exits 1,
-        names the --force command, keeps the change and HEAD, and installs nothing."""
-        root, checkout, commits, pip_log, r = self._root_clone_fix(tmp_path, monkeypatch)
+        """A clone in the root with a commit of its own makes the fix exit 1: HEAD, the
+        committed file and an untracked file stay, and pip is not called."""
+        root, checkout, _, r = self._clone_fix(tmp_path, 'root')
         (checkout / 'version.txt').write_text('local work\n')
+        git(checkout, 'commit', '-q', '-am', 'local work')
+        (checkout / 'notes.txt').write_text('kept\n')
+        local = git(checkout, 'rev-parse', 'HEAD')
+        pip_log = _stub_pip(tmp_path, monkeypatch)
         code = _run_fix_command(r.fix_cmd, root)
         out = capsys.readouterr().out
         assert code == 1
-        assert 'bash tools/get_python_module.sh MORS --force' in out
+        assert 'uncommitted changes or commits not on a remote' in out
+        assert git(checkout, 'rev-parse', 'HEAD') == local
         assert (checkout / 'version.txt').read_text() == 'local work\n'
-        assert git(checkout, 'rev-parse', 'HEAD') == commits[0]
+        assert (checkout / 'notes.txt').read_text() == 'kept\n'
         assert not pip_log.exists()
 
     @pytest.mark.parametrize('work', ['local commit', 'modified tracked file'])
@@ -2031,48 +2043,17 @@ class TestRunFixCommand:
         assert (checkout / 'version.txt').read_text() == 'local work\n'
         assert not pip_log.exists()
 
-    def test_detached_clone_of_a_name_the_script_refuses_moves_in_place(
-        self, tmp_path, monkeypatch, capsys
-    ):
-        """A detached clone at <root>/NEWMOD of fwl-newmod, a name that
-        tools/get_python_module.sh does not accept (it exits 2), gets the
-        in-place fix, which moves HEAD to the floor tag 26.10.06."""
-        from packaging.requirements import Requirement
-
-        root = scratch_proteus_root(tmp_path / 'root', ['fwl-newmod>=26.10.6'])
-        checkout = root / 'NEWMOD'
-        commits = _detached_clone(tmp_path, checkout, late_tag='26.10.06')
-        pip_log = _stub_pip(tmp_path, monkeypatch)
-        with (
-            patch('proteus.doctor._repo_root', return_value=root),
-            patch('proteus.doctor.importlib.metadata.version', return_value='26.10.5'),
-            patch('proteus.doctor._editable_checkout_path', return_value=str(checkout)),
-            patch('proteus.doctor._imported_package_dir', return_value=None),
-        ):
-            r = check_python_package('fwl-newmod', Requirement('fwl-newmod>=26.10.6'))
-        assert r.status == FAIL
-        assert r.auto_fixable is True
-        assert 'get_python_module.sh' not in r.fix_cmd
-        assert r.fix_cmd.startswith(f'git -C {shlex.quote(str(checkout))} fetch --tags')
-        code = _run_fix_command(r.fix_cmd, root)
-        out = capsys.readouterr().out
-        assert code == 0, out
-        assert git(checkout, 'rev-parse', 'HEAD') == commits[1]
-        assert pip_log.read_text() == f'install -e {checkout}\n'
-
     @pytest.mark.parametrize(
         ('missing', 'checkout_dir'),
         [
             ('_get_common.sh', 'root'),
-            ('get_python_module.sh', 'root'),
             ('_module_pins.py', 'root'),
-            ('get_python_module.sh', 'elsewhere'),
+            ('_get_common.sh', 'elsewhere'),
         ],
         ids=[
             'no helper library',
-            'no setup script',
             'no pin reader',
-            'clone outside the root without a setup script',
+            'clone outside the root without a helper library',
         ],
     )
     def test_without_the_source_tree_the_fix_is_advice(self, tmp_path, missing, checkout_dir):
@@ -2098,26 +2079,6 @@ class TestRunFixCommand:
         assert 'needs the PROTEUS source tree (git clone), not a wheel install' in r.fix_cmd
         assert 'bash ' not in r.fix_cmd
         assert git(checkout, 'rev-parse', 'HEAD') == commits[0]
-
-
-class TestPythonModuleScriptNames:
-    """doctor's list of the names tools/get_python_module.sh accepts."""
-
-    def test_names_equal_the_script_list_output(self):
-        """The tuple equals the 4 lines of ``get_python_module.sh --list``, in order;
-        a module with its own setup script (ARAGOG) is in neither."""
-        from proteus.doctor import _PYTHON_MODULE_SCRIPT_NAMES
-
-        result = subprocess.run(
-            ['bash', str(PROTEUS_ROOT / 'tools' / 'get_python_module.sh'), '--list'],
-            capture_output=True,
-            text=True,
-            timeout=20,
-        )
-        assert result.returncode == 0, result.stderr
-        assert tuple(result.stdout.splitlines()) == _PYTHON_MODULE_SCRIPT_NAMES
-        assert len(_PYTHON_MODULE_SCRIPT_NAMES) == 4
-        assert 'ARAGOG' not in _PYTHON_MODULE_SCRIPT_NAMES
 
 
 class TestVersionAndCondaHelpers:
