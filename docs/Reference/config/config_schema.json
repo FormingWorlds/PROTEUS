@@ -7393,7 +7393,7 @@
       "class": "Outgas",
       "type": "float",
       "accepts_none": false,
-      "default": "4.0",
+      "default": "2.0",
       "choices": null,
       "bounds": [
         {
