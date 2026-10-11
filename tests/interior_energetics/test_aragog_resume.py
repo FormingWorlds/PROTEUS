@@ -52,13 +52,17 @@ def _mesh_file(path, bounds):
     np.savetxt(path, cols)
 
 
-def _snapshot(data_dir, time, bounds, with_radii=True):
-    """Write an interior snapshot whose basic-node radii [km] span ``bounds`` [m]."""
+def _snapshot(data_dir, time, bounds, with_radii=True, n_entropy=N_BASIC - 1):
+    """Write an interior snapshot whose basic-node radii [km] span ``bounds`` [m],
+    with an entropy profile on ``n_entropy`` staggered nodes (none for 0)."""
     with nc.Dataset(data_dir / (format_subyear_time(time) + '_int.nc'), 'w') as ds:
         ds.createDimension('basic', N_BASIC)
         if with_radii:
             var = ds.createVariable('radius_b', 'f8', ('basic',))
             var[:] = np.linspace(bounds['R_core'], bounds['R_int'], N_BASIC) / 1.0e3
+        if n_entropy:
+            ds.createDimension('staggered', n_entropy)
+            ds.createVariable('entropy_s', 'f8', ('staggered',))[:] = 7300.0
 
 
 def _saved(out, time):
@@ -189,9 +193,10 @@ def test_no_mesh_file_of_the_earlier_structure_gives_none_and_one_warning(tmp_pa
 
 
 def test_a_snapshot_that_cannot_be_compared_is_not_a_pending_update(tmp_path, caplog):
-    """A snapshot on another node count than the run, a snapshot without
-    ``radius_b`` and a missing snapshot each give None without a warning: the
-    run continues on its row, as a run with no earlier structure to build on."""
+    """A snapshot on another node count than the run, a snapshot whose entropy
+    profile is absent or of another length, a snapshot without ``radius_b`` and
+    a missing snapshot each give None without a warning: the run has no state
+    to carry from an earlier structure and continues on its row."""
     out, hf_row, hf_all = _run_dir(tmp_path)
     snapshot = out / 'data' / (format_subyear_time(T_NEW) + '_int.nc')
 
@@ -199,9 +204,30 @@ def test_a_snapshot_that_cannot_be_compared_is_not_a_pending_update(tmp_path, ca
         # The same directory has a pending update for a run on 4 nodes, none for 5.
         assert pending_structure_update(str(out), hf_row, hf_all, N_BASIC) is not None
         assert pending_structure_update(str(out), hf_row, hf_all, N_BASIC + 1) is None
+        for n_entropy in (0, N_BASIC):  # no entropy profile; one node too many
+            snapshot.unlink()
+            _snapshot(out / 'data', T_NEW, OLD, n_entropy=n_entropy)
+            assert pending_structure_update(str(out), hf_row, hf_all, N_BASIC) is None
         snapshot.unlink()
         assert pending_structure_update(str(out), hf_row, hf_all, N_BASIC) is None
-        _snapshot(out / 'data', T_NEW, NEW, with_radii=False)
+        _snapshot(out / 'data', T_NEW, OLD, with_radii=False)
         assert pending_structure_update(str(out), hf_row, hf_all, N_BASIC) is None
 
     assert [r for r in caplog.records if r.levelno >= logging.WARNING] == []
+
+
+@pytest.mark.physics_invariant
+def test_the_mesh_tolerance_is_one_metre_or_a_billionth_of_the_shell(tmp_path):
+    """The tolerance on mesh bounds is ``max(1 m, 1e-9 * (R_int - R_core))``, for
+    a number and for a column: 1 m for an Earth-size mantle, 5 m for a shell of
+    5e9 m, and the mesh-file check uses the same value."""
+    from proteus.interior_struct.zalmoxis import mesh_radius_tolerance, zalmoxis_mesh_gaps
+
+    assert mesh_radius_tolerance(OLD['R_core'], OLD['R_int']) == pytest.approx(1.0)
+    shells = pd.Series([3.4e6, 5.0e9])
+    assert list(mesh_radius_tolerance(0.0 * shells, shells)) == pytest.approx([1.0, 5.0])
+    # Discrimination: a relative term of 1e-6 would give 3.4 m for the first shell.
+    assert mesh_radius_tolerance(0.0, 3.4e6) < 2.0
+    wide = {'R_core': 0.0, 'R_int': 5.0e9}
+    _mesh_file(tmp_path / 'mesh.dat', wide)
+    assert zalmoxis_mesh_gaps(str(tmp_path / 'mesh.dat'), wide)[2] == pytest.approx(5.0)

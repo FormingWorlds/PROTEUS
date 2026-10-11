@@ -25,12 +25,6 @@ log = logging.getLogger('fwl.' + __name__)
 STRUCTURE_ROW_KEYS = ('R_int', 'R_core', 'gravity', 'M_core', 'core_density')
 
 
-def _on_mesh(R_core, R_int, r_inner: float, r_outer: float):
-    """True where the radii [m] are the bounds of the mesh, to Aragog's mesh tolerance."""
-    tol = np.maximum(1.0, 1.0e-9 * (R_int - R_core))
-    return (np.abs(R_core - r_inner) <= tol) & (np.abs(R_int - r_outer) <= tol)
-
-
 def pending_structure_update(
     output_dir: str, hf_row: dict, hf_all: pd.DataFrame, n_basic: int
 ) -> tuple[dict, str] | None:
@@ -54,21 +48,28 @@ def pending_structure_update(
         and a mesh file that holds those bounds: the copy saved with the latest
         such row, else ``zalmoxis_output.dat.prev``, else the copy of an older
         such row. None when no update is pending: the snapshot mesh is the mesh
-        of ``hf_row``, the snapshot is absent or holds no ``radius_b``, or its
-        node count is not ``n_basic``. None with a warning when no earlier row
-        and file hold the snapshot mesh.
+        of ``hf_row``, or the snapshot is absent, holds no ``radius_b``, or does
+        not hold an entropy profile on ``n_basic`` nodes. None with a warning
+        when no earlier row and file hold the snapshot mesh.
 
     Notes
     -----
     A mesh copy is saved only with a row that has a snapshot, and every structure
     solve overwrites ``zalmoxis_output.dat.prev``. With snapshots on every row the
-    earlier structure is always found. With sparser snapshots it is found only
-    when the run stopped before the next structure solve.
+    earlier structure is found unless its row lost its snapshot, as the landing
+    row of a giant impact does; then only ``.prev`` can hold it. With sparser
+    snapshots it is found only when the run stopped before the next structure solve.
     """
     from proteus.interior_struct.zalmoxis import (
         get_zalmoxis_output_filepath,
+        mesh_radius_tolerance,
         zalmoxis_mesh_gaps,
     )
+
+    def on_mesh(R_core, R_int):
+        """True where the radii [m] are the bounds of the snapshot mesh."""
+        tol = mesh_radius_tolerance(R_core, R_int)
+        return (np.abs(R_core - r_inner) <= tol) & (np.abs(R_int - r_outer) <= tol)
 
     data_dir = os.path.join(output_dir, 'data')
     time = float(hf_row['Time'])
@@ -76,18 +77,20 @@ def pending_structure_update(
     if not os.path.isfile(snapshot):
         return None
     with nc.Dataset(snapshot) as ds:
-        if 'radius_b' not in ds.variables:
+        if 'radius_b' not in ds.variables or 'entropy_s' not in ds.variables:
             return None
         radii = np.asarray(ds['radius_b'][:], dtype=float) * 1.0e3  # km -> m
+        n_entropy = ds['entropy_s'].size
     r_inner, r_outer = float(radii[0]), float(radii[-1])
-    if radii.size != n_basic or _on_mesh(hf_row['R_core'], hf_row['R_int'], r_inner, r_outer):
+    restorable = radii.size == n_basic and n_entropy == n_basic - 1
+    if not restorable or on_mesh(hf_row['R_core'], hf_row['R_int']):
         return None
 
     earlier = hf_all.iloc[:-1]
-    held = _on_mesh(earlier['R_core'], earlier['R_int'], r_inner, r_outer).to_numpy()
-    rows = [earlier.iloc[i].to_dict() for i in np.flatnonzero(held)[::-1]]
+    held = np.flatnonzero(on_mesh(earlier['R_core'], earlier['R_int']).to_numpy())[::-1]
     prev = get_zalmoxis_output_filepath(output_dir) + '.prev'
-    for k, row in enumerate(rows):
+    for k, i in enumerate(held):
+        row = earlier.iloc[int(i)].to_dict()
         saved = snapshot_path_for_time(data_dir, float(row['Time']), '_zalmoxis.dat')
         for file in (saved, prev) if k == 0 else (saved,):
             gaps = zalmoxis_mesh_gaps(file, row)

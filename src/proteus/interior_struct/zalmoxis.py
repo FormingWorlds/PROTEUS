@@ -384,6 +384,12 @@ def validate_zalmoxis_output_schema(
             )
 
 
+def mesh_radius_tolerance(R_core, R_int):
+    """Tolerance [m] on the radial bounds of a mesh between ``R_core`` and ``R_int`` [m]:
+    that of Aragog's ``EntropySolver.reset()``, ``max(1 m, 1e-9 * (R_int - R_core))``."""
+    return np.maximum(1.0, 1.0e-9 * (R_int - R_core))
+
+
 def zalmoxis_mesh_gaps(output_path: str, hf_row: dict) -> tuple[float, float, float] | None:
     """Compare a mesh file's radial bounds with a helpfile row.
 
@@ -422,7 +428,7 @@ def zalmoxis_mesh_gaps(output_path: str, hf_row: dict) -> tuple[float, float, fl
         or (np.diff(r) <= 0).any()
     ):
         return None
-    atol = max(1.0, 1.0e-9 * (hf_row['R_int'] - hf_row['R_core']))
+    atol = float(mesh_radius_tolerance(hf_row['R_core'], hf_row['R_int']))
     return r[0] - hf_row['R_core'], r[-1] - hf_row['R_int'], atol
 
 
