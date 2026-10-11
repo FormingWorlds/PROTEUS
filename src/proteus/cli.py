@@ -67,6 +67,7 @@ import click  # noqa: E402
 from proteus import Proteus  # noqa: E402
 from proteus import __version__ as proteus_version  # noqa: E402
 from proteus.config import UnknownConfigKeyError, read_config_object  # noqa: E402
+from proteus.doctor import _proteus_julia_exe  # noqa: E402
 from proteus.utils.data import download_sufficient_data  # noqa: E402
 from proteus.utils.helper import get_proteus_dir, resolve_fwl_data_dir  # noqa: E402
 from proteus.utils.install_env import export_install_vars, reload_instruction  # noqa: E402
@@ -907,7 +908,35 @@ def _export_env(root: Path, variables: dict[str, str]) -> None:
 
 
 def is_julia_installed() -> bool:
-    return shutil.which('julia') is not None
+    """Return whether a Julia is available to PROTEUS.
+
+    Returns
+    -------
+    bool
+        True when ``PYTHON_JULIAPKG_EXE`` names an executable file or a
+        ``julia`` is on ``PATH``.
+    """
+    return _proteus_julia_exe() is not None or shutil.which('julia') is not None
+
+
+def _env_with_proteus_julia() -> dict[str, str]:
+    """Return a copy of the environment in which a bare ``julia`` is the Julia PROTEUS uses.
+
+    The directory of ``PYTHON_JULIAPKG_EXE`` goes first on ``PATH`` when the
+    variable names an executable file, so that the AGNI setup script runs the
+    Julia that ``install.sh`` selected and not the default Julia of the user.
+
+    Returns
+    -------
+    dict[str, str]
+        Environment for the setup-script subprocess.
+    """
+    env = os.environ.copy()
+    exe = _proteus_julia_exe()
+    if exe is not None:
+        julia_dir = os.path.dirname(os.path.abspath(exe))
+        env['PATH'] = os.pathsep.join(p for p in (julia_dir, env.get('PATH', '')) if p)
+    return env
 
 
 def _update_input_data(config_path: Path):
@@ -1044,6 +1073,36 @@ def _install_cvode(root: Path) -> None:
     click.secho('[+] CVODE available', fg='green')
 
 
+def _download_default_phoenix() -> None:
+    """Download the PHOENIX grid of the default star, or warn and let the command go on.
+
+    The default star reads the grid at [Fe/H] = 0.0 and [alpha/M] = 0.0, which
+    ``download_sufficient_data`` does not fetch; ``install.sh`` fetches it in its
+    essential data set. Without it a config with the default star stops at the
+    star set-up of an offline run, so a failed download is a warning here.
+    """
+    from .utils.data import download_phoenix
+    from .utils.phoenix_helper import phoenix_to_grid
+
+    click.secho('[+] Downloading the PHOENIX grid of the default star...', fg='blue')
+    grid = phoenix_to_grid(FeH=0.0, alpha=0.0)
+    label = f'[Fe/H]={grid["FeH"]:+.1f}, [alpha/M]={grid["alpha"]:+.1f}'
+    try:
+        ok = download_phoenix(alpha=grid['alpha'], FeH=grid['FeH'])
+    except OSError as exc:
+        click.echo(exc)
+        ok = False
+    if not ok:
+        click.secho(
+            f'[!] The PHOENIX grid for {label} did not download. A config with the default '
+            'star stops at the star set-up of an offline run until it is there: run '
+            '"proteus get phoenix --feh 0.0 --alpha 0.0".',
+            fg='yellow',
+        )
+        return
+    click.secho(f'[+] PHOENIX grid for {label} available', fg='green')
+
+
 @cli.command()
 @click.option(
     '--export-env',
@@ -1108,7 +1167,7 @@ def install_all(export_env: bool, config_path: Path | None):
     rad_dir = socrates_dir.resolve()
     os.environ.setdefault('RAD_DIR', str(rad_dir))
 
-    env = os.environ.copy()
+    env = _env_with_proteus_julia()
 
     # --- Step 3: Julia check ---
     if not is_julia_installed():
@@ -1150,6 +1209,7 @@ def install_all(export_env: bool, config_path: Path | None):
         _export_env(root, _install_vars(root, fwl_data, rad_dir))
 
     # --- Step 6: Update input data ---
+    _download_default_phoenix()
     _update_input_data(config_path)
     (root / 'output').mkdir(exist_ok=True)
 
@@ -1244,7 +1304,7 @@ def update_all(export_env: bool, config_path: Path | None):
                 subprocess.run(
                     ['bash', 'src/get_agni.sh', '0'],
                     cwd=agni_dir,
-                    env=os.environ,
+                    env=_env_with_proteus_julia(),
                     check=True,
                 )
                 click.secho('[+] AGNI updated', fg='green')

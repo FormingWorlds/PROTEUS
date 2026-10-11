@@ -15,13 +15,14 @@
 
 set -euo pipefail
 
+# Shared helpers: see tools/_get_common.sh.
+source "$(dirname "${BASH_SOURCE[0]}")/_get_common.sh" || exit 1
+use_proteus_julia
+
 if ! command -v julia >/dev/null 2>&1; then
     echo "ERROR: julia is not on PATH. Install Julia first (see https://github.com/FormingWorlds/Obliqua)." >&2
     exit 1
 fi
-
-# Shared helpers: see tools/_get_common.sh.
-source "$(dirname "${BASH_SOURCE[0]}")/_get_common.sh" || exit 1
 
 ob_url="${OBLIQUA_GIT_URL:-$(python "$proteus_tools_dir/_module_pins.py" obliqua url)}"
 ob_ref="${OBLIQUA_GIT_REF:-$(python "$proteus_tools_dir/_module_pins.py" obliqua ref)}"

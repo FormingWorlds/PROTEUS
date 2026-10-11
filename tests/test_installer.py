@@ -1537,7 +1537,8 @@ _JULIA_FUNCTIONS = (
     'prompt_yn',
     'resolve_real_julia_exe',
     'use_julia_channel',
-    'warn_julia_111_deprecated',
+    'julia_version_of',
+    'report_proteus_julia',
     'add_julia_beside_default',
     'install_fresh_juliaup',
     'setup_julia',
@@ -1565,7 +1566,7 @@ def _stub(path: Path, text: str) -> Path:
 
 
 class TestSetupJulia:
-    """setup_julia adds the required Julia beside an unaccepted default and never moves it."""
+    """setup_julia always selects Julia 1.13: a default of another version stays, 1.13 goes beside it."""
 
     @pytest.fixture
     def site(self, tmp_path):
@@ -1626,19 +1627,28 @@ class TestSetupJulia:
         """The four values the script prints after setup_julia returns."""
         return [ln[7:] for ln in result.stdout.splitlines() if ln.startswith('REPORT ')]
 
-    @pytest.mark.parametrize(
-        'version', ['1.10.4', '1.14.0'], ids=['default-below-set', 'default-above-set']
-    )
-    def test_unaccepted_default_gets_required_julia_beside_it(self, site, version):
-        """An unaccepted default with juliaup gets `juliaup add 1.13` and no `juliaup default`.
+    @staticmethod
+    def _used_lines(result: subprocess.CompletedProcess) -> list[str]:
+        """The lines of stdout that name the Julia PROTEUS uses."""
+        return [ln for ln in result.stdout.splitlines() if 'PROTEUS uses Julia' in ln]
 
-        The 1.13 binary leads PATH, so a bare julia reports 1.13.1, not the stub
-        default; PYTHON_JULIAPKG_EXE is that binary, not the launcher stub.
+    @pytest.mark.parametrize(
+        'version',
+        ['1.10.4', '1.11.9', '1.12.6', '1.14.0'],
+        ids=['default-1.10', 'default-1.11', 'default-1.12', 'default-1.14'],
+    )
+    def test_default_other_than_113_gets_113_beside_it(self, site, version):
+        """A default Julia other than 1.13 gets `juliaup add 1.13` and no `juliaup default`.
+
+        Obliqua does not resolve on 1.12, and 1.11 and 1.14 are untested with
+        PROTEUS. The 1.13 binary leads PATH, so a bare julia reports
+        1.13.1, not the stub default; PYTHON_JULIAPKG_EXE is that binary, not
+        the launcher stub, and one line names it and the default that stays.
         """
         result = self._call(site, version)
         assert result.returncode == 0, result.stdout + result.stderr
         calls = site['log'].read_text().splitlines()
-        assert 'juliaup add 1.13' in calls
+        assert calls.count('juliaup add 1.13') == 1
         assert not [c for c in calls if c.startswith('juliaup default')]
         path, exe, channel, bare = self._report(result)
         assert path.split(os.pathsep)[0] == str(site['jl113'])
@@ -1646,19 +1656,18 @@ class TestSetupJulia:
         assert exe == str(site['jl113'] / 'julia')
         assert channel == '+1.13'
         assert bare == 'julia version 1.13.1'
-        assert (
-            f'Julia 1.13 was added beside the default {version}, PROTEUS uses {exe}, '
-            'the default is unchanged.'
-        ) in result.stdout
+        assert self._used_lines(result) == [
+            f'\x1b[0;32m[INFO]\x1b[0m  PROTEUS uses Julia 1.13.1 at {exe}; '
+            f'your default Julia {version} stays as it is.'
+        ]
+        assert 'deprecated' not in result.stdout + result.stderr
 
-    @pytest.mark.parametrize(
-        'version', ['1.12.6', '1.11.9'], ids=['default-accepted', 'default-deprecated']
-    )
-    def test_accepted_default_calls_no_juliaup(self, site, version):
-        """An accepted default (1.12, or the deprecated 1.11) calls juliaup not at all.
+    @pytest.mark.parametrize('version', ['1.13.1', '1.13.0'], ids=['patch-1', 'patch-0'])
+    def test_default_113_is_used_and_calls_no_juliaup(self, site, version):
+        """A default Julia 1.13 is the Julia PROTEUS uses; juliaup is not called at all.
 
-        PATH is left as it was and PYTHON_JULIAPKG_EXE is the default's binary;
-        the 1.11 deprecation advice names no `juliaup default`.
+        PATH is left as it was, PYTHON_JULIAPKG_EXE is the default's binary,
+        and the one line names its version and path and no other default.
         """
         result = self._call(site, version)
         assert result.returncode == 0, result.stdout + result.stderr
@@ -1670,15 +1679,19 @@ class TestSetupJulia:
         assert exe == str(site['stubs'] / 'julia')
         assert channel == ''
         assert bare == f'julia version {version}'
-        assert ('deprecated' in result.stderr) is version.startswith('1.11')
-        assert 'juliaup default' not in result.stdout + result.stderr
+        assert self._used_lines(result) == [
+            f'\x1b[0;32m[INFO]\x1b[0m  PROTEUS uses Julia {version} at {exe}.'
+        ]
+        assert 'stays as it is' not in result.stdout + result.stderr
 
-    def test_unaccepted_default_without_juliaup_stops(self, site):
-        """Julia 1.10 without juliaup stops with advice that adds 1.13 and sets no default."""
+    @pytest.mark.parametrize('version', ['1.10.4', '1.12.6'], ids=['julia-1.10', 'julia-1.12'])
+    def test_other_julia_without_juliaup_stops(self, site, version):
+        """A package-manager Julia other than 1.13 stops with advice that adds 1.13 and sets no default."""
         (site['stubs'] / 'juliaup').unlink()
-        result = self._call(site, '1.10.4')
+        result = self._call(site, version)
         output = result.stdout + result.stderr
         assert result.returncode == 1
+        assert f'PROTEUS runs on Julia 1.13, found {version}.' in output
         assert 'Julia version mismatch.' in output
         assert 'Install juliaup: curl -fsSL https://install.julialang.org | sh' in output
         assert 'Then: juliaup add 1.13' in output

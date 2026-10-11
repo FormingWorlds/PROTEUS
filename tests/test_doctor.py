@@ -364,55 +364,43 @@ class TestCheckJulia:
         """Check the Julia on PATH unless a test sets PYTHON_JULIAPKG_EXE itself."""
         monkeypatch.delenv('PYTHON_JULIAPKG_EXE', raising=False)
 
-    def test_pass_for_supported_versions(self):
-        """Julia 1.12.x and 1.13.x pass."""
-        for ver in ('1.12.6', '1.13.0'):
+    def test_pass_for_julia_113(self):
+        """Julia 1.13.x passes, with the detected version reported and no fix."""
+        for ver in ('1.13.1', '1.13.0'):
             with patch('proteus.doctor._julia_version', return_value=ver):
                 r = check_julia()
             assert r.status == PASS
-            # The detected version is reported and no fix is suggested.
-            assert ver in r.message
+            assert r.message == ver
             assert r.fix_cmd is None
 
-    def test_warn_for_wrong_version(self):
-        """Julia versions outside 1.11 to 1.13 warn with a juliaup fix.
+    @pytest.mark.parametrize(
+        'ver',
+        ['1.12.6', '1.11.5', '1.14.0', '1.10.4'],
+        ids=['julia-1.12', 'julia-1.11', 'julia-1.14', 'julia-1.10'],
+    )
+    def test_julia_other_than_113_warns_and_names_obliqua(self, ver):
+        """Any Julia other than 1.13 is a warning, not a failure, that names Obliqua and 1.13.
 
-        1.10 (too old) and 1.14 (untested release) both warn; the
-        contrast against the passing 1.12 and 1.13 above pins both
-        boundaries. The fix points at 1.13, the version install.sh pins.
+        Obliqua does not resolve on 1.12, and 1.11, 1.10 and 1.14 are untested
+        with PROTEUS. The advice adds
+        1.13 and points PYTHON_JULIAPKG_EXE at it in the conda env, which
+        ``proteus update`` does not do, and never changes the default Julia.
         """
-        for ver in ('1.10.4', '1.14.0'):
-            with patch('proteus.doctor._julia_version', return_value=ver):
-                r = check_julia()
-            assert r.status == WARN
-            assert 'juliaup add 1.13' in r.fix_cmd
-
-    def test_warn_deprecated_111(self):
-        """Julia 1.11 still works but warns that support will be dropped.
-
-        Neither Julia warning is auto-fixable: the advice adds 1.13 and points
-        PYTHON_JULIAPKG_EXE at it in the conda env, which ``proteus update`` does
-        not do, and it never changes the user's default Julia. The
-        message separates the deprecated 1.11 from an unsupported 1.14.
-        """
-        with patch('proteus.doctor._julia_version', return_value='1.11.9'):
+        with patch('proteus.doctor._julia_version', return_value=ver):
             r = check_julia()
         assert r.status == WARN
-        assert 'deprecated' in r.message
-        assert '1.11.9' in r.message
+        assert r.status != FAIL
+        assert r.message.startswith(f'{ver} (')
+        assert 'Obliqua' in r.message
+        assert 'tested on Julia 1.13' in r.message
+        assert 'deprecated' not in r.message
         assert r.fix_cmd.startswith(
             'juliaup add 1.13, then conda env config vars set PYTHON_JULIAPKG_EXE=<the path that '
             'julia +1.13 -e \'print(joinpath(Sys.BINDIR, "julia"))\' prints>, then conda deactivate'
         )
         assert 'source .proteus-env.sh' in r.fix_cmd
-        assert 'rc file' not in r.fix_cmd
         assert 'juliaup default' not in r.fix_cmd
         assert r.auto_fixable is False
-        with patch('proteus.doctor._julia_version', return_value='1.14.0'):
-            other = check_julia()
-        assert other.auto_fixable is False
-        assert other.fix_cmd == r.fix_cmd
-        assert 'deprecated' not in other.message and 'required' in other.message
 
     def test_fail_when_missing(self):
         """Missing Julia fails with install command."""

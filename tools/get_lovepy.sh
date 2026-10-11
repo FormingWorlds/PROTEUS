@@ -1,14 +1,15 @@
 #!/bin/bash
 # Download and install LovePy
 
+# Shared helpers: see tools/_get_common.sh.
+source "$(dirname "${BASH_SOURCE[0]}")/_get_common.sh" || exit 1
+use_proteus_julia
+
 # Julia installed?
 if ! [ -x "$(command -v julia)" ]; then
   echo 'ERROR: Julia is not installed.' >&2
   exit 1
 fi
-
-# Shared helpers: see tools/_get_common.sh.
-source "$(dirname "${BASH_SOURCE[0]}")/_get_common.sh" || exit 1
 
 # Resolve the pinned LovePy URL + ref from pyproject.toml. Julia's Pkg.add
 # accepts a `rev=` kwarg for a specific commit / tag / branch.

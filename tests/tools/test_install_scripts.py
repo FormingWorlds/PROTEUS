@@ -2380,6 +2380,8 @@ def test_script_clones_the_expected_destination(tmp_path, script, argv, dest, ur
         'LAVA_DIR': '',
     }
     env.pop('GIT_SSH_COMMAND', None)
+    # The stub julia stands in for every Julia, so a bound Julia of the host must not lead PATH.
+    env.pop('PYTHON_JULIAPKG_EXE', None)
 
     subprocess.run(
         ['bash', str(root / 'tools' / script), *(a.format(root=root) for a in argv)],
@@ -3622,3 +3624,226 @@ def test_manual_install_page_names_existing_scripts_and_modules():
 # ---------------------------------------------------------------------------
 # Portable-flag rewrite and guards (tools/get_socrates.sh)
 # ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# The Julia PROTEUS uses: use_proteus_julia and the setup scripts that run julia
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('strict', [True, False], ids=['strict', 'lenient'])
+@pytest.mark.parametrize(
+    'kind', ['unset', 'empty', 'missing', 'not-executable', 'directory'], ids=str
+)
+def test_use_proteus_julia_changes_nothing_without_an_executable_file(tmp_path, kind, strict):
+    """Without PYTHON_JULIAPKG_EXE naming an executable file, PATH and stdout stay as they are.
+
+    The unset case runs under ``set -u`` as well, where a bare expansion of
+    the variable would stop the script.
+    """
+    target = {
+        'unset': None,
+        'empty': '',
+        'missing': str(tmp_path / 'none' / 'julia'),
+        'not-executable': str(_write_stub(tmp_path, 'julia', '#!/bin/sh\n')),
+        'directory': str(tmp_path),
+    }[kind]
+    if kind == 'not-executable':
+        Path(target).chmod(0o644)
+    env = {k: v for k, v in os.environ.items() if k != 'PYTHON_JULIAPKG_EXE'}
+    env['PATH'] = '/usr/bin:/bin'
+    if target is not None:
+        env['PYTHON_JULIAPKG_EXE'] = target
+    res = _run_bash(
+        _with_common('use_proteus_julia\nprintf "PATH=%s\\n" "$PATH"\n', strict=strict),
+        env=env,
+    )
+    assert res.returncode == 0, res.stderr
+    assert res.stdout.splitlines() == ['PATH=/usr/bin:/bin']
+    assert res.stderr == ''
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('strict', [True, False], ids=['strict', 'lenient'])
+def test_use_proteus_julia_puts_the_bound_julia_first_on_path(tmp_path, strict):
+    """An executable PYTHON_JULIAPKG_EXE leads PATH, so a bare julia is that binary.
+
+    PATH holds a second julia, which a bare julia would find without the
+    helper; the helper prints one line that names the bound binary.
+    """
+    other = tmp_path / 'default' / 'bin'
+    other.mkdir(parents=True)
+    _write_stub(other, 'julia', '#!/bin/sh\necho default\n')
+    bound_dir = tmp_path / 'julia-1.13.1' / 'bin'
+    bound_dir.mkdir(parents=True)
+    bound = _write_stub(bound_dir, 'julia', '#!/bin/sh\necho bound\n')
+    env = {**os.environ, 'PATH': f'{other}:/usr/bin:/bin', 'PYTHON_JULIAPKG_EXE': str(bound)}
+    res = _run_bash(
+        _with_common('use_proteus_julia\nprintf "PATH=%s\\n" "$PATH"\njulia\n', strict=strict),
+        env=env,
+    )
+    assert res.returncode == 0, res.stderr
+    assert res.stdout.splitlines() == [
+        f'Julia: {bound} (PYTHON_JULIAPKG_EXE)',
+        f'PATH={os.path.realpath(bound_dir)}:{other}:/usr/bin:/bin',
+        'bound',
+    ]
+
+
+def _julia_site(tmp_path: Path, bound: bool) -> dict:
+    """A PROTEUS copy, local AGNI and Obliqua remotes and two logging julia stubs.
+
+    The julia on PATH logs ``path-julia <args>``, writes a marker file and
+    exits ``PATH_JULIA_RC`` (1 when ``bound``, else 0). With ``bound``,
+    PYTHON_JULIAPKG_EXE names a second stub in another folder that logs
+    ``bound-julia <args>`` and exits 0; without it the variable is unset.
+    The AGNI remote carries a ``src/get_agni.sh`` that calls julia once, as
+    AGNI's own script does, so the run shows which julia a child script finds.
+    """
+    root = _fake_checkout(tmp_path)
+    remotes = tmp_path / 'remotes'
+    remotes.mkdir()
+    for repo, files in (
+        ('AGNI', {'src/get_agni.sh': 'julia --project=. -e "instantiate $1"\n'}),
+        ('Obliqua', {'Project.toml': 'name = "Obliqua"\n'}),
+    ):
+        work = tmp_path / 'work' / repo
+        for name, text in files.items():
+            (work / name).parent.mkdir(parents=True, exist_ok=True)
+            (work / name).write_text(text)
+        git(work, 'init', '-q', '-b', 'main')
+        git(work, 'add', '.')
+        git(work, 'commit', '-q', '-m', 'initial')
+        git(work, 'tag', 'v1.0.0')
+        git(remotes, 'clone', '-q', '--bare', str(work), str(remotes / f'{repo}.git'))
+    log = tmp_path / 'julia.log'
+    log.write_text('')
+    marker = tmp_path / 'path-julia-ran'
+    stubs = tmp_path / 'stubs'
+    stubs.mkdir()
+    _write_stub(
+        stubs,
+        'julia',
+        '#!/bin/sh\necho "path-julia $*" >> "$STUB_LOG"\n'
+        ': > "$STUB_MARKER"\nexit "$PATH_JULIA_RC"\n',
+    )
+    env = {k: v for k, v in os.environ.items() if k != 'PYTHON_JULIAPKG_EXE'}
+    env.update(
+        {
+            'PATH': f'{stubs}:{os.environ["PATH"]}',
+            'STUB_LOG': str(log),
+            'STUB_MARKER': str(marker),
+            'PATH_JULIA_RC': '1' if bound else '0',
+            'AGNI_GIT_URL': str(remotes / 'AGNI.git'),
+            'AGNI_GIT_REF': 'v1.0.0',
+            'OBLIQUA_GIT_URL': str(remotes / 'Obliqua.git'),
+            'OBLIQUA_GIT_REF': 'v1.0.0',
+            'GIT_CEILING_DIRECTORIES': str(tmp_path),
+        }
+    )
+    exe = None
+    if bound:
+        bound_dir = tmp_path / 'juliaup' / 'julia-1.13.1' / 'bin'
+        bound_dir.mkdir(parents=True)
+        exe = _write_stub(
+            bound_dir, 'julia', '#!/bin/sh\necho "bound-julia $*" >> "$STUB_LOG"\nexit 0\n'
+        )
+        env['PYTHON_JULIAPKG_EXE'] = str(exe)
+    return {'root': root, 'env': env, 'log': log, 'marker': marker, 'exe': exe}
+
+
+# The julia calls each script makes with the argument 0, in order; LovePy's
+# Pkg.add names the URL and ref of its pin, so only its prefix is pinned.
+_JULIA_CALLS = {
+    'get_agni.sh': ['--project=. -e instantiate 0'],
+    'get_obliqua.sh': [
+        '--project=. -e using Pkg; Pkg.resolve(); Pkg.instantiate()',
+        '-e using Pkg; Pkg.add(path=".")',
+        '-e using Obliqua; println("Installed to: "*pathof(Obliqua))',
+    ],
+    'get_lovepy.sh': [
+        '-e using Pkg; Pkg.add(url="https://github.com/nichollsh/LovePy", rev="',
+        '-e using LovePy; println("Installed to: "*pathof(LovePy))',
+    ],
+}
+
+
+def _run_julia_script(site: dict, script: str) -> subprocess.CompletedProcess:
+    """Run ``tools/<script> 0`` of the site copy, from outside the copy."""
+    return subprocess.run(
+        ['bash', str(site['root'] / 'tools' / script), '0'],
+        cwd=site['root'].parent,
+        env=site['env'],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+
+
+def _julia_calls(site: dict, who: str) -> list[str]:
+    """The arguments of each logged call of the ``who`` julia, in order."""
+    lines = site['log'].read_text().splitlines()
+    return [ln.partition(' ')[2] for ln in lines if ln.partition(' ')[0] == who]
+
+
+def _matches(calls: list[str], expected: list[str]) -> bool:
+    """Whether each call equals its expected text, or starts with it for the Pkg.add of LovePy."""
+    return len(calls) == len(expected) and all(
+        c == e or (e.endswith('rev="') and c.startswith(e))
+        for c, e in zip(calls, expected, strict=True)
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('script', sorted(_JULIA_CALLS))
+def test_setup_script_runs_the_bound_julia_and_never_the_path_one(tmp_path, script):
+    """With PYTHON_JULIAPKG_EXE set, every julia call of the script reaches that binary.
+
+    The julia on PATH would exit 1 and leave a marker file; neither happens,
+    the script finishes, and the bound stub got each call in order. For
+    AGNI the call comes from the cloned ``src/get_agni.sh``, a child script,
+    so the PATH the helper sets reaches it as well.
+    """
+    site = _julia_site(tmp_path, bound=True)
+    res = _run_julia_script(site, script)
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert not site['marker'].exists(), site['log'].read_text()
+    assert _julia_calls(site, 'path-julia') == []
+    calls = _julia_calls(site, 'bound-julia')
+    assert _matches(calls, _JULIA_CALLS[script]), calls
+    assert res.stdout.splitlines().count(f'Julia: {site["exe"]} (PYTHON_JULIAPKG_EXE)') == 1
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('script', sorted(_JULIA_CALLS))
+def test_setup_script_without_a_bound_julia_runs_the_path_one(tmp_path, script):
+    """Without PYTHON_JULIAPKG_EXE the script runs the julia on PATH and names no bound Julia."""
+    site = _julia_site(tmp_path, bound=False)
+    res = _run_julia_script(site, script)
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert site['marker'].exists()
+    calls = _julia_calls(site, 'path-julia')
+    assert _matches(calls, _JULIA_CALLS[script]), calls
+    assert 'PYTHON_JULIAPKG_EXE' not in res.stdout + res.stderr
+
+
+@pytest.mark.unit
+def test_every_setup_script_that_runs_julia_calls_use_proteus_julia_first():
+    """Each tools script whose code runs julia calls use_proteus_julia before its first julia.
+
+    get_agni.sh counts through the ``src/get_agni.sh`` of AGNI that it runs;
+    test_docker_image.sh runs julia inside the container, not on the host.
+    """
+    # Guard the guard: a renamed helper would make every script fail the same way.
+    assert 'use_proteus_julia' in _library_function_names()
+    runs_julia = {}
+    for script in sorted(TOOLS_DIR.glob('*.sh')):
+        lines = _code_lines(script)
+        julia = [i for i, code in lines if re.search(r'(^|[\s(=])julia(\s|$)', code)]
+        julia += [i for i, code in lines if 'src/get_agni.sh' in code]
+        if script.name == 'test_docker_image.sh' or not julia:
+            continue
+        helper = [i for i, code in lines if code == 'use_proteus_julia']
+        runs_julia[script.name] = bool(helper) and helper[0] < min(julia)
+    assert runs_julia == {'get_agni.sh': True, 'get_lovepy.sh': True, 'get_obliqua.sh': True}

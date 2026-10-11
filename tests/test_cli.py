@@ -21,6 +21,23 @@ pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 runner = CliRunner()
 
 
+@pytest.fixture(autouse=True)
+def phoenix_downloads(monkeypatch):
+    """Replace the PHOENIX download, so that no ``install-all`` run here reaches the network.
+
+    Returns the list of the keyword arguments of each call; a test of the
+    download command or of a failure sets its own replacement over this one.
+    """
+    calls = []
+
+    def fake_download_phoenix(**kwargs):
+        calls.append(kwargs)
+        return True
+
+    monkeypatch.setattr('proteus.utils.data.download_phoenix', fake_download_phoenix)
+    return calls
+
+
 def _solar_dir(root):
     """Version directory of the solar spectra dataset below ``root``."""
     from proteus.data import STELLAR_SPECTRA_SOLAR, dataset_dir
@@ -1729,6 +1746,7 @@ def test_resolve_fwl_data_dir_falls_back_when_env_missing(monkeypatch):
 @pytest.mark.unit
 def test_is_julia_installed_true_when_shutil_finds_it(monkeypatch):
     """is_julia_installed returns True when shutil.which finds a julia binary."""
+    monkeypatch.delenv('PYTHON_JULIAPKG_EXE', raising=False)
     monkeypatch.setattr(
         cli.shutil, 'which', lambda exe: '/usr/local/bin/julia' if exe == 'julia' else None
     )
@@ -1743,12 +1761,64 @@ def test_is_julia_installed_true_when_shutil_finds_it(monkeypatch):
 @pytest.mark.unit
 def test_is_julia_installed_false_when_missing(monkeypatch):
     """is_julia_installed returns False when shutil.which cannot resolve julia."""
+    monkeypatch.delenv('PYTHON_JULIAPKG_EXE', raising=False)
     monkeypatch.setattr(cli.shutil, 'which', lambda exe: None)
     result = cli.is_julia_installed()
     assert result is False
     # Discrimination: pin the bool type so a regression returning None (also
     # falsy) does not slip through.
     assert isinstance(result, bool)
+
+
+def _julia_stub(directory: Path, executable: bool = True) -> Path:
+    """Write a ``julia`` script in ``directory``, executable or not."""
+    directory.mkdir(parents=True, exist_ok=True)
+    exe = directory / 'julia'
+    exe.write_text('#!/bin/sh\necho "julia version 1.13.1"\n')
+    exe.chmod(0o755 if executable else 0o644)
+    return exe
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('kind', 'expected'),
+    [('executable', True), ('not-executable', False), ('missing', False)],
+    ids=['bound-executable', 'bound-not-executable', 'bound-missing'],
+)
+def test_is_julia_installed_reads_pythonjuliapkg_exe_without_a_path_julia(
+    monkeypatch, tmp_path, kind, expected
+):
+    """With no julia on PATH, PYTHON_JULIAPKG_EXE counts only when it names an executable file."""
+    bindir = tmp_path / 'julia-1.13.1' / 'bin'
+    exe = bindir / 'julia'
+    if kind != 'missing':
+        _julia_stub(bindir, executable=kind == 'executable')
+    monkeypatch.setattr(cli.shutil, 'which', lambda name: None)
+    monkeypatch.setenv('PYTHON_JULIAPKG_EXE', str(exe))
+    assert cli.is_julia_installed() is expected
+    monkeypatch.delenv('PYTHON_JULIAPKG_EXE')
+    assert cli.is_julia_installed() is False
+
+
+@pytest.mark.unit
+def test_env_with_proteus_julia_puts_the_bound_julia_first_on_path(monkeypatch, tmp_path):
+    """The directory of an executable PYTHON_JULIAPKG_EXE leads PATH in a copy of the environment.
+
+    The process environment keeps its PATH, and a variable that names no
+    executable file leaves PATH as it is in the copy too.
+    """
+    bindir = tmp_path / 'julia-1.13.1' / 'bin'
+    exe = _julia_stub(bindir)
+    monkeypatch.setenv('PATH', '/usr/bin:/bin')
+    monkeypatch.setenv('PYTHON_JULIAPKG_EXE', str(exe))
+    env = cli._env_with_proteus_julia()
+    assert env['PATH'].split(os.pathsep) == [str(bindir), '/usr/bin', '/bin']
+    assert os.environ['PATH'] == '/usr/bin:/bin'
+    assert env['PYTHON_JULIAPKG_EXE'] == str(exe)
+    exe.chmod(0o644)
+    assert cli._env_with_proteus_julia()['PATH'] == '/usr/bin:/bin'
+    monkeypatch.delenv('PYTHON_JULIAPKG_EXE')
+    assert cli._env_with_proteus_julia()['PATH'] == '/usr/bin:/bin'
 
 
 @pytest.mark.unit
@@ -2048,6 +2118,123 @@ def test_install_all_agni_clone_failure_aborts(monkeypatch, tmp_path):
     assert 'Failed to install AGNI' in res.output
 
 
+def _agni_site(monkeypatch, tmp_path, agni_present: bool) -> list:
+    """Stub the heavy steps of install-all and update-all around the AGNI setup script.
+
+    SOCRATES exists, AGNI exists when ``agni_present``, FWL_DATA exists, PATH
+    holds only system folders and the data downloads are no-ops. Returns the
+    list of ``(command, kwargs)`` of each subprocess call.
+    """
+    _pin_proteus_root(monkeypatch, tmp_path)
+    monkeypatch.setattr(cli.shutil, 'disk_usage', lambda path: _stub_disk_usage_high())
+    _make_fwl_data(monkeypatch, tmp_path)
+    monkeypatch.setenv('PATH', '/usr/bin:/bin')
+    (tmp_path / 'socrates').mkdir()
+    if agni_present:
+        (tmp_path / 'AGNI').mkdir()
+    captured = []
+
+    def fake_subprocess_run(cmd, **kwargs):
+        captured.append((list(cmd), kwargs))
+        return type('R', (), {'returncode': 0})()
+
+    monkeypatch.setattr(cli.subprocess, 'run', fake_subprocess_run)
+    monkeypatch.setattr(cli, '_update_input_data', lambda path: False)
+    return captured
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('command', 'agni_present'),
+    [('install-all', False), ('update-all', True)],
+    ids=['install-all-new-agni', 'update-all-existing-agni'],
+)
+def test_agni_setup_runs_with_the_bound_julia_first_on_path(
+    monkeypatch, tmp_path, command, agni_present
+):
+    """AGNI's setup script gets PATH with the directory of PYTHON_JULIAPKG_EXE first.
+
+    No julia is on PATH, so the command finds Julia only through the variable;
+    the PATH of the process itself stays as it was.
+    """
+    captured = _agni_site(monkeypatch, tmp_path, agni_present)
+    bindir = tmp_path / 'julia-1.13.1' / 'bin'
+    monkeypatch.setenv('PYTHON_JULIAPKG_EXE', str(_julia_stub(bindir)))
+    monkeypatch.setattr(cli.shutil, 'which', lambda name: None)
+    res = runner.invoke(cli.cli, [command])
+    assert res.exit_code == 0, res.output
+    assert 'Julia not found' not in res.output
+    agni = [kw for cmd, kw in captured if cmd == ['bash', 'src/get_agni.sh', '0']]
+    assert len(agni) == 1
+    assert agni[0]['cwd'] == tmp_path / 'AGNI'
+    assert agni[0]['env']['PATH'].split(os.pathsep) == [str(bindir), '/usr/bin', '/bin']
+    assert os.environ['PATH'] == '/usr/bin:/bin'
+
+
+@pytest.mark.unit
+def test_install_all_fetches_the_phoenix_grid_of_the_default_star_once(
+    monkeypatch, tmp_path, phoenix_downloads
+):
+    """install-all downloads the PHOENIX grid at [Fe/H] = 0.0, [alpha/M] = 0.0 once.
+
+    That is the grid of the star a config without a [star] section uses, read
+    from the config defaults; update-all leaves the grid to the data step.
+    """
+    import attrs
+
+    from proteus.config._config import Config
+
+    _agni_site(monkeypatch, tmp_path, agni_present=True)
+    monkeypatch.setattr(
+        cli.shutil, 'which', lambda name: '/usr/bin/julia' if name == 'julia' else None
+    )
+    star = attrs.fields(Config).star.default.factory()
+    res = runner.invoke(cli.cli, ['install-all'])
+    assert res.exit_code == 0, res.output
+    assert phoenix_downloads == [{'alpha': 0.0, 'FeH': 0.0}]
+    assert phoenix_downloads[0] == {
+        'alpha': star.mors.phoenix_alpha,
+        'FeH': star.mors.phoenix_FeH,
+    }
+    assert star.mors.spectrum_source == 'phoenix'
+    assert '[+] PHOENIX grid for [Fe/H]=+0.0, [alpha/M]=+0.0 available' in res.output
+    assert 'PROTEUS installation completed' in res.output
+    res = runner.invoke(cli.cli, ['update-all'])
+    assert res.exit_code == 0, res.output
+    assert len(phoenix_downloads) == 1
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('failure', ['returns-false', 'raises-oserror'])
+def test_install_all_warns_and_goes_on_when_the_phoenix_download_fails(
+    monkeypatch, tmp_path, failure
+):
+    """A failed PHOENIX download is a warning: the data step and the rest of install-all run."""
+    _agni_site(monkeypatch, tmp_path, agni_present=True)
+    monkeypatch.setattr(
+        cli.shutil, 'which', lambda name: '/usr/bin/julia' if name == 'julia' else None
+    )
+    attempts = []
+
+    def failing_download(**kwargs):
+        attempts.append(kwargs)
+        if failure == 'raises-oserror':
+            raise OSError('No space left on device')
+        return False
+
+    monkeypatch.setattr('proteus.utils.data.download_phoenix', failing_download)
+    data_paths = []
+    monkeypatch.setattr(cli, '_update_input_data', lambda path: data_paths.append(path) or True)
+    res = runner.invoke(cli.cli, ['install-all'])
+    assert res.exit_code == 0, res.output
+    assert attempts == [{'alpha': 0.0, 'FeH': 0.0}]
+    assert '[!] The PHOENIX grid for [Fe/H]=+0.0, [alpha/M]=+0.0 did not download' in res.output
+    assert 'proteus get phoenix --feh 0.0 --alpha 0.0' in res.output
+    assert 'PHOENIX grid for [Fe/H]=+0.0, [alpha/M]=+0.0 available' not in res.output
+    assert data_paths == [tmp_path / 'input' / 'all_options.toml']
+    assert 'PROTEUS installation completed' in res.output
+
+
 # ---------------------------
 # update_all
 # ---------------------------
@@ -2130,6 +2317,7 @@ def test_update_all_warns_when_socrates_missing(monkeypatch, tmp_path):
 def test_update_all_warns_when_julia_missing(monkeypatch, tmp_path):
     """Julia-missing path emits a warning but does NOT abort (unlike install-all)."""
     _pin_proteus_root(monkeypatch, tmp_path)
+    monkeypatch.delenv('PYTHON_JULIAPKG_EXE', raising=False)
     monkeypatch.setattr(cli.shutil, 'disk_usage', lambda path: _stub_disk_usage_high())
     monkeypatch.setattr(cli.shutil, 'which', lambda exe: None)
     _make_fwl_data(monkeypatch, tmp_path)

@@ -667,7 +667,9 @@ def check_julia() -> CheckResult:
     """Check the version of the Julia PROTEUS uses.
 
     That is ``PYTHON_JULIAPKG_EXE`` when it points at an executable, and the
-    ``julia`` on ``PATH`` otherwise.
+    ``julia`` on ``PATH`` otherwise. Julia 1.13.x passes; any other version
+    warns, because PROTEUS is tested on 1.13 and Obliqua resolves only on
+    1.11 or 1.13.
     """
     exe = _proteus_julia_exe()
     ver = _julia_version_at(exe) if exe else _julia_version()
@@ -681,29 +683,22 @@ def check_julia() -> CheckResult:
             fix_cmd='curl -fsSL https://install.julialang.org | sh',
         )
     parts = ver.split('.')
-    if len(parts) >= 2 and parts[0] == '1' and parts[1] in ('12', '13'):
+    if len(parts) >= 2 and parts[0] == '1' and parts[1] == '13':
         return CheckResult(
             name='julia',
             category='environment',
             status=PASS,
             message=f'{ver}{where}',
         )
-    if len(parts) >= 2 and parts[0] == '1' and parts[1] == '11':
-        # Still supported, but deprecated; a Python linking OpenSSL < 3.5 needs it.
-        return CheckResult(
-            name='julia',
-            category='environment',
-            status=WARN,
-            message=f'{ver}{where} (1.11 is deprecated and will be dropped; use 1.13)',
-            fix_cmd=_julia_fix(),
-            auto_fixable=False,
-        )
     # Not auto-fixable: the variable is set in the conda env by hand.
     return CheckResult(
         name='julia',
         category='environment',
         status=WARN,
-        message=f'{ver}{where} (1.11.x, 1.12.x or 1.13.x required)',
+        message=(
+            f'{ver}{where} (PROTEUS is tested on Julia 1.13; '
+            'Obliqua, the tides module, installs only on 1.11 or 1.13)'
+        ),
         fix_cmd=_julia_fix(),
         auto_fixable=False,
     )

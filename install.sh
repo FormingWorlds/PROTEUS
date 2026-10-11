@@ -13,11 +13,10 @@ set -euo pipefail
 # requires-python ceiling once the repo root is known (see below).
 REQUIRED_PYTHON_MAJOR=3
 REQUIRED_PYTHON_MINOR=12
-# Julia: 1.11.x, 1.12.x and 1.13.x are supported; fresh installs pin the
-# version below (matches what CI tests).
+# Julia: PROTEUS runs on 1.13.x (what CI tests); a default Julia of another
+# version stays, and juliaup adds 1.13 beside it.
 REQUIRED_JULIA_MAJOR=1
 REQUIRED_JULIA_MINOR=13
-ACCEPTED_JULIA_MINORS="11 12 13"
 MIN_DISK_GB=10
 
 # ---------------------------------------------------------------------------
@@ -267,14 +266,6 @@ julia_minor_at_least_12() {
     min=$(printf '%s' "$v" | cut -d. -f2)
     case "$maj.$min" in *[!0-9.]*|.|"") return 1 ;; esac
     [ "$maj" -eq 1 ] && [ "$min" -ge 12 ]
-}
-
-# Julia 1.11 still works but is deprecated. It aborts at run time on some
-# hosts (#885), and only the OpenSSL < 3.5 fallback below still needs it.
-warn_julia_111_deprecated() {
-    warn "Julia 1.11 is deprecated and support will be dropped in a future release."
-    warn "  Switch with 'juliaup add $REQUIRED_JULIA_MAJOR.$REQUIRED_JULIA_MINOR', then set PYTHON_JULIAPKG_EXE to the path that"
-    warn "  julia +$REQUIRED_JULIA_MAJOR.$REQUIRED_JULIA_MINOR -e 'print(joinpath(Sys.BINDIR, \"julia\"))' prints."
 }
 
 conda_openssl_too_old_for_julia() {
@@ -735,7 +726,25 @@ info "Pre-flight checks passed"
 CURRENT_PHASE=2
 phase 2 "Julia"
 
-# Add the required Julia beside an unaccepted default ($1, its version) without
+# Print the version that the Julia binary $1 reports, or nothing when it reports none.
+julia_version_of() {
+    "$1" --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -1 || true
+}
+
+# The one line that names the Julia PROTEUS uses; $1 is the version of a default Julia that
+# differs from it, "none" for a juliaup without julia on PATH, or empty.
+report_proteus_julia() {
+    local version used
+    version=$(julia_version_of "$PYTHON_JULIAPKG_EXE")
+    used="Julia ${version:-(version unknown)} at $PYTHON_JULIAPKG_EXE"
+    case "$1" in
+        "") info "PROTEUS uses $used." ;;
+        none) info "PROTEUS uses $used; the default Julia of juliaup stays as it is." ;;
+        *) info "PROTEUS uses $used; your default Julia $1 stays as it is." ;;
+    esac
+}
+
+# Add the required Julia beside the default ($1, as for report_proteus_julia) without
 # changing the default, and put its binary first on the installer's own PATH.
 add_julia_beside_default() {
     local req="$REQUIRED_JULIA_MAJOR.$REQUIRED_JULIA_MINOR"
@@ -748,7 +757,7 @@ add_julia_beside_default() {
     fi
     PATH="$(dirname "$PYTHON_JULIAPKG_EXE"):$PATH"
     export PATH
-    info "Julia $req was added beside the default $1, PROTEUS uses $PYTHON_JULIAPKG_EXE, the default is unchanged."
+    report_proteus_julia "$1"
 }
 
 # Install juliaup with the official installer. It has no earlier default to
@@ -773,50 +782,42 @@ install_fresh_juliaup() {
     info "Julia $req installed"
 }
 
-# Select the Julia PROTEUS uses and export it as PYTHON_JULIAPKG_EXE; only a
-# juliaup that install_fresh_juliaup installed in this run gets a new default.
+# Select the Julia PROTEUS uses, always the required one, and export it as PYTHON_JULIAPKG_EXE;
+# only a juliaup that install_fresh_juliaup installed in this run gets a new default.
 setup_julia() {
-    local julia_version julia_major julia_minor julia_minor_ok accepted_minor
+    local req="$REQUIRED_JULIA_MAJOR.$REQUIRED_JULIA_MINOR" julia_version
     if ! command_exists julia && [ -x "$HOME/.juliaup/bin/juliaup" ]; then
         export PATH="$HOME/.juliaup/bin:$PATH"
     fi
     if ! command_exists julia; then
         info "Julia not found."
         if command_exists juliaup; then
-            add_julia_beside_default "(no julia on PATH)"
+            add_julia_beside_default none
         elif prompt_yn "Install Julia via juliaup (official installer)?"; then
             install_fresh_juliaup
             use_julia_channel ""
+            report_proteus_julia ""
         else
             die "Julia is required for AGNI. Install it manually: https://julialang.org/downloads/"
         fi
         return 0
     fi
-    julia_version=$(julia --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -1)
+    julia_version=$(julia_version_of julia)
     if [ -z "$julia_version" ]; then
         die "Could not parse Julia version from 'julia --version' output."
     fi
-    julia_major=$(echo "$julia_version" | cut -d. -f1)
-    julia_minor=$(echo "$julia_version" | cut -d. -f2)
-    info "Julia found: $julia_version"
-
-    julia_minor_ok=false
-    for accepted_minor in $ACCEPTED_JULIA_MINORS; do
-        if [ "$julia_major" -eq "$REQUIRED_JULIA_MAJOR" ] && \
-           [ "$julia_minor" -eq "$accepted_minor" ]; then
-            julia_minor_ok=true
-        fi
-    done
-    if [ "$julia_minor_ok" = true ]; then
-        [ "$julia_minor" -ne 11 ] || warn_julia_111_deprecated
-        use_julia_channel ""
-        return 0
-    fi
-    warn "Julia $REQUIRED_JULIA_MAJOR.x with minor in {$ACCEPTED_JULIA_MINORS} required, found $julia_version."
+    case "$julia_version" in
+        "$req" | "$req".*)
+            use_julia_channel ""
+            report_proteus_julia ""
+            return 0
+            ;;
+    esac
     if ! command_exists juliaup; then
-        warn "juliaup not found. Cannot add Julia $REQUIRED_JULIA_MAJOR.$REQUIRED_JULIA_MINOR automatically."
+        warn "PROTEUS runs on Julia $req, found $julia_version."
+        warn "juliaup not found. Cannot add Julia $req automatically."
         echo "  Install juliaup: curl -fsSL https://install.julialang.org | sh"
-        echo "  Then: juliaup add $REQUIRED_JULIA_MAJOR.$REQUIRED_JULIA_MINOR"
+        echo "  Then: juliaup add $req"
         die "Julia version mismatch."
     fi
     add_julia_beside_default "$julia_version"

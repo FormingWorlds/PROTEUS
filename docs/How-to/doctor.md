@@ -32,7 +32,7 @@ command you can run manually or let `proteus update` handle.
 | `RAD_DIR` | Set, directory exists, and `bin/radlib.a` is present | Not set, path missing, or SOCRATES not compiled |
 | `FC_DIR` | Set and directory exists | Not set (only required when AGNI chemistry is enabled) |
 | `PYTHON_JULIAPKG_EXE` | Set | Not set |
-| `julia` | The Julia in `PYTHON_JULIAPKG_EXE` (or on PATH when it is unset) is 1.12.x or 1.13.x | Missing or wrong version; 1.11.x warns as deprecated |
+| `julia` | The Julia in `PYTHON_JULIAPKG_EXE` (or on PATH when it is unset) is 1.13.x | Missing; any other version warns, because PROTEUS is tested on 1.13 and Obliqua installs only on 1.11 or 1.13 |
 
 ### Reference data
 
@@ -200,7 +200,10 @@ proteus update-all
 It updates the PROTEUS Python package, recompiles SOCRATES, pulls the latest
 AGNI, and refreshes the reference data, verifying environment variables and disk
 space before proceeding. Pass `--export-env` to set the environment variables
-again in the active conda environment and in `.proteus-env.sh`. Use this after pulling new code when several
+again in the active conda environment and in `.proteus-env.sh`. It does not change the Python module clones
+(MORS, JANUS, CALLIOPE, ZEPHYRUS, Aragog, Zalmoxis): to move one to its release tag after a version change,
+run the two `git` commands that `bash install.sh` prints for a clone that is not at its tag, or the module's
+setup script with `--force`. Use this after pulling new code when several
 components may have moved at once; use `proteus update` when you want to apply
 only the fixes the doctor has flagged.
 

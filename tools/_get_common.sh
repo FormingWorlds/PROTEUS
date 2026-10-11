@@ -26,6 +26,19 @@ fi
 proteus_tools_dir=$(portable_realpath "$_get_common_dir")
 proteus_root=$(portable_realpath "$proteus_tools_dir/..")
 
+# Put the directory of PYTHON_JULIAPKG_EXE, the Julia PROTEUS uses, first on PATH for this process
+# when it names an executable file, so that a bare julia here is that Julia; otherwise change nothing.
+use_proteus_julia() {
+    local exe="${PYTHON_JULIAPKG_EXE:-}" dir
+    if [ -z "$exe" ] || [ ! -f "$exe" ] || [ ! -x "$exe" ]; then
+        return 0
+    fi
+    dir=$(cd "$(dirname "$exe")" && pwd)
+    PATH="$dir:$PATH"
+    export PATH
+    echo "Julia: $exe (PYTHON_JULIAPKG_EXE)"
+}
+
 # Split the script's arguments into the --force switch and an optional
 # install-path positional, reported as get_force (true / false) and
 # get_install_path (empty when no path was given). Scripts with a fixed
