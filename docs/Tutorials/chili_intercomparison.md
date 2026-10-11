@@ -77,9 +77,9 @@ Monitor progress with `tail -f output/chili_earth/proteus_00.log`
     Earth and Venus, TRAPPIST-1 b/e/&alpha;, and the H/C inventory grid
     specs). A nominal case equals its tutorial config in every field
     except the output path and the redox state, which the generator
-    sets to the protocol value IW+4; unit tests keep the two in lockstep. After a run, convert the
-    output to the CHILI-MIP submission format with
-    `python tools/chili_postproc.py <output_dir>`.
+    sets to the protocol value IW+4; unit tests keep the two in lockstep.
+    After a run, convert the output to the CHILI-MIP submission format
+    with `python tools/chili_postproc.py <output_dir>`.
 
 ## Step 2: Download comparison data
 

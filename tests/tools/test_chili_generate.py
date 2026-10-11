@@ -111,17 +111,23 @@ def test_a_case_cannot_set_its_own_redox_state():
         gen.generate_case('tr1a')
 
 
-def test_a_refused_case_leaves_every_generated_file_as_it_was(tmp_path):
-    """A case that cannot be rendered stops ``main`` before it writes any file."""
+@pytest.mark.parametrize('failure', ['case', 'grid'])
+def test_a_refused_case_leaves_every_generated_file_as_it_was(tmp_path, failure):
+    """A case or a grid spec that cannot be rendered stops ``main`` before any write."""
     gen = _load_generator()
     gen.OUTDIR = str(tmp_path)
     gen.main()
-    before = {p.name: p.read_text() for p in tmp_path.iterdir()}
-    assert len(before) == 7 and all(before.values())
-    gen.CASE_DELTAS['tr1a']['set']['outgas.fO2_shift_IW'] = 3.0
-    with pytest.raises(ValueError, match='tr1a'):
+    files = sorted(tmp_path.iterdir())
+    assert len(files) == 7
+    for p in files:
+        p.write_text('stale')
+    if failure == 'case':
+        gen.CASE_DELTAS['tr1a']['set']['outgas.fO2_shift_IW'] = 3.0
+    else:
+        gen.generate_grid = lambda planet: (_ for _ in ()).throw(ValueError('venus grid'))
+    with pytest.raises(ValueError, match='tr1a' if failure == 'case' else 'venus grid'):
         gen.main()
-    assert {p.name: p.read_text() for p in tmp_path.iterdir()} == before
+    assert [p.read_text() for p in sorted(tmp_path.iterdir())] == ['stale'] * 7
 
 
 def test_grid_axes_match_standalone_grid_configs():
