@@ -1470,6 +1470,13 @@ def load_zalmoxis_configuration(
         check_zalmoxis_eos_files(layer_eos_config, load_zalmoxis_material_dictionaries())
         raise
 
+    log.debug(
+        'Core target: %.9e kg, %.9f of the structure target (Time = %s yr)',
+        core_mass,
+        core_mass_fraction,
+        hf_row.get('Time'),
+    )
+
     return {
         'planet_mass': planet_mass,
         'core_mass_fraction': core_mass_fraction,
