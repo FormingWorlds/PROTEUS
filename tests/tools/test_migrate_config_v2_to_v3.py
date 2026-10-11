@@ -81,6 +81,7 @@ _REVIEWED_NEUTRAL = frozenset(
         # Accretion defaults to inactive with zero impactor budgets, zero
         # loss fractions, and unread dummy/morrigan sub-blocks.
         'accretion.atmloss_frac',
+        'accretion.atmloss_law',
         'accretion.atmloss_module',
         'accretion.dummy.eccentricity',
         'accretion.dummy.timeline_path',
