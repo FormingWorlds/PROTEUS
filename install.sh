@@ -994,19 +994,42 @@ else
     info "GitHub SSH access: not available, using HTTPS"
 fi
 
-# Usage: clone_and_install <RepoName> <distribution>. A new clone goes through
-# tools/get_python_module.sh, over the transport chosen above, to the floor release tag;
-# an existing clone, which may hold the user's work, is installed as it is.
+# Usage: clone_and_install <RepoName> <distribution>. A clone on a branch is a developer's and is
+# installed as it is; tools/get_python_module.sh makes a new clone and moves a clone on a detached
+# HEAD to the floor release tag, refusing one that holds local work.
 clone_and_install() {
     local repo="$1" dist="$2"
-    local dest="$SCRIPT_DIR/$repo" described
-    if [ -d "$dest" ]; then
-        described=$(git -C "$dest" describe --tags --always 2>/dev/null || echo 'no git commit')
-        info "$repo already cloned at $dest ($described); not changed"
+    local dest="$SCRIPT_DIR/$repo" branch tag rc=0
+    if [ -d "$dest" ] && [ ! -e "$dest/.git" ]; then
+        info "$repo at $dest is not a git clone; installing it as it is"
         run_logged "Installing $repo (editable)" pip install -e "$dest/."
-    elif ! run_logged "Cloning and installing $repo" env PROTEUS_MODULE_GIT_BASE="$GH_PREFIX" \
+        return 0
+    fi
+    if [ -d "$dest" ]; then
+        branch=$(git -C "$dest" symbolic-ref -q --short HEAD 2>/dev/null) || rc=$?
+        if [ "$rc" -eq 0 ]; then
+            info "$repo at $dest is on branch $branch; installing it as it is"
+            run_logged "Installing $repo (editable)" pip install -e "$dest/."
+            return 0
+        elif [ "$rc" -ne 1 ]; then
+            warn "git cannot read the clone at $dest; installing it as it is"
+            run_logged "Installing $repo (editable)" pip install -e "$dest/."
+            return 0
+        fi
+        git -C "$dest" fetch --tags --quiet 2>&1 || warn "Could not fetch the tags of $repo"
+        tag=$(git -C "$dest" tag -l | python "$SCRIPT_DIR/tools/_module_pins.py" "$dist" floor-tag \
+            2>/dev/null) || tag=""
+        if [ -n "$tag" ] && [ "$(git -C "$dest" rev-parse HEAD)" = \
+            "$(git -C "$dest" rev-list -n 1 "refs/tags/$tag")" ]; then
+            info "$repo is at the $dist release tag $tag; installing it (editable)..."
+            run_logged "Installing $repo (editable)" pip install -e "$dest/."
+            return 0
+        fi
+        info "$repo at $dest is on a detached HEAD away from the $dist release tag; moving it"
+    fi
+    if ! run_logged "Cloning and installing $repo" env PROTEUS_MODULE_GIT_BASE="$GH_PREFIX" \
         bash "$SCRIPT_DIR/tools/get_python_module.sh" "$repo"; then
-        die "Could not check out the $dist release tag in a new $repo clone and install it; see the error above"
+        die "Could not check out the $dist release tag for $repo and install it; see the error above"
     fi
 }
 

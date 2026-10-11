@@ -126,7 +126,7 @@ The installer prints one line per build step and writes the full build output to
 
 When your default Julia is not 1.11, 1.12 or 1.13, the installer adds Julia 1.13 through juliaup beside it and does not change your default; PROTEUS finds it through `PYTHON_JULIAPKG_EXE`, so a bare `julia` in your terminal is still your own default.
 
-The installer checks out each Python module (MORS, JANUS, CALLIOPE, ZEPHYRUS, Aragog and Zalmoxis) at the release tag that matches its minimum version in `pyproject.toml`, which leaves the clone on a detached HEAD.
+Each Python module clone that the installer makes (MORS, JANUS, CALLIOPE, ZEPHYRUS, Aragog and Zalmoxis) is at the release tag that matches the module's minimum version in `pyproject.toml`. When you run the installer again after a version bump, it moves such a clone to the new tag, and it leaves a MORS, JANUS, CALLIOPE or ZEPHYRUS clone that you switched to a branch as it is. Aragog and Zalmoxis are cloned again on every run and take the branch of the same name when PROTEUS itself is on a feature branch that they also have; a clone that holds local work stops the installer instead.
 
 !!! note "Developing a module"
     To develop a module, switch its clone to a branch and install it again, for example:

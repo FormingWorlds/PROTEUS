@@ -12,8 +12,9 @@ These tests cover the two distribution fields the installer reads:
   ``v`` and trailing zero fields ignored, and the refusal of no match or of
   more than one,
 
-and that the ``<module> <field>`` lookup of ``[tool.proteus.modules]``
-keeps working. The command-line cases run a copy of the tool beside a
+that the ``<module> <field>`` lookup of ``[tool.proteus.modules]`` keeps
+working and names the distribution fields for a distribution, and that a
+``pyproject.toml`` that is not valid TOML is reported in one line. The command-line cases run a copy of the tool beside a
 fixture ``pyproject.toml``, which it finds by walking up from its own file.
 
 See ``docs/How-to/testing.md`` and ``docs/Explanations/test_framework.md``
@@ -169,6 +170,39 @@ class TestFloor:
         missing = _run(tool_copy, 'agni', 'sha256')
         assert missing.returncode == 1
         assert 'Available: ref, url' in missing.stderr
+
+    def test_distribution_with_a_module_field_names_the_distribution_fields(self, tool_copy):
+        """A distribution asked for a module field is told its fields, not called unknown.
+
+        ``FWL_Mors`` is matched in its normalised form; a name that is
+        neither a module nor a distribution still lists the known modules.
+        """
+        for name in ('fwl-mors', 'FWL_Mors'):
+            result = _run(tool_copy, name, 'tag')
+            assert result.returncode == 1
+            assert result.stdout == ''
+            assert (
+                f"'{name}' is a distribution in pyproject.toml; "
+                'the fields of a distribution are floor and floor-tag'
+            ) in result.stderr
+            assert 'Unknown module' not in result.stderr
+        unknown = _run(tool_copy, 'fwl-nothing', 'tag')
+        assert unknown.returncode == 1
+        assert "Unknown module 'fwl-nothing'. Known: agni" in unknown.stderr
+
+    def test_pyproject_syntax_error_exits_1_in_one_line(self, tool_copy):
+        """A pyproject.toml that is no valid TOML is reported in one line naming the file,
+        with exit 1 and no traceback, for a floor and for a module field."""
+        pyproject = tool_copy.parents[1] / 'pyproject.toml'
+        pyproject.write_text('[project\nname = "fixture"\n')
+        for args in (('fwl-mors', 'floor'), ('agni', 'ref')):
+            result = _run(tool_copy, *args)
+            assert result.returncode == 1
+            assert result.stdout == ''
+            assert 'Traceback' not in result.stderr
+            assert len(result.stderr.splitlines()) == 1
+            assert result.stderr.startswith(f'cannot parse {pyproject}: ')
+            assert 'line 1' in result.stderr
 
     def test_wrong_argument_count_prints_usage(self, tool_copy):
         """A wrong argument count exits 2 with usage naming both field kinds."""

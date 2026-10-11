@@ -289,13 +289,21 @@ def _git_detached(path: str) -> bool | None:
     return {0: False, 1: True}.get(rc)
 
 
+# The module names tools/get_python_module.sh accepts; its --list option prints the same.
+_PYTHON_MODULE_SCRIPT_NAMES = ('MORS', 'JANUS', 'CALLIOPE', 'ZEPHYRUS')
+
+# The files of the PROTEUS source tree that the fixes of a detached clone run.
+_DETACHED_CLONE_FIX_TOOLS = ('_get_common.sh', '_module_pins.py', 'get_python_module.sh')
+
+
 def _floor_tag_fix(dist_name: str, checkout: str) -> str:
     """Return the shell command that puts a checkout on the release tag of its floor.
 
-    The command fetches the tags, checks out the tag whose version equals
-    the floor in ``pyproject.toml`` through ``checkout_floor_tag`` of
-    ``tools/_get_common.sh``, and reinstalls the checkout editable. Every
-    path is absolute and shell-quoted, so the command runs from any working
+    The command fetches the tags, refuses a checkout holding local work
+    through ``guard_dirty_checkout`` of ``tools/_get_common.sh``, checks out
+    the tag whose version equals the floor in ``pyproject.toml`` through
+    ``checkout_floor_tag``, and reinstalls the checkout editable. Every path
+    is absolute and shell-quoted, so the command runs from any working
     directory under ``/bin/sh``.
 
     Parameters
@@ -314,7 +322,7 @@ def _floor_tag_fix(dist_name: str, checkout: str) -> str:
     """
     path = shlex.quote(os.path.abspath(checkout))
     common = shlex.quote(str(_repo_root() / 'tools' / '_get_common.sh'))
-    checkout_tag = 'source "$1" && checkout_floor_tag "$2" "$3"'
+    checkout_tag = 'source "$1" && guard_dirty_checkout "$3" "" && checkout_floor_tag "$2" "$3"'
     return (
         f'git -C {path} fetch --tags --quiet'
         f' && bash -c {shlex.quote(checkout_tag)} _ {common} {shlex.quote(dist_name)} {path}'
@@ -322,14 +330,16 @@ def _floor_tag_fix(dist_name: str, checkout: str) -> str:
     )
 
 
-def _detached_clone_fix(dist_name: str, checkout: str) -> str:
+def _detached_clone_fix(dist_name: str, checkout: str, requirement: str) -> tuple[str, bool]:
     """Return the fix for a detached editable clone of a module without its own script.
 
     A clone at ``<PROTEUS root>/<RepoName>``, where ``install.sh`` and
-    ``tools/get_python_module.sh`` put it, is set up again by that script,
-    which refuses a checkout holding local work. The script only manages
-    that location, so a clone elsewhere is moved to the floor tag in place
-    (``_floor_tag_fix``) rather than replaced by a second clone.
+    ``tools/get_python_module.sh`` put it, is set up again by that script
+    when the script accepts the name; it refuses a checkout holding local
+    work. Any other clone is moved to the floor tag in place
+    (``_floor_tag_fix``) rather than replaced by a second clone. Both fixes
+    run files of the PROTEUS source tree, so without them (a wheel install)
+    the fix is advice, as ``proteus update`` needs a source install.
 
     Parameters
     ----------
@@ -337,19 +347,32 @@ def _detached_clone_fix(dist_name: str, checkout: str) -> str:
         Distribution name, for example ``fwl-mors``.
     checkout : str
         Directory of the editable checkout.
+    requirement : str
+        The requirement of ``pyproject.toml``, for example
+        ``fwl-mors>=26.10.6``, named in the advice.
 
     Returns
     -------
-    str
-        ``bash tools/get_python_module.sh MORS`` for the clone the script
-        manages, else the command of ``_floor_tag_fix``.
+    tuple of (str, bool)
+        The fix, and whether it is a command that ``proteus update`` may
+        run: ``bash tools/get_python_module.sh MORS`` for the clone the
+        script manages, the command of ``_floor_tag_fix`` for another clone,
+        and advice (False) when the source tree is missing.
     """
-    repo = dist_name.lower().removeprefix('fwl-').upper()
     root = _repo_root()
-    script = root / 'tools' / 'get_python_module.sh'
-    if script.is_file() and os.path.realpath(checkout) == os.path.realpath(root / repo):
-        return f'bash tools/get_python_module.sh {repo}'
-    return _floor_tag_fix(dist_name, checkout)
+    if not all((root / 'tools' / name).is_file() for name in _DETACHED_CLONE_FIX_TOOLS):
+        path = shlex.quote(os.path.abspath(checkout))
+        return (
+            f'check out the release tag of {requirement} in {path}, then pip install -e {path}'
+            '  # the scripted fix needs the PROTEUS source tree (git clone), not a wheel install',
+            False,
+        )
+    repo = dist_name.lower().removeprefix('fwl-').upper()
+    if repo in _PYTHON_MODULE_SCRIPT_NAMES and os.path.realpath(checkout) == os.path.realpath(
+        root / repo
+    ):
+        return f'bash tools/get_python_module.sh {repo}', True
+    return _floor_tag_fix(dist_name, checkout), True
 
 
 def _julia_version() -> str | None:
@@ -677,6 +700,7 @@ def check_python_package(name: str, spec: Requirement | None) -> CheckResult:
     if spec and spec.specifier:
         if not spec.specifier.contains(installed, prereleases=True):
             fix = f'pip install -U "{spec}"'
+            auto_fixable = True
             if checkout:
                 # `git pull` fails on a detached HEAD, so a tag checkout re-runs its setup
                 # script or moves to the floor tag; a branch, or unknown git state, pulls.
@@ -684,7 +708,7 @@ def check_python_package(name: str, spec: Requirement | None) -> CheckResult:
                 if script:
                     fix = f'bash {script}'
                 elif _git_detached(checkout):
-                    fix = _detached_clone_fix(name, checkout)
+                    fix, auto_fixable = _detached_clone_fix(name, checkout, str(spec))
                 else:
                     fix = f'cd {shlex.quote(checkout)} && git pull && pip install -e .'
             return CheckResult(
@@ -693,6 +717,7 @@ def check_python_package(name: str, spec: Requirement | None) -> CheckResult:
                 status=FAIL,
                 message=f'{installed} (requires {spec.specifier}){annotation}',
                 fix_cmd=fix,
+                auto_fixable=auto_fixable,
             )
 
     # Package satisfies the pin

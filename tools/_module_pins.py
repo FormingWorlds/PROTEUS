@@ -66,11 +66,6 @@ def _repo_root() -> pathlib.Path:
     raise SystemExit('Could not locate pyproject.toml above _module_pins.py')
 
 
-def _load_pyproject() -> dict:
-    """Return the parsed ``pyproject.toml`` of the repo root."""
-    return tomllib.loads((_repo_root() / 'pyproject.toml').read_text())
-
-
 def _normalise(name: str) -> str:
     """Return a distribution name in its PEP 503 normalised form.
 
@@ -86,23 +81,6 @@ def _normalise(name: str) -> str:
         by one ``-``, for example ``fwl-mors``.
     """
     return re.sub(r'[-_.]+', '-', name).lower()
-
-
-def _requirement_name(text: str) -> str | None:
-    """Return the normalised distribution name of a requirement string.
-
-    Parameters
-    ----------
-    text : str
-        A PEP 508 requirement such as ``fwl-mors>=26.10.6,<27``.
-
-    Returns
-    -------
-    str or None
-        The normalised name, or None if the string does not start with one.
-    """
-    match = _REQUIREMENT.match(text)
-    return _normalise(match.group(1)) if match else None
 
 
 def _specifiers(text: str) -> list[tuple[str, str]]:
@@ -138,8 +116,8 @@ def _specifiers(text: str) -> list[tuple[str, str]]:
     return found
 
 
-def _requirements(data: dict) -> list[str]:
-    """Return every requirement string in ``[project]`` of ``pyproject.toml``.
+def _requirements_by_name(data: dict) -> dict[str, list[str]]:
+    """Return the requirement strings in ``[project]``, keyed by distribution name.
 
     Parameters
     ----------
@@ -148,14 +126,19 @@ def _requirements(data: dict) -> list[str]:
 
     Returns
     -------
-    list of str
-        The entries of ``dependencies`` followed by those of every list
-        in ``optional-dependencies``.
+    dict of str to list of str
+        The entries of ``dependencies`` and of every list in
+        ``optional-dependencies``, under their normalised name.
     """
     project = data.get('project', {})
-    found = list(project.get('dependencies', []))
+    texts = list(project.get('dependencies', []))
     for extra in project.get('optional-dependencies', {}).values():
-        found.extend(extra)
+        texts.extend(extra)
+    found = {}
+    for text in texts:
+        match = _REQUIREMENT.match(text)
+        if match:
+            found.setdefault(_normalise(match.group(1)), []).append(text)
     return found
 
 
@@ -180,11 +163,8 @@ def find_floor(data: dict, distribution: str) -> str:
         If the distribution is not required, has no single ``>=``
         specifier, or is required twice with different floors.
     """
-    wanted = _normalise(distribution)
     floors = {}
-    for text in _requirements(data):
-        if _requirement_name(text) != wanted:
-            continue
+    for text in _requirements_by_name(data).get(_normalise(distribution), []):
         specifiers = _specifiers(text)
         lower = [version for op, version in specifiers if op == '>=']
         if len(lower) != 1:
@@ -218,9 +198,7 @@ def _release_key(version: str) -> tuple[int, ...] | None:
         ``(26, 10, 6)`` for ``26.10.06`` and ``(0, 2)`` for ``v0.2.0``;
         None when anything other than digits and dots remains.
     """
-    text = version.strip()
-    if text.startswith('v'):
-        text = text[1:]
+    text = version.strip().removeprefix('v')
     if not _RELEASE.match(text):
         return None
     fields = [int(f) for f in text.split('.')]
@@ -303,6 +281,11 @@ def _module_field(data: dict, module: str, field: str) -> str:
     """
     modules = data.get('tool', {}).get('proteus', {}).get('modules', {})
     if module not in modules:
+        if _normalise(module) in _requirements_by_name(data):
+            raise LookupError(
+                f"'{module}' is a distribution in pyproject.toml; "
+                'the fields of a distribution are floor and floor-tag'
+            )
         known = ', '.join(sorted(modules)) or '(none configured)'
         raise LookupError(f"Unknown module '{module}'. Known: {known}")
     entry = modules[module]
@@ -333,14 +316,18 @@ def main(argv: list[str]) -> int:
         return 2
 
     _, name, field = argv
-    data = _load_pyproject()
+    path = _repo_root() / 'pyproject.toml'
     try:
+        data = tomllib.loads(path.read_text())
         if field == 'floor':
             value = find_floor(data, name)
         elif field == 'floor-tag':
             value = match_floor_tag(name, find_floor(data, name), sys.stdin.read().splitlines())
         else:
             value = _module_field(data, name, field)
+    except tomllib.TOMLDecodeError as err:
+        print(f'cannot parse {path}: {err}', file=sys.stderr)
+        return 1
     except (LookupError, ValueError) as err:
         print(err.args[0], file=sys.stderr)
         return 1

@@ -44,21 +44,9 @@ get_parse_args() {
     done
 }
 
-# Refuse to delete a checkout that holds local work, unless --force was
-# given. Guarded states: modified tracked files, and commits that are on
-# no remote. Untracked files (build artifacts, egg-info) do not block the
-# refresh, because they are routine in a refreshed checkout.
-#
-# Usage: guard_dirty_checkout <checkout-path> <script-name> [git pathspec...]
-#
-# The script name goes into the recovery command in the error message.
-# Trailing arguments are passed to git status, which get_socrates.sh uses
-# to exclude its regenerable build config from the dirty test. Exits 1
-# when the checkout is guarded, so call it as a plain command.
-#
-# Neither probe is piped: `git ... | head -1` reports the pipeline's status,
-# which is git's under `set -o pipefail` and head's otherwise, so the same
-# unreadable checkout stopped some scripts and was deleted by others.
+# Usage: guard_dirty_checkout <checkout-path> <script-name> [git pathspec...]. Exits 1, unless
+# --force, when the checkout has modified tracked files or commits on no remote; pathspecs go to
+# git status. An empty script name marks a clone no script manages, for advice to keep the work.
 guard_dirty_checkout() {
     local workpath="$1"
     local script="$2"
@@ -67,33 +55,43 @@ guard_dirty_checkout() {
     if [ "${get_force:-false}" = true ]; then
         return 0
     fi
-    if [ ! -d "$workpath/.git" ]; then
+    # A worktree or a submodule has a .git file, not a directory.
+    if [ ! -e "$workpath/.git" ]; then
         return 0
     fi
 
-    # Branches, and HEAD when it resolves: commits can sit on a branch that is
-    # not checked out or on a detached HEAD, while a clone killed before its
-    # first commit has no HEAD to read. Tags stay out of it, since a clone
-    # carries the upstream's tags and the commits they hold are not local work.
-    local dirty unpushed refs='--branches' rc=0
+    # Branches, and HEAD when it resolves (a clone killed before its first commit has none);
+    # tags stay out, since their commits come from the upstream. The probes are not piped,
+    # because a pipeline reports git's status only under pipefail.
+    local dirty unpushed refs='--branches' rc=0 action='delete it'
     dirty=$(git -C "$workpath" status --porcelain --untracked-files=no "$@" 2>/dev/null) || rc=$?
     if git -C "$workpath" rev-parse --verify --quiet HEAD >/dev/null 2>&1; then
         refs='--branches HEAD'
     fi
     unpushed=$(git -C "$workpath" log $refs --not --remotes --oneline -1 2>/dev/null) || rc=$?
+    if [ -z "$script" ]; then
+        action='move it to another commit'
+    fi
     if [ "$rc" -ne 0 ]; then
-        # An incomplete .git, or no git at all. Whether the checkout holds
-        # local work is then unknown, so keep it.
         echo "ERROR: git could not report the state of $workpath, so whether" >&2
-        echo "       it holds local work is unknown. Refusing to delete it." >&2
-        echo "       Inspect the checkout, or run" >&2
-        echo "       bash tools/$script --force  to discard it." >&2
+        echo "       it holds local work is unknown. Refusing to $action." >&2
+        if [ -n "$script" ]; then
+            echo "       Inspect the checkout, or run" >&2
+            echo "       bash tools/$script --force  to discard it." >&2
+        else
+            echo "       Inspect the checkout with git status and git log." >&2
+        fi
         exit 1
     fi
     if [ -n "$dirty" ] || [ -n "$unpushed" ]; then
         echo "ERROR: $workpath has uncommitted changes or commits not on a remote." >&2
-        echo "       Refusing to delete it. Commit and push your work, or run" >&2
-        echo "       bash tools/$script --force  to discard the checkout." >&2
+        if [ -n "$script" ]; then
+            echo "       Refusing to delete it. Commit and push your work, or run" >&2
+            echo "       bash tools/$script --force  to discard the checkout." >&2
+        else
+            echo "       Refusing to move it to another commit. Commit, push or stash" >&2
+            echo "       the work first, then run the command again." >&2
+        fi
         exit 1
     fi
 }
@@ -143,12 +141,22 @@ resolve_module_pin() {
 # version equals the distribution's floor in pyproject.toml (detached HEAD) and prints it.
 # Exits 1, with the cause on stderr, when that fails, so call it as a plain command.
 checkout_floor_tag() {
-    local dist="$1" dir="$2" tag commit
-    if ! tag=$(git -C "$dir" tag -l | python "$proteus_tools_dir/_module_pins.py" "$dist" floor-tag); then
-        echo "ERROR: no release tag in $dir matches the $dist floor in pyproject.toml" >&2
+    local dist="$1" dir="$2" tags tag commit
+    if ! command -v python >/dev/null 2>&1; then
+        echo "ERROR: python is not on PATH, so the $dist floor in pyproject.toml cannot be read;" >&2
+        echo "       activate the PROTEUS Python environment first" >&2
         exit 1
     fi
-    if ! git -C "$dir" checkout --quiet "tags/$tag"; then
+    if ! tags=$(git -C "$dir" tag -l); then
+        echo "ERROR: git cannot list the tags of $dir; see the git message above" >&2
+        exit 1
+    fi
+    if ! tag=$(printf '%s\n' "$tags" | python "$proteus_tools_dir/_module_pins.py" "$dist" floor-tag); then
+        echo "ERROR: cannot choose the $dist release tag in $dir; see the message above" >&2
+        exit 1
+    fi
+    # Without --quiet, git warns when the move leaves commits of a detached HEAD behind.
+    if ! git -C "$dir" -c advice.detachedHead=false checkout "tags/$tag"; then
         echo "ERROR: cannot check out tag $tag of $dist in $dir" >&2
         exit 1
     fi

@@ -1,14 +1,7 @@
 #!/bin/bash
-# Download and setup VULCAN (optional atmospheric chemistry module) as an
-# editable sibling checkout.
-#
-# Clones FormingWorlds/VULCAN into ./VULCAN/ inside the PROTEUS root,
-# checks out the git tag matching the fwl-vulcan version floor pinned in
-# pyproject.toml ([project.optional-dependencies].vulcan), builds fastchem,
-# and installs it editable. Pinning to the floor tag keeps the editable
-# checkout and the PyPI fwl-vulcan release in lock-step instead of tracking
-# whatever the default branch points at. To develop against the latest
-# VULCAN, run `git checkout main` inside ./VULCAN and reinstall.
+# Clone VULCAN (optional atmospheric chemistry) into ./VULCAN/ at the release tag of the fwl-vulcan
+# floor in pyproject.toml, build fastchem and install it editable. To develop VULCAN, switch the
+# clone to a branch and install it again. --force discards local work.
 
 set -euo pipefail
 
@@ -40,17 +33,7 @@ fi
 echo "    $uri -> $workpath"
 git clone "$uri" "$workpath" || { echo "ERROR: git clone failed" >&2; exit 1; }
 
-# Pin the checkout to the fwl-vulcan version floor declared in PROTEUS's
-# pyproject.toml, so the editable install matches the PyPI release across
-# machines and CI instead of tracking whatever the default branch points at.
-floor=$(grep -oE 'fwl-vulcan>=[0-9][0-9.]*' "$root/pyproject.toml" | head -1 | sed 's/.*>=//')
-cd "$workpath" || { echo "ERROR: cannot enter $workpath" >&2; exit 1; }
-if [ -n "$floor" ]; then
-    echo "Pinning to fwl-vulcan floor: $floor"
-    checkout_floor_tag fwl-vulcan "$workpath"
-else
-    echo "WARNING: could not read fwl-vulcan floor from pyproject.toml; using HEAD" >&2
-fi
+checkout_floor_tag fwl-vulcan "$workpath"
 
 # Compile fastchem
 cd "$workpath/fastchem_vulcan/" || { echo "ERROR: fastchem dir missing" >&2; exit 1; }
