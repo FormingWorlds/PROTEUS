@@ -341,6 +341,31 @@ def test_extend_helpfile_warns_on_unknown_keys(caplog):
 
 
 @pytest.mark.unit
+def test_extend_helpfile_accepts_the_structure_mass_target(caplog):
+    """A row from a loop with a structure solve holds ``M_int_target``: no
+    unknown-key warning, and the key stays out of the table. A second unknown
+    key in the same row is still reported, alone."""
+    marker = 'not declared in GetHelpfileKeys()'
+    row = ZeroHelpfileRow()
+    row['M_int_target'] = 5.862513874440119e24  # dry-mass target of a 1 M_Earth run [kg]
+    hf = CreateHelpfileFromDict(ZeroHelpfileRow())
+
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.utils.coupler'):
+        extended = ExtendHelpfile(hf, row)
+    assert [r.getMessage() for r in caplog.records if marker in r.getMessage()] == []
+    assert len(extended) == 2
+    assert 'M_int_target' not in extended.columns
+
+    caplog.clear()
+    row['M_int_goal'] = 1.0  # near-miss name: the allowlist must match whole keys
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.utils.coupler'):
+        ExtendHelpfile(hf, row)
+    unknown = [r.getMessage() for r in caplog.records if marker in r.getMessage()]
+    assert len(unknown) == 1
+    assert "['M_int_goal']" in unknown[0]
+
+
+@pytest.mark.unit
 def test_extend_helpfile_preserves_dataframe_order():
     """Test that ExtendHelpfile preserves row order."""
     row1 = ZeroHelpfileRow()

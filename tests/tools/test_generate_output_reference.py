@@ -277,6 +277,24 @@ def test_committed_page_and_json_are_current(matrix):
     assert unitless == []
 
 
+def test_structure_solver_writes_only_declared_keys():
+    """Each literal key ``zalmoxis_solver`` writes into ``hf_row`` is a helpfile
+    column, an allowlisted non-schema key, or private. An undeclared key would
+    make ``ExtendHelpfile`` warn on every row that follows a structure solve."""
+    coupler = importlib.import_module('proteus.utils.coupler')
+    written = {
+        key
+        for rel, func, key in _scan.scan_tree()['writes']
+        if rel == 'interior_struct/zalmoxis.py' and func == 'zalmoxis_solver'
+    }
+    # The scan must see the writer, else the subset check below passes on nothing.
+    assert {'M_int', 'M_int_target', 'core_state_initial'} <= written
+    public = {k for k in written if not k.startswith('_')}
+    declared = set(coupler.GetHelpfileKeys()) | coupler._ALLOWED_NON_SCHEMA_KEYS
+    assert sorted(public - declared) == []
+    assert {'M_int_target', 'core_state_initial'} <= coupler._ALLOWED_NON_SCHEMA_KEYS
+
+
 def test_declared_scan_tables_are_all_live(monkeypatch):
     """Staleness guard for the declared attribution tables: with the template
     overrides and suppression list emptied, the scan must report an
