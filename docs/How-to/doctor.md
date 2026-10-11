@@ -32,7 +32,7 @@ command you can run manually or let `proteus update` handle.
 | `RAD_DIR` | Set, directory exists, and `bin/radlib.a` is present | Not set, path missing, or SOCRATES not compiled |
 | `FC_DIR` | Set and directory exists | Not set (only required when AGNI chemistry is enabled) |
 | `PYTHON_JULIAPKG_EXE` | Set | Not set |
-| `julia` | Julia is on PATH and version is 1.12.x or 1.13.x | Missing or wrong version; 1.11.x warns as deprecated |
+| `julia` | The Julia in `PYTHON_JULIAPKG_EXE` (or on PATH when it is unset) is 1.12.x or 1.13.x | Missing or wrong version; 1.11.x warns as deprecated |
 
 ### Reference data
 
@@ -160,7 +160,6 @@ This lists the fixable issues and their commands but does not execute anything.
 | Missing SOCRATES | `bash tools/get_socrates.sh` |
 | SOCRATES commit drift from pin | `bash tools/get_socrates.sh "$RAD_DIR" && RAD_DIR="$RAD_DIR" bash tools/get_agni.sh 0` (rebuilds AGNI's wrappers too). To discard local changes in the SOCRATES checkout, pass `--force` to the SOCRATES step only: `bash tools/get_socrates.sh --force "$RAD_DIR" && RAD_DIR="$RAD_DIR" bash tools/get_agni.sh 0` |
 | Missing reference data | `proteus get spectral` / `proteus get stellar` |
-| Wrong Julia version | `juliaup add 1.13 && juliaup default 1.13` |
 
 ### What proteus update cannot fix
 
@@ -169,6 +168,11 @@ This lists the fixable issues and their commands but does not execute anything.
   The doctor reports the fix command, but `proteus update` cannot modify your
   shell rc file. Run the suggested `export` command manually, then add it to
   your rc file.
+- **Wrong Julia version**: the doctor checks the Julia in
+  `PYTHON_JULIAPKG_EXE` (the `julia` on `PATH` when it is unset) and suggests
+  `juliaup add 1.13`, then setting `PYTHON_JULIAPKG_EXE` in your rc file to the
+  path that `julia +1.13 -e 'print(joinpath(Sys.BINDIR, "julia"))'` prints.
+  Your default Julia stays as it is.
 - **Missing system packages** (gfortran, cmake, netcdf): these require your
   system package manager (`brew`, `apt`, `dnf`). See the
   [installation guide](installation.md) for platform-specific commands.

@@ -489,15 +489,43 @@ def check_fwl_data() -> list[CheckResult]:
     return results
 
 
+def _proteus_julia_exe() -> str | None:
+    """Return the Julia binary PROTEUS uses when ``PYTHON_JULIAPKG_EXE`` names one.
+
+    Returns
+    -------
+    str or None
+        ``PYTHON_JULIAPKG_EXE`` when it points at an executable file, else None
+        (juliacall then uses the ``julia`` on ``PATH``).
+    """
+    exe = os.environ.get('PYTHON_JULIAPKG_EXE')
+    if exe and os.path.isfile(exe) and os.access(exe, os.X_OK):
+        return exe
+    return None
+
+
+# install.sh adds 1.13 beside the default Julia and points juliacall at it.
+_JULIA_FIX = (
+    'juliaup add 1.13, then set PYTHON_JULIAPKG_EXE in your shell rc file to the path that '
+    'julia +1.13 -e \'print(joinpath(Sys.BINDIR, "julia"))\' prints'
+)
+
+
 def check_julia() -> CheckResult:
-    """Check Julia version."""
-    ver = _julia_version()
+    """Check the version of the Julia PROTEUS uses.
+
+    That is ``PYTHON_JULIAPKG_EXE`` when it points at an executable, and the
+    ``julia`` on ``PATH`` otherwise.
+    """
+    exe = _proteus_julia_exe()
+    ver = _julia_version_at(exe) if exe else _julia_version()
+    where = f' at {exe} (PYTHON_JULIAPKG_EXE)' if exe else ''
     if ver is None:
         return CheckResult(
             name='julia',
             category='environment',
             status=FAIL,
-            message='not found on PATH',
+            message=f'not runnable{where}' if exe else 'not found on PATH',
             fix_cmd='curl -fsSL https://install.julialang.org | sh',
         )
     parts = ver.split('.')
@@ -506,26 +534,26 @@ def check_julia() -> CheckResult:
             name='julia',
             category='environment',
             status=PASS,
-            message=f'{ver}',
+            message=f'{ver}{where}',
         )
     if len(parts) >= 2 and parts[0] == '1' and parts[1] == '11':
-        # Still supported, but deprecated. Not auto-fixable: a Python linking
-        # OpenSSL < 3.5 needs 1.11, so switching the global default is the
-        # user's call.
+        # Still supported, but deprecated; a Python linking OpenSSL < 3.5 needs it.
         return CheckResult(
             name='julia',
             category='environment',
             status=WARN,
-            message=f'{ver} (1.11 is deprecated and will be dropped; use 1.13)',
-            fix_cmd='juliaup add 1.13 && juliaup default 1.13',
+            message=f'{ver}{where} (1.11 is deprecated and will be dropped; use 1.13)',
+            fix_cmd=_JULIA_FIX,
             auto_fixable=False,
         )
+    # Not auto-fixable: the variable has to be set in the user's shell rc file.
     return CheckResult(
         name='julia',
         category='environment',
         status=WARN,
-        message=f'{ver} (1.11.x, 1.12.x or 1.13.x required)',
-        fix_cmd='juliaup add 1.13 && juliaup default 1.13',
+        message=f'{ver}{where} (1.11.x, 1.12.x or 1.13.x required)',
+        fix_cmd=_JULIA_FIX,
+        auto_fixable=False,
     )
 
 

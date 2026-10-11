@@ -787,3 +787,194 @@ class TestEssentialData:
         assert all(' 2>&1 || warn "' in line for line in gets)
         content = INSTALL_SH.read_text()
         assert content.count('proteus get phoenix ') == 2
+
+
+_JULIA_FUNCTIONS = (
+    'command_exists',
+    'collect_env_info',
+    'die',
+    'prompt_yn',
+    'resolve_real_julia_exe',
+    'use_julia_channel',
+    'warn_julia_111_deprecated',
+    'add_julia_beside_default',
+    'install_fresh_juliaup',
+    'setup_julia',
+)
+
+# A stub julia: the default channel answers with its own directory, "+1.13" with
+# STUB_BINDIR_113 (empty: no such channel), and --version with STUB_JULIA_VERSION.
+_STUB_JULIA = """#!/bin/sh
+echo "julia $*" >> "$STUB_LOG"
+case "$1" in
+    --version) echo "julia version $STUB_JULIA_VERSION" ;;
+    +1.13) [ -n "$STUB_BINDIR_113" ] || exit 1; printf '%s' "$STUB_BINDIR_113" ;;
+    +*) exit 1 ;;
+    *) case "$*" in *Sys.BINDIR*) printf '%s' "$(dirname "$0")" ;; esac ;;
+esac
+"""
+
+
+def _stub(path: Path, text: str) -> Path:
+    """Write an executable shell script at ``path``."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text)
+    path.chmod(0o755)
+    return path
+
+
+class TestSetupJulia:
+    """setup_julia adds the required Julia beside an unaccepted default and never moves it."""
+
+    @pytest.fixture
+    def site(self, tmp_path):
+        """Stub julia, juliaup and python3 on a PATH without any other Julia.
+
+        The 1.13 channel resolves to a scratch directory with its own julia, which
+        reports 1.13.1, so a bare julia after the call shows which binary PATH finds.
+        """
+        stubs = tmp_path / 'stubs'
+        _stub(stubs / 'julia', _STUB_JULIA)
+        _stub(
+            stubs / 'juliaup',
+            '#!/bin/sh\necho "juliaup $*" >> "$STUB_LOG"\nexit "$STUB_JULIAUP_RC"\n',
+        )
+        _stub(stubs / 'python3', '#!/bin/sh\nexit 0\n')
+        jl113 = tmp_path / 'juliaup' / 'julia-1.13.1' / 'bin'
+        _stub(jl113 / 'julia', '#!/bin/sh\necho "julia version 1.13.1"\n')
+        system = '/usr/bin:/bin'
+        assert shutil.which('juliaup', path=system) is None
+        assert shutil.which('julia', path=system) is None
+        log = tmp_path / 'calls.log'
+        log.write_text('')
+        env = {
+            'PATH': f'{stubs}{os.pathsep}{system}',
+            'HOME': str(tmp_path / 'home'),
+            'STUB_LOG': str(log),
+            'STUB_BINDIR_113': str(jl113),
+            'STUB_JULIAUP_RC': '0',
+        }
+        return {'stubs': stubs, 'jl113': jl113, 'log': log, 'env': env}
+
+    @staticmethod
+    def _call(site, version: str, **env: str) -> subprocess.CompletedProcess:
+        """Run the shipped setup_julia with a default Julia of ``version``.
+
+        After the call the script prints PATH, PYTHON_JULIAPKG_EXE, JULIA_CHANNEL
+        and the version of the bare julia, one per line, prefixed with ``REPORT``.
+        """
+        defs = (
+            'set -euo pipefail\nCURRENT_PHASE=2\nINTERACTIVE=false\n'
+            + _install_sh_blocks("RED='", 'info()', 'REQUIRED_PYTHON_MAJOR=', 'JULIA_CHANNEL=')
+            + ''.join(_install_sh_function(f) for f in _JULIA_FUNCTIONS)
+        )
+        report = (
+            'setup_julia\n'
+            'printf "REPORT %s\\n" "$PATH" "$PYTHON_JULIAPKG_EXE" "$JULIA_CHANNEL" "$(julia --version)"\n'
+        )
+        return subprocess.run(
+            ['bash', '-c', defs + report],
+            capture_output=True,
+            text=True,
+            env={**site['env'], 'STUB_JULIA_VERSION': version, **env},
+            timeout=25,
+        )
+
+    @staticmethod
+    def _report(result: subprocess.CompletedProcess) -> list[str]:
+        """The four values the script prints after setup_julia returns."""
+        return [ln[7:] for ln in result.stdout.splitlines() if ln.startswith('REPORT ')]
+
+    @pytest.mark.parametrize(
+        'version', ['1.10.4', '1.14.0'], ids=['default-below-set', 'default-above-set']
+    )
+    def test_unaccepted_default_gets_required_julia_beside_it(self, site, version):
+        """An unaccepted default with juliaup gets `juliaup add 1.13` and no `juliaup default`.
+
+        The 1.13 binary leads PATH, so a bare julia reports 1.13.1, not the stub
+        default; PYTHON_JULIAPKG_EXE is that binary, not the launcher stub.
+        """
+        result = self._call(site, version)
+        assert result.returncode == 0, result.stdout + result.stderr
+        calls = site['log'].read_text().splitlines()
+        assert 'juliaup add 1.13' in calls
+        assert not [c for c in calls if c.startswith('juliaup default')]
+        path, exe, channel, bare = self._report(result)
+        assert path.split(os.pathsep)[0] == str(site['jl113'])
+        assert path.split(os.pathsep)[1] == str(site['stubs'])
+        assert exe == str(site['jl113'] / 'julia')
+        assert channel == '+1.13'
+        assert bare == 'julia version 1.13.1'
+        assert (
+            f'Julia 1.13 was added beside the default {version}, PROTEUS uses {exe}, '
+            'the default is unchanged.'
+        ) in result.stdout
+
+    @pytest.mark.parametrize(
+        'version', ['1.12.6', '1.11.9'], ids=['default-accepted', 'default-deprecated']
+    )
+    def test_accepted_default_calls_no_juliaup(self, site, version):
+        """An accepted default (1.12, or the deprecated 1.11) calls juliaup not at all.
+
+        PATH is left as it was and PYTHON_JULIAPKG_EXE is the default's binary;
+        the 1.11 deprecation advice names no `juliaup default`.
+        """
+        result = self._call(site, version)
+        assert result.returncode == 0, result.stdout + result.stderr
+        calls = site['log'].read_text().splitlines()
+        assert not [c for c in calls if c.startswith('juliaup ')]
+        assert not [c for c in calls if c.startswith('julia +')]
+        path, exe, channel, bare = self._report(result)
+        assert path == site['env']['PATH']
+        assert exe == str(site['stubs'] / 'julia')
+        assert channel == ''
+        assert bare == f'julia version {version}'
+        assert ('deprecated' in result.stderr) is version.startswith('1.11')
+        assert 'juliaup default' not in result.stdout + result.stderr
+
+    def test_unaccepted_default_without_juliaup_stops(self, site):
+        """Julia 1.10 without juliaup stops with advice that adds 1.13 and sets no default."""
+        (site['stubs'] / 'juliaup').unlink()
+        result = self._call(site, '1.10.4')
+        output = result.stdout + result.stderr
+        assert result.returncode == 1
+        assert 'Julia version mismatch.' in output
+        assert 'Install juliaup: curl -fsSL https://install.julialang.org | sh' in output
+        assert 'Then: juliaup add 1.13' in output
+        assert 'juliaup default' not in output
+        assert self._report(result) == []
+        assert not [c for c in site['log'].read_text().splitlines() if c.startswith('julia +')]
+
+    def test_missing_channel_stops_instead_of_using_the_default(self, site):
+        """A failed `juliaup add` with no 1.13 channel stops; the 1.10 default is never used.
+
+        A probe that falls back to the julia on PATH would set PYTHON_JULIAPKG_EXE
+        to the 1.10 launcher stub and return 0.
+        """
+        result = self._call(site, '1.10.4', STUB_JULIAUP_RC='1', STUB_BINDIR_113='')
+        output = result.stdout + result.stderr
+        assert result.returncode == 1
+        assert "Could not locate the Julia 1.13 binary after 'juliaup add 1.13'." in output
+        assert self._report(result) == []
+        assert site['log'].read_text().splitlines().count('juliaup add 1.13') == 1
+
+
+class TestJuliaupDefaultUse:
+    """Only a juliaup installed by this run gets a new default Julia."""
+
+    def test_juliaup_default_only_in_the_fresh_juliaup_install(self):
+        """Every `juliaup default` line of install.sh lies in install_fresh_juliaup.
+
+        The rule: the lines of install.sh holding `juliaup default` are exactly
+        those of install_fresh_juliaup, which also downloads the juliaup installer,
+        and there is one of them. doctor.py holds none.
+        """
+        everywhere = [
+            ln for ln in INSTALL_SH.read_text().splitlines() if 'juliaup default' in ln
+        ]
+        fresh = _install_sh_function('install_fresh_juliaup')
+        assert 'curl -fsSL https://install.julialang.org' in fresh
+        assert everywhere == [ln for ln in fresh.splitlines() if 'juliaup default' in ln]
+        assert [ln.strip() for ln in everywhere] == ['juliaup default "$req"']
+        doctor = PROTEUS_ROOT / 'src' / 'proteus' / 'doctor.py'
+        assert 'juliaup default' not in doctor.read_text()

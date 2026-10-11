@@ -18,6 +18,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
@@ -337,6 +338,11 @@ class TestCheckFwlData:
 class TestCheckJulia:
     """Julia version checks."""
 
+    @pytest.fixture(autouse=True)
+    def _no_bound_julia(self, monkeypatch):
+        """Check the Julia on PATH unless a test sets PYTHON_JULIAPKG_EXE itself."""
+        monkeypatch.delenv('PYTHON_JULIAPKG_EXE', raising=False)
+
     def test_pass_for_supported_versions(self):
         """Julia 1.12.x and 1.13.x pass."""
         for ver in ('1.12.6', '1.13.0'):
@@ -363,20 +369,24 @@ class TestCheckJulia:
     def test_warn_deprecated_111(self):
         """Julia 1.11 still works but warns that support will be dropped.
 
-        The warning is not auto-fixable, so ``proteus update`` never
-        switches the global Julia of a user who needs 1.11 for an
-        OpenSSL < 3.5 Python. The out-of-range warning above stays
-        auto-fixable, which separates the two WARN paths.
+        Neither Julia warning is auto-fixable: the advice adds 1.13 and points
+        PYTHON_JULIAPKG_EXE at it, which ``proteus update`` cannot write to the
+        user's rc file, and it never changes the user's default Julia. The
+        message separates the deprecated 1.11 from an unsupported 1.14.
         """
         with patch('proteus.doctor._julia_version', return_value='1.11.9'):
             r = check_julia()
         assert r.status == WARN
         assert 'deprecated' in r.message
         assert '1.11.9' in r.message
-        assert r.fix_cmd == 'juliaup add 1.13 && juliaup default 1.13'
+        assert r.fix_cmd.startswith('juliaup add 1.13, then set PYTHON_JULIAPKG_EXE')
+        assert 'juliaup default' not in r.fix_cmd
         assert r.auto_fixable is False
         with patch('proteus.doctor._julia_version', return_value='1.14.0'):
-            assert check_julia().auto_fixable is True
+            other = check_julia()
+        assert other.auto_fixable is False
+        assert other.fix_cmd == r.fix_cmd
+        assert 'deprecated' not in other.message and 'required' in other.message
 
     def test_fail_when_missing(self):
         """Missing Julia fails with install command."""
@@ -384,6 +394,56 @@ class TestCheckJulia:
             r = check_julia()
         assert r.status == FAIL
         assert 'julialang' in r.fix_cmd
+
+    @staticmethod
+    def _julia_stub(directory: Path, version: str) -> Path:
+        """An executable ``julia`` in ``directory`` that reports ``version``."""
+        directory.mkdir(parents=True)
+        exe = directory / 'julia'
+        exe.write_text(f'#!/bin/sh\necho "julia version {version}"\n')
+        exe.chmod(0o755)
+        return exe
+
+    def test_checks_the_julia_in_pythonjuliapkg_exe_first(self, tmp_path, monkeypatch):
+        """PYTHON_JULIAPKG_EXE at a 1.13.1 binary passes while PATH holds a 1.10 julia.
+
+        Unsetting the variable makes the same check report the PATH 1.10 as a
+        warning, so the pass comes from the variable and not from the PATH julia.
+        """
+        bound = self._julia_stub(tmp_path / 'juliaup' / 'bin', '1.13.1')
+        self._julia_stub(tmp_path / 'path', '1.10.4')
+        monkeypatch.setenv('PATH', str(tmp_path / 'path'))
+        monkeypatch.setenv('PYTHON_JULIAPKG_EXE', str(bound))
+        r = check_julia()
+        assert r.status == PASS
+        assert r.message == f'1.13.1 at {bound} (PYTHON_JULIAPKG_EXE)'
+        assert r.fix_cmd is None
+        monkeypatch.delenv('PYTHON_JULIAPKG_EXE')
+        fallback = check_julia()
+        assert fallback.status == WARN
+        assert fallback.message.startswith('1.10.4 (')
+        assert 'juliaup add 1.13' in fallback.fix_cmd
+        assert 'juliaup default' not in fallback.fix_cmd
+
+    @pytest.mark.parametrize('kind', ['missing', 'not-executable'])
+    def test_falls_back_to_path_when_pythonjuliapkg_exe_is_unusable(
+        self, tmp_path, monkeypatch, kind
+    ):
+        """A PYTHON_JULIAPKG_EXE that is no executable file leaves the PATH julia checked.
+
+        The variable names a 1.13.1 script that is either absent or not
+        executable, and PATH holds a 1.10 julia; the check reports the 1.10.
+        """
+        bound = tmp_path / 'bound' / 'julia'
+        if kind == 'not-executable':
+            self._julia_stub(bound.parent, '1.13.1').chmod(0o644)
+        self._julia_stub(tmp_path / 'path', '1.10.4')
+        monkeypatch.setenv('PATH', str(tmp_path / 'path'))
+        monkeypatch.setenv('PYTHON_JULIAPKG_EXE', str(bound))
+        r = check_julia()
+        assert r.status == WARN
+        assert r.message.startswith('1.10.4 (')
+        assert 'PYTHON_JULIAPKG_EXE' not in r.message
 
 
 class TestCheckPythonPackage:

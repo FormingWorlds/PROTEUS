@@ -110,20 +110,22 @@ conda activate proteus
 bash install.sh
 ```
 
-!!! warning "Remove old Julia installations"
-    Issues might arise if you already have Julia installed via your system manager (and not the official installer). In that case, please uninstall Julia _before running the installer_ and remove old Julia entries from your `PATH`.
+!!! warning "Julia from a system package manager"
+    If your `julia` comes from your system package manager (not the official installer) and is not version 1.11, 1.12 or 1.13, the installer stops, because it adds Julia 1.13 only through juliaup. Install juliaup with the official installer, or uninstall that Julia and remove its entries from your `PATH`, _before running the installer_.
 
 
 The installer runs through the following phases automatically:
 
 1. Pre-flight checks (OS, disk space, Python version, system dependencies)
-2. Julia installation and version pinning (1.13)
+2. Julia check, and Julia 1.13 through juliaup when no supported Julia is found
 3. Environment variables (`FWL_DATA`, `PYTHON_JULIAPKG_EXE`)
 4. SOCRATES compilation and `RAD_DIR` setup
 5. AGNI and FastChem setup (Julia atmosphere model + equilibrium chemistry)
 6. Python packages (editable installs of all submodules, the SUNDIALS CVODE solver, and PROTEUS itself)
 7. Reference data downloads (by default the essential set: the default-config and tutorial k-tables, stellar spectra and tracks, the PHOENIX grid of the default star, and the interior tables)
 8. Verification via `proteus doctor`
+
+When your default Julia is not 1.11, 1.12 or 1.13, the installer adds Julia 1.13 through juliaup beside it and does not change your default; PROTEUS finds it through `PYTHON_JULIAPKG_EXE`, so a bare `julia` in your terminal is still your own default.
 
 The installer checks out each Python module (MORS, JANUS, CALLIOPE, ZEPHYRUS, Aragog and Zalmoxis) at the release tag that matches its minimum version in `pyproject.toml`, which leaves the clone on a detached HEAD.
 
