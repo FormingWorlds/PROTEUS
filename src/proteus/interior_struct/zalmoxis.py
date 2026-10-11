@@ -1395,22 +1395,22 @@ def load_zalmoxis_configuration(
 
     log.debug(f'Target planet mass (dry mass): {planet_mass} kg ')
 
-    # The core takes core_frac of the planet without its kept volatiles, so it does not
-    # move with a derived inventory; the mantle is the rest of the structure target.
+    # On the rows of the init stage the core takes core_frac of the planet without its kept
+    # volatiles; the mantle is the rest of the structure target.
     core_mass = config.interior_struct.core_frac * (total_planet_mass - M_kept)
     core_mass_fraction = config.interior_struct.core_frac * (
         (total_planet_mass - M_kept) / planet_mass
     )
-    # A wet mantle outgasses its dissolved volatiles, so its core keeps the mass of the
-    # structure the evolution starts on: computed on the rows of the init stage, read after.
-    if not dry_mantle and float(hf_row.get('Time') or 0.0) > 0.0:
+    # After the init stage the core keeps that mass: no inventory that leaves the planet or
+    # the mantle moves mass across the core-mantle boundary. An impact adds to the row.
+    if float(hf_row.get('Time') or 0.0) > 0.0:
         stored = float(hf_row.get('M_core_target') or 0.0)
         if stored > 0.0:
             core_mass, core_mass_fraction = stored, stored / planet_mass
         else:
             log.warning(
-                'The row holds no M_core_target: the core mass of this wet-mantle run is '
-                'set from the present row, %.6e kg.',
+                'The row holds no M_core_target: the core mass is set from the present row, '
+                '%.6e kg.',
                 core_mass,
             )
     if not 0.0 < core_mass < planet_mass:

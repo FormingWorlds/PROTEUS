@@ -453,26 +453,42 @@ def test_a_wet_mantle_core_is_computed_in_the_init_stage_and_kept_after(monkeypa
 
 @pytest.mark.unit
 @pytest.mark.parametrize('stored', [None, 0.0], ids=['column_absent', 'zero_fill'])
-def test_a_wet_resume_without_the_core_target_computes_it_with_a_warning(
-    monkeypatch, caplog, stored
+@pytest.mark.parametrize(
+    'inventory, dry_mantle, kept_mass',
+    [(_WET, False, 3.0e20), (_BUFFERED, True, 7.43e20)],
+    ids=['wet', 'dry'],
+)
+def test_a_resume_without_the_core_target_computes_it_with_a_warning(
+    monkeypatch, caplog, stored, inventory, dry_mantle, kept_mass
 ):
-    """A helpfile row that predates the column, absent or filled with 0, gives a wet run
-    after its init stage the core of the present row, with a warning that names it."""
+    """A helpfile row that predates the column, absent or filled with 0, gives a run after
+    its init stage the core of the present row, with a warning that names it: 0.325 of the
+    planet without the atmosphere H and C (3e20 kg) of a wet mantle, or without the whole
+    H and C inventory (7.43e20 kg) of a dry one."""
     from proteus.utils.constants import M_earth
 
-    row = {**_WET, 'Time': 250.0, **({} if stored is None else {'M_core_target': stored})}
+    row = {**inventory, 'Time': 250.0, **({} if stored is None else {'M_core_target': stored})}
     with caplog.at_level('WARNING', logger='fwl.proteus.interior_struct.zalmoxis'):
-        _, core, _ = _structure_target(monkeypatch, row, dry_mantle=False)
-    assert core == pytest.approx(0.325 * (M_earth - 3.0e20), rel=1e-14)
+        _, core, _ = _structure_target(monkeypatch, row, dry_mantle=dry_mantle)
+    assert core == pytest.approx(0.325 * (M_earth - kept_mass), rel=1e-14)
     assert 'holds no M_core_target' in caplog.text
 
 
 @pytest.mark.unit
-def test_a_dry_mantle_core_is_computed_on_every_row(monkeypatch):
-    """With a dry mantle the core target is the value of the present row also after the
-    init stage: a stored value of another size is not read."""
-    row = {**_BUFFERED, 'Time': 250.0, 'M_core_target': 1.5e24}
-    _, base, _ = _structure_target(monkeypatch, _BUFFERED)
-    _, core, params = _structure_target(monkeypatch, row)
-    assert params['core_mass_target'] == pytest.approx(base, rel=1e-15)
-    assert core == pytest.approx(base, rel=1e-15)
+@pytest.mark.physics_invariant
+def test_a_dry_mantle_core_is_kept_when_derived_oxygen_leaves_the_planet(monkeypatch):
+    """With a dry mantle the core is also read from the row after the init stage. When
+    1e22 kg of buffered oxygen has escaped or been stripped, the ledger is lower by it and
+    no kept inventory is, so the structure target is lower by that mass and the core is
+    the kept one, to the last bit; computed from the row it would fall by 0.325 of the
+    lost oxygen, 3.25e21 kg."""
+    from proteus.utils.constants import M_earth
+
+    planet, base, params = _structure_target(monkeypatch, _BUFFERED)
+    kept = params['core_mass_target']
+    later = {**_BUFFERED, 'Time': 250.0, 'M_core_target': kept, 'M_volatile_change': -1.0e22}
+    planet_later, core, params_later = _structure_target(monkeypatch, later)
+    assert params_later['core_mass_target'] == kept
+    assert core == pytest.approx(base, rel=1e-14)
+    assert planet - planet_later == pytest.approx(1.0e22, rel=1e-9)
+    assert base - 0.325 * (M_earth - 1.0e22 - 7.43e20) > 3.2e21

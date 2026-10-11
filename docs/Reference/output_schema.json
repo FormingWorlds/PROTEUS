@@ -1834,7 +1834,7 @@
     {
       "name": "M_core_target",
       "unit": "kg",
-      "description": "core mass the Zalmoxis structure is solved for: core_frac of the planet without the volatiles the outgassing keeps as inputs; with dry_mantle = false the value of the structure the evolution starts on, plus core_frac of the rock of each impact; M_core is the first grid node at or above it; 0 with another structure module",
+      "description": "core mass the Zalmoxis structure is solved for: set on the structure the evolution starts on, as core_frac of the planet without the volatiles the outgassing keeps as inputs (their atmosphere part with dry_mantle = false), then kept, plus core_frac of the rock of each impact; M_core is the first grid node at or above it; 0 with another structure module",
       "group": "Planet interior properties",
       "origin": "literal",
       "producers": [
