@@ -1834,7 +1834,7 @@
     {
       "name": "M_core_target",
       "unit": "kg",
-      "description": "core mass the Zalmoxis structure is solved for: core_frac of the planet without its kept volatiles at the start of the evolution, then kept, plus core_frac of the rock of each impact; M_core follows it to the mass tolerance of the solve plus one shell; 0 with another structure module",
+      "description": "core mass the Zalmoxis structure is solved for; 0 with another structure module",
       "group": "Planet interior properties",
       "origin": "literal",
       "producers": [

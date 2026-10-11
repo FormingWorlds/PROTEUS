@@ -342,8 +342,9 @@ class Struct:
         Zalmoxis parameters if module is 'zalmoxis'.
     core_frac_mode: str
         How core_frac is interpreted. 'radius': fraction of planet radius.
-        'mass': fraction of total planet mass. Only 'radius' is supported
-        when module = 'spider'. The zalmoxis module always interprets
+        'mass': mass fraction, of planet.mass_tot with module = 'dummy' and of
+        the mass that core_frac names with module = 'zalmoxis'. Only 'radius'
+        is supported when module = 'spider'. The zalmoxis module always interprets
         core_frac as a mass fraction and ignores this flag (a warning is
         emitted at runtime if 'radius' is set with module = 'zalmoxis').
     core_density: float or str
