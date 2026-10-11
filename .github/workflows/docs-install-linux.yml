@@ -66,7 +66,7 @@ jobs:
         run: |
           python3 tools/docs_install_steps.py "$PAGE" --tab "$TAB" \
             --substitutions "$SUBSTITUTIONS" --format script \
-            --timing "$RUNNER_TEMP/install_timing.tsv" > "$RUNNER_TEMP/install_steps.sh"
+            --timing "$GITHUB_WORKSPACE/install-artifacts/install_timing.tsv" > "$RUNNER_TEMP/install_steps.sh"
           bash -n "$RUNNER_TEMP/install_steps.sh"
 
       - name: Run the commands of the page
@@ -74,8 +74,9 @@ jobs:
         # directory, and the checkout of this commit sits in the workspace.
         shell: bash
         run: |
+          mkdir -p "$GITHUB_WORKSPACE/install-artifacts"
           cd "$HOME"
-          bash -e "$RUNNER_TEMP/install_steps.sh" 2>&1 | tee "$RUNNER_TEMP/install_full.log"
+          bash -e "$RUNNER_TEMP/install_steps.sh" 2>&1 | tee "$GITHUB_WORKSPACE/install-artifacts/install_full.log"
 
       - name: Add the timing table to the summary
         if: always()
@@ -85,9 +86,9 @@ jobs:
             echo
             echo "| Page line | Seconds | Exit code | Command |"
             echo "|---|---|---|---|"
-            if [ -f "$RUNNER_TEMP/install_timing.tsv" ]; then
+            if [ -f "$GITHUB_WORKSPACE/install-artifacts/install_timing.tsv" ]; then
               awk -F '\t' 'NR > 1 { gsub(/\|/, "\\|", $4); printf "| %s | %s | %s | `%s` |\n", $1, $2, $3, $4 }' \
-                "$RUNNER_TEMP/install_timing.tsv"
+                "$GITHUB_WORKSPACE/install-artifacts/install_timing.tsv"
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -96,7 +97,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: docs-install-linux-${{ strategy.job-index }}
-          path: |
-            ${{ runner.temp }}/install_timing.tsv
-            ${{ runner.temp }}/install_full.log
+          path: install-artifacts
           if-no-files-found: warn
