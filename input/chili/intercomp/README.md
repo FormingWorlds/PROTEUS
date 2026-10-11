@@ -5,9 +5,9 @@ tutorial configs: `earth.toml` and `venus.toml` equal
 `input/tutorials/tutorial_earth.toml` and `tutorial_venus.toml` apart
 from the output path and the oxygen fugacity, which every case here
 sets to the protocol value IW+4 while the tutorials set IW+2. The
-TRAPPIST-1 cases (`tr1b`, `tr1e`,
-`tr1a`) derive from the Earth base with the protocol's star, orbit,
-and integration-time settings; escape is disabled there because
+TRAPPIST-1 cases (`tr1b`, `tr1e`, `tr1a`) derive from the Earth base
+with the protocol's star, orbit, and integration-time settings; escape
+is disabled there because
 ZEPHYRUS pairs only with the Spada evolution tracks while a
 0.09 M_sun star needs Baraffe, and the escape treatment for those
 cases awaits a protocol decision. The `*.grid.toml` files are
@@ -18,8 +18,9 @@ luminosity is used directly, matching the tutorial convention that the
 documented runs validate, rather than rescaling the bolometric flux to
 match a different track family at the starting age.
 
-Do not edit these files by hand. Change the tutorial configs or the
-delta tables in `tools/chili_generate.py`, rerun the generator, and
+Do not edit these files by hand. Change the tutorial configs, the
+delta tables or `PROTOCOL_FO2_SHIFT_IW` in `tools/chili_generate.py`,
+rerun the generator, and
 commit the result; `tests/tools/test_chili_generate.py` fails CI on
 any drift between the tutorials, these files, and the standalone grid
 configs under `input/tutorials/chili_grid/`.

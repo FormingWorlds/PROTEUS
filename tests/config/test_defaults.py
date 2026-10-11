@@ -514,16 +514,14 @@ def test_the_default_redox_state_is_two_log_units_above_iron_wustite():
     from proteus.config._outgas import Outgas
 
     assert Outgas().fO2_shift_IW == pytest.approx(2.0)
-    at_default = ('all_options.toml', 'minimal.toml')
-    at_default += ('tutorials/tutorial_earth.toml', 'tutorials/tutorial_venus.toml')
-    for name in at_default:
+    want = {f: 2.0 for f in ('all_options.toml', 'minimal.toml')}
+    want |= {f'tutorials/tutorial_{p}.toml': 2.0 for p in ('earth', 'venus')}
+    want |= {
+        f'chili/intercomp/{c}.toml': 4.0 for c in ('earth', 'venus', 'tr1b', 'tr1e', 'tr1a')
+    }
+    for name, shift in want.items():
         cfg = read_config_object(PROTEUS_ROOT / 'input' / name)
-        assert cfg.outgas.fO2_shift_IW == pytest.approx(2.0), name
-    for case in ('earth', 'venus', 'tr1b', 'tr1e', 'tr1a'):
-        cfg = read_config_object(
-            PROTEUS_ROOT / 'input' / 'chili' / 'intercomp' / f'{case}.toml'
-        )
-        assert cfg.outgas.fO2_shift_IW == pytest.approx(4.0), case
+        assert cfg.outgas.fO2_shift_IW == pytest.approx(shift), name
     # Edge and error contract: both bounds are inclusive.
     for edge in (-12.0, 12.0):
         assert Outgas(fO2_shift_IW=edge).fO2_shift_IW == pytest.approx(edge)

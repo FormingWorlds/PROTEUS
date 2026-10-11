@@ -1,6 +1,6 @@
 # PROTEUS Tutorial: Earth
 #
-# An Earth-mass planet after the nominal Earth case of the CHILI
+# An Earth-mass planet based on the nominal Earth case of the CHILI
 # intercomparison (Lichtenberg et al. 2026, PSJ 7:108, Table 2), at the
 # PROTEUS default redox state (IW+2). The protocol case at IW+4 is
 # input/chili/intercomp/earth.toml.

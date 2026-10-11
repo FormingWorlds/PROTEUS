@@ -97,9 +97,9 @@ def test_generated_cases_match_tutorials_outside_their_deltas():
             else:
                 assert got == want, f'{name}: {dotted}={got!r}, want {want!r}'
     # Discrimination: the nominal cases carry these 2 deltas and no other.
-    nominal = {'params.out.path', 'outgas.fO2_shift_IW'}
-    assert set(gen.CASE_DELTAS['earth']['set']) == nominal
-    assert set(gen.CASE_DELTAS['venus']['set']) == nominal
+    for name in ('earth', 'venus'):
+        assert set(gen.CASE_DELTAS[name]['set']) == {'params.out.path', 'outgas.fO2_shift_IW'}
+    assert set(gen.CASE_DELTAS) == {'earth', 'venus', 'tr1b', 'tr1e', 'tr1a'}
 
 
 def test_grid_axes_match_standalone_grid_configs():
@@ -119,16 +119,13 @@ def test_grid_axes_match_standalone_grid_configs():
     files = sorted(grid_dir.glob('earth_H*_C*.toml'))
     # The full cross product must be present: 3 x 3 cases.
     assert len(files) == len(h_axis) * len(c_axis)
-    # The standalone configs hold the protocol's redox state as the generated cases do.
-    for f in files:
-        with open(f, 'rb') as hdl:
-            shift = tomllib.load(hdl)['outgas']['fO2_shift_IW']
-        assert shift == pytest.approx(gen.PROTOCOL_FO2_SHIFT_IW), f.name
 
     budgets = set()
     for f in files:
         with open(f, 'rb') as hdl:
             cfg = tomllib.load(hdl)
+        # The standalone configs hold the protocol's redox state as the generated cases do.
+        assert cfg['outgas']['fO2_shift_IW'] == pytest.approx(gen.PROTOCOL_FO2_SHIFT_IW), f.name
         ele = cfg['planet']['elements']
         budgets.add((float(ele['H_budget']), float(ele['C_budget'])))
     expected = {(h, c) for h in h_axis for c in c_axis}

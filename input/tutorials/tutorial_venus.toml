@@ -1,6 +1,6 @@
 # PROTEUS Tutorial: Venus
 #
-# A Venus-mass planet after the nominal Venus case of the CHILI
+# A Venus-mass planet based on the nominal Venus case of the CHILI
 # intercomparison (Lichtenberg et al. 2026, PSJ 7:108, Table 2), at the
 # PROTEUS default redox state (IW+2). The protocol case at IW+4 is
 # input/chili/intercomp/venus.toml.

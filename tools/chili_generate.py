@@ -5,10 +5,10 @@ The tutorial configs are the base of the CHILI cases:
 ``input/tutorials/tutorial_earth.toml`` and
 ``input/tutorials/tutorial_venus.toml`` hold the Earth and Venus setups
 of the protocol, except the redox state, which they set to IW+2. This
-script derives every intercomparison config from them by applying only
-the deltas listed in ``CASE_DELTAS`` and ``GRID_AXES`` below and the
-protocol's redox state, so the intercomparison and the tutorials cannot
-drift apart in any other field. The unit tests in
+script derives every case config from them by applying only the deltas
+listed in ``CASE_DELTAS`` below and the protocol's redox state, so the
+intercomparison and the tutorials cannot drift apart in any other
+field; the grid specs sweep the ``GRID_AXES``. The unit tests in
 ``tests/tools/test_chili_generate.py`` enforce that contract:
 each generated config must equal its tutorial base on every field
 outside its delta list, the grid axes must match the standalone grid
@@ -24,12 +24,11 @@ Cases
 - ``tr1b.toml`` / ``tr1e.toml`` / ``tr1a.toml``: TRAPPIST-1 b, e, and
   alpha (protocol Table 4), derived from the Earth base with the
   TRAPPIST star, orbit, and integration-time deltas and the protocol's
-  redox state. Escape is
-  disabled in these cases: ZEPHYRUS pairs only with the Spada
-  evolution tracks, and a 0.09 M_sun star needs the Baraffe tracks,
-  so the escape treatment for the TRAPPIST cases awaits a protocol
-  decision. The configs are generated for completeness; their runs
-  are validated separately.
+  redox state. Escape is disabled in these cases: ZEPHYRUS pairs only
+  with the Spada evolution tracks, and a 0.09 M_sun star needs the
+  Baraffe tracks, so the escape treatment for the TRAPPIST cases awaits
+  a protocol decision. The configs are generated for completeness;
+  their runs are validated separately.
 
 Usage
 -----
@@ -48,9 +47,9 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 TUTORIALS = os.path.join(ROOT, 'input', 'tutorials')
 OUTDIR = os.path.join(ROOT, 'input', 'chili', 'intercomp')
 
-# Per-case deltas applied on top of the tutorial base config. Keys are
-# dotted config paths; every path listed here is exempt from the
-# equality contract with the tutorial base, nothing else is.
+# Per-case deltas applied on top of the tutorial base config. Keys are dotted config
+# paths; every path listed here, and the redox state that the loop below the table sets
+# for all cases, is exempt from the equality contract with the tutorial base.
 CASE_DELTAS: dict[str, dict] = {
     # Nominal cases: the tutorials at the protocol's redox state, written
     # to the intercomparison output folders.
@@ -123,9 +122,11 @@ CASE_DELTAS: dict[str, dict] = {
 }
 
 # Every case runs at the oxygen fugacity of the CHILI protocol, relative to iron-wustite
-# [log10 units], whatever the tutorial base sets.
+# [log10 units], whatever the tutorial base sets; a case cannot set its own value.
 PROTOCOL_FO2_SHIFT_IW = 4.0
-for _spec in CASE_DELTAS.values():
+for _name, _spec in CASE_DELTAS.items():
+    if 'outgas.fO2_shift_IW' in _spec['set']:
+        raise ValueError(f'{_name}: the redox state is set for all cases, not per case')
     _spec['set']['outgas.fO2_shift_IW'] = PROTOCOL_FO2_SHIFT_IW
 
 # Protocol H and C inventory axes [kg] for the grid sweeps. The
