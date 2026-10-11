@@ -141,21 +141,11 @@ def _dependency_specs() -> dict[str, Requirement | None]:
 def _get_script_for_package(dist_name: str) -> str | None:
     """Return the ``tools/get_<name>.sh`` setup script for an FWL package.
 
-    Some FWL packages (aragog, zalmoxis, vulcan, boreas) are installed as
-    editable siblings by a dedicated ``tools/get_<name>.sh`` script that checks
-    the clone out to the pinned version tag, i.e. a detached HEAD. On a detached
-    HEAD ``git pull`` has no upstream to advance and fails, so the update must
-    re-fetch and re-checkout the tag the way the installer does.
-    Re-running the setup script is exactly that path (it reads the version floor
-    from ``pyproject.toml`` and checks out the release tag of that floor), so it
-    is the correct fix for those packages.
+    Some FWL packages (aragog, zalmoxis, vulcan, morrigan, boreas) have a
+    setup script of their own; MORS, JANUS, CALLIOPE and ZEPHYRUS share
+    ``tools/get_python_module.sh`` (``_setup_command``).
 
-    Returns the repo-relative script path when it exists, else None. Packages
-    without a script of their own (MORS, JANUS, CALLIOPE, ZEPHYRUS) are cloned
-    by ``tools/get_python_module.sh`` at the release tag of their floor, also a
-    detached HEAD, or by a developer on a branch; with None, the caller picks
-    the fix from the git state of the checkout (``_git_detached``,
-    ``_detached_clone_fix``).
+    Returns the repo-relative script path when it exists, else None.
     """
     short = dist_name.lower()
     prefix = 'fwl-'
@@ -225,6 +215,31 @@ def _imported_package_dir(dist_name: str) -> str | None:
     return os.path.dirname(spec.origin)
 
 
+# Seconds that one git call in a checkout may take.
+_GIT_NOTE_TIMEOUT_S = 10
+
+# Environment variables that make git answer for another repository than the one -C names.
+_GIT_REPO_ENV = (
+    'GIT_DIR',
+    'GIT_WORK_TREE',
+    'GIT_INDEX_FILE',
+    'GIT_COMMON_DIR',
+    'GIT_NAMESPACE',
+)
+
+
+def _git_env() -> dict[str, str]:
+    """Return the environment of a git call in a checkout.
+
+    Returns
+    -------
+    dict of str to str
+        ``os.environ`` without the keys of ``_GIT_REPO_ENV``, so that
+        ``git -C <path>`` reads the repository at ``<path>``.
+    """
+    return {key: value for key, value in os.environ.items() if key not in _GIT_REPO_ENV}
+
+
 def _git_head(path: str) -> str | None:
     """Return the full HEAD commit hash for a git checkout, or None."""
     try:
@@ -232,8 +247,10 @@ def _git_head(path: str) -> str | None:
             ['git', '-C', path, 'rev-parse', 'HEAD'],
             text=True,
             stderr=subprocess.DEVNULL,
+            timeout=_GIT_NOTE_TIMEOUT_S,
+            env=_git_env(),
         ).strip()
-    except (FileNotFoundError, subprocess.CalledProcessError):
+    except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
         return None
 
 
@@ -244,54 +261,48 @@ def _git_short_head(path: str) -> str | None:
             ['git', '-C', path, 'rev-parse', '--short', 'HEAD'],
             text=True,
             stderr=subprocess.DEVNULL,
+            timeout=_GIT_NOTE_TIMEOUT_S,
+            env=_git_env(),
         ).strip()
-    except (FileNotFoundError, subprocess.CalledProcessError):
+    except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
         return None
 
 
 def _git_dirty(path: str) -> bool | None:
     """Return True if the git working tree has uncommitted changes, False if it
     is clean, or None if the git status could not be determined (not a git
-    repository, git missing, or a git error)."""
+    repository, git missing, a git error, or a git that does not finish within
+    ``_GIT_NOTE_TIMEOUT_S``). ``--no-optional-locks`` keeps git from rewriting
+    the index of the checkout."""
     try:
         out = subprocess.check_output(
-            ['git', '-C', path, 'status', '--porcelain'],
+            ['git', '--no-optional-locks', '-C', path, 'status', '--porcelain'],
             text=True,
             stderr=subprocess.DEVNULL,
+            timeout=_GIT_NOTE_TIMEOUT_S,
+            env=_git_env(),
         )
         return bool(out.strip())
-    except (FileNotFoundError, subprocess.CalledProcessError):
+    except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
         return None
 
 
-def _git_detached(path: str) -> bool | None:
-    """Return whether a git checkout is on a detached HEAD.
+# The module repositories that tools/get_python_module.sh clones, by distribution.
+_PYTHON_MODULE_REPOS = {
+    'fwl-calliope': 'CALLIOPE',
+    'fwl-janus': 'JANUS',
+    'fwl-mors': 'MORS',
+    'fwl-zephyrus': 'ZEPHYRUS',
+}
 
-    Parameters
-    ----------
-    path : str
-        Checkout directory.
-
-    Returns
-    -------
-    bool or None
-        True on a detached HEAD, False on a branch, None when git cannot
-        tell (not a git repository, git missing, or another git error).
-    """
-    try:
-        rc = subprocess.run(
-            ['git', '-C', path, 'symbolic-ref', '-q', 'HEAD'],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        ).returncode
-    except OSError:
-        return None
-    # symbolic-ref -q exits 1 only for a HEAD that is not a symbolic ref.
-    return {0: False, 1: True}.get(rc)
-
-
-# Seconds that one git call of the release-tag note may take.
-_GIT_NOTE_TIMEOUT_S = 10
+# The folder in the PROTEUS root that a setup script clones each module into, by distribution.
+_MODULE_FOLDERS = {
+    **_PYTHON_MODULE_REPOS,
+    'fwl-aragog': 'aragog',
+    'fwl-morrigan': 'Morrigan',
+    'fwl-vulcan': 'VULCAN',
+    'fwl-zalmoxis': 'Zalmoxis',
+}
 
 
 def _git_note_output(path: str, *args: str) -> tuple[int, str] | None:
@@ -316,10 +327,55 @@ def _git_note_output(path: str, *args: str) -> tuple[int, str] | None:
             capture_output=True,
             text=True,
             timeout=_GIT_NOTE_TIMEOUT_S,
+            env=_git_env(),
         )
     except (OSError, subprocess.TimeoutExpired):
         return None
     return done.returncode, done.stdout
+
+
+def _is_own_clone(path: str) -> bool:
+    """Return whether a directory is the top level of its own git clone.
+
+    An empty or broken ``.git`` makes git answer for the repository around
+    the directory, so this is checked before the clone is read.
+
+    Parameters
+    ----------
+    path : str
+        Checkout directory.
+
+    Returns
+    -------
+    bool
+        True when ``git rev-parse --show-toplevel`` names the directory
+        itself; False otherwise, also when git fails or times out.
+    """
+    top = _git_note_output(path, 'rev-parse', '--show-toplevel')
+    if top is None or top[0] != 0 or not top[1].strip():
+        return False
+    try:
+        return os.path.samefile(top[1].strip(), path)
+    except OSError:
+        return False
+
+
+def _floor_version(spec: Requirement | None) -> str | None:
+    """Return the one ``>=`` floor of a requirement.
+
+    Parameters
+    ----------
+    spec : Requirement or None
+        The requirement of ``pyproject.toml``, for example ``fwl-mors>=26.10.6``.
+
+    Returns
+    -------
+    str or None
+        The floor, for example ``'26.10.6'``, or None without exactly one
+        ``>=`` specifier.
+    """
+    floors = [s.version for s in (spec.specifier if spec else []) if s.operator == '>=']
+    return floors[0] if len(floors) == 1 else None
 
 
 def _floor_tag_name(spec: Requirement | None, tags: list[str]) -> str | None:
@@ -342,25 +398,54 @@ def _floor_tag_name(spec: Requirement | None, tags: list[str]) -> str | None:
         The tag, or None when the requirement has no single ``>=`` floor
         or not exactly one tag matches it.
     """
-    floors = [s.version for s in (spec.specifier if spec else []) if s.operator == '>=']
-    if len(floors) != 1:
+    floor = _floor_version(spec)
+    if floor is None:
         return None
     matches = []
     for tag in tags:
         text = tag.removeprefix('v')
-        if not re.fullmatch(r'\d+(\.\d+)*', text):
+        if not re.fullmatch(r'[0-9]+(\.[0-9]+)*', text):
             continue
-        if Version(text) == Version(floors[0]):
+        if Version(text) == Version(floor):
             matches.append(tag)
     return matches[0] if len(matches) == 1 else None
+
+
+def _tag_commits(checkout: str) -> dict[str, str]:
+    """Return the commit of each tag of a clone, read with one git call.
+
+    The full ref name is listed and ``refs/tags/`` stripped, so a tag that
+    shares its name with a branch keeps its own name.
+
+    Parameters
+    ----------
+    checkout : str
+        Directory of the clone.
+
+    Returns
+    -------
+    dict of str to str
+        Tag name to commit hash; empty when git cannot list the tags.
+    """
+    listing = _git_note_output(
+        checkout,
+        'for-each-ref',
+        '--format=%(refname) %(objectname) %(*objectname)',
+        'refs/tags',
+    )
+    lines = listing[1].splitlines() if listing and listing[0] == 0 else []
+    # The last field is the commit, for an annotated tag as for a lightweight one.
+    return {f[0].removeprefix('refs/tags/'): f[-1] for f in (line.split() for line in lines)}
 
 
 def _release_tag_note(checkout: str, short: str | None, spec: Requirement | None) -> str:
     """Return the note on an editable clone that is not at the release tag of its floor.
 
     The note has the parts of the installer's stay line: what the clone is
-    on, and the release tag PROTEUS expects. It costs 2 git calls with a
-    timeout: the branch, then the tags with their commits.
+    on, and what PROTEUS expects, in the words of the installer. It costs 3
+    git calls with a timeout: the top level of the clone, the branch, then
+    the tags with their commits. HEAD is compared with the tag commit first,
+    so a branch at the tag commit gets no note, as in the installer.
 
     Parameters
     ----------
@@ -375,29 +460,26 @@ def _release_tag_note(checkout: str, short: str | None, spec: Requirement | None
     -------
     str
         For example ``'; on branch main; PROTEUS expects the release tag
-        26.10.06'``; empty at the tag, or when git cannot read the clone.
+        26.10.06'``; empty at the tag commit, without a single ``>=``
+        floor, or when the checkout is not a clone of its own that git can
+        read.
     """
+    if _floor_version(spec) is None or not _is_own_clone(checkout):
+        return ''
     branch = _git_note_output(checkout, 'symbolic-ref', '-q', '--short', 'HEAD')
     if branch is None or branch[0] not in (0, 1):
         return ''
-    listing = _git_note_output(
-        checkout,
-        'for-each-ref',
-        '--format=%(refname:short) %(objectname) %(*objectname)',
-        'refs/tags',
-    )
-    commits = {}
-    for line in (listing[1] if listing and listing[0] == 0 else '').splitlines():
-        name, *objects = line.split()
-        commits[name] = objects[-1]  # the commit of an annotated tag comes last
+    commits = _tag_commits(checkout)
     tag = _floor_tag_name(spec, list(commits))
+    if short and tag and commits[tag].startswith(short):
+        return ''
     if tag:
         expected = f'PROTEUS expects the release tag {tag}'
     else:
-        expected = 'the release tag could not be determined'
+        expected = f'PROTEUS expects release {_floor_version(spec)}'
     if branch[0] == 0:
         return f'; on branch {branch[1].strip()}; {expected}'
-    if not short or (tag and commits[tag].startswith(short)):
+    if not short:
         return ''
     at_tags = sorted(name for name, commit in commits.items() if commit.startswith(short))
     found = f'at tag {at_tags[0]} ({short})' if at_tags else f'at commit {short}'
@@ -406,20 +488,41 @@ def _release_tag_note(checkout: str, short: str | None, spec: Requirement | None
     return f'; {found}; {expected}'
 
 
-# The files of the PROTEUS source tree that the fix of a detached clone runs.
-_DETACHED_CLONE_FIX_TOOLS = ('_get_common.sh', '_module_pins.py')
+def _setup_command(dist_name: str) -> str | None:
+    """Return the setup script, with its argument, that clones a module.
+
+    Parameters
+    ----------
+    dist_name : str
+        Distribution name, for example ``fwl-mors``.
+
+    Returns
+    -------
+    str or None
+        The repo-relative command, for example ``'tools/get_aragog.sh'`` or
+        ``'tools/get_python_module.sh MORS'``; None when the source tree
+        has no script for the module.
+    """
+    script = _get_script_for_package(dist_name)
+    if script:
+        return script
+    repo = _PYTHON_MODULE_REPOS.get(dist_name.lower())
+    if repo and (_repo_root() / 'tools' / 'get_python_module.sh').is_file():
+        return f'tools/get_python_module.sh {repo}'
+    return None
 
 
-def _floor_tag_fix(dist_name: str, checkout: str) -> str:
-    """Return the shell command that moves a clone in place to the release tag of its floor.
+def _below_floor_advice(
+    dist_name: str, checkout: str, spec: Requirement | None, setup: str
+) -> str:
+    """Return the advice for an editable module clone below its version floor.
 
-    The command sources ``tools/_get_common.sh`` and runs
-    ``move_clone_to_floor_tag``, which refuses a clone holding local work,
-    fetches the tags, checks out the tag whose version equals the floor in
-    ``pyproject.toml`` when HEAD is behind it and leaves a newer HEAD as it
-    is; then it reinstalls the clone editable. Untracked files and stash
-    entries stay. Every path is absolute and shell-quoted, so the command
-    runs from any working directory under ``/bin/sh``.
+    A fix never changes the clone: the advice names the commands that move
+    it to the release tag by hand and reinstall it, the ones the installer
+    prints, and, for the clone in the module folder of the PROTEUS root
+    only, the setup script that replaces it with ``--force``. The tag is
+    read from the clone without a fetch; when the clone does not have it
+    yet, the checkout picks it from the tags the fetch brings.
 
     Parameters
     ----------
@@ -427,57 +530,38 @@ def _floor_tag_fix(dist_name: str, checkout: str) -> str:
         Distribution name, for example ``fwl-mors``.
     checkout : str
         Directory of the editable checkout.
+    spec : Requirement or None
+        The requirement of ``pyproject.toml``.
+    setup : str
+        The setup command of ``_setup_command``.
 
     Returns
     -------
     str
-        The command, for example ``bash -c 'source "$1" &&
-        move_clone_to_floor_tag "$2" "$3"' _ /p/tools/_get_common.sh fwl-mors
-        /p/MORS && pip install -e /p/MORS``.
+        One line of shell commands with absolute, shell-quoted paths, and
+        a comment that names the replacement when the checkout resolves to
+        ``<root>/<module folder>``.
     """
     path = shlex.quote(os.path.abspath(checkout))
-    common = shlex.quote(str(_repo_root() / 'tools' / '_get_common.sh'))
-    move = 'source "$1" && move_clone_to_floor_tag "$2" "$3"'
-    return (
-        f'bash -c {shlex.quote(move)} _ {common} {shlex.quote(dist_name)} {path}'
+    root = _repo_root()
+    tag = (
+        _floor_tag_name(spec, list(_tag_commits(checkout))) if _is_own_clone(checkout) else None
+    )
+    if tag:
+        target = f'tags/{shlex.quote(tag)}'
+    else:
+        pins = shlex.quote(str(root / 'tools' / '_module_pins.py'))
+        target = f'"tags/$(git -C {path} tag -l | python {pins} {dist_name} floor-tag)"'
+    advice = (
+        f'git -C {path} fetch --tags && git -C {path} checkout {target}'
         f' && pip install -e {path}'
     )
-
-
-def _detached_clone_fix(dist_name: str, checkout: str, requirement: str) -> tuple[str, bool]:
-    """Return the fix for a detached editable clone of a module without its own script.
-
-    Every such clone, in the PROTEUS folder or elsewhere, is moved to the
-    floor tag in place (``_floor_tag_fix``), never replaced. The fix runs
-    files of the PROTEUS source tree, so without them (a wheel install) it
-    is advice, as ``proteus update`` needs a source install.
-
-    Parameters
-    ----------
-    dist_name : str
-        Distribution name, for example ``fwl-mors``.
-    checkout : str
-        Directory of the editable checkout.
-    requirement : str
-        The requirement of ``pyproject.toml``, for example
-        ``fwl-mors>=26.10.6``, named in the advice.
-
-    Returns
-    -------
-    tuple of (str, bool)
-        The fix, and whether it is a command that ``proteus update`` may
-        run: the command of ``_floor_tag_fix``, or advice (False) when the
-        source tree is missing.
-    """
-    root = _repo_root()
-    if not all((root / 'tools' / name).is_file() for name in _DETACHED_CLONE_FIX_TOOLS):
-        path = shlex.quote(os.path.abspath(checkout))
-        return (
-            f'check out the release tag of {requirement} in {path}, then pip install -e {path}'
-            '  # the scripted fix needs the PROTEUS source tree (git clone), not a wheel install',
-            False,
+    folder = _MODULE_FOLDERS.get(dist_name.lower())
+    if folder and os.path.realpath(checkout) == os.path.realpath(root / folder):
+        advice += (
+            f'  # or replace the clone: cd {shlex.quote(str(root))} && bash {setup} --force'
         )
-    return _floor_tag_fix(dist_name, checkout), True
+    return advice
 
 
 def _julia_version() -> str | None:
@@ -750,6 +834,7 @@ def check_python_package(name: str, spec: Requirement | None) -> CheckResult:
 
     # Build status message with editable annotation
     checkout = _editable_checkout_path(name)
+    setup = _setup_command(name) if checkout else None
     annotation = ''
     if checkout:
         short = _git_short_head(checkout)
@@ -761,7 +846,8 @@ def check_python_package(name: str, spec: Requirement | None) -> CheckResult:
             marker = ' (dirty)'
         else:
             marker = ''
-        note = _release_tag_note(checkout, short, spec)
+        # Only a module that a setup script clones at its floor has a release tag to expect.
+        note = _release_tag_note(checkout, short, spec) if setup else ''
         annotation = f' [editable @ {base} -> {short}{marker}{note}]'
         # Cross-check that the editable checkout is the package actually on
         # sys.path. A later `pip install <pin>` can shadow the editable sibling
@@ -788,13 +874,10 @@ def check_python_package(name: str, spec: Requirement | None) -> CheckResult:
             fix = f'pip install -U "{spec}"'
             auto_fixable = True
             if checkout:
-                # `git pull` fails on a detached HEAD, so a tag checkout re-runs its setup
-                # script or moves to the floor tag; a branch, or unknown git state, pulls.
-                script = _get_script_for_package(name)
-                if script:
-                    fix = f'bash {script}'
-                elif _git_detached(checkout):
-                    fix, auto_fixable = _detached_clone_fix(name, checkout, str(spec))
+                # A fix never changes a module clone that a setup script makes, so it is advice.
+                if setup:
+                    fix = _below_floor_advice(name, checkout, spec, setup)
+                    auto_fixable = False
                 else:
                     fix = f'cd {shlex.quote(checkout)} && git pull && pip install -e .'
             return CheckResult(

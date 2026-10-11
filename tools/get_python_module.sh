@@ -1,7 +1,7 @@
 #!/bin/bash
 # Usage: get_python_module.sh <RepoName> [--force]. Clones FormingWorlds/<RepoName> into ./<RepoName>/
-# at the release tag of its fwl-<lowercase name> floor, or moves an existing clone there in place, and
-# installs it editable. --force replaces the clone; PROTEUS_MODULE_GIT_BASE sets the URL prefix.
+# at the release tag of its fwl-<lowercase name> floor and installs it editable; an existing folder is
+# installed as it is. --force replaces it; PROTEUS_MODULE_GIT_BASE sets the URL prefix.
 
 set -euo pipefail
 
@@ -14,16 +14,10 @@ modules="MORS JANUS CALLIOPE ZEPHYRUS"
 get_parse_args "$@"
 repo="$get_install_path"
 names=0
-for arg in "$@"; do
-    if [ "$arg" != "--force" ]; then
-        names=$((names + 1))
-    fi
-done
+for arg in "$@"; do [ "$arg" = --force ] || names=$((names + 1)); done
 dist=""
 for name in $modules; do
-    if [ "$name" = "$repo" ]; then
-        dist="fwl-$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]')"
-    fi
+    [ "$name" != "$repo" ] || dist="fwl-$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]')"
 done
 if [ -z "$dist" ] || [ "$names" -ne 1 ]; then
     echo "usage: bash tools/get_python_module.sh <RepoName> [--force]" >&2
@@ -34,12 +28,7 @@ fi
 echo "Set up $repo..."
 workpath="$proteus_root/$repo"
 
-reuse_existing_clone "$dist" "$workpath" "get_python_module.sh $repo"
-guard_dirty_checkout "$workpath" "get_python_module.sh $repo"
-unchanged=""
-if [ -e "$workpath" ]; then
-    unchanged="; $workpath is unchanged"
-fi
+install_existing_clone "$dist" "$workpath" "get_python_module.sh $repo"
 
 # The new clone replaces the checkout only once it is at the release tag.
 tmp_clone="$workpath.tmp.$$"
@@ -56,7 +45,8 @@ if [ -z "$base" ]; then
 fi
 uri="${base}FormingWorlds/$repo.git"
 echo "Cloning $uri -> $tmp_clone"
-git clone "$uri" "$tmp_clone" || { echo "ERROR: git clone failed$unchanged" >&2; exit 1; }
+git clone "$uri" "$tmp_clone" ||
+    { echo "ERROR: git clone failed$(unchanged_note "$workpath")" >&2; exit 1; }
 checkout_floor_tag "$dist" "$tmp_clone"
 
 swap_in_checkout "$tmp_clone" "$workpath" || exit 1

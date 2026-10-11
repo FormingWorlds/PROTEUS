@@ -281,12 +281,16 @@ bash tools/get_cvode.sh
     cloning submodules. The editable sibling checkouts take precedence on
     `sys.path`. Run `proteus doctor` to confirm which versions are active.
 
-!!! warning "Local changes block checkout refreshes"
-    The `tools/get_*.sh` scripts refuse to replace a checkout that has
-    uncommitted changes to tracked files or commits not pushed to a
-    remote. Commit and push your work first, or pass `--force` to the
-    script (e.g. `bash tools/get_aragog.sh --force`) to discard the
-    checkout deliberately.
+!!! warning "A module folder that is already there is kept"
+    Run again, these commands keep a module folder that is already there,
+    whatever it holds: they run no git command that changes it, delete or
+    replace nothing in it, install it as it is and print the commands that
+    move it to its release tag by hand. The editable install can still
+    write files of its own into the folder (for example a version file or
+    an `.egg-info` folder), and `get_vulcan.sh` builds fastchem in it. An
+    empty folder gets a new clone. Pass `--force` (e.g.
+    `bash tools/get_aragog.sh --force`) to delete the folder and clone the
+    module again.
 
 ## 8. Install PROTEUS
 

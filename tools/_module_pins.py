@@ -51,7 +51,7 @@ MAX_TAGS_SHOWN = 10
 
 _REQUIREMENT = re.compile(r'^\s*([A-Za-z0-9][A-Za-z0-9._-]*)\s*(?:\[[^\]]*\])?\s*(.*)$')
 _SPECIFIER = re.compile(r'^(===|~=|==|!=|<=|>=|<|>)\s*(\S+)$')
-_RELEASE = re.compile(r'^\d+(?:\.\d+)*$')
+_RELEASE = re.compile(r'^[0-9]+(?:\.[0-9]+)*$')
 
 
 def _repo_root() -> pathlib.Path:
