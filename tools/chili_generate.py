@@ -48,8 +48,8 @@ TUTORIALS = os.path.join(ROOT, 'input', 'tutorials')
 OUTDIR = os.path.join(ROOT, 'input', 'chili', 'intercomp')
 
 # Per-case deltas applied on top of the tutorial base config. Keys are dotted config
-# paths; every path listed here, and the redox state that the loop below the table sets
-# for all cases, is exempt from the equality contract with the tutorial base.
+# paths; every path listed here, and the redox state that ``case_deltas`` adds for all
+# cases, is exempt from the equality contract with the tutorial base.
 CASE_DELTAS: dict[str, dict] = {
     # Nominal cases: the tutorials at the protocol's redox state, written
     # to the intercomparison output folders.
@@ -122,12 +122,8 @@ CASE_DELTAS: dict[str, dict] = {
 }
 
 # Every case runs at the oxygen fugacity of the CHILI protocol, relative to iron-wustite
-# [log10 units], whatever the tutorial base sets; a case cannot set its own value.
+# [log10 units], whatever the tutorial base sets.
 PROTOCOL_FO2_SHIFT_IW = 4.0
-for _name, _spec in CASE_DELTAS.items():
-    if 'outgas.fO2_shift_IW' in _spec['set']:
-        raise ValueError(f'{_name}: the redox state is set for all cases, not per case')
-    _spec['set']['outgas.fO2_shift_IW'] = PROTOCOL_FO2_SHIFT_IW
 
 # Protocol H and C inventory axes [kg] for the grid sweeps. The
 # standalone per-case grid configs under input/tutorials/chili_grid/
@@ -157,6 +153,20 @@ def _set_dotted(doc, dotted: str, value) -> None:
     node[keys[-1]] = value
 
 
+def case_deltas(name: str) -> dict:
+    """Deltas of case ``name``: its ``CASE_DELTAS`` entries and the protocol's redox state.
+
+    Raises
+    ------
+    ValueError
+        If the case lists a redox state of its own.
+    """
+    deltas = CASE_DELTAS[name]['set']
+    if 'outgas.fO2_shift_IW' in deltas:
+        raise ValueError(f'{name}: PROTOCOL_FO2_SHIFT_IW sets the redox state of all cases')
+    return {**deltas, 'outgas.fO2_shift_IW': PROTOCOL_FO2_SHIFT_IW}
+
+
 def generate_case(name: str) -> str:
     """Render one intercomparison case from its tutorial base.
 
@@ -171,7 +181,7 @@ def generate_case(name: str) -> str:
     with open(base_path) as f:
         text = f.read()
     doc = tomlkit.parse(text)
-    for dotted, value in spec['set'].items():
+    for dotted, value in case_deltas(name).items():
         _set_dotted(doc, dotted, value)
     rendered = tomlkit.dumps(doc)
 

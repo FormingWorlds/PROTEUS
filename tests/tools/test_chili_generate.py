@@ -75,17 +75,16 @@ def test_generated_cases_match_tutorials_outside_their_deltas():
         tut = _read_config(str(REPO / 'input' / 'tutorials' / spec['base']))
         case = _read_config(str(REPO / 'input' / 'chili' / 'intercomp' / f'{name}.toml'))
         diffs = set(_diff_paths(tut, case))
-        # The protocol's redox state is a real difference from the tutorial in every case.
         assert 'outgas.fO2_shift_IW' in diffs, name
-        declared = set(spec['set'].keys())
-        undeclared = diffs - declared
+        declared = gen.case_deltas(name)
+        undeclared = diffs - set(declared)
         assert not undeclared, f'{name}: differs from tutorial outside its deltas: {undeclared}'
         # Every declared delta must land in the loaded config with its
         # declared value: a generator regression that dropped a delta
         # would leave the tutorial value in place. Deltas that coincide
         # with the base value (a documented pin, e.g. tr1b age_ini) are
         # covered by the same direct comparison.
-        for dotted, want in spec['set'].items():
+        for dotted, want in declared.items():
             got = case
             for part in dotted.split('.'):
                 got = getattr(got, part)
@@ -98,8 +97,18 @@ def test_generated_cases_match_tutorials_outside_their_deltas():
                 assert got == want, f'{name}: {dotted}={got!r}, want {want!r}'
     # Discrimination: the nominal cases carry these 2 deltas and no other.
     for name in ('earth', 'venus'):
-        assert set(gen.CASE_DELTAS[name]['set']) == {'params.out.path', 'outgas.fO2_shift_IW'}
+        assert set(gen.case_deltas(name)) == {'params.out.path', 'outgas.fO2_shift_IW'}
     assert set(gen.CASE_DELTAS) == {'earth', 'venus', 'tr1b', 'tr1e', 'tr1a'}
+
+
+def test_a_case_cannot_set_its_own_redox_state():
+    """The redox state of the protocol is one value for all cases."""
+    gen = _load_generator()
+    assert 'outgas.fO2_shift_IW' not in gen.CASE_DELTAS['tr1a']['set']
+    assert gen.case_deltas('tr1a')['outgas.fO2_shift_IW'] == pytest.approx(4.0)
+    gen.CASE_DELTAS['tr1a']['set']['outgas.fO2_shift_IW'] = 3.0
+    with pytest.raises(ValueError, match='tr1a: PROTOCOL_FO2_SHIFT_IW'):
+        gen.generate_case('tr1a')
 
 
 def test_grid_axes_match_standalone_grid_configs():
@@ -124,7 +133,6 @@ def test_grid_axes_match_standalone_grid_configs():
     for f in files:
         with open(f, 'rb') as hdl:
             cfg = tomllib.load(hdl)
-        # The standalone configs hold the protocol's redox state as the generated cases do.
         assert cfg['outgas']['fO2_shift_IW'] == pytest.approx(gen.PROTOCOL_FO2_SHIFT_IW), f.name
         ele = cfg['planet']['elements']
         budgets.add((float(ele['H_budget']), float(ele['C_budget'])))
