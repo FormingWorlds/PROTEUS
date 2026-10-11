@@ -139,7 +139,7 @@ to_terminal() {
 # start and one at the end; the output goes to $LOGFILE only. A failure shows its last 40 lines.
 run_logged() {
     local takes="" what rc=0 t0=$SECONDS tmp where="the log file"
-    local show='checked out release tag|installed paired aragog branch'
+    local show='checked out release tag|installed paired aragog branch|stays as it is'
     if [ "${1:-}" = "--takes" ]; then
         takes=" (can take $2)"
         shift 2
@@ -1000,45 +1000,57 @@ else
     info "GitHub SSH access: not available, using HTTPS"
 fi
 
-# Usage: clone_and_install <RepoName> <distribution>. A clone on a branch is a developer's and is
-# installed as it is; tools/get_python_module.sh makes a new clone and moves a clone on a detached
-# HEAD to the floor release tag, refusing one that holds local work.
+# Usage: clone_and_install <RepoName> <distribution>. tools/get_python_module.sh makes a missing clone;
+# an existing one is never replaced: move_clone_to_floor_tag moves it forward in place or names why it
+# stays, and a folder git cannot use is installed as it is, with a stay line of the same shape.
 clone_and_install() {
     local repo="$1" dist="$2"
-    local dest="$SCRIPT_DIR/$repo" branch tag rc=0
-    if [ -d "$dest" ] && [ ! -e "$dest/.git" ]; then
-        info "$repo at $dest is not a git clone; installing it as it is"
+    local dest="$SCRIPT_DIR/$repo" found summary floor expected rc=0
+    if [ ! -e "$dest" ]; then
+        if ! run_logged "Cloning and installing $repo" env PROTEUS_MODULE_GIT_BASE="$GH_PREFIX" \
+            bash "$SCRIPT_DIR/tools/get_python_module.sh" "$repo"; then
+            die "Could not check out the $dist release tag for $repo and install it; see the error above"
+        fi
+        return 0
+    fi
+    found="not a git clone"
+    summary="not a git clone"
+    if [ -e "$dest/.git" ]; then
+        git -C "$dest" symbolic-ref -q HEAD >/dev/null 2>&1 || rc=$?
+        found="git cannot read the clone"
+        summary="git cannot read it"
+    fi
+    if [ ! -e "$dest/.git" ] || [ "$rc" -gt 1 ]; then
+        expected="the release tag could not be determined"
+        if floor=$(python "$SCRIPT_DIR/tools/_module_pins.py" "$dist" floor 2>/dev/null); then
+            expected="PROTEUS expects release $floor"
+        fi
+        warn "$(source "$SCRIPT_DIR/tools/_get_common.sh" &&
+            report_clone_stays "$dist" "$dest" "$found" "$summary" "$expected")"
         run_logged "Installing $repo (editable)" pip install -e "$dest/."
         return 0
     fi
-    if [ -d "$dest" ]; then
-        branch=$(git -C "$dest" symbolic-ref -q --short HEAD 2>/dev/null) || rc=$?
-        if [ "$rc" -eq 0 ]; then
-            info "$repo at $dest is on branch $branch; installing it as it is"
-            run_logged "Installing $repo (editable)" pip install -e "$dest/."
-            return 0
-        elif [ "$rc" -ne 1 ]; then
-            warn "git cannot read the clone at $dest; installing it as it is"
-            run_logged "Installing $repo (editable)" pip install -e "$dest/."
-            return 0
-        fi
-        git -C "$dest" fetch --tags --quiet 2>&1 || warn "Could not fetch the tags of $repo"
-        tag=$(git -C "$dest" tag -l | python "$SCRIPT_DIR/tools/_module_pins.py" "$dist" floor-tag \
-            2>/dev/null) || tag=""
-        if [ -n "$tag" ] && [ "$(git -C "$dest" rev-parse HEAD)" = \
-            "$(git -C "$dest" rev-list -n 1 "refs/tags/$tag")" ]; then
-            info "$repo is at the $dist release tag $tag; installing it (editable)..."
-            run_logged "Installing $repo (editable)" pip install -e "$dest/."
-            return 0
-        fi
-        info "$repo at $dest is on a detached HEAD away from the $dist release tag; moving it"
+    if ! (source "$SCRIPT_DIR/tools/_get_common.sh" &&
+        move_clone_to_floor_tag "$dist" "$dest" "get_python_module.sh $repo") 2>&1; then
+        die "Could not move $repo to the $dist release tag; see the error above"
     fi
-    if ! run_logged "Cloning and installing $repo" env PROTEUS_MODULE_GIT_BASE="$GH_PREFIX" \
-        bash "$SCRIPT_DIR/tools/get_python_module.sh" "$repo"; then
-        die "Could not check out the $dist release tag for $repo and install it; see the error above"
-    fi
+    run_logged "Installing $repo (editable)" pip install -e "$dest/."
 }
 
+# Print one line naming the module clones that stay off their release tag, which report_clone_stays
+# (tools/_get_common.sh) wrote to the file PROTEUS_CLONE_STAYS names, and remove that file.
+report_stayed_clones() {
+    local list
+    [ -n "$PROTEUS_CLONE_STAYS" ] || return 0
+    if [ -s "$PROTEUS_CLONE_STAYS" ]; then
+        list=$(awk 'NR > 1 {printf ", "} {printf "%s", $0}' "$PROTEUS_CLONE_STAYS")
+        warn "Not at their release tag: $list"
+    fi
+    rm -f "$PROTEUS_CLONE_STAYS"
+}
+
+PROTEUS_CLONE_STAYS=$(mktemp "${TMPDIR:-/tmp}/proteus-clone-stays.XXXXXX") || PROTEUS_CLONE_STAYS=""
+export PROTEUS_CLONE_STAYS
 clone_and_install "MORS"     "fwl-mors"
 clone_and_install "JANUS"    "fwl-janus"
 clone_and_install "CALLIOPE" "fwl-calliope"
@@ -1066,6 +1078,7 @@ pre-commit install -f 2>&1 || warn "pre-commit install failed (non-critical)"
 
 # Verify the installation (captures the error and self-heals the conda MPI clash)
 verify_proteus_import
+report_stayed_clones
 info "Python packages installed"
 
 # ===================================================================
