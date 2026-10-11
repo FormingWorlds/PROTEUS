@@ -415,6 +415,24 @@ def test_an_inventory_that_leaves_no_mantle_is_refused(monkeypatch):
     assert planet - core == pytest.approx(1.306e23, rel=1e-3)
 
 
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_a_structure_target_of_zero_or_a_negative_core_is_refused(monkeypatch):
+    """Two bounds of the same refusal. An oxygen inventory equal to the planet mass leaves
+    a structure target of exactly 0 kg: the builder raises its own error and divides by
+    nothing. A row with more hydrogen than the planet (6.5e24 kg) and a negative oxygen
+    column (-2e24 kg) gives a core of -1.7e23 kg below a positive target of 1.47e24 kg:
+    the core mass must be positive, so that row is refused too."""
+    empty = {'H_kg_total': 0.0, 'C_kg_total': 0.0, 'O_kg_total': M_earth}
+    with pytest.raises(ValueError, match=r'leaves no mantle: 0\.0000e\+00 kg .*, 1\.9409e\+24'):
+        _structure_target(monkeypatch, empty)
+    corrupt = {'H_kg_total': 6.5e24, 'C_kg_total': 2.73e20, 'O_kg_total': -2.0e24}
+    with pytest.raises(
+        ValueError, match=r'leaves no mantle: 1\.47\d+e\+24 kg .*, -1\.7\d+e\+23'
+    ):
+        _structure_target(monkeypatch, corrupt)
+
+
 _WET = {'H_kg_atm': 1.0e20, 'C_kg_atm': 2.0e20, 'O_kg_atm': 2.079e23, 'H_kg_total': 6.0e21}
 
 
@@ -449,24 +467,40 @@ def test_a_wet_mantle_core_is_computed_in_the_init_stage_and_kept_after(monkeypa
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 @pytest.mark.parametrize('stored', [None, 0.0], ids=['column_absent', 'zero_fill'])
 @pytest.mark.parametrize(
-    'inventory, dry_mantle, kept_mass',
-    [(_WET, False, 3.0e20), (_BUFFERED, True, 7.43e20)],
+    'inventory, dry_mantle, outside, kept',
+    [(_WET, False, 2.082e23, 3.0e20), (_BUFFERED, True, 2.117e23 + 7.43e20, 7.43e20)],
     ids=['wet', 'dry'],
 )
-def test_a_resume_without_the_core_target_computes_it_with_a_warning(
-    monkeypatch, caplog, stored, inventory, dry_mantle, kept_mass
+def test_a_resume_without_the_core_target_continues_on_core_frac_of_the_structure_target(
+    monkeypatch, caplog, stored, inventory, dry_mantle, outside, kept
 ):
-    """A helpfile row that predates the column, absent or filled with 0, gives a run after
-    its init stage the core of the present row, with a warning that names it: 0.325 of the
-    planet without the atmosphere H and C (3e20 kg) of a wet mantle, or without the whole
-    H and C inventory (7.43e20 kg) of a dry one."""
-    row = {**inventory, 'Time': 250.0, **({} if stored is None else {'M_core_target': stored})}
+    """A helpfile row that predates the column, absent or filled with 0, comes from a run
+    whose core was core_frac of the structure target. A solve after the init stage hands
+    Zalmoxis core_frac itself, bit for bit, so that run has no step in its core; the mass
+    goes to the row and is kept from there. The row's M_core, a node mass, is not read.
+    The rule of a new run, 0.325 of the planet without its kept volatiles, would give a
+    core that is higher by 0.325 of the derived oxygen (6.9e22 kg dry, 6.8e22 kg wet).
+    One warning names the source."""
+    row = {**inventory, 'Time': 250.0, 'M_core': 1.8915e24}
+    row.update({} if stored is None else {'M_core_target': stored})
     with caplog.at_level('WARNING', logger='fwl.proteus.interior_struct.zalmoxis'):
-        _, core, _ = _structure_target(monkeypatch, row, dry_mantle=dry_mantle)
-    assert core == pytest.approx(0.325 * (M_earth - kept_mass), rel=1e-14)
-    assert 'holds no M_core_target' in caplog.text
+        planet, core, params = _structure_target(monkeypatch, row, dry_mantle=dry_mantle)
+    assert planet == pytest.approx(M_earth - outside, rel=1e-14)
+    assert params['core_mass_fraction'] == pytest.approx(0.325, rel=0.0, abs=0.0)
+    assert params['core_mass_target'] == pytest.approx(0.325 * planet, rel=1e-15)
+    assert 0.325 * (M_earth - kept) - core == pytest.approx(0.325 * (outside - kept), rel=1e-9)
+    assert 0.325 * (M_earth - kept) - core > 6.7e22
+    assert abs(core - 1.8915e24) > 1.0e21
+    warnings = [r.getMessage() for r in caplog.records if r.levelname == 'WARNING']
+    assert len(warnings) == 1
+    assert (
+        'no M_core_target' in warnings[0]
+        and 'structure target of the resumed row' in warnings[0]
+    )
+    assert f'{core:.6e} kg' in warnings[0]
 
 
 @pytest.mark.unit

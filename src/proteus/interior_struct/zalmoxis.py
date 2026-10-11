@@ -1416,22 +1416,20 @@ def load_zalmoxis_configuration(
 
     # On the rows of the init stage the core takes core_frac of the planet without its kept
     # volatiles; the mantle is the rest of the structure target.
-    core_mass = config.interior_struct.core_frac * (total_planet_mass - M_kept)
-    core_mass_fraction = config.interior_struct.core_frac * (
-        (total_planet_mass - M_kept) / planet_mass
-    )
+    core_frac = config.interior_struct.core_frac
+    core_base, stored = total_planet_mass - M_kept, 0.0
     # After the init stage the core keeps that mass: no inventory that leaves the planet or
     # the mantle moves mass across the core-mantle boundary. An impact adds to the row.
     if float(hf_row.get('Time') or 0.0) > 0.0:
         stored = float(hf_row.get('M_core_target') or 0.0)
-        if stored > 0.0:
-            core_mass, core_mass_fraction = stored, stored / planet_mass
-        else:
+        if stored <= 0.0:
+            core_base = planet_mass
             log.warning(
-                'The row holds no M_core_target: the core mass is set from the present row, '
-                '%.6e kg.',
-                core_mass,
+                'The row holds no M_core_target: the core mass is set from the structure '
+                'target of the resumed row, %.6e kg, and kept from there.',
+                core_frac * core_base,
             )
+    core_mass = stored if stored > 0.0 else core_frac * core_base
     if not 0.0 < core_mass < planet_mass:
         raise ValueError(
             f'The structure target leaves no mantle: {planet_mass:.4e} kg for the interior, '
@@ -1439,6 +1437,11 @@ def load_zalmoxis_configuration(
             f'taken from a planet of {total_planet_mass:.4e} kg. Lower outgas.fO2_shift_IW '
             'or the volatile budgets.'
         )
+    # core_frac times a ratio: the solver gets core_frac itself when the ratio is 1
+    if stored > 0.0:
+        core_mass_fraction = stored / planet_mass
+    else:
+        core_mass_fraction = core_frac * (core_base / planet_mass)
     zc = config.interior_struct.zalmoxis
     if zc.ice_layer_eos is not None and core_mass_fraction + zc.mantle_mass_fraction >= 1:
         raise ValueError(
