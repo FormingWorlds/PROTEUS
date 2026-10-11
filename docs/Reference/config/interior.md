@@ -118,11 +118,13 @@ Zalmoxis solves the structure for a target mass and a core mass.
 The target is the planet mass (`planet.mass_tot` plus the `M_volatile_change` ledger of delivered, stripped, escaped and desiccated volatiles) without the volatile mass that the structure does not hold: every element inventory with `dry_mantle = true`, and the atmosphere part of each inventory with `dry_mantle = false`.
 The core mass is set on the structure the evolution starts on (the rows with `Time = 0`), as `core_frac` of the planet without its kept volatiles, the inventories that the outgassing takes as inputs: H, C, N, S and the noble gases, and oxygen only when it is an input too (`planet.fO2_source = "from_O_budget"`, or `outgas.module = "dummy"`).
 With `dry_mantle = false` only the atmosphere part of the kept inventories is taken off.
+With `zalmoxis.equilibrate_init = false` the init stage does not solve the structure again, so the core mass is set from the inventories of the row when the init stage ends.
 With the default `planet.fO2_source = "user_constant"`, CALLIOPE and atmodeller derive the oxygen inventory from the fO$_2$ buffer at each call. That oxygen is mantle mass, like rock vapour, and takes none of the core.
 From then on the core mass is kept, and the mantle is the rest of the target: mass that escapes, that an impact strips, that desiccation removes or that leaves the mantle moves nothing across the core-mantle boundary.
 A giant impact adds `core_frac` of the impactor rock to the core mass.
+With an ice layer the mantle is `zalmoxis.mantle_mass_fraction` of the target and the ice layer is the rest; the run stops with an error when the core and mantle fractions leave no ice layer.
 
-The helpfile column `M_core_target` holds this mass. `M_core` is the enclosed mass of the first grid node at or above it, so it exceeds the target by up to the mass of one shell.
+The helpfile column `M_core_target` holds this mass. Zalmoxis puts the core-mantle boundary at the first grid node at or above the core fraction of the mass it converged to, so `M_core` follows the target to the mass tolerance of the solve plus the mass of one shell.
 When the target leaves no mantle (a core mass at or above the target mass, which a large buffered oxygen inventory over a hot magma ocean can cause), the run stops with an error that names the masses.
 A run that resumes from a helpfile without the column sets the core mass from the resumed row and logs a warning.
 

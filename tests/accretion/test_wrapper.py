@@ -1457,6 +1457,34 @@ def test_every_outgassing_module_has_a_stated_oxygen_rule():
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize('stored', [None, 0.0], ids=['column_absent', 'zero'])
+def test_an_impact_leaves_an_unset_core_target_unset(monkeypatch, stored):
+    """A row without a core target (another structure module, or a zero-filled resume) gets
+    none from an impact. 0.325 of the rock of a 0.2 Earth-mass impactor alone, 3.9e23 kg,
+    would be read as the whole core by the next structure solve."""
+    from proteus.accretion.wrapper import apply_impact
+    from proteus.utils.constants import M_earth
+
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper.solve_structure',
+        _rescaling_solve_structure(1.2),
+    )
+    handler = _impact_handler(mass_tot=1.0, accretion=_impact_accretion(H=1000.0))
+    _atm_state(handler.hf_row, H=(2.0e20, 6.0e20))
+    handler.config.interior_struct.core_frac = 0.325
+    if stored is not None:
+        handler.hf_row['M_core_target'] = stored
+    m_imp = 0.2 * M_earth
+    event = _impact_event(
+        M_target_before=6.0 * M_earth, M_impactor=m_imp, M_merged_after=6.2 * M_earth
+    )
+    apply_impact(handler, event)
+    assert float(handler.hf_row.get('M_core_target') or 0.0) == 0.0
+    rock = event.mass_delta - m_imp * 1000.0 / 1.0e6
+    assert handler.config.planet.mass_tot == pytest.approx(1.0 + rock / M_earth, rel=1e-12)
+
+
+@pytest.mark.unit
 @pytest.mark.physics_invariant
 def test_two_sequential_impacts_compose_their_consequences(monkeypatch):
     """Each impact conserves and delivers against the state it finds.

@@ -1504,6 +1504,10 @@ class Proteus:
 
             # Init stage?
             if self.loops['total'] > self.loops['init_loops']:
+                if self.init_stage:
+                    from proteus.interior_struct.zalmoxis import set_core_target_at_init_end
+
+                    set_core_target_at_init_end(self.config, self.hf_row)
                 self.init_stage = False
 
             # Keep time at zero during init stage

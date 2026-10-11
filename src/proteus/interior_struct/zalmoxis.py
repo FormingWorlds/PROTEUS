@@ -1309,6 +1309,48 @@ def _solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
     return out
 
 
+def _structure_target_masses(config: Config, hf_row: dict) -> tuple[float, float, float]:
+    """Planet mass, volatile mass outside the structure, and its kept part [kg].
+
+    The volatile mass (O included) is the full inventory with ``dry_mantle``, else only the
+    atmosphere, since the wet-mantle EOS holds the dissolved mass. The kept part holds the
+    inventories that are inputs of the outgassing call; one that the call derives (O from a
+    fixed fO2, rock vapour) is mantle mass. Element columns absent from the row count as 0.
+    """
+    from proteus.interior_struct.common import volatile_mass_change
+    from proteus.outgas.wrapper import outgassing_derives_o_kg_total
+
+    # mass_tot is the rock anchor; the ledger adds what impacts and escape moved.
+    total_planet_mass = config.planet.mass_tot * M_earth + volatile_mass_change(hf_row)
+    kept = set(vol_element_list + noble_gases)
+    if outgassing_derives_o_kg_total(config):
+        kept.discard('O')
+    dry_mantle = config.interior_struct.zalmoxis.dry_mantle
+    M_volatiles = M_kept = 0.0
+    for e in element_list:
+        # literal suffixes: the output reference reads the column names from this file
+        if dry_mantle:
+            mass = float(hf_row.get(e + '_kg_total', 0.0))
+        else:
+            mass = float(hf_row.get(e + '_kg_atm', 0.0))
+        M_volatiles += mass
+        if e in kept:
+            M_kept += mass
+    return total_planet_mass, M_volatiles, M_kept
+
+
+def set_core_target_at_init_end(config: Config, hf_row: dict) -> None:
+    """Set ``M_core_target`` from the row when the init stage ends without a re-solve.
+
+    Without ``equilibrate_init`` the one structure solve of the init stage runs before the
+    first inventories exist, so the target it wrote takes no kept volatile off.
+    """
+    struct = config.interior_struct
+    if struct.module == 'zalmoxis' and not struct.zalmoxis.equilibrate_init:
+        total_planet_mass, _, M_kept = _structure_target_masses(config, hf_row)
+        hf_row['M_core_target'] = struct.core_frac * (total_planet_mass - M_kept)
+
+
 def load_zalmoxis_configuration(
     config: Config,
     hf_row: dict,
@@ -1346,12 +1388,7 @@ def load_zalmoxis_configuration(
             config.interior_struct.core_frac,
         )
 
-    # Setup target planet mass (input parameter) as the total mass of the planet (dry mass + volatiles) [kg],
-    # plus the volatile mass impacts and escape moved, which mass_tot (rock anchor) leaves out.
-    from proteus.interior_struct.common import volatile_mass_change
-    from proteus.outgas.wrapper import outgassing_derives_o_kg_total
-
-    total_planet_mass = config.planet.mass_tot * M_earth + volatile_mass_change(hf_row)
+    total_planet_mass, M_volatiles, M_kept = _structure_target_masses(config, hf_row)
 
     log.debug(
         'Total target planet mass (dry mass + volatiles): %s kg '
@@ -1361,25 +1398,6 @@ def load_zalmoxis_configuration(
         config.interior_struct.zalmoxis.mantle_eos,
         config.interior_struct.zalmoxis.ice_layer_eos or 'none',
     )
-
-    # Volatile mass (O included) excluded from the structure target: the full inventory
-    # with dry_mantle, else only the atmosphere, since the wet-mantle EOS holds the dissolved
-    # mass. Element columns absent before the first inventory count as zero (.get below).
-    dry_mantle = config.interior_struct.zalmoxis.dry_mantle
-    # M_kept: the inventories that are inputs of the outgassing call. One that the call
-    # derives (O from a fixed fO2, rock vapour) is mantle mass and takes none of the core.
-    kept = set(vol_element_list + noble_gases)
-    if outgassing_derives_o_kg_total(config):
-        kept.discard('O')
-    M_volatiles = M_kept = 0.0
-    for e in element_list:
-        if dry_mantle:
-            mass = float(hf_row.get(e + '_kg_total', 0.0))
-        else:
-            mass = float(hf_row.get(e + '_kg_atm', 0.0))
-        M_volatiles += mass
-        if e in kept:
-            M_kept += mass
 
     log.debug(f'Volatile mass: {M_volatiles} kg')
     log.debug(
@@ -1419,6 +1437,15 @@ def load_zalmoxis_configuration(
             f'{core_mass:.4e} kg of it core, after {M_volatiles:.4e} kg of volatiles are '
             f'taken from a planet of {total_planet_mass:.4e} kg. Lower outgas.fO2_shift_IW '
             'or the volatile budgets.'
+        )
+    mmf = config.interior_struct.zalmoxis.mantle_mass_fraction
+    if (
+        config.interior_struct.zalmoxis.ice_layer_eos is not None
+        and core_mass_fraction + mmf >= 1
+    ):
+        raise ValueError(
+            f'The structure target leaves no ice layer: the core is {core_mass_fraction:.4f} of '
+            f'it and zalmoxis.mantle_mass_fraction is {mmf:.4f}.'
         )
 
     # Build per-layer EOS config dict from PROTEUS config fields
