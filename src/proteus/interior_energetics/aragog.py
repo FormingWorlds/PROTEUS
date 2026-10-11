@@ -612,17 +612,14 @@ class AragogRunner:
             # A resume builds the solver on the structure of its snapshot; the update to
             # the structure of the row follows once the snapshot state is restored.
             pending = AragogRunner._pending_structure_update(config, hf_row, hf_all, dirs)
-            build_row, mesh_file = hf_row, None
-            if pending is not None:
-                mesh_file = pending[1]
-                build_row = {
-                    **hf_row,
-                    **{k: pending[0][k] for k in aragog_resume.STRUCTURE_ROW_KEYS},
-                }
-            AragogRunner.setup_solver(
-                config, build_row, interior_o, dirs['output'], mesh_file=mesh_file
-            )
-            if pending is not None:
+            if pending is None:
+                AragogRunner.setup_solver(config, hf_row, interior_o, dirs['output'])
+            else:
+                keys = aragog_resume.STRUCTURE_ROW_KEYS
+                build_row = {**hf_row, **{k: pending[0][k] for k in keys}}
+                AragogRunner.setup_solver(
+                    config, build_row, interior_o, dirs['output'], mesh_file=pending[1]
+                )
                 AragogRunner.update_structure(config, build_row, interior_o)
             if config.params.resume:
                 AragogRunner.update_solver(dt, hf_row, interior_o, output_dir=dirs['output'])
