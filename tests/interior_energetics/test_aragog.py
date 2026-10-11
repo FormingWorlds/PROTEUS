@@ -4671,6 +4671,11 @@ class _MeshCarrier:
 
     reset = EntropySolver.reset
     set_initial_entropy = EntropySolver.set_initial_entropy
+    solution = EntropySolver.solution
+    get_current_dSdr_cmb = EntropySolver.get_current_dSdr_cmb
+    _final_extra_state = EntropySolver._final_extra_state
+    _n_shell = EntropySolver._n_shell
+    _core_shell = EntropySolver._core_shell
     _resolve_dSdr_cmb_init = EntropySolver._resolve_dSdr_cmb_init
     entropy_staggered = EntropySolver.entropy_staggered
     staggered_mass_coordinates = EntropySolver.staggered_mass_coordinates
@@ -4690,7 +4695,12 @@ class _MeshCarrier:
         self.entropy_eos = SimpleNamespace(
             specific_enthalpy=lambda P, S: 3000.0 * S + P / 4500.0 + 2.0e-8 * S * P
         )
-        self.parameters = SimpleNamespace(mesh=SimpleNamespace(eos_method=1, eos_file=''))
+        self.parameters = SimpleNamespace(
+            mesh=SimpleNamespace(eos_method=1, eos_file=''),
+            solver=SimpleNamespace(start_time=0.0, end_time=0.0),
+            boundary_conditions=SimpleNamespace(core_bc='energy_balance'),
+            energy=SimpleNamespace(),
+        )
         self.evaluator = SimpleNamespace(mesh=SimpleNamespace(staggered=SimpleNamespace()))
         self.next_mesh = None
 
@@ -4714,16 +4724,22 @@ _MASS_OLD = [2.0e23, 1.5e23, 1.0e23]  # asymmetric, so a lost weight shows
 _XI_OLD, _XI_NEW = [1.0, 2.0, 3.0], [1.0, 2.5, 3.0]
 
 
-def _replay_on_carrier(P_new, *, with_replay=True):
-    """Move a carrier from the earlier mesh to ``P_new`` through the real structure
-    update, with the replay around it or without; return the carrier."""
-    from proteus.interior_energetics.aragog import AragogRunner
-
+def _carrier_on_the_earlier_mesh(P_new):
+    """A carrier on the earlier mesh whose next reset moves it to ``P_new``."""
     solver = _MeshCarrier(_S_SNAP, dSdr_cmb=-6.2e-9)
     density = np.array([5000.0, 4500.0, 4000.0])
     solver.put_on(_P_OLD, density, np.array(_MASS_OLD) / density, _XI_OLD)
     # The next mesh holds 0.88 of the earlier cell mass and another mass grid.
     solver.next_mesh = (P_new, 1.1 * density, 0.8 * np.array(_MASS_OLD) / density, _XI_NEW)
+    return solver
+
+
+def _replay_on_carrier(P_new, *, with_replay=True):
+    """Move a carrier from the earlier mesh to ``P_new`` through the real structure
+    update, with the replay around it or without; return the carrier."""
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    solver = _carrier_on_the_earlier_mesh(P_new)
     interior_o = SimpleNamespace(aragog_solver=solver, ic=2, _last_entropy=np.array(_S_SNAP))
     config = MagicMock()
     config.interior_energetics.aragog.core_bc = 'energy_balance'
@@ -4810,14 +4826,201 @@ def test_without_the_replay_a_new_solver_books_no_compression_work():
     assert solver._solution is None
 
 
-def _first_call(pending):
-    """Run the first-call branch of ``setup_or_update_solver`` on a resume with
-    every stage mocked; return the stage calls in order and the row."""
+def _k40(t0_years=0.0):
+    """The K-40 source of a mantle with 310 ppmw K, from the PROTEUS isotope table."""
+    from aragog.parser import _Radionuclide
+
+    from proteus.utils.constants import radnuc_data
+
+    k40 = radnuc_data['k40']
+    return _Radionuclide(
+        name='k40',
+        t0_years=t0_years,
+        abundance=k40['abundance'],
+        concentration=310.0,
+        heat_production=k40['heatprod'],
+        half_life_years=k40['halflife'],
+    )
+
+
+def _solver_output(dt_actual):
+    """A solver output of a 4e24 kg mantle below a surface at 6.4e6 m."""
+    out = MagicMock()
+    out.dt_actual, out.status, out.M_mantle = dt_actual, 0, 4.0e24
+    out.T_core, out.T_magma, out.Phi_global = 3800.0, 3000.0, 0.5
+    out.T_basic = np.array([4100.0, 3900.0, 3500.0, 3000.0])
+    out.r_basic = np.array([3.5e6, 4.5e6, 5.5e6, 6.4e6])
+    out.mass_stag = np.ones(3)
+    return out
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_the_radiogenic_heat_is_sampled_at_the_end_of_the_step(tmp_path):
+    """A step of 500 yr from 1000 yr, after a step of 20 yr, reports the K-40
+    heat at 1500 yr, the time of the row it writes: ``F_radio`` is the decay law
+    at 1500 yr times the mantle mass over the surface area, and it differs from
+    the value at 1020 yr (the time plus the previous step) by the decay over 480 yr."""
+    from proteus.interior_energetics.aragog import AragogRunner
+    from proteus.utils.constants import radnuc_data
+
+    source = _k40()
+    solver = SimpleNamespace(
+        parameters=SimpleNamespace(radionuclides=[source]), _S0=np.array([7300.0])
+    )
+    runner = AragogRunner.__new__(AragogRunner)
+    runner._config, runner._use_jax = MagicMock(), False
+    runner._config.interior_energetics.aragog.core_bc = 'energy_balance'
+    runner._solve_with_retry = lambda hf_row, interior_o, S0: _solver_output(500.0)
+    runner._store_profiles = lambda interior_o, out: None
+    interior_o = SimpleNamespace(aragog_solver=solver, dt=20.0, tides=np.zeros(3))
+    hf_row = {'Time': 1000.0, 'F_atm': 1.0e5}
+
+    with patch('proteus.interior_energetics.aragog._estimate_T_pot', return_value=3000.0):
+        sim_time, output = runner.run_solver(
+            hf_row, interior_o, {'output': str(tmp_path)}, False
+        )
+
+    area = 4.0 * np.pi * 6.4e6**2
+    assert sim_time == pytest.approx(1500.0)
+    assert output['F_radio'] == pytest.approx(source.get_heating(1500.0) * 4.0e24 / area)
+    # Decay law: K-40 loses 2**(-480 / half-life) between 1020 yr and 1500 yr, 2.7e-7.
+    at_1020 = source.get_heating(1020.0) * 4.0e24 / area
+    decay = 2.0 ** (-480.0 / radnuc_data['k40']['halflife'])
+    assert output['F_radio'] / at_1020 == pytest.approx(decay, rel=1e-13)
+    assert 1.0e-7 < 1.0 - output['F_radio'] / at_1020 < 1.0e-6
+    assert output['F_radio'] > 0.0
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_a_state_with_no_step_reports_the_radiogenic_heat_at_the_time_of_its_row():
+    """Without an end time the output builder samples at the time of the row, as
+    for the re-melted state of an impact row, whatever the stored step length is;
+    without radionuclides the heat is zero."""
     from proteus.interior_energetics.aragog import AragogRunner
 
-    S_snap = np.array(_S_SNAP)
+    source = _k40()
+    area = 4.0 * np.pi * 6.4e6**2
+    heat = {}
+    for label, sources, t_end in (
+        ('row', [source], None),
+        ('end', [source], 1500.0),
+        ('off', [], None),
+    ):
+        solver = SimpleNamespace(parameters=SimpleNamespace(radionuclides=sources))
+        interior_o = SimpleNamespace(aragog_solver=solver, dt=20.0, tides=np.zeros(3))
+        with patch('proteus.interior_energetics.aragog._estimate_T_pot', return_value=3000.0):
+            res = AragogRunner._build_helpfile_output(
+                _solver_output(0.0), {'Time': 1000.0, 'F_atm': 1.0e5}, interior_o, t_end=t_end
+            )
+        heat[label] = res['F_radio']
+
+    assert heat['row'] == pytest.approx(source.get_heating(1000.0) * 4.0e24 / area, rel=1e-13)
+    assert heat['end'] == pytest.approx(source.get_heating(1500.0) * 4.0e24 / area, rel=1e-13)
+    assert heat['row'] > heat['end'] > 0.0  # the source decays
+    assert heat['off'] == pytest.approx(0.0, abs=1e-30)
+
+
+def _two_column_solution(last_column):
+    """A solution of 2 time columns: an earlier state, then ``last_column``."""
+    from scipy.optimize import OptimizeResult
+
+    y = np.column_stack([np.array(last_column) + 50.0, last_column])
+    return OptimizeResult(y=y, t=np.array([222.0, 322.0]), status=0)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize(
+    'P_new',
+    [[135.0e9, 66.0e9, 10.5e9], [105.0e9, 54.0e9, 9.5e9]],
+    ids=['contraction', 'expansion'],
+)
+def test_the_replay_equals_the_update_of_a_running_loop(P_new):
+    """A resumed solver that replays the update ends in the state of a running
+    solver that makes it: the same compression work and the same start vector
+    after the parcel carry, bit for bit, through the real ``update_solver``."""
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    hf_row = {'Time': 322.0, 'F_atm': 1.0e5, 'T_eqm': 255.0}
+    config = MagicMock()
+    config.interior_energetics.aragog.core_bc = 'energy_balance'
+    state = [*_S_SNAP, -6.2e-9]
+
+    # Running loop: the last solution holds the state; the stored entropy is stale.
+    running = _carrier_on_the_earlier_mesh(P_new)
+    running._solution, running._dSdr_cmb_init = _two_column_solution(state), None
+    loop_o = SimpleNamespace(aragog_solver=running, ic=2, tides=np.zeros(3))
+    loop_o._last_entropy = np.array([1.0, 2.0, 3.0])
+    # Resume: the snapshot state is the start vector, with the snapshot CMB gradient.
+    resumed = _carrier_on_the_earlier_mesh(P_new)
+    resume_o = SimpleNamespace(aragog_solver=resumed, ic=2, tides=np.zeros(3))
+    resume_o._last_entropy = np.array(_S_SNAP)
+    with (
+        patch.object(AragogRunner, 'update_structure'),
+        patch.object(AragogRunner, '_refresh_entropy_eos'),
+    ):
+        AragogRunner._apply_structure_update(config, hf_row, loop_o, 100.0)
+        AragogRunner._replay_structure_update(config, hf_row, resume_o, 100.0)
+
+    assert resumed._last_compression_J == running._last_compression_J
+    assert np.array_equal(resumed._S0, running._S0)
+    assert np.array_equal(resume_o._last_entropy, loop_o._last_entropy)
+    # The loop took the entropy from its solution, not the stale stored one, and the
+    # work is of the size and sign of this structure change, not the 0 of no update.
+    assert loop_o._last_entropy == pytest.approx(_S_SNAP)
+    assert 1.0e30 < abs(running._last_compression_J) < 2.0e30
+    assert np.sign(running._last_compression_J) == np.sign(P_new[0] - _P_OLD[0])
+    assert resumed.parameters.solver.end_time == pytest.approx(422.0)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_the_update_of_an_initial_stage_loop_takes_the_entropy_from_the_solution():
+    """In the initial stage (``ic == 1``) the update stores the entropy of the last
+    solution before the reset and hands that over, without a solver update; with
+    no solution it keeps the stored entropy."""
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    P_new = [135.0e9, 66.0e9, 10.5e9]
+    config = MagicMock()
+    config.interior_energetics.aragog.core_bc = 'energy_balance'
+    solved = [7450.0, 7350.0, 7250.0]  # the solution, 50 J/kg/K above the stored entropy
+    carried = {}
+    for label, solution in (
+        ('solved', _two_column_solution([*solved, -6.2e-9])),
+        ('new', None),
+    ):
+        solver = _carrier_on_the_earlier_mesh(P_new)
+        solver._solution = solution
+        interior_o = SimpleNamespace(aragog_solver=solver, ic=1)
+        interior_o._last_entropy = np.array(_S_SNAP)
+        with (
+            patch.object(AragogRunner, 'update_structure'),
+            patch.object(AragogRunner, 'update_solver') as update_solver,
+            patch.object(AragogRunner, '_refresh_entropy_eos'),
+        ):
+            AragogRunner._apply_structure_update(config, {'Time': 0.0}, interior_o, 0.0)
+        assert not update_solver.called
+        carried[label] = (list(interior_o._last_entropy), solver._S0[:3].copy())
+
+    assert carried['solved'][0] == pytest.approx(solved)
+    assert carried['new'][0] == pytest.approx(_S_SNAP)
+    # The entropy handed to the new mesh follows the stored one: 50 J/kg/K apart.
+    assert carried['solved'][1] - carried['new'][1] == pytest.approx([50.0, 50.0, 50.0])
+    assert carried['solved'][1][1] == pytest.approx(7350.0 - 100.0 * 7.625 / 19.0)
+
+
+def _first_call(pending, S_snap=_S_SNAP):
+    """Run the first-call branch of ``setup_or_update_solver`` on a resume with
+    every stage mocked; return the stage calls in order and the row. ``S_snap`` is
+    the snapshot entropy on a solver of 3 staggered nodes (None for no entropy)."""
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    S_snap = None if S_snap is None else np.array(S_snap)
     solver = MagicMock()
-    solver._n_stag = S_snap.size
+    solver._n_stag = 3
     interior_o = SimpleNamespace(
         aragog_solver=None, _last_entropy=S_snap, _last_dSdr_cmb=-6.2e-9, ic=2
     )
@@ -4833,16 +5036,25 @@ def _first_call(pending):
         interior_o.aragog_solver = solver
 
     solver.initialize.side_effect = lambda: calls.initialize()
+    solver.reset.side_effect = lambda: calls.reset()
     solver.set_initial_entropy.side_effect = lambda S: calls.set_initial_entropy()
     with (
         patch('proteus.interior_energetics.aragog.require_cvode'),
         patch('proteus.interior_energetics.aragog._maybe_log_solver_environment'),
         patch.object(AragogRunner, '_pending_structure_update', return_value=pending),
         patch.object(AragogRunner, 'setup_solver', side_effect=_setup),
-        patch.object(AragogRunner, 'update_structure') as update_structure,
+        patch.object(
+            AragogRunner,
+            'update_structure',
+            side_effect=lambda c, row, i: calls.update_structure(dict(row)),
+        ),
         patch.object(
             AragogRunner, 'update_solver', side_effect=lambda *a, **k: calls.update_solver()
         ),
+        patch.object(
+            AragogRunner, '_set_entropy_ic', side_effect=lambda *a, **k: calls.fresh_ic()
+        ),
+        patch.object(AragogRunner, '_verify_entropy_ic'),
         patch.object(AragogRunner, '_maybe_install_jax_cvode_factory'),
         patch.object(
             AragogRunner,
@@ -4853,7 +5065,6 @@ def _first_call(pending):
         AragogRunner.setup_or_update_solver(
             config, hf_row, interior_o, 100.0, {'output': 'run'}, hf_all=MagicMock()
         )
-    assert not update_structure.called  # the set-up alone places the solver on its mesh
     return calls, hf_row
 
 
@@ -4887,6 +5098,27 @@ def test_a_resume_with_a_pending_update_builds_on_the_earlier_structure_first():
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize(
+    'S_snap', [[7400.0, 7300.0], None], ids=['entropy_of_another_length', 'no_entropy']
+)
+def test_a_pending_update_without_an_entropy_to_carry_moves_to_the_row(S_snap):
+    """Built on the earlier structure but with no snapshot entropy that fits the
+    mesh, the solver is moved to the structure of the row before the initial
+    condition is set, and there is no replay: the first step runs on the row."""
+    earlier = {'R_int': 6.869e6, 'R_core': 3.411e6, 'gravity': 8.29}
+    earlier.update(M_core=1.92e24, core_density=11574.0, Time=222.0)
+    calls, hf_row = _first_call((earlier, 'data/222p001_zalmoxis.dat'), S_snap=S_snap)
+
+    names = [c[0] for c in calls.mock_calls]
+    moved = ['setup_solver', 'update_solver', 'initialize', 'update_structure', 'reset']
+    assert names == [*moved, 'fresh_ic']
+    # The structure the solver is moved to is the row of the resume, not the earlier one.
+    assert calls.update_structure.call_args.args[0] == hf_row
+    assert calls.update_structure.call_args.args[0]['R_int'] == pytest.approx(6.819e6)
+    assert calls.setup_solver.call_args.args[0]['R_int'] == pytest.approx(6.869e6)
+
+
+@pytest.mark.unit
 def test_a_resume_without_a_pending_update_sets_up_as_before():
     """Nothing pending: the solver is set up on the row with the call a fresh
     run makes (no mesh file argument), and there is no replay."""
@@ -4900,53 +5132,65 @@ def test_a_resume_without_a_pending_update_sets_up_as_before():
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
-    'resume, struct_module, core_bc, expected_found, n_warnings',
+    'resume, struct_module, core_bc, impacts_since, expected_found, warned_for',
     [
-        (False, 'zalmoxis', 'energy_balance', False, 0),
-        (True, 'spider', 'energy_balance', False, 0),
-        (True, 'zalmoxis', 'energy_balance', True, 0),
-        (True, 'zalmoxis', 'core_module', False, 1),
+        (False, 'zalmoxis', 'energy_balance', 0, False, None),
+        (True, 'spider', 'energy_balance', 0, False, None),
+        (True, 'zalmoxis', 'energy_balance', 0, True, None),
+        (True, 'zalmoxis', 'energy_balance', 1, False, 'a giant impact'),
+        (True, 'zalmoxis', 'core_module', 0, False, "core_bc = 'core_module'"),
+        (True, 'zalmoxis', 'gradient', 0, False, "core_bc = 'gradient'"),
+        (True, 'zalmoxis', 'bower2018', 0, False, "core_bc = 'bower2018'"),
+        (True, 'zalmoxis', 'quasi_steady', 0, False, "core_bc = 'quasi_steady'"),
     ],
-    ids=['fresh_run', 'structure_without_zalmoxis', 'zalmoxis_resume', 'core_module'],
+    ids=[
+        'fresh_run',
+        'structure_without_zalmoxis',
+        'zalmoxis_resume',
+        'impact_since_the_snapshot',
+        'core_module',
+        'gradient',
+        'bower2018',
+        'quasi_steady',
+    ],
 )
-def test_the_pending_update_is_looked_for_on_a_zalmoxis_resume_only(
-    caplog, resume, struct_module, core_bc, expected_found, n_warnings
+def test_the_pending_update_is_replayed_for_a_plain_energy_balance_resume_only(
+    caplog, resume, struct_module, core_bc, impacts_since, expected_found, warned_for
 ):
     """A fresh run and a structure module other than Zalmoxis do not read the
-    snapshot. A Zalmoxis resume returns what the search finds for its node
-    count, except with ``core_bc = 'core_module'``, which leaves the update
-    out with one warning."""
+    snapshot. A Zalmoxis resume returns what the search finds for its node count
+    with ``core_bc = 'energy_balance'`` and no giant impact since the snapshot
+    structure; any other core boundary condition, and an impact in between, give
+    None and one warning that names the reason."""
     from proteus.interior_energetics import aragog_resume
-    from proteus.interior_energetics.aragog import AragogRunner
+    from proteus.interior_energetics.aragog import _REPLAY_CORE_BCS, AragogRunner
 
     config = MagicMock()
     config.params.resume = resume
     config.interior_struct.module = struct_module
     config.interior_energetics.aragog.core_bc = core_bc
     config.interior_energetics.num_levels = 80
-    found = ({'R_int': 6.869e6}, 'data/222p001_zalmoxis.dat')
+    found = ({'R_int': 6.869e6, 'n_impacts_applied': 2.0}, 'data/222p001_zalmoxis.dat')
+    hf_row = {'Time': 322.0, 'n_impacts_applied': 2.0 + impacts_since}
     hf_all = MagicMock()
 
     with (
         patch.object(aragog_resume, 'pending_structure_update', return_value=found) as search,
         caplog.at_level(logging.WARNING, logger='fwl.proteus.interior_energetics.aragog'),
     ):
-        result = AragogRunner._pending_structure_update(
-            config, {'Time': 322.0}, hf_all, {'output': 'out'}
-        )
-        no_table = AragogRunner._pending_structure_update(
-            config, {'Time': 322.0}, None, {'output': 'out'}
-        )
+        result = AragogRunner._pending_structure_update(config, hf_row, hf_all, {'output': 'o'})
+        no_table = AragogRunner._pending_structure_update(config, hf_row, None, {'output': 'o'})
 
     assert (result == found) is expected_found
     assert no_table is None  # no helpfile table, no earlier row to build on
     if resume and struct_module == 'zalmoxis':
-        search.assert_called_once_with('out', {'Time': 322.0}, hf_all, 80)
+        search.assert_called_once_with('o', hf_row, hf_all, 80)
     else:
         assert not search.called
     warnings = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
-    assert len(warnings) == n_warnings
-    assert all("core_bc = 'core_module'" in w for w in warnings)
+    assert len(warnings) == (0 if warned_for is None else 1)
+    assert all(warned_for in w and 'not replayed' in w for w in warnings)
+    assert _REPLAY_CORE_BCS == ('energy_balance',)
 
 
 @pytest.mark.unit

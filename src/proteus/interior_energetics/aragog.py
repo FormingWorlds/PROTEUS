@@ -56,6 +56,10 @@ from proteus.utils.helper import (
 
 log = logging.getLogger('fwl.' + __name__)
 
+# Core boundary conditions for which a resume replays a pending structure update: the
+# start vector then holds the entropy profile, and a run or a test covers the replay.
+_REPLAY_CORE_BCS = ('energy_balance',)
+
 # The effective step caps are fixed by the config, so record them once per
 # process at INFO for provenance rather than on every per-step solve.
 _effective_caps_logged = False
@@ -643,6 +647,13 @@ class AragogRunner:
                     _t_after_init - _t_init,
                     _t_after_factory - _t_after_init,
                 )
+            S_last = getattr(interior_o, '_last_entropy', None)
+            n_stag = getattr(interior_o.aragog_solver, '_n_stag', None)
+            if pending is not None and (S_last is None or len(S_last) != n_stag):
+                # No entropy to carry: the initial condition goes on the structure of the row.
+                AragogRunner.update_structure(config, hf_row, interior_o)
+                interior_o.aragog_solver.reset()
+                pending = None
             if config.params.resume and getattr(interior_o, '_last_entropy', None) is not None:
                 # Restore the evolved entropy field from the last NetCDF
                 # snapshot. Without this, _set_entropy_ic overwrites the
@@ -766,9 +777,10 @@ class AragogRunner:
         """Earlier row and mesh file a resume must build the solver on, or None.
 
         None for a fresh run, a structure module other than Zalmoxis, and a snapshot
-        that is already on the structure of ``hf_row``. With ``core_bc = 'core_module'``
-        a pending update is reported in the log and left out: the run continues as
-        if the snapshot were on the structure of its row.
+        that is already on the structure of ``hf_row``. A pending update is reported
+        in the log and not replayed, so that the run is set up on its row alone, with
+        a core boundary condition outside ``_REPLAY_CORE_BCS`` and when a giant
+        impact landed between the snapshot structure and the row.
         """
         if not config.params.resume or hf_all is None:
             return None
@@ -777,14 +789,23 @@ class AragogRunner:
         pending = aragog_resume.pending_structure_update(
             dirs['output'], hf_row, hf_all, int(config.interior_energetics.num_levels)
         )
-        if pending is not None and config.interior_energetics.aragog.core_bc == 'core_module':
-            log.warning(
-                'Resume: a structure update was pending at the stop. With core_bc = '
-                "'core_module' it is not applied again: the first step books no compression "
-                'work, and the entropy is carried by node and not by mass parcel.'
-            )
+        if pending is None:
             return None
-        return pending
+        core_bc = config.interior_energetics.aragog.core_bc
+        impacts = float(hf_row.get('n_impacts_applied', 0.0))
+        if core_bc in _REPLAY_CORE_BCS and impacts == pending[0].get('n_impacts_applied', 0.0):
+            return pending
+        reason = f"core_bc = '{core_bc}'"
+        if core_bc in _REPLAY_CORE_BCS:
+            reason = 'a giant impact between the snapshot and the row'
+        log.warning(
+            'Resume: a structure update was pending at the stop. With %s the solver is '
+            'built on the structure of the row and the update is not replayed from the '
+            'earlier mesh: the first step books no compression work, and the entropy is '
+            'carried by node and not by mass parcel.',
+            reason,
+        )
+        return None
 
     @staticmethod
     def _replay_structure_update(
@@ -797,7 +818,8 @@ class AragogRunner:
         a running loop makes, which carries the entropy by mass parcel from the
         earlier mesh. That update measures the compression work [J] only from a
         solution, so the start vector is handed to the solver as one for the length
-        of the update. The private solver names used are ``_solution`` and ``_S0``.
+        of the update. The private solver names used are ``_solution`` and ``_S0``,
+        and ``_last_compression_J`` is read for the log line.
         """
         solver = interior_o.aragog_solver
         previous = getattr(solver, '_solution', None)
@@ -2164,6 +2186,13 @@ class AragogRunner:
         try:
             out = self._solve_with_retry(hf_row, interior_o, S0_entry)
 
+            # The actual integration endpoint, not the requested end_time (dt_actual is
+            # shorter when the solver exits early); a step aimed at an impact ends on it,
+            # so the snapshot is named like the row.
+            sim_time = snap_to_impact(
+                hf_row['Time'] + out.dt_actual, getattr(interior_o, 't_next_impact', np.inf)
+            )
+
             # Build PROTEUS helpfile output from SolverOutput
             output = self._build_helpfile_output(
                 out,
@@ -2171,13 +2200,7 @@ class AragogRunner:
                 interior_o=interior_o,
                 surface_d=self._config.atmos_clim.surface_d,
                 surface_bc_mode=self._config.interior_energetics.surface_bc_mode,
-            )
-
-            # The actual integration endpoint, not the requested end_time (dt_actual is
-            # shorter when the solver exits early); a step aimed at an impact ends on it,
-            # so the snapshot is named like the row.
-            sim_time = snap_to_impact(
-                hf_row['Time'] + out.dt_actual, getattr(interior_o, 't_next_impact', np.inf)
+                t_end=sim_time,
             )
 
             core_module = self._config.interior_energetics.aragog.core_bc == 'core_module'
@@ -2725,6 +2748,7 @@ class AragogRunner:
         interior_o=None,
         surface_d: float = 0.0,
         surface_bc_mode: str = 'flux',
+        t_end: float | None = None,
     ) -> dict:
         """Build the PROTEUS helpfile dict from SolverOutput.
 
@@ -2746,6 +2770,10 @@ class AragogRunner:
             ``F_atm``. In ``'grey_body'`` mode Aragog computes its own
             surface flux, so ``F_int`` is taken from the surface heat-flux
             node instead.
+        t_end : float, optional
+            Simulation time of the row the output goes to [yr], at which the
+            radiogenic heat ``F_radio`` is sampled: the end of the step. The
+            time of ``hf_row`` when not given, for a state with no step.
         """
         log.info(
             'Aragog entropy: T_surf=%.0f K, T_cmb=%.0f K, Phi=%.3f, status=%d',
@@ -2775,19 +2803,9 @@ class AragogRunner:
         if solver_obj is not None:
             radionuclides = getattr(solver_obj.parameters, 'radionuclides', [])
             if radionuclides:
-                # Sample radio heating at the END of the step. ``out.F_heat_total``
-                # reflects the surface flux at the post-step state (Aragog
-                # returns the integrated surface flux at t_end), and PROTEUS
-                # increments ``hf_row['Time']`` by the interior dt only AFTER
-                # this output assembly runs (see proteus.py: run_interior is
-                # called before ``hf_row['Time'] += interior_o.dt``). Using
-                # ``hf_row['Time'] + interior_o.dt`` keeps the F_radio sample
-                # aligned with the F_heat_total reference instead of trailing
-                # by one dt, which matters for any isotope whose half-life is
-                # of order a coupling step.
-                t_end_yr = float(hf_row.get('Time', 0.0))
-                if interior_o is not None:
-                    t_end_yr += float(getattr(interior_o, 'dt', 0.0))
+                # The radiogenic heat is sampled at the time of the row this output goes
+                # to: the end of the step, or the time of ``hf_row`` for a state with no step.
+                t_end_yr = float(hf_row.get('Time', 0.0)) if t_end is None else float(t_end)
                 H_radio_per_kg = sum(float(r.get_heating(t_end_yr)) for r in radionuclides)
                 F_radio = H_radio_per_kg * float(out.M_mantle) / area_surf
 

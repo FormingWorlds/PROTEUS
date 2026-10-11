@@ -644,35 +644,6 @@ def test_proteus_resume_no_mesh_file(tmp_path):
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize(
-    'times, expected_dt',
-    [
-        ([0.0, 100.0, 200.0, 322.0, 422.5], 100.5),
-        ([0.0, 100.0, 200.0, 300.0, 300.0], None),
-    ],
-    ids=['uneven_steps', 'zero_length_last_step'],
-)
-def test_resume_takes_the_last_step_length_from_the_helpfile(tmp_path, times, expected_dt):
-    """A resumed run starts with the step length [yr] of its last two rows, which
-    the interior output adds to the time when it samples the radiogenic heat. A
-    last step of zero length leaves the step length of a new interior object."""
-    p = _make_proteus_instance(tmp_path)
-    (tmp_path / 'data').mkdir(exist_ok=True)
-    hf_df = _make_hf_df()
-    hf_df['Time'] = times
-
-    _resume_with_patches(p, hf_df)
-
-    if expected_dt is None:
-        assert not isinstance(p.interior_o.dt, float)  # the interior object keeps its own
-    else:
-        # 100.5 yr is the last step alone: the mean step is 105.6 and the one before 122.
-        assert p.interior_o.dt == pytest.approx(expected_dt, rel=1e-12)
-        assert p.interior_o.dt != pytest.approx(122.0)
-    assert p.hf_row['Time'] == pytest.approx(times[-1])
-
-
-@pytest.mark.unit
 def test_proteus_resume_mesh_no_prev(tmp_path):
     """start(resume=True) restores mesh but skips .prev when absent."""
     p = _make_proteus_instance(tmp_path)
