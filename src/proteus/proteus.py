@@ -323,16 +323,11 @@ class Proteus:
         self.directories = set_directories(self.config)
 
     def _end_init_stage_if_due(self):
-        """Leave the init stage once its loops are done.
+        """Leave the init stage once its loops are done, setting the core target of the row."""
+        if self.init_stage and self.loops['total'] > self.loops['init_loops']:
+            from proteus.interior_struct.zalmoxis import set_core_target_at_init_end
 
-        The step that leaves it sets the core target of the row
-        (``set_core_target_at_init_end``); later steps keep that target.
-        """
-        if self.loops['total'] > self.loops['init_loops']:
-            if self.init_stage:
-                from proteus.interior_struct.zalmoxis import set_core_target_at_init_end
-
-                set_core_target_at_init_end(self.config, self.hf_row)
+            set_core_target_at_init_end(self.config, self.hf_row)
             self.init_stage = False
 
     def _solve_structure_baseline_if_needed(self):
