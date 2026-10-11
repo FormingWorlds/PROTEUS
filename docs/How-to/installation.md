@@ -63,34 +63,22 @@ Install the required system libraries for your platform. See the
     (experimental).
 
 Python **3.12** is required, and is installed via
-[miniconda](https://www.anaconda.com/docs/getting-started/miniconda/install)
-or [miniforge](https://github.com/conda-forge/miniforge). If you do not have [miniconda](https://www.anaconda.com/docs/getting-started/miniconda/install)
-or [miniforge](https://github.com/conda-forge/miniforge) installed yet:
+[miniforge](https://github.com/conda-forge/miniforge) or
+[miniconda](https://www.anaconda.com/docs/getting-started/miniconda/install). If you have neither yet, install miniforge
+(the same two commands on macOS and Linux):
 
-=== "macOS (Homebrew)"
+```console
+curl -L -O "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh"
+bash Miniforge3-$(uname)-$(uname -m).sh
+```
 
-    ```console
-    curl -L -O "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh"
-    bash Miniforge3-$(uname)-$(uname -m).sh
-    ```
+Open a new terminal afterwards, so that `conda` is on your `PATH`.
 
-=== "Debian / Ubuntu"
-
-    ```console
-    mkdir -p ~/miniconda3
-    wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda3/miniconda.sh
-    bash ~/miniconda3/miniconda.sh
-    rm ~/miniconda3/miniconda.sh
-    ```
-
-=== "Fedora / RHEL"
-
-    ```console
-    mkdir -p ~/miniconda3
-    wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda3/miniconda.sh
-    bash ~/miniconda3/miniconda.sh
-    rm ~/miniconda3/miniconda.sh
-    ```
+!!! note "If you use miniconda"
+    Miniconda takes its packages from the Anaconda default channels, and conda
+    creates an environment from them only after you accept their terms of
+    service. When conda stops with that message, run the `conda tos accept`
+    commands that it prints, then repeat the step.
 
 !!! note "Install miniconda/miniforge in your personal directory"
     Installing miniconda/miniforge in your personal directory gives you full control over your environment and is recommended even on clusters (see the cluster guides: [Kapteyn](kapteyn_cluster_guide.md), [Habrok](habrok_cluster_guide.md), [Snellius](snellius_cluster_guide.md), [Cambridge IoA](ioa_cluster_guide.md)). 

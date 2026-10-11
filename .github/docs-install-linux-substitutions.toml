@@ -7,21 +7,19 @@ replace = "sudo apt-get update && sudo apt-get install -y gfortran libnetcdff-de
 reason = "A runner has no terminal to confirm the install."
 
 [[substitution]]
-match = "bash ~/miniconda3/miniconda.sh"
-replace = "bash ~/miniconda3/miniconda.sh -b -u -p ~/miniconda3 && ~/miniconda3/bin/conda init bash && source ~/miniconda3/etc/profile.d/conda.sh"
-reason = "The Miniconda installer is interactive and a runner has no terminal; conda is made available to this shell session."
+match = "bash Miniforge3-$(uname)-$(uname -m).sh"
+replace = "bash Miniforge3-$(uname)-$(uname -m).sh -b -p ~/miniforge3 && ~/miniforge3/bin/conda init bash && source ~/miniforge3/etc/profile.d/conda.sh"
+reason = "The Miniforge installer is interactive and a runner has no terminal; conda is made available to this shell session, which stands for the new terminal of the page."
 
 [[substitution]]
 match = "git clone https://github.com/FormingWorlds/PROTEUS.git"
 replace = 'git clone "$GITHUB_WORKSPACE" PROTEUS'
 reason = "The job tests the pushed commit, not the default branch."
 
-# The Anaconda default channels (Miniconda from repo.anaconda.com) require a
-# terms-of-service acceptance before `conda create` in a non-interactive shell.
 [[substitution]]
 match = "conda create -n proteus python=3.12"
-replace = "conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main && conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r && conda create -y -n proteus python=3.12"
-reason = "A runner has no terminal to confirm, and the Anaconda default channels need their terms of service accepted (conda tos accept) before conda create."
+replace = "conda create -y -n proteus python=3.12"
+reason = "A runner has no terminal to confirm."
 
 # Ubuntu's ~/.bashrc returns at the top in a non-interactive shell, so the lines
 # that install.sh and the juliaup installer append to it are evaluated directly.
