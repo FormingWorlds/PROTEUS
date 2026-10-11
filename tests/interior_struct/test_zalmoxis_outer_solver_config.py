@@ -139,6 +139,7 @@ def _make_mock_config(
     """Build a mock proteus Config that exercises the Zalmoxis-config builder."""
     config = MagicMock()
     config.planet.mass_tot = 1.0  # 1 M_earth
+    config.interior_struct.core_frac = 0.325
     config.planet.tsurf_init = 1500.0
     config.planet.tcmb_init = 4000.0
     config.planet.tcenter_init = 5000.0
@@ -311,3 +312,101 @@ def test_load_zalmoxis_configuration_propagates_use_anderson(monkeypatch, use_an
     _stub_get_target_surface_pressure(monkeypatch)
     cp = load_zalmoxis_configuration(config, _make_hf_row())
     assert cp['use_anderson'] is use_anderson
+
+
+# ----------------------------------------------------------------------
+# Core mass of the structure target
+# ----------------------------------------------------------------------
+
+_BUFFERED = {'H_kg_total': 4.70e20, 'C_kg_total': 2.73e20, 'O_kg_total': 2.117e23}
+
+
+def _structure_target(
+    monkeypatch, hf_extra, outgas='calliope', fO2_source='user_constant', **cfg
+):
+    """Planet target [kg] and core mass [kg] that the builder hands to Zalmoxis."""
+    from proteus.interior_struct.zalmoxis import load_zalmoxis_configuration
+
+    config = _make_mock_config()
+    config.outgas.module, config.planet.fO2_source = outgas, fO2_source
+    config.planet.mass_tot = cfg.get('mass_tot', 1.0)
+    config.interior_struct.zalmoxis.dry_mantle = cfg.get('dry_mantle', True)
+    _stub_get_target_surface_pressure(monkeypatch)
+    params = load_zalmoxis_configuration(config, {**_make_hf_row(), **hf_extra})
+    return params['planet_mass'], params['core_mass_fraction'] * params['planet_mass'], params
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_the_core_does_not_move_with_an_oxygen_inventory_that_the_buffer_derives(monkeypatch):
+    """With a fixed fO2 the outgassing derives the oxygen: 2.117e23 kg over a hot magma ocean
+    at IW+4, 3.15e21 kg when it has cooled. The planet target falls by the oxygen, and the
+    core stays at 0.325 of the planet without its kept volatiles (H and C, 7.43e20 kg): the
+    mantle alone gives and takes the oxygen. With core_frac itself as the fraction the core
+    would differ by 0.325 of the oxygen change, 6.8e22 kg."""
+    from proteus.utils.constants import M_earth
+
+    hot_planet, hot_core, _ = _structure_target(monkeypatch, _BUFFERED)
+    cool_planet, cool_core, _ = _structure_target(
+        monkeypatch, {**_BUFFERED, 'O_kg_total': 3.15e21}
+    )
+    expected = 0.325 * (M_earth - 7.43e20)
+    assert hot_core == pytest.approx(expected, rel=1e-14)
+    assert cool_core == pytest.approx(expected, rel=1e-14)
+    assert hot_planet == pytest.approx(M_earth - 7.43e20 - 2.117e23, rel=1e-14)
+    assert cool_planet - hot_planet == pytest.approx(2.117e23 - 3.15e21, rel=1e-9)
+    assert abs(0.325 * cool_planet - 0.325 * hot_planet) > 6.7e22
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'outgas, fO2_source',
+    [
+        ('calliope', 'from_O_budget'),
+        ('atmodeller', 'from_O_budget'),
+        ('dummy', 'user_constant'),
+    ],
+)
+def test_the_core_fraction_is_the_config_value_when_no_inventory_is_derived(
+    monkeypatch, outgas, fO2_source
+):
+    """When the oxygen is an input of the outgassing (an oxygen budget, or the dummy
+    module) every inventory is kept, and the solver gets core_frac itself, bit for bit."""
+    _, _, params = _structure_target(monkeypatch, _BUFFERED, outgas, fO2_source)
+    assert params['core_mass_fraction'] == 0.325
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize(
+    'hf_extra, cfg, core_change',
+    [
+        ({'H_kg_total': 3.70e20, 'M_volatile_change': -1.0e20}, {}, 0.0),
+        ({}, {'mass_tot': 1.05}, 0.325 * 0.05 * 5.972e24),
+        ({'Si_kg_total': 1.0e21}, {}, 0.0),
+        (
+            {'H_kg_atm': 1.0e20, 'C_kg_atm': 2.0e20, 'O_kg_atm': 2.079e23},
+            {'dry_mantle': False},
+            0.0,
+        ),
+    ],
+    ids=['escape', 'impact', 'rock_vapour', 'wet_mantle'],
+)
+def test_the_core_mass_follows_the_rock_and_nothing_else(
+    monkeypatch, hf_extra, cfg, core_change
+):
+    """Hydrogen that escapes lowers the inventory and the volatile ledger by the same mass,
+    so the core stays; an impact that adds 0.05 Earth masses of rock adds 0.325 of it to the
+    core; rock vapour is mantle mass, not a kept volatile; and with a wet mantle the
+    structure target takes off the atmosphere only, while the core is the same."""
+    _, base, _ = _structure_target(monkeypatch, _BUFFERED)
+    _, core, _ = _structure_target(monkeypatch, {**_BUFFERED, **hf_extra}, **cfg)
+    assert core - base == pytest.approx(core_change, rel=2e-3, abs=1e12)
+
+
+@pytest.mark.unit
+def test_an_inventory_that_leaves_no_mantle_is_refused(monkeypatch):
+    """An oxygen inventory of 4.1e24 kg leaves 1.87e24 kg for the interior, less than the
+    core of 1.94e24 kg: the builder refuses the structure with the masses in the message."""
+    with pytest.raises(ValueError, match='leaves no mantle: 1.87'):
+        _structure_target(monkeypatch, {**_BUFFERED, 'O_kg_total': 4.1e24})
