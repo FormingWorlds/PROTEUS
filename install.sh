@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# PROTEUS unified installer; `bash install.sh --help` lists the options. It needs an active conda
-# environment with Python 3.12 and the system packages of docs/How-to/installation.md, and each
-# phase can run again after a failure.
+# PROTEUS unified installer; `bash install.sh --help` lists the options. It uses the active conda
+# environment, or makes one with Python 3.12 when none is active; it needs the system packages of
+# docs/How-to/installation.md, and each phase can run again after a failure.
 
 set -euo pipefail
 
@@ -447,13 +447,26 @@ build_fastchem() {
     [ -x fastchem/fastchem ]
 }
 
-# The closing instruction: reactivate the conda env that holds the variables, or
+# The command that activates the conda env afresh: the user's shell has no env active when
+# setup_conda_env activated it in this process only.
+conda_activate_command() {
+    if [ "${CONDA_ACTIVATED_HERE:-false}" = true ]; then
+        echo "conda activate ${CONDA_DEFAULT_ENV:-proteus}"
+    else
+        echo "conda deactivate && conda activate ${CONDA_DEFAULT_ENV:-proteus}"
+    fi
+}
+
+# The closing instruction: activate the conda env that holds the variables, or
 # source the exports file where no conda env holds them.
 print_next_steps() {
     echo "Next steps:"
     if [ "$CONDA_BIND" = "bound" ]; then
-        echo "  1. Reactivate the env, so that it loads the variables:"
-        echo "     conda deactivate && conda activate ${CONDA_DEFAULT_ENV:-proteus}"
+        echo "  1. Activate the env, so that it loads the variables:"
+        echo "     $(conda_activate_command)"
+    elif [ "${CONDA_ACTIVATED_HERE:-false}" = true ]; then
+        echo "  1. Activate the env and load the variables, in the PROTEUS folder ($SCRIPT_DIR):"
+        echo "     conda activate ${CONDA_DEFAULT_ENV:-proteus} && source .proteus-env.sh"
     else
         echo "  1. Load the variables, in the PROTEUS folder ($SCRIPT_DIR):"
         echo "     source .proteus-env.sh"
@@ -474,6 +487,11 @@ print_exit_hint() {
         echo ""
         echo "--- NOTE: the variables set so far are in $PROTEUS_ENV_FILE. To keep them on"
         echo "    a re-run, run 'source $PROTEUS_ENV_FILE' first."
+    fi
+    if [ "$rc" -ne 0 ] && [ "${CONDA_ACTIVATED_HERE:-false}" = true ]; then
+        echo ""
+        echo "--- NOTE: the installer activated the conda env ${CONDA_DEFAULT_ENV:-proteus} in its own"
+        echo "    process only. To use it in your shell, run '$(conda_activate_command)'."
     fi
 }
 
@@ -496,6 +514,9 @@ LOG_SENTENCE_SHOWN="false"
 PROTEUS_ENV_FILE="$SCRIPT_DIR/.proteus-env.sh"
 INSTALL_VAR_NAMES=""
 CONDA_BIND="pending"
+# The conda env --conda-env names, and whether setup_conda_env activated an env in this process.
+CONDA_ENV_REQUESTED=""
+CONDA_ACTIVATED_HERE="false"
 trap print_exit_hint EXIT
 
 # ---------------------------------------------------------------------------
@@ -503,12 +524,23 @@ trap print_exit_hint EXIT
 # ---------------------------------------------------------------------------
 
 DATA_MODE="essential"
-for arg in "$@"; do
+while [ "$#" -gt 0 ]; do
+    arg="$1"
+    shift
     case "$arg" in
         --all-data) DATA_MODE="all" ;;
         --no-data)  DATA_MODE="none" ;;
         --interactive|-i) INTERACTIVE="true" ;;
         --verbose)  VERBOSE="true" ;;
+        --conda-env)
+            if [ "$#" -eq 0 ] || [ -z "$1" ] || [ "${1#-}" != "$1" ]; then
+                fail "--conda-env needs the name of a conda environment."
+                echo "Run 'bash install.sh --help' for usage."
+                exit 1
+            fi
+            CONDA_ENV_REQUESTED="$1"
+            shift
+            ;;
         --help|-h)
             echo "PROTEUS unified installer"
             echo ""
@@ -519,6 +551,8 @@ for arg in "$@"; do
             echo "  --no-data    Skip data downloads entirely, including the essential set"
             echo "  -i, --interactive  Interactive mode (prompt for choices)"
             echo "  --verbose    Show the full build output on the terminal, not only in the log file"
+            echo "  --conda-env <name>  The conda environment to use, or to make, when none or base"
+            echo "               is active (default: proteus)"
             echo "  --help       Show this message"
             echo ""
             echo "Default: download the essential data (~3 GB): the default-config and tutorial"
@@ -615,16 +649,75 @@ if [ "$disk_gb" -lt "$MIN_DISK_GB" ]; then
 fi
 info "Disk space: ${disk_gb} GB available"
 
-# Check conda environment is active
-if [ -z "${CONDA_DEFAULT_ENV:-}" ]; then
-    fail "No conda environment is active."
+# Stop with the 2 commands that make and activate the conda env $2 by hand; $1 names the step
+# of setup_conda_env that failed.
+stop_without_conda_env() {
+    fail "No conda environment other than base is active."
+    fail "$1"
     echo ""
     echo "Create and activate a conda environment first:"
-    echo "  conda create -n proteus python=$REQUIRED_PYTHON_MAJOR.$REQUIRED_PYTHON_MINOR"
-    echo "  conda activate proteus"
+    echo "  conda create -n $2 python=$REQUIRED_PYTHON_MAJOR.$REQUIRED_PYTHON_MINOR"
+    echo "  conda activate $2"
     die "Conda environment required."
-fi
-info "Conda environment: $CONDA_DEFAULT_ENV"
+}
+
+# Use the active conda env; when none or base is active, use or make the env that --conda-env
+# names (default proteus) and activate it in this process. A pixi env is used as it is.
+setup_conda_env() {
+    local name="${CONDA_ENV_REQUESTED:-proteus}" active="${CONDA_DEFAULT_ENV:-}"
+    local pyver="$REQUIRED_PYTHON_MAJOR.$REQUIRED_PYTHON_MINOR" envs base made step="" py
+    if [ -n "${PIXI_ENVIRONMENT_NAME:-}" ]; then
+        info "Pixi environment: $PIXI_ENVIRONMENT_NAME"
+        return 0
+    fi
+    if [ -n "$active" ] && [ "$active" != base ]; then
+        if [ -n "$CONDA_ENV_REQUESTED" ] && [ "$CONDA_ENV_REQUESTED" != "$active" ]; then
+            die "--conda-env $CONDA_ENV_REQUESTED and the active conda environment $active disagree; deactivate $active or leave out --conda-env."
+        fi
+        info "Conda environment: $active"
+        return 0
+    fi
+    if [ "$name" = base ]; then
+        die "The installer does not install into the conda base environment; name another with --conda-env."
+    fi
+    command_exists conda || stop_without_conda_env "conda is not on PATH." "$name"
+    if ! envs=$(conda env list </dev/null); then
+        stop_without_conda_env "'conda env list' failed." "$name"
+    fi
+    # An env name is the first column of its line; an env without a name shows only its path.
+    if printf '%s\n' "$envs" | awk -v n="$name" '$1 == n {f = 1} END {exit !f}'; then
+        made="found"
+    else
+        info "Creating the conda environment $name with Python $pyver..."
+        if ! conda create -y -n "$name" "python=$pyver" </dev/null; then
+            stop_without_conda_env "'conda create -y -n $name python=$pyver' failed." "$name"
+        fi
+        made="made"
+    fi
+    base=$(conda info --base </dev/null) || base=""
+    # conda's activation scripts read unset variables, so set -u is off for these 2 calls.
+    set +u
+    if [ -z "$base" ] || ! source "$base/etc/profile.d/conda.sh"; then
+        step="Loading conda's shell functions from '${base:-?}/etc/profile.d/conda.sh' failed."
+    elif ! conda activate "$name"; then
+        step="'conda activate $name' failed."
+    fi
+    set -u
+    [ -z "$step" ] || stop_without_conda_env "$step" "$name"
+    hash -r
+    py=$(command -v python || true)
+    case "${CONDA_DEFAULT_ENV:-}|$py" in
+        "$name|${CONDA_PREFIX:-?}"/*) ;;
+        *) stop_without_conda_env "'conda activate $name' left the env ${CONDA_DEFAULT_ENV:-(none)} active and python at ${py:-(none)}." "$name" ;;
+    esac
+    # Later conda calls go to the executable, as with an env of the user's: the shell
+    # function reactivates the env after an install, and that reads unset variables.
+    unset -f conda
+    CONDA_ACTIVATED_HERE="true"
+    info "Conda environment: $name ($made and activated by the installer for this run)"
+}
+
+setup_conda_env
 
 # Check Python version
 python_version=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>/dev/null || echo "none")

@@ -92,13 +92,11 @@ or [miniforge](https://github.com/conda-forge/miniforge) installed yet:
 !!! note "Install miniconda/miniforge in your personal directory"
     Installing miniconda/miniforge in your personal directory gives you full control over your environment and is recommended even on clusters (see the cluster guides: [Kapteyn](kapteyn_cluster_guide.md), [Habrok](habrok_cluster_guide.md), [Snellius](snellius_cluster_guide.md), [Cambridge IoA](ioa_cluster_guide.md)). 
 
-Then clone PROTEUS and create a conda environment with Python 3.12:
+Then clone PROTEUS:
 
 ```console
 git clone git@github.com:FormingWorlds/PROTEUS.git
 cd PROTEUS
-conda create -n proteus python=3.12
-conda activate proteus
 ```
 
 ## 3. Run the installer
@@ -106,6 +104,12 @@ conda activate proteus
 ```console
 bash install.sh
 ```
+
+!!! note "Conda environment"
+    The installer makes a conda environment named `proteus` with Python 3.12, or uses
+    the one of that name, when no environment or only `base` is active. To use an
+    environment of your own, activate it before `bash install.sh`, or pass
+    `--conda-env <name>`.
 
 !!! warning "Julia from a system package manager"
     If your `julia` comes from your system package manager (not the official installer) and is not version 1.13, the installer stops, because it adds Julia 1.13 only through juliaup. Install juliaup with the official installer, or uninstall that Julia and remove its entries from your `PATH`, _before running the installer_.
@@ -158,6 +162,7 @@ phases.
 | `--no-data` | Skip data downloads entirely (download later with `proteus get`) |
 | `-i` / `--interactive` | Interactive mode (prompt for choices; default is non-interactive) |
 | `--verbose` | Show the full build output on the terminal as well as in the log file |
+| `--conda-env <name>` | The conda environment to use, or to make, when no environment or only `base` is active (default: `proteus`) |
 
 !!! tip "CLI alternative: `proteus install-all`"
     If PROTEUS is already importable in your environment, `proteus install-all`
@@ -175,17 +180,18 @@ phases.
 
 ## 4. Verify and run
 
-After the installer finishes, activate the environment again and run the
+After the installer finishes, activate the environment and run the
 quick-start test:
 
 ```console
-conda deactivate
 conda activate proteus
 proteus start --offline -c input/dummy.toml
 ```
 
 Conda loads the environment variables of an environment when it activates it,
-and activating the environment that is already active does not load them.
+and activating the environment that is already active does not load them. If an
+environment of your own was active when you ran the installer, run
+`conda deactivate` first; the installer prints the exact line at its end.
 
 If this produces output in `output/run_<timestamp>_xxxx/`, your installation is working.
 See the [Quick start tutorial](../Tutorials/quick_start_dummy.md) for a guided walkthrough.

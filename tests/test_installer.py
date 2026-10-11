@@ -13,6 +13,10 @@ The module lines of the Python phase run whole, with the setup scripts of
 Aragog and Zalmoxis, to pin the one line that names each clone that stays
 off its release tag.
 
+``setup_conda_env`` (lifted from install.sh) runs against a fake conda base:
+a ``conda`` executable and a ``conda.sh`` shell function that record their
+calls, so no env is made or activated on the host.
+
 Testing standards:
   - docs/How-to/testing.md
   - docs/Explanations/test_framework.md
@@ -168,7 +172,9 @@ def _run_preflight(bindir: Path) -> str:
     """Run install.sh with PATH restricted to `bindir`; return its combined output."""
     env = os.environ.copy()
     env['PATH'] = str(bindir)
-    env.setdefault('CONDA_DEFAULT_ENV', 'proteus')
+    # An env other than base is active, so the installer makes no env of its own.
+    if env.get('CONDA_DEFAULT_ENV', 'base') in ('', 'base'):
+        env['CONDA_DEFAULT_ENV'] = 'proteus'
     result = subprocess.run(
         ['bash', str(INSTALL_SH)],
         capture_output=True,
@@ -184,14 +190,15 @@ class TestPreflightChecks:
     """Verify pre-flight check failure modes."""
 
     def test_fails_without_conda_env(self):
-        """Without CONDA_DEFAULT_ENV, the installer fails with conda instructions.
+        """Without an env and with a conda that cannot activate one, the installer stops with conda instructions.
 
-        Discrimination: the error must mention 'conda' so users know what
-        to do. A generic error would not be actionable.
+        The conda stub of this file answers every call with nothing, so it has no
+        base folder whose conda.sh the installer could load. Discrimination: the
+        error must name the manual commands and the step that failed.
         """
         env = os.environ.copy()
-        env.pop('CONDA_DEFAULT_ENV', None)
-        env.pop('CONDA_PREFIX', None)
+        for var in ('CONDA_DEFAULT_ENV', 'CONDA_PREFIX', 'PIXI_ENVIRONMENT_NAME'):
+            env.pop(var, None)
         result = subprocess.run(
             ['bash', str(INSTALL_SH)],
             capture_output=True,
@@ -203,7 +210,8 @@ class TestPreflightChecks:
         assert result.returncode != 0
         output = result.stdout + result.stderr
         assert 'conda' in output.lower()
-        assert 'conda create' in output
+        assert 'conda create -n proteus python=3.12' in output
+        assert "Loading conda's shell functions from" in output
 
     def test_fails_outside_proteus_repo(self, tmp_path):
         """Running install.sh from outside the PROTEUS repo fails because
@@ -354,6 +362,7 @@ _VAR_FUNCTIONS = (
     'set_install_var',
     'bind_install_vars',
     'note_old_shell_exports',
+    'conda_activate_command',
     'print_next_steps',
     'print_exit_hint',
 )
@@ -1732,6 +1741,443 @@ class TestJuliaupDefaultUse:
         assert [ln.strip() for ln in everywhere] == ['juliaup default "$req"']
         doctor = PROTEUS_ROOT / 'src' / 'proteus' / 'doctor.py'
         assert 'juliaup default' not in doctor.read_text()
+
+
+_CONDA_FUNCTIONS = (
+    'command_exists',
+    'collect_env_info',
+    'die',
+    'stop_without_conda_env',
+    'setup_conda_env',
+    'conda_activate_command',
+    'print_next_steps',
+    'print_exit_hint',
+)
+
+# The conda executable: `info --base`, `env list` (base, a nameless env, then STUB_CONDA_ENVS)
+# and `create -y -n <name> ...`, which makes the env with its python unless STUB_CREATE_RC is set.
+_STUB_CONDA_EXE = """#!/bin/sh
+printf '%s\\n' "$@" >> "$STUB_CONDA_LOG"
+echo --- >> "$STUB_CONDA_LOG"
+case "$1 $2" in
+    'info --base') printf '%s\\n' "$STUB_CONDA_BASE" ;;
+    'env list')
+        echo '# conda environments:'
+        echo '#'
+        echo "base                  *  $STUB_CONDA_BASE"
+        echo "                         /elsewhere/proteus"
+        for name in $STUB_CONDA_ENVS; do echo "$name    $STUB_CONDA_BASE/envs/$name"; done
+        ;;
+    'create -y')
+        [ "${STUB_CREATE_RC:-0}" = 0 ] || exit "$STUB_CREATE_RC"
+        mkdir -p "$STUB_CONDA_BASE/envs/$4/bin"
+        printf '#!/bin/sh\\n' > "$STUB_CONDA_BASE/envs/$4/bin/python"
+        chmod +x "$STUB_CONDA_BASE/envs/$4/bin/python"
+        ;;
+esac
+"""
+
+# The shell function of conda.sh: `activate` reads an unset variable, as conda's activation
+# scripts do, and sets the env (named STUB_ACTIVATE_AS, when set); the rest go to the executable.
+_STUB_CONDA_SH = """conda() {
+    [ "$1" = activate ] || { command conda "$@"; return; }
+    printf '%s\\n' "$@" >> "$STUB_CONDA_LOG"
+    echo --- >> "$STUB_CONDA_LOG"
+    : "$SOME_UNSET_NAME"
+    [ "${STUB_ACTIVATE_RC:-0}" = 0 ] || return "$STUB_ACTIVATE_RC"
+    CONDA_DEFAULT_ENV="${STUB_ACTIVATE_AS:-$2}"
+    CONDA_PREFIX="$STUB_CONDA_BASE/envs/$2"
+    PATH="$CONDA_PREFIX/bin:$PATH"
+    export CONDA_DEFAULT_ENV CONDA_PREFIX PATH
+}
+"""
+
+_MANUAL_COMMANDS = ('  conda create -n proteus python=3.12', '  conda activate proteus')
+
+
+class TestSetupCondaEnv:
+    """setup_conda_env uses the active env, or uses or makes `proteus` and activates it in its own process."""
+
+    @pytest.fixture
+    def site(self, tmp_path):
+        """A fake conda base with conda.sh, a conda executable and a python outside every env.
+
+        The env list holds `proteus2` and a nameless env at a path ending in
+        `/proteus`, so only an exact match on the name column finds no `proteus`.
+        """
+        base = tmp_path / 'conda'
+        (base / 'etc' / 'profile.d').mkdir(parents=True)
+        (base / 'etc' / 'profile.d' / 'conda.sh').write_text(_STUB_CONDA_SH)
+        stubs = tmp_path / 'stubs'
+        _stub(stubs / 'conda', _STUB_CONDA_EXE)
+        _stub(stubs / 'python', '#!/bin/sh\nexit 0\n')
+        _stub(stubs / 'python3', '#!/bin/sh\nexit 0\n')
+        system = '/usr/bin:/bin'
+        assert shutil.which('conda', path=system) is None
+        env = {
+            'PATH': f'{stubs}{os.pathsep}{system}',
+            'HOME': str(tmp_path / 'home'),
+            'STUB_CONDA_LOG': str(tmp_path / 'conda.log'),
+            'STUB_CONDA_BASE': str(base),
+            'STUB_CONDA_ENVS': 'proteus2',
+        }
+        return {'base': base, 'stubs': stubs, 'log': tmp_path / 'conda.log', 'env': env}
+
+    @staticmethod
+    def _existing_env(site, name: str, python: bool = True) -> Path:
+        """Make the env ``name`` in the fake base and list it; return its prefix."""
+        prefix = site['base'] / 'envs' / name
+        (prefix / 'bin').mkdir(parents=True)
+        if python:
+            _stub(prefix / 'bin' / 'python', '#!/bin/sh\nexit 0\n')
+        site['env']['STUB_CONDA_ENVS'] += f' {name}'
+        return prefix
+
+    @staticmethod
+    def _call(
+        site, requested: str = '', after: str = '', **env: str
+    ) -> subprocess.CompletedProcess:
+        """Run the shipped setup_conda_env under install.sh's options, then ``after``.
+
+        After the call the script prints CONDA_DEFAULT_ENV, CONDA_PREFIX, the python
+        on PATH, CONDA_ACTIVATED_HERE, the kind of ``conda`` and the shell flags,
+        one per line, prefixed with ``REPORT``.
+        """
+        defs = (
+            'set -euo pipefail\nCURRENT_PHASE=1\nCONDA_ACTIVATED_HERE=false\n'
+            + f'CONDA_ENV_REQUESTED={shlex.quote(requested)}\n'
+            + _install_sh_blocks("RED='", 'info()', 'REQUIRED_PYTHON_MAJOR=')
+            + ''.join(_install_sh_function(f) for f in _CONDA_FUNCTIONS)
+        )
+        report = (
+            'setup_conda_env\n'
+            'printf "REPORT %s\\n" "${CONDA_DEFAULT_ENV:-}" "${CONDA_PREFIX:-}" '
+            '"$(command -v python)" "$CONDA_ACTIVATED_HERE" "$(type -t conda)" "$-"\n'
+        )
+        return subprocess.run(
+            ['bash', '-c', defs + report + after],
+            capture_output=True,
+            text=True,
+            env={**site['env'], **env},
+            timeout=25,
+        )
+
+    @staticmethod
+    def _report(result: subprocess.CompletedProcess) -> list[str]:
+        """The six values the script prints after setup_conda_env returns."""
+        return [ln[7:] for ln in result.stdout.splitlines() if ln.startswith('REPORT ')]
+
+    @staticmethod
+    def _env_lines(result: subprocess.CompletedProcess) -> list[str]:
+        """The info lines that name the environment the installer uses."""
+        return [ln for ln in result.stdout.splitlines() if 'environment: ' in ln]
+
+    @pytest.mark.parametrize(
+        'active',
+        [{}, {'CONDA_DEFAULT_ENV': 'base', 'CONDA_PREFIX': '<base>'}],
+        ids=['no-env-active', 'base-active'],
+    )
+    def test_no_env_or_base_makes_proteus_and_activates_it(self, site, active):
+        """With no env or base active and no env `proteus`, the env is made and activated.
+
+        The calls are pinned in order: list, one create with the required Python,
+        the base folder, then activate. A substring or path match would find
+        `proteus2` or `/elsewhere/proteus` and skip the create. With base active
+        the function ends in `proteus`, so nothing goes into base.
+        """
+        active = {k: v.replace('<base>', str(site['base'])) for k, v in active.items()}
+        result = self._call(site, **active)
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert _conda_calls(site['log']) == [
+            ['env', 'list'],
+            ['create', '-y', '-n', 'proteus', 'python=3.12'],
+            ['info', '--base'],
+            ['activate', 'proteus'],
+        ]
+        prefix = site['base'] / 'envs' / 'proteus'
+        name, conda_prefix, python, here, kind, flags = self._report(result)
+        assert (name, conda_prefix, python) == (
+            'proteus',
+            str(prefix),
+            str(prefix / 'bin/python'),
+        )
+        assert here == 'true'
+        assert kind == 'file'
+        assert 'u' in flags
+        assert self._env_lines(result) == [
+            '\x1b[0;32m[INFO]\x1b[0m  Conda environment: proteus '
+            '(made and activated by the installer for this run)'
+        ]
+
+    def test_existing_proteus_is_activated_without_create(self, site):
+        """An env `proteus` that exists is activated and not made again."""
+        prefix = self._existing_env(site, 'proteus')
+        result = self._call(site)
+        assert result.returncode == 0, result.stdout + result.stderr
+        calls = _conda_calls(site['log'])
+        assert calls == [['env', 'list'], ['info', '--base'], ['activate', 'proteus']]
+        assert not [c for c in calls if c[0] == 'create']
+        assert self._report(result)[:4] == [
+            'proteus',
+            str(prefix),
+            str(prefix / 'bin/python'),
+            'true',
+        ]
+        assert self._env_lines(result) == [
+            '\x1b[0;32m[INFO]\x1b[0m  Conda environment: proteus '
+            '(found and activated by the installer for this run)'
+        ]
+
+    @pytest.mark.parametrize('requested', ['', 'myenv'], ids=['no-option', 'option-agrees'])
+    def test_active_env_is_used_without_any_conda_call(self, site, requested):
+        """An active env other than base is used as it is; conda is not called at all.
+
+        A `--conda-env` that names the active env agrees with it.
+        """
+        prefix = self._existing_env(site, 'myenv')
+        result = self._call(
+            site,
+            requested,
+            CONDA_DEFAULT_ENV='myenv',
+            CONDA_PREFIX=str(prefix),
+            PATH=f'{prefix / "bin"}{os.pathsep}{site["env"]["PATH"]}',
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert _conda_calls(site['log']) == []
+        assert self._report(result)[:4] == [
+            'myenv',
+            str(prefix),
+            str(prefix / 'bin/python'),
+            'false',
+        ]
+        assert self._env_lines(result) == ['\x1b[0;32m[INFO]\x1b[0m  Conda environment: myenv']
+
+    def test_conda_env_option_makes_and_activates_that_env(self, site):
+        """`--conda-env sci` with no env active makes and activates `sci`, and no `proteus`."""
+        result = self._call(site, 'sci')
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert _conda_calls(site['log']) == [
+            ['env', 'list'],
+            ['create', '-y', '-n', 'sci', 'python=3.12'],
+            ['info', '--base'],
+            ['activate', 'sci'],
+        ]
+        assert self._report(result)[0] == 'sci'
+        assert not (site['base'] / 'envs' / 'proteus').exists()
+
+    def test_conda_env_option_disagreeing_with_active_env_stops(self, site):
+        """`--conda-env sci` while `myenv` is active stops with one line naming both; nothing is made."""
+        result = self._call(site, 'sci', CONDA_DEFAULT_ENV='myenv', CONDA_PREFIX='/envs/myenv')
+        assert result.returncode == 1
+        fails = [ln for ln in result.stderr.splitlines() if '[FAIL]' in ln]
+        assert len(fails) == 1
+        assert 'sci' in fails[0] and 'myenv' in fails[0]
+        assert self._report(result) == []
+        assert not [c for c in _conda_calls(site['log']) if c[0] in ('create', 'activate')]
+        assert not (site['base'] / 'envs' / 'sci').exists()
+
+    def test_base_named_by_the_option_stops(self, site):
+        """`--conda-env base` stops before conda lists, makes or activates an env.
+
+        The one call left is the `conda list` of die's diagnostics.
+        """
+        result = self._call(site, 'base')
+        assert result.returncode == 1
+        assert 'does not install into the conda base environment' in result.stderr
+        assert _conda_calls(site['log']) == [['list']]
+        assert self._report(result) == []
+
+    def test_missing_conda_stops_with_the_manual_commands(self, site):
+        """Without conda on PATH the installer stops with both manual commands and the failed step."""
+        (site['stubs'] / 'conda').unlink()
+        result = self._call(site)
+        output = result.stdout + result.stderr
+        assert result.returncode == 1
+        assert all(cmd in result.stdout.splitlines() for cmd in _MANUAL_COMMANDS)
+        assert 'conda is not on PATH.' in result.stderr
+        assert 'Conda environment required.' in result.stderr
+        assert self._report(result) == []
+        assert not site['log'].exists()
+        assert 'conda activate proteus' in output
+
+    def test_failed_create_stops_before_activate(self, site):
+        """A failing `conda create` stops with the manual commands and the step; activate is not tried."""
+        result = self._call(site, STUB_CREATE_RC='1')
+        assert result.returncode == 1
+        assert all(cmd in result.stdout.splitlines() for cmd in _MANUAL_COMMANDS)
+        assert "'conda create -y -n proteus python=3.12' failed." in result.stderr
+        calls = _conda_calls(site['log'])
+        assert ['create', '-y', '-n', 'proteus', 'python=3.12'] in calls
+        assert not [c for c in calls if c[0] in ('activate', 'info')]
+        assert self._report(result) == []
+
+    @pytest.mark.parametrize(
+        ('env', 'python', 'step'),
+        [
+            ({'STUB_ACTIVATE_RC': '1'}, True, "'conda activate proteus' failed."),
+            ({'STUB_ACTIVATE_AS': 'other'}, True, 'left the env other active'),
+            ({}, False, 'and python at <stubs>/python.'),
+        ],
+        ids=['activate-fails', 'activate-leaves-other-env', 'python-outside-the-env'],
+    )
+    def test_activation_that_misses_the_env_stops(self, site, env, python, step):
+        """An activation that fails, leaves another env, or leaves a python outside the env stops.
+
+        In the last case CONDA_DEFAULT_ENV is right, so only the python check catches it.
+        """
+        self._existing_env(site, 'proteus', python=python)
+        result = self._call(site, **env)
+        assert result.returncode == 1
+        assert step.replace('<stubs>', str(site['stubs'])) in result.stderr
+        assert all(cmd in result.stdout.splitlines() for cmd in _MANUAL_COMMANDS)
+        assert ['activate', 'proteus'] in _conda_calls(site['log'])
+        assert self._report(result) == []
+
+    def test_pixi_env_makes_no_conda_call(self, site):
+        """In a pixi env the function calls no conda, even without CONDA_DEFAULT_ENV."""
+        result = self._call(site, PIXI_ENVIRONMENT_NAME='default')
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert not site['log'].exists()
+        assert self._report(result)[:4] == ['', '', str(site['stubs'] / 'python'), 'false']
+        assert self._env_lines(result) == ['\x1b[0;32m[INFO]\x1b[0m  Pixi environment: default']
+
+    def test_unset_variable_in_activation_passes_and_nounset_returns(self, site):
+        """The stub's activate reads an unset variable; the function passes, and set -u is on after it.
+
+        The control runs the same activate under set -u without the window, and it fails.
+        """
+        result = self._call(site)
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert 'SOME_UNSET_NAME' not in site['env']
+        assert 'u' in self._report(result)[5]
+        assert 'e' in self._report(result)[5]
+        conda_sh = site['base'] / 'etc' / 'profile.d' / 'conda.sh'
+        control = subprocess.run(
+            [
+                'bash',
+                '-c',
+                f'set -euo pipefail\nsource {shlex.quote(str(conda_sh))}\nconda activate proteus\necho DONE\n',
+            ],
+            capture_output=True,
+            text=True,
+            env=site['env'],
+            timeout=10,
+        )
+        assert control.returncode != 0
+        assert 'SOME_UNSET_NAME' in control.stderr
+        assert 'DONE' not in control.stdout
+
+    @pytest.mark.parametrize(
+        ('own_env', 'bind', 'line'),
+        [
+            (False, 'bound', '     conda activate proteus'),
+            (True, 'bound', '     conda deactivate && conda activate myenv'),
+            (False, 'none', '     conda activate proteus && source .proteus-env.sh'),
+            (True, 'none', '     source .proteus-env.sh'),
+        ],
+        ids=['made-env-bound', 'own-env-bound', 'made-env-not-bound', 'own-env-not-bound'],
+    )
+    def test_closing_instruction_follows_who_activated_the_env(self, site, own_env, bind, line):
+        """The env the installer activated needs only `conda activate`; the user's own needs both.
+
+        The user's shell has no env active after the installer activated one in its
+        own process, so a `conda deactivate` there would leave base, not reload the env.
+        """
+        env = {}
+        if own_env:
+            prefix = self._existing_env(site, 'myenv')
+            env = {'CONDA_DEFAULT_ENV': 'myenv', 'CONDA_PREFIX': str(prefix)}
+        after = f'SCRIPT_DIR=/p\nCONDA_BIND={bind}\nprint_next_steps\n'
+        result = self._call(site, after=after, **env)
+        assert result.returncode == 0, result.stdout + result.stderr
+        steps = result.stdout.split('Next steps:\n', 1)[1].splitlines()
+        assert steps[1] == line
+        assert ('conda deactivate' in result.stdout) == (own_env and bind == 'bound')
+
+    @pytest.mark.parametrize('own_env', [False, True], ids=['made-env', 'own-env'])
+    def test_failed_run_names_the_env_to_activate(self, site, own_env):
+        """A run that stops after the installer activated its env names `conda activate proteus`.
+
+        After a failure with the user's own env active the hint has no conda line,
+        because no variable was bound to the env yet.
+        """
+        env = {}
+        if own_env:
+            prefix = self._existing_env(site, 'myenv')
+            env = {'CONDA_DEFAULT_ENV': 'myenv', 'CONDA_PREFIX': str(prefix)}
+        after = 'INSTALL_VAR_NAMES=""\ntrap print_exit_hint EXIT\nexit 3\n'
+        result = self._call(site, after=after, **env)
+        assert result.returncode == 3
+        hint = "To use it in your shell, run 'conda activate proteus'."
+        assert (hint in result.stdout) == (not own_env)
+        assert 'conda deactivate' not in result.stdout
+        assert len(self._report(result)) == 6
+
+
+class TestCondaEnvOption:
+    """install.sh takes `--conda-env <name>`, lists it in --help, and passes the name on."""
+
+    def test_help_lists_the_option(self):
+        """--help exits 0 and has one line for --conda-env with its argument."""
+        result = subprocess.run(
+            ['bash', str(INSTALL_SH), '--help'], capture_output=True, text=True, timeout=10
+        )
+        assert result.returncode == 0
+        lines = [ln for ln in result.stdout.splitlines() if ln.startswith('  --conda-env ')]
+        assert len(lines) == 1
+        assert '<name>' in lines[0] and 'proteus' in result.stdout
+
+    @pytest.mark.parametrize(
+        'args',
+        [['--conda-env'], ['--conda-env', '--help'], ['--conda-env', '']],
+        ids=['no-value', 'option-as-value', 'empty-value'],
+    )
+    def test_option_without_a_name_stops(self, args):
+        """`--conda-env` without a name stops at parsing; a following option is not taken as the name."""
+        result = subprocess.run(
+            ['bash', str(INSTALL_SH), *args], capture_output=True, text=True, timeout=10
+        )
+        assert result.returncode == 1
+        assert '--conda-env needs the name of a conda environment.' in result.stderr
+        assert 'Usage' not in result.stdout
+
+    def test_option_value_is_consumed(self):
+        """`--conda-env sci --help` exits 0, so `sci` is the option's value and not an unknown argument."""
+        result = subprocess.run(
+            ['bash', str(INSTALL_SH), '--conda-env', 'sci', '--help'],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert 'Unknown argument' not in result.stdout + result.stderr
+        assert 'Usage' in result.stdout
+
+    def test_option_reaches_setup_conda_env(self):
+        """The whole installer with `--conda-env sci` and `myenv` active stops at the disagreement.
+
+        This runs pre-flight up to the env step, so the name the parser stores is
+        the one setup_conda_env reads.
+        """
+        if not _process_substitution_writable():
+            pytest.skip(
+                'bash cannot write to a process substitution on this host (/dev/fd refused)'
+            )
+        env = {k: v for k, v in os.environ.items() if k != 'PIXI_ENVIRONMENT_NAME'}
+        env.update(CONDA_DEFAULT_ENV='myenv', CONDA_PREFIX='/envs/myenv')
+        result = subprocess.run(
+            ['bash', str(INSTALL_SH), '--conda-env', 'sci'],
+            capture_output=True,
+            text=True,
+            timeout=25,
+            env=env,
+            cwd=str(PROTEUS_ROOT),
+            stdin=subprocess.DEVNULL,
+        )
+        output = result.stdout + result.stderr
+        assert result.returncode == 1
+        assert '--conda-env sci and the active conda environment myenv disagree' in output
+        assert 'Installation failed at Phase 1.' in output
 
 
 # 3 lines on stdout and 2 on stderr, interleaved, then the exit status given as $1.
