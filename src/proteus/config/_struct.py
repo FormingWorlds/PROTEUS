@@ -331,11 +331,11 @@ class Struct:
     ----------
     core_frac: float
         Core fraction of the planet, by mass or by radius (see core_frac_mode).
-        With module = 'zalmoxis' it sets the core mass on the structure the
-        evolution starts on: the fraction of the planet mass without the
-        volatile inventories that the outgassing takes as inputs (H, C, N, S,
-        noble gases; O when it is an input), or without their atmosphere part
-        with zalmoxis.dry_mantle = false. The core mass is then kept.
+        With module = 'zalmoxis' the core mass is this fraction of the planet
+        mass without the volatile inventories that the outgassing takes as
+        inputs (H, C, N, S, noble gases; O when it is an input), or without
+        their atmosphere part with zalmoxis.dry_mantle = false. It is set when
+        the init stage ends and then kept.
     module: str
         Module for solving the planet's interior structure. Choices: 'dummy', 'spider', 'zalmoxis'.
     zalmoxis: Zalmoxis or None

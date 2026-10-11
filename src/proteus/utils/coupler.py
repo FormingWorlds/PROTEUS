@@ -912,7 +912,7 @@ def GetHelpfileKeys():
         'RF_depth',         # depth of rheological front [1]
         'M_core',           # dry mass of core [kg]
         'M_mantle',         # dry mass of mantle [kg]
-        'M_core_target',    # core mass the Zalmoxis structure is solved for; 0 with another structure module [kg]
+        'M_core_target',    # core mass target of the Zalmoxis structure; 0 with another structure module [kg]
         'M_mantle_solid',   # dry mass of solid-phase mantle [kg]
         'M_mantle_liquid',  # dry mass of liquid-phase mantle [kg]
         'T_pot',            # characteristic mantle potential temperature [K]

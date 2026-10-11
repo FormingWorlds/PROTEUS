@@ -1834,7 +1834,7 @@
     {
       "name": "M_core_target",
       "unit": "kg",
-      "description": "core mass the Zalmoxis structure is solved for; 0 with another structure module",
+      "description": "core mass target of the Zalmoxis structure; 0 with another structure module",
       "group": "Planet interior properties",
       "origin": "literal",
       "producers": [

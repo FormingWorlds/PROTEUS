@@ -4283,7 +4283,7 @@
           "value": 1
         }
       ],
-      "description": "Core fraction of the planet, by mass or by radius (see core_frac_mode). With module = 'zalmoxis' it sets the core mass on the structure the evolution starts on: the fraction of the planet mass without the volatile inventories that the outgassing takes as inputs (H, C, N, S, noble gases; O when it is an input), or without their atmosphere part with zalmoxis.dry_mantle = false. The core mass is then kept.",
+      "description": "Core fraction of the planet, by mass or by radius (see core_frac_mode). With module = 'zalmoxis' the core mass is this fraction of the planet mass without the volatile inventories that the outgassing takes as inputs (H, C, N, S, noble gases; O when it is an input), or without their atmosphere part with zalmoxis.dry_mantle = false. It is set when the init stage ends and then kept.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
