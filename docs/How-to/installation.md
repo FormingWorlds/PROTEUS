@@ -20,9 +20,6 @@ configuration, some steps may differ. If you run into problems, check the
 [Troubleshooting](troubleshooting.md) page or
 [contact the developers](../Community/contact.md).
 
-!!! note "macOS users"
-    macOS Catalina (10.15) and later uses `zsh` as the default shell. Replace `.bashrc` with `.zshrc` throughout these instructions if you are using the default shell.
-
 ---
 
 ## 1. System packages
@@ -118,7 +115,7 @@ The installer runs through the following phases automatically:
 
 1. Pre-flight checks (OS, disk space, Python version, system dependencies)
 2. Julia check, and Julia 1.13 through juliaup when no supported Julia is found
-3. Environment variables (`FWL_DATA`, `PYTHON_JULIAPKG_EXE`)
+3. Environment variables (`FWL_DATA`, `PYTHON_JULIAPKG_EXE`, and in phases 4 and 5 `RAD_DIR` and `FC_DIR`): the installer sets them in the active conda environment and writes them to `.proteus-env.sh` in the PROTEUS folder; it edits no shell start file
 4. SOCRATES compilation and `RAD_DIR` setup
 5. AGNI and FastChem setup (Julia atmosphere model + equilibrium chemistry)
 6. Python packages (editable installs of all submodules, the SUNDIALS CVODE solver, and PROTEUS itself)
@@ -165,7 +162,7 @@ phases.
     submodules (SOCRATES, AGNI), downloads reference data, checks for sufficient
     disk space, creates `FWL_DATA` if needed, and sets the environment variables. 
 
-    - Pass `--export-env` to write the environment variables to your shell rc file. 
+    - Pass `--export-env` to set the environment variables in the active conda environment and write them to `.proteus-env.sh`, as the installer does.
     - To refresh an existing installation later, use `proteus update-all` (see [Diagnose and update](doctor.md)). 
     
     Both commands operate on the PROTEUS source tree, which they locate from the
@@ -175,14 +172,17 @@ phases.
 
 ## 4. Verify and run
 
-After the installer finishes, source your shell configuration and run the
+After the installer finishes, activate the environment again and run the
 quick-start test:
 
 ```console
-source ~/.zshrc   # or ~/.bashrc, depending on your shell
+conda deactivate
 conda activate proteus
 proteus start --offline -c input/dummy.toml
 ```
+
+Conda loads the environment variables of an environment when it activates it,
+and activating the environment that is already active does not load them.
 
 If this produces output in `output/run_<timestamp>_xxxx/`, your installation is working.
 See the [Quick start tutorial](../Tutorials/quick_start_dummy.md) for a guided walkthrough.
@@ -198,3 +198,19 @@ See the [Quick start tutorial](../Tutorials/quick_start_dummy.md) for a guided w
     ```
 
     See [SPIDER installation](optionalmodules_installation.md#optional-setup-petsc) for details.
+
+!!! note "Shell start files of an earlier install"
+    An earlier install wrote `export FWL_DATA=...`, `RAD_DIR`, `PYTHON_JULIAPKG_EXE`
+    and `FC_DIR` lines into a shell start file such as `~/.zshrc` or `~/.bashrc`.
+    The installer leaves them as they are and names each one at the end of its run.
+    Conda sets the values of the environment when it activates it, after the shell
+    start file was read, so inside the activated environment they win, and conda
+    warns at each activation that it overwrites the variables. You can delete the
+    old lines by hand; while they stay, a shell without the activated environment
+    still gets the old values.
+
+## Uninstall
+
+Removing the conda environment (`conda deactivate`, then `conda env remove -n proteus`)
+removes the environment variables with it; delete the PROTEUS folder and the
+`FWL_DATA` folder by hand.

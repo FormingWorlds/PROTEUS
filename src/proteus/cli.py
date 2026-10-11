@@ -69,6 +69,7 @@ from proteus import __version__ as proteus_version  # noqa: E402
 from proteus.config import UnknownConfigKeyError, read_config_object  # noqa: E402
 from proteus.utils.data import download_sufficient_data  # noqa: E402
 from proteus.utils.helper import get_proteus_dir, resolve_fwl_data_dir  # noqa: E402
+from proteus.utils.install_env import export_install_vars, reload_instruction  # noqa: E402
 from proteus.utils.logs import bootstrap_logger, setup_logger  # noqa: E402
 
 log = logging.getLogger('fwl.' + __name__)
@@ -849,29 +850,60 @@ def grid_pack(output_path: Path):
 # ----------------
 
 
-def append_to_shell_rc(var: str, value: str, shell: str | None = None) -> Path | None:
-    """Append an export line to the appropriate shell rc file."""
-    shell = shell or os.environ.get('SHELL', '')
-    shell_rc_map = {
-        'bash': '.bashrc',
-        'zsh': '.zshrc',
-        'fish': '.config/fish/config.fish',
-    }
+def _install_vars(root: Path, fwl_data: Path, rad_dir: Path) -> dict[str, str]:
+    """Return the install variables that ``--export-env`` records.
 
-    for key, rc in shell_rc_map.items():
-        if key in shell:
-            rc_path = Path.home() / rc
-            export_line = f'export {var}="{value}"\n'
+    ``PYTHON_JULIAPKG_EXE`` keeps a value that is already set, because
+    ``install.sh`` points it at the real Julia binary; otherwise it is the
+    ``julia`` on ``PATH``. ``FC_DIR`` and the Julia entry appear only when
+    the FastChem folder and a Julia exist.
 
-            if rc_path.exists() and export_line in rc_path.read_text():
-                return None  # Already present
+    Parameters
+    ----------
+    root : Path
+        PROTEUS source tree.
+    fwl_data : Path
+        Reference data folder.
+    rad_dir : Path
+        SOCRATES folder.
 
-            rc_path.parent.mkdir(parents=True, exist_ok=True)
-            with rc_path.open('a') as f:
-                f.write(f'\n# Set by PROTEUS installer\n{export_line}')
-            return rc_path
+    Returns
+    -------
+    dict[str, str]
+        Variable names and values.
+    """
+    variables = {'FWL_DATA': str(fwl_data), 'RAD_DIR': str(rad_dir)}
+    julia_exe = os.environ.get('PYTHON_JULIAPKG_EXE') or shutil.which('julia')
+    if julia_exe:
+        variables['PYTHON_JULIAPKG_EXE'] = julia_exe
+    fastchem = root / 'AGNI' / 'fastchem'
+    if fastchem.is_dir():
+        variables['FC_DIR'] = str(fastchem.resolve())
+    return variables
 
-    return None
+
+def _export_env(root: Path, variables: dict[str, str]) -> None:
+    """Record ``variables`` in the conda env and the exports file, and say how to load them.
+
+    Parameters
+    ----------
+    root : Path
+        PROTEUS source tree that holds the exports file.
+    variables : dict[str, str]
+        Variable names and values.
+    """
+    names = ', '.join(variables)
+    path, prefix, bound = export_install_vars(root, variables)
+    click.secho(f'[+] Wrote {names} to {path}', fg='green')
+    if bound:
+        click.secho(f'[+] Set {names} in the conda env at {prefix}', fg='green')
+    elif prefix is not None:
+        click.secho(
+            f'[!] Could not set {names} in the conda env at {prefix}; they are in {path}',
+            fg='yellow',
+        )
+    where = '' if bound else f' (in {root})'
+    click.secho(f'[i] To load them, run{where}: {reload_instruction(bound)}', fg='yellow')
 
 
 def is_julia_installed() -> bool:
@@ -1013,7 +1045,12 @@ def _install_cvode(root: Path) -> None:
 
 
 @cli.command()
-@click.option('--export-env', is_flag=True, help='Add FWL_DATA and RAD_DIR to shell rc.')
+@click.option(
+    '--export-env',
+    is_flag=True,
+    help='Record FWL_DATA, RAD_DIR, PYTHON_JULIAPKG_EXE and FC_DIR in the active conda env '
+    'and in .proteus-env.sh.',
+)
 @click.option(
     '--config-path',
     type=click.Path(dir_okay=False, path_type=Path),
@@ -1090,7 +1127,6 @@ def install_all(export_env: bool, config_path: Path | None):
             fg='red',
         )
         raise SystemExit(1)
-    julia_exec = shutil.which('julia')
 
     # --- Step 4: Install AGNI ---
     agni_dir = root / 'AGNI'
@@ -1111,20 +1147,7 @@ def install_all(export_env: bool, config_path: Path | None):
 
     # --- Step 5: Export environment variables ---
     if export_env:
-        for var, value in {
-            'FWL_DATA': fwl_data,
-            'RAD_DIR': rad_dir,
-            'PYTHON_JULIAPKG_EXE': julia_exec,
-        }.items():
-            rc_file = append_to_shell_rc(var, str(value))
-            if rc_file:
-                click.secho(f'[+] Exported {var} to {rc_file}', fg='green')
-            else:
-                click.secho(
-                    f'[i] {var} already exported or shell not recognized',
-                    fg='cyan',
-                )
-        click.secho('[i] Please run: source ~/.bashrc (or your shell rc)', fg='yellow')
+        _export_env(root, _install_vars(root, fwl_data, rad_dir))
 
     # --- Step 6: Update input data ---
     _update_input_data(config_path)
@@ -1137,7 +1160,8 @@ def install_all(export_env: bool, config_path: Path | None):
 @click.option(
     '--export-env',
     is_flag=True,
-    help='Re-add FWL_DATA and RAD_DIR to shell rc.',
+    help='Record FWL_DATA, RAD_DIR, PYTHON_JULIAPKG_EXE and FC_DIR again in the active '
+    'conda env and in .proteus-env.sh.',
 )
 @click.option(
     '--config-path',
@@ -1232,16 +1256,7 @@ def update_all(export_env: bool, config_path: Path | None):
 
     # --- Step 6: Refresh environment exports ---
     if export_env:
-        for var, value in {'FWL_DATA': fwl_data, 'RAD_DIR': rad_dir}.items():
-            rc_file = append_to_shell_rc(var, str(value))
-            if rc_file:
-                click.secho(f'[+] Exported {var} to {rc_file}', fg='green')
-            else:
-                click.secho(
-                    f'[i] {var} already exported or shell not recognized',
-                    fg='cyan',
-                )
-        click.secho('[i] Please run: source ~/.bashrc (or your shell rc)', fg='yellow')
+        _export_env(root, _install_vars(root, fwl_data, rad_dir))
 
     # --- Step 7: Update input data ---
     _update_input_data(config_path)

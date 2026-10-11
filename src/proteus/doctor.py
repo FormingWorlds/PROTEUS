@@ -398,6 +398,31 @@ def _conda_build_lines() -> list[str]:
 # ─── Check implementations ───────────────────────────────────────────
 
 
+def _set_var_advice(name: str, value: str) -> str:
+    """Return the advice that sets ``name`` in the active conda env and reloads it.
+
+    Conda loads env variables at activation, so the env is deactivated and
+    activated again; a shell without conda sources the PROTEUS exports file.
+
+    Parameters
+    ----------
+    name : str
+        Variable name.
+    value : str
+        Value or placeholder to show, for example ``<path>``.
+
+    Returns
+    -------
+    str
+        Human advice, not a runnable command.
+    """
+    env = os.environ.get('CONDA_DEFAULT_ENV') or '<env>'
+    return (
+        f'conda env config vars set {name}={value}, then conda deactivate && '
+        f'conda activate {env} (without conda: source .proteus-env.sh in the PROTEUS folder)'
+    )
+
+
 def check_env_var(
     name: str, *, validate_path: bool = True, required_file: str | None = None
 ) -> CheckResult:
@@ -409,7 +434,7 @@ def check_env_var(
             category='environment',
             status=FAIL,
             message='not set',
-            fix_cmd=f'export {name}=<path>  # add to your shell rc file',
+            fix_cmd=_set_var_advice(name, '<path>'),
             auto_fixable=False,
         )
     if validate_path and not os.path.exists(val):
@@ -505,10 +530,10 @@ def _proteus_julia_exe() -> str | None:
 
 
 # install.sh adds 1.13 beside the default Julia and points juliacall at it.
-_JULIA_FIX = (
-    'juliaup add 1.13, then set PYTHON_JULIAPKG_EXE in your shell rc file to the path that '
-    'julia +1.13 -e \'print(joinpath(Sys.BINDIR, "julia"))\' prints'
-)
+def _julia_fix() -> str:
+    """Return the advice that adds Julia 1.13 and points ``PYTHON_JULIAPKG_EXE`` at it."""
+    path = '<the path that julia +1.13 -e \'print(joinpath(Sys.BINDIR, "julia"))\' prints>'
+    return 'juliaup add 1.13, then ' + _set_var_advice('PYTHON_JULIAPKG_EXE', path)
 
 
 def check_julia() -> CheckResult:
@@ -543,16 +568,16 @@ def check_julia() -> CheckResult:
             category='environment',
             status=WARN,
             message=f'{ver}{where} (1.11 is deprecated and will be dropped; use 1.13)',
-            fix_cmd=_JULIA_FIX,
+            fix_cmd=_julia_fix(),
             auto_fixable=False,
         )
-    # Not auto-fixable: the variable has to be set in the user's shell rc file.
+    # Not auto-fixable: the variable is set in the conda env by hand.
     return CheckResult(
         name='julia',
         category='environment',
         status=WARN,
         message=f'{ver}{where} (1.11.x, 1.12.x or 1.13.x required)',
-        fix_cmd=_JULIA_FIX,
+        fix_cmd=_julia_fix(),
         auto_fixable=False,
     )
 

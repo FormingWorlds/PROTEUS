@@ -227,7 +227,7 @@ fix_julia_111_for_openssl() {
         warn "Could not locate the Julia 1.11 binary after 'juliaup add 1.11'."
         return 1
     fi
-    append_export_to_rc "PYTHON_JULIAPKG_EXE" "$PYTHON_JULIAPKG_EXE" "$RC_FILE"
+    set_install_var PYTHON_JULIAPKG_EXE "$PYTHON_JULIAPKG_EXE"
     reset_julia_env
 }
 
@@ -302,47 +302,91 @@ verify_proteus_import() {
     die "PROTEUS Python package failed to import. The full error is above and in $LOGFILE."
 }
 
-exit_export_message=""
-
-print_exit_export_message() {
-    if [ -n "$exit_export_message" ]; then
-        echo ""
-        echo "--- NOTE: Run the following export commands manually before restarting this install script if you want it to skip steps that were successful (or source your shell rc file now if it was modified):"
-        printf "%s" "$exit_export_message"
+# Export NAME=value ($1, $2) in this process and record it in the exports file, one
+# line per variable, written in place; bind_install_vars passes it to the conda env.
+set_install_var() {
+    local name="$1" value="$2" kept=""
+    export "$name=$value"
+    if [ -f "$PROTEUS_ENV_FILE" ]; then
+        kept=$(grep -v "^export $name=" "$PROTEUS_ENV_FILE" || true)
     fi
-}
-
-trap print_exit_export_message EXIT
-
-# Detect the shell rc file for the current user
-detect_shell_rc() {
-    local shell_name
-    shell_name="$(basename "${SHELL:-/bin/bash}")"
-    case "$shell_name" in
-        zsh)  echo "$HOME/.zshrc" ;;
-        bash) echo "$HOME/.bashrc" ;;
-        *)
-            warn "Unsupported shell '$shell_name' for auto-configuration; writing to ~/.bashrc"
-            echo "$HOME/.bashrc"
-            ;;
+    {
+        [ -z "$kept" ] || printf '%s\n' "$kept"
+        printf "export %s='%s'\n" "$name" "$(printf '%s' "$value" | sed "s/'/'\\\\''/g")"
+    } > "$PROTEUS_ENV_FILE"
+    case " $INSTALL_VAR_NAMES " in
+        *" $name "*) ;;
+        *) INSTALL_VAR_NAMES="${INSTALL_VAR_NAMES:+$INSTALL_VAR_NAMES }$name" ;;
     esac
+    info "Set $name=$value (recorded in $PROTEUS_ENV_FILE)"
 }
 
-# Safely append an export line to the shell rc file
-append_export_to_rc() {
-    local var_name="$1" var_value="$2" rc_file="$3"
-    local safe_value
-    safe_value=$(printf '%q' "$var_value")
-    local line="export ${var_name}=${safe_value}"
-    # Remove any existing line for this variable before appending
-    if [ -f "$rc_file" ]; then
-        grep -v "^export ${var_name}=" "$rc_file" > "${rc_file}.tmp" 2>/dev/null || true
-        mv "${rc_file}.tmp" "$rc_file"
+# Bind every recorded variable to the active conda env in one call. A pixi env is not
+# a conda env, so its variables stay in the exports file only.
+bind_install_vars() {
+    local name pairs=()
+    [ "$CONDA_BIND" = "pending" ] || return 0
+    CONDA_BIND="none"
+    if [ -z "${CONDA_PREFIX:-}" ] || [ -n "${PIXI_ENVIRONMENT_NAME:-}" ] \
+       || [ -z "$INSTALL_VAR_NAMES" ]; then
+        return 0
     fi
-    echo "$line" >> "$rc_file"
-    exit_export_message+="$line"
-    exit_export_message+=$'\n'
-    info "Set in $rc_file: export ${var_name}=${var_value}"
+    for name in $INSTALL_VAR_NAMES; do
+        pairs+=("$name=${!name}")
+    done
+    if command_exists conda \
+       && conda env config vars set -p "$CONDA_PREFIX" "${pairs[@]}" </dev/null 2>&1; then
+        CONDA_BIND="bound"
+        info "Bound $INSTALL_VAR_NAMES to the conda env at $CONDA_PREFIX"
+    else
+        warn "Could not bind $INSTALL_VAR_NAMES to the conda env at $CONDA_PREFIX."
+        warn "  They are in $PROTEUS_ENV_FILE; load them with: source $PROTEUS_ENV_FILE"
+    fi
+}
+
+# Read only: name each export line of the 4 install variables that an earlier
+# install left in a shell start file; the installer does not change these files.
+note_old_shell_exports() {
+    local f hits hit found=""
+    for f in "$HOME/.zshrc" "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.profile" "$HOME/.zprofile"; do
+        [ -f "$f" ] && [ -r "$f" ] || continue
+        hits=$(grep -nE '^export (FWL_DATA|RAD_DIR|PYTHON_JULIAPKG_EXE|FC_DIR)=' "$f" || true)
+        [ -n "$hits" ] || continue
+        while IFS= read -r hit; do
+            found+="  $f, line ${hit%%:*}: ${hit#*:}"$'\n'
+        done <<< "$hits"
+    done
+    [ -n "$found" ] || return 0
+    warn "An earlier install set these variables in a shell start file:"
+    printf '%s' "$found" >&2
+    warn "  PROTEUS takes the values from the conda env (or $PROTEUS_ENV_FILE) instead."
+    warn "  You can delete those lines by hand; while they stay, a shell without the"
+    warn "  activated env still gets the old values."
+}
+
+# The closing instruction: reactivate the conda env that holds the variables, or
+# source the exports file where no conda env holds them.
+print_next_steps() {
+    echo "Next steps:"
+    if [ "$CONDA_BIND" = "bound" ]; then
+        echo "  1. Reactivate the env, so that it loads the variables:"
+        echo "     conda deactivate && conda activate ${CONDA_DEFAULT_ENV:-proteus}"
+    else
+        echo "  1. Load the variables, in the PROTEUS folder ($SCRIPT_DIR):"
+        echo "     source .proteus-env.sh"
+    fi
+    echo "  2. Run the quick-start tutorial:"
+    echo "     proteus start --offline -c input/dummy.toml"
+}
+
+# On a failed run, name the exports file that holds the variables set so far.
+print_exit_hint() {
+    local rc=$?
+    if [ "$rc" -ne 0 ] && [ -n "$INSTALL_VAR_NAMES" ]; then
+        echo ""
+        echo "--- NOTE: the variables set so far are in $PROTEUS_ENV_FILE. To keep them on"
+        echo "    a re-run, run 'source $PROTEUS_ENV_FILE' first."
+    fi
 }
 
 # Get available disk space in GB (POSIX-portable)
@@ -353,6 +397,12 @@ available_disk_gb() {
 CURRENT_PHASE=0
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INTERACTIVE="false"
+
+# The exports file of set_install_var, and the state that bind_install_vars reads.
+PROTEUS_ENV_FILE="$SCRIPT_DIR/.proteus-env.sh"
+INSTALL_VAR_NAMES=""
+CONDA_BIND="pending"
+trap print_exit_hint EXIT
 
 # ---------------------------------------------------------------------------
 # Parse arguments
@@ -693,11 +743,6 @@ esac
 CURRENT_PHASE=3
 phase 3 "Environment variables"
 
-RC_FILE=$(detect_shell_rc)
-# Ensure parent directory exists (e.g. ~/.config/fish/)
-mkdir -p "$(dirname "$RC_FILE")"
-info "Shell config: $RC_FILE"
-
 # FWL_DATA
 if [ -z "${FWL_DATA:-}" ]; then
     default_fwl="$HOME/FWL_DATA"
@@ -709,10 +754,10 @@ else
     info "FWL_DATA already set: $FWL_DATA"
 fi
 mkdir -p "$fwl_path"
-append_export_to_rc "FWL_DATA" "$fwl_path" "$RC_FILE"
+set_install_var FWL_DATA "$fwl_path"
 
 # PYTHON_JULIAPKG_EXE, the real Julia binary that setup_julia selected in Phase 2
-append_export_to_rc "PYTHON_JULIAPKG_EXE" "$PYTHON_JULIAPKG_EXE" "$RC_FILE"
+set_install_var PYTHON_JULIAPKG_EXE "$PYTHON_JULIAPKG_EXE"
 
 info "Environment variables configured"
 
@@ -731,6 +776,7 @@ fi
 
 if [ "$socrates_compiled" = "true" ]; then
     info "SOCRATES already installed at $RAD_DIR"
+    set_install_var RAD_DIR "$RAD_DIR"
 else
     info "Installing SOCRATES..."
     # On HPC clusters, conda's netcdf can shadow the system netcdf and
@@ -754,8 +800,7 @@ else
     fi
     # Verify compilation succeeded (radlib.a is the primary build artifact)
     if [ -d "$SCRIPT_DIR/socrates" ] && [ -f "$SCRIPT_DIR/socrates/bin/radlib.a" ]; then
-        export RAD_DIR="$SCRIPT_DIR/socrates"
-        append_export_to_rc "RAD_DIR" "$SCRIPT_DIR/socrates" "$RC_FILE"
+        set_install_var RAD_DIR "$SCRIPT_DIR/socrates"
         info "SOCRATES installed, RAD_DIR=$RAD_DIR"
     else
         die "SOCRATES compilation failed. Check $LOGFILE for build errors."
@@ -795,7 +840,9 @@ else
         warn "Cleaning up partial FastChem clone from a previous failed attempt"
         rm -rf "$AGNI_REAL/fastchem"
     fi
-    bash src/get_fastchem.sh -y 2>&1
+    # Without FC_DIR and with no answer on stdin, get_fastchem.sh asks nothing and
+    # leaves the shell start files alone; FC_DIR is set below.
+    env -u FC_DIR bash src/get_fastchem.sh </dev/null 2>&1
     cd "$SCRIPT_DIR"
     if [ ! -d "$AGNI_REAL/fastchem" ]; then
         warn "FastChem installation failed. AGNI chemistry features will not work."
@@ -805,11 +852,9 @@ else
     fi
 fi
 
-# FC_DIR (use resolved AGNI path so the env var survives symlink changes)
-#   note: get_fastchem.sh also sets FC_DIR; we keep it here for consistency and for the rerun environment variable export message
+# FC_DIR, on the resolved AGNI path so that it survives a change of the symlink
 if [ -d "$AGNI_REAL/fastchem" ]; then
-    export FC_DIR="$AGNI_REAL/fastchem"
-    append_export_to_rc "FC_DIR" "$AGNI_REAL/fastchem" "$RC_FILE"
+    set_install_var FC_DIR "$AGNI_REAL/fastchem"
 fi
 
 # ===================================================================
@@ -950,13 +995,12 @@ echo ""
 # ===================================================================
 # Done
 # ===================================================================
+bind_install_vars
 echo ""
 printf "${GREEN}${BOLD}Installation complete!${NC}\n"
 echo ""
-echo "Next steps:"
-echo "  1. Source your shell config:  source $RC_FILE"
-echo "  2. Run the quick-start tutorial:"
-echo "     proteus start --offline -c input/dummy.toml"
+note_old_shell_exports
+print_next_steps
 echo ""
 echo "For SPIDER (legacy interior module), run separately:"
 echo "  bash tools/get_petsc.sh && bash tools/get_spider.sh"

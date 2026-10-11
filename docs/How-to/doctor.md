@@ -80,7 +80,7 @@ Environment
   [ok] FWL_DATA: /home/user/FWL_DATA
   [ok] RAD_DIR: /home/user/PROTEUS/socrates
   [FAIL] FC_DIR: not set
-       fix: export FC_DIR=<path>  # add to your shell rc file
+       fix: conda env config vars set FC_DIR=<path>, then conda deactivate && conda activate proteus (without conda: source .proteus-env.sh in the PROTEUS folder)
   [ok] julia: 1.13.0
 
 Reference data
@@ -163,14 +163,15 @@ This lists the fixable issues and their commands but does not execute anything.
 
 ### What proteus update cannot fix
 
-- **Missing environment variables** (`FWL_DATA`, `RAD_DIR`, etc.): these
-  require editing your shell configuration file (`~/.bashrc` or `~/.zshrc`).
-  The doctor reports the fix command, but `proteus update` cannot modify your
-  shell rc file. Run the suggested `export` command manually, then add it to
-  your rc file.
+- **Missing environment variables** (`FWL_DATA`, `RAD_DIR`, `FC_DIR`,
+  `PYTHON_JULIAPKG_EXE`): set them in the conda environment with
+  `conda env config vars set NAME=<path>`, then run
+  `conda deactivate && conda activate proteus`, because conda loads them only at
+  activation. Without conda, run `source .proteus-env.sh` in the PROTEUS folder.
+  `proteus update` does not run this advice.
 - **Wrong Julia version**: the doctor checks the Julia in
   `PYTHON_JULIAPKG_EXE` (the `julia` on `PATH` when it is unset) and suggests
-  `juliaup add 1.13`, then setting `PYTHON_JULIAPKG_EXE` in your rc file to the
+  `juliaup add 1.13`, then setting `PYTHON_JULIAPKG_EXE` in the same way to the
   path that `julia +1.13 -e 'print(joinpath(Sys.BINDIR, "julia"))'` prints.
   Your default Julia stays as it is.
 - **Missing system packages** (gfortran, cmake, netcdf): these require your
@@ -198,8 +199,8 @@ proteus update-all
 
 It updates the PROTEUS Python package, recompiles SOCRATES, pulls the latest
 AGNI, and refreshes the reference data, verifying environment variables and disk
-space before proceeding. Pass `--export-env` to re-export the environment
-variables to your shell rc file. Use this after pulling new code when several
+space before proceeding. Pass `--export-env` to set the environment variables
+again in the active conda environment and in `.proteus-env.sh`. Use this after pulling new code when several
 components may have moved at once; use `proteus update` when you want to apply
 only the fixes the doctor has flagged.
 

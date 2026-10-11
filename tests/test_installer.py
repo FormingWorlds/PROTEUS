@@ -18,6 +18,7 @@ Testing standards:
 from __future__ import annotations
 
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -280,92 +281,6 @@ class TestBashSyntax:
         assert _echo_e_lines(synthetic) == [3]
 
 
-class TestIdempotency:
-    """Verify the installer is safe to re-run."""
-
-    def test_append_export_is_idempotent(self, tmp_path):
-        """append_export_to_rc replaces existing lines rather than duplicating.
-
-        Discrimination: running the function 3 times must result in
-        exactly one copy. A naive append would produce 3 copies.
-        """
-        rc_file = tmp_path / '.testrc'
-        rc_file.write_text('# existing content\nexport OTHER_VAR=hello\n')
-
-        for _ in range(3):
-            subprocess.run(
-                [
-                    'bash',
-                    '-c',
-                    f"""
-                    append_export_to_rc() {{
-                        local var_name="$1" var_value="$2" rc_file="$3"
-                        local safe_value
-                        safe_value=$(printf '%q' "$var_value")
-                        local line="export ${{var_name}}=${{safe_value}}"
-                        if [ -f "$rc_file" ]; then
-                            grep -v "^export ${{var_name}}=" "$rc_file" > "${{rc_file}}.tmp" 2>/dev/null || true
-                            mv "${{rc_file}}.tmp" "$rc_file"
-                        fi
-                        echo "$line" >> "$rc_file"
-                    }}
-                    append_export_to_rc 'TEST_VAR' '/some/path' '{rc_file}'
-                    """,
-                ],
-                check=True,
-                timeout=10,
-            )
-
-        content = rc_file.read_text()
-        count = content.count('export TEST_VAR=')
-        assert count == 1, f'Line appears {count} times (expected 1)'
-        assert 'export OTHER_VAR=hello' in content
-
-    def test_append_export_handles_spaces_in_path(self, tmp_path):
-        """Paths with spaces are safely quoted via printf %q.
-
-        Discrimination: the written RC line must be valid shell that
-        sets the variable to the exact path including spaces.
-        """
-        rc_file = tmp_path / '.testrc'
-        rc_file.write_text('')
-        path_with_spaces = '/home/user name/FWL DATA'
-
-        subprocess.run(
-            [
-                'bash',
-                '-c',
-                f"""
-                append_export_to_rc() {{
-                    local var_name="$1" var_value="$2" rc_file="$3"
-                    local safe_value
-                    safe_value=$(printf '%q' "$var_value")
-                    local line="export ${{var_name}}=${{safe_value}}"
-                    if [ -f "$rc_file" ]; then
-                        grep -v "^export ${{var_name}}=" "$rc_file" > "${{rc_file}}.tmp" 2>/dev/null || true
-                        mv "${{rc_file}}.tmp" "$rc_file"
-                    fi
-                    echo "$line" >> "$rc_file"
-                }}
-                append_export_to_rc 'FWL_DATA' '{path_with_spaces}' '{rc_file}'
-                """,
-            ],
-            check=True,
-            timeout=10,
-        )
-
-        content = rc_file.read_text()
-        assert 'export FWL_DATA=' in content
-        # Verify the written line is valid shell that produces the correct value
-        result = subprocess.run(
-            ['bash', '-c', f'source {rc_file} && echo "$FWL_DATA"'],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        assert result.stdout.strip() == path_with_spaces
-
-
 def _install_sh_blocks(*markers: str) -> str:
     """The shipped lines of install.sh from each line holding a marker to the next blank line."""
     lines = INSTALL_SH.read_text().splitlines()
@@ -379,7 +294,7 @@ def _install_sh_blocks(*markers: str) -> str:
 
 def _run_with_helpers(script: str, **env: str) -> subprocess.CompletedProcess:
     """Run a bash snippet after install.sh's colour codes and log helpers, under its shell options."""
-    defs = 'set -euo pipefail\n' + _install_sh_blocks("RED='", 'info()', 'detect_shell_rc() {')
+    defs = 'set -euo pipefail\n' + _install_sh_blocks("RED='", 'info()')
     return subprocess.run(
         ['bash', '-c', defs + script],
         capture_output=True,
@@ -389,31 +304,8 @@ def _run_with_helpers(script: str, **env: str) -> subprocess.CompletedProcess:
     )
 
 
-class TestShellRcDetection:
-    """Verify the rc file path the installer captures from detect_shell_rc."""
-
-    @pytest.mark.parametrize(
-        ('shell', 'rc', 'warns'),
-        [
-            ('/usr/local/bin/fish', '.bashrc', True),
-            ('/bin/zsh', '.zshrc', False),
-            ('/bin/bash', '.bashrc', False),
-        ],
-    )
-    def test_captured_rc_file_is_only_the_path(self, tmp_path, shell, rc, warns):
-        """RC_FILE holds exactly the path; the unsupported-shell warning goes to stderr.
-
-        Discrimination: with warn on stdout, the fish case captures the
-        warning line in front of the path, so the equality fails.
-        """
-        out = _run_with_helpers(
-            'RC_FILE=$(detect_shell_rc)\nprintf "%s" "$RC_FILE"\n',
-            SHELL=shell,
-            HOME=str(tmp_path),
-        )
-        assert out.returncode == 0, out.stderr
-        assert out.stdout == str(tmp_path / rc)
-        assert ("Unsupported shell 'fish'" in out.stderr) is warns
+class TestLogHelpers:
+    """Verify where the installer's log helpers write."""
 
     def test_diagnostics_go_to_stderr_and_info_to_stdout(self):
         """warn and fail write only to stderr, info only to stdout.
@@ -428,6 +320,338 @@ class TestShellRcDetection:
         assert '[WARN]' in out.stderr and 'two' in out.stderr
         assert '[FAIL]' in out.stderr and 'three' in out.stderr
         assert '[INFO]' not in out.stderr
+
+
+_VAR_FUNCTIONS = (
+    'command_exists',
+    'set_install_var',
+    'bind_install_vars',
+    'note_old_shell_exports',
+    'print_next_steps',
+    'print_exit_hint',
+)
+
+# A space and a single quote are the two values that a naive quoting breaks.
+_VALUES = {
+    'FWL_DATA': '/data/FWL DATA',
+    'PYTHON_JULIAPKG_EXE': '/opt/julia-1.13.1/bin/julia',
+    'RAD_DIR': "/home/o'brien/socrates",
+    'FC_DIR': '/home/u/AGNI/fastchem',
+}
+
+_SYSTEM_PATH = '/usr/bin:/bin'
+
+
+def _set_script(values: dict[str, str]) -> str:
+    """Bash lines that call set_install_var once per variable, in the order of ``values``."""
+    return ''.join(f'set_install_var {name} {shlex.quote(v)}\n' for name, v in values.items())
+
+
+def _sourced(env_file: Path) -> dict[str, str]:
+    """The 4 variables as a fresh bash sees them after sourcing ``env_file``."""
+    out = subprocess.run(
+        [
+            'bash',
+            '--noprofile',
+            '--norc',
+            '-c',
+            'source "$1"; printf "%s\\0" "$FWL_DATA" "$PYTHON_JULIAPKG_EXE" "$RAD_DIR" "$FC_DIR"',
+            '_',
+            str(env_file),
+        ],
+        capture_output=True,
+        text=True,
+        env={'PATH': _SYSTEM_PATH},
+        timeout=10,
+        check=True,
+    )
+    return dict(zip(_VALUES, out.stdout.split('\0')[:4]))
+
+
+def _conda_calls(log: Path) -> list[list[str]]:
+    """The argument lists the conda stub recorded, one list per call."""
+    if not log.exists():
+        return []
+    calls, current = [], []
+    for line in log.read_text().splitlines():
+        if line == '---':
+            calls.append(current)
+            current = []
+        else:
+            current.append(line)
+    return calls
+
+
+def _start_file_state(home: Path) -> dict[str, tuple]:
+    """Bytes, mode and symlink state of every shell start file under ``home``."""
+    state = {}
+    for name in ('.zshrc', '.bashrc', '.bash_profile', '.profile', '.zprofile'):
+        path = home / name
+        if not path.exists() and not path.is_symlink():
+            continue
+        link = os.readlink(path) if path.is_symlink() else None
+        state[name] = (path.read_bytes(), path.stat().st_mode, os.lstat(path).st_mode, link)
+    return state
+
+
+def _write_start_file(path: Path, text: str) -> None:
+    """Write a shell start file, or skip on a host that refuses to create one."""
+    try:
+        path.write_text(text)
+    except PermissionError:
+        pytest.skip(
+            'this host refuses to create shell start files, even under a temporary HOME'
+        )
+
+
+class TestInstallVars:
+    """set_install_var records the 4 install variables without editing a shell start file."""
+
+    @pytest.fixture
+    def site(self, tmp_path):
+        """A PROTEUS folder, an empty HOME and a conda stub that records its arguments.
+
+        The stub exits with ``STUB_CONDA_RC`` (default 0), so a test can make the
+        conda call fail.
+        """
+        root = tmp_path / 'proteus'
+        root.mkdir()
+        home = tmp_path / 'home'
+        home.mkdir()
+        stubs = tmp_path / 'stubs'
+        _stub(
+            stubs / 'conda',
+            '#!/bin/sh\nprintf "%s\\n" "$@" >> "$STUB_CONDA_LOG"\n'
+            'echo --- >> "$STUB_CONDA_LOG"\nexit "${STUB_CONDA_RC:-0}"\n',
+        )
+        env = {
+            'PATH': f'{stubs}{os.pathsep}{_SYSTEM_PATH}',
+            'HOME': str(home),
+            'STUB_CONDA_LOG': str(tmp_path / 'conda.log'),
+        }
+        return {
+            'root': root,
+            'home': home,
+            'env_file': root / '.proteus-env.sh',
+            'log': tmp_path / 'conda.log',
+            'prefix': str(tmp_path / 'envs' / 'proteus'),
+            'env': env,
+        }
+
+    @staticmethod
+    def _call(site, script: str, **env: str) -> subprocess.CompletedProcess:
+        """Run ``script`` after the shipped variable functions, under install.sh's options."""
+        defs = (
+            'set -euo pipefail\n'
+            + f'SCRIPT_DIR={shlex.quote(str(site["root"]))}\n'
+            + _install_sh_blocks("RED='", 'info()', 'PROTEUS_ENV_FILE=')
+            + ''.join(_install_sh_function(f) for f in _VAR_FUNCTIONS)
+        )
+        return subprocess.run(
+            ['bash', '-c', defs + script],
+            capture_output=True,
+            text=True,
+            env={**site['env'], **env},
+            timeout=20,
+        )
+
+    def test_four_variables_reach_the_exports_file_and_one_conda_call(self, site):
+        """4 variables give 4 export lines that source back unchanged, and one conda call.
+
+        The conda stub gets `env config vars set -p <prefix>` with the 4 pairs in
+        one call. A second run with new values replaces the lines: still 4, with
+        the new values. The closing message tells the env `proteus` to reactivate.
+        """
+        conda_env = {'CONDA_PREFIX': site['prefix'], 'CONDA_DEFAULT_ENV': 'proteus'}
+        script = _set_script(_VALUES) + 'bind_install_vars\nprint_next_steps\n'
+        result = self._call(site, script, **conda_env)
+        assert result.returncode == 0, result.stdout + result.stderr
+        lines = site['env_file'].read_text().splitlines()
+        assert len(lines) == 4
+        assert [ln.split('=', 1)[0] for ln in lines] == [f'export {n}' for n in _VALUES]
+        assert all(ln.split('=', 1)[1].startswith("'") for ln in lines)
+        assert _sourced(site['env_file']) == _VALUES
+        pairs = [f'{n}={v}' for n, v in _VALUES.items()]
+        assert _conda_calls(site['log']) == [
+            ['env', 'config', 'vars', 'set', '-p', site['prefix'], *pairs]
+        ]
+        assert 'conda deactivate && conda activate proteus' in result.stdout
+        assert 'source .proteus-env.sh' not in result.stdout
+
+        newer = {n: f'{v}-2' for n, v in _VALUES.items()}
+        again = self._call(site, _set_script(newer) + 'bind_install_vars\n', **conda_env)
+        assert again.returncode == 0, again.stdout + again.stderr
+        assert len(site['env_file'].read_text().splitlines()) == 4
+        assert _sourced(site['env_file']) == newer
+        assert len(_conda_calls(site['log'])) == 2
+
+    def test_variable_set_twice_keeps_one_line_and_one_pair(self, site):
+        """A variable set twice in one run keeps its last value, once in the file and in conda.
+
+        This is the Julia 1.11 fall-back, which sets PYTHON_JULIAPKG_EXE again in phase 6.
+        """
+        script = (
+            _set_script(_VALUES)
+            + "set_install_var PYTHON_JULIAPKG_EXE '/opt/julia-1.11.9/bin/julia'\n"
+            + 'bind_install_vars\n'
+        )
+        result = self._call(site, script, CONDA_PREFIX=site['prefix'])
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert len(site['env_file'].read_text().splitlines()) == 4
+        assert (
+            _sourced(site['env_file'])['PYTHON_JULIAPKG_EXE'] == '/opt/julia-1.11.9/bin/julia'
+        )
+        (call,) = _conda_calls(site['log'])
+        exe_pairs = [a for a in call if a.startswith('PYTHON_JULIAPKG_EXE=')]
+        assert exe_pairs == ['PYTHON_JULIAPKG_EXE=/opt/julia-1.11.9/bin/julia']
+        assert len(call) == 6 + 4
+
+    @pytest.mark.parametrize(
+        'env',
+        [{}, {'CONDA_PREFIX': '/envs/default', 'PIXI_ENVIRONMENT_NAME': 'default'}],
+        ids=['no-conda-env', 'pixi-env'],
+    )
+    def test_without_conda_env_only_the_exports_file(self, site, env):
+        """Without a conda env, or in a pixi env, conda is not called and the message sources the file."""
+        script = _set_script(_VALUES) + 'bind_install_vars\nprint_next_steps\n'
+        result = self._call(site, script, **env)
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert _conda_calls(site['log']) == []
+        assert not site['log'].exists()
+        assert _sourced(site['env_file']) == _VALUES
+        assert 'source .proteus-env.sh' in result.stdout
+        assert 'conda activate' not in result.stdout
+
+    def test_failed_conda_call_warns_once_and_names_the_exports_file(self, site):
+        """A failing conda call warns once, names the exports file, and the run goes on."""
+        script = _set_script(_VALUES) + 'bind_install_vars\nprint_next_steps\n'
+        result = self._call(site, script, CONDA_PREFIX=site['prefix'], STUB_CONDA_RC='1')
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert len(_conda_calls(site['log'])) == 1
+        assert result.stderr.count('Could not bind') == 1
+        assert str(site['env_file']) in result.stderr
+        assert 'source .proteus-env.sh' in result.stdout
+        assert 'conda deactivate' not in result.stdout
+
+    def test_failed_run_names_the_exports_file_on_exit(self, site):
+        """A run that stops after a variable was set names the exports file; a clean exit does not."""
+        failed = self._call(site, 'set_install_var FWL_DATA /d\nexit 3\n')
+        assert failed.returncode == 3
+        assert f'source {site["env_file"]}' in failed.stdout
+        clean = self._call(site, 'set_install_var FWL_DATA /d\n')
+        assert clean.returncode == 0
+        assert 'NOTE' not in clean.stdout
+
+    def test_shell_start_files_keep_bytes_mode_and_symlink(self, site):
+        """The whole variable flow leaves ~/.zshrc and a symlinked ~/.bashrc as they were.
+
+        Both hold an old `export FWL_DATA=/old` line, which the removed rc
+        writer deleted, and mode 600, which its temp-file rename turned into 644.
+        """
+        home = site['home']
+        _write_start_file(home / '.zshrc', '# zsh\nexport FWL_DATA=/old\nalias ll="ls -l"\n')
+        (home / '.zshrc').chmod(0o600)
+        real = home / 'dotfiles' / 'bashrc'
+        real.parent.mkdir()
+        real.write_text('# bash\nexport FWL_DATA=/old\nexport PATH="$HOME/bin:$PATH"\n')
+        real.chmod(0o600)
+        try:
+            (home / '.bashrc').symlink_to(real)
+        except PermissionError:
+            pytest.skip(
+                'this host refuses to create shell start files, even under a temporary HOME'
+            )
+        before = _start_file_state(home)
+        real_before = real.read_bytes()
+        script = (
+            _set_script(_VALUES)
+            + 'bind_install_vars\nnote_old_shell_exports\nprint_next_steps\n'
+        )
+        result = self._call(site, script, CONDA_PREFIX=site['prefix'])
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert _start_file_state(home) == before
+        assert set(before) == {'.zshrc', '.bashrc'}
+        assert before['.bashrc'][3] == str(real)
+        assert real.read_bytes() == real_before
+        assert sorted(p.name for p in home.iterdir()) == ['.bashrc', '.zshrc', 'dotfiles']
+
+    def test_note_names_file_and_line_of_an_old_export(self, site):
+        """The note names the file and line number of an old export and leaves the file alone.
+
+        `export FWL_DATAX=` and an indented export are not install lines, so
+        only line 3 is named; a note that counted from 0 would say line 2.
+        """
+        zshrc = site['home'] / '.zshrc'
+        text = '# zsh\nexport FWL_DATAX=/x\nexport FWL_DATA=/old\n  export RAD_DIR=/r\n'
+        _write_start_file(zshrc, text)
+        result = self._call(site, 'note_old_shell_exports\n')
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert f'{zshrc}, line 3: export FWL_DATA=/old' in result.stderr
+        assert 'FWL_DATAX' not in result.stderr
+        assert 'RAD_DIR=/r' not in result.stderr
+        assert 'delete those lines by hand' in result.stderr
+        assert zshrc.read_text() == text
+
+    def test_no_note_without_old_exports(self, site):
+        """A HOME without shell start files gets no note."""
+        result = self._call(site, 'note_old_shell_exports\n')
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert result.stderr == ''
+        assert result.stdout == ''
+
+
+_START_FILE = re.compile(
+    r'zshrc|bashrc|bash_profile|\.profile|zprofile|config/fish|RC_FILE|rc_file'
+)
+_FILE_WRITE = re.compile(r'(?<![0-9&])>(?!&)|\bmv\b|\bsed\s+-i|\btee\b|\btouch\b')
+
+
+def _start_file_writes(text: str) -> list[str]:
+    """Uncommented lines that name a shell start file and write, move or touch a file."""
+    return [
+        ln
+        for ln in text.splitlines()
+        if not ln.lstrip().startswith('#') and _START_FILE.search(ln) and _FILE_WRITE.search(ln)
+    ]
+
+
+class TestNoShellFileEdit:
+    """install.sh edits no shell start file and keeps AGNI's FastChem script away from one."""
+
+    def test_no_write_to_a_shell_start_file(self):
+        """No line naming a start file writes it, and the reader of those files writes nothing.
+
+        The control is the removed rc writer: its 3 file operations are flagged
+        and its stderr warning is not, so the empty result for install.sh is not
+        a scanner that finds nothing.
+        """
+        text = INSTALL_SH.read_text()
+        assert _start_file_writes(text) == []
+        assert 'append_export_to_rc' not in text
+        assert 'detect_shell_rc' not in text
+        reader = _install_sh_function('note_old_shell_exports')
+        assert '.zshrc' in reader
+        assert [ln for ln in reader.splitlines() if _FILE_WRITE.search(ln)] == []
+        removed = (
+            '    grep -v "^export ${var_name}=" "$rc_file" > "${rc_file}.tmp" 2>/dev/null || true\n'
+            '    mv "${rc_file}.tmp" "$rc_file"\n'
+            '    echo "$line" >> "$rc_file"\n'
+            '    warn "Shell config: $RC_FILE" >&2\n'
+        )
+        assert len(_start_file_writes(removed)) == 3
+
+    def test_fastchem_runs_without_yes_and_without_input(self):
+        """get_fastchem.sh runs once, without -y, without FC_DIR and with stdin from /dev/null.
+
+        With -y it answers its own question to add FC_DIR to the shell start file.
+        """
+        calls = [
+            ln.strip()
+            for ln in INSTALL_SH.read_text().splitlines()
+            if 'get_fastchem.sh' in ln and not ln.lstrip().startswith(('#', 'warn', 'echo'))
+        ]
+        assert calls == ['env -u FC_DIR bash src/get_fastchem.sh </dev/null 2>&1']
+        assert '-y' not in calls[0].split()
 
 
 class TestDiskSpaceCheck:

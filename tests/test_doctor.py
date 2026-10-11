@@ -211,11 +211,28 @@ class TestCheckEnvVar:
         with patch.dict(os.environ, env, clear=True):
             r = check_env_var('NONEXISTENT_VAR')
         assert r.status == FAIL
-        # The fix is a placeholder export line, not a runnable command, so it
-        # must be flagged non-auto-fixable; otherwise `proteus update` feeds
-        # 'export VAR=<path>  # ...' to the shell and it errors on '<path>'.
+        # The fix is advice with a placeholder, not a runnable command, so it must
+        # be non-auto-fixable; `proteus update` would fail on '<path>' in a shell.
         assert r.auto_fixable is False
         assert '<path>' in r.fix_cmd
+
+    @pytest.mark.parametrize('name', ['FWL_DATA', 'RAD_DIR', 'FC_DIR', 'PYTHON_JULIAPKG_EXE'])
+    def test_unset_install_var_advice_uses_the_conda_env(self, monkeypatch, name):
+        """The advice for an unset install variable sets it in the conda env and reactivates it.
+
+        Activating the already active env does not load the variable, so the
+        advice deactivates first; without conda it names the exports file. It
+        names no shell start file.
+        """
+        monkeypatch.delenv(name, raising=False)
+        monkeypatch.setenv('CONDA_DEFAULT_ENV', 'proteus')
+        r = check_env_var(name)
+        assert r.fix_cmd == (
+            f'conda env config vars set {name}=<path>, then conda deactivate && '
+            'conda activate proteus (without conda: source .proteus-env.sh in the PROTEUS folder)'
+        )
+        assert r.auto_fixable is False
+        assert 'rc file' not in r.fix_cmd and 'export ' not in r.fix_cmd
 
     def test_warn_when_path_missing(self):
         """A set variable pointing to a nonexistent path warns."""
@@ -370,8 +387,8 @@ class TestCheckJulia:
         """Julia 1.11 still works but warns that support will be dropped.
 
         Neither Julia warning is auto-fixable: the advice adds 1.13 and points
-        PYTHON_JULIAPKG_EXE at it, which ``proteus update`` cannot write to the
-        user's rc file, and it never changes the user's default Julia. The
+        PYTHON_JULIAPKG_EXE at it in the conda env, which ``proteus update`` does
+        not do, and it never changes the user's default Julia. The
         message separates the deprecated 1.11 from an unsupported 1.14.
         """
         with patch('proteus.doctor._julia_version', return_value='1.11.9'):
@@ -379,7 +396,12 @@ class TestCheckJulia:
         assert r.status == WARN
         assert 'deprecated' in r.message
         assert '1.11.9' in r.message
-        assert r.fix_cmd.startswith('juliaup add 1.13, then set PYTHON_JULIAPKG_EXE')
+        assert r.fix_cmd.startswith(
+            'juliaup add 1.13, then conda env config vars set PYTHON_JULIAPKG_EXE=<the path that '
+            'julia +1.13 -e \'print(joinpath(Sys.BINDIR, "julia"))\' prints>, then conda deactivate'
+        )
+        assert 'source .proteus-env.sh' in r.fix_cmd
+        assert 'rc file' not in r.fix_cmd
         assert 'juliaup default' not in r.fix_cmd
         assert r.auto_fixable is False
         with patch('proteus.doctor._julia_version', return_value='1.14.0'):
@@ -1448,7 +1470,7 @@ class TestUpdateEntry:
         assert mock_recheck.call_count == 1
 
     def test_manual_advice_is_shown_but_never_executed(self, capsys, tmp_path):
-        """An unset env var carries human advice ('export VAR=<path>'), not a
+        """An unset env var carries human advice ('conda env config vars set VAR=<path>'), not a
         runnable command. update lists it under manual action and never passes
         it to the shell, while still running the genuinely fixable check."""
         (tmp_path / 'tools').mkdir()
@@ -1458,7 +1480,8 @@ class TestUpdateEntry:
                 'environment',
                 FAIL,
                 'not set',
-                'export FC_DIR=<path>  # add to your shell rc file',
+                'conda env config vars set FC_DIR=<path>, then conda deactivate && '
+                'conda activate proteus (without conda: source .proteus-env.sh in the PROTEUS folder)',
                 auto_fixable=False,
             ),
             CheckResult('AGNI', 'versions', WARN, 'differs from pin', 'bash tools/get_agni.sh'),
@@ -1474,7 +1497,7 @@ class TestUpdateEntry:
         assert mock_fix.call_count == 1
         ran = mock_fix.call_args_list[0].args[0]
         assert ran == 'bash tools/get_agni.sh'
-        assert 'export FC_DIR' not in ran
+        assert 'FC_DIR' not in ran
         # The manual item is still surfaced so the user knows to act on it.
         out = capsys.readouterr().out
         assert 'manual action' in out

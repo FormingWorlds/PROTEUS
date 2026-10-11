@@ -20,10 +20,13 @@ repository, so it replaces only the conda steps of the
     `pixi run` creates the environment on first use, so there is no separate
     setup step.
 
-Afterwards, prefix commands with `pixi run`, or use `pixi shell` for an
-activated shell:
+The installer writes the environment variables (`FWL_DATA`, `RAD_DIR`, `FC_DIR`,
+`PYTHON_JULIAPKG_EXE`) to `.proteus-env.sh` in the PROTEUS folder, not into the
+pixi environment. Load them in each new shell, then prefix commands with
+`pixi run`, or use `pixi shell` for an activated shell:
 
 ```console
+source .proteus-env.sh
 pixi run proteus start --offline -c input/dummy.toml
 ```
 

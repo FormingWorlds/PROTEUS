@@ -1727,44 +1727,6 @@ def test_resolve_fwl_data_dir_falls_back_when_env_missing(monkeypatch):
 
 
 @pytest.mark.unit
-def test_append_to_shell_rc_writes_when_absent(monkeypatch, tmp_path):
-    """append_to_shell_rc creates the rc file and writes the export line on first call."""
-    monkeypatch.setattr(Path, 'home', lambda: tmp_path)
-    rc = cli.append_to_shell_rc('TEST_VAR', '/some/value', shell='/bin/bash')
-    assert rc is not None
-    assert rc == tmp_path / '.bashrc'
-    contents = rc.read_text()
-    assert 'TEST_VAR' in contents
-    assert '/some/value' in contents
-
-
-@pytest.mark.unit
-def test_append_to_shell_rc_skips_when_already_present(monkeypatch, tmp_path):
-    """If the export line is already in the rc file, the helper returns None and does not duplicate."""
-    monkeypatch.setattr(Path, 'home', lambda: tmp_path)
-    rc_first = cli.append_to_shell_rc('TEST_VAR', '/some/value', shell='/bin/zsh')
-    assert rc_first == tmp_path / '.zshrc'
-
-    rc_second = cli.append_to_shell_rc('TEST_VAR', '/some/value', shell='/bin/zsh')
-    # Already present, must signal a no-op.
-    assert rc_second is None
-    # Idempotency guard: line count for that var must be exactly 1.
-    occurrences = (tmp_path / '.zshrc').read_text().count('TEST_VAR')
-    assert occurrences == 1
-
-
-@pytest.mark.unit
-def test_append_to_shell_rc_unknown_shell_returns_none(monkeypatch, tmp_path):
-    """An unrecognized shell returns None and does NOT create any rc file."""
-    monkeypatch.setattr(Path, 'home', lambda: tmp_path)
-    out = cli.append_to_shell_rc('TEST_VAR', '/x', shell='/usr/local/bin/exotic_shell')
-    assert out is None
-    # Discrimination: no rc files created
-    assert not (tmp_path / '.bashrc').exists()
-    assert not (tmp_path / '.zshrc').exists()
-
-
-@pytest.mark.unit
 def test_is_julia_installed_true_when_shutil_finds_it(monkeypatch):
     """is_julia_installed returns True when shutil.which finds a julia binary."""
     monkeypatch.setattr(
@@ -1920,46 +1882,74 @@ def test_install_all_aborts_when_julia_missing(monkeypatch, tmp_path):
     assert 'Installing AGNI' not in res.output
 
 
-@pytest.mark.unit
-def test_install_all_success_with_export_env(monkeypatch, tmp_path):
-    """Full ``install-all --export-env`` path with all heavy steps stubbed.
+def _export_env_site(monkeypatch, tmp_path, conda_prefix):
+    """Stub the heavy steps of install-all and update-all for an ``--export-env`` run.
 
-    Verifies the rc-export step writes lines, the socrates / AGNI dirs are
-    detected as pre-existing, and the completion message fires.
+    SOCRATES, AGNI and FastChem exist under the root, Julia and conda are on
+    the stubbed PATH, FWL_DATA holds a space, and HOME is an empty folder.
+    Returns the HOME folder and the list that records each subprocess command.
     """
     _pin_proteus_root(monkeypatch, tmp_path)
     monkeypatch.setattr(cli.shutil, 'disk_usage', lambda path: _stub_disk_usage_high())
-    monkeypatch.setattr(
-        cli.shutil, 'which', lambda exe: '/usr/local/bin/julia' if exe == 'julia' else None
-    )
-    monkeypatch.setenv('FWL_DATA', str(tmp_path / 'fwl_data'))
-    monkeypatch.setenv('SHELL', '/bin/bash')
-    monkeypatch.setattr(Path, 'home', lambda: tmp_path / 'home')
-    (tmp_path / 'home').mkdir()
-
-    # Pre-create socrates and AGNI to skip subprocess calls
+    on_path = {'julia': '/opt/julia-1.13.1/bin/julia', 'conda': '/opt/conda/condabin/conda'}
+    monkeypatch.setattr(cli.shutil, 'which', lambda exe: on_path.get(exe))
+    for var in ('PYTHON_JULIAPKG_EXE', 'PIXI_ENVIRONMENT_NAME', 'CONDA_PREFIX'):
+        monkeypatch.delenv(var, raising=False)
+    if conda_prefix:
+        monkeypatch.setenv('CONDA_PREFIX', conda_prefix)
+        monkeypatch.setenv('CONDA_DEFAULT_ENV', 'proteus')
+    (tmp_path / 'fwl data').mkdir()
+    monkeypatch.setenv('FWL_DATA', str(tmp_path / 'fwl data'))
+    home = tmp_path / 'home'
+    home.mkdir()
+    monkeypatch.setenv('HOME', str(home))
+    monkeypatch.setattr(Path, 'home', lambda: home)
     (tmp_path / 'socrates').mkdir()
-    (tmp_path / 'AGNI').mkdir()
-
-    subprocess_calls = []
+    (tmp_path / 'AGNI' / 'fastchem').mkdir(parents=True)
+    calls = []
 
     def fake_subprocess_run(cmd, **kwargs):
-        subprocess_calls.append(cmd)
-
-        class _Result:
-            returncode = 0
-
-        return _Result()
+        calls.append(list(cmd))
+        return type('R', (), {'returncode': 0})()
 
     monkeypatch.setattr(cli.subprocess, 'run', fake_subprocess_run)
-    # No config file so the input-data step gracefully skips.
     monkeypatch.setattr(cli, '_update_input_data', lambda path: False)
+    return home, calls
 
+
+def _expected_install_vars(tmp_path):
+    """The 4 variables that ``--export-env`` records for the site of ``_export_env_site``."""
+    return {
+        'FWL_DATA': str(tmp_path / 'fwl data'),
+        'RAD_DIR': str((tmp_path / 'socrates').resolve()),
+        'PYTHON_JULIAPKG_EXE': '/opt/julia-1.13.1/bin/julia',
+        'FC_DIR': str((tmp_path / 'AGNI' / 'fastchem').resolve()),
+    }
+
+
+@pytest.mark.unit
+def test_install_all_export_env_binds_four_vars_to_conda_env(monkeypatch, tmp_path):
+    """``install-all --export-env`` sets the 4 variables in the conda env and the exports file.
+
+    One conda call carries all 4 pairs, the exports file under the PROTEUS
+    root holds one quoted line each, the message names the reactivation of
+    the env, and the temporary HOME stays empty: no shell start file is written.
+    """
+    home, calls = _export_env_site(monkeypatch, tmp_path, '/opt/conda/envs/proteus')
     res = runner.invoke(cli.cli, ['install-all', '--export-env'])
     assert res.exit_code == 0, f'install-all output: {res.output}'
     assert 'PROTEUS installation completed' in res.output
-    # Discrimination: at least one rc-export line fired
-    assert 'Exported' in res.output or 'already exported' in res.output
+    expected = _expected_install_vars(tmp_path)
+    pairs = [f'{name}={value}' for name, value in expected.items()]
+    conda_calls = [c for c in calls if c[0] == 'conda']
+    assert conda_calls == [
+        ['conda', 'env', 'config', 'vars', 'set', '-p', '/opt/conda/envs/proteus', *pairs]
+    ]
+    lines = (tmp_path / '.proteus-env.sh').read_text().splitlines()
+    assert lines == [f"export {name}='{value}'" for name, value in expected.items()]
+    assert list(home.iterdir()) == []
+    assert 'conda deactivate && conda activate proteus' in res.output
+    assert 'source .proteus-env.sh' not in res.output
 
 
 @pytest.mark.unit
@@ -2222,30 +2212,26 @@ def test_update_all_agni_update_failure_continues(monkeypatch, tmp_path):
 
 
 @pytest.mark.unit
-def test_update_all_export_env_writes_rc(monkeypatch, tmp_path):
-    """``update-all --export-env`` writes rc lines for FWL_DATA and RAD_DIR."""
-    _pin_proteus_root(monkeypatch, tmp_path)
-    monkeypatch.setattr(cli.shutil, 'disk_usage', lambda path: _stub_disk_usage_high())
-    monkeypatch.setattr(
-        cli.shutil, 'which', lambda exe: '/usr/local/bin/julia' if exe == 'julia' else None
-    )
-    _make_fwl_data(monkeypatch, tmp_path)
-    monkeypatch.setenv('SHELL', '/bin/bash')
-    monkeypatch.setattr(Path, 'home', lambda: tmp_path / 'home')
-    (tmp_path / 'home').mkdir()
+def test_update_all_export_env_without_conda_env_writes_only_exports_file(
+    monkeypatch, tmp_path
+):
+    """``update-all --export-env`` without a conda env calls no conda and writes the exports file.
 
-    (tmp_path / 'socrates').mkdir()
-    (tmp_path / 'AGNI').mkdir()
-    monkeypatch.setattr(
-        cli.subprocess, 'run', lambda cmd, **kw: type('R', (), {'returncode': 0})()
-    )
-    monkeypatch.setattr(cli, '_update_input_data', lambda path: False)
-
-    res = runner.invoke(cli.cli, ['update-all', '--export-env'])
-    assert res.exit_code == 0
+    The message names ``source .proteus-env.sh``, a second run replaces the 4
+    lines instead of adding to them, and HOME stays empty.
+    """
+    home, calls = _export_env_site(monkeypatch, tmp_path, None)
+    for _ in range(2):
+        res = runner.invoke(cli.cli, ['update-all', '--export-env'])
+        assert res.exit_code == 0, f'update-all output: {res.output}'
     assert 'PROTEUS update completed' in res.output
-    # Either exported or detected as already exported; at least one rc line touched.
-    assert 'Exported' in res.output or 'already exported' in res.output
+    assert [c for c in calls if c[0] == 'conda'] == []
+    expected = _expected_install_vars(tmp_path)
+    lines = (tmp_path / '.proteus-env.sh').read_text().splitlines()
+    assert lines == [f"export {name}='{value}'" for name, value in expected.items()]
+    assert list(home.iterdir()) == []
+    assert 'source .proteus-env.sh' in res.output
+    assert 'conda activate' not in res.output
 
 
 # ---------------------------
