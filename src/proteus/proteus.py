@@ -1188,6 +1188,8 @@ class Proteus:
             # at module top). Populated as modules run; emitted as one
             # `[IT_TIMING]` log line at the end of the iter.
             _t_iter_start = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
+            # PROTEUS clears init_stage at the end of the last init iteration, before logging
+            _iter_init_stage = self.init_stage
             _t_mod: dict[str, float] = {}
 
             ############### INTERIOR
@@ -1594,7 +1596,12 @@ class Proteus:
                 _t_mod['other'] = max(0.0, _iter_wall - _accounted)
                 _t_mod['total'] = _iter_wall
                 _modstr = ' '.join(f'{k}={v:.3f}' for k, v in _t_mod.items())
-                log.info('[IT_TIMING] iter=%d %s', self.loops['total'], _modstr)
+                log.info(
+                    '[IT_TIMING] iter=%d init_stage=%d %s',
+                    self.loops['total'],
+                    _iter_init_stage,
+                    _modstr,
+                )
 
             ############### / HOUSEKEEPING AND CONVERGENCE CHECK
 
