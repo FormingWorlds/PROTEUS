@@ -371,39 +371,49 @@ def test_the_core_fraction_is_the_config_value_when_no_inventory_is_derived(
     monkeypatch, outgas, fO2_source
 ):
     """When the oxygen is an input of the outgassing (an oxygen budget, or the dummy
-    module) every inventory is kept, and the solver gets core_frac itself, bit for bit."""
-    _, _, params = _structure_target(monkeypatch, _BUFFERED, outgas, fO2_source)
-    assert params['core_mass_fraction'] == 0.325
+    module) every inventory is kept: the solver gets core_frac itself, bit for bit, and the
+    core is 0.325 of the structure target, 2.117e23 kg of oxygen lighter than the planet."""
+    from proteus.utils.constants import M_earth
+
+    planet, core, params = _structure_target(monkeypatch, _BUFFERED, outgas, fO2_source)
+    assert params['core_mass_fraction'] == pytest.approx(0.325, rel=0.0, abs=0.0)
+    assert core == pytest.approx(0.325 * (M_earth - 7.43e20 - 2.117e23), rel=1e-14)
+    assert params['core_mass_target'] == pytest.approx(0.325 * planet, rel=1e-15)
 
 
 @pytest.mark.unit
 @pytest.mark.physics_invariant
 @pytest.mark.parametrize(
-    'hf_extra, cfg, core_change',
+    'hf_extra, cfg, core_change, planet_change',
     [
-        ({'H_kg_total': 3.70e20, 'M_volatile_change': -1.0e20}, {}, 0.0),
-        ({}, {'mass_tot': 1.05}, 0.325 * 0.05 * 5.972e24),
-        ({'Si_kg_total': 1.0e21}, {}, 0.0),
+        ({'H_kg_total': 3.70e20, 'M_volatile_change': -1.0e20}, {}, 0.0, 0.0),
+        ({}, {'mass_tot': 1.05}, 0.325 * 0.05 * 5.972e24, 0.05 * 5.972e24),
+        ({'Si_kg_total': 1.0e21}, {}, 0.0, -1.0e21),
     ],
     ids=['escape', 'impact', 'rock_vapour'],
 )
 def test_the_core_mass_follows_the_rock_and_nothing_else(
-    monkeypatch, hf_extra, cfg, core_change
+    monkeypatch, hf_extra, cfg, core_change, planet_change
 ):
     """Hydrogen that escapes lowers the inventory and the volatile ledger by the same mass,
-    so the core stays; an impact that adds 0.05 Earth masses of rock adds 0.325 of it to the
-    core; and rock vapour is mantle mass, not a kept volatile."""
-    _, base, _ = _structure_target(monkeypatch, _BUFFERED)
-    _, core, _ = _structure_target(monkeypatch, {**_BUFFERED, **hf_extra}, **cfg)
+    so the core and the structure target stay; an impact that adds 0.05 Earth masses of rock
+    adds 0.325 of it to the core; and 1e21 kg of rock vapour leave the structure target as
+    mantle mass, not as a kept volatile."""
+    planet_base, base, _ = _structure_target(monkeypatch, _BUFFERED)
+    planet, core, _ = _structure_target(monkeypatch, {**_BUFFERED, **hf_extra}, **cfg)
     assert core - base == pytest.approx(core_change, rel=2e-3, abs=1e12)
+    assert planet - planet_base == pytest.approx(planet_change, rel=1e-6, abs=1e12)
 
 
 @pytest.mark.unit
 def test_an_inventory_that_leaves_no_mantle_is_refused(monkeypatch):
     """An oxygen inventory of 4.1e24 kg leaves 1.87e24 kg for the interior, less than the
-    core of 1.94e24 kg: the builder refuses the structure with the masses in the message."""
-    with pytest.raises(ValueError, match='leaves no mantle: 1.87'):
+    core of 1.94e24 kg: the builder refuses the structure with the masses in the message.
+    With 3.9e24 kg the interior is 2.07e24 kg and the mantle 1.306e23 kg."""
+    with pytest.raises(ValueError, match=r'leaves no mantle: 1\.87\d+e\+24 kg .*, 1\.94'):
         _structure_target(monkeypatch, {**_BUFFERED, 'O_kg_total': 4.1e24})
+    planet, core, _ = _structure_target(monkeypatch, {**_BUFFERED, 'O_kg_total': 3.9e24})
+    assert planet - core == pytest.approx(1.306e23, rel=1e-3)
 
 
 _WET = {'H_kg_atm': 1.0e20, 'C_kg_atm': 2.0e20, 'O_kg_atm': 2.079e23, 'H_kg_total': 6.0e21}
