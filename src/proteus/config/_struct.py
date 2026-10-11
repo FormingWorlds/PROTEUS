@@ -207,7 +207,8 @@ class Zalmoxis:
         Structure EOS assumes a dry mantle. Set False for
         melt-fraction-aware dissolved-volatile mixing in the mantle
         density (per-shell volatile profile); the dissolved mass then
-        stays inside the interior mass target.
+        stays inside the interior mass target, and the core keeps the mass
+        of the structure the evolution starts on.
     global_miscibility: bool
         Enable the H2-silicate binodal-aware radial structure. True is
         rejected at config load: it requires the binodal handoff on the
@@ -329,7 +330,12 @@ class Struct:
     Attributes
     ----------
     core_frac: float
-        Fraction of the planet's interior radius corresponding to the core.
+        Core fraction of the planet, by mass or by radius (see core_frac_mode).
+        With module = 'zalmoxis' it is the core mass over the planet mass
+        without the volatile inventories that the outgassing takes as inputs
+        (H, C, N, S, noble gases; O when it is an input). With
+        zalmoxis.dry_mantle = false only the atmosphere part of those
+        inventories is taken off, on the structure the evolution starts on.
     module: str
         Module for solving the planet's interior structure. Choices: 'dummy', 'spider', 'zalmoxis'.
     zalmoxis: Zalmoxis or None

@@ -22,6 +22,8 @@ Every site that sums element masses includes oxygen; that keeps `M_atm` below `M
 
 Sites 1 and 2 sum `vol_element_list + noble_gases` and leave the rock-vapour elements of `vap_element_list` out on purpose, because rock vapour enters the atmosphere without being debited from the interior; sites 3, 4 and 6 sum `element_list`; site 5 tests `vol_element_list + noble_gases` against the threshold and sums `element_list` (finite totals only) for the escape balance, to match the site-6 baseline, leaving out the mass earlier desiccations removed (`M_desiccated`). The different lists are intended, not an asymmetry to repair.
 
+Site 3 holds a second sum for the core mass: the kept inventories, `vol_element_list + noble_gases` without O when `outgassing_derives_o_kg_total(config)` holds. The core target is `core_frac` of the planet without that sum. Oxygen stays in the structure-target sum of site 3; it is left out of the kept sum on purpose, because an oxygen inventory that the outgassing derives from the fO2 buffer is mantle mass, like rock vapour.
+
 ## Mass-conservation check
 
 Flag any change that weakens or removes `assert_mass_conservation(hf_row)`; both of its halves use the tolerance `atol_frac`. The main loop passes `require_atm_le_planet=False` when `outgas.vapourise = true`, and the `M_atm <= M_planet` half turns into a warning only while `M_vaps > 0`; with no vapour column it is enforced whatever the keyword. The intended non-conservation is described in `docs/Explanations/model.md` ("Whole-planet mass is not conserved when vapourisation is enabled"). Flag any change that widens `atol_frac`, disables the species-sum half or silences the warning.
