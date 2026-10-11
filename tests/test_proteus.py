@@ -3098,6 +3098,32 @@ def test_timing_lines_keep_the_format_proteus_bench_parses(tmp_path, monkeypatch
     assert stages[init_loops + 1 :] and set(stages[init_loops + 1 :]) == {0}
 
 
+def test_init_timing_line_times_the_zalmoxis_equilibration(tmp_path, monkeypatch, caplog):
+    """With Zalmoxis equilibration on, ``[INIT_TIMING]`` has an ``equilibrate`` step, timed
+    around the call: a call that takes at least 0.05 s logs at least 0.050.
+    """
+    import re
+    import time as _time
+
+    monkeypatch.setattr('proteus.proteus._IT_TIMING_ENABLED', True)
+    p = _make_main_loop_proteus(tmp_path, plot_mod=1, write_mod=1, dt_write_rel=0.0)
+    p.config.interior_struct.module = 'zalmoxis'
+    p.config.interior_struct.zalmoxis.equilibrate_init = True
+    with (
+        caplog.at_level(logging.INFO, logger='fwl.proteus.proteus'),
+        patch(
+            'proteus.interior_energetics.wrapper.equilibrate_initial_state',
+            side_effect=lambda *_: _time.sleep(0.05),
+        ) as equilibrate,
+    ):
+        _run_main_loop_capturing_plots(p, stop_at_loop=4)
+
+    equilibrate.assert_called_once()
+    (line,) = [r.message for r in caplog.records if r.message.startswith('[INIT_TIMING]')]
+    seconds = float(re.search(r' equilibrate=(\d+\.\d{3})', line)[1])
+    assert seconds >= 0.05
+
+
 # =======================================================================================
 # SECTION: mass conservation across a multi-iteration run
 # =======================================================================================
