@@ -42,9 +42,6 @@ from proteus.utils.logs import (
     setup_logger,
 )
 
-# Opt-in wall-time breakdown under `PROTEUS_TIMING=1`: one `[IT_TIMING]` log line per
-# main-loop iter and one `[INIT_TIMING]` line for the init steps before the loop.
-# Overhead when disabled: one os.environ lookup at import time, nothing in the loop body.
 _IT_TIMING_ENABLED = os.environ.get('PROTEUS_TIMING', '').lower() in ('1', 'true', 'yes', 'on')
 
 # Consecutive iterations without a converged atmosphere after which a run ends,
