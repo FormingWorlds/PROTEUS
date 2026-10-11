@@ -1,19 +1,7 @@
 #!/usr/bin/env bash
-# PROTEUS unified installer
-#
-# Usage:
-#   bash install.sh              # Essential install (spectral + stellar data)
-#   bash install.sh --all-data   # Full install (all reference data)
-#   bash install.sh --no-data    # Skip data downloads
-#   bash install.sh -i           # Interactive mode (prompt for choices)
-#   bash install.sh --help       # Show usage
-#
-# Prerequisites:
-#   - conda environment with Python 3.12 must be active
-#   - System packages (gfortran >= 9, netcdf) must be installed
-#   - Internet connection for downloads
-#
-# This script is idempotent: safe to re-run after a failure or update.
+# PROTEUS unified installer; `bash install.sh --help` lists the options. It needs an active conda
+# environment with Python 3.12 and the system packages of docs/How-to/installation.md, and each
+# phase can run again after a failure.
 
 set -euo pipefail
 
@@ -375,12 +363,14 @@ for arg in "$@"; do
             echo "Usage: bash install.sh [OPTIONS]"
             echo ""
             echo "Options:"
-            echo "  --all-data   Download all reference data (~10-20 GB)"
-            echo "  --no-data    Skip data downloads entirely"
+            echo "  --all-data   Download all reference data (~10-20 GB) instead of the essential set"
+            echo "  --no-data    Skip data downloads entirely, including the essential set"
             echo "  -i, --interactive  Interactive mode (prompt for choices)"
             echo "  --help       Show this message"
             echo ""
-            echo "Default: download essential data (~2 GB)"
+            echo "Default: download the essential data (~3 GB): the default-config and tutorial"
+            echo "k-tables, stellar spectra and tracks, the PHOENIX grid of the default star"
+            echo "([Fe/H] = 0.0, [alpha/M] = 0.0) and the interior tables"
             exit 0
             ;;
         *)
@@ -885,7 +875,7 @@ phase 7 "Reference data"
 
 case "$DATA_MODE" in
     essential)
-        info "Downloading essential reference data (~2 GB)..."
+        info "Downloading essential reference data (~3 GB)..."
         # Default-config and tutorial k-tables only; the bare
         # `proteus get spectral` downloads every group (~10 GB).
         # Honeyside/48 serves the config default (src/proteus/config/_atmos_clim.py),
@@ -893,6 +883,8 @@ case "$DATA_MODE" in
         proteus get spectral -n Honeyside -b 48 2>&1 || warn "Spectral data download had issues"
         proteus get spectral -n Dayspring -b 48 2>&1 || warn "Spectral data download had issues"
         proteus get stellar 2>&1 || warn "Stellar data download had issues"
+        # The default star (src/proteus/config/_star.py) reads this PHOENIX grid (~1 GB on disk).
+        proteus get phoenix --feh +0.0 --alpha +0.0 2>&1 || warn "PHOENIX download had issues"
         # Interior lookup tables, melting curves, and the structure-solver
         # EOS tables that the default and tutorial configs require.
         proteus get interiordata 2>&1 || warn "Interior data download had issues"

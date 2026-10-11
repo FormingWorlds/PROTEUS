@@ -303,24 +303,27 @@ pre-commit install -f
 ## 10. Download reference data
 
 Download the essential reference data files (the default-config and
-tutorial k-tables, stellar spectra, and the interior tables, including
-the structure-solver EOS):
+tutorial k-tables, stellar spectra, the PHOENIX grid of the default star,
+and the interior tables, including the structure-solver EOS):
 
 ```console
 proteus get spectral -n Honeyside -b 48
 proteus get spectral -n Dayspring -b 48
 proteus get stellar
+proteus get phoenix --feh 0.0 --alpha 0.0
 proteus get interiordata
 ```
+
+The PHOENIX grid is in the essential set because the default star, which a
+config without a `[star]` section uses, takes its spectrum from it.
 
 Running `proteus get spectral` without arguments downloads every
 spectral file group (~10 GB).
 
-For additional datasets (MUSCLES spectra, PHOENIX models), use:
+For additional datasets (MUSCLES spectra, reference data), use:
 
 ```console
 proteus get muscles --all
-proteus get phoenix --feh 0.0 --alpha 0.0
 proteus get reference
 ```
 

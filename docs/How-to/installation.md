@@ -122,7 +122,7 @@ The installer runs through the following phases automatically:
 4. SOCRATES compilation and `RAD_DIR` setup
 5. AGNI and FastChem setup (Julia atmosphere model + equilibrium chemistry)
 6. Python packages (editable installs of all submodules, the SUNDIALS CVODE solver, and PROTEUS itself)
-7. Reference data downloads
+7. Reference data downloads (by default the essential set: the default-config and tutorial k-tables, stellar spectra and tracks, the PHOENIX grid of the default star, and the interior tables)
 8. Verification via `proteus doctor`
 
 The installer checks out each Python module (MORS, JANUS, CALLIOPE, ZEPHYRUS, Aragog and Zalmoxis) at the release tag that matches its minimum version in `pyproject.toml`, which leaves the clone on a detached HEAD.
@@ -153,7 +153,7 @@ phases.
 
 | Flag | Effect |
 |---|---|
-| `--all-data` | Download all reference data (~10-20 GB) instead of the essential set (~2 GB) |
+| `--all-data` | Download all reference data (~10-20 GB) instead of the essential set (~3 GB) |
 | `--no-data` | Skip data downloads entirely (download later with `proteus get`) |
 | `-i` / `--interactive` | Interactive mode (prompt for choices; default is non-interactive) |
 

@@ -723,3 +723,63 @@ class TestCloneAndInstallCalls:
             )
             assert floor.returncode == 0, floor.stderr
             assert floor.stdout.strip()[0].isdigit()
+
+
+def _essential_data_lines() -> list[str]:
+    """The lines of the ``essential)`` branch of install.sh's data-mode case, to its ``;;``."""
+    lines = INSTALL_SH.read_text().splitlines()
+    start = lines.index('    essential)')
+    end = lines.index('        ;;', start)
+    return [line.strip() for line in lines[start + 1 : end]]
+
+
+def _default_star():
+    """The star of a config that sets no ``[star]`` section."""
+    import attrs
+
+    from proteus.config._config import Config
+
+    return attrs.fields(Config).star.default.factory()
+
+
+class TestEssentialData:
+    """The essential data set holds what the default config reads."""
+
+    def test_essential_set_fetches_the_phoenix_grid_of_the_default_star(self):
+        """The essential branch downloads the PHOENIX grid at the default star's
+        [Fe/H] and [alpha/M], read from the config defaults, so a changed default
+        star fails here rather than at an offline first run."""
+        from proteus.utils.phoenix_helper import phoenix_to_grid
+
+        star = _default_star()
+        assert star.module == 'mors'
+        assert star.mors.spectrum_source == 'phoenix'
+        phoenix = [line for line in _essential_data_lines() if 'proteus get phoenix' in line]
+        assert len(phoenix) == 1
+        command, fallback = phoenix[0].split(' || ', 1)
+        assert fallback == 'warn "PHOENIX download had issues"'
+        words = shlex.split(command)
+        assert words[:3] == ['proteus', 'get', 'phoenix']
+        assert words[-1] == '2>&1'
+        feh = float(words[words.index('--feh') + 1])
+        alpha = float(words[words.index('--alpha') + 1])
+        assert (feh, alpha) == (star.mors.phoenix_FeH, star.mors.phoenix_alpha)
+        # The grid the CLI fetches is the one the default star snaps to.
+        assert phoenix_to_grid(FeH=feh, alpha=alpha) == phoenix_to_grid(
+            FeH=star.mors.phoenix_FeH, alpha=star.mors.phoenix_alpha
+        )
+
+    def test_essential_set_keeps_its_other_downloads(self):
+        """The PHOENIX line joins the 4 other downloads, each with a warn fall-back,
+        and the --all-data branch keeps its own PHOENIX line."""
+        gets = [line for line in _essential_data_lines() if line.startswith('proteus get ')]
+        assert [shlex.split(line.split(' || ')[0])[2] for line in gets] == [
+            'spectral',
+            'spectral',
+            'stellar',
+            'phoenix',
+            'interiordata',
+        ]
+        assert all(' 2>&1 || warn "' in line for line in gets)
+        content = INSTALL_SH.read_text()
+        assert content.count('proteus get phoenix ') == 2
