@@ -67,9 +67,12 @@ import click  # noqa: E402
 from proteus import Proteus  # noqa: E402
 from proteus import __version__ as proteus_version  # noqa: E402
 from proteus.config import UnknownConfigKeyError, read_config_object  # noqa: E402
-from proteus.doctor import _proteus_julia_exe  # noqa: E402
 from proteus.utils.data import download_sufficient_data  # noqa: E402
-from proteus.utils.helper import get_proteus_dir, resolve_fwl_data_dir  # noqa: E402
+from proteus.utils.helper import (  # noqa: E402
+    get_proteus_dir,
+    proteus_julia_exe,
+    resolve_fwl_data_dir,
+)
 from proteus.utils.install_env import export_install_vars, reload_instruction  # noqa: E402
 from proteus.utils.logs import bootstrap_logger, setup_logger  # noqa: E402
 
@@ -916,7 +919,7 @@ def is_julia_installed() -> bool:
         True when ``PYTHON_JULIAPKG_EXE`` names an executable file or a
         ``julia`` is on ``PATH``.
     """
-    return _proteus_julia_exe() is not None or shutil.which('julia') is not None
+    return proteus_julia_exe() is not None or shutil.which('julia') is not None
 
 
 def _env_with_proteus_julia() -> dict[str, str]:
@@ -932,7 +935,7 @@ def _env_with_proteus_julia() -> dict[str, str]:
         Environment for the setup-script subprocess.
     """
     env = os.environ.copy()
-    exe = _proteus_julia_exe()
+    exe = proteus_julia_exe()
     if exe is not None:
         julia_dir = os.path.dirname(os.path.abspath(exe))
         env['PATH'] = os.pathsep.join(p for p in (julia_dir, env.get('PATH', '')) if p)

@@ -38,6 +38,7 @@ from proteus.utils.coupler import (
     _get_socrates_version,
     get_proteus_directories,
 )
+from proteus.utils.helper import proteus_julia_exe
 
 # ─── Check result types ──────────────────────────────────────────────
 
@@ -641,21 +642,6 @@ def check_fwl_data() -> list[CheckResult]:
     return results
 
 
-def _proteus_julia_exe() -> str | None:
-    """Return the Julia binary PROTEUS uses when ``PYTHON_JULIAPKG_EXE`` names one.
-
-    Returns
-    -------
-    str or None
-        ``PYTHON_JULIAPKG_EXE`` when it points at an executable file, else None
-        (juliacall then uses the ``julia`` on ``PATH``).
-    """
-    exe = os.environ.get('PYTHON_JULIAPKG_EXE')
-    if exe and os.path.isfile(exe) and os.access(exe, os.X_OK):
-        return exe
-    return None
-
-
 # install.sh adds 1.13 beside the default Julia and points juliacall at it.
 def _julia_fix() -> str:
     """Return the advice that adds Julia 1.13 and points ``PYTHON_JULIAPKG_EXE`` at it."""
@@ -671,7 +657,7 @@ def check_julia() -> CheckResult:
     warns, because PROTEUS is tested on 1.13 and Obliqua resolves only on
     1.11 or 1.13.
     """
-    exe = _proteus_julia_exe()
+    exe = proteus_julia_exe()
     ver = _julia_version_at(exe) if exe else _julia_version()
     where = f' at {exe} (PYTHON_JULIAPKG_EXE)' if exe else ''
     if ver is None:

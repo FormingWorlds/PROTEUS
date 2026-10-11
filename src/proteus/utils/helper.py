@@ -229,6 +229,21 @@ def get_proteus_dir():
     return root
 
 
+def proteus_julia_exe() -> str | None:
+    """Return the Julia binary PROTEUS uses when ``PYTHON_JULIAPKG_EXE`` names one.
+
+    Returns
+    -------
+    str or None
+        ``PYTHON_JULIAPKG_EXE`` when it points at an executable file, else None
+        (juliacall then uses the ``julia`` on ``PATH``).
+    """
+    exe = os.environ.get('PYTHON_JULIAPKG_EXE')
+    if exe and os.path.isfile(exe) and os.access(exe, os.X_OK):
+        return exe
+    return None
+
+
 def snapshot_path_for_time(data_dir: str, time: float, suffix: str) -> str:
     """Return the snapshot path for a time, preferring the sub-year name.
 
