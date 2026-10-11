@@ -825,3 +825,68 @@ def test_selector_value_converter_contract(raw, expected, kind):
         assert value == pytest.approx(expected, rel=0)
     else:
         assert value == expected
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('accretion', 'core_bc', 'stratified', 'refused'),
+    [
+        ('morrigan', 'core_module', True, True),
+        ('timeline', 'core_module', True, True),
+        (None, 'core_module', True, False),
+        ('morrigan', 'core_module', False, False),
+        ('morrigan', 'energy_balance', True, False),
+    ],
+)
+def test_accretion_with_a_stratified_core_is_refused_at_config_load(
+    accretion, core_bc, stratified, refused
+):
+    """An impact books the core lift from the full-core heat content, which a stratified
+    core_module core does not evolve, so accretion with core stratification is refused;
+    either alone, or stratification on another core boundary, passes."""
+    from types import SimpleNamespace
+
+    from proteus.config._config import check_accretion_core_stratification_compatibility
+
+    instance = SimpleNamespace(
+        accretion=SimpleNamespace(module=accretion),
+        interior_energetics=SimpleNamespace(
+            module='aragog',
+            aragog=SimpleNamespace(
+                core_bc=core_bc, core_module=SimpleNamespace(stratification=stratified)
+            ),
+        ),
+    )
+    if refused:
+        with pytest.raises(ValueError, match='stratification = true'):
+            check_accretion_core_stratification_compatibility(instance, None, None)
+    else:
+        assert check_accretion_core_stratification_compatibility(instance, None, None) is None
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('stratification', [True, False])
+def test_a_stratified_core_with_accretion_is_refused_when_the_config_is_built(stratification):
+    """Building a configuration with accretion and a stratified core_module core runs the
+    guard and fails; the same configuration without stratification builds."""
+    import attrs
+    from helpers import PROTEUS_ROOT
+
+    from proteus.config import read_config_object
+
+    cfg = read_config_object(PROTEUS_ROOT / 'input' / 'all_options.toml')
+    aragog = cfg.interior_energetics.aragog
+    core = attrs.evolve(aragog.core_module, stratification=stratification)
+    interior = attrs.evolve(
+        cfg.interior_energetics,
+        module='aragog',
+        aragog=attrs.evolve(aragog, core_bc='core_module', core_module=core),
+    )
+    accretion = attrs.evolve(cfg.accretion, module='dummy')
+    if stratification:
+        with pytest.raises(ValueError, match='stratification = true'):
+            attrs.evolve(cfg, interior_energetics=interior, accretion=accretion)
+    else:
+        built = attrs.evolve(cfg, interior_energetics=interior, accretion=accretion)
+        assert built.interior_energetics.aragog.core_bc == 'core_module'
+        assert built.accretion.module == 'dummy'
