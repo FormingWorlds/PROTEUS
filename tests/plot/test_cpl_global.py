@@ -183,24 +183,7 @@ def test_plot_global_writes_linear_axes_figure(monkeypatch, tmp_path):
     assert log_calls == []
 
 
-# A dark style; 0x44 / 0xFF of the way from its text colour (224) to its face colour (32).
-DARK_STYLE = {'text.color': '#e0e0e0', 'axes.facecolor': '#202020'}
-DARK_STYLE_DARK_GREY = (172.8 / 255,) * 3
-
-_STYLES = pytest.mark.parametrize(
-    'rc, text, face, dark_grey',
-    [
-        ({}, 'black', 'white', '#444444'),
-        (DARK_STYLE, '#e0e0e0', '#202020', DARK_STYLE_DARK_GREY),
-    ],
-    ids=['default_style', 'dark_style'],
-)
-
-
-@_STYLES
-def test_plot_global_takes_its_neutral_colours_from_the_style(
-    draw_real, tmp_path, rc, text, face, dark_grey
-):
+def test_plot_global_takes_its_neutral_colours_from_the_style(draw_real, tmp_path, style):
     """On real axes the total pressure line has the text colour of the style, the
     net atmosphere flux, surface temperature and melt fraction curves its dark
     grey, and the 6 panel labels a box in its axes face colour: black, '#444444'
@@ -209,18 +192,20 @@ def test_plot_global_takes_its_neutral_colours_from_the_style(
     config = _make_config()
     config.interior_struct.core_frac = 0.325
 
-    (fig,) = draw_real(global_mod.plot_global, _full_helpfile(), str(tmp_path), config, rc=rc)
+    (fig,) = draw_real(
+        global_mod.plot_global, _full_helpfile(), str(tmp_path), config, rc=style.rc
+    )
 
     panel = {ax.texts[0].get_text()[:3]: ax for ax in fig.axes}
     assert sorted(panel) == ['(a)', '(b)', '(c)', '(d)', '(e)', '(f)']
     line = {ln.get_label(): ln for ax in fig.axes for ln in ax.lines}
-    assert to_rgb(line['Total'].get_color()) == pytest.approx(to_rgb(text))
+    assert to_rgb(line['Total'].get_color()) == pytest.approx(to_rgb(style.text))
     curves = [line['Net (atm.)'], line['Melt fraction'], panel['(c)'].lines[1]]
     for curve in curves:
-        assert to_rgb(curve.get_color()) == pytest.approx(to_rgb(dark_grey))
+        assert to_rgb(curve.get_color()) == pytest.approx(to_rgb(style.dark_grey))
     for ax in fig.axes:
         box = ax.texts[0].get_bbox_patch()
-        assert box.get_facecolor() == pytest.approx(to_rgba(face, 0.5))
-        assert box.get_edgecolor() == pytest.approx(to_rgba(face, 0.5))
+        assert box.get_facecolor() == pytest.approx(to_rgba(style.face, 0.5))
+        assert box.get_edgecolor() == pytest.approx(to_rgba(style.face, 0.5))
     # Module and species colours do not follow the style.
     assert to_rgb(panel['(c)'].lines[0].get_color()) == pytest.approx(to_rgb('#ff7f0e'))

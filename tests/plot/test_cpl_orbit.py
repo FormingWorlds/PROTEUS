@@ -894,42 +894,27 @@ def test_plot_orbit_entry_dispatches_to_plot_lovenumber_for_obliqua(monkeypatch,
     assert captured['data'][2] == [1000, 2000]
 
 
-# A dark style; 0x80 / 0xFF of the way from its text colour (224) to its face colour (32).
-DARK_STYLE = {'text.color': '#e0e0e0', 'axes.facecolor': '#202020'}
-DARK_STYLE_MID_GREY = ((224 - 192 * 0x80 / 0xFF) / 255,) * 3
-
-_STYLES = pytest.mark.parametrize(
-    'rc, text, mid_grey',
-    [
-        ({}, 'black', 'grey'),
-        (DARK_STYLE, '#e0e0e0', DARK_STYLE_MID_GREY),
-    ],
-    ids=['default_style', 'dark_style'],
-)
-
-
-@_STYLES
-def test_the_orbit_plots_take_their_neutral_colours_from_the_style(
-    draw_real, tmp_path, rc, text, mid_grey
-):
+def test_the_orbit_plots_take_their_neutral_colours_from_the_style(draw_real, tmp_path, style):
     """On real axes the note of an absent satellite and the Love-number
     trajectories have the mid grey of the style, and the satellite semi-major
     axis of the evection plot its text colour: 'grey' and black by default."""
     (tmp_path / 'plots').mkdir()
     out = str(tmp_path)
 
-    (fig,) = draw_real(orbit_mod.plot_orbit, _make_hf_all(), out, False, 'png', rc=rc)
+    (fig,) = draw_real(orbit_mod.plot_orbit, _make_hf_all(), out, False, 'png', rc=style.rc)
     notes = [t for ax in fig.axes for t in ax.texts if t.get_text() == 'No Satellite Data']
     assert len(notes) == 3
     for note in notes:
-        assert to_rgb(note.get_color()) == pytest.approx(to_rgb(mid_grey))
+        assert to_rgb(note.get_color()) == pytest.approx(to_rgb(style.mid_grey))
 
-    (fig,) = draw_real(orbit_mod.plot_evection, _make_evection_hf_all(), out, 'png', rc=rc)
+    (fig,) = draw_real(
+        orbit_mod.plot_evection, _make_evection_hf_all(), out, 'png', rc=style.rc
+    )
     line = {ln.get_label(): ln for ln in fig.axes[0].lines}
-    assert to_rgb(line["a' (satellite)"].get_color()) == pytest.approx(to_rgb(text))
+    assert to_rgb(line["a' (satellite)"].get_color()) == pytest.approx(to_rgb(style.text))
     assert to_rgb(line["a'_res (evection)"].get_color()) == pytest.approx(to_rgb('#a8c6e8'))
 
     data = [_make_lovenumber_ds(1e-2, 2e-3), _make_lovenumber_ds(1.5e-2, 3e-3)]
-    (fig,) = draw_real(orbit_mod.plot_lovenumber, out, [1000, 2000], data, 'png', rc=rc)
+    (fig,) = draw_real(orbit_mod.plot_lovenumber, out, [1000, 2000], data, 'png', rc=style.rc)
     for ax in fig.axes[:2]:
-        assert to_rgb(ax.lines[0].get_color()) == pytest.approx(to_rgb(mid_grey))
+        assert to_rgb(ax.lines[0].get_color()) == pytest.approx(to_rgb(style.mid_grey))

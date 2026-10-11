@@ -139,23 +139,8 @@ def test_plot_fluxes_global_entry_forwards_handler_attributes(monkeypatch, tmp_p
     assert captured['rows'] == 5
 
 
-# A dark style; 0x44 / 0xFF of the way from its text colour (224) to its face colour (32).
-DARK_STYLE = {'text.color': '#e0e0e0', 'axes.facecolor': '#202020'}
-DARK_STYLE_DARK_GREY = (172.8 / 255,) * 3
-
-_STYLES = pytest.mark.parametrize(
-    'rc, text, face, dark_grey',
-    [
-        ({}, 'black', 'white', '#444444'),
-        (DARK_STYLE, '#e0e0e0', '#202020', DARK_STYLE_DARK_GREY),
-    ],
-    ids=['default_style', 'dark_style'],
-)
-
-
-@_STYLES
 def test_plot_fluxes_global_takes_its_neutral_colours_from_the_style(
-    draw_real, tmp_path, rc, text, face, dark_grey
+    draw_real, tmp_path, style
 ):
     """On real axes the runaway limit line and the grid have the text colour of
     the style, the net atmosphere flux its dark grey, and the legend frame its
@@ -167,13 +152,15 @@ def test_plot_fluxes_global_takes_its_neutral_colours_from_the_style(
         _make_hf_all(),
         str(tmp_path),
         config=_make_config(),
-        rc=rc,
+        rc=style.rc,
     )
 
     (ax,) = fig.axes
     line = {ln.get_label(): ln for ln in ax.lines}
-    assert to_rgb(line['S-N limit'].get_color()) == pytest.approx(to_rgb(text))
-    assert to_rgb(line['Net (atm.)'].get_color()) == pytest.approx(to_rgb(dark_grey))
-    assert to_rgb(ax.xaxis.get_gridlines()[0].get_color()) == pytest.approx(to_rgb(text))
-    assert ax.get_legend().get_frame().get_facecolor() == pytest.approx(to_rgba(face, 0.99))
+    assert to_rgb(line['S-N limit'].get_color()) == pytest.approx(to_rgb(style.text))
+    assert to_rgb(line['Net (atm.)'].get_color()) == pytest.approx(to_rgb(style.dark_grey))
+    assert to_rgb(ax.xaxis.get_gridlines()[0].get_color()) == pytest.approx(to_rgb(style.text))
+    assert ax.get_legend().get_frame().get_facecolor() == pytest.approx(
+        to_rgba(style.face, 0.99)
+    )
     assert to_rgb(line['Net (int.)'].get_color()) == pytest.approx(to_rgb('#ff7f0e'))
