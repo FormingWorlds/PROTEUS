@@ -42,11 +42,9 @@ from proteus.utils.logs import (
     setup_logger,
 )
 
-# Opt-in per-iter module wall-time breakdown. Emits one `[IT_TIMING]` log
-# line per main-loop iter with wall-time shares per module. Enable by
-# exporting `PROTEUS_TIMING=1` before launching `proteus start`.
-# Overhead when disabled: one os.environ lookup at import time, nothing
-# in the loop body.
+# Opt-in wall-time breakdown under `PROTEUS_TIMING=1`: one `[IT_TIMING]` log line per
+# main-loop iter and one `[INIT_TIMING]` line for the init steps before the loop.
+# Overhead when disabled: one os.environ lookup at import time, nothing in the loop body.
 _IT_TIMING_ENABLED = os.environ.get('PROTEUS_TIMING', '').lower() in ('1', 'true', 'yes', 'on')
 
 # Consecutive iterations without a converged atmosphere after which a run ends,
@@ -558,6 +556,9 @@ class Proteus:
         offline : bool
             Run in offline mode; do not try to connect to the internet.
         """
+        # Init wall time per step, logged as one [INIT_TIMING] line under PROTEUS_TIMING
+        _t_start = time.perf_counter()
+        _t_init = {}
 
         # Anchor solves memoised by an earlier run in this process do not carry over.
         zalmoxis_module = sys.modules.get('proteus.interior_struct.zalmoxis')
@@ -737,7 +738,9 @@ class Proteus:
         self.lockfile = CreateLockFile(self.directories['output'])
 
         # Download basic data
+        _t0 = time.perf_counter()
         download_sufficient_data(self.config)
+        _t_init['data'] = time.perf_counter() - _t0
 
         # Initialise interior object
         if self.config.interior_energetics.module == 'spider':
@@ -806,6 +809,7 @@ class Proteus:
                 )
 
             # Solve interior structure
+            _t0 = time.perf_counter()
             solve_structure(
                 self.directories,
                 self.config,
@@ -813,6 +817,7 @@ class Proteus:
                 self.hf_row,
                 self.directories['output'],
             )
+            _t_init['structure'] = time.perf_counter() - _t0
 
             # Initialize structure-update sentinels so the first dynamic
             # update uses the post-init state as its baseline
@@ -872,12 +877,14 @@ class Proteus:
             ):
                 from proteus.interior_energetics.wrapper import equilibrate_initial_state
 
+                _t0 = time.perf_counter()
                 equilibrate_initial_state(
                     self.directories,
                     self.config,
                     self.hf_row,
                     self.directories['output'],
                 )
+                _t_init['equilibrate'] = time.perf_counter() - _t0
                 # Update sentinels with post-equilibration state
                 self.last_struct_Tmagma = self.hf_row.get('T_magma', np.inf)
                 self.last_struct_Phi = self.hf_row.get('Phi_global', np.inf)
@@ -1087,10 +1094,14 @@ class Proteus:
         log.info(' ')
 
         # Prepare star stuff
+        _t0 = time.perf_counter()
         init_star(self)
+        _t_init['stellar'] = time.perf_counter() - _t0
 
         # Prepare orbit stuff
+        _t0 = time.perf_counter()
         init_orbit(self)
+        _t_init['orbit'] = time.perf_counter() - _t0
 
         # Prepare the giant-impact timeline. Fixed at initialisation and
         # consulted on every step, like the stellar evolution track.
@@ -1134,6 +1145,12 @@ class Proteus:
         # Collects the index of the snapshots that already underwent a VULCAN calculation to avoid repeating:
         vulcan_completed_loops = set()
         UpdateStatusfile(self.directories, 1)
+        if _IT_TIMING_ENABLED:
+            _init_wall = time.perf_counter() - _t_start
+            _t_init['other'] = max(0.0, _init_wall - sum(_t_init.values()))
+            _t_init['total'] = _init_wall
+            _initstr = ' '.join(f'{k}={v:.3f}' for k, v in _t_init.items())
+            log.info('[INIT_TIMING] %s', _initstr)
         while not self.finished_both:
             # Determine whether this iteration is a data-write snapshot.
             # Conditions that are individually sufficient:

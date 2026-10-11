@@ -3061,6 +3061,33 @@ def test_it_timing_records_orbit_module_wall_time(tmp_path, monkeypatch, caplog)
     assert any('escape=' in msg for msg in timing_records)
 
 
+def test_timing_lines_keep_the_format_proteus_bench_parses(tmp_path, monkeypatch, caplog):
+    """Under ``PROTEUS_TIMING`` the run logs one ``[INIT_TIMING]`` line before the first
+    ``[IT_TIMING]`` line, both as space-separated ``key=<seconds, 3 decimals>`` fields
+    ending in ``other`` and ``total``. proteus-bench reads these lines to time a run, so
+    a change of format breaks it. In each line the steps plus ``other`` add up to ``total``.
+    """
+    import logging
+    import re
+
+    monkeypatch.setattr('proteus.proteus._IT_TIMING_ENABLED', True)
+    p = _make_main_loop_proteus(tmp_path, plot_mod=1, write_mod=1, dt_write_rel=0.0)
+    with caplog.at_level(logging.INFO, logger='fwl.proteus.proteus'):
+        _run_main_loop_capturing_plots(p, stop_at_loop=4)
+
+    timing = [r.message for r in caplog.records if r.message.startswith(('[INIT_', '[IT_'))]
+    assert timing[0].startswith('[INIT_TIMING] ')
+    assert sum(m.startswith('[INIT_TIMING]') for m in timing) == 1
+    assert len(timing) > 1
+    line = re.compile(r'(\[INIT_TIMING\]|\[IT_TIMING\] iter=\d+)( \w+=\d+\.\d{3})+')
+    for message in timing:
+        assert line.fullmatch(message), message
+        fields = dict(f.split('=') for f in message.split('] ')[1].split() if '=' in f)
+        assert list(fields)[-2:] == ['other', 'total'], message
+        steps = sum(float(v) for k, v in fields.items() if k not in ('iter', 'total'))
+        assert steps == pytest.approx(float(fields['total']), abs=0.01), message
+
+
 # =======================================================================================
 # SECTION: mass conservation across a multi-iteration run
 # =======================================================================================
