@@ -279,10 +279,11 @@ def test_committed_page_and_json_are_current(matrix):
 
 
 def test_structure_modules_write_only_declared_keys():
-    """Each literal key a structure module writes into ``hf_row`` is a helpfile
-    column or an allowlisted non-schema key, unless it is private, and the scan
-    resolves every structure write. Each allowlisted key has a writer and is no
-    column. An undeclared key would make ``ExtendHelpfile`` warn on every row."""
+    """Each literal ``hf_row[...]`` key written under ``interior_struct/`` is a
+    helpfile column or an allowlisted non-schema key, unless it is private, and
+    the scan reports no unresolved ``hf_row`` write there. Each allowlisted key
+    has a writer and is no column. An undeclared key would make
+    ``ExtendHelpfile`` warn on every row."""
     coupler = importlib.import_module('proteus.utils.coupler')
     scan = _scan.scan_tree()
     allowed, schema = coupler._ALLOWED_NON_SCHEMA_KEYS, set(coupler.GetHelpfileKeys())
