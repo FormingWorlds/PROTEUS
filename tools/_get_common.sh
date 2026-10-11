@@ -1,38 +1,6 @@
 # shellcheck shell=bash
-#
-# Shared shell helpers for the tools/get_*.sh module install scripts.
-#
-# This file is sourced, never executed. Source it near the top of a get_*
-# script, before the first helper call:
-#
-#     source "$(dirname "${BASH_SOURCE[0]}")/_get_common.sh" || exit 1
-#
-# Every caller runs a get_* script by path (docs, install.sh, the CI setup
-# action, and proteus install-all through src/proteus/utils/data.py), so
-# ${BASH_SOURCE[0]} locates this file without needing a resolved path
-# first, which is what makes that line safe to run before portable_realpath
-# exists. bash reports a missing file itself, but half the get_* scripts
-# set no -e and would carry on with every helper undefined and
-# proteus_root empty, which puts the work path at the filesystem root:
-# `rm -rf "/aragog/"`. Hence `|| exit 1`.
-#
-# The helpers target bash 3.2, the version macOS ships, and behave the same
-# whether or not the sourcing script enables `set -euo pipefail`. Two of
-# them exit the script on failure (guard_dirty_checkout, resolve_module_pin)
-# and so must be called as plain commands: inside a command substitution
-# the exit would only leave the subshell.
-#
-# Sourcing this file sets:
-#   proteus_tools_dir   absolute path of the tools/ directory
-#   proteus_root        absolute path of the PROTEUS checkout root
-#
-# and defines:
-#   portable_realpath     resolve a path, whether or not it exists yet
-#   get_parse_args        split --force from an optional install path
-#   guard_dirty_checkout  refuse to delete a checkout holding local work
-#   github_use_ssh        report whether GitHub accepts an SSH key
-#   github_ssh_url        rewrite an https GitHub URL for SSH transport
-#   resolve_module_pin    read a module's pinned clone URL and ref
+# Shared helpers for the tools/get_*.sh scripts, for bash 3.2 and later. Source this file near
+# the top of a script with `|| exit 1`; it sets proteus_tools_dir and proteus_root.
 
 # Resolve a path to an absolute one, with symlinks and .. expanded.
 #
@@ -169,6 +137,23 @@ resolve_module_pin() {
         echo "ERROR: could not resolve $module url/ref from pyproject.toml" >&2
         exit 1
     fi
+}
+
+# Usage: checkout_floor_tag <distribution> <checkout-dir>. Checks out the one tag whose
+# version equals the distribution's floor in pyproject.toml (detached HEAD) and prints it.
+# Exits 1, with the cause on stderr, when that fails, so call it as a plain command.
+checkout_floor_tag() {
+    local dist="$1" dir="$2" tag commit
+    if ! tag=$(git -C "$dir" tag -l | python "$proteus_tools_dir/_module_pins.py" "$dist" floor-tag); then
+        echo "ERROR: no release tag in $dir matches the $dist floor in pyproject.toml" >&2
+        exit 1
+    fi
+    if ! git -C "$dir" checkout --quiet "tags/$tag"; then
+        echo "ERROR: cannot check out tag $tag of $dist in $dir" >&2
+        exit 1
+    fi
+    commit=$(git -C "$dir" rev-parse --short HEAD)
+    echo "$dist: checked out release tag $tag at $commit"
 }
 
 # Download <dest> from the first of the urls that serves a file with the given

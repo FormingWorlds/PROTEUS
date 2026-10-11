@@ -1,19 +1,7 @@
 #!/bin/bash
-# Download and setup Zalmoxis as an editable sibling checkout.
-#
-# Clones FormingWorlds/Zalmoxis into ./Zalmoxis/ inside the PROTEUS root
-# and installs it editable into the active Python environment. The
-# editable install takes precedence over the PyPI fwl-zalmoxis pin on
-# sys.path, so any local edits to Zalmoxis/src/ are picked up by
-# `import zalmoxis` without reinstalling.
-#
-# Checkout target: if PROTEUS is on a feature branch that Zalmoxis also
-# has, the matching Zalmoxis branch is installed so the paired code is
-# exercised together; otherwise the checkout is pinned to the
-# fwl-zalmoxis version floor declared in pyproject.toml. The default
-# branch (main) and a detached HEAD always take the floor tag. To develop
-# against the latest Zalmoxis, run `git checkout main` inside ./Zalmoxis
-# and reinstall.
+# Clone Zalmoxis into ./Zalmoxis/ and install it editable. The checkout is the Zalmoxis branch of the
+# same name when PROTEUS is on a feature branch that Zalmoxis also has, and otherwise the release
+# tag whose version equals the fwl-zalmoxis floor in pyproject.toml. --force discards local work.
 
 echo "Set up Zalmoxis..."
 
@@ -76,13 +64,7 @@ if [ -n "$match_branch" ]; then
     git checkout "$match_branch" || { echo "ERROR: cannot checkout Zalmoxis branch $match_branch" >&2; exit 1; }
     echo "PROTEUS is on branch '$proteus_branch'; installed paired Zalmoxis branch at $(git rev-parse --short HEAD)"
 else
-    floor=$(grep -oE 'fwl-zalmoxis>=[0-9][0-9.]*' "$root/pyproject.toml" | head -1 | sed 's/.*>=//')
-    if [ -n "$floor" ]; then
-        echo "Pinning to fwl-zalmoxis floor: $floor"
-        git checkout "tags/$floor" || { echo "ERROR: cannot checkout tag $floor" >&2; exit 1; }
-    else
-        echo "WARNING: could not read fwl-zalmoxis floor from pyproject.toml; using HEAD" >&2
-    fi
+    checkout_floor_tag fwl-zalmoxis "$workpath"
 fi
 
 # Install zalmoxis package as editable

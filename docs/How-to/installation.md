@@ -125,6 +125,16 @@ The installer runs through the following phases automatically:
 7. Reference data downloads
 8. Verification via `proteus doctor`
 
+The installer checks out each Python module (MORS, JANUS, CALLIOPE, ZEPHYRUS, Aragog and Zalmoxis) at the release tag that matches its minimum version in `pyproject.toml`, which leaves the clone on a detached HEAD.
+
+!!! note "Developing a module"
+    To develop a module, switch its clone to a branch and install it again, for example:
+
+    ```console
+    git -C MORS switch main
+    pip install -e MORS/.
+    ```
+
 Each phase is idempotent: if the installer fails partway through, fix the
 reported issue and re-run `bash install.sh`. It will skip already-completed
 phases.

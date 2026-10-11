@@ -1,18 +1,7 @@
 #!/bin/bash
-# Download and setup Aragog as an editable sibling checkout.
-#
-# Clones FormingWorlds/aragog into ./aragog/ inside the PROTEUS root and
-# installs it editable into the active Python environment. The editable
-# install takes precedence over the PyPI fwl-aragog pin on sys.path, so
-# any local edits to aragog/src/ are picked up by `import aragog` without
-# reinstalling.
-#
-# Checkout target: if PROTEUS is on a feature branch that aragog also has,
-# the matching aragog branch is installed so the paired code is exercised
-# together; otherwise the checkout is pinned to the fwl-aragog version floor
-# declared in pyproject.toml. The default branch (main) and a detached HEAD
-# always take the floor tag. To develop against the latest aragog, run
-# `git checkout main` inside ./aragog and reinstall.
+# Clone Aragog into ./aragog/ and install it editable. The checkout is the Aragog branch of the
+# same name when PROTEUS is on a feature branch that Aragog also has, and otherwise the release
+# tag whose version equals the fwl-aragog floor in pyproject.toml. --force discards local work.
 
 echo "Set up Aragog..."
 
@@ -75,13 +64,7 @@ if [ -n "$match_branch" ]; then
     git checkout "$match_branch" || { echo "ERROR: cannot checkout aragog branch $match_branch" >&2; exit 1; }
     echo "PROTEUS is on branch '$proteus_branch'; installed paired aragog branch at $(git rev-parse --short HEAD)"
 else
-    floor=$(grep -oE 'fwl-aragog>=[0-9][0-9.]*' "$root/pyproject.toml" | head -1 | sed 's/.*>=//')
-    if [ -n "$floor" ]; then
-        echo "Pinning to fwl-aragog floor: $floor"
-        git checkout "tags/$floor" || { echo "ERROR: cannot checkout tag $floor" >&2; exit 1; }
-    else
-        echo "WARNING: could not read fwl-aragog floor from pyproject.toml; using HEAD" >&2
-    fi
+    checkout_floor_tag fwl-aragog "$workpath"
 fi
 
 # Install aragog package as editable
