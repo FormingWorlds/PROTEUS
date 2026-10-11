@@ -280,18 +280,22 @@ def test_committed_page_and_json_are_current(matrix):
 
 def test_structure_modules_write_only_declared_keys():
     """Each literal key a structure module writes into ``hf_row`` is a helpfile
-    column, an allowlisted non-schema key, or private. An undeclared key would
-    make ``ExtendHelpfile`` warn on every row that follows a structure solve."""
+    column or an allowlisted non-schema key, unless it is private, and the scan
+    resolves every structure write. Each allowlisted key has a writer and is no
+    column. An undeclared key would make ``ExtendHelpfile`` warn on every row."""
     coupler = importlib.import_module('proteus.utils.coupler')
+    scan = _scan.scan_tree()
+    allowed, schema = coupler._ALLOWED_NON_SCHEMA_KEYS, set(coupler.GetHelpfileKeys())
     written = {
         key
-        for rel, _func, key in _scan.scan_tree()['writes']
-        if rel.startswith('interior_struct/')
+        for rel, _func, key in scan['writes']
+        if rel.startswith('interior_struct/') and not key.startswith('_')
     }
-    # The scan must see the writers, else the check below passes on nothing.
-    assert {'M_int', 'M_int_target', 'core_state_initial'} <= written
-    declared = set(coupler.GetHelpfileKeys()) | coupler._ALLOWED_NON_SCHEMA_KEYS
-    assert sorted(k for k in written if not k.startswith('_') and k not in declared) == []
+    assert 'M_int' in written  # the scan sees the structure writers
+    assert sorted(written - schema - allowed) == []
+    assert [u for u in scan['unresolved'] if u[0].startswith('interior_struct/')] == []
+    assert allowed <= {key for _rel, _func, key in scan['writes']}
+    assert not allowed & schema
 
 
 def test_declared_scan_tables_are_all_live(monkeypatch):

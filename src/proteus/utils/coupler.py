@@ -1313,9 +1313,7 @@ _ALLOWED_NON_SCHEMA_KEYS = frozenset(
     {
         'core_state_initial',  # string: 'liquid'/'mixed'/'solid'
         'M_int_target',  # mass target of the latest structure solve [kg]
-        # User oxygen budget [kg] for check_ic_oxygen_budget, which resets it to
-        # -1.0 on the first outgassing call.
-        'O_kg_user_ic',
+        'O_kg_user_ic',  # user oxygen budget [kg]; check_ic_oxygen_budget sets it to -1.0
     }
 )
 
