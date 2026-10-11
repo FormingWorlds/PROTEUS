@@ -293,7 +293,8 @@ def test_structure_modules_write_only_declared_keys():
     }
     assert 'M_int' in written  # the scan sees the structure writers
     assert sorted(written - schema - allowed) == []
-    assert [u for u in scan['unresolved'] if u[0].startswith('interior_struct/')] == []
+    unresolved_writes = [u for u in scan['unresolved'] if u[3] == 'write']
+    assert [u for u in unresolved_writes if u[0].startswith('interior_struct/')] == []
     assert allowed <= {key for _rel, _func, key in scan['writes']}
     assert not allowed & schema
 
