@@ -4661,14 +4661,17 @@ def test_core_module_resumed_solver_matches_continuous_frozen_profile(tmp_path):
 
 
 class _MeshCarrier:
-    """A stand-in on one mesh that runs Aragog's own ``reset``, with its capture of
-    the earlier state, its work formula and its mass-parcel carry.
+    """A stand-in on one mesh that runs Aragog's own ``reset`` and
+    ``set_initial_entropy``, with the capture of the earlier state, the work
+    formula and the mass-parcel carry.
 
     Its enthalpy ``h = T0 * S + P / rho0 + c * S * P`` [J/kg] has a pressure part
     that depends on the entropy, so a work taken at another entropy differs.
     """
 
     reset = EntropySolver.reset
+    set_initial_entropy = EntropySolver.set_initial_entropy
+    _resolve_dSdr_cmb_init = EntropySolver._resolve_dSdr_cmb_init
     entropy_staggered = EntropySolver.entropy_staggered
     staggered_mass_coordinates = EntropySolver.staggered_mass_coordinates
     _snapshot_for_compression = EntropySolver._snapshot_for_compression
@@ -4682,6 +4685,8 @@ class _MeshCarrier:
     def __init__(self, S, dSdr_cmb):
         self._n_stag = len(S)
         self._S0 = np.array([*S, dSdr_cmb], dtype=float)
+        self._dSdr_cmb_init = dSdr_cmb  # the override a resume sets from its snapshot
+        self.seen_solution = None
         self.entropy_eos = SimpleNamespace(
             specific_enthalpy=lambda P, S: 3000.0 * S + P / 4500.0 + 2.0e-8 * S * P
         )
@@ -4699,6 +4704,7 @@ class _MeshCarrier:
 
     def _initialize_internals(self):
         """What the reset does between its capture and its work: build the next mesh."""
+        self.seen_solution = self._solution
         self.put_on(*self.next_mesh)
 
 
@@ -4709,8 +4715,8 @@ _XI_OLD, _XI_NEW = [1.0, 2.0, 3.0], [1.0, 2.5, 3.0]
 
 
 def _replay_on_carrier(P_new, *, with_replay=True):
-    """Move a carrier from the earlier mesh to ``P_new`` with Aragog's reset, through
-    the replay or through the bare update; return the carrier and what the update saw."""
+    """Move a carrier from the earlier mesh to ``P_new`` through the real structure
+    update, with the replay around it or without; return the carrier."""
     from proteus.interior_energetics.aragog import AragogRunner
 
     solver = _MeshCarrier(_S_SNAP, dSdr_cmb=-6.2e-9)
@@ -4718,19 +4724,19 @@ def _replay_on_carrier(P_new, *, with_replay=True):
     solver.put_on(_P_OLD, density, np.array(_MASS_OLD) / density, _XI_OLD)
     # The next mesh holds 0.88 of the earlier cell mass and another mass grid.
     solver.next_mesh = (P_new, 1.1 * density, 0.8 * np.array(_MASS_OLD) / density, _XI_NEW)
-    interior_o = SimpleNamespace(aragog_solver=solver)
-    seen = {}
-
-    def _reset_onto_the_row(config, hf_row, interior_o, dt):
-        seen['solution'] = solver._solution
-        solver.reset()
-
-    with patch.object(AragogRunner, '_apply_structure_update', side_effect=_reset_onto_the_row):
-        if with_replay:
-            AragogRunner._replay_structure_update(MagicMock(), {'Time': 322.0}, interior_o, 1.0)
-        else:
-            AragogRunner._apply_structure_update(MagicMock(), {'Time': 322.0}, interior_o, 1.0)
-    return solver, seen
+    interior_o = SimpleNamespace(aragog_solver=solver, ic=2, _last_entropy=np.array(_S_SNAP))
+    config = MagicMock()
+    config.interior_energetics.aragog.core_bc = 'energy_balance'
+    update = AragogRunner._replay_structure_update
+    if not with_replay:
+        update = AragogRunner._apply_structure_update
+    with (
+        patch.object(AragogRunner, 'update_structure'),
+        patch.object(AragogRunner, 'update_solver'),
+        patch.object(AragogRunner, '_refresh_entropy_eos'),
+    ):
+        update(config, {'Time': 322.0}, interior_o, 1.0)
+    return solver
 
 
 @pytest.mark.unit
@@ -4749,24 +4755,25 @@ def test_replay_books_the_compression_work_of_the_pending_update(P_new, sign):
     ``sum(mass * (h(P_new, S) - h(P_old, S)))`` at the snapshot entropy and the
     cell mass of the earlier mesh: positive for a contraction, zero for an
     unchanged mesh, negative for an expansion."""
-    solver, seen = _replay_on_carrier(P_new)
+    solver = _replay_on_carrier(P_new)
 
     dP = np.array(P_new) - np.array(_P_OLD)
     mass, S = np.array(_MASS_OLD), np.array(_S_SNAP)
     expected = float(np.sum(mass * dP * (1.0 / 4500.0 + 2.0e-8 * S)))
     assert solver._last_compression_J == pytest.approx(expected, rel=1e-12, abs=1e15)
     assert np.sign(solver._last_compression_J) == sign
-    # The update saw the snapshot state as a solution at the time of the row;
+    # The reset saw the snapshot state as a solution at the time of the row;
     # afterwards the solver has none again.
-    assert seen['solution'].y[:, 0] == pytest.approx([*_S_SNAP, -6.2e-9])
-    assert seen['solution'].t == pytest.approx([322.0])
+    assert solver.seen_solution.y[:, 0] == pytest.approx([*_S_SNAP, -6.2e-9])
+    assert solver.seen_solution.t == pytest.approx([322.0])
     assert solver._solution is None
-    # The reset ran on the earlier mesh, so the entropy goes to the new mass grid by
-    # parcel, linear in the enclosed mass (the cube of the mass radius): the middle
-    # node moves from 2.0 to 2.5, so 7300 - 100 * (2.5**3 - 2**3) / (3**3 - 2**3).
-    carried = solver._remap_entropy_to_current_mesh(np.array(_S_SNAP))
+    # The update handed the entropy over on the new mass grid by parcel, linear in the
+    # mass fraction between the end nodes, which both grids share: the middle node
+    # moves from 2.0 to 2.5, so 7300 - 100 * (2.5**3 - 2**3) / (3**3 - 2**3).
+    carried = solver._S0[:3]
     assert carried == pytest.approx([7400.0, 7300.0 - 100.0 * 7.625 / 19.0, 7200.0])
     assert abs(carried[1] - 7300.0) > 30.0  # by node the entropy would stay 7300
+    assert solver._S0[3] == pytest.approx(-6.2e-9)  # the snapshot CMB gradient
     if sign:
         # Discrimination: at zero entropy the work is 40 % smaller, and with the cell
         # mass of the new mesh (1.1 * 0.8 of the earlier one) it is 12 % smaller.
@@ -4784,10 +4791,12 @@ def test_without_the_replay_a_new_solver_books_no_compression_work():
     from proteus.interior_energetics.aragog import AragogRunner
 
     P_new = [135.0e9, 66.0e9, 10.5e9]
-    bare, _ = _replay_on_carrier(P_new, with_replay=False)
-    replayed, _ = _replay_on_carrier(P_new)
+    bare = _replay_on_carrier(P_new, with_replay=False)
+    replayed = _replay_on_carrier(P_new)
     assert bare._last_compression_J == pytest.approx(0.0, abs=1e-30)
     assert 1.0e30 < replayed._last_compression_J < 2.0e30
+    # The carry by parcel needs the earlier mesh only, so both hand over the same entropy.
+    assert bare._S0 == pytest.approx(replayed._S0, rel=1e-15)
 
     # Error contract: the update raises, the solver ends without the stand-in solution.
     solver = _MeshCarrier(_S_SNAP, dSdr_cmb=0.0)
@@ -4803,7 +4812,7 @@ def test_without_the_replay_a_new_solver_books_no_compression_work():
 
 def _first_call(pending):
     """Run the first-call branch of ``setup_or_update_solver`` on a resume with
-    every stage mocked; return the stage calls in order, the row and the solver."""
+    every stage mocked; return the stage calls in order and the row."""
     from proteus.interior_energetics.aragog import AragogRunner
 
     S_snap = np.array(_S_SNAP)
@@ -4831,7 +4840,9 @@ def _first_call(pending):
         patch.object(AragogRunner, '_pending_structure_update', return_value=pending),
         patch.object(AragogRunner, 'setup_solver', side_effect=_setup),
         patch.object(AragogRunner, 'update_structure') as update_structure,
-        patch.object(AragogRunner, 'update_solver'),
+        patch.object(
+            AragogRunner, 'update_solver', side_effect=lambda *a, **k: calls.update_solver()
+        ),
         patch.object(AragogRunner, '_maybe_install_jax_cvode_factory'),
         patch.object(
             AragogRunner,
@@ -4858,11 +4869,13 @@ def test_a_resume_with_a_pending_update_builds_on_the_earlier_structure_first():
     calls, hf_row = _first_call((earlier, 'data/222p001_zalmoxis.dat'))
 
     names = [c[0] for c in calls.mock_calls]
-    assert names == ['setup_solver', 'initialize', 'set_initial_entropy', 'replay']
+    stages = ['setup_solver', 'update_solver', 'initialize', 'set_initial_entropy']
+    assert names == [*stages, 'replay']
     build_row = calls.setup_solver.call_args.args[0]
     assert calls.setup_solver.call_args.kwargs == {'mesh_file': 'data/222p001_zalmoxis.dat'}
     # All 5 structure keys come from the earlier row, each unlike the row of the resume;
     # the time and the flux stay the row's.
+    assert set(STRUCTURE_ROW_KEYS) == {'R_int', 'R_core', 'gravity', 'M_core', 'core_density'}
     for key in STRUCTURE_ROW_KEYS:
         assert build_row[key] == pytest.approx(earlier[key])
         assert build_row[key] != pytest.approx(hf_row[key])
@@ -4880,7 +4893,7 @@ def test_a_resume_without_a_pending_update_sets_up_as_before():
     calls, hf_row = _first_call(None)
 
     names = [c[0] for c in calls.mock_calls]
-    assert names == ['setup_solver', 'initialize', 'set_initial_entropy']
+    assert names == ['setup_solver', 'update_solver', 'initialize', 'set_initial_entropy']
     assert calls.setup_solver.call_args.args[0] == hf_row
     assert calls.setup_solver.call_args.kwargs == {}
 
@@ -4990,6 +5003,7 @@ def test_setup_solver_builds_on_the_given_mesh_file_in_place_of_the_run_copy(tmp
 
     assert loaded == {'default': run_mesh, 'given': earlier_mesh, 'spider': loaded['spider']}
     assert loaded['spider'] != earlier_mesh
+    assert built['spider'].eos_file == loaded['spider']  # left as it was set up
     # After the arrays are loaded, every reset reads the mesh file of the run again.
     assert built['given'].eos_file == run_mesh
     assert built['default'].core_density == pytest.approx(_rho(3.30e6), rel=1e-12)
@@ -5028,6 +5042,8 @@ def test_the_structure_update_resets_after_the_refresh_and_hands_the_entropy_las
         ):
             AragogRunner._apply_structure_update(config, {'Time': 322.0}, interior_o, 100.0)
         assert [c[0] for c in calls.mock_calls] == expected
+        if stored is not None:
+            assert calls.entropy.call_args.args[0] == pytest.approx(_S_SNAP)
     assert calls.entropy.call_count == 0  # the second pass handed nothing over
 
 
