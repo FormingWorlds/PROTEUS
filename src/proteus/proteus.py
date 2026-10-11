@@ -949,6 +949,12 @@ class Proteus:
             # Get last row from helpfile dataframe
             self.hf_row = self.hf_all.iloc[-1].to_dict()
 
+            # A new process has no last step length [yr], and the interior output
+            # samples the radiogenic heat with it; take it from the table.
+            dt_last = float(self.hf_all['Time'].iloc[-1] - self.hf_all['Time'].iloc[-2])
+            if dt_last > 0.0:
+                self.interior_o.dt = dt_last
+
             # Resume banner. The '==== RESUME' prefix is added to output,
             # since this makes log triage (grep, tail -f, cron filters) easy
             log.info(

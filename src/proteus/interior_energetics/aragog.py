@@ -31,7 +31,7 @@ from aragog.parser import (
     _SolverParameters,
 )
 from proteus.accretion.common import snap_to_impact
-from proteus.interior_energetics import aragog_core
+from proteus.interior_energetics import aragog_core, aragog_resume
 from proteus.interior_energetics.aragog_core_impact import refit_core_at_reset
 from proteus.interior_energetics.aragog_phase import (
     build_jax_phase_params,
@@ -547,7 +547,7 @@ class AragogRunner:
         # Store P-S EOS directory path for entropy solver initialization
         interior_o._spider_eos_dir = dirs.get('spider_eos_dir', '')
         dt = AragogRunner.compute_time_step(config, dirs, hf_row, hf_all, interior_o)
-        self.setup_or_update_solver(config, hf_row, interior_o, dt, dirs)
+        self.setup_or_update_solver(config, hf_row, interior_o, dt, dirs, hf_all=hf_all)
         self.aragog_solver = interior_o.aragog_solver
         self._config = config
         # Diffrax direct-JAX integration is research-only (autodiff
@@ -598,13 +598,32 @@ class AragogRunner:
 
     @staticmethod
     def setup_or_update_solver(
-        config: Config, hf_row: dict, interior_o: Interior_t, dt: float, dirs: dict
+        config: Config,
+        hf_row: dict,
+        interior_o: Interior_t,
+        dt: float,
+        dirs: dict,
+        hf_all: pd.DataFrame | None = None,
     ):
         if interior_o.aragog_solver is None:
             require_cvode(config)
             _maybe_log_solver_environment(config)
             _t_setup = time.perf_counter()
-            AragogRunner.setup_solver(config, hf_row, interior_o, dirs['output'])
+            # A resume builds the solver on the structure of its snapshot; the update to
+            # the structure of the row follows once the snapshot state is restored.
+            pending = AragogRunner._pending_structure_update(config, hf_row, hf_all, dirs)
+            build_row, mesh_file = hf_row, None
+            if pending is not None:
+                mesh_file = pending[1]
+                build_row = {
+                    **hf_row,
+                    **{k: pending[0][k] for k in aragog_resume.STRUCTURE_ROW_KEYS},
+                }
+            AragogRunner.setup_solver(
+                config, build_row, interior_o, dirs['output'], mesh_file=mesh_file
+            )
+            if pending is not None:
+                AragogRunner.update_structure(config, build_row, interior_o)
             if config.params.resume:
                 AragogRunner.update_solver(dt, hf_row, interior_o, output_dir=dirs['output'])
             _t_init = time.perf_counter()
@@ -671,6 +690,10 @@ class AragogRunner:
                         'Restored entropy IC from snapshot: S_mean=%.1f J/kg/K',
                         float(np.mean(S_snap)),
                     )
+                    if pending is not None:
+                        AragogRunner._replay_structure_update(
+                            config, hf_row, interior_o, dt, dirs['output']
+                        )
             else:
                 # Fresh run: set entropy IC from Zalmoxis T(r) profile
                 AragogRunner._set_entropy_ic(config, interior_o, dirs['output'], hf_row)
@@ -700,39 +723,104 @@ class AragogRunner:
                 )
             else:
                 interior_o._stale_struct_steps = 0
-            if interior_o.ic == 1:
-                AragogRunner.update_structure(config, hf_row, interior_o)
-                # Preserve the evolved S field across equilibration resets.
-                # Use entropy_staggered accessor (handles variable state
-                # vector sizes depending on core BC mode).
-                sol = interior_o.aragog_solver.solution
-                if sol is not None and sol.y.size > 0:
-                    S_block = interior_o.aragog_solver.entropy_staggered
-                    S_last = S_block[:, -1] if S_block.ndim > 1 else S_block
-                    interior_o._last_entropy = S_last
-            else:
-                AragogRunner.update_structure(config, hf_row, interior_o)
-                AragogRunner.update_solver(dt, hf_row, interior_o)
-            # Refresh before reset() to evaluate new mesh pressures against
-            # the updated table ceiling on impact steps.
-            AragogRunner._refresh_entropy_eos(config, interior_o)
-            solver = interior_o.aragog_solver
-            core_module = config.interior_energetics.aragog.core_bc == 'core_module'
-            before = aragog_core.core_state(solver) if core_module else None
-            solver.reset()
-            if core_module:
-                # An impact refit covers the structure change of its reset.
-                if getattr(interior_o, '_core_refit_pending', None) is not None:
-                    refit_core_at_reset(hf_row, interior_o, solver)
-                else:
-                    aragog_core.carry_core_across_update(hf_row, interior_o, solver, before)
-            # Restore entropy from previous solve. Known gap: cached _last_entropy
-            # is not bounds-checked against the regenerated [S_min, S_max].
-            if hasattr(interior_o, '_last_entropy') and interior_o._last_entropy is not None:
-                interior_o.aragog_solver.set_initial_entropy(interior_o._last_entropy)
+            AragogRunner._apply_structure_update(config, hf_row, interior_o, dt)
 
     @staticmethod
-    def setup_solver(config: Config, hf_row: dict, interior_o: Interior_t, outdir: str):
+    def _apply_structure_update(
+        config: Config, hf_row: dict, interior_o: Interior_t, dt: float
+    ):
+        """Move the solver to the structure of ``hf_row`` and hand it its entropy again."""
+        if interior_o.ic == 1:
+            AragogRunner.update_structure(config, hf_row, interior_o)
+            # Preserve the evolved S field across equilibration resets.
+            # Use entropy_staggered accessor (handles variable state
+            # vector sizes depending on core BC mode).
+            sol = interior_o.aragog_solver.solution
+            if sol is not None and sol.y.size > 0:
+                S_block = interior_o.aragog_solver.entropy_staggered
+                S_last = S_block[:, -1] if S_block.ndim > 1 else S_block
+                interior_o._last_entropy = S_last
+        else:
+            AragogRunner.update_structure(config, hf_row, interior_o)
+            AragogRunner.update_solver(dt, hf_row, interior_o)
+        # Refresh before reset() to evaluate new mesh pressures against
+        # the updated table ceiling on impact steps.
+        AragogRunner._refresh_entropy_eos(config, interior_o)
+        solver = interior_o.aragog_solver
+        core_module = config.interior_energetics.aragog.core_bc == 'core_module'
+        before = aragog_core.core_state(solver) if core_module else None
+        solver.reset()
+        if core_module:
+            # An impact refit covers the structure change of its reset.
+            if getattr(interior_o, '_core_refit_pending', None) is not None:
+                refit_core_at_reset(hf_row, interior_o, solver)
+            else:
+                aragog_core.carry_core_across_update(hf_row, interior_o, solver, before)
+        # Restore entropy from previous solve. Known gap: cached _last_entropy
+        # is not bounds-checked against the regenerated [S_min, S_max].
+        if hasattr(interior_o, '_last_entropy') and interior_o._last_entropy is not None:
+            interior_o.aragog_solver.set_initial_entropy(interior_o._last_entropy)
+
+    @staticmethod
+    def _pending_structure_update(
+        config: Config, hf_row: dict, hf_all: pd.DataFrame | None, dirs: dict
+    ) -> tuple[dict, str] | None:
+        """Earlier row and mesh file a resume must build the solver on, or None.
+
+        None for a fresh run, a structure module other than Zalmoxis, and a snapshot
+        that is already on the structure of ``hf_row``. With ``core_bc = 'core_module'``
+        a pending update is reported in the log and left out: the run continues as
+        if the snapshot were on the structure of its row.
+        """
+        if not config.params.resume or hf_all is None:
+            return None
+        if config.interior_struct.module != 'zalmoxis':
+            return None
+        pending = aragog_resume.pending_structure_update(dirs['output'], hf_row, hf_all)
+        if pending is not None and config.interior_energetics.aragog.core_bc == 'core_module':
+            log.warning(
+                'Resume: a structure update was pending at the stop. With core_bc = '
+                "'core_module' it is not applied again: the first step books no compression "
+                'work, and the entropy is carried by node and not by mass parcel.'
+            )
+            return None
+        return pending
+
+    @staticmethod
+    def _replay_structure_update(
+        config: Config, hf_row: dict, interior_o: Interior_t, dt: float, outdir: str
+    ):
+        """Apply the structure update that was pending when the resumed run stopped.
+
+        The solver is on the structure of its snapshot. It moves to the structure of
+        ``hf_row`` through the same update as a running loop, which carries the entropy
+        by mass parcel. A solver without a solution measures no compression work in its
+        reset, so the work [J] is booked here from the earlier mesh.
+        """
+        solver = interior_o.aragog_solver
+        mesh = solver.evaluator.mesh
+        P_old = np.asarray(solver._P_stag_flat, dtype=float).ravel().copy()
+        mass_old = np.asarray(mesh.staggered_effective_density, dtype=float).ravel() * (
+            np.asarray(solver._volume_flat, dtype=float).ravel()
+        )
+        S_old = np.asarray(interior_o._last_entropy, dtype=float).ravel().copy()
+        solver.parameters.mesh.eos_file = os.path.join(outdir, 'data', 'zalmoxis_output.dat')
+        AragogRunner._apply_structure_update(config, hf_row, interior_o, dt)
+        solver._last_compression_J = solver._compute_compression_work(P_old, S_old, mass_old)
+        log.info(
+            'Resume: applied the structure update that was pending at the stop '
+            '(compression work %.6e J).',
+            solver._last_compression_J,
+        )
+
+    @staticmethod
+    def setup_solver(
+        config: Config,
+        hf_row: dict,
+        interior_o: Interior_t,
+        outdir: str,
+        mesh_file: str | None = None,
+    ):
         solver = _SolverParameters(
             start_time=0,
             end_time=0,
@@ -849,9 +937,8 @@ class AragogRunner:
             mesh.eos_file = spider_mesh
         elif config.interior_struct.module == 'zalmoxis':
             mesh.eos_method = 2  # User-defined EOS based on Zalmoxis
-            mesh.eos_file = os.path.join(
-                outdir, 'data', 'zalmoxis_output.dat'
-            )  # Zalmoxis output file with mantle parameters
+            # Zalmoxis output file with mantle parameters, or the given copy of one.
+            mesh.eos_file = mesh_file or os.path.join(outdir, 'data', 'zalmoxis_output.dat')
 
         # Per-cell step caps: each is a SUNDIALS root function that ends the
         # interior sub-solve when a cell's per-step change reaches the cap. On a
