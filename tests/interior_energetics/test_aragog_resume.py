@@ -85,7 +85,7 @@ def test_the_earlier_structure_is_found_from_the_bounds_of_the_snapshot(tmp_path
     """A snapshot on the pre-contraction radii names the latest row with those
     radii and the mesh file saved with it, and that file spans the snapshot
     bounds while the mesh of the resumed row is 25 km and 50 km away from them."""
-    out, hf_row, hf_all = _run_dir(tmp_path)
+    out, hf_row, hf_all = _run_dir(tmp_path, prev_copy=True)  # both copies: the saved one wins
 
     row, file = pending_structure_update(str(out), hf_row, hf_all)
 
