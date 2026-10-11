@@ -44,7 +44,7 @@ fraction drops below 5%.
 - Spectral files downloaded (`proteus get spectral -n Dayspring -b 48`)
 - Solar spectrum downloaded (`proteus get stellar`)
 - Interior data downloaded, including the PALEOS EOS tables
-  (`proteus get interiordata --config-path input/tutorials/tutorial_earth.toml`)
+  (`proteus get interiordata --config-path input/chili/intercomp/earth.toml`)
 - `git` (to clone the CHILI comparison data)
 - Allow 30 min to several hours per run depending on hardware
 
@@ -58,27 +58,28 @@ flag to let the first run download missing data instead.
 conda activate proteus
 
 # Earth (see also the Earth analogue tutorial for detailed analysis)
-mkdir -p output/tutorial_earth
-nohup proteus start --offline -c input/tutorials/tutorial_earth.toml \
+mkdir -p output/chili_earth
+nohup proteus start --offline -c input/chili/intercomp/earth.toml \
     > /tmp/proteus_earth_launch.log 2>&1 & disown
 
 # Venus
-mkdir -p output/tutorial_venus
-nohup proteus start --offline -c input/tutorials/tutorial_venus.toml \
+mkdir -p output/chili_venus
+nohup proteus start --offline -c input/chili/intercomp/venus.toml \
     > /tmp/proteus_venus_launch.log 2>&1 & disown
 ```
 
-Monitor progress with `tail -f output/tutorial_earth/proteus_00.log`
+Monitor progress with `tail -f output/chili_earth/proteus_00.log`
 (the log appears once PROTEUS has initialized).
 
 !!! info "Intercomparison configs"
-    The tutorial configs are the single source of truth for the CHILI
-    cases. `tools/chili_generate.py` derives the full intercomparison
-    set under `input/chili/intercomp/` from them (nominal Earth and
-    Venus, TRAPPIST-1 b/e/&alpha;, and the H/C inventory grid specs);
-    unit tests keep the two in lockstep. After a run, convert the
-    output to the CHILI-MIP submission format with
-    `python tools/chili_postproc.py <output_dir>`.
+    `tools/chili_generate.py` derives the full intercomparison set
+    under `input/chili/intercomp/` from the tutorial configs (nominal
+    Earth and Venus, TRAPPIST-1 b/e/&alpha;, and the H/C inventory grid
+    specs). A nominal case equals its tutorial config in every field
+    except the output path and the redox state, which the generator
+    sets to the protocol value IW+4; unit tests keep the two in lockstep.
+    After a run, convert the output to the CHILI-MIP submission format
+    with `python tools/chili_postproc.py <output_dir>`.
 
 ## Step 2: Download comparison data
 
@@ -93,15 +94,15 @@ git clone https://github.com/projectcuisines/chili.git /tmp/chili
 ```bash
 # Nominal cases only
 python tools/plot_chili_comparison.py \
-    --proteus-earth output/tutorial_earth/ \
-    --proteus-venus output/tutorial_venus/ \
+    --proteus-earth output/chili_earth/ \
+    --proteus-venus output/chili_venus/ \
     --chili-repo /tmp/chili \
     --output output_files/chili_plots/
 
 # With the Earth volatile grid (after running the grid cases)
 python tools/plot_chili_comparison.py \
-    --proteus-earth output/tutorial_earth/ \
-    --proteus-venus output/tutorial_venus/ \
+    --proteus-earth output/chili_earth/ \
+    --proteus-venus output/chili_venus/ \
     --grid-dir output/ \
     --chili-repo /tmp/chili \
     --output output_files/chili_plots/
