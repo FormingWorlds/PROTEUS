@@ -522,19 +522,21 @@ def test_the_core_target_is_set_from_the_row_when_the_init_stage_has_no_resolve(
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_a_raised_core_target_is_read_with_the_grown_planet(monkeypatch):
     """An impact leaves a row with mass_tot raised by the rock and the stored target raised
     by 0.325 of it (the accretion tests assert that write). For such a row, with 0.05 Earth
     masses of rock, the solve at 250 yr takes the stored core and a structure target that
-    grew by the rock. With core_frac of the structure target as the core, the result would
-    be 0.325 of the oxygen (6.9e22 kg) lower."""
+    grew by the rock. The row holds 1e20 kg less hydrogen than the init stage did, so a
+    core computed from the row would be 3.25e19 kg higher than the stored one."""
     stored, rock = 0.325 * (M_earth - 7.43e20), 0.05 * M_earth
-    late = {**_BUFFERED, 'Time': 250.0}
+    late = {**_BUFFERED, 'Time': 250.0, 'H_kg_total': 3.70e20}
     planet_base, _, _ = _structure_target(monkeypatch, {**late, 'M_core_target': stored})
     planet, core, _ = _structure_target(
         monkeypatch, {**late, 'M_core_target': stored + 0.325 * rock}, mass_tot=1.05
     )
     assert core == pytest.approx(stored + 0.325 * rock, rel=1e-14)
+    assert 0.325 * (1.05 * M_earth - 6.43e20) - core == pytest.approx(3.25e19, rel=1e-3)
     assert planet - planet_base == pytest.approx(rock, rel=1e-9)
 
 

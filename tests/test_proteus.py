@@ -2222,16 +2222,25 @@ def test_proteus_resume_too_short_raises(tmp_path):
 @pytest.mark.unit
 def test_the_init_stage_ends_once_and_sets_the_core_target_once(tmp_path):
     """With 3 init loops the stage ends when the loop counter reaches 4: that step calls
-    the setter of the core target once with the row, and the steps before and after call
-    nothing. A setter on every later step would move a kept core with each inventory."""
+    the setter of the core target once, and the write of the setter is in the row of the
+    instance. The steps before and after call nothing. A setter on every later step would
+    move a kept core with each inventory."""
     p = _make_proteus_instance(tmp_path)
     p.init_stage, p.hf_row, p.loops = True, {'M_core_target': 1.9409e24}, {'init_loops': 3}
-    with patch('proteus.interior_struct.zalmoxis.set_core_target_at_init_end') as setter:
-        for total, stage, calls in ((3, True, 0), (4, False, 1), (5, False, 1)):
+    with patch(
+        'proteus.interior_struct.zalmoxis.set_core_target_at_init_end',
+        side_effect=lambda config, row: row.update(M_core_target=1.9407e24),
+    ) as setter:
+        for total, stage, calls, target in (
+            (3, True, 0, 1.9409e24),
+            (4, False, 1, 1.9407e24),
+            (5, False, 1, 1.9407e24),
+        ):
             p.loops['total'] = total
             p._end_init_stage_if_due()
             assert (p.init_stage, setter.call_count) == (stage, calls)
-        setter.assert_called_once_with(p.config, p.hf_row)
+            assert p.hf_row['M_core_target'] == target
+        assert setter.call_args.args[0] is p.config
 
 
 # ============================================================================
@@ -3116,7 +3125,7 @@ def _write_post_outgas_row(hf_row, step, *, vapour):
 
 
 def _run_main_loop_recording_mass(
-    p, *, stop_at_loop, rows, row_writer, guard_calls=None, flags=None
+    p, *, stop_at_loop, rows, row_writer, guard_calls=None, flags=None, appended=None
 ):
     """Run p.start with the physics mocked, recording the row each outgas step
     wrote. ``row_writer(hf_row, step)`` fills the mass columns.
@@ -3152,6 +3161,8 @@ def _run_main_loop_recording_mass(
         return _FakeHelpfile(row)
 
     def _fake_extend_helpfile(_hf_all, row):
+        if appended is not None:
+            appended.append(dict(row))
         return _FakeHelpfile(row)
 
     def _fake_outgas(_dirs, _config, hf_row, first_iter):
@@ -3296,6 +3307,39 @@ def test_the_outgassing_is_told_the_init_stage_on_every_iteration(tmp_path):
     )
     assert all(passed is stage for passed, stage in flags)
     assert [passed for passed, _ in flags] == [True] * 4 + [False] * (len(flags) - 4)
+
+
+def test_the_main_loop_appends_the_core_target_of_the_step_that_leaves_the_init_stage(
+    tmp_path,
+):
+    """The setter of the core target runs once in the main loop, on the step that leaves
+    the init stage, before that step's row goes to the helpfile: the rows appended in the
+    init stage hold no target, and every row from the leaving step on holds the value
+    that the setter wrote."""
+    rows, appended, stages = [], [], []
+    p = _make_main_loop_proteus(
+        tmp_path, plot_mod=1, write_mod=1, dt_write_rel=0.0, vapourise=False
+    )
+
+    def _setter(config, row):
+        stages.append(p.init_stage)
+        row['M_core_target'] = 1.9407e24
+
+    with patch(
+        'proteus.interior_struct.zalmoxis.set_core_target_at_init_end', side_effect=_setter
+    ):
+        _run_main_loop_recording_mass(
+            p,
+            stop_at_loop=6,
+            rows=rows,
+            row_writer=lambda hf_row, step: _write_post_outgas_row(hf_row, step, vapour=False),
+            appended=appended,
+        )
+    assert stages == [True]
+    targets = [row.get('M_core_target') for row in appended]
+    first = targets.index(1.9407e24)
+    assert first > 0 and not any(targets[:first])
+    assert targets[first:] == [1.9407e24] * (len(appended) - first)
 
 
 @pytest.mark.physics_invariant
