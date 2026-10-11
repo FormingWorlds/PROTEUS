@@ -31,7 +31,6 @@ from proteus.data import (
     dataset_dir,
 )
 from proteus.interior_struct.common import solvus_radius
-from proteus.outgas.wrapper import outgassing_derives_o_kg_total
 from proteus.utils.constants import (
     FEI2021_LIQUIDUS_P_CALIB_PA,
     PALEOS_EOS_PREFIXES,
@@ -1350,6 +1349,7 @@ def load_zalmoxis_configuration(
     # Setup target planet mass (input parameter) as the total mass of the planet (dry mass + volatiles) [kg],
     # plus the volatile mass impacts and escape moved, which mass_tot (rock anchor) leaves out.
     from proteus.interior_struct.common import volatile_mass_change
+    from proteus.outgas.wrapper import outgassing_derives_o_kg_total
 
     total_planet_mass = config.planet.mass_tot * M_earth + volatile_mass_change(hf_row)
 
@@ -3907,7 +3907,7 @@ def zalmoxis_solver(
         hf_row['T_surf'] = temperature[-1]
     hf_row['P_center'] = model_results.get('p_center')
     hf_row['P_cmb'] = float(pressure[cmb_index])
-    # The dry mass target of this solve. The energetics wrapper treats a structure with
+    # The mass target of this solve. The energetics wrapper treats a structure with
     # |M_int / M_int_target - 1| above _ZALMOXIS_MASS_ANCHOR_TOL as not converged.
     hf_row['M_int_target'] = float(config_params.get('planet_mass', 0.0))
     hf_row['M_core_target'] = float(config_params.get('core_mass_target', 0.0))
