@@ -14,10 +14,14 @@ import importlib.metadata
 import io
 import json
 import os
+import shlex
+import shutil
 import subprocess
+import sys
 from unittest.mock import Mock, patch
 
 import pytest
+from helpers import PROTEUS_ROOT
 
 from proteus.doctor import (
     _SUPPORT_EMAIL,
@@ -32,7 +36,9 @@ from proteus.doctor import (
     _conda_build_lines,
     _dependency_specs,
     _editable_checkout_path,
+    _floor_tag_fix,
     _get_script_for_package,
+    _git_detached,
     _git_dirty,
     _git_head,
     _git_short_head,
@@ -431,30 +437,74 @@ class TestCheckPythonPackage:
         # The broken advice must be gone: `git pull` fails on a detached HEAD.
         assert 'git pull' not in r.fix_cmd
 
-    def test_below_spec_editable_branch_module_fix_keeps_git_pull(self):
-        """A package without a tools/get_<name>.sh script (calliope) is cloned on
-        a tracking branch, where `git pull && pip install -e .` is the correct
-        update. The detached-HEAD path must not swallow this case."""
+    def test_below_spec_editable_branch_module_fix_keeps_git_pull(self, tmp_path):
+        """A package without a tools/get_<name>.sh script (calliope) in a
+        developer's clone on a branch keeps `git pull && pip install -e .`;
+        the detached-HEAD path must not swallow this case."""
         from packaging.requirements import Requirement
 
+        checkout = tmp_path / 'CALLIOPE'
+        checkout.mkdir()
+        _init_test_repo(checkout)
         spec = Requirement('fwl-calliope>=99.0.0')
         with (
             patch('proteus.doctor.importlib.metadata.version', return_value='26.6.1'),
-            patch(
-                'proteus.doctor._editable_checkout_path',
-                return_value='/home/u/PROTEUS/CALLIOPE',
-            ),
-            patch('proteus.doctor._git_short_head', return_value='1e3ad73'),
-            patch('proteus.doctor._git_dirty', return_value=False),
+            patch('proteus.doctor._editable_checkout_path', return_value=str(checkout)),
             patch('proteus.doctor._imported_package_dir', return_value=None),
         ):
             r = check_python_package('fwl-calliope', spec)
         assert r.status == FAIL
-        assert 'git pull' in r.fix_cmd
-        assert 'pip install -e .' in r.fix_cmd
-        # The checkout path is quoted into the cd target, not replaced by a script.
-        assert 'CALLIOPE' in r.fix_cmd
-        assert not r.fix_cmd.startswith('bash tools/get_')
+        assert r.fix_cmd == f'cd {shlex.quote(str(checkout))} && git pull && pip install -e .'
+        assert 'checkout_floor_tag' not in r.fix_cmd
+
+    def test_below_spec_editable_detached_checkout_moves_to_floor_tag(self, tmp_path):
+        """A MORS clone that install.sh left on a detached release tag has no
+        setup script, so the fix fetches the tags, checks out the floor tag
+        through checkout_floor_tag and reinstalls; `git pull` fails there."""
+        from packaging.requirements import Requirement
+
+        # A space in the path checks that the checkout is shell-quoted.
+        checkout = tmp_path / 'my clones' / 'MORS'
+        checkout.mkdir(parents=True)
+        _init_test_repo(checkout)
+        subprocess.run(
+            ['git', '-C', str(checkout), 'checkout', '-q', '--detach'],
+            check=True,
+            capture_output=True,
+        )
+        spec = Requirement('fwl-mors>=26.10.6')
+        with (
+            patch('proteus.doctor.importlib.metadata.version', return_value='26.10.5'),
+            patch('proteus.doctor._editable_checkout_path', return_value=str(checkout)),
+            patch('proteus.doctor._imported_package_dir', return_value=None),
+        ):
+            r = check_python_package('fwl-mors', spec)
+        quoted = shlex.quote(str(checkout))
+        assert quoted.startswith("'")
+        assert r.status == FAIL
+        assert 'git pull' not in r.fix_cmd
+        assert r.fix_cmd.startswith(f'git -C {quoted} fetch --tags --quiet && bash -c ')
+        assert f' fwl-mors {quoted} && pip install -e {quoted}' in r.fix_cmd
+        assert 'checkout_floor_tag "$2" "$3"' in r.fix_cmd
+
+    def test_below_spec_editable_non_git_checkout_keeps_git_pull(self, tmp_path):
+        """When git cannot read the checkout (not a repository), the git state is
+        unknown, and the fix stays the `git pull` command, whose failure then
+        names the cause, rather than a tag checkout."""
+        from packaging.requirements import Requirement
+
+        checkout = tmp_path / 'JANUS'
+        checkout.mkdir()
+        spec = Requirement('fwl-janus>=26.10.8')
+        with (
+            patch('proteus.doctor.importlib.metadata.version', return_value='26.6.1'),
+            patch('proteus.doctor._editable_checkout_path', return_value=str(checkout)),
+            patch('proteus.doctor._imported_package_dir', return_value=None),
+        ):
+            r = check_python_package('fwl-janus', spec)
+        assert r.status == FAIL
+        assert r.fix_cmd == f'cd {shlex.quote(str(checkout))} && git pull && pip install -e .'
+        assert '(git status unknown)' in r.message
 
     def test_below_spec_wheel_install_fix_upgrades_via_pip(self):
         """With no editable checkout (a wheel install), neither branch applies:
@@ -601,6 +651,68 @@ def _git_commit_all(path, message):
     subprocess.run(['git', '-C', p, 'commit', '-m', message], check=True, capture_output=True)
 
 
+def _git(cwd, *args: str) -> str:
+    """Run git in ``cwd`` with a fixed identity and no signing; return its stdout."""
+    result = subprocess.run(
+        ['git', '-c', 'user.email=t@e.st', '-c', 'user.name=t', '-c', 'commit.gpgsign=false']
+        + list(args),
+        cwd=cwd,
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    return result.stdout.strip()
+
+
+def _fixture_root(root, requirement: str):
+    """Copy the shared shell helpers and the pin reader below a fixture pyproject.toml."""
+    (root / 'tools').mkdir(parents=True)
+    for name in ('_get_common.sh', '_module_pins.py'):
+        shutil.copy2(PROTEUS_ROOT / 'tools' / name, root / 'tools' / name)
+    (root / 'pyproject.toml').write_text(
+        f'[project]\nname = "fixture"\ndependencies = [\n    "{requirement}",\n]\n'
+    )
+    return root
+
+
+def _detached_clone(tmp_path, checkout, late_tag: str) -> list[str]:
+    """Clone a 3-commit remote to ``checkout`` at tag 26.10.05 on its first commit.
+
+    After the clone, ``late_tag`` goes on the second commit in the remote
+    only. Returns the 3 commit hashes in order.
+    """
+    source = tmp_path / 'source'
+    source.mkdir()
+    _git(source, 'init', '-q', '-b', 'main')
+    commits = []
+    for i in range(3):
+        (source / 'version.txt').write_text(f'{i}\n')
+        _git(source, 'add', 'version.txt')
+        _git(source, 'commit', '-q', '-m', f'commit {i}')
+        commits.append(_git(source, 'rev-parse', 'HEAD'))
+    _git(source, 'tag', '26.10.05', commits[0])
+    remote = tmp_path / 'MORS.git'
+    _git(tmp_path, 'clone', '-q', '--bare', str(source), str(remote))
+    _git(tmp_path, 'clone', '-q', str(remote), str(checkout))
+    _git(checkout, 'checkout', '-q', 'tags/26.10.05')
+    _git(source, 'tag', late_tag, commits[1])
+    _git(source, 'push', '-q', str(remote), f'refs/tags/{late_tag}')
+    return commits
+
+
+def _stub_pip(tmp_path, monkeypatch):
+    """Put a recording pip, and this test's python, first on PATH; return pip's log."""
+    bindir = tmp_path / 'bin'
+    bindir.mkdir()
+    log = tmp_path / 'pip.log'
+    (bindir / 'pip').write_text(f'#!/bin/sh\necho "$@" >> {shlex.quote(str(log))}\n')
+    (bindir / 'pip').chmod(0o755)
+    (bindir / 'python').symlink_to(sys.executable)
+    monkeypatch.setenv('PATH', f'{bindir}{os.pathsep}{os.environ["PATH"]}')
+    return log
+
+
 class TestGitHelpers:
     """Git helper functions."""
 
@@ -672,6 +784,25 @@ class TestGitHelpers:
         # None genuinely distinguishes "not a repo" from "clean tree".
         _init_test_repo(tmp_path)
         assert _git_dirty(str(tmp_path)) is False
+
+    def test_git_detached_tells_branch_from_detached_head(self, tmp_path):
+        """A clone on a branch reads False and the same clone after a detached
+        checkout reads True, so neither answer is a constant."""
+        _init_test_repo(tmp_path)
+        assert _git_detached(str(tmp_path)) is False
+        subprocess.run(
+            ['git', '-C', str(tmp_path), 'checkout', '-q', '--detach'],
+            check=True,
+            capture_output=True,
+        )
+        assert _git_detached(str(tmp_path)) is True
+
+    def test_git_detached_none_when_git_cannot_tell(self, tmp_path):
+        """A directory that is no repository, and a missing git binary, read
+        None (unknown) rather than True, so neither gets the tag checkout."""
+        assert _git_detached(str(tmp_path)) is None
+        with patch('proteus.doctor.subprocess.run', side_effect=FileNotFoundError):
+            assert _git_detached(str(tmp_path)) is None
 
 
 class TestEditableCheckoutPath:
@@ -1778,6 +1909,58 @@ class TestRunFixCommand:
         code = _run_fix_command('echo done_marker', tmp_path)
         assert code == 0
         assert 'done_marker' in capsys.readouterr().out
+
+    def test_floor_tag_fix_moves_a_detached_clone_to_the_floor_tag(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """The fix doctor builds for a detached MORS clone below its floor runs
+        under /bin/sh from the PROTEUS root and leaves HEAD at the floor tag.
+
+        The clone sits at tag 26.10.05 on the first of 3 commits; the floor
+        26.10.6 matches tag 26.10.06 on the second, which reaches the remote
+        after the clone, so the fix must fetch it. `git pull` exits non-zero on
+        the detached HEAD, and a checkout of the tip lands on the third commit.
+        """
+        root = _fixture_root(tmp_path / 'PROTEUS root', 'fwl-mors>=26.10.6')
+        checkout = tmp_path / 'my clones' / 'MORS'
+        commits = _detached_clone(tmp_path, checkout, late_tag='26.10.06')
+        pip_log = _stub_pip(tmp_path, monkeypatch)
+        from packaging.requirements import Requirement
+
+        with (
+            patch('proteus.doctor._repo_root', return_value=root),
+            patch('proteus.doctor.importlib.metadata.version', return_value='26.10.5'),
+            patch('proteus.doctor._editable_checkout_path', return_value=str(checkout)),
+            patch('proteus.doctor._imported_package_dir', return_value=None),
+        ):
+            r = check_python_package('fwl-mors', Requirement('fwl-mors>=26.10.6'))
+        assert r.status == FAIL
+        code = _run_fix_command(r.fix_cmd, root)
+        out = capsys.readouterr().out
+        assert code == 0, out
+        head = _git(checkout, 'rev-parse', 'HEAD')
+        assert head == commits[1]
+        assert head not in (commits[0], commits[2])
+        assert f'fwl-mors: checked out release tag 26.10.06 at {commits[1][:7]}' in out
+        assert pip_log.read_text() == f'install -e {checkout}\n'
+
+    def test_floor_tag_fix_stops_before_pip_without_a_floor_tag(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """A remote without a tag at the floor fails the fix with the cause, keeps
+        HEAD where it was and does not reinstall the checkout."""
+        root = _fixture_root(tmp_path / 'root', 'fwl-mors>=26.11.1')
+        checkout = tmp_path / 'MORS'
+        commits = _detached_clone(tmp_path, checkout, late_tag='26.10.06')
+        pip_log = _stub_pip(tmp_path, monkeypatch)
+        with patch('proteus.doctor._repo_root', return_value=root):
+            cmd = _floor_tag_fix('fwl-mors', str(checkout))
+        code = _run_fix_command(cmd, root)
+        out = capsys.readouterr().out
+        assert code == 1
+        assert "'fwl-mors' floor 26.11.1: no tag matches it" in out
+        assert _git(checkout, 'rev-parse', 'HEAD') == commits[0]
+        assert not pip_log.exists()
 
 
 class TestVersionAndCondaHelpers:

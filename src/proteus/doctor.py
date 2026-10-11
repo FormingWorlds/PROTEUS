@@ -150,8 +150,10 @@ def _get_script_for_package(dist_name: str) -> str | None:
     correct fix for those packages.
 
     Returns the repo-relative script path when it exists, else None. Packages
-    without a setup script are cloned on a tracking branch, where a plain
-    ``git pull`` is the right update, so None signals that fallback.
+    without a setup script (MORS, JANUS, CALLIOPE, ZEPHYRUS) are cloned by
+    ``install.sh`` at the release tag of their floor, also a detached HEAD,
+    or by a developer on a branch; with None, the caller picks the fix from
+    the git state of the checkout (``_git_detached``).
     """
     short = dist_name.lower()
     prefix = 'fwl-'
@@ -258,6 +260,65 @@ def _git_dirty(path: str) -> bool | None:
         return bool(out.strip())
     except (FileNotFoundError, subprocess.CalledProcessError):
         return None
+
+
+def _git_detached(path: str) -> bool | None:
+    """Return whether a git checkout is on a detached HEAD.
+
+    Parameters
+    ----------
+    path : str
+        Checkout directory.
+
+    Returns
+    -------
+    bool or None
+        True on a detached HEAD, False on a branch, None when git cannot
+        tell (not a git repository, git missing, or another git error).
+    """
+    try:
+        rc = subprocess.run(
+            ['git', '-C', path, 'symbolic-ref', '-q', 'HEAD'],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        ).returncode
+    except OSError:
+        return None
+    # symbolic-ref -q exits 1 only for a HEAD that is not a symbolic ref.
+    return {0: False, 1: True}.get(rc)
+
+
+def _floor_tag_fix(dist_name: str, checkout: str) -> str:
+    """Return the shell command that puts a checkout on the release tag of its floor.
+
+    The command fetches the tags, checks out the tag whose version equals
+    the floor in ``pyproject.toml`` through ``checkout_floor_tag`` of
+    ``tools/_get_common.sh``, and reinstalls the checkout editable. Every
+    path is absolute and shell-quoted, so the command runs from any working
+    directory under ``/bin/sh``.
+
+    Parameters
+    ----------
+    dist_name : str
+        Distribution name, for example ``fwl-mors``.
+    checkout : str
+        Directory of the editable checkout.
+
+    Returns
+    -------
+    str
+        The command, for example ``git -C /p/MORS fetch --tags --quiet &&
+        bash -c '...' _ /p/tools/_get_common.sh fwl-mors /p/MORS && pip
+        install -e /p/MORS``.
+    """
+    path = shlex.quote(os.path.abspath(checkout))
+    common = shlex.quote(str(_repo_root() / 'tools' / '_get_common.sh'))
+    checkout_tag = 'source "$1" && checkout_floor_tag "$2" "$3"'
+    return (
+        f'git -C {path} fetch --tags --quiet'
+        f' && bash -c {shlex.quote(checkout_tag)} _ {common} {shlex.quote(dist_name)} {path}'
+        f' && pip install -e {path}'
+    )
 
 
 def _julia_version() -> str | None:
@@ -533,15 +594,13 @@ def check_python_package(name: str, spec: Requirement | None) -> CheckResult:
         if not spec.specifier.contains(installed, prereleases=True):
             fix = f'pip install -U "{spec}"'
             if checkout:
-                # An editable checkout installed by a tools/get_<name>.sh script
-                # sits on a detached HEAD (pinned to the version tag), where
-                # `git pull` fails. Re-run the setup script, which fetches and
-                # re-checks-out the pinned tag exactly as the installer does.
-                # Packages without such a script are on a tracking branch, so
-                # the plain `git pull` update applies.
+                # `git pull` fails on a detached HEAD, so a tag checkout re-runs its setup
+                # script or moves to the floor tag; a branch, or unknown git state, pulls.
                 script = _get_script_for_package(name)
                 if script:
                     fix = f'bash {script}'
+                elif _git_detached(checkout):
+                    fix = _floor_tag_fix(name, checkout)
                 else:
                     fix = f'cd {shlex.quote(checkout)} && git pull && pip install -e .'
             return CheckResult(
