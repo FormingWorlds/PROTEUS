@@ -674,10 +674,51 @@ class TestNoShellFileEdit:
             for ln in INSTALL_SH.read_text().splitlines()
             if 'get_fastchem.sh' in ln and not ln.lstrip().startswith(('#', 'warn', 'echo'))
         ]
-        assert calls == [
-            'run_logged "Building FastChem" env -u FC_DIR bash src/get_fastchem.sh </dev/null'
-        ]
+        assert calls == ['env -u FC_DIR bash src/get_fastchem.sh </dev/null || true']
         assert '-y' not in calls[0].split()
+        assert calls[0] in _install_sh_function('build_fastchem')
+        assert 'run_logged "Building FastChem" build_fastchem || true' in INSTALL_SH.read_text()
+
+    @pytest.mark.parametrize(
+        ('builds', 'status', 'expected'),
+        [(True, 1, 0), (True, 0, 0), (False, 0, 1), (False, 1, 1)],
+        ids=[
+            'built, script exits 1',
+            'built, script exits 0',
+            'not built',
+            'not built, exits 1',
+        ],
+    )
+    def test_fastchem_result_is_the_built_program(self, tmp_path, builds, status, expected):
+        """build_fastchem succeeds exactly when the program exists, whatever the script returns.
+
+        AGNI's script exits 1 after a good build when it wrote no shell start file. The stub
+        records FC_DIR and what it reads from standard input: unset, and nothing.
+        """
+        agni = tmp_path / 'AGNI'
+        (agni / 'src').mkdir(parents=True)
+        made = 'mkdir -p fastchem && printf "#!/bin/sh\\n" > fastchem/fastchem && chmod +x fastchem/fastchem'
+        (agni / 'src' / 'get_fastchem.sh').write_text(
+            '#!/bin/bash\n'
+            'echo "FC_DIR=${FC_DIR-unset}" > seen.txt\n'
+            'read -r answer; echo "stdin=[$answer]" >> seen.txt\n'
+            + (made + '\n' if builds else '')
+            + f'exit {status}\n'
+        )
+        script = (
+            _install_sh_function('build_fastchem')
+            + f'cd {shlex.quote(str(agni))}\nbuild_fastchem\n'
+        )
+        result = subprocess.run(
+            ['bash', '-euo', 'pipefail', '-c', script],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            env={**os.environ, 'FC_DIR': '/an/old/value'},
+            input='y\n',
+        )
+        assert result.returncode == expected, result.stderr
+        assert (agni / 'seen.txt').read_text().splitlines() == ['FC_DIR=unset', 'stdin=[]']
 
 
 class TestDiskSpaceCheck:
@@ -1669,6 +1710,8 @@ def _shell_commands(text: str) -> list[list[str]]:
 def _build_target(words: list[str]) -> str | None:
     """The build step a command runs: a _BUILD_TARGETS script after `bash`, or `pip install -e`."""
     for i, word in enumerate(words):
+        if word == 'build_fastchem':
+            return 'src/get_fastchem.sh'
         if word == 'bash' and i + 1 < len(words):
             hit = [t for t in _BUILD_TARGETS if words[i + 1].endswith(t)]
             if hit:
@@ -1706,7 +1749,9 @@ class TestRunLoggedCalls:
         count, so a scan that finds nothing fails. The synthetic text is the
         control: a bare build and a logged download are both reported.
         """
-        builds, terminal = _logged_and_terminal_calls(INSTALL_SH.read_text())
+        # build_fastchem wraps AGNI's script and is itself the logged step
+        text = INSTALL_SH.read_text().replace(_install_sh_function('build_fastchem'), '')
+        builds, terminal = _logged_and_terminal_calls(text)
         assert {target for _, target in builds} == _BUILD_TARGETS
         assert [b for b in builds if b[0] != 'run_logged'] == []
         # 4 module installs in clone_and_install and the install of PROTEUS itself

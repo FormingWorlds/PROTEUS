@@ -448,6 +448,14 @@ note_old_shell_exports() {
     warn "  activated env still gets the old values."
 }
 
+# Build FastChem in the AGNI folder. Without FC_DIR and with no answer on stdin AGNI's script
+# asks nothing and writes no shell start file; it then exits 1 after a good build, so the
+# built program decides, not that status.
+build_fastchem() {
+    env -u FC_DIR bash src/get_fastchem.sh </dev/null || true
+    [ -x fastchem/fastchem ]
+}
+
 # The closing instruction: reactivate the conda env that holds the variables, or
 # source the exports file where no conda env holds them.
 print_next_steps() {
@@ -940,11 +948,9 @@ else
         warn "Cleaning up partial FastChem clone from a previous failed attempt"
         rm -rf "$AGNI_REAL/fastchem"
     fi
-    # Without FC_DIR and with no answer on stdin, get_fastchem.sh asks nothing and
-    # leaves the shell start files alone; FC_DIR is set below.
-    run_logged "Building FastChem" env -u FC_DIR bash src/get_fastchem.sh </dev/null
+    run_logged "Building FastChem" build_fastchem || true
     cd "$SCRIPT_DIR"
-    if [ ! -d "$AGNI_REAL/fastchem" ]; then
+    if [ ! -x "$AGNI_REAL/fastchem/fastchem" ]; then
         warn "FastChem installation failed. AGNI chemistry features will not work."
         warn "Install manually: cd AGNI && bash src/get_fastchem.sh"
     else
