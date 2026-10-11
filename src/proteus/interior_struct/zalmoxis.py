@@ -1438,14 +1438,11 @@ def load_zalmoxis_configuration(
             f'taken from a planet of {total_planet_mass:.4e} kg. Lower outgas.fO2_shift_IW '
             'or the volatile budgets.'
         )
-    mmf = config.interior_struct.zalmoxis.mantle_mass_fraction
-    if (
-        config.interior_struct.zalmoxis.ice_layer_eos is not None
-        and core_mass_fraction + mmf >= 1
-    ):
+    zc = config.interior_struct.zalmoxis
+    if zc.ice_layer_eos is not None and core_mass_fraction + zc.mantle_mass_fraction >= 1:
         raise ValueError(
             f'The structure target leaves no ice layer: the core is {core_mass_fraction:.4f} of '
-            f'it and zalmoxis.mantle_mass_fraction is {mmf:.4f}.'
+            f'it and zalmoxis.mantle_mass_fraction is {zc.mantle_mass_fraction:.4f}.'
         )
 
     # Build per-layer EOS config dict from PROTEUS config fields
@@ -1462,7 +1459,6 @@ def load_zalmoxis_configuration(
     mzf = config.interior_struct.zalmoxis.mushy_zone_factor
     mushy_zone_factors = _build_mushy_zone_factors(layer_eos_config, mzf)
 
-    zc = config.interior_struct.zalmoxis
     log.debug(
         'Zalmoxis config: num_layers=%d, outer_solver=%s, tol_outer=%.1e, '
         'tol_inner=%.1e, use_jax=%s, use_anderson=%s',

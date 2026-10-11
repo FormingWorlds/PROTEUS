@@ -322,6 +322,19 @@ class Proteus:
 
         self.directories = set_directories(self.config)
 
+    def _end_init_stage_if_due(self):
+        """Leave the init stage once its loops are done.
+
+        The step that leaves it sets the core target of the row
+        (``set_core_target_at_init_end``); later steps keep that target.
+        """
+        if self.loops['total'] > self.loops['init_loops']:
+            if self.init_stage:
+                from proteus.interior_struct.zalmoxis import set_core_target_at_init_end
+
+                set_core_target_at_init_end(self.config, self.hf_row)
+            self.init_stage = False
+
     def _solve_structure_baseline_if_needed(self):
         """Solve the one-time callable-representation structure baseline.
 
@@ -1502,13 +1515,7 @@ class Proteus:
             # Adjust total iteration counters
             self.loops['total'] += 1
 
-            # Init stage?
-            if self.loops['total'] > self.loops['init_loops']:
-                if self.init_stage:
-                    from proteus.interior_struct.zalmoxis import set_core_target_at_init_end
-
-                    set_core_target_at_init_end(self.config, self.hf_row)
-                self.init_stage = False
+            self._end_init_stage_if_due()
 
             # Keep time at zero during init stage
             if self.init_stage:

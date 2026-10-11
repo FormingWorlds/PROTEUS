@@ -522,12 +522,12 @@ def test_the_core_target_is_set_from_the_row_when_the_init_stage_has_no_resolve(
 
 
 @pytest.mark.unit
-@pytest.mark.physics_invariant
-def test_a_core_target_that_an_impact_raised_is_read_by_the_next_solve(monkeypatch):
-    """After the init stage an impact of 0.05 Earth masses of rock raises mass_tot and adds
-    0.325 of the rock to the stored target. The solve at 250 yr takes that core and a
-    structure target that grew by the rock. With core_frac of the structure target as the
-    core, the result would be 0.325 of the oxygen (6.9e22 kg) lower."""
+def test_a_raised_core_target_is_read_with_the_grown_planet(monkeypatch):
+    """An impact leaves a row with mass_tot raised by the rock and the stored target raised
+    by 0.325 of it (the accretion tests assert that write). For such a row, with 0.05 Earth
+    masses of rock, the solve at 250 yr takes the stored core and a structure target that
+    grew by the rock. With core_frac of the structure target as the core, the result would
+    be 0.325 of the oxygen (6.9e22 kg) lower."""
     stored, rock = 0.325 * (M_earth - 7.43e20), 0.05 * M_earth
     late = {**_BUFFERED, 'Time': 250.0}
     planet_base, _, _ = _structure_target(monkeypatch, {**late, 'M_core_target': stored})

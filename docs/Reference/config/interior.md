@@ -118,7 +118,7 @@ Zalmoxis solves the structure for a target mass and a core mass.
 The target is the planet mass (`planet.mass_tot` plus the `M_volatile_change` ledger of delivered, stripped, escaped and desiccated volatiles) without the volatile mass that the structure does not hold: every element inventory with `dry_mantle = true`, and the atmosphere part of each inventory with `dry_mantle = false`.
 The core mass is set on the structure the evolution starts on (the rows with `Time = 0`), as `core_frac` of the planet without its kept volatiles, the inventories that the outgassing takes as inputs: H, C, N, S and the noble gases, and oxygen only when it is an input too (`planet.fO2_source = "from_O_budget"`, or `outgas.module = "dummy"`).
 With `dry_mantle = false` only the atmosphere part of the kept inventories is taken off.
-With `zalmoxis.equilibrate_init = false` the init stage does not solve the structure again, so the core mass is set from the inventories of the row when the init stage ends.
+With `zalmoxis.equilibrate_init = false` no structure solve of the init stage takes the kept inventories off, so the core mass is set from the inventories of the row when the init stage ends.
 With the default `planet.fO2_source = "user_constant"`, CALLIOPE and atmodeller derive the oxygen inventory from the fO$_2$ buffer at each call. That oxygen is mantle mass, like rock vapour, and takes none of the core.
 From then on the core mass is kept, and the mantle is the rest of the target: mass that escapes, that an impact strips, that desiccation removes or that leaves the mantle moves nothing across the core-mantle boundary.
 A giant impact adds `core_frac` of the impactor rock to the core mass.

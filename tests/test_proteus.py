@@ -2215,6 +2215,26 @@ def test_proteus_resume_too_short_raises(tmp_path):
 
 
 # ============================================================================
+# _end_init_stage_if_due: the init stage ends once, with the core target of the row
+# ============================================================================
+
+
+@pytest.mark.unit
+def test_the_init_stage_ends_once_and_sets_the_core_target_once(tmp_path):
+    """With 3 init loops the stage ends when the loop counter reaches 4: that step calls
+    the setter of the core target once with the row, and the steps before and after call
+    nothing. A setter on every later step would move a kept core with each inventory."""
+    p = _make_proteus_instance(tmp_path)
+    p.init_stage, p.hf_row, p.loops = True, {'M_core_target': 1.9409e24}, {'init_loops': 3}
+    with patch('proteus.interior_struct.zalmoxis.set_core_target_at_init_end') as setter:
+        for total, stage, calls in ((3, True, 0), (4, False, 1), (5, False, 1)):
+            p.loops['total'] = total
+            p._end_init_stage_if_due()
+            assert (p.init_stage, setter.call_count) == (stage, calls)
+        setter.assert_called_once_with(p.config, p.hf_row)
+
+
+# ============================================================================
 # _solve_structure_baseline_if_needed: one-time callable-representation baseline
 # ============================================================================
 
