@@ -30,7 +30,7 @@ from proteus.data import (
     EOS_WOLF_BOWER_2018,
     dataset_dir,
 )
-from proteus.interior_struct.common import solvus_radius
+from proteus.interior_struct.common import solvus_radius, stored_core_target
 from proteus.utils.constants import (
     FEI2021_LIQUIDUS_P_CALIB_PA,
     PALEOS_EOS_PREFIXES,
@@ -1414,19 +1414,19 @@ def load_zalmoxis_configuration(
 
     log.debug(f'Target planet mass (dry mass): {planet_mass} kg ')
 
-    # On the rows of the init stage the core takes core_frac of the planet without its kept
-    # volatiles; the mantle is the rest of the structure target.
+    # At Time = 0 the core takes core_frac of the planet without its kept volatiles; the
+    # mantle is the rest of the structure target.
     core_frac = config.interior_struct.core_frac
     core_base, stored = total_planet_mass - M_kept, 0.0
-    # After the init stage the core keeps that mass: no inventory that leaves the planet or
+    # At Time > 0 the core keeps the stored mass: no inventory that leaves the planet or
     # the mantle moves mass across the core-mantle boundary. An impact adds to the row.
     if float(hf_row.get('Time') or 0.0) > 0.0:
-        stored = float(hf_row.get('M_core_target') or 0.0)
+        stored = stored_core_target(hf_row)
         if stored <= 0.0:
             core_base = planet_mass
             log.warning(
                 'The row holds no M_core_target: the core mass is set from the structure '
-                'target of the resumed row, %.6e kg, and kept from there.',
+                'target of the row of this solve, %.6e kg, and kept from there.',
                 core_frac * core_base,
             )
     core_mass = stored if stored > 0.0 else core_frac * core_base

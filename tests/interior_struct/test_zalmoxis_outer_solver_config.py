@@ -385,8 +385,8 @@ def test_the_core_fraction_is_the_config_value_when_no_inventory_is_derived(
 @pytest.mark.physics_invariant
 def test_nitrogen_sulfur_and_a_noble_gas_are_kept_volatiles(monkeypatch):
     """N, S and He are inputs of the outgassing like H and C, so the core is 0.325 of the
-    planet without all 5 (2.6790e21 kg here) and the structure target also loses the derived
-    oxygen. The 3 masses differ by a factor of 6 or more, so a kept set without one of
+    planet without all 5 (2.6793e21 kg here) and the structure target also loses the derived
+    oxygen. The 3 masses differ by a factor of 5 or more, so a kept set without one of
     them moves the core by 0.325 of that mass: 1.0e19 kg (N), 6.2e20 kg (S), 1.7e18 kg (He)."""
     extra = {'N_kg_total': 3.1e19, 'S_kg_total': 1.9e21, 'He_kg_total': 5.3e18}
     planet, core, _ = _structure_target(monkeypatch, {**_BUFFERED, **extra})
@@ -501,7 +501,10 @@ def test_a_wet_mantle_core_is_computed_in_the_init_stage_and_kept_after(monkeypa
 @pytest.mark.parametrize('stored', [None, 0.0], ids=['column_absent', 'zero_fill'])
 @pytest.mark.parametrize(
     'inventory, dry_mantle, outside, kept',
-    [(_WET, False, 2.082e23, 3.0e20), (_BUFFERED, True, 2.117e23 + 7.43e20, 7.43e20)],
+    [
+        ({**_WET, 'O_kg_atm': 2.0794e23}, False, 2.0824e23, 3.0e20),
+        ({**_BUFFERED, 'O_kg_total': 2.118e23}, True, 2.118e23 + 7.43e20, 7.43e20),
+    ],
     ids=['wet', 'dry'],
 )
 def test_a_resume_without_the_core_target_continues_on_core_frac_of_the_structure_target(
@@ -513,24 +516,48 @@ def test_a_resume_without_the_core_target_continues_on_core_frac_of_the_structur
     goes to the row and is kept from there. The row's M_core, a node mass, is not read.
     The rule of a new run, 0.325 of the planet without its kept volatiles, would give a
     core that is higher by 0.325 of the derived oxygen (6.9e22 kg dry, 6.8e22 kg wet).
-    One warning names the source."""
+    One warning names the source. The planet has 0.75 Earth masses and these inventories
+    because (0.325 * m) / m is then another float than 0.325: a fraction computed as core
+    mass over structure target fails here."""
     row = {**inventory, 'Time': 250.0, 'M_core': 1.8915e24}
     row.update({} if stored is None else {'M_core_target': stored})
     with caplog.at_level('WARNING', logger='fwl.proteus.interior_struct.zalmoxis'):
-        planet, core, params = _structure_target(monkeypatch, row, dry_mantle=dry_mantle)
-    assert planet == pytest.approx(M_earth - outside, rel=1e-14)
+        planet, core, params = _structure_target(
+            monkeypatch, row, dry_mantle=dry_mantle, mass_tot=0.75
+        )
+    assert planet == pytest.approx(0.75 * M_earth - outside, rel=1e-14)
+    assert (0.325 * planet) / planet != pytest.approx(0.325, rel=0.0, abs=0.0)
     assert params['core_mass_fraction'] == pytest.approx(0.325, rel=0.0, abs=0.0)
     assert params['core_mass_target'] == pytest.approx(0.325 * planet, rel=1e-15)
-    assert 0.325 * (M_earth - kept) - core == pytest.approx(0.325 * (outside - kept), rel=1e-9)
-    assert 0.325 * (M_earth - kept) - core > 6.7e22
+    rule_of_a_new_run = 0.325 * (0.75 * M_earth - kept)
+    assert rule_of_a_new_run - core == pytest.approx(0.325 * (outside - kept), rel=1e-9)
+    assert rule_of_a_new_run - core > 6.7e22
     assert abs(core - 1.8915e24) > 1.0e21
     warnings = [r.getMessage() for r in caplog.records if r.levelname == 'WARNING']
     assert len(warnings) == 1
-    assert (
-        'no M_core_target' in warnings[0]
-        and 'structure target of the resumed row' in warnings[0]
-    )
+    assert 'no M_core_target' in warnings[0]
+    assert 'structure target of the row of this solve' in warnings[0]
     assert f'{core:.6e} kg' in warnings[0]
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize(
+    'stored', [float('nan'), -1.9407e24, float('inf')], ids=['nan', 'negative', 'infinite']
+)
+def test_a_stored_core_target_that_is_not_a_mass_is_refused(monkeypatch, caplog, stored):
+    """A stored target that is NaN, negative or infinite is a damaged row: a solve after
+    the init stage raises an error that names the column and the value, and does not fall
+    back to a rule with a warning. On a row of the init stage the column is not read, so
+    the same row gives the core of the rule, 0.325 of the planet without H and C."""
+    row = {**_BUFFERED, 'M_core_target': stored}
+    with caplog.at_level('WARNING', logger='fwl.proteus.interior_struct.zalmoxis'):
+        with pytest.raises(ValueError, match='M_core_target is not a core mass') as err:
+            _structure_target(monkeypatch, {**row, 'Time': 250.0})
+    assert repr(stored) in str(err.value)
+    assert 'holds no M_core_target' not in caplog.text
+    _, core, _ = _structure_target(monkeypatch, {**row, 'Time': 0.0})
+    assert core == pytest.approx(0.325 * (M_earth - 7.43e20), rel=1e-14)
 
 
 @pytest.mark.unit
