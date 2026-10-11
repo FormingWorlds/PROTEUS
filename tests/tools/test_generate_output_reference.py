@@ -11,6 +11,7 @@ joined matrix (``generate_output_reference``). These tests exercise:
   albedo-to-bond_albedo merge rename,
 * complete producer coverage: every column attributed or listed unresolved,
 * module-conditionality pins for backend-specific columns,
+* every literal key the structure modules write is declared or private,
 * the missing-function error contract and check-mode drift detection.
 
 See ``docs/How-to/testing.md`` and ``docs/Explanations/test_framework.md``
@@ -277,22 +278,20 @@ def test_committed_page_and_json_are_current(matrix):
     assert unitless == []
 
 
-def test_structure_solver_writes_only_declared_keys():
-    """Each literal key ``zalmoxis_solver`` writes into ``hf_row`` is a helpfile
+def test_structure_modules_write_only_declared_keys():
+    """Each literal key a structure module writes into ``hf_row`` is a helpfile
     column, an allowlisted non-schema key, or private. An undeclared key would
     make ``ExtendHelpfile`` warn on every row that follows a structure solve."""
     coupler = importlib.import_module('proteus.utils.coupler')
     written = {
         key
-        for rel, func, key in _scan.scan_tree()['writes']
-        if rel == 'interior_struct/zalmoxis.py' and func == 'zalmoxis_solver'
+        for rel, _func, key in _scan.scan_tree()['writes']
+        if rel.startswith('interior_struct/')
     }
-    # The scan must see the writer, else the subset check below passes on nothing.
+    # The scan must see the writers, else the check below passes on nothing.
     assert {'M_int', 'M_int_target', 'core_state_initial'} <= written
-    public = {k for k in written if not k.startswith('_')}
     declared = set(coupler.GetHelpfileKeys()) | coupler._ALLOWED_NON_SCHEMA_KEYS
-    assert sorted(public - declared) == []
-    assert {'M_int_target', 'core_state_initial'} <= coupler._ALLOWED_NON_SCHEMA_KEYS
+    assert sorted(k for k in written if not k.startswith('_') and k not in declared) == []
 
 
 def test_declared_scan_tables_are_all_live(monkeypatch):

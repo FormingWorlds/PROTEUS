@@ -1312,11 +1312,9 @@ def _populate_energy_residual(current_hf: pd.DataFrame, new_row: dict) -> None:
 _ALLOWED_NON_SCHEMA_KEYS = frozenset(
     {
         'core_state_initial',  # string: 'liquid'/'mixed'/'solid'
-        # Dry-mass target of the latest structure solve [kg]: the mass-anchor
-        # check reads it in the same call, and every solve writes it again.
-        'M_int_target',
-        # User oxygen budget for check_ic_oxygen_budget, which resets it to -1.0
-        # on the first outgassing call; a resumed run derives it from the config.
+        'M_int_target',  # mass target of the latest structure solve [kg]
+        # User oxygen budget [kg] for check_ic_oxygen_budget, which resets it to
+        # -1.0 on the first outgassing call.
         'O_kg_user_ic',
     }
 )

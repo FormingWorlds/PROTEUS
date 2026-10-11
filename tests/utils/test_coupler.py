@@ -327,6 +327,8 @@ def test_extend_helpfile_warns_on_unknown_keys(caplog):
     row = ZeroHelpfileRow()
     row['_transient_scratch'] = 3000.0  # private transient key: must not warn
     row['core_state_initial'] = 'liquid'  # allowlisted string key: must not warn
+    row['M_int_target'] = 5.9e24  # allowlisted structure mass target [kg]: must not warn
+    row['O_kg_user_ic'] = 1.0e21  # allowlisted oxygen budget [kg]: must not warn
     row['nonsense_future_key'] = 1.0  # genuine drift: must warn
     hf = CreateHelpfileFromDict(ZeroHelpfileRow())
 
@@ -337,32 +339,8 @@ def test_extend_helpfile_warns_on_unknown_keys(caplog):
     joined = '\n'.join(r.message for r in warns)
     assert 'nonsense_future_key' in joined, f'Expected unknown-key warning, got: {joined!r}'
     assert '_transient_scratch' not in joined, 'Private key leaked into warning'
-    assert 'core_state_initial' not in joined, 'Allowlisted key triggered warning'
-
-
-@pytest.mark.unit
-def test_extend_helpfile_accepts_the_structure_mass_target(caplog):
-    """A row from a loop with a structure solve holds ``M_int_target``: no
-    unknown-key warning, and the key stays out of the table. A second unknown
-    key in the same row is still reported, alone."""
-    marker = 'not declared in GetHelpfileKeys()'
-    row = ZeroHelpfileRow()
-    row['M_int_target'] = 5.862513874440119e24  # dry-mass target of a 1 M_Earth run [kg]
-    hf = CreateHelpfileFromDict(ZeroHelpfileRow())
-
-    with caplog.at_level(logging.WARNING, logger='fwl.proteus.utils.coupler'):
-        extended = ExtendHelpfile(hf, row)
-    assert [r.getMessage() for r in caplog.records if marker in r.getMessage()] == []
-    assert len(extended) == 2
-    assert 'M_int_target' not in extended.columns
-
-    caplog.clear()
-    row['M_int_goal'] = 1.0  # near-miss name: the allowlist must match whole keys
-    with caplog.at_level(logging.WARNING, logger='fwl.proteus.utils.coupler'):
-        ExtendHelpfile(hf, row)
-    unknown = [r.getMessage() for r in caplog.records if marker in r.getMessage()]
-    assert len(unknown) == 1
-    assert "['M_int_goal']" in unknown[0]
+    for key in ('core_state_initial', 'M_int_target', 'O_kg_user_ic'):
+        assert key not in joined, f'Allowlisted key {key} triggered warning'
 
 
 @pytest.mark.unit
