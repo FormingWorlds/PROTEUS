@@ -147,6 +147,30 @@ def test_the_prev_copy_and_then_an_older_saved_copy_serve(tmp_path, caplog):
     assert row['R_int'] == pytest.approx(OLD['R_int'])
     assert caplog.records == []
 
+    # With .prev on the earlier structure again, it comes before the older row's copy.
+    _mesh_file(out / 'data' / 'zalmoxis_output.dat.prev', OLD)
+    row, file = pending_structure_update(str(out), hf_row, hf_all, N_BASIC)
+    assert file.endswith('zalmoxis_output.dat.prev')
+    assert row['Time'] == pytest.approx(T_OLD)
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize('bound', ['R_core', 'R_int'])
+def test_a_mesh_file_that_misses_one_bound_of_its_row_is_refused(tmp_path, caplog, bound):
+    """A mesh file is taken only when both of its radial bounds are those of the
+    earlier row: a copy 2 m off in the core radius or in the outer radius alone
+    is refused, and the search ends in its warning."""
+    out, hf_row, hf_all = _run_dir(tmp_path, saved_copy=False)
+    _mesh_file(out / 'data' / 'zalmoxis_output.dat.prev', {**OLD, bound: OLD[bound] + 2.0})
+
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.interior_energetics'):
+        assert pending_structure_update(str(out), hf_row, hf_all, N_BASIC) is None
+    assert len(caplog.records) == 1
+
+    # The same copy on both bounds is taken.
+    _mesh_file(out / 'data' / 'zalmoxis_output.dat.prev', OLD)
+    assert pending_structure_update(str(out), hf_row, hf_all, N_BASIC) is not None
+
 
 def test_no_mesh_file_of_the_earlier_structure_gives_none_and_one_warning(tmp_path, caplog):
     """With the snapshot on an earlier structure and no mesh file of it left

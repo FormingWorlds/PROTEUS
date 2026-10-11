@@ -449,7 +449,7 @@ def resolve_core_density(
         Live helpfile row. Read: ``M_core``, possibly ``core_density``.
         Written: ``core_density`` when echo-back fires.
     outdir : str
-        PROTEUS output directory; the mesh file is read from
+        PROTEUS output directory; without ``mesh_file`` the mesh file is
         ``<outdir>/data/zalmoxis_output.dat``.
     mesh_file : str, optional
         Mesh file to read in place of the one in ``outdir``.
@@ -624,10 +624,6 @@ class AragogRunner:
                 AragogRunner.setup_solver(
                     config, build_row, interior_o, dirs['output'], mesh_file=pending[1]
                 )
-                # The mesh arrays are loaded; every later reset reads the file of the run.
-                interior_o.aragog_solver.parameters.mesh.eos_file = os.path.join(
-                    dirs['output'], 'data', 'zalmoxis_output.dat'
-                )
             if config.params.resume:
                 AragogRunner.update_solver(dt, hf_row, interior_o, output_dir=dirs['output'])
             _t_init = time.perf_counter()
@@ -798,10 +794,10 @@ class AragogRunner:
 
         The solver is on the structure of its snapshot, with the snapshot state as
         its start vector. It moves to the structure of ``hf_row`` through the update
-        a running loop makes. That update measures the compression work [J] and
-        carries the entropy by mass parcel only from a solution, so the start vector
-        is handed to the solver as one for the length of the update. The private
-        solver names used are ``_solution`` and ``_S0``.
+        a running loop makes, which carries the entropy by mass parcel from the
+        earlier mesh. That update measures the compression work [J] only from a
+        solution, so the start vector is handed to the solver as one for the length
+        of the update. The private solver names used are ``_solution`` and ``_S0``.
         """
         solver = interior_o.aragog_solver
         previous = getattr(solver, '_solution', None)
@@ -1260,6 +1256,9 @@ class AragogRunner:
             radionuclides=radionuclides,
             solver=solver,
         )
+        if mesh_file and mesh.eos_file == mesh_file:
+            # The mesh arrays are loaded from the copy; every reset reads the file of the run.
+            mesh.eos_file = os.path.join(outdir, 'data', 'zalmoxis_output.dat')
 
         # Load PALEOS P-S EOS tables for entropy solver.
         # Skip entirely in const_properties mode (no table lookups needed).

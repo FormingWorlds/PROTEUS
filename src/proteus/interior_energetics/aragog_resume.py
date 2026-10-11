@@ -57,6 +57,13 @@ def pending_structure_update(
         of ``hf_row``, the snapshot is absent or holds no ``radius_b``, or its
         node count is not ``n_basic``. None with a warning when no earlier row
         and file hold the snapshot mesh.
+
+    Notes
+    -----
+    A mesh copy is saved only with a row that has a snapshot, and every structure
+    solve overwrites ``zalmoxis_output.dat.prev``. With snapshots on every row the
+    earlier structure is always found. With sparser snapshots it is found only
+    when the run stopped before the next structure solve.
     """
     from proteus.interior_struct.zalmoxis import (
         get_zalmoxis_output_filepath,
@@ -79,15 +86,13 @@ def pending_structure_update(
     earlier = hf_all.iloc[:-1]
     held = _on_mesh(earlier['R_core'], earlier['R_int'], r_inner, r_outer).to_numpy()
     rows = [earlier.iloc[i].to_dict() for i in np.flatnonzero(held)[::-1]]
-    files = [
-        (row, snapshot_path_for_time(data_dir, float(row['Time']), '_zalmoxis.dat'))
-        for row in rows
-    ]
-    files[1:1] = [(row, get_zalmoxis_output_filepath(output_dir) + '.prev') for row in rows[:1]]
-    for row, file in files:
-        gaps = zalmoxis_mesh_gaps(file, row)
-        if gaps is not None and abs(gaps[0]) <= gaps[2] and abs(gaps[1]) <= gaps[2]:
-            return row, file
+    prev = get_zalmoxis_output_filepath(output_dir) + '.prev'
+    for k, row in enumerate(rows):
+        saved = snapshot_path_for_time(data_dir, float(row['Time']), '_zalmoxis.dat')
+        for file in (saved, prev) if k == 0 else (saved,):
+            gaps = zalmoxis_mesh_gaps(file, row)
+            if gaps is not None and abs(gaps[0]) <= gaps[2] and abs(gaps[1]) <= gaps[2]:
+                return row, file
 
     log.warning(
         'Resume: the interior snapshot at t = %.6e yr is on an earlier structure '
