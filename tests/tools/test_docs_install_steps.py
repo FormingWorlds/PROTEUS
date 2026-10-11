@@ -291,11 +291,13 @@ def test_generated_script_prints_deviation_line_for_substituted_command(tmp_path
 
 
 def test_committed_substitutions_match_the_install_page():
-    """Every committed substitution matches a command on the Ubuntu tab of the page."""
+    """Every committed substitution matches a command on the Ubuntu and bash tabs of the page."""
     out = _run(
         str(_REPO_ROOT / 'docs' / 'How-to' / 'installation.md'),
         '--tab',
         'Debian / Ubuntu',
+        '--tab',
+        'bash',
         '--substitutions',
         str(_REPO_ROOT / '.github' / 'docs-install-linux-substitutions.toml'),
         '--format',
@@ -304,3 +306,32 @@ def test_committed_substitutions_match_the_install_page():
     assert out.returncode == 0, out.stderr
     assert '`git clone "$GITHUB_WORKSPACE" PROTEUS`' in out.stdout
     assert '`bash install.sh` | as written' in out.stdout
+
+
+@pytest.mark.parametrize(
+    ('tabs', 'expected'),
+    [
+        (
+            ['Alpha', 'Beta'],
+            [
+                'echo shared-one',
+                'echo alpha-one',
+                'echo alpha-two --long',
+                'echo beta-one   # a trailing comment',
+            ],
+        ),
+        (['Beta'], ['echo shared-one', 'echo beta-one   # a trailing comment']),
+    ],
+)
+def test_several_tabs_are_selected_together_in_page_order(tabs, expected):
+    """A page with two tab sets needs two names; each name adds its blocks, in page order."""
+    required, _ = steps.select_steps(steps.parse_page(_PAGE), tabs)
+    commands = [s.command for s in required]
+    assert commands[: len(expected)] == expected
+    assert ('echo alpha-one' in commands) == ('Alpha' in tabs)
+
+
+def test_an_unknown_name_among_several_tabs_is_refused():
+    """One wrong name stops the selection, so a renamed tab cannot drop its commands silently."""
+    with pytest.raises(steps.InstallStepsError, match="unknown tab 'Gamma'"):
+        steps.select_steps(steps.parse_page(_PAGE), ['Alpha', 'Gamma'])

@@ -10,7 +10,7 @@ variables, and reference data downloads in a single command.
       x86_64 installer.
     - ~20 GB disk space (conda, Julia, reference data, submodules)
     - Standard command-line tools: `curl`, `wget`, `make`
-    - Git with SSH key configured ([GitHub SSH setup](https://docs.github.com/en/authentication/connecting-to-github-with-ssh))
+    - Git
     - Internet connection for initial setup and data downloads
     - Allow ~60 minutes for a full installation including all submodules
 
@@ -98,11 +98,19 @@ or [miniforge](https://github.com/conda-forge/miniforge) installed yet:
 Then clone PROTEUS and create a conda environment with Python 3.12:
 
 ```console
-git clone git@github.com:FormingWorlds/PROTEUS.git
+git clone https://github.com/FormingWorlds/PROTEUS.git
 cd PROTEUS
 conda create -n proteus python=3.12
 conda activate proteus
 ```
+
+!!! tip "Cloning over SSH"
+    To push changes back to GitHub, clone over SSH instead. This needs an
+    [SSH key registered with GitHub](https://docs.github.com/en/authentication/connecting-to-github-with-ssh):
+
+    ```console
+    git clone git@github.com:FormingWorlds/PROTEUS.git
+    ```
 
 ## 3. Run the installer
 
@@ -163,14 +171,24 @@ phases.
 
 ## 4. Verify and run
 
-After the installer finishes, source your shell configuration and run the
-quick-start test:
+After the installer finishes, load the variables it wrote to your shell
+configuration and run the quick-start test:
 
-```console
-source ~/.zshrc   # or ~/.bashrc, depending on your shell
-conda activate proteus
-proteus start --offline -c input/dummy.toml
-```
+=== "bash"
+
+    ```console
+    source ~/.bashrc
+    conda activate proteus
+    proteus start --offline -c input/dummy.toml
+    ```
+
+=== "zsh"
+
+    ```console
+    source ~/.zshrc
+    conda activate proteus
+    proteus start --offline -c input/dummy.toml
+    ```
 
 If this produces output in `output/run_<timestamp>_xxxx/`, your installation is working.
 See the [Quick start tutorial](../Tutorials/quick_start_dummy.md) for a guided walkthrough.

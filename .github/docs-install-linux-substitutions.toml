@@ -12,9 +12,9 @@ replace = "bash ~/miniconda3/miniconda.sh -b -u -p ~/miniconda3 && ~/miniconda3/
 reason = "The Miniconda installer is interactive and a runner has no terminal; conda is made available to this shell session."
 
 [[substitution]]
-match = "git clone git@github.com:FormingWorlds/PROTEUS.git"
+match = "git clone https://github.com/FormingWorlds/PROTEUS.git"
 replace = 'git clone "$GITHUB_WORKSPACE" PROTEUS'
-reason = "The job tests the pushed commit, and a runner has no SSH key for GitHub."
+reason = "The job tests the pushed commit, not the default branch."
 
 # The Anaconda default channels (Miniconda from repo.anaconda.com) require a
 # terms-of-service acceptance before `conda create` in a non-interactive shell.
@@ -26,6 +26,6 @@ reason = "A runner has no terminal to confirm, and the Anaconda default channels
 # Ubuntu's ~/.bashrc returns at the top in a non-interactive shell, so the lines
 # that install.sh and the juliaup installer append to it are evaluated directly.
 [[substitution]]
-match = "source ~/.zshrc   # or ~/.bashrc, depending on your shell"
+match = "source ~/.bashrc"
 replace = '''eval "$(sed -n -e '/^# >>> juliaup initialize >>>/,/^# <<< juliaup initialize <<</p' -e '/^export FWL_DATA=/p' -e '/^export RAD_DIR=/p' -e '/^export FC_DIR=/p' -e '/^export PYTHON_JULIAPKG_EXE=/p' ~/.bashrc)"'''
 reason = "install.sh appends the FWL_DATA, RAD_DIR, FC_DIR and PYTHON_JULIAPKG_EXE exports and the juliaup PATH block to ~/.bashrc, and Ubuntu's ~/.bashrc returns early in a non-interactive shell, so a plain source loads nothing; the job evaluates those lines directly."

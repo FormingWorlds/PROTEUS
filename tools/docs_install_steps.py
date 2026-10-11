@@ -191,15 +191,18 @@ def parse_page(text: str) -> list[Step]:
     return steps
 
 
-def select_steps(steps: list[Step], tab: str | None) -> tuple[list[Step], list[Step]]:
-    """Split steps into required and optional ones for one tab.
+def select_steps(
+    steps: list[Step], tab: str | list[str] | None
+) -> tuple[list[Step], list[Step]]:
+    """Split steps into required and optional ones for the chosen tabs.
 
     Parameters
     ----------
     steps : list of Step
         Output of :func:`parse_page`.
-    tab : str or None
-        Tab name to select. None keeps only the blocks shared by all platforms.
+    tab : str, list of str, or None
+        Tab name or names to select, for a page with more than one tab set
+        (platform and shell). None keeps only the blocks shared by all tabs.
 
     Returns
     -------
@@ -209,14 +212,16 @@ def select_steps(steps: list[Step], tab: str | None) -> tuple[list[Step], list[S
     Raises
     ------
     InstallStepsError
-        If ``tab`` names no tab on the page or the selection has no command.
+        If a name is no tab on the page or the selection has no command.
     """
+    wanted = [tab] if isinstance(tab, str) else list(tab or [])
     known = sorted({s.tab for s in steps if s.tab is not None})
-    if tab is not None and tab not in known:
-        raise InstallStepsError(
-            f'unknown tab {tab!r}; the page has: {", ".join(known) or "(none)"}'
-        )
-    chosen = [s for s in steps if s.tab is None or s.tab == tab]
+    for name in wanted:
+        if name not in known:
+            raise InstallStepsError(
+                f'unknown tab {name!r}; the page has: {", ".join(known) or "(none)"}'
+            )
+    chosen = [s for s in steps if s.tab is None or s.tab in wanted]
     required = [s for s in chosen if s.admonition is None]
     optional = [s for s in chosen if s.admonition is not None]
     if not required:
@@ -407,7 +412,11 @@ def build_parser() -> argparse.ArgumentParser:
     """Return the command-line parser."""
     parser = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     parser.add_argument('page', type=Path, help='Markdown install page')
-    parser.add_argument('--tab', help='platform tab name, for example "Debian / Ubuntu"')
+    parser.add_argument(
+        '--tab',
+        action='append',
+        help='tab name, for example "Debian / Ubuntu"; repeat it for a page with platform and shell tabs',
+    )
     parser.add_argument(
         '--substitutions', type=Path, help='TOML table of documented deviations'
     )
