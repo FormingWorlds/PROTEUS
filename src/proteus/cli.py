@@ -537,6 +537,14 @@ def scattering():
 
 
 @click.command()
+def refractive():
+    """Get aerosol refractive indices for Mie scattering"""
+    from .utils.data import download_refractive
+
+    download_refractive()
+
+
+@click.command()
 def reference():
     """Get reference data (exoplanet populations, mass-radius curves, etc.)"""
     from .utils.data import download_exoplanet_data, download_massradius_data
@@ -605,6 +613,7 @@ cli.add_command(get)
 get.add_command(spectral)
 get.add_command(surfaces)
 get.add_command(scattering)
+get.add_command(refractive)
 get.add_command(muscles)
 get.add_command(phoenix)
 get.add_command(solar)

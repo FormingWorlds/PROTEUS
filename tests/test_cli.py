@@ -1103,6 +1103,17 @@ def test_get_scattering_dispatches_to_downloader(monkeypatch):
     assert calls == ['scattering']
 
 
+@pytest.mark.unit
+def test_get_refractive_dispatches_to_downloader(monkeypatch):
+    """``proteus get refractive`` calls download_refractive exactly once."""
+    calls = []
+    monkeypatch.setattr('proteus.utils.data.download_refractive', lambda: calls.append(1))
+
+    res = runner.invoke(cli.cli, ['get', 'refractive'])
+    assert res.exit_code == 0
+    assert calls == [1]
+
+
 # ---------------------------
 # archive commands
 # ---------------------------

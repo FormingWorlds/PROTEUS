@@ -306,6 +306,53 @@ def test_aragog_defaults():
         Aragog(dilatation=True)
 
 
+def test_aragog_core_module_defaults_and_mode_validator():
+    """Verify core-module sub-config defaults and validator bounds."""
+    from proteus.config._interior import AragogCoreModule
+
+    aragog = Aragog()
+    cm = aragog.core_module
+    assert not hasattr(cm, 'rho_cen')
+    assert not hasattr(cm, 'length_scale')
+    with pytest.raises(TypeError):
+        AragogCoreModule(rho_cen=12500.0)
+    with pytest.raises(TypeError):
+        AragogCoreModule(length_scale=7272e3)
+    assert cm.melting_curve == 'iron'
+    assert cm.light_element_fraction == pytest.approx(0.0)  # pure iron
+    assert cm.q_radio == pytest.approx(0.0)
+    assert cm.ds_fusion == pytest.approx(172.8, rel=1e-6)  # 1.16 k_B/atom of Fe
+
+    assert Aragog(core_bc='core_module').core_bc == 'core_module'
+    with pytest.raises(ValueError):
+        Aragog(core_bc='core_reservoir')
+    with pytest.raises(ValueError):
+        AragogCoreModule(light_element_fraction=1.0)  # bound is exclusive
+    with pytest.raises(ValueError):
+        AragogCoreModule(melting_curve='cubic')
+
+    # Diagnostics fields: Nimmo (2015) conductivity default, ohmic
+    # fraction bounded on (0, 1], and the two printed CHR09 geometries.
+    assert cm.k_core == pytest.approx(130.0)
+    assert cm.f_ohm == pytest.approx(1.0)
+    assert cm.flux_geometry == 'const_flux'
+    with pytest.raises(ValueError):
+        AragogCoreModule(k_core=0.0)
+    with pytest.raises(ValueError):
+        AragogCoreModule(f_ohm=1.5)  # bound is inclusive at 1
+    with pytest.raises(ValueError):
+        AragogCoreModule(f_ohm=0.0)  # bound is exclusive at 0
+    with pytest.raises(ValueError):
+        AragogCoreModule(flux_geometry='spherical_cow')
+
+    # CMB boundary-layer critical Rayleigh number: Thiriet et al. (2019) Table 2 default.
+    assert cm.ra_crit_cmb == pytest.approx(450.0)
+    assert AragogCoreModule(ra_crit_cmb=1000.0).ra_crit_cmb == pytest.approx(1000.0)
+    for bad in (0.0, float('inf'), float('nan')):
+        with pytest.raises(ValueError):
+            AragogCoreModule(ra_crit_cmb=bad)
+
+
 def test_aragog_phase_boundary_cap_defaults_to_rate_and_rejects_other_values():
     """The schema default is 'rate'; 'fixed' is kept; anything else is rejected at load."""
     assert Aragog().phase_boundary_cap == 'rate'
@@ -329,3 +376,127 @@ def test_deprecated_rtol_alias_overrides_the_aragog_default():
     """num_tolerance still copies into rtol for Aragog, with its deprecation warning."""
     with pytest.warns(DeprecationWarning, match='num_tolerance'):
         assert Interior(module='aragog', num_tolerance=1e-6).rtol == pytest.approx(1e-6)
+
+
+@pytest.mark.parametrize(
+    ('curve', 'fraction', 'depression', 'refused'),
+    [
+        ('iron', 0.1, 9.9, False),
+        ('iron', 0.0, 50.0, False),
+        ('iron', 0.1, 10.0, True),
+        ('iron', 0.5, 3.0, True),
+        ('iron', 0.0, float('inf'), True),
+        ('quadratic', 0.5, 3.0, False),
+    ],
+)
+def test_an_iron_melting_curve_depressed_to_zero_is_refused_at_config_load(
+    curve, fraction, depression, refused
+):
+    """The iron melting curve scales with 1 - depression * light_element_fraction, so a
+    product of 1 or more, or one that is not a number, is refused when the config is
+    built; the quadratic curve does not read the two keys."""
+    from proteus.config._interior import AragogCoreModule
+
+    kwargs = dict(melting_curve=curve, light_element_fraction=fraction, depression=depression)
+    if refused:
+        with pytest.raises(ValueError, match='must be below 1'):
+            AragogCoreModule(**kwargs)
+    else:
+        assert AragogCoreModule(**kwargs).depression == depression
+
+
+def test_a_change_of_one_melting_curve_key_is_not_checked_against_the_old_other_key():
+    """A grid sets the keys of a config one by one, so the product is checked when the
+    config is built, not at each change: the step from (0.4, 2.0) to (0.1, 5.0) passes
+    through a pair above 1 and must not stop."""
+    from proteus.config._interior import AragogCoreModule
+
+    core = AragogCoreModule(light_element_fraction=0.4, depression=2.0)
+    core.depression = 5.0
+    core.light_element_fraction = 0.1
+    assert core.depression * core.light_element_fraction == pytest.approx(0.5)
+    with pytest.raises(ValueError, match='must be below 1'):
+        AragogCoreModule(light_element_fraction=0.4, depression=5.0)
+
+
+@pytest.mark.parametrize(
+    ('struct', 'core_bc', 'stratified', 'solver', 'interval', 'ic', 'refused'),
+    [
+        ('zalmoxis', 'core_module', False, 'cvode', 1.0e9, 'adiabatic', None),
+        ('zalmoxis', 'core_module', True, 'bdf', 0.0, 'liquidus_super', None),
+        ('dummy', 'energy_balance', True, 'radau', 1.0e9, 'adiabatic', None),
+        ('zalmoxis', 'energy_balance', False, 'const', 0.0, 'liquidus_super', None),
+        ('zalmoxis', 'core_module', False, 'const', 0.0, 'liquidus_super', 'const_properties'),
+        (
+            'dummy',
+            'core_module',
+            False,
+            'cvode',
+            0.0,
+            'liquidus_super',
+            'needs interior_struct',
+        ),
+        ('spider', 'core_module', False, 'cvode', 0.0, 'liquidus_super', "not 'spider'"),
+        ('zalmoxis', 'core_module', True, 'radau', 0.0, 'liquidus_super', "not 'radau'"),
+        ('zalmoxis', 'core_module', True, 'bdf', 300.0, 'liquidus_super', 'solved once'),
+        ('zalmoxis', 'core_module', True, 'bdf', 0.0, 'adiabatic', 'solved once'),
+    ],
+)
+def test_core_module_requirements_are_checked_at_config_load(
+    struct, core_bc, stratified, solver, interval, ic, refused
+):
+    """The core_module core needs the Zalmoxis structure, which provides the core mass and
+    the central pressure of its profile fit, and its resolved shell does not run on Radau.
+    A stratified core needs a structure that is solved once: structure updates off and the
+    initial condition that has no baseline re-solve, because the core is carried across a
+    structure update with a heat content that a stratified budget does not give. Constant
+    properties (the solver name 'const' here) load no entropy tables, which the CMB flux
+    of the core model needs. Another core boundary is not checked."""
+    from types import SimpleNamespace
+
+    from proteus.config._config import check_core_module_requirements
+
+    instance = SimpleNamespace(
+        planet=SimpleNamespace(temperature_mode=ic),
+        interior_struct=SimpleNamespace(
+            module=struct, zalmoxis=SimpleNamespace(update_interval=interval)
+        ),
+        interior_energetics=SimpleNamespace(
+            module='aragog',
+            const_properties=solver == 'const',
+            aragog=SimpleNamespace(
+                core_bc=core_bc,
+                solver_method=solver,
+                core_module=SimpleNamespace(stratification=stratified),
+            ),
+        ),
+    )
+    if refused:
+        with pytest.raises(ValueError, match=refused):
+            check_core_module_requirements(instance, None, None)
+    else:
+        assert check_core_module_requirements(instance, None, None) is None
+    instance.interior_energetics.module = 'spider'
+    assert check_core_module_requirements(instance, None, None) is None
+
+
+def test_a_core_module_core_without_the_zalmoxis_structure_is_refused_when_built():
+    """Building a configuration runs the core_module check: the dummy structure is refused,
+    the Zalmoxis structure builds, and a light-element mass fraction of 1 is out of range."""
+    import attrs
+    from helpers import PROTEUS_ROOT
+
+    from proteus.config import read_config_object
+    from proteus.config._interior import AragogCoreModule
+
+    cfg = read_config_object(PROTEUS_ROOT / 'input' / 'all_options.toml')
+    aragog = attrs.evolve(cfg.interior_energetics.aragog, core_bc='core_module')
+    interior = attrs.evolve(cfg.interior_energetics, module='aragog', aragog=aragog)
+    built = attrs.evolve(cfg, interior_energetics=interior)
+    assert built.interior_struct.module == 'zalmoxis'
+    with pytest.raises(ValueError, match="needs interior_struct.module = 'zalmoxis'"):
+        dummy = attrs.evolve(cfg.interior_struct, module='dummy', melting_dir='Monteux-600')
+        attrs.evolve(built, interior_struct=dummy)
+    assert AragogCoreModule(c_light=0.046).c_light == pytest.approx(0.046)
+    with pytest.raises(ValueError):
+        AragogCoreModule(c_light=1.0)

@@ -22,6 +22,8 @@ from __future__ import annotations
 
 import logging
 import os
+import pathlib
+import shutil
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -142,6 +144,159 @@ def test_determine_aerosols_warns_when_the_scattering_dataset_cannot_be_resolved
     with caplog.at_level(logging.WARNING):
         assert _determine_aerosols({'fwl': str(tmp_path)}) == {}
     assert 'Scattering data directory not found: unresolved' in caplog.text
+
+
+def _fetch_refractive(root):
+    """Write every registry file of the refractive dataset below root."""
+    from proteus.data import REFRACTIVE, _dataset, dataset_dir
+
+    target = dataset_dir(REFRACTIVE, data_root=root)
+    target.mkdir(parents=True)
+    for name in _dataset(REFRACTIVE).registry():
+        (target / name).write_text('0.3 1.5 0.0\n')
+    return target
+
+
+@pytest.fixture
+def refractive_env(monkeypatch, tmp_path):
+    """A clean AGNI override environment and a fetched refractive dataset below tmp_path."""
+    for var in (agni_mod.REFRACTIVE_ENV, 'AGNI_DIR_res'):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setattr(agni_mod, '_refractive_dir_set', None)
+    yield str(_fetch_refractive(tmp_path))
+    for var in (agni_mod.REFRACTIVE_ENV, 'AGNI_DIR_res'):
+        os.environ.pop(var, None)
+
+
+@pytest.mark.unit
+def test_refractive_env_points_at_the_dataset_and_is_removed_without_aerosols(
+    refractive_env, tmp_path
+):
+    """Aerosols on set AGNI_DIR_refractive to the dataset; a later run without aerosols removes it."""
+    agni_mod._point_agni_at_refractive(str(tmp_path), True)
+    assert os.environ[agni_mod.REFRACTIVE_ENV] == refractive_env
+
+    agni_mod._point_agni_at_refractive(str(tmp_path), False)
+    assert agni_mod.REFRACTIVE_ENV not in os.environ
+    agni_mod._point_agni_at_refractive(str(tmp_path), False)
+    assert agni_mod.REFRACTIVE_ENV not in os.environ
+
+
+@pytest.mark.unit
+def test_refractive_env_follows_the_data_root_of_each_run(refractive_env, tmp_path, caplog):
+    """A second run with aerosols on replaces the value PROTEUS set; it is not kept as a user value."""
+    other = _fetch_refractive(tmp_path / 'b')
+    agni_mod._point_agni_at_refractive(str(tmp_path), True)
+    with caplog.at_level(logging.INFO):
+        agni_mod._point_agni_at_refractive(str(tmp_path / 'b'), True)
+    assert os.environ[agni_mod.REFRACTIVE_ENV] == str(other)
+    assert 'keeping' not in caplog.text
+
+    agni_mod._point_agni_at_refractive(str(tmp_path), False)
+    assert agni_mod.REFRACTIVE_ENV not in os.environ
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('blank', ['', '  ', '\t'])
+def test_refractive_env_treats_a_blank_user_value_as_unset(
+    refractive_env, tmp_path, monkeypatch, blank
+):
+    """A blank override counts as unset, as in AGNI, so PROTEUS points AGNI at the dataset."""
+    monkeypatch.setenv('AGNI_DIR_res', blank)
+    agni_mod._point_agni_at_refractive(str(tmp_path), True)
+    assert os.environ[agni_mod.REFRACTIVE_ENV] == refractive_env
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('var', ['AGNI_DIR_refractive', 'AGNI_DIR_res'])
+def test_refractive_env_keeps_a_user_value(refractive_env, tmp_path, monkeypatch, caplog, var):
+    """A user value of either override is kept, and PROTEUS sets nothing."""
+    monkeypatch.setenv(var, '/user/nk')
+    with caplog.at_level(logging.INFO):
+        agni_mod._point_agni_at_refractive(str(tmp_path), True)
+    assert os.environ[var] == '/user/nk'
+    assert (var == agni_mod.REFRACTIVE_ENV) == (agni_mod.REFRACTIVE_ENV in os.environ)
+    assert f'keeping {var}=/user/nk' in caplog.text
+    assert 'holds no refractive index file' in caplog.text
+
+    agni_mod._point_agni_at_refractive(str(tmp_path), False)
+    assert os.environ[var] == '/user/nk'
+
+
+@pytest.mark.unit
+def test_refractive_env_keeps_a_user_value_set_after_a_proteus_run(refractive_env, tmp_path):
+    """A value the user set after PROTEUS set its own is not removed by the next run."""
+    agni_mod._point_agni_at_refractive(str(tmp_path), True)
+    os.environ[agni_mod.REFRACTIVE_ENV] = '/user/nk'
+
+    agni_mod._point_agni_at_refractive(str(tmp_path), False)
+    assert os.environ[agni_mod.REFRACTIVE_ENV] == '/user/nk'
+    assert agni_mod._refractive_dir_set is None
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('call', 'fail'),
+    [
+        (None, None),
+        ('dataset_dir', KeyError('refractive')),
+        ('dataset_dir', RuntimeError('fwl-io')),
+        ('dataset_dir', OSError('ro')),
+        ('missing_files', OSError('unreadable')),
+    ],
+)
+def test_refractive_env_warns_when_the_dataset_is_missing(
+    refractive_env, tmp_path, monkeypatch, caplog, call, fail
+):
+    """A missing or unresolvable dataset is a warning that names AGNI's own empty folder."""
+    if fail is not None:
+        monkeypatch.setattr(agni_mod, call, MagicMock(side_effect=fail))
+    else:
+        shutil.rmtree(refractive_env)
+    with caplog.at_level(logging.WARNING):
+        agni_mod._point_agni_at_refractive(str(tmp_path), True)
+    assert agni_mod.REFRACTIVE_ENV not in os.environ
+    reason = 'incomplete in' if fail is None else f'could not be resolved ({fail})'
+    assert f'Refractive index data {reason}' in caplog.text
+    assert 'empty unless its get_data.sh fetched' in caplog.text
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('keep', [0, 1, -1, -3, -4])
+def test_refractive_env_skips_an_incomplete_dataset(refractive_env, tmp_path, caplog, keep):
+    """An empty or partly fetched dataset is a warning naming the first missing files; AGNI
+    keeps its own folder."""
+    files = sorted(pathlib.Path(refractive_env).iterdir())
+    for path in files[keep:]:
+        path.unlink()
+    with caplog.at_level(logging.WARNING):
+        agni_mod._point_agni_at_refractive(str(tmp_path), True)
+    assert agni_mod.REFRACTIVE_ENV not in os.environ
+    gone = [f.name for f in files[keep:]]
+    listed = ', '.join(gone[:3]) + (f' and {len(gone) - 3} more' if len(gone) > 3 else '')
+    assert f'incomplete in {refractive_env}, missing: {listed}. AGNI' in caplog.text
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('var', ['AGNI_DIR_refractive', 'AGNI_DIR_res'])
+@pytest.mark.parametrize(
+    ('files', 'warned'), [([], True), (['_readme.txt'], True), (['Fe.txt'], False)]
+)
+def test_refractive_env_checks_the_folder_of_a_user_value(
+    refractive_env, tmp_path, monkeypatch, caplog, var, files, warned
+):
+    """A kept value is logged with the absolute folder AGNI resolves, and a folder without a
+    material file (a leading underscore marks a note) is a warning."""
+    monkeypatch.chdir(tmp_path)
+    nk = tmp_path / 'user' / ('refractive' if var == 'AGNI_DIR_res' else 'nk')
+    nk.mkdir(parents=True)
+    for name in files:
+        (nk / name).write_text('x')
+    monkeypatch.setenv(var, ' user/ ' if var == 'AGNI_DIR_res' else ' user/nk ')
+    with caplog.at_level(logging.INFO):
+        agni_mod._point_agni_at_refractive(str(tmp_path), True)
+    assert f'AGNI reads {nk}' in caplog.text
+    assert ('holds no refractive index file' in caplog.text) == warned
 
 
 @pytest.mark.unit
@@ -580,6 +735,36 @@ def test_init_agni_atmos_greygas_bypasses_spectral_copy(monkeypatch, tmp_path):
     # grey_opacity_lw/sw should be forwarded as the Greek-named AGNI kwargs.
     assert fake_agni.last_setup_kwargs['κ_grey_lw'] == pytest.approx(0.1)
     assert fake_agni.last_setup_kwargs['κ_grey_sw'] == pytest.approx(0.2)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('aerosols', [True, False])
+def test_init_agni_atmos_warns_about_no_aerosols_only_when_they_are_on(
+    monkeypatch, tmp_path, caplog, aerosols
+):
+    """An AGNI listing no aerosol data is reported only for a run that uses aerosols."""
+    fake_agni = _FakeAGNI()
+    fake_jl = SimpleNamespace(
+        AGNI=fake_agni, Dict=dict, Char=str, Array=_FAKE_JL_ARRAY, String=str
+    )
+    output_dir = tmp_path / 'out'
+    (output_dir / 'data').mkdir(parents=True)
+    dirs = {'output': str(output_dir), 'agni': '/fake/agni', 'fwl': str(tmp_path)}
+    config = _build_greygas_config()
+    config.atmos_clim.aerosols_enabled = aerosols
+    hf_row = dict(
+        F_ins=1000.0, albedo_pl=0.2, T_surf=900.0, gravity=9.8, R_int=6.4e6, P_surf=1.0
+    )
+    hf_row.update(axial_period=86400.0, longitude=0.0, latitude=0.0, hill_radius=6.4e8)
+    monkeypatch.setattr(agni_mod, 'jl', fake_jl)
+    monkeypatch.setattr(agni_mod, 'convert', lambda _typ, value: value)
+    monkeypatch.setattr(agni_mod, '_construct_voldict', lambda *_a, **_k: {'H2O': 1.0})
+    monkeypatch.setattr(agni_mod, 'sync_log_files', lambda *_a, **_k: None)
+    monkeypatch.setattr(agni_mod, '_point_agni_at_refractive', lambda *_a: None)
+
+    with caplog.at_level(logging.WARNING):
+        assert init_agni_atmos(dirs, config, hf_row) is not None
+    assert ('No aerosols mapped' in caplog.text) == aerosols
 
 
 class _SpectralWritingAGNI(_FakeAGNI):
@@ -1270,7 +1455,7 @@ def test_init_agni_atmos_forwards_hill_radius_and_hydrograv_hilldr(monkeypatch, 
 
 @pytest.mark.unit
 @pytest.mark.physics_invariant
-def test_init_agni_atmos_ties_aerosol_to_matching_condensate(monkeypatch, tmp_path):
+def test_init_agni_atmos_ties_aerosol_to_matching_condensate(monkeypatch, tmp_path, caplog):
     """A discovered aerosol whose name matches a condensate (case-insensitive)
     tracks that condensate's mixing ratio; a non-matching aerosol is skipped
     entirely (never sent to AGNI), since it would always read zero anyway.
@@ -1323,9 +1508,16 @@ def test_init_agni_atmos_ties_aerosol_to_matching_condensate(monkeypatch, tmp_pa
     monkeypatch.setattr(
         agni_mod, '_determine_aerosols', lambda *_a, **_k: {'sio2': 'mon', 'Soot': 'mon'}
     )
+    calls = []
+    monkeypatch.setattr(agni_mod, '_point_agni_at_refractive', lambda *a: calls.append(a))
+    fake_agni.aerosol_optics.list_materials = lambda: calls.append('list') or []
 
-    atmos = init_agni_atmos(dirs, config, hf_row)
+    with caplog.at_level(logging.WARNING):
+        atmos = init_agni_atmos(dirs, config, hf_row)
     assert atmos is not None
+    assert 'No aerosols mapped' not in caplog.text
+    # AGNI must see the refractive directory before it lists its Mie materials.
+    assert calls[:2] == [(str(tmp_path), True), 'list']
 
     aerosol_species = fake_agni.last_setup_kwargs['aerosol_species']
     assert aerosol_species == {'sio2': {'method': 'mon', 'species': 'SiO2'}}
@@ -3586,3 +3778,23 @@ def test_resolve_surface_material_absolute_path_is_unchanged(tmp_path):
 
     assert _resolve_surface_material(str(target), str(tmp_path / 'root')) == str(target)
     assert _resolve_surface_material(str(nested), str(tmp_path / 'root')) == str(nested)
+
+
+@pytest.mark.unit
+def test_refractive_env_checks_the_folder_agni_takes_first(refractive_env, tmp_path, caplog):
+    """With both variables set, the AGNI_DIR_refractive folder is the one checked, also when
+    its path holds glob characters."""
+    nk, res = tmp_path / 'nk[1]', tmp_path / 'res'
+    nk.mkdir()
+    (res / 'refractive').mkdir(parents=True)
+    (res / 'refractive' / 'Fe.txt').write_text('x')
+    os.environ[agni_mod.REFRACTIVE_ENV], os.environ['AGNI_DIR_res'] = str(nk), str(res)
+    with caplog.at_level(logging.INFO):
+        agni_mod._point_agni_at_refractive(str(tmp_path), True)
+    assert f'AGNI reads {nk}' in caplog.text
+    assert f'{nk} (from AGNI_DIR_refractive) holds no refractive index file' in caplog.text
+    (nk / 'Fe.txt').write_text('x')
+    caplog.clear()
+    with caplog.at_level(logging.WARNING):
+        agni_mod._point_agni_at_refractive(str(tmp_path), True)
+    assert 'holds no refractive index file' not in caplog.text
