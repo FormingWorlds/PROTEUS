@@ -16,6 +16,7 @@ from unittest.mock import MagicMock
 import numpy as np
 import pandas as pd
 import pytest
+from matplotlib.colors import to_rgb, to_rgba
 
 import proteus.plot.cpl_fluxes_global as fluxes_mod
 
@@ -136,3 +137,43 @@ def test_plot_fluxes_global_entry_forwards_handler_attributes(monkeypatch, tmp_p
     assert captured['output_dir'] == str(tmp_path)
     assert captured['config'] is handler.config
     assert captured['rows'] == 5
+
+
+# A dark style; 0x44 / 0xFF of the way from its text colour (224) to its face colour (32).
+DARK_STYLE = {'text.color': '#e0e0e0', 'axes.facecolor': '#202020'}
+DARK_STYLE_DARK_GREY = (172.8 / 255,) * 3
+
+_STYLES = pytest.mark.parametrize(
+    'rc, text, face, dark_grey',
+    [
+        ({}, 'black', 'white', '#444444'),
+        (DARK_STYLE, '#e0e0e0', '#202020', DARK_STYLE_DARK_GREY),
+    ],
+    ids=['default_style', 'dark_style'],
+)
+
+
+@_STYLES
+def test_plot_fluxes_global_takes_its_neutral_colours_from_the_style(
+    draw_real, tmp_path, rc, text, face, dark_grey
+):
+    """On real axes the runaway limit line and the grid have the text colour of
+    the style, the net atmosphere flux its dark grey, and the legend frame its
+    axes face colour: black, '#444444' and white in the default style."""
+    (tmp_path / 'plots').mkdir()
+
+    (fig,) = draw_real(
+        fluxes_mod.plot_fluxes_global,
+        _make_hf_all(),
+        str(tmp_path),
+        config=_make_config(),
+        rc=rc,
+    )
+
+    (ax,) = fig.axes
+    line = {ln.get_label(): ln for ln in ax.lines}
+    assert to_rgb(line['S-N limit'].get_color()) == pytest.approx(to_rgb(text))
+    assert to_rgb(line['Net (atm.)'].get_color()) == pytest.approx(to_rgb(dark_grey))
+    assert to_rgb(ax.xaxis.get_gridlines()[0].get_color()) == pytest.approx(to_rgb(text))
+    assert ax.get_legend().get_frame().get_facecolor() == pytest.approx(to_rgba(face, 0.99))
+    assert to_rgb(line['Net (int.)'].get_color()) == pytest.approx(to_rgb('#ff7f0e'))

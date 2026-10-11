@@ -155,6 +155,33 @@ def _generate_colour(gas: str):
     return colour
 
 
+# Fades that give the greys '#444444' and '#808080' in the default (black on white) style.
+FADE_DARK_GREY = 0x44 / 0xFF
+FADE_MID_GREY = 0x80 / 0xFF
+
+
+def style_neutral(fade: float = 0.0) -> tuple[float, float, float]:
+    """Neutral colour of the active matplotlib style, read when it is called.
+
+    Parameters
+    ----------
+    fade : float
+        Position between the text colour (0) and the axes face colour (1) of the
+        style, mixed linearly in RGB.
+
+    Returns
+    -------
+    tuple of float
+        RGB colour: black, grey and white in the default style, and their
+        counterparts in a dark style.
+    """
+    from matplotlib import rcParams
+    from matplotlib.colors import to_rgb
+
+    text, face = (np.array(to_rgb(rcParams[k])) for k in ('text.color', 'axes.facecolor'))
+    return tuple(float(c) for c in text + fade * (face - text))
+
+
 def get_colour(thing: str):
     """
     Get a colour for something which needs one (e.g. for plotting a particular gas)

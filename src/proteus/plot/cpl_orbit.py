@@ -22,7 +22,7 @@ from proteus.utils.constants import (
     secs_per_hour,
     secs_per_year,
 )
-from proteus.utils.plot import sample_output
+from proteus.utils.plot import FADE_MID_GREY, sample_output, style_neutral
 
 if TYPE_CHECKING:
     from proteus import Proteus
@@ -137,7 +137,7 @@ def plot_orbit(
                 transform=axs[row, 1].transAxes,
                 ha='center',
                 va='center',
-                color='grey',
+                color=style_neutral(FADE_MID_GREY),
             )
 
     # ----------------- SHARED X-AXIS CONFIG -----------------
@@ -328,7 +328,7 @@ def plot_evection(
     axs[0].plot(
         time, a_res, lw=lw, ls='--', color='#a8c6e8', label="a'_res (evection)", zorder=2
     )
-    axs[0].plot(time, y_a_sat, lw=lw, color='black', label="a' (satellite)", zorder=3)
+    axs[0].plot(time, y_a_sat, lw=lw, color=style_neutral(), label="a' (satellite)", zorder=3)
     axs[0].set_ylabel('Semi-major Axis [R_Earth]')
     axs[0].set_ylim(np.amin(y_a_sat) / yext, np.amax(y_a_sat) * yext)
     axs[0].set_title('Satellite Orbiting Planet')
@@ -546,11 +546,12 @@ def plot_lovenumber(
         near_resonance = (real_raw > real_resonance_thresh) | (imag_raw > imag_resonance_thresh)
 
         # Draw connecting trajectory lines across time
+        grey = style_neutral(FADE_MID_GREY)
         axs[0].plot(
-            x_vals, y_vals, color='gray', linestyle='-', linewidth=0.8, alpha=0.4, zorder=1
+            x_vals, y_vals, color=grey, linestyle='-', linewidth=0.8, alpha=0.4, zorder=1
         )
         axs[1].plot(
-            x_vals, y_vals, color='gray', linestyle='-', linewidth=0.8, alpha=0.4, zorder=1
+            x_vals, y_vals, color=grey, linestyle='-', linewidth=0.8, alpha=0.4, zorder=1
         )
 
         # Overlay scatter points colored by magnitude
