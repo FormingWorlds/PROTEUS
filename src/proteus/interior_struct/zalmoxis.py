@@ -3907,14 +3907,8 @@ def zalmoxis_solver(
         hf_row['T_surf'] = temperature[-1]
     hf_row['P_center'] = model_results.get('p_center')
     hf_row['P_cmb'] = float(pressure[cmb_index])
-    # Expose the dry mass target Zalmoxis converged toward, so the
-    # wrapper can enforce a mass-anchor contract
-    # |M_int / M_int_target - 1| < _MASS_ANCHOR_TOL post-acceptance.
-    # Zalmoxis' internal solver_tol_outer (default 3e-3) is a numerical
-    # tolerance, not a coupling contract: it leaves room for ~0.3 % drift
-    # between hf_row['M_int'] and the conserved planet mass. The wrapper
-    # check tightens this to 1e-3 to satisfy the <0.1 % conservation
-    # target for the 1-10 M_Earth coupling.
+    # The dry mass target of this solve. The energetics wrapper treats a structure with
+    # |M_int / M_int_target - 1| above _ZALMOXIS_MASS_ANCHOR_TOL as not converged.
     hf_row['M_int_target'] = float(config_params.get('planet_mass', 0.0))
     hf_row['M_core_target'] = float(config_params.get('core_mass_target', 0.0))
 
