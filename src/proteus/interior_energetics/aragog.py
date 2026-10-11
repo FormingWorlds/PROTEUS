@@ -419,7 +419,9 @@ def _maybe_log_solver_environment(config: Config) -> None:
         log.warning('aragog diag env log failed: %s', exc)
 
 
-def resolve_core_density(config: Config, hf_row: dict, outdir: str) -> float:
+def resolve_core_density(
+    config: Config, hf_row: dict, outdir: str, mesh_file: str | None = None
+) -> float:
     """Resolve self-consistent core density for the Aragog energy-balance BC.
 
     Echo-back semantics: when a Zalmoxis mantle mesh file is present at
@@ -449,6 +451,8 @@ def resolve_core_density(config: Config, hf_row: dict, outdir: str) -> float:
     outdir : str
         PROTEUS output directory; the mesh file is read from
         ``<outdir>/data/zalmoxis_output.dat``.
+    mesh_file : str, optional
+        Mesh file to read in place of the one in ``outdir``.
 
     Returns
     -------
@@ -458,7 +462,7 @@ def resolve_core_density(config: Config, hf_row: dict, outdir: str) -> float:
     rho_core = get_core_density(config, hf_row)
 
     M_core = float(hf_row.get('M_core', 0.0))
-    mesh_file = os.path.join(outdir, 'data', 'zalmoxis_output.dat')
+    mesh_file = mesh_file or os.path.join(outdir, 'data', 'zalmoxis_output.dat')
 
     if M_core > 0.0 and os.path.isfile(mesh_file):
         try:
@@ -620,7 +624,10 @@ class AragogRunner:
                 AragogRunner.setup_solver(
                     config, build_row, interior_o, dirs['output'], mesh_file=pending[1]
                 )
-                AragogRunner.update_structure(config, build_row, interior_o)
+                # The mesh arrays are loaded; every later reset reads the file of the run.
+                interior_o.aragog_solver.parameters.mesh.eos_file = os.path.join(
+                    dirs['output'], 'data', 'zalmoxis_output.dat'
+                )
             if config.params.resume:
                 AragogRunner.update_solver(dt, hf_row, interior_o, output_dir=dirs['output'])
             _t_init = time.perf_counter()
@@ -688,9 +695,7 @@ class AragogRunner:
                         float(np.mean(S_snap)),
                     )
                     if pending is not None:
-                        AragogRunner._replay_structure_update(
-                            config, hf_row, interior_o, dt, dirs['output']
-                        )
+                        AragogRunner._replay_structure_update(config, hf_row, interior_o, dt)
             else:
                 # Fresh run: set entropy IC from Zalmoxis T(r) profile
                 AragogRunner._set_entropy_ic(config, interior_o, dirs['output'], hf_row)
@@ -773,7 +778,9 @@ class AragogRunner:
             return None
         if config.interior_struct.module != 'zalmoxis':
             return None
-        pending = aragog_resume.pending_structure_update(dirs['output'], hf_row, hf_all)
+        pending = aragog_resume.pending_structure_update(
+            dirs['output'], hf_row, hf_all, int(config.interior_energetics.num_levels)
+        )
         if pending is not None and config.interior_energetics.aragog.core_bc == 'core_module':
             log.warning(
                 'Resume: a structure update was pending at the stop. With core_bc = '
@@ -785,25 +792,24 @@ class AragogRunner:
 
     @staticmethod
     def _replay_structure_update(
-        config: Config, hf_row: dict, interior_o: Interior_t, dt: float, outdir: str
+        config: Config, hf_row: dict, interior_o: Interior_t, dt: float
     ):
         """Apply the structure update that was pending when the resumed run stopped.
 
-        The solver is on the structure of its snapshot. It moves to the structure of
-        ``hf_row`` through the same update as a running loop, which carries the entropy
-        by mass parcel. A solver without a solution measures no compression work in its
-        reset, so the work [J] is booked here from the earlier mesh.
+        The solver is on the structure of its snapshot, with the snapshot state as
+        its start vector. It moves to the structure of ``hf_row`` through the update
+        a running loop makes. That update measures the compression work [J] and
+        carries the entropy by mass parcel only from a solution, so the start vector
+        is handed to the solver as one for the length of the update. The private
+        solver names used are ``_solution`` and ``_S0``.
         """
         solver = interior_o.aragog_solver
-        mesh = solver.evaluator.mesh
-        P_old = np.asarray(solver._P_stag_flat, dtype=float).ravel().copy()
-        mass_old = np.asarray(mesh.staggered_effective_density, dtype=float).ravel() * (
-            np.asarray(solver._volume_flat, dtype=float).ravel()
-        )
-        S_old = np.asarray(interior_o._last_entropy, dtype=float).ravel().copy()
-        solver.parameters.mesh.eos_file = os.path.join(outdir, 'data', 'zalmoxis_output.dat')
-        AragogRunner._apply_structure_update(config, hf_row, interior_o, dt)
-        solver._last_compression_J = solver._compute_compression_work(P_old, S_old, mass_old)
+        previous = getattr(solver, '_solution', None)
+        try:
+            solver._solution = state_solution(solver._S0, hf_row['Time'])
+            AragogRunner._apply_structure_update(config, hf_row, interior_o, dt)
+        finally:
+            solver._solution = previous
         log.info(
             'Resume: applied the structure update that was pending at the stop '
             '(compression work %.6e J).',
@@ -908,7 +914,7 @@ class AragogRunner:
                 if config.interior_energetics.mixing_length == 'nearest'
                 else 'constant'
             ),
-            core_density=resolve_core_density(config, hf_row, outdir),
+            core_density=resolve_core_density(config, hf_row, outdir, mesh_file),
             eos_method=1,  # 1: Adams-Williamson / 2: User defined
             surface_density=config.interior_energetics.adams_williamson_rhos,
             gravitational_acceleration=hf_row['gravity'],  # [m/s-2]

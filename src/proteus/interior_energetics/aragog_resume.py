@@ -25,14 +25,14 @@ log = logging.getLogger('fwl.' + __name__)
 STRUCTURE_ROW_KEYS = ('R_int', 'R_core', 'gravity', 'M_core', 'core_density')
 
 
-def _row_holds_mesh(row: dict, r_inner: float, r_outer: float) -> bool:
-    """True when the radial bounds [m] are those of the row, to Aragog's mesh tolerance."""
-    tol = max(1.0, 1.0e-9 * (row['R_int'] - row['R_core']))
-    return abs(r_inner - row['R_core']) <= tol and abs(r_outer - row['R_int']) <= tol
+def _on_mesh(R_core, R_int, r_inner: float, r_outer: float):
+    """True where the radii [m] are the bounds of the mesh, to Aragog's mesh tolerance."""
+    tol = np.maximum(1.0, 1.0e-9 * (R_int - R_core))
+    return (np.abs(R_core - r_inner) <= tol) & (np.abs(R_int - r_outer) <= tol)
 
 
 def pending_structure_update(
-    output_dir: str, hf_row: dict, hf_all: pd.DataFrame
+    output_dir: str, hf_row: dict, hf_all: pd.DataFrame, n_basic: int
 ) -> tuple[dict, str] | None:
     """Row and mesh file of the structure the snapshot of ``hf_row`` was integrated on.
 
@@ -44,15 +44,19 @@ def pending_structure_update(
         Row the run resumes from; ``R_core`` and ``R_int`` in m, ``Time`` in yr.
     hf_all : pandas.DataFrame
         Helpfile table whose last row is ``hf_row``.
+    n_basic : int
+        Number of basic mesh nodes of the run that resumes.
 
     Returns
     -------
     tuple of (dict, str) or None
-        The latest earlier row whose radii are the radial bounds of the
-        snapshot mesh, and a mesh file that holds those bounds: the copy saved
-        with that row, else ``zalmoxis_output.dat.prev``. None when the
-        snapshot mesh is the mesh of ``hf_row``, so no update is pending, and
-        None with a warning when no earlier row and file hold the snapshot mesh.
+        An earlier row whose radii are the radial bounds of the snapshot mesh,
+        and a mesh file that holds those bounds: the copy saved with the latest
+        such row, else ``zalmoxis_output.dat.prev``, else the copy of an older
+        such row. None when no update is pending: the snapshot mesh is the mesh
+        of ``hf_row``, the snapshot is absent or holds no ``radius_b``, or its
+        node count is not ``n_basic``. None with a warning when no earlier row
+        and file hold the snapshot mesh.
     """
     from proteus.interior_struct.zalmoxis import (
         get_zalmoxis_output_filepath,
@@ -67,22 +71,23 @@ def pending_structure_update(
     with nc.Dataset(snapshot) as ds:
         if 'radius_b' not in ds.variables:
             return None
-        r_basic = np.asarray(ds['radius_b'][:], dtype=float) * 1.0e3  # km -> m
-    r_inner, r_outer = float(r_basic[0]), float(r_basic[-1])
-    if _row_holds_mesh(hf_row, r_inner, r_outer):
+        radii = np.asarray(ds['radius_b'][:], dtype=float) * 1.0e3  # km -> m
+    r_inner, r_outer = float(radii[0]), float(radii[-1])
+    if radii.size != n_basic or _on_mesh(hf_row['R_core'], hf_row['R_int'], r_inner, r_outer):
         return None
 
     earlier = hf_all.iloc[:-1]
-    for i in range(len(earlier) - 1, -1, -1):
-        row = earlier.iloc[i].to_dict()
-        if not _row_holds_mesh(row, r_inner, r_outer):
-            continue
-        saved = snapshot_path_for_time(data_dir, float(row['Time']), '_zalmoxis.dat')
-        for file in (saved, get_zalmoxis_output_filepath(output_dir) + '.prev'):
-            gaps = zalmoxis_mesh_gaps(file, row) if os.path.isfile(file) else None
-            if gaps is not None and abs(gaps[0]) <= gaps[2] and abs(gaps[1]) <= gaps[2]:
-                return row, file
-        break
+    held = _on_mesh(earlier['R_core'], earlier['R_int'], r_inner, r_outer).to_numpy()
+    rows = [earlier.iloc[i].to_dict() for i in np.flatnonzero(held)[::-1]]
+    files = [
+        (row, snapshot_path_for_time(data_dir, float(row['Time']), '_zalmoxis.dat'))
+        for row in rows
+    ]
+    files[1:1] = [(row, get_zalmoxis_output_filepath(output_dir) + '.prev') for row in rows[:1]]
+    for row, file in files:
+        gaps = zalmoxis_mesh_gaps(file, row)
+        if gaps is not None and abs(gaps[0]) <= gaps[2] and abs(gaps[1]) <= gaps[2]:
+            return row, file
 
     log.warning(
         'Resume: the interior snapshot at t = %.6e yr is on an earlier structure '
