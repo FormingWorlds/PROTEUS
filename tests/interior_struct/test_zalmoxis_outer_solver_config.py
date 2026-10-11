@@ -442,7 +442,8 @@ def test_a_structure_target_of_zero_or_a_negative_core_is_refused(monkeypatch):
     nothing. A row with more hydrogen than the planet (6.5e24 kg) and a negative oxygen
     column (-2e24 kg) gives a core of -1.7e23 kg below a positive target of 1.47e24 kg:
     the core mass must be positive, so that row is refused too, and so is a core of
-    exactly 0 kg (hydrogen equal to the planet mass) below a target of 1e24 kg."""
+    exactly 0 kg (hydrogen equal to the planet mass) below a target of 1e24 kg. A stored
+    core equal to the structure target, a mantle of exactly 0 kg, is refused as well."""
     empty = {'H_kg_total': 0.0, 'C_kg_total': 0.0, 'O_kg_total': M_earth}
     with pytest.raises(ValueError, match=r'leaves no mantle: 0\.0000e\+00 kg .*, 1\.9409e\+24'):
         _structure_target(monkeypatch, empty)
@@ -454,6 +455,12 @@ def test_a_structure_target_of_zero_or_a_negative_core_is_refused(monkeypatch):
     no_core = {'H_kg_total': M_earth, 'C_kg_total': 0.0, 'O_kg_total': -1.0e24}
     with pytest.raises(ValueError, match=r'leaves no mantle: 1\.0000e\+24 kg .*, 0\.0000e\+00'):
         _structure_target(monkeypatch, no_core)
+    planet, _, _ = _structure_target(monkeypatch, _BUFFERED)
+    all_core = {**_BUFFERED, 'Time': 250.0, 'M_core_target': planet}
+    with pytest.raises(
+        ValueError, match=r'leaves no mantle: (5\.7596e\+24) kg .*, \1 kg of it'
+    ):
+        _structure_target(monkeypatch, all_core)
 
 
 _WET = {'H_kg_atm': 1.0e20, 'C_kg_atm': 2.0e20, 'O_kg_atm': 2.079e23, 'H_kg_total': 6.0e21}
