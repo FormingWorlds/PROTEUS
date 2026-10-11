@@ -31,6 +31,8 @@ from aragog.parser import (
     _SolverParameters,
 )
 from proteus.accretion.common import snap_to_impact
+from proteus.interior_energetics import aragog_core
+from proteus.interior_energetics.aragog_core_impact import refit_core_at_reset
 from proteus.interior_energetics.aragog_phase import (
     build_jax_phase_params,
     build_mixed_phase_params,
@@ -46,7 +48,11 @@ from proteus.utils.data import (
     resolve_melting_curve_files,
 )
 from proteus.utils.helper import MissingDataError, energetics_eos_key, generates_paleos_tables
-from proteus.utils.helper import format_subyear_time, parse_subyear_time, snapshot_path_for_time
+from proteus.utils.helper import (
+    format_subyear_time,
+    parse_subyear_time,
+    snapshot_path_for_time,
+)
 
 log = logging.getLogger('fwl.' + __name__)
 
@@ -603,6 +609,8 @@ class AragogRunner:
                 AragogRunner.update_solver(dt, hf_row, interior_o, output_dir=dirs['output'])
             _t_init = time.perf_counter()
             interior_o.aragog_solver.initialize()
+            if config.interior_energetics.aragog.core_bc == 'core_module':
+                aragog_core.freeze_core_profile(interior_o)
             _t_after_init = time.perf_counter()
             # Option Z: register the JAX CVODE callback factory when
             # the flag is on. No-op when the flag is off.
@@ -634,10 +642,13 @@ class AragogRunner:
                     )
                     AragogRunner._set_entropy_ic(config, interior_o, dirs['output'], hf_row)
                 else:
-                    # Restore the snapshot's energy_balance CMB entropy gradient. Else
+                    # Restore the snapshot's energy_balance or core_module CMB entropy gradient. Else
                     # set_initial_entropy restarts it from a bottom-cell finite
                     # difference, which spikes the CMB flux on the first resumed step.
-                    if config.interior_energetics.aragog.core_bc == 'energy_balance':
+                    if config.interior_energetics.aragog.core_bc in (
+                        'energy_balance',
+                        'core_module',
+                    ):
                         dSdr_cmb = getattr(interior_o, '_last_dSdr_cmb', None)
                         if dSdr_cmb is None:
                             log.warning(
@@ -646,6 +657,15 @@ class AragogRunner:
                                 getattr(interior_o, '_last_dSdr_cmb_status', 'absent'),
                             )
                         solver.set_initial_dSdr_cmb(dSdr_cmb)
+                    if config.interior_energetics.aragog.core_bc == 'core_module':
+                        aragog_core.restore_core_start(hf_row, interior_o, solver)
+                        # The structure of the resumed row is not always the snapshot's.
+                        aragog_core.carry_core_across_update(
+                            hf_row,
+                            interior_o,
+                            solver,
+                            aragog_core.snapshot_core_state(interior_o, solver),
+                        )
                     solver.set_initial_entropy(S_snap)
                     log.info(
                         'Restored entropy IC from snapshot: S_mean=%.1f J/kg/K',
@@ -696,7 +716,16 @@ class AragogRunner:
             # Refresh before reset() to evaluate new mesh pressures against
             # the updated table ceiling on impact steps.
             AragogRunner._refresh_entropy_eos(config, interior_o)
-            interior_o.aragog_solver.reset()
+            solver = interior_o.aragog_solver
+            core_module = config.interior_energetics.aragog.core_bc == 'core_module'
+            before = aragog_core.core_state(solver) if core_module else None
+            solver.reset()
+            if core_module:
+                # An impact refit covers the structure change of its reset.
+                if getattr(interior_o, '_core_refit_pending', None) is not None:
+                    refit_core_at_reset(hf_row, interior_o, solver)
+                else:
+                    aragog_core.carry_core_across_update(hf_row, interior_o, solver, before)
             # Restore entropy from previous solve. Known gap: cached _last_entropy
             # is not bounds-checked against the regenerated [S_min, S_max].
             if hasattr(interior_o, '_last_entropy') and interior_o._last_entropy is not None:
@@ -723,17 +752,14 @@ class AragogRunner:
         #   setting for parity runs, so both solvers follow the identical
         #   physical law.
         _aragog_outer_bc = 1 if config.interior_energetics.surface_bc_mode == 'grey_body' else 4
-        # Core BC mode from config. Valid values:
-        #   'energy_balance' (default, capacitance-weighted core cooling)
-        #   'quasi_steady'   (alpha-factor approximation)
-        #   'gradient'       (gradient-based state)
-        #   'bower2018'      (EXPERIMENTAL, not recommended)
-        # Validation lives on the attrs schema (config._interior.Aragog).
-        # The attrs schema (config._interior.Aragog) already restricts
-        # core_bc to the four valid modes, so it is consumed directly here
-        # rather than re-checked with a silent fallback that could swap in a
-        # different core model.
+        # Core BC mode (modes in config._interior.Aragog); the attrs schema restricts it to the
+        # five valid modes, so it is used directly, with no fallback that could swap the model.
         core_bc_str = config.interior_energetics.aragog.core_bc
+        core_module_params = None
+        if core_bc_str == 'core_module':
+            core_module_params = aragog_core.core_module_params(
+                config, hf_row, interior_o, outdir
+            )
 
         boundary_conditions = _BoundaryConditionsParameters(
             # 4 = prescribed heat flux (PROTEUS coupling mode, from hf_row['F_atm'])
@@ -760,6 +786,7 @@ class AragogRunner:
             param_utbl_const=config.interior_energetics.param_utbl_const,
             # core BC mode (the 'energy_balance' option is available)
             core_bc=core_bc_str,
+            core_module_params=core_module_params,
         )
 
         # Define the inner_radius for the mesh.
@@ -1402,6 +1429,11 @@ class AragogRunner:
                     scales,
                     core_bc_mode=core_bc_mode,
                     radio_isotope_params=radio_isotope_params,
+                    # core_module closure: the solver's own budget, constant core
+                    # source and CMB boundary-layer Ra_crit; None/0 in every other mode.
+                    core_module_budget=getattr(solver, '_core_module_budget', None),
+                    core_module_q_radio=float(getattr(solver, '_core_module_q_radio', 0.0)),
+                    core_module_ra_crit_cmb=getattr(solver, '_core_module_ra_crit_cmb', None),
                 )
                 return rhs_fn, jac_fn
 
@@ -1834,6 +1866,11 @@ class AragogRunner:
             dSdr, status = _snapshot_scalar(output_dir, hf_row['Time'], 'dSdr_cmb_state')
             interior_o._last_dSdr_cmb = dSdr
             interior_o._last_dSdr_cmb_status = status
+            T_core, status_t = _snapshot_scalar(output_dir, hf_row['Time'], 'T_core_state')
+            interior_o._last_T_core = T_core
+            interior_o._last_T_core_status = status_t
+            interior_o._last_T_shell = aragog_core.snapshot_shell(output_dir, hf_row['Time'])
+            aragog_core.restore_frozen_profile(interior_o, output_dir, hf_row['Time'])
             # The run built its mesh with the surface pressure of its own setup.
             P_mesh, status = _snapshot_scalar(
                 output_dir, hf_row['Time'], 'mesh_surface_pressure'
@@ -2054,6 +2091,10 @@ class AragogRunner:
                 hf_row['Time'] + out.dt_actual, getattr(interior_o, 't_next_impact', np.inf)
             )
 
+            core_module = self._config.interior_energetics.aragog.core_bc == 'core_module'
+            if core_module:
+                aragog_core.write_core_columns(self, output, out, interior_o)
+
             # Write output to a file (skipped when dt_write suppresses this step)
             if write_data:
                 written = sim_time
@@ -2069,7 +2110,12 @@ class AragogRunner:
                         interior_o.aragog_solver,
                         self._config.interior_energetics.aragog.core_bc,
                     ),
+                    T_core=aragog_core.core_temperature_state(
+                        interior_o.aragog_solver,
+                        self._config.interior_energetics.aragog.core_bc,
+                    ),
                     mesh_surface_pressure=mesh_surface_pressure_state(interior_o.aragog_solver),
+                    core_profile=aragog_core.frozen_profile(interior_o),
                 )
         except Exception:
             # The row of this step is skipped or the run stops: the solver holds the state
@@ -2078,6 +2124,9 @@ class AragogRunner:
             if written is not None:
                 discard_snapshot(dirs['output'], written)
             raise
+        # The core ledger state and the stored profiles move with a call that returned.
+        if core_module:
+            aragog_core.commit_core_call(interior_o, out)
         self._store_profiles(interior_o, out)
 
         return sim_time, output
@@ -2462,8 +2511,11 @@ class AragogRunner:
             solver.parameters.solver.rtol = base_rtol
             if hasattr(solver, '_max_steps'):
                 solver._max_steps = base_max_steps
-            # Release a set dSdr_cmb start: the next step takes it from the solution.
+            # Release the set starts: the next step takes them from the solution.
             solver.set_initial_dSdr_cmb(None)
+            if self._config.interior_energetics.aragog.core_bc == 'core_module':
+                solver.set_initial_core_temperature(None)
+                solver.set_initial_shell_temperature(None)
 
         return out
 
@@ -2733,9 +2785,14 @@ class AragogRunner:
         write_diagnostics: bool = False,
         T_surf_coupled: float | None = None,
         dSdr_cmb: float | None = None,
+        T_core: float | None = None,
         mesh_surface_pressure: float | None = None,
+        core_profile: dict | None = None,
     ):
         """Write entropy solver output to NetCDF using SolverOutput.
+
+        A stratified ``core_module`` core also writes its shell temperatures as
+        ``core_T_shell_state`` so a resume restarts the stable layer.
 
         Parameters
         ----------
@@ -2750,10 +2807,15 @@ class AragogRunner:
             snapshot holds the value from the previous coupling step); a
             resume reads T_surf from the helpfile.
         dSdr_cmb : float or None
-            CMB entropy gradient state of the ``energy_balance`` core boundary
-            condition at ``time`` [J kg-1 K-1 m-1], written as
-            ``dSdr_cmb_state`` so a resume restarts the boundary state where
-            it was. None (other core_bc modes) writes nothing.
+            CMB entropy gradient state of the ``energy_balance`` or
+            ``core_module`` core boundary condition at ``time``
+            [J kg-1 K-1 m-1], written as ``dSdr_cmb_state`` so a resume
+            restarts the boundary state where it was. None writes nothing.
+        T_core : float or None
+            Core temperature state of the ``core_module`` core boundary
+            condition at ``time`` [K], written as
+            ``T_core_state`` so a resume restarts the core temperature. None
+            writes nothing.
         mesh_surface_pressure : float or None
             Surface pressure of the solver's Adams-Williamson mesh [Pa], the
             value fixed at solver setup; a resume rebuilds the same mesh from
@@ -2808,7 +2870,9 @@ class AragogRunner:
             for name, value, units in (
                 ('T_surf_coupled', T_surf_coupled, 'K'),
                 ('dSdr_cmb_state', dSdr_cmb, 'J kg-1 K-1 m-1'),
+                ('T_core_state', T_core, 'K'),
                 ('mesh_surface_pressure', mesh_surface_pressure, 'Pa'),
+                *aragog_core.frozen_profile_fields(core_profile),
             ):
                 if value is None:
                     continue
@@ -2822,6 +2886,11 @@ class AragogRunner:
                 ds.createVariable(name, np.float64)
                 ds[name][0] = value
                 ds[name].units = units
+
+            t_shell = getattr(out, 'core_T_shell', None)
+            if t_shell is not None and np.all(np.isfinite(t_shell)):
+                ds.createDimension('shell', len(t_shell))
+                _add('core_T_shell_state', t_shell, 'shell', 'K')
 
 
 def earlier_snapshot_exists(output_dir: str, time: float) -> bool:
@@ -2912,7 +2981,7 @@ def read_last_Sfield(output_dir: str, time: float):
 
 
 def cmb_gradient_state(solver, core_bc: str) -> float | None:
-    """CMB entropy gradient state of an ``energy_balance`` Aragog solve.
+    """CMB entropy gradient state of an ``energy_balance`` or ``core_module`` solve.
 
     ``get_current_dSdr_cmb`` identifies the slot by the state-vector length
     alone, which ``bower2018`` shares (its extra slot holds T_core), so the
@@ -2928,9 +2997,11 @@ def cmb_gradient_state(solver, core_bc: str) -> float | None:
     Returns
     -------
     float or None
-        dSdr_cmb [J kg-1 K-1 m-1] for ``energy_balance``, else None.
+        dSdr_cmb [J kg-1 K-1 m-1] for ``energy_balance`` or ``core_module``, else None.
     """
-    if core_bc != 'energy_balance' or not hasattr(solver, 'get_current_dSdr_cmb'):
+    if core_bc not in ('energy_balance', 'core_module') or not hasattr(
+        solver, 'get_current_dSdr_cmb'
+    ):
         return None
     return solver.get_current_dSdr_cmb()
 
@@ -2990,7 +3061,11 @@ def write_final_snapshot(config: Config, interior_o: Interior_t, dirs: dict, hf_
         write_diagnostics=getattr(config.interior_energetics, 'write_flux_diagnostics', False),
         T_surf_coupled=hf_row.get('T_surf'),
         dSdr_cmb=cmb_gradient_state(solver, config.interior_energetics.aragog.core_bc),
+        T_core=aragog_core.core_temperature_state(
+            solver, config.interior_energetics.aragog.core_bc
+        ),
         mesh_surface_pressure=mesh_surface_pressure_state(solver),
+        core_profile=aragog_core.frozen_profile(interior_o),
     )
 
 
