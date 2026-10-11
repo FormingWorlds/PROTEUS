@@ -49,7 +49,6 @@ from proteus.utils.data import (
 )
 from proteus.utils.helper import MissingDataError, energetics_eos_key, generates_paleos_tables
 from proteus.utils.helper import (
-    UpdateStatusfile,
     format_subyear_time,
     parse_subyear_time,
     snapshot_path_for_time,
@@ -661,16 +660,12 @@ class AragogRunner:
                     if config.interior_energetics.aragog.core_bc == 'core_module':
                         aragog_core.restore_core_start(hf_row, interior_o, solver)
                         # The structure of the resumed row is not always the snapshot's.
-                        try:
-                            aragog_core.carry_core_across_update(
-                                hf_row,
-                                interior_o,
-                                solver,
-                                aragog_core.snapshot_core_state(interior_o, solver),
-                            )
-                        except ValueError:
-                            UpdateStatusfile(dirs, 21)
-                            raise
+                        aragog_core.carry_core_across_update(
+                            hf_row,
+                            interior_o,
+                            solver,
+                            aragog_core.snapshot_core_state(interior_o, solver),
+                        )
                     solver.set_initial_entropy(S_snap)
                     log.info(
                         'Restored entropy IC from snapshot: S_mean=%.1f J/kg/K',
@@ -727,14 +722,10 @@ class AragogRunner:
             solver.reset()
             if core_module:
                 # An impact refit covers the structure change of its reset.
-                try:
-                    if getattr(interior_o, '_core_refit_pending', None) is not None:
-                        refit_core_at_reset(hf_row, interior_o, solver)
-                    else:
-                        aragog_core.carry_core_across_update(hf_row, interior_o, solver, before)
-                except ValueError:
-                    UpdateStatusfile(dirs, 21)
-                    raise
+                if getattr(interior_o, '_core_refit_pending', None) is not None:
+                    refit_core_at_reset(hf_row, interior_o, solver)
+                else:
+                    aragog_core.carry_core_across_update(hf_row, interior_o, solver, before)
             # Restore entropy from previous solve. Known gap: cached _last_entropy
             # is not bounds-checked against the regenerated [S_min, S_max].
             if hasattr(interior_o, '_last_entropy') and interior_o._last_entropy is not None:

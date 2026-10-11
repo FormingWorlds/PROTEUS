@@ -131,10 +131,17 @@ temperature, and the run ends with the status `Error (Interior model)`:
 - with `stratification = true`, the inner core reaches the base of the
   resolved shell.
 
-A run also ends with an error when the structure gives no positive core mass
-or central pressure, and when the density profile cannot be fitted to the core
-mass and the central pressure, at the start, after a structure update or after
-an impact.
+With the default iron melting curve and the default core fraction, the core of
+a planet of 1 Earth mass freezes from the centre, while the cores of planets
+of 2, 3 and 5 Earth masses meet the melting curve first away from the centre,
+so such a run ends when its core starts to freeze. The quadratic curve with
+its default coefficients gives growth from the centre for 1, 2 and 3 Earth
+masses, and not for 5.
+
+A run ends with the same status when the structure gives no positive core
+mass or central pressure, and when the density profile cannot be fitted to the
+core mass and the central pressure, at the start, after a structure update or
+after an impact.
 
 ## What to read in the output
 

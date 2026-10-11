@@ -4307,36 +4307,48 @@ def test_run_interior_aragog_ic_errors_are_not_retried(kind, tmp_path):
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize('where', ['set-up', 'call'])
 @pytest.mark.parametrize(
     'core_bc, status', [('core_module', [21]), ('energy_balance', []), ('bower2018', [])]
 )
-def test_a_value_error_of_the_interior_call_writes_the_status_for_the_core_module_alone(
-    core_bc, status
+def test_a_value_error_of_an_interior_step_writes_the_status_for_the_core_module_alone(
+    tmp_path, where, core_bc, status
 ):
-    """Aragog refuses a core state outside its model with a ValueError of the solve. A
-    core_module run then ends with the interior error status 21; every other core boundary
-    leaves the status file as it is. The error reaches the caller in each case."""
+    """A core_module run ends with the interior error status 21 when its set-up (a core
+    carry, refit or profile fit that fails) or its solve (a core state that Aragog refuses)
+    raises a ValueError. Every other core boundary leaves the status file as it is. The
+    error reaches the caller in each case, and it is not counted as a failed step."""
     from unittest.mock import patch as _patch
 
     from proteus.interior_energetics.wrapper import run_interior
 
     config = _make_run_interior_config(prevent_warming=False, module='aragog')
+    config.params.out.logging = 'INFO'
     config.interior_energetics.aragog.core_bc = core_bc
     hf_all, hf_row = _make_run_interior_state(prev_f_int=0.1)
     interior_o = MagicMock(spec=Interior_t)
-    interior_o.ic, interior_o.aragog_fail_count = 2, 0
+    interior_o.ic, interior_o.aragog_fail_count = 1 if where == 'set-up' else 2, 0
+    error = ValueError('the outer core holds 0.894 of the mass')
     runner_mock = MagicMock()
-    runner_mock.run_solver.side_effect = ValueError('the outer core holds 0.894 of the mass')
+    runner_mock.run_solver.side_effect = error
+    target = 'proteus.interior_energetics.aragog.AragogRunner'
+    raising = (
+        _patch(f'{target}.setup_or_update_solver', side_effect=error)
+        if where == 'set-up'
+        else _patch(target, return_value=runner_mock)
+    )
     calls = []
     with (
-        _patch('proteus.interior_energetics.aragog.AragogRunner', return_value=runner_mock),
+        raising,
         _patch(
             'proteus.interior_energetics.wrapper.UpdateStatusfile',
             side_effect=lambda dirs, code: calls.append(code),
         ),
         pytest.raises(ValueError, match='outer core holds'),
     ):
-        run_interior({}, config, hf_all, hf_row, interior_o, verbose=False)
+        run_interior(
+            {'output': str(tmp_path)}, config, hf_all, hf_row, interior_o, verbose=False
+        )
     assert calls == status
     assert interior_o.aragog_fail_count == 0
 

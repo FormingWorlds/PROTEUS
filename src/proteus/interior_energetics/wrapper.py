@@ -5,6 +5,7 @@ import gc
 import logging
 import os
 import shutil
+from contextlib import contextmanager
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -2339,6 +2340,21 @@ def solve_structure(
         raise ValueError('planet.mass_tot must be set to solve for the interior structure')
 
 
+@contextmanager
+def _core_module_status(config: Config, dirs: dict):
+    """Write the interior error status when a ``core_module`` set-up or call raises ``ValueError``.
+
+    Aragog and the core helpers refuse a core state outside the model with that error, which
+    ends the run. Every other core boundary passes through unchanged.
+    """
+    try:
+        yield
+    except ValueError:
+        if config.interior_energetics.aragog.core_bc == 'core_module':
+            UpdateStatusfile(dirs, 21)
+        raise
+
+
 def run_interior(
     dirs: dict,
     config: Config,
@@ -2450,20 +2466,17 @@ def run_interior(
     elif config.interior_energetics.module == 'aragog':
         from proteus.interior_energetics.aragog import AragogRunner, InteriorStalledError
 
-        runner = AragogRunner(config, dirs, hf_row, hf_all, interior_o)
+        with _core_module_status(config, dirs):
+            runner = AragogRunner(config, dirs, hf_row, hf_all, interior_o)
         try:
-            sim_time, output = runner.run_solver(
-                hf_row,
-                interior_o,
-                dirs,
-                write_data=write_data,
-            )
+            with _core_module_status(config, dirs):
+                sim_time, output = runner.run_solver(
+                    hf_row,
+                    interior_o,
+                    dirs,
+                    write_data=write_data,
+                )
             interior_o.aragog_fail_count = 0
-        except ValueError:
-            # A core_module call ends the run here: Aragog refuses a core state outside its model.
-            if config.interior_energetics.aragog.core_bc == 'core_module':
-                UpdateStatusfile(dirs, 21)
-            raise
         except InteriorStalledError:
             # InteriorStalledError indicates zero progress across successful steps.
             # Do not absorb it under the consecutive retry failure counter.

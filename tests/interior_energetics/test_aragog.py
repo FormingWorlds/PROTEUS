@@ -2431,11 +2431,10 @@ def test_the_update_refits_the_core_right_after_the_solver_reset(core_bc, pendin
     ],
     ids=['impact_refit', 'structure_update'],
 )
-def test_a_failed_core_refit_at_the_reset_writes_the_interior_status(pending, target):
+def test_a_failed_core_refit_at_the_reset_raises_before_the_entropy_is_set(pending, target):
     """A fit that cannot hold the core on the new structure, after an impact or after a
-    structure update, raises from the solver update; the run stops with the interior error
-    status 21 and the error reaches the caller, with the entropy not restored on a
-    half-updated solver."""
+    structure update, raises from the solver update: the error reaches the caller, which
+    writes the status, and the entropy is not restored on a half-updated solver."""
     from proteus.interior_energetics.aragog import AragogRunner
 
     interior_o = MagicMock()
@@ -2449,12 +2448,13 @@ def test_a_failed_core_refit_at_the_reset_writes_the_interior_status(pending, ta
         patch.object(AragogRunner, 'update_structure'),
         patch.object(AragogRunner, 'update_solver'),
         patch.object(AragogRunner, '_refresh_entropy_eos'),
-        patch(target, side_effect=ValueError('p_cen too low for the incompressible limit')),
-        patch('proteus.interior_energetics.aragog.UpdateStatusfile') as status,
+        patch(
+            target, side_effect=ValueError('p_cen too low for the incompressible limit')
+        ) as fit,
         pytest.raises(ValueError, match='incompressible'),
     ):
         AragogRunner.setup_or_update_solver(config, {'Time': 600.0}, interior_o, 1.0, dirs)
-    status.assert_called_once_with(dirs, 21)
+    fit.assert_called_once()
     interior_o.aragog_solver.set_initial_entropy.assert_not_called()
 
 
@@ -4498,10 +4498,10 @@ def test_a_resume_of_another_core_boundary_sets_no_core_start(core_bc):
 
 
 @pytest.mark.unit
-def test_a_failed_core_carry_on_a_resume_writes_the_interior_status():
+def test_a_failed_core_carry_on_a_resume_raises_before_the_entropy_is_set():
     """A resume whose row is on another structure than its snapshot carries the core; a fit
-    that cannot hold the core there stops the run with the interior error status 21, and
-    the entropy is not restored on a half-built solver."""
+    that cannot hold the core there raises to the caller, which writes the status, and the
+    entropy is not restored on a half-built solver."""
     from proteus.interior_energetics.aragog import AragogRunner
 
     config = _make_aragog_config(struct_module='zalmoxis')
@@ -4522,12 +4522,11 @@ def test_a_failed_core_carry_on_a_resume_writes_the_interior_status():
         patch(
             f'{_CORE}.carry_core_across_update',
             side_effect=ValueError('p_cen too low for the incompressible limit'),
-        ),
-        patch('proteus.interior_energetics.aragog.UpdateStatusfile') as status,
+        ) as carry,
         pytest.raises(ValueError, match='incompressible'),
     ):
         AragogRunner.setup_or_update_solver(config, {'Time': 100.0}, interior_o, 10.0, dirs)
-    status.assert_called_once_with(dirs, 21)
+    carry.assert_called_once()
     solver.set_initial_entropy.assert_not_called()
 
 
