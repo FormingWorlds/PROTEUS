@@ -500,3 +500,23 @@ def test_a_core_module_core_without_the_zalmoxis_structure_is_refused_when_built
     assert AragogCoreModule(c_light=0.046).c_light == pytest.approx(0.046)
     with pytest.raises(ValueError):
         AragogCoreModule(c_light=1.0)
+
+
+@pytest.mark.unit
+def test_the_default_redox_state_is_two_log_units_above_iron_wustite():
+    """``outgas.fO2_shift_IW`` defaults to IW+2, the 2 input files that list
+    every option and the smallest run set the same value, and the validator
+    still bounds a user value to [-12, 12]."""
+    from helpers import PROTEUS_ROOT
+
+    from proteus.config import read_config_object
+    from proteus.config._outgas import Outgas
+
+    assert Outgas().fO2_shift_IW == pytest.approx(2.0)
+    for name in ('all_options.toml', 'minimal.toml'):
+        cfg = read_config_object(PROTEUS_ROOT / 'input' / name)
+        assert cfg.outgas.fO2_shift_IW == pytest.approx(2.0), name
+    # Edge and error contract: the bounds are inclusive, and 0.5 beyond is refused.
+    assert Outgas(fO2_shift_IW=-12.0).fO2_shift_IW == pytest.approx(-12.0)
+    with pytest.raises(ValueError):
+        Outgas(fO2_shift_IW=12.5)

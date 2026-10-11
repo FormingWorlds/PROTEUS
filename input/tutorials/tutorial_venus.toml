@@ -1,9 +1,11 @@
-# PROTEUS Tutorial: CHILI Nominal Venus
+# PROTEUS Tutorial: Venus
 #
-# Reproduces the nominal Venus case from the CHILI intercomparison
-# (Lichtenberg et al. 2026, PSJ 7:108, Table 2).
+# A Venus-mass planet after the nominal Venus case of the CHILI
+# intercomparison (Lichtenberg et al. 2026, PSJ 7:108, Table 2), at the
+# PROTEUS default redox state (IW+2). The protocol case at IW+4 is
+# input/chili/intercomp/venus.toml.
 #
-# Identical to Nominal Earth except: mass=0.815 M_Earth, orbit=0.723 AU.
+# Identical to the Earth tutorial except: mass=0.815 M_Earth, orbit=0.723 AU.
 # Higher instellation delays solidification; some models predict Type II
 # radiative equilibrium.
 #
@@ -107,7 +109,7 @@ config_version = "3.0"
 
 [outgas]
     module       = "calliope"
-    fO2_shift_IW = 4.0
+    fO2_shift_IW = 2.0
     [outgas.calliope]
         include_H2O = true
         include_CO2 = true

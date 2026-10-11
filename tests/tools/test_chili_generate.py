@@ -1,7 +1,7 @@
 """Lockstep tests for the CHILI intercomparison generator.
 
-The tutorial configs are the single source of truth for the CHILI
-cases (tools/chili_generate.py). These tests pin that contract:
+The tutorial configs are the base of the CHILI cases
+(tools/chili_generate.py). These tests pin that contract:
 
 - each generated case equals its tutorial base on every config field
   outside its declared delta list, via the real config loader;
@@ -65,9 +65,10 @@ def test_generated_cases_match_tutorials_outside_their_deltas():
 
     The contract that keeps the intercomparison and the tutorials in
     lockstep: a physics field changed in only one of the two surfaces
-    appears here as an undeclared difference. The earth case also pins
-    the boundary from the other side: its only difference is the
-    output path, so the nominal CHILI Earth IS the tutorial Earth.
+    appears here as an undeclared difference. The nominal cases also pin
+    the boundary from the other side: they differ from their tutorial in
+    the output path and the redox state only, and every case runs at the
+    protocol's IW+4 while both tutorials run at the config default.
     """
     gen = _load_generator()
     for name, spec in gen.CASE_DELTAS.items():
@@ -93,9 +94,19 @@ def test_generated_cases_match_tutorials_outside_their_deltas():
                 assert got == pytest.approx(want, rel=1e-12), f'{name}: {dotted}={got!r}'
             else:
                 assert got == want, f'{name}: {dotted}={got!r}, want {want!r}'
-    # Discrimination: the nominal cases are single-delta by design.
-    assert set(gen.CASE_DELTAS['earth']['set']) == {'params.out.path'}
-    assert set(gen.CASE_DELTAS['venus']['set']) == {'params.out.path'}
+    # Discrimination: the nominal cases carry these 2 deltas and no other.
+    nominal = {'params.out.path', 'outgas.fO2_shift_IW'}
+    assert set(gen.CASE_DELTAS['earth']['set']) == nominal
+    assert set(gen.CASE_DELTAS['venus']['set']) == nominal
+    # The protocol value is set in all 5 cases and is not the tutorial value.
+    from proteus.config._outgas import Outgas
+
+    for name, spec in gen.CASE_DELTAS.items():
+        case = _read_config(str(REPO / 'input' / 'chili' / 'intercomp' / f'{name}.toml'))
+        tut = _read_config(str(REPO / 'input' / 'tutorials' / spec['base']))
+        assert case.outgas.fO2_shift_IW == pytest.approx(4.0), name
+        assert tut.outgas.fO2_shift_IW == pytest.approx(Outgas().fO2_shift_IW), spec['base']
+    assert len(gen.CASE_DELTAS) == 5
 
 
 def test_grid_axes_match_standalone_grid_configs():
