@@ -70,13 +70,17 @@ directory (`proteus_tools_dir`), the `--force` and install-path argument split
 (`get_parse_args`), the dirty-checkout guard (`guard_dirty_checkout`), the
 GitHub SSH probe (`github_use_ssh`), the https-to-SSH URL rewrite
 (`github_ssh_url`), the pin reader (`resolve_module_pin`), the release-tag
-checkout (`checkout_floor_tag`), the in-place move of an existing clone to that
-tag (`move_clone_to_floor_tag`) with the one line for a clone that stays
-(`report_clone_stays`), the re-run path of a module script that keeps its clone
-(`reuse_existing_clone`), and `swap_in_checkout`, which puts a finished
+checkout of a new clone (`checkout_floor_tag`), the path of a module script
+for a folder that is already there (`install_existing_clone`, which prints the
+state that `report_clone_state` reads with read-only git calls, after
+`is_own_clone` proves that the folder is the top level of its own clone, and
+installs the folder as it is), the summary entry for install.sh
+(`record_clone_stays`), the error suffix for a path that a failure leaves
+unchanged (`unchanged_note`), and `swap_in_checkout`, which puts a finished
 new checkout in the place of the old one. A script that replaces a checkout
 clones into a temporary sibling and calls `swap_in_checkout` last, so a failed
-clone or checkout leaves the old one as it was.
+clone or checkout, or a signal between its two moves, leaves the old one as it
+was.
 
 A new install script starts with the same bootstrap the existing ones use:
 

@@ -44,54 +44,9 @@ get_parse_args() {
     done
 }
 
-# Usage: _local_commits <checkout> <refs...>. Prints, one per line, the commits of the refs that are on
-# no remote branch and below no tag that a remote lists; a tag of the user's own stays local work.
-_local_commits() {
-    local workpath="$1" remote listed excluded=""
-    shift
-    for remote in $(git -C "$workpath" remote); do
-        listed=$(git -C "$workpath" ls-remote --tags "$remote" 2>/dev/null) || continue
-        excluded="$excluded $(printf '%s\n' "$listed" | awk '{print "^" $1}')"
-    done
-    # shellcheck disable=SC2086
-    git -C "$workpath" log --ignore-missing "$@" $excluded --not --remotes --oneline
-}
-
-# Print the number of lines of $1; an empty text has none.
-_count_lines() {
-    if [ -z "$1" ]; then
-        echo 0
-    else
-        printf '%s\n' "$1" | awk 'END {print NR}'
-    fi
-}
-
-# Usage: _local_work_counts <checkout> [git pathspec...]. Sets work_modified and work_local to the
-# number of modified tracked files and of local commits (_local_commits) of <checkout>; returns 1
-# when git cannot report them. Pathspecs go to git status.
-_local_work_counts() {
-    local workpath="$1" out refs='--branches'
-    shift
-    work_modified=0
-    work_local=0
-    # Not piped, because a pipeline reports git's status only under pipefail.
-    out=$(git -C "$workpath" status --porcelain --untracked-files=no "$@" 2>/dev/null) || return 1
-    work_modified=$(_count_lines "$out")
-    # HEAD counts when it resolves; a clone killed before its first commit has none.
-    if git -C "$workpath" rev-parse --verify --quiet HEAD >/dev/null 2>&1; then
-        refs='--branches HEAD'
-    fi
-    out=$(git -C "$workpath" log $refs --not --remotes --oneline -1 2>/dev/null) || return 1
-    if [ -n "$out" ]; then
-        out=$(_local_commits "$workpath" $refs 2>/dev/null) || return 1
-        work_local=$(_count_lines "$out")
-    fi
-    return 0
-}
-
-# Usage: guard_dirty_checkout <checkout-path> <script-name> [git pathspec...]. Exits 1, unless --force,
-# on a path that is neither a git clone nor an empty directory, and on a clone with modified tracked
-# files or local commits; pathspecs go to git status. An empty script name marks an unmanaged clone.
+# Usage: guard_dirty_checkout <checkout-path> <script-name> [git pathspec...]. Exits 1, unless
+# --force, when the checkout has modified tracked files or commits on no remote; pathspecs go to
+# git status. Call it as a plain command: inside a command substitution the exit leaves only that.
 guard_dirty_checkout() {
     local workpath="$1"
     local script="$2"
@@ -100,63 +55,37 @@ guard_dirty_checkout() {
     if [ "${get_force:-false}" = true ]; then
         return 0
     fi
-    # A worktree or a submodule has a .git file, not a directory.
-    if [ ! -e "$workpath/.git" ]; then
-        if [ ! -e "$workpath" ] || { [ -d "$workpath" ] && [ -r "$workpath" ] &&
-            [ -z "$(ls -A "$workpath" 2>/dev/null)" ]; }; then
-            return 0
-        fi
-        echo "ERROR: $workpath is not a git clone, so it is not replaced." >&2
-        if [ -n "$script" ]; then
-            echo "       Move it away, or run  bash tools/$script --force  to discard it." >&2
-        else
-            echo "       Move it away first." >&2
-        fi
+    if [ ! -d "$workpath/.git" ]; then
+        return 0
+    fi
+
+    # Branches, and HEAD when it resolves: commits can sit on a branch that is
+    # not checked out or on a detached HEAD, while a clone killed before its
+    # first commit has no HEAD to read. Tags stay out of it, since a clone
+    # carries the upstream's tags and the commits they hold are not local work.
+    local dirty unpushed refs='--branches' rc=0
+    dirty=$(git -C "$workpath" status --porcelain --untracked-files=no "$@" 2>/dev/null) || rc=$?
+    if git -C "$workpath" rev-parse --verify --quiet HEAD >/dev/null 2>&1; then
+        refs='--branches HEAD'
+    fi
+    unpushed=$(git -C "$workpath" log $refs --not --remotes --oneline -1 2>/dev/null) || rc=$?
+    if [ "$rc" -ne 0 ]; then
+        # An incomplete .git, or no git at all. Whether the checkout holds
+        # local work is then unknown, so keep it.
+        echo "ERROR: git could not report the state of $workpath, so whether" >&2
+        echo "       it holds local work is unknown. Refusing to delete it." >&2
+        echo "       Inspect the checkout, or run" >&2
+        echo "       bash tools/$script --force  to discard it." >&2
         exit 1
     fi
-    _refuse_local_work "$workpath" "$script" "" "$@"
+    if [ -n "$dirty" ] || [ -n "$unpushed" ]; then
+        echo "ERROR: $workpath has uncommitted changes or commits not on a remote." >&2
+        echo "       Refusing to delete it. Commit and push your work, or run" >&2
+        echo "       bash tools/$script --force  to discard the checkout." >&2
+        exit 1
+    fi
 }
 
-# Usage: _refuse_local_work <checkout> <script-name> <distribution> [git pathspec...]. The local-work
-# half of guard_dirty_checkout; with a distribution, the refusal names it, the count of each kind of
-# work and the release tag PROTEUS expects (stay_line).
-_refuse_local_work() {
-    local workpath="$1" script="$2" dist="$3" rc=0 action='delete it' tag found
-    shift 3
-    _local_work_counts "$workpath" "$@" || rc=$?
-    if [ -z "$script" ]; then
-        action='move it to another commit'
-    fi
-    if [ "$rc" -ne 0 ]; then
-        echo "ERROR: git could not report the state of $workpath, so whether" >&2
-        echo "       it holds local work is unknown. Refusing to $action." >&2
-        if [ -n "$script" ]; then
-            echo "       Inspect the checkout, or run" >&2
-            echo "       bash tools/$script --force  to discard it." >&2
-        else
-            echo "       Inspect the checkout with git status and git log." >&2
-        fi
-        exit 1
-    fi
-    if [ "$work_modified" -gt 0 ] || [ "$work_local" -gt 0 ]; then
-        if [ -n "$dist" ]; then
-            tag=$(_floor_tag_of "$dist" "$workpath" 2>/dev/null) || tag=""
-            found="$(_plural "$work_modified" 'modified tracked file') and"
-            found="$found $(_plural "$work_local" 'local commit') (on no remote)"
-            echo "ERROR: $(stay_line "$dist" "$workpath" "$found" "$(expected_tag_text "$tag")")" >&2
-        else
-            echo "ERROR: $workpath has uncommitted changes or commits not on a remote." >&2
-        fi
-        if [ -n "$script" ]; then
-            echo "       Refusing to delete it. Commit and push your work, or run" >&2
-            echo "       bash tools/$script --force  to discard the checkout." >&2
-        else
-            echo "       Refusing to move it to another commit. Commit, push or stash" >&2
-            echo "       the work first, then run the command again." >&2
-        fi
-        exit 1
-    fi
-}
 
 # Report whether GitHub accepts an SSH key, as "true" or "false" on stdout.
 #
@@ -208,7 +137,7 @@ _floor_tag_of() {
         echo "       activate the PROTEUS Python environment first" >&2
         return 1
     fi
-    if ! tags=$(git -C "$dir" tag -l); then
+    if ! tags=$(git -C "$dir" for-each-ref --format='%(refname:strip=2)' refs/tags); then
         echo "ERROR: git cannot list the tags of $dir; see the git message above" >&2
         return 1
     fi
@@ -233,23 +162,179 @@ checkout_floor_tag() {
     echo "$dist: checked out release tag $tag at $commit"
 }
 
+# Usage: unchanged_note <path>. Prints "; <path> is unchanged" for an error message when <path> exists.
+unchanged_note() { [ ! -e "$1" ] || echo "; $1 is unchanged"; }
+
+# Usage: is_own_clone <dir>. Succeeds when <dir> is the top level of its own git clone. An empty or
+# broken .git makes git answer for the repository around <dir>, so prove this before any other git call.
+is_own_clone() {
+    local dir="${1%/}" top
+    top=$(git -C "$dir" rev-parse --show-toplevel 2>/dev/null) || return 1
+    [ -n "$top" ] && [ "$top" -ef "$dir" ]
+}
+
+# Usage: expected_text <distribution> <tag>. Prints what PROTEUS expects of a module clone: the
+# release tag when the clone has it, else the floor version in pyproject.toml.
+expected_text() {
+    local floor
+    if [ -n "$2" ]; then
+        echo "PROTEUS expects the release tag $2"
+    elif floor=$(python "$proteus_tools_dir/_module_pins.py" "$1" floor 2>/dev/null) &&
+        [ -n "$floor" ]; then
+        echo "PROTEUS expects release $floor"
+    else
+        echo "the release tag could not be determined"
+    fi
+}
+
+# Usage: record_clone_stays <clone-dir> <summary>. Adds "<clone name> (<summary>)" to the file that
+# PROTEUS_CLONE_STAYS names, when it is set, for the summary at the end of install.sh.
+record_clone_stays() {
+    local dir="${1%/}"
+    if [ -n "${PROTEUS_CLONE_STAYS:-}" ]; then
+        printf '%s (%s)\n' "${dir##*/}" "$2" >>"$PROTEUS_CLONE_STAYS" || true
+    fi
+}
+
+# Usage: report_clone_stays <distribution> <clone-dir> <found> <summary> <expected>. Prints the one
+# line that says a module clone stays as it is, and records it (record_clone_stays).
+report_clone_stays() {
+    local dir="${2%/}"
+    echo "$1: $dir stays as it is: $3; $5"
+    record_clone_stays "$dir" "$4"
+}
+
+# Usage: _relation_to_tag <clone-dir> <head> <tag-commit>. Prints where HEAD lies against the tag,
+# read with merge-base only; prints nothing when git cannot compare the two.
+_relation_to_tag() {
+    local rc=0
+    git -C "$1" merge-base --is-ancestor "$2" "$3" 2>/dev/null || rc=$?
+    if [ "$rc" -eq 0 ]; then
+        echo "behind the tag"
+        return 0
+    fi
+    [ "$rc" -eq 1 ] || return 0
+    rc=0
+    git -C "$1" merge-base --is-ancestor "$3" "$2" 2>/dev/null || rc=$?
+    if [ "$rc" -eq 0 ]; then
+        echo "newer than the tag"
+    elif [ "$rc" -eq 1 ]; then
+        echo "on a line of history without the tag"
+    fi
+}
+
+# Usage: _clone_advice <distribution> <clone-dir> <script-label> <tag> <readable>. Prints the
+# commands that move a readable clone to the release tag by hand, and the one that replaces it.
+_clone_advice() {
+    local dir tag
+    dir=$(printf '%q' "${2%/}")
+    local how="From the PROTEUS folder, replace"
+    if [ "$5" = true ]; then
+        echo "    From the PROTEUS folder, move it to the release tag by hand with:"
+        echo "        git -C $dir fetch --tags"
+        if [ -n "$4" ]; then
+            tag=$(printf '%q' "$4")
+            echo "        git -C $dir checkout $tag"
+        else
+            echo "        git -C $dir checkout \"\$(git -C $dir tag -l |" \
+                "python tools/_module_pins.py $1 floor-tag)\""
+        fi
+        how="Or replace"
+    fi
+    echo "    $how it with a new clone, which deletes everything in it, with:"
+    echo "        bash tools/$3 --force"
+}
+
+# Usage: report_clone_state <distribution> <clone-dir> <script-label>. Reads what is at <clone-dir>
+# with read-only git calls and prints the at-tag line, or the stay line and the advice lines.
+report_clone_state() {
+    local dist="$1" dir="${2%/}" label="$3" tag="" tag_commit="" head="" rel="" branch
+    local found summary readable=false
+    if [ ! -e "$dir/.git" ] && [ ! -L "$dir/.git" ]; then
+        found="not a git clone"
+        summary="$found"
+    elif ! is_own_clone "$dir"; then
+        found="not a readable git clone"
+        summary="$found"
+    else
+        readable=true
+        tag=$(_floor_tag_of "$dist" "$dir" 2>/dev/null) || tag=""
+        head=$(git -C "$dir" rev-parse --verify --quiet HEAD 2>/dev/null) || head=""
+        if [ -n "$tag" ]; then
+            tag_commit=$(git -C "$dir" rev-parse --verify --quiet "refs/tags/$tag^{commit}" \
+                2>/dev/null) || tag_commit=""
+        fi
+        if [ -n "$head" ] && [ "$head" = "$tag_commit" ]; then
+            echo "$dist: $dir is at the release tag $tag"
+            return 0
+        fi
+        if branch=$(git -C "$dir" symbolic-ref -q --short HEAD 2>/dev/null); then
+            found="on branch $branch"
+            summary="branch $branch"
+        elif [ -z "$head" ]; then
+            found="a HEAD that git cannot resolve"
+            summary="HEAD unknown"
+        else
+            found="commit ${head:0:7} ($(git -C "$dir" describe --tags --always HEAD 2>/dev/null ||
+                echo "${head:0:7}"))"
+            summary="commit ${head:0:7}"
+            if [ -n "$tag_commit" ]; then
+                rel=$(_relation_to_tag "$dir" "$head" "$tag_commit")
+            fi
+            case "$rel" in
+                '') ;;
+                behind*) found="$found, $rel"; summary="$summary, behind" ;;
+                newer*) found="$found, $rel"; summary="$summary, newer" ;;
+                *) found="$found, $rel"; summary="$summary, other history" ;;
+            esac
+        fi
+    fi
+    report_clone_stays "$dist" "$dir" "$found" "$summary" "$(expected_text "$dist" "$tag")"
+    _clone_advice "$dist" "$dir" "$label" "$tag" "$readable"
+}
+
+# Usage: install_existing_clone <distribution> <clone-dir> <script-label> [prepare-function]. Returns
+# under --force or with nothing at <clone-dir>; else reports what is there, runs the prepare function
+# on it, installs it editable as it is and exits 0. No git call writes to it.
+install_existing_clone() {
+    local dist="$1" dir="${2%/}" label="$3" prepare="${4:-}"
+    if [ "${get_force:-false}" = true ] || { [ ! -e "$dir" ] && [ ! -L "$dir" ]; }; then
+        return 0
+    fi
+    report_clone_state "$dist" "$dir" "$label"
+    if [ -n "$prepare" ]; then
+        "$prepare" "$dir" || exit 1
+        echo "$dist: the build step ran in the existing folder $dir"
+    fi
+    pip install -U -e "$dir" || { echo "ERROR: editable install failed" >&2; exit 1; }
+    echo "Done!"
+    exit 0
+}
+
 # Usage: swap_in_checkout <new-dir> <workpath>. Moves an existing <workpath> aside, <new-dir> into its
 # place, and only then removes the old copy; a copy that will not go is a warning. Returns 1, with
 # the old checkout back at <workpath>, when <new-dir> cannot be moved there.
 swap_in_checkout() {
-    local new="${1%/}" dest="${2%/}" old="" n=0
+    local new="${1%/}" dest="${2%/}" old="" n=0 back
     if [ -e "$dest" ] || [ -L "$dest" ]; then
         old="$dest.old.$$"
         while [ -e "$old" ] || [ -L "$old" ]; do
             n=$((n + 1))
             old="$dest.old.$$.$n"
         done
+        # A signal during the 2 moves puts the old checkout back; the caller's EXIT trap still runs.
+        back="_swap_interrupted $(printf '%q' "$old") $(printf '%q' "$dest")"
+        trap "$back 129" HUP
+        trap "$back 130" INT
+        trap "$back 143" TERM
         if ! mv "$dest" "$old"; then
+            trap - HUP INT TERM
             echo "ERROR: cannot move $dest aside to put the new checkout there; it is unchanged" >&2
             return 1
         fi
     fi
     if ! mv "$new" "$dest"; then
+        trap - HUP INT TERM
         if [ -z "$old" ]; then
             echo "ERROR: cannot move the new checkout $new to $dest" >&2
         elif mv "$old" "$dest"; then
@@ -259,116 +344,25 @@ swap_in_checkout() {
         fi
         return 1
     fi
+    trap - HUP INT TERM
     if [ -n "$old" ] && ! rm -rf "$old" 2>/dev/null; then
         echo "WARNING: the old checkout could not be removed completely; delete $old by hand" >&2
     fi
     return 0
 }
 
-# Print "<count> <noun>", with an s after the noun unless the count is 1.
-_plural() {
-    if [ "$1" -eq 1 ]; then
-        echo "$1 $2"
+# Usage: _swap_interrupted <old> <dest> <status>. The signal handler of swap_in_checkout: moves <old>
+# back when <dest> is missing, says what it did and exits with <status>.
+_swap_interrupted() {
+    trap - HUP INT TERM
+    if [ ! -e "$1" ] && [ ! -L "$1" ]; then
+        echo "ERROR: interrupted before replacing $2; it is unchanged" >&2
+    elif [ ! -e "$2" ] && [ ! -L "$2" ] && mv "$1" "$2"; then
+        echo "ERROR: interrupted while replacing $2; the old checkout is back in place" >&2
     else
-        echo "$1 $2s"
+        echo "ERROR: interrupted while replacing $2; the old checkout is at $1" >&2
     fi
-}
-
-# Print the expected half of a stay line for the release tag $1, or say that it is unknown.
-expected_tag_text() {
-    if [ -n "$1" ]; then
-        echo "PROTEUS expects the release tag $1"
-    else
-        echo "the release tag could not be determined"
-    fi
-}
-
-# Usage: stay_line <distribution> <clone-dir> <found> <expected>. Prints the one line that says a
-# module clone stays as it is, what was found there and what PROTEUS expects.
-stay_line() {
-    echo "$1: ${2%/} stays as it is: $3; $4"
-}
-
-# Usage: report_clone_stays <distribution> <clone-dir> <found> <summary> <expected>. Prints stay_line
-# and adds "<clone name> (<summary>)" to the file PROTEUS_CLONE_STAYS names, when set, for install.sh.
-report_clone_stays() {
-    local dir="${2%/}"
-    stay_line "$1" "$dir" "$3" "$5"
-    if [ -n "${PROTEUS_CLONE_STAYS:-}" ]; then
-        printf '%s (%s)\n' "${dir##*/}" "$4" >>"$PROTEUS_CLONE_STAYS" || true
-    fi
-}
-
-# Usage: move_clone_to_floor_tag <distribution> <clone-dir> [script-label]. Moves a clone in place to
-# the floor release tag when its HEAD is behind it, and leaves a clone on a branch or at or past the
-# tag as it is. Exits 1 on local work or a failure; the label names the script that replaces it.
-move_clone_to_floor_tag() {
-    local dist="$1" dir="${2%/}" label="${3:-}" branch tag tag_commit head describe rc=0
-    # A branch is never moved, so its local work needs no guard; its tag comes without a fetch.
-    if [ -e "$dir/.git" ] && branch=$(git -C "$dir" symbolic-ref -q --short HEAD 2>/dev/null); then
-        tag=$(_floor_tag_of "$dist" "$dir" 2>/dev/null) || tag=""
-        report_clone_stays "$dist" "$dir" "on branch $branch" "branch $branch" \
-            "$(expected_tag_text "$tag")"
-        return 0
-    fi
-    if [ -e "$dir/.git" ]; then
-        # The tags come first, so that a refusal of local work names the tag of the floor.
-        if ! git -C "$dir" fetch --tags --quiet; then
-            echo "WARNING: cannot fetch the tags of $dir; going on with the tags it has" >&2
-        fi
-        (_refuse_local_work "$dir" "" "$dist") || rc=1
-    else
-        (guard_dirty_checkout "$dir" "") || rc=1
-    fi
-    if [ "$rc" -ne 0 ]; then
-        if [ -n "$label" ]; then
-            echo "       To replace the clone with a new one instead, run  bash tools/$label --force" >&2
-        fi
-        exit 1
-    fi
-    tag=$(_floor_tag_of "$dist" "$dir") || exit 1
-    if ! tag_commit=$(git -C "$dir" rev-parse --verify --quiet "refs/tags/$tag^{commit}") ||
-        ! head=$(git -C "$dir" rev-parse --verify --quiet HEAD); then
-        echo "ERROR: git cannot resolve HEAD and the tag $tag in $dir" >&2
-        exit 1
-    fi
-    if [ "$head" = "$tag_commit" ]; then
-        echo "$dist: $dir is at the release tag $tag"
-        return 0
-    fi
-    git -C "$dir" merge-base --is-ancestor "$head" "$tag_commit" || rc=$?
-    if [ "$rc" -eq 0 ]; then
-        checkout_floor_tag "$dist" "$dir"
-        return 0
-    elif [ "$rc" -ne 1 ]; then
-        echo "ERROR: git cannot compare HEAD of $dir with the tag $tag" >&2
-        exit 1
-    fi
-    describe=$(git -C "$dir" describe --tags --always HEAD 2>/dev/null) || describe="${head:0:7}"
-    rc=0
-    git -C "$dir" merge-base --is-ancestor "$tag_commit" "$head" || rc=$?
-    if [ "$rc" -eq 0 ]; then
-        report_clone_stays "$dist" "$dir" "commit ${head:0:7} ($describe), newer than the tag" \
-            "commit ${head:0:7}, newer" "$(expected_tag_text "$tag")"
-    else
-        report_clone_stays "$dist" "$dir" \
-            "commit ${head:0:7} ($describe), on a line of history without the tag" \
-            "commit ${head:0:7}, other history" "$(expected_tag_text "$tag")"
-    fi
-    return 0
-}
-
-# Usage: reuse_existing_clone <distribution> <clone-dir> <script-label>. Without --force and with a git
-# clone at <clone-dir>, moves it (move_clone_to_floor_tag), installs it editable and exits 0; else returns.
-reuse_existing_clone() {
-    local dist="$1" dir="${2%/}" label="$3"
-    if [ "${get_force:-false}" = true ] || [ ! -e "$dir/.git" ]; then
-        return 0
-    fi
-    move_clone_to_floor_tag "$dist" "$dir" "$label"
-    pip install -U -e "$dir" || { echo "ERROR: editable install failed" >&2; exit 1; }
-    echo "Done!"
-    exit 0
+    exit "$3"
 }
 
 # Download <dest> from the first of the urls that serves a file with the given

@@ -1,7 +1,7 @@
 #!/bin/bash
 # Clone Aragog into ./aragog/ and install it editable. A new clone, and the one --force puts in
 # place of an old one, takes the Aragog branch named like the PROTEUS feature branch, if any, else
-# the fwl-aragog floor tag; a re-run never replaces a clone, at most it moves it forward to that tag.
+# the fwl-aragog floor tag. An existing folder is installed as it is; only --force replaces it.
 
 echo "Set up Aragog..."
 
@@ -24,12 +24,7 @@ fi
 
 get_parse_args "$@"
 workpath="$root/aragog/"
-reuse_existing_clone fwl-aragog "$workpath" get_aragog.sh
-guard_dirty_checkout "$workpath" get_aragog.sh
-unchanged=""
-if [ -e "$workpath" ]; then
-    unchanged="; $workpath is unchanged"
-fi
+install_existing_clone fwl-aragog "$workpath" get_aragog.sh
 
 # The new clone replaces the checkout only once it is on its branch or release tag.
 tmp_clone="${workpath%/}.tmp.$$"
@@ -47,7 +42,8 @@ else
     uri="https://github.com/FormingWorlds/aragog.git"
 fi
 echo "    $uri -> $tmp_clone"
-git clone "$uri" "$tmp_clone" || { echo "ERROR: git clone failed$unchanged" >&2; exit 1; }
+git clone "$uri" "$tmp_clone" ||
+    { echo "ERROR: git clone failed$(unchanged_note "$workpath")" >&2; exit 1; }
 
 cd "$tmp_clone" || { echo "ERROR: cannot enter $tmp_clone" >&2; exit 1; }
 
@@ -77,6 +73,9 @@ fi
 cd "$root" || exit 1
 swap_in_checkout "$tmp_clone" "$workpath" || exit 1
 trap - EXIT
+if [ -n "$match_branch" ]; then
+    record_clone_stays "$workpath" "paired branch $match_branch"
+fi
 cd "$workpath" || { echo "ERROR: cannot enter $workpath" >&2; exit 1; }
 
 # Install aragog package as editable

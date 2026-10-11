@@ -152,8 +152,7 @@ This lists the fixable issues and their commands but does not execute anything.
 | Issue | Fix action |
 |-------|-----------|
 | Missing Python package | `pip install <name>` |
-| Outdated Python package (editable, tag-pinned: aragog, zalmoxis) | `bash tools/get_<name>.sh` |
-| Outdated Python package (editable, tracking branch) | `cd <checkout> && git pull && pip install -e .` |
+| Outdated Python package (editable, without a setup script) | `cd <checkout> && git pull && pip install -e .` |
 | Outdated Python package (wheel) | `pip install -U "<name>>=<version>"` |
 | Missing AGNI | `bash tools/get_agni.sh` |
 | AGNI commit drift from pin | `bash tools/get_agni.sh` |
@@ -176,6 +175,13 @@ This lists the fixable issues and their commands but does not execute anything.
   conda environment. If the wrong environment is active or conda is not
   configured, activate the correct environment first:
   `conda activate proteus`.
+- **An outdated editable module clone that a setup script makes** (MORS,
+  JANUS, CALLIOPE, ZEPHYRUS, Aragog, Zalmoxis): no fix changes such a clone.
+  The doctor shows as its fix the commands that fetch the tags, check out
+  the release tag of the minimum version and reinstall the clone, and the
+  setup script with `--force` (for example
+  `bash tools/get_python_module.sh MORS --force`), which replaces the clone
+  with a new one. Run the one you want by hand.
 
 !!! warning "Source install required"
     `proteus update` requires a source install (git clone). If PROTEUS was
@@ -195,7 +201,10 @@ proteus update-all
 It updates the PROTEUS Python package, recompiles SOCRATES, pulls the latest
 AGNI, and refreshes the reference data, verifying environment variables and disk
 space before proceeding. Pass `--export-env` to re-export the environment
-variables to your shell rc file. Use this after pulling new code when several
+variables to your shell rc file. It does not change the Python module clones
+(MORS, JANUS, CALLIOPE, ZEPHYRUS, Aragog, Zalmoxis): to move one to its release tag after a version change,
+run the two `git` commands that `bash install.sh` prints for a clone that is not at its tag, or the module's
+setup script with `--force`. Use this after pulling new code when several
 components may have moved at once; use `proteus update` when you want to apply
 only the fixes the doctor has flagged.
 
@@ -226,10 +235,10 @@ proteus update
 ```
 
 This updates any submodules whose installed version no longer satisfies the
-new bounds. For editable checkouts installed by a `tools/get_<name>.sh` script
-(aragog, zalmoxis), it re-runs that script, which fetches and checks out the
-pinned version tag; those checkouts sit on a detached HEAD where `git pull`
-would fail. For editable checkouts on a tracking branch, it runs
+new bounds. It does not change an editable module clone that a setup script
+makes (MORS, JANUS, CALLIOPE, ZEPHYRUS, Aragog, Zalmoxis): for one below its
+minimum version it lists the commands that move it to the release tag by
+hand or replace it with `--force`. For other editable checkouts it runs
 `git pull && pip install -e .` in the checkout directory.
 
 ### Before submitting a simulation
