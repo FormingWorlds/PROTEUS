@@ -52,10 +52,12 @@ def draw_real():
 
     def draw(func, *args, rc=None, **kwargs):
         before = set(plt.get_fignums())
-        with mpl.style.context('default'), mpl.rc_context(rc), patch.object(plt, 'close'):
-            func(*args, **kwargs)
-        new = [plt.figure(n) for n in plt.get_fignums() if n not in before]
-        made.extend(new)
+        try:
+            with mpl.style.context('default'), mpl.rc_context(rc), patch.object(plt, 'close'):
+                func(*args, **kwargs)
+        finally:
+            new = [plt.figure(n) for n in plt.get_fignums() if n not in before]
+            made.extend(new)
         return new
 
     yield draw

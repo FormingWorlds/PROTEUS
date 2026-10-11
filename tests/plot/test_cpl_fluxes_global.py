@@ -159,7 +159,9 @@ def test_plot_fluxes_global_takes_its_neutral_colours_from_the_style(
     line = {ln.get_label(): ln for ln in ax.lines}
     assert to_rgb(line['S-N limit'].get_color()) == pytest.approx(to_rgb(style.text))
     assert to_rgb(line['Net (atm.)'].get_color()) == pytest.approx(to_rgb(style.dark_grey))
-    assert to_rgb(ax.xaxis.get_gridlines()[0].get_color()) == pytest.approx(to_rgb(style.text))
+    grid = ax.xaxis.get_gridlines()[0]
+    assert to_rgb(grid.get_color()) == pytest.approx(to_rgb(style.text))
+    assert grid.get_alpha() == pytest.approx(0.05)
     assert ax.get_legend().get_frame().get_facecolor() == pytest.approx(
         to_rgba(style.face, 0.99)
     )

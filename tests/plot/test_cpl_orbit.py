@@ -904,6 +904,9 @@ def test_the_orbit_plots_take_their_neutral_colours_from_the_style(draw_real, tm
     (fig,) = draw_real(orbit_mod.plot_orbit, _make_hf_all(), out, False, 'png', rc=style.rc)
     notes = [t for ax in fig.axes for t in ax.texts if t.get_text() == 'No Satellite Data']
     assert len(notes) == 3
+    assert to_rgb(fig.axes[0].lines[0].get_color()) == pytest.approx(to_rgb(style.text))
+    (with_sat,) = draw_real(orbit_mod.plot_orbit, _make_hf_all(), out, True, 'png', rc=style.rc)
+    assert to_rgb(with_sat.axes[1].lines[0].get_color()) == pytest.approx(to_rgb(style.text))
     for note in notes:
         assert to_rgb(note.get_color()) == pytest.approx(to_rgb(style.mid_grey))
 

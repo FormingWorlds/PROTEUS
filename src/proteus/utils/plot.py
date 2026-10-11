@@ -167,7 +167,8 @@ def style_neutral(fade: float = 0.0) -> tuple[float, float, float]:
     ----------
     fade : float
         Position between the text colour (0) and the axes face colour (1) of the
-        style, mixed linearly in RGB.
+        style, mixed linearly in RGB. A transparent axes face stands for the
+        figure face colour.
 
     Returns
     -------
@@ -175,11 +176,13 @@ def style_neutral(fade: float = 0.0) -> tuple[float, float, float]:
         RGB colour: black, grey and white in the default style, and their
         counterparts in a dark style.
     """
-    from matplotlib import rcParams
-    from matplotlib.colors import to_rgb
+    from matplotlib import colors, rcParams
 
-    text, face = (np.array(to_rgb(rcParams[k])) for k in ('text.color', 'axes.facecolor'))
-    return tuple(float(c) for c in text + fade * (face - text))
+    face = colors.to_rgba(rcParams['axes.facecolor'])
+    if face[3] == 0.0:
+        face = colors.to_rgba(rcParams['figure.facecolor'])
+    text = colors.to_rgb(rcParams['text.color'])
+    return tuple(t + fade * (f - t) for t, f in zip(text, face))
 
 
 def get_colour(thing: str):

@@ -56,7 +56,7 @@ def plot_orbit(
     # ----------------- COLUMN 0: PLANET -----------------
     # Panel 0,0: Planet Semi-major Axis
     y_a_pl = hf_all['semimajorax'] / AU
-    axs[0, 0].plot(time, y_a_pl, lw=lw, color=mpl.rcParams['text.color'])
+    axs[0, 0].plot(time, y_a_pl, lw=lw, color=style_neutral())
     axs[0, 0].set_ylabel('Semi-major Axis [AU]')
     axs[0, 0].set_ylim(np.amin(y_a_pl) / yext, np.amax(y_a_pl) * yext)
     axs[0, 0].set_title('Planet Orbiting Star')
@@ -102,7 +102,7 @@ def plot_orbit(
         # Panel 0,1: Satellite Semi-major Axis
         # Using AU to keep consistent scale, or feel free to use e.g. 1e6 meters or Earth-Radii
         y_a_sat = hf_all['semimajorax_sat'] / R_earth
-        axs[0, 1].plot(time, y_a_sat, lw=lw, color=mpl.rcParams['text.color'])
+        axs[0, 1].plot(time, y_a_sat, lw=lw, color=style_neutral())
         axs[0, 1].set_ylabel('Semi-major Axis [R_earth]')
         axs[0, 1].set_ylim(np.amin(y_a_sat) / yext, np.amax(y_a_sat) * yext)
         axs[0, 1].set_title('Satellite Orbiting Planet')
