@@ -47,7 +47,7 @@ floor=$(grep -oE 'fwl-vulcan>=[0-9][0-9.]*' "$root/pyproject.toml" | head -1 | s
 cd "$workpath" || { echo "ERROR: cannot enter $workpath" >&2; exit 1; }
 if [ -n "$floor" ]; then
     echo "Pinning to fwl-vulcan floor: $floor"
-    git checkout "tags/$floor" || { echo "ERROR: cannot checkout tag $floor" >&2; exit 1; }
+    checkout_floor_tag fwl-vulcan "$workpath"
 else
     echo "WARNING: could not read fwl-vulcan floor from pyproject.toml; using HEAD" >&2
 fi

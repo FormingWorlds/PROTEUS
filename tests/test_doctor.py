@@ -666,9 +666,9 @@ def _git(cwd, *args: str) -> str:
 
 
 def _fixture_root(root, requirement: str):
-    """Copy the shared shell helpers and the pin reader below a fixture pyproject.toml."""
+    """Copy the shell helpers, the pin reader and get_python_module.sh below a pyproject.toml."""
     (root / 'tools').mkdir(parents=True)
-    for name in ('_get_common.sh', '_module_pins.py'):
+    for name in ('_get_common.sh', '_module_pins.py', 'get_python_module.sh'):
         shutil.copy2(PROTEUS_ROOT / 'tools' / name, root / 'tools' / name)
     (root / 'pyproject.toml').write_text(
         f'[project]\nname = "fixture"\ndependencies = [\n    "{requirement}",\n]\n'
@@ -1959,6 +1959,70 @@ class TestRunFixCommand:
         out = capsys.readouterr().out
         assert code == 1
         assert "'fwl-mors' floor 26.11.1: no tag matches it" in out
+        assert _git(checkout, 'rev-parse', 'HEAD') == commits[0]
+        assert not pip_log.exists()
+
+    @staticmethod
+    def _root_clone_fix(tmp_path, monkeypatch) -> tuple:
+        """A detached MORS clone at <root>/MORS below its floor, and the fix doctor offers.
+
+        The remote is published as ``<base>/FormingWorlds/MORS.git`` and the
+        setup script reads ``<base>`` from PROTEUS_MODULE_GIT_BASE, so no
+        network is touched. Returns the root, the checkout, the 3 commits,
+        the pip log and the check result.
+        """
+        root = _fixture_root(tmp_path / 'PROTEUS root', 'fwl-mors>=26.10.6')
+        checkout = root / 'MORS'
+        commits = _detached_clone(tmp_path, checkout, late_tag='26.10.06')
+        base = tmp_path / 'gh'
+        (base / 'FormingWorlds').mkdir(parents=True)
+        (base / 'FormingWorlds' / 'MORS.git').symlink_to(tmp_path / 'MORS.git')
+        monkeypatch.setenv('PROTEUS_MODULE_GIT_BASE', f'{base}/')
+        pip_log = _stub_pip(tmp_path, monkeypatch)
+        from packaging.requirements import Requirement
+
+        with (
+            patch('proteus.doctor._repo_root', return_value=root),
+            patch('proteus.doctor.importlib.metadata.version', return_value='26.10.5'),
+            patch('proteus.doctor._editable_checkout_path', return_value=str(checkout)),
+            patch('proteus.doctor._imported_package_dir', return_value=None),
+        ):
+            r = check_python_package('fwl-mors', Requirement('fwl-mors>=26.10.6'))
+        return root, checkout, commits, pip_log, r
+
+    def test_detached_clone_in_the_root_reruns_the_setup_script(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """A detached MORS clone where install.sh puts it gets the setup script as its fix,
+        and running it leaves HEAD at the floor tag, as the in-place fix does.
+
+        The clone sits at tag 26.10.05 on the first of 3 commits; the floor
+        26.10.6 matches the tag 26.10.06 on the second, and the tip is the third.
+        """
+        root, checkout, commits, pip_log, r = self._root_clone_fix(tmp_path, monkeypatch)
+        assert r.status == FAIL
+        assert r.fix_cmd == 'bash tools/get_python_module.sh MORS'
+        code = _run_fix_command(r.fix_cmd, root)
+        out = capsys.readouterr().out
+        assert code == 0, out
+        head = _git(checkout, 'rev-parse', 'HEAD')
+        assert head == commits[1]
+        assert head not in (commits[0], commits[2])
+        assert f'fwl-mors: checked out release tag 26.10.06 at {commits[1][:7]}' in out
+        assert pip_log.read_text() == f'install -U -e {os.path.realpath(checkout)}\n'
+
+    def test_detached_clone_in_the_root_with_local_work_is_kept(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """The setup-script fix refuses a clone with a modified tracked file: it exits 1,
+        names the --force command, keeps the change and HEAD, and installs nothing."""
+        root, checkout, commits, pip_log, r = self._root_clone_fix(tmp_path, monkeypatch)
+        (checkout / 'version.txt').write_text('local work\n')
+        code = _run_fix_command(r.fix_cmd, root)
+        out = capsys.readouterr().out
+        assert code == 1
+        assert 'bash tools/get_python_module.sh MORS --force' in out
+        assert (checkout / 'version.txt').read_text() == 'local work\n'
         assert _git(checkout, 'rev-parse', 'HEAD') == commits[0]
         assert not pip_log.exists()
 

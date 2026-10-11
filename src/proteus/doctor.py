@@ -146,14 +146,15 @@ def _get_script_for_package(dist_name: str) -> str | None:
     HEAD ``git pull`` has no upstream to advance and fails, so the update must
     re-fetch and re-checkout the tag the way the installer does.
     Re-running the setup script is exactly that path (it reads the version floor
-    from ``pyproject.toml`` and checks out ``tags/<floor>``), so it is the
-    correct fix for those packages.
+    from ``pyproject.toml`` and checks out the release tag of that floor), so it
+    is the correct fix for those packages.
 
     Returns the repo-relative script path when it exists, else None. Packages
-    without a setup script (MORS, JANUS, CALLIOPE, ZEPHYRUS) are cloned by
-    ``install.sh`` at the release tag of their floor, also a detached HEAD,
-    or by a developer on a branch; with None, the caller picks the fix from
-    the git state of the checkout (``_git_detached``).
+    without a script of their own (MORS, JANUS, CALLIOPE, ZEPHYRUS) are cloned
+    by ``tools/get_python_module.sh`` at the release tag of their floor, also a
+    detached HEAD, or by a developer on a branch; with None, the caller picks
+    the fix from the git state and location of the checkout
+    (``_git_detached``, ``_detached_clone_fix``).
     """
     short = dist_name.lower()
     prefix = 'fwl-'
@@ -319,6 +320,36 @@ def _floor_tag_fix(dist_name: str, checkout: str) -> str:
         f' && bash -c {shlex.quote(checkout_tag)} _ {common} {shlex.quote(dist_name)} {path}'
         f' && pip install -e {path}'
     )
+
+
+def _detached_clone_fix(dist_name: str, checkout: str) -> str:
+    """Return the fix for a detached editable clone of a module without its own script.
+
+    A clone at ``<PROTEUS root>/<RepoName>``, where ``install.sh`` and
+    ``tools/get_python_module.sh`` put it, is set up again by that script,
+    which refuses a checkout holding local work. The script only manages
+    that location, so a clone elsewhere is moved to the floor tag in place
+    (``_floor_tag_fix``) rather than replaced by a second clone.
+
+    Parameters
+    ----------
+    dist_name : str
+        Distribution name, for example ``fwl-mors``.
+    checkout : str
+        Directory of the editable checkout.
+
+    Returns
+    -------
+    str
+        ``bash tools/get_python_module.sh MORS`` for the clone the script
+        manages, else the command of ``_floor_tag_fix``.
+    """
+    repo = dist_name.lower().removeprefix('fwl-').upper()
+    root = _repo_root()
+    script = root / 'tools' / 'get_python_module.sh'
+    if script.is_file() and os.path.realpath(checkout) == os.path.realpath(root / repo):
+        return f'bash tools/get_python_module.sh {repo}'
+    return _floor_tag_fix(dist_name, checkout)
 
 
 def _julia_version() -> str | None:
@@ -600,7 +631,7 @@ def check_python_package(name: str, spec: Requirement | None) -> CheckResult:
                 if script:
                     fix = f'bash {script}'
                 elif _git_detached(checkout):
-                    fix = _floor_tag_fix(name, checkout)
+                    fix = _detached_clone_fix(name, checkout)
                 else:
                     fix = f'cd {shlex.quote(checkout)} && git pull && pip install -e .'
             return CheckResult(

@@ -509,9 +509,9 @@ def _module_repo(path: Path, tag: str | None = '26.10.06') -> tuple[str, str]:
 
 
 def _proteus_copy(root: Path, dependencies: list[str]) -> Path:
-    """Copy the helper library and the pin reader below a fixture pyproject.toml."""
+    """Copy the helper library, the pin reader and get_python_module.sh below a pyproject.toml."""
     (root / 'tools').mkdir(parents=True)
-    for name in ('_get_common.sh', '_module_pins.py'):
+    for name in ('_get_common.sh', '_module_pins.py', 'get_python_module.sh'):
         shutil.copy2(TOOLS_DIR / name, root / 'tools' / name)
     deps = ''.join(f'    "{d}",\n' for d in dependencies)
     (root / 'pyproject.toml').write_text(
@@ -654,7 +654,7 @@ class TestCloneAndInstall:
         branch fails the first equality.
         """
         tagged, tip = site['shas']['MORS']
-        result = self._call(site, 'MORS', 'FormingWorlds', 'MORS', 'fwl-mors')
+        result = self._call(site, 'MORS', 'fwl-mors')
         assert result.returncode == 0, result.stdout + result.stderr
         clone = site['root'] / 'MORS'
         assert _git(clone, 'rev-parse', 'HEAD') == tagged != tip
@@ -664,7 +664,9 @@ class TestCloneAndInstall:
             timeout=10,
         )
         assert detached.returncode == 1
-        assert site['log'].read_text().splitlines() == [f'install -e {clone}/.']
+        assert site['log'].read_text().splitlines() == [
+            f'install -U -e {os.path.realpath(clone)}'
+        ]
 
     def test_existing_clone_is_left_on_its_commit(self, site):
         """A second run reports an existing clone and installs it unchanged.
@@ -674,9 +676,9 @@ class TestCloneAndInstall:
         """
         _, tip = site['shas']['MORS']
         clone = site['root'] / 'MORS'
-        assert self._call(site, 'MORS', 'FormingWorlds', 'MORS', 'fwl-mors').returncode == 0
+        assert self._call(site, 'MORS', 'fwl-mors').returncode == 0
         _git(clone, 'checkout', '-q', 'main')
-        result = self._call(site, 'MORS', 'FormingWorlds', 'MORS', 'fwl-mors')
+        result = self._call(site, 'MORS', 'fwl-mors')
         assert result.returncode == 0, result.stdout + result.stderr
         assert _git(clone, 'rev-parse', 'HEAD') == tip
         assert f'MORS already cloned at {clone} (26.10.06-1-g' in result.stdout
@@ -689,7 +691,7 @@ class TestCloneAndInstall:
         The new clone is removed, so a re-run clones again rather than
         installing the branch tip as an existing clone.
         """
-        result = self._call(site, 'JANUS', 'FormingWorlds', 'JANUS', 'fwl-janus')
+        result = self._call(site, 'JANUS', 'fwl-janus')
         output = result.stdout + result.stderr
         assert result.returncode == 1
         assert 'Could not check out the fwl-janus release tag' in output
@@ -702,13 +704,15 @@ class TestCloneAndInstallCalls:
     """Every module install.sh clones has a floor to pin it to."""
 
     def test_each_call_names_a_distribution_with_a_floor(self):
-        """Each call passes 4 arguments, and the 4th has a >= floor in pyproject.toml.
+        """Each call passes 2 arguments, and the 2nd has a >= floor in pyproject.toml.
 
         The set of distributions is pinned too, so an empty scan cannot pass.
         """
         calls = _clone_and_install_calls()
-        assert [len(args) for args in calls] == [4] * len(calls)
-        assert {args[3] for args in calls} == {
+        assert [len(args) for args in calls] == [2] * len(calls)
+        # get_python_module.sh installs <RepoName> as fwl-<lowercase name>.
+        assert [args[1] for args in calls] == [f'fwl-{args[0].lower()}' for args in calls]
+        assert {args[1] for args in calls} == {
             'fwl-mors',
             'fwl-janus',
             'fwl-calliope',
@@ -716,7 +720,7 @@ class TestCloneAndInstallCalls:
         }
         for args in calls:
             floor = subprocess.run(
-                [sys.executable, str(TOOLS_DIR / '_module_pins.py'), args[3], 'floor'],
+                [sys.executable, str(TOOLS_DIR / '_module_pins.py'), args[1], 'floor'],
                 capture_output=True,
                 text=True,
                 timeout=10,

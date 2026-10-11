@@ -813,32 +813,27 @@ else
     info "GitHub SSH access: not available, using HTTPS"
 fi
 
-# Usage: clone_and_install <name> <github-org> <repo> <distribution>. Installs a new
-# clone editable at the release tag of the distribution's floor in pyproject.toml, and
-# an existing clone, which may hold the user's work, as it is.
+# Usage: clone_and_install <RepoName> <distribution>. A new clone goes through
+# tools/get_python_module.sh, over the transport chosen above, to the floor release tag;
+# an existing clone, which may hold the user's work, is installed as it is.
 clone_and_install() {
-    local name="$1" org="$2" repo="$3" dist="$4"
+    local repo="$1" dist="$2"
     local dest="$SCRIPT_DIR/$repo" described
     if [ -d "$dest" ]; then
         described=$(git -C "$dest" describe --tags --always 2>/dev/null || echo 'no git commit')
-        info "$name already cloned at $dest ($described); not changed"
-    else
-        info "Cloning $name..."
-        git clone "${GH_PREFIX}${org}/${repo}.git" "$dest"
-        # A subshell keeps the helper's exit and variables out of the installer.
-        if ! (source "$SCRIPT_DIR/tools/_get_common.sh" && checkout_floor_tag "$dist" "$dest"); then
-            rm -rf "$dest"
-            die "Could not check out the $dist release tag in the new $name clone; removed $dest"
-        fi
+        info "$repo already cloned at $dest ($described); not changed"
+        info "Installing $repo (editable)..."
+        pip install -e "$dest/." 2>&1
+    elif ! PROTEUS_MODULE_GIT_BASE="$GH_PREFIX" \
+        bash "$SCRIPT_DIR/tools/get_python_module.sh" "$repo" 2>&1; then
+        die "Could not check out the $dist release tag in a new $repo clone and install it; see the error above"
     fi
-    info "Installing $name (editable)..."
-    pip install -e "$dest/." 2>&1
 }
 
-clone_and_install "MORS"     "FormingWorlds" "MORS"     "fwl-mors"
-clone_and_install "JANUS"    "FormingWorlds" "JANUS"    "fwl-janus"
-clone_and_install "CALLIOPE" "FormingWorlds" "CALLIOPE" "fwl-calliope"
-clone_and_install "ZEPHYRUS" "FormingWorlds" "ZEPHYRUS" "fwl-zephyrus"
+clone_and_install "MORS"     "fwl-mors"
+clone_and_install "JANUS"    "fwl-janus"
+clone_and_install "CALLIOPE" "fwl-calliope"
+clone_and_install "ZEPHYRUS" "fwl-zephyrus"
 
 # Aragog and Zalmoxis use dedicated setup scripts
 info "Setting up Aragog..."

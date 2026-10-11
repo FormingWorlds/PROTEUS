@@ -33,7 +33,9 @@ script re-runs its cases against the new text:
   rebuild note
 
 Whole scripts run against stubbed ``git`` and ``ssh``, to pin the clone
-destination and transport each one resolves.
+destination and transport each one resolves, and ``get_python_module.sh``,
+``get_vulcan.sh`` and ``get_morrigan.sh`` against local bare remotes, to pin
+the release tag each new clone lands on.
 
 Also pins invariants that live in checked-in configuration and documentation
 rather than in shell, each of which fails silently when its counterpart moves:
@@ -2036,6 +2038,13 @@ _INSTALL_STUB_COMMANDS = (
 CLONE_CASES = (
     ('get_aragog.sh', (), '{root}/aragog/', 'git@github.com:FormingWorlds/aragog.git', 1),
     ('get_zalmoxis.sh', (), '{root}/Zalmoxis/', 'git@github.com:FormingWorlds/Zalmoxis.git', 1),
+    (
+        'get_python_module.sh',
+        ('CALLIOPE',),
+        '{root}/CALLIOPE',
+        'git@github.com:FormingWorlds/CALLIOPE.git',
+        1,
+    ),
     ('get_boreas.sh', (), '{root}/BOREAS/', 'git@github.com:ExoInteriors/BOREAS.git', 1),
     ('get_lavatmos.sh', (), '{root}/LavAtmos/', 'git@github.com:FormingWorlds/LavAtmos', 1),
     (
@@ -2072,11 +2081,19 @@ CLONE_CASES = (
     # SSH refused: the same destination, over https.
     ('get_aragog.sh', (), '{root}/aragog/', 'https://github.com/FormingWorlds/aragog.git', 255),
     ('get_boreas.sh', (), '{root}/BOREAS/', 'https://github.com/ExoInteriors/BOREAS.git', 255),
+    (
+        'get_python_module.sh',
+        ('ZEPHYRUS',),
+        '{root}/ZEPHYRUS',
+        'https://github.com/FormingWorlds/ZEPHYRUS.git',
+        255,
+    ),
 )
 
 CLONE_IDS = (
     'aragog over ssh',
     'zalmoxis over ssh',
+    'calliope over ssh',
     'boreas over ssh',
     'lavatmos over ssh',
     'thermoenginelite over ssh',
@@ -2088,6 +2105,7 @@ CLONE_IDS = (
     'spider custom path',
     'aragog without ssh',
     'boreas without ssh',
+    'zephyrus without ssh',
 )
 
 
@@ -2485,10 +2503,10 @@ def test_pyproject_keeps_morrigan_out_of_mandatory_dependencies():
     PyPI release, which is the dual-pin trap fwl-vulcan, fwl-aragog and
     fwl-zalmoxis are all kept out of.
 
-    The floor is written zero-padded to match the release tag, because
-    tools/get_morrigan.sh checks out ``tags/<floor>`` for an editable
-    checkout. PEP 440 treats the padded and normalised forms as the same
-    version, so one string serves the resolver and the tag lookup.
+    The floor is written zero-padded like the release tag that
+    tools/get_morrigan.sh checks out through ``checkout_floor_tag``. PEP 440
+    treats the padded and normalised forms as the same version, so one
+    string serves the resolver and names the tag.
     """
     repo_root = Path(__file__).resolve().parents[2]
     data = tomllib.loads((repo_root / 'pyproject.toml').read_text(encoding='utf-8'))
@@ -2517,9 +2535,8 @@ def test_pyproject_keeps_morrigan_out_of_mandatory_dependencies():
         f'fwl-vulcan/fwl-aragog/fwl-zalmoxis. Found: {sorted(git_modules)}'
     )
 
-    # The floor must be tag-shaped (zero-padded CalVer), because the installer
-    # checks out `tags/<floor>`. A normalised floor such as 26.7.25 resolves
-    # against PyPI but names no tag, so the editable install would break.
+    # The floor stays tag-shaped (zero-padded CalVer), so the floor text and
+    # the tag name it selects read the same in pyproject.toml and git.
     floor = next(r for r in morrigan_extra if r.startswith('fwl-morrigan>=')).split('>=')[1]
     assert re.fullmatch(r'\d{2}\.\d{2}\.\d{2}', floor), (
         f'morrigan floor must be zero-padded CalVer to match the release tag, got {floor!r}'
@@ -2528,7 +2545,7 @@ def test_pyproject_keeps_morrigan_out_of_mandatory_dependencies():
     # The installer reads the floor with this exact pattern; keep the two in
     # step so a reformatted pin cannot silently fall back to HEAD.
     script = (repo_root / 'tools' / 'get_morrigan.sh').read_text(encoding='utf-8')
-    assert 'fwl-morrigan>=' in script and 'tags/$floor' in script, (
+    assert 'fwl-morrigan>=' in script and 'checkout_floor_tag fwl-morrigan' in script, (
         'tools/get_morrigan.sh must pin the checkout to the fwl-morrigan floor tag'
     )
 
@@ -2569,6 +2586,260 @@ def test_pyproject_keeps_morrigan_out_of_mandatory_dependencies():
         'floor extraction must not abort the script; the warning branch is the '
         'documented behaviour when the pin cannot be read'
     )
+
+
+# Floor-tag clones against local remotes: get_python_module.sh, get_vulcan.sh, get_morrigan.sh
+
+PYTHON_MODULE_SCRIPT = TOOLS_DIR / 'get_python_module.sh'
+MANUAL_INSTALL_MD = TOOLS_DIR.parent / 'docs' / 'How-to' / 'manual_installation.md'
+
+
+def _git_out(cwd: Path, *args: str) -> str:
+    """Run git in ``cwd`` with a fixed identity and no signing; return its stdout."""
+    result = subprocess.run(
+        ['git', '-c', 'user.email=t@e.st', '-c', 'user.name=t', '-c', 'commit.gpgsign=false']
+        + list(args),
+        cwd=cwd,
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    return result.stdout.strip()
+
+
+def _bare_remote(remotes: Path, repo: str, tag: str) -> tuple[str, str]:
+    """Publish ``remotes/FormingWorlds/<repo>.git`` with 3 commits and ``tag`` on the second.
+
+    Every commit carries ``version.txt`` and ``fastchem_vulcan/Makefile``, so
+    the VULCAN build step finds its directory. Returns the tagged commit and
+    the tip, which differ, so a clone left on the branch is told apart.
+    """
+    work = remotes.parent / 'work' / repo
+    (work / 'fastchem_vulcan').mkdir(parents=True)
+    (work / 'fastchem_vulcan' / 'Makefile').write_text('all:\n')
+    _git_out(work, 'init', '-q', '-b', 'main')
+    for i in range(3):
+        (work / 'version.txt').write_text(f'{i}\n')
+        _git_out(work, 'add', '.')
+        _git_out(work, 'commit', '-q', '-m', f'commit {i}')
+        if i == 1:
+            _git_out(work, 'tag', tag)
+    shas = (_git_out(work, 'rev-parse', 'HEAD~1'), _git_out(work, 'rev-parse', 'HEAD'))
+    _git_out(remotes, 'clone', '-q', '--bare', str(work), str(remotes / f'{repo}.git'))
+    return shas
+
+
+def _floor_tag_site(tmp_path: Path, pyproject: str, remotes: dict[str, str]) -> dict:
+    """A PROTEUS copy, local bare remotes, and stubs for pip, make and ssh.
+
+    The copy holds the shipped scripts, the helper library and the pin
+    reader below ``pyproject``. ``remotes`` maps each repository name to
+    the one tag it carries. The ssh stub refuses the key, so a script that
+    probes clones over https, which git rewrites to the local remotes.
+    """
+    root = tmp_path / 'PROTEUS'
+    (root / 'tools').mkdir(parents=True)
+    for src in [*TOOLS_DIR.glob('get_*.sh'), COMMON_LIB, TOOLS_DIR / '_module_pins.py']:
+        shutil.copy2(src, root / 'tools' / src.name)
+    (root / 'pyproject.toml').write_text(pyproject)
+    base = tmp_path / 'remotes'
+    (base / 'FormingWorlds').mkdir(parents=True)
+    shas = {
+        repo: _bare_remote(base / 'FormingWorlds', repo, tag) for repo, tag in remotes.items()
+    }
+    stubs = tmp_path / 'stubs'
+    stubs.mkdir()
+    log = tmp_path / 'pip.log'
+    log.write_text('')
+    _write_stub(stubs, 'pip', '#!/bin/sh\necho "$@" >> "$STUB_PIP_LOG"\n')
+    _write_stub(stubs, 'make', '#!/bin/sh\nexit 0\n')
+    _write_stub(stubs, 'ssh', '#!/bin/sh\nexit 255\n')
+    env = {
+        **os.environ,
+        'PATH': f'{stubs}{os.pathsep}{os.environ["PATH"]}',
+        'STUB_PIP_LOG': str(log),
+        'PROTEUS_MODULE_GIT_BASE': f'{base}/',
+        'GIT_CONFIG_COUNT': '1',
+        'GIT_CONFIG_KEY_0': f'url.{base}/.insteadOf',
+        'GIT_CONFIG_VALUE_0': 'https://github.com/',
+    }
+    env.pop('GIT_SSH_COMMAND', None)
+    return {'root': Path(os.path.realpath(root)), 'shas': shas, 'log': log, 'env': env}
+
+
+def _run_tool(site: dict, script: str, *argv: str) -> subprocess.CompletedProcess:
+    """Run ``tools/<script>`` of the site copy with ``argv``, from outside the copy."""
+    return subprocess.run(
+        ['bash', str(site['root'] / 'tools' / script), *argv],
+        cwd=site['root'].parent,
+        env=site['env'],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+
+
+def _is_detached(checkout: Path) -> bool:
+    """Return whether ``checkout`` sits on a detached HEAD."""
+    return (
+        subprocess.run(
+            ['git', '-C', str(checkout), 'symbolic-ref', '-q', 'HEAD'],
+            capture_output=True,
+            timeout=10,
+        ).returncode
+        == 1
+    )
+
+
+class TestGetPythonModule:
+    """tools/get_python_module.sh clones a module at its floor tag, or stops cleanly."""
+
+    @pytest.fixture
+    def site(self, tmp_path):
+        """MORS carries the tag of its floor 26.10.6; JANUS only 26.07.10, below 26.10.08."""
+        pyproject = (
+            '[project]\nname = "fixture"\n'
+            'dependencies = ["fwl-mors>=26.10.6", "fwl-janus>=26.10.08"]\n'
+        )
+        return _floor_tag_site(tmp_path, pyproject, {'MORS': '26.10.06', 'JANUS': '26.07.10'})
+
+    def test_new_clone_lands_on_the_floor_tag(self, site):
+        """A new MORS clone sits detached at the tag 26.10.06 and is installed editable once.
+
+        The tip is one commit past the tag, so a clone left on the default
+        branch fails the equality; the floor text 26.10.6 is not the tag
+        name, so an exact-text checkout fails the run.
+        """
+        tagged, tip = site['shas']['MORS']
+        result = _run_tool(site, 'get_python_module.sh', 'MORS')
+        assert result.returncode == 0, result.stdout + result.stderr
+        clone = site['root'] / 'MORS'
+        assert _git_out(clone, 'rev-parse', 'HEAD') == tagged != tip
+        assert _is_detached(clone)
+        assert f'fwl-mors: checked out release tag 26.10.06 at {tagged[:7]}' in result.stdout
+        assert site['log'].read_text().splitlines() == [f'install -U -e {clone}']
+
+    @pytest.mark.parametrize(
+        'argv',
+        [(), ('mors',), ('Zalmoxis',), ('MORS JANUS',), ('--force',)],
+        ids=['no name', 'lower case', 'module with its own script', 'two names', 'force only'],
+    )
+    def test_unknown_name_exits_2_before_any_clone(self, site, argv):
+        """A missing or unknown module name prints the accepted names and exits 2.
+
+        Nothing is cloned or installed: the copy holds only what the
+        fixture put there, and the pip log stays empty.
+        """
+        result = _run_tool(site, 'get_python_module.sh', *argv)
+        assert result.returncode == 2
+        assert 'usage: bash tools/get_python_module.sh <RepoName> [--force]' in result.stderr
+        assert 'MORS JANUS CALLIOPE ZEPHYRUS' in result.stderr
+        assert sorted(p.name for p in site['root'].iterdir()) == ['pyproject.toml', 'tools']
+        assert site['log'].read_text() == ''
+
+    def test_modified_checkout_is_refused_then_replaced_with_force(self, site):
+        """A clone with a modified tracked file is kept without --force and replaced with it.
+
+        The refusal names the recovery command with the module name; with
+        --force the clone returns to the tagged content.
+        """
+        tagged, _ = site['shas']['MORS']
+        clone = site['root'] / 'MORS'
+        assert _run_tool(site, 'get_python_module.sh', 'MORS').returncode == 0
+        (clone / 'version.txt').write_text('local work\n')
+
+        refused = _run_tool(site, 'get_python_module.sh', 'MORS')
+        assert refused.returncode == 1
+        assert 'bash tools/get_python_module.sh MORS --force' in refused.stderr
+        assert (clone / 'version.txt').read_text() == 'local work\n'
+        assert len(site['log'].read_text().splitlines()) == 1
+
+        forced = _run_tool(site, 'get_python_module.sh', 'MORS', '--force')
+        assert forced.returncode == 0, forced.stdout + forced.stderr
+        assert (clone / 'version.txt').read_text() == '1\n'
+        assert _git_out(clone, 'rev-parse', 'HEAD') == tagged
+        assert len(site['log'].read_text().splitlines()) == 2
+
+    def test_floor_without_tag_exits_1_and_leaves_no_clone(self, site):
+        """JANUS has no tag at its floor: exit 1 with the cause, no clone, no install."""
+        result = _run_tool(site, 'get_python_module.sh', 'JANUS')
+        assert result.returncode == 1
+        assert "'fwl-janus' floor 26.10.08: no tag matches it" in result.stderr
+        assert '26.07.10' in result.stderr
+        assert not (site['root'] / 'JANUS').exists()
+        assert site['log'].read_text() == ''
+
+
+@pytest.mark.parametrize(
+    ('script', 'repo', 'dest'),
+    [('get_vulcan.sh', 'VULCAN', 'VULCAN'), ('get_morrigan.sh', 'Morrigan', 'Morrigan')],
+    ids=['vulcan', 'morrigan'],
+)
+def test_optional_module_floor_finds_a_tag_with_other_zero_padding(
+    tmp_path, script, repo, dest
+):
+    """The floor 26.4.22 selects the tag 26.04.22 on the second of 3 commits.
+
+    An exact-text checkout of ``tags/26.4.22`` names no tag and fails; a
+    clone left on the default branch lands on the tip.
+    """
+    pyproject = (
+        '[project]\nname = "fixture"\ndependencies = []\n'
+        '[project.optional-dependencies]\n'
+        'vulcan = ["fwl-vulcan>=26.4.22"]\nmorrigan = ["fwl-morrigan>=26.4.22"]\n'
+    )
+    site = _floor_tag_site(tmp_path, pyproject, {repo: '26.04.22'})
+    tagged, tip = site['shas'][repo]
+    result = _run_tool(site, script)
+    assert result.returncode == 0, result.stdout + result.stderr
+    clone = site['root'] / dest
+    assert _git_out(clone, 'rev-parse', 'HEAD') == tagged != tip
+    assert 'release tag 26.04.22' in result.stdout
+    assert len(site['log'].read_text().splitlines()) == 1
+
+
+def _manual_tool_commands() -> list[list[str]]:
+    """The words of every ``bash tools/<script>`` command line in the manual install page."""
+    return [
+        line.split()[1:]
+        for line in MANUAL_INSTALL_MD.read_text(encoding='utf-8').splitlines()
+        if re.match(r'^bash tools/\S+\.sh\b', line.strip())
+    ]
+
+
+def _accepted_module_names() -> set[str]:
+    """The module names tools/get_python_module.sh accepts, read from its ``modules=`` line."""
+    match = re.search(r'^modules="([^"]*)"$', PYTHON_MODULE_SCRIPT.read_text(), re.MULTILINE)
+    assert match, 'no modules= line in tools/get_python_module.sh'
+    return set(match.group(1).split())
+
+
+def test_manual_install_page_names_existing_scripts_and_modules():
+    """Each ``bash tools/...`` command in the manual page names a shipped script.
+
+    A ``get_python_module.sh`` command names a module the script accepts,
+    and the page sets up each of those modules, so a renamed script or
+    module, or one left out, fails here.
+    """
+    commands = _manual_tool_commands()
+    scripts = {words[0] for words in commands}
+    # Guard the guard: the page holds the per-module commands and the setup scripts.
+    assert {
+        'tools/get_python_module.sh',
+        'tools/get_zalmoxis.sh',
+        'tools/get_cvode.sh',
+    } <= scripts
+    missing = sorted(s for s in scripts if not (TOOLS_DIR.parent / s).is_file())
+    assert missing == []
+
+    accepted = _accepted_module_names()
+    named = [words[1] for words in commands if words[0] == 'tools/get_python_module.sh']
+    assert all(
+        len(words) == 2 for words in commands if words[0] == 'tools/get_python_module.sh'
+    )
+    assert set(named) == accepted
+    assert len(named) == len(accepted)
 
 
 # ---------------------------------------------------------------------------

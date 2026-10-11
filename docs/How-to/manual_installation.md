@@ -242,30 +242,37 @@ Set the FastChem environment variable:
 
 ## 7. Install Python submodules
 
-Clone and install each submodule in editable mode:
+Clone and install each submodule in editable mode. Each command clones the
+module at the release tag that matches its minimum version in
+`pyproject.toml` and installs it editable, the same code that `install.sh`
+installs.
 
 ```console
 # MORS - stellar evolution (https://proteus-framework.org/MORS/)
-git clone git@github.com:FormingWorlds/MORS
-python -m pip install -e MORS/.
+bash tools/get_python_module.sh MORS
 
 # JANUS - 1D convective atmosphere (https://proteus-framework.org/JANUS/)
-git clone git@github.com:FormingWorlds/JANUS
-python -m pip install -e JANUS/.
+bash tools/get_python_module.sh JANUS
 
 # CALLIOPE - volatile outgassing (https://proteus-framework.org/CALLIOPE/)
-git clone git@github.com:FormingWorlds/CALLIOPE
-python -m pip install -e CALLIOPE/.
+bash tools/get_python_module.sh CALLIOPE
 
 # ZEPHYRUS - atmospheric escape (https://github.com/FormingWorlds/ZEPHYRUS)
-git clone git@github.com:FormingWorlds/ZEPHYRUS
-python -m pip install -e ZEPHYRUS/.
+bash tools/get_python_module.sh ZEPHYRUS
 
 # Aragog - interior thermal evolution (https://proteus-framework.org/aragog/)
 bash tools/get_aragog.sh
 
 # Zalmoxis - planetary interior structure (https://proteus-framework.org/Zalmoxis/)
 bash tools/get_zalmoxis.sh
+```
+
+Aragog integrates with the SUNDIALS CVODE solver by default, so install it
+too (this needs the active conda environment); only Aragog on its default
+`solver_method = "cvode"` needs it:
+
+```console
+bash tools/get_cvode.sh
 ```
 
 !!! info "Editable checkouts override PyPI versions"

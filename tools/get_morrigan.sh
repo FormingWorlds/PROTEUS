@@ -41,8 +41,7 @@ floor=$(sed 's/#.*//' "$root/pyproject.toml" \
     | grep -oE 'fwl-morrigan>=[0-9][0-9.]*' | head -1 | sed 's/.*>=//' || true)
 if [ -n "$floor" ]; then
     echo "Pinning to fwl-morrigan floor: $floor"
-    git -C "$tmp_clone" checkout --quiet "tags/$floor" \
-        || { echo "ERROR: cannot checkout tag $floor" >&2; exit 1; }
+    checkout_floor_tag fwl-morrigan "$tmp_clone"
 else
     echo "WARNING: could not read fwl-morrigan floor from pyproject.toml; using HEAD" >&2
 fi
