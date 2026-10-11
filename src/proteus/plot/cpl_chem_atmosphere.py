@@ -79,7 +79,8 @@ REFRACTORY_GASES = tuple(vap_list)
 def _aerosol_species(name: str, gases: list) -> str:
     """Name an aerosol by the gas it condenses from.
 
-    AGNI writes an aerosol as the name of its gas in lower case ('feo' for 'FeO').
+    AGNI writes an aerosol as the name of its gas in lower case ('feo' for 'FeO');
+    the AGNI wrapper ties an aerosol to its condensate by the same lower-case rule.
 
     Parameters
     ----------
@@ -91,10 +92,10 @@ def _aerosol_species(name: str, gases: list) -> str:
     Returns
     -------
     str
-        The one gas whose lower-case name is ``name``; ``name`` itself when no gas
-        or more than one gas matches ('co' with both 'CO' and 'Co').
+        The one gas whose name equals ``name`` apart from case; ``name`` itself when
+        no gas or more than one gas matches ('co' with both 'CO' and 'Co').
     """
-    match = [g for g in gases if g.lower() == name]
+    match = [g for g in gases if g.lower() == name.lower()]
     return match[0] if len(match) == 1 else name
 
 
@@ -281,7 +282,7 @@ def plot_chem_atmosphere(
                 lw=1.5,
                 alpha=0.7,
                 color=get_colour(species),
-                label=species,
+                label=latexify(species) if species != aer_name else aer_name,
             )
 
     # Add temperature profile to Panel 2 (secondary x-axis at top)

@@ -17,7 +17,7 @@ import numpy as np
 import pytest
 
 from proteus.plot.cpl_chem_atmosphere import _aerosol_species, plot_chem_atmosphere
-from proteus.utils.plot import _preset_colours
+from proteus.utils.plot import _preset_colours, latexify
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -462,8 +462,9 @@ def test_agni_aerosols_take_the_colour_and_name_of_their_gas(
     profile = {
         'pl': np.array([1e8, 1e7, 1e6, 1e5]),
         'tmpl': np.array([3000, 2000, 1000, 500]),
-        'aerosols': [g.lower() for g in gases],
+        'aerosols': np.array([g.lower() for g in gases] + ['dustdiv1']),
     }
+    profile['dustdiv1_mmr'] = np.array([1e-8, 5e-8, 1e-9])
     for g in gases:
         profile[g + '_vmr'] = np.array([1e-3, 1e-4, 1e-5])
         profile[g.lower() + '_mmr'] = np.array([1e-8, 5e-8, 1e-9])
@@ -479,8 +480,9 @@ def test_agni_aerosols_take_the_colour_and_name_of_their_gas(
         )
 
     drawn = {c.kwargs['label']: c.kwargs['color'] for c in ax2.plot.call_args_list}
-    assert drawn == {g: _preset_colours[g] for g in gases}
-    assert len(set(drawn.values())) == 6 and _preset_colours['_fallback'] not in drawn.values()
+    want = {latexify(g): _preset_colours[g] for g in gases}
+    assert drawn == want | {'dustdiv1': _preset_colours['dustdiv1']}
+    assert 'SiO$_2$' in drawn
     assert 'fallback colour' not in caplog.text
 
 
@@ -489,5 +491,7 @@ def test_an_aerosol_name_without_one_matching_gas_is_kept():
     """Two gases that differ only in case, or no gas, leave the aerosol name as it is."""
     assert _aerosol_species('co', ['CO', 'Co', 'H2O']) == 'co'
     assert _aerosol_species('co', ['CO', 'H2O']) == 'CO'
+    assert _aerosol_species('Feo', ['CO', 'FeO']) == 'FeO'
+    assert _aerosol_species('Co', ['CO', 'Co']) == 'Co'
     assert _aerosol_species('soot', ['CO', 'H2O']) == 'soot'
     assert _aerosol_species('soot', []) == 'soot'
