@@ -3158,11 +3158,13 @@ def _run_main_loop_recording_mass(
         return handler.finished_both
 
     def _fake_create_helpfile(row):
+        if appended is not None:
+            appended.append((p.init_stage, dict(row)))
         return _FakeHelpfile(row)
 
     def _fake_extend_helpfile(_hf_all, row):
         if appended is not None:
-            appended.append(dict(row))
+            appended.append((p.init_stage, dict(row)))
         return _FakeHelpfile(row)
 
     def _fake_outgas(_dirs, _config, hf_row, first_iter):
@@ -3313,9 +3315,10 @@ def test_the_main_loop_appends_the_core_target_of_the_step_that_leaves_the_init_
     tmp_path,
 ):
     """The setter of the core target runs once in the main loop, on the step that leaves
-    the init stage, before that step's row goes to the helpfile: the rows appended in the
-    init stage hold no target, and every row from the leaving step on holds the value
-    that the setter wrote."""
+    the init stage, before that step's row goes to the helpfile. With 3 init loops that is
+    the 4th helpfile row: rows 1 to 3 are written in the init stage and hold no target,
+    and every row from the 4th on holds the value that the setter wrote. A stage that ends
+    one step later would put the first target in row 5."""
     rows, appended, stages = [], [], []
     p = _make_main_loop_proteus(
         tmp_path, plot_mod=1, write_mod=1, dt_write_rel=0.0, vapourise=False
@@ -3336,10 +3339,10 @@ def test_the_main_loop_appends_the_core_target_of_the_step_that_leaves_the_init_
             appended=appended,
         )
     assert stages == [True]
-    targets = [row.get('M_core_target') for row in appended]
-    first = targets.index(1.9407e24)
-    assert first > 0 and not any(targets[:first])
-    assert targets[first:] == [1.9407e24] * (len(appended) - first)
+    assert [stage for stage, _ in appended] == [True] * 3 + [False] * 3
+    targets = [row.get('M_core_target') for _, row in appended]
+    assert not any(targets[:3])
+    assert targets[3:] == [pytest.approx(1.9407e24, rel=1e-15)] * 3
 
 
 @pytest.mark.physics_invariant

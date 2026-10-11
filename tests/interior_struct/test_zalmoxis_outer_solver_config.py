@@ -360,6 +360,7 @@ def test_the_core_does_not_move_with_an_oxygen_inventory_that_the_buffer_derives
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 @pytest.mark.parametrize(
     'outgas, fO2_source',
     [
@@ -378,6 +379,23 @@ def test_the_core_fraction_is_the_config_value_when_no_inventory_is_derived(
     assert params['core_mass_fraction'] == pytest.approx(0.325, rel=0.0, abs=0.0)
     assert core == pytest.approx(0.325 * (M_earth - 7.43e20 - 2.117e23), rel=1e-14)
     assert params['core_mass_target'] == pytest.approx(0.325 * planet, rel=1e-15)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_nitrogen_sulfur_and_a_noble_gas_are_kept_volatiles(monkeypatch):
+    """N, S and He are inputs of the outgassing like H and C, so the core is 0.325 of the
+    planet without all 5 (2.6790e21 kg here) and the structure target also loses the derived
+    oxygen. The 3 masses differ by a factor of 6 or more, so a kept set without one of
+    them moves the core by 0.325 of that mass: 1.0e19 kg (N), 6.2e20 kg (S), 1.7e18 kg (He)."""
+    extra = {'N_kg_total': 3.1e19, 'S_kg_total': 1.9e21, 'He_kg_total': 5.3e18}
+    planet, core, _ = _structure_target(monkeypatch, {**_BUFFERED, **extra})
+    kept = 4.70e20 + 2.73e20 + 3.1e19 + 1.9e21 + 5.3e18
+    assert core == pytest.approx(0.325 * (M_earth - kept), rel=1e-14)
+    assert planet == pytest.approx(M_earth - kept - 2.117e23, rel=1e-14)
+    for missing in extra.values():
+        assert abs(0.325 * (M_earth - kept + missing) - core) > 1.0e-7 * core
+    assert 0.0 < core < planet
 
 
 @pytest.mark.unit
@@ -405,6 +423,7 @@ def test_the_core_mass_follows_the_rock_and_nothing_else(
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_an_inventory_that_leaves_no_mantle_is_refused(monkeypatch):
     """An oxygen inventory of 4.1e24 kg leaves 1.87e24 kg for the interior, less than the
     core of 1.94e24 kg: the builder refuses the structure with the masses in the message.
@@ -577,6 +596,22 @@ def test_a_raised_core_target_is_read_with_the_grown_planet(monkeypatch):
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_core_and_mantle_fractions_that_sum_to_one_leave_no_ice_layer(monkeypatch):
+    """The bound of the ice-layer refusal. With oxygen as an input every inventory is kept,
+    so the core is 0.325 of the structure target, bit for bit. A mantle fraction of 0.675
+    then leaves an ice layer of exactly 0, which is refused like a negative one; 0.6749
+    leaves 1e-4 of the target and is accepted."""
+    ice = {'ice': 'Seager2007:H2O', 'fO2_source': 'from_O_budget'}
+    assert 0.325 + 0.675 == pytest.approx(1.0, rel=0.0, abs=0.0)
+    with pytest.raises(ValueError, match=r'leaves no ice layer: the core is 0\.3250 of it'):
+        _structure_target(monkeypatch, _BUFFERED, mmf=0.675, **ice)
+    _, _, params = _structure_target(monkeypatch, _BUFFERED, mmf=0.6749, **ice)
+    assert 1.0 - params['core_mass_fraction'] - 0.6749 == pytest.approx(1.0e-4, rel=1e-9)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_a_target_that_leaves_no_ice_layer_is_refused(monkeypatch):
     """With an ice layer and mantle_mass_fraction = 0.45, an oxygen inventory of 2.5e24 kg
     makes the core 0.5591 of the structure target: core and mantle take 1.009 of it and the
