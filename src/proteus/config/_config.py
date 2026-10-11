@@ -327,6 +327,74 @@ def check_accretion_vapourise_compatibility(instance, attribute, value):
         )
 
 
+def check_accretion_core_stratification_compatibility(instance, attribute, value):
+    """Reject accretion runs with a stratified Aragog core_module core.
+
+    An impact refits the core and books the heat of its temperature lift from the
+    full-core heat content, while a stratified core evolves only its convecting
+    volume, so the booked lift would not be the heat the solver integrates.
+    """
+    interior = instance.interior_energetics
+    if (
+        instance.accretion.module is not None
+        and interior.module == 'aragog'
+        and interior.aragog.core_bc == 'core_module'
+        and interior.aragog.core_module.stratification
+    ):
+        raise ValueError(
+            f"accretion.module = '{instance.accretion.module}' cannot run with "
+            'interior_energetics.aragog.core_module.stratification = true: the core heat '
+            'booked at an impact is the full-core content, while a stratified core evolves '
+            'only its convecting volume. Disable one of the two.'
+        )
+
+
+def check_core_module_requirements(instance, attribute, value):
+    """Reject an Aragog core_module core that its structure or solver cannot serve.
+
+    The core profile is fitted to the core mass and the central pressure, which only the
+    Zalmoxis structure provides, its CMB flux needs the entropy EOS tables, and Aragog
+    refuses the resolved shell of a stratified core on Radau. A stratified core cannot be
+    carried across a structure update, because Aragog gives no heat content for a
+    stratified budget, so it needs a structure that is solved once: no dynamic update and
+    no baseline re-solve after the start.
+    """
+    interior = instance.interior_energetics
+    if interior.module != 'aragog' or interior.aragog.core_bc != 'core_module':
+        return
+    if instance.interior_struct.module != 'zalmoxis':
+        raise ValueError(
+            "interior_energetics.aragog.core_bc = 'core_module' needs "
+            f"interior_struct.module = 'zalmoxis', not '{instance.interior_struct.module}': "
+            'the core profile is fitted to the core mass and the central pressure of the '
+            'Zalmoxis structure.'
+        )
+    if interior.const_properties:
+        raise ValueError(
+            "interior_energetics.aragog.core_bc = 'core_module' needs "
+            'interior_energetics.const_properties = false: the CMB flux of the core model '
+            'is computed with the entropy EOS tables, which constant properties do not load.'
+        )
+    if not interior.aragog.core_module.stratification:
+        return
+    if interior.aragog.solver_method == 'radau':
+        raise ValueError(
+            'interior_energetics.aragog.core_module.stratification = true needs '
+            "interior_energetics.aragog.solver_method = 'cvode' or 'bdf', not 'radau'."
+        )
+    if (
+        instance.interior_struct.zalmoxis.update_interval > 0
+        or instance.planet.temperature_mode != 'liquidus_super'
+    ):
+        raise ValueError(
+            'interior_energetics.aragog.core_module.stratification = true needs a structure '
+            'that is solved once: interior_struct.zalmoxis.update_interval = 0 and '
+            "planet.temperature_mode = 'liquidus_super'. The core is carried across a "
+            'structure update with its heat content, which Aragog does not give for a '
+            'stratified core.'
+        )
+
+
 def boreas_requires_atmosphere(instance, attribute, value):
     """BOREAS escape requires a radiative atmosphere (not dummy)."""
     if (instance.escape.module == 'boreas') and (instance.atmos_clim.module == 'dummy'):
@@ -685,6 +753,8 @@ class Config:
             check_module_dependencies,
             check_accretion_interior_compatibility,
             check_accretion_vapourise_compatibility,
+            check_accretion_core_stratification_compatibility,
+            check_core_module_requirements,
             parameterized_excludes_accretion,
         ),
     )

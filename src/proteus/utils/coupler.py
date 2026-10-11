@@ -934,8 +934,8 @@ def GetHelpfileKeys():
         # Temperatures
         'T_surf',           # global surface temperature [K]
         'T_magma',          # global outgassing temperature [K]
-        'T_cmb',           # core temperature, bottom mantle cell [K]
-        'T_cmb_node',      # temperature at the core-mantle boundary basic node [K]
+        'T_cmb',           # core temperature: the bottom mantle cell, or the core state with core_bc = core_module or bower2018 [K]
+        'T_cmb_node',      # mantle temperature at the core-mantle boundary basic node; with core_bc = core_module the temperature of the bottom-cell entropy at P_cmb, so the CMB contrast is T_cmb - T_cmb_node, or core_T_top - T_cmb_node with stratification [K]
         'T_eqm',            # grey radiative equilibrium temperature [K]
         'T_skin',           # grey radiative skin temperature [K]
         'T_surface_initial',  # self-consistent T_surf from accretion mode [K]
@@ -977,6 +977,15 @@ def GetHelpfileKeys():
         'T_pot',            # characteristic mantle potential temperature [K]
         'boundary_layer_thickness',  # thermal boundary layer thickness [m]
 
+        # Core evolution diagnostic keys for core_module mode
+        'core_r_icb',           # inner-core boundary radius; computed only with core_bc = core_module, 0 otherwise [m]
+        'core_C_eff',           # core effective heat capacity incl. nucleation terms; computed only with core_bc = core_module, 0 otherwise [J K-1]
+        'core_dynamo_margin',   # entropy margin for dynamo action; computed only with core_bc = core_module, 0 otherwise [W K-1]
+        'core_B_rms',           # rms field (CHR09; superadiabatic reference flux, 0 when subadiabatic); computed only with core_bc = core_module, 0 otherwise [T]
+        'core_regime',          # crystallisation code: 0 fully liquid, 1 freezing from the centre outwards, 4 fully frozen; 2 (from the top) and 3 (snow) do not appear, Aragog ends the run at such a state; computed only with core_bc = core_module, 0 otherwise [1]
+        'core_strat_depth',     # thermally stratified layer depth below the CMB; computed only with core_bc = core_module, 0 otherwise [m]
+        'core_T_top',           # temperature at the top of the core, the top shell cell with stratification, else T_cmb; computed only with core_bc = core_module, 0 otherwise [K]
+
         # Energy-conservation columns: cumulative integrals of entropy-transported
         # heat against boundary-flux and source predictions in the live EOS frame.
         # Booked impact heat is symmetric on both sides, not closed by residual.
@@ -995,11 +1004,17 @@ def GetHelpfileKeys():
         'step_dE_compression_J',  # per-call structure-re-solve compression work [J] (diagnostic)
         'step_dE_state_heat_J',  # per-call entropy-transported heat content change [J]
         'step_dE_impact_J',  # giant-impact re-melt heat injection [J] (both residual sides)
+        'step_dE_impact_core_J',  # giant-impact core heat: the T_core lift under the refitted profile, on the first kept row after the impact; computed only with core_bc = core_module, 0 otherwise [J]
+        'step_dE_impact_core_refit_J',  # giant-impact core refit content change at the pre-impact T_core (the added iron's heat from the profile reference), on the first kept row after the impact; computed only with core_bc = core_module, 0 otherwise [J]
+        'step_dE_struct_core_J',  # change of the core heat content across the structure updates since the last kept interior call (core mass and total entropy kept), positive when the heat content rises; the rule keeps entropy and the heat content is an energy, so with an inner core the term also holds the latent and gravitational energy of the mass that freezes or melts at the update, which the rule does not put into the core, and the change of the reference from which each budget counts that energy; computed only with core_bc = core_module, 0 otherwise [J]
         'E_state_heat_cons_J',  # cumulative sum of step_dE_state_heat_J across rows [J]
         'dE_predicted_cons_J',  # cumulative sum of boundary fluxes + live-density step_dE_Q_*_J [J]
         'E_residual_cons_J',    # E_state_heat_cons_J - dE_predicted_cons_J [J]
         'E_residual_cons_frac', # E_residual_cons_J / max(|E_state_heat_cons_J|, 1 J) [1]
         'solver_residual_J',    # cumulative entropy-ODE LHS-RHS residual [J]
+        'step_dE_core_J',       # core heat change over the call net of its internal source, plus the jump of the heat content since the last kept call; computed only with core_bc = core_module, 0 otherwise [J]
+        'E_core_residual_J',    # cumulative core ledger: sum(step_dE_core_J + step_dE_F_cmb_J - step_dE_impact_core_J - step_dE_impact_core_refit_J - step_dE_struct_core_J); computed only with core_bc = core_module, 0 otherwise [J]
+        'E_core_residual_frac', # E_core_residual_J / max(sum(|step_dE_F_cmb_J| + |the 3 booked terms|), 1 J); a booked term equals the jump it explains by construction, so the fraction checks the bookkeeping of those terms and the solver's core heat against its CMB flux; computed only with core_bc = core_module, 0 otherwise [1]
         'Cp_eff',           # effective mantle heat capacity [J kg-1 K-1]
 
         # Host star properties
@@ -1186,6 +1201,56 @@ def ZeroHelpfileRow():
     return out
 
 
+# Heat booked into the core between interior calls, on the row of the next kept call.
+_CORE_BOOKED_KEYS = (
+    'step_dE_impact_core_J',
+    'step_dE_impact_core_refit_J',
+    'step_dE_struct_core_J',
+)
+
+
+def _finite_abs_sum(values) -> float:
+    """Sum of the absolute values of the finite entries of ``values``."""
+    values = np.abs(np.asarray(values, dtype=float))
+    return float(values[np.isfinite(values)].sum())
+
+
+def _populate_core_residual(current_hf: pd.DataFrame, new_row: dict) -> None:
+    """Fill the cumulative core ledger of ``new_row`` in place (Aragog core_module).
+
+    ``E_core_residual_J`` accumulates ``step_dE_core_J + step_dE_F_cmb_J`` minus the
+    booked terms ``step_dE_impact_core_J``, ``step_dE_impact_core_refit_J`` and
+    ``step_dE_struct_core_J``: the change of the core's heat content must equal the heat
+    it gives the mantle plus what a giant impact and a structure update book into it. An
+    unbooked jump of the heat content or a mismatched CMB flux integral shows here; a
+    booking is computed where the core changes and the jump where the next call starts,
+    so the ledger shows a missing or repeated booking. ``E_core_residual_frac`` divides
+    by ``max(sum(|step_dE_F_cmb_J| + |booked terms|), 1 J)`` over the rows with
+    ``core_C_eff != 0`` (0.0 is the unwritten value; other rows keep 0), a sum that only
+    grows. A non-finite term carries the previous residual unchanged, with a warning.
+    """
+    if float(new_row.get('core_C_eff', 0.0)) == 0.0:
+        new_row['E_core_residual_J'] = new_row['E_core_residual_frac'] = 0.0
+        return
+    terms = [float(new_row.get(k, 0.0)) for k in ('step_dE_core_J', 'step_dE_F_cmb_J')]
+    booked = [float(new_row.get(k, 0.0)) for k in _CORE_BOOKED_KEYS]
+    prev, scale = 0.0, _finite_abs_sum([terms[1], *booked])
+    if len(current_hf) and 'E_core_residual_J' in current_hf:
+        prev = np.nan_to_num(float(current_hf['E_core_residual_J'].iloc[-1]))
+        rows = current_hf['core_C_eff'].to_numpy(dtype=float) != 0.0
+        for key in ('step_dE_F_cmb_J', *_CORE_BOOKED_KEYS):
+            if key in current_hf:
+                scale += _finite_abs_sum(current_hf[key].to_numpy(dtype=float)[rows])
+    inc = terms[0] + terms[1] - sum(booked)
+    if not np.isfinite(inc):
+        log.warning(
+            'core ledger term is not finite at t=%s yr; residual carried', new_row.get('Time')
+        )
+        inc = 0.0
+    new_row['E_core_residual_J'] = prev + inc
+    new_row['E_core_residual_frac'] = new_row['E_core_residual_J'] / max(scale, 1.0)
+
+
 def _populate_energy_residual(current_hf: pd.DataFrame, new_row: dict) -> None:
     """Fill the cumulative energy-conservation columns of ``new_row`` in place.
 
@@ -1347,6 +1412,7 @@ def ExtendHelpfile(current_hf: pd.DataFrame, new_row: dict):
     # columns stay at 0.0 too, signalling "diagnostic not available for
     # this run" to downstream plotting.
     _populate_energy_residual(current_hf, new_row)
+    _populate_core_residual(current_hf, new_row)
 
     # Validate keys. We guard in both directions:
     # - Missing keys (schema expects but new_row lacks) are a real bug (a
@@ -1592,13 +1658,25 @@ def _describe_missing_columns(missing: list[str]) -> str:
     return shown
 
 
-# Derived diagnostic columns that nothing reads back to build state. A
-# helpfile written before one of them joined the schema still resumes: the
-# reader backfills these with zeros. Add a column here only if no module,
-# resume path or solver consumes it.
+# Diagnostic columns a resumed helpfile that predates them gets as zeros; add one only if no
+# module or resume path reads it back, except the core ledger's core_C_eff and
+# E_core_residual_J, which a helpfile from before the core module has no rows for.
 _DIAGNOSTIC_KEYS = (
     'dEdt_orb',
     'T_cmb_node',
+    'core_r_icb',
+    'core_C_eff',
+    'core_dynamo_margin',
+    'core_B_rms',
+    'core_regime',
+    'core_strat_depth',
+    'core_T_top',
+    'step_dE_impact_core_J',
+    'step_dE_impact_core_refit_J',
+    'step_dE_struct_core_J',
+    'step_dE_core_J',
+    'E_core_residual_J',
+    'E_core_residual_frac',
 )
 
 

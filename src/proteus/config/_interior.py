@@ -4,7 +4,7 @@ import math
 import warnings
 
 from attrs import define, field
-from attrs.validators import ge, gt, in_, lt
+from attrs.validators import ge, gt, in_, le, lt
 
 _TOL_UNSET = -1.0
 
@@ -163,6 +163,114 @@ def valid_aragog(instance, attribute, value):
 
 
 @define
+class AragogCoreModule:
+    """Parameters of the core evolution module (core_bc = 'core_module').
+
+    The core carries its own state: an energy budget with inner-core
+    growth and light-element gravitational energy, evolved as an extra
+    ODE state inside Aragog. The CMB radius and pressure always come from
+    the running mesh, so only material and model choices live here.
+
+    Attributes
+    ----------
+    alpha: float
+        Core thermal expansion coefficient [K-1].
+    c_p: float
+        Core specific heat capacity [J kg-1 K-1].
+    melting_curve: str
+        'iron' (Anzellini et al. 2013 via PALEOS, with light-element
+        depression) or 'quadratic' (Nimmo 2015 Eq. 6 parameterisation).
+    light_element_fraction: float
+        Mole fraction of light elements depressing the iron melting curve.
+    depression: float
+        Melting-point depression per unit mole fraction, as a fraction of the melting
+        temperature [1]; its product with light_element_fraction must stay below 1.
+    t_m0: float
+        Quadratic-curve prefactor [K] (melting_curve = 'quadratic').
+    t_m1: float
+        Quadratic-curve linear coefficient [Pa-1].
+    t_m2: float
+        Quadratic-curve quadratic coefficient [Pa-2].
+    ds_fusion: float
+        Entropy of fusion at the inner-core boundary [J kg-1 K-1].
+    alpha_c: float
+        Compositional expansivity of the outer-core alloy.
+    c_light: float
+        Light-element mass fraction of the outer core (complete rejection).
+    q_radio: float
+        Core radiogenic power [W], constant over a run.
+    stratification: bool
+        When true, the outer core above layer_base_fraction of the CMB radius is a resolved
+        shell whose temperatures are part of the solver state: heat moves
+        through it by conduction and, where its gradient is superadiabatic,
+        by convective mixing, so a stable layer forms below the CMB when the
+        CMB heat flow is subadiabatic and erodes when it is not. The CMB heat
+        flow sees the temperature of the top of the shell. Experimental:
+        erosion of a layer does not run on CVODE at the default tolerances.
+        Not available with accretion.
+    k_core: float
+        Core thermal conductivity [W m-1 K-1] for conduction in the
+        stratified shell and the entropy and dynamo diagnostics; the default is the
+        Nimmo (2015) Table 2 value.
+    layer_base_fraction: float
+        Base of the stratified shell as a fraction of the CMB radius, in (0, 1);
+        the inner core must stay below it. Used with the experimental
+        stratification.
+    layer_k_mix: float
+        Eddy diffusivity [m2 s-1] of convective mixing in the stratified shell
+        at the reference superadiabatic gradient. Used with the experimental
+        stratification.
+    layer_g_mix: float
+        Reference superadiabatic gradient of the shell mixing, as a fraction of
+        the adiabatic gradient at the CMB. Used with the experimental
+        stratification.
+    f_ohm: float
+        Ohmic fraction of the dissipation in the field-strength scaling,
+        in (0, 1]; Christensen et al. (2009) adopt 1 for planets.
+    ra_crit_cmb: float
+        Critical Rayleigh number of the mantle-side boundary layer that sets
+        the CMB heat flux from the core-mantle temperature contrast; the
+        default is the theoretical value of Thiriet et al. (2019, Table 2).
+    flux_geometry: str
+        Which printed Earth-core efficiency factor converts the
+        superadiabatic flux into the field-strength scaling's F:
+        'const_flux' or 'zero_outer'.
+    """
+
+    alpha: float = field(default=1.35e-5, validator=gt(0))
+    c_p: float = field(default=840.0, validator=gt(0))
+    melting_curve: str = field(default='iron', validator=in_(('iron', 'quadratic')))
+    light_element_fraction: float = field(default=0.0, validator=(ge(0), lt(1)))
+    depression: float = field(default=0.0, validator=ge(0))
+    t_m0: float = field(default=2677.0, validator=gt(0))
+    t_m1: float = field(default=2.95e-12)
+    t_m2: float = field(default=8.37e-25)
+    ds_fusion: float = field(default=172.8, validator=gt(0))
+    alpha_c: float = field(default=0.0, validator=ge(0))
+    c_light: float = field(default=0.0, validator=(ge(0), lt(1)))
+    q_radio: float = field(default=0.0, validator=ge(0))
+    stratification: bool = field(default=False)
+    k_core: float = field(default=130.0, validator=gt(0))
+    layer_base_fraction: float = field(default=0.4, validator=(gt(0), lt(1)))
+    layer_k_mix: float = field(default=1.0e7, validator=gt(0))
+    layer_g_mix: float = field(default=1.0e-3, validator=gt(0))
+    f_ohm: float = field(default=1.0, validator=(gt(0), le(1)))
+    ra_crit_cmb: float = field(default=450.0, validator=(gt(0), lt(float('inf'))))
+    flux_geometry: str = field(
+        default='const_flux', validator=in_(('const_flux', 'zero_outer'))
+    )
+
+    def __attrs_post_init__(self):
+        # The iron melting curve scales with 1 - depression * light_element_fraction.
+        product = self.depression * self.light_element_fraction
+        if self.melting_curve == 'iron' and not product < 1:
+            raise ValueError(
+                'interior_energetics.aragog.core_module: depression * light_element_fraction '
+                f'= {product:g} must be below 1.'
+            )
+
+
+@define
 class Aragog:
     """Aragog-specific parameters.
 
@@ -202,6 +310,10 @@ class Aragog:
           - 'gradient': gradient-based state with two boundary entropies
                         as state variables.
           - 'bower2018': experimental, do not use for production.
+          - 'core_module': full core evolution module with nucleation,
+                           crystallisation regimes, and dynamo energetics
+                           (aragog.core), coupled through a boundary-layer
+                           CMB flux in the core-mantle temperature contrast.
     """
 
     mass_coordinates: bool = field(default=True)
@@ -213,7 +325,9 @@ class Aragog:
     equilibration."""
     core_bc: str = field(
         default='energy_balance',
-        validator=in_(('quasi_steady', 'energy_balance', 'gradient', 'bower2018')),
+        validator=in_(
+            ('quasi_steady', 'energy_balance', 'gradient', 'bower2018', 'core_module')
+        ),
     )
     phase_smoothing: str = field(
         default='tanh',
@@ -260,6 +374,13 @@ class Aragog:
     to enable it; -1.0 is the explicit off spelling. An explicit 0.0 is
     rejected at load, since it cannot be told apart from the unset default;
     any other negative, NaN, or infinity is rejected too."""
+
+    core_module: AragogCoreModule = field(factory=AragogCoreModule)
+    """Core evolution module parameters, active when core_bc =
+    'core_module': the core evolves its own energy budget (inner-core
+    growth, latent and gravitational terms) as an extra ODE state, and
+    the reported core temperature (T_cmb) is that state, not the temperature
+    of the lowermost mantle node."""
 
     temperature_step_cap: float = field(default=0.0, validator=_step_cap_valid)
     """Per-call per-cell temperature step cap [K]. Shares the same root

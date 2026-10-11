@@ -219,6 +219,7 @@ def test_aragog_enum_fields_pinned_as_set_under_zalmoxis_pair():
         'energy_balance',
         'gradient',
         'bower2018',
+        'core_module',
     }
     assert set(fields.phase_smoothing.validator.options) == {'tanh', 'cubic_hermite'}
     assert set(fields.solver_method.validator.options) == {'cvode', 'radau', 'bdf'}

@@ -314,7 +314,7 @@ Jacobians for robust convergence.
 | `mass_coordinates` | bool | `true` | Whether to use mass coordinates in the model. Default is True. Uses uniform spacing in mass coordinate space, giving larger cells at the surface where density is lower, matching SPIDER's mesh. |
 | `backend` | str | `"jax"` | ODE backend selector. Default 'jax'. - 'jax'   : CVODE with JAX-derived RHS and JAX analytic Jacobian (`jax.jacrev`). Recommended for production. - 'numpy' : CVODE with numpy RHS and CVODE finite-difference Jacobian. Available for development and SPIDER-parity comparisons; less robust than 'jax' at production resolution because the FD-Jacobian noise can trip Aragog's T_core-jump retry guard at tight tolerances. The diffrax direct-JAX integration path is research-only and gated on a code-level flag in `proteus.interior_energetics.aragog`. Choices: `"numpy"`, `"jax"`. |
 | `atol_temperature_equivalent` | float | `1e-08` | Effective temperature-scale absolute tolerance \[K\] for Aragog's ODE integrator. Default 1e-8 matches SPIDER's atol=rtol=1e-8 setting; this tight tolerance avoids a marginal-stability bifurcation at the first dt jump after equilibration. Must be > 0. |
-| `core_bc` | str | `"energy_balance"` | Core-mantle boundary condition mode. Default 'energy_balance'. Valid values: - 'quasi_steady': alpha-factor heat-flux partition; gives about -19% T_core offset vs SPIDER. - 'energy_balance': SPIDER bit-parity BC with dSdr_cmb as a new state variable (mirrors SPIDER bc.c:76-131). - 'gradient': gradient-based state with two boundary entropies as state variables. - 'bower2018': experimental, do not use for production. Choices: `"quasi_steady"`, `"energy_balance"`, `"gradient"`, `"bower2018"`. |
+| `core_bc` | str | `"energy_balance"` | Core-mantle boundary condition mode. Default 'energy_balance'. Valid values: - 'quasi_steady': alpha-factor heat-flux partition; gives about -19% T_core offset vs SPIDER. - 'energy_balance': SPIDER bit-parity BC with dSdr_cmb as a new state variable (mirrors SPIDER bc.c:76-131). - 'gradient': gradient-based state with two boundary entropies as state variables. - 'bower2018': experimental, do not use for production. - 'core_module': full core evolution module with nucleation, crystallisation regimes, and dynamo energetics (aragog.core), coupled through a boundary-layer CMB flux in the core-mantle temperature contrast. Choices: `"quasi_steady"`, `"energy_balance"`, `"gradient"`, `"bower2018"`, `"core_module"`. |
 | `phase_smoothing` | str | `"tanh"` | Phase-boundary smoothing for Jgrav and Jmix: 'tanh' (SPIDER parity) or 'cubic_hermite'. Choices: `"tanh"`, `"cubic_hermite"`. |
 | `separation_viscosity` | str | `"mixture"` | Drag viscosity for the gravitational-separation velocity v_rel = \|dRho\| g F(phi) / eta. 'melt' (fixed single-phase liquid viscosity, SPIDER parity) keeps separation active below the rheological transition in coupled caps-off runs, which collapses the CMB temperature; 'mixture' (rheological-transition-blended bulk viscosity) ties the drag viscosity to the same solid-fraction rise that stiffens the bulk rheology, so separation locks up at the same melt fraction instead, which is why the default here is 'mixture' while Aragog's own default stays 'melt' for SPIDER parity. The regime boundaries are the porosities where adjacent permeability laws cross (Bower et al. 2018, section 2.1, Eqs. 13a to 13c). Choices: `"melt"`, `"mixture"`. |
 | `solver_method` | str | `"cvode"` | ODE solver: 'cvode' (SUNDIALS, SPIDER parity; needs scikits-odes-sundials and stops the run at setup without it), 'radau' (scipy), 'bdf' (scipy). Choices: `"cvode"`, `"radau"`, `"bdf"`. |
@@ -326,6 +326,58 @@ Jacobians for robust convergence.
 | `phase_boundary_cap` | str | `"rate"` | Phase-boundary step-size policy: 'fixed' tightens max_step to 1 yr whenever any cell is near or inside the two-phase band; 'rate' (default) uses event-driven CVODE segments with max_step scaled by approach time to the nearest phase boundary, clipped to \[1, 100\] yr. 'rate' needs the CVODE solver and a core_bc other than 'gradient'; otherwise Aragog logs it and uses 1 yr. Its accuracy is verified at rtol 1e-8; Aragog warns once per solver at an rtol above 1e-7. Choices: `"fixed"`, `"rate"`. |
 | `tolerance_struct` | float | `100.0` | Absolute mass tolerance \[kg\] for the secant solver in determine_interior_radius. Default 100 kg; pairs with Spider's matching field so both backends drive the same outer-loop convergence criterion. Must be > 0. |
 <!-- END GENERATED: config-table [interior_energetics.aragog] -->
+
+### Core evolution `[interior_energetics.aragog.core_module]`
+
+Active when `core_bc = "core_module"`. The core carries its own state: an
+energy budget with inner-core nucleation, latent heat, and
+light-element gravitational energy, integrated as an extra ODE state inside
+Aragog, so the reported core temperature (`T_cmb`) is that solver state, not the
+temperature of the lowermost mantle node. The CMB radius and pressure always come
+from the running mesh.
+
+<!-- BEGIN GENERATED: config-table [interior_energetics.aragog.core_module] -->
+<!-- Generated by tools/generate_config_reference.py; edit src/proteus/config/, not this table -->
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `alpha` | float | `1.35e-05` | Core thermal expansion coefficient \[K-1\]. Must be > 0. |
+| `c_p` | float | `840.0` | Core specific heat capacity \[J kg-1 K-1\]. Must be > 0. |
+| `melting_curve` | str | `"iron"` | 'iron' (Anzellini et al. 2013 via PALEOS, with light-element depression) or 'quadratic' (Nimmo 2015 Eq. 6 parameterisation). Choices: `"iron"`, `"quadratic"`. |
+| `light_element_fraction` | float | `0.0` | Mole fraction of light elements depressing the iron melting curve. Must be >= 0 and < 1. |
+| `depression` | float | `0.0` | Melting-point depression per unit mole fraction, as a fraction of the melting temperature \[1\]; its product with light_element_fraction must stay below 1. Must be >= 0. |
+| `t_m0` | float | `2677.0` | Quadratic-curve prefactor \[K\] (melting_curve = 'quadratic'). Must be > 0. |
+| `t_m1` | float | `2.95e-12` | Quadratic-curve linear coefficient \[Pa-1\]. |
+| `t_m2` | float | `8.37e-25` | Quadratic-curve quadratic coefficient \[Pa-2\]. |
+| `ds_fusion` | float | `172.8` | Entropy of fusion at the inner-core boundary \[J kg-1 K-1\]. Must be > 0. |
+| `alpha_c` | float | `0.0` | Compositional expansivity of the outer-core alloy. Must be >= 0. |
+| `c_light` | float | `0.0` | Light-element mass fraction of the outer core (complete rejection). Must be >= 0 and < 1. |
+| `q_radio` | float | `0.0` | Core radiogenic power \[W\], constant over a run. Must be >= 0. |
+| `stratification` | bool | `false` | When true, the outer core above layer_base_fraction of the CMB radius is a resolved shell whose temperatures are part of the solver state: heat moves through it by conduction and, where its gradient is superadiabatic, by convective mixing, so a stable layer forms below the CMB when the CMB heat flow is subadiabatic and erodes when it is not. The CMB heat flow sees the temperature of the top of the shell. Experimental: erosion of a layer does not run on CVODE at the default tolerances. Not available with accretion. |
+| `k_core` | float | `130.0` | Core thermal conductivity \[W m-1 K-1\] for conduction in the stratified shell and the entropy and dynamo diagnostics; the default is the Nimmo (2015) Table 2 value. Must be > 0. |
+| `layer_base_fraction` | float | `0.4` | Base of the stratified shell as a fraction of the CMB radius, in (0, 1); the inner core must stay below it. Used with the experimental stratification. Must be > 0 and < 1. |
+| `layer_k_mix` | float | `10000000.0` | Eddy diffusivity \[m2 s-1\] of convective mixing in the stratified shell at the reference superadiabatic gradient. Used with the experimental stratification. Must be > 0. |
+| `layer_g_mix` | float | `0.001` | Reference superadiabatic gradient of the shell mixing, as a fraction of the adiabatic gradient at the CMB. Used with the experimental stratification. Must be > 0. |
+| `f_ohm` | float | `1.0` | Ohmic fraction of the dissipation in the field-strength scaling, in (0, 1\]; Christensen et al. (2009) adopt 1 for planets. Must be > 0 and <= 1. |
+| `ra_crit_cmb` | float | `450.0` | Critical Rayleigh number of the mantle-side boundary layer that sets the CMB heat flux from the core-mantle temperature contrast; the default is the theoretical value of Thiriet et al. (2019, Table 2). Must be > 0 and < inf. |
+| `flux_geometry` | str | `"const_flux"` | Which printed Earth-core efficiency factor converts the superadiabatic flux into the field-strength scaling's F: 'const_flux' or 'zero_outer'. Choices: `"const_flux"`, `"zero_outer"`. |
+<!-- END GENERATED: config-table [interior_energetics.aragog.core_module] -->
+
+When this mode is active, per-step diagnostics are written to the helpfile
+columns `core_r_icb`, `core_C_eff`, `core_dynamo_margin`, `core_B_rms`,
+`core_regime`, `core_strat_depth` and `core_T_top`, driven by the step-averaged CMB heat
+flow. With `stratification = true`, `core_strat_depth` is the depth of the stable layer
+in the resolved shell below the CMB and `core_T_top` the temperature of its top cell; the
+shell temperatures are stored in each interior snapshot, so a resume restarts the layer. Every other `core_bc` mode leaves them at zero; note that zero is also
+a reachable physical value for most of them while the mode is active (no
+inner core yet, no stratified layer, subadiabatic field estimate), so key any
+analysis on the configured `core_bc`, not on the column values. `core_regime`
+encodes the way the core freezes as 0 = fully liquid, 1 = from the centre outwards,
+4 = fully frozen; the codes 2 (from the top) and 3 (snow) of `aragog.core.regime` do not
+appear, because Aragog ends the run at such a state. `core_B_rms` uses
+only the superadiabatic part of the heat flow as its reference flux, so a
+compositionally driven dynamo under a subadiabatic CMB reports a positive
+`core_dynamo_margin` with `core_B_rms = 0`; that pairing is the documented
+conservative floor of the field estimate, not an inconsistency.
 
 ### SPIDER `[interior_energetics.spider]`
 
