@@ -113,6 +113,30 @@ class TestInstallerArgParsing:
         assert bogus.returncode != 0
         assert 'Unknown argument' in bogus.stdout + bogus.stderr
 
+    def test_verbose_flag_accepted_set_and_documented(self):
+        """--verbose is accepted ahead of --help, sets VERBOSE and has a line in --help.
+
+        The parser arm is pinned as text, because the variable it sets is what
+        run_logged reads; a misspelt variable would pass the exit-code check alone.
+        """
+        result = subprocess.run(
+            ['bash', str(INSTALL_SH), '--verbose', '--help'],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert 'Unknown argument' not in result.stdout + result.stderr
+        help_lines = [ln for ln in result.stdout.splitlines() if ln.startswith('  --verbose ')]
+        assert len(help_lines) == 1
+        assert 'log file' in help_lines[0]
+        arms = [
+            ln.strip()
+            for ln in INSTALL_SH.read_text().splitlines()
+            if ln.strip().startswith('--verbose)')
+        ]
+        assert arms == ['--verbose)  VERBOSE="true" ;;']
+
 
 def _bin_dir_without(tmp_path, omitted: set[str]) -> Path:
     """Mirror every executable on PATH into a fresh directory, minus `omitted`.
@@ -650,7 +674,9 @@ class TestNoShellFileEdit:
             for ln in INSTALL_SH.read_text().splitlines()
             if 'get_fastchem.sh' in ln and not ln.lstrip().startswith(('#', 'warn', 'echo'))
         ]
-        assert calls == ['env -u FC_DIR bash src/get_fastchem.sh </dev/null 2>&1']
+        assert calls == [
+            'run_logged "Building FastChem" env -u FC_DIR bash src/get_fastchem.sh </dev/null'
+        ]
         assert '-y' not in calls[0].split()
 
 
@@ -811,6 +837,18 @@ def _install_sh_function(name: str) -> str:
     return '\n'.join(lines[start : end + 1]) + '\n'
 
 
+# run_logged and the helpers it calls; the colour codes and info/warn/fail come with "info()".
+_RUN_LOGGED_FUNCTIONS = ('log_file_sentence', 'log_catch_up', 'to_terminal', 'run_logged')
+
+# Shell variables of the installer's log state, kept out of the test environment.
+_LOG_STATE = ('LOGFILE', 'VERBOSE', 'LOG_TEE', 'RUN_LOGGED_TOLD', 'LOG_SENTENCE_SHOWN')
+
+
+def _env_without_log_state() -> dict[str, str]:
+    """The test process environment without the installer's log variables."""
+    return {k: v for k, v in os.environ.items() if k not in _LOG_STATE}
+
+
 def _clone_and_install_calls() -> list[list[str]]:
     """The arguments of every clone_and_install call in install.sh."""
     return [
@@ -844,30 +882,36 @@ class TestCloneAndInstall:
         log = tmp_path / 'pip.log'
         log.write_text('')
         env = {
-            **os.environ,
+            **_env_without_log_state(),
             'PATH': f'{stubs}{os.pathsep}{os.environ["PATH"]}',
             'GH_PREFIX': f'{tmp_path / "remotes"}/',
             'SCRIPT_DIR': str(root),
             'STUB_PIP_LOG': str(log),
         }
-        return {'root': root, 'shas': shas, 'log': log, 'env': env}
+        return {'root': root, 'shas': shas, 'log': log, 'env': env, 'tmp': tmp_path}
 
     @staticmethod
-    def _call(site, *args: str) -> subprocess.CompletedProcess:
+    def _call(site, *args: str, **env: str) -> subprocess.CompletedProcess:
         """Run the shipped clone_and_install with ``args``, under install.sh's options."""
         defs = (
             'set -euo pipefail\nCURRENT_PHASE=6\n'
             + _install_sh_blocks("RED='", 'info()')
             + ''.join(
                 _install_sh_function(f)
-                for f in ('command_exists', 'collect_env_info', 'die', 'clone_and_install')
+                for f in (
+                    'command_exists',
+                    'collect_env_info',
+                    'die',
+                    *_RUN_LOGGED_FUNCTIONS,
+                    'clone_and_install',
+                )
             )
         )
         return subprocess.run(
             ['bash', '-c', defs + shlex.join(['clone_and_install', *args])],
             capture_output=True,
             text=True,
-            env=site['env'],
+            env={**site['env'], **env},
             timeout=25,
         )
 
@@ -909,13 +953,35 @@ class TestCloneAndInstall:
         assert 'not changed' in result.stdout
         assert len(site['log'].read_text().splitlines()) == 2
 
-    def test_floor_without_tag_stops_the_installer(self, site):
+    def test_logged_clone_shows_the_tag_line_and_logs_the_rest(self, site):
+        """With a log file, the release tag line stays on the terminal and git's output does not.
+
+        get_python_module.sh prints `Cloning <uri> -> <dir>` before the tag line;
+        a helper that shows all output, or none, fails one of the two checks.
+        """
+        tagged, _ = site['shas']['MORS']
+        logfile = site['tmp'] / 'install.log'
+        result = self._call(site, 'MORS', 'fwl-mors', LOGFILE=str(logfile))
+        assert result.returncode == 0, result.stdout + result.stderr
+        terminal = result.stdout + result.stderr
+        tag_line = f'fwl-mors: checked out release tag 26.10.06 at {tagged[:7]}'
+        assert tag_line in result.stdout
+        assert 'FormingWorlds/MORS.git ->' not in terminal
+        assert re.search(r'Cloning and installing MORS: done in \d+ s', result.stdout)
+        logged = logfile.read_text().splitlines()
+        assert logged.count(tag_line) == 1
+        assert any('FormingWorlds/MORS.git ->' in ln for ln in logged)
+
+    @pytest.mark.parametrize('logged', [False, True], ids=['no-log-file', 'log-file'])
+    def test_floor_without_tag_stops_the_installer(self, site, logged):
         """A floor with no release tag fails, names the distribution, and installs nothing.
 
         The new clone is removed, so a re-run clones again rather than
-        installing the branch tip as an existing clone.
+        installing the branch tip as an existing clone. With a log file the
+        cause still reaches the terminal, in the last lines of the failed step.
         """
-        result = self._call(site, 'JANUS', 'fwl-janus')
+        env = {'LOGFILE': str(site['tmp'] / 'install.log')} if logged else {}
+        result = self._call(site, 'JANUS', 'fwl-janus', **env)
         output = result.stdout + result.stderr
         assert result.returncode == 1
         assert 'Could not check out the fwl-janus release tag' in output
@@ -1202,3 +1268,357 @@ class TestJuliaupDefaultUse:
         assert [ln.strip() for ln in everywhere] == ['juliaup default "$req"']
         doctor = PROTEUS_ROOT / 'src' / 'proteus' / 'doctor.py'
         assert 'juliaup default' not in doctor.read_text()
+
+
+# 3 lines on stdout and 2 on stderr, interleaved, then the exit status given as $1.
+_FIVE_LINES = (
+    'echo out-1; echo err-1 >&2; echo out-2; echo err-2 >&2; echo out-3; exit "${1:-0}"\n'
+)
+_FIVE = ['out-1', 'err-1', 'out-2', 'err-2', 'out-3']
+
+# 100 numbered lines and exit status 7: the last 40 are lines 61 to 100.
+_HUNDRED_LINES = 'i=1\nwhile [ "$i" -le 100 ]; do echo "line $i"; i=$((i + 1)); done\nexit 7\n'
+
+
+def _process_substitution_writable() -> bool:
+    """Whether bash here can write to a process substitution, as the installer's log tee does.
+
+    The probe runs no installer code, so a skip on it hides no failure of run_logged.
+    """
+    probe = subprocess.run(
+        ['bash', '-c', 'exec 5> >(cat >/dev/null) && echo ok'],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    return probe.returncode == 0 and probe.stdout.strip() == 'ok'
+
+
+def _run_logged(
+    tmp_path: Path,
+    script: str,
+    *,
+    logfile: Path | None,
+    tee: bool = False,
+    verbose: bool = False,
+    stdin: str | None = None,
+) -> subprocess.CompletedProcess:
+    """Run ``script`` after the shipped run_logged, in ``tmp_path`` with five.sh and hundred.sh.
+
+    ``tee`` adds the installer's own block that starts the log tee; ``logfile`` None
+    leaves LOGFILE unset.
+    """
+    if tee and not _process_substitution_writable():
+        pytest.skip(
+            'bash cannot write to a process substitution on this host (/dev/fd refused)'
+        )
+    (tmp_path / 'five.sh').write_text(_FIVE_LINES)
+    (tmp_path / 'hundred.sh').write_text(_HUNDRED_LINES)
+    defs = 'set -euo pipefail\n'
+    if logfile is not None:
+        defs += f'LOGFILE={shlex.quote(str(logfile))}\n'
+    if verbose:
+        defs += 'VERBOSE=true\n'
+    defs += _install_sh_blocks("RED='", 'info()') + ''.join(
+        _install_sh_function(f) for f in _RUN_LOGGED_FUNCTIONS
+    )
+    if tee:
+        defs += _install_sh_blocks('exec 3>&1')
+    return subprocess.run(
+        ['bash', '-c', defs + script],
+        capture_output=True,
+        text=True,
+        input=stdin,
+        cwd=tmp_path,
+        env=_env_without_log_state(),
+        timeout=25,
+    )
+
+
+def _lines(result: subprocess.CompletedProcess) -> list[str]:
+    """The terminal of a run: its stdout lines, then its stderr lines."""
+    return result.stdout.splitlines() + result.stderr.splitlines()
+
+
+class TestRunLogged:
+    """run_logged shows one line per step and keeps the step's output in the log file."""
+
+    def test_output_goes_to_the_log_only(self, tmp_path):
+        """A step that succeeds shows a start and an end line; its 5 lines are in the log only.
+
+        Two steps run: the first start line names the log file and the second
+        does not, and the log holds both outputs in order, each once.
+        """
+        log = tmp_path / 'install.log'
+        script = (
+            'run_logged "Building widget" bash five.sh\n'
+            'run_logged --takes "a minute" "Building gadget" bash five.sh\n'
+        )
+        result = _run_logged(tmp_path, script, logfile=log)
+        assert result.returncode == 0, result.stdout + result.stderr
+        terminal = _lines(result)
+        assert [ln for ln in terminal if ln in _FIVE] == []
+        starts = [ln for ln in terminal if 'its output goes to' in ln]
+        assert len(starts) == 2
+        assert starts[0].endswith(f'Building widget; its output goes to {log}')
+        assert starts[1].endswith(
+            'Building gadget (can take a minute); its output goes to the log file'
+        )
+        assert re.search(r'Building widget: done in \d+ s$', result.stdout, re.M)
+        assert re.search(r'Building gadget: done in \d+ s$', result.stdout, re.M)
+        assert log.read_text().splitlines() == _FIVE + _FIVE
+
+    def test_failure_shows_the_last_40_lines_and_returns_the_status(self, tmp_path):
+        """A step that exits 7 returns 7 and shows lines 61 to 100 and the log file path.
+
+        An off-by-one tail (39 or 41 lines) or the head of the output fails the
+        list equality. A bare call under errexit stops the script with that status.
+        """
+        log = tmp_path / 'install.log'
+        script = (
+            'if run_logged "Building widget" bash hundred.sh; then echo RC=0; '
+            'else echo "RC=$?"; fi\n'
+        )
+        result = _run_logged(tmp_path, script, logfile=log)
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert 'RC=7' in result.stdout.splitlines()
+        shown = [ln for ln in _lines(result) if ln.startswith('line ')]
+        assert shown == [f'line {i}' for i in range(61, 101)]
+        assert re.search(
+            r'Building widget: failed with exit status 7 after \d+ s', result.stderr
+        )
+        assert f'The full output of the installer is in {log}' in result.stderr.splitlines()
+        assert log.read_text().splitlines() == [f'line {i}' for i in range(1, 101)]
+
+        bare = _run_logged(
+            tmp_path, 'run_logged "Building widget" bash hundred.sh\necho AFTER\n', logfile=log
+        )
+        assert bare.returncode == 7
+        assert 'AFTER' not in bare.stdout
+
+    @pytest.mark.parametrize('status', [0, 3], ids=['step-succeeds', 'step-fails'])
+    def test_log_tee_keeps_each_line_once_and_in_order(self, tmp_path, status):
+        """Under the installer's log tee, each log line is there once, in the order written.
+
+        The start line precedes the step's output and the end line follows it.
+        A failed step shows its 5 lines on the terminal without writing them
+        to the log a second time.
+        """
+        log = tmp_path / 'install.log'
+        script = (
+            f'if run_logged "Building widget" bash five.sh {status}; then echo STEP-OK; '
+            'else echo "STEP-RC=$?"; fi\n'
+        )
+        result = _run_logged(tmp_path, script, logfile=log, tee=True)
+        assert result.returncode == 0, result.stdout + result.stderr
+        logged = log.read_text().splitlines()
+        assert len(logged) == len(set(logged)), logged
+        assert [ln for ln in logged if ln in _FIVE] == _FIVE
+        start = next(i for i, ln in enumerate(logged) if 'Building widget; its output' in ln)
+        end = next(i for i, ln in enumerate(logged) if 'Building widget: ' in ln)
+        assert start < logged.index('out-1') < logged.index('out-3') < end
+        shown = [ln for ln in _lines(result) if ln in _FIVE]
+        assert shown == ([] if status == 0 else _FIVE)
+        assert ('STEP-OK' if status == 0 else f'STEP-RC={status}') in logged
+
+    @pytest.mark.parametrize('tee', [False, True], ids=['no-log-tee', 'log-tee'])
+    def test_verbose_shows_and_logs_every_line(self, tmp_path, tee):
+        """With --verbose the 5 lines reach the terminal and the log, each once, in order."""
+        log = tmp_path / 'install.log'
+        result = _run_logged(
+            tmp_path,
+            'run_logged "Building widget" bash five.sh\n',
+            logfile=log,
+            tee=tee,
+            verbose=True,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert [ln for ln in _lines(result) if ln in _FIVE] == _FIVE
+        assert [ln for ln in log.read_text().splitlines() if ln in _FIVE] == _FIVE
+        assert re.search(r'Building widget: done in \d+ s', result.stdout)
+
+    @pytest.mark.parametrize('where', ['unset', 'unwritable'])
+    def test_without_a_writable_log_the_command_runs_as_is(self, tmp_path, where):
+        """With LOGFILE unset, or in a missing directory, the output stays on the terminal.
+
+        The exit status 3 comes back to the caller and no start line is printed.
+        """
+        logfile = None if where == 'unset' else tmp_path / 'missing' / 'install.log'
+        script = (
+            'if run_logged "Building widget" bash five.sh 3; then echo RC=0; '
+            'else echo "RC=$?"; fi\n'
+        )
+        result = _run_logged(tmp_path, script, logfile=logfile)
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert result.stdout.splitlines() == ['out-1', 'out-2', 'out-3', 'RC=3']
+        assert result.stderr.splitlines() == ['err-1', 'err-2']
+        assert not (tmp_path / 'missing').exists()
+
+    def test_hidden_step_reads_no_answer_from_stdin(self, tmp_path):
+        """A logged step gets end of input, so a question in it cannot wait unseen.
+
+        The test feeds `yes` on stdin; a step that inherited it would log `got:yes`.
+        """
+        log = tmp_path / 'install.log'
+        script = """run_logged "Asking" bash -c 'read -r x || x=EOF; echo "got:$x"'\n"""
+        result = _run_logged(tmp_path, script, logfile=log, stdin='yes\n')
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert log.read_text().splitlines() == ['got:EOF']
+        assert 'got:' not in result.stdout + result.stderr
+
+
+# The build steps whose output goes to the log only, and the commands that stay on the terminal.
+_BUILD_TARGETS = {
+    'tools/get_socrates.sh',
+    'tools/get_agni.sh',
+    'src/get_fastchem.sh',
+    'tools/get_python_module.sh',
+    'tools/get_aragog.sh',
+    'tools/get_zalmoxis.sh',
+    'tools/get_cvode.sh',
+    'pip install -e',
+}
+_TERMINAL_WORDS = {'proteus', 'prompt_yn', 'read', 'read_with_default', 'juliaup', 'curl'}
+_SEPARATORS = {'||', '&&', ';', ';;', '|', '&', '(', ')'}
+_KEYWORDS = {'if', 'elif', 'then', 'else', 'do', 'while', 'until', '!'}
+
+
+def _shell_commands(text: str) -> list[list[str]]:
+    """The simple commands of a shell text, as word lists, without comment lines.
+
+    Continued lines are joined first; a line shlex cannot split is returned whole.
+    """
+    joined = re.sub(r'\\\n', ' ', text)
+    commands = []
+    for line in joined.splitlines():
+        if not line.strip() or line.lstrip().startswith('#'):
+            continue
+        lexer = shlex.shlex(line, posix=True, punctuation_chars=True)
+        lexer.whitespace_split = True
+        try:
+            tokens = list(lexer)
+        except ValueError:
+            commands.append([line])
+            continue
+        current: list[str] = []
+        for tok in [*tokens, ';']:
+            if tok in _SEPARATORS:
+                while current and current[0] in _KEYWORDS:
+                    current.pop(0)
+                if current:
+                    commands.append(current)
+                current = []
+            else:
+                current.append(tok)
+    return commands
+
+
+def _build_target(words: list[str]) -> str | None:
+    """The build step a command runs: a _BUILD_TARGETS script after `bash`, or `pip install -e`."""
+    for i, word in enumerate(words):
+        if word == 'bash' and i + 1 < len(words):
+            hit = [t for t in _BUILD_TARGETS if words[i + 1].endswith(t)]
+            if hit:
+                return hit[0]
+        if words[i : i + 3] == ['pip', 'install', '-e']:
+            return 'pip install -e'
+    return None
+
+
+def _logged_and_terminal_calls(text: str) -> tuple[list[tuple[str, str]], list[list[str]]]:
+    """The build commands as (first word, step), and the commands meant for the terminal.
+
+    The second list holds each command that starts with a word of _TERMINAL_WORDS,
+    or that run_logged wraps around one of them.
+    """
+    builds, terminal = [], []
+    for words in _shell_commands(text):
+        target = _build_target(words)
+        if target:
+            builds.append((words[0], target))
+        if words[0] in _TERMINAL_WORDS or (
+            words[0] == 'run_logged' and _TERMINAL_WORDS & set(words)
+        ):
+            terminal.append(words)
+    return builds, terminal
+
+
+class TestRunLoggedCalls:
+    """install.sh logs each build step and leaves downloads and questions on the terminal."""
+
+    def test_build_steps_go_through_run_logged_and_downloads_do_not(self):
+        """Every build command of install.sh is run by run_logged; no download or question is.
+
+        The 8 build steps are pinned as a set, and the 11 data downloads as a
+        count, so a scan that finds nothing fails. The synthetic text is the
+        control: a bare build and a logged download are both reported.
+        """
+        builds, terminal = _logged_and_terminal_calls(INSTALL_SH.read_text())
+        assert {target for _, target in builds} == _BUILD_TARGETS
+        assert [b for b in builds if b[0] != 'run_logged'] == []
+        assert sum(1 for _, t in builds if t == 'pip install -e') == 2
+        assert [w for w in terminal if w[0] == 'run_logged'] == []
+        assert len([w for w in terminal if w[:2] == ['proteus', 'get']]) == 11
+        assert [w[:2] for w in terminal if w[:2] == ['proteus', 'doctor']] == [
+            ['proteus', 'doctor']
+        ]
+
+        control = (
+            'bash tools/get_socrates.sh\n'
+            'run_logged "Spectra" proteus get spectral 2>&1 || warn "x"\n'
+            'warn "re-run bash tools/get_cvode.sh"\n'
+        )
+        c_builds, c_terminal = _logged_and_terminal_calls(control)
+        assert c_builds == [('bash', 'tools/get_socrates.sh')]
+        assert [w[0] for w in c_terminal] == ['run_logged']
+
+
+class TestLogFileSentence:
+    """die, run_logged and the exit hint name the log file in one sentence, once per failure."""
+
+    @pytest.mark.parametrize(
+        ('script', 'status', 'count'),
+        [
+            ('die "boom"\n', 1, 1),
+            ('exit 3\n', 3, 1),
+            ('run_logged "Building widget" bash five.sh 4\n', 4, 1),
+            ('true\n', 0, 0),
+        ],
+        ids=['die', 'plain-exit', 'failed-step', 'clean-exit'],
+    )
+    def test_failed_run_names_the_log_file_once(self, tmp_path, script, status, count):
+        """A failed run prints the sentence once, from whichever of the three ends it.
+
+        die and run_logged print it and the exit hint then holds it back; a
+        clean exit prints nothing.
+        """
+        log = tmp_path / 'install.log'
+        log.write_text('')
+        (tmp_path / 'five.sh').write_text(_FIVE_LINES)
+        defs = (
+            'set -euo pipefail\nCURRENT_PHASE=6\nINSTALL_VAR_NAMES=""\n'
+            + f'LOGFILE={shlex.quote(str(log))}\n'
+            + _install_sh_blocks("RED='", 'info()')
+            + ''.join(
+                _install_sh_function(f)
+                for f in (
+                    'command_exists',
+                    'collect_env_info',
+                    'die',
+                    'print_exit_hint',
+                    *_RUN_LOGGED_FUNCTIONS,
+                )
+            )
+            + 'trap print_exit_hint EXIT\n'
+        )
+        result = subprocess.run(
+            ['bash', '-c', defs + script],
+            capture_output=True,
+            text=True,
+            cwd=tmp_path,
+            env=_env_without_log_state(),
+            timeout=25,
+        )
+        assert result.returncode == status
+        sentence = f'The full output of the installer is in {log}'
+        assert _lines(result).count(sentence) == count

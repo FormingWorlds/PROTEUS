@@ -2446,6 +2446,7 @@ def _run_install_block(tmp_path, marker: str, *, exit_code: int):
     (stubs / 'python').chmod(0o755)
     snippet = (
         'info() { :; }\nwarn() { echo "WARN: $1" >&2; }\ndie() { echo "DIE: $1" >&2; exit 1; }\n'
+        + _install_sh_block('run_logged() {')
         + _install_sh_block(marker)
         + 'echo REACHED\n'
     )

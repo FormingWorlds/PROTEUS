@@ -71,7 +71,8 @@ die() {
     collect_env_info || true
     echo ""
     if [ -n "${LOGFILE:-}" ] && [ -f "${LOGFILE:-}" ]; then
-        echo "A full log was written to: $LOGFILE"
+        log_file_sentence
+        LOG_SENTENCE_SHOWN=true
         echo "If you need help, send that log file to dev@proteus-framework.org,"
         echo "or open an issue or discussion at:"
         echo "  https://github.com/FormingWorlds/PROTEUS/issues"
@@ -107,6 +108,89 @@ read_with_default() {
 }
 
 command_exists() { command -v "$1" &>/dev/null; }
+
+# The one sentence that names the log file, in die, run_logged and the exit hint.
+log_file_sentence() { printf 'The full output of the installer is in %s\n' "$LOGFILE"; }
+
+# Wait, up to 5 s, until the last line of the log holds the text $1: the log tee runs
+# behind the script, and run_logged appends a command's output to the log directly.
+log_catch_up() {
+    local i=0
+    [ "${LOG_TEE:-false}" = true ] || return 0
+    while [ "$i" -lt 50 ]; do
+        case "$(tail -n 1 "$LOGFILE" 2>/dev/null)" in *"$1"*) return 0 ;; esac
+        sleep 0.1
+        i=$((i + 1))
+    done
+}
+
+# Copy stdin to the terminal only, past the log tee when it runs ($1: 1 stdout, 2 stderr).
+to_terminal() {
+    if [ "${LOG_TEE:-false}" != true ]; then
+        cat >&"$1"
+    elif [ "$1" = 1 ]; then
+        cat >&3
+    else
+        cat >&4
+    fi
+}
+
+# Usage: run_logged [--takes <duration>] <what is built> <command> [args...]. One line at the
+# start and one at the end; the output goes to $LOGFILE only. A failure shows its last 40 lines.
+run_logged() {
+    local takes="" what rc=0 t0=$SECONDS tmp where="the log file"
+    local show='checked out release tag|installed paired aragog branch'
+    if [ "${1:-}" = "--takes" ]; then
+        takes=" (can take $2)"
+        shift 2
+    fi
+    what="$1"
+    shift
+    # Without a writable log the command runs as it is, its output on the terminal.
+    if [ -z "${LOGFILE:-}" ] || ! { : >> "$LOGFILE"; } 2>/dev/null \
+       || ! tmp=$(mktemp "${TMPDIR:-/tmp}/proteus-install.XXXXXX" 2>/dev/null); then
+        "$@" || rc=$?
+        return "$rc"
+    fi
+    if [ "${RUN_LOGGED_TOLD:-false}" != true ]; then
+        where="$LOGFILE"
+        RUN_LOGGED_TOLD=true
+    fi
+    if [ "${VERBOSE:-false}" = true ]; then
+        info "$what$takes..."
+        if [ "${LOG_TEE:-false}" = true ]; then
+            "$@" || rc=$?
+        elif "$@" 2>&1 | tee -a "$LOGFILE"; then
+            rc=0
+        else
+            rc=${PIPESTATUS[0]}
+        fi
+    else
+        info "$what$takes; its output goes to $where"
+        log_catch_up "$what$takes; its output goes to $where"
+        # stdin is /dev/null: a step whose output is hidden must not wait for an answer.
+        if "$@" </dev/null 2>&1 | tee -a "$LOGFILE" > "$tmp"; then
+            rc=0
+        else
+            rc=${PIPESTATUS[0]}
+        fi
+    fi
+    if [ "$rc" -eq 0 ]; then
+        grep -E "$show" "$tmp" | to_terminal 1 || true
+        info "$what: done in $((SECONDS - t0)) s"
+    else
+        fail "$what: failed with exit status $rc after $((SECONDS - t0)) s"
+        if [ "${VERBOSE:-false}" != true ]; then
+            log_catch_up "$what: failed with exit status $rc"
+            echo "--- the last 40 lines of its output:" | to_terminal 2
+            tail -n 40 "$tmp" | to_terminal 2
+        fi
+        log_file_sentence >&2
+        LOG_SENTENCE_SHOWN=true
+    fi
+    rm -f "$tmp"
+    return "$rc"
+}
 
 # A fresh conda environment (notably anaconda3 on macOS) often installs the
 # MPI-enabled builds of HDF5/libnetcdf. Those load libmpi before Julia, and the
@@ -249,7 +333,7 @@ verify_proteus_import() {
         warn "Python and Julia are built for different CPU architectures (see above)."
         warn "On Apple Silicon, install a native arm64 conda (e.g. miniforge), recreate"
         warn "the proteus env, and re-run install.sh."
-        die "PROTEUS Python package failed to import. The full error is above and in $LOGFILE."
+        die "PROTEUS Python package failed to import. The full error is above."
     fi
     if printf '%s' "$import_log" | grep -qiE 'libmpi|PMPI_|ompi_|mpich|Symbol not found' \
        || conda_has_mpi_netcdf; then
@@ -299,7 +383,7 @@ verify_proteus_import() {
         warn "  juliaup add 1.11, then set PYTHON_JULIAPKG_EXE to the path that"
         warn "  julia +1.11 -e 'print(joinpath(Sys.BINDIR, \"julia\"))' prints   (Julia 1.11, deprecated)"
     fi
-    die "PROTEUS Python package failed to import. The full error is above and in $LOGFILE."
+    die "PROTEUS Python package failed to import. The full error is above."
 }
 
 # Export NAME=value ($1, $2) in this process and record it in the exports file, one
@@ -379,9 +463,14 @@ print_next_steps() {
     echo "     proteus start --offline -c input/dummy.toml"
 }
 
-# On a failed run, name the exports file that holds the variables set so far.
+# On a failed run, name the log file (unless die or run_logged did) and the exports file.
 print_exit_hint() {
     local rc=$?
+    if [ "$rc" -ne 0 ] && [ "${LOG_SENTENCE_SHOWN:-false}" != true ] \
+       && [ -n "${LOGFILE:-}" ] && [ -f "$LOGFILE" ]; then
+        echo ""
+        log_file_sentence
+    fi
     if [ "$rc" -ne 0 ] && [ -n "$INSTALL_VAR_NAMES" ]; then
         echo ""
         echo "--- NOTE: the variables set so far are in $PROTEUS_ENV_FILE. To keep them on"
@@ -397,6 +486,12 @@ available_disk_gb() {
 CURRENT_PHASE=0
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INTERACTIVE="false"
+VERBOSE="false"
+
+# The log state of run_logged: whether the log tee runs, whether it named the log file.
+LOG_TEE="false"
+RUN_LOGGED_TOLD="false"
+LOG_SENTENCE_SHOWN="false"
 
 # The exports file of set_install_var, and the state that bind_install_vars reads.
 PROTEUS_ENV_FILE="$SCRIPT_DIR/.proteus-env.sh"
@@ -414,6 +509,7 @@ for arg in "$@"; do
         --all-data) DATA_MODE="all" ;;
         --no-data)  DATA_MODE="none" ;;
         --interactive|-i) INTERACTIVE="true" ;;
+        --verbose)  VERBOSE="true" ;;
         --help|-h)
             echo "PROTEUS unified installer"
             echo ""
@@ -423,11 +519,15 @@ for arg in "$@"; do
             echo "  --all-data   Download all reference data (~10-20 GB) instead of the essential set"
             echo "  --no-data    Skip data downloads entirely, including the essential set"
             echo "  -i, --interactive  Interactive mode (prompt for choices)"
+            echo "  --verbose    Show the full build output on the terminal, not only in the log file"
             echo "  --help       Show this message"
             echo ""
             echo "Default: download the essential data (~3 GB): the default-config and tutorial"
             echo "k-tables, stellar spectra and tracks, the PHOENIX grid of the default star"
             echo "([Fe/H] = 0.0, [alpha/M] = 0.0) and the interior tables"
+            echo ""
+            echo "Each build step prints one line on the terminal; its full output goes to"
+            echo "install_<date>_<time>.log in the PROTEUS folder."
             exit 0
             ;;
         *)
@@ -438,9 +538,11 @@ for arg in "$@"; do
     esac
 done
 
-# Start logging
+# Start logging; fds 3 and 4 keep the terminal for the lines run_logged shows there only.
 LOGFILE="$SCRIPT_DIR/install_$(date +%Y%m%d_%H%M%S).log"
+exec 3>&1 4>&2
 exec > >(tee -a "$LOGFILE") 2>&1
+LOG_TEE="true"
 
 echo ""
 printf "${BOLD}PROTEUS Installer${NC}\n"
@@ -448,6 +550,9 @@ echo "Log: $LOGFILE"
 echo "Data mode: $DATA_MODE"
 if [ "$INTERACTIVE" = "true" ]; then
     echo "Mode: interactive (-i)"
+fi
+if [ "$VERBOSE" = "true" ]; then
+    echo "Build output: on the terminal and in the log (--verbose)"
 fi
 echo ""
 
@@ -778,12 +883,8 @@ if [ "$socrates_compiled" = "true" ]; then
     info "SOCRATES already installed at $RAD_DIR"
     set_install_var RAD_DIR "$RAD_DIR"
 else
-    info "Installing SOCRATES..."
-    # On HPC clusters, conda's netcdf can shadow the system netcdf and
-    # cause SOCRATES to link against the wrong libraries. Temporarily
-    # hide the conda lib/ from the linker so gfortran finds the system
-    # netcdf-fortran. The conda env stays active for Python; only the
-    # Fortran linker path is adjusted.
+    # On HPC clusters conda's netcdf can shadow the system one, so the Fortran linker
+    # does not see the conda lib/ during the build; Python keeps the conda env.
     _saved_conda_prefix="${CONDA_PREFIX:-}"
     if [ -n "$_saved_conda_prefix" ] && [ -d "$_saved_conda_prefix/lib" ]; then
         _saved_ld="${LD_LIBRARY_PATH:-}"
@@ -792,7 +893,7 @@ else
         export LIBRARY_PATH=$(echo "${LIBRARY_PATH:-}" | tr ':' '\n' | grep -v "$_saved_conda_prefix" | tr '\n' ':' | sed 's/:$//')
         info "Temporarily hiding conda lib paths from Fortran linker"
     fi
-    bash tools/get_socrates.sh
+    run_logged --takes "several minutes" "Building SOCRATES" bash tools/get_socrates.sh
     # Restore conda paths
     if [ -n "$_saved_conda_prefix" ] && [ -d "$_saved_conda_prefix/lib" ]; then
         export LD_LIBRARY_PATH="$_saved_ld"
@@ -803,7 +904,7 @@ else
         set_install_var RAD_DIR "$SCRIPT_DIR/socrates"
         info "SOCRATES installed, RAD_DIR=$RAD_DIR"
     else
-        die "SOCRATES compilation failed. Check $LOGFILE for build errors."
+        die "SOCRATES compilation failed: socrates/bin/radlib.a was not built."
     fi
 fi
 
@@ -816,10 +917,10 @@ phase 5 "AGNI + FastChem"
 if [ -d "$SCRIPT_DIR/AGNI" ] && [ -f "$SCRIPT_DIR/AGNI/Manifest.toml" ]; then
     info "AGNI already installed at $SCRIPT_DIR/AGNI"
 else
-    info "Installing AGNI..."
-    bash tools/get_agni.sh 0 2>&1
+    run_logged --takes "several minutes" "Installing AGNI and its Julia packages" \
+        bash tools/get_agni.sh 0
     if [ ! -f "$SCRIPT_DIR/AGNI/Manifest.toml" ]; then
-        die "AGNI installation failed (Julia packages not resolved). Check $LOGFILE for details."
+        die "AGNI installation failed (Julia packages not resolved)."
     fi
     info "AGNI installed"
 fi
@@ -833,7 +934,6 @@ AGNI_REAL=$(cd "$SCRIPT_DIR/AGNI" 2>/dev/null && pwd -P)
 if [ -d "$AGNI_REAL/fastchem" ] && [ -f "$AGNI_REAL/fastchem/fastchem" ]; then
     info "FastChem already installed at $AGNI_REAL/fastchem"
 else
-    info "Installing FastChem..."
     cd "$AGNI_REAL"
     # If a previous NFS-failed clone left a partial fastchem dir, clean it
     if [ -d "$AGNI_REAL/fastchem/.git" ] && [ ! -f "$AGNI_REAL/fastchem/CMakeLists.txt" ]; then
@@ -842,7 +942,7 @@ else
     fi
     # Without FC_DIR and with no answer on stdin, get_fastchem.sh asks nothing and
     # leaves the shell start files alone; FC_DIR is set below.
-    env -u FC_DIR bash src/get_fastchem.sh </dev/null 2>&1
+    run_logged "Building FastChem" env -u FC_DIR bash src/get_fastchem.sh </dev/null
     cd "$SCRIPT_DIR"
     if [ ! -d "$AGNI_REAL/fastchem" ]; then
         warn "FastChem installation failed. AGNI chemistry features will not work."
@@ -903,10 +1003,9 @@ clone_and_install() {
     if [ -d "$dest" ]; then
         described=$(git -C "$dest" describe --tags --always 2>/dev/null || echo 'no git commit')
         info "$repo already cloned at $dest ($described); not changed"
-        info "Installing $repo (editable)..."
-        pip install -e "$dest/." 2>&1
-    elif ! PROTEUS_MODULE_GIT_BASE="$GH_PREFIX" \
-        bash "$SCRIPT_DIR/tools/get_python_module.sh" "$repo" 2>&1; then
+        run_logged "Installing $repo (editable)" pip install -e "$dest/."
+    elif ! run_logged "Cloning and installing $repo" env PROTEUS_MODULE_GIT_BASE="$GH_PREFIX" \
+        bash "$SCRIPT_DIR/tools/get_python_module.sh" "$repo"; then
         die "Could not check out the $dist release tag in a new $repo clone and install it; see the error above"
     fi
 }
@@ -917,20 +1016,17 @@ clone_and_install "CALLIOPE" "fwl-calliope"
 clone_and_install "ZEPHYRUS" "fwl-zephyrus"
 
 # Aragog and Zalmoxis use dedicated setup scripts
-info "Setting up Aragog..."
-bash tools/get_aragog.sh 2>&1
-info "Setting up Zalmoxis..."
-bash tools/get_zalmoxis.sh 2>&1
+run_logged "Cloning and installing Aragog" bash tools/get_aragog.sh
+run_logged "Cloning and installing Zalmoxis" bash tools/get_zalmoxis.sh
 
 # Install the SUNDIALS CVODE solver, Aragog's default integrator. A run with
 # Aragog stops at setup without it.
-info "Setting up the SUNDIALS CVODE solver..."
-bash tools/get_cvode.sh 2>&1 \
+run_logged "Setting up the SUNDIALS CVODE solver" bash tools/get_cvode.sh \
     || warn "CVODE install failed. Aragog with solver_method = \"cvode\" stops at setup until it imports; fix the error above and re-run bash tools/get_cvode.sh. Other interior modules, radau and bdf do not need it."
 
 # Install PROTEUS itself
-info "Installing PROTEUS and remaining dependencies..."
-pip install -e ".[develop]"
+run_logged --takes "a few minutes" "Installing PROTEUS and its remaining dependencies" \
+    pip install -e ".[develop]"
 
 # The PROTEUS install can replace packages; Aragog on "cvode" needs CVODE to still import.
 python -c "from scikits_odes_sundials.cvode import CVODE, CV_RootFunction, StatusEnum" >/dev/null 2>&1 \

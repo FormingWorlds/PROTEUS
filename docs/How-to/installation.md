@@ -122,6 +122,8 @@ The installer runs through the following phases automatically:
 7. Reference data downloads (by default the essential set: the default-config and tutorial k-tables, stellar spectra and tracks, the PHOENIX grid of the default star, and the interior tables)
 8. Verification via `proteus doctor`
 
+The installer prints one line per build step and writes the full build output to `install_<date>_<time>.log` (for example `install_20261011_142530.log`) in the PROTEUS folder; when a step fails, it also prints the last 40 lines of that step's output.
+
 When your default Julia is not 1.11, 1.12 or 1.13, the installer adds Julia 1.13 through juliaup beside it and does not change your default; PROTEUS finds it through `PYTHON_JULIAPKG_EXE`, so a bare `julia` in your terminal is still your own default.
 
 The installer checks out each Python module (MORS, JANUS, CALLIOPE, ZEPHYRUS, Aragog and Zalmoxis) at the release tag that matches its minimum version in `pyproject.toml`, which leaves the clone on a detached HEAD.
@@ -155,6 +157,7 @@ phases.
 | `--all-data` | Download all reference data (~10-20 GB) instead of the essential set (~3 GB) |
 | `--no-data` | Skip data downloads entirely (download later with `proteus get`) |
 | `-i` / `--interactive` | Interactive mode (prompt for choices; default is non-interactive) |
+| `--verbose` | Show the full build output on the terminal as well as in the log file |
 
 !!! tip "CLI alternative: `proteus install-all`"
     If PROTEUS is already importable in your environment, `proteus install-all`

@@ -5,6 +5,8 @@ platform. If you encounter errors that you cannot solve via the standard
 step-by-step guide or the advice below,
 [contact the developers](../Community/contact.md).
 
+`install.sh` prints one line per build step on the terminal. The full output of every step, where the install errors below appear, is in the log file `install_<date>_<time>.log` in the PROTEUS folder; a failed step also prints its last 40 lines, and `bash install.sh --verbose` shows all of it on the terminal.
+
 ### Quick error index
 
 | Error / symptom | Section |
@@ -138,7 +140,8 @@ python -m pip install -U -e .
 ### An install refuses to replace a module checkout {#an-install-refuses-to-replace-a-module-checkout}
 
 An install script stops rather than delete a module checkout that holds work
-you would not get back:
+you would not get back (under `install.sh` the message is in the last lines of
+the failed step and in the log file `install_<date>_<time>.log`):
 
 ```console
 ERROR: /path/to/aragog has uncommitted changes or commits not on a remote.
@@ -304,7 +307,7 @@ Install Python via Homebrew and use pip to manage packages, rather than Conda.
 
 ### Errors during the SOCRATES compilation {#errors-during-the-socrates-compilation}
 
-One of the following errors happen during the SOCRATES compilation:
+One of the following errors happen during the SOCRATES compilation (with `install.sh`, they are in its log file `install_<date>_<time>.log` in the PROTEUS folder):
 
 1. `clang (LLVM option parsing): Unknown command line argument '-x86-pad-for-align=false'.  Try: 'clang (LLVM option parsing) --help'`
 2. `clang (LLVM option parsing): Did you mean '--x86-slh-loads=false'?`
