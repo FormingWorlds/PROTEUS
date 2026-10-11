@@ -504,19 +504,29 @@ def test_a_core_module_core_without_the_zalmoxis_structure_is_refused_when_built
 
 @pytest.mark.unit
 def test_the_default_redox_state_is_two_log_units_above_iron_wustite():
-    """``outgas.fO2_shift_IW`` defaults to IW+2, the 2 input files that list
-    every option and the smallest run set the same value, and the validator
-    still bounds a user value to [-12, 12]."""
+    """``outgas.fO2_shift_IW`` defaults to IW+2. ``all_options.toml``,
+    ``minimal.toml`` and the Earth and Venus tutorials set that value, the 5
+    CHILI intercomparison cases keep the protocol's IW+4, and a user value is
+    accepted on [-12, 12] and refused half a unit beyond either end."""
     from helpers import PROTEUS_ROOT
 
     from proteus.config import read_config_object
     from proteus.config._outgas import Outgas
 
     assert Outgas().fO2_shift_IW == pytest.approx(2.0)
-    for name in ('all_options.toml', 'minimal.toml'):
+    at_default = ('all_options.toml', 'minimal.toml')
+    at_default += ('tutorials/tutorial_earth.toml', 'tutorials/tutorial_venus.toml')
+    for name in at_default:
         cfg = read_config_object(PROTEUS_ROOT / 'input' / name)
         assert cfg.outgas.fO2_shift_IW == pytest.approx(2.0), name
-    # Edge and error contract: the bounds are inclusive, and 0.5 beyond is refused.
-    assert Outgas(fO2_shift_IW=-12.0).fO2_shift_IW == pytest.approx(-12.0)
-    with pytest.raises(ValueError):
-        Outgas(fO2_shift_IW=12.5)
+    for case in ('earth', 'venus', 'tr1b', 'tr1e', 'tr1a'):
+        cfg = read_config_object(
+            PROTEUS_ROOT / 'input' / 'chili' / 'intercomp' / f'{case}.toml'
+        )
+        assert cfg.outgas.fO2_shift_IW == pytest.approx(4.0), case
+    # Edge and error contract: both bounds are inclusive.
+    for edge in (-12.0, 12.0):
+        assert Outgas(fO2_shift_IW=edge).fO2_shift_IW == pytest.approx(edge)
+    for beyond in (-12.5, 12.5):
+        with pytest.raises(ValueError):
+            Outgas(fO2_shift_IW=beyond)

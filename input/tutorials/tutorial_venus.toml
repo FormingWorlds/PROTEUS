@@ -6,8 +6,6 @@
 # input/chili/intercomp/venus.toml.
 #
 # Identical to the Earth tutorial except: mass=0.815 M_Earth, orbit=0.723 AU.
-# Higher instellation delays solidification; some models predict Type II
-# radiative equilibrium.
 #
 # Run: proteus start --offline -c input/tutorials/tutorial_venus.toml
 

@@ -3,13 +3,13 @@
 
 The tutorial configs are the base of the CHILI cases:
 ``input/tutorials/tutorial_earth.toml`` and
-``input/tutorials/tutorial_venus.toml`` hold the protocol's Earth and
-Venus setups at the PROTEUS default redox state. This script derives
-every intercomparison config from them by applying only the deltas
-listed in ``CASE_DELTAS`` and ``GRID_AXES`` below, one of which is the
+``input/tutorials/tutorial_venus.toml`` hold the Earth and Venus setups
+of the protocol, except the redox state, which they set to IW+2. This
+script derives every intercomparison config from them by applying only
+the deltas listed in ``CASE_DELTAS`` and ``GRID_AXES`` below and the
 protocol's redox state, so the intercomparison and the tutorials cannot
-drift apart in any other field. The unit
-tests in ``tests/tools/test_chili_generate.py`` enforce that contract:
+drift apart in any other field. The unit tests in
+``tests/tools/test_chili_generate.py`` enforce that contract:
 each generated config must equal its tutorial base on every field
 outside its delta list, the grid axes must match the standalone grid
 configs under ``input/tutorials/chili_grid/``, and the committed files
@@ -23,7 +23,8 @@ Cases
   sweeping the protocol H and C inventories around the nominal cases.
 - ``tr1b.toml`` / ``tr1e.toml`` / ``tr1a.toml``: TRAPPIST-1 b, e, and
   alpha (protocol Table 4), derived from the Earth base with the
-  TRAPPIST star, orbit, and integration-time deltas. Escape is
+  TRAPPIST star, orbit, and integration-time deltas and the protocol's
+  redox state. Escape is
   disabled in these cases: ZEPHYRUS pairs only with the Spada
   evolution tracks, and a 0.09 M_sun star needs the Baraffe tracks,
   so the escape treatment for the TRAPPIST cases awaits a protocol
@@ -47,9 +48,6 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 TUTORIALS = os.path.join(ROOT, 'input', 'tutorials')
 OUTDIR = os.path.join(ROOT, 'input', 'chili', 'intercomp')
 
-# Oxygen fugacity of the CHILI protocol, relative to iron-wustite [log10 units].
-PROTOCOL_FO2_SHIFT_IW = 4.0
-
 # Per-case deltas applied on top of the tutorial base config. Keys are
 # dotted config paths; every path listed here is exempt from the
 # equality contract with the tutorial base, nothing else is.
@@ -60,14 +58,12 @@ CASE_DELTAS: dict[str, dict] = {
         'base': 'tutorial_earth.toml',
         'set': {
             'params.out.path': 'chili_earth',
-            'outgas.fO2_shift_IW': PROTOCOL_FO2_SHIFT_IW,
         },
     },
     'venus': {
         'base': 'tutorial_venus.toml',
         'set': {
             'params.out.path': 'chili_venus',
-            'outgas.fO2_shift_IW': PROTOCOL_FO2_SHIFT_IW,
         },
     },
     # TRAPPIST-1 cases (protocol Table 4). Flux scaling follows the
@@ -77,7 +73,6 @@ CASE_DELTAS: dict[str, dict] = {
         'base': 'tutorial_earth.toml',
         'set': {
             'params.out.path': 'chili_tr1b',
-            'outgas.fO2_shift_IW': PROTOCOL_FO2_SHIFT_IW,
             # ZEPHYRUS requires the Spada tracks; escape for the
             # TRAPPIST cases awaits a protocol decision.
             'escape.module': 'none',
@@ -95,7 +90,6 @@ CASE_DELTAS: dict[str, dict] = {
         'base': 'tutorial_earth.toml',
         'set': {
             'params.out.path': 'chili_tr1e',
-            'outgas.fO2_shift_IW': PROTOCOL_FO2_SHIFT_IW,
             # ZEPHYRUS requires the Spada tracks; escape for the
             # TRAPPIST cases awaits a protocol decision.
             'escape.module': 'none',
@@ -113,7 +107,6 @@ CASE_DELTAS: dict[str, dict] = {
         'base': 'tutorial_earth.toml',
         'set': {
             'params.out.path': 'chili_tr1a',
-            'outgas.fO2_shift_IW': PROTOCOL_FO2_SHIFT_IW,
             # ZEPHYRUS requires the Spada tracks; escape for the
             # TRAPPIST cases awaits a protocol decision.
             'escape.module': 'none',
@@ -128,6 +121,12 @@ CASE_DELTAS: dict[str, dict] = {
         },
     },
 }
+
+# Every case runs at the oxygen fugacity of the CHILI protocol, relative to iron-wustite
+# [log10 units], whatever the tutorial base sets.
+PROTOCOL_FO2_SHIFT_IW = 4.0
+for _spec in CASE_DELTAS.values():
+    _spec['set']['outgas.fO2_shift_IW'] = PROTOCOL_FO2_SHIFT_IW
 
 # Protocol H and C inventory axes [kg] for the grid sweeps. The
 # standalone per-case grid configs under input/tutorials/chili_grid/

@@ -67,14 +67,16 @@ def test_generated_cases_match_tutorials_outside_their_deltas():
     lockstep: a physics field changed in only one of the two surfaces
     appears here as an undeclared difference. The nominal cases also pin
     the boundary from the other side: they differ from their tutorial in
-    the output path and the redox state only, and every case runs at the
-    protocol's IW+4 while both tutorials run at the config default.
+    the output path and the redox state only, and the redox state differs
+    in every case.
     """
     gen = _load_generator()
     for name, spec in gen.CASE_DELTAS.items():
         tut = _read_config(str(REPO / 'input' / 'tutorials' / spec['base']))
         case = _read_config(str(REPO / 'input' / 'chili' / 'intercomp' / f'{name}.toml'))
         diffs = set(_diff_paths(tut, case))
+        # The protocol's redox state is a real difference from the tutorial in every case.
+        assert 'outgas.fO2_shift_IW' in diffs, name
         declared = set(spec['set'].keys())
         undeclared = diffs - declared
         assert not undeclared, f'{name}: differs from tutorial outside its deltas: {undeclared}'
@@ -98,15 +100,6 @@ def test_generated_cases_match_tutorials_outside_their_deltas():
     nominal = {'params.out.path', 'outgas.fO2_shift_IW'}
     assert set(gen.CASE_DELTAS['earth']['set']) == nominal
     assert set(gen.CASE_DELTAS['venus']['set']) == nominal
-    # The protocol value is set in all 5 cases and is not the tutorial value.
-    from proteus.config._outgas import Outgas
-
-    for name, spec in gen.CASE_DELTAS.items():
-        case = _read_config(str(REPO / 'input' / 'chili' / 'intercomp' / f'{name}.toml'))
-        tut = _read_config(str(REPO / 'input' / 'tutorials' / spec['base']))
-        assert case.outgas.fO2_shift_IW == pytest.approx(4.0), name
-        assert tut.outgas.fO2_shift_IW == pytest.approx(Outgas().fO2_shift_IW), spec['base']
-    assert len(gen.CASE_DELTAS) == 5
 
 
 def test_grid_axes_match_standalone_grid_configs():
@@ -126,6 +119,11 @@ def test_grid_axes_match_standalone_grid_configs():
     files = sorted(grid_dir.glob('earth_H*_C*.toml'))
     # The full cross product must be present: 3 x 3 cases.
     assert len(files) == len(h_axis) * len(c_axis)
+    # The standalone configs hold the protocol's redox state as the generated cases do.
+    for f in files:
+        with open(f, 'rb') as hdl:
+            shift = tomllib.load(hdl)['outgas']['fO2_shift_IW']
+        assert shift == pytest.approx(gen.PROTOCOL_FO2_SHIFT_IW), f.name
 
     budgets = set()
     for f in files:
