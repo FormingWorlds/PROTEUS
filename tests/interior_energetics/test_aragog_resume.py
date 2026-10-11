@@ -157,6 +157,16 @@ def test_the_prev_copy_and_then_an_older_saved_copy_serve(tmp_path, caplog):
     assert file.endswith('zalmoxis_output.dat.prev')
     assert row['Time'] == pytest.approx(T_OLD)
 
+    # .prev is tried with the newest matching row only: here it fits the older row alone.
+    _saved(out, T_OLDER).unlink()
+    hf_all.loc[1, 'R_core'] = OLD['R_core'] + 0.9
+    _mesh_file(
+        out / 'data' / 'zalmoxis_output.dat.prev', {**OLD, 'R_core': OLD['R_core'] - 0.5}
+    )
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.interior_energetics'):
+        assert pending_structure_update(str(out), hf_row, hf_all, N_BASIC) is None
+    assert len(caplog.records) == 1
+
 
 @pytest.mark.physics_invariant
 @pytest.mark.parametrize('bound', ['R_core', 'R_int'])
@@ -208,6 +218,14 @@ def test_a_snapshot_that_cannot_be_compared_is_not_a_pending_update(tmp_path, ca
             snapshot.unlink()
             _snapshot(out / 'data', T_NEW, OLD, n_entropy=n_entropy)
             assert pending_structure_update(str(out), hf_row, hf_all, N_BASIC) is None
+        # Entropy on 4 cells fits a run on 5 nodes, the 4 radii do not.
+        assert pending_structure_update(str(out), hf_row, hf_all, N_BASIC + 1) is None
+        with nc.Dataset(snapshot, 'w') as ds:  # no radii at all
+            ds.createDimension('basic', 0)
+            ds.createVariable('radius_b', 'f8', ('basic',))
+            ds.createDimension('staggered', N_BASIC - 1)
+            ds.createVariable('entropy_s', 'f8', ('staggered',))[:] = 7300.0
+        assert pending_structure_update(str(out), hf_row, hf_all, N_BASIC) is None
         snapshot.unlink()
         assert pending_structure_update(str(out), hf_row, hf_all, N_BASIC) is None
         _snapshot(out / 'data', T_NEW, OLD, with_radii=False)
@@ -226,8 +244,6 @@ def test_the_mesh_tolerance_is_one_metre_or_a_billionth_of_the_shell(tmp_path):
     assert mesh_radius_tolerance(OLD['R_core'], OLD['R_int']) == pytest.approx(1.0)
     shells = pd.Series([3.4e6, 5.0e9])
     assert list(mesh_radius_tolerance(0.0 * shells, shells)) == pytest.approx([1.0, 5.0])
-    # Discrimination: a relative term of 1e-6 would give 3.4 m for the first shell.
-    assert mesh_radius_tolerance(0.0, 3.4e6) < 2.0
     wide = {'R_core': 0.0, 'R_int': 5.0e9}
     _mesh_file(tmp_path / 'mesh.dat', wide)
     assert zalmoxis_mesh_gaps(str(tmp_path / 'mesh.dat'), wide)[2] == pytest.approx(5.0)

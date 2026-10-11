@@ -4,7 +4,7 @@ A loop integrates the interior on the structure it starts with and re-solves the
 structure after that step; the solver takes the new mesh at the start of the
 next loop. A run that stops between the two leaves an interior snapshot on the
 earlier mesh and a helpfile row on the new one. The solver needs the earlier
-mesh to book the compression work of the update and to carry the entropy to
+mesh to record the compression work of the update and to carry the entropy to
 the new mesh by mass parcel, so a resume has to build it first.
 """
 
@@ -81,9 +81,10 @@ def pending_structure_update(
             return None
         radii = np.asarray(ds['radius_b'][:], dtype=float) * 1.0e3  # km -> m
         n_entropy = ds['entropy_s'].size
+    if radii.size != n_basic or n_entropy != n_basic - 1:
+        return None
     r_inner, r_outer = float(radii[0]), float(radii[-1])
-    restorable = radii.size == n_basic and n_entropy == n_basic - 1
-    if not restorable or on_mesh(hf_row['R_core'], hf_row['R_int']):
+    if on_mesh(hf_row['R_core'], hf_row['R_int']):
         return None
 
     earlier = hf_all.iloc[:-1]
@@ -100,7 +101,7 @@ def pending_structure_update(
     log.warning(
         'Resume: the interior snapshot at t = %.6e yr is on an earlier structure '
         '(R_core = %.6e m, R_int = %.6e m) and no row with a mesh file of that structure '
-        'is left. The run continues on the structure of its row: the first step books no '
+        'is left. The run continues on the structure of its row: the first step records no '
         'compression work, and the entropy is carried by node and not by mass parcel.',
         time,
         r_inner,

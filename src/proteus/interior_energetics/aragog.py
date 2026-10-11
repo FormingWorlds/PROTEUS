@@ -56,8 +56,8 @@ from proteus.utils.helper import (
 
 log = logging.getLogger('fwl.' + __name__)
 
-# Core boundary conditions for which a resume replays a pending structure update: the
-# start vector then holds the entropy profile, and a run or a test covers the replay.
+# Core boundary conditions for which a resume replays a pending structure update:
+# the modes with a test and a run of the replay.
 _REPLAY_CORE_BCS = ('energy_balance',)
 
 # The effective step caps are fixed by the config, so record them once per
@@ -650,10 +650,11 @@ class AragogRunner:
             S_last = getattr(interior_o, '_last_entropy', None)
             n_stag = getattr(interior_o.aragog_solver, '_n_stag', None)
             if pending is not None and (S_last is None or len(S_last) != n_stag):
-                # No entropy to carry: the initial condition goes on the structure of the row.
-                AragogRunner.update_structure(config, hf_row, interior_o)
-                interior_o.aragog_solver.reset()
-                pending = None
+                raise RuntimeError(
+                    'Resume: the solver is on the structure of the interior snapshot, and the '
+                    f'snapshot entropy ({None if S_last is None else len(S_last)} values) does '
+                    f'not fit its {n_stag} cells. Run again from t = 0.'
+                )
             if config.params.resume and getattr(interior_o, '_last_entropy', None) is not None:
                 # Restore the evolved entropy field from the last NetCDF
                 # snapshot. Without this, _set_entropy_ic overwrites the
@@ -801,7 +802,7 @@ class AragogRunner:
         log.warning(
             'Resume: a structure update was pending at the stop. With %s the solver is '
             'built on the structure of the row and the update is not replayed from the '
-            'earlier mesh: the first step books no compression work, and the entropy is '
+            'earlier mesh: the first step records no compression work, and the entropy is '
             'carried by node and not by mass parcel.',
             reason,
         )
@@ -2771,9 +2772,9 @@ class AragogRunner:
             surface flux, so ``F_int`` is taken from the surface heat-flux
             node instead.
         t_end : float, optional
-            Simulation time of the row the output goes to [yr], at which the
-            radiogenic heat ``F_radio`` is sampled: the end of the step. The
-            time of ``hf_row`` when not given, for a state with no step.
+            End of the step [yr], at which the radiogenic heat ``F_radio`` is
+            sampled. The time of ``hf_row`` when not given, for a state with
+            no step.
         """
         log.info(
             'Aragog entropy: T_surf=%.0f K, T_cmb=%.0f K, Phi=%.3f, status=%d',

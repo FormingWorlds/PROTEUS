@@ -4862,7 +4862,6 @@ def test_the_radiogenic_heat_is_sampled_at_the_end_of_the_step(tmp_path):
     at 1500 yr times the mantle mass over the surface area, and it differs from
     the value at 1020 yr (the time plus the previous step) by the decay over 480 yr."""
     from proteus.interior_energetics.aragog import AragogRunner
-    from proteus.utils.constants import radnuc_data
 
     source = _k40()
     solver = SimpleNamespace(
@@ -4886,7 +4885,7 @@ def test_the_radiogenic_heat_is_sampled_at_the_end_of_the_step(tmp_path):
     assert output['F_radio'] == pytest.approx(source.get_heating(1500.0) * 4.0e24 / area)
     # Decay law: K-40 loses 2**(-480 / half-life) between 1020 yr and 1500 yr, 2.7e-7.
     at_1020 = source.get_heating(1020.0) * 4.0e24 / area
-    decay = 2.0 ** (-480.0 / radnuc_data['k40']['halflife'])
+    decay = 2.0 ** (-480.0 / source.half_life_years)
     assert output['F_radio'] / at_1020 == pytest.approx(decay, rel=1e-13)
     assert 1.0e-7 < 1.0 - output['F_radio'] / at_1020 < 1.0e-6
     assert output['F_radio'] > 0.0
@@ -5099,23 +5098,23 @@ def test_a_resume_with_a_pending_update_builds_on_the_earlier_structure_first():
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
-    'S_snap', [[7400.0, 7300.0], None], ids=['entropy_of_another_length', 'no_entropy']
+    'S_snap, size',
+    [([7400.0, 7300.0], '2 values'), (None, 'None values')],
+    ids=['short', 'none'],
 )
-def test_a_pending_update_without_an_entropy_to_carry_moves_to_the_row(S_snap):
-    """Built on the earlier structure but with no snapshot entropy that fits the
-    mesh, the solver is moved to the structure of the row before the initial
-    condition is set, and there is no replay: the first step runs on the row."""
+def test_a_pending_update_without_an_entropy_that_fits_stops_the_resume(S_snap, size):
+    """Built on the earlier structure with no snapshot entropy on its 3 cells, the
+    resume stops with an error that names both sizes, before any initial condition
+    is set; an entropy that fits passes the same guard and is replayed."""
     earlier = {'R_int': 6.869e6, 'R_core': 3.411e6, 'gravity': 8.29}
     earlier.update(M_core=1.92e24, core_density=11574.0, Time=222.0)
-    calls, hf_row = _first_call((earlier, 'data/222p001_zalmoxis.dat'), S_snap=S_snap)
+    pending = (earlier, 'data/222p001_zalmoxis.dat')
 
-    names = [c[0] for c in calls.mock_calls]
-    moved = ['setup_solver', 'update_solver', 'initialize', 'update_structure', 'reset']
-    assert names == [*moved, 'fresh_ic']
-    # The structure the solver is moved to is the row of the resume, not the earlier one.
-    assert calls.update_structure.call_args.args[0] == hf_row
-    assert calls.update_structure.call_args.args[0]['R_int'] == pytest.approx(6.819e6)
-    assert calls.setup_solver.call_args.args[0]['R_int'] == pytest.approx(6.869e6)
+    with pytest.raises(RuntimeError, match=f'{size}.* 3 cells. Run again from t = 0') as err:
+        _first_call(pending, S_snap=S_snap)
+    assert 'Resume' in str(err.value)
+    calls, _ = _first_call(pending)
+    assert [c[0] for c in calls.mock_calls][-2:] == ['set_initial_entropy', 'replay']
 
 
 @pytest.mark.unit
@@ -5132,16 +5131,17 @@ def test_a_resume_without_a_pending_update_sets_up_as_before():
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
-    'resume, struct_module, core_bc, impacts_since, expected_found, warned_for',
+    'resume, struct_module, core_bc, impacts_since, expected_found, warned_for, pending',
     [
-        (False, 'zalmoxis', 'energy_balance', 0, False, None),
-        (True, 'spider', 'energy_balance', 0, False, None),
-        (True, 'zalmoxis', 'energy_balance', 0, True, None),
-        (True, 'zalmoxis', 'energy_balance', 1, False, 'a giant impact'),
-        (True, 'zalmoxis', 'core_module', 0, False, "core_bc = 'core_module'"),
-        (True, 'zalmoxis', 'gradient', 0, False, "core_bc = 'gradient'"),
-        (True, 'zalmoxis', 'bower2018', 0, False, "core_bc = 'bower2018'"),
-        (True, 'zalmoxis', 'quasi_steady', 0, False, "core_bc = 'quasi_steady'"),
+        (False, 'zalmoxis', 'energy_balance', 0, False, None, True),
+        (True, 'spider', 'energy_balance', 0, False, None, True),
+        (True, 'zalmoxis', 'energy_balance', 0, True, None, True),
+        (True, 'zalmoxis', 'energy_balance', 1, False, 'a giant impact', True),
+        (True, 'zalmoxis', 'core_module', 0, False, "core_bc = 'core_module'", True),
+        (True, 'zalmoxis', 'gradient', 0, False, "core_bc = 'gradient'", True),
+        (True, 'zalmoxis', 'bower2018', 0, False, "core_bc = 'bower2018'", True),
+        (True, 'zalmoxis', 'quasi_steady', 0, False, "core_bc = 'quasi_steady'", True),
+        (True, 'zalmoxis', 'gradient', 0, False, None, False),
     ],
     ids=[
         'fresh_run',
@@ -5152,18 +5152,20 @@ def test_a_resume_without_a_pending_update_sets_up_as_before():
         'gradient',
         'bower2018',
         'quasi_steady',
+        'nothing_pending',
     ],
 )
 def test_the_pending_update_is_replayed_for_a_plain_energy_balance_resume_only(
-    caplog, resume, struct_module, core_bc, impacts_since, expected_found, warned_for
+    caplog, resume, struct_module, core_bc, impacts_since, expected_found, warned_for, pending
 ):
     """A fresh run and a structure module other than Zalmoxis do not read the
     snapshot. A Zalmoxis resume returns what the search finds for its node count
     with ``core_bc = 'energy_balance'`` and no giant impact since the snapshot
     structure; any other core boundary condition, and an impact in between, give
-    None and one warning that names the reason."""
+    None and one warning that names the reason. A search that finds nothing gives
+    None without a warning in any mode."""
     from proteus.interior_energetics import aragog_resume
-    from proteus.interior_energetics.aragog import _REPLAY_CORE_BCS, AragogRunner
+    from proteus.interior_energetics.aragog import AragogRunner
 
     config = MagicMock()
     config.params.resume = resume
@@ -5171,6 +5173,7 @@ def test_the_pending_update_is_replayed_for_a_plain_energy_balance_resume_only(
     config.interior_energetics.aragog.core_bc = core_bc
     config.interior_energetics.num_levels = 80
     found = ({'R_int': 6.869e6, 'n_impacts_applied': 2.0}, 'data/222p001_zalmoxis.dat')
+    found = found if pending else None
     hf_row = {'Time': 322.0, 'n_impacts_applied': 2.0 + impacts_since}
     hf_all = MagicMock()
 
@@ -5181,7 +5184,7 @@ def test_the_pending_update_is_replayed_for_a_plain_energy_balance_resume_only(
         result = AragogRunner._pending_structure_update(config, hf_row, hf_all, {'output': 'o'})
         no_table = AragogRunner._pending_structure_update(config, hf_row, None, {'output': 'o'})
 
-    assert (result == found) is expected_found
+    assert (result is not None and result == found) is expected_found
     assert no_table is None  # no helpfile table, no earlier row to build on
     if resume and struct_module == 'zalmoxis':
         search.assert_called_once_with('o', hf_row, hf_all, 80)
@@ -5190,31 +5193,6 @@ def test_the_pending_update_is_replayed_for_a_plain_energy_balance_resume_only(
     warnings = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
     assert len(warnings) == (0 if warned_for is None else 1)
     assert all(warned_for in w and 'not replayed' in w for w in warnings)
-    assert _REPLAY_CORE_BCS == ('energy_balance',)
-
-
-@pytest.mark.unit
-def test_a_resume_with_no_pending_update_reports_nothing(caplog):
-    """When the search finds no earlier structure, the gate returns None without a
-    warning, also for a core boundary condition that is never replayed."""
-    from proteus.interior_energetics import aragog_resume
-    from proteus.interior_energetics.aragog import AragogRunner
-
-    config = MagicMock()
-    config.params.resume = True
-    config.interior_struct.module = 'zalmoxis'
-    config.interior_energetics.aragog.core_bc = 'gradient'
-    config.interior_energetics.num_levels = 80
-    with (
-        patch.object(aragog_resume, 'pending_structure_update', return_value=None) as search,
-        caplog.at_level(logging.WARNING, logger='fwl.proteus.interior_energetics.aragog'),
-    ):
-        result = AragogRunner._pending_structure_update(
-            config, {'Time': 322.0}, MagicMock(), {'output': 'o'}
-        )
-    assert result is None
-    assert search.call_count == 1
-    assert not caplog.records
 
 
 @pytest.mark.unit
