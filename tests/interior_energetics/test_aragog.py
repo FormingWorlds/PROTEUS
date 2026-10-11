@@ -5194,6 +5194,30 @@ def test_the_pending_update_is_replayed_for_a_plain_energy_balance_resume_only(
 
 
 @pytest.mark.unit
+def test_a_resume_with_no_pending_update_reports_nothing(caplog):
+    """When the search finds no earlier structure, the gate returns None without a
+    warning, also for a core boundary condition that is never replayed."""
+    from proteus.interior_energetics import aragog_resume
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    config = MagicMock()
+    config.params.resume = True
+    config.interior_struct.module = 'zalmoxis'
+    config.interior_energetics.aragog.core_bc = 'gradient'
+    config.interior_energetics.num_levels = 80
+    with (
+        patch.object(aragog_resume, 'pending_structure_update', return_value=None) as search,
+        caplog.at_level(logging.WARNING, logger='fwl.proteus.interior_energetics.aragog'),
+    ):
+        result = AragogRunner._pending_structure_update(
+            config, {'Time': 322.0}, MagicMock(), {'output': 'o'}
+        )
+    assert result is None
+    assert search.call_count == 1
+    assert not caplog.records
+
+
+@pytest.mark.unit
 @pytest.mark.physics_invariant
 def test_setup_solver_builds_on_the_given_mesh_file_in_place_of_the_run_copy(tmp_path):
     """With a mesh file given, the Zalmoxis set-up loads the mesh from it, takes
