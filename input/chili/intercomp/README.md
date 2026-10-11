@@ -13,9 +13,9 @@ for those cases awaits a protocol decision. The `*.grid.toml` files are
 `proteus grid` specs sweeping the protocol H and C inventories.
 
 In every case `star.bol_scale` keeps its default of 1: the MORS track
-luminosity is used directly, matching the tutorial convention that the
-documented runs validate, rather than rescaling the bolometric flux to
-match a different track family at the starting age.
+luminosity is used directly, as in the tutorial configs, rather than
+rescaling the bolometric flux to match a different track family at the
+starting age.
 
 Do not edit these files by hand. Change the tutorial configs, the
 delta tables or `PROTOCOL_FO2_SHIFT_IW` in `tools/chili_generate.py`,

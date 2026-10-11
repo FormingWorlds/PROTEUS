@@ -111,6 +111,19 @@ def test_a_case_cannot_set_its_own_redox_state():
         gen.generate_case('tr1a')
 
 
+def test_a_refused_case_leaves_every_generated_file_as_it_was(tmp_path):
+    """A case that cannot be rendered stops ``main`` before it writes any file."""
+    gen = _load_generator()
+    gen.OUTDIR = str(tmp_path)
+    gen.main()
+    before = {p.name: p.read_text() for p in tmp_path.iterdir()}
+    assert len(before) == 7 and all(before.values())
+    gen.CASE_DELTAS['tr1a']['set']['outgas.fO2_shift_IW'] = 3.0
+    with pytest.raises(ValueError, match='tr1a'):
+        gen.main()
+    assert {p.name: p.read_text() for p in tmp_path.iterdir()} == before
+
+
 def test_grid_axes_match_standalone_grid_configs():
     """The grid-spec inventory axes equal the standalone grid configs.
 

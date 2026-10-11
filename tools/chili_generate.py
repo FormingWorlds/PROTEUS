@@ -7,8 +7,10 @@ The tutorial configs are the base of the CHILI cases:
 of the protocol, except the redox state, which they set to IW+2. This
 script derives every case config from them by applying only the deltas
 listed in ``CASE_DELTAS`` below and the protocol's redox state, so the
-intercomparison and the tutorials cannot drift apart in any other
-field; the grid specs sweep the ``GRID_AXES``. The unit tests in
+generated cases and the tutorials cannot drift apart in any other
+field; the grid specs sweep the ``GRID_AXES``. The standalone grid
+configs under ``input/tutorials/chili_grid/`` are not generated and
+hold the protocol values by hand. The unit tests in
 ``tests/tools/test_chili_generate.py`` enforce that contract:
 each generated config must equal its tutorial base on every field
 outside its delta list, the grid axes must match the standalone grid
@@ -221,16 +223,14 @@ def generate_grid(planet: str) -> str:
 
 
 def main() -> None:
+    """Write every case and grid spec; a case that cannot be rendered leaves all files as they are."""
+    texts = {f'{name}.toml': generate_case(name) for name in CASE_DELTAS}
+    texts |= {f'{planet}.grid.toml': generate_grid(planet) for planet in ('earth', 'venus')}
     os.makedirs(OUTDIR, exist_ok=True)
-    for name in CASE_DELTAS:
-        path = os.path.join(OUTDIR, f'{name}.toml')
+    for fname, text in texts.items():
+        path = os.path.join(OUTDIR, fname)
         with open(path, 'w') as f:
-            f.write(generate_case(name))
-        print(f'wrote {os.path.relpath(path, ROOT)}')
-    for planet in ('earth', 'venus'):
-        path = os.path.join(OUTDIR, f'{planet}.grid.toml')
-        with open(path, 'w') as f:
-            f.write(generate_grid(planet))
+            f.write(text)
         print(f'wrote {os.path.relpath(path, ROOT)}')
 
 

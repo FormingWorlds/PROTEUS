@@ -528,3 +528,19 @@ def test_the_default_redox_state_is_two_log_units_above_iron_wustite():
     for beyond in (-12.5, 12.5):
         with pytest.raises(ValueError):
             Outgas(fO2_shift_IW=beyond)
+
+
+@pytest.mark.unit
+def test_a_config_without_the_redox_key_loads_the_default(tmp_path):
+    """``input/minimal.toml`` with its ``fO2_shift_IW`` line removed loads IW+2."""
+    from helpers import PROTEUS_ROOT
+
+    from proteus.config import read_config_object
+
+    lines = (PROTEUS_ROOT / 'input' / 'minimal.toml').read_text().splitlines(keepends=True)
+    kept = [line for line in lines if 'fO2_shift_IW' not in line]
+    assert len(kept) == len(lines) - 1
+    (tmp_path / 'minimal.toml').write_text(''.join(kept))
+    assert read_config_object(tmp_path / 'minimal.toml').outgas.fO2_shift_IW == pytest.approx(
+        2.0
+    )
