@@ -424,6 +424,11 @@ def test_a_wet_mantle_core_is_computed_in_the_init_stage_and_kept_after(monkeypa
     assert planet == pytest.approx(M_earth - 2.082e23, rel=1e-14)
     assert core == pytest.approx(0.325 * (M_earth - 3.0e20), rel=1e-14)
     assert params['core_mass_target'] == pytest.approx(core, rel=1e-15)
+    # A row of the init stage computes also when the row before left a value.
+    _, again, _ = _structure_target(
+        monkeypatch, {**_WET, 'Time': 0.0, 'M_core_target': 1.5e24}, dry_mantle=False
+    )
+    assert again == pytest.approx(core, rel=1e-15)
 
     kept = params['core_mass_target']
     later = {**_WET, 'H_kg_atm': 5.1e21, 'Time': 250.0, 'M_core_target': kept}
