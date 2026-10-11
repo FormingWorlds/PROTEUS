@@ -441,7 +441,8 @@ def test_a_structure_target_of_zero_or_a_negative_core_is_refused(monkeypatch):
     a structure target of exactly 0 kg: the builder raises its own error and divides by
     nothing. A row with more hydrogen than the planet (6.5e24 kg) and a negative oxygen
     column (-2e24 kg) gives a core of -1.7e23 kg below a positive target of 1.47e24 kg:
-    the core mass must be positive, so that row is refused too."""
+    the core mass must be positive, so that row is refused too, and so is a core of
+    exactly 0 kg (hydrogen equal to the planet mass) below a target of 1e24 kg."""
     empty = {'H_kg_total': 0.0, 'C_kg_total': 0.0, 'O_kg_total': M_earth}
     with pytest.raises(ValueError, match=r'leaves no mantle: 0\.0000e\+00 kg .*, 1\.9409e\+24'):
         _structure_target(monkeypatch, empty)
@@ -450,6 +451,9 @@ def test_a_structure_target_of_zero_or_a_negative_core_is_refused(monkeypatch):
         ValueError, match=r'leaves no mantle: 1\.47\d+e\+24 kg .*, -1\.7\d+e\+23'
     ):
         _structure_target(monkeypatch, corrupt)
+    no_core = {'H_kg_total': M_earth, 'C_kg_total': 0.0, 'O_kg_total': -1.0e24}
+    with pytest.raises(ValueError, match=r'leaves no mantle: 1\.0000e\+24 kg .*, 0\.0000e\+00'):
+        _structure_target(monkeypatch, no_core)
 
 
 _WET = {'H_kg_atm': 1.0e20, 'C_kg_atm': 2.0e20, 'O_kg_atm': 2.079e23, 'H_kg_total': 6.0e21}

@@ -251,6 +251,22 @@ def test_zalmoxis_dummy_two_timesteps(proteus_multi_timestep_run):
         f'mass fraction regardless of core_frac_mode)'
     )
 
+    # The core follows its target: the boundary is the first node at or above core_frac of
+    # the converged mass (within solver_tol_outer of the target), and the shell below node i
+    # holds less than 3 / i of the core, since its density is below the mean core density.
+    zal = runner.config.interior_struct.zalmoxis
+    core_target = float(final['M_core_target'])
+    node = r_core / float(final['R_int']) * (zal.num_levels - 1)
+    assert node == pytest.approx(round(node), abs=1e-6), f'R_core is not on a node: {node}'
+    assert core_target > 0, f'M_core_target not written: {core_target:.3e}'
+    snap = float(final['M_core']) / core_target
+    assert (
+        1.0 - zal.solver_tol_outer <= snap <= (1.0 + zal.solver_tol_outer) * (1.0 + 3.0 / node)
+    ), (
+        f'M_core / M_core_target = {snap:.5f} outside the mass tolerance plus one shell '
+        f'(boundary at node {node:.0f} of {zal.num_levels})'
+    )
+
     # P_center, P_cmb positive and bounded. Earth: P_center ~ 3.6e11
     # Pa, P_cmb ~ 1.36e11 Pa. The discrimination guards are wide
     # (factor of ~5 on each) so a Mars-mass or super-Earth fiducial
