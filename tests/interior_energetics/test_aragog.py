@@ -2521,7 +2521,6 @@ def test_first_solver_build_logs_the_integrator(cvode_missing, caplog, solver_me
     integrator that runs: any scipy method other than BDF runs Radau, so the configured
     name is not what is logged.
     """
-    import logging
 
     from proteus.interior_energetics.aragog import AragogRunner
 

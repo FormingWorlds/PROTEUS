@@ -3070,7 +3070,6 @@ def test_timing_lines_keep_the_format_proteus_bench_parses(tmp_path, monkeypatch
     iteration began: the first ``init_loops + 1`` iterations run in the init stage,
     including the one at whose end PROTEUS clears it.
     """
-    import logging
     import re
 
     monkeypatch.setattr('proteus.proteus._IT_TIMING_ENABLED', True)
