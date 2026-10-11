@@ -98,14 +98,14 @@ A structure solve rewrites `data/zalmoxis_output.dat` at once, while the helpfil
 
 A Zalmoxis + Aragog run solves the structure after the interior step of an iteration, and Aragog takes the new mesh at the start of the next iteration. A run that stops between the two leaves an interior snapshot on the earlier structure and a helpfile row on the new one. On resume, PROTEUS builds Aragog on the earlier structure, restores the snapshot, and then makes the same structure update as a running loop. The first resumed step then books the compression work of that update (`step_dE_compression_J`) and carries the entropy to the new mesh by mass parcel, as the uninterrupted run does.
 
-This needs a mesh file of the earlier structure: the copy saved with its row (`data/<time>_zalmoxis.dat`) or `data/zalmoxis_output.dat.prev`. With a snapshot on every iteration (`params.out.write_mod = 1`) one of them is present after a normal stop. With sparser snapshots it is present only when the run stopped before the next structure solve, and the landing row of a giant impact keeps no copy. Two warnings mark a resume that continues without the update:
+This needs a mesh file of the earlier structure: the copy saved with its row (`data/<time>_zalmoxis.dat`) or `data/zalmoxis_output.dat.prev`. With a snapshot on every iteration (`params.out.write_mod = 1`), one of them is present after a normal stop. With sparser snapshots, it is present only when the run stopped before the next structure solve, and the landing row of a giant impact keeps no copy. Two warnings mark a resume that continues without the update:
 
 ```text
 Resume: the interior snapshot at t = 3.220037e+02 yr is on an earlier structure (...) and no row with a mesh file of that structure is left.
 Resume: a structure update was pending at the stop. With core_bc = 'core_module' the solver is built on the structure of the row and the update is not replayed from the earlier mesh
 ```
 
-The first appears when no mesh file of the earlier structure is left. The second appears for a core boundary condition other than `energy_balance`, and when a giant impact landed between the snapshot and the row. In both cases the run continues on the structure of its row: the first resumed step books no compression work, and the entropy is handed over by node. The resumed run then differs from the uninterrupted one from that step on. A structure update that moves both radii by less than 1 m is not detected and is handled in the same way.
+The first appears when no mesh file of the earlier structure is left. The second appears for a core boundary condition other than `energy_balance`, and when a giant impact landed between the snapshot and the row. In both cases, the run continues on the structure of its row: the first resumed step books no compression work, and the entropy is handed over by node. The resumed run then differs from the uninterrupted one from that step on. A structure update that moves both radii by less than 1 m is not detected and is handled in the same way.
 
 ### Cannot clone module, or Permission denied (publickey) {#cannot-clone-module-or-permission-denied-publickey}
 
