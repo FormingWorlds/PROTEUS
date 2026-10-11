@@ -464,10 +464,10 @@ def test_agni_aerosols_take_the_colour_and_name_of_their_gas(
         'tmpl': np.array([3000, 2000, 1000, 500]),
         'aerosols': np.array([g.lower() for g in gases[:-1]] + ['SiO2', 'dustdiv1']),
     }
-    profile['dustdiv1_mmr'] = np.array([1e-8, 5e-8, 1e-9])
+    for name in profile['aerosols']:
+        profile[name + '_mmr'] = np.array([1e-8, 5e-8, 1e-9])
     for g in gases:
         profile[g + '_vmr'] = np.array([1e-3, 1e-4, 1e-5])
-        profile[g.lower() + '_mmr'] = profile[g + '_mmr'] = np.array([1e-8, 5e-8, 1e-9])
     mock_glob.return_value = ['output_dir/data/1000_atm.nc']
     mock_read.return_value = profile
     ax1, ax2 = MagicMock(), MagicMock()
@@ -479,6 +479,7 @@ def test_agni_aerosols_take_the_colour_and_name_of_their_gas(
             'output_dir', None, plot_format='png', plot_gases=['Fe'], plot_offchem=False
         )
 
+    assert len(ax2.plot.call_args_list) == 7
     drawn = {c.kwargs['label']: c.kwargs['color'] for c in ax2.plot.call_args_list}
     want = {latexify(g): _preset_colours[g] for g in gases}
     assert drawn == want | {'dustdiv1': _preset_colours['dustdiv1']}
