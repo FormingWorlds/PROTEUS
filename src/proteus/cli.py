@@ -1106,6 +1106,161 @@ def _download_default_phoenix() -> None:
     click.secho(f'[+] PHOENIX grid for {label} available', fg='green')
 
 
+_GIT_READ_TIMEOUT_S = 30
+_NOT_OWN_CLONE = 'not a git clone of its own'
+
+
+def _git_read(directory: Path, *args: str) -> str | None:
+    """Return the standard output of a read-only git command run in ``directory``.
+
+    ``GIT_OPTIONAL_LOCKS=0`` keeps ``git status`` from rewriting the index.
+
+    Parameters
+    ----------
+    directory : Path
+        Folder given to ``git -C``.
+    *args : str
+        The git subcommand and its arguments.
+
+    Returns
+    -------
+    str or None
+        The output without surrounding white space, or None when git is
+        missing, exits non-zero or runs longer than ``_GIT_READ_TIMEOUT_S`` s.
+    """
+    try:
+        done = subprocess.run(
+            ['git', '-C', str(directory), *args],
+            capture_output=True,
+            text=True,
+            timeout=_GIT_READ_TIMEOUT_S,
+            env={**os.environ, 'GIT_OPTIONAL_LOCKS': '0'},
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if done.returncode != 0:
+        return None
+    return done.stdout.strip()
+
+
+def _agni_update_blocker(agni_dir: Path) -> str | None:
+    """Return what keeps ``tools/get_agni.sh`` from moving the AGNI clone, or None.
+
+    The script checks out the pinned commit in place, which git refuses over
+    a conflicting change but does without a word over commits of a detached
+    HEAD. The checks run in this order, each with read-only git commands:
+
+    1. ``git rev-parse --show-toplevel`` fails or names another folder: the
+       folder is no clone of its own, and git would act on the repository
+       around it (an empty ``.git`` folder inside the PROTEUS checkout).
+    2. ``git status --porcelain --untracked-files=no`` lists modified
+       tracked files.
+    3. ``git rev-list --count HEAD --not --remotes --tags`` counts commits
+       of HEAD on no remote-tracking branch and under no tag: local work on
+       a detached HEAD or on a branch that was not pushed.
+
+    A git command that fails or times out blocks too, because the state of
+    the clone is then unknown. Untracked files and stash entries do not
+    block: the checkout keeps them.
+
+    Parameters
+    ----------
+    agni_dir : Path
+        The AGNI folder under the PROTEUS root.
+
+    Returns
+    -------
+    str or None
+        What was found, for the stay line, or None when the clone may move.
+    """
+    top = _git_read(agni_dir, 'rev-parse', '--show-toplevel')
+    if top is None:
+        return f'{_NOT_OWN_CLONE} (git does not report one there)'
+    if Path(top).resolve() != agni_dir.resolve():
+        return f'{_NOT_OWN_CLONE} (git answers for {top})'
+    status = _git_read(agni_dir, 'status', '--porcelain', '--untracked-files=no')
+    if status is None:
+        return 'git could not report its modified files'
+    if status:
+        count = len(status.splitlines())
+        return f'{count} modified tracked file{"s" if count != 1 else ""}'
+    local = _git_read(agni_dir, 'rev-list', '--count', 'HEAD', '--not', '--remotes', '--tags')
+    if local is None or not local.isdigit():
+        return 'git could not list its local commits'
+    if int(local) > 0:
+        count = int(local)
+        return (
+            f'{count} local commit{"s" if count != 1 else ""} '
+            '(on no remote-tracking branch and under no tag)'
+        )
+    return None
+
+
+def _agni_pinned_ref() -> str | None:
+    """Return the AGNI commit that ``tools/get_agni.sh`` checks out.
+
+    Returns
+    -------
+    str or None
+        ``AGNI_GIT_REF`` when set, as the script reads it, else the ``ref``
+        of ``[tool.proteus.modules.agni]`` in ``pyproject.toml``; None when
+        neither is there.
+    """
+    from .doctor import _module_pins
+
+    return os.environ.get('AGNI_GIT_REF') or _module_pins().get('agni', {}).get('ref')
+
+
+def _update_agni(root: Path) -> None:
+    """Bring the AGNI clone under ``root`` to its pinned commit, or say why it stays.
+
+    A clone that ``_agni_update_blocker`` holds back is not touched; the
+    commands that move it by hand are printed instead. A failure of
+    ``tools/get_agni.sh`` is reported with its exit status, and the update
+    goes on with its next step either way.
+
+    Parameters
+    ----------
+    root : Path
+        PROTEUS source tree that holds ``AGNI/`` and ``tools/get_agni.sh``.
+    """
+    agni_dir = root / 'AGNI'
+    ref = _agni_pinned_ref()
+    found = _agni_update_blocker(agni_dir)
+    if found is not None:
+        if ref is None:
+            expected = 'the commit PROTEUS expects could not be read from pyproject.toml'
+        else:
+            expected = f'PROTEUS expects the commit {ref[:7] if len(ref) == 40 else ref}'
+        click.secho(f'[!] agni: {agni_dir} stays as it is: {found}; {expected}', fg='yellow')
+        if found.startswith(_NOT_OWN_CLONE):
+            click.echo(f'    Move it away; then, in {root}, run  bash tools/get_agni.sh 0')
+            click.echo('    which clones AGNI there at the pinned commit.')
+            return
+        click.echo('    To move it to that commit by hand, run:')
+        click.echo(f'      git -C {agni_dir} fetch origin')
+        click.echo(f'      git -C {agni_dir} checkout {ref or "<agni ref in pyproject.toml>"}')
+        click.echo(f'    and then, in {root}:  bash tools/get_agni.sh 0')
+        return
+    click.secho('[+] Updating AGNI...', fg='blue')
+    try:
+        subprocess.run(
+            ['bash', str(root / 'tools' / 'get_agni.sh'), '0'],
+            cwd=root,
+            env=_env_with_proteus_julia(),
+            check=True,
+        )
+    except subprocess.CalledProcessError as e:
+        click.secho(
+            f'[x] Failed to update AGNI: bash tools/get_agni.sh 0 exited with status '
+            f'{e.returncode}; its messages are above',
+            fg='red',
+        )
+        return
+    click.secho('[+] AGNI updated', fg='green')
+
+
 @cli.command()
 @click.option(
     '--export-env',
@@ -1298,22 +1453,9 @@ def update_all(export_env: bool, config_path: Path | None):
         click.secho('[!] Julia not found in PATH.', fg='yellow')
         click.secho('   Cannot update AGNI without Julia.', fg='yellow')
     else:
-        # --- Step 5: Update AGNI ---
-        agni_dir = root / 'AGNI'
-        if agni_dir.exists():
-            click.secho('[+] Updating AGNI...', fg='blue')
-            try:
-                subprocess.run(['git', 'pull'], cwd=agni_dir, check=True)
-                subprocess.run(
-                    ['bash', 'src/get_agni.sh', '0'],
-                    cwd=agni_dir,
-                    env=_env_with_proteus_julia(),
-                    check=True,
-                )
-                click.secho('[+] AGNI updated', fg='green')
-            except subprocess.CalledProcessError as e:
-                click.secho('[x] Failed to update AGNI', fg='red')
-                click.echo(e)
+        # --- Step 5: Bring AGNI to its pinned commit ---
+        if (root / 'AGNI').exists():
+            _update_agni(root)
         else:
             click.secho('[!] AGNI not found. Run `proteus install-all`.', fg='yellow')
 

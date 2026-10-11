@@ -197,8 +197,10 @@ finds, `proteus update-all` performs a full refresh of the whole stack:
 proteus update-all
 ```
 
-It updates the PROTEUS Python package, recompiles SOCRATES, pulls the latest
-AGNI, and refreshes the reference data, verifying environment variables and disk
+It updates the PROTEUS Python package, recompiles SOCRATES, brings AGNI to the
+commit pinned in `pyproject.toml` (an AGNI clone with modified files or commits of
+your own stays as it is, and the command prints the commands that move it by hand),
+and refreshes the reference data, verifying environment variables and disk
 space before proceeding. Pass `--export-env` to set the environment variables
 again in the active conda environment and in `.proteus-env.sh`. It does not change the Python module clones
 (MORS, JANUS, CALLIOPE, ZEPHYRUS, Aragog, Zalmoxis): to move one to its release tag after a version change,

@@ -5,7 +5,10 @@ import builtins
 import importlib.util
 import logging
 import os
+import shutil
+import subprocess
 import sys
+import types
 from pathlib import Path
 
 import pytest
@@ -1910,6 +1913,15 @@ def _make_fwl_data(monkeypatch, tmp_path):
     monkeypatch.setenv('FWL_DATA', str(fwl))
 
 
+def _agni_clone_may_move(monkeypatch):
+    """Let ``update-all`` treat the empty ``AGNI/`` stand-in of a test as a clone it may move.
+
+    The git checks of ``_agni_update_blocker`` have their own tests on real
+    clones; here every subprocess is stubbed.
+    """
+    monkeypatch.setattr(cli, '_agni_update_blocker', lambda agni_dir: None)
+
+
 @pytest.mark.unit
 def test_install_all_aborts_on_low_disk(monkeypatch, tmp_path):
     """``install-all`` exits non-zero when free disk is below the 5 GB threshold."""
@@ -1976,6 +1988,7 @@ def _export_env_site(monkeypatch, tmp_path, conda_prefix):
     monkeypatch.setattr(Path, 'home', lambda: home)
     (tmp_path / 'socrates').mkdir()
     (tmp_path / 'AGNI' / 'fastchem').mkdir(parents=True)
+    _agni_clone_may_move(monkeypatch)
     calls = []
 
     def fake_subprocess_run(cmd, **kwargs):
@@ -2132,6 +2145,7 @@ def _agni_site(monkeypatch, tmp_path, agni_present: bool) -> list:
     (tmp_path / 'socrates').mkdir()
     if agni_present:
         (tmp_path / 'AGNI').mkdir()
+    _agni_clone_may_move(monkeypatch)
     captured = []
 
     def fake_subprocess_run(cmd, **kwargs):
@@ -2155,7 +2169,8 @@ def test_agni_setup_runs_with_the_bound_julia_first_on_path(
     """AGNI's setup script gets PATH with the directory of PYTHON_JULIAPKG_EXE first.
 
     No julia is on PATH, so the command finds Julia only through the variable;
-    the PATH of the process itself stays as it was.
+    the PATH of the process itself stays as it was. install-all runs AGNI's own
+    script in the new clone, update-all runs ``tools/get_agni.sh`` in the root.
     """
     captured = _agni_site(monkeypatch, tmp_path, agni_present)
     bindir = tmp_path / 'julia-1.13.1' / 'bin'
@@ -2164,9 +2179,13 @@ def test_agni_setup_runs_with_the_bound_julia_first_on_path(
     res = runner.invoke(cli.cli, [command])
     assert res.exit_code == 0, res.output
     assert 'Julia not found' not in res.output
-    agni = [kw for cmd, kw in captured if cmd == ['bash', 'src/get_agni.sh', '0']]
+    if command == 'install-all':
+        script, cwd = ['bash', 'src/get_agni.sh', '0'], tmp_path / 'AGNI'
+    else:
+        script, cwd = ['bash', str(tmp_path / 'tools' / 'get_agni.sh'), '0'], tmp_path
+    agni = [kw for cmd, kw in captured if cmd == script]
     assert len(agni) == 1
-    assert agni[0]['cwd'] == tmp_path / 'AGNI'
+    assert agni[0]['cwd'] == cwd
     assert agni[0]['env']['PATH'].split(os.pathsep) == [str(bindir), '/usr/bin', '/bin']
     assert os.environ['PATH'] == '/usr/bin:/bin'
 
@@ -2270,6 +2289,7 @@ def test_update_all_success_path(monkeypatch, tmp_path):
 
     (tmp_path / 'socrates').mkdir()
     (tmp_path / 'AGNI').mkdir()
+    _agni_clone_may_move(monkeypatch)
 
     subprocess_calls = []
 
@@ -2348,6 +2368,7 @@ def test_update_all_socrates_update_failure_continues(monkeypatch, tmp_path):
 
     (tmp_path / 'socrates').mkdir()
     (tmp_path / 'AGNI').mkdir()
+    _agni_clone_may_move(monkeypatch)
 
     def fake_subprocess_run(cmd, **kwargs):
         if 'get_socrates.sh' in str(cmd):
@@ -2380,10 +2401,10 @@ def test_update_all_agni_update_failure_continues(monkeypatch, tmp_path):
 
     (tmp_path / 'socrates').mkdir()
     (tmp_path / 'AGNI').mkdir()
+    _agni_clone_may_move(monkeypatch)
 
     def fake_subprocess_run(cmd, **kwargs):
-        # The AGNI block uses cwd=agni_dir; identify by that
-        if kwargs.get('cwd') == tmp_path / 'AGNI':
+        if 'get_agni.sh' in str(cmd):
             raise cli.subprocess.CalledProcessError(returncode=1, cmd=cmd)
 
         class _Result:
@@ -2396,7 +2417,11 @@ def test_update_all_agni_update_failure_continues(monkeypatch, tmp_path):
 
     res = runner.invoke(cli.cli, ['update-all'])
     assert res.exit_code == 0
-    assert 'Failed to update AGNI' in res.output
+    assert (
+        '[x] Failed to update AGNI: bash tools/get_agni.sh 0 exited with status 1; '
+        'its messages are above'
+    ) in res.output
+    assert 'PROTEUS update completed' in res.output
 
 
 @pytest.mark.unit
@@ -2423,6 +2448,298 @@ def test_update_all_export_env_without_conda_env_writes_only_exports_file(
 
 
 # ---------------------------
+# update_all and the AGNI clone: real git on scratch repositories, local remote
+# ---------------------------
+
+_REPO_TOOLS = Path(__file__).resolve().parents[1] / 'tools'
+_REAL_RUN = subprocess.run
+
+
+def _git(cwd: Path, *args: str) -> str:
+    """Run git in ``cwd`` and return its output without surrounding white space."""
+    done = _REAL_RUN(['git', '-C', str(cwd), *args], capture_output=True, text=True, check=True)
+    return done.stdout.strip()
+
+
+def _is_detached(clone: Path) -> bool:
+    """Return whether HEAD of ``clone`` is on no branch."""
+    done = _REAL_RUN(
+        ['git', '-C', str(clone), 'symbolic-ref', '-q', 'HEAD'], capture_output=True
+    )
+    return done.returncode == 1
+
+
+def _agni_remote(tmp_path: Path) -> tuple[Path, list[str]]:
+    """Make a bare AGNI remote with 3 commits on main; return it and the hashes, oldest first.
+
+    Its ``src/get_agni.sh`` only prints a line, and the second commit adds
+    ``src/pin_only.jl``, so an untracked file of that name blocks the checkout.
+    """
+    work = tmp_path / 'agni_work'
+    _REAL_RUN(['git', 'init', '-q', '-b', 'main', str(work)], check=True)
+    (work / 'src').mkdir()
+    (work / 'src' / 'get_agni.sh').write_text('#!/bin/bash\necho "AGNI setup ${1:-}"\n')
+    commits = []
+    for n in (1, 2, 3):
+        (work / 'version.txt').write_text(f'{n}\n')
+        if n == 2:
+            (work / 'src' / 'pin_only.jl').write_text('# added at the pinned commit\n')
+        _git(work, 'add', '-A')
+        _git(work, 'commit', '-q', '-m', f'AGNI commit {n}')
+        commits.append(_git(work, 'rev-parse', 'HEAD'))
+    bare = tmp_path / 'AGNI.git'
+    _REAL_RUN(['git', 'clone', '-q', '--bare', str(work), str(bare)], check=True)
+    return bare, commits
+
+
+def _agni_update_site(monkeypatch, tmp_path: Path, script: str, clone: bool = True):
+    """A PROTEUS root with an AGNI clone, a stub julia, and the steps before AGNI stubbed.
+
+    ``script = 'real'`` copies ``tools/get_agni.sh`` and ``tools/_get_common.sh``
+    of this checkout into the root; ``'stub'`` writes a ``get_agni.sh`` that
+    only exits 0, for the tests of the decision in ``update_all``. The
+    remote is local (``AGNI_GIT_URL``), the pin is its second commit
+    (``AGNI_GIT_REF``) and its tip the third, and the clone is detached at
+    the first. Git reads a config of the test only. pip is the one stubbed
+    subprocess; git and bash run for real.
+    """
+    gitconfig = tmp_path / 'gitconfig'
+    gitconfig.write_text('[user]\n\tname = PROTEUS test\n\temail = test@example.org\n')
+    monkeypatch.setenv('GIT_CONFIG_GLOBAL', str(gitconfig))
+    monkeypatch.setenv('GIT_CONFIG_NOSYSTEM', '1')
+    monkeypatch.setenv('XDG_CONFIG_HOME', str(tmp_path / 'xdg'))
+    for var in ('GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'PYTHON_JULIAPKG_EXE'):
+        monkeypatch.delenv(var, raising=False)
+    root = tmp_path / 'proteus'
+    _pin_proteus_root(monkeypatch, root)
+    monkeypatch.setattr(cli.shutil, 'disk_usage', lambda path: _stub_disk_usage_high())
+    _make_fwl_data(monkeypatch, tmp_path)
+    monkeypatch.setattr(cli, '_install_cvode', lambda root: None)
+    bindir = tmp_path / 'bin'
+    _julia_stub(bindir)
+    monkeypatch.setenv('PATH', os.pathsep.join([str(bindir), os.environ['PATH']]))
+    bare, commits = _agni_remote(tmp_path)
+    monkeypatch.setenv('AGNI_GIT_URL', str(bare))
+    monkeypatch.setenv('AGNI_GIT_REF', commits[1])
+    (root / 'tools').mkdir()
+    if script == 'real':
+        for name in ('get_agni.sh', '_get_common.sh'):
+            shutil.copy(_REPO_TOOLS / name, root / 'tools' / name)
+    else:
+        (root / 'tools' / 'get_agni.sh').write_text('#!/bin/bash\nexit 0\n')
+    agni = root / 'AGNI'
+    if clone:
+        _REAL_RUN(['git', 'clone', '-q', str(bare), str(agni)], check=True)
+        _git(agni, 'checkout', '-q', '--detach', commits[0])
+    calls = []
+
+    def run(cmd, **kwargs):
+        calls.append([str(part) for part in cmd])
+        if list(cmd[1:3]) == ['-m', 'pip']:
+            return subprocess.CompletedProcess(cmd, 0)
+        return _REAL_RUN(cmd, **kwargs)
+
+    monkeypatch.setattr(cli.subprocess, 'run', run)
+    data_paths = []
+    monkeypatch.setattr(
+        cli, '_update_input_data', lambda path: data_paths.append(path) or False
+    )
+    return types.SimpleNamespace(
+        root=root, agni=agni, commits=commits, calls=calls, data_paths=data_paths
+    )
+
+
+def _script_calls(site) -> list[list[str]]:
+    """The commands of ``site`` that ran ``tools/get_agni.sh`` of its root."""
+    script = str(site.root / 'tools' / 'get_agni.sh')
+    return [cmd for cmd in site.calls if cmd[:2] == ['bash', script]]
+
+
+def _stay_line(site, found: str) -> str:
+    """The line ``update-all`` prints for an AGNI clone that it leaves as it is."""
+    pin = site.commits[1][:7]
+    return f'agni: {site.agni} stays as it is: {found}; PROTEUS expects the commit {pin}'
+
+
+@pytest.mark.unit
+def test_update_all_moves_a_clean_detached_agni_clone_to_the_pin(monkeypatch, tmp_path):
+    """A clean clone detached at an older commit, as install.sh leaves it, ends at the pin.
+
+    The real ``tools/get_agni.sh`` runs once with ``0``. The remote tip is
+    one commit past the pin, so a pull of the latest AGNI ends elsewhere.
+    """
+    site = _agni_update_site(monkeypatch, tmp_path, 'real')
+
+    res = runner.invoke(cli.cli, ['update-all'])
+
+    assert res.exit_code == 0, res.output
+    assert _script_calls(site) == [['bash', str(site.root / 'tools' / 'get_agni.sh'), '0']]
+    assert _git(site.agni, 'rev-parse', 'HEAD') == site.commits[1]
+    assert _git(site.agni, 'rev-parse', 'HEAD') != site.commits[2]
+    assert _is_detached(site.agni)
+    assert ['git', 'pull'] not in site.calls
+    assert 'Failed to update AGNI' not in res.output
+    assert '[+] AGNI updated' in res.output
+    assert 'stays as it is' not in res.output
+
+
+@pytest.mark.unit
+def test_update_all_moves_agni_and_keeps_an_untracked_file_and_a_stash(monkeypatch, tmp_path):
+    """An untracked file and a stash entry do not block: the clone moves and keeps both."""
+    site = _agni_update_site(monkeypatch, tmp_path, 'real')
+    (site.agni / 'version.txt').write_text('an edit put aside\n')
+    _git(site.agni, 'stash', 'push', '-q', '-m', 'my edit')
+    (site.agni / 'notes.txt').write_text('my notes\n')
+
+    res = runner.invoke(cli.cli, ['update-all'])
+
+    assert res.exit_code == 0, res.output
+    assert len(_script_calls(site)) == 1
+    assert _git(site.agni, 'rev-parse', 'HEAD') == site.commits[1]
+    assert (site.agni / 'notes.txt').read_text() == 'my notes\n'
+    assert 'my edit' in _git(site.agni, 'stash', 'list')
+    assert (site.agni / 'version.txt').read_text() == '2\n'
+
+
+@pytest.mark.unit
+def test_update_all_reports_the_script_status_when_git_refuses_the_checkout(
+    monkeypatch, tmp_path
+):
+    """An untracked file that the pin would overwrite makes git refuse; the clone stays put.
+
+    The message names the script and its exit status, and the later steps run.
+    """
+    site = _agni_update_site(monkeypatch, tmp_path, 'real')
+    (site.agni / 'src' / 'pin_only.jl').write_text('# my own file of that name\n')
+
+    res = runner.invoke(cli.cli, ['update-all'])
+
+    assert res.exit_code == 0, res.output
+    assert len(_script_calls(site)) == 1
+    assert _git(site.agni, 'rev-parse', 'HEAD') == site.commits[0]
+    assert (site.agni / 'src' / 'pin_only.jl').read_text() == '# my own file of that name\n'
+    assert (
+        '[x] Failed to update AGNI: bash tools/get_agni.sh 0 exited with status 1; '
+        'its messages are above'
+    ) in res.output
+    assert '[+] AGNI updated' not in res.output
+    assert 'PROTEUS update completed' in res.output
+
+
+@pytest.mark.unit
+def test_update_all_leaves_an_agni_clone_with_a_modified_file_as_it_is(monkeypatch, tmp_path):
+    """A modified tracked file blocks: no script, same HEAD and status, the hand commands.
+
+    ``tools/get_agni.sh`` is a stub here: the test is about the decision of
+    ``update_all``, and the command still runs its later steps.
+    """
+    site = _agni_update_site(monkeypatch, tmp_path, 'stub')
+    (site.agni / 'version.txt').write_text('my change\n')
+    head = _git(site.agni, 'rev-parse', 'HEAD')
+    status = _git(site.agni, 'status', '--porcelain')
+
+    res = runner.invoke(cli.cli, ['update-all'])
+
+    assert res.exit_code == 0, res.output
+    assert _script_calls(site) == []
+    assert _git(site.agni, 'rev-parse', 'HEAD') == head == site.commits[0]
+    assert _git(site.agni, 'status', '--porcelain') == status == 'M version.txt'
+    assert _stay_line(site, '1 modified tracked file') in res.output
+    assert f'git -C {site.agni} fetch origin' in res.output
+    assert f'git -C {site.agni} checkout {site.commits[1]}' in res.output
+    assert 'bash tools/get_agni.sh 0' in res.output
+    assert 'Failed to update AGNI' not in res.output
+    assert site.data_paths == [site.root / 'input' / 'all_options.toml']
+    assert 'PROTEUS update completed' in res.output
+
+
+@pytest.mark.unit
+def test_update_all_leaves_a_local_commit_on_a_detached_agni_head(monkeypatch, tmp_path):
+    """A commit on a detached HEAD is on no ref; moving the clone would lose it, so it stays.
+
+    ``tools/get_agni.sh`` is a stub here: the test is about the decision.
+    """
+    site = _agni_update_site(monkeypatch, tmp_path, 'stub')
+    (site.agni / 'version.txt').write_text('my work\n')
+    _git(site.agni, 'commit', '-q', '-am', 'my work')
+    local = _git(site.agni, 'rev-parse', 'HEAD')
+
+    res = runner.invoke(cli.cli, ['update-all'])
+
+    assert res.exit_code == 0, res.output
+    assert _script_calls(site) == []
+    assert _git(site.agni, 'rev-parse', 'HEAD') == local
+    assert local not in site.commits
+    found = '1 local commit (on no remote-tracking branch and under no tag)'
+    assert _stay_line(site, found) in res.output
+
+
+@pytest.mark.unit
+def test_update_all_leaves_an_agni_branch_with_an_unpushed_commit(monkeypatch, tmp_path):
+    """A branch ahead of its remote blocks as well. ``tools/get_agni.sh`` is a stub here."""
+    site = _agni_update_site(monkeypatch, tmp_path, 'stub')
+    _git(site.agni, 'switch', '-q', 'main')
+    (site.agni / 'version.txt').write_text('not pushed\n')
+    _git(site.agni, 'commit', '-q', '-am', 'not pushed')
+    local = _git(site.agni, 'rev-parse', 'HEAD')
+
+    res = runner.invoke(cli.cli, ['update-all'])
+
+    assert res.exit_code == 0, res.output
+    assert _script_calls(site) == []
+    assert _git(site.agni, 'rev-parse', 'HEAD') == local
+    assert _git(site.agni, 'symbolic-ref', '--short', 'HEAD') == 'main'
+    assert 'stays as it is: 1 local commit' in res.output
+
+
+@pytest.mark.unit
+def test_update_all_moves_an_agni_branch_that_equals_its_remote(monkeypatch, tmp_path):
+    """A branch at its remote holds no local work: the clone ends detached at the pin.
+
+    The branch stays at the remote tip, one commit past the pin.
+    """
+    site = _agni_update_site(monkeypatch, tmp_path, 'real')
+    _git(site.agni, 'switch', '-q', 'main')
+
+    res = runner.invoke(cli.cli, ['update-all'])
+
+    assert res.exit_code == 0, res.output
+    assert len(_script_calls(site)) == 1
+    assert _git(site.agni, 'rev-parse', 'HEAD') == site.commits[1]
+    assert _is_detached(site.agni)
+    assert _git(site.agni, 'rev-parse', 'refs/heads/main') == site.commits[2]
+    assert '[+] AGNI updated' in res.output
+
+
+@pytest.mark.unit
+def test_update_all_leaves_an_agni_folder_with_an_empty_git_dir(monkeypatch, tmp_path):
+    """An empty ``.git`` folder makes git answer for the PROTEUS repository around it.
+
+    The folder stays, and HEAD and status of the PROTEUS repository are
+    unchanged. ``tools/get_agni.sh`` is a stub here: the real script would
+    run its checkout in the PROTEUS repository.
+    """
+    site = _agni_update_site(monkeypatch, tmp_path, 'stub', clone=False)
+    _git(site.root, 'init', '-q', '-b', 'main')
+    _git(site.root, 'add', '-A')
+    _git(site.root, 'commit', '-q', '-m', 'PROTEUS')
+    (site.agni / '.git').mkdir(parents=True)
+    head = _git(site.root, 'rev-parse', 'HEAD')
+    status = _git(site.root, 'status', '--porcelain')
+
+    res = runner.invoke(cli.cli, ['update-all'])
+
+    assert res.exit_code == 0, res.output
+    assert _script_calls(site) == []
+    assert _git(site.root, 'rev-parse', 'HEAD') == head
+    assert _git(site.root, 'status', '--porcelain') == status
+    found = f'not a git clone of its own (git answers for {site.root.resolve()})'
+    assert _stay_line(site, found) in res.output
+    assert f'Move it away; then, in {site.root}, run  bash tools/get_agni.sh 0' in res.output
+    assert f'git -C {site.agni} checkout' not in res.output
+
+
+# ---------------------------
 # run-from-anywhere contract: install-all / update-all must resolve the
 # source tree from the package location, not the caller's working directory
 # ---------------------------
@@ -2444,6 +2761,7 @@ def test_update_all_anchors_paths_to_source_root_not_cwd(monkeypatch, tmp_path):
     (source_root / 'tools').mkdir()
     (source_root / 'socrates').mkdir()
     (source_root / 'AGNI').mkdir()
+    _agni_clone_may_move(monkeypatch)
     foreign_cwd.mkdir()
 
     monkeypatch.chdir(foreign_cwd)
@@ -2499,10 +2817,9 @@ def test_update_all_anchors_paths_to_source_root_not_cwd(monkeypatch, tmp_path):
     assert socrates_args[0].startswith(str(source_root))
     assert str(foreign_cwd) not in socrates_args[0]
 
-    # The AGNI update runs inside the AGNI checkout under the root, not the cwd.
-    agni_cwds = [kw.get('cwd') for _, kw in captured if kw.get('cwd') is not None]
-    assert (source_root / 'AGNI') in agni_cwds
-    assert (foreign_cwd / 'AGNI') not in agni_cwds
+    # The AGNI update runs the script under the root from the root, not the cwd.
+    agni = [(cmd, kw.get('cwd')) for cmd, kw in captured if 'get_agni.sh' in str(cmd)]
+    assert agni == [(['bash', str(source_root / 'tools' / 'get_agni.sh'), '0'], source_root)]
 
     # The disk gate measures the filesystem the update writes to.
     assert disk_paths == [source_root]
@@ -2798,6 +3115,7 @@ def test_update_all_explicit_config_path_not_reanchored(monkeypatch, tmp_path):
     _pin_proteus_root(monkeypatch, source_root)
     (source_root / 'socrates').mkdir()
     (source_root / 'AGNI').mkdir()
+    _agni_clone_may_move(monkeypatch)
     monkeypatch.chdir(foreign_cwd)
     _make_fwl_data(monkeypatch, tmp_path)
     monkeypatch.setattr(cli.shutil, 'disk_usage', lambda path: _stub_disk_usage_high())
@@ -2965,6 +3283,7 @@ def _cvode_command_env(monkeypatch, tmp_path):
     (tmp_path / 'fwl_data').mkdir()
     (tmp_path / 'socrates').mkdir()
     (tmp_path / 'AGNI').mkdir()
+    _agni_clone_may_move(monkeypatch)
     monkeypatch.setattr(cli, '_update_input_data', lambda path: False)
 
 
