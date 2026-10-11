@@ -384,21 +384,15 @@ def test_the_core_fraction_is_the_config_value_when_no_inventory_is_derived(
         ({'H_kg_total': 3.70e20, 'M_volatile_change': -1.0e20}, {}, 0.0),
         ({}, {'mass_tot': 1.05}, 0.325 * 0.05 * 5.972e24),
         ({'Si_kg_total': 1.0e21}, {}, 0.0),
-        (
-            {'H_kg_atm': 1.0e20, 'C_kg_atm': 2.0e20, 'O_kg_atm': 2.079e23},
-            {'dry_mantle': False},
-            0.0,
-        ),
     ],
-    ids=['escape', 'impact', 'rock_vapour', 'wet_mantle'],
+    ids=['escape', 'impact', 'rock_vapour'],
 )
 def test_the_core_mass_follows_the_rock_and_nothing_else(
     monkeypatch, hf_extra, cfg, core_change
 ):
     """Hydrogen that escapes lowers the inventory and the volatile ledger by the same mass,
     so the core stays; an impact that adds 0.05 Earth masses of rock adds 0.325 of it to the
-    core; rock vapour is mantle mass, not a kept volatile; and with a wet mantle the
-    structure target takes off the atmosphere only, while the core is the same."""
+    core; and rock vapour is mantle mass, not a kept volatile."""
     _, base, _ = _structure_target(monkeypatch, _BUFFERED)
     _, core, _ = _structure_target(monkeypatch, {**_BUFFERED, **hf_extra}, **cfg)
     assert core - base == pytest.approx(core_change, rel=2e-3, abs=1e12)
@@ -410,3 +404,60 @@ def test_an_inventory_that_leaves_no_mantle_is_refused(monkeypatch):
     core of 1.94e24 kg: the builder refuses the structure with the masses in the message."""
     with pytest.raises(ValueError, match='leaves no mantle: 1.87'):
         _structure_target(monkeypatch, {**_BUFFERED, 'O_kg_total': 4.1e24})
+
+
+_WET = {'H_kg_atm': 1.0e20, 'C_kg_atm': 2.0e20, 'O_kg_atm': 2.079e23, 'H_kg_total': 6.0e21}
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_a_wet_mantle_core_is_computed_in_the_init_stage_and_kept_after(monkeypatch):
+    """With a wet mantle the structure target takes off the atmosphere only (2.082e23 kg
+    here), and on a row of the init stage the core is 0.325 of the planet without the
+    atmosphere mass of its kept elements (H and C, 3e20 kg; the derived oxygen is mantle
+    mass). After the init stage the core is read from the row: when 5e21 kg of water have
+    outgassed, the planet target is lower by that mass and the core is the kept one, to
+    the last bit, not 0.325 of the new target."""
+    from proteus.utils.constants import M_earth
+
+    planet, core, params = _structure_target(monkeypatch, _WET, dry_mantle=False)
+    assert planet == pytest.approx(M_earth - 2.082e23, rel=1e-14)
+    assert core == pytest.approx(0.325 * (M_earth - 3.0e20), rel=1e-14)
+    assert params['core_mass_target'] == pytest.approx(core, rel=1e-15)
+
+    kept = params['core_mass_target']
+    later = {**_WET, 'H_kg_atm': 5.1e21, 'Time': 250.0, 'M_core_target': kept}
+    planet_later, core_later, params_later = _structure_target(
+        monkeypatch, later, dry_mantle=False
+    )
+    assert planet - planet_later == pytest.approx(5.0e21, rel=1e-9)
+    assert params_later['core_mass_target'] == kept
+    assert core_later == pytest.approx(core, rel=1e-14)
+    assert abs(0.325 * (M_earth - 5.3e21) - core) > 1.0e21
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('stored', [None, 0.0], ids=['column_absent', 'zero_fill'])
+def test_a_wet_resume_without_the_core_target_computes_it_with_a_warning(
+    monkeypatch, caplog, stored
+):
+    """A helpfile row that predates the column, absent or filled with 0, gives a wet run
+    after its init stage the core of the present row, with a warning that names it."""
+    from proteus.utils.constants import M_earth
+
+    row = {**_WET, 'Time': 250.0, **({} if stored is None else {'M_core_target': stored})}
+    with caplog.at_level('WARNING', logger='fwl.proteus.interior_struct.zalmoxis'):
+        _, core, _ = _structure_target(monkeypatch, row, dry_mantle=False)
+    assert core == pytest.approx(0.325 * (M_earth - 3.0e20), rel=1e-14)
+    assert 'holds no M_core_target' in caplog.text
+
+
+@pytest.mark.unit
+def test_a_dry_mantle_core_is_computed_on_every_row(monkeypatch):
+    """With a dry mantle the core target is the value of the present row also after the
+    init stage: a stored value of another size is not read."""
+    row = {**_BUFFERED, 'Time': 250.0, 'M_core_target': 1.5e24}
+    _, base, _ = _structure_target(monkeypatch, _BUFFERED)
+    _, core, params = _structure_target(monkeypatch, row)
+    assert params['core_mass_target'] == pytest.approx(base, rel=1e-15)
+    assert core == pytest.approx(base, rel=1e-15)

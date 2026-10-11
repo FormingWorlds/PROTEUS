@@ -1481,6 +1481,8 @@ def test_two_sequential_impacts_compose_their_consequences(monkeypatch):
         accretion=_impact_accretion(H=1000.0),  # ppmw mode, loss off
     )
     _atm_state(handler.hf_row, H=(2.0e20, 6.0e20))
+    handler.config.interior_struct.core_frac = 0.325
+    handler.hf_row['M_core_target'] = 1.9e24
     m_imp = 0.2 * M_earth
     event = _impact_event(
         M_target_before=6.0 * M_earth,
@@ -1509,6 +1511,10 @@ def test_two_sequential_impacts_compose_their_consequences(monkeypatch):
     assert handler.hf_row['n_impacts_applied'] == 2
     assert handler.hf_row['M_accreted_rock'] == pytest.approx(
         2 * (event.mass_delta - delivered), rel=1e-12
+    )
+    # The core target takes core_frac of the rock of each impact, 0.13 Earth masses here.
+    assert handler.hf_row['M_core_target'] == pytest.approx(
+        1.9e24 + 0.325 * 2 * (event.mass_delta - delivered), rel=1e-12
     )
     assert handler.hf_row['M_volatile_change'] == pytest.approx(2 * delivered, rel=1e-12)
     assert float(handler.hf_row.get('esc_kg_cumulative', 0.0)) == pytest.approx(0.0, abs=1.0)

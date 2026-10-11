@@ -600,6 +600,9 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
     # Record accreted rock and impact counts in the helpfile so resumed runs
     # can restore the accumulated mass and event state.
     hf_row['M_accreted_rock'] = float(hf_row.get('M_accreted_rock') or 0.0) + impactor_rock
+    # The core takes its fraction of the impactor rock; a structure without a core target has 0.
+    if float(hf_row.get('M_core_target') or 0.0) > 0.0:
+        hf_row['M_core_target'] += config.interior_struct.core_frac * impactor_rock
     hf_row['n_impacts_applied'] = int(float(hf_row.get('n_impacts_applied') or 0.0)) + 1
     solve_structure(
         handler.directories,

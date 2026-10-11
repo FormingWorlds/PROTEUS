@@ -18,6 +18,7 @@
         "atmos_chem",
         "atmos_clim",
         "interior_energetics",
+        "interior_struct",
         "main loop",
         "observe",
         "orbit",
@@ -1827,6 +1828,28 @@
         "interior_energetics",
         "interior_struct",
         "outgas"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "M_core_target",
+      "unit": "kg",
+      "description": "core mass the Zalmoxis structure is solved for: core_frac of the planet without the volatiles the outgassing keeps as inputs; with dry_mantle = false the value of the structure the evolution starts on, plus core_frac of the rock of each impact; M_core is the first grid node at or above it; 0 with another structure module",
+      "group": "Planet interior properties",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/accretion/wrapper.py",
+          "condition": "always"
+        },
+        {
+          "file": "src/proteus/interior_struct/zalmoxis.py",
+          "condition": "interior_struct.module = \"zalmoxis\""
+        }
+      ],
+      "consumers": [
+        "accretion",
+        "interior_struct"
       ],
       "consumers_possible": []
     },
