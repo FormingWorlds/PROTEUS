@@ -1,7 +1,7 @@
 #!/bin/bash
-# Clone Zalmoxis into ./Zalmoxis/ and install it editable. The checkout is the Zalmoxis branch of the
-# same name when PROTEUS is on a feature branch that Zalmoxis also has, and otherwise the release
-# tag whose version equals the fwl-zalmoxis floor in pyproject.toml. --force discards local work.
+# Clone Zalmoxis into ./Zalmoxis/ and install it editable. A new clone, and the one --force puts in
+# place of an old one, takes the Zalmoxis branch named like the PROTEUS feature branch, if any, else
+# the fwl-zalmoxis floor tag; a re-run never replaces a clone, at most it moves it forward to that tag.
 
 echo "Set up Zalmoxis..."
 
@@ -24,6 +24,7 @@ fi
 
 get_parse_args "$@"
 workpath="$root/Zalmoxis/"
+reuse_existing_clone fwl-zalmoxis "$workpath" get_zalmoxis.sh
 guard_dirty_checkout "$workpath" get_zalmoxis.sh
 unchanged=""
 if [ -e "$workpath" ]; then

@@ -34,13 +34,7 @@ fi
 echo "Set up $repo..."
 workpath="$proteus_root/$repo"
 
-if [ "$get_force" != true ] && [ -e "$workpath/.git" ]; then
-    move_clone_to_floor_tag "$dist" "$workpath" "get_python_module.sh $repo"
-    pip install -U -e "$workpath" || { echo "ERROR: editable install failed" >&2; exit 1; }
-    echo "Done!"
-    exit 0
-fi
-
+reuse_existing_clone "$dist" "$workpath" "get_python_module.sh $repo"
 guard_dirty_checkout "$workpath" "get_python_module.sh $repo"
 unchanged=""
 if [ -e "$workpath" ]; then

@@ -814,11 +814,11 @@ else
 fi
 
 # Usage: clone_and_install <RepoName> <distribution>. tools/get_python_module.sh makes a missing clone;
-# an existing one is never replaced: on a detached HEAD it moves in place to the floor release tag
-# when it is behind it, and anything else is installed as it is.
+# an existing one is never replaced: move_clone_to_floor_tag moves it forward in place or names why it
+# stays, and a folder git cannot use is installed as it is, with a stay line of the same shape.
 clone_and_install() {
     local repo="$1" dist="$2"
-    local dest="$SCRIPT_DIR/$repo" branch rc=0
+    local dest="$SCRIPT_DIR/$repo" found summary floor expected rc=0
     if [ ! -e "$dest" ]; then
         if ! PROTEUS_MODULE_GIT_BASE="$GH_PREFIX" \
             bash "$SCRIPT_DIR/tools/get_python_module.sh" "$repo" 2>&1; then
@@ -826,18 +826,20 @@ clone_and_install() {
         fi
         return 0
     fi
-    if [ ! -e "$dest/.git" ]; then
-        info "$repo at $dest is not a git clone; installing it as it is"
-        pip install -e "$dest/." 2>&1
-        return 0
+    found="not a git clone"
+    summary="not a git clone"
+    if [ -e "$dest/.git" ]; then
+        git -C "$dest" symbolic-ref -q HEAD >/dev/null 2>&1 || rc=$?
+        found="git cannot read the clone"
+        summary="git cannot read it"
     fi
-    branch=$(git -C "$dest" symbolic-ref -q --short HEAD 2>/dev/null) || rc=$?
-    if [ "$rc" -eq 0 ]; then
-        info "$repo at $dest is on branch $branch; installing it as it is"
-        pip install -e "$dest/." 2>&1
-        return 0
-    elif [ "$rc" -ne 1 ]; then
-        warn "git cannot read the clone at $dest; installing it as it is"
+    if [ ! -e "$dest/.git" ] || [ "$rc" -gt 1 ]; then
+        expected="the release tag could not be determined"
+        if floor=$(python "$SCRIPT_DIR/tools/_module_pins.py" "$dist" floor 2>/dev/null); then
+            expected="PROTEUS expects release $floor"
+        fi
+        warn "$(source "$SCRIPT_DIR/tools/_get_common.sh" &&
+            report_clone_stays "$dist" "$dest" "$found" "$summary" "$expected")"
         pip install -e "$dest/." 2>&1
         return 0
     fi
@@ -849,6 +851,20 @@ clone_and_install() {
     pip install -e "$dest/." 2>&1
 }
 
+# Print one line naming the module clones that stay off their release tag, which report_clone_stays
+# (tools/_get_common.sh) wrote to the file PROTEUS_CLONE_STAYS names, and remove that file.
+report_stayed_clones() {
+    local list
+    [ -n "$PROTEUS_CLONE_STAYS" ] || return 0
+    if [ -s "$PROTEUS_CLONE_STAYS" ]; then
+        list=$(awk 'NR > 1 {printf ", "} {printf "%s", $0}' "$PROTEUS_CLONE_STAYS")
+        warn "Not at their release tag: $list"
+    fi
+    rm -f "$PROTEUS_CLONE_STAYS"
+}
+
+PROTEUS_CLONE_STAYS=$(mktemp "${TMPDIR:-/tmp}/proteus-clone-stays.XXXXXX") || PROTEUS_CLONE_STAYS=""
+export PROTEUS_CLONE_STAYS
 clone_and_install "MORS"     "fwl-mors"
 clone_and_install "JANUS"    "fwl-janus"
 clone_and_install "CALLIOPE" "fwl-calliope"
@@ -879,6 +895,7 @@ pre-commit install -f 2>&1 || warn "pre-commit install failed (non-critical)"
 
 # Verify the installation (captures the error and self-heals the conda MPI clash)
 verify_proteus_import
+report_stayed_clones
 info "Python packages installed"
 
 # ===================================================================

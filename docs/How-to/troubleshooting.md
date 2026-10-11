@@ -141,9 +141,9 @@ An install script stops rather than delete a module checkout that holds work
 you would not get back:
 
 ```console
-ERROR: /path/to/aragog has uncommitted changes or commits not on a remote.
+ERROR: /path/to/VULCAN has uncommitted changes or commits not on a remote.
        Refusing to delete it. Commit and push your work, or run
-       bash tools/get_aragog.sh --force  to discard the checkout.
+       bash tools/get_vulcan.sh --force  to discard the checkout.
 ```
 
 Commit and push the work, and the next run replaces the checkout normally.
@@ -153,17 +153,17 @@ step over this for you. To discard the checkout deliberately, run the script
 the message names by hand, from the PROTEUS folder:
 
 ```console
-bash tools/get_aragog.sh --force
+bash tools/get_vulcan.sh --force
 ```
 
 A second message reports a checkout git cannot read at all, from a truncated
 copy or a clone interrupted after it started writing refs:
 
 ```console
-ERROR: git could not report the state of /path/to/aragog, so whether
+ERROR: git could not report the state of /path/to/VULCAN, so whether
        it holds local work is unknown. Refusing to delete it.
        Inspect the checkout, or run
-       bash tools/get_aragog.sh --force  to discard it.
+       bash tools/get_vulcan.sh --force  to discard it.
 ```
 
 The same `--force` discards it. A clone killed before it committed anything

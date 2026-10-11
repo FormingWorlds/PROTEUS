@@ -289,6 +289,122 @@ def _git_detached(path: str) -> bool | None:
     return {0: False, 1: True}.get(rc)
 
 
+# Seconds that one git call of the release-tag note may take.
+_GIT_NOTE_TIMEOUT_S = 10
+
+
+def _git_note_output(path: str, *args: str) -> tuple[int, str] | None:
+    """Run one short git command in a checkout for the release-tag note.
+
+    Parameters
+    ----------
+    path : str
+        Checkout directory.
+    *args : str
+        The git arguments, for example ``'symbolic-ref', '-q', 'HEAD'``.
+
+    Returns
+    -------
+    tuple of (int, str) or None
+        The exit status and the standard output, or None when git is
+        missing or does not finish within ``_GIT_NOTE_TIMEOUT_S``.
+    """
+    try:
+        done = subprocess.run(
+            ['git', '-C', path, *args],
+            capture_output=True,
+            text=True,
+            timeout=_GIT_NOTE_TIMEOUT_S,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return done.returncode, done.stdout
+
+
+def _floor_tag_name(spec: Requirement | None, tags: list[str]) -> str | None:
+    """Return the one tag whose release number equals the ``>=`` floor of a requirement.
+
+    The match is the one of ``tools/_module_pins.py``: a leading ``v`` is
+    ignored and the numbers compare as versions, so ``26.10.06`` matches
+    the floor ``26.10.6``.
+
+    Parameters
+    ----------
+    spec : Requirement or None
+        The requirement of ``pyproject.toml``, for example ``fwl-mors>=26.10.6``.
+    tags : list of str
+        Tag names of the clone.
+
+    Returns
+    -------
+    str or None
+        The tag, or None when the requirement has no single ``>=`` floor
+        or not exactly one tag matches it.
+    """
+    floors = [s.version for s in (spec.specifier if spec else []) if s.operator == '>=']
+    if len(floors) != 1:
+        return None
+    matches = []
+    for tag in tags:
+        text = tag.removeprefix('v')
+        if not re.fullmatch(r'\d+(\.\d+)*', text):
+            continue
+        if Version(text) == Version(floors[0]):
+            matches.append(tag)
+    return matches[0] if len(matches) == 1 else None
+
+
+def _release_tag_note(checkout: str, short: str | None, spec: Requirement | None) -> str:
+    """Return the note on an editable clone that is not at the release tag of its floor.
+
+    The note has the parts of the installer's stay line: what the clone is
+    on, and the release tag PROTEUS expects. It costs 2 git calls with a
+    timeout: the branch, then the tags with their commits.
+
+    Parameters
+    ----------
+    checkout : str
+        Directory of the editable checkout.
+    short : str or None
+        Short HEAD commit of the checkout, as ``_git_short_head`` gives it.
+    spec : Requirement or None
+        The requirement of ``pyproject.toml``.
+
+    Returns
+    -------
+    str
+        For example ``'; on branch main; PROTEUS expects the release tag
+        26.10.06'``; empty at the tag, or when git cannot read the clone.
+    """
+    branch = _git_note_output(checkout, 'symbolic-ref', '-q', '--short', 'HEAD')
+    if branch is None or branch[0] not in (0, 1):
+        return ''
+    listing = _git_note_output(
+        checkout,
+        'for-each-ref',
+        '--format=%(refname:short) %(objectname) %(*objectname)',
+        'refs/tags',
+    )
+    commits = {}
+    for line in (listing[1] if listing and listing[0] == 0 else '').splitlines():
+        name, *objects = line.split()
+        commits[name] = objects[-1]  # the commit of an annotated tag comes last
+    tag = _floor_tag_name(spec, list(commits))
+    if tag:
+        expected = f'PROTEUS expects the release tag {tag}'
+    else:
+        expected = 'the release tag could not be determined'
+    if branch[0] == 0:
+        return f'; on branch {branch[1].strip()}; {expected}'
+    if not short or (tag and commits[tag].startswith(short)):
+        return ''
+    at_tags = sorted(name for name, commit in commits.items() if commit.startswith(short))
+    found = f'at tag {at_tags[0]} ({short})' if at_tags else f'at commit {short}'
+    if tag:
+        found += ', not the release tag'
+    return f'; {found}; {expected}'
+
+
 # The files of the PROTEUS source tree that the fix of a detached clone runs.
 _DETACHED_CLONE_FIX_TOOLS = ('_get_common.sh', '_module_pins.py')
 
@@ -611,7 +727,8 @@ def check_python_package(name: str, spec: Requirement | None) -> CheckResult:
             marker = ' (dirty)'
         else:
             marker = ''
-        annotation = f' [editable @ {base} -> {short}{marker}]'
+        note = _release_tag_note(checkout, short, spec)
+        annotation = f' [editable @ {base} -> {short}{marker}{note}]'
         # Cross-check that the editable checkout is the package actually on
         # sys.path. A later `pip install <pin>` can shadow the editable sibling
         # while leaving its direct_url metadata in place, so the checkout

@@ -9,6 +9,9 @@ The Python modules the installer clones are pinned to the release tag of
 their version floor: ``checkout_floor_tag`` (``tools/_get_common.sh``) and
 ``clone_and_install`` (lifted from install.sh at run time) run against
 local scratch repositories and a recording ``pip`` stub, without network.
+The module lines of the Python phase run whole, with the setup scripts of
+Aragog and Zalmoxis, to pin the one line that names each clone that stays
+off its release tag.
 
 Testing standards:
   - docs/How-to/testing.md
@@ -675,6 +678,38 @@ def _clone_and_install_calls() -> list[list[str]]:
     ]
 
 
+# The prefix install.sh's warn puts before a message.
+_WARN_PREFIX = '\x1b[1;33m[WARN]\x1b[0m  '
+
+
+def _run_module_phase(
+    env: dict, script: str, cwd: Path | None = None, timeout: int = 25
+) -> subprocess.CompletedProcess:
+    """Run ``script`` after install.sh's log helpers and its module-phase functions, under its options."""
+    defs = (
+        'set -euo pipefail\nCURRENT_PHASE=6\n'
+        + _install_sh_blocks("RED='", 'info()')
+        + ''.join(
+            _install_sh_function(f)
+            for f in (
+                'command_exists',
+                'collect_env_info',
+                'die',
+                'clone_and_install',
+                'report_stayed_clones',
+            )
+        )
+    )
+    return subprocess.run(
+        ['bash', '-c', defs + script],
+        capture_output=True,
+        text=True,
+        env=env,
+        cwd=cwd,
+        timeout=timeout,
+    )
+
+
 class TestCloneAndInstall:
     """clone_and_install pins a new clone to the floor tag and never replaces an existing one."""
 
@@ -706,27 +741,18 @@ class TestCloneAndInstall:
             'GH_PREFIX': f'{tmp_path / "remotes"}/',
             'SCRIPT_DIR': str(root),
             'STUB_PIP_LOG': str(log),
+            # A github URL, from any version of the scripts, goes to the local remotes.
+            'GIT_CONFIG_COUNT': '1',
+            'GIT_CONFIG_KEY_0': f'url.{tmp_path / "remotes"}/.insteadOf',
+            'GIT_CONFIG_VALUE_0': 'https://github.com/',
         }
+        env.pop('PROTEUS_CLONE_STAYS', None)
         return {'root': root, 'shas': shas, 'log': log, 'env': env}
 
     @staticmethod
     def _call(site, *args: str) -> subprocess.CompletedProcess:
         """Run the shipped clone_and_install with ``args``, under install.sh's options."""
-        defs = (
-            'set -euo pipefail\nCURRENT_PHASE=6\n'
-            + _install_sh_blocks("RED='", 'info()')
-            + ''.join(
-                _install_sh_function(f)
-                for f in ('command_exists', 'collect_env_info', 'die', 'clone_and_install')
-            )
-        )
-        return subprocess.run(
-            ['bash', '-c', defs + shlex.join(['clone_and_install', *args])],
-            capture_output=True,
-            text=True,
-            env=site['env'],
-            timeout=25,
-        )
+        return _run_module_phase(site['env'], shlex.join(['clone_and_install', *args]))
 
     def test_new_clone_is_installed_at_the_floor_tag(self, site):
         """A new clone sits at the tagged commit, detached, and is installed editable.
@@ -779,7 +805,13 @@ class TestCloneAndInstall:
         result = self._call(site, 'MORS', 'fwl-mors')
         assert result.returncode == 0, result.stdout + result.stderr
         assert git(clone, 'rev-parse', 'HEAD') == tip
-        assert f'MORS at {clone} is on branch main; installing it as it is' in result.stdout
+        line = (
+            f'fwl-mors: {clone} stays as it is: on branch main;'
+            ' PROTEUS expects the release tag 26.10.06'
+        )
+        assert result.stdout.splitlines().count(line) == 1
+        assert 'checked out release tag' not in result.stdout
+        assert 'is at the release tag' not in result.stdout
         assert site['log'].read_text().splitlines()[1:] == [f'install -e {clone}/.']
 
     def test_detached_clone_at_an_older_tag_moves_in_place_to_the_floor_tag(self, site):
@@ -827,7 +859,13 @@ class TestCloneAndInstall:
         result = self._call(site, 'MORS', 'fwl-mors')
         assert result.returncode == 0, result.stdout + result.stderr
         assert git(clone, 'rev-parse', 'HEAD') == tip != tagged
-        assert 'is not behind the release tag 26.10.06; it stays as it is' in result.stdout
+        line = (
+            f'fwl-mors: {clone} stays as it is: commit {tip[:7]} (26.10.06-1-g{tip[:7]}),'
+            ' newer than the tag; PROTEUS expects the release tag 26.10.06'
+        )
+        assert result.stdout.splitlines().count(line) == 1
+        assert 'checked out release tag' not in result.stdout
+        assert 'is at the release tag' not in result.stdout
         assert site['log'].read_text().splitlines() == [f'install -e {clone}/.']
 
     def test_detached_clone_with_an_unreachable_remote_warns_and_moves(self, site):
@@ -845,15 +883,35 @@ class TestCloneAndInstall:
         assert site['log'].read_text().splitlines() == [f'install -e {clone}/.']
 
     def test_folder_that_is_not_a_git_clone_is_installed_as_it_is(self, site):
-        """A MORS folder without .git is installed as it is, with its info line, and keeps its
-        file; the installer never replaces an existing folder."""
+        """A MORS folder without .git is installed as it is and keeps its file; the installer
+        never replaces an existing folder. One warning names the folder and the release the
+        floor 26.10.6 of pyproject.toml asks for, as there is no clone to ask for tags."""
         plain = site['root'] / 'MORS'
         plain.mkdir()
         (plain / 'setup.py').write_text('# mine\n')
         result = self._call(site, 'MORS', 'fwl-mors')
         assert result.returncode == 0, result.stdout + result.stderr
-        assert f'MORS at {plain} is not a git clone; installing it as it is' in result.stdout
+        line = f'fwl-mors: {plain} stays as it is: not a git clone; PROTEUS expects release 26.10.6'
+        assert [ln for ln in result.stderr.splitlines() if 'stays as it is' in ln] == [
+            f'{_WARN_PREFIX}{line}'
+        ]
+        assert 'release tag' not in result.stdout
         assert sorted(p.name for p in plain.iterdir()) == ['setup.py']
+        assert site['log'].read_text().splitlines() == [f'install -e {plain}/.']
+
+    def test_folder_of_a_distribution_without_a_floor_names_no_release(self, site):
+        """When pyproject.toml has no floor for the distribution, the warning says that the
+        release tag could not be determined, in place of a release, and the folder is
+        still installed as it is."""
+        plain = site['root'] / 'MORS'
+        plain.mkdir()
+        result = self._call(site, 'MORS', 'fwl-unpinned')
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert (
+            f'fwl-unpinned: {plain} stays as it is: not a git clone;'
+            ' the release tag could not be determined'
+        ) in result.stderr
+        assert 'PROTEUS expects' not in result.stderr
         assert site['log'].read_text().splitlines() == [f'install -e {plain}/.']
 
     def test_clone_git_cannot_read_is_installed_with_a_warning(self, site):
@@ -871,7 +929,13 @@ class TestCloneAndInstall:
         assert rc == 128
         result = self._call(site, 'MORS', 'fwl-mors')
         assert result.returncode == 0, result.stdout + result.stderr
-        assert f'git cannot read the clone at {broken}; installing it as it is' in result.stderr
+        line = (
+            f'fwl-mors: {broken} stays as it is: git cannot read the clone;'
+            ' PROTEUS expects release 26.10.6'
+        )
+        assert [ln for ln in result.stderr.splitlines() if 'stays as it is' in ln] == [
+            f'{_WARN_PREFIX}{line}'
+        ]
         assert sorted(p.name for p in broken.iterdir()) == ['.git']
         assert site['log'].read_text().splitlines() == [f'install -e {broken}/.']
 
@@ -888,6 +952,11 @@ class TestCloneAndInstall:
         assert result.returncode == 1
         assert 'bash tools/get_python_module.sh MORS --force' in output
         assert 'Could not move MORS to the fwl-mors release tag' in output
+        line = (
+            f'ERROR: fwl-mors: {clone} stays as it is: 0 modified tracked files and'
+            ' 1 local commit (on no remote); PROTEUS expects the release tag 26.10.06'
+        )
+        assert output.splitlines().count(line) == 1
         assert git(clone, 'rev-parse', 'HEAD') == local
         assert (clone / 'version.txt').read_text() == 'local work\n'
         assert site['log'].read_text() == ''
@@ -905,6 +974,137 @@ class TestCloneAndInstall:
         assert "'fwl-janus' floor 26.10.08: no tag matches it" in output
         assert site['log'].read_text() == ''
         assert not (site['root'] / 'JANUS').exists()
+
+
+class TestModulePhaseSummary:
+    """The Python module phase of install.sh names, in one line, every clone that stays."""
+
+    REPOS = ('MORS', 'JANUS', 'CALLIOPE', 'ZEPHYRUS', 'aragog', 'Zalmoxis')
+
+    @pytest.fixture
+    def site(self, tmp_path):
+        """A PROTEUS copy with the six module scripts, a local remote per module with the tag
+        26.10.06 on the second of 3 commits, stubs for pip and ssh, and git URLs rewritten to
+        the local remotes, so that no clone or fetch leaves the host."""
+        repos = {r: f'fwl-{r.lower()}' for r in self.REPOS}
+        root = scratch_proteus_root(
+            tmp_path / 'proteus', [f'{d}>=26.10.6' for d in repos.values()]
+        )
+        for script in ('get_aragog.sh', 'get_zalmoxis.sh'):
+            shutil.copy2(TOOLS_DIR / script, root / 'tools' / script)
+        base = tmp_path / 'remotes'
+        shas = {}
+        for repo in self.REPOS:
+            shas[repo] = _module_repo(tmp_path / 'work' / repo)
+            git(
+                tmp_path,
+                'clone',
+                '-q',
+                '--bare',
+                str(tmp_path / 'work' / repo),
+                str(base / 'FormingWorlds' / f'{repo}.git'),
+            )
+        stubs = tmp_path / 'stubs'
+        stubs.mkdir()
+        for name, body in (('pip', 'echo "$@" >> "$STUB_PIP_LOG"'), ('ssh', 'exit 255')):
+            (stubs / name).write_text(f'#!/bin/sh\n{body}\n')
+            (stubs / name).chmod(0o755)
+        (tmp_path / 'tmp').mkdir()
+        env = {
+            **os.environ,
+            'PATH': f'{stubs}{os.pathsep}{os.environ["PATH"]}',
+            'GH_PREFIX': f'{base}/',
+            'SCRIPT_DIR': str(root),
+            'STUB_PIP_LOG': str(tmp_path / 'pip.log'),
+            'TMPDIR': str(tmp_path / 'tmp'),
+            'GIT_CONFIG_COUNT': '1',
+            'GIT_CONFIG_KEY_0': f'url.{base}/.insteadOf',
+            'GIT_CONFIG_VALUE_0': 'https://github.com/',
+            'GIT_CEILING_DIRECTORIES': str(tmp_path),
+        }
+        for name in (
+            'GIT_SSH_COMMAND',
+            'GITHUB_HEAD_REF',
+            'GITHUB_REF_NAME',
+            'PROTEUS_CLONE_STAYS',
+        ):
+            env.pop(name, None)
+        return {'root': root, 'shas': shas, 'env': env, 'remotes': base / 'FormingWorlds'}
+
+    @staticmethod
+    def _clone(site, repo: str) -> Path:
+        """Clone ``repo`` from its remote into the root, on the branch main at the tip."""
+        clone = site['root'] / repo
+        git(site['root'], 'clone', '-q', str(site['remotes'] / f'{repo}.git'), str(clone))
+        return clone
+
+    @staticmethod
+    def _run_phase(site) -> subprocess.CompletedProcess:
+        """Run the module lines of install.sh, from the summary file to Zalmoxis, then the summary."""
+        lines = INSTALL_SH.read_text().splitlines()
+        start = next(i for i, ln in enumerate(lines) if ln.startswith('PROTEUS_CLONE_STAYS=$('))
+        end = lines.index('bash tools/get_zalmoxis.sh 2>&1')
+        block = '\n'.join(lines[start : end + 1]) + '\nreport_stayed_clones\n'
+        return _run_module_phase(site['env'], block, cwd=site['root'], timeout=60)
+
+    def test_summary_names_exactly_the_clones_that_stay(self, site):
+        """MORS and aragog on a branch and ZEPHYRUS one commit past the tag are named, in the
+        order the installer reached them; JANUS and CALLIOPE, cloned at the tag, and
+        Zalmoxis, already at it, are not.
+
+        Each clone that stays gets its stay line once, and no line says that it was
+        checked out at, or is at, the release tag. The summary file is removed.
+        """
+        mors = self._clone(site, 'MORS')
+        zephyrus = self._clone(site, 'ZEPHYRUS')
+        tip = site['shas']['ZEPHYRUS'][1]
+        git(zephyrus, 'checkout', '-q', '--detach', tip)
+        aragog = self._clone(site, 'aragog')
+        zalmoxis = self._clone(site, 'Zalmoxis')
+        git(zalmoxis, 'checkout', '-q', 'tags/26.10.06')
+
+        result = self._run_phase(site)
+        assert result.returncode == 0, result.stdout + result.stderr
+        out = (result.stdout + result.stderr).splitlines()
+        summary = [ln for ln in out if 'Not at their release tag' in ln]
+        assert summary == [
+            f'{_WARN_PREFIX}Not at their release tag: MORS (branch main),'
+            f' ZEPHYRUS (commit {tip[:7]}, newer), aragog (branch main)'
+        ]
+        expected = 'PROTEUS expects the release tag 26.10.06'
+        for dist, clone, found in (
+            ('fwl-mors', mors, 'on branch main'),
+            (
+                'fwl-zephyrus',
+                zephyrus,
+                f'commit {tip[:7]} (26.10.06-1-g{tip[:7]}), newer than the tag',
+            ),
+            ('fwl-aragog', aragog, 'on branch main'),
+        ):
+            assert out.count(f'{dist}: {clone} stays as it is: {found}; {expected}') == 1
+            told_at_tag = [
+                ln
+                for ln in out
+                if ln.startswith(f'{dist}: ')
+                and ('checked out release tag' in ln or 'is at the release tag' in ln)
+            ]
+            assert told_at_tag == []
+        assert any(ln.startswith('fwl-janus: checked out release tag 26.10.06') for ln in out)
+        assert any(
+            ln.startswith('fwl-calliope: checked out release tag 26.10.06') for ln in out
+        )
+        assert f'fwl-zalmoxis: {zalmoxis} is at the release tag 26.10.06' in out
+        assert list(Path(site['env']['TMPDIR']).iterdir()) == []
+
+    def test_no_summary_when_every_clone_is_at_its_tag(self, site):
+        """With every module cloned new at its tag, the phase prints no summary line and leaves
+        no summary file; a summary printed without a check names an empty list."""
+        result = self._run_phase(site)
+        assert result.returncode == 0, result.stdout + result.stderr
+        output = result.stdout + result.stderr
+        assert 'Not at their release tag' not in output
+        assert output.count('checked out release tag 26.10.06') == 6
+        assert list(Path(site['env']['TMPDIR']).iterdir()) == []
 
 
 class TestCloneAndInstallCalls:

@@ -1,7 +1,7 @@
 #!/bin/bash
-# Clone Aragog into ./aragog/ and install it editable. The checkout is the Aragog branch of the
-# same name when PROTEUS is on a feature branch that Aragog also has, and otherwise the release
-# tag whose version equals the fwl-aragog floor in pyproject.toml. --force discards local work.
+# Clone Aragog into ./aragog/ and install it editable. A new clone, and the one --force puts in
+# place of an old one, takes the Aragog branch named like the PROTEUS feature branch, if any, else
+# the fwl-aragog floor tag; a re-run never replaces a clone, at most it moves it forward to that tag.
 
 echo "Set up Aragog..."
 
@@ -24,6 +24,7 @@ fi
 
 get_parse_args "$@"
 workpath="$root/aragog/"
+reuse_existing_clone fwl-aragog "$workpath" get_aragog.sh
 guard_dirty_checkout "$workpath" get_aragog.sh
 unchanged=""
 if [ -e "$workpath" ]; then

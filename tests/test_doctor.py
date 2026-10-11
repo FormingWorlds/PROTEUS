@@ -11,6 +11,7 @@ Testing standards:
 from __future__ import annotations
 
 import importlib.metadata
+import importlib.util
 import io
 import json
 import os
@@ -20,9 +21,10 @@ import sys
 from unittest.mock import Mock, patch
 
 import pytest
-from helpers import git, scratch_proteus_root
+from helpers import PROTEUS_ROOT, git, scratch_proteus_root
 
 from proteus.doctor import (
+    _GIT_NOTE_TIMEOUT_S,
     _SUPPORT_EMAIL,
     FAIL,
     GIT_MODULES,
@@ -36,15 +38,18 @@ from proteus.doctor import (
     _dependency_specs,
     _editable_checkout_path,
     _floor_tag_fix,
+    _floor_tag_name,
     _get_script_for_package,
     _git_detached,
     _git_dirty,
     _git_head,
+    _git_note_output,
     _git_short_head,
     _imported_package_dir,
     _julia_version,
     _julia_version_at,
     _print_support_prompt,
+    _release_tag_note,
     _run_fix_command,
     _Tee,
     _write_failure_log,
@@ -685,6 +690,181 @@ def _stub_pip(tmp_path, monkeypatch):
     (bindir / 'python').symlink_to(sys.executable)
     monkeypatch.setenv('PATH', f'{bindir}{os.pathsep}{os.environ["PATH"]}')
     return log
+
+
+def _tagged_module(path, annotated: bool = False) -> list[str]:
+    """Build a repository with 3 commits on main, the tag 26.10.05 on the first and 26.10.06
+    on the second; return the 3 commit hashes. ``annotated`` makes 26.10.06 an annotated tag,
+    whose tag object differs from its commit."""
+    path.mkdir(parents=True)
+    git(path, 'init', '-q', '-b', 'main')
+    commits = []
+    for i in range(3):
+        (path / 'version.txt').write_text(f'{i}\n')
+        git(path, 'add', 'version.txt')
+        git(path, 'commit', '-q', '-m', f'commit {i}')
+        commits.append(git(path, 'rev-parse', 'HEAD'))
+    git(path, 'tag', '26.10.05', commits[0])
+    if annotated:
+        git(path, 'tag', '-a', '-m', 'release', '26.10.06', commits[1])
+    else:
+        git(path, 'tag', '26.10.06', commits[1])
+    return commits
+
+
+def _check_editable_mors(checkout) -> CheckResult:
+    """Run check_python_package on fwl-mors 26.10.6, editable at ``checkout``, floor 26.10.6."""
+    from packaging.requirements import Requirement
+
+    with (
+        patch('proteus.doctor.importlib.metadata.version', return_value='26.10.6'),
+        patch('proteus.doctor._editable_checkout_path', return_value=str(checkout)),
+        patch('proteus.doctor._imported_package_dir', return_value=None),
+    ):
+        return check_python_package('fwl-mors', Requirement('fwl-mors>=26.10.6'))
+
+
+class TestReleaseTagNote:
+    """The version check of an editable clone names a branch or a commit that is not the floor tag."""
+
+    def test_branch_clone_names_the_branch_and_the_tag(self, tmp_path):
+        """A clone on the branch main names the branch and the tag 26.10.06 that the floor
+        26.10.6 selects; the check still passes, as the version satisfies the floor."""
+        checkout = tmp_path / 'MORS'
+        commits = _tagged_module(checkout)
+        r = _check_editable_mors(checkout)
+        assert r.status == PASS
+        assert r.message == (
+            f'26.10.6 [editable @ MORS -> {commits[2][:7]};'
+            ' on branch main; PROTEUS expects the release tag 26.10.06]'
+        )
+
+    def test_newer_commit_names_the_commit_and_the_tag(self, tmp_path):
+        """A clone detached one commit past the floor tag names its commit, says that it is not
+        the release tag, and names the tag; the older tag 26.10.05 is not the one expected."""
+        checkout = tmp_path / 'MORS'
+        commits = _tagged_module(checkout)
+        git(checkout, 'checkout', '-q', '--detach', commits[2])
+        r = _check_editable_mors(checkout)
+        short = commits[2][:7]
+        assert r.message.endswith(
+            f'; at commit {short}, not the release tag; PROTEUS expects the release tag 26.10.06]'
+        )
+        assert '26.10.05' not in r.message
+
+    def test_older_tag_is_named_as_found(self, tmp_path):
+        """A clone at the older tag 26.10.05 is named by that tag and its commit, and the check
+        only reads it: HEAD stays at that tag."""
+        checkout = tmp_path / 'MORS'
+        commits = _tagged_module(checkout)
+        git(checkout, 'checkout', '-q', 'tags/26.10.05')
+        r = _check_editable_mors(checkout)
+        assert (
+            f'; at tag 26.10.05 ({commits[0][:7]}), not the release tag;'
+            ' PROTEUS expects the release tag 26.10.06]'
+        ) in r.message
+        assert git(checkout, 'rev-parse', 'HEAD') == commits[0]
+
+    @pytest.mark.parametrize('annotated', [False, True], ids=['lightweight', 'annotated'])
+    def test_clone_at_the_floor_tag_gets_no_note(self, tmp_path, annotated):
+        """A clone detached at the floor tag gets the plain annotation; for an annotated tag
+        the commit, not the tag object, is compared with HEAD."""
+        checkout = tmp_path / 'MORS'
+        commits = _tagged_module(checkout, annotated=annotated)
+        git(checkout, 'checkout', '-q', 'tags/26.10.06')
+        r = _check_editable_mors(checkout)
+        assert r.message == f'26.10.6 [editable @ MORS -> {commits[1][:7]}]'
+        assert r.status == PASS
+
+    def test_branch_without_the_floor_tag_says_the_tag_is_unknown(self, tmp_path):
+        """A branch clone whose tags hold no 26.10.6 says that the release tag could not be
+        determined, in place of a tag."""
+        checkout = tmp_path / 'MORS'
+        _tagged_module(checkout)
+        git(checkout, 'tag', '-d', '26.10.06')
+        r = _check_editable_mors(checkout)
+        assert r.message.endswith('; on branch main; the release tag could not be determined]')
+        assert 'PROTEUS expects' not in r.message
+
+    def test_note_costs_two_git_calls_with_a_timeout(self, tmp_path):
+        """The note adds 2 git calls to the check, each with the timeout of the note; the
+        other git calls of the check go through check_output, as before."""
+        checkout = tmp_path / 'MORS'
+        _tagged_module(checkout)
+        real_run = subprocess.run
+        calls = []
+
+        def recording_run(argv, **kwargs):
+            calls.append((argv, kwargs.get('timeout')))
+            return real_run(argv, **kwargs)
+
+        with patch('proteus.doctor.subprocess.run', side_effect=recording_run):
+            r = _check_editable_mors(checkout)
+        assert 'on branch main' in r.message
+        # check_output runs through subprocess.run, so the 2 calls of the plain annotation show.
+        assert [argv[3] for argv, _ in calls] == [
+            'rev-parse',
+            'status',
+            'symbolic-ref',
+            'for-each-ref',
+        ]
+        assert [timeout for _, timeout in calls] == [None, None] + [_GIT_NOTE_TIMEOUT_S] * 2
+        assert 0 < _GIT_NOTE_TIMEOUT_S <= 30
+
+    def test_git_that_does_not_finish_gives_no_note(self, tmp_path):
+        """A git call that times out, or a missing git, gives no note and no exception."""
+        err = subprocess.TimeoutExpired(cmd='git', timeout=_GIT_NOTE_TIMEOUT_S)
+        with patch('proteus.doctor.subprocess.run', side_effect=err):
+            assert _git_note_output(str(tmp_path), 'symbolic-ref', 'HEAD') is None
+            assert _release_tag_note(str(tmp_path), 'abc1234', None) == ''
+        with patch('proteus.doctor.subprocess.run', side_effect=FileNotFoundError):
+            assert _git_note_output(str(tmp_path), 'symbolic-ref', 'HEAD') is None
+
+    def test_clone_git_cannot_read_gets_no_note(self, tmp_path, monkeypatch):
+        """A folder that is no git repository gives no note: symbolic-ref exits 128."""
+        monkeypatch.setenv('GIT_CEILING_DIRECTORIES', str(tmp_path))
+        assert _git_note_output(str(tmp_path), 'symbolic-ref', '-q', 'HEAD')[0] == 128
+        assert _release_tag_note(str(tmp_path), None, None) == ''
+
+    @pytest.mark.parametrize(
+        ('requirement', 'tags', 'expected'),
+        [
+            ('fwl-mors>=26.10.6', ['26.10.05', '26.10.06', '26.11.01'], '26.10.06'),
+            ('fwl-mors>=26.10.6', ['v26.10.6', 'release-26.10.6'], 'v26.10.6'),
+            ('fwl-mors>=0.2', ['0.2.0', '0.1.0'], '0.2.0'),
+            ('fwl-mors>=26.10.6', ['26.10.06', '26.10.6'], None),
+            ('fwl-mors>=26.10.6', ['26.10.60', '26.1.6'], None),
+            ('fwl-mors==26.10.6', ['26.10.6'], None),
+        ],
+        ids=[
+            'zero padded tag',
+            'v prefix, other names skipped',
+            'trailing zero',
+            'two tags of the floor',
+            'near misses',
+            'no floor',
+        ],
+    )
+    def test_floor_tag_name_matches_the_pin_reader(self, requirement, tags, expected):
+        """The tag of the floor compares release numbers, as tools/_module_pins.py does: zero
+        padding, a v prefix and trailing zeros do not matter, 26.10.60 is not 26.10.6, and
+        two matches or no >= floor give no tag. The pin reader the installer runs picks the
+        same tag, or refuses, for every case with a floor."""
+        from packaging.requirements import Requirement
+
+        spec = Requirement(requirement)
+        assert _floor_tag_name(spec, tags) == expected
+        loader = importlib.util.spec_from_file_location(
+            'module_pins', PROTEUS_ROOT / 'tools' / '_module_pins.py'
+        )
+        pins = importlib.util.module_from_spec(loader)
+        loader.loader.exec_module(pins)
+        floors = [s.version for s in spec.specifier if s.operator == '>=']
+        try:
+            picked = pins.match_floor_tag('fwl-mors', floors[0], tags) if floors else None
+        except LookupError:
+            picked = None
+        assert picked == expected
 
 
 class TestGitHelpers:
@@ -2006,7 +2186,10 @@ class TestRunFixCommand:
         code = _run_fix_command(r.fix_cmd, root)
         out = capsys.readouterr().out
         assert code == 1
-        assert 'uncommitted changes or commits not on a remote' in out
+        assert (
+            f'ERROR: fwl-mors: {checkout} stays as it is: 0 modified tracked files and'
+            ' 1 local commit (on no remote); PROTEUS expects the release tag 26.10.06'
+        ) in out
         assert git(checkout, 'rev-parse', 'HEAD') == local
         assert (checkout / 'version.txt').read_text() == 'local work\n'
         assert (checkout / 'notes.txt').read_text() == 'kept\n'
@@ -2036,7 +2219,14 @@ class TestRunFixCommand:
         code = _run_fix_command(cmd, root)
         out = capsys.readouterr().out
         assert code == 1
-        assert 'uncommitted changes or commits not on a remote' in out
+        found = {
+            'local commit': '0 modified tracked files and 1 local commit',
+            'modified tracked file': '1 modified tracked file and 0 local commits',
+        }[work]
+        assert (
+            f'ERROR: fwl-mors: {checkout} stays as it is: {found} (on no remote);'
+            ' PROTEUS expects the release tag 26.10.06'
+        ) in out
         assert 'Commit, push or stash' in out
         assert '--force' not in out
         assert git(checkout, 'rev-parse', 'HEAD') == head

@@ -71,7 +71,9 @@ directory (`proteus_tools_dir`), the `--force` and install-path argument split
 GitHub SSH probe (`github_use_ssh`), the https-to-SSH URL rewrite
 (`github_ssh_url`), the pin reader (`resolve_module_pin`), the release-tag
 checkout (`checkout_floor_tag`), the in-place move of an existing clone to that
-tag (`move_clone_to_floor_tag`), and `swap_in_checkout`, which puts a finished
+tag (`move_clone_to_floor_tag`) with the one line for a clone that stays
+(`report_clone_stays`), the re-run path of a module script that keeps its clone
+(`reuse_existing_clone`), and `swap_in_checkout`, which puts a finished
 new checkout in the place of the old one. A script that replaces a checkout
 clones into a temporary sibling and calls `swap_in_checkout` last, so a failed
 clone or checkout leaves the old one as it was.
