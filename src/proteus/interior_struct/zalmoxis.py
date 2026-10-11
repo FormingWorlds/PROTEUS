@@ -1340,13 +1340,14 @@ def _structure_target_masses(config: Config, hf_row: dict) -> tuple[float, float
 
 
 def set_core_target_at_init_end(config: Config, hf_row: dict) -> None:
-    """Set ``M_core_target`` from the row when the init stage ends without a re-solve.
+    """Set ``M_core_target`` from the row when the init stage ends.
 
-    Without ``equilibrate_init`` the one structure solve of the init stage runs before the
-    first inventories exist, so the target it wrote takes no kept volatile off.
+    The kept inventories of that row are the ones the evolution starts with. A structure
+    solve of the init stage can see others: none without ``equilibrate_init``, and moving
+    ones with a wet mantle or a volatile budget given as a pressure or a concentration.
     """
     struct = config.interior_struct
-    if struct.module == 'zalmoxis' and not struct.zalmoxis.equilibrate_init:
+    if struct.module == 'zalmoxis':
         total_planet_mass, _, M_kept = _structure_target_masses(config, hf_row)
         hf_row['M_core_target'] = struct.core_frac * (total_planet_mass - M_kept)
 

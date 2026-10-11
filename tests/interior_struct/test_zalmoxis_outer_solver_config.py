@@ -488,24 +488,26 @@ def test_a_dry_mantle_core_is_kept_when_derived_oxygen_leaves_the_planet(monkeyp
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 @pytest.mark.parametrize(
     'module, equilibrate, dry, kept',
     [
         ('zalmoxis', False, True, 7.43e20),
         ('zalmoxis', False, False, 3.0e20),
-        ('zalmoxis', True, True, 0.0),
+        ('zalmoxis', True, True, 7.43e20),
+        ('zalmoxis', True, False, 3.0e20),
         ('spider', False, True, 0.0),
     ],
-    ids=['dry', 'wet', 'equilibrated', 'other_structure'],
+    ids=['dry', 'wet', 'dry_equilibrated', 'wet_equilibrated', 'other_structure'],
 )
-def test_the_core_target_is_set_from_the_row_when_the_init_stage_has_no_resolve(
+def test_the_core_target_is_set_from_the_row_when_the_init_stage_ends(
     monkeypatch, module, equilibrate, dry, kept
 ):
-    """Without equilibrate_init the one structure solve of the init stage sees no inventory
-    and writes 0.325 of the planet. When the init stage ends the row holds H and C (7.43e20 kg,
-    3.0e20 kg of it in the atmosphere), and the target becomes 0.325 of the planet without
-    them; the solve at 250 yr reads it. With equilibrate_init, or another structure module,
-    the stored value stays."""
+    """A structure solve of the init stage can leave a target that is not the one of the
+    final inventories: here 0.325 of the whole planet. When the init stage ends the row
+    holds H and C (7.43e20 kg, 3.0e20 kg of it in the atmosphere), and the target becomes
+    0.325 of the planet without them, with or without equilibrate_init; the solve at
+    250 yr reads it. With another structure module the stored value stays."""
     from proteus.interior_struct.zalmoxis import set_core_target_at_init_end
 
     config = _make_mock_config()

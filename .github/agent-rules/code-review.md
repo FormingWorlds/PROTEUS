@@ -15,14 +15,14 @@ Every site that sums element masses includes oxygen; that keeps `M_atm` below `M
 
 1. Initial-budget population (`calc_target_elemental_inventories`, `_resolve_oxygen_budget`)
 2. M_planet bookkeeping (`update_planet_mass`)
-3. Structure dry-mass target (`load_zalmoxis_configuration`)
+3. Structure dry-mass target (`_structure_target_masses`, called by `load_zalmoxis_configuration`)
 4. Escape rate distribution (`calc_unfract_fluxes`, `calc_new_elements`); O is in the unfractionated partitioning, so `sum(esc_rate_e) == esc_rate_total` to within rounding
 5. Desiccation gate (`check_desiccation`)
 6. First-call baseline (`M_vol_initial` in `run_escape`)
 
 Sites 1 and 2 sum `vol_element_list + noble_gases` and leave the rock-vapour elements of `vap_element_list` out on purpose, because rock vapour enters the atmosphere without being debited from the interior; sites 3, 4 and 6 sum `element_list`; site 5 tests `vol_element_list + noble_gases` against the threshold and sums `element_list` (finite totals only) for the escape balance, to match the site-6 baseline, leaving out the mass earlier desiccations removed (`M_desiccated`). The different lists are intended, not an asymmetry to repair.
 
-Site 3 holds a second sum for the core mass: the kept inventories, `vol_element_list + noble_gases` without O when `outgassing_derives_o_kg_total(config)` holds. On the rows of the init stage the core target is `core_frac` of the planet without that sum (`set_core_target_at_init_end` writes it when no structure solve of the init stage saw the inventories); later rows read it from `M_core_target`. Oxygen stays in the structure-target sum of site 3; it is left out of the kept sum on purpose, because an oxygen inventory that the outgassing derives from the fO2 buffer is mantle mass, like rock vapour.
+Site 3 holds a second sum for the core mass: the kept inventories, `vol_element_list + noble_gases` without O when `outgassing_derives_o_kg_total(config)` holds. The core target is `core_frac` of the planet without the kept sum: the solves of the init stage compute it from their row, `set_core_target_at_init_end` writes it from the row on which the init stage ends, and later solves read it from `M_core_target`. Oxygen stays in the structure-target sum of site 3; it is left out of the kept sum on purpose, because an oxygen inventory that the outgassing derives from the fO2 buffer is mantle mass, like rock vapour.
 
 ## Mass-conservation check
 
