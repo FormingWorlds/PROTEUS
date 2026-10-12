@@ -1,19 +1,7 @@
 #!/usr/bin/env bash
-# PROTEUS unified installer
-#
-# Usage:
-#   bash install.sh              # Essential install (spectral + stellar data)
-#   bash install.sh --all-data   # Full install (all reference data)
-#   bash install.sh --no-data    # Skip data downloads
-#   bash install.sh -i           # Interactive mode (prompt for choices)
-#   bash install.sh --help       # Show usage
-#
-# Prerequisites:
-#   - conda environment with Python 3.12 must be active
-#   - System packages (gfortran >= 9, netcdf) must be installed
-#   - Internet connection for downloads
-#
-# This script is idempotent: safe to re-run after a failure or update.
+# PROTEUS unified installer; `bash install.sh --help` lists the options. It needs an active conda
+# environment with Python 3.12 and the system packages of docs/How-to/installation.md, and each
+# phase can run again after a failure.
 
 set -euo pipefail
 
@@ -375,12 +363,14 @@ for arg in "$@"; do
             echo "Usage: bash install.sh [OPTIONS]"
             echo ""
             echo "Options:"
-            echo "  --all-data   Download all reference data (~10-20 GB)"
-            echo "  --no-data    Skip data downloads entirely"
+            echo "  --all-data   Download all reference data (~10-20 GB) instead of the essential set"
+            echo "  --no-data    Skip data downloads entirely, including the essential set"
             echo "  -i, --interactive  Interactive mode (prompt for choices)"
             echo "  --help       Show this message"
             echo ""
-            echo "Default: download essential data (~2 GB)"
+            echo "Default: download the essential data (~3 GB): the default-config and tutorial"
+            echo "k-tables, stellar spectra and tracks, the PHOENIX grid of the default star"
+            echo "([Fe/H] = 0.0, [alpha/M] = 0.0) and the interior tables"
             exit 0
             ;;
         *)
@@ -823,35 +813,44 @@ else
     info "GitHub SSH access: not available, using HTTPS"
 fi
 
-# Clone and install a submodule as editable if not already present.
-# Optional 4th arg: branch to checkout (defaults to repo default branch).
+# Usage: clone_and_install <RepoName> <distribution>. tools/get_python_module.sh clones a missing module
+# at its release tag, or installs an existing folder as it is and names its state; it never replaces one.
 clone_and_install() {
-    local name="$1" org="$2" repo="$3" branch="${4:-}"
-    local dest="$SCRIPT_DIR/$repo"
-    if [ -d "$dest" ]; then
-        info "$name already cloned at $dest"
-    else
-        info "Cloning $name..."
-        if [ -n "$branch" ]; then
-            git clone -b "$branch" "${GH_PREFIX}${org}/${repo}.git" "$dest"
-        else
-            git clone "${GH_PREFIX}${org}/${repo}.git" "$dest"
-        fi
+    local repo="$1" dist="$2"
+    if ! PROTEUS_MODULE_GIT_BASE="$GH_PREFIX" \
+        bash "$SCRIPT_DIR/tools/get_python_module.sh" "$repo" 2>&1; then
+        die "Could not install $repo ($dist); see the error above"
     fi
-    info "Installing $name (editable)..."
-    pip install -e "$dest/." 2>&1
 }
 
-clone_and_install "MORS"     "FormingWorlds" "MORS"
-clone_and_install "JANUS"    "FormingWorlds" "JANUS"
-clone_and_install "CALLIOPE" "FormingWorlds" "CALLIOPE"
-clone_and_install "ZEPHYRUS" "FormingWorlds" "ZEPHYRUS"
+# Print one line naming the module clones that stay as they are, which record_clone_stays
+# (tools/_get_common.sh) wrote to the file PROTEUS_CLONE_STAYS names, and remove that file.
+report_stayed_clones() {
+    local list
+    [ -n "${PROTEUS_CLONE_STAYS:-}" ] || return 0
+    if [ -s "$PROTEUS_CLONE_STAYS" ]; then
+        list=$(awk 'NR > 1 {printf ", "} {printf "%s", $0}' "$PROTEUS_CLONE_STAYS")
+        warn "Not at their release tag: $list. A clone that is older than the minimum version is" \
+            "not used: the PROTEUS install takes that release from PyPI. The commands printed" \
+            "above move a clone to its tag or replace it; a paired branch without the release" \
+            "has no command, its release comes from PyPI."
+    fi
+    rm -f "$PROTEUS_CLONE_STAYS"
+}
+
+PROTEUS_CLONE_STAYS=$(mktemp "${TMPDIR:-/tmp}/proteus-clone-stays.XXXXXX") || PROTEUS_CLONE_STAYS=""
+export PROTEUS_CLONE_STAYS
+clone_and_install "MORS"     "fwl-mors"
+clone_and_install "JANUS"    "fwl-janus"
+clone_and_install "CALLIOPE" "fwl-calliope"
+clone_and_install "ZEPHYRUS" "fwl-zephyrus"
 
 # Aragog and Zalmoxis use dedicated setup scripts
 info "Setting up Aragog..."
 bash tools/get_aragog.sh 2>&1
 info "Setting up Zalmoxis..."
 bash tools/get_zalmoxis.sh 2>&1
+report_stayed_clones
 
 # Install the SUNDIALS CVODE solver, Aragog's default integrator. A run with
 # Aragog stops at setup without it.
@@ -882,7 +881,7 @@ phase 7 "Reference data"
 
 case "$DATA_MODE" in
     essential)
-        info "Downloading essential reference data (~2 GB)..."
+        info "Downloading essential reference data (~3 GB)..."
         # Default-config and tutorial k-tables only; the bare
         # `proteus get spectral` downloads every group (~10 GB).
         # Honeyside/48 serves the config default (src/proteus/config/_atmos_clim.py),
@@ -890,6 +889,8 @@ case "$DATA_MODE" in
         proteus get spectral -n Honeyside -b 48 2>&1 || warn "Spectral data download had issues"
         proteus get spectral -n Dayspring -b 48 2>&1 || warn "Spectral data download had issues"
         proteus get stellar 2>&1 || warn "Stellar data download had issues"
+        # The default star (src/proteus/config/_star.py) reads this PHOENIX grid (~1 GB on disk).
+        proteus get phoenix --feh +0.0 --alpha +0.0 2>&1 || warn "PHOENIX download had issues"
         # Interior lookup tables, melting curves, and the structure-solver
         # EOS tables that the default and tutorial configs require.
         proteus get interiordata 2>&1 || warn "Interior data download had issues"
