@@ -166,3 +166,31 @@ def test_plot_fluxes_global_takes_its_neutral_colours_from_the_style(
         to_rgba(style.face, 0.99)
     )
     assert to_rgb(line['Net (int.)'].get_color()) == pytest.approx(to_rgb('#ff7f0e'))
+
+
+# Font sizes of a presentation style, larger than the matplotlib defaults.
+_LARGE_FONTS = {'font.size': 14.5, 'axes.labelsize': 18, 'legend.fontsize': 14.5}
+
+
+@pytest.mark.parametrize('rc', [None, _LARGE_FONTS], ids=['default_fonts', 'large_fonts'])
+def test_plot_fluxes_global_legend_is_above_the_data_area(draw_real, tmp_path, rc):
+    """The legend with its 8 entries lies above the panel at both font sizes,
+    so it covers no curve whatever the run looks like."""
+    (tmp_path / 'plots').mkdir()
+
+    (fig,) = draw_real(
+        fluxes_mod.plot_fluxes_global,
+        _make_hf_all(),
+        str(tmp_path),
+        config=_make_config(plot_fmt='png'),
+        rc=rc,
+    )
+    fig.set_dpi(200)
+    fig.canvas.draw()
+    (ax,) = fig.axes
+    legend = ax.get_legend()
+    box = legend.get_window_extent(fig.canvas.get_renderer())
+
+    assert len(legend.get_texts()) == 8
+    assert not box.overlaps(ax.bbox)
+    assert box.y0 >= ax.bbox.y1

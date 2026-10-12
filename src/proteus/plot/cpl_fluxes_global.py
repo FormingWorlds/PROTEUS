@@ -70,7 +70,7 @@ def plot_fluxes_global(
     ax.set_xscale('log')
     ax.set_xlabel('Time [yr]')
     ax.set_xlim(time[0], time[-1])
-    legend = ax.legend(loc='lower left')
+    legend = ax.legend(loc='lower left', bbox_to_anchor=(0.0, 1.0), ncol=3)
     legend.get_frame().set_alpha(None)
     legend.get_frame().set_facecolor((*style_neutral(1.0), 0.99))
     ax.grid(color=neutral, alpha=0.05)
