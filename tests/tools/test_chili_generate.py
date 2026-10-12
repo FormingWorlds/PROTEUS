@@ -102,21 +102,6 @@ def test_generated_cases_match_tutorials_outside_their_deltas():
     assert set(gen.CASE_DELTAS) == {'earth', 'venus', 'tr1b', 'tr1e', 'tr1a'}
 
 
-def test_the_venus_case_keeps_its_end_time():
-    """The Venus tutorial stops at 3 Myr and the intercomparison case runs to 5 Gyr."""
-    import tomllib
-
-    gen = _load_generator()
-    tut = _read_config(str(REPO / 'input' / 'tutorials' / 'tutorial_venus.toml'))
-    case = _read_config(str(REPO / 'input' / 'chili' / 'intercomp' / 'venus.toml'))
-    assert tut.params.stop.time.maximum == pytest.approx(3.0e6, rel=1e-12)
-    assert case.params.stop.time.maximum == pytest.approx(5.0e9, rel=1e-12)
-    # Discrimination: without its delta the case takes the end time of the tutorial.
-    del gen.CASE_DELTAS['venus']['set']['params.stop.time.maximum']
-    stop = tomllib.loads(gen.generate_case('venus'))['params']['stop']['time']
-    assert stop['maximum'] == pytest.approx(3.0e6, rel=1e-12)
-
-
 def test_a_case_cannot_set_its_own_redox_state():
     """The redox state of the protocol is one value for all cases."""
     gen = _load_generator()

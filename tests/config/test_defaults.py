@@ -533,7 +533,7 @@ def test_the_default_redox_state_is_two_log_units_above_iron_wustite():
 @pytest.mark.unit
 def test_the_time_limits_of_the_tutorials():
     """The Venus tutorial stops at 3 Myr and the Earth and Moon tutorial at
-    0.8 Myr; the Earth tutorial keeps 5 Gyr."""
+    0.8 Myr; the Earth tutorial and the CHILI Venus case keep 5 Gyr."""
     from helpers import PROTEUS_ROOT
 
     from proteus.config import read_config_object
@@ -542,6 +542,8 @@ def test_the_time_limits_of_the_tutorials():
     for name, limit in want.items():
         cfg = read_config_object(PROTEUS_ROOT / 'input' / 'tutorials' / f'tutorial_{name}.toml')
         assert cfg.params.stop.time.maximum == pytest.approx(limit, rel=1e-12), name
+    case = read_config_object(PROTEUS_ROOT / 'input' / 'chili' / 'intercomp' / 'venus.toml')
+    assert case.params.stop.time.maximum == pytest.approx(5.0e9, rel=1e-12)
 
 
 @pytest.mark.unit
