@@ -17,7 +17,7 @@ from unittest.mock import MagicMock
 import numpy as np
 import pandas as pd
 import pytest
-from matplotlib.colors import to_rgb, to_rgba
+from matplotlib.colors import to_rgb
 
 import proteus.plot.cpl_global as global_mod
 
@@ -186,8 +186,7 @@ def test_plot_global_writes_linear_axes_figure(monkeypatch, tmp_path):
 def test_plot_global_takes_its_neutral_colours_from_the_style(draw_real, tmp_path, style):
     """On real axes the total pressure line has the text colour of the style, the
     net atmosphere flux, surface temperature and melt fraction curves its dark
-    grey, and the 6 panel labels a box in its axes face colour: black, '#444444'
-    and white in the default style."""
+    grey: black and '#444444' in the default style."""
     (tmp_path / 'plots').mkdir()
     config = _make_config()
     config.interior_struct.core_frac = 0.325
@@ -196,16 +195,78 @@ def test_plot_global_takes_its_neutral_colours_from_the_style(draw_real, tmp_pat
         global_mod.plot_global, _full_helpfile(), str(tmp_path), config, rc=style.rc
     )
 
-    panel = {ax.texts[0].get_text()[:3]: ax for ax in fig.axes}
+    panel = {ax.get_title(loc='left')[:3]: ax for ax in fig.axes}
     assert sorted(panel) == ['(a)', '(b)', '(c)', '(d)', '(e)', '(f)']
     line = {ln.get_label(): ln for ax in fig.axes for ln in ax.lines}
     assert to_rgb(line['Total'].get_color()) == pytest.approx(to_rgb(style.text))
     curves = [line['Net (atm.)'], line['Melt fraction'], panel['(c)'].lines[1]]
     for curve in curves:
         assert to_rgb(curve.get_color()) == pytest.approx(to_rgb(style.dark_grey))
-    for ax in fig.axes:
-        box = ax.texts[0].get_bbox_patch()
-        assert box.get_facecolor() == pytest.approx(to_rgba(style.face, 0.5))
-        assert box.get_edgecolor() == pytest.approx(to_rgba(style.face, 0.5))
     # Module and species colours do not follow the style.
     assert to_rgb(panel['(c)'].lines[0].get_color()) == pytest.approx(to_rgb('#ff7f0e'))
+
+
+# Font sizes of a presentation style, larger than the matplotlib defaults.
+_LARGE_FONTS = {'font.size': 14.5, 'axes.labelsize': 18, 'legend.fontsize': 14.5}
+
+
+@pytest.mark.parametrize('logt', [True, False])
+@pytest.mark.parametrize('rc', [None, _LARGE_FONTS], ids=['default', 'large'])
+def test_plot_global_text_boxes_do_not_collide(draw_real, tmp_path, logt, rc):
+    """Text geometry of the drawn figure, for both time axes and two font sizes:
+    tick labels of different panels do not intersect, each panel label is
+    outside every data area and clear of every legend, and the y label of the
+    top row is no taller than its panel, so it cannot leave the figure."""
+    (tmp_path / 'plots').mkdir()
+    config = _make_config()
+    config.interior_struct.core_frac = 0.325
+    config.params.out.plot_fmt = 'png'
+
+    (fig,) = draw_real(
+        global_mod.plot_global, _full_helpfile(), str(tmp_path), config, logt=logt, rc=rc
+    )
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+
+    ticks = []
+    for i, ax in enumerate(fig.axes):
+        for axis, lim in ((ax.xaxis, ax.get_xlim()), (ax.yaxis, ax.get_ylim())):
+            for tick in axis.get_major_ticks():
+                if not min(lim) <= tick.get_loc() <= max(lim):
+                    continue
+                for label in (tick.label1, tick.label2):
+                    if label.get_visible() and label.get_text():
+                        ticks.append((i, label.get_text(), label.get_window_extent(renderer)))
+    # Guard: the labels were found, so an empty list of collisions means something.
+    assert len({i for i, _, _ in ticks}) == 6
+    legends = [ax.get_legend() for ax in fig.axes if ax.get_legend() is not None]
+    assert len(legends) == 3
+    titles = [ax._left_title for ax in fig.axes]
+    boxes = [t.get_window_extent(renderer) for t in titles]
+    top_left = fig.axes[0]
+
+    found = {
+        'panel labels': [t.get_text()[:3] for t in titles],
+        'tick labels that intersect': [
+            (a[1], b[1])
+            for n, a in enumerate(ticks)
+            for b in ticks[n + 1 :]
+            if a[0] != b[0] and a[2].overlaps(b[2])
+        ],
+        'panel labels in a data area': sum(
+            b.overlaps(ax.bbox) for b in boxes for ax in fig.axes
+        ),
+        'panel labels under a legend': sum(
+            b.overlaps(leg.get_window_extent(renderer)) for b in boxes for leg in legends
+        ),
+        'top y label taller than its panel': bool(
+            top_left.yaxis.label.get_window_extent(renderer).height > top_left.bbox.height
+        ),
+    }
+    assert found == {
+        'panel labels': ['(a)', '(b)', '(c)', '(d)', '(e)', '(f)'],
+        'tick labels that intersect': [],
+        'panel labels in a data area': 0,
+        'panel labels under a legend': 0,
+        'top y label taller than its panel': False,
+    }
