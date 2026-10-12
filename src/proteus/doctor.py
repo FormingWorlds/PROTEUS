@@ -239,32 +239,47 @@ def _git_env() -> dict[str, str]:
     return {key: value for key, value in os.environ.items() if key not in _GIT_REPO_ENV}
 
 
-def _git_head(path: str) -> str | None:
-    """Return the full HEAD commit hash for a git checkout, or None."""
+def _git_stdout(path: str, *args: str, options: tuple[str, ...] = ()) -> str | None:
+    """Return the standard output of one git command in a checkout.
+
+    Parameters
+    ----------
+    path : str
+        Checkout directory, passed to ``git -C``.
+    *args : str
+        The git subcommand and its arguments, for example ``'rev-parse', 'HEAD'``.
+    options : tuple of str
+        Options of git itself that go before ``-C``, for example
+        ``('--no-optional-locks',)``.
+
+    Returns
+    -------
+    str or None
+        The output, or None when git is missing, fails or does not finish
+        within ``_GIT_NOTE_TIMEOUT_S``.
+    """
     try:
         return subprocess.check_output(
-            ['git', '-C', path, 'rev-parse', 'HEAD'],
+            ['git', *options, '-C', path, *args],
             text=True,
             stderr=subprocess.DEVNULL,
             timeout=_GIT_NOTE_TIMEOUT_S,
             env=_git_env(),
-        ).strip()
+        )
     except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
         return None
+
+
+def _git_head(path: str) -> str | None:
+    """Return the full HEAD commit hash for a git checkout, or None."""
+    out = _git_stdout(path, 'rev-parse', 'HEAD')
+    return None if out is None else out.strip()
 
 
 def _git_short_head(path: str) -> str | None:
     """Return the short HEAD commit hash for a git checkout, or None."""
-    try:
-        return subprocess.check_output(
-            ['git', '-C', path, 'rev-parse', '--short', 'HEAD'],
-            text=True,
-            stderr=subprocess.DEVNULL,
-            timeout=_GIT_NOTE_TIMEOUT_S,
-            env=_git_env(),
-        ).strip()
-    except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
-        return None
+    out = _git_stdout(path, 'rev-parse', '--short', 'HEAD')
+    return None if out is None else out.strip()
 
 
 def _git_dirty(path: str) -> bool | None:
@@ -273,17 +288,8 @@ def _git_dirty(path: str) -> bool | None:
     repository, git missing, a git error, or a git that does not finish within
     ``_GIT_NOTE_TIMEOUT_S``). ``--no-optional-locks`` keeps git from rewriting
     the index of the checkout."""
-    try:
-        out = subprocess.check_output(
-            ['git', '--no-optional-locks', '-C', path, 'status', '--porcelain'],
-            text=True,
-            stderr=subprocess.DEVNULL,
-            timeout=_GIT_NOTE_TIMEOUT_S,
-            env=_git_env(),
-        )
-        return bool(out.strip())
-    except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
-        return None
+    out = _git_stdout(path, 'status', '--porcelain', options=('--no-optional-locks',))
+    return None if out is None else bool(out.strip())
 
 
 # The module repositories that tools/get_python_module.sh clones, by distribution.
@@ -294,14 +300,18 @@ _PYTHON_MODULE_REPOS = {
     'fwl-zephyrus': 'ZEPHYRUS',
 }
 
-# The folder in the PROTEUS root that a setup script clones each module into, by distribution.
+# The folder in the PROTEUS root that a setup script clones each module of PYTHON_PACKAGES into.
 _MODULE_FOLDERS = {
     **_PYTHON_MODULE_REPOS,
     'fwl-aragog': 'aragog',
-    'fwl-morrigan': 'Morrigan',
-    'fwl-vulcan': 'VULCAN',
     'fwl-zalmoxis': 'Zalmoxis',
 }
+
+# The modules whose setup script gives a new clone the branch named like the PROTEUS feature branch.
+_PAIRED_MODULES = (
+    'fwl-aragog',
+    'fwl-zalmoxis',
+)
 
 
 def _git_note_output(path: str, *args: str) -> tuple[int, str] | None:
@@ -437,14 +447,39 @@ def _tag_commits(checkout: str) -> dict[str, str]:
     return {f[0].removeprefix('refs/tags/'): f[-1] for f in (line.split() for line in lines)}
 
 
+def _proteus_feature_branch() -> str | None:
+    """Return the branch PROTEUS is on, as the setup scripts read it to pair a module branch.
+
+    In CI the branch is ``GITHUB_HEAD_REF`` or ``GITHUB_REF_NAME``; else it
+    is read from the PROTEUS checkout with ``git rev-parse --abbrev-ref
+    HEAD``, a read-only call with a timeout.
+
+    Returns
+    -------
+    str or None
+        The branch name; None for ``main``, ``master``, a detached HEAD or
+        a branch that cannot be read, which pair with no module branch.
+    """
+    branch = os.environ.get('GITHUB_HEAD_REF') or os.environ.get('GITHUB_REF_NAME')
+    if not branch:
+        out = _git_note_output(str(_repo_root()), 'rev-parse', '--abbrev-ref', 'HEAD')
+        branch = out[1].strip() if out and out[0] == 0 else ''
+    return None if branch in ('', 'HEAD', 'main', 'master') else branch
+
+
 def _release_tag_note(checkout: str, short: str | None, spec: Requirement | None) -> str:
     """Return the note on an editable clone that is not at the release tag of its floor.
 
     The note has the parts of the installer's stay line: what the clone is
-    on, and what PROTEUS expects, in the words of the installer. It costs 3
-    git calls with a timeout: the top level of the clone, the branch, then
-    the tags with their commits. HEAD is compared with the tag commit first,
-    so a branch at the tag commit gets no note, as in the installer.
+    on, and what PROTEUS expects, in the words of the installer. It costs up
+    to 4 git calls with a timeout: the top level of the clone, the branch,
+    the tags with their commits, and ``merge-base --is-ancestor``. HEAD is
+    compared with the tag commit first, so a branch at the tag commit gets
+    no note, as in the installer; a HEAD that has the tag commit as an
+    ancestor is newer than the release and gets none either. An Aragog or
+    Zalmoxis clone on the branch that PROTEUS is on is the paired branch
+    of the installer and gets no note; that costs one call on the PROTEUS
+    checkout, and it compares branch names only, without a network call.
 
     Parameters
     ----------
@@ -459,19 +494,29 @@ def _release_tag_note(checkout: str, short: str | None, spec: Requirement | None
     -------
     str
         For example ``'; on branch main; PROTEUS expects the release tag
-        26.10.06'``; empty at the tag commit, without a single ``>=``
-        floor, or when the checkout is not a clone of its own that git can
-        read.
+        26.10.06'``; empty at the tag commit, newer than it, on the paired
+        branch, without a single ``>=`` floor, or when the checkout is not a
+        clone of its own that git can read.
     """
     if _floor_version(spec) is None or not _is_own_clone(checkout):
         return ''
     branch = _git_note_output(checkout, 'symbolic-ref', '-q', '--short', 'HEAD')
     if branch is None or branch[0] not in (0, 1):
         return ''
+    if (
+        branch[0] == 0
+        and spec.name.lower() in _PAIRED_MODULES
+        and branch[1].strip() == _proteus_feature_branch()
+    ):
+        return ''
     commits = _tag_commits(checkout)
     tag = _floor_tag_name(spec, list(commits))
     if short and tag and commits[tag].startswith(short):
         return ''
+    if short and tag:
+        newer = _git_note_output(checkout, 'merge-base', '--is-ancestor', commits[tag], 'HEAD')
+        if newer is not None and newer[0] == 0:
+            return ''
     if tag:
         expected = f'PROTEUS expects the release tag {tag}'
     else:
@@ -521,7 +566,10 @@ def _below_floor_advice(
     prints, and, for the clone in the module folder of the PROTEUS root
     only, the setup script that replaces it with ``--force``. The tag is
     read from the clone without a fetch; when the clone does not have it
-    yet, the checkout picks it from the tags the fetch brings.
+    yet, the checkout picks it from the tags the fetch brings. A folder
+    that is not a git clone of its own gets no git command, which would act
+    on the repository around it: only the ``--force`` replacement, or the
+    advice to move it away.
 
     Parameters
     ----------
@@ -539,27 +587,36 @@ def _below_floor_advice(
     str
         One line of shell commands with absolute, shell-quoted paths, and
         a comment that names the replacement when the checkout resolves to
-        ``<root>/<module folder>``.
+        ``<root>/<module folder>``; for a folder that is not a clone of its
+        own, the replacement with a comment, or a comment alone.
     """
     path = shlex.quote(os.path.abspath(checkout))
     root = _repo_root()
-    tag = (
-        _floor_tag_name(spec, list(_tag_commits(checkout))) if _is_own_clone(checkout) else None
-    )
+    folder = _MODULE_FOLDERS.get(dist_name.lower())
+    in_folder = bool(folder) and os.path.realpath(checkout) == os.path.realpath(root / folder)
+    replace = f'cd {shlex.quote(str(root))} && bash {setup}'
+    if not _is_own_clone(checkout):
+        if in_folder:
+            return (
+                f'{replace} --force  # {path} is not a git clone of its own; this replaces it'
+                ' with a new clone, which deletes everything in it'
+            )
+        return (
+            f'# {path} is not a git clone of its own, so no git command moves it to the'
+            f' release tag; move it away, then run: {replace}'
+        )
+    tag = _floor_tag_name(spec, list(_tag_commits(checkout)))
     if tag:
-        target = f'tags/{shlex.quote(tag)}'
+        target = f'refs/tags/{shlex.quote(tag)}'
     else:
         pins = shlex.quote(str(root / 'tools' / '_module_pins.py'))
-        target = f'"tags/$(git -C {path} tag -l | python {pins} {dist_name} floor-tag)"'
+        target = f'"refs/tags/$(git -C {path} tag -l | python {pins} {dist_name} floor-tag)"'
     advice = (
-        f'git -C {path} fetch --tags && git -C {path} checkout {target}'
+        f'git -C {path} fetch --tags && git -C {path} checkout --detach {target}'
         f' && pip install -e {path}'
     )
-    folder = _MODULE_FOLDERS.get(dist_name.lower())
-    if folder and os.path.realpath(checkout) == os.path.realpath(root / folder):
-        advice += (
-            f'  # or replace the clone: cd {shlex.quote(str(root))} && bash {setup} --force'
-        )
+    if in_folder:
+        advice += f'  # or replace the clone: {replace} --force'
     return advice
 
 
@@ -803,18 +860,21 @@ def check_python_package(name: str, spec: Requirement | None) -> CheckResult:
     setup = _setup_command(name) if checkout else None
     annotation = ''
     if checkout:
-        short = _git_short_head(checkout)
-        dirty = _git_dirty(checkout)
         base = os.path.basename(checkout.rstrip('/'))
-        if dirty is None:
-            marker = ' (git status unknown)'
-        elif dirty:
-            marker = ' (dirty)'
+        marker = ''
+        # git in a folder that is not a clone of its own reads the repository around it.
+        if not _is_own_clone(checkout):
+            annotation = f' [editable @ {base}; not a git clone of its own]'
         else:
-            marker = ''
-        # Only a module that a setup script clones at its floor has a release tag to expect.
-        note = _release_tag_note(checkout, short, spec) if setup else ''
-        annotation = f' [editable @ {base} -> {short}{marker}{note}]'
+            short = _git_short_head(checkout)
+            dirty = _git_dirty(checkout)
+            if dirty is None:
+                marker = ' (git status unknown)'
+            elif dirty:
+                marker = ' (dirty)'
+            # Only a module that a setup script clones at its floor has a release tag to expect.
+            note = _release_tag_note(checkout, short, spec) if setup else ''
+            annotation = f' [editable @ {base} -> {short}{marker}{note}]'
         # Cross-check that the editable checkout is the package actually on
         # sys.path. A later `pip install <pin>` can shadow the editable sibling
         # while leaving its direct_url metadata in place, so the checkout

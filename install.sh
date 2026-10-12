@@ -823,14 +823,16 @@ clone_and_install() {
     fi
 }
 
-# Print one line naming the module clones that are not at their release tag, which record_clone_stays
+# Print one line naming the module clones that stay as they are, which record_clone_stays
 # (tools/_get_common.sh) wrote to the file PROTEUS_CLONE_STAYS names, and remove that file.
 report_stayed_clones() {
     local list
     [ -n "${PROTEUS_CLONE_STAYS:-}" ] || return 0
     if [ -s "$PROTEUS_CLONE_STAYS" ]; then
         list=$(awk 'NR > 1 {printf ", "} {printf "%s", $0}' "$PROTEUS_CLONE_STAYS")
-        warn "Not at their release tag: $list"
+        warn "Not at their release tag: $list. A clone that is older than the minimum version is" \
+            "not used: the PROTEUS install takes that release from PyPI. The commands printed" \
+            "above for each clone move it to its tag or replace it."
     fi
     rm -f "$PROTEUS_CLONE_STAYS"
 }

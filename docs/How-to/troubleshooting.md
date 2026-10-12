@@ -172,9 +172,13 @@ is not affected: there is nothing to lose, so the next install refreshes it
 without asking.
 
 The setup scripts of the Python modules (MORS, JANUS, CALLIOPE, ZEPHYRUS,
-Aragog, Zalmoxis, VULCAN and Morrigan) never stop here: without `--force` they
-install a module folder that is already there as it is and print the commands
-that move it to its release tag or replace it; an empty folder gets a new clone.
+Aragog, Zalmoxis, VULCAN and Morrigan) never give these two messages: without
+`--force` they install a module folder that is already there as it is
+(`get_vulcan.sh` first runs `make` in its `fastchem_vulcan` folder) and print
+the commands that move it to its release tag or replace it; an empty folder
+gets a new clone. They stop with an error when the pip install of the folder
+fails, and `get_vulcan.sh` stops when the folder has no `fastchem_vulcan`
+folder or its `make` fails.
 
 ### Data download errors or slow Zenodo downloads {#data-download-errors-or-slow-zenodo-downloads}
 
