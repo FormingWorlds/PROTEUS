@@ -218,10 +218,12 @@ _LARGE_FONTS = {'font.size': 14.5, 'axes.labelsize': 18, 'legend.fontsize': 14.5
 @pytest.mark.parametrize('n_gases', [1, 6, 7], ids=['one_gas', 'six_gases', 'seven_gases'])
 def test_plot_global_text_boxes_do_not_collide(draw_real, tmp_path, logt, rc, n_gases):
     """Text geometry of the drawn figure, for both time axes, two font sizes and
-    both small gas legends: tick labels of different panels do not intersect, each
-    panel label is outside every data area and clear of every legend, the y label
-    of the top row is no taller than its panel, so it cannot leave the figure,
-    and each legend lies on no more curves than its best place needs."""
+    1, 6 and 7 gases (the gas legend has 1 column up to 6 gases). No tick labels of
+    different panels intersect and none lies in a data area; only the x tick labels
+    at the inner column edges are turned; each panel label is outside every data
+    area and clear of every legend, tick label and other panel label; no two axis
+    labels intersect; the y label of the top row is no taller than its panel; and
+    each legend lies on no more curves than its best place needs."""
     (tmp_path / 'plots').mkdir()
     config = _make_config()
     config.interior_struct.core_frac = 0.325
@@ -279,6 +281,12 @@ def test_plot_global_text_boxes_do_not_collide(draw_real, tmp_path, logt, rc, n_
         for ax in (fig.axes[4], fig.axes[5])
     ]
     tick_boxes = [box for _, _, box in ticks]
+    label_boxes = [
+        axis.label.get_window_extent(renderer)
+        for ax in fig.axes
+        for axis in (ax.xaxis, ax.yaxis)
+        if axis.label.get_text()
+    ]
 
     found = {
         'panel labels': [t.get_text()[:3] for t in titles],
@@ -300,6 +308,12 @@ def test_plot_global_text_boxes_do_not_collide(draw_real, tmp_path, logt, rc, n_
         'panel labels in a data area': sum(
             b.overlaps(ax.bbox) for b in boxes for ax in fig.axes
         ),
+        'tick labels in a data area': sum(
+            b.overlaps(ax.bbox) for b in tick_boxes for ax in fig.axes
+        ),
+        'axis labels on each other': sum(
+            a.overlaps(b) for n, a in enumerate(label_boxes) for b in label_boxes[n + 1 :]
+        ),
         'panel labels under a legend': sum(
             b.overlaps(leg.get_window_extent(renderer)) for b in boxes for leg in legends
         ),
@@ -318,6 +332,8 @@ def test_plot_global_text_boxes_do_not_collide(draw_real, tmp_path, logt, rc, n_
         + ([(1, -len(aligned[1]), 'left')] if logt else []),
         'panel labels on a tick label or on each other': 0,
         'panel labels in a data area': 0,
+        'tick labels in a data area': 0,
+        'axis labels on each other': 0,
         'panel labels under a legend': 0,
         'top y label taller than its panel': False,
         'legends on more curves than their best place needs': [],
