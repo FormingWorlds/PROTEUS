@@ -75,6 +75,7 @@ import os
 import re
 import shlex
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -2759,6 +2760,16 @@ def _floor_tag_site(tmp_path: Path, pyproject: str, remotes: dict[str, str]) -> 
     return {'root': Path(os.path.realpath(root)), 'shas': shas, 'log': log, 'env': env}
 
 
+def _default_signals() -> None:
+    """Give the child the default action for HUP, INT and TERM.
+
+    A shell cannot trap a signal that it found ignored, and a test runner
+    started with ``nohup`` or as a background job ignores HUP or INT.
+    """
+    for sig in (signal.SIGHUP, signal.SIGINT, signal.SIGTERM):
+        signal.signal(sig, signal.SIG_DFL)
+
+
 def _run_tool(site: dict, script: str, *argv: str) -> subprocess.CompletedProcess:
     """Run ``tools/<script>`` of the site copy with ``argv``, from outside the copy."""
     return subprocess.run(
@@ -2768,6 +2779,7 @@ def _run_tool(site: dict, script: str, *argv: str) -> subprocess.CompletedProces
         capture_output=True,
         text=True,
         timeout=60,
+        preexec_fn=_default_signals,
     )
 
 
