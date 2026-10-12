@@ -368,7 +368,7 @@ def plot_fig1(intercomp, pe, pv, NS, out):
     ax.set_xlabel('Time (Myr)')
     ax.set_ylabel('Melt fraction (by volume)')
     ax.set_xscale('log')
-    ax.set_xlim(1e-3, 1e1)
+    ax.set_xlim(1e-3, 2e1)
     ax.set_ylim(0, 1.05)
     ax.legend(fontsize=8, ncol=2, loc='upper right', framealpha=0.9)
     _save(fig, out, 'chili_fig1_melt_fraction')
