@@ -30,7 +30,9 @@ The trapping tests also assert, without a published reference:
   takes: a desiccated planet with 3.6e19 kg of water trapped, remelting from
   `Phi = 0.30` to 0.50 in 1000 steps that each release less than
   `mass_thresh`, ends with every total and the trapped 5/7 that 4 steps
-  reach, and through the main loop in 16 such steps likewise;
+  reach. Through the main loop in 16 such steps the H and O totals end the
+  same way, and the released N (2/7 of 1.5e18 kg, below `mass_thresh`) is
+  emptied by the escape floor once the remelt stops, down to the locked 5/7;
 - the escape floor reading the reachable mass, as the desiccation gate does:
   two runs that differ only in how much N is trapped, 5e14 or 1.1e16 kg, both
   empty a reachable 9e15 kg below `mass_thresh` to the locked mass, and on a

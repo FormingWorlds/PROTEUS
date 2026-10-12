@@ -80,7 +80,4 @@ def build_ledger(phi: np.ndarray, trapped: np.ndarray) -> list[Layer]:
 
 def ledger_total(layers: list[Layer], n_columns: int) -> np.ndarray:
     """Mass the ledger holds per column [kg]."""
-    total = np.zeros(n_columns)
-    for layer in layers:
-        total = total + layer.mass
-    return total
+    return sum((layer.mass for layer in layers), np.zeros(n_columns))

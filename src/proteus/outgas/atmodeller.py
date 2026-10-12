@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from proteus.outgas.common import VOLATILE_ELEMENT_STOICH
+from proteus.outgas.common import VOLATILE_ELEMENT_STOICH as _VOLATILE_ELEMENT_STOICH
 from proteus.utils.helper import eval_gas_mmw
 
 if TYPE_CHECKING:
@@ -68,10 +68,6 @@ def _total_volatile_oxygen_kg(hf_row: dict, element_mmw: dict) -> float:
         total += float(hf_row.get(f'{sp}_kg_liquid', 0.0)) * frac
     return total
 
-
-# Atom counts per outgassing species, shared with the trapping step so the two
-# cannot drift apart; see ``outgas.common.VOLATILE_ELEMENT_STOICH``.
-_VOLATILE_ELEMENT_STOICH = VOLATILE_ELEMENT_STOICH
 
 # Cache of atmodeller EquilibriumModel instances. atmodeller compiles its JIT
 # solver lazily on the first solve and caches it on the model as ``_solver``,

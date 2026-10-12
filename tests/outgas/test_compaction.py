@@ -52,6 +52,7 @@ from proteus.outgas.compaction import (
     porosity_from_densities,
     volume_to_mass_fraction,
 )
+from proteus.utils.constants import secs_per_year as _SECS_PER_YEAR
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -62,7 +63,6 @@ _L = 60.0e3
 _DRHO = 330.0
 _G = 3.711
 _PHI_C = 0.3
-_SECS_PER_YEAR = 3.15576e7
 _T_RES_FAST = _L / (0.70 / _SECS_PER_YEAR)
 _T_RES_SLOW = _L / (0.05 / _SECS_PER_YEAR)
 

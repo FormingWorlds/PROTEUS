@@ -2215,6 +2215,35 @@ def test_proteus_resume_too_short_raises(tmp_path):
 
 
 # ============================================================================
+# _end_init_stage_if_due: the init stage ends once, with the core target of the row
+# ============================================================================
+
+
+@pytest.mark.unit
+def test_the_init_stage_ends_once_and_sets_the_core_target_once(tmp_path):
+    """With 3 init loops the stage ends when the loop counter reaches 4: that step calls
+    the setter of the core target once, and the write of the setter is in the row of the
+    instance. The steps before and after call nothing. A setter on every later step would
+    move a kept core with each inventory."""
+    p = _make_proteus_instance(tmp_path)
+    p.init_stage, p.hf_row, p.loops = True, {'M_core_target': 1.9409e24}, {'init_loops': 3}
+    with patch(
+        'proteus.interior_struct.zalmoxis.set_core_target_at_init_end',
+        side_effect=lambda config, row: row.update(M_core_target=1.9407e24),
+    ) as setter:
+        for total, stage, calls, target in (
+            (3, True, 0, 1.9409e24),
+            (4, False, 1, 1.9407e24),
+            (5, False, 1, 1.9407e24),
+        ):
+            p.loops['total'] = total
+            p._end_init_stage_if_due()
+            assert (p.init_stage, setter.call_count) == (stage, calls)
+            assert p.hf_row['M_core_target'] == target
+        assert setter.call_args.args[0] is p.config
+
+
+# ============================================================================
 # _solve_structure_baseline_if_needed: one-time callable-representation baseline
 # ============================================================================
 
@@ -3096,7 +3125,7 @@ def _write_post_outgas_row(hf_row, step, *, vapour):
 
 
 def _run_main_loop_recording_mass(
-    p, *, stop_at_loop, rows, row_writer, guard_calls=None, flags=None
+    p, *, stop_at_loop, rows, row_writer, guard_calls=None, flags=None, appended=None
 ):
     """Run p.start with the physics mocked, recording the row each outgas step
     wrote. ``row_writer(hf_row, step)`` fills the mass columns.
@@ -3129,9 +3158,13 @@ def _run_main_loop_recording_mass(
         return handler.finished_both
 
     def _fake_create_helpfile(row):
+        if appended is not None:
+            appended.append((p.init_stage, dict(row)))
         return _FakeHelpfile(row)
 
     def _fake_extend_helpfile(_hf_all, row):
+        if appended is not None:
+            appended.append((p.init_stage, dict(row)))
         return _FakeHelpfile(row)
 
     def _fake_outgas(_dirs, _config, hf_row, first_iter):
@@ -3276,6 +3309,40 @@ def test_the_outgassing_is_told_the_init_stage_on_every_iteration(tmp_path):
     )
     assert all(passed is stage for passed, stage in flags)
     assert [passed for passed, _ in flags] == [True] * 4 + [False] * (len(flags) - 4)
+
+
+def test_the_main_loop_appends_the_core_target_of_the_step_that_leaves_the_init_stage(
+    tmp_path,
+):
+    """The setter of the core target runs once in the main loop, on the step that leaves
+    the init stage, before that step's row goes to the helpfile. With 3 init loops that is
+    the 4th helpfile row: rows 1 to 3 are written in the init stage and hold no target,
+    and every row from the 4th on holds the value that the setter wrote. A stage that ends
+    one step later would put the first target in row 5."""
+    rows, appended, stages = [], [], []
+    p = _make_main_loop_proteus(
+        tmp_path, plot_mod=1, write_mod=1, dt_write_rel=0.0, vapourise=False
+    )
+
+    def _setter(config, row):
+        stages.append(p.init_stage)
+        row['M_core_target'] = 1.9407e24
+
+    with patch(
+        'proteus.interior_struct.zalmoxis.set_core_target_at_init_end', side_effect=_setter
+    ):
+        _run_main_loop_recording_mass(
+            p,
+            stop_at_loop=6,
+            rows=rows,
+            row_writer=lambda hf_row, step: _write_post_outgas_row(hf_row, step, vapour=False),
+            appended=appended,
+        )
+    assert stages == [True]
+    assert [stage for stage, _ in appended] == [True] * 3 + [False] * 3
+    targets = [row.get('M_core_target') for _, row in appended]
+    assert not any(targets[:3])
+    assert targets[3:] == [pytest.approx(1.9407e24, rel=1e-15)] * 3
 
 
 @pytest.mark.physics_invariant
@@ -4140,6 +4207,13 @@ def test_a_desiccated_planet_remelting_in_small_steps_keeps_what_it_releases(
     down to what is still locked, although the N total stays above mass_thresh."""
     runner, hf, trapped = _remelting_desiccated_run(tmp_path, monkeypatch, n_steps=16)
     after = hf[np.isclose(hf['M_vol_initial'], 3.6e19 + _REMELT_N, rtol=1e-12)]
+    # After the row that the test writes, the moles of melt and solid follow the masses.
+    from proteus.utils.helper import eval_gas_mmw
+
+    for column in ('H2O_mol_liquid', 'H2O_mol_solid', 'N2_mol_liquid', 'N2_mol_solid'):
+        kg = after[column.replace('_mol_', '_kg_')].iloc[1:]
+        mmw = eval_gas_mmw(column.split('_mol_')[0])
+        np.testing.assert_allclose(after[column].iloc[1:] * mmw, kg, rtol=1e-12)
     end = hf.iloc[-1]
     assert end['Phi_global'] == pytest.approx(0.50, abs=1e-12)
     assert len(after) >= 19

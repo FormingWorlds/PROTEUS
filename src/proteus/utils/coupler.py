@@ -854,6 +854,7 @@ RESUMABLE_ZERO_FILL_KEYS = frozenset(
     {
         'esc_kg_cumulative',
         'M_accreted_rock',
+        'M_core_target',
         'M_desiccated',
         'M_volatile_change',
         'n_impacts_applied',
@@ -972,6 +973,7 @@ def GetHelpfileKeys():
         'RF_depth',         # depth of rheological front [1]
         'M_core',           # dry mass of core [kg]
         'M_mantle',         # dry mass of mantle [kg]
+        'M_core_target',    # core mass target of the Zalmoxis structure; 0 with another structure module [kg]
         'M_mantle_solid',   # dry mass of solid-phase mantle [kg]
         'M_mantle_liquid',  # dry mass of liquid-phase mantle [kg]
         'T_pot',            # characteristic mantle potential temperature [K]
@@ -1087,7 +1089,7 @@ def GetHelpfileKeys():
         'trap_F_tl',        # trapped melt fraction applied this step [1]
         'trap_kg_step',     # volatile mass buried this step, negative when remelting released it [kg]
         'trap_kg_cumulative',  # net volatile mass buried since the run began [kg]
-        'trap_branch',      # drainage regime code: 0 no front, 1 Darcy, 2 matrix, 3 guard, 6 no interior state, 7 remelting [1]
+        'trap_branch',      # drainage regime code: 0 no front (a freezing step still buries by crystal partitioning), 1 Darcy, 2 matrix, 3 guard, 6 no interior state, 7 remelting [1]
         'trap_tau_D',       # percolation time at the top of the front [yr]
         'trap_tau_s',       # matrix deformation time [yr]
         'trap_t_res',       # parcel residence time in the front [yr]
@@ -1096,9 +1098,6 @@ def GetHelpfileKeys():
         'trap_v_front',     # freezing-front speed [m s-1]
         'trap_front_courant',  # front advance over one step, in front thicknesses [1]
         'trap_w_matrix_over_vf',  # matrix speed over front speed [1]
-        'trap_n_exited',    # mush nodes that reached the porosity floor this step [1]
-        'trap_frac_bound',  # share of their mass trapped at the no-drainage bound [1]
-        'trap_n_substeps',  # drainage sub-steps of the step [1]
 
         # Giant-impact accretion ledger: cumulative rock mass added to interior
         # mass anchor to enable reconstruction on resume.
@@ -1395,6 +1394,17 @@ def _populate_energy_residual(current_hf: pd.DataFrame, new_row: dict) -> None:
     new_row['solver_residual_J'] = solver_resid_prev + solver_inc
 
 
+# Keys that modules write into hf_row and that are not helpfile columns;
+# ExtendHelpfile leaves them out of the CSV without a warning.
+_ALLOWED_NON_SCHEMA_KEYS = frozenset(
+    {
+        'core_state_initial',  # string: 'liquid'/'mixed'/'solid'
+        'M_int_target',  # mass target of the latest structure solve [kg]
+        'O_kg_user_ic',  # user oxygen budget [kg]; check_ic_oxygen_budget sets it to -1.0
+    }
+)
+
+
 def ExtendHelpfile(current_hf: pd.DataFrame, new_row: dict):
     """
     Extend helpfile with new row of variables
@@ -1428,20 +1438,6 @@ def ExtendHelpfile(current_hf: pd.DataFrame, new_row: dict):
     schema = set(GetHelpfileKeys())
 
     row_keys = {k for k in new_row.keys() if not k.startswith('_')}
-    # Known non-numeric / non-persistent keys that are written into hf_row
-    # but deliberately not tracked in the helpfile CSV schema.
-    _ALLOWED_NON_SCHEMA_KEYS = frozenset(
-        {
-            'core_state_initial',  # string: 'liquid'/'mixed'/'solid'
-            # IC consistency sentinel for the issue #677 oxygen-budget
-            # check. Set by calc_target_elemental_inventories, consumed
-            # and reset to -1.0 by check_ic_oxygen_budget on the first
-            # outgas call. Intentionally not persisted to the CSV
-            # because subsequent runs (or resumed runs) re-derive it
-            # from the config on the next IC pass.
-            'O_kg_user_ic',
-        }
-    )
     missing_keys = schema - row_keys
     unknown_keys = row_keys - schema - _ALLOWED_NON_SCHEMA_KEYS
     if missing_keys:

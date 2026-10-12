@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
 """Generate the CHILI intercomparison configs from the tutorial configs.
 
-The tutorial configs are the single source of truth for the CHILI
-nominal cases: ``input/tutorials/tutorial_earth.toml`` and
-``input/tutorials/tutorial_venus.toml`` implement the protocol's Earth
-and Venus setups and are validated by the documented tutorial runs.
-This script derives every intercomparison config from them by applying
-only the deltas listed in ``CASE_DELTAS`` and ``GRID_AXES`` below, so
-the intercomparison and the tutorials cannot drift apart. The unit
-tests in ``tests/tools/test_chili_generate.py`` enforce that contract:
+The tutorial configs are the base of the CHILI cases:
+``input/tutorials/tutorial_earth.toml`` and
+``input/tutorials/tutorial_venus.toml`` hold the Earth and Venus setups
+of the protocol, except the redox state, which they set to IW+2. This
+script derives every case config from them by applying only the deltas
+listed in ``CASE_DELTAS`` below and the protocol's redox state, so the
+generated cases and the tutorials cannot drift apart in any other
+field; the grid specs sweep the ``GRID_AXES``. The standalone grid
+configs under ``input/tutorials/chili_grid/`` are not generated and
+hold the protocol values by hand. The unit tests in
+``tests/tools/test_chili_generate.py`` enforce that contract:
 each generated config must equal its tutorial base on every field
 outside its delta list, the grid axes must match the standalone grid
 configs under ``input/tutorials/chili_grid/``, and the committed files
@@ -16,18 +19,18 @@ under ``input/chili/intercomp/`` must equal a fresh regeneration.
 
 Cases
 -----
-- ``earth.toml`` / ``venus.toml``: tutorial configs with only the
-  output path changed.
+- ``earth.toml`` / ``venus.toml``: tutorial configs with the output
+  path and the protocol's redox state set.
 - ``earth.grid.toml`` / ``venus.grid.toml``: ``proteus grid`` specs
   sweeping the protocol H and C inventories around the nominal cases.
 - ``tr1b.toml`` / ``tr1e.toml`` / ``tr1a.toml``: TRAPPIST-1 b, e, and
   alpha (protocol Table 4), derived from the Earth base with the
-  TRAPPIST star, orbit, and integration-time deltas. Escape is
-  disabled in these cases: ZEPHYRUS pairs only with the Spada
-  evolution tracks, and a 0.09 M_sun star needs the Baraffe tracks,
-  so the escape treatment for the TRAPPIST cases awaits a protocol
-  decision. The configs are generated for completeness; their runs
-  are validated separately.
+  TRAPPIST star, orbit, and integration-time deltas and the protocol's
+  redox state. Escape is disabled in these cases: ZEPHYRUS pairs only
+  with the Spada evolution tracks, and a 0.09 M_sun star needs the
+  Baraffe tracks, so the escape treatment for the TRAPPIST cases awaits
+  a protocol decision. The configs are generated for completeness;
+  their runs are validated separately.
 
 Usage
 -----
@@ -46,12 +49,12 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 TUTORIALS = os.path.join(ROOT, 'input', 'tutorials')
 OUTDIR = os.path.join(ROOT, 'input', 'chili', 'intercomp')
 
-# Per-case deltas applied on top of the tutorial base config. Keys are
-# dotted config paths; every path listed here is exempt from the
-# equality contract with the tutorial base, nothing else is.
+# Per-case deltas applied on top of the tutorial base config. Keys are dotted config
+# paths; every path listed here, and the redox state that ``case_deltas`` adds for all
+# cases, is exempt from the equality contract with the tutorial base.
 CASE_DELTAS: dict[str, dict] = {
-    # Nominal cases: the tutorials, written to the intercomparison
-    # output folders.
+    # Nominal cases: the tutorials at the protocol's redox state, written
+    # to the intercomparison output folders.
     'earth': {
         'base': 'tutorial_earth.toml',
         'set': {
@@ -120,6 +123,10 @@ CASE_DELTAS: dict[str, dict] = {
     },
 }
 
+# Every case runs at the oxygen fugacity of the CHILI protocol, relative to iron-wustite
+# [log10 units], whatever the tutorial base sets.
+PROTOCOL_FO2_SHIFT_IW = 4.0
+
 # Protocol H and C inventory axes [kg] for the grid sweeps. The
 # standalone per-case grid configs under input/tutorials/chili_grid/
 # carry exactly these values; the lockstep test compares the two.
@@ -148,6 +155,20 @@ def _set_dotted(doc, dotted: str, value) -> None:
     node[keys[-1]] = value
 
 
+def case_deltas(name: str) -> dict:
+    """Deltas of case ``name``: its ``CASE_DELTAS`` entries and the protocol's redox state.
+
+    Raises
+    ------
+    ValueError
+        If the case lists a redox state of its own.
+    """
+    deltas = CASE_DELTAS[name]['set']
+    if 'outgas.fO2_shift_IW' in deltas:
+        raise ValueError(f'{name}: PROTOCOL_FO2_SHIFT_IW sets the redox state of all cases')
+    return {**deltas, 'outgas.fO2_shift_IW': PROTOCOL_FO2_SHIFT_IW}
+
+
 def generate_case(name: str) -> str:
     """Render one intercomparison case from its tutorial base.
 
@@ -162,7 +183,7 @@ def generate_case(name: str) -> str:
     with open(base_path) as f:
         text = f.read()
     doc = tomlkit.parse(text)
-    for dotted, value in spec['set'].items():
+    for dotted, value in case_deltas(name).items():
         _set_dotted(doc, dotted, value)
     rendered = tomlkit.dumps(doc)
 
@@ -202,16 +223,14 @@ def generate_grid(planet: str) -> str:
 
 
 def main() -> None:
+    """Write every case and grid spec; a case that cannot be rendered leaves all files as they are."""
+    texts = {f'{name}.toml': generate_case(name) for name in CASE_DELTAS}
+    texts |= {f'{planet}.grid.toml': generate_grid(planet) for planet in ('earth', 'venus')}
     os.makedirs(OUTDIR, exist_ok=True)
-    for name in CASE_DELTAS:
-        path = os.path.join(OUTDIR, f'{name}.toml')
+    for fname, text in texts.items():
+        path = os.path.join(OUTDIR, fname)
         with open(path, 'w') as f:
-            f.write(generate_case(name))
-        print(f'wrote {os.path.relpath(path, ROOT)}')
-    for planet in ('earth', 'venus'):
-        path = os.path.join(OUTDIR, f'{planet}.grid.toml')
-        with open(path, 'w') as f:
-            f.write(generate_grid(planet))
+            f.write(text)
         print(f'wrote {os.path.relpath(path, ROOT)}')
 
 

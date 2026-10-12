@@ -11,6 +11,7 @@ joined matrix (``generate_output_reference``). These tests exercise:
   albedo-to-bond_albedo merge rename,
 * complete producer coverage: every column attributed or listed unresolved,
 * module-conditionality pins for backend-specific columns,
+* every literal key the structure modules write is declared or private,
 * the missing-function error contract and check-mode drift detection.
 
 See ``docs/How-to/testing.md`` and ``docs/Explanations/test_framework.md``
@@ -275,6 +276,28 @@ def test_committed_page_and_json_are_current(matrix):
     assert _gor.JSON_PATH.read_text() == _docgen.dump_json(matrix)
     unitless = [k['name'] for k in matrix['keys'] if not k['unit']]
     assert unitless == []
+
+
+def test_structure_modules_write_only_declared_keys():
+    """Each literal ``hf_row[...]`` key written under ``interior_struct/`` is a
+    helpfile column or an allowlisted non-schema key, unless it is private, and
+    the scan reports no unresolved ``hf_row`` write there. Each allowlisted key
+    has a writer and is no column. An undeclared key would make
+    ``ExtendHelpfile`` warn on every row."""
+    coupler = importlib.import_module('proteus.utils.coupler')
+    scan = _scan.scan_tree()
+    allowed, schema = coupler._ALLOWED_NON_SCHEMA_KEYS, set(coupler.GetHelpfileKeys())
+    written = {
+        key
+        for rel, _func, key in scan['writes']
+        if rel.startswith('interior_struct/') and not key.startswith('_')
+    }
+    assert 'M_int' in written  # the scan sees the structure writers
+    assert sorted(written - schema - allowed) == []
+    unresolved_writes = [u for u in scan['unresolved'] if u[3] == 'write']
+    assert [u for u in unresolved_writes if u[0].startswith('interior_struct/')] == []
+    assert allowed <= {key for _rel, _func, key in scan['writes']}
+    assert not allowed & schema
 
 
 def test_declared_scan_tables_are_all_live(monkeypatch):
