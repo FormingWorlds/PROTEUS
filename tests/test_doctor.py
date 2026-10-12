@@ -658,10 +658,10 @@ class TestCheckPythonPackage:
             f' refs/tags/26.10.06 && pip install -e {quoted}'
         )
 
-    def test_below_spec_editable_non_git_checkout_keeps_git_pull(self, tmp_path):
+    def test_below_spec_editable_non_git_checkout_gets_the_pip_advice(self, tmp_path):
         """When the checkout of a package without a setup script is no git repository, the
-        annotation says that it is not a git clone of its own, and the fix stays the `git
-        pull` command, whose failure then names the cause, rather than a tag checkout."""
+        annotation says that it is not a git clone of its own, and the fix is the pip install
+        of the release, run by hand, with no git command and no tag checkout."""
         from packaging.requirements import Requirement
 
         checkout = tmp_path / 'io'
@@ -674,7 +674,12 @@ class TestCheckPythonPackage:
         ):
             r = check_python_package('fwl-io', spec)
         assert r.status == FAIL
-        assert r.fix_cmd == f'cd {shlex.quote(str(checkout))} && git pull && pip install -e .'
+        assert r.fix_cmd == (
+            f'pip install -U "fwl-io>=26.10.8"  # {shlex.quote(str(checkout))} is not a git'
+            ' clone of its own, so no git command updates it; this installs the release in'
+            ' place of the editable folder'
+        )
+        assert r.auto_fixable is False
         assert r.message == (
             '26.6.1 (requires >=26.10.8) [editable @ io; not a git clone of its own]'
         )
@@ -2688,6 +2693,76 @@ class TestBelowFloorAdvice:
         assert sorted(q.name for q in folder.iterdir()) == sorted(
             ['setup.py'] + (['.git'] if kind == 'empty .git' else [])
         )
+
+    @staticmethod
+    def _check_io(root, checkout) -> CheckResult:
+        """Run check_python_package on fwl-io 26.10.5, editable at ``checkout``, floor 26.10.6;
+        fwl-io has no setup script."""
+        from packaging.requirements import Requirement
+
+        with (
+            patch('proteus.doctor._repo_root', return_value=root),
+            patch('proteus.doctor.importlib.metadata.version', return_value='26.10.5'),
+            patch('proteus.doctor._editable_checkout_path', return_value=str(checkout)),
+            patch('proteus.doctor._imported_package_dir', return_value=None),
+        ):
+            return check_python_package('fwl-io', Requirement('fwl-io>=26.10.6'))
+
+    @pytest.mark.parametrize('kind', ['no .git', 'empty .git'])
+    def test_package_without_a_script_in_a_folder_that_is_not_its_own_clone_gets_no_git_pull(
+        self, tmp_path, monkeypatch, kind
+    ):
+        """An editable fwl-io below its floor, in a folder that is not a git clone of its own
+        inside a PROTEUS root that is a git repository, gets the pip advice with no git
+        command, which git pull would run on the PROTEUS repository; it is not auto-fixable,
+        so proteus update runs nothing, and the root keeps its HEAD, branch and status."""
+        root, folder = self._folder_in_a_proteus_repository(tmp_path, kind, 'elsewhere')
+        monkeypatch.setenv('GIT_CEILING_DIRECTORIES', str(tmp_path))
+        state = [
+            git(root, 'rev-parse', 'HEAD'),
+            git(root, 'symbolic-ref', '--short', 'HEAD'),
+            git(root, '--no-optional-locks', 'status', '--porcelain'),
+        ]
+        r = self._check_io(root, folder)
+        assert r.status == FAIL
+        assert r.auto_fixable is False
+        assert r.fix_cmd == (
+            f'pip install -U "fwl-io>=26.10.6"  # {folder} is not a git clone of its own, so'
+            ' no git command updates it; this installs the release in place of the editable'
+            ' folder'
+        )
+        assert 'git pull' not in r.fix_cmd and 'cd ' not in r.fix_cmd
+        runner = Mock(return_value=0)
+        with (
+            patch('proteus.doctor.run_all_checks', return_value=[r]),
+            patch('proteus.doctor._run_fix_command', runner),
+        ):
+            assert update_entry() is False
+        runner.assert_not_called()
+        assert state == [
+            git(root, 'rev-parse', 'HEAD'),
+            git(root, 'symbolic-ref', '--short', 'HEAD'),
+            git(root, '--no-optional-locks', 'status', '--porcelain'),
+        ]
+        assert 'M notes.txt' in state[2]
+
+    def test_package_without_a_script_in_its_own_clone_keeps_git_pull(self, tmp_path):
+        """An editable fwl-io below its floor in a git clone of its own keeps the automatic
+        git pull fix, and proteus update runs exactly that command."""
+        root, checkout, _ = self._site(tmp_path)
+        r = self._check_io(root, checkout)
+        assert r.status == FAIL
+        assert r.auto_fixable is True
+        assert r.fix_cmd == f'cd {shlex.quote(str(checkout))} && git pull && pip install -e .'
+        runner = Mock(return_value=0)
+        with (
+            patch('proteus.doctor.run_all_checks', return_value=[r]),
+            patch('proteus.doctor._run_fix_command', runner),
+            patch('proteus.doctor._repo_root', return_value=root),
+            patch('proteus.doctor.doctor_entry', return_value=True),
+        ):
+            assert update_entry() is True
+        runner.assert_called_once_with(r.fix_cmd, root)
 
     @pytest.mark.parametrize('kind', ['no .git', 'empty .git'])
     def test_folder_that_is_not_its_own_clone_shows_no_commit_of_the_root(

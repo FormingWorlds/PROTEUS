@@ -314,7 +314,7 @@ _commit_text() {
 
 # Usage: report_clone_state <distribution> <clone-dir> <script-label>. Reads <clone-dir> with read-only
 # git calls; prints one line for a clone at its tag, newer than it or on the paired branch (with
-# get_pairs_branch=true), else the stay line and the advice lines.
+# get_pairs_branch=true; 2 lines and a summary entry when HEAD lacks the tag), else stay and advice.
 report_clone_state() {
     local dist="$1" dir="${2%/}" label="$3" tag="" tag_commit="" head="" rel="" branch=""
     local found summary readable=false
@@ -340,6 +340,16 @@ report_clone_state() {
         if [ -n "$branch" ] && [ "${get_pairs_branch:-false}" = true ] &&
             [ "$branch" = "$(paired_branch_of "$dir")" ]; then
             echo "$dist: $dir is on the paired branch $branch, as PROTEUS on that branch expects"
+            if [ -n "$head" ] && [ -n "$tag_commit" ]; then
+                rel=$(_relation_to_tag "$dir" "$head" "$tag_commit")
+            fi
+            case "$rel" in
+                'behind the tag' | 'on a line of history without the tag')
+                    echo "    This branch does not hold the release $tag: the PROTEUS install" \
+                        "takes that release from PyPI, not this folder."
+                    record_clone_stays "$dir" "paired branch $branch, without the release $tag"
+                    ;;
+            esac
             return 0
         fi
         if [ -n "$head" ] && [ -n "$tag_commit" ]; then

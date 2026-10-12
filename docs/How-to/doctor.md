@@ -155,7 +155,7 @@ This lists the fixable issues and their commands but does not execute anything.
 | Issue | Fix action |
 |-------|-----------|
 | Missing Python package | `pip install <name>` |
-| Outdated Python package (editable, without a setup script) | `cd <checkout> && git pull && pip install -e .` |
+| Outdated Python package (editable git clone of its own, without a setup script) | `cd <checkout> && git pull && pip install -e .` |
 | Outdated Python package (wheel) | `pip install -U "<name>>=<version>"` |
 | Missing AGNI | `bash tools/get_agni.sh` |
 | AGNI commit drift from pin | `bash tools/get_agni.sh` |
@@ -256,8 +256,9 @@ This updates any submodules whose installed version no longer satisfies the
 new bounds. It does not change an editable module clone that a setup script
 makes (MORS, JANUS, CALLIOPE, ZEPHYRUS, Aragog, Zalmoxis):
 for one below its minimum version it lists the commands that move it to the
-release tag by hand or replace it with `--force`. For other editable checkouts it runs
-`git pull && pip install -e .` in the checkout directory.
+release tag by hand or replace it with `--force`. For another editable checkout that is a
+git clone of its own it runs `git pull && pip install -e .` in the checkout directory;
+any other editable folder gets the advice `pip install -U "<name>>=<version>"`, which you run by hand.
 
 ### Before submitting a simulation
 

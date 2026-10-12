@@ -944,8 +944,16 @@ def check_python_package(name: str, spec: Requirement | None) -> CheckResult:
                 if setup:
                     fix = _below_floor_advice(name, checkout, spec, setup)
                     auto_fixable = False
-                else:
+                elif _is_own_clone(checkout):
                     fix = f'cd {shlex.quote(checkout)} && git pull && pip install -e .'
+                else:
+                    # git pull here would update the repository around the folder.
+                    fix = (
+                        f'{fix}  # {shlex.quote(checkout)} is not a git clone of its own, so no'
+                        ' git command updates it; this installs the release in place of the'
+                        ' editable folder'
+                    )
+                    auto_fixable = False
             return CheckResult(
                 name=name,
                 category='versions',

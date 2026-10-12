@@ -3053,6 +3053,10 @@ def test_paired_module_floor_without_tag_exits_1_before_pip(tmp_path, script, re
 
 
 _PAIRED_BRANCH = 'tl/paired-feature'
+_WITHOUT_TAG_LINE = (
+    '    This branch does not hold the release 26.04.22: the PROTEUS install takes that'
+    ' release from PyPI, not this folder.'
+)
 
 
 def _paired_site(tmp_path: Path, repo: str, dist: str) -> dict:
@@ -3206,12 +3210,15 @@ class TestPairedModuleRerun:
         assert not stays.exists()
 
     @pytest.mark.parametrize('source', ['CI variable', 'PROTEUS checkout'])
-    def test_rerun_on_the_paired_branch_is_in_order(self, tmp_path, script, repo, dist, source):
+    def test_rerun_on_a_paired_branch_without_the_tag_names_it(
+        self, tmp_path, script, repo, dist, source
+    ):
         """A second run, with PROTEUS still on the feature branch (named by GITHUB_HEAD_REF, or
-        the branch of the PROTEUS checkout), prints one neutral line for the clone on the paired
-        branch: no stay line, no hand commands, no summary entry, no clone, fetch or checkout.
-        The branch lies on a line of history without the tag, so a reader that does not know
-        the paired branch prints the stay line, as it does once PROTEUS leaves the branch."""
+        the branch of the PROTEUS checkout), prints the neutral line for the clone on the paired
+        branch and, as the branch lies on a line of history without the tag, the line that the
+        PROTEUS install takes the release from PyPI, and the summary entry: no stay line, no
+        hand commands, no clone, fetch or checkout. Once PROTEUS leaves the branch, a reader
+        that does not know the paired branch prints the stay line."""
         site = _paired_site(tmp_path, repo, dist)
         if source == 'CI variable':
             site['env']['GITHUB_HEAD_REF'] = _PAIRED_BRANCH
@@ -3229,15 +3236,18 @@ class TestPairedModuleRerun:
         result = _run_tool(site, script)
         assert result.returncode == 0, result.stdout + result.stderr
         line = f'{dist}: {clone} is on the paired branch {_PAIRED_BRANCH}, as PROTEUS on that'
-        assert [ln for ln in result.stdout.splitlines() if ln.startswith(f'{dist}: ')] == [
-            f'{line} branch expects'
-        ]
+        out = result.stdout.splitlines()
+        assert [ln for ln in out if ln.startswith(f'{dist}: ')] == [f'{line} branch expects']
+        assert out[out.index(f'{line} branch expects') + 1] == _WITHOUT_TAG_LINE
         assert 'stays as it is' not in result.stdout
-        assert 'fetch --tags' not in result.stdout
-        assert not stays.exists()
+        assert 'git -C' not in result.stdout and '--force' not in result.stdout
+        assert stays.read_text() == (
+            f'{repo} (paired branch {_PAIRED_BRANCH}, without the release 26.04.22)\n'
+        )
         assert [_git_calls(site, sub) for sub in ('clone', 'fetch', 'checkout')] == [[]] * 3
         assert git(clone, 'rev-parse', 'HEAD') == site['paired']
 
+        stays.unlink()
         site['env'].pop('GITHUB_HEAD_REF', None)
         site['env']['GITHUB_REF_NAME'] = 'other-feature'
         moved = _run_tool(site, script)
@@ -3247,6 +3257,47 @@ class TestPairedModuleRerun:
             ' without the tag; PROTEUS expects the release tag 26.04.22'
         ) in moved.stdout.splitlines()
         assert stays.read_text() == f'{repo} (branch {_PAIRED_BRANCH}, other history)\n'
+
+    @pytest.mark.parametrize(
+        ('start', 'holds'),
+        [('commit below the tag', False), ('commit past the tag', True)],
+    )
+    def test_paired_branch_line_names_the_release_only_when_head_lacks_it(
+        self, tmp_path, script, repo, dist, start, holds
+    ):
+        """A clone on the paired branch reset to the commit below the tag (behind it) gets the
+        neutral line, the line that the release comes from PyPI and the summary entry; reset to
+        the commit past the tag, which holds the tag commit, it gets the neutral line alone and
+        no entry. Neither gets a hand command, and HEAD stays where it was put."""
+        site = _paired_site(tmp_path, repo, dist)
+        tagged, tip = site['shas'][repo]
+        site['env']['GITHUB_HEAD_REF'] = _PAIRED_BRANCH
+        assert _run_tool(site, script).returncode == 0
+        clone = site['root'] / repo
+        target = tip if holds else git(clone, 'rev-parse', f'{tagged}~1')
+        git(clone, 'reset', '-q', '--hard', target)
+        stays = tmp_path / 'stays.txt'
+        site['env']['PROTEUS_CLONE_STAYS'] = str(stays)
+
+        result = _run_tool(site, script)
+        assert result.returncode == 0, result.stdout + result.stderr
+        out = result.stdout.splitlines()
+        neutral = (
+            f'{dist}: {clone} is on the paired branch {_PAIRED_BRANCH}, as PROTEUS on that'
+            ' branch expects'
+        )
+        assert [ln for ln in out if ln.startswith(f'{dist}: ')] == [neutral]
+        assert (_WITHOUT_TAG_LINE in out) is not holds
+        assert 'git -C' not in result.stdout and '--force' not in result.stdout
+        if holds:
+            assert not stays.exists()
+        else:
+            assert out[out.index(neutral) + 1] == _WITHOUT_TAG_LINE
+            assert stays.read_text() == (
+                f'{repo} (paired branch {_PAIRED_BRANCH}, without the release 26.04.22)\n'
+            )
+        assert git(clone, 'rev-parse', 'HEAD') == target != tagged
+        assert git(clone, 'symbolic-ref', '--short', 'HEAD') == _PAIRED_BRANCH
 
     def test_plain_folder_is_installed_as_it_is(self, tmp_path, script, repo, dist):
         """A folder that is not a git clone keeps its file, gets the stay line with the floor
