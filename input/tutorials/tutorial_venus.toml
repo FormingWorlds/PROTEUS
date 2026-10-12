@@ -1,12 +1,5 @@
-# PROTEUS Tutorial: Venus
-#
-# A Venus-mass planet based on the nominal Venus case of the CHILI
-# intercomparison (Lichtenberg et al. 2026, PSJ 7:108, Table 2), at the
-# PROTEUS default redox state (IW+2). The protocol case at IW+4 is
-# input/chili/intercomp/venus.toml.
-#
-# Identical to the Earth tutorial except: mass=0.815 M_Earth, orbit=0.723 AU, end time 3 Myr.
-#
+# PROTEUS tutorial, Venus: the Earth tutorial with mass 0.815 M_Earth, orbit 0.723 AU and an end time of 3 Myr, at IW+2.
+# Based on the nominal Venus case of CHILI (Lichtenberg et al. 2026, PSJ 7:108, Table 2); the protocol case at IW+4 is input/chili/intercomp/venus.toml.
 # Run: proteus start --offline -c input/tutorials/tutorial_venus.toml
 
 config_version = "3.0"
