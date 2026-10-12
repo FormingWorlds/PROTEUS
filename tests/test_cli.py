@@ -1805,23 +1805,61 @@ def test_is_julia_installed_reads_pythonjuliapkg_exe_without_a_path_julia(
 
 @pytest.mark.unit
 def test_env_with_proteus_julia_puts_the_bound_julia_first_on_path(monkeypatch, tmp_path):
-    """The directory of an executable PYTHON_JULIAPKG_EXE leads PATH in a copy of the environment.
+    """The folder <root>/.proteus-julia, with a link to PYTHON_JULIAPKG_EXE, leads PATH in a copy.
 
     The process environment keeps its PATH, and a variable that names no
     executable file leaves PATH as it is in the copy too.
     """
+    root = tmp_path / 'proteus'
+    root.mkdir()
     bindir = tmp_path / 'julia-1.13.1' / 'bin'
     exe = _julia_stub(bindir)
     monkeypatch.setenv('PATH', '/usr/bin:/bin')
     monkeypatch.setenv('PYTHON_JULIAPKG_EXE', str(exe))
-    env = cli._env_with_proteus_julia()
-    assert env['PATH'].split(os.pathsep) == [str(bindir), '/usr/bin', '/bin']
+    env = cli._env_with_proteus_julia(root)
+    link_dir = root / '.proteus-julia'
+    assert env['PATH'].split(os.pathsep) == [str(link_dir), '/usr/bin', '/bin']
+    assert os.listdir(link_dir) == ['julia']
+    assert os.readlink(link_dir / 'julia') == str(exe)
     assert os.environ['PATH'] == '/usr/bin:/bin'
     assert env['PYTHON_JULIAPKG_EXE'] == str(exe)
     exe.chmod(0o644)
-    assert cli._env_with_proteus_julia()['PATH'] == '/usr/bin:/bin'
+    assert cli._env_with_proteus_julia(root)['PATH'] == '/usr/bin:/bin'
     monkeypatch.delenv('PYTHON_JULIAPKG_EXE')
-    assert cli._env_with_proteus_julia()['PATH'] == '/usr/bin:/bin'
+    assert cli._env_with_proteus_julia(root)['PATH'] == '/usr/bin:/bin'
+
+
+@pytest.mark.unit
+def test_env_with_proteus_julia_shadows_no_other_program_of_the_binary_folder(
+    monkeypatch, tmp_path
+):
+    """A bound julia-1.13 in a folder with a python: julia is it, python stays the env's.
+
+    The folder of the binary (a shared one such as /opt/homebrew/bin) holds a
+    python, and the binary is not named julia; the env folder holds a python and
+    a julia of another version. In the returned PATH, julia resolves to the bound
+    binary and python to the env's.
+    """
+    root = tmp_path / 'proteus'
+    root.mkdir()
+    shared = tmp_path / 'shared' / 'bin'
+    shared.mkdir(parents=True)
+    bound = shared / 'julia-1.13'
+    bound.write_text('#!/bin/sh\necho "julia version 1.13.1"\n')
+    bound.chmod(0o755)
+    (shared / 'python').write_text('#!/bin/sh\n')
+    (shared / 'python').chmod(0o755)
+    env_bin = tmp_path / 'env' / 'bin'
+    _julia_stub(env_bin)
+    (env_bin / 'python').write_text('#!/bin/sh\n')
+    (env_bin / 'python').chmod(0o755)
+    monkeypatch.setenv('PATH', f'{env_bin}{os.pathsep}/usr/bin{os.pathsep}/bin')
+    monkeypatch.setenv('PYTHON_JULIAPKG_EXE', str(bound))
+    path = cli._env_with_proteus_julia(root)['PATH']
+    julia = shutil.which('julia', path=path)
+    assert os.path.realpath(julia) == os.path.realpath(bound)
+    assert julia != str(env_bin / 'julia')
+    assert shutil.which('python', path=path) == str(env_bin / 'python')
 
 
 @pytest.mark.unit
@@ -1967,16 +2005,20 @@ def test_install_all_aborts_when_julia_missing(monkeypatch, tmp_path):
 def _export_env_site(monkeypatch, tmp_path, conda_prefix):
     """Stub the heavy steps of install-all and update-all for an ``--export-env`` run.
 
-    SOCRATES, AGNI and FastChem exist under the root, Julia and conda are on
-    the stubbed PATH, FWL_DATA holds a space, and HOME is an empty folder.
-    Returns the HOME folder and the list that records each subprocess command.
+    SOCRATES, AGNI and a built FastChem exist under the root, PYTHON_JULIAPKG_EXE
+    names an executable Julia 1.13 stub, Julia and conda are on the stubbed PATH,
+    FWL_DATA holds a space, and HOME is an empty folder. Returns the HOME folder
+    and the list that records each subprocess command.
     """
     _pin_proteus_root(monkeypatch, tmp_path)
     monkeypatch.setattr(cli.shutil, 'disk_usage', lambda path: _stub_disk_usage_high())
-    on_path = {'julia': '/opt/julia-1.13.1/bin/julia', 'conda': '/opt/conda/condabin/conda'}
+    on_path = {'julia': '/opt/julia-1.10.4/bin/julia', 'conda': '/opt/conda/condabin/conda'}
     monkeypatch.setattr(cli.shutil, 'which', lambda exe: on_path.get(exe))
-    for var in ('PYTHON_JULIAPKG_EXE', 'PIXI_ENVIRONMENT_NAME', 'CONDA_PREFIX'):
+    for var in ('PIXI_ENVIRONMENT_NAME', 'CONDA_PREFIX', 'CONDA_DEFAULT_ENV'):
         monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv(
+        'PYTHON_JULIAPKG_EXE', str(_julia_stub(tmp_path / 'julia-1.13.1' / 'bin'))
+    )
     if conda_prefix:
         monkeypatch.setenv('CONDA_PREFIX', conda_prefix)
         monkeypatch.setenv('CONDA_DEFAULT_ENV', 'proteus')
@@ -1987,7 +2029,10 @@ def _export_env_site(monkeypatch, tmp_path, conda_prefix):
     monkeypatch.setenv('HOME', str(home))
     monkeypatch.setattr(Path, 'home', lambda: home)
     (tmp_path / 'socrates').mkdir()
-    (tmp_path / 'AGNI' / 'fastchem').mkdir(parents=True)
+    fastchem = tmp_path / 'AGNI' / 'fastchem'
+    fastchem.mkdir(parents=True)
+    (fastchem / 'fastchem').write_text('#!/bin/sh\n')
+    (fastchem / 'fastchem').chmod(0o755)
     _agni_clone_may_move(monkeypatch)
     calls = []
 
@@ -2005,7 +2050,7 @@ def _expected_install_vars(tmp_path):
     return {
         'FWL_DATA': str(tmp_path / 'fwl data'),
         'RAD_DIR': str((tmp_path / 'socrates').resolve()),
-        'PYTHON_JULIAPKG_EXE': '/opt/julia-1.13.1/bin/julia',
+        'PYTHON_JULIAPKG_EXE': str(tmp_path / 'julia-1.13.1' / 'bin' / 'julia'),
         'FC_DIR': str((tmp_path / 'AGNI' / 'fastchem').resolve()),
     }
 
@@ -2033,6 +2078,129 @@ def test_install_all_export_env_binds_four_vars_to_conda_env(monkeypatch, tmp_pa
     assert list(home.iterdir()) == []
     assert 'conda deactivate && conda activate proteus' in res.output
     assert 'source .proteus-env.sh' not in res.output
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('command', ['install-all', 'update-all'])
+def test_export_env_with_base_active_binds_nothing_and_says_why(monkeypatch, tmp_path, command):
+    """With base active, `--export-env` calls no conda, writes the file and names base.
+
+    Without the rule the 4 variables would be bound to the base env, which every
+    other env inherits on top of its own activation.
+    """
+    _, calls = _export_env_site(monkeypatch, tmp_path, '/opt/conda')
+    monkeypatch.setenv('CONDA_DEFAULT_ENV', 'base')
+    res = runner.invoke(cli.cli, [command, '--export-env'])
+    assert res.exit_code == 0, res.output
+    assert [c for c in calls if c[0] == 'conda'] == []
+    expected = _expected_install_vars(tmp_path)
+    lines = (tmp_path / '.proteus-env.sh').read_text().splitlines()
+    assert lines == [f"export {name}='{value}'" for name, value in expected.items()]
+    assert (
+        '[!] The conda base environment is active, and PROTEUS sets nothing in base; '
+        f'the variables are in {tmp_path / ".proteus-env.sh"} only'
+    ) in res.output
+    assert 'source .proteus-env.sh' in res.output
+    assert 'conda activate base' not in res.output
+
+
+@pytest.mark.unit
+def test_export_env_keeps_a_value_with_a_single_quote_out_of_conda(monkeypatch, tmp_path):
+    """A FWL_DATA with a single quote is in the exports file only; the other 3 go to conda.
+
+    One warning names FWL_DATA, and the closing line sources the exports file,
+    since the conda env alone does not hold every variable.
+    """
+    _, calls = _export_env_site(monkeypatch, tmp_path, '/opt/conda/envs/proteus')
+    quoted = tmp_path / "o'brien data"
+    quoted.mkdir()
+    monkeypatch.setenv('FWL_DATA', str(quoted))
+    res = runner.invoke(cli.cli, ['install-all', '--export-env'])
+    assert res.exit_code == 0, res.output
+    expected = {**_expected_install_vars(tmp_path), 'FWL_DATA': str(quoted)}
+    pairs = [f'{n}={v}' for n, v in expected.items() if n != 'FWL_DATA']
+    assert [c for c in calls if c[0] == 'conda'] == [
+        ['conda', 'env', 'config', 'vars', 'set', '-p', '/opt/conda/envs/proteus', *pairs]
+    ]
+    assert "export FWL_DATA='" in (tmp_path / '.proteus-env.sh').read_text()
+    assert res.output.count('[!] Not set in the conda env: FWL_DATA, whose value') == 1
+    assert 'source .proteus-env.sh' in res.output
+    assert 'conda deactivate' not in res.output
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'bound', ['unset', 'not-executable', 'missing'], ids=['unset', 'not-executable', 'missing']
+)
+def test_install_vars_never_take_the_julia_on_path(monkeypatch, tmp_path, capsys, bound):
+    """Without an executable PYTHON_JULIAPKG_EXE no Julia is recorded, and one line says so.
+
+    A julia 1.10 is on PATH; recording it would bind PROTEUS to that version, or
+    to the juliaup launcher. The line names bash install.sh.
+    """
+    monkeypatch.setattr(
+        cli.shutil,
+        'which',
+        lambda exe: '/opt/julia-1.10.4/bin/julia' if exe == 'julia' else None,
+    )
+    exe = tmp_path / 'julia-1.13.1' / 'bin' / 'julia'
+    if bound == 'unset':
+        monkeypatch.delenv('PYTHON_JULIAPKG_EXE', raising=False)
+    else:
+        if bound == 'not-executable':
+            _julia_stub(exe.parent, executable=False)
+        monkeypatch.setenv('PYTHON_JULIAPKG_EXE', str(exe))
+    variables = cli._install_vars(tmp_path, tmp_path / 'fwl', tmp_path / 'socrates')
+    assert list(variables) == ['FWL_DATA', 'RAD_DIR']
+    out = capsys.readouterr().out.splitlines()
+    assert out == [
+        '[!] PYTHON_JULIAPKG_EXE is not set to an executable Julia, so it is not recorded; '
+        'bash install.sh selects Julia 1.13 and records it.'
+    ]
+    _julia_stub(exe.parent)
+    monkeypatch.setenv('PYTHON_JULIAPKG_EXE', str(exe))
+    assert cli._install_vars(tmp_path, tmp_path, tmp_path)['PYTHON_JULIAPKG_EXE'] == str(exe)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('program', 'recorded'),
+    [('built', True), ('missing', False), ('not-executable', False)],
+    ids=['fastchem-built', 'folder-without-program', 'program-not-executable'],
+)
+def test_install_vars_record_fc_dir_only_for_a_built_fastchem(
+    monkeypatch, tmp_path, program, recorded
+):
+    """FC_DIR is recorded when AGNI/fastchem/fastchem is executable, not for the folder alone."""
+    monkeypatch.setenv('PYTHON_JULIAPKG_EXE', str(_julia_stub(tmp_path / 'jl')))
+    fastchem = tmp_path / 'AGNI' / 'fastchem'
+    fastchem.mkdir(parents=True)
+    if program != 'missing':
+        (fastchem / 'fastchem').write_text('#!/bin/sh\n')
+        (fastchem / 'fastchem').chmod(0o755 if program == 'built' else 0o644)
+    variables = cli._install_vars(tmp_path, tmp_path / 'fwl', tmp_path / 'socrates')
+    assert ('FC_DIR' in variables) is recorded
+    assert variables.get('FC_DIR') == (str(fastchem.resolve()) if recorded else None)
+
+
+@pytest.mark.unit
+def test_install_all_runs_the_proteus_agni_script_and_no_clone(monkeypatch, tmp_path):
+    """A missing AGNI is set up by tools/get_agni.sh 0 of PROTEUS, not by a clone of the tip.
+
+    The script checks out the commit PROTEUS pins; it runs in the root, with the
+    bound Julia first on PATH and stdin from /dev/null, as update-all runs it.
+    """
+    captured = _agni_site(monkeypatch, tmp_path, agni_present=False)
+    monkeypatch.setenv('PYTHON_JULIAPKG_EXE', str(_julia_stub(tmp_path / 'jl' / 'bin')))
+    res = runner.invoke(cli.cli, ['install-all'])
+    assert res.exit_code == 0, res.output
+    assert [cmd for cmd, _ in captured if 'clone' in cmd or cmd[:1] == ['git']] == []
+    assert [cmd for cmd, _ in captured if 'src/get_agni.sh' in cmd] == []
+    agni = [(cmd, kw) for cmd, kw in captured if 'get_agni.sh' in ' '.join(cmd)]
+    assert [cmd for cmd, _ in agni] == [['bash', str(tmp_path / 'tools' / 'get_agni.sh'), '0']]
+    kw = agni[0][1]
+    assert (kw['cwd'], kw['stdin'], kw['check']) == (tmp_path, subprocess.DEVNULL, True)
+    assert kw['env']['PATH'].split(os.pathsep)[0] == str(tmp_path / '.proteus-julia')
 
 
 @pytest.mark.unit
@@ -2101,8 +2269,8 @@ def test_install_all_socrates_subprocess_failure_aborts(monkeypatch, tmp_path):
 
 
 @pytest.mark.unit
-def test_install_all_agni_clone_failure_aborts(monkeypatch, tmp_path):
-    """A CalledProcessError during AGNI clone aborts the installation."""
+def test_install_all_agni_setup_failure_aborts(monkeypatch, tmp_path):
+    """A CalledProcessError of tools/get_agni.sh, which clones AGNI, aborts the installation."""
     _pin_proteus_root(monkeypatch, tmp_path)
     monkeypatch.setattr(cli.shutil, 'disk_usage', lambda path: _stub_disk_usage_high())
     monkeypatch.setattr(
@@ -2112,10 +2280,10 @@ def test_install_all_agni_clone_failure_aborts(monkeypatch, tmp_path):
 
     # SOCRATES present so the SOCRATES branch is skipped
     (tmp_path / 'socrates').mkdir()
-    # AGNI missing; cloning must fail
+    # AGNI missing; its setup script must fail
 
     def fake_subprocess_run(cmd, **kwargs):
-        if 'git' in str(cmd[0]) and 'clone' in cmd:
+        if cmd[:2] == ['bash', str(tmp_path / 'tools' / 'get_agni.sh')]:
             raise cli.subprocess.CalledProcessError(returncode=1, cmd=cmd)
 
         class _Result:
@@ -2166,27 +2334,28 @@ def _agni_site(monkeypatch, tmp_path, agni_present: bool) -> list:
 def test_agni_setup_runs_with_the_bound_julia_first_on_path(
     monkeypatch, tmp_path, command, agni_present
 ):
-    """AGNI's setup script gets PATH with the directory of PYTHON_JULIAPKG_EXE first.
+    """AGNI's setup script gets PATH with the folder of the link to PYTHON_JULIAPKG_EXE first.
 
     No julia is on PATH, so the command finds Julia only through the variable;
-    the PATH of the process itself stays as it was. install-all runs AGNI's own
-    script in the new clone, update-all runs ``tools/get_agni.sh`` in the root.
+    the PATH of the process itself stays as it was. Both commands run
+    ``tools/get_agni.sh 0`` in the root, with stdin from /dev/null.
     """
     captured = _agni_site(monkeypatch, tmp_path, agni_present)
     bindir = tmp_path / 'julia-1.13.1' / 'bin'
-    monkeypatch.setenv('PYTHON_JULIAPKG_EXE', str(_julia_stub(bindir)))
+    exe = _julia_stub(bindir)
+    monkeypatch.setenv('PYTHON_JULIAPKG_EXE', str(exe))
     monkeypatch.setattr(cli.shutil, 'which', lambda name: None)
     res = runner.invoke(cli.cli, [command])
     assert res.exit_code == 0, res.output
     assert 'Julia not found' not in res.output
-    if command == 'install-all':
-        script, cwd = ['bash', 'src/get_agni.sh', '0'], tmp_path / 'AGNI'
-    else:
-        script, cwd = ['bash', str(tmp_path / 'tools' / 'get_agni.sh'), '0'], tmp_path
+    script = ['bash', str(tmp_path / 'tools' / 'get_agni.sh'), '0']
     agni = [kw for cmd, kw in captured if cmd == script]
     assert len(agni) == 1
-    assert agni[0]['cwd'] == cwd
-    assert agni[0]['env']['PATH'].split(os.pathsep) == [str(bindir), '/usr/bin', '/bin']
+    assert agni[0]['cwd'] == tmp_path
+    assert agni[0]['stdin'] is subprocess.DEVNULL
+    link_dir = tmp_path / '.proteus-julia'
+    assert agni[0]['env']['PATH'].split(os.pathsep) == [str(link_dir), '/usr/bin', '/bin']
+    assert os.readlink(link_dir / 'julia') == str(exe)
     assert os.environ['PATH'] == '/usr/bin:/bin'
 
 
@@ -2675,6 +2844,71 @@ def test_update_all_leaves_a_local_commit_on_a_detached_agni_head(monkeypatch, t
 
 
 @pytest.mark.unit
+def test_stay_line_for_local_commits_keeps_them_on_a_branch_first(monkeypatch, tmp_path):
+    """For a local commit on a detached HEAD the hand commands start with a `git branch`.
+
+    `fetch` and `checkout <pin>` alone would leave the commit on no ref. The
+    3 lines come in this order; run by hand, they keep the commit on the
+    branch and move HEAD to the pin.
+    """
+    site = _agni_update_site(monkeypatch, tmp_path, 'stub')
+    (site.agni / 'version.txt').write_text('my work\n')
+    _git(site.agni, 'commit', '-q', '-am', 'my work')
+    local = _git(site.agni, 'rev-parse', 'HEAD')
+
+    res = runner.invoke(cli.cli, ['update-all'])
+
+    assert res.exit_code == 0, res.output
+    commands = [ln.strip() for ln in res.output.splitlines() if ln.startswith('      git -C ')]
+    assert commands == [
+        f'git -C {site.agni} branch my-agni-work'
+        '    (keeps the local commits on a branch; choose any name)',
+        f'git -C {site.agni} fetch origin',
+        f'git -C {site.agni} checkout {site.commits[1]}',
+    ]
+    for command in commands:
+        _REAL_RUN(command.split('    (')[0].split(), check=True, capture_output=True)
+    assert _git(site.agni, 'rev-parse', 'refs/heads/my-agni-work') == local
+    assert _git(site.agni, 'rev-parse', 'HEAD') == site.commits[1]
+
+
+@pytest.mark.unit
+def test_modified_file_stay_line_has_no_branch_command(monkeypatch, tmp_path):
+    """A clone held back by a modified file, with no local commit, gets no `git branch` line."""
+    site = _agni_update_site(monkeypatch, tmp_path, 'stub')
+    (site.agni / 'version.txt').write_text('my change\n')
+
+    res = runner.invoke(cli.cli, ['update-all'])
+
+    assert res.exit_code == 0, res.output
+    assert 'stays as it is: 1 modified tracked file' in res.output
+    assert 'branch my-agni-work' not in res.output
+    assert f'git -C {site.agni} fetch origin' in res.output
+
+
+@pytest.mark.unit
+def test_agni_blocker_reads_the_clone_and_not_the_repository_of_git_dir(monkeypatch, tmp_path):
+    """With GIT_DIR naming another repository, the AGNI clone is still the one read.
+
+    git would take the index and HEAD of GIT_DIR and compare them with the AGNI
+    files, which blocks a clean clone; the blocker reads the clone itself, so a
+    clean clone may move and a modified one stays.
+    """
+    site = _agni_update_site(monkeypatch, tmp_path, 'stub')
+    other = tmp_path / 'other'
+    _REAL_RUN(['git', 'init', '-q', '-b', 'main', str(other)], check=True)
+    (other / 'unrelated.txt').write_text('x\n')
+    _git(other, 'add', '-A')
+    _git(other, 'commit', '-q', '-m', 'other')
+    monkeypatch.setenv('GIT_DIR', str(other / '.git'))
+
+    assert cli._agni_update_blocker(site.agni) is None
+    (site.agni / 'version.txt').write_text('my change\n')
+    assert cli._agni_update_blocker(site.agni) == '1 modified tracked file'
+    assert cli._git_read(site.agni, 'rev-parse', 'HEAD') == site.commits[0]
+
+
+@pytest.mark.unit
 def test_update_all_leaves_an_agni_branch_with_an_unpushed_commit(monkeypatch, tmp_path):
     """A branch ahead of its remote blocks as well. ``tools/get_agni.sh`` is a stub here."""
     site = _agni_update_site(monkeypatch, tmp_path, 'stub')
@@ -2838,7 +3072,7 @@ def test_install_all_anchors_paths_to_source_root_not_cwd(monkeypatch, tmp_path)
     """``install-all`` clones submodules next to the source tree, not the cwd.
 
     With neither socrates/ nor AGNI/ present yet, the installer must run the
-    SOCRATES script by its absolute path under the root and clone AGNI into the
+    SOCRATES and AGNI scripts by their absolute paths under the root, from the
     root, so a run launched from a foreign directory populates the checkout
     rather than scattering submodules into the caller's directory.
     """
@@ -2892,10 +3126,11 @@ def test_install_all_anchors_paths_to_source_root_not_cwd(monkeypatch, tmp_path)
     assert len(socrates_args) == 1
     assert socrates_args[0].startswith(str(source_root))
 
-    # AGNI clone targets the root explicitly (git clone <url> <dest>), so the
-    # checkout lands under the root and never in the foreign cwd.
-    clone_dests = [cmd[-1] for cmd, _ in captured if 'clone' in cmd]
-    assert clone_dests == [str(source_root / 'AGNI')]
+    # AGNI is set up by the script under the root, run from the root, which
+    # clones into <root>/AGNI; nothing is cloned into the foreign cwd.
+    assert [cmd for cmd, _ in captured if 'clone' in cmd] == []
+    agni = [(cmd, kw.get('cwd')) for cmd, kw in captured if 'get_agni.sh' in str(cmd)]
+    assert agni == [(['bash', str(source_root / 'tools' / 'get_agni.sh'), '0'], source_root)]
 
     # The default config for the data download sits under the root.
     assert data_paths == [source_root / 'input' / 'all_options.toml']
@@ -2904,10 +3139,6 @@ def test_install_all_anchors_paths_to_source_root_not_cwd(monkeypatch, tmp_path)
     # directory.
     assert (source_root / 'output').is_dir()
     assert not (foreign_cwd / 'output').exists()
-
-    # The AGNI setup script runs inside the cloned checkout under the root.
-    agni_cwds = [kw.get('cwd') for cmd, kw in captured if 'src/get_agni.sh' in cmd]
-    assert agni_cwds == [source_root / 'AGNI']
 
     # The disk gate measures the filesystem the install writes to.
     assert disk_paths == [source_root]

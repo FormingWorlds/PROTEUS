@@ -145,9 +145,13 @@ run_logged() {
     fi
     what="$1"
     shift
-    # Without a writable log the command runs as it is, its output on the terminal.
-    if [ -z "${LOGFILE:-}" ] || ! { : >> "$LOGFILE"; } 2>/dev/null \
-       || ! tmp=$(mktemp "${TMPDIR:-/tmp}/proteus-install.XXXXXX" 2>/dev/null); then
+    # Without a writable log the command runs as it is, its output on the terminal. The temp
+    # file is one per installer run, emptied at each step; print_exit_hint removes it.
+    if [ -n "${LOGFILE:-}" ] && [ -z "${RUN_LOGGED_TMP:-}" ] && { : >> "$LOGFILE"; } 2>/dev/null; then
+        RUN_LOGGED_TMP=$(mktemp "${TMPDIR:-/tmp}/proteus-install.XXXXXX" 2>/dev/null) || RUN_LOGGED_TMP=""
+    fi
+    tmp="${RUN_LOGGED_TMP:-}"
+    if [ -z "${LOGFILE:-}" ] || ! { : >> "$LOGFILE"; } 2>/dev/null || ! { : > "$tmp"; } 2>/dev/null; then
         "$@" || rc=$?
         return "$rc"
     fi
@@ -159,20 +163,14 @@ run_logged() {
         info "$what$takes..."
         if [ "${LOG_TEE:-false}" = true ]; then
             "$@" || rc=$?
-        elif "$@" 2>&1 | tee -a "$LOGFILE"; then
-            rc=0
         else
-            rc=${PIPESTATUS[0]}
+            "$@" 2>&1 | tee -a "$LOGFILE" || rc=${PIPESTATUS[0]}
         fi
     else
         info "$what$takes; its output goes to $where"
         log_catch_up "$what$takes; its output goes to $where"
         # stdin is /dev/null: a step whose output is hidden must not wait for an answer.
-        if "$@" </dev/null 2>&1 | tee -a "$LOGFILE" > "$tmp"; then
-            rc=0
-        else
-            rc=${PIPESTATUS[0]}
-        fi
+        "$@" </dev/null 2>&1 | tee -a "$LOGFILE" > "$tmp" || rc=${PIPESTATUS[0]}
     fi
     if [ "$rc" -eq 0 ]; then
         grep -E "$show" "$tmp" | to_terminal 1 || true
@@ -187,7 +185,6 @@ run_logged() {
         log_file_sentence >&2
         LOG_SENTENCE_SHOWN=true
     fi
-    rm -f "$tmp"
     return "$rc"
 }
 
@@ -396,10 +393,11 @@ set_install_var() {
     info "Set $name=$value (recorded in $PROTEUS_ENV_FILE)"
 }
 
-# Bind every recorded variable to the active conda env in one call. A pixi env is not
-# a conda env, so its variables stay in the exports file only.
+# Bind every recorded variable to the active conda env in one call. A pixi env is not a conda
+# env, and conda writes a value unquoted into its activation script, so a pixi env and a value
+# with a single quote stay in the exports file only.
 bind_install_vars() {
-    local name pairs=()
+    local name names="" quoted="" pairs=()
     [ "$CONDA_BIND" = "pending" ] || return 0
     CONDA_BIND="none"
     if [ -z "${CONDA_PREFIX:-}" ] || [ -n "${PIXI_ENVIRONMENT_NAME:-}" ] \
@@ -407,14 +405,21 @@ bind_install_vars() {
         return 0
     fi
     for name in $INSTALL_VAR_NAMES; do
-        pairs+=("$name=${!name}")
+        case "${!name}" in
+            *"'"*) quoted="${quoted:+$quoted }$name" ;;
+            *) pairs+=("$name=${!name}"); names="${names:+$names }$name" ;;
+        esac
     done
+    if [ -n "$quoted" ]; then
+        warn "Not bound to the conda env: $quoted, whose value holds a single quote that conda's activation script cannot read; load it with: source $PROTEUS_ENV_FILE"
+    fi
+    [ -n "$names" ] || return 0
     if command_exists conda \
        && conda env config vars set -p "$CONDA_PREFIX" "${pairs[@]}" </dev/null 2>&1; then
-        CONDA_BIND="bound"
-        info "Bound $INSTALL_VAR_NAMES to the conda env at $CONDA_PREFIX"
+        [ -n "$quoted" ] || CONDA_BIND="bound"
+        info "Bound $names to the conda env at $CONDA_PREFIX"
     else
-        warn "Could not bind $INSTALL_VAR_NAMES to the conda env at $CONDA_PREFIX."
+        warn "Could not bind $names to the conda env at $CONDA_PREFIX."
         warn "  They are in $PROTEUS_ENV_FILE; load them with: source $PROTEUS_ENV_FILE"
     fi
 }
@@ -423,7 +428,8 @@ bind_install_vars() {
 # install left in a shell start file; the installer does not change these files.
 note_old_shell_exports() {
     local f hits hit found=""
-    for f in "$HOME/.zshrc" "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.profile" "$HOME/.zprofile"; do
+    for f in "$HOME/.zshrc" "$HOME/.zshenv" "$HOME/.zprofile" "$HOME/.bashrc" "$HOME/.bash_profile" \
+             "$HOME/.bash_login" "$HOME/.profile" "$HOME/.kshrc" "$HOME/.config/fish/config.fish"; do
         [ -f "$f" ] && [ -r "$f" ] || continue
         hits=$(grep -nE '^export (FWL_DATA|RAD_DIR|PYTHON_JULIAPKG_EXE|FC_DIR)=' "$f" || true)
         [ -n "$hits" ] || continue
@@ -437,6 +443,18 @@ note_old_shell_exports() {
     warn "  PROTEUS takes the values from the conda env (or $PROTEUS_ENV_FILE) instead."
     warn "  You can delete those lines by hand; while they stay, a shell without the"
     warn "  activated env still gets the old values."
+}
+
+# Warn once when the Manifest.toml of the AGNI folder $1 names another minor Julia version than
+# the Julia PROTEUS uses; proteus update-all brings AGNI to its pin and instantiates it again.
+note_agni_julia_version() {
+    local built used
+    built=$(sed -n 's/^julia_version = "\([^"]*\)"$/\1/p' "$1/Manifest.toml" 2>/dev/null | head -1 || true)
+    used=$(julia_version_of "${PYTHON_JULIAPKG_EXE:-julia}")
+    if [ -n "$built" ] && [ -n "$used" ] \
+       && [ "$(echo "$built" | cut -d. -f1,2)" != "$(echo "$used" | cut -d. -f1,2)" ]; then
+        warn "AGNI at $1 was built with Julia $built (its Manifest.toml), and PROTEUS uses Julia $used; after the installer, run 'proteus update-all', which brings AGNI to its pin and instantiates it again."
+    fi
 }
 
 # Build FastChem in the AGNI folder. Without FC_DIR and with no answer on stdin AGNI's script
@@ -475,9 +493,11 @@ print_next_steps() {
     echo "     proteus start --offline -c input/dummy.toml"
 }
 
-# On a failed run, name the log file (unless die or run_logged did) and the exports file.
+# Remove the temp file of run_logged; on a failed run, name the log file (unless die or
+# run_logged did) and the exports file.
 print_exit_hint() {
     local rc=$?
+    [ -z "${RUN_LOGGED_TMP:-}" ] || rm -f "$RUN_LOGGED_TMP"
     if [ "$rc" -ne 0 ] && [ "${LOG_SENTENCE_SHOWN:-false}" != true ] \
        && [ -n "${LOGFILE:-}" ] && [ -f "$LOGFILE" ]; then
         echo ""
@@ -505,9 +525,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INTERACTIVE="false"
 VERBOSE="false"
 
-# The log state of run_logged: whether the log tee runs, whether it named the log file.
+# The log state of run_logged: whether the log tee runs, whether it named the log, its temp file.
 LOG_TEE="false"
 RUN_LOGGED_TOLD="false"
+RUN_LOGGED_TMP=""
 LOG_SENTENCE_SHOWN="false"
 
 # The exports file of set_install_var, and the state that bind_install_vars reads.
@@ -661,6 +682,25 @@ stop_without_conda_env() {
     die "Conda environment required."
 }
 
+# Stop when <envs dir>/$1 exists although the env list $2 holds no env $1: on a file system that
+# ignores case that folder is an env such as PROTEUS, which `conda create -y -n $1` would remove.
+# The envs dirs come from `conda config --show envs_dirs`, one "  - <path>" line each.
+stop_on_env_folder() {
+    local dirs dir folder listed
+    dirs=$(conda config --show envs_dirs </dev/null | sed -n 's/^  - //p') || dirs=""
+    [ -n "$dirs" ] || stop_without_conda_env "'conda config --show envs_dirs' named no envs directory." "$1"
+    while IFS= read -r dir; do
+        folder="$dir/$1"
+        [ -e "$folder" ] || continue
+        listed=$(printf '%s\n' "$2" | awk -v f="$folder" 'BEGIN {f = tolower(f)} /^[^ #]/ {
+            l = tolower($0); if (substr(l, length(l) - length(f) + 1) == f) {print $1; exit}}')
+        if [ -n "$listed" ]; then
+            die "The folder $folder exists and conda lists it as the environment $listed; the installer does not make an environment over it. Run bash install.sh --conda-env $listed to install into it, or --conda-env <name> for another one."
+        fi
+        die "The folder $folder exists and conda lists no environment name for it; the installer does not make an environment over it. Run bash install.sh --conda-env <name> with another name."
+    done <<< "$dirs"
+}
+
 # Use the active conda env; when none or base is active, use or make the env that --conda-env
 # names (default proteus) and activate it in this process. A pixi env is used as it is.
 setup_conda_env() {
@@ -674,7 +714,7 @@ setup_conda_env() {
         if [ -n "$CONDA_ENV_REQUESTED" ] && [ "$CONDA_ENV_REQUESTED" != "$active" ]; then
             die "--conda-env $CONDA_ENV_REQUESTED and the active conda environment $active disagree; deactivate $active or leave out --conda-env."
         fi
-        info "Conda environment: $active"
+        info "Conda environment: $active (active; the installer installs into it)"
         return 0
     fi
     if [ "$name" = base ]; then
@@ -688,6 +728,7 @@ setup_conda_env() {
     if printf '%s\n' "$envs" | awk -v n="$name" '$1 == n {f = 1} END {exit !f}'; then
         made="found"
     else
+        stop_on_env_folder "$name" "$envs"
         info "Creating the conda environment $name with Python $pyver..."
         if ! conda create -y -n "$name" "python=$pyver" </dev/null; then
             stop_without_conda_env "'conda create -y -n $name python=$pyver' failed." "$name"
@@ -714,7 +755,11 @@ setup_conda_env() {
     # function reactivates the env after an install, and that reads unset variables.
     unset -f conda
     CONDA_ACTIVATED_HERE="true"
-    info "Conda environment: $name ($made and activated by the installer for this run)"
+    if [ "$made" = found ]; then
+        warn "Conda environment: installing INTO the existing environment $name ($CONDA_PREFIX); to use another one, stop now and run: bash install.sh --conda-env <other name>"
+    else
+        info "Conda environment: $name (made and activated by the installer for this run)"
+    fi
 }
 
 setup_conda_env
@@ -853,15 +898,14 @@ add_julia_beside_default() {
     report_proteus_julia "$1"
 }
 
-# Install juliaup with the official installer. It has no earlier default to
-# protect, so the required Julia becomes its default.
+# Install juliaup with the official installer, which adds nothing to a shell start file with
+# --add-to-path=no. It has no earlier default to protect, so the required Julia becomes its default.
 install_fresh_juliaup() {
     local req="$REQUIRED_JULIA_MAJOR.$REQUIRED_JULIA_MINOR" julia_installer
     info "Installing Julia..."
-    # Download to temp file for auditability
-    julia_installer=$(mktemp /tmp/juliaup-install-XXXXXX.sh)
+    julia_installer=$(mktemp "${TMPDIR:-/tmp}/juliaup-install.XXXXXX")
     curl -fsSL https://install.julialang.org -o "$julia_installer"
-    bash "$julia_installer" --yes 2>&1
+    bash "$julia_installer" --yes --add-to-path=no 2>&1
     rm -f "$julia_installer"
     # Source the juliaup env for the current shell
     if [ -f "$HOME/.juliaup/bin/juliaup" ]; then
@@ -886,6 +930,8 @@ setup_julia() {
         info "Julia not found."
         if command_exists juliaup; then
             add_julia_beside_default none
+        elif [ -f "$HOME/.julia/juliaup/juliaup.json" ]; then
+            die "A juliaup configuration exists at $HOME/.julia/juliaup/juliaup.json, but no juliaup is on PATH or in ~/.juliaup/bin; put your juliaup on PATH and run bash install.sh again."
         elif prompt_yn "Install Julia via juliaup (official installer)?"; then
             install_fresh_juliaup
             use_julia_channel ""
@@ -895,10 +941,8 @@ setup_julia() {
         fi
         return 0
     fi
+    # A version that 'julia --version' does not report counts as another version.
     julia_version=$(julia_version_of julia)
-    if [ -z "$julia_version" ]; then
-        die "Could not parse Julia version from 'julia --version' output."
-    fi
     case "$julia_version" in
         "$req" | "$req".*)
             use_julia_channel ""
@@ -906,6 +950,7 @@ setup_julia() {
             return 0
             ;;
     esac
+    julia_version="${julia_version:-(version unknown)}"
     if ! command_exists juliaup; then
         warn "PROTEUS runs on Julia $req, found $julia_version."
         warn "juliaup not found. Cannot add Julia $req automatically."
@@ -1018,6 +1063,7 @@ phase 5 "AGNI + FastChem"
 
 if [ -d "$SCRIPT_DIR/AGNI" ] && [ -f "$SCRIPT_DIR/AGNI/Manifest.toml" ]; then
     info "AGNI already installed at $SCRIPT_DIR/AGNI"
+    note_agni_julia_version "$SCRIPT_DIR/AGNI"
 else
     run_logged --takes "several minutes" "Installing AGNI and its Julia packages" \
         bash tools/get_agni.sh 0
@@ -1052,8 +1098,9 @@ else
     fi
 fi
 
-# FC_DIR, on the resolved AGNI path so that it survives a change of the symlink
-if [ -d "$AGNI_REAL/fastchem" ]; then
+# FC_DIR only for a built FastChem, on the resolved AGNI path so that it survives a change
+# of the symlink
+if [ -x "$AGNI_REAL/fastchem/fastchem" ]; then
     set_install_var FC_DIR "$AGNI_REAL/fastchem"
 fi
 
@@ -1186,6 +1233,9 @@ case "$DATA_MODE" in
         ;;
 esac
 
+# Phase 6 sets the last variable (the Julia 1.11 fall-back), so here every variable is recorded.
+bind_install_vars
+
 # ===================================================================
 # Phase 8: Verification
 # ===================================================================
@@ -1200,7 +1250,6 @@ echo ""
 # ===================================================================
 # Done
 # ===================================================================
-bind_install_vars
 echo ""
 printf "${GREEN}${BOLD}Installation complete!${NC}\n"
 echo ""

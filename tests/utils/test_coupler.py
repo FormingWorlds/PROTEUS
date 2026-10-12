@@ -1958,14 +1958,20 @@ def _julia_version_stub(directory, version: str):
 @pytest.mark.unit
 @pytest.mark.parametrize(
     ('bound', 'expected'),
-    [('executable', '1.13.1'), ('unset', '1.12.6'), ('not-executable', '1.12.6')],
+    [
+        ('executable', '1.13.1'),
+        ('unset', '1.12.6'),
+        ('not-executable', 'unknown (PYTHON_JULIAPKG_EXE=<bound> is not an executable file)'),
+    ],
     ids=['bound-1.13-beside-path-1.12', 'path-1.12-only', 'bound-not-executable'],
 )
 def test_get_julia_version_names_the_julia_proteus_uses(monkeypatch, tmp_path, bound, expected):
-    """The run log names the Julia of PYTHON_JULIAPKG_EXE when it is executable, else the PATH one.
+    """The run log names the Julia of PYTHON_JULIAPKG_EXE when it is set, else the PATH one.
 
     The 2 stubs differ in the minor version, the field PROTEUS checks, so
-    a function that asks the default Julia gives 1.12.6 in the first case.
+    a function that asks the default Julia gives 1.12.6 in the first case. A
+    set variable that names no executable file is reported as such, not as the
+    PATH version, because juliacall does not fall back to PATH.
     """
     from proteus.utils.coupler import _get_julia_version
 
@@ -1981,30 +1987,35 @@ def test_get_julia_version_names_the_julia_proteus_uses(monkeypatch, tmp_path, b
 
     version = _get_julia_version()
 
-    assert version == expected
+    assert version == expected.replace('<bound>', str(bound_julia))
     # The default Julia stays first on PATH, so 1.13.1 can only come from the variable.
     assert shutil.which('julia') == str(path_julia)
 
 
 @pytest.mark.unit
 @pytest.mark.parametrize('bound', ['unset', 'missing-file'])
-def test_get_julia_version_without_any_julia_keeps_the_not_installed_text(
+def test_get_julia_version_without_any_julia_names_what_is_missing(
     monkeypatch, tmp_path, bound
 ):
-    """With no julia on PATH and no usable PYTHON_JULIAPKG_EXE the log says Julia is not installed."""
+    """With no julia on PATH the log says Julia is not installed, or names the unusable variable."""
     from proteus.utils.coupler import _get_julia_version
 
     empty = tmp_path / 'empty-bin'
     empty.mkdir()
     monkeypatch.setenv('PATH', str(empty))
+    missing = tmp_path / 'no-such' / 'julia'
     if bound == 'unset':
         monkeypatch.delenv('PYTHON_JULIAPKG_EXE', raising=False)
     else:
-        monkeypatch.setenv('PYTHON_JULIAPKG_EXE', str(tmp_path / 'no-such' / 'julia'))
+        monkeypatch.setenv('PYTHON_JULIAPKG_EXE', str(missing))
 
     version = _get_julia_version()
 
-    assert version == 'unknown (julia not installed)'
+    assert version == (
+        'unknown (julia not installed)'
+        if bound == 'unset'
+        else f'unknown (PYTHON_JULIAPKG_EXE={missing} is not an executable file)'
+    )
     assert shutil.which('julia') is None
 
 

@@ -28,14 +28,15 @@ proteus_root=$(portable_realpath "$proteus_tools_dir/..")
 # Each git call must answer for the folder its -C names, not for a repository these variables name.
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_NAMESPACE
 
-# Put the directory of PYTHON_JULIAPKG_EXE, the Julia PROTEUS uses, first on PATH for this process
-# when it names an executable file, so that a bare julia here is that Julia; otherwise change nothing.
+# When PYTHON_JULIAPKG_EXE, the Julia PROTEUS uses, names an executable file, put the folder
+# <PROTEUS root>/.proteus-julia, whose one entry is a link julia to it, first on PATH for this
+# process, so that a bare julia is that Julia and no other program of its folder is found first.
 use_proteus_julia() {
-    local exe="${PYTHON_JULIAPKG_EXE:-}" dir
-    if [ -z "$exe" ] || [ ! -f "$exe" ] || [ ! -x "$exe" ]; then
-        return 0
-    fi
-    dir=$(cd "$(dirname "$exe")" && pwd)
+    local exe="${PYTHON_JULIAPKG_EXE:-}" dir="$proteus_root/.proteus-julia" target
+    [ -f "$exe" ] && [ -x "$exe" ] || return 0
+    target="$(cd "$(dirname "$exe")" && pwd)/$(basename "$exe")"
+    mkdir -p "$dir" && ln -sfn "$target" "$dir/julia" \
+        || { echo "ERROR: could not link $dir/julia to $target." >&2; return 1; }
     PATH="$dir:$PATH"
     export PATH
     echo "Julia: $exe (PYTHON_JULIAPKG_EXE)"

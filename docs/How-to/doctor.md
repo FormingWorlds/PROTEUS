@@ -31,8 +31,8 @@ command you can run manually or let `proteus update` handle.
 | `FWL_DATA` | Environment variable is set and the directory exists | Not set, or path missing |
 | `RAD_DIR` | Set, directory exists, and `bin/radlib.a` is present | Not set, path missing, or SOCRATES not compiled |
 | `FC_DIR` | Set and directory exists | Not set (only required when AGNI chemistry is enabled) |
-| `PYTHON_JULIAPKG_EXE` | Set | Not set |
-| `julia` | The Julia in `PYTHON_JULIAPKG_EXE` (or on PATH when it is unset) is 1.13.x | Missing; any other version warns, because PROTEUS is tested on 1.13 and Obliqua installs only on 1.11 or 1.13 |
+| `PYTHON_JULIAPKG_EXE` | Set, and the path exists | Not set; a path that does not exist warns |
+| `julia` | The Julia in `PYTHON_JULIAPKG_EXE` (or on PATH when it is unset) is 1.13.x | Missing, or `PYTHON_JULIAPKG_EXE` set to a path that is no executable file, because juliacall then fails at import instead of using the `julia` on PATH; any other version warns, because PROTEUS is tested on 1.13 and Obliqua installs only on 1.11 or 1.13 |
 
 ### Reference data
 
@@ -172,7 +172,9 @@ This lists the fixable issues and their commands but does not execute anything.
   `PYTHON_JULIAPKG_EXE` (the `julia` on `PATH` when it is unset) and suggests
   `juliaup add 1.13`, then setting `PYTHON_JULIAPKG_EXE` in the same way to the
   path that `julia +1.13 -e 'print(joinpath(Sys.BINDIR, "julia"))'` prints.
-  Your default Julia stays as it is.
+  Your default Julia stays as it is. The installer binds Julia 1.11 only when the
+  import of PROTEUS fails on `OpenSSL_jll` because Python links an OpenSSL older
+  than 3.5; after `conda install -c conda-forge 'openssl>=3.5'`, Julia 1.13 can be used.
 - **Missing system packages** (gfortran, cmake, netcdf): these require your
   system package manager (`brew`, `apt`, `dnf`). See the
   [installation guide](installation.md) for platform-specific commands.

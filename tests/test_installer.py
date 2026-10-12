@@ -193,9 +193,9 @@ class TestPreflightChecks:
     def test_fails_without_conda_env(self):
         """Without an env and with a conda that cannot activate one, the installer stops with conda instructions.
 
-        The conda stub of this file answers every call with nothing, so it has no
-        base folder whose conda.sh the installer could load. Discrimination: the
-        error must name the manual commands and the step that failed.
+        The conda stub of this file answers every call with nothing, so it names no
+        envs directory in which the installer could look for the env. Discrimination:
+        the error must name the manual commands and the step that failed.
         """
         env = os.environ.copy()
         for var in ('CONDA_DEFAULT_ENV', 'CONDA_PREFIX', 'PIXI_ENVIRONMENT_NAME'):
@@ -212,7 +212,7 @@ class TestPreflightChecks:
         output = result.stdout + result.stderr
         assert 'conda' in output.lower()
         assert 'conda create -n proteus python=3.12' in output
-        assert "Loading conda's shell functions from" in output
+        assert "'conda config --show envs_dirs' named no envs directory." in output
 
     def test_fails_outside_proteus_repo(self, tmp_path):
         """Running install.sh from outside the PROTEUS repo fails because
@@ -376,6 +376,9 @@ _VALUES = {
     'FC_DIR': '/home/u/AGNI/fastchem',
 }
 
+# The same 4 variables without a single quote, all of which conda can hold.
+_PLAIN = {**_VALUES, 'RAD_DIR': '/home/obrien/socrates'}
+
 _SYSTEM_PATH = '/usr/bin:/bin'
 
 
@@ -500,27 +503,63 @@ class TestInstallVars:
         the new values. The closing message tells the env `proteus` to reactivate.
         """
         conda_env = {'CONDA_PREFIX': site['prefix'], 'CONDA_DEFAULT_ENV': 'proteus'}
-        script = _set_script(_VALUES) + 'bind_install_vars\nprint_next_steps\n'
+        script = _set_script(_PLAIN) + 'bind_install_vars\nprint_next_steps\n'
         result = self._call(site, script, **conda_env)
         assert result.returncode == 0, result.stdout + result.stderr
         lines = site['env_file'].read_text().splitlines()
         assert len(lines) == 4
-        assert [ln.split('=', 1)[0] for ln in lines] == [f'export {n}' for n in _VALUES]
+        assert [ln.split('=', 1)[0] for ln in lines] == [f'export {n}' for n in _PLAIN]
         assert all(ln.split('=', 1)[1].startswith("'") for ln in lines)
-        assert _sourced(site['env_file']) == _VALUES
-        pairs = [f'{n}={v}' for n, v in _VALUES.items()]
+        assert _sourced(site['env_file']) == _PLAIN
+        pairs = [f'{n}={v}' for n, v in _PLAIN.items()]
         assert _conda_calls(site['log']) == [
             ['env', 'config', 'vars', 'set', '-p', site['prefix'], *pairs]
         ]
         assert 'conda deactivate && conda activate proteus' in result.stdout
         assert 'source .proteus-env.sh' not in result.stdout
 
-        newer = {n: f'{v}-2' for n, v in _VALUES.items()}
+        newer = {n: f'{v}-2' for n, v in _PLAIN.items()}
         again = self._call(site, _set_script(newer) + 'bind_install_vars\n', **conda_env)
         assert again.returncode == 0, again.stdout + again.stderr
         assert len(site['env_file'].read_text().splitlines()) == 4
         assert _sourced(site['env_file']) == newer
         assert len(_conda_calls(site['log'])) == 2
+
+    def test_value_with_a_single_quote_stays_out_of_conda(self, site):
+        """RAD_DIR=/home/o'brien/socrates is in the exports file only, named in one warning.
+
+        conda writes `export RAD_DIR='<value>'` unescaped, which breaks each later
+        activation. The other 3 pairs go to conda in one call; the closing line
+        sources the exports file, which reads the value back unchanged.
+        """
+        conda_env = {'CONDA_PREFIX': site['prefix'], 'CONDA_DEFAULT_ENV': 'proteus'}
+        script = _set_script(_VALUES) + 'bind_install_vars\nprint_next_steps\n'
+        result = self._call(site, script, **conda_env)
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert _sourced(site['env_file']) == _VALUES
+        pairs = [f'{n}={v}' for n, v in _VALUES.items() if n != 'RAD_DIR']
+        assert _conda_calls(site['log']) == [
+            ['env', 'config', 'vars', 'set', '-p', site['prefix'], *pairs]
+        ]
+        assert not [a for call in _conda_calls(site['log']) for a in call if "'" in a]
+        warnings = [ln for ln in result.stderr.splitlines() if 'Not bound' in ln]
+        assert warnings == [
+            f'{_WARN_PREFIX}Not bound to the conda env: RAD_DIR, whose value holds a single '
+            "quote that conda's activation script cannot read; load it with: "
+            f'source {site["env_file"]}'
+        ]
+        assert 'source .proteus-env.sh' in result.stdout
+        assert 'conda deactivate' not in result.stdout
+
+    def test_only_quoted_values_make_no_conda_call(self, site):
+        """With every value holding a single quote conda is not called, and the warning names them."""
+        quoted = {'FWL_DATA': "/d/o'b", 'RAD_DIR': "/r/o'b"}
+        script = _set_script(quoted) + 'bind_install_vars\n'
+        result = self._call(site, script, CONDA_PREFIX=site['prefix'])
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert _conda_calls(site['log']) == []
+        assert 'Not bound to the conda env: FWL_DATA RAD_DIR,' in result.stderr
+        assert 'Bound ' not in result.stdout
 
     def test_variable_set_twice_keeps_one_line_and_one_pair(self, site):
         """A variable set twice in one run keeps its last value, once in the file and in conda.
@@ -528,7 +567,7 @@ class TestInstallVars:
         This is the Julia 1.11 fall-back, which sets PYTHON_JULIAPKG_EXE again in phase 6.
         """
         script = (
-            _set_script(_VALUES)
+            _set_script(_PLAIN)
             + "set_install_var PYTHON_JULIAPKG_EXE '/opt/julia-1.11.9/bin/julia'\n"
             + 'bind_install_vars\n'
         )
@@ -629,12 +668,86 @@ class TestInstallVars:
         assert 'delete those lines by hand' in result.stderr
         assert zshrc.read_text() == text
 
+    def test_note_reads_the_fish_ksh_bash_login_and_zshenv_files(self, site):
+        """An old export in fish's config.fish, ~/.kshrc, ~/.bash_login or ~/.zshenv is named.
+
+        Each file holds its export on another line (1 to 4), so a note that names a
+        line of the wrong file fails, and the files keep their bytes.
+        """
+        files = {
+            '.config/fish/config.fish': 'export FC_DIR=/old/fastchem',
+            '.kshrc': 'export RAD_DIR=/old/socrates',
+            '.bash_login': 'export PYTHON_JULIAPKG_EXE=/old/julia',
+            '.zshenv': 'export FWL_DATA=/old/data',
+        }
+        texts = {}
+        for n, (name, line) in enumerate(files.items()):
+            path = site['home'] / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            texts[path] = '# comment\n' * n + line + '\n'
+            _write_start_file(path, texts[path])
+        result = self._call(site, 'note_old_shell_exports\n')
+        assert result.returncode == 0, result.stdout + result.stderr
+        named = [ln.strip() for ln in result.stderr.splitlines() if ', line ' in ln]
+        expected = [
+            f'{site["home"] / name}, line {n + 1}: {line}'
+            for n, (name, line) in enumerate(files.items())
+        ]
+        assert sorted(named) == sorted(expected)
+        assert all(path.read_text() == text for path, text in texts.items())
+
     def test_no_note_without_old_exports(self, site):
         """A HOME without shell start files gets no note."""
         result = self._call(site, 'note_old_shell_exports\n')
         assert result.returncode == 0, result.stdout + result.stderr
         assert result.stderr == ''
         assert result.stdout == ''
+
+    @pytest.mark.parametrize(
+        ('program', 'recorded'),
+        [('built', True), ('missing', False), ('not-executable', False)],
+        ids=['fastchem-built', 'folder-without-program', 'program-not-executable'],
+    )
+    def test_fc_dir_is_recorded_only_for_a_built_fastchem(self, site, program, recorded):
+        """Phase 5 records FC_DIR when AGNI/fastchem/fastchem is executable, not for the folder alone.
+
+        A failed build leaves the folder (with a clone and no program, or a
+        program without its mode); FC_DIR at it would point AGNI at no solver.
+        """
+        fastchem = site['root'] / 'AGNI' / 'fastchem'
+        fastchem.mkdir(parents=True)
+        if program != 'missing':
+            _stub(fastchem / 'fastchem', '#!/bin/sh\n')
+        if program == 'not-executable':
+            (fastchem / 'fastchem').chmod(0o644)
+        block = _install_sh_blocks('# FC_DIR only')
+        assert block.count('set_install_var FC_DIR') == 1
+        script = f'AGNI_REAL={shlex.quote(str(site["root"] / "AGNI"))}\n' + block
+        result = self._call(site, script)
+        assert result.returncode == 0, result.stdout + result.stderr
+        lines = site['env_file'].read_text().splitlines() if site['env_file'].exists() else []
+        assert lines == ([f"export FC_DIR='{fastchem}'"] if recorded else [])
+        assert ('Set FC_DIR=' in result.stdout) is recorded
+
+    def test_variables_are_bound_once_before_the_doctor_phase(self):
+        """bind_install_vars runs once, after the last variable can be set and before Phase 8.
+
+        The Julia 1.11 fall-back in verify_proteus_import (Phase 6) sets the last
+        variable; a bind after `proteus doctor` would follow a passed doctor with a
+        failed bind. Each anchor is asserted to be in install.sh once.
+        """
+        lines = INSTALL_SH.read_text().splitlines()
+
+        def at(text: str) -> int:
+            hits = [i for i, ln in enumerate(lines) if ln == text]
+            assert len(hits) == 1, (text, hits)
+            return hits[0]
+
+        bind = at('bind_install_vars')
+        assert at('verify_proteus_import') < at('CURRENT_PHASE=7') < bind
+        assert bind < at('CURRENT_PHASE=8') < at('proteus doctor 2>&1 || true')
+        assert bind < at('printf "${GREEN}${BOLD}Installation complete!${NC}\\n"')
+        assert at('print_next_steps') > at('proteus doctor 2>&1 || true')
 
 
 _START_FILE = re.compile(
@@ -669,6 +782,11 @@ class TestNoShellFileEdit:
         reader = _install_sh_function('note_old_shell_exports')
         assert '.zshrc' in reader
         assert [ln for ln in reader.splitlines() if _FILE_WRITE.search(ln)] == []
+        # The juliaup installer writes a PATH block to the start files unless told not to.
+        fresh = _install_sh_function('install_fresh_juliaup')
+        runs = [ln.strip() for ln in text.splitlines() if 'bash "$julia_installer"' in ln]
+        assert runs == ['bash "$julia_installer" --yes --add-to-path=no 2>&1']
+        assert runs[0] in fresh
         removed = (
             '    grep -v "^export ${var_name}=" "$rc_file" > "${rc_file}.tmp" 2>/dev/null || true\n'
             '    mv "${rc_file}.tmp" "$rc_file"\n'
@@ -973,6 +1091,9 @@ def _install_sh_function(name: str) -> str:
 # run_logged and the helpers it calls; the colour codes and info/warn/fail come with "info()".
 _RUN_LOGGED_FUNCTIONS = ('log_file_sentence', 'log_catch_up', 'to_terminal', 'run_logged')
 
+# The exit trap that removes the temp file of run_logged where print_exit_hint is not lifted.
+_RUN_LOGGED_CLEANUP = 'trap \'rm -f "${RUN_LOGGED_TMP:-}"\' EXIT\n'
+
 # Shell variables of the installer's log state, kept out of the test environment.
 _LOG_STATE = ('LOGFILE', 'VERBOSE', 'LOG_TEE', 'RUN_LOGGED_TOLD', 'LOG_SENTENCE_SHOWN')
 
@@ -1013,6 +1134,7 @@ def _run_module_phase(
                 'report_stayed_clones',
             )
         )
+        + _RUN_LOGGED_CLEANUP
     )
     return subprocess.run(
         ['bash', '-c', defs + script],
@@ -1837,6 +1959,223 @@ class TestSetupJulia:
         assert self._report(result) == []
         assert site['log'].read_text().splitlines().count('juliaup add 1.13') == 1
 
+    def test_unparsable_version_with_juliaup_gets_113_beside_it(self, site):
+        """A julia whose --version holds no version, as a juliaup launcher without a
+        default channel prints, gets 1.13 beside it like any other version; no stop.
+
+        `juliaup default` is not called, and the line says the version is unknown.
+        """
+        result = self._call(site, 'unknown-build')
+        assert result.returncode == 0, result.stdout + result.stderr
+        calls = site['log'].read_text().splitlines()
+        assert calls.count('juliaup add 1.13') == 1
+        assert not [c for c in calls if c.startswith('juliaup default')]
+        path, exe, channel, bare = self._report(result)
+        assert exe == str(site['jl113'] / 'julia')
+        assert channel == '+1.13'
+        assert self._used_lines(result) == [
+            f'\x1b[0;32m[INFO]\x1b[0m  PROTEUS uses Julia 1.13.1 at {exe}; '
+            'your default Julia (version unknown) stays as it is.'
+        ]
+        assert 'Could not parse' not in result.stdout + result.stderr
+
+
+# The juliaup installer that the curl stub writes: it logs its arguments, puts juliaup and
+# julia in ~/.juliaup/bin, and without --add-to-path=no adds a PATH line to ~/.zshrc and
+# ~/.bashrc, as the official installer does.
+_STUB_JULIAUP_INSTALLER = """#!/bin/sh
+echo "installer $*" >> "$STUB_LOG"
+mkdir -p "$HOME/.juliaup/bin"
+cp "$STUB_JULIAUP" "$HOME/.juliaup/bin/juliaup"
+cp "$STUB_JULIA_SRC" "$HOME/.juliaup/bin/julia"
+chmod +x "$HOME/.juliaup/bin/juliaup" "$HOME/.juliaup/bin/julia"
+case " $* " in
+    *" --add-to-path=no "*) ;;
+    *) for f in .zshrc .bashrc; do echo 'export PATH="$HOME/.juliaup/bin:$PATH"' >> "$HOME/$f"; done ;;
+esac
+"""
+
+# curl: log the call and write the installer stub to the file after -o.
+_STUB_CURL = """#!/bin/sh
+echo "curl $*" >> "$STUB_LOG"
+while [ "$#" -gt 0 ]; do [ "$1" = -o ] && out="$2"; shift; done
+cp "$STUB_INSTALLER" "$out"
+"""
+
+# juliaup: log the call; `add` puts the julia launcher beside juliaup, as juliaup ships one.
+_STUB_JULIAUP = """#!/bin/sh
+echo "juliaup $*" >> "$STUB_LOG"
+[ "$1" = add ] && cp "$STUB_JULIA_SRC" "$(dirname "$0")/julia" && chmod +x "$(dirname "$0")/julia"
+exit 0
+"""
+
+
+class TestSetupJuliaWithoutJulia:
+    """setup_julia without a julia on PATH: juliaup adds 1.13, or the fresh juliaup install runs."""
+
+    @pytest.fixture
+    def site(self, tmp_path):
+        """A HOME and a TMPDIR of their own, and curl and python3 stubs on a PATH without julia.
+
+        The juliaup and julia stubs that the installer stub copies sit in a folder
+        that is not on PATH; the 1.13 channel resolves to a folder with a julia
+        that reports 1.13.1.
+        """
+        payload = tmp_path / 'payload'
+        _stub(payload / 'installer.sh', _STUB_JULIAUP_INSTALLER)
+        _stub(payload / 'juliaup', _STUB_JULIAUP)
+        _stub(payload / 'julia', _STUB_JULIA)
+        stubs = tmp_path / 'stubs'
+        _stub(stubs / 'curl', _STUB_CURL)
+        _stub(stubs / 'python3', '#!/bin/sh\nexit 0\n')
+        jl113 = tmp_path / 'juliaup' / 'julia-1.13.1' / 'bin'
+        _stub(jl113 / 'julia', '#!/bin/sh\necho "julia version 1.13.1"\n')
+        home = tmp_path / 'home'
+        home.mkdir()
+        scratch = tmp_path / 'tmpdir'
+        scratch.mkdir()
+        log = tmp_path / 'calls.log'
+        log.write_text('')
+        system = '/usr/bin:/bin'
+        env = {
+            'PATH': f'{stubs}{os.pathsep}{system}',
+            'HOME': str(home),
+            'TMPDIR': str(scratch),
+            'STUB_LOG': str(log),
+            'STUB_BINDIR_113': str(jl113),
+            'STUB_INSTALLER': str(payload / 'installer.sh'),
+            'STUB_JULIAUP': str(payload / 'juliaup'),
+            'STUB_JULIA_SRC': str(payload / 'julia'),
+        }
+        return {
+            'home': home,
+            'tmpdir': scratch,
+            'log': log,
+            'jl113': jl113,
+            'payload': payload,
+            'env': env,
+        }
+
+    def test_neither_julia_nor_juliaup_runs_the_installer_without_a_path_edit(self, site):
+        """With no julia and no juliaup, the official installer runs with --yes --add-to-path=no.
+
+        HOME holds only ~/.juliaup afterwards: the installer stub writes a PATH line
+        to ~/.zshrc and ~/.bashrc unless it gets --add-to-path=no. This juliaup is
+        new, so `juliaup default 1.13` is allowed here, and the downloaded script
+        is gone from TMPDIR.
+        """
+        result = TestSetupJulia._call(site, '1.13.1')
+        assert result.returncode == 0, result.stdout + result.stderr
+        calls = site['log'].read_text().splitlines()
+        assert [c for c in calls if c.startswith('installer ')] == [
+            'installer --yes --add-to-path=no'
+        ]
+        assert calls.count('juliaup add 1.13') == 1
+        assert calls.count('juliaup default 1.13') == 1
+        assert sorted(p.name for p in site['home'].iterdir()) == ['.juliaup']
+        assert list(site['tmpdir'].iterdir()) == []
+        exe = TestSetupJulia._report(result)[1]
+        assert exe == str(site['home'] / '.juliaup' / 'bin' / 'julia')
+
+    def test_juliaup_without_julia_adds_113_and_sets_no_default(self, site):
+        """A juliaup on PATH with no julia gets `juliaup add 1.13` and no `juliaup default`.
+
+        The installer stub is not run, and the line names the juliaup default that stays.
+        """
+        jup = site['payload'].parent / 'jup' / 'bin'
+        _stub(jup / 'juliaup', _STUB_JULIAUP)
+        env = {'PATH': f'{jup}{os.pathsep}{site["env"]["PATH"]}'}
+        result = TestSetupJulia._call(site, '1.10.4', **env)
+        assert result.returncode == 0, result.stdout + result.stderr
+        calls = site['log'].read_text().splitlines()
+        assert calls.count('juliaup add 1.13') == 1
+        assert not [c for c in calls if c.startswith(('juliaup default', 'installer', 'curl'))]
+        path, exe, channel, bare = TestSetupJulia._report(result)
+        assert (exe, channel, bare) == (
+            str(site['jl113'] / 'julia'),
+            '+1.13',
+            'julia version 1.13.1',
+        )
+        assert TestSetupJulia._used_lines(result) == [
+            f'\x1b[0;32m[INFO]\x1b[0m  PROTEUS uses Julia 1.13.1 at {exe}; '
+            'the default Julia of juliaup stays as it is.'
+        ]
+
+    def test_juliaup_config_without_a_juliaup_on_path_stops(self, site):
+        """A ~/.julia/juliaup/juliaup.json with no juliaup found stops before any download.
+
+        A second juliaup would run `juliaup default` on that shared configuration and
+        change the default of the user's own juliaup.
+        """
+        config = site['home'] / '.julia' / 'juliaup' / 'juliaup.json'
+        config.parent.mkdir(parents=True)
+        config.write_text('{"Default": "release"}\n')
+        result = TestSetupJulia._call(site, '1.10.4')
+        assert result.returncode == 1
+        assert site['log'].read_text() == ''
+        fails = [ln for ln in result.stderr.splitlines() if '[FAIL]' in ln]
+        assert fails == [
+            f'\x1b[0;31m[FAIL]\x1b[0m  A juliaup configuration exists at {config}, but no '
+            'juliaup is on PATH or in ~/.juliaup/bin; put your juliaup on PATH and run '
+            'bash install.sh again.'
+        ]
+        assert not (site['home'] / '.juliaup').exists()
+        assert config.read_text() == '{"Default": "release"}\n'
+
+
+class TestAgniJuliaVersion:
+    """Phase 5 warns once when an existing AGNI was built with another minor Julia version."""
+
+    @pytest.mark.parametrize(
+        ('manifest', 'warned'),
+        [
+            ('julia_version = "1.11.5"\n', True),
+            ('julia_version = "1.12.0-rc1"\n', True),
+            ('julia_version = "1.13.0"\n', False),
+            ('manifest_format = "2.0"\n', False),
+        ],
+        ids=['built-1.11', 'built-1.12-rc', 'built-1.13-other-patch', 'no-version-line'],
+    )
+    def test_warns_only_for_another_minor_version(self, tmp_path, manifest, warned):
+        """A Manifest.toml of Julia 1.11 or 1.12 warns with both versions; 1.13.0 and none do not.
+
+        PROTEUS uses a stub Julia 1.13.1, so a patch release differs but the minor
+        version does not; the warning names `proteus update-all`.
+        """
+        agni = tmp_path / 'AGNI'
+        agni.mkdir()
+        (agni / 'Manifest.toml').write_text('# This file is machine-generated\n\n' + manifest)
+        exe = _stub(tmp_path / 'jl' / 'julia', '#!/bin/sh\necho "julia version 1.13.1"\n')
+        defs = (
+            'set -euo pipefail\n'
+            + _install_sh_blocks("RED='", 'info()')
+            + _install_sh_function('julia_version_of')
+            + _install_sh_function('note_agni_julia_version')
+        )
+        result = subprocess.run(
+            ['bash', '-c', defs + f'note_agni_julia_version {shlex.quote(str(agni))}\n'],
+            capture_output=True,
+            text=True,
+            env={'PATH': '/usr/bin:/bin', 'PYTHON_JULIAPKG_EXE': str(exe)},
+            timeout=10,
+        )
+        assert result.returncode == 0, result.stderr
+        assert result.stdout == ''
+        built = manifest.split('"')[1]
+        expected = [
+            f'{_WARN_PREFIX}AGNI at {agni} was built with Julia {built} (its Manifest.toml), '
+            "and PROTEUS uses Julia 1.13.1; after the installer, run 'proteus update-all', "
+            'which brings AGNI to its pin and instantiates it again.'
+        ]
+        assert result.stderr.splitlines() == (expected if warned else [])
+
+    def test_phase_5_checks_an_existing_agni_and_does_not_rebuild_it(self):
+        """The check runs in the branch for an existing AGNI, which runs no build step."""
+        lines = INSTALL_SH.read_text().splitlines()
+        start = lines.index('    info "AGNI already installed at $SCRIPT_DIR/AGNI"')
+        assert lines[start + 1] == '    note_agni_julia_version "$SCRIPT_DIR/AGNI"'
+        assert lines[start + 2] == 'else'
+
 
 class TestJuliaupDefaultUse:
     """Only a juliaup installed by this run gets a new default Julia."""
@@ -1864,19 +2203,22 @@ _CONDA_FUNCTIONS = (
     'collect_env_info',
     'die',
     'stop_without_conda_env',
+    'stop_on_env_folder',
     'setup_conda_env',
     'conda_activate_command',
     'print_next_steps',
     'print_exit_hint',
 )
 
-# The conda executable: `info --base`, `env list` (base, a nameless env, then STUB_CONDA_ENVS)
-# and `create -y -n <name> ...`, which makes the env with its python unless STUB_CREATE_RC is set.
+# The conda executable: `info --base`, `config --show envs_dirs` (a missing folder, then the envs
+# folder of the base), `env list` (base, a nameless env, then STUB_CONDA_ENVS) and
+# `create -y -n <name> ...`, which makes the env with its python unless STUB_CREATE_RC is set.
 _STUB_CONDA_EXE = """#!/bin/sh
 printf '%s\\n' "$@" >> "$STUB_CONDA_LOG"
 echo --- >> "$STUB_CONDA_LOG"
 case "$1 $2" in
     'info --base') printf '%s\\n' "$STUB_CONDA_BASE" ;;
+    'config --show') printf 'envs_dirs:\\n  - %s\\n  - %s\\n' "$HOME/.conda/envs" "$STUB_CONDA_BASE/envs" ;;
     'env list')
         echo '# conda environments:'
         echo '#'
@@ -1994,18 +2336,19 @@ class TestSetupCondaEnv:
         ids=['no-env-active', 'base-active'],
     )
     def test_no_env_or_base_makes_proteus_and_activates_it(self, site, active):
-        """With no env or base active and no env `proteus`, the env is made and activated.
+        """With no env or base active, no env `proteus` and no folder of it, the env is made once.
 
-        The calls are pinned in order: list, one create with the required Python,
-        the base folder, then activate. A substring or path match would find
-        `proteus2` or `/elsewhere/proteus` and skip the create. With base active
-        the function ends in `proteus`, so nothing goes into base.
+        The calls are pinned in order: list, the envs folders, one create with the
+        required Python, the base folder, then activate. A substring or path match
+        would find `proteus2` or `/elsewhere/proteus` and skip the create. With base
+        active the function ends in `proteus`, so nothing goes into base.
         """
         active = {k: v.replace('<base>', str(site['base'])) for k, v in active.items()}
         result = self._call(site, **active)
         assert result.returncode == 0, result.stdout + result.stderr
         assert _conda_calls(site['log']) == [
             ['env', 'list'],
+            ['config', '--show', 'envs_dirs'],
             ['create', '-y', '-n', 'proteus', 'python=3.12'],
             ['info', '--base'],
             ['activate', 'proteus'],
@@ -2025,8 +2368,12 @@ class TestSetupCondaEnv:
             '(made and activated by the installer for this run)'
         ]
 
-    def test_existing_proteus_is_activated_without_create(self, site):
-        """An env `proteus` that exists is activated and not made again."""
+    def test_existing_proteus_is_used_with_a_warning_that_names_the_switch(self, site):
+        """An env `proteus` that exists is activated, not made again, and named in one warning.
+
+        The warning names the env, its prefix and `--conda-env`, on stderr; no info
+        line claims the env was made.
+        """
         prefix = self._existing_env(site, 'proteus')
         result = self._call(site)
         assert result.returncode == 0, result.stdout + result.stderr
@@ -2039,16 +2386,65 @@ class TestSetupCondaEnv:
             str(prefix / 'bin/python'),
             'true',
         ]
-        assert self._env_lines(result) == [
-            '\x1b[0;32m[INFO]\x1b[0m  Conda environment: proteus '
-            '(found and activated by the installer for this run)'
+        assert self._env_lines(result) == []
+        notices = [ln for ln in result.stderr.splitlines() if 'Conda environment: ' in ln]
+        assert notices == [
+            f'{_WARN_PREFIX}Conda environment: installing INTO the existing environment '
+            f'proteus ({prefix}); to use another one, stop now and run: '
+            'bash install.sh --conda-env <other name>'
         ]
+
+    @pytest.mark.parametrize(
+        ('listed', 'line'),
+        [
+            (
+                'PROTEUS',
+                'The folder <envs>/proteus exists and conda lists it as the environment '
+                'PROTEUS; the installer does not make an environment over it. Run bash '
+                'install.sh --conda-env PROTEUS to install into it, or --conda-env <name> '
+                'for another one.',
+            ),
+            (
+                None,
+                'The folder <envs>/proteus exists and conda lists no environment name for '
+                'it; the installer does not make an environment over it. Run bash '
+                'install.sh --conda-env <name> with another name.',
+            ),
+        ],
+        ids=['env-PROTEUS-listed', 'folder-not-listed'],
+    )
+    def test_folder_of_the_name_under_another_case_stops_before_create(
+        self, site, listed, line
+    ):
+        """No `conda create -y` runs on a folder `<envs>/proteus` that the name match missed.
+
+        The file system: on macOS `envs/proteus` and `envs/PROTEUS` are one folder, so
+        `[ -e envs/proteus ]` is true for the env `PROTEUS`. The test stands in for that
+        on any file system by making the folder under the wanted spelling `proteus` as
+        well (one folder on macOS, a second one on Linux). conda lists `PROTEUS` or no
+        name at all; the stop line names the folder, the listed name and `--conda-env`.
+        """
+        envs = site['base'] / 'envs'
+        if listed:
+            self._existing_env(site, listed)
+        (envs / 'proteus' / 'bin').mkdir(parents=True, exist_ok=True)
+        _stub(envs / 'proteus' / 'bin' / 'python', '#!/bin/sh\nexit 0\n')
+        result = self._call(site)
+        assert result.returncode == 1
+        calls = _conda_calls(site['log'])
+        assert calls[:2] == [['env', 'list'], ['config', '--show', 'envs_dirs']]
+        assert not [c for c in calls if c[0] in ('create', 'activate')]
+        fails = [ln for ln in result.stderr.splitlines() if '[FAIL]' in ln]
+        assert fails == [f'\x1b[0;31m[FAIL]\x1b[0m  {line.replace("<envs>", str(envs))}']
+        assert (envs / 'proteus' / 'bin' / 'python').exists()
+        assert self._report(result) == []
 
     @pytest.mark.parametrize('requested', ['', 'myenv'], ids=['no-option', 'option-agrees'])
     def test_active_env_is_used_without_any_conda_call(self, site, requested):
         """An active env other than base is used as it is; conda is not called at all.
 
-        A `--conda-env` that names the active env agrees with it.
+        A `--conda-env` that names the active env agrees with it. The one line says
+        that the installer installs into the active env, and no warning is printed.
         """
         prefix = self._existing_env(site, 'myenv')
         result = self._call(
@@ -2066,7 +2462,11 @@ class TestSetupCondaEnv:
             str(prefix / 'bin/python'),
             'false',
         ]
-        assert self._env_lines(result) == ['\x1b[0;32m[INFO]\x1b[0m  Conda environment: myenv']
+        assert self._env_lines(result) == [
+            '\x1b[0;32m[INFO]\x1b[0m  Conda environment: myenv '
+            '(active; the installer installs into it)'
+        ]
+        assert '[WARN]' not in result.stderr
 
     def test_conda_env_option_makes_and_activates_that_env(self, site):
         """`--conda-env sci` with no env active makes and activates `sci`, and no `proteus`."""
@@ -2074,6 +2474,7 @@ class TestSetupCondaEnv:
         assert result.returncode == 0, result.stdout + result.stderr
         assert _conda_calls(site['log']) == [
             ['env', 'list'],
+            ['config', '--show', 'envs_dirs'],
             ['create', '-y', '-n', 'sci', 'python=3.12'],
             ['info', '--base'],
             ['activate', 'sci'],
@@ -2345,8 +2746,10 @@ def _run_logged(
         defs += f'LOGFILE={shlex.quote(str(logfile))}\n'
     if verbose:
         defs += 'VERBOSE=true\n'
-    defs += _install_sh_blocks("RED='", 'info()') + ''.join(
-        _install_sh_function(f) for f in _RUN_LOGGED_FUNCTIONS
+    defs += (
+        _install_sh_blocks("RED='", 'info()')
+        + ''.join(_install_sh_function(f) for f in _RUN_LOGGED_FUNCTIONS)
+        + _RUN_LOGGED_CLEANUP
     )
     if tee:
         defs += _install_sh_blocks('exec 3>&1')
@@ -2491,6 +2894,73 @@ class TestRunLogged:
         assert result.returncode == 0, result.stdout + result.stderr
         assert log.read_text().splitlines() == ['got:EOF']
         assert 'got:' not in result.stdout + result.stderr
+
+
+def _run_logged_with_exit_hint(tmp_path: Path, script: str) -> subprocess.CompletedProcess:
+    """Run ``script`` after run_logged and print_exit_hint, trapped on EXIT as in install.sh.
+
+    TMPDIR is the empty folder ``tmp_path / 'tmpdir'``, where run_logged makes its temp file.
+    """
+    log = tmp_path / 'install.log'
+    log.write_text('')
+    (tmp_path / 'tmpdir').mkdir()
+    defs = (
+        'set -euo pipefail\nINSTALL_VAR_NAMES=""\n'
+        + f'LOGFILE={shlex.quote(str(log))}\n'
+        + _install_sh_blocks("RED='", 'info()')
+        + ''.join(_install_sh_function(f) for f in (*_RUN_LOGGED_FUNCTIONS, 'print_exit_hint'))
+        + 'trap print_exit_hint EXIT\n'
+    )
+    return subprocess.run(
+        ['bash', '-c', defs + script],
+        capture_output=True,
+        text=True,
+        cwd=tmp_path,
+        env={**_env_without_log_state(), 'TMPDIR': str(tmp_path / 'tmpdir')},
+        timeout=25,
+        start_new_session=True,
+    )
+
+
+class TestRunLoggedTempFile:
+    """run_logged keeps one temp file per installer run, which the exit trap removes."""
+
+    def test_interrupted_step_leaves_no_temp_file(self, tmp_path):
+        """A step that sends INT to the installer, as Ctrl-C does, leaves no proteus-install.* file.
+
+        The step records the TMPDIR listing first, so the file was there while it
+        ran; the run stops at the interrupt, before the line after the step.
+        """
+        (tmp_path / 'interrupt.sh').write_text(
+            'ls "$TMPDIR" > seen.txt\nkill -INT "$PPID"\nkill -INT $$\nsleep 5\n'
+        )
+        result = _run_logged_with_exit_hint(
+            tmp_path, 'run_logged "Building widget" bash interrupt.sh\necho AFTER\n'
+        )
+        assert result.returncode != 0
+        assert 'AFTER' not in result.stdout
+        seen = (tmp_path / 'seen.txt').read_text().split()
+        assert len(seen) == 1 and seen[0].startswith('proteus-install.')
+        assert list((tmp_path / 'tmpdir').iterdir()) == []
+
+    def test_steps_share_one_temp_file_and_a_clean_exit_removes_it(self, tmp_path):
+        """2 steps use 1 temp file, emptied between them; a clean exit removes it.
+
+        The second step shows only its own stay line: a file that kept the first
+        step's output would show `stays as it is: first` again.
+        """
+        script = (
+            'run_logged "Step one" bash -c "echo \'stays as it is: first\'"\n'
+            'run_logged "Step two" bash -c "echo \'stays as it is: second\'"\n'
+            'ls "$TMPDIR" > listing.txt\n'
+        )
+        result = _run_logged_with_exit_hint(tmp_path, script)
+        assert result.returncode == 0, result.stdout + result.stderr
+        listing = (tmp_path / 'listing.txt').read_text().split()
+        assert len(listing) == 1 and listing[0].startswith('proteus-install.')
+        shown = [ln for ln in _lines(result) if ln.startswith('stays as it is')]
+        assert shown == ['stays as it is: first', 'stays as it is: second']
+        assert list((tmp_path / 'tmpdir').iterdir()) == []
 
 
 # The build steps whose output goes to the log only, and the commands that stay on the terminal.

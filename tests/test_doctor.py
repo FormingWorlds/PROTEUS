@@ -36,6 +36,7 @@ from proteus.doctor import (
     _MODULE_FOLDERS,
     _PYTHON_MODULE_REPOS,
     _SUPPORT_EMAIL,
+    ENVIRONMENT_VARS,
     FAIL,
     GIT_MODULES,
     OPTIONAL_GIT_MODULES,
@@ -246,6 +247,35 @@ class TestCheckEnvVar:
         assert r.auto_fixable is False
         assert 'rc file' not in r.fix_cmd and 'export ' not in r.fix_cmd
 
+    @pytest.mark.parametrize('active', ['base', None], ids=['base-active', 'no-env-active'])
+    def test_advice_without_a_proteus_env_active_does_not_name_base(self, monkeypatch, active):
+        """With base or no env active, the advice names the PROTEUS env as a placeholder.
+
+        `conda env config vars set` without `-n` would set the variable in base;
+        the advice passes `-n <your PROTEUS environment>` and activates that env.
+        """
+        if active:
+            monkeypatch.setenv('CONDA_DEFAULT_ENV', active)
+        else:
+            monkeypatch.delenv('CONDA_DEFAULT_ENV', raising=False)
+        monkeypatch.delenv('FWL_DATA', raising=False)
+        r = check_env_var('FWL_DATA')
+        assert r.fix_cmd == (
+            'conda env config vars set -n <your PROTEUS environment> FWL_DATA=<path>, then '
+            'conda activate <your PROTEUS environment> '
+            '(without conda: source .proteus-env.sh in the PROTEUS folder)'
+        )
+        assert 'base' not in r.fix_cmd
+        assert 'conda deactivate' not in r.fix_cmd
+
+    def test_pythonjuliapkg_exe_path_is_validated(self, monkeypatch, tmp_path):
+        """The env-var check of PYTHON_JULIAPKG_EXE warns for a path that does not exist."""
+        assert ('PYTHON_JULIAPKG_EXE', True, None) in ENVIRONMENT_VARS
+        monkeypatch.setenv('PYTHON_JULIAPKG_EXE', str(tmp_path / 'no-such' / 'julia'))
+        r = check_env_var('PYTHON_JULIAPKG_EXE', validate_path=True)
+        assert r.status == WARN
+        assert str(tmp_path / 'no-such' / 'julia') in r.message
+
     def test_warn_when_path_missing(self):
         """A set variable pointing to a nonexistent path warns."""
         with patch.dict(os.environ, {'BAD_PATH': '/no/such/path'}):
@@ -386,7 +416,7 @@ class TestCheckJulia:
         ['1.12.6', '1.11.5', '1.14.0', '1.10.4'],
         ids=['julia-1.12', 'julia-1.11', 'julia-1.14', 'julia-1.10'],
     )
-    def test_julia_other_than_113_warns_and_names_obliqua(self, ver):
+    def test_julia_other_than_113_warns_and_names_obliqua(self, monkeypatch, ver):
         """Any Julia other than 1.13 is a warning, not a failure, that names Obliqua and 1.13.
 
         Obliqua does not resolve on 1.12, and 1.11, 1.10 and 1.14 are untested
@@ -394,6 +424,7 @@ class TestCheckJulia:
         1.13 and points PYTHON_JULIAPKG_EXE at it in the conda env, which
         ``proteus update`` does not do, and never changes the default Julia.
         """
+        monkeypatch.setenv('CONDA_DEFAULT_ENV', 'proteus')
         with patch('proteus.doctor._julia_version', return_value=ver):
             r = check_julia()
         assert r.status == WARN
@@ -447,25 +478,75 @@ class TestCheckJulia:
         assert 'juliaup add 1.13' in fallback.fix_cmd
         assert 'juliaup default' not in fallback.fix_cmd
 
-    @pytest.mark.parametrize('kind', ['missing', 'not-executable'])
-    def test_falls_back_to_path_when_pythonjuliapkg_exe_is_unusable(
+    @pytest.mark.parametrize('kind', ['missing', 'not-executable', 'directory'])
+    def test_fails_when_pythonjuliapkg_exe_is_set_but_unusable(
         self, tmp_path, monkeypatch, kind
     ):
-        """A PYTHON_JULIAPKG_EXE that is no executable file leaves the PATH julia checked.
+        """A PYTHON_JULIAPKG_EXE that is no executable file fails, even with a 1.13 julia on PATH.
 
-        The variable names a 1.13.1 script that is either absent or not
-        executable, and PATH holds a 1.10 julia; the check reports the 1.10.
+        juliacall does not fall back to the PATH julia from a set variable; it
+        fails at import. The message names the variable and its value, and the
+        fix adds 1.13 and points the variable at it.
         """
         bound = tmp_path / 'bound' / 'julia'
         if kind == 'not-executable':
             self._julia_stub(bound.parent, '1.13.1').chmod(0o644)
-        self._julia_stub(tmp_path / 'path', '1.10.4')
+        elif kind == 'directory':
+            bound.mkdir(parents=True)
+        self._julia_stub(tmp_path / 'path', '1.13.1')
         monkeypatch.setenv('PATH', str(tmp_path / 'path'))
         monkeypatch.setenv('PYTHON_JULIAPKG_EXE', str(bound))
+        monkeypatch.setenv('CONDA_DEFAULT_ENV', 'proteus')
+        r = check_julia()
+        assert r.status == FAIL
+        assert r.message == (
+            f'PYTHON_JULIAPKG_EXE={bound} is not an executable file; juliacall does not '
+            'fall back to the julia on PATH and fails at import'
+        )
+        assert r.fix_cmd.startswith(
+            'juliaup add 1.13, then conda env config vars set PYTHON_JULIAPKG_EXE=<the path'
+        )
+        assert r.auto_fixable is False
+        monkeypatch.delenv('PYTHON_JULIAPKG_EXE')
+        assert check_julia().status == PASS
+
+    @pytest.mark.parametrize(
+        ('bound', 'sentence'),
+        [(True, True), (False, False)],
+        ids=['bound-1.11', 'path-1.11'],
+    )
+    def test_advice_for_a_bound_111_names_the_openssl_exception(
+        self, tmp_path, monkeypatch, bound, sentence
+    ):
+        """A Julia 1.11 in PYTHON_JULIAPKG_EXE gets one more sentence: why the installer bound it.
+
+        The installer binds 1.11 only after an OpenSSL_jll import failure with a
+        Python that links OpenSSL < 3.5; a 1.11 on PATH was not bound by it.
+        """
+        exe = self._julia_stub(tmp_path / 'jl', '1.11.9')
+        if bound:
+            monkeypatch.setenv('PYTHON_JULIAPKG_EXE', str(exe))
+        else:
+            monkeypatch.setenv('PATH', str(exe.parent))
         r = check_julia()
         assert r.status == WARN
-        assert r.message.startswith('1.10.4 (')
-        assert 'PYTHON_JULIAPKG_EXE' not in r.message
+        extra = (
+            '. The installer binds Julia 1.11 only when the import of PROTEUS fails on '
+            'OpenSSL_jll because Python links an OpenSSL older than 3.5; after '
+            "conda install -c conda-forge 'openssl>=3.5', Julia 1.13 can be used"
+        )
+        assert r.fix_cmd.endswith(extra) is sentence
+        assert r.fix_cmd.startswith('juliaup add 1.13, then ')
+
+    @pytest.mark.parametrize(
+        'ver', ['1.130.2', '11.3.0', '1.1.3'], ids=['1.130', '11.3', '1.1']
+    )
+    def test_only_minor_13_of_major_1_passes(self, ver):
+        """1.130, 11.3 and 1.1.3 hold the digits 1 and 13 or 3 but are not Julia 1.13."""
+        with patch('proteus.doctor._julia_version', return_value=ver):
+            r = check_julia()
+        assert r.status == WARN
+        assert r.message.startswith(f'{ver} (')
 
 
 class TestCheckPythonPackage:

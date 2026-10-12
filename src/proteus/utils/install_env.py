@@ -1,9 +1,10 @@
 """Record the install variables of PROTEUS without editing a shell start file.
 
 ``install.sh`` (``set_install_var``) and ``proteus install-all --export-env``
-use the same two places: the active conda env, through
+use the same two places: the active conda env other than ``base``, through
 ``conda env config vars set``, and the exports file ``<PROTEUS root>/.proteus-env.sh``
 of ``export NAME='value'`` lines, which a shell without a conda env sources.
+A value with a single quote goes to the exports file only.
 """
 
 from __future__ import annotations
@@ -68,19 +69,42 @@ def active_conda_prefix() -> str | None:
     -------
     str or None
         ``CONDA_PREFIX``, or None when it is unset, when ``conda`` is not on
-        ``PATH``, or when the env is a pixi env (``PIXI_ENVIRONMENT_NAME`` set),
-        whose activation does not read conda env variables.
+        ``PATH``, when the env is ``base`` (``CONDA_DEFAULT_ENV``), which
+        PROTEUS does not install into, or when the env is a pixi env
+        (``PIXI_ENVIRONMENT_NAME`` set), whose activation does not read conda
+        env variables.
     """
     prefix = os.environ.get('CONDA_PREFIX')
     if not prefix or os.environ.get('PIXI_ENVIRONMENT_NAME'):
         return None
-    if shutil.which('conda') is None:
+    if os.environ.get('CONDA_DEFAULT_ENV') == 'base' or shutil.which('conda') is None:
         return None
     return prefix
 
 
+def quoted_names(variables: dict[str, str]) -> list[str]:
+    """Return the names of the variables whose value holds a single quote.
+
+    conda writes a variable into its activation script as ``export NAME='value'``
+    without escaping, so such a value breaks each later activation of the env.
+
+    Parameters
+    ----------
+    variables : dict[str, str]
+        Variable names and values.
+
+    Returns
+    -------
+    list[str]
+        The names, in the order of ``variables``.
+    """
+    return [name for name, value in variables.items() if "'" in value]
+
+
 def bind_to_conda_env(prefix: str, variables: dict[str, str]) -> bool:
-    """Set all ``variables`` in the conda env at ``prefix`` in one conda call.
+    """Set the ``variables`` in the conda env at ``prefix`` in one conda call.
+
+    A variable of ``quoted_names`` is left out; it stays in the exports file.
 
     Parameters
     ----------
@@ -92,9 +116,13 @@ def bind_to_conda_env(prefix: str, variables: dict[str, str]) -> bool:
     Returns
     -------
     bool
-        Whether ``conda env config vars set`` succeeded.
+        Whether ``conda env config vars set`` succeeded; False without a call
+        when no variable is left.
     """
-    pairs = [f'{name}={value}' for name, value in variables.items()]
+    skipped = quoted_names(variables)
+    pairs = [f'{name}={value}' for name, value in variables.items() if name not in skipped]
+    if not pairs:
+        return False
     cmd = ['conda', 'env', 'config', 'vars', 'set', '-p', prefix, *pairs]
     try:
         subprocess.run(
@@ -141,7 +169,7 @@ def export_install_vars(root: Path, variables: dict[str, str]) -> tuple[Path, st
     -------
     tuple[Path, str or None, bool]
         The exports file, the prefix of the active conda env (None without
-        one), and whether the conda call succeeded.
+        one, and for ``base``), and whether the conda call succeeded.
     """
     path = write_env_file(root, variables)
     prefix = active_conda_prefix()

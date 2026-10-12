@@ -155,17 +155,22 @@ def _get_obliqua_version(dirs: dict):
 def _get_julia_version() -> str:
     """Return the version of the Julia that PROTEUS uses.
 
-    That is ``PYTHON_JULIAPKG_EXE`` when it names an executable file, else
-    the ``julia`` on ``PATH``.
+    That is ``PYTHON_JULIAPKG_EXE`` when it is set, else the ``julia`` on
+    ``PATH``; juliacall does not fall back to ``PATH`` from a set variable.
 
     Returns
     -------
     str
-        The version, for example ``1.13.1``, or a note that no Julia was found.
+        The version, for example ``1.13.1``, or a note that no Julia was found
+        or that ``PYTHON_JULIAPKG_EXE`` names no executable file.
     """
     from proteus.utils.helper import proteus_julia_exe
 
-    exe = proteus_julia_exe() or 'julia'
+    raw = os.environ.get('PYTHON_JULIAPKG_EXE')
+    exe = proteus_julia_exe()
+    if raw and exe is None:
+        return f'unknown (PYTHON_JULIAPKG_EXE={raw} is not an executable file)'
+    exe = exe or 'julia'
     try:
         return subprocess.check_output([exe, '--version']).decode('utf-8').split()[-1]
     except FileNotFoundError:

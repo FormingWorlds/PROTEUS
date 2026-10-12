@@ -4072,14 +4072,28 @@ def test_use_proteus_julia_changes_nothing_without_an_executable_file(tmp_path, 
     assert res.stderr == ''
 
 
+def _common_copy(tmp_path: Path) -> Path:
+    """Copy ``tools/_get_common.sh`` into ``tmp_path/proteus/tools``; return the copy.
+
+    Sourced there, its ``proteus_root`` is ``tmp_path/proteus``, so the
+    ``.proteus-julia`` folder that use_proteus_julia makes lands under ``tmp_path``.
+    """
+    tools = tmp_path / 'proteus' / 'tools'
+    tools.mkdir(parents=True)
+    shutil.copy(COMMON_LIB, tools / '_get_common.sh')
+    return tools / '_get_common.sh'
+
+
 @pytest.mark.unit
 @pytest.mark.parametrize('strict', [True, False], ids=['strict', 'lenient'])
 def test_use_proteus_julia_puts_the_bound_julia_first_on_path(tmp_path, strict):
-    """An executable PYTHON_JULIAPKG_EXE leads PATH, so a bare julia is that binary.
+    """An executable PYTHON_JULIAPKG_EXE is a bare julia, through the folder .proteus-julia.
 
     PATH holds a second julia, which a bare julia would find without the
-    helper; the helper prints one line that names the bound binary.
+    helper; the helper prints one line that names the bound binary, and the
+    folder first on PATH holds the one link julia to it.
     """
+    common = _common_copy(tmp_path)
     other = tmp_path / 'default' / 'bin'
     other.mkdir(parents=True)
     _write_stub(other, 'julia', '#!/bin/sh\necho default\n')
@@ -4087,16 +4101,52 @@ def test_use_proteus_julia_puts_the_bound_julia_first_on_path(tmp_path, strict):
     bound_dir.mkdir(parents=True)
     bound = _write_stub(bound_dir, 'julia', '#!/bin/sh\necho bound\n')
     env = {**os.environ, 'PATH': f'{other}:/usr/bin:/bin', 'PYTHON_JULIAPKG_EXE': str(bound)}
+    prelude = 'set -euo pipefail\n' if strict else ''
     res = _run_bash(
-        _with_common('use_proteus_julia\nprintf "PATH=%s\\n" "$PATH"\njulia\n', strict=strict),
+        f'{prelude}source "{common}"\nuse_proteus_julia\nprintf "PATH=%s\\n" "$PATH"\njulia\n',
         env=env,
     )
     assert res.returncode == 0, res.stderr
+    link_dir = os.path.realpath(tmp_path / 'proteus') + '/.proteus-julia'
     assert res.stdout.splitlines() == [
         f'Julia: {bound} (PYTHON_JULIAPKG_EXE)',
-        f'PATH={os.path.realpath(bound_dir)}:{other}:/usr/bin:/bin',
+        f'PATH={link_dir}:{other}:/usr/bin:/bin',
         'bound',
     ]
+    assert os.listdir(link_dir) == ['julia']
+    assert os.path.realpath(Path(link_dir) / 'julia') == os.path.realpath(bound)
+
+
+@pytest.mark.unit
+def test_use_proteus_julia_shadows_no_other_program_of_the_binary_folder(tmp_path):
+    """A bound julia-1.13 in a folder with a python: bare julia is it, python stays the env's.
+
+    The folder of the binary (a shared one such as /opt/homebrew/bin) also holds
+    a python, and the binary is not named julia; a bare julia on PATH is another
+    version. After the helper, julia runs the bound binary and python the env's.
+    A second call with another binary moves the link.
+    """
+    common = _common_copy(tmp_path)
+    shared = tmp_path / 'shared' / 'bin'
+    shared.mkdir(parents=True)
+    bound = _write_stub(shared, 'julia-1.13', '#!/bin/sh\necho bound-1.13\n')
+    _write_stub(shared, 'python', '#!/bin/sh\necho shared-python\n')
+    env_bin = tmp_path / 'env' / 'bin'
+    env_bin.mkdir(parents=True)
+    _write_stub(env_bin, 'python', '#!/bin/sh\necho env-python\n')
+    _write_stub(env_bin, 'julia', '#!/bin/sh\necho path-julia-1.10\n')
+    newer = _write_stub(tmp_path / 'shared', 'julia-1.13.2', '#!/bin/sh\necho bound-1.13.2\n')
+    env = {**os.environ, 'PATH': f'{env_bin}:/usr/bin:/bin', 'PYTHON_JULIAPKG_EXE': str(bound)}
+    script = (
+        f'set -euo pipefail\nsource "{common}"\n'
+        'use_proteus_julia >/dev/null\njulia\npython\n'
+        f'PYTHON_JULIAPKG_EXE={shlex.quote(str(newer))}\n'
+        'use_proteus_julia >/dev/null\njulia\n'
+    )
+    res = _run_bash(script, env=env)
+    assert res.returncode == 0, res.stderr
+    assert res.stdout.splitlines() == ['bound-1.13', 'env-python', 'bound-1.13.2']
+    assert os.listdir(tmp_path / 'proteus' / '.proteus-julia') == ['julia']
 
 
 def _julia_site(tmp_path: Path, bound: bool) -> dict:

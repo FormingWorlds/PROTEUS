@@ -70,10 +70,16 @@ from proteus.config import UnknownConfigKeyError, read_config_object  # noqa: E4
 from proteus.utils.data import download_sufficient_data  # noqa: E402
 from proteus.utils.helper import (  # noqa: E402
     get_proteus_dir,
+    git_env,
+    link_proteus_julia,
     proteus_julia_exe,
     resolve_fwl_data_dir,
 )
-from proteus.utils.install_env import export_install_vars, reload_instruction  # noqa: E402
+from proteus.utils.install_env import (  # noqa: E402
+    export_install_vars,
+    quoted_names,
+    reload_instruction,
+)
 from proteus.utils.logs import bootstrap_logger, setup_logger  # noqa: E402
 
 log = logging.getLogger('fwl.' + __name__)
@@ -857,10 +863,11 @@ def grid_pack(output_path: Path):
 def _install_vars(root: Path, fwl_data: Path, rad_dir: Path) -> dict[str, str]:
     """Return the install variables that ``--export-env`` records.
 
-    ``PYTHON_JULIAPKG_EXE`` keeps a value that is already set, because
-    ``install.sh`` points it at the real Julia binary; otherwise it is the
-    ``julia`` on ``PATH``. ``FC_DIR`` and the Julia entry appear only when
-    the FastChem folder and a Julia exist.
+    ``PYTHON_JULIAPKG_EXE`` appears only when it is set and names an
+    executable file (``proteus_julia_exe``), because ``install.sh`` points it
+    at the real binary of Julia 1.13; a ``julia`` on ``PATH`` can be another
+    version or the juliaup launcher, so it is never taken. ``FC_DIR``
+    appears only when the FastChem program is built.
 
     Parameters
     ----------
@@ -877,11 +884,18 @@ def _install_vars(root: Path, fwl_data: Path, rad_dir: Path) -> dict[str, str]:
         Variable names and values.
     """
     variables = {'FWL_DATA': str(fwl_data), 'RAD_DIR': str(rad_dir)}
-    julia_exe = os.environ.get('PYTHON_JULIAPKG_EXE') or shutil.which('julia')
+    julia_exe = proteus_julia_exe()
     if julia_exe:
         variables['PYTHON_JULIAPKG_EXE'] = julia_exe
+    else:
+        click.secho(
+            '[!] PYTHON_JULIAPKG_EXE is not set to an executable Julia, so it is not '
+            'recorded; bash install.sh selects Julia 1.13 and records it.',
+            fg='yellow',
+        )
     fastchem = root / 'AGNI' / 'fastchem'
-    if fastchem.is_dir():
+    program = fastchem / 'fastchem'
+    if program.is_file() and os.access(program, os.X_OK):
         variables['FC_DIR'] = str(fastchem.resolve())
     return variables
 
@@ -896,18 +910,33 @@ def _export_env(root: Path, variables: dict[str, str]) -> None:
     variables : dict[str, str]
         Variable names and values.
     """
+    quoted = quoted_names(variables)
     names = ', '.join(variables)
+    bindable = ', '.join(name for name in variables if name not in quoted)
     path, prefix, bound = export_install_vars(root, variables)
     click.secho(f'[+] Wrote {names} to {path}', fg='green')
     if bound:
-        click.secho(f'[+] Set {names} in the conda env at {prefix}', fg='green')
-    elif prefix is not None:
+        click.secho(f'[+] Set {bindable} in the conda env at {prefix}', fg='green')
+    elif prefix is not None and bindable:
         click.secho(
-            f'[!] Could not set {names} in the conda env at {prefix}; they are in {path}',
+            f'[!] Could not set {bindable} in the conda env at {prefix}; they are in {path}',
             fg='yellow',
         )
-    where = '' if bound else f' (in {root})'
-    click.secho(f'[i] To load them, run{where}: {reload_instruction(bound)}', fg='yellow')
+    elif prefix is None and os.environ.get('CONDA_DEFAULT_ENV') == 'base':
+        click.secho(
+            '[!] The conda base environment is active, and PROTEUS sets nothing in base; '
+            f'the variables are in {path} only',
+            fg='yellow',
+        )
+    if quoted and prefix is not None:
+        click.secho(
+            f'[!] Not set in the conda env: {", ".join(quoted)}, whose value holds a single '
+            f"quote that conda's activation script cannot read; load it with: source {path}",
+            fg='yellow',
+        )
+    loaded = bound and not quoted
+    where = '' if loaded else f' (in {root})'
+    click.secho(f'[i] To load them, run{where}: {reload_instruction(loaded)}', fg='yellow')
 
 
 def is_julia_installed() -> bool:
@@ -922,12 +951,18 @@ def is_julia_installed() -> bool:
     return proteus_julia_exe() is not None or shutil.which('julia') is not None
 
 
-def _env_with_proteus_julia() -> dict[str, str]:
+def _env_with_proteus_julia(root: Path) -> dict[str, str]:
     """Return a copy of the environment in which a bare ``julia`` is the Julia PROTEUS uses.
 
-    The directory of ``PYTHON_JULIAPKG_EXE`` goes first on ``PATH`` when the
-    variable names an executable file, so that the AGNI setup script runs the
-    Julia that ``install.sh`` selected and not the default Julia of the user.
+    When ``PYTHON_JULIAPKG_EXE`` names an executable file, the folder of
+    ``link_proteus_julia`` goes first on ``PATH``, so that the AGNI setup
+    script runs the Julia that ``install.sh`` selected and not the default
+    Julia of the user, and finds no other program of that binary's folder.
+
+    Parameters
+    ----------
+    root : Path
+        PROTEUS source tree that holds the ``.proteus-julia`` folder.
 
     Returns
     -------
@@ -935,10 +970,9 @@ def _env_with_proteus_julia() -> dict[str, str]:
         Environment for the setup-script subprocess.
     """
     env = os.environ.copy()
-    exe = proteus_julia_exe()
-    if exe is not None:
-        julia_dir = os.path.dirname(os.path.abspath(exe))
-        env['PATH'] = os.pathsep.join(p for p in (julia_dir, env.get('PATH', '')) if p)
+    folder = link_proteus_julia(root)
+    if folder is not None:
+        env['PATH'] = os.pathsep.join(p for p in (str(folder), env.get('PATH', '')) if p)
     return env
 
 
@@ -1113,7 +1147,9 @@ _NOT_OWN_CLONE = 'not a git clone of its own'
 def _git_read(directory: Path, *args: str) -> str | None:
     """Return the standard output of a read-only git command run in ``directory``.
 
-    ``GIT_OPTIONAL_LOCKS=0`` keeps ``git status`` from rewriting the index.
+    The environment is ``git_env()``, without ``GIT_DIR`` and the other
+    variables that make git read another repository, and with
+    ``GIT_OPTIONAL_LOCKS=0``, which keeps ``git status`` from rewriting the index.
 
     Parameters
     ----------
@@ -1134,7 +1170,7 @@ def _git_read(directory: Path, *args: str) -> str | None:
             capture_output=True,
             text=True,
             timeout=_GIT_READ_TIMEOUT_S,
-            env={**os.environ, 'GIT_OPTIONAL_LOCKS': '0'},
+            env={**git_env(), 'GIT_OPTIONAL_LOCKS': '0'},
             check=False,
         )
     except (OSError, subprocess.TimeoutExpired):
@@ -1197,26 +1233,14 @@ def _agni_update_blocker(agni_dir: Path) -> str | None:
     return None
 
 
-def _agni_pinned_ref() -> str | None:
-    """Return the AGNI commit that ``tools/get_agni.sh`` checks out.
-
-    Returns
-    -------
-    str or None
-        ``AGNI_GIT_REF`` when set, as the script reads it, else the ``ref``
-        of ``[tool.proteus.modules.agni]`` in ``pyproject.toml``; None when
-        neither is there.
-    """
-    from .doctor import _module_pins
-
-    return os.environ.get('AGNI_GIT_REF') or _module_pins().get('agni', {}).get('ref')
-
-
 def _update_agni(root: Path) -> None:
     """Bring the AGNI clone under ``root`` to its pinned commit, or say why it stays.
 
-    A clone that ``_agni_update_blocker`` holds back is not touched; the
-    commands that move it by hand are printed instead. A failure of
+    The pinned commit is ``AGNI_GIT_REF`` when set, as ``tools/get_agni.sh``
+    reads it, else the ``ref`` of ``[tool.proteus.modules.agni]`` in
+    ``pyproject.toml``. A clone that ``_agni_update_blocker`` holds back is
+    not touched; the commands that move it by hand are printed instead, led
+    by a ``git branch`` that keeps local commits. A failure of
     ``tools/get_agni.sh`` is reported with its exit status, and the update
     goes on with its next step either way.
 
@@ -1225,8 +1249,10 @@ def _update_agni(root: Path) -> None:
     root : Path
         PROTEUS source tree that holds ``AGNI/`` and ``tools/get_agni.sh``.
     """
+    from .doctor import _module_pins
+
     agni_dir = root / 'AGNI'
-    ref = _agni_pinned_ref()
+    ref = os.environ.get('AGNI_GIT_REF') or _module_pins().get('agni', {}).get('ref')
     found = _agni_update_blocker(agni_dir)
     if found is not None:
         if ref is None:
@@ -1239,6 +1265,11 @@ def _update_agni(root: Path) -> None:
             click.echo('    which clones AGNI there at the pinned commit.')
             return
         click.echo('    To move it to that commit by hand, run:')
+        if 'local commit' in found:
+            click.echo(
+                f'      git -C {agni_dir} branch my-agni-work'
+                '    (keeps the local commits on a branch; choose any name)'
+            )
         click.echo(f'      git -C {agni_dir} fetch origin')
         click.echo(f'      git -C {agni_dir} checkout {ref or "<agni ref in pyproject.toml>"}')
         click.echo(f'    and then, in {root}:  bash tools/get_agni.sh 0')
@@ -1248,7 +1279,8 @@ def _update_agni(root: Path) -> None:
         subprocess.run(
             ['bash', str(root / 'tools' / 'get_agni.sh'), '0'],
             cwd=root,
-            env=_env_with_proteus_julia(),
+            env=_env_with_proteus_julia(root),
+            stdin=subprocess.DEVNULL,
             check=True,
         )
     except subprocess.CalledProcessError as e:
@@ -1325,8 +1357,6 @@ def install_all(export_env: bool, config_path: Path | None):
     rad_dir = socrates_dir.resolve()
     os.environ.setdefault('RAD_DIR', str(rad_dir))
 
-    env = _env_with_proteus_julia()
-
     # --- Step 3: Julia check ---
     if not is_julia_installed():
         click.secho('[!] Julia not found in PATH.', fg='yellow')
@@ -1345,16 +1375,18 @@ def install_all(export_env: bool, config_path: Path | None):
         )
         raise SystemExit(1)
 
-    # --- Step 4: Install AGNI ---
+    # --- Step 4: Install AGNI at its pinned commit, as install.sh does ---
     agni_dir = root / 'AGNI'
     if not agni_dir.exists():
         click.secho('[+] Installing AGNI...', fg='blue')
         try:
             subprocess.run(
-                ['git', 'clone', 'https://github.com/nichollsh/AGNI.git', str(agni_dir)],
+                ['bash', str(root / 'tools' / 'get_agni.sh'), '0'],
+                cwd=root,
+                env=_env_with_proteus_julia(root),
+                stdin=subprocess.DEVNULL,
                 check=True,
             )
-            subprocess.run(['bash', 'src/get_agni.sh', '0'], cwd=agni_dir, env=env, check=True)
         except subprocess.CalledProcessError as e:
             click.secho('[x] Failed to install AGNI', fg='red')
             click.echo(e)

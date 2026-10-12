@@ -2,8 +2,9 @@
 
 The exports file holds one ``export NAME='value'`` line per variable, which a
 fresh bash sources back to the same values; it is rewritten in place. The
-conda env gets all variables in one ``conda env config vars set`` call, and
-only when a conda env (not a pixi env) is active and ``conda`` is on PATH.
+conda env gets the variables without a single quote in their value in one
+``conda env config vars set`` call, and only when a conda env other than
+``base`` (and not a pixi env) is active and ``conda`` is on PATH.
 """
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ from proteus.utils.install_env import (
     active_conda_prefix,
     bind_to_conda_env,
     export_install_vars,
+    quoted_names,
     reload_instruction,
     write_env_file,
 )
@@ -95,12 +97,28 @@ class TestConda:
                 '/bin/conda',
                 None,
             ),
+            ({'CONDA_PREFIX': '/opt/conda', 'CONDA_DEFAULT_ENV': 'base'}, '/bin/conda', None),
+            (
+                {'CONDA_PREFIX': '/opt/conda/envs/based', 'CONDA_DEFAULT_ENV': 'based'},
+                '/bin/conda',
+                '/opt/conda/envs/based',
+            ),
         ],
-        ids=['conda-env', 'no-env', 'conda-not-on-path', 'pixi-env'],
+        ids=[
+            'conda-env',
+            'no-env',
+            'conda-not-on-path',
+            'pixi-env',
+            'base-env',
+            'env-named-based',
+        ],
     )
     def test_active_conda_prefix(self, monkeypatch, env, conda, expected):
-        """Only a conda env with conda on PATH counts; a pixi env does not."""
-        for var in ('CONDA_PREFIX', 'PIXI_ENVIRONMENT_NAME'):
+        """Only a conda env other than base with conda on PATH counts; a pixi env does not.
+
+        `based` starts with `base` and is an env of the user's, so a prefix match fails it.
+        """
+        for var in ('CONDA_PREFIX', 'PIXI_ENVIRONMENT_NAME', 'CONDA_DEFAULT_ENV'):
             monkeypatch.delenv(var, raising=False)
         for var, value in env.items():
             monkeypatch.setenv(var, value)
@@ -108,8 +126,12 @@ class TestConda:
         assert active_conda_prefix() == expected
         assert (active_conda_prefix() is None) is (expected is None)
 
-    def test_bind_passes_all_pairs_in_one_call(self, monkeypatch):
-        """One conda call carries `-p <prefix>` and the 4 NAME=value pairs, values unquoted."""
+    def test_bind_passes_all_pairs_without_a_quote_in_one_call(self, monkeypatch):
+        """One conda call carries `-p <prefix>` and the 3 NAME=value pairs without a quote.
+
+        RAD_DIR=/home/o'brien/socrates is left out: conda would write it unescaped
+        into its activation script. With only quoted values no call is made.
+        """
         calls = []
         monkeypatch.setattr(
             install_env.subprocess, 'run', lambda cmd, **kw: calls.append((cmd, kw))
@@ -117,9 +139,32 @@ class TestConda:
         assert bind_to_conda_env('/envs/proteus', _VALUES) is True
         ((cmd, kw),) = calls
         assert cmd[:7] == ['conda', 'env', 'config', 'vars', 'set', '-p', '/envs/proteus']
-        assert cmd[7:] == [f'{n}={v}' for n, v in _VALUES.items()]
+        assert cmd[7:] == [f'{n}={v}' for n, v in _VALUES.items() if n != 'RAD_DIR']
         assert kw['check'] is True
         assert kw['stdin'] is subprocess.DEVNULL
+        assert quoted_names(_VALUES) == ['RAD_DIR']
+        assert bind_to_conda_env('/envs/proteus', {'RAD_DIR': _VALUES['RAD_DIR']}) is False
+        assert len(calls) == 1
+
+    def test_conda_writes_a_value_into_its_activation_script_without_escaping(self):
+        """conda's POSIX template is export %s='%s', so a value with a quote breaks the script.
+
+        This reads the template from the conda that is importable here; the line it
+        makes for /home/o'brien does not parse in bash, the exports-file line does.
+        """
+        activate = pytest.importorskip(
+            'conda.activate', reason='conda is not importable in this Python environment'
+        )
+        template = getattr(activate.PosixActivator, 'export_var_tmpl', None)
+        if template is None:
+            template = activate.PosixActivator().export_var_tmpl
+        assert template == "export %s='%s'"
+        value = "/home/o'brien/socrates"
+        broken = template % ('RAD_DIR', value)
+        check = ['bash', '--noprofile', '--norc', '-n', '-c']
+        assert subprocess.run([*check, broken], capture_output=True).returncode != 0
+        quoted = f'export RAD_DIR={install_env._sh_quote(value)}'
+        assert subprocess.run([*check, quoted], capture_output=True).returncode == 0
 
     @pytest.mark.parametrize(
         'error',
