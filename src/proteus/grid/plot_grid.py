@@ -344,7 +344,7 @@ def plot_ecdf_grid(
         row_keys.append((axes[i][-1], param, values, is_numeric, norm, colour_of))
 
     fig.suptitle(f'ECDF summary for grid {grid_name}')
-    fig.supylabel('Cumulative fraction of cases [%]', x=-0.005)
+    fig.supylabel('Empirical cumulative fraction of simulations [%]', x=-0.005)
     fig.tight_layout()
 
     # Add the colourbar or legend AFTER the layout, in an axes anchored outside the

@@ -120,7 +120,7 @@ PRESET_QUANTITIES = {
     # Atmosphere
     'M_atm': QuantityInfo(r'$M_{\rm atm}$ [kg]', 1.0, True),
     'P_surf': QuantityInfo(r'$P_{\rm surf}$ [bar]', 1.0, True),
-    'atm_kg_per_mol': QuantityInfo(r'$\mu$ [g mol$^{-1}$]', 1.0e3, False),
+    'atm_kg_per_mol': QuantityInfo(r'MMW [g mol$^{-1}$]', 1.0e3, False),
     # Volatile species (per species: whole-planet mass, atmospheric mixing ratio,
     # partial surface pressure), in runtime_helpfile species order
     'H2O_kg_total': QuantityInfo(r'$M_{\rm H_2O}$ [kg]', 1.0, True),

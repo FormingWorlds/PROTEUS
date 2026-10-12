@@ -64,3 +64,4 @@ def test_scaled_quantities_state_their_display_unit():
     ]
     assert unlabelled == []
     assert '[g cm$^{-3}$]' in PRESET_QUANTITIES['rho_obs'].label
+    assert PRESET_QUANTITIES['atm_kg_per_mol'].label == r'MMW [g mol$^{-1}$]'
