@@ -10,7 +10,13 @@ import numpy as np
 import pandas as pd
 
 from proteus.utils.constants import gas_list
-from proteus.utils.plot import get_colour, get_linestyle, latexify
+from proteus.utils.plot import (
+    FADE_DARK_GREY,
+    get_colour,
+    get_linestyle,
+    latexify,
+    style_neutral,
+)
 
 if TYPE_CHECKING:
     from proteus import Proteus
@@ -128,6 +134,7 @@ def plot_global(
         '(d) Surface gas mole fraction',
         '(f) Volatile partitioning into interior',
     ]
+    box, grey = style_neutral(1.0), style_neutral(FADE_DARK_GREY)
     for i, ax in enumerate(axs):
         ax.text(
             0.011,
@@ -138,7 +145,7 @@ def plot_global(
             verticalalignment='bottom',
             fontsize=11,
             zorder=20,
-            bbox=dict(fc='white', ec='white', alpha=0.5, pad=0.1, boxstyle='round'),
+            bbox=dict(fc=box, ec=box, alpha=0.5, pad=0.1, boxstyle='round'),
         )
 
     # Move right subplots y-axes to right side
@@ -189,7 +196,7 @@ def plot_global(
     ax_tl.plot(
         hf['Time'],
         hf['F_atm'],
-        color=get_colour('atm'),
+        color=grey,
         lw=lw * 1.5,
         alpha=al,
         label='Net (atm.)',
@@ -215,7 +222,7 @@ def plot_global(
     min_temp = np.amin(hf['T_surf'])
     max_temp = np.amax(hf['T_magma'])
     ax_cl.plot(hf['Time'], hf['T_magma'], ls='dashed', lw=lw, alpha=al, color=get_colour('int'))
-    ax_cl.plot(hf['Time'], hf['T_surf'], ls='-', lw=lw, alpha=al, color=get_colour('atm'))
+    ax_cl.plot(hf['Time'], hf['T_surf'], ls='-', lw=lw, alpha=al, color=grey)
     ax_cl.set_ylim(min(1000.0, min_temp - 25), max(3500.0, max_temp + 25))
 
     # PLOT ax_bl
@@ -239,7 +246,7 @@ def plot_global(
     ax_bl.plot(
         hf['Time'],
         hf['Phi_global'],
-        color=get_colour('atm'),
+        color=grey,
         linestyle=':',
         lw=lw,
         alpha=al,
@@ -251,7 +258,12 @@ def plot_global(
 
     # PLOT ax_tr
     ax_tr.plot(
-        hf['Time'], hf['P_surf'], color='black', linestyle='dashed', lw=lw * 1.5, label=r'Total'
+        hf['Time'],
+        hf['P_surf'],
+        color=style_neutral(),
+        linestyle='dashed',
+        lw=lw * 1.5,
+        label=r'Total',
     )
     bar_min, bar_max = 0.1, 1.0
     bar_max = max(bar_max, np.amax(hf['P_surf']))

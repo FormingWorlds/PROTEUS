@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from proteus.utils.plot import get_colour
+from proteus.utils.plot import FADE_DARK_GREY, get_colour, style_neutral
 
 if TYPE_CHECKING:
     from proteus import Proteus
@@ -49,13 +49,15 @@ def plot_fluxes_global(
     al = 0.96
 
     # Steam runaway line
-    ax.axhline(y=280.0, color='black', lw=lw, linestyle='dashed', label='S-N limit', zorder=1)
+    neutral = style_neutral()
+    ax.axhline(y=280.0, color=neutral, lw=lw, linestyle='dashed', label='S-N limit', zorder=1)
 
     # Plot fluxes
     ax.plot(time, F_tidal, lw=lw, alpha=al, color=get_colour('tidal'), label='Tidal')
     ax.plot(time, F_radio, lw=lw, alpha=al, color=get_colour('radio'), label='Radio.')
     ax.plot(time, F_int, lw=lw, alpha=al, color=get_colour('int'), label='Net (int.)')
-    ax.plot(time, F_net, lw=lw, alpha=al, color=get_colour('atm'), label='Net (atm.)')
+    grey = style_neutral(FADE_DARK_GREY)
+    ax.plot(time, F_net, lw=lw, alpha=al, color=grey, label='Net (atm.)')
     ax.plot(time, F_olr, lw=lw, alpha=al, color=get_colour('OLR'), label='OLR')
     ax.plot(time, F_upw, lw=lw, alpha=al, color=get_colour('sct'), label='OLR + Scat.')
     ax.plot(
@@ -70,8 +72,8 @@ def plot_fluxes_global(
     ax.set_xlim(time[0], time[-1])
     legend = ax.legend(loc='lower left')
     legend.get_frame().set_alpha(None)
-    legend.get_frame().set_facecolor((1, 1, 1, 0.99))
-    ax.grid(color='black', alpha=0.05)
+    legend.get_frame().set_facecolor((*style_neutral(1.0), 0.99))
+    ax.grid(color=neutral, alpha=0.05)
 
     plt.close()
     plt.ioff()
