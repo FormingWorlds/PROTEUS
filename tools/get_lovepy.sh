@@ -3,7 +3,7 @@
 
 # Shared helpers: see tools/_get_common.sh.
 source "$(dirname "${BASH_SOURCE[0]}")/_get_common.sh" || exit 1
-use_proteus_julia
+use_proteus_julia || exit 1
 
 # Julia installed?
 if ! [ -x "$(command -v julia)" ]; then

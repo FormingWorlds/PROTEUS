@@ -219,8 +219,13 @@ def _imported_package_dir(dist_name: str) -> str | None:
 _GIT_NOTE_TIMEOUT_S = 10
 
 
-def _git_stdout(path: str, *args: str, options: tuple[str, ...] = ()) -> str | None:
+def _git_stdout(
+    path: str, *args: str, options: tuple[str, ...] = (), timeout: float = _GIT_NOTE_TIMEOUT_S
+) -> str | None:
     """Return the standard output of one git command in a checkout.
+
+    The environment is ``git_env()``, so that ``git -C`` reads the repository
+    at ``path`` and not one that ``GIT_DIR`` names.
 
     Parameters
     ----------
@@ -231,22 +236,24 @@ def _git_stdout(path: str, *args: str, options: tuple[str, ...] = ()) -> str | N
     options : tuple of str
         Options of git itself that go before ``-C``, for example
         ``('--no-optional-locks',)``.
+    timeout : float
+        Seconds the command may take.
 
     Returns
     -------
     str or None
         The output, or None when git is missing, fails or does not finish
-        within ``_GIT_NOTE_TIMEOUT_S``.
+        within ``timeout`` s.
     """
     try:
         return subprocess.check_output(
             ['git', *options, '-C', path, *args],
             text=True,
             stderr=subprocess.DEVNULL,
-            timeout=_GIT_NOTE_TIMEOUT_S,
+            timeout=timeout,
             env=git_env(),
         )
-    except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
         return None
 
 

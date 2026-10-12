@@ -57,8 +57,7 @@ def write_env_file(root: Path, variables: dict[str, str]) -> Path:
         prefixes = tuple(f'export {name}=' for name in variables)
         kept = [ln for ln in path.read_text().splitlines() if not ln.startswith(prefixes)]
     lines = kept + [f'export {name}={_sh_quote(value)}' for name, value in variables.items()]
-    with path.open('w') as fh:
-        fh.write('\n'.join(lines) + '\n')
+    path.write_text('\n'.join(lines) + '\n')
     return path
 
 

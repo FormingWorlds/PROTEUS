@@ -70,7 +70,6 @@ from proteus.config import UnknownConfigKeyError, read_config_object  # noqa: E4
 from proteus.utils.data import download_sufficient_data  # noqa: E402
 from proteus.utils.helper import (  # noqa: E402
     get_proteus_dir,
-    git_env,
     link_proteus_julia,
     proteus_julia_exe,
     resolve_fwl_data_dir,
@@ -860,10 +859,34 @@ def grid_pack(output_path: Path):
 # ----------------
 
 
-def _install_vars(root: Path, fwl_data: Path, rad_dir: Path) -> dict[str, str]:
+def _built_socrates(root: Path) -> Path | None:
+    """Return the SOCRATES folder for ``RAD_DIR``: the first one that holds ``bin/radlib.a``.
+
+    Parameters
+    ----------
+    root : Path
+        PROTEUS source tree.
+
+    Returns
+    -------
+    Path or None
+        ``<root>/socrates`` (resolved) when it is built, else the ``RAD_DIR``
+        of the environment when that is built, else None.
+    """
+    if (root / 'socrates' / 'bin' / 'radlib.a').is_file():
+        return (root / 'socrates').resolve()
+    rad_dir = os.environ.get('RAD_DIR')
+    if rad_dir and (Path(rad_dir) / 'bin' / 'radlib.a').is_file():
+        return Path(rad_dir)
+    return None
+
+
+def _install_vars(root: Path, fwl_data: Path, rad_dir: Path | None) -> dict[str, str]:
     """Return the install variables that ``--export-env`` records.
 
-    ``PYTHON_JULIAPKG_EXE`` appears only when it is set and names an
+    ``RAD_DIR`` appears only for a built SOCRATES (``_built_socrates``), so
+    that a folder without one does not override a valid ``RAD_DIR`` at each
+    activation. ``PYTHON_JULIAPKG_EXE`` appears only when it is set and names an
     executable file (``proteus_julia_exe``), because ``install.sh`` points it
     at the real binary of Julia 1.13; a ``julia`` on ``PATH`` can be another
     version or the juliaup launcher, so it is never taken. ``FC_DIR``
@@ -875,15 +898,23 @@ def _install_vars(root: Path, fwl_data: Path, rad_dir: Path) -> dict[str, str]:
         PROTEUS source tree.
     fwl_data : Path
         Reference data folder.
-    rad_dir : Path
-        SOCRATES folder.
+    rad_dir : Path or None
+        Built SOCRATES folder, or None when there is none.
 
     Returns
     -------
     dict[str, str]
         Variable names and values.
     """
-    variables = {'FWL_DATA': str(fwl_data), 'RAD_DIR': str(rad_dir)}
+    variables = {'FWL_DATA': str(fwl_data)}
+    if rad_dir is not None:
+        variables['RAD_DIR'] = str(rad_dir)
+    else:
+        click.secho(
+            f'[!] No SOCRATES build (bin/radlib.a) in {root / "socrates"} or in RAD_DIR, so '
+            'RAD_DIR is not recorded; bash tools/get_socrates.sh builds it.',
+            fg='yellow',
+        )
     julia_exe = proteus_julia_exe()
     if julia_exe:
         variables['PYTHON_JULIAPKG_EXE'] = julia_exe
@@ -951,6 +982,21 @@ def is_julia_installed() -> bool:
     return proteus_julia_exe() is not None or shutil.which('julia') is not None
 
 
+def _report_julia() -> None:
+    """Print the version of the Julia PROTEUS uses, with a warning when it is not 1.13.
+
+    The check is ``doctor.check_julia``, which reads ``PYTHON_JULIAPKG_EXE``
+    and else the ``julia`` on ``PATH``.
+    """
+    from .doctor import PASS, check_julia
+
+    result = check_julia()
+    if result.status == PASS:
+        click.secho(f'[+] Julia: {result.message}', fg='green')
+    else:
+        click.secho(f'[!] Julia: {result.message}; fix: {result.fix_cmd}', fg='yellow')
+
+
 def _env_with_proteus_julia(root: Path) -> dict[str, str]:
     """Return a copy of the environment in which a bare ``julia`` is the Julia PROTEUS uses.
 
@@ -958,6 +1004,8 @@ def _env_with_proteus_julia(root: Path) -> dict[str, str]:
     ``link_proteus_julia`` goes first on ``PATH``, so that the AGNI setup
     script runs the Julia that ``install.sh`` selected and not the default
     Julia of the user, and finds no other program of that binary's folder.
+    A link that cannot be written (a read-only root) is a warning, and
+    ``PATH`` stays as it is.
 
     Parameters
     ----------
@@ -970,7 +1018,15 @@ def _env_with_proteus_julia(root: Path) -> dict[str, str]:
         Environment for the setup-script subprocess.
     """
     env = os.environ.copy()
-    folder = link_proteus_julia(root)
+    try:
+        folder = link_proteus_julia(root)
+    except OSError as exc:
+        click.secho(
+            f'[!] Could not link {root / ".proteus-julia" / "julia"} to the Julia PROTEUS '
+            f'uses ({exc}); the setup script gets PATH as it is',
+            fg='yellow',
+        )
+        folder = None
     if folder is not None:
         env['PATH'] = os.pathsep.join(p for p in (str(folder), env.get('PATH', '')) if p)
     return env
@@ -1145,39 +1201,22 @@ _NOT_OWN_CLONE = 'not a git clone of its own'
 
 
 def _git_read(directory: Path, *args: str) -> str | None:
-    """Return the standard output of a read-only git command run in ``directory``.
+    """Return the output of a read-only git command in ``directory``, without surrounding white space.
 
-    The environment is ``git_env()``, without ``GIT_DIR`` and the other
-    variables that make git read another repository, and with
-    ``GIT_OPTIONAL_LOCKS=0``, which keeps ``git status`` from rewriting the index.
-
-    Parameters
-    ----------
-    directory : Path
-        Folder given to ``git -C``.
-    *args : str
-        The git subcommand and its arguments.
+    ``--no-optional-locks`` keeps ``git status`` from rewriting the index.
 
     Returns
     -------
     str or None
-        The output without surrounding white space, or None when git is
-        missing, exits non-zero or runs longer than ``_GIT_READ_TIMEOUT_S`` s.
+        The output, or None when git is missing, fails or runs longer than
+        ``_GIT_READ_TIMEOUT_S`` s (``doctor._git_stdout``).
     """
-    try:
-        done = subprocess.run(
-            ['git', '-C', str(directory), *args],
-            capture_output=True,
-            text=True,
-            timeout=_GIT_READ_TIMEOUT_S,
-            env={**git_env(), 'GIT_OPTIONAL_LOCKS': '0'},
-            check=False,
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return None
-    if done.returncode != 0:
-        return None
-    return done.stdout.strip()
+    from .doctor import _git_stdout
+
+    out = _git_stdout(
+        str(directory), *args, options=('--no-optional-locks',), timeout=_GIT_READ_TIMEOUT_S
+    )
+    return None if out is None else out.strip()
 
 
 def _agni_update_blocker(agni_dir: Path) -> str | None:
@@ -1297,7 +1336,8 @@ def _update_agni(root: Path) -> None:
 @click.option(
     '--export-env',
     is_flag=True,
-    help='Record FWL_DATA, RAD_DIR, PYTHON_JULIAPKG_EXE and FC_DIR in the active conda env '
+    help='Record FWL_DATA, RAD_DIR for a built SOCRATES, PYTHON_JULIAPKG_EXE when it names an '
+    'executable Julia, and FC_DIR for a built FastChem, in the active conda env (not base) '
     'and in .proteus-env.sh.',
 )
 @click.option(
@@ -1354,8 +1394,9 @@ def install_all(export_env: bool, config_path: Path | None):
     else:
         click.secho('[+] SOCRATES already present', fg='green')
 
-    rad_dir = socrates_dir.resolve()
-    os.environ.setdefault('RAD_DIR', str(rad_dir))
+    rad_dir = _built_socrates(root)
+    if rad_dir is not None:
+        os.environ.setdefault('RAD_DIR', str(rad_dir))
 
     # --- Step 3: Julia check ---
     if not is_julia_installed():
@@ -1374,6 +1415,7 @@ def install_all(export_env: bool, config_path: Path | None):
             fg='red',
         )
         raise SystemExit(1)
+    _report_julia()
 
     # --- Step 4: Install AGNI at its pinned commit, as install.sh does ---
     agni_dir = root / 'AGNI'
@@ -1410,8 +1452,9 @@ def install_all(export_env: bool, config_path: Path | None):
 @click.option(
     '--export-env',
     is_flag=True,
-    help='Record FWL_DATA, RAD_DIR, PYTHON_JULIAPKG_EXE and FC_DIR again in the active '
-    'conda env and in .proteus-env.sh.',
+    help='Record FWL_DATA, RAD_DIR for a built SOCRATES, PYTHON_JULIAPKG_EXE when it names an '
+    'executable Julia, and FC_DIR for a built FastChem, again in the active conda env (not '
+    'base) and in .proteus-env.sh.',
 )
 @click.option(
     '--config-path',
@@ -1477,14 +1520,16 @@ def update_all(export_env: bool, config_path: Path | None):
     else:
         click.secho('[!] SOCRATES not found. Run `proteus install-all`.', fg='yellow')
 
-    rad_dir = socrates_dir.resolve()
-    os.environ.setdefault('RAD_DIR', str(rad_dir))
+    rad_dir = _built_socrates(root)
+    if rad_dir is not None:
+        os.environ.setdefault('RAD_DIR', str(rad_dir))
 
     # --- Step 4: Julia check ---
     if not is_julia_installed():
         click.secho('[!] Julia not found in PATH.', fg='yellow')
         click.secho('   Cannot update AGNI without Julia.', fg='yellow')
     else:
+        _report_julia()
         # --- Step 5: Bring AGNI to its pinned commit ---
         if (root / 'AGNI').exists():
             _update_agni(root)

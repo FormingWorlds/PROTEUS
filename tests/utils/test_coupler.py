@@ -1993,6 +1993,32 @@ def test_get_julia_version_names_the_julia_proteus_uses(monkeypatch, tmp_path, b
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize(
+    'script',
+    ['#!/bin/sh\nexit 3\n', '#!/bin/sh\n', 'no program, no interpreter line\n'],
+    ids=['exits-non-zero', 'prints-nothing', 'cannot-execute'],
+)
+def test_get_julia_version_of_a_broken_bound_binary_is_a_note(monkeypatch, tmp_path, script):
+    """A bound binary that fails, prints nothing or cannot run gives the unknown note, no exception.
+
+    These raise CalledProcessError, IndexError and OSError; the run log's
+    system line must not stop ``proteus start``.
+    """
+    from proteus.utils.coupler import _get_julia_version
+
+    exe = tmp_path / 'bin' / 'julia'
+    exe.parent.mkdir()
+    exe.write_text(script)
+    exe.chmod(0o755)
+    monkeypatch.setenv('PYTHON_JULIAPKG_EXE', str(exe))
+
+    version = _get_julia_version()
+
+    assert version == f'unknown ({exe} --version reported no version)'
+    assert not version[0].isdigit()
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize('bound', ['unset', 'missing-file'])
 def test_get_julia_version_without_any_julia_names_what_is_missing(
     monkeypatch, tmp_path, bound

@@ -50,4 +50,6 @@ git -C "$workpath" checkout --quiet "$l_ref" \
 echo " "
 echo "You must now run the following command:"
 echo "    export LAVA_DIR='$workpath'"
-echo "You should also add this command to your shell rc file (e.g. ~/.bashrc)"
+echo "To keep it, set it in your conda environment:"
+echo "    conda env config vars set LAVA_DIR='$workpath'"
+echo "and then run: conda deactivate && conda activate <your environment>"

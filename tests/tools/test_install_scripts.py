@@ -116,6 +116,7 @@ def _run_bash(snippet: str, *argv: str, **kwargs) -> subprocess.CompletedProcess
         ['bash', '-c', snippet, 'get_test.sh', *argv],
         capture_output=True,
         text=True,
+        preexec_fn=_default_signals,
         **kwargs,
     )
 
@@ -2764,13 +2765,14 @@ def _floor_tag_site(tmp_path: Path, pyproject: str, remotes: dict[str, str]) -> 
 
 
 def _default_signals() -> None:
-    """Give the child the default action for HUP, INT and TERM.
+    """Give the child the default action for HUP, INT and TERM, and unblock them.
 
-    A shell cannot trap a signal that it found ignored, and a test runner
-    started with ``nohup`` or as a background job ignores HUP or INT.
+    A shell cannot trap a signal that it found ignored, and a blocked signal stays pending;
+    a test runner started with ``nohup``, in the background or by a CI step passes either on.
     """
     for sig in (signal.SIGHUP, signal.SIGINT, signal.SIGTERM):
         signal.signal(sig, signal.SIG_DFL)
+        signal.pthread_sigmask(signal.SIG_UNBLOCK, [sig])
 
 
 def _run_tool(site: dict, script: str, *argv: str) -> subprocess.CompletedProcess:
@@ -2910,8 +2912,10 @@ class TestGetPythonModule:
         lines = result.stdout.splitlines()
         stay = f'fwl-mors: {plain} stays as it is: not a git clone; PROTEUS expects release 26.10.6'
         assert lines[lines.index(stay) + 1 :][:2] == [
-            '    From the PROTEUS folder, replace it with a new clone, which deletes everything'
-            ' in it, with:',
+            (
+                '    From the PROTEUS folder, replace it with a new clone, which deletes everything'
+                ' in it, with:'
+            ),
             '        bash tools/get_python_module.sh MORS --force',
         ]
         assert 'fetch --tags' not in result.stdout
@@ -3319,6 +3323,31 @@ class TestPairedModuleRerun:
         assert sorted(q.name for q in plain.iterdir()) == ['notes.txt']
         assert _git_calls(site, 'clone') == []
         assert site['log'].read_text().splitlines() == [f'install -U -e {plain}']
+
+
+def test_module_without_a_paired_branch_rule_gets_the_stay_line(tmp_path):
+    """MORS pairs no branch: its clone on a branch named like the PROTEUS feature branch, which
+    its origin has, gets the stay line with the hand commands and the summary entry of any
+    other branch, and no paired-branch line; the clone stays on the branch."""
+    site = _paired_site(tmp_path, 'MORS', 'fwl-mors')
+    site['env']['GITHUB_HEAD_REF'] = _PAIRED_BRANCH
+    assert _run_tool(site, 'get_python_module.sh', 'MORS').returncode == 0
+    clone = site['root'] / 'MORS'
+    git(clone, 'checkout', '-q', '-b', _PAIRED_BRANCH, f'origin/{_PAIRED_BRANCH}')
+    stays = tmp_path / 'stays.txt'
+    site['env']['PROTEUS_CLONE_STAYS'] = str(stays)
+
+    result = _run_tool(site, 'get_python_module.sh', 'MORS')
+    assert result.returncode == 0, result.stdout + result.stderr
+    out = result.stdout.splitlines()
+    assert (
+        f'fwl-mors: {clone} stays as it is: on branch {_PAIRED_BRANCH}, on a line of history'
+        ' without the tag; PROTEUS expects the release tag 26.04.22'
+    ) in out
+    assert f'        git -C {clone} checkout --detach refs/tags/26.04.22' in out
+    assert 'is on the paired branch' not in result.stdout
+    assert stays.read_text() == f'MORS (branch {_PAIRED_BRANCH}, other history)\n'
+    assert git(clone, 'rev-parse', 'HEAD') == site['paired']
 
 
 # Each module with a setup script: the script, its arguments, the clone folder and the distribution.
@@ -4060,8 +4089,10 @@ class TestReportCloneState:
         result = _run_tool(site, 'get_python_module.sh', 'MORS')
         assert result.returncode == 0, result.stderr
         assert self._after(result, 'fwl-mors: ') == [
-            f'fwl-mors: {clone} stays as it is: on branch old, behind the tag;'
-            ' PROTEUS expects the release tag 26.10.06',
+            (
+                f'fwl-mors: {clone} stays as it is: on branch old, behind the tag;'
+                ' PROTEUS expects the release tag 26.10.06'
+            ),
             '    From the PROTEUS folder, move it to the release tag by hand with:',
             f'        git -C {clone} fetch --tags',
             f'        git -C {clone} checkout --detach refs/tags/26.10.06',
@@ -4173,10 +4204,14 @@ class TestReportCloneState:
         result = _run_tool(site, 'get_python_module.sh', 'MORS')
         assert result.returncode == 0, result.stderr
         assert self._after(result, 'fwl-mors: ') == [
-            f'fwl-mors: {clone} stays as it is: not a readable git clone;'
-            ' PROTEUS expects release 26.10.6',
-            '    From the PROTEUS folder, replace it with a new clone, which deletes everything'
-            ' in it, with:',
+            (
+                f'fwl-mors: {clone} stays as it is: not a readable git clone;'
+                ' PROTEUS expects release 26.10.6'
+            ),
+            (
+                '    From the PROTEUS folder, replace it with a new clone, which deletes everything'
+                ' in it, with:'
+            ),
             '        bash tools/get_python_module.sh MORS --force',
         ]
         assert 'pip install -e' not in result.stdout
@@ -4219,10 +4254,14 @@ class TestReportCloneState:
         )
         assert result.returncode == 0, result.stderr
         assert result.stdout.splitlines() == [
-            f'fwl-unpinned: {plain} stays as it is: not a git clone;'
-            ' the release tag could not be determined',
-            '    From the PROTEUS folder, replace it with a new clone, which deletes everything'
-            ' in it, with:',
+            (
+                f'fwl-unpinned: {plain} stays as it is: not a git clone;'
+                ' the release tag could not be determined'
+            ),
+            (
+                '    From the PROTEUS folder, replace it with a new clone, which deletes everything'
+                ' in it, with:'
+            ),
             '        bash tools/get_other.sh --force',
         ]
 
@@ -4320,28 +4359,17 @@ def test_manual_install_page_names_existing_scripts_and_modules():
 
 @pytest.mark.unit
 @pytest.mark.parametrize('strict', [True, False], ids=['strict', 'lenient'])
-@pytest.mark.parametrize(
-    'kind', ['unset', 'empty', 'missing', 'not-executable', 'directory'], ids=str
-)
-def test_use_proteus_julia_changes_nothing_without_an_executable_file(tmp_path, kind, strict):
-    """Without PYTHON_JULIAPKG_EXE naming an executable file, PATH and stdout stay as they are.
+@pytest.mark.parametrize('kind', ['unset', 'empty'], ids=str)
+def test_use_proteus_julia_changes_nothing_without_the_variable(tmp_path, kind, strict):
+    """With PYTHON_JULIAPKG_EXE unset or empty, PATH and stdout stay as they are, status 0.
 
     The unset case runs under ``set -u`` as well, where a bare expansion of
     the variable would stop the script.
     """
-    target = {
-        'unset': None,
-        'empty': '',
-        'missing': str(tmp_path / 'none' / 'julia'),
-        'not-executable': str(_write_stub(tmp_path, 'julia', '#!/bin/sh\n')),
-        'directory': str(tmp_path),
-    }[kind]
-    if kind == 'not-executable':
-        Path(target).chmod(0o644)
     env = {k: v for k, v in os.environ.items() if k != 'PYTHON_JULIAPKG_EXE'}
     env['PATH'] = '/usr/bin:/bin'
-    if target is not None:
-        env['PYTHON_JULIAPKG_EXE'] = target
+    if kind == 'empty':
+        env['PYTHON_JULIAPKG_EXE'] = ''
     res = _run_bash(
         _with_common('use_proteus_julia\nprintf "PATH=%s\\n" "$PATH"\n', strict=strict),
         env=env,
@@ -4349,6 +4377,34 @@ def test_use_proteus_julia_changes_nothing_without_an_executable_file(tmp_path, 
     assert res.returncode == 0, res.stderr
     assert res.stdout.splitlines() == ['PATH=/usr/bin:/bin']
     assert res.stderr == ''
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('kind', ['missing', 'not-executable', 'directory'], ids=str)
+def test_use_proteus_julia_stops_on_a_variable_that_names_no_executable_file(tmp_path, kind):
+    """A set PYTHON_JULIAPKG_EXE that names no executable file returns 1 with one error line.
+
+    juliacall fails at import with such a value, so the default Julia on PATH
+    must not stand in for it; PATH stays as it is and nothing is linked.
+    """
+    target = {
+        'missing': str(tmp_path / 'none' / 'julia'),
+        'not-executable': str(_write_stub(tmp_path, 'julia', '#!/bin/sh\n')),
+        'directory': str(tmp_path),
+    }[kind]
+    if kind == 'not-executable':
+        Path(target).chmod(0o644)
+    env = {**os.environ, 'PATH': '/usr/bin:/bin', 'PYTHON_JULIAPKG_EXE': target}
+    res = _run_bash(
+        _with_common('use_proteus_julia || echo "STATUS=$?"\nprintf "PATH=%s\\n" "$PATH"\n'),
+        env=env,
+    )
+    assert res.returncode == 0, res.stderr
+    assert res.stdout.splitlines() == ['STATUS=1', 'PATH=/usr/bin:/bin']
+    assert res.stderr.splitlines() == [
+        f'ERROR: PYTHON_JULIAPKG_EXE={target} is not an executable file; point it at the '
+        'Julia PROTEUS uses, or unset it to use the Julia on PATH.'
+    ]
 
 
 def _common_copy(tmp_path: Path) -> Path:
@@ -4554,6 +4610,25 @@ def test_setup_script_runs_the_bound_julia_and_never_the_path_one(tmp_path, scri
 
 @pytest.mark.unit
 @pytest.mark.parametrize('script', sorted(_JULIA_CALLS))
+def test_setup_script_with_an_unusable_bound_julia_stops_before_any_julia(tmp_path, script):
+    """A PYTHON_JULIAPKG_EXE that names a missing file stops the script with status 1.
+
+    The julia on PATH, another version, would install into the wrong Julia; it
+    runs no call, and the error names the variable. get_lovepy.sh has no
+    ``set -e``, so it stops through ``use_proteus_julia || exit 1``.
+    """
+    site = _julia_site(tmp_path, bound=False)
+    missing = tmp_path / 'juliaup' / 'gone' / 'julia'
+    site['env']['PYTHON_JULIAPKG_EXE'] = str(missing)
+    res = _run_julia_script(site, script)
+    assert res.returncode == 1, res.stdout + res.stderr
+    assert not site['marker'].exists()
+    assert site['log'].read_text() == ''
+    assert f'ERROR: PYTHON_JULIAPKG_EXE={missing} is not an executable file' in res.stderr
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('script', sorted(_JULIA_CALLS))
 def test_setup_script_without_a_bound_julia_runs_the_path_one(tmp_path, script):
     """Without PYTHON_JULIAPKG_EXE the script runs the julia on PATH and names no bound Julia."""
     site = _julia_site(tmp_path, bound=False)
@@ -4581,6 +4656,10 @@ def test_every_setup_script_that_runs_julia_calls_use_proteus_julia_first():
         julia += [i for i, code in lines if 'src/get_agni.sh' in code]
         if script.name == 'test_docker_image.sh' or not julia:
             continue
-        helper = [i for i, code in lines if code == 'use_proteus_julia']
+        helper = [
+            i
+            for i, code in lines
+            if code in ('use_proteus_julia', 'use_proteus_julia || exit 1')
+        ]
         runs_julia[script.name] = bool(helper) and helper[0] < min(julia)
     assert runs_julia == {'get_agni.sh': True, 'get_lovepy.sh': True, 'get_obliqua.sh': True}
