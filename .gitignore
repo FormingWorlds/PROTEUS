@@ -353,6 +353,3 @@ input/test_infer_proteus/
 input/inference/test_infer
 # Resolved at install time from the current package set
 pixi.lock
-
-# pickle files
-*.pkl

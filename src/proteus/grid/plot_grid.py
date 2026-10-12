@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import math
 from pathlib import Path
 
 import matplotlib as mpl
@@ -14,28 +15,38 @@ from proteus.utils.plot import get_colourmap, get_label, get_log_scale, get_scal
 
 log = logging.getLogger('fwl.' + __name__)
 
-# Wong colour-blind-safe qualitative palette (Wong 2011, Nat. Methods 8, 441),
-# used for the categorical status bars. Ordered for a harmonious progression that
-# starts on the blue end (not black) and keeps the two palest colours last.
-WONG_PALETTE = (
-    '#0072B2',  # blue
-    '#009E73',  # bluish green
-    '#56B4E9',  # sky blue
-    '#E69F00',  # orange
-    '#D55E00',  # vermillion
-    '#CC79A7',  # reddish purple
-    '#F0E442',  # yellow
-    '#000000',  # black
-)
+# Image formats the grid plots may be saved as.
+SUPPORTED_PLOT_FORMATS = ('png', 'pdf')
+
+# Status-bar colours, fixed per status category so a category keeps its colour from
+# grid to grid. Wong colour-blind-safe palette (Wong 2011, Nat. Methods 8, 441),
+# with neutral greys for cases whose outcome is unknown or that never started.
+CATEGORY_COLOURS = {
+    'Completed': '#009E73',  # bluish green
+    'Running': '#56B4E9',  # sky blue
+    'Error': '#D55E00',  # vermillion
+    'Unknown': '#999999',  # grey
+    'Not started': '#DDDDDD',  # light grey
+}
+# Bar order of the status categories, left to right.
+CATEGORY_ORDER = tuple(CATEGORY_COLOURS)
 
 # The lightest fraction of a sequential colour map, trimmed off when colouring
-# ECDF curves so a pale top-of-range colour stays visible on a white background.
+# ECDF curves so a pale end-of-range colour stays visible on a white background.
 COLOURMAP_TRIM = 0.15
 
 
+def _luminance(rgba) -> float:
+    """Return the relative luminance (Rec. 709 weights) of an RGBA colour."""
+    return 0.2126 * rgba[0] + 0.7152 * rgba[1] + 0.0722 * rgba[2]
+
+
 def _trim_colourmap(cmap, trim: float = COLOURMAP_TRIM):
-    """Return ``cmap`` with its lightest top fraction removed (for visible curves)."""
-    base = np.linspace(0.0, 1.0 - trim, 256)
+    """Return ``cmap`` with the lighter of its two ends removed (for visible curves)."""
+    if _luminance(cmap(1.0)) >= _luminance(cmap(0.0)):
+        base = np.linspace(0.0, 1.0 - trim, 256)
+    else:
+        base = np.linspace(trim, 1.0, 256)
     return mpl.colors.LinearSegmentedColormap.from_list(f'{cmap.name}_trim', cmap(base))
 
 
@@ -44,10 +55,48 @@ def _apply_axis_style(ax) -> None:
     ax.tick_params(direction='in', which='both', top=True, right=True)
 
 
+def status_counts(df: pd.DataFrame, n_not_started: int = 0) -> pd.DataFrame:
+    """Count cases per final status, ordered by category then by count.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        The 'all' summary CSV, with ``status`` and ``status_category`` columns
+        (a CSV without ``status_category`` counts every status as 'Unknown').
+    n_not_started : int
+        Number of grid cases with no case folder yet, added as a 'Not started' row.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Columns ``status``, ``category`` and ``count``, one row per status.
+    """
+    if 'status' not in df.columns:
+        raise ValueError("Summary CSV must contain a 'status' column")
+    category = df.get('status_category', pd.Series('Unknown', index=df.index))
+    counts = (
+        pd.DataFrame({'status': df['status'].astype(str), 'category': category.astype(str)})
+        .value_counts()
+        .rename('count')
+        .reset_index()
+    )
+    if n_not_started > 0:
+        extra = {'status': 'Not started', 'category': 'Not started', 'count': n_not_started}
+        counts = pd.concat([counts, pd.DataFrame([extra])], ignore_index=True)
+    rank = {c: i for i, c in enumerate(CATEGORY_ORDER)}
+    counts['_rank'] = counts['category'].map(rank).fillna(len(rank))
+    counts = counts.sort_values(['_rank', 'count'], ascending=[True, False])
+    return counts.drop(columns='_rank').reset_index(drop=True)
+
+
 def plot_status_summary(
-    df: pd.DataFrame, out_dir: str | Path, grid_name: str, plot_format: str = 'png'
+    df: pd.DataFrame,
+    out_dir: str | Path,
+    grid_name: str,
+    plot_format: str = 'png',
+    n_not_started: int = 0,
 ) -> Path:
-    """Plot the number of grid cases per final status.
+    """Plot the number of grid cases per final status, coloured by status category.
 
     Parameters
     ----------
@@ -59,24 +108,23 @@ def plot_status_summary(
         Grid name, used in the plot title.
     plot_format : str
         Image format extension (for example 'png' or 'pdf').
+    n_not_started : int
+        Number of grid cases with no case folder yet (shown as a 'Not started' bar).
 
     Returns
     -------
     pathlib.Path
         The path written.
     """
-    if 'status' not in df.columns:
-        raise ValueError("Summary CSV must contain a 'status' column")
-
-    counts = df['status'].astype(str).value_counts().sort_values(ascending=False)
-    total = int(counts.sum())
-    labels = [s.replace(' (', '\n(') for s in counts.index]
-    colours = [WONG_PALETTE[i % len(WONG_PALETTE)] for i in range(len(counts))]
+    counts = status_counts(df, n_not_started)
+    total = int(counts['count'].sum())
+    labels = [s.replace(' (', '\n(') for s in counts['status']]
+    colours = [CATEGORY_COLOURS.get(c, CATEGORY_COLOURS['Unknown']) for c in counts['category']]
 
     fig, ax = plt.subplots(figsize=(max(7.0, 1.6 * len(counts)), 6.0))
-    bars = ax.bar(labels, counts.values, color=colours, edgecolor='black')
+    bars = ax.bar(labels, counts['count'], color=colours, edgecolor='black')
 
-    for bar, count in zip(bars, counts.values):
+    for bar, count in zip(bars, counts['count']):
         pct = 100.0 * count / total if total else 0.0
         ax.text(
             bar.get_x() + bar.get_width() / 2,
@@ -98,36 +146,79 @@ def plot_status_summary(
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     out_file = out_dir / f'summary_grid_statuses.{plot_format}'
-    fig.savefig(out_file, dpi=200, bbox_inches='tight')
-    plt.close(fig)
+    try:
+        fig.savefig(out_file, dpi=200, bbox_inches='tight')
+    finally:
+        plt.close(fig)
     log.info('Wrote status summary plot to %s', out_file.name)
     return out_file
 
 
-def clean_series(series: pd.Series, log_axis: bool) -> pd.Series:
-    """Drop NaN/inf; on a log axis also drop non-positive values, logging the count."""
+def clean_series(series: pd.Series, log_axis: bool) -> tuple[pd.Series, int]:
+    """Drop NaN/inf, and on a log axis split off the non-positive values.
+
+    Returns
+    -------
+    tuple of (pandas.Series, int)
+        The values to draw, and how many finite non-positive values were left out
+        because they cannot sit on a log axis (0 on a linear axis). Those values
+        lie below the axis range, so the caller counts them at the left edge of
+        the ECDF rather than discarding them; a warning gives their number.
+    """
     cleaned = series.replace([np.inf, -np.inf], np.nan).dropna()
-    if log_axis:
-        n_before = len(cleaned)
-        cleaned = cleaned[cleaned > 0]
-        dropped = n_before - len(cleaned)
-        if dropped:
-            log.warning('Dropped %d non-positive value(s) before a log-axis ECDF', dropped)
-    return cleaned
+    if not log_axis:
+        return cleaned, 0
+    positive = cleaned[cleaned > 0]
+    n_below = len(cleaned) - len(positive)
+    if n_below:
+        log.warning(
+            '%d non-positive value(s) lie below the log-axis ECDF range; counted at its '
+            'left edge',
+            n_below,
+        )
+    return positive, n_below
 
 
-def ecdf(values: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """Return (x, y) of the empirical CDF of ``values`` as a percentage in [0, 100].
+def ecdf(values: np.ndarray, n_total: int | None = None, n_below: int = 0):
+    """Return (x, y) of the empirical CDF of ``values`` as a percentage of ``n_total``.
 
-    The step function starts at 0 % just below the smallest value, so the curve is
-    drawn with ``drawstyle='steps-post'``.
+    Parameters
+    ----------
+    values : array_like
+        Finite values to draw.
+    n_total : int or None
+        Number of cases the percentage refers to (default: ``len(values)``). Cases
+        with no value (for example never solidified) are counted here but have no
+        step, so the curve levels off at the fraction of cases that have a value.
+    n_below : int
+        Cases whose value lies below the plotted range (non-positive on a log
+        axis); the curve starts at their fraction instead of at 0 %.
+
+    Returns
+    -------
+    tuple of numpy.ndarray
+        Step-function coordinates, drawn with ``drawstyle='steps-post'``.
     """
     x = np.sort(np.asarray(values, dtype=float))
     n = len(x)
-    if n == 0:
+    if n_total is None:
+        n_total = n + n_below
+    if n == 0 or n_total <= 0:
         return np.array([]), np.array([])
-    y = np.arange(1, n + 1) / n * 100.0
-    return np.concatenate([x[:1], x]), np.concatenate([[0.0], y])
+    y = (n_below + np.arange(1, n + 1)) / n_total * 100.0
+    return np.concatenate([x[:1], x]), np.concatenate([[n_below / n_total * 100.0], y])
+
+
+def use_log_axis(values: pd.Series, preset_log: bool) -> bool:
+    """Return True when the preset asks for a log axis and the positive values span
+    at least a decade (below that, matplotlib's minor-tick labels overlap)."""
+    if not preset_log:
+        return False
+    finite = values.replace([np.inf, -np.inf], np.nan).dropna()
+    positive = finite[finite > 0]
+    if positive.empty:
+        return False
+    return bool(positive.max() / positive.min() >= 10.0)
 
 
 def _value_colours(values, log_norm: bool, cmap):
@@ -158,10 +249,12 @@ def _value_colours(values, log_norm: bool, cmap):
 def _plot_cell(ax, df, param, value, output, colour, log_axis):
     """Draw one ECDF curve (cases with ``param == value``) on a cell, return success."""
     subset = df[df[param] == value]
-    series = clean_series(subset[output] * get_scale(output), log_axis)
+    series, n_below = clean_series(subset[output] * get_scale(output), log_axis)
     if series.empty:
         return False
-    x, y = ecdf(series.to_numpy())
+    # Normalise by every case in the subset, so cases without a value (for example
+    # never solidified) keep the curve below 100 %.
+    x, y = ecdf(series.to_numpy(), n_total=len(subset), n_below=n_below)
     ax.plot(x, y, drawstyle='steps-post', color=colour, linewidth=2.0)
     return True
 
@@ -179,7 +272,8 @@ def plot_ecdf_grid(
 
     Within a panel, one ECDF curve is drawn per tested value of the row parameter,
     coloured by that value (a colourbar for numeric parameters, a legend for string
-    parameters).
+    parameters). Each curve is a percentage of all cases with that value, so it
+    levels off below 100 % when some cases have no value for the output.
 
     Parameters
     ----------
@@ -222,6 +316,9 @@ def plot_ecdf_grid(
         sharey=True,
     )
 
+    log_axes = {
+        out: use_log_axis(df[out] * get_scale(out), get_log_scale(out)) for out in outputs
+    }
     row_keys = []
     for i, param in enumerate(params):
         values = tested_params[param]
@@ -233,23 +330,21 @@ def plot_ecdf_grid(
 
         for j, output in enumerate(outputs):
             ax = axes[i][j]
+            log_axis = log_axes[output]
             for value in present_values:
-                _plot_cell(
-                    ax, df, param, value, output, colour_of(value), get_log_scale(output)
-                )
-            if get_log_scale(output):
+                _plot_cell(ax, df, param, value, output, colour_of(value), log_axis)
+            if log_axis:
                 ax.set_xscale('log')
             ax.set_ylim(0, 100)
             ax.grid(alpha=0.3)
             _apply_axis_style(ax)
             if i == n_rows - 1:
                 ax.set_xlabel(get_label(output))
-            if j == 0:
-                ax.set_ylabel('ECDF [%]')
 
         row_keys.append((axes[i][-1], param, values, is_numeric, norm, colour_of))
 
     fig.suptitle(f'ECDF summary for grid {grid_name}')
+    fig.supylabel('Cumulative fraction of cases [%]', x=-0.005)
     fig.tight_layout()
 
     # Add the colourbar or legend AFTER the layout, in an axes anchored outside the
@@ -261,8 +356,10 @@ def plot_ecdf_grid(
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     out_file = out_dir / f'ecdf_grid_plot.{plot_format}'
-    fig.savefig(out_file, dpi=200, bbox_inches='tight')
-    plt.close(fig)
+    try:
+        fig.savefig(out_file, dpi=200, bbox_inches='tight')
+    finally:
+        plt.close(fig)
     log.info('Wrote ECDF grid plot to %s', out_file.name)
     return out_file
 
@@ -300,3 +397,104 @@ def _add_row_key(fig, ax, param, values, is_numeric, norm, cmap, colour_of) -> N
             loc='upper left',
             borderaxespad=0.0,
         )
+
+
+def validate_output_variables(df: pd.DataFrame, requested_outputs: list) -> list:
+    """Return the requested outputs present in ``df``; warn (never substitute) for missing.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        The summary CSV loaded for plotting.
+    requested_outputs : list
+        Output variable names requested in the grid config.
+    """
+    available = list(df.columns)
+    present = [v for v in requested_outputs if v in available]
+    missing = [v for v in requested_outputs if v not in available]
+    if missing:
+        log.warning(
+            'Output variable(s) %s not found in summary data; skipping them. '
+            'Available columns: %s',
+            missing,
+            available,
+        )
+    return present
+
+
+def resolve_plot_format(requested: str | None, base_fmt: str | None = None) -> str:
+    """Return a validated plot format for the grid plots.
+
+    Uses ``[post_processing].plot_format`` when set, else ``base_fmt`` (the base
+    run's ``params.out.plot_fmt`` from ref_config.toml), else 'png'. Raises on an unsupported value rather than writing a ``.None`` file.
+    """
+    fmt = requested if requested is not None else base_fmt
+    fmt = (fmt or 'png').lower()
+    if fmt not in SUPPORTED_PLOT_FORMATS:
+        raise ValueError(
+            f"Unsupported plot_format '{fmt}'; choose one of {SUPPORTED_PLOT_FORMATS}"
+        )
+    return fmt
+
+
+def count_not_started(df_all: pd.DataFrame, tested_params: dict) -> int:
+    """Return how many grid cases have no case folder (not started yet).
+
+    The grid has one case per combination of swept values, numbered from 0, so the
+    expected size is the product of the axis lengths.
+    """
+    expected = math.prod(len(v) for v in tested_params.values())
+    present = set(df_all['case_number']) & set(range(expected))
+    missing = expected - len(present)
+    if missing > 0:
+        log.warning('%d of %d grid cases have no case folder (not started)', missing, expected)
+    return max(missing, 0)
+
+
+def make_grid_plots(opts, csv_paths, tested_params, grid_dir, base_fmt=None) -> None:
+    """Draw the status summary and ECDF grid plots requested in ``opts``.
+
+    Parameters
+    ----------
+    opts : dict
+        Validated ``[post_processing]`` options (``plot_status``, ``plot_ecdf``,
+        ``output_variables``, ``colormap``, ``plot_format``).
+    csv_paths : dict
+        Paths of the 'all' and 'completed' summary CSVs.
+    tested_params : dict
+        Mapping of parameter path to its swept values.
+    grid_dir : Path
+        Grid output directory; plots go to ``post_processing/grid_plots`` inside it.
+    base_fmt : str or None
+        The base run's ``params.out.plot_fmt``, used when ``plot_format`` is unset.
+    """
+    grid_name = Path(grid_dir).name
+    plots_dir = Path(grid_dir) / 'post_processing' / 'grid_plots'
+    plot_format = resolve_plot_format(opts['plot_format'], base_fmt)
+
+    if opts['plot_status']:
+        df_all = pd.read_csv(csv_paths['all'], sep='\t')
+        n_not_started = count_not_started(df_all, tested_params)
+        plot_status_summary(df_all, plots_dir, grid_name, plot_format, n_not_started)
+
+    if not opts['plot_ecdf']:
+        return
+    df_completed = pd.read_csv(csv_paths['completed'], sep='\t')
+    if df_completed.empty:
+        log.warning('No completed cases; skipping the ECDF plot')
+        return
+    outputs = validate_output_variables(df_completed, opts['output_variables'])
+    if not outputs:
+        raise ValueError(
+            'No valid output_variables for the ECDF plot. Set output_variables in the '
+            '[post_processing] table to columns present in the summary CSV.'
+        )
+    plot_ecdf_grid(
+        df_completed,
+        tested_params,
+        outputs,
+        plots_dir,
+        grid_name,
+        colourmap=opts['colormap'],
+        plot_format=plot_format,
+    )

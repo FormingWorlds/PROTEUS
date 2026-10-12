@@ -192,23 +192,32 @@ def test_get_scale_converts_known_units_else_identity():
 
 
 def test_get_log_scale_flags_only_log_quantities():
-    """get_log_scale is True for log-axis quantities and False otherwise/by default."""
+    """get_log_scale is True for log-axis quantities and False otherwise/by default.
+
+    Signed fluxes (F_int, F_atm) and F_tidal (zero without tides) are linear, so a
+    log axis does not hide their non-positive values; F_olr is always positive.
+    """
     from proteus.utils.plot import get_log_scale
 
     assert get_log_scale('P_surf') is True
+    assert get_log_scale('F_olr') is True
     assert get_log_scale('T_surf') is False
+    assert [get_log_scale(f) for f in ('F_int', 'F_atm', 'F_net', 'F_tidal')] == [False] * 4
     assert get_log_scale('unregistered_quantity') is False
 
 
-def test_get_colourmap_resolves_names_and_falls_back(caplog):
-    """get_colourmap returns the named matplotlib map (no cmcrameri import), and
-    falls back to the default for an empty or unknown name (warning on the latter).
+def test_get_colourmap_resolves_crameri_and_matplotlib_names(caplog):
+    """get_colourmap resolves Crameri maps with or without the 'cmc.' prefix and any
+    matplotlib map, defaults to batlowK_r, and warns before falling back.
     """
     from proteus.utils.plot import DEFAULT_COLOURMAP, get_colourmap
 
-    assert get_colourmap('plasma').name == 'plasma'
-    assert get_colourmap(None).name == DEFAULT_COLOURMAP
+    assert DEFAULT_COLOURMAP == 'batlowK_r'
+    assert get_colourmap('vik').name == get_colourmap('cmc.vik').name
+    assert 'vik' in get_colourmap('vik').name
+    assert get_colourmap('viridis').name == 'viridis'
+    assert 'batlowK_r' in get_colourmap(None).name
     with caplog.at_level('WARNING'):
         fallback = get_colourmap('definitely_not_a_colourmap')
-    assert fallback.name == DEFAULT_COLOURMAP
+    assert 'batlowK_r' in fallback.name
     assert any('colourmap' in rec.message.lower() for rec in caplog.records)

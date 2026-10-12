@@ -26,11 +26,10 @@ import toml
 
 from proteus.config import UnknownConfigKeyError, read_config_object
 from proteus.grid import manage as gm
+from proteus.grid.dimensions import dimension_values
 from proteus.grid.manage import (
     Grid,
     _thread_target,
-    dimension_arange,
-    dimension_values,
     grid_dimension_keys,
     grid_from_config,
 )
@@ -1468,49 +1467,12 @@ def test_grid_settings_match_the_keys_grid_from_config_reads(fake_proteus_dir, m
 
 
 # ---------------------------------------------------------------------------
-# dimension_values (shared axis construction)
+# Grid setters and the shared axis builders (proteus.grid.dimensions)
 # ---------------------------------------------------------------------------
 
 
 class TestDimensionValues:
-    """Module-level axis builders shared by Grid and the grid analysis."""
-
-    def test_dispatches_each_method_to_matching_builder(self):
-        """dimension_values builds linspace/logspace/arange/direct axes correctly."""
-        assert dimension_values(
-            {'method': 'linspace', 'start': 0.0, 'stop': 1.0, 'count': 3}
-        ) == [
-            0.0,
-            0.5,
-            1.0,
-        ]
-        logv = dimension_values({'method': 'logspace', 'start': 1.0, 'stop': 100.0, 'count': 3})
-        assert logv == pytest.approx([1.0, 10.0, 100.0])
-
-    def test_direct_dedups_numeric_and_preserves_strings(self):
-        """direct removes duplicates (sorted when numeric) and keeps string values."""
-        assert dimension_values({'method': 'direct', 'values': [3.0, 1.0, 2.0, 1.0]}) == [
-            1.0,
-            2.0,
-            3.0,
-        ]
-        assert set(dimension_values({'method': 'direct', 'values': ['janus', 'agni']})) == {
-            'janus',
-            'agni',
-        }
-
-    def test_arange_appends_endpoint_and_guards_empty_range(self):
-        """arange includes the stop endpoint and does not crash on an empty range."""
-        assert dimension_arange(1.0, 5.0, 1.0) == pytest.approx([1.0, 2.0, 3.0, 4.0, 5.0])
-        # start == stop gives an empty np.arange; the endpoint is still returned.
-        assert dimension_arange(5.0, 5.0, 1.0) == pytest.approx([5.0])
-
-    def test_unknown_method_raises_valueerror(self):
-        """An unrecognised method raises rather than silently skipping an axis."""
-        with pytest.raises(ValueError, match='Unknown grid dimension method'):
-            dimension_values({'method': 'bogus', 'values': [1.0]})
-        with pytest.raises(ValueError):
-            dimension_values({'values': [1.0]})  # missing method
+    """Grid setters use the axis builders shared with the grid analysis."""
 
     def test_grid_setter_and_dimension_values_agree(self, grid_with_mocks):
         """A Grid axis and dimension_values build identical values for one table,

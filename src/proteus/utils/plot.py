@@ -5,13 +5,14 @@ from __future__ import annotations
 import glob
 import logging
 import os
-from typing import TYPE_CHECKING, NamedTuple
+from typing import TYPE_CHECKING
 
 import numpy as np
 
 from proteus.utils.archive import archive_exists
-from proteus.utils.constants import AU, M_earth, M_sun, R_earth, R_sun, secs_per_day, vap_list
+from proteus.utils.constants import vap_list
 from proteus.utils.helper import mol_to_ele, parse_subyear_time
+from proteus.utils.plot_quantities import PRESET_QUANTITIES
 
 log = logging.getLogger('fwl.' + __name__)
 
@@ -105,166 +106,6 @@ _preset_colours = {
 }
 
 
-class _QuantityInfo(NamedTuple):
-    """Default plotting metadata for one grid input parameter or output column.
-
-    Attributes
-    ----------
-    label : str
-        Display-ready axis or colourbar label, with its own LaTeX ``$...$`` and
-        unit. Used directly by matplotlib (no further wrapping needed).
-    scale : float
-        Factor applied to a raw value before plotting (unit conversion).
-    log : bool
-        Whether the quantity is shown on a logarithmic axis, and, for a grid
-        parameter, whether its colour normalisation is logarithmic.
-    """
-
-    label: str
-    scale: float
-    log: bool
-
-
-# Default plotting metadata, keyed by grid config path (input parameters) or by
-# runtime_helpfile.csv column name (output variables). get_label/get_scale/
-# get_log_scale read this; a name that is absent falls back to sensible defaults.
-# Grouped by module, one entry per line, so independent additions merge cleanly.
-_preset_quantities = {
-    ## Grid input parameters (config paths)
-    # Orbit module
-    'orbit.semimajoraxis': _QuantityInfo(r'$a$ [AU]', 1.0, False),
-    'orbit.eccentricity': _QuantityInfo(r'$e$', 1.0, False),
-    # Star module
-    'star.mass': _QuantityInfo(r'$M_\star$ [$M_\odot$]', 1.0, False),
-    'star.age_ini': _QuantityInfo('Start age [Gyr]', 1.0, False),
-    'star.mors.age_now': _QuantityInfo('Stellar age [Gyr]', 1.0, False),
-    # Planet structure
-    'planet.mass_tot': _QuantityInfo(r'$M_{\rm tot}$ [$M_\oplus$]', 1.0, False),
-    'planet.volatile_reservoir': _QuantityInfo('Volatile reservoir', 1.0, False),
-    # core_frac is a mass or radius fraction depending on interior_struct.core_frac_mode.
-    'interior_struct.core_frac': _QuantityInfo('Core fraction', 1.0, False),
-    # Module choices
-    'interior_struct.module': _QuantityInfo('Structure model', 1.0, False),
-    'interior_energetics.module': _QuantityInfo('Interior model', 1.0, False),
-    'outgas.module': _QuantityInfo('Outgassing model', 1.0, False),
-    # Atmosphere module
-    'atmos_clim.module': _QuantityInfo('Atmosphere model', 1.0, False),
-    'atmos_clim.surf_state': _QuantityInfo('Surface scheme', 1.0, False),
-    # Escape module
-    'escape.module': _QuantityInfo('Escape model', 1.0, False),
-    'escape.reservoir': _QuantityInfo('Escape reservoir', 1.0, False),
-    'escape.zephyrus.efficiency': _QuantityInfo(r'$\epsilon$', 1.0, False),
-    'escape.zephyrus.Pxuv': _QuantityInfo(r'$P_{\rm XUV}$ [bar]', 1.0, True),
-    # Outgassing module
-    'outgas.fO2_shift_IW': _QuantityInfo(r'$\Delta$IW', 1.0, False),
-    # Volatile element budgets (planet.elements.<X>_budget, unit set by <X>_mode)
-    'planet.elements.H_budget': _QuantityInfo('H budget', 1.0, True),
-    'planet.elements.C_budget': _QuantityInfo('C budget', 1.0, True),
-    'planet.elements.N_budget': _QuantityInfo('N budget', 1.0, True),
-    'planet.elements.S_budget': _QuantityInfo('S budget', 1.0, True),
-    'planet.elements.O_budget': _QuantityInfo('O budget', 1.0, True),
-    'planet.elements.metallicity': _QuantityInfo(r'Metallicity [$\times$ solar]', 1.0, True),
-    ## Output variables, ordered as they appear in runtime_helpfile.csv (GetHelpfileKeys)
-    # Model time (solidification_time is computed in post-processing; kept next to Time)
-    'Time': _QuantityInfo('Time [yr]', 1.0, True),
-    'solidification_time': _QuantityInfo('Solidification time [yr]', 1.0, True),
-    # Orbit (semimajorax is in m, orbital_period in s)
-    'semimajorax': _QuantityInfo(r'$a$ [AU]', 1.0 / AU, False),
-    'separation': _QuantityInfo(r'Orbital separation [AU]', 1.0 / AU, False),
-    'orbital_period': _QuantityInfo('Orbital period [days]', 1.0 / secs_per_day, True),
-    'eccentricity': _QuantityInfo(r'$e$', 1.0, False),
-    # Planet structure
-    'R_int': _QuantityInfo(r'$R_{\rm int}$ [$R_\oplus$]', 1.0 / R_earth, False),
-    'M_int': _QuantityInfo(r'$M_{\rm int}$ [$M_\oplus$]', 1.0 / M_earth, False),
-    'M_planet': _QuantityInfo(r'$M_{\rm planet}$ [$M_\oplus$]', 1.0 / M_earth, False),
-    'R_core': _QuantityInfo(r'$R_{\rm core}$ [$R_\oplus$]', 1.0 / R_earth, False),
-    'P_center': _QuantityInfo(r'$P_{\rm center}$ [GPa]', 1.0e-9, False),
-    'P_cmb': _QuantityInfo(r'$P_{\rm CMB}$ [GPa]', 1.0e-9, False),
-    # Temperatures
-    'T_surf': _QuantityInfo(r'$T_{\rm surf}$ [K]', 1.0, False),
-    'T_magma': _QuantityInfo(r'$T_{\rm magma}$ [K]', 1.0, False),
-    'T_cmb': _QuantityInfo(r'$T_{\rm CMB}$ [K]', 1.0, False),
-    'T_eqm': _QuantityInfo(r'$T_{\rm eq}$ [K]', 1.0, False),
-    'T_skin': _QuantityInfo(r'$T_{\rm skin}$ [K]', 1.0, False),
-    # Energy fluxes (W m-2); F_net may be negative, so it is not logarithmic
-    'F_int': _QuantityInfo(r'$F_{\rm int}$ [W m$^{-2}$]', 1.0, True),
-    'F_atm': _QuantityInfo(r'$F_{\rm atm}$ [W m$^{-2}$]', 1.0, True),
-    'F_net': _QuantityInfo(r'$F_{\rm net}$ [W m$^{-2}$]', 1.0, False),
-    'F_olr': _QuantityInfo(r'$F_{\rm OLR}$ [W m$^{-2}$]', 1.0, True),
-    'F_ins': _QuantityInfo(r'$F_{\rm ins}$ [W m$^{-2}$]', 1.0, True),
-    'F_xuv': _QuantityInfo(r'$F_{\rm XUV}$ [W m$^{-2}$]', 1.0, True),
-    'F_tidal': _QuantityInfo(r'$F_{\rm tidal}$ [W m$^{-2}$]', 1.0, True),
-    # Interior (melt and mantle); gravity sits in this block in the helpfile
-    'gravity': _QuantityInfo(r'$g_{\rm surf}$ [m s$^{-2}$]', 1.0, False),
-    'Phi_global': _QuantityInfo('Melt fraction (mass) [%]', 100.0, False),
-    'Phi_global_vol': _QuantityInfo('Melt fraction (volume) [%]', 100.0, False),
-    'RF_depth': _QuantityInfo('Rheological front depth', 1.0, False),
-    'M_core': _QuantityInfo(r'$M_{\rm core}$ [$M_\oplus$]', 1.0 / M_earth, False),
-    'M_mantle': _QuantityInfo(r'$M_{\rm mantle}$ [$M_\oplus$]', 1.0 / M_earth, False),
-    'T_pot': _QuantityInfo(r'$T_{\rm pot}$ [K]', 1.0, False),
-    # Star
-    'M_star': _QuantityInfo(r'$M_\star$ [$M_\odot$]', 1.0 / M_sun, False),
-    'R_star': _QuantityInfo(r'$R_\star$ [$R_\odot$]', 1.0 / R_sun, False),
-    'age_star': _QuantityInfo('Stellar age [Gyr]', 1.0e-9, True),
-    'T_star': _QuantityInfo(r'$T_\star$ [K]', 1.0, False),
-    # Observational
-    'p_obs': _QuantityInfo(r'$P_{\rm obs}$ [bar]', 1.0, True),
-    'R_obs': _QuantityInfo(r'$R_{\rm obs}$ [$R_\oplus$]', 1.0 / R_earth, False),
-    'T_obs': _QuantityInfo(r'$T_{\rm obs}$ [K]', 1.0, False),
-    'rho_obs': _QuantityInfo(r'$\rho_{\rm obs}$ [g cm$^{-3}$]', 1.0e-3, False),
-    'transit_depth': _QuantityInfo('Transit depth [ppm]', 1.0e6, False),
-    'eclipse_depth': _QuantityInfo('Eclipse depth [ppm]', 1.0e6, False),
-    'bond_albedo': _QuantityInfo('Bond albedo', 1.0, False),
-    # Atmosphere
-    'M_atm': _QuantityInfo(r'$M_{\rm atm}$ [kg]', 1.0, True),
-    'P_surf': _QuantityInfo(r'$P_{\rm surf}$ [bar]', 1.0, True),
-    'atm_kg_per_mol': _QuantityInfo(r'$\mu$ [g mol$^{-1}$]', 1.0e3, False),
-    # Volatile species (per species: whole-planet mass, atmospheric mixing ratio,
-    # partial surface pressure), in runtime_helpfile species order
-    'H2O_kg_total': _QuantityInfo(r'$M_{\rm H_2O}$ [kg]', 1.0, True),
-    'H2O_vmr': _QuantityInfo(r'$VMR_{\rm H_2O}$', 1.0, True),
-    'H2O_bar': _QuantityInfo(r'$p_{\rm H_2O}$ [bar]', 1.0, True),
-    'CO2_kg_total': _QuantityInfo(r'$M_{\rm CO_2}$ [kg]', 1.0, True),
-    'CO2_vmr': _QuantityInfo(r'$VMR_{\rm CO_2}$', 1.0, True),
-    'CO2_bar': _QuantityInfo(r'$p_{\rm CO_2}$ [bar]', 1.0, True),
-    'O2_kg_total': _QuantityInfo(r'$M_{\rm O_2}$ [kg]', 1.0, True),
-    'O2_vmr': _QuantityInfo(r'$VMR_{\rm O_2}$', 1.0, True),
-    'O2_bar': _QuantityInfo(r'$p_{\rm O_2}$ [bar]', 1.0, True),
-    'H2_kg_total': _QuantityInfo(r'$M_{\rm H_2}$ [kg]', 1.0, True),
-    'H2_vmr': _QuantityInfo(r'$VMR_{\rm H_2}$', 1.0, True),
-    'H2_bar': _QuantityInfo(r'$p_{\rm H_2}$ [bar]', 1.0, True),
-    'CH4_kg_total': _QuantityInfo(r'$M_{\rm CH_4}$ [kg]', 1.0, True),
-    'CH4_vmr': _QuantityInfo(r'$VMR_{\rm CH_4}$', 1.0, True),
-    'CH4_bar': _QuantityInfo(r'$p_{\rm CH_4}$ [bar]', 1.0, True),
-    'CO_kg_total': _QuantityInfo(r'$M_{\rm CO}$ [kg]', 1.0, True),
-    'CO_vmr': _QuantityInfo(r'$VMR_{\rm CO}$', 1.0, True),
-    'CO_bar': _QuantityInfo(r'$p_{\rm CO}$ [bar]', 1.0, True),
-    'N2_kg_total': _QuantityInfo(r'$M_{\rm N_2}$ [kg]', 1.0, True),
-    'N2_vmr': _QuantityInfo(r'$VMR_{\rm N_2}$', 1.0, True),
-    'N2_bar': _QuantityInfo(r'$p_{\rm N_2}$ [bar]', 1.0, True),
-    'NH3_kg_total': _QuantityInfo(r'$M_{\rm NH_3}$ [kg]', 1.0, True),
-    'NH3_vmr': _QuantityInfo(r'$VMR_{\rm NH_3}$', 1.0, True),
-    'NH3_bar': _QuantityInfo(r'$p_{\rm NH_3}$ [bar]', 1.0, True),
-    'S2_kg_total': _QuantityInfo(r'$M_{\rm S_2}$ [kg]', 1.0, True),
-    'S2_vmr': _QuantityInfo(r'$VMR_{\rm S_2}$', 1.0, True),
-    'S2_bar': _QuantityInfo(r'$p_{\rm S_2}$ [bar]', 1.0, True),
-    'SO2_kg_total': _QuantityInfo(r'$M_{\rm SO_2}$ [kg]', 1.0, True),
-    'SO2_vmr': _QuantityInfo(r'$VMR_{\rm SO_2}$', 1.0, True),
-    'SO2_bar': _QuantityInfo(r'$p_{\rm SO_2}$ [bar]', 1.0, True),
-    'H2S_kg_total': _QuantityInfo(r'$M_{\rm H_2S}$ [kg]', 1.0, True),
-    'H2S_vmr': _QuantityInfo(r'$VMR_{\rm H_2S}$', 1.0, True),
-    'H2S_bar': _QuantityInfo(r'$p_{\rm H_2S}$ [bar]', 1.0, True),
-    # Element inventories (whole planet)
-    'H_kg_total': _QuantityInfo(r'$M_{\rm H}$ [kg]', 1.0, True),
-    'O_kg_total': _QuantityInfo(r'$M_{\rm O}$ [kg]', 1.0, True),
-    'C_kg_total': _QuantityInfo(r'$M_{\rm C}$ [kg]', 1.0, True),
-    'N_kg_total': _QuantityInfo(r'$M_{\rm N}$ [kg]', 1.0, True),
-    'S_kg_total': _QuantityInfo(r'$M_{\rm S}$ [kg]', 1.0, True),
-    # Atmospheric escape
-    'esc_rate_total': _QuantityInfo(r'$\dot{M}_{\rm esc}$ [g s$^{-1}$]', 1.0e3, True),
-}
-
-
 def get_label(quant: str) -> str:
     """Return a display-ready plot label for a grid quantity.
 
@@ -279,37 +120,37 @@ def get_label(quant: str) -> str:
         The preset label, or the last dotted component of ``quant`` when no
         preset exists (so an unlabelled quantity still reads sensibly).
     """
-    if quant in _preset_quantities:
-        return _preset_quantities[quant].label
+    if quant in PRESET_QUANTITIES:
+        return PRESET_QUANTITIES[quant].label
     return quant.split('.')[-1]
 
 
 def get_scale(quant: str) -> float:
     """Return the multiplicative plot scale for a grid quantity (1.0 if unset)."""
-    if quant in _preset_quantities:
-        return _preset_quantities[quant].scale
+    if quant in PRESET_QUANTITIES:
+        return PRESET_QUANTITIES[quant].scale
     return 1.0
 
 
 def get_log_scale(quant: str) -> bool:
     """Return whether a grid quantity is plotted on a log axis (False if unset)."""
-    if quant in _preset_quantities:
-        return _preset_quantities[quant].log
+    if quant in PRESET_QUANTITIES:
+        return PRESET_QUANTITIES[quant].log
     return False
 
 
-# Default colour map for grid parameter values: perceptually uniform and
-# colour-blind friendly, and available in matplotlib without an extra package.
-DEFAULT_COLOURMAP = 'viridis'
+# Default colour map for grid parameter values: a Crameri scientific colour map
+# (perceptually uniform, colour-blind friendly), as used across the PROTEUS plots.
+DEFAULT_COLOURMAP = 'batlowK_r'
 
 
 def get_colourmap(name: str | None = None):
-    """Return a registered matplotlib Colormap for colouring grid parameter values.
+    """Return a matplotlib Colormap for colouring grid parameter values.
 
-    ``name`` may be any colour map registered with matplotlib (for example
-    'viridis', 'cividis', 'plasma', or the scientific 'berlin'/'managua' added in
-    matplotlib 3.10). Falls back to a perceptually uniform, colour-blind friendly
-    default when ``name`` is empty or not recognised.
+    ``name`` may be a Crameri scientific colour map from cmcrameri (for example
+    'batlowK_r', 'batlow', 'vik'; the 'cmc.' prefix is optional) or any colour
+    map registered with matplotlib (for example 'viridis'). Falls back to
+    ``DEFAULT_COLOURMAP`` when ``name`` is empty or not recognised.
 
     Parameters
     ----------
@@ -321,13 +162,20 @@ def get_colourmap(name: str | None = None):
     matplotlib.colors.Colormap
         The resolved colour map.
     """
+    import cmcrameri.cm  # noqa: F401  (registers the 'cmc.<name>' colour maps)
     import matplotlib as mpl
 
-    try:
-        return mpl.colormaps[name or DEFAULT_COLOURMAP]
-    except KeyError:
+    def _lookup(key):
+        for candidate in (key, f'cmc.{key}'):
+            if candidate in mpl.colormaps:
+                return mpl.colormaps[candidate]
+        return None
+
+    cmap = _lookup(name or DEFAULT_COLOURMAP)
+    if cmap is None:
         log.warning("Unknown colourmap '%s'; falling back to '%s'", name, DEFAULT_COLOURMAP)
-        return mpl.colormaps[DEFAULT_COLOURMAP]
+        cmap = _lookup(DEFAULT_COLOURMAP)
+    return cmap
 
 
 def _generate_colour(gas: str):

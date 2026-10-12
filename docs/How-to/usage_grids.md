@@ -158,7 +158,9 @@ Once a grid has run, `proteus grid-analyse` extracts each case's final-row resul
 proteus grid-analyse -c input/example.grid.toml
 ```
 
-The `output` setting must name a fixed folder (not `"auto"`), so the analysis can find the grid's output directory.
+The `output` setting must name a fixed folder (not `"auto"`), so the analysis can find the grid's output directory. The swept axes are read from `copy.grid.toml` in that folder (the copy of the grid file saved when the grid was launched), so editing the grid file afterwards does not change them. If that copy no longer passes the current grid-file checks (for example a grid launched with an older PROTEUS), the analysis stops with an error naming the rejected keys; update them in the copy, or remove it to use the axes of the file passed with `-c`.
+
+The `[post_processing]` table is checked: an unknown key or a value of the wrong type is an error.
 
 The `[post_processing]` table accepts:
 
@@ -167,11 +169,11 @@ The `[post_processing]` table accepts:
 | `update_csv` | Rebuild the summary CSVs from the case folders before plotting (default `true`). Set `false` to plot from existing CSVs. |
 | `plot_status` | Make the status-summary bar plot (default `true`). |
 | `plot_ecdf` | Make the ECDF grid plot (default `true`). |
-| `colormap` | Matplotlib colour map for numeric parameter values in the ECDF plot (for example `"viridis"`, `"cividis"`, or the scientific `"berlin"`; `colourmap` is also accepted). Defaults to `viridis`. |
-| `output_variables` | List of `runtime_helpfile.csv` columns to plot, plus the derived `solidification_time`. |
+| `colormap` | Colour map for numeric parameter values in the ECDF plot: a Crameri scientific colour map from `cmcrameri` (for example `"batlowK_r"`, `"batlow"`, `"vik"`) or any matplotlib colour map (`colourmap` is also accepted). Defaults to `batlowK_r`. |
+| `output_variables` | List of `runtime_helpfile.csv` columns to plot, plus the derived `solidification_time`. Defaults to `solidification_time`, `Phi_global`, `T_surf`, `P_surf` and `atm_kg_per_mol`. |
 | `plot_format` | Image format (`"png"` or `"pdf"`); defaults to the base config's `params.out.plot_fmt`, then `"png"`. |
 
-`solidification_time` is computed by the analysis as the first time a case's `Phi_global` drops below its `params.stop.solid.phi_crit`.
+`solidification_time` is computed by the analysis as the first time a case's `Phi_global` drops below its `params.stop.solid.phi_crit`. It is empty (NaN) for a case that never solidified, and for a case whose solidification stop criterion (`params.stop.solid.enabled`) was disabled.
 
 The outputs are written under the grid's output folder:
 
@@ -180,13 +182,17 @@ output/<grid name>/post_processing/
 ├── extracted_data/
 │   ├── final_extracted_data_all.csv            # every case
 │   ├── final_extracted_data_completed.csv      # completed cases
-│   └── final_extracted_data_running_error.csv  # running or errored cases
+│   └── final_extracted_data_running_error.csv  # running, errored or unknown-status cases
 └── grid_plots/
     ├── summary_grid_statuses.<fmt>             # case count per final status
     └── ecdf_grid_plot.<fmt>                    # ECDF per (parameter, output) panel
 ```
 
-The CSVs are tab-separated (like other PROTEUS output), one row per case, holding the case number, status, the swept parameter values, every helpfile column at the final row, and `solidification_time`. The ECDF grid plot has one row per swept parameter and one column per requested output; curves are coloured by the parameter value (a colourbar for numeric parameters, a legend for string parameters), after Figure 5 of [Nicholls et al. (2024)](https://arxiv.org/abs/2411.19137).
+The CSVs are tab-separated (like other PROTEUS output), one row per started case, holding the case number, status, status category (`Completed`, `Running`, `Error`, or `Unknown` when the status file is missing), the swept parameter values, every helpfile column at the final row, and `solidification_time`.
+
+The status-summary plot has one bar per final status, coloured by category, plus a `Not started` bar for grid cases that have no case folder yet (for example still queued on SLURM).
+
+The ECDF grid plot uses the completed cases. It has one row per swept parameter and one column per requested output; curves are coloured by the parameter value (a colourbar for numeric parameters, a legend for string parameters), after Figure 5 of [Nicholls et al. (2024)](https://arxiv.org/abs/2411.19137). Each curve is a percentage of all completed cases with that parameter value, so it levels off below 100 % when some cases have no value for the output (for example cases that never solidified). An output is drawn on a logarithmic axis when its default plot setting asks for one and its positive values span at least a factor of 10. On a logarithmic axis, cases with a zero or negative value lie below the axis range; the curve starts at their percentage instead of at 0 %.
 
 ---
 

@@ -15,7 +15,7 @@ max_mem  = 3
     update_csv  = true
     plot_status = true
     plot_ecdf   = true
-    colormap    = "viridis"
+    colormap    = "batlowK_r"
     plot_format = "png"
     output_variables = ["solidification_time", "Phi_global", "T_surf", "P_surf"]
 

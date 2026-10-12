@@ -4,6 +4,7 @@ from __future__ import annotations
 import filecmp
 import os
 
+import pandas as pd
 import pytest
 from helpers import PROTEUS_ROOT
 
@@ -113,3 +114,13 @@ def test_grid_post_process(grid_run):
     # Both plots exist in the requested format.
     assert os.path.isfile(plots / 'summary_grid_statuses.png')
     assert os.path.isfile(plots / 'ecdf_grid_plot.png')
+
+    # One row per case of the 1 x 2 x 2 grid, carrying the swept values, and the
+    # completed and running_error CSVs partition it.
+    read = {
+        mode: pd.read_csv(extracted / f'final_extracted_data_{mode}.csv', sep='\t')
+        for mode in ('all', 'completed', 'running_error')
+    }
+    assert sorted(read['all']['case_number']) == [0, 1, 2, 3]
+    assert sorted(set(read['all']['planet.elements.H_budget'])) == pytest.approx([1000, 2000])
+    assert len(read['completed']) + len(read['running_error']) == len(read['all'])
