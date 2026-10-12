@@ -2967,10 +2967,11 @@ class TestRunLogged:
 
 
 def _default_signals() -> None:
-    """Give the child the default action for HUP, INT and TERM, which a test runner started
-    with ``nohup`` or as a background job ignores."""
+    """Give the child the default action for HUP, INT and TERM, and unblock them: a test
+    runner started with ``nohup``, in the background or by a CI step can ignore or block them."""
     for sig in (signal.SIGHUP, signal.SIGINT, signal.SIGTERM):
         signal.signal(sig, signal.SIG_DFL)
+        signal.pthread_sigmask(signal.SIG_UNBLOCK, [sig])
 
 
 def _run_logged_with_exit_hint(tmp_path: Path, script: str) -> subprocess.CompletedProcess:
