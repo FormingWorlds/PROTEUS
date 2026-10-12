@@ -89,10 +89,11 @@ def test_plot_global_entry_invokes_plot_global_twice_for_log_and_linear_axes(
     assert captured_calls[0]['config'] is handler.config
 
 
-def _full_helpfile(n=8):
+def _full_helpfile(n=8, n_gases=1):
     """A synthetic runtime_helpfile.csv with every column ``plot_global``
-    reads. One gas (H2O) is present (vmr >= 1e-10) so the per-volatile
-    branch is exercised; the others sit below the presence threshold.
+    reads. The first ``n_gases`` gases are present (vmr >= 1e-10), each at
+    its own level, so the per-volatile branch is exercised; the others sit
+    below the presence threshold.
     """
     from proteus.utils.constants import gas_list
 
@@ -112,12 +113,12 @@ def _full_helpfile(n=8):
         'Phi_global': np.linspace(1.0, 0.0, n),
         'P_surf': np.linspace(300.0, 100.0, n),
     }
-    for vol in gas_list:
-        is_present = vol == 'H2O'
+    for i, vol in enumerate(gas_list):
+        is_present = i < n_gases
         base[f'{vol}_vmr'] = np.full(n, 0.5 if is_present else 1e-12)
-        base[f'{vol}_bar'] = np.full(n, 50.0 if is_present else 0.0)
+        base[f'{vol}_bar'] = np.full(n, 50.0 / 2**i if is_present else 0.0)
         base[f'{vol}_mol_atm'] = np.full(n, 1.0e22 if is_present else 0.0)
-        base[f'{vol}_mol_total'] = np.full(n, 2.0e22 if is_present else 0.0)
+        base[f'{vol}_mol_total'] = np.full(n, (2.0 + i) * 1.0e22 if is_present else 0.0)
     return pd.DataFrame(base)
 
 
@@ -202,6 +203,8 @@ def test_plot_global_takes_its_neutral_colours_from_the_style(draw_real, tmp_pat
     curves = [line['Net (atm.)'], line['Melt fraction'], panel['(c)'].lines[1]]
     for curve in curves:
         assert to_rgb(curve.get_color()) == pytest.approx(to_rgb(style.dark_grey))
+    for ax in fig.axes:
+        assert to_rgb(ax._left_title.get_color()) == pytest.approx(to_rgb(style.text))
     # Module and species colours do not follow the style.
     assert to_rgb(panel['(c)'].lines[0].get_color()) == pytest.approx(to_rgb('#ff7f0e'))
 
@@ -210,20 +213,27 @@ def test_plot_global_takes_its_neutral_colours_from_the_style(draw_real, tmp_pat
 _LARGE_FONTS = {'font.size': 14.5, 'axes.labelsize': 18, 'legend.fontsize': 14.5}
 
 
-@pytest.mark.parametrize('logt', [True, False])
-@pytest.mark.parametrize('rc', [None, _LARGE_FONTS], ids=['default', 'large'])
-def test_plot_global_text_boxes_do_not_collide(draw_real, tmp_path, logt, rc):
-    """Text geometry of the drawn figure, for both time axes and two font sizes:
-    tick labels of different panels do not intersect, each panel label is
-    outside every data area and clear of every legend, and the y label of the
-    top row is no taller than its panel, so it cannot leave the figure."""
+@pytest.mark.parametrize('logt', [True, False], ids=['log_time', 'linear_time'])
+@pytest.mark.parametrize('rc', [None, _LARGE_FONTS], ids=['default_fonts', 'large_fonts'])
+@pytest.mark.parametrize('n_gases', [1, 8], ids=['one_gas', 'eight_gases'])
+def test_plot_global_text_boxes_do_not_collide(draw_real, tmp_path, logt, rc, n_gases):
+    """Text geometry of the drawn figure, for both time axes, two font sizes and
+    both small gas legends: tick labels of different panels do not intersect, each
+    panel label is outside every data area and clear of every legend, the y label
+    of the top row is no taller than its panel, so it cannot leave the figure,
+    and each legend lies on no more curves than its best place needs."""
     (tmp_path / 'plots').mkdir()
     config = _make_config()
     config.interior_struct.core_frac = 0.325
     config.params.out.plot_fmt = 'png'
 
     (fig,) = draw_real(
-        global_mod.plot_global, _full_helpfile(), str(tmp_path), config, logt=logt, rc=rc
+        global_mod.plot_global,
+        _full_helpfile(n_gases=n_gases),
+        str(tmp_path),
+        config,
+        logt=logt,
+        rc=rc,
     )
     fig.canvas.draw()
     renderer = fig.canvas.get_renderer()
@@ -241,9 +251,27 @@ def test_plot_global_text_boxes_do_not_collide(draw_real, tmp_path, logt, rc):
     assert len({i for i, _, _ in ticks}) == 6
     legends = [ax.get_legend() for ax in fig.axes if ax.get_legend() is not None]
     assert len(legends) == 3
+    assert legends[2]._ncols == (1 if n_gases == 1 else 2)
     titles = [ax._left_title for ax in fig.axes]
     boxes = [t.get_window_extent(renderer) for t in titles]
     top_left = fig.axes[0]
+    under = [
+        sum(
+            line.get_transform()
+            .transform_path(line.get_path())
+            .intersects_bbox(ax.get_legend().get_window_extent(renderer), filled=False)
+            for line in ax.lines
+        )
+        for ax in (fig.axes[0], fig.axes[4], fig.axes[5])
+    ]
+    # Curves that no place of the mantle and gas legends avoids in this helpfile.
+    mantle_floor = (1 if logt else 0) + (1 if rc else 0)
+    edge_labels = [
+        label.get_horizontalalignment()
+        for ax, side in ((fig.axes[4], 1), (fig.axes[5], 0))
+        for label in ax.get_xticklabels()
+        if np.isclose(label.get_position()[0], ax.get_xlim()[side])
+    ]
 
     found = {
         'panel labels': [t.get_text()[:3] for t in titles],
@@ -253,6 +281,7 @@ def test_plot_global_text_boxes_do_not_collide(draw_real, tmp_path, logt, rc):
             for b in ticks[n + 1 :]
             if a[0] != b[0] and a[2].overlaps(b[2])
         ],
+        'alignment of the inner edge labels': edge_labels if logt else ['right', 'left'],
         'panel labels in a data area': sum(
             b.overlaps(ax.bbox) for b in boxes for ax in fig.axes
         ),
@@ -262,11 +291,16 @@ def test_plot_global_text_boxes_do_not_collide(draw_real, tmp_path, logt, rc):
         'top y label taller than its panel': bool(
             top_left.yaxis.label.get_window_extent(renderer).height > top_left.bbox.height
         ),
+        'legends on more curves than their best place needs': [
+            (n, bound) for n, bound in zip(under, (0, mantle_floor, n_gases // 8)) if n > bound
+        ],
     }
     assert found == {
         'panel labels': ['(a)', '(b)', '(c)', '(d)', '(e)', '(f)'],
         'tick labels that intersect': [],
+        'alignment of the inner edge labels': ['right', 'left'],
         'panel labels in a data area': 0,
         'panel labels under a legend': 0,
         'top y label taller than its panel': False,
+        'legends on more curves than their best place needs': [],
     }
