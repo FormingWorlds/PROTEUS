@@ -344,7 +344,7 @@
       "class": "TimeStepParams",
       "type": "float",
       "accepts_none": false,
-      "default": "10000.0",
+      "default": "100.0",
       "choices": null,
       "bounds": [
         {
