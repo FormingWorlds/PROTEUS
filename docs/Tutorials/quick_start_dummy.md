@@ -22,7 +22,7 @@ settings are:
   $\Phi$ = 1). Volatile budget of 10,000 ppmw H, 1000 ppmw C, 500 ppmw N,
   500 ppmw S.
 - **Star**: fixed solar luminosity (no evolution)
-- **Orbit**: 0.5 AU, weak tidal heating
+- **Orbit**: 0.5 AU, negligible tidal heating
 - **Interior structure**: Noack & Lasbleis (2020) [^cite-noack2020] analytical
   scaling laws
 - **Interior energetics**: heat-capacity integrator with prescribed solidus
@@ -86,7 +86,7 @@ series. Key columns:
 | `T_magma` | K | Decreases monotonically from 4000 to ~1700 |
 | `Phi_global` | 1 | Drops from 1.0 to ~0.003, triggering the solidification stop |
 | `P_surf` | bar | Increases from ~7,000 to ~70,000 as volatiles outgas |
-| `F_atm` | W m$^{-2}$ | Outgoing longwave radiation; decreases as the surface cools |
+| `F_atm` | W m$^{-2}$ | Net flux at the top of the atmosphere; decreases as the surface cools |
 | `F_int` | W m$^{-2}$ | Interior heat flux; tracks `F_atm`, a few percent above it as the interior loses heat |
 | `M_planet` | kg | Constant throughout (mass conservation) |
 
@@ -101,9 +101,10 @@ series. Key columns:
    in panel (f) decreases. This is the core coupling feedback that the
    production modules (CALLIOPE, Aragog) compute with full thermodynamics.
 
-3. **Energy balance**: the OLR (red line in panel a) and interior flux
-   (orange dashed) track each other, with `F_int` slightly above `F_atm` as
-   the interior loses heat. The absorbed stellar flux (blue dashed) is
+3. **Energy balance**: the net atmospheric flux `F_atm` (grey line in panel
+   a, with the OLR in red just above it) and the interior flux (orange
+   dashed) track each other, with `F_int` slightly above `F_atm` as the
+   interior loses heat. The absorbed stellar flux (blue dashed) is
    constant because the star is fixed.
 
 4. **Mass conservation**: `M_planet` should remain constant within rounding.
