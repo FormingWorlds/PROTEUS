@@ -3061,11 +3061,32 @@ def test_it_timing_records_orbit_module_wall_time(tmp_path, monkeypatch, caplog)
     assert any('escape=' in msg for msg in timing_records)
 
 
+# Step names proteus-bench turns into series; a renamed or dropped name splits a series
+INIT_TIMING_KEYS = ['data', 'structure', 'equilibrate', 'stellar', 'orbit', 'other', 'total']
+IT_TIMING_KEYS = {
+    'interior',
+    'structure',
+    'orbit',
+    'stellar',
+    'escape',
+    'outgas',
+    'atmos',
+    'chem',
+    'write',
+    'plots',
+    'archive',
+    'other',
+    'total',
+}
+
+
 def test_timing_lines_keep_the_format_proteus_bench_parses(tmp_path, monkeypatch, caplog):
     """Under ``PROTEUS_TIMING`` the run logs one ``[INIT_TIMING]`` line before the first
     ``[IT_TIMING] iter=N init_stage=0|1`` line, both followed by space-separated
     ``key=<seconds, 3 decimals>`` fields ending in ``other`` and ``total``. proteus-bench
-    reads these lines to time a run, so a change of format breaks it. In each line the
+    reads these lines to time a run, so a change of format breaks it. ``[INIT_TIMING]``
+    has its steps in a fixed order, leaving out the ones that did not run (here
+    ``equilibrate``); every ``[IT_TIMING]`` key is a known stage name. In each line the
     steps plus ``other`` add up to ``total``. ``init_stage`` is the state when the
     iteration began: the first ``init_loops + 1`` iterations run in the init stage,
     including the one at whose end PROTEUS clears it.
@@ -3090,6 +3111,9 @@ def test_timing_lines_keep_the_format_proteus_bench_parses(tmp_path, monkeypatch
         if 'init_stage' in fields:
             stages.append(int(fields.pop('init_stage')))
             fields.pop('iter')
+            assert set(fields) <= IT_TIMING_KEYS, message
+        else:
+            assert list(fields) == [k for k in INIT_TIMING_KEYS if k != 'equilibrate'], message
         assert list(fields)[-2:] == ['other', 'total'], message
         steps = sum(float(v) for k, v in fields.items() if k != 'total')
         assert steps == pytest.approx(float(fields['total']), abs=0.01), message
@@ -3099,8 +3123,8 @@ def test_timing_lines_keep_the_format_proteus_bench_parses(tmp_path, monkeypatch
 
 
 def test_init_timing_line_times_the_zalmoxis_equilibration(tmp_path, monkeypatch, caplog):
-    """With Zalmoxis equilibration on, ``[INIT_TIMING]`` has an ``equilibrate`` step, timed
-    around the call: a call that takes at least 0.05 s logs at least 0.050.
+    """With Zalmoxis equilibration on, ``[INIT_TIMING]`` has every step, ``equilibrate``
+    timed around the call: a call that takes at least 0.05 s logs at least 0.050.
     """
     import re
     import time as _time
@@ -3122,6 +3146,8 @@ def test_init_timing_line_times_the_zalmoxis_equilibration(tmp_path, monkeypatch
     (line,) = [r.message for r in caplog.records if r.message.startswith('[INIT_TIMING]')]
     seconds = float(re.search(r' equilibrate=(\d+\.\d{3})', line)[1])
     assert seconds >= 0.05
+    keys = [field.split('=')[0] for field in line.split('] ')[1].split()]
+    assert keys == INIT_TIMING_KEYS
 
 
 # =======================================================================================
