@@ -46,15 +46,18 @@ non-empty:
 
 ### Package versions
 
-For each Python submodule (fwl-proteus, fwl-aragog, fwl-calliope, fwl-janus,
-fwl-mors, fwl-vulcan, fwl-zephyrus, fwl-zalmoxis), the doctor checks:
+For each required Python package (fwl-proteus, fwl-io, fwl-aragog, fwl-calliope,
+fwl-janus, fwl-mors, fwl-zephyrus, fwl-zalmoxis), the doctor checks the points
+below; it does not check the optional fwl-vulcan and fwl-morrigan:
 
 1. **Is the package installed?** If not, the fix is `pip install <name>`.
 2. **Does the installed version satisfy the minimum bound in `pyproject.toml`?**
    For example, if `pyproject.toml` requires `fwl-aragog>=26.05.13` and you
    have `25.1.1` installed, the check fails.
 3. **Is this an editable install?** If so, the output shows the checkout
-   directory, git commit hash, and dirty state.
+   directory, git commit hash, and dirty state; for a folder that is not a git
+   clone of its own (no `.git`, or an empty one inside the PROTEUS checkout),
+   it says so in place of the hash and the dirty state.
 
 For git-pinned modules (AGNI, SOCRATES), the doctor compares the checkout's
 HEAD commit against the commit SHA pinned in `pyproject.toml` under
@@ -90,8 +93,8 @@ Reference data
 Package versions
   [ok] fwl-proteus: 25.10.15 [editable @ PROTEUS -> a1b2c3d]
   [ok] fwl-aragog: 26.5.13 [editable @ aragog -> d051902]
-  [FAIL] fwl-vulcan: not installed
-       fix: pip install fwl-vulcan
+  [FAIL] fwl-janus: not installed
+       fix: pip install fwl-janus
   [warn] AGNI: 1.10.1 (bf65a56c) differs from pin (b06a3fed)
        fix: bash tools/get_agni.sh
 
@@ -183,13 +186,15 @@ This lists the fixable issues and their commands but does not execute anything.
   configured, activate the correct environment first:
   `conda activate proteus`.
 - **An outdated editable module clone that a setup script makes** (MORS,
-  JANUS, CALLIOPE, ZEPHYRUS, Aragog, Zalmoxis, VULCAN, Morrigan): no fix
+  JANUS, CALLIOPE, ZEPHYRUS, Aragog, Zalmoxis): no fix
   changes such a clone. The doctor shows as its fix the commands that fetch
   the tags, check out the release tag of the minimum version and reinstall
   the clone, and, for the clone in the module's folder of the PROTEUS root,
   the setup script with `--force` (for example
   `bash tools/get_python_module.sh MORS --force`), which replaces the clone
-  with a new one. Run the one you want by hand.
+  with a new one. Run the one you want by hand. A folder that is not a git
+  clone of its own gets no git command, which would act on the repository
+  around it: only the `--force` replacement, or the advice to move it away.
 
 !!! warning "Source install required"
     `proteus update` requires a source install (git clone). If PROTEUS was
@@ -212,7 +217,7 @@ your own stays as it is, and the command prints the commands that move it by han
 and refreshes the reference data, verifying environment variables and disk
 space before proceeding. Pass `--export-env` to set the environment variables
 again in the active conda environment and in `.proteus-env.sh`. It runs no git command in the Python module
-clones (MORS, JANUS, CALLIOPE, ZEPHYRUS, Aragog, Zalmoxis, VULCAN, Morrigan); as
+clones (MORS, JANUS, CALLIOPE, ZEPHYRUS, Aragog, Zalmoxis); as
 with `bash install.sh`, its pip step installs the PyPI release in place of a
 clone that is older than the minimum version. To move a clone to its release
 tag after a version change, run the commands that `bash install.sh` prints for
@@ -249,7 +254,7 @@ proteus update
 
 This updates any submodules whose installed version no longer satisfies the
 new bounds. It does not change an editable module clone that a setup script
-makes (MORS, JANUS, CALLIOPE, ZEPHYRUS, Aragog, Zalmoxis, VULCAN, Morrigan):
+makes (MORS, JANUS, CALLIOPE, ZEPHYRUS, Aragog, Zalmoxis):
 for one below its minimum version it lists the commands that move it to the
 release tag by hand or replace it with `--force`. For other editable checkouts it runs
 `git pull && pip install -e .` in the checkout directory.

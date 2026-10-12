@@ -16,12 +16,20 @@ repo="$get_install_path"
 names=0
 for arg in "$@"; do [ "$arg" = --force ] || names=$((names + 1)); done
 dist=""
+spelled=""
+wanted=$(printf '%s' "$repo" | tr '[:upper:]' '[:lower:]')
 for name in $modules; do
-    [ "$name" != "$repo" ] || dist="fwl-$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]')"
+    lower=$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]')
+    if [ "$name" = "$repo" ]; then
+        dist="fwl-$lower"
+    elif [ "$lower" = "$wanted" ]; then
+        spelled="$name"
+    fi
 done
 if [ -z "$dist" ] || [ "$names" -ne 1 ]; then
     echo "usage: bash tools/get_python_module.sh <RepoName> [--force]" >&2
     echo "       RepoName is one of: $modules" >&2
+    [ -z "$spelled" ] || echo "       The name is case-sensitive: write $spelled, not $repo" >&2
     exit 2
 fi
 

@@ -138,7 +138,7 @@ to_terminal() {
 # start and one at the end; the output goes to $LOGFILE only. A failure shows its last 40 lines.
 run_logged() {
     local takes="" what rc=0 t0=$SECONDS tmp where="the log file"
-    local show='checked out release tag|installed paired aragog branch|stays as it is|^    (From the PROTEUS folder|Or replace it)|^        (git -C|pip install -e|bash tools/)'
+    local show='checked out release tag|installed paired [A-Za-z]* branch|stays as it is|is newer than the release tag|is on the paired branch|^    (From the PROTEUS folder|Or replace it)|^        (git -C|pip install -e|bash tools/)'
     if [ "${1:-}" = "--takes" ]; then
         takes=" (can take $2)"
         shift 2
@@ -1151,14 +1151,16 @@ clone_and_install() {
     fi
 }
 
-# Print one line naming the module clones that are not at their release tag, which record_clone_stays
+# Print one line naming the module clones that stay as they are, which record_clone_stays
 # (tools/_get_common.sh) wrote to the file PROTEUS_CLONE_STAYS names, and remove that file.
 report_stayed_clones() {
     local list
     [ -n "${PROTEUS_CLONE_STAYS:-}" ] || return 0
     if [ -s "$PROTEUS_CLONE_STAYS" ]; then
         list=$(awk 'NR > 1 {printf ", "} {printf "%s", $0}' "$PROTEUS_CLONE_STAYS")
-        warn "Not at their release tag: $list"
+        warn "Not at their release tag: $list. A clone that is older than the minimum version is" \
+            "not used: the PROTEUS install takes that release from PyPI. The commands printed" \
+            "above for each clone move it to its tag or replace it."
     fi
     rm -f "$PROTEUS_CLONE_STAYS"
 }

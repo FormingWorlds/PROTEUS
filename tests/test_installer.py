@@ -950,20 +950,30 @@ class TestCheckoutFloorTag:
 
     @pytest.mark.parametrize('prelude', ['', 'set -euo pipefail\n'], ids=['plain', 'errexit'])
     def test_checks_out_the_tag_matching_the_floor(self, tmp_path, prelude):
-        """The floor 26.10.6 selects the tag 26.10.06 on the second commit.
+        """The floor 26.10.6 selects the tag 26.10.06 on the second commit, detached.
 
         The tip is a later commit, so a helper that leaves the clone on its
         branch fails the equality; the floor text is not a tag, so an exact
-        text lookup fails the checkout.
+        text lookup fails the checkout. Branches named 26.10.06 and
+        tags/26.10.06 point at the tip, so a checkout of ``tags/26.10.06``
+        switches to the second and lands there.
         """
         repo = tmp_path / 'MORS'
         tagged, tip = _module_repo(repo)
+        git(repo, 'branch', '26.10.06', tip)
+        git(repo, 'branch', 'tags/26.10.06', tip)
         root = scratch_proteus_root(tmp_path / 'proteus', ['fwl-mors>=26.10.6'])
         result = _run_checkout_floor_tag(root, repo, prelude)
         assert result.returncode == 0, result.stderr
         head = git(repo, 'rev-parse', 'HEAD')
         assert head == tagged
         assert head != tip
+        detached = subprocess.run(
+            ['git', '-C', str(repo), 'symbolic-ref', '-q', 'HEAD'],
+            capture_output=True,
+            timeout=10,
+        )
+        assert detached.returncode == 1
         assert f'fwl-mors: checked out release tag 26.10.06 at {tagged[:7]}' in result.stdout
         assert result.stdout.rstrip().endswith('AFTER')
 
@@ -1240,51 +1250,67 @@ class TestCloneAndInstall:
         return clone, first
 
     def test_branch_clone_is_left_on_its_commit(self, site):
-        """A second run reports a clone on a branch, with the commands that move it by hand,
-        and installs it unchanged.
+        """A second run reports a clone on a branch behind the tag, with the commands that move
+        it by hand, and installs it unchanged.
 
-        The clone is moved to the branch tip first, as a developer would; a
-        function that checks out the floor tag again moves it back.
+        The clone is put on a new branch at the commit below the tag first, as a
+        developer would; a function that checks out the floor tag again moves it.
         """
-        _, tip = site['shas']['MORS']
+        tagged, _ = site['shas']['MORS']
         clone, real = site['root'] / 'MORS', site['clone']
         assert self._call(site, 'MORS', 'fwl-mors').returncode == 0
-        git(clone, 'checkout', '-q', 'main')
+        git(clone, 'checkout', '-q', '-b', 'old', 'HEAD~1')
+        below = git(clone, 'rev-parse', 'HEAD')
         result = self._call(site, 'MORS', 'fwl-mors')
         assert result.returncode == 0, result.stdout + result.stderr
-        assert git(clone, 'rev-parse', 'HEAD') == tip
+        assert git(clone, 'rev-parse', 'HEAD') == below != tagged
         lines = result.stdout.splitlines()
         line = (
-            f'fwl-mors: {real} stays as it is: on branch main;'
+            f'fwl-mors: {real} stays as it is: on branch old, behind the tag;'
             ' PROTEUS expects the release tag 26.10.06'
         )
         assert lines.count(line) == 1
-        assert lines[lines.index(line) + 3] == f'        git -C {real} checkout tags/26.10.06'
+        assert lines[lines.index(line) + 3] == (
+            f'        git -C {real} checkout --detach refs/tags/26.10.06'
+        )
         assert 'checked out release tag' not in result.stdout
         assert 'is at the release tag' not in result.stdout
         assert site['log'].read_text().splitlines()[1:] == [f'install -U -e {real}']
 
     def test_logged_stay_line_and_its_commands_reach_the_terminal(self, site):
-        """With a log file, the stay line of a clone on a branch and the 4 command lines below
-        it stay on the terminal, each once, and the line of the setup script does not."""
-        clone, real = site['root'] / 'MORS', site['clone']
-        assert self._call(site, 'MORS', 'fwl-mors').returncode == 0
-        git(clone, 'checkout', '-q', 'main')
+        """With a log file, the stay line of a clone behind its tag and the 4 command lines
+        below it stay on the terminal, each once, and the line of the setup script does not."""
+        real = site['clone']
+        self._detached_at_old_tag(site)
         logfile = site['tmp'] / 'install.log'
         result = self._call(site, 'MORS', 'fwl-mors', LOGFILE=str(logfile))
         assert result.returncode == 0, result.stdout + result.stderr
         shown = result.stdout.splitlines()
+        stay = [ln for ln in shown if 'stays as it is' in ln]
+        assert len(stay) == 1 and 'behind the tag' in stay[0], shown
+        assert stay[0].endswith('PROTEUS expects the release tag 26.10.06')
         for line in (
-            f'fwl-mors: {real} stays as it is: on branch main;'
-            ' PROTEUS expects the release tag 26.10.06',
             f'        git -C {real} fetch --tags',
-            f'        git -C {real} checkout tags/26.10.06',
+            f'        git -C {real} checkout --detach refs/tags/26.10.06',
             f'        pip install -e {real}',
             '        bash tools/get_python_module.sh MORS --force',
         ):
             assert shown.count(line) == 1, line
         assert 'Set up MORS...' not in result.stdout
         assert 'Set up MORS...' in logfile.read_text()
+
+    def test_logged_newer_clone_line_reaches_the_terminal(self, site):
+        """With a log file, the one line of a clone that is newer than its tag stays on the
+        terminal, and no command line follows it."""
+        clone, real = site['root'] / 'MORS', site['clone']
+        assert self._call(site, 'MORS', 'fwl-mors').returncode == 0
+        git(clone, 'checkout', '-q', 'main')
+        result = self._call(site, 'MORS', 'fwl-mors', LOGFILE=str(site['tmp'] / 'install.log'))
+        assert result.returncode == 0, result.stdout + result.stderr
+        shown = result.stdout.splitlines()
+        line = f'fwl-mors: {real} is newer than the release tag 26.10.06 (branch main)'
+        assert shown.count(line) == 1, shown
+        assert not any('git -C' in ln or '--force' in ln for ln in shown)
 
     def test_detached_clone_at_an_older_tag_stays_where_it_is(self, site):
         """A clone the installer left at the tag of an older floor (26.10.05) stays there, with
@@ -1325,21 +1351,20 @@ class TestCloneAndInstall:
         assert 'Cloning' not in result.stdout
         assert site['log'].read_text().splitlines()[1:] == [f'install -U -e {real}']
 
-    def test_detached_clone_ahead_of_the_floor_tag_stays(self, site):
-        """A detached clone that the user put on the tip, past the floor tag, stays there with
-        a line that says so and is installed; the installer does not move it back."""
+    def test_detached_clone_ahead_of_the_floor_tag_is_in_order(self, site):
+        """A detached clone that the user put on the tip, past the floor tag, satisfies the >=
+        floor: it stays there with one line that says it is newer, without hand commands, and
+        is installed; the installer does not move it back."""
         tagged, tip = site['shas']['MORS']
         clone, _ = self._detached_at_old_tag(site)
         git(clone, 'checkout', '-q', '--detach', tip)
         result = self._call(site, 'MORS', 'fwl-mors')
         assert result.returncode == 0, result.stdout + result.stderr
         assert git(clone, 'rev-parse', 'HEAD') == tip != tagged
-        line = (
-            f'fwl-mors: {site["clone"]} stays as it is: commit {tip[:7]}'
-            f' (26.10.06-1-g{tip[:7]}), newer than the tag; PROTEUS expects the release tag'
-            ' 26.10.06'
-        )
+        line = f'fwl-mors: {site["clone"]} is newer than the release tag 26.10.06 (commit {tip[:7]})'
         assert result.stdout.splitlines().count(line) == 1
+        assert 'stays as it is' not in result.stdout
+        assert 'fetch --tags' not in result.stdout
         assert 'checked out release tag' not in result.stdout
         assert 'is at the release tag' not in result.stdout
         assert site['log'].read_text().splitlines() == [f'install -U -e {site["clone"]}']
@@ -1559,16 +1584,17 @@ class TestModulePhaseSummary:
         return result
 
     def test_summary_names_exactly_the_clones_that_stay(self, site):
-        """MORS on a branch, CALLIOPE as a plain folder, ZEPHYRUS one commit past the tag and
-        aragog one commit below it are named in the order the installer reached them; JANUS,
-        cloned new at the tag, and Zalmoxis, already at it, are not.
+        """MORS on a branch below the tag, CALLIOPE as a plain folder and aragog one commit
+        below the tag are named in the order the installer reached them, in one warning that
+        says what the install does with them; JANUS, cloned new at the tag, Zalmoxis, already
+        at it, and ZEPHYRUS, one commit past it, are not.
 
-        Each clone that stays gets its stay line once and keeps its HEAD, and no
-        line says that it was checked out at the release tag. The summary file is
-        removed.
+        Each clone that stays gets its stay line once and keeps its HEAD, ZEPHYRUS gets the
+        line of a newer clone, and no line says that a clone was checked out at the release
+        tag. The summary file is removed.
         """
         real = site['real']
-        mors = self._clone(site, 'MORS')
+        mors = self._clone(site, 'MORS', '-b', 'old', '26.10.06~1')
         (site['root'] / 'CALLIOPE').mkdir()
         (site['root'] / 'CALLIOPE' / 'setup.py').write_text('# mine\n')
         tip = site['shas']['ZEPHYRUS'][1]
@@ -1583,27 +1609,23 @@ class TestModulePhaseSummary:
         out = (result.stdout + result.stderr).splitlines()
         summary = [ln for ln in out if 'Not at their release tag' in ln]
         assert summary == [
-            f'{_WARN_PREFIX}Not at their release tag: MORS (branch main),'
-            f' CALLIOPE (not a git clone), ZEPHYRUS (commit {tip[:7]}, newer),'
-            f' aragog (commit {below[:7]}, behind)'
+            f'{_WARN_PREFIX}Not at their release tag: MORS (branch old, behind),'
+            f' CALLIOPE (not a git clone), aragog (commit {below[:7]}, behind).'
+            ' A clone that is older than the minimum version is not used: the PROTEUS install'
+            ' takes that release from PyPI. The commands printed above for each clone move it'
+            ' to its tag or replace it.'
         ]
         expected = 'PROTEUS expects the release tag 26.10.06'
         for dist, repo, found in (
-            ('fwl-mors', 'MORS', f'on branch main; {expected}'),
+            ('fwl-mors', 'MORS', f'on branch old, behind the tag; {expected}'),
             ('fwl-calliope', 'CALLIOPE', 'not a git clone; PROTEUS expects release 26.10.6'),
-            (
-                'fwl-zephyrus',
-                'ZEPHYRUS',
-                f'commit {tip[:7]} (26.10.06-1-g{tip[:7]}), newer than the tag; {expected}',
-            ),
-            (
-                'fwl-aragog',
-                'aragog',
-                f'commit {below[:7]} ({below[:7]}), behind the tag; {expected}',
-            ),
+            ('fwl-aragog', 'aragog', f'commit {below[:7]}, behind the tag; {expected}'),
         ):
             assert out.count(f'{dist}: {real / repo} stays as it is: {found}') == 1
             assert not [ln for ln in out if ln.startswith(f'{dist}: checked out release tag')]
+        zephyrus_line = f'fwl-zephyrus: {real / "ZEPHYRUS"} is newer than the release tag'
+        assert out.count(f'{zephyrus_line} 26.10.06 (commit {tip[:7]})') == 1
+        assert not [ln for ln in out if ln.startswith('fwl-zephyrus: checked out release tag')]
         assert {c: git(c, 'rev-parse', 'HEAD') for c in heads} == heads
         assert any(ln.startswith('fwl-janus: checked out release tag 26.10.06') for ln in out)
         assert f'fwl-zalmoxis: {real / "Zalmoxis"} is at the release tag 26.10.06' in out
@@ -1639,9 +1661,10 @@ class TestModulePhaseSummary:
         assert all(heads[repo] != site['shas'][repo][1] for repo in self.REPOS)
         assert list(Path(site['env']['TMPDIR']).iterdir()) == []
 
-    def test_new_aragog_clone_on_a_paired_branch_is_named(self, site):
+    def test_aragog_clone_on_a_paired_branch_is_not_named(self, site):
         """PROTEUS on a feature branch that the aragog remote has gives a new aragog clone on
-        that branch, which the summary names; the other modules, at their tag, are not."""
+        that branch, which is in order: no summary line, neither after the run that clones it
+        nor after a second run, which prints the paired-branch line for it."""
         work = site['root'].parent / 'work' / 'aragog'
         git(work, 'checkout', '-q', '-b', _PAIRED_BRANCH)
         (work / 'version.txt').write_text('paired\n')
@@ -1652,13 +1675,16 @@ class TestModulePhaseSummary:
         site['env']['GITHUB_HEAD_REF'] = _PAIRED_BRANCH
         result = self._run_phase(site)
         assert result.returncode == 0, result.stdout + result.stderr
-        summary = [
-            ln for ln in (result.stdout + result.stderr).splitlines() if 'Not at their' in ln
-        ]
-        assert summary == [
-            f'{_WARN_PREFIX}Not at their release tag: aragog (paired branch {_PAIRED_BRANCH})'
-        ]
+        assert 'Not at their' not in result.stdout + result.stderr
         assert git(site['root'] / 'aragog', 'symbolic-ref', '--short', 'HEAD') == _PAIRED_BRANCH
+        again = self._run_phase(site)
+        assert again.returncode == 0, again.stdout + again.stderr
+        assert 'Not at their' not in again.stdout + again.stderr
+        assert (
+            f'fwl-aragog: {site["real"] / "aragog"} is on the paired branch {_PAIRED_BRANCH},'
+            ' as PROTEUS on that branch expects'
+        ) in again.stdout.splitlines()
+        assert 'stays as it is' not in again.stdout
 
     @pytest.mark.parametrize('value', [None, ''], ids=['unset', 'empty'])
     def test_summary_tolerates_an_unset_or_empty_file_name(self, value):

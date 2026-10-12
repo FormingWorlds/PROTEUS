@@ -102,7 +102,6 @@ guard_dirty_checkout() {
     fi
 }
 
-
 # Report whether GitHub accepts an SSH key, as "true" or "false" on stdout.
 #
 # `ssh -T git@github.com` exits 1 when the key is accepted (GitHub refuses
@@ -169,13 +168,52 @@ _floor_tag_of() {
 checkout_floor_tag() {
     local dist="$1" dir="$2" tag commit
     tag=$(_floor_tag_of "$dist" "$dir") || exit 1
-    # Without --quiet, git warns when the move leaves commits of a detached HEAD behind.
-    if ! git -C "$dir" -c advice.detachedHead=false checkout "tags/$tag"; then
+    # refs/tags/ passes a branch named tags/<tag>; without --quiet git names commits left behind.
+    if ! git -C "$dir" -c advice.detachedHead=false checkout --detach "refs/tags/$tag"; then
         echo "ERROR: cannot check out tag $tag of $dist in $dir" >&2
         exit 1
     fi
     commit=$(git -C "$dir" rev-parse --short HEAD)
     echo "$dist: checked out release tag $tag at $commit"
+}
+
+# Usage: _proteus_feature_branch. Prints the PROTEUS branch, GITHUB_HEAD_REF or GITHUB_REF_NAME in CI,
+# else the branch of the PROTEUS checkout; prints nothing for main, master or a detached HEAD.
+_proteus_feature_branch() {
+    local branch="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}"
+    if [ -z "$branch" ]; then
+        branch=$(git -C "$proteus_root" rev-parse --abbrev-ref HEAD 2>/dev/null) || branch=""
+    fi
+    case "$branch" in
+        '' | HEAD | main | master) ;;
+        *) echo "$branch" ;;
+    esac
+}
+
+# Usage: paired_branch_of <clone-dir>. Prints the PROTEUS feature branch when the origin of the clone
+# has a branch of that name, read from its remote-tracking refs without a fetch; else prints nothing.
+paired_branch_of() {
+    local branch
+    branch=$(_proteus_feature_branch)
+    if [ -n "$branch" ] &&
+        git -C "$1" rev-parse --verify --quiet "refs/remotes/origin/$branch" >/dev/null 2>&1; then
+        echo "$branch"
+    fi
+}
+
+# Usage: checkout_paired_or_floor <distribution> <checkout-dir> <repo name>. Checks out the paired
+# branch of a new clone (paired_branch_of), else the floor tag; exits 1 on failure, so call it plainly.
+checkout_paired_or_floor() {
+    local dist="$1" dir="$2" name="$3" branch
+    branch=$(paired_branch_of "$dir")
+    if [ -z "$branch" ]; then
+        checkout_floor_tag "$dist" "$dir"
+        return 0
+    fi
+    git -C "$dir" checkout "$branch" ||
+        { echo "ERROR: cannot checkout $name branch $branch" >&2; exit 1; }
+    echo "PROTEUS is on branch '$branch'; installed paired $name branch at" \
+        "$(git -C "$dir" rev-parse --short HEAD)"
 }
 
 # Usage: unchanged_note <path>. Prints "; <path> is unchanged" for an error message when <path> exists.
@@ -242,9 +280,9 @@ _clone_advice() {
         echo "        git -C $dir fetch --tags"
         if [ -n "$4" ]; then
             tag=$(printf '%q' "$4")
-            echo "        git -C $dir checkout tags/$tag"
+            echo "        git -C $dir checkout --detach refs/tags/$tag"
         else
-            echo "        git -C $dir checkout \"tags/\$(git -C $dir tag -l |" \
+            echo "        git -C $dir checkout --detach \"refs/tags/\$(git -C $dir tag -l |" \
                 "python tools/_module_pins.py $1 floor-tag)\""
         fi
         echo "        pip install -e $dir"
@@ -254,10 +292,31 @@ _clone_advice() {
     echo "        bash tools/$3 --force"
 }
 
-# Usage: report_clone_state <distribution> <clone-dir> <script-label>. Reads what is at <clone-dir>
-# with read-only git calls and prints the at-tag line, or the stay line and the advice lines.
+# Usage: _local_changes_note <clone-dir>. Prints ", with local changes" when a tracked file differs from
+# HEAD; --no-optional-locks keeps git status from rewriting the index.
+_local_changes_note() {
+    local changes
+    changes=$(git --no-optional-locks -C "$1" status --porcelain --untracked-files=no 2>/dev/null) ||
+        changes=""
+    [ -z "$changes" ] || echo ", with local changes"
+}
+
+# Usage: _commit_text <clone-dir> <head>. Prints "commit <short hash>", followed by what git describe
+# names in brackets when that is a tag and not the hash alone.
+_commit_text() {
+    local desc
+    desc=$(git -C "$1" describe --tags --always HEAD 2>/dev/null) || desc=""
+    case "$2" in
+        "$desc"*) echo "commit ${2:0:7}" ;;
+        *) echo "commit ${2:0:7} ($desc)" ;;
+    esac
+}
+
+# Usage: report_clone_state <distribution> <clone-dir> <script-label>. Reads <clone-dir> with read-only
+# git calls; prints one line for a clone at its tag, newer than it or on the paired branch (with
+# get_pairs_branch=true), else the stay line and the advice lines.
 report_clone_state() {
-    local dist="$1" dir="${2%/}" label="$3" tag="" tag_commit="" head="" rel="" branch
+    local dist="$1" dir="${2%/}" label="$3" tag="" tag_commit="" head="" rel="" branch=""
     local found summary readable=false
     if [ ! -e "$dir/.git" ] && [ ! -L "$dir/.git" ]; then
         found="not a git clone"
@@ -274,29 +333,37 @@ report_clone_state() {
                 2>/dev/null) || tag_commit=""
         fi
         if [ -n "$head" ] && [ "$head" = "$tag_commit" ]; then
-            echo "$dist: $dir is at the release tag $tag"
+            echo "$dist: $dir is at the release tag $tag$(_local_changes_note "$dir")"
             return 0
         fi
-        if branch=$(git -C "$dir" symbolic-ref -q --short HEAD 2>/dev/null); then
+        branch=$(git -C "$dir" symbolic-ref -q --short HEAD 2>/dev/null) || branch=""
+        if [ -n "$branch" ] && [ "${get_pairs_branch:-false}" = true ] &&
+            [ "$branch" = "$(paired_branch_of "$dir")" ]; then
+            echo "$dist: $dir is on the paired branch $branch, as PROTEUS on that branch expects"
+            return 0
+        fi
+        if [ -n "$head" ] && [ -n "$tag_commit" ]; then
+            rel=$(_relation_to_tag "$dir" "$head" "$tag_commit")
+        fi
+        if [ -n "$branch" ]; then
             found="on branch $branch"
             summary="branch $branch"
         elif [ -z "$head" ]; then
             found="a HEAD that git cannot resolve"
             summary="HEAD unknown"
         else
-            found="commit ${head:0:7} ($(git -C "$dir" describe --tags --always HEAD 2>/dev/null ||
-                echo "${head:0:7}"))"
+            found=$(_commit_text "$dir" "$head")
             summary="commit ${head:0:7}"
-            if [ -n "$tag_commit" ]; then
-                rel=$(_relation_to_tag "$dir" "$head" "$tag_commit")
-            fi
-            case "$rel" in
-                '') ;;
-                behind*) found="$found, $rel"; summary="$summary, behind" ;;
-                newer*) found="$found, $rel"; summary="$summary, newer" ;;
-                *) found="$found, $rel"; summary="$summary, other history" ;;
-            esac
         fi
+        case "$rel" in
+            '') ;;
+            newer*)
+                echo "$dist: $dir is newer than the release tag $tag ($summary)"
+                return 0
+                ;;
+            behind*) found="$found, $rel"; summary="$summary, behind" ;;
+            *) found="$found, $rel"; summary="$summary, other history" ;;
+        esac
     fi
     echo "$dist: $dir stays as it is: $found; $(expected_text "$dist" "$tag")"
     record_clone_stays "$dir" "$summary"
@@ -326,8 +393,11 @@ install_existing_clone() {
         echo "$dist: the build step ran in the existing folder $dir"
     fi
     if ! pip install -U -e "$dir"; then
-        echo "ERROR: editable install of $dir failed; to replace it with a new clone, run" >&2
-        echo "       bash tools/$label --force  from the PROTEUS folder" >&2
+        echo "ERROR: pip could not install $dir (its message is above)" >&2
+        if [ ! -f "$dir/pyproject.toml" ] && [ ! -f "$dir/setup.py" ]; then
+            echo "       It has no pyproject.toml or setup.py; to replace it with a new clone, run" >&2
+            echo "       bash tools/$label --force  from the PROTEUS folder" >&2
+        fi
         exit 1
     fi
     echo "Done!"

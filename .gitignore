@@ -106,22 +106,8 @@ morrigan
 Morrigan
 MORRIGAN
 # The new clone and the old copy that a module setup script makes next to the module folder
-/MORS.tmp.*
-/MORS.old.*
-/JANUS.tmp.*
-/JANUS.old.*
-/CALLIOPE.tmp.*
-/CALLIOPE.old.*
-/ZEPHYRUS.tmp.*
-/ZEPHYRUS.old.*
-/aragog.tmp.*
-/aragog.old.*
-/Zalmoxis.tmp.*
-/Zalmoxis.old.*
-/VULCAN.tmp.*
-/VULCAN.old.*
-/Morrigan.tmp.*
-/Morrigan.old.*
+/*.tmp.[0-9]*
+/*.old.[0-9]*
 
 # misc
 ######

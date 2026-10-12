@@ -16,6 +16,7 @@ from unittest.mock import MagicMock
 import numpy as np
 import pandas as pd
 import pytest
+from matplotlib.colors import to_rgb
 
 import proteus.plot.cpl_orbit as orbit_mod
 from proteus.utils.constants import AU, R_earth, secs_per_hour
@@ -891,3 +892,32 @@ def test_plot_orbit_entry_dispatches_to_plot_lovenumber_for_obliqua(monkeypatch,
     # model/times pair (output_dir is the first positional argument).
     assert captured['data'][1] == 'obliqua'
     assert captured['data'][2] == [1000, 2000]
+
+
+def test_the_orbit_plots_take_their_neutral_colours_from_the_style(draw_real, tmp_path, style):
+    """On real axes the note of an absent satellite and the Love-number
+    trajectories have the mid grey of the style, and the satellite semi-major
+    axis of the evection plot its text colour: 'grey' and black by default."""
+    (tmp_path / 'plots').mkdir()
+    out = str(tmp_path)
+
+    (fig,) = draw_real(orbit_mod.plot_orbit, _make_hf_all(), out, False, 'png', rc=style.rc)
+    notes = [t for ax in fig.axes for t in ax.texts if t.get_text() == 'No Satellite Data']
+    assert len(notes) == 3
+    assert to_rgb(fig.axes[0].lines[0].get_color()) == pytest.approx(to_rgb(style.text))
+    (with_sat,) = draw_real(orbit_mod.plot_orbit, _make_hf_all(), out, True, 'png', rc=style.rc)
+    assert to_rgb(with_sat.axes[1].lines[0].get_color()) == pytest.approx(to_rgb(style.text))
+    for note in notes:
+        assert to_rgb(note.get_color()) == pytest.approx(to_rgb(style.mid_grey))
+
+    (fig,) = draw_real(
+        orbit_mod.plot_evection, _make_evection_hf_all(), out, 'png', rc=style.rc
+    )
+    line = {ln.get_label(): ln for ln in fig.axes[0].lines}
+    assert to_rgb(line["a' (satellite)"].get_color()) == pytest.approx(to_rgb(style.text))
+    assert to_rgb(line["a'_res (evection)"].get_color()) == pytest.approx(to_rgb('#a8c6e8'))
+
+    data = [_make_lovenumber_ds(1e-2, 2e-3), _make_lovenumber_ds(1.5e-2, 3e-3)]
+    (fig,) = draw_real(orbit_mod.plot_lovenumber, out, [1000, 2000], data, 'png', rc=style.rc)
+    for ax in fig.axes[:2]:
+        assert to_rgb(ax.lines[0].get_color()) == pytest.approx(to_rgb(style.mid_grey))
