@@ -21,14 +21,14 @@ Figures produced:
 Usage:
     # Nominal cases only
     python tools/plot_chili_comparison.py \\
-        --proteus-earth output/tutorial_earth/ \\
-        --proteus-venus output/tutorial_venus/ \\
+        --proteus-earth output/chili_earth/ \\
+        --proteus-venus output/chili_venus/ \\
         --output output_files/chili_plots/
 
     # With the 3x3 Earth volatile grid
     python tools/plot_chili_comparison.py \\
-        --proteus-earth output/tutorial_earth/ \\
-        --proteus-venus output/tutorial_venus/ \\
+        --proteus-earth output/chili_earth/ \\
+        --proteus-venus output/chili_venus/ \\
         --grid-dir output/ \\
         --output output_files/chili_plots/
 
@@ -1636,13 +1636,13 @@ def main():
         '--proteus-earth',
         type=Path,
         default=None,
-        help='Path to PROTEUS Nominal Earth output directory (e.g. output/tutorial_earth/)',
+        help='Path to PROTEUS Nominal Earth output directory (e.g. output/chili_earth/)',
     )
     parser.add_argument(
         '--proteus-venus',
         type=Path,
         default=None,
-        help='Path to PROTEUS Nominal Venus output directory (e.g. output/tutorial_venus/)',
+        help='Path to PROTEUS Nominal Venus output directory (e.g. output/chili_venus/)',
     )
     parser.add_argument(
         '--chili-repo',

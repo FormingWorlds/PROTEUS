@@ -93,7 +93,7 @@ planetary surface conditions.
 | Parameter | Type | Default | Description |
 |---|---|---|---|
 | `module` | str | `"calliope"` | Outgassing module to be used. Choices: `"calliope"`, `"atmodeller"`, `"dummy"`. |
-| `fO2_shift_IW` | float | `4.0` | Oxygen fugacity relative to Iron-Wustite \[log10 units\]. Must be >= -12.0 and <= 12.0. |
+| `fO2_shift_IW` | float | `2.0` | Oxygen fugacity relative to Iron-Wustite \[log10 units\]. Must be >= -12.0 and <= 12.0. |
 | `mass_thresh` | float | `1e+16` | Minimum threshold for element mass \[kg\]. Outgassing treats H, C, N or S below it as absent; escape sets a non-noble element total below it to zero, except on a mantle frozen with params.stop.solid.freeze_volatiles. Noble gases are exempt. Must be > 0.0. |
 | `h2_binodal` | bool | `false` | Enable binodal-controlled H2 partitioning between atmosphere and magma ocean using the Rogers+2025 H2-MgSiO3 miscibility model. |
 | `T_floor` | float | `700.0` | Temperature floor \[K\]. The outgassing temperature is clamped to this value from below before the chemistry solve. Must be > 0.0. |

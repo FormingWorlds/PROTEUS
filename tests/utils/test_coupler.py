@@ -328,17 +328,22 @@ def test_extend_helpfile_warns_on_unknown_keys(caplog):
     row = ZeroHelpfileRow()
     row['_transient_scratch'] = 3000.0  # private transient key: must not warn
     row['core_state_initial'] = 'liquid'  # allowlisted string key: must not warn
+    row['M_int_target'] = 5.9e24  # allowlisted structure mass target [kg]: must not warn
+    row['O_kg_user_ic'] = 1.0e21  # allowlisted oxygen budget [kg]: must not warn
+    row['M_int_target_prev'] = 1.0  # allowlisted name plus a suffix: must warn
     row['nonsense_future_key'] = 1.0  # genuine drift: must warn
     hf = CreateHelpfileFromDict(ZeroHelpfileRow())
 
     with caplog.at_level(logging.WARNING, logger='fwl.proteus.utils.coupler'):
-        ExtendHelpfile(hf, row)
+        extended = ExtendHelpfile(hf, row)
 
     warns = [r for r in caplog.records if r.levelno >= logging.WARNING]
     joined = '\n'.join(r.message for r in warns)
     assert 'nonsense_future_key' in joined, f'Expected unknown-key warning, got: {joined!r}'
     assert '_transient_scratch' not in joined, 'Private key leaked into warning'
-    assert 'core_state_initial' not in joined, 'Allowlisted key triggered warning'
+    # The warning lists exactly the two undeclared keys, so no allowlisted key is in it.
+    assert "['M_int_target_prev', 'nonsense_future_key']" in joined
+    assert list(extended.columns) == GetHelpfileKeys()
 
 
 @pytest.mark.unit

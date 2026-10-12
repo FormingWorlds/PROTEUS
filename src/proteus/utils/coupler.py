@@ -854,6 +854,7 @@ RESUMABLE_ZERO_FILL_KEYS = frozenset(
     {
         'esc_kg_cumulative',
         'M_accreted_rock',
+        'M_core_target',
         'M_desiccated',
         'M_volatile_change',
         'n_impacts_applied',
@@ -972,6 +973,7 @@ def GetHelpfileKeys():
         'RF_depth',         # depth of rheological front [1]
         'M_core',           # dry mass of core [kg]
         'M_mantle',         # dry mass of mantle [kg]
+        'M_core_target',    # core mass target of the Zalmoxis structure; 0 with another structure module [kg]
         'M_mantle_solid',   # dry mass of solid-phase mantle [kg]
         'M_mantle_liquid',  # dry mass of liquid-phase mantle [kg]
         'T_pot',            # characteristic mantle potential temperature [K]
@@ -1395,6 +1397,17 @@ def _populate_energy_residual(current_hf: pd.DataFrame, new_row: dict) -> None:
     new_row['solver_residual_J'] = solver_resid_prev + solver_inc
 
 
+# Keys that modules write into hf_row and that are not helpfile columns;
+# ExtendHelpfile leaves them out of the CSV without a warning.
+_ALLOWED_NON_SCHEMA_KEYS = frozenset(
+    {
+        'core_state_initial',  # string: 'liquid'/'mixed'/'solid'
+        'M_int_target',  # mass target of the latest structure solve [kg]
+        'O_kg_user_ic',  # user oxygen budget [kg]; check_ic_oxygen_budget sets it to -1.0
+    }
+)
+
+
 def ExtendHelpfile(current_hf: pd.DataFrame, new_row: dict):
     """
     Extend helpfile with new row of variables
@@ -1428,20 +1441,6 @@ def ExtendHelpfile(current_hf: pd.DataFrame, new_row: dict):
     schema = set(GetHelpfileKeys())
 
     row_keys = {k for k in new_row.keys() if not k.startswith('_')}
-    # Known non-numeric / non-persistent keys that are written into hf_row
-    # but deliberately not tracked in the helpfile CSV schema.
-    _ALLOWED_NON_SCHEMA_KEYS = frozenset(
-        {
-            'core_state_initial',  # string: 'liquid'/'mixed'/'solid'
-            # IC consistency sentinel for the issue #677 oxygen-budget
-            # check. Set by calc_target_elemental_inventories, consumed
-            # and reset to -1.0 by check_ic_oxygen_budget on the first
-            # outgas call. Intentionally not persisted to the CSV
-            # because subsequent runs (or resumed runs) re-derive it
-            # from the config on the next IC pass.
-            'O_kg_user_ic',
-        }
-    )
     missing_keys = schema - row_keys
     unknown_keys = row_keys - schema - _ALLOWED_NON_SCHEMA_KEYS
     if missing_keys:

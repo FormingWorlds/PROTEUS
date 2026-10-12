@@ -296,7 +296,7 @@ class Outgas:
         default='calliope', validator=validators.in_(('calliope', 'atmodeller', 'dummy'))
     )
     fO2_shift_IW: float = field(
-        default=4.0, validator=[validators.ge(-12.0), validators.le(12.0)]
+        default=2.0, validator=[validators.ge(-12.0), validators.le(12.0)]
     )
 
     mass_thresh: float = field(default=1e16, validator=validators.gt(0.0))
