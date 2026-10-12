@@ -1612,8 +1612,9 @@ class TestModulePhaseSummary:
             f'{_WARN_PREFIX}Not at their release tag: MORS (branch old, behind),'
             f' CALLIOPE (not a git clone), aragog (commit {below[:7]}, behind).'
             ' A clone that is older than the minimum version is not used: the PROTEUS install'
-            ' takes that release from PyPI. The commands printed above for each clone move it'
-            ' to its tag or replace it.'
+            ' takes that release from PyPI. The commands printed above move a clone to its tag'
+            ' or replace it; a paired branch without the release has no command, its release'
+            ' comes from PyPI.'
         ]
         expected = 'PROTEUS expects the release tag 26.10.06'
         for dist, repo, found in (
@@ -1720,7 +1721,8 @@ class TestModulePhaseSummary:
             f'{_WARN_PREFIX}Not at their release tag: aragog (paired branch {_PAIRED_BRANCH},'
             ' without the release 26.10.06). A clone that is older than the minimum version is'
             ' not used: the PROTEUS install takes that release from PyPI. The commands printed'
-            ' above for each clone move it to its tag or replace it.'
+            ' above move a clone to its tag or replace it; a paired branch without the release'
+            ' has no command, its release comes from PyPI.'
         ]
         assert not [ln for ln in out if 'git -C' in ln or 'stays as it is' in ln]
         assert git(aragog, 'symbolic-ref', '--short', 'HEAD') == _PAIRED_BRANCH

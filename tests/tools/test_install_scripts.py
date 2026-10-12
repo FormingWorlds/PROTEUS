@@ -3191,8 +3191,9 @@ class TestPairedModuleRerun:
 
     def test_new_clone_takes_the_paired_branch(self, tmp_path, script, repo, dist):
         """Without a clone, a PROTEUS feature branch that the remote has gives a new clone on
-        that branch, at its own commit, neither the tag nor the tip; a clone on the paired
-        branch is in order, so the installer summary file gets no entry."""
+        that branch, at its own commit, neither the tag nor the tip. The paired branch of the
+        fixture starts below the tag, so the first install prints the line about the release
+        from PyPI and records the summary entry, as a second run does."""
         site = _paired_site(tmp_path, repo, dist)
         tagged, tip = site['shas'][repo]
         stays = tmp_path / 'stays.txt'
@@ -3207,7 +3208,10 @@ class TestPairedModuleRerun:
         assert len(_git_calls(site, 'clone')) == 1
         paired_line = f"PROTEUS is on branch '{_PAIRED_BRANCH}'; installed paired {repo} branch"
         assert f'{paired_line} at {site["paired"][:7]}' in result.stdout
-        assert not stays.exists()
+        assert result.stdout.splitlines().count(_WITHOUT_TAG_LINE) == 1
+        assert stays.read_text() == (
+            f'{repo} (paired branch {_PAIRED_BRANCH}, without the release 26.04.22)\n'
+        )
 
     @pytest.mark.parametrize('source', ['CI variable', 'PROTEUS checkout'])
     def test_rerun_on_a_paired_branch_without_the_tag_names_it(

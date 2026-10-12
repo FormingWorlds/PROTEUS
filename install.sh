@@ -138,7 +138,7 @@ to_terminal() {
 # start and one at the end; the output goes to $LOGFILE only. A failure shows its last 40 lines.
 run_logged() {
     local takes="" what rc=0 t0=$SECONDS tmp where="the log file"
-    local show='checked out release tag|installed paired [A-Za-z]* branch|stays as it is|is newer than the release tag|is on the paired branch|^    (From the PROTEUS folder|Or replace it)|^        (git -C|pip install -e|bash tools/)'
+    local show='checked out release tag|installed paired [A-Za-z]* branch|stays as it is|is newer than the release tag|is on the paired branch|^    (From the PROTEUS folder|Or replace it|This branch does not hold the release)|^        (git -C|pip install -e|bash tools/)'
     if [ "${1:-}" = "--takes" ]; then
         takes=" (can take $2)"
         shift 2
@@ -1160,7 +1160,8 @@ report_stayed_clones() {
         list=$(awk 'NR > 1 {printf ", "} {printf "%s", $0}' "$PROTEUS_CLONE_STAYS")
         warn "Not at their release tag: $list. A clone that is older than the minimum version is" \
             "not used: the PROTEUS install takes that release from PyPI. The commands printed" \
-            "above for each clone move it to its tag or replace it."
+            "above move a clone to its tag or replace it; a paired branch without the release" \
+            "has no command, its release comes from PyPI."
     fi
     rm -f "$PROTEUS_CLONE_STAYS"
 }

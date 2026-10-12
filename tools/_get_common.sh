@@ -201,10 +201,27 @@ paired_branch_of() {
     fi
 }
 
+# Usage: _note_paired_without_release <dir> <branch> <tag> <head> <tag-commit> [<final dir>]. For a paired
+# branch whose HEAD lacks the commit of the floor tag, prints the line that says so and records the
+# summary entry, under <final dir> when the clone is still in its temporary folder.
+_note_paired_without_release() {
+    local rel=""
+    if [ -n "$4" ] && [ -n "$5" ]; then
+        rel=$(_relation_to_tag "$1" "$4" "$5")
+    fi
+    case "$rel" in
+        'behind the tag' | 'on a line of history without the tag')
+            echo "    This branch does not hold the release $3: the PROTEUS install" \
+                "takes that release from PyPI, not this folder."
+            record_clone_stays "${6:-$1}" "paired branch $2, without the release $3"
+            ;;
+    esac
+}
+
 # Usage: checkout_paired_or_floor <distribution> <checkout-dir> <repo name>. Checks out the paired
 # branch of a new clone (paired_branch_of), else the floor tag; exits 1 on failure, so call it plainly.
 checkout_paired_or_floor() {
-    local dist="$1" dir="$2" name="$3" branch
+    local dist="$1" dir="$2" name="$3" branch tag
     branch=$(paired_branch_of "$dir")
     if [ -z "$branch" ]; then
         checkout_floor_tag "$dist" "$dir"
@@ -214,6 +231,12 @@ checkout_paired_or_floor() {
         { echo "ERROR: cannot checkout $name branch $branch" >&2; exit 1; }
     echo "PROTEUS is on branch '$branch'; installed paired $name branch at" \
         "$(git -C "$dir" rev-parse --short HEAD)"
+    tag=$(_floor_tag_of "$dist" "$dir" 2>/dev/null) || tag=""
+    if [ -n "$tag" ]; then
+        _note_paired_without_release "$dir" "$branch" "$tag" "$(git -C "$dir" rev-parse HEAD)" \
+            "$(git -C "$dir" rev-parse --verify --quiet "refs/tags/$tag^{commit}" || true)" \
+            "${dir%.tmp.*}"
+    fi
 }
 
 # Usage: unchanged_note <path>. Prints "; <path> is unchanged" for an error message when <path> exists.
@@ -340,16 +363,7 @@ report_clone_state() {
         if [ -n "$branch" ] && [ "${get_pairs_branch:-false}" = true ] &&
             [ "$branch" = "$(paired_branch_of "$dir")" ]; then
             echo "$dist: $dir is on the paired branch $branch, as PROTEUS on that branch expects"
-            if [ -n "$head" ] && [ -n "$tag_commit" ]; then
-                rel=$(_relation_to_tag "$dir" "$head" "$tag_commit")
-            fi
-            case "$rel" in
-                'behind the tag' | 'on a line of history without the tag')
-                    echo "    This branch does not hold the release $tag: the PROTEUS install" \
-                        "takes that release from PyPI, not this folder."
-                    record_clone_stays "$dir" "paired branch $branch, without the release $tag"
-                    ;;
-            esac
+            _note_paired_without_release "$dir" "$branch" "$tag" "$head" "$tag_commit"
             return 0
         fi
         if [ -n "$head" ] && [ -n "$tag_commit" ]; then
