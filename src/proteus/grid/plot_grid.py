@@ -31,22 +31,38 @@ CATEGORY_COLOURS = {
 # Bar order of the status categories, left to right.
 CATEGORY_ORDER = tuple(CATEGORY_COLOURS)
 
-# The lightest fraction of a sequential colour map, trimmed off when colouring
-# ECDF curves so a pale end-of-range colour stays visible on a white background.
-COLOURMAP_TRIM = 0.15
+# ECDF curve colours must stand out on white: the lighter end of a colour map is
+# trimmed until its colour has a contrast of at least 2:1 against white (relative
+# luminance <= 0.475), trimming at most MAX_COLOURMAP_TRIM of the map.
+MAX_CURVE_LUMINANCE = 0.475
+MAX_COLOURMAP_TRIM = 0.35
 
 
 def _luminance(rgba) -> float:
-    """Return the relative luminance (Rec. 709 weights) of an RGBA colour."""
-    return 0.2126 * rgba[0] + 0.7152 * rgba[1] + 0.0722 * rgba[2]
+    """Return the relative luminance (sRGB, Rec. 709 weights) of an RGBA colour."""
+    rgb = np.asarray(rgba[:3], dtype=float)
+    linear = np.where(rgb <= 0.04045, rgb / 12.92, ((rgb + 0.055) / 1.055) ** 2.4)
+    return float(linear @ np.array([0.2126, 0.7152, 0.0722]))
 
 
-def _trim_colourmap(cmap, trim: float = COLOURMAP_TRIM):
-    """Return ``cmap`` with the lighter of its two ends removed (for visible curves)."""
-    if _luminance(cmap(1.0)) >= _luminance(cmap(0.0)):
-        base = np.linspace(0.0, 1.0 - trim, 256)
-    else:
-        base = np.linspace(trim, 1.0, 256)
+def _trim_colourmap(cmap):
+    """Return ``cmap`` without its too-light end, so every curve colour is visible.
+
+    The lighter of the two ends is cut back to the first colour with luminance
+    <= MAX_CURVE_LUMINANCE (at most MAX_COLOURMAP_TRIM of the map); a map whose
+    ends are both dark enough is returned unchanged.
+    """
+    light_top = _luminance(cmap(1.0)) >= _luminance(cmap(0.0))
+    steps = np.linspace(0.0, MAX_COLOURMAP_TRIM, 71)
+    trim = next(
+        (
+            t
+            for t in steps
+            if _luminance(cmap(1.0 - t if light_top else t)) <= MAX_CURVE_LUMINANCE
+        ),
+        MAX_COLOURMAP_TRIM,
+    )
+    base = np.linspace(0.0, 1.0 - trim, 256) if light_top else np.linspace(trim, 1.0, 256)
     return mpl.colors.LinearSegmentedColormap.from_list(f'{cmap.name}_trim', cmap(base))
 
 
@@ -154,71 +170,58 @@ def plot_status_summary(
     return out_file
 
 
-def clean_series(series: pd.Series, log_axis: bool) -> tuple[pd.Series, int]:
-    """Drop NaN/inf, and on a log axis split off the non-positive values.
-
-    Returns
-    -------
-    tuple of (pandas.Series, int)
-        The values to draw, and how many finite non-positive values were left out
-        because they cannot sit on a log axis (0 on a linear axis). Those values
-        lie below the axis range, so the caller counts them at the left edge of
-        the ECDF rather than discarding them; a warning gives their number.
-    """
-    cleaned = series.replace([np.inf, -np.inf], np.nan).dropna()
-    if not log_axis:
-        return cleaned, 0
-    positive = cleaned[cleaned > 0]
-    n_below = len(cleaned) - len(positive)
-    if n_below:
-        log.warning(
-            '%d non-positive value(s) lie below the log-axis ECDF range; counted at its '
-            'left edge',
-            n_below,
-        )
-    return positive, n_below
+def clean_series(series: pd.Series) -> pd.Series:
+    """Drop NaN and infinite values (a case without a finite value has no step)."""
+    return series.replace([np.inf, -np.inf], np.nan).dropna()
 
 
-def ecdf(values: np.ndarray, n_total: int | None = None, n_below: int = 0):
+def ecdf(values: np.ndarray, n_total: int | None = None):
     """Return (x, y) of the empirical CDF of ``values`` as a percentage of ``n_total``.
 
-    Parameters
-    ----------
-    values : array_like
-        Finite values to draw.
-    n_total : int or None
-        Number of cases the percentage refers to (default: ``len(values)``). Cases
-        with no value (for example never solidified) are counted here but have no
-        step, so the curve levels off at the fraction of cases that have a value.
-    n_below : int
-        Cases whose value lies below the plotted range (non-positive on a log
-        axis); the curve starts at their fraction instead of at 0 %.
-
-    Returns
-    -------
-    tuple of numpy.ndarray
-        Step-function coordinates, drawn with ``drawstyle='steps-post'``.
+    ``n_total`` (default ``len(values)``) counts every case the percentage refers
+    to; cases without a value (for example never solidified) have no step, so the
+    curve levels off at the fraction that have one. Draw with ``steps-post``.
     """
     x = np.sort(np.asarray(values, dtype=float))
     n = len(x)
     if n_total is None:
-        n_total = n + n_below
+        n_total = n
     if n == 0 or n_total <= 0:
         return np.array([]), np.array([])
-    y = (n_below + np.arange(1, n + 1)) / n_total * 100.0
-    return np.concatenate([x[:1], x]), np.concatenate([[n_below / n_total * 100.0], y])
+    y = np.arange(1, n + 1) / n_total * 100.0
+    return np.concatenate([x[:1], x]), np.concatenate([[0.0], y])
 
 
-def use_log_axis(values: pd.Series, preset_log: bool) -> bool:
-    """Return True when the preset asks for a log axis and the positive values span
-    at least a decade (below that, matplotlib's minor-tick labels overlap)."""
+def axis_scale(values: pd.Series, preset_log: bool) -> tuple[str, float | None]:
+    """Return the x-axis scale ``(name, linthresh)`` for one output.
+
+    A log-preset quantity gets ``'log'`` if all values are positive and span a
+    decade or more, ``'symlog'`` (a 0 + log axis, linear up to the decade below the
+    smallest positive value) if some are <= 0, else ``'linear'`` (a narrower log
+    axis adds nothing and its minor-tick labels overlap). Others are ``'linear'``.
+    """
     if not preset_log:
-        return False
-    finite = values.replace([np.inf, -np.inf], np.nan).dropna()
+        return 'linear', None
+    finite = clean_series(values)
     positive = finite[finite > 0]
     if positive.empty:
-        return False
-    return bool(positive.max() / positive.min() >= 10.0)
+        return 'linear', None
+    if (finite <= 0).any():
+        return 'symlog', float(10.0 ** np.floor(np.log10(positive.min())))
+    if positive.max() / positive.min() >= 10.0:
+        return 'log', None
+    return 'linear', None
+
+
+def _set_axis_scale(ax, scale: str, linthresh: float | None, values: pd.Series) -> None:
+    """Apply an :func:`axis_scale` result; a 0 + log axis starts at 0 if nothing is negative."""
+    if scale == 'log':
+        ax.set_xscale('log')
+    elif scale == 'symlog':
+        ax.set_xscale('symlog', linthresh=linthresh, linscale=0.5)
+        if clean_series(values).min() >= 0:
+            # Start just below 0 so a step at 0 is not hidden under the axis frame.
+            ax.set_xlim(left=-0.2 * linthresh)
 
 
 def _value_colours(values, log_norm: bool, cmap):
@@ -246,15 +249,15 @@ def _value_colours(values, log_norm: bool, cmap):
     return (lambda v: lookup.get(str(v), (0.5, 0.5, 0.5, 1.0))), False, None
 
 
-def _plot_cell(ax, df, param, value, output, colour, log_axis):
+def _plot_cell(ax, df, param, value, output, colour):
     """Draw one ECDF curve (cases with ``param == value``) on a cell, return success."""
     subset = df[df[param] == value]
-    series, n_below = clean_series(subset[output] * get_scale(output), log_axis)
+    series = clean_series(subset[output] * get_scale(output))
     if series.empty:
         return False
     # Normalise by every case in the subset, so cases without a value (for example
     # never solidified) keep the curve below 100 %.
-    x, y = ecdf(series.to_numpy(), n_total=len(subset), n_below=n_below)
+    x, y = ecdf(series.to_numpy(), n_total=len(subset))
     ax.plot(x, y, drawstyle='steps-post', color=colour, linewidth=2.0)
     return True
 
@@ -316,9 +319,8 @@ def plot_ecdf_grid(
         sharey=True,
     )
 
-    log_axes = {
-        out: use_log_axis(df[out] * get_scale(out), get_log_scale(out)) for out in outputs
-    }
+    scaled = {out: df[out] * get_scale(out) for out in outputs}
+    scales = {out: axis_scale(scaled[out], get_log_scale(out)) for out in outputs}
     row_keys = []
     for i, param in enumerate(params):
         values = tested_params[param]
@@ -330,11 +332,9 @@ def plot_ecdf_grid(
 
         for j, output in enumerate(outputs):
             ax = axes[i][j]
-            log_axis = log_axes[output]
             for value in present_values:
-                _plot_cell(ax, df, param, value, output, colour_of(value), log_axis)
-            if log_axis:
-                ax.set_xscale('log')
+                _plot_cell(ax, df, param, value, output, colour_of(value))
+            _set_axis_scale(ax, *scales[output], scaled[output])
             ax.set_ylim(0, 100)
             ax.grid(alpha=0.3)
             _apply_axis_style(ax)

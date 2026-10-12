@@ -2,11 +2,12 @@
 
 Covers the ECDF/status plotting helpers without a display:
 - the ECDF is a percentage of ALL cases in a subset, so cases with no value (never
-  solidified) keep the curve below 100 %, and values below a log axis start it above 0 %
+  solidified) keep the curve below 100 %
+- a log-preset output with zeros is drawn on a 0 + log (symlog) axis, zeros at 0
 - the output unit scale is applied once to the plotted values
 - status bars are coloured by category and ordered by category then count, with a
   'Not started' bar for grid cases that have no folder
-- the colour map is trimmed at its lighter end, whichever end that is
+- the colour map's light end is trimmed to 2:1 contrast on white, whichever end it is
 - plot format resolution, output-variable validation and the figure files
 
 Testing standards:
@@ -26,10 +27,13 @@ matplotlib.use('Agg')  # headless backend for file-only tests
 
 from proteus.grid.plot_grid import (  # noqa: E402
     CATEGORY_COLOURS,
+    MAX_CURVE_LUMINANCE,
     _luminance,
     _plot_cell,
+    _set_axis_scale,
     _trim_colourmap,
     _value_colours,
+    axis_scale,
     clean_series,
     count_not_started,
     ecdf,
@@ -37,7 +41,6 @@ from proteus.grid.plot_grid import (  # noqa: E402
     plot_status_summary,
     resolve_plot_format,
     status_counts,
-    use_log_axis,
     validate_output_variables,
 )
 from proteus.utils.plot import get_colourmap  # noqa: E402
@@ -70,15 +73,6 @@ def test_ecdf_levels_off_at_fraction_of_cases_with_a_value():
     assert y[1:] == pytest.approx([25.0, 50.0, 75.0])
 
 
-def test_ecdf_starts_at_fraction_below_the_axis():
-    """One of 4 cases lies below a log axis: the curve starts at 25 %, and the two
-    drawn values add 25 % each, ending at 75 % (one case has no value).
-    """
-    x, y = ecdf(np.array([20.0, 10.0]), n_total=4, n_below=1)
-    assert y == pytest.approx([25.0, 50.0, 75.0])
-    assert x == pytest.approx([10.0, 10.0, 20.0])
-
-
 def test_ecdf_empty_input_returns_empty_arrays():
     """An empty series yields empty x and y rather than raising or dividing by 0."""
     x, y = ecdf(np.array([]), n_total=0)
@@ -86,19 +80,13 @@ def test_ecdf_empty_input_returns_empty_arrays():
     assert len(y) == 0
 
 
-def test_clean_series_splits_off_non_positive_values_only_on_log_axis(caplog):
-    """On a log axis non-positive values are counted (and warned about), not kept;
-    on a linear axis zeros and negatives are kept and only NaN/inf dropped.
+def test_clean_series_keeps_zero_and_negative_values():
+    """Only NaN and inf are dropped: zeros and negatives are real outcomes (a 0 bar
+    surface pressure after escape) and are drawn, on a 0 + log axis if need be.
     """
-    s = pd.Series([1.0, 0.0, -2.0, np.inf, np.nan, 10.0])
-    with caplog.at_level('WARNING'):
-        log_kept, n_below = clean_series(s, log_axis=True)
-    lin_kept, n_lin = clean_series(s, log_axis=False)
-    assert sorted(log_kept.tolist()) == pytest.approx([1.0, 10.0])
-    assert n_below == 2
-    assert sorted(lin_kept.tolist()) == pytest.approx([-2.0, 0.0, 1.0, 10.0])
-    assert n_lin == 0
-    assert any('non-positive' in rec.message for rec in caplog.records)
+    kept = clean_series(pd.Series([1.0, 0.0, -2.0, np.inf, np.nan, 10.0]))
+    assert sorted(kept.tolist()) == pytest.approx([-2.0, 0.0, 1.0, 10.0])
+    assert len(clean_series(pd.Series([np.nan, -np.inf]))) == 0
 
 
 def test_plot_cell_applies_unit_scale_once_and_normalises_by_subset():
@@ -109,26 +97,53 @@ def test_plot_cell_applies_unit_scale_once_and_normalises_by_subset():
     df = pd.DataFrame({'p': [1.0, 1.0, 1.0, 2.0], 'Phi_global': [0.2, 0.4, np.nan, 0.9]})
     fig, ax = plt.subplots()
     try:
-        assert _plot_cell(ax, df, 'p', 1.0, 'Phi_global', 'k', log_axis=False)
+        assert _plot_cell(ax, df, 'p', 1.0, 'Phi_global', 'k')
         line = ax.lines[0]
         assert line.get_xdata() == pytest.approx([20.0, 20.0, 40.0])
         assert line.get_ydata()[-1] == pytest.approx(200.0 / 3.0)
-        assert not _plot_cell(
-            ax, df.assign(Phi_global=np.nan), 'p', 1.0, 'Phi_global', 'k', False
-        )
+        assert not _plot_cell(ax, df.assign(Phi_global=np.nan), 'p', 1.0, 'Phi_global', 'k')
     finally:
         plt.close(fig)
 
 
-def test_use_log_axis_needs_preset_and_a_decade_of_positive_values():
-    """A log axis is used only for a log preset whose positive values span >= 10x:
-    60395 to 60430 bar (0.0003 decades) stays linear, 1 to 100 goes log, a linear
-    preset never goes log, and all non-positive data cannot be drawn on a log axis.
+@pytest.mark.parametrize(
+    'values, preset_log, expected',
+    [
+        ([1.0, 100.0, np.nan], True, ('log', None)),
+        ([0.0, 3.0e-3, 2.0e2], True, ('symlog', 1.0e-3)),
+        ([60395.0, 60430.0], True, ('linear', None)),
+        ([0.0, -5.0], True, ('linear', None)),
+        ([1.0, 100.0], False, ('linear', None)),
+    ],
+    ids=['positive_decades', 'zeros_present', 'narrow_span', 'none_positive', 'linear_preset'],
+)
+def test_axis_scale_picks_log_zero_plus_log_or_linear(values, preset_log, expected):
+    """A log preset is drawn on a log axis over >= 1 decade, on a 0 + log (symlog)
+    axis when zeros occur, with the linear part ending at the decade below the
+    smallest positive value (3e-3 -> 1e-3), and linear otherwise.
     """
-    assert use_log_axis(pd.Series([60395.0, 60430.0]), preset_log=True) is False
-    assert use_log_axis(pd.Series([1.0, 100.0, 0.0, np.nan]), preset_log=True) is True
-    assert use_log_axis(pd.Series([1.0, 100.0]), preset_log=False) is False
-    assert use_log_axis(pd.Series([0.0, -5.0]), preset_log=True) is False
+    name, linthresh = axis_scale(pd.Series(values), preset_log)
+    assert name == expected[0]
+    assert linthresh == pytest.approx(expected[1]) if expected[1] else linthresh is None
+
+
+def test_zero_plus_log_axis_draws_zero_cases_at_zero():
+    """On a 0 + log axis the escaped-atmosphere case (P_surf = 0) is a step at
+    x = 0 and the axis starts at 0, so 1 of 3 cases shows as 33 % at 0 bar.
+    """
+    values = pd.Series([0.0, 50.0, 300.0])
+    fig, ax = plt.subplots()
+    try:
+        assert _plot_cell(ax, pd.DataFrame({'p': [1.0] * 3, 'P_surf': values}), 'p', 1.0,
+                          'P_surf', 'k')  # fmt: skip
+        _set_axis_scale(ax, *axis_scale(values, preset_log=True), values)
+        assert ax.get_xscale() == 'symlog'
+        assert -10.0 < ax.get_xlim()[0] < 0.0  # just below 0, so the step at 0 is visible
+        x, y = ax.lines[0].get_xdata(), ax.lines[0].get_ydata()
+        assert x[1] == pytest.approx(0.0)
+        assert y[1] == pytest.approx(100.0 / 3.0)
+    finally:
+        plt.close(fig)
 
 
 # ---------------------------------------------------------------------------
@@ -173,15 +188,26 @@ def test_value_colours_string_uses_discrete_legend_mapping():
 @pytest.mark.parametrize(
     'name, light_end', [('viridis', 1.0), ('batlowK_r', 0.0)], ids=['light_top', 'light_bottom']
 )
-def test_trim_colourmap_removes_the_lighter_end(name, light_end):
-    """The trimmed map is darker at the original light end and unchanged at the dark
-    end, for maps whose light end is at either side.
+def test_trim_colourmap_makes_the_light_end_visible(name, light_end):
+    """The light end is cut until it has 2:1 contrast on white (luminance <= 0.475),
+    whichever side it is on; the dark end is untouched. The old fixed 15 % trim left
+    batlowK_r at luminance ~0.6, a faint pink.
     """
     cmap = get_colourmap(name)
     trimmed = _trim_colourmap(cmap)
     dark_end = 1.0 - light_end
-    assert _luminance(trimmed(light_end)) < _luminance(cmap(light_end)) - 0.02
+    assert _luminance(cmap(light_end)) > 0.7  # untrimmed light end is too pale
+    assert _luminance(trimmed(light_end)) <= MAX_CURVE_LUMINANCE + 0.01
+    assert _luminance(trimmed(light_end)) > MAX_CURVE_LUMINANCE - 0.05  # not over-trimmed
     assert trimmed(dark_end)[:3] == pytest.approx(cmap(dark_end)[:3], abs=0.01)
+
+
+def test_trim_colourmap_leaves_a_map_with_dark_ends_unchanged():
+    """A diverging map (vik) is dark at both ends, so nothing is trimmed."""
+    cmap = get_colourmap('vik')
+    trimmed = _trim_colourmap(cmap)
+    assert trimmed(0.0)[:3] == pytest.approx(cmap(0.0)[:3], abs=0.01)
+    assert trimmed(1.0)[:3] == pytest.approx(cmap(1.0)[:3], abs=0.01)
 
 
 # ---------------------------------------------------------------------------
