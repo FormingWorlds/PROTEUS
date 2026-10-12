@@ -41,8 +41,10 @@ in which the net atmospheric flux differs from the radiogenic and tidal
 heating by no more than about 1 W m$^{-2}$ (`params.stop.radeqm`, enabled
 by default with `atol = 1.0` and `rtol = 0.001`). The runs behind the
 figures of this page end at the first of these criteria or at 15 Myr of
-model time, whichever comes first. The config files do not set the 15 Myr
-bound; it was applied to the runs of this page. Melt fractions of the
+model time, whichever comes first. The nine grid configs in
+`input/tutorials/chili_grid/` set this bound
+(`params.stop.time.maximum = 1.5e7`); the protocol files in
+`input/chili/intercomp/` keep the end time of the protocol. Melt fractions of the
 current PROTEUS runs are by mass on this page unless stated otherwise,
 and the melt fractions of the intercomparison data are by volume.
 
