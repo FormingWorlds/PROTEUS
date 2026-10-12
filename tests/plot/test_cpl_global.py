@@ -215,7 +215,7 @@ _LARGE_FONTS = {'font.size': 14.5, 'axes.labelsize': 18, 'legend.fontsize': 14.5
 
 @pytest.mark.parametrize('logt', [True, False], ids=['log_time', 'linear_time'])
 @pytest.mark.parametrize('rc', [None, _LARGE_FONTS], ids=['default_fonts', 'large_fonts'])
-@pytest.mark.parametrize('n_gases', [1, 8], ids=['one_gas', 'eight_gases'])
+@pytest.mark.parametrize('n_gases', [1, 6, 7], ids=['one_gas', 'six_gases', 'seven_gases'])
 def test_plot_global_text_boxes_do_not_collide(draw_real, tmp_path, logt, rc, n_gases):
     """Text geometry of the drawn figure, for both time axes, two font sizes and
     both small gas legends: tick labels of different panels do not intersect, each
@@ -235,6 +235,8 @@ def test_plot_global_text_boxes_do_not_collide(draw_real, tmp_path, logt, rc, n_
         logt=logt,
         rc=rc,
     )
+    # Measure the figure as savefig draws it.
+    fig.set_dpi(200)
     fig.canvas.draw()
     renderer = fig.canvas.get_renderer()
 
@@ -251,7 +253,7 @@ def test_plot_global_text_boxes_do_not_collide(draw_real, tmp_path, logt, rc, n_
     assert len({i for i, _, _ in ticks}) == 6
     legends = [ax.get_legend() for ax in fig.axes if ax.get_legend() is not None]
     assert len(legends) == 3
-    assert legends[2]._ncols == (1 if n_gases == 1 else 2)
+    assert legends[2]._ncols == (1 if n_gases <= 6 else 2)
     titles = [ax._left_title for ax in fig.axes]
     boxes = [t.get_window_extent(renderer) for t in titles]
     top_left = fig.axes[0]
@@ -264,14 +266,19 @@ def test_plot_global_text_boxes_do_not_collide(draw_real, tmp_path, logt, rc, n_
         )
         for ax in (fig.axes[0], fig.axes[4], fig.axes[5])
     ]
-    # Curves that no place of the mantle and gas legends avoids in this helpfile.
-    mantle_floor = (1 if logt else 0) + (1 if rc else 0)
-    edge_labels = [
-        label.get_horizontalalignment()
-        for ax, side in ((fig.axes[4], 1), (fig.axes[5], 0))
-        for label in ax.get_xticklabels()
-        if np.isclose(label.get_position()[0], ax.get_xlim()[side])
+    # Curves under each legend at its best place in this helpfile, as measured: lines
+    # that cross the whole panel leave the mantle and the one-column gas legend no free place.
+    bounds = (0, (1 if logt else 0) + (1 if rc else 0), {1: 0, 6: 2, 7: 0}[n_gases])
+    # Alignment of every x tick label in view of the bottom row, left to right.
+    aligned = [
+        [
+            label.get_horizontalalignment()
+            for label in ax.get_xticklabels()
+            if min(ax.get_xlim()) <= label.get_position()[0] <= max(ax.get_xlim())
+        ]
+        for ax in (fig.axes[4], fig.axes[5])
     ]
+    tick_boxes = [box for _, _, box in ticks]
 
     found = {
         'panel labels': [t.get_text()[:3] for t in titles],
@@ -281,7 +288,15 @@ def test_plot_global_text_boxes_do_not_collide(draw_real, tmp_path, logt, rc, n_
             for b in ticks[n + 1 :]
             if a[0] != b[0] and a[2].overlaps(b[2])
         ],
-        'alignment of the inner edge labels': edge_labels if logt else ['right', 'left'],
+        'x label alignments that differ from the centre': [
+            (col, n - len(row), ha)
+            for col, row in enumerate(aligned)
+            for n, ha in enumerate(row)
+            if ha != 'center'
+        ],
+        'panel labels on a tick label or on each other': sum(
+            a.overlaps(b) for n, a in enumerate(boxes) for b in boxes[n + 1 :] + tick_boxes
+        ),
         'panel labels in a data area': sum(
             b.overlaps(ax.bbox) for b in boxes for ax in fig.axes
         ),
@@ -292,13 +307,16 @@ def test_plot_global_text_boxes_do_not_collide(draw_real, tmp_path, logt, rc, n_
             top_left.yaxis.label.get_window_extent(renderer).height > top_left.bbox.height
         ),
         'legends on more curves than their best place needs': [
-            (n, bound) for n, bound in zip(under, (0, mantle_floor, n_gases // 8)) if n > bound
+            (n, bound) for n, bound in zip(under, bounds) if n > bound
         ],
     }
     assert found == {
         'panel labels': ['(a)', '(b)', '(c)', '(d)', '(e)', '(f)'],
         'tick labels that intersect': [],
-        'alignment of the inner edge labels': ['right', 'left'],
+        # Last label of the left column; first of the right column in log time only.
+        'x label alignments that differ from the centre': [(0, -1, 'right')]
+        + ([(1, -len(aligned[1]), 'left')] if logt else []),
+        'panel labels on a tick label or on each other': 0,
         'panel labels in a data area': 0,
         'panel labels under a legend': 0,
         'top y label taller than its panel': False,
