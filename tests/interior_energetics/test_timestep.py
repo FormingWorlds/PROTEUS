@@ -1462,16 +1462,14 @@ class TestEscapeStepLimit:
         """With the schema defaults of `params.dt.minimum`, `params.dt.minimum_rel` and
         `escape.step_dt_floor_frac`, an adaptive request below the floor (30 yr steps,
         so at most 48 yr) gives `100 + 1e-5 * Time` yr, and an escape limit far below
-        both floors gives 0.1 yr. At a default floor of 1e4 yr the two values are 1e4 yr
-        and 10 yr."""
+        both floors gives 0.1 yr."""
         from proteus.config._escape import Escape
         from proteus.config._params import TimeStepParams
         from proteus.interior_energetics.timestep import next_step
 
-        config = _make_config()
+        config = _make_config(escape_dt_floor_frac=Escape().step_dt_floor_frac)
         config.params.dt.minimum = TimeStepParams().minimum
         config.params.dt.minimum_rel = TimeStepParams().minimum_rel
-        config.escape.step_dt_floor_frac = Escape().step_dt_floor_frac
         hf_all = _make_hf_all(n_rows=10, dt_prev=30.0)
         hf_row = {'Time': float(hf_all['Time'].iloc[-1]), 'Phi_global': 1.0}
 
