@@ -3099,6 +3099,7 @@ IT_TIMING_KEYS = {
     'stellar',
     'escape',
     'outgas',
+    'trapping',
     'atmos',
     'chem',
     'write',
