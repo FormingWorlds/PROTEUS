@@ -311,6 +311,7 @@ echo " PETSC_ARCH = $PETSC_ARCH"
 echo ""
 echo " To rebuild SPIDER by hand, set these in"
 echo " your conda environment:"
-echo "   conda env config vars set -p \"\$CONDA_PREFIX\" PETSC_DIR=$PETSC_DIR PETSC_ARCH=$PETSC_ARCH"
+env_opt='-p "$CONDA_PREFIX"'; [ -n "${CONDA_PREFIX:-}" ] || env_opt='-n <your environment>'
+echo "   conda env config vars set $env_opt PETSC_DIR=$PETSC_DIR PETSC_ARCH=$PETSC_ARCH"
 echo " and then run: conda deactivate && conda activate <your environment>"
 echo "========================================"

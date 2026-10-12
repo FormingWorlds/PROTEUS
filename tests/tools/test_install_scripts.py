@@ -4678,35 +4678,36 @@ def test_printed_and_documented_conda_var_commands_name_their_env(tmp_path):
     """Each `conda env config vars set` that a script prints or a page gives names its env.
 
     Without `-n` or `-p`, conda writes to the active env, which is base when the
-    user types the command in a new shell. The echo lines of the scripts run in
-    bash with CONDA_PREFIX set, so the printed command must hold the literal
-    `-p "$CONDA_PREFIX"` and not the path of the env the script ran in; the pages
-    name `-n proteus`. Each scan counts its hits, so a scan that finds none fails.
+    user types the command in a new shell. With an env active, a script prints
+    the literal `-p "$CONDA_PREFIX"`, not the path of the env it ran in; with no
+    env active it prints `-n <your environment>`, because an empty prefix is an
+    error. The pages name `-n proteus`. A scan that finds no line fails.
     """
-    printed = []
-    for script in sorted(TOOLS_DIR.glob('get_*.sh')):
-        for line in script.read_text().splitlines():
-            if 'conda env config vars set' in line and line.lstrip().startswith('echo '):
-                out = subprocess.run(
-                    ['bash', '-c', line],
-                    capture_output=True,
-                    text=True,
-                    env={
-                        'PATH': '/usr/bin:/bin',
-                        'HOME': str(tmp_path),
-                        'CONDA_PREFIX': '/envs/where-the-script-ran',
-                    },
-                    timeout=10,
-                )
-                printed.append((script.name, out.stdout.strip()))
-    assert [name for name, _ in printed] == [
-        'get_lavatmos.sh',
-        'get_petsc.sh',
-        'get_socrates.sh',
-    ]
-    prefix = 'conda env config vars set -p "$CONDA_PREFIX" '
-    assert [p for p in printed if not p[1].startswith(prefix)] == []
-    assert [p for p in printed if 'where-the-script-ran' in p[1]] == []
+    printed = {}
+    for active in (True, False):
+        env = {'PATH': '/usr/bin:/bin', 'HOME': str(tmp_path)}
+        if active:
+            env['CONDA_PREFIX'] = '/envs/where-the-script-ran'
+        for script in sorted(TOOLS_DIR.glob('get_*.sh')):
+            lines = script.read_text().splitlines()
+            for i, line in enumerate(lines):
+                if 'conda env config vars set' in line and line.lstrip().startswith('echo '):
+                    assert lines[i - 1].startswith("env_opt='-p "), script.name
+                    out = subprocess.run(
+                        ['bash', '-c', lines[i - 1] + '\n' + line],
+                        capture_output=True,
+                        text=True,
+                        env=env,
+                        timeout=10,
+                    )
+                    printed[(script.name, active)] = out.stdout.strip()
+    assert sorted(name for name, _ in printed) == sorted(
+        ['get_lavatmos.sh', 'get_petsc.sh', 'get_socrates.sh'] * 2
+    )
+    for (name, active), text in printed.items():
+        option = '-p "$CONDA_PREFIX" ' if active else '-n <your environment> '
+        assert text.startswith('conda env config vars set ' + option), (name, active, text)
+        assert 'where-the-script-ran' not in text
     docs = TOOLS_DIR.parent / 'docs' / 'How-to'
     commands = [
         (page, line)

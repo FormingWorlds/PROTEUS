@@ -51,5 +51,6 @@ echo " "
 echo "You must now run the following command:"
 echo "    export LAVA_DIR='$workpath'"
 echo "To keep it, set it in your conda environment:"
-echo "    conda env config vars set -p \"\$CONDA_PREFIX\" LAVA_DIR='$workpath'"
+env_opt='-p "$CONDA_PREFIX"'; [ -n "${CONDA_PREFIX:-}" ] || env_opt='-n <your environment>'
+echo "    conda env config vars set $env_opt LAVA_DIR='$workpath'"
 echo "and then run: conda deactivate && conda activate <your environment>"
