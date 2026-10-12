@@ -1,6 +1,11 @@
 # Helper functions for running the tests
 from __future__ import annotations
 
+import hashlib
+import os
+import shlex
+import shutil
+import subprocess
 from pathlib import Path
 
 from PIL import Image
@@ -47,3 +52,244 @@ def df_intersect(df1, df2):
 
     # Return
     return out1, out2
+
+
+def git(cwd: Path, *args: str) -> str:
+    """Run git in ``cwd`` with a fixed identity and no signing; return its stdout.
+
+    Parameters
+    ----------
+    cwd : Path
+        Working directory of the git call.
+    *args : str
+        The git arguments, for example ``'rev-parse', 'HEAD'``.
+
+    Returns
+    -------
+    str
+        The standard output, stripped.
+    """
+    result = subprocess.run(
+        ['git', '-c', 'user.email=t@e.st', '-c', 'user.name=t', '-c', 'commit.gpgsign=false']
+        + list(args),
+        cwd=cwd,
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    return result.stdout.strip()
+
+
+def scratch_proteus_root(root: Path, dependencies: list[str]) -> Path:
+    """Build a PROTEUS root with the module clone tools below a ``pyproject.toml``.
+
+    Parameters
+    ----------
+    root : Path
+        Directory to create; it must not exist yet.
+    dependencies : list of str
+        The ``[project] dependencies`` of the fixture ``pyproject.toml``.
+
+    Returns
+    -------
+    Path
+        ``root``, holding ``tools/_get_common.sh``, ``tools/_module_pins.py``
+        and ``tools/get_python_module.sh`` copied from this tree.
+    """
+    (root / 'tools').mkdir(parents=True)
+    for name in ('_get_common.sh', '_module_pins.py', 'get_python_module.sh'):
+        shutil.copy2(PROTEUS_ROOT / 'tools' / name, root / 'tools' / name)
+    deps = ''.join(f'    "{d}",\n' for d in dependencies)
+    (root / 'pyproject.toml').write_text(
+        f'[project]\nname = "fixture"\ndependencies = [\n{deps}]\n'
+    )
+    return root
+
+
+# git subcommands that only read a repository; symbolic-ref, tag and status pass with conditions.
+GIT_READ_SUBCOMMANDS = (
+    'rev-parse for-each-ref describe merge-base cat-file log rev-list ls-files show-ref'
+).split()
+
+# Options of git tag that create, delete or sign a tag, so that a listing call is no listing.
+_GIT_TAG_WRITE_OPTIONS = '-d --delete -a --annotate -s --sign -f --force -e --edit'.split()
+_GIT_TAG_WRITE_PREFIXES = ('-u', '--local-user', '-m', '--message', '-F', '--file')
+
+
+def git_call_is_read_only(argv: list[str], env: dict[str, str] | None = None) -> bool:
+    """Return whether a git call is one that the git guard lets through on a guarded repository.
+
+    Parameters
+    ----------
+    argv : list of str
+        The git arguments, without ``git``, for example ``['-C', 'MORS', 'rev-parse', 'HEAD']``.
+    env : dict of str to str or None
+        The environment of the call; ``GIT_OPTIONAL_LOCKS=0`` in it lets ``status`` pass.
+
+    Returns
+    -------
+    bool
+        True for a subcommand of ``GIT_READ_SUBCOMMANDS``, ``symbolic-ref``
+        with exactly 1 operand and no ``-d``, ``tag`` with ``-l`` or
+        ``--list`` and no option that creates or deletes, and ``status``
+        with ``--no-optional-locks`` or ``GIT_OPTIONAL_LOCKS=0``.
+    """
+    no_locks = (env or {}).get('GIT_OPTIONAL_LOCKS') == '0'
+    i = 0
+    while i < len(argv) and argv[i].startswith('-'):
+        no_locks = no_locks or argv[i] == '--no-optional-locks'
+        i += 2 if argv[i] in ('-C', '-c', '--git-dir', '--work-tree', '--namespace') else 1
+    sub, rest = (argv[i], argv[i + 1 :]) if i < len(argv) else ('', [])
+    if sub in GIT_READ_SUBCOMMANDS:
+        return True
+    if sub == 'symbolic-ref':
+        operands = [a for a in rest if not a.startswith('-')]
+        return len(operands) == 1 and not {'-d', '--delete'} & set(rest)
+    if sub == 'tag':
+        writes = [
+            a
+            for a in rest
+            if a in _GIT_TAG_WRITE_OPTIONS or a.startswith(_GIT_TAG_WRITE_PREFIXES)
+        ]
+        return bool({'-l', '--list'} & set(rest)) and not writes
+    return sub == 'status' and no_locks
+
+
+_GIT_GUARD = """#!/bin/bash
+# Logs every git call; on a guarded repository only a read-only call runs, the rest exit 97.
+log={log}
+printf '%s\\t%s\\n' "$PWD" "$*" >>"$log"
+orig=("$@")
+repo="$PWD"
+sub=""
+locks="${{GIT_OPTIONAL_LOCKS:-1}}"
+rest=()
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -C) shift; case "$1" in /*) repo="$1" ;; *) repo="$repo/$1" ;; esac ;;
+        -c | --git-dir | --work-tree | --namespace) shift ;;
+        --no-optional-locks) locks=0 ;;
+        -*) ;;
+        *) sub="$1"; shift; rest=("$@"); break ;;
+    esac
+    shift
+done
+# A clone writes only to its destination, its last operand.
+if [ "$sub" = clone ]; then
+    dest=""
+    for a in "${{rest[@]}}"; do case "$a" in -*) ;; *) dest="$a" ;; esac; done
+    case "$dest" in /*) repo="$dest" ;; ?*) repo="$repo/$dest" ;; esac
+fi
+read_only=false
+case " {reads} " in *" $sub "*) read_only=true ;; esac
+case "$sub" in
+    symbolic-ref)
+        n=0
+        for a in "${{rest[@]}}"; do case "$a" in -d | --delete) n=9 ;; -*) ;; *) n=$((n + 1)) ;; esac; done
+        [ "$n" -ne 1 ] || read_only=true ;;
+    tag)
+        for a in "${{rest[@]}}"; do case "$a" in -l | --list) read_only=true ;; esac; done
+        for a in "${{rest[@]}}"; do
+            case " {tag_writes} " in *" $a "*) read_only=false ;; esac
+            case "$a" in {tag_prefixes}) read_only=false ;; esac
+        done ;;
+    status) [ "$locks" != 0 ] || read_only=true ;;
+esac
+if [ "$read_only" != true ]; then
+    real=$(cd "$repo" 2>/dev/null && pwd -P) || real="$repo"
+    for dir in {exact}; do
+        [ "$real" != "$dir" ] || blocked=1
+    done
+    for dir in {trees}; do
+        case "$real/" in "$dir"/*) blocked=1 ;; esac
+    done
+    if [ -n "${{blocked:-}}" ]; then
+        printf 'BLOCKED\\t%s\\t%s\\n' "$real" "${{orig[*]}}" >>"$log"
+        : >{marker}
+        exit 97
+    fi
+fi
+exec {git} "${{orig[@]}}"
+"""
+
+
+def install_git_guard(
+    bindir: Path, log: Path, marker: Path, roots: list[Path], trees: list[Path]
+) -> Path:
+    """Write a ``git`` wrapper into ``bindir`` that logs every call and refuses all but reads.
+
+    A call whose repository (the destination of a clone, else the ``-C``
+    directories, else the working directory) is one of ``roots`` or lies in
+    one of ``trees`` runs only when ``git_call_is_read_only`` holds for it;
+    any other such call exits 97 and creates ``marker``. Calls on other
+    repositories run the real git.
+
+    Parameters
+    ----------
+    bindir : Path
+        Directory to put first on PATH.
+    log : Path
+        File that gets one line per call: the working directory and the arguments.
+    marker : Path
+        File created by a refused call.
+    roots : list of Path
+        Repositories guarded by exact path, such as the PROTEUS root.
+    trees : list of Path
+        Folders guarded with everything below them, such as a module clone.
+
+    Returns
+    -------
+    Path
+        The wrapper.
+    """
+    real_git = shutil.which('git')
+    assert real_git and Path(real_git).parent != bindir, 'the real git must be on PATH'
+
+    def words(paths: list[Path]) -> str:
+        return ' '.join(shlex.quote(os.path.realpath(p)) for p in paths) or "''"
+
+    wrapper = bindir / 'git'
+    wrapper.write_text(
+        _GIT_GUARD.format(
+            log=shlex.quote(str(log)),
+            marker=shlex.quote(str(marker)),
+            reads=' '.join(GIT_READ_SUBCOMMANDS),
+            tag_writes=' '.join(_GIT_TAG_WRITE_OPTIONS),
+            tag_prefixes=' | '.join(f'{p}*' for p in _GIT_TAG_WRITE_PREFIXES),
+            exact=words(roots),
+            trees=words(trees),
+            git=shlex.quote(real_git),
+        )
+    )
+    wrapper.chmod(0o755)
+    return wrapper
+
+
+def tree_snapshot(root: Path) -> dict[str, tuple]:
+    """Return every entry below ``root``, ``.git`` included, with its kind, size and SHA-256.
+
+    Parameters
+    ----------
+    root : Path
+        Folder to list; symlinks are recorded with their target, not followed.
+
+    Returns
+    -------
+    dict of str to tuple
+        Relative path to ``('dir',)``, ``('link', target)`` or
+        ``('file', size, sha256)``.
+    """
+    snap: dict[str, tuple] = {}
+    for dirpath, dirnames, filenames in os.walk(root):
+        for name in dirnames + filenames:
+            path = Path(dirpath) / name
+            rel = str(path.relative_to(root))
+            if path.is_symlink():
+                snap[rel] = ('link', os.readlink(path))
+            elif path.is_dir():
+                snap[rel] = ('dir',)
+            else:
+                data = path.read_bytes()
+                snap[rel] = ('file', len(data), hashlib.sha256(data).hexdigest())
+    return snap
