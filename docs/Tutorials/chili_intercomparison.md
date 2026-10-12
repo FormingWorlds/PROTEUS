@@ -34,8 +34,23 @@ The CHILI intercomparison defines three solar system test cases:
 | Earth grid | 3 $\times$ 3 H/C inventory variations | Volatile sensitivity |
 
 All cases start fully molten at 50 Myr stellar age with BSE composition,
-fO$_2$ = IW+4, and Bond albedo = 0.1. Simulations run until the melt
-fraction drops below 5%.
+fO$_2$ = IW+4, and Bond albedo = 0.1. Each run ends at the first stop
+criterion that it meets. Two of them matter on this page: a melt fraction
+of 5% (`params.stop.solid.phi_crit = 0.05`), and a global energy balance,
+in which the net atmospheric flux differs from the radiogenic and tidal
+heating by no more than about 1 W m$^{-2}$ (`params.stop.radeqm`, enabled
+by default with `atol = 1.0` and `rtol = 0.001`).
+
+!!! note "How far the runs on this page go"
+    The runs on this page follow each planet to a quasi-steady state:
+    either the mantle is solid down to the 5% melt fraction threshold, or
+    the planet is in global energy balance with a small residual melt
+    fraction. They do not follow the long-term solid-state evolution of the
+    mantle or the loss of the atmosphere after that state. Differences
+    between the PROTEUS results in the CHILI paper and the results shown
+    here come from the continued development of the code and from a
+    different set of sub-modules in the current configuration (see
+    [Current PROTEUS configuration vs the CHILI submission](#current-proteus-configuration-vs-the-chili-submission)).
 
 ## Prerequisites
 
@@ -78,6 +93,12 @@ Monitor progress with `tail -f output/chili_earth/proteus_00.log`
     specs). A nominal case equals its tutorial config in every field
     except the output path and the redox state, which the generator
     sets to the protocol value IW+4; unit tests keep the two in lockstep.
+    TRAPPIST-1 &alpha; is the extreme case of the protocol, a fictitious
+    lava world at 6.75 $\times$ 10$^{-4}$ AU, inside the Roche limit of
+    the star [^cite-lichtenberg2026]. PROTEUS runs this case and warns
+    during the run that the planet orbits within the Roche limit, spins
+    faster than the breakup rate, and has an atmosphere beyond the Hill
+    radius.
     After a run, convert the output to the CHILI-MIP submission format
     with `python tools/chili_postproc.py <output_dir>`.
 
@@ -133,7 +154,7 @@ reproducible without editing the script.
 
 <figure markdown="span">
   ![CHILI Fig 1](../assets/tutorials/chili/fig1_melt_fraction.png){ width="100%" }
-  <figcaption><strong>Figure 1.</strong> Melt fraction vs time for the CHILI Nominal Earth (solid lines) and Nominal Venus (dashed lines) cases. All seven models start fully molten and solidify within 0.1 to 4 Myr for Earth. Venus solidifies later due to higher instellation at 0.723 AU. PROTEUS predicts solidification at 1.34 Myr for Earth and 2.22 Myr for Venus, within the model ensemble range.</figcaption>
+  <figcaption><strong>Figure 1.</strong> Melt fraction vs time for the CHILI Nominal Earth (solid lines) and Nominal Venus (dashed lines) cases. All seven models start fully molten and solidify within 0.1 to 4 Myr for Earth. Venus cools more slowly because of its higher instellation at 0.723 AU. PROTEUS predicts solidification at 1.34 Myr for Earth. The current PROTEUS Venus run does not reach a 5% melt fraction: its melt fraction levels off, and the run ends in global energy balance at 11.3 Myr with 8.3% of melt by volume.</figcaption>
 </figure>
 
 ## Solidification milestones
@@ -161,21 +182,21 @@ reproducible without editing the script.
 
 <figure markdown="span">
   ![CHILI Fig 5](../assets/tutorials/chili/fig5_venus_atm.png){ width="100%" }
-  <figcaption><strong>Figure 5.</strong> Atmospheric composition for the Nominal Venus case at 5% melt fraction. Stacked bars show gas partial pressures &#91;bar&#93;; grey stars mark surface temperature (right axis). The current PROTEUS run (vermillion label, black-edged bar) is placed next to the submitted PROTEUS CHILI result. The current run predicts ~397 bar H<sub>2</sub>O and ~62 bar CO<sub>2</sub> near solidification, for a total surface pressure of ~467 bar.</figcaption>
+  <figcaption><strong>Figure 5.</strong> Atmospheric composition for the Nominal Venus case at 5% melt fraction. Stacked bars show gas partial pressures &#91;bar&#93;; grey stars mark surface temperature (right axis). The current PROTEUS run (vermillion label, black-edged bar) is placed next to the submitted PROTEUS CHILI result. The current run does not reach a 5% melt fraction, so the figure has no bar for it: it ends in global energy balance at 11.3 Myr with a melt fraction of 6.8% by mass (8.3% by volume), a surface temperature of 1800 K and a surface pressure of 384 bar (321 bar H<sub>2</sub>O and 56 bar CO<sub>2</sub>). The bar of the submitted PROTEUS CHILI result is its last row, at a melt fraction of 6.2% by volume.</figcaption>
 </figure>
 
 ## Oxygen fugacity
 
 <figure markdown="span">
   ![CHILI Fig 6](../assets/tutorials/chili/fig6_fO2_vs_T.png){ width="100%" }
-  <figcaption><strong>Figure 6.</strong> Oxygen fugacity from each model's Nominal Venus simulation, plotted as a function of degassing temperature. (a) Absolute fO<sub>2</sub> compared to the iron-wustite buffer parameterizations of Fischer et al. (2011, dotted) and O'Neill & Eggins (2002, dashed). (b) Relative fO<sub>2</sub> as delta-IW referenced to O'Neill+02. Circular markers indicate 5% melt fraction. The current PROTEUS run (vermillion, thick line, black-edged marker) tracks along IW+4 as prescribed by the CHILI protocol.</figcaption>
+  <figcaption><strong>Figure 6.</strong> Oxygen fugacity from each model's Nominal Venus simulation, plotted as a function of degassing temperature. (a) Absolute fO<sub>2</sub> compared to the iron-wustite buffer parameterizations of Fischer et al. (2011, dotted) and O'Neill & Eggins (2002, dashed). (b) Relative fO<sub>2</sub> as delta-IW referenced to O'Neill+02. Circular markers indicate 5% melt fraction, or the last row of a run that ends above it. The curve of the current PROTEUS run (vermillion, thick line) is the IW+4 of the CHILI protocol on the buffer of Fischer et al. (2011), evaluated at the surface temperature of the run; referenced to O'Neill & Eggins (2002) in panel (b) it lies at 5.3 at 3373 K and at 4.0 at 1800 K. It has no circular marker, because the run does not reach a 5% melt fraction.</figcaption>
 </figure>
 
 ## Volatile retention
 
 <figure markdown="span">
   ![CHILI Fig 7](../assets/tutorials/chili/fig7_volatiles.png){ width="100%" }
-  <figcaption><strong>Figure 7.</strong> Relative amounts of the initial (a) hydrogen and (b) carbon inventories retained in the Nominal Venus case as a function of simulation time, with atoms lost from the planet by hydrodynamic escape. Crosses mark 95% melt fraction and circles mark 5% melt fraction. The submitted PROTEUS CHILI run (black dashed) extends to ~39 Myr and retains 63% of its hydrogen and 28% of its carbon by the time it reaches 5% melt fraction. The current PROTEUS run (vermillion, labelled with its git commit SHA) stops at solidification near 2.2 Myr, before hydrodynamic escape becomes significant, and so retains 99.7% of its hydrogen and 97.9% of its carbon.</figcaption>
+  <figcaption><strong>Figure 7.</strong> Relative amounts of the initial (a) hydrogen and (b) carbon inventories retained in the Nominal Venus case as a function of simulation time, with atoms lost from the planet by hydrodynamic escape. Crosses mark 95% melt fraction and circles mark 5% melt fraction, or the last row of a run that ends above it. The submitted PROTEUS CHILI run (black dashed) extends to 39 Myr, where its melt fraction is 6.2% by volume and it retains 63% of its hydrogen and 28% of its carbon. The current PROTEUS run (vermillion, labelled with the git commit SHA of the run) ends in global energy balance at 11.3 Myr, where it retains 97.3% of its hydrogen and 92.8% of its carbon; it has no circle, and the figure makes no statement on the escape after that time.</figcaption>
 </figure>
 
 ## Outgoing longwave radiation
@@ -272,43 +293,48 @@ composition, oxygen fugacity at IW+4, a Bond albedo of 0.1, and a 50 Myr
 stellar age [^cite-lichtenberg2026]. What differs is the interior machinery.
 
 The PROTEUS results submitted to the intercomparison were computed with an
-earlier version of PROTEUS, not the configuration documented here. That
-version used **SPIDER** for the interior thermal evolution and an
-Adams-Williamson integration for the interior structure. See Lichtenberg
-et al. (2026) [^cite-lichtenberg2026] and Nicholls et al. (2026, in
-prep.) [^cite-nicholls2026] for further details.
+earlier version of PROTEUS, not the configuration documented here. The
+config file of the submitted Venus run is archived with the comparison
+data (`intercomparison/inputs/proteus/evolution-proteus-venus-config.in`).
+It selects **SPIDER** for the interior thermal evolution
+(`interior.module = "spider"`) and the structure calculation built into
+that version (`struct.module = "self"`), together with AGNI, CALLIOPE,
+ZEPHYRUS and MORS. Its energy balance stop criterion is switched off. See
+Lichtenberg et al. (2026) [^cite-lichtenberg2026] and Nicholls et al.
+(2026, in prep.) [^cite-nicholls2026] for further details.
 
 The configuration documented on this page uses **Aragog** for the
-interior thermal evolution and **Zalmoxis** for the interior structure.
-Aragog is the Python reimplementation of SPIDER and integrates the same
-specific-entropy equation for a two-phase, partially molten mantle with a
-mixing-length convective closure. The main change is on the structure
-side: Zalmoxis replaces the Adams-Williamson approximation, solving the
-layered interior (mass, radius, density profile, and core-mantle-boundary
-radius) directly and supplying the pressure-entropy equation-of-state
-tables that Aragog reads.
+interior thermal evolution and **Zalmoxis** for the interior structure,
+with AGNI for the atmosphere, CALLIOPE for the outgassing, ZEPHYRUS for
+the escape and MORS for the star. Aragog is the Python reimplementation of
+SPIDER and integrates the same specific-entropy equation for a two-phase,
+partially molten mantle with a mixing-length convective closure. Zalmoxis
+solves the layered interior (mass, radius, density profile, and
+core-mantle-boundary radius) directly and supplies the pressure-entropy
+equation-of-state tables that Aragog reads. The energy balance stop
+criterion is enabled in this configuration, and the Nominal Venus run ends
+by it.
 
 ## Takeaways
 
 Earth and Venus begin from the same fully molten state and diverge as they
-cool. Across the model ensemble both solidify on million-year timescales,
+cool. Across the model ensemble both cool on million-year timescales,
 with Venus lagging Earth because its higher instellation slows radiative
-cooling, and the spread between codes at any given moment reflects genuine
+cooling, and the spread between codes at any given moment reflects
 differences in how each treats atmospheric opacity, volatile partitioning,
-and interior convection. PROTEUS captures this evolution by coupling a
-radiative-convective atmosphere, equilibrium outgassing, and a 1D interior
-solver, advancing the magma ocean from melt through solidification while
-tracking the volatiles exchanged between the mantle and the atmosphere.
+and interior convection. PROTEUS couples a radiative-convective atmosphere,
+equilibrium outgassing, and a 1D interior solver, and follows the magma
+ocean from the molten state to a quasi-steady state while tracking the
+volatiles exchanged between the mantle and the atmosphere.
 
 The point of this tutorial is to place the current PROTEUS against that
 published ensemble on demand. The comparison figures are regenerated from
 your own checkout and labelled with its git commit, so re-running the
 plotting command benchmarks whatever version of PROTEUS you are running
 against the fixed literature values from the CHILI papers. It is therefore
-an always-current intercomparison: a quick way to confirm that a new
-PROTEUS release still reproduces the established Earth and Venus
-solidification behaviour, and to see where it sits relative to the other
-community codes.
+an always-current intercomparison: a quick way to see how a new PROTEUS
+release compares with the submitted Earth and Venus results, and where it
+lies relative to the other community codes.
 
 ---
 
