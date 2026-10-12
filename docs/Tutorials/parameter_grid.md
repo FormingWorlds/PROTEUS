@@ -112,6 +112,13 @@ Which one triggers depends on orbital distance, as shown below.
 
 ## Results
 
+Both figures below come from `tools/plot_grid_tutorial.py`, which reads the case
+folders of the grid:
+
+```bash
+python tools/plot_grid_tutorial.py output/tutorial_grid/ --output output_files/grid_plots/
+```
+
 The melt-fraction histories split cleanly by orbital distance:
 
 <figure markdown="span">
@@ -123,7 +130,7 @@ Each input axis controls a distinct output:
 
 <figure markdown="span">
   ![Output parameters across the grid](../assets/tutorials/grid/grid_outputs.avif){ width="100%" }
-  <figcaption><strong>Figure 2.</strong> Final-state outputs across the grid, coloured by planet mass; filled circles solidified, open squares stopped at energy balance. (a) Final melt fraction collapses from 1 (molten, 0.03 AU) to near 0 (solidified) with increasing orbital distance. (b) Final surface temperature: the molten 0.03 AU cases sit near 2950 K, while solidified cases pin to the mantle solidus near 1700 K. (c) Stop time rises with planet mass and, for solidified cases, falls with orbital distance. (d) Final surface pressure scales with the hydrogen budget.</figcaption>
+  <figcaption><strong>Figure 2.</strong> Final-state outputs across the grid, coloured by planet mass; filled circles solidified, open squares stopped at energy balance. (a) Final melt fraction collapses from 1 (molten, 0.03 AU) to near 0 (solidified) with increasing orbital distance. (b) Final surface temperature: the molten 0.03 AU cases sit near 2960 K, while solidified cases pin to the mantle solidus near 1700 K. (c) Stop time rises with planet mass and, for solidified cases, falls with orbital distance. (d) Final surface pressure scales with the hydrogen budget.</figcaption>
 </figure>
 
 In words, for this dummy setup:
@@ -132,9 +139,9 @@ In words, for this dummy setup:
   mantle above its liquidus, so the planet never solidifies and stops at energy
   balance. Farther out it solidifies. Among the solidified cases, a closer orbit
   gives a *longer* cooling time, because absorbed instellation partly offsets the
-  surface cooling (for 1 M_earth: 32 kyr at 0.122 AU versus 23 kyr at 0.5 AU).
+  surface cooling (for 1 M_earth: 31 kyr at 0.122 AU versus 23 kyr at 0.5 AU).
 - **Planet mass sets the timescale.** A more massive planet holds more heat and
-  takes longer to solidify (roughly 19, 23, and 28 kyr at 0.5 AU for 0.5, 1.0,
+  takes longer to solidify (roughly 17, 23, and 30 kyr at 0.5 AU for 0.5, 1.0,
   and 2.0 M_earth).
 - **Hydrogen budget sets the surface pressure.** More hydrogen outgasses a
   thicker atmosphere (surface pressure scales with `H_budget`), but in this
