@@ -70,7 +70,7 @@ die() {
     collect_env_info || true
     echo ""
     if [ -n "${LOGFILE:-}" ] && [ -f "${LOGFILE:-}" ]; then
-        log_file_sentence
+        [ "${LOG_SENTENCE_SHOWN:-false}" = true ] || log_file_sentence
         LOG_SENTENCE_SHOWN=true
         echo "If you need help, send that log file to dev@proteus-framework.org,"
         echo "or open an issue or discussion at:"
@@ -82,18 +82,25 @@ die() {
 }
 
 prompt_yn() {
-    if [ "$INTERACTIVE" != "true" ] || [ ! -t 0 ]; then
+    if [ "$INTERACTIVE" != "true" ] || [ ! -t 0 ] || [ ! -t 3 ]; then
         return 0
     fi
     ask_yn "$1" "${2:-y}"
 }
 
-# Ask the question $1 on stdin; an empty answer and the end of input take the default $2 (y or n).
+# Ask the question $1 on the terminal of fd 3 and read stdin; after a trim of white space, an empty
+# answer and the end of input take the default $2 (y or n), and only y or yes in any case is yes.
 ask_yn() {
     local response="" hint="[y/N]"
     [ "$2" != y ] || hint="[Y/n]"
-    read -r -p "$1 $hint " response || true
-    [[ "${response:-$2}" =~ ^[Yy] ]]
+    printf '%s %s ' "$1" "$hint" >&3
+    read -r response || true
+    response="${response#"${response%%[![:space:]]*}"}"
+    response="${response%"${response##*[![:space:]]}"}"
+    case "${response:-$2}" in
+        [Yy] | [Yy][Ee][Ss]) return 0 ;;
+    esac
+    return 1
 }
 
 read_with_default() {
@@ -208,9 +215,9 @@ fix_conda_mpi_builds() {
 
 # juliacall needs the real Julia binary as PYTHON_JULIAPKG_EXE, not the juliaup launcher
 # shim, to find sys.so beside it. A "+1.13" channel selector goes to the launcher beside
-# juliaup; without one, a failed probe falls back to the julia on PATH.
+# juliaup; without one, the launcher $2 (default julia) is asked, and a failed probe gives it back.
 resolve_real_julia_exe() {
-    local sel="${1:-}" launcher=julia bindir
+    local sel="${1:-}" launcher="${2:-julia}" bindir
     if [ -n "$sel" ] && command_exists juliaup \
        && [ -x "$(dirname "$(command -v juliaup)")/julia" ]; then
         launcher="$(dirname "$(command -v juliaup)")/julia"
@@ -219,7 +226,7 @@ resolve_real_julia_exe() {
     if [ -n "$bindir" ] && [ -x "$bindir/julia" ]; then
         printf '%s\n' "$bindir/julia"
     elif [ -z "$sel" ]; then
-        command -v julia 2>/dev/null || true
+        command -v "$launcher" 2>/dev/null || true
     fi
 }
 
@@ -477,28 +484,22 @@ conda_activate_command() {
     fi
 }
 
-# The line for a shell without `conda init`, where `conda activate` fails, after the installer
-# activated the env itself.
-conda_sh_line() {
-    [ "${CONDA_ACTIVATED_HERE:-false}" = true ] && [ -n "${CONDA_BASE_DIR:-}" ] || return 0
-    echo "     (In a shell without 'conda init', run first: source \"$CONDA_BASE_DIR/etc/profile.d/conda.sh\")"
-}
-
-# The closing instruction: activate the conda env that holds the variables, or
-# source the exports file where no conda env holds them.
+# The closing instruction: activate the conda env that holds the variables, or source the exports
+# file where no conda env holds them; an env the installer activated needs conda.sh without `conda init`.
 print_next_steps() {
     echo "Next steps:"
     if [ "$CONDA_BIND" = "bound" ]; then
         echo "  1. Activate the env, so that it loads the variables:"
         echo "     $(conda_activate_command)"
-        conda_sh_line
     elif [ "${CONDA_ACTIVATED_HERE:-false}" = true ]; then
         echo "  1. Activate the env and load the variables, in the PROTEUS folder ($SCRIPT_DIR):"
         echo "     conda activate ${CONDA_DEFAULT_ENV:-proteus} && source .proteus-env.sh"
-        conda_sh_line
     else
         echo "  1. Load the variables, in the PROTEUS folder ($SCRIPT_DIR):"
         echo "     source .proteus-env.sh"
+    fi
+    if [ "${CONDA_ACTIVATED_HERE:-false}" = true ] && [ -n "${CONDA_BASE_DIR:-}" ]; then
+        echo "     (In a shell without 'conda init', run first: source \"$CONDA_BASE_DIR/etc/profile.d/conda.sh\")"
     fi
     echo "  2. Run the quick-start tutorial:"
     echo "     proteus start --offline -c input/dummy.toml"
@@ -683,19 +684,23 @@ if [ "$disk_gb" -lt "$MIN_DISK_GB" ]; then
 fi
 info "Disk space: ${disk_gb} GB available"
 
-# Stop with the 2 commands that make and activate the conda env $2 by hand, or without conda the
-# page that installs it; $1 names the step of setup_conda_env that failed, $3 is a further line.
+# Stop with the commands that make and activate the conda env $2 by hand, or without conda the page
+# that installs it; $1 names the failed step, $3 is a further line. Once setup_conda_env has found or
+# made the env (its local `made` is set), `conda create` would replace it, so only activate is named.
 stop_without_conda_env() {
     fail "No conda environment other than base is active."
     fail "$1"
     echo ""
-    if command_exists conda; then
+    if ! command_exists conda; then
+        echo "Install conda first (Miniforge), as step 2 of the installation page describes:"
+        echo "  https://proteus-framework.org/PROTEUS/How-to/installation.html#2-clone-proteus-and-set-up-python-environment"
+    elif [ -n "${made:-}" ]; then
+        echo "Activate the conda environment first:"
+        echo "  conda activate $2"
+    else
         echo "Create and activate a conda environment first:"
         echo "  conda create -n $2 python=$REQUIRED_PYTHON_MAJOR.$REQUIRED_PYTHON_MINOR"
         echo "  conda activate $2"
-    else
-        echo "Install conda first (Miniforge), as step 2 of the installation page describes:"
-        echo "  https://proteus-framework.org/PROTEUS/How-to/installation.html#2-clone-proteus-and-set-up-python-environment"
     fi
     [ -z "${3:-}" ] || echo "$3"
     die "Conda environment required."
@@ -750,7 +755,8 @@ setup_conda_env() {
     if prefix=$(printf '%s\n' "$envs" | awk -v n="$name" '$1 == n {
             sub(/^[^ \t]+[ \t]+([*+][ \t]+)*/, ""); print; f = 1; exit} END {exit !f}'); then
         made="found"
-        if [ -z "$CONDA_ENV_REQUESTED" ] && [ -t 0 ]; then
+        # Only a terminal on stdin and on the saved stdout (fd 3) sees the question and answers it.
+        if [ -z "$CONDA_ENV_REQUESTED" ] && [ -t 0 ] && [ -t 3 ]; then
             if ! ask_yn "Install PROTEUS INTO the existing conda environment $name ($prefix)?" n; then
                 info "The existing conda environment $name stays as it is; to use another one run: $other"
                 LOG_SENTENCE_SHOWN=true
@@ -943,7 +949,10 @@ install_fresh_juliaup() {
         rm -f "$julia_installer"
         die "Could not download the Julia installer from https://install.julialang.org; check the network connection and run bash install.sh again, or install Julia $req by hand: https://julialang.org/downloads/"
     fi
-    bash "$julia_installer" --yes --add-to-path=no 2>&1
+    if ! bash "$julia_installer" --yes --add-to-path=no 2>&1; then
+        rm -f "$julia_installer"
+        die "The Julia installer from https://install.julialang.org failed; see its output above, or install Julia $req by hand: https://julialang.org/downloads/"
+    fi
     rm -f "$julia_installer"
     # Source the juliaup env for the current shell
     if [ -f "$HOME/.juliaup/bin/juliaup" ]; then
@@ -952,14 +961,14 @@ install_fresh_juliaup() {
     if ! command_exists juliaup; then
         die "juliaup installation failed. Install Julia manually: https://julialang.org/downloads/"
     fi
-    juliaup add "$req"
-    juliaup default "$req"
+    juliaup add "$req" || die "'juliaup add $req' failed; see its output above, then run bash install.sh again."
+    juliaup default "$req" || die "'juliaup default $req' failed; see its output above, then run bash install.sh again."
     info "Julia $req installed"
 }
 
 # Select the Julia PROTEUS uses, always the required one, and export it as PYTHON_JULIAPKG_EXE;
-# a PYTHON_JULIAPKG_EXE of that version stays. Only a juliaup that install_fresh_juliaup
-# installed in this run gets a new default; juliaup keeps its configuration in JULIAUP_DEPOT_PATH.
+# a PYTHON_JULIAPKG_EXE of that version stays, as the real binary of a launcher that it names.
+# Only a juliaup that install_fresh_juliaup installed in this run gets a new default.
 setup_julia() {
     local req="$REQUIRED_JULIA_MAJOR.$REQUIRED_JULIA_MINOR" julia_version
     local exe="${PYTHON_JULIAPKG_EXE:-}" config="${JULIAUP_DEPOT_PATH:-$HOME/.julia}/juliaup/juliaup.json"
@@ -967,6 +976,8 @@ setup_julia() {
         case "$(julia_version_of "$exe")" in
             "$req" | "$req".*)
                 JULIA_CHANNEL=""
+                PYTHON_JULIAPKG_EXE="$(resolve_real_julia_exe "" "$exe")"
+                export PYTHON_JULIAPKG_EXE
                 report_proteus_julia ""
                 return 0
                 ;;
