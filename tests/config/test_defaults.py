@@ -59,12 +59,12 @@ def test_dt_params_defaults():
 
     Verifies time-stepping defaults are set for stable integration:
     - method: adaptive (safest for general use)
-    - limits: 3e2 yr to 1e7 yr (covers typical geological timescales)
+    - limits: 1e2 yr to 1e7 yr (covers typical geological timescales)
     - adaptive tolerance: 10% change per step (standard stability/speed trade-off)
     """
     dt = TimeStepParams()
     assert dt.method == 'adaptive'
-    assert dt.minimum == pytest.approx(1e4, rel=1e-12)  # Minimum step 300 years
+    assert dt.minimum == pytest.approx(1e2, rel=1e-12)  # Minimum step 100 years
     assert dt.minimum_rel == pytest.approx(1e-5, rel=1e-12)  # Relative minimum precision
     assert dt.maximum == pytest.approx(1e7, rel=1e-12)  # Maximum step 10 Myr
     assert dt.initial == pytest.approx(3e1, rel=1e-12)  # Start with 1000 years
