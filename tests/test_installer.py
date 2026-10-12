@@ -150,15 +150,15 @@ class TestInstallerArgParsing:
         assert arms == ['--verbose)  VERBOSE="true" ;;']
 
 
-def _bin_dir_without(tmp_path, omitted: set[str]) -> Path:
-    """Mirror every executable on PATH into a fresh directory, minus `omitted`.
+def _bin_dir_without(tmp_path, omitted: set[str], path: str | None = None) -> Path:
+    """Mirror every executable on `path` (default PATH) into a fresh directory, minus `omitted`.
 
     Lets a test run the installer as if the host lacked one specific tool,
     without disturbing anything else the pre-flight checks need.
     """
     bindir = tmp_path / 'bin'
     bindir.mkdir()
-    for entry in os.environ['PATH'].split(os.pathsep):
+    for entry in (path or os.environ['PATH']).split(os.pathsep):
         source = Path(entry)
         if not source.is_dir():
             continue
@@ -171,6 +171,17 @@ def _bin_dir_without(tmp_path, omitted: set[str]) -> Path:
             except OSError:
                 continue
     return bindir
+
+
+@pytest.fixture(scope='session')
+def system_path(tmp_path_factory) -> str:
+    """One PATH entry with the tools of /usr/bin and /bin, minus conda, julia and juliaup.
+
+    A host can hold any of the three in /usr/bin, where a test of the missing
+    tool would find it behind its own stubs.
+    """
+    hidden = {'conda', 'julia', 'juliaup'}
+    return str(_bin_dir_without(tmp_path_factory.mktemp('system'), hidden, '/usr/bin:/bin'))
 
 
 def _run_preflight(bindir: Path) -> str:
@@ -1909,7 +1920,7 @@ class TestSetupJulia:
     """setup_julia always selects Julia 1.13: a default of another version stays, 1.13 goes beside it."""
 
     @pytest.fixture
-    def site(self, tmp_path):
+    def site(self, tmp_path, system_path):
         """Stub julia, juliaup and python3 on a PATH without any other Julia.
 
         The 1.13 channel resolves to a scratch directory with its own julia, which
@@ -1924,13 +1935,12 @@ class TestSetupJulia:
         _stub(stubs / 'python3', '#!/bin/sh\nexit 0\n')
         jl113 = tmp_path / 'juliaup' / 'julia-1.13.1' / 'bin'
         _stub(jl113 / 'julia', '#!/bin/sh\necho "julia version 1.13.1"\n')
-        system = '/usr/bin:/bin'
-        assert shutil.which('juliaup', path=system) is None
-        assert shutil.which('julia', path=system) is None
+        assert shutil.which('juliaup', path=system_path) is None
+        assert shutil.which('julia', path=system_path) is None
         log = tmp_path / 'calls.log'
         log.write_text('')
         env = {
-            'PATH': f'{stubs}{os.pathsep}{system}',
+            'PATH': f'{stubs}{os.pathsep}{system_path}',
             'HOME': str(tmp_path / 'home'),
             'STUB_LOG': str(log),
             'STUB_BINDIR_113': str(jl113),
@@ -2212,7 +2222,7 @@ class TestSetupJuliaWithoutJulia:
     """setup_julia without a julia on PATH: juliaup adds 1.13, or the fresh juliaup install runs."""
 
     @pytest.fixture
-    def site(self, tmp_path):
+    def site(self, tmp_path, system_path):
         """A HOME and a TMPDIR of their own, and curl and python3 stubs on a PATH without julia.
 
         The juliaup and julia stubs that the installer stub copies sit in a folder
@@ -2234,9 +2244,8 @@ class TestSetupJuliaWithoutJulia:
         scratch.mkdir()
         log = tmp_path / 'calls.log'
         log.write_text('')
-        system = '/usr/bin:/bin'
         env = {
-            'PATH': f'{stubs}{os.pathsep}{system}',
+            'PATH': f'{stubs}{os.pathsep}{system_path}',
             'HOME': str(home),
             'TMPDIR': str(scratch),
             'STUB_LOG': str(log),
@@ -2653,7 +2662,7 @@ class TestSetupCondaEnv:
     """setup_conda_env uses the active env, or uses or makes `proteus` and activates it in its own process."""
 
     @pytest.fixture
-    def site(self, tmp_path):
+    def site(self, tmp_path, system_path):
         """A fake conda base with conda.sh, a conda executable and a python outside every env.
 
         The env list holds `proteus2` and a nameless env at a path ending in
@@ -2666,10 +2675,9 @@ class TestSetupCondaEnv:
         _stub(stubs / 'conda', _STUB_CONDA_EXE)
         _stub(stubs / 'python', '#!/bin/sh\nexit 0\n')
         _stub(stubs / 'python3', '#!/bin/sh\nexit 0\n')
-        system = '/usr/bin:/bin'
-        assert shutil.which('conda', path=system) is None
+        assert shutil.which('conda', path=system_path) is None
         env = {
-            'PATH': f'{stubs}{os.pathsep}{system}',
+            'PATH': f'{stubs}{os.pathsep}{system_path}',
             'HOME': str(tmp_path / 'home'),
             'STUB_CONDA_LOG': str(tmp_path / 'conda.log'),
             'STUB_CONDA_BASE': str(base),
