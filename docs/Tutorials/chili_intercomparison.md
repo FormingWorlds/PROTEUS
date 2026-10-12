@@ -328,6 +328,17 @@ core-mantle-boundary radius) directly and supplies the pressure-entropy
 equation-of-state tables that Aragog reads. The energy balance stop
 criterion is enabled in this configuration.
 
+The configuration also departs from the protocol table in two inputs.
+The protocol fixes a planet radius (1 R$_\oplus$ for Earth, 0.95
+R$_\oplus$ for Venus) and a core radius fraction of 0.55
+[^cite-lichtenberg2026]. Here Zalmoxis solves the structure from a core
+mass fraction of 0.325, which gives a radius of 7.03 Mm (1.10
+R$_\oplus$) for Earth and 6.63 Mm (1.04 R$_\oplus$) for Venus, each with
+a core radius fraction of 0.49. The protocol sets the stellar irradiance
+to 920 W m$^{-2}$ for Earth and 1760 W m$^{-2}$ for Venus; the runs take
+it from the stellar evolution model, 1005 and 1923 W m$^{-2}$ at their
+start.
+
 ### The Nominal Venus case
 
 The Nominal Venus case does not reach the solidification criterion. The
