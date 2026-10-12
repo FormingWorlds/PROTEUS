@@ -448,12 +448,21 @@ def _apply_to_reservoirs(hf_row: dict, moved: dict[str, float]) -> None:
 
 
 def _move(hf_row: dict, name: str, mass: float) -> None:
-    """Take ``mass`` of one species or element out of the melt into the solid."""
+    """Take ``mass`` of one species or element out of the melt into the solid.
+
+    A species or a noble gas also carries mole columns [mol]; they follow the
+    masses, so a step with no chemistry solve after it (a frozen or desiccated
+    mantle) leaves them equal to ``kg / mmw``. The volatile elements carry none.
+    """
     liq = float(hf_row.get(f'{name}_kg_liquid', 0.0))
     sol = float(hf_row.get(f'{name}_kg_solid', 0.0))
     hf_row[f'{name}_kg_liquid'] = max(0.0, liq - mass)
     hf_row[f'{name}_kg_solid'] = max(0.0, sol + mass)
     hf_row[f'{name}_kg_trapped'] = max(0.0, _trapped(hf_row, name) + mass)
+    if f'{name}_mol_liquid' in hf_row:
+        mmw = eval_gas_mmw(name)
+        hf_row[f'{name}_mol_liquid'] = hf_row[f'{name}_kg_liquid'] / mmw
+        hf_row[f'{name}_mol_solid'] = hf_row[f'{name}_kg_solid'] / mmw
 
 
 SECS_PER_YEAR = 3.15576e7  # Julian year, matching the interior solver's step length

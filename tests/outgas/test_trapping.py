@@ -1438,3 +1438,32 @@ def test_the_front_speed_follows_the_crystallised_mass_not_the_solid_mass():
     # porosity as a mass fraction, far above the integrated value.
     bound = volume_to_mass_fraction(phi_b[11], _RHO_MELT, _RHO_SOLID)
     assert shrank.f_tl < 0.9 * bound
+
+
+@pytest.mark.physics_invariant
+def test_buried_and_released_mass_keeps_the_mole_columns_in_step_with_the_mass_columns():
+    """Burying mass and releasing part of it moves the moles of a species and of a
+    noble gas with the masses, so `mol * mmw` equals `kg` in the melt and in the
+    solid with no chemistry solve after the step. The volatile elements carry no
+    mole columns and get none. A move that changes the masses only leaves the solid
+    at 0 mol, which the first assertion on the moles refuses."""
+    from proteus.outgas.trapping import _apply_to_reservoirs
+
+    row = _hf_row(He_kg_liquid=4.0e16, He_kg_solid=0.0, He_kg_atm=0.0, He_kg_total=4.0e16)
+    for name in ('H2O', 'CO2', 'He'):
+        row[f'{name}_mol_liquid'] = row[f'{name}_kg_liquid'] / eval_gas_mmw(name)
+        row[f'{name}_mol_solid'] = 0.0
+
+    _apply_to_reservoirs(row, {'H2O': 3.0e20, 'CO2': 1.0e20, 'He': 1.0e16})
+    _apply_to_reservoirs(row, {'H2O': -1.0e20})
+
+    for name, solid, melt in (
+        ('H2O', 2.0e20, 1.6e21),
+        ('CO2', 1.0e20, 3.5e21),
+        ('He', 1.0e16, 3.0e16),
+    ):
+        mmw = eval_gas_mmw(name)
+        assert row[f'{name}_kg_solid'] == pytest.approx(solid, rel=1e-12)
+        assert row[f'{name}_mol_solid'] * mmw == pytest.approx(solid, rel=1e-12)
+        assert row[f'{name}_mol_liquid'] * mmw == pytest.approx(melt, rel=1e-12)
+    assert not [key for key in row if key.startswith(('H_mol', 'O_mol', 'C_mol'))]
