@@ -128,7 +128,9 @@ Shared fixtures live in `tests/conftest.py`:
 
 - `EarthLikeParams`, `UltraHotSuperEarthParams`, `IntermediateSuperEarthParams`:
   pre-configured parameter sets
-- `config_earth`, `config_minimal`, `config_dummy`: paths to test configs
+- `config_earth`, `config_minimal`, `config_dummy`: paths to test configs. Use
+  `config_dummy` for a smoke test; a run of `config_minimal` takes about 40 min,
+  so tests load that file and do not run it
 - `tmp_path`: pytest built-in for temporary directories
 
 ### Optional dependencies

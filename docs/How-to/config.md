@@ -23,9 +23,16 @@ configuration schema in
 so a configuration file only needs to set the parameters whose defaults you
 want to change. Empty sections can be omitted entirely. The
 [`minimal.toml`](https://github.com/FormingWorlds/PROTEUS/blob/main/input/minimal.toml)
-example shows how little a working file needs: a few science-critical choices
-(planet mass, orbit, volatiles, redox), with everything else left at its
-default.
+example sets only what its case needs: the planet mass and orbit, the hydrogen
+and carbon inventories, the redox state, and four run settings. The carbon
+inventory keeps the surface pressure above 90 bar while the mantle cools. The
+step floor of 100 yr and the step tolerance set how finely the molten stage is
+resolved. The run stops when the melt fraction falls to 0.05, and the interior
+structure is solved once at the start. Every other parameter is left at its
+default. The run takes about 40 min.
+[`minimal_quick.toml`](https://github.com/FormingWorlds/PROTEUS/blob/main/input/minimal_quick.toml)
+runs the same modules with a grey atmosphere in place of AGNI and takes about
+12 min.
 
 **Where to find the default for each parameter.** The configuration reference
 pages listed above give the default value of every parameter in their

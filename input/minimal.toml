@@ -1,5 +1,6 @@
 # PROTEUS minimal example: an Earth-mass planet at 1 AU cools from a magma ocean until the mantle is solid.
-# Every option that is not set here takes its default (see all_options.toml). Run time: about 39 min.
+# Run: proteus start -c input/minimal.toml (about 40 min on a workstation; the first rows appear after about 11 min).
+# Every option that is not set here takes its default (see all_options.toml).
 
 # Config file format version
 config_version = "3.0"
@@ -7,7 +8,7 @@ config_version = "3.0"
 [params]
     [params.dt]
         minimum = 100.0              # [yr]
-        rtol    = 0.2                # the step grows while flux and melt fraction change by less than this fraction
+        rtol    = 0.2                # relative tolerance of the adaptive step on the flux and the melt fraction; default 0.1
     [params.stop.solid]
         phi_crit = 0.05              # melt fraction at which the mantle counts as solidified
 
@@ -21,9 +22,9 @@ config_version = "3.0"
         O_mode   = "ic_chemistry"  # ic_chemistry | ppmw | kg | FeO_mantle_wt_pct
         O_budget = 0.0           # ignored for ic_chemistry mode
         H_mode   = "oceans"
-        H_budget = 0.5               # [Earth oceans]
+        H_budget = 0.5               # [Earth oceans]; a small inventory keeps the AGNI run short
         C_mode   = "kg"
-        C_budget = 2.73e20           # [kg]
+        C_budget = 2.73e20           # [kg of carbon]
 
 [interior_struct.zalmoxis]
     update_interval = 0.0            # [yr]; 0 keeps the structure of the initial state
