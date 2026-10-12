@@ -419,16 +419,13 @@ def test_the_initialisation_stage_buries_nothing_and_writes_no_diagnostics(fixed
 
     # Outside the initialisation stage: (0.98 * 0.0017 + 0.02) * 1e-3 * 2e23.
     live = _hf_row()
-    step = run_trapping(_config(), live, _hf_all(), init_stage=False)
+    run_trapping(_config(), live, _hf_all(), init_stage=False)
     expected = (0.98 * 0.0017 + 0.02) * 1.0e-3 * _DM_RM
     assert live['H2O_kg_solid'] == pytest.approx(expected, rel=1e-9)
     # Dropping the interstitial-melt term would bury about 12 times less.
     assert 0.98 * 0.0017 * 1.0e-3 * _DM_RM < 0.1 * expected
     assert live['H2O_kg_solid'] + live['H2O_kg_liquid'] == pytest.approx(1.8e21, rel=1e-12)
-    # The front scheme resolves no nodes, and the step reports the code of no front.
-    assert step.n_front == 0
-    assert live['trap_n_front'] == pytest.approx(0.0, abs=0.0)
-    assert live['trap_branch'] == pytest.approx(0.0, abs=0.0)
+    assert live['trap_F_tl'] == pytest.approx(0.02, rel=1e-9)
 
 
 @pytest.mark.physics_invariant

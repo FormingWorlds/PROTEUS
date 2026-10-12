@@ -143,6 +143,8 @@ TEMPLATE_OVERRIDES: dict[tuple[str, str, str], TemplateOverride] = {
     ('outgas/trapping.py', '_move', '<?>_kg_liquid'): _TRAPPED,
     ('outgas/trapping.py', '_move', '<?>_kg_solid'): _TRAPPED,
     ('outgas/trapping.py', '_move', '<?>_kg_trapped'): _TRAPPED,
+    ('outgas/trapping.py', '_move', '<?>_mol_liquid'): _TRAPPED_SPECIES,
+    ('outgas/trapping.py', '_move', '<?>_mol_solid'): _TRAPPED_SPECIES,
     ('outgas/trapping.py', 'run_trapping', '<?>_kg_liquid'): _TRAPPED_SPECIES,
 }
 
