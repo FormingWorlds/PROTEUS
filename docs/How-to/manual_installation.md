@@ -242,24 +242,23 @@ Set the FastChem environment variable:
 
 ## 7. Install Python submodules
 
-Clone and install each submodule in editable mode:
+Clone and install each submodule in editable mode. Each command clones the
+module at the release tag that matches its minimum version in
+`pyproject.toml` and installs it editable, the same code that `install.sh`
+installs.
 
 ```console
 # MORS - stellar evolution (https://proteus-framework.org/MORS/)
-git clone git@github.com:FormingWorlds/MORS
-python -m pip install -e MORS/.
+bash tools/get_python_module.sh MORS
 
 # JANUS - 1D convective atmosphere (https://proteus-framework.org/JANUS/)
-git clone git@github.com:FormingWorlds/JANUS
-python -m pip install -e JANUS/.
+bash tools/get_python_module.sh JANUS
 
 # CALLIOPE - volatile outgassing (https://proteus-framework.org/CALLIOPE/)
-git clone git@github.com:FormingWorlds/CALLIOPE
-python -m pip install -e CALLIOPE/.
+bash tools/get_python_module.sh CALLIOPE
 
 # ZEPHYRUS - atmospheric escape (https://github.com/FormingWorlds/ZEPHYRUS)
-git clone git@github.com:FormingWorlds/ZEPHYRUS
-python -m pip install -e ZEPHYRUS/.
+bash tools/get_python_module.sh ZEPHYRUS
 
 # Aragog - interior thermal evolution (https://proteus-framework.org/aragog/)
 bash tools/get_aragog.sh
@@ -268,18 +267,30 @@ bash tools/get_aragog.sh
 bash tools/get_zalmoxis.sh
 ```
 
+Aragog integrates with the SUNDIALS CVODE solver by default, so install it
+too (this needs the active conda environment); only Aragog on its default
+`solver_method = "cvode"` needs it:
+
+```console
+bash tools/get_cvode.sh
+```
+
 !!! info "Editable checkouts override PyPI versions"
     `fwl-aragog` and `fwl-zalmoxis` are listed as PyPI dependencies in
     `pyproject.toml` as a fallback for users who install PROTEUS without
     cloning submodules. The editable sibling checkouts take precedence on
     `sys.path`. Run `proteus doctor` to confirm which versions are active.
 
-!!! warning "Local changes block checkout refreshes"
-    The `tools/get_*.sh` scripts refuse to replace a checkout that has
-    uncommitted changes to tracked files or commits not pushed to a
-    remote. Commit and push your work first, or pass `--force` to the
-    script (e.g. `bash tools/get_aragog.sh --force`) to discard the
-    checkout deliberately.
+!!! warning "A module folder that is already there is kept"
+    Run again, these commands keep a module folder that is already there,
+    whatever it holds: they run no git command that changes it, delete or
+    replace nothing in it, install it as it is and print the commands that
+    move it to its release tag by hand. The editable install can still
+    write files of its own into the folder (for example a version file or
+    an `.egg-info` folder), and `get_vulcan.sh` builds fastchem in it. An
+    empty folder gets a new clone. Pass `--force` (e.g.
+    `bash tools/get_aragog.sh --force`) to delete the folder and clone the
+    module again.
 
 ## 8. Install PROTEUS
 
@@ -303,24 +314,27 @@ pre-commit install -f
 ## 10. Download reference data
 
 Download the essential reference data files (the default-config and
-tutorial k-tables, stellar spectra, and the interior tables, including
-the structure-solver EOS):
+tutorial k-tables, stellar spectra, the PHOENIX grid of the default star,
+and the interior tables, including the structure-solver EOS):
 
 ```console
 proteus get spectral -n Honeyside -b 48
 proteus get spectral -n Dayspring -b 48
 proteus get stellar
+proteus get phoenix --feh 0.0 --alpha 0.0
 proteus get interiordata
 ```
+
+The PHOENIX grid is in the essential set because the default star, which a
+config without a `[star]` section uses, takes its spectrum from it.
 
 Running `proteus get spectral` without arguments downloads every
 spectral file group (~10 GB).
 
-For additional datasets (MUSCLES spectra, PHOENIX models), use:
+For additional datasets (MUSCLES spectra, reference data), use:
 
 ```console
 proteus get muscles --all
-proteus get phoenix --feh 0.0 --alpha 0.0
 proteus get reference
 ```
 
