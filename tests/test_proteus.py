@@ -4207,6 +4207,13 @@ def test_a_desiccated_planet_remelting_in_small_steps_keeps_what_it_releases(
     down to what is still locked, although the N total stays above mass_thresh."""
     runner, hf, trapped = _remelting_desiccated_run(tmp_path, monkeypatch, n_steps=16)
     after = hf[np.isclose(hf['M_vol_initial'], 3.6e19 + _REMELT_N, rtol=1e-12)]
+    # After the row that the test writes, the moles of melt and solid follow the masses.
+    from proteus.utils.helper import eval_gas_mmw
+
+    for column in ('H2O_mol_liquid', 'H2O_mol_solid', 'N2_mol_liquid', 'N2_mol_solid'):
+        kg = after[column.replace('_mol_', '_kg_')].iloc[1:]
+        mmw = eval_gas_mmw(column.split('_mol_')[0])
+        np.testing.assert_allclose(after[column].iloc[1:] * mmw, kg, rtol=1e-12)
     end = hf.iloc[-1]
     assert end['Phi_global'] == pytest.approx(0.50, abs=1e-12)
     assert len(after) >= 19

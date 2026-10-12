@@ -447,9 +447,10 @@ def _apply_to_reservoirs(hf_row: dict, moved: dict[str, float]) -> None:
 def _move(hf_row: dict, name: str, mass: float) -> None:
     """Take ``mass`` of one species or element out of the melt into the solid.
 
-    A species or a noble gas also carries mole columns [mol]; they follow the
-    masses, so a step with no chemistry solve after it (a frozen or desiccated
-    mantle) leaves them equal to ``kg / mmw``. The volatile elements carry none.
+    A species or a noble gas also carries mole columns [mol]. Those of the melt
+    and the solid follow the masses, so a step with no chemistry solve after it
+    (a frozen or desiccated mantle) leaves them equal to ``kg / mmw``. The move
+    leaves ``_mol_total`` as it is. The volatile elements carry no mole columns.
     """
     liq = float(hf_row.get(f'{name}_kg_liquid', 0.0))
     sol = float(hf_row.get(f'{name}_kg_solid', 0.0))
