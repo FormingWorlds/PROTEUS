@@ -1,18 +1,5 @@
-# PROTEUS CHILI Grid: Hmid Clow
-#
-# CHILI Earth grid case (H=7.80e+20 kg, C=1.36e+20 kg)
-# Lichtenberg et al. 2026, PSJ 7:108, Table 3.
-#
-# Planet: 1 M_Earth, BSE composition, fO2 = IW+4
-# Star: Sun at 50 Myr (Spada tracks, solar spectrum)
-# Orbit: 1 AU, no tides
-# Interior: Aragog + Zalmoxis (PALEOS EOS)
-# Atmosphere: AGNI (correlated-k, Dayspring 48 bands)
-# Outgassing: CALLIOPE (C-H-O equilibrium, IW+4)
-# Escape: ZEPHYRUS (energy-limited, 30% efficiency)
-#
-# Expected: solidification in ~0.5-4 Myr, consistent with CHILI models.
-#
+# PROTEUS CHILI grid case Hmid Clow: Earth at IW+4 with H = 7.80e+20 kg and C = 1.36e+20 kg (Lichtenberg et al. 2026, PSJ 7:108, Table 3).
+# The run stops at a melt fraction of 0.05, at energy balance, or at 15 Myr of model time.
 # Run: proteus start --offline -c input/tutorials/chili_grid/earth_Hmid_Clow.toml
 
 config_version = "3.0"
