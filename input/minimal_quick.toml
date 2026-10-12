@@ -1,0 +1,38 @@
+# PROTEUS quick install check: an Earth-mass planet at 1 AU cools from a magma ocean until the mantle is solid,
+# with a grey atmosphere in place of AGNI. Run time: about 12 min.
+
+# Config file format version
+config_version = "3.0"
+
+[params]
+    [params.dt]
+        minimum = 100.0              # [yr]
+    [params.stop.solid]
+        phi_crit = 0.05              # melt fraction at which the mantle counts as solidified
+
+[orbit]
+    semimajoraxis = 1.0              # [AU]
+
+[planet]
+    mass_tot      = 1.0              # [M_earth]
+    volatile_mode = "elements"
+    [planet.elements]
+        O_mode   = "ic_chemistry"  # ic_chemistry | ppmw | kg | FeO_mantle_wt_pct
+        O_budget = 0.0           # ignored for ic_chemistry mode
+        H_mode   = "oceans"
+        H_budget = 3.0               # [Earth oceans]
+        C_mode   = "kg"
+        C_budget = 2.73e20           # [kg]
+
+[interior_struct.zalmoxis]
+    update_interval = 0.0            # [yr]; 0 keeps the structure of the initial state
+
+[atmos_clim]
+    module   = "dummy"
+    rayleigh = false
+    [atmos_clim.dummy]
+        gamma = 0.8              # opacity of the grey atmosphere: T_rad = T_surf * (1 - gamma)
+
+[outgas]
+    module       = "calliope"        # explicit pin so the file is robust to schema-default changes
+    fO2_shift_IW = 2                 # offset from IW [log10 units]

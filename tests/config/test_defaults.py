@@ -505,7 +505,7 @@ def test_a_core_module_core_without_the_zalmoxis_structure_is_refused_when_built
 @pytest.mark.unit
 def test_the_default_redox_state_is_two_log_units_above_iron_wustite():
     """``outgas.fO2_shift_IW`` defaults to IW+2. ``all_options.toml``,
-    ``minimal.toml`` and the Earth and Venus tutorials set that value, the 5
+    ``minimal.toml``, ``minimal_quick.toml`` and the Earth and Venus tutorials set that value, the 5
     CHILI intercomparison cases keep the protocol's IW+4, and a user value is
     accepted on [-12, 12] and refused half a unit beyond either end."""
     from helpers import PROTEUS_ROOT
@@ -514,7 +514,7 @@ def test_the_default_redox_state_is_two_log_units_above_iron_wustite():
     from proteus.config._outgas import Outgas
 
     assert Outgas().fO2_shift_IW == pytest.approx(2.0)
-    want = {f: 2.0 for f in ('all_options.toml', 'minimal.toml')}
+    want = {f: 2.0 for f in ('all_options.toml', 'minimal.toml', 'minimal_quick.toml')}
     want |= {f'tutorials/tutorial_{p}.toml': 2.0 for p in ('earth', 'venus')}
     want |= {
         f'chili/intercomp/{c}.toml': 4.0 for c in ('earth', 'venus', 'tr1b', 'tr1e', 'tr1a')
