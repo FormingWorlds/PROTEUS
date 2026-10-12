@@ -832,7 +832,8 @@ report_stayed_clones() {
         list=$(awk 'NR > 1 {printf ", "} {printf "%s", $0}' "$PROTEUS_CLONE_STAYS")
         warn "Not at their release tag: $list. A clone that is older than the minimum version is" \
             "not used: the PROTEUS install takes that release from PyPI. The commands printed" \
-            "above for each clone move it to its tag or replace it."
+            "above move a clone to its tag or replace it; a paired branch without the release" \
+            "has no command, its release comes from PyPI."
     fi
     rm -f "$PROTEUS_CLONE_STAYS"
 }
