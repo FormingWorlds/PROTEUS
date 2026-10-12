@@ -1185,6 +1185,47 @@ class TestModulePhaseSummary:
         ) in again.stdout.splitlines()
         assert 'stays as it is' not in again.stdout
 
+    def test_aragog_clone_on_a_paired_branch_without_the_tag_is_named(self, site):
+        """An aragog paired branch that starts below the tag commit, with a commit of its own,
+        does not hold the release: on the run after the one that clones it, aragog gets the
+        neutral line, the line that the PROTEUS install takes the release from PyPI and an
+        entry in the summary, which the other 5 modules at their tag do not get. No hand
+        command is printed for it and its HEAD stays on the branch."""
+        work = site['root'].parent / 'work' / 'aragog'
+        git(work, 'checkout', '-q', '-b', _PAIRED_BRANCH, '26.10.06~1')
+        (work / 'version.txt').write_text('paired\n')
+        git(work, 'commit', '-q', '-am', 'paired commit')
+        git(work, 'push', '-q', str(site['remotes'] / 'aragog.git'), 'HEAD')
+        paired = git(work, 'rev-parse', 'HEAD')
+        for repo in ('MORS', 'JANUS', 'CALLIOPE', 'ZEPHYRUS', 'Zalmoxis'):
+            self._clone(site, repo, 'tags/26.10.06')
+        site['env']['GITHUB_HEAD_REF'] = _PAIRED_BRANCH
+        assert self._run_phase(site).returncode == 0
+        aragog = site['root'] / 'aragog'
+        assert git(aragog, 'rev-parse', 'HEAD') == paired
+
+        result = self._run_phase(site)
+        assert result.returncode == 0, result.stdout + result.stderr
+        out = (result.stdout + result.stderr).splitlines()
+        neutral = (
+            f'fwl-aragog: {site["real"] / "aragog"} is on the paired branch {_PAIRED_BRANCH},'
+            ' as PROTEUS on that branch expects'
+        )
+        assert out[out.index(neutral) + 1] == (
+            '    This branch does not hold the release 26.10.06: the PROTEUS install takes that'
+            ' release from PyPI, not this folder.'
+        )
+        assert [ln for ln in out if 'Not at their release tag' in ln] == [
+            f'{_WARN_PREFIX}Not at their release tag: aragog (paired branch {_PAIRED_BRANCH},'
+            ' without the release 26.10.06). A clone that is older than the minimum version is'
+            ' not used: the PROTEUS install takes that release from PyPI. The commands printed'
+            ' above for each clone move it to its tag or replace it.'
+        ]
+        assert not [ln for ln in out if 'git -C' in ln or 'stays as it is' in ln]
+        assert git(aragog, 'symbolic-ref', '--short', 'HEAD') == _PAIRED_BRANCH
+        assert git(aragog, 'rev-parse', 'HEAD') == paired
+        assert list(Path(site['env']['TMPDIR']).iterdir()) == []
+
     @pytest.mark.parametrize('value', [None, ''], ids=['unset', 'empty'])
     def test_summary_tolerates_an_unset_or_empty_file_name(self, value):
         """report_stayed_clones returns 0 and prints nothing under set -u when the file name
