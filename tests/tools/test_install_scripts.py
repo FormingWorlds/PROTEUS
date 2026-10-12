@@ -3321,6 +3321,31 @@ class TestPairedModuleRerun:
         assert site['log'].read_text().splitlines() == [f'install -U -e {plain}']
 
 
+def test_module_without_a_paired_branch_rule_gets_the_stay_line(tmp_path):
+    """MORS pairs no branch: its clone on a branch named like the PROTEUS feature branch, which
+    its origin has, gets the stay line with the hand commands and the summary entry of any
+    other branch, and no paired-branch line; the clone stays on the branch."""
+    site = _paired_site(tmp_path, 'MORS', 'fwl-mors')
+    site['env']['GITHUB_HEAD_REF'] = _PAIRED_BRANCH
+    assert _run_tool(site, 'get_python_module.sh', 'MORS').returncode == 0
+    clone = site['root'] / 'MORS'
+    git(clone, 'checkout', '-q', '-b', _PAIRED_BRANCH, f'origin/{_PAIRED_BRANCH}')
+    stays = tmp_path / 'stays.txt'
+    site['env']['PROTEUS_CLONE_STAYS'] = str(stays)
+
+    result = _run_tool(site, 'get_python_module.sh', 'MORS')
+    assert result.returncode == 0, result.stdout + result.stderr
+    out = result.stdout.splitlines()
+    assert (
+        f'fwl-mors: {clone} stays as it is: on branch {_PAIRED_BRANCH}, on a line of history'
+        ' without the tag; PROTEUS expects the release tag 26.04.22'
+    ) in out
+    assert f'        git -C {clone} checkout --detach refs/tags/26.04.22' in out
+    assert 'is on the paired branch' not in result.stdout
+    assert stays.read_text() == f'MORS (branch {_PAIRED_BRANCH}, other history)\n'
+    assert git(clone, 'rev-parse', 'HEAD') == site['paired']
+
+
 # Each module with a setup script: the script, its arguments, the clone folder and the distribution.
 _MODULES = [
     ('get_python_module.sh', ('MORS',), 'MORS', 'fwl-mors'),

@@ -113,6 +113,9 @@ bash install.sh
     an environment over an existing folder of that name, such as the folder of an
     environment `PROTEUS` on a file system that ignores case: it stops and names that
     folder. To use an environment of your own, activate it before `bash install.sh`.
+    With Miniconda, conda can refuse to make the environment until you accept the terms
+    of service of its default channels: run the `conda tos accept` commands that conda
+    prints, then run `bash install.sh` again.
 
 !!! warning "Julia from a system package manager"
     If your `julia` comes from your system package manager (not the official installer) and is not version 1.13, the installer stops, because it adds Julia 1.13 only through juliaup. Install juliaup with the official installer, or uninstall that Julia and remove its entries from your `PATH`, _before running the installer_.
