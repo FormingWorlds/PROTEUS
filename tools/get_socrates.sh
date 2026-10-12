@@ -175,7 +175,9 @@ fi
 echo "You must now run the following command:"
 echo "    export RAD_DIR='$socpath'"
 echo " "
-echo "You should also add this command to your shell rc file (e.g. ~/.bashrc)"
+echo "To keep it, set it in your conda environment (bash install.sh does this itself):"
+echo "    conda env config vars set RAD_DIR='$socpath'"
+echo "and then run: conda deactivate && conda activate <your environment>"
 
 # Re-cloning the SOCRATES tree deleted the build products AGNI writes into it:
 # the generated wrappers under socrates/julia/gen and the compiled libSOCRATES

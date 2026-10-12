@@ -15,7 +15,7 @@ import pytest
 from click.testing import CliRunner
 
 from proteus import __version__ as proteus_version
-from proteus import cli
+from proteus import cli, doctor
 from proteus.config import UnknownConfigKeyError
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
@@ -39,6 +39,22 @@ def phoenix_downloads(monkeypatch):
 
     monkeypatch.setattr('proteus.utils.data.download_phoenix', fake_download_phoenix)
     return calls
+
+
+_REAL_CHECK_JULIA = doctor.check_julia
+
+
+@pytest.fixture(autouse=True)
+def julia_check(monkeypatch):
+    """Replace the Julia check of install-all and update-all, which runs ``julia --version``.
+
+    Many tests here stub ``subprocess.run`` with an object without output; a test
+    of the Julia line sets ``_REAL_CHECK_JULIA`` back.
+    """
+    passed = doctor.CheckResult(
+        name='julia', category='environment', status=doctor.PASS, message='1.13.1 (stub)'
+    )
+    monkeypatch.setattr(doctor, 'check_julia', lambda: passed)
 
 
 def _solar_dir(root):
@@ -2002,10 +2018,17 @@ def test_install_all_aborts_when_julia_missing(monkeypatch, tmp_path):
     assert 'Installing AGNI' not in res.output
 
 
+def _built_socrates(folder: Path) -> Path:
+    """Make ``folder`` a SOCRATES build: it holds ``bin/radlib.a``. Returns the folder."""
+    (folder / 'bin').mkdir(parents=True)
+    (folder / 'bin' / 'radlib.a').write_text('')
+    return folder
+
+
 def _export_env_site(monkeypatch, tmp_path, conda_prefix):
     """Stub the heavy steps of install-all and update-all for an ``--export-env`` run.
 
-    SOCRATES, AGNI and a built FastChem exist under the root, PYTHON_JULIAPKG_EXE
+    A built SOCRATES (bin/radlib.a), AGNI and a built FastChem exist under the root, PYTHON_JULIAPKG_EXE
     names an executable Julia 1.13 stub, Julia and conda are on the stubbed PATH,
     FWL_DATA holds a space, and HOME is an empty folder. Returns the HOME folder
     and the list that records each subprocess command.
@@ -2028,7 +2051,7 @@ def _export_env_site(monkeypatch, tmp_path, conda_prefix):
     home.mkdir()
     monkeypatch.setenv('HOME', str(home))
     monkeypatch.setattr(Path, 'home', lambda: home)
-    (tmp_path / 'socrates').mkdir()
+    _built_socrates(tmp_path / 'socrates')
     fastchem = tmp_path / 'AGNI' / 'fastchem'
     fastchem.mkdir(parents=True)
     (fastchem / 'fastchem').write_text('#!/bin/sh\n')
@@ -2181,6 +2204,57 @@ def test_install_vars_record_fc_dir_only_for_a_built_fastchem(
     variables = cli._install_vars(tmp_path, tmp_path / 'fwl', tmp_path / 'socrates')
     assert ('FC_DIR' in variables) is recorded
     assert variables.get('FC_DIR') == (str(fastchem.resolve()) if recorded else None)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('command', ['install-all', 'update-all'])
+def test_export_env_records_the_rad_dir_set_when_the_root_folder_has_no_build(
+    monkeypatch, tmp_path, command
+):
+    """A socrates folder of the root without bin/radlib.a gives way to a RAD_DIR set to a build.
+
+    That folder is what a failed build or a clone without a build leaves. Recording it
+    would override the valid RAD_DIR at each activation of the env; the RAD_DIR of the
+    process stays as it was.
+    """
+    _, calls = _export_env_site(monkeypatch, tmp_path, '/opt/conda/envs/proteus')
+    shutil.rmtree(tmp_path / 'socrates' / 'bin')
+    own = _built_socrates(tmp_path / 'elsewhere' / 'socrates')
+    monkeypatch.setenv('RAD_DIR', str(own))
+    res = runner.invoke(cli.cli, [command, '--export-env'])
+    assert res.exit_code == 0, res.output
+    expected = {**_expected_install_vars(tmp_path), 'RAD_DIR': str(own)}
+    lines = (tmp_path / '.proteus-env.sh').read_text().splitlines()
+    assert lines == [f"export {name}='{value}'" for name, value in expected.items()]
+    (call,) = [c for c in calls if c[0] == 'conda']
+    assert [a for a in call if a.startswith('RAD_DIR=')] == [f'RAD_DIR={own}']
+    assert os.environ['RAD_DIR'] == str(own)
+    assert 'No SOCRATES build' not in res.output
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('command', ['install-all', 'update-all'])
+def test_export_env_records_no_rad_dir_without_a_built_socrates(monkeypatch, tmp_path, command):
+    """With no bin/radlib.a in the root's socrates or in RAD_DIR, RAD_DIR is not recorded.
+
+    One line names the root's folder; the other 3 variables are recorded, and
+    the RAD_DIR of the process, a missing folder, is not replaced.
+    """
+    _, calls = _export_env_site(monkeypatch, tmp_path, '/opt/conda/envs/proteus')
+    shutil.rmtree(tmp_path / 'socrates' / 'bin')
+    monkeypatch.setenv('RAD_DIR', str(tmp_path / 'missing'))
+    res = runner.invoke(cli.cli, [command, '--export-env'])
+    assert res.exit_code == 0, res.output
+    expected = {k: v for k, v in _expected_install_vars(tmp_path).items() if k != 'RAD_DIR'}
+    lines = (tmp_path / '.proteus-env.sh').read_text().splitlines()
+    assert lines == [f"export {name}='{value}'" for name, value in expected.items()]
+    (call,) = [c for c in calls if c[0] == 'conda']
+    assert [a for a in call if a.startswith('RAD_DIR=')] == []
+    assert (
+        res.output.count(f'[!] No SOCRATES build (bin/radlib.a) in {tmp_path / "socrates"}')
+        == 1
+    )
+    assert os.environ['RAD_DIR'] == str(tmp_path / 'missing')
 
 
 @pytest.mark.unit
@@ -2357,6 +2431,83 @@ def test_agni_setup_runs_with_the_bound_julia_first_on_path(
     assert agni[0]['env']['PATH'].split(os.pathsep) == [str(link_dir), '/usr/bin', '/bin']
     assert os.readlink(link_dir / 'julia') == str(exe)
     assert os.environ['PATH'] == '/usr/bin:/bin'
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('command', 'agni_present'),
+    [('install-all', False), ('update-all', True)],
+    ids=['install-all-new-agni', 'update-all-existing-agni'],
+)
+def test_agni_setup_goes_on_without_the_julia_link_in_a_read_only_root(
+    monkeypatch, tmp_path, command, agni_present
+):
+    """A root where ``.proteus-julia`` cannot be made gives one warning, not a traceback.
+
+    The AGNI script still runs once, with PATH as it is, and the command completes.
+    """
+    if os.geteuid() == 0:
+        pytest.skip('the root user writes into a read-only folder')
+    captured = _agni_site(monkeypatch, tmp_path, agni_present)
+    monkeypatch.setenv('PYTHON_JULIAPKG_EXE', str(_julia_stub(tmp_path / 'jl' / 'bin')))
+    (tmp_path / 'output').mkdir()
+    tmp_path.chmod(0o555)
+    try:
+        res = runner.invoke(cli.cli, [command])
+    finally:
+        tmp_path.chmod(0o755)
+    assert res.exit_code == 0, res.output
+    assert res.exception is None
+    link = tmp_path / '.proteus-julia' / 'julia'
+    assert f'[!] Could not link {link} to the Julia PROTEUS uses (' in res.output
+    script = ['bash', str(tmp_path / 'tools' / 'get_agni.sh'), '0']
+    agni = [kw for cmd, kw in captured if cmd == script]
+    assert len(agni) == 1
+    assert agni[0]['env']['PATH'] == '/usr/bin:/bin'
+    assert not (tmp_path / '.proteus-julia').exists()
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('version', 'line'),
+    [
+        ('1.13.1', '[+] Julia: 1.13.1 at <exe> (PYTHON_JULIAPKG_EXE)'),
+        ('1.12.6', '[!] Julia: 1.12.6 at <exe> (PYTHON_JULIAPKG_EXE) (PROTEUS is tested on'),
+    ],
+    ids=['julia-1.13', 'julia-1.12'],
+)
+@pytest.mark.parametrize('command', ['install-all', 'update-all'])
+def test_install_all_and_update_all_name_the_julia_they_use(
+    monkeypatch, tmp_path, command, version, line
+):
+    """Both commands print the version of PYTHON_JULIAPKG_EXE once, and warn for a 1.12.
+
+    A julia 1.13 on PATH does not count: the bound binary is the one PROTEUS uses.
+    The warning carries the advice of ``proteus doctor``, which adds 1.13 beside the default.
+    """
+    monkeypatch.setattr(doctor, 'check_julia', _REAL_CHECK_JULIA)
+    _agni_site(monkeypatch, tmp_path, agni_present=True)
+    exe = tmp_path / 'jl' / 'bin' / 'julia'
+    exe.parent.mkdir(parents=True)
+    exe.write_text(f'#!/bin/sh\necho "julia version {version}"\n')
+    exe.chmod(0o755)
+    monkeypatch.setenv('PYTHON_JULIAPKG_EXE', str(exe))
+    _julia_stub(tmp_path / 'path-bin')
+    monkeypatch.setenv('PATH', f'{tmp_path / "path-bin"}:/usr/bin:/bin')
+    stubbed = cli.subprocess.run
+    monkeypatch.setattr(
+        cli.subprocess,
+        'run',
+        lambda cmd, **kw: _REAL_RUN(cmd, **kw) if cmd[0] == str(exe) else stubbed(cmd, **kw),
+    )
+    res = runner.invoke(cli.cli, [command])
+    assert res.exit_code == 0, res.output
+    julia_lines = [
+        ln for ln in res.output.splitlines() if ln.startswith(('[+] Julia:', '[!] Julia:'))
+    ]
+    assert len(julia_lines) == 1
+    assert julia_lines[0].startswith(line.replace('<exe>', str(exe)))
+    assert ('juliaup add 1.13' in julia_lines[0]) is (version != '1.13.1')
 
 
 @pytest.mark.unit
@@ -2816,6 +2967,7 @@ def test_update_all_leaves_an_agni_clone_with_a_modified_file_as_it_is(monkeypat
     assert _stay_line(site, '1 modified tracked file') in res.output
     assert f'git -C {site.agni} fetch origin' in res.output
     assert f'git -C {site.agni} checkout {site.commits[1]}' in res.output
+    assert 'branch my-agni-work' not in res.output
     assert 'bash tools/get_agni.sh 0' in res.output
     assert 'Failed to update AGNI' not in res.output
     assert site.data_paths == [site.root / 'input' / 'all_options.toml']
@@ -2826,7 +2978,10 @@ def test_update_all_leaves_an_agni_clone_with_a_modified_file_as_it_is(monkeypat
 def test_update_all_leaves_a_local_commit_on_a_detached_agni_head(monkeypatch, tmp_path):
     """A commit on a detached HEAD is on no ref; moving the clone would lose it, so it stays.
 
-    ``tools/get_agni.sh`` is a stub here: the test is about the decision.
+    ``tools/get_agni.sh`` is a stub here: the test is about the decision. The
+    hand commands start with a `git branch`, since `fetch` and `checkout <pin>`
+    alone would leave the commit on no ref; run by hand in this order, they keep
+    the commit on the branch and move HEAD to the pin.
     """
     site = _agni_update_site(monkeypatch, tmp_path, 'stub')
     (site.agni / 'version.txt').write_text('my work\n')
@@ -2841,24 +2996,6 @@ def test_update_all_leaves_a_local_commit_on_a_detached_agni_head(monkeypatch, t
     assert local not in site.commits
     found = '1 local commit (on no remote-tracking branch and under no tag)'
     assert _stay_line(site, found) in res.output
-
-
-@pytest.mark.unit
-def test_stay_line_for_local_commits_keeps_them_on_a_branch_first(monkeypatch, tmp_path):
-    """For a local commit on a detached HEAD the hand commands start with a `git branch`.
-
-    `fetch` and `checkout <pin>` alone would leave the commit on no ref. The
-    3 lines come in this order; run by hand, they keep the commit on the
-    branch and move HEAD to the pin.
-    """
-    site = _agni_update_site(monkeypatch, tmp_path, 'stub')
-    (site.agni / 'version.txt').write_text('my work\n')
-    _git(site.agni, 'commit', '-q', '-am', 'my work')
-    local = _git(site.agni, 'rev-parse', 'HEAD')
-
-    res = runner.invoke(cli.cli, ['update-all'])
-
-    assert res.exit_code == 0, res.output
     commands = [ln.strip() for ln in res.output.splitlines() if ln.startswith('      git -C ')]
     assert commands == [
         f'git -C {site.agni} branch my-agni-work'
@@ -2873,17 +3010,24 @@ def test_stay_line_for_local_commits_keeps_them_on_a_branch_first(monkeypatch, t
 
 
 @pytest.mark.unit
-def test_modified_file_stay_line_has_no_branch_command(monkeypatch, tmp_path):
-    """A clone held back by a modified file, with no local commit, gets no `git branch` line."""
+def test_agni_commit_that_only_a_local_tag_holds_does_not_block(monkeypatch, tmp_path):
+    """A commit on a detached HEAD under a tag of the clone, on no remote branch, may move.
+
+    A tag keeps the commit, so the checkout of the pin loses nothing; without
+    ``--tags`` in the count it would be 1 local commit and block.
+    """
     site = _agni_update_site(monkeypatch, tmp_path, 'stub')
-    (site.agni / 'version.txt').write_text('my change\n')
+    (site.agni / 'version.txt').write_text('tagged work\n')
+    _git(site.agni, 'commit', '-q', '-am', 'tagged work')
+    _git(site.agni, 'tag', 'my-release')
+    count = _git(site.agni, 'rev-list', '--count', 'HEAD', '--not', '--remotes')
+    assert count == '1'
 
-    res = runner.invoke(cli.cli, ['update-all'])
-
-    assert res.exit_code == 0, res.output
-    assert 'stays as it is: 1 modified tracked file' in res.output
-    assert 'branch my-agni-work' not in res.output
-    assert f'git -C {site.agni} fetch origin' in res.output
+    assert cli._agni_update_blocker(site.agni) is None
+    _git(site.agni, 'tag', '-d', 'my-release')
+    assert cli._agni_update_blocker(site.agni) == (
+        '1 local commit (on no remote-tracking branch and under no tag)'
+    )
 
 
 @pytest.mark.unit

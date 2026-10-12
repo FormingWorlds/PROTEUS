@@ -4359,28 +4359,17 @@ def test_manual_install_page_names_existing_scripts_and_modules():
 
 @pytest.mark.unit
 @pytest.mark.parametrize('strict', [True, False], ids=['strict', 'lenient'])
-@pytest.mark.parametrize(
-    'kind', ['unset', 'empty', 'missing', 'not-executable', 'directory'], ids=str
-)
-def test_use_proteus_julia_changes_nothing_without_an_executable_file(tmp_path, kind, strict):
-    """Without PYTHON_JULIAPKG_EXE naming an executable file, PATH and stdout stay as they are.
+@pytest.mark.parametrize('kind', ['unset', 'empty'], ids=str)
+def test_use_proteus_julia_changes_nothing_without_the_variable(tmp_path, kind, strict):
+    """With PYTHON_JULIAPKG_EXE unset or empty, PATH and stdout stay as they are, status 0.
 
     The unset case runs under ``set -u`` as well, where a bare expansion of
     the variable would stop the script.
     """
-    target = {
-        'unset': None,
-        'empty': '',
-        'missing': str(tmp_path / 'none' / 'julia'),
-        'not-executable': str(_write_stub(tmp_path, 'julia', '#!/bin/sh\n')),
-        'directory': str(tmp_path),
-    }[kind]
-    if kind == 'not-executable':
-        Path(target).chmod(0o644)
     env = {k: v for k, v in os.environ.items() if k != 'PYTHON_JULIAPKG_EXE'}
     env['PATH'] = '/usr/bin:/bin'
-    if target is not None:
-        env['PYTHON_JULIAPKG_EXE'] = target
+    if kind == 'empty':
+        env['PYTHON_JULIAPKG_EXE'] = ''
     res = _run_bash(
         _with_common('use_proteus_julia\nprintf "PATH=%s\\n" "$PATH"\n', strict=strict),
         env=env,
@@ -4388,6 +4377,34 @@ def test_use_proteus_julia_changes_nothing_without_an_executable_file(tmp_path, 
     assert res.returncode == 0, res.stderr
     assert res.stdout.splitlines() == ['PATH=/usr/bin:/bin']
     assert res.stderr == ''
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('kind', ['missing', 'not-executable', 'directory'], ids=str)
+def test_use_proteus_julia_stops_on_a_variable_that_names_no_executable_file(tmp_path, kind):
+    """A set PYTHON_JULIAPKG_EXE that names no executable file returns 1 with one error line.
+
+    juliacall fails at import with such a value, so the default Julia on PATH
+    must not stand in for it; PATH stays as it is and nothing is linked.
+    """
+    target = {
+        'missing': str(tmp_path / 'none' / 'julia'),
+        'not-executable': str(_write_stub(tmp_path, 'julia', '#!/bin/sh\n')),
+        'directory': str(tmp_path),
+    }[kind]
+    if kind == 'not-executable':
+        Path(target).chmod(0o644)
+    env = {**os.environ, 'PATH': '/usr/bin:/bin', 'PYTHON_JULIAPKG_EXE': target}
+    res = _run_bash(
+        _with_common('use_proteus_julia || echo "STATUS=$?"\nprintf "PATH=%s\\n" "$PATH"\n'),
+        env=env,
+    )
+    assert res.returncode == 0, res.stderr
+    assert res.stdout.splitlines() == ['STATUS=1', 'PATH=/usr/bin:/bin']
+    assert res.stderr.splitlines() == [
+        f'ERROR: PYTHON_JULIAPKG_EXE={target} is not an executable file; point it at the '
+        'Julia PROTEUS uses, or unset it to use the Julia on PATH.'
+    ]
 
 
 def _common_copy(tmp_path: Path) -> Path:
@@ -4593,6 +4610,25 @@ def test_setup_script_runs_the_bound_julia_and_never_the_path_one(tmp_path, scri
 
 @pytest.mark.unit
 @pytest.mark.parametrize('script', sorted(_JULIA_CALLS))
+def test_setup_script_with_an_unusable_bound_julia_stops_before_any_julia(tmp_path, script):
+    """A PYTHON_JULIAPKG_EXE that names a missing file stops the script with status 1.
+
+    The julia on PATH, another version, would install into the wrong Julia; it
+    runs no call, and the error names the variable. get_lovepy.sh has no
+    ``set -e``, so it stops through ``use_proteus_julia || exit 1``.
+    """
+    site = _julia_site(tmp_path, bound=False)
+    missing = tmp_path / 'juliaup' / 'gone' / 'julia'
+    site['env']['PYTHON_JULIAPKG_EXE'] = str(missing)
+    res = _run_julia_script(site, script)
+    assert res.returncode == 1, res.stdout + res.stderr
+    assert not site['marker'].exists()
+    assert site['log'].read_text() == ''
+    assert f'ERROR: PYTHON_JULIAPKG_EXE={missing} is not an executable file' in res.stderr
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('script', sorted(_JULIA_CALLS))
 def test_setup_script_without_a_bound_julia_runs_the_path_one(tmp_path, script):
     """Without PYTHON_JULIAPKG_EXE the script runs the julia on PATH and names no bound Julia."""
     site = _julia_site(tmp_path, bound=False)
@@ -4620,6 +4656,10 @@ def test_every_setup_script_that_runs_julia_calls_use_proteus_julia_first():
         julia += [i for i, code in lines if 'src/get_agni.sh' in code]
         if script.name == 'test_docker_image.sh' or not julia:
             continue
-        helper = [i for i, code in lines if code == 'use_proteus_julia']
+        helper = [
+            i
+            for i, code in lines
+            if code in ('use_proteus_julia', 'use_proteus_julia || exit 1')
+        ]
         runs_julia[script.name] = bool(helper) and helper[0] < min(julia)
     assert runs_julia == {'get_agni.sh': True, 'get_lovepy.sh': True, 'get_obliqua.sh': True}

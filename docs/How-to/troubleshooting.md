@@ -214,11 +214,14 @@ This happens when compiling SPIDER within a Python environment that is incompati
 
 There are incompatibilities between Python and some versions of Julia. PROTEUS runs on Julia **1.13.x**: `install.sh` adds 1.13 through juliaup beside a default Julia of another version, and `proteus doctor` warns on any other version. The one exception: when the import of PROTEUS fails on `OpenSSL_jll` because Python links an OpenSSL older than 3.5, `install.sh` binds Julia 1.11; run `conda install -c conda-forge 'openssl>=3.5'` first to use 1.13. Obliqua, the tides module, installs only on 1.11 or 1.13. Newer releases are untested and may fail when juliacall resolves shared libraries.
 
-You must use **Python 3.12** with a supported Julia to avoid these problems:
+You must use **Python 3.12** with a supported Julia to avoid these problems. Add Julia 1.13
+beside your default Julia, which stays as it is, and point `PYTHON_JULIAPKG_EXE` at its binary
+in your conda environment:
 
 ```console
 juliaup add 1.13
-juliaup default 1.13
+conda env config vars set PYTHON_JULIAPKG_EXE="$(julia +1.13 --startup-file=no -e 'print(joinpath(Sys.BINDIR, "julia"))')"
+conda deactivate && conda activate proteus
 ```
 
 ---

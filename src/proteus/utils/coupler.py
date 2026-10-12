@@ -161,8 +161,9 @@ def _get_julia_version() -> str:
     Returns
     -------
     str
-        The version, for example ``1.13.1``, or a note that no Julia was found
-        or that ``PYTHON_JULIAPKG_EXE`` names no executable file.
+        The version, for example ``1.13.1``, or a note that no Julia was found,
+        that ``PYTHON_JULIAPKG_EXE`` names no executable file, or that the
+        binary reported no version (it failed, printed nothing or could not run).
     """
     from proteus.utils.helper import proteus_julia_exe
 
@@ -175,6 +176,8 @@ def _get_julia_version() -> str:
         return subprocess.check_output([exe, '--version']).decode('utf-8').split()[-1]
     except FileNotFoundError:
         return 'unknown (julia not installed)'
+    except (subprocess.CalledProcessError, IndexError, OSError):
+        return f'unknown ({exe} --version reported no version)'
 
 
 def _get_lavatmos_version() -> str:

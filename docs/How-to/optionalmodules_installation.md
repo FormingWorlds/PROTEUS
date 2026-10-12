@@ -100,11 +100,12 @@ bash tools/get_lavatmos.sh
     ThermoEngineLite compiles a C++/Python extension and requires `clang` and
     `pip` on `PATH`. Compilation takes around 20 minutes.
 
-`get_lavatmos.sh` clones the checkout but does not export an environment
-variable for you. Export the printed path and add it to your shell rc file:
+`get_lavatmos.sh` clones the checkout but does not set an environment
+variable for you. Set the printed path in your conda environment:
 
 ```console
-export LAVA_DIR='<path-to-LavAtmos>/'
+conda env config vars set LAVA_DIR='<path-to-LavAtmos>/'
+conda deactivate && conda activate proteus
 ```
 
 See [`input/tutorials/tutorial_vapourise.toml`](https://github.com/FormingWorlds/PROTEUS/blob/main/input/tutorials/tutorial_vapourise.toml) for an example configuration.

@@ -268,8 +268,7 @@ def link_proteus_julia(root: Path) -> Path | None:
     folder = root / '.proteus-julia'
     folder.mkdir(exist_ok=True)
     link = folder / 'julia'
-    if link.is_symlink() or link.exists():
-        link.unlink()
+    link.unlink(missing_ok=True)
     link.symlink_to(os.path.abspath(exe))
     return folder
 

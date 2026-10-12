@@ -974,6 +974,13 @@ def test_git_env_drops_the_variables_that_name_another_repository(monkeypatch):
         monkeypatch.setenv(name, f'/other/{name}')
     monkeypatch.setenv('GIT_AUTHOR_NAME', 'tester')
     env = git_env()
+    assert GIT_REPO_ENV == (
+        'GIT_DIR',
+        'GIT_WORK_TREE',
+        'GIT_INDEX_FILE',
+        'GIT_COMMON_DIR',
+        'GIT_NAMESPACE',
+    )
     assert not set(GIT_REPO_ENV) & set(env)
     assert env['GIT_AUTHOR_NAME'] == 'tester'
     assert env['PATH'] == os.environ['PATH']

@@ -82,18 +82,18 @@ die() {
 }
 
 prompt_yn() {
-    local msg="$1" default="${2:-y}"
     if [ "$INTERACTIVE" != "true" ] || [ ! -t 0 ]; then
         return 0
     fi
-    if [ "$default" = "y" ]; then
-        read -r -p "$msg [Y/n] " response
-        response="${response:-y}"
-    else
-        read -r -p "$msg [y/N] " response
-        response="${response:-n}"
-    fi
-    [[ "$response" =~ ^[Yy] ]]
+    ask_yn "$1" "${2:-y}"
+}
+
+# Ask the question $1 on stdin; an empty answer and the end of input take the default $2 (y or n).
+ask_yn() {
+    local response="" hint="[y/N]"
+    [ "$2" != y ] || hint="[Y/n]"
+    read -r -p "$1 $hint " response || true
+    [[ "${response:-$2}" =~ ^[Yy] ]]
 }
 
 read_with_default() {
@@ -256,9 +256,10 @@ sys.exit(0 if ssl.OPENSSL_VERSION_INFO[:2] < (3, 5) else 1)
 PY
 }
 
+# Whether the Julia PROTEUS uses (PYTHON_JULIAPKG_EXE, else the julia on PATH) is 1.12 or newer.
 julia_minor_at_least_12() {
     local v maj min
-    v=$(julia --version 2>/dev/null | awk '{print $3}')
+    v=$(julia_version_of "${PYTHON_JULIAPKG_EXE:-julia}")
     maj=${v%%.*}
     min=$(printf '%s' "$v" | cut -d. -f2)
     case "$maj.$min" in *[!0-9.]*|.|"") return 1 ;; esac
@@ -301,6 +302,7 @@ fix_julia_111_for_openssl() {
     fi
     set_install_var PYTHON_JULIAPKG_EXE "$PYTHON_JULIAPKG_EXE"
     reset_julia_env
+    note_agni_julia_version "$SCRIPT_DIR/AGNI"
 }
 
 # Verify that "import proteus" works. The import is the first place the Julia
@@ -475,6 +477,13 @@ conda_activate_command() {
     fi
 }
 
+# The line for a shell without `conda init`, where `conda activate` fails, after the installer
+# activated the env itself.
+conda_sh_line() {
+    [ "${CONDA_ACTIVATED_HERE:-false}" = true ] && [ -n "${CONDA_BASE_DIR:-}" ] || return 0
+    echo "     (In a shell without 'conda init', run first: source \"$CONDA_BASE_DIR/etc/profile.d/conda.sh\")"
+}
+
 # The closing instruction: activate the conda env that holds the variables, or
 # source the exports file where no conda env holds them.
 print_next_steps() {
@@ -482,9 +491,11 @@ print_next_steps() {
     if [ "$CONDA_BIND" = "bound" ]; then
         echo "  1. Activate the env, so that it loads the variables:"
         echo "     $(conda_activate_command)"
+        conda_sh_line
     elif [ "${CONDA_ACTIVATED_HERE:-false}" = true ]; then
         echo "  1. Activate the env and load the variables, in the PROTEUS folder ($SCRIPT_DIR):"
         echo "     conda activate ${CONDA_DEFAULT_ENV:-proteus} && source .proteus-env.sh"
+        conda_sh_line
     else
         echo "  1. Load the variables, in the PROTEUS folder ($SCRIPT_DIR):"
         echo "     source .proteus-env.sh"
@@ -535,9 +546,11 @@ LOG_SENTENCE_SHOWN="false"
 PROTEUS_ENV_FILE="$SCRIPT_DIR/.proteus-env.sh"
 INSTALL_VAR_NAMES=""
 CONDA_BIND="pending"
-# The conda env --conda-env names, and whether setup_conda_env activated an env in this process.
+# The conda env --conda-env names, whether setup_conda_env activated an env in this process,
+# and the conda base folder it activated it from.
 CONDA_ENV_REQUESTED=""
 CONDA_ACTIVATED_HERE="false"
+CONDA_BASE_DIR=""
 trap print_exit_hint EXIT
 
 # ---------------------------------------------------------------------------
@@ -670,15 +683,21 @@ if [ "$disk_gb" -lt "$MIN_DISK_GB" ]; then
 fi
 info "Disk space: ${disk_gb} GB available"
 
-# Stop with the 2 commands that make and activate the conda env $2 by hand; $1 names the step
-# of setup_conda_env that failed.
+# Stop with the 2 commands that make and activate the conda env $2 by hand, or without conda the
+# page that installs it; $1 names the step of setup_conda_env that failed, $3 is a further line.
 stop_without_conda_env() {
     fail "No conda environment other than base is active."
     fail "$1"
     echo ""
-    echo "Create and activate a conda environment first:"
-    echo "  conda create -n $2 python=$REQUIRED_PYTHON_MAJOR.$REQUIRED_PYTHON_MINOR"
-    echo "  conda activate $2"
+    if command_exists conda; then
+        echo "Create and activate a conda environment first:"
+        echo "  conda create -n $2 python=$REQUIRED_PYTHON_MAJOR.$REQUIRED_PYTHON_MINOR"
+        echo "  conda activate $2"
+    else
+        echo "Install conda first (Miniforge), as step 2 of the installation page describes:"
+        echo "  https://proteus-framework.org/PROTEUS/How-to/installation.html#2-clone-proteus-and-set-up-python-environment"
+    fi
+    [ -z "${3:-}" ] || echo "$3"
     die "Conda environment required."
 }
 
@@ -702,10 +721,12 @@ stop_on_env_folder() {
 }
 
 # Use the active conda env; when none or base is active, use or make the env that --conda-env
-# names (default proteus) and activate it in this process. A pixi env is used as it is.
+# names (default proteus) and activate it in this process. A pixi env is used as it is. An
+# existing env that --conda-env does not name is used after a yes on a terminal.
 setup_conda_env() {
     local name="${CONDA_ENV_REQUESTED:-proteus}" active="${CONDA_DEFAULT_ENV:-}"
     local pyver="$REQUIRED_PYTHON_MAJOR.$REQUIRED_PYTHON_MINOR" envs base made step="" py
+    local prefix="" asked=false other="bash install.sh --conda-env <other name>"
     if [ -n "${PIXI_ENVIRONMENT_NAME:-}" ]; then
         info "Pixi environment: $PIXI_ENVIRONMENT_NAME"
         return 0
@@ -724,14 +745,25 @@ setup_conda_env() {
     if ! envs=$(conda env list </dev/null); then
         stop_without_conda_env "'conda env list' failed." "$name"
     fi
-    # An env name is the first column of its line; an env without a name shows only its path.
-    if printf '%s\n' "$envs" | awk -v n="$name" '$1 == n {f = 1} END {exit !f}'; then
+    # An env name is the first column of its line, then the marks * (active) and + (frozen) and
+    # the prefix; an env without a name shows only its path.
+    if prefix=$(printf '%s\n' "$envs" | awk -v n="$name" '$1 == n {
+            sub(/^[^ \t]+[ \t]+([*+][ \t]+)*/, ""); print; f = 1; exit} END {exit !f}'); then
         made="found"
+        if [ -z "$CONDA_ENV_REQUESTED" ] && [ -t 0 ]; then
+            if ! ask_yn "Install PROTEUS INTO the existing conda environment $name ($prefix)?" n; then
+                info "The existing conda environment $name stays as it is; to use another one run: $other"
+                LOG_SENTENCE_SHOWN=true
+                exit 1
+            fi
+            asked=true
+        fi
     else
         stop_on_env_folder "$name" "$envs"
         info "Creating the conda environment $name with Python $pyver..."
         if ! conda create -y -n "$name" "python=$pyver" </dev/null; then
-            stop_without_conda_env "'conda create -y -n $name python=$pyver' failed." "$name"
+            stop_without_conda_env "'conda create -y -n $name python=$pyver' failed." "$name" \
+                "If conda printed a terms-of-service error above, run the 'conda tos accept' commands it printed, then bash install.sh again."
         fi
         made="made"
     fi
@@ -755,10 +787,13 @@ setup_conda_env() {
     # function reactivates the env after an install, and that reads unset variables.
     unset -f conda
     CONDA_ACTIVATED_HERE="true"
-    if [ "$made" = found ]; then
-        warn "Conda environment: installing INTO the existing environment $name ($CONDA_PREFIX); to use another one, stop now and run: bash install.sh --conda-env <other name>"
-    else
+    CONDA_BASE_DIR="$base"
+    if [ "$made" = made ]; then
         info "Conda environment: $name (made and activated by the installer for this run)"
+    elif [ "$asked" = true ]; then
+        info "Conda environment: installing into the existing environment $name ($prefix)"
+    else
+        warn "Conda environment: installing INTO the existing environment $name ($prefix); to use another one run: $other"
     fi
 }
 
@@ -904,7 +939,10 @@ install_fresh_juliaup() {
     local req="$REQUIRED_JULIA_MAJOR.$REQUIRED_JULIA_MINOR" julia_installer
     info "Installing Julia..."
     julia_installer=$(mktemp "${TMPDIR:-/tmp}/juliaup-install.XXXXXX")
-    curl -fsSL https://install.julialang.org -o "$julia_installer"
+    if ! curl -fsSL https://install.julialang.org -o "$julia_installer"; then
+        rm -f "$julia_installer"
+        die "Could not download the Julia installer from https://install.julialang.org; check the network connection and run bash install.sh again, or install Julia $req by hand: https://julialang.org/downloads/"
+    fi
     bash "$julia_installer" --yes --add-to-path=no 2>&1
     rm -f "$julia_installer"
     # Source the juliaup env for the current shell
@@ -920,9 +958,20 @@ install_fresh_juliaup() {
 }
 
 # Select the Julia PROTEUS uses, always the required one, and export it as PYTHON_JULIAPKG_EXE;
-# only a juliaup that install_fresh_juliaup installed in this run gets a new default.
+# a PYTHON_JULIAPKG_EXE of that version stays. Only a juliaup that install_fresh_juliaup
+# installed in this run gets a new default; juliaup keeps its configuration in JULIAUP_DEPOT_PATH.
 setup_julia() {
     local req="$REQUIRED_JULIA_MAJOR.$REQUIRED_JULIA_MINOR" julia_version
+    local exe="${PYTHON_JULIAPKG_EXE:-}" config="${JULIAUP_DEPOT_PATH:-$HOME/.julia}/juliaup/juliaup.json"
+    if [ -f "$exe" ] && [ -x "$exe" ]; then
+        case "$(julia_version_of "$exe")" in
+            "$req" | "$req".*)
+                JULIA_CHANNEL=""
+                report_proteus_julia ""
+                return 0
+                ;;
+        esac
+    fi
     if ! command_exists julia && [ -x "$HOME/.juliaup/bin/juliaup" ]; then
         export PATH="$HOME/.juliaup/bin:$PATH"
     fi
@@ -930,8 +979,8 @@ setup_julia() {
         info "Julia not found."
         if command_exists juliaup; then
             add_julia_beside_default none
-        elif [ -f "$HOME/.julia/juliaup/juliaup.json" ]; then
-            die "A juliaup configuration exists at $HOME/.julia/juliaup/juliaup.json, but no juliaup is on PATH or in ~/.juliaup/bin; put your juliaup on PATH and run bash install.sh again."
+        elif [ -f "$config" ]; then
+            die "A juliaup configuration exists at $config, but no juliaup is on PATH or in ~/.juliaup/bin; put your juliaup on PATH and run bash install.sh again."
         elif prompt_yn "Install Julia via juliaup (official installer)?"; then
             install_fresh_juliaup
             use_julia_channel ""
@@ -963,9 +1012,9 @@ setup_julia() {
 
 setup_julia
 
-# Verify Julia works
-if ! julia -e 'println("ok")' &>/dev/null; then
-    die "Julia is installed but not functional. Check your PATH."
+# Verify that the Julia PROTEUS uses works
+if ! "$PYTHON_JULIAPKG_EXE" -e 'println("ok")' &>/dev/null; then
+    die "Julia at $PYTHON_JULIAPKG_EXE is installed but not functional."
 fi
 info "Julia: OK"
 
@@ -976,7 +1025,7 @@ info "Julia: OK"
 # architecture". Catch it here rather than after the full submodule install.
 norm_arch() { case "$1" in arm64|aarch64) echo arm ;; x86_64|amd64) echo x86 ;; *) echo "$1" ;; esac; }
 py_arch=$(python3 -c "import platform; print(platform.machine())" 2>/dev/null || true)
-jl_arch=$(julia --startup-file=no -e 'print(String(Sys.ARCH))' 2>/dev/null || true)
+jl_arch=$("$PYTHON_JULIAPKG_EXE" --startup-file=no -e 'print(String(Sys.ARCH))' 2>/dev/null || true)
 # Only flag a recognized arm-vs-x86 mismatch; an unrecognized arch fails open.
 case "$(norm_arch "$py_arch") $(norm_arch "$jl_arch")" in
     "arm x86"|"x86 arm")
@@ -1040,7 +1089,8 @@ else
         export LIBRARY_PATH=$(echo "${LIBRARY_PATH:-}" | tr ':' '\n' | grep -v "$_saved_conda_prefix" | tr '\n' ':' | sed 's/:$//')
         info "Temporarily hiding conda lib paths from Fortran linker"
     fi
-    run_logged --takes "several minutes" "Building SOCRATES" bash tools/get_socrates.sh
+    run_logged --takes "several minutes" "Building SOCRATES" bash tools/get_socrates.sh \
+        || die "Could not build SOCRATES (bash tools/get_socrates.sh); see the error above"
     # Restore conda paths
     if [ -n "$_saved_conda_prefix" ] && [ -d "$_saved_conda_prefix/lib" ]; then
         export LD_LIBRARY_PATH="$_saved_ld"
@@ -1066,7 +1116,8 @@ if [ -d "$SCRIPT_DIR/AGNI" ] && [ -f "$SCRIPT_DIR/AGNI/Manifest.toml" ]; then
     note_agni_julia_version "$SCRIPT_DIR/AGNI"
 else
     run_logged --takes "several minutes" "Installing AGNI and its Julia packages" \
-        bash tools/get_agni.sh 0
+        bash tools/get_agni.sh 0 \
+        || die "Could not install AGNI and its Julia packages (bash tools/get_agni.sh 0); see the error above"
     if [ ! -f "$SCRIPT_DIR/AGNI/Manifest.toml" ]; then
         die "AGNI installation failed (Julia packages not resolved)."
     fi
@@ -1079,7 +1130,7 @@ fi
 # the symlink so paths are canonical and NFS locking is less likely to
 # trip on path mismatches.
 AGNI_REAL=$(cd "$SCRIPT_DIR/AGNI" 2>/dev/null && pwd -P)
-if [ -d "$AGNI_REAL/fastchem" ] && [ -f "$AGNI_REAL/fastchem/fastchem" ]; then
+if [ -d "$AGNI_REAL/fastchem" ] && [ -x "$AGNI_REAL/fastchem/fastchem" ]; then
     info "FastChem already installed at $AGNI_REAL/fastchem"
 else
     cd "$AGNI_REAL"
@@ -1174,8 +1225,10 @@ clone_and_install "CALLIOPE" "fwl-calliope"
 clone_and_install "ZEPHYRUS" "fwl-zephyrus"
 
 # Aragog and Zalmoxis use dedicated setup scripts
-run_logged "Setting up Aragog" bash tools/get_aragog.sh
-run_logged "Setting up Zalmoxis" bash tools/get_zalmoxis.sh
+run_logged "Setting up Aragog" bash tools/get_aragog.sh \
+    || die "Could not set up Aragog (bash tools/get_aragog.sh); see the error above"
+run_logged "Setting up Zalmoxis" bash tools/get_zalmoxis.sh \
+    || die "Could not set up Zalmoxis (bash tools/get_zalmoxis.sh); see the error above"
 report_stayed_clones
 
 # Install the SUNDIALS CVODE solver, Aragog's default integrator. A run with
@@ -1185,7 +1238,8 @@ run_logged "Setting up the SUNDIALS CVODE solver" bash tools/get_cvode.sh \
 
 # Install PROTEUS itself
 run_logged --takes "a few minutes" "Installing PROTEUS and its remaining dependencies" \
-    pip install -e ".[develop]"
+    pip install -e ".[develop]" \
+    || die "Could not install PROTEUS and its remaining dependencies (pip install -e \".[develop]\"); see the error above"
 
 # The PROTEUS install can replace packages; Aragog on "cvode" needs CVODE to still import.
 python -c "from scikits_odes_sundials.cvode import CVODE, CV_RootFunction, StatusEnum" >/dev/null 2>&1 \
@@ -1197,6 +1251,10 @@ pre-commit install -f 2>&1 || warn "pre-commit install failed (non-critical)"
 # Verify the installation (captures the error and self-heals the conda MPI clash)
 verify_proteus_import
 info "Python packages installed"
+
+# The Julia 1.11 fall-back of verify_proteus_import sets the last variable, so every variable is
+# recorded here, and an interrupted data download leaves them bound.
+bind_install_vars
 
 # ===================================================================
 # Phase 7: Reference data
@@ -1235,9 +1293,6 @@ case "$DATA_MODE" in
         info "Skipping data downloads (use 'proteus get' to download later)"
         ;;
 esac
-
-# Phase 6 sets the last variable (the Julia 1.11 fall-back), so here every variable is recorded.
-bind_install_vars
 
 # ===================================================================
 # Phase 8: Verification
