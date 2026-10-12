@@ -35,10 +35,7 @@ default. The run takes about 1 h of CPU time and reaches its stop at about
 runs the same modules with a grey atmosphere in place of AGNI. It takes about
 45 min of CPU time and reaches its stop at about 3.55 Myr, after 122 output
 rows. The wall time of both runs is shorter on a machine with several free
-cores. Late in both runs, single output rows show a rise of the magma and
-surface temperature of 30 to 40 K, at melt fractions of 0.11 to 0.16, before
-the cooling continues. This is a known limitation of the coupled model during
-crystallisation.
+cores.
 
 **Where to find the default for each parameter.** The configuration reference
 pages listed above give the default value of every parameter in their
