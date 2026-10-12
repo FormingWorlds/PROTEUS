@@ -91,8 +91,9 @@ Monitor progress with `tail -f output/chili_earth/proteus_00.log`
     under `input/chili/intercomp/` from the tutorial configs (nominal
     Earth and Venus, TRAPPIST-1 b/e/&alpha;, and the H/C inventory grid
     specs). A nominal case equals its tutorial config in every field
-    except the output path and the redox state, which the generator
-    sets to the protocol value IW+4; unit tests keep the two in lockstep.
+    except the output path, the redox state, which the generator sets to
+    the protocol value IW+4, and for Venus the end time, which stays at
+    5 Gyr; unit tests keep the two in lockstep.
     TRAPPIST-1 &alpha; is the extreme case of the protocol, a fictitious
     lava world at 6.75 $\times$ 10$^{-4}$ AU, inside the Roche limit of
     the star [^cite-lichtenberg2026]. PROTEUS runs this case and warns
@@ -312,8 +313,25 @@ partially molten mantle with a mixing-length convective closure. Zalmoxis
 solves the layered interior (mass, radius, density profile, and
 core-mantle-boundary radius) directly and supplies the pressure-entropy
 equation-of-state tables that Aragog reads. The energy balance stop
-criterion is enabled in this configuration, and the Nominal Venus run ends
-by it.
+criterion is enabled in this configuration.
+
+### The Nominal Venus case
+
+The Nominal Venus case does not reach the solidification criterion. The
+run ends on the energy balance criterion at 11.3 Myr, with a melt fraction
+of 0.068. An earlier version of this page gave 2.22 Myr for Venus. That
+run also ended on the energy balance criterion, at a melt fraction of
+0.052. The run submitted to the intercomparison ends at 39 Myr with a melt
+fraction of 0.062 by volume.
+
+The earlier result of this page and the current one differ in the
+treatment of melt-solid separation in the interior module. The earlier run
+used a grain size of 0.1 m and the viscosity of the melt in the separation
+velocity. The current configuration uses a grain size of 1 mm and the
+viscosity of the melt-solid mixture
+(`interior_energetics.aragog.separation_viscosity = "mixture"`). Its
+mantle crystallises as a mush with melt at all depths: at the end of the
+run every node of the mantle still holds melt, between 2% and 36%.
 
 ## Takeaways
 
