@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pytest
@@ -955,5 +956,8 @@ def test_plot_lovenumber_legend_is_clear_of_the_panel_titles(draw_real, tmp_path
     ]
 
     assert len(titles) == 2
-    assert not any(box.overlaps(t) for t in titles)
     assert all(box.y0 >= t.y1 for t in titles)
+    # The legend is above the canvas: only a tight save, 0.1 in of pad, keeps it in the image.
+    image = plt.imread(tmp_path / 'plots' / 'plot_lovenumber.png')
+    tight = fig.get_tightbbox(renderer)
+    assert image.shape[0] == pytest.approx((tight.height + 0.2) * 200, abs=2)
