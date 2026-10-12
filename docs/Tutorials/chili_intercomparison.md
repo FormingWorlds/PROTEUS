@@ -36,16 +36,19 @@ The CHILI intercomparison defines three solar system test cases:
 All cases start fully molten at 50 Myr stellar age with BSE composition,
 fO$_2$ = IW+4, and Bond albedo = 0.1. Each run ends at the first stop
 criterion that it meets. Two of them matter on this page: a melt fraction
-of 5% (`params.stop.solid.phi_crit = 0.05`), and a global energy balance,
+of 5% by mass (`params.stop.solid.phi_crit = 0.05`), and a global energy balance,
 in which the net atmospheric flux differs from the radiogenic and tidal
 heating by no more than about 1 W m$^{-2}$ (`params.stop.radeqm`, enabled
 by default with `atol = 1.0` and `rtol = 0.001`). The runs behind the
 figures of this page end at the first of these criteria or at 15 Myr of
-model time, whichever comes first.
+model time, whichever comes first. The config files do not set the 15 Myr
+bound; it was applied to the runs of this page. Melt fractions of the
+current PROTEUS runs are by mass on this page unless stated otherwise,
+and the melt fractions of the intercomparison data are by volume.
 
 !!! note "How far the runs on this page go"
     The runs on this page follow each planet to a quasi-steady state:
-    either the mantle is solid down to the 5% melt fraction threshold, or
+    either the melt fraction of the mantle has fallen to the 5% threshold, or
     the planet is in global energy balance with a small residual melt
     fraction. They do not follow the long-term solid-state evolution of the
     mantle or the loss of the atmosphere after that state. Differences
@@ -141,24 +144,26 @@ version-general:
 
 - It clones the CHILI comparison data automatically if `--chili-repo`
   does not already point to a checkout, so Step 2 is optional.
-- It reads the current git commit SHA and labels the active run with it,
-  so every figure records the exact code version that produced it.
+- It reads the git commit hash of each run from its log
+  (`proteus_00.log`) and labels the run with it, so every figure records
+  the code version that produced the run. Without a log it uses the
+  commit of the checkout.
 - `--proteus-earth` and `--proteus-venus` are optional; omit either to
   plot the intercomparison models alone.
 
-Two PROTEUS curves appear on each plot. The results submitted to the
+Up to two PROTEUS results appear on each plot. The results submitted to the
 intercomparison (Nicholls et al. 2026, in prep.) are drawn as a thin black
 dashed line labelled "PROTEUS CHILI". The run from your own checkout is drawn in
 vermillion with thick lines, black-edged markers, and its git SHA in the
-legend. Re-running the command on a future PROTEUS version regenerates
-every figure with that version's SHA, so the comparison stays
+legend. Running the command on the output of a future PROTEUS version
+regenerates every figure with that version's SHA, so the comparison stays
 reproducible without editing the script.
 
 ## Melt fraction evolution
 
 <figure markdown="span">
   ![CHILI Fig 1](../assets/tutorials/chili/fig1_melt_fraction.png){ width="100%" }
-  <figcaption><strong>Figure 1.</strong> Melt fraction vs time for the CHILI Nominal Earth (solid lines) and Nominal Venus (dashed lines) cases. All seven models start fully molten and solidify within 0.1 to 4 Myr for Earth. Venus cools more slowly because of its higher instellation at 0.723 AU. The current PROTEUS Earth run reaches a melt fraction of 5% by mass at 2.44 Myr (6.2% by volume, the quantity on the axis). The current PROTEUS Venus run does not reach a 5% melt fraction: its melt fraction levels off, and the run ends in global energy balance at 11.3 Myr with 8.3% of melt by volume.</figcaption>
+  <figcaption><strong>Figure 1.</strong> Melt fraction vs time for the CHILI Nominal Earth (solid lines) and Nominal Venus (dashed lines) cases. All seven models start fully molten and solidify within 0.1 to 4 Myr for Earth. The curves of the current PROTEUS runs show the melt fraction by mass; the curves of the intercomparison data show it by volume. The current PROTEUS Earth run reaches a melt fraction of 5% by mass at 2.44 Myr (6.2% by volume). The current PROTEUS Venus run does not reach a 5% melt fraction: its melt fraction levels off, and the run ends in global energy balance at 11.3 Myr with 6.8% of melt by mass (8.3% by volume).</figcaption>
 </figure>
 
 ## Solidification milestones
@@ -193,21 +198,21 @@ reproducible without editing the script.
 
 <figure markdown="span">
   ![CHILI Fig 6](../assets/tutorials/chili/fig6_fO2_vs_T.png){ width="100%" }
-  <figcaption><strong>Figure 6.</strong> Oxygen fugacity from each model's Nominal Venus simulation, plotted as a function of degassing temperature. (a) Absolute fO<sub>2</sub> compared to the iron-wustite buffer parameterizations of Fischer et al. (2011, dotted) and O'Neill & Eggins (2002, dashed). (b) Relative fO<sub>2</sub> as delta-IW referenced to O'Neill+02. Circular markers indicate 5% melt fraction, or the last row of a run that ends above it. The curve of the current PROTEUS run (vermillion, thick line) is the IW+4 of the CHILI protocol on the buffer of Fischer et al. (2011), evaluated at the surface temperature of the run; referenced to O'Neill & Eggins (2002) in panel (b) it lies at 5.3 at 3373 K and at 4.0 at 1800 K. It has no circular marker, because the run does not reach a 5% melt fraction.</figcaption>
+  <figcaption><strong>Figure 6.</strong> Oxygen fugacity from each model's Nominal Venus simulation, plotted as a function of degassing temperature. (a) Absolute fO<sub>2</sub> compared to the iron-wustite buffer parameterizations of Fischer et al. (2011, dotted) and O'Neill & Eggins (2002, dashed). (b) Relative fO<sub>2</sub> as delta-IW referenced to O'Neill+02. Circular markers indicate the row closest to 5% melt fraction for each model that comes within 2 percentage points of it. The curve of the current PROTEUS run (vermillion, thick line) is not an output of the run: the plotting script computes it as the IW+4 of the CHILI protocol on the buffer of Fischer et al. (2011), evaluated at the surface temperature of the run; referenced to O'Neill & Eggins (2002) in panel (b) it lies at 5.3 at 3373 K and at 4.0 at 1800 K. It has no circular marker, because the run ends at a melt fraction of 6.8%, more than 1 percentage point above 5%.</figcaption>
 </figure>
 
 ## Volatile retention
 
 <figure markdown="span">
   ![CHILI Fig 7](../assets/tutorials/chili/fig7_volatiles.png){ width="100%" }
-  <figcaption><strong>Figure 7.</strong> Relative amounts of the initial (a) hydrogen and (b) carbon inventories retained in the Nominal Venus case as a function of simulation time, with atoms lost from the planet by hydrodynamic escape. Crosses mark 95% melt fraction and circles mark 5% melt fraction, or the last row of a run that ends above it. The submitted PROTEUS CHILI run (black dashed) extends to 39 Myr, where its melt fraction is 6.2% by volume and it retains 63% of its hydrogen and 28% of its carbon. The current PROTEUS run (vermillion, labelled with the git commit SHA of the run) ends in global energy balance at 11.3 Myr, where it retains 97.3% of its hydrogen and 92.8% of its carbon; it has no circle, and the figure makes no statement on the escape after that time.</figcaption>
+  <figcaption><strong>Figure 7.</strong> Relative amounts of the initial (a) hydrogen and (b) carbon inventories retained in the Nominal Venus case as a function of simulation time, with atoms lost from the planet by hydrodynamic escape. Crosses mark 95% melt fraction and circles mark the row closest to 5% melt fraction for each model that comes within 2 percentage points of it. The submitted PROTEUS CHILI run (black dashed) extends to 39 Myr, where its melt fraction is 6.2% by volume and it retains 63% of its hydrogen and 28% of its carbon. The current PROTEUS run (vermillion, labelled with the git commit SHA of the run) ends in global energy balance at 11.3 Myr, where it retains 97.3% of its hydrogen and 92.8% of its carbon; it has no circle, and the figure makes no statement on the escape after that time.</figcaption>
 </figure>
 
 ## Outgoing longwave radiation
 
 <figure markdown="span">
   ![CHILI Fig 8](../assets/tutorials/chili/fig8_olr.png){ width="100%" }
-  <figcaption><strong>Figure 8.</strong> Outgoing longwave radiation flux from Nominal Earth, plotted as a function of (a) melt fraction and (b) surface temperature. In panel (a) the dashed line marks the absorbed stellar radiation (ASR = 208 W/m<sup>2</sup>) at 50 Myr stellar age with the CHILI protocol parameters. In panel (b) the dash-dot line marks the Simpson-Nakajima steam runaway limit (293 W/m<sup>2</sup>; Nakajima et al. 1992). OLR controls the cooling rate; The OLR of the current PROTEUS run decreases from 2.2 x 10<sup>5</sup> W/m<sup>2</sup> at full melt to 405 W/m<sup>2</sup> at a melt fraction of 5%; its absorbed stellar flux is 226 W/m<sup>2</sup>.</figcaption>
+  <figcaption><strong>Figure 8.</strong> Outgoing longwave radiation flux from Nominal Earth, plotted as a function of (a) melt fraction and (b) surface temperature. In panel (a) the dashed line marks the absorbed stellar radiation (ASR = 208 W/m<sup>2</sup>) at 50 Myr stellar age with the CHILI protocol parameters. In panel (b) the dash-dot line marks the Simpson-Nakajima steam runaway limit (293 W/m<sup>2</sup>; Nakajima et al. 1992). OLR controls the cooling rate. The OLR of the current PROTEUS run decreases from 2.2 x 10<sup>5</sup> W/m<sup>2</sup> at full melt to 405 W/m<sup>2</sup> at a melt fraction of 5%; its absorbed stellar flux is 226 W/m<sup>2</sup>.</figcaption>
 </figure>
 
 ## Geodynamics diagnostics
@@ -221,7 +226,7 @@ reproducible without editing the script.
 
 <figure markdown="span">
   ![CHILI P_surf](../assets/tutorials/chili/psurf_vs_time.png){ width="100%" }
-  <figcaption><strong>Figure 10.</strong> Surface pressure vs time for all models. The current PROTEUS run starts near 2.6x10<sup>4</sup> bar during the brief fully molten phase. This early peak is almost entirely molecular oxygen. CALLIOPE, the outgassing and gas-speciation module, solves the equilibrium atmospheric composition at the imposed oxygen fugacity, and because O<sub>2</sub> is one of the equilibrium species its partial pressure equals that fugacity. The CHILI protocol pins fO<sub>2</sub> at IW+4, and the iron-wustite buffer is steeply temperature-dependent, so at the magma temperature of the fully molten surface (4316 K) it places fO<sub>2</sub>, and hence pO<sub>2</sub>, near 2.6x10<sup>4</sup> bar, 99.7% of the total surface pressure. The magnitude comes from two compounding factors: the +4 dex offset multiplies the buffer value by 10<sup>4</sup>, and the high temperature already raises the iron-wustite fO<sub>2</sub> itself to a few bar. As the surface cools below ~3000 K the buffer falls by several orders of magnitude, oxygen becomes negligible, and the pressure drops to a minimum of 110 bar set by CO<sub>2</sub> partitioning before rising to 411 bar at a melt fraction of 5% as H<sub>2</sub>O exsolves from the crystallizing mantle. The submitted PROTEUS CHILI run starts with a cooler surface (3125 K) and 124 bar of O<sub>2</sub>, so no comparable spike appears. The early-time offset between the two PROTEUS curves is therefore set by the magma temperature at which CALLIOPE evaluates the buffer, not by which species are counted. Other models differ in the timing and magnitude of the pressure evolution, reflecting their volatile solubility and oxygen treatments.</figcaption>
+  <figcaption><strong>Figure 10.</strong> Surface pressure vs time for all models. The current PROTEUS run starts near 2.6x10<sup>4</sup> bar during the brief fully molten phase. This early peak is almost entirely molecular oxygen. CALLIOPE, the outgassing and gas-speciation module, solves the equilibrium atmospheric composition at the imposed oxygen fugacity, and because O<sub>2</sub> is one of the equilibrium species its partial pressure equals that fugacity. The CHILI protocol pins fO<sub>2</sub> at IW+4, and the iron-wustite buffer is steeply temperature-dependent, so at the magma temperature of the fully molten surface (4316 K) it places fO<sub>2</sub>, and hence pO<sub>2</sub>, near 2.6x10<sup>4</sup> bar, 99.7% of the total surface pressure. The magnitude comes from two compounding factors: the +4 dex offset multiplies the buffer value by 10<sup>4</sup>, and the high temperature already raises the iron-wustite fO<sub>2</sub> itself to a few bar. As the surface cools below ~3000 K the buffer falls by several orders of magnitude, oxygen becomes negligible, and the pressure drops to a minimum of 110 bar set by CO<sub>2</sub> partitioning before rising to 411 bar at a melt fraction of 5% as H<sub>2</sub>O exsolves from the crystallizing mantle. The submitted PROTEUS CHILI run starts with a cooler surface (3125 K) and 124 bar of O<sub>2</sub>, so no comparable spike appears. Other models differ in the timing and magnitude of the pressure evolution, reflecting their volatile solubility and oxygen treatments.</figcaption>
 </figure>
 
 ## Earth volatile grid
@@ -290,11 +295,12 @@ atmospheric H$_2$O greenhouse and allowing higher OLR (2.72 to
 
 ## Current PROTEUS configuration vs the CHILI submission
 
-Every figure shows two PROTEUS curves, and the gap between them is itself
+The figures show two PROTEUS results, and the gap between them is itself
 informative because the two come from different model configurations. The
 protocol fixes the inputs that both share: a bulk-silicate-Earth
 composition, oxygen fugacity at IW+4, a Bond albedo of 0.1, and a 50 Myr
-stellar age [^cite-lichtenberg2026]. What differs is the interior machinery.
+stellar age [^cite-lichtenberg2026]. The two differ in the interior
+modules and in the stop criteria.
 
 The PROTEUS results submitted to the intercomparison were computed with an
 earlier version of PROTEUS, not the configuration documented here. The
@@ -303,7 +309,9 @@ data (`intercomparison/inputs/proteus/evolution-proteus-venus-config.in`).
 It selects **SPIDER** for the interior thermal evolution
 (`interior.module = "spider"`) and the structure calculation built into
 that version (`struct.module = "self"`), together with AGNI, CALLIOPE,
-ZEPHYRUS and MORS. Its energy balance stop criterion is switched off. See
+ZEPHYRUS and MORS. It names VULCAN for the atmospheric chemistry, set to
+run only on request (`atmos_chem.when = "manually"`). Its energy balance
+stop criterion is switched off. See
 Lichtenberg et al. (2026) [^cite-lichtenberg2026] and Nicholls et al.
 (2026, in prep.) [^cite-nicholls2026] for further details.
 
@@ -322,9 +330,9 @@ criterion is enabled in this configuration.
 
 The Nominal Venus case does not reach the solidification criterion. The
 run ends on the energy balance criterion at 11.3 Myr, with a melt fraction
-of 0.068. An earlier version of this page gave 2.22 Myr for Venus. That
-run also ended on the energy balance criterion, at a melt fraction of
-0.052. The run submitted to the intercomparison ends at 39 Myr with a melt
+of 0.068 by mass (0.083 by volume). An earlier version of this page gave
+2.22 Myr for Venus. That run also ended on the energy balance criterion,
+at a melt fraction of 0.052 by mass (0.063 by volume). The run submitted to the intercomparison ends at 39 Myr with a melt
 fraction of 0.062 by volume.
 
 The earlier result of this page and the current one differ in the
@@ -332,16 +340,15 @@ treatment of melt-solid separation in the interior module. The earlier run
 used a grain size of 0.1 m and the viscosity of the melt in the separation
 velocity. The current configuration uses a grain size of 1 mm and the
 viscosity of the melt-solid mixture
-(`interior_energetics.aragog.separation_viscosity = "mixture"`). Its
-mantle crystallises as a mush with melt at all depths: at the end of the
+(`interior_energetics.aragog.separation_viscosity = "mixture"`). In the
+current run the mantle crystallises as a mush with melt at all depths: at the end of the
 run every node of the mantle still holds melt, between 2% and 36%.
 
 ## Takeaways
 
 Earth and Venus begin from the same fully molten state and diverge as they
 cool. Across the model ensemble both cool on million-year timescales,
-with Venus lagging Earth because its higher instellation slows radiative
-cooling, and the spread between codes at any given moment reflects
+and the spread between codes at any given moment reflects
 differences in how each treats atmospheric opacity, volatile partitioning,
 and interior convection. PROTEUS couples a radiative-convective atmosphere,
 equilibrium outgassing, and a 1D interior solver, and follows the magma
