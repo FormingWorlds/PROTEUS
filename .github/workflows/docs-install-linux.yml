@@ -1,0 +1,110 @@
+name: Install from the docs (Linux)
+
+# Runs the commands of docs/How-to/installation.md (Debian / Ubuntu tab); the
+# deviations are listed in the substitutions file of each job.
+
+on:
+  push:
+    branches:
+      - tl/installer-env-and-julia-linux-check
+
+permissions:
+  contents: read
+
+jobs:
+  install:
+    name: Install (${{ matrix.machine }}, ${{ matrix.conda }})
+    runs-on: ubuntu-latest
+    container: ${{ matrix.container }}
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The hosted runner image, which ships many developer tools; the page as written.
+          - machine: hosted runner
+            container: ''
+            conda: Miniconda
+            substitutions: .github/docs-install-linux-substitutions.toml
+          # The same machine with Miniforge in place of Miniconda.
+          - machine: hosted runner
+            container: ''
+            conda: Miniforge
+            substitutions: .github/docs-install-linux-miniforge-substitutions.toml
+          # A bare Ubuntu image, the closest to a machine with nothing installed.
+          - machine: bare ubuntu 24.04
+            container: ubuntu:24.04
+            conda: Miniforge
+            substitutions: .github/docs-install-linux-miniforge-substitutions.toml
+    env:
+      PAGE: docs/How-to/installation.md
+      TAB: Debian / Ubuntu
+      SUBSTITUTIONS: ${{ matrix.substitutions }}
+    steps:
+      - name: Prepare the bare image
+        # Not part of the page: sudo for its apt command, git for the checkout,
+        # python3 for the tool that reads the page.
+        if: matrix.container != ''
+        run: |
+          apt-get update
+          apt-get install -y sudo git python3 ca-certificates
+          echo "Machine preparation outside the page: apt-get install -y sudo git python3 ca-certificates" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Check out the pushed commit
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Print the plan
+        run: |
+          python3 tools/docs_install_steps.py "$PAGE" --tab "$TAB" \
+            --substitutions "$SUBSTITUTIONS" --format table | tee "$RUNNER_TEMP/plan.md"
+          {
+            echo "## Install plan"
+            echo
+            cat "$RUNNER_TEMP/plan.md"
+            echo
+            echo "Optional steps skipped:"
+            echo
+            echo '```'
+            python3 tools/docs_install_steps.py "$PAGE" --tab "$TAB" --list-skipped
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Generate the install script
+        run: |
+          python3 tools/docs_install_steps.py "$PAGE" --tab "$TAB" \
+            --substitutions "$SUBSTITUTIONS" --format script \
+            --timing "$GITHUB_WORKSPACE/install-artifacts/install_timing.tsv" > "$RUNNER_TEMP/install_steps.sh"
+          bash -n "$RUNNER_TEMP/install_steps.sh"
+
+      - name: Run the commands of the page
+        # Run from the home directory: the page clones PROTEUS into the current
+        # directory, and the checkout of this commit sits in the workspace.
+        shell: bash
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/install-artifacts"
+          cd "$HOME"
+          bash -e "$RUNNER_TEMP/install_steps.sh" 2>&1 | tee "$GITHUB_WORKSPACE/install-artifacts/install_full.log"
+
+      - name: Add the timing table to the summary
+        if: always()
+        run: |
+          {
+            echo "## Wall time per command"
+            echo
+            echo "| Page line | Seconds | Exit code | Command |"
+            echo "|---|---|---|---|"
+            if [ -f "$GITHUB_WORKSPACE/install-artifacts/install_timing.tsv" ]; then
+              awk -F '\t' 'NR > 1 { gsub(/\|/, "\\|", $4); printf "| %s | %s | %s | `%s` |\n", $1, $2, $3, $4 }' \
+                "$GITHUB_WORKSPACE/install-artifacts/install_timing.tsv"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the timing and the log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: docs-install-linux-${{ strategy.job-index }}
+          path: install-artifacts
+          if-no-files-found: warn
