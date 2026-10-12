@@ -23,7 +23,9 @@ Do not edit these files by hand. Change the tutorial configs, the
 delta tables or `PROTOCOL_FO2_SHIFT_IW` in `tools/chili_generate.py`,
 rerun the generator, and commit the result. The standalone grid configs
 under `input/tutorials/chili_grid/` are not generated: they hold the
-protocol's oxygen fugacity and inventories by hand.
+protocol's oxygen fugacity and inventories by hand and stop at 15 Myr,
+while the grid specs here take the end time of 5 Gyr from `earth.toml`
+and `venus.toml`.
 `tests/tools/test_chili_generate.py` fails CI on any drift between the
 tutorials, these files, and the standalone grid configs.
 
