@@ -326,11 +326,10 @@ def plot_global(
     fig.subplots_adjust(wspace=0.05, hspace=0.2)
 
     # Turn the x tick labels at the inner edges of the two columns away from each other
-    fig.canvas.draw()
-    for ax, edge, ha in ((ax_bl, xlim[1], 'right'), (ax_br, xlim[0], 'left')):
-        for tick in ax.xaxis.get_major_ticks():
-            if np.isclose(tick.get_loc(), edge):
-                tick.label1.set_horizontalalignment(ha)
+    for ax, side, ha in ((ax_bl, 1, 'right'), (ax_br, 0, 'left')):
+        for label in ax.get_xticklabels():
+            if np.isclose(label.get_position()[0], ax.get_xlim()[side]):
+                label.set_horizontalalignment(ha)
     plt_name = 'plot_global'
     if logt:
         plt_name += '_log'
