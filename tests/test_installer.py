@@ -29,6 +29,7 @@ import os
 import re
 import shlex
 import shutil
+import signal
 import subprocess
 import sys
 from pathlib import Path
@@ -2965,6 +2966,13 @@ class TestRunLogged:
         assert 'got:' not in result.stdout + result.stderr
 
 
+def _default_signals() -> None:
+    """Give the child the default action for HUP, INT and TERM, which a test runner started
+    with ``nohup`` or as a background job ignores."""
+    for sig in (signal.SIGHUP, signal.SIGINT, signal.SIGTERM):
+        signal.signal(sig, signal.SIG_DFL)
+
+
 def _run_logged_with_exit_hint(tmp_path: Path, script: str) -> subprocess.CompletedProcess:
     """Run ``script`` after run_logged and print_exit_hint, trapped on EXIT as in install.sh.
 
@@ -2988,6 +2996,7 @@ def _run_logged_with_exit_hint(tmp_path: Path, script: str) -> subprocess.Comple
         env={**_env_without_log_state(), 'TMPDIR': str(tmp_path / 'tmpdir')},
         timeout=25,
         start_new_session=True,
+        preexec_fn=_default_signals,
     )
 
 
