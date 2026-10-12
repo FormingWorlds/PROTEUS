@@ -505,7 +505,7 @@ def test_a_core_module_core_without_the_zalmoxis_structure_is_refused_when_built
 @pytest.mark.unit
 def test_the_default_redox_state_is_two_log_units_above_iron_wustite():
     """``outgas.fO2_shift_IW`` defaults to IW+2. ``all_options.toml``,
-    ``minimal.toml`` and the Earth and Venus tutorials set that value, the 5
+    ``minimal.toml``, ``minimal_quick.toml`` and the Earth and Venus tutorials set that value, the 5
     CHILI intercomparison cases keep the protocol's IW+4, and a user value is
     accepted on [-12, 12] and refused half a unit beyond either end."""
     from helpers import PROTEUS_ROOT
@@ -514,7 +514,7 @@ def test_the_default_redox_state_is_two_log_units_above_iron_wustite():
     from proteus.config._outgas import Outgas
 
     assert Outgas().fO2_shift_IW == pytest.approx(2.0)
-    want = {f: 2.0 for f in ('all_options.toml', 'minimal.toml')}
+    want = {f: 2.0 for f in ('all_options.toml', 'minimal.toml', 'minimal_quick.toml')}
     want |= {f'tutorials/tutorial_{p}.toml': 2.0 for p in ('earth', 'venus')}
     want |= {
         f'chili/intercomp/{c}.toml': 4.0 for c in ('earth', 'venus', 'tr1b', 'tr1e', 'tr1a')
@@ -560,3 +560,31 @@ def test_a_config_without_the_redox_key_loads_the_default(tmp_path):
     assert read_config_object(tmp_path / 'minimal.toml').outgas.fO2_shift_IW == pytest.approx(
         2.0
     )
+
+
+@pytest.mark.unit
+def test_the_minimal_examples_set_the_keys_their_runs_need():
+    """``input/minimal.toml`` and ``input/minimal_quick.toml`` set the keys that keep
+    their runs sound: carbon keeps the atmosphere, the step floor and the static
+    structure resolve the molten stage, and the stop is at a melt fraction of 0.05. The
+    quick file also names the grey atmosphere of its run. The carbon mode, the stop,
+    the structure interval and the grey atmosphere differ from their defaults, so a file
+    that loses one of those keys fails here."""
+    from helpers import PROTEUS_ROOT
+
+    from proteus.config import read_config_object
+
+    cfgs = {
+        n: read_config_object(PROTEUS_ROOT / 'input' / n)
+        for n in ('minimal.toml', 'minimal_quick.toml')
+    }
+    for name, cfg in cfgs.items():
+        assert cfg.planet.elements.C_mode == 'kg', name
+        assert cfg.planet.elements.C_budget > 0.0, name
+        assert cfg.params.dt.minimum == pytest.approx(100.0), name
+        assert cfg.params.stop.solid.phi_crit == pytest.approx(0.05), name
+        assert cfg.interior_struct.zalmoxis.update_interval == pytest.approx(0.0), name
+    assert cfgs['minimal.toml'].atmos_clim.module == 'agni'
+    quick = cfgs['minimal_quick.toml'].atmos_clim
+    assert (quick.module, quick.rayleigh) == ('dummy', False)
+    assert quick.dummy.gamma == pytest.approx(0.8)
