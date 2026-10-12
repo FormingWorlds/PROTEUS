@@ -509,7 +509,11 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
     """
     from proteus.accretion.common import MASS_CLOSURE_RTOL
     from proteus.interior_energetics.wrapper import remelt_mantle, solve_structure
-    from proteus.interior_struct.common import record_volatile_change, volatile_mass_change
+    from proteus.interior_struct.common import (
+        record_volatile_change,
+        stored_core_target,
+        volatile_mass_change,
+    )
     from proteus.outgas.wrapper import outgassing_derives_o_kg_total
 
     config = handler.config
@@ -552,6 +556,7 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
     # Refuse a corrupt ledger or a negative or non-finite mass before anything
     # moves; with valid inputs the loss split closes by construction.
     volatile_mass_change(hf_row)
+    core_target = stored_core_target(hf_row)
     bad = [f'{e}_kg_atm' for e in element_list if not _valid_mass(hf_row.get(f'{e}_kg_atm'))]
     bad += [
         f'{e}_kg_total' for e in element_list if not _valid_mass(hf_row.get(f'{e}_kg_total'))
@@ -593,6 +598,9 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
     # Record accreted rock and impact counts in the helpfile so resumed runs
     # can restore the accumulated mass and event state.
     hf_row['M_accreted_rock'] = float(hf_row.get('M_accreted_rock') or 0.0) + impactor_rock
+    # The core takes its fraction of the impactor rock; a structure without a core target has 0.
+    if core_target > 0.0:
+        hf_row['M_core_target'] += config.interior_struct.core_frac * impactor_rock
     hf_row['n_impacts_applied'] = int(float(hf_row.get('n_impacts_applied') or 0.0)) + 1
     solve_structure(
         handler.directories,
