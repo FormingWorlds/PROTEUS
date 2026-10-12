@@ -110,8 +110,9 @@ bash install.sh
     the one of that name, when no environment or only `base` is active. When an
     environment named `proteus` already exists and none is active, the installer
     installs into it; pass `--conda-env <name>` to use another one. Run in a terminal,
-    it first asks whether to install into that existing environment, and the answer
-    no, the default, stops it before it changes anything. It does not make
+    with its output not redirected, it first asks whether to install into that existing
+    environment: `y` or `yes` goes on, and any other answer stops it before it changes
+    anything. It does not make
     an environment over an existing folder of that name, such as the folder of an
     environment `PROTEUS` on a file system that ignores case: it stops and names that
     folder. To use an environment of your own, activate it before `bash install.sh`.
@@ -120,7 +121,7 @@ bash install.sh
     prints, then run `bash install.sh` again.
 
 !!! warning "Julia from a system package manager"
-    If your `julia` comes from your system package manager (not the official installer), is not version 1.13, and you have no juliaup, the installer stops, because it adds Julia 1.13 only through juliaup. Install juliaup with the official installer, or uninstall that Julia and remove its entries from your `PATH`, _before running the installer_. A `PYTHON_JULIAPKG_EXE` that names a Julia 1.13 binary is used as it is.
+    If your `julia` comes from your system package manager (not the official installer), is not version 1.13, and no juliaup is on your `PATH`, the installer stops, because it adds Julia 1.13 only through juliaup; a juliaup in `~/.juliaup/bin` that is not on your `PATH` counts only when no `julia` is on it. Install juliaup with the official installer and put it on your `PATH`, or uninstall that Julia and remove its entries from your `PATH`, _before running the installer_. A `PYTHON_JULIAPKG_EXE` that names a Julia 1.13 is kept; when it names a launcher, such as the `julia` of juliaup, the installer keeps the binary that the launcher runs.
 
 
 The installer runs through the following phases automatically:
@@ -168,7 +169,7 @@ phases.
 |---|---|
 | `--all-data` | Download all reference data (~10-20 GB) instead of the essential set (~3 GB) |
 | `--no-data` | Skip data downloads entirely (download later with `proteus get`) |
-| `-i` / `--interactive` | Interactive mode (prompt for choices; default is non-interactive) |
+| `-i` / `--interactive` | Interactive mode (prompt for choices; default is non-interactive, except that an existing environment `proteus`, with no environment active, brings 1 question in a terminal, which `--conda-env proteus` answers in advance) |
 | `--verbose` | Show the full build output on the terminal as well as in the log file |
 | `--conda-env <name>` | The conda environment to use, or to make, when no environment or only `base` is active (default: `proteus`) |
 

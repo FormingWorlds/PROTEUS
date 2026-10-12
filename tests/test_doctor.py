@@ -55,6 +55,7 @@ from proteus.doctor import (
     _git_head,
     _git_note_output,
     _git_short_head,
+    _git_stdout,
     _imported_package_dir,
     _julia_version,
     _julia_version_at,
@@ -2031,6 +2032,21 @@ class TestGitAndJuliaHelpers:
         # Error contract: a missing git binary is also swallowed to None.
         with patch('proteus.doctor.subprocess.check_output', side_effect=FileNotFoundError):
             assert _git_short_head('/not/a/repo') is None
+
+    def test_git_stdout_gives_none_for_a_git_the_system_refuses_to_run(self):
+        """A git that the system refuses to run gives None, not an exception.
+
+        PermissionError is an OSError other than FileNotFoundError, as a git
+        without its execute bit raises; a handler that named only
+        FileNotFoundError would let it through. A working git gives its output.
+        """
+        err = PermissionError(13, 'Permission denied', 'git')
+        with patch('proteus.doctor.subprocess.check_output', side_effect=err) as run:
+            assert _git_stdout('/some/repo', 'rev-parse', 'HEAD') is None
+        assert run.call_count == 1
+        assert run.call_args.kwargs['timeout'] == _GIT_NOTE_TIMEOUT_S
+        with patch('proteus.doctor.subprocess.check_output', return_value='abc\n'):
+            assert _git_stdout('/some/repo', 'rev-parse', 'HEAD') == 'abc\n'
 
     def test_julia_version_parses_last_token(self):
         """`julia --version` output is parsed to its trailing version token."""

@@ -48,8 +48,8 @@ guide pages.
     Follow the prompts, then restart your terminal or run `source ~/.zshrc`.
 
 5. macOS Catalina (10.15) and later uses `zsh` as the default shell. The
-   installation instructions edit no shell start file: the installer sets the
-   PROTEUS variables in the conda environment.
+   installer sets the PROTEUS variables in the conda environment, not in a shell
+   start file such as `~/.zshrc`.
 
 ## Debian / Ubuntu Linux
 

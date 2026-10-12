@@ -21,9 +21,9 @@ configuration, some steps may differ. If you run into problems, check the
 [contact the developers](../Community/contact.md).
 
 !!! tip "Environment variables"
-    The steps below set each environment variable in the conda environment
-    `proteus` with `conda env config vars set`, as `install.sh` does, and edit
-    no shell start file. Conda sets the variables when it activates the
+    The steps below set each PROTEUS environment variable in the conda environment
+    `proteus` with `conda env config vars set -n proteus`, as `install.sh` does,
+    not in a shell start file. Conda sets the variables when it activates the
     environment, so each step ends with `conda deactivate && conda activate proteus`.
 
 ---
@@ -47,8 +47,11 @@ Install the required system packages for your platform before proceeding.
 !!! tip "Using pixi instead of conda"
     PROTEUS can also be installed into a [pixi](https://pixi.sh) environment,
     which replaces the conda steps below. See [Install with pixi](pixi.md)
-    (experimental). With pixi, skip the `conda activate proteus` lines in the
-    steps below.
+    (experimental). With pixi, skip the conda lines in the steps below
+    (`conda activate`, `conda deactivate` and `conda env config vars set`); write
+    each variable instead as an `export NAME='value'` line to `.proteus-env.sh`
+    in the PROTEUS folder, and run `source .proteus-env.sh` in each new shell,
+    as [Install with pixi](pixi.md) describes.
 
 Python **3.12** is required, and is installed via
 [miniconda](https://www.anaconda.com/docs/getting-started/miniconda/install)
@@ -116,7 +119,7 @@ Set the Julia environment variable to the binary of Julia 1.13, not to the
 juliaup launcher:
 
 ```console
-conda env config vars set PYTHON_JULIAPKG_EXE="$(julia +1.13 --startup-file=no -e 'print(joinpath(Sys.BINDIR, "julia"))')"
+conda env config vars set -n proteus PYTHON_JULIAPKG_EXE="$(julia +1.13 --startup-file=no -e 'print(joinpath(Sys.BINDIR, "julia"))')"
 conda deactivate && conda activate proteus
 ```
 
@@ -127,7 +130,7 @@ reference data. This variable must always be set.
 
 ```console
 mkdir -p /your/local/path/FWL_DATA
-conda env config vars set FWL_DATA=/your/local/path/FWL_DATA/
+conda env config vars set -n proteus FWL_DATA=/your/local/path/FWL_DATA/
 conda deactivate && conda activate proteus
 ```
 
@@ -161,7 +164,7 @@ bash tools/get_socrates.sh
 Set `RAD_DIR` to point to the SOCRATES installation:
 
 ```console
-conda env config vars set RAD_DIR="$PWD/socrates/"
+conda env config vars set -n proteus RAD_DIR="$PWD/socrates/"
 conda deactivate && conda activate proteus
 ```
 
@@ -191,7 +194,7 @@ the true location).
 Set the FastChem environment variable:
 
 ```console
-conda env config vars set FC_DIR="$PWD/AGNI/fastchem/"
+conda env config vars set -n proteus FC_DIR="$PWD/AGNI/fastchem/"
 conda deactivate && conda activate proteus
 ```
 

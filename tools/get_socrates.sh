@@ -176,7 +176,7 @@ echo "You must now run the following command:"
 echo "    export RAD_DIR='$socpath'"
 echo " "
 echo "To keep it, set it in your conda environment (bash install.sh does this itself):"
-echo "    conda env config vars set RAD_DIR='$socpath'"
+echo "    conda env config vars set -p \"\$CONDA_PREFIX\" RAD_DIR='$socpath'"
 echo "and then run: conda deactivate && conda activate <your environment>"
 
 # Re-cloning the SOCRATES tree deleted the build products AGNI writes into it:

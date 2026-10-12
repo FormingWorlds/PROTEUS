@@ -4663,3 +4663,57 @@ def test_every_setup_script_that_runs_julia_calls_use_proteus_julia_first():
         ]
         runs_julia[script.name] = bool(helper) and helper[0] < min(julia)
     assert runs_julia == {'get_agni.sh': True, 'get_lovepy.sh': True, 'get_obliqua.sh': True}
+
+
+# The pages whose commands set a variable in the env `proteus`, which manual_installation.md makes.
+_CONDA_VAR_PAGES = (
+    'manual_installation.md',
+    'optionalmodules_installation.md',
+    'troubleshooting.md',
+)
+
+
+@pytest.mark.unit
+def test_printed_and_documented_conda_var_commands_name_their_env(tmp_path):
+    """Each `conda env config vars set` that a script prints or a page gives names its env.
+
+    Without `-n` or `-p`, conda writes to the active env, which is base when the
+    user types the command in a new shell. The echo lines of the scripts run in
+    bash with CONDA_PREFIX set, so the printed command must hold the literal
+    `-p "$CONDA_PREFIX"` and not the path of the env the script ran in; the pages
+    name `-n proteus`. Each scan counts its hits, so a scan that finds none fails.
+    """
+    printed = []
+    for script in sorted(TOOLS_DIR.glob('get_*.sh')):
+        for line in script.read_text().splitlines():
+            if 'conda env config vars set' in line and line.lstrip().startswith('echo '):
+                out = subprocess.run(
+                    ['bash', '-c', line],
+                    capture_output=True,
+                    text=True,
+                    env={
+                        'PATH': '/usr/bin:/bin',
+                        'HOME': str(tmp_path),
+                        'CONDA_PREFIX': '/envs/where-the-script-ran',
+                    },
+                    timeout=10,
+                )
+                printed.append((script.name, out.stdout.strip()))
+    assert [name for name, _ in printed] == [
+        'get_lavatmos.sh',
+        'get_petsc.sh',
+        'get_socrates.sh',
+    ]
+    prefix = 'conda env config vars set -p "$CONDA_PREFIX" '
+    assert [p for p in printed if not p[1].startswith(prefix)] == []
+    assert [p for p in printed if 'where-the-script-ran' in p[1]] == []
+    docs = TOOLS_DIR.parent / 'docs' / 'How-to'
+    commands = [
+        (page, line)
+        for page in _CONDA_VAR_PAGES
+        for line in (docs / page).read_text().splitlines()
+        if line.startswith('conda env config vars set')
+    ]
+    assert len(commands) == 6
+    named = 'conda env config vars set -n proteus '
+    assert [c for c in commands if not c[1].startswith(named)] == []

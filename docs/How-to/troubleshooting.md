@@ -220,7 +220,7 @@ in your conda environment:
 
 ```console
 juliaup add 1.13
-conda env config vars set PYTHON_JULIAPKG_EXE="$(julia +1.13 --startup-file=no -e 'print(joinpath(Sys.BINDIR, "julia"))')"
+conda env config vars set -n proteus PYTHON_JULIAPKG_EXE="$(julia +1.13 --startup-file=no -e 'print(joinpath(Sys.BINDIR, "julia"))')"
 conda deactivate && conda activate proteus
 ```
 

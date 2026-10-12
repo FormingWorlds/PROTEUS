@@ -2445,6 +2445,8 @@ def test_agni_setup_goes_on_without_the_julia_link_in_a_read_only_root(
     """A root where ``.proteus-julia`` cannot be made gives one warning, not a traceback.
 
     The AGNI script still runs once, with PATH as it is, and the command completes.
+    The warning says that the script stops: its ``use_proteus_julia`` makes the
+    same link in the same root and returns 1, so PATH as it is never reaches Julia.
     """
     if os.geteuid() == 0:
         pytest.skip('the root user writes into a read-only folder')
@@ -2459,7 +2461,11 @@ def test_agni_setup_goes_on_without_the_julia_link_in_a_read_only_root(
     assert res.exit_code == 0, res.output
     assert res.exception is None
     link = tmp_path / '.proteus-julia' / 'julia'
-    assert f'[!] Could not link {link} to the Julia PROTEUS uses (' in res.output
+    warnings = [ln for ln in res.output.splitlines() if ln.startswith('[!] Could not link')]
+    assert len(warnings) == 1
+    assert warnings[0].startswith(f'[!] Could not link {link} to the Julia PROTEUS uses (')
+    assert warnings[0].endswith('; the setup script will stop, because it makes the same link')
+    assert 'gets PATH as it is' not in res.output
     script = ['bash', str(tmp_path / 'tools' / 'get_agni.sh'), '0']
     agni = [kw for cmd, kw in captured if cmd == script]
     assert len(agni) == 1
@@ -3050,6 +3056,28 @@ def test_agni_blocker_reads_the_clone_and_not_the_repository_of_git_dir(monkeypa
     (site.agni / 'version.txt').write_text('my change\n')
     assert cli._agni_update_blocker(site.agni) == '1 modified tracked file'
     assert cli._git_read(site.agni, 'rev-parse', 'HEAD') == site.commits[0]
+
+
+@pytest.mark.unit
+def test_git_read_gives_git_its_own_timeout_and_no_optional_locks(monkeypatch, tmp_path):
+    """``_git_read`` passes ``_GIT_READ_TIMEOUT_S`` (30 s), not the 10 s default of the doctor.
+
+    A slow ``git status`` on a network folder needs the longer limit. The call
+    also puts ``--no-optional-locks`` before ``-C``, so that status rewrites no
+    index, and the output comes back without its surrounding white space.
+    """
+    calls = []
+
+    def fake_check_output(cmd, **kwargs):
+        calls.append((cmd, kwargs))
+        return '  M version.txt\n'
+
+    monkeypatch.setattr(doctor.subprocess, 'check_output', fake_check_output)
+    assert cli._git_read(tmp_path, 'status', '--porcelain') == 'M version.txt'
+    ((cmd, kwargs),) = calls
+    assert cmd == ['git', '--no-optional-locks', '-C', str(tmp_path), 'status', '--porcelain']
+    assert kwargs['timeout'] == cli._GIT_READ_TIMEOUT_S == 30
+    assert kwargs['timeout'] != doctor._GIT_NOTE_TIMEOUT_S
 
 
 @pytest.mark.unit

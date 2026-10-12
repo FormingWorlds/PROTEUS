@@ -1004,8 +1004,9 @@ def _env_with_proteus_julia(root: Path) -> dict[str, str]:
     ``link_proteus_julia`` goes first on ``PATH``, so that the AGNI setup
     script runs the Julia that ``install.sh`` selected and not the default
     Julia of the user, and finds no other program of that binary's folder.
-    A link that cannot be written (a read-only root) is a warning, and
-    ``PATH`` stays as it is.
+    A link that cannot be written (a read-only root) is a warning that the
+    setup script stops on the same link (``use_proteus_julia`` in
+    ``tools/_get_common.sh``), and ``PATH`` stays as it is.
 
     Parameters
     ----------
@@ -1023,7 +1024,7 @@ def _env_with_proteus_julia(root: Path) -> dict[str, str]:
     except OSError as exc:
         click.secho(
             f'[!] Could not link {root / ".proteus-julia" / "julia"} to the Julia PROTEUS '
-            f'uses ({exc}); the setup script gets PATH as it is',
+            f'uses ({exc}); the setup script will stop, because it makes the same link',
             fg='yellow',
         )
         folder = None

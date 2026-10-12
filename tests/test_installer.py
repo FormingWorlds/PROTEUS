@@ -28,11 +28,13 @@ from __future__ import annotations
 import os
 import pty
 import re
+import select
 import shlex
 import shutil
 import signal
 import subprocess
 import sys
+import termios
 from pathlib import Path
 
 import pytest
@@ -366,7 +368,6 @@ _VAR_FUNCTIONS = (
     'bind_install_vars',
     'note_old_shell_exports',
     'conda_activate_command',
-    'conda_sh_line',
     'print_next_steps',
     'print_exit_hint',
 )
@@ -795,7 +796,7 @@ class TestNoShellFileEdit:
         # The juliaup installer writes a PATH block to the start files unless told not to.
         fresh = _install_sh_function('install_fresh_juliaup')
         runs = [ln.strip() for ln in text.splitlines() if 'bash "$julia_installer"' in ln]
-        assert runs == ['bash "$julia_installer" --yes --add-to-path=no 2>&1']
+        assert runs == ['if ! bash "$julia_installer" --yes --add-to-path=no 2>&1; then']
         assert runs[0] in fresh
         writer = (
             '    grep -v "^export ${var_name}=" "$rc_file" > "${rc_file}.tmp" 2>/dev/null || true\n'
@@ -2096,6 +2097,33 @@ class TestSetupJulia:
             f'\x1b[0;32m[INFO]\x1b[0m  PROTEUS uses Julia 1.13.2 at {bound}.'
         ]
 
+    def test_bound_launcher_of_113_is_replaced_by_the_binary_it_runs(self, site):
+        """A PYTHON_JULIAPKG_EXE that is a launcher reporting 1.13 becomes the binary in its Sys.BINDIR.
+
+        A user who bound `$(which julia)` holds the juliaup launcher there; with
+        the launcher bound, a later `juliaup default` changes the Julia PROTEUS uses.
+        The stand-in launcher answers Sys.BINDIR with another folder, whose
+        julia is what the variable holds after the call; juliaup is not called.
+        """
+        real = site['jl113'].parents[2] / 'real-1.13.4' / 'bin'
+        _stub(real / 'julia', '#!/bin/sh\necho "julia version 1.13.4"\n')
+        launcher = _stub(
+            site['jl113'].parents[2] / 'launcher' / 'bin' / 'julia',
+            '#!/bin/sh\ncase "$*" in\n'
+            '    --version) echo "julia version 1.13.1" ;;\n'
+            f'    *Sys.BINDIR*) printf "%s" "{real}" ;;\n'
+            'esac\n',
+        )
+        result = self._call(site, '1.12.6', PYTHON_JULIAPKG_EXE=str(launcher))
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert not [c for c in site['log'].read_text().splitlines() if c.startswith('juliaup')]
+        path, exe, channel, _ = self._report(result)
+        assert (path, exe, channel) == (site['env']['PATH'], str(real / 'julia'), '')
+        assert exe != str(launcher)
+        assert self._used_lines(result) == [
+            f'\x1b[0;32m[INFO]\x1b[0m  PROTEUS uses Julia 1.13.4 at {real / "julia"}.'
+        ]
+
     def test_bound_julia_of_another_version_gets_113_beside_the_default(self, site):
         """A PYTHON_JULIAPKG_EXE that reports 1.12 is not kept: juliaup adds 1.13 and PROTEUS uses it."""
         bound = _stub(
@@ -2152,6 +2180,7 @@ class TestSetupJulia:
 # ~/.bashrc, as the official installer does.
 _STUB_JULIAUP_INSTALLER = """#!/bin/sh
 echo "installer $*" >> "$STUB_LOG"
+[ -z "${STUB_INSTALLER_RC:-}" ] || exit "$STUB_INSTALLER_RC"
 mkdir -p "$HOME/.juliaup/bin"
 cp "$STUB_JULIAUP" "$HOME/.juliaup/bin/juliaup"
 cp "$STUB_JULIA_SRC" "$HOME/.juliaup/bin/julia"
@@ -2169,9 +2198,11 @@ while [ "$#" -gt 0 ]; do [ "$1" = -o ] && out="$2"; shift; done
 cp "$STUB_INSTALLER" "$out"
 """
 
-# juliaup: log the call; `add` puts the julia launcher beside juliaup, as juliaup ships one.
+# juliaup: log the call; the subcommand STUB_JULIAUP_FAILS exits 3, and `add` puts the julia
+# launcher beside juliaup, as juliaup ships one.
 _STUB_JULIAUP = """#!/bin/sh
 echo "juliaup $*" >> "$STUB_LOG"
+[ "$1" != "${STUB_JULIAUP_FAILS:-}" ] || exit 3
 [ "$1" = add ] && cp "$STUB_JULIA_SRC" "$(dirname "$0")/julia" && chmod +x "$(dirname "$0")/julia"
 exit 0
 """
@@ -2357,6 +2388,49 @@ class TestSetupJuliaWithoutJulia:
         assert list(site['tmpdir'].iterdir()) == []
         assert not (site['home'] / '.juliaup').exists()
 
+    @pytest.mark.parametrize(
+        ('env', 'last_call', 'line'),
+        [
+            (
+                {'STUB_INSTALLER_RC': '4'},
+                'installer --yes --add-to-path=no',
+                'The Julia installer from https://install.julialang.org failed; see its output '
+                'above, or install Julia 1.13 by hand: https://julialang.org/downloads/',
+            ),
+            (
+                {'STUB_JULIAUP_FAILS': 'add'},
+                'juliaup add 1.13',
+                "'juliaup add 1.13' failed; see its output above, then run bash install.sh again.",
+            ),
+            (
+                {'STUB_JULIAUP_FAILS': 'default'},
+                'juliaup default 1.13',
+                "'juliaup default 1.13' failed; see its output above, then run bash install.sh "
+                'again.',
+            ),
+        ],
+        ids=['installer-fails', 'juliaup-add-fails', 'juliaup-default-fails'],
+    )
+    def test_failed_step_of_the_fresh_juliaup_stops_with_the_failure_block(
+        self, site, env, last_call, line
+    ):
+        """A failing Julia installer, `juliaup add` or `juliaup default` ends in die, not in set -e.
+
+        Under set -e alone the run ends with the step's own status (4 or 3) and
+        no line of its own; die gives status 1, the phase and one FAIL line, the
+        failed step is the last installer or juliaup call, and the downloaded
+        script is gone.
+        """
+        result = TestSetupJulia._call(site, '1.13.1', **env)
+        assert result.returncode == 1, result.stdout + result.stderr
+        assert 'Installation failed at Phase 2.' in result.stdout
+        fails = [ln for ln in result.stderr.splitlines() if '[FAIL]' in ln]
+        assert fails == [f'\x1b[0;31m[FAIL]\x1b[0m  {line}']
+        steps = site['log'].read_text().splitlines()
+        assert [c for c in steps if c.startswith(('installer', 'juliaup'))][-1] == last_call
+        assert list(site['tmpdir'].iterdir()) == []
+        assert TestSetupJulia._report(result) == []
+
 
 class TestAgniJuliaVersion:
     """Phase 5 warns once when an existing AGNI was built with another minor Julia version."""
@@ -2491,7 +2565,7 @@ class TestJuliaupDefaultUse:
         fresh = _install_sh_function('install_fresh_juliaup')
         assert 'curl -fsSL https://install.julialang.org' in fresh
         assert everywhere == [ln for ln in fresh.splitlines() if 'juliaup default' in ln]
-        assert [ln.strip() for ln in everywhere] == ['juliaup default "$req"']
+        assert [ln.strip().split(' || ')[0] for ln in everywhere] == ['juliaup default "$req"']
         doctor = PROTEUS_ROOT / 'src' / 'proteus' / 'doctor.py'
         assert 'juliaup default' not in doctor.read_text()
 
@@ -2505,14 +2579,13 @@ _CONDA_FUNCTIONS = (
     'setup_conda_env',
     'ask_yn',
     'conda_activate_command',
-    'conda_sh_line',
     'print_next_steps',
     'print_exit_hint',
 )
 
 # The conda executable: `info --base`, `config --show envs_dirs` (a missing folder, then the envs
-# folder of the base), `env list` (base, a nameless env, then STUB_CONDA_ENVS) and
-# `create -y -n <name> ...`, which makes the env with its python unless STUB_CREATE_RC is set.
+# folder of the base), `env list` (base, a nameless env, then STUB_CONDA_ENVS with the mark
+# STUB_CONDA_MARK) and `create -y -n <name> ...`, which makes the env unless STUB_CREATE_RC is set.
 _STUB_CONDA_EXE = """#!/bin/sh
 printf '%s\\n' "$@" >> "$STUB_CONDA_LOG"
 echo --- >> "$STUB_CONDA_LOG"
@@ -2524,7 +2597,9 @@ case "$1 $2" in
         echo '#'
         echo "base                  *  $STUB_CONDA_BASE"
         echo "                         /elsewhere/proteus"
-        for name in $STUB_CONDA_ENVS; do echo "$name    $STUB_CONDA_BASE/envs/$name"; done
+        for name in $STUB_CONDA_ENVS; do
+            echo "$name  ${STUB_CONDA_MARK:-}  $STUB_CONDA_BASE/envs/$name"
+        done
         ;;
     'create -y')
         [ "${STUB_CREATE_RC:-0}" = 0 ] || exit "$STUB_CREATE_RC"
@@ -2551,6 +2626,21 @@ _STUB_CONDA_SH = """conda() {
 """
 
 _MANUAL_COMMANDS = ('  conda create -n proteus python=3.12', '  conda activate proteus')
+
+
+def _drain(master: int) -> str:
+    """The output waiting on the master side of a pseudo-terminal, decoded, without a wait."""
+    chunks = []
+    while select.select([master], [], [], 0)[0]:
+        try:
+            data = os.read(master, 4096)
+        except OSError:
+            break
+        if not data:
+            break
+        chunks.append(data)
+    return b''.join(chunks).decode(errors='replace')
+
 
 # The line after a failed `conda create`.
 _TOS_LINE = (
@@ -2599,7 +2689,13 @@ class TestSetupCondaEnv:
 
     @staticmethod
     def _call(
-        site, requested: str = '', after: str = '', terminal: bytes | None = None, **env: str
+        site,
+        requested: str = '',
+        after: str = '',
+        terminal: bytes | None = None,
+        saved_stdout: Path | None = None,
+        icrnl: bool = True,
+        **env: str,
     ) -> subprocess.CompletedProcess:
         """Run the shipped setup_conda_env under install.sh's options, then ``after``.
 
@@ -2607,6 +2703,10 @@ class TestSetupCondaEnv:
         on PATH, CONDA_ACTIVATED_HERE, the kind of ``conda`` and the shell flags,
         one per line, prefixed with ``REPORT``. stdin is /dev/null, or with
         ``terminal`` a pseudo-terminal that holds those bytes as typed input.
+        fd 3, the installer's saved stdout, is that terminal, or the file
+        ``saved_stdout`` as after ``bash install.sh > file``; what the script
+        wrote to the terminal is in the attribute ``terminal`` of the result.
+        ``icrnl`` False keeps a typed carriage return in the line read.
         """
         defs = (
             'set -euo pipefail\nCURRENT_PHASE=1\nCONDA_ACTIVATED_HERE=false\n'
@@ -2626,9 +2726,15 @@ class TestSetupCondaEnv:
                 master, stdin = pty.openpty()
             except OSError:
                 pytest.skip('this host refuses a pseudo-terminal (pty)')
+            if not icrnl:
+                attrs = termios.tcgetattr(stdin)
+                attrs[0] &= ~termios.ICRNL
+                termios.tcsetattr(stdin, termios.TCSANOW, attrs)
             os.write(master, terminal)
+            fd3 = '&0' if saved_stdout is None else shlex.quote(str(saved_stdout))
+            defs = f'exec 3>{fd3}\n' + defs
         try:
-            return subprocess.run(
+            result = subprocess.run(
                 ['bash', '-c', defs + report + after],
                 capture_output=True,
                 text=True,
@@ -2637,6 +2743,8 @@ class TestSetupCondaEnv:
                 timeout=25,
                 preexec_fn=_default_signals,
             )
+            result.terminal = '' if master is None else _drain(master)
+            return result
         finally:
             if master is not None:
                 os.close(master)
@@ -2726,18 +2834,25 @@ class TestSetupCondaEnv:
         """The question for the existing env `proteus` at ``prefix``, as read prints it."""
         return f'Install PROTEUS INTO the existing conda environment proteus ({prefix})? [y/N] '
 
-    def test_existing_proteus_on_a_terminal_is_used_after_yes(self, site):
-        """On a terminal the installer asks before it uses an existing `proteus`; y uses it.
+    @pytest.mark.parametrize(
+        ('answer', 'icrnl'),
+        [(b'y\n', True), (b'YES\n', True), (b' \tyes \n', True), (b'y\r\n', False)],
+        ids=['y', 'YES', 'yes-in-white-space', 'y-carriage-return'],
+    )
+    def test_existing_proteus_on_a_terminal_is_used_after_yes(self, site, answer, icrnl):
+        """On a terminal the installer asks before it uses an existing `proteus`; y or yes uses it.
 
-        The question names the env and its prefix, and comes before `conda info`
-        and the activation; after the yes one info line names the env and no
-        warning follows. Without the question no prompt is printed and the
-        warning stands instead of the info line.
+        The question goes to the terminal (fd 3), not to stdout or stderr, which
+        the installer copies into its log, and comes before `conda info` and the
+        activation; after the yes one info line names the env and no warning
+        follows. Case, spaces, tabs and a carriage return around the answer do
+        not count.
         """
         prefix = self._existing_env(site, 'proteus')
-        result = self._call(site, terminal=b'y\n')
+        result = self._call(site, terminal=answer, icrnl=icrnl)
         assert result.returncode == 0, result.stdout + result.stderr
-        assert result.stderr.count(self._question(prefix)) == 1
+        assert result.terminal.count(self._question(prefix)) == 1
+        assert '[y/N]' not in result.stdout + result.stderr
         assert _conda_calls(site['log']) == [
             ['env', 'list'],
             ['info', '--base'],
@@ -2752,21 +2867,22 @@ class TestSetupCondaEnv:
 
     @pytest.mark.parametrize(
         'answer',
-        [b'n\n', b'\n', b'\x04', b'nope, another one\n'],
-        ids=['no', 'empty-line', 'end-of-input', 'other-text'],
+        [b'n\n', b'\n', b'\x04', b'nope, another one\n', b'yikes\n', b'y n\n', b'maybe\n'],
+        ids=['no', 'empty-line', 'end-of-input', 'other-text', 'yikes', 'y-then-n', 'maybe'],
     )
     def test_existing_proteus_on_a_terminal_stops_without_yes(self, site, answer):
-        """n, an empty line, Ctrl-D and any answer not starting with y stop with status 1.
+        """n, an empty line, Ctrl-D and every answer other than y or yes stop with status 1.
 
         Nothing is activated or made: the one conda call is the env list. One
         INFO line names `--conda-env`, and the failure block of a failed step is
         not printed. A default of yes would use the env for the empty line and
-        Ctrl-D; a question after the activation would leave an activate call.
+        Ctrl-D; a match on the first letter would take `yikes` and `y n`; a
+        question after the activation would leave an activate call.
         """
         prefix = self._existing_env(site, 'proteus')
         result = self._call(site, terminal=answer)
         assert result.returncode == 1
-        assert result.stderr.count(self._question(prefix)) == 1
+        assert result.terminal.count(self._question(prefix)) == 1
         assert _conda_calls(site['log']) == [['env', 'list']]
         assert self._env_lines(result) == []
         assert (
@@ -2787,6 +2903,48 @@ class TestSetupCondaEnv:
         assert result.returncode == 0, result.stdout + result.stderr
         assert '[y/N]' not in result.stdout + result.stderr
         assert ['activate', 'proteus'] in _conda_calls(site['log'])
+        assert self._report(result)[:2] == ['proteus', str(prefix)]
+
+    def test_terminal_stdin_with_stdout_in_a_file_takes_the_warning_path(self, site, tmp_path):
+        """stdin a terminal and the saved stdout a file, as `bash install.sh > out.log`, asks nothing.
+
+        The prompt would go into the file while the installer waits unseen, so
+        the existing env is used with the warning. The typed `n` stays unread:
+        the line after the call reads it, and a question would have stopped on it.
+        """
+        prefix = self._existing_env(site, 'proteus')
+        out = tmp_path / 'out.log'
+        after = 'read -r unread\necho "UNREAD=$unread"\n'
+        result = self._call(site, after=after, terminal=b'n\n', saved_stdout=out)
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert 'UNREAD=n' in result.stdout.splitlines()
+        assert ['activate', 'proteus'] in _conda_calls(site['log'])
+        assert '[y/N]' not in result.stdout + result.stderr + result.terminal + out.read_text()
+        notices = [ln for ln in result.stderr.splitlines() if 'Conda environment: ' in ln]
+        assert notices == [
+            f'{_WARN_PREFIX}Conda environment: installing INTO the existing environment '
+            f'proteus ({prefix}); to use another one run: '
+            'bash install.sh --conda-env <other name>'
+        ]
+
+    @pytest.mark.parametrize('mark', ['*', '+'], ids=['active-mark', 'frozen-mark'])
+    def test_marked_env_line_gives_the_bare_prefix(self, site, mark):
+        """A listed `proteus  <mark>  <prefix>` line gives the prefix without the mark.
+
+        conda marks the active env with * and, in newer releases, a frozen env
+        with +; a name match that kept the mark would name `<mark>  <prefix>`.
+        The warning without a terminal holds the same prefix as the question.
+        """
+        prefix = self._existing_env(site, 'proteus')
+        result = self._call(site, STUB_CONDA_MARK=mark)
+        assert result.returncode == 0, result.stdout + result.stderr
+        notices = [ln for ln in result.stderr.splitlines() if 'Conda environment: ' in ln]
+        assert notices == [
+            f'{_WARN_PREFIX}Conda environment: installing INTO the existing environment '
+            f'proteus ({prefix}); to use another one run: '
+            'bash install.sh --conda-env <other name>'
+        ]
+        assert f'{mark}  {prefix}' not in result.stderr
         assert self._report(result)[:2] == ['proteus', str(prefix)]
 
     def test_made_env_on_a_terminal_asks_nothing(self, site):
@@ -2953,19 +3111,34 @@ class TestSetupCondaEnv:
             ({'STUB_ACTIVATE_RC': '1'}, True, "'conda activate proteus' failed."),
             ({'STUB_ACTIVATE_AS': 'other'}, True, 'left the env other active'),
             ({}, False, 'and python at <stubs>/python.'),
+            ({'STUB_ACTIVATE_RC': '1'}, None, "'conda activate proteus' failed."),
         ],
-        ids=['activate-fails', 'activate-leaves-other-env', 'python-outside-the-env'],
+        ids=[
+            'activate-fails',
+            'activate-leaves-other-env',
+            'python-outside-the-env',
+            'activate-of-the-made-env-fails',
+        ],
     )
     def test_activation_that_misses_the_env_stops(self, site, env, python, step):
         """An activation that fails, leaves another env, or leaves a python outside the env stops.
 
-        In the last case CONDA_DEFAULT_ENV is right, so only the python check catches it.
+        In the third case CONDA_DEFAULT_ENV is right, so only the python check
+        catches it. The env exists in each case, listed or made by the
+        installer, so only `conda activate` is printed: a `conda create -n
+        proteus` there would ask to remove that env.
         """
-        self._existing_env(site, 'proteus', python=python)
+        if python is not None:
+            self._existing_env(site, 'proteus', python=python)
         result = self._call(site, **env)
         assert result.returncode == 1
         assert step.replace('<stubs>', str(site['stubs'])) in result.stderr
-        assert all(cmd in result.stdout.splitlines() for cmd in _MANUAL_COMMANDS)
+        steps = result.stdout.split('Activate the conda environment first:\n', 1)[1]
+        assert steps.splitlines()[0] == '  conda activate proteus'
+        assert 'conda create' not in result.stdout
+        assert (site['base'] / 'envs' / 'proteus' / 'bin' / 'python').exists() is (
+            python is not False
+        )
         assert _TOS_LINE not in result.stdout
         assert ['activate', 'proteus'] in _conda_calls(site['log'])
         assert self._report(result) == []
@@ -3055,6 +3228,69 @@ class TestSetupCondaEnv:
         assert (hint in result.stdout) == (not own_env)
         assert 'conda deactivate' not in result.stdout
         assert len(self._report(result)) == 6
+
+
+class TestAskYn:
+    """ask_yn writes its question to fd 3, the installer's saved terminal, and takes only y or yes."""
+
+    @pytest.mark.parametrize(
+        ('answer', 'default', 'yes'),
+        [
+            ('y\n', 'n', True),
+            ('YES\n', 'n', True),
+            (' \tYes \r\n', 'n', True),
+            ('y\r\n', 'n', True),
+            ('yikes\n', 'n', False),
+            ('y n\n', 'n', False),
+            ('maybe\n', 'n', False),
+            ('\n', 'n', False),
+            ('', 'n', False),
+            ('\n', 'y', True),
+            ('', 'y', True),
+            ('yikes\n', 'y', False),
+        ],
+        ids=[
+            'y',
+            'YES',
+            'yes-in-white-space',
+            'y-carriage-return',
+            'yikes',
+            'y-then-n',
+            'maybe',
+            'empty-default-no',
+            'end-of-input-default-no',
+            'empty-default-yes',
+            'end-of-input-default-yes',
+            'yikes-default-yes',
+        ],
+    )
+    def test_only_y_or_yes_is_yes(self, tmp_path, answer, default, yes):
+        """y or yes in any case, after a trim of spaces, tabs and a carriage return, is yes.
+
+        Every other text is no, also with the default yes; an empty answer and
+        the end of input take the default. stdin is a pipe, so the answer keeps
+        its carriage return as a terminal without ICRNL passes it. The question
+        and its hint are in the fd 3 file only: stdout and stderr go to the log.
+        """
+        out = tmp_path / 'fd3.txt'
+        script = (
+            'set -euo pipefail\n'
+            + _install_sh_function('ask_yn')
+            + f'exec 3>{shlex.quote(str(out))}\n'
+            + f'if ask_yn "Go on?" {default}; then echo YES; else echo NO; fi\n'
+        )
+        result = subprocess.run(
+            ['bash', '-c', script],
+            input=answer,
+            capture_output=True,
+            text=True,
+            env={'PATH': '/usr/bin:/bin', 'HOME': str(tmp_path)},
+            timeout=10,
+        )
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.splitlines() == ['YES' if yes else 'NO']
+        assert out.read_text() == f'Go on? {"[Y/n]" if default == "y" else "[y/N]"} '
+        assert result.stderr == ''
 
 
 class TestCondaEnvOption:
@@ -3534,8 +3770,7 @@ class TestFailedStepsEndInDie:
         """Each run_logged statement is in an `if !`, or ends in `|| die`, `|| warn` or `|| true`.
 
         Under set -e a bare failing step ends the run with no failure block. The 8
-        statements are counted, so a scan that finds none fails; the control, a
-        bare step, is reported.
+        statements are counted, so a scan that finds none fails.
         """
         statements = _run_logged_statements()
         assert len(statements) == 8
@@ -3551,8 +3786,6 @@ class TestFailedStepsEndInDie:
             assert shlex.split(hit.split('|| die ', 1)[1]) == [
                 f'{sentence}; see the error above'
             ]
-        control = 'run_logged "Setting up X" bash tools/get_x.sh'
-        assert not re.search(r'\|\| (die "|warn "|true$)', control)
 
     @pytest.mark.parametrize('step', sorted(_STOPPING_STEPS))
     def test_failed_step_prints_the_failure_block(self, tmp_path, step):
@@ -3642,15 +3875,17 @@ class TestLogFileSentence:
             ('die "boom"\n', 1, 1),
             ('exit 3\n', 3, 1),
             ('run_logged "Building widget" bash five.sh 4\n', 4, 1),
+            ('run_logged "Building widget" bash five.sh 4 || die "boom"\n', 1, 1),
             ('true\n', 0, 0),
         ],
-        ids=['die', 'plain-exit', 'failed-step', 'clean-exit'],
+        ids=['die', 'plain-exit', 'failed-step', 'failed-step-then-die', 'clean-exit'],
     )
     def test_failed_run_names_the_log_file_once(self, tmp_path, script, status, count):
         """A failed run prints the sentence once, from whichever of the three ends it.
 
-        die and run_logged print it and the exit hint then holds it back; a
-        clean exit prints nothing.
+        die and run_logged print it and the exit hint then holds it back; die
+        after a failed run_logged step, as each stopping build step ends, holds
+        it back too. A clean exit prints nothing.
         """
         log = tmp_path / 'install.log'
         log.write_text('')

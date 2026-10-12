@@ -104,7 +104,7 @@ bash tools/get_lavatmos.sh
 variable for you. Set the printed path in your conda environment:
 
 ```console
-conda env config vars set LAVA_DIR='<path-to-LavAtmos>/'
+conda env config vars set -n proteus LAVA_DIR='<path-to-LavAtmos>/'
 conda deactivate && conda activate proteus
 ```
 
