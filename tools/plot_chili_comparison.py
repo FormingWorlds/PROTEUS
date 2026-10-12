@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Plot PROTEUS output overlaid on CHILI intercomparison data.
 
-Generates comparison figures mirroring Nicholls et al. (in prep) using
+Generates comparison figures mirroring Nicholls et al. (2026, arXiv:2606.24757) using
 the Wong colorblind-friendly palette. Overlays the current PROTEUS run
 on the CHILI v2 submission and all other intercomparison models.
 

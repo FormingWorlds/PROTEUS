@@ -12,8 +12,8 @@ models: GOOEY, NEONGOOEY, PACMAN, LINCS, MOAI, and PlanAtMO. The figures
 below reproduce the intercomparison plots: each one overlays the current
 PROTEUS run on the results submitted by every participating model. Those
 submitted results, and the figure layouts they follow, are drawn from the
-Solar System CHILI intercomparison paper (Nicholls et al. 2026, in
-prep.) [^cite-nicholls2026].
+Solar System CHILI intercomparison paper (Nicholls et al. 2026)
+[^cite-nicholls2026].
 
 !!! info "CHILI data and code"
     The simulation output of every participating model is openly available
@@ -154,7 +154,7 @@ version-general:
   plot the intercomparison models alone.
 
 Up to two PROTEUS results appear on each plot. The results submitted to the
-intercomparison (Nicholls et al. 2026, in prep.) are drawn as a thin black
+intercomparison (Nicholls et al. 2026) are drawn as a thin black
 dashed line labelled "PROTEUS CHILI". The run from your own checkout is drawn in
 vermillion with thick lines, black-edged markers, and its git SHA in the
 legend. Running the command on the output of a future PROTEUS version
@@ -315,7 +315,7 @@ ZEPHYRUS and MORS. It names VULCAN for the atmospheric chemistry, set to
 run only on request (`atmos_chem.when = "manually"`). Its energy balance
 stop criterion is switched off. See
 Lichtenberg et al. (2026) [^cite-lichtenberg2026] and Nicholls et al.
-(2026, in prep.) [^cite-nicholls2026] for further details.
+(2026) [^cite-nicholls2026] for further details.
 
 The configuration documented on this page uses **Aragog** for the
 interior thermal evolution and **Zalmoxis** for the interior structure,
@@ -372,4 +372,4 @@ lies relative to the other community codes.
 
  [^cite-lichtenberg2026]: Lichtenberg, T., Schaefer, L., Krissansen-Totton, J., et al., *[Coupled atmospHere Interior modeL Intercomparison (CHILI): Protocol Version 1.0](https://doi.org/10.3847/PSJ/ae593b)*, The Planetary Science Journal, 7, 108, 2026. [SciX](https://scixplorer.org/abs/2026PSJ.....7..108L/abstract).
 
- [^cite-nicholls2026]: Nicholls, H. et al., *Coupled atmospHere Interior modeL Intercomparison (CHILI). I. Evolutionary Modelling: Primordial Magma Oceans of Earth and Venus*, in preparation, 2026.
+ [^cite-nicholls2026]: Nicholls, H., Krissansen-Totton, J., Lichtenberg, T., et al., *[Coupled atmospHere Interior modeL Intercomparison (CHILI). I. Evolutionary Modelling: Primordial Magma Oceans of Earth and Venus](https://doi.org/10.48550/arXiv.2606.24757)*, arXiv:2606.24757, submitted to The Planetary Science Journal, 2026.
