@@ -1201,7 +1201,7 @@ class TestImpactClamp:
 
     def test_the_static_step_is_not_changed_by_a_near_impact(self):
         """In the init stage (Time < 2 yr) the 1 yr step stays 1 yr with an impact
-        500 yr ahead, inside the default 1e4 yr floor, as with a distant one."""
+        500 yr ahead, inside a floor of 1e4 yr, as with a distant one."""
         from proteus.interior_energetics.timestep import next_step
 
         config = _make_config()
@@ -1456,6 +1456,32 @@ class TestEscapeStepLimit:
         # is 1000x the raw limit, so a pass-through would be plainly separated.
         assert limited > 1.0e-9
         assert limited == pytest.approx(dt_min / 1000.0, rel=1e-9)
+
+    @pytest.mark.unit
+    def test_the_schema_defaults_give_a_floor_of_100_yr_and_an_escape_floor_of_a_tenth(self):
+        """With the schema defaults of `params.dt.minimum`, `params.dt.minimum_rel` and
+        `escape.step_dt_floor_frac`, an adaptive request below the floor (30 yr steps,
+        so at most 48 yr) gives `100 + 1e-5 * Time` yr, and an escape limit far below
+        both floors gives 0.1 yr. At a default floor of 1e4 yr the two values are 1e4 yr
+        and 10 yr."""
+        from proteus.config._escape import Escape
+        from proteus.config._params import TimeStepParams
+        from proteus.interior_energetics.timestep import next_step
+
+        config = _make_config()
+        config.params.dt.minimum = TimeStepParams().minimum
+        config.params.dt.minimum_rel = TimeStepParams().minimum_rel
+        config.escape.step_dt_floor_frac = Escape().step_dt_floor_frac
+        hf_all = _make_hf_all(n_rows=10, dt_prev=30.0)
+        hf_row = {'Time': float(hf_all['Time'].iloc[-1]), 'Phi_global': 1.0}
+
+        floored = next_step(config, {}, hf_row, hf_all, 1.0, interior_o=_make_interior_o())
+        assert floored == pytest.approx(100.0 + 1.0e-5 * hf_row['Time'], rel=1e-12)
+
+        interior_o = _make_interior_o()
+        interior_o.escape_dt_limit = 1.0e-9
+        limited = next_step(config, {}, hf_row, hf_all, 1.0, interior_o=interior_o)
+        assert limited == pytest.approx(0.1, rel=1e-12)
 
     @pytest.mark.unit
     def test_absent_escape_limit_leaves_the_step_untouched(self):
