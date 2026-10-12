@@ -5,7 +5,7 @@
 # PROTEUS default redox state (IW+2). The protocol case at IW+4 is
 # input/chili/intercomp/venus.toml.
 #
-# Identical to the Earth tutorial except: mass=0.815 M_Earth, orbit=0.723 AU.
+# Identical to the Earth tutorial except: mass=0.815 M_Earth, orbit=0.723 AU, end time 3 Myr.
 #
 # Run: proteus start --offline -c input/tutorials/tutorial_venus.toml
 
@@ -27,7 +27,7 @@ config_version = "3.0"
     mushy_upper   = 0.99
 
     [params.stop.time]
-        maximum = 5e9
+        maximum = 3e6
     [params.stop.solid]
         phi_crit = 0.05
 

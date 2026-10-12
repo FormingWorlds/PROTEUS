@@ -95,10 +95,26 @@ def test_generated_cases_match_tutorials_outside_their_deltas():
                 assert got == pytest.approx(want, rel=1e-12), f'{name}: {dotted}={got!r}'
             else:
                 assert got == want, f'{name}: {dotted}={got!r}, want {want!r}'
-    # Discrimination: the nominal cases carry these 2 deltas and no other.
-    for name in ('earth', 'venus'):
-        assert set(gen.case_deltas(name)) == {'params.out.path', 'outgas.fO2_shift_IW'}
+    # Discrimination: the nominal cases carry these deltas and no other.
+    nominal = {'params.out.path', 'outgas.fO2_shift_IW'}
+    assert set(gen.case_deltas('earth')) == nominal
+    assert set(gen.case_deltas('venus')) == nominal | {'params.stop.time.maximum'}
     assert set(gen.CASE_DELTAS) == {'earth', 'venus', 'tr1b', 'tr1e', 'tr1a'}
+
+
+def test_the_venus_case_keeps_its_end_time():
+    """The Venus tutorial stops at 3 Myr and the intercomparison case runs to 5 Gyr."""
+    import tomllib
+
+    gen = _load_generator()
+    tut = _read_config(str(REPO / 'input' / 'tutorials' / 'tutorial_venus.toml'))
+    case = _read_config(str(REPO / 'input' / 'chili' / 'intercomp' / 'venus.toml'))
+    assert tut.params.stop.time.maximum == pytest.approx(3.0e6, rel=1e-12)
+    assert case.params.stop.time.maximum == pytest.approx(5.0e9, rel=1e-12)
+    # Discrimination: without its delta the case takes the end time of the tutorial.
+    del gen.CASE_DELTAS['venus']['set']['params.stop.time.maximum']
+    stop = tomllib.loads(gen.generate_case('venus'))['params']['stop']['time']
+    assert stop['maximum'] == pytest.approx(3.0e6, rel=1e-12)
 
 
 def test_a_case_cannot_set_its_own_redox_state():
