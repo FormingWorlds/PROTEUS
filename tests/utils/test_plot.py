@@ -29,6 +29,32 @@ pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 
 @pytest.mark.unit
+def test_style_neutral_mixes_the_text_and_face_colours_of_the_active_style():
+    """Fade 0 is the text colour and 1 the axes face colour; in the default style
+    the 2 fade constants give exactly '#444444' and '#808080'. A transparent axes
+    face, by name or by alpha, stands for the figure face colour."""
+    import matplotlib as mpl
+    from matplotlib.colors import to_rgb
+
+    from proteus.utils.plot import FADE_DARK_GREY, FADE_MID_GREY, style_neutral
+
+    with mpl.style.context('default'):
+        assert style_neutral() == to_rgb('black')
+        assert style_neutral(1.0) == to_rgb('white')
+        assert style_neutral(FADE_DARK_GREY) == to_rgb('#444444')
+        assert style_neutral(FADE_MID_GREY) == to_rgb('#808080')
+    dark = {'text.color': '#e0d0c0', 'axes.facecolor': '#102030', 'figure.facecolor': '#405060'}
+    with mpl.rc_context(dark):
+        assert style_neutral(0.0) == to_rgb('#e0d0c0')
+        assert style_neutral(1.0) == to_rgb('#102030')
+        assert style_neutral(0.5) == pytest.approx((120 / 255,) * 3)
+        for transparent in ('none', '#10203000'):
+            with mpl.rc_context({'axes.facecolor': transparent}):
+                assert style_neutral(1.0) == to_rgb('#405060')
+                assert style_neutral(0.0) == to_rgb('#e0d0c0')
+
+
+@pytest.mark.unit
 def test_get_colour_preset():
     """Test retrieval of preset colours."""
     # Test known presets

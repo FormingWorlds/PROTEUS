@@ -1111,6 +1111,19 @@ def test_download_scattering_fetches_the_manifest_dataset(mock_fetch):
 
 
 @pytest.mark.unit
+@patch('proteus.data.fetch_dataset')
+def test_download_refractive_fetches_the_manifest_dataset(mock_fetch):
+    """The Mie refractive indices are fetched through fwl-io from the PROTEUS manifest."""
+    from proteus.data import REFRACTIVE
+    from proteus.utils.data import download_refractive
+
+    download_refractive()
+
+    mock_fetch.assert_called_once_with(REFRACTIVE)
+    assert mock_fetch.call_args.args[0] == 'atmos_clim.refractive.agni_aerosols'
+
+
+@pytest.mark.unit
 @patch('proteus.data.fetch_dataset', side_effect=OSError('mirror unreachable'))
 def test_download_surface_albedos_propagates_fetch_failure(mock_fetch):
     """AGNI needs the albedo files, so a failed fetch raises instead of being logged."""
@@ -3231,15 +3244,23 @@ def test_get_sufficient_mors_muscles_spectrum_only(monkeypatch):
 
 
 @pytest.mark.unit
-def test_get_sufficient_agni_aerosols_downloads_scattering(monkeypatch):
-    """When aerosols_enabled is True, download_scattering is invoked."""
+@pytest.mark.parametrize(
+    'module, aerosols, fetched',
+    [('agni', True, ['x']), ('agni', False, []), ('janus', True, [])],
+)
+def test_get_sufficient_fetches_aerosol_data_only_for_agni_with_aerosols(
+    monkeypatch, module, aerosols, fetched
+):
+    """The scattering tables and refractive indices are fetched only for AGNI with aerosols."""
     from types import SimpleNamespace
 
     import proteus.atmos_clim.common as atmos_common
     import proteus.utils.data as data_mod
 
     scattering_calls = []
+    refractive_calls = []
     monkeypatch.setattr(data_mod, 'download_scattering', lambda: scattering_calls.append('x'))
+    monkeypatch.setattr(data_mod, 'download_refractive', lambda: refractive_calls.append('x'))
     monkeypatch.setattr(data_mod, 'download_stellar_spectra', lambda *a, **k: None)
     monkeypatch.setattr(data_mod, 'download_stellar_tracks', lambda *a, **k: None)
     monkeypatch.setattr(data_mod, 'download_spectral_file', lambda *a, **k: None)
@@ -3255,8 +3276,8 @@ def test_get_sufficient_agni_aerosols_downloads_scattering(monkeypatch):
     config = SimpleNamespace(
         star=SimpleNamespace(module='dummy'),
         atmos_clim=SimpleNamespace(
-            module='agni',
-            aerosols_enabled=True,
+            module=module,
+            aerosols_enabled=aerosols,
             agni=SimpleNamespace(spectral_file=None),
         ),
         interior_energetics=SimpleNamespace(module='dummy'),
@@ -3268,10 +3289,9 @@ def test_get_sufficient_agni_aerosols_downloads_scattering(monkeypatch):
 
     data_mod._get_sufficient(config)
 
-    # Discrimination: download_scattering fired exactly once, and
-    # download_surface_albedos also fired (both are AGNI-only paths).
-    assert scattering_calls == ['x']
-    assert surface_calls == ['s']
+    assert scattering_calls == fetched
+    assert refractive_calls == fetched
+    assert surface_calls == (['s'] if module == 'agni' else [])
 
 
 # ============================================================================

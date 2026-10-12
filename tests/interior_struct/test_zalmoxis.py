@@ -25,6 +25,7 @@ import pytest
 
 from proteus.interior_struct.zalmoxis import (
     compute_structure_mass_desync,
+    dissolved_h2_mass,
     write_spider_mesh_file,
 )
 
@@ -2168,6 +2169,7 @@ def _run_gate_solver(
     use_anderson=None,
     outer_solver=None,
     use_jax=None,
+    config_edit=None,
 ):
     """Invoke zalmoxis_solver with the heavy solve mocked out.
 
@@ -2211,6 +2213,8 @@ def _run_gate_solver(
         Value for ``config.interior_struct.zalmoxis.outer_solver``.
     use_jax : bool, optional
         Value for ``config.interior_struct.zalmoxis.use_jax``.
+    config_edit : callable, optional
+        Called with the mock config before the solve, for a field with no keyword here.
     """
     from proteus.interior_struct import zalmoxis as zalmoxis_wrapper
 
@@ -2237,6 +2241,8 @@ def _run_gate_solver(
         config.interior_struct.zalmoxis.use_jax = use_jax
     if mzf is not None:
         config.interior_struct.zalmoxis.mushy_zone_factor = mzf
+    if config_edit is not None:
+        config_edit(config)
     melting_patch_kwargs = (
         {'side_effect': zalmoxis_wrapper.load_zalmoxis_solidus_liquidus_functions}
         if real_melting_curves
@@ -2286,6 +2292,50 @@ def _run_gate_solver(
         )
 
     return main_mock, rho_mock, mixed_mock, hf_row, model_results, cmb_radius, mesh_file
+
+
+@pytest.mark.physics_invariant
+def test_the_accretion_thermal_state_gets_the_core_fraction_of_the_solve(tmp_path, monkeypatch):
+    """With 2.117e23 kg of buffered oxygen the structure is solved for a core fraction of
+    0.325 * (M_earth - 7.43e20) / (M_earth - 7.43e20 - 2.117e23) = 0.3370, and the accretion
+    thermal state splits the same structure at the same fraction, not at core_frac = 0.325."""
+    from proteus.utils.constants import M_earth
+
+    thermal = {
+        'T_cmb': 5200.0,
+        'T_surf_accr': 2900.0,
+        'U_differentiated': -2.5e32,
+        'U_undifferentiated': -2.3e32,
+        'Delta_T_accretion': 2600.0,
+        'Delta_T_differentiation': 1700.0,
+        'Delta_T_adiabat': 2300.0,
+        'core_state': 'liquid',
+        'T_profile': np.linspace(5200.0, 2900.0, 60),
+        'radii': np.linspace(0.0, 6.4e6, 60),
+        'pressure': np.linspace(3.6e11, 1.0e5, 60),
+    }
+
+    def _accretion(config):
+        config.planet.temperature_mode = 'accretion'
+        config.outgas.module, config.planet.fO2_source = 'calliope', 'user_constant'
+
+    buffered = {'H_kg_total': 4.70e20, 'C_kg_total': 2.73e20, 'O_kg_total': 2.117e23}
+    with patch('zalmoxis.energetics.initial_thermal_state', return_value=thermal) as state:
+        main_mock, _, _, hf_row, _, _, _ = _run_gate_solver(
+            tmp_path,
+            monkeypatch,
+            'Seager2007:silicate',
+            None,
+            None,
+            hf_extra=buffered,
+            config_edit=_accretion,
+        )
+    expected = 0.325 * (M_earth - 7.43e20) / (M_earth - 7.43e20 - 2.117e23)
+    fraction = state.call_args.kwargs['core_mass_fraction']
+    assert fraction == pytest.approx(expected, rel=1e-12)
+    assert fraction - 0.325 > 0.011
+    assert hf_row['T_surf_accr'] == pytest.approx(2900.0, rel=1e-15)
+    assert hf_row['M_core_target'] == pytest.approx(0.325 * (M_earth - 7.43e20), rel=1e-14)
 
 
 def test_zalmoxis_solver_passes_callable_when_jax_path_not_viable(tmp_path, monkeypatch):
@@ -4245,3 +4295,27 @@ def test_resume_keeps_tables_when_the_key_builder_fails(tmp_path, monkeypatch, c
     assert out['eos_dir'] == str(run_eos)
     bounds.assert_not_called()
     assert 'current key is not checked: registry unreadable' in caplog.text
+
+
+@pytest.mark.physics_invariant
+def test_dissolved_h2_excludes_the_share_trapped_in_the_solid_mantle():
+    """The miscible structure solve takes the dissolved H2 as its hydrogen
+    target. The species total includes the H2 trapped in the crystallising
+    mantle, which is not dissolved in the melt, so the dissolved mass is the
+    total less both the atmosphere and the solid, and the three add back to the
+    total."""
+    row = {'H2_kg_total': 5.0e20, 'H2_kg_atm': 1.0e20, 'H2_kg_solid': 1.5e20}
+    dissolved = dissolved_h2_mass(row)
+    assert dissolved == pytest.approx(2.5e20, rel=1e-12)
+    # Discrimination: counting the trapped share as dissolved gives 4e20 kg.
+    assert abs(dissolved - 4.0e20) > 1.0e20
+    # Conservation: dissolved, atmospheric and solid H2 make up the total.
+    parts = dissolved + row['H2_kg_atm'] + row['H2_kg_solid']
+    assert parts == pytest.approx(row['H2_kg_total'], rel=1e-12)
+
+    # Edge case: with nothing trapped the target is the total less the
+    # atmosphere, as it was before the solid reservoir could hold H2.
+    no_solid = {'H2_kg_total': 5.0e20, 'H2_kg_atm': 1.0e20}
+    assert dissolved_h2_mass(no_solid) == pytest.approx(4.0e20, rel=1e-12)
+    # Limit: an empty row has no dissolved H2, so no target is built from it.
+    assert dissolved_h2_mass({}) == pytest.approx(0.0, abs=0.0)
