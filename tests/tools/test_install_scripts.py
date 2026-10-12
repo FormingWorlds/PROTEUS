@@ -116,6 +116,7 @@ def _run_bash(snippet: str, *argv: str, **kwargs) -> subprocess.CompletedProcess
         ['bash', '-c', snippet, 'get_test.sh', *argv],
         capture_output=True,
         text=True,
+        preexec_fn=_default_signals,
         **kwargs,
     )
 
@@ -2761,13 +2762,14 @@ def _floor_tag_site(tmp_path: Path, pyproject: str, remotes: dict[str, str]) -> 
 
 
 def _default_signals() -> None:
-    """Give the child the default action for HUP, INT and TERM.
+    """Give the child the default action for HUP, INT and TERM, and unblock them.
 
-    A shell cannot trap a signal that it found ignored, and a test runner
-    started with ``nohup`` or as a background job ignores HUP or INT.
+    A shell cannot trap a signal that it found ignored, and a blocked signal stays pending;
+    a test runner started with ``nohup``, in the background or by a CI step passes either on.
     """
     for sig in (signal.SIGHUP, signal.SIGINT, signal.SIGTERM):
         signal.signal(sig, signal.SIG_DFL)
+        signal.pthread_sigmask(signal.SIG_UNBLOCK, [sig])
 
 
 def _run_tool(site: dict, script: str, *argv: str) -> subprocess.CompletedProcess:
@@ -2907,8 +2909,10 @@ class TestGetPythonModule:
         lines = result.stdout.splitlines()
         stay = f'fwl-mors: {plain} stays as it is: not a git clone; PROTEUS expects release 26.10.6'
         assert lines[lines.index(stay) + 1 :][:2] == [
-            '    From the PROTEUS folder, replace it with a new clone, which deletes everything'
-            ' in it, with:',
+            (
+                '    From the PROTEUS folder, replace it with a new clone, which deletes everything'
+                ' in it, with:'
+            ),
             '        bash tools/get_python_module.sh MORS --force',
         ]
         assert 'fetch --tags' not in result.stdout
@@ -4057,8 +4061,10 @@ class TestReportCloneState:
         result = _run_tool(site, 'get_python_module.sh', 'MORS')
         assert result.returncode == 0, result.stderr
         assert self._after(result, 'fwl-mors: ') == [
-            f'fwl-mors: {clone} stays as it is: on branch old, behind the tag;'
-            ' PROTEUS expects the release tag 26.10.06',
+            (
+                f'fwl-mors: {clone} stays as it is: on branch old, behind the tag;'
+                ' PROTEUS expects the release tag 26.10.06'
+            ),
             '    From the PROTEUS folder, move it to the release tag by hand with:',
             f'        git -C {clone} fetch --tags',
             f'        git -C {clone} checkout --detach refs/tags/26.10.06',
@@ -4170,10 +4176,14 @@ class TestReportCloneState:
         result = _run_tool(site, 'get_python_module.sh', 'MORS')
         assert result.returncode == 0, result.stderr
         assert self._after(result, 'fwl-mors: ') == [
-            f'fwl-mors: {clone} stays as it is: not a readable git clone;'
-            ' PROTEUS expects release 26.10.6',
-            '    From the PROTEUS folder, replace it with a new clone, which deletes everything'
-            ' in it, with:',
+            (
+                f'fwl-mors: {clone} stays as it is: not a readable git clone;'
+                ' PROTEUS expects release 26.10.6'
+            ),
+            (
+                '    From the PROTEUS folder, replace it with a new clone, which deletes everything'
+                ' in it, with:'
+            ),
             '        bash tools/get_python_module.sh MORS --force',
         ]
         assert 'pip install -e' not in result.stdout
@@ -4216,10 +4226,14 @@ class TestReportCloneState:
         )
         assert result.returncode == 0, result.stderr
         assert result.stdout.splitlines() == [
-            f'fwl-unpinned: {plain} stays as it is: not a git clone;'
-            ' the release tag could not be determined',
-            '    From the PROTEUS folder, replace it with a new clone, which deletes everything'
-            ' in it, with:',
+            (
+                f'fwl-unpinned: {plain} stays as it is: not a git clone;'
+                ' the release tag could not be determined'
+            ),
+            (
+                '    From the PROTEUS folder, replace it with a new clone, which deletes everything'
+                ' in it, with:'
+            ),
             '        bash tools/get_other.sh --force',
         ]
 
