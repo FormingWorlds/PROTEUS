@@ -1,38 +1,6 @@
 # shellcheck shell=bash
-#
-# Shared shell helpers for the tools/get_*.sh module install scripts.
-#
-# This file is sourced, never executed. Source it near the top of a get_*
-# script, before the first helper call:
-#
-#     source "$(dirname "${BASH_SOURCE[0]}")/_get_common.sh" || exit 1
-#
-# Every caller runs a get_* script by path (docs, install.sh, the CI setup
-# action, and proteus install-all through src/proteus/utils/data.py), so
-# ${BASH_SOURCE[0]} locates this file without needing a resolved path
-# first, which is what makes that line safe to run before portable_realpath
-# exists. bash reports a missing file itself, but half the get_* scripts
-# set no -e and would carry on with every helper undefined and
-# proteus_root empty, which puts the work path at the filesystem root:
-# `rm -rf "/aragog/"`. Hence `|| exit 1`.
-#
-# The helpers target bash 3.2, the version macOS ships, and behave the same
-# whether or not the sourcing script enables `set -euo pipefail`. Two of
-# them exit the script on failure (guard_dirty_checkout, resolve_module_pin)
-# and so must be called as plain commands: inside a command substitution
-# the exit would only leave the subshell.
-#
-# Sourcing this file sets:
-#   proteus_tools_dir   absolute path of the tools/ directory
-#   proteus_root        absolute path of the PROTEUS checkout root
-#
-# and defines:
-#   portable_realpath     resolve a path, whether or not it exists yet
-#   get_parse_args        split --force from an optional install path
-#   guard_dirty_checkout  refuse to delete a checkout holding local work
-#   github_use_ssh        report whether GitHub accepts an SSH key
-#   github_ssh_url        rewrite an https GitHub URL for SSH transport
-#   resolve_module_pin    read a module's pinned clone URL and ref
+# Shared helpers for the tools/get_*.sh scripts, for bash 3.2 and later. Source this file near
+# the top of a script with `|| exit 1`; it sets proteus_tools_dir and proteus_root.
 
 # Resolve a path to an absolute one, with symlinks and .. expanded.
 #
@@ -57,6 +25,8 @@ if [ "$_get_common_dir" = "${BASH_SOURCE[0]}" ]; then
 fi
 proteus_tools_dir=$(portable_realpath "$_get_common_dir")
 proteus_root=$(portable_realpath "$proteus_tools_dir/..")
+# Each git call must answer for the folder its -C names, not for a repository these variables name.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_NAMESPACE
 
 # Split the script's arguments into the --force switch and an optional
 # install-path positional, reported as get_force (true / false) and
@@ -76,21 +46,9 @@ get_parse_args() {
     done
 }
 
-# Refuse to delete a checkout that holds local work, unless --force was
-# given. Guarded states: modified tracked files, and commits that are on
-# no remote. Untracked files (build artifacts, egg-info) do not block the
-# refresh, because they are routine in a refreshed checkout.
-#
-# Usage: guard_dirty_checkout <checkout-path> <script-name> [git pathspec...]
-#
-# The script name goes into the recovery command in the error message.
-# Trailing arguments are passed to git status, which get_socrates.sh uses
-# to exclude its regenerable build config from the dirty test. Exits 1
-# when the checkout is guarded, so call it as a plain command.
-#
-# Neither probe is piped: `git ... | head -1` reports the pipeline's status,
-# which is git's under `set -o pipefail` and head's otherwise, so the same
-# unreadable checkout stopped some scripts and was deleted by others.
+# Usage: guard_dirty_checkout <checkout-path> <script-name> [git pathspec...]. Exits 1, unless
+# --force, when the checkout has modified tracked files or commits on no remote; pathspecs go to
+# git status. Call it as a plain command: inside a command substitution the exit leaves only that.
 guard_dirty_checkout() {
     local workpath="$1"
     local script="$2"
@@ -169,6 +127,350 @@ resolve_module_pin() {
         echo "ERROR: could not resolve $module url/ref from pyproject.toml" >&2
         exit 1
     fi
+}
+
+# Print the one tag of <checkout-dir> whose version equals the floor of <distribution> in
+# pyproject.toml; returns 1, with the cause on stderr, otherwise. Usage: <distribution> <checkout-dir>.
+_floor_tag_of() {
+    local dist="$1" dir="$2" tags
+    if ! command -v python >/dev/null 2>&1; then
+        echo "ERROR: python is not on PATH, so the $dist floor in pyproject.toml cannot be read;" >&2
+        echo "       activate the PROTEUS Python environment first" >&2
+        return 1
+    fi
+    if ! tags=$(git -C "$dir" for-each-ref --format='%(refname:strip=2)' refs/tags); then
+        echo "ERROR: git cannot list the tags of $dir; see the git message above" >&2
+        return 1
+    fi
+    if ! printf '%s\n' "$tags" | python "$proteus_tools_dir/_module_pins.py" "$dist" floor-tag; then
+        echo "ERROR: cannot choose the $dist release tag in $dir; see the message above" >&2
+        return 1
+    fi
+}
+
+# Usage: checkout_floor_tag <distribution> <checkout-dir>. Checks out the one tag whose
+# version equals the distribution's floor in pyproject.toml (detached HEAD) and prints it.
+# Exits 1, with the cause on stderr, when that fails, so call it as a plain command.
+checkout_floor_tag() {
+    local dist="$1" dir="$2" tag commit
+    tag=$(_floor_tag_of "$dist" "$dir") || exit 1
+    # refs/tags/ passes a branch named tags/<tag>; without --quiet git names commits left behind.
+    if ! git -C "$dir" -c advice.detachedHead=false checkout --detach "refs/tags/$tag"; then
+        echo "ERROR: cannot check out tag $tag of $dist in $dir" >&2
+        exit 1
+    fi
+    commit=$(git -C "$dir" rev-parse --short HEAD)
+    echo "$dist: checked out release tag $tag at $commit"
+}
+
+# Usage: _proteus_feature_branch. Prints the PROTEUS branch, GITHUB_HEAD_REF or GITHUB_REF_NAME in CI,
+# else the branch of the PROTEUS checkout; prints nothing for main, master or a detached HEAD.
+_proteus_feature_branch() {
+    local branch="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}"
+    if [ -z "$branch" ]; then
+        branch=$(git -C "$proteus_root" rev-parse --abbrev-ref HEAD 2>/dev/null) || branch=""
+    fi
+    case "$branch" in
+        '' | HEAD | main | master) ;;
+        *) echo "$branch" ;;
+    esac
+}
+
+# Usage: paired_branch_of <clone-dir>. Prints the PROTEUS feature branch when the origin of the clone
+# has a branch of that name, read from its remote-tracking refs without a fetch; else prints nothing.
+paired_branch_of() {
+    local branch
+    branch=$(_proteus_feature_branch)
+    if [ -n "$branch" ] &&
+        git -C "$1" rev-parse --verify --quiet "refs/remotes/origin/$branch" >/dev/null 2>&1; then
+        echo "$branch"
+    fi
+}
+
+# Usage: _note_paired_without_release <dir> <branch> <tag> <head> <tag-commit> [<final dir>]. For a paired
+# branch whose HEAD lacks the commit of the floor tag, prints the line that says so and records the
+# summary entry, under <final dir> when the clone is still in its temporary folder.
+_note_paired_without_release() {
+    local rel=""
+    if [ -n "$4" ] && [ -n "$5" ]; then
+        rel=$(_relation_to_tag "$1" "$4" "$5")
+    fi
+    case "$rel" in
+        'behind the tag' | 'on a line of history without the tag')
+            echo "    This branch does not hold the release $3: the PROTEUS install" \
+                "takes that release from PyPI, not this folder."
+            record_clone_stays "${6:-$1}" "paired branch $2, without the release $3"
+            ;;
+    esac
+}
+
+# Usage: checkout_paired_or_floor <distribution> <checkout-dir> <repo name>. Checks out the paired
+# branch of a new clone (paired_branch_of), else the floor tag; exits 1 on failure, so call it plainly.
+checkout_paired_or_floor() {
+    local dist="$1" dir="$2" name="$3" branch tag
+    branch=$(paired_branch_of "$dir")
+    if [ -z "$branch" ]; then
+        checkout_floor_tag "$dist" "$dir"
+        return 0
+    fi
+    git -C "$dir" checkout "$branch" ||
+        { echo "ERROR: cannot checkout $name branch $branch" >&2; exit 1; }
+    echo "PROTEUS is on branch '$branch'; installed paired $name branch at" \
+        "$(git -C "$dir" rev-parse --short HEAD)"
+    tag=$(_floor_tag_of "$dist" "$dir" 2>/dev/null) || tag=""
+    if [ -n "$tag" ]; then
+        _note_paired_without_release "$dir" "$branch" "$tag" "$(git -C "$dir" rev-parse HEAD)" \
+            "$(git -C "$dir" rev-parse --verify --quiet "refs/tags/$tag^{commit}" || true)" \
+            "${dir%.tmp.*}"
+    fi
+}
+
+# Usage: unchanged_note <path>. Prints "; <path> is unchanged" for an error message when <path> exists.
+unchanged_note() { [ ! -e "$1" ] || echo "; $1 is unchanged"; }
+
+# Usage: is_own_clone <dir>. Succeeds when <dir> is the top level of its own git clone. An empty or
+# broken .git makes git answer for the repository around <dir>, so prove this before any other git call.
+is_own_clone() {
+    local dir="${1%/}" top
+    top=$(git -C "$dir" rev-parse --show-toplevel 2>/dev/null) || return 1
+    [ -n "$top" ] && [ "$top" -ef "$dir" ]
+}
+
+# Usage: expected_text <distribution> <tag>. Prints what PROTEUS expects of a module clone: the
+# release tag when the clone has it, else the floor version in pyproject.toml.
+expected_text() {
+    local floor
+    if [ -n "$2" ]; then
+        echo "PROTEUS expects the release tag $2"
+    elif floor=$(python "$proteus_tools_dir/_module_pins.py" "$1" floor 2>/dev/null) &&
+        [ -n "$floor" ]; then
+        echo "PROTEUS expects release $floor"
+    else
+        echo "the release tag could not be determined"
+    fi
+}
+
+# Usage: record_clone_stays <clone-dir> <summary>. Adds "<clone name> (<summary>)" to the file that
+# PROTEUS_CLONE_STAYS names, when it is set, for the summary at the end of install.sh.
+record_clone_stays() {
+    local dir="${1%/}"
+    if [ -n "${PROTEUS_CLONE_STAYS:-}" ]; then
+        printf '%s (%s)\n' "${dir##*/}" "$2" >>"$PROTEUS_CLONE_STAYS" || true
+    fi
+}
+
+# Usage: _relation_to_tag <clone-dir> <head> <tag-commit>. Prints where HEAD lies against the tag,
+# read with merge-base only; prints nothing when git cannot compare the two.
+_relation_to_tag() {
+    local rc=0
+    git -C "$1" merge-base --is-ancestor "$2" "$3" 2>/dev/null || rc=$?
+    if [ "$rc" -eq 0 ]; then
+        echo "behind the tag"
+        return 0
+    fi
+    [ "$rc" -eq 1 ] || return 0
+    rc=0
+    git -C "$1" merge-base --is-ancestor "$3" "$2" 2>/dev/null || rc=$?
+    if [ "$rc" -eq 0 ]; then
+        echo "newer than the tag"
+    elif [ "$rc" -eq 1 ]; then
+        echo "on a line of history without the tag"
+    fi
+}
+
+# Usage: _clone_advice <distribution> <clone-dir> <script-label> <tag> <readable>. Prints the commands
+# that move a readable clone to the release tag by hand and reinstall it, and the one that replaces it.
+_clone_advice() {
+    local dir tag
+    dir=$(printf '%q' "${2%/}")
+    local how="From the PROTEUS folder, replace"
+    if [ "$5" = true ]; then
+        echo "    From the PROTEUS folder, move it to the release tag by hand with:"
+        echo "        git -C $dir fetch --tags"
+        if [ -n "$4" ]; then
+            tag=$(printf '%q' "$4")
+            echo "        git -C $dir checkout --detach refs/tags/$tag"
+        else
+            echo "        git -C $dir checkout --detach \"refs/tags/\$(git -C $dir tag -l |" \
+                "python tools/_module_pins.py $1 floor-tag)\""
+        fi
+        echo "        pip install -e $dir"
+        how="Or replace"
+    fi
+    echo "    $how it with a new clone, which deletes everything in it, with:"
+    echo "        bash tools/$3 --force"
+}
+
+# Usage: _local_changes_note <clone-dir>. Prints ", with local changes" when a tracked file differs from
+# HEAD; --no-optional-locks keeps git status from rewriting the index.
+_local_changes_note() {
+    local changes
+    changes=$(git --no-optional-locks -C "$1" status --porcelain --untracked-files=no 2>/dev/null) ||
+        changes=""
+    [ -z "$changes" ] || echo ", with local changes"
+}
+
+# Usage: _commit_text <clone-dir> <head>. Prints "commit <short hash>", followed by what git describe
+# names in brackets when that is a tag and not the hash alone.
+_commit_text() {
+    local desc
+    desc=$(git -C "$1" describe --tags --always HEAD 2>/dev/null) || desc=""
+    case "$2" in
+        "$desc"*) echo "commit ${2:0:7}" ;;
+        *) echo "commit ${2:0:7} ($desc)" ;;
+    esac
+}
+
+# Usage: report_clone_state <distribution> <clone-dir> <script-label>. Reads <clone-dir> with read-only
+# git calls; prints one line for a clone at its tag, newer than it or on the paired branch (with
+# get_pairs_branch=true; 2 lines and a summary entry when HEAD lacks the tag), else stay and advice.
+report_clone_state() {
+    local dist="$1" dir="${2%/}" label="$3" tag="" tag_commit="" head="" rel="" branch=""
+    local found summary readable=false
+    if [ ! -e "$dir/.git" ] && [ ! -L "$dir/.git" ]; then
+        found="not a git clone"
+        summary="$found"
+    elif ! is_own_clone "$dir"; then
+        found="not a readable git clone"
+        summary="$found"
+    else
+        readable=true
+        tag=$(_floor_tag_of "$dist" "$dir" 2>/dev/null) || tag=""
+        head=$(git -C "$dir" rev-parse --verify --quiet HEAD 2>/dev/null) || head=""
+        if [ -n "$tag" ]; then
+            tag_commit=$(git -C "$dir" rev-parse --verify --quiet "refs/tags/$tag^{commit}" \
+                2>/dev/null) || tag_commit=""
+        fi
+        if [ -n "$head" ] && [ "$head" = "$tag_commit" ]; then
+            echo "$dist: $dir is at the release tag $tag$(_local_changes_note "$dir")"
+            return 0
+        fi
+        branch=$(git -C "$dir" symbolic-ref -q --short HEAD 2>/dev/null) || branch=""
+        if [ -n "$branch" ] && [ "${get_pairs_branch:-false}" = true ] &&
+            [ "$branch" = "$(paired_branch_of "$dir")" ]; then
+            echo "$dist: $dir is on the paired branch $branch, as PROTEUS on that branch expects"
+            _note_paired_without_release "$dir" "$branch" "$tag" "$head" "$tag_commit"
+            return 0
+        fi
+        if [ -n "$head" ] && [ -n "$tag_commit" ]; then
+            rel=$(_relation_to_tag "$dir" "$head" "$tag_commit")
+        fi
+        if [ -n "$branch" ]; then
+            found="on branch $branch"
+            summary="branch $branch"
+        elif [ -z "$head" ]; then
+            found="a HEAD that git cannot resolve"
+            summary="HEAD unknown"
+        else
+            found=$(_commit_text "$dir" "$head")
+            summary="commit ${head:0:7}"
+        fi
+        case "$rel" in
+            '') ;;
+            newer*)
+                echo "$dist: $dir is newer than the release tag $tag ($summary)"
+                return 0
+                ;;
+            behind*) found="$found, $rel"; summary="$summary, behind" ;;
+            *) found="$found, $rel"; summary="$summary, other history" ;;
+        esac
+    fi
+    echo "$dist: $dir stays as it is: $found; $(expected_text "$dist" "$tag")"
+    record_clone_stays "$dir" "$summary"
+    _clone_advice "$dist" "$dir" "$label" "$tag" "$readable"
+}
+
+# Usage: is_empty_dir <path>. Succeeds when <path> is a directory, not a symlink, without any entry.
+is_empty_dir() {
+    local entries
+    { [ -d "$1" ] && [ ! -L "$1" ]; } || return 1
+    entries=$(ls -A "$1" 2>/dev/null) || return 1
+    [ -z "$entries" ]
+}
+
+# Usage: install_existing_clone <distribution> <clone-dir> <script-label> [prepare-function]. Returns
+# under --force or with nothing or an empty folder at <clone-dir>; else reports what is there, runs the
+# prepare function on it, installs it editable as it is and exits 0. No git call writes to it.
+install_existing_clone() {
+    local dist="$1" dir="${2%/}" label="$3" prepare="${4:-}"
+    if [ "${get_force:-false}" = true ] || { [ ! -e "$dir" ] && [ ! -L "$dir" ]; } ||
+        is_empty_dir "$dir"; then
+        return 0
+    fi
+    report_clone_state "$dist" "$dir" "$label"
+    if [ -n "$prepare" ]; then
+        "$prepare" "$dir" || exit 1
+        echo "$dist: the build step ran in the existing folder $dir"
+    fi
+    if ! pip install -U -e "$dir"; then
+        echo "ERROR: pip could not install $dir (its message is above)" >&2
+        if [ ! -f "$dir/pyproject.toml" ] && [ ! -f "$dir/setup.py" ]; then
+            echo "       It has no pyproject.toml or setup.py; to replace it with a new clone, run" >&2
+            echo "       bash tools/$label --force  from the PROTEUS folder" >&2
+        fi
+        exit 1
+    fi
+    echo "Done!"
+    exit 0
+}
+
+# Usage: swap_in_checkout <new-dir> <workpath>. Moves an existing <workpath> aside (without --force only
+# an empty folder), <new-dir> into its place, then removes the old copy; a copy that will not go is a
+# warning. Returns 1, with what was at <workpath> back there, when <new-dir> may not or cannot go there.
+swap_in_checkout() {
+    local new="${1%/}" dest="${2%/}" old="" n=0 back
+    if [ "${get_force:-false}" != true ] && { [ -e "$dest" ] || [ -L "$dest" ]; } &&
+        ! is_empty_dir "$dest"; then
+        echo "ERROR: $dest appeared while the new clone was made; it is unchanged" >&2
+        return 1
+    fi
+    if [ -e "$dest" ] || [ -L "$dest" ]; then
+        old="$dest.old.$$"
+        while [ -e "$old" ] || [ -L "$old" ]; do
+            n=$((n + 1))
+            old="$dest.old.$$.$n"
+        done
+        # A signal during the 2 moves puts the old checkout back; the caller's EXIT trap still runs.
+        back="_swap_interrupted $(printf '%q' "$old") $(printf '%q' "$dest")"
+        trap "$back 129" HUP
+        trap "$back 130" INT
+        trap "$back 143" TERM
+        if ! mv "$dest" "$old"; then
+            trap - HUP INT TERM
+            echo "ERROR: cannot move $dest aside to put the new checkout there; it is unchanged" >&2
+            return 1
+        fi
+    fi
+    if ! mv "$new" "$dest"; then
+        trap - HUP INT TERM
+        if [ -z "$old" ]; then
+            echo "ERROR: cannot move the new checkout $new to $dest" >&2
+        elif mv "$old" "$dest"; then
+            echo "ERROR: cannot move the new checkout $new to $dest; $dest is unchanged" >&2
+        else
+            echo "ERROR: cannot move the new checkout $new to $dest; the old one is at $old" >&2
+        fi
+        return 1
+    fi
+    trap - HUP INT TERM
+    if [ -n "$old" ] && ! rm -rf "$old" 2>/dev/null; then
+        echo "WARNING: the old checkout could not be removed completely; delete $old by hand" >&2
+    fi
+    return 0
+}
+
+# Usage: _swap_interrupted <old> <dest> <status>. The signal handler of swap_in_checkout: moves <old>
+# back when <dest> is missing, says what it did and exits with <status>.
+_swap_interrupted() {
+    trap - HUP INT TERM
+    if [ ! -e "$1" ] && [ ! -L "$1" ]; then
+        echo "ERROR: interrupted before replacing $2; it is unchanged" >&2
+    elif [ ! -e "$2" ] && [ ! -L "$2" ] && mv "$1" "$2"; then
+        echo "ERROR: interrupted while replacing $2; the old checkout is back in place" >&2
+    else
+        echo "ERROR: interrupted while replacing $2; the old checkout is at $1" >&2
+    fi
+    exit "$3"
 }
 
 # Download <dest> from the first of the urls that serves a file with the given

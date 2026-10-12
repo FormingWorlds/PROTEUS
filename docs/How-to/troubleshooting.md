@@ -152,13 +152,14 @@ python -m pip install -U -e .
 
 ### An install refuses to replace a module checkout {#an-install-refuses-to-replace-a-module-checkout}
 
-An install script stops rather than delete a module checkout that holds work
-you would not get back:
+An install script that replaces its checkout on every run (SOCRATES, SPIDER,
+BOREAS, LavAtmos, ThermoEngineLite) stops rather than delete one that holds
+work you would not get back:
 
 ```console
-ERROR: /path/to/aragog has uncommitted changes or commits not on a remote.
+ERROR: /path/to/socrates has uncommitted changes or commits not on a remote.
        Refusing to delete it. Commit and push your work, or run
-       bash tools/get_aragog.sh --force  to discard the checkout.
+       bash tools/get_socrates.sh --force  to discard the checkout.
 ```
 
 Commit and push the work, and the next run replaces the checkout normally.
@@ -168,22 +169,31 @@ step over this for you. To discard the checkout deliberately, run the script
 the message names by hand, from the PROTEUS folder:
 
 ```console
-bash tools/get_aragog.sh --force
+bash tools/get_socrates.sh --force
 ```
 
 A second message reports a checkout git cannot read at all, from a truncated
 copy or a clone interrupted after it started writing refs:
 
 ```console
-ERROR: git could not report the state of /path/to/aragog, so whether
+ERROR: git could not report the state of /path/to/socrates, so whether
        it holds local work is unknown. Refusing to delete it.
        Inspect the checkout, or run
-       bash tools/get_aragog.sh --force  to discard it.
+       bash tools/get_socrates.sh --force  to discard it.
 ```
 
 The same `--force` discards it. A clone killed before it committed anything
 is not affected: there is nothing to lose, so the next install refreshes it
 without asking.
+
+The setup scripts of the Python modules (MORS, JANUS, CALLIOPE, ZEPHYRUS,
+Aragog, Zalmoxis, VULCAN and Morrigan) never give these two messages: without
+`--force` they install a module folder that is already there as it is
+(`get_vulcan.sh` first runs `make` in its `fastchem_vulcan` folder) and print
+the commands that move it to its release tag or replace it; an empty folder
+gets a new clone. They stop with an error when the pip install of the folder
+fails, and `get_vulcan.sh` stops when the folder has no `fastchem_vulcan`
+folder or its `make` fails.
 
 ### Data download errors or slow Zenodo downloads {#data-download-errors-or-slow-zenodo-downloads}
 

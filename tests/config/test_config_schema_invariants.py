@@ -296,6 +296,31 @@ def test_check_module_dependencies_raises_when_atmodeller_missing():
 
 
 @pytest.mark.unit
+def test_check_module_dependencies_names_the_calliope_install_command():
+    """If outgas.module = calliope and the package is unavailable, the hint is the
+    PROTEUS command that clones CALLIOPE at its release tag, not a bare git clone
+    of the default branch, and the original error is chained.
+    """
+    instance = _make_config_instance(**{'outgas.module': 'calliope'})
+
+    real_import = importlib.import_module
+
+    def _fake_import(name):
+        if name == 'calliope':
+            raise ImportError("No module named 'calliope'")
+        return real_import(name)
+
+    with patch('importlib.import_module', side_effect=_fake_import):
+        with pytest.raises(ImportError, match=r'outgas\.module = "calliope"') as excinfo:
+            check_module_dependencies(instance, None, None)
+    msg = str(excinfo.value)
+    assert 'Install with: bash tools/get_python_module.sh CALLIOPE' in msg
+    assert 'git clone' not in msg
+    assert 'pip install -e CALLIOPE' not in msg
+    assert "No module named 'calliope'" in str(excinfo.value.__cause__)
+
+
+@pytest.mark.unit
 def test_check_module_dependencies_raises_when_vulcan_missing():
     """If atmos_chem.module = vulcan and the package is unavailable, raise
     ImportError naming the GPL-3.0 license and the install hint.

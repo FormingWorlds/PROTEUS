@@ -11,15 +11,30 @@ Testing standards:
 from __future__ import annotations
 
 import importlib.metadata
+import importlib.util
 import io
 import json
 import os
+import re
+import shlex
 import subprocess
+import sys
 from unittest.mock import Mock, patch
 
 import pytest
+from helpers import (
+    PROTEUS_ROOT,
+    git,
+    git_call_is_read_only,
+    install_git_guard,
+    scratch_proteus_root,
+)
 
 from proteus.doctor import (
+    _GIT_NOTE_TIMEOUT_S,
+    _MODULE_FOLDERS,
+    _PAIRED_MODULES,
+    _PYTHON_MODULE_REPOS,
     _SUPPORT_EMAIL,
     FAIL,
     GIT_MODULES,
@@ -32,15 +47,19 @@ from proteus.doctor import (
     _conda_build_lines,
     _dependency_specs,
     _editable_checkout_path,
+    _floor_tag_name,
     _get_script_for_package,
     _git_dirty,
     _git_head,
+    _git_note_output,
     _git_short_head,
     _imported_package_dir,
     _julia_version,
     _julia_version_at,
     _print_support_prompt,
+    _release_tag_note,
     _run_fix_command,
+    _setup_command,
     _Tee,
     _write_failure_log,
     check_cvode,
@@ -407,10 +426,12 @@ class TestCheckPythonPackage:
         assert r.status == FAIL
         assert 'requires' in r.message
 
-    def test_below_spec_editable_tag_module_fix_reruns_setup_script(self):
-        """A tag-pinned editable checkout (aragog, zalmoxis) sits on a detached
-        HEAD, so the fix must re-run tools/get_<name>.sh, not `git pull`, which
-        cannot advance a detached HEAD. This is the issue #779 regression."""
+    def test_below_spec_editable_module_with_a_setup_script_gets_advice(self):
+        """An editable Zalmoxis clone below its floor gets advice that proteus update does not
+        run: the fetch, the detached checkout of the full ref of the tag that the pin reader
+        picks after the fetch (the clone does not have the tag yet) and a reinstall. The clone
+        is not the Zalmoxis folder of this PROTEUS root, so the setup script with --force,
+        which replaces that folder, is not offered; nor are `git pull` or a re-run."""
         from packaging.requirements import Requirement
 
         spec = Requirement('fwl-zalmoxis>=26.07.17')
@@ -420,41 +441,97 @@ class TestCheckPythonPackage:
                 'proteus.doctor._editable_checkout_path',
                 return_value='/home/u/PROTEUS/Zalmoxis',
             ),
+            patch('proteus.doctor._is_own_clone', return_value=True),
+            patch('proteus.doctor._tag_commits', return_value={'26.05.13': 'c0b8412' * 5}),
             patch('proteus.doctor._git_short_head', return_value='c0b8412'),
             patch('proteus.doctor._git_dirty', return_value=False),
+            patch('proteus.doctor._git_note_output', return_value=(1, '')),
             patch('proteus.doctor._imported_package_dir', return_value=None),
         ):
             r = check_python_package('fwl-zalmoxis', spec)
+        pins = PROTEUS_ROOT / 'tools' / '_module_pins.py'
         assert r.status == FAIL
-        # The setup script re-fetches and re-checks-out the pinned tag.
-        assert r.fix_cmd == 'bash tools/get_zalmoxis.sh'
-        # The broken advice must be gone: `git pull` fails on a detached HEAD.
+        assert r.auto_fixable is False
+        assert r.fix_cmd == (
+            'git -C /home/u/PROTEUS/Zalmoxis fetch --tags && git -C /home/u/PROTEUS/Zalmoxis'
+            ' checkout --detach "refs/tags/$(git -C /home/u/PROTEUS/Zalmoxis tag -l |'
+            f' python {pins} fwl-zalmoxis floor-tag)"'
+            ' && pip install -e /home/u/PROTEUS/Zalmoxis'
+        )
         assert 'git pull' not in r.fix_cmd
+        assert '--force' not in r.fix_cmd
 
-    def test_below_spec_editable_branch_module_fix_keeps_git_pull(self):
-        """A package without a tools/get_<name>.sh script (calliope) is cloned on
-        a tracking branch, where `git pull && pip install -e .` is the correct
-        update. The detached-HEAD path must not swallow this case."""
+    def test_below_spec_editable_branch_module_fix_keeps_git_pull(self, tmp_path):
+        """A package without a setup script (fwl-io) in a developer's clone on a branch keeps
+        `git pull && pip install -e .`, a command proteus update runs; the advice of the
+        modules with a setup script must not swallow this case."""
         from packaging.requirements import Requirement
 
-        spec = Requirement('fwl-calliope>=99.0.0')
+        checkout = tmp_path / 'io'
+        checkout.mkdir()
+        _init_test_repo(checkout)
+        spec = Requirement('fwl-io>=99.0.0')
         with (
             patch('proteus.doctor.importlib.metadata.version', return_value='26.6.1'),
-            patch(
-                'proteus.doctor._editable_checkout_path',
-                return_value='/home/u/PROTEUS/CALLIOPE',
-            ),
-            patch('proteus.doctor._git_short_head', return_value='1e3ad73'),
-            patch('proteus.doctor._git_dirty', return_value=False),
+            patch('proteus.doctor._editable_checkout_path', return_value=str(checkout)),
             patch('proteus.doctor._imported_package_dir', return_value=None),
         ):
-            r = check_python_package('fwl-calliope', spec)
+            r = check_python_package('fwl-io', spec)
         assert r.status == FAIL
-        assert 'git pull' in r.fix_cmd
-        assert 'pip install -e .' in r.fix_cmd
-        # The checkout path is quoted into the cd target, not replaced by a script.
-        assert 'CALLIOPE' in r.fix_cmd
-        assert not r.fix_cmd.startswith('bash tools/get_')
+        assert r.fix_cmd == f'cd {shlex.quote(str(checkout))} && git pull && pip install -e .'
+        assert r.auto_fixable is True
+        assert '--force' not in r.fix_cmd
+
+    def test_below_spec_detached_clone_with_the_tag_gets_the_short_advice(self, tmp_path):
+        """A MORS clone that has the floor tag gets the checkout of ``tags/26.10.06``, with the
+        path shell-quoted (it holds a space); it is not the MORS folder of this PROTEUS root,
+        so get_python_module.sh MORS --force is not offered."""
+        from packaging.requirements import Requirement
+
+        checkout = tmp_path / 'my clones' / 'MORS'
+        _tagged_module(checkout)
+        git(checkout, 'checkout', '-q', 'tags/26.10.05')
+        spec = Requirement('fwl-mors>=26.10.6')
+        with (
+            patch('proteus.doctor.importlib.metadata.version', return_value='26.10.5'),
+            patch('proteus.doctor._editable_checkout_path', return_value=str(checkout)),
+            patch('proteus.doctor._imported_package_dir', return_value=None),
+        ):
+            r = check_python_package('fwl-mors', spec)
+        quoted = shlex.quote(str(checkout))
+        assert quoted.startswith("'")
+        assert r.status == FAIL
+        assert r.auto_fixable is False
+        assert r.fix_cmd == (
+            f'git -C {quoted} fetch --tags && git -C {quoted} checkout --detach'
+            f' refs/tags/26.10.06 && pip install -e {quoted}'
+        )
+
+    def test_below_spec_editable_non_git_checkout_gets_the_pip_advice(self, tmp_path):
+        """When the checkout of a package without a setup script is no git repository, the
+        annotation says that it is not a git clone of its own, and the fix is the pip install
+        of the release, run by hand, with no git command and no tag checkout."""
+        from packaging.requirements import Requirement
+
+        checkout = tmp_path / 'io'
+        checkout.mkdir()
+        spec = Requirement('fwl-io>=26.10.8')
+        with (
+            patch('proteus.doctor.importlib.metadata.version', return_value='26.6.1'),
+            patch('proteus.doctor._editable_checkout_path', return_value=str(checkout)),
+            patch('proteus.doctor._imported_package_dir', return_value=None),
+        ):
+            r = check_python_package('fwl-io', spec)
+        assert r.status == FAIL
+        assert r.fix_cmd == (
+            f'pip install -U "fwl-io>=26.10.8"  # {shlex.quote(str(checkout))} is not a git'
+            ' clone of its own, so no git command updates it; this installs the release in'
+            ' place of the editable folder'
+        )
+        assert r.auto_fixable is False
+        assert r.message == (
+            '26.6.1 (requires >=26.10.8) [editable @ io; not a git clone of its own]'
+        )
 
     def test_below_spec_wheel_install_fix_upgrades_via_pip(self):
         """With no editable checkout (a wheel install), neither branch applies:
@@ -528,8 +605,10 @@ class TestCheckPythonPackage:
                 'proteus.doctor._editable_checkout_path',
                 return_value='/tmp/aragog',
             ),
+            patch('proteus.doctor._is_own_clone', return_value=True),
             patch('proteus.doctor._git_short_head', return_value='d051902'),
             patch('proteus.doctor._git_dirty', return_value=False),
+            patch('proteus.doctor._release_tag_note', return_value=''),
             # Imported package lives under the editable checkout, so the
             # annotation keeps the checkout/hash form.
             patch(
@@ -599,6 +678,433 @@ def _git_commit_all(path, message):
     p = str(path)
     subprocess.run(['git', '-C', p, 'add', '.'], check=True, capture_output=True)
     subprocess.run(['git', '-C', p, 'commit', '-m', message], check=True, capture_output=True)
+
+
+def _detached_clone(tmp_path, checkout, late_tag: str) -> list[str]:
+    """Clone a 3-commit remote to ``checkout`` at tag 26.10.05 on its first commit.
+
+    After the clone, ``late_tag`` goes on the second commit in the remote
+    only. Returns the 3 commit hashes in order.
+    """
+    source = tmp_path / 'source'
+    source.mkdir()
+    git(source, 'init', '-q', '-b', 'main')
+    commits = []
+    for i in range(3):
+        (source / 'version.txt').write_text(f'{i}\n')
+        git(source, 'add', 'version.txt')
+        git(source, 'commit', '-q', '-m', f'commit {i}')
+        commits.append(git(source, 'rev-parse', 'HEAD'))
+    git(source, 'tag', '26.10.05', commits[0])
+    remote = tmp_path / 'MORS.git'
+    git(tmp_path, 'clone', '-q', '--bare', str(source), str(remote))
+    git(tmp_path, 'clone', '-q', str(remote), str(checkout))
+    git(checkout, 'checkout', '-q', 'tags/26.10.05')
+    git(source, 'tag', late_tag, commits[1])
+    git(source, 'push', '-q', str(remote), f'refs/tags/{late_tag}')
+    return commits
+
+
+def _stub_pip(tmp_path, monkeypatch):
+    """Put a recording pip, and this test's python, first on PATH; return pip's log."""
+    bindir = tmp_path / 'bin'
+    bindir.mkdir()
+    log = tmp_path / 'pip.log'
+    (bindir / 'pip').write_text(f'#!/bin/sh\necho "$@" >> {shlex.quote(str(log))}\n')
+    (bindir / 'pip').chmod(0o755)
+    (bindir / 'python').symlink_to(sys.executable)
+    monkeypatch.setenv('PATH', f'{bindir}{os.pathsep}{os.environ["PATH"]}')
+    return log
+
+
+def _tagged_module(path, annotated: bool = False) -> list[str]:
+    """Build a repository with 3 commits on main, the tag 26.10.05 on the first and 26.10.06
+    on the second; return the 3 commit hashes. ``annotated`` makes 26.10.06 an annotated tag,
+    whose tag object differs from its commit."""
+    path.mkdir(parents=True)
+    git(path, 'init', '-q', '-b', 'main')
+    commits = []
+    for i in range(3):
+        (path / 'version.txt').write_text(f'{i}\n')
+        git(path, 'add', 'version.txt')
+        git(path, 'commit', '-q', '-m', f'commit {i}')
+        commits.append(git(path, 'rev-parse', 'HEAD'))
+    git(path, 'tag', '26.10.05', commits[0])
+    if annotated:
+        git(path, 'tag', '-a', '-m', 'release', '26.10.06', commits[1])
+    else:
+        git(path, 'tag', '26.10.06', commits[1])
+    return commits
+
+
+def _check_editable_mors(checkout) -> CheckResult:
+    """Run check_python_package on fwl-mors 26.10.6, editable at ``checkout``, floor 26.10.6."""
+    from packaging.requirements import Requirement
+
+    with (
+        patch('proteus.doctor.importlib.metadata.version', return_value='26.10.6'),
+        patch('proteus.doctor._editable_checkout_path', return_value=str(checkout)),
+        patch('proteus.doctor._imported_package_dir', return_value=None),
+    ):
+        return check_python_package('fwl-mors', Requirement('fwl-mors>=26.10.6'))
+
+
+class TestReleaseTagNote:
+    """The version check of an editable clone names a branch or a commit that is not the floor tag."""
+
+    def test_branch_clone_names_the_branch_and_the_tag(self, tmp_path):
+        """A clone on the branch main, moved back to the commit of 26.10.05, names the branch
+        and the tag 26.10.06 that the floor 26.10.6 selects; the check still passes, as the
+        version satisfies the floor."""
+        checkout = tmp_path / 'MORS'
+        commits = _tagged_module(checkout)
+        git(checkout, 'reset', '-q', '--hard', commits[0])
+        r = _check_editable_mors(checkout)
+        assert r.status == PASS
+        assert r.message == (
+            f'26.10.6 [editable @ MORS -> {commits[0][:7]};'
+            ' on branch main; PROTEUS expects the release tag 26.10.06]'
+        )
+
+    @pytest.mark.parametrize('where', ['detached', 'branch'])
+    def test_clone_newer_than_the_tag_gets_no_note(self, tmp_path, where):
+        """A clone one commit past the floor tag, detached or on main, satisfies the >= floor:
+        no note, as in the installer, which prints the neutral line of a newer clone. The same
+        clone moved to a commit on a line of history without the tag gets the note, so the
+        note is decided by the ancestry of HEAD."""
+        checkout = tmp_path / 'MORS'
+        commits = _tagged_module(checkout)
+        if where == 'detached':
+            git(checkout, 'checkout', '-q', '--detach', commits[2])
+        r = _check_editable_mors(checkout)
+        assert r.message == f'26.10.6 [editable @ MORS -> {commits[2][:7]}]'
+        assert r.status == PASS
+        git(checkout, 'checkout', '-q', '--detach', commits[0])
+        (checkout / 'version.txt').write_text('side\n')
+        git(checkout, 'commit', '-q', '-am', 'side')
+        side = git(checkout, 'rev-parse', 'HEAD')
+        assert _check_editable_mors(checkout).message.endswith(
+            f'; at commit {side[:7]}, not the release tag; PROTEUS expects the release tag'
+            ' 26.10.06]'
+        )
+
+    @pytest.mark.parametrize('source', ['CI variable', 'PROTEUS checkout'])
+    def test_aragog_clone_on_the_paired_branch_gets_no_note(
+        self, tmp_path, monkeypatch, source
+    ):
+        """An Aragog clone on the branch PROTEUS is on, here on a line of history without the
+        tag, is the paired branch of the installer: no note. The PROTEUS branch comes from
+        GITHUB_HEAD_REF or from the PROTEUS checkout. The same clone gets the note when PROTEUS
+        is on another branch, and as fwl-mors, whose setup script pairs no branch."""
+        from packaging.requirements import Requirement
+
+        checkout = tmp_path / 'aragog'
+        commits = _tagged_module(checkout)
+        git(checkout, 'checkout', '-q', '-b', 'tl/paired-feature', commits[0])
+        (checkout / 'version.txt').write_text('paired\n')
+        git(checkout, 'commit', '-q', '-am', 'paired')
+        root = tmp_path / 'PROTEUS'
+        _init_test_repo(root)
+        monkeypatch.delenv('GITHUB_HEAD_REF', raising=False)
+        monkeypatch.delenv('GITHUB_REF_NAME', raising=False)
+        if source == 'CI variable':
+            monkeypatch.setenv('GITHUB_HEAD_REF', 'tl/paired-feature')
+        else:
+            git(root, 'checkout', '-q', '-b', 'tl/paired-feature')
+
+        def note(dist: str) -> str:
+            with patch('proteus.doctor._repo_root', return_value=root):
+                return _release_tag_note(str(checkout), None, Requirement(f'{dist}>=26.10.6'))
+
+        expected = '; on branch tl/paired-feature; PROTEUS expects the release tag 26.10.06'
+        assert note('fwl-aragog') == ''
+        assert note('fwl-mors') == expected
+        monkeypatch.setenv('GITHUB_REF_NAME', 'other-feature')
+        monkeypatch.delenv('GITHUB_HEAD_REF', raising=False)
+        assert note('fwl-aragog') == expected
+
+    def test_older_tag_is_named_as_found(self, tmp_path):
+        """A clone at the older tag 26.10.05 is named by that tag and its commit, and the check
+        only reads it: HEAD stays at that tag."""
+        checkout = tmp_path / 'MORS'
+        commits = _tagged_module(checkout)
+        git(checkout, 'checkout', '-q', 'tags/26.10.05')
+        r = _check_editable_mors(checkout)
+        assert (
+            f'; at tag 26.10.05 ({commits[0][:7]}), not the release tag;'
+            ' PROTEUS expects the release tag 26.10.06]'
+        ) in r.message
+        assert git(checkout, 'rev-parse', 'HEAD') == commits[0]
+
+    @pytest.mark.parametrize('annotated', [False, True], ids=['lightweight', 'annotated'])
+    def test_clone_at_the_floor_tag_gets_no_note(self, tmp_path, annotated):
+        """A clone detached at the floor tag gets the plain annotation; for an annotated tag
+        the commit, not the tag object, is compared with HEAD."""
+        checkout = tmp_path / 'MORS'
+        commits = _tagged_module(checkout, annotated=annotated)
+        git(checkout, 'checkout', '-q', 'tags/26.10.06')
+        r = _check_editable_mors(checkout)
+        assert r.message == f'26.10.6 [editable @ MORS -> {commits[1][:7]}]'
+        assert r.status == PASS
+
+    def test_branch_without_the_floor_tag_names_the_floor_release(self, tmp_path):
+        """A branch clone whose tags hold no 26.10.6 names the floor release that PROTEUS
+        expects, in the words of the installer, in place of a tag."""
+        checkout = tmp_path / 'MORS'
+        _tagged_module(checkout)
+        git(checkout, 'tag', '-d', '26.10.06')
+        r = _check_editable_mors(checkout)
+        assert r.message.endswith('; on branch main; PROTEUS expects release 26.10.6]')
+        assert 'release tag' not in r.message
+
+    @pytest.mark.parametrize(
+        'requirement',
+        [None, 'fwl-mors==26.10.6', 'fwl-mors>=26.10.6,>=26.10.5'],
+        ids=['no requirement', 'exact pin', 'two floors'],
+    )
+    def test_no_note_without_a_single_floor(self, tmp_path, requirement):
+        """Without a requirement, or without one >= floor, there is nothing to expect: a branch
+        clone gets no note, where a note would say that the tag could not be determined."""
+        from packaging.requirements import Requirement
+
+        checkout = tmp_path / 'MORS'
+        commits = _tagged_module(checkout)
+        git(checkout, 'reset', '-q', '--hard', commits[0])
+        spec = Requirement(requirement) if requirement else None
+        assert _release_tag_note(str(checkout), commits[0][:7], spec) == ''
+        floor = _release_tag_note(
+            str(checkout), commits[0][:7], Requirement('fwl-mors>=26.10.6')
+        )
+        assert floor == '; on branch main; PROTEUS expects the release tag 26.10.06'
+
+    def test_tag_that_shares_its_name_with_a_branch_is_found(self, tmp_path):
+        """A branch named 26.10.06 next to the tag 26.10.06 does not hide the tag: the short
+        ref name of the tag would read tags/26.10.06, which names no release."""
+        checkout = tmp_path / 'MORS'
+        commits = _tagged_module(checkout)
+        git(checkout, 'reset', '-q', '--hard', commits[0])
+        git(checkout, 'branch', '26.10.06', commits[0])
+        assert git(checkout, 'for-each-ref', '--format=%(refname:short)', 'refs/tags') == (
+            '26.10.05\ntags/26.10.06'
+        )
+        r = _check_editable_mors(checkout)
+        assert r.message.endswith('; on branch main; PROTEUS expects the release tag 26.10.06]')
+
+    def test_floor_tag_name_reads_ascii_digits_only(self):
+        """A tag of other Unicode digits is skipped, not passed to Version, which raises on
+        it; the ASCII tag of the floor is still found."""
+        from packaging.requirements import Requirement
+
+        spec = Requirement('fwl-mors>=26.10.6')
+        fullwidth = '\uff12\uff16.\uff11\uff10.\uff10\uff16'
+        arabic = '\u0662\u0666.\u0661\u0660.\u0660\u0666'
+        assert _floor_tag_name(spec, [fullwidth, arabic, '26.10.06']) == '26.10.06'
+        assert _floor_tag_name(spec, [fullwidth]) is None
+
+    def test_no_note_for_a_folder_that_is_not_its_own_clone(self, tmp_path, monkeypatch):
+        """An empty .git inside another clone makes git answer for that clone; the annotation
+        says that the folder is not a git clone of its own, with no note, where reading the
+        outer clone would name its branch main and its tag."""
+        outer = tmp_path / 'PROTEUS'
+        _tagged_module(outer)
+        inner = outer / 'MORS'
+        (inner / '.git').mkdir(parents=True)
+        monkeypatch.setenv('GIT_CEILING_DIRECTORIES', str(tmp_path))
+        assert _git_note_output(str(inner), 'symbolic-ref', '-q', '--short', 'HEAD') == (
+            0,
+            'main\n',
+        )
+        r = _check_editable_mors(inner)
+        assert r.message == '26.10.6 [editable @ MORS; not a git clone of its own]'
+        assert 'PROTEUS expects' not in r.message
+        assert 'on branch' not in r.message
+
+    @staticmethod
+    def _recorded_check(checkout, requirement: str | None) -> tuple[CheckResult, list]:
+        """Run the fwl-mors check of ``checkout`` and record the argv and timeout of each call."""
+        from packaging.requirements import Requirement
+
+        real_run = subprocess.run
+        calls = []
+
+        def recording_run(argv, **kwargs):
+            calls.append((argv, kwargs.get('timeout')))
+            return real_run(argv, **kwargs)
+
+        with (
+            patch('proteus.doctor.subprocess.run', side_effect=recording_run),
+            patch('proteus.doctor.importlib.metadata.version', return_value='26.10.6'),
+            patch('proteus.doctor._editable_checkout_path', return_value=str(checkout)),
+            patch('proteus.doctor._imported_package_dir', return_value=None),
+        ):
+            spec = Requirement(requirement) if requirement else None
+            return check_python_package('fwl-mors', spec), calls
+
+    def test_git_calls_of_the_check_are_read_only_with_a_timeout(self, tmp_path):
+        """Every git call of the check of an editable clone behind its tag, the note's
+        included, has the timeout of the note and is on the read-only list of the test git
+        guard, and the note costs at most 4 calls more than the check without a floor, which
+        gives no note: the top level, the branch, the tags and the ancestry of HEAD."""
+        checkout = tmp_path / 'MORS'
+        commits = _tagged_module(checkout)
+        git(checkout, 'reset', '-q', '--hard', commits[0])
+        r, calls = self._recorded_check(checkout, 'fwl-mors>=26.10.6')
+        _, plain = self._recorded_check(checkout, None)
+        assert 'on branch main' in r.message
+        assert all(argv[0] == 'git' for argv, _ in calls)
+        assert [timeout for _, timeout in calls] == [_GIT_NOTE_TIMEOUT_S] * len(calls)
+        assert [argv for argv, _ in calls if not git_call_is_read_only(argv[1:])] == []
+        assert 0 < len(calls) - len(plain) <= 4
+        assert 0 < _GIT_NOTE_TIMEOUT_S <= 30
+
+    def test_check_keeps_the_index_of_a_clone_with_stale_stat_data(self, tmp_path):
+        """A tracked file whose mtime changed after the commit leaves stale stat data in the
+        index, which a plain git status rewrites; the check runs status with
+        --no-optional-locks, and the bytes of .git/index stay the same."""
+        checkout = tmp_path / 'MORS'
+        _tagged_module(checkout)
+        os.utime(checkout / 'version.txt', (1_000_000_000, 1_000_000_000))
+        index = (checkout / '.git' / 'index').read_bytes()
+        r, calls = self._recorded_check(checkout, 'fwl-mors>=26.10.6')
+        assert (checkout / '.git' / 'index').read_bytes() == index
+        assert ['git', '--no-optional-locks', '-C', str(checkout), 'status', '--porcelain'] in [
+            argv for argv, _ in calls
+        ]
+        assert ' (dirty)' not in r.message
+
+    def test_no_note_for_a_package_without_a_setup_script(self, tmp_path):
+        """An editable fwl-io clone on a branch, with one >= floor and a tag of it, gets no
+        note: no installer clones fwl-io at its floor. The same clone checked as fwl-mors,
+        which a setup script clones, gets the note."""
+        from packaging.requirements import Requirement
+
+        checkout = tmp_path / 'fwl-io'
+        commits = _tagged_module(checkout)
+        git(checkout, 'reset', '-q', '--hard', commits[0])
+        with (
+            patch('proteus.doctor.importlib.metadata.version', return_value='26.10.6'),
+            patch('proteus.doctor._editable_checkout_path', return_value=str(checkout)),
+            patch('proteus.doctor._imported_package_dir', return_value=None),
+        ):
+            r = check_python_package('fwl-io', Requirement('fwl-io>=26.10.6'))
+        assert _setup_command('fwl-io') is None
+        assert r.status == PASS
+        assert 'PROTEUS expects' not in r.message
+        assert 'on branch' not in r.message
+        assert (
+            'PROTEUS expects the release tag 26.10.06' in _check_editable_mors(checkout).message
+        )
+
+    def test_branch_at_the_tag_commit_gets_no_note_as_in_the_installer(self, tmp_path):
+        """The branch main moved to the commit of the floor tag gets no note, and the
+        installer's state line for the same clone says that it is at the release tag; a note
+        that names the branch before HEAD is compared with the tag says on branch main."""
+        checkout = tmp_path / 'MORS'
+        commits = _tagged_module(checkout)
+        git(checkout, 'reset', '-q', '--hard', commits[1])
+        r = _check_editable_mors(checkout)
+        assert r.message == f'26.10.6 [editable @ MORS -> {commits[1][:7]}]'
+        root = scratch_proteus_root(tmp_path / 'PROTEUS', ['fwl-mors>=26.10.6'])
+        snippet = (
+            f'source {shlex.quote(str(root / "tools" / "_get_common.sh"))}\n'
+            f'report_clone_state fwl-mors {shlex.quote(str(checkout))} "get_python_module.sh MORS"\n'
+        )
+        done = subprocess.run(
+            ['bash', '-c', 'set -euo pipefail\n' + snippet],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        assert done.returncode == 0, done.stderr
+        assert done.stdout == f'fwl-mors: {checkout} is at the release tag 26.10.06\n'
+        assert git(checkout, 'symbolic-ref', '--short', 'HEAD') == 'main'
+
+    def test_git_dir_in_the_environment_does_not_redirect_the_note(self, tmp_path, monkeypatch):
+        """With GIT_DIR naming another repository on the branch elsewhere, the annotation of a
+        MORS clone on main names its own commit and branch: git -C answers for GIT_DIR
+        otherwise."""
+        checkout = tmp_path / 'MORS'
+        commits = _tagged_module(checkout)
+        git(checkout, 'reset', '-q', '--hard', commits[0])
+        other = tmp_path / 'other'
+        other.mkdir()
+        git(other, 'init', '-q', '-b', 'elsewhere')
+        (other / 'other.txt').write_text('other\n')
+        git(other, 'add', 'other.txt')
+        git(other, 'commit', '-q', '-m', 'other')
+        monkeypatch.setenv('GIT_DIR', str(other / '.git'))
+        r = _check_editable_mors(checkout)
+        assert r.message == (
+            f'26.10.6 [editable @ MORS -> {commits[0][:7]};'
+            ' on branch main; PROTEUS expects the release tag 26.10.06]'
+        )
+        assert 'elsewhere' not in r.message
+
+    def test_git_that_does_not_finish_gives_no_note(self, tmp_path):
+        """A git call that times out, or a missing git, gives no note and no exception."""
+        err = subprocess.TimeoutExpired(cmd='git', timeout=_GIT_NOTE_TIMEOUT_S)
+        with patch('proteus.doctor.subprocess.run', side_effect=err):
+            assert _git_note_output(str(tmp_path), 'symbolic-ref', 'HEAD') is None
+            assert _release_tag_note(str(tmp_path), 'abc1234', None) == ''
+        with patch('proteus.doctor.subprocess.run', side_effect=FileNotFoundError):
+            assert _git_note_output(str(tmp_path), 'symbolic-ref', 'HEAD') is None
+
+    def test_clone_git_cannot_read_gets_no_note(self, tmp_path, monkeypatch):
+        """A folder that is no git repository gives no note, also with a floor: rev-parse
+        exits 128."""
+        from packaging.requirements import Requirement
+
+        monkeypatch.setenv('GIT_CEILING_DIRECTORIES', str(tmp_path))
+        assert _git_note_output(str(tmp_path), 'rev-parse', '--show-toplevel')[0] == 128
+        spec = Requirement('fwl-mors>=26.10.6')
+        assert _release_tag_note(str(tmp_path), 'abc1234', spec) == ''
+
+    @pytest.mark.parametrize(
+        ('requirement', 'tags', 'expected'),
+        [
+            ('fwl-mors>=26.10.6', ['26.10.05', '26.10.06', '26.11.01'], '26.10.06'),
+            ('fwl-mors>=26.10.6', ['v26.10.6', 'release-26.10.6'], 'v26.10.6'),
+            ('fwl-mors>=0.2', ['0.2.0', '0.1.0'], '0.2.0'),
+            ('fwl-mors>=26.10.6', ['26.10.06', '26.10.6'], None),
+            ('fwl-mors>=26.10.6', ['26.10.60', '26.1.6'], None),
+            ('fwl-mors==26.10.6', ['26.10.6'], None),
+            (
+                'fwl-mors>=26.10.6',
+                ['\uff12\uff16.\uff11\uff10.\uff10\uff16', '26.10.06'],
+                '26.10.06',
+            ),
+        ],
+        ids=[
+            'zero padded tag',
+            'v prefix, other names skipped',
+            'trailing zero',
+            'two tags of the floor',
+            'near misses',
+            'no floor',
+            'tag of other Unicode digits skipped',
+        ],
+    )
+    def test_floor_tag_name_matches_the_pin_reader(self, requirement, tags, expected):
+        """The tag of the floor compares release numbers, as tools/_module_pins.py does: zero
+        padding, a v prefix and trailing zeros do not matter, 26.10.60 is not 26.10.6, a tag
+        of fullwidth digits is no release number, and two matches or no >= floor give no
+        tag. The pin reader the installer runs picks the same tag, or refuses, for every
+        case with a floor."""
+        from packaging.requirements import Requirement
+
+        spec = Requirement(requirement)
+        assert _floor_tag_name(spec, tags) == expected
+        loader = importlib.util.spec_from_file_location(
+            'module_pins', PROTEUS_ROOT / 'tools' / '_module_pins.py'
+        )
+        pins = importlib.util.module_from_spec(loader)
+        loader.loader.exec_module(pins)
+        floors = [s.version for s in spec.specifier if s.operator == '>=']
+        try:
+            picked = pins.match_floor_tag('fwl-mors', floors[0], tags) if floors else None
+        except LookupError:
+            picked = None
+        assert picked == expected
 
 
 class TestGitHelpers:
@@ -1778,6 +2284,361 @@ class TestRunFixCommand:
         code = _run_fix_command('echo done_marker', tmp_path)
         assert code == 0
         assert 'done_marker' in capsys.readouterr().out
+
+
+class TestBelowFloorAdvice:
+    """The fix of an editable module clone below its floor is advice that changes nothing."""
+
+    @staticmethod
+    def _site(tmp_path) -> tuple:
+        """A PROTEUS root with a MORS clone at 26.10.05; the remote gets 26.10.06 after the clone.
+
+        Returns the root, the clone and its 3 commits.
+        """
+        root = scratch_proteus_root(tmp_path / 'PROTEUS', ['fwl-mors>=26.10.6'])
+        checkout = root / 'MORS'
+        commits = _detached_clone(tmp_path, checkout, late_tag='26.10.06')
+        return root, checkout, commits
+
+    @staticmethod
+    def _check(root, checkout) -> CheckResult:
+        """Run check_python_package on fwl-mors 26.10.5, editable at ``checkout``, floor 26.10.6."""
+        from packaging.requirements import Requirement
+
+        with (
+            patch('proteus.doctor._repo_root', return_value=root),
+            patch('proteus.doctor.importlib.metadata.version', return_value='26.10.5'),
+            patch('proteus.doctor._editable_checkout_path', return_value=str(checkout)),
+            patch('proteus.doctor._imported_package_dir', return_value=None),
+        ):
+            return check_python_package('fwl-mors', Requirement('fwl-mors>=26.10.6'))
+
+    def test_check_runs_no_git_write_and_gives_the_advice(self, tmp_path, monkeypatch):
+        """Behind a git wrapper that lets only read-only calls reach the clone or the PROTEUS
+        root, the check runs and keeps HEAD, its status call carries --no-optional-locks; the
+        fix holds the fetch, the checkout of the tag the fetch brings, and the --force
+        command, and proteus update may not run it."""
+        root, checkout, commits = self._site(tmp_path)
+        guard = tmp_path / 'guard'
+        guard.mkdir()
+        log, marker = tmp_path / 'git-calls.log', tmp_path / 'git-write.marker'
+        install_git_guard(guard, log, marker, roots=[root], trees=[checkout])
+        monkeypatch.setenv('PATH', f'{guard}{os.pathsep}{os.environ["PATH"]}')
+        r = self._check(root, checkout)
+        calls = log.read_text().splitlines()
+        assert not marker.exists(), calls
+        args = [c.split('\t')[1].split() for c in calls]
+        assert [a for a in args if not git_call_is_read_only(a)] == []
+        assert ['--no-optional-locks', '-C', str(checkout), 'status', '--porcelain'] in args
+        assert git(checkout, 'rev-parse', 'HEAD') == commits[0]
+        assert r.status == FAIL
+        assert r.auto_fixable is False
+        pins = root / 'tools' / '_module_pins.py'
+        assert f'git -C {checkout} fetch --tags && ' in r.fix_cmd
+        assert (
+            f'git -C {checkout} checkout --detach "refs/tags/$(git -C {checkout} tag -l |'
+            f' python {pins} fwl-mors floor-tag)"'
+        ) in r.fix_cmd
+        assert r.fix_cmd.endswith(
+            f'  # or replace the clone: cd {root} && bash tools/get_python_module.sh MORS --force'
+        )
+
+    @pytest.mark.parametrize(
+        'has_tag', [False, True], ids=['tag after fetch', 'tag in the clone']
+    )
+    def test_hand_commands_move_the_clone_to_the_tag_the_fetch_brings(
+        self, tmp_path, monkeypatch, has_tag
+    ):
+        """Run from another folder, the commands before the comment fetch the tag 26.10.06,
+        check it out detached and reinstall the clone, although branches named 26.10.06 and
+        tags/26.10.06 point at the tip; its untracked file stays. Without the tag in the clone
+        the checkout picks it after the fetch, with it the checkout names
+        ``refs/tags/26.10.06``."""
+        root, checkout, commits = self._site(tmp_path)
+        (checkout / 'notes.txt').write_text('kept\n')
+        git(checkout, 'branch', '26.10.06', commits[2])
+        git(checkout, 'branch', 'tags/26.10.06', commits[2])
+        if has_tag:
+            git(checkout, 'fetch', '-q', '--tags')
+        r = self._check(root, checkout)
+        assert ('checkout --detach refs/tags/26.10.06 ' in r.fix_cmd) is has_tag
+        pip_log = _stub_pip(tmp_path, monkeypatch)
+        hand = r.fix_cmd.split('  # ')[0]
+        done = subprocess.run(
+            ['bash', '-c', hand], cwd=tmp_path, capture_output=True, text=True, timeout=30
+        )
+        assert done.returncode == 0, done.stderr
+        assert git(checkout, 'rev-parse', 'HEAD') == commits[1]
+        assert git(checkout, 'rev-parse', 'HEAD') not in (commits[0], commits[2])
+        detached = subprocess.run(
+            ['git', '-C', str(checkout), 'symbolic-ref', '-q', 'HEAD'], capture_output=True
+        )
+        assert detached.returncode == 1
+        assert (checkout / 'notes.txt').read_text() == 'kept\n'
+        assert pip_log.read_text() == f'install -e {checkout}\n'
+
+    @pytest.mark.parametrize(
+        ('where', 'force'),
+        [('module folder', True), ('symlink to it', True), ('elsewhere', False)],
+    )
+    def test_force_part_only_for_the_clone_in_the_module_folder(self, tmp_path, where, force):
+        """The --force command, which replaces <root>/MORS, follows the hand commands only when
+        the editable checkout resolves to that folder, also through a symlink; a clone moved
+        to another folder gets the hand commands alone."""
+        root, checkout, _ = self._site(tmp_path)
+        if where == 'symlink to it':
+            editable = tmp_path / 'link-to-MORS'
+            editable.symlink_to(checkout)
+        elif where == 'elsewhere':
+            editable = tmp_path / 'elsewhere' / 'MORS'
+            editable.parent.mkdir()
+            checkout.rename(editable)
+        else:
+            editable = checkout
+        r = self._check(root, editable)
+        hand = f'git -C {editable} fetch --tags && git -C {editable} checkout --detach "refs/tags/$('
+        tail = f'  # or replace the clone: cd {root} && bash tools/get_python_module.sh MORS --force'
+        assert r.fix_cmd.startswith(hand)
+        assert r.fix_cmd.endswith(f' && pip install -e {editable}{tail if force else ""}')
+        assert r.fix_cmd.count('--force') == int(force)
+        assert r.auto_fixable is False
+
+    def test_update_shows_the_advice_and_does_not_run_it(self, tmp_path, capsys):
+        """proteus update lists the advice among the issues without an automatic fix, runs no
+        fix command and reports the install as unhealthy."""
+        root, checkout, _ = self._site(tmp_path)
+        r = self._check(root, checkout)
+        runner = Mock(return_value=0)
+        with (
+            patch('proteus.doctor.run_all_checks', return_value=[r]),
+            patch('proteus.doctor._run_fix_command', runner),
+            patch('proteus.doctor.doctor_entry', return_value=True),
+        ):
+            healthy = update_entry()
+        out = capsys.readouterr().out
+        assert healthy is False
+        runner.assert_not_called()
+        assert 'none of them have an automatic fix' in out
+        assert 'get_python_module.sh MORS --force' in out
+
+    def test_setup_command_names_the_script_of_each_module(self):
+        """Aragog, Zalmoxis and the 4 modules of get_python_module.sh get their command; fwl-io
+        has none. The 4 names are the ones the script accepts, and the module folder of each of
+        the 6 is the folder its script clones into. The module folders cover exactly the
+        modules of PYTHON_PACKAGES with a setup script: doctor checks neither fwl-vulcan nor
+        fwl-morrigan, so neither has a folder entry. The paired modules are the scripts that
+        check out a paired branch."""
+        assert _setup_command('fwl-aragog') == 'tools/get_aragog.sh'
+        assert _setup_command('fwl-zalmoxis') == 'tools/get_zalmoxis.sh'
+        assert _setup_command('fwl-mors') == 'tools/get_python_module.sh MORS'
+        assert _setup_command('FWL-Calliope') == 'tools/get_python_module.sh CALLIOPE'
+        assert _setup_command('fwl-io') is None
+        assert {'fwl-vulcan', 'fwl-morrigan'}.isdisjoint(PYTHON_PACKAGES)
+        assert set(_MODULE_FOLDERS) == {p for p in PYTHON_PACKAGES if _setup_command(p)}
+        paired = {
+            f'fwl-{s.stem.removeprefix("get_")}'
+            for s in (PROTEUS_ROOT / 'tools').glob('get_*.sh')
+            if 'checkout_paired_or_floor ' in s.read_text()
+        }
+        assert paired == set(_PAIRED_MODULES) == {'fwl-aragog', 'fwl-zalmoxis'}
+        text = (PROTEUS_ROOT / 'tools' / 'get_python_module.sh').read_text()
+        accepted = re.search(r'^modules="([^"]*)"$', text, re.MULTILINE).group(1).split()
+        assert sorted(_PYTHON_MODULE_REPOS.values()) == sorted(accepted)
+        assert all(dist == f'fwl-{repo.lower()}' for dist, repo in _PYTHON_MODULE_REPOS.items())
+        # The module folder of each script with a fixed destination is the one it clones into.
+        for dist, folder in _MODULE_FOLDERS.items():
+            script = PROTEUS_ROOT / _setup_command(dist).split()[0]
+            if dist not in _PYTHON_MODULE_REPOS:
+                assert f'workpath="$root/{folder}/"' in script.read_text(), dist
+        assert len(_MODULE_FOLDERS) == 6
+
+    def test_without_the_source_tree_a_clone_gets_git_pull(self, tmp_path):
+        """A wheel install has no tools folder, so no setup script: the fix of an editable
+        clone below its floor is the git pull of a package without a script."""
+        _, checkout, _ = self._site(tmp_path)
+        r = self._check(tmp_path / 'wheel', checkout)
+        assert r.fix_cmd == f'cd {shlex.quote(str(checkout))} && git pull && pip install -e .'
+        assert r.auto_fixable is True
+
+    @staticmethod
+    def _folder_in_a_proteus_repository(tmp_path, kind: str, where: str) -> tuple:
+        """A PROTEUS root that is a git repository on main with a modified tracked file, and a
+        MORS folder with setup.py inside it, without .git or with an empty .git, at the module
+        folder or below another folder of the root. Returns the root and the folder."""
+        root = scratch_proteus_root(tmp_path / 'PROTEUS', ['fwl-mors>=26.10.6'])
+        (root / 'notes.txt').write_text('PROTEUS\n')
+        git(root, 'init', '-q', '-b', 'main')
+        git(root, 'add', '-A')
+        git(root, 'commit', '-q', '-m', 'PROTEUS')
+        (root / 'notes.txt').write_text('changed\n')
+        folder = root / 'MORS' if where == 'module folder' else root / 'mine' / 'MORS'
+        folder.mkdir(parents=True)
+        (folder / 'setup.py').write_text('# mine\n')
+        if kind == 'empty .git':
+            (folder / '.git').mkdir()
+        return root, folder
+
+    @pytest.mark.parametrize('kind', ['no .git', 'empty .git'])
+    @pytest.mark.parametrize('where', ['module folder', 'elsewhere in the root'])
+    def test_folder_that_is_not_its_own_clone_gets_no_git_command(
+        self, tmp_path, monkeypatch, kind, where
+    ):
+        """An editable MORS folder below its floor that is not a git clone of its own, inside a
+        PROTEUS root that is a git repository, gets advice with no git command, whose fetch and
+        checkout would act on the PROTEUS repository: the --force replacement for the module
+        folder, else a comment that says to move it away. Behind the git guard only read-only
+        calls run; proteus update runs nothing, and running the comment changes nothing in the
+        PROTEUS repository (HEAD, branch, tags, status)."""
+        root, folder = self._folder_in_a_proteus_repository(tmp_path, kind, where)
+        monkeypatch.setenv('GIT_CEILING_DIRECTORIES', str(tmp_path))
+        guard = tmp_path / 'guard'
+        guard.mkdir()
+        log, marker = tmp_path / 'git-calls.log', tmp_path / 'git-write.marker'
+        install_git_guard(guard, log, marker, roots=[root], trees=[folder])
+        monkeypatch.setenv('PATH', f'{guard}{os.pathsep}{os.environ["PATH"]}')
+        state = [
+            git(root, 'rev-parse', 'HEAD'),
+            git(root, 'symbolic-ref', '--short', 'HEAD'),
+            git(root, 'tag', '-l'),
+            git(root, '--no-optional-locks', 'status', '--porcelain'),
+        ]
+        r = self._check(root, folder)
+        calls = log.read_text().splitlines()
+        assert not marker.exists(), calls
+        assert [c for c in calls if not git_call_is_read_only(c.split('\t')[1].split())] == []
+        assert r.status == FAIL
+        assert r.auto_fixable is False
+        assert 'git -C' not in r.fix_cmd
+        assert 'fetch' not in r.fix_cmd and 'checkout' not in r.fix_cmd
+        setup = f'cd {root} && bash tools/get_python_module.sh MORS'
+        if where == 'module folder':
+            assert r.fix_cmd == (
+                f'{setup} --force  # {folder} is not a git clone of its own; this replaces it'
+                ' with a new clone, which deletes everything in it'
+            )
+        else:
+            assert r.fix_cmd == (
+                f'# {folder} is not a git clone of its own, so no git command moves it to the'
+                f' release tag; move it away, then run: {setup}'
+            )
+            done = subprocess.run(
+                ['bash', '-c', r.fix_cmd], cwd=tmp_path, capture_output=True, timeout=10
+            )
+            assert done.returncode == 0
+        runner = Mock(return_value=0)
+        with (
+            patch('proteus.doctor.run_all_checks', return_value=[r]),
+            patch('proteus.doctor._run_fix_command', runner),
+        ):
+            assert update_entry() is False
+        runner.assert_not_called()
+        assert state == [
+            git(root, 'rev-parse', 'HEAD'),
+            git(root, 'symbolic-ref', '--short', 'HEAD'),
+            git(root, 'tag', '-l'),
+            git(root, '--no-optional-locks', 'status', '--porcelain'),
+        ]
+        assert sorted(q.name for q in folder.iterdir()) == sorted(
+            ['setup.py'] + (['.git'] if kind == 'empty .git' else [])
+        )
+
+    @staticmethod
+    def _check_io(root, checkout) -> CheckResult:
+        """Run check_python_package on fwl-io 26.10.5, editable at ``checkout``, floor 26.10.6;
+        fwl-io has no setup script."""
+        from packaging.requirements import Requirement
+
+        with (
+            patch('proteus.doctor._repo_root', return_value=root),
+            patch('proteus.doctor.importlib.metadata.version', return_value='26.10.5'),
+            patch('proteus.doctor._editable_checkout_path', return_value=str(checkout)),
+            patch('proteus.doctor._imported_package_dir', return_value=None),
+        ):
+            return check_python_package('fwl-io', Requirement('fwl-io>=26.10.6'))
+
+    @pytest.mark.parametrize('kind', ['no .git', 'empty .git'])
+    def test_package_without_a_script_in_a_folder_that_is_not_its_own_clone_gets_no_git_pull(
+        self, tmp_path, monkeypatch, kind
+    ):
+        """An editable fwl-io below its floor, in a folder that is not a git clone of its own
+        inside a PROTEUS root that is a git repository, gets the pip advice with no git
+        command, which git pull would run on the PROTEUS repository; it is not auto-fixable,
+        so proteus update runs nothing, and the root keeps its HEAD, branch and status."""
+        root, folder = self._folder_in_a_proteus_repository(tmp_path, kind, 'elsewhere')
+        monkeypatch.setenv('GIT_CEILING_DIRECTORIES', str(tmp_path))
+        state = [
+            git(root, 'rev-parse', 'HEAD'),
+            git(root, 'symbolic-ref', '--short', 'HEAD'),
+            git(root, '--no-optional-locks', 'status', '--porcelain'),
+        ]
+        r = self._check_io(root, folder)
+        assert r.status == FAIL
+        assert r.auto_fixable is False
+        assert r.fix_cmd == (
+            f'pip install -U "fwl-io>=26.10.6"  # {folder} is not a git clone of its own, so'
+            ' no git command updates it; this installs the release in place of the editable'
+            ' folder'
+        )
+        assert 'git pull' not in r.fix_cmd and 'cd ' not in r.fix_cmd
+        runner = Mock(return_value=0)
+        with (
+            patch('proteus.doctor.run_all_checks', return_value=[r]),
+            patch('proteus.doctor._run_fix_command', runner),
+        ):
+            assert update_entry() is False
+        runner.assert_not_called()
+        assert state == [
+            git(root, 'rev-parse', 'HEAD'),
+            git(root, 'symbolic-ref', '--short', 'HEAD'),
+            git(root, '--no-optional-locks', 'status', '--porcelain'),
+        ]
+        assert 'M notes.txt' in state[2]
+
+    def test_package_without_a_script_in_its_own_clone_keeps_git_pull(self, tmp_path):
+        """An editable fwl-io below its floor in a git clone of its own keeps the automatic
+        git pull fix, and proteus update runs exactly that command."""
+        root, checkout, _ = self._site(tmp_path)
+        r = self._check_io(root, checkout)
+        assert r.status == FAIL
+        assert r.auto_fixable is True
+        assert r.fix_cmd == f'cd {shlex.quote(str(checkout))} && git pull && pip install -e .'
+        runner = Mock(return_value=0)
+        with (
+            patch('proteus.doctor.run_all_checks', return_value=[r]),
+            patch('proteus.doctor._run_fix_command', runner),
+            patch('proteus.doctor._repo_root', return_value=root),
+            patch('proteus.doctor.doctor_entry', return_value=True),
+        ):
+            assert update_entry() is True
+        runner.assert_called_once_with(r.fix_cmd, root)
+
+    @pytest.mark.parametrize('kind', ['no .git', 'empty .git'])
+    def test_folder_that_is_not_its_own_clone_shows_no_commit_of_the_root(
+        self, tmp_path, monkeypatch, kind
+    ):
+        """The annotation of an editable MORS folder that is not a git clone of its own says so,
+        without a commit or a dirty marker: the short head and the status of the folder would
+        be those of the PROTEUS repository, which has a modified file. Neither call runs."""
+        from packaging.requirements import Requirement
+
+        root, folder = self._folder_in_a_proteus_repository(tmp_path, kind, 'module folder')
+        monkeypatch.setenv('GIT_CEILING_DIRECTORIES', str(tmp_path))
+        assert _git_short_head(str(folder)) == git(root, 'rev-parse', '--short', 'HEAD')
+        assert _git_dirty(str(folder)) is True
+        with (
+            patch('proteus.doctor._repo_root', return_value=root),
+            patch('proteus.doctor.importlib.metadata.version', return_value='26.10.6'),
+            patch('proteus.doctor._editable_checkout_path', return_value=str(folder)),
+            patch('proteus.doctor._imported_package_dir', return_value=None),
+            patch('proteus.doctor._git_short_head', wraps=_git_short_head) as short,
+            patch('proteus.doctor._git_dirty', wraps=_git_dirty) as dirty,
+        ):
+            r = check_python_package('fwl-mors', Requirement('fwl-mors>=26.10.6'))
+        assert r.status == PASS
+        assert r.message == '26.10.6 [editable @ MORS; not a git clone of its own]'
+        assert git(root, 'rev-parse', '--short', 'HEAD') not in r.message
+        short.assert_not_called()
+        dirty.assert_not_called()
 
 
 class TestVersionAndCondaHelpers:
