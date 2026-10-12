@@ -10,10 +10,7 @@ from proteus.escape.wrapper import readable_total
 from proteus.interior_struct.common import record_volatile_change
 from proteus.outgas.common import expected_keys
 from proteus.outgas.lavatmos import run_vapourisation
-from proteus.outgas.trapping import (
-    trapped_mass_withheld,
-    trapping_active,
-)
+from proteus.outgas.trapping import escapable_inventory, trapped_mass_withheld, trapping_active
 from proteus.utils.constants import (
     element_list,
     element_mmw,
@@ -282,8 +279,6 @@ def check_desiccation(config: Config, hf_row: dict) -> bool:
     # CALLIOPE drives O_kg_total to near-zero once H/C/N/S vanish, so this
     # change rarely affects the desiccation timing, but it keeps the
     # semantics honest under whole-planet O accounting.
-    from proteus.outgas.trapping import escapable_inventory
-
     unreadable = [
         e for e in element_list if not np.isfinite(float(hf_row.get(f'{e}_kg_total', 0.0)))
     ]
@@ -578,9 +573,7 @@ def run_crystallized(config: Config, hf_row: dict, dt: float):
     esc_rate = float(hf_row.get('esc_rate_total', 0.0))
     # The element masses in the atmosphere, the reservoir escape shared its loss over;
     # a row that records none has only the species sum.
-    m_elements = sum(float(hf_row.get(f'{e}_kg_atm', 0.0)) for e in element_list)
-    if m_elements == 0.0:
-        m_elements = m_atm
+    m_elements = sum(float(hf_row.get(f'{e}_kg_atm', 0.0)) for e in element_list) or m_atm
 
     if dt <= 0.0:
         # A non-positive step is a coupling error, not a benign no-op: surface it
