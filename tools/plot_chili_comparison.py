@@ -39,6 +39,7 @@ The CHILI comparison data is cloned automatically from GitHub if
 from __future__ import annotations
 
 import argparse
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -128,7 +129,15 @@ GRID_C_LABELS = {
 PHI_RELAX = 0.01
 
 
-def _get_proteus_sha():
+def _get_proteus_sha(*runs):
+    """Commit that made the runs, from their logs; else the commit of this checkout."""
+    found = set()
+    for run in runs:
+        log = run / 'proteus_00.log' if run else None
+        if log is not None and log.is_file():
+            found.update(re.findall(r'PROTEUS git hash\s+([0-9a-f]{8})', log.read_text()))
+    if found:
+        return '/'.join(sorted(found))
     try:
         r = subprocess.run(
             ['git', 'rev-parse', '--short', 'HEAD'],
@@ -188,8 +197,8 @@ def _smooth(y, window=9, log=False):
         z = np.log10(y)
     else:
         z = y
-    s = pd.Series(z).rolling(window=window, center=True, min_periods=1).mean().to_numpy()
-    out = 10**s if log else s
+    s = pd.Series(z).rolling(window=window, center=True, min_periods=1).mean()
+    out = np.array(10**s if log else s)
     out[0] = y[0]
     out[-1] = y[-1]
     return out
@@ -1667,7 +1676,7 @@ def main():
     matplotlib.rcParams.update(_PLOT_STYLE)
 
     intercomp = ensure_chili_repo(args.chili_repo)
-    sha = _get_proteus_sha()
+    sha = _get_proteus_sha(args.proteus_earth, args.proteus_venus)
     NS = _new_style(sha)
     pe = _load_proteus_helpfile(args.proteus_earth) if args.proteus_earth else None
     pv = _load_proteus_helpfile(args.proteus_venus) if args.proteus_venus else None
