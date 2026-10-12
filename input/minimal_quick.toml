@@ -1,5 +1,5 @@
 # PROTEUS quick example: the interior, structure, outgassing and star modules of minimal.toml with a grey atmosphere
-# in place of AGNI. Run: proteus start -c input/minimal_quick.toml (about 12 min on a workstation).
+# in place of AGNI. Run: proteus start -c input/minimal_quick.toml (about 45 min of CPU time).
 # For an install check in under 1 min use input/dummy.toml, which replaces every module by its dummy.
 
 # Config file format version

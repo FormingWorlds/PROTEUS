@@ -1,5 +1,5 @@
 # PROTEUS minimal example: an Earth-mass planet at 1 AU cools from a magma ocean until the mantle is solid.
-# Run: proteus start -c input/minimal.toml (about 40 min on a workstation; the first rows appear after about 11 min).
+# Run: proteus start -c input/minimal.toml (about 1 h of CPU time; the first output rows appear after several minutes).
 # Every option that is not set here takes its default (see all_options.toml).
 
 # Config file format version

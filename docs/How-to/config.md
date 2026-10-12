@@ -29,10 +29,16 @@ inventory keeps the surface pressure above 90 bar while the mantle cools. The
 step floor of 100 yr and the step tolerance set how finely the molten stage is
 resolved. The run stops when the melt fraction falls to 0.05, and the interior
 structure is solved once at the start. Every other parameter is left at its
-default. The run takes about 40 min.
+default. The run takes about 1 h of CPU time and reaches its stop at about
+0.84 Myr, after 92 output rows.
 [`minimal_quick.toml`](https://github.com/FormingWorlds/PROTEUS/blob/main/input/minimal_quick.toml)
-runs the same modules with a grey atmosphere in place of AGNI and takes about
-12 min.
+runs the same modules with a grey atmosphere in place of AGNI. It takes about
+45 min of CPU time and reaches its stop at about 3.55 Myr, after 122 output
+rows. The wall time of both runs is shorter on a machine with several free
+cores. Late in both runs, single output rows show a rise of the magma and
+surface temperature of 30 to 40 K, at melt fractions of 0.11 to 0.16, before
+the cooling continues. This is a known limitation of the coupled model during
+crystallisation.
 
 **Where to find the default for each parameter.** The configuration reference
 pages listed above give the default value of every parameter in their
