@@ -222,19 +222,18 @@ def proteus_root() -> Path:
 @pytest.fixture(scope='session')
 def config_minimal(proteus_root: Path):
     """
-    Load minimal configuration file for quick validation tests.
+    Path of the minimal example config, for tests that load it.
 
     **Depends on**: proteus_root fixture
 
     **Returns**:
-        Path: Path to input/minimal.toml (fast, minimal setup)
+        Path: Path to input/minimal.toml
 
-    **Use Case**: Smoke tests and quick integration validation
+    **Use Case**: Tests that read a small valid config without running it
 
     **Notes**:
-        - Faster initialization than full Earth config
-        - Minimal timesteps, low resolution
-        - Preferred for smoke tests (@pytest.mark.smoke)
+        - A run of this file takes about 40 min (Aragog, Zalmoxis, AGNI)
+        - For a smoke test use config_dummy
     """
     config_path = proteus_root / 'input' / 'minimal.toml'
     assert config_path.exists(), f'Minimal config not found at {config_path}'
