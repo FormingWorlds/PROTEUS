@@ -207,7 +207,8 @@ class Zalmoxis:
         Structure EOS assumes a dry mantle. Set False for
         melt-fraction-aware dissolved-volatile mixing in the mantle
         density (per-shell volatile profile); the dissolved mass then
-        stays inside the interior mass target.
+        stays inside the interior mass target and inside the mass that
+        core_frac refers to.
     global_miscibility: bool
         Enable the H2-silicate binodal-aware radial structure. True is
         rejected at config load: it requires the binodal handoff on the
@@ -329,15 +330,21 @@ class Struct:
     Attributes
     ----------
     core_frac: float
-        Fraction of the planet's interior radius corresponding to the core.
+        Core fraction of the planet, by mass or by radius (see core_frac_mode).
+        With module = 'zalmoxis' the core mass is this fraction of the planet
+        mass without the volatile inventories that the outgassing takes as
+        inputs (H, C, N, S, noble gases; O when it is an input), or without
+        their atmosphere part with zalmoxis.dry_mantle = false. It is set when
+        the init stage ends and then kept.
     module: str
         Module for solving the planet's interior structure. Choices: 'dummy', 'spider', 'zalmoxis'.
     zalmoxis: Zalmoxis or None
         Zalmoxis parameters if module is 'zalmoxis'.
     core_frac_mode: str
         How core_frac is interpreted. 'radius': fraction of planet radius.
-        'mass': fraction of total planet mass. Only 'radius' is supported
-        when module = 'spider'. The zalmoxis module always interprets
+        'mass': mass fraction, of planet.mass_tot with module = 'dummy' and of
+        the mass that core_frac names with module = 'zalmoxis'. Only 'radius'
+        is supported when module = 'spider'. The zalmoxis module always interprets
         core_frac as a mass fraction and ignores this flag (a warning is
         emitted at runtime if 'radius' is set with module = 'zalmoxis').
     core_density: float or str

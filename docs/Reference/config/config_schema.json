@@ -4283,7 +4283,7 @@
           "value": 1
         }
       ],
-      "description": "Fraction of the planet's interior radius corresponding to the core.",
+      "description": "Core fraction of the planet, by mass or by radius (see core_frac_mode). With module = 'zalmoxis' the core mass is this fraction of the planet mass without the volatile inventories that the outgassing takes as inputs (H, C, N, S, noble gases; O when it is an input), or without their atmosphere part with zalmoxis.dry_mantle = false. It is set when the init stage ends and then kept.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -4302,7 +4302,7 @@
         "mass"
       ],
       "bounds": null,
-      "description": "How core_frac is interpreted. 'radius': fraction of planet radius. 'mass': fraction of total planet mass. Only 'radius' is supported when module = 'spider'. The zalmoxis module always interprets core_frac as a mass fraction and ignores this flag (a warning is emitted at runtime if 'radius' is set with module = 'zalmoxis').",
+      "description": "How core_frac is interpreted. 'radius': fraction of planet radius. 'mass': mass fraction, of planet.mass_tot with module = 'dummy' and of the mass that core_frac names with module = 'zalmoxis'. Only 'radius' is supported when module = 'spider'. The zalmoxis module always interprets core_frac as a mass fraction and ignores this flag (a warning is emitted at runtime if 'radius' is set with module = 'zalmoxis').",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -4779,7 +4779,7 @@
       "default": "true",
       "choices": null,
       "bounds": null,
-      "description": "Structure EOS assumes a dry mantle. Set False for melt-fraction-aware dissolved-volatile mixing in the mantle density (per-shell volatile profile); the dissolved mass then stays inside the interior mass target.",
+      "description": "Structure EOS assumes a dry mantle. Set False for melt-fraction-aware dissolved-volatile mixing in the mantle density (per-shell volatile profile); the dissolved mass then stays inside the interior mass target and inside the mass that core_frac refers to.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 5,

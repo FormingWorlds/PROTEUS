@@ -1468,6 +1468,64 @@ def test_every_outgassing_module_has_a_stated_oxygen_rule():
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize('stored', [None, 0.0], ids=['column_absent', 'zero'])
+def test_an_impact_leaves_an_unset_core_target_unset(monkeypatch, stored):
+    """A row without a core target (another structure module, or a zero-filled resume) gets
+    none from an impact. 0.325 of the rock of a 0.2 Earth-mass impactor alone, 3.9e23 kg,
+    would be read as the whole core by the next structure solve."""
+    from proteus.accretion.wrapper import apply_impact
+    from proteus.utils.constants import M_earth
+
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper.solve_structure',
+        _rescaling_solve_structure(1.2),
+    )
+    handler = _impact_handler(mass_tot=1.0, accretion=_impact_accretion(H=1000.0))
+    _atm_state(handler.hf_row, H=(2.0e20, 6.0e20))
+    handler.config.interior_struct.core_frac = 0.325
+    if stored is not None:
+        handler.hf_row['M_core_target'] = stored
+    m_imp = 0.2 * M_earth
+    event = _impact_event(
+        M_target_before=6.0 * M_earth, M_impactor=m_imp, M_merged_after=6.2 * M_earth
+    )
+    apply_impact(handler, event)
+    assert float(handler.hf_row.get('M_core_target') or 0.0) == 0.0
+    rock = event.mass_delta - m_imp * 1000.0 / 1.0e6
+    assert handler.config.planet.mass_tot == pytest.approx(1.0 + rock / M_earth, rel=1e-12)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('stored', [float('nan'), -1.9e24], ids=['nan', 'negative'])
+def test_an_impact_refuses_a_stored_core_target_that_is_not_a_mass(monkeypatch, stored):
+    """A NaN or negative core target is a damaged row. The impact raises an error that
+    names the column before anything moves: the planet mass, the accreted rock and the
+    impact count stay, and no structure solve runs. Without the check a NaN would drop the
+    core increment of the rock (3.9e23 kg here) with no message."""
+    from proteus.accretion.wrapper import apply_impact
+    from proteus.utils.constants import M_earth
+
+    solve = _rescaling_solve_structure(1.2)
+    calls = []
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper.solve_structure',
+        lambda *a, **k: calls.append(1) or solve(*a, **k),
+    )
+    handler = _impact_handler(mass_tot=1.0, accretion=_impact_accretion(H=1000.0))
+    _atm_state(handler.hf_row, H=(2.0e20, 6.0e20))
+    handler.config.interior_struct.core_frac = 0.325
+    handler.hf_row['M_core_target'] = stored
+    event = _impact_event(
+        M_target_before=6.0 * M_earth, M_impactor=0.2 * M_earth, M_merged_after=6.2 * M_earth
+    )
+    with pytest.raises(ValueError, match='M_core_target is not a core mass'):
+        apply_impact(handler, event)
+    assert handler.config.planet.mass_tot == pytest.approx(1.0, rel=1e-15)
+    assert float(handler.hf_row.get('M_accreted_rock') or 0.0) == pytest.approx(0.0, abs=0.0)
+    assert not calls
+
+
+@pytest.mark.unit
 @pytest.mark.physics_invariant
 def test_two_sequential_impacts_compose_their_consequences(monkeypatch):
     """Each impact conserves and delivers against the state it finds.
@@ -1492,6 +1550,8 @@ def test_two_sequential_impacts_compose_their_consequences(monkeypatch):
         accretion=_impact_accretion(H=1000.0),  # ppmw mode, loss off
     )
     _atm_state(handler.hf_row, H=(2.0e20, 6.0e20))
+    handler.config.interior_struct.core_frac = 0.325
+    handler.hf_row['M_core_target'] = 1.9e24
     m_imp = 0.2 * M_earth
     event = _impact_event(
         M_target_before=6.0 * M_earth,
@@ -1520,6 +1580,10 @@ def test_two_sequential_impacts_compose_their_consequences(monkeypatch):
     assert handler.hf_row['n_impacts_applied'] == 2
     assert handler.hf_row['M_accreted_rock'] == pytest.approx(
         2 * (event.mass_delta - delivered), rel=1e-12
+    )
+    # The core target takes core_frac of the rock of each impact, 0.13 Earth masses here.
+    assert handler.hf_row['M_core_target'] == pytest.approx(
+        1.9e24 + 0.325 * 2 * (event.mass_delta - delivered), rel=1e-12
     )
     assert handler.hf_row['M_volatile_change'] == pytest.approx(2 * delivered, rel=1e-12)
     assert float(handler.hf_row.get('esc_kg_cumulative', 0.0)) == pytest.approx(0.0, abs=1.0)
