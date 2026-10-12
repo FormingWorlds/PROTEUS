@@ -1089,7 +1089,7 @@ def GetHelpfileKeys():
         'trap_F_tl',        # trapped melt fraction applied this step [1]
         'trap_kg_step',     # volatile mass buried this step, negative when remelting released it [kg]
         'trap_kg_cumulative',  # net volatile mass buried since the run began [kg]
-        'trap_branch',      # drainage regime code: 0 no front, 1 Darcy, 2 matrix, 3 guard, 6 no interior state, 7 remelting [1]
+        'trap_branch',      # drainage regime code: 0 no front (a freezing step still buries by crystal partitioning), 1 Darcy, 2 matrix, 3 guard, 6 no interior state, 7 remelting [1]
         'trap_tau_D',       # percolation time at the top of the front [yr]
         'trap_tau_s',       # matrix deformation time [yr]
         'trap_t_res',       # parcel residence time in the front [yr]
@@ -1098,9 +1098,6 @@ def GetHelpfileKeys():
         'trap_v_front',     # freezing-front speed [m s-1]
         'trap_front_courant',  # front advance over one step, in front thicknesses [1]
         'trap_w_matrix_over_vf',  # matrix speed over front speed [1]
-        'trap_n_exited',    # mush nodes that reached the porosity floor this step [1]
-        'trap_frac_bound',  # share of their mass trapped at the no-drainage bound [1]
-        'trap_n_substeps',  # drainage sub-steps of the step [1]
 
         # Giant-impact accretion ledger: cumulative rock mass added to interior
         # mass anchor to enable reconstruction on resume.

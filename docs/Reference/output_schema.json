@@ -3406,7 +3406,7 @@
     {
       "name": "trap_branch",
       "unit": "1",
-      "description": "drainage regime code: 0 no front, 1 Darcy, 2 matrix, 3 guard, 6 no interior state, 7 remelting",
+      "description": "drainage regime code: 0 no front (a freezing step still buries by crystal partitioning), 1 Darcy, 2 matrix, 3 guard, 6 no interior state, 7 remelting",
       "group": "Solid-phase volatile trapping",
       "origin": "literal",
       "producers": [
@@ -3529,51 +3529,6 @@
       "name": "trap_w_matrix_over_vf",
       "unit": "1",
       "description": "matrix speed over front speed",
-      "group": "Solid-phase volatile trapping",
-      "origin": "literal",
-      "producers": [
-        {
-          "file": "src/proteus/outgas/trapping.py",
-          "condition": "always"
-        }
-      ],
-      "consumers": [],
-      "consumers_possible": []
-    },
-    {
-      "name": "trap_n_exited",
-      "unit": "1",
-      "description": "mush nodes that reached the porosity floor this step",
-      "group": "Solid-phase volatile trapping",
-      "origin": "literal",
-      "producers": [
-        {
-          "file": "src/proteus/outgas/trapping.py",
-          "condition": "always"
-        }
-      ],
-      "consumers": [],
-      "consumers_possible": []
-    },
-    {
-      "name": "trap_frac_bound",
-      "unit": "1",
-      "description": "share of their mass trapped at the no-drainage bound",
-      "group": "Solid-phase volatile trapping",
-      "origin": "literal",
-      "producers": [
-        {
-          "file": "src/proteus/outgas/trapping.py",
-          "condition": "always"
-        }
-      ],
-      "consumers": [],
-      "consumers_possible": []
-    },
-    {
-      "name": "trap_n_substeps",
-      "unit": "1",
-      "description": "drainage sub-steps of the step",
       "group": "Solid-phase volatile trapping",
       "origin": "literal",
       "producers": [
@@ -26234,6 +26189,18 @@
       "kind": "read",
       "reason": "dynamic key key",
       "function": "calc_surface_pressures_atmodeller"
+    },
+    {
+      "file": "src/proteus/outgas/trapping.py",
+      "kind": "write",
+      "reason": "template <name>_mol_liquid",
+      "function": "_move"
+    },
+    {
+      "file": "src/proteus/outgas/trapping.py",
+      "kind": "write",
+      "reason": "template <name>_mol_solid",
+      "function": "_move"
     },
     {
       "file": "src/proteus/plot/cpl_global.py",

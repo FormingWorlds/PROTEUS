@@ -293,7 +293,7 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | `trap_F_tl` | `1` | trapped melt fraction applied this step | `outgas/trapping.py` | always |   |
 | `trap_kg_step` | `kg` | volatile mass buried this step, negative when remelting released it | `outgas/trapping.py` | always | outgas |
 | `trap_kg_cumulative` | `kg` | net volatile mass buried since the run began | `outgas/trapping.py` | always | outgas |
-| `trap_branch` | `1` | drainage regime code: 0 no front, 1 Darcy, 2 matrix, 3 guard, 6 no interior state, 7 remelting | `outgas/trapping.py` | always | outgas |
+| `trap_branch` | `1` | drainage regime code: 0 no front (a freezing step still buries by crystal partitioning), 1 Darcy, 2 matrix, 3 guard, 6 no interior state, 7 remelting | `outgas/trapping.py` | always | outgas |
 | `trap_tau_D` | `yr` | percolation time at the top of the front | `outgas/trapping.py` | always |   |
 | `trap_tau_s` | `yr` | matrix deformation time | `outgas/trapping.py` | always |   |
 | `trap_t_res` | `yr` | parcel residence time in the front | `outgas/trapping.py` | always |   |
@@ -302,9 +302,6 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | `trap_v_front` | `m s-1` | freezing-front speed | `outgas/trapping.py` | always |   |
 | `trap_front_courant` | `1` | front advance over one step, in front thicknesses | `outgas/trapping.py` | always |   |
 | `trap_w_matrix_over_vf` | `1` | matrix speed over front speed | `outgas/trapping.py` | always |   |
-| `trap_n_exited` | `1` | mush nodes that reached the porosity floor this step | `outgas/trapping.py` | always |   |
-| `trap_frac_bound` | `1` | share of their mass trapped at the no-drainage bound | `outgas/trapping.py` | always |   |
-| `trap_n_substeps` | `1` | drainage sub-steps of the step | `outgas/trapping.py` | always |   |
 
 ### Giant-impact accretion ledger
 
@@ -1126,6 +1123,13 @@ A computed key is a helpfile column name constructed dynamically at runtime thro
 - `src/proteus/plot/cpl_orbit.py::_plot_orbit_snapshot`: `dynamic key sma_col` (touches semimajorax, semimajorax_sat, eccentricity, eccentricity_sat)
 - `src/proteus/plot/cpl_orbit.py::_plot_orbit_snapshot`: `dynamic key ecc_col` (touches semimajorax, semimajorax_sat, eccentricity, eccentricity_sat)
 - `src/proteus/utils/coupler.py::assert_mass_conservation`: `dynamic key f'{e}_kg_{r}'`
+
+### Writes with computed keys
+
+A computed key is a helpfile column name constructed dynamically at runtime through variable lookups or formatted strings. Because static analysis cannot determine the modified column names in advance, these write sites are not attributed to specific columns in the table above.
+
+- `src/proteus/outgas/trapping.py::_move`: `template <name>_mol_liquid`
+- `src/proteus/outgas/trapping.py::_move`: `template <name>_mol_solid`
 <!-- END GENERATED: helpfile-matrix -->
 
 ## Synthetic observation CSV columns

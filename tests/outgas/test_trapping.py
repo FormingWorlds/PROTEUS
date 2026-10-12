@@ -415,7 +415,7 @@ def test_the_initialisation_stage_buries_nothing_and_writes_no_diagnostics(fixed
     assert held['H2O_kg_solid'] == pytest.approx(0.0, abs=0.0)
     assert held['H2O_kg_liquid'] == pytest.approx(1.8e21, rel=1e-12)
     assert 'trap_branch' not in held
-    assert 'trap_n_exited' not in held
+    assert 'trap_n_front' not in held
 
     # Outside the initialisation stage: (0.98 * 0.0017 + 0.02) * 1e-3 * 2e23.
     live = _hf_row()
@@ -425,12 +425,10 @@ def test_the_initialisation_stage_buries_nothing_and_writes_no_diagnostics(fixed
     # Dropping the interstitial-melt term would bury about 12 times less.
     assert 0.98 * 0.0017 * 1.0e-3 * _DM_RM < 0.1 * expected
     assert live['H2O_kg_solid'] + live['H2O_kg_liquid'] == pytest.approx(1.8e21, rel=1e-12)
-    # The front scheme resolves no nodes and takes no sub-steps, and with no
-    # node reaching the floor the share on the no-drainage bound is undefined.
-    assert step.n_exited == 0
-    assert live['trap_n_exited'] == pytest.approx(0.0, abs=0.0)
-    assert live['trap_n_substeps'] == pytest.approx(0.0, abs=0.0)
-    assert np.isnan(live['trap_frac_bound'])
+    # The front scheme resolves no nodes, and the step reports the code of no front.
+    assert step.n_front == 0
+    assert live['trap_n_front'] == pytest.approx(0.0, abs=0.0)
+    assert live['trap_branch'] == pytest.approx(0.0, abs=0.0)
 
 
 @pytest.mark.physics_invariant

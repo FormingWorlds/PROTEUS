@@ -108,7 +108,7 @@ from proteus.outgas.compaction import (
     porosity_from_densities,
     volume_to_mass_fraction,
 )
-from proteus.utils.constants import noble_gases, vol_element_list, vol_list
+from proteus.utils.constants import noble_gases, secs_per_year, vol_element_list, vol_list
 from proteus.utils.helper import eval_gas_mmw
 
 if TYPE_CHECKING:
@@ -146,9 +146,6 @@ class TrappingStep:
     front_courant: float = float('nan')
     w_matrix_over_vf: float = float('nan')
     guard_reason: str = ''
-    n_exited: int = 0  # mush nodes that reached the porosity floor this step
-    frac_bound: float = float('nan')  # share of their mass on the no-drainage bound
-    n_substeps: int = 0  # drainage sub-steps the step took
 
     @property
     def total_trapped(self) -> float:
@@ -465,9 +462,6 @@ def _move(hf_row: dict, name: str, mass: float) -> None:
         hf_row[f'{name}_mol_solid'] = hf_row[f'{name}_kg_solid'] / mmw
 
 
-SECS_PER_YEAR = 3.15576e7  # Julian year, matching the interior solver's step length
-
-
 def _usable_gravity(values, n: int) -> np.ndarray | None:
     """``values`` as ``n`` finite, positive accelerations [m s-2], else ``None``."""
     if values is None:
@@ -555,7 +549,7 @@ def _drainage_fraction(
     # Front speed from the crystallised mass, the increment the flux uses, not from
     # the node-snapped front depth, whose difference is zero on most steps and a
     # spike on the rest.
-    dt_s = (float(hf_row['Time']) - float(prev['Time'])) * SECS_PER_YEAR
+    dt_s = (float(hf_row['Time']) - float(prev['Time'])) * secs_per_year
     area = 4.0 * np.pi * geom.r_base**2 * geom.rho_solid_base
     v_f = abs(float(dm_rm)) / (area * dt_s) if (area > 0.0 and dt_s > 0.0) else 0.0
 
@@ -616,9 +610,9 @@ def _drainage_fraction(
         mush_visc,
     )
     step.f_tl = volume_to_mass_fraction(f_vol, geom.rho_melt, geom.rho_solid_base)
-    step.tau_d = tau_d / SECS_PER_YEAR
-    step.tau_s = tau_s / SECS_PER_YEAR
-    step.t_res = t_res / SECS_PER_YEAR
+    step.tau_d = tau_d / secs_per_year
+    step.tau_s = tau_s / secs_per_year
+    step.t_res = t_res / secs_per_year
     step.branch = BRANCH_MATRIX if tau_s > tau_d else BRANCH_DARCY
     w_top = geom.thickness / tau_d if np.isfinite(tau_d) and tau_d > 0.0 else 0.0
     step.w_matrix_over_vf = (geom.porosity_top * w_top / v_f) if v_f > 0.0 else float('nan')
@@ -645,9 +639,6 @@ def _record(hf_row: dict, step: TrappingStep) -> None:
     hf_row['trap_v_front'] = step.v_front
     hf_row['trap_front_courant'] = step.front_courant
     hf_row['trap_w_matrix_over_vf'] = step.w_matrix_over_vf
-    hf_row['trap_n_exited'] = float(step.n_exited)
-    hf_row['trap_frac_bound'] = step.frac_bound
-    hf_row['trap_n_substeps'] = float(step.n_substeps)
     hf_row['trap_kg_cumulative'] = (
         float(hf_row.get('trap_kg_cumulative', 0.0)) + step.total_trapped
     )
