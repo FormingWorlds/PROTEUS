@@ -84,7 +84,7 @@ Monitor progress with `tail -f output/tutorial_earth_moon/proteus_00.log`
 (the log appears once PROTEUS has initialized).
 
 !!! info "Runtime"
-    This run takes roughly 20 minutes depending on hardware. A fine excuse to go
+    This run takes roughly 30 minutes depending on hardware. A fine excuse to go
     read up on the physics while SPIDER, AGNI, and Obliqua sort out the
     Earth-Moon system on your behalf: the [orbital dynamics](../Explanations/orbit.md)
     page covers PROTEUS's own orbital models, or head over to the
@@ -120,10 +120,14 @@ After the run completes, generate plots:
 proteus plot -c input/tutorials/tutorial_earth_moon.toml all
 ```
 
-The reference run below terminates at t $\approx$ 7.9 &times; 10<sup>5</sup> yr once
-the net atmosphere-interior flux drops below the convergence threshold
-(status: *Completed, net flux is small*), with the mantle still around 20%
-molten ($\Phi \approx 0.20$) rather than fully solidified. Overall, the 
+The run also writes these plots by itself when it ends. Its Love number
+figure, shown below, holds every snapshot; `proteus plot` draws that figure
+from a sample of 8 snapshots.
+
+The config limits the run to 8 &times; 10<sup>5</sup> yr of evolution
+(`params.stop.time.maximum`), so the reference run below ends at that time
+(status: *Completed, target time*), with the mantle still around 22%
+molten ($\Phi \approx 0.22$) rather than fully solidified. Overall, the 
 time steps are small enough to resolve the tidal evolution, but finer 
 time resolution will substantially reduce the jumping behavior in the tidal heating.
 Ultimately, this is beyond the scope of this tutorial, as it would take substantially 
@@ -137,10 +141,11 @@ longer to run.
   1.00 AU and 0 (Obliqua evolves the planet-satellite pair; the star-planet
   orbit is not perturbed by it here), so the planet's orbital period holds at
   365.2563 days while its axial (spin) period lengthens from 4.00 h to
-  7.52 h as the satellite despins it. The satellite's semi-major axis climbs
-  from ~3.5 to ~23.4 Earth radii over the run, with its orbital and axial spin
-  periods rising together from ~9.1 h to ~158.3 h (i.e. it stays
-  tidally locked), and its eccentricity varying between 0 and 0.05.</figcaption>
+  7.73 h as the satellite despins it. The satellite's semi-major axis climbs
+  from ~3.5 to ~24.9 Earth radii over the run, with its orbital and axial spin
+  periods rising together from ~9.1 h to ~172 h (i.e. it stays
+  tidally locked). Its eccentricity, 0.05 at the start, is damped away
+  within the first ~20 yr, before the plotted time range.</figcaption>
 </figure>
 
 <figure markdown="span">
@@ -152,15 +157,16 @@ longer to run.
   then decreases as the satellite moves away from the planet, first dropping
   below the runaway-greenhouse (S&ndash;N) limit at t &approx;
   8.8 &times; 10<sup>4</sup> yr. From there it no longer decays smoothly: it
-  reaches an absolute minimum of ~0.2 W m<sup>-2</sup> near
-  2.8 &times; 10<sup>5</sup> yr, then fluctuates through a long series of
+  reaches an absolute minimum of ~0.5 W m<sup>-2</sup> near
+  3.5 &times; 10<sup>5</sup> yr, then fluctuates through a series of
   resonance-driven bursts as the dominant tidal mode repeatedly sweeps in and out of the
   mantle's normal-mode resonances (see the Love-number figure below), peaking
-  at ~1.7 &times; 10<sup>3</sup> W m<sup>-2</sup> near
-  7.4 &times; 10<sup>5</sup> yr. The mantle is still ~20% molten when the run
-  ends at t &approx; 7.9 &times; 10<sup>5</sup> yr, with tidal heating
-  (~2.6 &times; 10<sup>2</sup> W m<sup>-2</sup>) comparable to the net
-  interior/atmosphere flux rather than having settled into a smoothly decaying
+  at ~7.8 &times; 10<sup>2</sup> W m<sup>-2</sup> near
+  7.8 &times; 10<sup>5</sup> yr. The mantle is still ~22% molten when the run
+  ends at t = 8 &times; 10<sup>5</sup> yr, with tidal heating that swings
+  between ~20 and ~500 W m<sup>-2</sup> over the last 2 &times; 10<sup>4</sup> yr,
+  around the net interior/atmosphere flux (~2.3 &times; 10<sup>2</sup> W
+  m<sup>-2</sup>), rather than having settled into a smoothly decaying
   solid-tide regime.</figcaption>
 </figure>
 
@@ -170,18 +176,18 @@ longer to run.
   <figcaption><b>Degree-2 Love number spectrum evolution (Obliqua).</b>
   The dominant, almost always populated mode is the semidiurnal (n=2, m=2, k=2) tide;
   its forcing frequency |&sigma;| decreases from
-  ~6.5 &times; 10<sup>-4</sup> to ~4.4 &times; 10<sup>-4</sup> rad
+  ~6.5 &times; 10<sup>-4</sup> to ~4.3 &times; 10<sup>-4</sup> rad
   s<sup>-1</sup> as the satellite recedes and despins the planet.
-  Re(k<sub>22</sub>) starts near 0.03 and jumps by roughly two orders of
-  magnitude to ~1&ndash;1.3 once the forcing frequency first sweeps past a
-  normal-mode (seismic) resonance around t &approx; 9.6 &times; 10<sup>4</sup> yr,
-  then fluctuates in that resonance-affected regime for most of the run. It
-  briefly exceeds the seismic-resonance threshold (Re &gt; 1.5, ringed in red)
-  four times between t &approx; 6.5 &times; 10<sup>5</sup> and
-  7.3 &times; 10<sup>5</sup> yr, peaking at ~4.1 at t &approx;
-  7.3 &times; 10<sup>5</sup> yr (where Im(k<sub>22</sub>) also drops to its
-  smallest value, 10<sup>-3.0</sup>), before settling to small, occasionally
-  negative values (~10<sup>-1.0</sup>) by the end of the run.</figcaption>
+  Re(k<sub>22</sub>) starts near 0.02 and jumps by more than an order of
+  magnitude to ~1.4 once the forcing frequency first sweeps past a
+  normal-mode (seismic) resonance around t &approx; 1.5 &times; 10<sup>5</sup> yr,
+  then stays in that resonance-affected regime, mostly between ~0.5 and ~1.4.
+  It exceeds the seismic-resonance threshold (Re &gt; 1.5, ringed in red)
+  once, at t &approx; 7.9 &times; 10<sup>5</sup> yr, where it peaks at ~3.7,
+  and it changes sign repeatedly in the last 1.5 &times; 10<sup>4</sup> yr of the
+  run. The magnitude of Im(k<sub>22</sub>) is smallest, 10<sup>-3.5</sup>, near
+  3.4 &times; 10<sup>5</sup> yr, where the tidal heating has its
+  minimum.</figcaption>
 </figure>
 
 ---
