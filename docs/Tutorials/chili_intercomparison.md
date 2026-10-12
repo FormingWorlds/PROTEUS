@@ -39,7 +39,9 @@ criterion that it meets. Two of them matter on this page: a melt fraction
 of 5% (`params.stop.solid.phi_crit = 0.05`), and a global energy balance,
 in which the net atmospheric flux differs from the radiogenic and tidal
 heating by no more than about 1 W m$^{-2}$ (`params.stop.radeqm`, enabled
-by default with `atol = 1.0` and `rtol = 0.001`).
+by default with `atol = 1.0` and `rtol = 0.001`). The runs behind the
+figures of this page end at the first of these criteria or at 15 Myr of
+model time, whichever comes first.
 
 !!! note "How far the runs on this page go"
     The runs on this page follow each planet to a quasi-steady state:
@@ -99,7 +101,8 @@ Monitor progress with `tail -f output/chili_earth/proteus_00.log`
     the star [^cite-lichtenberg2026]. PROTEUS runs this case and warns
     during the run that the planet orbits within the Roche limit, spins
     faster than the breakup rate, and has an atmosphere beyond the Hill
-    radius.
+    radius. The TRAPPIST-1 configs keep the end time of the protocol; the
+    runs of this release were ended at 15 Myr of model time.
     After a run, convert the output to the CHILI-MIP submission format
     with `python tools/chili_postproc.py <output_dir>`.
 
@@ -162,7 +165,7 @@ reproducible without editing the script.
 
 <figure markdown="span">
   ![CHILI Fig 2](../assets/tutorials/chili/fig2_milestones.png){ width="100%" }
-  <figcaption><strong>Figure 2.</strong> Time to reach melt fraction milestones for all Earth scenarios. (a) 95%, (b) 40%, (c) 5% melt fraction. The y-axis spans H inventories from the Nominal case (bottom) to H<sub>high</sub> (10 EO, top). C inventory is encoded as marker opacity (light = C<sub>low</sub>, medium = C<sub>mid</sub>, dark = C<sub>high</sub>). Connected scatter points trace the three H levels for each model at a given C level. The current PROTEUS run (vermillion, thick lines, black-edged markers) stands out from the CHILI intercomparison ensemble. Nominal Earth cases appear as crosses at the bottom of each panel.</figcaption>
+  <figcaption><strong>Figure 2.</strong> Time to reach melt fraction milestones for all Earth scenarios. (a) 95%, (b) 40%, (c) 5% melt fraction. The y-axis spans H inventories from the Nominal case (bottom) to H<sub>high</sub> (10 EO, top). C inventory is encoded as marker opacity (light = C<sub>low</sub>, medium = C<sub>mid</sub>, dark = C<sub>high</sub>). Connected scatter points trace the three H levels for each model at a given C level. The current PROTEUS run (vermillion, thick lines, black-edged markers) stands out from the CHILI intercomparison ensemble. Nominal Earth cases appear as crosses at the bottom of each panel. A current PROTEUS run that has not reached a milestone when it ends has no marker in that panel.</figcaption>
 </figure>
 
 ## Atmospheric composition
