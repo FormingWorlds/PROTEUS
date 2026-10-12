@@ -78,6 +78,25 @@ _DROP_PREFIXES = (
 # decision: pin it (OVERRIDES) or certify it neutral (add it here).
 _REVIEWED_NEUTRAL = frozenset(
     {
+        # Solid-phase volatile trapping. Inert on a migrated config:
+        # trap_mode defaults to 'none', so the partition coefficients and
+        # the front parameters are never read and behaviour is unchanged.
+        'outgas.trap_phi_min',
+        'outgas.trap_mush_log10visc',
+        'outgas.trap_n_front_min',
+        'outgas.trap_max_front_fraction',
+        'outgas.trap_mode',
+        'outgas.D_const_CH4',
+        'outgas.D_const_CO',
+        'outgas.D_const_CO2',
+        'outgas.D_const_H2',
+        'outgas.D_const_H2O',
+        'outgas.D_const_H2S',
+        'outgas.D_const_N2',
+        'outgas.D_const_NH3',
+        'outgas.D_const_O2',
+        'outgas.D_const_S2',
+        'outgas.D_const_SO2',
         # Accretion defaults to inactive with zero impactor budgets, zero
         # loss fractions, and unread dummy/morrigan sub-blocks.
         'accretion.atmloss_frac',

@@ -317,6 +317,14 @@ class Proteus:
 
         self.directories = set_directories(self.config)
 
+    def _end_init_stage_if_due(self):
+        """Leave the init stage once its loops are done, setting the core target of the row."""
+        if self.init_stage and self.loops['total'] > self.loops['init_loops']:
+            from proteus.interior_struct.zalmoxis import set_core_target_at_init_end
+
+            set_core_target_at_init_end(self.config, self.hf_row)
+            self.init_stage = False
+
     def _solve_structure_baseline_if_needed(self):
         """Solve the one-time callable-representation structure baseline.
 
@@ -591,10 +599,14 @@ class Proteus:
         from proteus.orbit.common import Tides_t
         from proteus.orbit.wrapper import init_orbit, run_orbit
 
+        #   solid-phase volatile trapping
+        from proteus.outgas.trapping import run_trapping
+
         #    outgassing
         from proteus.outgas.wrapper import (
             calc_target_elemental_inventories,
             check_desiccation,
+            desiccated_after_trapping,
             run_crystallized,
             run_desiccated,
             run_outgassing_and_vapourisation,
@@ -1265,6 +1277,26 @@ class Proteus:
 
             ############### / INTERIOR AND STRUCTURE
 
+            ############### VOLATILE TRAPPING
+            # The front has moved and any structure re-solve is done, and escape and
+            # outgassing have not read the inventories yet, so all of them see the burial.
+            _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
+            trapping_step = run_trapping(
+                self.config,
+                self.hf_row,
+                self.hf_all,
+                self.interior_o,
+                init_stage=self.init_stage,
+            )
+            # Mass a remelt returns to a desiccated planet must reach escape and outgassing.
+            self.desiccated = desiccated_after_trapping(
+                self.config, self.hf_row, self.desiccated, trapping_step
+            )
+            if _IT_TIMING_ENABLED:
+                _t_mod['trapping'] = time.perf_counter() - _t0
+
+            ############### / VOLATILE TRAPPING
+
             ############### ORBIT AND TIDES
             PrintHalfSeparator()
             _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
@@ -1396,9 +1428,14 @@ class Proteus:
             # that mode. An excess larger than the vapour column explains still
             # warns, and PrintCurrentState reports the vapour budget every
             # iteration. Non-conservation is a simplification of vapourisation.
+            from proteus.outgas.trapping import derived_total_elements, trapping_active
+
             assert_mass_conservation(
                 self.hf_row,
                 require_atm_le_planet=not self.config.outgas.vapourise,
+                check_element_closure=trapping_active(self.config),
+                derived_elements=derived_total_elements(self.config),
+                closure_rtol=self.config.outgas.solver_rtol,
             )
 
             # P_surf = P_vol + P_vap, and P_vap == 0 when rock
@@ -1518,9 +1555,7 @@ class Proteus:
             # Adjust total iteration counters
             self.loops['total'] += 1
 
-            # Init stage?
-            if self.loops['total'] > self.loops['init_loops']:
-                self.init_stage = False
+            self._end_init_stage_if_due()
 
             # Keep time at zero during init stage
             if self.init_stage:

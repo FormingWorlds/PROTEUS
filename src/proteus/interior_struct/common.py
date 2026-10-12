@@ -79,6 +79,22 @@ def volatile_mass_change(hf_row: dict) -> float:
     return change
 
 
+def stored_core_target(hf_row: dict) -> float:
+    """Return ``M_core_target`` [kg]; zero when absent (another structure, older helpfile).
+
+    Raises
+    ------
+    ValueError
+        If the column is not finite or is negative, which is not a core mass.
+    """
+    stored = float(hf_row.get('M_core_target') or 0.0)
+    if not math.isfinite(stored) or stored < 0.0:
+        raise ValueError(
+            f'M_core_target is not a core mass ({stored!r} kg); the helpfile row is corrupt.'
+        )
+    return stored
+
+
 def record_volatile_change(config: Config, hf_row: dict, delta: float) -> None:
     """Add ``delta`` [kg] to ``M_volatile_change`` when the Zalmoxis structure is in use.
 

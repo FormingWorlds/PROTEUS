@@ -5,6 +5,15 @@ and error messages by running install.sh in controlled subprocess
 environments. Does not execute actual installations (SOCRATES, AGNI,
 pip install); those are tested by the CI pipeline and smoke tests.
 
+The Python modules the installer clones are pinned to the release tag of
+their version floor: ``checkout_floor_tag`` (``tools/_get_common.sh``) and
+``clone_and_install`` (lifted from install.sh at run time) run against
+local scratch repositories and a recording ``pip`` stub, without network.
+The module lines of the Python phase run whole, with the setup scripts of
+Aragog and Zalmoxis and a git wrapper that lets only read-only calls reach a
+module clone, to pin that an existing clone is installed as it is and the one
+line that names each clone that is not at its release tag.
+
 Testing standards:
   - docs/How-to/testing.md
   - docs/Explanations/test_framework.md
@@ -13,15 +22,19 @@ Testing standards:
 from __future__ import annotations
 
 import os
+import shlex
+import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
-from helpers import PROTEUS_ROOT
+from helpers import PROTEUS_ROOT, git, install_git_guard, scratch_proteus_root
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 INSTALL_SH = PROTEUS_ROOT / 'install.sh'
+TOOLS_DIR = PROTEUS_ROOT / 'tools'
 
 
 @pytest.fixture(autouse=True)
@@ -465,3 +478,866 @@ class TestNonInteractive:
         assert result.returncode != 0
         output = result.stdout + result.stderr
         assert 'conda' in output.lower()
+
+
+def _module_repo(path: Path, tag: str | None = '26.10.06') -> tuple[str, str]:
+    """Build a repository with 3 commits and ``tag`` on the second one.
+
+    Returns the tagged commit and the tip, which differ, so a checkout that
+    stays on the branch is told apart from one at the tag.
+    """
+    path.mkdir(parents=True)
+    git(path, 'init', '-q', '-b', 'main')
+    for i in range(3):
+        (path / 'version.txt').write_text(f'{i}\n')
+        git(path, 'add', 'version.txt')
+        git(path, 'commit', '-q', '-m', f'commit {i}')
+        if i == 1 and tag:
+            git(path, 'tag', tag)
+    tagged = git(path, 'rev-parse', 'HEAD~1')
+    return tagged, git(path, 'rev-parse', 'HEAD')
+
+
+def _run_checkout_floor_tag(
+    root: Path, repo: Path, prelude: str, env: dict | None = None
+) -> subprocess.CompletedProcess:
+    """Source the copied helper library and run checkout_floor_tag on ``repo`` for fwl-mors."""
+    return subprocess.run(
+        [
+            '/bin/bash',
+            '-c',
+            f'{prelude}source "{root}/tools/_get_common.sh"\n'
+            f'checkout_floor_tag fwl-mors "{repo}"\necho AFTER\n',
+        ],
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=20,
+    )
+
+
+def _path_without_python(tmp_path: Path) -> str:
+    """A PATH directory holding git and realpath but no python, as a shell outside conda sees."""
+    bindir = tmp_path / 'no-python-bin'
+    bindir.mkdir()
+    for tool in ('git', 'realpath'):
+        found = shutil.which(tool)
+        if found:
+            (bindir / tool).symlink_to(found)
+    return str(bindir)
+
+
+class TestCheckoutFloorTag:
+    """checkout_floor_tag puts a clone on the release tag of its floor, or stops."""
+
+    @pytest.mark.parametrize('prelude', ['', 'set -euo pipefail\n'], ids=['plain', 'errexit'])
+    def test_checks_out_the_tag_matching_the_floor(self, tmp_path, prelude):
+        """The floor 26.10.6 selects the tag 26.10.06 on the second commit, detached.
+
+        The tip is a later commit, so a helper that leaves the clone on its
+        branch fails the equality; the floor text is not a tag, so an exact
+        text lookup fails the checkout. Branches named 26.10.06 and
+        tags/26.10.06 point at the tip, so a checkout of ``tags/26.10.06``
+        switches to the second and lands there.
+        """
+        repo = tmp_path / 'MORS'
+        tagged, tip = _module_repo(repo)
+        git(repo, 'branch', '26.10.06', tip)
+        git(repo, 'branch', 'tags/26.10.06', tip)
+        root = scratch_proteus_root(tmp_path / 'proteus', ['fwl-mors>=26.10.6'])
+        result = _run_checkout_floor_tag(root, repo, prelude)
+        assert result.returncode == 0, result.stderr
+        head = git(repo, 'rev-parse', 'HEAD')
+        assert head == tagged
+        assert head != tip
+        detached = subprocess.run(
+            ['git', '-C', str(repo), 'symbolic-ref', '-q', 'HEAD'],
+            capture_output=True,
+            timeout=10,
+        )
+        assert detached.returncode == 1
+        assert f'fwl-mors: checked out release tag 26.10.06 at {tagged[:7]}' in result.stdout
+        assert result.stdout.rstrip().endswith('AFTER')
+
+    @pytest.mark.parametrize('prelude', ['', 'set -euo pipefail\n'], ids=['plain', 'errexit'])
+    def test_no_matching_tag_exits_1_and_keeps_head(self, tmp_path, prelude):
+        """A floor with no tag stops the caller with the cause, and HEAD stays put.
+
+        ``AFTER`` must not print: the helper exits rather than returns, in a
+        shell with or without errexit, so no caller carries on at the tip.
+        """
+        repo = tmp_path / 'MORS'
+        _, tip = _module_repo(repo)
+        root = scratch_proteus_root(tmp_path / 'proteus', ['fwl-mors>=26.11.1'])
+        result = _run_checkout_floor_tag(root, repo, prelude)
+        assert result.returncode == 1
+        assert 'AFTER' not in result.stdout
+        assert git(repo, 'rev-parse', 'HEAD') == tip
+        assert "'fwl-mors' floor 26.11.1: no tag matches it" in result.stderr
+        assert '26.10.06' in result.stderr
+        assert f'cannot choose the fwl-mors release tag in {repo}; see the message above' in (
+            result.stderr
+        )
+
+    @pytest.mark.parametrize(
+        ('requirement', 'extra_tag', 'cause'),
+        [
+            ('fwl-mors>=26.10.6', '26.10.6', '2 tags match it: 26.10.06, 26.10.6'),
+            ('fwl-mors==26.10.6', None, 'has no single >= version floor'),
+        ],
+        ids=['two tags of the floor', 'requirement without a floor'],
+    )
+    def test_pin_failure_keeps_the_pin_reader_cause(
+        self, tmp_path, requirement, extra_tag, cause
+    ):
+        """When the pin reader fails, its cause stands alone and is not contradicted.
+
+        Two tags of one version, or an exact pin, are not cases of a missing
+        tag, so the line that follows only points at the cause; HEAD stays
+        at the tip and the caller stops.
+        """
+        repo = tmp_path / 'MORS'
+        tagged, tip = _module_repo(repo)
+        if extra_tag:
+            git(repo, 'tag', extra_tag, tagged)
+        root = scratch_proteus_root(tmp_path / 'proteus', [requirement])
+        result = _run_checkout_floor_tag(root, repo, 'set -euo pipefail\n')
+        assert result.returncode == 1
+        assert 'AFTER' not in result.stdout
+        assert cause in result.stderr
+        assert f'cannot choose the fwl-mors release tag in {repo}; see the message above' in (
+            result.stderr
+        )
+        assert 'no release tag' not in result.stderr
+        assert git(repo, 'rev-parse', 'HEAD') == tip
+
+    def test_missing_python_is_named_before_git_runs(self, tmp_path):
+        """Without python on PATH the helper names python, not the tags.
+
+        HEAD stays at the tip; a helper that pipes the tags into a missing
+        python reports a tag that does not match.
+        """
+        repo = tmp_path / 'MORS'
+        _, tip = _module_repo(repo)
+        root = scratch_proteus_root(tmp_path / 'proteus', ['fwl-mors>=26.10.6'])
+        env = {**os.environ, 'PATH': _path_without_python(tmp_path)}
+        result = _run_checkout_floor_tag(root, repo, '', env=env)
+        assert result.returncode == 1
+        assert 'AFTER' not in result.stdout
+        assert 'python is not on PATH, so the fwl-mors floor in pyproject.toml' in result.stderr
+        assert 'tag' not in result.stderr
+        assert git(repo, 'rev-parse', 'HEAD') == tip
+
+    def test_directory_that_is_no_repository_is_reported_as_such(self, tmp_path):
+        """A directory git does not read as a repository fails at the tag listing.
+
+        git's own message and the listing step are named; a helper that
+        pipes the failed listing on reports that no release tag was seen.
+        """
+        plain = tmp_path / 'MORS'
+        plain.mkdir()
+        root = scratch_proteus_root(tmp_path / 'proteus', ['fwl-mors>=26.10.6'])
+        env = {**os.environ, 'GIT_CEILING_DIRECTORIES': str(tmp_path)}
+        result = _run_checkout_floor_tag(root, plain, 'set -euo pipefail\n', env=env)
+        assert result.returncode == 1
+        assert 'AFTER' not in result.stdout
+        assert 'not a git repository' in result.stderr
+        assert (
+            f'git cannot list the tags of {plain}; see the git message above' in result.stderr
+        )
+        assert 'saw no release tags' not in result.stderr
+        assert list(plain.iterdir()) == []
+
+    def test_moving_a_detached_local_commit_shows_the_git_warning(self, tmp_path):
+        """A detached clone with a local commit lands on the tag, and git's warning
+        that the move leaves 1 commit behind reaches the user.
+
+        ``--quiet`` hides that warning, so the commit would be left without
+        a word; the tag checkout itself still succeeds.
+        """
+        repo = tmp_path / 'MORS'
+        tagged, _ = _module_repo(repo)
+        git(repo, 'checkout', '-q', '--detach', 'HEAD~2')
+        (repo / 'version.txt').write_text('local work\n')
+        git(repo, 'commit', '-q', '-am', 'local work')
+        local = git(repo, 'rev-parse', 'HEAD')
+        root = scratch_proteus_root(tmp_path / 'proteus', ['fwl-mors>=26.10.6'])
+        result = _run_checkout_floor_tag(root, repo, 'set -euo pipefail\n')
+        assert result.returncode == 0, result.stderr
+        assert git(repo, 'rev-parse', 'HEAD') == tagged != local
+        assert 'leaving 1 commit behind' in result.stderr
+        assert local[:7] in result.stderr
+        assert result.stdout.rstrip().endswith('AFTER')
+
+
+def _install_sh_function(name: str) -> str:
+    """The text of a shell function in install.sh, a one-line one or a block to its ``}``."""
+    lines = INSTALL_SH.read_text().splitlines()
+    start = next(i for i, ln in enumerate(lines) if ln.startswith(f'{name}()'))
+    if lines[start].rstrip().endswith('}'):
+        return lines[start] + '\n'
+    end = next(i for i, ln in enumerate(lines) if ln == '}' and i > start)
+    return '\n'.join(lines[start : end + 1]) + '\n'
+
+
+def _clone_and_install_calls() -> list[list[str]]:
+    """The arguments of every clone_and_install call in install.sh."""
+    return [
+        shlex.split(line)[1:]
+        for line in INSTALL_SH.read_text().splitlines()
+        if line.startswith('clone_and_install ')
+    ]
+
+
+# The prefix install.sh's warn puts before a message.
+_WARN_PREFIX = '\x1b[1;33m[WARN]\x1b[0m  '
+
+
+def _run_module_phase(
+    env: dict, script: str, cwd: Path | None = None, timeout: int = 25
+) -> subprocess.CompletedProcess:
+    """Run ``script`` after install.sh's log helpers and its module-phase functions, under its options."""
+    defs = (
+        'set -euo pipefail\nCURRENT_PHASE=6\n'
+        + _install_sh_blocks("RED='", 'info()')
+        + ''.join(
+            _install_sh_function(f)
+            for f in (
+                'command_exists',
+                'collect_env_info',
+                'die',
+                'clone_and_install',
+                'report_stayed_clones',
+            )
+        )
+    )
+    return subprocess.run(
+        ['bash', '-c', defs + script],
+        capture_output=True,
+        text=True,
+        env=env,
+        cwd=cwd,
+        timeout=timeout,
+    )
+
+
+class TestCloneAndInstall:
+    """clone_and_install pins a new clone to the floor tag and installs an existing one as it is."""
+
+    @pytest.fixture
+    def site(self, tmp_path):
+        """A PROTEUS copy, local bare remotes for MORS and JANUS, and a pip stub.
+
+        JANUS carries only the tag 26.07.10, below its floor 26.10.08.
+        """
+        root = scratch_proteus_root(
+            tmp_path / 'proteus', ['fwl-mors>=26.10.6', 'fwl-janus>=26.10.08']
+        )
+        remotes = tmp_path / 'remotes' / 'FormingWorlds'
+        shas = {}
+        for repo, tag in (('MORS', '26.10.06'), ('JANUS', '26.07.10')):
+            work = tmp_path / 'work' / repo
+            shas[repo] = _module_repo(work, tag)
+            git(tmp_path, 'clone', '-q', '--bare', str(work), str(remotes / f'{repo}.git'))
+        stubs = tmp_path / 'stubs'
+        stubs.mkdir()
+        pip = stubs / 'pip'
+        pip.write_text('#!/bin/sh\necho "$@" >> "$STUB_PIP_LOG"\n')
+        pip.chmod(0o755)
+        log = tmp_path / 'pip.log'
+        log.write_text('')
+        env = {
+            **os.environ,
+            'PATH': f'{stubs}{os.pathsep}{os.environ["PATH"]}',
+            'GH_PREFIX': f'{tmp_path / "remotes"}/',
+            'SCRIPT_DIR': str(root),
+            'STUB_PIP_LOG': str(log),
+            # A github URL, from any version of the scripts, goes to the local remotes.
+            'GIT_CONFIG_COUNT': '1',
+            'GIT_CONFIG_KEY_0': f'url.{tmp_path / "remotes"}/.insteadOf',
+            'GIT_CONFIG_VALUE_0': 'https://github.com/',
+        }
+        env.pop('PROTEUS_CLONE_STAYS', None)
+        # The script names the clone below the resolved PROTEUS root.
+        clone = Path(os.path.realpath(root)) / 'MORS'
+        return {'root': root, 'shas': shas, 'log': log, 'env': env, 'clone': clone}
+
+    @staticmethod
+    def _call(site, *args: str) -> subprocess.CompletedProcess:
+        """Run the shipped clone_and_install with ``args``, under install.sh's options."""
+        return _run_module_phase(site['env'], shlex.join(['clone_and_install', *args]))
+
+    def test_new_clone_is_installed_at_the_floor_tag(self, site):
+        """A new clone sits at the tagged commit, detached, and is installed editable.
+
+        The tip is one commit past the tag, so a clone left on the default
+        branch fails the first equality.
+        """
+        tagged, tip = site['shas']['MORS']
+        result = self._call(site, 'MORS', 'fwl-mors')
+        assert result.returncode == 0, result.stdout + result.stderr
+        clone = site['root'] / 'MORS'
+        assert git(clone, 'rev-parse', 'HEAD') == tagged != tip
+        detached = subprocess.run(
+            ['git', '-C', str(clone), 'symbolic-ref', '-q', 'HEAD'],
+            capture_output=True,
+            timeout=10,
+        )
+        assert detached.returncode == 1
+        assert site['log'].read_text().splitlines() == [
+            f'install -U -e {os.path.realpath(clone)}'
+        ]
+
+    @staticmethod
+    def _detached_at_old_tag(site) -> tuple[Path, str]:
+        """Clone MORS into the root, detached at the tag 26.10.05 on the first commit.
+
+        The tag goes into the remote first, so the clone carries it as the
+        installer's clone of an older floor does. Returns the clone and the
+        first commit.
+        """
+        tagged, _ = site['shas']['MORS']
+        remote = site['root'].parent / 'remotes' / 'FormingWorlds' / 'MORS.git'
+        first = git(remote, 'rev-parse', f'{tagged}~1')
+        git(remote, 'tag', '26.10.05', first)
+        clone = site['root'] / 'MORS'
+        git(site['root'], 'clone', '-q', str(remote), str(clone))
+        git(clone, 'checkout', '-q', 'tags/26.10.05')
+        return clone, first
+
+    def test_branch_clone_is_left_on_its_commit(self, site):
+        """A second run reports a clone on a branch behind the tag, with the commands that move
+        it by hand, and installs it unchanged.
+
+        The clone is put on a new branch at the commit below the tag first, as a
+        developer would; a function that checks out the floor tag again moves it.
+        """
+        tagged, _ = site['shas']['MORS']
+        clone, real = site['root'] / 'MORS', site['clone']
+        assert self._call(site, 'MORS', 'fwl-mors').returncode == 0
+        git(clone, 'checkout', '-q', '-b', 'old', 'HEAD~1')
+        below = git(clone, 'rev-parse', 'HEAD')
+        result = self._call(site, 'MORS', 'fwl-mors')
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert git(clone, 'rev-parse', 'HEAD') == below != tagged
+        lines = result.stdout.splitlines()
+        line = (
+            f'fwl-mors: {real} stays as it is: on branch old, behind the tag;'
+            ' PROTEUS expects the release tag 26.10.06'
+        )
+        assert lines.count(line) == 1
+        assert lines[lines.index(line) + 3] == (
+            f'        git -C {real} checkout --detach refs/tags/26.10.06'
+        )
+        assert 'checked out release tag' not in result.stdout
+        assert 'is at the release tag' not in result.stdout
+        assert site['log'].read_text().splitlines()[1:] == [f'install -U -e {real}']
+
+    def test_detached_clone_at_an_older_tag_stays_where_it_is(self, site):
+        """A clone the installer left at the tag of an older floor (26.10.05) stays there, with
+        its untracked file, and is named as behind the tag 26.10.06; nothing is cloned.
+
+        A function that moves the clone lands on the tag, and one that pulls
+        lands on the tip.
+        """
+        tagged, tip = site['shas']['MORS']
+        clone, first = self._detached_at_old_tag(site)
+        (clone / 'notes.txt').write_text('kept\n')
+        result = self._call(site, 'MORS', 'fwl-mors')
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert git(clone, 'rev-parse', 'HEAD') == first
+        assert first not in (tagged, tip)
+        assert (clone / 'notes.txt').read_text() == 'kept\n'
+        assert (
+            f'fwl-mors: {site["clone"]} stays as it is: commit {first[:7]} (26.10.05), behind the'
+            ' tag; PROTEUS expects the release tag 26.10.06'
+        ) in result.stdout.splitlines()
+        assert 'checked out release tag' not in result.stdout
+        assert 'Cloning' not in result.stdout
+        assert site['log'].read_text().splitlines() == [f'install -U -e {site["clone"]}']
+
+    def test_detached_clone_at_the_floor_tag_is_not_cloned_again(self, site):
+        """A clone already at the floor tag is installed in place: an untracked marker
+        file survives, so no new clone replaced it."""
+        tagged, _ = site['shas']['MORS']
+        clone, real = site['root'] / 'MORS', site['clone']
+        assert self._call(site, 'MORS', 'fwl-mors').returncode == 0
+        (clone / 'marker.txt').write_text('kept\n')
+        result = self._call(site, 'MORS', 'fwl-mors')
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert (clone / 'marker.txt').read_text() == 'kept\n'
+        assert git(clone, 'rev-parse', 'HEAD') == tagged
+        assert f'fwl-mors: {real} is at the release tag 26.10.06' in result.stdout
+        assert 'stays as it is' not in result.stdout
+        assert 'Cloning' not in result.stdout
+        assert site['log'].read_text().splitlines()[1:] == [f'install -U -e {real}']
+
+    def test_detached_clone_ahead_of_the_floor_tag_is_in_order(self, site):
+        """A detached clone that the user put on the tip, past the floor tag, satisfies the >=
+        floor: it stays there with one line that says it is newer, without hand commands, and
+        is installed; the installer does not move it back."""
+        tagged, tip = site['shas']['MORS']
+        clone, _ = self._detached_at_old_tag(site)
+        git(clone, 'checkout', '-q', '--detach', tip)
+        result = self._call(site, 'MORS', 'fwl-mors')
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert git(clone, 'rev-parse', 'HEAD') == tip != tagged
+        line = f'fwl-mors: {site["clone"]} is newer than the release tag 26.10.06 (commit {tip[:7]})'
+        assert result.stdout.splitlines().count(line) == 1
+        assert 'stays as it is' not in result.stdout
+        assert 'fetch --tags' not in result.stdout
+        assert 'checked out release tag' not in result.stdout
+        assert 'is at the release tag' not in result.stdout
+        assert site['log'].read_text().splitlines() == [f'install -U -e {site["clone"]}']
+
+    def test_clone_with_an_unreachable_remote_is_kept_without_a_fetch(self, site):
+        """With the remote gone, a clone behind the tag is still kept and installed, and no
+        fetch is tried: there is no fetch warning, and HEAD stays on its commit."""
+        clone, first = self._detached_at_old_tag(site)
+        remote = site['root'].parent / 'remotes' / 'FormingWorlds' / 'MORS.git'
+        remote.rename(remote.with_name('MORS.moved'))
+        result = self._call(site, 'MORS', 'fwl-mors')
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert 'fetch' not in (result.stdout + result.stderr).replace('fetch --tags', '')
+        assert 'behind the tag' in result.stdout
+        assert git(clone, 'rev-parse', 'HEAD') == first
+        assert site['log'].read_text().splitlines() == [f'install -U -e {site["clone"]}']
+
+    def test_folder_that_is_not_a_git_clone_is_installed_as_it_is(self, site):
+        """A MORS folder without .git is installed as it is and keeps its file; the installer
+        never replaces an existing folder. The stay line names the release the floor 26.10.6
+        of pyproject.toml asks for, as there is no clone to ask for tags."""
+        plain = site['root'] / 'MORS'
+        plain.mkdir()
+        (plain / 'setup.py').write_text('# mine\n')
+        result = self._call(site, 'MORS', 'fwl-mors')
+        assert result.returncode == 0, result.stdout + result.stderr
+        line = (
+            f'fwl-mors: {site["clone"]} stays as it is: not a git clone;'
+            ' PROTEUS expects release 26.10.6'
+        )
+        assert [ln for ln in result.stdout.splitlines() if 'stays as it is' in ln] == [line]
+        assert 'release tag 26.10' not in result.stdout
+        assert sorted(p.name for p in plain.iterdir()) == ['setup.py']
+        assert site['log'].read_text().splitlines() == [f'install -U -e {site["clone"]}']
+
+    def test_clone_git_cannot_read_is_installed_as_it_is(self, site):
+        """A MORS folder whose .git git cannot read (rev-parse exits 128) is installed as it
+        is with the stay line of an unreadable clone, and nothing is cloned over it."""
+        broken = site['root'] / 'MORS'
+        (broken / '.git').mkdir(parents=True)
+        site['env']['GIT_CEILING_DIRECTORIES'] = str(site['root'].parent)
+        rc = subprocess.run(
+            ['git', '-C', str(broken), 'rev-parse', '--show-toplevel'],
+            capture_output=True,
+            env=site['env'],
+            timeout=10,
+        ).returncode
+        assert rc == 128
+        result = self._call(site, 'MORS', 'fwl-mors')
+        assert result.returncode == 0, result.stdout + result.stderr
+        line = (
+            f'fwl-mors: {site["clone"]} stays as it is: not a readable git clone;'
+            ' PROTEUS expects release 26.10.6'
+        )
+        assert [ln for ln in result.stdout.splitlines() if 'stays as it is' in ln] == [line]
+        assert sorted(p.name for p in broken.iterdir()) == ['.git']
+        assert site['log'].read_text().splitlines() == [f'install -U -e {site["clone"]}']
+
+    def test_detached_clone_with_a_local_commit_is_kept(self, site):
+        """A detached clone holding a commit that is on no remote is kept and installed: the
+        commit stays checked out and is named on a line of history without the tag."""
+        clone, _ = self._detached_at_old_tag(site)
+        (clone / 'version.txt').write_text('local work\n')
+        git(clone, 'commit', '-q', '-am', 'local work')
+        local = git(clone, 'rev-parse', 'HEAD')
+        result = self._call(site, 'MORS', 'fwl-mors')
+        assert result.returncode == 0, result.stdout + result.stderr
+        line = (
+            f'fwl-mors: {site["clone"]} stays as it is: commit {local[:7]}'
+            f' (26.10.05-1-g{local[:7]}), on a line of history without the tag;'
+            ' PROTEUS expects the release tag 26.10.06'
+        )
+        assert result.stdout.splitlines().count(line) == 1
+        assert git(clone, 'rev-parse', 'HEAD') == local
+        assert (clone / 'version.txt').read_text() == 'local work\n'
+        assert site['log'].read_text().splitlines() == [f'install -U -e {site["clone"]}']
+
+    def test_floor_without_tag_stops_the_installer(self, site):
+        """A floor with no release tag fails, names the module, and installs nothing.
+
+        The new clone is removed, so a re-run clones again rather than
+        installing the branch tip as an existing clone.
+        """
+        result = self._call(site, 'JANUS', 'fwl-janus')
+        output = result.stdout + result.stderr
+        assert result.returncode == 1
+        assert 'Could not install JANUS (fwl-janus); see the error above' in output
+        assert "'fwl-janus' floor 26.10.08: no tag matches it" in output
+        assert site['log'].read_text() == ''
+        assert not (site['root'] / 'JANUS').exists()
+
+
+_PAIRED_BRANCH = 'tl/paired-feature'
+
+
+class TestModulePhaseSummary:
+    """The Python module phase of install.sh writes nothing to an existing clone and names, in
+    one line, every clone that is not at its release tag."""
+
+    REPOS = ('MORS', 'JANUS', 'CALLIOPE', 'ZEPHYRUS', 'aragog', 'Zalmoxis')
+
+    @pytest.fixture
+    def site(self, tmp_path):
+        """A PROTEUS copy with the six module scripts, a local remote per module with the tag
+        26.10.06 on the second of 3 commits, stubs for pip and ssh, git URLs rewritten to the
+        local remotes, and a git wrapper first on PATH that lets only read-only calls reach a
+        module folder or the PROTEUS root."""
+        repos = {r: f'fwl-{r.lower()}' for r in self.REPOS}
+        root = scratch_proteus_root(
+            tmp_path / 'proteus', [f'{d}>=26.10.6' for d in repos.values()]
+        )
+        for script in ('get_aragog.sh', 'get_zalmoxis.sh'):
+            shutil.copy2(TOOLS_DIR / script, root / 'tools' / script)
+        base = tmp_path / 'remotes'
+        shas = {}
+        for repo in self.REPOS:
+            shas[repo] = _module_repo(tmp_path / 'work' / repo)
+            git(
+                tmp_path,
+                'clone',
+                '-q',
+                '--bare',
+                str(tmp_path / 'work' / repo),
+                str(base / 'FormingWorlds' / f'{repo}.git'),
+            )
+        stubs = tmp_path / 'stubs'
+        stubs.mkdir()
+        for name, body in (('pip', 'echo "$@" >> "$STUB_PIP_LOG"'), ('ssh', 'exit 255')):
+            (stubs / name).write_text(f'#!/bin/sh\n{body}\n')
+            (stubs / name).chmod(0o755)
+        guard = tmp_path / 'guard'
+        guard.mkdir()
+        calls, marker = tmp_path / 'git-calls.log', tmp_path / 'git-write.marker'
+        install_git_guard(
+            guard, calls, marker, roots=[root], trees=[root / r for r in self.REPOS]
+        )
+        (tmp_path / 'tmp').mkdir()
+        env = {
+            **os.environ,
+            'PATH': f'{guard}{os.pathsep}{stubs}{os.pathsep}{os.environ["PATH"]}',
+            'GH_PREFIX': f'{base}/',
+            'SCRIPT_DIR': str(root),
+            'STUB_PIP_LOG': str(tmp_path / 'pip.log'),
+            'TMPDIR': str(tmp_path / 'tmp'),
+            'GIT_CONFIG_COUNT': '1',
+            'GIT_CONFIG_KEY_0': f'url.{base}/.insteadOf',
+            'GIT_CONFIG_VALUE_0': 'https://github.com/',
+            'GIT_CEILING_DIRECTORIES': str(tmp_path),
+        }
+        for name in (
+            'GIT_SSH_COMMAND',
+            'GITHUB_HEAD_REF',
+            'GITHUB_REF_NAME',
+            'PROTEUS_CLONE_STAYS',
+        ):
+            env.pop(name, None)
+        return {
+            'root': root,
+            'real': Path(os.path.realpath(root)),
+            'shas': shas,
+            'env': env,
+            'remotes': base / 'FormingWorlds',
+            'calls': calls,
+            'marker': marker,
+        }
+
+    @staticmethod
+    def _clone(site, repo: str, *checkout: str) -> Path:
+        """Clone ``repo`` from its remote into the root, then check out ``checkout`` if given."""
+        clone = site['root'] / repo
+        git(site['root'], 'clone', '-q', str(site['remotes'] / f'{repo}.git'), str(clone))
+        if checkout:
+            git(clone, 'checkout', '-q', *checkout)
+        return clone
+
+    @staticmethod
+    def _phase_block() -> str:
+        """The module lines of install.sh, from the summary file to the shipped summary call.
+
+        Each anchor is found by its text and must be in install.sh once.
+        """
+        lines = INSTALL_SH.read_text().splitlines()
+        starts = [i for i, ln in enumerate(lines) if ln.startswith('PROTEUS_CLONE_STAYS=$(')]
+        ends = [i for i, ln in enumerate(lines) if ln == 'report_stayed_clones']
+        assert len(starts) == 1 and len(ends) == 1, (starts, ends)
+        assert starts[0] < ends[0]
+        return '\n'.join(lines[starts[0] : ends[0] + 1]) + '\n'
+
+    def _run_phase(self, site) -> subprocess.CompletedProcess:
+        """Run the module lines of install.sh with the git wrapper; no write may reach a clone."""
+        result = _run_module_phase(
+            site['env'], self._phase_block(), cwd=site['root'], timeout=60
+        )
+        assert not site['marker'].exists(), site['calls'].read_text()
+        return result
+
+    def test_summary_names_exactly_the_clones_that_stay(self, site):
+        """MORS on a branch below the tag, CALLIOPE as a plain folder and aragog one commit
+        below the tag are named in the order the installer reached them, in one warning that
+        says what the install does with them; JANUS, cloned new at the tag, Zalmoxis, already
+        at it, and ZEPHYRUS, one commit past it, are not.
+
+        Each clone that stays gets its stay line once and keeps its HEAD, ZEPHYRUS gets the
+        line of a newer clone, and no line says that a clone was checked out at the release
+        tag. The summary file is removed.
+        """
+        real = site['real']
+        mors = self._clone(site, 'MORS', '-b', 'old', '26.10.06~1')
+        (site['root'] / 'CALLIOPE').mkdir()
+        (site['root'] / 'CALLIOPE' / 'setup.py').write_text('# mine\n')
+        tip = site['shas']['ZEPHYRUS'][1]
+        zephyrus = self._clone(site, 'ZEPHYRUS', '--detach', tip)
+        below = git(site['remotes'] / 'aragog.git', 'rev-parse', '26.10.06~1')
+        aragog = self._clone(site, 'aragog', '--detach', below)
+        self._clone(site, 'Zalmoxis', 'tags/26.10.06')
+        heads = {c: git(c, 'rev-parse', 'HEAD') for c in (mors, zephyrus, aragog)}
+
+        result = self._run_phase(site)
+        assert result.returncode == 0, result.stdout + result.stderr
+        out = (result.stdout + result.stderr).splitlines()
+        summary = [ln for ln in out if 'Not at their release tag' in ln]
+        assert summary == [
+            f'{_WARN_PREFIX}Not at their release tag: MORS (branch old, behind),'
+            f' CALLIOPE (not a git clone), aragog (commit {below[:7]}, behind).'
+            ' A clone that is older than the minimum version is not used: the PROTEUS install'
+            ' takes that release from PyPI. The commands printed above move a clone to its tag'
+            ' or replace it; a paired branch without the release has no command, its release'
+            ' comes from PyPI.'
+        ]
+        expected = 'PROTEUS expects the release tag 26.10.06'
+        for dist, repo, found in (
+            ('fwl-mors', 'MORS', f'on branch old, behind the tag; {expected}'),
+            ('fwl-calliope', 'CALLIOPE', 'not a git clone; PROTEUS expects release 26.10.6'),
+            ('fwl-aragog', 'aragog', f'commit {below[:7]}, behind the tag; {expected}'),
+        ):
+            assert out.count(f'{dist}: {real / repo} stays as it is: {found}') == 1
+            assert not [ln for ln in out if ln.startswith(f'{dist}: checked out release tag')]
+        zephyrus_line = f'fwl-zephyrus: {real / "ZEPHYRUS"} is newer than the release tag'
+        assert out.count(f'{zephyrus_line} 26.10.06 (commit {tip[:7]})') == 1
+        assert not [ln for ln in out if ln.startswith('fwl-zephyrus: checked out release tag')]
+        assert {c: git(c, 'rev-parse', 'HEAD') for c in heads} == heads
+        assert any(ln.startswith('fwl-janus: checked out release tag 26.10.06') for ln in out)
+        assert f'fwl-zalmoxis: {real / "Zalmoxis"} is at the release tag 26.10.06' in out
+        assert list(Path(site['env']['TMPDIR']).iterdir()) == []
+
+    def test_no_summary_when_every_clone_is_at_its_tag(self, site):
+        """With every module already cloned at its tag, the phase prints the at-tag line 6
+        times, no summary line and leaves no summary file; a summary printed without a check
+        names an empty list."""
+        for repo in self.REPOS:
+            self._clone(site, repo, 'tags/26.10.06')
+        result = self._run_phase(site)
+        assert result.returncode == 0, result.stdout + result.stderr
+        output = result.stdout + result.stderr
+        assert 'Not at their release tag' not in output
+        assert output.count('is at the release tag 26.10.06') == 6
+        assert 'stays as it is' not in output
+        assert list(Path(site['env']['TMPDIR']).iterdir()) == []
+
+    def test_no_summary_when_every_clone_is_new(self, site):
+        """With no module cloned yet, each is cloned detached at the tag of its floor and no
+        summary line follows. Every remote also has the newer tag 26.11.01 on its tip, so a
+        choice of the newest tag lands on the tip."""
+        for repo in self.REPOS:
+            git(site['remotes'] / f'{repo}.git', 'tag', '26.11.01', 'main')
+        result = self._run_phase(site)
+        assert result.returncode == 0, result.stdout + result.stderr
+        output = result.stdout + result.stderr
+        assert 'Not at their release tag' not in output
+        assert output.count('checked out release tag 26.10.06') == 6
+        heads = {repo: git(site['root'] / repo, 'rev-parse', 'HEAD') for repo in self.REPOS}
+        assert heads == {repo: site['shas'][repo][0] for repo in self.REPOS}
+        assert all(heads[repo] != site['shas'][repo][1] for repo in self.REPOS)
+        assert list(Path(site['env']['TMPDIR']).iterdir()) == []
+
+    def test_aragog_clone_on_a_paired_branch_is_not_named(self, site):
+        """PROTEUS on a feature branch that the aragog remote has gives a new aragog clone on
+        that branch, which is in order: no summary line, neither after the run that clones it
+        nor after a second run, which prints the paired-branch line for it."""
+        work = site['root'].parent / 'work' / 'aragog'
+        git(work, 'checkout', '-q', '-b', _PAIRED_BRANCH)
+        (work / 'version.txt').write_text('paired\n')
+        git(work, 'commit', '-q', '-am', 'paired commit')
+        git(work, 'push', '-q', str(site['remotes'] / 'aragog.git'), 'HEAD')
+        for repo in ('MORS', 'JANUS', 'CALLIOPE', 'ZEPHYRUS', 'Zalmoxis'):
+            self._clone(site, repo, 'tags/26.10.06')
+        site['env']['GITHUB_HEAD_REF'] = _PAIRED_BRANCH
+        result = self._run_phase(site)
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert 'Not at their' not in result.stdout + result.stderr
+        assert git(site['root'] / 'aragog', 'symbolic-ref', '--short', 'HEAD') == _PAIRED_BRANCH
+        again = self._run_phase(site)
+        assert again.returncode == 0, again.stdout + again.stderr
+        assert 'Not at their' not in again.stdout + again.stderr
+        assert (
+            f'fwl-aragog: {site["real"] / "aragog"} is on the paired branch {_PAIRED_BRANCH},'
+            ' as PROTEUS on that branch expects'
+        ) in again.stdout.splitlines()
+        assert 'stays as it is' not in again.stdout
+
+    def test_aragog_clone_on_a_paired_branch_without_the_tag_is_named(self, site):
+        """An aragog paired branch that starts below the tag commit, with a commit of its own,
+        does not hold the release: on the run after the one that clones it, aragog gets the
+        neutral line, the line that the PROTEUS install takes the release from PyPI and an
+        entry in the summary, which the other 5 modules at their tag do not get. No hand
+        command is printed for it and its HEAD stays on the branch."""
+        work = site['root'].parent / 'work' / 'aragog'
+        git(work, 'checkout', '-q', '-b', _PAIRED_BRANCH, '26.10.06~1')
+        (work / 'version.txt').write_text('paired\n')
+        git(work, 'commit', '-q', '-am', 'paired commit')
+        git(work, 'push', '-q', str(site['remotes'] / 'aragog.git'), 'HEAD')
+        paired = git(work, 'rev-parse', 'HEAD')
+        for repo in ('MORS', 'JANUS', 'CALLIOPE', 'ZEPHYRUS', 'Zalmoxis'):
+            self._clone(site, repo, 'tags/26.10.06')
+        site['env']['GITHUB_HEAD_REF'] = _PAIRED_BRANCH
+        assert self._run_phase(site).returncode == 0
+        aragog = site['root'] / 'aragog'
+        assert git(aragog, 'rev-parse', 'HEAD') == paired
+
+        result = self._run_phase(site)
+        assert result.returncode == 0, result.stdout + result.stderr
+        out = (result.stdout + result.stderr).splitlines()
+        neutral = (
+            f'fwl-aragog: {site["real"] / "aragog"} is on the paired branch {_PAIRED_BRANCH},'
+            ' as PROTEUS on that branch expects'
+        )
+        assert out[out.index(neutral) + 1] == (
+            '    This branch does not hold the release 26.10.06: the PROTEUS install takes that'
+            ' release from PyPI, not this folder.'
+        )
+        assert [ln for ln in out if 'Not at their release tag' in ln] == [
+            f'{_WARN_PREFIX}Not at their release tag: aragog (paired branch {_PAIRED_BRANCH},'
+            ' without the release 26.10.06). A clone that is older than the minimum version is'
+            ' not used: the PROTEUS install takes that release from PyPI. The commands printed'
+            ' above move a clone to its tag or replace it; a paired branch without the release'
+            ' has no command, its release comes from PyPI.'
+        ]
+        assert not [ln for ln in out if 'git -C' in ln or 'stays as it is' in ln]
+        assert git(aragog, 'symbolic-ref', '--short', 'HEAD') == _PAIRED_BRANCH
+        assert git(aragog, 'rev-parse', 'HEAD') == paired
+        assert list(Path(site['env']['TMPDIR']).iterdir()) == []
+
+    @pytest.mark.parametrize('value', [None, ''], ids=['unset', 'empty'])
+    def test_summary_tolerates_an_unset_or_empty_file_name(self, value):
+        """report_stayed_clones returns 0 and prints nothing under set -u when the file name
+        is unset or empty, as after a failed mktemp."""
+        env = {k: v for k, v in os.environ.items() if k != 'PROTEUS_CLONE_STAYS'}
+        if value is not None:
+            env['PROTEUS_CLONE_STAYS'] = value
+        result = _run_module_phase(env, 'report_stayed_clones\necho AFTER\n')
+        assert result.returncode == 0, result.stderr
+        assert result.stdout == 'AFTER\n'
+        assert result.stderr == ''
+
+    def test_summary_follows_the_last_module_clone(self):
+        """The summary call is the line after the Zalmoxis setup and comes before the
+        PROTEUS install and the import check, so a later failure does not lose it."""
+        lines = INSTALL_SH.read_text().splitlines()
+        call = lines.index('report_stayed_clones')
+        assert lines[call - 1] == 'bash tools/get_zalmoxis.sh 2>&1'
+        assert call < lines.index('verify_proteus_import')
+        assert call < lines.index('pip install -e ".[develop]"')
+
+
+class TestCloneAndInstallCalls:
+    """Every module install.sh clones has a floor to pin it to."""
+
+    def test_each_call_names_a_distribution_with_a_floor(self):
+        """Each call passes 2 arguments, and the 2nd has a >= floor in pyproject.toml.
+
+        The set of distributions is pinned too, so an empty scan cannot pass.
+        """
+        calls = _clone_and_install_calls()
+        assert [len(args) for args in calls] == [2] * len(calls)
+        # get_python_module.sh installs <RepoName> as fwl-<lowercase name>.
+        assert [args[1] for args in calls] == [f'fwl-{args[0].lower()}' for args in calls]
+        assert {args[1] for args in calls} == {
+            'fwl-mors',
+            'fwl-janus',
+            'fwl-calliope',
+            'fwl-zephyrus',
+        }
+        for args in calls:
+            floor = subprocess.run(
+                [sys.executable, str(TOOLS_DIR / '_module_pins.py'), args[1], 'floor'],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            assert floor.returncode == 0, floor.stderr
+            assert floor.stdout.strip()[0].isdigit()
+
+
+def _essential_data_lines() -> list[str]:
+    """The lines of the ``essential)`` branch of install.sh's data-mode case, to its ``;;``."""
+    lines = INSTALL_SH.read_text().splitlines()
+    start = lines.index('    essential)')
+    end = lines.index('        ;;', start)
+    return [line.strip() for line in lines[start + 1 : end]]
+
+
+def _default_star():
+    """The star of a config that sets no ``[star]`` section."""
+    import attrs
+
+    from proteus.config._config import Config
+
+    return attrs.fields(Config).star.default.factory()
+
+
+class TestEssentialData:
+    """The essential data set holds what the default config reads."""
+
+    def test_essential_set_fetches_the_phoenix_grid_of_the_default_star(self):
+        """The essential branch downloads the PHOENIX grid at the default star's
+        [Fe/H] and [alpha/M], read from the config defaults, so a changed default
+        star fails here rather than at an offline first run."""
+        from proteus.utils.phoenix_helper import phoenix_to_grid
+
+        star = _default_star()
+        assert star.module == 'mors'
+        assert star.mors.spectrum_source == 'phoenix'
+        phoenix = [line for line in _essential_data_lines() if 'proteus get phoenix' in line]
+        assert len(phoenix) == 1
+        command, fallback = phoenix[0].split(' || ', 1)
+        assert fallback == 'warn "PHOENIX download had issues"'
+        words = shlex.split(command)
+        assert words[:3] == ['proteus', 'get', 'phoenix']
+        assert words[-1] == '2>&1'
+        feh = float(words[words.index('--feh') + 1])
+        alpha = float(words[words.index('--alpha') + 1])
+        assert (feh, alpha) == (star.mors.phoenix_FeH, star.mors.phoenix_alpha)
+        # The grid the CLI fetches is the one the default star snaps to.
+        assert phoenix_to_grid(FeH=feh, alpha=alpha) == phoenix_to_grid(
+            FeH=star.mors.phoenix_FeH, alpha=star.mors.phoenix_alpha
+        )
+
+    def test_essential_set_keeps_its_other_downloads(self):
+        """The PHOENIX line joins the 4 other downloads, each with a warn fall-back,
+        and the --all-data branch keeps its own PHOENIX line."""
+        gets = [line for line in _essential_data_lines() if line.startswith('proteus get ')]
+        assert [shlex.split(line.split(' || ')[0])[2] for line in gets] == [
+            'spectral',
+            'spectral',
+            'stellar',
+            'phoenix',
+            'interiordata',
+        ]
+        assert all(' 2>&1 || warn "' in line for line in gets)
+        commands = [
+            line
+            for line in INSTALL_SH.read_text().splitlines()
+            if line.strip().startswith('proteus get phoenix ')
+        ]
+        assert len(commands) == 2

@@ -76,6 +76,28 @@ GASES_STANDARD = (
 REFRACTORY_GASES = tuple(vap_list)
 
 
+def _aerosol_gas(name: str, gases: list[str]) -> str | None:
+    """Match an aerosol name to a gas name of the same atmosphere file.
+
+    AGNI writes an aerosol as the name of its gas in lower case ('feo' for 'FeO').
+
+    Parameters
+    ----------
+    name : str
+        Aerosol name of the atmosphere file.
+    gases : list of str
+        Gas names of the same file.
+
+    Returns
+    -------
+    str or None
+        The one gas whose name equals ``name`` apart from case; None when no gas
+        or more than one gas matches ('co' with both 'CO' and 'Co').
+    """
+    match = [g for g in gases if g.lower() == name.lower()]
+    return match[0] if len(match) == 1 else None
+
+
 def plot_chem_atmosphere(
     output_dir: str,
     chem_module: str,
@@ -245,8 +267,10 @@ def plot_chem_atmosphere(
     # Check for individual aerosol species
     num_aerosols = 0
     if 'aerosols' in atm_profile.keys():
+        gases = [k[:-4] for k in atm_profile if k.endswith('_vmr')]
         for aer_name in atm_profile['aerosols']:
             num_aerosols += 1
+            gas = _aerosol_gas(aer_name, gases)
             aer_mmr = atm_profile[f'{aer_name}_mmr']
             aer_arr = [aer_mmr[0]] + list(aer_mmr)
             n = min(len(aer_arr), len(parr))
@@ -256,8 +280,8 @@ def plot_chem_atmosphere(
                 ls='solid',
                 lw=1.5,
                 alpha=0.7,
-                color=get_colour(aer_name),
-                label=aer_name,
+                color=get_colour(gas or aer_name),
+                label=latexify(gas) if gas else aer_name,
             )
 
     # Add temperature profile to Panel 2 (secondary x-axis at top)
