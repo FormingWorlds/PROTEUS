@@ -74,7 +74,7 @@ MODELS = {
     'planatmo': {'color': WONG[7], 'label': 'PlanAtMO'},
 }
 
-GAS_SPECIES = ['H2O', 'CO2', 'CO', 'H2', 'CH4', 'N2', 'S2', 'SO2', 'H2S']
+GAS_SPECIES = ['H2O', 'CO2', 'CO', 'H2', 'CH4', 'N2', 'S2', 'SO2', 'H2S', 'O2']
 GAS_LABELS = {
     'H2O': r'H$_2$O',
     'CO2': r'CO$_2$',
@@ -85,6 +85,7 @@ GAS_LABELS = {
     'S2': r'S$_2$',
     'SO2': r'SO$_2$',
     'H2S': r'H$_2$S',
+    'O2': r'O$_2$',
 }
 GAS_COLORS = {
     'H2O': '#2196F3',
@@ -96,6 +97,7 @@ GAS_COLORS = {
     'S2': '#FFC107',
     'SO2': '#607D8B',
     'H2S': '#E91E63',
+    'O2': '#00BCD4',
 }
 
 _PLOT_STYLE = {
@@ -130,24 +132,19 @@ PHI_RELAX = 0.01
 
 
 def _get_proteus_sha(*runs):
-    """Commit that made the runs, from their logs; else the commit of this checkout."""
-    found = set()
+    """Commits that made the runs, from their logs, in argument order; 'unknown' for a log without one."""
+    found = []
     for run in runs:
         log = run / 'proteus_00.log' if run else None
-        if log is not None and log.is_file():
-            found.update(re.findall(r'PROTEUS git hash\s+([0-9a-f]{8})', log.read_text()))
-    if found:
-        return '/'.join(sorted(found))
-    try:
-        r = subprocess.run(
-            ['git', 'rev-parse', '--short', 'HEAD'],
-            capture_output=True,
-            text=True,
-            cwd=Path(__file__).parent.parent,
-        )
-        return r.stdout.strip()
-    except Exception:
-        return '?'
+        if log is None or not log.is_file():
+            continue
+        shas = re.findall(r'PROTEUS git hash\s+([0-9a-f]{8})', log.read_text(errors='replace'))
+        if not shas:
+            print(f'Warning: no commit in {log}', file=sys.stderr)
+        for sha in shas or ['unknown']:
+            if sha not in found:
+                found.append(sha)
+    return '/'.join(found) or 'unknown'
 
 
 def _new_style(sha):
@@ -366,7 +363,7 @@ def plot_fig1(intercomp, pe, pv, NS, out):
         )
 
     ax.set_xlabel('Time (Myr)')
-    ax.set_ylabel('Melt fraction (by volume)')
+    ax.set_ylabel('Melt fraction (by volume; current PROTEUS runs by mass)')
     ax.set_xscale('log')
     ax.set_xlim(1e-3, 2e1)
     ax.set_ylim(0, 1.05)
@@ -1041,12 +1038,9 @@ def plot_fig6(intercomp, pv, NS, out):
                 )
 
     if pv is not None:
-        T = pv['T_surf'].values
-        log10_fO2_IW = _iw_fischer11(T)
-        iw_shift = (
-            pv['fO2_shift_IW_derived'].values if 'fO2_shift_IW_derived' in pv.columns else 4.0
-        )
-        log10_fO2 = log10_fO2_IW + iw_shift
+        # O2_bar is the oxygen fugacity of the run, which it sets at T_magma
+        T = pv['T_magma'].values
+        log10_fO2 = np.log10(pv['O2_bar'].values)
         kw = dict(
             color=NS['color'], linewidth=NS['linewidth'], label=NS['label'], zorder=NS['zorder']
         )
@@ -1056,8 +1050,8 @@ def plot_fig6(intercomp, pv, NS, out):
 
         row5 = _find_row_at_phi(pv, 0.05)
         if row5 is not None:
-            T5 = float(row5['T_surf'])
-            log_f5 = _iw_fischer11(T5) + float(row5.get('fO2_shift_IW_derived', 4.0))
+            T5 = float(row5['T_magma'])
+            log_f5 = np.log10(float(row5['O2_bar']))
             ax_abs.plot(
                 T5,
                 log_f5,
@@ -1676,7 +1670,8 @@ def main():
     matplotlib.rcParams.update(_PLOT_STYLE)
 
     intercomp = ensure_chili_repo(args.chili_repo)
-    sha = _get_proteus_sha(args.proteus_earth, args.proteus_venus)
+    grid_runs = sorted(args.grid_dir.glob('chili_grid_earth_*')) if args.grid_dir else []
+    sha = _get_proteus_sha(args.proteus_earth, args.proteus_venus, *grid_runs)
     NS = _new_style(sha)
     pe = _load_proteus_helpfile(args.proteus_earth) if args.proteus_earth else None
     pv = _load_proteus_helpfile(args.proteus_venus) if args.proteus_venus else None
