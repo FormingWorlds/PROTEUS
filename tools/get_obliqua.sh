@@ -34,6 +34,26 @@ esac
 exists=false
 if [ -e "$dest" ] || [ -L "$dest" ]; then exists=true; fi
 
+# The PROTEUS folder, the home folder and a folder that holds one of them are never the Obliqua folder.
+real=""
+if [ "$exists" = true ]; then
+    real=$(cd "$dest" 2>/dev/null && pwd -P) || real=""
+fi
+if [ -n "$real" ]; then
+    for keep in "$proteus_root" "${HOME:-}"; do
+        [ -n "$keep" ] || continue
+        up=$(cd "$keep" 2>/dev/null && pwd -P) || continue
+        while :; do
+            if [ "$up" -ef "$real" ]; then
+                echo "ERROR: $dest is $keep or a folder that holds it, and cannot be the Obliqua folder; it is unchanged" >&2
+                exit 1
+            fi
+            if [ "$up" = "/" ]; then break; fi
+            up=$(dirname "$up")
+        done
+    done
+fi
+
 # A clone of another project is never taken for Obliqua, with or without --force.
 if [ "$exists" = true ] && ! is_empty_dir "$dest" && is_own_clone "$dest" &&
     ! grep -q '^name = "Obliqua"' "$dest/Project.toml" 2>/dev/null; then
@@ -42,23 +62,10 @@ if [ "$exists" = true ] && ! is_empty_dir "$dest" && is_own_clone "$dest" &&
 fi
 
 if [ "$get_force" = true ] && [ "$exists" = true ]; then
-    real=$(cd "$dest" 2>/dev/null && pwd -P) || real=""
     if [ -z "$real" ]; then
         echo "ERROR: --force cannot enter $dest (not a folder, or no permission); it is unchanged" >&2
         exit 1
     fi
-    for keep in "$proteus_root" "${HOME:-}"; do
-        [ -n "$keep" ] || continue
-        up=$(cd "$keep" 2>/dev/null && pwd -P) || continue
-        while :; do
-            if [ "$up" -ef "$real" ]; then
-                echo "ERROR: --force would delete $keep; $dest is unchanged" >&2
-                exit 1
-            fi
-            if [ "$up" = "/" ]; then break; fi
-            up=$(dirname "$up")
-        done
-    done
     if ! is_empty_dir "$real" && ! is_own_clone "$dest"; then
         echo "ERROR: $dest holds files and is not a git clone of its own; move it away or delete it by hand; it is unchanged" >&2
         exit 1

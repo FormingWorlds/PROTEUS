@@ -3960,8 +3960,16 @@ class TestFurtherModulesPhase:
         tmp_dir.mkdir()
         install_log = scratch / 'install.log'
         install_log.write_text('')
+        stubs = scratch / 'bin_stubs'
+        stubs.mkdir()
+        py_log = scratch / 'python.log'
+        py_log.write_text('')
+        stub_py = stubs / 'python3'
+        stub_py.write_text(f'#!/bin/sh\necho "$@" >> {shlex.quote(str(py_log))}\nexit 0\n')
+        stub_py.chmod(0o755)
         env = {
             **_env_without_log_state(),
+            'PATH': f'{stubs}{os.pathsep}{os.environ["PATH"]}',
             'SCRIPT_DIR': str(scratch),
             'TMPDIR': str(tmp_dir),
             'LOGFILE': str(install_log),
@@ -3974,6 +3982,8 @@ class TestFurtherModulesPhase:
             'calls_log': log,
             'install_log': install_log,
             'tmp_dir': tmp_dir,
+            'python_log': py_log,
+            'stubs': stubs,
             'env': env,
         }
 
@@ -4176,9 +4186,15 @@ class TestFurtherModulesPhase:
         stubs = tmp_path / 'bin_stubs'
         stubs.mkdir()
         stub_py = stubs / 'python3'
-        stub_py.write_text('#!/bin/sh\necho "ImportError: DLL load failed" >&2\nexit 1\n')
+        stub_py.write_text(
+            '#!/bin/sh\n'
+            'case "$*" in\n'
+            '  *"import proteus"*) echo "ImportError: DLL load failed" >&2; exit 1 ;;\n'
+            '  *) echo "Python 3.12.0"; exit 0 ;;\n'
+            'esac\n'
+        )
         stub_py.chmod(0o755)
-        env_extra = {'PATH': f'{stubs}{os.pathsep}{os.environ["PATH"]}'}
+        env_extra = {'PATH': f'{stubs}{os.pathsep}{site["env"]["PATH"]}'}
         suffix = '\necho "PHASE_8_RAN"\n'
         res = self._run_phase(site, suffix=suffix, env_extra=env_extra)
         assert res.returncode != 0, res.stdout + res.stderr
@@ -4186,8 +4202,10 @@ class TestFurtherModulesPhase:
             'PROTEUS does not import after the setup steps of Morrigan, VULCAN, atmodeller and Obliqua. Error output:'
             in res.stderr
         )
+        assert 'ImportError: DLL load failed' in (res.stdout + res.stderr)
         assert (
-            'One of these steps changed a package that PROTEUS needs (see above).' in res.stderr
+            'PROTEUS imported before these steps and does not import now (see the error above).'
+            in res.stderr
         )
         assert 'Steps that failed:' not in res.stderr
         assert 'PHASE_8_RAN' not in (res.stdout + res.stderr)
@@ -4197,10 +4215,16 @@ class TestFurtherModulesPhase:
         stubs = tmp_path / 'bin_stubs'
         stubs.mkdir()
         stub_py = stubs / 'python3'
-        stub_py.write_text('#!/bin/sh\necho "ImportError: DLL load failed" >&2\nexit 1\n')
+        stub_py.write_text(
+            '#!/bin/sh\n'
+            'case "$*" in\n'
+            '  *"import proteus"*) echo "ImportError: DLL load failed" >&2; exit 1 ;;\n'
+            '  *) echo "Python 3.12.0"; exit 0 ;;\n'
+            'esac\n'
+        )
         stub_py.chmod(0o755)
         (site['tools'] / 'get_vulcan.sh').write_text('#!/bin/bash\nexit 1\n')
-        env_extra = {'PATH': f'{stubs}{os.pathsep}{os.environ["PATH"]}'}
+        env_extra = {'PATH': f'{stubs}{os.pathsep}{site["env"]["PATH"]}'}
         suffix = '\necho "PHASE_8_RAN"\n'
         res = self._run_phase(site, suffix=suffix, env_extra=env_extra)
         assert res.returncode != 0, res.stdout + res.stderr
@@ -4209,24 +4233,20 @@ class TestFurtherModulesPhase:
             in res.stderr
         )
         assert (
-            'One of these steps changed a package that PROTEUS needs (see above).' in res.stderr
+            'PROTEUS imported before these steps and does not import now (see the error above).'
+            in res.stderr
         )
         assert 'Steps that failed: VULCAN (bash tools/get_vulcan.sh).' in res.stderr
         assert 'PHASE_8_RAN' not in (res.stdout + res.stderr)
 
-    def test_second_import_check_passes_when_proteus_import_succeeds(self, site, tmp_path):
+    def test_second_import_check_passes_when_proteus_import_succeeds(self, site):
         """When PROTEUS imports successfully after further modules, the phase continues."""
-        stubs = tmp_path / 'bin_stubs'
-        stubs.mkdir()
-        stub_py = stubs / 'python3'
-        stub_py.write_text('#!/bin/sh\nexit 0\n')
-        stub_py.chmod(0o755)
-        env_extra = {'PATH': f'{stubs}{os.pathsep}{os.environ["PATH"]}'}
         suffix = '\necho "PHASE_8_RAN"\n'
-        res = self._run_phase(site, suffix=suffix, env_extra=env_extra)
+        res = self._run_phase(site, suffix=suffix)
         assert res.returncode == 0, res.stdout + res.stderr
         assert 'PROTEUS does not import after the setup steps' not in (res.stdout + res.stderr)
         assert 'PHASE_8_RAN' in res.stdout
+        assert site['python_log'].read_text().splitlines() == ['-c import proteus']
 
     def test_installer_phase_order_and_binding_positions(self):
         """Order of verify, bind_install_vars, further modules and second import check in install.sh."""
@@ -4245,13 +4265,14 @@ class TestFurtherModulesPhase:
         idx_last_module = max(
             i for i, ln in enumerate(lines) if ln.startswith('install_further_module "')
         )
+        idx_rm_stays = next(i for i, ln in enumerate(lines) if ln == 'rm -f "$FURTHER_STAYS"')
         idx_second_import = next(
             i
             for i, ln in enumerate(lines)
             if 'PROTEUS does not import after the setup steps' in ln
         )
         idx_phase8 = next(i for i, ln in enumerate(lines) if ln == 'CURRENT_PHASE=8')
-        assert idx_last_module < idx_second_import < idx_phase8
+        assert idx_last_module < idx_rm_stays < idx_second_import < idx_phase8
 
     def test_phase_seven_further_module_scripts_list_and_files(self):
         """Phase 7 further module invocations match the four expected scripts in order and files exist."""

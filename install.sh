@@ -1303,7 +1303,7 @@ rm -f "$FURTHER_STAYS"
 if ! import_log=$(python3 -c "import proteus" 2>&1); then
     fail "PROTEUS does not import after the setup steps of Morrigan, VULCAN, atmodeller and Obliqua. Error output:"
     printf '%s\n' "$import_log"
-    die "One of these steps changed a package that PROTEUS needs (see above).${FAILED_MODULES:+ Steps that failed: $FAILED_MODULES.}"
+    die "PROTEUS imported before these steps and does not import now (see the error above).${FAILED_MODULES:+ Steps that failed: $FAILED_MODULES.}"
 fi
 
 # ===================================================================

@@ -5536,7 +5536,8 @@ def test_obliqua_force_refuses_site_root(tmp_path):
     res = _run_tool(site, 'get_obliqua.sh', '--force', str(site['root']))
     assert res.returncode == 1, res.stdout + res.stderr
     assert (
-        f'ERROR: --force would delete {site["root"]}; {site["root"]} is unchanged' in res.stderr
+        f'ERROR: {site["root"]} is {site["root"]} or a folder that holds it, and cannot be the Obliqua folder; it is unchanged'
+        in res.stderr
     )
     assert sorted(p.name for p in site['root'].iterdir()) == before_names
     assert marker.read_text() == 'keep this file\n'
@@ -5571,7 +5572,8 @@ def test_obliqua_force_refuses_site_root_aliases(tmp_path, alias_mode):
     res = _run_tool(site, 'get_obliqua.sh', '--force', target_path)
     assert res.returncode == 1, res.stdout + res.stderr
     assert (
-        f'ERROR: --force would delete {site["root"]}; {target_path} is unchanged' in res.stderr
+        f'ERROR: {target_path} is {site["root"]} or a folder that holds it, and cannot be the Obliqua folder; it is unchanged'
+        in res.stderr
     )
     assert sorted(p.name for p in site['root'].iterdir()) == before_names
     assert marker.read_text() == 'keep alias\n'
@@ -5590,7 +5592,10 @@ def test_obliqua_force_refuses_parent_of_site_root(tmp_path):
     marker.write_text('preserve parent\n')
     res = _run_tool(site, 'get_obliqua.sh', '--force', str(parent))
     assert res.returncode == 1, res.stdout + res.stderr
-    assert f'ERROR: --force would delete {site["root"]}; {parent} is unchanged' in res.stderr
+    assert (
+        f'ERROR: {parent} is {site["root"]} or a folder that holds it, and cannot be the Obliqua folder; it is unchanged'
+        in res.stderr
+    )
     assert marker.read_text() == 'preserve parent\n'
     assert site['root'].is_dir()
     assert not any('.tmp.' in p.name or '.old.' in p.name for p in parent.iterdir())
@@ -5607,7 +5612,10 @@ def test_obliqua_force_refuses_home_and_home_parent(tmp_path):
     site['env']['HOME'] = str(fake_home)
     res = _run_tool(site, 'get_obliqua.sh', '--force', str(fake_home))
     assert res.returncode == 1, res.stdout + res.stderr
-    assert f'ERROR: --force would delete {fake_home}; {fake_home} is unchanged' in res.stderr
+    assert (
+        f'ERROR: {fake_home} is {fake_home} or a folder that holds it, and cannot be the Obliqua folder; it is unchanged'
+        in res.stderr
+    )
     assert (fake_home / 'home_marker.txt').read_text() == 'home content\n'
     assert not any('.tmp.' in p.name for p in tmp_path.iterdir())
 
@@ -5619,7 +5627,8 @@ def test_obliqua_force_refuses_home_and_home_parent(tmp_path):
     res2 = _run_tool(site, 'get_obliqua.sh', '--force', str(home_parent))
     assert res2.returncode == 1, res2.stdout + res2.stderr
     assert (
-        f'ERROR: --force would delete {home_nested}; {home_parent} is unchanged' in res2.stderr
+        f'ERROR: {home_parent} is {home_nested} or a folder that holds it, and cannot be the Obliqua folder; it is unchanged'
+        in res2.stderr
     )
     assert (home_parent / 'parent_marker.txt').read_text() == 'parent content\n'
     assert site['log'].read_text() == ''
@@ -5769,21 +5778,23 @@ def test_obliqua_uncommitted_clone_with_project_toml_advises_and_force_replaces(
 
 @pytest.mark.unit
 def test_obliqua_force_refuses_site_root_with_different_letter_case(tmp_path):
-    """Verify get_obliqua.sh --force refuses site root in uppercase on case-insensitive filesystems."""
+    """Verify get_obliqua.sh --force refuses site root with swapped letter case on case-insensitive filesystems."""
     site = _obliqua_site(tmp_path)
     root = site['root']
-    low_root = root.parent / 'proteus_root'
-    root.rename(low_root)
-    site['root'] = Path(os.path.realpath(low_root))
-    upper_root = low_root.parent / low_root.name.upper()
-    if not upper_root.exists():
-        pytest.skip('filesystem is case-sensitive')
-    res = _run_tool(site, 'get_obliqua.sh', '--force', str(upper_root))
+    marker = root / 'site_marker.txt'
+    marker.write_text('preserve site\n')
+    other = root.parent / root.name.swapcase()
+    assert str(other) != str(root)
+    if not other.exists():
+        pytest.skip('the file system tells letter case apart')
+    res = _run_tool(site, 'get_obliqua.sh', '--force', str(other))
     assert res.returncode == 1, res.stdout + res.stderr
     assert (
-        f'ERROR: --force would delete {site["root"]}; {upper_root} is unchanged' in res.stderr
+        f'ERROR: {other} is {site["root"]} or a folder that holds it, and cannot be the Obliqua folder; it is unchanged'
+        in res.stderr
     )
-    assert low_root.is_dir()
+    assert root.is_dir()
+    assert marker.read_text() == 'preserve site\n'
 
 
 @pytest.mark.unit
@@ -5830,6 +5841,99 @@ def test_obliqua_force_refuses_plain_copy_inside_git_repo(tmp_path, empty_git_di
     )
     assert (target / 'copy.txt').read_text() == 'copied file\n'
     assert site['log'].read_text() == ''
+
+
+@pytest.mark.unit
+def test_obliqua_force_refuses_site_root_when_git_repo(tmp_path):
+    """Verify get_obliqua.sh --force refuses site root even when it is a git repository."""
+    site = _obliqua_site(tmp_path)
+    git(site['root'], 'init', '-q', '-b', 'main')
+    marker = site['root'] / 'site_marker.txt'
+    marker.write_text('site marker\n')
+    git(site['root'], 'add', 'site_marker.txt')
+    git(site['root'], 'commit', '-q', '-m', 'init-site')
+    before_names = sorted(p.name for p in site['root'].iterdir())
+    res = _run_tool(site, 'get_obliqua.sh', '--force', str(site['root']))
+    assert res.returncode == 1, res.stdout + res.stderr
+    assert (
+        f'ERROR: {site["root"]} is {site["root"]} or a folder that holds it, and cannot be the Obliqua folder; it is unchanged'
+        in res.stderr
+    )
+    assert 'delete it by hand' not in res.stderr
+    assert sorted(p.name for p in site['root'].iterdir()) == before_names
+    assert marker.read_text() == 'site marker\n'
+
+
+@pytest.mark.unit
+def test_obliqua_no_force_refuses_site_root_when_git_repo(tmp_path):
+    """Verify get_obliqua.sh without --force refuses site root when it is a git repository."""
+    site = _obliqua_site(tmp_path)
+    git(site['root'], 'init', '-q', '-b', 'main')
+    marker = site['root'] / 'site_marker.txt'
+    marker.write_text('site marker\n')
+    git(site['root'], 'add', 'site_marker.txt')
+    git(site['root'], 'commit', '-q', '-m', 'init-site')
+    before_names = sorted(p.name for p in site['root'].iterdir())
+    res = _run_tool(site, 'get_obliqua.sh', str(site['root']))
+    assert res.returncode == 1, res.stdout + res.stderr
+    assert (
+        f'ERROR: {site["root"]} is {site["root"]} or a folder that holds it, and cannot be the Obliqua folder; it is unchanged'
+        in res.stderr
+    )
+    assert 'delete it by hand' not in res.stderr
+    assert sorted(p.name for p in site['root'].iterdir()) == before_names
+    assert marker.read_text() == 'site marker\n'
+    assert site['log'].read_text() == ''
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('with_force', [False, True], ids=['no-force', 'force'])
+def test_obliqua_refuses_home_when_git_repo(tmp_path, with_force):
+    """Verify get_obliqua.sh refuses HOME directory when HOME is a git repository."""
+    site = _obliqua_site(tmp_path)
+    fake_home = tmp_path / 'fake_home'
+    fake_home.mkdir()
+    git(fake_home, 'init', '-q', '-b', 'main')
+    marker = fake_home / 'home_marker.txt'
+    marker.write_text('home marker\n')
+    git(fake_home, 'add', 'home_marker.txt')
+    git(fake_home, 'commit', '-q', '-m', 'init-home')
+    site['env']['HOME'] = str(fake_home)
+    args = ['--force', str(fake_home)] if with_force else [str(fake_home)]
+    res = _run_tool(site, 'get_obliqua.sh', *args)
+    assert res.returncode == 1, res.stdout + res.stderr
+    assert (
+        f'ERROR: {fake_home} is {fake_home} or a folder that holds it, and cannot be the Obliqua folder; it is unchanged'
+        in res.stderr
+    )
+    assert 'delete it by hand' not in res.stderr
+    assert marker.read_text() == 'home marker\n'
+    assert site['log'].read_text() == ''
+
+
+@pytest.mark.unit
+def test_obliqua_force_replaces_symlink_to_pinned_clone(tmp_path):
+    """Verify get_obliqua.sh --force replaces symlink to pinned clone without deleting target."""
+    site = _obliqua_site(tmp_path)
+    first_clone = tmp_path / 'original_obliqua'
+    res_orig = _run_tool(site, 'get_obliqua.sh', str(first_clone))
+    assert res_orig.returncode == 0, res_orig.stdout + res_orig.stderr
+    orig_head = git(first_clone, 'rev-parse', 'HEAD')
+    assert orig_head == site['target_sha']
+
+    link_path = site['root'] / 'Obliqua'
+    link_path.symlink_to(first_clone)
+    assert link_path.is_symlink()
+
+    res = _run_tool(site, 'get_obliqua.sh', '--force', str(link_path))
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert not link_path.is_symlink()
+    assert link_path.is_dir()
+    assert (link_path / 'Project.toml').is_file()
+    assert git(link_path, 'rev-parse', 'HEAD') == site['target_sha']
+    assert first_clone.is_dir()
+    assert (first_clone / '.git').is_dir()
+    assert git(first_clone, 'rev-parse', 'HEAD') == orig_head
 
 
 @pytest.mark.unit
