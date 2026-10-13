@@ -114,7 +114,7 @@ where `R` is the correlation matrix. Each coefficient must lie strictly between 
 
 #### Element-ratio observables
 
-For element-ratio observables (such as `C/O_atm` and `O/H_atm`), `correlate_ratios = true` builds the table instead. Assuming the same dex error for every element, two ratios correlate by the cosine of their exponent vectors. One element shared on the same side gives +0.5 (`C/O_atm` with `S/O_atm`); on opposite sides -0.5 (`C/O_atm` with `O/H_atm`). The same assumption gives every ratio the same dex error, so the study refuses to start when the ratio sigmas differ in dex by more than 1 %: with `C/O_atm` at 0.1 dex and `O/H_atm` at 0.3 dex, independent element errors allow a correlation between -1/3 and 0 only. Give such coefficients in `[correlation]` instead.
+For element-ratio observables (such as `C/O_atm` and `O/H_atm`), `correlate_ratios = true` builds the table instead. Assuming the same dex error for every element, two ratios correlate by the cosine of their exponent vectors. One element shared on the same side gives +0.5 (`C/O_atm` with `S/O_atm`); on opposite sides -0.5 (`C/O_atm` with `O/H_atm`). With this parameter set to True, the study refuses to start when the ratio sigmas differ in dex by more than 1%. Give such coefficients in `[correlation]` instead.
 
 When posterior samples, e.g. from a retrieval, exist, their correlation matrix in `[correlation]` is the best input; `correlate_ratios` can be set when nothing better is known.
 
