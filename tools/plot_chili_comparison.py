@@ -40,6 +40,9 @@ Usage:
 
 The CHILI comparison data is cloned automatically from GitHub if
 --chili-repo does not point to an existing checkout.
+
+A tool that makes the figures of the docs calls ``make_figure`` once per figure
+and style.
 """
 
 from __future__ import annotations
@@ -138,8 +141,8 @@ def _contrast(a, b):
 
 
 def _bar_edges(colour, is_run):
-    """Edge colours of a row of bars: the text colour for the current run, the
-    surface colour for a model, or mid grey where the fill is close to the surface."""
+    """Edge colours of a row of bars: the text colour for the current run; for a
+    model the surface colour, or mid grey where the fill is close to the surface."""
     faint = _contrast(colour, style_neutral(1)) < 1.5
     other = style_neutral(FADE_MID_GREY if faint else 1)
     return [style_neutral() if ip else other for ip in is_run]
@@ -150,6 +153,51 @@ def _legend_below(fig, ax, ncol=3):
     fig.legend(
         *ax.get_legend_handles_labels(), loc='outside lower center', ncol=ncol, fontsize='small'
     )
+
+
+def _text_on(fill):
+    """Text colour or surface colour of the style, whichever has more contrast on ``fill``."""
+    return max((style_neutral(), style_neutral(1)), key=lambda c: _contrast(c, fill))
+
+
+def _stack_bars(ax, x, gas, present, isp):
+    """Stacked partial-pressure bars, one segment per gas of ``present``."""
+    bottom = np.zeros(len(x))
+    for g in present:
+        vals = np.array(gas[g], dtype=float).clip(min=0)
+        ax.bar(
+            x,
+            vals,
+            bottom=bottom,
+            color=_colour(g),
+            label=GAS_LABELS.get(g, g),
+            width=0.6,
+            edgecolor=_bar_edges(_colour(g), isp),
+            linewidth=[2.0 if ip else 0.5 for ip in isp],
+        )
+        bottom += vals
+
+
+def _t_surf_axis(ax, tsv, isp, NS, ylim):
+    """Twin axis with one star per bar at the surface temperature."""
+    ax2 = ax.twinx()
+    ax2.grid(False)
+    ax2.spines['right'].set_visible(True)
+    for i, (t, ip) in enumerate(zip(tsv, isp)):
+        if not np.isnan(t):
+            ax2.plot(
+                i,
+                t,
+                marker='*',
+                color=NS['color'] if ip else style_neutral(FADE_MID_GREY),
+                markersize=16 if ip else 12,
+                markeredgecolor=style_neutral(1),
+                markeredgewidth=1.0,
+                zorder=10,
+                linestyle='none',
+            )
+    ax2.set_ylabel(r'$T_\mathrm{surf}$ [K]')
+    ax2.set_ylim(*ylim)
 
 
 def _new_style(sha):
@@ -668,25 +716,9 @@ def _plot_atm_composition(intercomp, proteus_df, planet, NS):
     t_pad = (max_t - min_t) * 0.15
     t_ylim = (min_t - t_pad, max_t + t_pad)
     x = np.arange(n_slots)
-    bar_width = 0.6
 
     for ax, (gas, tsv, isp, present), title, plabel in zip(axes, panels, titles, panel_labels):
-        bottom = np.zeros(n_slots)
-        for g in present:
-            vals = np.array(gas[g], dtype=float).clip(min=0)
-            edgecolors = _bar_edges(_colour(g), isp)
-            edgewidths = [2.0 if ip else 0.5 for ip in isp]
-            ax.bar(
-                x,
-                vals,
-                bottom=bottom,
-                color=_colour(g),
-                label=GAS_LABELS.get(g, g),
-                width=bar_width,
-                edgecolor=edgecolors,
-                linewidth=edgewidths,
-            )
-            bottom += vals
+        _stack_bars(ax, x, gas, present, isp)
 
         ax.set_xticks(x)
         tick_labels = []
@@ -704,24 +736,7 @@ def _plot_atm_composition(intercomp, proteus_df, planet, NS):
         ax.set_ylim(0, bar_ylim)
         ax.set_xlim(-0.5, n_slots - 0.5)
 
-        ax2 = ax.twinx()
-        ax2.grid(False)
-        ax2.spines['right'].set_visible(True)
-        for i, (t, ip) in enumerate(zip(tsv, isp)):
-            if not np.isnan(t):
-                ax2.plot(
-                    i,
-                    t,
-                    marker='*',
-                    color=NS['color'] if ip else style_neutral(FADE_MID_GREY),
-                    markersize=16 if ip else 12,
-                    markeredgecolor=style_neutral(1),
-                    markeredgewidth=1.0,
-                    zorder=10,
-                    linestyle='none',
-                )
-        ax2.set_ylabel(r'$T_\mathrm{surf}$ [K]')
-        ax2.set_ylim(*t_ylim)
+        _t_surf_axis(ax, tsv, isp, NS, t_ylim)
 
     handles, labels = axes[0].get_legend_handles_labels()
     seen = set()
@@ -755,24 +770,7 @@ def plot_fig5(intercomp, pv, NS):
     is_proteus_global = [ip for ip in isp]
 
     fig, ax = plt.subplots(figsize=(8, 6), layout='constrained')
-    bottom = np.zeros(n)
-    bar_width = 0.6
-
-    for g in present:
-        vals = np.array(gas[g], dtype=float).clip(min=0)
-        edgecolors = _bar_edges(_colour(g), isp)
-        edgewidths = [2.0 if ip else 0.5 for ip in isp]
-        ax.bar(
-            x,
-            vals,
-            bottom=bottom,
-            color=_colour(g),
-            label=GAS_LABELS.get(g, g),
-            width=bar_width,
-            edgecolor=edgecolors,
-            linewidth=edgewidths,
-        )
-        bottom += vals
+    _stack_bars(ax, x, gas, present, isp)
 
     ax.set_xticks(x)
     tick_labels = [rf'$\bf{{{n}}}$' if ip else n for n, ip in zip(names, is_proteus_global)]
@@ -785,24 +783,7 @@ def plot_fig5(intercomp, pv, NS):
     # Adopt the same axis limits as the Nominal Earth panel (Figure 3b).
     ax.set_ylim(0, 650)
 
-    ax2 = ax.twinx()
-    ax2.grid(False)
-    ax2.spines['right'].set_visible(True)
-    for i, (t, ip) in enumerate(zip(tsv, isp)):
-        if not np.isnan(t):
-            ax2.plot(
-                i,
-                t,
-                marker='*',
-                color=NS['color'] if ip else style_neutral(FADE_MID_GREY),
-                markersize=16 if ip else 12,
-                markeredgecolor=style_neutral(1),
-                markeredgewidth=1.0,
-                zorder=10,
-                linestyle='none',
-            )
-    ax2.set_ylabel(r'$T_\mathrm{surf}$ [K]')
-    ax2.set_ylim(1500, 4000)
+    _t_surf_axis(ax, tsv, isp, NS, (1500, 4000))
 
     handles, labels = ax.get_legend_handles_labels()
     seen = set()
@@ -903,18 +884,16 @@ def plot_fig4(intercomp, pe, NS):
         c_vals = np.array(data.get(f'C_{r}', [0] * n), dtype=float).clip(min=0) / 1e20
 
         for i in range(n):
-            ec_h = style_neutral() if is_proteus[i] else style_neutral(1)
-            ew_h = 2.0 if is_proteus[i] else 0.5
-            ec_c = style_neutral() if is_proteus[i] else style_neutral(1)
-            ew_c = 2.0 if is_proteus[i] else 0.5
+            ec = style_neutral() if is_proteus[i] else style_neutral(1)
+            ew = 2.0 if is_proteus[i] else 0.5
             ax.bar(
                 x[i] - width / 2,
                 h_vals[i],
                 color=h_color,
                 width=width,
                 hatch=res_hatches[r],
-                edgecolor=ec_h,
-                linewidth=ew_h,
+                edgecolor=ec,
+                linewidth=ew,
             )
             ax.bar(
                 x[i] + width / 2,
@@ -922,8 +901,8 @@ def plot_fig4(intercomp, pe, NS):
                 color=c_color,
                 width=width,
                 hatch=res_hatches[r],
-                edgecolor=ec_c,
-                linewidth=ew_c,
+                edgecolor=ec,
+                linewidth=ew,
             )
             if r == 'atm' and h_vals[i] > 0:
                 ax.text(
@@ -934,7 +913,7 @@ def plot_fig4(intercomp, pe, NS):
                     va='center',
                     fontsize='x-small',
                     fontweight='bold',
-                    color=style_neutral(1),
+                    color=_text_on(h_color),
                 )
             if r == 'atm' and c_vals[i] > 0:
                 ax.text(
@@ -945,7 +924,7 @@ def plot_fig4(intercomp, pe, NS):
                     va='center',
                     fontsize='x-small',
                     fontweight='bold',
-                    color=style_neutral(1),
+                    color=_text_on(c_color),
                 )
 
         ax.set_ylim(0, ylim_top)
@@ -995,23 +974,13 @@ def plot_fig6(intercomp, pv, NS):
     ax_abs, ax_rel = axes
 
     T_ref = np.linspace(1400, 4000, 200)
-    ax_abs.plot(
-        T_ref,
-        _iw_fischer11(T_ref),
-        ':',
-        color=style_neutral(FADE_MID_GREY),
-        linewidth=1.5,
-        label='Fischer+11',
-    )
-    ax_abs.plot(
-        T_ref,
-        _iw_oneill02(T_ref),
-        '--',
-        color=style_neutral(FADE_MID_GREY),
-        linewidth=1.5,
-        label="O'Neill+02",
-    )
-    ax_rel.axhline(0, color=style_neutral(FADE_MID_GREY), linestyle='--', linewidth=1.0)
+    grey = style_neutral(FADE_MID_GREY)
+    for ls, iw, label in (
+        (':', _iw_fischer11, 'Fischer+11'),
+        ('--', _iw_oneill02, "O'Neill+02"),
+    ):
+        ax_abs.plot(T_ref, iw(T_ref), ls, color=grey, linewidth=1.5, label=label)
+    ax_rel.axhline(0, color=grey, linestyle='--', linewidth=1.0)
 
     for mk, st in MODELS.items():
         df = _load_chili_csv(intercomp / mk / f'evolution-{mk}-venus-data.csv')
@@ -1204,8 +1173,8 @@ def plot_fig7(intercomp, pv, NS):
                         marker=marker,
                         color=NS['color'],
                         markersize=10,
-                        markeredgecolor=style_neutral(),
-                        markeredgewidth=1.5 if marker == 'x' else 1.0,
+                        markeredgecolor=NS['color'] if marker == 'x' else style_neutral(),
+                        markeredgewidth=2.5 if marker == 'x' else 1.0,
                         zorder=15,
                         linestyle='none',
                     )
@@ -1589,7 +1558,7 @@ def plot_grid_timescales(intercomp, grid_dir, NS):
         Line2D(
             [],
             [],
-            color=style_neutral(0.4),
+            color=style_neutral(FADE_MID_GREY),
             linestyle='-',
             linewidth=2,
             marker='o',
@@ -1604,7 +1573,7 @@ def plot_grid_timescales(intercomp, grid_dir, NS):
             Line2D(
                 [],
                 [],
-                color=style_neutral(0.4),
+                color=style_neutral(FADE_MID_GREY),
                 linestyle='--',
                 linewidth=1.5,
                 marker='o',
@@ -1656,7 +1625,7 @@ def make_figure(
 
     Parameters
     ----------
-    run_dirs : list of Path
+    run_dirs : list of Path or str
         Every run folder that the figure reads; their commits make the run label.
     out_path : Path
         File of the PNG.
@@ -1672,25 +1641,33 @@ def make_figure(
     Returns
     -------
     matplotlib.figure.Figure
-        The figure, left open.
+        The figure, left open; the caller closes it.
 
     Raises
     ------
     ValueError
-        For an unknown ``fig_id`` and for a figure without data.
+        For an unknown ``fig_id``, for Figure 5 without model and run data and
+        for the grid figure without ``grid_dir``.
     """
-    NS = _new_style(_get_proteus_sha(*run_dirs))
+    NS = _new_style(_get_proteus_sha(*map(Path, run_dirs)))
     pe = _load_proteus_helpfile(Path(earth)) if earth else None
     pv = _load_proteus_helpfile(Path(venus)) if venus else None
     figs = _figures(
         ensure_chili_repo(Path(chili_repo)), pe, pv, NS, Path(grid_dir) if grid_dir else None
     )
+    if fig_id == 'chili_grid_solidification' and not grid_dir:
+        raise ValueError(f'figure {fig_id!r} needs grid_dir')
     if fig_id not in figs:
         raise ValueError(f'unknown figure {fig_id!r}; known: {", ".join(figs)}')
     fig = figs[fig_id]()
     if fig is None:
         raise ValueError(f'no data for figure {fig_id!r}')
-    fig.savefig(out_path)
+    try:
+        Path(out_path).parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(out_path)
+    except Exception:
+        plt.close(fig)
+        raise
     return fig
 
 

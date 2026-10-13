@@ -290,6 +290,13 @@ def test_figure_6_draws_the_o2_fugacity_of_the_run_at_its_magma_temperature(tool
     assert marker_rel.get_ydata() == pytest.approx([expected[-1]])
     assert ax_rel.get_ylim()[0] == pytest.approx(-0.5)
     assert (ax_rel.get_legend(), ax_abs.get_legend(), len(fig.legends)) == (None, None, 1)
+    for label, buffer in (
+        ('Fischer+11', tool._iw_fischer11),
+        ("O'Neill+02", tool._iw_oneill02),
+    ):
+        line = [ln for ln in ax_abs.lines if ln.get_label() == label][0]
+        assert line.get_ydata() == pytest.approx(buffer(line.get_xdata()))
+    assert tool._iw_fischer11(2000.0) != pytest.approx(tool._iw_oneill02(2000.0), abs=0.05)
 
 
 def test_figure_6_has_no_marker_for_a_run_that_ends_above_6_percent_melt(tool, tmp_path):
@@ -387,8 +394,12 @@ def test_smooth_accepts_a_helpfile_column_and_keeps_the_end_points(tool, log):
     assert out[2] != pytest.approx(column[2])
 
 
+# Black, white and the greys 'grey', '0.25' and '0.4' as literal colours.
+LITERAL_NEUTRALS = {'#000000', '#ffffff', '#808080', '#404040', '#666666'}
+
+
 def _colours(fig) -> set[str]:
-    """Hex colours of every visible text, line, marker and patch of a figure."""
+    """Hex colours of every visible text, text box, line, marker and patch of a figure."""
     found = set()
     for artist in fig.findobj(lambda a: a is not fig.patch and a.get_visible()):
         for getter in ('get_color', 'get_markeredgecolor', 'get_markerfacecolor'):
@@ -396,30 +407,110 @@ def _colours(fig) -> set[str]:
                 value = getattr(artist, getter, lambda: 'none')()
                 if matplotlib.colors.to_rgba(value)[3] > 0:
                     found.add(_hex(value))
-        if isinstance(artist, matplotlib.patches.Patch):
-            for value in (artist.get_facecolor(), artist.get_edgecolor()):
-                if value[3] > 0:
-                    found.add(_hex(value))
+        box = artist.get_bbox_patch() if isinstance(artist, matplotlib.text.Text) else None
+        for patch in (artist, box):
+            if isinstance(patch, matplotlib.patches.Patch):
+                for value in (patch.get_facecolor(), patch.get_edgecolor()):
+                    if value[3] > 0:
+                        found.add(_hex(value))
     return found
 
 
 def _all_figures(tool, tmp_path):
     """The 11 figures of the page on small tables, by file stem."""
     data, grid = _grid_case(tmp_path)
-    run = tool._load_proteus_helpfile(_run_folder(tmp_path / 'earth'))
-    calls = tool._figures(data, run, run, tool._new_style('d0c7f080'), grid)
+    earth = tool._load_proteus_helpfile(_run_folder(tmp_path / 'earth'))
+    venus = earth.assign(Time=earth['Time'] * 2, T_magma=earth['T_magma'] + 100)
+    calls = tool._figures(data, earth, venus, tool._new_style('d0c7f080'), grid)
     return {name: draw() for name, draw in calls.items()}
 
 
+def test_each_file_stem_draws_its_own_figure_from_its_own_run(tool, tmp_path):
+    """Each file stem gives the figure of its name: the panel count and an axis
+    label identify it; Figures 6 and 7 draw the Venus run, the surface pressure
+    figure and Figure 8 the Earth run, and Figure 2 the grid runs."""
+    figures = _all_figures(tool, tmp_path)
+
+    seen = {
+        name[6:]: (len(fig.axes), fig.axes[0].get_ylabel(), fig.axes[-1].get_xlabel())
+        for name, fig in figures.items()
+    }
+    assert seen == {
+        'fig1_melt_fraction': (
+            1,
+            'Melt fraction\n(by volume; current runs by mass)',
+            'Time (Myr)',
+        ),
+        'fig2_milestones': (3, '', 'Earth simulated time [Myr]'),
+        'fig3_atm_composition': (4, 'Partial pressure [bar]', ''),
+        'fig4_mass_budgets': (3, r'$10^{20}$ kg', ''),
+        'fig5_venus_atm': (2, 'Partial pressure [bar]', ''),
+        'fig6_fO2_vs_T': (
+            2,
+            r'$\log_{10}(f\mathrm{O}_2 / \mathrm{bar})$',
+            'Degassing temperature [K]',
+        ),
+        'fig7_volatiles': (2, 'Hydrogen', 'Simulated time [Myr]'),
+        'fig8_olr': (2, r'Outgoing LW radiation [W/m$^2$]', r'$T_\mathrm{surf}$ [K]'),
+        'fig9_geodynamics': (3, r'$T_\mathrm{surf}$ [K]', 'Melt fraction [vol%]'),
+        'psurf_vs_time': (1, 'Surface pressure (bar)', 'Time (Myr)'),
+        'grid_solidification': (
+            1,
+            'Solidification time (Myr)',
+            r'H inventory ($\times 10^{20}$ kg)',
+        ),
+    }
+    assert 'Earth' in figures['chili_fig3_atm_composition'].axes[0].get_title()
+    assert 'Venus' in figures['chili_fig5_venus_atm'].axes[0].get_title()
+
+    def run_line(stem, panel=0):
+        lines = figures[f'chili_{stem}'].axes[panel].lines
+        return [ln for ln in lines if ln.get_label() == 'PROTEUS (d0c7f080)'][0]
+
+    assert run_line('fig6_fO2_vs_T').get_xdata() == pytest.approx([4300.0, 3200.0, 1910.0])
+    assert run_line('fig7_volatiles').get_xdata() == pytest.approx([2e-6, 2e-2, 22.6])
+    assert run_line('psurf_vs_time').get_xdata() == pytest.approx([1e-6, 1e-2, 11.3])
+    assert run_line('fig8_olr', 1).get_xdata()[[0, -1]] == pytest.approx([3300.0, 1800.0])
+    grid_run = [
+        ln for ln in figures['chili_fig2_milestones'].axes[2].lines if ln.get_markersize() == 9
+    ]
+    assert [list(ln.get_xdata()) for ln in grid_run] == [[11.3]]
+
+
+def test_composition_bars_stack_from_zero_and_each_star_sits_on_its_bar(tool, tmp_path):
+    """Gas segments stack in the order given, a negative partial pressure counts
+    as zero, and the star of each model is at the x position of its bar on a
+    temperature axis from 1500 to 4000 K in Figure 5."""
+    fig, ax = tool.plt.subplots()
+    gas = {'H2O': [-1.0, 2.0], 'CO2': [3.0, 4.0]}
+
+    tool._stack_bars(ax, np.arange(2), gas, ['H2O', 'CO2'], [False, True])
+
+    assert [p.get_height() for p in ax.patches] == [0.0, 2.0, 3.0, 4.0]
+    assert [p.get_y() for p in ax.patches] == [0.0, 0.0, 0.0, 2.0]
+    assert [p.get_linewidth() for p in ax.patches] == [0.5, 2.0, 0.5, 2.0]
+
+    venus = tool.plot_fig5(
+        _comparison_data(tmp_path / 'data'), _run_table(), tool._new_style('x')
+    )
+    bars, twin = venus.axes
+    assert [p.get_y() for p in bars.patches] == pytest.approx([0, 0, 70, 300, 73, 302.5])
+    stars = [(ln.get_xdata()[0], ln.get_ydata()[0], ln.get_markersize()) for ln in twin.lines]
+    assert stars == [(0, 1700.0, 12), (1, 1800.0, 16)]
+    assert twin.get_ylim() == (1500, 4000)
+
+
 def test_every_figure_takes_its_neutral_colours_from_the_active_style(tool, tmp_path, style):
-    """Under a style without pure black and pure white, no figure draws a text,
-    a line, a marker or a patch in pure black or pure white; the reference
-    lines of Figure 8 take the text colour of the style."""
+    """Under a style without pure black, white and grey, no figure draws a text,
+    a text box, a line, a marker or a patch in such a literal colour; each
+    figure has a constrained layout; the reference lines of Figure 8 take the
+    text colour of the style."""
     figures = _all_figures(tool, tmp_path)
 
     assert len(figures) == 11
     for name, fig in figures.items():
-        assert not {'#000000', '#ffffff'} & _colours(fig), name
+        assert not LITERAL_NEUTRALS & _colours(fig), name
+        assert type(fig.get_layout_engine()).__name__ == 'ConstrainedLayoutEngine', name
     text_colour = _hex(matplotlib.rcParams['text.color'])
     reference = [
         ln for ln in figures['chili_fig8_olr'].axes[0].lines if ln.get_linestyle() == '--'
@@ -431,13 +522,16 @@ def test_every_figure_takes_its_neutral_colours_from_the_active_style(tool, tmp_
 def test_default_style_keeps_black_and_white_neutrals(tool, tmp_path):
     """Without a style the neutral colours are black, mid grey and white, so
     the reference lines of Figure 8 are black, and the bars have white edges
-    for the models and black edges for the current run."""
+    for the models and black edges for the current run (3 gases in Figure 5,
+    H and C in Figure 4)."""
     figures = _all_figures(tool, tmp_path)
 
     lines = figures['chili_fig8_olr'].axes[1].lines
     assert '#000000' in {_hex(ln.get_color()) for ln in lines if ln.get_linestyle() == '-.'}
-    edges = {_hex(p.get_edgecolor()) for p in figures['chili_fig5_venus_atm'].axes[0].patches}
-    assert edges == {'#ffffff', '#000000'}
+    for stem, of_run in (('fig5_venus_atm', 3), ('fig4_mass_budgets', 2)):
+        edges = [_hex(p.get_edgecolor()) for p in figures[f'chili_{stem}'].axes[0].patches]
+        assert set(edges) == {'#ffffff', '#000000'}, stem
+        assert edges.count('#000000') == of_run, stem
 
 
 def test_model_lines_take_the_colours_of_the_chili_analysis_code(tool, tmp_path, style):
@@ -457,7 +551,8 @@ def test_gas_colours_follow_the_chili_code_for_h2s_and_o2_and_proteus_for_the_re
     tool, tmp_path
 ):
     """The 10 gases have the colours of the page; the bars of Figure 5 are
-    drawn in them, and H and C of Figure 4 take the element colours."""
+    drawn in them; H and C of Figure 4 take the element colours, each with its
+    letter in the neutral colour of more contrast."""
     assert {gas: tool._colour(gas).lower() for gas in tool.GAS_SPECIES} == GAS_COLOURS
     assert (tool._colour('H'), tool._colour('C')) == ('#11B587', '#D20F01')
 
@@ -471,11 +566,15 @@ def test_gas_colours_follow_the_chili_code_for_h2s_and_o2_and_proteus_for_the_re
         _comparison_data(tmp_path / 'more'), _run_table(), tool._new_style('x')
     )
     assert {_hex(p.get_facecolor()) for p in budget.axes[0].patches} == {'#11b587', '#d20f01'}
+    texts = budget.axes[0].texts
+    letters = {t.get_text(): _hex(t.get_color()) for t in texts if len(t.get_text()) == 1}
+    assert letters == {'H': '#000000', 'C': '#ffffff'}
 
 
 def test_submitted_and_current_run_share_the_colour_and_differ_in_line(tool, tmp_path, style):
     """The submitted run is thin and dashed, the current run thick and solid,
-    both in the PROTEUS colour; in Figure 2 the current run has edged markers."""
+    both in the PROTEUS colour; in Figure 2 the current run has edged markers,
+    and in Figure 7 an edged circle and a cross in the PROTEUS colour."""
     data, grid = _grid_case(tmp_path)
     run = tool._load_proteus_helpfile(_run_folder(tmp_path / 'earth'))
     ns = tool._new_style('x')
@@ -486,6 +585,18 @@ def test_submitted_and_current_run_share_the_colour_and_differ_in_line(tool, tmp
     assert _hex(submitted.get_color()) == _hex(current.get_color()) == '#eb7d0f'
     assert (submitted.get_linestyle(), current.get_linestyle()) == ('--', '-')
     assert (submitted.get_linewidth(), current.get_linewidth()) == (1.5, 2.5)
+
+    retained = tool.plot_fig7(data, run, ns).axes[0]
+    marks = {ln.get_marker(): ln for ln in retained.lines if ln.get_markersize() == 10}
+    text_colour = _hex(matplotlib.rcParams['text.color'])
+    assert (_hex(marks['x'].get_markeredgecolor()), marks['x'].get_markeredgewidth()) == (
+        '#eb7d0f',
+        2.5,
+    )
+    assert (_hex(marks['o'].get_markeredgecolor()), _hex(marks['o'].get_color())) == (
+        text_colour,
+        '#eb7d0f',
+    )
 
     panel = tool.plot_fig2(data, run, ns, grid_dir=grid).axes[0]
     grid_lines = [
@@ -513,9 +624,14 @@ def test_grid_figure_draws_both_runs_in_the_proteus_colour(tool, tmp_path, style
     assert (current.get_linestyle(), _hex(current.get_markerfacecolor())) == ('-', '#eb7d0f')
     assert _hex(current.get_markeredgecolor()) == _hex(matplotlib.rcParams['text.color'])
     assert submitted.get_alpha() == current.get_alpha() == tool.C_ALPHAS['Clow']
-    assert submitted.get_xdata() == pytest.approx(
-        [1.6]
-    ) and current.get_ydata() == pytest.approx([11.3])
+    assert (submitted.get_xdata(), submitted.get_ydata()) == (
+        pytest.approx([1.6]),
+        pytest.approx([0.1]),
+    )
+    assert (current.get_xdata(), current.get_ydata()) == (
+        pytest.approx([1.6]),
+        pytest.approx([11.3]),
+    )
     assert 'PROTEUS CHILI' in [t.get_text() for t in fig.axes[0].get_legend().get_texts()]
 
 
@@ -524,6 +640,7 @@ def test_bar_of_a_colour_close_to_the_surface_gets_a_grey_edge(tool):
     edge there and a surface-coloured edge on a light surface; the bar of the
     current run has the text colour in both cases."""
     assert tool._contrast('#000000', '#ffffff') == pytest.approx(21.0)
+    assert tool._contrast('#333333', '#ffffff') == pytest.approx(12.63, abs=0.005)
     assert tool._contrast('#bbbbbb', '#F2F5F7') == pytest.approx(1.75, abs=0.005)
     assert tool._contrast('#00008B', '#05070B') == pytest.approx(1.32, abs=0.005)
     assert tool._contrast('#05070B', '#00008B') == tool._contrast('#00008B', '#05070B')
@@ -611,9 +728,11 @@ def test_style_option_calls_proteus_mpl_and_the_default_call_does_not_need_it(
     _main_arguments(tool, tmp_path, monkeypatch)
     tool.main()
     assert used == ['dark']
+    monkeypatch.setitem(sys.modules, 'proteus_mpl', types.SimpleNamespace(use=used.append))
     monkeypatch.setattr(tool.sys, 'argv', ['plot', '--style', 'white'])
     with pytest.raises(SystemExit):
         tool.main()
+    assert used == ['dark']
 
 
 def test_main_writes_a_png_and_a_pdf_for_each_figure_with_data(tool, tmp_path, monkeypatch):
@@ -630,25 +749,21 @@ def test_main_writes_a_png_and_a_pdf_for_each_figure_with_data(tool, tmp_path, m
 
 
 def test_make_figure_writes_the_png_and_labels_it_with_the_commits_of_its_runs(tool, tmp_path):
-    """``make_figure`` writes one figure as PNG to the given path under the
-    active style, with the commits of ``run_dirs`` in the label, and reads the
-    run folders that the keywords name."""
-    data = _comparison_data(tmp_path / 'data')
+    """``make_figure`` writes one figure as PNG to the given path, in a folder
+    that it makes, under the active style, with the commits of ``run_dirs`` in
+    the label, and reads the run folders that the keywords name."""
+    repo = tmp_path / 'repo'
+    _comparison_data(repo / 'intercomparison' / 'outputs')
     earth = _run_folder(tmp_path / 'earth')
     other = _run_with_log(tmp_path / 'other', '81e1514466a590a9fd97acea99150ea5d978a751')
-    out = tmp_path / 'figure.png'
+    out = tmp_path / 'new_folder' / 'figure.png'
     matplotlib.rcParams.update(DARK_BY_HAND)
-    (data / 'intercomparison').mkdir()
-    (data / 'moai').rename(data / 'intercomparison' / 'outputs')
-    (data / 'intercomparison' / 'outputs').rename(data / 'intercomparison' / 'moai')
-    (data / 'intercomparison' / 'outputs').mkdir()
-    (data / 'intercomparison' / 'moai').rename(data / 'intercomparison' / 'outputs' / 'moai')
 
     fig = tool.make_figure(
-        [earth, other],
+        [earth, str(other)],
         out,
         fig_id='chili_psurf_vs_time',
-        chili_repo=str(data),
+        chili_repo=str(repo),
         earth=str(earth),
     )
 
@@ -662,7 +777,8 @@ def test_make_figure_writes_the_png_and_labels_it_with_the_commits_of_its_runs(t
 
 def test_make_figure_refuses_an_unknown_figure_and_a_figure_without_data(tool, tmp_path):
     """An unknown figure name and a figure with no model and no run data raise
-    ``ValueError`` and write no file; the grid figure needs ``grid_dir``."""
+    ``ValueError`` and write no file; the grid figure without ``grid_dir`` says
+    so; a figure that cannot be written is closed."""
     repo = tmp_path / 'repo'
     (repo / 'intercomparison' / 'outputs').mkdir(parents=True)
     out = tmp_path / 'figure.png'
@@ -671,9 +787,18 @@ def test_make_figure_refuses_an_unknown_figure_and_a_figure_without_data(tool, t
         tool.make_figure([], out, fig_id='chili_fig10', chili_repo=repo)
     with pytest.raises(ValueError, match="no data for figure 'chili_fig5_venus_atm'"):
         tool.make_figure([], out, fig_id='chili_fig5_venus_atm', chili_repo=repo)
-    with pytest.raises(ValueError, match="unknown figure 'chili_grid_solidification'"):
+    with pytest.raises(ValueError, match="figure 'chili_grid_solidification' needs grid_dir"):
         tool.make_figure([], out, fig_id='chili_grid_solidification', chili_repo=repo)
     assert not out.exists()
+    (tmp_path / 'a_file').write_text('')
+    with pytest.raises(OSError):
+        tool.make_figure(
+            [],
+            tmp_path / 'a_file' / 'figure.png',
+            fig_id='chili_psurf_vs_time',
+            chili_repo=repo,
+        )
+    assert tool.plt.get_fignums() == []
     fig = tool.make_figure(
         [], out, fig_id='chili_grid_solidification', chili_repo=repo, grid_dir=str(tmp_path)
     )
