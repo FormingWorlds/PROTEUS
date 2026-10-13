@@ -60,8 +60,6 @@ def dimension_arange(start: float, stop: float, step: float) -> list[float]:
     if step == 0 or (stop - start) * step < 0:
         raise ValueError(f'Grid arange step {step} cannot reach stop={stop} from start={start}')
     tol = ARANGE_STEP_RTOL * abs(step)
-    if abs(stop - start) <= tol:
-        return [float(stop)]
     values = [float(v) for v in np.arange(start, stop, step)]
     # np.arange can end within rounding of stop (0.1 to 0.4 by 0.1); keep one endpoint.
     if abs(values[-1] - stop) <= tol:

@@ -3845,3 +3845,19 @@ def test_get_continues_when_the_logfile_cannot_be_opened(monkeypatch, tmp_path):
         assert len(logging.getLogger('fwl').handlers) == 1
     finally:
         logging.getLogger('fwl').handlers.clear()
+
+
+def test_grid_analyse_passes_the_config_path(monkeypatch, tmp_path):
+    """grid-analyse hands the resolved -c path to analyse_grid; a missing file is
+    refused by the option check before any analysis runs.
+    """
+    cfg = tmp_path / 'g.grid.toml'
+    cfg.write_text('')
+    calls = []
+    monkeypatch.setattr('proteus.grid.analyse.analyse_grid', calls.append)
+    res = runner.invoke(cli.cli, ['grid-analyse', '-c', str(cfg)])
+    assert res.exit_code == 0, res.output
+    assert calls == [cfg.resolve()]
+    res = runner.invoke(cli.cli, ['grid-analyse', '-c', str(tmp_path / 'missing.toml')])
+    assert res.exit_code != 0
+    assert len(calls) == 1

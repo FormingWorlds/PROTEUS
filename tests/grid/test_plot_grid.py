@@ -459,3 +459,48 @@ def test_plot_ecdf_grid_closes_its_figure_on_error_and_draws_thick_lines(tmp_pat
     with pytest.raises(RuntimeError, match='drawing failed'):
         plot_ecdf_grid(df, tested, ['T_surf'], tmp_path, 'demo')
     assert plt.get_fignums() == []
+
+
+def test_log_axis_scale_sets_a_log_x_axis():
+    """A 'log' result from axis_scale gives a log x axis without a forced limit."""
+    values = pd.Series([1.0, 100.0])
+    fig, ax = plt.subplots()
+    try:
+        ax.plot(values, [50.0, 100.0])
+        _set_axis_scale(ax, 'log', None, values)
+        assert ax.get_xscale() == 'log'
+        assert ax.get_xlim()[0] > 0.0
+    finally:
+        plt.close(fig)
+
+
+def test_zero_plus_log_axis_keeps_negative_values_in_view():
+    """With a negative value the 0 + log axis is not cut just below 0 (which would
+    hide the case at -50); the linear part still ends at the decade below 300.
+    """
+    values = pd.Series([-50.0, 0.0, 300.0])
+    scale, linthresh = axis_scale(values, preset_log=True)
+    assert (scale, linthresh) == ('symlog', pytest.approx(100.0))
+    fig, ax = plt.subplots()
+    try:
+        ax.plot(values, [1.0, 2.0, 3.0])
+        _set_axis_scale(ax, scale, linthresh, values)
+        assert ax.get_xscale() == 'symlog'
+        assert ax.get_xlim()[0] <= -50.0
+    finally:
+        plt.close(fig)
+
+
+def test_make_grid_plots_skips_ecdf_without_completed_cases(tmp_path, caplog):
+    """A grid with no completed case still gets its status plot; the ECDF is skipped
+    with a warning instead of drawing an empty figure or raising.
+    """
+    paths = _summary_csvs(tmp_path, [])
+    # The completed CSV keeps its header with no rows, as write_summary_csvs writes it.
+    columns = ['case_number', 'status', 'status_category', 'planet.mass_tot', 'T_surf']
+    pd.DataFrame(columns=columns).to_csv(paths['completed'], sep='\t', index=False)
+    with caplog.at_level('WARNING'):
+        make_grid_plots(_opts(), paths, {'planet.mass_tot': [1.0]}, tmp_path, 'png')
+    plots = tmp_path / 'post_processing' / 'grid_plots'
+    assert sorted(p.name for p in plots.iterdir()) == ['summary_grid_statuses.png']
+    assert any('No completed cases' in r.message for r in caplog.records)

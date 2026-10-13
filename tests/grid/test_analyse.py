@@ -17,6 +17,8 @@ Testing standards:
 
 from __future__ import annotations
 
+import shutil
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -480,3 +482,97 @@ def test_analyse_grid_without_update_requires_existing_csvs(tmp_path, monkeypatc
     with pytest.raises(FileNotFoundError, match='update_csv is false'):
         analyse_grid(config)
     assert not (grid_dir / 'post_processing').exists()
+
+
+def test_unreadable_init_coupler_warns_and_falls_back_to_grid_config(tmp_path, caplog):
+    """A corrupt init_coupler.toml (a run killed while writing it) is reported, and
+    the swept value comes from cfgs/case_<N>.toml instead of a TOMLDecodeError.
+    """
+    (tmp_path / 'cfgs').mkdir()
+    (tmp_path / 'cfgs' / 'case_000000.toml').write_text('[planet]\nmass_tot = 2.5\n')
+    case_dir = _write_case(tmp_path, 0, status=20)
+    (case_dir / 'init_coupler.toml').write_text('[planet\nmass_tot = ')
+    with caplog.at_level('WARNING'):
+        cases = load_grid_cases(tmp_path)
+    df = build_summary_dataframe(cases, ['planet.mass_tot'])
+    assert df.loc[0, 'planet.mass_tot'] == pytest.approx(2.5)
+    assert df.loc[0, 'config_source'] == 'cfgs/case_000000.toml'
+    assert any('cannot read init_coupler.toml' in r.message for r in caplog.records)
+
+
+def test_analyse_grid_without_ref_config_uses_schema_defaults(tmp_path, monkeypatch):
+    """Without ref_config.toml the base solid stop is the schema default (enabled,
+    phi_crit = 0.01): a case with no [params.stop.solid] table solidifies at the
+    first row with Phi_global <= 0.01, which is 20 yr in _phi_series (Phi = 0.007),
+    not 50 yr (the 0.005 crossing). Plotting gets no base format.
+    """
+    config, grid_dir = _grid_project(tmp_path, monkeypatch)
+    (grid_dir / 'ref_config.toml').unlink()
+    case_dir = _write_case(grid_dir, 0, status=10, helpfile=_phi_series())
+    (case_dir / 'init_coupler.toml').write_text('[planet]\nmass_tot = 0.5\n')
+    calls = []
+    monkeypatch.setattr(plot_grid, 'make_grid_plots', lambda *a, **k: calls.append(a))
+    analyse_grid(config)
+    all_df = pd.read_csv(
+        grid_dir / 'post_processing' / 'extracted_data' / 'final_extracted_data_all.csv',
+        sep='\t',
+    )
+    assert all_df.loc[0, 'solidification_time'] == pytest.approx(20.0)
+    assert calls[0][4] is None
+
+
+def test_analyse_grid_without_update_plots_the_existing_csvs(tmp_path, monkeypatch):
+    """update_csv = false hands the CSVs already on disk to the plots without
+    reading the cases again: it works once the case folders are gone, and the CSV
+    contents are left as they were.
+    """
+    config, grid_dir = _grid_project(tmp_path, monkeypatch)
+    _write_case(grid_dir, 0, status=10, mass=0.5, helpfile=_phi_series())
+    calls = []
+    monkeypatch.setattr(plot_grid, 'make_grid_plots', lambda *a, **k: calls.append(a))
+    analyse_grid(config)
+    extracted = grid_dir / 'post_processing' / 'extracted_data'
+    before = {p.name: p.read_text() for p in extracted.iterdir()}
+
+    shutil.rmtree(grid_dir / 'case_000000')
+    config.write_text(config.read_text() + '\n[post_processing]\nupdate_csv = false\n')
+    analyse_grid(config)
+    assert calls[1][1] == {
+        m: extracted / f'final_extracted_data_{m}.csv'
+        for m in ('all', 'completed', 'running_error')
+    }
+    assert {p.name: p.read_text() for p in extracted.iterdir()} == before
+
+
+def test_analyse_grid_raises_when_grid_output_is_missing(tmp_path, monkeypatch):
+    """A grid config whose output folder does not exist raises a clear error naming
+    it, before anything is written.
+    """
+    config, grid_dir = _grid_project(tmp_path, monkeypatch)
+    shutil.rmtree(grid_dir)
+    with pytest.raises(FileNotFoundError, match='Grid output directory not found'):
+        analyse_grid(config)
+    assert not grid_dir.exists()
+
+
+def test_analyse_grid_with_both_plots_off_only_writes_csvs(tmp_path, monkeypatch):
+    """plot_status = false and plot_ecdf = false write the CSVs and never call the
+    plotting code (so the CSV-only path needs no matplotlib).
+    """
+    config, grid_dir = _grid_project(
+        tmp_path,
+        monkeypatch,
+        post='[post_processing]\nplot_status = false\nplot_ecdf = false\n',
+    )
+    _write_case(grid_dir, 0, status=10, mass=0.5, helpfile=_phi_series())
+    calls = []
+    monkeypatch.setattr(plot_grid, 'make_grid_plots', lambda *a, **k: calls.append(a))
+    analyse_grid(config)
+    assert calls == []
+    extracted = grid_dir / 'post_processing' / 'extracted_data'
+    assert sorted(p.name for p in extracted.iterdir()) == [
+        'final_extracted_data_all.csv',
+        'final_extracted_data_completed.csv',
+        'final_extracted_data_running_error.csv',
+    ]
+    assert not (grid_dir / 'post_processing' / 'grid_plots').exists()

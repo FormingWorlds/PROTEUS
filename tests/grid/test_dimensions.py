@@ -121,3 +121,18 @@ def test_dimension_values_dispatches_by_method_and_rejects_unknown():
         dimension_values({'method': 'bogus', 'values': [1.0]})
     with pytest.raises(ValueError):
         dimension_values({'values': [1.0]})  # missing method
+
+
+@pytest.mark.parametrize(
+    'start, stop, step',
+    [(1.0, 1.0 + 1e-9, 0.5), (2.0, 2.0 - 1e-9, -0.5)],
+    ids=['rising', 'falling'],
+)
+def test_arange_stop_within_tolerance_of_start_is_one_point(start, stop, step):
+    """A stop that differs from start by less than ARANGE_STEP_RTOL * |step| (rounding
+    in a written value) gives the single stop value; np.arange plus the appended
+    endpoint would give two near-duplicate points.
+    """
+    values = dimension_arange(start, stop, step)
+    assert len(values) == 1
+    assert values[0] == pytest.approx(stop, rel=1e-15, abs=0.0)
