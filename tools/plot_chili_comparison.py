@@ -507,6 +507,7 @@ def plot_fig2(intercomp, pe, NS, grid_dir=None):
         r'(c) Time to reach $\phi$ = 5%',
     ]
     fig, axes = plt.subplots(3, 1, figsize=(7, 9), sharex=True, layout='constrained')
+    drawn = set()
 
     for ax, phi_tgt, title in zip(axes, milestones, titles):
         for mk, st in MODELS.items():
@@ -520,6 +521,7 @@ def plot_fig2(intercomp, pe, NS, grid_dir=None):
             )
 
             if not np.isnan(t_nom):
+                drawn.add(st['label'])
                 ax.plot(
                     t_nom,
                     0,
@@ -551,6 +553,7 @@ def plot_fig2(intercomp, pe, NS, grid_dir=None):
                         t_vals.append(t_m)
 
                 if t_vals:
+                    drawn.add(st['label'])
                     ax.plot(
                         t_vals,
                         y_vals,
@@ -618,7 +621,6 @@ def plot_fig2(intercomp, pe, NS, grid_dir=None):
 
     axes[-1].set_xlabel('Earth simulated time [Myr]')
     # One entry per model that is drawn: its grid line and its cross of the nominal case.
-    drawn = {ln.get_color() for ax in axes for ln in ax.lines}
     entries = {
         st['label']: (
             Line2D(
@@ -633,7 +635,7 @@ def plot_fig2(intercomp, pe, NS, grid_dir=None):
             _cross(st['color'], 7, 1.5),
         )
         for st in MODELS.values()
-        if st['color'] in drawn
+        if st['label'] in drawn
     }
     if pe is not None or grid_dir is not None:
         edge = dict(markeredgecolor=style_neutral(), markeredgewidth=0.6)
@@ -1432,13 +1434,13 @@ def plot_fig9(intercomp, pe, NS):
     )
     ax_v.axhline(visc_water, color=style_neutral(), linestyle=':', linewidth=1.0)
     ax_v.text(
-        0.5,
+        0.02,
         visc_water / 3,
         'Water STP viscosity',
         transform=ax_v.get_yaxis_transform(),
-        fontsize='small',
+        fontsize='x-small',
         va='top',
-        ha='center',
+        ha='left',
     )
 
     ax_t.set_ylabel(r'$T_\mathrm{surf}$ [K]')
@@ -1729,6 +1731,8 @@ def make_figure(
     try:
         draw = _figures(intercomp, by_name.get('earth'), by_name.get('venus'), NS, grid)[fig_id]
         fig = draw()
+        if fig is None:
+            raise ValueError('no model and no run has data for it')
         Path(out_path).parent.mkdir(parents=True, exist_ok=True)
         fig.savefig(out_path)
     except Exception as err:

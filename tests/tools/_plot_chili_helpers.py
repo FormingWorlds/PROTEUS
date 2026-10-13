@@ -121,22 +121,26 @@ def _run_table() -> pd.DataFrame:
     )
 
 
-def _run_folder(path: Path, sha: str = 'd0c7f08062bdf08631b61225bad460c6d4e381eb') -> Path:
-    """A run folder with a log and a helpfile of ``_run_table``."""
+def _run_folder(
+    path: Path, sha: str = 'd0c7f08062bdf08631b61225bad460c6d4e381eb', slower: float = 1.0
+) -> Path:
+    """A run folder with a log and a helpfile of ``_run_table``, its times scaled by ``slower``."""
     _run_with_log(path, sha)
-    _run_table().to_csv(path / 'runtime_helpfile.csv', sep=' ', index=False)
+    table = _run_table()
+    table['Time'] *= slower
+    table.to_csv(path / 'runtime_helpfile.csv', sep=' ', index=False)
     return path
 
 
 def _grid_case(tmp_path: Path) -> tuple[Path, Path]:
     """Comparison data with a grid file of the submitted run and of GOOEY, and a
-    grid folder with one run."""
+    grid folder with one run, 3 times slower than the run of ``_run_folder``."""
     data = _comparison_data(tmp_path / 'data', models=MODEL_KEYS)
     table = pd.read_csv(data / 'proteus' / 'evolution-proteus-earth-data.csv', index_col=0)
     table.to_csv(data / 'proteus' / 'evolution-proteus-earth-grid-Hlow-Clow-data.csv')
     table.to_csv(data / 'gooey' / 'evolution-gooey-earth-grid-Hlow-data.csv')
     (tmp_path / 'grid').mkdir()
-    _run_folder(tmp_path / 'grid' / 'chili_grid_earth_Hlow_Clow')
+    _run_folder(tmp_path / 'grid' / 'chili_grid_earth_Hlow_Clow', slower=3.0)
     return data, tmp_path / 'grid'
 
 

@@ -30,25 +30,25 @@ from ._plot_chili_helpers import (
 pytestmark = [
     pytest.mark.unit,
     pytest.mark.timeout(30),
-    pytest.mark.usefixtures('close_figures'),
+    pytest.mark.usefixtures('chili_figures'),
 ]
 
 
-def test_run_label_names_the_commits_of_the_run_logs_in_argument_order(tool, tmp_path):
+def test_run_label_names_the_commits_of_the_run_logs_in_argument_order(chili_tool, tmp_path):
     """The label gives the commit of each run log once, in the order of the
     arguments, and takes it from the hash line, not from the version line."""
     a = _run_with_log(tmp_path / 'a', 'd0c7f08062bdf08631b61225bad460c6d4e381eb')
     b = _run_with_log(tmp_path / 'b', '81e1514466a590a9fd97acea99150ea5d978a751')
     c = _run_with_log(tmp_path / 'c', '0a1b2c3d4e5f60718293a4b5c6d7e8f901234567')
 
-    assert tool._get_proteus_sha(a, None) == 'd0c7f080'
-    assert tool._get_proteus_sha(a, a) == 'd0c7f080'
-    assert tool._get_proteus_sha(a, b, c) == 'd0c7f080/81e15144/0a1b2c3d'
-    assert tool._get_proteus_sha(c, a, b, a) == '0a1b2c3d/d0c7f080/81e15144'
-    assert tool._get_proteus_sha(b, c, a) == '81e15144/0a1b2c3d/d0c7f080'
+    assert chili_tool._get_proteus_sha(a, None) == 'd0c7f080'
+    assert chili_tool._get_proteus_sha(a, a) == 'd0c7f080'
+    assert chili_tool._get_proteus_sha(a, b, c) == 'd0c7f080/81e15144/0a1b2c3d'
+    assert chili_tool._get_proteus_sha(c, a, b, a) == '0a1b2c3d/d0c7f080/81e15144'
+    assert chili_tool._get_proteus_sha(b, c, a) == '81e15144/0a1b2c3d/d0c7f080'
     with open(b / 'proteus_00.log', 'a') as log:
         log.write('[ INFO  ] PROTEUS git hash  0a1b2c3d4e5f60718293a4b5c6d7e8f901234567\n')
-    assert tool._get_proteus_sha(b) == '81e15144/0a1b2c3d'
+    assert chili_tool._get_proteus_sha(b) == '81e15144/0a1b2c3d'
 
 
 @pytest.mark.parametrize(
@@ -56,7 +56,7 @@ def test_run_label_names_the_commits_of_the_run_logs_in_argument_order(tool, tmp
     [b'', b'[ INFO  ] PROTEUS git hash  unknown\n', b'[ INFO  ] PROTEUS git hash  D0C7F080\n'],
 )
 def test_run_label_is_unknown_for_a_log_without_a_commit(
-    tool, tmp_path, monkeypatch, capsys, hash_line
+    chili_tool, tmp_path, monkeypatch, capsys, hash_line
 ):
     """A log without a usable hash line gives the label ``unknown`` and a warning,
     never the commit of the checkout; bytes that are not UTF-8 do not stop it."""
@@ -64,7 +64,7 @@ def test_run_label_is_unknown_for_a_log_without_a_commit(
     def no_git(*args, **kwargs):
         raise AssertionError('the label must not ask git for the checkout commit')
 
-    monkeypatch.setattr(tool.subprocess, 'run', no_git)
+    monkeypatch.setattr(chili_tool.subprocess, 'run', no_git)
     run = tmp_path / 'run'
     run.mkdir()
     (run / 'proteus_00.log').write_bytes(
@@ -73,32 +73,36 @@ def test_run_label_is_unknown_for_a_log_without_a_commit(
     (tmp_path / 'empty').mkdir()
     good = _run_with_log(tmp_path / 'good', 'd0c7f08062bdf08631b61225bad460c6d4e381eb')
 
-    assert tool._get_proteus_sha(run) == 'unknown'
+    assert chili_tool._get_proteus_sha(run) == 'unknown'
     assert 'no commit in' in capsys.readouterr().err
-    assert tool._get_proteus_sha(good, run) == 'd0c7f080/unknown'
-    assert tool._get_proteus_sha(tmp_path / 'empty', good, run) == 'unknown/d0c7f080'
+    assert chili_tool._get_proteus_sha(good, run) == 'd0c7f080/unknown'
+    assert chili_tool._get_proteus_sha(tmp_path / 'empty', good, run) == 'unknown/d0c7f080'
     assert 'no commit in' in capsys.readouterr().err
-    assert tool._get_proteus_sha(tmp_path / 'not_a_folder', None, good) == 'd0c7f080'
-    assert tool._get_proteus_sha(good / 'proteus_00.log', good) == 'd0c7f080'
-    assert tool._get_proteus_sha() == 'unknown'
+    assert chili_tool._get_proteus_sha(tmp_path / 'not_a_folder', None, good) == 'd0c7f080'
+    assert chili_tool._get_proteus_sha(good / 'proteus_00.log', good) == 'd0c7f080'
+    assert chili_tool._get_proteus_sha() == 'unknown'
     assert capsys.readouterr().err == ''
 
 
-def test_composition_bars_hold_o2_of_the_models_and_of_the_run(tool, tmp_path):
+def test_composition_bars_hold_o2_of_the_models_and_of_the_run(chili_tool, tmp_path):
     """The composition panel at 95% melt carries the O2 partial pressure of a
     model file and of the current run, beside the other gases."""
-    names, gas, _, is_run = tool._collect_atm_panel(
-        _comparison_data(tmp_path / 'data'), _run_table(), 'earth', 0.95, tool._new_style('x')
+    names, gas, _, is_run = chili_tool._collect_atm_panel(
+        _comparison_data(tmp_path / 'data'),
+        _run_table(),
+        'earth',
+        0.95,
+        chili_tool._new_style('x'),
     )
 
     assert (names, is_run) == (['MOAI', 'PROTEUS (x)'], [False, True])
     assert gas['O2'] == pytest.approx([0.25, 128.0])
     assert gas['H2O'] == pytest.approx([5.0, 4.0])
-    assert 'O2' in tool.GAS_LABELS and tool._colour('O2') == '#00dcc6'
+    assert 'O2' in chili_tool.GAS_LABELS and chili_tool._colour('O2') == '#00dcc6'
 
 
 def test_main_labels_the_figures_with_the_commits_of_all_run_folders(
-    tool, tmp_path, monkeypatch
+    chili_tool, tmp_path, monkeypatch
 ):
     """``main`` builds the label from the Earth run, the Venus run and the grid
     runs, in this order, and hands it to every figure function."""
@@ -114,11 +118,11 @@ def test_main_labels_the_figures_with_the_commits_of_all_run_folders(
         _run_with_log(tmp_path / 'grid' / f'chili_grid_earth_{name}', sha)
     _run_with_log(tmp_path / 'grid' / 'chili_grid_earth_Hlow_Clow_old', 'f' * 40)
     seen = {}
-    for name in [n for n in dir(tool) if n.startswith('plot_')]:
+    for name in [n for n in dir(chili_tool) if n.startswith('plot_')]:
         monkeypatch.setattr(
-            tool, name, lambda *args, _name=name, **kwargs: seen.__setitem__(_name, args)
+            chili_tool, name, lambda *args, _name=name, **kwargs: seen.__setitem__(_name, args)
         )
-    monkeypatch.setattr(tool, 'ensure_chili_repo', lambda path: path)
+    monkeypatch.setattr(chili_tool, 'ensure_chili_repo', lambda path: path)
     argv = ['plot', '--proteus-earth', str(earth), '--proteus-venus', str(venus)]
     argv += ['--output', str(tmp_path / 'out')]
 
@@ -130,9 +134,9 @@ def test_main_labels_the_figures_with_the_commits_of_all_run_folders(
         ([], 'd0c7f080/81e15144'),
     ):
         seen.clear()
-        monkeypatch.setattr(tool.sys, 'argv', argv + grid)
+        monkeypatch.setattr(chili_tool.sys, 'argv', argv + grid)
 
-        tool.main()
+        chili_tool.main()
 
         assert ('plot_grid_timescales' in seen) == bool(grid)
         assert {'plot_fig1', 'plot_fig6', 'plot_psurf'} <= set(seen)
@@ -141,34 +145,34 @@ def test_main_labels_the_figures_with_the_commits_of_all_run_folders(
             assert style['label'] == f'PROTEUS ({label})', name
 
 
-def test_smooth_uses_a_centred_mean_of_9_points_by_default(tool):
+def test_smooth_uses_a_centred_mean_of_9_points_by_default(chili_tool):
     """The default window is 9 points, centred; near an end and for an array
     shorter than the window the mean covers the points that exist."""
     y = np.array([0.0, 1.0, 4.0, 9.0, 16.0, 25.0, 36.0, 49.0, 64.0, 81.0, 100.0, 121.0])
 
-    out = tool._smooth(y)
+    out = chili_tool._smooth(y)
 
     assert out[5] == pytest.approx(np.mean(y[1:10]))
     assert out[1] == pytest.approx(np.mean(y[0:6]))
-    assert tool._smooth(y[:5])[2] == pytest.approx(np.mean(y[:5]))
+    assert chili_tool._smooth(y[:5])[2] == pytest.approx(np.mean(y[:5]))
 
 
-def test_smooth_returns_short_and_non_positive_input_unchanged(tool):
+def test_smooth_returns_short_and_non_positive_input_unchanged(chili_tool):
     """Fewer than 3 points are returned as they are, and so is a column with a
     value at or below zero when the mean is taken in log space."""
-    assert tool._smooth([3.0, 7.0]) == pytest.approx([3.0, 7.0])
+    assert chili_tool._smooth([3.0, 7.0]) == pytest.approx([3.0, 7.0])
     with_zero = np.array([4.0, 0.0, 9.0, 25.0, 1.0])
-    assert tool._smooth(with_zero, log=True) == pytest.approx(with_zero)
-    assert tool._smooth(with_zero)[2] != pytest.approx(with_zero[2])
+    assert chili_tool._smooth(with_zero, log=True) == pytest.approx(with_zero)
+    assert chili_tool._smooth(with_zero)[2] != pytest.approx(with_zero[2])
 
 
 @pytest.mark.parametrize('log', [False, True])
-def test_smooth_accepts_a_helpfile_column_and_keeps_the_end_points(tool, log):
+def test_smooth_accepts_a_helpfile_column_and_keeps_the_end_points(chili_tool, log):
     """A column of a helpfile (a read-only array in pandas 3) is smoothed without
     an error; the first and last value stay exact and the middle is averaged."""
     column = pd.DataFrame({'y': [1.0, 100.0, 1.0, 100.0, 1.0, 100.0, 8.0]})['y'].values
 
-    out = tool._smooth(column, window=3, log=log)
+    out = chili_tool._smooth(column, window=3, log=log)
 
     assert (out[0], out[-1]) == (column[0], column[-1])
     window = [100.0, 1.0, 100.0]
@@ -177,20 +181,22 @@ def test_smooth_accepts_a_helpfile_column_and_keeps_the_end_points(tool, log):
     assert out[2] != pytest.approx(column[2])
 
 
-def test_bar_of_a_colour_close_to_the_surface_gets_a_grey_edge(tool):
+def test_bar_of_a_colour_close_to_the_surface_gets_a_grey_edge(chili_tool):
     """SO2 is close to a dark surface (contrast 1.3), so its bars get a mid grey
     edge there and a surface-coloured edge on a light surface; the bar of the
     current run has the text colour in both cases."""
-    assert tool._contrast('#000000', '#ffffff') == pytest.approx(21.0)
-    assert tool._contrast('#333333', '#ffffff') == pytest.approx(12.63, abs=0.005)
-    assert tool._contrast('#bbbbbb', '#F2F5F7') == pytest.approx(1.75, abs=0.005)
-    assert tool._contrast('#00008B', '#05070B') == pytest.approx(1.32, abs=0.005)
-    assert tool._contrast('#05070B', '#00008B') == tool._contrast('#00008B', '#05070B')
+    assert chili_tool._contrast('#000000', '#ffffff') == pytest.approx(21.0)
+    assert chili_tool._contrast('#333333', '#ffffff') == pytest.approx(12.63, abs=0.005)
+    assert chili_tool._contrast('#bbbbbb', '#F2F5F7') == pytest.approx(1.75, abs=0.005)
+    assert chili_tool._contrast('#00008B', '#05070B') == pytest.approx(1.32, abs=0.005)
+    assert chili_tool._contrast('#05070B', '#00008B') == chili_tool._contrast(
+        '#00008B', '#05070B'
+    )
 
-    light = [_hex(c) for c in tool._bar_edges('#00008B', [False, True])]
+    light = [_hex(c) for c in chili_tool._bar_edges('#00008B', [False, True])]
     matplotlib.rcParams.update(DARK_BY_HAND)
-    dark = [_hex(c) for c in tool._bar_edges('#00008B', [False, True])]
-    water = [_hex(c) for c in tool._bar_edges('#027FB1', [False, True])]
+    dark = [_hex(c) for c in chili_tool._bar_edges('#00008B', [False, True])]
+    water = [_hex(c) for c in chili_tool._bar_edges('#027FB1', [False, True])]
 
     assert light == ['#ffffff', '#000000']
     assert dark == ['#777a7e', '#e9eef2']
@@ -198,55 +204,57 @@ def test_bar_of_a_colour_close_to_the_surface_gets_a_grey_edge(tool):
 
 
 def test_style_option_calls_proteus_mpl_and_the_default_call_does_not_need_it(
-    tool, tmp_path, monkeypatch, capsys
+    chili_tool, tmp_path, monkeypatch, capsys
 ):
     """``--style dark`` hands the variant to ``proteus_mpl.use``; without the
     package it stops with exit status 2 and names the package; a call without
     ``--style`` draws without the package."""
     used = []
     monkeypatch.setitem(sys.modules, 'proteus_mpl', types.SimpleNamespace(use=used.append))
-    seen = _main_arguments(tool, tmp_path, monkeypatch, '--style', 'dark')
-    tool.main()
+    seen = _main_arguments(chili_tool, tmp_path, monkeypatch, '--style', 'dark')
+    chili_tool.main()
     assert used == ['dark'] and len(seen) == 10
 
     monkeypatch.setitem(sys.modules, 'proteus_mpl', None)
     with pytest.raises(SystemExit) as stop:
-        tool.main()
+        chili_tool.main()
     assert stop.value.code == 2
     assert 'pip install proteus-mpl' in capsys.readouterr().err
     assert len(seen) == 10
 
-    _main_arguments(tool, tmp_path, monkeypatch)
-    tool.main()
+    _main_arguments(chili_tool, tmp_path, monkeypatch)
+    chili_tool.main()
     assert used == ['dark']
     monkeypatch.setitem(sys.modules, 'proteus_mpl', types.SimpleNamespace(use=used.append))
-    monkeypatch.setattr(tool.sys, 'argv', ['plot', '--style', 'white'])
+    monkeypatch.setattr(chili_tool.sys, 'argv', ['plot', '--style', 'white'])
     with pytest.raises(SystemExit):
-        tool.main()
+        chili_tool.main()
     assert used == ['dark']
 
 
-def test_main_writes_a_png_and_a_pdf_for_each_figure_with_data(tool, tmp_path, monkeypatch):
+def test_main_writes_a_png_and_a_pdf_for_each_figure_with_data(
+    chili_tool, tmp_path, monkeypatch
+):
     """``main`` saves each figure that a function returns as PNG and as PDF and
     closes it; a function without a figure leaves no file. Figure 5 without
     a model and without a run gives no figure."""
-    figure_5 = tool.plot_fig5
-    _main_arguments(tool, tmp_path, monkeypatch)
-    monkeypatch.setattr(tool, 'plot_psurf', lambda *args: tool.plt.figure())
+    figure_5 = chili_tool.plot_fig5
+    _main_arguments(chili_tool, tmp_path, monkeypatch)
+    monkeypatch.setattr(chili_tool, 'plot_psurf', lambda *args: chili_tool.plt.figure())
 
-    tool.main()
+    chili_tool.main()
 
     written = sorted(path.name for path in (tmp_path / 'out').iterdir())
     assert written == ['chili_psurf_vs_time.pdf', 'chili_psurf_vs_time.png']
-    assert tool.plt.get_fignums() == []
+    assert chili_tool.plt.get_fignums() == []
     (tmp_path / 'no_models').mkdir()
-    assert figure_5(tmp_path / 'no_models', None, tool._new_style('x')) is None
-    assert figure_5 is not tool.plot_fig5
-    assert tool.plt.get_fignums() == []
+    assert figure_5(tmp_path / 'no_models', None, chili_tool._new_style('x')) is None
+    assert figure_5 is not chili_tool.plot_fig5
+    assert chili_tool.plt.get_fignums() == []
 
 
 def test_make_figure_writes_the_png_at_the_dpi_of_the_style_and_labels_it_with_the_run_it_reads(
-    tool, tmp_path
+    chili_tool, tmp_path
 ):
     """``make_figure`` writes the PNG to the given path, in a folder that it
     makes, at ``savefig.dpi`` of the active style; the label holds the commit
@@ -257,7 +265,7 @@ def test_make_figure_writes_the_png_at_the_dpi_of_the_style_and_labels_it_with_t
     out = tmp_path / 'new_folder' / 'figure.png'
     matplotlib.rcParams.update(DARK_BY_HAND | {'savefig.dpi': 50})
 
-    fig = tool.make_figure(
+    fig = chili_tool.make_figure(
         [str(other), earth],
         out,
         fig_id='chili_psurf_vs_time',
@@ -273,7 +281,7 @@ def test_make_figure_writes_the_png_at_the_dpi_of_the_style_and_labels_it_with_t
     assert len(fig.legends) == 0 and fig.axes[0].get_legend() is not None
 
 
-def test_make_figure_reads_the_grid_runs_and_names_their_commits(tool, tmp_path):
+def test_make_figure_reads_the_grid_runs_and_names_their_commits(chili_tool, tmp_path):
     """The grid figure reads the grid run folders with a helpfile; the label
     holds their commits in the order of the grid, not of ``run_dirs``; a grid
     folder without a helpfile is not read; a grid run that ``run_dirs`` does
@@ -290,20 +298,20 @@ def test_make_figure_reads_the_grid_runs_and_names_their_commits(tool, tmp_path)
     _run_with_log(grid / 'chili_grid_earth_Hmid_Clow', '2' * 40)
     out = tmp_path / 'grid.png'
 
-    fig = tool.make_figure(
+    fig = chili_tool.make_figure(
         runs, out, fig_id='chili_grid_solidification', chili_repo=repo, grid_dir=str(grid)
     )
 
     legend = [t.get_text() for t in fig.axes[0].get_legend().get_texts()]
     assert 'PROTEUS (d0c7f080/11111111/33333333)' in legend and out.exists()
     with pytest.raises(ValueError, match='run_dirs does not hold these run folders'):
-        tool.make_figure(
+        chili_tool.make_figure(
             [tmp_path], out, fig_id='chili_grid_solidification', chili_repo=repo, grid_dir=grid
         )
 
 
 def test_make_figure_refuses_a_figure_without_the_run_that_it_reads(
-    tool, tmp_path, monkeypatch
+    chili_tool, tmp_path, monkeypatch
 ):
     """A wrong figure name, a run folder that the figure reads and that is not
     given or holds no helpfile, and a wrong ``run_dirs`` raise an error with
@@ -312,14 +320,16 @@ def test_make_figure_refuses_a_figure_without_the_run_that_it_reads(
     def no_clone(*args, **kwargs):
         raise AssertionError('a refused figure must not fetch the comparison data')
 
-    monkeypatch.setattr(tool.subprocess, 'run', no_clone)
+    monkeypatch.setattr(chili_tool.subprocess, 'run', no_clone)
     missing = tmp_path / 'no_checkout'
     out = tmp_path / 'figure.png'
     earth = _run_folder(tmp_path / 'earth')
     empty = _run_with_log(tmp_path / 'empty', '81e1514466a590a9fd97acea99150ea5d978a751')
 
     def make(fig_id, runs=(), **folders):
-        return tool.make_figure(list(runs), out, fig_id=fig_id, chili_repo=missing, **folders)
+        return chili_tool.make_figure(
+            list(runs), out, fig_id=fig_id, chili_repo=missing, **folders
+        )
 
     with pytest.raises(ValueError, match="unknown figure 'chili_fig10'; known: chili_fig1_"):
         make('chili_fig10')
@@ -350,40 +360,56 @@ def test_make_figure_refuses_a_figure_without_the_run_that_it_reads(
         make('chili_psurf_vs_time', [empty], earth=earth)
     for wrong in (None, str(earth), earth):
         with pytest.raises(TypeError, match='run_dirs must be a list of run folders'):
-            tool.make_figure(
+            chili_tool.make_figure(
                 wrong, out, fig_id='chili_psurf_vs_time', chili_repo=missing, earth=earth
             )
     assert not out.exists() and not missing.exists()
 
 
-def test_make_figure_closes_a_figure_that_it_cannot_draw_or_write(tool, tmp_path, monkeypatch):
+def test_make_figure_closes_a_figure_that_it_cannot_draw_or_write(
+    chili_tool, tmp_path, monkeypatch
+):
     """A figure function that fails after it opened a figure, and a file that
     cannot be written, give ``ValueError`` with the cause and leave no open
-    figure."""
+    figure; so does Figure 5 when no model and no run has data at 5% melt."""
     earth = _run_folder(tmp_path / 'earth')
     repo = _repo(tmp_path)
     (tmp_path / 'a_file').write_text('')
 
     def make(out):
-        return tool.make_figure(
+        return chili_tool.make_figure(
             [earth], out, fig_id='chili_psurf_vs_time', chili_repo=repo, earth=earth
         )
 
     with pytest.raises(ValueError, match="figure 'chili_psurf_vs_time' could not be made"):
         make(tmp_path / 'a_file' / 'figure.png')
-    assert tool.plt.get_fignums() == []
+    assert chili_tool.plt.get_fignums() == []
 
     def broken(*args):
-        tool.plt.figure()
+        chili_tool.plt.figure()
         raise RuntimeError('no bars to draw')
 
-    monkeypatch.setattr(tool, 'plot_psurf', broken)
+    venus = _run_folder(tmp_path / 'venus')
+    table = _run_table().assign(Phi_global=[1.0, 0.95, 0.068])
+    table.to_csv(venus / 'runtime_helpfile.csv', sep=' ', index=False)
+    (tmp_path / 'bare' / 'intercomparison' / 'outputs').mkdir(parents=True)
+    with pytest.raises(ValueError, match='could not be made: no model and no run has data'):
+        chili_tool.make_figure(
+            [venus],
+            tmp_path / 'figure.png',
+            fig_id='chili_fig5_venus_atm',
+            chili_repo=tmp_path / 'bare',
+            venus=venus,
+        )
+    assert chili_tool.plt.get_fignums() == []
+
+    monkeypatch.setattr(chili_tool, 'plot_psurf', broken)
     with pytest.raises(ValueError, match='could not be made: no bars to draw'):
         make(tmp_path / 'figure.png')
-    assert tool.plt.get_fignums() == [] and not (tmp_path / 'figure.png').exists()
+    assert chili_tool.plt.get_fignums() == [] and not (tmp_path / 'figure.png').exists()
 
 
-def test_interior_profiles_are_read_for_figure_9_only(tool, tmp_path, monkeypatch):
+def test_interior_profiles_are_read_for_figure_9_only(chili_tool, tmp_path, monkeypatch):
     """``make_figure`` reads the interior profiles of the Earth run for Figure 9
     and for no other figure; the grid runs are read without them."""
     data, grid = _grid_case(tmp_path)
@@ -395,11 +421,11 @@ def test_interior_profiles_are_read_for_figure_9_only(tool, tmp_path, monkeypatc
     read = []
     empty = {'Phi_global': np.array([]), 'R_rheo': np.array([]), 'visc_avg': np.array([])}
     monkeypatch.setattr(
-        tool, '_extract_profiles', lambda folder, table: read.append(folder.name) or empty
+        chili_tool, '_extract_profiles', lambda folder, table: read.append(folder.name) or empty
     )
 
     for stem in ('psurf_vs_time', 'fig2_milestones', 'fig9_geodynamics'):
-        tool.make_figure(
+        chili_tool.make_figure(
             runs,
             tmp_path / f'{stem}.png',
             fig_id=f'chili_{stem}',
@@ -408,4 +434,4 @@ def test_interior_profiles_are_read_for_figure_9_only(tool, tmp_path, monkeypatc
             grid_dir=grid if stem == 'fig2_milestones' else None,
         )
         assert read == (['earth'] if stem == 'fig9_geodynamics' else []), stem
-    assert tool._load_proteus_helpfile(earth).attrs['_profiles'] is empty
+    assert chili_tool._load_proteus_helpfile(earth).attrs['_profiles'] is empty
