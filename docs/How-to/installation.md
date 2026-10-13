@@ -6,11 +6,10 @@ variables, and reference data downloads in a single command.
 
 !!! info "Prerequisites"
     - Tested in CI: Linux x86_64 (Ubuntu) and macOS on Apple Silicon. Intel macOS and
-      Linux ARM64 are not tested; the Linux Miniconda commands below download the
-      x86_64 installer.
+      Linux ARM64 are not tested.
     - ~20 GB disk space (conda, Julia, reference data, submodules)
     - Standard command-line tools: `curl`, `wget`, `make`
-    - Git with SSH key configured ([GitHub SSH setup](https://docs.github.com/en/authentication/connecting-to-github-with-ssh))
+    - Git
     - Internet connection for initial setup and data downloads
     - Allow ~60 minutes for a full installation including all submodules
 
@@ -37,6 +36,7 @@ Install the required system libraries for your platform. See the
 === "Debian / Ubuntu"
 
     ```console
+    sudo apt update
     sudo apt install gfortran libnetcdff-dev build-essential curl wget git cmake unzip
     ```
 
@@ -54,40 +54,30 @@ Install the required system libraries for your platform. See the
 
 ## 2. Clone PROTEUS and set up Python environment
 
-!!! tip "Using pixi instead of conda"
+!!! tip "Experimental: pixi instead of conda"
     PROTEUS can also be installed into a [pixi](https://pixi.sh) environment,
-    which replaces the conda steps below. See [Install with pixi](pixi.md)
-    (experimental).
+    which replaces the conda steps below. This route is experimental and not yet
+    recommended for new users: if you install PROTEUS for the first time, follow
+    the conda steps of this page. See [Install with pixi](pixi.md).
 
 Python **3.12** is required, and is installed via
-[miniconda](https://www.anaconda.com/docs/getting-started/miniconda/install)
-or [miniforge](https://github.com/conda-forge/miniforge). If you do not have [miniconda](https://www.anaconda.com/docs/getting-started/miniconda/install)
-or [miniforge](https://github.com/conda-forge/miniforge) installed yet:
+[miniforge](https://github.com/conda-forge/miniforge) or
+[miniconda](https://www.anaconda.com/docs/getting-started/miniconda/install). If you have neither yet, install miniforge
+(the same two commands on macOS and Linux):
 
-=== "macOS (Homebrew)"
+```console
+curl -L -O "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh"
+bash Miniforge3-$(uname)-$(uname -m).sh
+```
 
-    ```console
-    curl -L -O "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh"
-    bash Miniforge3-$(uname)-$(uname -m).sh
-    ```
+Answer `yes` when the installer asks whether to initialize conda for your
+shell. Open a new terminal afterwards, so that `conda` is on your `PATH`.
 
-=== "Debian / Ubuntu"
-
-    ```console
-    mkdir -p ~/miniconda3
-    wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda3/miniconda.sh
-    bash ~/miniconda3/miniconda.sh
-    rm ~/miniconda3/miniconda.sh
-    ```
-
-=== "Fedora / RHEL"
-
-    ```console
-    mkdir -p ~/miniconda3
-    wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda3/miniconda.sh
-    bash ~/miniconda3/miniconda.sh
-    rm ~/miniconda3/miniconda.sh
-    ```
+!!! note "If you use miniconda"
+    Miniconda takes its packages from the Anaconda default channels, and conda
+    creates an environment from them only after you accept their terms of
+    service. When conda stops with that message, run the `conda tos accept`
+    commands that it prints, then repeat the step.
 
 !!! note "Install miniconda/miniforge in your personal directory"
     Installing miniconda/miniforge in your personal directory gives you full control over your environment and is recommended even on clusters (see the cluster guides: [Kapteyn](kapteyn_cluster_guide.md), [Habrok](habrok_cluster_guide.md), [Snellius](snellius_cluster_guide.md), [Cambridge IoA](ioa_cluster_guide.md)). 
@@ -95,9 +85,17 @@ or [miniforge](https://github.com/conda-forge/miniforge) installed yet:
 Then clone PROTEUS:
 
 ```console
-git clone git@github.com:FormingWorlds/PROTEUS.git
+git clone https://github.com/FormingWorlds/PROTEUS.git
 cd PROTEUS
 ```
+
+!!! tip "Cloning over SSH"
+    To push changes back to GitHub, clone over SSH instead. This needs an
+    [SSH key registered with GitHub](https://docs.github.com/en/authentication/connecting-to-github-with-ssh):
+
+    ```console
+    git clone git@github.com:FormingWorlds/PROTEUS.git
+    ```
 
 ## 3. Run the installer
 
@@ -121,7 +119,23 @@ bash install.sh
     prints, then run `bash install.sh` again.
 
 !!! warning "Julia from a system package manager"
-    If your `julia` comes from your system package manager (not the official installer), is not version 1.13, and no juliaup is on your `PATH`, the installer stops, because it adds Julia 1.13 only through juliaup; a juliaup in `~/.juliaup/bin` that is not on your `PATH` counts only when no `julia` is on it. Install juliaup with the official installer and put it on your `PATH`, or uninstall that Julia and remove its entries from your `PATH`, _before running the installer_. A `PYTHON_JULIAPKG_EXE` that names a Julia 1.13 is kept; when it names a launcher, such as the `julia` of juliaup, the installer keeps the binary that the launcher runs.
+    The installer adds Julia 1.13 only through juliaup. It stops when all three of these hold:
+
+    - a `julia` is on your `PATH`, for example from your system package manager (not the official installer);
+    - that `julia` is not version 1.13;
+    - no juliaup is on your `PATH`.
+
+    A juliaup in `~/.juliaup/bin` that is not on your `PATH` counts only when no `julia` is on it.
+
+    In that case, install juliaup with the [official installer](https://julialang.org/downloads/):
+
+    ```console
+    curl -fsSL https://install.julialang.org | sh
+    ```
+
+    Open a new terminal, so that juliaup is on your `PATH`, and run `bash install.sh` again. The installer then adds Julia 1.13 through juliaup when your default Julia is another version. The other way is to uninstall that Julia and remove its entries from your `PATH` before you run the installer again.
+
+    A `PYTHON_JULIAPKG_EXE` that names a Julia 1.13 is kept. When it names a launcher, such as the `julia` of juliaup, the installer keeps the binary that the launcher runs.
 
 
 The installer runs through the following phases automatically:
@@ -144,7 +158,14 @@ The installer prints one line per build step and writes the full build output to
 
 PROTEUS runs on Julia 1.13. When your default Julia is another version, the installer adds Julia 1.13 through juliaup beside it and does not change your default. When you have no Julia, the installer installs juliaup with Julia 1.13 and does not put it on your `PATH`: PROTEUS finds it through `PYTHON_JULIAPKG_EXE`, and to use `julia` in your terminal, add `~/.juliaup/bin` to your `PATH`. When neither `julia` nor juliaup is on your `PATH`, the installer takes juliaup from `~/.juliaup/bin`; when there is none either but a juliaup configuration exists (`juliaup/juliaup.json` under `JULIAUP_DEPOT_PATH`, by default `~/.julia`), the installer stops and asks you to put your juliaup on your `PATH`, so that a second juliaup does not change your default. PROTEUS and the setup scripts in `tools/` find Julia 1.13 through `PYTHON_JULIAPKG_EXE`, so a bare `julia` in your terminal is still your own default.
 
-A new Python module clone (MORS, JANUS, CALLIOPE, ZEPHYRUS, Aragog, Zalmoxis, Morrigan and VULCAN) is at the release tag of the module's minimum version in `pyproject.toml`; a new atmodeller or Obliqua clone is at the commit that `pyproject.toml` pins under `[tool.proteus.modules]`; a new Aragog or Zalmoxis clone takes the branch of the same name instead when PROTEUS is on a feature branch that the module also has. Running the installer again does not update a module clone that is already there: it installs the clone as it is and names each one that is not at its tag or pinned commit, with the commands that move it there and reinstall it, and the command that replaces it with a new clone, for example `bash tools/get_python_module.sh MORS --force`. If a clone of MORS, JANUS, CALLIOPE, ZEPHYRUS, Aragog or Zalmoxis is older than the minimum version, the PROTEUS install that follows replaces its editable install with the release from PyPI: PROTEUS then imports that release, not the clone, and `proteus doctor` shows the version without the `[editable @ ...]` mark.
+The installer installs every Python module (MORS, JANUS, CALLIOPE, ZEPHYRUS, Aragog, Zalmoxis, Morrigan, VULCAN and atmodeller) and PROTEUS itself in editable mode, each from a clone in the PROTEUS folder, so a change in a clone takes effect without a new install. fwl-io, which downloads the reference data, is installed from PyPI.
+
+- A new module clone is at the release tag of the module's minimum version in `pyproject.toml`; a new atmodeller or Obliqua clone is at the commit that `pyproject.toml` pins under `[tool.proteus.modules]`.
+- A new Aragog or Zalmoxis clone takes the branch of the same name instead when PROTEUS is on a feature branch that the module also has.
+- Running the installer again does not update a module clone that is already there. It installs the clone as it is and names each one that is not at its tag or pinned commit, with the commands that move it there and reinstall it, and the command that replaces it with a new clone, for example `bash tools/get_python_module.sh MORS --force`.
+
+!!! note "The one exception: a clone older than the minimum version"
+    If a clone of MORS, JANUS, CALLIOPE, ZEPHYRUS, Aragog or Zalmoxis that stays is older than the minimum version, the PROTEUS install that follows replaces its editable install with the release from PyPI. PROTEUS then imports that release, not the clone, and `proteus doctor` shows the version without the `[editable @ ...]` mark. To use the clone again, move it to its tag and reinstall it, or replace it with a new clone, with the commands that the installer prints.
 
 !!! note "Developing a module"
     To develop a module, switch its clone to a branch and install it again, for example:

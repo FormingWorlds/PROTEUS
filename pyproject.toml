@@ -130,6 +130,7 @@ develop = [
     "tomlkit>=0.11.0",
     "pillow",
     "pip-tools",
+    "proteus-mpl>=1.3.0",  # style of the tutorial figures (tools/make_docs_figures.py)
     "pytest >= 8.1",
     "pytest-cov",
     "pytest-dependency",
@@ -144,6 +145,7 @@ docs = [
     "markdown-include",
     "mkdocs",
     "mkdocstrings[python]",
+    "proteus-mpl>=1.3.0",  # style of the tutorial figures (tools/make_docs_figures.py)
     "pymdown-extensions"
 ]
 
