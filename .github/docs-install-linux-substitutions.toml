@@ -14,4 +14,4 @@ reason = "The Miniforge installer is interactive and a runner has no terminal; c
 [[substitution]]
 match = "git clone https://github.com/FormingWorlds/PROTEUS.git"
 replace = 'git clone "$GITHUB_WORKSPACE" PROTEUS'
-reason = "The job tests the pushed commit, not the default branch."
+reason = "The job tests the checked-out commit, not the default branch."

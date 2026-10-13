@@ -4,9 +4,18 @@ name: Install from the docs (Linux)
 # deviations are listed in .github/docs-install-linux-substitutions.toml.
 
 on:
-  push:
-    branches:
-      - tl/release-docs-joss
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - docs/How-to/installation.md
+      - install.sh
+      - tools/docs_install_steps.py
+      - .github/docs-install-linux-substitutions.toml
+      - .github/workflows/docs-install-linux.yml
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -41,7 +50,7 @@ jobs:
           apt-get install -y sudo git python3 ca-certificates
           echo "Machine preparation outside the page: apt-get install -y sudo git python3 ca-certificates" >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Check out the pushed commit
+      - name: Check out the commit under test
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
