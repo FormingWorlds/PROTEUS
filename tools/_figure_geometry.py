@@ -3,8 +3,8 @@
 `watch_savefig` wraps `Figure.savefig` for the duration of a block, so the figure of any
 plot function is measured without a change to that function. `measure` returns, for one
 figure: the texts that the saved file cuts off, the texts outside the figure box (a tight
-bounding box keeps them), the tick labels that intersect across axes or crowd on one axes, and the
-legends and in-axes texts that lie on a data line or a scatter point.
+bounding box keeps them), the tick labels that intersect across axes or crowd on one
+axes, and the legends and texts that lie on a data line or a scatter point.
 """
 
 from __future__ import annotations
@@ -26,13 +26,6 @@ LABEL_CHARS = 40
 CROWDED = 0.2
 
 
-def _axis_ticks(ax):
-    """Yield (tick, view limits) for every major and minor tick of both axes."""
-    for axis, lim in ((ax.xaxis, sorted(ax.get_xlim())), (ax.yaxis, sorted(ax.get_ylim()))):
-        for tick in axis.get_major_ticks() + axis.get_minor_ticks():
-            yield tick, lim
-
-
 def _drawn_texts(fig: Figure) -> list[tuple[int, str, Text]]:
     """List (axes index or -1, kind, text artist) for every text that the figure draws.
 
@@ -41,12 +34,13 @@ def _drawn_texts(fig: Figure) -> list[tuple[int, str, Text]]:
     """
     rows, tick_ids = [], set()
     for i, ax in enumerate(fig.axes):
-        for tick, lim in _axis_ticks(ax):
-            for label in (tick.label1, tick.label2):
-                tick_ids.add(id(label))
-                shown = label.get_visible() and label.get_text().strip()
-                if shown and lim[0] <= tick.get_loc() <= lim[1]:
-                    rows.append((i, 'tick', label))
+        for axis, lim in ((ax.xaxis, ax.get_xlim()), (ax.yaxis, ax.get_ylim())):
+            for tick in axis.get_major_ticks() + axis.get_minor_ticks():
+                for label in (tick.label1, tick.label2):
+                    tick_ids.add(id(label))
+                    shown = label.get_visible() and label.get_text().strip()
+                    if shown and min(lim) <= tick.get_loc() <= max(lim):
+                        rows.append((i, 'tick', label))
     for text in fig.findobj(Text):
         if id(text) in tick_ids or not text.get_visible() or not text.get_text().strip():
             continue
@@ -56,7 +50,13 @@ def _drawn_texts(fig: Figure) -> list[tuple[int, str, Text]]:
 
 
 def _data_under(ax, box: Bbox) -> int:
-    """Count the lines and scatters in data coordinates of `ax` that pass under `box`."""
+    """Count the lines and scatters in data coordinates of `ax` that pass under `box`.
+
+    Only the part of `box` inside the axes counts, because the axes clips its data.
+    """
+    box = Bbox.intersection(box, ax.bbox)
+    if box is None:
+        return 0
     hits = 0
     for line in ax.lines:
         if not line.get_visible() or line.get_transform() != ax.transData:
@@ -79,7 +79,9 @@ def _saved_area(fig: Figure, renderer, bbox_inches, pad_inches) -> Bbox:
         bbox_inches = matplotlib.rcParams['savefig.bbox']
     if bbox_inches != 'tight':
         return fig.bbox
-    pad = matplotlib.rcParams['savefig.pad_inches'] if pad_inches is None else pad_inches
+    # A pad that is not a number (None, or the 'layout' pad of a layout engine) is the style pad
+    numeric = isinstance(pad_inches, (int, float))
+    pad = pad_inches if numeric else matplotlib.rcParams['savefig.pad_inches']
     tight = fig.get_tightbbox(renderer)
     corners = (tight.x0 - pad, tight.y0 - pad, tight.x1 + pad, tight.y1 + pad)
     return Bbox.from_extents(*(c * fig.dpi for c in corners))
@@ -106,31 +108,25 @@ def _tick_pairs(ticks: list) -> tuple[list, list]:
                 across.append((i, label, j, other))
                 continue
             shared = Bbox.intersection(box, obox)
-            share = (
-                shared.width
-                * shared.height
-                / min(box.width * box.height, obox.width * obox.height)
-            )
+            smaller = min(box.width * box.height, obox.width * obox.height)
+            share = shared.width * shared.height / smaller if smaller else 0.0
             if share > CROWDED:
                 crowded.append((i, label, other, round(share, 2)))
     return across, crowded
 
 
 def _covered(fig: Figure, renderer) -> list[tuple[int, str, str, int]]:
-    """List the legends and in-axes texts whose box lies on data of an axes."""
+    """List the legends and texts of the axes and of the figure that lie on data of an axes."""
     rows = []
-    for i, ax in enumerate(fig.axes):
-        boxes = [
-            ('text', t.get_text(), t.get_window_extent(renderer))
-            for t in ax.texts
-            if t.get_visible() and t.get_text().strip()
-        ]
-        legend = ax.get_legend()
-        if legend is not None:
-            title = legend.get_title().get_text() or 'legend'
-            boxes.append(('legend', title, legend.get_window_extent(renderer)))
-        for kind, label, box in boxes:
-            count = sum(_data_under(other, box) for other in fig.axes)
+    for i, owner in [(-1, fig), *enumerate(fig.axes)]:
+        legends = owner.legends if owner is fig else [owner.get_legend()]
+        boxes = [('text', t.get_text(), t) for t in owner.texts if t.get_text().strip()]
+        boxes += [('legend', g.get_title().get_text() or 'legend', g) for g in legends if g]
+        for kind, label, artist in boxes:
+            if not artist.get_visible():
+                continue
+            box = artist.get_window_extent(renderer)
+            count = sum(_data_under(ax, box) for ax in fig.axes)
             if count:
                 rows.append((i, kind, label[:LABEL_CHARS], count))
     return rows
@@ -154,8 +150,9 @@ def measure(fig: Figure, bbox_inches=None, pad_inches=None) -> dict:
         (axes index, kind, text). `outside_figure`: texts outside the figure box, same
         form. `tick_overlaps`: (axes, label, axes, label) for tick labels of different
         axes that intersect. `tick_crowding`: (axes, label, label, share) for 2 tick
-        labels of one axes that share more than `CROWDED` of the smaller label box. `covered`: (axes, kind, label, number of data artists) for
-        a legend or an in-axes text that lies on data.
+        labels of one axes that share more than `CROWDED` of the smaller label box.
+        `covered`: (axes index or -1 for the figure, kind, label, number of data artists)
+        for a legend or a text that lies on a data line or a scatter point.
     """
     if not hasattr(fig.canvas, 'get_renderer'):
         FigureCanvasAgg(fig)

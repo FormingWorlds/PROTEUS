@@ -9,6 +9,7 @@ pages = "docs/Tutorials"
 # Pages whose figures do not come from this tool; `--check` names and skips them.
 exempt_pages = ["chili_intercomparison.md"]
 
+# The quick start run (input/dummy.toml); PROTEUS names its folder after the start time.
 [[figure]]
 id = "dummy_global_lin"
 page = "quick_start_dummy.md"

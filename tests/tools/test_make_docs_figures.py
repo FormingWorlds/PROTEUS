@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import importlib.metadata
 import importlib.util
+import inspect
 import sys
 import tomllib
 from pathlib import Path
@@ -72,6 +73,17 @@ def write_nothing(run_dirs, out_path):
     pass
 
 
+def fail_in_dark(run_dirs, out_path):
+    if sum(matplotlib.colors.to_rgb(matplotlib.rcParams['figure.facecolor'])) < 1.0:
+        raise RuntimeError('no dark figure')
+    draw(run_dirs, out_path)
+
+
+def save_through_the_canvas(run_dirs, out_path):
+    fig, ax = plt.subplots(figsize=(2, 1.5))
+    fig.canvas.print_figure(out_path)
+
+
 NOT_A_FUNCTION = 1
 """
 PAIR = (
@@ -117,12 +129,14 @@ def site(tmp_path, monkeypatch):
     run = tmp_path / 'runs' / 'run_a'
     (run / 'plots').mkdir(parents=True)
     (run / 'runtime_helpfile.csv').write_text('Time\n1.0\n')
+    (run / 'dangling_link').symlink_to(run / 'gone')
     monkeypatch.setattr(tool, 'REPO_ROOT', repo)
     return SimpleNamespace(repo=repo, runs=tmp_path / 'runs', run=run, toml=tmp_path / 'm.toml')
 
 
 def _files(root: Path) -> list[str]:
-    return sorted(p.relative_to(root).as_posix() for p in root.rglob('*') if p.is_file())
+    paths = [p for p in root.rglob('*') if p.is_file() or p.is_symlink()]
+    return sorted(p.relative_to(root).as_posix() for p in paths)
 
 
 # --- manifest ---------------------------------------------------------------------
@@ -141,12 +155,27 @@ def test_manifest_fills_the_defaults_of_an_entry(tmp_path):
     [
         ({'proteus_mpl': None}, None, 'key `proteus_mpl` is missing'),
         ({'pages': None}, None, 'key `pages` is missing'),
-        ({}, [_entry(runs=None)], 'figure fig_a has no `runs`'),
-        ({}, [_entry(id=None)], 'figure ? has no `id`'),
+        ({'page': 'docs/Tutorials'}, None, 'unknown key `page`'),
+        ({'avif_quality': 0}, None, 'avif_quality must be a whole number from 1 to 100'),
+        ({'avif_quality': 101}, None, 'avif_quality must be a whole number from 1 to 100'),
+        ({'avif_quality': '80'}, None, 'avif_quality must be a whole number from 1 to 100'),
+        ({}, [_entry(runs=None)], 'figure fig_a: has no `runs`'),
+        ({}, [_entry(id=None)], 'figure ?: has no `id`'),
         ({}, [_entry(), _entry()], 'id fig_a is used twice'),
+        ({}, [_entry(), _entry(id='fig_b')], 'asset docs/assets/tutorials/fig_a is used twice'),
+        ({}, [_entry(variant=['dark'])], 'figure fig_a: unknown key `variant`'),
+        ({}, [_entry(arg={'logt': False})], 'figure fig_a: unknown key `arg`'),
         ({}, [_entry(maker='draw')], 'maker `draw` is not `<kind>:<name>`'),
+        ({}, [_entry(maker='scripts/fake_maker.py:draw')], 'is not under tools/'),
+        ({}, [_entry(maker='/tmp/tools/fake_maker.py:draw')], 'is not under tools/'),
+        ({}, [_entry(maker='tools/../../fake_maker.py:draw')], 'is not under tools/'),
         ({}, [_entry(asset='docs/other/fig_a')], 'is not under docs/assets'),
         ({}, [_entry(asset='docs/assets/../../fig_a')], 'is not under docs/assets'),
+        ({}, [_entry(runs=[])], '`runs` must list at least 1 folder name'),
+        ({}, [_entry(runs='run_a')], '`runs` must list at least 1 folder name'),
+        ({}, [_entry(runs=['run_a', '../other'])], '`runs` must list at least 1 folder name'),
+        ({}, [_entry(runs=['/abs/run_a'])], '`runs` must list at least 1 folder name'),
+        ({}, [_entry(args=['logt'])], '`args` must be a table'),
         ({}, [_entry(variants=['light', 'white'])], 'variants must be light and dark'),
         ({}, [_entry(variants=[])], 'variants must be light and dark'),
     ],
@@ -156,6 +185,17 @@ def test_manifest_with_a_fault_is_refused_by_name(tmp_path, top, figures, messag
     with pytest.raises(tool.FigureError) as err:
         _manifest(tmp_path / 'm.toml', figures, **top)
     assert message in str(err.value)
+    assert str(err.value).startswith('m.toml: ')
+
+
+def test_manifest_that_cannot_be_read_is_refused(tmp_path):
+    """A missing file and a file with a TOML fault stop the tool with the file name."""
+    with pytest.raises(tool.FigureError, match='absent.toml: .*No such file'):
+        tool.load_manifest(tmp_path / 'absent.toml')
+    (tmp_path / 'broken.toml').write_text('proteus_mpl = "1.3.0\n[[figure]\n')
+    with pytest.raises(tool.FigureError, match='broken.toml: '):
+        tool.load_manifest(tmp_path / 'broken.toml')
+    assert tool.main(['--check', '--manifest', str(tmp_path / 'broken.toml')]) == 1
 
 
 def test_manifest_of_the_repository_agrees_with_pyproject_and_the_pages():
@@ -167,8 +207,14 @@ def test_manifest_of_the_repository_agrees_with_pyproject_and_the_pages():
         pins = [d for d in extras[extra] if d.startswith('proteus-mpl')]
         assert pins == [f'proteus-mpl>={manifest["proteus_mpl"]}']
     assert tool.check_pages(manifest, _REPO_ROOT) == []
-    assert manifest['exempt_pages'] != [] and len(manifest['figure']) >= 7
     assert tool.main(['--check']) == 0
+    # Every figure is a pair, and every maker that an entry names can be loaded
+    for fig in manifest['figure']:
+        assert fig['variants'] == ['light', 'dark']
+        kind, name = fig['maker'].rsplit(':', 1)
+        assert (
+            name in tool.PROTEUS_MAKERS if kind == 'proteus' else tool._script_maker(kind, name)
+        )
     # The environment of the tests has a proteus-mpl that this manifest accepts
     installed = importlib.metadata.version('proteus-mpl')
     assert tool.style_version(manifest['proteus_mpl']) == installed
@@ -289,6 +335,10 @@ def test_maker_that_changes_a_run_folder_stops_the_tool(site, maker):
         ({'maker': 'tools/fake_maker.py:absent'}, 'tools/fake_maker.py has no function absent'),
         ({'maker': 'tools/fake_maker.py:NOT_A_FUNCTION'}, 'has no function NOT_A_FUNCTION'),
         ({'maker': 'tools/fake_maker.py:write_nothing'}, 'the maker wrote no file fig_a.png'),
+        (
+            {'maker': 'tools/fake_maker.py:save_through_the_canvas'},
+            'the maker saved no figure with `Figure.savefig`',
+        ),
         ({'maker': 'proteus:absent'}, 'no `proteus plot` maker named absent'),
         ({'args': {'note': '{chili_repo}/data'}}, 'argument `note` needs --chili-repo'),
     ],
@@ -328,8 +378,23 @@ def test_text_that_the_file_cuts_off_is_counted_and_fails_the_command(site, caps
     printed = capsys.readouterr().out
     assert printed.count('ERROR cut_off: 1') == 2
     assert "(-1, 'text', 'stray')" in printed
+    assert 'fig_a: NOT WRITTEN, the saved file would cut off 2 text(s)' in printed
     assert '2 text(s) cut off in the saved files' in printed
-    assert len(_files(out)) == 2
+    assert not out.exists()
+
+
+def test_failure_in_the_second_variant_leaves_the_first_unwritten(site):
+    """A maker that fails for the dark variant leaves no light file of that entry behind."""
+    out = site.repo / 'out'
+    first = _entry(id='fig_0', asset='docs/assets/tutorials/fig_0')
+    failing = _entry(maker='tools/fake_maker.py:fail_in_dark')
+    with pytest.raises(RuntimeError, match='no dark figure'):
+        tool.make_figures(_manifest(site.toml, [first, failing]), site.runs, out)
+    assert _files(out) == [
+        'docs/assets/tutorials/fig_0.avif',
+        'docs/assets/tutorials/fig_0_dark.avif',
+    ]
+    assert plt.get_fignums() == []
 
 
 def test_pillow_without_avif_stops_the_tool(site, monkeypatch):
@@ -361,15 +426,25 @@ def plot_calls(monkeypatch):
         tool, '_run_inputs', lambda run_dir: (config, f'helpfile of {run_dir.name}')
     )
 
-    def recorder(name):
-        return lambda *args, **kwargs: calls.append((name, args, kwargs))
+    def record(module, function, name):
+        """Replace a plot function; a call that its real signature refuses raises TypeError."""
+        signature = inspect.signature(getattr(module, function))
 
-    monkeypatch.setattr(proteus.plot.cpl_global, 'plot_global', recorder('global'))
-    monkeypatch.setattr(proteus.plot.cpl_orbit, 'plot_orbit', recorder('orbit'))
-    monkeypatch.setattr(proteus.plot.cpl_orbit, 'plot_lovenumber', recorder('lovenumber'))
-    monkeypatch.setattr(
-        proteus.plot.cpl_fluxes_global, 'plot_fluxes_global', recorder('fluxes')
-    )
+        def recorder(*args, **kwargs):
+            signature.bind(*args, **kwargs)
+            calls.append((name, args, kwargs))
+
+        monkeypatch.setattr(module, function, recorder)
+
+    record(proteus.plot.cpl_global, 'plot_global', 'global')
+    record(proteus.plot.cpl_orbit, 'plot_orbit', 'orbit')
+    record(proteus.plot.cpl_orbit, 'plot_lovenumber', 'lovenumber')
+    record(proteus.plot.cpl_fluxes_global, 'plot_fluxes_global', 'fluxes')
+    assert list(inspect.signature(proteus.orbit.wrapper.read_tides_data).parameters) == [
+        'output_dir',
+        'model',
+        'times',
+    ]
     monkeypatch.setattr(
         proteus.orbit.wrapper,
         'read_tides_data',
@@ -393,6 +468,11 @@ def test_proteus_makers_pass_the_run_data_and_the_output_folder(site, plot_calls
         ('orbit', (hf, str(out), True), {'plot_format': 'png'}),
         ('fluxes', (hf, str(out), plot_calls.config), {}),
     ]
+    # An argument that the real plot function does not have is refused, as in a real call
+    with pytest.raises(TypeError, match='unexpected keyword'):
+        makers['global'](site.run, out, time_min=10.0)
+    with pytest.raises(TypeError):
+        makers['orbit'](site.run, out, logt=True)
 
 
 def test_lovenumber_maker_reads_every_snapshot_in_time_order(site, plot_calls, tmp_path):
@@ -503,16 +583,75 @@ def test_check_names_each_page_fault(site, page_text, problems):
     assert all(expected in line for expected, line in zip(problems, found))
 
 
+@pytest.mark.parametrize(
+    'line, image',
+    [
+        (
+            '![Other](../assets/tutorials/other.png "A title")',
+            'docs/assets/tutorials/other.png',
+        ),
+        (
+            '![T [K] against t]( ../assets/tutorials/other.png )',
+            'docs/assets/tutorials/other.png',
+        ),
+        (
+            '<img alt="x" src="../assets/tutorials/other.png" width="50%">',
+            'docs/assets/tutorials/other.png',
+        ),
+        ("<IMG SRC='../assets/tutorials/other.png'>", 'docs/assets/tutorials/other.png'),
+        (
+            '![Other][ref]\n\n[ref]: ../assets/tutorials/other.png#only-light',
+            'docs/assets/tutorials/other.png#only-light',
+        ),
+        ('![Other](<../assets/tutorials/other.png>)', 'docs/assets/tutorials/other.png'),
+    ],
+    ids=['title', 'brackets in the alt text', 'img tag', 'capitals', 'reference', 'angle'],
+)
+def test_check_sees_an_image_in_every_form_that_a_page_can_use(site, line, image):
+    """An image with a title, in an HTML tag or behind a reference needs a manifest entry too."""
+    page = site.repo / 'docs' / 'Tutorials' / 'page_a.md'
+    page.write_text(f'{PAIR}\n{line}\n')
+    manifest = _manifest(site.toml)
+    assert tool.check_pages(manifest, site.repo) == [
+        f'page_a.md: image {image} has no manifest entry'
+    ]
+    (page.parent / 'more').mkdir()
+    (page.parent / 'more' / 'deep.md').write_text('![Deep](../../assets/tutorials/deep.png)\n')
+    assert tool.check_pages(manifest, site.repo) == [
+        'more/deep.md: image docs/assets/tutorials/deep.png has no manifest entry',
+        f'page_a.md: image {image} has no manifest entry',
+    ]
+
+
+def test_check_reads_no_image_from_a_code_example_or_a_page_link(site):
+    """A fenced example, a link next to an image and a reference to a page are not images."""
+    page = site.repo / 'docs' / 'Tutorials' / 'page_a.md'
+    page.write_text(
+        f'```markdown\n![Example](../assets/tutorials/example.png)\n```\n\n'
+        f'~~~\n<img src="x.png">\n~~~\n\n{PAIR}\n'
+        'See ![a][ref] and [the guide](other_page.md), or [ref2].\n\n'
+        '[ref2]: other_page.md\n'
+    )
+    assert tool.check_pages(_manifest(site.toml), site.repo) == []
+    # The same pair twice is still a pair; one more light file alone is not
+    page.write_text(PAIR + PAIR)
+    assert tool.check_pages(_manifest(site.toml), site.repo) == []
+    page.write_text(PAIR + PAIR.splitlines()[0] + '\n')
+    assert len(tool.check_pages(_manifest(site.toml), site.repo)) == 1
+
+
 def test_check_names_a_missing_file_and_a_missing_page(site):
     """An entry without its dark file, or with a page that does not exist, is a problem."""
     (site.repo / 'docs' / 'assets' / 'tutorials' / 'fig_a_dark.avif').unlink()
-    lost = _entry(id='fig_b', page='page_b.md', asset='docs/assets/tutorials/fig_a')
+    lost = _entry(id='fig_b', page='page_b.md', asset='docs/assets/tutorials/fig_b')
+    (site.repo / 'docs' / 'assets' / 'tutorials' / 'fig_b.avif').write_bytes(b'x')
     found = tool.check_pages(_manifest(site.toml, [_entry(), lost]), site.repo)
     assert found == [
         'fig_a: file docs/assets/tutorials/fig_a_dark.avif is missing',
-        'fig_b: file docs/assets/tutorials/fig_a_dark.avif is missing',
+        'fig_b: file docs/assets/tutorials/fig_b_dark.avif is missing',
         'fig_b: page page_b.md is exempt or does not exist',
     ]
+    (site.repo / 'docs' / 'assets' / 'tutorials' / 'fig_b_dark.avif').write_bytes(b'x')
     (site.repo / 'docs' / 'assets' / 'tutorials' / 'fig_a_dark.avif').write_bytes(b'x')
     assert tool.check_pages(_manifest(site.toml, [_entry(), lost]), site.repo) == [
         'fig_b: page page_b.md is exempt or does not exist'

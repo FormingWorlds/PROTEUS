@@ -196,3 +196,56 @@ def test_watch_savefig_measures_each_save_and_restores_the_method():
         with geom.watch_savefig() as tables:
             raise RuntimeError('maker failed')
     assert Figure.savefig is original and tables == []
+
+
+def test_data_that_its_axes_clips_covers_nothing():
+    """A line that runs past its view limits is not under a legend outside the axes."""
+    fig, ax = _line_figure()
+    ax.plot([0, 3], [0.5, 0.5])
+    ax.set_xlim(0, 1)
+    ax.plot([], [], label='entry')
+    ax.legend(loc='center left', bbox_to_anchor=(1.02, 0.5), title='Outside')
+    assert geom.measure(fig)['covered'] == []
+    ax.get_legend().set_bbox_to_anchor((0.3, 0.5))
+    assert geom.measure(fig)['covered'] == [(0, 'legend', 'Outside', 2)]
+
+
+def test_legend_of_one_axes_on_the_data_of_another_is_covered():
+    """A legend that reaches into a second axes is reported for the data it covers there."""
+    fig = Figure(figsize=(4, 3), dpi=100)
+    left = fig.add_axes([0.1, 0.2, 0.3, 0.6])
+    right = fig.add_axes([0.6, 0.2, 0.3, 0.6])
+    right.plot([0, 1], [0.5, 0.5])
+    left.plot([], [], label='entry')
+    left.legend(loc='center', bbox_to_anchor=(2.2, 0.5), title='Stray')
+    assert geom.measure(fig)['covered'] == [(0, 'legend', 'Stray', 1)]
+    left.get_legend().set_visible(False)
+    assert geom.measure(fig)['covered'] == []
+
+
+def test_figure_level_legend_and_text_on_data_are_covered():
+    """A legend and a text of the figure itself are measured, with the index -1."""
+    fig, ax = _line_figure()
+    (line,) = ax.plot([0, 1], [1, 0], label='entry')
+    fig.legend(handles=[line], loc='center', title='Figure legend')
+    fig.text(0.35, 0.35, 'note', ha='center', va='center')
+    rows = geom.measure(fig)['covered']
+    assert sorted(rows) == [(-1, 'legend', 'Figure legend', 2), (-1, 'text', 'note', 1)]
+    fig.legends[0].set_loc('upper right')
+    fig.texts[0].set_position((0.05, 0.05))
+    assert geom.measure(fig)['covered'] == []
+
+
+def test_pad_of_the_save_call_reaches_the_measurement():
+    """The pad of `savefig` sets the saved area; for the 'layout' pad the style pad is used."""
+    fig, _ = _line_figure()
+    fig.text(1.05, 0.5, 'not in layout').set_in_layout(False)
+    with geom.watch_savefig() as tables:
+        fig.savefig(io.BytesIO(), format='png', bbox_inches='tight', pad_inches=3.0)
+        fig.savefig(io.BytesIO(), format='png', bbox_inches='tight', pad_inches=0.0)
+    assert [len(table['cut_off']) for _, table in tables] == [0, 1]
+    # 'layout' is a valid pad of savefig; the measurement must not fail on it
+    table = geom.measure(fig, bbox_inches='tight', pad_inches='layout')
+    assert table['cut_off'] == [(-1, 'text', 'not in layout')]
+    matplotlib.rcParams['savefig.pad_inches'] = 3.0
+    assert geom.measure(fig, bbox_inches='tight', pad_inches='layout')['cut_off'] == []
