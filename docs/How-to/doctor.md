@@ -51,7 +51,9 @@ fwl-janus, fwl-mors, fwl-zephyrus, fwl-zalmoxis) and standard module package
 (fwl-morrigan, fwl-vulcan, atmodeller), the doctor checks the points below:
 
 1. **Is the package installed?** If not, the check fails for a required package
-   and warns for a standard module package, with the command that installs it.
+   and warns for a standard module package, with the command that installs it:
+   the setup script, or `pip install "fwl-proteus[<extra>]"` in a tree with no
+   setup script.
 2. **Does the installed version satisfy the minimum bound in `pyproject.toml`?**
    For example, if `pyproject.toml` requires `fwl-aragog>=26.05.13` and you
    have `25.1.1` installed, the check fails.
@@ -67,7 +69,7 @@ missing AGNI or SOCRATES clone is a failure; a missing Obliqua clone is a
 warning with the fix `bash tools/get_obliqua.sh`. For an Obliqua folder that
 is not at its pin the fix is advice that `proteus update` does not run:
 `bash tools/get_obliqua.sh --force <folder>` replaces the folder with a new
-clone at the pin. An Obliqua folder with no `Manifest.toml` gives a warning
+clone at the pin. An Obliqua folder at its pin with no `Manifest.toml` gives a warning
 that its Julia environment is not instantiated, with the fix
 `bash tools/get_obliqua.sh`. The AGNI fix is
 `bash tools/get_agni.sh`. The SOCRATES fix also rebuilds AGNI,
