@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import filecmp
 import os
+import tomllib
 
+import numpy as np
 import pandas as pd
 import pytest
 from helpers import PROTEUS_ROOT
@@ -11,7 +13,9 @@ from helpers import PROTEUS_ROOT
 from proteus.grid.analyse import analyse_grid
 from proteus.grid.manage import grid_from_config
 from proteus.grid.pack import pack as gpack
+from proteus.grid.summarise import status_category
 from proteus.grid.summarise import summarise as gsummarise
+from proteus.utils.helper import CommentFromStatus
 
 pytestmark = [pytest.mark.slow, pytest.mark.timeout(3600)]
 
@@ -95,32 +99,56 @@ def test_grid_pack(grid_run):
 
 
 def test_grid_post_process(grid_run):
-    """``proteus grid-analyse`` extracts the three summary CSVs and writes the
-    status-summary and ECDF grid plots for the completed dummy grid. End-to-end
-    check that the analysis runs on a real grid and produces every artefact
-    users rely on. Runs in the slow tier because it depends on the grid run.
+    """``proteus grid-analyse`` on the completed dummy grid writes both plots and
+    three CSVs whose rows match the case folders: every swept combination once,
+    the status and category of each case's status file, the last row of its
+    helpfile, and a solidification time recomputed here from its helpfile and
+    init_coupler.toml. Runs in the slow tier because it depends on the grid run.
     """
     analyse_grid(GRID_CONFIG)
 
     extracted = OUT_DIR / 'post_processing' / 'extracted_data'
     plots = OUT_DIR / 'post_processing' / 'grid_plots'
-
-    # All three filtered CSVs exist (grid name is not in the filenames: the
-    # folder already identifies the grid).
-    assert os.path.isfile(extracted / 'final_extracted_data_all.csv')
-    assert os.path.isfile(extracted / 'final_extracted_data_completed.csv')
-    assert os.path.isfile(extracted / 'final_extracted_data_running_error.csv')
-
-    # Both plots exist in the requested format.
     assert os.path.isfile(plots / 'summary_grid_statuses.png')
     assert os.path.isfile(plots / 'ecdf_grid_plot.png')
-
-    # One row per case of the 1 x 2 x 2 grid, carrying the swept values, and the
-    # completed and running_error CSVs partition it.
     read = {
         mode: pd.read_csv(extracted / f'final_extracted_data_{mode}.csv', sep='\t')
         for mode in ('all', 'completed', 'running_error')
     }
-    assert sorted(read['all']['case_number']) == [0, 1, 2, 3]
-    assert sorted(set(read['all']['planet.elements.H_budget'])) == pytest.approx([1000, 2000])
-    assert len(read['completed']) + len(read['running_error']) == len(read['all'])
+    summary = read['all'].set_index('case_number')
+
+    # One row per case of the 1 x 2 x 2 grid, each swept combination exactly once.
+    assert sorted(summary.index) == [0, 1, 2, 3]
+    assert summary['planet.mass_tot'].tolist() == pytest.approx([0.7] * 4)
+    combos = sorted(
+        zip(summary['planet.elements.H_budget'], summary['interior_struct.core_frac'])
+    )
+    np.testing.assert_allclose(combos, [[1000, 0.35], [1000, 0.95], [2000, 0.35], [2000, 0.95]])
+
+    for index, row in summary.iterrows():
+        case_dir = OUT_DIR / f'case_{index:06d}'
+        code = int((case_dir / 'status').read_text().split()[0])
+        assert row['status'] == CommentFromStatus(code)
+        assert row['status_category'] == status_category(code)
+        assert row['config_source'] == 'init_coupler.toml'
+
+        helpfile = pd.read_csv(case_dir / 'runtime_helpfile.csv', sep='\t')
+        for column in ('Time', 'T_surf', 'P_surf', 'Phi_global'):
+            assert row[column] == pytest.approx(helpfile[column].iloc[-1], rel=1e-12)
+        assert row['T_surf'] > 0.0
+        assert 0.0 <= row['Phi_global'] <= 1.0
+
+        with open(case_dir / 'init_coupler.toml', 'rb') as f:
+            solid = tomllib.load(f)['params']['stop']['solid']
+        crossed = helpfile['Phi_global'] <= solid['phi_crit']
+        if solid['enabled'] and crossed.any():
+            assert row['solidification_time'] == pytest.approx(
+                helpfile.loc[crossed.idxmax(), 'Time'], rel=1e-12
+            )
+        else:
+            assert np.isnan(row['solidification_time'])
+
+    # completed and running_error hold exactly the Completed and the other cases.
+    is_completed = summary['status_category'] == 'Completed'
+    assert set(read['completed']['case_number']) == set(summary.index[is_completed])
+    assert set(read['running_error']['case_number']) == set(summary.index[~is_completed])

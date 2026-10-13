@@ -37,6 +37,9 @@ CATEGORY_ORDER = tuple(CATEGORY_COLOURS)
 MAX_CURVE_LUMINANCE = 0.475
 MAX_COLOURMAP_TRIM = 0.35
 
+# Line width [pt] of the ECDF curves and of their legend entries.
+ECDF_LINEWIDTH = 3.0
+
 
 def _luminance(rgba) -> float:
     """Return the relative luminance (sRGB, Rec. 709 weights) of an RGBA colour."""
@@ -137,32 +140,30 @@ def plot_status_summary(
     labels = [s.replace(' (', '\n(') for s in counts['status']]
     colours = [CATEGORY_COLOURS.get(c, CATEGORY_COLOURS['Unknown']) for c in counts['category']]
 
-    fig, ax = plt.subplots(figsize=(max(7.0, 1.6 * len(counts)), 6.0))
-    bars = ax.bar(labels, counts['count'], color=colours, edgecolor='black')
-
-    for bar, count in zip(bars, counts['count']):
-        pct = 100.0 * count / total if total else 0.0
-        ax.text(
-            bar.get_x() + bar.get_width() / 2,
-            count,
-            f'{count} ({pct:.1f}%)',
-            ha='center',
-            va='bottom',
-            fontsize=11,
-        )
-
-    ax.set_title(f'Status summary for grid {grid_name} ({total} cases)')
-    ax.set_xlabel('Final simulation status')
-    ax.set_ylabel('Number of simulations')
-    ax.margins(y=0.12)
-    ax.grid(alpha=0.2, axis='y')
-    _apply_axis_style(ax)
-    fig.tight_layout()
-
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     out_file = out_dir / f'summary_grid_statuses.{plot_format}'
+
+    fig, ax = plt.subplots(figsize=(max(7.0, 1.6 * len(counts)), 6.0))
     try:
+        bars = ax.bar(labels, counts['count'], color=colours, edgecolor='black')
+        for bar, count in zip(bars, counts['count']):
+            pct = 100.0 * count / total if total else 0.0
+            ax.text(
+                bar.get_x() + bar.get_width() / 2,
+                count,
+                f'{count} ({pct:.1f}%)',
+                ha='center',
+                va='bottom',
+                fontsize=11,
+            )
+        ax.set_title(f'Status summary for grid {grid_name} ({total} cases)')
+        ax.set_xlabel('Final simulation status')
+        ax.set_ylabel('Number of simulations')
+        ax.margins(y=0.12)
+        ax.grid(alpha=0.2, axis='y')
+        _apply_axis_style(ax)
+        fig.tight_layout()
         fig.savefig(out_file, dpi=200, bbox_inches='tight')
     finally:
         plt.close(fig)
@@ -258,7 +259,7 @@ def _plot_cell(ax, df, param, value, output, colour):
     # Normalise by every case in the subset, so cases without a value (for example
     # never solidified) keep the curve below 100 %.
     x, y = ecdf(series.to_numpy(), n_total=len(subset))
-    ax.plot(x, y, drawstyle='steps-post', color=colour, linewidth=2.0)
+    ax.plot(x, y, drawstyle='steps-post', color=colour, linewidth=ECDF_LINEWIDTH)
     return True
 
 
@@ -319,6 +320,32 @@ def plot_ecdf_grid(
         sharey=True,
     )
 
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_file = out_dir / f'ecdf_grid_plot.{plot_format}'
+    try:
+        row_keys = _draw_ecdf_rows(axes, df, params, tested_params, outputs, cmap)
+        fig.suptitle(f'ECDF summary for grid {grid_name}')
+        fig.supylabel('Empirical cumulative fraction of simulations [%]', x=-0.005)
+        fig.tight_layout()
+        # Add the colourbar or legend after the layout, outside the rightmost panel,
+        # so every data panel keeps an identical size.
+        for ax, param, values, is_numeric, norm, colour_of in row_keys:
+            _add_row_key(fig, ax, param, values, is_numeric, norm, cmap, colour_of)
+        fig.savefig(out_file, dpi=200, bbox_inches='tight')
+    finally:
+        plt.close(fig)
+    log.info('Wrote ECDF grid plot to %s', out_file.name)
+    return out_file
+
+
+def _draw_ecdf_rows(axes, df, params, tested_params, outputs, cmap) -> list:
+    """Draw every ECDF panel and return the key data of each parameter row.
+
+    Each returned tuple is (rightmost axes, param, swept values, is_numeric, norm,
+    colour_of), the arguments :func:`_add_row_key` needs after the layout.
+    """
+    n_rows = len(params)
     scaled = {out: df[out] * get_scale(out) for out in outputs}
     scales = {out: axis_scale(scaled[out], get_log_scale(out)) for out in outputs}
     row_keys = []
@@ -342,26 +369,7 @@ def plot_ecdf_grid(
                 ax.set_xlabel(get_label(output))
 
         row_keys.append((axes[i][-1], param, values, is_numeric, norm, colour_of))
-
-    fig.suptitle(f'ECDF summary for grid {grid_name}')
-    fig.supylabel('Empirical cumulative fraction of simulations [%]', x=-0.005)
-    fig.tight_layout()
-
-    # Add the colourbar or legend AFTER the layout, in an axes anchored outside the
-    # rightmost panel, so every data panel keeps an identical size (a colourbar added
-    # with ax=... would shrink only the panel it sits beside).
-    for ax, param, values, is_numeric, norm, colour_of in row_keys:
-        _add_row_key(fig, ax, param, values, is_numeric, norm, cmap, colour_of)
-
-    out_dir = Path(out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    out_file = out_dir / f'ecdf_grid_plot.{plot_format}'
-    try:
-        fig.savefig(out_file, dpi=200, bbox_inches='tight')
-    finally:
-        plt.close(fig)
-    log.info('Wrote ECDF grid plot to %s', out_file.name)
-    return out_file
+    return row_keys
 
 
 def _add_row_key(fig, ax, param, values, is_numeric, norm, cmap, colour_of) -> None:
@@ -386,7 +394,7 @@ def _add_row_key(fig, ax, param, values, is_numeric, norm, cmap, colour_of) -> N
         cbar.set_ticks(sorted(set(values)))
     else:
         handles = [
-            mpl.lines.Line2D([0], [0], color=colour_of(v), lw=2.0, label=str(v))
+            mpl.lines.Line2D([0], [0], color=colour_of(v), lw=ECDF_LINEWIDTH, label=str(v))
             for v in sorted({str(v) for v in values})
         ]
         ax.legend(
@@ -400,7 +408,10 @@ def _add_row_key(fig, ax, param, values, is_numeric, norm, cmap, colour_of) -> N
 
 
 def validate_output_variables(df: pd.DataFrame, requested_outputs: list) -> list:
-    """Return the requested outputs present in ``df``; warn (never substitute) for missing.
+    """Return the requested outputs present in ``df`` with numeric values.
+
+    A missing or non-numeric output (for example ``status``) is dropped with a
+    warning, never substituted.
 
     Parameters
     ----------
@@ -410,7 +421,6 @@ def validate_output_variables(df: pd.DataFrame, requested_outputs: list) -> list
         Output variable names requested in the grid config.
     """
     available = list(df.columns)
-    present = [v for v in requested_outputs if v in available]
     missing = [v for v in requested_outputs if v not in available]
     if missing:
         log.warning(
@@ -419,14 +429,19 @@ def validate_output_variables(df: pd.DataFrame, requested_outputs: list) -> list
             missing,
             available,
         )
-    return present
+    present = [v for v in requested_outputs if v in available]
+    non_numeric = [v for v in present if not pd.api.types.is_numeric_dtype(df[v])]
+    if non_numeric:
+        log.warning('Output variable(s) %s are not numeric; skipping them', non_numeric)
+    return [v for v in present if v not in non_numeric]
 
 
 def resolve_plot_format(requested: str | None, base_fmt: str | None = None) -> str:
     """Return a validated plot format for the grid plots.
 
     Uses ``[post_processing].plot_format`` when set, else ``base_fmt`` (the base
-    run's ``params.out.plot_fmt`` from ref_config.toml), else 'png'. Raises on an unsupported value rather than writing a ``.None`` file.
+    run's ``params.out.plot_fmt`` from ref_config.toml), else 'png'. Raises on an
+    unsupported value rather than writing a ``.None`` file.
     """
     fmt = requested if requested is not None else base_fmt
     fmt = (fmt or 'png').lower()
@@ -487,7 +502,7 @@ def make_grid_plots(opts, csv_paths, tested_params, grid_dir, base_fmt=None) -> 
     if not outputs:
         raise ValueError(
             'No valid output_variables for the ECDF plot. Set output_variables in the '
-            '[post_processing] table to columns present in the summary CSV.'
+            '[post_processing] table to numeric columns of the summary CSV.'
         )
     plot_ecdf_grid(
         df_completed,

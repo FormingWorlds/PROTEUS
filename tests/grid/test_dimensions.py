@@ -65,6 +65,27 @@ def test_arange_single_point_and_negative_step():
 
 
 @pytest.mark.parametrize(
+    'start, stop, step, expected',
+    [
+        (1e-9, 5e-9, 1e-9, [1e-9, 2e-9, 3e-9, 4e-9, 5e-9]),
+        (1e-10, 4e-10, 1e-10, [1e-10, 2e-10, 3e-10, 4e-10]),
+        (1e5, 100002.0, 1.0, [1e5, 100001.0, 100002.0]),
+        (1e20, 3e20, 1e20, [1e20, 2e20, 3e20]),
+    ],
+    ids=['nano_scale', 'sub_nano_scale', 'large_offset', 'huge_scale'],
+)
+def test_arange_keeps_every_point_at_any_magnitude(start, stop, step, expected):
+    """Equality is judged against the step, not an absolute 1e-8: np.isclose's
+    default collapsed the 1e-9 axis to [5e-9] and dropped 100002 from the 1e5 axis.
+    """
+    values = dimension_arange(start, stop, step)
+    assert len(values) == len(expected)
+    assert values == pytest.approx(expected, rel=1e-9, abs=0.0)
+    assert values[0] == start
+    assert values[-1] == stop
+
+
+@pytest.mark.parametrize(
     'start, stop, step',
     [(5.0, 1.0, 1.0), (1.0, 5.0, -1.0), (1.0, 5.0, 0.0)],
     ids=['swapped_bounds', 'step_sign_away_from_stop', 'zero_step'],

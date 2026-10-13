@@ -188,7 +188,7 @@ output/<grid name>/post_processing/
     └── ecdf_grid_plot.<fmt>                    # ECDF per (parameter, output) panel
 ```
 
-The CSVs are tab-separated (like other PROTEUS output), one row per started case, holding the case number, status, status category (`Completed`, `Running`, `Error`, or `Unknown` when the status file is missing), the swept parameter values, every helpfile column at the final row, and `solidification_time`.
+The CSVs are tab-separated (like other PROTEUS output), one row per started case, holding the case number, status, status category (`Completed`, `Running`, `Error`, or `Unknown` when the status file is missing, unreadable or holds an unrecognised code), `config_source`, the swept parameter values, every helpfile column at the final row, and `solidification_time`. The swept values come from the case's `init_coupler.toml`; a case that stopped before writing it (for example on a configuration error) takes them from `cfgs/case_<N>.toml`, the config the grid wrote for it, and `config_source` names the file used.
 
 The status-summary plot has one bar per final status, coloured by category, plus a `Not started` bar for grid cases that have no case folder yet (for example still queued on SLURM).
 

@@ -1,8 +1,9 @@
 """Unit tests for ``proteus.grid.analyse``.
 
 Covers the grid post-processing extraction with small grids built under tmp_path:
-- solidification time is the FIRST row with Phi_global <= phi_crit (the stop criterion), uses each
-  case's own phi_crit, and is NaN when the case's solidification stop is disabled
+- solidification time is the FIRST row with Phi_global <= phi_crit (the stop
+  criterion), uses each case's own phi_crit, and is NaN when the case's
+  solidification stop is disabled
 - tested-parameter axes come from copy.grid.toml when present, and the
   [post_processing] table is never read as an axis
 - the summary CSVs filter cases by status category (Unknown goes to running_error)
@@ -192,12 +193,16 @@ def test_build_summary_uses_each_case_phi_crit_and_solid_enabled_flag():
     the base 0.01 (20 yr); case 2 disabled its solid stop, so its time is NaN even
     though Phi crosses. Ignoring the per-case value would give 20 yr for case 0.
     """
+
+    def solid(enabled):
+        return {'params': {'stop': {'solid': {'phi_crit': 0.005, 'enabled': enabled}}}}
+
     cases = [
         _case(0, 'Completed', 'Completed (solidified)', output=_phi_series(),
-              init_params={'params': {'stop': {'solid': {'phi_crit': 0.005, 'enabled': True}}}}),
+              init_params=solid(True)),
         _case(1, 'Completed', 'Completed (solidified)', output=_phi_series()),
         _case(2, 'Completed', 'Completed (target time)', output=_phi_series(),
-              init_params={'params': {'stop': {'solid': {'phi_crit': 0.005, 'enabled': False}}}}),
+              init_params=solid(False)),
     ]  # fmt: skip
     df = build_summary_dataframe(cases, [], {'enabled': True, 'phi_crit': 0.01})
     assert df.loc[0, 'solidification_time'] == pytest.approx(50.0)
@@ -373,6 +378,27 @@ def test_load_grid_cases_skips_stray_entries_and_tolerates_missing_files(tmp_pat
     assert cases[0]['status'] == 'Completed (solidified)'
     assert cases[0]['init_params']['planet']['mass_tot'] == pytest.approx(1.0)
     assert cases[1]['output'] is None
+
+
+def test_case_that_failed_before_init_coupler_reads_its_grid_config(tmp_path, caplog):
+    """A case that stopped before writing init_coupler.toml (status 20, a config
+    error) takes its swept value from cfgs/case_<N>.toml instead of NaN; a case
+    with neither file has an empty config_source and a NaN value.
+    """
+    (tmp_path / 'cfgs').mkdir()
+    (tmp_path / 'cfgs' / 'case_000000.toml').write_text('[planet]\nmass_tot = 2.5\n')
+    _write_case(tmp_path, 0, status=20)
+    _write_case(tmp_path, 1, status=20)
+    _write_case(tmp_path, 2, status=10, mass=0.5, helpfile=_phi_series())
+    with caplog.at_level('WARNING'):
+        cases = load_grid_cases(tmp_path)
+    df = build_summary_dataframe(cases, ['planet.mass_tot'])
+    assert df.loc[0, 'planet.mass_tot'] == pytest.approx(2.5)
+    assert df.loc[0, 'config_source'] == 'cfgs/case_000000.toml'
+    assert np.isnan(df.loc[1, 'planet.mass_tot'])
+    assert df.loc[1, 'config_source'] == ''
+    assert df.loc[2, 'config_source'] == 'init_coupler.toml'
+    assert any('reading cfgs/case_000000.toml' in r.message for r in caplog.records)
 
 
 def test_load_grid_cases_refuses_a_cut_helpfile(tmp_path, caplog):

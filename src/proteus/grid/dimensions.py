@@ -11,6 +11,9 @@ DIMENSION_METHODS = {
     'arange': ('start', 'stop', 'step'),
 }
 
+# Fraction of an arange step within which two values count as the same grid point.
+ARANGE_STEP_RTOL = 1e-6
+
 
 def _check_count(count: int) -> None:
     """Raise ValueError unless ``count`` is a positive number of points."""
@@ -44,19 +47,26 @@ def dimension_arange(start: float, stop: float, step: float) -> list[float]:
     """Return values from start to stop in steps of ``step``, including the endpoint.
 
     The endpoint is appended when ``np.arange`` omits it. ``start == stop`` gives
-    that single value.
+    that single value. Values count as equal within ``ARANGE_STEP_RTOL * |step|``,
+    so the axis does not depend on the magnitude of its values.
 
     Raises
     ------
     ValueError
         If ``step`` is zero, or its sign cannot reach ``stop`` from ``start``.
     """
-    if np.isclose(start, stop):
+    if start == stop:
         return [float(stop)]
     if step == 0 or (stop - start) * step < 0:
         raise ValueError(f'Grid arange step {step} cannot reach stop={stop} from start={start}')
+    tol = ARANGE_STEP_RTOL * abs(step)
+    if abs(stop - start) <= tol:
+        return [float(stop)]
     values = [float(v) for v in np.arange(start, stop, step)]
-    if not np.isclose(values[-1], stop):
+    # np.arange can end within rounding of stop (0.1 to 0.4 by 0.1); keep one endpoint.
+    if abs(values[-1] - stop) <= tol:
+        values[-1] = float(stop)
+    else:
         values.append(float(stop))
     return values
 

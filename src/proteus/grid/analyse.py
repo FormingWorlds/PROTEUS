@@ -106,22 +106,46 @@ def _case_folders(grid_dir: Path) -> list[tuple[int, Path]]:
     return sorted(found)
 
 
+def _read_toml(path: Path, index: int) -> dict | None:
+    """Return a case's TOML file as a dict, or None if it is absent or unreadable."""
+    if not path.exists():
+        return None
+    try:
+        with path.open('rb') as f:
+            return tomllib.load(f)
+    except (OSError, tomllib.TOMLDecodeError) as exc:
+        log.warning('Case %06d: cannot read %s: %s', index, path.name, exc)
+        return None
+
+
+def _load_case_config(index: int, case_dir: Path) -> tuple[dict, str]:
+    """Return a case's config and the file it came from.
+
+    The run writes ``init_coupler.toml`` only after its start-up checks; a case
+    that failed before that still has the config the grid manager wrote to
+    ``<grid>/cfgs/case_<N>.toml``, so its swept values are not lost.
+    """
+    init_params = _read_toml(case_dir / 'init_coupler.toml', index)
+    if init_params is not None:
+        return init_params, 'init_coupler.toml'
+    grid_cfg = case_dir.parent / 'cfgs' / f'{case_dir.name}.toml'
+    grid_params = _read_toml(grid_cfg, index)
+    if grid_params is not None:
+        log.warning('Case %06d has no init_coupler.toml; reading cfgs/%s', index, grid_cfg.name)
+        return grid_params, f'cfgs/{grid_cfg.name}'
+    log.warning('Case %06d has no readable config', index)
+    return {}, ''
+
+
 def _load_case(index: int, case_dir: Path) -> dict:
-    """Load one case's status, init_coupler.toml and runtime helpfile (tolerantly)."""
+    """Load one case's status, config and runtime helpfile (tolerantly)."""
     # Status code is read tolerantly (ReadStatus returns STATUS_MISSING if absent).
     code = ReadStatus(case_dir)
     comment = CommentFromStatus(code) if code >= 0 else 'Missing status file'
     if code < 0:
         log.warning('Case %06d has no readable status file', index)
 
-    init_params = {}
-    init_file = case_dir / 'init_coupler.toml'
-    if init_file.exists():
-        try:
-            with init_file.open('rb') as f:
-                init_params = tomllib.load(f)
-        except (OSError, tomllib.TOMLDecodeError) as exc:
-            log.warning('Case %06d: cannot read init_coupler.toml: %s', index, exc)
+    init_params, config_source = _load_case_config(index, case_dir)
 
     # Read through the coupler's exact reader, which refuses a cut or malformed file
     # (for example a run killed mid-write) instead of returning a partial last row.
@@ -141,6 +165,7 @@ def _load_case(index: int, case_dir: Path) -> dict:
         'status': comment,
         'category': status_category(code),
         'init_params': init_params,
+        'config_source': config_source,
         'output': output,
     }
 
@@ -158,8 +183,10 @@ def load_grid_cases(grid_dir: str | Path) -> list[dict]:
     list of dict
         One dict per case (ascending case index), each with keys
         ``index`` (int), ``status_code`` (int), ``status`` (str comment),
-        ``category`` (str), ``init_params`` (dict from init_coupler.toml) and
-        ``output`` (pandas.DataFrame from runtime_helpfile.csv, or None).
+        ``category`` (str), ``init_params`` (dict from init_coupler.toml, else
+        from the grid's cfgs/case_<N>.toml), ``config_source`` (str, the file it
+        came from, empty if neither is readable) and ``output``
+        (pandas.DataFrame from runtime_helpfile.csv, or None).
     """
     grid_dir = Path(grid_dir)
     cases = [_load_case(index, path) for index, path in _case_folders(grid_dir)]
@@ -238,7 +265,7 @@ def build_summary_dataframe(
     cases : list of dict
         Output of :func:`load_grid_cases`.
     param_paths : list of str
-        Swept grid-parameter paths to record per case (from init_coupler.toml).
+        Swept grid-parameter paths to record per case (from each case's config).
     base_solid : dict or None
         ``{'enabled': bool, 'phi_crit': float}`` for a case whose init_coupler.toml
         omits ``params.stop.solid`` (normally the base config's values; default
@@ -248,9 +275,10 @@ def build_summary_dataframe(
     -------
     pandas.DataFrame
         One row per case. Columns: ``case_number``, ``status``,
-        ``status_category``, the tested parameters, every runtime-helpfile column
-        at the final row, and ``solidification_time`` (NaN when the case never
-        solidified or its solidification stop criterion was disabled).
+        ``status_category``, ``config_source``, the tested parameters, every
+        runtime-helpfile column at the final row, and ``solidification_time``
+        (NaN when the case never solidified or its solidification stop
+        criterion was disabled).
     """
     if base_solid is None:
         base_solid = {'enabled': DEFAULT_SOLID_ENABLED, 'phi_crit': DEFAULT_PHI_CRIT}
@@ -260,6 +288,7 @@ def build_summary_dataframe(
             'case_number': case['index'],
             'status': case['status'],
             'status_category': case['category'],
+            'config_source': case.get('config_source', ''),
         }
 
         # Tested parameter values actually used by this case.

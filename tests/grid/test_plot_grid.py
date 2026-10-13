@@ -27,6 +27,7 @@ matplotlib.use('Agg')  # headless backend for file-only tests
 
 from proteus.grid.plot_grid import (  # noqa: E402
     CATEGORY_COLOURS,
+    ECDF_LINEWIDTH,
     MAX_CURVE_LUMINANCE,
     _luminance,
     _plot_cell,
@@ -396,8 +397,15 @@ def test_make_grid_plots_honours_switches_and_rejects_no_valid_output(tmp_path):
     """plot_status = false and plot_ecdf = false write nothing; an ECDF with no
     requested output present raises instead of drawing an empty figure.
     """
-    rows = [{'case_number': 0, 'status': 'Completed (solidified)',
-             'status_category': 'Completed', 'planet.mass_tot': 1.0, 'T_surf': 300.0}]  # fmt: skip
+    rows = [
+        {
+            'case_number': 0,
+            'status': 'Completed (solidified)',
+            'status_category': 'Completed',
+            'planet.mass_tot': 1.0,
+            'T_surf': 300.0,
+        }
+    ]
     paths = _summary_csvs(tmp_path, rows)
     tested = {'planet.mass_tot': [1.0]}
     make_grid_plots(_opts(plot_status=False, plot_ecdf=False), paths, tested, tmp_path)
@@ -406,3 +414,48 @@ def test_make_grid_plots_honours_switches_and_rejects_no_valid_output(tmp_path):
         make_grid_plots(
             _opts(plot_status=False, output_variables=['not_a_column']), paths, tested, tmp_path
         )
+
+
+def test_validate_output_variables_drops_non_numeric_columns(caplog):
+    """A text column (status) or a string parameter cannot be drawn as an ECDF; it
+    is dropped with a warning instead of raising a TypeError while plotting.
+    """
+    df = pd.DataFrame({'status': ['Completed'], 'atmos_clim.module': ['agni'], 'T_surf': [3.0]})
+    with caplog.at_level('WARNING'):
+        present = validate_output_variables(df, ['status', 'T_surf', 'atmos_clim.module'])
+    assert present == ['T_surf']
+    assert any('not numeric' in rec.message for rec in caplog.records)
+
+
+def test_plot_ecdf_grid_closes_its_figure_on_error_and_draws_thick_lines(tmp_path, monkeypatch):
+    """A failure while drawing closes the figure (no figure left open), and the
+    curves and legend entries use ECDF_LINEWIDTH, thicker than the default 1.5 pt.
+    """
+    from proteus.grid import plot_grid
+
+    df = pd.DataFrame({'atmos_clim.module': ['agni', 'janus'], 'T_surf': [300.0, 400.0]})
+    tested = {'atmos_clim.module': ['agni', 'janus']}
+    drawn = {}
+    real_savefig = matplotlib.figure.Figure.savefig
+
+    def spy_savefig(fig, *args, **kwargs):
+        ax = fig.axes[0]
+        drawn['lines'] = [line.get_linewidth() for line in ax.lines]
+        drawn['legend'] = [h.get_linewidth() for h in ax.get_legend().get_lines()]
+        return real_savefig(fig, *args, **kwargs)
+
+    monkeypatch.setattr(matplotlib.figure.Figure, 'savefig', spy_savefig)
+    plt.close('all')
+    plot_ecdf_grid(df, tested, ['T_surf'], tmp_path, 'demo')
+    assert ECDF_LINEWIDTH > 2.0
+    assert drawn['lines'] == [ECDF_LINEWIDTH, ECDF_LINEWIDTH]
+    assert drawn['legend'] == [ECDF_LINEWIDTH, ECDF_LINEWIDTH]
+    assert plt.get_fignums() == []
+
+    def boom(*args, **kwargs):
+        raise RuntimeError('drawing failed')
+
+    monkeypatch.setattr(plot_grid, '_draw_ecdf_rows', boom)
+    with pytest.raises(RuntimeError, match='drawing failed'):
+        plot_ecdf_grid(df, tested, ['T_surf'], tmp_path, 'demo')
+    assert plt.get_fignums() == []
