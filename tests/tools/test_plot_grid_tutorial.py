@@ -173,7 +173,9 @@ def test_tracks_draw_the_threshold_of_the_config(grid_dir, tmp_path):
         '0.5 AU',
     ]
     assert [ln.get_color() for ln in ax.get_legend().get_lines()] == tool.WONG[:3]
-    assert pytest.approx(200, abs=1) == Image.open(out).info['dpi'][0]
+    with Image.open(out) as img:
+        dpi = img.info['dpi'][0]
+    assert pytest.approx(200, abs=1) == dpi
     assert out.stat().st_size > 0
     plt.close(fig)
 
@@ -237,7 +239,9 @@ def test_outputs_give_pressure_in_bar_against_the_budget(grid_dir, tmp_path):
                 assert np.allclose(coll.get_facecolors()[0], to_rgba(expected_hex))
             else:
                 assert np.allclose(coll.get_edgecolors()[0], to_rgba(expected_hex))
-    assert pytest.approx(200, abs=1) == Image.open(out).info['dpi'][0]
+    with Image.open(out) as img:
+        dpi = img.info['dpi'][0]
+    assert pytest.approx(200, abs=1) == dpi
     assert out.stat().st_size > 0
     plt.close(fig)
 
@@ -291,10 +295,12 @@ def test_main_uses_default_png_format_and_output_folder(grid_dir, tmp_path, monk
         'grid_tracks.png',
     ]
     assert all(p.stat().st_size > 0 for p in default_out.iterdir())
-    assert all(
-        pytest.approx(200, abs=1) == Image.open(p).info['dpi'][0]
-        for p in default_out.glob('*.png')
-    )
+    dpis = []
+    for p in sorted(default_out.glob('*.png')):
+        with Image.open(p) as img:
+            dpis.append(img.info['dpi'][0])
+    assert dpis
+    assert all(pytest.approx(200, abs=1) == d for d in dpis)
     # A second call into the existing folder succeeds
     tool.main([str(grid_dir)])
     assert sorted(p.name for p in default_out.iterdir()) == [
