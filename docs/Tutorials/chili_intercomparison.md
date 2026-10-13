@@ -157,9 +157,10 @@ python tools/plot_chili_comparison.py \
 `tools/plot_chili_comparison.py` writes every figure on this page to the
 `--output` directory (here `output_files/chili_plots/`, which is
 gitignored) as both PDF (vector) and PNG. The colours follow the CHILI
-analysis code: the models are in Paul Tol's bright scheme and the gases in
-the PROTEUS gas colours, with H<sub>2</sub>S and O<sub>2</sub> in the colours
-of the CHILI analysis code. The script draws under the active matplotlib
+analysis code: six of the seven models are in Paul Tol's bright scheme, and
+PROTEUS has the orange of that code. The gases are in the PROTEUS gas
+colours; H<sub>2</sub>S, O<sub>2</sub> and the elements H and C of Figure 4
+take the colours of the CHILI analysis code. The script draws under the active matplotlib
 style, and `--style light` or `--style dark` applies the PROTEUS plot style
 of the `proteus-mpl` package for a direct call. The figures of this page
 come from `tools/make_docs_figures.py`, which calls the script once per
@@ -177,11 +178,12 @@ figure and style. The script is version-general:
   plot the intercomparison models alone.
 
 Up to two PROTEUS results appear on each plot. The results submitted to the
-intercomparison (Nicholls et al. 2026) are drawn as a thin orange line
-labelled "PROTEUS CHILI", dashed in every figure except Figure 1, where
-the line style tells the planets apart. The current run is drawn in the
-same orange with thick lines, edged markers, and the commit of the
-runs in the legend. Running the command on the output of a future PROTEUS
+intercomparison (Nicholls et al. 2026) are labelled "PROTEUS CHILI". In the
+figures with curves they are a thin orange line, dashed except in Figure 1,
+where the line style tells the planets apart; in Figures 3, 4 and 5 they
+are a bar. The current run is drawn in the same orange with thick lines
+and edged markers, or as a bar with an outline and a bold label, and
+carries the commit of the runs in its label. Running the command on the output of a future PROTEUS
 version draws every figure with the commit of those runs, so the
 comparison stays reproducible without editing the script.
 
@@ -206,7 +208,7 @@ comparison stays reproducible without editing the script.
 <figure markdown="span">
   ![CHILI Fig 3](../assets/tutorials/chili/fig3_atm_composition.avif#only-light){ width="100%" }
   ![CHILI Fig 3](../assets/tutorials/chili/fig3_atm_composition_dark.avif#only-dark){ width="100%" }
-  <figcaption><strong>Figure 3.</strong> Atmospheric compositions for the Nominal Earth case at (a) 95% and (b) 5% melt fraction. Stacked bars show gas partial pressures &#91;bar&#93; for each model; grey stars mark surface temperature (right axis), with an orange star for the current run. The current PROTEUS run (bold label, edged bar) is placed next to the original CHILI submission for direct comparison. At 95% melt fraction the largest gas is CO<sub>2</sub> in the NEONGOOEY, PROTEUS CHILI and PlanAtMO bars (87 to 93% of the summed pressure), CO in the PACMAN and MOAI bars, and H<sub>2</sub>O in the GOOEY and LINCS bars, which hold no carbon gas. The bar of the current PROTEUS run is 58% O<sub>2</sub> (129 bar of 222 bar), with 84 bar of CO<sub>2</sub>. O<sub>2</sub> is drawn where a file gives it: at the plotted row it is below 0.5 bar in five intercomparison files, and the LINCS and PlanAtMO files give no value. At 5% the largest gas is H<sub>2</sub>O in six bars, with 346 bar of 411 bar for the current PROTEUS run, and CO<sub>2</sub> in the PACMAN and MOAI bars. Both panels share the same y-axis range to highlight the pressure increase during solidification.</figcaption>
+  <figcaption><strong>Figure 3.</strong> Atmospheric compositions for the Nominal Earth case at (a) 95% and (b) 5% melt fraction. Stacked bars show gas partial pressures &#91;bar&#93; for each model; grey stars mark surface temperature (right axis), with an orange star for the current run. The current PROTEUS run (bold label, outlined bar) is placed next to the original CHILI submission for direct comparison. At 95% melt fraction the largest gas is CO<sub>2</sub> in the NEONGOOEY, PROTEUS CHILI and PlanAtMO bars (87 to 93% of the summed pressure), CO in the PACMAN and MOAI bars, and H<sub>2</sub>O in the GOOEY and LINCS bars, which hold no carbon gas. The bar of the current PROTEUS run is 58% O<sub>2</sub> (129 bar of 222 bar), with 84 bar of CO<sub>2</sub>. O<sub>2</sub> is drawn where a file gives it: at the plotted row it is below 0.5 bar in five intercomparison files, and the LINCS and PlanAtMO files give no value. At 5% the largest gas is H<sub>2</sub>O in six bars, with 346 bar of 411 bar for the current PROTEUS run, and CO<sub>2</sub> in the PACMAN and MOAI bars. Both panels share the same y-axis range to highlight the pressure increase during solidification.</figcaption>
 </figure>
 
 ## H and C mass budgets
@@ -222,7 +224,7 @@ comparison stays reproducible without editing the script.
 <figure markdown="span">
   ![CHILI Fig 5](../assets/tutorials/chili/fig5_venus_atm.avif#only-light){ width="100%" }
   ![CHILI Fig 5](../assets/tutorials/chili/fig5_venus_atm_dark.avif#only-dark){ width="100%" }
-  <figcaption><strong>Figure 5.</strong> Atmospheric composition for the Nominal Venus case at 5% melt fraction. Stacked bars show gas partial pressures &#91;bar&#93;; grey stars mark surface temperature (right axis). A current PROTEUS run that reaches a 5% melt fraction is drawn as an edged bar with a bold label next to the submitted PROTEUS CHILI result. The current run does not reach a 5% melt fraction, so the figure has no bar for it: it ends in global energy balance at 11.3 Myr with a melt fraction of 6.8% by mass (8.3% by volume), a surface temperature of 1800 K and a surface pressure of 384 bar (321 bar H<sub>2</sub>O and 56 bar CO<sub>2</sub>). The bar of the submitted PROTEUS CHILI result is its last row, at a melt fraction of 6.2% by volume (4.9% by mass).</figcaption>
+  <figcaption><strong>Figure 5.</strong> Atmospheric composition for the Nominal Venus case at 5% melt fraction. Stacked bars show gas partial pressures &#91;bar&#93;; grey stars mark surface temperature (right axis). A current PROTEUS run that reaches a 5% melt fraction is drawn as an outlined bar with a bold label next to the submitted PROTEUS CHILI result. The current run does not reach a 5% melt fraction, so the figure has no bar for it: it ends in global energy balance at 11.3 Myr with a melt fraction of 6.8% by mass (8.3% by volume), a surface temperature of 1800 K and a surface pressure of 384 bar (321 bar H<sub>2</sub>O and 56 bar CO<sub>2</sub>). The bar of the submitted PROTEUS CHILI result is its last row, at a melt fraction of 6.2% by volume (4.9% by mass).</figcaption>
 </figure>
 
 ## Oxygen fugacity
@@ -246,7 +248,7 @@ comparison stays reproducible without editing the script.
 <figure markdown="span">
   ![CHILI Fig 8](../assets/tutorials/chili/fig8_olr.avif#only-light){ width="100%" }
   ![CHILI Fig 8](../assets/tutorials/chili/fig8_olr_dark.avif#only-dark){ width="100%" }
-  <figcaption><strong>Figure 8.</strong> Outgoing longwave radiation flux from Nominal Earth, plotted as a function of (a) melt fraction and (b) surface temperature. In panel (a) the dashed line marks the absorbed stellar radiation (ASR = 208 W/m<sup>2</sup>) at 50 Myr stellar age with the CHILI protocol parameters. In panel (b) the dash-dot line marks the Simpson-Nakajima steam runaway limit (293 W/m<sup>2</sup>; Nakajima et al. 1992). OLR controls the cooling rate. The OLR of the current PROTEUS run decreases from 2.2 x 10<sup>5</sup> W/m<sup>2</sup> in its first row, at 1 yr, to 405 W/m<sup>2</sup> at a melt fraction of 5%; its absorbed stellar flux is 226 to 227 W/m<sup>2</sup>. The curve of the current run is a centred mean over 9 rows, which differs from a single row by about 8% at most.</figcaption>
+  <figcaption><strong>Figure 8.</strong> Outgoing longwave radiation flux from Nominal Earth, plotted as a function of (a) melt fraction and (b) surface temperature. The melt fraction is by volume for the intercomparison models and by mass for the current PROTEUS run. In panel (a) the dashed line marks the absorbed stellar radiation (ASR = 208 W/m<sup>2</sup>) at 50 Myr stellar age with the CHILI protocol parameters. In panel (b) the dash-dot line marks the Simpson-Nakajima steam runaway limit (293 W/m<sup>2</sup>; Nakajima et al. 1992). OLR controls the cooling rate. The OLR of the current PROTEUS run decreases from 2.2 x 10<sup>5</sup> W/m<sup>2</sup> in its first row, at 1 yr, to 405 W/m<sup>2</sup> at a melt fraction of 5%; its absorbed stellar flux is 226 to 227 W/m<sup>2</sup>. The curve of the current run is a centred mean over 9 rows, which differs from a single row by about 8% at most.</figcaption>
 </figure>
 
 ## Geodynamics diagnostics
@@ -254,7 +256,7 @@ comparison stays reproducible without editing the script.
 <figure markdown="span">
   ![CHILI Fig 9](../assets/tutorials/chili/fig9_geodynamics.avif#only-light){ width="100%" }
   ![CHILI Fig 9](../assets/tutorials/chili/fig9_geodynamics_dark.avif#only-dark){ width="100%" }
-  <figcaption><strong>Figure 9.</strong> Geodynamics diagnostics as functions of melt fraction for the Nominal Earth case. (a) Surface temperature. (b) Rheological front radius in megameters; the dashed line marks the PROTEUS core-mantle boundary at 3.45 Mm (R<sub>core</sub>/R<sub>p</sub> = 0.49). (c) Effective mantle viscosity; the dashed line marks solid Earth mantle viscosity (5 x 10<sup>22</sup> Pa s), and the dotted line marks water STP viscosity (10<sup>-3</sup> Pa s). Current PROTEUS values are extracted from Aragog interior profiles at each timestep and drawn as a centred mean over 9 rows.</figcaption>
+  <figcaption><strong>Figure 9.</strong> Geodynamics diagnostics as functions of melt fraction for the Nominal Earth case; the melt fraction is by volume for the intercomparison models and by mass for the current PROTEUS run. (a) Surface temperature. (b) Rheological front radius in megameters; the dashed line marks the PROTEUS core-mantle boundary at 3.45 Mm (R<sub>core</sub>/R<sub>p</sub> = 0.49). (c) Effective mantle viscosity; the dashed line marks solid Earth mantle viscosity (5 x 10<sup>22</sup> Pa s), and the dotted line marks water STP viscosity (10<sup>-3</sup> Pa s). Current PROTEUS values are extracted from Aragog interior profiles at each timestep and drawn as a centred mean over 9 rows.</figcaption>
 </figure>
 
 ## Surface pressure evolution
