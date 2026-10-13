@@ -124,6 +124,7 @@ def test_run_label_is_unknown_for_a_log_without_a_commit(
     assert tool._get_proteus_sha(tmp_path / 'empty', good, run) == 'unknown/d0c7f080'
     assert 'no commit in' in capsys.readouterr().err
     assert tool._get_proteus_sha(tmp_path / 'not_a_folder', None, good) == 'd0c7f080'
+    assert tool._get_proteus_sha(good / 'proteus_00.log', good) == 'd0c7f080'
     assert tool._get_proteus_sha() == 'unknown'
     assert capsys.readouterr().err == ''
 
@@ -142,7 +143,7 @@ def test_figure_1_spans_20_myr_and_names_the_run_commit(tool, tmp_path, figures)
     assert ax.get_xlim()[1] > _run_table()['Time'].iloc[-1] / 1e6
     labels = [text.get_text() for text in ax.get_legend().get_texts()]
     assert labels == ['MOAI', 'PROTEUS (d0c7f080) Earth', 'PROTEUS (d0c7f080) Venus']
-    assert 'by volume' in ax.get_ylabel() and 'by mass' in ax.get_ylabel()
+    assert ax.get_ylabel() == 'Melt fraction\n(by volume; current runs by mass)'
 
 
 def test_composition_bars_hold_o2_of_the_models_and_of_the_run(tool, tmp_path):
@@ -209,6 +210,7 @@ def test_main_labels_the_figures_with_the_commits_of_all_run_folders(
     venus = _run_with_log(tmp_path / 'venus', '81e1514466a590a9fd97acea99150ea5d978a751')
     (tmp_path / 'grid').mkdir()
     for name, sha in (
+        ('Hhigh_Clow', '3' * 40),
         ('Hmid_Clow', '2' * 40),
         ('Hlow_Chigh', '1' * 40),
         ('Hlow_Clow', '0' * 40),
@@ -227,7 +229,7 @@ def test_main_labels_the_figures_with_the_commits_of_all_run_folders(
     for grid, label in (
         (
             ['--grid-dir', str(tmp_path / 'grid')],
-            'd0c7f080/81e15144/00000000/11111111/22222222',
+            'd0c7f080/81e15144/00000000/11111111/22222222/33333333',
         ),
         ([], 'd0c7f080/81e15144'),
     ):

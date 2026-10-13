@@ -1670,12 +1670,11 @@ def main():
     matplotlib.rcParams.update(_PLOT_STYLE)
 
     intercomp = ensure_chili_repo(args.chili_repo)
-    grid_runs = [
-        args.grid_dir / f'chili_grid_earth_{hl}_{cl}'
-        for hl in GRID_H
-        for cl in C_LEVELS
+    grid_runs = (
+        [args.grid_dir / f'chili_grid_earth_{hl}_{cl}' for hl in GRID_H for cl in C_LEVELS]
         if args.grid_dir
-    ]
+        else []
+    )
     sha = _get_proteus_sha(args.proteus_earth, args.proteus_venus, *grid_runs)
     NS = _new_style(sha)
     pe = _load_proteus_helpfile(args.proteus_earth) if args.proteus_earth else None
