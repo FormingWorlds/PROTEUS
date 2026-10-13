@@ -36,6 +36,7 @@ Install the required system libraries for your platform. See the
 === "Debian / Ubuntu"
 
     ```console
+    sudo apt update
     sudo apt install gfortran libnetcdff-dev build-essential curl wget git cmake unzip
     ```
 

@@ -56,6 +56,7 @@ guide pages.
 1. Install the required system libraries:
 
     ```console
+    sudo apt update
     sudo apt install libnetcdff-dev gfortran build-essential cmake unzip curl wget git
     ```
 
