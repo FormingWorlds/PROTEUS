@@ -342,24 +342,40 @@ _commit_text() {
 # Usage: _report_pinned_clone <distribution> <clone-dir> <script-label> <pin>. Reports an existing
 # clone against a commit pin and prints advice when HEAD does not match the pin commit.
 _report_pinned_clone() {
-    local dist="$1" dir="${2%/}" label="$3" pin="$4" head pin_commit found qdir qref
-    head=$(git -C "$dir" rev-parse --verify --quiet HEAD 2>/dev/null) || head=""
-    pin_commit=$(git -C "$dir" rev-parse --verify --quiet "$pin^{commit}" \
-        2>/dev/null) || pin_commit=""
-    if [ -n "$head" ] && [ "$head" = "$pin_commit" ]; then
-        echo "$dist: $dir is at the pinned commit ${pin:0:8}$(_local_changes_note "$dir")"
-        return 0
+    local dist="$1" dir="${2%/}" label="$3" pin="$4" head="" pin_commit="" found="" summary=""
+    local qdir qref
+    if [ ! -e "$dir/.git" ] && [ ! -L "$dir/.git" ]; then
+        found="not a git clone"
+        summary="$found"
+    elif ! is_own_clone "$dir"; then
+        found="not a readable git clone"
+        summary="$found"
+    else
+        head=$(git -C "$dir" rev-parse --verify --quiet HEAD 2>/dev/null) || head=""
+        pin_commit=$(git -C "$dir" rev-parse --verify --quiet "$pin^{commit}" \
+            2>/dev/null) || pin_commit=""
+        if [ -n "$head" ] && [ "$head" = "$pin_commit" ]; then
+            echo "$dist: $dir is at the pinned commit ${pin:0:8}$(_local_changes_note "$dir")"
+            return 0
+        fi
+        found=$(_commit_text "$dir" "$head")
+        summary="commit ${head:0:7}"
     fi
-    found=$(_commit_text "$dir" "$head")
     echo "$dist: $dir stays as it is: $found; not at the pinned commit ${pin:0:8}"
-    record_clone_stays "$dir" "commit ${head:0:7}"
+    record_clone_stays "$dir" "$summary"
     qdir=$(printf '%q' "$dir")
-    qref=$(printf '%q' "$pin")
-    echo "    From the PROTEUS folder, move it to the pinned commit by hand with:"
-    echo "        git -C $qdir fetch origin"
-    echo "        git -C $qdir checkout --detach $qref"
-    echo "        pip install -e $qdir"
-    echo "    Or replace it with a new clone, which deletes everything in it, with:"
+    if [ -n "$head" ]; then
+        qref=$(printf '%q' "$pin")
+        echo "    From the PROTEUS folder, move it to the pinned commit by hand with:"
+        echo "        git -C $qdir fetch origin"
+        echo "        git -C $qdir checkout --detach $qref"
+        if [ -f "$dir/pyproject.toml" ] || [ -f "$dir/setup.py" ]; then
+            echo "        pip install -e $qdir"
+        fi
+        echo "    Or replace it with a new clone, which deletes everything in it, with:"
+    else
+        echo "    From the PROTEUS folder, replace it with a new clone, which deletes everything in it, with:"
+    fi
     echo "        bash tools/$label --force"
 }
 
