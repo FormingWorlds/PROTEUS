@@ -4866,6 +4866,79 @@ def test_atmodeller_existing_folder_off_pin_stays_and_advises(tmp_path):
     assert git(clone, 'rev-parse', 'HEAD') == site['tip_sha']
 
 
+def _assert_read_only_git_calls(log_path: Path, folder: Path) -> None:
+    """Assert all git calls recorded in log_path on folder are strictly read-only."""
+    allowed = {
+        'rev-parse',
+        'status',
+        'symbolic-ref',
+        'describe',
+        'merge-base',
+        'log',
+        'show',
+        'for-each-ref',
+        'tag',
+    }
+    forbidden = {'fetch', 'pull', 'checkout', 'reset', 'merge', 'clean'}
+    calls = log_path.read_text().splitlines() if log_path.exists() else []
+    assert len(calls) > 0, 'expected at least one git call'
+    folder_real = str(os.path.realpath(folder))
+    folder_calls = 0
+    for line in calls:
+        if line.startswith('BLOCKED\t'):
+            parts = line.split('\t')
+            target = parts[1] if len(parts) > 1 else ''
+            args = parts[2].split() if len(parts) > 2 else []
+        else:
+            parts = line.split('\t')
+            target = parts[0]
+            args = parts[1].split() if len(parts) > 1 else []
+        i = 0
+        while i < len(args):
+            if args[i] == '-C' and i + 1 < len(args):
+                target = args[i + 1]
+                i += 2
+            elif args[i] in ('-c', '--git-dir', '--work-tree', '--namespace') and i + 1 < len(
+                args
+            ):
+                i += 2
+            elif args[i].startswith('-'):
+                i += 1
+            else:
+                break
+        sub = args[i] if i < len(args) else ''
+        rest = args[i + 1 :]
+        target_real = str(os.path.realpath(target))
+        if target_real == folder_real or target_real.startswith(folder_real + '/'):
+            folder_calls += 1
+            assert sub not in forbidden, f'Forbidden write git command on {folder}: {line}'
+            assert sub in allowed, f'Unexpected git command on {folder}: {line}'
+            if sub == 'tag':
+                assert any(opt in rest for opt in ('-l', '--list')), (
+                    f'git tag without list option on {folder}: {line}'
+                )
+    assert folder_calls > 0, f'no git calls found targeting {folder}'
+
+
+@pytest.mark.unit
+def test_atmodeller_existing_folder_gets_no_writing_git_commands(tmp_path):
+    """Verify an existing atmodeller folder receives no modifying git commands."""
+    site = _atmodeller_site(tmp_path)
+    assert _run_tool(site, 'get_atmodeller.sh').returncode == 0
+    clone = site['root'] / 'Atmodeller'
+    guard = tmp_path / 'guard'
+    guard.mkdir()
+    log = tmp_path / 'git-calls.log'
+    marker = tmp_path / 'git-write.marker'
+    install_git_guard(guard, log, marker, roots=[site['root']], trees=[clone])
+    site['env']['PATH'] = f'{guard}{os.pathsep}{site["env"]["PATH"]}'
+    res = _run_tool(site, 'get_atmodeller.sh')
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert not marker.exists(), f'Write git command called: {log.read_text()}'
+    assert clone.is_dir()
+    _assert_read_only_git_calls(log, clone)
+
+
 @pytest.mark.unit
 def test_atmodeller_failed_clone_leaves_existing_folder_unchanged(tmp_path):
     """Verify failing clone exits 1 and leaves existing folder unchanged."""
@@ -5151,6 +5224,25 @@ def test_obliqua_existing_folder_off_pin_stays_and_advises(tmp_path):
     assert 'bash tools/get_obliqua.sh --force' in res.stdout
     assert git(clone, 'rev-parse', 'HEAD') == site['tip_sha']
     assert (clone / 'Manifest.toml').read_bytes() == manifest_bytes
+
+
+@pytest.mark.unit
+def test_obliqua_existing_folder_gets_no_writing_git_commands(tmp_path):
+    """Verify an existing Obliqua folder receives no modifying git commands."""
+    site = _obliqua_site(tmp_path)
+    assert _run_tool(site, 'get_obliqua.sh').returncode == 0
+    clone = site['root'] / 'Obliqua'
+    guard = tmp_path / 'guard'
+    guard.mkdir()
+    log = tmp_path / 'git-calls.log'
+    marker = tmp_path / 'git-write.marker'
+    install_git_guard(guard, log, marker, roots=[site['root']], trees=[clone])
+    site['env']['PATH'] = f'{guard}{os.pathsep}{site["env"]["PATH"]}'
+    res = _run_tool(site, 'get_obliqua.sh')
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert not marker.exists(), f'Write git command called: {log.read_text()}'
+    assert (clone / 'Manifest.toml').exists()
+    _assert_read_only_git_calls(log, clone)
 
 
 @pytest.mark.unit
