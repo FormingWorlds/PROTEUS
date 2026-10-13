@@ -52,8 +52,8 @@ Everything in PROTEUS reads from the same table, so a pin is changed in
   pins.
 - **`proteus doctor`** and **`proteus update`** compare an installation against
   the pins and report or apply fixes (see [Diagnose and update](doctor.md)).
-  Git-commit drift is checked for AGNI and SOCRATES; the other git modules are
-  pinned but not drift-checked by the doctor.
+  Git-commit drift is checked for AGNI, SOCRATES and Obliqua; the other git
+  modules are pinned but not drift-checked by the doctor.
 
 Because of this, bumping a module is a single-line edit followed by a badge
 refresh and a local re-sync; a PETSc archive change is three lines here and the
@@ -89,11 +89,14 @@ matching lines in SPIDER.
       clone in the module's folder of the PROTEUS root, the setup script with
       `--force` that replaces it; run one of them by hand. The atmodeller
       clone is pinned by a commit: `bash tools/get_atmodeller.sh` prints the
-      commands that move it to the pin.
+      commands that move it to the pin, and `proteus doctor` prints them for a
+      clone below the floor.
     - Git module: `bash tools/get_<module>.sh` (for SOCRATES, add `--force` to
       discard local modifications to the checkout, that is, changes to tracked
       files or commits not pushed to a remote; the compiled build tree is left
-      in place).
+      in place). An existing Obliqua folder stays as it is: `proteus doctor`
+      prints `bash tools/get_obliqua.sh --force <folder>`, which replaces the
+      folder with a new clone at the pin; run it by hand.
 
 4. **Verify:**
 

@@ -64,7 +64,12 @@ For git-pinned modules (AGNI, SOCRATES, Obliqua), the doctor compares the
 checkout's HEAD commit against the commit SHA pinned in `pyproject.toml` under
 `[tool.proteus.modules]`. A mismatch produces a warning with a fix command. A
 missing AGNI or SOCRATES clone is a failure; a missing Obliqua clone is a
-warning with the fix `bash tools/get_obliqua.sh`. The AGNI fix is
+warning with the fix `bash tools/get_obliqua.sh`. For an Obliqua folder that
+is not at its pin the fix is advice that `proteus update` does not run:
+`bash tools/get_obliqua.sh --force <folder>` replaces the folder with a new
+clone at the pin. An Obliqua folder with no `Manifest.toml` gives a warning
+that its Julia environment is not instantiated, with the fix
+`bash tools/get_obliqua.sh`. The AGNI fix is
 `bash tools/get_agni.sh`. The SOCRATES fix also rebuilds AGNI,
 because re-cloning the SOCRATES tree removes the wrappers AGNI compiles into
 `socrates/julia`, so it reads
@@ -157,7 +162,9 @@ This lists the fixable issues and their commands but does not execute anything.
 
 | Issue | Fix action |
 |-------|-----------|
-| Missing Python package | `pip install <name>` |
+| Missing required Python package | `pip install <name>` |
+| Missing Morrigan, VULCAN or atmodeller | `bash tools/get_morrigan.sh`, `bash tools/get_vulcan.sh` or `bash tools/get_atmodeller.sh` |
+| Missing Obliqua, or an Obliqua folder with no instantiated Julia environment | `bash tools/get_obliqua.sh` |
 | Outdated Python package (editable git clone of its own, without a setup script) | `cd <checkout> && git pull && pip install -e .` |
 | Outdated Python package (wheel) | `pip install -U "<name>>=<version>"` |
 | Missing AGNI | `bash tools/get_agni.sh` |
@@ -189,15 +196,19 @@ This lists the fixable issues and their commands but does not execute anything.
   configured, activate the correct environment first:
   `conda activate proteus`.
 - **An outdated editable module clone that a setup script makes** (MORS,
-  JANUS, CALLIOPE, ZEPHYRUS, Aragog, Zalmoxis): no fix
-  changes such a clone. The doctor shows as its fix the commands that fetch
+  JANUS, CALLIOPE, ZEPHYRUS, Aragog, Zalmoxis, Morrigan, VULCAN, atmodeller):
+  no fix changes such a clone. The doctor shows as its fix the commands that fetch
   the tags, check out the release tag of the minimum version and reinstall
   the clone, and, for the clone in the module's folder of the PROTEUS root,
   the setup script with `--force` (for example
   `bash tools/get_python_module.sh MORS --force`), which replaces the clone
-  with a new one. Run the one you want by hand. A folder that is not a git
+  with a new one; for atmodeller the commands check out the pinned commit,
+  not a release tag. Run the one you want by hand. A folder that is not a git
   clone of its own gets no git command, which would act on the repository
   around it: only the `--force` replacement, or the advice to move it away.
+  An Obliqua folder that is not at its pin is not changed either: the doctor
+  shows `bash tools/get_obliqua.sh --force <folder>`, which replaces the
+  folder with a new clone at the pin.
 
 !!! warning "Source install required"
     `proteus update` requires a source install (git clone). If PROTEUS was
@@ -220,7 +231,9 @@ your own stays as it is, and the command prints the commands that move it by han
 and refreshes the reference data, verifying environment variables and disk
 space before proceeding. Pass `--export-env` to set the environment variables
 again in the active conda environment and in `.proteus-env.sh`. It runs no git command in the Python module
-clones (MORS, JANUS, CALLIOPE, ZEPHYRUS, Aragog, Zalmoxis); as
+clones (MORS, JANUS, CALLIOPE, ZEPHYRUS, Aragog, Zalmoxis, Morrigan, VULCAN,
+atmodeller) and none in Obliqua, and for a folder of the last four that is
+absent it prints the setup command; as
 with `bash install.sh`, its pip step installs the PyPI release in place of a
 clone that is older than the minimum version. To move a clone to its release
 tag after a version change, run the commands that `bash install.sh` prints for
@@ -257,7 +270,8 @@ proteus update
 
 This updates any submodules whose installed version no longer satisfies the
 new bounds. It does not change an editable module clone that a setup script
-makes (MORS, JANUS, CALLIOPE, ZEPHYRUS, Aragog, Zalmoxis):
+makes (MORS, JANUS, CALLIOPE, ZEPHYRUS, Aragog, Zalmoxis, Morrigan, VULCAN,
+atmodeller):
 for one below its minimum version it lists the commands that move it to the
 release tag by hand or replace it with `--force`. For another editable checkout that is a
 git clone of its own it runs `git pull && pip install -e .` in the checkout directory;

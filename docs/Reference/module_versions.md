@@ -43,6 +43,8 @@ pinned commit.
 
 ### Optional modules
 
+`bash install.sh` sets up atmodeller, VULCAN and Morrigan; in `pyproject.toml` they are package extras. The installer clones atmodeller at the commit under `[tool.proteus.modules.atmodeller]`.
+
 <!-- BEGIN OPTIONAL_TABLE -->
 | Module | Role | Pin | Docs |
 |--------|------|-----|------|
