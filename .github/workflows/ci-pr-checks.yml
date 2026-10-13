@@ -570,9 +570,15 @@ jobs:
         continue-on-error: true
         timeout-minutes: 20
         run: |
+          # pipefail: without it the exit status of this step is the one of tee,
+          # and a failed test does not fail the job.
+          set -euo pipefail
+          # 2 workers on the 3 cores and 7 GB of the runner: a third one brings the
+          # install script tests close to their time limits. worksteal evens out those tests.
           pytest -m "unit and not skip and not slow and not integration" \
             --ignore=tests/examples \
             --junit-xml=junit-unit-macos.xml \
+            -n 2 --dist worksteal \
             -p no:faulthandler \
             --durations=25 | tee pytest-unit-macos.log
 
