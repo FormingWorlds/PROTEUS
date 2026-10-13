@@ -150,8 +150,7 @@ from a sample of 8 snapshots.
 The config limits the run to 8 &times; 10<sup>5</sup> yr of evolution
 (`params.stop.time.maximum`), so the reference run below ends at that time
 (status: *Completed (target time)*), with the mantle still around 22%
-molten ($\Phi \approx 0.22$) rather than fully solidified. Overall, the 
-time steps are small enough to resolve the tidal evolution, but finer 
+molten ($\Phi \approx 0.22$) rather than fully solidified. Overall, finer 
 time resolution will substantially reduce the jumping behavior in the tidal heating.
 Ultimately, this is beyond the scope of this tutorial, as it would take substantially 
 longer to run. 
@@ -182,11 +181,13 @@ longer to run.
   below the runaway-greenhouse (S&ndash;N) limit at t &approx;
   8.8 &times; 10<sup>4</sup> yr. From there it no longer decays smoothly: it
   reaches an absolute minimum of ~0.5 W m<sup>-2</sup> near
-  3.5 &times; 10<sup>5</sup> yr, then fluctuates through a series of
-  resonance-driven bursts as the dominant tidal mode repeatedly sweeps in and out of the
-  mantle's normal-mode resonances (see the Love-number figure below), peaking
-  at ~7.8 &times; 10<sup>2</sup> W m<sup>-2</sup> near
-  7.8 &times; 10<sup>5</sup> yr. The mantle is still ~22% molten when the run
+  3.5 &times; 10<sup>5</sup> yr, then rises again and changes by up to a
+  factor of ~300 from one output time to the next (see the Love-number figure
+  below), peaking at ~7.8 &times; 10<sup>2</sup> W m<sup>-2</sup> near
+  7.8 &times; 10<sup>5</sup> yr. This peak and the two values of
+  ~500 W m<sup>-2</sup> in the last 10<sup>4</sup> yr each follow a snapshot in
+  which Im(k<sub>22</sub>) is at the cap of the config
+  (`orbit.obliqua.cap_LN = true`). The mantle is still ~22% molten when the run
   ends at t = 8 &times; 10<sup>5</sup> yr, with tidal heating that swings
   between ~20 and ~500 W m<sup>-2</sup> over the last 2 &times; 10<sup>4</sup> yr,
   around the net interior/atmosphere flux (~2.3 &times; 10<sup>2</sup> W
@@ -204,16 +205,20 @@ longer to run.
   s<sup>-1</sup> in the first ~10<sup>3</sup> yr and then decreases to
   ~4.3 &times; 10<sup>-4</sup> rad s<sup>-1</sup> as the planet despins.
   Both panels show magnitudes.
-  Re(k<sub>22</sub>) is near 0.02 at 10<sup>3</sup> yr and jumps by more than an order of
-  magnitude to ~1.4 once the forcing frequency first sweeps past a
-  normal-mode (seismic) resonance around t &approx; 1.5 &times; 10<sup>5</sup> yr,
-  then stays in that resonance-affected regime, mostly between ~0.5 and ~1.4.
-  It exceeds the seismic-resonance threshold (Re &gt; 1.5, ringed in red)
+  Re(k<sub>22</sub>) is near 0.02 at 10<sup>3</sup> yr and stays below 0.04 while
+  the layer list of the tidal model holds only a fluid layer. It jumps to ~1.4
+  at t &approx; 1.5 &times; 10<sup>5</sup> yr, in the snapshot where the first
+  solid layer appears (&Phi; &approx; 0.69); the forcing frequency changes by
+  0.4% between these two snapshots. From there to 7.6 &times; 10<sup>5</sup> yr
+  it lies mostly between ~0.5 and ~1.4.
+  It exceeds the threshold of the red rings (Re &gt; 1.5)
   once, at t &approx; 7.9 &times; 10<sup>5</sup> yr, where it peaks at ~3.7.
   It is negative in 14 snapshots, which get no ring: first at
   t &approx; 7.2 &times; 10<sup>5</sup> yr, again at
   7.7 &times; 10<sup>5</sup> yr (its minimum, &minus;3.5), and in 12 of the
-  last 14 snapshots (the last 1.5 &times; 10<sup>4</sup> yr of the run). The magnitude of Im(k<sub>22</sub>) is smallest, 10<sup>-3.5</sup>, near
+  last 14 snapshots (the last 1.5 &times; 10<sup>4</sup> yr of the run).
+  Im(k<sub>22</sub>) is at the cap (|Im| = 3) in 3 snapshots of the last
+  3.2 &times; 10<sup>4</sup> yr. The magnitude of Im(k<sub>22</sub>) is smallest, 10<sup>-3.5</sup>, near
   3.4 &times; 10<sup>5</sup> yr, where the tidal heating has its
   minimum.</figcaption>
 </figure>
