@@ -3925,3 +3925,264 @@ class TestLogFileSentence:
         assert result.returncode == status
         sentence = f'The full output of the installer is in {log}'
         assert _lines(result).count(sentence) == count
+
+
+class TestFurtherModulesPhase:
+    """The Further modules phase installs Morrigan, VULCAN, atmodeller, and Obliqua."""
+
+    MODULES = ('Morrigan', 'VULCAN', 'atmodeller', 'Obliqua')
+    SCRIPTS = (
+        'get_morrigan.sh',
+        'get_vulcan.sh',
+        'get_atmodeller.sh',
+        'get_obliqua.sh',
+    )
+
+    @pytest.fixture
+    def site(self, tmp_path):
+        """Prepare a scratch directory with stub setup scripts and log setup."""
+        scratch = tmp_path / 'proteus'
+        tools = scratch / 'tools'
+        tools.mkdir(parents=True)
+        log = scratch / 'calls.log'
+        log.write_text('')
+        for name, script in zip(self.MODULES, self.SCRIPTS, strict=True):
+            body = (
+                '#!/bin/bash\n'
+                f'echo "{name} $0 PROTEUS_CLONE_STAYS=${{PROTEUS_CLONE_STAYS:-}}" >> '
+                f'{shlex.quote(str(log))}\n'
+                'exit 0\n'
+            )
+            stub = tools / script
+            stub.write_text(body)
+            stub.chmod(0o755)
+        tmp_dir = scratch / 'tmp'
+        tmp_dir.mkdir()
+        install_log = scratch / 'install.log'
+        install_log.write_text('')
+        env = {
+            **_env_without_log_state(),
+            'SCRIPT_DIR': str(scratch),
+            'TMPDIR': str(tmp_dir),
+            'LOGFILE': str(install_log),
+        }
+        for var in ('FAILED_MODULES', 'PROTEUS_CLONE_STAYS', 'FURTHER_STAYS'):
+            env.pop(var, None)
+        return {
+            'scratch': scratch,
+            'tools': tools,
+            'calls_log': log,
+            'install_log': install_log,
+            'tmp_dir': tmp_dir,
+            'env': env,
+        }
+
+    @staticmethod
+    def _phase_block() -> str:
+        """The shipped lines of install.sh for the further modules phase."""
+        lines = INSTALL_SH.read_text().splitlines()
+        start = next(i for i, ln in enumerate(lines) if ln.startswith('FAILED_MODULES=""'))
+        end = next(
+            i for i, ln in enumerate(lines) if ln.startswith('# Verify the installation')
+        )
+        return '\n'.join(lines[start:end]) + '\n'
+
+    @staticmethod
+    def _end_block() -> str:
+        """The shipped lines of install.sh for the failed modules end warning."""
+        lines = INSTALL_SH.read_text().splitlines()
+        start = next(
+            i for i, ln in enumerate(lines) if ln == 'if [ -n "$FAILED_MODULES" ]; then'
+        )
+        end = next(i for i, ln in enumerate(lines) if i > start and ln == 'fi')
+        return '\n'.join(lines[start : end + 1]) + '\n'
+
+    def _run_phase(
+        self,
+        site: dict,
+        suffix: str = '',
+        env_extra: dict | None = None,
+        shell: str = '/bin/bash',
+    ) -> subprocess.CompletedProcess:
+        """Run the shipped lines of the phase under the installer functions and environment."""
+        scratch = site['scratch']
+        defs = (
+            'set -euo pipefail\nCURRENT_PHASE=7\n'
+            + f'SCRIPT_DIR={shlex.quote(str(scratch))}\n'
+            + f'TMPDIR={shlex.quote(str(site["tmp_dir"]))}\n'
+            + f'LOGFILE={shlex.quote(str(site["install_log"]))}\n'
+            + _install_sh_blocks("RED='", 'info()')
+            + ''.join(
+                _install_sh_function(f)
+                for f in ('command_exists', 'collect_env_info', 'die', *_RUN_LOGGED_FUNCTIONS)
+            )
+            + _RUN_LOGGED_CLEANUP
+        )
+        env = {**site['env'], **(env_extra or {})}
+        return subprocess.run(
+            [shell, '-c', defs + self._phase_block() + suffix],
+            cwd=scratch,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+
+    def test_commands_run_in_order_with_run_logged_and_stays_file(self, site):
+        """The four setup commands run in specified order through run_logged with stays file."""
+        res = self._run_phase(site)
+        assert res.returncode == 0, res.stdout + res.stderr
+        calls = site['calls_log'].read_text().splitlines()
+        assert len(calls) == 4
+        assert calls[0].startswith('Morrigan tools/get_morrigan.sh ')
+        assert calls[1].startswith('VULCAN tools/get_vulcan.sh ')
+        assert calls[2].startswith('atmodeller tools/get_atmodeller.sh ')
+        assert calls[3].startswith('Obliqua tools/get_obliqua.sh ')
+        stays_targets = [c.partition('PROTEUS_CLONE_STAYS=')[2] for c in calls]
+        assert len(set(stays_targets)) == 1
+        assert stays_targets[0] != ''
+        assert 'proteus-clone-stays.' in stays_targets[0]
+        assert 'Setting up Morrigan' in res.stdout
+        assert 'Setting up VULCAN' in res.stdout
+        assert 'Setting up atmodeller' in res.stdout
+        assert 'Setting up Obliqua' in res.stdout
+
+    @pytest.mark.parametrize(
+        ('failed_name', 'failed_script'),
+        [
+            ('Morrigan', 'get_morrigan.sh'),
+            ('VULCAN', 'get_vulcan.sh'),
+            ('atmodeller', 'get_atmodeller.sh'),
+            ('Obliqua', 'get_obliqua.sh'),
+        ],
+    )
+    def test_each_module_fails_alone_warns_and_records(self, site, failed_name, failed_script):
+        """Each module failure alone warns, lets others run, records command, and exits 0."""
+        (site['tools'] / failed_script).write_text('#!/bin/bash\nexit 1\n')
+        res = self._run_phase(site, suffix='\necho "RESULT_FAILED=$FAILED_MODULES"\n')
+        assert res.returncode == 0, res.stdout + res.stderr
+        warn_msg = f'{failed_name} is not installed: its setup step failed'
+        cmd_msg = f'bash tools/{failed_script}'
+        assert warn_msg in res.stdout + res.stderr
+        assert cmd_msg in res.stdout + res.stderr
+        calls = site['calls_log'].read_text().splitlines()
+        assert len(calls) == 3
+        assert not any(failed_name in c for c in calls)
+        assert f'RESULT_FAILED={failed_name} ({cmd_msg})' in res.stdout
+
+    def test_two_modules_fail_joined_by_semicolon_in_order(self, site):
+        """Two failing modules are recorded in FAILED_MODULES joined by semicolon in order."""
+        (site['tools'] / 'get_morrigan.sh').write_text('#!/bin/bash\nexit 1\n')
+        (site['tools'] / 'get_atmodeller.sh').write_text('#!/bin/bash\nexit 1\n')
+        res = self._run_phase(site, suffix='\necho "RESULT_FAILED=$FAILED_MODULES"\n')
+        assert res.returncode == 0, res.stdout + res.stderr
+        expected = (
+            'Morrigan (bash tools/get_morrigan.sh); atmodeller (bash tools/get_atmodeller.sh)'
+        )
+        assert f'RESULT_FAILED={expected}' in res.stdout
+        calls = site['calls_log'].read_text().splitlines()
+        assert len(calls) == 2
+        assert any('VULCAN' in c for c in calls)
+        assert any('Obliqua' in c for c in calls)
+
+    def test_none_fails_failed_modules_is_empty_and_end_block_prints_nothing(self, site):
+        """When no module fails FAILED_MODULES is empty and end block prints no warning."""
+        suffix = '\n' + self._end_block() + '\necho "RESULT_FAILED=$FAILED_MODULES"\n'
+        res = self._run_phase(site, suffix=suffix)
+        assert res.returncode == 0, res.stdout + res.stderr
+        assert 'RESULT_FAILED=' in res.stdout
+        assert res.stdout.partition('RESULT_FAILED=')[2].strip() == ''
+        assert 'Not installed:' not in res.stdout + res.stderr
+
+    def test_end_block_with_failed_module_prints_single_warning(self, site):
+        """The end block prints exactly one warning naming each failed module and its command."""
+        scratch = site['scratch']
+        script = (
+            'set -euo pipefail\n'
+            + f'SCRIPT_DIR={shlex.quote(str(scratch))}\n'
+            + _install_sh_blocks("RED='", 'info()')
+            + 'FAILED_MODULES="Morrigan (bash tools/get_morrigan.sh)"\n'
+            + self._end_block()
+        )
+        res = subprocess.run(
+            ['/bin/bash', '-c', script],
+            cwd=scratch,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        assert res.returncode == 0, res.stdout + res.stderr
+        assert (
+            'Not installed: Morrigan (bash tools/get_morrigan.sh).' in res.stdout + res.stderr
+        )
+        assert f'run its command from {scratch}' in res.stdout + res.stderr
+        assert (res.stdout + res.stderr).count('Not installed:') == 1
+
+    def test_clone_stays_warning_lists_recorded_clones_and_removes_file(self, site):
+        """Stays warning prints all recorded clones and removes temporary stays file."""
+        morrigan_stub = (
+            '#!/bin/bash\n'
+            'printf "Morrigan (commit 1234567)\\n" >> "$PROTEUS_CLONE_STAYS"\n'
+            'exit 0\n'
+        )
+        obliqua_stub = (
+            '#!/bin/bash\n'
+            'printf "Obliqua (not a git clone)\\n" >> "$PROTEUS_CLONE_STAYS"\n'
+            'exit 0\n'
+        )
+        (site['tools'] / 'get_morrigan.sh').write_text(morrigan_stub)
+        (site['tools'] / 'get_obliqua.sh').write_text(obliqua_stub)
+        suffix = '\necho "STAYS_EXISTS=$([ -e "$FURTHER_STAYS" ] && echo yes || echo no)"\n'
+        res = self._run_phase(site, suffix=suffix)
+        assert res.returncode == 0, res.stdout + res.stderr
+        expected_warning = (
+            'Not at their release tag or pinned commit: '
+            'Morrigan (commit 1234567), Obliqua (not a git clone).'
+        )
+        assert expected_warning in res.stdout + res.stderr
+        assert 'Each stays as it is;' in res.stdout + res.stderr
+        assert 'STAYS_EXISTS=no' in res.stdout
+
+        # Verify no warning printed when stays file is empty
+        (site['tools'] / 'get_morrigan.sh').write_text('#!/bin/bash\nexit 0\n')
+        (site['tools'] / 'get_obliqua.sh').write_text('#!/bin/bash\nexit 0\n')
+        clean_res = self._run_phase(site)
+        assert clean_res.returncode == 0
+        assert 'Not at their release tag or pinned commit:' not in (
+            clean_res.stdout + clean_res.stderr
+        )
+
+    def test_mktemp_failure_runs_commands_and_skips_stays_warning(self, site, tmp_path):
+        """When mktemp fails the phase runs all setup commands and prints no stays warning."""
+        stubs = tmp_path / 'bin_stubs'
+        stubs.mkdir()
+        (stubs / 'mktemp').write_text('#!/bin/sh\nexit 1\n')
+        (stubs / 'mktemp').chmod(0o755)
+        env_extra = {'PATH': f'{stubs}{os.pathsep}{os.environ["PATH"]}'}
+        res = self._run_phase(site, env_extra=env_extra)
+        assert res.returncode == 0, res.stdout + res.stderr
+        calls = site['calls_log'].read_text().splitlines()
+        assert len(calls) == 4
+        assert 'Not at their release tag or pinned commit:' not in (res.stdout + res.stderr)
+
+    def test_phase_runs_under_bin_bash_with_set_euo_pipefail(self, site):
+        """The phase runs under macOS /bin/bash without unbound variable errors."""
+        res = self._run_phase(site, shell='/bin/bash')
+        assert res.returncode == 0, res.stdout + res.stderr
+        assert 'unbound variable' not in res.stderr.lower()
+        assert 'command not found' not in res.stderr.lower()
+
+    def test_installer_phase_order_and_binding_positions(self):
+        """Phase 7 lies between develop install and verify, and bind_install_vars precedes phase 8."""
+        lines = INSTALL_SH.read_text().splitlines()
+        idx_develop = next(
+            i for i, ln in enumerate(lines) if 'pip install -e ".[develop]"' in ln
+        )
+        idx_phase7 = next(i for i, ln in enumerate(lines) if 'phase 7 "Further modules"' in ln)
+        idx_verify = next(i for i, ln in enumerate(lines) if ln == 'verify_proteus_import')
+        idx_bind = next(i for i, ln in enumerate(lines) if ln == 'bind_install_vars')
+        idx_phase8 = next(i for i, ln in enumerate(lines) if 'phase 8 "Reference data"' in ln)
+        assert idx_develop < idx_phase7
+        assert idx_phase7 < idx_verify
+        assert idx_verify < idx_bind
+        assert idx_bind < idx_phase8
