@@ -31,7 +31,9 @@ This case takes its orbit, albedo, volatile inventories and initial thermal
 state from Table 2 of the CHILI protocol paper. It departs from the protocol in
 the following points. The oxygen fugacity is IW+2. Zalmoxis solves the interior
 structure from a core mass fraction instead of the fixed planet radius and core
-radius fraction of the protocol. The star follows the Spada tracks with the
+radius fraction of the protocol, with the MgSiO$_3$ equation of state of PALEOS
+for the mantle, where the protocol names a bulk silicate Earth (BSE)
+composition. The star follows the Spada tracks with the
 solar spectrum, where the protocol asks for the Baraffe et al. (2015) track
 with a blackbody spectrum for models that evolve the stellar luminosity. The
 instellation is ~1005 W m$^{-2}$ at the start; the 920 W m$^{-2}$ of Table 2
@@ -42,6 +44,7 @@ is the value of the protocol for models with a constant luminosity. Radiogenic h
 |-----------|-------|
 | Planet mass | 1 M$_\oplus$ |
 | Core mass fraction (CHILI: core radius fraction 0.55) | 0.325 |
+| Mantle composition (CHILI: BSE) | MgSiO$_3$ (PALEOS equation of state) |
 | Stellar mass | 1 M$_\odot$ |
 | Starting stellar age | 50 Myr |
 | Stellar track and spectrum (CHILI: Baraffe et al. 2015 track, blackbody spectrum) | Spada tracks, solar spectrum |
@@ -116,7 +119,7 @@ proteus plot -c input/tutorials/tutorial_earth.toml all
   ![Earth tutorial output](../assets/tutorials/earth_global_log.avif#only-light){ width="100%" }
   ![Earth tutorial output](../assets/tutorials/earth_global_log_dark.avif#only-dark){ width="100%" }
   <figcaption><b>Multi-panel overview of the PROTEUS Earth analogue tutorial run.</b>
-  (a) Upward heat flux components: radiogenic heating (magenta, ~0.2 W m<sup>-2</sup>), net interior flux (dashed orange), net atmospheric flux (solid, grey/white), outgoing longwave radiation (OLR, red), and absorbed stellar flux (ASF, dashed blue, ~226 W m<sup>-2</sup>). Tidal heating (dark yellow) is zero in this run. The net fluxes decline from ~2 &times; 10<sup>5</sup> W m<sup>-2</sup> at 10<sup>3</sup> yr, where the time axis starts, to ~140 W m<sup>-2</sup> over ~3.8 Myr.
+  (a) Upward heat flux components: radiogenic heating (magenta, ~0.2 W m<sup>-2</sup>), net interior flux (dashed orange), net atmospheric flux (solid, grey/white), outgoing longwave radiation (OLR, red), and absorbed stellar flux (ASF, dashed blue, ~226 to ~227 W m<sup>-2</sup>). Tidal heating (dark yellow) is zero in this run. The net fluxes decline from ~2 &times; 10<sup>5</sup> W m<sup>-2</sup> at 10<sup>3</sup> yr, where the time axis starts, to ~140 W m<sup>-2</sup> over ~3.8 Myr.
   (b) Surface partial pressures: at the start of the time axis the total surface pressure (dashed) is ~210 bar and O<sub>2</sub> (yellow-green, ~120 bar) is the largest species; O<sub>2</sub> collapses within the first ~2 &times; 10<sup>4</sup> yr as the surface cools. CO<sub>2</sub> (orange) holds ~36-61 bar; H<sub>2</sub>O (blue) rises from ~4 bar to ~280 bar as it exsolves during solidification. CO (gold) falls from ~33 bar to ~16 bar and H<sub>2</sub> (green) rises from ~0.2 bar to ~35 bar.
   (c) Surface temperature (solid) declining from ~3200 K to ~1760 K at termination; the magma temperature (dashed orange) starts near 4100 K on this axis.
   (d) Surface gas mole fractions: O<sub>2</sub> (yellow-green) is the largest species at the start of the axis (~58%) and collapses; CO<sub>2</sub> (orange) then dominates, peaking near 61%, with CO (gold) at up to ~34%; H<sub>2</sub>O (blue) rises to dominate late, crossing CO<sub>2</sub> around 1.2 &times; 10<sup>6</sup> yr and reaching ~76%.

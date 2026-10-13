@@ -7,7 +7,11 @@ execution of simulations to study the effects of tides on planetary orbits.
 
 ## Prerequisites
 
-- Full PROTEUS installation with AGNI, SOCRATES, and Obliqua compiled
+- PROTEUS installed with `bash install.sh` (see the
+  [installation guide](../How-to/installation.md)), which builds AGNI and
+  SOCRATES
+- SPIDER (with PETSc) and Obliqua, which the installer does not build
+  (commands below)
 - `FWL_DATA` and `RAD_DIR` environment variables set
 - Spectral files downloaded (`proteus get spectral -n Dayspring -b 48`)
 - Solar spectrum downloaded (`proteus get stellar`)
@@ -18,13 +22,28 @@ Reference data is also fetched automatically when `proteus start` runs
 without the `--offline` flag, so the download commands above are only
 required for offline use.
 
+The config uses SPIDER for the interior structure and energetics and Obliqua
+for the tides. Build them after the standard install, from the PROTEUS folder
+with the `proteus` environment active:
+
+```bash
+bash tools/get_petsc.sh
+bash tools/get_spider.sh
+bash tools/get_obliqua.sh
+```
+
+The [optional modules](../How-to/optionalmodules_installation.md) page
+describes each step.
+
 ## Physical setup
 
 The physical setup for the orbit and tides tutorial involves defining the 
 properties of the planet and its satellite. For the satellite a data file called 
 `tutorial_earth_moon.json` is included in the `input/tutorials/` directory relative 
 to the PROTEUS root directory. The data file must be a JSON file with the following 
-structure:
+structure. The `//` comments explain the fields here and are not part of the
+file: JSON has no comment syntax, and the file in the repository holds only
+the values.
 
 ```json
 {
@@ -72,7 +91,8 @@ values provided here are arbitrary and do not affect the tidal response calculat
 ```bash
 conda activate proteus
 mkdir -p output/tutorial_earth_moon
-proteus start -c input/tutorials/tutorial_earth_moon.toml
+nohup proteus start -c input/tutorials/tutorial_earth_moon.toml \
+    > /tmp/proteus_earth_moon_launch.log 2>&1 & disown
 ```
 
 Add `--offline` to skip the reference-data check on later runs; the first
@@ -107,7 +127,10 @@ The config at `input/tutorials/tutorial_earth_moon.toml` sets:
 - **Outgassing**: CALLIOPE partitions the hydrogen, carbon, nitrogen and
   sulfur volatiles (among them H$_2$O, CO$_2$, CO, H$_2$, CH$_4$ and N$_2$)
   between atmosphere and melt at the fO$_2$ = IW+2 buffer.
-- **Atmosphere**: AGNI solves the radiative-convective equilibrium with
+- **Atmosphere**: AGNI computes the radiative fluxes on a prescribed
+  temperature profile (`atmos_clim.agni.solve_energy = false`): a dry adiabat
+  from the surface, which is held at the magma temperature
+  (`atmos_clim.surf_state = "fixed"`), with condensation above it. It uses
   Dayspring 48-band correlated-k opacities and real-gas corrections.
 - **Escape**: ZEPHYRUS computes energy-limited mass loss at 20% efficiency,
   distributing the bulk escape rate across elements proportionally.

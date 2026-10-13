@@ -8,8 +8,9 @@ to production runs.
 
 ## Prerequisites
 
-- PROTEUS installed (`pip install -e ".[develop]"`)
-- `FWL_DATA` environment variable set
+- PROTEUS installed with `bash install.sh` (see the
+  [installation guide](../How-to/installation.md)); the installer sets
+  `FWL_DATA` in the `proteus` conda environment
 
 No external solvers, spectral files, or EOS data are required.
 
@@ -44,14 +45,15 @@ conda activate proteus
 proteus start --offline -c input/dummy.toml
 ```
 
-The `--offline` flag skips data downloads. The run takes about a minute,
+The `--offline` flag skips data downloads. The run takes less than a minute,
 including the plots.
 
 ## Expected output
 
-The run creates a directory inside `output/` named with a timestamp.
-Check `plots/plot_global_lin.png` for a multi-panel overview. Your
-output should look similar to this:
+The run creates a directory inside `output/` named with a timestamp
+(`run_<timestamp>_xxxx`, called `<run folder>` below). Check
+`output/<run folder>/plots/plot_global_lin.png` for a multi-panel overview.
+Your output should look similar to this:
 
 <figure markdown="span">
   ![Dummy tutorial output](../assets/tutorials/dummy_global_lin.avif){ width="100%" }
@@ -69,11 +71,15 @@ output should look similar to this:
   interior to the atmosphere.</figcaption>
 </figure>
 
-To regenerate these plots from your own output:
+To regenerate these plots from your own output, pass the resolved config
+that the run wrote into its folder:
 
 ```bash
-proteus plot -c input/dummy.toml all
+proteus plot -c output/<run folder>/init_coupler.toml all
 ```
+
+`input/dummy.toml` sets `params.out.path = "auto"`, so the plot command
+with that file would look for a new run folder.
 
 ## Understanding the helpfile
 
@@ -119,8 +125,11 @@ series. Key columns:
 - **Enable escape**: set `escape.dummy.rate = 1e4` and
   `params.stop.escape.enabled = true` to see atmospheric mass loss
 - **Change volatile inventory**: increase `H_budget` to 50,000 ppmw for a
-  thicker steam atmosphere, or decrease it to 1,000 ppmw for faster
-  solidification
+  thicker steam atmosphere, or decrease it to 1,000 ppmw for a thinner one
+  (~11,000 bar at the end of the run, against ~74,000 bar here). The
+  solidification time stays the same, because the grey atmosphere uses a
+  fixed greenhouse factor (see the
+  [parameter grid tutorial](parameter_grid.md))
 - **Move to production modules**: the [Earth analogue tutorial](earth_analogue.md)
   uses Aragog, Zalmoxis, CALLIOPE, and AGNI for a quantitatively meaningful
   simulation
