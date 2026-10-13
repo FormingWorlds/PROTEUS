@@ -68,8 +68,11 @@ def check_doctor(results: list[Any]) -> list[str]:
     problems: list[str] = []
     for name in DOCTOR_NAMES:
         matches = [r for r in results if getattr(r, 'name', None) == name]
-        if len(matches) != 1:
+        if not matches:
             problems.append(f'{name}: not in the doctor report')
+            continue
+        if len(matches) > 1:
+            problems.append(f'{name}: {len(matches)} results in the doctor report, 1 expected')
             continue
         res = matches[0]
         if res.status != PASS:
@@ -95,15 +98,29 @@ def check_obliqua(
     list of str
         Problem descriptions; empty when Obliqua loads cleanly.
     """
-    if loader is None:
-        from proteus.orbit.obliqua import import_obliqua
-
-        loader = import_obliqua
     try:
+        if loader is None:
+            from proteus.orbit.obliqua import import_obliqua
+
+            loader = import_obliqua
         loader({'obliqua': str(root / 'Obliqua')})
     except Exception as exc:
         return [f'Obliqua does not load through PROTEUS: {type(exc).__name__}: {exc}']
     return []
+
+
+def doctor_problems() -> list[str]:
+    """Run all doctor checks and return any reported problems.
+
+    Returns
+    -------
+    list of str
+        Problem descriptions from doctor checks or execution failure.
+    """
+    try:
+        return check_doctor(run_all_checks())
+    except Exception as exc:
+        return [f'doctor could not run: {type(exc).__name__}: {exc}']
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -130,7 +147,7 @@ def main(argv: list[str] | None = None) -> int:
     root = args.root.resolve()
 
     problems_imports = check_imports()
-    problems_doctor = check_doctor(run_all_checks())
+    problems_doctor = doctor_problems()
     problems_obliqua = check_obliqua(root)
 
     checks = [

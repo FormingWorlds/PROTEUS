@@ -86,12 +86,46 @@ def test_check_doctor_verifies_pass_status_and_reports_anomalies():
     message_problems = cfm.check_doctor(message_results)
     assert message_problems == ['Obliqua: doctor says fail: broken build']
 
+    duplicate_results = [
+        types.SimpleNamespace(name='Obliqua', status='pass', message='ok'),
+        types.SimpleNamespace(name='Obliqua', status='pass', message='ok'),
+    ] + [
+        types.SimpleNamespace(name=name, status='pass', message='ok')
+        for name in cfm.DOCTOR_NAMES
+        if name != 'Obliqua'
+    ]
+    assert cfm.check_doctor(duplicate_results) == [
+        'Obliqua: 2 results in the doctor report, 1 expected'
+    ]
 
-def test_check_obliqua_loads_through_proteus_mock_and_preserves_sys_modules(
+
+def test_check_obliqua_default_loader_invokes_import_obliqua(monkeypatch, tmp_path):
+    """Default loader imports proteus.orbit.obliqua and passes custom path mapping."""
+    received: list[dict[str, str]] = []
+    fake_module = types.ModuleType('proteus.orbit.obliqua')
+    fake_module.import_obliqua = lambda custom_paths: received.append(custom_paths)
+    monkeypatch.setitem(sys.modules, 'proteus.orbit.obliqua', fake_module)
+
+    problems = cfm.check_obliqua(tmp_path)
+    assert problems == []
+    assert received == [{'obliqua': str(tmp_path / 'Obliqua')}]
+
+
+def test_check_obliqua_handles_import_error_cleanly(monkeypatch, tmp_path):
+    """Import error in Obliqua loader is trapped into a problem report."""
+    monkeypatch.setitem(sys.modules, 'proteus.orbit.obliqua', None)
+
+    problems = cfm.check_obliqua(tmp_path)
+    assert len(problems) == 1
+    assert problems[0].startswith('Obliqua does not load through PROTEUS: ')
+    assert 'ModuleNotFoundError' in problems[0]
+
+
+def test_check_obliqua_with_a_loader_reports_its_error_and_imports_nothing(
     tmp_path,
 ):
     """Obliqua loader wrapper passes custom path mapping and catches runtime errors."""
-    assert 'proteus.orbit.obliqua' not in sys.modules
+    before_keys = set(sys.modules.keys())
 
     received_dirs: list[dict[str, str]] = []
 
@@ -111,7 +145,7 @@ def test_check_obliqua_loads_through_proteus_mock_and_preserves_sys_modules(
 
     assert cfm.check_obliqua(tmp_path, loader=clean_loader) == []
     assert clean_dirs == [{'obliqua': str(tmp_path / 'Obliqua')}]
-    assert 'proteus.orbit.obliqua' not in sys.modules
+    assert set(sys.modules.keys()) == before_keys
 
 
 def test_main_clean_exit_code_and_output(monkeypatch, tmp_path, capsys):
@@ -127,6 +161,33 @@ def test_main_clean_exit_code_and_output(monkeypatch, tmp_path, capsys):
     assert exit_code == 0
     assert 'All 4 further modules are usable.' in captured.out
     assert captured.err == ''
+
+
+def test_main_handles_doctor_exception_and_continues(monkeypatch, tmp_path, capsys):
+    """Exception in doctor checks is caught and other checks continue."""
+    check_calls: list[str] = []
+
+    def fake_imports():
+        check_calls.append('imports')
+        return []
+
+    def fake_obliqua(root, loader=None):
+        check_calls.append('obliqua')
+        return []
+
+    def failing_doctor():
+        raise RuntimeError('boom')
+
+    monkeypatch.setattr(cfm, 'check_imports', fake_imports)
+    monkeypatch.setattr(cfm, 'run_all_checks', failing_doctor)
+    monkeypatch.setattr(cfm, 'check_obliqua', fake_obliqua)
+
+    exit_code = cfm.main(['--root', str(tmp_path)])
+    captured = capsys.readouterr()
+
+    assert exit_code == 1
+    assert 'doctor could not run: RuntimeError: boom' in captured.err
+    assert check_calls == ['imports', 'obliqua']
 
 
 def test_main_failing_exit_code_and_no_short_circuit(monkeypatch, tmp_path, capsys):
@@ -170,6 +231,12 @@ def test_workflow_further_modules_check_step_configuration():
         import yaml
 
         data = yaml.safe_load(workflow_text)
+        on_data = data.get('on') if 'on' in data else data.get(True, {})
+        pr_paths = on_data['pull_request']['paths']
+        assert 'tools/check_further_modules.py' in pr_paths
+        assert 'tools/_get_common.sh' in pr_paths
+        assert 'tools/get_*.sh' in pr_paths
+
         steps = data['jobs']['install']['steps']
         matching_steps = [
             s
@@ -199,6 +266,9 @@ def test_workflow_further_modules_check_step_configuration():
         assert 'Check that the four further modules are usable' in workflow_text
 
     # Text assertions apply unconditionally
+    assert '- tools/check_further_modules.py' in workflow_text
+    assert '- tools/_get_common.sh' in workflow_text
+    assert '- tools/get_*.sh' in workflow_text
     step_marker = '- name: Check that the four further modules are usable'
     assert step_marker in workflow_text
     after_step = workflow_text.split(step_marker, 1)[1]

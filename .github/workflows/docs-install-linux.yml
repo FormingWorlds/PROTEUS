@@ -11,6 +11,9 @@ on:
       - docs/How-to/installation.md
       - install.sh
       - tools/docs_install_steps.py
+      - tools/check_further_modules.py
+      - tools/_get_common.sh
+      - tools/get_*.sh
       - .github/docs-install-linux-substitutions.toml
       - .github/workflows/docs-install-linux.yml
 
