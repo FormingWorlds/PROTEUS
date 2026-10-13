@@ -1,7 +1,7 @@
 #!/bin/bash
-# Clone and configure Morrigan as an editable module inside ./Morrigan/.
-# Checks out the git tag matching the fwl-morrigan floor in pyproject.toml.
-# For standard installations, use `pip install "fwl-proteus[morrigan]"`.
+# Clone Morrigan into ./Morrigan/ at the tag of the fwl-morrigan floor and install it editable; an
+# existing folder is installed as it is, and --force replaces it. For standard installations, use
+# `pip install "fwl-proteus[morrigan]"`.
 
 set -euo pipefail
 
@@ -15,10 +15,9 @@ root="$proteus_root"
 
 get_parse_args "$@"
 workpath="$root/Morrigan/"
-guard_dirty_checkout "$workpath" get_morrigan.sh
+install_existing_clone fwl-morrigan "$workpath" get_morrigan.sh
 
-# Clone to a temporary directory first so a failed clone does not destroy
-# the existing checkout.
+# The new clone replaces the checkout only once it is at the release tag.
 tmp_clone="${workpath%/}.tmp.$$"
 rm -rf "$tmp_clone"
 trap 'rm -rf "$tmp_clone"' EXIT
@@ -33,23 +32,12 @@ else
     uri="https://github.com/FormingWorlds/Morrigan.git"
 fi
 echo "    $uri -> $tmp_clone"
-git clone "$uri" "$tmp_clone" || { echo "ERROR: git clone failed" >&2; exit 1; }
+git clone "$uri" "$tmp_clone" ||
+    { echo "ERROR: git clone failed$(unchanged_note "$workpath")" >&2; exit 1; }
 
-# Pin checkout to the fwl-morrigan version floor from pyproject.toml.
-# Strip comments before extracting to match the active dependency specification.
-floor=$(sed 's/#.*//' "$root/pyproject.toml" \
-    | grep -oE 'fwl-morrigan>=[0-9][0-9.]*' | head -1 | sed 's/.*>=//' || true)
-if [ -n "$floor" ]; then
-    echo "Pinning to fwl-morrigan floor: $floor"
-    git -C "$tmp_clone" checkout --quiet "tags/$floor" \
-        || { echo "ERROR: cannot checkout tag $floor" >&2; exit 1; }
-else
-    echo "WARNING: could not read fwl-morrigan floor from pyproject.toml; using HEAD" >&2
-fi
+checkout_floor_tag fwl-morrigan "$tmp_clone"
 
-# Replace existing checkout only after clone and tag checkout succeed
-rm -rf "$workpath"
-mv "$tmp_clone" "$workpath"
+swap_in_checkout "$tmp_clone" "$workpath" || exit 1
 trap - EXIT
 
 # Install morrigan package as editable

@@ -5,6 +5,7 @@ import gc
 import logging
 import os
 import shutil
+from contextlib import contextmanager
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -101,6 +102,21 @@ _SPIDER_MAX_CONSECUTIVE_FAILS = 3
 # Abort threshold for consecutive Aragog retry-ladder exhaustions; the
 # counter resets on each successful Aragog call.
 _ARAGOG_MAX_CONSECUTIVE_FAILS = 3
+
+# Per-call energy columns that a skipped Aragog step sets to 0.
+_ARAGOG_CALL_ENERGY_KEYS = (
+    'step_dE_F_int_J',
+    'step_dE_F_cmb_J',
+    'step_dE_Q_radio_J',
+    'step_dE_Q_tidal_J',
+    'step_dE_Q_radio_cons_J',
+    'step_dE_Q_tidal_cons_J',
+    'step_solver_residual_J',
+    'step_dE_compression_J',
+    'step_dE_state_heat_J',
+    'step_dE_core_J',
+    'step_dE_struct_core_J',
+)
 
 # Physical band for retained impact kinetic energy in giant-impact re-melts.
 # Values outside this range indicate initial conditions dominate collision energy.
@@ -1958,19 +1974,11 @@ def evaluate_molten_state(solver, hf_row: dict):
     if not hasattr(solver, 'get_state'):
         return None
 
+    from proteus.interior_energetics.aragog import state_solution
+
     prev_solution = getattr(solver, '_solution', None)
-    t_curr = float(hf_row.get('Time', 0.0))
-    # Aragog reads its solution by attribute and by .get, as on an OptimizeResult.
-    sol = optimise.OptimizeResult(
-        y=solver._S0.reshape(-1, 1),
-        t=np.array([t_curr]),
-        status=0,
-        cvode_flag=0,
-        cvode_flag_name='SUCCESS',
-        message='',
-    )
     try:
-        solver._solution = sol
+        solver._solution = state_solution(solver._S0, hf_row.get('Time', 0.0))
         return solver.get_state()
     finally:
         solver._solution = prev_solution
@@ -2005,6 +2013,13 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
     defined convention quantified in the helpfile, not a quantity the residual
     itself can validate.
 
+    With ``core_bc = 'core_module'`` the core keeps its temperature across the
+    re-melt unless the re-melted base is hotter
+    (``aragog_core_impact.remelt_core_module``); the core profile is refit to the
+    grown core at the next solver reset, and the core's heat goes to
+    ``step_dE_impact_core_J`` on the next kept row, not to ``step_dE_impact_J``, which
+    stays the mantle's.
+
     The melt-state keys in ``hf_row`` (``T_magma``, ``T_cmb``, ``Phi_global``,
     ``Phi_global_vol``, ``T_pot``, ``RF_depth``, ``M_mantle_liquid``, ``M_mantle_solid``)
     and the profile arrays on ``interior_o`` are updated to the re-melted
@@ -2036,11 +2051,22 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
     if S_end is not None:
         S_end = np.asarray(S_end, dtype=float).ravel().copy()
 
+    # A core_module core keeps its temperature across the re-melt; the lift below
+    # raises it to the re-melted base, never lowers it.
+    core_module = config.interior_energetics.aragog.core_bc == 'core_module'
+    T_core_pre = None
+    if core_module:
+        T_core_pre = solver.get_current_core_temperature()
+        if T_core_pre is None:  # a re-melt before this one dropped the solution
+            T_core_pre = getattr(solver, '_T_core_init', None)
+
     # Drop cooled trajectory and CMB gradient before rebuilding initial conditions.
     # This prevents hot-starting from obsolete profiles or restoring cooled fields.
     solver._solution = None
     if hasattr(solver, '_dSdr_cmb_init'):
         solver._dSdr_cmb_init = None
+    if T_core_pre is not None:
+        solver.set_initial_core_temperature(T_core_pre)
 
     # _set_entropy_ic returns the staggered molten profile it just set. Take it
     # from the return value rather than from the solver's solution object, which
@@ -2078,6 +2104,22 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
         hf_row['step_dE_impact_J'] = float(hf_row.get('step_dE_impact_J') or 0.0)
         log.warning('    re-melt heat injection not booked: %s', unbooked)
 
+    if core_module:
+        from proteus.interior_energetics.aragog_core_impact import remelt_core_module
+
+        S_ic = np.asarray(interior_o._last_entropy, dtype=float)
+        try:
+            if T_core_pre is None:
+                raise ValueError('core_module: the solver holds no core temperature to re-melt')
+            T_core_new = remelt_core_module(
+                hf_row, interior_o, solver, T_core_pre, float(S_ic[0])
+            )
+        except ValueError:
+            UpdateStatusfile(dirs, 21)
+            raise
+        solver.set_initial_core_temperature(T_core_new)
+        solver.set_initial_entropy(S_ic)
+
     log.info('    mantle re-melted: Aragog restarts from the re-melted entropy profile')
 
     molten_out = evaluate_molten_state(solver, hf_row)
@@ -2102,12 +2144,25 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
             'RF_depth',
         ):
             hf_row[key] = output[key]
+        # Accretion excludes a stratified core, so the top of a re-melted core is its T_cmb.
+        if core_module:
+            hf_row['core_T_top'] = output['T_cmb']
 
     if 'Phi_global' in hf_row and 'M_mantle' in hf_row:
         phi_g = min(max(float(hf_row['Phi_global']), 0.0), 1.0)
         m_mantle = float(hf_row['M_mantle'])
         hf_row['M_mantle_liquid'] = phi_g * m_mantle
         hf_row['M_mantle_solid'] = (1.0 - phi_g) * m_mantle
+
+
+def _skip_aragog_call_energy(hf_row: dict) -> None:
+    """Set the per-call energy columns of a skipped Aragog step to 0, in place.
+
+    A retry-ladder fallback integrates nothing, so the energy ledgers must not count the
+    previous call's values again.
+    """
+    for key in _ARAGOG_CALL_ENERGY_KEYS:
+        hf_row[key] = 0.0
 
 
 def remelt_mantle(dirs: dict, config: Config, hf_row: dict, interior_o, event=None) -> None:
@@ -2150,7 +2205,9 @@ def remelt_mantle(dirs: dict, config: Config, hf_row: dict, interior_o, event=No
     NotImplementedError
         If the interior module has no supported re-melt path (SPIDER).
     ValueError
-        If the interior module is unrecognised.
+        If the interior module is unrecognised, or a core_module solver holds no core
+        temperature, or its core or basal temperature is not finite
+        (``aragog_core_impact.remelt_core_module``).
     RuntimeError
         If the Aragog solver has not been initialised.
     """
@@ -2283,6 +2340,21 @@ def solve_structure(
         raise ValueError('planet.mass_tot must be set to solve for the interior structure')
 
 
+@contextmanager
+def _core_module_status(config: Config, dirs: dict):
+    """Write the interior error status when a ``core_module`` set-up or call raises ``ValueError``.
+
+    Aragog and the core helpers refuse a core state outside the model with that error, which
+    ends the run. Every other core boundary passes through unchanged.
+    """
+    try:
+        yield
+    except ValueError:
+        if config.interior_energetics.aragog.core_bc == 'core_module':
+            UpdateStatusfile(dirs, 21)
+        raise
+
+
 def run_interior(
     dirs: dict,
     config: Config,
@@ -2394,14 +2466,16 @@ def run_interior(
     elif config.interior_energetics.module == 'aragog':
         from proteus.interior_energetics.aragog import AragogRunner, InteriorStalledError
 
-        runner = AragogRunner(config, dirs, hf_row, hf_all, interior_o)
+        with _core_module_status(config, dirs):
+            runner = AragogRunner(config, dirs, hf_row, hf_all, interior_o)
         try:
-            sim_time, output = runner.run_solver(
-                hf_row,
-                interior_o,
-                dirs,
-                write_data=write_data,
-            )
+            with _core_module_status(config, dirs):
+                sim_time, output = runner.run_solver(
+                    hf_row,
+                    interior_o,
+                    dirs,
+                    write_data=write_data,
+                )
             interior_o.aragog_fail_count = 0
         except InteriorStalledError:
             # InteriorStalledError indicates zero progress across successful steps.
@@ -2423,9 +2497,9 @@ def run_interior(
                     interior_o.aragog_fail_count,
                 )
                 raise
-            # Skip output update; keep hf_row values from previous step.
-            # Atmosphere + outgassing still advance, pushing the planet
-            # past the stiff regime. Same pattern as SPIDER fallback above.
+            # Keep the previous step's hf_row with the call energies at 0; the solver holds
+            # the state this call started from, and the other modules advance.
+            _skip_aragog_call_energy(hf_row)
             from proteus.interior_energetics.timestep import next_step
 
             dtswitch = next_step(

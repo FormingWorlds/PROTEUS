@@ -5,6 +5,8 @@ platform. If you encounter errors that you cannot solve via the standard
 step-by-step guide or the advice below,
 [contact the developers](../Community/contact.md).
 
+`install.sh` prints one line per build step on the terminal. The full output of every step, where the install errors below appear, is in the log file `install_<date>_<time>.log` in the PROTEUS folder; a failed step also prints its last 40 lines, and `bash install.sh --verbose` shows all of it on the terminal.
+
 ### Quick error index
 
 | Error / symptom | Section |
@@ -12,6 +14,8 @@ step-by-step guide or the advice below,
 | `Aragog retry ladder exhausted` / T_core jumps >1500 K on coupled runs | [Numerically fragile coupled runs](#numerically-fragile-coupled-runs) |
 | `was written before N column(s) of the current output schema existed` | [Resuming an older run](#resuming-a-run-written-by-an-older-proteus) |
 | `Resume: no Zalmoxis structure file matches the helpfile row` | [Resume stops on the Zalmoxis structure](#resume-stops-no-zalmoxis-structure-file-matches-the-row) |
+| `Resume: the interior snapshot at t = ... is on an earlier structure` | [A resumed run and the uninterrupted run](#a-resumed-run-and-the-uninterrupted-run) |
+| `Resume: a structure update was pending at the stop` | [A resumed run and the uninterrupted run](#a-resumed-run-and-the-uninterrupted-run) |
 | Simulation fails to converge (general) | [Stabilise a simulation](stabilise_run.md) |
 | `Aragog needs the SUNDIALS CVODE solver` / `scikits_odes_sundials.cvode cannot be imported` | [Aragog stops at setup](#aragog-stops-at-setup-cvode-cannot-be-imported) |
 | `Permission denied (publickey)` | [SSH keys](#cannot-clone-module-or-permission-denied-publickey) |
@@ -92,6 +96,19 @@ R_int -5.486e+04 m; ...
 
 A structure solve rewrites `data/zalmoxis_output.dat` at once, while the helpfile and the snapshots are written only on snapshot iterations, so a stopped run can hold a structure newer than the row it resumes from. PROTEUS tries three files in this order: the copy saved with that row (`data/<time>_zalmoxis.dat`), `data/zalmoxis_output.dat`, and its backup `data/zalmoxis_output.dat.prev`. The run resumes on the first one whose inner and outer radii match the row within the tolerance in the message. When none of them matches, or none of them exists, run the configuration again from `t = 0`.
 
+### A resumed run and the uninterrupted run {#a-resumed-run-and-the-uninterrupted-run}
+
+A Zalmoxis + Aragog run solves the structure after the interior step of an iteration, and Aragog takes the new mesh at the start of the next iteration. A run that stops between the two leaves an interior snapshot on the earlier structure and a helpfile row on the new one. On resume, PROTEUS builds Aragog on the earlier structure, restores the snapshot, and then makes the same structure update as a running loop. The first resumed step then records the compression work of that update (`step_dE_compression_J`) and carries the entropy to the new mesh by mass parcel, as the uninterrupted run does.
+
+This needs a mesh file of the earlier structure: the copy saved with its row (`data/<time>_zalmoxis.dat`), `data/zalmoxis_output.dat.prev`, or the copy saved with an older row on the same structure. With a snapshot on every iteration (`params.out.write_mod = 1`), one of them is present after a normal stop. With sparser snapshots, it is present only when the run stopped before the next structure solve, and the landing row of a giant impact keeps no copy. A resume that continues without the update gives one of two warnings:
+
+```text
+Resume: the interior snapshot at t = 3.220037e+02 yr is on an earlier structure (...) and no row with a mesh file of that structure is left.
+Resume: a structure update was pending at the stop. With core_bc = 'core_module' the solver is built on the structure of the row and the update is not replayed from the earlier mesh
+```
+
+The first appears when no mesh file of the earlier structure is left. The second appears for a core boundary condition other than `energy_balance`, and when a giant impact landed between the snapshot and the row. In both cases, the run continues on the structure of its row: the first resumed step records no compression work, and the entropy is handed over by node. The resumed run then differs from the uninterrupted one from that step on. A structure update that moves both radii by less than 1 m is not detected and is handled in the same way, without a warning. A snapshot with no entropy profile on the node count of the run gives neither warning: the run starts from a fresh initial condition on its row, as on any resume with such a snapshot. If the solver is built on the earlier structure and the snapshot entropy does not fit its cells, the resume stops with an error, and the run must start again from t = 0.
+
 ### Cannot clone module, or Permission denied (publickey) {#cannot-clone-module-or-permission-denied-publickey}
 
 Have you added your SSH key to GitHub? See these pages for guidance:
@@ -137,13 +154,15 @@ python -m pip install -U -e .
 
 ### An install refuses to replace a module checkout {#an-install-refuses-to-replace-a-module-checkout}
 
-An install script stops rather than delete a module checkout that holds work
-you would not get back:
+An install script that replaces its checkout on every run (SOCRATES, SPIDER,
+BOREAS, LavAtmos, ThermoEngineLite) stops rather than delete one that holds
+work you would not get back (under `install.sh` the message is in the last lines of
+the failed step and in the log file `install_<date>_<time>.log`):
 
 ```console
-ERROR: /path/to/aragog has uncommitted changes or commits not on a remote.
+ERROR: /path/to/socrates has uncommitted changes or commits not on a remote.
        Refusing to delete it. Commit and push your work, or run
-       bash tools/get_aragog.sh --force  to discard the checkout.
+       bash tools/get_socrates.sh --force  to discard the checkout.
 ```
 
 Commit and push the work, and the next run replaces the checkout normally.
@@ -153,22 +172,31 @@ step over this for you. To discard the checkout deliberately, run the script
 the message names by hand, from the PROTEUS folder:
 
 ```console
-bash tools/get_aragog.sh --force
+bash tools/get_socrates.sh --force
 ```
 
 A second message reports a checkout git cannot read at all, from a truncated
 copy or a clone interrupted after it started writing refs:
 
 ```console
-ERROR: git could not report the state of /path/to/aragog, so whether
+ERROR: git could not report the state of /path/to/socrates, so whether
        it holds local work is unknown. Refusing to delete it.
        Inspect the checkout, or run
-       bash tools/get_aragog.sh --force  to discard it.
+       bash tools/get_socrates.sh --force  to discard it.
 ```
 
 The same `--force` discards it. A clone killed before it committed anything
 is not affected: there is nothing to lose, so the next install refreshes it
 without asking.
+
+The setup scripts of the Python modules (MORS, JANUS, CALLIOPE, ZEPHYRUS,
+Aragog, Zalmoxis, VULCAN and Morrigan) never give these two messages: without
+`--force` they install a module folder that is already there as it is
+(`get_vulcan.sh` first runs `make` in its `fastchem_vulcan` folder) and print
+the commands that move it to its release tag or replace it; an empty folder
+gets a new clone. They stop with an error when the pip install of the folder
+fails, and `get_vulcan.sh` stops when the folder has no `fastchem_vulcan`
+folder or its `make` fails.
 
 ### Data download errors or slow Zenodo downloads {#data-download-errors-or-slow-zenodo-downloads}
 
@@ -184,13 +212,16 @@ This happens when compiling SPIDER within a Python environment that is incompati
 
 ### Julia compatibility error {#julia-compatibility-error}
 
-There are incompatibilities between Python and some versions of Julia. Supported Julia versions are **1.11.x, 1.12.x and 1.13.x**. Support for 1.11 is deprecated and will be dropped in a future release; `install.sh` and `proteus doctor` warn when they find it. Newer releases are untested and may fail when juliacall resolves shared libraries.
+There are incompatibilities between Python and some versions of Julia. PROTEUS runs on Julia **1.13.x**: `install.sh` adds 1.13 through juliaup beside a default Julia of another version, and `proteus doctor` warns on any other version. The one exception: when the import of PROTEUS fails on `OpenSSL_jll` because Python links an OpenSSL older than 3.5, `install.sh` binds Julia 1.11; run `conda install -c conda-forge 'openssl>=3.5'` first to use 1.13. Obliqua, the tides module, installs only on 1.11 or 1.13. Newer releases are untested and may fail when juliacall resolves shared libraries.
 
-You must use **Python 3.12** with a supported Julia to avoid these problems:
+You must use **Python 3.12** with a supported Julia to avoid these problems. Add Julia 1.13
+beside your default Julia, which stays as it is, and point `PYTHON_JULIAPKG_EXE` at its binary
+in your conda environment:
 
 ```console
 juliaup add 1.13
-juliaup default 1.13
+conda env config vars set -n proteus PYTHON_JULIAPKG_EXE="$(julia +1.13 --startup-file=no -e 'print(joinpath(Sys.BINDIR, "julia"))')"
+conda deactivate && conda activate proteus
 ```
 
 ---
@@ -304,7 +335,7 @@ Install Python via Homebrew and use pip to manage packages, rather than Conda.
 
 ### Errors during the SOCRATES compilation {#errors-during-the-socrates-compilation}
 
-One of the following errors happen during the SOCRATES compilation:
+One of the following errors happen during the SOCRATES compilation (with `install.sh`, they are in its log file `install_<date>_<time>.log` in the PROTEUS folder):
 
 1. `clang (LLVM option parsing): Unknown command line argument '-x86-pad-for-align=false'.  Try: 'clang (LLVM option parsing) --help'`
 2. `clang (LLVM option parsing): Did you mean '--x86-slh-loads=false'?`

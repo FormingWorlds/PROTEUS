@@ -16,7 +16,8 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-from proteus.plot.cpl_chem_atmosphere import plot_chem_atmosphere
+from proteus.plot.cpl_chem_atmosphere import _aerosol_gas, plot_chem_atmosphere
+from proteus.utils.plot import _preset_colours, latexify
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -447,3 +448,50 @@ def test_plot_chem_atmosphere_no_aerosols_key(mock_glob, mock_read, mock_subplot
     # Verify gas panel was still plotted
     assert ax1_mock.plot.called
     fig_mock.savefig.assert_called_once()
+
+
+@pytest.mark.unit
+@patch('proteus.plot.cpl_chem_atmosphere.plt.subplots')
+@patch('proteus.plot.cpl_chem_atmosphere.read_ncdf_profile')
+@patch('proteus.plot.cpl_chem_atmosphere.glob.glob')
+def test_agni_aerosols_take_the_colour_and_name_of_their_gas(
+    mock_glob, mock_read, mock_subplots, caplog
+):
+    """An aerosol named as a gas, in any case, is drawn as that gas, with no fall-back."""
+    gases = ('Fe', 'FeO', 'MgO', 'NH3', 'SiO', 'SiO2')
+    profile = {
+        'pl': np.array([1e8, 1e7, 1e6, 1e5]),
+        'tmpl': np.array([3000, 2000, 1000, 500]),
+        'aerosols': np.array([g.lower() for g in gases[:-1]] + ['SiO2', 'dustdiv1']),
+    }
+    for name in profile['aerosols']:
+        profile[name + '_mmr'] = np.array([1e-8, 5e-8, 1e-9])
+    for g in gases:
+        profile[g + '_vmr'] = np.array([1e-3, 1e-4, 1e-5])
+    mock_glob.return_value = ['output_dir/data/1000_atm.nc']
+    mock_read.return_value = profile
+    ax1, ax2 = MagicMock(), MagicMock()
+    mock_subplots.return_value = (MagicMock(), (ax1, ax2))
+    ax1.get_legend_handles_labels.return_value = ([MagicMock()], ['Fe'])
+
+    with caplog.at_level('WARNING'):
+        plot_chem_atmosphere(
+            'output_dir', None, plot_format='png', plot_gases=['Fe'], plot_offchem=False
+        )
+
+    assert len(ax2.plot.call_args_list) == 7
+    drawn = {c.kwargs['label']: c.kwargs['color'] for c in ax2.plot.call_args_list}
+    want = {latexify(g): _preset_colours[g] for g in gases}
+    assert drawn == want | {'dustdiv1': _preset_colours['dustdiv1']}
+    assert 'SiO$_2$' in drawn
+    assert 'fallback colour' not in caplog.text
+
+
+@pytest.mark.unit
+def test_an_aerosol_matches_one_gas_apart_from_case_or_none():
+    """Two gases that differ only in case, or no gas, give no match."""
+    assert _aerosol_gas('co', ['CO', 'Co', 'H2O']) is None
+    assert _aerosol_gas('co', ['CO', 'H2O']) == 'CO'
+    assert _aerosol_gas('Feo', ['CO', 'FeO']) == 'FeO'
+    assert _aerosol_gas('soot', ['CO', 'H2O']) is None
+    assert _aerosol_gas('soot', []) is None

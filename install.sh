@@ -1,19 +1,7 @@
 #!/usr/bin/env bash
-# PROTEUS unified installer
-#
-# Usage:
-#   bash install.sh              # Essential install (spectral + stellar data)
-#   bash install.sh --all-data   # Full install (all reference data)
-#   bash install.sh --no-data    # Skip data downloads
-#   bash install.sh -i           # Interactive mode (prompt for choices)
-#   bash install.sh --help       # Show usage
-#
-# Prerequisites:
-#   - conda environment with Python 3.12 must be active
-#   - System packages (gfortran >= 9, netcdf) must be installed
-#   - Internet connection for downloads
-#
-# This script is idempotent: safe to re-run after a failure or update.
+# PROTEUS unified installer; `bash install.sh --help` lists the options. It uses the active conda
+# environment, or makes one with Python 3.12 when none is active; it needs the system packages of
+# docs/How-to/installation.md, and each phase can run again after a failure.
 
 set -euo pipefail
 
@@ -25,11 +13,10 @@ set -euo pipefail
 # requires-python ceiling once the repo root is known (see below).
 REQUIRED_PYTHON_MAJOR=3
 REQUIRED_PYTHON_MINOR=12
-# Julia: 1.11.x, 1.12.x and 1.13.x are supported; fresh installs pin the
-# version below (matches what CI tests).
+# Julia: PROTEUS runs on 1.13.x (what CI tests); a default Julia of another
+# version stays, and juliaup adds 1.13 beside it.
 REQUIRED_JULIA_MAJOR=1
 REQUIRED_JULIA_MINOR=13
-ACCEPTED_JULIA_MINORS="11 12 13"
 MIN_DISK_GB=10
 
 # ---------------------------------------------------------------------------
@@ -63,7 +50,7 @@ collect_env_info() {
     echo "python:  $(python3 --version 2>&1) ($(command -v python3 2>/dev/null))"
     echo "julia:   $(julia --version 2>/dev/null || echo '(not on PATH)') ($(command -v julia 2>/dev/null))"
     local v
-    for v in FWL_DATA RAD_DIR FC_DIR PYTHON_JULIAPKG_EXE PYTHON_JULIACALL_BINDIR; do
+    for v in FWL_DATA RAD_DIR FC_DIR PYTHON_JULIAPKG_EXE PYTHON_JULIACALL_BINDIR JULIA_CHANNEL; do
         echo "  ${v}=${!v:-(unset)}"
     done
     echo "package versions:"
@@ -83,7 +70,8 @@ die() {
     collect_env_info || true
     echo ""
     if [ -n "${LOGFILE:-}" ] && [ -f "${LOGFILE:-}" ]; then
-        echo "A full log was written to: $LOGFILE"
+        [ "${LOG_SENTENCE_SHOWN:-false}" = true ] || log_file_sentence
+        LOG_SENTENCE_SHOWN=true
         echo "If you need help, send that log file to dev@proteus-framework.org,"
         echo "or open an issue or discussion at:"
         echo "  https://github.com/FormingWorlds/PROTEUS/issues"
@@ -94,18 +82,25 @@ die() {
 }
 
 prompt_yn() {
-    local msg="$1" default="${2:-y}"
-    if [ "$INTERACTIVE" != "true" ] || [ ! -t 0 ]; then
+    if [ "$INTERACTIVE" != "true" ] || [ ! -t 0 ] || [ ! -t 3 ]; then
         return 0
     fi
-    if [ "$default" = "y" ]; then
-        read -r -p "$msg [Y/n] " response
-        response="${response:-y}"
-    else
-        read -r -p "$msg [y/N] " response
-        response="${response:-n}"
-    fi
-    [[ "$response" =~ ^[Yy] ]]
+    ask_yn "$1" "${2:-y}"
+}
+
+# Ask the question $1 on the terminal of fd 3 and read stdin; after a trim of white space, an empty
+# answer and the end of input take the default $2 (y or n), and only y or yes in any case is yes.
+ask_yn() {
+    local response="" hint="[y/N]"
+    [ "$2" != y ] || hint="[Y/n]"
+    printf '%s %s ' "$1" "$hint" >&3
+    read -r response || true
+    response="${response#"${response%%[![:space:]]*}"}"
+    response="${response%"${response##*[![:space:]]}"}"
+    case "${response:-$2}" in
+        [Yy] | [Yy][Ee][Ss]) return 0 ;;
+    esac
+    return 1
 }
 
 read_with_default() {
@@ -119,6 +114,86 @@ read_with_default() {
 }
 
 command_exists() { command -v "$1" &>/dev/null; }
+
+# The one sentence that names the log file, in die, run_logged and the exit hint.
+log_file_sentence() { printf 'The full output of the installer is in %s\n' "$LOGFILE"; }
+
+# Wait, up to 5 s, until the last line of the log holds the text $1: the log tee runs
+# behind the script, and run_logged appends a command's output to the log directly.
+log_catch_up() {
+    local i=0
+    [ "${LOG_TEE:-false}" = true ] || return 0
+    while [ "$i" -lt 50 ]; do
+        case "$(tail -n 1 "$LOGFILE" 2>/dev/null)" in *"$1"*) return 0 ;; esac
+        sleep 0.1
+        i=$((i + 1))
+    done
+}
+
+# Copy stdin to the terminal only, past the log tee when it runs ($1: 1 stdout, 2 stderr).
+to_terminal() {
+    if [ "${LOG_TEE:-false}" != true ]; then
+        cat >&"$1"
+    elif [ "$1" = 1 ]; then
+        cat >&3
+    else
+        cat >&4
+    fi
+}
+
+# Usage: run_logged [--takes <duration>] <what is built> <command> [args...]. One line at the
+# start and one at the end; the output goes to $LOGFILE only. A failure shows its last 40 lines.
+run_logged() {
+    local takes="" what rc=0 t0=$SECONDS tmp where="the log file"
+    local show='checked out release tag|installed paired [A-Za-z]* branch|stays as it is|is newer than the release tag|is on the paired branch|^    (From the PROTEUS folder|Or replace it|This branch does not hold the release)|^        (git -C|pip install -e|bash tools/)'
+    if [ "${1:-}" = "--takes" ]; then
+        takes=" (can take $2)"
+        shift 2
+    fi
+    what="$1"
+    shift
+    # Without a writable log the command runs as it is, its output on the terminal. The temp
+    # file is one per installer run, emptied at each step; print_exit_hint removes it.
+    if [ -n "${LOGFILE:-}" ] && [ -z "${RUN_LOGGED_TMP:-}" ] && { : >> "$LOGFILE"; } 2>/dev/null; then
+        RUN_LOGGED_TMP=$(mktemp "${TMPDIR:-/tmp}/proteus-install.XXXXXX" 2>/dev/null) || RUN_LOGGED_TMP=""
+    fi
+    tmp="${RUN_LOGGED_TMP:-}"
+    if [ -z "${LOGFILE:-}" ] || ! { : >> "$LOGFILE"; } 2>/dev/null || ! { : > "$tmp"; } 2>/dev/null; then
+        "$@" || rc=$?
+        return "$rc"
+    fi
+    if [ "${RUN_LOGGED_TOLD:-false}" != true ]; then
+        where="$LOGFILE"
+        RUN_LOGGED_TOLD=true
+    fi
+    if [ "${VERBOSE:-false}" = true ]; then
+        info "$what$takes..."
+        if [ "${LOG_TEE:-false}" = true ]; then
+            "$@" || rc=$?
+        else
+            "$@" 2>&1 | tee -a "$LOGFILE" || rc=${PIPESTATUS[0]}
+        fi
+    else
+        info "$what$takes; its output goes to $where"
+        log_catch_up "$what$takes; its output goes to $where"
+        # stdin is /dev/null: a step whose output is hidden must not wait for an answer.
+        "$@" </dev/null 2>&1 | tee -a "$LOGFILE" > "$tmp" || rc=${PIPESTATUS[0]}
+    fi
+    if [ "$rc" -eq 0 ]; then
+        grep -E "$show" "$tmp" | to_terminal 1 || true
+        info "$what: done in $((SECONDS - t0)) s"
+    else
+        fail "$what: failed with exit status $rc after $((SECONDS - t0)) s"
+        if [ "${VERBOSE:-false}" != true ]; then
+            log_catch_up "$what: failed with exit status $rc"
+            echo "--- the last 40 lines of its output:" | to_terminal 2
+            tail -n 40 "$tmp" | to_terminal 2
+        fi
+        log_file_sentence >&2
+        LOG_SENTENCE_SHOWN=true
+    fi
+    return "$rc"
+}
 
 # A fresh conda environment (notably anaconda3 on macOS) often installs the
 # MPI-enabled builds of HDF5/libnetcdf. Those load libmpi before Julia, and the
@@ -138,21 +213,34 @@ fix_conda_mpi_builds() {
     conda install -y -c conda-forge "hdf5=*=nompi*" "libnetcdf=*=nompi*" 2>&1 || return 1
 }
 
-# juliaup installs a launcher shim at ~/.juliaup/bin/julia that dispatches to
-# the real versioned binary. juliacall needs the real binary as
-# PYTHON_JULIAPKG_EXE so it can find sys.so / libjulia beside it (the shim has
-# no lib/julia/sys.so). Ask the running Julia for its actual BINDIR; fall back
-# to the launcher only if that probe fails.
+# juliacall needs the real Julia binary as PYTHON_JULIAPKG_EXE, not the juliaup launcher
+# shim, to find sys.so beside it. A "+1.13" channel selector goes to the launcher beside
+# juliaup; without one, the launcher $2 (default julia) is asked, and a failed probe gives it back.
 resolve_real_julia_exe() {
-    # Optional $1 is a juliaup channel selector like "+1.11"; empty uses the
-    # default channel.
-    local sel="${1:-}" bindir
-    bindir="$(julia $sel --startup-file=no -e 'print(Sys.BINDIR)' 2>/dev/null || true)"
+    local sel="${1:-}" launcher="${2:-julia}" bindir
+    if [ -n "$sel" ] && command_exists juliaup \
+       && [ -x "$(dirname "$(command -v juliaup)")/julia" ]; then
+        launcher="$(dirname "$(command -v juliaup)")/julia"
+    fi
+    bindir="$("$launcher" $sel --startup-file=no -e 'print(Sys.BINDIR)' </dev/null 2>/dev/null || true)"
     if [ -n "$bindir" ] && [ -x "$bindir/julia" ]; then
         printf '%s\n' "$bindir/julia"
-    else
-        command -v julia 2>/dev/null || true
+    elif [ -z "$sel" ]; then
+        command -v "$launcher" 2>/dev/null || true
     fi
+}
+
+# The juliaup channel selector of the Julia PROTEUS uses: empty for the default channel.
+JULIA_CHANNEL=""
+
+# Point PROTEUS at the real binary of channel $1 (JULIA_CHANNEL, PYTHON_JULIAPKG_EXE);
+# returns 1 and changes nothing when the channel has no binary.
+use_julia_channel() {
+    local exe
+    exe="$(resolve_real_julia_exe "$1")"
+    [ -n "$exe" ] || return 1
+    JULIA_CHANNEL="$1"
+    export PYTHON_JULIAPKG_EXE="$exe"
 }
 
 # Remove the installer-owned juliacall project so the next import re-resolves
@@ -175,20 +263,14 @@ sys.exit(0 if ssl.OPENSSL_VERSION_INFO[:2] < (3, 5) else 1)
 PY
 }
 
+# Whether the Julia PROTEUS uses (PYTHON_JULIAPKG_EXE, else the julia on PATH) is 1.12 or newer.
 julia_minor_at_least_12() {
     local v maj min
-    v=$(julia --version 2>/dev/null | awk '{print $3}')
+    v=$(julia_version_of "${PYTHON_JULIAPKG_EXE:-julia}")
     maj=${v%%.*}
     min=$(printf '%s' "$v" | cut -d. -f2)
     case "$maj.$min" in *[!0-9.]*|.|"") return 1 ;; esac
     [ "$maj" -eq 1 ] && [ "$min" -ge 12 ]
-}
-
-# Julia 1.11 still works but is deprecated. It aborts at run time on some
-# hosts (#885), and only the OpenSSL < 3.5 fallback below still needs it.
-warn_julia_111_deprecated() {
-    warn "Julia 1.11 is deprecated and support will be dropped in a future release."
-    warn "  Switch with: juliaup add $REQUIRED_JULIA_MAJOR.$REQUIRED_JULIA_MINOR && juliaup default $REQUIRED_JULIA_MAJOR.$REQUIRED_JULIA_MINOR"
 }
 
 conda_openssl_too_old_for_julia() {
@@ -214,27 +296,20 @@ fix_conda_openssl() {
     reset_julia_env
 }
 
-# When Python links OpenSSL < 3.5, juliacall can only resolve its environment on
-# Julia <= 1.11, which still ships OpenSSL_jll for the 3.0 series. juliacall
-# 0.9.35 supports Julia 1.10.3-1.11 and AGNI runs on 1.11, so when juliaup
-# manages Julia, point only the bridge (PYTHON_JULIAPKG_EXE) at a 1.11 binary.
-# The user's global default Julia is left untouched.
+# With a Python linking OpenSSL < 3.5, juliacall resolves its environment only on
+# Julia <= 1.11 (OpenSSL_jll 3.0 series), so point only PYTHON_JULIAPKG_EXE at a
+# juliaup 1.11 binary; the default Julia and the Julia on PATH stay as they are.
 fix_julia_111_for_openssl() {
     command_exists juliaup || return 1
     info "Pointing the juliacall Julia at 1.11 (matches OpenSSL < 3.5)..."
     juliaup add 1.11 </dev/null 2>&1 || return 1
-    # Resolve the real 1.11 binary via the channel selector, without changing
-    # the user's default Julia. The real binary (not the launcher shim) lets
-    # juliacall find sys.so beside it.
-    local exe
-    exe="$(resolve_real_julia_exe '+1.11')"
-    if [ -z "$exe" ] || [ "$exe" = "$(command -v julia)" ]; then
+    if ! use_julia_channel '+1.11'; then
         warn "Could not locate the Julia 1.11 binary after 'juliaup add 1.11'."
         return 1
     fi
-    export PYTHON_JULIAPKG_EXE="$exe"
-    append_export_to_rc "PYTHON_JULIAPKG_EXE" "$exe" "$RC_FILE"
+    set_install_var PYTHON_JULIAPKG_EXE "$PYTHON_JULIAPKG_EXE"
     reset_julia_env
+    note_agni_julia_version "$SCRIPT_DIR/AGNI"
 }
 
 # Verify that "import proteus" works. The import is the first place the Julia
@@ -255,7 +330,7 @@ verify_proteus_import() {
         warn "Python and Julia are built for different CPU architectures (see above)."
         warn "On Apple Silicon, install a native arm64 conda (e.g. miniforge), recreate"
         warn "the proteus env, and re-run install.sh."
-        die "PROTEUS Python package failed to import. The full error is above and in $LOGFILE."
+        die "PROTEUS Python package failed to import. The full error is above."
     fi
     if printf '%s' "$import_log" | grep -qiE 'libmpi|PMPI_|ompi_|mpich|Symbol not found' \
        || conda_has_mpi_netcdf; then
@@ -302,52 +377,154 @@ verify_proteus_import() {
         warn "The Julia environment cannot resolve OpenSSL_jll: Julia >= 1.12 needs OpenSSL >= 3.5"
         warn "in this Python environment. Fix it with either:"
         warn "  conda install -c conda-forge 'openssl>=3.5'   (keep your Julia, then re-run)"
-        warn "  juliaup add 1.11 && juliaup default 1.11      (use Julia 1.11, deprecated)"
+        warn "  juliaup add 1.11, then set PYTHON_JULIAPKG_EXE to the path that"
+        warn "  julia +1.11 -e 'print(joinpath(Sys.BINDIR, \"julia\"))' prints   (Julia 1.11, deprecated)"
     fi
-    die "PROTEUS Python package failed to import. The full error is above and in $LOGFILE."
+    die "PROTEUS Python package failed to import. The full error is above."
 }
 
-exit_export_message=""
-
-print_exit_export_message() {
-    if [ -n "$exit_export_message" ]; then
-        echo ""
-        echo "--- NOTE: Run the following export commands manually before restarting this install script if you want it to skip steps that were successful (or source your shell rc file now if it was modified):"
-        printf "%s" "$exit_export_message"
+# Export NAME=value ($1, $2) in this process and record it in the exports file, one
+# line per variable, written in place; bind_install_vars passes it to the conda env.
+set_install_var() {
+    local name="$1" value="$2" kept=""
+    export "$name=$value"
+    if [ -f "$PROTEUS_ENV_FILE" ]; then
+        kept=$(grep -v "^export $name=" "$PROTEUS_ENV_FILE" || true)
     fi
-}
-
-trap print_exit_export_message EXIT
-
-# Detect the shell rc file for the current user
-detect_shell_rc() {
-    local shell_name
-    shell_name="$(basename "${SHELL:-/bin/bash}")"
-    case "$shell_name" in
-        zsh)  echo "$HOME/.zshrc" ;;
-        bash) echo "$HOME/.bashrc" ;;
-        *)
-            warn "Unsupported shell '$shell_name' for auto-configuration; writing to ~/.bashrc"
-            echo "$HOME/.bashrc"
-            ;;
+    {
+        [ -z "$kept" ] || printf '%s\n' "$kept"
+        printf "export %s='%s'\n" "$name" "$(printf '%s' "$value" | sed "s/'/'\\\\''/g")"
+    } > "$PROTEUS_ENV_FILE"
+    case " $INSTALL_VAR_NAMES " in
+        *" $name "*) ;;
+        *) INSTALL_VAR_NAMES="${INSTALL_VAR_NAMES:+$INSTALL_VAR_NAMES }$name" ;;
     esac
+    info "Set $name=$value (recorded in $PROTEUS_ENV_FILE)"
 }
 
-# Safely append an export line to the shell rc file
-append_export_to_rc() {
-    local var_name="$1" var_value="$2" rc_file="$3"
-    local safe_value
-    safe_value=$(printf '%q' "$var_value")
-    local line="export ${var_name}=${safe_value}"
-    # Remove any existing line for this variable before appending
-    if [ -f "$rc_file" ]; then
-        grep -v "^export ${var_name}=" "$rc_file" > "${rc_file}.tmp" 2>/dev/null || true
-        mv "${rc_file}.tmp" "$rc_file"
+# Bind every recorded variable to the active conda env in one call. A pixi env is not a conda
+# env, and conda writes a value unquoted into its activation script, so a pixi env and a value
+# with a single quote stay in the exports file only.
+bind_install_vars() {
+    local name names="" quoted="" pairs=()
+    [ "$CONDA_BIND" = "pending" ] || return 0
+    CONDA_BIND="none"
+    if [ -z "${CONDA_PREFIX:-}" ] || [ -n "${PIXI_ENVIRONMENT_NAME:-}" ] \
+       || [ -z "$INSTALL_VAR_NAMES" ]; then
+        return 0
     fi
-    echo "$line" >> "$rc_file"
-    exit_export_message+="$line"
-    exit_export_message+=$'\n'
-    info "Set in $rc_file: export ${var_name}=${var_value}"
+    for name in $INSTALL_VAR_NAMES; do
+        case "${!name}" in
+            *"'"*) quoted="${quoted:+$quoted }$name" ;;
+            *) pairs+=("$name=${!name}"); names="${names:+$names }$name" ;;
+        esac
+    done
+    if [ -n "$quoted" ]; then
+        warn "Not bound to the conda env: $quoted, whose value holds a single quote that conda's activation script cannot read; load it with: source $PROTEUS_ENV_FILE"
+    fi
+    [ -n "$names" ] || return 0
+    if command_exists conda \
+       && conda env config vars set -p "$CONDA_PREFIX" "${pairs[@]}" </dev/null 2>&1; then
+        [ -n "$quoted" ] || CONDA_BIND="bound"
+        info "Bound $names to the conda env at $CONDA_PREFIX"
+    else
+        warn "Could not bind $names to the conda env at $CONDA_PREFIX."
+        warn "  They are in $PROTEUS_ENV_FILE; load them with: source $PROTEUS_ENV_FILE"
+    fi
+}
+
+# Read only: name each export line of the 4 install variables that an earlier
+# install left in a shell start file; the installer does not change these files.
+note_old_shell_exports() {
+    local f hits hit found=""
+    for f in "$HOME/.zshrc" "$HOME/.zshenv" "$HOME/.zprofile" "$HOME/.bashrc" "$HOME/.bash_profile" \
+             "$HOME/.bash_login" "$HOME/.profile" "$HOME/.kshrc" "$HOME/.config/fish/config.fish"; do
+        [ -f "$f" ] && [ -r "$f" ] || continue
+        hits=$(grep -nE '^export (FWL_DATA|RAD_DIR|PYTHON_JULIAPKG_EXE|FC_DIR)=' "$f" || true)
+        [ -n "$hits" ] || continue
+        while IFS= read -r hit; do
+            found+="  $f, line ${hit%%:*}: ${hit#*:}"$'\n'
+        done <<< "$hits"
+    done
+    [ -n "$found" ] || return 0
+    warn "An earlier install set these variables in a shell start file:"
+    printf '%s' "$found" >&2
+    warn "  PROTEUS takes the values from the conda env (or $PROTEUS_ENV_FILE) instead."
+    warn "  You can delete those lines by hand; while they stay, a shell without the"
+    warn "  activated env still gets the old values."
+}
+
+# Warn once when the Manifest.toml of the AGNI folder $1 names another minor Julia version than
+# the Julia PROTEUS uses; proteus update-all brings AGNI to its pin and instantiates it again.
+note_agni_julia_version() {
+    local built used
+    built=$(sed -n 's/^julia_version = "\([^"]*\)"$/\1/p' "$1/Manifest.toml" 2>/dev/null | head -1 || true)
+    used=$(julia_version_of "${PYTHON_JULIAPKG_EXE:-julia}")
+    if [ -n "$built" ] && [ -n "$used" ] \
+       && [ "$(echo "$built" | cut -d. -f1,2)" != "$(echo "$used" | cut -d. -f1,2)" ]; then
+        warn "AGNI at $1 was built with Julia $built (its Manifest.toml), and PROTEUS uses Julia $used; after the installer, run 'proteus update-all', which brings AGNI to its pin and instantiates it again."
+    fi
+}
+
+# Build FastChem in the AGNI folder. Without FC_DIR and with no answer on stdin AGNI's script
+# asks nothing and writes no shell start file; it then exits 1 after a good build, so the
+# built program decides, not that status.
+build_fastchem() {
+    env -u FC_DIR bash src/get_fastchem.sh </dev/null || true
+    [ -x fastchem/fastchem ]
+}
+
+# The command that activates the conda env afresh: the user's shell has no env active when
+# setup_conda_env activated it in this process only.
+conda_activate_command() {
+    if [ "${CONDA_ACTIVATED_HERE:-false}" = true ]; then
+        echo "conda activate ${CONDA_DEFAULT_ENV:-proteus}"
+    else
+        echo "conda deactivate && conda activate ${CONDA_DEFAULT_ENV:-proteus}"
+    fi
+}
+
+# The closing instruction: activate the conda env that holds the variables, or source the exports
+# file where no conda env holds them; an env the installer activated needs conda.sh without `conda init`.
+print_next_steps() {
+    echo "Next steps:"
+    if [ "$CONDA_BIND" = "bound" ]; then
+        echo "  1. Activate the env, so that it loads the variables:"
+        echo "     $(conda_activate_command)"
+    elif [ "${CONDA_ACTIVATED_HERE:-false}" = true ]; then
+        echo "  1. Activate the env and load the variables, in the PROTEUS folder ($SCRIPT_DIR):"
+        echo "     conda activate ${CONDA_DEFAULT_ENV:-proteus} && source .proteus-env.sh"
+    else
+        echo "  1. Load the variables, in the PROTEUS folder ($SCRIPT_DIR):"
+        echo "     source .proteus-env.sh"
+    fi
+    if [ "${CONDA_ACTIVATED_HERE:-false}" = true ] && [ -n "${CONDA_BASE_DIR:-}" ]; then
+        echo "     (In a shell without 'conda init', run first: source \"$CONDA_BASE_DIR/etc/profile.d/conda.sh\")"
+    fi
+    echo "  2. Run the quick-start tutorial:"
+    echo "     proteus start --offline -c input/dummy.toml"
+}
+
+# Remove the temp file of run_logged; on a failed run, name the log file (unless die or
+# run_logged did) and the exports file.
+print_exit_hint() {
+    local rc=$?
+    [ -z "${RUN_LOGGED_TMP:-}" ] || rm -f "$RUN_LOGGED_TMP"
+    if [ "$rc" -ne 0 ] && [ "${LOG_SENTENCE_SHOWN:-false}" != true ] \
+       && [ -n "${LOGFILE:-}" ] && [ -f "$LOGFILE" ]; then
+        echo ""
+        log_file_sentence
+    fi
+    if [ "$rc" -ne 0 ] && [ -n "$INSTALL_VAR_NAMES" ]; then
+        echo ""
+        echo "--- NOTE: the variables set so far are in $PROTEUS_ENV_FILE. To keep them on"
+        echo "    a re-run, run 'source $PROTEUS_ENV_FILE' first."
+    fi
+    if [ "$rc" -ne 0 ] && [ "${CONDA_ACTIVATED_HERE:-false}" = true ]; then
+        echo ""
+        echo "--- NOTE: the installer activated the conda env ${CONDA_DEFAULT_ENV:-proteus} in its own"
+        echo "    process only. To use it in your shell, run '$(conda_activate_command)'."
+    fi
 }
 
 # Get available disk space in GB (POSIX-portable)
@@ -358,29 +535,67 @@ available_disk_gb() {
 CURRENT_PHASE=0
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INTERACTIVE="false"
+VERBOSE="false"
+
+# The log state of run_logged: whether the log tee runs, whether it named the log, its temp file.
+LOG_TEE="false"
+RUN_LOGGED_TOLD="false"
+RUN_LOGGED_TMP=""
+LOG_SENTENCE_SHOWN="false"
+
+# The exports file of set_install_var, and the state that bind_install_vars reads.
+PROTEUS_ENV_FILE="$SCRIPT_DIR/.proteus-env.sh"
+INSTALL_VAR_NAMES=""
+CONDA_BIND="pending"
+# The conda env --conda-env names, whether setup_conda_env activated an env in this process,
+# and the conda base folder it activated it from.
+CONDA_ENV_REQUESTED=""
+CONDA_ACTIVATED_HERE="false"
+CONDA_BASE_DIR=""
+trap print_exit_hint EXIT
 
 # ---------------------------------------------------------------------------
 # Parse arguments
 # ---------------------------------------------------------------------------
 
 DATA_MODE="essential"
-for arg in "$@"; do
+while [ "$#" -gt 0 ]; do
+    arg="$1"
+    shift
     case "$arg" in
         --all-data) DATA_MODE="all" ;;
         --no-data)  DATA_MODE="none" ;;
         --interactive|-i) INTERACTIVE="true" ;;
+        --verbose)  VERBOSE="true" ;;
+        --conda-env)
+            if [ "$#" -eq 0 ] || [ -z "$1" ] || [ "${1#-}" != "$1" ]; then
+                fail "--conda-env needs the name of a conda environment."
+                echo "Run 'bash install.sh --help' for usage."
+                exit 1
+            fi
+            CONDA_ENV_REQUESTED="$1"
+            shift
+            ;;
         --help|-h)
             echo "PROTEUS unified installer"
             echo ""
             echo "Usage: bash install.sh [OPTIONS]"
             echo ""
             echo "Options:"
-            echo "  --all-data   Download all reference data (~10-20 GB)"
-            echo "  --no-data    Skip data downloads entirely"
+            echo "  --all-data   Download all reference data (~10-20 GB) instead of the essential set"
+            echo "  --no-data    Skip data downloads entirely, including the essential set"
             echo "  -i, --interactive  Interactive mode (prompt for choices)"
+            echo "  --verbose    Show the full build output on the terminal, not only in the log file"
+            echo "  --conda-env <name>  The conda environment to use, or to make, when none or base"
+            echo "               is active (default: proteus)"
             echo "  --help       Show this message"
             echo ""
-            echo "Default: download essential data (~2 GB)"
+            echo "Default: download the essential data (~3 GB): the default-config and tutorial"
+            echo "k-tables, stellar spectra and tracks, the PHOENIX grid of the default star"
+            echo "([Fe/H] = 0.0, [alpha/M] = 0.0) and the interior tables"
+            echo ""
+            echo "Each build step prints one line on the terminal; its full output goes to"
+            echo "install_<date>_<time>.log in the PROTEUS folder."
             exit 0
             ;;
         *)
@@ -391,9 +606,11 @@ for arg in "$@"; do
     esac
 done
 
-# Start logging
+# Start logging; fds 3 and 4 keep the terminal for the lines run_logged shows there only.
 LOGFILE="$SCRIPT_DIR/install_$(date +%Y%m%d_%H%M%S).log"
+exec 3>&1 4>&2
 exec > >(tee -a "$LOGFILE") 2>&1
+LOG_TEE="true"
 
 echo ""
 printf "${BOLD}PROTEUS Installer${NC}\n"
@@ -401,6 +618,9 @@ echo "Log: $LOGFILE"
 echo "Data mode: $DATA_MODE"
 if [ "$INTERACTIVE" = "true" ]; then
     echo "Mode: interactive (-i)"
+fi
+if [ "$VERBOSE" = "true" ]; then
+    echo "Build output: on the terminal and in the log (--verbose)"
 fi
 echo ""
 
@@ -464,16 +684,126 @@ if [ "$disk_gb" -lt "$MIN_DISK_GB" ]; then
 fi
 info "Disk space: ${disk_gb} GB available"
 
-# Check conda environment is active
-if [ -z "${CONDA_DEFAULT_ENV:-}" ]; then
-    fail "No conda environment is active."
+# Stop with the commands that make and activate the conda env $2 by hand, or without conda the page
+# that installs it; $1 names the failed step, $3 is a further line. Once setup_conda_env has found or
+# made the env (its local `made` is set), `conda create` would replace it, so only activate is named.
+stop_without_conda_env() {
+    fail "No conda environment other than base is active."
+    fail "$1"
     echo ""
-    echo "Create and activate a conda environment first:"
-    echo "  conda create -n proteus python=$REQUIRED_PYTHON_MAJOR.$REQUIRED_PYTHON_MINOR"
-    echo "  conda activate proteus"
+    if ! command_exists conda; then
+        echo "Install conda first (Miniforge), as step 2 of the installation page describes:"
+        echo "  https://proteus-framework.org/PROTEUS/How-to/installation.html#2-clone-proteus-and-set-up-python-environment"
+    elif [ -n "${made:-}" ]; then
+        echo "Activate the conda environment first:"
+        echo "  conda activate $2"
+    else
+        echo "Create and activate a conda environment first:"
+        echo "  conda create -n $2 python=$REQUIRED_PYTHON_MAJOR.$REQUIRED_PYTHON_MINOR"
+        echo "  conda activate $2"
+    fi
+    [ -z "${3:-}" ] || echo "$3"
     die "Conda environment required."
-fi
-info "Conda environment: $CONDA_DEFAULT_ENV"
+}
+
+# Stop when <envs dir>/$1 exists although the env list $2 holds no env $1: on a file system that
+# ignores case that folder is an env such as PROTEUS, which `conda create -y -n $1` would remove.
+# The envs dirs come from `conda config --show envs_dirs`, one "  - <path>" line each.
+stop_on_env_folder() {
+    local dirs dir folder listed
+    dirs=$(conda config --show envs_dirs </dev/null | sed -n 's/^  - //p') || dirs=""
+    [ -n "$dirs" ] || stop_without_conda_env "'conda config --show envs_dirs' named no envs directory." "$1"
+    while IFS= read -r dir; do
+        folder="$dir/$1"
+        [ -e "$folder" ] || continue
+        listed=$(printf '%s\n' "$2" | awk -v f="$folder" 'BEGIN {f = tolower(f)} /^[^ #]/ {
+            l = tolower($0); if (substr(l, length(l) - length(f) + 1) == f) {print $1; exit}}')
+        if [ -n "$listed" ]; then
+            die "The folder $folder exists and conda lists it as the environment $listed; the installer does not make an environment over it. Run bash install.sh --conda-env $listed to install into it, or --conda-env <name> for another one."
+        fi
+        die "The folder $folder exists and conda lists no environment name for it; the installer does not make an environment over it. Run bash install.sh --conda-env <name> with another name."
+    done <<< "$dirs"
+}
+
+# Use the active conda env; when none or base is active, use or make the env that --conda-env
+# names (default proteus) and activate it in this process. A pixi env is used as it is. An
+# existing env that --conda-env does not name is used after a yes on a terminal.
+setup_conda_env() {
+    local name="${CONDA_ENV_REQUESTED:-proteus}" active="${CONDA_DEFAULT_ENV:-}"
+    local pyver="$REQUIRED_PYTHON_MAJOR.$REQUIRED_PYTHON_MINOR" envs base made step="" py
+    local prefix="" asked=false other="bash install.sh --conda-env <other name>"
+    if [ -n "${PIXI_ENVIRONMENT_NAME:-}" ]; then
+        info "Pixi environment: $PIXI_ENVIRONMENT_NAME"
+        return 0
+    fi
+    if [ -n "$active" ] && [ "$active" != base ]; then
+        if [ -n "$CONDA_ENV_REQUESTED" ] && [ "$CONDA_ENV_REQUESTED" != "$active" ]; then
+            die "--conda-env $CONDA_ENV_REQUESTED and the active conda environment $active disagree; deactivate $active or leave out --conda-env."
+        fi
+        info "Conda environment: $active (active; the installer installs into it)"
+        return 0
+    fi
+    if [ "$name" = base ]; then
+        die "The installer does not install into the conda base environment; name another with --conda-env."
+    fi
+    command_exists conda || stop_without_conda_env "conda is not on PATH." "$name"
+    if ! envs=$(conda env list </dev/null); then
+        stop_without_conda_env "'conda env list' failed." "$name"
+    fi
+    # An env name is the first column of its line, then the marks * (active) and + (frozen) and
+    # the prefix; an env without a name shows only its path.
+    if prefix=$(printf '%s\n' "$envs" | awk -v n="$name" '$1 == n {
+            sub(/^[^ \t]+[ \t]+([*+][ \t]+)*/, ""); print; f = 1; exit} END {exit !f}'); then
+        made="found"
+        # Only a terminal on stdin and on the saved stdout (fd 3) sees the question and answers it.
+        if [ -z "$CONDA_ENV_REQUESTED" ] && [ -t 0 ] && [ -t 3 ]; then
+            if ! ask_yn "Install PROTEUS INTO the existing conda environment $name ($prefix)?" n; then
+                info "The existing conda environment $name stays as it is; to use another one run: $other"
+                LOG_SENTENCE_SHOWN=true
+                exit 1
+            fi
+            asked=true
+        fi
+    else
+        stop_on_env_folder "$name" "$envs"
+        info "Creating the conda environment $name with Python $pyver..."
+        if ! conda create -y -n "$name" "python=$pyver" </dev/null; then
+            stop_without_conda_env "'conda create -y -n $name python=$pyver' failed." "$name" \
+                "If conda printed a terms-of-service error above, run the 'conda tos accept' commands it printed, then bash install.sh again."
+        fi
+        made="made"
+    fi
+    base=$(conda info --base </dev/null) || base=""
+    # conda's activation scripts read unset variables, so set -u is off for these 2 calls.
+    set +u
+    if [ -z "$base" ] || ! source "$base/etc/profile.d/conda.sh"; then
+        step="Loading conda's shell functions from '${base:-?}/etc/profile.d/conda.sh' failed."
+    elif ! conda activate "$name"; then
+        step="'conda activate $name' failed."
+    fi
+    set -u
+    [ -z "$step" ] || stop_without_conda_env "$step" "$name"
+    hash -r
+    py=$(command -v python || true)
+    case "${CONDA_DEFAULT_ENV:-}|$py" in
+        "$name|${CONDA_PREFIX:-?}"/*) ;;
+        *) stop_without_conda_env "'conda activate $name' left the env ${CONDA_DEFAULT_ENV:-(none)} active and python at ${py:-(none)}." "$name" ;;
+    esac
+    # Later conda calls go to the executable, as with an env of the user's: the shell
+    # function reactivates the env after an install, and that reads unset variables.
+    unset -f conda
+    CONDA_ACTIVATED_HERE="true"
+    CONDA_BASE_DIR="$base"
+    if [ "$made" = made ]; then
+        info "Conda environment: $name (made and activated by the installer for this run)"
+    elif [ "$asked" = true ]; then
+        info "Conda environment: installing into the existing environment $name ($prefix)"
+    else
+        warn "Conda environment: installing INTO the existing environment $name ($prefix); to use another one run: $other"
+    fi
+}
+
+setup_conda_env
 
 # Check Python version
 python_version=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>/dev/null || echo "none")
@@ -575,66 +905,127 @@ info "Pre-flight checks passed"
 CURRENT_PHASE=2
 phase 2 "Julia"
 
-if command_exists julia; then
-    julia_version=$(julia --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -1)
-    if [ -z "$julia_version" ]; then
-        die "Could not parse Julia version from 'julia --version' output."
-    fi
-    julia_major=$(echo "$julia_version" | cut -d. -f1)
-    julia_minor=$(echo "$julia_version" | cut -d. -f2)
-    info "Julia found: $julia_version"
+# Print the version that the Julia binary $1 reports, or nothing when it reports none.
+julia_version_of() {
+    "$1" --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -1 || true
+}
 
-    julia_minor_ok=false
-    for accepted_minor in $ACCEPTED_JULIA_MINORS; do
-        if [ "$julia_major" -eq "$REQUIRED_JULIA_MAJOR" ] && \
-           [ "$julia_minor" -eq "$accepted_minor" ]; then
-            julia_minor_ok=true
-        fi
-    done
-    if [ "$julia_minor_ok" != true ]; then
-        warn "Julia $REQUIRED_JULIA_MAJOR.x with minor in {$ACCEPTED_JULIA_MINORS} required, found $julia_version."
-        if command_exists juliaup; then
-            info "Pinning Julia to $REQUIRED_JULIA_MAJOR.$REQUIRED_JULIA_MINOR via juliaup..."
-            juliaup add "$REQUIRED_JULIA_MAJOR.$REQUIRED_JULIA_MINOR"
-            juliaup default "$REQUIRED_JULIA_MAJOR.$REQUIRED_JULIA_MINOR"
-            info "Julia pinned to $REQUIRED_JULIA_MAJOR.$REQUIRED_JULIA_MINOR"
-        else
-            warn "juliaup not found. Cannot pin Julia version automatically."
-            echo "  Install juliaup: curl -fsSL https://install.julialang.org | sh"
-            echo "  Then: juliaup add $REQUIRED_JULIA_MAJOR.$REQUIRED_JULIA_MINOR"
-            echo "        juliaup default $REQUIRED_JULIA_MAJOR.$REQUIRED_JULIA_MINOR"
-            die "Julia version mismatch."
-        fi
-    elif [ "$julia_minor" -eq 11 ]; then
-        warn_julia_111_deprecated
+# The one line that names the Julia PROTEUS uses; $1 is the version of a default Julia that
+# differs from it, "none" for a juliaup without julia on PATH, or empty.
+report_proteus_julia() {
+    local version used
+    version=$(julia_version_of "$PYTHON_JULIAPKG_EXE")
+    used="Julia ${version:-(version unknown)} at $PYTHON_JULIAPKG_EXE"
+    case "$1" in
+        "") info "PROTEUS uses $used." ;;
+        none) info "PROTEUS uses $used; the default Julia of juliaup stays as it is." ;;
+        *) info "PROTEUS uses $used; your default Julia $1 stays as it is." ;;
+    esac
+}
+
+# Add the required Julia beside the default ($1, as for report_proteus_julia) without
+# changing the default, and put its binary first on the installer's own PATH.
+add_julia_beside_default() {
+    local req="$REQUIRED_JULIA_MAJOR.$REQUIRED_JULIA_MINOR"
+    info "Adding Julia $req via juliaup, beside the default Julia..."
+    if ! juliaup add "$req" </dev/null; then
+        warn "'juliaup add $req' failed; looking for an installed $req channel."
     fi
-else
-    info "Julia not found."
-    if prompt_yn "Install Julia via juliaup (official installer)?"; then
-        info "Installing Julia..."
-        # Download to temp file for auditability
-        julia_installer=$(mktemp /tmp/juliaup-install-XXXXXX.sh)
-        curl -fsSL https://install.julialang.org -o "$julia_installer"
-        bash "$julia_installer" --yes 2>&1
+    if ! use_julia_channel "+$req"; then
+        die "Could not locate the Julia $req binary after 'juliaup add $req'."
+    fi
+    PATH="$(dirname "$PYTHON_JULIAPKG_EXE"):$PATH"
+    export PATH
+    report_proteus_julia "$1"
+}
+
+# Install juliaup with the official installer, which adds nothing to a shell start file with
+# --add-to-path=no. It has no earlier default to protect, so the required Julia becomes its default.
+install_fresh_juliaup() {
+    local req="$REQUIRED_JULIA_MAJOR.$REQUIRED_JULIA_MINOR" julia_installer
+    info "Installing Julia..."
+    julia_installer=$(mktemp "${TMPDIR:-/tmp}/juliaup-install.XXXXXX")
+    if ! curl -fsSL https://install.julialang.org -o "$julia_installer"; then
         rm -f "$julia_installer"
-        # Source the juliaup env for the current shell
-        if [ -f "$HOME/.juliaup/bin/juliaup" ]; then
-            export PATH="$HOME/.juliaup/bin:$PATH"
-        fi
-        if ! command_exists juliaup; then
-            die "juliaup installation failed. Install Julia manually: https://julialang.org/downloads/"
-        fi
-        juliaup add "$REQUIRED_JULIA_MAJOR.$REQUIRED_JULIA_MINOR"
-        juliaup default "$REQUIRED_JULIA_MAJOR.$REQUIRED_JULIA_MINOR"
-        info "Julia $REQUIRED_JULIA_MAJOR.$REQUIRED_JULIA_MINOR installed"
-    else
-        die "Julia is required for AGNI. Install it manually: https://julialang.org/downloads/"
+        die "Could not download the Julia installer from https://install.julialang.org; check the network connection and run bash install.sh again, or install Julia $req by hand: https://julialang.org/downloads/"
     fi
-fi
+    if ! bash "$julia_installer" --yes --add-to-path=no 2>&1; then
+        rm -f "$julia_installer"
+        die "The Julia installer from https://install.julialang.org failed; see its output above, or install Julia $req by hand: https://julialang.org/downloads/"
+    fi
+    rm -f "$julia_installer"
+    # Source the juliaup env for the current shell
+    if [ -f "$HOME/.juliaup/bin/juliaup" ]; then
+        export PATH="$HOME/.juliaup/bin:$PATH"
+    fi
+    if ! command_exists juliaup; then
+        die "juliaup installation failed. Install Julia manually: https://julialang.org/downloads/"
+    fi
+    juliaup add "$req" || die "'juliaup add $req' failed; see its output above, then run bash install.sh again."
+    juliaup default "$req" || die "'juliaup default $req' failed; see its output above, then run bash install.sh again."
+    info "Julia $req installed"
+}
 
-# Verify Julia works
-if ! julia -e 'println("ok")' &>/dev/null; then
-    die "Julia is installed but not functional. Check your PATH."
+# Select the Julia PROTEUS uses, always the required one, and export it as PYTHON_JULIAPKG_EXE;
+# a PYTHON_JULIAPKG_EXE of that version stays, as the real binary of a launcher that it names.
+# Only a juliaup that install_fresh_juliaup installed in this run gets a new default.
+setup_julia() {
+    local req="$REQUIRED_JULIA_MAJOR.$REQUIRED_JULIA_MINOR" julia_version
+    local exe="${PYTHON_JULIAPKG_EXE:-}" config="${JULIAUP_DEPOT_PATH:-$HOME/.julia}/juliaup/juliaup.json"
+    if [ -f "$exe" ] && [ -x "$exe" ]; then
+        case "$(julia_version_of "$exe")" in
+            "$req" | "$req".*)
+                JULIA_CHANNEL=""
+                PYTHON_JULIAPKG_EXE="$(resolve_real_julia_exe "" "$exe")"
+                export PYTHON_JULIAPKG_EXE
+                report_proteus_julia ""
+                return 0
+                ;;
+        esac
+    fi
+    if ! command_exists julia && [ -x "$HOME/.juliaup/bin/juliaup" ]; then
+        export PATH="$HOME/.juliaup/bin:$PATH"
+    fi
+    if ! command_exists julia; then
+        info "Julia not found."
+        if command_exists juliaup; then
+            add_julia_beside_default none
+        elif [ -f "$config" ]; then
+            die "A juliaup configuration exists at $config, but no juliaup is on PATH or in ~/.juliaup/bin; put your juliaup on PATH and run bash install.sh again."
+        elif prompt_yn "Install Julia via juliaup (official installer)?"; then
+            install_fresh_juliaup
+            use_julia_channel ""
+            report_proteus_julia ""
+        else
+            die "Julia is required for AGNI. Install it manually: https://julialang.org/downloads/"
+        fi
+        return 0
+    fi
+    # A version that 'julia --version' does not report counts as another version.
+    julia_version=$(julia_version_of julia)
+    case "$julia_version" in
+        "$req" | "$req".*)
+            use_julia_channel ""
+            report_proteus_julia ""
+            return 0
+            ;;
+    esac
+    julia_version="${julia_version:-(version unknown)}"
+    if ! command_exists juliaup; then
+        warn "PROTEUS runs on Julia $req, found $julia_version."
+        warn "juliaup not found. Cannot add Julia $req automatically."
+        echo "  Install juliaup: curl -fsSL https://install.julialang.org | sh"
+        echo "  Then: juliaup add $req"
+        die "Julia version mismatch."
+    fi
+    add_julia_beside_default "$julia_version"
+}
+
+setup_julia
+
+# Verify that the Julia PROTEUS uses works
+if ! "$PYTHON_JULIAPKG_EXE" -e 'println("ok")' &>/dev/null; then
+    die "Julia at $PYTHON_JULIAPKG_EXE is installed but not functional."
 fi
 info "Julia: OK"
 
@@ -645,7 +1036,7 @@ info "Julia: OK"
 # architecture". Catch it here rather than after the full submodule install.
 norm_arch() { case "$1" in arm64|aarch64) echo arm ;; x86_64|amd64) echo x86 ;; *) echo "$1" ;; esac; }
 py_arch=$(python3 -c "import platform; print(platform.machine())" 2>/dev/null || true)
-jl_arch=$(julia --startup-file=no -e 'print(String(Sys.ARCH))' 2>/dev/null || true)
+jl_arch=$("$PYTHON_JULIAPKG_EXE" --startup-file=no -e 'print(String(Sys.ARCH))' 2>/dev/null || true)
 # Only flag a recognized arm-vs-x86 mismatch; an unrecognized arch fails open.
 case "$(norm_arch "$py_arch") $(norm_arch "$jl_arch")" in
     "arm x86"|"x86 arm")
@@ -664,11 +1055,6 @@ esac
 CURRENT_PHASE=3
 phase 3 "Environment variables"
 
-RC_FILE=$(detect_shell_rc)
-# Ensure parent directory exists (e.g. ~/.config/fish/)
-mkdir -p "$(dirname "$RC_FILE")"
-info "Shell config: $RC_FILE"
-
 # FWL_DATA
 if [ -z "${FWL_DATA:-}" ]; then
     default_fwl="$HOME/FWL_DATA"
@@ -680,13 +1066,10 @@ else
     info "FWL_DATA already set: $FWL_DATA"
 fi
 mkdir -p "$fwl_path"
-append_export_to_rc "FWL_DATA" "$fwl_path" "$RC_FILE"
+set_install_var FWL_DATA "$fwl_path"
 
-# PYTHON_JULIAPKG_EXE. Resolve the real binary so juliacall can find sys.so even
-# when julia on PATH is the juliaup launcher shim.
-julia_exe="$(resolve_real_julia_exe)"
-export PYTHON_JULIAPKG_EXE="$julia_exe"
-append_export_to_rc "PYTHON_JULIAPKG_EXE" "$julia_exe" "$RC_FILE"
+# PYTHON_JULIAPKG_EXE, the real Julia binary that setup_julia selected in Phase 2
+set_install_var PYTHON_JULIAPKG_EXE "$PYTHON_JULIAPKG_EXE"
 
 info "Environment variables configured"
 
@@ -705,13 +1088,10 @@ fi
 
 if [ "$socrates_compiled" = "true" ]; then
     info "SOCRATES already installed at $RAD_DIR"
+    set_install_var RAD_DIR "$RAD_DIR"
 else
-    info "Installing SOCRATES..."
-    # On HPC clusters, conda's netcdf can shadow the system netcdf and
-    # cause SOCRATES to link against the wrong libraries. Temporarily
-    # hide the conda lib/ from the linker so gfortran finds the system
-    # netcdf-fortran. The conda env stays active for Python; only the
-    # Fortran linker path is adjusted.
+    # On HPC clusters conda's netcdf can shadow the system one, so the Fortran linker
+    # does not see the conda lib/ during the build; Python keeps the conda env.
     _saved_conda_prefix="${CONDA_PREFIX:-}"
     if [ -n "$_saved_conda_prefix" ] && [ -d "$_saved_conda_prefix/lib" ]; then
         _saved_ld="${LD_LIBRARY_PATH:-}"
@@ -720,7 +1100,8 @@ else
         export LIBRARY_PATH=$(echo "${LIBRARY_PATH:-}" | tr ':' '\n' | grep -v "$_saved_conda_prefix" | tr '\n' ':' | sed 's/:$//')
         info "Temporarily hiding conda lib paths from Fortran linker"
     fi
-    bash tools/get_socrates.sh
+    run_logged --takes "several minutes" "Building SOCRATES" bash tools/get_socrates.sh \
+        || die "Could not build SOCRATES (bash tools/get_socrates.sh); see the error above"
     # Restore conda paths
     if [ -n "$_saved_conda_prefix" ] && [ -d "$_saved_conda_prefix/lib" ]; then
         export LD_LIBRARY_PATH="$_saved_ld"
@@ -728,11 +1109,10 @@ else
     fi
     # Verify compilation succeeded (radlib.a is the primary build artifact)
     if [ -d "$SCRIPT_DIR/socrates" ] && [ -f "$SCRIPT_DIR/socrates/bin/radlib.a" ]; then
-        export RAD_DIR="$SCRIPT_DIR/socrates"
-        append_export_to_rc "RAD_DIR" "$SCRIPT_DIR/socrates" "$RC_FILE"
+        set_install_var RAD_DIR "$SCRIPT_DIR/socrates"
         info "SOCRATES installed, RAD_DIR=$RAD_DIR"
     else
-        die "SOCRATES compilation failed. Check $LOGFILE for build errors."
+        die "SOCRATES compilation failed: socrates/bin/radlib.a was not built."
     fi
 fi
 
@@ -744,11 +1124,13 @@ phase 5 "AGNI + FastChem"
 
 if [ -d "$SCRIPT_DIR/AGNI" ] && [ -f "$SCRIPT_DIR/AGNI/Manifest.toml" ]; then
     info "AGNI already installed at $SCRIPT_DIR/AGNI"
+    note_agni_julia_version "$SCRIPT_DIR/AGNI"
 else
-    info "Installing AGNI..."
-    bash tools/get_agni.sh 0 2>&1
+    run_logged --takes "several minutes" "Installing AGNI and its Julia packages" \
+        bash tools/get_agni.sh 0 \
+        || die "Could not install AGNI and its Julia packages (bash tools/get_agni.sh 0); see the error above"
     if [ ! -f "$SCRIPT_DIR/AGNI/Manifest.toml" ]; then
-        die "AGNI installation failed (Julia packages not resolved). Check $LOGFILE for details."
+        die "AGNI installation failed (Julia packages not resolved)."
     fi
     info "AGNI installed"
 fi
@@ -759,19 +1141,18 @@ fi
 # the symlink so paths are canonical and NFS locking is less likely to
 # trip on path mismatches.
 AGNI_REAL=$(cd "$SCRIPT_DIR/AGNI" 2>/dev/null && pwd -P)
-if [ -d "$AGNI_REAL/fastchem" ] && [ -f "$AGNI_REAL/fastchem/fastchem" ]; then
+if [ -d "$AGNI_REAL/fastchem" ] && [ -x "$AGNI_REAL/fastchem/fastchem" ]; then
     info "FastChem already installed at $AGNI_REAL/fastchem"
 else
-    info "Installing FastChem..."
     cd "$AGNI_REAL"
     # If a previous NFS-failed clone left a partial fastchem dir, clean it
     if [ -d "$AGNI_REAL/fastchem/.git" ] && [ ! -f "$AGNI_REAL/fastchem/CMakeLists.txt" ]; then
         warn "Cleaning up partial FastChem clone from a previous failed attempt"
         rm -rf "$AGNI_REAL/fastchem"
     fi
-    bash src/get_fastchem.sh -y 2>&1
+    run_logged "Building FastChem" build_fastchem || true
     cd "$SCRIPT_DIR"
-    if [ ! -d "$AGNI_REAL/fastchem" ]; then
+    if [ ! -x "$AGNI_REAL/fastchem/fastchem" ]; then
         warn "FastChem installation failed. AGNI chemistry features will not work."
         warn "Install manually: cd AGNI && bash src/get_fastchem.sh"
     else
@@ -779,11 +1160,10 @@ else
     fi
 fi
 
-# FC_DIR (use resolved AGNI path so the env var survives symlink changes)
-#   note: get_fastchem.sh also sets FC_DIR; we keep it here for consistency and for the rerun environment variable export message
-if [ -d "$AGNI_REAL/fastchem" ]; then
-    export FC_DIR="$AGNI_REAL/fastchem"
-    append_export_to_rc "FC_DIR" "$AGNI_REAL/fastchem" "$RC_FILE"
+# FC_DIR only for a built FastChem, on the resolved AGNI path so that it survives a change
+# of the symlink
+if [ -x "$AGNI_REAL/fastchem/fastchem" ]; then
+    set_install_var FC_DIR "$AGNI_REAL/fastchem"
 fi
 
 # ===================================================================
@@ -823,45 +1203,54 @@ else
     info "GitHub SSH access: not available, using HTTPS"
 fi
 
-# Clone and install a submodule as editable if not already present.
-# Optional 4th arg: branch to checkout (defaults to repo default branch).
+# Usage: clone_and_install <RepoName> <distribution>. tools/get_python_module.sh clones a missing module
+# at its release tag, or installs an existing folder as it is and names its state; it never replaces one.
 clone_and_install() {
-    local name="$1" org="$2" repo="$3" branch="${4:-}"
-    local dest="$SCRIPT_DIR/$repo"
-    if [ -d "$dest" ]; then
-        info "$name already cloned at $dest"
-    else
-        info "Cloning $name..."
-        if [ -n "$branch" ]; then
-            git clone -b "$branch" "${GH_PREFIX}${org}/${repo}.git" "$dest"
-        else
-            git clone "${GH_PREFIX}${org}/${repo}.git" "$dest"
-        fi
+    local repo="$1" dist="$2"
+    if ! run_logged "Setting up $repo" env PROTEUS_MODULE_GIT_BASE="$GH_PREFIX" \
+        bash "$SCRIPT_DIR/tools/get_python_module.sh" "$repo"; then
+        die "Could not install $repo ($dist); see the error above"
     fi
-    info "Installing $name (editable)..."
-    pip install -e "$dest/." 2>&1
 }
 
-clone_and_install "MORS"     "FormingWorlds" "MORS"
-clone_and_install "JANUS"    "FormingWorlds" "JANUS"
-clone_and_install "CALLIOPE" "FormingWorlds" "CALLIOPE"
-clone_and_install "ZEPHYRUS" "FormingWorlds" "ZEPHYRUS"
+# Print one line naming the module clones that stay as they are, which record_clone_stays
+# (tools/_get_common.sh) wrote to the file PROTEUS_CLONE_STAYS names, and remove that file.
+report_stayed_clones() {
+    local list
+    [ -n "${PROTEUS_CLONE_STAYS:-}" ] || return 0
+    if [ -s "$PROTEUS_CLONE_STAYS" ]; then
+        list=$(awk 'NR > 1 {printf ", "} {printf "%s", $0}' "$PROTEUS_CLONE_STAYS")
+        warn "Not at their release tag: $list. A clone that is older than the minimum version is" \
+            "not used: the PROTEUS install takes that release from PyPI. The commands printed" \
+            "above move a clone to its tag or replace it; a paired branch without the release" \
+            "has no command, its release comes from PyPI."
+    fi
+    rm -f "$PROTEUS_CLONE_STAYS"
+}
+
+PROTEUS_CLONE_STAYS=$(mktemp "${TMPDIR:-/tmp}/proteus-clone-stays.XXXXXX") || PROTEUS_CLONE_STAYS=""
+export PROTEUS_CLONE_STAYS
+clone_and_install "MORS"     "fwl-mors"
+clone_and_install "JANUS"    "fwl-janus"
+clone_and_install "CALLIOPE" "fwl-calliope"
+clone_and_install "ZEPHYRUS" "fwl-zephyrus"
 
 # Aragog and Zalmoxis use dedicated setup scripts
-info "Setting up Aragog..."
-bash tools/get_aragog.sh 2>&1
-info "Setting up Zalmoxis..."
-bash tools/get_zalmoxis.sh 2>&1
+run_logged "Setting up Aragog" bash tools/get_aragog.sh \
+    || die "Could not set up Aragog (bash tools/get_aragog.sh); see the error above"
+run_logged "Setting up Zalmoxis" bash tools/get_zalmoxis.sh \
+    || die "Could not set up Zalmoxis (bash tools/get_zalmoxis.sh); see the error above"
+report_stayed_clones
 
 # Install the SUNDIALS CVODE solver, Aragog's default integrator. A run with
 # Aragog stops at setup without it.
-info "Setting up the SUNDIALS CVODE solver..."
-bash tools/get_cvode.sh 2>&1 \
+run_logged "Setting up the SUNDIALS CVODE solver" bash tools/get_cvode.sh \
     || warn "CVODE install failed. Aragog with solver_method = \"cvode\" stops at setup until it imports; fix the error above and re-run bash tools/get_cvode.sh. Other interior modules, radau and bdf do not need it."
 
 # Install PROTEUS itself
-info "Installing PROTEUS and remaining dependencies..."
-pip install -e ".[develop]"
+run_logged --takes "a few minutes" "Installing PROTEUS and its remaining dependencies" \
+    pip install -e ".[develop]" \
+    || die "Could not install PROTEUS and its remaining dependencies (pip install -e \".[develop]\"); see the error above"
 
 # The PROTEUS install can replace packages; Aragog on "cvode" needs CVODE to still import.
 python -c "from scikits_odes_sundials.cvode import CVODE, CV_RootFunction, StatusEnum" >/dev/null 2>&1 \
@@ -874,6 +1263,10 @@ pre-commit install -f 2>&1 || warn "pre-commit install failed (non-critical)"
 verify_proteus_import
 info "Python packages installed"
 
+# The Julia 1.11 fall-back of verify_proteus_import sets the last variable, so every variable is
+# recorded here, and an interrupted data download leaves them bound.
+bind_install_vars
+
 # ===================================================================
 # Phase 7: Reference data
 # ===================================================================
@@ -882,7 +1275,7 @@ phase 7 "Reference data"
 
 case "$DATA_MODE" in
     essential)
-        info "Downloading essential reference data (~2 GB)..."
+        info "Downloading essential reference data (~3 GB)..."
         # Default-config and tutorial k-tables only; the bare
         # `proteus get spectral` downloads every group (~10 GB).
         # Honeyside/48 serves the config default (src/proteus/config/_atmos_clim.py),
@@ -890,6 +1283,8 @@ case "$DATA_MODE" in
         proteus get spectral -n Honeyside -b 48 2>&1 || warn "Spectral data download had issues"
         proteus get spectral -n Dayspring -b 48 2>&1 || warn "Spectral data download had issues"
         proteus get stellar 2>&1 || warn "Stellar data download had issues"
+        # The default star (src/proteus/config/_star.py) reads this PHOENIX grid (~1 GB on disk).
+        proteus get phoenix --feh +0.0 --alpha +0.0 2>&1 || warn "PHOENIX download had issues"
         # Interior lookup tables, melting curves, and the structure-solver
         # EOS tables that the default and tutorial configs require.
         proteus get interiordata 2>&1 || warn "Interior data download had issues"
@@ -927,10 +1322,8 @@ echo ""
 echo ""
 printf "${GREEN}${BOLD}Installation complete!${NC}\n"
 echo ""
-echo "Next steps:"
-echo "  1. Source your shell config:  source $RC_FILE"
-echo "  2. Run the quick-start tutorial:"
-echo "     proteus start --offline -c input/dummy.toml"
+note_old_shell_exports
+print_next_steps
 echo ""
 echo "For SPIDER (legacy interior module), run separately:"
 echo "  bash tools/get_petsc.sh && bash tools/get_spider.sh"

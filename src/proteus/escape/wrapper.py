@@ -52,6 +52,24 @@ def reservoir_key(reservoir: str) -> str:
             raise ValueError(f"Invalid escape reservoir '{reservoir}'")
 
 
+def reservoir_mass(hf_row: dict, element: str, key: str) -> float:
+    """Mass of one element escape can draw on from the named reservoir [kg].
+
+    Mass trapped in the solid mantle is locked there: it is neither in the
+    atmosphere nor available to be stripped from it. The `_kg_atm` reservoir
+    never holds it, so only the whole-planet `_kg_total` reservoir needs the
+    subtraction, and sizing a loss from a reservoir that included it would ask
+    escape to remove mass it cannot reach.
+    """
+    # Imported here: proteus.outgas imports this module at load.
+    from proteus.outgas.trapping import locked_solid_mass
+
+    mass = float(hf_row.get(f'{element}{key}', 0.0))
+    if key != '_kg_total' or not np.isfinite(mass):
+        return mass
+    return max(0.0, mass - locked_solid_mass(hf_row, element))
+
+
 def escapable_mass(hf_row: dict, reservoir: str) -> float:
     """Return the mass escape can draw on this step [kg].
 
@@ -68,7 +86,7 @@ def escapable_mass(hf_row: dict, reservoir: str) -> float:
             Summed elemental mass held in that reservoir [kg].
     """
     key = reservoir_key(reservoir)
-    return float(sum(float(hf_row.get(f'{e}{key}', 0.0)) for e in element_list))
+    return float(sum(reservoir_mass(hf_row, e, key) for e in element_list))
 
 
 def readable_total(hf_row: dict) -> float:
@@ -250,11 +268,15 @@ def run_escape(
             solidified: dissolved volatiles are then frozen into the solid and
             the atmosphere is the only reservoir that can supply escape. The
             element floor of :func:`calc_new_elements` is then off, since no
-            outgassing solve follows to repartition a zeroed total.
+            outgassing solve follows to repartition a zeroed total. It is also
+            off on a step on which a remelt returned buried mass to the melt.
         interior_o : Interior_t | None
             Interior state. When given, its ``escape_dt_limit`` is set so a
             capped step shortens the next one; see :func:`escape_dt_limit`.
     """
+    # Imported here: proteus.outgas imports this module at load.
+    from proteus.outgas.trapping import remelt_returned_mass
+
     dirs = dirs or {}
 
     if not config.escape.module:
@@ -350,7 +372,7 @@ def run_escape(
         reservoir,
         min_thresh=config.outgas.mass_thresh,
         esc_mass=esc_step_kg,
-        floor=not atmosphere_only,
+        floor=not (atmosphere_only or remelt_returned_mass(hf_row)),
     )
 
     # store new elemental inventories
@@ -521,21 +543,32 @@ def calc_new_elements(
             Time-step length [years]
         min_thresh: float
             Minimum threshold for element mass [kg]. A reservoir below it is not
-            debited; with ``floor``, an element total below it is set to zero.
+            debited; with ``floor``, an element whose reachable mass is below it
+            is emptied to the mass locked in the solid.
         esc_mass : float | None
             Mass to remove over this step [kg]. Defaults to the unrestricted
             ``esc_rate_total * dt``; pass the value from
             :func:`limit_escape_step` to apply the per-step cap.
         floor : bool
-            Set a non-noble element that falls below ``min_thresh`` to zero. Only
-            for a step whose outgassing solve repartitions the totals afterwards;
-            on a frozen mantle no solve follows and the atmosphere keeps the mass.
+            Empty a non-noble element whose reachable mass, its total less the
+            mass trapping locks in the solid, falls below ``min_thresh``, down to
+            that locked mass. The desiccation gate tests the same reachable mass,
+            so the two agree on what depleted means. Only for a step whose
+            outgassing solve repartitions the totals afterwards; on a frozen
+            mantle no solve follows and the atmosphere keeps the mass. On a step
+            on which a remelt returned buried mass, the element is being
+            resupplied rather than depleted: flooring it then would delete the
+            release whenever it is small, so the result would depend on how many
+            steps the remelt takes, and the caller turns the floor off.
 
     Returns
     -------
         tgt : dict
             Volatile element whole-planet inventories [kg]
     """
+    # Imported here: proteus.outgas imports this module at load.
+    from proteus.outgas.trapping import locked_solid_mass
+
     # which reservoir?
 
     log.info(f'Calculating new elemental inventories from escape, reservoir = {reservoir}')
@@ -549,7 +582,7 @@ def calc_new_elements(
     # all elements proportionally rather than concentrated on H+C+N+S).
     res: dict[str, float] = {}
     for e in element_list:
-        res[e] = float(hf_row.get(f'{e}{key}', 0.0))
+        res[e] = reservoir_mass(hf_row, e, key)
 
     M_vols = float(sum(res.values()))
 
@@ -596,14 +629,11 @@ def calc_new_elements(
             tgt[e] = old_total
             continue
         new_total = old_total - lost
-        # The desiccation floor treats a major volatile that drops below
-        # min_thresh as fully depleted. Noble gases are intrinsically trace
-        # (Earth-like whole-planet inventories sit orders of magnitude below
-        # min_thresh), so applying the same absolute floor would zero a
-        # realistic noble inventory on the first escape step. Exempt them and
-        # only clamp to non-negative.
-        if floor and e not in noble_gases and new_total < min_thresh:
-            new_total = 0.0
-        tgt[e] = max(0.0, new_total)
+        # A major volatile whose reachable mass, the total less what is locked in the
+        # solid, falls below min_thresh is depleted, as check_desiccation reads it.
+        locked = locked_solid_mass(hf_row, e)
+        if floor and e not in noble_gases and new_total - locked < min_thresh:
+            new_total = locked
+        tgt[e] = max(locked, new_total)
 
     return tgt

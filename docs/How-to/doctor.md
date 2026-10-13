@@ -31,8 +31,8 @@ command you can run manually or let `proteus update` handle.
 | `FWL_DATA` | Environment variable is set and the directory exists | Not set, or path missing |
 | `RAD_DIR` | Set, directory exists, and `bin/radlib.a` is present | Not set, path missing, or SOCRATES not compiled |
 | `FC_DIR` | Set and directory exists | Not set (only required when AGNI chemistry is enabled) |
-| `PYTHON_JULIAPKG_EXE` | Set | Not set |
-| `julia` | Julia is on PATH and version is 1.12.x or 1.13.x | Missing or wrong version; 1.11.x warns as deprecated |
+| `PYTHON_JULIAPKG_EXE` | Set, and the path exists | Not set; a path that does not exist warns |
+| `julia` | The Julia in `PYTHON_JULIAPKG_EXE` (or on PATH when it is unset) is 1.13.x | Missing, or `PYTHON_JULIAPKG_EXE` set to a path that is no executable file, because juliacall then fails at import instead of using the `julia` on PATH; any other version warns, because PROTEUS is tested on 1.13 and Obliqua installs only on 1.11 or 1.13 |
 
 ### Reference data
 
@@ -46,15 +46,18 @@ non-empty:
 
 ### Package versions
 
-For each Python submodule (fwl-proteus, fwl-aragog, fwl-calliope, fwl-janus,
-fwl-mors, fwl-vulcan, fwl-zephyrus, fwl-zalmoxis), the doctor checks:
+For each required Python package (fwl-proteus, fwl-io, fwl-aragog, fwl-calliope,
+fwl-janus, fwl-mors, fwl-zephyrus, fwl-zalmoxis), the doctor checks the points
+below; it does not check the optional fwl-vulcan and fwl-morrigan:
 
 1. **Is the package installed?** If not, the fix is `pip install <name>`.
 2. **Does the installed version satisfy the minimum bound in `pyproject.toml`?**
    For example, if `pyproject.toml` requires `fwl-aragog>=26.05.13` and you
    have `25.1.1` installed, the check fails.
 3. **Is this an editable install?** If so, the output shows the checkout
-   directory, git commit hash, and dirty state.
+   directory, git commit hash, and dirty state; for a folder that is not a git
+   clone of its own (no `.git`, or an empty one inside the PROTEUS checkout),
+   it says so in place of the hash and the dirty state.
 
 For git-pinned modules (AGNI, SOCRATES), the doctor compares the checkout's
 HEAD commit against the commit SHA pinned in `pyproject.toml` under
@@ -80,7 +83,7 @@ Environment
   [ok] FWL_DATA: /home/user/FWL_DATA
   [ok] RAD_DIR: /home/user/PROTEUS/socrates
   [FAIL] FC_DIR: not set
-       fix: export FC_DIR=<path>  # add to your shell rc file
+       fix: conda env config vars set FC_DIR=<path>, then conda deactivate && conda activate proteus (without conda: source .proteus-env.sh in the PROTEUS folder)
   [ok] julia: 1.13.0
 
 Reference data
@@ -90,8 +93,8 @@ Reference data
 Package versions
   [ok] fwl-proteus: 25.10.15 [editable @ PROTEUS -> a1b2c3d]
   [ok] fwl-aragog: 26.5.13 [editable @ aragog -> d051902]
-  [FAIL] fwl-vulcan: not installed
-       fix: pip install fwl-vulcan
+  [FAIL] fwl-janus: not installed
+       fix: pip install fwl-janus
   [warn] AGNI: 1.10.1 (bf65a56c) differs from pin (b06a3fed)
        fix: bash tools/get_agni.sh
 
@@ -152,23 +155,29 @@ This lists the fixable issues and their commands but does not execute anything.
 | Issue | Fix action |
 |-------|-----------|
 | Missing Python package | `pip install <name>` |
-| Outdated Python package (editable, tag-pinned: aragog, zalmoxis) | `bash tools/get_<name>.sh` |
-| Outdated Python package (editable, tracking branch) | `cd <checkout> && git pull && pip install -e .` |
+| Outdated Python package (editable git clone of its own, without a setup script) | `cd <checkout> && git pull && pip install -e .` |
 | Outdated Python package (wheel) | `pip install -U "<name>>=<version>"` |
 | Missing AGNI | `bash tools/get_agni.sh` |
 | AGNI commit drift from pin | `bash tools/get_agni.sh` |
 | Missing SOCRATES | `bash tools/get_socrates.sh` |
 | SOCRATES commit drift from pin | `bash tools/get_socrates.sh "$RAD_DIR" && RAD_DIR="$RAD_DIR" bash tools/get_agni.sh 0` (rebuilds AGNI's wrappers too). To discard local changes in the SOCRATES checkout, pass `--force` to the SOCRATES step only: `bash tools/get_socrates.sh --force "$RAD_DIR" && RAD_DIR="$RAD_DIR" bash tools/get_agni.sh 0` |
 | Missing reference data | `proteus get spectral` / `proteus get stellar` |
-| Wrong Julia version | `juliaup add 1.13 && juliaup default 1.13` |
 
 ### What proteus update cannot fix
 
-- **Missing environment variables** (`FWL_DATA`, `RAD_DIR`, etc.): these
-  require editing your shell configuration file (`~/.bashrc` or `~/.zshrc`).
-  The doctor reports the fix command, but `proteus update` cannot modify your
-  shell rc file. Run the suggested `export` command manually, then add it to
-  your rc file.
+- **Missing environment variables** (`FWL_DATA`, `RAD_DIR`, `FC_DIR`,
+  `PYTHON_JULIAPKG_EXE`): set them in the conda environment with
+  `conda env config vars set NAME=<path>`, then run
+  `conda deactivate && conda activate proteus`, because conda loads them only at
+  activation. Without conda, run `source .proteus-env.sh` in the PROTEUS folder.
+  `proteus update` does not run this advice.
+- **Wrong Julia version**: the doctor checks the Julia in
+  `PYTHON_JULIAPKG_EXE` (the `julia` on `PATH` when it is unset) and suggests
+  `juliaup add 1.13`, then setting `PYTHON_JULIAPKG_EXE` in the same way to the
+  path that `julia +1.13 -e 'print(joinpath(Sys.BINDIR, "julia"))'` prints.
+  Your default Julia stays as it is. The installer binds Julia 1.11 only when the
+  import of PROTEUS fails on `OpenSSL_jll` because Python links an OpenSSL older
+  than 3.5; after `conda install -c conda-forge 'openssl>=3.5'`, Julia 1.13 can be used.
 - **Missing system packages** (gfortran, cmake, netcdf): these require your
   system package manager (`brew`, `apt`, `dnf`). See the
   [installation guide](installation.md) for platform-specific commands.
@@ -176,6 +185,16 @@ This lists the fixable issues and their commands but does not execute anything.
   conda environment. If the wrong environment is active or conda is not
   configured, activate the correct environment first:
   `conda activate proteus`.
+- **An outdated editable module clone that a setup script makes** (MORS,
+  JANUS, CALLIOPE, ZEPHYRUS, Aragog, Zalmoxis): no fix
+  changes such a clone. The doctor shows as its fix the commands that fetch
+  the tags, check out the release tag of the minimum version and reinstall
+  the clone, and, for the clone in the module's folder of the PROTEUS root,
+  the setup script with `--force` (for example
+  `bash tools/get_python_module.sh MORS --force`), which replaces the clone
+  with a new one. Run the one you want by hand. A folder that is not a git
+  clone of its own gets no git command, which would act on the repository
+  around it: only the `--force` replacement, or the advice to move it away.
 
 !!! warning "Source install required"
     `proteus update` requires a source install (git clone). If PROTEUS was
@@ -192,10 +211,18 @@ finds, `proteus update-all` performs a full refresh of the whole stack:
 proteus update-all
 ```
 
-It updates the PROTEUS Python package, recompiles SOCRATES, pulls the latest
-AGNI, and refreshes the reference data, verifying environment variables and disk
-space before proceeding. Pass `--export-env` to re-export the environment
-variables to your shell rc file. Use this after pulling new code when several
+It updates the PROTEUS Python package, recompiles SOCRATES, brings AGNI to the
+commit pinned in `pyproject.toml` (an AGNI clone with modified files or commits of
+your own stays as it is, and the command prints the commands that move it by hand),
+and refreshes the reference data, verifying environment variables and disk
+space before proceeding. Pass `--export-env` to set the environment variables
+again in the active conda environment and in `.proteus-env.sh`. It runs no git command in the Python module
+clones (MORS, JANUS, CALLIOPE, ZEPHYRUS, Aragog, Zalmoxis); as
+with `bash install.sh`, its pip step installs the PyPI release in place of a
+clone that is older than the minimum version. To move a clone to its release
+tag after a version change, run the commands that `bash install.sh` prints for
+a clone that is not at its tag, or the module's setup script with `--force`.
+Use this after pulling new code when several
 components may have moved at once; use `proteus update` when you want to apply
 only the fixes the doctor has flagged.
 
@@ -226,11 +253,12 @@ proteus update
 ```
 
 This updates any submodules whose installed version no longer satisfies the
-new bounds. For editable checkouts installed by a `tools/get_<name>.sh` script
-(aragog, zalmoxis), it re-runs that script, which fetches and checks out the
-pinned version tag; those checkouts sit on a detached HEAD where `git pull`
-would fail. For editable checkouts on a tracking branch, it runs
-`git pull && pip install -e .` in the checkout directory.
+new bounds. It does not change an editable module clone that a setup script
+makes (MORS, JANUS, CALLIOPE, ZEPHYRUS, Aragog, Zalmoxis):
+for one below its minimum version it lists the commands that move it to the
+release tag by hand or replace it with `--force`. For another editable checkout that is a
+git clone of its own it runs `git pull && pip install -e .` in the checkout directory;
+any other editable folder gets the advice `pip install -U "<name>>=<version>"`, which you run by hand.
 
 ### Before submitting a simulation
 
