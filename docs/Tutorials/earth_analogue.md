@@ -32,8 +32,10 @@ state from Table 2 of the CHILI protocol paper. It departs from the protocol in
 the following points. The oxygen fugacity is IW+2. Zalmoxis solves the interior
 structure from a core mass fraction instead of the fixed planet radius and core
 radius fraction of the protocol. The star follows the Spada tracks with the
-solar spectrum, which gives an instellation of ~1005 W m$^{-2}$ at the
-start, against 920 W m$^{-2}$ in Table 2. Radiogenic heating is on
+solar spectrum, where the protocol asks for the Baraffe et al. (2015) track
+with a blackbody spectrum for models that evolve the stellar luminosity. The
+instellation is ~1005 W m$^{-2}$ at the start; the 920 W m$^{-2}$ of Table 2
+is the value of the protocol for models with a constant luminosity. Radiogenic heating is on
 (~0.2 W m$^{-2}$), while the baseline cases of the protocol have none:
 
 | Parameter | Value |
@@ -42,7 +44,8 @@ start, against 920 W m$^{-2}$ in Table 2. Radiogenic heating is on
 | Core mass fraction (CHILI: core radius fraction 0.55) | 0.325 |
 | Stellar mass | 1 M$_\odot$ |
 | Starting stellar age | 50 Myr |
-| Instellation at the start (CHILI: 920 W m$^{-2}$) | ~1005 W m$^{-2}$ |
+| Stellar track and spectrum (CHILI: Baraffe et al. 2015 track, blackbody spectrum) | Spada tracks, solar spectrum |
+| Instellation at the start (CHILI: 920 W m$^{-2}$ for a constant luminosity) | ~1005 W m$^{-2}$ |
 | Radiogenic heating (CHILI baseline: none) | On |
 | Semi-major axis | 1 AU |
 | Bond albedo | 0.1 |
@@ -138,8 +141,8 @@ The surface temperature (c, solid) decreases from ~3300 K to
 orange) tracks above it, starting near 4300 K. The decline slows after
 ~10$^5$ yr, when the melt fraction has dropped to ~0.75 and latent
 heat release buffers the cooling. At termination the net interior and
-atmospheric fluxes have fallen to ~140 W m$^{-2}$ (OLR ~360 W m$^{-2}$,
-absorbed stellar flux ~230 W m$^{-2}$).
+atmospheric fluxes have fallen to ~138 W m$^{-2}$ (OLR ~365 W m$^{-2}$,
+absorbed stellar flux ~227 W m$^{-2}$).
 
 ### Atmospheric evolution (b, d)
 

@@ -188,9 +188,9 @@ longer to run.
   It exceeds the seismic-resonance threshold (Re &gt; 1.5, ringed in red)
   once, at t &approx; 7.9 &times; 10<sup>5</sup> yr, where it peaks at ~3.7.
   It is negative in 14 snapshots, which get no ring: first at
-  t &approx; 7.2 &times; 10<sup>5</sup> yr, and in 12 of the 14 snapshots of
-  the last 1.5 &times; 10<sup>4</sup> yr of the run, with values down to
-  &minus;3.5. The magnitude of Im(k<sub>22</sub>) is smallest, 10<sup>-3.5</sup>, near
+  t &approx; 7.2 &times; 10<sup>5</sup> yr, again at
+  7.7 &times; 10<sup>5</sup> yr (its minimum, &minus;3.5), and in 12 of the
+  last 14 snapshots (the last 1.5 &times; 10<sup>4</sup> yr of the run). The magnitude of Im(k<sub>22</sub>) is smallest, 10<sup>-3.5</sup>, near
   3.4 &times; 10<sup>5</sup> yr, where the tidal heating has its
   minimum.</figcaption>
 </figure>

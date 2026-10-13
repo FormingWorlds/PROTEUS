@@ -5,8 +5,8 @@ parameter values using the `proteus grid` command. Grid runs are the standard
 approach for parameter studies, sensitivity analyses, and population synthesis.
 
 It uses the all-dummy base configuration (`input/dummy.toml`), so every case
-runs in 20 to 100 s without any external solver, and the whole grid finishes in
-about 8 minutes on a workstation with 8 cases in parallel. The numbers below are therefore illustrative of
+needs no external solver and its coupling loop takes 20 to 100 s, and the whole
+grid finishes in about 8 minutes on a workstation with 8 cases in parallel. The numbers below are therefore illustrative of
 the workflow, not physical predictions; see the caveats at the end.
 
 ## How grids work
