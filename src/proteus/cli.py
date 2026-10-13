@@ -1342,12 +1342,7 @@ _STANDARD_MODULES = (
 )
 
 
-def _install_module(
-    root: Path,
-    name: str,
-    script_rel: str,
-    env: dict | None = None,
-) -> None:
+def _install_module(root: Path, name: str, script_rel: str, env: dict) -> None:
     """Run a module setup script, or warn on failure and proceed.
 
     Parameters
@@ -1358,14 +1353,13 @@ def _install_module(
         Display name of the module.
     script_rel : str
         Repository-relative path to the install script.
-    env : dict, optional
+    env : dict
         Environment variables passed to the subprocess.
     """
     click.secho(f'[+] Setting up {name}...', fg='blue')
-    cmd = ['bash', str(root / script_rel)]
     try:
         subprocess.run(
-            cmd,
+            ['bash', str(root / script_rel)],
             cwd=root,
             env=env,
             stdin=subprocess.DEVNULL,

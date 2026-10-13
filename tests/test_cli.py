@@ -2582,10 +2582,7 @@ def test_install_all_warns_and_goes_on_when_the_phoenix_download_fails(
     assert 'PROTEUS installation completed' in res.output
 
 
-class _RecordedCalls(list):
-    """List of captured subprocess calls with environment stub attached."""
-
-    env: dict
+_STUB_JULIA_ENV = {'STUB_JULIA_ENV': '1'}
 
 
 def _standard_modules_test_site(monkeypatch, tmp_path, fail_script=None):
@@ -2600,77 +2597,56 @@ def _standard_modules_test_site(monkeypatch, tmp_path, fail_script=None):
     (tmp_path / 'AGNI').mkdir(exist_ok=True)
     _agni_clone_may_move(monkeypatch)
     monkeypatch.setattr(cli, '_update_input_data', lambda path: False)
+    monkeypatch.setattr(cli, '_env_with_proteus_julia', lambda root: _STUB_JULIA_ENV)
 
-    stub_julia_env = {'STUB_JULIA_ENV': '1'}
-    monkeypatch.setattr(cli, '_env_with_proteus_julia', lambda root: stub_julia_env)
-
-    calls = _RecordedCalls()
-    calls.env = stub_julia_env
+    calls = []
 
     def fake_subprocess_run(cmd, **kwargs):
         calls.append((list(cmd), dict(kwargs)))
         if fail_script and len(cmd) > 1 and fail_script in str(cmd[1]):
             raise cli.subprocess.CalledProcessError(returncode=1, cmd=cmd)
-        return type('R', (), {'returncode': 0})()
+        return type('R', (), {'returncode': 0, 'stdout': ''})()
 
     monkeypatch.setattr(cli.subprocess, 'run', fake_subprocess_run)
     return calls
 
 
-@pytest.mark.unit
-def test_install_all_installs_standard_modules_when_absent(monkeypatch, tmp_path):
-    """install-all invokes setup scripts for standard modules when their folders are absent."""
-    calls = _standard_modules_test_site(monkeypatch, tmp_path)
-
-    res = runner.invoke(cli.cli, ['install-all'])
-    assert res.exit_code == 0
-    expected_scripts = [
-        'tools/get_morrigan.sh',
-        'tools/get_vulcan.sh',
-        'tools/get_atmodeller.sh',
-        'tools/get_obliqua.sh',
-    ]
-    std_calls = [
-        c for c in calls if len(c[0]) > 1 and any(s in str(c[0][1]) for s in expected_scripts)
-    ]
-    assert [c[0][1] for c in std_calls] == [str(tmp_path / s) for s in expected_scripts]
-    for cmd, kwargs in std_calls:
-        assert len(cmd) == 2
-        assert cmd[0] == 'bash'
-        assert kwargs.get('cwd') == tmp_path
-        assert kwargs.get('env') is calls.env
-        assert kwargs.get('check') is True
-        assert kwargs.get('stdin') is cli.subprocess.DEVNULL
+def _assert_module_runs(calls, tmp_path, expected_scripts):
+    """Assert the setup scripts of modules ran once each, in order, as install-all runs them."""
+    full_expected = [str(tmp_path / s) for s in expected_scripts]
+    runs = [(cmd, kw) for cmd, kw in calls if len(cmd) > 1 and cmd[1] in full_expected]
+    assert [cmd[1] for cmd, _ in runs] == full_expected
+    for cmd, kwargs in runs:
+        assert (cmd[0], len(cmd)) == ('bash', 2)
+        assert (kwargs['cwd'], kwargs['check'], kwargs['stdin']) == (
+            tmp_path,
+            True,
+            cli.subprocess.DEVNULL,
+        )
+        assert kwargs['env'] is _STUB_JULIA_ENV
 
 
 @pytest.mark.unit
-def test_install_all_runs_standard_module_scripts_when_folders_present(monkeypatch, tmp_path):
-    """install-all runs setup scripts for standard modules even when folders exist."""
+@pytest.mark.parametrize('present', [False, True], ids=['folders absent', 'folders present'])
+def test_install_all_runs_standard_module_scripts(monkeypatch, tmp_path, present):
+    """install-all runs the four setup scripts in order, whether or not the folders exist."""
     calls = _standard_modules_test_site(monkeypatch, tmp_path)
-    expected_folders = ['Morrigan', 'VULCAN', 'Atmodeller', 'Obliqua']
-    for folder in expected_folders:
-        (tmp_path / folder).mkdir()
+    if present:
+        for folder in ['Morrigan', 'VULCAN', 'Atmodeller', 'Obliqua']:
+            (tmp_path / folder).mkdir()
 
     res = runner.invoke(cli.cli, ['install-all'])
     assert res.exit_code == 0
-
-    expected_scripts = [
-        'tools/get_morrigan.sh',
-        'tools/get_vulcan.sh',
-        'tools/get_atmodeller.sh',
-        'tools/get_obliqua.sh',
-    ]
-    std_calls = [
-        c for c in calls if len(c[0]) > 1 and any(s in str(c[0][1]) for s in expected_scripts)
-    ]
-    assert [c[0][1] for c in std_calls] == [str(tmp_path / s) for s in expected_scripts]
-    for cmd, kwargs in std_calls:
-        assert len(cmd) == 2
-        assert cmd[0] == 'bash'
-        assert kwargs.get('cwd') == tmp_path
-        assert kwargs.get('env') is calls.env
-        assert kwargs.get('check') is True
-        assert kwargs.get('stdin') is cli.subprocess.DEVNULL
+    _assert_module_runs(
+        calls,
+        tmp_path,
+        [
+            'tools/get_morrigan.sh',
+            'tools/get_vulcan.sh',
+            'tools/get_atmodeller.sh',
+            'tools/get_obliqua.sh',
+        ],
+    )
 
 
 @pytest.mark.unit
@@ -2683,22 +2659,16 @@ def test_install_all_warns_and_continues_when_standard_module_script_fails(
     res = runner.invoke(cli.cli, ['install-all'])
     assert res.exit_code == 0
     assert 'Morrigan is not installed: "bash tools/get_morrigan.sh" failed' in res.output
-    remaining_scripts = [
-        'tools/get_vulcan.sh',
-        'tools/get_atmodeller.sh',
-        'tools/get_obliqua.sh',
-    ]
-    succeeded = [
-        c for c in calls if len(c[0]) > 1 and any(s in str(c[0][1]) for s in remaining_scripts)
-    ]
-    assert [c[0][1] for c in succeeded] == [str(tmp_path / s) for s in remaining_scripts]
-    for cmd, kwargs in succeeded:
-        assert len(cmd) == 2
-        assert cmd[0] == 'bash'
-        assert kwargs.get('cwd') == tmp_path
-        assert kwargs.get('env') is calls.env
-        assert kwargs.get('check') is True
-        assert kwargs.get('stdin') is cli.subprocess.DEVNULL
+    _assert_module_runs(
+        calls,
+        tmp_path,
+        [
+            'tools/get_morrigan.sh',
+            'tools/get_vulcan.sh',
+            'tools/get_atmodeller.sh',
+            'tools/get_obliqua.sh',
+        ],
+    )
 
 
 # ---------------------------

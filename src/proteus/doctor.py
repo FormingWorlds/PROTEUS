@@ -613,12 +613,9 @@ def _below_floor_advice(
             f' {target_name}; move it away, then run: {replace}'
         )
     if ref:
-        target = shlex.quote(ref)
-        advice = (
-            f'git -C {path} fetch origin && git -C {path} checkout --detach {target}'
-            f' && pip install -e {path}'
-        )
+        fetch, target = 'origin', shlex.quote(ref)
     else:
+        fetch = '--tags'
         tag = _floor_tag_name(spec, list(_tag_commits(checkout)))
         if tag:
             target = f'refs/tags/{shlex.quote(tag)}'
@@ -627,10 +624,10 @@ def _below_floor_advice(
             target = (
                 f'"refs/tags/$(git -C {path} tag -l | python {pins} {dist_name} floor-tag)"'
             )
-        advice = (
-            f'git -C {path} fetch --tags && git -C {path} checkout --detach {target}'
-            f' && pip install -e {path}'
-        )
+    advice = (
+        f'git -C {path} fetch {fetch} && git -C {path} checkout --detach {target}'
+        f' && pip install -e {path}'
+    )
     if in_folder:
         advice += f'  # or replace the clone: {replace} --force'
     return advice
@@ -929,16 +926,16 @@ def check_python_package(name: str, spec: Requirement | None) -> CheckResult:
     """Check a Python package against the pyproject.toml version spec."""
     installed = _installed_version(name)
     if installed is None:
+        status, fix = FAIL, f'pip install {name}'
         if name in STANDARD_MODULE_PACKAGES:
             setup = _setup_command(name)
-            if setup:
-                root = shlex.quote(str(_repo_root()))
-                status, fix = WARN, f'cd {root} && bash {setup}'
-            else:
-                extra = name.lower().removeprefix('fwl-')
-                status, fix = WARN, f'pip install "fwl-proteus[{extra}]"'
-        else:
-            status, fix = FAIL, f'pip install {name}'
+            extra = name.lower().removeprefix('fwl-')
+            status = WARN
+            fix = (
+                f'cd {shlex.quote(str(_repo_root()))} && bash {setup}'
+                if setup
+                else f'pip install "fwl-proteus[{extra}]"'
+            )
         return CheckResult(
             name=name, category='versions', status=status, message='not installed', fix_cmd=fix
         )

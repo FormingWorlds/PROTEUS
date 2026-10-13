@@ -1401,36 +1401,46 @@ class TestReleaseTagNote:
         assert '--tags' not in adv
         assert 'refs/tags' not in adv
 
-    def test_below_floor_advice_for_non_own_clone_outside_module_folder(self, tmp_path):
-        """Advice for a non-own clone outside module folder uses its pinned commit or release tag."""
+    @pytest.mark.parametrize(
+        ('dist', 'floor', 'pins', 'script', 'named', 'absent'),
+        [
+            (
+                'atmodeller',
+                '1.0.2',
+                {'atmodeller': {'ref': '77e81aac5147bad7eec727fba5b299e055db2d4d'}},
+                'tools/get_atmodeller.sh',
+                'its pinned commit',
+                'release tag',
+            ),
+            (
+                'fwl-morrigan',
+                '26.10.0',
+                {},
+                'tools/get_morrigan.sh',
+                'the release tag',
+                'pinned',
+            ),
+        ],
+        ids=['commit pin', 'release tag'],
+    )
+    def test_below_floor_advice_for_non_own_clone_outside_module_folder(
+        self, tmp_path, dist, floor, pins, script, named, absent
+    ):
+        """Advice for a non-own clone outside the module folder names its pinned commit or tag."""
         from packaging.requirements import Requirement
 
         checkout = tmp_path / 'custom'
         checkout.mkdir()
-        spec_atm = Requirement('atmodeller>=1.0.2')
-        pins = {'atmodeller': {'ref': '77e81aac5147bad7eec727fba5b299e055db2d4d'}}
         with (
             patch('proteus.doctor._repo_root', return_value=tmp_path),
             patch('proteus.doctor._module_pins', return_value=pins),
             patch('proteus.doctor._is_own_clone', return_value=False),
         ):
-            adv_atm = _below_floor_advice(
-                'atmodeller', str(checkout), spec_atm, 'tools/get_atmodeller.sh'
+            adv = _below_floor_advice(
+                dist, str(checkout), Requirement(f'{dist}>={floor}'), script
             )
-        assert 'its pinned commit' in adv_atm
-        assert 'release tag' not in adv_atm
-
-        spec_mor = Requirement('fwl-morrigan>=26.10.0')
-        with (
-            patch('proteus.doctor._repo_root', return_value=tmp_path),
-            patch('proteus.doctor._module_pins', return_value={}),
-            patch('proteus.doctor._is_own_clone', return_value=False),
-        ):
-            adv_mor = _below_floor_advice(
-                'fwl-morrigan', str(checkout), spec_mor, 'tools/get_morrigan.sh'
-            )
-        assert 'the release tag' in adv_mor
-        assert 'its pinned commit' not in adv_mor
+        assert named in adv
+        assert absent not in adv
 
 
 class TestGitHelpers:
@@ -1958,36 +1968,29 @@ class TestCheckGitModuleOptional:
             agni_r = check_git_module('AGNI', {'agni': str(tmp_path)}, required=True)
         assert agni_r.auto_fixable is True
 
+    @pytest.mark.parametrize(
+        ('head', 'message'),
+        [
+            ('a' * 40, '0.1.0 (aaaaaaaa): Julia environment not instantiated'),
+            (None, '0.1.0: Julia environment not instantiated'),
+        ],
+        ids=['with head', 'without head'],
+    )
     def test_obliqua_missing_manifest_warns_julia_not_instantiated(
-        self, tmp_path, mock_own_clone
+        self, tmp_path, mock_own_clone, head, message
     ):
-        """An on-pin Obliqua folder without Manifest.toml warns with automatic fix."""
+        """An on-pin Obliqua folder without Manifest.toml warns, naming the head when git has one."""
         pins = {'obliqua': {'ref': 'a' * 40}}
         (tmp_path / 'Project.toml').touch()
         with (
             patch('proteus.doctor._module_pins', return_value=pins),
-            patch('proteus.doctor._git_head', return_value='a' * 40),
+            patch('proteus.doctor._git_head', return_value=head),
             patch('proteus.doctor._get_obliqua_version', return_value='0.1.0'),
         ):
             r = check_git_module('Obliqua', {'obliqua': str(tmp_path)}, required=False)
         assert r.status == WARN
         assert r.auto_fixable is True
-        assert r.message == '0.1.0 (aaaaaaaa): Julia environment not instantiated'
-        assert r.fix_cmd == 'bash tools/get_obliqua.sh'
-
-    def test_obliqua_missing_manifest_without_git_head(self, tmp_path, mock_own_clone):
-        """When git returns no head, the message omits the head commit."""
-        pins = {'obliqua': {'ref': 'a' * 40}}
-        (tmp_path / 'Project.toml').touch()
-        with (
-            patch('proteus.doctor._module_pins', return_value=pins),
-            patch('proteus.doctor._git_head', return_value=None),
-            patch('proteus.doctor._get_obliqua_version', return_value='0.1.0'),
-        ):
-            r = check_git_module('Obliqua', {'obliqua': str(tmp_path)}, required=False)
-        assert r.status == WARN
-        assert r.auto_fixable is True
-        assert r.message == '0.1.0: Julia environment not instantiated'
+        assert r.message == message
         assert r.fix_cmd == 'bash tools/get_obliqua.sh'
 
     def test_obliqua_off_pin_takes_precedence_over_missing_manifest(
