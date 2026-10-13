@@ -356,10 +356,26 @@ def _opts(**overrides):
     return opts
 
 
-def test_make_grid_plots_writes_both_plots_in_the_base_format(tmp_path):
+def test_make_grid_plots_writes_both_plots_in_the_base_format(tmp_path, monkeypatch):
     """Both plots land in post_processing/grid_plots in the base run's format when
-    plot_format is unset; a missing output is skipped, not fatal.
+    plot_format is unset; a missing output is skipped, not fatal. The status plot
+    reads the all CSV (with the Error case) and the ECDF the completed one.
     """
+    from proteus.grid import plot_grid
+
+    seen = {}
+    real_status, real_ecdf = plot_grid.plot_status_summary, plot_grid.plot_ecdf_grid
+
+    def spy_status(df, *args, **kwargs):
+        seen['status'] = sorted(df['status_category'])
+        return real_status(df, *args, **kwargs)
+
+    def spy_ecdf(df, tested, outputs, *args, **kwargs):
+        seen['ecdf'] = (len(df), list(outputs))
+        return real_ecdf(df, tested, outputs, *args, **kwargs)
+
+    monkeypatch.setattr(plot_grid, 'plot_status_summary', spy_status)
+    monkeypatch.setattr(plot_grid, 'plot_ecdf_grid', spy_ecdf)
     rows = [
         {'case_number': i, 'status': 'Completed (solidified)', 'status_category': 'Completed',
          'planet.mass_tot': m, 'T_surf': t}
@@ -372,6 +388,8 @@ def test_make_grid_plots_writes_both_plots_in_the_base_format(tmp_path):
         'ecdf_grid_plot.pdf',
         'summary_grid_statuses.pdf',
     ]
+    assert seen['status'] == ['Completed', 'Completed', 'Error']
+    assert seen['ecdf'] == (2, ['T_surf'])
 
 
 def test_make_grid_plots_honours_switches_and_rejects_no_valid_output(tmp_path):
