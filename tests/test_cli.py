@@ -3351,14 +3351,48 @@ def test_update_all_anchors_paths_to_source_root_not_cwd(monkeypatch, tmp_path):
 
 
 @pytest.mark.unit
+def test_standard_modules_tuple_matches_literal_definition():
+    """_STANDARD_MODULES equals the four literal triples and each setup script exists."""
+    expected = (
+        ('Morrigan', 'Morrigan', 'tools/get_morrigan.sh'),
+        ('VULCAN', 'VULCAN', 'tools/get_vulcan.sh'),
+        ('atmodeller', 'Atmodeller', 'tools/get_atmodeller.sh'),
+        ('Obliqua', 'Obliqua', 'tools/get_obliqua.sh'),
+    )
+    assert cli._STANDARD_MODULES == expected
+    root = cli._resolve_proteus_root()
+    for _, _, script in cli._STANDARD_MODULES:
+        assert (root / script).is_file()
+
+
+@pytest.mark.unit
 def test_update_all_warns_when_standard_modules_missing(monkeypatch, tmp_path):
     """update-all emits yellow warnings for missing standard module directories."""
-    _standard_modules_test_site(monkeypatch, tmp_path)
+    calls = _standard_modules_test_site(monkeypatch, tmp_path)
 
     res = runner.invoke(cli.cli, ['update-all'])
     assert res.exit_code == 0
     for name, _, script in cli._STANDARD_MODULES:
         assert f'{name} not found. Run "bash {script}".' in res.output
+    for cmd, _ in calls:
+        for _, _, script in cli._STANDARD_MODULES:
+            assert not any(script in str(arg) for arg in cmd)
+
+
+@pytest.mark.unit
+def test_update_all_warns_only_for_absent_module(monkeypatch, tmp_path):
+    """update-all warns only for absent standard modules when others are present."""
+    _standard_modules_test_site(monkeypatch, tmp_path)
+    for name, folder, _ in cli._STANDARD_MODULES:
+        if name != 'VULCAN':
+            (tmp_path / folder).mkdir()
+
+    res = runner.invoke(cli.cli, ['update-all'])
+    assert res.exit_code == 0
+    assert '[!] VULCAN not found. Run "bash tools/get_vulcan.sh".' in res.output
+    assert 'Morrigan not found' not in res.output
+    assert 'atmodeller not found' not in res.output
+    assert 'Obliqua not found' not in res.output
 
 
 @pytest.mark.unit
@@ -3376,8 +3410,10 @@ def test_update_all_runs_no_commands_in_standard_module_folders(monkeypatch, tmp
             for _, folder, _ in cli._STANDARD_MODULES:
                 assert cwd_path != tmp_path / folder
     for cmd, _ in calls:
-        for _, _, script in cli._STANDARD_MODULES:
+        for _, folder, script in cli._STANDARD_MODULES:
             assert not any(script in str(arg) for arg in cmd)
+            folder_str = str(tmp_path / folder)
+            assert not any(folder_str in str(arg) for arg in cmd)
 
 
 @pytest.mark.unit

@@ -592,23 +592,26 @@ def _below_floor_advice(
         a comment that names the replacement when the checkout resolves to
         ``<root>/<module folder>``; for a folder that is not a clone of its
         own, the replacement with a comment, or a comment alone.
+        A module with a commit pin in ``[tool.proteus.modules]`` gets the
+        checkout of that commit in place of the release tag.
     """
     path = shlex.quote(os.path.abspath(checkout))
     root = _repo_root()
     folder = _MODULE_FOLDERS.get(dist_name.lower())
     in_folder = bool(folder) and os.path.realpath(checkout) == os.path.realpath(root / folder)
     replace = f'cd {shlex.quote(str(root))} && bash {setup}'
+    ref = _module_pins().get(dist_name.lower(), {}).get('ref')
     if not _is_own_clone(checkout):
         if in_folder:
             return (
                 f'{replace} --force  # {path} is not a git clone of its own; this replaces it'
                 ' with a new clone, which deletes everything in it'
             )
+        target_name = 'its pinned commit' if ref else 'the release tag'
         return (
-            f'# {path} is not a git clone of its own, so no git command moves it to the'
-            f' release tag; move it away, then run: {replace}'
+            f'# {path} is not a git clone of its own, so no git command moves it to'
+            f' {target_name}; move it away, then run: {replace}'
         )
-    ref = _module_pins().get(dist_name.lower(), {}).get('ref')
     if ref:
         target = shlex.quote(ref)
         advice = (
@@ -1036,7 +1039,7 @@ def check_git_module(name: str, dirs: dict, required: bool = True) -> CheckResul
     else:
         path = dirs.get(dir_key, '')
 
-    if not path or not os.path.isdir(path):
+    if not path or not os.path.isdir(path) or (not required and not os.listdir(path)):
         # Unlike the off-pin case below, this fix is not chained to an AGNI
         # rebuild: a not-installed SOCRATES means RAD_DIR is unset, so the AGNI
         # step would have nowhere to find SOCRATES. The install script prints
@@ -1128,8 +1131,7 @@ ENVIRONMENT_VARS = [
 ]
 
 # Mandatory Python packages checked by doctor. An absent package in this list
-# is a failure; an absent package in STANDARD_MODULE_PACKAGES gives a warning
-# with its setup command instead.
+# is a failure.
 PYTHON_PACKAGES = [
     'fwl-proteus',
     'fwl-io',
@@ -1141,6 +1143,8 @@ PYTHON_PACKAGES = [
     'fwl-zalmoxis',
 ]
 
+# An absent package in this list gives a warning with its setup script,
+# or with the package extra when the tree has no setup script.
 STANDARD_MODULE_PACKAGES = [
     'fwl-morrigan',
     'fwl-vulcan',

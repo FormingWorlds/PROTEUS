@@ -775,18 +775,24 @@ class TestCheckPythonPackage:
             ('atmodeller', 'tools/get_atmodeller.sh'),
         ],
     )
-    def test_warn_when_standard_module_not_installed(self, pkg, script):
+    def test_warn_when_standard_module_not_installed(self, pkg, script, tmp_path):
         """A missing standard module package warns with its setup command."""
         from importlib.metadata import PackageNotFoundError
 
-        with patch(
-            'proteus.doctor.importlib.metadata.version',
-            side_effect=PackageNotFoundError(pkg),
+        root = tmp_path / 'repo'
+        (root / script).parent.mkdir(parents=True, exist_ok=True)
+        (root / script).touch()
+        with (
+            patch('proteus.doctor._repo_root', return_value=root),
+            patch(
+                'proteus.doctor.importlib.metadata.version',
+                side_effect=PackageNotFoundError(pkg),
+            ),
         ):
             r = check_python_package(pkg, None)
         assert r.status == WARN
         assert r.message == 'not installed'
-        assert script in r.fix_cmd
+        assert r.fix_cmd == f'cd {shlex.quote(str(root))} && bash {script}'
 
     @pytest.mark.parametrize(
         ('pkg', 'extra'),
@@ -1387,6 +1393,37 @@ class TestReleaseTagNote:
         assert '--tags' not in adv
         assert 'refs/tags' not in adv
 
+    def test_below_floor_advice_for_non_own_clone_outside_module_folder(self, tmp_path):
+        """Advice for a non-own clone outside module folder uses its pinned commit or release tag."""
+        from packaging.requirements import Requirement
+
+        checkout = tmp_path / 'custom'
+        checkout.mkdir()
+        spec_atm = Requirement('atmodeller>=1.0.2')
+        pins = {'atmodeller': {'ref': '77e81aac5147bad7eec727fba5b299e055db2d4d'}}
+        with (
+            patch('proteus.doctor._repo_root', return_value=tmp_path),
+            patch('proteus.doctor._module_pins', return_value=pins),
+            patch('proteus.doctor._is_own_clone', return_value=False),
+        ):
+            adv_atm = _below_floor_advice(
+                'atmodeller', str(checkout), spec_atm, 'tools/get_atmodeller.sh'
+            )
+        assert 'its pinned commit' in adv_atm
+        assert 'release tag' not in adv_atm
+
+        spec_mor = Requirement('fwl-morrigan>=26.10.0')
+        with (
+            patch('proteus.doctor._repo_root', return_value=tmp_path),
+            patch('proteus.doctor._module_pins', return_value={}),
+            patch('proteus.doctor._is_own_clone', return_value=False),
+        ):
+            adv_mor = _below_floor_advice(
+                'fwl-morrigan', str(checkout), spec_mor, 'tools/get_morrigan.sh'
+            )
+        assert 'the release tag' in adv_mor
+        assert 'its pinned commit' not in adv_mor
+
 
 class TestGitHelpers:
     """Git helper functions."""
@@ -1883,6 +1920,7 @@ class TestCheckGitModuleOptional:
         root.mkdir()
         obliqua_dir = tmp_path / 'Obliqua'
         obliqua_dir.mkdir()
+        (obliqua_dir / 'Project.toml').touch()
         with (
             patch('proteus.doctor._repo_root', return_value=root),
             patch('proteus.doctor._module_pins', return_value=pins),
@@ -1909,6 +1947,7 @@ class TestCheckGitModuleOptional:
     def test_obliqua_missing_manifest_warns_julia_not_instantiated(self, tmp_path):
         """An on-pin Obliqua folder without Manifest.toml warns with automatic fix."""
         pins = {'obliqua': {'ref': 'a' * 40}}
+        (tmp_path / 'Project.toml').touch()
         with (
             patch('proteus.doctor._module_pins', return_value=pins),
             patch('proteus.doctor._git_head', return_value='a' * 40),
@@ -1923,6 +1962,7 @@ class TestCheckGitModuleOptional:
     def test_obliqua_missing_manifest_without_git_head(self, tmp_path):
         """When git returns no head, the message omits the head commit."""
         pins = {'obliqua': {'ref': 'a' * 40}}
+        (tmp_path / 'Project.toml').touch()
         with (
             patch('proteus.doctor._module_pins', return_value=pins),
             patch('proteus.doctor._git_head', return_value=None),
@@ -1937,6 +1977,7 @@ class TestCheckGitModuleOptional:
     def test_obliqua_off_pin_takes_precedence_over_missing_manifest(self, tmp_path):
         """Off-pin warning takes precedence over missing Manifest.toml."""
         pins = {'obliqua': {'ref': 'a' * 40}}
+        (tmp_path / 'Project.toml').touch()
         with (
             patch('proteus.doctor._repo_root', return_value=tmp_path),
             patch('proteus.doctor._module_pins', return_value=pins),
@@ -1947,6 +1988,36 @@ class TestCheckGitModuleOptional:
         assert r.auto_fixable is False
         assert 'differs from pin' in r.message
         assert '--force' in r.fix_cmd
+
+    def test_empty_optional_module_folder_in_git_repo_counts_as_not_installed(self, tmp_path):
+        """An empty optional module folder in a git repo counts as not installed."""
+        _init_test_repo(tmp_path)
+        obliqua_dir = tmp_path / 'Obliqua'
+        obliqua_dir.mkdir()
+        pins = {'obliqua': {'ref': 'a' * 40}}
+        with patch('proteus.doctor._module_pins', return_value=pins):
+            r = check_git_module('Obliqua', {'obliqua': str(obliqua_dir)}, required=False)
+        assert r.status == WARN
+        assert r.message == 'not installed'
+        assert r.fix_cmd == 'bash tools/get_obliqua.sh'
+        assert r.auto_fixable is True
+        assert 'differs from pin' not in r.message
+
+    def test_empty_required_module_folder_in_git_repo_does_not_count_as_not_installed(
+        self, tmp_path
+    ):
+        """An empty required module folder in a git repo does not count as not installed."""
+        _init_test_repo(tmp_path)
+        agni_dir = tmp_path / 'AGNI'
+        agni_dir.mkdir()
+        pins = {'agni': {'ref': 'a' * 40}}
+        with (
+            patch('proteus.doctor._module_pins', return_value=pins),
+            patch('proteus.doctor._get_agni_version', return_value='1.0.0'),
+        ):
+            r = check_git_module('AGNI', {'agni': str(agni_dir)}, required=True)
+        assert r.message != 'not installed'
+        assert 'differs from pin' in r.message
 
     def test_run_all_checks_warns_obliqua_when_not_installed(self, tmp_path):
         """End to end: with no Obliqua checkout, run_all_checks returns WARN."""
