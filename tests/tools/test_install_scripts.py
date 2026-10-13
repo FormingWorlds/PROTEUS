@@ -5522,7 +5522,7 @@ def test_obliqua_custom_destination_off_pin_advises_escaped_path(tmp_path, folde
 
 
 # ===================================================================
-# W11b: forced replace safety, ssh batch mode, and unreadable clones
+# Forced replace safety, ssh batch mode, and unreadable clones
 # ===================================================================
 
 
@@ -5569,10 +5569,11 @@ def test_obliqua_force_refuses_site_root_aliases(tmp_path, alias_mode):
             'trailing-slash': f'{site["root"]}/',
         }
         target_path = path_forms[alias_mode]
+    expected_dest = target_path.rstrip('/')
     res = _run_tool(site, 'get_obliqua.sh', '--force', target_path)
     assert res.returncode == 1, res.stdout + res.stderr
     assert (
-        f'ERROR: {target_path} is {site["root"]} or a folder that holds it, and cannot be the Obliqua folder; it is unchanged'
+        f'ERROR: {expected_dest} is {site["root"]} or a folder that holds it, and cannot be the Obliqua folder; it is unchanged'
         in res.stderr
     )
     assert sorted(p.name for p in site['root'].iterdir()) == before_names
@@ -5636,7 +5637,7 @@ def test_obliqua_force_refuses_home_and_home_parent(tmp_path):
 
 @pytest.mark.unit
 def test_obliqua_force_refuses_non_clone_folder_with_files(tmp_path):
-    """Verify get_obliqua.sh --force refuses a non-empty folder that is not a git clone."""
+    """Verify get_obliqua.sh --force refuses a non-empty folder without an Obliqua Project.toml."""
     site = _obliqua_site(tmp_path)
     target = tmp_path / 'non_clone_folder'
     target.mkdir()
@@ -5645,7 +5646,7 @@ def test_obliqua_force_refuses_non_clone_folder_with_files(tmp_path):
     res = _run_tool(site, 'get_obliqua.sh', '--force', str(target))
     assert res.returncode == 1, res.stdout + res.stderr
     assert (
-        f'ERROR: {target} holds files and is not a git clone of its own; move it away or delete it by hand; it is unchanged'
+        f'ERROR: {target} is not an Obliqua project (no Project.toml that names Obliqua); move it away or delete it by hand; it is unchanged'
         in res.stderr
     )
     assert marker.read_text() == 'important data\n'
@@ -5670,7 +5671,7 @@ def test_obliqua_force_refuses_foreign_git_clone(tmp_path, has_project_toml):
     res = _run_tool(site, 'get_obliqua.sh', '--force', str(target))
     assert res.returncode == 1, res.stdout + res.stderr
     assert (
-        f'ERROR: {target} is a git clone that is not Obliqua; move it away or delete it by hand; it is unchanged'
+        f'ERROR: {target} is not an Obliqua project (no Project.toml that names Obliqua); move it away or delete it by hand; it is unchanged'
         in res.stderr
     )
     assert (target / 'README.md').read_text() == 'Foreign project\n'
@@ -5687,7 +5688,7 @@ def test_obliqua_force_refuses_regular_file(tmp_path):
     res = _run_tool(site, 'get_obliqua.sh', '--force', str(target))
     assert res.returncode == 1, res.stdout + res.stderr
     assert (
-        f'ERROR: --force cannot enter {target} (not a folder, or no permission); it is unchanged'
+        f'ERROR: {target} is a file, a broken link or a folder that cannot be entered; move it away or delete it by hand; it is unchanged'
         in res.stderr
     )
     assert target.is_file()
@@ -5710,7 +5711,7 @@ def test_obliqua_foreign_git_clone_at_default_dest_without_force_refused(tmp_pat
     res = _run_tool(site, 'get_obliqua.sh')
     assert res.returncode == 1, res.stdout + res.stderr
     assert (
-        f'ERROR: {target} is a git clone that is not Obliqua; move it away or delete it by hand; it is unchanged'
+        f'ERROR: {target} is not an Obliqua project (no Project.toml that names Obliqua); move it away or delete it by hand; it is unchanged'
         in res.stderr
     )
     assert (target / 'README.md').read_text() == 'Foreign project\n'
@@ -5733,7 +5734,7 @@ def test_obliqua_foreign_git_clone_at_default_dest_with_force_refused(tmp_path):
     res = _run_tool(site, 'get_obliqua.sh', '--force')
     assert res.returncode == 1, res.stdout + res.stderr
     assert (
-        f'ERROR: {target} is a git clone that is not Obliqua; move it away or delete it by hand; it is unchanged'
+        f'ERROR: {target} is not an Obliqua project (no Project.toml that names Obliqua); move it away or delete it by hand; it is unchanged'
         in res.stderr
     )
     assert (target / 'README.md').read_text() == 'Foreign project\n'
@@ -5751,7 +5752,7 @@ def test_obliqua_git_init_only_folder_without_force_refused(tmp_path):
     res = _run_tool(site, 'get_obliqua.sh')
     assert res.returncode == 1, res.stdout + res.stderr
     assert (
-        f'ERROR: {target} is a git clone that is not Obliqua; move it away or delete it by hand; it is unchanged'
+        f'ERROR: {target} is not an Obliqua project (no Project.toml that names Obliqua); move it away or delete it by hand; it is unchanged'
         in res.stderr
     )
     assert (target / '.git').is_dir()
@@ -5810,7 +5811,7 @@ def test_obliqua_force_refuses_unreadable_folder(tmp_path):
         res = _run_tool(site, 'get_obliqua.sh', '--force', str(target))
         assert res.returncode == 1, res.stdout + res.stderr
         assert (
-            f'ERROR: --force cannot enter {target} (not a folder, or no permission); it is unchanged'
+            f'ERROR: {target} is a file, a broken link or a folder that cannot be entered; move it away or delete it by hand; it is unchanged'
             in res.stderr
         )
         assert target.exists()
@@ -5913,13 +5914,14 @@ def test_obliqua_refuses_home_when_git_repo(tmp_path, with_force):
 
 @pytest.mark.unit
 def test_obliqua_force_replaces_symlink_to_pinned_clone(tmp_path):
-    """Verify get_obliqua.sh --force replaces symlink to pinned clone without deleting target."""
+    """Verify get_obliqua.sh --force keeps a folder symlink and replaces its target clone."""
     site = _obliqua_site(tmp_path)
     first_clone = tmp_path / 'original_obliqua'
     res_orig = _run_tool(site, 'get_obliqua.sh', str(first_clone))
     assert res_orig.returncode == 0, res_orig.stdout + res_orig.stderr
-    orig_head = git(first_clone, 'rev-parse', 'HEAD')
-    assert orig_head == site['target_sha']
+    assert git(first_clone, 'rev-parse', 'HEAD') == site['target_sha']
+    marker = first_clone / 'old_marker.txt'
+    marker.write_text('old content\n')
 
     link_path = site['root'] / 'Obliqua'
     link_path.symlink_to(first_clone)
@@ -5927,18 +5929,17 @@ def test_obliqua_force_replaces_symlink_to_pinned_clone(tmp_path):
 
     res = _run_tool(site, 'get_obliqua.sh', '--force', str(link_path))
     assert res.returncode == 0, res.stdout + res.stderr
-    assert not link_path.is_symlink()
-    assert link_path.is_dir()
-    assert (link_path / 'Project.toml').is_file()
-    assert git(link_path, 'rev-parse', 'HEAD') == site['target_sha']
+    assert link_path.is_symlink()
     assert first_clone.is_dir()
     assert (first_clone / '.git').is_dir()
-    assert git(first_clone, 'rev-parse', 'HEAD') == orig_head
+    assert (first_clone / 'Project.toml').is_file()
+    assert not marker.exists()
+    assert git(first_clone, 'rev-parse', 'HEAD') == site['target_sha']
 
 
 @pytest.mark.unit
 def test_obliqua_force_replaces_symlink_to_empty_directory(tmp_path):
-    """Verify get_obliqua.sh --force replaces symlink to empty directory with clone."""
+    """Verify get_obliqua.sh --force keeps a symlink to an empty directory and clones into its target."""
     site = _obliqua_site(tmp_path)
     empty_dir = tmp_path / 'empty_target'
     empty_dir.mkdir()
@@ -5946,12 +5947,11 @@ def test_obliqua_force_replaces_symlink_to_empty_directory(tmp_path):
     link_path.symlink_to(empty_dir)
     res = _run_tool(site, 'get_obliqua.sh', '--force')
     assert res.returncode == 0, res.stdout + res.stderr
-    assert not link_path.is_symlink()
-    assert link_path.is_dir()
-    assert (link_path / 'Project.toml').is_file()
-    assert git(link_path, 'rev-parse', 'HEAD') == site['target_sha']
+    assert link_path.is_symlink()
     assert empty_dir.is_dir()
-    assert list(empty_dir.iterdir()) == []
+    assert (empty_dir / '.git').is_dir()
+    assert (empty_dir / 'Project.toml').is_file()
+    assert git(empty_dir, 'rev-parse', 'HEAD') == site['target_sha']
 
 
 @pytest.mark.unit
@@ -5974,11 +5974,11 @@ def test_obliqua_force_allowed_paths(tmp_path):
 
 @pytest.mark.unit
 def test_obliqua_non_clone_folder_stays_and_advises_manual_removal(tmp_path):
-    """Verify non-clone Obliqua folder without --force stays and advises manual removal."""
+    """Verify plain copy of Obliqua without --force stays, runs julia instantiate, and advises removal."""
     site = _obliqua_site(tmp_path)
     target = site['root'] / 'Obliqua'
     target.mkdir()
-    (target / 'Project.toml').write_text('name = "Other"\nuuid = "1234"\n')
+    (target / 'Project.toml').write_text('name = "Obliqua"\nuuid = "1234"\n')
     (target / 'custom.txt').write_text('data\n')
     res = _run_tool(site, 'get_obliqua.sh')
     assert res.returncode == 0, res.stdout + res.stderr
@@ -5987,6 +5987,9 @@ def test_obliqua_non_clone_folder_stays_and_advises_manual_removal(tmp_path):
     assert 'bash tools/get_obliqua.sh' in res.stdout
     assert '--force' not in res.stdout
     assert (target / 'custom.txt').read_text() == 'data\n'
+    calls = site['log'].read_text().splitlines()
+    assert len(calls) == 1
+    assert 'Pkg.instantiate' in calls[0]
 
 
 @pytest.mark.unit
@@ -6102,6 +6105,8 @@ def test_pinned_clone_in_outer_git_repo_reports_not_a_readable_git_clone(
     target = site['root'] / folder_name
     (target / '.git').mkdir(parents=True)
     (target / 'content.txt').write_text('data\n')
+    if folder_name == 'Obliqua':
+        (target / 'Project.toml').write_text('name = "Obliqua"\nuuid = "1234"\n')
 
     res = _run_tool(site, script)
     output = res.stdout + res.stderr
@@ -6185,3 +6190,149 @@ def test_obliqua_env_overrides_missing_pin_table(tmp_path):
     clone = site['root'] / 'Obliqua'
     assert (clone / 'Project.toml').is_file()
     assert git(clone, 'rev-parse', 'HEAD') == site['target_sha']
+
+
+@pytest.mark.unit
+def test_obliqua_non_clone_other_project_without_force_refused(tmp_path):
+    """Verify non-clone folder with another Project.toml name without --force is refused."""
+    site = _obliqua_site(tmp_path)
+    target = site['root'] / 'Obliqua'
+    target.mkdir()
+    (target / 'Project.toml').write_text('name = "Other"\nuuid = "1234"\n')
+    (target / 'other.txt').write_text('data\n')
+    res = _run_tool(site, 'get_obliqua.sh')
+    assert res.returncode == 1, res.stdout + res.stderr
+    assert (
+        f'ERROR: {target} is not an Obliqua project (no Project.toml that names Obliqua); move it away or delete it by hand; it is unchanged'
+        in res.stderr
+    )
+    assert not (target / 'Manifest.toml').exists()
+    assert site['log'].read_text() == ''
+
+
+@pytest.mark.unit
+def test_obliqua_site_tools_folder_without_force_refused(tmp_path):
+    """Verify passing the site tools folder without --force is refused without running julia."""
+    site = _obliqua_site(tmp_path)
+    tools_dir = site['root'] / 'tools'
+    before_names = sorted(p.name for p in tools_dir.iterdir())
+    res = _run_tool(site, 'get_obliqua.sh', str(tools_dir))
+    assert res.returncode == 1, res.stdout + res.stderr
+    assert (
+        f'ERROR: {tools_dir} is not an Obliqua project (no Project.toml that names Obliqua); move it away or delete it by hand; it is unchanged'
+        in res.stderr
+    )
+    assert site['log'].read_text() == ''
+    assert sorted(p.name for p in tools_dir.iterdir()) == before_names
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('with_force', [False, True], ids=['no-force', 'force'])
+def test_obliqua_refuses_broken_symlink(tmp_path, with_force):
+    """Verify broken symlink at default Obliqua destination is refused with and without --force."""
+    site = _obliqua_site(tmp_path)
+    link = site['root'] / 'Obliqua'
+    link.symlink_to(tmp_path / 'does_not_exist')
+    args = ['--force'] if with_force else []
+    res = _run_tool(site, 'get_obliqua.sh', *args)
+    assert res.returncode == 1, res.stdout + res.stderr
+    assert (
+        f'ERROR: {link} is a file, a broken link or a folder that cannot be entered; move it away or delete it by hand; it is unchanged'
+        in res.stderr
+    )
+    assert link.is_symlink()
+    assert site['log'].read_text() == ''
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('with_force', [False, True], ids=['no-force', 'force'])
+def test_obliqua_refuses_regular_file_at_default_dest(tmp_path, with_force):
+    """Verify regular file at default Obliqua destination is refused with and without --force."""
+    site = _obliqua_site(tmp_path)
+    target = site['root'] / 'Obliqua'
+    target.write_text('regular file bytes\n')
+    args = ['--force'] if with_force else []
+    res = _run_tool(site, 'get_obliqua.sh', *args)
+    assert res.returncode == 1, res.stdout + res.stderr
+    assert (
+        f'ERROR: {target} is a file, a broken link or a folder that cannot be entered; move it away or delete it by hand; it is unchanged'
+        in res.stderr
+    )
+    assert target.is_file()
+    assert target.read_text() == 'regular file bytes\n'
+    assert site['log'].read_text() == ''
+
+
+@pytest.mark.unit
+def test_obliqua_symlink_to_empty_folder_without_force_clones_into_target(tmp_path):
+    """Verify symlink to empty folder without --force keeps symlink and clones into target."""
+    site = _obliqua_site(tmp_path)
+    empty_dir = tmp_path / 'empty_target'
+    empty_dir.mkdir()
+    link = site['root'] / 'Obliqua'
+    link.symlink_to(empty_dir)
+    res = _run_tool(site, 'get_obliqua.sh')
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert link.is_symlink()
+    assert (empty_dir / '.git').is_dir()
+    assert git(empty_dir, 'rev-parse', 'HEAD') == site['target_sha']
+    calls = site['log'].read_text().splitlines()
+    assert '--project=. -e using Pkg; Pkg.resolve(); Pkg.instantiate()' in calls
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('suffix', ['//', '/.'], ids=['double-slash', 'slash-dot'])
+def test_obliqua_missing_destination_with_trailing_slash_or_dot(tmp_path, suffix):
+    """Verify missing destination ending in // or /. clones cleanly without leaving .tmp. folders."""
+    site = _obliqua_site(tmp_path)
+    target = tmp_path / 'newdir'
+    res = _run_tool(site, 'get_obliqua.sh', f'{target}{suffix}')
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert (target / '.git').is_dir()
+    assert git(target, 'rev-parse', 'HEAD') == site['target_sha']
+    assert not any('.tmp.' in p.name for p in target.iterdir())
+    assert not any('.tmp.' in p.name for p in tmp_path.iterdir())
+
+
+@pytest.mark.unit
+def test_obliqua_existing_empty_destination_with_double_slash(tmp_path):
+    """Verify existing empty destination ending in // clones cleanly without leaving .tmp. folders."""
+    site = _obliqua_site(tmp_path)
+    target = tmp_path / 'emptydir'
+    target.mkdir()
+    res = _run_tool(site, 'get_obliqua.sh', f'{target}//')
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert (target / '.git').is_dir()
+    assert git(target, 'rev-parse', 'HEAD') == site['target_sha']
+    assert not any('.tmp.' in p.name for p in target.iterdir())
+    assert not any('.tmp.' in p.name for p in tmp_path.iterdir())
+
+
+@pytest.mark.unit
+def test_obliqua_refuses_filesystem_root_without_force(tmp_path):
+    """Verify passing / without --force is refused before invoking git or julia."""
+    site = _obliqua_site(tmp_path)
+    fake_home = tmp_path / 'home'
+    fake_home.mkdir()
+    site['env']['HOME'] = str(fake_home)
+    git_log = tmp_path / 'git_root.log'
+    git_log.write_text('')
+    julia_log = site['log']
+    _write_stub(
+        site['stubs'],
+        'git',
+        f'#!/bin/sh\necho "$@" >> {shlex.quote(str(git_log))}\nexit 1\n',
+    )
+    _write_stub(
+        site['stubs'],
+        'julia',
+        f'#!/bin/sh\necho "$@" >> {shlex.quote(str(julia_log))}\nexit 1\n',
+    )
+    res = _run_tool(site, 'get_obliqua.sh', '/')
+    assert res.returncode == 1, res.stdout + res.stderr
+    assert (
+        f'ERROR: / is {site["root"]} or a folder that holds it, and cannot be the Obliqua folder; it is unchanged'
+        in res.stderr
+    )
+    assert git_log.read_text() == ''
+    assert julia_log.read_text() == ''

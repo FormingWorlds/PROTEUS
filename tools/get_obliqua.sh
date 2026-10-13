@@ -1,7 +1,7 @@
 #!/bin/bash
-# Clone Obliqua at its pin into ./Obliqua/ (or the path given) and instantiate its Julia
-# project; an existing folder stays as it is, --force replaces it. --register also adds it
-# to the default Julia environment, --test runs its own tests. Argument 0 has no effect.
+# Clone Obliqua at its pin into ./Obliqua/ (or the path given) and set up its Julia project.
+# An existing Obliqua folder stays as it is; --force replaces an Obliqua clone at the pin;
+# a folder that is no Obliqua project, the PROTEUS folder and the home folder are refused.
 
 set -euo pipefail
 
@@ -31,15 +31,26 @@ case "$dest" in
     *) dest="$PWD/$dest" ;;
 esac
 
+# A trailing "/" or "/." names the same folder.
+while :; do
+    case "$dest" in
+        */.) dest="${dest%/.}" ;;
+        ?*/) dest="${dest%/}" ;;
+        *) break ;;
+    esac
+done
+[ -n "$dest" ] || dest="/"
+
 exists=false
 if [ -e "$dest" ] || [ -L "$dest" ]; then exists=true; fi
 
-# The PROTEUS folder, the home folder and a folder that holds one of them are never the Obliqua folder.
-real=""
 if [ "$exists" = true ]; then
     real=$(cd "$dest" 2>/dev/null && pwd -P) || real=""
-fi
-if [ -n "$real" ]; then
+    if [ -z "$real" ]; then
+        echo "ERROR: $dest is a file, a broken link or a folder that cannot be entered; move it away or delete it by hand; it is unchanged" >&2
+        exit 1
+    fi
+    # The PROTEUS folder, the home folder and a folder that holds one of them are never the Obliqua folder.
     for keep in "$proteus_root" "${HOME:-}"; do
         [ -n "$keep" ] || continue
         up=$(cd "$keep" 2>/dev/null && pwd -P) || continue
@@ -52,21 +63,13 @@ if [ -n "$real" ]; then
             up=$(dirname "$up")
         done
     done
-fi
-
-# A clone of another project is never taken for Obliqua, with or without --force.
-if [ "$exists" = true ] && ! is_empty_dir "$dest" && is_own_clone "$dest" &&
-    ! grep -q '^name = "Obliqua"' "$dest/Project.toml" 2>/dev/null; then
-    echo "ERROR: $dest is a git clone that is not Obliqua; move it away or delete it by hand; it is unchanged" >&2
-    exit 1
-fi
-
-if [ "$get_force" = true ] && [ "$exists" = true ]; then
-    if [ -z "$real" ]; then
-        echo "ERROR: --force cannot enter $dest (not a folder, or no permission); it is unchanged" >&2
+    # A link to a folder stands for that folder.
+    dest="$real"
+    if ! is_empty_dir "$dest" && ! grep -q '^name = "Obliqua"' "$dest/Project.toml" 2>/dev/null; then
+        echo "ERROR: $dest is not an Obliqua project (no Project.toml that names Obliqua); move it away or delete it by hand; it is unchanged" >&2
         exit 1
     fi
-    if ! is_empty_dir "$real" && ! is_own_clone "$dest"; then
+    if [ "$get_force" = true ] && ! is_empty_dir "$dest" && ! is_own_clone "$dest"; then
         echo "ERROR: $dest holds files and is not a git clone of its own; move it away or delete it by hand; it is unchanged" >&2
         exit 1
     fi
@@ -87,7 +90,7 @@ fi
 if [ "$get_force" != true ] && [ "$exists" = true ] &&
     ! is_empty_dir "$dest"; then
     label="get_obliqua.sh"
-    [ "$dest" = "$proteus_root/Obliqua" ] || label="get_obliqua.sh $(printf '%q' "$dest")"
+    [ "$dest" -ef "$proteus_root/Obliqua" ] || label="get_obliqua.sh $(printf '%q' "$dest")"
     report_clone_state Obliqua "$dest" "$label" "$ob_ref"
     cd "$dest"
     LD_LIBRARY_PATH="" julia --project=. -e 'using Pkg; Pkg.instantiate()' ||
