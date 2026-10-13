@@ -579,7 +579,7 @@ class TestInstallVars:
     def test_variable_set_twice_keeps_one_line_and_one_pair(self, site):
         """A variable set twice in one run keeps its last value, once in the file and in conda.
 
-        This is the Julia 1.11 fall-back, which sets PYTHON_JULIAPKG_EXE again in phase 6.
+        This is the Julia 1.11 fall-back, which sets PYTHON_JULIAPKG_EXE again in phase 7.
         """
         script = (
             _set_script(_PLAIN)
@@ -746,10 +746,10 @@ class TestInstallVars:
         assert ('Set FC_DIR=' in result.stdout) is recorded
 
     def test_variables_are_bound_once_after_the_import_check_and_before_the_data(self):
-        """bind_install_vars runs once, right after the import check of Phase 6, before Phase 7.
+        """bind_install_vars runs once, right after the import check of Phase 7, before Phase 8.
 
         The Julia 1.11 fall-back in verify_proteus_import sets the last variable;
-        the data downloads of Phase 7 take long and can be interrupted, which
+        the data downloads of Phase 8 take long and can be interrupted, which
         would leave a complete install whose new shell has no variable. Each
         anchor is asserted to be in install.sh once.
         """
@@ -767,7 +767,7 @@ class TestInstallVars:
             'verify_proteus_import',
             'info "Python packages installed"',
         ]
-        assert bind < at('CURRENT_PHASE=7') < at('case "$DATA_MODE" in')
+        assert bind < at('CURRENT_PHASE=8') < at('case "$DATA_MODE" in')
         assert at('CURRENT_PHASE=8') < at('proteus doctor 2>&1 || true')
         assert at('print_next_steps') > at('proteus doctor 2>&1 || true')
 
@@ -2497,7 +2497,7 @@ class TestAgniJuliaVersion:
     ):
         """After the switch of PROTEUS to Julia 1.11, an AGNI built with 1.13 gets the warning.
 
-        Phase 5 built AGNI with 1.13 before the import check of Phase 6 moved
+        Phase 5 built AGNI with 1.13 before the import check of Phase 7 moved
         PROTEUS to 1.11; the switch itself records the 1.11 binary.
         """
         root = tmp_path / 'proteus'
@@ -3777,11 +3777,11 @@ class TestFailedStepsEndInDie:
     def test_every_logged_step_ends_in_die_warn_or_true(self):
         """Each run_logged statement is in an `if !`, or ends in `|| die`, `|| warn` or `|| true`.
 
-        Under set -e a bare failing step ends the run with no failure block. The 8
+        Under set -e a bare failing step ends the run with no failure block. The 9
         statements are counted, so a scan that finds none fails.
         """
         statements = _run_logged_statements()
-        assert len(statements) == 8
+        assert len(statements) == 9
         bare = [
             s
             for s in statements
