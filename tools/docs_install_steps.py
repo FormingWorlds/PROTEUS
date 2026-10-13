@@ -145,6 +145,12 @@ def parse_page(text: str) -> list[Step]:
     list of Step
         Commands of all tabs, with their tab and admonition context. Filtering
         by tab is done by :func:`select_steps`.
+
+    Raises
+    ------
+    InstallStepsError
+        If a line starts with ``===`` and is not a tab header, or a ``console``
+        block is not closed.
     """
     lines = text.splitlines()
     # Each container is (indent, kind, name) with kind 'tab' or 'admonition'.
@@ -164,6 +170,8 @@ def parse_page(text: str) -> list[Step]:
         fence_match = _FENCE_RE.match(line)
         if tab_match:
             containers.append((indent, 'tab', tab_match.group('name')))
+        elif line.lstrip(' ').startswith('==='):
+            raise InstallStepsError(f'malformed tab header on page line {i + 1}')
         elif adm_match:
             containers.append((indent, 'admonition', adm_match.group('kind')))
         elif fence_match:
@@ -176,6 +184,8 @@ def parse_page(text: str) -> list[Step]:
                     break
                 body.append((j + 1, lines[j][indent:] if lines[j].strip() else ''))
                 j += 1
+            if j >= len(lines) and fence_match.group('info') == 'console':
+                raise InstallStepsError(f'console block on page line {i + 1} is never closed')
             if fence_match.group('info') == 'console':
                 tab = next((n for _, k, n in containers if k == 'tab'), None)
                 adm = next((n for _, k, n in containers if k == 'admonition'), None)
@@ -241,13 +251,19 @@ def load_substitutions(path: Path) -> list[dict[str, str]]:
     Raises
     ------
     InstallStepsError
-        If the file is unreadable or an entry lacks a key or repeats a match.
+        If the file is unreadable, has no ``substitution`` table or holds
+        another top-level key, or an entry lacks a key or repeats a match.
     """
     try:
         data = tomllib.loads(path.read_text(encoding='utf-8'))
     except (OSError, tomllib.TOMLDecodeError) as exc:
         raise InstallStepsError(f'cannot read substitutions {path}: {exc}') from exc
-    entries = data.get('substitution', [])
+    unknown = [k for k in data if k != 'substitution']
+    if unknown:
+        raise InstallStepsError(f'unknown key in {path}: {", ".join(sorted(unknown))}')
+    if 'substitution' not in data or not isinstance(data['substitution'], list):
+        raise InstallStepsError(f'{path} has no substitution table')
+    entries = data['substitution']
     seen: set[str] = set()
     for n, entry in enumerate(entries, start=1):
         for key in ('match', 'replace', 'reason'):
@@ -364,13 +380,15 @@ def render_script(plan: list[PlanEntry], timing: str) -> str:
     plan : list of PlanEntry
         Output of :func:`build_plan`.
     timing : str
-        Path of the TSV file to write.
+        Path of the TSV file to write. The script holds it as an absolute
+        path, so a ``cd`` step does not move the file.
 
     Returns
     -------
     str
         The bash script.
     """
+    timing = str(Path(timing).resolve())
     out = [
         '#!/usr/bin/env bash',
         '# Generated from the install page by tools/docs_install_steps.py',

@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import importlib.util
 import re
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -359,6 +360,19 @@ def test_substitution_whitespace_only_reason_exits_2(page, tmp_path, capsys):
     assert "'reason'" in out.stderr
 
 
+def test_substitution_without_replace_exits_2(page, tmp_path, capsys):
+    """A substitution entry lacking the replace key is rejected with exit code 2."""
+    path = tmp_path / 'subs.toml'
+    path.write_text(
+        '[[substitution]]\nmatch = "echo alpha-one"\nreason = "test"\n',
+        encoding='utf-8',
+    )
+    out = _run(capsys, str(page), '--tab', 'Alpha', '--substitutions', str(path))
+    assert out.returncode == 2
+    assert 'error:' in out.stderr
+    assert "'replace'" in out.stderr
+
+
 def test_duplicate_substitution_match_exits_2(page, tmp_path, capsys):
     """Duplicate substitution match entries in one table are rejected with exit code 2."""
     path = tmp_path / 'subs.toml'
@@ -477,6 +491,31 @@ def test_generated_script_runs_in_one_session_and_writes_timing(tmp_path, capsys
     assert '::group::[page line 4] cd sub' in done.stdout
 
 
+def test_generated_script_uses_date_fallback_when_epochrealtime_is_unset(tmp_path, capsys):
+    """The generated script measures timing using the date fallback when EPOCHREALTIME is unset."""
+    p = tmp_path / 'p.md'
+    p.write_text('```console\nsleep 1\n```\n', encoding='utf-8')
+    timing = tmp_path / 'timing.tsv'
+    script = _bash_script(p, tmp_path, None, capsys=capsys, timing=timing)
+    wrapper = f'unset EPOCHREALTIME\n. {shlex.quote(str(script))}\n'
+    done = subprocess.run(
+        ['bash', '-c', wrapper],
+        capture_output=True,
+        text=True,
+        cwd=tmp_path,
+    )
+    assert done.returncode == 0, done.stdout + done.stderr
+    rows = timing.read_text(encoding='utf-8').splitlines()
+    assert len(rows) == 2
+    assert rows[0] == 'page_line\twall_seconds\texit_code\tcommand'
+    line, wall_str, rc, cmd = rows[1].split('\t')
+    assert line == '2'
+    assert rc == '0'
+    assert cmd == 'sleep 1'
+    assert 1.0 <= float(wall_str) <= 30.0
+    assert re.match(r'^\d+(\.\d+)?$', wall_str)
+
+
 def test_generated_script_handles_timing_path_with_spaces(tmp_path, capsys):
     """A timing file path containing spaces is quoted properly in the bash script."""
     timing_dir = tmp_path / 'my dir'
@@ -563,6 +602,20 @@ def test_committed_substitutions_match_the_install_page(capsys):
     assert '`bash install.sh` | as written' in out.stdout
 
 
+def test_install_page_tabs_and_verification_commands_parse_into_plans():
+    """Install page tabs select bash install.sh and verify commands into their plans."""
+    page_text = (_REPO_ROOT / 'docs' / 'How-to' / 'installation.md').read_text(encoding='utf-8')
+    all_steps = steps.parse_page(page_text)
+    ubuntu_steps, _ = steps.select_steps(all_steps, 'Debian / Ubuntu')
+    ubuntu_cmds = [s.command for s in ubuntu_steps]
+    assert 'conda activate proteus' in ubuntu_cmds
+    assert 'proteus start --offline -c input/dummy.toml' in ubuntu_cmds
+    for tab in ('macOS (Homebrew)', 'Fedora / RHEL'):
+        tab_steps, _ = steps.select_steps(all_steps, tab)
+        tab_cmds = [s.command for s in tab_steps]
+        assert 'bash install.sh' in tab_cmds
+
+
 @pytest.mark.parametrize(
     ('tabs', 'expected'),
     [
@@ -632,3 +685,117 @@ def test_fence_like_line_does_not_close_console_block():
     steps_list = steps.parse_page(page_text)
     assert [s.command for s in steps_list] == ['echo before', '```not-a-fence', 'echo after']
     assert [s.line for s in steps_list] == [2, 3, 4]
+
+
+def test_substitutions_plural_table_name_exits_2(page, tmp_path, capsys):
+    """A substitutions file using the plural table name is rejected with exit code 2."""
+    path = tmp_path / 'subs.toml'
+    path.write_text(
+        '[[substitutions]]\nmatch = "echo alpha-one"\nreplace = "true"\nreason = "test"\n',
+        encoding='utf-8',
+    )
+    out = _run(capsys, str(page), '--tab', 'Alpha', '--substitutions', str(path))
+    assert out.returncode == 2
+    assert 'error:' in out.stderr
+    assert 'substitutions' in out.stderr
+    assert out.stdout == ''
+
+
+def test_substitutions_file_with_extra_top_level_key_exits_2(page, tmp_path, capsys):
+    """A substitutions file with an unknown top-level key is rejected with exit code 2."""
+    path = tmp_path / 'subs.toml'
+    path.write_text(
+        'extra = 1\n[[substitution]]\nmatch = "echo alpha-one"\nreplace = "true"\nreason = "test"\n',
+        encoding='utf-8',
+    )
+    out = _run(capsys, str(page), '--tab', 'Alpha', '--substitutions', str(path))
+    assert out.returncode == 2
+    assert 'error:' in out.stderr
+    assert 'extra' in out.stderr
+    assert str(path) in out.stderr
+
+
+def test_substitutions_file_with_multiple_unknown_top_level_keys_names_all(page, tmp_path, capsys):
+    """A substitutions file with several unknown top-level keys names every unknown key."""
+    path = tmp_path / 'subs.toml'
+    path.write_text(
+        '[[substitutions]]\nmatch = "echo alpha-one"\nreplace = "true"\nreason = "test"\n\n'
+        '[[extra]]\nfoo = "bar"\n',
+        encoding='utf-8',
+    )
+    out = _run(capsys, str(page), '--tab', 'Alpha', '--substitutions', str(path))
+    assert out.returncode == 2
+    assert 'error:' in out.stderr
+    assert 'extra' in out.stderr
+    assert 'substitutions' in out.stderr
+
+
+def test_empty_substitutions_file_exits_2(page, tmp_path, capsys):
+    """An empty substitutions file without a substitution table is rejected with exit code 2."""
+    path = tmp_path / 'empty.toml'
+    path.write_text('', encoding='utf-8')
+    out = _run(capsys, str(page), '--tab', 'Alpha', '--substitutions', str(path))
+    assert out.returncode == 2
+    assert 'error:' in out.stderr
+    assert 'no substitution table' in out.stderr
+    assert str(path) in out.stderr
+
+
+def test_substitution_key_that_is_not_a_list_exits_2(page, tmp_path, capsys):
+    """A substitution key defined as a string rather than a table is rejected with exit code 2."""
+    path = tmp_path / 'subs.toml'
+    path.write_text('substitution = "x"\n', encoding='utf-8')
+    out = _run(capsys, str(page), '--tab', 'Alpha', '--substitutions', str(path))
+    assert out.returncode == 2
+    assert 'error:' in out.stderr
+    assert 'has no substitution table' in out.stderr
+
+
+def test_committed_linux_substitutions_file_loads_entries():
+    """The committed Linux substitutions file loads successfully with at least 3 entries."""
+    path = _REPO_ROOT / '.github' / 'docs-install-linux-substitutions.toml'
+    entries = steps.load_substitutions(path)
+    assert isinstance(entries, list)
+    assert len(entries) >= 3
+
+
+def test_relative_timing_path_resolves_against_initial_working_directory(
+    tmp_path, monkeypatch, capsys
+):
+    """A relative timing path remains absolute in the script and does not move with cd."""
+    monkeypatch.chdir(tmp_path)
+    p = tmp_path / 'p.md'
+    p.write_text('```console\nmkdir sub\ncd sub\necho hi\n```\n', encoding='utf-8')
+    out = _run(capsys, str(p), '--format', 'script', '--timing', 'rel_timing.tsv')
+    assert out.returncode == 0
+    script = tmp_path / 'run.sh'
+    script.write_text(out.stdout, encoding='utf-8')
+    done = subprocess.run(
+        ['bash', '-e', str(script)], capture_output=True, text=True, cwd=tmp_path
+    )
+    assert done.returncode == 0, done.stdout + done.stderr
+    timing_file = tmp_path / 'rel_timing.tsv'
+    assert timing_file.is_file()
+    rows = timing_file.read_text(encoding='utf-8').splitlines()
+    assert len(rows) == 4
+    assert not (tmp_path / 'sub' / 'rel_timing.tsv').exists()
+
+
+def test_malformed_tab_header_raises_structural_error(tmp_path, capsys):
+    """A line starting with three equals signs that is not a valid tab header exits 2."""
+    p = tmp_path / 'bad_tab.md'
+    p.write_text('=== Malformed\n```console\necho test\n```\n', encoding='utf-8')
+    out = _run(capsys, str(p))
+    assert out.returncode == 2
+    assert 'malformed tab header' in out.stderr
+    assert 'line 1' in out.stderr
+
+
+def test_unclosed_console_fence_raises_structural_error(tmp_path, capsys):
+    """A console code fence that is not closed before the end of the page exits 2."""
+    p = tmp_path / 'unclosed.md'
+    p.write_text('```console\necho unclosed\n', encoding='utf-8')
+    out = _run(capsys, str(p))
+    assert out.returncode == 2
+    assert 'never closed' in out.stderr
+    assert 'line 1' in out.stderr
