@@ -44,19 +44,29 @@ def load_cases(grid_dir: Path) -> list[dict]:
     list[dict]
         One record per case: `mass` [M_earth], `distance` [AU], `H_budget` and its
         unit `H_mode`, `status` code, `phi_crit` (None when the solidification stop
-        is off) and `hf`, the helpfile rows after the initial stage.
+        is off) and `hf`, the helpfile rows after the initial stage. A case that
+        lacks one of the three files, or has no row after the initial stage, is
+        skipped and named on the terminal.
 
     Raises
     ------
     FileNotFoundError
-        If `grid_dir` holds no `case_*` folder.
+        If `grid_dir` holds no `case_*` folder with output.
     """
     cases = []
     for case_dir in sorted(grid_dir.glob('case_*')):
+        names = ('init_coupler.toml', 'status', 'runtime_helpfile.csv')
+        if not all((case_dir / name).is_file() for name in names):
+            print(f'Skipped {case_dir.name}: output files are missing')
+            continue
         with open(case_dir / 'init_coupler.toml', 'rb') as f:
             cfg = tomllib.load(f)
         solid = cfg['params']['stop']['solid']
         hf = pd.read_csv(case_dir / 'runtime_helpfile.csv', sep=r'\s+')
+        hf = hf[hf['Time'] > 0]
+        if hf.empty:
+            print(f'Skipped {case_dir.name}: no row after the initial stage')
+            continue
         cases.append(
             {
                 'mass': cfg['planet']['mass_tot'],
@@ -65,11 +75,11 @@ def load_cases(grid_dir: Path) -> list[dict]:
                 'H_mode': cfg['planet']['elements']['H_mode'],
                 'status': int((case_dir / 'status').read_text().split()[0]),
                 'phi_crit': solid['phi_crit'] if solid['enabled'] else None,
-                'hf': hf[hf['Time'] > 0],
+                'hf': hf,
             }
         )
     if not cases:
-        raise FileNotFoundError(f'No case_* folder in {grid_dir}')
+        raise FileNotFoundError(f'No case_* folder with output in {grid_dir}')
     return cases
 
 
