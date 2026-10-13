@@ -28,6 +28,7 @@ import logging
 import math
 import os
 import re
+import shutil
 import sys
 import tempfile
 import types
@@ -1979,10 +1980,11 @@ def test_get_lavatmos_version_returns_unknown_without_lava_dir():
 
 
 @pytest.mark.unit
-def test_get_julia_version_with_mock():
+def test_get_julia_version_with_mock(monkeypatch):
     """Test that _get_julia_version parses julia --version output."""
     from proteus.utils.coupler import _get_julia_version
 
+    monkeypatch.delenv('PYTHON_JULIAPKG_EXE', raising=False)
     with patch('subprocess.check_output') as mock_check_output:
         mock_check_output.return_value = b'julia version 1.9.3\n'
 
@@ -1991,6 +1993,105 @@ def test_get_julia_version_with_mock():
         assert version == '1.9.3'
         assert isinstance(version, str)
         mock_check_output.assert_called_once_with(['julia', '--version'])
+
+
+def _julia_version_stub(directory, version: str):
+    """Write an executable ``julia`` in ``directory`` that prints ``julia version <version>``."""
+    directory.mkdir(parents=True)
+    exe = directory / 'julia'
+    exe.write_text(f'#!/bin/sh\necho "julia version {version}"\n')
+    exe.chmod(0o755)
+    return exe
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('bound', 'expected'),
+    [
+        ('executable', '1.13.1'),
+        ('unset', '1.12.6'),
+        ('not-executable', 'unknown (PYTHON_JULIAPKG_EXE=<bound> is not an executable file)'),
+    ],
+    ids=['bound-1.13-beside-path-1.12', 'path-1.12-only', 'bound-not-executable'],
+)
+def test_get_julia_version_names_the_julia_proteus_uses(monkeypatch, tmp_path, bound, expected):
+    """The run log names the Julia of PYTHON_JULIAPKG_EXE when it is set, else the PATH one.
+
+    The 2 stubs differ in the minor version, the field PROTEUS checks, so
+    a function that asks the default Julia gives 1.12.6 in the first case. A
+    set variable that names no executable file is reported as such, not as the
+    PATH version, because juliacall does not fall back to PATH.
+    """
+    from proteus.utils.coupler import _get_julia_version
+
+    path_julia = _julia_version_stub(tmp_path / 'default' / 'bin', '1.12.6')
+    bound_julia = _julia_version_stub(tmp_path / 'julia-1.13.1' / 'bin', '1.13.1')
+    monkeypatch.setenv('PATH', os.pathsep.join([str(path_julia.parent), '/usr/bin', '/bin']))
+    if bound == 'unset':
+        monkeypatch.delenv('PYTHON_JULIAPKG_EXE', raising=False)
+    else:
+        if bound == 'not-executable':
+            bound_julia.chmod(0o644)
+        monkeypatch.setenv('PYTHON_JULIAPKG_EXE', str(bound_julia))
+
+    version = _get_julia_version()
+
+    assert version == expected.replace('<bound>', str(bound_julia))
+    # The default Julia stays first on PATH, so 1.13.1 can only come from the variable.
+    assert shutil.which('julia') == str(path_julia)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'script',
+    ['#!/bin/sh\nexit 3\n', '#!/bin/sh\n', 'no program, no interpreter line\n'],
+    ids=['exits-non-zero', 'prints-nothing', 'cannot-execute'],
+)
+def test_get_julia_version_of_a_broken_bound_binary_is_a_note(monkeypatch, tmp_path, script):
+    """A bound binary that fails, prints nothing or cannot run gives the unknown note, no exception.
+
+    These raise CalledProcessError, IndexError and OSError; the run log's
+    system line must not stop ``proteus start``.
+    """
+    from proteus.utils.coupler import _get_julia_version
+
+    exe = tmp_path / 'bin' / 'julia'
+    exe.parent.mkdir()
+    exe.write_text(script)
+    exe.chmod(0o755)
+    monkeypatch.setenv('PYTHON_JULIAPKG_EXE', str(exe))
+
+    version = _get_julia_version()
+
+    assert version == f'unknown ({exe} --version reported no version)'
+    assert not version[0].isdigit()
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('bound', ['unset', 'missing-file'])
+def test_get_julia_version_without_any_julia_names_what_is_missing(
+    monkeypatch, tmp_path, bound
+):
+    """With no julia on PATH the log says Julia is not installed, or names the unusable variable."""
+    from proteus.utils.coupler import _get_julia_version
+
+    empty = tmp_path / 'empty-bin'
+    empty.mkdir()
+    monkeypatch.setenv('PATH', str(empty))
+    missing = tmp_path / 'no-such' / 'julia'
+    if bound == 'unset':
+        monkeypatch.delenv('PYTHON_JULIAPKG_EXE', raising=False)
+    else:
+        monkeypatch.setenv('PYTHON_JULIAPKG_EXE', str(missing))
+
+    version = _get_julia_version()
+
+    assert version == (
+        'unknown (julia not installed)'
+        if bound == 'unset'
+        else f'unknown (PYTHON_JULIAPKG_EXE={missing} is not an executable file)'
+    )
+    assert shutil.which('julia') is None
 
 
 # =============================================================================
