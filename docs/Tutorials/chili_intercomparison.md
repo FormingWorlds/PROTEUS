@@ -264,35 +264,42 @@ done
 ```
 
 !!! warning "Runtime"
-    Low-H cases finish in ~1 hour. Mid-H cases take ~3-5 hours. High-H
-    cases (10 Earth oceans) may take 12+ hours because the thick steam
-    atmosphere reduces OLR to a few hundred W m$^{-2}$ in the late
-    mushy zone.
+    In the runs of this release the low-H cases took 2.1 to 2.3 hours of
+    CPU time and the mid-H cases 6.3 to 8.2 hours. The high-H cases
+    (10 Earth oceans) took 19.2 to 21.0 hours to reach the 15 Myr bound,
+    because the thick steam atmosphere reduces the OLR to less than
+    300 W m$^{-2}$ in the late mushy zone.
 
 ### Grid results
 
-Solidification times for the completed grid cases:
+Time at which each grid run of this release first reaches a melt
+fraction of 5% by mass:
 
 | | C$_\mathrm{low}$ | C$_\mathrm{mid}$ | C$_\mathrm{high}$ |
 |---|---|---|---|
-| **H$_\mathrm{low}$** (1 EO) | 0.49 Myr | 0.53 Myr | 0.61 Myr |
-| **H$_\mathrm{mid}$** (5 EO) | 2.72 Myr | 2.55 Myr | 2.42 Myr |
-| **H$_\mathrm{high}$** (10 EO) | 8.85 Myr | 8.45 Myr | 7.78 Myr |
+| **H$_\mathrm{low}$** (1 EO) | 0.81 Myr | 0.84 Myr | 0.92 Myr |
+| **H$_\mathrm{mid}$** (5 EO) | 5.55 Myr | 5.28 Myr | 4.89 Myr |
+| **H$_\mathrm{high}$** (10 EO) | not reached (9.4%) | not reached (9.1%) | not reached (8.2%) |
 
-Hydrogen inventory is the primary control on solidification timescale:
-a ~5x increase in H budget (1 to 5 EO) delays solidification by a
-factor of ~5, and a further 2x increase (5 to 10 EO) adds another
-factor of ~3 (2.5 to 8.5 Myr). The carbon effect is secondary and
-non-monotonic. At low H, more CO$_2$ adds greenhouse opacity and
-slows cooling (0.49 to 0.61 Myr). At mid and high H, the effect
-reverses: more CO$_2$ raises P$_\mathrm{surf}$, which via Henry's
-law enhances H$_2$O dissolution in the silicate melt, reducing the
-atmospheric H$_2$O greenhouse and allowing higher OLR (2.72 to
-2.42 Myr at mid-H; 8.85 to 7.78 Myr at high-H).
+The three high-H runs end at the 15 Myr bound; the table gives their
+melt fraction at that time.
+
+The hydrogen inventory is the primary control on the solidification
+time. From 1 to 5 EO the time to 5% melt rises by a factor of 5.3 to
+6.8, and at 10 EO no run reaches 5% melt within 15 Myr. The carbon
+effect is secondary and changes sign. At low H, more carbon slows the
+cooling (0.81 to 0.92 Myr): at a melt fraction of 30% the three runs
+hold nearly the same H$_2$O partial pressure (5.4 to 5.6 bar), and the
+OLR falls from 5525 to 4235 W m$^{-2}$ from low to high C. At mid H the
+order reverses (5.55 to 4.89 Myr): at a melt fraction of 30% the high-C
+run holds 7.2% of its hydrogen in the atmosphere against 9.6% in the
+low-C run, and its OLR is higher (1323 against 1115 W m$^{-2}$). The
+high-H runs follow the order of the mid-H runs: at 15 Myr the melt
+fraction is lower for a higher carbon inventory.
 
 <figure markdown="span">
   ![CHILI grid solidification](../assets/tutorials/chili/grid_solidification.png){ width="80%" }
-  <figcaption><strong>Figure 11.</strong> Solidification time of the current PROTEUS grid runs (solid lines, filled markers) as a function of hydrogen inventory for the three carbon levels. Where the submitted PROTEUS CHILI grid runs reach 5% melt by volume they are overlaid as dashed lines with open markers; the runs archived in the comparison repository stop just above that threshold, so no submitted points appear here. The near-linear scaling on the log-log axes reflects the blanketing effect of the steam atmosphere on OLR. The carbon-inventory dependence reverses sign between low-H and high-H cases (see text).</figcaption>
+  <figcaption><strong>Figure 11.</strong> Time at which the current PROTEUS grid runs reach 5% melt by mass (solid lines, filled markers) as a function of hydrogen inventory for the three carbon levels. The high-H runs end at the 15 Myr bound above this threshold and have no marker. Where the submitted PROTEUS CHILI grid runs reach 5% melt by volume they are overlaid as dashed lines with open markers; the runs archived in the comparison repository stop just above that threshold, so no submitted points appear here. The carbon-inventory dependence reverses sign between the low-H and mid-H cases (see text).</figcaption>
 </figure>
 
 ## Current PROTEUS configuration vs the CHILI submission
