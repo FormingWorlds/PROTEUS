@@ -439,7 +439,8 @@ def test_legend_of_figure_2_names_each_model_that_is_drawn_with_its_cross(chili_
     the current run, each with its grid line and, beside it, the cross of its
     nominal case; the cross of the current run is larger than that of the submitted
     run; a model without data has no entry, and a model with a grid line and
-    no nominal case has one. The current run has no entry when no point of
+    no nominal case has one, as has a current run with grid runs only. The
+    current run has no entry when no point of
     it is drawn: a run that reaches no milestone, or a grid folder without runs."""
     data, grid = _grid_case(tmp_path)
     run = chili_tool._load_proteus_helpfile(_run_folder(tmp_path / 'earth'))
@@ -471,6 +472,12 @@ def test_legend_of_figure_2_names_each_model_that_is_drawn_with_its_cross(chili_
     table.to_csv(tmp_path / 'few' / 'lincs' / 'evolution-lincs-earth-grid-Hlow-data.csv')
     by_line = chili_tool.plot_fig2(tmp_path / 'few', None, style)
     assert [t.get_text() for t in by_line.legends[0].get_texts()] == ['LINCS', 'MOAI']
+    by_grid = chili_tool.plot_fig2(tmp_path / 'few', None, style, grid_dir=grid)
+    assert [t.get_text() for t in by_grid.legends[0].get_texts()] == [
+        'LINCS',
+        'MOAI',
+        'PROTEUS (x)',
+    ]
     molten = _run_table().assign(Phi_global=[1.0, 0.99, 0.98])
     (tmp_path / 'no_grid').mkdir()
     for early, folder in (

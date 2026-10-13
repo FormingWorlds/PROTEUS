@@ -269,7 +269,7 @@ def _draw(fig: dict, run_dirs: list[Path], work: Path, places: dict) -> Path:
         try:
             maker(run_dirs, png, **args)
         except Exception as exc:
-            raise FigureError(f'{fig["id"]}: {exc}') from exc
+            raise FigureError(f'{fig["id"]}: {type(exc).__name__}: {exc}') from exc
     if not png.is_file():
         raise FigureError(f'{fig["id"]}: the maker wrote no file {png.name}')
     return png

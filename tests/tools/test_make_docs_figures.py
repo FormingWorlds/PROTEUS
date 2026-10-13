@@ -536,7 +536,7 @@ def test_failure_in_the_second_variant_leaves_the_first_unwritten(site):
     out = site.repo / 'out'
     first = _entry(id='fig_0', asset='docs/assets/tutorials/fig_0')
     failing = _entry(maker='tools/fake_maker.py:fail_in_dark')
-    with pytest.raises(tool.FigureError, match='fig_a: no dark figure'):
+    with pytest.raises(tool.FigureError, match='fig_a: RuntimeError: no dark figure'):
         tool.make_figures(_manifest(site.toml, [first, failing]), site.runs, out)
     assert _files(out) == [
         'docs/assets/tutorials/fig_0.avif',
@@ -738,7 +738,7 @@ def test_main_reports_an_error_of_a_maker_as_its_own_error_line(site, capsys):
     _manifest(site.toml, [_entry(maker='tools/fake_maker.py:fail_in_dark')])
     assert tool.main(['--manifest', str(site.toml), '--runs', str(site.runs)]) == 1
     printed = capsys.readouterr()
-    assert printed.err.strip() == 'ERROR: fig_a: no dark figure'
+    assert printed.err.strip() == 'ERROR: fig_a: RuntimeError: no dark figure'
     assert 'Traceback' not in printed.out + printed.err
     assets = site.repo / 'docs' / 'assets' / 'tutorials'
     assert (assets / 'fig_a.avif').read_bytes() == b'placeholder'

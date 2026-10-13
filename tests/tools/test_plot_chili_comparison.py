@@ -370,8 +370,9 @@ def test_make_figure_stops_for_a_comparison_folder_without_model_data(
     chili_tool, tmp_path, monkeypatch
 ):
     """A ``chili_repo`` that does not exist, that is no checkout, or whose
-    outputs folder holds no model file stops ``make_figure`` with the name of
-    the folder; nothing is fetched and no folder is made."""
+    outputs folder holds no file of one of the 7 models (an empty model folder,
+    a file of another name, a folder of an unknown model) stops ``make_figure``
+    with the name of the folder; nothing is fetched and no folder is made."""
 
     def no_clone(*args, **kwargs):
         raise AssertionError('make_figure must not fetch the comparison data')
@@ -380,8 +381,12 @@ def test_make_figure_stops_for_a_comparison_folder_without_model_data(
     earth = _run_folder(tmp_path / 'earth')
     (tmp_path / 'not_a_checkout').mkdir()
     (tmp_path / 'empty' / 'intercomparison' / 'outputs' / 'moai').mkdir(parents=True)
+    other = tmp_path / 'other_files' / 'intercomparison' / 'outputs'
+    for folder, file in (('moai', 'notes.csv'), ('zzz', 'evolution-zzz-earth-data.csv')):
+        (other / folder).mkdir(parents=True)
+        (other / folder / file).write_text('t(yr),phi(vol_frac)\n1.0,0.5\n')
 
-    for name in ('typo', 'not_a_checkout', 'empty'):
+    for name in ('typo', 'not_a_checkout', 'empty', 'other_files'):
         with pytest.raises(
             ValueError, match=f'{name}/intercomparison/outputs holds no model data'
         ):
@@ -478,7 +483,8 @@ def test_manifest_entries_of_the_chili_page_agree_with_the_runs_that_make_figure
     """Each entry of ``tools/docs_figures.toml`` for the CHILI page has the
     ``fig_id`` of its ``id`` and the asset of that figure, lists the run folders
     that ``make_figure`` reads for it (the 9 grid folders for the grid), and
-    gives ``earth``, ``venus`` and ``grid_dir`` where the figure reads them."""
+    gives ``earth``, ``venus`` and ``grid_dir`` where the figure reads them and
+    no other argument; no entry limits the variants."""
     manifest = tomllib.loads(
         (Path(__file__).resolve().parents[2] / 'tools' / 'docs_figures.toml').read_text()
     )
@@ -504,6 +510,7 @@ def test_manifest_entries_of_the_chili_page_agree_with_the_runs_that_make_figure
         assert fig['asset'] == 'docs/assets/tutorials/chili/' + fig['id'].removeprefix('chili_')
         assert fig['page'] == 'chili_intercomparison.md', fig['id']
         assert fig['runs'] == [run for name in reads for run in folders[name]], fig['id']
-        given = {key: value for key, value in fig['args'].items() if key in places}
-        assert given == {name: places[name] for name in reads}, fig['id']
-        assert fig['args']['chili_repo'] == '{chili_repo}', fig['id']
+        wanted = {name: places[name] for name in reads}
+        wanted |= {'fig_id': fig['id'], 'chili_repo': '{chili_repo}'}
+        assert fig['args'] == wanted, fig['id']
+        assert 'variants' not in fig, fig['id']

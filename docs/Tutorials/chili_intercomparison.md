@@ -166,8 +166,10 @@ of the `proteus-mpl` package for a direct call. The figures of this page
 come from `tools/make_docs_figures.py`, which calls the script once per
 figure and style. The script is version-general:
 
-- It clones the CHILI comparison data automatically if `--chili-repo`
-  does not already point to a checkout, so Step 2 is optional.
+- Run from the command line, it clones the CHILI comparison data
+  automatically if `--chili-repo` does not already point to a checkout, so
+  Step 2 is optional. `tools/make_docs_figures.py` needs an existing
+  checkout, given with its own `--chili-repo`.
 - It reads the git commit of the runs from their logs (`proteus_00.log`
   of the Earth run, the Venus run and the grid runs) and puts it in the
   label of the current PROTEUS curves, so every figure records the code

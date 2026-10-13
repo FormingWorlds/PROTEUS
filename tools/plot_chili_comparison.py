@@ -1736,7 +1736,7 @@ def make_figure(
         raise ValueError(f'run_dirs does not hold these run folders of {fig_id!r}: {missing}')
     by_name = dict(zip(_READS[fig_id], runs))
     intercomp = Path(chili_repo) / 'intercomparison' / 'outputs'
-    if not any(intercomp.glob('*/evolution-*-data.csv')):
+    if not any(any((intercomp / mk).glob(f'evolution-{mk}-*-data.csv')) for mk in MODELS):
         raise ValueError(
             f'{intercomp} holds no model data: give a checkout of the CHILI repository'
         )
