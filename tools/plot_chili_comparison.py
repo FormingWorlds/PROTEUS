@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Plot PROTEUS output overlaid on CHILI intercomparison data.
 
-Generates comparison figures mirroring Nicholls et al. (2026, arXiv:2606.24757) using
-the Wong colorblind-friendly palette. Overlays the current PROTEUS run
-on the CHILI v2 submission and all other intercomparison models.
+Generates comparison figures mirroring Nicholls et al. (2026, arXiv:2606.24757) in
+the model colours of the CHILI analysis code, under the active matplotlib
+style. Overlays the current PROTEUS run on the CHILI v2 submission and all
+other intercomparison models.
 
 Figures produced:
     Fig 1 - Melt fraction vs time (Earth + Venus)
@@ -32,6 +33,11 @@ Usage:
         --grid-dir output/ \\
         --output output_files/chili_plots/
 
+    # In the PROTEUS visual language (needs the proteus-mpl package)
+    python tools/plot_chili_comparison.py --style dark \\
+        --proteus-earth output/chili_earth/ \\
+        --output output_files/chili_plots/
+
 The CHILI comparison data is cloned automatically from GitHub if
 --chili-repo does not point to an existing checkout.
 """
@@ -44,34 +50,30 @@ import subprocess
 import sys
 from pathlib import Path
 
-import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from matplotlib.colors import to_rgb
 from matplotlib.lines import Line2D
 from matplotlib.ticker import NullFormatter, ScalarFormatter
 
+from proteus.utils.plot import FADE_DARK_GREY, FADE_MID_GREY, get_colour, style_neutral
+
 CHILI_REPO_URL = 'https://github.com/projectcuisines/chili.git'
 
-WONG = [
-    '#000000',
-    '#E69F00',
-    '#56B4E9',
-    '#009E73',
-    '#F0E442',
-    '#0072B2',
-    '#D55E00',
-    '#CC79A7',
-]
+# Both PROTEUS results share the PROTEUS colour of the CHILI analysis code:
+# the submitted run is thin and dashed, the current run thick and solid.
+PROTEUS_COLOUR = '#EB7D0F'
 
+# Model colours of the CHILI analysis code (analysis_solarsystem/util.py), Paul Tol's bright scheme.
 MODELS = {
-    'gooey': {'color': WONG[1], 'label': 'GOOEY'},
-    'neongooey': {'color': WONG[2], 'label': 'NEONGOOEY'},
-    'proteus': {'color': WONG[0], 'label': 'PROTEUS CHILI', 'ls': '--', 'lw': 1.5},
-    'pacman': {'color': WONG[3], 'label': 'PACMAN'},
-    'lincs': {'color': WONG[5], 'label': 'LINCS'},
-    'moai': {'color': WONG[6], 'label': 'MOAI'},
-    'planatmo': {'color': WONG[7], 'label': 'PlanAtMO'},
+    'gooey': {'color': '#bbbbbb', 'label': 'GOOEY'},
+    'neongooey': {'color': '#ee6677', 'label': 'NEONGOOEY'},
+    'proteus': {'color': PROTEUS_COLOUR, 'label': 'PROTEUS CHILI', 'ls': '--', 'lw': 1.5},
+    'pacman': {'color': '#4477aa', 'label': 'PACMAN'},
+    'lincs': {'color': '#228833', 'label': 'LINCS'},
+    'moai': {'color': '#aa3377', 'label': 'MOAI'},
+    'planatmo': {'color': '#ccbb44', 'label': 'PlanAtMO'},
 }
 
 GAS_SPECIES = ['H2O', 'CO2', 'CO', 'H2', 'CH4', 'N2', 'S2', 'SO2', 'H2S', 'O2']
@@ -87,34 +89,8 @@ GAS_LABELS = {
     'H2S': r'H$_2$S',
     'O2': r'O$_2$',
 }
-GAS_COLORS = {
-    'H2O': '#2196F3',
-    'CO2': '#FF5722',
-    'CO': '#FF9800',
-    'H2': '#9C27B0',
-    'CH4': '#4CAF50',
-    'N2': '#795548',
-    'S2': '#FFC107',
-    'SO2': '#607D8B',
-    'H2S': '#E91E63',
-    'O2': '#00BCD4',
-}
-
-_PLOT_STYLE = {
-    'font.family': 'sans-serif',
-    'font.sans-serif': ['Helvetica', 'Arial', 'DejaVu Sans'],
-    'font.size': 11,
-    'axes.labelsize': 12,
-    'axes.titlesize': 13,
-    'legend.fontsize': 8,
-    'xtick.direction': 'in',
-    'ytick.direction': 'in',
-    'xtick.top': True,
-    'ytick.right': True,
-    'axes.linewidth': 0.8,
-    'xtick.major.width': 0.8,
-    'ytick.major.width': 0.8,
-}
+# Colours of the CHILI analysis code where they differ from the PROTEUS gas colours.
+CHILI_COLOURS = {'H2S': '#640deb', 'O2': '#00dcc6', 'H': '#11B587', 'C': '#D20F01'}
 
 GRID_H = {
     'Hlow': 1.6e20,
@@ -146,9 +122,39 @@ def _get_proteus_sha(*runs):
     return '/'.join(dict.fromkeys(found)) or 'unknown'
 
 
+def _colour(thing):
+    """Colour of a gas or an element: the CHILI analysis code first, then PROTEUS."""
+    return CHILI_COLOURS.get(thing) or get_colour(thing)
+
+
+def _contrast(a, b):
+    """WCAG contrast ratio of two colours."""
+    lum = []
+    for colour in (a, b):
+        c = np.array(to_rgb(colour))
+        lin = np.where(c <= 0.03928, c / 12.92, ((c + 0.055) / 1.055) ** 2.4)
+        lum.append(float(np.dot([0.2126, 0.7152, 0.0722], lin)))
+    return (max(lum) + 0.05) / (min(lum) + 0.05)
+
+
+def _bar_edges(colour, is_run):
+    """Edge colours of a row of bars: the text colour for the current run, the
+    surface colour for a model, or mid grey where the fill is close to the surface."""
+    faint = _contrast(colour, style_neutral(1)) < 1.5
+    other = style_neutral(FADE_MID_GREY if faint else 1)
+    return [style_neutral() if ip else other for ip in is_run]
+
+
+def _legend_below(fig, ax, ncol=3):
+    """Legend of the lines of ``ax`` below all panels, inside the figure box and clear of the data."""
+    fig.legend(
+        *ax.get_legend_handles_labels(), loc='outside lower center', ncol=ncol, fontsize='small'
+    )
+
+
 def _new_style(sha):
     return {
-        'color': '#D55E00',
+        'color': PROTEUS_COLOUR,
         'linewidth': 2.5,
         'label': f'PROTEUS ({sha})',
         'zorder': 10,
@@ -317,8 +323,8 @@ def ensure_chili_repo(chili_path):
 
 
 # ── Fig 1: Melt fraction vs time ──────────────────────────────────────
-def plot_fig1(intercomp, pe, pv, NS, out):
-    fig, ax = plt.subplots(figsize=(7, 5))
+def plot_fig1(intercomp, pe, pv, NS):
+    fig, ax = plt.subplots(figsize=(7, 6), layout='constrained')
 
     for mk, st in MODELS.items():
         for planet, ls in [('earth', '-'), ('venus', '--')]:
@@ -366,8 +372,8 @@ def plot_fig1(intercomp, pe, pv, NS, out):
     ax.set_xscale('log')
     ax.set_xlim(1e-3, 2e1)
     ax.set_ylim(0, 1.05)
-    ax.legend(fontsize=8, ncol=3, loc='upper center', bbox_to_anchor=(0.5, -0.16))
-    _save(fig, out, 'chili_fig1_melt_fraction')
+    _legend_below(fig, ax)
+    return fig
 
 
 # ── Fig 2: Solidification milestones (3-panel, Nicholls+ style) ──────
@@ -404,14 +410,14 @@ def _milestone_time_proteus(df, phi_target):
     return float(row['Time']) / 1e6
 
 
-def plot_fig2(intercomp, pe, NS, out, grid_dir=None):
+def plot_fig2(intercomp, pe, NS, grid_dir=None):
     milestones = [0.95, 0.40, 0.05]
     titles = [
         r'$\mathbf{(a)}$ Time to reach $\phi$ = 95%',
         r'$\mathbf{(b)}$ Time to reach $\phi$ = 40%',
         r'$\mathbf{(c)}$ Time to reach $\phi$ = 5%',
     ]
-    fig, axes = plt.subplots(3, 1, figsize=(7, 9), sharex=True)
+    fig, axes = plt.subplots(3, 1, figsize=(7, 9), sharex=True, layout='constrained')
 
     for ax, phi_tgt, title in zip(axes, milestones, titles):
         for mk, st in MODELS.items():
@@ -460,7 +466,8 @@ def plot_fig2(intercomp, pe, NS, out, grid_dir=None):
                     ax.plot(
                         t_vals,
                         y_vals,
-                        'o-',
+                        marker='o',
+                        linestyle=st.get('ls', '-'),
                         color=st['color'],
                         alpha=C_ALPHAS[cl],
                         markersize=6,
@@ -508,7 +515,7 @@ def plot_fig2(intercomp, pe, NS, out, grid_dir=None):
                         alpha=C_ALPHAS[cl],
                         markersize=9,
                         linewidth=3.0,
-                        markeredgecolor='black',
+                        markeredgecolor=style_neutral(),
                         markeredgewidth=0.6,
                         label=label,
                         zorder=10,
@@ -521,13 +528,12 @@ def plot_fig2(intercomp, pe, NS, out, grid_dir=None):
             [r'Nmnl', r'H$_\mathrm{low}$', r'H$_\mathrm{mid}$', r'H$_\mathrm{high}$']
         )
         ax.set_ylim(-0.5, 3.5)
-        ax.set_title(title, fontsize=12, loc='left')
-        ax.grid(axis='x', alpha=0.15)
+        ax.set_title(title, loc='left')
+        ax.grid(True, axis='x')
 
     axes[-1].set_xlabel('Earth simulated time [Myr]')
-    axes[0].legend(fontsize=7, ncol=3, loc='lower right', framealpha=0.9)
-    fig.tight_layout()
-    _save(fig, out, 'chili_fig2_milestones')
+    _legend_below(fig, axes[0])
+    return fig
 
 
 # ── Figs 3 & 5: Atmospheric composition (stacked bars + T_surf stars) ─
@@ -600,7 +606,7 @@ def _collect_atm_panel(intercomp, proteus_df, planet, phi_tgt, NS):
     return model_names, gas_data, t_surf_vals, is_proteus
 
 
-def _plot_atm_composition(intercomp, proteus_df, planet, NS, out, fig_name):
+def _plot_atm_composition(intercomp, proteus_df, planet, NS):
     """Stacked bar chart of partial pressures at Phi=95% and 5%, matching Nicholls+ layout."""
     phi_targets = [0.95, 0.05]
     planet_cap = planet.capitalize()
@@ -657,7 +663,7 @@ def _plot_atm_composition(intercomp, proteus_df, planet, NS, out, fig_name):
             min_t = min(min_t, min(valid_t))
         panels.append((gas_aligned, tsv_aligned, isp_aligned, present))
 
-    fig, axes = plt.subplots(2, 1, figsize=(8, 10))
+    fig, axes = plt.subplots(2, 1, figsize=(8, 10), layout='constrained')
     bar_ylim = max_bar * 1.15
     t_pad = (max_t - min_t) * 0.15
     t_ylim = (min_t - t_pad, max_t + t_pad)
@@ -668,13 +674,13 @@ def _plot_atm_composition(intercomp, proteus_df, planet, NS, out, fig_name):
         bottom = np.zeros(n_slots)
         for g in present:
             vals = np.array(gas[g], dtype=float).clip(min=0)
-            edgecolors = ['black' if ip else 'white' for ip in isp]
+            edgecolors = _bar_edges(_colour(g), isp)
             edgewidths = [2.0 if ip else 0.5 for ip in isp]
             ax.bar(
                 x,
                 vals,
                 bottom=bottom,
-                color=GAS_COLORS[g],
+                color=_colour(g),
                 label=GAS_LABELS.get(g, g),
                 width=bar_width,
                 edgecolor=edgecolors,
@@ -689,25 +695,27 @@ def _plot_atm_composition(intercomp, proteus_df, planet, NS, out, fig_name):
                 tick_labels.append(rf'$\bf{{{n}}}$')
             else:
                 tick_labels.append(n)
-        ax.set_xticklabels(tick_labels, fontsize=9, rotation=45, ha='right')
+        ax.set_xticklabels(tick_labels, fontsize='small', rotation=45, ha='right')
         for tl, ip in zip(ax.get_xticklabels(), is_proteus_global):
             if ip:
                 tl.set_color(NS['color'])
         ax.set_ylabel('Partial pressure [bar]')
-        ax.set_title(f'{plabel} {title}', fontsize=12)
+        ax.set_title(f'{plabel} {title}')
         ax.set_ylim(0, bar_ylim)
         ax.set_xlim(-0.5, n_slots - 0.5)
 
         ax2 = ax.twinx()
+        ax2.grid(False)
+        ax2.spines['right'].set_visible(True)
         for i, (t, ip) in enumerate(zip(tsv, isp)):
             if not np.isnan(t):
                 ax2.plot(
                     i,
                     t,
                     marker='*',
-                    color=NS['color'] if ip else 'grey',
+                    color=NS['color'] if ip else style_neutral(FADE_MID_GREY),
                     markersize=16 if ip else 12,
-                    markeredgecolor='white',
+                    markeredgecolor=style_neutral(1),
                     markeredgewidth=1.0,
                     zorder=10,
                     linestyle='none',
@@ -721,45 +729,44 @@ def _plot_atm_composition(intercomp, proteus_df, planet, NS, out, fig_name):
     axes[0].legend(
         [u[0] for u in unique],
         [u[1] for u in unique],
-        fontsize=8,
+        fontsize='small',
         ncol=3,
         loc='upper right',
         framealpha=0.9,
     )
-    fig.tight_layout()
-    _save(fig, out, fig_name)
+    return fig
 
 
-def plot_fig3(intercomp, pe, NS, out):
-    _plot_atm_composition(intercomp, pe, 'earth', NS, out, 'chili_fig3_atm_composition')
+def plot_fig3(intercomp, pe, NS):
+    return _plot_atm_composition(intercomp, pe, 'earth', NS)
 
 
-def plot_fig5(intercomp, pv, NS, out):
+def plot_fig5(intercomp, pv, NS):
     """Venus atmospheric composition at phi=5% only (single panel), matching Nicholls+ Fig 5."""
     phi_tgt = 0.05
     names, gas, tsv, isp = _collect_atm_panel(intercomp, pv, 'venus', phi_tgt, NS)
     if not names:
         print('Warning: no Venus data for Fig 5')
-        return
+        return None
 
     present = [g for g in GAS_SPECIES if np.array(gas[g]).sum() > 0]
     n = len(names)
     x = np.arange(n)
     is_proteus_global = [ip for ip in isp]
 
-    fig, ax = plt.subplots(figsize=(8, 6))
+    fig, ax = plt.subplots(figsize=(8, 6), layout='constrained')
     bottom = np.zeros(n)
     bar_width = 0.6
 
     for g in present:
         vals = np.array(gas[g], dtype=float).clip(min=0)
-        edgecolors = ['black' if ip else 'white' for ip in isp]
+        edgecolors = _bar_edges(_colour(g), isp)
         edgewidths = [2.0 if ip else 0.5 for ip in isp]
         ax.bar(
             x,
             vals,
             bottom=bottom,
-            color=GAS_COLORS[g],
+            color=_colour(g),
             label=GAS_LABELS.get(g, g),
             width=bar_width,
             edgecolor=edgecolors,
@@ -769,25 +776,27 @@ def plot_fig5(intercomp, pv, NS, out):
 
     ax.set_xticks(x)
     tick_labels = [rf'$\bf{{{n}}}$' if ip else n for n, ip in zip(names, is_proteus_global)]
-    ax.set_xticklabels(tick_labels, fontsize=9, rotation=45, ha='right')
+    ax.set_xticklabels(tick_labels, fontsize='small', rotation=45, ha='right')
     for tl, ip in zip(ax.get_xticklabels(), is_proteus_global):
         if ip:
             tl.set_color(NS['color'])
     ax.set_ylabel('Partial pressure [bar]')
-    ax.set_title(r'Nominal-Venus atmosphere at $\phi$ = 5%', fontsize=12)
+    ax.set_title(r'Nominal-Venus atmosphere at $\phi$ = 5%')
     # Adopt the same axis limits as the Nominal Earth panel (Figure 3b).
     ax.set_ylim(0, 650)
 
     ax2 = ax.twinx()
+    ax2.grid(False)
+    ax2.spines['right'].set_visible(True)
     for i, (t, ip) in enumerate(zip(tsv, isp)):
         if not np.isnan(t):
             ax2.plot(
                 i,
                 t,
                 marker='*',
-                color=NS['color'] if ip else 'grey',
+                color=NS['color'] if ip else style_neutral(FADE_MID_GREY),
                 markersize=16 if ip else 12,
-                markeredgecolor='white',
+                markeredgecolor=style_neutral(1),
                 markeredgewidth=1.0,
                 zorder=10,
                 linestyle='none',
@@ -801,17 +810,16 @@ def plot_fig5(intercomp, pv, NS, out):
     ax.legend(
         [u[0] for u in unique],
         [u[1] for u in unique],
-        fontsize=8,
+        fontsize='small',
         ncol=3,
         loc='upper right',
         framealpha=0.9,
     )
-    fig.tight_layout()
-    _save(fig, out, 'chili_fig5_venus_atm')
+    return fig
 
 
 # ── Fig 4: H, C mass budgets ─────────────────────────────────────────
-def plot_fig4(intercomp, pe, NS, out):
+def plot_fig4(intercomp, pe, NS):
     """H and C mass budgets in 3 reservoirs, matching Nicholls+ Fig 4 layout."""
     reservoirs = ['atm', 'melt', 'solid']
     res_titles = {
@@ -820,8 +828,8 @@ def plot_fig4(intercomp, pe, NS, out):
         'solid': 'Stored in solid',
     }
     res_hatches = {'atm': '', 'melt': '..', 'solid': '//'}
-    h_color = '#009E73'
-    c_color = '#CC3311'
+    h_color = _colour('H')
+    c_color = _colour('C')
     panel_labels = [r'$\mathbf{(a)}$', r'$\mathbf{(b)}$', r'$\mathbf{(c)}$']
 
     model_names = []
@@ -887,7 +895,7 @@ def plot_fig4(intercomp, pe, NS, out):
             if len(vals) > 0:
                 max_val = max(max_val, vals.max())
 
-    fig, axes = plt.subplots(3, 1, figsize=(8, 10), sharex=True)
+    fig, axes = plt.subplots(3, 1, figsize=(8, 10), sharex=True, layout='constrained')
     ylim_top = max_val * 1.15 / 1e20
 
     for ax, r, plabel in zip(axes, reservoirs, panel_labels):
@@ -895,9 +903,9 @@ def plot_fig4(intercomp, pe, NS, out):
         c_vals = np.array(data.get(f'C_{r}', [0] * n), dtype=float).clip(min=0) / 1e20
 
         for i in range(n):
-            ec_h = 'black' if is_proteus[i] else 'white'
+            ec_h = style_neutral() if is_proteus[i] else style_neutral(1)
             ew_h = 2.0 if is_proteus[i] else 0.5
-            ec_c = 'black' if is_proteus[i] else 'white'
+            ec_c = style_neutral() if is_proteus[i] else style_neutral(1)
             ew_c = 2.0 if is_proteus[i] else 0.5
             ax.bar(
                 x[i] - width / 2,
@@ -924,9 +932,9 @@ def plot_fig4(intercomp, pe, NS, out):
                     'H',
                     ha='center',
                     va='center',
-                    fontsize=7,
+                    fontsize='x-small',
                     fontweight='bold',
-                    color='white',
+                    color=style_neutral(1),
                 )
             if r == 'atm' and c_vals[i] > 0:
                 ax.text(
@@ -935,9 +943,9 @@ def plot_fig4(intercomp, pe, NS, out):
                     'C',
                     ha='center',
                     va='center',
-                    fontsize=7,
+                    fontsize='x-small',
                     fontweight='bold',
-                    color='white',
+                    color=style_neutral(1),
                 )
 
         ax.set_ylim(0, ylim_top)
@@ -947,10 +955,9 @@ def plot_fig4(intercomp, pe, NS, out):
             0.92,
             f'{plabel} {res_titles[r]}',
             transform=ax.transAxes,
-            fontsize=12,
             va='top',
         )
-        ax.grid(axis='y', alpha=0.2)
+        ax.grid(True, axis='y')
 
     axes[-1].set_xticks(x)
     tick_labels = []
@@ -959,14 +966,13 @@ def plot_fig4(intercomp, pe, NS, out):
             tick_labels.append(rf'$\bf{{{nm}}}$')
         else:
             tick_labels.append(nm)
-    axes[-1].set_xticklabels(tick_labels, fontsize=9, rotation=45, ha='right')
+    axes[-1].set_xticklabels(tick_labels, fontsize='small', rotation=45, ha='right')
     for tl, ip in zip(axes[-1].get_xticklabels(), is_proteus):
         if ip:
             tl.set_color(NS['color'])
 
-    fig.suptitle(r'Nominal-Earth H,C inventories at $\phi$ = 5%', fontsize=13)
-    fig.tight_layout()
-    _save(fig, out, 'chili_fig4_mass_budgets')
+    fig.suptitle(r'Nominal-Earth H,C inventories at $\phi$ = 5%')
+    return fig
 
 
 # ── Fig 6: fO2 vs temperature ────────────────────────────────────────
@@ -983,19 +989,29 @@ def _iw_oneill02(T):
     return 2.0 * (-244118.0 + 115.559 * T - 8.474 * T * np.log(T)) / (np.log(10) * 8.31441 * T)
 
 
-def plot_fig6(intercomp, pv, NS, out):
+def plot_fig6(intercomp, pv, NS):
     """fO2 vs degassing temperature (Venus): (a) absolute, (b) relative to IW, matching Nicholls+ Fig 6."""
-    fig, axes = plt.subplots(2, 1, figsize=(7, 9), sharex=True)
+    fig, axes = plt.subplots(2, 1, figsize=(7, 9), sharex=True, layout='constrained')
     ax_abs, ax_rel = axes
 
     T_ref = np.linspace(1400, 4000, 200)
     ax_abs.plot(
-        T_ref, _iw_fischer11(T_ref), ':', color='grey', linewidth=1.5, label='Fischer+11'
+        T_ref,
+        _iw_fischer11(T_ref),
+        ':',
+        color=style_neutral(FADE_MID_GREY),
+        linewidth=1.5,
+        label='Fischer+11',
     )
     ax_abs.plot(
-        T_ref, _iw_oneill02(T_ref), '--', color='grey', linewidth=1.5, label="O'Neill+02"
+        T_ref,
+        _iw_oneill02(T_ref),
+        '--',
+        color=style_neutral(FADE_MID_GREY),
+        linewidth=1.5,
+        label="O'Neill+02",
     )
-    ax_rel.axhline(0, color='grey', linestyle='--', linewidth=1.0)
+    ax_rel.axhline(0, color=style_neutral(FADE_MID_GREY), linestyle='--', linewidth=1.0)
 
     for mk, st in MODELS.items():
         df = _load_chili_csv(intercomp / mk / f'evolution-{mk}-venus-data.csv')
@@ -1057,7 +1073,7 @@ def plot_fig6(intercomp, pv, NS, out):
                 'o',
                 color=NS['color'],
                 markersize=10,
-                markeredgecolor='black',
+                markeredgecolor=style_neutral(),
                 markeredgewidth=1.0,
                 zorder=15,
             )
@@ -1067,7 +1083,7 @@ def plot_fig6(intercomp, pv, NS, out):
                 'o',
                 color=NS['color'],
                 markersize=10,
-                markeredgecolor='black',
+                markeredgecolor=style_neutral(),
                 markeredgewidth=1.0,
                 zorder=15,
             )
@@ -1078,15 +1094,14 @@ def plot_fig6(intercomp, pv, NS, out):
         0.95,
         r'$\mathbf{(a)}$ Absolute $f$O$_2$',
         transform=ax_abs.transAxes,
-        fontsize=12,
         va='top',
         ha='right',
     )
-    ax_abs.legend(fontsize=7, ncol=2, loc='lower left', framealpha=0.9)
+    _legend_below(fig, ax_abs)
     ax_abs.invert_xaxis()
     ax_abs.set_xlim(3300, None)
     ax_abs.set_ylim(-10, None)
-    ax_abs.grid(alpha=0.15)
+    ax_abs.grid(True)
 
     ax_rel.set_xlabel('Degassing temperature [K]')
     ax_rel.set_ylabel(r"$\Delta$IW (O'Neill+02)")
@@ -1095,22 +1110,20 @@ def plot_fig6(intercomp, pv, NS, out):
         0.95,
         r'$\mathbf{(b)}$ Relative $f$O$_2$',
         transform=ax_rel.transAxes,
-        fontsize=12,
         va='top',
         ha='right',
     )
     ax_rel.set_xlim(3300, None)
     ax_rel.set_ylim(bottom=-0.5)
-    ax_rel.grid(alpha=0.15)
+    ax_rel.grid(True)
 
-    fig.tight_layout()
-    _save(fig, out, 'chili_fig6_fO2_vs_T')
+    return fig
 
 
 # ── Fig 7: Volatile retention (Venus) ──────────────────────────────
-def plot_fig7(intercomp, pv, NS, out):
+def plot_fig7(intercomp, pv, NS):
     """Volatile retention % vs time for Venus, matching Nicholls+ Fig 7."""
-    fig, axes = plt.subplots(2, 1, figsize=(8, 8), sharex=True)
+    fig, axes = plt.subplots(2, 1, figsize=(8, 8), sharex=True, layout='constrained')
     ax_h, ax_c = axes
     panel_labels = [r'$\mathbf{(a)}$', r'$\mathbf{(b)}$']
 
@@ -1191,7 +1204,7 @@ def plot_fig7(intercomp, pv, NS, out):
                         marker=marker,
                         color=NS['color'],
                         markersize=10,
-                        markeredgecolor='black',
+                        markeredgecolor=style_neutral(),
                         markeredgewidth=1.5 if marker == 'x' else 1.0,
                         zorder=15,
                         linestyle='none',
@@ -1202,13 +1215,12 @@ def plot_fig7(intercomp, pv, NS, out):
         ax.set_ylim(-2, 105)
         ax.set_xscale('log')
         ax.set_xlim(1e-3, 300)
-        ax.grid(alpha=0.15)
+        ax.grid(True)
         ax.text(
             0.96,
             0.93,
             plabel,
             transform=ax.transAxes,
-            fontsize=14,
             ha='right',
             va='top',
             fontweight='bold',
@@ -1224,7 +1236,7 @@ def plot_fig7(intercomp, pv, NS, out):
             [],
             [],
             marker='x',
-            color='0.25',
+            color=style_neutral(FADE_DARK_GREY),
             linestyle='none',
             markersize=8,
             markeredgewidth=1.5,
@@ -1234,7 +1246,7 @@ def plot_fig7(intercomp, pv, NS, out):
             [],
             [],
             marker='o',
-            color='0.25',
+            color=style_neutral(FADE_DARK_GREY),
             linestyle='none',
             markersize=8,
             label=r'$\phi = 5\%$',
@@ -1243,21 +1255,20 @@ def plot_fig7(intercomp, pv, NS, out):
     ax_c.legend(
         handles + marker_key,
         labels + [h.get_label() for h in marker_key],
-        fontsize=7,
+        fontsize='x-small',
         ncol=2,
         loc='lower left',
         framealpha=0.9,
     )
 
-    fig.suptitle('Nominal-Venus volatiles retained [%]', fontsize=13)
-    fig.tight_layout()
-    _save(fig, out, 'chili_fig7_volatiles')
+    fig.suptitle('Nominal-Venus volatiles retained [%]')
+    return fig
 
 
 # ── Fig 8: OLR ───────────────────────────────────────────────────────
-def plot_fig8(intercomp, pe, NS, out):
+def plot_fig8(intercomp, pe, NS):
     """OLR vs melt fraction and T_surf, matching Nicholls+ Fig 8."""
-    fig, axes = plt.subplots(1, 2, figsize=(8, 6), sharey=True)
+    fig, axes = plt.subplots(1, 2, figsize=(8, 6), sharey=True, layout='constrained')
     asr_val = 208.0  # 50 Myr ASR: L_sun(50Myr)/(4pi*1AU^2) * (1-0.1) * 0.375 * cos(48.19)
     sn_limit = 293.0  # Simpson-Nakajima steam runaway limit (Nakajima+1992)
 
@@ -1288,54 +1299,49 @@ def plot_fig8(intercomp, pe, NS, out):
     for ax in axes:
         ax.set_yscale('log')
         ax.set_ylim(1e2, 5e5)
-        ax.grid(alpha=0.15)
+        ax.grid(True)
 
     axes[0].set_ylabel(r'Outgoing LW radiation [W/m$^2$]')
 
     # ASR reference on panel (a), Simpson-Nakajima limit on panel (b):
     # one reference line per panel, matching the paper layout.
-    axes[0].axhline(asr_val, color='black', linestyle='--', linewidth=1.0)
+    axes[0].axhline(asr_val, color=style_neutral(), linestyle='--', linewidth=1.0)
     axes[0].text(
         0.03,
         asr_val * 1.1,
         f'50 Myr ASR\n({asr_val:.0f} W/m$^2$)',
         transform=axes[0].get_yaxis_transform(),
-        fontsize=8,
+        fontsize='small',
         fontweight='bold',
         va='bottom',
         ha='left',
     )
-    axes[1].axhline(sn_limit, color='black', linestyle='-.', linewidth=1.0)
+    axes[1].axhline(sn_limit, color=style_neutral(), linestyle='-.', linewidth=1.0)
     axes[1].text(
         0.03,
         sn_limit * 1.1,
         f'SN limit\n({sn_limit:.0f} W/m$^2$)',
         transform=axes[1].get_yaxis_transform(),
-        fontsize=8,
+        fontsize='small',
         fontweight='bold',
         va='bottom',
         ha='left',
     )
 
-    axes[0].text(
-        0.03, 0.96, r'$\mathbf{(a)}$', transform=axes[0].transAxes, fontsize=14, va='top'
-    )
+    axes[0].set_title(r'$\mathbf{(a)}$', loc='left')
     axes[0].set_xlabel('Melt fraction [vol%]')
     axes[0].set_xlim(100, 0)
-    axes[0].legend(fontsize=7, ncol=1, loc='upper right', framealpha=0.9)
+    _legend_below(fig, axes[0], ncol=4)
 
-    axes[1].text(
-        0.03, 0.96, r'$\mathbf{(b)}$', transform=axes[1].transAxes, fontsize=14, va='top'
-    )
+    axes[1].set_title(r'$\mathbf{(b)}$', loc='left')
     axes[1].set_xlabel(r'$T_\mathrm{surf}$ [K]')
     axes[1].set_xlim(3400, 1400)
 
-    fig.tight_layout()
-    _save(fig, out, 'chili_fig8_olr')
+    return fig
 
 
 # ── Fig 9: Geodynamics (T_surf, R_RF, viscosity vs phi) ──────────────
-def plot_fig9(intercomp, pe, NS, out):
+def plot_fig9(intercomp, pe, NS):
     """3-panel geodynamics: T_surf, R_RF/R_p, viscosity vs phi, matching Nicholls+ Fig 9."""
     # Radii are plotted in absolute units (Mm). The CHILI CSVs report R_solid /
     # R_trans in metres and carry no planet-radius column, so a fractional axis
@@ -1347,7 +1353,7 @@ def plot_fig9(intercomp, pe, NS, out):
     visc_solid = 5e22  # solid Earth mantle viscosity [Pa s] (Peltier+1981, McKenzie 1967)
     visc_water = 1e-3  # water viscosity at STP [Pa s]
 
-    fig, axes = plt.subplots(3, 1, figsize=(7, 11), sharex=True)
+    fig, axes = plt.subplots(3, 1, figsize=(7, 11), sharex=True, layout='constrained')
     ax_t, ax_r, ax_v = axes
     panel_labels = [r'$\mathbf{(a)}$', r'$\mathbf{(b)}$', r'$\mathbf{(c)}$']
 
@@ -1404,36 +1410,36 @@ def plot_fig9(intercomp, pe, NS, out):
                 **kw,
             )
 
-    _anno_box = dict(boxstyle='round,pad=0.2', fc='white', ec='none', alpha=0.85)
-    ax_r.axhline(R_cmb_Mm, color='black', linestyle='--', linewidth=1.0)
+    _anno_box = dict(boxstyle='round,pad=0.2', fc=style_neutral(1), ec='none', alpha=0.85)
+    ax_r.axhline(R_cmb_Mm, color=style_neutral(), linestyle='--', linewidth=1.0)
     ax_r.text(
         0.98,
         R_cmb_Mm,
         'Core-mantle boundary (PROTEUS)',
         transform=ax_r.get_yaxis_transform(),
-        fontsize=8,
+        fontsize='small',
         va='top',
         ha='right',
         bbox=_anno_box,
     )
-    ax_v.axhline(visc_solid, color='black', linestyle='--', linewidth=1.0)
+    ax_v.axhline(visc_solid, color=style_neutral(), linestyle='--', linewidth=1.0)
     ax_v.text(
         0.5,
         visc_solid,
         'Solid mantle viscosity',
         transform=ax_v.get_yaxis_transform(),
-        fontsize=8,
+        fontsize='small',
         va='bottom',
         ha='center',
         bbox=_anno_box,
     )
-    ax_v.axhline(visc_water, color='black', linestyle=':', linewidth=1.0)
+    ax_v.axhline(visc_water, color=style_neutral(), linestyle=':', linewidth=1.0)
     ax_v.text(
         0.98,
         visc_water,
         'Water STP viscosity',
         transform=ax_v.get_yaxis_transform(),
-        fontsize=8,
+        fontsize='small',
         va='bottom',
         ha='right',
         bbox=_anno_box,
@@ -1448,17 +1454,16 @@ def plot_fig9(intercomp, pe, NS, out):
 
     for ax, plabel in zip(axes, panel_labels):
         ax.set_xlim(100, 0)
-        ax.grid(alpha=0.15)
-        ax.text(0.02, 0.93, plabel, transform=ax.transAxes, fontsize=14, va='top')
+        ax.grid(True)
+        ax.set_title(plabel, loc='left')
 
-    ax_t.legend(fontsize=7, ncol=2, loc='lower left', framealpha=0.9)
-    fig.tight_layout()
-    _save(fig, out, 'chili_fig9_geodynamics')
+    _legend_below(fig, ax_t)
+    return fig
 
 
 # ── Surface pressure vs time ─────────────────────────────────────────
-def plot_psurf(intercomp, pe, NS, out):
-    fig, ax = plt.subplots(figsize=(7, 5))
+def plot_psurf(intercomp, pe, NS):
+    fig, ax = plt.subplots(figsize=(7, 5), layout='constrained')
 
     for mk, st in MODELS.items():
         df = _load_chili_csv(intercomp / mk / f'evolution-{mk}-earth-data.csv')
@@ -1498,15 +1503,14 @@ def plot_psurf(intercomp, pe, NS, out):
     # spurious near-zero initial point that would otherwise stretch the axis
     # across 20 empty decades.
     ax.set_ylim(1e1, 1e5)
-    ax.legend(fontsize=8, ncol=2, framealpha=0.9)
-    _save(fig, out, 'chili_psurf_vs_time')
+    ax.legend(fontsize='small', ncol=2, framealpha=0.9)
+    return fig
 
 
 # ── Grid solidification timescales ──────────────────────────────────
-def plot_grid_timescales(intercomp, grid_dir, NS, out):
-    fig, ax = plt.subplots(figsize=(8, 5.5))
+def plot_grid_timescales(intercomp, grid_dir, NS):
+    fig, ax = plt.subplots(figsize=(8, 5.5), layout='constrained')
     c_markers = {'Clow': 'o', 'Cmid': 's', 'Chigh': 'D'}
-    c_colors = {'Clow': WONG[5], 'Cmid': WONG[6], 'Chigh': WONG[3]}
     h_levels = ['Hlow', 'Hmid', 'Hhigh']
     plotted_chili = False
 
@@ -1531,11 +1535,12 @@ def plot_grid_timescales(intercomp, grid_dir, NS, out):
                 np.array(h_sub) / 1e20,
                 t_sub,
                 marker=c_markers[cl],
-                color=c_colors[cl],
+                color=PROTEUS_COLOUR,
+                alpha=C_ALPHAS[cl],
                 linestyle='--',
                 linewidth=1.5,
                 markersize=8,
-                markerfacecolor='white',
+                markerfacecolor=style_neutral(1),
                 zorder=4,
             )
 
@@ -1557,9 +1562,12 @@ def plot_grid_timescales(intercomp, grid_dir, NS, out):
                 np.array(h_vals) / 1e20,
                 t_vals,
                 marker=c_markers[cl],
-                color=c_colors[cl],
+                color=PROTEUS_COLOUR,
+                alpha=C_ALPHAS[cl],
                 linewidth=2,
                 markersize=8,
+                markeredgecolor=style_neutral(),
+                markeredgewidth=0.6,
                 zorder=6,
             )
 
@@ -1568,7 +1576,8 @@ def plot_grid_timescales(intercomp, grid_dir, NS, out):
         Line2D(
             [],
             [],
-            color=c_colors[cl],
+            color=PROTEUS_COLOUR,
+            alpha=C_ALPHAS[cl],
             marker=c_markers[cl],
             linestyle='-',
             markersize=8,
@@ -1580,7 +1589,7 @@ def plot_grid_timescales(intercomp, grid_dir, NS, out):
         Line2D(
             [],
             [],
-            color='0.4',
+            color=style_neutral(0.4),
             linestyle='-',
             linewidth=2,
             marker='o',
@@ -1595,16 +1604,16 @@ def plot_grid_timescales(intercomp, grid_dir, NS, out):
             Line2D(
                 [],
                 [],
-                color='0.4',
+                color=style_neutral(0.4),
                 linestyle='--',
                 linewidth=1.5,
                 marker='o',
                 markersize=7,
-                markerfacecolor='white',
+                markerfacecolor=style_neutral(1),
                 label='PROTEUS CHILI',
             )
         )
-    ax.legend(handles=c_handles + src_handles, fontsize=9, framealpha=0.9)
+    ax.legend(handles=c_handles + src_handles, fontsize='small', framealpha=0.9)
 
     ax.set_xlabel(r'H inventory ($\times 10^{20}$ kg)')
     ax.set_ylabel('Solidification time (Myr)')
@@ -1616,10 +1625,78 @@ def plot_grid_timescales(intercomp, grid_dir, NS, out):
         axis.set_major_formatter(ScalarFormatter())
         axis.set_minor_formatter(NullFormatter())
     ax.set_title('CHILI Earth grid: solidification vs H inventory')
-    _save(fig, out, 'chili_grid_solidification')
+    return fig
+
+
+def _figures(intercomp, pe, pv, NS, grid_dir):
+    """Figures of the tutorial page by file stem, each as a call that draws it."""
+    figs = {
+        'chili_fig1_melt_fraction': lambda: plot_fig1(intercomp, pe, pv, NS),
+        'chili_fig2_milestones': lambda: plot_fig2(intercomp, pe, NS, grid_dir=grid_dir),
+        'chili_fig3_atm_composition': lambda: plot_fig3(intercomp, pe, NS),
+        'chili_fig4_mass_budgets': lambda: plot_fig4(intercomp, pe, NS),
+        'chili_fig5_venus_atm': lambda: plot_fig5(intercomp, pv, NS),
+        'chili_fig6_fO2_vs_T': lambda: plot_fig6(intercomp, pv, NS),
+        'chili_fig7_volatiles': lambda: plot_fig7(intercomp, pv, NS),
+        'chili_fig8_olr': lambda: plot_fig8(intercomp, pe, NS),
+        'chili_fig9_geodynamics': lambda: plot_fig9(intercomp, pe, NS),
+        'chili_psurf_vs_time': lambda: plot_psurf(intercomp, pe, NS),
+    }
+    if grid_dir is not None:
+        figs['chili_grid_solidification'] = lambda: plot_grid_timescales(
+            intercomp, grid_dir, NS
+        )
+    return figs
+
+
+def make_figure(
+    run_dirs, out_path, *, fig_id, chili_repo, earth=None, venus=None, grid_dir=None
+):
+    """Draw one figure of the tutorial page under the active style and write it as PNG.
+
+    Parameters
+    ----------
+    run_dirs : list of Path
+        Every run folder that the figure reads; their commits make the run label.
+    out_path : Path
+        File of the PNG.
+    fig_id : str
+        File stem of the figure, a key of ``_figures``.
+    chili_repo : Path or str
+        Checkout of the CHILI repository.
+    earth, venus : Path or str, optional
+        Folder of the Nominal Earth and of the Nominal Venus run.
+    grid_dir : Path or str, optional
+        Parent folder of the ``chili_grid_earth_*`` run folders.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        The figure, left open.
+
+    Raises
+    ------
+    ValueError
+        For an unknown ``fig_id`` and for a figure without data.
+    """
+    NS = _new_style(_get_proteus_sha(*run_dirs))
+    pe = _load_proteus_helpfile(Path(earth)) if earth else None
+    pv = _load_proteus_helpfile(Path(venus)) if venus else None
+    figs = _figures(
+        ensure_chili_repo(Path(chili_repo)), pe, pv, NS, Path(grid_dir) if grid_dir else None
+    )
+    if fig_id not in figs:
+        raise ValueError(f'unknown figure {fig_id!r}; known: {", ".join(figs)}')
+    fig = figs[fig_id]()
+    if fig is None:
+        raise ValueError(f'no data for figure {fig_id!r}')
+    fig.savefig(out_path)
+    return fig
 
 
 def _save(fig, out, name):
+    if fig is None:
+        return
     out.mkdir(parents=True, exist_ok=True)
     fig.savefig(out / f'{name}.pdf', dpi=300, bbox_inches='tight')
     fig.savefig(out / f'{name}.png', dpi=300, bbox_inches='tight')
@@ -1663,9 +1740,21 @@ def main():
         default=Path('output_files/chili_plots'),
         help='Output directory for plots (default: output_files/chili_plots/)',
     )
+    parser.add_argument(
+        '--style',
+        choices=['light', 'dark'],
+        default=None,
+        help='Draw in the PROTEUS visual language (needs the proteus-mpl package); '
+        'without this option the active matplotlib style is used',
+    )
     args = parser.parse_args()
 
-    matplotlib.rcParams.update(_PLOT_STYLE)
+    if args.style:
+        try:
+            import proteus_mpl
+        except ImportError:
+            parser.error('--style needs the proteus-mpl package: pip install proteus-mpl')
+        proteus_mpl.use(args.style)
 
     intercomp = ensure_chili_repo(args.chili_repo)
     grid_runs = (
@@ -1703,20 +1792,9 @@ def main():
         )
         print('Figs 1, 5-7 (Venus) will show CHILI models only')
 
-    plot_fig1(intercomp, pe, pv, NS, args.output)
-    plot_fig2(intercomp, pe, NS, args.output, grid_dir=args.grid_dir)
-    plot_fig3(intercomp, pe, NS, args.output)
-    plot_fig4(intercomp, pe, NS, args.output)
-    plot_fig5(intercomp, pv, NS, args.output)
-    plot_fig6(intercomp, pv, NS, args.output)
-    plot_fig7(intercomp, pv, NS, args.output)
-    plot_fig8(intercomp, pe, NS, args.output)
-    plot_fig9(intercomp, pe, NS, args.output)
-    plot_psurf(intercomp, pe, NS, args.output)
-
-    if args.grid_dir is not None:
-        plot_grid_timescales(intercomp, args.grid_dir, NS, args.output)
-    else:
+    for name, draw in _figures(intercomp, pe, pv, NS, args.grid_dir).items():
+        _save(draw(), args.output, name)
+    if args.grid_dir is None:
         print('Skipping grid plot (pass --grid-dir to enable)')
 
     print(f'\nAll plots saved to {args.output}/')
