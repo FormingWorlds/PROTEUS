@@ -31,6 +31,9 @@ bash tools/get_petsc.sh
 bash tools/get_spider.sh
 ```
 
+The installer sets up Obliqua. When `proteus doctor` reports Obliqua as not
+installed, run `bash tools/get_obliqua.sh` from the PROTEUS folder.
+
 The [optional modules](../How-to/optionalmodules_installation.md) page
 describes each step.
 

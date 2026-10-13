@@ -201,7 +201,7 @@ PROTEUS folder, your home folder and a folder that holds one of them, for a
 file or a broken link, for a path that goes through a folder that does not
 exist and then through `.` or `..`, and for a folder with files that is not an Obliqua
 project; with `--force` it also stops for a folder with files that is not a
-git clone of its own with a commit, and for a git worktree. They stop with an error when the pip install of the folder
+git clone of its own with a commit, and for a folder whose `.git` is a file (a git worktree or a submodule). They stop with an error when the pip install of the folder
 fails, and `get_vulcan.sh` stops when the folder has no `fastchem_vulcan`
 folder or its `make` fails.
 

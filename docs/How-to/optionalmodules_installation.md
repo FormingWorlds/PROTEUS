@@ -65,7 +65,8 @@ not exist, and a link to a folder stands for that folder. With or without
 holds one of them, a file or a broken link, a path that goes through a folder
 that does not exist and then through `.` or `..`, and a folder with files that is
 not an Obliqua project; with `--force` it also refuses a folder with files
-that is not a git clone of its own with a commit, and a git worktree.
+that is not a git clone of its own with a commit, and a folder whose `.git` is a
+file (a git worktree or a submodule).
 
 ## Synthetic observations (PetitRADTRANS)
 

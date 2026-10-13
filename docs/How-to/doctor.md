@@ -83,7 +83,7 @@ folder, your home folder and a folder that holds one of them as its
 destination, a file or a broken link, a path that goes through a folder that
 does not exist and then through `.` or `..`, and a folder with files that is not an
 Obliqua project. The forced form also refuses a
-folder with files that is not a git clone of its own with a commit, and a git worktree. An Obliqua clone at its pin with no `Manifest.toml` gives a warning
+folder with files that is not a git clone of its own with a commit, and a folder whose `.git` is a file (a git worktree or a submodule). An Obliqua clone at its pin with no `Manifest.toml` gives a warning
 that its Julia environment is not instantiated, with the fix
 `bash tools/get_obliqua.sh`. The AGNI fix is
 `bash tools/get_agni.sh`. The SOCRATES fix also rebuilds AGNI,
