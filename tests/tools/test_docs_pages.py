@@ -255,6 +255,8 @@ def test_single_variant_entry_needs_its_one_file_only(site):
     assert pages.check_pages(_manifest([_entry(variants=['dark'])]), site.repo) == []
     assert pages.check_pages(_manifest(), site.repo) == [
         'fig_a: file docs/assets/tutorials/fig_a.avif is missing',
-        'fig_a: page_a.md does not embed docs/assets/tutorials/fig_a.avif#only-light and '
-        'docs/assets/tutorials/fig_a_dark.avif#only-dark as a pair',
+        (
+            'fig_a: page_a.md does not embed docs/assets/tutorials/fig_a.avif#only-light and '
+            'docs/assets/tutorials/fig_a_dark.avif#only-dark as a pair'
+        ),
     ]

@@ -4,7 +4,8 @@
 plot function is measured without a change to that function. `measure` returns, for one
 figure: the texts that the saved file cuts off, the texts outside the figure box (a tight
 bounding box keeps them), the tick labels that intersect across axes or crowd on one
-axes, and the legends and texts that lie on a data line or a scatter point.
+axes, and the legends and texts that lie on data (a line, a scatter point, a bar, a
+filled area or an image).
 """
 
 from __future__ import annotations
@@ -15,8 +16,12 @@ from numbers import Real
 import matplotlib
 import numpy as np
 from matplotlib.backends.backend_agg import FigureCanvasAgg
+from matplotlib.collections import LineCollection
 from matplotlib.figure import Figure
+from matplotlib.image import AxesImage
 from matplotlib.layout_engine import ConstrainedLayoutEngine
+from matplotlib.lines import Line2D
+from matplotlib.patches import Patch
 from matplotlib.text import Text
 from matplotlib.transforms import Bbox
 
@@ -28,20 +33,35 @@ LABEL_CHARS = 40
 CROWDED = 0.2
 
 
+def _in_view(axis, loc: float) -> bool:
+    """True when matplotlib draws the tick at `loc`.
+
+    As `Axis._update_ticks` does: inside the view limits on the scale of the axis, with a
+    slack of 1e-10 of their span, so that a tick at 0.30000000000000004 on limits (0, 0.3)
+    counts.
+    """
+    scale = axis.get_transform()
+    low, high = sorted(scale.transform(axis.get_view_interval()))
+    slack = 1e-10 * (high - low)
+    return low - slack <= scale.transform(loc) <= high + slack
+
+
 def _drawn_texts(fig: Figure) -> list[tuple[int, str, Text]]:
     """List (axes index or -1, kind, text artist) for every text that the figure draws.
 
-    A tick label counts only when it is switched on and its tick lies inside the view
-    limits; matplotlib keeps the artists of the other ticks but does not draw them.
+    A tick label counts only when it is switched on and matplotlib draws its tick: the
+    ticks outside the view limits and the ticks of a hidden axis (the x axis of a twin
+    axes) have artists that are not drawn.
     """
     rows, tick_ids = [], set()
     for i, ax in enumerate(fig.axes):
-        for axis, lim in ((ax.xaxis, ax.get_xlim()), (ax.yaxis, ax.get_ylim())):
+        for axis in (ax.xaxis, ax.yaxis):
+            drawn = ax.get_visible() and axis.get_visible()
             for tick in axis.get_major_ticks() + axis.get_minor_ticks():
                 for label in (tick.label1, tick.label2):
                     tick_ids.add(id(label))
-                    shown = label.get_visible() and label.get_text().strip()
-                    if shown and min(lim) <= tick.get_loc() <= max(lim):
+                    shown = drawn and label.get_visible() and label.get_text().strip()
+                    if shown and _in_view(axis, tick.get_loc()):
                         rows.append((i, 'tick', label))
     for text in fig.findobj(Text):
         if id(text) in tick_ids or not text.get_visible() or not text.get_text().strip():
@@ -51,33 +71,44 @@ def _drawn_texts(fig: Figure) -> list[tuple[int, str, Text]]:
     return rows
 
 
-def _data_under(ax, box: Bbox) -> int:
-    """Count the lines and scatters in data coordinates of `ax` that pass under `box`.
+def _under(artist, ax, area: Bbox, renderer) -> bool:
+    """True when a data artist of `ax` (a line, scatter, bar, filled area or image) lies in `area`."""
+    data = ax.transData
+    if isinstance(artist, Line2D):
+        paths, filled = [artist.get_path()] if artist.get_transform() == data else [], False
+    elif isinstance(artist, Patch):
+        own = artist.get_data_transform() == data
+        return own and artist.get_transform().transform_path(artist.get_path()).intersects_bbox(
+            area
+        )
+    elif isinstance(artist, AxesImage):
+        shared = Bbox.intersection(area, artist.get_window_extent(renderer))
+        return shared is not None and min(shared.width, shared.height) > TOL_PX
+    elif artist.get_offset_transform() == data and len(artist.get_offsets()):
+        return bool(area.count_contains(np.asarray(data.transform(artist.get_offsets()))))
+    else:
+        paths = artist.get_paths() if artist.get_transform() == data else []
+        filled = not isinstance(artist, LineCollection)
+    shown = [data.transform_path(path) for path in paths if len(path.vertices)]
+    return any(path.intersects_bbox(area, filled=filled) for path in shown)
 
-    For an artist that its axes clips, only the part of `box` inside the axes counts,
-    and a box that only touches the axes edge covers nothing. A hidden axes has no data.
+
+def _data_under(ax, box: Bbox, renderer) -> int:
+    """Count the data artists of `ax` that pass under `box`.
+
+    Data artists are the lines, scatters, bars and other patches, filled areas and images
+    in data coordinates. For an artist that its axes clips, only the part of `box` inside
+    the axes counts, and a box that only touches the axes edge covers nothing. A hidden
+    axes has no data.
     """
     inside = Bbox.intersection(box, ax.bbox)
     if inside is not None and min(inside.width, inside.height) <= TOL_PX:
         inside = None
     hits = 0
-    for line in ax.lines if ax.get_visible() else []:
-        area = inside if line.get_clip_on() else box
-        if area is None or not line.get_visible() or line.get_transform() != ax.transData:
-            continue
-        path = ax.transData.transform_path(line.get_path())
-        if len(path.vertices) and path.intersects_bbox(area, filled=False):
-            hits += 1
-    for coll in ax.collections if ax.get_visible() else []:
-        area = inside if coll.get_clip_on() else box
-        if (
-            area is None
-            or not coll.get_visible()
-            or coll.get_offset_transform() != ax.transData
-        ):
-            continue
-        pts = np.asarray(ax.transData.transform(coll.get_offsets()))
-        if len(pts) and area.count_contains(pts):
+    artists = [*ax.lines, *ax.patches, *ax.images, *ax.collections] if ax.get_visible() else []
+    for artist in artists:
+        area = inside if artist.get_clip_on() else box
+        if area is not None and artist.get_visible() and _under(artist, ax, area, renderer):
             hits += 1
     return hits
 
@@ -143,7 +174,7 @@ def _covered(fig: Figure, renderer) -> list[tuple[int, str, str, int]]:
             if not (owner.get_visible() and artist.get_visible()):
                 continue
             box = artist.get_window_extent(renderer)
-            count = sum(_data_under(ax, box) for ax in fig.axes)
+            count = sum(_data_under(ax, box, renderer) for ax in fig.axes)
             if count:
                 rows.append((i, kind, label[:LABEL_CHARS], count))
     return rows
@@ -169,7 +200,7 @@ def measure(fig: Figure, bbox_inches=None, pad_inches=None) -> dict:
         axes that intersect. `tick_crowding`: (axes, label, label, share) for 2 tick
         labels of one axes that share more than `CROWDED` of the smaller label box.
         `covered`: (axes index or -1 for the figure, kind, label, number of data artists)
-        for a legend or a text that lies on a data line or a scatter point.
+        for a legend or a text that lies on data.
     """
     if not hasattr(fig.canvas, 'get_renderer'):
         FigureCanvasAgg(fig)

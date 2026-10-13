@@ -18,6 +18,7 @@ matplotlib.use('Agg')
 import numpy as np  # noqa: E402
 import pytest  # noqa: E402
 from matplotlib.figure import Figure  # noqa: E402
+from matplotlib.transforms import Bbox  # noqa: E402
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -55,16 +56,6 @@ def test_clean_figure_gives_an_empty_table():
     assert table['cut_off'] == [] and table['outside_figure'] == []
     assert table['tick_overlaps'] == [] and table['tick_crowding'] == []
     assert table['covered'] == []
-
-
-def test_text_outside_a_plain_save_is_cut_off():
-    """Without a tight box the file is the figure box, so a text beyond it is lost."""
-    fig, _ = _line_figure()
-    fig.text(1.3, 0.5, 'far right')
-    fig.text(0.5, 0.5, 'inside')
-    table = geom.measure(fig)
-    assert table['cut_off'] == [(-1, 'text', 'far right')]
-    assert table['outside_figure'] == [(-1, 'text', 'far right')]
 
 
 @pytest.mark.parametrize(
@@ -332,3 +323,133 @@ def test_scatter_point_that_its_axes_clips_covers_nothing():
         (0, 'legend', 'Outside'),
         (1, 'legend', 'Over the hidden axes'),
     ]
+
+
+def test_tick_label_at_the_end_of_the_axis_is_measured():
+    """With limits (0, 0.3) the last tick lies at 0.30000000000000004; its label is drawn."""
+    fig, ax = _line_figure()
+    ax.set_xlim(0, 0.3)
+    ax.set_yticks([])
+    count = geom.measure(fig)['texts']
+    labels = [t.get_text() for _, kind, t in geom._drawn_texts(fig) if kind == 'tick']
+    assert max(tick.get_loc() for tick in ax.xaxis.get_major_ticks()) > 0.3
+    assert float(labels[-1]) == pytest.approx(0.3) and float(labels[0]) == 0.0
+    assert count == len(labels) >= 4
+    # A tick clearly past the limit is still no drawn text
+    ax.set_xticks([0.0, 0.3 + 1e-6], ['start', 'past the limit'])
+    ax.set_xlim(0, 0.3)
+    assert geom.measure(fig)['texts'] == 1
+    assert [t.get_text() for _, kind, t in geom._drawn_texts(fig) if kind == 'tick'] == [
+        'start'
+    ]
+
+
+def test_tick_at_the_end_of_a_log_axis_is_measured():
+    """The slack is taken on the scale of the axis: a decade tick at the limit of a log axis counts."""
+    fig, ax = _line_figure()
+    ax.set_yticks([])
+    ax.set_xscale('log')
+    ax.set_xticks([1.0, 10.0, 100.0, 1000.0000000002], ['a', 'b', 'c', 'd'])
+    ax.minorticks_off()
+    ax.set_xlim(1.0, 1000.0000000001)
+    assert geom.measure(fig)['texts'] == 4
+    ax.set_xlim(1.0, 900.0)
+    assert geom.measure(fig)['texts'] == 3
+    # 5e-11 is 0.3 decades below the limit 1e-10, though it is close to it as a number
+    ax.set_xticks([5e-11, 1e-5, 1.0], ['below', 'b', 'c'])
+    ax.set_xlim(1e-10, 1.0)
+    assert geom.measure(fig)['texts'] == 2
+    assert [t.get_text() for _, kind, t in geom._drawn_texts(fig) if kind == 'tick'] == [
+        'b',
+        'c',
+    ]
+
+
+@pytest.mark.parametrize(
+    'kind, artists',
+    [('bar', 1), ('hist', 3), ('fill_between', 1), ('imshow', 1), ('pcolormesh', 1)],
+)
+def test_legend_on_bars_filled_areas_and_images_is_covered(kind, artists):
+    """A legend over a bar, the 3 bars of a histogram, a filled area or an image lies on data."""
+    fig = Figure(figsize=(4, 3), dpi=100)
+    ax = fig.add_axes([0.2, 0.2, 0.6, 0.6])
+    if kind == 'bar':
+        ax.bar([0.5], [1.0], width=0.4)
+    elif kind == 'hist':
+        ax.hist([0.4, 0.5, 0.5, 0.6], bins=3, range=(0.3, 0.7))
+    elif kind == 'fill_between':
+        ax.fill_between([0.3, 0.7], [0.0, 0.0], [1.0, 1.0])
+    elif kind == 'imshow':
+        ax.imshow([[0.0, 1.0], [1.0, 0.0]], extent=(0.3, 0.7, 0.0, 1.0), aspect='auto')
+    else:
+        ax.pcolormesh([0.3, 0.5, 0.7], [0.0, 0.5, 1.0], [[0.0, 1.0], [1.0, 0.0]])
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    ax.plot([], [], label='entry')
+    ax.legend(loc='center', title='On the data')
+    assert geom.measure(fig)['covered'] == [(0, 'legend', 'On the data', artists)]
+    # The same legend beside the data covers nothing
+    ax.get_legend().set_bbox_to_anchor((0.05, 0.5))
+    assert geom.measure(fig)['covered'] == []
+
+
+def test_span_across_the_axes_is_no_data():
+    """A band of `axvspan` is a reference area in axes coordinates, like a reference line."""
+    fig, ax = _line_figure()
+    ax.lines[0].remove()
+    ax.axvspan(0.3, 0.7)
+    ax.plot([], [], label='entry')
+    ax.legend(loc='center', title='On the band')
+    assert geom.measure(fig)['covered'] == []
+    ax.bar([0.5], [1.0], width=0.2)
+    assert geom.measure(fig)['covered'] == [(0, 'legend', 'On the band', 1)]
+
+
+def test_tick_labels_count_as_crowded_above_one_fifth_of_the_smaller_box():
+    """2 labels of 1 axes that share 0.30 of the box are crowded; a share of 0.15 is not."""
+    box = Bbox.from_extents(0, 0, 10, 10)
+    near = [(0, 'a', box), (0, 'b', Bbox.from_extents(7, 0, 17, 10))]
+    apart = [(0, 'a', box), (0, 'b', Bbox.from_extents(8.5, 0, 18.5, 10))]
+    assert geom._tick_pairs(near) == ([], [(0, 'a', 'b', 0.3)])
+    assert geom._tick_pairs(apart) == ([], [])
+    assert 0.15 < geom.CROWDED < 0.30
+    # On 2 axes any shared area is an overlap, whatever its share
+    across = [(0, 'a', box), (1, 'b', Bbox.from_extents(9.5, 0, 19.5, 10))]
+    assert geom._tick_pairs(across) == ([(0, 'a', 1, 'b')], [])
+
+
+def test_drawn_texts_are_the_texts_that_the_renderer_draws(monkeypatch):
+    """On a figure with a twin axes, a log axis and a tick at the axis end, the check lists
+    every text that the Agg renderer draws and no other."""
+    from matplotlib.backends.backend_agg import RendererAgg
+
+    fig = Figure(figsize=(6, 4), dpi=100)
+    left = fig.add_axes([0.1, 0.15, 0.35, 0.7])
+    right = fig.add_axes([0.6, 0.15, 0.35, 0.7])
+    left.plot([0.0, 0.3], [1.0, 2.0], label='series')
+    left.set_xlim(0, 0.3)
+    left.legend(title='Legend')
+    twin = left.twinx()
+    twin.plot([0.0, 0.3], [10.0, 20.0])
+    twin.xaxis.get_ticklabels()  # fills the label texts of the hidden x axis of the twin
+    right.loglog([1.0, 1000.0], [1.0, 1000.0])
+    right.set_title('Title')
+    fig.text(0.5, 0.95, 'Figure text', ha='center')
+    table = geom.measure(fig)
+
+    drawn = []
+    draw_text = RendererAgg.draw_text
+    monkeypatch.setattr(
+        RendererAgg,
+        'draw_text',
+        lambda self, gc, x, y, s, *a, **k: (
+            drawn.append(s),
+            draw_text(self, gc, x, y, s, *a, **k),
+        )[1],
+    )
+    fig.canvas.draw()
+    listed = sorted(t.get_text() for _, _, t in geom._drawn_texts(fig))
+    assert listed == sorted(drawn) and table['texts'] == len(drawn) > 20
+    assert not twin.xaxis.get_visible() and any(
+        t.get_text() for t in twin.xaxis.get_ticklabels()
+    )

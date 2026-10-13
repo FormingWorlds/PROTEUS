@@ -3,6 +3,7 @@
 
 Usage:
     python tools/make_docs_figures.py --runs <folder of run folders> [--only <id or page>]
+        [--run <name>=<folder>] [--out <root>] [--chili-repo <folder>] [--manifest <file>]
     python tools/make_docs_figures.py --check
 
 The manifest `tools/docs_figures.toml` has one entry per figure: the page, the asset
@@ -35,10 +36,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = REPO_ROOT / 'tools' / 'docs_figures.toml'
 SUFFIX = _docs_pages.SUFFIX
 # Manifest keys with their TOML types; the keys in OPTIONAL can be absent.
-TOP_TYPES = {'proteus_mpl': str, 'avif_quality': int, 'pages': str, 'exempt_pages': list}
-TOP_TYPES['figure'] = list
-ENTRY_TYPES = {'id': str, 'page': str, 'asset': str, 'runs': list, 'maker': str}
-ENTRY_TYPES.update(args=dict, variants=list)
+TOP_TYPES = dict(proteus_mpl=str, avif_quality=int, pages=str, exempt_pages=list, figure=list)
+ENTRY_TYPES = dict(id=str, page=str, asset=str, runs=list, maker=str, args=dict, variants=list)
 OPTIONAL = {'exempt_pages', 'args', 'variants'}
 TYPE_NAMES = {str: 'a string', int: 'a whole number', list: 'a list', dict: 'a table'}
 
@@ -327,7 +326,12 @@ def _tree_state(run_dirs: list[Path]) -> dict:
     state = {}
     for run_dir in run_dirs:
         for path in [run_dir, *run_dir.rglob('*')]:
-            stat = path.lstat()
+            try:
+                stat = path.lstat()
+            except FileNotFoundError:
+                raise FigureError(
+                    f'a run folder changed during the draw: {path} is gone'
+                ) from None
             state[path] = (stat.st_mtime_ns, stat.st_size)
     return state
 
@@ -351,6 +355,7 @@ def make_figures(
     out_root: Path | None = None,
     only: str | None = None,
     chili_repo: Path | None = None,
+    run_map: dict[str, Path] | None = None,
 ) -> int:
     """Draw the figures of the manifest in every variant and write the AVIF files.
 
@@ -367,6 +372,9 @@ def make_figures(
         Id or page of the entries to draw; all when None.
     chili_repo : Path, optional
         Value of the `{chili_repo}` placeholder.
+    run_map : dict, optional
+        Folder of a run by its manifest name, for a run folder that has another name or
+        lies outside `runs`.
 
     Returns
     -------
@@ -399,7 +407,7 @@ def make_figures(
     places = {'{runs}': runs, '{chili_repo}': chili_repo}
     errors = 0
     for fig in figures:
-        run_dirs = [runs / name for name in fig['runs']]
+        run_dirs = [(run_map or {}).get(name, runs / name) for name in fig['runs']]
         for run_dir in run_dirs:
             if not run_dir.is_dir():
                 raise FigureError(f'{fig["id"]}: run folder {run_dir} does not exist')
@@ -410,7 +418,8 @@ def make_figures(
                 png, tables = _draw_variant(fig, variant, run_dirs, Path(tmp) / variant, places)
                 if _tree_state(run_dirs) != before:
                     raise FigureError(
-                        f'{fig["id"]}: the maker changed a run folder; run folders are read only'
+                        f'{fig["id"]}: a run folder changed during the draw; '
+                        'run folders are read only'
                     )
                 cut_off += _report(fig['id'], variant, tables)
                 drawn.append((variant, png))
@@ -426,6 +435,13 @@ def main(argv: list[str] | None = None) -> int:
     """Command line entry point; returns the exit code."""
     parser = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     parser.add_argument('--runs', type=Path, help='Folder that holds the run folders')
+    parser.add_argument(
+        '--run',
+        action='append',
+        default=[],
+        metavar='NAME=FOLDER',
+        help='Folder of the run with this manifest name (repeatable)',
+    )
     parser.add_argument('--only', help='Draw the entries with this id or page only')
     parser.add_argument('--chili-repo', type=Path, help='Checkout of the CHILI repository')
     parser.add_argument('--out', type=Path, help='Write under this root, not the repository')
@@ -444,7 +460,20 @@ def main(argv: list[str] | None = None) -> int:
             return 1 if problems else 0
         if args.runs is None:
             parser.error('--runs is required unless --check is given')
-        errors = make_figures(manifest, args.runs, args.out, args.only, args.chili_repo)
+        names = {name for fig in manifest['figure'] for name in fig['runs']}
+        run_map = {
+            name: Path(folder) for name, _, folder in (r.partition('=') for r in args.run)
+        }
+        unknown = sorted(
+            name for name, folder in run_map.items() if name not in names or not folder.name
+        )
+        if unknown:
+            raise FigureError(
+                f'--run {unknown[0]}: give NAME=FOLDER with a run name of the manifest'
+            )
+        errors = make_figures(
+            manifest, args.runs, args.out, args.only, args.chili_repo, run_map
+        )
     except FigureError as exc:
         print(f'ERROR: {exc}', file=sys.stderr)
         return 1

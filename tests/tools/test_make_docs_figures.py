@@ -40,7 +40,7 @@ def _load(name: str):
 
 
 _load('_figure_geometry')
-pages = _load('_docs_pages')
+_load('_docs_pages')
 tool = _load('make_docs_figures')
 
 MAKER = """
@@ -248,7 +248,6 @@ def test_manifest_of_the_repository_agrees_with_pyproject_and_the_pages():
     for extra in ('docs', 'develop'):
         pins = [d for d in extras[extra] if d.startswith('proteus-mpl')]
         assert pins == [f'proteus-mpl>={manifest["proteus_mpl"]}']
-    assert pages.check_pages(manifest, _REPO_ROOT) == []
     assert tool.main(['--check']) == 0
     # Every figure is a pair, and every maker that an entry names can be loaded
     for fig in manifest['figure']:
@@ -260,6 +259,26 @@ def test_manifest_of_the_repository_agrees_with_pyproject_and_the_pages():
     # The environment of the tests has a proteus-mpl that this manifest accepts
     installed = importlib.metadata.version('proteus-mpl')
     assert tool.style_version(manifest['proteus_mpl']) == installed
+
+
+def test_committed_pairs_are_images_of_equal_size_on_the_surface_of_their_variant():
+    """Each file of the manifest opens as an image; a pair has 1 size and the 2 surface colours."""
+    surface = {}
+    for variant in ('light', 'dark'):
+        with matplotlib.rc_context():
+            proteus_mpl.use(variant)
+            surface[variant] = [
+                round(255 * c) for c in to_rgb(matplotlib.rcParams['figure.facecolor'])
+            ]
+    assert sum(surface['light']) > 600 > 60 > sum(surface['dark'])
+    for fig in tool.load_manifest(tool.MANIFEST)['figure']:
+        sizes = []
+        for variant in fig['variants']:
+            with Image.open(_REPO_ROOT / f'{fig["asset"]}{tool.SUFFIX[variant]}.avif') as image:
+                sizes.append(image.size)
+                corner = image.convert('RGB').getpixel((2, 2))
+            assert corner == pytest.approx(surface[variant], abs=6), (fig['id'], variant)
+        assert sizes[0] == sizes[-1] and min(sizes[0]) > 500, fig['id']
 
 
 # --- style version ----------------------------------------------------------------
@@ -363,10 +382,76 @@ def test_maker_that_changes_a_run_folder_stops_the_tool(site, maker):
     """A new file and a rewritten file in a run folder both stop the tool before a write."""
     out = site.repo / 'out'
     manifest = _manifest(site.toml, [_entry(maker=f'tools/fake_maker.py:{maker}')])
-    with pytest.raises(tool.FigureError, match='fig_a: the maker changed a run folder'):
+    with pytest.raises(tool.FigureError, match='fig_a: a run folder changed during the draw'):
         tool.make_figures(manifest, site.runs, out)
     assert not out.exists()
     assert plt.get_fignums() == []
+
+
+def test_file_that_goes_away_during_the_walk_is_a_named_fault(site, monkeypatch):
+    """A path that is gone when the tool reads its state is a `FigureError`, not a traceback."""
+    monkeypatch.setattr(
+        Path, 'rglob', lambda self, pattern: iter([self / 'removed_by_another_process'])
+    )
+    with pytest.raises(tool.FigureError) as err:
+        tool.make_figures(_manifest(site.toml), site.runs, site.repo / 'out')
+    assert 'a run folder changed during the draw' in str(err.value)
+    assert 'removed_by_another_process is gone' in str(err.value)
+    assert not (site.repo / 'out').exists()
+
+
+def test_quality_of_the_manifest_reaches_the_encoder(site):
+    """A low `avif_quality` gives smaller files than a high one, for both variants."""
+    sizes = {}
+    for quality in (5, 95):
+        out = site.repo / f'out_{quality}'
+        tool.make_figures(_manifest(site.toml, avif_quality=quality), site.runs, out)
+        sizes[quality] = [(out / name).stat().st_size for name in _files(out)]
+    assert len(sizes[5]) == len(sizes[95]) == 2
+    assert all(low < 0.8 * high for low, high in zip(sizes[5], sizes[95]))
+
+
+def test_run_option_maps_a_manifest_name_to_a_folder_under_the_watch(site, tmp_path, capsys):
+    """`--run name=folder` draws from a folder of another name; that folder is read only too."""
+    elsewhere = tmp_path / 'elsewhere' / 'run_20260101_000000_abcd'
+    elsewhere.parent.mkdir()
+    site.run.rename(elsewhere)
+    record, out = site.repo / 'record.txt', site.repo / 'out'
+    _manifest(site.toml, [_entry(runs=['quick_start'], args={'record': str(record)})])
+    base = ['--manifest', str(site.toml), '--runs', str(site.runs), '--out', str(out)]
+    assert tool.main(base) == 1
+    assert 'quick_start does not exist' in capsys.readouterr().err
+    assert tool.main([*base, '--run', f'quick_start={elsewhere}']) == 0
+    assert len(_files(out)) == 2 and len(record.read_text().splitlines()) == 2
+    # A name that is not in the manifest and an entry without a folder are refused
+    for option in (f'quick={elsewhere}', 'quick_start', 'quick_start='):
+        assert tool.main([*base, '--run', option]) == 1
+        assert 'give NAME=FOLDER with a run name of the manifest' in capsys.readouterr().err
+    _manifest(
+        site.toml, [_entry(runs=['quick_start'], maker='tools/fake_maker.py:add_file_to_run')]
+    )
+    (elsewhere / 'plots').mkdir(exist_ok=True)
+    assert tool.main([*base, '--run', f'quick_start={elsewhere}']) == 1
+    assert 'a run folder changed during the draw' in capsys.readouterr().err
+
+
+def test_main_passes_the_output_root_and_the_chili_folder(site, tmp_path, capsys):
+    """`--out` and `--chili-repo` reach the maker: the files go under the root, the path into the argument."""
+    record, out, chili = site.repo / 'record.txt', tmp_path / 'root', tmp_path / 'chili-repo'
+    _manifest(site.toml, [_entry(args={'record': str(record), 'note': '{chili_repo}/data'})])
+    options = ['--manifest', str(site.toml), '--runs', str(site.runs)]
+    assert tool.main([*options, '--out', str(out)]) == 1
+    assert 'argument `note` needs --chili-repo' in capsys.readouterr().err
+    assert tool.main([*options, '--out', str(out), '--chili-repo', str(chili)]) == 0
+    assert [line.split()[1] for line in record.read_text().splitlines()] == [
+        f'{chili}/data'
+    ] * 2
+    assert _files(out) == [
+        'docs/assets/tutorials/fig_a.avif',
+        'docs/assets/tutorials/fig_a_dark.avif',
+    ]
+    assets = site.repo / 'docs' / 'assets' / 'tutorials'
+    assert (assets / 'fig_a.avif').read_bytes() == b'placeholder'
 
 
 @pytest.mark.parametrize(
@@ -589,8 +674,13 @@ def test_run_inputs_reads_the_resolved_config_and_the_helpfile(tmp_path):
     """The config of the run folder is read with PNG as plot format, and the helpfile by column."""
     run = tmp_path / 'run'
     run.mkdir()
-    (run / 'init_coupler.toml').write_bytes((_REPO_ROOT / 'input' / 'dummy.toml').read_bytes())
+    resolved = tomlkit.parse((_REPO_ROOT / 'input' / 'dummy.toml').read_text())
+    resolved['params']['out']['plot_fmt'] = 'pdf'
+    (run / 'init_coupler.toml').write_text(tomlkit.dumps(resolved))
     (run / 'runtime_helpfile.csv').write_text('Time\tT_surf\n0.0\t3000.0\n10.5\t2900.0\n')
+    from proteus.config import read_config_object
+
+    assert read_config_object(str(run / 'init_coupler.toml')).params.out.plot_fmt == 'pdf'
     config, hf_all = tool._run_inputs(run)
     assert config.params.out.plot_fmt == 'png'
     assert list(hf_all.columns) == ['Time', 'T_surf']

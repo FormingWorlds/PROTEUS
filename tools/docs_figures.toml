@@ -9,15 +9,16 @@ pages = "docs/Tutorials"
 # Pages whose figures do not come from this tool; `--check` names and skips them.
 exempt_pages = ["chili_intercomparison.md"]
 
-# The quick start run (input/dummy.toml); PROTEUS names its folder after the start time.
+# Run of input/dummy.toml; PROTEUS names its folder after the start time: give it with --run.
 [[figure]]
 id = "dummy_global_lin"
 page = "quick_start_dummy.md"
 asset = "docs/assets/tutorials/dummy_global_lin"
-runs = ["run_20261012_175211_ae08"]
+runs = ["quick_start"]
 maker = "proteus:global"
 args = { logt = false, tmin = 1e3 }
 
+# Run of input/tutorials/tutorial_earth.toml.
 [[figure]]
 id = "earth_global_log"
 page = "earth_analogue.md"
@@ -26,6 +27,7 @@ runs = ["tutorial_earth"]
 maker = "proteus:global"
 args = { logt = true, tmin = 1e3 }
 
+# Grid of input/tutorials/tutorial_grid.toml (`proteus grid`).
 [[figure]]
 id = "grid_tracks"
 page = "parameter_grid.md"
@@ -33,6 +35,7 @@ asset = "docs/assets/tutorials/grid/grid_tracks"
 runs = ["tutorial_grid"]
 maker = "tools/plot_grid_tutorial.py:make_tracks"
 
+# Grid of input/tutorials/tutorial_grid.toml (`proteus grid`).
 [[figure]]
 id = "grid_outputs"
 page = "parameter_grid.md"
@@ -40,23 +43,26 @@ asset = "docs/assets/tutorials/grid/grid_outputs"
 runs = ["tutorial_grid"]
 maker = "tools/plot_grid_tutorial.py:make_outputs"
 
+# Run of input/tutorials/tutorial_earth_moon.toml, which ends at 8e5 yr.
 [[figure]]
 id = "orbit_tides_orbit"
 page = "orbit_tides.md"
 asset = "docs/assets/orbit/orbit_tides_orbit"
-runs = ["tutorial_earth_moon_08myr"]
+runs = ["tutorial_earth_moon"]
 maker = "proteus:orbit"
 
+# Run of input/tutorials/tutorial_earth_moon.toml, which ends at 8e5 yr.
 [[figure]]
 id = "orbit_tides_fluxes_global"
 page = "orbit_tides.md"
 asset = "docs/assets/orbit/orbit_tides_fluxes_global"
-runs = ["tutorial_earth_moon_08myr"]
+runs = ["tutorial_earth_moon"]
 maker = "proteus:fluxes_global"
 
+# Run of input/tutorials/tutorial_earth_moon.toml, which ends at 8e5 yr.
 [[figure]]
 id = "orbit_tides_lovenumber"
 page = "orbit_tides.md"
 asset = "docs/assets/orbit/orbit_tides_lovenumber"
-runs = ["tutorial_earth_moon_08myr"]
+runs = ["tutorial_earth_moon"]
 maker = "proteus:lovenumber"
