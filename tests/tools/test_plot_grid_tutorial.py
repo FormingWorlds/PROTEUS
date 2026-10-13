@@ -9,6 +9,7 @@ drawn on the Agg backend and their axes are read back; no image is compared.
 from __future__ import annotations
 
 import importlib.util
+import sys
 from pathlib import Path
 
 import matplotlib
@@ -17,8 +18,9 @@ matplotlib.use('Agg')
 
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
+import proteus_mpl  # noqa: E402
 import pytest  # noqa: E402
-from matplotlib.colors import to_rgba  # noqa: E402
+from matplotlib.colors import to_rgb, to_rgba  # noqa: E402
 from matplotlib.markers import MarkerStyle  # noqa: E402
 from PIL import Image  # noqa: E402
 
@@ -28,6 +30,12 @@ _script = Path(__file__).resolve().parents[2] / 'tools' / 'plot_grid_tutorial.py
 _spec = importlib.util.spec_from_file_location('plot_grid_tutorial_under_test', _script)
 tool = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(tool)
+
+
+def _cycle() -> list[str]:
+    """Series colours of the active matplotlib style."""
+    return plt.rcParams['axes.prop_cycle'].by_key()['color']
+
 
 GRID_CASES = [
     (0, 0.5, 0.03, 1000.0, 14),
@@ -150,7 +158,8 @@ def test_tracks_draw_the_threshold_of_the_config(grid_dir, tmp_path):
     """The dotted line sits at the `phi_crit` of the resolved configs, and its label names it."""
     out = tmp_path / 'tracks.png'
     cases = tool.load_cases(grid_dir)
-    fig = tool.plot_tracks(cases, out)
+    with plt.rc_context({'savefig.dpi': 123}):
+        fig = tool.plot_tracks(cases, out)
     ax = fig.axes[0]
     flat = [ln for ln in ax.lines if ln.get_linestyle() == ':']
     assert len(flat) == 1
@@ -162,7 +171,7 @@ def test_tracks_draw_the_threshold_of_the_config(grid_dir, tmp_path):
     # 5 tracks, 3 colours (one per distance), and the legend names all 3 distances
     tracks = [ln for ln in ax.lines if ln.get_linestyle() == '-']
     assert len(tracks) == 5 and len({ln.get_color() for ln in tracks}) == 3
-    dist_colors = {0.03: tool.WONG[0], 0.1225: tool.WONG[1], 0.5: tool.WONG[2]}
+    dist_colors = dict(zip([0.03, 0.1225, 0.5], _cycle()))
     for c, track in zip(cases, tracks):
         assert list(track.get_xdata()) == pytest.approx(list(c['hf']['Time']))
         assert list(track.get_ydata()) == pytest.approx(list(c['hf']['Phi_global']))
@@ -172,10 +181,11 @@ def test_tracks_draw_the_threshold_of_the_config(grid_dir, tmp_path):
         '0.122 AU',
         '0.5 AU',
     ]
-    assert [ln.get_color() for ln in ax.get_legend().get_lines()] == tool.WONG[:3]
+    assert [ln.get_color() for ln in ax.get_legend().get_lines()] == _cycle()[:3]
+    # The resolution is the one of the active style, not a value of the tool
     with Image.open(out) as img:
         dpi = img.info['dpi'][0]
-    assert pytest.approx(200, abs=1) == dpi
+    assert pytest.approx(123, abs=1) == dpi
     assert out.stat().st_size > 0
     plt.close(fig)
 
@@ -194,11 +204,17 @@ def test_outputs_give_pressure_in_bar_against_the_budget(grid_dir, tmp_path):
     """Panel (d) is in bar on a log axis and holds the final `P_surf` of each case."""
     out = tmp_path / 'outputs.png'
     cases = tool.load_cases(grid_dir)
-    fig = tool.plot_outputs(cases, out)
+    with plt.rc_context({'savefig.dpi': 123}):
+        fig = tool.plot_outputs(cases, out)
     ax_d = fig.axes[3]
     assert ax_d.get_yscale() == 'log'
-    # All 3 distance panels use log scale on the x axis
+    # All 3 distance panels use a log x axis with one labelled tick per swept distance
     assert all(fig.axes[i].get_xscale() == 'log' for i in (0, 1, 2))
+    for i in (0, 1, 2):
+        axis = fig.axes[i].xaxis
+        assert list(axis.get_majorticklocs()) == pytest.approx([0.03, 0.1225, 0.5])
+        assert [t.get_text() for t in axis.get_majorticklabels()] == ['0.03', '0.122', '0.5']
+        assert len(axis.get_minorticklocs()) == 0
     expected = [
         (
             r'(a) Final melt fraction $\Phi_{\rm global}$',
@@ -234,14 +250,14 @@ def test_outputs_give_pressure_in_bar_against_the_budget(grid_dir, tmp_path):
     # Assert point colour of each case against expected mass colour
     for ax in fig.axes:
         for c, coll in zip(cases, ax.collections):
-            expected_hex = tool.WONG[0] if c['mass'] == pytest.approx(0.5) else tool.WONG[1]
+            expected_hex = _cycle()[0] if c['mass'] == pytest.approx(0.5) else _cycle()[1]
             if c['status'] == tool.STATUS_SOLIDIFIED:
                 assert np.allclose(coll.get_facecolors()[0], to_rgba(expected_hex))
             else:
                 assert np.allclose(coll.get_edgecolors()[0], to_rgba(expected_hex))
     with Image.open(out) as img:
         dpi = img.info['dpi'][0]
-    assert pytest.approx(200, abs=1) == dpi
+    assert pytest.approx(123, abs=1) == dpi
     assert out.stat().st_size > 0
     plt.close(fig)
 
@@ -271,7 +287,7 @@ def test_outputs_mark_the_stop_reason(grid_dir, tmp_path):
         r'0.5 $M_\oplus$',
         r'2 $M_\oplus$',
     ]
-    assert [ln.get_color() for ln in mass_legend.get_lines()] == tool.WONG[:2]
+    assert [ln.get_color() for ln in mass_legend.get_lines()] == _cycle()[:2]
     plt.close(fig)
 
 
@@ -308,3 +324,80 @@ def test_main_uses_default_png_format_and_output_folder(grid_dir, tmp_path, monk
         'grid_tracks.png',
     ]
     assert plt.get_fignums() == []
+
+
+@pytest.mark.parametrize('variant', ['light', 'dark'])
+def test_figures_take_series_and_neutral_colours_from_the_style(grid_dir, tmp_path, variant):
+    """Under each proteus-mpl style the series follow its cycle and no neutral is a fixed colour."""
+    cases = tool.load_cases(grid_dir)
+    cycle = proteus_mpl.CYCLE if variant == 'light' else proteus_mpl.CYCLE_DARK
+    with plt.rc_context():
+        proteus_mpl.use(variant)
+        text, face = to_rgb(plt.rcParams['text.color']), to_rgb(plt.rcParams['axes.facecolor'])
+        tracks = tool.plot_tracks(cases, tmp_path / 'tracks.png')
+        outputs = tool.plot_outputs(cases, tmp_path / 'outputs.png')
+    ax = tracks.axes[0]
+    solid = [ln for ln in ax.lines if ln.get_linestyle() == '-']
+    assert {to_rgb(ln.get_color()) for ln in solid} == {to_rgb(c) for c in cycle[:3]}
+    assert to_rgb(tracks.get_facecolor()) == face
+    # The threshold line and its label lie between the text and the surface colour
+    threshold = to_rgb([ln for ln in ax.lines if ln.get_linestyle() == ':'][0].get_color())
+    label = to_rgb(ax.texts[0].get_color())
+    for neutral in (threshold, label):
+        assert neutral not in (text, face, to_rgb('grey'), to_rgb('dimgrey'))
+        assert all(min(t, f) <= n <= max(t, f) for n, t, f in zip(neutral, text, face))
+    # Solidified markers: face in the series colour, edge in the text colour of the style
+    solidified = [
+        coll
+        for c, coll in zip(cases, outputs.axes[2].collections)
+        if c['status'] == tool.STATUS_SOLIDIFIED
+    ]
+    assert len(solidified) == 3
+    for coll in solidified:
+        assert to_rgb(coll.get_edgecolors()[0]) == pytest.approx(text)
+        assert to_rgb(coll.get_facecolors()[0]) in [to_rgb(c) for c in cycle[:2]]
+    handles = outputs.axes[1].get_legend().legend_handles
+    assert to_rgb(handles[0].get_markeredgecolor()) == pytest.approx(text)
+    if variant == 'dark':
+        assert sum(text) > 2.0 and text != to_rgb('black')
+    plt.close('all')
+
+
+def test_makers_draw_from_the_grid_folder_of_the_manifest_entry(grid_dir, tmp_path):
+    """The 2 makers read the cases of `run_dirs[0]` and write the file at the given path."""
+    tracks = tool.make_tracks([grid_dir], tmp_path / 'a.png')
+    outputs = tool.make_outputs([grid_dir], tmp_path / 'b.png')
+    assert len([ln for ln in tracks.axes[0].lines if ln.get_linestyle() == '-']) == 5
+    assert [len(ax.collections) for ax in outputs.axes] == [5, 5, 5, 5]
+    assert all((tmp_path / n).stat().st_size > 0 for n in ('a.png', 'b.png'))
+    with pytest.raises(FileNotFoundError, match='No case_'):
+        tool.make_tracks([tmp_path / 'empty'], tmp_path / 'c.png')
+    assert not (tmp_path / 'c.png').exists()
+    plt.close('all')
+
+
+def test_main_style_option_draws_on_the_dark_surface_and_restores_the_style(grid_dir, tmp_path):
+    """`--style dark` gives the dark surface at the resolution of the style, for this call only."""
+    before = dict(plt.rcParams)
+    tool.main([str(grid_dir), '--output', str(tmp_path), '--style', 'dark'])
+    with plt.rc_context():
+        proteus_mpl.use('dark')
+        surface = [round(255 * c) for c in to_rgb(plt.rcParams['figure.facecolor'])]
+        style_dpi = plt.rcParams['savefig.dpi']
+    with Image.open(tmp_path / 'grid_tracks.png') as img:
+        assert list(img.convert('RGB').getpixel((2, 2))) == surface
+        assert img.info['dpi'][0] == pytest.approx(style_dpi, abs=1)
+    assert sum(surface) < 60 and style_dpi != 200
+    assert dict(plt.rcParams) == before
+
+
+def test_main_style_option_without_the_package_is_a_usage_error(
+    grid_dir, tmp_path, monkeypatch, capsys
+):
+    """Without proteus-mpl, `--style` stops with a message and writes no figure."""
+    monkeypatch.setitem(sys.modules, 'proteus_mpl', None)
+    with pytest.raises(SystemExit) as err:
+        tool.main([str(grid_dir), '--output', str(tmp_path / 'out'), '--style', 'light'])
+    assert err.value.code == 2
+    assert '--style needs the proteus-mpl package' in capsys.readouterr().err
+    assert list((tmp_path / 'out').iterdir()) == []

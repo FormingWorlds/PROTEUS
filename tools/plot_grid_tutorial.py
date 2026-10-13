@@ -11,6 +11,10 @@ Reads the resolved config (`init_coupler.toml`), the `status` file and
     grid_outputs  - final melt fraction, final surface temperature and stop time against
                     orbital distance, and final surface pressure against the hydrogen
                     budget, coloured by planet mass
+
+The figures follow the active matplotlib style: series colours from its colour cycle,
+neutral colours from its text and surface colours. `--style light` or `--style dark`
+activates the proteus-mpl style of the documentation figures.
 """
 
 from __future__ import annotations
@@ -24,8 +28,7 @@ import pandas as pd
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 
-# Wong colour-blind palette, without black
-WONG = ['#E69F00', '#56B4E9', '#009E73', '#D55E00', '#0072B2', '#CC79A7', '#F0E442']
+from proteus.utils.plot import FADE_DARK_GREY, FADE_MID_GREY, style_neutral
 
 STATUS_SOLIDIFIED = 10
 STOP_LABELS = {STATUS_SOLIDIFIED: 'solidified', 14: 'energy balance'}
@@ -84,8 +87,9 @@ def load_cases(grid_dir: Path) -> list[dict]:
 
 
 def _colours(values) -> dict:
-    """Map each distinct value, in rising order, to a colour of the palette."""
-    return {v: WONG[i % len(WONG)] for i, v in enumerate(sorted(set(values)))}
+    """Map each distinct value, in rising order, to a colour of the active style cycle."""
+    cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
+    return {v: cycle[i % len(cycle)] for i, v in enumerate(sorted(set(values)))}
 
 
 def plot_tracks(cases: list[dict], out_path: Path) -> Figure:
@@ -110,15 +114,15 @@ def plot_tracks(cases: list[dict], out_path: Path) -> Figure:
 
     # The threshold of the solidification stop, as the resolved configs give it
     for phi_crit in sorted({c['phi_crit'] for c in cases} - {None}):
-        ax.axhline(phi_crit, color='grey', ls=':', lw=1.2)
+        ax.axhline(phi_crit, color=style_neutral(FADE_MID_GREY), ls=':', lw=1.2)
         ax.annotate(
             rf'solidification ($\Phi$ = {phi_crit:g})',
             xy=(0.02, phi_crit),
             xycoords=('axes fraction', 'data'),
             xytext=(0, 4),
             textcoords='offset points',
-            color='dimgrey',
-            fontsize=9,
+            color=style_neutral(FADE_DARK_GREY),
+            fontsize='small',
         )
 
     ax.set_xscale('log')
@@ -130,7 +134,7 @@ def plot_tracks(cases: list[dict], out_path: Path) -> Figure:
     ]
     ax.legend(handles=handles, title='Orbital distance', frameon=False, loc='center left')
     fig.tight_layout()
-    fig.savefig(out_path, dpi=200)
+    fig.savefig(out_path)
     return fig
 
 
@@ -153,6 +157,8 @@ def plot_outputs(cases: list[dict], out_path: Path) -> Figure:
         The saved figure.
     """
     colours = _colours(c['mass'] for c in cases)
+    ink, grey = style_neutral(), style_neutral(FADE_MID_GREY)
+    distances = sorted({c['distance'] for c in cases})
     fig, axes = plt.subplots(2, 2, figsize=(10, 8))
     panels = [
         (axes[0, 0], 'distance', 'Phi_global', r'(a) Final melt fraction $\Phi_{\rm global}$'),
@@ -163,16 +169,18 @@ def plot_outputs(cases: list[dict], out_path: Path) -> Figure:
     for c in cases:
         col = colours[c['mass']]
         if c['status'] == STATUS_SOLIDIFIED:
-            style = {'marker': 'o', 'facecolor': col, 'edgecolor': 'black', 'linewidth': 0.8}
+            style = {'marker': 'o', 'facecolor': col, 'edgecolor': ink, 'linewidth': 0.8}
         else:
             style = {'marker': 's', 'facecolor': 'none', 'edgecolor': col, 'linewidth': 1.5}
         for ax, xkey, column, _ in panels:
             ax.scatter(c[xkey], c['hf'][column].iloc[-1], s=50, **style)
 
     for ax, xkey, _, title in panels:
-        ax.set_title(title, loc='left', fontsize=10)
+        ax.set_title(title, loc='left')
         if xkey == 'distance':
             ax.set_xscale('log')
+            ax.set_xticks(distances, [f'{d:.3g}' for d in distances])
+            ax.minorticks_off()
             ax.set_xlabel('Orbital distance [AU]')
         else:
             ax.set_xlabel(f'H budget [{cases[0]["H_mode"]}]')
@@ -191,8 +199,8 @@ def plot_outputs(cases: list[dict], out_path: Path) -> Figure:
             [],
             ls='none',
             marker='o' if code == STATUS_SOLIDIFIED else 's',
-            markerfacecolor='grey' if code == STATUS_SOLIDIFIED else 'none',
-            markeredgecolor='black' if code == STATUS_SOLIDIFIED else 'grey',
+            markerfacecolor=grey if code == STATUS_SOLIDIFIED else 'none',
+            markeredgecolor=ink if code == STATUS_SOLIDIFIED else grey,
             label=STOP_LABELS.get(code, f'status {code}'),
         )
         for code in sorted({c['status'] for c in cases})
@@ -201,8 +209,18 @@ def plot_outputs(cases: list[dict], out_path: Path) -> Figure:
         handles=stop_handles, title='Stop reason', frameon=False, loc='upper right'
     )
     fig.tight_layout()
-    fig.savefig(out_path, dpi=200)
+    fig.savefig(out_path)
     return fig
+
+
+def make_tracks(run_dirs: list[Path], out_path: Path) -> Figure:
+    """Draw `grid_tracks` for `tools/make_docs_figures.py` from the grid folder `run_dirs[0]`."""
+    return plot_tracks(load_cases(run_dirs[0]), out_path)
+
+
+def make_outputs(run_dirs: list[Path], out_path: Path) -> Figure:
+    """Draw `grid_outputs` for `tools/make_docs_figures.py` from the grid folder `run_dirs[0]`."""
+    return plot_outputs(load_cases(run_dirs[0]), out_path)
 
 
 def main(argv: list[str] | None = None):
@@ -211,12 +229,20 @@ def main(argv: list[str] | None = None):
     parser.add_argument('grid_dir', type=Path, help='Output folder of `proteus grid`')
     parser.add_argument('--output', type=Path, default=Path('output_files/grid_plots'))
     parser.add_argument('--format', default='png', help='Figure format (png, pdf, ...)')
+    parser.add_argument('--style', choices=['light', 'dark'], help='proteus-mpl style to use')
     args = parser.parse_args(argv)
 
     cases = load_cases(args.grid_dir)
     args.output.mkdir(parents=True, exist_ok=True)
-    plot_tracks(cases, args.output / f'grid_tracks.{args.format}')
-    plot_outputs(cases, args.output / f'grid_outputs.{args.format}')
+    with plt.rc_context({'savefig.dpi': 200}):
+        if args.style:
+            try:
+                import proteus_mpl
+            except ImportError:
+                parser.error('--style needs the proteus-mpl package (pip install proteus-mpl)')
+            proteus_mpl.use(args.style)
+        plot_tracks(cases, args.output / f'grid_tracks.{args.format}')
+        plot_outputs(cases, args.output / f'grid_outputs.{args.format}')
     plt.close('all')
     print(f'Wrote grid_tracks.{args.format} and grid_outputs.{args.format} to {args.output}')
 
