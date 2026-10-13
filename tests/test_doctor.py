@@ -36,13 +36,14 @@ from proteus.doctor import (
     _MODULE_FOLDERS,
     _PAIRED_MODULES,
     _PYTHON_MODULE_REPOS,
+    _STANDARD_DISTRIBUTIONS,
     _SUPPORT_EMAIL,
     ENVIRONMENT_VARS,
     FAIL,
     GIT_MODULES,
-    OPTIONAL_GIT_MODULES,
     PASS,
     PYTHON_PACKAGES,
+    STANDARD_GIT_MODULES,
     STANDARD_MODULE_PACKAGES,
     WARN,
     CheckResult,
@@ -74,6 +75,7 @@ from proteus.doctor import (
     check_julia,
     check_python_package,
     doctor_entry,
+    is_standard_module_installed,
     run_all_checks,
     run_doctor,
     run_update,
@@ -83,24 +85,26 @@ from proteus.doctor import (
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 
-@pytest.mark.unit
-def test_python_packages_excludes_optional_backends():
-    """`proteus doctor` must check only mandatory packages.
+@pytest.fixture
+def mock_own_clone():
+    """Mock _is_own_clone to True for tests with synthetic checkouts."""
+    with patch('proteus.doctor._is_own_clone', return_value=True):
+        yield
 
-    The optional GPL backends (fwl-vulcan, atmodeller) are not pulled by a
-    default install, so listing them in PYTHON_PACKAGES would make doctor
-    report a missing package and update-all try to install software a standard
-    run does not need. The mandatory framework packages must stay so their
-    versions are still verified.
+
+@pytest.mark.unit
+def test_python_packages_excludes_standard_module_packages():
+    """`proteus doctor` must list standard package extras in STANDARD_MODULE_PACKAGES.
+
+    The packages in STANDARD_MODULE_PACKAGES (fwl-vulcan, atmodeller, fwl-morrigan)
+    are package extras with setup scripts, so listing them in PYTHON_PACKAGES
+    would make doctor report an uninstalled failure instead of a warning with
+    their setup command.
     """
-    optional = {'fwl-vulcan', 'atmodeller'}
-    assert optional.isdisjoint(PYTHON_PACKAGES), (
-        f'doctor must not check optional backends as mandatory: '
-        f'{optional & set(PYTHON_PACKAGES)}'
+    assert set(STANDARD_MODULE_PACKAGES).isdisjoint(PYTHON_PACKAGES), (
+        f'doctor must not check standard module extras as mandatory: '
+        f'{set(STANDARD_MODULE_PACKAGES) & set(PYTHON_PACKAGES)}'
     )
-    # Discrimination: an empty list would also pass the disjointness check
-    # while silently disabling all version verification; pin the mandatory
-    # framework packages that must remain.
     mandatory = {'fwl-proteus', 'fwl-aragog', 'fwl-calliope', 'fwl-zalmoxis'}
     assert mandatory <= set(PYTHON_PACKAGES), (
         f'doctor lost mandatory package checks: {mandatory - set(PYTHON_PACKAGES)}'
@@ -108,21 +112,25 @@ def test_python_packages_excludes_optional_backends():
 
 
 @pytest.mark.unit
-def test_git_modules_excludes_optional_obliqua():
+def test_git_modules_excludes_standard_git_modules():
     """`proteus doctor` must not check Obliqua as a mandatory git module.
 
-    Obliqua is an optional tidal-heating backend (orbit.module defaults to
-    'none'); listing it in GIT_MODULES would make doctor report a missing
-    checkout for every user who has never touched tidal heating. It belongs
-    in OPTIONAL_GIT_MODULES instead, which check_git_module skips entirely
-    when the checkout is absent (see check_git_module's `required` param).
+    Obliqua is a standard module with a setup script; listing it in GIT_MODULES
+    would make doctor report a failure instead of a warning when absent. It
+    belongs in STANDARD_GIT_MODULES instead.
     """
     assert 'Obliqua' not in GIT_MODULES
-    assert 'Obliqua' in OPTIONAL_GIT_MODULES
-    # Discrimination: AGNI/SOCRATES must remain mandatory, not accidentally
-    # migrated to the optional list alongside Obliqua.
+    assert 'Obliqua' in STANDARD_GIT_MODULES
     assert {'AGNI', 'SOCRATES'} <= set(GIT_MODULES)
-    assert {'AGNI', 'SOCRATES'}.isdisjoint(OPTIONAL_GIT_MODULES)
+    assert {'AGNI', 'SOCRATES'}.isdisjoint(STANDARD_GIT_MODULES)
+
+
+@pytest.mark.unit
+def test_standard_distributions_matches_standard_module_packages():
+    """_STANDARD_DISTRIBUTIONS maps the 3 standard modules to their distribution packages."""
+    assert set(_STANDARD_DISTRIBUTIONS.values()) == {'fwl-morrigan', 'fwl-vulcan', 'atmodeller'}
+    assert set(_STANDARD_DISTRIBUTIONS.values()) == set(STANDARD_MODULE_PACKAGES)
+    assert is_standard_module_installed('NoSuchModule') is False
 
 
 @pytest.mark.unit
@@ -1640,7 +1648,9 @@ class TestCheckGitModulePinMismatch:
         """Pinned refs distinct from the head returned by the patched helper."""
         return {'socrates': {'ref': 'a' * 40}, 'agni': {'ref': 'b' * 40}}
 
-    def test_socrates_mismatch_fix_also_rebuilds_agni(self, tmp_path, monkeypatch):
+    def test_socrates_mismatch_fix_also_rebuilds_agni(
+        self, tmp_path, monkeypatch, mock_own_clone
+    ):
         """A SOCRATES checkout off its pin must suggest a fix that rebuilds AGNI.
 
         Rebuilding SOCRATES re-clones its tree and deletes the Julia wrapper
@@ -1665,7 +1675,7 @@ class TestCheckGitModulePinMismatch:
         # no AGNI step; that command has no shell chain.
         assert '&&' in r.fix_cmd
 
-    def test_agni_mismatch_fix_does_not_chain_socrates(self, tmp_path):
+    def test_agni_mismatch_fix_does_not_chain_socrates(self, tmp_path, mock_own_clone):
         """An AGNI checkout off its pin rebuilds only AGNI.
 
         AGNI's own rebuild regenerates the wrappers from the current SOCRATES
@@ -1685,7 +1695,7 @@ class TestCheckGitModulePinMismatch:
         assert 'get_socrates.sh' not in r.fix_cmd
         assert '&&' not in r.fix_cmd
 
-    def test_update_runs_the_chained_socrates_fix(self, tmp_path, monkeypatch):
+    def test_update_runs_the_chained_socrates_fix(self, tmp_path, monkeypatch, mock_own_clone):
         """`proteus update` actually executes the chained SOCRATES fix.
 
         Constructing the right string is useless unless `proteus update` runs
@@ -1766,7 +1776,7 @@ class TestCheckGitModuleInstallState:
         assert 'get_socrates.sh' not in r.fix_cmd
         assert '&&' not in r.fix_cmd
 
-    def test_socrates_on_pin_passes_with_no_fix(self, tmp_path, monkeypatch):
+    def test_socrates_on_pin_passes_with_no_fix(self, tmp_path, monkeypatch, mock_own_clone):
         """A SOCRATES checkout exactly on its pin passes and suggests no fix.
 
         When HEAD matches the pinned ref the tree is already correct, so the
@@ -1792,7 +1802,7 @@ class TestCheckGitModuleInstallState:
         # the on-pin path must not.
         assert 'differs' not in r.message
 
-    def test_obliqua_on_pin_reports_resolved_version(self, tmp_path):
+    def test_obliqua_on_pin_reports_resolved_version(self, tmp_path, mock_own_clone):
         """An on-pin Obliqua checkout reports its real version, not a placeholder.
 
         check_git_module dispatches to a per-module version getter; Obliqua's
@@ -1814,12 +1824,14 @@ class TestCheckGitModuleInstallState:
         # getter wired up must not appear once the getter is actually called.
         assert r.message != '?'
 
-    def test_unrecognized_module_name_falls_back_to_placeholder_version(self, tmp_path):
+    def test_unrecognized_module_name_falls_back_to_placeholder_version(
+        self, tmp_path, mock_own_clone
+    ):
         """A module name with no dedicated version getter degrades to '?'.
 
         The name dispatch (AGNI/SOCRATES/Obliqua) is exhaustive over today's
         git-pinned modules, but the trailing ``else`` exists so a future
-        module added to GIT_MODULES/OPTIONAL_GIT_MODULES without a matching
+        module added to GIT_MODULES/STANDARD_GIT_MODULES without a matching
         version-getter branch fails soft with a placeholder instead of
         raising or reporting a fabricated version.
         """
@@ -1842,7 +1854,9 @@ class TestCheckGitModuleInstallState:
             obliqua_r = check_git_module('Obliqua', {'obliqua': str(tmp_path)}, required=False)
         assert obliqua_r.message != '?'
 
-    def test_socrates_version_unreadable_still_classifies(self, tmp_path, monkeypatch):
+    def test_socrates_version_unreadable_still_classifies(
+        self, tmp_path, monkeypatch, mock_own_clone
+    ):
         """An unreadable SOCRATES version degrades to '?' instead of crashing.
 
         Reading the version can fail on a half-built tree, so the lookup is
@@ -1896,7 +1910,7 @@ class TestCheckGitModuleOptional:
         assert r.status == FAIL
         assert r.message == 'not installed'
 
-    def test_present_optional_module_on_pin_still_reports_pass(self, tmp_path):
+    def test_present_optional_module_on_pin_still_reports_pass(self, tmp_path, mock_own_clone):
         """Once actually installed, an optional module IS checked and
         pin-compared normally (PASS on a matching HEAD) -- ``required``
         only controls the missing-checkout case, not whether an existing
@@ -1913,7 +1927,7 @@ class TestCheckGitModuleOptional:
         assert r.status == PASS
         assert r.fix_cmd is None
 
-    def test_present_optional_module_off_pin_still_warns(self, tmp_path):
+    def test_present_optional_module_off_pin_still_warns(self, tmp_path, mock_own_clone):
         """An installed-but-off-pin optional module gets advice and auto_fixable=False."""
         pins = {'obliqua': {'ref': 'a' * 40}}
         root = tmp_path / 'repo'
@@ -1944,7 +1958,9 @@ class TestCheckGitModuleOptional:
             agni_r = check_git_module('AGNI', {'agni': str(tmp_path)}, required=True)
         assert agni_r.auto_fixable is True
 
-    def test_obliqua_missing_manifest_warns_julia_not_instantiated(self, tmp_path):
+    def test_obliqua_missing_manifest_warns_julia_not_instantiated(
+        self, tmp_path, mock_own_clone
+    ):
         """An on-pin Obliqua folder without Manifest.toml warns with automatic fix."""
         pins = {'obliqua': {'ref': 'a' * 40}}
         (tmp_path / 'Project.toml').touch()
@@ -1959,7 +1975,7 @@ class TestCheckGitModuleOptional:
         assert r.message == '0.1.0 (aaaaaaaa): Julia environment not instantiated'
         assert r.fix_cmd == 'bash tools/get_obliqua.sh'
 
-    def test_obliqua_missing_manifest_without_git_head(self, tmp_path):
+    def test_obliqua_missing_manifest_without_git_head(self, tmp_path, mock_own_clone):
         """When git returns no head, the message omits the head commit."""
         pins = {'obliqua': {'ref': 'a' * 40}}
         (tmp_path / 'Project.toml').touch()
@@ -1974,7 +1990,9 @@ class TestCheckGitModuleOptional:
         assert r.message == '0.1.0: Julia environment not instantiated'
         assert r.fix_cmd == 'bash tools/get_obliqua.sh'
 
-    def test_obliqua_off_pin_takes_precedence_over_missing_manifest(self, tmp_path):
+    def test_obliqua_off_pin_takes_precedence_over_missing_manifest(
+        self, tmp_path, mock_own_clone
+    ):
         """Off-pin warning takes precedence over missing Manifest.toml."""
         pins = {'obliqua': {'ref': 'a' * 40}}
         (tmp_path / 'Project.toml').touch()
@@ -2003,6 +2021,53 @@ class TestCheckGitModuleOptional:
         assert r.auto_fixable is True
         assert 'differs from pin' not in r.message
 
+    def test_obliqua_in_outer_repo_without_own_clone_reports_mark(self, tmp_path):
+        """A non-clone Obliqua directory in a git repo does not read the outer repo commit."""
+        _init_test_repo(tmp_path)
+        obliqua_dir = tmp_path / 'Obliqua'
+        obliqua_dir.mkdir()
+        (obliqua_dir / 'Project.toml').write_text('version = "0.1.0"\n')
+        (obliqua_dir / 'Manifest.toml').touch()
+        outer_head = _git_head(str(tmp_path))
+        pins = {'obliqua': {'ref': '0' * 40}}
+        with patch('proteus.doctor._module_pins', return_value=pins):
+            r = check_git_module('Obliqua', {'obliqua': str(obliqua_dir)}, required=False)
+        assert r.status == PASS
+        assert '[not a git clone of its own]' in r.message
+        assert outer_head[:8] not in r.message
+        assert 'differs from pin' not in r.message
+        assert r.fix_cmd is None
+
+    def test_obliqua_in_outer_repo_missing_manifest_carries_mark(self, tmp_path):
+        """A non-clone Obliqua directory missing Manifest.toml warns with the mark."""
+        _init_test_repo(tmp_path)
+        obliqua_dir = tmp_path / 'Obliqua'
+        obliqua_dir.mkdir()
+        (obliqua_dir / 'Project.toml').write_text('version = "0.1.0"\n')
+        pins = {'obliqua': {'ref': '0' * 40}}
+        with patch('proteus.doctor._module_pins', return_value=pins):
+            r = check_git_module('Obliqua', {'obliqua': str(obliqua_dir)}, required=False)
+        assert r.status == WARN
+        assert 'Julia environment not instantiated' in r.message
+        assert '[not a git clone of its own]' in r.message
+
+    def test_obliqua_own_clone_off_pin_gives_forced_advice(self, tmp_path):
+        """An Obliqua directory that is its own clone warns and advises --force when off pin."""
+        _init_test_repo(tmp_path)
+        obliqua_dir = tmp_path / 'Obliqua'
+        _init_test_repo(obliqua_dir)
+        (obliqua_dir / 'Project.toml').write_text('version = "0.1.0"\n')
+        (obliqua_dir / 'Manifest.toml').touch()
+        obliqua_head = _git_head(str(obliqua_dir))
+        pins = {'obliqua': {'ref': '0' * 40}}
+        with patch('proteus.doctor._module_pins', return_value=pins):
+            r = check_git_module('Obliqua', {'obliqua': str(obliqua_dir)}, required=False)
+        assert r.status == WARN
+        assert 'differs from pin' in r.message
+        assert obliqua_head[:8] in r.message
+        assert r.fix_cmd is not None and '--force' in r.fix_cmd
+        assert r.auto_fixable is False
+
     def test_empty_required_module_folder_in_git_repo_does_not_count_as_not_installed(
         self, tmp_path
     ):
@@ -2017,10 +2082,10 @@ class TestCheckGitModuleOptional:
         ):
             r = check_git_module('AGNI', {'agni': str(agni_dir)}, required=True)
         assert r.message != 'not installed'
-        assert 'differs from pin' in r.message
+        assert '[not a git clone of its own]' in r.message
 
     def test_run_all_checks_warns_obliqua_when_not_installed(self, tmp_path):
-        """End to end: with no Obliqua checkout, run_all_checks returns WARN."""
+        """With no Obliqua checkout, run_all_checks returns WARN."""
         with (
             patch('proteus.doctor._dependency_specs', return_value={}),
             patch('proteus.doctor._module_pins', return_value={}),
@@ -2036,14 +2101,14 @@ class TestCheckGitModuleOptional:
         assert obliqua_results[0].message == 'not installed'
         assert 'get_obliqua.sh' in obliqua_results[0].fix_cmd
         # Discrimination: AGNI (mandatory, also missing here) must still be
-        # reported as a real FAIL -- proving the loop that skips Obliqua
+        # reported as a real FAIL -- proving the standard git module checks
         # did not also silently swallow the mandatory git-module checks.
         agni_results = [r for r in results if r.name == 'AGNI']
         assert len(agni_results) == 1
         assert agni_results[0].status == FAIL
 
-    def test_run_all_checks_includes_obliqua_when_installed(self, tmp_path):
-        """End to end: with a real Obliqua checkout present, run_all_checks
+    def test_run_all_checks_includes_obliqua_when_installed(self, tmp_path, mock_own_clone):
+        """With a real Obliqua checkout present, run_all_checks
         must include its CheckResult in the top-level report -- the
         counterpart to the omitted-when-absent case above, confirming
         ``required=False`` only changes the missing-checkout behaviour,

@@ -1588,10 +1588,15 @@ def update_all(export_env: bool, config_path: Path | None):
         else:
             click.secho('[!] AGNI not found. Run `proteus install-all`.', fg='yellow')
 
+    from .doctor import is_standard_module_installed
+
     # --- Step 5b: Check standard modules ---
-    for mod_name, mod_folder, mod_script in _STANDARD_MODULES:
-        if not (root / mod_folder).exists():
-            click.secho(f'[!] {mod_name} not found. Run "bash {mod_script}".', fg='yellow')
+    for mod_name, _mod_folder, mod_script in _STANDARD_MODULES:
+        if not is_standard_module_installed(mod_name, root):
+            click.secho(
+                f'[!] {mod_name} not found. Run "cd {root} && bash {mod_script}".',
+                fg='yellow',
+            )
 
     # --- Step 6: Refresh environment exports ---
     if export_env:

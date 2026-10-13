@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import builtins
+import importlib.metadata
 import importlib.util
 import logging
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -2622,12 +2624,16 @@ def test_install_all_installs_standard_modules_when_absent(monkeypatch, tmp_path
 
     res = runner.invoke(cli.cli, ['install-all'])
     assert res.exit_code == 0
-    std_calls = [
-        c
-        for c in calls
-        if len(c[0]) > 1 and any(s[2] in str(c[0][1]) for s in cli._STANDARD_MODULES)
+    expected_scripts = [
+        'tools/get_morrigan.sh',
+        'tools/get_vulcan.sh',
+        'tools/get_atmodeller.sh',
+        'tools/get_obliqua.sh',
     ]
-    assert [c[0][1] for c in std_calls] == [str(tmp_path / s[2]) for s in cli._STANDARD_MODULES]
+    std_calls = [
+        c for c in calls if len(c[0]) > 1 and any(s in str(c[0][1]) for s in expected_scripts)
+    ]
+    assert [c[0][1] for c in std_calls] == [str(tmp_path / s) for s in expected_scripts]
     for cmd, kwargs in std_calls:
         assert len(cmd) == 2
         assert cmd[0] == 'bash'
@@ -2641,20 +2647,23 @@ def test_install_all_installs_standard_modules_when_absent(monkeypatch, tmp_path
 def test_install_all_runs_standard_module_scripts_when_folders_present(monkeypatch, tmp_path):
     """install-all runs setup scripts for standard modules even when folders exist."""
     calls = _standard_modules_test_site(monkeypatch, tmp_path)
-    for _, folder, _ in cli._STANDARD_MODULES:
+    expected_folders = ['Morrigan', 'VULCAN', 'Atmodeller', 'Obliqua']
+    for folder in expected_folders:
         (tmp_path / folder).mkdir()
 
     res = runner.invoke(cli.cli, ['install-all'])
     assert res.exit_code == 0
-    for name, _, _ in cli._STANDARD_MODULES:
-        assert f'{name} already present' not in res.output
 
-    std_calls = [
-        c
-        for c in calls
-        if len(c[0]) > 1 and any(s[2] in str(c[0][1]) for s in cli._STANDARD_MODULES)
+    expected_scripts = [
+        'tools/get_morrigan.sh',
+        'tools/get_vulcan.sh',
+        'tools/get_atmodeller.sh',
+        'tools/get_obliqua.sh',
     ]
-    assert [c[0][1] for c in std_calls] == [str(tmp_path / s[2]) for s in cli._STANDARD_MODULES]
+    std_calls = [
+        c for c in calls if len(c[0]) > 1 and any(s in str(c[0][1]) for s in expected_scripts)
+    ]
+    assert [c[0][1] for c in std_calls] == [str(tmp_path / s) for s in expected_scripts]
     for cmd, kwargs in std_calls:
         assert len(cmd) == 2
         assert cmd[0] == 'bash'
@@ -2674,14 +2683,15 @@ def test_install_all_warns_and_continues_when_standard_module_script_fails(
     res = runner.invoke(cli.cli, ['install-all'])
     assert res.exit_code == 0
     assert 'Morrigan is not installed: "bash tools/get_morrigan.sh" failed' in res.output
+    remaining_scripts = [
+        'tools/get_vulcan.sh',
+        'tools/get_atmodeller.sh',
+        'tools/get_obliqua.sh',
+    ]
     succeeded = [
-        c
-        for c in calls
-        if len(c[0]) > 1 and any(s[2] in str(c[0][1]) for s in cli._STANDARD_MODULES[1:])
+        c for c in calls if len(c[0]) > 1 and any(s in str(c[0][1]) for s in remaining_scripts)
     ]
-    assert [c[0][1] for c in succeeded] == [
-        str(tmp_path / s[2]) for s in cli._STANDARD_MODULES[1:]
-    ]
+    assert [c[0][1] for c in succeeded] == [str(tmp_path / s) for s in remaining_scripts]
     for cmd, kwargs in succeeded:
         assert len(cmd) == 2
         assert cmd[0] == 'bash'
@@ -2760,7 +2770,9 @@ def test_update_all_warns_when_socrates_missing(monkeypatch, tmp_path):
 
     # NO socrates dir, NO AGNI dir
     monkeypatch.setattr(
-        cli.subprocess, 'run', lambda cmd, **kw: type('R', (), {'returncode': 0})()
+        cli.subprocess,
+        'run',
+        lambda cmd, **kw: type('R', (), {'returncode': 0, 'stdout': ''})(),
     )
     monkeypatch.setattr(cli, '_update_input_data', lambda path: False)
 
@@ -2781,7 +2793,9 @@ def test_update_all_warns_when_julia_missing(monkeypatch, tmp_path):
 
     (tmp_path / 'socrates').mkdir()
     monkeypatch.setattr(
-        cli.subprocess, 'run', lambda cmd, **kw: type('R', (), {'returncode': 0})()
+        cli.subprocess,
+        'run',
+        lambda cmd, **kw: type('R', (), {'returncode': 0, 'stdout': ''})(),
     )
     monkeypatch.setattr(cli, '_update_input_data', lambda path: False)
 
@@ -3351,31 +3365,72 @@ def test_update_all_anchors_paths_to_source_root_not_cwd(monkeypatch, tmp_path):
 
 
 @pytest.mark.unit
-def test_standard_modules_tuple_matches_literal_definition():
-    """_STANDARD_MODULES equals the four literal triples and each setup script exists."""
-    expected = (
-        ('Morrigan', 'Morrigan', 'tools/get_morrigan.sh'),
-        ('VULCAN', 'VULCAN', 'tools/get_vulcan.sh'),
-        ('atmodeller', 'Atmodeller', 'tools/get_atmodeller.sh'),
-        ('Obliqua', 'Obliqua', 'tools/get_obliqua.sh'),
-    )
-    assert cli._STANDARD_MODULES == expected
+@pytest.mark.parametrize(
+    ('mod_name', 'expected_folder', 'script_rel', 'pattern'),
+    [
+        ('Morrigan', 'Morrigan', 'tools/get_morrigan.sh', r'workpath="\$root/([^/]+)/"'),
+        ('VULCAN', 'VULCAN', 'tools/get_vulcan.sh', r'workpath="\$root/([^/]+)/"'),
+        ('atmodeller', 'Atmodeller', 'tools/get_atmodeller.sh', r'workpath="\$root/([^/]+)/"'),
+        ('Obliqua', 'Obliqua', 'tools/get_obliqua.sh', r'dest="\$proteus_root/([^"]+)"'),
+    ],
+    ids=['Morrigan', 'VULCAN', 'atmodeller', 'Obliqua'],
+)
+def test_standard_module_folder_matches_script_default(
+    mod_name, expected_folder, script_rel, pattern
+):
+    """The folder of each standard module matches the destination folder in its setup script."""
     root = cli._resolve_proteus_root()
-    for _, _, script in cli._STANDARD_MODULES:
-        assert (root / script).is_file()
+    script_text = (root / script_rel).read_text()
+    match = re.search(pattern, script_text)
+    assert match is not None
+    assert match.group(1) == expected_folder
+    entry = next(item for item in cli._STANDARD_MODULES if item[0] == mod_name)
+    assert entry[1] == expected_folder
+
+
+@pytest.mark.unit
+def test_standard_modules_matches_install_sh_further_modules():
+    """The standard module pairs and order match the install_further_module lines in install.sh."""
+    root = cli._resolve_proteus_root()
+    install_text = (root / 'install.sh').read_text()
+    matches = re.findall(r'install_further_module\s+"([^"]+)"\s+bash\s+(\S+)', install_text)
+    expected_pairs = [
+        ('Morrigan', 'tools/get_morrigan.sh'),
+        ('VULCAN', 'tools/get_vulcan.sh'),
+        ('atmodeller', 'tools/get_atmodeller.sh'),
+        ('Obliqua', 'tools/get_obliqua.sh'),
+    ]
+    assert len(matches) == 4
+    assert matches == expected_pairs
+    pairs_in_cli = [(name, script) for name, _, script in cli._STANDARD_MODULES]
+    assert pairs_in_cli == expected_pairs
 
 
 @pytest.mark.unit
 def test_update_all_warns_when_standard_modules_missing(monkeypatch, tmp_path):
     """update-all emits yellow warnings for missing standard module directories."""
     calls = _standard_modules_test_site(monkeypatch, tmp_path)
+    real_version = importlib.metadata.version
+
+    def fake_version(pkg):
+        if pkg in ('fwl-morrigan', 'fwl-vulcan', 'atmodeller'):
+            raise importlib.metadata.PackageNotFoundError(pkg)
+        return real_version(pkg)
+
+    monkeypatch.setattr('importlib.metadata.version', fake_version)
 
     res = runner.invoke(cli.cli, ['update-all'])
     assert res.exit_code == 0
-    for name, _, script in cli._STANDARD_MODULES:
-        assert f'{name} not found. Run "bash {script}".' in res.output
+    expected_modules = [
+        ('Morrigan', 'tools/get_morrigan.sh'),
+        ('VULCAN', 'tools/get_vulcan.sh'),
+        ('atmodeller', 'tools/get_atmodeller.sh'),
+        ('Obliqua', 'tools/get_obliqua.sh'),
+    ]
+    for name, script in expected_modules:
+        assert f'[!] {name} not found. Run "cd {tmp_path} && bash {script}".' in res.output
     for cmd, _ in calls:
-        for _, _, script in cli._STANDARD_MODULES:
+        for _, script in expected_modules:
             assert not any(script in str(arg) for arg in cmd)
 
 
@@ -3383,13 +3438,25 @@ def test_update_all_warns_when_standard_modules_missing(monkeypatch, tmp_path):
 def test_update_all_warns_only_for_absent_module(monkeypatch, tmp_path):
     """update-all warns only for absent standard modules when others are present."""
     _standard_modules_test_site(monkeypatch, tmp_path)
-    for name, folder, _ in cli._STANDARD_MODULES:
-        if name != 'VULCAN':
-            (tmp_path / folder).mkdir()
+    (tmp_path / 'Obliqua').mkdir()
+    (tmp_path / 'Obliqua' / 'Project.toml').write_text('name = "Obliqua"\n')
+
+    real_version = importlib.metadata.version
+
+    def fake_version(pkg):
+        if pkg == 'fwl-vulcan':
+            raise importlib.metadata.PackageNotFoundError(pkg)
+        if pkg in ('fwl-morrigan', 'atmodeller'):
+            return '1.0.0'
+        return real_version(pkg)
+
+    monkeypatch.setattr('importlib.metadata.version', fake_version)
 
     res = runner.invoke(cli.cli, ['update-all'])
     assert res.exit_code == 0
-    assert '[!] VULCAN not found. Run "bash tools/get_vulcan.sh".' in res.output
+    assert (
+        f'[!] VULCAN not found. Run "cd {tmp_path} && bash tools/get_vulcan.sh".' in res.output
+    )
     assert 'Morrigan not found' not in res.output
     assert 'atmodeller not found' not in res.output
     assert 'Obliqua not found' not in res.output
@@ -3399,7 +3466,14 @@ def test_update_all_warns_only_for_absent_module(monkeypatch, tmp_path):
 def test_update_all_runs_no_commands_in_standard_module_folders(monkeypatch, tmp_path):
     """update-all runs no git commands inside standard module directories."""
     calls = _standard_modules_test_site(monkeypatch, tmp_path)
-    for _, folder, _ in cli._STANDARD_MODULES:
+    expected_folders = ['Morrigan', 'VULCAN', 'Atmodeller', 'Obliqua']
+    expected_scripts = [
+        'tools/get_morrigan.sh',
+        'tools/get_vulcan.sh',
+        'tools/get_atmodeller.sh',
+        'tools/get_obliqua.sh',
+    ]
+    for folder in expected_folders:
         (tmp_path / folder).mkdir()
 
     res = runner.invoke(cli.cli, ['update-all'])
@@ -3407,13 +3481,90 @@ def test_update_all_runs_no_commands_in_standard_module_folders(monkeypatch, tmp
     for _, kwargs in calls:
         if 'cwd' in kwargs and kwargs['cwd'] is not None:
             cwd_path = Path(kwargs['cwd'])
-            for _, folder, _ in cli._STANDARD_MODULES:
+            for folder in expected_folders:
                 assert cwd_path != tmp_path / folder
     for cmd, _ in calls:
-        for _, folder, script in cli._STANDARD_MODULES:
+        for script in expected_scripts:
             assert not any(script in str(arg) for arg in cmd)
+        for folder in expected_folders:
             folder_str = str(tmp_path / folder)
             assert not any(folder_str in str(arg) for arg in cmd)
+
+
+@pytest.mark.unit
+def test_update_all_omits_warning_when_vulcan_installed_as_package_without_folder(
+    monkeypatch, tmp_path
+):
+    """update-all does not warn when VULCAN package is installed even if folder is missing."""
+    calls = _standard_modules_test_site(monkeypatch, tmp_path)
+    real_version = importlib.metadata.version
+
+    def fake_version(pkg):
+        if pkg == 'fwl-vulcan':
+            return '2.0.0'
+        return real_version(pkg)
+
+    monkeypatch.setattr('importlib.metadata.version', fake_version)
+    assert not (tmp_path / 'VULCAN').exists()
+
+    res = runner.invoke(cli.cli, ['update-all'])
+    assert res.exit_code == 0
+    assert 'VULCAN not found' not in res.output
+    assert not any('get_vulcan.sh' in str(c[0]) for c in calls)
+
+
+@pytest.mark.unit
+def test_update_all_warns_when_morrigan_folder_present_but_package_not_installed(
+    monkeypatch, tmp_path
+):
+    """update-all warns when Morrigan folder exists but the package is not installed."""
+    _standard_modules_test_site(monkeypatch, tmp_path)
+    (tmp_path / 'Morrigan').mkdir()
+    real_version = importlib.metadata.version
+
+    def fake_version(pkg):
+        if pkg == 'fwl-morrigan':
+            raise importlib.metadata.PackageNotFoundError(pkg)
+        return real_version(pkg)
+
+    monkeypatch.setattr('importlib.metadata.version', fake_version)
+
+    res = runner.invoke(cli.cli, ['update-all'])
+    assert res.exit_code == 0
+    expected_line = (
+        f'[!] Morrigan not found. Run "cd {tmp_path} && bash tools/get_morrigan.sh".'
+    )
+    assert expected_line in res.output
+    assert 'Setting up Morrigan' not in res.output
+
+
+@pytest.mark.unit
+def test_update_all_obliqua_empty_folder_warns_populated_folder_passes(monkeypatch, tmp_path):
+    """update-all warns for empty Obliqua folder and passes for populated Obliqua folder."""
+    _standard_modules_test_site(monkeypatch, tmp_path)
+    obliqua_dir = tmp_path / 'Obliqua'
+    obliqua_dir.mkdir()
+    expected_line = f'[!] Obliqua not found. Run "cd {tmp_path} && bash tools/get_obliqua.sh".'
+
+    res_empty = runner.invoke(cli.cli, ['update-all'])
+    assert res_empty.exit_code == 0
+    assert expected_line in res_empty.output
+
+    (obliqua_dir / 'Project.toml').write_text('name = "Obliqua"\n')
+    res_populated = runner.invoke(cli.cli, ['update-all'])
+    assert res_populated.exit_code == 0
+    assert 'Obliqua not found' not in res_populated.output
+
+
+@pytest.mark.unit
+def test_update_all_standard_module_warning_includes_cd_root(monkeypatch, tmp_path):
+    """update-all warning includes the cd <root> prefix in setup instructions."""
+    _standard_modules_test_site(monkeypatch, tmp_path)
+
+    res = runner.invoke(cli.cli, ['update-all'])
+    assert res.exit_code == 0
+    assert f'cd {tmp_path} && ' in res.output
+    assert '[!] Obliqua not found. Run "cd ' in res.output
 
 
 @pytest.mark.unit

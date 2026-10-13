@@ -41,15 +41,15 @@ pinned commit.
 | Obliqua | Multi-phase tidal response (Julia) | [![Obliqua](https://img.shields.io/badge/Obliqua-ee1ef40d-green)](https://github.com/FormingWorlds/Obliqua/commit/ee1ef40deaac47e1ba9e6d344a8541f500bb9e94){target="_blank" rel="noopener"} | [Docs](https://proteus-framework.org/Obliqua/) |
 <!-- END GIT_TABLE -->
 
-### Optional modules
+### Modules from package extras
 
-`bash install.sh` sets up atmodeller, VULCAN and Morrigan; in `pyproject.toml` they are package extras. The installer clones atmodeller at the commit under `[tool.proteus.modules.atmodeller]`.
+`bash install.sh` sets up atmodeller, VULCAN, Morrigan and Obliqua. In `pyproject.toml`, atmodeller, VULCAN and Morrigan are package extras with a version floor. The installer clones atmodeller at the commit under `[tool.proteus.modules.atmodeller]`; the table above gives the commit of Obliqua.
 
 <!-- BEGIN OPTIONAL_TABLE -->
 | Module | Role | Pin | Docs |
 |--------|------|-----|------|
 | LovePy | Solid-phase tidal heating (Julia) | [![LovePy](https://img.shields.io/badge/LovePy-main-lightgrey)](https://github.com/nichollsh/LovePy){target="_blank" rel="noopener"} | [GitHub](https://github.com/nichollsh/LovePy) |
-| atmodeller | Alternative outgassing backend (GPL-3.0) | [![atmodeller](https://img.shields.io/badge/atmodeller-%3E%3D1.0.2-blue)](https://pypi.org/project/atmodeller/1.0.2/){target="_blank" rel="noopener"} | [GitHub](https://github.com/djbower/atmodeller) |
+| atmodeller | Alternative outgassing module (GPL-3.0) | [![atmodeller](https://img.shields.io/badge/atmodeller-%3E%3D1.0.2-blue)](https://pypi.org/project/atmodeller/1.0.2/){target="_blank" rel="noopener"} [![atmodeller](https://img.shields.io/badge/atmodeller-77e81aac-green)](https://github.com/FormingWorlds/atmodeller/commit/77e81aac5147bad7eec727fba5b299e055db2d4d){target="_blank" rel="noopener"} | [GitHub](https://github.com/FormingWorlds/atmodeller) |
 | VULCAN | Atmospheric chemistry (GPL-3.0) | [![VULCAN](https://img.shields.io/badge/VULCAN-%3E%3D26.04.22-blue)](https://pypi.org/project/fwl-vulcan/26.04.22/){target="_blank" rel="noopener"} | [GitHub](https://github.com/FormingWorlds/VULCAN) |
 | Morrigan | Protoplanet accretion via giant impacts | [![Morrigan](https://img.shields.io/badge/Morrigan-%3E%3D26.07.27-blue)](https://pypi.org/project/fwl-morrigan/26.07.27/){target="_blank" rel="noopener"} | [GitHub](https://github.com/FormingWorlds/Morrigan) |
 <!-- END OPTIONAL_TABLE -->

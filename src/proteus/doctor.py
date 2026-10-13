@@ -150,7 +150,7 @@ def _dependency_specs() -> dict[str, Requirement | None]:
 def _get_script_for_package(dist_name: str) -> str | None:
     """Return the ``tools/get_<name>.sh`` setup script for an FWL package.
 
-    Some FWL packages (aragog, zalmoxis, vulcan, morrigan, boreas) have a
+    Some FWL packages (aragog, zalmoxis, vulcan, morrigan, atmodeller, boreas) have a
     setup script of their own; MORS, JANUS, CALLIOPE and ZEPHYRUS share
     ``tools/get_python_module.sh`` (``_setup_command``).
 
@@ -917,11 +917,18 @@ def check_cvode() -> CheckResult:
     )
 
 
+def _installed_version(name: str) -> Version | None:
+    """Return the installed version of a distribution, or None when it is not installed."""
+    try:
+        return Version(importlib.metadata.version(name))
+    except PackageNotFoundError:
+        return None
+
+
 def check_python_package(name: str, spec: Requirement | None) -> CheckResult:
     """Check a Python package against the pyproject.toml version spec."""
-    try:
-        installed = Version(importlib.metadata.version(name))
-    except PackageNotFoundError:
+    installed = _installed_version(name)
+    if installed is None:
         if name in STANDARD_MODULE_PACKAGES:
             setup = _setup_command(name)
             if setup:
@@ -1013,6 +1020,13 @@ def check_python_package(name: str, spec: Requirement | None) -> CheckResult:
     )
 
 
+def _is_git_module_present(path: str, required: bool = True) -> bool:
+    """Return whether a git module directory is populated."""
+    if not path or not os.path.isdir(path):
+        return False
+    return required or bool(os.listdir(path))
+
+
 def check_git_module(name: str, dirs: dict, required: bool = True) -> CheckResult:
     """Check a git-pinned module (AGNI, SOCRATES, Obliqua) against pyproject.toml ref.
 
@@ -1039,7 +1053,7 @@ def check_git_module(name: str, dirs: dict, required: bool = True) -> CheckResul
     else:
         path = dirs.get(dir_key, '')
 
-    if not path or not os.path.isdir(path) or (not required and not os.listdir(path)):
+    if not _is_git_module_present(path, required=required):
         # Unlike the off-pin case below, this fix is not chained to an AGNI
         # rebuild: a not-installed SOCRATES means RAD_DIR is unset, so the AGNI
         # step would have nowhere to find SOCRATES. The install script prints
@@ -1066,7 +1080,11 @@ def check_git_module(name: str, dirs: dict, required: bool = True) -> CheckResul
         ver = '?'
 
     # Check HEAD against pinned ref
-    head = _git_head(path)
+    if not _is_own_clone(path):
+        ver = f'{ver} [not a git clone of its own]'
+        head = None
+    else:
+        head = _git_head(path)
     if pinned_ref and head and head != pinned_ref:
         # Re-cloning SOCRATES deletes AGNI build products in that tree;
         # the SOCRATES refresh command chains an AGNI rebuild.
@@ -1120,6 +1138,30 @@ def check_git_module(name: str, dirs: dict, required: bool = True) -> CheckResul
     )
 
 
+_STANDARD_DISTRIBUTIONS = {
+    'morrigan': 'fwl-morrigan',
+    'vulcan': 'fwl-vulcan',
+    'atmodeller': 'atmodeller',
+}
+
+
+def is_standard_module_installed(name: str, root: Path | str | None = None) -> bool:
+    """Return whether a standard module is installed.
+
+    Delegates to the doctor's installation rules: package discovery for
+    Morrigan, VULCAN and atmodeller, and directory population for Obliqua.
+    """
+    key = name.lower()
+    if key in _STANDARD_DISTRIBUTIONS:
+        return _installed_version(_STANDARD_DISTRIBUTIONS[key]) is not None
+    if key == 'obliqua':
+        if root is None:
+            root = _repo_root()
+        path = str(Path(root) / 'Obliqua')
+        return _is_git_module_present(path, required=False)
+    return False
+
+
 # ─── Main entry points ──────────────────────────────────────────────
 
 
@@ -1152,7 +1194,7 @@ STANDARD_MODULE_PACKAGES = [
 ]
 
 GIT_MODULES = ['AGNI', 'SOCRATES']
-OPTIONAL_GIT_MODULES = ['Obliqua']
+STANDARD_GIT_MODULES = ['Obliqua']
 
 
 def run_all_checks() -> list[CheckResult]:
@@ -1244,7 +1286,7 @@ def run_all_checks() -> list[CheckResult]:
             )
 
     # Git module versions (against pyproject.toml commit pins)
-    for mod in (*GIT_MODULES, *OPTIONAL_GIT_MODULES):
+    for mod in (*GIT_MODULES, *STANDARD_GIT_MODULES):
         try:
             results.append(check_git_module(mod, dirs, mod in GIT_MODULES))
         except Exception as exc:
