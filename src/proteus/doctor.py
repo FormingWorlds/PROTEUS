@@ -368,6 +368,15 @@ def _is_own_clone(path: str) -> bool:
         return False
 
 
+def _names_obliqua(path: str) -> bool:
+    """Return whether the Project.toml of a folder names Obliqua, as get_obliqua.sh tests it."""
+    try:
+        text = Path(path, 'Project.toml').read_text(encoding='utf-8', errors='replace')
+    except OSError:
+        return False
+    return re.search(r'^name = "Obliqua"', text, flags=re.MULTILINE) is not None
+
+
 def _floor_version(spec: Requirement | None) -> str | None:
     """Return the one ``>=`` floor of a requirement.
 
@@ -591,7 +600,8 @@ def _below_floor_advice(
         One line of shell commands with absolute, shell-quoted paths, and
         a comment that names the replacement when the checkout resolves to
         ``<root>/<module folder>``; for a folder that is not a clone of its
-        own, the replacement with a comment, or a comment alone.
+        own, the replacement with a comment, the move-away advice, or a
+        comment alone.
         A module with a commit pin in ``[tool.proteus.modules]`` gets the
         checkout of that commit in place of the release tag.
     """
@@ -603,6 +613,8 @@ def _below_floor_advice(
     ref = _module_pins().get(dist_name.lower(), {}).get('ref')
     if not _is_own_clone(checkout):
         if in_folder:
+            if ref:
+                return f'move {path} away or delete it by hand, then run: {replace}'
             return (
                 f'{replace} --force  # {path} is not a git clone of its own; this replaces it'
                 ' with a new clone, which deletes everything in it'
@@ -1053,7 +1065,19 @@ def check_git_module(name: str, dirs: dict, required: bool = True) -> CheckResul
     if not _is_git_module_present(path):
         # Unlike the off-pin case below, this fix is not chained to an AGNI rebuild:
         # RAD_DIR can be unset, and get_socrates.sh prints the AGNI follow-up once built.
-        arg = ' "$RAD_DIR"' if dir_key == 'socrates' and path and os.path.isdir(path) else ''
+        arg = ' "$RAD_DIR"' if dir_key == 'socrates' and path else ''
+        if path and os.path.lexists(path) and not os.path.isdir(path):
+            return CheckResult(
+                name=name,
+                category='versions',
+                status=FAIL if required else WARN,
+                message='not installed: a file or a broken link is at its path',
+                fix_cmd=(
+                    f'delete {shlex.quote(path)}, then run: '
+                    f'cd {shlex.quote(str(_repo_root()))} && bash tools/get_{dir_key}.sh{arg}'
+                ),
+                auto_fixable=False,
+            )
         return CheckResult(
             name=name,
             category='versions',
@@ -1087,6 +1111,30 @@ def check_git_module(name: str, dirs: dict, required: bool = True) -> CheckResul
         if name == 'SOCRATES'
         else f'bash tools/get_{dir_key}.sh'
     )
+    move_away_fix = (
+        f'move {shlex.quote(path)} away or delete it, then run: '
+        f'cd {shlex.quote(str(_repo_root()))} && {setup_cmd}'
+    )
+    if not is_own:
+        return CheckResult(
+            name=name,
+            category='versions',
+            status=WARN,
+            message=f'{ver}: the commit cannot be compared with the pin',
+            fix_cmd=move_away_fix,
+            auto_fixable=False,
+        )
+
+    if name == 'Obliqua' and not _names_obliqua(path):
+        return CheckResult(
+            name=name,
+            category='versions',
+            status=WARN,
+            message=f'{ver}: a git clone of another project (its Project.toml does not name Obliqua)',
+            fix_cmd=move_away_fix,
+            auto_fixable=False,
+        )
+
     if pinned_ref and head and head != pinned_ref:
         # Re-cloning SOCRATES deletes AGNI build products in that tree;
         # the SOCRATES refresh command chains an AGNI rebuild.
@@ -1119,19 +1167,6 @@ def check_git_module(name: str, dirs: dict, required: bool = True) -> CheckResul
             fix_cmd='bash tools/get_obliqua.sh',
         )
 
-    if not is_own:
-        return CheckResult(
-            name=name,
-            category='versions',
-            status=WARN,
-            message=f'{ver}: the commit cannot be compared with the pin',
-            fix_cmd=(
-                f'move {shlex.quote(path)} away or delete it, then run: '
-                f'cd {shlex.quote(str(_repo_root()))} && {setup_cmd}'
-            ),
-            auto_fixable=False,
-        )
-
     if pinned_ref and head:
         return CheckResult(
             name=name,
@@ -1161,6 +1196,18 @@ def is_standard_module_installed(name: str, root: Path | str) -> bool:
     Delegates to the doctor's installation rules: package discovery for
     Morrigan, VULCAN and atmodeller, and directory population for Obliqua
     under the PROTEUS repository root ``root``.
+
+    Parameters
+    ----------
+    name : str
+        The standard module name.
+    root : Path or str
+        The PROTEUS repository root directory.
+
+    Returns
+    -------
+    bool
+        True when the standard module is installed, False otherwise.
     """
     key = name.lower()
     if key in _STANDARD_DISTRIBUTIONS:

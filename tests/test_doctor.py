@@ -62,6 +62,7 @@ from proteus.doctor import (
     _imported_package_dir,
     _julia_version,
     _julia_version_at,
+    _names_obliqua,
     _print_support_prompt,
     _release_tag_note,
     _run_fix_command,
@@ -1433,6 +1434,31 @@ class TestReleaseTagNote:
         assert named in adv
         assert absent not in adv
 
+    def test_below_floor_advice_for_non_own_clone_in_pinned_module_folder(self, tmp_path):
+        """A non-own clone in a pinned module folder advises manual removal without --force."""
+        from packaging.requirements import Requirement
+
+        checkout = tmp_path / 'Atmodeller'
+        checkout.mkdir()
+        (checkout / 'empty.txt').write_text('content\n')
+        pins = {'atmodeller': {'ref': '77e81aac5147bad7eec727fba5b299e055db2d4d'}}
+        with (
+            patch('proteus.doctor._repo_root', return_value=tmp_path),
+            patch('proteus.doctor._module_pins', return_value=pins),
+            patch('proteus.doctor._is_own_clone', return_value=False),
+        ):
+            adv = _below_floor_advice(
+                'atmodeller',
+                str(checkout),
+                Requirement('atmodeller>=1.0.2'),
+                'tools/get_atmodeller.sh',
+            )
+        path_q = shlex.quote(os.path.abspath(str(checkout)))
+        root_q = shlex.quote(str(tmp_path))
+        expected = f'move {path_q} away or delete it by hand, then run: cd {root_q} && bash tools/get_atmodeller.sh'
+        assert adv == expected
+        assert '--force' not in adv
+
 
 class TestGitHelpers:
     """Git helper functions."""
@@ -1812,6 +1838,7 @@ class TestCheckGitModuleInstallState:
         modules with no getter at all.
         """
         pins = {'obliqua': {'ref': 'a' * 40}}
+        (tmp_path / 'Project.toml').write_text('name = "Obliqua"\n')
         (tmp_path / 'Manifest.toml').touch()
         with (
             patch('proteus.doctor._module_pins', return_value=pins),
@@ -1918,6 +1945,7 @@ class TestCheckGitModuleStandard:
         checkout gets verified.
         """
         pins = {'obliqua': {'ref': 'a' * 40}}
+        (tmp_path / 'Project.toml').write_text('name = "Obliqua"\n')
         (tmp_path / 'Manifest.toml').touch()
         with (
             patch('proteus.doctor._module_pins', return_value=pins),
@@ -1935,7 +1963,7 @@ class TestCheckGitModuleStandard:
         root.mkdir()
         obliqua_dir = tmp_path / 'Obliqua'
         obliqua_dir.mkdir()
-        (obliqua_dir / 'Project.toml').touch()
+        (obliqua_dir / 'Project.toml').write_text('name = "Obliqua"\n')
         with (
             patch('proteus.doctor._repo_root', return_value=root),
             patch('proteus.doctor._module_pins', return_value=pins),
@@ -1972,7 +2000,7 @@ class TestCheckGitModuleStandard:
     ):
         """An on-pin Obliqua folder without Manifest.toml warns, naming the head when git has one."""
         pins = {'obliqua': {'ref': 'a' * 40}}
-        (tmp_path / 'Project.toml').touch()
+        (tmp_path / 'Project.toml').write_text('name = "Obliqua"\n')
         with (
             patch('proteus.doctor._module_pins', return_value=pins),
             patch('proteus.doctor._git_head', return_value=head),
@@ -1989,7 +2017,7 @@ class TestCheckGitModuleStandard:
     ):
         """Off-pin warning takes precedence over missing Manifest.toml."""
         pins = {'obliqua': {'ref': 'a' * 40}}
-        (tmp_path / 'Project.toml').touch()
+        (tmp_path / 'Project.toml').write_text('name = "Obliqua"\n')
         with (
             patch('proteus.doctor._repo_root', return_value=tmp_path),
             patch('proteus.doctor._module_pins', return_value=pins),
@@ -2043,27 +2071,62 @@ class TestCheckGitModuleStandard:
         )
         assert r.auto_fixable is False
 
-    def test_obliqua_in_outer_repo_missing_manifest_carries_mark(self, tmp_path):
-        """A non-clone Obliqua directory missing Manifest.toml warns with the mark."""
+    def test_obliqua_in_outer_repo_missing_manifest_warns_not_own_clone(self, tmp_path):
+        """A non-clone Obliqua directory missing Manifest.toml warns that it is not its own clone."""
         _init_test_repo(tmp_path)
         obliqua_dir = tmp_path / 'Obliqua'
         obliqua_dir.mkdir()
-        (obliqua_dir / 'Project.toml').write_text('version = "0.1.0"\n')
+        (obliqua_dir / 'Project.toml').write_text('name = "Obliqua"\nversion = "0.1.0"\n')
+        root = tmp_path / 'repo'
+        root.mkdir()
         pins = {'obliqua': {'ref': '0' * 40}}
-        with patch('proteus.doctor._module_pins', return_value=pins):
+        with (
+            patch('proteus.doctor._module_pins', return_value=pins),
+            patch('proteus.doctor._repo_root', return_value=root),
+        ):
             r = check_git_module('Obliqua', {'obliqua': str(obliqua_dir)}, required=False)
         assert r.status == WARN
-        assert 'Julia environment not instantiated' in r.message
-        assert '[not a git clone of its own]' in r.message
-        assert r.fix_cmd == 'bash tools/get_obliqua.sh'
-        assert r.auto_fixable is True
+        assert (
+            r.message
+            == '0.1.0 [not a git clone of its own]: the commit cannot be compared with the pin'
+        )
+        assert r.fix_cmd == (
+            f'move {shlex.quote(str(obliqua_dir))} away or delete it, then run: '
+            f'cd {shlex.quote(str(root))} && bash tools/get_obliqua.sh'
+        )
+        assert r.auto_fixable is False
+
+    def test_obliqua_foreign_project_clone_warns_and_advises_move_away(self, tmp_path):
+        """A clone of another project at Obliqua path warns and gives move-away advice."""
+        root = tmp_path / 'repo'
+        root.mkdir()
+        obliqua_dir = tmp_path / 'Obliqua'
+        _init_test_repo(obliqua_dir)
+        (obliqua_dir / 'Project.toml').write_text('name = "AGNI"\nversion = "1.13.0"\n')
+        pins = {'obliqua': {'ref': '0' * 40}}
+        with (
+            patch('proteus.doctor._repo_root', return_value=root),
+            patch('proteus.doctor._module_pins', return_value=pins),
+        ):
+            r = check_git_module('Obliqua', {'obliqua': str(obliqua_dir)}, required=False)
+        assert r.status == WARN
+        assert (
+            r.message
+            == '1.13.0: a git clone of another project (its Project.toml does not name Obliqua)'
+        )
+        assert r.fix_cmd == (
+            f'move {shlex.quote(str(obliqua_dir))} away or delete it, then run: '
+            f'cd {shlex.quote(str(root))} && bash tools/get_obliqua.sh'
+        )
+        assert '--force' not in r.fix_cmd
+        assert r.auto_fixable is False
 
     def test_obliqua_own_clone_off_pin_gives_forced_advice(self, tmp_path):
         """An Obliqua directory that is its own clone warns and advises --force when off pin."""
         _init_test_repo(tmp_path)
         obliqua_dir = tmp_path / 'Obliqua'
         _init_test_repo(obliqua_dir)
-        (obliqua_dir / 'Project.toml').write_text('version = "0.1.0"\n')
+        (obliqua_dir / 'Project.toml').write_text('name = "Obliqua"\nversion = "0.1.0"\n')
         (obliqua_dir / 'Manifest.toml').touch()
         obliqua_head = _git_head(str(obliqua_dir))
         pins = {'obliqua': {'ref': '0' * 40}}
@@ -2074,6 +2137,78 @@ class TestCheckGitModuleStandard:
         assert obliqua_head[:8] in r.message
         assert r.fix_cmd is not None and '--force' in r.fix_cmd
         assert r.auto_fixable is False
+
+    def test_names_obliqua_direct(self, tmp_path):
+        """_names_obliqua tests Project.toml for name = "Obliqua" at start of line."""
+        folder = tmp_path / 'obliqua_project'
+        folder.mkdir()
+        assert _names_obliqua(str(folder)) is False
+
+        (folder / 'Project.toml').write_text('version = "0.1.0"\nname="Obliqua"\n')
+        assert _names_obliqua(str(folder)) is False
+
+        (folder / 'Project.toml').write_text('# comment\nversion = "0.1.0"\nname = "Obliqua"\n')
+        assert _names_obliqua(str(folder)) is True
+
+    def test_broken_link_or_regular_file_at_module_path(self, tmp_path):
+        """A broken link or regular file at module path reports not installed with manual delete fix."""
+        root = tmp_path / 'repo'
+        root.mkdir()
+        broken_link = tmp_path / 'broken_obliqua'
+        broken_link.symlink_to(tmp_path / 'nonexistent')
+        assert os.path.lexists(str(broken_link)) and not os.path.isdir(str(broken_link))
+
+        with patch('proteus.doctor._repo_root', return_value=root):
+            r_link = check_git_module('Obliqua', {'obliqua': str(broken_link)}, required=False)
+        assert r_link.status == WARN
+        assert r_link.message == 'not installed: a file or a broken link is at its path'
+        assert r_link.fix_cmd == (
+            f'delete {shlex.quote(str(broken_link))}, then run: '
+            f'cd {shlex.quote(str(root))} && bash tools/get_obliqua.sh'
+        )
+        assert r_link.auto_fixable is False
+
+        regular_file = tmp_path / 'regular_agni'
+        regular_file.write_text('not a directory\n')
+        with patch('proteus.doctor._repo_root', return_value=root):
+            r_file = check_git_module('AGNI', {'agni': str(regular_file)}, required=True)
+        assert r_file.status == FAIL
+        assert r_file.message == 'not installed: a file or a broken link is at its path'
+        assert r_file.fix_cmd == (
+            f'delete {shlex.quote(str(regular_file))}, then run: '
+            f'cd {shlex.quote(str(root))} && bash tools/get_agni.sh'
+        )
+        assert r_file.auto_fixable is False
+
+    def test_symlink_to_empty_directory_at_module_path(self, tmp_path):
+        """A link to an empty directory reports not installed with automatic fix."""
+        empty_dir = tmp_path / 'empty_dir'
+        empty_dir.mkdir()
+        link_dir = tmp_path / 'link_to_empty'
+        link_dir.symlink_to(empty_dir)
+        assert os.path.islink(str(link_dir)) and os.path.isdir(str(link_dir))
+
+        r = check_git_module('Obliqua', {'obliqua': str(link_dir)}, required=False)
+        assert r.status == WARN
+        assert r.message == 'not installed'
+        assert r.fix_cmd == 'bash tools/get_obliqua.sh'
+        assert r.auto_fixable is True
+
+    def test_socrates_not_installed_rad_dir_nonexistent_names_rad_dir(
+        self, tmp_path, monkeypatch
+    ):
+        """RAD_DIR pointing to nonexistent folder reports not installed naming RAD_DIR."""
+        monkeypatch.setenv('RAD_DIR', str(tmp_path / 'nowhere'))
+        r = check_git_module('SOCRATES', {}, required=True)
+        assert r.status == FAIL
+        assert r.message == 'not installed'
+        assert r.fix_cmd == 'bash tools/get_socrates.sh "$RAD_DIR"'
+
+        monkeypatch.delenv('RAD_DIR', raising=False)
+        r_unset = check_git_module('SOCRATES', {}, required=True)
+        assert r_unset.status == FAIL
+        assert r_unset.message == 'not installed'
+        assert r_unset.fix_cmd == 'bash tools/get_socrates.sh'
 
     def test_empty_required_module_folder_in_git_repo_counts_as_not_installed(self, tmp_path):
         """An empty required module folder in a git repo counts as not installed."""
@@ -2176,6 +2311,7 @@ class TestCheckGitModuleStandard:
         not whether an installed standard module is reported at all.
         """
         pins = {'obliqua': {'ref': 'a' * 40}}
+        (tmp_path / 'Project.toml').write_text('name = "Obliqua"\n')
         (tmp_path / 'Manifest.toml').touch()
         with (
             patch('proteus.doctor._dependency_specs', return_value={}),

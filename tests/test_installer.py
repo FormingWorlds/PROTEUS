@@ -4174,12 +4174,13 @@ class TestFurtherModulesPhase:
         stubs.mkdir()
         (stubs / 'mktemp').write_text('#!/bin/sh\nexit 1\n')
         (stubs / 'mktemp').chmod(0o755)
-        env_extra = {'PATH': f'{stubs}{os.pathsep}{os.environ["PATH"]}'}
+        env_extra = {'PATH': f'{stubs}{os.pathsep}{site["env"]["PATH"]}'}
         res = self._run_phase(site, env_extra=env_extra)
         assert res.returncode == 0, res.stdout + res.stderr
         calls = site['calls_log'].read_text().splitlines()
         assert len(calls) == 4
         assert 'Not at their release tag or pinned commit:' not in (res.stdout + res.stderr)
+        assert '-c import proteus' in site['python_log'].read_text()
 
     def test_second_import_check_fails_when_proteus_unimportable(self, site, tmp_path):
         """When PROTEUS does not import after further modules, the phase dies with error output."""
