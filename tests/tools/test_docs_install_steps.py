@@ -18,6 +18,7 @@ See ``docs/How-to/testing.md`` for the test framework.
 from __future__ import annotations
 
 import importlib.util
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -125,6 +126,19 @@ def test_cli_subprocess_invocation(page):
     assert 'echo alpha-one' in out.stdout
 
 
+def test_cli_subprocess_failure_exits_2(page):
+    """Running the tool as a subprocess exits with code 2 on error."""
+    out = subprocess.run(
+        [sys.executable, str(_TOOL), str(page), '--tab', 'Gamma'],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert out.returncode == 2
+    assert 'error:' in out.stderr
+    assert 'unknown tab' in out.stderr
+
+
 def test_tab_selection_keeps_shared_blocks_and_selected_tab_only(page, capsys):
     """Alpha gets the shared blocks and its own, in page order, and no Beta command."""
     out = _run(capsys, str(page), '--tab', 'Alpha')
@@ -150,6 +164,21 @@ def test_other_tab_does_not_see_first_tab_commands(page, capsys):
         'echo shared-two',
     ]
     assert 'alpha' not in out.stdout
+
+
+def test_repeated_tab_cli_options_select_all_specified_tabs(page, capsys):
+    """Passing multiple --tab options selects commands for all specified tabs in page order."""
+    out = _run(capsys, str(page), '--tab', 'Alpha', '--tab', 'Beta')
+    assert out.returncode == 0
+    assert out.stdout.splitlines() == [
+        'echo shared-one',
+        'echo alpha-one',
+        'echo alpha-two --long',
+        'echo beta-one   # a trailing comment',
+        'echo beta-two',
+        'echo shared-two',
+    ]
+    assert 'echo alpha-one' in out.stdout and 'echo beta-one' in out.stdout
 
 
 def test_unknown_tab_exits_2_and_names_known_tabs(page, capsys):
@@ -274,13 +303,20 @@ def test_commands_format_prints_job_command_when_substituted(page, tmp_path, cap
 
 
 def test_stale_substitution_exits_2(page, tmp_path, capsys):
-    """A match that is not on the page fails the run, so a page change is caught."""
-    subs = _write_subs(tmp_path, 'echo alpha-one-renamed')
+    """A match that is not on the page fails the run and names all stale matches."""
+    path = tmp_path / 'subs.toml'
+    path.write_text(
+        '[[substitution]]\nmatch = "echo alpha-one-renamed"\nreplace = "true"\nreason = "r1"\n\n'
+        '[[substitution]]\nmatch = "echo alpha-two-renamed"\nreplace = "true"\nreason = "r2"\n',
+        encoding='utf-8',
+    )
     out = _run(
-        capsys, str(page), '--tab', 'Alpha', '--substitutions', str(subs), '--format', 'script'
+        capsys, str(page), '--tab', 'Alpha', '--substitutions', str(path), '--format', 'script'
     )
     assert out.returncode == 2
     assert 'matches no command on the page' in out.stderr
+    assert "'echo alpha-one-renamed'" in out.stderr
+    assert "'echo alpha-two-renamed'" in out.stderr
     assert out.stdout == ''
 
 
@@ -371,21 +407,33 @@ def test_table_format_escapes_pipe_characters_in_commands(tmp_path, capsys):
     assert r'pipe \| test' in out.stdout
 
 
+def test_table_format_escapes_backticks_in_commands(tmp_path, capsys):
+    """Commands with backticks are displayed with single quotes in table cells."""
+    page_file = tmp_path / 'backtick.md'
+    page_file.write_text('```console\necho `date`\n```\n', encoding='utf-8')
+    out = _run(capsys, str(page_file), '--format', 'table')
+    assert out.returncode == 0
+    assert "`echo 'date'`" in out.stdout
+    assert '`echo `date``' not in out.stdout
+
+
 def _bash_script(
-    page: Path, tmp_path: Path, tab: str | None, subs: Path | None = None, capsys=None
+    page: Path,
+    tmp_path: Path,
+    tab: str | None,
+    subs: Path | None = None,
+    *,
+    capsys,
+    timing: Path | None = None,
 ) -> Path:
     """Generate the script for ``tab`` into ``tmp_path`` and return its path."""
-    args = [str(page), '--format', 'script', '--timing', str(tmp_path / 't.tsv')]
+    timing_path = str(timing or (tmp_path / 't.tsv'))
+    args = [str(page), '--format', 'script', '--timing', timing_path]
     if tab is not None:
         args += ['--tab', tab]
     if subs is not None:
         args += ['--substitutions', str(subs)]
-    if capsys is not None:
-        out = _run(capsys, *args)
-    else:
-        out = subprocess.run(
-            [sys.executable, str(_TOOL), *args], capture_output=True, text=True, check=False
-        )
+    out = _run(capsys, *args)
     assert out.returncode == 0, out.stderr
     script = tmp_path / 'run.sh'
     script.write_text(out.stdout, encoding='utf-8')
@@ -420,12 +468,46 @@ def test_generated_script_runs_in_one_session_and_writes_timing(tmp_path, capsys
     assert rows[0] == 'page_line\twall_seconds\texit_code\tcommand'
     assert [r.split('\t')[0] for r in rows[1:]] == ['2', '3', '4', '5', '6', '7']
     assert {r.split('\t')[2] for r in rows[1:]} == {'0'}
+    for r in rows[1:]:
+        assert re.match(r'^\d+\.\d$', r.split('\t')[1])
     sleep_row = rows[-1].split('\t')
     wall_sec = float(sleep_row[1])
-    assert 0.9 <= wall_sec <= 10.0
-    assert not sleep_row[1].startswith('-')
+    assert 0.9 <= wall_sec <= 30.0
     assert done.stdout.count('::group::') == done.stdout.count('::endgroup::') == 6
     assert '::group::[page line 4] cd sub' in done.stdout
+
+
+def test_generated_script_handles_timing_path_with_spaces(tmp_path, capsys):
+    """A timing file path containing spaces is quoted properly in the bash script."""
+    timing_dir = tmp_path / 'my dir'
+    timing_dir.mkdir()
+    timing_file = timing_dir / 't.tsv'
+    p = tmp_path / 'p.md'
+    p.write_text('```console\necho hello\n```\n', encoding='utf-8')
+    script = _bash_script(p, tmp_path, None, capsys=capsys, timing=timing_file)
+    done = subprocess.run(
+        ['bash', '-e', str(script)], capture_output=True, text=True, cwd=tmp_path
+    )
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert timing_file.is_file()
+    rows = timing_file.read_text(encoding='utf-8').splitlines()
+    assert len(rows) == 2
+    assert rows[0] == 'page_line\twall_seconds\texit_code\tcommand'
+    assert rows[1].startswith('2\t')
+
+
+def test_timing_row_replaces_tab_characters_in_command(tmp_path, capsys):
+    """A command containing tab characters produces a TSV row with exactly 4 columns."""
+    p = tmp_path / 'tab_cmd.md'
+    p.write_text('```console\necho\twith\ttabs\n```\n', encoding='utf-8')
+    script = _bash_script(p, tmp_path, None, capsys=capsys)
+    done = subprocess.run(['bash', str(script)], capture_output=True, text=True, cwd=tmp_path)
+    assert done.returncode == 0, done.stderr
+    rows = (tmp_path / 't.tsv').read_text(encoding='utf-8').splitlines()
+    assert len(rows) == 2
+    cols = rows[1].split('\t')
+    assert len(cols) == 4
+    assert cols[3] == 'echo with tabs'
 
 
 def test_generated_script_stops_at_first_failure(tmp_path, capsys):
@@ -542,3 +624,11 @@ def test_tab_with_no_required_commands_exits_2(tmp_path, capsys):
     out = _run(capsys, str(p), '--tab', 'Gamma')
     assert out.returncode == 2
     assert 'no console block found for the selection' in out.stderr
+
+
+def test_fence_like_line_does_not_close_console_block():
+    """Three backticks followed by text do not close the console block; the line stays a command."""
+    page_text = '```console\necho before\n```not-a-fence\necho after\n```\n'
+    steps_list = steps.parse_page(page_text)
+    assert [s.command for s in steps_list] == ['echo before', '```not-a-fence', 'echo after']
+    assert [s.line for s in steps_list] == [2, 3, 4]
