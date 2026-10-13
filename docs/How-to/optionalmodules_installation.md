@@ -46,12 +46,16 @@ bash tools/get_lovepy.sh
 
 ## Multi-phase tidal response (Obliqua)
 
-Obliqua computes the multi-phase tidal response of the planet from its
-interior structure and rheology. It is written in Julia.
+The installer sets Obliqua up automatically. Obliqua computes the multi-phase
+tidal response of the planet from its interior structure and rheology. It is
+written in Julia. To repeat the setup step by hand:
 
 ```console
 bash tools/get_obliqua.sh
 ```
+
+The options `--register` (adds Obliqua to the default Julia environment) and
+`--test` (runs its own tests) exist.
 
 ## Synthetic observations (PetitRADTRANS)
 
@@ -67,9 +71,15 @@ bash tools/get_prt.sh
 
 ## Alternative outgassing (atmodeller)
 
-[atmodeller](https://github.com/djbower/atmodeller) is an optional
-alternative to CALLIOPE, selected with `outgas.module = "atmodeller"`. It is
-not installed with PROTEUS by default; a standard run uses CALLIOPE.
+The installer sets atmodeller up automatically as an editable clone in `Atmodeller/`.
+[atmodeller](https://github.com/djbower/atmodeller) is an alternative to
+CALLIOPE, selected with `outgas.module = "atmodeller"`. To repeat the setup step by hand:
+
+```console
+bash tools/get_atmodeller.sh
+```
+
+For an installation without the installer, install the package via its extra:
 
 ```console
 pip install "fwl-proteus[atmodeller]"
@@ -136,18 +146,18 @@ package; every other command is unaffected. See the
 
 ## Atmospheric chemistry (VULCAN)
 
-VULCAN is an optional atmospheric-photochemistry backend, selected with
-`atmos_chem.module = "vulcan"`. It is not required for a standard PROTEUS
-run. Install it from PyPI:
-
-```console
-pip install "fwl-proteus[vulcan]"
-```
-
-For local development, install as an editable checkout instead:
+The installer sets VULCAN up automatically as an editable clone in `VULCAN/`.
+VULCAN is an atmospheric photochemistry module, selected with
+`atmos_chem.module = "vulcan"`. To repeat the setup step by hand:
 
 ```console
 bash tools/get_vulcan.sh
+```
+
+For an installation without the installer, install the package via its extra:
+
+```console
+pip install "fwl-proteus[vulcan]"
 ```
 
 !!! warning "License"
@@ -156,20 +166,20 @@ bash tools/get_vulcan.sh
 
 ## Protoplanet accretion (Morrigan)
 
-Morrigan is an optional giant-impact accretion module, selected with
+The installer sets Morrigan up automatically as an editable clone in `Morrigan/`.
+Morrigan is a giant-impact accretion module, selected with
 `accretion.module = "morrigan"`. It evolves a system of planetary embryos
 through orbital crossings and collisions and returns the impact history
-that the coupled run replays. It is not required for a standard PROTEUS
-run. Install it from PyPI:
-
-```console
-pip install "fwl-proteus[morrigan]"
-```
-
-For local development, install as an editable checkout instead:
+that the coupled run replays. To repeat the setup step by hand:
 
 ```console
 bash tools/get_morrigan.sh
+```
+
+For an installation without the installer, install the package via its extra:
+
+```console
+pip install "fwl-proteus[morrigan]"
 ```
 
 An accretion run needs an interior module that can re-melt the mantle

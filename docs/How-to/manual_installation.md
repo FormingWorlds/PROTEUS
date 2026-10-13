@@ -256,8 +256,18 @@ bash tools/get_cvode.sh
 python -m pip install -e ".[develop]"
 ```
 
-The optional backends and the parameter-inference stack are not part of this
-install, and their tests skip without them. To match what CI runs:
+VULCAN, atmodeller, Morrigan, Obliqua and the parameter-inference stack are not part of this
+install, and the tests of VULCAN, atmodeller and the inference stack skip without them. To
+set up the four modules as `bash install.sh` does:
+
+```console
+bash tools/get_morrigan.sh
+bash tools/get_vulcan.sh
+bash tools/get_atmodeller.sh
+bash tools/get_obliqua.sh
+```
+
+To match what CI runs, which takes VULCAN and atmodeller from PyPI:
 
 ```console
 python -m pip install -e ".[develop,vulcan,atmodeller,inference]"

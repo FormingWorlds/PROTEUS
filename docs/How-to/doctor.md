@@ -47,10 +47,11 @@ non-empty:
 ### Package versions
 
 For each required Python package (fwl-proteus, fwl-io, fwl-aragog, fwl-calliope,
-fwl-janus, fwl-mors, fwl-zephyrus, fwl-zalmoxis), the doctor checks the points
-below; it does not check the optional fwl-vulcan and fwl-morrigan:
+fwl-janus, fwl-mors, fwl-zephyrus, fwl-zalmoxis) and standard module package
+(fwl-morrigan, fwl-vulcan, atmodeller), the doctor checks the points below:
 
-1. **Is the package installed?** If not, the fix is `pip install <name>`.
+1. **Is the package installed?** If not, the check fails for a required package
+   and warns for a standard module package, with the command that installs it.
 2. **Does the installed version satisfy the minimum bound in `pyproject.toml`?**
    For example, if `pyproject.toml` requires `fwl-aragog>=26.05.13` and you
    have `25.1.1` installed, the check fails.
@@ -59,10 +60,12 @@ below; it does not check the optional fwl-vulcan and fwl-morrigan:
    clone of its own (no `.git`, or an empty one inside the PROTEUS checkout),
    it says so in place of the hash and the dirty state.
 
-For git-pinned modules (AGNI, SOCRATES), the doctor compares the checkout's
-HEAD commit against the commit SHA pinned in `pyproject.toml` under
-`[tool.proteus.modules]`. A mismatch produces a warning with a fix command.
-The AGNI fix is `bash tools/get_agni.sh`. The SOCRATES fix also rebuilds AGNI,
+For git-pinned modules (AGNI, SOCRATES, Obliqua), the doctor compares the
+checkout's HEAD commit against the commit SHA pinned in `pyproject.toml` under
+`[tool.proteus.modules]`. A mismatch produces a warning with a fix command. A
+missing AGNI or SOCRATES clone is a failure; a missing Obliqua clone is a
+warning with the fix `bash tools/get_obliqua.sh`. The AGNI fix is
+`bash tools/get_agni.sh`. The SOCRATES fix also rebuilds AGNI,
 because re-cloning the SOCRATES tree removes the wrappers AGNI compiles into
 `socrates/julia`, so it reads
 `bash tools/get_socrates.sh "$RAD_DIR" && RAD_DIR="$RAD_DIR" bash tools/get_agni.sh 0`.

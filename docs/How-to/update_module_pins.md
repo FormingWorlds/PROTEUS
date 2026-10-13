@@ -18,8 +18,8 @@ module is distributed.
 | Pin type | Where it lives in `pyproject.toml` | Pin value | Modules |
 |----------|------------------------------------|-----------|---------|
 | PyPI floor | `[project] dependencies` | Minimum version bound, e.g. `fwl-aragog>=26.05.13` | fwl-janus, fwl-mors, fwl-calliope, fwl-zephyrus, fwl-aragog, fwl-zalmoxis |
-| PyPI floor (optional) | `[project.optional-dependencies]` | Minimum version bound on an optional backend | fwl-vulcan, atmodeller, fwl-morrigan |
-| Git ref | `[tool.proteus.modules.<name>]` | Exact commit SHA, tag, or branch in a `ref` field | AGNI, SOCRATES, SPIDER, BOREAS, LovePy, Obliqua |
+| PyPI floor (extras) | `[project.optional-dependencies]` | Minimum version bound on a package extra | fwl-vulcan, atmodeller, fwl-morrigan |
+| Git ref | `[tool.proteus.modules.<name>]` | Exact commit SHA, tag, or branch in a `ref` field | AGNI, SOCRATES, SPIDER, BOREAS, LovePy, Obliqua, atmodeller |
 
 
 A third entry, PETSc, is pinned in `[tool.proteus.modules.petsc]` by the SHA-256
@@ -83,13 +83,13 @@ matching lines in SPIDER.
     - PyPI module installed as a wheel: `proteus update`, which runs
       `pip install -U "<name>>=<version>"`.
     - PyPI module in an editable clone that a setup script makes (MORS, JANUS,
-      CALLIOPE, ZEPHYRUS, Aragog, Zalmoxis): `proteus update` does not change
-      the clone. `proteus doctor` prints the commands that move it to the
-      release tag of the new floor and, for the clone in the module's folder of
-      the PROTEUS root, the setup script with `--force` that replaces it; run
-      one of them by hand. The doctor does not check VULCAN and Morrigan; for
-      their clones, `bash tools/get_vulcan.sh` or `bash tools/get_morrigan.sh`
-      prints the same commands.
+      CALLIOPE, ZEPHYRUS, Aragog, Zalmoxis, Morrigan, VULCAN):
+      `proteus update` does not change the clone. `proteus doctor` prints the
+      commands that move it to the release tag of the new floor and, for the
+      clone in the module's folder of the PROTEUS root, the setup script with
+      `--force` that replaces it; run one of them by hand. The atmodeller
+      clone is pinned by a commit: `bash tools/get_atmodeller.sh` prints the
+      commands that move it to the pin.
     - Git module: `bash tools/get_<module>.sh` (for SOCRATES, add `--force` to
       discard local modifications to the checkout, that is, changes to tracked
       files or commits not pushed to a remote; the compiled build tree is left
