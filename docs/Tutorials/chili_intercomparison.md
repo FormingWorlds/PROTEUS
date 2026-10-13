@@ -52,10 +52,12 @@ volume.
 !!! note "How far the runs on this page go"
     The runs on this page follow each planet to a quasi-steady state:
     either the melt fraction of the mantle has fallen to the 5% threshold, or
-    the planet is in global energy balance with a small residual melt
-    fraction. The three high-H runs of the Earth grid are the exception:
-    they end at the 15 Myr bound with 8 to 9% of melt. The runs do not follow the long-term solid-state evolution of the
-    mantle or the loss of the atmosphere after that state. Differences
+    the planet is in global energy balance and part of the mantle stays
+    molten. The three high-H runs of the Earth grid and the TRAPPIST-1 b
+    run are the exception: they end at the 15 Myr bound, the grid runs with
+    8.2 to 9.4% of melt by mass and TRAPPIST-1 b with 20%. The runs do not
+    follow the long-term solid-state evolution of the mantle or the loss of
+    the atmosphere after that state. Differences
     between the PROTEUS results in the CHILI paper and the results shown
     here come from the continued development of the code and from a
     different set of sub-modules in the current configuration (see
@@ -108,8 +110,11 @@ Monitor progress with `tail -f output/chili_earth/proteus_00.log`
     the star [^cite-lichtenberg2026]. PROTEUS runs this case and warns
     during the run that the planet orbits within the Roche limit, spins
     faster than the breakup rate, and has an atmosphere beyond the Hill
-    radius. The TRAPPIST-1 configs keep the end time of the protocol; the
-    runs of this release were ended at 15 Myr of model time.
+    radius. The TRAPPIST-1 configs keep the end time of the protocol. In
+    the runs of this release, TRAPPIST-1 &alpha; reaches global energy
+    balance at 3.1 Myr with 56% of melt by mass, TRAPPIST-1 e reaches the
+    5% threshold at 9.0 Myr, and TRAPPIST-1 b ends at the 15 Myr bound with
+    20% of melt by mass.
     After a run, convert the output to the CHILI-MIP submission format
     with `python tools/chili_postproc.py <output_dir>`.
 
