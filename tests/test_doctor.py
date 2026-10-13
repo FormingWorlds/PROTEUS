@@ -1988,18 +1988,25 @@ class TestCheckGitModuleStandard:
         assert agni_r.auto_fixable is True
 
     @pytest.mark.parametrize(
-        ('head', 'message'),
+        ('pins', 'head', 'message'),
         [
-            ('a' * 40, '0.1.0 (aaaaaaaa): Julia environment not instantiated'),
-            (None, '0.1.0: Julia environment not instantiated'),
+            (
+                {'obliqua': {'ref': 'a' * 40}},
+                'a' * 40,
+                '0.1.0 (aaaaaaaa): Julia environment not instantiated',
+            ),
+            (
+                {},
+                None,
+                '0.1.0: Julia environment not instantiated',
+            ),
         ],
         ids=['with head', 'without head'],
     )
     def test_obliqua_missing_manifest_warns_julia_not_instantiated(
-        self, tmp_path, mock_own_clone, head, message
+        self, tmp_path, mock_own_clone, pins, head, message
     ):
         """An on-pin Obliqua folder without Manifest.toml warns, naming the head when git has one."""
-        pins = {'obliqua': {'ref': 'a' * 40}}
         (tmp_path / 'Project.toml').write_text('name = "Obliqua"\n')
         with (
             patch('proteus.doctor._module_pins', return_value=pins),
@@ -2279,6 +2286,95 @@ class TestCheckGitModuleStandard:
         assert r.status == FAIL
         assert r.message == 'not installed'
         assert r.fix_cmd == 'bash tools/get_socrates.sh "$RAD_DIR"'
+
+    def test_agni_clone_without_commit_warns_cannot_compare_pin(self, tmp_path):
+        """A git repository without commits at a pinned module path warns."""
+        root = tmp_path / 'repo'
+        root.mkdir()
+        agni_dir = tmp_path / 'AGNI'
+        agni_dir.mkdir()
+        subprocess.run(['git', 'init'], cwd=agni_dir, check=True, capture_output=True)
+        (agni_dir / 'Project.toml').write_text('[project]\n')
+        pins = {'agni': {'ref': 'a' * 40}}
+        with (
+            patch('proteus.doctor._module_pins', return_value=pins),
+            patch('proteus.doctor._get_agni_version', return_value='1.13.0'),
+            patch('proteus.doctor._repo_root', return_value=root),
+        ):
+            r = check_git_module('AGNI', {'agni': str(agni_dir)}, required=True)
+        assert r.status == WARN
+        assert r.message == '1.13.0: the commit cannot be compared with the pin'
+        assert r.fix_cmd == (
+            f'move {shlex.quote(str(agni_dir))} away or delete it, then run: '
+            f'cd {shlex.quote(str(root))} && bash tools/get_agni.sh'
+        )
+        assert r.auto_fixable is False
+
+    def test_obliqua_clone_without_commit_warns_cannot_compare_pin(self, tmp_path):
+        """An Obliqua clone without commits warns even with Manifest present."""
+        root = tmp_path / 'repo'
+        root.mkdir()
+        obliqua_dir = tmp_path / 'Obliqua'
+        obliqua_dir.mkdir()
+        subprocess.run(['git', 'init'], cwd=obliqua_dir, check=True, capture_output=True)
+        (obliqua_dir / 'Project.toml').write_text('name = "Obliqua"\nversion = "0.1.0"\n')
+        (obliqua_dir / 'Manifest.toml').write_text('manifest_format = "2.0"\n')
+        pins = {'obliqua': {'ref': 'b' * 40}}
+        with (
+            patch('proteus.doctor._module_pins', return_value=pins),
+            patch('proteus.doctor._repo_root', return_value=root),
+        ):
+            r = check_git_module('Obliqua', {'obliqua': str(obliqua_dir)}, required=False)
+        assert r.status == WARN
+        assert r.message == '0.1.0: the commit cannot be compared with the pin'
+        assert r.fix_cmd == (
+            f'move {shlex.quote(str(obliqua_dir))} away or delete it, then run: '
+            f'cd {shlex.quote(str(root))} && bash tools/get_obliqua.sh'
+        )
+        assert '--force' not in r.fix_cmd
+        assert r.auto_fixable is False
+
+    def test_obliqua_clone_without_commit_without_manifest_warns_cannot_compare_pin(
+        self, tmp_path
+    ):
+        """An Obliqua clone without commits warns before the Manifest check."""
+        root = tmp_path / 'repo'
+        root.mkdir()
+        obliqua_dir = tmp_path / 'Obliqua'
+        obliqua_dir.mkdir()
+        subprocess.run(['git', 'init'], cwd=obliqua_dir, check=True, capture_output=True)
+        (obliqua_dir / 'Project.toml').write_text('name = "Obliqua"\nversion = "0.1.0"\n')
+        pins = {'obliqua': {'ref': 'b' * 40}}
+        with (
+            patch('proteus.doctor._module_pins', return_value=pins),
+            patch('proteus.doctor._repo_root', return_value=root),
+        ):
+            r = check_git_module('Obliqua', {'obliqua': str(obliqua_dir)}, required=False)
+        assert r.status == WARN
+        assert r.message == '0.1.0: the commit cannot be compared with the pin'
+        assert r.fix_cmd == (
+            f'move {shlex.quote(str(obliqua_dir))} away or delete it, then run: '
+            f'cd {shlex.quote(str(root))} && bash tools/get_obliqua.sh'
+        )
+        assert 'Julia environment not instantiated' not in r.message
+        assert r.auto_fixable is False
+
+    def test_unpinned_module_clone_without_commit_passes(self, tmp_path):
+        """A module clone without commit passes when the module has no pin."""
+        root = tmp_path / 'repo'
+        root.mkdir()
+        agni_dir = tmp_path / 'AGNI'
+        agni_dir.mkdir()
+        subprocess.run(['git', 'init'], cwd=agni_dir, check=True, capture_output=True)
+        (agni_dir / 'Project.toml').write_text('[project]\n')
+        with (
+            patch('proteus.doctor._module_pins', return_value={}),
+            patch('proteus.doctor._get_agni_version', return_value='1.13.0'),
+            patch('proteus.doctor._repo_root', return_value=root),
+        ):
+            r = check_git_module('AGNI', {'agni': str(agni_dir)}, required=True)
+        assert r.status == PASS
+        assert r.message == '1.13.0'
 
     def test_run_all_checks_warns_obliqua_when_not_installed(self, tmp_path):
         """With no Obliqua checkout, run_all_checks returns WARN."""

@@ -1135,6 +1135,16 @@ def check_git_module(name: str, dirs: dict, required: bool = True) -> CheckResul
             auto_fixable=False,
         )
 
+    if pinned_ref and head is None:
+        return CheckResult(
+            name=name,
+            category='versions',
+            status=WARN,
+            message=f'{ver}: the commit cannot be compared with the pin',
+            fix_cmd=move_away_fix,
+            auto_fixable=False,
+        )
+
     if pinned_ref and head and head != pinned_ref:
         # Re-cloning SOCRATES deletes AGNI build products in that tree;
         # the SOCRATES refresh command chains an AGNI rebuild.
