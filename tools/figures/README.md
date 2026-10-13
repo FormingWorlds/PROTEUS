@@ -73,9 +73,37 @@ surface underneath it: on a chip whose colour is the same in both modes it keeps
 the ink given here, and only a label whose surface changes between modes has its
 ink recomputed by contrast.
 
-The loop-stage boxes link to the call site in `src/proteus/proteus.py` that runs
-them, and module boxes link to the file that implements them. Both are line
-anchors on `main` and are worth re-checking when the loop is restructured.
+### Code links
+
+Links into the code name their target instead of a line number, so they survive
+edits elsewhere in the file. In draw.io (and in `arch_final.json`) a link is
+written as
+
+```
+https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/proteus.py#interior
+```
+
+with the part after `#` being either a function, class or method name
+(`run_zephyrus`, `Proteus.start`) or a slug of a comment: the loop stages use
+the section banners in `Proteus.start` (`############### INTERIOR` is
+`#interior`, `############### ORBIT AND TIDES` is `#orbit-and-tides`), and any
+other comment is matched by its text or first sentence (`# Run offline
+chemistry` is `#run-offline-chemistry`). The build replaces each with a
+`#L<first>-L<last>` range: the whole function, the banner up to its closing
+`############### /` banner, or a comment and the statement after it. A target
+has to match exactly once, so a renamed banner or function fails loudly.
+
+When `proteus.py` or a linked module changes, refresh the ranges in the two
+committed SVGs without rebuilding the figure:
+
+```bash
+python3 tools/figures/code_links.py
+```
+
+PR CI runs `python tools/figures/code_links.py --check`, which fails when a
+range no longer matches the code or a link still carries a hard-coded `#L`
+anchor. `--ref <git ref>` resolves against another revision instead of the work
+tree.
 
 ## Module schematic
 
