@@ -46,10 +46,8 @@ from proteus.interior_chem.disproportionation import (
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
-# Bulk-silicate-Earth melt on a single-cation oxide basis, moles per 100 g
-# (Schaefer et al. 2024 Table 1: 7.82 wt% FeO, 38.3 MgO, 45.5 SiO2, 3.58 CaO,
-# 4.49 Al2O3). Asymmetric by construction, so a bug that mixes up the Fe2+ and
-# Fe3+ slots cannot pass by symmetry.
+# BSE melt (Schaefer et al. 2024 Table 1), single-cation moles per 100 g;
+# asymmetric, so swapped Fe2+ and Fe3+ slots cannot pass by symmetry.
 _N_FET = 7.82 / 71.844
 _N_OTHER = 38.3 / 40.304 + 45.5 / 60.084 + 3.58 / 56.077 + 2 * 4.49 / 101.96
 _N_SIL = _N_OTHER + _N_FET
@@ -264,10 +262,8 @@ def test_final_ferric_fraction_is_independent_of_the_starting_value():
     output_spread = max(finals) / min(finals) - 1.0
 
     assert finals[0] == pytest.approx(finals[-1], rel=5e-3)
-    # The discriminating statement is that the outputs collapse: a tenfold
-    # spread in the starting value survives as a fraction of a per cent.
-    # Convergence is close but not exact, because the melt inventory shrinks
-    # by the reaction extent and that extent differs between the runs.
+    # A tenfold input spread collapses to under 1 %; not to zero, because the
+    # melt inventory shrinks by a reaction extent that differs between runs.
     assert output_spread < 0.01
     assert input_spread / output_spread > 100.0
     # All of them ended more oxidised than the most oxidised starting point,

@@ -797,10 +797,8 @@ RESUMABLE_ZERO_FILL_KEYS = frozenset(
         'M_volatile_change',
         'n_impacts_applied',
         'step_dE_impact_J',
-        # Melt-redox offset (interior_chem/redox.py). update_melt_redox
-        # rewrites it every step before the outgassing reads it (run_interior
-        # precedes the outgassing in the loop), and a resume re-initialises
-        # the tracker, so a stored value is never read back.
+        # Melt-redox offset: rewritten by update_melt_redox every step before the
+        # outgassing reads it, so a stored value is never read back.
         'fO2_shift_IW_mantle',
     }
 )
@@ -972,39 +970,16 @@ def GetHelpfileKeys():
         'atm_kg_per_mol',   # outgassed atmosphere MMW [kg mol-1]
         'M_vol_atm',        # atmospheric mass of volatiles and noble gases; rock vapour excluded [kg]
 
-        # Iron-wustite buffer offset that the chemistry solver actually
-        # equilibrated to, and the O mass-balance residual of that
-        # equilibrium. Under planet.fO2_source = "user_constant" the
-        # offset echoes the configured outgas.fO2_shift_IW (so the column
-        # is single-source-of-truth for downstream analysis) and the
-        # residual is zero (O is an output, not a constraint). Under
-        # planet.fO2_source = "from_O_budget" the offset is the solver
-        # output and the residual is the 5th element-mass residual paired
-        # with the H/C/N/S residuals reported by CALLIOPE. The offset is
-        # against each backend's own IW buffer.
-        # The rock-vapour columns below are the LavAtmos counterparts,
-        # derived from the O2 partial pressure of the vapourisation
-        # solve rather than from the volatile chemistry. They are
-        # independent of `fO2_shift_IW_derived` and are left at zero
-        # when vapourisation is disabled.
+        # IW offset the chemistry equilibrated to (against each backend's own buffer)
+        # and its O residual; rock-vapour columns come from LavAtmos, 0 when off.
         'fO2_shift_IW_derived',  # equilibrated IW-buffer offset [log10 bar]
         'fO2_vapourise_derived',         # rock-vapour fO2 [log10 bar]
         'fO2_vapourise_shift_IW_derived',  # rock-vapour IW offset [log10 bar]
         'O_res',                 # O mass-balance residual [kg]
         'O_vapourised_kg',         # oxygen released by rock vapourisation (LavAtmos) [kg]
 
-        # Melt Fe3+/Fe2+ redox tracking (issue #653,
-        # interior_chem/redox.py). Populated only under
-        # planet.fO2_source = "from_mantle_redox"; left at 0.0 (from
-        # ZeroHelpfileRow) otherwise. fO2_shift_IW_mantle is what the
-        # outgas dispatch buffers to under that source, echoed here
-        # verbatim for single-source-of-truth analysis (same convention
-        # as fO2_shift_IW_derived above).
-        # The Fe-metal columns are the saturation diagnostics of the same
-        # tracker: the largest per-cell metal activity (0 when no cell was
-        # tested) and the index of the cell holding it (-1 when no cell was
-        # tested; 0 under other fO2 sources), the cumulative metal formed in mol and in kg, and the
-        # metal formed on this step.
+        # Melt-redox tracker (planet.fO2_source = "from_mantle_redox", else 0);
+        # a_fe_max_cell_mantle is -1 when no cell was tested.
         'a_fe_max_mantle',  # largest per-cell Fe-metal activity [1]
         'a_fe_max_cell_mantle',  # index of that cell (-1: none tested) [1]
         'fO2_shift_IW_mantle',  # tracked-melt-redox surface Delta-IW [log10 bar]

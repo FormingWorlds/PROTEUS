@@ -843,15 +843,8 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
     # O was a mass constraint; mirrors CALLIOPE, which always writes O_kg_total.
     volatile_O_kg = _total_volatile_oxygen_kg(hf_row, element_mmw)
 
-    # Plumb the derived IW-buffer offset only for the 'from_O_budget'
-    # source. Under user_constant and from_mantle_redox, the wrapper's
-    # pre-dispatch echo (config.outgas.fO2_shift_IW, or
-    # hf_row['fO2_shift_IW_mantle']) IS the offset the chemistry
-    # equilibrated to (the fugacity constraint set it), so overwriting with
-    # atmodeller's back-computed log10dIW_1_bar would lose bit-for-bit
-    # echo of the user input and introduce a small Hirschmann-buffer
-    # 1-bar-vs-P reconstruction drift. The column is backend-faithful:
-    # each wrapper reports the offset against its own IW buffer.
+    # Only 'from_O_budget' derives the offset; the other sources keep the echoed
+    # constraint, which a back-computed log10dIW_1_bar would perturb slightly.
     if fO2_source == 'from_O_budget':
         o2_dict = output_dict.get('O2_g', {})
         log10dIW = o2_dict.get('log10dIW_1_bar') if isinstance(o2_dict, dict) else None

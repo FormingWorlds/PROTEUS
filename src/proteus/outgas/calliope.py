@@ -449,15 +449,8 @@ def calc_surface_pressures(dirs: dict, config: Config, hf_row: dict):
     if config.planet.fO2_source == 'from_O_budget':
         hf_row['O_kg_total'] = float(target['O'])
 
-    # Plumb the derived IW-buffer offset and O-mass residual into hf_row.
-    # For the 'from_O_budget' source the solver returns these as part of
-    # solvevol_result; for 'from_mantle_redox' the buffer offset is the
-    # tracked-melt-redox value already used as the fugacity constraint
-    # above (opts['fO2_shift_IW'], set from hf_row['fO2_shift_IW_mantle']
-    # in construct_options); for the user_constant path the buffer offset
-    # is the user-supplied config.outgas.fO2_shift_IW (echoed for column
-    # uniformity). None of the non-from_O_budget sources have an O
-    # residual (O is an output, not a constraint).
+    # Derived offset and O residual: solved for 'from_O_budget'; otherwise the offset
+    # used as the constraint is echoed, and O is an output, so its residual is 0.
     if config.planet.fO2_source == 'from_O_budget':
         hf_row['fO2_shift_IW_derived'] = float(solvevol_result['fO2_shift_derived'])
         hf_row['O_res'] = float(solvevol_result['O_res'])

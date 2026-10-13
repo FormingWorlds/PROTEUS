@@ -57,3 +57,20 @@ def test_non_finite_ini_dsdr_is_rejected_in_every_mode(mode, dsdr):
     with pytest.raises(ValueError, match='is not finite') as exc:
         Planet(temperature_mode=mode, ini_dsdr=dsdr)
     assert 'planet.ini_dsdr' in str(exc.value)
+
+
+@pytest.mark.parametrize('choice', ['mgsio3', 'bulk_BSE'])
+def test_partition_coefficient_prescriptions_are_accepted(choice):
+    """Both redox-tracker prescriptions are valid, and mgsio3 is the default."""
+    assert Planet(partition_coefficients=choice).partition_coefficients == choice
+    assert Planet().partition_coefficients == 'mgsio3'
+
+
+@pytest.mark.parametrize('bad', ['bulk_bse', 'MgSiO3', 'schaefer', ''])
+def test_unknown_partition_coefficient_prescription_is_rejected(bad):
+    """A misspelt prescription fails at config load rather than at the first
+    tracker call, deep into a run."""
+    with pytest.raises(ValueError) as exc:
+        Planet(partition_coefficients=bad)
+    assert 'partition_coefficients' in str(exc.value)
+    assert bad not in ('mgsio3', 'bulk_BSE')

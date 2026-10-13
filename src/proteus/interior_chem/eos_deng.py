@@ -80,10 +80,8 @@ import numpy as np
 
 log = logging.getLogger('fwl.' + __name__)
 
-# ── Deng et al. (2020) 4th-order Birch-Murnaghan + thermal pressure ─────────
-# Row 0 = reduced   (Mg14Fe2Si16O48, ferrous)
-# Row 1 = oxidised  (Mg14Fe2Si16O49, ferric)
-# V0 converted from cubic Angstroms/mol to J/GPa/mol: 1 A^3/mol = 602.21 J/GPa
+# Deng et al. (2020) BM4 + thermal pressure; rows: reduced Mg14Fe2Si16O48,
+# oxidised Mg14Fe2Si16O49. V0 in J/GPa/mol (1 A^3/mol = 602.21 J/GPa).
 _V0 = 602.21 * np.array([1180.11401427979, 1204.76365212898])
 _K0 = np.array([26.9471386120485, 23.1953006249046])
 _KP = np.array([2.80253187140108, 3.21608935806420])

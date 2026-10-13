@@ -372,18 +372,8 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict, *, initial: bool):
 
     log.info('Calculating volatile outgassing at surface')
 
-    # planet.fO2_source dispatch. Three runtime paths are wired today:
-    # 'user_constant' (fO2 buffered to the configured IW offset) for
-    # every backend, 'from_O_budget' (authoritative-O chemistry) for the
-    # CALLIOPE and atmodeller backends, and 'from_mantle_redox' (fO2
-    # buffered to the tracked-melt-redox offset computed in
-    # interior_chem/redox.py, hf_row['fO2_shift_IW_mantle']) for
-    # every backend. The Config-level validator
-    # (planet_fO2_source_compat) rejects any other value and the
-    # from_O_budget + dummy combo at config-load, so this guard is
-    # unreachable under a normally-loaded Config. It remains as defence
-    # in depth for programmatic Config construction (tests, scripted
-    # runs) that bypasses the validators.
+    # planet_fO2_source_compat rejects other values at config load; this guard
+    # covers Config objects built without the validators (tests, scripts).
     fO2_source = config.planet.fO2_source
     if fO2_source not in ('user_constant', 'from_O_budget', 'from_mantle_redox'):
         raise NotImplementedError(
@@ -398,23 +388,8 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict, *, initial: bool):
             'invert against; outgas.module = "dummy" has none.'
         )
 
-    # Default the derived-fO2 helpfile columns before the backend
-    # dispatch. Each backend overrides the default as appropriate for its
-    # chemistry. Under fO2_source = "user_constant" the pre-seeded value
-    # is the offset the chemistry equilibrated to (because the fugacity
-    # constraint set it); leaving it untouched is the right behaviour.
-    # Under fO2_source = "from_O_budget" CALLIOPE and atmodeller
-    # overwrite the pre-seed with their solver-derived value. Under
-    # fO2_source = "from_mantle_redox" the offset was already computed
-    # this iteration by update_melt_redox (run_interior, earlier in the
-    # coupling loop, before run_outgassing) and stashed in
-    # hf_row['fO2_shift_IW_mantle']; echo that so
-    # hf_row['fO2_shift_IW_derived'] stays the single-source-of-truth
-    # column across all three sources. The pre-seed exists primarily so
-    # the dummy backend and any solve-skipped path land at the
-    # physically meaningful value rather than the ZeroHelpfileRow default
-    # 0.0, which downstream consumers would otherwise mis-interpret as
-    # "the chemistry ran at exactly IW".
+    # Pre-seed the derived offset with the constraint (from_O_budget backends replace
+    # it), so the dummy backend and skipped solves do not report 0, i.e. exactly IW.
     if fO2_source == 'from_mantle_redox':
         hf_row['fO2_shift_IW_derived'] = float(hf_row['fO2_shift_IW_mantle'])
     else:

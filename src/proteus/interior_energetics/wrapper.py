@@ -2550,10 +2550,8 @@ def run_interior(
         if config.interior_energetics.heat_radiogenic:
             log.info('    F_radio    = %.2e W m-2' % float(hf_row['F_radio']))
 
-    # Melt Fe3+/Fe2+ redox tracking (issue #653). No-op unless
-    # planet.fO2_source == 'from_mantle_redox'. Placed after all T_magma
-    # clamping above so the fO2 it computes is consistent with the
-    # T_magma the outgas dispatch uses later this same iteration.
+    # Melt redox tracking (no-op unless planet.fO2_source = 'from_mantle_redox'), after
+    # the T_magma clamping so its fO2 uses the T_magma the outgassing uses.
     from proteus.interior_chem.redox import store_profile_snapshot, update_melt_redox
 
     update_melt_redox(interior_o, hf_row, config)

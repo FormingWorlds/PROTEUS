@@ -4291,6 +4291,25 @@
       "group_qualifier": null
     },
     {
+      "path": "planet.partition_coefficients",
+      "toml_section": "planet",
+      "class": "Planet",
+      "type": "str",
+      "accepts_none": false,
+      "default": "\"mgsio3\"",
+      "choices": [
+        "mgsio3",
+        "bulk_BSE"
+      ],
+      "bounds": null,
+      "description": "Solid/melt partition coefficients of Fe2+ and Fe3+ in the melt-redox tracker (``interior_chem/redox.py``, Step 5-6), chosen per cell from its pressure at the first tracker call. 'mgsio3' (default): the MgSiO3 phases only, bridgmanite at P >= 22 GPa and a 1:1 Cpx/Opx mix below, with the mineral values of Schaefer et al. (2024) Table S1 (Fe2+) and Table 3 (Fe3+). 'bulk_BSE': the bulk coefficients of the full mineral assemblage of each Schaefer et al. (2024) layer (boundaries 1, 2.5, 15, 18, 22 GPa) for their bulk-silicate-Earth magma ocean, the medians over all draws of their archived 1000 km run; this follows their mean Fe3+/FeT. Read only when ``fO2_source = 'from_mantle_redox'``; a resumed run keeps the coefficients it started with.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
       "path": "planet.R_int_override",
       "toml_section": "planet",
       "class": "Planet",

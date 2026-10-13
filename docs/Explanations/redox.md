@@ -36,7 +36,7 @@ Setting `planet.fO2_source = "from_mantle_redox"` enables this calculation. PROT
 
     Schaefer, Pahlevan and Elkins-Tanton track Fe$^{3+}$ and Fe$^{2+}$ during fractional crystallization using mineral/melt partition coefficients. They then convert the melt ferric/ferrous ratio to surface $f_{\rm O_2}$ using Hirschmann (2022)[^cite-hirschmann2022].
 
-    Because Fe$^{2+}$ is generally more compatible than Fe$^{3+}$, crystallization preferentially removes Fe$^{2+}$ and the remaining melt becomes more oxidized. The magnitude of this effect depends strongly on the poorly constrained Fe$^{3+}$ partitioning into lower-mantle minerals, especially bridgmanite.
+    In upper-mantle peridotite Fe$^{2+}$ is more compatible than Fe$^{3+}$, so crystallization there preferentially removes Fe$^{2+}$ and the remaining melt becomes more oxidized. In their lower-mantle and transition-zone minerals Fe$^{3+}$ is taken up more readily, so the melt Fe$^{3+}$/Fe$_{\rm T}$ first falls and then rises once the upper mantle crystallizes. The magnitude of these effects depends strongly on the poorly constrained Fe$^{3+}$ partitioning into lower-mantle minerals, especially bridgmanite.
 
     PROTEUS follows this approach with the simplifications listed in [Assumptions and limitations](#assumptions-and-limitations).
 
@@ -47,6 +47,7 @@ Setting `planet.fO2_source = "from_mantle_redox"` enables this calculation. PROT
 | `planet.fO2_source` | Set to `"from_mantle_redox"` to enable the tracker. Other values disable it. | `"user_constant"` |
 | `planet.ferric_fraction_initial` | Initial melt Fe$^{3+}$/Fe$_{\rm T}$, $f_0$, in the interval $(0,1)$. | `0.1` |
 | `planet.metal_saturation` | Must be `false` for this model. | `false` |
+| `planet.partition_coefficients` | Fe$^{2+}$ and Fe$^{3+}$ partition coefficients: `"mgsio3"` (bridgmanite and pyroxenes) or `"bulk_BSE"` (bulk values of the Schaefer et al. layers); see [step 4](#4-partition-iron-into-the-new-solid). | `"mgsio3"` |
 
 The tracker needs a melt fraction for every radial cell, so `interior_energetics.module` must be `spider` or `aragog`.
 
@@ -122,7 +123,7 @@ The adopted $w_{\rm FeO}$ is the rounded bulk-silicate-Earth value from Schaefer
 
 On a single-cation basis, one mole of Fe$^{2+}$ is one mole of FeO units and one mole of Fe$^{3+}$ is one mole of FeO$_{1.5}$ units. So $n^{2+}$ and $n^{3+}$ count both iron ions and oxide units.
 
-The per-cell Fe$^{3+}$ partition coefficient $D_i^{3+}$ (step 4) is also fixed at this call, from the pressure profile of the first step.
+The per-cell partition coefficients $D_i^{2+}$ and $D_i^{3+}$ (step 4) are also fixed at this call, from the pressure profile of the first step.
 
 ### 2. Determine newly formed solid
 
@@ -181,15 +182,17 @@ $$
 $$
 \Delta n^{2+}
 =
-D^{2+}C^{2+}\sum_i\Delta M_{s,i}.
+\sum_i D_i^{2+}C^{2+}\Delta M_{s,i}.
 $$
 
-The Fe$^{3+}$ coefficient depends on the mineral assemblage, selected from the cell pressure at the first step:
+Both coefficients depend on the mineral assemblage, selected from the cell pressure at the first step. `planet.partition_coefficients` chooses between two prescriptions.
+
+#### `"mgsio3"` (default): bridgmanite and pyroxenes
 
 | Assemblage | Pressure | $D^{3+}$ | $D^{2+}$ | Source |
 |---|---:|---:|---:|---|
-| Bridgmanite | $P\geq22$ GPa | 0.75 | 0.85 | Schaefer et al. (2024), Table 3 |
-| Clinopyroxene + orthopyroxene | $P<22$ GPa | 0.3825 | 0.85 | Mean of Cpx and Opx values |
+| Bridgmanite | $P\geq22$ GPa | 0.75 | 0.44 | Schaefer et al. (2024), Table 3 ($D^{3+}$) and Table S1 ($D^{2+}$) |
+| Clinopyroxene + orthopyroxene | $P<22$ GPa | 0.3825 | 0.535 | Mean of Cpx and Opx values |
 
 The shallow-mantle value is
 
@@ -209,9 +212,21 @@ from Schaefer et al. (2024, Eq. 6).
 
 PROTEUS does not use modal proportions of the two pyroxenes.
 
-For Fe$^{2+}$, PROTEUS uses $D^{2+}=0.85$ at all depths. This is the bulk mantle/melt FeO partition coefficient quoted by Schaefer et al. for fertile upper-mantle mineralogy.
+For Fe$^{2+}$, $D^{2+}$ is the experimental mineral/melt FeO partition coefficient compiled in Schaefer et al. (2024) Table S1: bridgmanite $0.44\pm0.19$, Cpx $0.38\pm0.23$, Opx $0.69\pm0.46$; the shallow value is $(0.38+0.69)/2=0.535$. Schaefer et al. use these values to derive Fe/Mg exchange coefficients; their model applies those exchange coefficients, and the $D^{2+}$ it produces against a magma-ocean liquid is lower (bridgmanite 0.385, Cpx 0.33, Opx 0.36 in their archived 1000 km run). With Table S1, $D^{3+}>D^{2+}$ for bridgmanite, so Fe$^{3+}$/Fe$_{\rm T}$ falls while the lower mantle crystallizes, and $D^{3+}<D^{2+}$ for the pyroxenes, so it rises at pressures below 22 GPa, as in Schaefer et al. In their models the shallow rise comes mainly from olivine, which takes up no Fe$^{3+}$. Before 2026-10-12 PROTEUS used $D^{2+}=0.85$ at all depths, the bulk value Schaefer et al. quote for fertile upper-mantle peridotite.
 
-Because $D^{3+}<D^{2+}$ in both assemblages, Fe$^{3+}$ is less compatible and preferentially remains in the melt.
+#### `"bulk_BSE"`: bulk coefficients of the Schaefer et al. layers
+
+Each cell takes the bulk coefficient of the full mineral assemblage of the Schaefer et al. (2024) layer holding its pressure. The values are medians over all 1000 draws of their archived 1000 km run for a bulk-silicate-Earth magma ocean.
+
+| Layer | Pressure | Minerals (fraction) | $D^{3+}$ | $D^{2+}$ |
+|---|---:|---|---:|---:|
+| 1 | $P<2.5$ GPa | olivine, pyroxenes, spinel or plagioclase | 0.76 | 0.97 |
+| 2 | $2.5\leq P<15$ GPa | ol 0.5, cpx 0.2, opx 0.2, gt 0.1 | 0.30 | 0.39 |
+| 3 | $15\leq P<18$ GPa | wad 0.40, maj 0.35, cpx 0.25 | 1.14 | 0.42 |
+| 4 | $18\leq P<22$ GPa | maj 0.55, ring 0.45 | 1.60 | 0.59 |
+| 5 | $P\geq22$ GPa | bg 0.95, mw 0.05 | 0.83 | 0.45 |
+
+Their runs never reach $P<1$ GPa, so that layer repeats the 1-2.5 GPa values. On their crystallization sequence this prescription follows their mean Fe$^{3+}$/Fe$_{\rm T}$ within 0.005; the `"mgsio3"` prescription follows its shape but differs by up to 0.04, because it has no transition-zone phases and no olivine. [The validation page](../Validation/interior_chem/redox.md) gives both comparisons.
 
 ### 5. Update the reservoirs and redox ratio
 
@@ -381,11 +396,14 @@ Snapshots created before redox state storage was implemented cannot restore the 
 - **Fixed composition in the $f_{\rm O_2}$ relation.**  
   The Hirschmann (2022) oxide mole fractions remain fixed at bulk-silicate-Earth values. Schaefer et al. (2024) instead evolve the melt composition during fractional crystallization; PROTEUS evolves only the iron redox state.
 
-- **Two mineral assemblages.**  
-  Schaefer et al. track a full mineral sequence, including olivine, pyroxenes, garnet, majorite, wadsleyite, ringwoodite, and bridgmanite. PROTEUS uses only two $D^{3+}$ values, selected above or below 22 GPa from each cell's initial pressure.
+- **Temperature range of the $f_{\rm O_2}$ relation.**  
+  Hirschmann (2022) calibrated Eq. 21 at 100 kPa on 478 experiments spanning 1468-2197 K. The surface $f_{\rm O_2}$ is evaluated at $\max(T_{\rm magma}, T_{\rm floor})$, which lies well above 2197 K early in a run and can fall to the 700 K default of `outgas.T_floor` late, so the relation is extrapolated at both ends.
 
-- **Single $D^{2+}$.**  
-  Fe$^{2+}$ uses $D^{2+}=0.85$ at all depths rather than mineral-specific Fe/Mg exchange.
+- **Restricted mineralogy or fixed bulk coefficients.**  
+  Schaefer et al. track a full mineral sequence, including olivine, pyroxenes, garnet, majorite, wadsleyite, ringwoodite, and bridgmanite. The `"mgsio3"` prescription uses only bridgmanite and the pyroxenes; `"bulk_BSE"` uses their bulk layer coefficients but holds them fixed rather than letting them follow the melt composition.
+
+- **No Fe/Mg exchange.**  
+  $D^{2+}$ is a fixed coefficient per assemblage. In Schaefer et al. it follows from a fixed Fe/Mg exchange coefficient and the evolving melt composition.
 
 - **Uncertain partition coefficients.**  
   Schaefer et al. report $D^{3+}_{\rm bg}=0.75\pm0.65$ and $D^{3+}_{\rm cpx}=0.45\pm0.20$. Their Monte Carlo calculations therefore produce a wide range of Fe$^{3+}$/Fe$_{\rm T}$ and $f_{\rm O_2}$. PROTEUS uses only the central values.
@@ -397,7 +415,7 @@ Snapshots created before redox state storage was implemented cannot restore the 
   Oxygen exchanged with the atmosphere does not modify the melt reservoirs. The coupling is one-way: melt redox $\rightarrow$ outgassing.
 
 - **No remelting of iron.**  
-  Iron that entered the solid does not return to the melt if the cell later remelts, for example after a giant impact.
+  Iron that entered the solid does not return to the melt if the cell later remelts, for example after a giant impact. In one coupled run with remelting, Fe$^{3+}$/Fe$_{\rm T}$ ended at 0.219, against 0.192 when the iron of the remelted solid was returned to the melt.
 
 - **Finite time-step effects.**  
   The reservoir update is explicit and first-order in the change in melt fraction. Coarse steps late in solidification can therefore make the melt slightly too oxidized. For a single shallow-regime cell frozen to 2% melt in 10 equal steps, $f$ is 0.419 instead of the converged 0.409.
@@ -407,7 +425,8 @@ Snapshots created before redox state storage was implemented cannot restore the 
 The unit tests in `tests/interior_chem/test_redox.py` check that:
 
 - the initial iron split reproduces $f_0$ exactly and rejects values outside $(0,1)$;
-- $D^{3+}$ switches between the two assemblages at 22 GPa;
+- $D^{2+}$ and $D^{3+}$ switch between the two assemblages at 22 GPa, and `"bulk_BSE"` assigns each cell the coefficients of its Schaefer et al. layer;
+- the crystallization step reproduces an archived Schaefer et al. (2024) run when fed its coefficients, and both prescriptions give the fall and later rise of their Fe$^{3+}$/Fe$_{\rm T}$ ([validation page](../Validation/interior_chem/redox.md));
 - increasing $f_0$ increases surface $\Delta$IW at fixed temperature;
 - surface $\Delta$IW uses the Hirschmann (2022) relation at 1 bar and $T_{\rm out}$ minus the Hirschmann (2021) IW buffer;
 - the real melt-fraction change determines how much iron crystallizes;
@@ -423,7 +442,7 @@ The figure compares a coupled Earth run (Aragog, `ferric_fraction_initial = 0.1`
   <figcaption>Whole-mantle fractional crystallization without metal saturation, f₀ = 0.1. (a) Melt ferric fraction and (b) surface ΔIW at 1 bar against the pressure at the base of the magma ocean. Blue: Schaefer et al. (2024), mean of 1000 Monte Carlo runs (their Fig. 3) and range of all runs (their Fig. 2) their mass ratio FeO₁.₅/(FeO₁.₅+FeO) is converted to the molar ferric fraction. Vermillion: PROTEUS, the interior snapshots placed at equal remaining melt mass. The PROTEUS ΔIW is taken at the uppermost melt cell and its temperature; Schaefer et al. evaluate it on an adiabat anchored at the solidus of the base.</figcaption>
 </figure>
 
-Both models start from the same state. The PROTEUS ferric fraction stays within the range of the Schaefer et al. runs down to a base pressure of about 15 GPa, near the upper edge of that range, and lies slightly above it at shallower bases. With $D^{2+}=0.85$ above $D^{3+}=0.75$ in the bridgmanite regime, Fe$^{3+}$ stays in the melt as the lower mantle crystallizes, whereas the mean Schaefer et al. run removes it there. The surface $\Delta$IW lies above all of their runs by 0.3 to 1.2 log units. It adds to the ferric-fraction difference the different temperature convention and the fixed bulk-silicate-Earth composition used in the activity terms of the Hirschmann (2022) relation; Schaefer et al. evolve the melt composition during crystallization.
+This figure was made before 2026-10-12, with $D^{2+}=0.85$ at all depths, and has not been regenerated with either current prescription. Both models start from the same state. The PROTEUS ferric fraction stays within the range of the Schaefer et al. runs down to a base pressure of about 15 GPa, near the upper edge of that range, and lies slightly above it at shallower bases. With $D^{2+}=0.85$ above $D^{3+}=0.75$ in the bridgmanite regime, Fe$^{3+}$ stays in the melt as the lower mantle crystallizes, whereas the mean Schaefer et al. run removes it there. The surface $\Delta$IW lies above all of their runs by 0.3 to 1.2 log units. It adds to the ferric-fraction difference the different temperature convention and the fixed bulk-silicate-Earth composition used in the activity terms of the Hirschmann (2022) relation; Schaefer et al. evolve the melt composition during crystallization.
 
 ---
 

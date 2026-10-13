@@ -449,19 +449,9 @@ def next_step(
         )
         dtswitch = evection_cap
 
-    # Fe-metal activity cap (melt-redox tracker, interior_chem/redox.py):
-    # limit the relative change of a_fe_max_mantle between consecutive steps
-    # to dt.afe_max_rel_change. The change over the last step is assumed to
-    # continue at the same rate, so the next step is scaled by
-    # target / observed. Only rows where a cell was tested carry a_Fe > 0;
-    # under other fO2 sources the column stays 0 and the cap is inactive.
-    # The step that produced the observed change has already been taken, so
-    # this bounds the next one, not the last. A jump that is not set by dt
-    # (a new cell entering the EOS range, a change of binding cell) would
-    # otherwise drive dt to zero, so the cap is floored at dt.minimum +
-    # dt.minimum_rel * Time like the impact alignment below.
-    # Inactive with planet.metal_saturation = False: a_Fe is then not
-    # evaluated (the column holds 0), and there is no reaction to resolve.
+    # a_Fe cap (redox tracker): scale the next step by dt.afe_max_rel_change over the
+    # last relative change of a_fe_max_mantle, floored like the impact alignment
+    # below so a jump not set by dt cannot drive dt to zero. Needs metal_saturation.
     afe_target = float(config.params.dt.afe_max_rel_change)
     if (
         afe_target > 0.0

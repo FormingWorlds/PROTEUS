@@ -22,6 +22,7 @@ See docs/How-to/testing.md and docs/Explanations/test_framework.md.
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import numpy as np
@@ -29,14 +30,21 @@ import pytest
 
 from proteus.interior_chem.disproportionation import activity_Fe_metal
 from proteus.interior_chem.redox import (
+    BULK_D_FE2,
+    BULK_D_FE3,
+    BULK_P_BOUNDS_GPA,
+    D_FE2_BRG,
+    D_FE2_SHALLOW,
     D_FE3_BRG,
     D_FE3_SHALLOW,
     MU_FEO,
     MU_FEO15,
     P_CUTOFF_GPA,
     W_FET,
+    _fe_into_new_solid,
     _init_state,
     _metal_saturation_step,
+    _partition_coefficients,
     update_melt_redox,
 )
 
@@ -78,6 +86,7 @@ def _make_config(
     config.planet.fO2_source = source
     config.planet.ferric_fraction_initial = f_0
     config.planet.metal_saturation = metal_saturation
+    config.planet.partition_coefficients = 'mgsio3'
     config.outgas.T_floor = 700.0  # the outgassing temperature floor default
     return config
 
@@ -187,8 +196,9 @@ def test_init_state_accepts_values_just_inside_the_open_interval():
 
 @pytest.mark.physics_invariant
 def test_partition_coefficients_switch_at_the_bridgmanite_pressure_cutoff():
-    """Step 1-2: the per-cell Fe3+ partition coefficient takes the bridgmanite
-    value at and below the cutoff depth and the Cpx/Opx mean above it.
+    """Step 1-2: the per-cell Fe2+ and Fe3+ partition coefficients take the
+    bridgmanite values at and below the cutoff depth and the Cpx/Opx means
+    above it.
 
     The mesh straddles P_CUTOFF_GPA (10, 30, 50 GPa against a 22 GPa cutoff),
     so a dropped or inverted comparison changes at least one cell.
@@ -197,9 +207,17 @@ def test_partition_coefficients_switch_at_the_bridgmanite_pressure_cutoff():
 
     # 10 GPa is shallower than the 22 GPa cutoff: Cpx/Opx assemblage.
     assert state.D_fe3_cell[0] == pytest.approx(D_FE3_SHALLOW, rel=1e-12)
+    assert state.D_fe2_cell[0] == pytest.approx(D_FE2_SHALLOW, rel=1e-12)
     # 30 and 50 GPa are deeper: bridgmanite.
     assert state.D_fe3_cell[1] == pytest.approx(D_FE3_BRG, rel=1e-12)
     assert state.D_fe3_cell[2] == pytest.approx(D_FE3_BRG, rel=1e-12)
+    np.testing.assert_allclose(state.D_fe2_cell[1:], D_FE2_BRG, rtol=1e-12)
+    # Bridgmanite takes up Fe3+ more readily than Fe2+ and the pyroxenes the
+    # reverse, so Fe3+/FeT falls in the lower mantle and rises above it.
+    assert np.all(state.D_fe3_cell[1:] > state.D_fe2_cell[1:] + 0.2)
+    assert state.D_fe2_cell[0] > state.D_fe3_cell[0] + 0.1
+    # Guard: the bulk peridotite D(FeO) = 0.85 would invert the deep order.
+    assert np.all(state.D_fe2_cell < 0.6)
     # Inverted-comparison guard: the two branches differ by ~0.4, far beyond
     # any tolerance, so a flipped >= would fail the assertions above.
     assert abs(D_FE3_BRG - D_FE3_SHALLOW) > 0.3
@@ -306,10 +324,8 @@ def test_reduced_melt_saturates_in_metal_and_becomes_more_oxidised():
     # The reaction brought the melt down onto the saturation boundary: it
     # started an order of magnitude supersaturated and must not be left so.
     assert rows[-1]['a_fe_max_mantle'] <= 1.0
-    # Discriminating against partitioning alone. Fe3+ is incompatible in both
-    # mineral assemblages, so the ferric fraction rises either way, but
-    # partitioning alone lifts it by well under a factor of two over this many
-    # steps, whereas the metal reaction drives it several times higher.
+    # Discriminating against partitioning alone, which lowers the ferric
+    # fraction on this mesh; only the metal reaction can double it.
     assert reduced.ferric_frac > 2.0 * f_0
 
 
@@ -317,9 +333,10 @@ def test_reduced_melt_saturates_in_metal_and_becomes_more_oxidised():
 def test_disabled_metal_saturation_skips_the_metal_check(monkeypatch):
     """planet.metal_saturation = False: the same reduced melt that exsolves
     metal above forms none, a_Fe is never evaluated (the activity function
-    is not called, the columns hold 0 and -1), and the melt ends less
-    oxidised than with saturation on, because only partitioning raises its
-    Fe3+/FeT."""
+    is not called, the columns hold 0 and -1), and the melt ends below f_0.
+    Without metal only partitioning acts: each step the 30 GPa bridgmanite
+    cell crystallises 2.8e20 kg with D(Fe3+) - D(Fe2+) = 0.31, which outweighs
+    the 2.4e20 kg of the 10 GPa pyroxene cell with D(Fe2+) - D(Fe3+) = 0.15."""
     from proteus.interior_chem import redox
 
     f_0 = 0.005
@@ -342,9 +359,8 @@ def test_disabled_metal_saturation_skips_the_metal_check(monkeypatch):
     assert off.a_fe_max_cell == -1
     # Discrimination guard: with saturation on, the same melt does report a_Fe.
     assert rows_on[-1]['a_fe_max_mantle'] > 0.0
-    # Partitioning alone still oxidises the melt a little, but by much less
-    # than the metal reaction does.
-    assert f_0 < off.ferric_frac < on.ferric_frac
+    # Partitioning alone reduces this melt; the metal reaction oxidises it.
+    assert off.ferric_frac < f_0 < on.ferric_frac
 
 
 @pytest.mark.physics_invariant
@@ -1053,7 +1069,7 @@ def test_without_metal_saturation_crystallisation_follows_the_real_melt_fraction
     """With metal_saturation = False a cell dropping from phi = 0.5 to
     0.8 * PHI_SOLID crystallises only that decrease (Eq 12-19), not its whole
     remaining melt, and phi_prev keeps the solver value."""
-    from proteus.interior_chem.redox import D_FE2_BRG, PHI_SOLID
+    from proteus.interior_chem.redox import PHI_SOLID
 
     f_0, phi_last = 0.1, 0.8 * PHI_SOLID
     config = _make_config(f_0, metal_saturation=False)
@@ -1319,7 +1335,7 @@ def test_restored_state_matches_every_stored_field(tmp_path):
     assert write_fO2_profile_ncdf(fpath, st)
 
     got = read_tracker_state(fpath)
-    for name in ('phi_prev', 'D_fe3_cell', 'n_fe_metal_cell', 'a_fe_cell'):
+    for name in ('phi_prev', 'D_fe3_cell', 'D_fe2_cell', 'n_fe_metal_cell', 'a_fe_cell'):
         np.testing.assert_array_equal(getattr(got, name), getattr(st, name))
     for name in ('n_fe3_melt', 'n_fe2_melt', 'ferric_frac', 'redox_ratio', 'w_feo15'):
         assert getattr(got, name) == getattr(st, name), name
@@ -1327,6 +1343,33 @@ def test_restored_state_matches_every_stored_field(tmp_path):
     assert got.melt_exhausted is True and got.eos_coverage_logged is True
     assert got.profile_pressure_term is st.profile_pressure_term
     assert got.log10_fO2_cell is None
+
+
+def test_a_state_stored_without_per_cell_d_fe2_rebuilds_it_from_the_d_fe3_regime(
+    tmp_path, monkeypatch, caplog
+):
+    """A snapshot written before D(Fe2+) was a per-cell field still resumes:
+    each cell gets the D(Fe2+) of the assemblage its stored D(Fe3+) marks,
+    and the substitution is logged."""
+    from proteus.interior_chem import redox
+
+    interior = _make_interior()
+    _run_steps(interior, _resume_config(), range(2))
+    st = interior.redox_state
+    fpath = str(tmp_path / '1_int.nc')
+    _make_int_snapshot(fpath, _PHI.size)
+    with monkeypatch.context() as m:
+        m.delitem(redox._STATE_CELL, 'D_fe2_cell')
+        assert redox.write_fO2_profile_ncdf(fpath, st)
+
+    with caplog.at_level('WARNING'):
+        got = redox.read_tracker_state(fpath)
+    np.testing.assert_array_equal(got.D_fe2_cell, st.D_fe2_cell)
+    # The shallow cell takes the Cpx/Opx value, not the bridgmanite one.
+    assert got.D_fe2_cell[0] == pytest.approx(D_FE2_SHALLOW, rel=1e-12)
+    assert abs(got.D_fe2_cell[0] - D_FE2_BRG) > 0.02
+    assert got.n_fe2_melt == st.n_fe2_melt
+    assert sum('no per-cell D(Fe2+)' in r.message for r in caplog.records) == 1
 
 
 def test_a_snapshot_without_state_warns_and_leaves_the_tracker_unset(tmp_path, caplog):
@@ -1363,3 +1406,210 @@ def test_a_restored_state_on_a_different_grid_is_refused():
     with pytest.raises(ValueError, match='3 cells but the interior grid has 4'):
         update_melt_redox(interior, {'T_magma': 2200.0}, config)
     assert interior.redox_state.n_fe2_melt == n2
+
+
+# ---------------------------------------------------------------------------
+# Crystallisation step against Schaefer et al. (2024)
+# ---------------------------------------------------------------------------
+
+# One converged run of the archived Schaefer et al. (2024) 1000 km model;
+# fixtures/make_schaefer2024_replay.py writes it from their output.mat.
+_SCHAEFER = np.loadtxt(
+    Path(__file__).parent / 'fixtures' / 'schaefer2024_1000km_replay.csv', delimiter=','
+)
+_SCH_P, _SCH_S, _SCH_D2, _SCH_D3, _SCH_F = _SCHAEFER[:, 1:].T
+
+
+def _replay(D_fe2, D_fe3, f_0=0.1):
+    """Molar Fe3+/FeT of one well-mixed melt after each step of the Schaefer
+    sequence, crystallised with _fe_into_new_solid; the magma ocean mass
+    shrinks by the solid fraction s of each step."""
+    n2, n3, M, out = 1.0 - f_0, f_0, 1.0, []
+    for s, d2, d3 in zip(_SCH_S, D_fe2, D_fe3):
+        dn2, dn3 = _fe_into_new_solid(
+            n2, n3, np.array([M]), np.array([s * M]), np.array([d2]), np.array([d3])
+        )
+        n2, n3, M = n2 - dn2, n3 - dn3, M * (1.0 - s)
+        out.append(n3 / (n2 + n3))
+    return np.array(out)
+
+
+@pytest.mark.physics_invariant
+def test_new_solid_takes_up_d_times_the_pre_step_melt_concentration():
+    """Step 4-6: with two melt cells of unequal mass and D, the solid takes
+    n * sum_c(D_c * m_c) / M_melt, a cell without melt contributes nothing,
+    and no new solid moves no iron."""
+    M = np.array([3.0e21, 1.0e21, 0.0])  # kg of melt per cell
+    m_new = np.array([0.6e21, 0.5e21, 2.0e21])  # kg of new solid per cell
+    D2, D3 = np.array([0.3, 0.9, 5.0]), np.array([0.7, 0.2, 5.0])
+    dn2, dn3 = _fe_into_new_solid(100.0, 10.0, M, m_new, D2, D3)
+
+    # 100 mol * (0.3 * 0.6 + 0.9 * 0.5) / 4 = 15.75 mol; the empty cell is ignored.
+    assert dn2 == pytest.approx(15.75, rel=1e-12)
+    assert dn3 == pytest.approx(10.0 * (0.7 * 0.6 + 0.2 * 0.5) / 4.0, rel=1e-12)
+    # Guard: weighting by the cell's own melt mass alone (no 1/M_melt) is off by 4.
+    assert abs(dn2 - 4.0 * 15.75) > 10.0
+    assert _fe_into_new_solid(100.0, 10.0, M, np.zeros(3), D2, D3) == (0.0, 0.0)
+    # Limit: D = 1 and every kg of melt crystallising removes all the iron.
+    full = _fe_into_new_solid(100.0, 10.0, M[:2], M[:2], np.ones(2), np.ones(2))
+    assert full == pytest.approx((100.0, 10.0), rel=1e-12)
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.reference_pinned
+def test_crystallisation_step_replays_the_schaefer_2024_run():
+    """The tracker's crystallisation step, fed the bulk D(FeO), D(FeO1.5)
+    and solid fractions of a run of Schaefer et al. (2024, archived Earth
+    code, 1000 km, Fe3+/FeT = 0.1), reproduces its liquid Fe3+/FeT.
+
+    Schaefer equilibrates the solid with the residual liquid; the tracker
+    uses the melt before the step. Per step the moles left differ by a
+    relative s**2 * |D (1 - D)| / ((1 - s + s D)(1 - s D)), so f differs by
+    at most f (1 - f) times the running sum of that over both species.
+    """
+    f = _replay(_SCH_D2, _SCH_D3)
+
+    # The fixture is Schaefer's equilibrium mass balance step by step.
+    n2, n3 = np.cumprod((1 - _SCH_S) / (1 - _SCH_S + _SCH_S * np.stack([_SCH_D2, _SCH_D3])), 1)
+    np.testing.assert_allclose(0.1 * n3 / (0.9 * n2 + 0.1 * n3), _SCH_F, rtol=1e-10)
+
+    def rel(D):
+        s = _SCH_S
+        return s**2 * np.abs(D * (1 - D)) / ((1 - s + s * D) * (1 - s * D))
+
+    bound = _SCH_F * (1 - _SCH_F) * np.cumsum(rel(_SCH_D2) + rel(_SCH_D3))
+    assert np.all(np.abs(f - _SCH_F) <= bound)
+    # Below 22 GPa the steps are small and the two agree to 1e-4.
+    assert np.max(np.abs(f - _SCH_F)[_SCH_P >= P_CUTOFF_GPA]) < 1e-4
+    # Guards: the bulk peridotite D(FeO) = 0.85, or the two D swapped, miss
+    # by more than ten times the largest bound.
+    assert np.max(np.abs(_replay(np.full_like(_SCH_D2, 0.85), _SCH_D3) - _SCH_F)) > 0.05
+    assert np.max(np.abs(_replay(_SCH_D3, _SCH_D2) - _SCH_F)) > 0.05
+    assert bound.max() < 0.007
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.reference_pinned
+def test_bridgmanite_coefficients_follow_schaefer_2024_in_the_lower_mantle():
+    """With the tracker's own MgSiO3 coefficients on the Schaefer et al.
+    (2024) crystallisation sequence, the lower mantle (P >= 22 GPa) loses
+    ferric iron as in their run: Fe3+/FeT falls monotonically, by 60-100 %
+    of their drop, and stays within 5e-3 of it (3.4e-3 at 22 GPa). The drop
+    is smaller because their layer averages D(Fe3+) over truncated random
+    draws (bulk 0.87, against 0.75 here) and holds 5 % magnesiowuestite.
+    """
+    deep = _SCH_P >= P_CUTOFF_GPA
+    D2 = np.where(deep, D_FE2_BRG, D_FE2_SHALLOW)
+    D3 = np.where(deep, D_FE3_BRG, D_FE3_SHALLOW)
+    f = _replay(D2, D3)[deep]
+
+    assert np.all(np.diff(f) < 0.0) and f[0] < 0.1
+    drop_ratio = (0.1 - f[-1]) / (0.1 - _SCH_F[deep][-1])
+    assert 0.6 < drop_ratio < 1.0
+    assert np.max(np.abs(f - _SCH_F[deep])) < 5e-3
+    # Guard: the former D(Fe2+) = 0.85 raises Fe3+/FeT where Schaefer's falls.
+    old = _replay(np.full_like(D2, 0.85), D3)[deep]
+    assert old[-1] > 0.1 and old[-1] - _SCH_F[deep][-1] > 0.01
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.reference_pinned
+def test_pyroxene_coefficients_give_the_shallow_rise_of_schaefer_2024():
+    """Below 15 GPa Fe3+/FeT rises in the Schaefer et al. (2024) run (mainly
+    olivine, which takes up no Fe3+), and with the tracker's pyroxene
+    coefficients it rises too, because their Table S1 D(FeO) exceeds D(Fe3+).
+    The turning point sits at the 22 GPa cutoff here and near 15 GPa in
+    their run, since the transition-zone phases are absent; the rise is
+    larger here (0.019 against 0.008 from 15 to 2.5 GPa).
+    """
+    deep = _SCH_P >= P_CUTOFF_GPA
+    shallow = (_SCH_P < 15.0) & (_SCH_P >= 2.5)
+    D3 = np.where(deep, D_FE3_BRG, D_FE3_SHALLOW)
+    f = _replay(np.where(deep, D_FE2_BRG, D_FE2_SHALLOW), D3)
+
+    rise, rise_sch = f[shallow][-1] - f[shallow][0], _SCH_F[shallow][-1] - _SCH_F[shallow][0]
+    assert rise_sch > 0.0
+    assert np.all(np.diff(f[shallow]) > 0.0)
+    assert rise_sch < rise < 3.0 * rise_sch
+    assert 15.0 <= _SCH_P[np.argmin(_SCH_F)] < _SCH_P[np.argmin(f)] < 23.0
+    # Guard: the pyroxene D(FeO) her model produces against a magma-ocean
+    # liquid (Cpx 0.33, Opx 0.36) lies below D(Fe3+) and gives a fall instead.
+    model_run = _replay(np.where(deep, D_FE2_BRG, 0.345), D3)
+    assert model_run[shallow][-1] < model_run[shallow][0]
+
+
+@pytest.mark.physics_invariant
+def test_bulk_prescription_takes_the_schaefer_layer_of_each_cell():
+    """'bulk_BSE' gives each cell the bulk D of the Schaefer et al. (2024)
+    layer that holds its pressure; a boundary pressure belongs to the deeper
+    layer, and the layer below 1 GPa repeats the 1-2.5 GPa values."""
+    P_gpa = np.array([0.5, 1.0, 2.0, 2.5, 10.0, 15.0, 17.0, 18.0, 20.0, 22.0, 60.0])
+    D2, D3 = _partition_coefficients(P_gpa * 1e9, 'bulk_BSE')
+
+    layer = np.array([0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5])
+    np.testing.assert_array_equal(D2, np.asarray(BULK_D_FE2)[layer])
+    np.testing.assert_array_equal(D3, np.asarray(BULK_D_FE3)[layer])
+    assert BULK_P_BOUNDS_GPA == (1.0, 2.5, 15.0, 18.0, 22.0)
+    # Transition-zone layers hold Fe3+ more strongly than the melt; the
+    # 2.5-15 GPa layer (olivine-rich) rejects it.
+    assert np.all(D3[5:9] > 1.0) and D3[4] < D2[4]
+    # Guard: the mgsio3 prescription differs at 17 GPa (no transition-zone phase).
+    assert abs(_partition_coefficients(17e9, 'mgsio3')[1] - D3[6]) > 0.5
+
+
+def test_an_unknown_prescription_is_refused_before_the_tracker_starts():
+    """A prescription name the tracker does not know raises, and the
+    interior keeps no half-built state."""
+    with pytest.raises(ValueError, match='unknown partition-coefficient prescription'):
+        _init_state(_PHI, _MASS, _PRES, 0.1, 'bulk_bse')
+    interior = _make_interior()
+    config = _make_config(0.1)
+    config.planet.partition_coefficients = 'schaefer'
+    with pytest.raises(ValueError, match="'schaefer'"):
+        update_melt_redox(interior, {'T_magma': 2200.0}, config)
+    assert interior.redox_state is None
+
+
+@pytest.mark.physics_invariant
+def test_configured_prescription_sets_the_coefficients_of_the_run():
+    """planet.partition_coefficients = 'bulk_BSE' reaches the tracker state:
+    the 10 GPa cell takes the 2.5-15 GPa bulk values and the 30 and 50 GPa
+    cells the lower-mantle ones, and the first crystallisation step uses them."""
+    config = _make_config(0.1, metal_saturation=False)
+    config.planet.partition_coefficients = 'bulk_BSE'
+    interior = _make_interior()
+    update_melt_redox(interior, {'T_magma': 2200.0}, config)
+    st = interior.redox_state
+    np.testing.assert_array_equal(st.D_fe2_cell, [BULK_D_FE2[2], BULK_D_FE2[5], BULK_D_FE2[5]])
+    np.testing.assert_array_equal(st.D_fe3_cell, [BULK_D_FE3[2], BULK_D_FE3[5], BULK_D_FE3[5]])
+
+    n2_0, n3_0 = st.n_fe2_melt, st.n_fe3_melt
+    interior.phi = np.array([0.8, 0.5, 0.0])  # 0.2 x 2e21 kg crystallises at 10 GPa
+    update_melt_redox(interior, {'T_magma': 2200.0}, config)
+    dM = 0.2 * _MASS[0]
+    assert st.n_fe2_melt == pytest.approx(n2_0 * (1 - BULK_D_FE2[2] * dM / _M_MELT), rel=1e-12)
+    assert st.n_fe3_melt == pytest.approx(n3_0 * (1 - BULK_D_FE3[2] * dM / _M_MELT), rel=1e-12)
+    # Guard: with the mgsio3 pyroxene D(Fe3+) the Fe3+ loss differs by 22 %.
+    assert abs(BULK_D_FE3[2] - D_FE3_SHALLOW) / D_FE3_SHALLOW > 0.2
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.reference_pinned
+def test_bulk_prescription_follows_the_schaefer_2024_run():
+    """With 'bulk_BSE' on the Schaefer et al. (2024) crystallisation
+    sequence, Fe3+/FeT falls through the lower mantle and transition zone to
+    a minimum between 12 and 18 GPa and then rises, as in their run, and
+    stays within 0.01 of run 570 at every step (constant layer medians
+    against the per-step values of one draw; their mean is within 0.005).
+    """
+    P = _SCH_P * 1e9
+    f = _replay(*_partition_coefficients(P, 'bulk_BSE'))
+
+    assert np.max(np.abs(f - _SCH_F)) < 0.01
+    assert 12.0 < _SCH_P[np.argmin(f)] < 18.0
+    assert 12.0 < _SCH_P[np.argmin(_SCH_F)] < 18.0
+    assert f[-1] > f.min() + 0.01
+    # Guard: the mgsio3 coefficients miss by more than 0.02 and turn at 22 GPa.
+    f_mg = _replay(*_partition_coefficients(P, 'mgsio3'))
+    assert np.max(np.abs(f_mg - _SCH_F)) > 0.02
+    assert _SCH_P[np.argmin(f_mg)] > 21.0
