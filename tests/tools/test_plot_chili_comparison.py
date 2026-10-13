@@ -70,7 +70,7 @@ def test_smooth_accepts_a_helpfile_column_and_keeps_the_end_points(tool, log):
 
     out = tool._smooth(column, window=3, log=log)
 
-    assert out[0] == 1.0 and out[-1] == 8.0
+    assert (out[0], out[-1]) == (column[0], column[-1])
     window = [100.0, 1.0, 100.0]
     middle = 10 ** np.mean(np.log10(window)) if log else np.mean(window)
     assert out[2] == pytest.approx(middle)
