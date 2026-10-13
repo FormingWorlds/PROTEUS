@@ -259,11 +259,15 @@ def test_default_style_keeps_black_and_white_neutrals(chili_tool, tmp_path):
     """Without a style the neutral colours are black, mid grey and white, so
     the reference lines of Figure 8 are black, and the bars have white edges
     for the models and black edges for the current run (1 outline in Figure 5,
-    H and C in Figure 4)."""
+    H and C in Figure 4); the panel titles are bold without a style."""
     figures = _all_figures(chili_tool, tmp_path)
 
     lines = figures['chili_fig8_olr'].axes[1].lines
     assert '#000000' in {_hex(ln.get_color()) for ln in lines if ln.get_linestyle() == '-.'}
+    for stem in ('fig2_milestones', 'fig3_atm_composition', 'fig8_olr', 'fig9_geodynamics'):
+        heading = figures[f'chili_{stem}'].axes[0]
+        title = heading.title if heading.get_title() else heading._left_title
+        assert title.get_fontweight() == 'bold', stem
     for stem, of_run in (('fig5_venus_atm', 1), ('fig4_mass_budgets', 2)):
         edges = [_hex(p.get_edgecolor()) for p in figures[f'chili_{stem}'].axes[0].patches]
         assert set(edges) == {'#ffffff', '#000000'}, stem
