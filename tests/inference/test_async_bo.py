@@ -971,6 +971,18 @@ def test_evaluations_since_improvement_needs_a_real_rise():
     assert async_mod.evaluations_since_improvement(_y(0.2, -5.0, -5.0, -5.0), n_init=1) == 3
 
 
+def test_evaluations_since_improvement_uses_the_given_min_gain():
+    """An explicit `min_gain` replaces PATIENCE_MIN_GAIN, in both directions."""
+    y = _y(-1.5, -1.495, -1.6)
+    # The 0.005 rise counts under a 0.001 threshold, one step from the end
+    assert async_mod.evaluations_since_improvement(y, n_init=1, min_gain=0.001) == 1
+    # but not under the default, so the default is not ignored
+    assert async_mod.evaluations_since_improvement(y, n_init=1) == 2
+    # A 0.012 total rise is below 0.1, so no step counts
+    y = _y(-1.5, -1.494, -1.488)
+    assert async_mod.evaluations_since_improvement(y, n_init=1, min_gain=0.1) == 2
+
+
 def _worse_each_time(**_kwargs):
     """A BO step whose evaluation never beats the initial sample."""
     return (_y(0.5), _y(-5.0), 0.1, 0.2, 0.3, 0.4, 0.5, None)

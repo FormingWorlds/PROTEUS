@@ -30,8 +30,10 @@ log = logging.getLogger('fwl.' + __name__)
 PATIENCE_MIN_GAIN = 0.01
 
 
-def evaluations_since_improvement(Y: torch.Tensor, n_init: int) -> int:
-    """Evaluations since the best objective last rose by more than PATIENCE_MIN_GAIN.
+def evaluations_since_improvement(
+    Y: torch.Tensor, n_init: int, min_gain: float = PATIENCE_MIN_GAIN
+) -> int:
+    """Evaluations since the best objective last rose by more than `min_gain`.
 
     The best of the initial samples is the first reference. Small rises add up: the
     reference moves only once the best has risen by more than the threshold in total.
@@ -40,6 +42,8 @@ def evaluations_since_improvement(Y: torch.Tensor, n_init: int) -> int:
     ----------
     - Y (torch.Tensor): Objective values in evaluation order, initial samples first.
     - n_init (int): Number of initial samples at the start of `Y`.
+    - min_gain (float): Smallest rise of the best objective that counts as an
+      improvement, in objective units (-log10 of chi-squared).
 
     Returns
     ----------
@@ -48,7 +52,7 @@ def evaluations_since_improvement(Y: torch.Tensor, n_init: int) -> int:
     y = Y.reshape(-1).tolist()
     ref, last = max(y[:n_init], default=-math.inf), n_init - 1
     for i in range(n_init, len(y)):
-        if y[i] > ref + PATIENCE_MIN_GAIN:
+        if y[i] > ref + min_gain:
             ref, last = y[i], i
     return len(y) - 1 - last
 
