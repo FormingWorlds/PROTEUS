@@ -119,6 +119,15 @@ jobs:
           path: fwl-data-cache
           key: ${{ steps.data-cache.outputs.cache-primary-key }}
 
+      - name: Check that the four further modules are usable
+        # Not part of the page: the installer goes on when the setup of a further module fails.
+        shell: bash
+        run: |
+          source "$HOME/miniforge3/etc/profile.d/conda.sh"
+          conda activate proteus
+          cd "$HOME/PROTEUS"
+          python tools/check_further_modules.py --root "$HOME/PROTEUS"
+
       - name: Add the timing table to the summary
         if: always()
         run: |
