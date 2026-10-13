@@ -95,9 +95,10 @@ def test_generated_cases_match_tutorials_outside_their_deltas():
                 assert got == pytest.approx(want, rel=1e-12), f'{name}: {dotted}={got!r}'
             else:
                 assert got == want, f'{name}: {dotted}={got!r}, want {want!r}'
-    # Discrimination: the nominal cases carry these 2 deltas and no other.
-    for name in ('earth', 'venus'):
-        assert set(gen.case_deltas(name)) == {'params.out.path', 'outgas.fO2_shift_IW'}
+    # Discrimination: the nominal cases carry these deltas and no other.
+    nominal = {'params.out.path', 'outgas.fO2_shift_IW'}
+    assert set(gen.case_deltas('earth')) == nominal
+    assert set(gen.case_deltas('venus')) == nominal | {'params.stop.time.maximum'}
     assert set(gen.CASE_DELTAS) == {'earth', 'venus', 'tr1b', 'tr1e', 'tr1a'}
 
 

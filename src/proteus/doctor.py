@@ -38,6 +38,7 @@ from proteus.utils.coupler import (
     _get_socrates_version,
     get_proteus_directories,
 )
+from proteus.utils.helper import git_env, proteus_julia_exe
 
 # ─── Check result types ──────────────────────────────────────────────
 
@@ -217,30 +218,14 @@ def _imported_package_dir(dist_name: str) -> str | None:
 # Seconds that one git call in a checkout may take.
 _GIT_NOTE_TIMEOUT_S = 10
 
-# Environment variables that make git answer for another repository than the one -C names.
-_GIT_REPO_ENV = (
-    'GIT_DIR',
-    'GIT_WORK_TREE',
-    'GIT_INDEX_FILE',
-    'GIT_COMMON_DIR',
-    'GIT_NAMESPACE',
-)
 
-
-def _git_env() -> dict[str, str]:
-    """Return the environment of a git call in a checkout.
-
-    Returns
-    -------
-    dict of str to str
-        ``os.environ`` without the keys of ``_GIT_REPO_ENV``, so that
-        ``git -C <path>`` reads the repository at ``<path>``.
-    """
-    return {key: value for key, value in os.environ.items() if key not in _GIT_REPO_ENV}
-
-
-def _git_stdout(path: str, *args: str, options: tuple[str, ...] = ()) -> str | None:
+def _git_stdout(
+    path: str, *args: str, options: tuple[str, ...] = (), timeout: float = _GIT_NOTE_TIMEOUT_S
+) -> str | None:
     """Return the standard output of one git command in a checkout.
+
+    The environment is ``git_env()``, so that ``git -C`` reads the repository
+    at ``path`` and not one that ``GIT_DIR`` names.
 
     Parameters
     ----------
@@ -251,22 +236,24 @@ def _git_stdout(path: str, *args: str, options: tuple[str, ...] = ()) -> str | N
     options : tuple of str
         Options of git itself that go before ``-C``, for example
         ``('--no-optional-locks',)``.
+    timeout : float
+        Seconds the command may take.
 
     Returns
     -------
     str or None
         The output, or None when git is missing, fails or does not finish
-        within ``_GIT_NOTE_TIMEOUT_S``.
+        within ``timeout`` s.
     """
     try:
         return subprocess.check_output(
             ['git', *options, '-C', path, *args],
             text=True,
             stderr=subprocess.DEVNULL,
-            timeout=_GIT_NOTE_TIMEOUT_S,
-            env=_git_env(),
+            timeout=timeout,
+            env=git_env(),
         )
-    except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
         return None
 
 
@@ -336,7 +323,7 @@ def _git_note_output(path: str, *args: str) -> tuple[int, str] | None:
             capture_output=True,
             text=True,
             timeout=_GIT_NOTE_TIMEOUT_S,
-            env=_git_env(),
+            env=git_env(),
         )
     except (OSError, subprocess.TimeoutExpired):
         return None
@@ -666,6 +653,41 @@ def _conda_build_lines() -> list[str]:
 # ─── Check implementations ───────────────────────────────────────────
 
 
+def _set_var_advice(name: str, value: str) -> str:
+    """Return the advice that sets ``name`` in the PROTEUS conda env and reloads it.
+
+    Conda loads env variables at activation, so the env is deactivated and
+    activated again; a shell without conda sources the PROTEUS exports file.
+    With no env or ``base`` active, the advice names the env as
+    ``<your PROTEUS environment>`` and passes it with ``-n``, because PROTEUS
+    is not installed into ``base``.
+
+    Parameters
+    ----------
+    name : str
+        Variable name.
+    value : str
+        Value or placeholder to show, for example ``<path>``.
+
+    Returns
+    -------
+    str
+        Human advice, not a runnable command.
+    """
+    env = os.environ.get('CONDA_DEFAULT_ENV')
+    without = '(without conda: source .proteus-env.sh in the PROTEUS folder)'
+    if not env or env == 'base':
+        env = '<your PROTEUS environment>'
+        return (
+            f'conda env config vars set -n {env} {name}={value}, then '
+            f'conda activate {env} {without}'
+        )
+    return (
+        f'conda env config vars set {name}={value}, then conda deactivate && '
+        f'conda activate {env} {without}'
+    )
+
+
 def check_env_var(
     name: str, *, validate_path: bool = True, required_file: str | None = None
 ) -> CheckResult:
@@ -677,7 +699,7 @@ def check_env_var(
             category='environment',
             status=FAIL,
             message='not set',
-            fix_cmd=f'export {name}=<path>  # add to your shell rc file',
+            fix_cmd=_set_var_advice(name, '<path>'),
             auto_fixable=False,
         )
     if validate_path and not os.path.exists(val):
@@ -758,42 +780,67 @@ def check_fwl_data() -> list[CheckResult]:
 
 
 def check_julia() -> CheckResult:
-    """Check Julia version."""
-    ver = _julia_version()
+    """Check the version of the Julia PROTEUS uses.
+
+    That is ``PYTHON_JULIAPKG_EXE`` when it is set, and the ``julia`` on
+    ``PATH`` otherwise. A set variable that names no executable file fails,
+    because juliacall does not fall back to the ``julia`` on ``PATH``. Julia
+    1.13.x passes; any other version warns, because PROTEUS is tested on 1.13
+    and Obliqua resolves only on 1.11 or 1.13. The advice adds 1.13 beside the
+    default Julia and points ``PYTHON_JULIAPKG_EXE`` at it, as ``install.sh``
+    does.
+    """
+    path = '<the path that julia +1.13 -e \'print(joinpath(Sys.BINDIR, "julia"))\' prints>'
+    fix = 'juliaup add 1.13, then ' + _set_var_advice('PYTHON_JULIAPKG_EXE', path)
+    raw = os.environ.get('PYTHON_JULIAPKG_EXE')
+    exe = proteus_julia_exe()
+    if raw and exe is None:
+        return CheckResult(
+            name='julia',
+            category='environment',
+            status=FAIL,
+            message=(
+                f'PYTHON_JULIAPKG_EXE={raw} is not an executable file; juliacall does not '
+                'fall back to the julia on PATH and fails at import'
+            ),
+            fix_cmd=fix,
+            auto_fixable=False,
+        )
+    ver = _julia_version_at(exe) if exe else _julia_version()
+    where = f' at {exe} (PYTHON_JULIAPKG_EXE)' if exe else ''
     if ver is None:
         return CheckResult(
             name='julia',
             category='environment',
             status=FAIL,
-            message='not found on PATH',
+            message=f'not runnable{where}' if exe else 'not found on PATH',
             fix_cmd='curl -fsSL https://install.julialang.org | sh',
         )
-    parts = ver.split('.')
-    if len(parts) >= 2 and parts[0] == '1' and parts[1] in ('12', '13'):
+    if ver.split('.')[:2] == ['1', '13']:
         return CheckResult(
             name='julia',
             category='environment',
             status=PASS,
-            message=f'{ver}',
+            message=f'{ver}{where}',
         )
-    if len(parts) >= 2 and parts[0] == '1' and parts[1] == '11':
-        # Still supported, but deprecated. Not auto-fixable: a Python linking
-        # OpenSSL < 3.5 needs 1.11, so switching the global default is the
-        # user's call.
-        return CheckResult(
-            name='julia',
-            category='environment',
-            status=WARN,
-            message=f'{ver} (1.11 is deprecated and will be dropped; use 1.13)',
-            fix_cmd='juliaup add 1.13 && juliaup default 1.13',
-            auto_fixable=False,
+    # fix_julia_111_for_openssl in install.sh is the one place that binds 1.11.
+    if exe and ver.split('.')[:2] == ['1', '11']:
+        fix += (
+            '. The installer binds Julia 1.11 only when the import of PROTEUS fails on '
+            'OpenSSL_jll because Python links an OpenSSL older than 3.5; after '
+            "conda install -c conda-forge 'openssl>=3.5', Julia 1.13 can be used"
         )
+    # Not auto-fixable: the variable is set in the conda env by hand.
     return CheckResult(
         name='julia',
         category='environment',
         status=WARN,
-        message=f'{ver} (1.11.x, 1.12.x or 1.13.x required)',
-        fix_cmd='juliaup add 1.13 && juliaup default 1.13',
+        message=(
+            f'{ver}{where} (PROTEUS is tested on Julia 1.13; '
+            'Obliqua, the tides module, installs only on 1.11 or 1.13)'
+        ),
+        fix_cmd=fix,
+        auto_fixable=False,
     )
 
 
@@ -1038,7 +1085,7 @@ ENVIRONMENT_VARS = [
     ('FWL_DATA', True, None),
     ('RAD_DIR', True, 'bin/radlib.a'),
     ('FC_DIR', True, None),
-    ('PYTHON_JULIAPKG_EXE', False, None),
+    ('PYTHON_JULIAPKG_EXE', True, None),
 ]
 
 # Mandatory Python packages checked by `proteus doctor`. The optional

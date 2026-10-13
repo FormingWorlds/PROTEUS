@@ -31,8 +31,8 @@ command you can run manually or let `proteus update` handle.
 | `FWL_DATA` | Environment variable is set and the directory exists | Not set, or path missing |
 | `RAD_DIR` | Set, directory exists, and `bin/radlib.a` is present | Not set, path missing, or SOCRATES not compiled |
 | `FC_DIR` | Set and directory exists | Not set (only required when AGNI chemistry is enabled) |
-| `PYTHON_JULIAPKG_EXE` | Set | Not set |
-| `julia` | Julia is on PATH and version is 1.12.x or 1.13.x | Missing or wrong version; 1.11.x warns as deprecated |
+| `PYTHON_JULIAPKG_EXE` | Set, and the path exists | Not set; a path that does not exist warns |
+| `julia` | The Julia in `PYTHON_JULIAPKG_EXE` (or on PATH when it is unset) is 1.13.x | Missing, or `PYTHON_JULIAPKG_EXE` set to a path that is no executable file, because juliacall then fails at import instead of using the `julia` on PATH; any other version warns, because PROTEUS is tested on 1.13 and Obliqua installs only on 1.11 or 1.13 |
 
 ### Reference data
 
@@ -83,7 +83,7 @@ Environment
   [ok] FWL_DATA: /home/user/FWL_DATA
   [ok] RAD_DIR: /home/user/PROTEUS/socrates
   [FAIL] FC_DIR: not set
-       fix: export FC_DIR=<path>  # add to your shell rc file
+       fix: conda env config vars set FC_DIR=<path>, then conda deactivate && conda activate proteus (without conda: source .proteus-env.sh in the PROTEUS folder)
   [ok] julia: 1.13.0
 
 Reference data
@@ -162,15 +162,22 @@ This lists the fixable issues and their commands but does not execute anything.
 | Missing SOCRATES | `bash tools/get_socrates.sh` |
 | SOCRATES commit drift from pin | `bash tools/get_socrates.sh "$RAD_DIR" && RAD_DIR="$RAD_DIR" bash tools/get_agni.sh 0` (rebuilds AGNI's wrappers too). To discard local changes in the SOCRATES checkout, pass `--force` to the SOCRATES step only: `bash tools/get_socrates.sh --force "$RAD_DIR" && RAD_DIR="$RAD_DIR" bash tools/get_agni.sh 0` |
 | Missing reference data | `proteus get spectral` / `proteus get stellar` |
-| Wrong Julia version | `juliaup add 1.13 && juliaup default 1.13` |
 
 ### What proteus update cannot fix
 
-- **Missing environment variables** (`FWL_DATA`, `RAD_DIR`, etc.): these
-  require editing your shell configuration file (`~/.bashrc` or `~/.zshrc`).
-  The doctor reports the fix command, but `proteus update` cannot modify your
-  shell rc file. Run the suggested `export` command manually, then add it to
-  your rc file.
+- **Missing environment variables** (`FWL_DATA`, `RAD_DIR`, `FC_DIR`,
+  `PYTHON_JULIAPKG_EXE`): set them in the conda environment with
+  `conda env config vars set NAME=<path>`, then run
+  `conda deactivate && conda activate proteus`, because conda loads them only at
+  activation. Without conda, run `source .proteus-env.sh` in the PROTEUS folder.
+  `proteus update` does not run this advice.
+- **Wrong Julia version**: the doctor checks the Julia in
+  `PYTHON_JULIAPKG_EXE` (the `julia` on `PATH` when it is unset) and suggests
+  `juliaup add 1.13`, then setting `PYTHON_JULIAPKG_EXE` in the same way to the
+  path that `julia +1.13 -e 'print(joinpath(Sys.BINDIR, "julia"))'` prints.
+  Your default Julia stays as it is. The installer binds Julia 1.11 only when the
+  import of PROTEUS fails on `OpenSSL_jll` because Python links an OpenSSL older
+  than 3.5; after `conda install -c conda-forge 'openssl>=3.5'`, Julia 1.13 can be used.
 - **Missing system packages** (gfortran, cmake, netcdf): these require your
   system package manager (`brew`, `apt`, `dnf`). See the
   [installation guide](installation.md) for platform-specific commands.
@@ -204,10 +211,12 @@ finds, `proteus update-all` performs a full refresh of the whole stack:
 proteus update-all
 ```
 
-It updates the PROTEUS Python package, recompiles SOCRATES, pulls the latest
-AGNI, and refreshes the reference data, verifying environment variables and disk
-space before proceeding. Pass `--export-env` to re-export the environment
-variables to your shell rc file. It runs no git command in the Python module
+It updates the PROTEUS Python package, recompiles SOCRATES, brings AGNI to the
+commit pinned in `pyproject.toml` (an AGNI clone with modified files or commits of
+your own stays as it is, and the command prints the commands that move it by hand),
+and refreshes the reference data, verifying environment variables and disk
+space before proceeding. Pass `--export-env` to set the environment variables
+again in the active conda environment and in `.proteus-env.sh`. It runs no git command in the Python module
 clones (MORS, JANUS, CALLIOPE, ZEPHYRUS, Aragog, Zalmoxis); as
 with `bash install.sh`, its pip step installs the PyPI release in place of a
 clone that is older than the minimum version. To move a clone to its release

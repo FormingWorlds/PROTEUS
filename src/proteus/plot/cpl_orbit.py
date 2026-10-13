@@ -618,8 +618,8 @@ def plot_lovenumber(
     )
     fig.legend(
         handles=[resonance_proxy],
-        loc='upper center',
-        bbox_to_anchor=(0.5, 1.02),
+        loc='lower center',
+        bbox_to_anchor=(0.5, 1.0),
         ncol=1,
         frameon=False,
     )
