@@ -95,11 +95,6 @@ class PlanEntry:
         return self.job_command != self.step.command
 
 
-def _indent_of(line: str) -> int:
-    """Return the number of leading spaces of ``line``."""
-    return len(line) - len(line.lstrip(' '))
-
-
 def _block_commands(body: list[tuple[int, str]]) -> list[tuple[int, str]]:
     """Split the body of a console block into (page line, command) pairs.
 
@@ -161,7 +156,7 @@ def parse_page(text: str) -> list[Step]:
         if not line.strip():
             i += 1
             continue
-        indent = _indent_of(line)
+        indent = len(line) - len(line.lstrip(' '))
         while containers and indent <= containers[-1][0]:
             containers.pop()
         tab_match = _TAB_RE.match(line)

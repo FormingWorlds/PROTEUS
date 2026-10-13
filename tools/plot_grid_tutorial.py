@@ -44,8 +44,8 @@ def load_cases(grid_dir: Path) -> list[dict]:
     list[dict]
         One record per case: `mass` [M_earth], `distance` [AU], `H_budget` and its
         unit `H_mode`, `status` code, `phi_crit` (None when the solidification stop
-        is off) and `hf`, the helpfile rows after the initial stage. A case that
-        lacks one of the three files, or has no row after the initial stage, is
+        is off) and `hf`, the helpfile rows after the initial stage. A case with a
+        missing or empty file, or with no row after the initial stage, is
         skipped and named on the terminal.
 
     Raises
@@ -55,9 +55,9 @@ def load_cases(grid_dir: Path) -> list[dict]:
     """
     cases = []
     for case_dir in sorted(grid_dir.glob('case_*')):
-        names = ('init_coupler.toml', 'status', 'runtime_helpfile.csv')
-        if not all((case_dir / name).is_file() for name in names):
-            print(f'Skipped {case_dir.name}: output files are missing')
+        files = [case_dir / n for n in ('init_coupler.toml', 'status', 'runtime_helpfile.csv')]
+        if not all(f.is_file() and f.stat().st_size for f in files):
+            print(f'Skipped {case_dir.name}: an output file is missing or empty')
             continue
         with open(case_dir / 'init_coupler.toml', 'rb') as f:
             cfg = tomllib.load(f)

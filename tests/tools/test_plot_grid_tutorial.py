@@ -100,17 +100,20 @@ def test_load_cases_gives_no_threshold_when_the_stop_is_off(tmp_path):
 
 
 def test_load_cases_skips_cases_without_output(grid_dir, capsys):
-    """A case with a missing file or with rows of the initial stage only is skipped and named."""
+    """A case with a missing or empty file, or with rows of the initial stage only, is skipped and named."""
     (grid_dir / 'case_000004').mkdir()
     _write_case(grid_dir, 5, 1.0, 0.5, 5000.0, 10)
     helpfile = grid_dir / 'case_000005' / 'runtime_helpfile.csv'
     helpfile.write_text(''.join(helpfile.read_text().splitlines(keepends=True)[:3]))
+    _write_case(grid_dir, 6, 1.0, 0.5, 5000.0, 10)
+    (grid_dir / 'case_000006' / 'status').write_text('')
     cases = tool.load_cases(grid_dir)
     assert [c['mass'] for c in cases] == [0.5, 2.0, 0.5, 2.0]
     printed = capsys.readouterr().out
-    assert 'Skipped case_000004: output files are missing' in printed
+    assert 'Skipped case_000004: an output file is missing or empty' in printed
     assert 'Skipped case_000005: no row after the initial stage' in printed
-    assert printed.count('Skipped') == 2
+    assert 'Skipped case_000006: an output file is missing or empty' in printed
+    assert printed.count('Skipped') == 3
 
 
 def test_load_cases_without_a_case_folder_raises(tmp_path):
