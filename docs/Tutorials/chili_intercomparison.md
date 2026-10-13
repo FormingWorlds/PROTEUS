@@ -156,9 +156,13 @@ python tools/plot_chili_comparison.py \
 
 `tools/plot_chili_comparison.py` writes every figure on this page to the
 `--output` directory (here `output_files/chili_plots/`, which is
-gitignored) as both PDF (vector) and PNG, using the Wong
-colorblind-friendly palette. The script is self-contained and
-version-general:
+gitignored) as both PDF (vector) and PNG. The colours follow the CHILI
+analysis code: the models are in Paul Tol's bright scheme and the gases in
+the PROTEUS gas colours. The script draws under the active matplotlib
+style, and `--style light` or `--style dark` applies the PROTEUS plot style
+of the `proteus-mpl` package for a direct call. The figures of this page
+come from `tools/make_docs_figures.py`, which calls the script once per
+figure and style. The script is version-general:
 
 - It clones the CHILI comparison data automatically if `--chili-repo`
   does not already point to a checkout, so Step 2 is optional.
@@ -172,9 +176,10 @@ version-general:
   plot the intercomparison models alone.
 
 Up to two PROTEUS results appear on each plot. The results submitted to the
-intercomparison (Nicholls et al. 2026) are drawn as a thin black
-dashed line labelled "PROTEUS CHILI". The current run is drawn in
-vermillion with thick lines, black-edged markers, and the commit of the
+intercomparison (Nicholls et al. 2026) are drawn as a thin orange line
+labelled "PROTEUS CHILI", dashed in every figure except Figure 1, where
+the line style tells the planets apart. The current run is drawn in the
+same orange with thick lines, edged markers, and the commit of the
 runs in the legend. Running the command on the output of a future PROTEUS
 version draws every figure with the commit of those runs, so the
 comparison stays reproducible without editing the script.
@@ -182,70 +187,80 @@ comparison stays reproducible without editing the script.
 ## Melt fraction evolution
 
 <figure markdown="span">
-  ![CHILI Fig 1](../assets/tutorials/chili/fig1_melt_fraction.avif){ width="100%" }
+  ![CHILI Fig 1](../assets/tutorials/chili/fig1_melt_fraction.avif#only-light){ width="100%" }
+  ![CHILI Fig 1](../assets/tutorials/chili/fig1_melt_fraction_dark.avif#only-dark){ width="100%" }
   <figcaption><strong>Figure 1.</strong> Melt fraction vs time for the CHILI Nominal Earth (solid lines) and Nominal Venus (dashed lines) cases. In the Earth files of the intercomparison the first melt fraction after t = 0 is 0.93 to 1.00. Six of the seven models reach a 5% melt fraction between 0.011 Myr (PACMAN) and 2.0 Myr (NEONGOOEY); the submitted PROTEUS CHILI run ends at 0.47 Myr with 6.1%. Two Venus curves of the intercomparison end after the 20 Myr range of the time axis: PROTEUS CHILI at 39.3 Myr and LINCS at 49.3 Myr. The curves of the current PROTEUS runs show the melt fraction by mass; the curves of the intercomparison data show it by volume. The current PROTEUS Earth run reaches a melt fraction of 5% by mass at 2.44 Myr (6.2% by volume). The current PROTEUS Venus run does not reach a 5% melt fraction: its melt fraction levels off, and the run ends in global energy balance at 11.3 Myr with 6.8% of melt by mass (8.3% by volume).</figcaption>
 </figure>
 
 ## Solidification milestones
 
 <figure markdown="span">
-  ![CHILI Fig 2](../assets/tutorials/chili/fig2_milestones.avif){ width="100%" }
-  <figcaption><strong>Figure 2.</strong> Time to reach melt fraction milestones for all Earth scenarios. (a) 95%, (b) 40%, (c) 5% melt fraction. The y-axis spans H inventories from the Nominal case (bottom) to H<sub>high</sub> (10 EO, top). C inventory is encoded as marker opacity (light = C<sub>low</sub>, medium = C<sub>mid</sub>, dark = C<sub>high</sub>). Connected scatter points trace the three H levels for each model at a given C level. The current PROTEUS run (vermillion, thick lines, black-edged markers) stands out from the CHILI intercomparison ensemble. Nominal Earth cases appear as crosses at the bottom of each panel. A current PROTEUS run that has not reached a milestone when it ends has no marker in that panel. The submitted PROTEUS CHILI runs end above 5% melt by volume, and their points in panel (c) mark the last archived row.</figcaption>
+  ![CHILI Fig 2](../assets/tutorials/chili/fig2_milestones.avif#only-light){ width="100%" }
+  ![CHILI Fig 2](../assets/tutorials/chili/fig2_milestones_dark.avif#only-dark){ width="100%" }
+  <figcaption><strong>Figure 2.</strong> Time to reach melt fraction milestones for all Earth scenarios. (a) 95%, (b) 40%, (c) 5% melt fraction. The y-axis spans H inventories from the Nominal case (bottom) to H<sub>high</sub> (10 EO, top). C inventory is encoded as marker opacity (faint = C<sub>low</sub>, medium = C<sub>mid</sub>, full = C<sub>high</sub>). Connected scatter points trace the three H levels for each model at a given C level. The current PROTEUS run (orange, thick solid lines, edged markers) stands out from the CHILI intercomparison ensemble; the submitted PROTEUS CHILI runs have the same orange with thin dashed lines. Nominal Earth cases appear as crosses at the bottom of each panel, and the larger orange cross is that of the current run. A current PROTEUS run that has not reached a milestone when it ends has no marker in that panel. The submitted PROTEUS CHILI runs end above 5% melt by volume, and their points in panel (c) mark the last archived row.</figcaption>
 </figure>
 
 ## Atmospheric composition
 
 <figure markdown="span">
-  ![CHILI Fig 3](../assets/tutorials/chili/fig3_atm_composition.avif){ width="100%" }
-  <figcaption><strong>Figure 3.</strong> Atmospheric compositions for the Nominal Earth case at (a) 95% and (b) 5% melt fraction. Stacked bars show gas partial pressures &#91;bar&#93; for each model; grey stars mark surface temperature (right axis). The current PROTEUS run (vermillion label, black-edged bar) is placed next to the original CHILI submission for direct comparison. At 95% melt fraction the largest gas is CO<sub>2</sub> in the NEONGOOEY, PROTEUS CHILI and PlanAtMO bars (87 to 93% of the summed pressure), CO in the PACMAN and MOAI bars, and H<sub>2</sub>O in the GOOEY and LINCS bars, which hold no carbon gas. The bar of the current PROTEUS run is 58% O<sub>2</sub> (129 bar of 222 bar), with 84 bar of CO<sub>2</sub>. O<sub>2</sub> is drawn where a file gives it: at the plotted row it is below 0.5 bar in five intercomparison files, and the LINCS and PlanAtMO files give no value. At 5% the largest gas is H<sub>2</sub>O in six bars, with 346 bar of 411 bar for the current PROTEUS run, and CO<sub>2</sub> in the PACMAN and MOAI bars. Both panels share the same y-axis range to highlight the pressure increase during solidification.</figcaption>
+  ![CHILI Fig 3](../assets/tutorials/chili/fig3_atm_composition.avif#only-light){ width="100%" }
+  ![CHILI Fig 3](../assets/tutorials/chili/fig3_atm_composition_dark.avif#only-dark){ width="100%" }
+  <figcaption><strong>Figure 3.</strong> Atmospheric compositions for the Nominal Earth case at (a) 95% and (b) 5% melt fraction. Stacked bars show gas partial pressures &#91;bar&#93; for each model; grey stars mark surface temperature (right axis), with an orange star for the current run. The current PROTEUS run (bold label, edged bar) is placed next to the original CHILI submission for direct comparison. At 95% melt fraction the largest gas is CO<sub>2</sub> in the NEONGOOEY, PROTEUS CHILI and PlanAtMO bars (87 to 93% of the summed pressure), CO in the PACMAN and MOAI bars, and H<sub>2</sub>O in the GOOEY and LINCS bars, which hold no carbon gas. The bar of the current PROTEUS run is 58% O<sub>2</sub> (129 bar of 222 bar), with 84 bar of CO<sub>2</sub>. O<sub>2</sub> is drawn where a file gives it: at the plotted row it is below 0.5 bar in five intercomparison files, and the LINCS and PlanAtMO files give no value. At 5% the largest gas is H<sub>2</sub>O in six bars, with 346 bar of 411 bar for the current PROTEUS run, and CO<sub>2</sub> in the PACMAN and MOAI bars. Both panels share the same y-axis range to highlight the pressure increase during solidification.</figcaption>
 </figure>
 
 ## H and C mass budgets
 
 <figure markdown="span">
-  ![CHILI Fig 4](../assets/tutorials/chili/fig4_mass_budgets.avif){ width="100%" }
-  <figcaption><strong>Figure 4.</strong> Hydrogen (green) and carbon (red) mass budgets at 5% melt fraction, distributed across three reservoirs: (a) outgassed to atmosphere, (b, dotted) dissolved in the remnant magma ocean, (c, hatched) stored in solidified mantle. The current PROTEUS run (vermillion label, black-edged bars) is placed next to the original CHILI submission. GOOEY and LINCS do not simulate carbon. MOAI and PACMAN store significant H in the solid mantle, while most other models retain H in the atmosphere or melt.</figcaption>
+  ![CHILI Fig 4](../assets/tutorials/chili/fig4_mass_budgets.avif#only-light){ width="100%" }
+  ![CHILI Fig 4](../assets/tutorials/chili/fig4_mass_budgets_dark.avif#only-dark){ width="100%" }
+  <figcaption><strong>Figure 4.</strong> Hydrogen (green) and carbon (red) mass budgets at 5% melt fraction, distributed across three reservoirs: (a) outgassed to atmosphere, (b, dotted) dissolved in the remnant magma ocean, (c, hatched) stored in solidified mantle. The current PROTEUS run (bold label, edged bars) is placed next to the original CHILI submission. GOOEY and LINCS do not simulate carbon. MOAI and PACMAN store significant H in the solid mantle, while most other models retain H in the atmosphere or melt.</figcaption>
 </figure>
 
 ## Venus atmospheric composition
 
 <figure markdown="span">
-  ![CHILI Fig 5](../assets/tutorials/chili/fig5_venus_atm.avif){ width="100%" }
-  <figcaption><strong>Figure 5.</strong> Atmospheric composition for the Nominal Venus case at 5% melt fraction. Stacked bars show gas partial pressures &#91;bar&#93;; grey stars mark surface temperature (right axis). A current PROTEUS run that reaches a 5% melt fraction is drawn as a black-edged bar with a vermillion label next to the submitted PROTEUS CHILI result. The current run does not reach a 5% melt fraction, so the figure has no bar for it: it ends in global energy balance at 11.3 Myr with a melt fraction of 6.8% by mass (8.3% by volume), a surface temperature of 1800 K and a surface pressure of 384 bar (321 bar H<sub>2</sub>O and 56 bar CO<sub>2</sub>). The bar of the submitted PROTEUS CHILI result is its last row, at a melt fraction of 6.2% by volume (4.9% by mass). O<sub>2</sub> is in the legend because five files give a value at the plotted row; each of these values is below 10<sup>-4</sup> bar, too small to see in a bar.</figcaption>
+  ![CHILI Fig 5](../assets/tutorials/chili/fig5_venus_atm.avif#only-light){ width="100%" }
+  ![CHILI Fig 5](../assets/tutorials/chili/fig5_venus_atm_dark.avif#only-dark){ width="100%" }
+  <figcaption><strong>Figure 5.</strong> Atmospheric composition for the Nominal Venus case at 5% melt fraction. Stacked bars show gas partial pressures &#91;bar&#93;; grey stars mark surface temperature (right axis). A current PROTEUS run that reaches a 5% melt fraction is drawn as an edged bar with a bold label next to the submitted PROTEUS CHILI result. The current run does not reach a 5% melt fraction, so the figure has no bar for it: it ends in global energy balance at 11.3 Myr with a melt fraction of 6.8% by mass (8.3% by volume), a surface temperature of 1800 K and a surface pressure of 384 bar (321 bar H<sub>2</sub>O and 56 bar CO<sub>2</sub>). The bar of the submitted PROTEUS CHILI result is its last row, at a melt fraction of 6.2% by volume (4.9% by mass).</figcaption>
 </figure>
 
 ## Oxygen fugacity
 
 <figure markdown="span">
-  ![CHILI Fig 6](../assets/tutorials/chili/fig6_fO2_vs_T.avif){ width="100%" }
-  <figcaption><strong>Figure 6.</strong> Oxygen fugacity of the Nominal Venus simulations of the four intercomparison models whose files give a value (GOOEY, PROTEUS CHILI, PACMAN, MOAI) and of the current PROTEUS run, plotted as a function of degassing temperature. The intercomparison curves are drawn against the surface temperature. (a) Absolute fO<sub>2</sub> compared to the iron-wustite buffer parameterizations of Fischer et al. (2011, dotted) and O'Neill & Eggins (2002, dashed). (b) Relative fO<sub>2</sub> as delta-IW referenced to O'Neill+02. Circular markers indicate, for each intercomparison model that reaches a melt fraction of 7% or less, its row closest to 5%. The curve of the current PROTEUS run (vermillion, thick line) is the O<sub>2</sub> partial pressure of the run, which CALLIOPE sets equal to the oxygen fugacity, against the magma temperature at which the run degasses; it equals IW+4 on the buffer of Fischer et al. (2011) at that temperature. Referenced to O'Neill & Eggins (2002) in panel (b) it lies at 5.2 at 3300 K, where the axis starts, and at 4.0 at 1800 K; the hotter rows of the run, up to 4272 K, lie before the axis. It has no circular marker: a current run is marked at its first row with a melt fraction of 5% or less, or else of 6% or less, and this run ends at 6.8%. The vermillion circle at 1665 K is the marker of MOAI, whose thin curve has the same colour. In panel (b) the GOOEY curve lies below the buffer between 3299 and 3182 K, down to -0.20, and the MOAI curve between 2968 and 2942 K, down to -0.06. The legend of panel (a) holds for both panels.</figcaption>
+  ![CHILI Fig 6](../assets/tutorials/chili/fig6_fO2_vs_T.avif#only-light){ width="100%" }
+  ![CHILI Fig 6](../assets/tutorials/chili/fig6_fO2_vs_T_dark.avif#only-dark){ width="100%" }
+  <figcaption><strong>Figure 6.</strong> Oxygen fugacity of the Nominal Venus simulations of the four intercomparison models whose files give a value (GOOEY, PROTEUS CHILI, PACMAN, MOAI) and of the current PROTEUS run, plotted as a function of degassing temperature. The intercomparison curves are drawn against the surface temperature. (a) Absolute fO<sub>2</sub> compared to the iron-wustite buffer parameterizations of Fischer et al. (2011, dotted) and O'Neill & Eggins (2002, dashed). (b) Relative fO<sub>2</sub> as delta-IW referenced to O'Neill+02. Circular markers indicate, for each intercomparison model that reaches a melt fraction of 7% or less, its row closest to 5%. The curve of the current PROTEUS run (orange, thick line) is the O<sub>2</sub> partial pressure of the run, which CALLIOPE sets equal to the oxygen fugacity, against the magma temperature at which the run degasses; it equals IW+4 on the buffer of Fischer et al. (2011) at that temperature. Referenced to O'Neill & Eggins (2002) in panel (b) it lies at 5.2 at 3300 K, where the axis starts, and at 4.0 at 1800 K; the hotter rows of the run, up to 4272 K, lie before the axis. It has no circular marker: a current run is marked at its first row with a melt fraction of 5% or less, or else of 6% or less, and this run ends at 6.8%. The orange circle at 1692 K is the marker of the submitted PROTEUS CHILI run, whose thin dashed curve has the colour of the current run. In panel (b) the GOOEY curve lies below the buffer between 3299 and 3182 K, down to -0.20, and the MOAI curve between 2968 and 2942 K, down to -0.06. The legend below the panels holds for both.</figcaption>
 </figure>
 
 ## Volatile retention
 
 <figure markdown="span">
-  ![CHILI Fig 7](../assets/tutorials/chili/fig7_volatiles.avif){ width="100%" }
-  <figcaption><strong>Figure 7.</strong> Relative amounts of the initial (a) hydrogen and (b) carbon inventories retained in the Nominal Venus case as a function of simulation time, with atoms lost from the planet by hydrodynamic escape. Crosses mark 95% melt fraction and circles mark, for each intercomparison model that reaches a melt fraction of 7% or less, its row closest to 5%. The submitted PROTEUS CHILI run (black dashed) extends to 39 Myr, where its melt fraction is 6.2% by volume (4.9% by mass) and it retains 63% of its hydrogen and 28% of its carbon. The current PROTEUS run (vermillion, labelled with the commit of the runs) ends in global energy balance at 11.3 Myr, where it retains 97.3% of its hydrogen and 92.8% of its carbon; it has no circle, because it ends above a melt fraction of 6%, and the figure makes no statement on the escape after that time.</figcaption>
+  ![CHILI Fig 7](../assets/tutorials/chili/fig7_volatiles.avif#only-light){ width="100%" }
+  ![CHILI Fig 7](../assets/tutorials/chili/fig7_volatiles_dark.avif#only-dark){ width="100%" }
+  <figcaption><strong>Figure 7.</strong> Relative amounts of the initial (a) hydrogen and (b) carbon inventories retained in the Nominal Venus case as a function of simulation time, with atoms lost from the planet by hydrodynamic escape. Crosses mark 95% melt fraction and circles mark, for each intercomparison model that reaches a melt fraction of 7% or less, its row closest to 5%. The submitted PROTEUS CHILI run (thin, dashed) extends to 39 Myr, where its melt fraction is 6.2% by volume (4.9% by mass) and it retains 63% of its hydrogen and 28% of its carbon. The current PROTEUS run (thick, solid, labelled with the commit of the runs) ends in global energy balance at 11.3 Myr, where it retains 97.3% of its hydrogen and 92.8% of its carbon; it has no circle, because it ends above a melt fraction of 6%, and the figure makes no statement on the escape after that time.</figcaption>
 </figure>
 
 ## Outgoing longwave radiation
 
 <figure markdown="span">
-  ![CHILI Fig 8](../assets/tutorials/chili/fig8_olr.avif){ width="100%" }
+  ![CHILI Fig 8](../assets/tutorials/chili/fig8_olr.avif#only-light){ width="100%" }
+  ![CHILI Fig 8](../assets/tutorials/chili/fig8_olr_dark.avif#only-dark){ width="100%" }
   <figcaption><strong>Figure 8.</strong> Outgoing longwave radiation flux from Nominal Earth, plotted as a function of (a) melt fraction and (b) surface temperature. In panel (a) the dashed line marks the absorbed stellar radiation (ASR = 208 W/m<sup>2</sup>) at 50 Myr stellar age with the CHILI protocol parameters. In panel (b) the dash-dot line marks the Simpson-Nakajima steam runaway limit (293 W/m<sup>2</sup>; Nakajima et al. 1992). OLR controls the cooling rate. The OLR of the current PROTEUS run decreases from 2.2 x 10<sup>5</sup> W/m<sup>2</sup> in its first row, at 1 yr, to 405 W/m<sup>2</sup> at a melt fraction of 5%; its absorbed stellar flux is 226 to 227 W/m<sup>2</sup>. The curve of the current run is a centred mean over 9 rows, which differs from a single row by about 8% at most.</figcaption>
 </figure>
 
 ## Geodynamics diagnostics
 
 <figure markdown="span">
-  ![CHILI Fig 9](../assets/tutorials/chili/fig9_geodynamics.avif){ width="100%" }
+  ![CHILI Fig 9](../assets/tutorials/chili/fig9_geodynamics.avif#only-light){ width="100%" }
+  ![CHILI Fig 9](../assets/tutorials/chili/fig9_geodynamics_dark.avif#only-dark){ width="100%" }
   <figcaption><strong>Figure 9.</strong> Geodynamics diagnostics as functions of melt fraction for the Nominal Earth case. (a) Surface temperature. (b) Rheological front radius in megameters; the dashed line marks the PROTEUS core-mantle boundary at 3.45 Mm (R<sub>core</sub>/R<sub>p</sub> = 0.49). (c) Effective mantle viscosity; the dashed line marks solid Earth mantle viscosity (5 x 10<sup>22</sup> Pa s), and the dotted line marks water STP viscosity (10<sup>-3</sup> Pa s). Current PROTEUS values are extracted from Aragog interior profiles at each timestep and drawn as a centred mean over 9 rows.</figcaption>
 </figure>
 
 ## Surface pressure evolution
 
 <figure markdown="span">
-  ![CHILI P_surf](../assets/tutorials/chili/psurf_vs_time.avif){ width="100%" }
+  ![CHILI P_surf](../assets/tutorials/chili/psurf_vs_time.avif#only-light){ width="100%" }
+  ![CHILI P_surf](../assets/tutorials/chili/psurf_vs_time_dark.avif#only-dark){ width="100%" }
   <figcaption><strong>Figure 10.</strong> Surface pressure vs time for the Nominal Earth case of all models. The current PROTEUS run has 2.6x10<sup>4</sup> bar in its first rows (1 to 22 yr), before the start of the time axis, and 1.7x10<sup>4</sup> bar at 10<sup>-3</sup> Myr, where the axis starts. This early peak is almost entirely molecular oxygen. CALLIOPE, the outgassing and gas-speciation module, solves the equilibrium atmospheric composition at the imposed oxygen fugacity, and because O<sub>2</sub> is one of the equilibrium species its partial pressure equals that fugacity. The CHILI protocol asks for a final mantle redox state of IW+4; the PROTEUS configuration sets fO<sub>2</sub> to IW+4 on the iron-wustite buffer at the magma temperature throughout the run (`outgas.fO2_shift_IW = 4.0`). The buffer is steeply temperature-dependent, so at the magma temperature of the first row (4316 K) this gives fO<sub>2</sub>, and hence pO<sub>2</sub>, near 2.6x10<sup>4</sup> bar, 99.7% of the total surface pressure. The magnitude comes from two compounding factors: the +4 dex offset multiplies the buffer value by 10<sup>4</sup>, and the high temperature already raises the iron-wustite fO<sub>2</sub> itself to a few bar. As the magma ocean cools the buffer falls by several orders of magnitude: O<sub>2</sub> falls below half of the surface pressure at a surface temperature of 2878 K, below 10% at 2697 K, and below 1% at 2471 K. There the pressure has its minimum of 110 bar, 97 bar of it CO<sub>2</sub>, before it rises to 411 bar at a melt fraction of 5% as H<sub>2</sub>O exsolves from the crystallizing mantle. The submitted PROTEUS CHILI run has 124 bar of O<sub>2</sub> in its first row, at a surface temperature of 3125 K; the first row of the current run, at 1 yr, has a surface temperature of 3324 K and a magma temperature of 4316 K. Other models differ in the timing and magnitude of the pressure evolution, reflecting their volatile solubility and oxygen treatments.</figcaption>
 </figure>
 
@@ -314,8 +329,9 @@ high-H runs follow the order of the mid-H runs: at 15 Myr the melt
 fraction is lower for a higher carbon inventory.
 
 <figure markdown="span">
-  ![CHILI grid solidification](../assets/tutorials/chili/grid_solidification.avif){ width="80%" }
-  <figcaption><strong>Figure 11.</strong> Time at which the current PROTEUS grid runs reach 5% melt by mass (solid lines, filled markers) as a function of hydrogen inventory for the three carbon levels (colour and marker shape), on logarithmic axes. The high-H runs were ended at 15 Myr above this threshold and have no marker. Where the submitted PROTEUS CHILI grid runs reach 5% melt by volume they are overlaid as dashed lines with open markers; the runs archived in the comparison repository stop just above that threshold, so no submitted points appear here. The carbon-inventory dependence reverses sign between the low-H and mid-H cases (see text).</figcaption>
+  ![CHILI grid solidification](../assets/tutorials/chili/grid_solidification.avif#only-light){ width="80%" }
+  ![CHILI grid solidification](../assets/tutorials/chili/grid_solidification_dark.avif#only-dark){ width="80%" }
+  <figcaption><strong>Figure 11.</strong> Time at which the current PROTEUS grid runs reach 5% melt by mass (solid lines, filled markers) as a function of hydrogen inventory for the three carbon levels (opacity and marker shape), on logarithmic axes. The high-H runs were ended at 15 Myr above this threshold and have no marker. Where the submitted PROTEUS CHILI grid runs reach 5% melt by volume they are overlaid as dashed lines with open markers; the runs archived in the comparison repository stop just above that threshold, so no submitted points appear here. The carbon-inventory dependence reverses sign between the low-H and mid-H cases (see text).</figcaption>
 </figure>
 
 ## Current PROTEUS configuration vs the CHILI submission

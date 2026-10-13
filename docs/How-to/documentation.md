@@ -122,7 +122,7 @@ nav:
 
 ## Update the tutorial figures
 
-The figures of the pages under `docs/Tutorials` are drawn by `tools/make_docs_figures.py` from the output folder of a run, as a pair: `<name>.avif` for the light colour scheme of the site and `<name>_dark.avif` for the dark one. The exception is a page that the manifest lists under `exempt_pages` (the CHILI intercomparison page): its figures do not come from the tool. Both files of a pair follow the PROTEUS visual language through the [`proteus-mpl`](https://pypi.org/project/proteus-mpl/) matplotlib style, which the `docs` and `develop` extras install. The manifest `tools/docs_figures.toml` lists the figures; the comment above each entry names the config that makes its run.
+The figures of the pages under `docs/Tutorials` are drawn by `tools/make_docs_figures.py` from the output folder of a run, as a pair: `<name>.avif` for the light colour scheme of the site and `<name>_dark.avif` for the dark one. A page that the manifest lists under `exempt_pages` is the exception: its figures do not come from the tool. No page is listed there now. Both files of a pair follow the PROTEUS visual language through the [`proteus-mpl`](https://pypi.org/project/proteus-mpl/) matplotlib style, which the `docs` and `develop` extras install. The manifest `tools/docs_figures.toml` lists the figures; the comment above each entry names the config that makes its run.
 
 To redraw the figures, give the folder that holds the run folders:
 
