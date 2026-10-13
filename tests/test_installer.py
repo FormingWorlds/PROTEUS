@@ -4171,8 +4171,65 @@ class TestFurtherModulesPhase:
         assert len(calls) == 4
         assert 'Not at their release tag or pinned commit:' not in (res.stdout + res.stderr)
 
+    def test_second_import_check_fails_when_proteus_unimportable(self, site, tmp_path):
+        """When PROTEUS does not import after further modules, the phase dies with error output."""
+        stubs = tmp_path / 'bin_stubs'
+        stubs.mkdir()
+        stub_py = stubs / 'python3'
+        stub_py.write_text('#!/bin/sh\necho "ImportError: DLL load failed" >&2\nexit 1\n')
+        stub_py.chmod(0o755)
+        env_extra = {'PATH': f'{stubs}{os.pathsep}{os.environ["PATH"]}'}
+        suffix = '\necho "PHASE_8_RAN"\n'
+        res = self._run_phase(site, suffix=suffix, env_extra=env_extra)
+        assert res.returncode != 0, res.stdout + res.stderr
+        assert (
+            'PROTEUS does not import after the setup steps of Morrigan, VULCAN, atmodeller and Obliqua. Error output:'
+            in res.stderr
+        )
+        assert (
+            'One of these steps changed a package that PROTEUS needs (see above).' in res.stderr
+        )
+        assert 'Steps that failed:' not in res.stderr
+        assert 'PHASE_8_RAN' not in (res.stdout + res.stderr)
+
+    def test_second_import_check_fails_with_failed_module_reported(self, site, tmp_path):
+        """When import fails and a module step failed, the failed module is named in the die message."""
+        stubs = tmp_path / 'bin_stubs'
+        stubs.mkdir()
+        stub_py = stubs / 'python3'
+        stub_py.write_text('#!/bin/sh\necho "ImportError: DLL load failed" >&2\nexit 1\n')
+        stub_py.chmod(0o755)
+        (site['tools'] / 'get_vulcan.sh').write_text('#!/bin/bash\nexit 1\n')
+        env_extra = {'PATH': f'{stubs}{os.pathsep}{os.environ["PATH"]}'}
+        suffix = '\necho "PHASE_8_RAN"\n'
+        res = self._run_phase(site, suffix=suffix, env_extra=env_extra)
+        assert res.returncode != 0, res.stdout + res.stderr
+        assert (
+            'PROTEUS does not import after the setup steps of Morrigan, VULCAN, atmodeller and Obliqua. Error output:'
+            in res.stderr
+        )
+        assert (
+            'One of these steps changed a package that PROTEUS needs (see above).' in res.stderr
+        )
+        assert 'Steps that failed: VULCAN (bash tools/get_vulcan.sh).' in res.stderr
+        assert 'PHASE_8_RAN' not in (res.stdout + res.stderr)
+
+    def test_second_import_check_passes_when_proteus_import_succeeds(self, site, tmp_path):
+        """When PROTEUS imports successfully after further modules, the phase continues."""
+        stubs = tmp_path / 'bin_stubs'
+        stubs.mkdir()
+        stub_py = stubs / 'python3'
+        stub_py.write_text('#!/bin/sh\nexit 0\n')
+        stub_py.chmod(0o755)
+        env_extra = {'PATH': f'{stubs}{os.pathsep}{os.environ["PATH"]}'}
+        suffix = '\necho "PHASE_8_RAN"\n'
+        res = self._run_phase(site, suffix=suffix, env_extra=env_extra)
+        assert res.returncode == 0, res.stdout + res.stderr
+        assert 'PROTEUS does not import after the setup steps' not in (res.stdout + res.stderr)
+        assert 'PHASE_8_RAN' in res.stdout
+
     def test_installer_phase_order_and_binding_positions(self):
-        """Order of verify, bind_install_vars and further modules in install.sh."""
+        """Order of verify, bind_install_vars, further modules and second import check in install.sh."""
         lines = INSTALL_SH.read_text().splitlines()
         idx_phase6 = next(i for i, ln in enumerate(lines) if ln == 'CURRENT_PHASE=6')
         idx_verify = next(i for i, ln in enumerate(lines) if ln == 'verify_proteus_import')
@@ -4185,6 +4242,16 @@ class TestFurtherModulesPhase:
         assert not any(
             ln.startswith('CURRENT_PHASE=') for ln in lines[idx_phase6 + 1 : idx_verify]
         )
+        idx_last_module = max(
+            i for i, ln in enumerate(lines) if ln.startswith('install_further_module "')
+        )
+        idx_second_import = next(
+            i
+            for i, ln in enumerate(lines)
+            if 'PROTEUS does not import after the setup steps' in ln
+        )
+        idx_phase8 = next(i for i, ln in enumerate(lines) if ln == 'CURRENT_PHASE=8')
+        assert idx_last_module < idx_second_import < idx_phase8
 
     def test_phase_seven_further_module_scripts_list_and_files(self):
         """Phase 7 further module invocations match the four expected scripts in order and files exist."""

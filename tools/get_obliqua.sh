@@ -31,21 +31,37 @@ case "$dest" in
     *) dest="$PWD/$dest" ;;
 esac
 
-if [ "$get_force" = true ] && { [ -e "$dest" ] || [ -L "$dest" ]; }; then
+exists=false
+if [ -e "$dest" ] || [ -L "$dest" ]; then exists=true; fi
+
+# A clone of another project is never taken for Obliqua, with or without --force.
+if [ "$exists" = true ] && ! is_empty_dir "$dest" && is_own_clone "$dest" &&
+    ! grep -q '^name = "Obliqua"' "$dest/Project.toml" 2>/dev/null; then
+    echo "ERROR: $dest is a git clone that is not Obliqua; move it away or delete it by hand; it is unchanged" >&2
+    exit 1
+fi
+
+if [ "$get_force" = true ] && [ "$exists" = true ]; then
     real=$(cd "$dest" 2>/dev/null && pwd -P) || real=""
-    [ -n "$real" ] || { echo "ERROR: --force replaces a folder, and $dest is not one; it is unchanged" >&2; exit 1; }
+    if [ -z "$real" ]; then
+        echo "ERROR: --force cannot enter $dest (not a folder, or no permission); it is unchanged" >&2
+        exit 1
+    fi
     for keep in "$proteus_root" "${HOME:-}"; do
         [ -n "$keep" ] || continue
-        keep_real=$(cd "$keep" 2>/dev/null && pwd -P) || continue
-        case "$keep_real/" in
-            "${real%/}/"*) echo "ERROR: --force would delete $keep; $dest is unchanged" >&2; exit 1 ;;
-        esac
+        up=$(cd "$keep" 2>/dev/null && pwd -P) || continue
+        while :; do
+            if [ "$up" -ef "$real" ]; then
+                echo "ERROR: --force would delete $keep; $dest is unchanged" >&2
+                exit 1
+            fi
+            if [ "$up" = "/" ]; then break; fi
+            up=$(dirname "$up")
+        done
     done
-    if ! is_empty_dir "$dest"; then
-        is_own_clone "$dest" ||
-            { echo "ERROR: $dest holds files and is not a git clone of its own; move it away or delete it by hand; it is unchanged" >&2; exit 1; }
-        grep -q '^name = "Obliqua"' "$dest/Project.toml" 2>/dev/null ||
-            { echo "ERROR: $dest is a git clone that is not Obliqua; move it away or delete it by hand; it is unchanged" >&2; exit 1; }
+    if ! is_empty_dir "$real" && ! is_own_clone "$dest"; then
+        echo "ERROR: $dest holds files and is not a git clone of its own; move it away or delete it by hand; it is unchanged" >&2
+        exit 1
     fi
 fi
 
@@ -61,7 +77,7 @@ if [ -z "$ob_url" ] || [ -z "$ob_ref" ]; then
     exit 1
 fi
 
-if [ "$get_force" != true ] && { [ -e "$dest" ] || [ -L "$dest" ]; } &&
+if [ "$get_force" != true ] && [ "$exists" = true ] &&
     ! is_empty_dir "$dest"; then
     label="get_obliqua.sh"
     [ "$dest" = "$proteus_root/Obliqua" ] || label="get_obliqua.sh $(printf '%q' "$dest")"

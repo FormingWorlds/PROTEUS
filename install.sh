@@ -1180,7 +1180,7 @@ phase 6 "Python submodules"
 # ssh -T returns non-zero even on success (exit 1, "does not provide shell
 # access"), so the capture must stay inside an if to survive set -e; a bare
 # assignment would abort the script.
-if ssh_test_out=$(ssh -T -o BatchMode=yes git@github.com 2>&1); then
+if ssh_test_out=$(ssh -T -o BatchMode=yes -o ConnectTimeout=10 git@github.com 2>&1); then
     ssh_test_rc=0
 else
     ssh_test_rc=$?
@@ -1298,6 +1298,13 @@ if [ -s "$FURTHER_STAYS" ]; then
         "commands printed above move a clone to its tag or pin, or replace it."
 fi
 rm -f "$FURTHER_STAYS"
+
+# A setup step above can change a package that PROTEUS imports.
+if ! import_log=$(python3 -c "import proteus" 2>&1); then
+    fail "PROTEUS does not import after the setup steps of Morrigan, VULCAN, atmodeller and Obliqua. Error output:"
+    printf '%s\n' "$import_log"
+    die "One of these steps changed a package that PROTEUS needs (see above).${FAILED_MODULES:+ Steps that failed: $FAILED_MODULES.}"
+fi
 
 # ===================================================================
 # Phase 8: Reference data

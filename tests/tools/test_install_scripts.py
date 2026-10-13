@@ -356,7 +356,11 @@ def test_no_get_script_carries_a_private_helper_copy():
             for pattern, label in (*definitions, *COPIED_SHELL_PATTERNS):
                 if re.search(pattern, code):
                     offenders.setdefault(script.name, []).append(label)
-            if 'dirname' in code and not re.match(BOOTSTRAP_LINE, code):
+            if (
+                'dirname' in code
+                and not re.match(BOOTSTRAP_LINE, code)
+                and code != 'up=$(dirname "$up")'
+            ):
                 offenders.setdefault(script.name, []).append('a private root derivation')
     assert offenders == {}, offenders
 
@@ -1210,7 +1214,7 @@ def test_pyproject_keeps_boreas_out_of_mandatory_dependencies():
 
 @pytest.mark.unit
 def test_optional_backends_vulcan_atmodeller_are_extras_not_mandatory():
-    """VULCAN and atmodeller are optional backends, installed on demand.
+    """VULCAN and atmodeller are package extras that the installer sets up.
 
     A standard PROTEUS run uses CALLIOPE for outgassing and no atmospheric
     chemistry, so neither package should be a mandatory dependency. Each
@@ -1228,7 +1232,7 @@ def test_optional_backends_vulcan_atmodeller_are_extras_not_mandatory():
         f'vulcan/atmodeller must not be mandatory dependencies: {mandatory!r}'
     )
     # Discrimination: an empty or truncated dependency list would also pass
-    # the check above; confirm a known-mandatory backend is still present.
+    # the check above; confirm a known-mandatory dependency is still present.
     assert any('fwl-calliope' in d for d in deps), 'mandatory dependency list is intact'
 
     extras = data['project']['optional-dependencies']
@@ -1296,7 +1300,7 @@ def test_ci_setup_installs_every_declared_extra():
     The CI composite action installs PROTEUS with a literal extras list, e.g.
     ``pip install -e ".[develop,vulcan,atmodeller]"``. pip treats an unknown
     extra as a warning and still exits 0, so a typo or a renamed extra would
-    silently stop installing the optional backends, and their tests would skip
+    silently stop installing the package extras, and their tests would skip
     instead of failing. This guard ties the CI string to the pyproject extra
     keys: every extra named in the action must be a real optional-dependency
     group.
@@ -1315,7 +1319,7 @@ def test_ci_setup_installs_every_declared_extra():
         'the extras-install guard cannot verify CI'
     )
     ci_extras = {e.strip() for group in matches for e in group.split(',')}
-    # The two optional physics backends must be installed by CI so their tests
+    # The two optional physics modules must be installed by CI so their tests
     # run rather than skip.
     assert {'vulcan', 'atmodeller'} <= ci_extras, (
         f'CI must install the vulcan + atmodeller extras; found {sorted(ci_extras)}'
@@ -4797,7 +4801,7 @@ def _obliqua_site(tmp_path: Path) -> dict:
         '    exit 1\n'
         'fi\n'
         'case "$*" in\n'
-        '    *"Pkg.instantiate"*) echo "# Manifest generated" > Manifest.toml ;;\n'
+        '    *"Pkg.instantiate"*) [ -f "Manifest.toml" ] || echo "# Manifest generated" > Manifest.toml ;;\n'
         'esac\n'
         'if [ -n "${FAIL_JULIA_PATTERN:-}" ]; then\n'
         '    case "$*" in\n'
@@ -4808,7 +4812,7 @@ def _obliqua_site(tmp_path: Path) -> dict:
     )
     site['env'].pop('PYTHON_JULIAPKG_EXE', None)
     site['env']['STUB_JULIA_LOG'] = str(log)
-    return {**site, 'log': log}
+    return {**site, 'log': log, 'pip_log': tmp_path / 'pip.log'}
 
 
 @pytest.mark.unit
@@ -4983,6 +4987,7 @@ def test_module_failed_clone_leaves_existing_folder_unchanged(
     res = _run_tool(site, script, '--force')
     assert res.returncode == 1
     assert 'ERROR: git clone failed' in res.stderr
+    assert 'git checkout failed' not in res.stderr
     assert tree_snapshot(clone) == before
     assert not any(p.name.startswith(f'{folder}.tmp.') for p in site['root'].iterdir())
 
@@ -5111,6 +5116,7 @@ def test_obliqua_new_clone_and_instantiate(tmp_path):
     assert not any('Pkg.add' in c for c in calls)
     assert not any('using Obliqua' in c for c in calls)
     assert not any('Pkg.test' in c for c in calls)
+    assert not site['pip_log'].exists() or site['pip_log'].read_text().strip() == ''
 
 
 @pytest.mark.unit
@@ -5141,16 +5147,18 @@ def test_obliqua_existing_folder_at_pin_stays_and_instantiates(tmp_path):
     assert _run_tool(site, 'get_obliqua.sh').returncode == 0
     clone = site['root'] / 'Obliqua'
     (clone / 'local_note.txt').write_text('keep me\n')
-    (clone / 'Manifest.toml').unlink()
+    manifest_bytes = b'# custom manifest bytes\nversion = 99\n'
+    (clone / 'Manifest.toml').write_bytes(manifest_bytes)
     site['log'].write_text('')
     res = _run_tool(site, 'get_obliqua.sh')
     assert res.returncode == 0, res.stdout + res.stderr
     assert f'Obliqua: {clone} is at the pinned commit {site["target_sha"][:8]}' in res.stdout
     assert (clone / 'local_note.txt').read_text() == 'keep me\n'
-    assert (clone / 'Manifest.toml').is_file()
+    assert (clone / 'Manifest.toml').read_bytes() == manifest_bytes
     assert git(clone, 'rev-parse', 'HEAD') == site['target_sha']
     calls = site['log'].read_text().splitlines()
     assert calls == ['--project=. -e using Pkg; Pkg.instantiate()']
+    assert not site['pip_log'].exists() or site['pip_log'].read_text().strip() == ''
 
 
 @pytest.mark.unit
@@ -5160,7 +5168,8 @@ def test_obliqua_existing_folder_off_pin_stays_and_advises(tmp_path):
     assert _run_tool(site, 'get_obliqua.sh').returncode == 0
     clone = site['root'] / 'Obliqua'
     git(clone, 'checkout', '-q', 'main')
-    manifest_bytes = (clone / 'Manifest.toml').read_bytes()
+    manifest_bytes = b'# custom manifest bytes off pin\nversion = 101\n'
+    (clone / 'Manifest.toml').write_bytes(manifest_bytes)
     site['log'].write_text('')
     res = _run_tool(site, 'get_obliqua.sh')
     assert res.returncode == 0, res.stdout + res.stderr
@@ -5269,6 +5278,7 @@ def test_pinned_clone_at_pin_reports_at_the_pinned_commit(tmp_path):
         ('Morrigan', 'fwl-morrigan', 'morrigan', False),
         ('VULCAN', 'fwl-vulcan', 'vulcan', True),
     ],
+    ids=['morrigan', 'vulcan'],
 )
 def test_second_call_after_failed_pip_exits_1(tmp_path, repo, dist, extra, built):
     """Verify the second call after a failed pip reports the release tag and exits 1."""
@@ -5668,13 +5678,176 @@ def test_obliqua_force_refuses_regular_file(tmp_path):
     res = _run_tool(site, 'get_obliqua.sh', '--force', str(target))
     assert res.returncode == 1, res.stdout + res.stderr
     assert (
-        f'ERROR: --force replaces a folder, and {target} is not one; it is unchanged'
+        f'ERROR: --force cannot enter {target} (not a folder, or no permission); it is unchanged'
         in res.stderr
     )
     assert target.is_file()
     assert target.read_text() == 'plain file content\n'
     assert not any('.tmp.' in p.name for p in tmp_path.iterdir())
     assert site['log'].read_text() == ''
+
+
+@pytest.mark.unit
+def test_obliqua_foreign_git_clone_at_default_dest_without_force_refused(tmp_path):
+    """Verify foreign git clone at default destination without --force is refused."""
+    site = _obliqua_site(tmp_path)
+    target = site['root'] / 'Obliqua'
+    target.mkdir()
+    git(target, 'init', '-q', '-b', 'main')
+    (target / 'README.md').write_text('Foreign project\n')
+    git(target, 'add', '.')
+    git(target, 'commit', '-q', '-m', 'init')
+    head = git(target, 'rev-parse', 'HEAD')
+    res = _run_tool(site, 'get_obliqua.sh')
+    assert res.returncode == 1, res.stdout + res.stderr
+    assert (
+        f'ERROR: {target} is a git clone that is not Obliqua; move it away or delete it by hand; it is unchanged'
+        in res.stderr
+    )
+    assert (target / 'README.md').read_text() == 'Foreign project\n'
+    assert git(target, 'rev-parse', 'HEAD') == head
+    assert site['log'].read_text() == ''
+    assert '--force' not in res.stdout
+
+
+@pytest.mark.unit
+def test_obliqua_foreign_git_clone_at_default_dest_with_force_refused(tmp_path):
+    """Verify foreign git clone at default destination with --force is refused."""
+    site = _obliqua_site(tmp_path)
+    target = site['root'] / 'Obliqua'
+    target.mkdir()
+    git(target, 'init', '-q', '-b', 'main')
+    (target / 'README.md').write_text('Foreign project\n')
+    git(target, 'add', '.')
+    git(target, 'commit', '-q', '-m', 'init')
+    head = git(target, 'rev-parse', 'HEAD')
+    res = _run_tool(site, 'get_obliqua.sh', '--force')
+    assert res.returncode == 1, res.stdout + res.stderr
+    assert (
+        f'ERROR: {target} is a git clone that is not Obliqua; move it away or delete it by hand; it is unchanged'
+        in res.stderr
+    )
+    assert (target / 'README.md').read_text() == 'Foreign project\n'
+    assert git(target, 'rev-parse', 'HEAD') == head
+    assert site['log'].read_text() == ''
+
+
+@pytest.mark.unit
+def test_obliqua_git_init_only_folder_without_force_refused(tmp_path):
+    """Verify folder with git init only without --force is refused."""
+    site = _obliqua_site(tmp_path)
+    target = site['root'] / 'Obliqua'
+    target.mkdir()
+    git(target, 'init', '-q', '-b', 'main')
+    res = _run_tool(site, 'get_obliqua.sh')
+    assert res.returncode == 1, res.stdout + res.stderr
+    assert (
+        f'ERROR: {target} is a git clone that is not Obliqua; move it away or delete it by hand; it is unchanged'
+        in res.stderr
+    )
+    assert (target / '.git').is_dir()
+    assert site['log'].read_text() == ''
+    assert '--force' not in res.stdout
+
+
+@pytest.mark.unit
+def test_obliqua_uncommitted_clone_with_project_toml_advises_and_force_replaces(tmp_path):
+    """Verify uncommitted clone with Obliqua Project.toml advises --force and --force succeeds."""
+    site = _obliqua_site(tmp_path)
+    target = site['root'] / 'Obliqua'
+    target.mkdir()
+    git(target, 'init', '-q', '-b', 'main')
+    (target / 'Project.toml').write_text('name = "Obliqua"\nuuid = "1234"\n')
+    res_no_force = _run_tool(site, 'get_obliqua.sh')
+    assert res_no_force.returncode == 0, res_no_force.stdout + res_no_force.stderr
+    assert 'bash tools/get_obliqua.sh --force' in res_no_force.stdout
+    res_force = _run_tool(site, 'get_obliqua.sh', '--force')
+    assert res_force.returncode == 0, res_force.stdout + res_force.stderr
+    assert git(target, 'rev-parse', 'HEAD') == site['target_sha']
+    assert (target / 'Project.toml').is_file()
+
+
+@pytest.mark.unit
+def test_obliqua_force_refuses_site_root_with_different_letter_case(tmp_path):
+    """Verify get_obliqua.sh --force refuses site root in uppercase on case-insensitive filesystems."""
+    site = _obliqua_site(tmp_path)
+    root = site['root']
+    low_root = root.parent / 'proteus_root'
+    root.rename(low_root)
+    site['root'] = Path(os.path.realpath(low_root))
+    upper_root = low_root.parent / low_root.name.upper()
+    if not upper_root.exists():
+        pytest.skip('filesystem is case-sensitive')
+    res = _run_tool(site, 'get_obliqua.sh', '--force', str(upper_root))
+    assert res.returncode == 1, res.stdout + res.stderr
+    assert (
+        f'ERROR: --force would delete {site["root"]}; {upper_root} is unchanged' in res.stderr
+    )
+    assert low_root.is_dir()
+
+
+@pytest.mark.unit
+def test_obliqua_force_refuses_unreadable_folder(tmp_path):
+    """Verify get_obliqua.sh --force refuses a folder without permissions."""
+    if os.geteuid() == 0:
+        pytest.skip('root bypasses filesystem permissions')
+    site = _obliqua_site(tmp_path)
+    target = tmp_path / 'unreadable_dir'
+    target.mkdir()
+    target.chmod(0)
+    try:
+        res = _run_tool(site, 'get_obliqua.sh', '--force', str(target))
+        assert res.returncode == 1, res.stdout + res.stderr
+        assert (
+            f'ERROR: --force cannot enter {target} (not a folder, or no permission); it is unchanged'
+            in res.stderr
+        )
+        assert target.exists()
+    finally:
+        target.chmod(0o755)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('empty_git_dir', [False, True], ids=['no-git', 'empty-git-dir'])
+def test_obliqua_force_refuses_plain_copy_inside_git_repo(tmp_path, empty_git_dir):
+    """Verify get_obliqua.sh --force refuses plain copy of Obliqua inside an outer git repo."""
+    site = _obliqua_site(tmp_path)
+    git(site['root'], 'init', '-q', '-b', 'main')
+    (site['root'] / 'outer.txt').write_text('outer repo\n')
+    git(site['root'], 'add', '.')
+    git(site['root'], 'commit', '-q', '-m', 'init-outer')
+    target = site['root'] / 'Obliqua'
+    target.mkdir()
+    (target / 'Project.toml').write_text('name = "Obliqua"\nuuid = "1234"\n')
+    (target / 'copy.txt').write_text('copied file\n')
+    if empty_git_dir:
+        (target / '.git').mkdir()
+    res = _run_tool(site, 'get_obliqua.sh', '--force')
+    assert res.returncode == 1, res.stdout + res.stderr
+    assert (
+        f'ERROR: {target} holds files and is not a git clone of its own; move it away or delete it by hand; it is unchanged'
+        in res.stderr
+    )
+    assert (target / 'copy.txt').read_text() == 'copied file\n'
+    assert site['log'].read_text() == ''
+
+
+@pytest.mark.unit
+def test_obliqua_force_replaces_symlink_to_empty_directory(tmp_path):
+    """Verify get_obliqua.sh --force replaces symlink to empty directory with clone."""
+    site = _obliqua_site(tmp_path)
+    empty_dir = tmp_path / 'empty_target'
+    empty_dir.mkdir()
+    link_path = site['root'] / 'Obliqua'
+    link_path.symlink_to(empty_dir)
+    res = _run_tool(site, 'get_obliqua.sh', '--force')
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert not link_path.is_symlink()
+    assert link_path.is_dir()
+    assert (link_path / 'Project.toml').is_file()
+    assert git(link_path, 'rev-parse', 'HEAD') == site['target_sha']
+    assert empty_dir.is_dir()
+    assert list(empty_dir.iterdir()) == []
 
 
 @pytest.mark.unit
@@ -5773,10 +5946,11 @@ def test_modules_ssh_probe_batch_mode_arguments(tmp_path, script, fixture_fn):
 
 @pytest.mark.unit
 def test_ssh_invocations_use_batch_mode():
-    """Verify every non-comment shell command executing ssh includes BatchMode=yes."""
+    """Verify every non-comment shell command executing ssh includes BatchMode=yes and ConnectTimeout=10."""
     repo_root = Path(__file__).resolve().parents[2]
     sh_files = [repo_root / 'install.sh', *(repo_root / 'tools').glob('*.sh')]
     checked_count = 0
+    matched_files = set()
     for path in sh_files:
         lines = path.read_text(encoding='utf-8').splitlines()
         for idx, line in enumerate(lines, 1):
@@ -5792,8 +5966,13 @@ def test_ssh_invocations_use_batch_mode():
                 assert 'BatchMode=yes' in stripped, (
                     f'{path.name}:{idx} lacks BatchMode=yes: {line}'
                 )
+                assert 'ConnectTimeout=10' in stripped, (
+                    f'{path.name}:{idx} lacks ConnectTimeout=10: {line}'
+                )
+                matched_files.add(path.name)
                 checked_count += 1
-    assert checked_count == 2
+    assert checked_count >= 2
+    assert {'install.sh', '_get_common.sh'} <= matched_files
 
 
 @pytest.mark.unit
