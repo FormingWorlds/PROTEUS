@@ -234,7 +234,7 @@ def init_locs(
 ) -> torch.Tensor:
     """Generate initial sample locations for each worker using the configured acqf.
 
-    Calls optimize_acqf once per worker with q=1, passing the candidates chosen so
+    Calls optimize_acqf_logged once per worker with q=1, passing the candidates chosen so
     far as pending points, so the workers start from different points.
 
     Parameters
