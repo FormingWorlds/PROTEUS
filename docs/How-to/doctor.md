@@ -74,11 +74,10 @@ the pin; the fix is advice that `proteus update` does not run: move the folder
 away or delete it, then run the setup script of the module. For an Obliqua folder that
 is not at its pin the fix is advice that `proteus update` does not run:
 `bash tools/get_obliqua.sh --force <folder>` replaces the folder with a new
-clone at the pin. The forced form replaces only an Obliqua clone or an empty
-folder: it refuses the PROTEUS folder, your home folder, a folder that holds
-one of them, and a folder with files that is not a git clone of its own. A
-clone of another project stops the script with an error, with or without
-`--force`. An Obliqua folder at its pin with no `Manifest.toml` gives a warning
+clone at the pin. The script refuses the PROTEUS folder, your home folder and
+a folder that holds one of them as its destination, and stops for a clone of
+another project, with or without `--force`. The forced form also refuses a
+folder with files that is not a git clone of its own. An Obliqua folder at its pin with no `Manifest.toml` gives a warning
 that its Julia environment is not instantiated, with the fix
 `bash tools/get_obliqua.sh`. The AGNI fix is
 `bash tools/get_agni.sh`. The SOCRATES fix also rebuilds AGNI,
