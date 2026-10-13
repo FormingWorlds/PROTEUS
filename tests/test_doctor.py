@@ -43,6 +43,7 @@ from proteus.doctor import (
     OPTIONAL_GIT_MODULES,
     PASS,
     PYTHON_PACKAGES,
+    STANDARD_MODULE_PACKAGES,
     WARN,
     CheckResult,
     _collect_environment_info,
@@ -156,9 +157,9 @@ def test_python_packages_covers_every_pinned_fwl_dependency():
         'fwl-io is no longer a pinned dependency, so this test is guarding nothing'
     )
 
-    # `_dependency_specs` reads [project] dependencies only, so the optional
-    # extras are out of scope here by construction rather than by exclusion.
-    checked = set(PYTHON_PACKAGES)
+    # `_dependency_specs` reads [project] dependencies and STANDARD_MODULE_PACKAGES
+    # from pyproject.toml.
+    checked = set(PYTHON_PACKAGES) | set(STANDARD_MODULE_PACKAGES)
     missing = pinned - checked
     assert not missing, (
         f'pyproject pins these FWL packages but doctor does not check them: {sorted(missing)}'
@@ -172,6 +173,25 @@ def test_python_packages_covers_every_pinned_fwl_dependency():
         f'doctor checks these but reads no version bound for them, so they pass at any '
         f'installed version: {sorted(unbounded)}'
     )
+
+
+def test_dependency_specs_reads_standard_module_packages_and_omits_other_extras():
+    """Dependency specs reader loads standard modules from pyproject extras and omits other extras."""
+    specs = _dependency_specs()
+    assert 'atmodeller' in specs
+    assert 'fwl-vulcan' in specs
+    assert 'fwl-morrigan' in specs
+    assert 'torch' not in specs
+    assert 'botorch' not in specs
+
+
+def test_dependency_specs_ignores_malformed_optional_dependency():
+    """Dependency specs reader ignores unparseable strings in pyproject extras."""
+    malformed = {'project': {'optional-dependencies': {'test': ['invalid:::specifier']}}}
+    with patch('proteus.doctor._read_pyproject', return_value=malformed):
+        specs = _dependency_specs()
+    assert specs == {}
+    assert 'invalid:::specifier' not in specs
 
 
 class TestCheckResult:
@@ -740,11 +760,32 @@ class TestCheckPythonPackage:
 
         with patch(
             'proteus.doctor.importlib.metadata.version',
-            side_effect=PackageNotFoundError('fwl-vulcan'),
+            side_effect=PackageNotFoundError('fwl-aragog'),
         ):
-            r = check_python_package('fwl-vulcan', None)
+            r = check_python_package('fwl-aragog', None)
         assert r.status == FAIL
         assert 'pip install' in r.fix_cmd
+
+    @pytest.mark.parametrize(
+        ('pkg', 'script'),
+        [
+            ('fwl-vulcan', 'tools/get_vulcan.sh'),
+            ('fwl-morrigan', 'tools/get_morrigan.sh'),
+            ('atmodeller', 'tools/get_atmodeller.sh'),
+        ],
+    )
+    def test_warn_when_standard_module_not_installed(self, pkg, script):
+        """A missing standard module package warns with its setup command."""
+        from importlib.metadata import PackageNotFoundError
+
+        with patch(
+            'proteus.doctor.importlib.metadata.version',
+            side_effect=PackageNotFoundError(pkg),
+        ):
+            r = check_python_package(pkg, None)
+        assert r.status == WARN
+        assert r.message == 'not installed'
+        assert script in r.fix_cmd
 
     def test_editable_annotation_included(self):
         """Editable installs show the checkout path and git hash."""
@@ -1258,6 +1299,31 @@ class TestReleaseTagNote:
             picked = None
         assert picked == expected
 
+    def test_editable_atmodeller_clone_gets_version_and_no_tag_note(self, tmp_path):
+        """An editable atmodeller clone gets its version and no release tag note."""
+        from packaging.requirements import Requirement
+
+        checkout = tmp_path / 'Atmodeller'
+        _init_test_repo(checkout)
+        spec = Requirement('atmodeller>=1.0.2')
+        with (
+            patch('proteus.doctor.importlib.metadata.version', return_value='1.0.2'),
+            patch('proteus.doctor._editable_checkout_path', return_value=str(checkout)),
+            patch('proteus.doctor._imported_package_dir', return_value=None),
+            patch(
+                'proteus.doctor._get_script_for_package', return_value='tools/get_atmodeller.sh'
+            ),
+            patch(
+                'proteus.doctor._module_pins', return_value={'atmodeller': {'ref': 'abc1234'}}
+            ),
+        ):
+            r = check_python_package('atmodeller', spec)
+        assert r.status == PASS
+        assert 'atmodeller' in r.name
+        assert '1.0.2' in r.message
+        assert 'PROTEUS expects' not in r.message
+        assert 'release tag' not in r.message
+
 
 class TestGitHelpers:
     """Git helper functions."""
@@ -1452,6 +1518,18 @@ class TestRunAllChecks:
         for r in results:
             assert isinstance(r, CheckResult)
             assert r.status in (PASS, WARN, FAIL)
+
+    def test_run_all_checks_handles_standard_module_check_exception(self):
+        """run_all_checks records a check error when check_python_package raises."""
+        with (
+            patch('proteus.doctor._dependency_specs', return_value={}),
+            patch('proteus.doctor._module_pins', return_value={}),
+            patch('proteus.doctor.check_python_package', side_effect=RuntimeError('boom')),
+        ):
+            results = run_all_checks()
+        errors = [r for r in results if r.message == 'check error: boom']
+        assert len(errors) >= len(STANDARD_MODULE_PACKAGES)
+        assert any(r.name == 'atmodeller' for r in errors)
 
 
 class TestCheckGitModulePinMismatch:
@@ -1694,21 +1772,15 @@ class TestCheckGitModuleInstallState:
 class TestCheckGitModuleOptional:
     """check_git_module(required=False): Obliqua's not-required contract."""
 
-    def test_missing_optional_module_is_silently_skipped(self):
-        """``required=False`` with no checkout on disk returns None, not a
-        FAIL CheckResult -- the whole point of the flag, so doctor does not
-        report Obliqua as broken for a user who has never installed it.
-
-        Discrimination: the SAME missing checkout, with ``required=True``,
-        must still return a real FAIL result -- proving the None above
-        comes from the flag, not from some other reason the function
-        happens to return nothing (a bug that broke the check entirely
-        would make both calls return None).
-        """
+    def test_missing_optional_module_warns_when_not_required(self):
+        """A missing checkout with required=False returns a WARN CheckResult."""
         with patch('proteus.doctor._module_pins', return_value={}):
-            optional_result = check_git_module('Obliqua', {}, required=False)
+            res = check_git_module('Obliqua', {}, required=False)
             required_result = check_git_module('Obliqua', {}, required=True)
-        assert optional_result is None
+        assert res is not None
+        assert res.status == WARN
+        assert res.message == 'not installed'
+        assert 'get_obliqua.sh' in res.fix_cmd
         assert required_result is not None
         assert required_result.status == FAIL
 
@@ -1752,12 +1824,8 @@ class TestCheckGitModuleOptional:
         assert r.status == WARN
         assert 'get_obliqua.sh' in r.fix_cmd
 
-    def test_run_all_checks_omits_obliqua_when_not_installed(self, tmp_path):
-        """End to end: with no Obliqua checkout, run_all_checks's result
-        list must contain no 'Obliqua' entry at all (not a FAIL/WARN one
-        either) -- confirms the skip actually reaches the top-level report,
-        not just the unit-level check_git_module call.
-        """
+    def test_run_all_checks_warns_obliqua_when_not_installed(self, tmp_path):
+        """End to end: with no Obliqua checkout, run_all_checks returns WARN."""
         with (
             patch('proteus.doctor._dependency_specs', return_value={}),
             patch('proteus.doctor._module_pins', return_value={}),
@@ -1767,7 +1835,11 @@ class TestCheckGitModuleOptional:
             ),
         ):
             results = run_all_checks()
-        assert not any(r.name == 'Obliqua' for r in results)
+        obliqua_results = [r for r in results if r.name == 'Obliqua']
+        assert len(obliqua_results) == 1
+        assert obliqua_results[0].status == WARN
+        assert obliqua_results[0].message == 'not installed'
+        assert 'get_obliqua.sh' in obliqua_results[0].fix_cmd
         # Discrimination: AGNI (mandatory, also missing here) must still be
         # reported as a real FAIL -- proving the loop that skips Obliqua
         # did not also silently swallow the mandatory git-module checks.
@@ -2590,19 +2662,20 @@ class TestBelowFloorAdvice:
         assert 'get_python_module.sh MORS --force' in out
 
     def test_setup_command_names_the_script_of_each_module(self):
-        """Aragog, Zalmoxis and the 4 modules of get_python_module.sh get their command; fwl-io
-        has none. The 4 names are the ones the script accepts, and the module folder of each of
-        the 6 is the folder its script clones into. The module folders cover exactly the
-        modules of PYTHON_PACKAGES with a setup script: doctor checks neither fwl-vulcan nor
-        fwl-morrigan, so neither has a folder entry. The paired modules are the scripts that
-        check out a paired branch."""
+        """Aragog, Zalmoxis, VULCAN, Morrigan and get_python_module.sh modules get their command."""
         assert _setup_command('fwl-aragog') == 'tools/get_aragog.sh'
         assert _setup_command('fwl-zalmoxis') == 'tools/get_zalmoxis.sh'
         assert _setup_command('fwl-mors') == 'tools/get_python_module.sh MORS'
         assert _setup_command('FWL-Calliope') == 'tools/get_python_module.sh CALLIOPE'
+        assert _setup_command('fwl-vulcan') == 'tools/get_vulcan.sh'
+        assert _setup_command('fwl-morrigan') == 'tools/get_morrigan.sh'
         assert _setup_command('fwl-io') is None
         assert {'fwl-vulcan', 'fwl-morrigan'}.isdisjoint(PYTHON_PACKAGES)
-        assert set(_MODULE_FOLDERS) == {p for p in PYTHON_PACKAGES if _setup_command(p)}
+        expected_folders = {*PYTHON_PACKAGES, *STANDARD_MODULE_PACKAGES} - {
+            'fwl-proteus',
+            'fwl-io',
+        }
+        assert set(_MODULE_FOLDERS) == expected_folders
         paired = {
             f'fwl-{s.stem.removeprefix("get_")}'
             for s in (PROTEUS_ROOT / 'tools').glob('get_*.sh')
@@ -2613,12 +2686,25 @@ class TestBelowFloorAdvice:
         accepted = re.search(r'^modules="([^"]*)"$', text, re.MULTILINE).group(1).split()
         assert sorted(_PYTHON_MODULE_REPOS.values()) == sorted(accepted)
         assert all(dist == f'fwl-{repo.lower()}' for dist, repo in _PYTHON_MODULE_REPOS.items())
+
         # The module folder of each script with a fixed destination is the one it clones into.
         for dist, folder in _MODULE_FOLDERS.items():
-            script = PROTEUS_ROOT / _setup_command(dist).split()[0]
+            cmd = _setup_command(dist)
+            if cmd is None:
+                continue
+            script = PROTEUS_ROOT / cmd.split()[0]
             if dist not in _PYTHON_MODULE_REPOS:
                 assert f'workpath="$root/{folder}/"' in script.read_text(), dist
-        assert len(_MODULE_FOLDERS) == 6
+        assert len(_MODULE_FOLDERS) == 9
+
+    def test_setup_command_and_script_for_atmodeller_in_tree(self, tmp_path):
+        """When tools/get_atmodeller.sh exists, setup command and script helper resolve it."""
+        tools = tmp_path / 'tools'
+        tools.mkdir(parents=True)
+        (tools / 'get_atmodeller.sh').touch()
+        with patch('proteus.doctor._repo_root', return_value=tmp_path):
+            assert _get_script_for_package('atmodeller') == 'tools/get_atmodeller.sh'
+            assert _setup_command('atmodeller') == 'tools/get_atmodeller.sh'
 
     def test_without_the_source_tree_a_clone_gets_git_pull(self, tmp_path):
         """A wheel install has no tools folder, so no setup script: the fix of an editable

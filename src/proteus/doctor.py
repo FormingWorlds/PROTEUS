@@ -113,7 +113,7 @@ def _module_pins() -> dict[str, dict]:
 
 
 def _dependency_specs() -> dict[str, Requirement | None]:
-    """Return [project] dependencies as {name: Requirement|None} for FWL packages.
+    """Return dependencies as {name: Requirement|None} for FWL and standard packages.
 
     PEP 508 URL requirements (``name @ git+https://...``) parse into a
     Requirement with an empty specifier set. We still record them so that
@@ -135,6 +135,15 @@ def _dependency_specs() -> dict[str, Requirement | None]:
             continue
         if 'fwl-' in req.name:
             result[req.name] = req
+    opt_deps = cfg.get('project', {}).get('optional-dependencies', {})
+    for extra_deps in opt_deps.values():
+        for dep_str in extra_deps:
+            try:
+                req = Requirement(dep_str)
+            except Exception:
+                continue
+            if req.name in STANDARD_MODULE_PACKAGES:
+                result[req.name] = req
     return result
 
 
@@ -287,11 +296,14 @@ _PYTHON_MODULE_REPOS = {
     'fwl-zephyrus': 'ZEPHYRUS',
 }
 
-# The folder in the PROTEUS root that a setup script clones each module of PYTHON_PACKAGES into.
+# The folder in the PROTEUS root that a setup script clones each module into.
 _MODULE_FOLDERS = {
     **_PYTHON_MODULE_REPOS,
     'fwl-aragog': 'aragog',
     'fwl-zalmoxis': 'Zalmoxis',
+    'fwl-morrigan': 'Morrigan',
+    'fwl-vulcan': 'VULCAN',
+    'atmodeller': 'Atmodeller',
 }
 
 # The modules whose setup script gives a new clone the branch named like the PROTEUS feature branch.
@@ -485,7 +497,11 @@ def _release_tag_note(checkout: str, short: str | None, spec: Requirement | None
         branch, without a single ``>=`` floor, or when the checkout is not a
         clone of its own that git can read.
     """
-    if _floor_version(spec) is None or not _is_own_clone(checkout):
+    if (
+        _floor_version(spec) is None
+        or not _is_own_clone(checkout)
+        or (spec and spec.name.lower() in _module_pins())
+    ):
         return ''
     branch = _git_note_output(checkout, 'symbolic-ref', '-q', '--short', 'HEAD')
     if branch is None or branch[0] not in (0, 1):
@@ -893,6 +909,17 @@ def check_python_package(name: str, spec: Requirement | None) -> CheckResult:
     try:
         installed = Version(importlib.metadata.version(name))
     except PackageNotFoundError:
+        if name in STANDARD_MODULE_PACKAGES:
+            short = name.lower().removeprefix('fwl-')
+            root = _repo_root()
+            fix = f'cd {shlex.quote(str(root))} && bash tools/get_{short}.sh'
+            return CheckResult(
+                name=name,
+                category='versions',
+                status=WARN,
+                message='not installed',
+                fix_cmd=fix,
+            )
         fix = f'pip install {name}'
         return CheckResult(
             name=name,
@@ -990,9 +1017,9 @@ def check_git_module(name: str, dirs: dict, required: bool = True) -> CheckResul
     dirs : dict
         Directory mapping from `get_proteus_directories()`.
     required : bool
-        AGNI/SOCRATES are mandatory for a standard install, so a missing
-        checkout is a FAIL. Optional tidal-heating backends (Obliqua) are
-        not needed unless the user opts into them.
+        When True (AGNI, SOCRATES), a missing checkout returns a FAIL result.
+        When False (Obliqua), a missing checkout returns a WARN result with
+        its setup command.
     """
     pins = _module_pins()
     pin = pins.get(name.lower(), {})
@@ -1006,13 +1033,19 @@ def check_git_module(name: str, dirs: dict, required: bool = True) -> CheckResul
         path = dirs.get(dir_key, '')
 
     if not path or not os.path.isdir(path):
+        setup_script = f'bash tools/get_{name.lower()}.sh'
         if not required:
-            return None
+            return CheckResult(
+                name=name,
+                category='versions',
+                status=WARN,
+                message='not installed',
+                fix_cmd=setup_script,
+            )
         # Unlike the off-pin case below, this fix is not chained to an AGNI
         # rebuild: a not-installed SOCRATES means RAD_DIR is unset, so the AGNI
         # step would have nowhere to find SOCRATES. The install script prints
         # the AGNI follow-up once SOCRATES is in place.
-        setup_script = f'bash tools/get_{name.lower()}.sh'
         return CheckResult(
             name=name,
             category='versions',
@@ -1088,10 +1121,9 @@ ENVIRONMENT_VARS = [
     ('PYTHON_JULIAPKG_EXE', True, None),
 ]
 
-# Mandatory Python packages checked by `proteus doctor`. The optional
-# backends (fwl-vulcan, atmodeller) are deliberately excluded: they are
-# not required for a standard run, so doctor must not report them as
-# missing when a user has not installed them.
+# Mandatory Python packages checked by doctor. An absent package in this list
+# is a failure; an absent package in STANDARD_MODULE_PACKAGES gives a warning
+# with its setup command instead.
 PYTHON_PACKAGES = [
     'fwl-proteus',
     'fwl-io',
@@ -1101,6 +1133,12 @@ PYTHON_PACKAGES = [
     'fwl-mors',
     'fwl-zephyrus',
     'fwl-zalmoxis',
+]
+
+STANDARD_MODULE_PACKAGES = [
+    'fwl-morrigan',
+    'fwl-vulcan',
+    'atmodeller',
 ]
 
 GIT_MODULES = ['AGNI', 'SOCRATES']
@@ -1195,6 +1233,20 @@ def run_all_checks() -> list[CheckResult]:
                 )
             )
 
+    # Standard module packages (against pyproject.toml pins)
+    for pkg in STANDARD_MODULE_PACKAGES:
+        try:
+            results.append(check_python_package(pkg, specs.get(pkg)))
+        except Exception as exc:
+            results.append(
+                CheckResult(
+                    name=pkg,
+                    category='versions',
+                    status=FAIL,
+                    message=f'check error: {exc}',
+                )
+            )
+
     # Git module versions (against pyproject.toml commit pins)
     for mod in GIT_MODULES:
         try:
@@ -1209,7 +1261,7 @@ def run_all_checks() -> list[CheckResult]:
                 )
             )
 
-    # Optional git-pinned modules: only reported when actually installed.
+    # Git-pinned modules checked with a warning on absence.
     for mod in OPTIONAL_GIT_MODULES:
         try:
             result = check_git_module(mod, dirs, required=False)
@@ -1272,6 +1324,8 @@ _ENV_PACKAGES = (
     'fwl-aragog',
     'fwl-zalmoxis',
     'fwl-vulcan',
+    'fwl-morrigan',
+    'atmodeller',
     'juliacall',
     'juliapkg',
     'jax',
