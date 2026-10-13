@@ -105,7 +105,7 @@ def _entry(**changes) -> dict:
     return {k: v for k, v in entry.items() if v is not None}
 
 
-def _manifest(path: Path, figures: list[dict] | None = None, **top) -> dict:
+def _manifest(path: Path, figures=None, **top) -> dict:
     """Write a manifest file and read it back through the tool."""
     data = {'proteus_mpl': '1.3.0', 'avif_quality': 80, 'pages': 'docs/Tutorials'}
     data.update(top)
@@ -153,30 +153,58 @@ def test_manifest_fills_the_defaults_of_an_entry(tmp_path):
 @pytest.mark.parametrize(
     'top, figures, message',
     [
-        ({'proteus_mpl': None}, None, 'key `proteus_mpl` is missing'),
-        ({'pages': None}, None, 'key `pages` is missing'),
+        ({'proteus_mpl': None}, None, 'm.toml: has no `proteus_mpl`'),
+        ({'pages': None}, None, 'm.toml: has no `pages`'),
         ({'page': 'docs/Tutorials'}, None, 'unknown key `page`'),
-        ({'avif_quality': 0}, None, 'avif_quality must be a whole number from 1 to 100'),
-        ({'avif_quality': 101}, None, 'avif_quality must be a whole number from 1 to 100'),
-        ({'avif_quality': '80'}, None, 'avif_quality must be a whole number from 1 to 100'),
+        ({'pages': 3}, None, '`pages` must be a string'),
+        ({'proteus_mpl': 1.3}, None, '`proteus_mpl` must be a string'),
+        ({'exempt_pages': 'old.md'}, None, '`exempt_pages` must be a list'),
+        ({'exempt_pages': [3]}, None, '`exempt_pages` must list page names'),
+        ({'avif_quality': 0}, None, '`avif_quality` must be from 1 to 100'),
+        ({'avif_quality': 101}, None, '`avif_quality` must be from 1 to 100'),
+        ({'avif_quality': '80'}, None, '`avif_quality` must be a whole number'),
+        ({'avif_quality': True}, None, '`avif_quality` must be a whole number'),
+        ({'avif_quality': 80.0}, None, '`avif_quality` must be a whole number'),
+        ({}, 3, '`figure` must be a list'),
+        ({}, [3], 'figure ?: is not a table'),
         ({}, [_entry(runs=None)], 'figure fig_a: has no `runs`'),
         ({}, [_entry(id=None)], 'figure ?: has no `id`'),
+        ({}, [_entry(id=['fig_a'])], '`id` must be a string'),
+        ({}, [_entry(page=3)], '`page` must be a string'),
+        ({}, [_entry(asset=3)], '`asset` must be a string'),
+        ({}, [_entry(maker=3)], '`maker` must be a string'),
         ({}, [_entry(), _entry()], 'id fig_a is used twice'),
-        ({}, [_entry(), _entry(id='fig_b')], 'asset docs/assets/tutorials/fig_a is used twice'),
+        (
+            {},
+            [_entry(), _entry(id='fig_b')],
+            'file docs/assets/tutorials/fig_a.avif is used twice',
+        ),
+        (
+            {},
+            [_entry(), _entry(id='fig_b', asset='docs/assets/tutorials/fig_a_dark')],
+            'file docs/assets/tutorials/fig_a_dark.avif is used twice',
+        ),
         ({}, [_entry(variant=['dark'])], 'figure fig_a: unknown key `variant`'),
         ({}, [_entry(arg={'logt': False})], 'figure fig_a: unknown key `arg`'),
         ({}, [_entry(maker='draw')], 'maker `draw` is not `<kind>:<name>`'),
         ({}, [_entry(maker='scripts/fake_maker.py:draw')], 'is not under tools/'),
         ({}, [_entry(maker='/tmp/tools/fake_maker.py:draw')], 'is not under tools/'),
         ({}, [_entry(maker='tools/../../fake_maker.py:draw')], 'is not under tools/'),
-        ({}, [_entry(asset='docs/other/fig_a')], 'is not under docs/assets'),
-        ({}, [_entry(asset='docs/assets/../../fig_a')], 'is not under docs/assets'),
+        ({}, [_entry(asset='docs/other/fig_a')], 'is not a file stem under docs/assets'),
+        ({}, [_entry(asset='docs/assets/../../fig_a')], 'is not a file stem under docs/assets'),
+        ({}, [_entry(asset='docs/assets/')], 'is not a file stem under docs/assets'),
+        ({}, [_entry(asset='docs/assets//fig_a')], 'is not a file stem under docs/assets'),
         ({}, [_entry(runs=[])], '`runs` must list at least 1 folder name'),
-        ({}, [_entry(runs='run_a')], '`runs` must list at least 1 folder name'),
+        ({}, [_entry(runs='run_a')], '`runs` must be a list'),
+        ({}, [_entry(runs=[3])], '`runs` must list at least 1 folder name'),
         ({}, [_entry(runs=['run_a', '../other'])], '`runs` must list at least 1 folder name'),
         ({}, [_entry(runs=['/abs/run_a'])], '`runs` must list at least 1 folder name'),
+        ({}, [_entry(runs=['.'])], '`runs` must list at least 1 folder name'),
         ({}, [_entry(args=['logt'])], '`args` must be a table'),
+        ({}, [_entry(variants='dark')], '`variants` must be a list'),
         ({}, [_entry(variants=['light', 'white'])], 'variants must be light and dark'),
+        ({}, [_entry(variants=['light', 'light'])], 'variants must be light and dark'),
+        ({}, [_entry(variants=[['light']])], 'variants must be light and dark'),
         ({}, [_entry(variants=[])], 'variants must be light and dark'),
     ],
 )
@@ -195,6 +223,9 @@ def test_manifest_that_cannot_be_read_is_refused(tmp_path):
     (tmp_path / 'broken.toml').write_text('proteus_mpl = "1.3.0\n[[figure]\n')
     with pytest.raises(tool.FigureError, match='broken.toml: '):
         tool.load_manifest(tmp_path / 'broken.toml')
+    (tmp_path / 'latin.toml').write_bytes('pages = "caf\xe9"\n'.encode('latin-1'))
+    with pytest.raises(tool.FigureError, match='latin.toml: '):
+        tool.load_manifest(tmp_path / 'latin.toml')
     assert tool.main(['--check', '--manifest', str(tmp_path / 'broken.toml')]) == 1
 
 
@@ -383,6 +414,26 @@ def test_text_that_the_file_cuts_off_is_counted_and_fails_the_command(site, caps
     assert not out.exists()
 
 
+def test_failure_of_the_second_encode_leaves_the_committed_pair(site, monkeypatch):
+    """When the dark file cannot be encoded, the light file in place stays the old one."""
+    assets = site.repo / 'docs' / 'assets' / 'tutorials'
+    real_save = Image.Image.save
+
+    def save(self, target, *args, **kwargs):
+        if str(target).endswith('.avif') and 'dark' in Path(target).parent.name:
+            raise OSError('no space left')
+        return real_save(self, target, *args, **kwargs)
+
+    monkeypatch.setattr(Image.Image, 'save', save)
+    with pytest.raises(OSError, match='no space left'):
+        tool.make_figures(_manifest(site.toml), site.runs)
+    assert (assets / 'fig_a.avif').read_bytes() == b'placeholder'
+    assert (assets / 'fig_a_dark.avif').read_bytes() == b'placeholder'
+    monkeypatch.setattr(Image.Image, 'save', real_save)
+    assert tool.make_figures(_manifest(site.toml), site.runs) == 0
+    assert all(len((assets / n).read_bytes()) > 100 for n in ('fig_a.avif', 'fig_a_dark.avif'))
+
+
 def test_failure_in_the_second_variant_leaves_the_first_unwritten(site):
     """A maker that fails for the dark variant leaves no light file of that entry behind."""
     out = site.repo / 'out'
@@ -450,10 +501,12 @@ def plot_calls(monkeypatch):
         'read_tides_data',
         lambda output_dir, model, times: [f'{model} {t}' for t in times],
     )
-    return SimpleNamespace(calls=calls, config=config)
+    return SimpleNamespace(calls=calls, config=config, record=record)
 
 
-def test_proteus_makers_pass_the_run_data_and_the_output_folder(site, plot_calls, tmp_path):
+def test_proteus_makers_pass_the_run_data_and_the_output_folder(
+    site, plot_calls, tmp_path, monkeypatch
+):
     """Each maker calls its plot function with the data of the run and names the file it writes."""
     out, hf = tmp_path / 'work', 'helpfile of run_a'
     makers = tool.PROTEUS_MAKERS
@@ -468,11 +521,14 @@ def test_proteus_makers_pass_the_run_data_and_the_output_folder(site, plot_calls
         ('orbit', (hf, str(out), True), {'plot_format': 'png'}),
         ('fluxes', (hf, str(out), plot_calls.config), {}),
     ]
-    # An argument that the real plot function does not have is refused, as in a real call
-    with pytest.raises(TypeError, match='unexpected keyword'):
-        makers['global'](site.run, out, time_min=10.0)
-    with pytest.raises(TypeError):
-        makers['orbit'](site.run, out, logt=True)
+    # A plot function that loses a parameter refuses the call of its adapter
+    import proteus.plot.cpl_orbit as cpl_orbit
+
+    monkeypatch.setattr(cpl_orbit, 'plot_orbit', lambda hf_all, output_dir, has_sat: None)
+    plot_calls.record(cpl_orbit, 'plot_orbit', 'orbit')
+    with pytest.raises(TypeError, match="unexpected keyword argument 'plot_format'"):
+        makers['orbit'](site.run, out)
+    assert len(plot_calls.calls) == 4
 
 
 def test_lovenumber_maker_reads_every_snapshot_in_time_order(site, plot_calls, tmp_path):
@@ -600,12 +656,35 @@ def test_check_names_each_page_fault(site, page_text, problems):
         ),
         ("<IMG SRC='../assets/tutorials/other.png'>", 'docs/assets/tutorials/other.png'),
         (
+            '<img data-src="lazy.png" src=../assets/tutorials/other.png>',
+            'docs/assets/tutorials/other.png',
+        ),
+        (
             '![Other][ref]\n\n[ref]: ../assets/tutorials/other.png#only-light',
             'docs/assets/tutorials/other.png#only-light',
         ),
+        ('![Ref][]\n\n[REF]: <../assets/tutorials/other>', 'docs/assets/tutorials/other'),
         ('![Other](<../assets/tutorials/other.png>)', 'docs/assets/tutorials/other.png'),
+        ('![Other](<../assets/tutorials/my other.png>)', 'docs/assets/tutorials/my other.png'),
+        ('![Other](../assets/tutorials/other(1).png)', 'docs/assets/tutorials/other(1).png'),
+        (
+            '  ```\n  code\n  ```\n![Other](../assets/tutorials/other.png)',
+            'docs/assets/tutorials/other.png',
+        ),
     ],
-    ids=['title', 'brackets in the alt text', 'img tag', 'capitals', 'reference', 'angle'],
+    ids=[
+        'title',
+        'brackets in the alt text',
+        'img tag',
+        'capitals',
+        'unquoted src after data-src',
+        'reference',
+        'collapsed reference without a file extension',
+        'angle',
+        'angle with a space',
+        'parentheses',
+        'after an indented fence',
+    ],
 )
 def test_check_sees_an_image_in_every_form_that_a_page_can_use(site, line, image):
     """An image with a title, in an HTML tag or behind a reference needs a manifest entry too."""
@@ -623,21 +702,51 @@ def test_check_sees_an_image_in_every_form_that_a_page_can_use(site, line, image
     ]
 
 
-def test_check_reads_no_image_from_a_code_example_or_a_page_link(site):
-    """A fenced example, a link next to an image and a reference to a page are not images."""
+@pytest.mark.parametrize(
+    'text',
+    [
+        '```markdown\n![Example](../assets/tutorials/example.png)\n```',
+        '~~~\n<img src="x.png">\n~~~',
+        '    ```markdown\n    ![In a list](../assets/tutorials/example.png)\n    ```',
+        '````\n```\n![Inner fence](../assets/tutorials/example.png)\n```\n````',
+        '~~~\n```\n![Other fence character](../assets/tutorials/example.png)\n~~~',
+        'Write `![x](../assets/tutorials/example.png)` for an image.',
+        '<!-- ![x](../assets/tutorials/example.png)\n<img src="y.png"> -->',
+        '<img data-src="lazy.png" alt="no src">',
+        'See ![a][missing] and [the guide](other_page.md), or [ref2].\n\n[ref2]: other_page.md',
+    ],
+    ids=[
+        'fence',
+        'tilde fence',
+        'indented fence',
+        'longer fence',
+        'fence of the other character',
+        'inline code',
+        'comment',
+        'data-src only',
+        'links and an undefined reference',
+    ],
+)
+def test_check_reads_no_image_from_code_a_comment_or_a_link(site, text):
+    """Code, a comment, a link and an image reference without a definition embed no image."""
     page = site.repo / 'docs' / 'Tutorials' / 'page_a.md'
-    page.write_text(
-        f'```markdown\n![Example](../assets/tutorials/example.png)\n```\n\n'
-        f'~~~\n<img src="x.png">\n~~~\n\n{PAIR}\n'
-        'See ![a][ref] and [the guide](other_page.md), or [ref2].\n\n'
-        '[ref2]: other_page.md\n'
-    )
+    page.write_text(f'{text}\n\n{PAIR}')
     assert tool.check_pages(_manifest(site.toml), site.repo) == []
-    # The same pair twice is still a pair; one more light file alone is not
+    assert tool._page_images(text) == []
+
+
+def test_check_requires_that_the_files_of_a_pair_occur_only_as_a_pair(site):
+    """The same pair twice is still a pair; a third light file alone is not. A fence
+    without an end hides the rest of the page, as the site renders it."""
+    page = site.repo / 'docs' / 'Tutorials' / 'page_a.md'
     page.write_text(PAIR + PAIR)
     assert tool.check_pages(_manifest(site.toml), site.repo) == []
     page.write_text(PAIR + PAIR.splitlines()[0] + '\n')
-    assert len(tool.check_pages(_manifest(site.toml), site.repo)) == 1
+    problems = tool.check_pages(_manifest(site.toml), site.repo)
+    assert len(problems) == 1 and 'does not embed' in problems[0]
+    page.write_text(f'```\ncode without an end\n{PAIR}')
+    assert tool._page_images(page.read_text()) == []
+    assert 'does not embed' in tool.check_pages(_manifest(site.toml), site.repo)[0]
 
 
 def test_check_names_a_missing_file_and_a_missing_page(site):

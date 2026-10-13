@@ -22,6 +22,7 @@ import argparse
 import importlib.metadata
 import importlib.util
 import re
+import shutil
 import sys
 import tempfile
 import tomllib
@@ -32,48 +33,69 @@ import _figure_geometry
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = REPO_ROOT / 'tools' / 'docs_figures.toml'
 SUFFIX = {'light': '', 'dark': '_dark'}
-TOP_KEYS = {'proteus_mpl', 'avif_quality', 'pages', 'exempt_pages', 'figure'}
-ENTRY_KEYS = {'id', 'page', 'asset', 'runs', 'maker', 'args', 'variants'}
-FENCED = re.compile(r'^(```|~~~).*?^\1', re.DOTALL | re.MULTILINE)
-# An inline image (alt text with one level of brackets, optional title), an <img> tag,
-# and a reference definition that points at an image file.
-EMBED = re.compile(
-    r'!\[(?:[^\[\]\n]|\[[^\[\]\n]*\])*\]\(\s*<?([^\s<>)]+)'
-    r'|<img\b[^>]*?\bsrc=["\']([^"\']+)'
-    r'|^\s*\[[^\]\n]+\]:\s*<?([^\s<>]+\.(?:avif|png|jpe?g|gif|svg|webp)(?:#[^\s<>]*)?)',
-    re.IGNORECASE | re.MULTILINE,
+# Manifest keys with their TOML types; the keys in OPTIONAL can be absent.
+TOP_TYPES = {'proteus_mpl': str, 'avif_quality': int, 'pages': str, 'exempt_pages': list}
+TOP_TYPES['figure'] = list
+ENTRY_TYPES = {'id': str, 'page': str, 'asset': str, 'runs': list, 'maker': str}
+ENTRY_TYPES.update(args=dict, variants=list)
+OPTIONAL = {'exempt_pages', 'args', 'variants'}
+TYPE_NAMES = {str: 'a string', int: 'a whole number', list: 'a list', dict: 'a table'}
+# Alt text of an image, with one level of brackets inside it
+ALT = r'(?:[^\[\]\n]|\[[^\[\]\n]*\])*'
+# An inline image, a reference-style image and an <img> tag, in page order
+IMAGE = re.compile(
+    rf'!\[{ALT}\]\(\s*(?:<([^<>\n]+)>|((?:[^\s<>()]|\([^\s<>()]*\))+))'
+    rf'|!\[({ALT})\]\[([^\]\n]*)\]'
+    r'|<img\b[^>]*?(?<![\w-])src\s*=\s*["\']?([^"\'\s>]+)',
+    re.IGNORECASE,
 )
+DEFINITION = re.compile(r'^ {0,3}\[([^\]\n]+)\]:\s*<?([^\s<>]+)', re.MULTILINE)
+NOT_CONTENT = re.compile(r'<!--.*?-->|`[^`\n]*`', re.DOTALL)
+FENCE = re.compile(r'\s*(`{3,}|~{3,})')
 
 
 class FigureError(Exception):
     """A manifest, a maker or a run folder does not meet the contract of the tool."""
 
 
-def _entry_fault(fig: dict) -> str | None:
-    """Say what is wrong with one `[[figure]]` table of the manifest; None when it is valid."""
-    missing = [key for key in ('id', 'page', 'asset', 'runs', 'maker') if key not in fig]
+def _table_fault(table, types: dict) -> str | None:
+    """Name a missing key, an unknown key or a value of the wrong type in a manifest table."""
+    if not isinstance(table, dict):
+        return 'is not a table'
+    missing = [key for key in types if key not in table and key not in OPTIONAL]
+    unknown = sorted(set(table) - set(types))
+    wrong = [key for key in types if key in table and type(table[key]) is not types[key]]
     if missing:
         return f'has no `{missing[0]}`'
-    if set(fig) - ENTRY_KEYS:
-        return f'unknown key `{sorted(set(fig) - ENTRY_KEYS)[0]}`'
+    if unknown:
+        return f'unknown key `{unknown[0]}`'
+    if wrong:
+        return f'`{wrong[0]}` must be {TYPE_NAMES[types[wrong[0]]]}'
+    return None
+
+
+def _plain(path) -> bool:
+    """True for a relative path (a string) without an empty, `.` or `..` part."""
+    return isinstance(path, str) and all(p not in ('', '.', '..') for p in path.split('/'))
+
+
+def _entry_fault(fig) -> str | None:
+    """Say what is wrong with one `[[figure]]` table of the manifest; None when it is valid."""
+    fault = _table_fault(fig, ENTRY_TYPES)
+    if fault:
+        return fault
     kind = fig['maker'].rpartition(':')[0]
     if not kind:
         return f'maker `{fig["maker"]}` is not `<kind>:<name>`'
-    if kind != 'proteus' and (not kind.startswith('tools/') or '..' in kind):
+    if kind != 'proteus' and not (kind.startswith('tools/') and _plain(kind)):
         return f'maker script `{kind}` is not under tools/'
-    if not fig['asset'].startswith('docs/assets/') or '..' in fig['asset']:
-        return f'asset `{fig["asset"]}` is not under docs/assets'
-    runs = fig['runs']
-    plain = isinstance(runs, list) and all(
-        isinstance(name, str) and name and '..' not in name and not name.startswith('/')
-        for name in runs
-    )
-    if not runs or not plain:
+    if not (fig['asset'].startswith('docs/assets/') and _plain(fig['asset'])):
+        return f'asset `{fig["asset"]}` is not a file stem under docs/assets'
+    if not fig['runs'] or not all(_plain(name) for name in fig['runs']):
         return '`runs` must list at least 1 folder name'
-    if not isinstance(fig.get('args', {}), dict):
-        return '`args` must be a table'
     variants = fig.get('variants', list(SUFFIX))
-    if not variants or set(variants) - set(SUFFIX):
+    known = tuple(SUFFIX)
+    if not variants or any(v not in known or variants.count(v) > 1 for v in variants):
         return f'variants must be light and dark, got {variants}'
     return None
 
@@ -95,36 +117,38 @@ def load_manifest(path: Path) -> dict:
     Raises
     ------
     FigureError
-        If the file cannot be read, a key is missing or unknown, an id or an asset
-        repeats, or an entry has a maker without the `kind:name` form, a maker script
-        outside `tools/`, an asset outside `docs/assets`, no run folder, or a variant
-        that is not `light` or `dark`.
+        If the file cannot be read, a key is missing or unknown or has a value of the
+        wrong type, an id or a file of an asset repeats, or an entry has a maker without
+        the `kind:name` form, a maker script outside `tools/`, an asset outside
+        `docs/assets`, no run folder, or a variant that is not `light` or `dark`.
     """
     try:
         with open(path, 'rb') as f:
             manifest = tomllib.load(f)
-    except (OSError, tomllib.TOMLDecodeError) as exc:
+    except (OSError, ValueError) as exc:
         raise FigureError(f'{path.name}: {exc}') from exc
-    for key in ('proteus_mpl', 'avif_quality', 'pages', 'figure'):
-        if key not in manifest:
-            raise FigureError(f'{path.name}: key `{key}` is missing')
-    if set(manifest) - TOP_KEYS:
-        raise FigureError(f'{path.name}: unknown key `{sorted(set(manifest) - TOP_KEYS)[0]}`')
-    quality = manifest['avif_quality']
-    if not isinstance(quality, int) or not 1 <= quality <= 100:
-        raise FigureError(f'{path.name}: avif_quality must be a whole number from 1 to 100')
+    fault = _table_fault(manifest, TOP_TYPES)
+    if fault:
+        raise FigureError(f'{path.name}: {fault}')
+    if not 1 <= manifest['avif_quality'] <= 100:
+        raise FigureError(f'{path.name}: `avif_quality` must be from 1 to 100')
     manifest.setdefault('exempt_pages', [])
-    for key in ('id', 'asset'):
-        values = [fig.get(key) for fig in manifest['figure']]
-        twice = sorted({v for v in values if v is not None and values.count(v) > 1})
-        if twice:
-            raise FigureError(f'{path.name}: {key} {twice[0]} is used twice')
+    if not all(isinstance(name, str) for name in manifest['exempt_pages']):
+        raise FigureError(f'{path.name}: `exempt_pages` must list page names')
+    ids, files = [], []
     for fig in manifest['figure']:
         fault = _entry_fault(fig)
         if fault:
-            raise FigureError(f'{path.name}: figure {fig.get("id", "?")}: {fault}')
+            name = fig.get('id', '?') if isinstance(fig, dict) else '?'
+            raise FigureError(f'{path.name}: figure {name}: {fault}')
         fig.setdefault('args', {})
         fig.setdefault('variants', list(SUFFIX))
+        ids.append(fig['id'])
+        files += [f'{fig["asset"]}{SUFFIX[v]}.avif' for v in fig['variants']]
+    for kind, values in (('id', ids), ('file', files)):
+        twice = sorted({v for v in values if values.count(v) > 1})
+        if twice:
+            raise FigureError(f'{path.name}: {kind} {twice[0]} is used twice')
     return manifest
 
 
@@ -228,10 +252,10 @@ def _fill(args: dict, fig_id: str, places: dict) -> dict:
     for key, value in args.items():
         if isinstance(value, str):
             for place, path in places.items():
-                if place in value and path is None:
-                    option = '--' + place.strip('{}').replace('_', '-')
-                    raise FigureError(f'{fig_id}: argument `{key}` needs {option}')
                 if place in value:
+                    if path is None:
+                        option = '--' + place.strip('{}').replace('_', '-')
+                        raise FigureError(f'{fig_id}: argument `{key}` needs {option}')
                     value = value.replace(place, str(path))
         filled[key] = value
     return filled
@@ -276,8 +300,31 @@ def _draw_variant(fig: dict, variant: str, run_dirs: list[Path], work: Path, pla
     return png, tables
 
 
+def _write_entry(fig: dict, drawn: list, out_root: Path, quality: int) -> None:
+    """Encode every drawn variant of an entry, then put the AVIF files into place.
+
+    A failure of an encode leaves the files in `out_root` as they were.
+    """
+    from PIL import Image
+
+    staged = []
+    for variant, png in drawn:
+        with Image.open(png) as image:
+            image.convert('RGB').save(png.with_suffix('.avif'), 'AVIF', quality=quality)
+            size = f'{image.size[0]} x {image.size[1]} px'
+        target = out_root / f'{fig["asset"]}{SUFFIX[variant]}.avif'
+        staged.append((png.with_suffix('.avif'), target))
+        print(f'{fig["id"]} {variant}: {size} -> {target}')
+    for encoded, target in staged:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(encoded, target)
+
+
 def _tree_state(run_dirs: list[Path]) -> dict:
-    """Modification time and size of every file and folder under the run folders."""
+    """Modification time and size of every file and folder under the run folders.
+
+    A symbolic link inside a run folder is recorded as the link, not as its target.
+    """
     state = {}
     for run_dir in run_dirs:
         for path in [run_dir, *run_dir.rglob('*')]:
@@ -338,7 +385,7 @@ def make_figures(
 
     matplotlib.use('Agg')
     import PIL
-    from PIL import Image, features
+    from PIL import features
 
     version = style_version(manifest['proteus_mpl'])
     print(
@@ -368,15 +415,8 @@ def make_figures(
                     )
                 cut_off += _report(fig['id'], variant, tables)
                 drawn.append((variant, png))
-            # The files of an entry are written together, and only when no text is cut off
-            for variant, png in drawn if not cut_off else []:
-                target = out_root / f'{fig["asset"]}{SUFFIX[variant]}.avif'
-                target.parent.mkdir(parents=True, exist_ok=True)
-                with Image.open(png) as image:
-                    image.convert('RGB').save(target, 'AVIF', quality=manifest['avif_quality'])
-                    print(
-                        f'{fig["id"]} {variant}: {image.size[0]} x {image.size[1]} px -> {target}'
-                    )
+            if not cut_off:
+                _write_entry(fig, drawn, out_root, manifest['avif_quality'])
         if cut_off:
             print(f'{fig["id"]}: NOT WRITTEN, the saved file would cut off {cut_off} text(s)')
         errors += cut_off
@@ -397,16 +437,36 @@ def _repo_target(page: Path, target: str, repo: Path) -> str:
     )
 
 
+def _page_images(text: str) -> list[str]:
+    """Targets of the images that a Markdown page embeds, in page order.
+
+    Reads inline images, reference-style images and `<img>` tags. Fenced code (a fence
+    without an end runs to the end of the page), inline code and HTML comments are not
+    page content.
+    """
+    lines, fence = [], None
+    for line in text.splitlines():
+        mark = FENCE.match(line)
+        if fence is None and mark:
+            fence = mark.group(1)
+        elif fence and mark and mark.group(1).startswith(fence) and not line.strip(' \t`~'):
+            fence = None
+        elif fence is None:
+            lines.append(line)
+    text = NOT_CONTENT.sub('', '\n'.join(lines))
+    definitions = {label.lower(): target for label, target in DEFINITION.findall(text)}
+    targets = []
+    for angle, plain, alt, label, src in IMAGE.findall(text):
+        reference = definitions.get((label or alt).lower()) if alt or label else None
+        targets.append((angle or plain or src or reference or '').strip())
+    return [target for target in targets if target]
+
+
 def _in_pairs(embeds: list[str], pair: list[str]) -> bool:
     """True when `pair` occurs at least once in `embeds` and its files occur nowhere else."""
-    count, rest, i = 0, [], 0
-    while i < len(embeds):
-        if embeds[i : i + len(pair)] == pair:
-            count, i = count + 1, i + len(pair)
-        else:
-            rest.append(embeds[i])
-            i += 1
-    return count > 0 and not set(rest) & set(pair)
+    size = len(pair)
+    pairs = sum(embeds[i : i + size] == pair for i in range(len(embeds)))
+    return pairs > 0 and sum(embeds.count(name) for name in pair) == size * pairs
 
 
 def check_pages(manifest: dict, repo: Path) -> list[str]:
@@ -445,8 +505,7 @@ def check_pages(manifest: dict, repo: Path) -> list[str]:
         name = page.relative_to(pages_dir).as_posix()
         if name in manifest['exempt_pages']:
             continue
-        found = EMBED.findall(FENCED.sub('', page.read_text()))
-        embeds = [_repo_target(page, next(filter(None, groups)), repo) for groups in found]
+        embeds = [_repo_target(page, t, repo) for t in _page_images(page.read_text())]
         entries = wanted.get(name, [])
         known = {target for _, pair in entries for target in pair}
         problems += [

@@ -10,11 +10,13 @@ axes, and the legends and texts that lie on a data line or a scatter point.
 from __future__ import annotations
 
 from contextlib import contextmanager
+from numbers import Real
 
 import matplotlib
 import numpy as np
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.figure import Figure
+from matplotlib.layout_engine import ConstrainedLayoutEngine
 from matplotlib.text import Text
 from matplotlib.transforms import Bbox
 
@@ -52,38 +54,53 @@ def _drawn_texts(fig: Figure) -> list[tuple[int, str, Text]]:
 def _data_under(ax, box: Bbox) -> int:
     """Count the lines and scatters in data coordinates of `ax` that pass under `box`.
 
-    Only the part of `box` inside the axes counts, because the axes clips its data.
+    For an artist that its axes clips, only the part of `box` inside the axes counts,
+    and a box that only touches the axes edge covers nothing. A hidden axes has no data.
     """
-    box = Bbox.intersection(box, ax.bbox)
-    if box is None:
-        return 0
+    inside = Bbox.intersection(box, ax.bbox)
+    if inside is not None and min(inside.width, inside.height) <= TOL_PX:
+        inside = None
     hits = 0
-    for line in ax.lines:
-        if not line.get_visible() or line.get_transform() != ax.transData:
+    for line in ax.lines if ax.get_visible() else []:
+        area = inside if line.get_clip_on() else box
+        if area is None or not line.get_visible() or line.get_transform() != ax.transData:
             continue
         path = ax.transData.transform_path(line.get_path())
-        if len(path.vertices) and path.intersects_bbox(box, filled=False):
+        if len(path.vertices) and path.intersects_bbox(area, filled=False):
             hits += 1
-    for coll in ax.collections:
-        if not coll.get_visible() or coll.get_offset_transform() != ax.transData:
+    for coll in ax.collections if ax.get_visible() else []:
+        area = inside if coll.get_clip_on() else box
+        if (
+            area is None
+            or not coll.get_visible()
+            or coll.get_offset_transform() != ax.transData
+        ):
             continue
         pts = np.asarray(ax.transData.transform(coll.get_offsets()))
-        if len(pts) and box.count_contains(pts):
+        if len(pts) and area.count_contains(pts):
             hits += 1
     return hits
 
 
 def _saved_area(fig: Figure, renderer, bbox_inches, pad_inches) -> Bbox:
-    """Area of the saved file in the pixel coordinates of the figure."""
+    """Area of the saved file in the pixel coordinates of the figure.
+
+    The pad follows `savefig`: the pads of a constrained layout for `'layout'`, a number
+    as given, and the pad of the active style otherwise.
+    """
     if bbox_inches is None:
         bbox_inches = matplotlib.rcParams['savefig.bbox']
     if bbox_inches != 'tight':
         return fig.bbox
-    # A pad that is not a number (None, or the 'layout' pad of a layout engine) is the style pad
-    numeric = isinstance(pad_inches, (int, float))
-    pad = pad_inches if numeric else matplotlib.rcParams['savefig.pad_inches']
+    engine = fig.get_layout_engine()
+    if pad_inches == 'layout' and isinstance(engine, ConstrainedLayoutEngine):
+        w_pad, h_pad = engine.get()['w_pad'], engine.get()['h_pad']
+    elif isinstance(pad_inches, Real) and not isinstance(pad_inches, bool):
+        w_pad = h_pad = pad_inches
+    else:
+        w_pad = h_pad = matplotlib.rcParams['savefig.pad_inches']
     tight = fig.get_tightbbox(renderer)
-    corners = (tight.x0 - pad, tight.y0 - pad, tight.x1 + pad, tight.y1 + pad)
+    corners = (tight.x0 - w_pad, tight.y0 - h_pad, tight.x1 + w_pad, tight.y1 + h_pad)
     return Bbox.from_extents(*(c * fig.dpi for c in corners))
 
 
@@ -123,7 +140,7 @@ def _covered(fig: Figure, renderer) -> list[tuple[int, str, str, int]]:
         boxes = [('text', t.get_text(), t) for t in owner.texts if t.get_text().strip()]
         boxes += [('legend', g.get_title().get_text() or 'legend', g) for g in legends if g]
         for kind, label, artist in boxes:
-            if not artist.get_visible():
+            if not (owner.get_visible() and artist.get_visible()):
                 continue
             box = artist.get_window_extent(renderer)
             count = sum(_data_under(ax, box) for ax in fig.axes)

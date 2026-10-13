@@ -15,6 +15,7 @@ import matplotlib
 
 matplotlib.use('Agg')
 
+import numpy as np  # noqa: E402
 import pytest  # noqa: E402
 from matplotlib.figure import Figure  # noqa: E402
 
@@ -210,6 +211,30 @@ def test_data_that_its_axes_clips_covers_nothing():
     assert geom.measure(fig)['covered'] == [(0, 'legend', 'Outside', 2)]
 
 
+def test_unclipped_line_under_a_legend_outside_the_axes_is_covered():
+    """A line with the clip switched off is drawn under the legend, so it counts."""
+    fig, ax = _line_figure()
+    (stray,) = ax.plot([0, 3], [0.5, 0.5], clip_on=False)
+    ax.set_xlim(0, 1)
+    ax.plot([], [], label='entry')
+    ax.legend(loc='center left', bbox_to_anchor=(1.02, 0.5), title='Outside')
+    assert geom.measure(fig)['covered'] == [(0, 'legend', 'Outside', 1)]
+    stray.set_clip_on(True)
+    assert geom.measure(fig)['covered'] == []
+
+
+def test_legend_that_touches_the_axes_edge_covers_nothing():
+    """A legend that starts on the axes edge shares no area with the axes."""
+    fig, ax = _line_figure()
+    ax.plot([0, 3], [0.5, 0.5])
+    ax.set_xlim(0, 1)
+    ax.plot([], [], label='entry')
+    ax.legend(loc='center left', bbox_to_anchor=(1.0, 0.5), borderaxespad=0, title='Edge')
+    assert geom.measure(fig)['covered'] == []
+    ax.get_legend().set_bbox_to_anchor((0.9, 0.5))
+    assert geom.measure(fig)['covered'] == [(0, 'legend', 'Edge', 1)]
+
+
 def test_legend_of_one_axes_on_the_data_of_another_is_covered():
     """A legend that reaches into a second axes is reported for the data it covers there."""
     fig = Figure(figsize=(4, 3), dpi=100)
@@ -220,6 +245,12 @@ def test_legend_of_one_axes_on_the_data_of_another_is_covered():
     left.legend(loc='center', bbox_to_anchor=(2.2, 0.5), title='Stray')
     assert geom.measure(fig)['covered'] == [(0, 'legend', 'Stray', 1)]
     left.get_legend().set_visible(False)
+    assert geom.measure(fig)['covered'] == []
+    left.get_legend().set_visible(True)
+    right.set_visible(False)
+    assert geom.measure(fig)['covered'] == []
+    right.set_visible(True)
+    left.set_visible(False)
     assert geom.measure(fig)['covered'] == []
 
 
@@ -249,3 +280,28 @@ def test_pad_of_the_save_call_reaches_the_measurement():
     assert table['cut_off'] == [(-1, 'text', 'not in layout')]
     matplotlib.rcParams['savefig.pad_inches'] = 3.0
     assert geom.measure(fig, bbox_inches='tight', pad_inches='layout')['cut_off'] == []
+    # A numpy number and a whole number are pads too; True is not the number 1
+    for pad in (np.float32(3.0), np.int64(3), 3):
+        assert geom.measure(fig, bbox_inches='tight', pad_inches=pad)['cut_off'] == []
+    near, _ = _line_figure()
+    near.text(0.9, 0.5, 'x').set_in_layout(False)
+    matplotlib.rcParams['savefig.pad_inches'] = 0.0
+    assert geom.measure(near, bbox_inches='tight', pad_inches=1.0)['cut_off'] == []
+    assert geom.measure(near, bbox_inches='tight', pad_inches=True)['cut_off'] == [
+        (-1, 'text', 'x')
+    ]
+
+
+def test_layout_pad_of_a_constrained_layout_sets_the_saved_area():
+    """With a constrained layout, the 'layout' pad is the pad of the layout, not of the style."""
+    fig = Figure(figsize=(4, 3), dpi=100, layout='constrained')
+    fig.get_layout_engine().set(w_pad=0.5, h_pad=0.5)
+    ax = fig.add_subplot()
+    ax.plot([0, 1], [0, 1])
+    # The text ends about 0.4 inch right of the axes, between the style pad and the layout pad
+    fig.text(0.9, 0.5, 'edge').set_in_layout(False)
+    matplotlib.rcParams['savefig.pad_inches'] = 0.01
+    assert geom.measure(fig, bbox_inches='tight', pad_inches='layout')['cut_off'] == []
+    assert geom.measure(fig, bbox_inches='tight')['cut_off'] == [(-1, 'text', 'edge')]
+    fig.set_layout_engine('none')
+    assert len(geom.measure(fig, bbox_inches='tight', pad_inches='layout')['cut_off']) == 1
