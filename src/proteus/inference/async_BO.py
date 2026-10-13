@@ -283,6 +283,8 @@ def _worker_loop(
             D_shared['X'] = X
             Y = torch.cat((D_shared['Y'], y_new), dim=0)
             D_shared['Y'] = Y
+            # Evaluated now, so no longer pending for the other workers.
+            B.pop(worker_id, None)
 
             # Record end timestamp
             T.append(t_end)

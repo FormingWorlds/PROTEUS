@@ -566,6 +566,54 @@ def test_worker_releases_its_busy_point_after_a_normal_finish(tmp_path):
     assert 1 in B
 
 
+def test_worker_releases_an_evaluated_point_with_its_result(tmp_path):
+    """Contract: once a result is in the shared data, its point is no longer
+    busy, so a worker choosing in the meantime does not pass an evaluated point
+    to the acquisition as pending.
+    """
+    D_shared = {
+        'X': torch.tensor([[0.1], [0.2]], dtype=torch.double),
+        'Y': torch.tensor([[0.3], [0.4]], dtype=torch.double),
+    }
+    other = torch.tensor([[0.6]], dtype=torch.double)
+    B = {1: other}
+    seen = []
+
+    def step(B, worker_id, **_kwargs):
+        # What another worker reads before this one claims its next point.
+        seen.append({k: v.clone() for k, v in B.items()})
+        x = torch.tensor([[0.35 + 0.1 * len(seen)]], dtype=torch.double)
+        B[worker_id] = x
+        return x, torch.tensor([[-1.0]], dtype=torch.double), 0, 0, 0, 0, 0, None
+
+    # _worker_loop, not worker: worker's own exit releases the point anyway.
+    async_mod._worker_loop(
+        process_fun=step,
+        build_obj=lambda **kwargs: lambda x: x,
+        D_shared=D_shared,
+        B=B,
+        T=[],
+        T0=0.0,
+        x_init=torch.tensor([[0.45]], dtype=torch.double),
+        n_init=2,
+        lock=_DummyLock(),
+        max_len=4,
+        worker_id=0,
+        log_list=[],
+        output_dir=str(tmp_path),
+    )
+
+    assert len(seen) == 2
+    assert 0 not in seen[1]
+    assert 0 not in B
+    # No busy point left behind is a row of the evaluated data.
+    assert not any(
+        torch.equal(v, row.reshape(1, -1)) for v in B.values() for row in D_shared['X']
+    )
+    # Only this worker's claim is released; the other worker is still running.
+    assert torch.equal(B[1], other)
+
+
 def test_parallel_process_names_the_real_step_budget_when_no_worker_failed(
     monkeypatch, tmp_path
 ):
