@@ -59,7 +59,7 @@ patience   = 0                                    # Stop after this many evaluat
 "T_obs" = 4.0923645346e+02
 "g_obs" = 9.1084971059e+00
 "atm_kg_per_mol" = 1.8866492160e-02
-"C/O_atm" = 8.6643301819e-01
+"C/O_atm" = 8.6643301819e-01                      # X/Y_atm are mass ratios (kg/kg), not number ratios
 "S/O_atm" = 5.6541485879e-01
 "O/H_atm" = 2.7986395281e+00
 
@@ -70,7 +70,7 @@ patience   = 0                                    # Stop after this many evaluat
 # "T_obs" = 20.0
 # "g_obs" = 0.5
 # "atm_kg_per_mol" = 1.0e-3
-# "C/O_atm" = "0.1 dex"                            # or use 0.1 when you prefer a linear uncertainty.
+# "C/O_atm" = "0.1 dex"                           # linear equivalent at this C/O: 0.2
 # "S/O_atm" = "0.1 dex"
 # "O/H_atm" = "0.1 dex"
 
