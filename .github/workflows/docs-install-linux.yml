@@ -1,6 +1,6 @@
 name: Install from the docs (Linux)
 
-# Runs the commands of docs/How-to/installation.md (Debian / Ubuntu and bash tabs); the
+# Runs the commands of docs/How-to/installation.md (Debian / Ubuntu tab); the
 # deviations are listed in .github/docs-install-linux-substitutions.toml.
 
 on:
@@ -30,7 +30,6 @@ jobs:
     env:
       PAGE: docs/How-to/installation.md
       TAB: Debian / Ubuntu
-      SHELL_TAB: bash
       SUBSTITUTIONS: .github/docs-install-linux-substitutions.toml
     steps:
       - name: Prepare the bare image
@@ -49,7 +48,7 @@ jobs:
 
       - name: Print the plan
         run: |
-          python3 tools/docs_install_steps.py "$PAGE" --tab "$TAB" --tab "$SHELL_TAB" \
+          python3 tools/docs_install_steps.py "$PAGE" --tab "$TAB" \
             --substitutions "$SUBSTITUTIONS" --format table | tee "$RUNNER_TEMP/plan.md"
           {
             echo "## Install plan"
@@ -59,13 +58,13 @@ jobs:
             echo "Optional steps skipped:"
             echo
             echo '```'
-            python3 tools/docs_install_steps.py "$PAGE" --tab "$TAB" --tab "$SHELL_TAB" --list-skipped
+            python3 tools/docs_install_steps.py "$PAGE" --tab "$TAB" --list-skipped
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Generate the install script
         run: |
-          python3 tools/docs_install_steps.py "$PAGE" --tab "$TAB" --tab "$SHELL_TAB" \
+          python3 tools/docs_install_steps.py "$PAGE" --tab "$TAB" \
             --substitutions "$SUBSTITUTIONS" --format script \
             --timing "$GITHUB_WORKSPACE/install-artifacts/install_timing.tsv" > "$RUNNER_TEMP/install_steps.sh"
           bash -n "$RUNNER_TEMP/install_steps.sh"

@@ -291,13 +291,11 @@ def test_generated_script_prints_deviation_line_for_substituted_command(tmp_path
 
 
 def test_committed_substitutions_match_the_install_page():
-    """Every committed substitution matches a command on the Ubuntu and bash tabs of the page."""
+    """Every committed substitution matches a command on the Ubuntu tab of the page."""
     out = _run(
         str(_REPO_ROOT / 'docs' / 'How-to' / 'installation.md'),
         '--tab',
         'Debian / Ubuntu',
-        '--tab',
-        'bash',
         '--substitutions',
         str(_REPO_ROOT / '.github' / 'docs-install-linux-substitutions.toml'),
         '--format',
