@@ -23,17 +23,10 @@ from matplotlib.markers import MarkerStyle  # noqa: E402
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
-
-def _load_tool():
-    """Load ``tools/plot_grid_tutorial.py`` as a module."""
-    script_path = Path(__file__).resolve().parents[2] / 'tools' / 'plot_grid_tutorial.py'
-    spec = importlib.util.spec_from_file_location('plot_grid_tutorial_under_test', script_path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-tool = _load_tool()
+_script = Path(__file__).resolve().parents[2] / 'tools' / 'plot_grid_tutorial.py'
+_spec = importlib.util.spec_from_file_location('plot_grid_tutorial_under_test', _script)
+tool = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(tool)
 
 GRID_CASES = [
     (0, 0.5, 0.03, 1000.0, 14),
@@ -107,21 +100,14 @@ def test_load_cases_gives_no_threshold_when_the_stop_is_off(tmp_path):
     assert cases[0]['phi_crit'] is None
 
 
-def test_load_cases_skips_cases_without_output(grid_dir, capsys):
-    """A case with a missing or empty file, or with rows of the initial stage only, is skipped and named."""
-    (grid_dir / 'case_000004').mkdir()
-    _write_case(grid_dir, 5, 1.0, 0.5, 5000.0, 10)
-    helpfile = grid_dir / 'case_000005' / 'runtime_helpfile.csv'
+def test_load_cases_skips_case_with_rows_of_the_initial_stage_only(grid_dir, capsys):
+    """A case with rows of the initial stage only is skipped and named on the terminal."""
+    _write_case(grid_dir, 4, 1.0, 0.5, 5000.0, 10)
+    helpfile = grid_dir / 'case_000004' / 'runtime_helpfile.csv'
     helpfile.write_text(''.join(helpfile.read_text().splitlines(keepends=True)[:3]))
-    _write_case(grid_dir, 6, 1.0, 0.5, 5000.0, 10)
-    (grid_dir / 'case_000006' / 'status').write_text('')
     cases = tool.load_cases(grid_dir)
     assert [c['mass'] for c in cases] == [0.5, 2.0, 0.5, 2.0]
-    printed = capsys.readouterr().out
-    assert 'Skipped case_000004: an output file is missing or empty' in printed
-    assert 'Skipped case_000005: no row after the initial stage' in printed
-    assert 'Skipped case_000006: an output file is missing or empty' in printed
-    assert printed.count('Skipped') == 3
+    assert 'Skipped case_000004: no row after the initial stage' in capsys.readouterr().out
 
 
 @pytest.mark.parametrize('filename', ['init_coupler.toml', 'status', 'runtime_helpfile.csv'])
@@ -171,10 +157,8 @@ def test_tracks_draw_the_threshold_of_the_config(grid_dir, tmp_path):
         assert list(track.get_ydata()) == pytest.approx(list(c['hf']['Phi_global']))
         expected_color = tool.WONG[0] if c['distance'] == pytest.approx(0.03) else tool.WONG[1]
         assert track.get_color() == expected_color
-    legend_lines = ax.get_legend().get_lines()
     assert [t.get_text() for t in ax.get_legend().get_texts()] == ['0.03 AU', '0.5 AU']
-    expected_dist_colors = [tool.WONG[0], tool.WONG[1]]
-    assert [ln.get_color() for ln in legend_lines] == expected_dist_colors
+    assert [ln.get_color() for ln in ax.get_legend().get_lines()] == tool.WONG[:2]
     assert out.stat().st_size > 0
     plt.close(fig)
 
@@ -200,34 +184,15 @@ def test_outputs_give_pressure_in_bar_against_the_budget(grid_dir, tmp_path):
     assert ax_d.get_yscale() == 'log'
     # All 3 distance panels use log scale on the x axis
     assert all(fig.axes[i].get_xscale() == 'log' for i in (0, 1, 2))
-    # Panel (a) plots final melt fraction against orbital distance
-    pts_a = sorted(tuple(c.get_offsets()[0]) for c in fig.axes[0].collections)
-    assert pts_a == pytest.approx(
-        sorted((c['distance'], c['hf']['Phi_global'].iloc[-1]) for c in cases)
-    )
-    expected_a = sorted((d, 0.02 if s == 10 else 1.0) for _, _, d, _, s in GRID_CASES)
-    assert pts_a == pytest.approx(expected_a)
-    # Panel (b) plots final surface temperature against orbital distance
-    pts_b = sorted(tuple(c.get_offsets()[0]) for c in fig.axes[1].collections)
-    assert pts_b == pytest.approx(
-        sorted((c['distance'], c['hf']['T_surf'].iloc[-1]) for c in cases)
-    )
-    expected_b = sorted((d, 1700.0 + 100.0 * d + 50.0 * m) for _, m, d, _, _ in GRID_CASES)
-    assert pts_b == pytest.approx(expected_b)
-    # Panel (c) holds the stop time, which rises with the planet mass in this grid
-    pts_c = sorted(tuple(c.get_offsets()[0]) for c in fig.axes[2].collections)
-    assert pts_c == pytest.approx(
-        sorted((c['distance'], c['hf']['Time'].iloc[-1]) for c in cases)
-    )
-    expected_c = sorted((d, 2.0e4 * m) for _, m, d, _, _ in GRID_CASES)
-    assert pts_c == pytest.approx(expected_c)
-    # Panel (d) plots final surface pressure against hydrogen budget
-    pts_d = sorted(tuple(c.get_offsets()[0]) for c in ax_d.collections)
-    assert pts_d == pytest.approx(
-        sorted((c['H_budget'], c['hf']['P_surf'].iloc[-1]) for c in cases)
-    )
-    expected_d = sorted((h, 7.5 * h + 100.0 * m) for _, m, _, h, _ in GRID_CASES)
-    assert pts_d == pytest.approx(expected_d)
+    expected = [
+        sorted((d, 0.02 if s == 10 else 1.0) for _, _, d, _, s in GRID_CASES),
+        sorted((d, 1700.0 + 100.0 * d + 50.0 * m) for _, m, d, _, _ in GRID_CASES),
+        sorted((d, 2.0e4 * m) for _, m, d, _, _ in GRID_CASES),
+        sorted((h, 7.5 * h + 100.0 * m) for _, m, _, h, _ in GRID_CASES),
+    ]
+    for ax, exp in zip(fig.axes, expected):
+        pts = sorted(tuple(c.get_offsets()[0]) for c in ax.collections)
+        assert pts == pytest.approx(exp)
     # Assert point colour of each case against expected mass colour
     for ax in fig.axes:
         for c, coll in zip(cases, ax.collections):
@@ -265,8 +230,7 @@ def test_outputs_mark_the_stop_reason(grid_dir, tmp_path):
         r'0.5 $M_\oplus$',
         r'2 $M_\oplus$',
     ]
-    expected_mass_colors = [tool.WONG[0], tool.WONG[1]]
-    assert [ln.get_color() for ln in mass_legend.get_lines()] == expected_mass_colors
+    assert [ln.get_color() for ln in mass_legend.get_lines()] == tool.WONG[:2]
     plt.close(fig)
 
 
