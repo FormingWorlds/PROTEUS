@@ -46,8 +46,6 @@ jobs:
         run: python tools/cache_badges.py --out docs/badges/
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      # Pin the diagram's code links to the commit being published, so they
-      # always land on the lines of the code this deploy was built from.
       - name: Resolve the architecture diagram code links against main
         run: python tools/figures/code_links.py --deploy
       - run: zensical build --clean
