@@ -399,14 +399,15 @@ def test_legends_and_panel_labels_lie_outside_the_axes(tool, tmp_path, style):
 
 def test_legend_of_figure_2_names_each_model_that_is_drawn_with_its_cross(tool, tmp_path):
     """Figure 2 has an entry for each model with a point in the figure and for
-    the current run, each with its grid line and the cross of its nominal
-    case; the cross of the current run is larger than that of the submitted
+    the current run, each with its grid line and, beside it, the cross of its
+    nominal case; the cross of the current run is larger than that of the submitted
     run; a model without data has no entry."""
     data, grid = _grid_case(tmp_path)
     run = tool._load_proteus_helpfile(_run_folder(tmp_path / 'earth'))
 
     fig = tool.plot_fig2(data, run, tool._new_style('x'), grid_dir=grid)
 
+    fig.canvas.draw()
     (legend,) = fig.legends
     labels = [t.get_text() for t in legend.get_texts()]
     assert labels == [*MODEL_COLOURS, 'PROTEUS (x)']
@@ -415,6 +416,9 @@ def test_legend_of_figure_2_names_each_model_that_is_drawn_with_its_cross(tool, 
         (7, 1.5)
     ] * 7 + [(11, 3.0)]
     assert [_hex(ln.get_color()) for ln in crosses] == [*MODEL_COLOURS.values(), '#eb7d0f']
+    circles = [ln for ln in legend.findobj(matplotlib.lines.Line2D) if ln.get_marker() == 'o']
+    beside = [np.mean(x.get_xdata()) - np.mean(o.get_xdata()) for x, o in zip(crosses, circles)]
+    assert len(circles) == 8 and min(beside) > 1
     few = tool.plot_fig2(_comparison_data(tmp_path / 'few'), None, tool._new_style('x'))
     assert [t.get_text() for t in few.legends[0].get_texts()] == ['MOAI']
 
@@ -427,6 +431,7 @@ def test_legend_of_figure_7_shows_the_cross_of_each_proteus_result(tool, tmp_pat
 
     fig = tool.plot_fig7(data, _run_table(), tool._new_style('x'))
 
+    fig.canvas.draw()
     legend = fig.axes[1].get_legend()
     crosses = [ln for ln in legend.findobj(matplotlib.lines.Line2D) if ln.get_marker() == 'x']
     seen = [
@@ -437,6 +442,10 @@ def test_legend_of_figure_7_shows_the_cross_of_each_proteus_result(tool, tmp_pat
         ln for ln in fig.axes[0].lines if ln.get_marker() == 'x' and ln.get_color() == '#EB7D0F'
     ]
     assert sorted(ln.get_markersize() for ln in drawn) == [8, 10]
+    dashed = [
+        ln for ln in legend.findobj(matplotlib.lines.Line2D) if ln.get_linestyle() == '--'
+    ]
+    assert np.mean(crosses[0].get_xdata()) > np.mean(dashed[0].get_xdata()) + 1
 
 
 def test_gas_legend_lists_a_gas_only_where_a_bar_of_it_can_be_seen(tool, tmp_path):

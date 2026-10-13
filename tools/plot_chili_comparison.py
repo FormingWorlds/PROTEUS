@@ -1640,6 +1640,11 @@ _READS = {
 }
 
 
+def _grid_runs(grid_dir):
+    """Run folders of the Earth grid in ``grid_dir``, in the order of the run label."""
+    return [grid_dir / f'chili_grid_earth_{hl}_{cl}' for hl in GRID_H for cl in C_LEVELS]
+
+
 def _figures(intercomp, pe, pv, NS, grid_dir):
     """Figures of the tutorial page by file stem, each as a call that draws it."""
     figs = {
@@ -1708,8 +1713,7 @@ def make_figure(
     runs = [_load_proteus_helpfile(run, fig_id == 'chili_fig9_geodynamics') for run in read]
     grid = Path(grid_dir) if 'grid_dir' in _READS[fig_id] else None
     if grid is not None:
-        grid_runs = [grid / f'chili_grid_earth_{hl}_{cl}' for hl in GRID_H for cl in C_LEVELS]
-        read += [run for run in grid_runs if (run / 'runtime_helpfile.csv').is_file()]
+        read += [run for run in _grid_runs(grid) if (run / 'runtime_helpfile.csv').is_file()]
         runs.append(read[len(runs) :] or None)
     for name, run in zip(_READS[fig_id], runs):
         if run is None:
@@ -1797,11 +1801,7 @@ def main():
         proteus_mpl.use(args.style)
 
     intercomp = ensure_chili_repo(args.chili_repo)
-    grid_runs = (
-        [args.grid_dir / f'chili_grid_earth_{hl}_{cl}' for hl in GRID_H for cl in C_LEVELS]
-        if args.grid_dir
-        else []
-    )
+    grid_runs = _grid_runs(args.grid_dir) if args.grid_dir else []
     sha = _get_proteus_sha(args.proteus_earth, args.proteus_venus, *grid_runs)
     NS = _new_style(sha)
     pe = _load_proteus_helpfile(args.proteus_earth) if args.proteus_earth else None

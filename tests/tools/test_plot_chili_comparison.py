@@ -228,7 +228,8 @@ def test_style_option_calls_proteus_mpl_and_the_default_call_does_not_need_it(
 
 def test_main_writes_a_png_and_a_pdf_for_each_figure_with_data(tool, tmp_path, monkeypatch):
     """``main`` saves each figure that a function returns as PNG and as PDF and
-    closes it; a function without a figure leaves no file."""
+    closes it; a function without a figure leaves no file. Figure 5 without
+    a model and without a run gives no figure."""
     _main_arguments(tool, tmp_path, monkeypatch)
     monkeypatch.setattr(tool, 'plot_psurf', lambda *args: tool.plt.figure())
 
@@ -236,6 +237,9 @@ def test_main_writes_a_png_and_a_pdf_for_each_figure_with_data(tool, tmp_path, m
 
     written = sorted(path.name for path in (tmp_path / 'out').iterdir())
     assert written == ['chili_psurf_vs_time.pdf', 'chili_psurf_vs_time.png']
+    assert tool.plt.get_fignums() == []
+    (tmp_path / 'no_models').mkdir()
+    assert tool.plot_fig5(tmp_path / 'no_models', None, tool._new_style('x')) is None
     assert tool.plt.get_fignums() == []
 
 
@@ -269,21 +273,25 @@ def test_make_figure_writes_the_png_at_the_dpi_of_the_style_and_labels_it_with_t
 
 def test_make_figure_reads_the_grid_runs_and_names_their_commits(tool, tmp_path):
     """The grid figure reads the grid run folders with a helpfile; the label
-    holds their commits, and a grid run that ``run_dirs`` does not list is
-    refused."""
+    holds their commits in the order of the grid, not of ``run_dirs``, and a
+    grid run that ``run_dirs`` does not list is refused."""
     data, grid = _grid_case(tmp_path)
     repo = tmp_path / 'repo'
     (repo / 'intercomparison').mkdir(parents=True)
     data.rename(repo / 'intercomparison' / 'outputs')
-    run = grid / 'chili_grid_earth_Hlow_Clow'
+    runs = [
+        _run_folder(grid / 'chili_grid_earth_Hhigh_Clow', '3' * 40),
+        _run_folder(grid / 'chili_grid_earth_Hlow_Chigh', '1' * 40),
+        grid / 'chili_grid_earth_Hlow_Clow',
+    ]
     out = tmp_path / 'grid.png'
 
     fig = tool.make_figure(
-        [run], out, fig_id='chili_grid_solidification', chili_repo=repo, grid_dir=str(grid)
+        runs, out, fig_id='chili_grid_solidification', chili_repo=repo, grid_dir=str(grid)
     )
 
     legend = [t.get_text() for t in fig.axes[0].get_legend().get_texts()]
-    assert 'PROTEUS (d0c7f080)' in legend and out.exists()
+    assert 'PROTEUS (d0c7f080/11111111/33333333)' in legend and out.exists()
     with pytest.raises(ValueError, match='run_dirs does not hold these run folders'):
         tool.make_figure(
             [tmp_path], out, fig_id='chili_grid_solidification', chili_repo=repo, grid_dir=grid
