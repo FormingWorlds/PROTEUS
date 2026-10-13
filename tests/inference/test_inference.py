@@ -9,6 +9,8 @@ References:
 # ruff: noqa: E402, I001
 from __future__ import annotations
 
+import inspect
+import math
 import multiprocessing as mp
 import os
 from pathlib import Path
@@ -23,6 +25,7 @@ pytest.importorskip('torch')
 pytest.importorskip('botorch')
 pytest.importorskip('gpytorch')
 
+import proteus.inference.async_BO as async_BO  # noqa: E402
 import proteus.inference.inference as inference_mod  # noqa: E402
 from proteus.config import UnknownConfigKeyError  # noqa: E402
 from proteus.inference.failures import ABORT_ON_FAILURE_ENV  # noqa: E402
@@ -649,6 +652,50 @@ def test_run_inference_validates_and_derives_correlation_tables(monkeypatch, tmp
         inference_mod.run_inference(single)
     assert single['correlation'] == {}
     assert 'share no element' in caplog.text
+
+
+def test_run_inference_passes_the_validated_tables_to_the_workers(monkeypatch, tmp_path):
+    """The study runs with the validated sigma, the derived correlation and the
+    patience from the config, not with their defaults or the raw config values.
+    """
+    config, _ = _validation_study(
+        monkeypatch,
+        tmp_path,
+        n_steps=3,
+        observables={'R_obs': 6.0e6, 'C/O_atm': 0.62, 'O/H_atm': 5.4},
+        sigma={'R_obs': 1.0e5, 'C/O_atm': '0.1 dex', 'O/H_atm': '0.1 dex'},
+        correlate_ratios=True,
+        patience=7,
+    )
+    monkeypatch.setattr(inference_mod, 'create_init', lambda cfg: 2)
+    received = {}
+
+    class _StopAtWorkers(Exception):
+        pass
+
+    def _capture(*args, **kwargs):
+        sig = inspect.signature(async_BO.parallel_process)
+        received.update(sig.bind(*args, **kwargs).arguments)
+        raise _StopAtWorkers
+
+    monkeypatch.setattr(inference_mod, 'parallel_process', _capture)
+    with pytest.raises(_StopAtWorkers):
+        inference_mod.run_inference(config)
+
+    # A dex sigma reaches the workers in the observable's units: 0.1 * true * ln 10.
+    assert received['sigma'] == pytest.approx(
+        {
+            'R_obs': 1.0e5,
+            'C/O_atm': 0.1 * 0.62 * math.log(10),
+            'O/H_atm': 0.1 * 5.4 * math.log(10),
+        },
+        rel=1e-12,
+    )
+    # O is shared on opposite sides, so equal element errors give -0.5.
+    assert received['correlation'] == {'C/O_atm': {'O/H_atm': pytest.approx(-0.5)}}
+    assert received['patience'] == 7
+    # n_steps on top of the initial samples
+    assert received['max_len'] == 5
 
 
 def test_validate_truth_returns_ordered_floats_and_rejects_bad_tables():
