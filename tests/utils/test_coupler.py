@@ -27,6 +27,8 @@ import json
 import logging
 import math
 import os
+import re
+import shutil
 import sys
 import tempfile
 import types
@@ -48,7 +50,9 @@ from proteus.utils.coupler import (
     GetHelpfileCoreKeys,
     GetHelpfileDiagnosticKeys,
     GetHelpfileKeys,
+    GetHelpfileTrappingKeys,
     GetPostprocessingKeys,
+    HelpfileFormatError,
     HelpfileRow,
     HelpfileSchemaDriftError,
     PrintCurrentState,
@@ -67,6 +71,7 @@ from proteus.utils.coupler import (
     get_proteus_directories,
     print_citation,
     print_module_configuration,
+    read_helpfile_table,
     remove_excess_files,
     select_profile_plot_times,
     select_resumable_snapshot,
@@ -324,17 +329,22 @@ def test_extend_helpfile_warns_on_unknown_keys(caplog):
     row = ZeroHelpfileRow()
     row['_transient_scratch'] = 3000.0  # private transient key: must not warn
     row['core_state_initial'] = 'liquid'  # allowlisted string key: must not warn
+    row['M_int_target'] = 5.9e24  # allowlisted structure mass target [kg]: must not warn
+    row['O_kg_user_ic'] = 1.0e21  # allowlisted oxygen budget [kg]: must not warn
+    row['M_int_target_prev'] = 1.0  # allowlisted name plus a suffix: must warn
     row['nonsense_future_key'] = 1.0  # genuine drift: must warn
     hf = CreateHelpfileFromDict(ZeroHelpfileRow())
 
     with caplog.at_level(logging.WARNING, logger='fwl.proteus.utils.coupler'):
-        ExtendHelpfile(hf, row)
+        extended = ExtendHelpfile(hf, row)
 
     warns = [r for r in caplog.records if r.levelno >= logging.WARNING]
     joined = '\n'.join(r.message for r in warns)
     assert 'nonsense_future_key' in joined, f'Expected unknown-key warning, got: {joined!r}'
     assert '_transient_scratch' not in joined, 'Private key leaked into warning'
-    assert 'core_state_initial' not in joined, 'Allowlisted key triggered warning'
+    # The warning lists exactly the two undeclared keys, so no allowlisted key is in it.
+    assert "['M_int_target_prev', 'nonsense_future_key']" in joined
+    assert list(extended.columns) == GetHelpfileKeys()
 
 
 @pytest.mark.unit
@@ -450,6 +460,416 @@ def test_write_and_read_helpfile_roundtrip():
         assert hf_read['T_magma'].iloc[0] == pytest.approx(2500.0)
         assert hf_read['P_surf'].iloc[0] == pytest.approx(1.0)
         assert hf_read['F_int'].iloc[0] == pytest.approx(50.0)
+
+
+@pytest.mark.unit
+def test_helpfile_round_trip_is_exact(tmp_path):
+    """Every helpfile float reads back as the same double.
+
+    A resume rebuilds the solver mesh and boundary values from the last row, so
+    a value rounded on its way through the file moves a resumed run off the run
+    it continues. The values span 60 decades and have all 17 significant digits,
+    which a shorter format or the default pandas parser does not reproduce.
+    """
+    rng = np.random.default_rng(3)
+    row = ZeroHelpfileRow()
+    for key in row:
+        row[key] = float(rng.uniform(-1.0, 1.0) * 10.0 ** rng.integers(-30, 31))
+    row['E_state_heat_cons_J'] = -4.524433010726972e30
+    # Discrimination: these values do not survive the 11-digit format.
+    assert sum(float('%.10e' % v) != v for v in row.values()) > 0.9 * len(row)
+    WriteHelpfileToCSV(str(tmp_path), CreateHelpfileFromDict(row))
+
+    back = ReadHelpfileFromCSV(str(tmp_path)).iloc[0]
+    plain = pd.read_csv(tmp_path / 'runtime_helpfile.csv', sep=r'\s+').iloc[0]
+
+    assert [key for key in row if back[key] != row[key]] == []
+    # Discrimination: the default parser misses the last bit of some of these values.
+    assert any(plain[key] != row[key] for key in row)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('nan_key', ['Time', 'semimajorax', 'runtime'])
+def test_helpfile_keeps_a_nan_in_its_column(tmp_path, nan_key):
+    """A NaN reads back in its own column; an empty field would shift the later columns.
+
+    The NaN sits in the first, a middle or the last column of the middle row of three.
+    """
+    rows = [
+        {key: float(10 * r + i + 1) for i, key in enumerate(ZeroHelpfileRow())}
+        for r in range(3)
+    ]
+    rows[1][nan_key] = float('nan')
+    WriteHelpfileToCSV(str(tmp_path), pd.concat([CreateHelpfileFromDict(r) for r in rows]))
+
+    back = ReadHelpfileFromCSV(str(tmp_path))
+
+    expected = pd.DataFrame(rows, columns=GetHelpfileKeys())
+    pd.testing.assert_frame_equal(back[expected.columns], expected, check_exact=True)
+    assert math.isnan(back[nan_key].iloc[1])
+    assert back['runtime'].iloc[2] == rows[2]['runtime']
+
+
+@pytest.mark.unit
+def test_helpfile_writes_nan_as_a_token(tmp_path):
+    """The writer puts the token nan in a NaN's field and leaves no field empty, which the
+    plot readers that split on whitespace rely on (na_rep='nan')."""
+    row = ZeroHelpfileRow()
+    row['R_xuv'] = float('nan')
+    WriteHelpfileToCSV(str(tmp_path), CreateHelpfileFromDict(row))
+
+    fields = (tmp_path / 'runtime_helpfile.csv').read_text().splitlines()[1].split('\t')
+
+    assert fields[list(row).index('R_xuv')] == 'nan'
+    assert '' not in fields
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'value',
+    [np.inf, -np.inf, -0.0, 5e-324, 2.2250738585072014e-308, 1.7976931348623157e308, 1e22],
+)
+def test_helpfile_round_trip_keeps_edge_values(tmp_path, value):
+    """Infinities, a signed zero, subnormal and extreme doubles read back bit for bit."""
+    row = ZeroHelpfileRow()
+    row['T_magma'] = value
+    WriteHelpfileToCSV(str(tmp_path), CreateHelpfileFromDict(row))
+
+    back = ReadHelpfileFromCSV(str(tmp_path)).iloc[0]['T_magma']
+
+    assert back == value
+    assert np.signbit(back) == np.signbit(value)
+
+
+@pytest.mark.unit
+def test_helpfile_from_an_11_digit_writer_still_reads(tmp_path):
+    """An 11-digit helpfile, as runs that wrote fewer digits left it, reads within 5e-11."""
+    rng = np.random.default_rng(5)
+    row = {
+        key: float(rng.uniform(1.0, 10.0) * 10.0 ** rng.integers(-20, 21))
+        for key in ZeroHelpfileRow()
+    }
+    CreateHelpfileFromDict(row).to_csv(
+        tmp_path / 'runtime_helpfile.csv', index=False, sep='\t', float_format='%.10e'
+    )
+
+    back = ReadHelpfileFromCSV(str(tmp_path)).iloc[0]
+
+    relative = [abs(back[key] / row[key] - 1.0) for key in row]
+    assert max(relative) <= 5e-11
+    assert max(relative) > 0.0  # the file really holds rounded values
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('body', 'refused'),
+    [
+        ('1 2 3 4\n', True),  # one field more than the header
+        ('1 2\n', True),  # one field fewer
+        ('\t2\t3\n', True),  # an empty first field
+        ('1 2 3\n4 5\n', True),  # a short second row
+        ('1 2 3\n4 5 6 7\n', True),  # a long second row
+        ('1 2 3\n\n4 5 6\n', False),  # a blank line between rows
+        ('1 2 3\r\n4 5 6\r\n', False),  # CRLF line ends
+    ],
+)
+def test_helpfile_table_checks_each_row_against_the_header(tmp_path, body, refused):
+    """A row with a field count other than the header's is refused; blank lines and
+    CRLF line ends read normally."""
+    path = tmp_path / 'runtime_helpfile.csv'
+    path.write_text('\na b c\n' + body, encoding='utf-8', newline='')
+
+    if refused:
+        with pytest.raises(HelpfileFormatError, match='fields against 3 columns'):
+            read_helpfile_table(str(path))
+    else:
+        table = read_helpfile_table(str(path))
+        assert table['c'].tolist() == [3.0, 6.0]
+        assert table['a'].tolist() == [1.0, 4.0]
+
+
+@pytest.mark.unit
+def test_helpfile_with_empty_nan_fields_reads_in_place(tmp_path):
+    """A tab-separated helpfile whose NaN values are empty fields, as files written
+    with fewer digits hold them, reads with every NaN in its own column."""
+    rows = [{key: float(i + 1) for i, key in enumerate(ZeroHelpfileRow())} for _ in range(3)]
+    rows[0]['Time'] = rows[1]['R_xuv'] = rows[2]['runtime'] = float('nan')
+    pd.concat([CreateHelpfileFromDict(r) for r in rows]).to_csv(
+        tmp_path / 'runtime_helpfile.csv', index=False, sep='\t', float_format='%.10e'
+    )
+    assert '\t\t' in (tmp_path / 'runtime_helpfile.csv').read_text()
+
+    back = ReadHelpfileFromCSV(str(tmp_path))
+
+    expected = pd.DataFrame(rows, columns=GetHelpfileKeys())
+    pd.testing.assert_frame_equal(back[expected.columns], expected, rtol=5e-11)
+    assert back['R_xuv'].isna().tolist() == [False, True, False]
+
+
+@pytest.mark.unit
+def test_helpfile_is_read_once_and_too_few_rows_names_the_last_line(tmp_path, monkeypatch):
+    """pandas parses the bytes the check read, not the path again, and a short file
+    is reported at its last line."""
+    path = tmp_path / 'runtime_helpfile.csv'
+    path.write_bytes(b'a\tb\n1\t2\n3\t4\n')
+    sources = []
+    real = pd.read_csv
+    monkeypatch.setattr(
+        pd, 'read_csv', lambda src, **kw: sources.append(src) or real(src, **kw)
+    )
+
+    assert read_helpfile_table(path)['b'].tolist() == [2, 4]
+    with pytest.raises(HelpfileFormatError, match=r'line 3: 2 data rows, 3 needed'):
+        read_helpfile_table(path, min_rows=3)
+    assert [type(s).__name__ for s in sources] == ['BytesIO']
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'data',
+    [
+        b'a\tb\tc\n1.0\t2.5\t6.25e10\n4.0\t5.5\t6.25e1',
+        b'a\tb\tc\n1.0\t2.5\t6.25e10\n4.0\t5.5\t',
+    ],
+    ids=['inside-last-field', 'after-last-tab'],
+)
+def test_helpfile_with_a_cut_last_row_is_refused(tmp_path, data):
+    """A last row without its newline was cut short, though its fields still count."""
+    path = tmp_path / 'runtime_helpfile.csv'
+    path.write_bytes(data)
+
+    with pytest.raises(
+        HelpfileFormatError, match='line 3: the file does not end with a newline'
+    ) as excinfo:
+        read_helpfile_table(path)
+
+    assert str(path) in str(excinfo.value)
+    assert 'remove an incomplete last line' in str(excinfo.value)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('line_end', ['\n', '\r\n'], ids=['lf', 'crlf'])
+def test_helpfile_cut_at_any_byte_reads_whole_rows_or_refuses(tmp_path, line_end):
+    """A file cut at a line end reads its whole rows unchanged; a cut anywhere else is
+    refused at the line it falls in. Every last field changes under any truncation."""
+    rows = pd.DataFrame(
+        {'a': [1.0, 4.0, 7.25], 'b': [2.5, np.nan, -0.0], 'c': [6.25e10, 1.5e-300, 7.25e-05]}
+    )
+    full = tmp_path / 'full.csv'
+    rows.to_csv(full, index=False, sep='\t', na_rep='nan', lineterminator=line_end)
+    data = full.read_bytes()
+    cut = tmp_path / 'runtime_helpfile.csv'
+
+    read = []
+    for k in range(len(data) + 1):
+        cut.write_bytes(data[:k])
+        if k and data[k - 1 : k] == b'\n':
+            table = read_helpfile_table(cut)
+            # A header-only prefix gives empty columns of object dtype.
+            expected = rows.iloc[: len(table)]
+            pd.testing.assert_frame_equal(
+                table, expected, check_exact=True, check_dtype=len(table) > 0
+            )
+            read.append(len(table))
+            continue
+        with pytest.raises(HelpfileFormatError) as excinfo:
+            read_helpfile_table(cut)
+        assert f'line {data[:k].count(b"\n") + 1}' in str(excinfo.value), k
+
+    assert read == [0, 1, 2, 3]
+
+
+@pytest.mark.unit
+def test_header_only_helpfile_reads_as_an_empty_table(tmp_path):
+    """A header with no rows is an empty table when the caller needs no row."""
+    path = tmp_path / 'runtime_helpfile.csv'
+    path.write_bytes(b'a\tb\n')
+
+    table = read_helpfile_table(path)
+
+    assert table.shape == (0, 2)
+    assert list(table.columns) == ['a', 'b']
+
+
+@pytest.mark.unit
+def test_tab_only_line_reads_as_a_row_of_nan(tmp_path):
+    """In a tab file a line of one tab is a row of two empty fields, as pandas reads it."""
+    path = tmp_path / 'runtime_helpfile.csv'
+    path.write_bytes(b'a\tb\n1\t2\n\t\n5\t6\n')
+
+    table = read_helpfile_table(path, min_rows=3)
+
+    assert table['a'].isna().tolist() == [False, True, False]
+    assert table['b'].iloc[2] == 6
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('data', 'min_rows', 'where'),
+    [
+        (b'', 0, 'line 1: no header'),
+        (b'  \n\t\n', 0, 'line 2: no header'),
+        (b'a\tb\n', 1, 'line 1: 0 data rows'),
+        (b'a b c\n"x 3 4\n5 6 7\n', 0, None),
+        (b'a b\n1 2\n3 \xff\n', 0, 'line 3: not UTF-8'),
+        (b'a\tb\n\t\t\n1\t2\n', 0, 'line 2: 3 fields'),
+        (b'a\tb\n1\t2\n \t \n', 0, 'lines 1 to 3'),
+        (b'a\tb\n"1\t2\n3\t4"\t5\n', 0, 'line 3: 3 fields'),
+        (b'a\tb\n1\t2\n3\t4\n', 3, 'line 3: 2 data rows'),
+        (b'a\tb\r1\t2\r', 0, 'line 1: a NUL'),
+        (b'a\tb\tc\n1\t2\t3\n\r\t2\t3\n', 0, 'line 3: a NUL'),
+        (b'a\tb\n1\t2\n2.5\x007\t1\n', 0, 'line 3: a NUL'),
+        (b'a\tb\r\n1\t2\r\n3\x00\t4\r\n', 0, 'line 3: a NUL'),
+        (b'a\tb\n1\t2\n1\x00\t2\n\r3\t4\n', 0, 'line 3: a NUL'),
+        (b'\xef\xbb\xbf\n', 0, 'line 1: no columns to parse'),
+        (b'a\tb\n1\t2\t3\n4\t5\n6\x007\t8\n', 0, 'line 4: a NUL'),
+        (b'a\tb\n1\t2\t3\n4\t5', 0, 'line 2: 3 fields'),
+        (b'a\tb', 0, 'line 1: the file does not end with a newline'),
+    ],
+    ids=[
+        'empty',
+        'whitespace',
+        'header-only',
+        'unbalanced-quote',
+        'not-utf8',
+        'tab-row-too-long',
+        'tab-text',
+        'quoted-lines',
+        'too-few-rows',
+        'lone-cr',
+        'lone-cr-in-row',
+        'nul-byte',
+        'pin-crlf-then-nul',
+        'pin-nul-before-cr',
+        'bom-only',
+        'nul-after-ragged',
+        'ragged-before-cut',
+        'header-without-newline',
+    ],
+)
+def test_unreadable_helpfile_raises_one_error_naming_file_and_line(
+    tmp_path, data, min_rows, where
+):
+    """Every unreadable helpfile raises HelpfileFormatError naming the file and the line of
+    its first defect; a NUL byte or lone carriage return is reported before anything else."""
+    path = tmp_path / 'runtime_helpfile.csv'
+    path.write_bytes(data)
+
+    with pytest.raises(HelpfileFormatError) as excinfo:
+        read_helpfile_table(path, min_rows=min_rows)
+
+    assert str(path) in str(excinfo.value)
+    # pandas words its own tokenising error; only the type and the file are pinned there.
+    assert where is None or where in str(excinfo.value)
+
+
+# Readers that only display the values; every other helpfile reader uses read_helpfile_table.
+_PLAIN_HELPFILE_READERS = {
+    'src/proteus/plot/cpl_bolometry.py',
+    'src/proteus/plot/cpl_escape.py',
+    'src/proteus/plot/cpl_fluxes_global.py',
+    'src/proteus/plot/cpl_global.py',
+    'src/proteus/plot/cpl_orbit.py',
+    'src/proteus/plot/cpl_population.py',
+    'src/proteus/plot/cpl_structure.py',
+    'src/proteus/plot/cpl_visual.py',
+    'src/proteus/utils/coupler.py',
+    'tools/plot_chili_comparison.py',
+    'tools/plot_energy_balance.py',
+    'tools/plot_tutorial.py',
+}
+
+
+def _helpfile_readers(root):
+    """Files under ``root``/src and ``root``/tools that read a table with pandas or numpy
+    where the path or the enclosing scope names a helpfile. A heuristic: a path passed
+    in from another module is not traced."""
+    import ast
+
+    found = set()
+    for path in sorted([*(root / 'src').rglob('*.py'), *(root / 'tools').rglob('*.py')]):
+        text = path.read_text()
+        tree = ast.parse(text)
+        aliases = {
+            a.asname
+            for n in ast.walk(tree)
+            if isinstance(n, ast.ImportFrom)
+            for a in n.names
+            if a.name in _TABLE_READERS and a.asname
+        }
+        scopes = [
+            n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+        ]
+        constants = {
+            t.id
+            for n in tree.body
+            if isinstance(n, ast.Assign)
+            and 'runtime_helpfile' in str(getattr(n.value, 'value', ''))
+            for t in n.targets
+            if isinstance(t, ast.Name)
+        }
+        for call in ast.walk(tree):
+            func = getattr(call, 'func', None)
+            name = getattr(func, 'attr', getattr(func, 'id', None))
+            if not isinstance(call, ast.Call) or name not in _TABLE_READERS | aliases:
+                continue
+            keys = ('filepath_or_buffer', 'fname')
+            arg = (
+                call.args[0]
+                if call.args
+                else next((k.value for k in call.keywords if k.arg in keys), None)
+            )
+            inner = [s for s in scopes if s.lineno <= call.lineno <= s.end_lineno]
+            scope = min(inner, key=lambda s: s.end_lineno - s.lineno) if inner else tree
+            names = ast.get_source_segment(text, arg) or '' if arg else ''
+            body = ast.get_source_segment(text, scope) or text
+            if (
+                re.search(r'helpfile|(?:\b|_)hf', names, re.I)
+                or any(c in names for c in constants)
+                or re.search(r'runtime_helpfile|helpfile_path\(', body, re.I)
+            ):
+                found.add(path.relative_to(root).as_posix())
+    return found
+
+
+_TABLE_READERS = {'read_csv', 'read_table', 'loadtxt', 'genfromtxt'}
+
+
+@pytest.mark.unit
+def test_helpfile_is_read_with_read_csv_only_by_display_code(tmp_path):
+    """A table read of the helpfile outside the display readers would skip the exact
+    parser and the field-count check; the scan also finds module-level reads, bare
+    read_csv names and keyword paths."""
+    from pathlib import Path
+
+    readers = _helpfile_readers(Path(__file__).resolve().parents[2])
+
+    assert readers - _PLAIN_HELPFILE_READERS == set()
+    # Guard the guard: the scan finds the forms a new reader could take.
+    (tmp_path / 'src').mkdir()
+    (tmp_path / 'src' / 'a.py').write_text(
+        "from pandas import read_csv\nt = read_csv(filepath_or_buffer='o/runtime_helpfile.csv')\n"
+    )
+    (tmp_path / 'src' / 'b.py').write_text(
+        "import numpy as np\ndef f(p):\n    q = p + '/runtime_helpfile.csv'\n    return np.loadtxt(q)\n"
+    )
+    (tmp_path / 'src' / 'c.py').write_text(
+        'from pandas import read_csv as rc\nfrom m import helpfile_path\n'
+        'def f(d):\n    p = helpfile_path(d)\n    return rc(p)\n'
+    )
+    (tmp_path / 'src' / 'd.py').write_text(
+        "import pandas as pd\nOUT = 'runtime_helpfile.csv'\ndef f(d):\n    return pd.read_csv(d / OUT)\n"
+    )
+    (tmp_path / 'src' / 'e.py').write_text(
+        'import pandas as pd\ndef f(hf_path):\n    return pd.read_csv(hf_path)\n'
+    )
+    assert _helpfile_readers(tmp_path) == {
+        'src/a.py',
+        'src/b.py',
+        'src/c.py',
+        'src/d.py',
+        'src/e.py',
+    }
 
 
 @pytest.mark.unit
@@ -606,6 +1026,24 @@ def test_read_helpfile_refuses_a_file_that_predates_schema_columns():
 
 
 @pytest.mark.unit
+def test_orbital_energy_rate_column_is_a_diagnostic_zero_filled_on_resume():
+    """``dEdt_orb`` is a derived diagnostic that nothing reads back, so a run
+    written before the column existed resumes with it zeroed, while every
+    other column keeps the value the file holds."""
+    assert 'dEdt_orb' in GetHelpfileKeys()
+    assert 'dEdt_orb' in GetHelpfileDiagnosticKeys()
+    assert 'dEdt_orb' not in GetHelpfileCoreKeys()
+    with tempfile.TemporaryDirectory() as tmpdir:
+        _write_drifted_helpfile(tmpdir, ['dEdt_orb'], n_rows=2)
+        hf = ReadHelpfileFromCSV(tmpdir)
+
+        assert (hf['dEdt_orb'] == 0.0).all()
+        # Discrimination: the neighbouring orbit columns keep their written values.
+        assert (hf['eccentricity'] > 0.0).all()
+        assert (hf['T_cmb_node'] > 0.0).all()
+
+
+@pytest.mark.unit
 def test_helpfile_without_diagnostic_column_resumes_with_zero_fill(caplog):
     """A helpfile short only of a diagnostic column loads, with that column zeroed.
 
@@ -640,6 +1078,54 @@ def test_helpfile_without_diagnostic_column_resumes_with_zero_fill(caplog):
         # frame extends without a key gap.
         extended = ExtendHelpfile(hf, {**hf.iloc[-1].to_dict(), 'T_cmb_node': 4321.0})
         assert extended['T_cmb_node'].iloc[-1] == pytest.approx(4321.0)
+
+
+@pytest.mark.unit
+def test_helpfile_written_before_trapping_resumes_with_nothing_trapped(caplog):
+    """A run written before the solid-phase trapping columns existed resumes.
+
+    Such a run trapped nothing, and zero is the value every trapping column
+    holds in a run that never trapped, so the reader fills them with zeros
+    through the same path as ``RESUMABLE_ZERO_FILL_KEYS`` and says so, and the
+    run continues whatever ``trap_mode`` it resumes under. Every other column
+    keeps the value the file holds.
+    """
+    from proteus.utils.constants import noble_gases, vol_element_list, vol_list
+
+    trapping = GetHelpfileTrappingKeys()
+    reservoirs = {f'{n}_kg_trapped' for n in (*vol_list, *vol_element_list, *noble_gases)}
+    assert reservoirs <= set(trapping)
+    assert {'trap_F_tl', 'trap_kg_cumulative', 'trap_branch'} <= set(trapping)
+    # Discrimination: the reservoirs trapping moves mass between stay core.
+    for core in ('H2O_kg_solid', 'H_kg_total', 'Phi_global', 'T_cmb_node'):
+        assert core not in trapping
+    # They are core columns that may be read as zero, not optional ones.
+    assert set(trapping) <= set(GetHelpfileCoreKeys())
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        _write_drifted_helpfile(tmpdir, trapping, n_rows=3)
+        with caplog.at_level(logging.INFO, logger='fwl.proteus.utils.coupler'):
+            hf = ReadHelpfileFromCSV(tmpdir)
+
+        assert len(hf) == 3
+        assert set(GetHelpfileKeys()) <= set(hf.columns)
+        for key in trapping:
+            assert (hf[key] == 0.0).all(), key
+        assert hf['H2O_kg_solid'].iloc[-1] > 0.0
+        messages = [r.getMessage() for r in caplog.records]
+        assert any(f'predates {len(trapping)} column(s)' in m for m in messages)
+
+        # A row appended on resume carries the full schema.
+        extended = ExtendHelpfile(hf, {**hf.iloc[-1].to_dict(), 'H2O_kg_trapped': 1.0e18})
+        assert extended['H2O_kg_trapped'].iloc[-1] == pytest.approx(1.0e18, rel=1e-12)
+
+    # Error contract: the zero-fill never excuses a missing core column.
+    with tempfile.TemporaryDirectory() as tmpdir:
+        _write_drifted_helpfile(tmpdir, [*trapping, 'H2O_kg_solid'])
+        with pytest.raises(HelpfileSchemaDriftError) as excinfo:
+            ReadHelpfileFromCSV(tmpdir)
+        assert 'H2O_kg_solid' in str(excinfo.value)
+        assert 'before 1 column(s)' in str(excinfo.value)
 
 
 @pytest.mark.unit
@@ -958,7 +1444,8 @@ def test_postprocessing_set_does_not_lose_a_key():
         'atm_kg_per_mol',
         'R_star',
         'T_star',
-        'separation',
+        'semimajorax',
+        'eccentricity',
     }
     assert named <= required, 'dropped from the requirement: %s' % sorted(named - required)
 
@@ -979,7 +1466,7 @@ def test_postprocessing_still_refuses_a_column_it_does_read():
     the synthesis code reads without a fallback still has to be there.
     """
     probes = list(_POSTPROCESSING_FIXED_KEYS) + ['H2O_vmr', 'O_kg_atm']
-    assert len(probes) == 11, 'expected every fixed key plus one of each expansion'
+    assert len(probes) == 12, 'expected every fixed key plus one of each expansion'
     for needed in probes:
         assert needed in GetPostprocessingKeys()
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1526,10 +2013,11 @@ def test_get_petitradtrans_version_returns_unknown_without_package():
 
 
 @pytest.mark.unit
-def test_get_julia_version_with_mock():
+def test_get_julia_version_with_mock(monkeypatch):
     """Test that _get_julia_version parses julia --version output."""
     from proteus.utils.coupler import _get_julia_version
 
+    monkeypatch.delenv('PYTHON_JULIAPKG_EXE', raising=False)
     with patch('subprocess.check_output') as mock_check_output:
         mock_check_output.return_value = b'julia version 1.9.3\n'
 
@@ -1538,6 +2026,105 @@ def test_get_julia_version_with_mock():
         assert version == '1.9.3'
         assert isinstance(version, str)
         mock_check_output.assert_called_once_with(['julia', '--version'])
+
+
+def _julia_version_stub(directory, version: str):
+    """Write an executable ``julia`` in ``directory`` that prints ``julia version <version>``."""
+    directory.mkdir(parents=True)
+    exe = directory / 'julia'
+    exe.write_text(f'#!/bin/sh\necho "julia version {version}"\n')
+    exe.chmod(0o755)
+    return exe
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('bound', 'expected'),
+    [
+        ('executable', '1.13.1'),
+        ('unset', '1.12.6'),
+        ('not-executable', 'unknown (PYTHON_JULIAPKG_EXE=<bound> is not an executable file)'),
+    ],
+    ids=['bound-1.13-beside-path-1.12', 'path-1.12-only', 'bound-not-executable'],
+)
+def test_get_julia_version_names_the_julia_proteus_uses(monkeypatch, tmp_path, bound, expected):
+    """The run log names the Julia of PYTHON_JULIAPKG_EXE when it is set, else the PATH one.
+
+    The 2 stubs differ in the minor version, the field PROTEUS checks, so
+    a function that asks the default Julia gives 1.12.6 in the first case. A
+    set variable that names no executable file is reported as such, not as the
+    PATH version, because juliacall does not fall back to PATH.
+    """
+    from proteus.utils.coupler import _get_julia_version
+
+    path_julia = _julia_version_stub(tmp_path / 'default' / 'bin', '1.12.6')
+    bound_julia = _julia_version_stub(tmp_path / 'julia-1.13.1' / 'bin', '1.13.1')
+    monkeypatch.setenv('PATH', os.pathsep.join([str(path_julia.parent), '/usr/bin', '/bin']))
+    if bound == 'unset':
+        monkeypatch.delenv('PYTHON_JULIAPKG_EXE', raising=False)
+    else:
+        if bound == 'not-executable':
+            bound_julia.chmod(0o644)
+        monkeypatch.setenv('PYTHON_JULIAPKG_EXE', str(bound_julia))
+
+    version = _get_julia_version()
+
+    assert version == expected.replace('<bound>', str(bound_julia))
+    # The default Julia stays first on PATH, so 1.13.1 can only come from the variable.
+    assert shutil.which('julia') == str(path_julia)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'script',
+    ['#!/bin/sh\nexit 3\n', '#!/bin/sh\n', 'no program, no interpreter line\n'],
+    ids=['exits-non-zero', 'prints-nothing', 'cannot-execute'],
+)
+def test_get_julia_version_of_a_broken_bound_binary_is_a_note(monkeypatch, tmp_path, script):
+    """A bound binary that fails, prints nothing or cannot run gives the unknown note, no exception.
+
+    These raise CalledProcessError, IndexError and OSError; the run log's
+    system line must not stop ``proteus start``.
+    """
+    from proteus.utils.coupler import _get_julia_version
+
+    exe = tmp_path / 'bin' / 'julia'
+    exe.parent.mkdir()
+    exe.write_text(script)
+    exe.chmod(0o755)
+    monkeypatch.setenv('PYTHON_JULIAPKG_EXE', str(exe))
+
+    version = _get_julia_version()
+
+    assert version == f'unknown ({exe} --version reported no version)'
+    assert not version[0].isdigit()
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('bound', ['unset', 'missing-file'])
+def test_get_julia_version_without_any_julia_names_what_is_missing(
+    monkeypatch, tmp_path, bound
+):
+    """With no julia on PATH the log says Julia is not installed, or names the unusable variable."""
+    from proteus.utils.coupler import _get_julia_version
+
+    empty = tmp_path / 'empty-bin'
+    empty.mkdir()
+    monkeypatch.setenv('PATH', str(empty))
+    missing = tmp_path / 'no-such' / 'julia'
+    if bound == 'unset':
+        monkeypatch.delenv('PYTHON_JULIAPKG_EXE', raising=False)
+    else:
+        monkeypatch.setenv('PYTHON_JULIAPKG_EXE', str(missing))
+
+    version = _get_julia_version()
+
+    assert version == (
+        'unknown (julia not installed)'
+        if bound == 'unset'
+        else f'unknown (PYTHON_JULIAPKG_EXE={missing} is not an executable file)'
+    )
+    assert shutil.which('julia') is None
 
 
 # =============================================================================
@@ -1801,6 +2388,7 @@ def _aragog_row(
     step_dE_Q_tidal_J: float = 0.0,
     step_solver_residual_J: float = 0.0,
     step_dE_state_heat_J: float = 0.0,
+    step_dE_impact_J: float = 0.0,
     F_cmb: float = 0.0,
     R_int: float = 6.371e6,
     R_core: float = 3.481e6,
@@ -1824,6 +2412,7 @@ def _aragog_row(
     row['step_dE_Q_tidal_J'] = step_dE_Q_tidal_J
     row['step_solver_residual_J'] = step_solver_residual_J
     row['step_dE_state_heat_J'] = step_dE_state_heat_J
+    row['step_dE_impact_J'] = step_dE_impact_J
     row['F_cmb'] = F_cmb
     row['R_int'] = R_int
     row['R_core'] = R_core
@@ -1847,6 +2436,8 @@ def test_helpfile_keys_include_energy_conservation_columns():
         'step_solver_residual_J',
         # State-side primitive: the entropy-transported heat content change.
         'step_dE_state_heat_J',
+        # Giant-impact re-melt heat injection (enters both residual sides).
+        'step_dE_impact_J',
         # Cumulative columns derived from the primitives above.
         'E_state_heat_cons_J',
         'dE_predicted_cons_J',
@@ -2184,6 +2775,72 @@ def test_populate_energy_residual_predicted_uses_live_mass_heating():
     # Frozen-mass variant would have given +4e29; guard the gap.
     assert abs(row1['dE_predicted_cons_J'] - frozen_radio) > 1e29
     assert abs(row1['E_residual_cons_J']) < 1e-3 * abs(live_radio)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_populate_energy_residual_is_invariant_across_a_giant_impact():
+    """A giant-impact re-melt is booked on both sides, leaving the residual closed.
+
+    The re-melt injects mantle-scale heat as an entropy jump between solver
+    calls, so no per-call state integral carries it. The booking enters the
+    impact heat on BOTH cumulatives: the state side gains the heat that was
+    actually added, the predicted side gains the impact as an energy source,
+    and the residual is unchanged across the impact. A one-sided booking would
+    shift the residual by the full injection, which dwarfs every physical
+    increment here, so closure is the discriminating signature.
+    """
+    E0 = 1.0e31
+    row0 = _aragog_row(time_yr=0.0, E_state_cons_J=E0)
+    hf = CreateHelpfileFromDict(row0)
+
+    # Ordinary cooling step before the impact.
+    cool = -2.0e29
+    row1 = _aragog_row(
+        time_yr=10.0,
+        E_state_cons_J=E0 + cool,
+        step_dE_F_int_J=cool,
+        step_dE_state_heat_J=cool,
+    )
+    _populate_energy_residual(hf, row1)
+    hf = ExtendHelpfile(hf, row1)
+    residual_before = row1['E_residual_cons_J']
+
+    # Impact row: the solve itself cooled a little more, then the re-melt
+    # injected mantle-scale heat (two orders above the step increments).
+    dE_impact = +5.0e30
+    row2 = _aragog_row(
+        time_yr=20.0,
+        E_state_cons_J=E0 + 2 * cool + dE_impact,
+        step_dE_F_int_J=cool,
+        step_dE_state_heat_J=cool,
+        step_dE_impact_J=dE_impact,
+    )
+    _populate_energy_residual(hf, row2)
+
+    # Both cumulatives carry the injection.
+    assert row2['dE_predicted_cons_J'] == pytest.approx(2 * cool + dE_impact, rel=1e-12)
+    assert row2['E_state_heat_cons_J'] == pytest.approx(2 * cool + dE_impact, rel=1e-12)
+    # The residual is invariant across the impact: booked, not leaked.
+    assert row2['E_residual_cons_J'] == pytest.approx(residual_before, abs=1e-3 * abs(cool))
+    # Discrimination: booking on only one side would shift the residual by the
+    # full 5e30 J injection, twenty-five times the physical step increment.
+    assert abs(dE_impact) > 20 * abs(cool)
+
+    # Boundary case: a zero-impact row must reduce to the ordinary bookkeeping,
+    # so the column's default cannot perturb quiet steps.
+    row3 = _aragog_row(
+        time_yr=30.0,
+        E_state_cons_J=E0 + 3 * cool + dE_impact,
+        step_dE_F_int_J=cool,
+        step_dE_state_heat_J=cool,
+        step_dE_impact_J=0.0,
+    )
+    hf = ExtendHelpfile(hf, row2)
+    _populate_energy_residual(hf, row3)
+    assert row3['E_residual_cons_J'] == pytest.approx(
+        row2['E_residual_cons_J'], abs=1e-3 * abs(cool)
+    )
 
 
 @pytest.mark.unit
@@ -3741,11 +4398,17 @@ def test_select_resumable_snapshot_falls_back_on_corrupt_int(tmp_path):
         _write_valid_nc(str(data / f'{t}_atm.nc'))
     _write_corrupt_nc(str(data / '30_int.nc'))
     _write_valid_nc(str(data / '30_atm.nc'))
+    for t in (10, 20, 30):
+        (data / f'{t}p000_zalmoxis.dat').write_text('3.4e6\n6.4e6\n')
 
     out, dropped = select_resumable_snapshot(str(tmp_path), _hf_times([10, 20, 30]))
 
     assert dropped == [30]
     assert int(out.iloc[-1]['Time']) == 20
+    # Only the dropped row's structure copy goes; the kept and earlier rows keep theirs.
+    assert not (data / '30p000_zalmoxis.dat').exists()
+    assert (data / '20p000_zalmoxis.dat').exists()
+    assert (data / '10p000_zalmoxis.dat').exists()
     # Both halves of the incomplete pair are deleted (symmetry with the
     # corrupt-atm case): a stray valid 30_atm.nc must not be left for the
     # atmosphere module's latest-file glob to pick up against a missing 30_int.
@@ -3753,6 +4416,56 @@ def test_select_resumable_snapshot_falls_back_on_corrupt_int(tmp_path):
     assert not (data / '30_atm.nc.incomplete').exists()
     assert not (data / '30_int.nc').exists()
     assert not (data / '30_atm.nc').exists()
+
+
+@pytest.mark.unit
+def test_dropped_row_sharing_the_kept_rows_name_keeps_the_structure_copy(tmp_path):
+    """Two rows under 1e-3 yr apart share one copy name. Without an atmosphere
+    half, dropping the later row leaves the copy of the earlier, kept row, while a
+    dropped row with a name of its own loses its copy."""
+    data = tmp_path / 'data'
+    data.mkdir()
+    _write_valid_nc(str(data / '10_int.nc'))
+    _write_timed_nc(str(data / '20p000_int.nc'), 20.0002)
+    _write_corrupt_nc(str(data / '30_int.nc'))
+    for name in ('20p000', '30p000'):
+        (data / f'{name}_zalmoxis.dat').write_text('3.4e6\n6.4e6\n')
+
+    out, dropped = select_resumable_snapshot(
+        str(tmp_path), _hf_times([10, 20.0002, 20.0004, 30]), require_atm=False
+    )
+
+    assert out.iloc[-1]['Time'] == pytest.approx(20.0002, rel=1e-12)
+    assert dropped == [20, 30]
+    assert (data / '20p000_zalmoxis.dat').exists()
+    assert not (data / '30p000_zalmoxis.dat').exists()
+
+
+@pytest.mark.unit
+def test_rows_dropped_with_their_shared_atmosphere_lose_every_copy(tmp_path):
+    """An atmosphere file records no time, so a dropped row takes the shared
+    _atm.nc down with it and the earlier row of that name is dropped too; every
+    dropped name, not only one, loses its structure copy."""
+    data = tmp_path / 'data'
+    data.mkdir()
+    for half in ('int', 'atm'):
+        _write_valid_nc(str(data / f'10_{half}.nc'))
+    _write_timed_nc(str(data / '20p000_int.nc'), 20.0002)
+    _write_valid_nc(str(data / '20p000_atm.nc'))
+    _write_corrupt_nc(str(data / '30_int.nc'))
+    _write_valid_nc(str(data / '30_atm.nc'))
+    for name in ('10p000', '20p000', '30p000'):
+        (data / f'{name}_zalmoxis.dat').write_text('3.4e6\n6.4e6\n')
+
+    out, dropped = select_resumable_snapshot(
+        str(tmp_path), _hf_times([10, 20.0002, 20.0004, 30])
+    )
+
+    assert out.iloc[-1]['Time'] == pytest.approx(10.0)
+    assert dropped == [20, 20, 30]
+    assert (data / '10p000_zalmoxis.dat').exists()
+    assert not (data / '20p000_zalmoxis.dat').exists()
+    assert not (data / '30p000_zalmoxis.dat').exists()
 
 
 @pytest.mark.unit
@@ -3807,9 +4520,11 @@ def test_select_resumable_snapshot_raises_when_no_complete_pair(tmp_path):
     for t in (10, 20):
         _write_corrupt_nc(str(data / f'{t}_int.nc'))
         _write_corrupt_nc(str(data / f'{t}_atm.nc'))
+    (data / '20p000_zalmoxis.dat').write_text('3.4e6\n6.4e6\n')
 
     with pytest.raises(RuntimeError, match='No complete'):
         select_resumable_snapshot(str(tmp_path), _hf_times([10, 20]))
+    assert (data / '20p000_zalmoxis.dat').exists(), 'a failed selection deletes nothing'
 
     # Boundary: a helpfile with no rows has nothing to resume from either.
     with pytest.raises(RuntimeError, match='No complete'):
@@ -4096,6 +4811,463 @@ def test_select_resumable_snapshot_rejects_cross_row_atm_collision(tmp_path):
     assert not (data / '31.json').exists()
 
 
+@pytest.mark.unit
+def test_a_helpfile_predating_a_schema_column_still_resumes(tmp_path):
+    """A run in flight when a column is added must survive its own resume.
+
+    The helpfile a run writes carries the schema in force when it started.
+    Adding a column and resuming feeds that file's last row straight back into
+    ExtendHelpfile, which rejects a row missing any schema key, so without a
+    backfill every in-flight run in the fleet dies on its next restart, whether
+    or not it uses the feature the column belongs to. The backfill is zero:
+    exact for a column that resets every step, and the best available value,
+    though not lossless, for one that accumulates over the whole run. See
+    ReadHelpfileFromCSV for which of the three columns below is which.
+    """
+    from proteus.utils.coupler import (
+        ExtendHelpfile,
+        GetHelpfileKeys,
+        ReadHelpfileFromCSV,
+        ZeroHelpfileRow,
+    )
+
+    absent = (
+        'M_accreted_rock',
+        'esc_kg_cumulative',
+        'n_impacts_applied',
+        'step_dE_impact_J',
+    )
+    row = ZeroHelpfileRow()
+    for key in absent:
+        assert key in row, f'{key} must be in the current schema for this test to mean anything'
+        del row[key]
+
+    pd.DataFrame([row]).to_csv(tmp_path / 'runtime_helpfile.csv', sep='\t', index=False)
+
+    loaded = ReadHelpfileFromCSV(str(tmp_path))
+
+    # Every schema column is present, and the ones that were absent read zero
+    # rather than NaN, which would poison any later arithmetic on them.
+    for key in GetHelpfileKeys():
+        assert key in loaded.columns, f'{key} missing after backfill'
+    for key in absent:
+        assert loaded[key].iloc[-1] == pytest.approx(0.0, abs=1e-30)
+        assert np.isfinite(loaded[key].iloc[-1])
+
+    # The resume path itself: the restored row is accepted.
+    ExtendHelpfile(loaded, loaded.iloc[-1].to_dict())
+
+    # Columns the file did carry are untouched, so the backfill does not
+    # overwrite real data with zeros.
+    original = ZeroHelpfileRow()
+    original['T_surf'] = 1234.5
+    for key in absent:
+        del original[key]
+    pd.DataFrame([original]).to_csv(tmp_path / 'runtime_helpfile.csv', sep='\t', index=False)
+    reloaded = ReadHelpfileFromCSV(str(tmp_path))
+    assert reloaded['T_surf'].iloc[-1] == pytest.approx(1234.5, rel=1e-9)
+
+
+@pytest.mark.unit
+def test_a_helpfile_missing_physical_state_is_refused_not_zero_filled():
+    """Only declared zero-fill columns may be read as zero; state columns must fail.
+
+    The declared columns are safe to zero-fill for the two reasons explained in
+    ReadHelpfileFromCSV. Every other column holds instantaneous physical state,
+    where zero is a specific and wrong value, not an unknown one. A zero-filled
+    surface temperature or planet mass would be read as real by everything
+    downstream and would quietly poison a resumed run, which is worse than the
+    loud failure this function gave before the backfill existed. So the backfill
+    is scoped to a declared set, and anything outside it still stops the run.
+    """
+    from proteus.utils.coupler import (
+        RESUMABLE_ZERO_FILL_KEYS,
+        GetHelpfileKeys,
+        ReadHelpfileFromCSV,
+    )
+
+    # Every fillable key is in the schema, so the set cannot drift into naming
+    # columns that no longer exist.
+    assert RESUMABLE_ZERO_FILL_KEYS <= set(GetHelpfileKeys())
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        row = ZeroHelpfileRow()
+        row['T_surf'] = 1500.0
+        del row['T_surf']  # a state column, not a ledger
+        pd.DataFrame([row]).to_csv(
+            os.path.join(tmpdir, 'runtime_helpfile.csv'), sep='\t', index=False
+        )
+
+        with pytest.raises(Exception, match='physical state'):
+            ReadHelpfileFromCSV(tmpdir)
+
+    # The same function still fills a ledger column, so the guard discriminates
+    # between the two rather than refusing every schema change.
+    with tempfile.TemporaryDirectory() as tmpdir:
+        row = ZeroHelpfileRow()
+        del row['M_accreted_rock']
+        pd.DataFrame([row]).to_csv(
+            os.path.join(tmpdir, 'runtime_helpfile.csv'), sep='\t', index=False
+        )
+
+        loaded = ReadHelpfileFromCSV(tmpdir)
+        assert loaded['M_accreted_rock'].iloc[-1] == pytest.approx(0.0, abs=1e-30)
+
+
+@pytest.mark.unit
+def test_a_helpfile_without_m_desiccated_resumes_with_nothing_booked(tmp_path):
+    """M_desiccated is a ledger: a helpfile written before the column resumes with it at zero."""
+    from proteus.utils.coupler import GetHelpfileKeys, ReadHelpfileFromCSV
+
+    row = ZeroHelpfileRow()
+    del row['M_desiccated']
+    pd.DataFrame([row]).to_csv(tmp_path / 'runtime_helpfile.csv', sep='\t', index=False)
+
+    loaded = ReadHelpfileFromCSV(str(tmp_path))
+    assert loaded['M_desiccated'].iloc[-1] == pytest.approx(0.0, abs=1e-30)
+    assert set(loaded.columns) == set(GetHelpfileKeys())
+
+
+@pytest.mark.unit
+def test_read_helpfile_from_csv_loads_legacy_helpfile_with_zero_filled_columns(tmp_path):
+    """A legacy helpfile without n_impacts_applied loads successfully with zero backfill."""
+    import shutil
+    from pathlib import Path
+
+    from proteus.utils.coupler import ReadHelpfileFromCSV
+
+    fixture_path = (
+        Path(__file__).parent / 'fixtures' / 'legacy_helpfile_without_impact_counter.csv'
+    )
+    dest_path = tmp_path / 'runtime_helpfile.csv'
+    shutil.copyfile(fixture_path, dest_path)
+
+    loaded = ReadHelpfileFromCSV(str(tmp_path))
+    assert 'n_impacts_applied' in loaded.columns
+    assert (loaded['n_impacts_applied'] == 0.0).all()
+
+
+def _write_timed_nc(path: str, time: float | None) -> str:
+    """Create a valid interior snapshot recording ``time``, or none at all."""
+    from netCDF4 import Dataset
+
+    with Dataset(path, 'w') as ds:
+        ds.createDimension('x', 1)
+        if time is not None:
+            ds.createVariable('time', 'f8')
+            ds['time'][0] = float(time)
+    return path
+
+
+@pytest.mark.unit
+def test_snapshot_time_reads_what_the_writer_recorded(tmp_path):
+    """The recorded time is read back from either writer, or reported absent.
+
+    Contract clause: the snapshot filenames are keyed on a whole year, so the
+    name cannot tell two steps inside one year apart. Both interior writers
+    record the time they wrote, and reading it back is what lets a resume
+    tell a row's own state from one a neighbouring step left behind. A file
+    that records nothing has to be reported as such rather than guessed at,
+    because that is what every directory written before the field existed
+    looks like.
+
+    Verifies:
+    - The netCDF ``time`` variable and SPIDER's ``time_years`` entry are both
+      read, including a fractional time the filename cannot express.
+    - A file of either kind without the field reports None rather than zero,
+      which would otherwise read as a snapshot from the start of the run.
+    - A corrupt file and a missing one report None instead of raising, so the
+      readability probe stays the one place that judges those.
+    """
+    assert _snapshot_time(_write_timed_nc(str(tmp_path / 'a_int.nc'), 70.8)) == pytest.approx(
+        70.8, rel=1e-12
+    )
+    assert _snapshot_time(_write_timed_nc(str(tmp_path / 'b_int.nc'), None)) is None
+
+    spider = str(tmp_path / 'c.json')
+    with open(spider, 'w') as fh:
+        json.dump({'time_years': 70.2, 'data': {}}, fh)
+    assert _snapshot_time(spider) == pytest.approx(70.2, rel=1e-12)
+    assert _snapshot_time(_write_valid_json(str(tmp_path / 'd.json'))) is None
+
+    assert _snapshot_time(_write_corrupt_nc(str(tmp_path / 'e_int.nc'))) is None
+    assert _snapshot_time(str(tmp_path / 'missing_int.nc')) is None
+
+
+@pytest.mark.unit
+def test_snapshot_belongs_to_matches_the_row_it_was_written_for(tmp_path):
+    """A file counts as a row's own only when it records that row's time.
+
+    Contract clause: a step less than a year from its neighbour writes to the
+    same filename, so a file found under a row's name may be another step's.
+    Matching on the recorded time is what separates them, and a file that
+    records nothing keeps the old behaviour of being accepted on its name.
+
+    Verifies:
+    - The row's own time matches and a neighbouring step's does not, at a
+      separation the filename itself cannot resolve.
+    - A file with no recorded time is accepted, so directories written before
+      the field existed still resume.
+    - The tolerance admits the round trip of an 11-digit helpfile and
+      still rejects a step a thousandth of a year away.
+    """
+    own = _write_timed_nc(str(tmp_path / 'own_int.nc'), 70.2)
+    other = _write_timed_nc(str(tmp_path / 'other_int.nc'), 70.8)
+    legacy = _write_timed_nc(str(tmp_path / 'legacy_int.nc'), None)
+
+    assert _snapshot_belongs_to(own, 70.2) is True
+    assert _snapshot_belongs_to(other, 70.2) is False, (
+        'a snapshot written 0.6 yr later was accepted as this row, which is '
+        'the mismatch the whole-year filename cannot rule out'
+    )
+    assert _snapshot_belongs_to(legacy, 70.2) is True
+
+    # An 11-digit helpfile moves Time in about the eleventh digit; that row must match.
+    assert _snapshot_belongs_to(own, float('%.10e' % 70.2)) is True
+    # A step a thousandth of a year away is a different step, not a round trip.
+    assert _snapshot_belongs_to(own, 70.201) is False
+
+    # At 1 Gyr an 11-digit helpfile moves the row by about 0.05 yr, which must match;
+    # a step 0.7 yr away shares the filename and must not.
+    gyr = 1.0e9
+    far = _write_timed_nc(str(tmp_path / 'gyr_int.nc'), gyr)
+    assert _snapshot_belongs_to(far, float('%.10e' % gyr)) is True
+    assert _snapshot_belongs_to(far, gyr + 0.7) is False
+    assert _snapshot_belongs_to(far, gyr + 0.2) is False
+
+    # Past a few Gyr the helpfile cannot resolve two rows inside one filename
+    # at all, so the file is accepted on its name rather than a row that is
+    # perfectly resumable being refused.
+    beyond = 1.0e10
+    unresolvable = _write_timed_nc(str(tmp_path / 'beyond_int.nc'), beyond)
+    assert _snapshot_belongs_to(unresolvable, beyond + 0.7) is True
+
+
+@pytest.mark.unit
+def test_snapshot_time_margin_is_four_times_the_11_digit_shift(tmp_path):
+    """At 1e8 yr the margin is 4 x 5e-11 x 1e8 = 0.02 yr: an offset of 0.015 yr
+    matches, which a margin of one shift (0.005 yr) would reject, and 0.025 yr does not."""
+    snap = _write_timed_nc(str(tmp_path / 'snap_int.nc'), 1.0e8)
+
+    assert _snapshot_belongs_to(snap, 1.0e8 + 0.015) is True
+    assert _snapshot_belongs_to(snap, 1.0e8 + 0.025) is False
+
+
+@pytest.mark.unit
+def test_select_resumable_snapshot_rejects_a_later_steps_snapshot(tmp_path):
+    """A snapshot left by a step the helpfile never recorded is not resumed from.
+
+    Physical scenario: the interior writes its snapshot during a step and the
+    helpfile row is written at the end of it, so a run killed in between
+    leaves a file whose name rounds onto the previous row while its contents
+    are the next step's mantle. Resuming there would continue from a state
+    the helpfile has no row for, and nothing in the filename says so.
+
+    Verifies:
+    - The row is rejected and the walk continues to an earlier complete one.
+    - The same directory with the file recording the row's own time resumes at
+      that row, so the rejection is the recorded time doing its work rather
+      than the row being unusable for another reason.
+    """
+    data = tmp_path / 'data'
+    data.mkdir()
+    for t in (0, 1, 2):
+        _write_timed_nc(str(data / f'{t}_int.nc'), float(t))
+    # Named for the 70.2 row, holding the state written at 70.8.
+    _write_timed_nc(str(data / '70_int.nc'), 70.8)
+
+    out, dropped = select_resumable_snapshot(
+        str(tmp_path), _hf_times([0, 1, 2, 70.2]), require_atm=False, interior_module='aragog'
+    )
+    assert dropped == [70]
+    assert out.iloc[-1]['Time'] == pytest.approx(2.0), (
+        f'resumed at {out.iloc[-1]["Time"]} from a snapshot written 0.6 yr later, '
+        'so the interior would continue from a state the helpfile has no row for'
+    )
+
+    # Discrimination: the same row with its own snapshot is resumable.
+    _write_timed_nc(str(data / '70_int.nc'), 70.2)
+    kept, none_dropped = select_resumable_snapshot(
+        str(tmp_path), _hf_times([0, 1, 2, 70.2]), require_atm=False, interior_module='aragog'
+    )
+    assert none_dropped == []
+    assert kept.iloc[-1]['Time'] == pytest.approx(70.2)
+
+
+@pytest.mark.unit
+def test_select_resumable_snapshot_leaves_another_steps_file_in_place(tmp_path):
+    """Dropping a row does not take a file that belongs to a different step.
+
+    Contract clause: a row without a complete pair has its own snapshot halves
+    moved aside so the modules' latest-file globs cannot pick them up. A file
+    that records a different time is not one of those halves, whatever its
+    name suggests, and removing it would destroy state the run may still need.
+
+    Verifies:
+    - The dropped row's own atmosphere half is quarantined and swept, as
+      before.
+    - The interior file recording another step's time survives untouched, and
+      still holds that step's time afterwards.
+    """
+    data = tmp_path / 'data'
+    data.mkdir()
+    for t in (0, 1, 2):
+        _write_timed_nc(str(data / f'{t}_int.nc'), float(t))
+        _write_timed_nc(str(data / f'{t}_atm.nc'), float(t))
+    _write_timed_nc(str(data / '70_int.nc'), 70.8)  # a later step's interior
+    _write_timed_nc(str(data / '70_atm.nc'), 70.2)  # the dropped row's own half
+
+    out, dropped = select_resumable_snapshot(
+        str(tmp_path),
+        _hf_times([0, 1, 2, 70.2]),
+        require_atm=True,
+        interior_module='aragog',
+    )
+
+    assert dropped == [70]
+    assert out.iloc[-1]['Time'] == pytest.approx(2.0)
+    assert not (data / '70_atm.nc').exists(), (
+        "the dropped row's own atmosphere half was left where a latest-file "
+        'glob can still reach it'
+    )
+    assert (data / '70_int.nc').is_file(), (
+        'dropping the row removed a snapshot belonging to a different step, '
+        'which is state no other file carries'
+    )
+    assert _snapshot_time(str(data / '70_int.nc')) == pytest.approx(70.8, rel=1e-12)
+
+
+def _write_spider_json(path: str, time: float | str | None) -> str:
+    """Create a SPIDER-shaped interior snapshot recording ``time_years``.
+
+    SPIDER writes the achieved time at the top level of its JSON, which is
+    what ``ReadSPIDER`` reads back in place of the rounded filename. Passing
+    None omits the field, which is what an older output directory looks like.
+    """
+    payload: dict = {'step': 7, 'data': {'S': [1.0, 2.0]}}
+    if time is not None:
+        payload['time_years'] = time
+    with open(path, 'w') as fh:
+        json.dump(payload, fh)
+    return path
+
+
+@pytest.mark.unit
+def test_snapshot_time_reads_a_spider_json_however_it_stores_the_number(tmp_path):
+    """SPIDER's recorded time is read whether it is a number or a string.
+
+    Contract clause: the interior half of a SPIDER resume is a JSON file, and
+    the field the resume matches on is the same one ``ReadSPIDER`` uses for
+    the coupling clock, where it is read through a ``float`` for the same
+    reason. SPIDER writes it as a JSON number today; the surrounding file
+    carries other quantities as strings, so the reader takes either and a run
+    does not fall back to matching on the filename if that ever changes.
+
+    Verifies:
+    - A numeric and a string ``time_years`` both read back as the same float.
+    - A file without the field reports None, so it is accepted on its name
+      rather than being read as a snapshot from time zero.
+    """
+    numeric = _write_spider_json(str(tmp_path / 'a.json'), 70.2)
+    stringy = _write_spider_json(str(tmp_path / 'b.json'), '70.2')
+    legacy = _write_spider_json(str(tmp_path / 'c.json'), None)
+
+    assert _snapshot_time(numeric) == pytest.approx(70.2, rel=1e-12)
+    assert _snapshot_time(stringy) == pytest.approx(70.2, rel=1e-12)
+    assert _snapshot_time(legacy) is None
+
+
+@pytest.mark.unit
+def test_select_resumable_snapshot_matches_a_spider_row_to_its_own_json(tmp_path):
+    """A SPIDER row resumes from the JSON written for it, not a neighbour's.
+
+    Physical scenario: SPIDER names its snapshot for the time rounded to a
+    whole year and records the time it achieved inside, so two steps rounding
+    into the same year land on one file and the later one overwrites it. A
+    run killed between a write and the helpfile row it belongs to leaves that
+    file under a row whose state it does not hold, and resuming on the name
+    alone hands the run a mantle from a step the helpfile has no row for.
+
+    Verifies:
+    - A JSON recording another step's time is not accepted for this row, and
+      the walk continues to a row whose own snapshot is there.
+    - The same directory with the JSON recording the row's own time resumes at
+      that row, so the rejection is the recorded time and not the row being
+      unusable.
+    - A JSON with no recorded time is accepted on its name, so output written
+      before the field was read still resumes.
+    """
+    data = tmp_path / 'data'
+    data.mkdir()
+    for t in (0, 1, 2):
+        _write_spider_json(str(data / f'{t}.json'), float(t))
+    # Named for the 70.2 row, holding the step SPIDER achieved at 70.4.
+    _write_spider_json(str(data / '70.json'), 70.4)
+
+    out, dropped = select_resumable_snapshot(
+        str(tmp_path), _hf_times([0, 1, 2, 70.2]), require_atm=False, interior_module='spider'
+    )
+    assert dropped == [70]
+    assert out.iloc[-1]['Time'] == pytest.approx(2.0), (
+        f'resumed at {out.iloc[-1]["Time"]} from a JSON recording 70.4, so SPIDER '
+        'would restart from a state the helpfile has no row for'
+    )
+
+    _write_spider_json(str(data / '70.json'), 70.2)
+    kept, none_dropped = select_resumable_snapshot(
+        str(tmp_path), _hf_times([0, 1, 2, 70.2]), require_atm=False, interior_module='spider'
+    )
+    assert none_dropped == []
+    assert kept.iloc[-1]['Time'] == pytest.approx(70.2)
+
+    _write_spider_json(str(data / '70.json'), None)
+    legacy, legacy_dropped = select_resumable_snapshot(
+        str(tmp_path), _hf_times([0, 1, 2, 70.2]), require_atm=False, interior_module='spider'
+    )
+    assert legacy_dropped == []
+    assert legacy.iloc[-1]['Time'] == pytest.approx(70.2)
+
+
+@pytest.mark.unit
+def test_select_resumable_snapshot_leaves_another_spider_steps_json_in_place(tmp_path):
+    """Dropping a SPIDER row does not take a JSON written for another step.
+
+    Contract clause: a row without a complete pair has its own halves moved
+    aside so the module's latest-file glob cannot pick them up. A JSON that
+    records a different time is another step's, however closely its rounded
+    name fits this row, and removing it would destroy the only copy of that
+    step's interior state.
+
+    Verifies:
+    - The row is dropped and its own atmosphere half is swept.
+    - The JSON recording another step's time is still on disk afterwards and
+      still records that step.
+    """
+    data = tmp_path / 'data'
+    data.mkdir()
+    for t in (0, 1, 2):
+        _write_spider_json(str(data / f'{t}.json'), float(t))
+        _write_timed_nc(str(data / f'{t}_atm.nc'), float(t))
+    _write_spider_json(str(data / '70.json'), 70.4)  # another step's interior
+    _write_timed_nc(str(data / '70_atm.nc'), 70.2)  # the dropped row's own half
+
+    out, dropped = select_resumable_snapshot(
+        str(tmp_path),
+        _hf_times([0, 1, 2, 70.2]),
+        require_atm=True,
+        interior_module='spider',
+    )
+
+    assert dropped == [70]
+    assert out.iloc[-1]['Time'] == pytest.approx(2.0)
+    assert not (data / '70_atm.nc').exists()
+    assert (data / '70.json').is_file(), (
+        'dropping the row deleted a SPIDER snapshot belonging to a different '
+        'step, which is state no other file carries'
+    )
+    assert _snapshot_time(str(data / '70.json')) == pytest.approx(70.4, rel=1e-12)
+
+
 # =============================================================================
 # Test: select_profile_plot_times() - atmosphere/interior profile-time selection
 # =============================================================================
@@ -4204,191 +5376,6 @@ def test_assert_mass_conservation_still_passes_a_finite_row():
         assert_mass_conservation(
             {'M_atm': 9.0e24, 'M_planet': 5.97e24, 'M_vol_atm': 0.0, 'M_vaps': 0.0}
         )
-
-
-def _write_timed_nc(path: str, time: float | None) -> str:
-    """Create a valid interior snapshot recording ``time``, or none at all."""
-    from netCDF4 import Dataset
-
-    with Dataset(path, 'w') as ds:
-        ds.createDimension('x', 1)
-        if time is not None:
-            ds.createVariable('time', 'f8')
-            ds['time'][0] = float(time)
-    return path
-
-
-@pytest.mark.unit
-def test_snapshot_time_reads_what_the_writer_recorded(tmp_path):
-    """The recorded time is read back from either writer, or reported absent.
-
-    Contract clause: the snapshot filenames are keyed on a whole year, so the
-    name cannot tell two steps inside one year apart. Both interior writers
-    record the time they wrote, and reading it back is what lets a resume
-    tell a row's own state from one a neighbouring step left behind. A file
-    that records nothing has to be reported as such rather than guessed at,
-    because that is what every directory written before the field existed
-    looks like.
-
-    Verifies:
-    - The netCDF ``time`` variable and SPIDER's ``time_years`` entry are both
-      read, including a fractional time the filename cannot express.
-    - A file of either kind without the field reports None rather than zero,
-      which would otherwise read as a snapshot from the start of the run.
-    - A corrupt file and a missing one report None instead of raising, so the
-      readability probe stays the one place that judges those.
-    """
-    assert _snapshot_time(_write_timed_nc(str(tmp_path / 'a_int.nc'), 70.8)) == pytest.approx(
-        70.8, rel=1e-12
-    )
-    assert _snapshot_time(_write_timed_nc(str(tmp_path / 'b_int.nc'), None)) is None
-
-    spider = str(tmp_path / 'c.json')
-    with open(spider, 'w') as fh:
-        json.dump({'time_years': 70.2, 'data': {}}, fh)
-    assert _snapshot_time(spider) == pytest.approx(70.2, rel=1e-12)
-    assert _snapshot_time(_write_valid_json(str(tmp_path / 'd.json'))) is None
-
-    assert _snapshot_time(_write_corrupt_nc(str(tmp_path / 'e_int.nc'))) is None
-    assert _snapshot_time(str(tmp_path / 'missing_int.nc')) is None
-
-
-@pytest.mark.unit
-def test_snapshot_belongs_to_matches_the_row_it_was_written_for(tmp_path):
-    """A file counts as a row's own only when it records that row's time.
-
-    Contract clause: a step less than a year from its neighbour writes to the
-    same filename, so a file found under a row's name may be another step's.
-    Matching on the recorded time is what separates them, and a file that
-    records nothing keeps the old behaviour of being accepted on its name.
-
-    Verifies:
-    - The row's own time matches and a neighbouring step's does not, at a
-      separation the filename itself cannot resolve.
-    - A file with no recorded time is accepted, so directories written before
-      the field existed still resume.
-    - The tolerance admits the helpfile's own serialisation round trip and
-      still rejects a step a thousandth of a year away.
-    """
-    own = _write_timed_nc(str(tmp_path / 'own_int.nc'), 70.2)
-    other = _write_timed_nc(str(tmp_path / 'other_int.nc'), 70.8)
-    legacy = _write_timed_nc(str(tmp_path / 'legacy_int.nc'), None)
-
-    assert _snapshot_belongs_to(own, 70.2) is True
-    assert _snapshot_belongs_to(other, 70.2) is False, (
-        'a snapshot written 0.6 yr later was accepted as this row, which is '
-        'the mismatch the whole-year filename cannot rule out'
-    )
-    assert _snapshot_belongs_to(legacy, 70.2) is True
-
-    # The helpfile round-trips Time through '%.10e', so a restored row differs
-    # from the written value in about the eleventh digit; that must still match.
-    assert _snapshot_belongs_to(own, float('%.10e' % 70.2)) is True
-    # A step a thousandth of a year away is a different step, not a round trip.
-    assert _snapshot_belongs_to(own, 70.201) is False
-
-    # The margin is relative to the time, because the helpfile's precision is,
-    # so it has to be checked where a run actually ends up. At 1 Gyr a round
-    # trip moves the row by about 0.05 yr and must still match, while a step
-    # 0.7 yr away shares the same filename and must not: a margin that grew to
-    # a whole year there would accept every neighbour and leave the check
-    # doing nothing exactly where runs spend most of their time.
-    gyr = 1.0e9
-    far = _write_timed_nc(str(tmp_path / 'gyr_int.nc'), gyr)
-    assert _snapshot_belongs_to(far, float('%.10e' % gyr)) is True
-    assert _snapshot_belongs_to(far, gyr + 0.7) is False
-    assert _snapshot_belongs_to(far, gyr + 0.2) is False
-
-    # Past a few Gyr the helpfile cannot resolve two rows inside one filename
-    # at all, so the file is accepted on its name rather than a row that is
-    # perfectly resumable being refused.
-    beyond = 1.0e10
-    unresolvable = _write_timed_nc(str(tmp_path / 'beyond_int.nc'), beyond)
-    assert _snapshot_belongs_to(unresolvable, beyond + 0.7) is True
-
-
-@pytest.mark.unit
-def test_select_resumable_snapshot_rejects_a_later_steps_snapshot(tmp_path):
-    """A snapshot left by a step the helpfile never recorded is not resumed from.
-
-    Physical scenario: the interior writes its snapshot during a step and the
-    helpfile row is written at the end of it, so a run killed in between
-    leaves a file whose name rounds onto the previous row while its contents
-    are the next step's mantle. Resuming there would continue from a state
-    the helpfile has no row for, and nothing in the filename says so.
-
-    Verifies:
-    - The row is rejected and the walk continues to an earlier complete one.
-    - The same directory with the file recording the row's own time resumes at
-      that row, so the rejection is the recorded time doing its work rather
-      than the row being unusable for another reason.
-    """
-    data = tmp_path / 'data'
-    data.mkdir()
-    for t in (0, 1, 2):
-        _write_timed_nc(str(data / f'{t}_int.nc'), float(t))
-    # Named for the 70.2 row, holding the state written at 70.8.
-    _write_timed_nc(str(data / '70_int.nc'), 70.8)
-
-    out, dropped = select_resumable_snapshot(
-        str(tmp_path), _hf_times([0, 1, 2, 70.2]), require_atm=False, interior_module='aragog'
-    )
-    assert dropped == [70]
-    assert out.iloc[-1]['Time'] == pytest.approx(2.0), (
-        f'resumed at {out.iloc[-1]["Time"]} from a snapshot written 0.6 yr later, '
-        'so the interior would continue from a state the helpfile has no row for'
-    )
-
-    # Discrimination: the same row with its own snapshot is resumable.
-    _write_timed_nc(str(data / '70_int.nc'), 70.2)
-    kept, none_dropped = select_resumable_snapshot(
-        str(tmp_path), _hf_times([0, 1, 2, 70.2]), require_atm=False, interior_module='aragog'
-    )
-    assert none_dropped == []
-    assert kept.iloc[-1]['Time'] == pytest.approx(70.2)
-
-
-@pytest.mark.unit
-def test_select_resumable_snapshot_leaves_another_steps_file_in_place(tmp_path):
-    """Dropping a row does not take a file that belongs to a different step.
-
-    Contract clause: a row without a complete pair has its own snapshot halves
-    moved aside so the modules' latest-file globs cannot pick them up. A file
-    that records a different time is not one of those halves, whatever its
-    name suggests, and removing it would destroy state the run may still need.
-
-    Verifies:
-    - The dropped row's own atmosphere half is quarantined and swept, as
-      before.
-    - The interior file recording another step's time survives untouched, and
-      still holds that step's time afterwards.
-    """
-    data = tmp_path / 'data'
-    data.mkdir()
-    for t in (0, 1, 2):
-        _write_timed_nc(str(data / f'{t}_int.nc'), float(t))
-        _write_timed_nc(str(data / f'{t}_atm.nc'), float(t))
-    _write_timed_nc(str(data / '70_int.nc'), 70.8)  # a later step's interior
-    _write_timed_nc(str(data / '70_atm.nc'), 70.2)  # the dropped row's own half
-
-    out, dropped = select_resumable_snapshot(
-        str(tmp_path),
-        _hf_times([0, 1, 2, 70.2]),
-        require_atm=True,
-        interior_module='aragog',
-    )
-
-    assert dropped == [70]
-    assert out.iloc[-1]['Time'] == pytest.approx(2.0)
-    assert not (data / '70_atm.nc').exists(), (
-        "the dropped row's own atmosphere half was left where a latest-file "
-        'glob can still reach it'
-    )
-    assert (data / '70_int.nc').is_file(), (
-        'dropping the row removed a snapshot belonging to a different step, '
-        'which is state no other file carries'
-    )
-    assert _snapshot_time(str(data / '70_int.nc')) == pytest.approx(70.8, rel=1e-12)
 
 
 @pytest.mark.unit
@@ -4522,3 +5509,268 @@ def test_select_resumable_snapshot_resolves_sub_year_rows_to_distinct_files(tmp_
     )
     assert none_dropped == []
     assert kept.iloc[-1]['Time'] == pytest.approx(30.2)
+
+
+CORE_COLUMNS = (
+    'core_r_icb',
+    'core_C_eff',
+    'core_dynamo_margin',
+    'core_B_rms',
+    'core_regime',
+    'core_strat_depth',
+    'core_T_top',
+    'step_dE_impact_core_J',
+    'step_dE_impact_core_refit_J',
+    'step_dE_struct_core_J',
+    'step_dE_core_J',
+    'E_core_residual_J',
+    'E_core_residual_frac',
+)
+
+
+@pytest.mark.unit
+def test_core_module_columns_registered_and_zero_seeded():
+    """The core_module columns are registered once and start at 0.0 like every other
+    column; they are written only with core_bc = core_module."""
+    from proteus.utils.coupler import GetHelpfileKeys, ZeroHelpfileRow
+
+    keys = GetHelpfileKeys()
+    assert [keys.count(col) for col in CORE_COLUMNS] == [1] * len(CORE_COLUMNS)
+    row = ZeroHelpfileRow()
+    assert [row[col] for col in CORE_COLUMNS] == [0.0] * len(CORE_COLUMNS)
+
+
+@pytest.mark.unit
+def test_helpfile_without_core_evolution_diagnostic_columns_resumes():
+    """A helpfile written before the core diagnostic columns resumes with them filled
+    with zeros, as for every other diagnostic column."""
+    core_cols = list(CORE_COLUMNS[:6])
+    with tempfile.TemporaryDirectory() as tmpdir:
+        _write_drifted_helpfile(tmpdir, core_cols + ['T_cmb_node'], n_rows=3)
+        raw = pd.read_csv(os.path.join(tmpdir, 'runtime_helpfile.csv'), sep=r'\s+')
+        assert [col in raw.columns for col in core_cols] == [False] * 6
+
+        hf = ReadHelpfileFromCSV(tmpdir)
+        assert len(hf) == 3
+        assert (hf[core_cols + ['T_cmb_node']] == 0.0).all().all()
+
+
+@pytest.mark.unit
+def test_snapshot_belongs_to_rejects_non_numeric_time_years(tmp_path):
+    """A snapshot recording a non-numeric time is rejected by _snapshot_belongs_to.
+
+    When time_years is present but non-numeric (string, list, or non-finite),
+    _snapshot_time returns NaN and _snapshot_belongs_to rejects the file rather
+    than treating it as an unversioned legacy file.
+    """
+    stringy_bad = tmp_path / 'bad_str.json'
+    stringy_bad.write_text(json.dumps({'time_years': 'non_numeric_garbage'}))
+
+    list_bad = tmp_path / 'bad_list.json'
+    list_bad.write_text(json.dumps({'time_years': [100.0, 200.0]}))
+
+    nan_bad = tmp_path / 'bad_nan.json'
+    nan_bad.write_text(json.dumps({'time_years': 'nan'}))
+
+    assert _snapshot_belongs_to(str(stringy_bad), 100.0) is False
+    assert _snapshot_belongs_to(str(list_bad), 100.0) is False
+    assert _snapshot_belongs_to(str(nan_bad), 100.0) is False
+
+
+@pytest.mark.unit
+def test_snapshot_time_rejects_empty_nc_and_non_dict_json(tmp_path):
+    """An empty netCDF time variable or non-dict JSON returns NaN and is rejected."""
+    from netCDF4 import Dataset
+
+    # 1. Empty netCDF time variable
+    nc_empty = tmp_path / 'empty_time.nc'
+    with Dataset(str(nc_empty), 'w') as ds:
+        ds.createDimension('time', 0)
+        ds.createVariable('time', 'f8', ('time',))
+
+    time_empty = _snapshot_time(str(nc_empty))
+    assert time_empty is not None and math.isnan(time_empty)
+    assert _snapshot_belongs_to(str(nc_empty), 100.0) is False
+
+    # 2. JSON top level that is not a dict
+    json_list = tmp_path / 'not_a_dict.json'
+    json_list.write_text(json.dumps([1, 2, 3]))
+
+    time_json = _snapshot_time(str(json_list))
+    assert time_json is not None and math.isnan(time_json)
+    assert _snapshot_belongs_to(str(json_list), 100.0) is False
+
+
+@pytest.mark.unit
+def test_core_columns_of_a_run_without_the_core_module_stay_zero(tmp_path, caplog):
+    """Without the core module the core columns stay 0.0 through ExtendHelpfile, the CSV
+    and the reader, with no NaN warning; a NaN elsewhere is still set to zero with one."""
+    row = ZeroHelpfileRow()
+    row['Time'] = 1.0
+    row['T_magma'] = np.nan
+    row['step_dE_F_cmb_J'] = 4.0e28
+    with caplog.at_level('WARNING', logger='fwl.proteus.utils.coupler'):
+        hf = ExtendHelpfile(pd.DataFrame(columns=GetHelpfileKeys()), row)
+    warned = [r.getMessage() for r in caplog.records if 'is NaN' in r.getMessage()]
+    assert warned == ['hf_row[T_magma] is NaN at t=1.00e+00 years; setting to zero.']
+    WriteHelpfileToCSV(str(tmp_path), hf)
+    back = ReadHelpfileFromCSV(str(tmp_path))
+    assert [back[col].iloc[0] for col in CORE_COLUMNS] == [0.0] * len(CORE_COLUMNS)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize('booked', [True, False], ids=['booked', 'booking_removed'])
+@pytest.mark.parametrize(
+    'column',
+    ['step_dE_impact_core_J', 'step_dE_impact_core_refit_J', 'step_dE_struct_core_J'],
+)
+def test_core_ledger_closes_across_a_booked_jump_and_shows_a_missing_booking(booked, column):
+    """Row 2 carries a solve that cooled the core by 1e29 J into the mantle and a
+    3e29 J jump of the core heat content between calls, which cancels the core's
+    cumulative cooling. With the jump booked in the column of its cause (the lift or the
+    refit of an impact, or a structure update) the residual stays at the prior row's
+    value, without it it grows by exactly the jump; the fraction is normalised by the
+    summed CMB and booked magnitudes, so it stays bounded where the summed core heat
+    change is zero."""
+    from proteus.utils.coupler import _populate_core_residual
+
+    hf = pd.DataFrame(
+        [
+            {
+                'core_C_eff': 1.6e27,
+                'step_dE_core_J': -2.0e29,
+                'step_dE_F_cmb_J': 2.0e29,
+                'E_core_residual_J': 3.0e24,
+            }
+        ]
+    )
+    row = {
+        'core_C_eff': 1.6e27,
+        'step_dE_core_J': -1.0e29 + 3.0e29,
+        'step_dE_F_cmb_J': 1.0e29,
+        column: 3.0e29 if booked else 0.0,
+    }
+    _populate_core_residual(hf, row)
+    expected = 3.0e24 + (0.0 if booked else 3.0e29)
+    scale = 3.0e29 + (3.0e29 if booked else 0.0)
+    assert row['E_core_residual_J'] == pytest.approx(expected, rel=1e-9)
+    assert row['E_core_residual_frac'] == pytest.approx(expected / scale, rel=1e-9)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_a_core_row_through_the_helpfile_extension_gets_its_ledger_columns():
+    """A core_module row that is appended to the helpfile gets the core ledger: the first
+    row cools the core by 2e29 J against 1.99e29 J of CMB heat, so its residual is -1e27 J
+    on a scale of 1.99e29 J; the second row books a structure term of 3e29 J and closes to
+    +2e26 J, which adds to the first residual on the summed scale of both rows."""
+    row = ZeroHelpfileRow()
+    row.update(Time=0.0)
+    hf = CreateHelpfileFromDict(row)
+    first = ZeroHelpfileRow()
+    first.update(Time=100.0, core_C_eff=1.6e27, step_dE_core_J=-2.0e29, step_dE_F_cmb_J=1.99e29)
+    hf = ExtendHelpfile(hf, first)
+    assert hf['E_core_residual_J'].iloc[-1] == pytest.approx(-1.0e27, rel=1e-9)
+    assert hf['E_core_residual_frac'].iloc[-1] == pytest.approx(-1.0e27 / 1.99e29, rel=1e-9)
+
+    second = ZeroHelpfileRow()
+    second.update(
+        Time=200.0,
+        core_C_eff=1.6e27,
+        step_dE_core_J=2.0e29,
+        step_dE_F_cmb_J=1.002e29,
+        step_dE_struct_core_J=3.0e29,
+    )
+    hf = ExtendHelpfile(hf, second)
+    assert hf['E_core_residual_J'].iloc[-1] == pytest.approx(-0.8e27, rel=1e-9)
+    scale = 1.99e29 + 1.002e29 + 3.0e29
+    assert hf['E_core_residual_frac'].iloc[-1] == pytest.approx(-0.8e27 / scale, rel=1e-9)
+
+
+@pytest.mark.unit
+def test_core_ledger_scale_sums_the_history_of_core_rows_only():
+    """The fraction's scale adds |step_dE_F_cmb_J| and the magnitudes of the 3 booked
+    terms of every earlier core row (a lift of 2e29 J, a refit of 5e28 J and a structure
+    update that took 1e29 J out), and leaves out rows without the core budget
+    (core_C_eff 0), whose CMB flux is not core heat."""
+    from proteus.utils.coupler import _populate_core_residual
+
+    hf = pd.DataFrame(
+        {
+            'core_C_eff': [0.0, 1.6e27, 1.6e27],
+            'step_dE_core_J': [0.0, -1.0e29, 1.6e29],
+            'step_dE_F_cmb_J': [9.0e30, 1.0e29, 4.0e28],
+            'step_dE_impact_core_J': [0.0, 0.0, 2.0e29],
+            'step_dE_impact_core_refit_J': [0.0, 5.0e28, 0.0],
+            'step_dE_struct_core_J': [7.0e30, -1.0e29, 0.0],
+            'E_core_residual_J': [0.0, 0.0, 2.0e24],
+        }
+    )
+    row = {
+        'core_C_eff': 1.6e27,
+        'step_dE_core_J': -5.0e28,
+        'step_dE_F_cmb_J': 5.0e28,
+        'step_dE_impact_core_J': 0.0,
+    }
+    _populate_core_residual(hf, row)
+    assert row['E_core_residual_J'] == pytest.approx(2.0e24, rel=1e-9)
+    assert row['E_core_residual_frac'] == pytest.approx(2.0e24 / 5.4e29, rel=1e-12)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('bad', 'value'),
+    [
+        ('core_C_eff', np.nan),
+        ('step_dE_F_cmb_J', np.nan),
+        ('step_dE_F_cmb_J', np.inf),
+        ('previous', np.nan),
+        ('earlier_row', np.inf),
+    ],
+)
+def test_a_non_finite_core_ledger_input_never_resets_the_ledger(bad, value, caplog):
+    """A NaN capacity still marks a core row, a NaN or infinite term carries the previous
+    residual with a warning instead of feeding the NaN-to-zero fill, a NaN previous residual
+    (an older helpfile) starts from 0, and an infinite term of an earlier row stays out of
+    the scale; in no case is the cumulative 2e24 J residual or its scale erased."""
+    from proteus.utils.coupler import _populate_core_residual
+
+    hf = pd.DataFrame(
+        {
+            'core_C_eff': [1.6e27, 1.6e27],
+            'step_dE_F_cmb_J': [value if bad == 'earlier_row' else 0.0, 1.0e29],
+            'step_dE_impact_core_J': [0.0, 0.0],
+            'E_core_residual_J': [0.0, value if bad == 'previous' else 2.0e24],
+        }
+    )
+    row = {
+        'Time': 300.0,
+        'core_C_eff': value if bad == 'core_C_eff' else 1.6e27,
+        'step_dE_core_J': -5.0e28 + 1.0e24,
+        'step_dE_F_cmb_J': value if bad == 'step_dE_F_cmb_J' else 5.0e28,
+        'step_dE_impact_core_J': 0.0,
+    }
+    with caplog.at_level('WARNING', logger='fwl.proteus.utils.coupler'):
+        _populate_core_residual(hf, row)
+    expected = {'step_dE_F_cmb_J': 2.0e24, 'previous': 1.0e24}.get(bad, 3.0e24)
+    assert row['E_core_residual_J'] == pytest.approx(expected, rel=1e-6)
+    # The scale keeps the CMB heat of the earlier rows; a bad term of this row adds nothing.
+    scale = 1.0e29 + (0.0 if bad == 'step_dE_F_cmb_J' else 5.0e28)
+    assert row['E_core_residual_frac'] == pytest.approx(expected / scale, rel=1e-6)
+    assert ('residual carried' in caplog.text) == (bad == 'step_dE_F_cmb_J')
+
+
+@pytest.mark.unit
+def test_core_ledger_is_zero_without_the_core_module():
+    """Without the core module (core_C_eff 0) the ledger stays 0 even where the CMB carries
+    heat into an energy_balance reservoir, which is not the core budget's heat."""
+    from proteus.utils.coupler import _populate_core_residual
+
+    hf = pd.DataFrame(
+        {'core_C_eff': [0.0], 'step_dE_F_cmb_J': [2.0e29], 'E_core_residual_J': [0.0]}
+    )
+    row = {'core_C_eff': 0.0, 'step_dE_core_J': 0.0, 'step_dE_F_cmb_J': 1.0e29}
+    _populate_core_residual(hf, row)
+    assert row['E_core_residual_J'] == 0.0
+    assert row['E_core_residual_frac'] == 0.0

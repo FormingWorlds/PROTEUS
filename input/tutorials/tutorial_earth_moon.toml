@@ -23,7 +23,7 @@ config_version = "3.0"
     mushy_upper   = 0.99
 
     [params.stop.time]
-        maximum = 5e9
+        maximum = 8e5
     [params.stop.solid]
         phi_crit = 0.05
 

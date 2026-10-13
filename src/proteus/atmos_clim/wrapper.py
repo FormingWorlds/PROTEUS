@@ -16,8 +16,9 @@ from proteus.atmos_clim.common import (
     Atmos_t,
     LevelsSource,
     clip_radius_to_hill,
-    get_spfile_path,
+    require_spfile_path,
 )
+from proteus.star.wrapper import flux_weighted_distance
 from proteus.utils.constants import const_R, gas_list
 from proteus.utils.helper import UpdateStatusfile, safe_rm
 
@@ -313,12 +314,7 @@ def run_atmosphere(
 
         # Init atm object if first iteration or change in stellar spectrum
         if no_atm or update_stellar_spectrum:
-            spectral_file_nostar = get_spfile_path(dirs['fwl'], config)
-            if not os.path.exists(spectral_file_nostar):
-                UpdateStatusfile(dirs, 20)
-                raise FileNotFoundError(
-                    "Spectral file does not exist at '%s'" % spectral_file_nostar
-                )
+            spectral_file_nostar = require_spfile_path(dirs, config)
 
             wl = np.array(wl)
             fl = np.array(fl)
@@ -364,7 +360,8 @@ def run_atmosphere(
                 deallocate_atmos(atmos_o._atm)
 
             # allocate new
-            atmos_o._atm = init_agni_atmos(dirs, config, hf_row)
+            # Only the first build can match another run's spectral file.
+            atmos_o._atm = init_agni_atmos(dirs, config, hf_row, use_cache=no_atm)
 
             # Check allocation was ok
             if not bool(atmos_o._atm.is_alloc):
@@ -512,14 +509,13 @@ def update_bolometry(hf_row: dict):
     # Transit depth
     hf_row['transit_depth'] = (hf_row['R_obs'] / hf_row['R_star']) ** 2.0
 
-    # Eclipse depth
-    #    Accounting for fact that F_ins is scaled to TOA, not to stellar surface.
-    #    Also, F_ins can be zero when bol_scale is being appled.
+    # Eclipse depth. F_ins is the flux at the flux-weighted distance, not at
+    # the stellar surface, and can be zero when bol_scale is applied.
     if hf_row['F_ins'] == 0.0:
         hf_row['eclipse_depth'] = 0.0
     else:
         hf_row['eclipse_depth'] = ((hf_row['F_olr'] + hf_row['F_sct']) / hf_row['F_ins']) * (
-            hf_row['R_obs'] / hf_row['separation']
+            hf_row['R_obs'] / flux_weighted_distance(hf_row)
         ) ** 2.0
 
 

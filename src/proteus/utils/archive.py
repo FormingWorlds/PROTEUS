@@ -21,11 +21,11 @@ def _tarfile_from_dir(dir: str) -> str:
 def _snapshot_time(name: str) -> float | None:
     """Parse the simulated time from a timestamped snapshot filename.
 
-    A timestamped snapshot is a file ending in ``.nc`` or ``.json`` whose
-    leading token is the simulated time in years, e.g. ``1000p000_int.nc``,
-    ``1000p000_atm.nc``, ``0p200_int.nc``, or ``5000.json``. Whole-year
-    names without a fractional part (``1000_int.nc``) parse to the same
-    value.
+    A timestamped snapshot is a file ending in ``.nc``, ``.json`` or
+    ``_zalmoxis.dat`` whose leading token is the simulated time in years, e.g.
+    ``1000p000_int.nc``, ``1000p000_atm.nc``, ``0p200_int.nc``, or
+    ``5000.json``. Whole-year names without a fractional part
+    (``1000_int.nc``) parse to the same value.
 
     Arguments
     ---------
@@ -46,7 +46,7 @@ def _snapshot_time(name: str) -> float | None:
         itself.
     """
 
-    if not (name.endswith('.nc') or name.endswith('.json')):
+    if not name.endswith(('.nc', '.json', '_zalmoxis.dat')):
         return None
     try:
         return parse_subyear_time(name.rsplit('.', 1)[0].split('_')[0])
@@ -287,8 +287,8 @@ def remove_old(dir: str, before: float) -> None:
     """
     Prune archived snapshot files older than a cutoff time.
 
-    Only timestamped snapshot files are removed: names ending in ``.nc``
-    or ``.json`` whose leading token parses as a simulated time (e.g.
+    Only timestamped snapshot files are removed: names ending in ``.nc``,
+    ``.json`` or ``_zalmoxis.dat`` whose leading token parses as a simulated time (e.g.
     ``1000p000_int.nc``), and only when that time is below `before`.
     Every other entry is kept, notably the tar
     archive itself and the fixed-name runtime files that the interior

@@ -837,7 +837,7 @@ class TestPaleosLiquidusSourceOfTruth:
 
         T = float(paleos_liquidus(135e9))
         assert T == pytest.approx(5943.53, abs=1.0)
-        # Sign guard (Section 3 positivity): liquidus temperature must
+        # Sign guard (positivity, tests/AGENTS.md, Physics modules): liquidus temperature must
         # be positive Kelvin everywhere.
         assert T > 0.0
         # Exponent-error guard: a regression that swapped the 0.26

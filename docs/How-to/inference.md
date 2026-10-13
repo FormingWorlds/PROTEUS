@@ -32,6 +32,7 @@ The system performs Bayesian optimization to infer planetary formation parameter
     | `async_BO.py`      | Parallel BO implementation                |
     | `BO.py`            | Single BO step implementation             |
     | `objective.py`     | PROTEUS interface and objective function  |
+    | `failures.py`      | Functions for handling failing simulations |
     | `plot.py`          | Visualization utilities                   |
     | `utils.py`         | Helper functions for inference scheme     |
     | `gen_D_init.py`    | Generate initial data                     |
@@ -122,6 +123,7 @@ The system generates several outputs in:
 - `logs.csv`: Detailed logs of each BO step
 - `Ts.csv`: Timestamps for performance analysis
 - `init.csv`: Data used as an initial guess for starting the optimisation
+- `failures.csv`: One row per simulation that failed or was excluded, written only when there is at least one (see [Failed and excluded simulations](#failed-and-excluded-simulations))
 
 ### Plots
 The BO scheme will generate many plots upon completion.
@@ -144,9 +146,14 @@ Plots prefixed with `result_` show the results of the optimisation.
 
 ### Results Summary
 The system prints the final results including:
+
 - Best found parameters
 - Corresponding simulated observables
 - Comparison with target observables
+
+### Failed and excluded simulations
+
+During the inference run, some PROTEUS simulations might crash or fail, or stop on a status that is excluded in the inference configuration (e.g. maximum runtime reached). Status 29 (planet evaporated) is always excluded. The run carries on when there are failures unless `abort_on_failure` is set to `true` in the inference config. The study then starts no new simulations, but those already running finish first. Each failure is added to `failures.csv` in the output folder as it happens, and all failures are summarised at the end of the study. A study stopped by `abort_on_failure` keeps its `failures.csv` but prints no summary.
 
 ## Customization
 
@@ -164,3 +171,4 @@ The system prints the final results including:
 - Set `n_workers` to be less than your CPU core count minus 1
 - The system automatically limits thread usage to prevent oversubscription
 - PROTEUS evaluation time typically dominates total runtime
+- Workers share prepared spectral files through a cache in the inference run's output folder. Set `spectral_cache = false` in the inference config to turn it off. The study log names the cache in use.

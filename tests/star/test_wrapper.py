@@ -1,8 +1,9 @@
 """Unit tests for the pure-Python helpers in ``proteus.star.wrapper``.
 
-Targets the small inverse-square scaling helper and the spectrum-write
-helper. Heavier dispatch functions that drive MORS / Spada tracks are
-covered by integration tests in nightly tier.
+Targets the small inverse-square scaling helper, the orbital average
+behind the instellation, and the spectrum-write helper. Heavier dispatch
+functions that drive MORS / Spada tracks are covered by integration tests
+in nightly tier.
 
 Testing standards:
   - docs/How-to/testing.md
@@ -190,7 +191,12 @@ def test_update_instellation_baraffe_branch_uses_baraffesolarconstant_and_zeros_
     config = _make_mors_config('baraffe')
     track = MagicMock()
     track.BaraffeSolarConstant.return_value = 1361.0
-    hf_row = {'age_star': 4.567e9, 'separation': 1.0 * AU}
+    hf_row = {
+        'age_star': 4.567e9,
+        'separation': 1.0 * AU,
+        'semimajorax': 1.0 * AU,
+        'eccentricity': 0.0,
+    }
 
     update_instellation(hf_row, config, stellar_track=track)
     # Was passed as (age_yr, sep/AU); confirm sep/AU == 1.0.
@@ -217,7 +223,12 @@ def test_update_instellation_dummy_branch_zeroes_fxuv_and_computes_finstellation
     config.star.module = 'dummy'
     config.star.dummy.Teff = 5778.0
     config.star.bol_scale = 1.0
-    hf_row = {'R_star': 6.957e8, 'separation': 1.496e11}
+    hf_row = {
+        'R_star': 6.957e8,
+        'separation': 1.496e11,
+        'semimajorax': 1.496e11,
+        'eccentricity': 0.0,
+    }
 
     with patch('proteus.star.dummy.calc_instellation', return_value=1361.0) as mock_inst:
         update_instellation(hf_row, config)
@@ -252,7 +263,13 @@ def _run_update_instellation_dummy(config, age_star, s0_return=1361.0):
 
     from proteus.star.wrapper import update_instellation
 
-    hf_row = {'R_star': 6.957e8, 'separation': 1.496e11, 'age_star': age_star}
+    hf_row = {
+        'R_star': 6.957e8,
+        'separation': 1.496e11,
+        'semimajorax': 1.496e11,
+        'eccentricity': 0.0,
+        'age_star': age_star,
+    }
     with patch('proteus.star.dummy.calc_instellation', return_value=s0_return):
         update_instellation(hf_row, config)
     return hf_row
@@ -509,3 +526,233 @@ def test_write_spectrum_emits_a_single_header_line(tmp_path):
     recovered = np.loadtxt(path, skiprows=1).T
     np.testing.assert_allclose(recovered[0], wl, rtol=1e-12)
     np.testing.assert_allclose(recovered[1], fl, rtol=1e-12)
+
+
+# ---------------------------------------------------------------------------
+# flux_weighted_distance: the orbital average behind the instellation
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.physics_invariant
+def test_flux_weighted_distance_is_the_semimajor_axis_on_a_circular_orbit():
+    """Edge case e = 0, the fixed point of the (1 - e^2)^(1/4) factor:
+    a circular orbit has nothing to average, so the flux-weighted
+    distance is the semi-major axis itself.
+    """
+    circular = star_wrapper.flux_weighted_distance(
+        {'semimajorax': 1.496e11, 'eccentricity': 0.0}
+    )
+    assert circular == pytest.approx(1.496e11, rel=1e-12)
+    assert circular > 0.0
+
+
+@pytest.mark.parametrize(
+    'row, missing',
+    [({'semimajorax': 1.496e11}, 'eccentricity'), ({'eccentricity': 0.3}, 'semimajorax')],
+    ids=['no_eccentricity', 'no_semimajor_axis'],
+)
+def test_flux_weighted_distance_requires_both_orbital_elements(row, missing):
+    """A row without its eccentricity is refused rather than read as circular,
+    since a silent e = 0 would bring back the separation bias on an eccentric
+    orbit. The message names the absent element and the row is left as is."""
+    before = dict(row)
+    with pytest.raises(ValueError, match=missing) as excinfo:
+        star_wrapper.flux_weighted_distance(row)
+    assert f"hf_row['{missing}']" in str(excinfo.value)
+    assert row == before
+
+
+@pytest.mark.reference_pinned
+@pytest.mark.physics_invariant
+def test_flux_weighted_distance_pins_the_orbit_averaged_inverse_square_law():
+    """Analytical limit: averaging 1/r^2 over one orbit gives
+    1 / (a^2 sqrt(1 - e^2)), so the distance carrying the same flux is
+    a (1 - e^2)^(1/4). At e = 0.8 that is a * 0.36^(1/4) = 0.774597 a.
+
+    The competing average, the time-averaged separation a (1 + e^2 / 2),
+    gives 1.32 a instead. The two differ in the resulting flux by a
+    factor of 2.904 here, which is what makes this eccentricity
+    discriminating.
+    """
+    sma = 1.0e11
+    dist = star_wrapper.flux_weighted_distance({'semimajorax': sma, 'eccentricity': 0.8})
+
+    assert dist == pytest.approx(sma * 0.36**0.25, rel=1e-12)
+    # Exponent guard: the time-averaged separation lands at 1.32 a.
+    assert abs(dist - sma * 1.32) > 0.3 * sma
+    # The flux ratio between the two averages is what matters downstream.
+    assert (sma * 1.32 / dist) ** 2 == pytest.approx(2.9040, rel=1e-3)
+    # Sign and scale guards: an eccentric orbit is effectively closer in,
+    # so the distance is positive and shorter than the semi-major axis.
+    assert 0.0 < dist < sma
+
+
+@pytest.mark.physics_invariant
+def test_spectrum_normalisation_tracks_the_instellation_it_carries():
+    """The broadband spectrum handed to the climate module and the scalar
+    instellation derived from the same star must share one orbital
+    average, or the energy the atmosphere receives disagrees with the
+    number the rest of the run reports.
+
+    Composing scale_spectrum_to_toa with flux_weighted_distance has to
+    reproduce the eccentricity dependence of F_ins exactly: both scale as
+    1 / sqrt(1 - e^2), which at e = 0.8 is 1 / 0.6. Scaling the spectrum
+    by the time-averaged separation instead would give 1 / 1.7424, a
+    factor of 2.904 low.
+    """
+    from unittest.mock import MagicMock
+
+    luminosities = {'Lbol': 3.828e33, 'Lx': 1.0e29, 'Leuv': 2.0e29}
+    config = _make_mors_config('spada')
+    track = MagicMock()
+    track.Value.side_effect = lambda age_myr, key: luminosities[key]
+
+    sma = 1.496e11
+    flux_at_1au = np.array([1.0, 2.0, 3.0])
+    scaled = {}
+    instellation = {}
+    for ecc in (0.0, 0.8):
+        hf_row = {
+            'age_star': 4.6e9,
+            'semimajorax': sma,
+            'eccentricity': ecc,
+            'separation': sma * (1.0 + 0.5 * ecc**2),
+        }
+        star_wrapper.update_instellation(hf_row, config, stellar_track=track)
+        instellation[ecc] = hf_row['F_ins']
+        scaled[ecc] = star_wrapper.scale_spectrum_to_toa(
+            flux_at_1au, star_wrapper.flux_weighted_distance(hf_row)
+        )
+
+    spectrum_ratio = scaled[0.8] / scaled[0.0]
+    flux_ratio = instellation[0.8] / instellation[0.0]
+    np.testing.assert_allclose(spectrum_ratio, flux_ratio, rtol=1e-12)
+    assert flux_ratio == pytest.approx(1.0 / 0.6, rel=1e-12)
+    # The competing average would have landed 2.904 times lower, so the
+    # equality above is not satisfied by both conventions at once.
+    assert abs(flux_ratio - 1.0 / 1.7424) > 1.0
+    assert np.all(scaled[0.8] > scaled[0.0])
+
+
+@pytest.mark.parametrize('ecc', [1.0, 1.5, -0.1], ids=['parabolic', 'hyperbolic', 'negative'])
+def test_flux_weighted_distance_rejects_an_unbound_orbit(ecc):
+    """An eccentricity at or beyond 1 has no bound-orbit average and
+    would put a negative number under the fourth root. The helper reports
+    it instead of returning nan. This is an error-contract test, so it
+    asserts the contract rather than a physical invariant."""
+    with pytest.raises(ValueError) as excinfo:
+        star_wrapper.flux_weighted_distance({'semimajorax': 1.0e11, 'eccentricity': ecc})
+
+    message = str(excinfo.value)
+    assert 'Eccentricity' in message
+    assert str(float(ecc)) in message
+
+
+@pytest.mark.physics_invariant
+def test_update_instellation_spada_shares_one_average_for_bolometric_and_xuv():
+    """The Spada branch derives both fluxes from the same orbital
+    average, so their ratio is fixed by the luminosity ratio alone and
+    cannot depend on the eccentricity. The bolometric flux is pinned
+    against the closed-form inverse-square value on a circular orbit and
+    against 1 / sqrt(1 - e^2) times it at e = 0.8; a pair of mismatched
+    averages would move the ratio by a factor of 2.9 at that
+    eccentricity.
+    """
+    from unittest.mock import MagicMock
+
+    luminosities = {'Lbol': 3.828e33, 'Lx': 1.0e29, 'Leuv': 2.0e29}
+
+    config = _make_mors_config('spada')
+    track = MagicMock()
+    track.Value.side_effect = lambda age_myr, key: luminosities[key]
+
+    sma = 1.496e11
+    fluxes = {}
+    for ecc in (0.0, 0.8):
+        # The row also carries the time-averaged separation, so a
+        # regression reverting either flux to it produces a wrong number
+        # rather than a KeyError.
+        hf_row = {
+            'age_star': 4.6e9,
+            'semimajorax': sma,
+            'eccentricity': ecc,
+            'separation': sma * (1.0 + 0.5 * ecc**2),
+        }
+        star_wrapper.update_instellation(hf_row, config, stellar_track=track)
+        fluxes[ecc] = (hf_row['F_ins'], hf_row['F_xuv'])
+
+    s0_circular = luminosities['Lbol'] * 1e-7 / (4.0 * np.pi * sma**2)
+    assert fluxes[0.0][0] == pytest.approx(s0_circular, rel=1e-12)
+    # Eccentric orbit: brighter by 1 / sqrt(1 - 0.64) = 1 / 0.6.
+    assert fluxes[0.8][0] == pytest.approx(s0_circular / 0.6, rel=1e-12)
+    assert fluxes[0.8][1] / fluxes[0.8][0] == pytest.approx(
+        fluxes[0.0][1] / fluxes[0.0][0], rel=1e-12
+    )
+    # Absolute pin, since the ratio survives a uniform cgs-to-SI error:
+    # 3.0e29 erg/s over 4 pi (1.496e13 cm)^2 = 106.6714 erg/s/cm^2 = 0.1066714 W/m^2.
+    assert fluxes[0.0][1] == pytest.approx(0.1066714, rel=1e-6)
+    assert fluxes[0.8][1] == pytest.approx(0.1066714 / 0.6, rel=1e-6)
+    # Scale guard: dropping the metre-to-centimetre factor lands at
+    # 1066.7 and dropping the unit conversion lands at 106.67.
+    assert 0.01 < fluxes[0.0][1] < 1.0
+    assert fluxes[0.8][0] > fluxes[0.0][0] > 0.0
+    assert fluxes[0.8][1] > fluxes[0.0][1] > 0.0
+
+
+def test_update_instellation_baraffe_uses_the_flux_weighted_distance():
+    """The Baraffe branch must share the orbital average the other two
+    branches use. Probed at e = 0.8, where the flux-weighted distance
+    a (1 - e^2)^(1/4) = 0.7746 a and the time-averaged separation
+    a (1 + e^2 / 2) = 1.32 a differ by 70 per cent, so reverting this
+    branch to hf_row['separation'] changes the argument rather than
+    leaving it untouched as it would on a circular orbit.
+    """
+    from unittest.mock import MagicMock
+
+    from proteus.star.wrapper import update_instellation
+    from proteus.utils.constants import AU
+
+    config = _make_mors_config('baraffe')
+    track = MagicMock()
+    track.BaraffeSolarConstant.return_value = 1361.0
+
+    ecc = 0.8
+    sma = 1.0 * AU
+    hf_row = {
+        'age_star': 4.567e9,
+        'semimajorax': sma,
+        'eccentricity': ecc,
+        # Carried so a regression reverting to it yields a wrong number
+        # rather than a KeyError.
+        'separation': sma * (1.0 + 0.5 * ecc**2),
+    }
+
+    update_instellation(hf_row, config, stellar_track=track)
+
+    expected_au = (1.0 - ecc**2) ** 0.25
+    track.BaraffeSolarConstant.assert_called_once_with(
+        4.567e9, pytest.approx(expected_au, rel=1e-12)
+    )
+    # Competing value: the time-averaged separation would pass 1.32 au.
+    passed_au = track.BaraffeSolarConstant.call_args[0][1]
+    assert abs(passed_au - (1.0 + 0.5 * ecc**2)) > 0.5
+    assert hf_row['F_ins'] == pytest.approx(1361.0, rel=1e-12)
+
+
+def test_flux_weighted_distance_names_a_missing_semimajor_axis():
+    """A caller carrying only the time-averaged separation, as every caller
+    did before this function existed, gets a named error rather than a bare
+    KeyError raised deep inside the star module. The eccentricity bound is
+    already reported this way two lines above.
+    """
+    from proteus.star.wrapper import flux_weighted_distance
+    from proteus.utils.constants import AU
+
+    with pytest.raises(ValueError, match='semimajorax'):
+        flux_weighted_distance({'eccentricity': 0.0, 'separation': 1.0 * AU})
+
+    # Positive: the same row with the key present resolves normally, so the
+    # check is not rejecting every input.
+    assert flux_weighted_distance({'semimajorax': 1.0 * AU, 'eccentricity': 0.0}) == (
+        pytest.approx(1.0 * AU, rel=1e-12)
+    )

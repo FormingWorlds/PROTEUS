@@ -1,541 +1,45 @@
 from __future__ import annotations
 
-import functools
-import hashlib
 import logging
 import os
-import re
-import shutil
 import subprocess as sp
 import zipfile
 from pathlib import Path
-from time import sleep
 from typing import TYPE_CHECKING
 
 import numpy as np
-from osfclient.api import OSF
 from scipy.interpolate import interp1d
 
 if TYPE_CHECKING:
     from proteus.config import Config
 
-from proteus.utils.helper import resolve_fwl_data_dir, safe_rm
+from proteus.utils.constants import PALEOS_REGISTRY_KEYS, VOLATILE_EOS_MAP
+from proteus.utils.helper import (
+    MissingDataError,
+    energetics_eos_key,
+    eos_components,
+    paleos_companion_keys,
+    resolve_fwl_data_dir,
+    safe_rm,
+    twophase_registry_key,
+)
 from proteus.utils.phoenix_helper import phoenix_param
 
 log = logging.getLogger('fwl.' + __name__)
 
 FWL_DATA_DIR = resolve_fwl_data_dir()
-MAX_ATTEMPTS = 3
-MAX_DLTIME = 120.0  # seconds
-RETRY_WAIT = 5.0  # seconds
 
-ARAGOG_BASIC = ('Melting_curves/Wolf_Bower+2018',)
+# Appended to the errors of a data file that an offline run cannot find.
+RELOCATE_HINT = (
+    'Data kept in the older FWL_DATA layout can be moved into place with `fwl-io relocate`.'
+)
 
 log.debug(f'FWL data location: {FWL_DATA_DIR}')
 
 
-def download_zenodo_folder(zenodo_id: str, folder_dir: Path) -> bool:
-    """
-    Download a specific Zenodo record into specified folder
-
-    Inputs :
-        - zenodo_id : str
-            Zenodo record ID to download
-        - folder_dir : Path
-            Local directory where the Zenodo record will be downloaded
-
-    Returns :
-        - zenodo_ok : bool
-            Did the download/request complete successfully?
-    """
-    # Sanitize zenodo_id to prevent command injection
-    # Zenodo IDs should only contain digits
-    if not re.match(r'^[0-9]+$', zenodo_id):
-        log.error(f'Invalid Zenodo ID format: {zenodo_id}. Must contain only digits.')
-        return False
-
-    # Check if zenodo_get is available
-    try:
-        sp.run(['zenodo_get', '--version'], capture_output=True, check=True, timeout=10)
-    except (FileNotFoundError, sp.TimeoutExpired, sp.CalledProcessError) as e:
-        log.error(f'zenodo_get command not available or not working: {e}')
-        return False
-
-    out = os.path.join(GetFWLData(), 'zenodo_download.log')
-    log.debug(f'    zenodo_get, logging to {out}')
-
-    # Use exponential backoff for retries
-    for attempt in range(MAX_ATTEMPTS):
-        # remove folder
-        safe_rm(folder_dir)
-        folder_dir.mkdir(parents=True, exist_ok=True)
-
-        # try making request with timeout
-        try:
-            with open(out, 'w') as hdl:
-                # Use Python's subprocess timeout for robust timeout handling
-                # (zenodo_get's -t flag is not always respected by all versions)
-                proc = sp.run(
-                    ['zenodo_get', '-o', str(folder_dir), zenodo_id],
-                    stdout=hdl,
-                    stderr=sp.STDOUT,  # Combine stderr into stdout for better logging
-                    timeout=MAX_DLTIME,  # Python's timeout will kill the process if it hangs
-                    check=False,  # Don't raise on non-zero exit
-                )
-
-            # Check if command succeeded and folder has content
-            if proc.returncode == 0:
-                # Verify folder exists and has files
-                if folder_dir.exists():
-                    # Check if folder has any files (not just empty directory)
-                    files = list(folder_dir.rglob('*'))
-                    if files and any(f.is_file() for f in files):
-                        log.info(f'Successfully downloaded Zenodo record {zenodo_id}')
-                        return True
-                    else:
-                        log.warning(
-                            f'Zenodo download completed but folder is empty (ID {zenodo_id})'
-                        )
-                else:
-                    log.warning(
-                        f'Zenodo download completed but folder does not exist (ID {zenodo_id})'
-                    )
-            else:
-                # Read error from log file for better diagnostics
-                error_msg = 'Unknown error'
-                try:
-                    with open(out, 'r') as f:
-                        error_lines = f.readlines()[-10:]  # Last 10 lines
-                        error_msg = ''.join(error_lines).strip()
-                except Exception:
-                    pass
-                log.warning(
-                    f'Failed to get data from Zenodo (ID {zenodo_id}, attempt {attempt + 1}/{MAX_ATTEMPTS}): '
-                    f'exit code {proc.returncode}. Error: {error_msg[:500]}'
-                )
-
-        except sp.TimeoutExpired:
-            log.warning(
-                f'zenodo_get timed out after {MAX_DLTIME:.1f}s (ID {zenodo_id}, '
-                f'attempt {attempt + 1}/{MAX_ATTEMPTS})'
-            )
-        except Exception as e:
-            log.warning(f'Unexpected error during Zenodo download (ID {zenodo_id}): {e}')
-
-        # Exponential backoff: wait longer between retries
-        if attempt < MAX_ATTEMPTS - 1:
-            wait_time = RETRY_WAIT * (2**attempt)  # Exponential backoff
-            log.debug(f'Waiting {wait_time:.1f}s before retry...')
-            sleep(wait_time)
-
-    # Return status indicating that file/folder is invalid, if failed
-    log.error(
-        f'Could not obtain data for Zenodo record {zenodo_id} after {MAX_ATTEMPTS} attempts'
-    )
-    return False
-
-
-def download_zenodo_file(zenodo_id: str, folder_dir: Path, record_path: str) -> bool:
-    """
-    Download a specific file from a Zenodo record into specified folder
-
-    Inputs :
-        - zenodo_id : str
-            Zenodo record ID to download
-        - folder_dir : Path
-            Local directory where the Zenodo file will be downloaded
-        - record_path : str
-            Record-internal path/name of the file to download (passed to zenodo_get -g)
-
-    Returns :
-        - zenodo_ok : bool
-            Did the download/request complete successfully?
-    """
-    # Sanitize zenodo_id to prevent command injection
-    # Zenodo IDs should only contain digits
-    if not re.match(r'^[0-9]+$', zenodo_id):
-        log.error(f'Invalid Zenodo ID format: {zenodo_id}. Must contain only digits.')
-        return False
-
-    # Check if zenodo_get is available
-    try:
-        sp.run(['zenodo_get', '--version'], capture_output=True, check=True, timeout=10)
-    except (FileNotFoundError, sp.TimeoutExpired, sp.CalledProcessError) as e:
-        log.error(f'zenodo_get command not available or not working: {e}')
-        return False
-
-    out = os.path.join(GetFWLData(), 'zenodo_download.log')
-    log.debug(f'    zenodo_get, logging to {out}')
-
-    # Ensure destination base exists
-    folder_dir.mkdir(parents=True, exist_ok=True)
-
-    # Expected destination path (if zenodo_get preserves record_path structure)
-    expected_path = folder_dir / record_path
-
-    for attempt in range(MAX_ATTEMPTS):
-        # Remove only the specific file we intend to download (if present)
-        try:
-            if expected_path.exists():
-                if expected_path.is_file() or expected_path.is_symlink():
-                    expected_path.unlink()
-                else:
-                    # If it's somehow a directory, remove it safely
-                    safe_rm(expected_path)
-        except Exception as e:
-            log.debug(f'Could not remove existing target {expected_path}: {e}')
-
-        # Make sure parent dirs exist for nested record_path
-        expected_path.parent.mkdir(parents=True, exist_ok=True)
-
-        try:
-            with open(out, 'w') as hdl:
-                # Use Python's subprocess timeout for robust timeout handling
-                # (zenodo_get's -t flag is not always respected by all versions)
-                proc = sp.run(
-                    ['zenodo_get', '-o', str(folder_dir), '-g', record_path, zenodo_id],
-                    stdout=hdl,
-                    stderr=sp.STDOUT,  # Combine stderr into stdout for better logging
-                    timeout=MAX_DLTIME,  # Python's timeout will kill the process if it hangs
-                    check=False,  # Don't raise on non-zero exit
-                )
-
-            if proc.returncode == 0:
-                # Prefer strict check: file exists where we expect it
-                if expected_path.is_file() and expected_path.stat().st_size > 0:
-                    log.info(
-                        f'Successfully downloaded Zenodo record {zenodo_id} (file: {record_path})'
-                    )
-                    return True
-
-                # Fallback: sometimes zenodo_get layout differs; find the basename anywhere
-                matches = [
-                    p
-                    for p in folder_dir.rglob(Path(record_path).name)
-                    if p.is_file() and p.stat().st_size > 0
-                ]
-                if matches:
-                    log.info(
-                        f'Successfully downloaded Zenodo record {zenodo_id} '
-                        f'(file: {record_path}, found at {matches[0]})'
-                    )
-                    return True
-
-                log.warning(
-                    f'Zenodo download exited 0 but file not found/empty '
-                    f'(ID {zenodo_id}, file {record_path})'
-                )
-
-            else:
-                # Read error from log file for better diagnostics
-                error_msg = 'Unknown error'
-                try:
-                    with open(out, 'r') as f:
-                        error_lines = f.readlines()[-10:]  # Last 10 lines
-                        error_msg = ''.join(error_lines).strip()
-                except Exception:
-                    pass
-
-                log.warning(
-                    f'Failed to get file from Zenodo (ID {zenodo_id}, '
-                    f'attempt {attempt + 1}/{MAX_ATTEMPTS}): exit code {proc.returncode}. '
-                    f'Error: {error_msg[:500]}'
-                )
-
-        except sp.TimeoutExpired:
-            log.warning(
-                f'zenodo_get timed out after {MAX_DLTIME:.1f}s (ID {zenodo_id}, '
-                f'attempt {attempt + 1}/{MAX_ATTEMPTS})'
-            )
-        except Exception as e:
-            log.warning(f'Unexpected error during Zenodo download (ID {zenodo_id}): {e}')
-
-        # Exponential backoff: wait longer between retries
-        if attempt < MAX_ATTEMPTS - 1:
-            wait_time = RETRY_WAIT * (2**attempt)  # Exponential backoff
-            log.debug(f'Waiting {wait_time:.1f}s before retry...')
-            sleep(wait_time)
-
-    # Return status indicating that file/folder is invalid, if failed
-    log.error(
-        f"Could not obtain file '{record_path}' for Zenodo record {zenodo_id} "
-        f'after {MAX_ATTEMPTS} attempts'
-    )
-    return False
-
-
-def md5(_fname):
-    """Return the md5 hash of a file."""
-
-    # https://stackoverflow.com/a/3431838
-    hash_md5 = hashlib.md5()
-    with open(_fname, 'rb') as f:
-        for chunk in iter(lambda: f.read(4096), b''):
-            hash_md5.update(chunk)
-    return hash_md5.hexdigest()
-
-
-def _source_marker_path(dest_path: Path) -> Path:
-    """Sidecar path recording which Zenodo record provided a single file."""
-    return dest_path.parent / (dest_path.name + '.zenodo')
-
-
-def _read_source_marker(dest_path: Path) -> str | None:
-    """Return the Zenodo record id recorded for ``dest_path``, or None.
-
-    A missing or unreadable sidecar reads as None, which callers treat
-    as "provenance unknown, refresh the file".
-    """
-    try:
-        return _source_marker_path(dest_path).read_text().strip() or None
-    except OSError:
-        return None
-
-
-def _write_source_marker(dest_path: Path, zenodo_id: str | None) -> None:
-    """Record the Zenodo record id that provided ``dest_path``.
-
-    Written after every successful single-file download (including the
-    OSF fallback, where the id states which record the fetch targeted).
-    Failures are logged, not raised: a missing marker only costs one
-    redundant re-download on the next check.
-    """
-    if zenodo_id is None or not dest_path.is_file():
-        return
-    try:
-        _source_marker_path(dest_path).write_text(f'{zenodo_id}\n')
-    except OSError as e:
-        log.warning(f'Could not write source marker for {dest_path}: {e}')
-
-
-def validate_zenodo_folder(zenodo_id: str, folder_dir: Path, hash_maxfilesize=100e6) -> bool:
-    """
-    Validate the content of a specific Zenodo-provided folder by checking md5 hashes
-
-    Inputs :
-        - zenodo_id : str
-            Zenodo record ID to compare
-        - folder_dir : Path
-            Local directory where the Zenodo record has already been downloaded
-        - hash_maxfilesize
-            Don't validate the md5 hash of files greater than this size (bytes)
-
-    Returns :
-        - valid : bool
-            Is folder valid?
-    """
-    # Sanitize zenodo_id to prevent command injection
-    # Zenodo IDs should only contain digits
-    if not re.match(r'^[0-9]+$', zenodo_id):
-        log.error(f'Invalid Zenodo ID format: {zenodo_id}. Must contain only digits.')
-        return False
-
-    # Check if zenodo_get is available
-    try:
-        sp.run(['zenodo_get', '--version'], capture_output=True, check=True, timeout=10)
-    except (FileNotFoundError, sp.TimeoutExpired, sp.CalledProcessError):
-        # If zenodo_get not available, skip validation but warn
-        log.warning('zenodo_get not available for validation - skipping hash check')
-        # If folder exists and has files, assume it's valid
-        if folder_dir.exists() and any(f.is_file() for f in folder_dir.rglob('*')):
-            return True
-        return False
-
-    # Use zenodo_get to obtain md5 hashes
-    #     They will be saved to a txt file in folder_dir
-    md5sums_path = os.path.join(folder_dir, 'md5sums.txt')
-    out = os.path.join(GetFWLData(), 'zenodo_validate.log')
-    zenodo_ok = False
-
-    for attempt in range(MAX_ATTEMPTS):
-        # remove file
-        safe_rm(md5sums_path)
-
-        # try making request with timeout
-        try:
-            with open(out, 'w') as hdl:
-                proc = sp.run(
-                    ['zenodo_get', '-m', zenodo_id],
-                    stdout=hdl,
-                    stderr=sp.STDOUT,
-                    cwd=str(folder_dir),
-                    timeout=60,  # Shorter timeout for validation
-                    check=False,
-                )
-
-            # process exited fine and file exists?
-            zenodo_ok = (proc.returncode == 0) and os.path.isfile(md5sums_path)
-
-            # try again?
-            if zenodo_ok:
-                break
-            else:
-                log.warning(
-                    f'Failed to get checksum from Zenodo (ID {zenodo_id}, '
-                    f'attempt {attempt + 1}/{MAX_ATTEMPTS})'
-                )
-        except sp.TimeoutExpired:
-            log.warning(f'zenodo_get validation timed out (ID {zenodo_id})')
-        except Exception as e:
-            log.warning(f'Unexpected error during Zenodo validation (ID {zenodo_id}): {e}')
-
-        if attempt < MAX_ATTEMPTS - 1:
-            sleep(RETRY_WAIT * (2**attempt))  # Exponential backoff
-
-    # Return status indicating that file/folder is invalid, if failed
-    if not zenodo_ok:
-        log.warning(
-            f'Could not obtain checksum for Zenodo record {zenodo_id} - skipping validation'
-        )
-        # If we can't validate but folder exists with files, assume it's valid
-        if folder_dir.exists() and any(f.is_file() for f in folder_dir.rglob('*')):
-            log.info(f'Folder exists with files - assuming valid (ID {zenodo_id})')
-            return True
-        return False
-
-    # Read hashes file
-    try:
-        with open(md5sums_path, 'r') as hdl:
-            md5sums = hdl.readlines()
-    except Exception as e:
-        log.warning(f'Could not read md5sums file: {e}')
-        # If folder has files, assume valid
-        if folder_dir.exists() and any(f.is_file() for f in folder_dir.rglob('*')):
-            return True
-        return False
-
-    # Check each item in the record...
-    for line in md5sums:
-        if not line.strip():
-            continue
-        try:
-            parts = line.strip().split()
-            if len(parts) < 2:
-                continue
-            sum_expect, name = parts[0], parts[1]
-            file = os.path.join(folder_dir, name)
-
-            # exit here if file does not exist
-            if not os.path.exists(file):
-                log.warning(f'Detected missing file {name} (Zenodo record {zenodo_id})')
-                return False
-
-            # skip symbolic links for security
-            if os.path.islink(file):
-                log.debug(f'Skipping symbolic link: {name}')
-                continue
-
-            # don't check the hashes of very large files, because it's slow
-            if os.path.getsize(file) > hash_maxfilesize:
-                continue  # Skip hash check but file exists
-
-            # check the actual hash of the file on disk, compare to expected
-            sum_actual = md5(file).strip()
-            if sum_actual != sum_expect:
-                log.warning(f'Detected invalid file {name} (Zenodo record {zenodo_id})')
-                log.warning(f'    expected hash {sum_expect}, got {sum_actual}')
-                return False
-        except Exception as e:
-            log.warning(f'Error validating file from md5sums line: {e}')
-            continue
-
-    return True
-
-
-# Unified mapping of folder names to both Zenodo and OSF identifiers
-# Structure: folder_name -> {'zenodo_id': str, 'osf_id': str, 'osf_project': str}
-DATA_SOURCE_MAP: dict[str, dict[str, str]] = {
-    # Spectral files (OSF project: vehxg)
-    'Frostflow/16': {'zenodo_id': '15799743', 'osf_id': 'vehxg', 'osf_project': 'vehxg'},
-    'Frostflow/48': {'zenodo_id': '15696415', 'osf_id': 'vehxg', 'osf_project': 'vehxg'},
-    'Frostflow/256': {'zenodo_id': '15799754', 'osf_id': 'vehxg', 'osf_project': 'vehxg'},
-    'Frostflow/4096': {'zenodo_id': '15799776', 'osf_id': 'vehxg', 'osf_project': 'vehxg'},
-    'Dayspring/16': {'zenodo_id': '15799318', 'osf_id': 'vehxg', 'osf_project': 'vehxg'},
-    'Dayspring/48': {'zenodo_id': '15721749', 'osf_id': 'vehxg', 'osf_project': 'vehxg'},
-    'Dayspring/256': {'zenodo_id': '15799474', 'osf_id': 'vehxg', 'osf_project': 'vehxg'},
-    'Dayspring/4096': {'zenodo_id': '15799495', 'osf_id': 'vehxg', 'osf_project': 'vehxg'},
-    'Honeyside/16': {'zenodo_id': '15799607', 'osf_id': 'vehxg', 'osf_project': 'vehxg'},
-    'Honeyside/48': {'zenodo_id': '15799652', 'osf_id': 'vehxg', 'osf_project': 'vehxg'},
-    'Honeyside/256': {'zenodo_id': '15799731', 'osf_id': 'vehxg', 'osf_project': 'vehxg'},
-    'Honeyside/4096': {'zenodo_id': '15696457', 'osf_id': 'vehxg', 'osf_project': 'vehxg'},
-    'Oak/318': {'zenodo_id': '15743843', 'osf_id': 'vehxg', 'osf_project': 'vehxg'},
-    # Interior lookup tables (OSF project: phsxf)
-    '1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018': {
-        'zenodo_id': '15877374',
-        'osf_id': 'phsxf',
-        'osf_project': 'phsxf',
-    },
-    '1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018_400GPa': {
-        'zenodo_id': '15877424',
-        'osf_id': 'phsxf',
-        'osf_project': 'phsxf',
-    },
-    '1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018_1TPa': {
-        # Zenodo 19473625: complete P-S format tables (10 phase-property files
-        # + 2 P-S melting curves + README + md5sums). Used by BOTH SPIDER and
-        # Aragog at runtime.
-        'zenodo_id': '19473625',
-        'osf_id': 'phsxf',
-        'osf_project': 'phsxf',
-    },
-    # Melting curves (OSF project: phsxf)
-    'Melting_curves/Monteux+600': {
-        'zenodo_id': '15728091',
-        'osf_id': 'phsxf',
-        'osf_project': 'phsxf',
-    },
-    'Melting_curves/Monteux-600': {
-        'zenodo_id': '15728138',
-        'osf_id': 'phsxf',
-        'osf_project': 'phsxf',
-    },
-    'Melting_curves/Wolf_Bower+2018': {
-        'zenodo_id': '15728072',
-        'osf_id': 'phsxf',
-        'osf_project': 'phsxf',
-    },
-    # Surface albedos (OSF project: 2gcd9)
-    'Hammond24': {'zenodo_id': '15880455', 'osf_id': '2gcd9', 'osf_project': '2gcd9'},
-    # Stellar spectra (OSF project: 8r2sw)
-    'Named': {'zenodo_id': '15721440', 'osf_id': '8r2sw', 'osf_project': '8r2sw'},
-    # Stellar spectra - PHOENIX (OSF project: 8r2sw)
-    'PHOENIX': {'zenodo_id': '17674612', 'osf_id': '8r2sw', 'osf_project': '8r2sw'},
-    # Stellar spectra - MUSCLES (OSF project: 8r2sw)
-    'MUSCLES': {'zenodo_id': '17802209', 'osf_id': '8r2sw', 'osf_project': '8r2sw'},
-    # Stellar spectra - solar (OSF project: 8r2sw)
-    'solar': {'zenodo_id': '17981836', 'osf_id': '8r2sw', 'osf_project': '8r2sw'},
-    # The exoplanet catalogue and the mass-radius relations are declared in
-    # src/proteus/data/proteus_manifest.toml and fetched through fwl-io, so
-    # their record pins live there and are absent here.
-    # Population data (OSF project: dpkjb)
-    # NOTE: Population and EOS_Seager2007 currently share Zenodo ID '15727998'.
-    'Population': {'zenodo_id': '15727998', 'osf_id': 'dpkjb', 'osf_project': 'dpkjb'},
-    # EOS material properties (OSF project: dpkjb)
-    'EOS_Seager2007': {'zenodo_id': '15727998', 'osf_id': 'dpkjb', 'osf_project': 'dpkjb'},
-    # Zalmoxis EOS: Wolf & Bower 2018 T-dependent MgSiO3 (1 TPa)
-    'EOS_WolfBower2018_1TPa': {'zenodo_id': '17417017'},
-    # Zalmoxis EOS: RTPress 100 TPa extended melt
-    'EOS_RTPress_melt_100TPa': {'zenodo_id': '18819027'},
-    # Zalmoxis EOS: PALEOS 2-phase MgSiO3 (separate solid/liquid).
-    # Zenodo 19680050: ecosystem-wide PALEOS reference; ships 150 + 600
-    # pts/decade tables for both phases.
-    'EOS_PALEOS_MgSiO3': {'zenodo_id': '19680050'},
-    # Zalmoxis EOS: PALEOS unified tables (iron, MgSiO3, H2O share Zenodo
-    # 22776069, the v1.3.0 release of concept record 19000315). Each folder
-    # fetches only its own table file via the single-file download mode, so
-    # the high-res variants in the record are never pulled.
-    'EOS_PALEOS_iron': {'zenodo_id': '22776069'},
-    'EOS_PALEOS_MgSiO3_unified': {'zenodo_id': '22776069'},
-    'EOS_PALEOS_H2O': {'zenodo_id': '22776069'},
-    # Zalmoxis EOS: Chabrier+2019/2021 H/He
-    'EOS_Chabrier2021_HHe': {'zenodo_id': '19135021'},
-    # Aerosol scattering data (no OSF project)
-    'scattering': {'zenodo_id': '19294180', 'osf_id': 'vehxg', 'osf_project': 'vehxg'},
-}
-
 # Spectral file folders served by `proteus get spectral`. One entry per
 # line, grouped by k-table set, ordered by band count. Every entry must
-# have a matching DATA_SOURCE_MAP record.
+# have a matching manifest table (see proteus.data.spectral_file_key).
 SPECTRAL_FILE_FOLDERS: tuple[str, ...] = (
     'Dayspring/16',
     'Dayspring/48',
@@ -553,234 +57,6 @@ SPECTRAL_FILE_FOLDERS: tuple[str, ...] = (
 )
 
 
-def get_data_source_info(folder: str) -> dict[str, str] | None:
-    """
-    Get both Zenodo and OSF identifiers for a given folder.
-
-    Parameters
-    ----------
-    folder : str
-        Folder name to get identifiers for
-
-    Returns
-    -------
-    dict[str, str] | None
-        Dictionary with 'zenodo_id', 'osf_id', and 'osf_project' keys, or None if not found
-    """
-    return DATA_SOURCE_MAP.get(folder, None)
-
-
-def get_zenodo_record(folder: str) -> str | None:
-    """
-    Get Zenodo record ID for a given folder.
-
-    Inputs :
-        - folder : str
-            Folder name to get the Zenodo record ID for
-
-    Returns :
-        - str | None : Zenodo record ID or None if not found
-    """
-    info = get_data_source_info(folder)
-    return info.get('zenodo_id') if info else None
-
-
-def get_osf_project(folder: str) -> str | None:
-    """
-    Get OSF project ID for a given folder.
-
-    Parameters
-    ----------
-    folder : str
-        Folder name to get the OSF project ID for
-
-    Returns
-    -------
-    str | None
-        OSF project ID or None if not found
-    """
-    info = get_data_source_info(folder)
-    return info.get('osf_project') if info else None
-
-
-def get_zenodo_from_osf(osf_id: str) -> list[str]:
-    """
-    Get all Zenodo record IDs associated with an OSF project.
-
-    Parameters
-    ----------
-    osf_id : str
-        OSF project ID
-
-    Returns
-    -------
-    list[str]
-        List of Zenodo record IDs in that OSF project
-    """
-    return [
-        info['zenodo_id']
-        for info in DATA_SOURCE_MAP.values()
-        if info.get('osf_project') == osf_id and 'zenodo_id' in info
-    ]
-
-
-def get_osf_from_zenodo(zenodo_id: str) -> str | None:
-    """
-    Get OSF project ID associated with a Zenodo record.
-
-    Parameters
-    ----------
-    zenodo_id : str
-        Zenodo record ID
-
-    Returns
-    -------
-    str | None
-        OSF project ID or None if not found
-    """
-    for info in DATA_SOURCE_MAP.values():
-        if info.get('zenodo_id') == zenodo_id:
-            return info.get('osf_project')
-    return None
-
-
-def download_OSF_folder(*, storage, folders: list[str], data_dir: Path):
-    """
-    Download a specific folder in the OSF repository
-
-    Inputs :
-        - storage : OSF storage name
-        - folders : folder names to download
-        - data_dir : local repository where data are saved
-    """
-    downloaded_files = 0
-    total_size = 0
-
-    try:
-        # Iterate through all files in OSF storage
-        for file in storage.files:
-            for folder in folders:
-                # Check if file path matches folder (handle both with and without leading slash)
-                file_path = file.path.lstrip('/')
-                folder_path = folder.lstrip('/')
-
-                if not file_path.startswith(folder_path):
-                    continue
-
-                # Extract relative path parts
-                parts = file.path.lstrip('/').split('/')
-                target = Path(data_dir, *parts)
-                target.parent.mkdir(parents=True, exist_ok=True)
-
-                # Skip if file already exists and is not empty
-                if target.exists() and target.stat().st_size > 0:
-                    log.debug(f'Skipping existing file: {file.path}')
-                    continue
-
-                try:
-                    log.info(f'Downloading {file.path} ({file.size / 1024 / 1024:.1f} MB)...')
-                    with open(target, 'wb') as f:
-                        file.write_to(f)
-                    downloaded_files += 1
-                    total_size += target.stat().st_size
-                except Exception as e:
-                    log.warning(f'Failed to download {file.path}: {e}')
-                    # Remove partial file
-                    if target.exists():
-                        try:
-                            target.unlink()
-                        except Exception:
-                            pass
-                    continue
-                break
-
-        if downloaded_files > 0:
-            log.info(
-                f'Downloaded {downloaded_files} file(s) from OSF '
-                f'({total_size / 1024 / 1024:.1f} MB total)'
-            )
-        else:
-            log.warning(f'No files downloaded from OSF for folders: {folders}')
-
-    except Exception as e:
-        log.error(f'Error accessing OSF storage: {e}')
-        raise
-
-
-def download_OSF_file(*, storage, files: list[str], data_dir: Path):
-    """
-    Download specific file(s) from OSF storage into data_dir.
-
-    Inputs :
-        - storage : OSF storage handle (e.g. from `get_osf(osf_id)`)
-        - files   : list[str]
-            OSF file paths to download (record-relative). Can be with or without leading slash.
-        - data_dir : Path
-            Local base directory where files are saved
-    """
-    downloaded_files = 0
-    total_size = 0
-
-    # Normalise requested paths (no leading slash)
-    want = {p.lstrip('/') for p in files}
-
-    try:
-        # Iterate through all files in OSF storage
-        for file in storage.files:
-            file_path = file.path.lstrip('/')
-
-            # Exact match only
-            if file_path not in want:
-                continue
-
-            parts = file.path.lstrip('/').split('/')
-            target = Path(data_dir, *parts)
-            target.parent.mkdir(parents=True, exist_ok=True)
-
-            # Skip if file already exists and is not empty
-            if target.exists() and target.stat().st_size > 0:
-                log.debug(f'Skipping existing file: {file.path}')
-                want.discard(file_path)
-                continue
-
-            try:
-                log.info(f'Downloading {file.path} ({file.size / 1024 / 1024:.1f} MB)...')
-                with open(target, 'wb') as f:
-                    file.write_to(f)
-                downloaded_files += 1
-                total_size += target.stat().st_size
-                want.discard(file_path)
-            except Exception as e:
-                log.warning(f'Failed to download {file.path}: {e}')
-                # Remove partial file
-                if target.exists():
-                    try:
-                        target.unlink()
-                    except Exception:
-                        pass
-                continue
-
-            # Optional early exit if we got everything
-            if not want:
-                break
-
-        if downloaded_files > 0:
-            log.info(
-                f'Downloaded {downloaded_files} file(s) from OSF '
-                f'({total_size / 1024 / 1024:.1f} MB total)'
-            )
-        else:
-            log.warning(f'No files downloaded from OSF for files: {files}')
-
-        # Warn if any requested files were not found in OSF storage
-        if want:
-            log.warning(f'Requested OSF files not found in storage: {sorted(want)}')
-
-    except Exception as e:
-        log.error(f'Error accessing OSF storage: {e}')
-        raise
-
-
 def GetFWLData() -> Path:
     """
     Get path to FWL data directory on the disk
@@ -788,319 +64,41 @@ def GetFWLData() -> Path:
     return Path(FWL_DATA_DIR).absolute()
 
 
-@functools.cache
-def get_osf(id: str):
-    """
-    Generate an object to access OSF storage
-    """
-    osf = OSF()
-    project = osf.project(id)
-    return project.storage('osfstorage')
-
-
-def check_needs_update(dir, zenodo):
-    """
-    Check whether the folder 'dir' needs to be re-downloaded.
-
-    This is the case when it is missing, outdated, or corrupted.
-
-    Inputs :
-        - dir : folder path
-        - zenodo : zenodo record ID
-    """
-
-    log.debug(f'Checking whether {dir} needs updating (record {zenodo})')
-
-    # Trivial case where folder is missing
-    if not os.path.isdir(dir):
-        return True
-
-    # Folder exists but cannot check hashes, so exit here
-    if not zenodo:
-        return False  # don't update
-
-    # Folder exists... use Zenodo to check MD5 hashes
-    return not validate_zenodo_folder(zenodo, dir)
-
-
-def download(
-    *,
-    folder: str,
-    target: str,
-    osf_id: str | None = None,
-    zenodo_id: str | None = None,
-    desc: str,
-    force: bool = False,
-    file: str | None = None,
-) -> bool:
-    """
-    Generic download function with automatic source mapping.
-
-    This function can automatically look up OSF and Zenodo IDs from the unified
-    DATA_SOURCE_MAP if they are not provided. If both are provided, uses them directly.
-
-    Attributes
-    ----------
-    folder: str
-        Filename to download
-    target: str
-        name of target directory
-    osf_id: str | None
-        OSF project id (optional, will be looked up from mapping if not provided)
-    zenodo_id: str | None
-        Zenodo record id (optional, will be looked up from mapping if not provided)
-    desc: str
-        Description for logging
-    force: bool
-        Force a re-download even if valid
-    file: str | None
-        If specified, the specific file within the Zenodo record to download. If None, the entire record will be downloaded.
-
-    Returns
-    -------
-    bool
-        True if the file was downloaded successfully, False otherwise
-    """
-    log.debug(f'Get {desc}?')
-
-    # Try to get source info from mapping if IDs not provided
-    source_info = get_data_source_info(folder)
-    if source_info:
-        # Use mapping values if not explicitly provided
-        if zenodo_id is None:
-            zenodo_id = source_info.get('zenodo_id')
-        if osf_id is None:
-            osf_id = source_info.get('osf_project')
-        log.debug(f'Using mapped source info: Zenodo={zenodo_id}, OSF={osf_id}')
-    elif zenodo_id is None and osf_id is None:
-        log.warning(f'No source mapping found for {folder} and no IDs provided')
-        log.warning(f'  Cannot download {desc} without source identifiers')
-        return False
-
-    # Check that target FWL_DATA folder exists
-    data_dir = GetFWLData() / target
-    data_dir.mkdir(parents=True, exist_ok=True)
-
-    # Path to specific folder within the data_dir folder
-    folder_dir = data_dir / folder
-
-    # ----------------------------
-    # Single-file mode
-    # ----------------------------
-
-    if file is not None:
-        # Destination is inside folder_dir, preserving any subfolders in `file`
-        dest_path = folder_dir / file
-
-        # Decide if we need to download
-        file_invalid = force or (not dest_path.is_file()) or (dest_path.stat().st_size == 0)
-
-        # A pin bump must refresh files fetched from an older record: the
-        # sidecar written next to the file records the providing Zenodo
-        # record. A missing or mismatching sidecar (including every file
-        # that predates this bookkeeping) triggers a one-time re-fetch.
-        if not file_invalid and zenodo_id is not None:
-            if _read_source_marker(dest_path) != zenodo_id:
-                log.info(
-                    f'    {desc}: on-disk file is not from Zenodo record '
-                    f'{zenodo_id}; refreshing'
-                )
-                file_invalid = True
-
-        if not file_invalid:
-            log.debug(f'    {desc} already exists (file: {file})')
-            return True
-
-        log.info(f'Downloading {desc} (file: {file}) to {folder_dir}')
-        success = False
-
-        # Try Zenodo first
-        if zenodo_id is not None:
-            try:
-                # Ensure parent directories exist for file-mode expectations
-                (folder_dir / Path(file).parent).mkdir(parents=True, exist_ok=True)
-
-                if download_zenodo_file(
-                    zenodo_id=zenodo_id, folder_dir=folder_dir, record_path=file
-                ):
-                    # Confirm file exists somewhere under folder_dir.
-                    if dest_path.is_file() and dest_path.stat().st_size > 0:
-                        success = True
-                    else:
-                        # fallback: look for basename anywhere under folder_dir
-                        matches = [
-                            p
-                            for p in folder_dir.rglob(Path(file).name)
-                            if p.is_file() and p.stat().st_size > 0
-                        ]
-                        success = bool(matches)
-                        if success and not dest_path.exists():
-                            # leave it; caller can locate via rglob if record layout differs
-                            log.debug(
-                                f'File downloaded but not at expected path {dest_path}; '
-                                f'found at {matches[0]}'
-                            )
-            except RuntimeError as e:
-                log.warning(f'    Zenodo download failed: {e}')
-                success = False
-        else:
-            log.debug('    No Zenodo ID provided, skipping Zenodo download')
-
-        if success:
-            _write_source_marker(dest_path, zenodo_id)
-            return True
-
-        # OSF fallback
-        if osf_id:
-            try:
-                log.info(f'Attempting OSF fallback download (project {osf_id})...')
-                storage = get_osf(osf_id)
-
-                # OSF paths usually include folder prefix; try a couple of common variants
-                osf_candidates = []
-                # if caller passed "subdir/file.ext", likely OSF has "<folder>/subdir/file.ext"
-                osf_candidates.append(f'{folder.rstrip("/")}/{file.lstrip("/")}')
-                # sometimes files live at project root
-                osf_candidates.append(file.lstrip('/'))
-
-                target_root = GetFWLData() / target
-                download_OSF_file(storage=storage, files=osf_candidates, data_dir=target_root)
-
-                # Verify OSF download succeeded
-                if dest_path.exists() and dest_path.is_file() and dest_path.stat().st_size > 0:
-                    log.info(f'Successfully downloaded {desc} from OSF (project {osf_id})')
-                    success = True
-                else:
-                    # basename fallback
-                    matches = [
-                        p
-                        for p in folder_dir.rglob(Path(file).name)
-                        if p.is_file() and p.stat().st_size > 0
-                    ]
-                    if matches:
-                        log.info(f'Successfully downloaded {desc} from OSF (project {osf_id})')
-                        success = True
-                    else:
-                        log.warning(f'OSF download completed but file not found: {dest_path}')
-                        success = False
-            except Exception as e:
-                log.warning(f'    OSF download failed: {e}')
-                import traceback
-
-                log.debug(f'OSF download traceback: {traceback.format_exc()}')
-                success = False
-        else:
-            log.warning(f'No OSF project ID available for {desc}')
-
-        if success:
-            _write_source_marker(dest_path, zenodo_id)
-            return True
-
-        log.error(
-            f'    Failed to download {desc} (file: {file}) from IDs: Zenodo {zenodo_id}, OSF {osf_id}'
-        )
-        return False
-
-    # ----------------------------
-    # Folder/record mode
-    # ----------------------------
-
-    # Check if the folder needs updating
-    folder_invalid = check_needs_update(folder_dir, zenodo_id) or force
-
-    # Update the folder
-    if folder_invalid:
-        log.info(f'Downloading {desc} to {data_dir}')
-        success = False
-
-        # Try Zenodo in the first instance
-        if zenodo_id is not None:
-            try:
-                # download the folder
-                if download_zenodo_folder(zenodo_id=zenodo_id, folder_dir=folder_dir):
-                    # files validated ok?
-                    success = validate_zenodo_folder(zenodo_id, folder_dir)
-            except RuntimeError as e:
-                log.warning(f'    Zenodo download failed: {e}')
-                if folder_dir.exists():
-                    try:
-                        folder_dir.rmdir()
-                    except Exception:
-                        pass  # Ignore cleanup errors
-        else:
-            log.debug('    No Zenodo ID provided, skipping Zenodo download')
-
-        if success:
-            return True
-
-        # If Zenodo fails or not available, try OSF
-        if osf_id:
-            try:
-                log.info(f'Attempting OSF fallback download (project {osf_id})...')
-                storage = get_osf(osf_id)
-                download_OSF_folder(storage=storage, folders=[folder], data_dir=data_dir)
-
-                # Verify OSF download succeeded
-                if folder_dir.exists() and any(f.is_file() for f in folder_dir.rglob('*')):
-                    log.info(f'Successfully downloaded {desc} from OSF (project {osf_id})')
-                    success = True
-                else:
-                    log.warning(f'OSF download completed but folder is empty: {folder_dir}')
-                    success = False
-            except Exception as e:
-                log.warning(f'    OSF download failed: {e}')
-                import traceback
-
-                log.debug(f'OSF download traceback: {traceback.format_exc()}')
-                success = False
-        else:
-            log.warning(f'No OSF project ID available for {desc}')
-
-        if success:
-            return True
-
-        log.error(f'    Failed to download {desc} from IDs: Zenodo {zenodo_id}, OSF {osf_id}')
-        return False
-
-    else:
-        log.debug(f'    {desc} already exists')
-    return True
-
-
 def download_surface_albedos():
     """
-    Download reflectance data for various surface materials
-    """
-    folder = 'Hammond24'
-    source_info = get_data_source_info(folder)
-    if not source_info:
-        raise ValueError(f'No data source mapping found for folder: {folder}')
+    Download the surface reflectance data through fwl-io.
 
-    download(
-        folder=folder,
-        target='surface_albedos',
-        osf_id=source_info['osf_project'],
-        zenodo_id=source_info['zenodo_id'],
-        desc='surface reflectance data',
-    )
+    The record pin and the file checksums come from the manifest PROTEUS ships,
+    so the tables land in their version directory and are verified against the
+    committed registry. AGNI needs these files, so a failed fetch raises.
+    """
+    from proteus.data import SURFACE_ALBEDOS_HAMMOND_2024, fetch_dataset
+
+    fetch_dataset(SURFACE_ALBEDOS_HAMMOND_2024)
 
 
 def download_scattering():
     """
-    Download scattering radiative properties data
-    """
-    folder = 'scattering'
-    source_info = get_data_source_info(folder)
-    if not source_info:
-        raise ValueError(f'No data source mapping found for folder: {folder}')
+    Download the monochromatic aerosol scattering data (``.mon``) through fwl-io.
 
-    download(
-        folder=folder,
-        target='scattering',
-        osf_id=source_info['osf_project'],
-        zenodo_id=source_info['zenodo_id'],
-        desc='radiative properties scattering data',
-    )
+    The tables land in the version directory of ``SCATTERING`` and are verified
+    against the committed registry; DataverseNL serves them when Zenodo fails.
+    """
+    from proteus.data import SCATTERING, fetch_dataset
+
+    fetch_dataset(SCATTERING)
+
+
+def download_refractive():
+    """
+    Download the aerosol refractive indices (n, k) for Mie scattering through fwl-io.
+
+    The files land in the version directory of ``REFRACTIVE`` and are verified
+    against the committed registry; DataverseNL serves them when Zenodo fails.
+    """
+    from proteus.data import REFRACTIVE, fetch_dataset
+
+    fetch_dataset(REFRACTIVE)
 
 
 def download_spectral_file(name: str, bands: str):
@@ -1119,18 +117,13 @@ def download_spectral_file(name: str, bands: str):
     if not isinstance(bands, str) or (len(bands) < 1):
         raise ValueError('Must provide number of bands in spectral file')
 
+    from proteus.data import fetch_dataset, spectral_file_key
+
     folder = f'{name}/{bands}'
-    source_info = get_data_source_info(folder)
-    if not source_info:
+    if folder not in SPECTRAL_FILE_FOLDERS:
         raise ValueError(f'No data source mapping found for folder: {folder}')
 
-    download(
-        folder=folder,
-        target='spectral_files',
-        osf_id=source_info['osf_project'],
-        zenodo_id=source_info['zenodo_id'],
-        desc=f'{name}{bands} spectral file',
-    )
+    fetch_dataset(spectral_file_key(name, bands))
 
 
 def download_spectral_files(name: str | None = None, bands: str | None = None):
@@ -1175,271 +168,362 @@ def download_spectral_files(name: str | None = None, bands: str | None = None):
 
 
 def download_phoenix(*, alpha: float = 0.0, FeH: float = 0.0, force: bool = False) -> bool:
-    """Download PHOENIX stellar spectra into `FWL_DATA`.
+    """Fetch one PHOENIX grid through fwl-io and unpack it.
 
-    Used by `proteus.star.phoenix`. The current implementation downloads the
-    PHOENIX bundle via the unified `download()` mechanism.
+    The dataset holds one zip archive per ([Fe/H], [alpha/M]) pair. Only the
+    archive for the requested pair is fetched and verified against the registry
+    checksum; the other archives of the record are not downloaded. The archive
+    is unpacked into ``FeH<FeH>_alpha<alpha>/`` inside the dataset directory
+    and kept beside it.
 
-    Downloads the FeH/alpha-specific PHOENIX zip bundle as a single file, then unzips it.
+    Parameters
+    ----------
+    alpha : float
+        Alpha-element enhancement [alpha/M] of the grid.
+    FeH : float
+        Metallicity [Fe/H] of the grid.
+    force : bool
+        Remove the unpacked grid and its archive first, so both are fetched again.
+
+    Returns
+    -------
+    bool
+        True if the unpacked grid is on disk.
     """
-    desc = f'PHOENIX stellar spectra (alpha={alpha:+0.1f}, [Fe/H]={FeH:+0.1f})'
+    from proteus.data import STELLAR_SPECTRA_PHOENIX, dataset_dir, fetch_dataset_file
 
     feh_str = phoenix_param(FeH, kind='FeH')
     alpha_str = phoenix_param(alpha, kind='alpha')
-
-    # Published zip name
     zip_name = f'FeH{feh_str}_alpha{alpha_str}_phoenixMedRes_R05000.zip'
+    lte_glob = 'LTE_T*_phoenixMedRes_R05000.txt'
 
-    base_dir = GetFWLData() / 'stellar_spectra' / 'PHOENIX'
-    zip_path = base_dir / zip_name
-
-    # Where unpacked files are stored
+    fwl_data = GetFWLData()
+    base_dir = dataset_dir(STELLAR_SPECTRA_PHOENIX, data_root=fwl_data)
     grid_dir = base_dir / f'FeH{feh_str}_alpha{alpha_str}'
 
-    ok = download(
-        folder='PHOENIX',
-        target='stellar_spectra',
-        desc=desc,
-        force=force,
-        file=zip_name,
-    )
-    if not ok:
-        return False
-
-    if not zip_path.is_file():
-        matches = [p for p in base_dir.rglob(zip_name) if p.is_file()]
-        if not matches:
-            log.error(f'Downloaded PHOENIX bundle but cannot find zip on disk: {zip_name}')
-            return False
-        zip_path = matches[0]
-
-    # Skip if already there and no force (zip still removed below only if we unzip)
-    if (
-        not force
-        and grid_dir.exists()
-        and any(grid_dir.glob('LTE_T*_phoenixMedRes_R05000.txt'))
-    ):
-        # If zip exists from a previous run, remove it
-        if zip_path.exists():
-            zip_path.unlink()
+    if force:
+        safe_rm(str(grid_dir))
+        safe_rm(str(base_dir / zip_name))
+    elif any(grid_dir.glob(lte_glob)):
         return True
 
-    if force and grid_dir.exists():
-        safe_rm(grid_dir)
-    grid_dir.mkdir(parents=True, exist_ok=True)
-
-    log.info(f'Unpacking PHOENIX zip: {zip_path.name} -> {grid_dir}')
-    with zipfile.ZipFile(zip_path, 'r') as zf:
-        zf.extractall(grid_dir)
-
-    if not any(grid_dir.glob('LTE_T*_phoenixMedRes_R05000.txt')):
-        log.error(f'Extraction completed but LTE files not found where expected: {grid_dir}')
+    log.info(f'Fetching PHOENIX grid [Fe/H]={FeH:+0.1f}, [alpha/M]={alpha:+0.1f}: {zip_name}')
+    try:
+        zip_path = fetch_dataset_file(STELLAR_SPECTRA_PHOENIX, zip_name, data_root=fwl_data)
+    except KeyError:
+        log.error(f'No PHOENIX grid archive named {zip_name} in the dataset registry')
+        return False
+    except Exception as exc:  # noqa: BLE001 - the caller reports the failed download
+        log.error(f'Failed to fetch PHOENIX grid {zip_name}: {exc}')
         return False
 
-    # Remove extraction marker
-    marker = base_dir / f'.extracted_{zip_path.stem}'
-    if marker.exists():
-        marker.unlink()
+    # Unpack next to the final directory and rename, so an interrupted
+    # extraction is never mistaken for a complete grid.
+    partial_dir = grid_dir.with_name(grid_dir.name + '.partial')
+    safe_rm(str(partial_dir))
+    partial_dir.mkdir(parents=True, exist_ok=True)
 
-    # Remove the zip after successful unpack
-    zip_path.unlink()
+    log.info(f'Unpacking PHOENIX zip: {zip_path.name} -> {grid_dir}')
+    try:
+        with zipfile.ZipFile(zip_path, 'r') as zf:
+            zf.extractall(partial_dir)
+    except zipfile.BadZipFile as exc:
+        log.error(f'PHOENIX archive {zip_path.name} cannot be unpacked: {exc}')
+        safe_rm(str(partial_dir))
+        return False
 
+    if not any(partial_dir.glob(lte_glob)):
+        log.error(f'Extraction completed but LTE files not found where expected: {partial_dir}')
+        safe_rm(str(partial_dir))
+        return False
+
+    safe_rm(str(grid_dir))
+    partial_dir.rename(grid_dir)
     return True
 
 
 def download_muscles(stars: str | list[str] | None = None, *, force: bool = False) -> bool:
     """
-    Specifically download MUSCLES stellar spectrum(s). Uses the unified `download()` mechanism.
-    Currently not called in the main codebase, but available for users who want to download specific MUSCLES spectra manually through the CLI.
+    Download MUSCLES stellar spectrum(s) through fwl-io.
+
+    Available to users who want to download specific MUSCLES spectra manually through the CLI.
 
     Parameters
     ----------
     stars:
-        - None: download the whole MUSCLES catalogue (previous behaviour)
+        - None: download the whole MUSCLES catalogue
         - str: download one star (e.g. "trappist-1")
         - list[str]: download multiple stars
     force:
-        Force re-download even if present.
+        Remove the requested files first so they are fetched again.
 
     Returns
     -------
     bool
         True if requested downloads succeeded (all of them, when list provided).
     """
-    folder = 'MUSCLES'
-    source_info = get_data_source_info(folder)
-    if not source_info:
-        raise ValueError(f'No data source mapping found for folder: {folder}')
+    from proteus.data import (
+        STELLAR_SPECTRA_MUSCLES,
+        dataset_dir,
+        fetch_dataset,
+        fetch_dataset_file,
+    )
 
-    # Old behavior: download everything
-    if stars is None:
-        return download(
-            folder=folder,
-            target='stellar_spectra',
-            osf_id=source_info['osf_project'],
-            zenodo_id=source_info['zenodo_id'],
-            desc='MUSCLES stellar spectra catalogue',
-            force=force,
-        )
+    try:
+        if stars is None:
+            if force:
+                safe_rm(dataset_dir(STELLAR_SPECTRA_MUSCLES))
+            fetch_dataset(STELLAR_SPECTRA_MUSCLES)
+            return True
 
-    # Normalize to list
-    if isinstance(stars, str):
-        stars_list = [stars]
+        stars_list = [stars] if isinstance(stars, str) else list(stars)
+        ok_all = True
+        for star in stars_list:
+            fname = f'{star}.txt'
+            if force:
+                safe_rm(dataset_dir(STELLAR_SPECTRA_MUSCLES) / fname)
+            try:
+                fetch_dataset_file(STELLAR_SPECTRA_MUSCLES, fname)
+            except KeyError:
+                log.error('No MUSCLES spectrum named %s in the dataset registry', star)
+                ok_all = False
+        return ok_all
+    except Exception as exc:  # noqa: BLE001 -- the caller reports a failed download
+        log.error('Failed to download MUSCLES stellar spectra: %s', exc)
+        return False
+
+
+def _melting_curve_keys() -> dict[str, str]:
+    """Return the manifest key of each melting-curve name served by fwl-io.
+
+    Returns
+    -------
+    dict
+        Maps a ``interior_struct.melting_dir`` value to a dotted manifest key.
+    """
+    from proteus.data import (
+        MELTING_MONTEUX_MINUS600,
+        MELTING_MONTEUX_PLUS600,
+        MELTING_WOLF_BOWER_2018,
+    )
+
+    return {
+        'Monteux+600': MELTING_MONTEUX_PLUS600,
+        'Monteux-600': MELTING_MONTEUX_MINUS600,
+        'Wolf_Bower+2018': MELTING_WOLF_BOWER_2018,
+    }
+
+
+def resolve_melting_curve_files(
+    melting_dir: str, data_root: Path | str | None = None
+) -> tuple[Path, Path]:
+    """Locate the P-T solidus and liquidus files of one melting curve.
+
+    A name served through the manifest (``Monteux+600``, ``Monteux-600``,
+    ``Wolf_Bower+2018``) resolves to ``solidus.dat`` and ``liquidus.dat`` in its
+    checksum-verified dataset directory; a local directory
+    ``interior_lookup_tables/Melting_curves/<melting_dir>`` with
+    ``solidus_P-T.dat`` and ``liquidus_P-T.dat`` is used only when that dataset
+    is not on disk. Any other name resolves to the local directory, which may
+    hold ``solidus_P-T.dat`` and ``liquidus_P-T.dat`` or ``solidus.dat`` and
+    ``liquidus.dat``.
+
+    Parameters
+    ----------
+    melting_dir : str
+        Value of ``interior_struct.melting_dir``.
+    data_root : Path or str, optional
+        Data root; defaults to ``FWL_DATA``.
+
+    Returns
+    -------
+    tuple of Path
+        Solidus and liquidus file paths; when no pair is on disk, the paths the
+        caller reports as missing.
+    """
+    from proteus.data import dataset_dir
+
+    root = GetFWLData() if data_root is None else Path(data_root)
+    local = root / 'interior_lookup_tables' / 'Melting_curves' / melting_dir
+    candidates = [(local / 'solidus_P-T.dat', local / 'liquidus_P-T.dat')]
+    key = _melting_curve_keys().get(melting_dir)
+    if key is None:
+        candidates.append((local / 'solidus.dat', local / 'liquidus.dat'))
     else:
-        stars_list = list(stars)
+        folder = dataset_dir(key, data_root=root)
+        candidates.insert(0, (folder / 'solidus.dat', folder / 'liquidus.dat'))
+    for solidus, liquidus in candidates:
+        if solidus.is_file() and liquidus.is_file():
+            return solidus, liquidus
+    return candidates[0]
 
-    def muscles_filename(star: str) -> str:
-        return f'{star}.txt'
 
-    ok_all = True
-    for star in stars_list:
-        f = muscles_filename(star)
-        ok = download(
-            folder=folder,
-            target='stellar_spectra',
-            osf_id=source_info['osf_project'],
-            zenodo_id=source_info['zenodo_id'],
-            desc=f'MUSCLES stellar spectrum ({star})',
-            force=force,
-            file=f,  # uses single-file mode
-        )
-        ok_all = ok_all and ok
+def resolve_lookup_table_dir(data_root: Path | str | None = None) -> Path:
+    """Return the directory of the Wolf and Bower 2018 P-S lookup tables.
 
-    return ok_all
+    Parameters
+    ----------
+    data_root : Path or str, optional
+        Data root; defaults to ``FWL_DATA``.
+
+    Returns
+    -------
+    Path
+        Versioned dataset directory of the tables. The directory is not
+        checked to hold the files.
+    """
+    from proteus.data import LOOKUP_WOLF_BOWER_2018_1TPA, dataset_dir
+
+    root = GetFWLData() if data_root is None else Path(data_root)
+    return dataset_dir(LOOKUP_WOLF_BOWER_2018_1TPA, data_root=root)
+
+
+def find_lookup_table_dir(data_root: Path | str | None = None) -> Path | None:
+    """Return the fetched Wolf and Bower 2018 P-S table directory if populated.
+
+    Parameters
+    ----------
+    data_root : Path or str, optional
+        Data root; defaults to ``FWL_DATA``.
+
+    Returns
+    -------
+    Path or None
+        The dataset directory when it holds every SPIDER phase file and both
+        P-S melting curves, else None (also when the data root cannot be
+        created), so an interrupted fetch never shadows a complete table set.
+    """
+    from proteus.interior_energetics.common import (
+        _SPIDER_EOS_MELTING_CURVES,
+        _SPIDER_EOS_PHASE_FILES,
+    )
+
+    try:
+        folder = resolve_lookup_table_dir(data_root)
+    except OSError:
+        return None
+    names = _SPIDER_EOS_PHASE_FILES + _SPIDER_EOS_MELTING_CURVES
+    if all((folder / name).is_file() for name in names):
+        return folder
+    return None
 
 
 def download_interior_lookuptables(clean=False):
+    """Fetch the Wolf and Bower 2018 melting curves.
+
+    They are fetched through fwl-io into
+    ``FWL_DATA/interior/melting_curves/wolf_bower_2018/r<record-id>/`` and read
+    when ``interior_struct.melting_dir`` is ``Wolf_Bower+2018``.
+
+    Parameters
+    ----------
+    clean : bool
+        Remove the fetched dataset first, so it is fetched again.
     """
-    Download basic interior lookup tables
-    """
-    log.debug('Download basic interior lookup tables')
+    from proteus.data import MELTING_WOLF_BOWER_2018, dataset_dir, fetch_dataset
 
-    data_dir = GetFWLData() / 'interior_lookup_tables'
-    data_dir.mkdir(parents=True, exist_ok=True)
-
-    for dir in ARAGOG_BASIC:
-        folder_dir = data_dir / dir
-        if clean:
-            safe_rm(folder_dir.as_posix())
-        source_info = get_data_source_info(dir)
-        if not source_info:
-            log.warning(f'No data source mapping found for {dir}, skipping')
-            continue
-
-        download(
-            folder=dir,
-            target=data_dir,
-            osf_id=source_info['osf_project'],
-            zenodo_id=source_info['zenodo_id'],
-            desc=f'Interior lookup tables: {dir}',
-        )
+    log.debug('Fetch basic interior lookup tables')
+    root = GetFWLData()
+    if clean:
+        safe_rm(str(dataset_dir(MELTING_WOLF_BOWER_2018, data_root=root)))
+    fetch_dataset(MELTING_WOLF_BOWER_2018, data_root=root)
 
 
 def download_melting_curves(config: Config, clean: bool = False):
-    """
-    Ensure melting curve data are available locally.
+    """Ensure the melting curve named in the configuration is available.
 
-    Expected layout:
-        interior_lookup_tables/
-            Melting_curves/
-                <melting_dir>/
-                    solidus_P-T.dat
-                    liquidus_P-T.dat
-                    solidus_P-S.dat
-                    liquidus_P-S.dat
+    ``Monteux+600``, ``Monteux-600`` and ``Wolf_Bower+2018`` are fetched through
+    fwl-io into ``FWL_DATA/interior/melting_curves/<key>/r<record-id>/``. Any
+    other name must be a local directory
+    ``interior_lookup_tables/Melting_curves/<melting_dir>`` that holds
+    ``solidus_P-T.dat`` and ``liquidus_P-T.dat`` or ``solidus.dat`` and
+    ``liquidus.dat``; nothing is fetched for it.
+
+    Parameters
+    ----------
+    config : Config
+        Configuration object; ``interior_struct.melting_dir`` names the curve.
+    clean : bool
+        For a served name, remove the fetched dataset and the local directory of
+        that name first, so the curve is fetched again. A local directory of a
+        name that is not served is never removed.
+
+    Raises
+    ------
+    ValueError
+        If the name is neither served through the manifest nor present as a
+        local directory.
     """
-    log.debug('Download melting curve data')
-    if config.interior_struct.melting_dir is None:
+    from proteus.data import dataset_dir, fetch_dataset
+
+    log.debug('Fetch melting curve data')
+    melting_dir = config.interior_struct.melting_dir
+    if melting_dir is None:
         log.debug('melting_dir is None, skipping melting curve download')
         return
-    rel_dir = Path('Melting_curves') / config.interior_struct.melting_dir
 
-    data_dir = GetFWLData() / 'interior_lookup_tables'
-    data_dir.mkdir(parents=True, exist_ok=True)
-
-    folder_dir = data_dir / rel_dir
-
-    if clean:
-        safe_rm(folder_dir.as_posix())
-
-    # ------------------------------------------------------------------
-    # Canonical flat layout: if files already exist locally, do not download.
-    # ------------------------------------------------------------------
-    solidus_pt = folder_dir / 'solidus_P-T.dat'
-    liquidus_pt = folder_dir / 'liquidus_P-T.dat'
-    solidus_ps = folder_dir / 'solidus_P-S.dat'
-    liquidus_ps = folder_dir / 'liquidus_P-S.dat'
-
-    if all(p.is_file() for p in (solidus_pt, liquidus_pt, solidus_ps, liquidus_ps)):
-        log.debug('Melting curve data already present locally: %s', folder_dir)
+    root = GetFWLData()
+    key = _melting_curve_keys().get(melting_dir)
+    local = root / 'interior_lookup_tables' / 'Melting_curves' / melting_dir
+    if key is not None:
+        if clean:
+            safe_rm(str(dataset_dir(key, data_root=root)))
+            safe_rm(str(local))
+        fetch_dataset(key, data_root=root)
         return
 
-    # ------------------------------------------------------------------
-    # Fallback: try remote source mapping.
-    # ------------------------------------------------------------------
-    source_info = get_data_source_info(rel_dir.as_posix())
-    if not source_info:
+    solidus, liquidus = resolve_melting_curve_files(melting_dir, data_root=root)
+    if not (solidus.is_file() and liquidus.is_file()):
         raise ValueError(
-            f'No data source mapping found for folder: {rel_dir}. '
-            f'Also did not find local melting curve data in: {folder_dir}'
+            f"No dataset serves melting_dir='{melting_dir}' and no local melting "
+            f'curve files were found in: {local}'
         )
-
-    download(
-        folder=rel_dir.as_posix(),
-        target=data_dir,
-        osf_id=source_info['osf_project'],
-        zenodo_id=source_info['zenodo_id'],
-        desc=f'Melting curve data: {rel_dir}',
-    )
-
-    # ------------------------------------------------------------------
-    # If the download contains solidus.dat / liquidus.dat, treat them as
-    # P-T and create canonical *_P-T.dat copies.
-    # ------------------------------------------------------------------
-    for stem in ('solidus', 'liquidus'):
-        legacy = folder_dir / f'{stem}.dat'
-        canonical = folder_dir / f'{stem}_P-T.dat'
-        if legacy.is_file() and not canonical.is_file():
-            shutil.copy2(legacy, canonical)
-            log.debug('Copied %s -> %s', legacy.name, canonical.name)
+    log.debug('Melting curve data already present locally: %s', local)
 
 
 def download_stellar_spectra(*, folders: tuple[str, ...] | None = None):
     """
-    Download stellar spectra folders into ``FWL_DATA/stellar_spectra``.
+    Download stellar spectra collections into ``FWL_DATA/star/spectra``.
 
     Notes
     -----
-    PROTEUS expects different stellar spectra collections in subfolders like:
-    - ``stellar_spectra/solar/``
-    - ``stellar_spectra/MUSCLES/``
-    - ``stellar_spectra/Named/``
+    Each collection is a manifest dataset and lands in its own version
+    directory: ``star/spectra/solar/``, ``star/spectra/named/`` and
+    ``star/spectra/muscles/``, each below an ``r<record-id>`` directory.
 
     Parameters
     ----------
     folders:
-        Specific folders to download. If None, downloads a minimal set that covers
-        common configurations.
+        Collections to download: ``'Named'``, ``'solar'`` or ``'MUSCLES'``.
+        If None, downloads all three.
+
+    Raises
+    ------
+    ValueError
+        A requested collection is not known.
     """
+    from proteus.data import (
+        STELLAR_SPECTRA_MUSCLES,
+        STELLAR_SPECTRA_NAMED,
+        STELLAR_SPECTRA_SOLAR,
+        fetch_dataset,
+    )
+
+    keys = {
+        'Named': STELLAR_SPECTRA_NAMED,
+        'solar': STELLAR_SPECTRA_SOLAR,
+        'MUSCLES': STELLAR_SPECTRA_MUSCLES,
+    }
     if folders is None:
-        # Minimal set for most configurations:
-        # - Named: general named spectra
-        # - solar: solar spectra (e.g., sun.txt, Sun0.6Ga.txt, ...)
-        # - MUSCLES: observed stellar spectra catalogue
-        folders = ('Named', 'solar', 'MUSCLES')
+        folders = tuple(keys)
 
-    for folder in folders:
-        source_info = get_data_source_info(folder)
-        if not source_info:
-            raise ValueError(f'No data source mapping found for folder: {folder}')
-
-        download(
-            folder=folder,
-            target='stellar_spectra',
-            osf_id=source_info['osf_project'],
-            zenodo_id=source_info['zenodo_id'],
-            desc=f'stellar spectra ({folder})',
+    unknown = [folder for folder in folders if folder not in keys]
+    if unknown:
+        raise ValueError(
+            f'Unknown stellar spectra collection(s) {unknown}; choose from {list(keys)}'
         )
+    for folder in folders:
+        fetch_dataset(keys[folder])
 
 
 def _fetch_optional_dataset(key: str, desc: str) -> bool:
@@ -1491,106 +575,134 @@ def download_massradius_data():
     """
     Download the mass-radius relations through fwl-io.
 
-    The record pin and the file checksums come from the manifest PROTEUS ships,
-    so the curves land in their version directory and are verified against the
-    committed registry.
+    The record pin and the file checksums come from the fwl-io shared manifest,
+    so the curves land in their version directory and are verified against its
+    registry.
     """
     from proteus.data import MASS_RADIUS_ZENG_2019
 
     return _fetch_optional_dataset(MASS_RADIUS_ZENG_2019, 'mass radius data')
 
 
-def download_stellar_tracks(track: str, use_osf_fallback: bool = True):
+def download_stellar_tracks(track: str):
     """
-    Download stellar evolution tracks
+    Download stellar evolution tracks through MORS.
 
-    Uses the function built-into MORS. Falls back to OSF if MORS download fails.
+    MORS fetches each track set through fwl-io from its Zenodo record, with its
+    DataverseNL mirror as the fallback, and verifies the files against the
+    committed registry.
 
     Parameters
     ----------
     track : str
         Track name ('Spada' or 'Baraffe')
-    use_osf_fallback : bool
-        If True, attempt OSF download if MORS download fails
+
+    Raises
+    ------
+    ValueError
+        ``track`` is not 'Spada' or 'Baraffe'; nothing is downloaded.
+    FileNotFoundError
+        MORS finished, but the track directory is missing or empty.
+    OSError or fwl-io error
+        A failed download, as MORS raises it.
     """
     from mors import data as mors_data
 
+    accessors = {'Baraffe': mors_data.baraffe_data_dir, 'Spada': mors_data.spada_data_dir}
+    if track not in accessors:
+        raise ValueError(f'Unknown stellar track set {track!r}; choose from {list(accessors)}')
     log.debug(f'Downloading stellar evolution tracks: {track}')
+    mors_data.DownloadEvolutionTracks(track)
+    tracks_path = accessors[track]()
+    if not (tracks_path.exists() and any(tracks_path.iterdir())):
+        raise FileNotFoundError(f'Tracks directory empty or missing: {tracks_path}')
+    log.info(f'Successfully downloaded {track} tracks via MORS')
 
-    # Try MORS download first
+
+def _fetch_errors() -> tuple[type[Exception], ...]:
+    """Return what a fetch raises when a dataset cannot be obtained.
+
+    Filesystem errors and fwl-io's own download errors; any other error (a
+    stale fwl-io, a bug) is not a failed download and must propagate.
+
+    Returns
+    -------
+    tuple of type
+        ``(OSError, DownloadError, OfflineDataError, ArchiveError,
+        MissingDataRootError)``.
+
+    Raises
+    ------
+    RuntimeError
+        The installed fwl-io lacks these classes, so it predates the floor.
+    """
     try:
-        mors_data.DownloadEvolutionTracks(track)
-        # Verify the download landed. A migrated MORS fetches Baraffe through
-        # fwl-io into its versioned directory and exposes baraffe_data_dir to
-        # resolve it; an older MORS wrote Baraffe to the legacy path, like Spada.
-        # Verify wherever this MORS version actually placed the tracks.
-        if track == 'Baraffe' and hasattr(mors_data, 'baraffe_data_dir'):
-            tracks_path = mors_data.baraffe_data_dir()
-        else:
-            tracks_path = GetFWLData() / 'stellar_evolution_tracks' / track
-        if tracks_path.exists() and any(tracks_path.iterdir()):
-            log.info(f'Successfully downloaded {track} tracks via MORS')
-            return
-        else:
-            log.warning(f'MORS download completed but tracks not found at {tracks_path}')
-            raise FileNotFoundError(f'Tracks directory empty or missing: {tracks_path}')
-    except Exception as e:
-        log.warning(f'MORS download failed for {track} tracks: {e}')
+        from fwl_io import DownloadError, MissingDataRootError, OfflineDataError
+        from fwl_io.archive import ArchiveError
+    except ImportError as exc:
+        from proteus.data import FWL_IO_FLOOR
 
-        # Baraffe is hash-verified by fwl-io and has no OSF mirror, so a failure
-        # is authoritative; only Spada has a legacy OSF fallback.
-        if track == 'Baraffe' or not use_osf_fallback:
-            raise
+        raise RuntimeError(
+            f'the installed fwl-io is too old for PROTEUS; upgrade to fwl-io>={FWL_IO_FLOOR}.'
+        ) from exc
+    return (OSError, DownloadError, OfflineDataError, ArchiveError, MissingDataRootError)
 
-        # Fallback to OSF if available
-        # Note: OSF project ID for stellar tracks may need to be determined
-        # For now, log that we're attempting OSF fallback
-        log.info(f'Attempting OSF fallback for {track} tracks...')
 
-        # Try to find OSF project with stellar tracks
-        # Common OSF project IDs in PROTEUS: 'phsxf' (ARAGOG), '8r2sw' (stellar spectra)
-        # Stellar tracks might be in a different project - would need to check MORS docs
-        try:
-            # Try common OSF projects that might have stellar data
-            osf_projects = ['8r2sw']  # Stellar spectra project - might also have tracks
+def _attempt(desc: str, func, *args, **kwargs) -> bool:
+    """Run one start-of-run fetch step, reporting a failure instead of raising.
 
-            fwl_data = GetFWLData()
-            tracks_dir = fwl_data / 'stellar_evolution_tracks'
-            tracks_dir.mkdir(parents=True, exist_ok=True)
-            target_dir = tracks_dir / track
+    Each step is fetched independently, so an unreachable mirror for one
+    dataset does not stop the others; a dataset that is still missing fails
+    later, where it is read.
 
-            for osf_id in osf_projects:
-                try:
-                    storage = get_osf(osf_id)
-                    # Try to download from OSF
-                    # Note: Folder structure on OSF may differ - this is a best-effort attempt
-                    download_OSF_folder(
-                        storage=storage,
-                        folders=[f'stellar_evolution_tracks/{track}', track],
-                        data_dir=tracks_dir,
-                    )
-                    if target_dir.exists() and any(target_dir.iterdir()):
-                        log.info(
-                            f'Successfully downloaded {track} tracks via OSF (project {osf_id})'
-                        )
-                        return
-                except Exception as osf_e:
-                    log.debug(f'OSF project {osf_id} did not have {track} tracks: {osf_e}')
-                    continue
+    Parameters
+    ----------
+    desc : str
+        What the step fetches, for the log message.
+    func : callable
+        The fetch function, called with the remaining arguments.
 
-            log.error(
-                f'Could not download {track} tracks via MORS or OSF fallback. '
-                f'You may need to download manually or check network connectivity.'
-            )
-            raise RuntimeError(
-                f'Failed to download {track} tracks: MORS failed, OSF fallback unavailable'
-            )
+    Returns
+    -------
+    bool
+        Whether the step finished without a fetch error.
+    """
+    fetch_errors = _fetch_errors()
+    try:
+        func(*args, **kwargs)
+    except fetch_errors as exc:
+        log.warning('Problem when downloading/checking %s: %s', desc, exc)
+        return False
+    return True
 
-        except Exception as osf_fallback_error:
-            log.error(f'OSF fallback also failed for {track} tracks: {osf_fallback_error}')
-            raise RuntimeError(
-                f'Failed to download {track} tracks: MORS error ({e}), OSF fallback error ({osf_fallback_error})'
-            )
+
+def needs_spider_ps_tables(config) -> bool:
+    """Return whether a run reads the Wolf and Bower P-S lookup set.
+
+    SPIDER and Aragog read it unless Zalmoxis generates a PALEOS table set
+    (:func:`proteus.utils.helper.generates_paleos_tables`). Under the dummy structure
+    Aragog requires its phase-property lookup tables even with a PALEOS P-S set. A set
+    interior_struct.eos_dir asks for it whenever SPIDER or Aragog run.
+
+    Parameters
+    ----------
+    config : Config
+        The run configuration.
+
+    Returns
+    -------
+    bool
+        True when the run needs the lookup set in FWL_DATA.
+    """
+    from proteus.utils.helper import generates_paleos_tables
+
+    energetics = getattr(getattr(config, 'interior_energetics', None), 'module', None)
+    if energetics not in ('spider', 'aragog'):
+        return False
+    struct = getattr(config, 'interior_struct', None)
+    if getattr(struct, 'eos_dir', None) is not None:
+        return True
+    return not generates_paleos_tables(struct)
 
 
 def _get_sufficient(config: Config, clean: bool = False):
@@ -1604,16 +716,15 @@ def _get_sufficient(config: Config, clean: bool = False):
             folders.append('solar')
         if spec_src in (None, 'muscles'):
             folders.append('MUSCLES')
-        download_stellar_spectra(folders=tuple(dict.fromkeys(folders)))
-        if config.star.mors.tracks == 'spada':
-            download_stellar_tracks('Spada')
-        else:
-            download_stellar_tracks('Baraffe')
+        for folder in dict.fromkeys(folders):
+            _attempt(f'stellar spectra {folder}', download_stellar_spectra, folders=(folder,))
+        tracks = 'Spada' if config.star.mors.tracks == 'spada' else 'Baraffe'
+        _attempt('stellar tracks', download_stellar_tracks, tracks)
 
     # Spectral files
     if config.atmos_clim.module in ('janus', 'agni'):
         # High-res file often used for post-processing
-        download_spectral_file('Honeyside', '4096')
+        _attempt('spectral file Honeyside/4096', download_spectral_file, 'Honeyside', '4096')
 
         # Skip the group/bands download when AGNI takes its spectral file
         # directly from the user (a custom path, or 'greygas').
@@ -1624,15 +735,21 @@ def _get_sufficient(config: Config, clean: bool = False):
             from proteus.atmos_clim.common import get_spfile_name_and_bands
 
             group, bands = get_spfile_name_and_bands(config)
-            download_spectral_file(group, bands)
+            if f'{group}/{bands}' in SPECTRAL_FILE_FOLDERS:
+                _attempt(f'spectral file {group}/{bands}', download_spectral_file, group, bands)
+            else:
+                log.info(
+                    'Spectral file %s/%s is in no manifest; it is read locally', group, bands
+                )
 
     # Surface single-scattering data
     if config.atmos_clim.module == 'agni':
-        download_surface_albedos()
+        _attempt('surface albedos', download_surface_albedos)
 
     # Aerosol scattering data
     if config.atmos_clim.module == 'agni' and config.atmos_clim.aerosols_enabled:
-        download_scattering()
+        _attempt('aerosol scattering data', download_scattering)
+        _attempt('aerosol refractive indices', download_refractive)
 
     # Exoplanet population data
     download_exoplanet_data()
@@ -1642,32 +759,45 @@ def _get_sufficient(config: Config, clean: bool = False):
 
     # Interior lookup tables (melting curves)
     if config.interior_energetics.module in ('aragog', 'spider'):
-        download_interior_lookuptables(clean=clean)
-        download_melting_curves(config, clean=clean)
+        # A configured curve that is still missing stops the run where it is read.
+        _attempt('Wolf and Bower melting curves', download_interior_lookuptables, clean=clean)
+        _attempt('melting curves', download_melting_curves, config, clean=clean)
 
-    # Dynamic EOS for SPIDER and Aragog (uses struct.eos_dir, skip if None/PALEOS)
-    if (
-        config.interior_energetics.module in ('spider', 'aragog')
-        and config.interior_struct.eos_dir is not None
-    ):
-        download_eos_dynamic(config.interior_struct.eos_dir)
+    # P-S lookup set for SPIDER and Aragog, unless Zalmoxis generates PALEOS tables
+    if needs_spider_ps_tables(config):
+        _attempt('EOS lookup tables', download_eos_dynamic)
 
     # EOS for Zalmoxis (derived from struct.zalmoxis config, not struct.eos_dir)
-    download_zalmoxis_eos_for_config(config)
+    _attempt('Zalmoxis EOS tables', download_zalmoxis_eos_for_config, config)
 
 
 def download_zalmoxis_eos_for_config(config) -> None:
     """Download the structure EOS tables that a config's Zalmoxis setup needs.
 
     Single extraction point for the per-layer EOS identifiers, shared by
-    the start-of-run data check and ``proteus get interiordata``. No-op
-    when the config does not select the zalmoxis structure module. The
-    ``'none'`` ice-layer sentinel maps to ``''`` (no ice EOS). Covers
-    the statically configured EOS components; volatile-extended mantle
-    components are resolved at runtime and fetched by the run itself.
+    the start-of-run data check and ``proteus get interiordata``. The
+    ``'none'`` ice-layer sentinel maps to ``''`` (no ice EOS). With
+    ``dry_mantle = false`` it also fetches the tables of the dissolved
+    volatiles that the structure solve adds to the mantle EOS. When the dummy
+    structure builds a PALEOS P-S set it fetches the tables of every mantle
+    component (the table check requires them) and the 2-phase pair, but no
+    core tables; other dummy runs and structures need nothing.
     """
     struct_cfg = getattr(config, 'interior_struct', None)
-    if getattr(struct_cfg, 'module', None) != 'zalmoxis':
+    module = getattr(struct_cfg, 'module', None)
+    anchor_pair = getattr(getattr(config, 'planet', None), 'temperature_mode', None) in (
+        'liquidus_super',
+        'adiabatic_from_cmb',
+    )
+    if module == 'dummy':
+        energetics = getattr(getattr(config, 'interior_energetics', None), 'module', None)
+        mantle = getattr(getattr(struct_cfg, 'zalmoxis', None), 'mantle_eos', None)
+        if energetics in ('spider', 'aragog') and energetics_eos_key(mantle) in (
+            PALEOS_REGISTRY_KEYS
+        ):
+            download_zalmoxis_eos(mantle_eos=mantle, with_core=False)
+        return
+    if module != 'zalmoxis':
         return
     zconf = struct_cfg.zalmoxis
     ice = getattr(zconf, 'ice_layer_eos', None)
@@ -1675,6 +805,10 @@ def download_zalmoxis_eos_for_config(config) -> None:
         mantle_eos=getattr(zconf, 'mantle_eos', ''),
         core_eos=getattr(zconf, 'core_eos', ''),
         ice_layer_eos='' if ice in (None, 'none') else ice,
+        volatile_eos=''
+        if getattr(zconf, 'dry_mantle', True)
+        else '+'.join(VOLATILE_EOS_MAP.values()),
+        anchor_pair=anchor_pair,
     )
 
 
@@ -1808,214 +942,76 @@ def get_spider(dirs=None):
 def download_eos_static():
     """Download static (Zalmoxis-only) EOS files.
 
-    Downloads Seager et al. (2007) EOS into
-    ``FWL_DATA/EOS_material_properties/EOS_Seager2007/``.
-    Code in ``get_zalmoxis_EOS()`` falls back to this path when the
-    unified ``EOS/static/Seager2007/`` folder is not yet populated.
+    Fetches the Seager et al. (2007) EOS tables through fwl-io into
+    ``FWL_DATA/interior/eos/seager_2007/r<record-id>/``.
     """
     download_Seager_EOS()
 
 
 def download_eos_dynamic(eos_dir: str = 'WolfBower2018_MgSiO3'):
-    """Download dynamic EOS files from Zenodo 19473625.
+    """Fetch the Wolf and Bower 2018 P-S lookup tables through fwl-io.
 
-    Downloads into
-    ``FWL_DATA/interior_lookup_tables/1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018_1TPa/``.
-    The record provides the complete P-S set that both SPIDER and
-    Aragog consume at runtime: 10 phase-property files (temperature,
-    density, heat capacity, adiabatic gradient, thermal expansivity
-    for melt and solid) plus the two P-S melting curves
-    (``solidus_P-S.dat``, ``liquidus_P-S.dat``).
+    The tables land in ``FWL_DATA/interior/eos/dk09_1tpa_elec_free/
+    mgsio3_wolf_bower_2018_1tpa/r19473625/``. The
+    record provides the complete P-S set that both SPIDER and Aragog consume
+    at runtime: 10 phase-property files (temperature, density, heat capacity,
+    adiabatic gradient, thermal expansivity for melt and solid) plus the two
+    P-S melting curves (``solidus_P-S.dat``, ``liquidus_P-S.dat``).
 
-    After download, the function verifies that all 12 expected files
-    landed in the target directory and raises a clear error if any are
-    missing. This prevents silent downstream failures where Aragog's
-    ``EntropyEOS`` would otherwise crash with a confusing
-    ``FileNotFoundError`` for a single missing file.
+    After the fetch, the function warns if any of the 12 expected files is
+    missing from the dataset directory.
 
     Parameters
     ----------
     eos_dir : str
         Name of the dynamic EOS folder. Reserved for future multi-EOS
-        support; currently always resolves to
-        ``1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018_1TPa``.
+        support; currently always resolves to the dataset above.
     """
-    folder = '1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018_1TPa'
-    source_info = get_data_source_info(folder)
-    if not source_info:
-        log.warning(f'No data source mapping for dynamic EOS: {folder}')
-        return
+    from proteus.data import LOOKUP_WOLF_BOWER_2018_1TPA, dataset_dir, fetch_dataset
 
-    download(
-        folder=folder,
-        target='interior_lookup_tables',
-        osf_id=source_info['osf_project'],
-        zenodo_id=source_info['zenodo_id'],
-        desc=f'Dynamic EOS (P-S): {folder}',
+    fwl_data = GetFWLData()
+    fetch_dataset(LOOKUP_WOLF_BOWER_2018_1TPA, data_root=fwl_data)
+    target_dir = dataset_dir(LOOKUP_WOLF_BOWER_2018_1TPA, data_root=fwl_data)
+
+    from proteus.interior_energetics.common import (
+        _SPIDER_EOS_MELTING_CURVES,
+        _SPIDER_EOS_PHASE_FILES,
     )
 
-    # Manifest validation: verify all 12 expected files are present.
-    # A partial download means the PROTEUS helpers will silently fall
-    # back to the SPIDER submodule at runtime, which is a warning sign
-    # that the user's FWL_DATA tree is stale or the Zenodo record
-    # contents have drifted.
-    expected_files = (
-        'temperature_melt.dat',
-        'temperature_solid.dat',
-        'density_melt.dat',
-        'density_solid.dat',
-        'heat_capacity_melt.dat',
-        'heat_capacity_solid.dat',
-        'adiabat_temp_grad_melt.dat',
-        'adiabat_temp_grad_solid.dat',
-        'thermal_exp_melt.dat',
-        'thermal_exp_solid.dat',
-        'solidus_P-S.dat',
-        'liquidus_P-S.dat',
-    )
-    target_dir = GetFWLData() / 'interior_lookup_tables' / folder
+    expected_files = _SPIDER_EOS_PHASE_FILES + _SPIDER_EOS_MELTING_CURVES
     missing = [f for f in expected_files if not (target_dir / f).is_file()]
     if missing:
         log.warning(
-            'Zenodo record %s download landed at %s but is missing %d of '
-            '%d expected files: %s. Aragog will fall back to the SPIDER '
-            'submodule at runtime via _provide_spider_eos_tables. To '
-            'refresh, delete %s and rerun with clean=True.',
-            source_info['zenodo_id'],
+            'Lookup tables at %s are missing %d of %d expected files: %s. '
+            'Aragog will fall back to the SPIDER submodule at runtime via '
+            '_provide_spider_eos_tables.',
             target_dir,
             len(missing),
             len(expected_files),
             missing[:5],
-            target_dir,
         )
     else:
         log.debug(
-            'Zenodo record %s complete: all %d files present at %s',
-            source_info['zenodo_id'],
+            'Lookup tables complete: all %d files present at %s',
             len(expected_files),
             target_dir,
         )
 
 
 def download_Seager_EOS():
-    """Download Seager EOS to the EOS_material_properties location."""
-    folder = 'EOS_Seager2007'
-    source_info = get_data_source_info(folder)
-    if not source_info:
-        raise ValueError(f'No data source mapping found for folder: {folder}')
+    """Fetch the Seager EOS tables through fwl-io.
 
-    download(
-        folder=folder,
-        target='EOS_material_properties',
-        osf_id=source_info['osf_project'],
-        zenodo_id=source_info['zenodo_id'],
-        desc='EOS Seager2007 material files',
-    )
-
-
-# ── Zalmoxis EOS download helpers ────────────────────────────────────
-#
-# Each function downloads a specific Zalmoxis EOS dataset into
-# ``FWL_DATA/zalmoxis_eos/<folder>/``.  The folder names and Zenodo
-# record IDs mirror the Zalmoxis-internal ``setup_utils.download_data()``
-# so that every file ends up at a predictable path.
-#
-# ``download_zalmoxis_eos()`` is the top-level dispatcher called from
-# ``_get_sufficient()``; it inspects the mantle/core EOS config and
-# downloads only the datasets required for the current run.
-# ─────────────────────────────────────────────────────────────────────
-
-_ZALMOXIS_EOS_TARGET = 'zalmoxis_eos'
-
-
-def _download_zalmoxis_folder(folder: str, file: str | None = None):
-    """Download a single Zalmoxis EOS folder/file from its DATA_SOURCE_MAP entry.
-
-    Parameters
-    ----------
-    folder : str
-        Folder key in DATA_SOURCE_MAP (e.g. ``'EOS_PALEOS_iron'``).
-    file : str or None
-        If given, download only this file from the Zenodo record.
+    The record pin and the file checksums come from the fwl-io shared manifest.
+    Zalmoxis needs these tables for every Seager component, so a failed fetch
+    raises.
     """
-    source_info = get_data_source_info(folder)
-    if not source_info:
-        log.warning(f'No data source mapping for Zalmoxis EOS folder: {folder}')
-        return
-    download(
-        folder=folder,
-        target=_ZALMOXIS_EOS_TARGET,
-        zenodo_id=source_info['zenodo_id'],
-        osf_id=source_info.get('osf_project'),
-        desc=f'Zalmoxis EOS: {folder}',
-        file=file,
-    )
+    from proteus.data import EOS_SEAGER_2007, fetch_dataset
+
+    fetch_dataset(EOS_SEAGER_2007, data_root=FWL_DATA_DIR)
 
 
-def _download_zalmoxis_chabrier():
-    """Download and extract Chabrier H/He EOS tarball into FWL_DATA.
-
-    The Zenodo record contains a ``.tar.gz`` with multiple H/He tables.
-    We download the full record and extract it, mirroring the Zalmoxis
-    setup script behavior.
-    """
-    folder = 'EOS_Chabrier2021_HHe'
-    folder_dir = GetFWLData() / _ZALMOXIS_EOS_TARGET / folder
-    if folder_dir.exists() and any(folder_dir.iterdir()):
-        log.debug(f'Zalmoxis Chabrier EOS already present at {folder_dir}')
-        return
-
-    source_info = get_data_source_info(folder)
-    if not source_info:
-        log.warning(f'No data source mapping for {folder}')
-        return
-
-    log.info(f'Downloading Chabrier H/He EOS from Zenodo {source_info["zenodo_id"]}')
-    folder_dir.mkdir(parents=True, exist_ok=True)
-
-    # Download the full Zenodo record, then keep only relevant .dat files
-    ok = download_zenodo_folder(source_info['zenodo_id'], folder_dir)
-    if not ok:
-        log.warning('Failed to download Chabrier H/He EOS from Zenodo')
-        return
-
-    # If the record contains a tarball, extract it
-    import tarfile
-
-    for tb in folder_dir.glob('*.tar.gz'):
-        with tarfile.open(tb, 'r:gz') as tar:
-            tar.extractall(path=folder_dir, filter='data')
-        tb.unlink()
-
-    # Move files out of any nested subdirectory to the top level
-    for subdir in [d for d in folder_dir.iterdir() if d.is_dir()]:
-        if subdir.name == '__MACOSX':
-            shutil.rmtree(subdir)
-            continue
-        for item in subdir.iterdir():
-            if item.name.startswith('._') or item.name == '.DS_Store':
-                continue
-            dest = folder_dir / item.name
-            if not dest.exists():
-                shutil.move(str(item), folder_dir)
-        if subdir.exists():
-            shutil.rmtree(subdir)
-
-    # Clean up md5sums.txt if present
-    md5file = folder_dir / 'md5sums.txt'
-    if md5file.exists():
-        md5file.unlink()
-
-    # Validate that the expected EOS file was extracted
-    expected_file = folder_dir / 'chabrier2021_H.dat'
-    if not expected_file.exists():
-        log.warning(
-            'Post-extraction validation failed: %s not found in %s. Available files: %s',
-            expected_file.name,
-            folder_dir,
-            [f.name for f in folder_dir.iterdir()],
-        )
-
+# Zalmoxis EOS download helpers: download_zalmoxis_eos fetches only the
+# manifest files that the configured layer EOS read.
 
 # Mantle EOS family prefixes whose registry entry carries the Seager iron
 # table as its core fallback (see
@@ -2033,11 +1029,37 @@ SEAGER_FALLBACK_FAMILIES = (
 )
 
 
-def download_zalmoxis_eos(mantle_eos: str, core_eos: str = '', ice_layer_eos: str = ''):
+# Files Zalmoxis reads from each dataset whose record holds more than it needs.
+_WOLF_BOWER_SOLID_FILES = ('density_solid.dat', 'heat_capacity_solid.dat')
+_RTPRESS_EOS_FILES = (
+    'density_melt.dat',
+    'adiabat_temp_grad_melt.dat',
+    'heat_capacity_melt.dat',
+)
+_WOLF_BOWER_EOS_FILES = (*_RTPRESS_EOS_FILES, *_WOLF_BOWER_SOLID_FILES)
+_PALEOS_2PHASE_FILES = (
+    'paleos_mgsio3_tables_pt_proteus_liquid.dat',
+    'paleos_mgsio3_tables_pt_proteus_solid.dat',
+)
+_PALEOS_2PHASE_HIGHRES_FILES = (
+    'paleos_mgsio3_tables_pt_proteus_liquid_highres.dat',
+    'paleos_mgsio3_tables_pt_proteus_solid_highres.dat',
+)
+
+
+def download_zalmoxis_eos(
+    mantle_eos: str,
+    core_eos: str = '',
+    ice_layer_eos: str = '',
+    volatile_eos: str = '',
+    anchor_pair: bool = False,
+    with_core: bool = True,
+):
     """Download Zalmoxis EOS data required for the given EOS configuration.
 
     Inspects the mantle, core, and ice layer EOS identifiers and downloads
-    only the datasets needed.  All files land in ``FWL_DATA/zalmoxis_eos/``.
+    only the files needed. Every dataset is declared in the fwl-io shared
+    manifest and lands under ``FWL_DATA/interior/eos/``.
 
     Parameters
     ----------
@@ -2047,105 +1069,102 @@ def download_zalmoxis_eos(mantle_eos: str, core_eos: str = '', ice_layer_eos: st
         Core EOS identifier (e.g. ``'Seager2007:iron'``, ``'PALEOS:iron'``).
     ice_layer_eos : str
         Ice layer EOS identifier (e.g. ``'Seager2007:H2O'``, ``'PALEOS:H2O'``, or empty).
+    volatile_eos : str
+        ``+``-joined EOS components of dissolved volatiles, or empty.
+    anchor_pair : bool
+        Also fetch the MgSiO3 2-phase pair for any mantle, which the
+        liquidus_super initial adiabat and the adiabatic_from_cmb entropy fallback read.
+    with_core : bool
+        Whether a structure solve reads a core EOS. False skips the Seager 2007
+        iron core default and fallback; a Seager component is still fetched.
     """
-    all_eos = [e for e in (mantle_eos, core_eos, ice_layer_eos) if e]
+    from proteus.data import (
+        EOS_CHABRIER_2021,
+        EOS_PALEOS_H2O,
+        EOS_PALEOS_IRON,
+        EOS_PALEOS_MGSIO3,
+        EOS_PALEOS_MGSIO3_UNIFIED,
+        EOS_RTPRESS_100TPA,
+        EOS_WOLF_BOWER_2018,
+        fetch_dataset,
+        fetch_dataset_file,
+    )
+
+    failed = []
+
+    def attempt(what, func, *args, **kwargs):
+        # One unreachable dataset does not stop the others; the first failure is raised at the end.
+        try:
+            func(*args, **kwargs)
+        except _fetch_errors() as exc:
+            log.warning('Could not fetch %s: %s', what, exc)
+            failed.append(exc)
+
+    def fetch_files(key, names):
+        for name in names:
+            attempt(f'{name} from {key}', fetch_dataset_file, key, name, data_root=FWL_DATA_DIR)
+
+    all_eos = [e for e in (mantle_eos, core_eos, ice_layer_eos, volatile_eos) if e]
 
     # Multi-component EOS strings: "PALEOS:MgSiO3:0.98+Chabrier:H:0.01"
-    components = set()
-    for eos_str in all_eos:
-        for part in eos_str.split('+'):
-            # Strip fraction suffix: "PALEOS:MgSiO3:0.98" -> "PALEOS:MgSiO3"
-            tokens = part.split(':')
-            if len(tokens) >= 2:
-                components.add(f'{tokens[0]}:{tokens[1]}')
+    components = {c for eos_str in all_eos for c in eos_components(eos_str)}
 
-    # Seager2007 static EOS. Needed when a Seager component is selected
-    # directly, when no core EOS is given (Seager iron is the default
-    # core), and for every mantle family whose registry entry carries
-    # the Seager iron core fallback (SEAGER_FALLBACK_FAMILIES above).
-    if (
-        any(c.startswith('Seager2007') for c in components)
-        or any(c.startswith(SEAGER_FALLBACK_FAMILIES) for c in components)
-        or not core_eos
+    # Seager2007 static EOS: for a Seager component, and with a core solve for the
+    # default Seager iron core (no core EOS) or a SEAGER_FALLBACK_FAMILIES mantle.
+    if any(c.startswith('Seager2007') for c in components) or (
+        with_core
+        and (any(c.startswith(SEAGER_FALLBACK_FAMILIES) for c in components) or not core_eos)
     ):
-        download_eos_static()
+        attempt('the Seager 2007 tables', download_eos_static)
 
-    # WolfBower2018 T-dependent MgSiO3
-    if any(c.startswith('WolfBower2018') for c in components):
-        _download_zalmoxis_folder(
-            'EOS_WolfBower2018_1TPa',
-            file='density_melt.dat',
-        )
-        _download_zalmoxis_folder(
-            'EOS_WolfBower2018_1TPa',
-            file='density_solid.dat',
-        )
-        _download_zalmoxis_folder(
-            'EOS_WolfBower2018_1TPa',
-            file='adiabat_temp_grad_melt.dat',
-        )
+    # A PALEOS mantle, and any mantle with a CMB or liquidus anchor, reads the 2-phase pair.
+    components.update(paleos_companion_keys(mantle_eos))
+    if anchor_pair:
+        components.add(twophase_registry_key(mantle_eos))
+
+    # WolfBower2018 T-dependent MgSiO3. The RTPress mantle pairs its melt tables
+    # with the Wolf & Bower solid tables, so those files are needed for both.
+    needs_wb = any(c.startswith('WolfBower2018') for c in components)
+    needs_rtpress = any(c.startswith('RTPress100TPa') for c in components)
+    if needs_wb:
+        fetch_files(EOS_WOLF_BOWER_2018, _WOLF_BOWER_EOS_FILES)
+    elif needs_rtpress:
+        fetch_files(EOS_WOLF_BOWER_2018, _WOLF_BOWER_SOLID_FILES)
 
     # RTPress 100 TPa extended melt
-    if any(c.startswith('RTPress100TPa') for c in components):
-        _download_zalmoxis_folder(
-            'EOS_RTPress_melt_100TPa',
-            file='density_melt.dat',
-        )
-        _download_zalmoxis_folder(
-            'EOS_RTPress_melt_100TPa',
-            file='adiabat_temp_grad_melt.dat',
-        )
+    if needs_rtpress:
+        fetch_files(EOS_RTPRESS_100TPA, _RTPRESS_EOS_FILES)
 
-    # PALEOS 2-phase MgSiO3 (separate solid/liquid). The default
-    # entry uses 150 pts/decade tables; the -highres entry (Zenodo
-    # 19680050) uses 600 pts/decade. Both ship in the same Zenodo
-    # record; we fetch only what's selected to keep first-time setup
-    # fast (the highres pair is ~1.3 GB).
+    # PALEOS unified tables: one dataset per material.
+    unified = {
+        'PALEOS:iron': (EOS_PALEOS_IRON, 'paleos_iron_eos_table_pt.dat'),
+        'PALEOS:MgSiO3': (EOS_PALEOS_MGSIO3_UNIFIED, 'paleos_mgsio3_eos_table_pt.dat'),
+        'PALEOS:H2O': (EOS_PALEOS_H2O, 'paleos_water_eos_table_pt.dat'),
+    }
+    for component, (key, table) in unified.items():
+        if component in components:
+            fetch_files(key, (table,))
+
+    # PALEOS 2-phase MgSiO3 (separate solid/liquid), one record holding the
+    # 150 pts/decade pair and the 600 pts/decade (-highres) pair; fetch only the
+    # selected pair, since the highres pair alone is about 1.3 GB.
     if 'PALEOS-2phase:MgSiO3' in components:
-        _download_zalmoxis_folder(
-            'EOS_PALEOS_MgSiO3',
-            file='paleos_mgsio3_tables_pt_proteus_liquid.dat',
-        )
-        _download_zalmoxis_folder(
-            'EOS_PALEOS_MgSiO3',
-            file='paleos_mgsio3_tables_pt_proteus_solid.dat',
-        )
+        fetch_files(EOS_PALEOS_MGSIO3, _PALEOS_2PHASE_FILES)
     if 'PALEOS-2phase:MgSiO3-highres' in components:
-        _download_zalmoxis_folder(
-            'EOS_PALEOS_MgSiO3',
-            file='paleos_mgsio3_tables_pt_proteus_liquid_highres.dat',
-        )
-        _download_zalmoxis_folder(
-            'EOS_PALEOS_MgSiO3',
-            file='paleos_mgsio3_tables_pt_proteus_solid_highres.dat',
-        )
-
-    # PALEOS unified tables
-    if 'PALEOS:iron' in components:
-        _download_zalmoxis_folder(
-            'EOS_PALEOS_iron',
-            file='paleos_iron_eos_table_pt.dat',
-        )
-    if 'PALEOS:MgSiO3' in components:
-        _download_zalmoxis_folder(
-            'EOS_PALEOS_MgSiO3_unified',
-            file='paleos_mgsio3_eos_table_pt.dat',
-        )
-    if 'PALEOS:H2O' in components:
-        _download_zalmoxis_folder(
-            'EOS_PALEOS_H2O',
-            file='paleos_water_eos_table_pt.dat',
-        )
+        fetch_files(EOS_PALEOS_MGSIO3, _PALEOS_2PHASE_HIGHRES_FILES)
 
     # Chabrier H/He
     if any(c.startswith('Chabrier') for c in components):
-        _download_zalmoxis_chabrier()
+        attempt(
+            'the Chabrier 2021 tables', fetch_dataset, EOS_CHABRIER_2021, data_root=FWL_DATA_DIR
+        )
 
     # Defensive warn for any component key that no handler above recognised.
     # PALEOS-API:* and PALEOS-API-2phase:* are intentionally not downloaded
     # (generated locally from upstream paleos at runtime) but are valid.
     known_prefixes = (
         'Seager2007:',
+        'WolfBower2018:',
         'RTPress100TPa:',
         'Chabrier:',
         'PALEOS-API:',
@@ -2168,17 +1187,8 @@ def download_zalmoxis_eos(mantle_eos: str, core_eos: str = '', ice_layer_eos: st
             '(typo or unsupported EOS family?); no data downloaded for it',
             c,
         )
-
-
-def get_zalmoxis_eos_dir() -> Path:
-    """Return the base directory for Zalmoxis EOS data in FWL_DATA.
-
-    Returns
-    -------
-    Path
-        ``FWL_DATA/zalmoxis_eos/``
-    """
-    return GetFWLData() / _ZALMOXIS_EOS_TARGET
+    if failed:
+        raise failed[0]
 
 
 def load_melting_curve(melt_file):
@@ -2205,8 +1215,8 @@ def load_melting_curve(melt_file):
 def get_zalmoxis_melting_curves(config: Config):
     """Load solidus and liquidus T(P) melting curves for Zalmoxis.
 
-    Reads the melting curve files from the directory specified by
-    ``config.interior_struct.melting_dir`` under ``FWL_DATA/interior_lookup_tables/Melting_curves/``.
+    Reads the melting curve files that :func:`resolve_melting_curve_files`
+    locates for ``config.interior_struct.melting_dir``.
 
     Parameters
     ----------
@@ -2220,34 +1230,26 @@ def get_zalmoxis_melting_curves(config: Config):
     """
     if config.interior_struct.melting_dir is None:
         return None
-    melting_curves_folder = (
-        FWL_DATA_DIR
-        / 'interior_lookup_tables'
-        / 'Melting_curves'
-        / config.interior_struct.melting_dir
+    solidus_file, liquidus_file = resolve_melting_curve_files(
+        config.interior_struct.melting_dir, data_root=FWL_DATA_DIR
     )
-    if not melting_curves_folder.is_dir():
-        raise FileNotFoundError(
-            f'Melting curves directory not found: {melting_curves_folder}. '
-            f"Check struct.melting_dir='{config.interior_struct.melting_dir}'."
-        )
-    solidus_func = load_melting_curve(melting_curves_folder / 'solidus_P-T.dat')
-    liquidus_func = load_melting_curve(melting_curves_folder / 'liquidus_P-T.dat')
+    for melting_file in (solidus_file, liquidus_file):
+        if not melting_file.is_file():
+            raise MissingDataError(
+                f'Melting curve file not found: {melting_file}. '
+                f"Check interior_struct.melting_dir='{config.interior_struct.melting_dir}', or fetch "
+                f'it with `proteus get interiordata --config-path <config.toml>`. {RELOCATE_HINT}'
+            )
+    solidus_func = load_melting_curve(solidus_file)
+    liquidus_func = load_melting_curve(liquidus_file)
     return (solidus_func, liquidus_func)
 
 
 def get_zalmoxis_EOS():
     """Build and return material properties dictionaries for Zalmoxis.
 
-    Reads EOS files from the unified folder structure under
-    ``FWL_DATA/interior_lookup_tables/EOS/``. Static (Zalmoxis-only) EOS
-    like Seager2007 live in ``EOS/static/``, while dynamic EOS like
-    Wolf & Bower 2018 live in ``EOS/dynamic/WolfBower2018_MgSiO3/P-T/``.
-
-    Falls back to the EOS_material_properties paths if the unified structure is not yet populated.
-
-    The folder name matches the Zalmoxis ``mantle_eos`` source string
-    (``WolfBower2018_MgSiO3``), not ``struct.eos_dir``.
+    The Seager2007 tables are fetched through fwl-io into their versioned
+    dataset directory, as are the Wolf & Bower 2018 and RTPress 100 TPa tables.
 
     Returns
     -------
@@ -2256,30 +1258,19 @@ def get_zalmoxis_EOS():
         water planet, and iron/RTPress100TPa silicate EOS. T-dep dicts include
         ``cp_file`` entries for heat capacity tables when the files exist.
     """
-    eos_base = FWL_DATA_DIR / 'interior_lookup_tables' / 'EOS'
+    from proteus.data import (
+        EOS_RTPRESS_100TPA,
+        EOS_SEAGER_2007,
+        EOS_WOLF_BOWER_2018,
+        dataset_dir,
+    )
 
-    # Seager2007: try the unified location, fall back to EOS_material_properties
-    seager_folder = eos_base / 'static' / 'Seager2007'
-    if not seager_folder.exists():
-        seager_folder = FWL_DATA_DIR / 'EOS_material_properties' / 'EOS_Seager2007'
-    if not seager_folder.exists():
+    seager_folder = dataset_dir(EOS_SEAGER_2007, data_root=FWL_DATA_DIR)
+    if not (seager_folder / 'eos_seager07_iron.txt').exists():
         log.debug('Get EOS material properties from Seager et al. (2007)')
         download_eos_static()
-        seager_folder = eos_base / 'static' / 'Seager2007'
-        if not seager_folder.exists():
-            seager_folder = FWL_DATA_DIR / 'EOS_material_properties' / 'EOS_Seager2007'
 
-    # Wolf-Bower: fixed mapping from source name to data folder
-    wb_folder = eos_base / 'dynamic' / 'WolfBower2018_MgSiO3' / 'P-T'
-    if not wb_folder.exists():
-        wb_folder = eos_base / 'dynamic' / 'WolfBower2018_MgSiO3'
-    if not wb_folder.exists():
-        wb_folder = (
-            FWL_DATA_DIR
-            / 'interior_lookup_tables'
-            / '1TPa-dK09-elec-free'
-            / 'MgSiO3_Wolf_Bower_2018_1TPa'
-        )
+    wb_folder = dataset_dir(EOS_WOLF_BOWER_2018, data_root=FWL_DATA_DIR)
 
     # Iron/silicate (Seager 2007)
     material_properties_iron_silicate_planets = {
@@ -2312,9 +1303,7 @@ def get_zalmoxis_EOS():
     }
 
     # RTPress100TPa melt EOS with WolfBower2018 solid
-    rt_folder = eos_base / 'RTPress_melt_100TPa'
-    if not rt_folder.exists():
-        rt_folder = FWL_DATA_DIR / 'EOS_material_properties' / 'EOS_RTPress_melt_100TPa'
+    rt_folder = dataset_dir(EOS_RTPRESS_100TPA, data_root=FWL_DATA_DIR)
     if not rt_folder.exists():
         log.warning(
             'RTPress100TPa EOS folder not found at %s. '

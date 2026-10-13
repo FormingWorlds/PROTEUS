@@ -29,7 +29,7 @@ buffer (5-10x ratio at hot oxidising conditions), or that introduced a
 sign / unit error in either backend, would push the ratio outside the
 window.
 
-Per ``proteus-tests.md`` §1 the file also includes an error-contract test
+Per ``tests/AGENTS.md`` the file also includes an error-contract test
 exercising the outgas module schema validator.
 
 See also:
@@ -187,7 +187,7 @@ def test_calliope_atmodeller_cross_consistency(proteus_multi_timestep_run, scena
 
 
 # ---------------------------------------------------------------------------
-# Error-contract path per proteus-tests.md §1 clause 2.
+# Error-contract path per tests/AGENTS.md.
 # ---------------------------------------------------------------------------
 
 

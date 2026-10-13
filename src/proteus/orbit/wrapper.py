@@ -268,6 +268,39 @@ def update_breakup_period_sat(hf_row: dict):
     hf_row['breakup_period_sat'] = 2 * np.pi / np.sqrt(const_G * Msa / (Rsa**3))
 
 
+def sma_for_instellation(config: Config, ecc: float) -> float:
+    """
+    Semi-major axis at which the dummy star delivers orbit.instellationflux.
+
+    The instellation uses the orbit-averaged inverse-square flux, which on an
+    orbit of eccentricity e equals the flux at a (1 - e^2)^(1/4). Inverting it
+    gives a = sqrt(L / (4 pi S)) / (1 - e^2)^(1/4), which reduces to the
+    circular result at e = 0.
+
+    Parameters
+    ----------
+        config : Config
+            Model configuration.
+        ecc : float
+            Orbital eccentricity [1].
+
+    Returns
+    -------
+        float
+            Semi-major axis [m].
+    """
+    from proteus.star.dummy import calc_star_luminosity, get_star_radius
+
+    if not 0.0 <= ecc < 1.0:
+        raise ValueError(f'Eccentricity must be >= 0 and < 1, got {ecc}')
+
+    Lbol = calc_star_luminosity(config.star.dummy.Teff, get_star_radius(config) * R_sun)
+    S_earth = L_sun / (4 * np.pi * AU * AU)
+    S_0 = config.orbit.instellationflux * S_earth
+
+    return np.sqrt(Lbol / (4 * np.pi * S_0)) / (1.0 - ecc * ecc) ** 0.25
+
+
 def run_orbit(
     hf_row: dict, config: Config, dirs: dict, tides_o: Tides_t, interior_o: Interior_t
 ):
@@ -300,13 +333,7 @@ def run_orbit(
 
         # set semi-major axis to obtain a particular bolometric instellation flux
         if config.orbit.instellation_method == 'inst' and config.star.module == 'dummy':
-            from proteus.star.dummy import calc_star_luminosity, get_star_radius
-
-            Lbol = calc_star_luminosity(config.star.dummy.Teff, get_star_radius(config) * R_sun)
-            S_earth = L_sun / (4 * np.pi * AU * AU)
-            S_0 = config.orbit.instellationflux * S_earth
-
-            hf_row['semimajorax'] = np.sqrt(Lbol / (4 * np.pi * S_0))
+            hf_row['semimajorax'] = sma_for_instellation(config, hf_row['eccentricity'])
 
         # Update orbital period (dependent)
         update_period(hf_row)
@@ -383,15 +410,7 @@ def run_orbit(
         else:
             # set semi-major axis to obtain a particular bolometric instellation flux
             if config.orbit.instellation_method == 'inst' and config.star.module == 'dummy':
-                from proteus.star.dummy import calc_star_luminosity, get_star_radius
-
-                Lbol = calc_star_luminosity(
-                    config.star.dummy.Teff, get_star_radius(config) * R_sun
-                )
-                S_earth = L_sun / (4 * np.pi * AU * AU)
-                S_0 = config.orbit.instellationflux * S_earth
-
-                hf_row['semimajorax'] = np.sqrt(Lbol / (4 * np.pi * S_0))
+                hf_row['semimajorax'] = sma_for_instellation(config, hf_row['eccentricity'])
 
         # Set independent orbital parameters, through the desired method... (Planet-Satellite)
         if config.orbit.planet_satellite_model is not None:
@@ -409,6 +428,11 @@ def run_orbit(
 
         # Update orbital period, from independent variables above
         update_period(hf_row)
+
+        # sp0d and a prescribed track move the orbit with no torque on the
+        # spin, so the planet stays locked to the orbit it now has
+        if config.orbit.star_planet_model in ('sp0d', 'parameterized'):
+            hf_row['axial_period'] = hf_row['orbital_period']
 
         # Update satellite orbital period, from independent variables above
         update_period_sat(hf_row)

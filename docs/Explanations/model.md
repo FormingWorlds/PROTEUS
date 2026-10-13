@@ -47,9 +47,11 @@ atmosphere), enabling hierarchical model intercomparison.
 | Outgassing | [CALLIOPE](https://proteus-framework.org/CALLIOPE/), [atmodeller](https://github.com/djbower/atmodeller), dummy | Volatile exchange between interior and atmosphere |
 | Tides | [Obliqua](https://proteus-framework.org/Obliqua), [Lovepy](https://github.com/nichollsh/LovePy), dummy | Tidal response of the planet (Love numbers, heating) |
 | Orbit | PROTEUS (internal) | Orbital evolution (semi-major axis, eccentricity, spin) |
+| Accretion | [Morrigan](https://proteus-framework.org/Morrigan/), timeline, dummy | Protoplanet growth by giant impacts |
 | Observations | [petitRADTRANS](https://petitradtrans.readthedocs.io/), none | Synthetic transit and eclipse spectra |
 
 Each module is maintained in its own repository and can be used as a standalone package outside of PROTEUS. The following sections describe each module's physical role and how PROTEUS couples to it.
+
 
 ---
 
@@ -66,6 +68,8 @@ Config section: `[interior_struct]`. Reference: [Interior configuration](../Refe
 The interior energetics module evolves the mantle temperature and melt fraction in time by solving the energy equation in the planetary interior.
 
 **[Aragog](https://proteus-framework.org/aragog/)** (Python/JAX) solves the interior energy equation in the temperature-pressure (T-P) formulation. It discretises the mantle on a radial grid and advances the temperature profile using the SUNDIALS CVODE integrator (required unless a scipy solver is chosen explicitly) with an analytic Jacobian computed via JAX automatic differentiation. Aragog handles the full mushy-zone (partial melt) regime, including phase-dependent material properties, radiogenic heating, tidal heating, and core cooling. It is the recommended interior module for most configurations.
+
+By default the core below the Aragog mantle is a heat reservoir of fixed heat capacity. With `interior_energetics.aragog.core_bc = "core_module"` the core has its own energy budget instead: secular cooling along the core adiabat, the latent heat of a growing inner core, the gravitational energy of the light elements it rejects, and radiogenic heat. The core temperature is then a state of the solver, and the heat flux through the core-mantle boundary follows from the temperature contrast between the core and the base of the mantle across a boundary layer. See [Core evolution](../How-to/usage_core_evolution.md).
 
 **[SPIDER](https://proteus-framework.org/SPIDER/)** (C) uses the temperature-entropy (T-S) formulation [^cite-bower2018]. It discretises the mantle on a staggered radial grid and solves the entropy equation using PETSc's implicit time integrator. SPIDER provides an independent cross-check on Aragog for the same physical problem formulated in a different thermodynamic variable. It requires PETSc and is an optional installation component.
 
@@ -200,7 +204,19 @@ Some notable consequences of step 3:
 
 **[Orbital evolution](https://github.com/FormingWorlds/PROTEUS/tree/main/src/proteus/orbit)** (Python) computes the time evolution of the independent orbital parameters (semi-major axis, eccentricity, spin, apsidal precession) under the influence of tidal dissipation in both the primary and the perturbing body. The model combines spin-orbit dynamics with eccentricity evolution, based on a vectorial approach expressed in Hansen coefficients. The model allows for angular momentum draining through the evection resonance, but conserves it in all other cases.
 
-Config section: `[orbit]`. Reference: [Star and orbit configuration](../Reference/config/star_orbit.md). For the full set of star-planet and planet-satellite models (sp0d/sp1d/ps0d/ps1d/ps1d_evec), the evection resonance, and the satellite Love-number lookup workflow, see [Orbital dynamics and tides](orbit.md).
+Config section: `[orbit]`. Reference: [Star and orbit configuration](../Reference/config/star_orbit.md). For the full set of star-planet and planet-satellite models (sp0d/sp1d/parameterized/ps0d/ps1d/ps1d_evec), the evection resonance, and the satellite Love-number lookup workflow, see [Orbital dynamics and tides](orbit.md).
+
+## Accretion: Morrigan
+
+The accretion module supplies the giant impacts a planet experiences after the disk disperses, and PROTEUS applies each one to the planet it is evolving.
+
+**[Morrigan](https://proteus-framework.org/Morrigan/)** (Python) follows a system of planetary embryos through the secular eccentricity oscillations, orbit crossings, scatterings, ejections and giant impacts by which they accrete, until the system settles into a Hill-stable configuration. It implements the semi-analytical Monte Carlo model of Kimura et al. (2025) [^cite-kimura2025], which predicts when a system goes unstable and resolves each instability with prescriptions calibrated against N-body simulations, rather than integrating the orbits. That makes one system cheap enough to run inside a coupled framework, at the cost of any single history being a statistical realisation rather than a trajectory: ensemble statistics are the meaningful comparison. PROTEUS follows one survivor of that system, chosen by the configured selector, and takes its impact history.
+
+Each impact is applied at the timestep it falls in. The impactor's rock grows the planet and the interior structure is re-solved at the new mass, so radius, gravity and the core-mantle split follow the growth. The impactor's volatiles are delivered while the same collision fraction strips the target's atmosphere and the impactor's own, so a small impactor striking a heavily-clothed planet can leave it lighter than before. The mantle is re-melted by raising it to the run's temperature-mode initial condition, where parts that are already hotter keep their state, and the orbit takes the collision's change in semi-major axis and eccentricity, clamped to a bound orbit.
+
+Two further implementations take an impact history rather than derive one. `timeline` replays a table of impacts from a file, which reproduces a published history or drives PROTEUS from one computed elsewhere. `dummy` builds a history from scaling laws: the planet approaches an asymptotic mass exponentially, impacts are evenly spaced in time, and each delivers the mass the law accretes over its interval, so the increments decay and the largest impact is the first. With no accretion module selected the impact list is empty and the planet's mass is set by its initial condition alone.
+
+Config section: `[accretion]`. Reference: [Accretion configuration](../Reference/config/accretion.md).
 
 ## Synthetic observations: petitRADTRANS
 
@@ -248,9 +264,13 @@ architecture and for quick parameter exploration.
 | Escape | Constant bulk mass loss rate (user-specified kg/s), distributed proportionally across elements |
 | Outgassing | Melt-fraction-dependent volatile partitioning with fixed stoichiometry, no equilibrium chemistry |
 | Orbit & Tides | Fixed semi-major axis and eccentricity; configurable parameterised tidal heating |
+| Accretion | Exponential approach to an asymptotic mass, delivered as evenly spaced impacts; Noack & Lasbleis (2020) [^cite-noack2020] radii and momentum-conserving mergers |
 
-The [Quick start tutorial](../Tutorials/quick_start_dummy.md) runs PROTEUS
-with all modules set to dummy.
+
+The [Quick start tutorial](../Tutorials/quick_start_dummy.md) runs PROTEUS with
+every physics module set to dummy. Accretion is left out of that configuration,
+so the planet keeps the mass its initial condition gives it; add an
+`[accretion]` section with `module = "dummy"` to let it grow.
 
 ---
 
@@ -303,3 +323,5 @@ Only the interior and star modules have an explicit notion of time-evolution. Al
  [^cite-baraffe2015]: Baraffe, I., Homeier, D., Allard, F. & Chabrier, G., *[New evolutionary models for pre-main sequence and main sequence low-mass stars down to the hydrogen-burning limit](https://doi.org/10.1051/0004-6361/201425481)*, Astronomy & Astrophysics, 577, A42, 2015. [SciX](https://scixplorer.org/abs/2015A%26A...577A..42B/abstract).
 
  [^cite-noack2020]: Noack, L. & Lasbleis, M., *[Parameterisations of interior properties of rocky planets](https://doi.org/10.1051/0004-6361/202037723)*, Astronomy & Astrophysics, 638, A129, 2020. [SciX](https://scixplorer.org/abs/2020A%26A...638A.129N/abstract).
+
+ [^cite-kimura2025]: Kimura, T., Hoshino, H., Kokubo, E., Matsumoto, Y. & Ikoma, M., *[Semi-analytical model for the dynamical evolution of planetary systems via giant impacts](https://doi.org/10.3847/1538-4357/ade992)*, The Astrophysical Journal, 989, 109, 2025.

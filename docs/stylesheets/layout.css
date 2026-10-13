@@ -31,7 +31,7 @@
 }
 
 .arch-diagram[data*="proteus_architecture"] {
-  aspect-ratio: 1412 / 1315;
+  aspect-ratio: 1412 / 1415;
 }
 
 /* Light mode: show light diagram */
@@ -172,6 +172,28 @@
 .md-footer-copyright a,
 .md-footer-meta a {
   text-decoration: none !important;
+}
+
+/* Primary buttons: the dark scheme reuses the primary color as the page
+   background, so the pill inverts to the light foreground tone there. */
+[data-md-color-scheme="slate"] .md-typeset .md-button--primary {
+  background-color: var(--md-primary-bg-color);
+  border-color: var(--md-primary-bg-color);
+  color: var(--pt-void);
+}
+[data-md-color-scheme="slate"] .md-typeset .md-button--primary:hover,
+[data-md-color-scheme="slate"] .md-typeset .md-button--primary:focus {
+  background-color: var(--pt-ice);
+  border-color: var(--pt-ice);
+  color: var(--pt-void);
+}
+
+/* Front-page subtitle: the line under the module name, a size down and in the
+   muted foreground so it reads as a caption rather than a second heading */
+.md-typeset .subtitle {
+  font-size: 1.0rem;
+  color: var(--md-default-fg-color--light);
+  margin-top: -0.1rem;
 }
 
 /* Header title doubles as a home link (see javascripts/header-links.js) */

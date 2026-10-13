@@ -1,17 +1,5 @@
-"""Asynchronous Bayesian optimization pipeline utilities.
-
-This module implements functions to:
-
-    * Save and checkpoint optimization state to disk.
-    * Generate initial sample locations via a Halton low-discrepancy sequence.
-    * Run a worker process that performs BO steps, logs metrics, and checkpoints.
-    * Coordinate multiple worker processes for asynchronous Bayesian optimization.
-
-Functions:
-    checkpoint: Persist shared data, logs, and timestamps to files.
-    init_locs: Create initial candidate points in the unit hypercube.
-    worker: Execute BO iterations in a subprocess, updating shared state.
-    parallel_process: Set up shared resources, spawn workers, and collect results.
+"""Asynchronous Bayesian optimisation: worker processes that each run BO steps
+against shared data, checkpointing as they go, and the orchestration around them.
 """
 
 from __future__ import annotations
@@ -26,8 +14,10 @@ import pandas as pd
 import torch
 
 from proteus.inference.BO import BO_step, init_locs
+from proteus.inference.failures import ProteusRunFailure
 from proteus.inference.utils import get_kernel, load_dataset_csv, save_dataset_csv
 from proteus.utils.coupler import get_proteus_directories
+from proteus.utils.logs import attach_worker_logfile
 
 # Tensor dtype for all computations
 dtype = torch.double
@@ -65,6 +55,19 @@ def checkpoint(D: dict, logs: list, Ts: list, output_dir: str) -> None:
     )
 
 
+def _parent_logfile() -> str | None:
+    """Path of the logfile the inference run's logger is writing, if it has one.
+
+    Read in the parent, because a spawned worker has no logging configuration
+    of its own to read it from. Returning the handler's own path rather than
+    rebuilding it keeps the logfile named in one place only.
+    """
+    for handler in logging.getLogger('fwl').handlers:
+        if isinstance(handler, logging.FileHandler):
+            return handler.baseFilename
+    return None
+
+
 def worker(
     process_fun,
     build_obj,
@@ -79,6 +82,10 @@ def worker(
     worker_id: int,
     log_list,
     output_dir: str,
+    logpath: str | None = None,
+    log_level: int = logging.INFO,
+    stop=None,
+    aborts=None,
 ) -> None:
     """Worker subprocess that performs asynchronous BO steps.
 
@@ -87,7 +94,8 @@ def worker(
       2. Calls BO_step to propose and evaluate a new point.
       3. Logs timing and performance metrics.
       4. Updates shared data, busy points, and checkpoints.
-    Runs until the total number of observations reaches max_len.
+    Runs until the total number of observations reaches max_len, or until
+    `stop` is set because a worker's run failed under `abort_on_failure`.
 
     Parameters
     ----------
@@ -103,6 +111,89 @@ def worker(
     - worker_id (int): Unique identifier of this worker.
     - log_list (Manager.list): Shared list to store per-eval log dicts.
     - output_dir (str): Output directory for the whole inference call (abspath).
+    - logpath (str | None): Inference run logfile to reopen when this process has no
+      logging configuration of its own.
+    - log_level (int): Numeric level to log at, read from the parent.
+    - stop (Manager.Event | None): Set by the worker whose run failed under
+      `abort_on_failure`, and checked by every worker before it starts
+      another evaluation.
+    - aborts (Manager.list | None): Receives the failure that set `stop`, so
+      the parent can raise it once every worker has exited.
+
+    Returns
+    ----------
+    - None
+    """
+    # A spawned worker inherits no logging configuration on MacOS.
+    # Reattach before any work starts, so that a failure in
+    # the very first iteration is still recorded in the logfile.
+    if logpath:
+        attach_worker_logfile(logpath, log_level)
+
+    try:
+        _worker_loop(
+            process_fun,
+            build_obj,
+            D_shared,
+            B,
+            T,
+            T0,
+            x_init,
+            n_init,
+            lock,
+            max_len,
+            worker_id,
+            log_list,
+            output_dir,
+            stop,
+        )
+    except ProteusRunFailure as failure:
+        # Only raised out of the objective under `abort_on_failure`.
+        if aborts is not None:
+            aborts.append(failure)
+        if stop is not None:
+            stop.set()
+        log.exception(f'Worker {worker_id} stopped the study after a failed run')
+        raise
+    except BaseException:
+        # A worker that dies takes its traceback with it: multiprocessing
+        # prints it to the parent's stderr without consulting the logging
+        # configuration, so nothing reaches the logfile. Record it here.
+        log.exception(f'Worker {worker_id} stopped early and will run no further evaluations')
+        raise
+    finally:
+        # Release this worker's busy point.
+        try:
+            with lock:
+                B.pop(worker_id, None)
+        except Exception:
+            log.warning(f'Worker {worker_id} could not release its busy point')
+
+
+def _worker_loop(
+    process_fun,
+    build_obj,
+    D_shared,
+    B,
+    T,
+    T0: float,
+    x_init: torch.Tensor,
+    n_init: int,
+    lock,
+    max_len: int,
+    worker_id: int,
+    log_list,
+    output_dir: str,
+    stop=None,
+) -> None:
+    """Run BO iterations until the evaluation budget is reached.
+
+    The body of `worker`, separated so that failure reporting and busy-point
+    release wrap every exit path.
+
+    Parameters
+    ----------
+    - See `worker`; arguments are forwarded unchanged.
 
     Returns
     ----------
@@ -116,6 +207,12 @@ def worker(
         current_X = D_shared['X']
         if len(current_X) >= max_len:
             log.info(f'Worker {worker_id} exiting')
+            break
+
+        # Another worker's run failed under `abort_on_failure`. Checked
+        # between evaluations only.
+        if stop is not None and stop.is_set():
+            log.info(f'Worker {worker_id} exiting: the study is stopping on a failed run')
             break
 
         # For the first iteration, use provided initial point
@@ -206,7 +303,8 @@ def parallel_process(
     - ref_config (str): Path to reference config to pass to objective_builder.
     - observables (dict): Target observables (keys) and values.
     - parameters (dict):  Parameters (keys) with bounds (values) for inference.
-    - failure_codes (list[int]): Additional PROTEUS exit codes to treat as failures.
+    - failure_codes (list[int]): PROTEUS status codes that complete normally but
+      that this run excludes from the fit.
 
     Returns
     ----------
@@ -251,6 +349,10 @@ def parallel_process(
     n_init = len(D_shared['X'])
 
     lock = mgr.Lock()
+    # Set by the first worker whose run fails under `abort_on_failure`,
+    # which also leaves that failure in `aborts` for the parent to re-raise.
+    stop = mgr.Event()
+    aborts = mgr.list()
     log_list = mgr.list([None] * n_init)  # no logs from init data
 
     # Generate initial candidate locations and busy-map
@@ -263,6 +365,10 @@ def parallel_process(
 
     # Set up step constraint
     max_steps = max_len - (n_workers - 1)
+
+    # Read in the parent: a spawned worker has none of this to read from.
+    worker_logpath = _parent_logfile()
+    worker_log_level = logging.getLogger('fwl').level
 
     # Spawn worker processes
     procs = []
@@ -286,6 +392,10 @@ def parallel_process(
                 wid,
                 log_list,
                 output_abspath,
+                worker_logpath,
+                worker_log_level,
+                stop,
+                aborts,
             ),
         )
         p.start()
@@ -295,9 +405,49 @@ def parallel_process(
     for p in procs:
         p.join()
 
+    # A failed run under `abort_on_failure` ends the study here.
+    if len(aborts):
+        failure = aborts[0]
+        n_done = len(D_shared['X'])
+        log.error(
+            'Study stopped: a run failed and abort_on_failure is set. '
+            f'{n_done} evaluation{"" if n_done == 1 else "s"}, initial samples '
+            'included, completed before it stopped.'
+        )
+        raise failure
+
     # Collect final results
     D_final = dict(D_shared)
     logs = list(log_list)
     T_elapsed = [t - T0 for t in list(T)]
+
+    # A worker that dies mid-run leaves the run looking complete. Report.
+    died = [wid for wid, p in enumerate(procs) if p.exitcode != 0]
+    if died:
+        names = ', '.join(str(wid) for wid in died)
+        log.error(
+            f'{len(died)} of {n_workers} workers stopped before the evaluation budget '
+            f'was reached (workers {names}). Their exit codes were '
+            f'{[procs[wid].exitcode for wid in died]}.'
+            f' Results are based on {len(D_final["X"])} evaluations '
+            f'rather than the {max_len} requested.'
+        )
+    # Nothing was added to the initial sample, so there is no optimisation to
+    # report and the best-fit summary would describe the initial design alone.
+    if len(D_final['X']) <= n_init:
+        if died:
+            cause = (
+                f'{len(died)} of {n_workers} workers stopped early; see the messages '
+                'above for the cause.'
+            )
+        else:
+            # Every worker exited on its first budget check.
+            n_steps = max_len - n_init
+            cause = (
+                f'No worker failed: the config asks for {n_steps} optimisation '
+                f'step{"" if n_steps == 1 else "s"} across {n_workers} workers. '
+                f'Raise n_steps to at least n_workers ({n_workers}).'
+            )
+        raise RuntimeError('No optimisation steps completed. ' + cause)
 
     return D_final, logs, T_elapsed

@@ -74,6 +74,15 @@ def parse_schema() -> list[dict]:
     lines, func = _function_source()
     constants = _constants()
     gas_list, element_list = constants.gas_list, constants.element_list
+    # Species lists a registry loop may iterate over, each with the placeholder
+    # its key pattern uses.
+    domains = {
+        'gas_list': (list(gas_list), 'gas'),
+        'element_list': (list(element_list), 'element'),
+        'vol_list': (list(constants.vol_list), 'gas'),
+        'vol_element_list': (list(constants.vol_element_list), 'element'),
+        'noble_gases': (list(constants.noble_gases), 'element'),
+    }
 
     records: list[dict] = []
     group = 'Model tracking'
@@ -148,7 +157,7 @@ def parse_schema() -> list[dict]:
                     f'coupler.py:{node.lineno}: top-level append with a non-literal key'
                 )
         elif isinstance(node, ast.For):
-            _expand_loop(node, add, gas_list, element_list)
+            _expand_loop(node, add, gas_list, element_list, domains)
         lineno = (node.end_lineno or lineno) + 1
 
     names = [r['name'] for r in records]
@@ -197,15 +206,12 @@ def _template_parts(arg) -> tuple[str, str, str] | None:
     return None
 
 
-def _expand_loop(node: ast.For, add, gas_list: list, element_list: list) -> None:
-    """Expand a ``for ... in gas_list/element_list`` append block."""
+def _expand_loop(node: ast.For, add, gas_list: list, element_list: list, domains: dict) -> None:
+    """Expand a registry append block that loops over one of ``domains``."""
     iter_name = node.iter.id if isinstance(node.iter, ast.Name) else None
-    if iter_name == 'gas_list':
-        domain, label = list(gas_list), 'gas'
-    elif iter_name == 'element_list':
-        domain, label = list(element_list), 'element'
-    else:
+    if iter_name not in domains:
         raise _docgen.DocgenError(f'coupler.py:{node.lineno}: loop over unrecognised iterable')
+    domain, label = list(domains[iter_name][0]), domains[iter_name][1]
 
     # The element-ratio block is a nested double loop with a dedup guard;
     # recognise it by shape and mirror the guard exactly. The append line

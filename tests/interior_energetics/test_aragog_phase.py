@@ -425,12 +425,59 @@ def test_cvode_factory_reads_the_setup_solver_fallback_tables(tmp_path, spider_e
             'proteus.interior_energetics.aragog.build_jax_phase_params',
             return_value=MagicMock(),
         ),
+        patch(
+            'aragog.solver.cvode_jax.build_jax_rhs_and_jacobian',
+            return_value=(MagicMock(), MagicMock(), MagicMock()),
+        ),
     ):
         AragogRunner._maybe_install_jax_cvode_factory(config, interior_o, str(tmp_path))
+        factory = interior_o.aragog_solver.set_jax_cvode_factory.call_args[0][0]
+        factory(MagicMock(), 'energy_balance')
 
-    mock_eos.assert_called_once_with(str(tmp_path / 'data' / 'spider_eos'))
-    # Discrimination: the configured directory is not what the EOS reads.
-    assert mock_eos.call_args.args[0] != eos_dir
+    # Both install-time verification and factory invocation read the fallback directory.
+    assert mock_eos.call_count == 2
+    for call in mock_eos.call_args_list:
+        assert call.args[0] == str(tmp_path / 'data' / 'spider_eos')
+        assert call.args[0] != eos_dir
+
+
+def test_cvode_factory_reads_live_spider_eos_dir_on_each_call(tmp_path):
+    """When _spider_eos_dir updates after install, factory invocations resolve
+    the live directory rather than the install-time directory.
+    """
+    config = _make_full_config()
+    config.interior_energetics.aragog.backend = 'jax'
+    dir1 = tmp_path / 'eos_initial'
+    dir2 = tmp_path / 'eos_regenerated'
+    dir1.mkdir()
+    dir2.mkdir()
+    interior_o = _make_runner_interior_o(spider_eos_dir=str(dir1))
+
+    with (
+        patch(
+            'proteus.interior_energetics.aragog._cached_entropy_eos_jax',
+            return_value=MagicMock(),
+        ) as mock_eos,
+        patch('aragog.jax.phase.MeshArrays.from_numpy_mesh', return_value=MagicMock()),
+        patch(
+            'proteus.interior_energetics.aragog.build_jax_phase_params',
+            return_value=MagicMock(),
+        ),
+        patch(
+            'aragog.solver.cvode_jax.build_jax_rhs_and_jacobian',
+            return_value=(MagicMock(), MagicMock(), MagicMock()),
+        ),
+    ):
+        AragogRunner._maybe_install_jax_cvode_factory(config, interior_o, str(tmp_path))
+        factory = interior_o.aragog_solver.set_jax_cvode_factory.call_args[0][0]
+        # Point to the regenerated directory after install
+        interior_o._spider_eos_dir = str(dir2)
+        factory(MagicMock(), 'energy_balance')
+
+    # Install read initial dir1; subsequent invocation read regenerated dir2.
+    assert mock_eos.call_count == 2
+    assert mock_eos.call_args_list[0].args[0] == str(dir1)
+    assert mock_eos.call_args_list[1].args[0] == str(dir2)
 
 
 def test_numpy_setup_solver_site_delegates_to_the_shared_builder():

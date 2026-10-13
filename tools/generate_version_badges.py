@@ -124,6 +124,16 @@ OPTIONAL = [
         'GitHub',
         ('vulcan', 'fwl-vulcan'),
     ),
+    (
+        'Morrigan',
+        'Protoplanet accretion via giant impacts',
+        None,
+        'blue',
+        None,
+        'https://github.com/FormingWorlds/Morrigan',
+        'GitHub',
+        ('morrigan', 'fwl-morrigan'),
+    ),
 ]
 
 

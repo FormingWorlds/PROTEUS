@@ -5,6 +5,9 @@ This module tests the AGNI atmosphere interface including:
 - Aerosol discovery (_determine_aerosols)
 - Condensate species determination (_determine_condensates)
 - AGNI atmosphere initialization (init_agni_atmos)
+- Reuse of prepared spectral files across runs, covering the folder AGNI builds
+  them in, the hit path that skips the stellar insertion, and the contract that
+  an unusable cache slows a run down without changing its result
 - Temperature-profile carry-over between iterations (_validate_stored_profile,
   update_agni_atmos), covering pressure and temperature positivity, profile
   monotonicity under interpolation, and the atmosphere-failure contract when
@@ -18,6 +21,10 @@ See also:
 from __future__ import annotations
 
 import logging
+import os
+import pathlib
+import shutil
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -29,10 +36,12 @@ import proteus.atmos_clim.agni as agni_mod
 from proteus.atmos_clim.agni import (
     _determine_aerosols,
     _determine_condensates,
+    _resolve_surface_material,
     _validate_stored_profile,
     init_agni_atmos,
     write_atmos_ncdf,
 )
+from proteus.atmos_clim.spectral_cache import cache_key
 from proteus.utils.constants import noble_gases
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
@@ -45,15 +54,19 @@ def _fake_jl_with_mie_materials(*names):
     )
 
 
+# Version directory of the scattering dataset below a data root (record 19294180).
+SCATTERING_DIR = Path('atmos_clim', 'scattering', 'socrates_aerosols', 'r19294180')
+
+
 @pytest.mark.unit
 @patch('proteus.atmos_clim.agni.os.listdir')
 @patch('proteus.atmos_clim.agni.os.path.isdir')
-def test_determine_aerosols_success(mock_isdir, mock_listdir, monkeypatch):
+def test_determine_aerosols_success(mock_isdir, mock_listdir, monkeypatch, tmp_path):
     """
     Test aerosol discovery when scattering data directory exists.
 
     Physical scenario: Scattering data for aerosols (e.g., sulfate, silicate)
-    is available in FWL_DATA/scattering/scattering/*.mon files, and AGNI has
+    is available as *.mon files in the scattering dataset directory of FWL_DATA, and AGNI has
     no Mie-capable materials for any of them.
     """
     monkeypatch.setattr(agni_mod, 'jl', _fake_jl_with_mie_materials())
@@ -66,7 +79,7 @@ def test_determine_aerosols_success(mock_isdir, mock_listdir, monkeypatch):
         'readme.md',  # Should be ignored
     ]
 
-    dirs = {'fwl': '/fake/fwl/path'}
+    dirs = {'fwl': str(tmp_path)}
     aerosols = _determine_aerosols(dirs)
 
     # Verify correct aerosols found, each via the 'mon' method, keeping the
@@ -74,12 +87,221 @@ def test_determine_aerosols_success(mock_isdir, mock_listdir, monkeypatch):
     assert aerosols == {'Haze': 'mon', 'Silicate': 'mon', 'Sulfate': 'mon'}
 
     # Verify correct directory was checked
-    mock_isdir.assert_called_once_with('/fake/fwl/path/scattering/scattering')
+    mock_isdir.assert_called_once_with(tmp_path / SCATTERING_DIR)
+
+
+@pytest.mark.unit
+def test_determine_aerosols_reads_the_fetched_scattering_dataset(monkeypatch, tmp_path):
+    """The .mon species come from the version directory fwl-io fills for SCATTERING."""
+    from proteus.data import SCATTERING, dataset_dir
+
+    monkeypatch.setattr(agni_mod, 'jl', _fake_jl_with_mie_materials())
+    target = dataset_dir(SCATTERING, data_root=tmp_path)
+    target.mkdir(parents=True)
+    for name in ('sulph.mon', 'ash.mon', 'notes.txt'):
+        (target / name).write_text('x')
+    # A file in the old layout must not be read.
+    old = tmp_path / 'scattering' / 'scattering'
+    old.mkdir(parents=True)
+    (old / 'soot.mon').write_text('x')
+
+    assert _determine_aerosols({'fwl': str(tmp_path)}) == {'ash': 'mon', 'sulph': 'mon'}
+    assert target == tmp_path / SCATTERING_DIR
+
+
+@pytest.mark.unit
+def test_determine_aerosols_skips_the_scattering_lookup_without_aerosols(monkeypatch, tmp_path):
+    """With aerosols off, the scattering dataset is not resolved and no .mon species is listed."""
+    monkeypatch.setattr(agni_mod, 'jl', _fake_jl_with_mie_materials('SiO2_amorph'))
+    calls = []
+    monkeypatch.setattr(agni_mod, 'dataset_dir', lambda *a, **k: calls.append(a) or tmp_path)
+
+    assert _determine_aerosols({'fwl': str(tmp_path)}, aerosols_enabled=False) == {
+        'SiO2_amorph': 'mie'
+    }
+    assert calls == []
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'error',
+    [
+        KeyError('atmos_clim.scattering.socrates_aerosols'),
+        RuntimeError('upgrade fwl-io'),
+        OSError('ro'),
+    ],
+)
+def test_determine_aerosols_warns_when_the_scattering_dataset_cannot_be_resolved(
+    monkeypatch, tmp_path, caplog, error
+):
+    """A failure to resolve the scattering dataset is a warning with no .mon species."""
+    monkeypatch.setattr(agni_mod, 'jl', _fake_jl_with_mie_materials())
+
+    def fail(*args, **kwargs):
+        raise error
+
+    monkeypatch.setattr(agni_mod, 'dataset_dir', fail)
+    with caplog.at_level(logging.WARNING):
+        assert _determine_aerosols({'fwl': str(tmp_path)}) == {}
+    assert 'Scattering data directory not found: unresolved' in caplog.text
+
+
+def _fetch_refractive(root):
+    """Write every registry file of the refractive dataset below root."""
+    from proteus.data import REFRACTIVE, _dataset, dataset_dir
+
+    target = dataset_dir(REFRACTIVE, data_root=root)
+    target.mkdir(parents=True)
+    for name in _dataset(REFRACTIVE).registry():
+        (target / name).write_text('0.3 1.5 0.0\n')
+    return target
+
+
+@pytest.fixture
+def refractive_env(monkeypatch, tmp_path):
+    """A clean AGNI override environment and a fetched refractive dataset below tmp_path."""
+    for var in (agni_mod.REFRACTIVE_ENV, 'AGNI_DIR_res'):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setattr(agni_mod, '_refractive_dir_set', None)
+    yield str(_fetch_refractive(tmp_path))
+    for var in (agni_mod.REFRACTIVE_ENV, 'AGNI_DIR_res'):
+        os.environ.pop(var, None)
+
+
+@pytest.mark.unit
+def test_refractive_env_points_at_the_dataset_and_is_removed_without_aerosols(
+    refractive_env, tmp_path
+):
+    """Aerosols on set AGNI_DIR_refractive to the dataset; a later run without aerosols removes it."""
+    agni_mod._point_agni_at_refractive(str(tmp_path), True)
+    assert os.environ[agni_mod.REFRACTIVE_ENV] == refractive_env
+
+    agni_mod._point_agni_at_refractive(str(tmp_path), False)
+    assert agni_mod.REFRACTIVE_ENV not in os.environ
+    agni_mod._point_agni_at_refractive(str(tmp_path), False)
+    assert agni_mod.REFRACTIVE_ENV not in os.environ
+
+
+@pytest.mark.unit
+def test_refractive_env_follows_the_data_root_of_each_run(refractive_env, tmp_path, caplog):
+    """A second run with aerosols on replaces the value PROTEUS set; it is not kept as a user value."""
+    other = _fetch_refractive(tmp_path / 'b')
+    agni_mod._point_agni_at_refractive(str(tmp_path), True)
+    with caplog.at_level(logging.INFO):
+        agni_mod._point_agni_at_refractive(str(tmp_path / 'b'), True)
+    assert os.environ[agni_mod.REFRACTIVE_ENV] == str(other)
+    assert 'keeping' not in caplog.text
+
+    agni_mod._point_agni_at_refractive(str(tmp_path), False)
+    assert agni_mod.REFRACTIVE_ENV not in os.environ
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('blank', ['', '  ', '\t'])
+def test_refractive_env_treats_a_blank_user_value_as_unset(
+    refractive_env, tmp_path, monkeypatch, blank
+):
+    """A blank override counts as unset, as in AGNI, so PROTEUS points AGNI at the dataset."""
+    monkeypatch.setenv('AGNI_DIR_res', blank)
+    agni_mod._point_agni_at_refractive(str(tmp_path), True)
+    assert os.environ[agni_mod.REFRACTIVE_ENV] == refractive_env
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('var', ['AGNI_DIR_refractive', 'AGNI_DIR_res'])
+def test_refractive_env_keeps_a_user_value(refractive_env, tmp_path, monkeypatch, caplog, var):
+    """A user value of either override is kept, and PROTEUS sets nothing."""
+    monkeypatch.setenv(var, '/user/nk')
+    with caplog.at_level(logging.INFO):
+        agni_mod._point_agni_at_refractive(str(tmp_path), True)
+    assert os.environ[var] == '/user/nk'
+    assert (var == agni_mod.REFRACTIVE_ENV) == (agni_mod.REFRACTIVE_ENV in os.environ)
+    assert f'keeping {var}=/user/nk' in caplog.text
+    assert 'holds no refractive index file' in caplog.text
+
+    agni_mod._point_agni_at_refractive(str(tmp_path), False)
+    assert os.environ[var] == '/user/nk'
+
+
+@pytest.mark.unit
+def test_refractive_env_keeps_a_user_value_set_after_a_proteus_run(refractive_env, tmp_path):
+    """A value the user set after PROTEUS set its own is not removed by the next run."""
+    agni_mod._point_agni_at_refractive(str(tmp_path), True)
+    os.environ[agni_mod.REFRACTIVE_ENV] = '/user/nk'
+
+    agni_mod._point_agni_at_refractive(str(tmp_path), False)
+    assert os.environ[agni_mod.REFRACTIVE_ENV] == '/user/nk'
+    assert agni_mod._refractive_dir_set is None
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('call', 'fail'),
+    [
+        (None, None),
+        ('dataset_dir', KeyError('refractive')),
+        ('dataset_dir', RuntimeError('fwl-io')),
+        ('dataset_dir', OSError('ro')),
+        ('missing_files', OSError('unreadable')),
+    ],
+)
+def test_refractive_env_warns_when_the_dataset_is_missing(
+    refractive_env, tmp_path, monkeypatch, caplog, call, fail
+):
+    """A missing or unresolvable dataset is a warning that names AGNI's own empty folder."""
+    if fail is not None:
+        monkeypatch.setattr(agni_mod, call, MagicMock(side_effect=fail))
+    else:
+        shutil.rmtree(refractive_env)
+    with caplog.at_level(logging.WARNING):
+        agni_mod._point_agni_at_refractive(str(tmp_path), True)
+    assert agni_mod.REFRACTIVE_ENV not in os.environ
+    reason = 'incomplete in' if fail is None else f'could not be resolved ({fail})'
+    assert f'Refractive index data {reason}' in caplog.text
+    assert 'empty unless its get_data.sh fetched' in caplog.text
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('keep', [0, 1, -1, -3, -4])
+def test_refractive_env_skips_an_incomplete_dataset(refractive_env, tmp_path, caplog, keep):
+    """An empty or partly fetched dataset is a warning naming the first missing files; AGNI
+    keeps its own folder."""
+    files = sorted(pathlib.Path(refractive_env).iterdir())
+    for path in files[keep:]:
+        path.unlink()
+    with caplog.at_level(logging.WARNING):
+        agni_mod._point_agni_at_refractive(str(tmp_path), True)
+    assert agni_mod.REFRACTIVE_ENV not in os.environ
+    gone = [f.name for f in files[keep:]]
+    listed = ', '.join(gone[:3]) + (f' and {len(gone) - 3} more' if len(gone) > 3 else '')
+    assert f'incomplete in {refractive_env}, missing: {listed}. AGNI' in caplog.text
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('var', ['AGNI_DIR_refractive', 'AGNI_DIR_res'])
+@pytest.mark.parametrize(
+    ('files', 'warned'), [([], True), (['_readme.txt'], True), (['Fe.txt'], False)]
+)
+def test_refractive_env_checks_the_folder_of_a_user_value(
+    refractive_env, tmp_path, monkeypatch, caplog, var, files, warned
+):
+    """A kept value is logged with the absolute folder AGNI resolves, and a folder without a
+    material file (a leading underscore marks a note) is a warning."""
+    monkeypatch.chdir(tmp_path)
+    nk = tmp_path / 'user' / ('refractive' if var == 'AGNI_DIR_res' else 'nk')
+    nk.mkdir(parents=True)
+    for name in files:
+        (nk / name).write_text('x')
+    monkeypatch.setenv(var, ' user/ ' if var == 'AGNI_DIR_res' else ' user/nk ')
+    with caplog.at_level(logging.INFO):
+        agni_mod._point_agni_at_refractive(str(tmp_path), True)
+    assert f'AGNI reads {nk}' in caplog.text
+    assert ('holds no refractive index file' in caplog.text) == warned
 
 
 @pytest.mark.unit
 @patch('proteus.atmos_clim.agni.os.path.isdir')
-def test_determine_aerosols_missing_directory(mock_isdir, monkeypatch):
+def test_determine_aerosols_missing_directory(mock_isdir, monkeypatch, tmp_path):
     """
     Test aerosol discovery when scattering directory doesn't exist.
 
@@ -90,7 +312,7 @@ def test_determine_aerosols_missing_directory(mock_isdir, monkeypatch):
     monkeypatch.setattr(agni_mod, 'jl', _fake_jl_with_mie_materials())
     mock_isdir.return_value = False
 
-    dirs = {'fwl': '/nonexistent/path'}
+    dirs = {'fwl': str(tmp_path)}
     aerosols = _determine_aerosols(dirs)
 
     # Should return an empty mapping without crashing
@@ -101,7 +323,7 @@ def test_determine_aerosols_missing_directory(mock_isdir, monkeypatch):
 @pytest.mark.unit
 @patch('proteus.atmos_clim.agni.os.listdir')
 @patch('proteus.atmos_clim.agni.os.path.isdir')
-def test_determine_aerosols_empty_directory(mock_isdir, mock_listdir, monkeypatch):
+def test_determine_aerosols_empty_directory(mock_isdir, mock_listdir, monkeypatch, tmp_path):
     """
     Test aerosol discovery when directory exists but has no .mon files.
 
@@ -112,7 +334,7 @@ def test_determine_aerosols_empty_directory(mock_isdir, mock_listdir, monkeypatc
     mock_isdir.return_value = True
     mock_listdir.return_value = ['readme.txt', 'config.yaml']
 
-    dirs = {'fwl': '/path/to/fwl'}
+    dirs = {'fwl': str(tmp_path)}
     aerosols = _determine_aerosols(dirs)
 
     # Should return an empty mapping
@@ -121,7 +343,7 @@ def test_determine_aerosols_empty_directory(mock_isdir, mock_listdir, monkeypatc
     # been queried AND listdir must have been called to inspect the
     # contents. A regression that returned {} without inspecting (e.g.
     # always short-circuited) would still pass the assertion above.
-    mock_isdir.assert_called_once_with('/path/to/fwl/scattering/scattering')
+    mock_isdir.assert_called_once_with(tmp_path / SCATTERING_DIR)
     mock_listdir.assert_called_once()
     # Type guard: returning None or a non-dict would also satisfy
     # `== {}` against another empty container, so pin the type.
@@ -131,7 +353,7 @@ def test_determine_aerosols_empty_directory(mock_isdir, mock_listdir, monkeypatc
 @pytest.mark.unit
 @patch('proteus.atmos_clim.agni.os.listdir')
 @patch('proteus.atmos_clim.agni.os.path.isdir')
-def test_determine_aerosols_single_species(mock_isdir, mock_listdir, monkeypatch):
+def test_determine_aerosols_single_species(mock_isdir, mock_listdir, monkeypatch, tmp_path):
     """
     Test aerosol discovery with only one aerosol type.
 
@@ -142,7 +364,7 @@ def test_determine_aerosols_single_species(mock_isdir, mock_listdir, monkeypatch
     mock_isdir.return_value = True
     mock_listdir.return_value = ['Sulfate.mon']
 
-    dirs = {'fwl': '/path/to/fwl'}
+    dirs = {'fwl': str(tmp_path)}
     aerosols = _determine_aerosols(dirs)
 
     assert aerosols == {'Sulfate': 'mon'}
@@ -154,7 +376,7 @@ def test_determine_aerosols_single_species(mock_isdir, mock_listdir, monkeypatch
 
 @pytest.mark.unit
 @patch('proteus.atmos_clim.agni.os.path.isdir')
-def test_determine_aerosols_mie_only_species(mock_isdir, monkeypatch):
+def test_determine_aerosols_mie_only_species(mock_isdir, monkeypatch, tmp_path):
     """
     Test aerosol discovery when AGNI has Mie-capable materials but there is
     no FWL_DATA scattering directory at all.
@@ -167,19 +389,21 @@ def test_determine_aerosols_mie_only_species(mock_isdir, monkeypatch):
     monkeypatch.setattr(agni_mod, 'jl', _fake_jl_with_mie_materials('SiO2_amorph', 'VO'))
     mock_isdir.return_value = False
 
-    dirs = {'fwl': '/nonexistent/path'}
+    dirs = {'fwl': str(tmp_path)}
     aerosols = _determine_aerosols(dirs)
 
     assert aerosols == {'SiO2_amorph': 'mie', 'VO': 'mie'}
     # Discrimination guard: a regression that only merged Mie names in when
     # the scattering directory also existed would return {} here instead.
-    mock_isdir.assert_called_once_with('/nonexistent/path/scattering/scattering')
+    mock_isdir.assert_called_once_with(tmp_path / SCATTERING_DIR)
 
 
 @pytest.mark.unit
 @patch('proteus.atmos_clim.agni.os.listdir')
 @patch('proteus.atmos_clim.agni.os.path.isdir')
-def test_determine_aerosols_prefers_mie_over_mon(mock_isdir, mock_listdir, monkeypatch):
+def test_determine_aerosols_prefers_mie_over_mon(
+    mock_isdir, mock_listdir, monkeypatch, tmp_path
+):
     """
     A species with both a 'mon' file and Mie support uses 'mie'.
 
@@ -195,7 +419,7 @@ def test_determine_aerosols_prefers_mie_over_mon(mock_isdir, mock_listdir, monke
     mock_isdir.return_value = True
     mock_listdir.return_value = ['Sulfate.mon', 'Haze.mon']
 
-    dirs = {'fwl': '/path/to/fwl'}
+    dirs = {'fwl': str(tmp_path)}
     aerosols = _determine_aerosols(dirs)
 
     assert aerosols == {'Sulfate': 'mie', 'Haze': 'mon'}
@@ -455,7 +679,7 @@ def _build_greygas_config():
 
 @pytest.mark.unit
 def test_init_agni_atmos_greygas_bypasses_spectral_copy(monkeypatch, tmp_path):
-    """Greygas path should not call get_spfile_path or pass a stellar spectrum.
+    """Greygas path should not call require_spfile_path or pass a stellar spectrum.
 
     When spectral_file='greygas' is set, AGNI uses the grey-gas RT scheme and
     does not need a SOCRATES spectral file or stellar flux to be copied into
@@ -471,7 +695,7 @@ def test_init_agni_atmos_greygas_bypasses_spectral_copy(monkeypatch, tmp_path):
     data_dir.mkdir(parents=True)
     (data_dir / '100.sflux').write_text('sflux', encoding='utf-8')
 
-    dirs = {'output': str(output_dir), 'agni': '/fake/agni', 'fwl': '/fake/fwl'}
+    dirs = {'output': str(output_dir), 'agni': '/fake/agni', 'fwl': str(tmp_path)}
     config = _build_greygas_config()
     hf_row = {
         'F_ins': 1000.0,
@@ -492,9 +716,9 @@ def test_init_agni_atmos_greygas_bypasses_spectral_copy(monkeypatch, tmp_path):
     monkeypatch.setattr(agni_mod, 'sync_log_files', lambda *_a, **_k: None)
     monkeypatch.setattr(
         agni_mod,
-        'get_spfile_path',
+        'require_spfile_path',
         lambda *_a, **_k: (_ for _ in ()).throw(
-            AssertionError('get_spfile_path should not be called for greygas')
+            AssertionError('require_spfile_path should not be called for greygas')
         ),
     )
 
@@ -511,6 +735,358 @@ def test_init_agni_atmos_greygas_bypasses_spectral_copy(monkeypatch, tmp_path):
     # grey_opacity_lw/sw should be forwarded as the Greek-named AGNI kwargs.
     assert fake_agni.last_setup_kwargs['κ_grey_lw'] == pytest.approx(0.1)
     assert fake_agni.last_setup_kwargs['κ_grey_sw'] == pytest.approx(0.2)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('aerosols', [True, False])
+def test_init_agni_atmos_warns_about_no_aerosols_only_when_they_are_on(
+    monkeypatch, tmp_path, caplog, aerosols
+):
+    """An AGNI listing no aerosol data is reported only for a run that uses aerosols."""
+    fake_agni = _FakeAGNI()
+    fake_jl = SimpleNamespace(
+        AGNI=fake_agni, Dict=dict, Char=str, Array=_FAKE_JL_ARRAY, String=str
+    )
+    output_dir = tmp_path / 'out'
+    (output_dir / 'data').mkdir(parents=True)
+    dirs = {'output': str(output_dir), 'agni': '/fake/agni', 'fwl': str(tmp_path)}
+    config = _build_greygas_config()
+    config.atmos_clim.aerosols_enabled = aerosols
+    hf_row = dict(
+        F_ins=1000.0, albedo_pl=0.2, T_surf=900.0, gravity=9.8, R_int=6.4e6, P_surf=1.0
+    )
+    hf_row.update(axial_period=86400.0, longitude=0.0, latitude=0.0, hill_radius=6.4e8)
+    monkeypatch.setattr(agni_mod, 'jl', fake_jl)
+    monkeypatch.setattr(agni_mod, 'convert', lambda _typ, value: value)
+    monkeypatch.setattr(agni_mod, '_construct_voldict', lambda *_a, **_k: {'H2O': 1.0})
+    monkeypatch.setattr(agni_mod, 'sync_log_files', lambda *_a, **_k: None)
+    monkeypatch.setattr(agni_mod, '_point_agni_at_refractive', lambda *_a: None)
+
+    with caplog.at_level(logging.WARNING):
+        assert init_agni_atmos(dirs, config, hf_row) is not None
+    assert ('No aerosols mapped' in caplog.text) == aerosols
+
+
+class _SpectralWritingAGNI(_FakeAGNI):
+    """Fake AGNI that writes the runtime spectral pair where the real one does.
+
+    AGNI builds `<IO_DIR>/runtime.sf` and its `_k` companion inside `allocate!`,
+    and only when a stellar spectrum is supplied; an empty spectrum means the
+    spectral file it was handed is already prepared and is used untouched. As
+    in AGNI, a prepared file is refused when an enabled aerosol uses Mie theory,
+    whose properties are computed from the stellar spectrum.
+    """
+
+    def _allocate_b(self, atmos, input_star, **kwargs):
+        setup = self.last_setup_kwargs
+        aerosols = setup.get('aerosol_species', {})
+        if not input_star and setup.get('flag_aerosol'):
+            if any(entry['method'] == 'mie' for entry in aerosols.values()):
+                return False
+        if input_star:
+            io_dir = Path(self.last_setup_kwargs['IO_DIR'])
+            io_dir.mkdir(parents=True, exist_ok=True)
+            star_name = Path(input_star).name
+            (io_dir / 'runtime.sf').write_text(f'prepared from {star_name}', encoding='utf-8')
+            (io_dir / 'runtime.sf_k').write_text(f'ktable from {star_name}', encoding='utf-8')
+        return super()._allocate_b(atmos, input_star, **kwargs)
+
+
+def _setup_cached_spectral_run(monkeypatch, tmp_path, cache_dir, verbosity=1, log_level='INFO'):
+    """Wire up an init_agni_atmos call that goes through the spectral-file cache.
+
+    The base spectral file and the stellar spectrum are real files, because the
+    cache key fingerprints both. `verbosity` and `log_level` select which folder
+    AGNI works in: the output folder only when verbose or debug-logged.
+    """
+    fake_agni = _SpectralWritingAGNI()
+    fake_jl = SimpleNamespace(
+        AGNI=fake_agni, Dict=dict, Char=str, Array=_FAKE_JL_ARRAY, String=str
+    )
+
+    output_dir = tmp_path / 'out'
+    data_dir = output_dir / 'data'
+    data_dir.mkdir(parents=True)
+    sflux = data_dir / '100.sflux'
+    sflux.write_text('400.0 1.0\n500.0 2.0\n', encoding='utf-8')
+
+    fwl_dir = tmp_path / 'fwl'
+    fwl_dir.mkdir(parents=True, exist_ok=True)
+    base_sf = fwl_dir / 'Honeyside.sf'
+    base_sf.write_text('base spectral file, no star inserted', encoding='utf-8')
+
+    scratch = tmp_path / 'scratch'
+
+    def _fake_tmp_folder():
+        scratch.mkdir(parents=True, exist_ok=True)
+        return str(scratch)
+
+    config = _build_greygas_config()
+    config.atmos_clim.agni.spectral_file = None
+    config.atmos_clim.agni.verbosity = verbosity
+    config.atmos_clim.spectral_group = 'Honeyside'
+    config.atmos_clim.spectral_bands = '16'
+    config.atmos_clim.spectral_cache = str(cache_dir)
+    config.params.out.logging = log_level
+
+    monkeypatch.setattr(agni_mod, 'jl', fake_jl)
+    monkeypatch.setattr(agni_mod, 'convert', lambda _typ, value: value)
+    monkeypatch.setattr(agni_mod, '_construct_voldict', lambda *_a, **_k: {'H2O': 1.0})
+    monkeypatch.setattr(agni_mod, 'sync_log_files', lambda *_a, **_k: None)
+    monkeypatch.setattr(agni_mod, 'require_spfile_path', lambda *_a, **_k: str(base_sf))
+    monkeypatch.setattr(agni_mod, 'create_tmp_folder', _fake_tmp_folder)
+
+    return SimpleNamespace(
+        fake_agni=fake_agni,
+        dirs={'output': str(output_dir), 'agni': '/fake/agni', 'fwl': str(fwl_dir)},
+        config=config,
+        hf_row={
+            'F_ins': 1000.0,
+            'albedo_pl': 0.2,
+            'T_surf': 900.0,
+            'gravity': 9.8,
+            'R_int': 6.4e6,
+            'P_surf': 1.0,
+            'axial_period': 86400.0,
+            'longitude': 0.0,
+            'latitude': 0.0,
+            'hill_radius': 6.4e8,
+        },
+        output_dir=output_dir,
+        scratch=scratch,
+        base_sf=base_sf,
+        sflux=sflux,
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('verbosity', 'log_level', 'work_dir'),
+    [(1, 'INFO', 'scratch'), (2, 'INFO', 'output')],
+    ids=['quiet-run-works-in-scratch', 'verbose-run-works-in-output'],
+)
+def test_spectral_cache_is_filled_from_the_folder_agni_wrote_in(
+    monkeypatch, tmp_path, verbosity, log_level, work_dir
+):
+    """A run that builds a spectral file leaves a cache entry, in either work folder.
+
+    AGNI writes the prepared file into its own working folder, which is the run's
+    output folder only when the run is verbose or debug-logged. A quiet run, the
+    default and the one inference workers use, works in a scratch folder instead;
+    harvesting the entry from the output folder there stores nothing at all, so
+    the cache stays empty and every later run repeats the insertion.
+    """
+    cache = tmp_path / 'cache'
+    ctx = _setup_cached_spectral_run(
+        monkeypatch, tmp_path, cache, verbosity=verbosity, log_level=log_level
+    )
+
+    atmos = init_agni_atmos(ctx.dirs, ctx.config, ctx.hf_row)
+    assert atmos is not None
+
+    # Cache miss: this run did the insertion itself, so allocate saw the spectrum.
+    assert ctx.fake_agni.last_allocate_input_star == str(ctx.sflux)
+
+    built_in = ctx.scratch if work_dir == 'scratch' else ctx.output_dir
+    assert (built_in / 'runtime.sf').is_file()
+
+    key = cache_key(ctx.base_sf, ctx.sflux, 'Honeyside', '16', rayleigh=False, aerosols=None)
+    assert sorted(p.name for p in cache.iterdir()) == [f'{key}.sf', f'{key}.sf_k']
+    assert (cache / f'{key}.sf').read_text() == (built_in / 'runtime.sf').read_text()
+    assert (cache / f'{key}.sf_k').read_text() == (built_in / 'runtime.sf_k').read_text()
+
+    # Discriminating guard: in the quiet run the output folder holds no prepared
+    # file, so a harvest pointed there would find nothing and cache nothing.
+    quiet_output_is_empty = not (ctx.output_dir / 'runtime.sf').is_file()
+    assert quiet_output_is_empty == (work_dir == 'scratch')
+
+
+@pytest.mark.unit
+def test_a_cached_spectral_file_is_reused_without_reinserting_the_spectrum(
+    monkeypatch, tmp_path
+):
+    """A cache hit hands AGNI the prepared file and skips the stellar insertion.
+
+    The seeded pair has to land in the folder AGNI reads from, and the path
+    handed to setup has to be that copy: pointing at the output folder in a quiet
+    run names a file that was never created there.
+    """
+    cache = tmp_path / 'cache'
+    cache.mkdir()
+    ctx = _setup_cached_spectral_run(monkeypatch, tmp_path, cache)
+
+    key = cache_key(ctx.base_sf, ctx.sflux, 'Honeyside', '16', rayleigh=False, aerosols=None)
+    (cache / f'{key}.sf').write_text('cached prepared file', encoding='utf-8')
+    (cache / f'{key}.sf_k').write_text('cached ktable', encoding='utf-8')
+
+    atmos = init_agni_atmos(ctx.dirs, ctx.config, ctx.hf_row)
+    assert atmos is not None
+
+    # Empty spectrum: AGNI takes the file as already prepared and does not rebuild.
+    assert ctx.fake_agni.last_allocate_input_star == ''
+
+    # setup_b positional args: [dirs['agni'], dirs['output'], input_sf, ...]
+    assert ctx.fake_agni.last_setup_args[2] == str(ctx.scratch / 'runtime.sf')
+    assert (ctx.scratch / 'runtime.sf').read_text() == 'cached prepared file'
+    assert (ctx.scratch / 'runtime.sf_k').read_text() == 'cached ktable'
+
+    # Guard: the companion must travel with its file. A seeded pair that AGNI
+    # cannot find is the failure mode the path-choice above exists to avoid.
+    assert not (ctx.output_dir / 'runtime.sf').exists()
+
+
+@pytest.mark.unit
+def test_a_rebuild_after_a_spectrum_update_bypasses_the_spectral_cache(monkeypatch, tmp_path):
+    """A rebuild after a stellar-spectrum update neither reads nor fills the
+    cache: its spectrum depends on the run's own timestep, so an entry stored
+    for it would never be reused, and a study would accumulate one per update.
+    The first build of the same run, with the same entry present, does use it.
+    """
+    cache = tmp_path / 'cache'
+    cache.mkdir()
+    ctx = _setup_cached_spectral_run(monkeypatch, tmp_path, cache)
+    key = cache_key(ctx.base_sf, ctx.sflux, 'Honeyside', '16', rayleigh=False, aerosols=None)
+    (cache / f'{key}.sf').write_text('cached prepared file', encoding='utf-8')
+    (cache / f'{key}.sf_k').write_text('cached ktable', encoding='utf-8')
+    before = sorted(p.name for p in cache.iterdir())
+
+    assert init_agni_atmos(ctx.dirs, ctx.config, ctx.hf_row, use_cache=False) is not None
+    # Built from the spectrum, not seeded, and nothing added to the cache.
+    assert ctx.fake_agni.last_allocate_input_star == str(ctx.sflux)
+    assert (ctx.scratch / 'runtime.sf').read_text() != 'cached prepared file'
+    assert sorted(p.name for p in cache.iterdir()) == before
+
+    # Discrimination: the first build reads the same entry, so the bypass above
+    # comes from the flag and not from a cache that could not be read.
+    for suffix in ('', '_k'):
+        (ctx.scratch / f'runtime.sf{suffix}').unlink()
+    assert init_agni_atmos(ctx.dirs, ctx.config, ctx.hf_row) is not None
+    assert ctx.fake_agni.last_allocate_input_star == ''
+    assert (ctx.scratch / 'runtime.sf').read_text() == 'cached prepared file'
+
+
+@pytest.mark.unit
+def test_a_cached_spectral_file_is_not_reused_across_rayleigh_settings(monkeypatch, tmp_path):
+    """A cache folder shared by runs that differ only in `atmos_clim.rayleigh`
+    must not hand one the other's file, because AGNI writes the Rayleigh block
+    into it. The entry built without Rayleigh scattering is left alone, and the
+    run with it builds and stores its own.
+    """
+    cache = tmp_path / 'cache'
+    cache.mkdir()
+    ctx = _setup_cached_spectral_run(monkeypatch, tmp_path, cache)
+    without = cache_key(
+        ctx.base_sf, ctx.sflux, 'Honeyside', '16', rayleigh=False, aerosols=None
+    )
+    (cache / f'{without}.sf').write_text('built without rayleigh', encoding='utf-8')
+    (cache / f'{without}.sf_k').write_text('ktable without rayleigh', encoding='utf-8')
+    ctx.config.atmos_clim.rayleigh = True
+
+    assert init_agni_atmos(ctx.dirs, ctx.config, ctx.hf_row) is not None
+
+    # A miss: the spectrum was handed to AGNI for insertion, not a seeded file.
+    assert ctx.fake_agni.last_allocate_input_star == str(ctx.sflux)
+    assert (ctx.scratch / 'runtime.sf').read_text() != 'built without rayleigh'
+    with_rayleigh = cache_key(
+        ctx.base_sf, ctx.sflux, 'Honeyside', '16', rayleigh=True, aerosols=None
+    )
+    assert sorted(p.name for p in cache.iterdir()) == sorted(
+        [f'{without}.sf', f'{without}.sf_k', f'{with_rayleigh}.sf', f'{with_rayleigh}.sf_k']
+    )
+    assert (cache / f'{without}.sf').read_text() == 'built without rayleigh'
+
+
+@pytest.mark.unit
+def test_a_cached_spectral_file_is_keyed_on_the_aerosols_agni_receives(monkeypatch, tmp_path):
+    """The cache key names the aerosols tied to a condensate, not all available ones.
+
+    AGNI only receives aerosols tied to a condensate, and writes their blocks
+    into the prepared file. A run without condensates therefore passes no
+    aerosols even when SiO2 data exist, and must not reuse an entry built by a
+    run whose rainout tied SiO2 in. Keying on every available species would
+    give both runs the same key and hand the first the wrong file.
+    """
+    cache = tmp_path / 'cache'
+    cache.mkdir()
+    ctx = _setup_cached_spectral_run(monkeypatch, tmp_path, cache)
+    ctx.config.atmos_clim.aerosols_enabled = True
+    monkeypatch.setattr(agni_mod, '_determine_aerosols', lambda _d, *args: {'SiO2': 'mon'})
+    monkeypatch.setattr(agni_mod, '_determine_condensates', lambda _v: ['SiO2'])
+
+    tied = cache_key(
+        ctx.base_sf, ctx.sflux, 'Honeyside', '16', rayleigh=False, aerosols=['SiO2']
+    )
+    untied = cache_key(ctx.base_sf, ctx.sflux, 'Honeyside', '16', rayleigh=False, aerosols=[])
+    # Discrimination guard: the two runs must map to different entries.
+    assert tied != untied
+    (cache / f'{tied}.sf').write_text('built with SiO2 block', encoding='utf-8')
+    (cache / f'{tied}.sf_k').write_text('ktable with SiO2 block', encoding='utf-8')
+
+    # Edge case: SiO2 data available, but no condensates, so nothing is tied.
+    assert init_agni_atmos(ctx.dirs, ctx.config, ctx.hf_row) is not None
+    assert ctx.fake_agni.last_setup_kwargs['aerosol_species'] == {}
+    assert ctx.fake_agni.last_allocate_input_star == str(ctx.sflux)
+    assert (cache / f'{untied}.sf').read_text() == 'prepared from 100.sflux'
+    assert (cache / f'{tied}.sf').read_text() == 'built with SiO2 block'
+
+    # With rainout on, SiO2 is tied and the matching entry is reused as is.
+    ctx.config.atmos_clim.agni.rainout = True
+    assert init_agni_atmos(ctx.dirs, ctx.config, ctx.hf_row) is not None
+    assert list(ctx.fake_agni.last_setup_kwargs['aerosol_species']) == ['SiO2']
+    assert ctx.fake_agni.last_allocate_input_star == ''
+    assert (ctx.scratch / 'runtime.sf').read_text() == 'built with SiO2 block'
+
+
+@pytest.mark.unit
+def test_a_run_with_a_mie_aerosol_builds_its_own_spectral_file(monkeypatch, tmp_path):
+    """A Mie aerosol skips the cache: AGNI refuses a prepared file for it."""
+    cache = tmp_path / 'cache'
+    cache.mkdir()
+    ctx = _setup_cached_spectral_run(monkeypatch, tmp_path, cache)
+    ctx.config.atmos_clim.aerosols_enabled = True
+    ctx.config.atmos_clim.agni.rainout = True
+    monkeypatch.setattr(agni_mod, '_determine_aerosols', lambda _d, *args: {'SiO2': 'mie'})
+    monkeypatch.setattr(agni_mod, '_determine_condensates', lambda _v: ['SiO2'])
+    key = cache_key(
+        ctx.base_sf, ctx.sflux, 'Honeyside', '16', rayleigh=False, aerosols=['SiO2']
+    )
+    (cache / f'{key}.sf').write_text('built with SiO2 block', encoding='utf-8')
+    (cache / f'{key}.sf_k').write_text('ktable with SiO2 block', encoding='utf-8')
+
+    # A hit would reach the fake's refusal and raise; the run builds instead.
+    assert init_agni_atmos(ctx.dirs, ctx.config, ctx.hf_row) is not None
+    assert ctx.fake_agni.last_allocate_input_star == str(ctx.sflux)
+    assert sorted(p.name for p in cache.iterdir()) == [f'{key}.sf', f'{key}.sf_k']
+    assert (cache / f'{key}.sf').read_text() == 'built with SiO2 block'
+
+
+@pytest.mark.unit
+def test_a_cache_that_cannot_be_written_costs_time_and_not_correctness(
+    monkeypatch, tmp_path, caplog
+):
+    """An unusable cache folder degrades to a normal build instead of failing.
+
+    A cache path occupied by a regular file cannot hold entries. The run must
+    still initialise, still insert the spectrum itself, and leave the occupying
+    file untouched.
+    """
+    blocked = tmp_path / 'blocked'
+    blocked.write_text('not a folder', encoding='utf-8')
+    ctx = _setup_cached_spectral_run(monkeypatch, tmp_path, blocked)
+
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.atmos_clim.spectral_cache'):
+        atmos = init_agni_atmos(ctx.dirs, ctx.config, ctx.hf_row)
+
+    assert atmos is not None
+    assert 'Could not store spectral file in cache' in caplog.text
+
+    # The run built its own file, exactly as it would with the cache switched off.
+    assert ctx.fake_agni.last_allocate_input_star == str(ctx.sflux)
+    assert (ctx.scratch / 'runtime.sf').is_file()
+
+    # Nothing was written over the occupying file.
+    assert blocked.is_file()
+    assert blocked.read_text() == 'not a folder'
 
 
 @pytest.mark.unit
@@ -537,7 +1113,7 @@ def test_init_agni_atmos_loads_the_row_matched_profile(monkeypatch, tmp_path):
     (data_dir / '30p200_atm.nc').write_text('row', encoding='utf-8')
     (data_dir / '40p000_atm.nc').write_text('stray', encoding='utf-8')
 
-    dirs = {'output': str(output_dir), 'agni': '/fake/agni', 'fwl': '/fake/fwl'}
+    dirs = {'output': str(output_dir), 'agni': '/fake/agni', 'fwl': str(tmp_path)}
     config = _build_greygas_config()
     hf_row = {
         'Time': 30.200,
@@ -591,7 +1167,7 @@ def test_init_agni_atmos_falls_back_to_latest_profile_mid_run(monkeypatch, tmp_p
     (data_dir / '9p000_atm.nc').write_text('early', encoding='utf-8')
     (data_dir / '40p000_atm.nc').write_text('latest', encoding='utf-8')
 
-    dirs = {'output': str(output_dir), 'agni': '/fake/agni', 'fwl': '/fake/fwl'}
+    dirs = {'output': str(output_dir), 'agni': '/fake/agni', 'fwl': str(tmp_path)}
     config = _build_greygas_config()
     hf_row = {
         'Time': 50.000,
@@ -641,7 +1217,7 @@ def test_init_agni_atmos_passes_unscaled_surface_pressure(monkeypatch, tmp_path)
     data_dir.mkdir(parents=True)
     (data_dir / '100.sflux').write_text('sflux', encoding='utf-8')
 
-    dirs = {'output': str(output_dir), 'agni': '/fake/agni', 'fwl': '/fake/fwl'}
+    dirs = {'output': str(output_dir), 'agni': '/fake/agni', 'fwl': str(tmp_path)}
     config = _build_greygas_config()
     p_surf_true = 200.0  # bar, far above the p_top floor so no clamping occurs
     hf_row = {
@@ -676,6 +1252,47 @@ def test_init_agni_atmos_passes_unscaled_surface_pressure(monkeypatch, tmp_path)
 
 
 @pytest.mark.unit
+def test_init_agni_atmos_missing_surface_albedo_file_stops_with_its_fetch_command(
+    monkeypatch, tmp_path
+):
+    """A configured albedo file that is absent writes status 20 and names
+    `proteus get surfaces` and `fwl-io relocate`."""
+    fake_jl = SimpleNamespace(AGNI=_FakeAGNI(), Dict=dict, Char=str)
+    (tmp_path / 'out' / 'data').mkdir(parents=True)
+    dirs = {'output': str(tmp_path / 'out'), 'agni': '/fake/agni', 'fwl': str(tmp_path)}
+    config = _build_greygas_config()
+    config.atmos_clim.agni.surf_material = 'lunarmarebasalt.dat'
+    hf_row = {'P_surf': 1.0, 'T_surf': 900.0, 'gravity': 9.8, 'R_int': 6.4e6}
+    monkeypatch.setattr(agni_mod, 'jl', fake_jl)
+    monkeypatch.setattr(agni_mod, 'convert', lambda _typ, value: value)
+    monkeypatch.setattr(agni_mod, '_construct_voldict', lambda *_a, **_k: {'H2O': 1.0})
+    status = MagicMock()
+    monkeypatch.setattr(agni_mod, 'UpdateStatusfile', status)
+    with pytest.raises(FileNotFoundError, match='`proteus get surfaces`.*`fwl-io relocate`'):
+        init_agni_atmos(dirs, config, hf_row)
+    status.assert_called_once_with(dirs, 20)
+
+
+@pytest.mark.unit
+def test_init_agni_atmos_missing_spectral_file_stops_with_status_20(monkeypatch, tmp_path):
+    """With a stellar spectrum but no spectral file of the configured group in FWL_DATA,
+    AGNI writes status 20 and names `proteus get spectral` and `fwl-io relocate`."""
+    fake_jl = SimpleNamespace(AGNI=_FakeAGNI(), Dict=dict, Char=str)
+    (tmp_path / 'out' / 'data').mkdir(parents=True)
+    (tmp_path / 'out' / 'data' / '100.sflux').write_text('sflux', encoding='utf-8')
+    dirs = {'output': str(tmp_path / 'out'), 'agni': '/fake/agni', 'fwl': str(tmp_path)}
+    config = _build_greygas_config()
+    config.atmos_clim.agni.spectral_file = None
+    config.atmos_clim.spectral_group, config.atmos_clim.spectral_bands = 'Dayspring', '48'
+    hf_row = {'P_surf': 1.0, 'T_surf': 900.0, 'gravity': 9.8, 'R_int': 6.4e6}
+    monkeypatch.setattr(agni_mod, 'jl', fake_jl)
+    monkeypatch.setattr(agni_mod, 'convert', lambda _typ, value: value)
+    with pytest.raises(FileNotFoundError, match='`proteus get spectral`.*`fwl-io relocate`'):
+        init_agni_atmos(dirs, config, hf_row)
+    assert (tmp_path / 'out' / 'status').read_text().splitlines()[0] == '20'
+
+
+@pytest.mark.unit
 def test_init_agni_atmos_greygas_does_not_glob_sflux(monkeypatch, tmp_path):
     """Regression: in grey-gas mode, init_agni_atmos must not require any
     *.sflux file to exist. Before this fix, an unconditional
@@ -693,7 +1310,7 @@ def test_init_agni_atmos_greygas_does_not_glob_sflux(monkeypatch, tmp_path):
     data_dir.mkdir(parents=True)
     # NOTE: no *.sflux file written. Pre-fix this would have crashed.
 
-    dirs = {'output': str(output_dir), 'agni': '/fake/agni', 'fwl': '/fake/fwl'}
+    dirs = {'output': str(output_dir), 'agni': '/fake/agni', 'fwl': str(tmp_path)}
     config = _build_greygas_config()
     hf_row = {
         'F_ins': 1000.0,
@@ -714,9 +1331,9 @@ def test_init_agni_atmos_greygas_does_not_glob_sflux(monkeypatch, tmp_path):
     monkeypatch.setattr(agni_mod, 'sync_log_files', lambda *_a, **_k: None)
     monkeypatch.setattr(
         agni_mod,
-        'get_spfile_path',
+        'require_spfile_path',
         lambda *_a, **_k: (_ for _ in ()).throw(
-            AssertionError('get_spfile_path should not be called for greygas')
+            AssertionError('require_spfile_path should not be called for greygas')
         ),
     )
 
@@ -744,7 +1361,7 @@ def test_init_agni_atmos_non_greygas_no_sflux_raises_filenotfound(monkeypatch, t
     data_dir.mkdir(parents=True)
     # No *.sflux; no runtime.sf either.
 
-    dirs = {'output': str(output_dir), 'agni': '/fake/agni', 'fwl': '/fake/fwl'}
+    dirs = {'output': str(output_dir), 'agni': '/fake/agni', 'fwl': str(tmp_path)}
     # Use the same scaffold as greygas test but flip spectral_file to None
     # so the function takes the "AGNI copy from FWL_DATA" branch.
     config = _build_greygas_config()
@@ -767,7 +1384,7 @@ def test_init_agni_atmos_non_greygas_no_sflux_raises_filenotfound(monkeypatch, t
     monkeypatch.setattr(agni_mod, '_construct_voldict', lambda *_a, **_k: {'H2O': 1.0})
     monkeypatch.setattr(agni_mod, 'sync_log_files', lambda *_a, **_k: None)
     monkeypatch.setattr(agni_mod, 'UpdateStatusfile', lambda *_a, **_k: None)
-    monkeypatch.setattr(agni_mod, 'get_spfile_path', lambda *_a, **_k: '/fake/spfile')
+    monkeypatch.setattr(agni_mod, 'require_spfile_path', lambda *_a, **_k: '/fake/spfile')
 
     with pytest.raises(FileNotFoundError, match='No stellar spectrum'):
         init_agni_atmos(dirs, config, hf_row)
@@ -805,7 +1422,7 @@ def test_init_agni_atmos_forwards_hill_radius_and_hydrograv_hilldr(monkeypatch, 
     data_dir.mkdir(parents=True)
     (data_dir / '100.sflux').write_text('sflux', encoding='utf-8')
 
-    dirs = {'output': str(output_dir), 'agni': '/fake/agni', 'fwl': '/fake/fwl'}
+    dirs = {'output': str(output_dir), 'agni': '/fake/agni', 'fwl': str(tmp_path)}
     config = _build_greygas_config()
     hf_row = {
         'F_ins': 1000.0,
@@ -838,7 +1455,7 @@ def test_init_agni_atmos_forwards_hill_radius_and_hydrograv_hilldr(monkeypatch, 
 
 @pytest.mark.unit
 @pytest.mark.physics_invariant
-def test_init_agni_atmos_ties_aerosol_to_matching_condensate(monkeypatch, tmp_path):
+def test_init_agni_atmos_ties_aerosol_to_matching_condensate(monkeypatch, tmp_path, caplog):
     """A discovered aerosol whose name matches a condensate (case-insensitive)
     tracks that condensate's mixing ratio; a non-matching aerosol is skipped
     entirely (never sent to AGNI), since it would always read zero anyway.
@@ -860,7 +1477,7 @@ def test_init_agni_atmos_ties_aerosol_to_matching_condensate(monkeypatch, tmp_pa
     data_dir.mkdir(parents=True)
     (data_dir / '100.sflux').write_text('sflux', encoding='utf-8')
 
-    dirs = {'output': str(output_dir), 'agni': '/fake/agni', 'fwl': '/fake/fwl'}
+    dirs = {'output': str(output_dir), 'agni': '/fake/agni', 'fwl': str(tmp_path)}
     config = _build_greygas_config()
     config.atmos_clim.aerosols_enabled = True
     config.atmos_clim.agni.rainout = True
@@ -891,9 +1508,16 @@ def test_init_agni_atmos_ties_aerosol_to_matching_condensate(monkeypatch, tmp_pa
     monkeypatch.setattr(
         agni_mod, '_determine_aerosols', lambda *_a, **_k: {'sio2': 'mon', 'Soot': 'mon'}
     )
+    calls = []
+    monkeypatch.setattr(agni_mod, '_point_agni_at_refractive', lambda *a: calls.append(a))
+    fake_agni.aerosol_optics.list_materials = lambda: calls.append('list') or []
 
-    atmos = init_agni_atmos(dirs, config, hf_row)
+    with caplog.at_level(logging.WARNING):
+        atmos = init_agni_atmos(dirs, config, hf_row)
     assert atmos is not None
+    assert 'No aerosols mapped' not in caplog.text
+    # AGNI must see the refractive directory before it lists its Mie materials.
+    assert calls[:2] == [(str(tmp_path), True), 'list']
 
     aerosol_species = fake_agni.last_setup_kwargs['aerosol_species']
     assert aerosol_species == {'sio2': {'method': 'mon', 'species': 'SiO2'}}
@@ -925,7 +1549,7 @@ def test_init_agni_atmos_mie_aerosol_carries_size_distribution(monkeypatch, tmp_
     data_dir.mkdir(parents=True)
     (data_dir / '100.sflux').write_text('sflux', encoding='utf-8')
 
-    dirs = {'output': str(output_dir), 'agni': '/fake/agni', 'fwl': '/fake/fwl'}
+    dirs = {'output': str(output_dir), 'agni': '/fake/agni', 'fwl': str(tmp_path)}
     config = _build_greygas_config()
     config.atmos_clim.aerosols_enabled = True
     config.atmos_clim.agni.rainout = True
@@ -1217,7 +1841,7 @@ def test_init_agni_spectral_file_path_not_found_raises(monkeypatch, tmp_path):
     config = _build_greygas_config()
     config.atmos_clim.agni.spectral_file = '/nonexistent/path/to/spec.sf'
 
-    dirs = {'output': str(tmp_path), 'fwl': '/fake/fwl', 'agni': '/fake/agni'}
+    dirs = {'output': str(tmp_path), 'fwl': str(tmp_path), 'agni': '/fake/agni'}
     hf_row = {'T_surf': 1500.0, 'P_surf': 100.0}
 
     with pytest.raises(FileNotFoundError, match='AGNI spectral file not found') as excinfo:
@@ -3092,3 +3716,85 @@ def test_a_lost_atmosphere_goes_to_transparent_mode_not_the_pressure_grid(monkey
     assert 'generate_pgrid' in fake_agni.calls
     assert 'make_transparent' not in fake_agni.calls
     status.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# _resolve_surface_material: the configured surface file names
+# ---------------------------------------------------------------------------
+
+
+def _hammond_file(root, name='lunarmarebasalt.dat'):
+    """Create a stand-in Hammond file in its version directory and return it."""
+    from proteus.data import SURFACE_ALBEDOS_HAMMOND_2024, dataset_dir
+
+    folder = dataset_dir(SURFACE_ALBEDOS_HAMMOND_2024, data_root=root)
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / name
+    path.write_text('0.5 0.1\n')
+    return path
+
+
+def test_resolve_surface_material_bare_file_name(tmp_path):
+    """A bare file name selects a file of the versioned Hammond dataset."""
+    expected = _hammond_file(tmp_path)
+
+    resolved = _resolve_surface_material('lunarmarebasalt.dat', str(tmp_path))
+
+    assert resolved == str(expected)
+    assert 'r15880455' in resolved
+    assert os.path.isfile(resolved)
+
+
+def test_resolve_surface_material_legacy_prefixed_path(tmp_path):
+    """The pre-manifest value resolves to the same file as the bare name."""
+    expected = _hammond_file(tmp_path)
+
+    legacy = _resolve_surface_material(
+        'surface_albedos/Hammond24/lunarmarebasalt.dat', str(tmp_path)
+    )
+    bare = _resolve_surface_material('lunarmarebasalt.dat', str(tmp_path))
+
+    assert legacy == bare == str(expected)
+    # The legacy directory must not be joined literally: that path holds no
+    # file in the versioned layout.
+    assert legacy != str(tmp_path / 'surface_albedos' / 'Hammond24' / 'lunarmarebasalt.dat')
+
+
+def test_resolve_surface_material_other_paths_stay_relative_to_the_data_root(tmp_path):
+    """A value that is neither a bare name nor the legacy prefix keeps its old meaning."""
+    resolved = _resolve_surface_material('my_albedos/custom.dat', str(tmp_path))
+
+    assert resolved == str(tmp_path / 'my_albedos' / 'custom.dat')
+    # A deeper path under the legacy directory is not a Hammond file name.
+    nested = _resolve_surface_material('surface_albedos/Hammond24/sub/x.dat', str(tmp_path))
+    assert nested == str(tmp_path / 'surface_albedos' / 'Hammond24' / 'sub' / 'x.dat')
+
+
+def test_resolve_surface_material_absolute_path_is_unchanged(tmp_path):
+    """An absolute path is returned as given."""
+    target = tmp_path / 'elsewhere.dat'
+
+    nested = tmp_path / 'surface_albedos' / 'Hammond24' / 'basalt.dat'
+
+    assert _resolve_surface_material(str(target), str(tmp_path / 'root')) == str(target)
+    assert _resolve_surface_material(str(nested), str(tmp_path / 'root')) == str(nested)
+
+
+@pytest.mark.unit
+def test_refractive_env_checks_the_folder_agni_takes_first(refractive_env, tmp_path, caplog):
+    """With both variables set, the AGNI_DIR_refractive folder is the one checked, also when
+    its path holds glob characters."""
+    nk, res = tmp_path / 'nk[1]', tmp_path / 'res'
+    nk.mkdir()
+    (res / 'refractive').mkdir(parents=True)
+    (res / 'refractive' / 'Fe.txt').write_text('x')
+    os.environ[agni_mod.REFRACTIVE_ENV], os.environ['AGNI_DIR_res'] = str(nk), str(res)
+    with caplog.at_level(logging.INFO):
+        agni_mod._point_agni_at_refractive(str(tmp_path), True)
+    assert f'AGNI reads {nk}' in caplog.text
+    assert f'{nk} (from AGNI_DIR_refractive) holds no refractive index file' in caplog.text
+    (nk / 'Fe.txt').write_text('x')
+    caplog.clear()
+    with caplog.at_level(logging.WARNING):
+        agni_mod._point_agni_at_refractive(str(tmp_path), True)
+    assert 'holds no refractive index file' not in caplog.text

@@ -89,9 +89,9 @@ def test_verify_passes_on_committed_tree(schema):
     a stale declaration in DISPATCH_SITES."""
     problems = _gmm.verify(schema)
     assert problems == []
-    # The map covers all nine dispatch sites, one per physics area.
-    assert len(_gmm.DISPATCH_SITES) == 9
-    assert len({site['config_path'] for site in _gmm.DISPATCH_SITES}) == 9
+    # The map covers all ten dispatch sites, one per physics area.
+    assert len(_gmm.DISPATCH_SITES) == 10
+    assert len({site['config_path'] for site in _gmm.DISPATCH_SITES}) == 10
 
 
 def test_verify_flags_broken_entry_and_option_drift(schema, monkeypatch):

@@ -568,7 +568,7 @@ jobs:
       - name: Run unit tests
         id: unit-tests
         continue-on-error: true
-        timeout-minutes: 10
+        timeout-minutes: 20
         run: |
           pytest -m "unit and not skip and not slow and not integration" \
             --ignore=tests/examples \
@@ -653,6 +653,11 @@ jobs:
 
       - name: Run ruff format check
         run: ruff format --check src/ tests/ tools/
+
+      - name: Check agent instruction files
+        run: |
+          python tools/agents/check_agents_md.py
+          python tools/agents/sync_core.py --check .
 
   # --------------------------------------------------------------------
   # Documentation links and anchors.

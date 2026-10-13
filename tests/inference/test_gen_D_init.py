@@ -8,6 +8,8 @@ References:
 
 from __future__ import annotations
 
+import threading
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -21,6 +23,7 @@ pytest.importorskip('botorch')
 pytest.importorskip('gpytorch')
 
 import proteus.inference.gen_D_init as init_mod  # noqa: E402
+from proteus.inference.failures import ProteusRunFailure  # noqa: E402
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -118,10 +121,9 @@ def test_create_init_routes_to_sample_from_grid(monkeypatch, tmp_path):
     }
 
     assert init_mod.create_init(config) == 6
-    # The grid dir is resolved through get_proteus_directories(grid)['output'],
-    # i.e. the (possibly relocated) output root joined with the grid name, not a
-    # hard-coded <proteus>/output. Pinning the full path discriminates a
-    # regression that ignored the grid name or reintroduced the hard-coded root.
+    # The grid dir is the (possibly relocated) output root joined with the grid
+    # name. The full path rules out ignoring the grid name or a hard-coded
+    # <proteus>/output root.
     assert observed['grid_dir'] == str(tmp_path / 'output' / 'my_grid')
 
 
@@ -163,6 +165,99 @@ def test_sample_from_grid_builds_and_saves_dataset(monkeypatch, tmp_path):
 
 
 @pytest.mark.unit
+def test_sample_from_grid_skips_a_case_whose_helpfile_row_is_ragged(
+    monkeypatch, tmp_path, caplog
+):
+    """A case whose helpfile row has more fields than its header is skipped with a
+    warning, so one unreadable case does not stop the dataset from the others."""
+    grid_dir = tmp_path / 'grid'
+    output_dir = tmp_path / 'output'
+    output_dir.mkdir(parents=True)
+    rows = ['R_obs\n1.5\n4.5 9.0\n', 'R_obs\n2.5\n', 'R_obs\n3.5\n']
+    for i, (mass, text) in enumerate(zip([1.0, 2.0, 3.0], rows)):
+        case = grid_dir / f'case_{i}'
+        case.mkdir(parents=True)
+        (case / 'runtime_helpfile.csv').write_text(text, encoding='utf-8')
+        (case / 'init_coupler.toml').write_text(
+            toml.dumps({'planet': {'mass_tot': mass}}), encoding='utf-8'
+        )
+    monkeypatch.setattr(
+        init_mod, 'get_proteus_directories', lambda _output: {'output': str(output_dir)}
+    )
+
+    with caplog.at_level('WARNING'):
+        n = init_mod.sample_from_grid(
+            output='ignored',
+            params={'planet.mass_tot': [0.0, 10.0]},
+            observables={'R_obs': 1.0},
+            grid_dir=str(grid_dir),
+        )
+
+    assert n == 2
+    assert 'Skipping case_0' in caplog.text
+    # The surviving cases keep their own configs: masses 2 and 3, not 1 and 2.
+    assert pd.read_csv(output_dir / 'init.csv')['x_0'].tolist() == pytest.approx([0.2, 0.3])
+
+
+@pytest.mark.unit
+def test_sample_from_grid_skips_a_case_without_a_helpfile(monkeypatch, tmp_path, caplog):
+    """A case with no helpfile, or with a directory in its place, is skipped like an
+    unreadable one. The directory case pins the OSError half of the except clause."""
+    grid_dir = tmp_path / 'grid'
+    for i, text in enumerate([None, 'dir', 'R_obs\n2.5\n']):
+        case = grid_dir / f'case_{i}'
+        case.mkdir(parents=True)
+        if text == 'dir':
+            (case / 'runtime_helpfile.csv').mkdir()
+        elif text is not None:
+            (case / 'runtime_helpfile.csv').write_text(text, encoding='utf-8')
+        (case / 'init_coupler.toml').write_text(f'[planet]\nmass_tot = {i + 2.0}\n')
+    output_dir = tmp_path / 'out'
+    output_dir.mkdir()
+    monkeypatch.setattr(
+        init_mod, 'get_proteus_directories', lambda _output: {'output': str(output_dir)}
+    )
+
+    with caplog.at_level('WARNING'):
+        n = init_mod.sample_from_grid(
+            output='ignored',
+            params={'planet.mass_tot': [0.0, 10.0]},
+            observables={'R_obs': 1.0},
+            grid_dir=str(grid_dir),
+        )
+
+    assert n == 1
+    assert 'Skipping case_0' in caplog.text and 'Skipping case_1' in caplog.text
+    assert pd.read_csv(output_dir / 'init.csv')['x_0'].tolist() == pytest.approx([0.4])
+
+
+@pytest.mark.unit
+def test_sample_from_grid_refuses_a_grid_with_no_readable_case(monkeypatch, tmp_path, caplog):
+    """A grid whose cases are all empty or header-only raises instead of writing an
+    empty dataset, and the warning for each case names it."""
+    grid_dir = tmp_path / 'grid'
+    for i, text in enumerate(['', 'R_obs\n']):
+        case = grid_dir / f'case_{i}'
+        case.mkdir(parents=True)
+        (case / 'runtime_helpfile.csv').write_text(text, encoding='utf-8')
+        (case / 'init_coupler.toml').write_text('[planet]\nmass_tot = 1.0\n')
+    monkeypatch.setattr(
+        init_mod, 'get_proteus_directories', lambda _output: {'output': str(tmp_path / 'out')}
+    )
+
+    with caplog.at_level('WARNING'), pytest.raises(ValueError, match='No readable helpfile'):
+        init_mod.sample_from_grid(
+            output='ignored',
+            params={'planet.mass_tot': [0.0, 10.0]},
+            observables={'R_obs': 1.0},
+            grid_dir=str(grid_dir),
+        )
+
+    assert 'Skipping case_0' in caplog.text and 'Skipping case_1' in caplog.text
+    assert not (tmp_path / 'out' / 'init.csv').exists()
+
+
+@pytest.mark.unit
 def test_sample_from_bounds_rejects_invalid_worker_count():
     """``sample_from_bounds`` rejects ``n_workers < 1`` with an
     'at least 1' message, so a misconfigured worker pool fails loudly
@@ -179,10 +274,8 @@ def test_sample_from_bounds_rejects_invalid_worker_count():
             n_workers=0,
             failure_codes=[],
         )
-    # Discrimination: negative worker counts must also raise. A regression
-    # that only guarded the n_workers==0 boundary (e.g. `if n == 0`) would
-    # let -1 slip through and crash multiprocessing.Pool with an opaque
-    # error far from the user's misconfiguration.
+    # Discrimination: negative counts raise too. A guard on n_workers == 0
+    # alone would let -1 reach multiprocessing.Pool and fail opaquely there.
     with pytest.raises(ValueError, match='at least 1'):
         init_mod.sample_from_bounds(
             output='out',
@@ -194,10 +287,8 @@ def test_sample_from_bounds_rejects_invalid_worker_count():
             n_workers=-1,
             failure_codes=[],
         )
-    # Discrimination: negative worker counts must also raise. A regression
-    # that only guarded the n_workers==0 boundary (e.g. `if n == 0`) would
-    # let -1 slip through and crash multiprocessing.Pool with an opaque
-    # error far from the user's misconfiguration.
+    # Discrimination: negative counts raise too. A guard on n_workers == 0
+    # alone would let -1 reach multiprocessing.Pool and fail opaquely there.
     with pytest.raises(ValueError, match='at least 1'):
         init_mod.sample_from_bounds(
             output='out',
@@ -229,8 +320,9 @@ def test_sample_from_bounds_caps_workers_and_saves(monkeypatch, tmp_path):
             return np.array([[0.1], [0.9]])[:n]
 
     class FakePool:
-        def __init__(self, processes):
+        def __init__(self, processes, initializer=None, initargs=()):
             captured['processes'] = processes
+            captured['initializer'] = initializer
 
         def __enter__(self):
             return self
@@ -276,12 +368,57 @@ def test_sample_from_bounds_caps_workers_and_saves(monkeypatch, tmp_path):
     assert n == 2
     assert captured['processes'] == 3
     assert captured['task_count'] == 2
+    # Each pool worker is handed the batch's stop signal.
+    assert captured['initializer'] is init_mod._init_pool_worker
     assert captured['saved_shape'] == ((2, 1), (2, 1))
     assert captured['saved_path'].endswith('init.csv')
     # The batch is bounded so a wedged worker cannot hang it indefinitely:
     # the default per-child timeout (6 h) yields a positive, finite pool cap.
     assert captured['pool_timeout'] is not None
     assert captured['pool_timeout'] > 0
+
+
+@pytest.mark.unit
+def test_a_failed_initial_sample_stops_the_samples_not_yet_started(monkeypatch):
+    """Under `abort_on_failure` the first failed run fails the whole initial
+    batch, so the samples still queued must not each run a simulation first.
+    The failing sample sets the batch's stop signal, and a sample that finds it
+    set returns without building an objective or running anything.
+    """
+    stop = threading.Event()
+    monkeypatch.setattr(init_mod, '_stop', None)
+    init_mod._init_pool_worker(stop)
+    args = {'parameters': {'a': [0.0, 1.0]}, 'observables': {'obs': 1.0}}
+    args |= {'ref_config': 'ref.toml', 'output': 'out', 'failure_codes': []}
+    x = torch.tensor([[0.5]], dtype=torch.double)
+
+    # Discrimination: a sample that succeeds returns its score and leaves the
+    # signal clear, so the stop below is the failure's doing.
+    score = torch.tensor([[1.25]], dtype=torch.double)
+    monkeypatch.setattr(init_mod, 'prot_builder', lambda **_kw: lambda _x: score)
+    assert init_mod.f_aug(x, 0, args).item() == pytest.approx(1.25)
+    assert not stop.is_set()
+
+    def _failing(_x):
+        raise ProteusRunFailure(reason='r', worker=-1, iter=1, out_dir='/o', status=21)
+
+    monkeypatch.setattr(init_mod, 'prot_builder', lambda **_kw: _failing)
+    with pytest.raises(ProteusRunFailure):
+        init_mod.f_aug(x, 1, args)
+    assert stop.is_set()
+
+    # A later sample runs nothing: building its objective would fail the test.
+    monkeypatch.setattr(
+        init_mod, 'prot_builder', lambda **_kw: pytest.fail('a skipped sample ran')
+    )
+    assert init_mod.f_aug(x, 2, args) is None
+
+    # Edge case: called outside a pool, with no signal installed, a failure
+    # propagates as before and nothing is skipped.
+    monkeypatch.setattr(init_mod, '_stop', None)
+    monkeypatch.setattr(init_mod, 'prot_builder', lambda **_kw: _failing)
+    with pytest.raises(ProteusRunFailure):
+        init_mod.f_aug(x, 3, args)
 
 
 @pytest.mark.unit

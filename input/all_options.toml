@@ -44,11 +44,12 @@ config_version = "3.0"
         remove_sf             = false        # remove spectral file when done
 
     [params.dt]
-        minimum               = 1e4          # minimum time step [yr]
+        minimum               = 1e2          # minimum time step [yr]
         minimum_rel           = 1e-5         # minimum relative time step
         maximum               = 1e7          # maximum time step [yr]
         initial               = 3e1          # initial step size [yr]
         maximum_rel           = 1.0          # time-fraction allowance added to the maximum step; 0 disables
+        impact_maximum        = 0.0          # max dt [yr] for the step landing on a scheduled giant impact; 0 = disabled
         starspec              = 1e8          # recalculate stellar spectrum interval [yr]
         starinst              = 1e2          # recalculate instellation interval [yr]
         method                = "adaptive"   # proportional | adaptive | maximum
@@ -241,7 +242,7 @@ config_version = "3.0"
     axial_period              = "none"       # day length [hours]; none = tidally locked
 
     # Tidal evolution and rotation
-    star_planet_model         = "none"       # evolve star-planet orbital parameters (semi-major axis and eccentricity); options = "none" | "sp0d" | "sp1d"
+    star_planet_model         = "none"       # evolve star-planet orbital parameters (semi-major axis and eccentricity); options = "none" | "sp0d" | "sp1d" | "parameterized"
     planet_satellite_model    = "none"       # evolve planet-satellite orbital parameters (semi-major axis and eccentricity); options = "none" | "ps1d" | "ps1d_evec"
 
     perturber                 = "star"       # perturbing object ("star", "satellite") to induce tides on the primairy (planet)
@@ -285,6 +286,13 @@ config_version = "3.0"
         resonance_margin_exit  = 0.50        # evection-band exit margin  ((a-a_res)/a > margin)
         resonance_margin_approach = 0.30     # wider pre-emptive margin for event detection
         fine_csv_target_rel_dt = 0.01        # target storage-clock spacing for out-of-band fine samples, stores with 1% of current time, time resolution
+
+    # Parameterized orbital migration
+    [orbit.parameterized]
+        migration             = "none"       # none | instant | sigmoid | high_ecc, starts from orbit.semimajoraxis
+        sma_final             = 0.5          # semi-major axis after migration [AU]
+        time_migration        = 1e5          # time at which migration begins [yr]
+        tau_migration         = 1e6          # sigmoid window length / high_ecc decay timescale [yr]
 
     # Tidal heating
     [orbit.dummy]
@@ -371,7 +379,7 @@ config_version = "3.0"
         # Outer mass-radius solver
         outer_solver          = "newton"     # newton (Newton + brentq bracketing) | picard (damped fixed-point)
         use_jax               = true         # JAX path for structure solver
-        use_anderson           = false       # Anderson Type-II Picard acceleration on density loop
+        use_anderson           = true        # Anderson Type-II Picard acceleration on density loop
 
         # Solver tolerances
         solver_tol_outer      = 3e-3         # relative tolerance for mass convergence
@@ -425,7 +433,7 @@ config_version = "3.0"
 
     # Grid and solver tolerances (shared by Aragog + SPIDER; ignored for dummy)
     num_levels                = 80           # radial grid levels (energetics domain only)
-    rtol                      = 1.0e-10      # relative ODE solver tolerance
+    rtol                      = -1.0         # relative ODE solver tolerance; unset: 1e-8 Aragog, 1e-10 SPIDER
     atol                      = 1.0e-10      # absolute ODE solver tolerance
     flux_guess                = -1           # initial F_atm guess [W/m2]; <0 = sigma*T_magma^4
     num_tolerance             = -1           # deprecated alias for rtol; leave at -1 (unset)
@@ -504,23 +512,43 @@ config_version = "3.0"
         atol_temperature_equivalent   = 1.0e-8   # CVODE atol [K]
         phase_smoothing               = "tanh"   # phase-boundary smoothing: tanh | cubic_hermite
         separation_viscosity          = "mixture" # gravitational-separation drag viscosity: melt (SPIDER parity) | mixture (keeps the CMB temperature from collapsing in coupled caps-off runs)
-        core_bc                       = "energy_balance"  # CMB condition: energy_balance | quasi_steady | gradient | bower2018
+        core_bc                       = "energy_balance"  # CMB condition: energy_balance | quasi_steady | gradient | bower2018 | core_module
         tolerance_struct              = 100      # absolute mass tolerance [kg] for the radius secant solver
         scalar_gravity_override       = false    # replace the mesh gravity column with a uniform surface scalar
-        # phi_step_cap, temperature_step_cap, entropy_step_cap: omitted here so they
-        # fall back to the schema default (0.0), which the Aragog wrapper reads as off
-        # (no cap). The caps are a debugging control, not a production setting: each
-        # ends the interior sub-solve at a freezing-front crossing, which slices the
-        # coupled step and drives the reported CMB heat flux briefly negative. Set a
-        # positive value to enable one; -1.0 is the off spelling; explicit 0.0 rejected.
-        # Proximity band [J/kg/K] within which a cell counts as near a solidus/liquidus
-        # crossing, tightening the integrator max_step so CVODE resolves the stiff two-phase
-        # RHS. Solver-accuracy control, not a cosmetic step-size knob: lowering it below the
-        # default can under-resolve a real crossing and shift the converged state. Modestly
-        # widening does not move a converged result, but a value far above the default clamps
-        # the integrator to 1 yr steps (max_step = 1 yr vs 100 yr) every step and can stall
-        # the run; keep it of order a few hundred.
+        # phi_step_cap, temperature_step_cap, entropy_step_cap are omitted, so off (default 0.0).
+        # Debugging controls: each ends the sub-solve at a freezing-front crossing and can drive the
+        # reported CMB heat flux briefly negative. A positive value enables one; -1.0 is off; 0.0 is rejected.
+
+        # Band [J/kg/K] near a solidus/liquidus that arms the phase-boundary step control; a lower
+        # value can under-resolve a crossing, a value far above the default puts every call under
+        # it (1 yr steps with "fixed", which can stall a run; 1 to 100 yr segments with "rate").
         phase_boundary_entropy_margin = 200.0    # phase-boundary max_step band [J/kg/K]
+        phase_boundary_cap            = "rate"     # phase-boundary max_step policy: "rate" (default) | "fixed"
+
+        # Core evolution, read when core_bc = "core_module": the CMB radius and pressure come
+        # from the mesh and the central density and length scale from fits to the interior
+        # structure, so only material and model choices appear here.
+        [interior_energetics.aragog.core_module]
+            alpha                  = 1.35e-5   # core thermal expansion coefficient [K-1]
+            c_p                    = 840.0     # core specific heat capacity [J kg-1 K-1]
+            melting_curve          = "iron"    # iron (Anzellini et al. 2013 via PALEOS) | quadratic (Nimmo 2015 Eq. 6)
+            light_element_fraction = 0.0       # mole fraction of light elements depressing the iron curve
+            depression             = 0.0       # melting-point depression per unit mole fraction, as a fraction of the melting temperature
+            t_m0                   = 2677.0    # quadratic-curve prefactor [K]
+            t_m1                   = 2.95e-12  # quadratic-curve linear coefficient [Pa-1]
+            t_m2                   = 8.37e-25  # quadratic-curve quadratic coefficient [Pa-2]
+            ds_fusion              = 172.8     # entropy of fusion at the inner-core boundary [J kg-1 K-1]
+            alpha_c                = 0.0       # compositional expansivity of the outer-core alloy; 0 disables the gravitational term
+            c_light                = 0.0       # light-element mass fraction of the outer core
+            q_radio                = 0.0       # core radiogenic power [W], constant over a run
+            stratification         = false     # experimental: resolve the outer core as a shell in which a stable layer forms when the CMB heat flow is subadiabatic
+            k_core                 = 130.0     # core thermal conductivity [W m-1 K-1] for conduction in the shell and the entropy and dynamo diagnostics
+            layer_base_fraction    = 0.4       # shell base as a fraction of the CMB radius, in (0, 1)
+            layer_k_mix            = 1.0e7     # eddy diffusivity of shell mixing [m2 s-1]
+            layer_g_mix            = 1.0e-3    # reference superadiabatic gradient of shell mixing, fraction of the CMB adiabatic gradient
+            f_ohm                  = 1.0       # ohmic fraction of the dissipation in the field-strength scaling
+            ra_crit_cmb            = 450.0     # critical Rayleigh number of the mantle-side CMB boundary layer that sets the core-mantle heat flux
+            flux_geometry          = "const_flux"  # field-strength efficiency geometry: const_flux | zero_outer
 
     # SPIDER-only parameters
     [interior_energetics.spider]
@@ -567,7 +595,7 @@ config_version = "3.0"
 # Outgassing (volatile partitioning between interior and atmosphere)
 [outgas]
     module                    = "calliope"   # calliope | atmodeller | dummy
-    fO2_shift_IW              = 4            # redox state [log10(delta_IW)]
+    fO2_shift_IW              = 2            # redox state, offset from IW [log10 units]
     mass_thresh               = 1e16         # minimum volatile mass threshold [kg]
     h2_binodal                = false        # H2 binodal partitioning; true is rejected at config load (not production ready)
     vapourise                 = false        # include rock vapour species
@@ -576,6 +604,28 @@ config_version = "3.0"
     T_floor                   = 700.0        # outgassing temperature floor [K]; clamped from below
     solver_rtol               = 1e-4         # relative mass/equilibrium tolerance
     solver_atol               = 1e-6         # absolute mass/equilibrium tolerance
+
+    # Solid-phase volatile trapping during mantle crystallisation
+    trap_mode                 = "none"       # none | front (needs interior_energetics.module = "aragog")
+
+    # Drainage integral over the freezing front the solver resolves
+    trap_phi_min              = 0.01         # porosity below which a node counts as solid [1]
+    trap_mush_log10visc       = -1.0         # log10 mush viscosity [Pa s]; negative selects 20
+    trap_n_front_min          = 3            # fewest nodes a front must span to be integrated
+    trap_max_front_fraction   = 1.0          # largest fraction of the mantle the front may occupy; 1 = no limit
+
+    # Crystal/melt partition coefficients, D = w_solid / w_liquid
+    D_const_H2O              = 0.0017       # H2O lattice incorporation [1]
+    D_const_CO2              = 0.0          # CO2 lattice incorporation [1]
+    D_const_O2               = 0.0          # O2 lattice incorporation [1]
+    D_const_H2               = 0.0          # H2 lattice incorporation [1]
+    D_const_CH4              = 0.0          # CH4 lattice incorporation [1]
+    D_const_CO               = 0.0          # CO lattice incorporation [1]
+    D_const_N2               = 0.0          # N2 lattice incorporation [1]
+    D_const_NH3              = 0.0          # NH3 lattice incorporation [1]
+    D_const_S2               = 0.0          # S2 lattice incorporation [1]
+    D_const_SO2              = 0.0          # SO2 lattice incorporation [1]
+    D_const_H2S              = 0.0          # H2S lattice incorporation [1]
 
     [outgas.calliope]
         # Species switches (false = excluded entirely from equilibrium calculation)
@@ -637,6 +687,7 @@ config_version = "3.0"
     # Grid and spectral setup (shared by agni + janus)
     spectral_group            = "Honeyside"  # opacity k-table set; see docs/assets/spectral_files.pdf
     spectral_bands            = "48"         # wavenumber bands in k-table
+    spectral_cache            = "none"       # reuse prepared spectral files across runs with the same star; none = off
     num_levels                = 50           # vertical atmosphere levels (min 15)
     p_top                     = 1.0e-6       # top-of-atmosphere pressure [bar]
     p_obs                     = "none"       # observation pressure level [bar] (transit radius)
@@ -770,9 +821,57 @@ config_version = "3.0"
         kappa_SO2             = 1.0          # grey SO2 opacity in IR [cm2 g-1]
         kappa_S2              = 1.0          # grey S2 opacity in IR [cm2 g-1]
 
-# Late accretion
+# Giant-impact accretion and delivery
 [accretion]
-    module                    = "none"       # not yet implemented
+    module                    = "none"       # none | dummy | timeline | morrigan
+    time_offset               = 0.0          # shift of impact times onto the PROTEUS time axis [yr]
+
+    # Impactor volatile source: dry impactors add silicate and iron only;
+    # match_planet scales formation composition to impactor mass;
+    # ppmw sets explicit volatile budgets per element.
+    impactor_volatiles        = "dry"        # dry | match_planet | ppmw
+    impactor_H_ppmw           = 0.0          # hydrogen per impactor [ppmw of impactor mass]
+    impactor_C_ppmw           = 0.0          # carbon per impactor [ppmw of impactor mass]
+    impactor_N_ppmw           = 0.0          # nitrogen per impactor [ppmw of impactor mass]
+    impactor_S_ppmw           = 0.0          # sulfur per impactor [ppmw of impactor mass]
+    impactor_O_ppmw           = 0.0          # oxygen per impactor [ppmw of impactor mass]
+
+    # Impact atmosphere loss: the fraction stripped from target and impactor.
+    # The constant module applies atmloss_frac directly; zephyrus evaluates
+    # collision erosion scaling laws.
+    atmloss_module            = "none"       # none | constant | zephyrus
+    atmloss_law               = "roche2026"  # roche2026 | kegerreis2020 (zephyrus module)
+    atmloss_frac              = 0.0          # atmosphere fraction removed per impact (constant module) [0-1]
+
+    [accretion.morrigan]
+        seed                  = 1            # Monte Carlo seed
+        num_planets           = 10           # number of embryos at disk dispersal
+        masses                = []           # embryo masses [M_earth]; empty = all mass_equal
+        mass_equal            = 0.5          # embryo mass when masses is empty [M_earth]
+        eccentricity_init     = 0.01         # initial eccentricity of every embryo
+        inner_edge            = 0.1          # orbit of the innermost embryo [AU]
+        spacing               = 10.0         # initial embryo separation [mutual Hill radii]; max 50
+        density               = 5500.0       # bulk density for mass to radius [kg m-3]
+        impact_angle          = 45.0         # impact angle [deg]
+        evolution_time        = 1.0          # duration of the dynamical evolution [Gyr]
+        inner_cutoff          = 0.005        # perihelion counting as lost to the star [AU]
+        selector              = "match_config"  # match_config | mass | semimajoraxis | id
+        selector_value        = "none"       # target orbit [AU] or embryo id, per selector
+
+    [accretion.dummy]
+        # Analytical accretion: exponential mass growth with evenly spaced
+        # impacts, Noack & Lasbleis (2020) radii, and post-impact orbits
+        # determined by angular momentum conservation.
+        mass_accreted         = 0.1          # total mass delivered over the timeline [M_earth]
+        num_impacts           = 3            # number of impacts
+        timescale             = 1.0e6        # e-folding time of the accretion law [yr]
+        time_last             = 5.0e6        # time of the final impact [yr]
+        eccentricity          = 0.05         # encounter eccentricity [0-1)
+        impact_parameter      = 0.5          # sine of the impact angle [0-1]
+        timeline_path         = "none"       # not a dummy parameter; setting a file here is rejected, use module = "timeline"
+
+    [accretion.timeline]
+        timeline_path         = "none"       # impact timeline file to replay
 
 # Atmospheric chemistry (post-processing)
 [atmos_chem]

@@ -344,7 +344,7 @@
       "class": "TimeStepParams",
       "type": "float",
       "accepts_none": false,
-      "default": "10000.0",
+      "default": "100.0",
       "choices": null,
       "bounds": [
         {
@@ -658,6 +658,27 @@
       "group_qualifier": null
     },
     {
+      "path": "params.dt.impact_maximum",
+      "toml_section": "params.dt",
+      "class": "TimeStepParams",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0
+        }
+      ],
+      "description": "Ceiling [yr] for the step that reaches a scheduled giant impact. Such a step is otherwise clamped only to the time left before the impact, which after a long quiescent phase can itself be large. With the ceiling set, a reaching step longer than ``max(impact_maximum, dtfloor)`` (dtfloor = dt.minimum + dt.minimum_rel * Time) is cut to an equal fraction of the time left; later steps are evaluated again, and the step that lands is no longer than ``max(impact_maximum, dtfloor)``. Set to 0 (default) to disable. Independent of this setting, the step that lands on an impact can be shorter than dtfloor, a step ending at most 1e-3 yr short of an impact is extended onto it (unless the step already reaches stop.time.maximum), and an impact is applied at the end of the first step that reaches its time. Impacts each less than 1e-3 yr after the one before form a chain that the step aims at the last of, so an impact in a chain can be applied later than its time by up to the chain span; a chain spanning 1e-3 yr or more is logged as a warning.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
       "path": "params.dt.max_growth_factor",
       "toml_section": "params.dt",
       "class": "TimeStepParams",
@@ -671,7 +692,7 @@
           "value": 0
         }
       ],
-      "description": "Cap on the dt growth ratio between consecutive steps [dimensionless]. Bounds dtswitch / dtprev, preventing large jumps that can wedge the interior solver; 0 (default) disables the cap.",
+      "description": "Cap on the dt growth ratio between consecutive steps [dimensionless]. Bounds dtswitch / dtprev, preventing large jumps that can wedge the interior solver; 0 (default) disables the cap. After a step that landed on a giant impact, dtprev is the larger of that step and ``min(dtfloor, last step that did not land on an impact)``, or dtfloor when there is no such step.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -1700,7 +1721,7 @@
         "inst"
       ],
       "bounds": null,
-      "description": "Whether to use the semi-major axis ('distance') or instellation flux ('inst') to define the planet's initial orbit",
+      "description": "Whether to use the semi-major axis ('distance') or instellation flux ('inst') to define the planet's initial orbit. With 'inst' the semi-major axis follows the flux at every step, so a giant impact's semi-major axis change is not applied; its eccentricity change is.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -1785,10 +1806,11 @@
         null,
         "none",
         "sp0d",
-        "sp1d"
+        "sp1d",
+        "parameterized"
       ],
       "bounds": null,
-      "description": "Select star-planet orbit module to use. Choices: 'none', 'sp0d', 'sp1d'.",
+      "description": "Select star-planet orbit module to use. Choices: 'none', 'sp0d', 'sp1d', 'parameterized'.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -1804,7 +1826,7 @@
       "default": "none",
       "choices": null,
       "bounds": null,
-      "description": "Planet initial day length [hours], will use orbital period if value is None.",
+      "description": "Planet initial day length [hours], will use orbital period if value is None. Must be None for sp0d and parameterized, which keep the spin locked to the orbit.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -2354,6 +2376,90 @@
       "group_qualifier": null
     },
     {
+      "path": "orbit.parameterized.sma_final",
+      "toml_section": "orbit.parameterized",
+      "class": "Parameterized",
+      "type": "float or none",
+      "accepts_none": true,
+      "default": "none",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Final semi-major axis [AU].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.parameterized.migration",
+      "toml_section": "orbit.parameterized",
+      "class": "Parameterized",
+      "type": "str",
+      "accepts_none": false,
+      "default": "\"none\"",
+      "choices": [
+        "none",
+        "instant",
+        "sigmoid",
+        "high_ecc"
+      ],
+      "bounds": null,
+      "description": "Type of orbital migration to apply.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.parameterized.time_migration",
+      "toml_section": "orbit.parameterized",
+      "class": "Parameterized",
+      "type": "float",
+      "accepts_none": false,
+      "default": "1000000.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 1
+        }
+      ],
+      "description": "Time at which migration begins [yr].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.parameterized.tau_migration",
+      "toml_section": "orbit.parameterized",
+      "class": "Parameterized",
+      "type": "float",
+      "accepts_none": false,
+      "default": "1000000000.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Timescale of migration, used by the sigmoid and high_ecc laws [yr].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
       "path": "orbit.perturber",
       "toml_section": "orbit",
       "class": "Orbit",
@@ -2674,7 +2780,7 @@
       "path": "orbit.obliqua.k_min",
       "toml_section": "orbit.obliqua",
       "class": "Obliqua",
-      "type": "int | Literal",
+      "type": "int or Literal",
       "accepts_none": false,
       "default": "\"none\"",
       "choices": null,
@@ -2690,7 +2796,7 @@
       "path": "orbit.obliqua.k_max",
       "toml_section": "orbit.obliqua",
       "class": "Obliqua",
-      "type": "int | Literal",
+      "type": "int or Literal",
       "accepts_none": false,
       "default": "\"none\"",
       "choices": null,
@@ -4177,7 +4283,7 @@
           "value": 1
         }
       ],
-      "description": "Fraction of the planet's interior radius corresponding to the core.",
+      "description": "Core fraction of the planet, by mass or by radius (see core_frac_mode). With module = 'zalmoxis' the core mass is this fraction of the planet mass without the volatile inventories that the outgassing takes as inputs (H, C, N, S, noble gases; O when it is an input), or without their atmosphere part with zalmoxis.dry_mantle = false. It is set when the init stage ends and then kept.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -4196,7 +4302,7 @@
         "mass"
       ],
       "bounds": null,
-      "description": "How core_frac is interpreted. 'radius': fraction of planet radius. 'mass': fraction of total planet mass. Only 'radius' is supported when module = 'spider'. The zalmoxis module always interprets core_frac as a mass fraction and ignores this flag (a warning is emitted at runtime if 'radius' is set with module = 'zalmoxis').",
+      "description": "How core_frac is interpreted. 'radius': fraction of planet radius. 'mass': mass fraction, of planet.mass_tot with module = 'dummy' and of the mass that core_frac names with module = 'zalmoxis'. Only 'radius' is supported when module = 'spider'. The zalmoxis module always interprets core_frac as a mass fraction and ignores this flag (a warning is emitted at runtime if 'radius' is set with module = 'zalmoxis').",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -4673,7 +4779,7 @@
       "default": "true",
       "choices": null,
       "bounds": null,
-      "description": "Structure EOS assumes a dry mantle. Set False for melt-fraction-aware dissolved-volatile mixing in the mantle density (per-shell volatile profile); the dissolved mass then stays inside the interior mass target.",
+      "description": "Structure EOS assumes a dry mantle. Set False for melt-fraction-aware dissolved-volatile mixing in the mantle density (per-shell volatile profile); the dissolved mass then stays inside the interior mass target and inside the mass that core_frac refers to.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 5,
@@ -4802,7 +4908,7 @@
       "class": "Zalmoxis",
       "type": "bool",
       "accepts_none": false,
-      "default": "false",
+      "default": "true",
       "choices": null,
       "bounds": null,
       "description": "Anderson Type-II Picard acceleration on the density loop.",
@@ -4919,7 +5025,7 @@
       "path": "interior_struct.core_density",
       "toml_section": "interior_struct",
       "class": "Struct",
-      "type": "float | str",
+      "type": "float or str",
       "accepts_none": false,
       "default": "\"self\"",
       "choices": null,
@@ -4935,7 +5041,7 @@
       "path": "interior_struct.core_heatcap",
       "toml_section": "interior_struct",
       "class": "Struct",
-      "type": "float | str",
+      "type": "float or str",
       "accepts_none": false,
       "default": "\"self\"",
       "choices": null,
@@ -4956,7 +5062,7 @@
       "default": "none",
       "choices": null,
       "bounds": null,
-      "description": "Melting curve folder name in FWL_DATA, for the SPIDER structure module.",
+      "description": "Melting curve name in FWL_DATA. Required for the SPIDER structure module and for any run without a PALEOS table set; not read with module = 'zalmoxis' and a single PALEOS mantle EOS. With module = 'dummy' and a PALEOS mantle EOS, Aragog requires it but the solve uses the PALEOS set.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -5030,7 +5136,7 @@
       "default": "-1.0",
       "choices": null,
       "bounds": null,
-      "description": "Relative numerical tolerance for the interior ODE solver. SPIDER: -ts_sundials_rtol (used internally via atol_sf scaling). Aragog: scipy solve_ivp rtol. The deprecated aliases num_tolerance and [interior_energetics.spider].tolerance_rel copy into this field. Resolves to 1e-10 when left unset.",
+      "description": "Relative numerical tolerance for the interior ODE solver. SPIDER: -ts_sundials_rtol (used internally via atol_sf scaling). Aragog: scipy solve_ivp rtol. The deprecated aliases num_tolerance and [interior_energetics.spider].tolerance_rel copy into this field. Resolves to 1e-8 for Aragog and 1e-10 for SPIDER when left unset. With interior_struct.module = 'spider' it also sets the relative tolerance of the secant solve for the interior radius.",
       "doc_source": "field_docstring",
       "group_order": 0,
       "group_position": 2,
@@ -5334,10 +5440,11 @@
         "quasi_steady",
         "energy_balance",
         "gradient",
-        "bower2018"
+        "bower2018",
+        "core_module"
       ],
       "bounds": null,
-      "description": "Core-mantle boundary condition mode. Default 'energy_balance'. Valid values: - 'quasi_steady': alpha-factor heat-flux partition; gives about -19% T_core offset vs SPIDER. - 'energy_balance': SPIDER bit-parity BC with dSdr_cmb as a new state variable (mirrors SPIDER bc.c:76-131). - 'gradient': gradient-based state with two boundary entropies as state variables. - 'bower2018': experimental, do not use for production.",
+      "description": "Core-mantle boundary condition mode. Default 'energy_balance'. Valid values: - 'quasi_steady': alpha-factor heat-flux partition; gives about -19% T_core offset vs SPIDER. - 'energy_balance': SPIDER bit-parity BC with dSdr_cmb as a new state variable (mirrors SPIDER bc.c:76-131). - 'gradient': gradient-based state with two boundary entropies as state variables. - 'bower2018': experimental, do not use for production. - 'core_module': full core evolution module with nucleation, crystallisation regimes, and dynamo energetics (aragog.core), coupled through a boundary-layer CMB flux in the core-mantle temperature contrast.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -5435,6 +5542,427 @@
       "group_qualifier": null
     },
     {
+      "path": "interior_energetics.aragog.core_module.alpha",
+      "toml_section": "interior_energetics.aragog.core_module",
+      "class": "AragogCoreModule",
+      "type": "float",
+      "accepts_none": false,
+      "default": "1.35e-05",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Core thermal expansion coefficient [K-1].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.core_module.c_p",
+      "toml_section": "interior_energetics.aragog.core_module",
+      "class": "AragogCoreModule",
+      "type": "float",
+      "accepts_none": false,
+      "default": "840.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Core specific heat capacity [J kg-1 K-1].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.core_module.melting_curve",
+      "toml_section": "interior_energetics.aragog.core_module",
+      "class": "AragogCoreModule",
+      "type": "str",
+      "accepts_none": false,
+      "default": "\"iron\"",
+      "choices": [
+        "iron",
+        "quadratic"
+      ],
+      "bounds": null,
+      "description": "'iron' (Anzellini et al. 2013 via PALEOS, with light-element depression) or 'quadratic' (Nimmo 2015 Eq. 6 parameterisation).",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.core_module.light_element_fraction",
+      "toml_section": "interior_energetics.aragog.core_module",
+      "class": "AragogCoreModule",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0
+        },
+        {
+          "op": "<",
+          "value": 1
+        }
+      ],
+      "description": "Mole fraction of light elements depressing the iron melting curve.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.core_module.depression",
+      "toml_section": "interior_energetics.aragog.core_module",
+      "class": "AragogCoreModule",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0
+        }
+      ],
+      "description": "Melting-point depression per unit mole fraction, as a fraction of the melting temperature [1]; its product with light_element_fraction must stay below 1.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.core_module.t_m0",
+      "toml_section": "interior_energetics.aragog.core_module",
+      "class": "AragogCoreModule",
+      "type": "float",
+      "accepts_none": false,
+      "default": "2677.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Quadratic-curve prefactor [K] (melting_curve = 'quadratic').",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.core_module.t_m1",
+      "toml_section": "interior_energetics.aragog.core_module",
+      "class": "AragogCoreModule",
+      "type": "float",
+      "accepts_none": false,
+      "default": "2.95e-12",
+      "choices": null,
+      "bounds": null,
+      "description": "Quadratic-curve linear coefficient [Pa-1].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.core_module.t_m2",
+      "toml_section": "interior_energetics.aragog.core_module",
+      "class": "AragogCoreModule",
+      "type": "float",
+      "accepts_none": false,
+      "default": "8.37e-25",
+      "choices": null,
+      "bounds": null,
+      "description": "Quadratic-curve quadratic coefficient [Pa-2].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.core_module.ds_fusion",
+      "toml_section": "interior_energetics.aragog.core_module",
+      "class": "AragogCoreModule",
+      "type": "float",
+      "accepts_none": false,
+      "default": "172.8",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Entropy of fusion at the inner-core boundary [J kg-1 K-1].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.core_module.alpha_c",
+      "toml_section": "interior_energetics.aragog.core_module",
+      "class": "AragogCoreModule",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0
+        }
+      ],
+      "description": "Compositional expansivity of the outer-core alloy.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.core_module.c_light",
+      "toml_section": "interior_energetics.aragog.core_module",
+      "class": "AragogCoreModule",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0
+        },
+        {
+          "op": "<",
+          "value": 1
+        }
+      ],
+      "description": "Light-element mass fraction of the outer core (complete rejection).",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.core_module.q_radio",
+      "toml_section": "interior_energetics.aragog.core_module",
+      "class": "AragogCoreModule",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0
+        }
+      ],
+      "description": "Core radiogenic power [W], constant over a run.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.core_module.stratification",
+      "toml_section": "interior_energetics.aragog.core_module",
+      "class": "AragogCoreModule",
+      "type": "bool",
+      "accepts_none": false,
+      "default": "false",
+      "choices": null,
+      "bounds": null,
+      "description": "When true, the outer core above layer_base_fraction of the CMB radius is a resolved shell whose temperatures are part of the solver state: heat moves through it by conduction and, where its gradient is superadiabatic, by convective mixing, so a stable layer forms below the CMB when the CMB heat flow is subadiabatic and erodes when it is not. The CMB heat flow sees the temperature of the top of the shell. Experimental: erosion of a layer does not run on CVODE at the default tolerances. Not available with accretion.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.core_module.k_core",
+      "toml_section": "interior_energetics.aragog.core_module",
+      "class": "AragogCoreModule",
+      "type": "float",
+      "accepts_none": false,
+      "default": "130.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Core thermal conductivity [W m-1 K-1] for conduction in the stratified shell and the entropy and dynamo diagnostics; the default is the Nimmo (2015) Table 2 value.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.core_module.layer_base_fraction",
+      "toml_section": "interior_energetics.aragog.core_module",
+      "class": "AragogCoreModule",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.4",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        },
+        {
+          "op": "<",
+          "value": 1
+        }
+      ],
+      "description": "Base of the stratified shell as a fraction of the CMB radius, in (0, 1); the inner core must stay below it. Used with the experimental stratification.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.core_module.layer_k_mix",
+      "toml_section": "interior_energetics.aragog.core_module",
+      "class": "AragogCoreModule",
+      "type": "float",
+      "accepts_none": false,
+      "default": "10000000.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Eddy diffusivity [m2 s-1] of convective mixing in the stratified shell at the reference superadiabatic gradient. Used with the experimental stratification.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.core_module.layer_g_mix",
+      "toml_section": "interior_energetics.aragog.core_module",
+      "class": "AragogCoreModule",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.001",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Reference superadiabatic gradient of the shell mixing, as a fraction of the adiabatic gradient at the CMB. Used with the experimental stratification.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.core_module.f_ohm",
+      "toml_section": "interior_energetics.aragog.core_module",
+      "class": "AragogCoreModule",
+      "type": "float",
+      "accepts_none": false,
+      "default": "1.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        },
+        {
+          "op": "<=",
+          "value": 1
+        }
+      ],
+      "description": "Ohmic fraction of the dissipation in the field-strength scaling, in (0, 1]; Christensen et al. (2009) adopt 1 for planets.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.core_module.ra_crit_cmb",
+      "toml_section": "interior_energetics.aragog.core_module",
+      "class": "AragogCoreModule",
+      "type": "float",
+      "accepts_none": false,
+      "default": "450.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        },
+        {
+          "op": "<",
+          "value": Infinity
+        }
+      ],
+      "description": "Critical Rayleigh number of the mantle-side boundary layer that sets the CMB heat flux from the core-mantle temperature contrast; the default is the theoretical value of Thiriet et al. (2019, Table 2).",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.core_module.flux_geometry",
+      "toml_section": "interior_energetics.aragog.core_module",
+      "class": "AragogCoreModule",
+      "type": "str",
+      "accepts_none": false,
+      "default": "\"const_flux\"",
+      "choices": [
+        "const_flux",
+        "zero_outer"
+      ],
+      "bounds": null,
+      "description": "Which printed Earth-core efficiency factor converts the superadiabatic flux into the field-strength scaling's F: 'const_flux' or 'zero_outer'.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
       "path": "interior_energetics.aragog.temperature_step_cap",
       "toml_section": "interior_energetics.aragog",
       "class": "Aragog",
@@ -5480,7 +6008,26 @@
           "value": 0
         }
       ],
-      "description": "Phase-boundary proximity band [J/kg/K] within which a staggered cell counts as near a solidus or liquidus crossing, tightening the integrator max_step so CVODE resolves the stiff two-phase RHS across the boundary. This is a solver-accuracy control, not a cosmetic step-size setting: at the default it reproduces the fixed band and the converged trajectory is unchanged, but lowering it below the default can under-resolve a real phase crossing and shift the converged state, because CVODE's local error control can accept an over-large step across the near-discontinuous RHS. Keeping the default reproduces current behaviour, and modestly widening the band does not move a converged result because tighter steps only refine an adaptive integrator; but a value orders of magnitude above the default makes every cell count as near a boundary at all times, clamping the integrator to 1 yr steps (max_step = 1 yr, versus 100 yr otherwise) for the whole run and stalling it, so keep the band of order a few hundred J/kg/K. Default 200.0, matching Aragog's own default; a positive value is required (0 or negative is not a valid disabled state for a proximity band).",
+      "description": "Phase-boundary proximity band [J/kg/K] within which a staggered cell counts as near a solidus or liquidus crossing, tightening the integrator max_step so CVODE resolves the stiff two-phase RHS across the boundary. This is a solver-accuracy control, not a cosmetic step-size setting: at the default it reproduces the fixed band and the converged trajectory is unchanged, but lowering it below the default can under-resolve a real phase crossing and shift the converged state, because CVODE's local error control can accept an over-large step across the near-discontinuous RHS. Keeping the default reproduces current behaviour, and modestly widening the band does not move a converged result because tighter steps only refine an adaptive integrator; but a value orders of magnitude above the default makes every cell count as near a boundary at all times, so every call runs under the phase-boundary step control: with phase_boundary_cap = 'fixed' that clamps the integrator to 1 yr steps (versus 100 yr otherwise) and stalls the run, and with 'rate' every call runs as CVODE segments with max_step between 1 and 100 yr. Keep the band of order a few hundred J/kg/K. Default 200.0, matching Aragog's own default; a positive value is required (0 or negative is not a valid disabled state for a proximity band).",
+      "doc_source": "field_docstring",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.phase_boundary_cap",
+      "toml_section": "interior_energetics.aragog",
+      "class": "Aragog",
+      "type": "str",
+      "accepts_none": false,
+      "default": "\"rate\"",
+      "choices": [
+        "fixed",
+        "rate"
+      ],
+      "bounds": null,
+      "description": "Phase-boundary step-size policy: 'fixed' tightens max_step to 1 yr whenever any cell is near or inside the two-phase band; 'rate' (default) uses event-driven CVODE segments with max_step scaled by approach time to the nearest phase boundary, clipped to [1, 100] yr. 'rate' needs the CVODE solver and a core_bc other than 'gradient'; otherwise Aragog logs it and uses 1 yr. Its accuracy is verified at rtol 1e-8; Aragog warns once per solver at an rtol above 1e-7.",
       "doc_source": "field_docstring",
       "group_order": 0,
       "group_position": 0,
@@ -6846,7 +7393,7 @@
       "class": "Outgas",
       "type": "float",
       "accepts_none": false,
-      "default": "4.0",
+      "default": "2.0",
       "choices": null,
       "bounds": [
         {
@@ -6879,7 +7426,7 @@
           "value": 0.0
         }
       ],
-      "description": "Minimum threshold for element mass [kg]. Inventories below this are set to zero.",
+      "description": "Minimum threshold for element mass [kg]. Outgassing treats H, C, N or S below it as absent; escape empties a non-noble element whose reachable mass (its total less the mass trapped in the solid) is below it, down to the trapped mass, except on a mantle frozen with params.stop.solid.freeze_volatiles. Noble gases are exempt.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -6959,6 +7506,343 @@
         }
       ],
       "description": "Absolute tolerance for the volatile equilibrium solver.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "outgas.trap_mode",
+      "toml_section": "outgas",
+      "class": "Outgas",
+      "type": "str",
+      "accepts_none": false,
+      "default": "\"none\"",
+      "choices": [
+        "none",
+        "front"
+      ],
+      "bounds": null,
+      "description": "Solid-phase volatile trapping during mantle crystallisation. Choices: 'none' (off) and 'front' (F_tl from the drainage of melt across the freezing front the interior solver resolves; needs `interior_energetics.module = 'aragog'`). The disaggregation melt fraction that tops the front is `interior_energetics.rfront_loc`, the melt fraction of the solver's own rheological transition, not a separate field.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "outgas.trap_phi_min",
+      "toml_section": "outgas",
+      "class": "Outgas",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.01",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0.0
+        },
+        {
+          "op": "<",
+          "value": 1.0
+        }
+      ],
+      "description": "Porosity below which a node counts as solid [1]. Needed because the density-derived porosity never reaches exactly zero.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "outgas.trap_mush_log10visc",
+      "toml_section": "outgas",
+      "class": "Outgas",
+      "type": "float",
+      "accepts_none": false,
+      "default": "-1.0",
+      "choices": null,
+      "bounds": null,
+      "description": "Log10 viscosity of the mush near the solidus [log10(Pa s)], entering the matrix deformation time. Negative selects the default of 20, mid-range of the 18 to 22 the literature allows.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "outgas.trap_n_front_min",
+      "toml_section": "outgas",
+      "class": "Outgas",
+      "type": "int",
+      "accepts_none": false,
+      "default": "3",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 2
+        }
+      ],
+      "description": "Fewest nodes a freezing front must span before its drainage is integrated rather than bounded above.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "outgas.trap_max_front_fraction",
+      "toml_section": "outgas",
+      "class": "Outgas",
+      "type": "float",
+      "accepts_none": false,
+      "default": "1.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0.0
+        },
+        {
+          "op": "<=",
+          "value": 1.0
+        }
+      ],
+      "description": "Largest fraction of the mantle thickness the front may occupy before its drainage is bounded above instead of integrated [1]. The default of 1 sets no limit: where percolation controls the drainage, the retained fraction depends on the ratio of drainage speed to front speed and not on the front thickness, and a thicker front only lengthens the residence time.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "outgas.D_const_H2O",
+      "toml_section": "outgas",
+      "class": "Outgas",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0017",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0.0
+        }
+      ],
+      "description": "Crystal/melt partition coefficient of H2O [1], D = w_solid / w_liquid.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "outgas.D_const_CO2",
+      "toml_section": "outgas",
+      "class": "Outgas",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0.0
+        }
+      ],
+      "description": "Crystal/melt partition coefficient of CO2 [1], D = w_solid / w_liquid.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "outgas.D_const_O2",
+      "toml_section": "outgas",
+      "class": "Outgas",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0.0
+        }
+      ],
+      "description": "Crystal/melt partition coefficient of O2 [1], D = w_solid / w_liquid.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "outgas.D_const_H2",
+      "toml_section": "outgas",
+      "class": "Outgas",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0.0
+        }
+      ],
+      "description": "Crystal/melt partition coefficient of H2 [1], D = w_solid / w_liquid.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "outgas.D_const_CH4",
+      "toml_section": "outgas",
+      "class": "Outgas",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0.0
+        }
+      ],
+      "description": "Crystal/melt partition coefficient of CH4 [1], D = w_solid / w_liquid.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "outgas.D_const_CO",
+      "toml_section": "outgas",
+      "class": "Outgas",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0.0
+        }
+      ],
+      "description": "Crystal/melt partition coefficient of CO [1], D = w_solid / w_liquid.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "outgas.D_const_N2",
+      "toml_section": "outgas",
+      "class": "Outgas",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0.0
+        }
+      ],
+      "description": "Crystal/melt partition coefficient of N2 [1], D = w_solid / w_liquid.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "outgas.D_const_NH3",
+      "toml_section": "outgas",
+      "class": "Outgas",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0.0
+        }
+      ],
+      "description": "Crystal/melt partition coefficient of NH3 [1], D = w_solid / w_liquid.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "outgas.D_const_S2",
+      "toml_section": "outgas",
+      "class": "Outgas",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0.0
+        }
+      ],
+      "description": "Crystal/melt partition coefficient of S2 [1], D = w_solid / w_liquid.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "outgas.D_const_SO2",
+      "toml_section": "outgas",
+      "class": "Outgas",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0.0
+        }
+      ],
+      "description": "Crystal/melt partition coefficient of SO2 [1], D = w_solid / w_liquid.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "outgas.D_const_H2S",
+      "toml_section": "outgas",
+      "class": "Outgas",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0.0
+        }
+      ],
+      "description": "Crystal/melt partition coefficient of H2S [1], D = w_solid / w_liquid.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -7235,7 +8119,7 @@
           "value": 0
         }
       ],
-      "description": "Maximum number of initial-guess samples for the CALLIOPE equilibrium solver. Default 1000.",
+      "description": "Maximum number of initial-guess samples for the CALLIOPE equilibrium solver. The samples come from a fixed seed, so identical inputs draw the same guesses, and an input that exhausts the samples fails the same way on a rerun. Default 1000.",
       "doc_source": "attributes",
       "group_order": 1,
       "group_position": 0,
@@ -7720,7 +8604,7 @@
       "default": "\"greybody\"",
       "choices": null,
       "bounds": null,
-      "description": "Surface scattering material file. Set to 'greybody' to use surf_greyalbedo.",
+      "description": "Surface scattering material: the file name of a Hammond et al. (2024) spectrum, e.g. 'lunarmarebasalt.dat', or 'greybody' to use surf_greyalbedo.",
       "doc_source": "attributes",
       "group_order": 1,
       "group_position": 0,
@@ -8795,6 +9679,22 @@
       "group_qualifier": null
     },
     {
+      "path": "atmos_clim.spectral_cache",
+      "toml_section": "atmos_clim",
+      "class": "AtmosClim",
+      "type": "str or none",
+      "accepts_none": true,
+      "default": "none",
+      "choices": null,
+      "bounds": null,
+      "description": "Folder in which to reuse prepared spectral files across runs that share a stellar spectrum. None disables the cache and every run builds its own.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 3,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
       "path": "atmos_clim.num_levels",
       "toml_section": "atmos_clim",
       "class": "AtmosClim",
@@ -8811,7 +9711,7 @@
       "description": "Number of vertical atmosphere levels.",
       "doc_source": "attributes",
       "group_order": 0,
-      "group_position": 3,
+      "group_position": 4,
       "group": null,
       "group_qualifier": null
     },
@@ -8832,7 +9732,7 @@
       "description": "Top-of-atmosphere pressure [bar].",
       "doc_source": "attributes",
       "group_order": 0,
-      "group_position": 4,
+      "group_position": 5,
       "group": null,
       "group_qualifier": null
     },
@@ -8840,7 +9740,7 @@
       "path": "atmos_clim.p_obs",
       "toml_section": "atmos_clim",
       "class": "AtmosClim",
-      "type": "float | Literal or none",
+      "type": "float or Literal or none",
       "accepts_none": true,
       "default": "0.02",
       "choices": null,
@@ -8848,7 +9748,7 @@
       "description": "Observation pressure level [bar] (transit radius). Set to 'none' (-> None) to instead let AGNI determine this pressure level self-consistently from the optical depth (see `agni.tau_obs`, `agni.wl_obs`); AGNI only.",
       "doc_source": "attributes",
       "group_order": 0,
-      "group_position": 5,
+      "group_position": 6,
       "group": null,
       "group_qualifier": null
     },
@@ -8864,7 +9764,7 @@
       "description": "Gas overlap method. Choices: 'ro', 'rorr', 'ee'.",
       "doc_source": "attributes",
       "group_order": 0,
-      "group_position": 6,
+      "group_position": 7,
       "group": null,
       "group_qualifier": null
     },
@@ -9941,10 +10841,659 @@
       "accepts_none": true,
       "default": "none",
       "choices": [
-        null
+        null,
+        "dummy",
+        "timeline",
+        "morrigan"
       ],
       "bounds": null,
-      "description": "Accretion module to use. Currently only None is supported.",
+      "description": "Accretion module to use. A \"timeline\" or \"morrigan\" history is borrowed from its dynamical bodies: impactor masses, collision loss fractions and impact energies are theirs, not rescaled to this planet. A warning is logged when the timeline's target mass differs from the planet mass by more than 10 %, a round threshold (about 3.5 % in escape speed, which scales as M^0.36), at load and per impact. Choices: None, \"dummy\", \"timeline\", \"morrigan\".",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "accretion.morrigan.seed",
+      "toml_section": "accretion.morrigan",
+      "class": "Morrigan",
+      "type": "int",
+      "accepts_none": false,
+      "default": "1",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0
+        }
+      ],
+      "description": "Random seed for the Monte Carlo. Fixing it makes an impact history reproducible; sweeping it samples the outcome distribution.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "accretion.morrigan.num_planets",
+      "toml_section": "accretion.morrigan",
+      "class": "Morrigan",
+      "type": "int",
+      "accepts_none": false,
+      "default": "10",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 2
+        }
+      ],
+      "description": "Number of embryos the system starts with.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "accretion.morrigan.masses",
+      "toml_section": "accretion.morrigan",
+      "class": "Morrigan",
+      "type": "list",
+      "accepts_none": false,
+      "default": "[]",
+      "choices": null,
+      "bounds": null,
+      "description": "Initial embryo masses [M_earth], one per embryo. An empty list starts every embryo at ``mass_equal``.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "accretion.morrigan.mass_equal",
+      "toml_section": "accretion.morrigan",
+      "class": "Morrigan",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.5",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Initial mass of every embryo [M_earth], used when ``masses`` is empty.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "accretion.morrigan.eccentricity_init",
+      "toml_section": "accretion.morrigan",
+      "class": "Morrigan",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.01",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0
+        },
+        {
+          "op": "<",
+          "value": 1
+        }
+      ],
+      "description": "Initial eccentricity shared by all embryos.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "accretion.morrigan.inner_edge",
+      "toml_section": "accretion.morrigan",
+      "class": "Morrigan",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.1",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Semi-major axis of the innermost embryo [AU].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "accretion.morrigan.spacing",
+      "toml_section": "accretion.morrigan",
+      "class": "Morrigan",
+      "type": "float",
+      "accepts_none": false,
+      "default": "10.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        },
+        {
+          "op": "<=",
+          "value": 50.0
+        }
+      ],
+      "description": "Initial separation between adjacent embryos, in mutual Hill radii. Typical values are 5 to 15; beyond roughly 30 the system does not go unstable within any useful evolution time, so the run finishes with no impacts. Capped at 50 purely to catch an order-of-magnitude mistake at configuration load. The cap is not the physical limit and does not track it. The layout condition has a pole where the requested gap approaches the span it is measured across, and its position scales with the embryo masses and with the cube root of the stellar mass: near 74 mutual Hill radii for a pair of ten-Earth-mass embryos around a solar-mass star, but near 34 for the same pair around a 0.1-solar-mass host. A spacing this validator accepts can therefore still be too wide for a compact, low-mass-host system. The dynamical model applies the exact condition and refuses such a layout by name, so that check, not this cap, is what guarantees a valid layout.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "accretion.morrigan.density",
+      "toml_section": "accretion.morrigan",
+      "class": "Morrigan",
+      "type": "float",
+      "accepts_none": false,
+      "default": "5500.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Uniform bulk density used to convert embryo mass to radius [kg m-3].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "accretion.morrigan.impact_angle",
+      "toml_section": "accretion.morrigan",
+      "class": "Morrigan",
+      "type": "float",
+      "accepts_none": false,
+      "default": "45.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0
+        },
+        {
+          "op": "<=",
+          "value": 90
+        }
+      ],
+      "description": "Impact angle [deg]. The impact parameter is its sine.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "accretion.morrigan.evolution_time",
+      "toml_section": "accretion.morrigan",
+      "class": "Morrigan",
+      "type": "float",
+      "accepts_none": false,
+      "default": "1.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Duration of the dynamical evolution [Gyr].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "accretion.morrigan.inner_cutoff",
+      "toml_section": "accretion.morrigan",
+      "class": "Morrigan",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.005",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Perihelion inside which an embryo counts as lost to the star [AU].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "accretion.morrigan.selector",
+      "toml_section": "accretion.morrigan",
+      "class": "Morrigan",
+      "type": "str",
+      "accepts_none": false,
+      "default": "\"match_config\"",
+      "choices": [
+        "match_config",
+        "mass",
+        "semimajoraxis",
+        "id"
+      ],
+      "bounds": null,
+      "description": "Which survivor's impact history PROTEUS follows. 'match_config' picks the survivor whose initial mass and orbit are closest to the PROTEUS configuration, 'mass' the most massive survivor, 'semimajoraxis' the survivor whose final orbit is nearest ``selector_value`` [AU], and 'id' the embryo with index ``selector_value``.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "accretion.morrigan.selector_value",
+      "toml_section": "accretion.morrigan",
+      "class": "Morrigan",
+      "type": "float or int or none",
+      "accepts_none": true,
+      "default": "none",
+      "choices": null,
+      "bounds": null,
+      "description": "Target value for the 'semimajoraxis' and 'id' selectors. Ignored otherwise. The field converter parses numeric strings to numbers.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "accretion.dummy.timeline_path",
+      "toml_section": "accretion.dummy",
+      "class": "AccretionDummy",
+      "type": "str or none",
+      "accepts_none": true,
+      "default": "none",
+      "choices": null,
+      "bounds": null,
+      "description": "Not a parameter of this module. Present only to reject a configuration that sets it here, which asks to replay a file and would otherwise be served a generated timeline at default settings. Use ``accretion.module = \"timeline\"`` and ``accretion.timeline.timeline_path``.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "accretion.dummy.mass_accreted",
+      "toml_section": "accretion.dummy",
+      "class": "AccretionDummy",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.1",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Total mass delivered over the whole timeline [M_earth]. The growth law sets how this is distributed in time and between impacts; the increments are scaled so they sum to exactly this value.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "accretion.dummy.num_impacts",
+      "toml_section": "accretion.dummy",
+      "class": "AccretionDummy",
+      "type": "int",
+      "accepts_none": false,
+      "default": "3",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 1
+        }
+      ],
+      "description": "Number of impacts in the timeline.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "accretion.dummy.timescale",
+      "toml_section": "accretion.dummy",
+      "class": "AccretionDummy",
+      "type": "float",
+      "accepts_none": false,
+      "default": "1000000.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "E-folding time of the accretion law [yr]. Short compared with ``time_last`` concentrates the mass in the first impacts; long compared with it spreads the mass evenly.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "accretion.dummy.time_last",
+      "toml_section": "accretion.dummy",
+      "class": "AccretionDummy",
+      "type": "float",
+      "accepts_none": false,
+      "default": "5000000.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Time of the final impact [yr]. Impacts are spaced evenly from ``time_last / num_impacts`` up to this time.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "accretion.dummy.eccentricity",
+      "toml_section": "accretion.dummy",
+      "class": "AccretionDummy",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.05",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0
+        },
+        {
+          "op": "<",
+          "value": 1
+        }
+      ],
+      "description": "Encounter eccentricity [1], setting both the approach velocity that adds to the mutual escape velocity and the impactor's orbit.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "accretion.dummy.impact_parameter",
+      "toml_section": "accretion.dummy",
+      "class": "AccretionDummy",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.5",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0
+        },
+        {
+          "op": "<=",
+          "value": 1
+        }
+      ],
+      "description": "Impact parameter of every collision [1], the sine of the impact angle. Zero is head-on, one is grazing.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "accretion.timeline.timeline_path",
+      "toml_section": "accretion.timeline",
+      "class": "AccretionTimeline",
+      "type": "str or none",
+      "accepts_none": true,
+      "default": "none",
+      "choices": null,
+      "bounds": null,
+      "description": "Path to the impact timeline file. Environment variables and ``~`` are expanded.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "accretion.time_offset",
+      "toml_section": "accretion",
+      "class": "Accretion",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0",
+      "choices": null,
+      "bounds": null,
+      "description": "Offset applied to every impact time when mapping the timeline onto the PROTEUS time axis [yr]. A dynamical model measures time from disk dispersal, while PROTEUS measures it from the start of its own evolution. Impacts that still land at or before the start of the run are discarded with a warning, and their mass is not applied anywhere: the configured planet mass and orbit define the initial state on their own.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "accretion.impactor_volatiles",
+      "toml_section": "accretion",
+      "class": "Accretion",
+      "type": "str",
+      "accepts_none": false,
+      "default": "\"dry\"",
+      "choices": [
+        "dry",
+        "match_planet",
+        "ppmw"
+      ],
+      "bounds": null,
+      "description": "Where each impactor's volatile content comes from. Choices: \"dry\" (impactors carry rock and iron only), \"match_planet\" (every impactor carries the planet's own initial fractional volatile abundances, scaled to the impactor mass, on the assumption that all embryos co-formed from the same disk material), \"ppmw\" (the per-element ``impactor_<e>_ppmw`` budgets below). The content is split into an atmospheric and a dissolved part by mirroring the planet's own partitioning at impact time; the atmospheric part loses the same collision fraction that strips the target's atmosphere and the remainder of the content is delivered.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "accretion.impactor_H_ppmw",
+      "toml_section": "accretion",
+      "class": "Accretion",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0
+        }
+      ],
+      "description": "Hydrogen carried by each impactor [ppmw of impactor mass].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "accretion.impactor_C_ppmw",
+      "toml_section": "accretion",
+      "class": "Accretion",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0
+        }
+      ],
+      "description": "Carbon carried by each impactor [ppmw of impactor mass].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "accretion.impactor_N_ppmw",
+      "toml_section": "accretion",
+      "class": "Accretion",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0
+        }
+      ],
+      "description": "Nitrogen carried by each impactor [ppmw of impactor mass].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "accretion.impactor_S_ppmw",
+      "toml_section": "accretion",
+      "class": "Accretion",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0
+        }
+      ],
+      "description": "Sulfur carried by each impactor [ppmw of impactor mass].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "accretion.impactor_O_ppmw",
+      "toml_section": "accretion",
+      "class": "Accretion",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0
+        }
+      ],
+      "description": "Oxygen carried by each impactor [ppmw of impactor mass]. With CALLIOPE or atmodeller at a fixed fO2 (``planet.fO2_source = 'user_constant'``) the outgassing derives the O budget, so the delivered part counts as rock; otherwise it joins the O budget.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "accretion.atmloss_module",
+      "toml_section": "accretion",
+      "class": "Accretion",
+      "type": "str or none",
+      "accepts_none": true,
+      "default": "none",
+      "choices": [
+        null,
+        "constant",
+        "zephyrus"
+      ],
+      "bounds": null,
+      "description": "How impact atmosphere loss is computed. Choices: None (no impact atmosphere loss at all: the target keeps its atmosphere and a volatile-bearing impactor delivers its whole content), \"constant\" (the fixed fraction below), \"zephyrus\" (the giant-impact erosion scaling laws evaluated by ``zephyrus.collision.impact_loss`` from each impact's collision parameters). One fraction governs both bodies at each impact: the target loses that fraction of its atmosphere, and a volatile-bearing impactor loses the same fraction of its atmospheric part and delivers the remainder. PROTEUS itself ships no impact loss physics.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "accretion.atmloss_law",
+      "toml_section": "accretion",
+      "class": "Accretion",
+      "type": "str",
+      "accepts_none": false,
+      "default": "\"roche2026\"",
+      "choices": [
+        "kegerreis2020",
+        "roche2026"
+      ],
+      "bounds": null,
+      "description": "Which erosion scaling law to evaluate when ``atmloss_module = 'zephyrus'``. Choices: \"roche2026\" (Roche et al. 2026, arXiv:2610.06077, parameterized by impact angle, mass ratio, contact velocity, target mass, radius ratio, and target atmospheric fraction), \"kegerreis2020\" (Kegerreis et al. 2020, doi:10.3847/2041-8213/abb5fb, parameterized by impact angle, contact velocity, mass ratio, radii, and bulk densities). The default is \"roche2026\". Both laws are calibrated on H2-He atmospheres (Kegerreis et al. 2020 used the HM80 equation of state; Roche et al. 2026, Sect. 2.1). For atmospheres of higher mean molecular weight (H2O, CO2, O2), the shock-driven loss is an upper limit for a given envelope mass (Roche et al. 2026, Sect. 4.3). The law covers the immediate shock- and vapour-plume-driven loss only; it neglects later thermally driven loss (an outflow driven by heat from the post-impact interior, Biersteker & Schlichting 2021), so for primordial H2-He envelopes the total loss can be higher (Roche et al. 2026, Sect. 4.1); that later loss becomes negligible for envelopes of higher mean molecular weight. Conversely, envelope miscibility may lead to overestimating loss from massive young envelopes (Roche et al. 2026, Sect. 4.1). The atmospheric mass fraction f_atm is computed from the running planet state as the sum of ``<e>_kg_atm`` over ``M_planet`` across all elements including rock vapour. Rock vapour adds to the envelope mass the scaling law sees, but PROTEUS does not debit stripped rock vapour because its inventory re-equilibrates with the magma ocean at each step. With ``roche2026``, an airless target (m_atm = 0) returns f_loss = 0 so an impactor delivers its full volatile content. An atmosphere with f_atm between 1e-6 and below 0.0099 (1 % tolerance) is flagged and extrapolated without a clamp; f_atm below the 1e-6 stability bound is evaluated at 1e-6, and the resulting fraction depends on the collision parameters. When parameters are clamped, only the fit terms use the clamped value while v_esc, Q'_R, and the mass ratio use the raw collision state. When the far-field term predicts loss without impact energy, the 'X_FF_zero_energy' flag is set; this flag can fire inside the fitted range (for high gamma at f_atm 0.01 to 0.1) and is common below f_atm 0.01.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "accretion.atmloss_frac",
+      "toml_section": "accretion",
+      "class": "Accretion",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0
+        },
+        {
+          "op": "<=",
+          "value": 1
+        }
+      ],
+      "description": "Fraction of the atmosphere removed by each impact when ``atmloss_module = \"constant\"`` [0-1]. Applies to the target's atmosphere and to the impactor's atmospheric part alike.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -10159,6 +11708,62 @@
   ],
   "constraints": [
     {
+      "validator": "valid_accretiondummy",
+      "module": "_accretion.py",
+      "attached_to": [
+        "accretion.dummy"
+      ],
+      "touches": [
+        "dummy.timeline_path"
+      ],
+      "doc": "Refuse a timeline path aimed at the module that generates its own."
+    },
+    {
+      "validator": "valid_accretiontimeline",
+      "module": "_accretion.py",
+      "attached_to": [
+        "accretion.timeline"
+      ],
+      "touches": [
+        "module",
+        "timeline.timeline_path"
+      ],
+      "doc": "The timeline accretion module requires a path to an impact timeline file."
+    },
+    {
+      "validator": "valid_impactor_budget_total",
+      "module": "_accretion.py",
+      "attached_to": [
+        "accretion.impactor_O_ppmw"
+      ],
+      "touches": [
+        "impactor_volatiles"
+      ],
+      "doc": "Refuse a volatile budget that exceeds the impactor's own mass."
+    },
+    {
+      "validator": "valid_impactor_volatiles",
+      "module": "_accretion.py",
+      "attached_to": [
+        "accretion.impactor_O_ppmw"
+      ],
+      "touches": [
+        "impactor_volatiles"
+      ],
+      "doc": "Refuse ppmw budgets that the selected content mode would ignore."
+    },
+    {
+      "validator": "valid_morrigan",
+      "module": "_accretion.py",
+      "attached_to": [
+        "accretion.morrigan"
+      ],
+      "touches": [
+        "module"
+      ],
+      "doc": "The Morrigan module requires as many embryo masses as planets, all positive, and a valid selector value when the selector is a semi-major axis or planet id."
+    },
+    {
       "validator": "valid_aerosols_enabled",
       "module": "_atmos_clim.py",
       "attached_to": [
@@ -10242,6 +11847,17 @@
       "doc": "Reject enabling this option when the dummy atmos_clim module is selected."
     },
     {
+      "validator": "aragog_needs_melting_curves",
+      "module": "_config.py",
+      "attached_to": [
+        "interior_energetics"
+      ],
+      "touches": [
+        "interior_struct.melting_dir"
+      ],
+      "doc": "Require ``interior_struct.melting_dir`` for Aragog without a PALEOS table set."
+    },
+    {
       "validator": "boreas_requires_atmosphere",
       "module": "_config.py",
       "attached_to": [
@@ -10266,17 +11882,102 @@
       "doc": "Boundary backend assumes a fixed surface state coupling."
     },
     {
+      "validator": "check_accretion_core_stratification_compatibility",
+      "module": "_config.py",
+      "attached_to": [
+        "config_version"
+      ],
+      "touches": [
+        "accretion.module",
+        "interior_energetics"
+      ],
+      "doc": "Reject accretion runs with a stratified Aragog core_module core."
+    },
+    {
+      "validator": "check_accretion_interior_compatibility",
+      "module": "_config.py",
+      "attached_to": [
+        "config_version"
+      ],
+      "touches": [
+        "accretion.module",
+        "interior_energetics.module"
+      ],
+      "doc": "Reject accretion runs on an interior that cannot apply an impact."
+    },
+    {
+      "validator": "check_accretion_vapourise_compatibility",
+      "module": "_config.py",
+      "attached_to": [
+        "config_version"
+      ],
+      "touches": [
+        "accretion.module",
+        "outgas.vapourise"
+      ],
+      "doc": "Reject accretion runs that also vapourise rock into the atmosphere."
+    },
+    {
+      "validator": "check_core_module_requirements",
+      "module": "_config.py",
+      "attached_to": [
+        "config_version"
+      ],
+      "touches": [
+        "interior_energetics",
+        "interior_struct.module",
+        "interior_struct.zalmoxis.update_interval",
+        "planet.temperature_mode"
+      ],
+      "doc": "Reject an Aragog core_module core that its structure or solver cannot serve."
+    },
+    {
       "validator": "check_module_dependencies",
       "module": "_config.py",
       "attached_to": [
         "config_version"
       ],
       "touches": [
+        "accretion.module",
         "atmos_chem.module",
         "escape.module",
         "outgas.module"
       ],
       "doc": "Check that required external packages are importable for the selected modules."
+    },
+    {
+      "validator": "dummy_struct_mantle_eos",
+      "module": "_config.py",
+      "attached_to": [
+        "interior_energetics"
+      ],
+      "touches": [
+        "interior_struct"
+      ],
+      "doc": "Check the mantle EOS that the dummy structure hands to SPIDER or Aragog."
+    },
+    {
+      "validator": "energetics_needs_a_thermal_mantle_eos",
+      "module": "_config.py",
+      "attached_to": [
+        "interior_energetics"
+      ],
+      "touches": [
+        "interior_struct"
+      ],
+      "doc": "Require a PALEOS or temperature-dependent energetics key for SPIDER or Aragog."
+    },
+    {
+      "validator": "front_trapping_requires_aragog",
+      "module": "_config.py",
+      "attached_to": [
+        "outgas"
+      ],
+      "touches": [
+        "interior_energetics.module",
+        "outgas"
+      ],
+      "doc": "Front trapping reads the freezing front the Aragog interior resolves."
     },
     {
       "validator": "instmethod_dummy",
@@ -10353,6 +12054,43 @@
       "doc": "sp1d, ps1d, and ps1d_evec require at least Lovepy, but ideally the Obliqua tidal-response module: all three read the full per-mode spectrum in ``tides_o``, which ``dummy`` never populates. ``sp0d``/``ps0d`` read the scalar ``Imk2`` instead (which ``dummy`` does provide), so they are unrestricted here; see \"Compatibility between orbit models and tidal modules\" in docs/Explanations/orbit.md."
     },
     {
+      "validator": "parameterized_excludes_accretion",
+      "module": "_config.py",
+      "attached_to": [
+        "config_version"
+      ],
+      "touches": [
+        "accretion.module",
+        "orbit.star_planet_model"
+      ],
+      "doc": "Reject giant impacts with the parameterized star-planet model."
+    },
+    {
+      "validator": "parameterized_excludes_tides",
+      "module": "_config.py",
+      "attached_to": [
+        "orbit"
+      ],
+      "touches": [
+        "orbit.module",
+        "orbit.star_planet_model"
+      ],
+      "doc": "The parameterized model prescribes the orbit as a closed-form track and exchanges no energy with the interior, so no tides module can run alongside it; see \"Star-planet models\" in docs/Explanations/orbit.md."
+    },
+    {
+      "validator": "parameterized_high_ecc_inward",
+      "module": "_config.py",
+      "attached_to": [
+        "orbit"
+      ],
+      "touches": [
+        "orbit.parameterized",
+        "orbit.semimajoraxis",
+        "orbit.star_planet_model"
+      ],
+      "doc": "The high-eccentricity law circularises at fixed orbital angular momentum, which can only shrink the orbit, so its final semi-major axis must not exceed the initial one, orbit.semimajoraxis."
+    },
+    {
       "validator": "planet_fO2_source_compat",
       "module": "_config.py",
       "attached_to": [
@@ -10426,6 +12164,18 @@
         "star.mors.tracks"
       ],
       "doc": "ZEPHYRUS escape requires the MORS star module with the Spada evolution tracks."
+    },
+    {
+      "validator": "spinless_orbit_keeps_spin_synchronous",
+      "module": "_config.py",
+      "attached_to": [
+        "orbit"
+      ],
+      "touches": [
+        "orbit.axial_period",
+        "orbit.star_planet_model"
+      ],
+      "doc": "sp0d and parameterized evolve no spin, so the planet stays synchronous and orbit.axial_period must be unset; see \"Star-planet models\" in docs/Explanations/orbit.md."
     },
     {
       "validator": "tides_enabled_orbit",

@@ -21,7 +21,8 @@ bash tools/get_spider.sh
 
 === "Linux"
 
-    The PETSc script downloads a pre-compiled version from OSF and configures
+    The PETSc script downloads the PETSc 3.19.0 source archive from Zenodo (or its
+    DataverseNL mirror), checks its SHA-256, builds it and configures
     `PETSC_DIR` and `PETSC_ARCH` automatically.
 
     !!! note "Fedora / RHEL"
@@ -30,7 +31,7 @@ bash tools/get_spider.sh
 
 === "macOS"
 
-    The script detects Apple Silicon vs Intel and uses Homebrew's MPI. If you
+    The script uses the MPI on your PATH, for example Homebrew's Open MPI. If you
     encounter issues, see
     [Troubleshooting: PETSc on Apple Silicon](troubleshooting.md#petsc-compilation-fails-on-apple-silicon).
 
@@ -99,11 +100,12 @@ bash tools/get_lavatmos.sh
     ThermoEngineLite compiles a C++/Python extension and requires `clang` and
     `pip` on `PATH`. Compilation takes around 20 minutes.
 
-`get_lavatmos.sh` clones the checkout but does not export an environment
-variable for you. Export the printed path and add it to your shell rc file:
+`get_lavatmos.sh` clones the checkout but does not set an environment
+variable for you. Set the printed path in your conda environment:
 
 ```console
-export LAVA_DIR='<path-to-LavAtmos>/'
+conda env config vars set -n proteus LAVA_DIR='<path-to-LavAtmos>/'
+conda deactivate && conda activate proteus
 ```
 
 See [`input/tutorials/tutorial_vapourise.toml`](https://github.com/FormingWorlds/PROTEUS/blob/main/input/tutorials/tutorial_vapourise.toml) for an example configuration.
@@ -151,3 +153,31 @@ bash tools/get_vulcan.sh
 !!! warning "License"
     VULCAN is distributed under the GPL-3.0 license; review its terms
     before installing.
+
+## Protoplanet accretion (Morrigan)
+
+Morrigan is an optional giant-impact accretion module, selected with
+`accretion.module = "morrigan"`. It evolves a system of planetary embryos
+through orbital crossings and collisions and returns the impact history
+that the coupled run replays. It is not required for a standard PROTEUS
+run. Install it from PyPI:
+
+```console
+pip install "fwl-proteus[morrigan]"
+```
+
+For local development, install as an editable checkout instead:
+
+```console
+bash tools/get_morrigan.sh
+```
+
+An accretion run needs an interior module that can re-melt the mantle
+after an impact. Aragog is the production choice; SPIDER is refused at
+configuration load because it has no re-melt path.
+
+Two accretion modules need no installation at all. `accretion.module =
+"dummy"` builds an impact history from scaling laws, and `accretion.module
+= "timeline"` replays one from a file, which is how a published or
+externally computed impact history drives a run. Both apply the same
+impact physics as the dynamical model.

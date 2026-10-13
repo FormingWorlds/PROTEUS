@@ -6,6 +6,10 @@ coverage:
     project:
       default:
         target: auto
+        flags: [unit-tests]
+      nightly:
+        target: auto
+        flags: [nightly]
     patch:
       default:
         target: 80%

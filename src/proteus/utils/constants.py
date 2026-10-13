@@ -20,6 +20,24 @@ FEI2021_LIQUIDUS_P_CALIB_PA = 500e9  # Pa
 # the solidus from mushy_zone_factor; the config validator matches the core
 # and ice-layer EOS too.
 PALEOS_EOS_PREFIXES = ('PALEOS:', 'PALEOS-2phase:', 'PALEOS-API:', 'PALEOS-API-2phase:')
+# Temperature-dependent silicate EOS whose energetics read melting_dir and the WB P-S set.
+TDEP_EOS_PREFIXES = ('WolfBower2018', 'RTPress100TPa')
+# Zalmoxis EOS component of each dissolved volatile species that has a table.
+VOLATILE_EOS_MAP = {'H2O': 'PALEOS:H2O', 'H2': 'Chabrier:H'}
+# PALEOS keys of the Zalmoxis material registry (load_zalmoxis_material_dictionaries).
+PALEOS_REGISTRY_KEYS = frozenset(
+    {
+        'PALEOS:iron',
+        'PALEOS:MgSiO3',
+        'PALEOS:H2O',
+        'PALEOS-2phase:MgSiO3',
+        'PALEOS-2phase:MgSiO3-highres',
+        'PALEOS-API:iron',
+        'PALEOS-API:MgSiO3',
+        'PALEOS-API:H2O',
+        'PALEOS-API-2phase:MgSiO3',
+    }
+)
 
 mol = 6.02214076e23  # mol definition
 

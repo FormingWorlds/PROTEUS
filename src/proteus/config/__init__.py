@@ -9,7 +9,12 @@ import cattrs
 
 from ._config import Config
 from ._interior import _STEP_CAP_FIELDS
-from .orphans import UnknownConfigKeyError, find_key_problems, format_orphan_message
+from .orphans import (
+    UnknownConfigKeyError,
+    field_path_kind,
+    find_key_problems,
+    format_orphan_message,
+)
 
 log = logging.getLogger('fwl.' + __name__)
 
@@ -182,6 +187,7 @@ __all__ = [
     'read_config_object',
     'read_config',
     'structure_config',
+    'field_path_kind',
     'find_key_problems',
     'format_orphan_message',
 ]

@@ -15,7 +15,7 @@ import vulcan
 
 # Import PROTEUS
 from proteus.atmos_clim.common import find_latest_atmosphere_time, read_atmosphere_data
-from proteus.star.wrapper import scale_spectrum_to_stellar_surface
+from proteus.star.wrapper import flux_weighted_distance, scale_spectrum_to_stellar_surface
 from proteus.utils.constants import AU, R_sun, element_list, vol_list
 from proteus.utils.helper import find_nearest
 
@@ -146,7 +146,7 @@ def run_vulcan(dirs: dict, config: Config, hf_row: dict, *, online: bool = False
     sflux_data = np.loadtxt(sflux_fpath, skiprows=1).T
     star_wl = np.array(sflux_data[0])
     star_fl = scale_spectrum_to_stellar_surface(
-        sflux_data[1], hf_row['separation'], hf_row['R_star']
+        sflux_data[1], flux_weighted_distance(hf_row), hf_row['R_star']
     )
 
     # Remove small values
@@ -311,7 +311,7 @@ def run_vulcan(dirs: dict, config: Config, hf_row: dict, *, online: bool = False
     # Spectrum
     vcfg.sflux_file = star_write
     vcfg.r_star = hf_row['R_star'] / R_sun  # stellar radius (R_sun)
-    vcfg.orbit_radius = hf_row['separation'] / AU  # planet-star distance in A.U.
+    vcfg.orbit_radius = flux_weighted_distance(hf_row) / AU  # same distance as star.dat [AU]
     vcfg.sl_angle = config.orbit.zenith_angle * np.pi / 180.0  # the zenith angle
     vcfg.f_diurnal = config.orbit.s0_factor
 

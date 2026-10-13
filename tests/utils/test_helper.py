@@ -775,6 +775,17 @@ def test_is_write_snapshot_initial_iteration_and_disabled_time_guard():
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize('t', [0.0, 884.7, 108000.25, 1.0e9])
+def test_times_one_resolution_apart_get_different_snapshot_names(t):
+    """SUBYEAR_TIME_RESOLUTION matches the precision of format_subyear_time: one
+    resolution apart gives a new name, 0.4 of it does not."""
+    from proteus.utils.helper import SUBYEAR_TIME_RESOLUTION, format_subyear_time
+
+    assert format_subyear_time(t) != format_subyear_time(t + SUBYEAR_TIME_RESOLUTION)
+    assert format_subyear_time(t) == format_subyear_time(t + 0.4 * SUBYEAR_TIME_RESOLUTION)
+
+
+@pytest.mark.unit
 def test_format_subyear_time_replaces_dot_with_p():
     """format_subyear_time uses ``p`` as the decimal separator."""
     from proteus.utils.helper import format_subyear_time
@@ -820,3 +831,202 @@ def test_parse_subyear_time_rejects_multiple_p():
         parse_subyear_time('1p2p3')
     with pytest.raises(ValueError, match="multiple 'p' characters"):
         parse_subyear_time('884pp700')
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('mantle_eos', 'expected'),
+    [
+        ('PALEOS:MgSiO3', True),
+        ('PALEOS-2phase:MgSiO3-highres', True),
+        ('PALEOS-API:MgSiO3', True),
+        # One component with a fraction token or spaces is the same registry key.
+        ('PALEOS:MgSiO3:1.0', True),
+        ('PALEOS:MgSiO3 ', True),
+        ('PALEOS:Olivine', False),
+        ('PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1', True),
+        ('PALEOS:H2O:0.5+PALEOS:iron:0.5', True),
+        ('WolfBower2018:MgSiO3:0.9+PALEOS:H2O:0.1', False),
+        ('WolfBower2018:MgSiO3', False),
+        (None, False),
+    ],
+)
+def test_generates_paleos_tables_follows_the_energetics_key(mantle_eos, expected):
+    """Under the Zalmoxis structure, a PALEOS energetics key counts: a single PALEOS
+    key, or a mixture whose MgSiO3 component is PALEOS or that has no MgSiO3
+    component but a PALEOS one; an unknown material does not."""
+    from types import SimpleNamespace
+
+    from proteus.utils.helper import generates_paleos_tables
+
+    struct = SimpleNamespace(module='zalmoxis', zalmoxis=SimpleNamespace(mantle_eos=mantle_eos))
+    assert generates_paleos_tables(struct) is expected
+    struct.module = 'dummy'
+    assert generates_paleos_tables(struct) is False
+
+
+@pytest.mark.unit
+def test_paleos_registry_keys_match_the_zalmoxis_registry():
+    """The static key set equals the PALEOS keys that generate_spider_tables can find."""
+    pytest.importorskip('zalmoxis')
+    from proteus.interior_struct.zalmoxis import load_zalmoxis_material_dictionaries
+    from proteus.utils.constants import PALEOS_EOS_PREFIXES, PALEOS_REGISTRY_KEYS
+
+    registry = load_zalmoxis_material_dictionaries()
+    paleos = {k for k in registry if k.startswith(PALEOS_EOS_PREFIXES)}
+    assert paleos == PALEOS_REGISTRY_KEYS
+    assert all(k.startswith(PALEOS_EOS_PREFIXES) for k in PALEOS_REGISTRY_KEYS)
+
+
+@pytest.mark.unit
+def test_paleos_companion_keys_follow_the_mantle_family():
+    """A mantle with any PALEOS component reads the MgSiO3 2-phase pair of its family
+    and no MgSiO3 unified table; a mantle without one reads neither."""
+    from proteus.utils.helper import paleos_companion_keys
+
+    shipped = ['PALEOS-2phase:MgSiO3']
+    assert paleos_companion_keys('PALEOS:MgSiO3') == shipped
+    assert paleos_companion_keys('PALEOS:H2O:1.0') == shipped
+    assert paleos_companion_keys('WolfBower2018:MgSiO3:0.9+PALEOS:H2O:0.1') == shipped
+    assert paleos_companion_keys('PALEOS-2phase:MgSiO3-highres') == [
+        'PALEOS-2phase:MgSiO3-highres'
+    ]
+    assert paleos_companion_keys('PALEOS-API:iron') == ['PALEOS-API-2phase:MgSiO3']
+    assert paleos_companion_keys('WolfBower2018:MgSiO3') == []
+    assert paleos_companion_keys('Seager2007:H2O') == []
+    assert paleos_companion_keys('') == []
+
+
+@pytest.mark.parametrize(
+    'mantle_eos, key',
+    [
+        ('PALEOS-2phase:MgSiO3-highres:1.0', 'PALEOS-2phase:MgSiO3-highres'),
+        ('PALEOS-2phase:MgSiO3-highres:0.9+PALEOS:H2O:0.1', 'PALEOS-2phase:MgSiO3-highres'),
+        ('Chabrier:H:0.03+PALEOS-API:MgSiO3:0.97', 'PALEOS-API-2phase:MgSiO3'),
+        (' PALEOS:H2O:0.1 + PALEOS-API:MgSiO3:0.9 ', 'PALEOS-API-2phase:MgSiO3'),
+        ('PALEOS:MgSiO3:0.9+PALEOS:H2O:0.1', 'PALEOS-2phase:MgSiO3'),
+        ('PALEOS:MgSiO3:0.9+PALEOS-API:H2O:0.1', 'PALEOS-2phase:MgSiO3'),
+        ('PALEOS:H2O:0.5+PALEOS-API:iron:0.5', 'PALEOS-API-2phase:MgSiO3'),
+    ],
+)
+def test_twophase_registry_key_uses_every_component(mantle_eos, key):
+    """The pair family comes from the PALEOS MgSiO3 component when there is one, else from
+    any component, with fraction tokens and spaces stripped."""
+    from proteus.utils.helper import paleos_companion_keys, twophase_registry_key
+
+    assert twophase_registry_key(mantle_eos) == key
+    assert paleos_companion_keys(mantle_eos) == [key]
+
+
+def test_eos_components_strip_spaces_and_fractions():
+    """Each component becomes its registry key."""
+    from proteus.utils.helper import eos_components
+
+    assert eos_components(' PALEOS:MgSiO3:0.9 + Chabrier:H:0.1 ') == [
+        'PALEOS:MgSiO3',
+        'Chabrier:H',
+    ]
+    assert eos_components('PALEOS:MgSiO3:0.9 + 0.1') == ['PALEOS:MgSiO3']
+    assert eos_components('') == eos_components(None) == []
+
+
+def test_energetics_eos_key_treats_a_repeated_key_as_one_material():
+    """One key written as several components is that key, not a mixture."""
+    from proteus.utils.helper import energetics_eos_key
+
+    assert energetics_eos_key('PALEOS:MgSiO3:0.5+PALEOS:MgSiO3:0.5') == 'PALEOS:MgSiO3'
+    assert energetics_eos_key('Seager2007:iron:0.5+Seager2007:iron:0.5') == 'Seager2007:iron'
+    assert energetics_eos_key(None) is None
+
+
+@pytest.mark.parametrize(
+    'mantle, key',
+    [
+        ('PALEOS:H2O', 'PALEOS-2phase:MgSiO3'),
+        ('PALEOS:iron:1.0', 'PALEOS-2phase:MgSiO3'),
+        ('PALEOS:H2O:0.5+PALEOS:iron:0.5', 'PALEOS-2phase:MgSiO3'),
+        ('PALEOS-API:H2O', 'PALEOS-API-2phase:MgSiO3'),
+        ('PALEOS:Olivine', 'PALEOS:Olivine'),
+        ('WolfBower2018:MgSiO3', 'WolfBower2018:MgSiO3'),
+    ],
+)
+def test_energetics_eos_key_gives_a_non_mgsio3_paleos_mantle_the_mgsio3_pair(mantle, key):
+    """A PALEOS H2O or iron mantle, single or mixed, uses the MgSiO3 pair of its family;
+    a key that is not a PALEOS registry key is kept."""
+    from proteus.utils.helper import energetics_eos_key
+
+    assert energetics_eos_key(mantle) == key
+
+
+# =============================================================================
+# Test: git_env() and link_proteus_julia()
+# =============================================================================
+
+
+def test_git_env_drops_the_variables_that_name_another_repository(monkeypatch):
+    """git_env keeps PATH and HOME and drops GIT_DIR, GIT_WORK_TREE and GIT_INDEX_FILE.
+
+    GIT_AUTHOR_NAME also starts with GIT_ but names no repository, so it stays.
+    """
+    from proteus.utils.helper import GIT_REPO_ENV, git_env
+
+    for name in ('GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE'):
+        monkeypatch.setenv(name, f'/other/{name}')
+    monkeypatch.setenv('GIT_AUTHOR_NAME', 'tester')
+    env = git_env()
+    assert GIT_REPO_ENV == (
+        'GIT_DIR',
+        'GIT_WORK_TREE',
+        'GIT_INDEX_FILE',
+        'GIT_COMMON_DIR',
+        'GIT_NAMESPACE',
+    )
+    assert not set(GIT_REPO_ENV) & set(env)
+    assert env['GIT_AUTHOR_NAME'] == 'tester'
+    assert env['PATH'] == os.environ['PATH']
+    assert os.environ['GIT_DIR'] == '/other/GIT_DIR'
+
+
+@pytest.mark.parametrize('kind', ['unset', 'missing', 'not-executable'])
+def test_link_proteus_julia_makes_no_folder_without_a_usable_binary(
+    monkeypatch, tmp_path, kind
+):
+    """Without an executable PYTHON_JULIAPKG_EXE the function returns None and makes nothing."""
+    from proteus.utils.helper import link_proteus_julia
+
+    exe = tmp_path / 'bin' / 'julia'
+    if kind == 'unset':
+        monkeypatch.delenv('PYTHON_JULIAPKG_EXE', raising=False)
+    else:
+        if kind == 'not-executable':
+            exe.parent.mkdir()
+            exe.write_text('#!/bin/sh\n')
+            exe.chmod(0o644)
+        monkeypatch.setenv('PYTHON_JULIAPKG_EXE', str(exe))
+    assert link_proteus_julia(tmp_path) is None
+    assert not (tmp_path / '.proteus-julia').exists()
+
+
+def test_link_proteus_julia_links_one_julia_and_moves_it_on_a_second_call(
+    monkeypatch, tmp_path
+):
+    """The folder holds one link `julia` to the bound binary; a second binary replaces it.
+
+    The binaries are named julia-1.13 and julia-1.13.2, so a bare julia finds
+    them only through the link.
+    """
+    from proteus.utils.helper import link_proteus_julia
+
+    first, second = tmp_path / 'julia-1.13', tmp_path / 'julia-1.13.2'
+    for exe in (first, second):
+        exe.write_text('#!/bin/sh\n')
+        exe.chmod(0o755)
+    monkeypatch.setenv('PYTHON_JULIAPKG_EXE', str(first))
+    folder = link_proteus_julia(tmp_path)
+    assert folder == tmp_path / '.proteus-julia'
+    assert os.listdir(folder) == ['julia']
+    assert os.readlink(folder / 'julia') == str(first)
+    monkeypatch.setenv('PYTHON_JULIAPKG_EXE', str(second))
+    assert link_proteus_julia(tmp_path) == folder
+    assert os.readlink(folder / 'julia') == str(second)
+    assert shutil.which('julia', path=str(folder)) == str(folder / 'julia')

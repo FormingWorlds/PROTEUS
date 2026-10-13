@@ -6,8 +6,8 @@ CMB entropy gradient is a state variable of the solve. Each ``_int.nc``
 snapshot stores it (``dSdr_cmb_state``) together with the surface pressure of
 the solver's Adams-Williamson mesh (``mesh_surface_pressure``), and the resume
 restores both. Restarting the gradient from a finite difference of the
-restored profile gives a first-step CMB flux away from the control and a
-lasting offset in the cumulative energy-conservation residual; rebuilding the
+restored profile gives a first-step CMB flux and mantle heat release away
+from the control; rebuilding the
 mesh from the restored row's P_surf shifts every mesh pressure by the
 atmospheric load and the run no longer follows the control.
 
@@ -23,11 +23,12 @@ Invariants asserted:
   that value to the solver's ``set_initial_dSdr_cmb``; the copy without it
   hands None, so the solver starts from the finite difference.
 - A fresh run's snapshot stores the setup mesh surface pressure, 0 Pa.
-- The resumed run's energy-conservation residual and first-step ``F_cmb`` are
-  closer to the control than the finite-difference restart's.
+- The resumed run's first-step ``F_cmb`` and mantle heat release are closer to
+  the control than the finite-difference restart's, which moves both visibly.
 - Temperatures stay positive and melt fraction in [0, 1] after the seam.
 - After the seam the resumed run reproduces the control row by row: the same
-  step times, and CMB flux and temperatures within FLUX_RTOL and TEMP_RTOL.
+  step times, CMB flux within FLUX_RTOL, and temperatures and the cumulative
+  energy ledger within STATE_RTOL.
 
 Wall time: about 3 min locally (macOS, M-series) for the three runs.
 
@@ -47,6 +48,7 @@ import pytest
 from helpers import PROTEUS_ROOT
 
 from proteus import Proteus
+from proteus.config._interior import default_rtol
 
 # resume_runs setup counts against the first test: 2613-2898 s on CI, over 3600 s on a slow runner.
 pytestmark = [pytest.mark.slow, pytest.mark.timeout(7200)]
@@ -58,10 +60,10 @@ CONFIG = PROTEUS_ROOT / 'input' / 'dummy.toml'
 N_ITERS = 12
 SEAM_ITERS = 6
 
-# Parity tolerances: above the resumed-run difference (5e-6 in F_cmb, 1e-8 in
-# T_magma) and well below the 1e-2 and 5e-3 of a mesh built from P_surf.
+# A mesh rebuilt from P_surf moves F_cmb and T_magma by 1e-2 and 5e-3; both bounds sit
+# far below that and above the differences a resumed run shows.
 FLUX_RTOL = 2.0e-3
-TEMP_RTOL = 1.0e-5
+STATE_RTOL = 1.0e-5
 
 
 def _config_with_output_path(output_dir):
@@ -79,6 +81,7 @@ def _make_runner(output_dir, iters_max):
     runner = Proteus(config_path=_config_with_output_path(output_dir))
     cfg = runner.config
     cfg.interior_energetics.module = 'aragog'
+    cfg.interior_energetics.rtol = default_rtol('aragog')  # dummy.toml resolved it for 'dummy'
     cfg.interior_struct.melting_dir = 'Monteux-600'
     assert cfg.interior_energetics.aragog.core_bc == 'energy_balance'
     cfg.params.dt.initial = 1.0e2
@@ -221,9 +224,9 @@ def resume_runs(tmp_path_factory):
 
 @pytest.mark.slow
 @pytest.mark.physics_invariant
-def test_resume_restores_the_cmb_entropy_gradient(resume_runs):
+def test_resume_restores_the_cmb_entropy_gradient(resume_runs, record_property):
     """A resumed Aragog run hands the stored CMB gradient to the solver, and
-    its energy-conservation residual and first-step CMB flux are closer to the
+    its first-step CMB flux and mantle heat release are closer to the
     uninterrupted control than a finite-difference restart.
 
     Physical scenario: a molten 1 M_Earth mantle on the real Aragog solver
@@ -247,12 +250,19 @@ def test_resume_restores_the_cmb_entropy_gradient(resume_runs):
         k: abs(D['F_cmb'].iloc[first] / ctrl['F_cmb'].iloc[first] - 1)
         for k, D in (('res', res), ('fd', fd))
     }
-    d_res = {
-        k: abs(D['E_residual_cons_frac'].iloc[first] - ctrl['E_residual_cons_frac'].iloc[first])
+    d_heat = {
+        k: abs(
+            D['step_dE_state_heat_J'].iloc[first] / ctrl['step_dE_state_heat_J'].iloc[first] - 1
+        )
         for k, D in (('res', res), ('fd', fd))
     }
+    for name, d in (('d_flux', d_flux), ('d_heat', d_heat)):
+        for k in ('res', 'fd'):
+            record_property(f'{name}_{k}', float(d[k]))
+    # At rtol 1e-8 the restart moves both by at least 4.8e-6 (heat, Wolf and Bower set).
+    assert d_flux['fd'] > 1e-6 and d_heat['fd'] > 1e-6, (d_flux, d_heat)
     assert d_flux['res'] < 0.5 * d_flux['fd'], d_flux
-    assert d_res['res'] < 0.5 * d_res['fd'], d_res
+    assert d_heat['res'] < 0.5 * d_heat['fd'], d_heat
 
     after = (res['Time'] > r['t_seam']).to_numpy()
     assert (res['T_magma'][after] > 0).all() and (res['T_cmb'][after] > 0).all()
@@ -263,7 +273,8 @@ def test_resume_restores_the_cmb_entropy_gradient(resume_runs):
 @pytest.mark.physics_invariant
 def test_resume_matches_the_uninterrupted_control(resume_runs):
     """After the seam the resumed run reproduces the control row by row: same
-    times, CMB flux within FLUX_RTOL and temperatures within TEMP_RTOL.
+    times, CMB flux within FLUX_RTOL, temperatures and the cumulative energy
+    ledger within STATE_RTOL.
 
     Physical scenario: the same molten mantle and seam as the gradient test;
     the resumed Aragog mesh must be the one the control built at setup, not
@@ -281,5 +292,5 @@ def test_resume_matches_the_uninterrupted_control(resume_runs):
     after = (ctrl['Time'] > r['t_seam']).to_numpy()
     np.testing.assert_allclose(res['Time'][after], ctrl['Time'][after], rtol=1e-9)
     np.testing.assert_allclose(res['F_cmb'][after], ctrl['F_cmb'][after], rtol=FLUX_RTOL)
-    for key in ('T_cmb', 'T_magma'):
-        np.testing.assert_allclose(res[key][after], ctrl[key][after], rtol=TEMP_RTOL)
+    for key in ('T_cmb', 'T_magma', 'E_state_heat_cons_J', 'dE_predicted_cons_J'):
+        np.testing.assert_allclose(res[key][after], ctrl[key][after], rtol=STATE_RTOL)

@@ -4,6 +4,7 @@ from __future__ import annotations
 import glob
 import logging
 import os
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -11,7 +12,19 @@ from juliacall import Main as jl
 from juliacall import convert
 from scipy.interpolate import PchipInterpolator
 
-from proteus.atmos_clim.common import clip_radius_to_hill, get_oarr_from_parr, get_spfile_path
+from proteus.atmos_clim.common import (
+    clip_radius_to_hill,
+    get_oarr_from_parr,
+    require_spfile_path,
+)
+from proteus.atmos_clim.spectral_cache import cache_key, seed_from_cache, store_in_cache
+from proteus.data import (
+    REFRACTIVE,
+    SCATTERING,
+    SURFACE_ALBEDOS_HAMMOND_2024,
+    dataset_dir,
+    missing_files,
+)
 from proteus.utils.constants import gas_list, noble_gases
 from proteus.utils.helper import (
     UpdateStatusfile,
@@ -425,19 +438,80 @@ def _determine_condensates(vol_list: list):
     return [v for v in vol_list if v not in ALWAYS_DRY]
 
 
-def _determine_aerosols(dirs: dict) -> dict:
+REFRACTIVE_ENV = 'AGNI_DIR_refractive'
+_refractive_dir_set = None  # the AGNI_DIR_refractive value PROTEUS set, if any
+
+
+def _point_agni_at_refractive(fwl_dir: str, aerosols_enabled: bool) -> None:
+    """Point AGNI at the fetched aerosol refractive indices through ``AGNI_DIR_refractive``.
+
+    With aerosols on, the variable is set to the version directory of ``REFRACTIVE`` when
+    every registry file is there, unless the user already set ``AGNI_DIR_refractive`` or
+    ``AGNI_DIR_res``; a kept value whose folder holds no material file is a warning. A value
+    PROTEUS set in an earlier run of the same process is removed first, but only while
+    the variable still holds that value. AGNI reads the variable when it lists its
+    materials and when it sets up the atmosphere; an AGNI without this override ignores it.
+
+    Parameters
+    ----------
+    fwl_dir : str
+        Root of the reference-data tree.
+    aerosols_enabled : bool
+        Whether the run uses aerosols.
+    """
+    global _refractive_dir_set
+    if _refractive_dir_set and os.environ.get(REFRACTIVE_ENV) == _refractive_dir_set:
+        del os.environ[REFRACTIVE_ENV]
+    _refractive_dir_set = None
+    if not aerosols_enabled:
+        return
+    for var in (REFRACTIVE_ENV, 'AGNI_DIR_res'):
+        value = os.environ.get(var, '').strip()
+        if value:
+            nk_dir = os.path.abspath(value if var == REFRACTIVE_ENV else f'{value}/refractive')
+            log.info(f'Refractive indices: keeping {var}={value}; AGNI reads {nk_dir}')
+            if not glob.glob(os.path.join(glob.escape(nk_dir), '[!_]*.txt')):
+                log.warning(
+                    f'{nk_dir} (from {var}) holds no refractive index file, so AGNI '
+                    'finds no material for Mie aerosols.'
+                )
+            return
+    fallback = (
+        'AGNI then reads its own res/refractive, which is empty unless its get_data.sh '
+        'fetched the data; fetch it with `proteus get refractive`.'
+    )
+    try:
+        nk_dir = str(dataset_dir(REFRACTIVE, data_root=fwl_dir))
+        missing = missing_files(REFRACTIVE, data_root=fwl_dir)
+    except (KeyError, RuntimeError, OSError) as exc:
+        log.warning(f'Refractive index data could not be resolved ({exc}). {fallback}')
+        return
+    if missing:
+        more = f' and {len(missing) - 3} more' if len(missing) > 3 else ''
+        log.warning(
+            f'Refractive index data incomplete in {nk_dir}, missing: '
+            f'{", ".join(missing[:3])}{more}. {fallback}'
+        )
+        return
+    os.environ[REFRACTIVE_ENV] = nk_dir
+    _refractive_dir_set = nk_dir
+
+
+def _determine_aerosols(dirs: dict, aerosols_enabled: bool = True) -> dict:
     """
     Determine which aerosols are available, and which method to use for each.
 
     AGNI can compute aerosol optical properties two ways:
      - Pre-computed monochromatic scattering data
-     - Mie theory at runtime from refractive-index data bundled with AGNI
+     - Mie theory at runtime from the refractive-index data in the folder AGNI resolves
     Mie is preferred when both are available for the same species.
 
     Parameters
     ----------
         dirs : dict
             Dictionary containing paths to directories
+        aerosols_enabled : bool
+            Whether the run uses aerosols; the scattering data is looked up only then.
 
     Returns
     ----------
@@ -447,13 +521,18 @@ def _determine_aerosols(dirs: dict) -> dict:
 
     aerosols = {}
 
-    # Pre-computed monochromatic scattering data (FWL_DATA)
-    scattering_dir = os.path.join(dirs['fwl'], 'scattering', 'scattering')
-    if os.path.isdir(scattering_dir):
+    # Pre-computed monochromatic scattering data (FWL_DATA, fetched through fwl-io)
+    try:
+        scattering_dir = (
+            dataset_dir(SCATTERING, data_root=dirs['fwl']) if aerosols_enabled else None
+        )
+    except (KeyError, RuntimeError, OSError) as exc:
+        scattering_dir = f'unresolved ({exc})'
+    if scattering_dir is not None and os.path.isdir(scattering_dir):
         for f in os.listdir(scattering_dir):
             if f.endswith('.mon'):
                 aerosols[f.replace('.mon', '')] = 'mon'
-    else:
+    elif scattering_dir is not None:
         log.warning(f'Scattering data directory not found: {scattering_dir}')
 
     # Materials AGNI can compute via Mie theory at runtime.
@@ -470,7 +549,35 @@ def _determine_aerosols(dirs: dict) -> dict:
     return aerosols
 
 
-def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
+def _resolve_surface_material(name: str, fwl_dir: str) -> str:
+    """Return the path of the surface reflectance file named in the config.
+
+    A bare file name, or the path ``surface_albedos/Hammond24/<file>``, selects
+    a file of the Hammond et al. (2024) dataset; the ``r<record-id>`` version
+    segment is never part of the configured value. Any other value is a path
+    relative to the reference-data root.
+
+    Parameters
+    ----------
+    name : str
+        Value of ``atmos_clim.agni.surf_material``.
+    fwl_dir : str
+        Root of the reference-data tree.
+
+    Returns
+    -------
+    str
+        Path to the reflectance file, which may not exist.
+    """
+    parts = Path(name).parts
+    if parts[:2] == ('surface_albedos', 'Hammond24') and len(parts) == 3:
+        name = parts[2]
+    if len(Path(name).parts) == 1:
+        return os.path.join(dataset_dir(SURFACE_ALBEDOS_HAMMOND_2024, data_root=fwl_dir), name)
+    return os.path.join(fwl_dir, name)
+
+
+def init_agni_atmos(dirs: dict, config: Config, hf_row: dict, use_cache: bool = True):
     """Initialise atmosphere struct for use by AGNI.
 
     Does not set the temperature profile.
@@ -483,6 +590,8 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
             Configuration options and other variables
         hf_row : dict
             Dictionary containing simulation variables for current iteration
+        use_cache : bool
+            Whether to read from and store into `atmos_clim.spectral_cache`.
 
     Returns
     ----------
@@ -500,6 +609,19 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
     # the spectral file from FWL_DATA). Grey-gas and user-provided paths
     # bypass the glob entirely so a missing or empty `data/*.sflux` directory
     # is not a precondition for those modes.
+
+    # Fast I/O folder. Decided before the spectral file, because AGNI writes the
+    # prepared runtime.sf pair here and so this is where the cache reads from.
+    if (config.atmos_clim.agni.verbosity >= 2) or (config.params.out.logging == 'DEBUG'):
+        io_dir = dirs['output']
+    else:
+        io_dir = create_tmp_folder()
+    log.info(f'Temporary-file working dir: {io_dir}')
+
+    # Set when this run built a prepared spectral file that the cache does not
+    # yet hold, so it can be stored once the build is known to have succeeded.
+    cache_store_key = None
+    cache_candidate = False
 
     # Spectral file path provided?
     if config.atmos_clim.agni.spectral_file is not None:
@@ -541,15 +663,12 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
         sflux_path = os.path.join(
             dirs['output'], 'data', '%d.sflux' % int(sorted(sflux_times)[-1])
         )
-        input_sf = get_spfile_path(dirs['fwl'], config)
+        input_sf = require_spfile_path(dirs, config)
         input_star = sflux_path
 
-    # Fast I/O folder
-    if (config.atmos_clim.agni.verbosity >= 2) or (config.params.out.logging == 'DEBUG'):
-        io_dir = dirs['output']
-    else:
-        io_dir = create_tmp_folder()
-    log.info(f'Temporary-file working dir: {io_dir}')
+        # The cache is consulted once the aerosol species are known, because they
+        # are part of the cache key.
+        cache_candidate = bool(config.atmos_clim.spectral_cache and use_cache)
 
     # composition
     vol_dict = _construct_voldict(config, hf_row, dirs)
@@ -572,10 +691,15 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
     else:
         # Empirical values
         log.debug(f"Using '{surface_material}' single-scattering surface properties")
-        surface_material = os.path.join(dirs['fwl'], surface_material)
+        surface_material = _resolve_surface_material(surface_material, dirs['fwl'])
         if not os.path.isfile(surface_material):
+            from proteus.utils.data import RELOCATE_HINT
+
             UpdateStatusfile(dirs, 20)
-            raise FileNotFoundError(surface_material)
+            raise FileNotFoundError(
+                f'Surface albedo file not found: {surface_material}. Fetch it with '
+                f'`proteus get surfaces`. {RELOCATE_HINT}'
+            )
 
     # Boundary pressures.
     p_surf = hf_row['P_surf']
@@ -583,6 +707,7 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
     p_surf = max(p_surf, p_top * 1.1)  # this will happen if the atmosphere is stripped
 
     # Aerosol species dictionary which maps names to properties files
+    _point_agni_at_refractive(dirs['fwl'], config.atmos_clim.aerosols_enabled)
     mie_materials_by_lower = {
         str(m).lower(): str(m) for m in jl.AGNI.aerosol_optics.list_materials()
     }
@@ -593,7 +718,7 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
 
     # Loop through each potential aerosol and determine which method to use
     log.info('Aerosol species:')
-    for name, method in _determine_aerosols(dirs).items():
+    for name, method in _determine_aerosols(dirs, config.atmos_clim.aerosols_enabled).items():
         entry = {'method': method}
 
         # Try mie
@@ -614,8 +739,33 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
             log.debug(f'    {name:8s} ({method}) not tied to any condensate; skipping')
 
     # Warn if no aerosol species were found
-    if len(aerosol_species) == 0:
+    if config.atmos_clim.aerosols_enabled and len(aerosol_species) == 0:
         log.warning('    No aerosols mapped or data unavailable')
+
+    # AGNI computes Mie aerosol properties from the stellar spectrum while it
+    # builds the file, so a run with a Mie aerosol always refuses the cache.
+    if cache_candidate and config.atmos_clim.aerosols_enabled:
+        if any(entry['method'] == 'mie' for entry in aerosol_species.values()):
+            log.debug('Mie aerosols present; not using the spectral-file cache')
+            cache_candidate = False
+
+    # Reuse a cached file built earlier from this base file and this stellar
+    # spectrum, and skip the insertion.
+    if cache_candidate:
+        key = cache_key(
+            input_sf,
+            sflux_path,
+            config.atmos_clim.spectral_group,
+            config.atmos_clim.spectral_bands,
+            rayleigh=config.atmos_clim.rayleigh,
+            aerosols=list(aerosol_species) if config.atmos_clim.aerosols_enabled else None,
+        )
+        if seed_from_cache(config.atmos_clim.spectral_cache, key, io_dir):
+            log.debug('Reusing prepared spectral file from cache')
+            input_sf = os.path.join(io_dir, 'runtime.sf')
+            input_star = ''
+        else:
+            cache_store_key = key
 
     # Build the AGNI setup! kwargs.
     setup_kwargs = dict(
@@ -711,6 +861,10 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
 
     # Confirm the live Atmos_t contains every field that PROTEUS expects
     _check_agni_schema(atmos, dirs)
+
+    # Stored spectral file is now valid, so store it in the cache if requested.
+    if cache_store_key:
+        store_in_cache(config.atmos_clim.spectral_cache, cache_store_key, io_dir)
 
     # Set temperature profile from old NetCDF if it exists
     nc_files = glob.glob(os.path.join(dirs['output'], 'data', '*_atm.nc'))
