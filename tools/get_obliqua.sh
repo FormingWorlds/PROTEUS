@@ -27,6 +27,7 @@ done
 
 case "$dest" in
     "") echo "ERROR: the destination is empty" >&2; exit 1 ;;
+    *$'\n'*) echo "ERROR: the destination holds a line break; nothing is changed" >&2; exit 1 ;;
     /*) ;;
     *) dest="$PWD/$dest" ;;
 esac
@@ -60,7 +61,7 @@ while [ ! -d "$base" ]; do
         *) rest="$part${rest:+/$rest}" ;;
     esac
 done
-real=$(cd "$base" 2>/dev/null && pwd -P) || real=""
+real=$(cd -P "$base" 2>/dev/null && pwd -P) || real=""
 if [ -z "$real" ]; then
     echo "ERROR: $base is a file, a broken link or a folder that cannot be entered; move it away or delete it by hand; it is unchanged" >&2
     exit 1
@@ -74,7 +75,7 @@ if [ "$exists" = true ]; then
     # The PROTEUS folder, the home folder and a folder that holds one of them are never the Obliqua folder.
     for keep in "$proteus_root" "${HOME:-}"; do
         [ -n "$keep" ] || continue
-        up=$(cd "$keep" 2>/dev/null && pwd -P) || continue
+        up=$(cd -P "$keep" 2>/dev/null && pwd -P) || continue
         while :; do
             if [ "$up" -ef "$dest" ]; then
                 echo "ERROR: $dest is $keep or a folder that holds it, and cannot be the Obliqua folder; it is unchanged" >&2
@@ -90,7 +91,7 @@ if [ "$exists" = true ]; then
     fi
     if [ "$get_force" = true ] && ! is_empty_dir "$dest"; then
         if [ -f "$dest/.git" ]; then
-            echo "ERROR: $dest is a git worktree or submodule (its .git is a file); remove it with git worktree remove first; it is unchanged" >&2
+            echo "ERROR: $dest is a folder whose .git is a file (a git worktree or a submodule); move it away or delete it by hand; it is unchanged" >&2
             exit 1
         fi
         if ! is_own_clone "$dest" || ! git -C "$dest" rev-parse --verify --quiet HEAD >/dev/null 2>&1; then

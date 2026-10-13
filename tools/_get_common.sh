@@ -372,8 +372,13 @@ _report_pinned_clone() {
         elif [ -f "$dir/Project.toml" ]; then
             echo "        bash tools/$label"
         fi
-        echo "    Or replace it with a new clone, which deletes everything in it, with:"
-        echo "        bash tools/$label --force"
+        if [ -f "$dir/.git" ]; then
+            echo "    Or move it away or delete it by hand, then run:"
+            echo "        bash tools/$label"
+        else
+            echo "    Or replace it with a new clone, which deletes everything in it, with:"
+            echo "        bash tools/$label --force"
+        fi
     else
         echo "    From the PROTEUS folder, move it away or delete it by hand, then run:"
         echo "        bash tools/$label"

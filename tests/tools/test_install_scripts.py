@@ -6525,29 +6525,46 @@ def test_obliqua_force_on_new_destination_refuses_folder_appearing_during_clone(
 
 
 @pytest.mark.unit
-def test_obliqua_force_refuses_git_worktree(tmp_path):
-    """Verify --force refuses a destination whose .git is a file such as a git worktree."""
+@pytest.mark.parametrize(
+    'mode', ['worktree', 'separate-git-dir'], ids=['worktree', 'separate-git-dir']
+)
+def test_obliqua_force_refuses_git_worktree(tmp_path, mode):
+    """Verify --force refuses a destination whose .git is a file such as a worktree or separate-git-dir clone."""
     site = _obliqua_site(tmp_path)
     fake_home = tmp_path / 'home'
     fake_home.mkdir()
     site['env']['HOME'] = str(fake_home)
     clone = site['root'] / 'Obliqua'
-    assert _run_tool(site, 'get_obliqua.sh').returncode == 0
-    wt = tmp_path / 'wt'
-    git(clone, 'worktree', 'add', '-q', '--detach', str(wt))
-    marker = wt / 'wt_marker.txt'
+    if mode == 'worktree':
+        assert _run_tool(site, 'get_obliqua.sh').returncode == 0
+        target = tmp_path / 'wt'
+        git(clone, 'worktree', 'add', '-q', '--detach', str(target))
+    else:
+        gd = tmp_path / 'gd'
+        target = tmp_path / 'sep'
+        git(
+            tmp_path,
+            'clone',
+            '-q',
+            f'--separate-git-dir={gd}',
+            str(site['remotes'] / 'Obliqua.git'),
+            str(target),
+        )
+    assert (target / '.git').is_file()
+    marker = target / 'wt_marker.txt'
     marker.write_text('worktree bytes\n')
-    before_names = sorted(p.name for p in wt.iterdir())
+    before_names = sorted(p.name for p in target.iterdir())
     site['log'].write_text('')
-    res = _run_tool(site, 'get_obliqua.sh', '--force', str(wt))
+    res = _run_tool(site, 'get_obliqua.sh', '--force', str(target))
     assert res.returncode == 1, res.stdout + res.stderr
     assert (
-        f'ERROR: {wt} is a git worktree or submodule (its .git is a file); remove it with git worktree remove first; it is unchanged'
+        f'ERROR: {target} is a folder whose .git is a file (a git worktree or a submodule); move it away or delete it by hand; it is unchanged'
         in res.stderr
     )
-    assert sorted(p.name for p in wt.iterdir()) == before_names
+    assert sorted(p.name for p in target.iterdir()) == before_names
     assert marker.read_text() == 'worktree bytes\n'
-    assert str(wt) in git(clone, 'worktree', 'list')
+    if mode == 'worktree':
+        assert str(target) in git(clone, 'worktree', 'list')
     assert _temp_or_old_entries(tmp_path) == []
     assert site['log'].read_text() == ''
 
@@ -6589,4 +6606,173 @@ def test_obliqua_clones_into_nested_missing_destination(tmp_path, force_args):
     assert res.returncode == 0, res.stdout + res.stderr
     assert target.is_dir()
     assert git(target, 'rev-parse', 'HEAD') == site['target_sha']
+    assert _temp_or_old_entries(tmp_path) == []
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('force_args', [(), ('--force',)], ids=['no-force', 'force'])
+def test_obliqua_refuses_destination_with_trailing_line_break(tmp_path, force_args):
+    """Verify get_obliqua.sh refuses a destination with a trailing line break without touching sibling folders."""
+    site = _obliqua_site(tmp_path)
+    fake_home = tmp_path / 'home'
+    fake_home.mkdir()
+    site['env']['HOME'] = str(fake_home)
+    d = tmp_path / 'd'
+    d.mkdir()
+    nl_clone = d / 'nl'
+    assert _run_tool(site, 'get_obliqua.sh', str(nl_clone)).returncode == 0
+    clone_marker = nl_clone / 'clone_marker.txt'
+    clone_marker.write_text('clone marker bytes\n')
+    clone_head = git(nl_clone, 'rev-parse', 'HEAD')
+    nl_newline_str = str(d) + '/nl\n'
+    os.mkdir(nl_newline_str)
+    nl_newline_marker = os.path.join(nl_newline_str, 'newline_marker.txt')
+    with open(nl_newline_marker, 'w', encoding='utf-8') as f:
+        f.write('newline marker bytes\n')
+    site['log'].write_text('')
+    res = _run_tool(site, 'get_obliqua.sh', *force_args, nl_newline_str)
+    assert res.returncode == 1, res.stdout + res.stderr
+    assert 'ERROR: the destination holds a line break; nothing is changed' in res.stderr
+    assert clone_marker.read_text() == 'clone marker bytes\n'
+    assert git(nl_clone, 'rev-parse', 'HEAD') == clone_head
+    with open(nl_newline_marker, encoding='utf-8') as f:
+        assert f.read() == 'newline marker bytes\n'
+    assert _temp_or_old_entries(tmp_path) == []
+    assert site['log'].read_text() == ''
+
+
+@pytest.mark.unit
+def test_obliqua_refuses_destination_with_line_break_in_middle(tmp_path):
+    """Verify get_obliqua.sh refuses a destination with a line break in the middle of the path."""
+    site = _obliqua_site(tmp_path)
+    fake_home = tmp_path / 'home'
+    fake_home.mkdir()
+    site['env']['HOME'] = str(fake_home)
+    d = tmp_path / 'd'
+    d.mkdir()
+    dest_arg = str(d) + '/a\nb/Obliqua'
+    res = _run_tool(site, 'get_obliqua.sh', dest_arg)
+    assert res.returncode == 1, res.stdout + res.stderr
+    assert 'ERROR: the destination holds a line break; nothing is changed' in res.stderr
+    assert list(d.iterdir()) == []
+    assert _temp_or_old_entries(tmp_path) == []
+    assert site['log'].read_text() == ''
+
+
+@pytest.mark.unit
+def test_obliqua_force_resolves_symlink_before_dotdot_to_clone(tmp_path):
+    """Verify --force resolves a folder symlink physically before .. and replaces the physical clone."""
+    site = _obliqua_site(tmp_path)
+    fake_home = tmp_path / 'home'
+    fake_home.mkdir()
+    site['env']['HOME'] = str(fake_home)
+    t = tmp_path / 't'
+    sub = t / 'real' / 'sub'
+    sub.mkdir(parents=True)
+    link = t / 'link'
+    link.symlink_to(sub)
+    clone = t / 'real' / 'clone'
+    assert _run_tool(site, 'get_obliqua.sh', str(clone)).returncode == 0
+    git(clone, 'checkout', '-q', site['tip_sha'])
+    marker = clone / 'marker.txt'
+    marker.write_text('off-pin marker\n')
+    res = _run_tool(site, 'get_obliqua.sh', '--force', f'{t}/link/../clone')
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert git(clone, 'rev-parse', 'HEAD') == site['target_sha']
+    assert not marker.exists()
+    assert not (t / 'clone').exists()
+    assert _temp_or_old_entries(tmp_path) == []
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('force_args', [(), ('--force',)], ids=['no-force', 'force'])
+def test_obliqua_resolves_symlink_before_dotdot_and_refuses_non_obliqua_folder(
+    tmp_path, force_args
+):
+    """Verify symlink followed by .. resolves to the physical target and refuses a non-Obliqua folder."""
+    site = _obliqua_site(tmp_path)
+    fake_home = tmp_path / 'home'
+    fake_home.mkdir()
+    site['env']['HOME'] = str(fake_home)
+    t = tmp_path / 't'
+    sub = t / 'real' / 'sub'
+    sub.mkdir(parents=True)
+    link = t / 'link'
+    link.symlink_to(sub)
+    other = t / 'real' / 'other'
+    other.mkdir(parents=True)
+    user_file = other / 'user.txt'
+    user_file.write_text('keep other file\n')
+    res = _run_tool(site, 'get_obliqua.sh', *force_args, f'{t}/link/../other')
+    assert res.returncode == 1, res.stdout + res.stderr
+    assert (
+        f'ERROR: {other} is not an Obliqua project (no Project.toml that names Obliqua); move it away or delete it by hand; it is unchanged'
+        in res.stderr
+    )
+    assert user_file.read_text() == 'keep other file\n'
+    assert not (t / 'other').exists()
+    assert _temp_or_old_entries(tmp_path) == []
+    assert site['log'].read_text() == ''
+
+
+@pytest.mark.unit
+def test_obliqua_worktree_off_pin_advises_move_without_force_and_refuses_force(tmp_path):
+    """Verify an off-pin Obliqua worktree advises moving or deleting without --force, and refuses --force."""
+    site = _obliqua_site(tmp_path)
+    fake_home = tmp_path / 'home'
+    fake_home.mkdir()
+    site['env']['HOME'] = str(fake_home)
+    clone = tmp_path / 'base_clone'
+    assert _run_tool(site, 'get_obliqua.sh', str(clone)).returncode == 0
+    wt = tmp_path / 'wt'
+    git(clone, 'worktree', 'add', '-q', '--detach', str(wt), site['tip_sha'])
+    site['log'].write_text('')
+    res = _run_tool(site, 'get_obliqua.sh', str(wt))
+    assert res.returncode == 0, res.stdout + res.stderr
+    lines = [ln.strip() for ln in res.stdout.splitlines()]
+    idx_fetch = lines.index(f'git -C {wt} fetch origin')
+    idx_checkout = lines.index(f'git -C {wt} checkout --detach {site["target_sha"]}')
+    idx_or = lines.index('Or move it away or delete it by hand, then run:')
+    assert idx_fetch < idx_checkout < idx_or
+    assert lines.count(f'bash tools/get_obliqua.sh {wt}') == 2
+    assert '--force' not in res.stdout
+    assert '--project=. -e using Pkg; Pkg.instantiate()' in site['log'].read_text().splitlines()
+
+    site['log'].write_text('')
+    res_force = _run_tool(site, 'get_obliqua.sh', '--force', str(wt))
+    assert res_force.returncode == 1, res_force.stdout + res_force.stderr
+    assert (
+        f'ERROR: {wt} is a folder whose .git is a file (a git worktree or a submodule); move it away or delete it by hand; it is unchanged'
+        in res_force.stderr
+    )
+    assert site['log'].read_text() == ''
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('force_args', [(), ('--force',)], ids=['no-force', 'force'])
+def test_obliqua_resolves_symlink_before_dotdot_when_name_exists_beside_link(
+    tmp_path, force_args
+):
+    """Verify symlink followed by .. clones into the physical target when the name exists beside the link."""
+    site = _obliqua_site(tmp_path)
+    fake_home = tmp_path / 'home'
+    fake_home.mkdir()
+    site['env']['HOME'] = str(fake_home)
+    t = tmp_path / 't'
+    sub = t / 'real' / 'sub'
+    sub.mkdir(parents=True)
+    link = t / 'link'
+    link.symlink_to(sub)
+    shell_name = t / 'name'
+    shell_name.mkdir(parents=True)
+    marker = shell_name / 'marker.txt'
+    marker.write_text('beside link bytes\n')
+    before_names = sorted(p.name for p in shell_name.iterdir())
+    kernel_name = t / 'real' / 'name'
+    res = _run_tool(site, 'get_obliqua.sh', *force_args, f'{t}/link/../name')
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert kernel_name.is_dir()
+    assert git(kernel_name, 'rev-parse', 'HEAD') == site['target_sha']
+    assert sorted(p.name for p in shell_name.iterdir()) == before_names
+    assert marker.read_text() == 'beside link bytes\n'
     assert _temp_or_old_entries(tmp_path) == []
