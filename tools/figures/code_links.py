@@ -14,14 +14,16 @@ where ``<target>`` is one of
   wins over other comments with the same words.  Only real comments count,
   not ``#`` inside strings.
 
-Each target must match exactly once.  A resolved link is ``blob/<sha>/...#L<n>``:
-the line number is only valid for the commit it was taken from, so the link is
-pinned to that commit, never to ``main``.
+Each target must match exactly once.  A resolved link is
+``blob/main/...#L<n>`` with the line read from ``main`` itself: the docs deploy
+runs on every push to ``main`` and resolves against that checkout, so the
+published links follow ``main`` as it moves.  A target that ``main`` no longer
+has is left without a link, and the deploy warns about it.
 
 Usage:
-    python3 tools/figures/code_links.py --check         # every target resolves (PR CI)
-    python3 tools/figures/code_links.py --commit SHA    # pin to SHA (docs deploy)
-    python3 tools/figures/code_links.py                 # pin to origin/main (committed SVGs)
+    python3 tools/figures/code_links.py --check     # every target resolves (PR CI)
+    python3 tools/figures/code_links.py --deploy    # resolve against this main checkout
+    python3 tools/figures/code_links.py             # resolve against origin/main
 """
 
 from __future__ import annotations
@@ -48,7 +50,7 @@ SVGS = [
 ]
 LINE_ANCHOR = re.compile(r'^L\d+(-L\d+)?$')
 BANNER = re.compile(r'^#{5,}\s*(.*?)\s*$')
-SVG_LINK = re.compile(r'<a xlink:href="([^"]*)" data-target="([^"]*)"')
+SVG_LINK = re.compile(r'<a(?: xlink:href="([^"]*)")? data-target="([^"]*)"')
 
 
 class LinkError(Exception):
@@ -70,7 +72,8 @@ def source(path: str, ref: str | None) -> str:
         ['git', '-C', str(ROOT), 'show', f'{ref}:{path}'], capture_output=True, text=True
     )
     if res.returncode:
-        raise LinkError(f'{path} not found at {ref}: {res.stderr.strip()}')
+        hint = '; run git fetch origin main' if ref.startswith('origin/') else ''
+        raise LinkError(f'{path} not found at {ref}{hint}: {res.stderr.strip()}')
     return res.stdout
 
 
@@ -135,26 +138,14 @@ def is_symbolic(href: str) -> bool:
     return split(href) is not None
 
 
-def rev_parse(ref: str) -> str:
-    res = subprocess.run(
-        ['git', '-C', str(ROOT), 'rev-parse', '--verify', f'{ref}^{{commit}}'],
-        capture_output=True,
-        text=True,
-    )
-    if res.returncode:
-        raise SystemExit(f'error: cannot resolve {ref}; run git fetch origin main first')
-    return res.stdout.strip()
-
-
-def resolve(href: str, ref: str | None, commit: str) -> str:
-    """Turn a name-based link into a line link pinned to ``commit``; other links
-    pass through.  ``ref`` (None for the work tree) must hold the code of ``commit``."""
+def resolve(href: str, ref: str | None = None) -> str:
+    """Turn a name-based link into a ``blob/main`` line link, reading the line from
+    ``ref`` (None for the work tree); other links pass through."""
     parts = split(href)
     if parts is None:
         return href
     path, target = parts
-    line = resolve_target(path, target, ref)
-    return f'{REPO}/blob/{commit}/{path}#L{line}'
+    return f'{REPO_URL}{path}#L{resolve_target(path, target, ref)}'
 
 
 def unpinned(href: str) -> str:
@@ -175,7 +166,7 @@ def validate(ref: str | None) -> list[str]:
             errors.append(f'hard-coded line anchor in arch_final.json: {href}')
             continue
         try:
-            resolve(href, ref, 'main')
+            resolve(href, ref)
         except (LinkError, SyntaxError) as e:
             errors.append(str(e))
     for svg in SVGS:
@@ -184,9 +175,9 @@ def validate(ref: str | None) -> list[str]:
     return errors
 
 
-def rewrite(ref: str | None, commit: str, lenient: bool) -> list[str]:
-    """Rewrite the links in the SVGs; with ``lenient``, an unresolvable target
-    falls back to the file itself instead of failing."""
+def rewrite(ref: str | None, lenient: bool) -> list[str]:
+    """Rewrite the links in the SVGs.  With ``lenient``, a target that does not
+    resolve loses its link instead of failing; otherwise it is left as it was."""
     problems = []
     for svg in SVGS:
         text = svg.read_text()
@@ -194,13 +185,12 @@ def rewrite(ref: str | None, commit: str, lenient: bool) -> list[str]:
         def fix(m):
             target = unescape(m.group(2))
             try:
-                new = resolve(target, ref, commit)
+                new = resolve(target, ref)
             except (LinkError, SyntaxError) as e:
                 problems.append(str(e))
                 if not lenient:
                     return m.group(0)
-                path = split(target)[0]
-                new = f'{REPO}/blob/{commit}/{path}'
+                return f'<a data-target="{m.group(2)}"'  # no href: not clickable
             return f'<a xlink:href="{escape(new, quote=True)}" data-target="{m.group(2)}"'
 
         new_text = SVG_LINK.sub(fix, text)
@@ -214,8 +204,12 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     mode = ap.add_mutually_exclusive_group()
     mode.add_argument('--check', action='store_true', help='fail if a target does not resolve')
-    mode.add_argument('--commit', help='pin the links to this commit; never fails')
-    ap.add_argument('--ref', help='git ref to resolve and pin against (default origin/main)')
+    mode.add_argument(
+        '--deploy',
+        action='store_true',
+        help='resolve against the work tree (a main checkout); a missing target loses its link',
+    )
+    ap.add_argument('--ref', help='git ref to read the code from (default origin/main)')
     args = ap.parse_args()
 
     if args.check:
@@ -230,16 +224,15 @@ def main() -> int:
             )
         return 1 if errors else 0
 
-    lenient = args.commit is not None
-    if lenient:
-        ref, commit = args.ref, args.commit  # the deploy checkout is that commit
-    else:
-        ref = args.ref or 'origin/main'
-        commit = rev_parse(ref)
-    problems = rewrite(ref, commit, lenient)
+    lenient = args.deploy
+    ref = args.ref if lenient else (args.ref or 'origin/main')
+    problems = rewrite(ref, lenient)
     for p in problems:
         # a GitHub annotation in the docs deploy, a plain message elsewhere
-        print(f'::warning::{p}' if lenient else f'error: {p}', file=sys.stderr)
+        if lenient:
+            print(f'::warning::{p}; this box has no link until the diagram is updated')
+        else:
+            print(f'error: {p}', file=sys.stderr)
     return 0 if lenient or not problems else 1
 
 
