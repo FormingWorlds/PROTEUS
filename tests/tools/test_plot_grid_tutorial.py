@@ -16,7 +16,10 @@ import matplotlib
 matplotlib.use('Agg')
 
 import matplotlib.pyplot as plt  # noqa: E402
+import numpy as np  # noqa: E402
 import pytest  # noqa: E402
+from matplotlib.colors import to_rgba  # noqa: E402
+from matplotlib.markers import MarkerStyle  # noqa: E402
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -31,6 +34,13 @@ def _load_tool():
 
 
 tool = _load_tool()
+
+GRID_CASES = [
+    (0, 0.5, 0.03, 1000.0, 14),
+    (1, 2.0, 0.03, 9000.0, 14),
+    (2, 0.5, 0.5, 1000.0, 10),
+    (3, 2.0, 0.5, 9000.0, 10),
+]
 
 
 def _write_case(grid_dir: Path, index: int, mass, distance, h_budget, status, phi_crit=0.03):
@@ -70,10 +80,8 @@ def _write_case(grid_dir: Path, index: int, mass, distance, h_budget, status, ph
 def grid_dir(tmp_path):
     """A grid of 4 cases: 2 masses at 2 distances, the inner pair stopped at energy balance."""
     grid = tmp_path / 'grid'
-    _write_case(grid, 0, 0.5, 0.03, 1000.0, 14)
-    _write_case(grid, 1, 2.0, 0.03, 9000.0, 14)
-    _write_case(grid, 2, 0.5, 0.5, 1000.0, 10)
-    _write_case(grid, 3, 2.0, 0.5, 9000.0, 10)
+    for c in GRID_CASES:
+        _write_case(grid, *c)
     return grid
 
 
@@ -81,12 +89,10 @@ def test_load_cases_reads_inputs_stop_and_science_rows(grid_dir):
     """Each record holds the swept inputs, the status code and the rows after Time = 0."""
     cases = tool.load_cases(grid_dir)
     assert len(cases) == 4
-    assert [(c['mass'], c['distance'], c['H_budget'], c['status']) for c in cases] == [
-        (0.5, 0.03, 1000.0, 14),
-        (2.0, 0.03, 9000.0, 14),
-        (0.5, 0.5, 1000.0, 10),
-        (2.0, 0.5, 9000.0, 10),
-    ]
+    expected_inputs = [(m, d, h, s) for _, m, d, h, s in GRID_CASES]
+    assert [
+        (c['mass'], c['distance'], c['H_budget'], c['status']) for c in cases
+    ] == expected_inputs
     assert all(c['H_mode'] == 'ppmw' and c['phi_crit'] == pytest.approx(0.03) for c in cases)
     # The 2 rows of the initial stage are dropped
     assert all(len(c['hf']) == 3 and c['hf']['Time'].min() > 0 for c in cases)
@@ -118,6 +124,25 @@ def test_load_cases_skips_cases_without_output(grid_dir, capsys):
     assert printed.count('Skipped') == 3
 
 
+@pytest.mark.parametrize('filename', ['init_coupler.toml', 'status', 'runtime_helpfile.csv'])
+@pytest.mark.parametrize('empty', [False, True])
+def test_load_cases_skips_case_with_missing_or_empty_required_file(
+    grid_dir, capsys, filename, empty
+):
+    """A case with one required file missing or empty is skipped and named on the terminal."""
+    _write_case(grid_dir, 4, 1.0, 0.5, 5000.0, 10)
+    target = grid_dir / 'case_000004' / filename
+    if empty:
+        target.write_text('')
+    else:
+        target.unlink()
+    cases = tool.load_cases(grid_dir)
+    assert len(cases) == 4
+    assert [c['mass'] for c in cases] == [0.5, 2.0, 0.5, 2.0]
+    printed = capsys.readouterr().out
+    assert 'Skipped case_000004: an output file is missing or empty' in printed
+
+
 def test_load_cases_without_a_case_folder_raises(tmp_path):
     """A folder without `case_*` is an error that names the folder."""
     (tmp_path / 'manager.log').write_text('')
@@ -144,9 +169,11 @@ def test_tracks_draw_the_threshold_of_the_config(grid_dir, tmp_path):
     for c, track in zip(cases, tracks):
         assert list(track.get_xdata()) == pytest.approx(list(c['hf']['Time']))
         assert list(track.get_ydata()) == pytest.approx(list(c['hf']['Phi_global']))
+        expected_color = tool.WONG[0] if c['distance'] == pytest.approx(0.03) else tool.WONG[1]
+        assert track.get_color() == expected_color
     legend_lines = ax.get_legend().get_lines()
     assert [t.get_text() for t in ax.get_legend().get_texts()] == ['0.03 AU', '0.5 AU']
-    expected_dist_colors = [tool._colours([0.03, 0.5])[d] for d in (0.03, 0.5)]
+    expected_dist_colors = [tool.WONG[0], tool.WONG[1]]
     assert [ln.get_color() for ln in legend_lines] == expected_dist_colors
     assert out.stat().st_size > 0
     plt.close(fig)
@@ -178,21 +205,37 @@ def test_outputs_give_pressure_in_bar_against_the_budget(grid_dir, tmp_path):
     assert pts_a == pytest.approx(
         sorted((c['distance'], c['hf']['Phi_global'].iloc[-1]) for c in cases)
     )
+    expected_a = sorted((d, 0.02 if s == 10 else 1.0) for _, _, d, _, s in GRID_CASES)
+    assert pts_a == pytest.approx(expected_a)
     # Panel (b) plots final surface temperature against orbital distance
     pts_b = sorted(tuple(c.get_offsets()[0]) for c in fig.axes[1].collections)
     assert pts_b == pytest.approx(
         sorted((c['distance'], c['hf']['T_surf'].iloc[-1]) for c in cases)
     )
+    expected_b = sorted((d, 1700.0 + 100.0 * d + 50.0 * m) for _, m, d, _, _ in GRID_CASES)
+    assert pts_b == pytest.approx(expected_b)
     # Panel (c) holds the stop time, which rises with the planet mass in this grid
     pts_c = sorted(tuple(c.get_offsets()[0]) for c in fig.axes[2].collections)
     assert pts_c == pytest.approx(
         sorted((c['distance'], c['hf']['Time'].iloc[-1]) for c in cases)
     )
+    expected_c = sorted((d, 2.0e4 * m) for _, m, d, _, _ in GRID_CASES)
+    assert pts_c == pytest.approx(expected_c)
     # Panel (d) plots final surface pressure against hydrogen budget
     pts_d = sorted(tuple(c.get_offsets()[0]) for c in ax_d.collections)
     assert pts_d == pytest.approx(
         sorted((c['H_budget'], c['hf']['P_surf'].iloc[-1]) for c in cases)
     )
+    expected_d = sorted((h, 7.5 * h + 100.0 * m) for _, m, _, h, _ in GRID_CASES)
+    assert pts_d == pytest.approx(expected_d)
+    # Assert point colour of each case against expected mass colour
+    for ax in fig.axes:
+        for c, coll in zip(cases, ax.collections):
+            expected_hex = tool.WONG[0] if c['mass'] == pytest.approx(0.5) else tool.WONG[1]
+            if c['status'] == tool.STATUS_SOLIDIFIED:
+                assert np.allclose(coll.get_facecolors()[0], to_rgba(expected_hex))
+            else:
+                assert np.allclose(coll.get_edgecolors()[0], to_rgba(expected_hex))
     assert out.stat().st_size > 0
     plt.close(fig)
 
@@ -205,14 +248,24 @@ def test_outputs_mark_the_stop_reason(grid_dir, tmp_path):
     filled = [len(c.get_facecolors()) > 0 for c in fig.axes[0].collections]
     assert filled == [c['status'] == tool.STATUS_SOLIDIFIED for c in cases]
     assert filled.count(True) == 2 and filled.count(False) == 3
-    labels = [t.get_text() for t in fig.axes[1].get_legend().get_texts()]
+    # Check marker paths on scatter points
+    p_s = MarkerStyle('s').get_path().transformed(MarkerStyle('s').get_transform())
+    p_o = MarkerStyle('o').get_path().transformed(MarkerStyle('o').get_transform())
+    for c, coll in zip(cases, fig.axes[0].collections):
+        target = p_o if c['status'] == tool.STATUS_SOLIDIFIED else p_s
+        v = coll.get_paths()[0].vertices
+        assert v.shape == target.vertices.shape and np.allclose(v, target.vertices)
+    # Stop legend labels and handle markers
+    stop_legend = fig.axes[1].get_legend()
+    labels = [t.get_text() for t in stop_legend.get_texts()]
     assert labels == ['solidified', 'status 13', 'energy balance']
+    assert [h.get_marker() for h in stop_legend.legend_handles] == ['o', 's', 's']
     mass_legend = fig.axes[0].get_legend()
     assert [t.get_text() for t in mass_legend.get_texts()] == [
         r'0.5 $M_\oplus$',
         r'2 $M_\oplus$',
     ]
-    expected_mass_colors = [tool._colours([0.5, 2.0])[m] for m in (0.5, 2.0)]
+    expected_mass_colors = [tool.WONG[0], tool.WONG[1]]
     assert [ln.get_color() for ln in mass_legend.get_lines()] == expected_mass_colors
     plt.close(fig)
 
