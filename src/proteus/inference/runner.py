@@ -26,7 +26,8 @@ class ProteusRunner:
     ----------
     - console (str | Path): File collecting the process's console output.
     - max_jobs (int): Replace the process after this many simulations; 0 never.
-    - command (list[str] | None): How to start it. Defaults to this module.
+    - command (list[str] | None): How to start it. Defaults to this module, run
+      with the working directory left off the import path.
     """
 
     def __init__(
@@ -34,7 +35,9 @@ class ProteusRunner:
     ):
         self.console = Path(console)
         self.max_jobs = max(int(max_jobs), 0)
-        self.command = command or [sys.executable, '-m', 'proteus.inference.runner']
+        # -P keeps the working directory off sys.path: from a developer's PROTEUS
+        # root, `import aragog` would otherwise find the ./aragog clone folder.
+        self.command = command or [sys.executable, '-P', '-m', 'proteus.inference.runner']
         self._proc: subprocess.Popen | None = None
         self._requests = self._replies = self._out = None
         self._jobs = 0

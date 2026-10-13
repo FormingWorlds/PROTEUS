@@ -4,7 +4,8 @@ Unit tests for the PROTEUS process that inference workers reuse.
 Covers the contract of `proteus.inference.runner`: one process serving many
 evaluations, the reason and exit code reported for a run that overran, for one
 whose process died without replying and for one that raised, replacement after
-`max_jobs`, and the console file a process shares across its simulations.
+`max_jobs`, the console file a process shares across its simulations, and an
+import path that leaves out the working directory.
 
 References:
   - docs/How-to/testing.md
@@ -15,6 +16,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 import textwrap
 import time
@@ -243,6 +245,25 @@ def test_stop_is_safe_before_anything_has_run(runner_factory):
     runner.stop()
     runner.stop()
     assert runner._proc is None
+
+
+def test_default_command_ignores_packages_in_the_working_directory(tmp_path):
+    """From a developer's PROTEUS root, a module clone folder such as ./aragog
+    must not shadow the installed package inside the reused process.
+    """
+    (tmp_path / 'shadow_probe').mkdir()
+    (tmp_path / 'shadow_probe' / '__init__.py').write_text('')
+    command = ProteusRunner(tmp_path / 'console.log').command
+    # Same interpreter and flags, with the module replaced by an import probe.
+    flags = command[: command.index('-m')]
+    probe = ['-c', 'import shadow_probe']
+
+    shielded = subprocess.run([*flags, *probe], cwd=tmp_path, capture_output=True)
+    assert shielded.returncode != 0
+    assert b'ModuleNotFoundError' in shielded.stderr
+    # Discrimination: without the flag the folder in the working directory is imported.
+    exposed = subprocess.run([sys.executable, *probe], cwd=tmp_path, capture_output=True)
+    assert exposed.returncode == 0
 
 
 def test_console_file_collects_every_simulation_across_a_replacement(runner_factory, tmp_path):
