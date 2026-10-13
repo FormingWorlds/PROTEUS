@@ -4726,15 +4726,13 @@ def test_printed_and_documented_conda_var_commands_name_their_env(tmp_path):
     assert [c for c in commands if not c[1].startswith(named)] == []
 
 
-def _atmodeller_site(tmp_path: Path, pin_ref: str | None = None) -> dict:
+def _atmodeller_site(tmp_path: Path) -> dict:
     """Prepare a test site with an atmodeller bare remote and stubs.
 
     Parameters
     ----------
     tmp_path : Path
         Temporary test directory.
-    pin_ref : str, optional
-        Commit SHA to configure in pyproject.toml table.
 
     Returns
     -------
@@ -4766,7 +4764,7 @@ def _atmodeller_site(tmp_path: Path, pin_ref: str | None = None) -> dict:
         str(work),
         str(base / 'FormingWorlds' / 'atmodeller.git'),
     )
-    ref = pin_ref if pin_ref is not None else target_sha
+    ref = target_sha
     pyproject = (
         '[project]\nname = "fixture"\ndependencies = []\n'
         '[project.optional-dependencies]\natmodeller = ["atmodeller>=1.0.2"]\n'
@@ -5033,6 +5031,10 @@ def test_atmodeller_script_holds_no_hardcoded_url_or_commit():
     assert 'https://' not in script
     assert 'git@github.com' not in script
     assert not re.search(r'[0-9a-f]{40}', script)
+    pyproject = tomllib.loads((repo_root / 'pyproject.toml').read_text(encoding='utf-8'))
+    ref = pyproject['tool']['proteus']['modules']['atmodeller']['ref']
+    assert 'resolve_module_pin atmodeller' in script
+    assert ref[:7] not in script
 
 
 @pytest.mark.unit
@@ -5082,15 +5084,13 @@ def test_atmodeller_folder_is_ignored_by_git():
         assert res.stdout.strip() == name
 
 
-def _obliqua_site(tmp_path: Path, pin_ref: str | None = None) -> dict:
+def _obliqua_site(tmp_path: Path) -> dict:
     """Prepare a test site with an Obliqua bare remote and stubs.
 
     Parameters
     ----------
     tmp_path : Path
         Temporary test directory.
-    pin_ref : str, optional
-        Commit SHA to configure in pyproject.toml table.
 
     Returns
     -------
@@ -5125,7 +5125,7 @@ def _obliqua_site(tmp_path: Path, pin_ref: str | None = None) -> dict:
         str(work),
         str(base / 'FormingWorlds' / 'Obliqua.git'),
     )
-    ref = pin_ref if pin_ref is not None else target_sha
+    ref = target_sha
     pyproject = (
         '[project]\nname = "fixture"\ndependencies = []\n'
         '[tool.proteus.modules.obliqua]\n'
@@ -5137,7 +5137,18 @@ def _obliqua_site(tmp_path: Path, pin_ref: str | None = None) -> dict:
     stubs.mkdir()
     log = tmp_path / 'julia.log'
     log.write_text('')
-    _write_stub(stubs, 'julia', '#!/bin/sh\necho "$@" >> "$STUB_JULIA_LOG"\nexit 0\n')
+    _write_stub(
+        stubs,
+        'julia',
+        '#!/bin/sh\n'
+        'echo "$@" >> "$STUB_JULIA_LOG"\n'
+        'if [ -n "${FAIL_JULIA_PATTERN:-}" ]; then\n'
+        '    case "$*" in\n'
+        '        *"$FAIL_JULIA_PATTERN"*) exit 1 ;;\n'
+        '    esac\n'
+        'fi\n'
+        'exit 0\n',
+    )
     _write_stub(stubs, 'ssh', '#!/bin/sh\nexit 255\n')
     env = {
         **os.environ,
@@ -5498,3 +5509,102 @@ def test_pinned_clone_unresolvable_head(tmp_path):
     assert 'a HEAD that git cannot resolve' in res.stdout
     assert 'commit ;' not in res.stdout
     assert stays.read_text().splitlines() == ['Atmodeller (HEAD unknown)']
+
+
+@pytest.mark.unit
+def test_obliqua_empty_destination_with_force_refused(tmp_path):
+    """Verify empty destination with --force exits 1 without deleting current directory."""
+    site = _obliqua_site(tmp_path)
+    before = sorted(p.name for p in site['root'].iterdir())
+    assert 'pyproject.toml' in before
+    assert 'tools' in before
+    res = subprocess.run(
+        ['bash', str(site['root'] / 'tools' / 'get_obliqua.sh'), '--force', ''],
+        cwd=site['root'],
+        env=site['env'],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert res.returncode == 1, res.stdout + res.stderr
+    assert 'ERROR: the destination is empty' in res.stderr
+    assert sorted(p.name for p in site['root'].iterdir()) == before
+    assert not any('.tmp.' in p.name for p in site['root'].parent.iterdir())
+    assert not (site['root'] / '.git').exists()
+
+
+@pytest.mark.unit
+def test_obliqua_empty_destination_without_force_refused(tmp_path):
+    """Verify empty destination without --force exits 1 before invoking julia."""
+    site = _obliqua_site(tmp_path)
+    res = _run_tool(site, 'get_obliqua.sh', '')
+    assert res.returncode == 1, res.stdout + res.stderr
+    assert 'ERROR: the destination is empty' in res.stderr
+    assert site['log'].read_text() == ''
+
+
+@pytest.mark.unit
+def test_obliqua_failed_julia_in_new_clone_exits_1(tmp_path):
+    """Verify failed julia resolve or instantiate in new clone exits 1 with error message."""
+    site = _obliqua_site(tmp_path)
+    site['env']['FAIL_JULIA_PATTERN'] = 'Pkg.resolve'
+    res = _run_tool(site, 'get_obliqua.sh')
+    assert res.returncode == 1, res.stdout + res.stderr
+    dest = site['root'] / 'Obliqua'
+    assert f'ERROR: julia resolve or instantiate failed in {dest}' in res.stderr
+
+
+@pytest.mark.unit
+def test_obliqua_failed_julia_in_existing_folder_exits_1(tmp_path):
+    """Verify failed julia instantiate in existing folder exits 1 with error message."""
+    site = _obliqua_site(tmp_path)
+    assert _run_tool(site, 'get_obliqua.sh').returncode == 0
+    site['env']['FAIL_JULIA_PATTERN'] = 'Pkg.instantiate()'
+    res = _run_tool(site, 'get_obliqua.sh')
+    assert res.returncode == 1, res.stdout + res.stderr
+    dest = site['root'] / 'Obliqua'
+    assert f'ERROR: julia instantiate failed in {dest}' in res.stderr
+
+
+@pytest.mark.unit
+def test_obliqua_register_failed_pkg_add_exits_1(tmp_path):
+    """Verify failed Pkg.add during --register exits 1 with error message."""
+    site = _obliqua_site(tmp_path)
+    site['env']['FAIL_JULIA_PATTERN'] = 'Pkg.add'
+    res = _run_tool(site, 'get_obliqua.sh', '--register')
+    assert res.returncode == 1, res.stdout + res.stderr
+    assert 'ERROR: julia Pkg.add failed' in res.stderr
+
+
+@pytest.mark.unit
+def test_obliqua_register_failed_using_check_exits_1(tmp_path):
+    """Verify failed using Obliqua check during --register exits 1 with error message."""
+    site = _obliqua_site(tmp_path)
+    site['env']['FAIL_JULIA_PATTERN'] = 'using Obliqua'
+    res = _run_tool(site, 'get_obliqua.sh', '--register')
+    assert res.returncode == 1, res.stdout + res.stderr
+    assert 'ERROR: using Obliqua check failed' in res.stderr
+
+
+@pytest.mark.unit
+def test_obliqua_test_failed_pkg_test_exits_1(tmp_path):
+    """Verify failed Pkg.test during --test exits 1 with error message."""
+    site = _obliqua_site(tmp_path)
+    site['env']['FAIL_JULIA_PATTERN'] = 'Pkg.test'
+    res = _run_tool(site, 'get_obliqua.sh', '--test')
+    assert res.returncode == 1, res.stdout + res.stderr
+    assert 'ERROR: julia Pkg.test failed' in res.stderr
+
+
+@pytest.mark.unit
+def test_obliqua_custom_destination_with_space_off_pin_advises_escaped_path(tmp_path):
+    """Verify custom destination path with spaces is escaped with backslashes in advice."""
+    site = _obliqua_site(tmp_path)
+    custom = site['root'] / 'custom path' / 'Obliqua'
+    assert _run_tool(site, 'get_obliqua.sh', str(custom)).returncode == 0
+    git(custom, 'checkout', '-q', 'main')
+    res = _run_tool(site, 'get_obliqua.sh', str(custom))
+    assert res.returncode == 0, res.stdout + res.stderr
+    expected_path = str(custom).replace(' ', r'\ ')
+    assert f'bash tools/get_obliqua.sh {expected_path} --force' in res.stdout
+    assert f'bash tools/get_obliqua.sh {custom} --force' not in res.stdout

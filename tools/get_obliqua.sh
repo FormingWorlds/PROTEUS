@@ -25,7 +25,11 @@ for arg in "$@"; do
     esac
 done
 
-case "$dest" in /*) ;; *) dest="$PWD/$dest" ;; esac
+case "$dest" in
+    "") echo "ERROR: the destination is empty" >&2; exit 1 ;;
+    /*) ;;
+    *) dest="$PWD/$dest" ;;
+esac
 
 if ! command -v julia >/dev/null 2>&1; then
     echo "ERROR: julia is not on PATH. Install Julia first (see https://github.com/FormingWorlds/Obliqua)." >&2

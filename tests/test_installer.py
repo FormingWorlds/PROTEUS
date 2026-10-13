@@ -4045,6 +4045,8 @@ class TestFurtherModulesPhase:
         assert 'Setting up VULCAN' in res.stdout
         assert 'Setting up atmodeller' in res.stdout
         assert 'Setting up Obliqua' in res.stdout
+        assert 'unbound variable' not in res.stderr.lower()
+        assert 'command not found' not in res.stderr.lower()
 
     @pytest.mark.parametrize(
         ('failed_name', 'failed_script'),
