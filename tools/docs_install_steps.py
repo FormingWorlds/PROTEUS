@@ -201,8 +201,8 @@ def select_steps(
     steps : list of Step
         Output of :func:`parse_page`.
     tab : str, list of str, or None
-        Tab name or names to select, for a page with more than one tab set
-        (platform and shell). None keeps only the blocks shared by all tabs.
+        Tab name or names to select, for a page with more than one tab set.
+        None keeps only the blocks shared by all tabs.
 
     Returns
     -------
@@ -415,7 +415,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         '--tab',
         action='append',
-        help='tab name, for example "Debian / Ubuntu"; repeat it for a page with platform and shell tabs',
+        help='tab name, for example "Debian / Ubuntu"; repeat it to select the blocks of several tabs',
     )
     parser.add_argument(
         '--substitutions', type=Path, help='TOML table of documented deviations'

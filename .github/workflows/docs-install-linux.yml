@@ -47,6 +47,7 @@ jobs:
           fetch-depth: 0
 
       - name: Print the plan
+        shell: bash
         run: |
           python3 tools/docs_install_steps.py "$PAGE" --tab "$TAB" \
             --substitutions "$SUBSTITUTIONS" --format table | tee "$RUNNER_TEMP/plan.md"
@@ -91,6 +92,10 @@ jobs:
                 "$GITHUB_WORKSPACE/install-artifacts/install_timing.tsv"
             fi
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Keep the full log of the installer
+        if: always()
+        run: cp "$HOME"/PROTEUS/install_*.log "$GITHUB_WORKSPACE/install-artifacts/" || true
 
       - name: Upload the timing and the log
         if: always()
