@@ -49,14 +49,16 @@ def _write_case(grid_dir: Path, index: int, mass, distance, h_budget, status, ph
         f'[params.stop.solid]\n{solid}\n'
     )
     (case_dir / 'status').write_text(f'{status}\nCompleted\n')
-    # 2 rows of the initial stage (Time = 0), then 3 rows; P_surf scales with the H budget
+    # 2 rows of the initial stage (Time = 0), then 3 rows; P_surf differs distinctly from H_budget
     last_phi = 0.02 if status == tool.STATUS_SOLIDIFIED else 1.0
+    last_t_surf = 1700.0 + 100.0 * distance + 50.0 * mass
+    last_p_surf = 7.5 * h_budget + 100.0 * mass
     rows = [
         (0.0, 1.0, 4000.0, 0.1 * h_budget),
         (0.0, 1.0, 4000.0, 0.1 * h_budget),
         (10.0, 1.0, 3500.0, 0.5 * h_budget),
         (1.0e3 * mass, 0.5, 2500.0, 0.8 * h_budget),
-        (2.0e4 * mass, last_phi, 1700.0 + 100.0 * distance, 1.0 * h_budget),
+        (2.0e4 * mass, last_phi, last_t_surf, last_p_surf),
     ]
     text = 'Time Phi_global T_surf P_surf\n' + ''.join(
         ' '.join(f'{v:.8e}' for v in r) + '\n' for r in rows
@@ -128,16 +130,24 @@ def test_load_cases_without_a_case_folder_raises(tmp_path):
 def test_tracks_draw_the_threshold_of_the_config(grid_dir, tmp_path):
     """The dotted line sits at the `phi_crit` of the resolved configs, and its label names it."""
     out = tmp_path / 'tracks.png'
-    fig = tool.plot_tracks(tool.load_cases(grid_dir), out)
+    cases = tool.load_cases(grid_dir)
+    fig = tool.plot_tracks(cases, out)
     ax = fig.axes[0]
     flat = [ln for ln in ax.lines if ln.get_linestyle() == ':']
     assert len(flat) == 1
     assert list(flat[0].get_ydata()) == pytest.approx([0.03, 0.03])
     assert [t.get_text() for t in ax.texts] == [r'solidification ($\Phi$ = 0.03)']
+    assert ax.get_xscale() == 'log'
     # 4 tracks, 2 colours (one per distance), and the legend names both distances
     tracks = [ln for ln in ax.lines if ln.get_linestyle() == '-']
     assert len(tracks) == 4 and len({ln.get_color() for ln in tracks}) == 2
+    for c, track in zip(cases, tracks):
+        assert list(track.get_xdata()) == pytest.approx(list(c['hf']['Time']))
+        assert list(track.get_ydata()) == pytest.approx(list(c['hf']['Phi_global']))
+    legend_lines = ax.get_legend().get_lines()
     assert [t.get_text() for t in ax.get_legend().get_texts()] == ['0.03 AU', '0.5 AU']
+    expected_dist_colors = [tool._colours([0.03, 0.5])[d] for d in (0.03, 0.5)]
+    assert [ln.get_color() for ln in legend_lines] == expected_dist_colors
     assert out.stat().st_size > 0
     plt.close(fig)
 
@@ -155,18 +165,34 @@ def test_tracks_draw_no_threshold_when_the_stop_is_off(tmp_path):
 def test_outputs_give_pressure_in_bar_against_the_budget(grid_dir, tmp_path):
     """Panel (d) is in bar on a log axis and holds the final `P_surf` of each case."""
     out = tmp_path / 'outputs.png'
-    fig = tool.plot_outputs(tool.load_cases(grid_dir), out)
+    cases = tool.load_cases(grid_dir)
+    fig = tool.plot_outputs(cases, out)
     ax_d = fig.axes[3]
     assert ax_d.get_title(loc='left') == r'(d) Final $P_{\rm surf}$ [bar]'
     assert ax_d.get_xlabel() == 'H budget [ppmw]'
     assert ax_d.get_yscale() == 'log'
-    points = sorted(tuple(c.get_offsets()[0]) for c in ax_d.collections)
-    assert points == pytest.approx(
-        [(1000.0, 1000.0), (1000.0, 1000.0), (9000.0, 9000.0), (9000.0, 9000.0)]
+    # All 3 distance panels use log scale on the x axis
+    assert all(fig.axes[i].get_xscale() == 'log' for i in (0, 1, 2))
+    # Panel (a) plots final melt fraction against orbital distance
+    pts_a = sorted(tuple(c.get_offsets()[0]) for c in fig.axes[0].collections)
+    assert pts_a == pytest.approx(
+        sorted((c['distance'], c['hf']['Phi_global'].iloc[-1]) for c in cases)
+    )
+    # Panel (b) plots final surface temperature against orbital distance
+    pts_b = sorted(tuple(c.get_offsets()[0]) for c in fig.axes[1].collections)
+    assert pts_b == pytest.approx(
+        sorted((c['distance'], c['hf']['T_surf'].iloc[-1]) for c in cases)
     )
     # Panel (c) holds the stop time, which rises with the planet mass in this grid
-    stop_times = sorted(c.get_offsets()[0][1] for c in fig.axes[2].collections)
-    assert stop_times == pytest.approx([1.0e4, 1.0e4, 4.0e4, 4.0e4])
+    pts_c = sorted(tuple(c.get_offsets()[0]) for c in fig.axes[2].collections)
+    assert pts_c == pytest.approx(
+        sorted((c['distance'], c['hf']['Time'].iloc[-1]) for c in cases)
+    )
+    # Panel (d) plots final surface pressure against hydrogen budget
+    pts_d = sorted(tuple(c.get_offsets()[0]) for c in ax_d.collections)
+    assert pts_d == pytest.approx(
+        sorted((c['H_budget'], c['hf']['P_surf'].iloc[-1]) for c in cases)
+    )
     assert out.stat().st_size > 0
     plt.close(fig)
 
@@ -181,10 +207,13 @@ def test_outputs_mark_the_stop_reason(grid_dir, tmp_path):
     assert filled.count(True) == 2 and filled.count(False) == 3
     labels = [t.get_text() for t in fig.axes[1].get_legend().get_texts()]
     assert labels == ['solidified', 'status 13', 'energy balance']
-    assert [t.get_text() for t in fig.axes[0].get_legend().get_texts()] == [
+    mass_legend = fig.axes[0].get_legend()
+    assert [t.get_text() for t in mass_legend.get_texts()] == [
         r'0.5 $M_\oplus$',
         r'2 $M_\oplus$',
     ]
+    expected_mass_colors = [tool._colours([0.5, 2.0])[m] for m in (0.5, 2.0)]
+    assert [ln.get_color() for ln in mass_legend.get_lines()] == expected_mass_colors
     plt.close(fig)
 
 
@@ -196,3 +225,22 @@ def test_main_writes_both_figures_in_the_asked_format(grid_dir, tmp_path, capsys
     assert all(p.stat().st_size > 0 for p in out.iterdir())
     assert plt.get_fignums() == []
     assert 'grid_tracks.pdf' in capsys.readouterr().out
+
+
+def test_main_uses_default_png_format_and_output_folder(grid_dir, tmp_path, monkeypatch):
+    """Calling main without options writes PNGs into output_files/grid_plots and permits existing folders."""
+    monkeypatch.chdir(tmp_path)
+    tool.main([str(grid_dir)])
+    default_out = tmp_path / 'output_files' / 'grid_plots'
+    assert sorted(p.name for p in default_out.iterdir()) == [
+        'grid_outputs.png',
+        'grid_tracks.png',
+    ]
+    assert all(p.stat().st_size > 0 for p in default_out.iterdir())
+    # A second call into the existing folder succeeds
+    tool.main([str(grid_dir)])
+    assert sorted(p.name for p in default_out.iterdir()) == [
+        'grid_outputs.png',
+        'grid_tracks.png',
+    ]
+    assert plt.get_fignums() == []
