@@ -16,26 +16,16 @@ dest="$proteus_root/Obliqua"
 
 for arg in "$@"; do
     case "$arg" in
-        --force)
-            get_force=true
-            ;;
-        --register)
-            register=true
-            ;;
-        --test)
-            run_tests=true
-            ;;
-        0)
-            ;;
-        --*)
-            echo "ERROR: unknown option $arg" >&2
-            exit 1
-            ;;
-        *)
-            dest="$arg"
-            ;;
+        --force) get_force=true ;;
+        --register) register=true ;;
+        --test) run_tests=true ;;
+        0) ;;
+        --*) echo "ERROR: unknown option $arg" >&2; exit 1 ;;
+        *) dest="$arg" ;;
     esac
 done
+
+case "$dest" in /*) ;; *) dest="$PWD/$dest" ;; esac
 
 if ! command -v julia >/dev/null 2>&1; then
     echo "ERROR: julia is not on PATH. Install Julia first (see https://github.com/FormingWorlds/Obliqua)." >&2
@@ -51,12 +41,12 @@ fi
 
 if [ "$get_force" != true ] && { [ -e "$dest" ] || [ -L "$dest" ]; } &&
     ! is_empty_dir "$dest"; then
-    report_clone_state Obliqua "$dest" get_obliqua.sh "$ob_ref"
+    label="get_obliqua.sh"
+    [ "$dest" = "$proteus_root/Obliqua" ] || label="get_obliqua.sh $(printf '%q' "$dest")"
+    report_clone_state Obliqua "$dest" "$label" "$ob_ref"
     cd "$dest"
-    LD_LIBRARY_PATH="" julia --project=. -e 'using Pkg; Pkg.instantiate()' || {
-        echo "ERROR: julia instantiate failed in $dest" >&2
-        exit 1
-    }
+    LD_LIBRARY_PATH="" julia --project=. -e 'using Pkg; Pkg.instantiate()' ||
+        { echo "ERROR: julia instantiate failed in $dest" >&2; exit 1; }
 else
     # The new clone replaces the checkout only once it is at the pinned commit.
     tmp_clone="${dest%/}.tmp.$$"
@@ -64,43 +54,31 @@ else
     trap 'rm -rf "$tmp_clone"' EXIT
 
     echo "Cloning Obliqua ($ob_url @ $ob_ref) into $dest..."
-    git clone "$ob_url" "$tmp_clone" || {
-        echo "ERROR: git clone failed$(unchanged_note "$dest")" >&2
-        exit 1
-    }
+    git clone "$ob_url" "$tmp_clone" ||
+        { echo "ERROR: git clone failed$(unchanged_note "$dest")" >&2; exit 1; }
 
-    git -C "$tmp_clone" checkout --quiet "$ob_ref" || {
-        echo "ERROR: git checkout failed$(unchanged_note "$dest")" >&2
-        exit 1
-    }
+    git -C "$tmp_clone" checkout --quiet "$ob_ref" ||
+        { echo "ERROR: git checkout failed$(unchanged_note "$dest")" >&2; exit 1; }
 
     swap_in_checkout "$tmp_clone" "$dest" || exit 1
     trap - EXIT
 
     cd "$dest"
     echo "Obliqua at $(git -C "$dest" rev-parse --short HEAD)"
-    LD_LIBRARY_PATH="" julia --project=. -e 'using Pkg; Pkg.resolve(); Pkg.instantiate()' || {
-        echo "ERROR: julia resolve or instantiate failed in $dest" >&2
-        exit 1
-    }
+    LD_LIBRARY_PATH="" julia --project=. -e 'using Pkg; Pkg.resolve(); Pkg.instantiate()' ||
+        { echo "ERROR: julia resolve or instantiate failed in $dest" >&2; exit 1; }
 fi
 
 if [ "$register" = true ]; then
     echo "Registering Obliqua into the default Julia environment..."
-    LD_LIBRARY_PATH="" julia -e 'using Pkg; Pkg.add(path=".")' || {
-        echo "ERROR: julia Pkg.add failed" >&2
-        exit 1
-    }
-    LD_LIBRARY_PATH="" julia -e 'using Obliqua; println("Installed to: "*pathof(Obliqua))' || {
-        echo "ERROR: using Obliqua check failed" >&2
-        exit 1
-    }
+    LD_LIBRARY_PATH="" julia -e 'using Pkg; Pkg.add(path=".")' ||
+        { echo "ERROR: julia Pkg.add failed" >&2; exit 1; }
+    LD_LIBRARY_PATH="" julia -e 'using Obliqua; println("Installed to: "*pathof(Obliqua))' ||
+        { echo "ERROR: using Obliqua check failed" >&2; exit 1; }
 fi
 
 if [ "$run_tests" = true ]; then
     echo "Running Obliqua's own test suite..."
-    LD_LIBRARY_PATH="" julia --project=. -e 'using Pkg; Pkg.test()' || {
-        echo "ERROR: julia Pkg.test failed" >&2
-        exit 1
-    }
+    LD_LIBRARY_PATH="" julia --project=. -e 'using Pkg; Pkg.test()' ||
+        { echo "ERROR: julia Pkg.test failed" >&2; exit 1; }
 fi

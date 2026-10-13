@@ -358,8 +358,13 @@ _report_pinned_clone() {
             echo "$dist: $dir is at the pinned commit ${pin:0:8}$(_local_changes_note "$dir")"
             return 0
         fi
-        found=$(_commit_text "$dir" "$head")
-        summary="commit ${head:0:7}"
+        if [ -z "$head" ]; then
+            found="a HEAD that git cannot resolve"
+            summary="HEAD unknown"
+        else
+            found=$(_commit_text "$dir" "$head")
+            summary="commit ${head:0:7}"
+        fi
     fi
     echo "$dist: $dir stays as it is: $found; not at the pinned commit ${pin:0:8}"
     record_clone_stays "$dir" "$summary"

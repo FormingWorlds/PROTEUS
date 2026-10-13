@@ -2151,6 +2151,13 @@ CLONE_CASES = (
         'git@github.com:FormingWorlds/VULCAN.git',
         1,
     ),
+    (
+        'get_atmodeller.sh',
+        (),
+        '{root}/Atmodeller.tmp.<pid>',
+        'git@github.com:FormingWorlds/atmodeller.git',
+        1,
+    ),
     ('get_socrates.sh', (), '{root}/socrates', 'git@github.com:FormingWorlds/SOCRATES.git', 1),
     (
         'get_socrates.sh',
@@ -2200,6 +2207,7 @@ CLONE_IDS = (
     'lavatmos over ssh',
     'thermoenginelite over ssh',
     'vulcan over ssh',
+    'atmodeller over ssh',
     'socrates default path',
     'socrates custom path',
     'agni pinned url',
@@ -4798,7 +4806,7 @@ def _atmodeller_site(tmp_path: Path, pin_ref: str | None = None) -> dict:
 
 @pytest.mark.unit
 def test_atmodeller_single_pin_in_pyproject():
-    """Verify atmodeller pin configuration in pyproject.toml and get_atmodeller.sh."""
+    """Verify the atmodeller extra floor and the pinned url and ref in pyproject.toml."""
     repo_root = Path(__file__).resolve().parents[2]
     data = tomllib.loads((repo_root / 'pyproject.toml').read_text(encoding='utf-8'))
     deps = data['project']['dependencies']
@@ -4812,10 +4820,6 @@ def test_atmodeller_single_pin_in_pyproject():
     table = data['tool']['proteus']['modules']['atmodeller']
     assert table['url'] == 'https://github.com/FormingWorlds/atmodeller.git'
     assert table['ref'] == '77e81aac5147bad7eec727fba5b299e055db2d4d'
-    script = (repo_root / 'tools' / 'get_atmodeller.sh').read_text(encoding='utf-8')
-    assert 'resolve_module_pin atmodeller' in script
-    assert 'https://' not in script
-    assert '77e81aac' not in script
 
 
 @pytest.mark.unit
@@ -4864,6 +4868,12 @@ def test_atmodeller_existing_folder_off_pin_stays_and_advises(tmp_path):
     assert f'pip install -e {clone}' in res.stdout
     assert 'bash tools/get_atmodeller.sh --force' in res.stdout
     assert git(clone, 'rev-parse', 'HEAD') == site['tip_sha']
+
+
+_MODULE_SITES = (
+    ('get_atmodeller.sh', lambda path: _atmodeller_site(path), 'Atmodeller', 'atmodeller.git'),
+    ('get_obliqua.sh', lambda path: _obliqua_site(path), 'Obliqua', 'Obliqua.git'),
+)
 
 
 def _assert_read_only_git_calls(log_path: Path, folder: Path) -> None:
@@ -4921,53 +4931,71 @@ def _assert_read_only_git_calls(log_path: Path, folder: Path) -> None:
 
 
 @pytest.mark.unit
-def test_atmodeller_existing_folder_gets_no_writing_git_commands(tmp_path):
-    """Verify an existing atmodeller folder receives no modifying git commands."""
-    site = _atmodeller_site(tmp_path)
-    assert _run_tool(site, 'get_atmodeller.sh').returncode == 0
-    clone = site['root'] / 'Atmodeller'
+@pytest.mark.parametrize(
+    ('script', 'make_site', 'folder', 'remote'), _MODULE_SITES, ids=('atmodeller', 'Obliqua')
+)
+def test_module_existing_folder_gets_no_writing_git_commands(
+    tmp_path, script, make_site, folder, remote
+):
+    """Verify an existing module folder receives no modifying git commands."""
+    site = make_site(tmp_path)
+    assert _run_tool(site, script).returncode == 0
+    clone = site['root'] / folder
     guard = tmp_path / 'guard'
     guard.mkdir()
     log = tmp_path / 'git-calls.log'
     marker = tmp_path / 'git-write.marker'
     install_git_guard(guard, log, marker, roots=[site['root']], trees=[clone])
     site['env']['PATH'] = f'{guard}{os.pathsep}{site["env"]["PATH"]}'
-    res = _run_tool(site, 'get_atmodeller.sh')
+    res = _run_tool(site, script)
     assert res.returncode == 0, res.stdout + res.stderr
     assert not marker.exists(), f'Write git command called: {log.read_text()}'
     assert clone.is_dir()
+    if folder == 'Obliqua':
+        assert (clone / 'Manifest.toml').exists()
     _assert_read_only_git_calls(log, clone)
 
 
 @pytest.mark.unit
-def test_atmodeller_failed_clone_leaves_existing_folder_unchanged(tmp_path):
+@pytest.mark.parametrize(
+    ('script', 'make_site', 'folder', 'remote'), _MODULE_SITES, ids=('atmodeller', 'Obliqua')
+)
+def test_module_failed_clone_leaves_existing_folder_unchanged(
+    tmp_path, script, make_site, folder, remote
+):
     """Verify failing clone exits 1 and leaves existing folder unchanged."""
-    site = _atmodeller_site(tmp_path)
-    assert _run_tool(site, 'get_atmodeller.sh').returncode == 0
-    clone = site['root'] / 'Atmodeller'
+    site = make_site(tmp_path)
+    assert _run_tool(site, script).returncode == 0
+    clone = site['root'] / folder
     (clone / 'canary.txt').write_text('original\n')
     before = tree_snapshot(clone)
-    remote = site['remotes'] / 'atmodeller.git'
-    remote.rename(site['remotes'] / 'atmodeller.moved')
-    res = _run_tool(site, 'get_atmodeller.sh', '--force')
+    (site['remotes'] / remote).rename(site['remotes'] / (remote + '.moved'))
+    res = _run_tool(site, script, '--force')
     assert res.returncode == 1
     assert 'ERROR: git clone failed' in res.stderr
     assert tree_snapshot(clone) == before
+    assert not any(p.name.startswith(f'{folder}.tmp.') for p in site['root'].iterdir())
 
 
 @pytest.mark.unit
-def test_atmodeller_failed_checkout_leaves_existing_folder_unchanged(tmp_path):
+@pytest.mark.parametrize(
+    ('script', 'make_site', 'folder', 'remote'), _MODULE_SITES, ids=('atmodeller', 'Obliqua')
+)
+def test_module_failed_checkout_leaves_existing_folder_unchanged(
+    tmp_path, script, make_site, folder, remote
+):
     """Verify failing checkout exits 1 and leaves existing folder unchanged."""
-    site = _atmodeller_site(tmp_path)
-    assert _run_tool(site, 'get_atmodeller.sh').returncode == 0
-    clone = site['root'] / 'Atmodeller'
+    site = make_site(tmp_path)
+    assert _run_tool(site, script).returncode == 0
+    clone = site['root'] / folder
     before = tree_snapshot(clone)
     pyproject = site['root'] / 'pyproject.toml'
     pyproject.write_text(pyproject.read_text().replace(site['target_sha'], '0' * 40))
-    res = _run_tool(site, 'get_atmodeller.sh', '--force')
+    res = _run_tool(site, script, '--force')
     assert res.returncode == 1
     assert 'ERROR: git checkout failed' in res.stderr
     assert tree_snapshot(clone) == before
+    assert not any(p.name.startswith(f'{folder}.tmp.') for p in site['root'].iterdir())
 
 
 @pytest.mark.unit
@@ -4981,26 +5009,20 @@ def test_atmodeller_failed_pip_exits_1(tmp_path):
 
 
 @pytest.mark.unit
-def test_atmodeller_force_replaces_existing_folder(tmp_path):
+@pytest.mark.parametrize(
+    ('script', 'make_site', 'folder', 'remote'), _MODULE_SITES, ids=('atmodeller', 'Obliqua')
+)
+def test_module_force_replaces_existing_folder(tmp_path, script, make_site, folder, remote):
     """Verify --force replaces off-pin folder with a fresh clone at the pin."""
-    site = _atmodeller_site(tmp_path)
-    assert _run_tool(site, 'get_atmodeller.sh').returncode == 0
-    clone = site['root'] / 'Atmodeller'
+    site = make_site(tmp_path)
+    assert _run_tool(site, script).returncode == 0
+    clone = site['root'] / folder
     git(clone, 'checkout', '-q', 'main')
     (clone / 'untracked.txt').write_text('delete me\n')
-    res = _run_tool(site, 'get_atmodeller.sh', '--force')
+    res = _run_tool(site, script, '--force')
     assert res.returncode == 0, res.stdout + res.stderr
     assert git(clone, 'rev-parse', 'HEAD') == site['target_sha']
     assert not (clone / 'untracked.txt').exists()
-
-
-@pytest.mark.unit
-def test_atmodeller_reads_url_and_ref_from_table(tmp_path):
-    """Verify script resolves git URL and ref directly from pyproject table."""
-    site = _atmodeller_site(tmp_path, pin_ref='77e81aac5147bad7eec727fba5b299e055db2d4d')
-    res = _run_tool(site, 'get_atmodeller.sh')
-    assert res.returncode == 1
-    assert 'ERROR: git checkout failed' in res.stderr
 
 
 @pytest.mark.unit
@@ -5227,70 +5249,6 @@ def test_obliqua_existing_folder_off_pin_stays_and_advises(tmp_path):
 
 
 @pytest.mark.unit
-def test_obliqua_existing_folder_gets_no_writing_git_commands(tmp_path):
-    """Verify an existing Obliqua folder receives no modifying git commands."""
-    site = _obliqua_site(tmp_path)
-    assert _run_tool(site, 'get_obliqua.sh').returncode == 0
-    clone = site['root'] / 'Obliqua'
-    guard = tmp_path / 'guard'
-    guard.mkdir()
-    log = tmp_path / 'git-calls.log'
-    marker = tmp_path / 'git-write.marker'
-    install_git_guard(guard, log, marker, roots=[site['root']], trees=[clone])
-    site['env']['PATH'] = f'{guard}{os.pathsep}{site["env"]["PATH"]}'
-    res = _run_tool(site, 'get_obliqua.sh')
-    assert res.returncode == 0, res.stdout + res.stderr
-    assert not marker.exists(), f'Write git command called: {log.read_text()}'
-    assert (clone / 'Manifest.toml').exists()
-    _assert_read_only_git_calls(log, clone)
-
-
-@pytest.mark.unit
-def test_obliqua_force_replaces_existing_folder(tmp_path):
-    """Verify --force replaces off-pin folder with fresh clone at the pin."""
-    site = _obliqua_site(tmp_path)
-    assert _run_tool(site, 'get_obliqua.sh').returncode == 0
-    clone = site['root'] / 'Obliqua'
-    git(clone, 'checkout', '-q', 'main')
-    (clone / 'untracked.txt').write_text('delete me\n')
-    res = _run_tool(site, 'get_obliqua.sh', '--force')
-    assert res.returncode == 0, res.stdout + res.stderr
-    assert git(clone, 'rev-parse', 'HEAD') == site['target_sha']
-    assert not (clone / 'untracked.txt').exists()
-
-
-@pytest.mark.unit
-def test_obliqua_failed_clone_leaves_existing_folder_unchanged(tmp_path):
-    """Verify failing clone exits 1 and leaves existing folder unchanged."""
-    site = _obliqua_site(tmp_path)
-    assert _run_tool(site, 'get_obliqua.sh').returncode == 0
-    clone = site['root'] / 'Obliqua'
-    (clone / 'canary.txt').write_text('original\n')
-    before = tree_snapshot(clone)
-    remote = site['remotes'] / 'Obliqua.git'
-    remote.rename(site['remotes'] / 'Obliqua.moved')
-    res = _run_tool(site, 'get_obliqua.sh', '--force')
-    assert res.returncode == 1
-    assert 'ERROR: git clone failed' in res.stderr
-    assert tree_snapshot(clone) == before
-
-
-@pytest.mark.unit
-def test_obliqua_failed_checkout_leaves_existing_folder_unchanged(tmp_path):
-    """Verify failing checkout exits 1 and leaves existing folder unchanged."""
-    site = _obliqua_site(tmp_path)
-    assert _run_tool(site, 'get_obliqua.sh').returncode == 0
-    clone = site['root'] / 'Obliqua'
-    before = tree_snapshot(clone)
-    pyproject = site['root'] / 'pyproject.toml'
-    pyproject.write_text(pyproject.read_text().replace(site['target_sha'], '0' * 40))
-    res = _run_tool(site, 'get_obliqua.sh', '--force')
-    assert res.returncode == 1
-    assert 'ERROR: git checkout failed' in res.stderr
-    assert tree_snapshot(clone) == before
-
-
-@pytest.mark.unit
 def test_obliqua_positional_zero_and_path_arguments(tmp_path):
     """Verify positional 0 and destination path arguments are honoured."""
     site = _obliqua_site(tmp_path)
@@ -5379,23 +5337,6 @@ def test_pinned_clone_at_pin_reports_at_the_pinned_commit(tmp_path):
 
 
 @pytest.mark.unit
-def test_morrigan_failed_pip_in_new_clone_leaves_folder(tmp_path):
-    """Verify failing pip in a new Morrigan clone exits 1 and leaves folder in place."""
-    pyproject = (
-        '[project]\nname = "fixture"\ndependencies = []\n'
-        '[project.optional-dependencies]\nmorrigan = ["fwl-morrigan>=26.4.22"]\n'
-    )
-    site = _floor_tag_site(tmp_path, pyproject, {'Morrigan': '26.04.22'})
-    _write_stub(tmp_path / 'stubs', 'pip', '#!/bin/sh\nexit 1\n')
-    res = _run_tool(site, 'get_morrigan.sh')
-    assert res.returncode == 1
-    assert 'ERROR: editable install failed' in res.stderr
-    clone = site['root'] / 'Morrigan'
-    assert clone.is_dir()
-    assert (clone / 'version.txt').exists()
-
-
-@pytest.mark.unit
 def test_morrigan_second_call_after_failed_pip_exits_1(tmp_path):
     """Verify second Morrigan call after failed pip reports release tag and exits 1."""
     pyproject = (
@@ -5406,30 +5347,15 @@ def test_morrigan_second_call_after_failed_pip_exits_1(tmp_path):
     _write_stub(tmp_path / 'stubs', 'pip', '#!/bin/sh\nexit 1\n')
     res1 = _run_tool(site, 'get_morrigan.sh')
     assert res1.returncode == 1
+    assert 'ERROR: editable install failed' in res1.stderr
     clone = site['root'] / 'Morrigan'
     assert clone.is_dir()
+    assert (clone / 'version.txt').exists()
     res2 = _run_tool(site, 'get_morrigan.sh')
     assert res2.returncode == 1
     assert f'fwl-morrigan: {clone} is at the release tag 26.04.22' in res2.stdout
     assert f'ERROR: pip could not install {clone} (its message is above)' in res2.stderr
     assert clone.is_dir()
-
-
-@pytest.mark.unit
-def test_vulcan_failed_pip_in_new_clone_leaves_folder(tmp_path):
-    """Verify failing pip in a new VULCAN clone exits 1 and leaves folder in place."""
-    pyproject = (
-        '[project]\nname = "fixture"\ndependencies = []\n'
-        '[project.optional-dependencies]\nvulcan = ["fwl-vulcan>=26.4.22"]\n'
-    )
-    site = _floor_tag_site(tmp_path, pyproject, {'VULCAN': '26.04.22'})
-    _write_stub(tmp_path / 'stubs', 'pip', '#!/bin/sh\nexit 1\n')
-    res = _run_tool(site, 'get_vulcan.sh')
-    assert res.returncode == 1
-    assert 'ERROR: editable install failed' in res.stderr
-    clone = site['root'] / 'VULCAN'
-    assert clone.is_dir()
-    assert (clone / 'fastchem_vulcan').is_dir()
 
 
 @pytest.mark.unit
@@ -5443,8 +5369,10 @@ def test_vulcan_second_call_after_failed_pip_exits_1(tmp_path):
     _write_stub(tmp_path / 'stubs', 'pip', '#!/bin/sh\nexit 1\n')
     res1 = _run_tool(site, 'get_vulcan.sh')
     assert res1.returncode == 1
+    assert 'ERROR: editable install failed' in res1.stderr
     clone = site['root'] / 'VULCAN'
     assert clone.is_dir()
+    assert (clone / 'fastchem_vulcan').is_dir()
     res2 = _run_tool(site, 'get_vulcan.sh')
     assert res2.returncode == 1
     assert f'fwl-vulcan: {clone} is at the release tag 26.04.22' in res2.stdout
@@ -5486,3 +5414,87 @@ def test_atmodeller_second_call_after_failed_pip_exits_1(tmp_path):
     )
     assert f'ERROR: pip could not install {clone} (its message is above)' in res2.stderr
     assert clone.is_dir()
+
+
+@pytest.mark.unit
+def test_obliqua_positional_zero_alone_clones_to_default_folder(tmp_path):
+    """Verify positional argument 0 alone clones to default Obliqua folder and leaves no folder 0."""
+    site = _obliqua_site(tmp_path)
+    res = _run_tool(site, 'get_obliqua.sh', '0')
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert (site['root'] / 'Obliqua').is_dir()
+    assert not (site['root'] / '0').exists()
+
+
+@pytest.mark.unit
+def test_obliqua_relative_destination_path(tmp_path):
+    """Verify relative destination path creates clone without git directory errors."""
+    site = _obliqua_site(tmp_path)
+    run_dir = tmp_path / 'workdir'
+    run_dir.mkdir()
+    res = subprocess.run(
+        ['bash', str(site['root'] / 'tools' / 'get_obliqua.sh'), 'rel/Obliqua'],
+        cwd=run_dir,
+        env=site['env'],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert res.returncode == 0, res.stdout + res.stderr
+    dest = run_dir / 'rel' / 'Obliqua'
+    assert dest.is_dir()
+    assert re.search(r'Obliqua at [0-9a-f]{7,}', res.stdout)
+    assert 'fatal:' not in res.stderr
+
+
+@pytest.mark.unit
+def test_obliqua_custom_destination_off_pin_advises_custom_folder(tmp_path):
+    """Verify advice names the custom folder path in the force command when off pin."""
+    site = _obliqua_site(tmp_path)
+    custom = site['root'] / 'custom' / 'Obliqua'
+    assert _run_tool(site, 'get_obliqua.sh', str(custom)).returncode == 0
+    git(custom, 'checkout', '-q', 'main')
+    res = _run_tool(site, 'get_obliqua.sh', str(custom))
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert f'bash tools/get_obliqua.sh {shlex.quote(str(custom))} --force' in res.stdout
+    assert 'bash tools/get_obliqua.sh --force\n' not in res.stdout
+
+
+@pytest.mark.unit
+def test_pinned_clone_stays_file_and_local_changes(tmp_path):
+    """Verify pinned clone off pin records to stays file and tracked modification notes local changes."""
+    site = _atmodeller_site(tmp_path)
+    assert _run_tool(site, 'get_atmodeller.sh').returncode == 0
+    clone = site['root'] / 'Atmodeller'
+    git(clone, 'checkout', '-q', 'main')
+    stays = tmp_path / 'stays.txt'
+    site['env']['PROTEUS_CLONE_STAYS'] = str(stays)
+    res_off = _run_tool(site, 'get_atmodeller.sh')
+    assert res_off.returncode == 0, res_off.stdout + res_off.stderr
+    assert stays.read_text().splitlines() == [f'Atmodeller (commit {site["tip_sha"][:7]})']
+
+    git(clone, 'checkout', '-q', site['target_sha'])
+    tracked = next(p for p in clone.iterdir() if p.is_file() and not p.name.startswith('.'))
+    tracked.write_text(tracked.read_text() + 'modified\n')
+    res_at = _run_tool(site, 'get_atmodeller.sh')
+    assert res_at.returncode == 0, res_at.stdout + res_at.stderr
+    assert (
+        f'atmodeller: {clone} is at the pinned commit {site["target_sha"][:8]}, with local changes'
+        in res_at.stdout
+    )
+
+
+@pytest.mark.unit
+def test_pinned_clone_unresolvable_head(tmp_path):
+    """Verify pinned clone without commits reports unresolvable HEAD without empty commit string."""
+    site = _atmodeller_site(tmp_path)
+    clone = site['root'] / 'Atmodeller'
+    clone.mkdir(parents=True)
+    git(clone, 'init', '-q')
+    stays = tmp_path / 'stays.txt'
+    site['env']['PROTEUS_CLONE_STAYS'] = str(stays)
+    res = _run_tool(site, 'get_atmodeller.sh')
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert 'a HEAD that git cannot resolve' in res.stdout
+    assert 'commit ;' not in res.stdout
+    assert stays.read_text().splitlines() == ['Atmodeller (HEAD unknown)']

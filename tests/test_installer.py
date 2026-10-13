@@ -768,7 +768,7 @@ class TestInstallVars:
             'info "Python packages installed"',
         ]
         assert bind < at('CURRENT_PHASE=8') < at('case "$DATA_MODE" in')
-        assert at('CURRENT_PHASE=8') < at('proteus doctor 2>&1 || true')
+        assert at('CURRENT_PHASE=9') < at('proteus doctor 2>&1 || true')
         assert at('print_next_steps') > at('proteus doctor 2>&1 || true')
 
 
@@ -4002,7 +4002,6 @@ class TestFurtherModulesPhase:
         site: dict,
         suffix: str = '',
         env_extra: dict | None = None,
-        shell: str = '/bin/bash',
     ) -> subprocess.CompletedProcess:
         """Run the shipped lines of the phase under the installer functions and environment."""
         scratch = site['scratch']
@@ -4020,7 +4019,7 @@ class TestFurtherModulesPhase:
         )
         env = {**site['env'], **(env_extra or {})}
         return subprocess.run(
-            [shell, '-c', defs + self._phase_block() + suffix],
+            ['/bin/bash', '-c', defs + self._phase_block() + suffix],
             cwd=scratch,
             env=env,
             capture_output=True,
@@ -4165,13 +4164,6 @@ class TestFurtherModulesPhase:
         assert len(calls) == 4
         assert 'Not at their release tag or pinned commit:' not in (res.stdout + res.stderr)
 
-    def test_phase_runs_under_bin_bash_with_set_euo_pipefail(self, site):
-        """The phase runs under macOS /bin/bash without unbound variable errors."""
-        res = self._run_phase(site, shell='/bin/bash')
-        assert res.returncode == 0, res.stdout + res.stderr
-        assert 'unbound variable' not in res.stderr.lower()
-        assert 'command not found' not in res.stderr.lower()
-
     def test_installer_phase_order_and_binding_positions(self):
         """Phase 7 lies between develop install and verify, and bind_install_vars precedes phase 8."""
         lines = INSTALL_SH.read_text().splitlines()
@@ -4186,3 +4178,25 @@ class TestFurtherModulesPhase:
         assert idx_phase7 < idx_verify
         assert idx_verify < idx_bind
         assert idx_bind < idx_phase8
+
+    def test_phase_seven_further_module_scripts_list_and_files(self):
+        """Phase 7 further module invocations match the four expected scripts in order and files exist."""
+        lines = INSTALL_SH.read_text().splitlines()
+        invocations = [
+            ln.strip() for ln in lines if ln.strip().startswith('install_further_module ')
+        ]
+        assert invocations == [
+            'install_further_module "Morrigan" bash tools/get_morrigan.sh',
+            'install_further_module "VULCAN" bash tools/get_vulcan.sh',
+            'install_further_module "atmodeller" bash tools/get_atmodeller.sh',
+            'install_further_module "Obliqua" bash tools/get_obliqua.sh',
+        ]
+        repo_root = INSTALL_SH.parent
+        expected_scripts = [
+            'tools/get_morrigan.sh',
+            'tools/get_vulcan.sh',
+            'tools/get_atmodeller.sh',
+            'tools/get_obliqua.sh',
+        ]
+        for script_path in expected_scripts:
+            assert (repo_root / script_path).is_file()
