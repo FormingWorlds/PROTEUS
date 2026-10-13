@@ -975,7 +975,9 @@ def plot_fig4(intercomp, pe, NS):
 
     _name_ticks(axes[-1], model_names, is_proteus)
 
-    fig.suptitle(r'Nominal-Earth H,C inventories at $\phi$ = 5%')
+    axes[0].set_title(
+        r'Nominal-Earth H,C inventories at $\phi$ = 5%', loc='left', fontweight='bold'
+    )
     return fig
 
 
@@ -1263,7 +1265,7 @@ def plot_fig7(intercomp, pv, NS):
         framealpha=0.9,
     )
 
-    fig.suptitle('Nominal-Venus volatiles retained [%]')
+    ax_h.set_title('Nominal-Venus volatiles retained [%]', loc='left', fontweight='bold')
     return fig
 
 

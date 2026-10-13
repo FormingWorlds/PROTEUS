@@ -419,7 +419,8 @@ def test_legend_of_figure_2_names_each_model_that_is_drawn_with_its_cross(chili_
     """Figure 2 has an entry for each model with a point in the figure and for
     the current run, each with its grid line and, beside it, the cross of its
     nominal case; the cross of the current run is larger than that of the submitted
-    run; a model without data has no entry."""
+    run; a model without data has no entry, and a model with a grid line and
+    no nominal case has one."""
     data, grid = _grid_case(tmp_path)
     run = chili_tool._load_proteus_helpfile(_run_folder(tmp_path / 'earth'))
 
@@ -442,6 +443,13 @@ def test_legend_of_figure_2_names_each_model_that_is_drawn_with_its_cross(chili_
     assert [t.get_text() for t in few.legends[0].get_texts()] == ['MOAI']
     alone = chili_tool.plot_fig2(tmp_path / 'few', run, style)
     assert [t.get_text() for t in alone.legends[0].get_texts()] == ['MOAI', 'PROTEUS (x)']
+    table = pd.read_csv(
+        tmp_path / 'few' / 'moai' / 'evolution-moai-earth-data.csv', index_col=0
+    )
+    (tmp_path / 'few' / 'lincs').mkdir()
+    table.to_csv(tmp_path / 'few' / 'lincs' / 'evolution-lincs-earth-grid-Hlow-data.csv')
+    by_line = chili_tool.plot_fig2(tmp_path / 'few', None, style)
+    assert [t.get_text() for t in by_line.legends[0].get_texts()] == ['LINCS', 'MOAI']
 
 
 def test_legend_of_figure_7_shows_the_cross_of_each_proteus_result(chili_tool, tmp_path):
@@ -504,6 +512,13 @@ def test_text_is_in_the_font_of_the_style_and_the_run_name_is_bold(
         panel = figures[f'chili_{stem}'].axes[0]
         title = panel.title if panel.get_title() else panel._left_title
         assert title.get_text().startswith('(a)') and title.get_fontweight() == 'bold', stem
+    for stem, words in (
+        ('fig4_mass_budgets', 'Nominal-Earth H,C'),
+        ('fig7_volatiles', 'Nominal-Venus'),
+    ):
+        heading = figures[f'chili_{stem}'].axes[0]._left_title
+        assert heading.get_text().startswith(words) and heading.get_fontweight() == 'bold', stem
+        assert figures[f'chili_{stem}'].get_suptitle() == '', stem
     for stem in ('fig4_mass_budgets', 'fig6_fO2_vs_T', 'fig7_volatiles'):
         label = [t for t in figures[f'chili_{stem}'].axes[0].texts if t.get_text()[:3] == '(a)']
         assert [t.get_fontweight() for t in label] == ['bold'], stem

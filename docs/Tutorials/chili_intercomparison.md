@@ -158,7 +158,8 @@ python tools/plot_chili_comparison.py \
 `--output` directory (here `output_files/chili_plots/`, which is
 gitignored) as both PDF (vector) and PNG. The colours follow the CHILI
 analysis code: the models are in Paul Tol's bright scheme and the gases in
-the PROTEUS gas colours. The script draws under the active matplotlib
+the PROTEUS gas colours, with H<sub>2</sub>S and O<sub>2</sub> in the colours
+of the CHILI analysis code. The script draws under the active matplotlib
 style, and `--style light` or `--style dark` applies the PROTEUS plot style
 of the `proteus-mpl` package for a direct call. The figures of this page
 come from `tools/make_docs_figures.py`, which calls the script once per
