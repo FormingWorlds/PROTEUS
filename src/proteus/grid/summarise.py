@@ -11,13 +11,12 @@ from proteus.utils.helper import CommentFromStatus
 
 log = logging.getLogger('fwl.' + __name__)
 
-# Broad status categories, by the status-code ranges that `CommentFromStatus`
-# documents (see proteus.utils.helper). Shared by `summarise` and by the grid
-# analysis (proteus.grid.analyse) so both bin cases the same way.
+# Broad status categories of the codes in `CommentFromStatus` (proteus.utils.helper),
+# shared by `summarise` and the grid analysis. Code 29 is 'Completed (planet evaporated)'.
 STATUS_CATEGORIES = {
-    'Running': range(0, 10),
-    'Completed': range(10, 20),
-    'Error': range(20, 30),
+    'Running': tuple(range(0, 10)),
+    'Completed': (*range(10, 20), 29),
+    'Error': tuple(range(20, 29)),
 }
 
 
@@ -32,8 +31,8 @@ def status_category(code: int) -> str:
     Returns
     -------
     str
-        'Running', 'Completed', 'Error', or 'Unknown' for a code outside the
-        documented ranges.
+        'Running' (0-9), 'Completed' (10-19 and 29), 'Error' (20-28), or
+        'Unknown' for any other code.
     """
     for name, codes in STATUS_CATEGORIES.items():
         if code in codes:

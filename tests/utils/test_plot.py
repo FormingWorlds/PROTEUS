@@ -230,6 +230,8 @@ def test_get_log_scale_flags_only_log_quantities():
     assert get_log_scale('T_surf') is False
     assert [get_log_scale(f) for f in ('F_int', 'F_atm', 'F_net', 'F_tidal')] == [False] * 4
     assert get_log_scale('unregistered_quantity') is False
+    # Without a preset, the inference convention applies (compositional columns).
+    assert get_log_scale('XYZ_vmr') is True
 
 
 def test_get_colourmap_resolves_crameri_and_matplotlib_names(caplog):

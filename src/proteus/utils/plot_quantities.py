@@ -28,12 +28,13 @@ class QuantityInfo(NamedTuple):
 
 # Default plotting metadata, keyed by grid config path (input parameters) or by
 # runtime_helpfile.csv column name (output variables). proteus.utils.plot.get_label,
-# get_scale and get_log_scale read this; a name that is absent falls back to sensible defaults.
+# get_scale and get_log_scale read this; an absent name falls back to the defaults there.
+# A log flag is True wherever utils.coupler.variable_is_logarithmic is (tested).
 # Grouped by module, one entry per line, so independent additions merge cleanly.
 PRESET_QUANTITIES = {
     ## Grid input parameters (config paths)
     # Orbit module
-    'orbit.semimajoraxis': QuantityInfo(r'$a$ [AU]', 1.0, False),
+    'orbit.semimajoraxis': QuantityInfo(r'$a$ [AU]', 1.0, True),
     'orbit.eccentricity': QuantityInfo(r'$e$', 1.0, False),
     # Star module
     'star.mass': QuantityInfo(r'$M_\star$ [$M_\odot$]', 1.0, False),
@@ -70,10 +71,10 @@ PRESET_QUANTITIES = {
     'Time': QuantityInfo('Time [yr]', 1.0, True),
     'solidification_time': QuantityInfo('Solidification time [yr]', 1.0, True),
     # Orbit (semimajorax is in m, orbital_period in s)
-    'semimajorax': QuantityInfo(r'$a$ [AU]', 1.0 / AU, False),
-    'separation': QuantityInfo(r'Orbital separation [AU]', 1.0 / AU, False),
+    'semimajorax': QuantityInfo(r'$a$ [AU]', 1.0 / AU, True),
+    'separation': QuantityInfo(r'Orbital separation [AU]', 1.0 / AU, True),
     'orbital_period': QuantityInfo('Orbital period [days]', 1.0 / secs_per_day, True),
-    'eccentricity': QuantityInfo(r'$e$', 1.0, False),
+    'eccentricity': QuantityInfo(r'$e$', 1.0, True),
     # Planet structure
     'R_int': QuantityInfo(r'$R_{\rm int}$ [$R_\oplus$]', 1.0 / R_earth, False),
     'M_int': QuantityInfo(r'$M_{\rm int}$ [$M_\oplus$]', 1.0 / M_earth, False),
@@ -113,14 +114,14 @@ PRESET_QUANTITIES = {
     'p_obs': QuantityInfo(r'$P_{\rm obs}$ [bar]', 1.0, True),
     'R_obs': QuantityInfo(r'$R_{\rm obs}$ [$R_\oplus$]', 1.0 / R_earth, False),
     'T_obs': QuantityInfo(r'$T_{\rm obs}$ [K]', 1.0, False),
-    'rho_obs': QuantityInfo(r'$\rho_{\rm obs}$ [g cm$^{-3}$]', 1.0e-3, False),
+    'rho_obs': QuantityInfo(r'$\rho_{\rm obs}$ [g cm$^{-3}$]', 1.0e-3, True),
     'transit_depth': QuantityInfo('Transit depth [ppm]', 1.0e6, False),
     'eclipse_depth': QuantityInfo('Eclipse depth [ppm]', 1.0e6, False),
     'bond_albedo': QuantityInfo('Bond albedo', 1.0, False),
     # Atmosphere
     'M_atm': QuantityInfo(r'$M_{\rm atm}$ [kg]', 1.0, True),
     'P_surf': QuantityInfo(r'$P_{\rm surf}$ [bar]', 1.0, True),
-    'atm_kg_per_mol': QuantityInfo(r'MMW [g mol$^{-1}$]', 1.0e3, False),
+    'atm_kg_per_mol': QuantityInfo(r'MMW [g mol$^{-1}$]', 1.0e3, True),
     # Volatile species (per species: whole-planet mass, atmospheric mixing ratio,
     # partial surface pressure), in runtime_helpfile species order
     'H2O_kg_total': QuantityInfo(r'$M_{\rm H_2O}$ [kg]', 1.0, True),

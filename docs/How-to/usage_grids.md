@@ -173,7 +173,7 @@ The `[post_processing]` table accepts:
 | `output_variables` | List of `runtime_helpfile.csv` columns to plot, plus the derived `solidification_time`. Defaults to `solidification_time`, `Phi_global`, `T_surf`, `P_surf` and `atm_kg_per_mol`. |
 | `plot_format` | Image format (`"png"` or `"pdf"`); defaults to the base config's `params.out.plot_fmt`, then `"png"`. |
 
-`solidification_time` is computed by the analysis as the first time a case's `Phi_global` drops below its `params.stop.solid.phi_crit`. It is empty (NaN) for a case that never solidified, and for a case whose solidification stop criterion (`params.stop.solid.enabled`) was disabled.
+`solidification_time` is computed by the analysis as the first time a case's `Phi_global` is at or below its `params.stop.solid.phi_crit` (the solidification stop criterion). It is empty (NaN) for a case that never solidified, and for a case whose solidification stop criterion (`params.stop.solid.enabled`) was disabled.
 
 The outputs are written under the grid's output folder:
 

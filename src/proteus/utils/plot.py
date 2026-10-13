@@ -133,10 +133,17 @@ def get_scale(quant: str) -> float:
 
 
 def get_log_scale(quant: str) -> bool:
-    """Return whether a grid quantity is plotted on a log axis (False if unset)."""
+    """Return whether a grid quantity is plotted on a log axis.
+
+    A quantity without a preset follows ``utils.coupler.variable_is_logarithmic``,
+    the convention the inference tools use (for example any ``*_vmr`` column).
+    """
     if quant in PRESET_QUANTITIES:
         return PRESET_QUANTITIES[quant].log
-    return False
+    # Imported here because proteus.utils.coupler imports this module.
+    from proteus.utils.coupler import variable_is_logarithmic
+
+    return variable_is_logarithmic(quant)
 
 
 # Default colour map for grid parameter values: a Crameri scientific colour map

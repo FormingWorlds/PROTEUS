@@ -37,6 +37,7 @@ from proteus.grid.plot_grid import (  # noqa: E402
     clean_series,
     count_not_started,
     ecdf,
+    make_grid_plots,
     plot_ecdf_grid,
     plot_status_summary,
     resolve_plot_format,
@@ -328,3 +329,62 @@ def test_plot_ecdf_grid_writes_numeric_and_string_rows(tmp_path):
     assert out.exists()
     with pytest.raises(ValueError, match='at least one tested parameter'):
         plot_ecdf_grid(df, {'orbit.eccentricity': [0.1]}, ['P_surf'], tmp_path, 'demo')
+
+
+def _summary_csvs(tmp_path, completed_rows):
+    """Write 'all' and 'completed' summary CSVs; 'all' adds one Error case."""
+    completed = pd.DataFrame(completed_rows)
+    error = pd.DataFrame(
+        [{'case_number': 99, 'status': 'Error (Atmosphere model)', 'status_category': 'Error'}]
+    )
+    paths = {'all': tmp_path / 'all.csv', 'completed': tmp_path / 'completed.csv'}
+    pd.concat([completed, error], ignore_index=True).to_csv(paths['all'], sep='\t', index=False)
+    completed.to_csv(paths['completed'], sep='\t', index=False)
+    return paths
+
+
+def _opts(**overrides):
+    """Return validated-style [post_processing] options with every plot on."""
+    opts = {
+        'plot_status': True,
+        'plot_ecdf': True,
+        'output_variables': ['T_surf', 'not_a_column'],
+        'colormap': None,
+        'plot_format': None,
+    }
+    opts.update(overrides)
+    return opts
+
+
+def test_make_grid_plots_writes_both_plots_in_the_base_format(tmp_path):
+    """Both plots land in post_processing/grid_plots in the base run's format when
+    plot_format is unset; a missing output is skipped, not fatal.
+    """
+    rows = [
+        {'case_number': i, 'status': 'Completed (solidified)', 'status_category': 'Completed',
+         'planet.mass_tot': m, 'T_surf': t}
+        for i, (m, t) in enumerate([(0.5, 300.0), (1.0, 900.0)])
+    ]  # fmt: skip
+    paths = _summary_csvs(tmp_path, rows)
+    make_grid_plots(_opts(), paths, {'planet.mass_tot': [0.5, 1.0]}, tmp_path, 'pdf')
+    plots = tmp_path / 'post_processing' / 'grid_plots'
+    assert sorted(p.name for p in plots.iterdir()) == [
+        'ecdf_grid_plot.pdf',
+        'summary_grid_statuses.pdf',
+    ]
+
+
+def test_make_grid_plots_honours_switches_and_rejects_no_valid_output(tmp_path):
+    """plot_status = false and plot_ecdf = false write nothing; an ECDF with no
+    requested output present raises instead of drawing an empty figure.
+    """
+    rows = [{'case_number': 0, 'status': 'Completed (solidified)',
+             'status_category': 'Completed', 'planet.mass_tot': 1.0, 'T_surf': 300.0}]  # fmt: skip
+    paths = _summary_csvs(tmp_path, rows)
+    tested = {'planet.mass_tot': [1.0]}
+    make_grid_plots(_opts(plot_status=False, plot_ecdf=False), paths, tested, tmp_path)
+    assert not (tmp_path / 'post_processing').exists()
+    with pytest.raises(ValueError, match='No valid output_variables'):
+        make_grid_plots(
+            _opts(plot_status=False, output_variables=['not_a_column']), paths, tested, tmp_path
+        )

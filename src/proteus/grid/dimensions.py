@@ -64,6 +64,10 @@ def dimension_arange(start: float, stop: float, step: float) -> list[float]:
 def dimension_direct(values: list, sort: bool = True) -> list:
     """Return the given values with duplicates removed (sorted when numeric).
 
+    String values (or any values with ``sort=False``) keep their first-seen order,
+    so the case numbering of a string axis is the same in every process (a ``set``
+    of strings is ordered by the per-process string hash).
+
     Raises
     ------
     ValueError
@@ -71,10 +75,9 @@ def dimension_direct(values: list, sort: bool = True) -> list:
     """
     if not values:
         raise ValueError('Grid direct dimension needs at least one value')
-    deduped = list(set(values))
     if (not isinstance(values[0], str)) and sort:
-        deduped = sorted(deduped)
-    return deduped
+        return sorted(set(values))
+    return list(dict.fromkeys(values))
 
 
 _DIMENSION_BUILDERS = {

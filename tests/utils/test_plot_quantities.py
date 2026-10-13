@@ -6,6 +6,7 @@ of the table:
   (R_earth, AU, day, GPa, Gyr, g cm-3)
 - every scaled quantity names its display unit in the label
 - every scale is finite and positive, so no axis flips sign or collapses
+- a quantity the inference tools treat as logarithmic has a log preset
 
 Testing standards:
   - docs/How-to/testing.md
@@ -19,6 +20,7 @@ import math
 import pytest
 
 from proteus.utils.constants import AU, M_earth, R_earth, secs_per_day
+from proteus.utils.coupler import variable_is_logarithmic
 from proteus.utils.plot_quantities import PRESET_QUANTITIES
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
@@ -65,3 +67,16 @@ def test_scaled_quantities_state_their_display_unit():
     assert unlabelled == []
     assert '[g cm$^{-3}$]' in PRESET_QUANTITIES['rho_obs'].label
     assert PRESET_QUANTITIES['atm_kg_per_mol'].label == r'MMW [g mol$^{-1}$]'
+
+
+def test_log_presets_agree_with_the_inference_log_convention():
+    """Every preset that utils.coupler.variable_is_logarithmic calls logarithmic is
+    plotted on a log axis, so grid and inference plots do not disagree (they did for
+    rho_obs, semimajorax, eccentricity and atm_kg_per_mol).
+    """
+    disagree = [
+        k for k, q in PRESET_QUANTITIES.items() if variable_is_logarithmic(k) and not q.log
+    ]
+    assert disagree == []
+    assert PRESET_QUANTITIES['atm_kg_per_mol'].log is True
+    assert PRESET_QUANTITIES['rho_obs'].log is True

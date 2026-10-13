@@ -1,7 +1,7 @@
 """Unit tests for ``proteus.grid.analyse``.
 
 Covers the grid post-processing extraction with small grids built under tmp_path:
-- solidification time is the FIRST strict crossing of Phi_global < phi_crit, uses each
+- solidification time is the FIRST row with Phi_global <= phi_crit (the stop criterion), uses each
   case's own phi_crit, and is NaN when the case's solidification stop is disabled
 - tested-parameter axes come from copy.grid.toml when present, and the
   [post_processing] table is never read as an axis
@@ -113,14 +113,44 @@ def test_extract_solidification_time_is_first_crossing_not_last():
     assert t_solid != pytest.approx(10000.0)
 
 
-def test_extract_solidification_time_is_strict_below_phi_crit():
-    """Phi exactly equal to phi_crit has not yet solidified (strict '<', as in the
-    stop criterion); a '<=' implementation would return 10 yr instead of 100 yr.
+def test_extract_solidification_time_counts_phi_equal_to_phi_crit():
+    """Phi exactly equal to phi_crit has solidified ('<=', as in the stop criterion
+    of utils.terminate); a strict '<' would return 100 yr instead of 10 yr, and a
+    run stopped with status 10 on that row would get no solidification time.
     """
     df = pd.DataFrame({'Time': [1.0, 10.0, 100.0], 'Phi_global': [1.0, 0.005, 0.004]})
     t_solid = extract_solidification_time(df, phi_crit=0.005)
-    assert t_solid == pytest.approx(100.0)
-    assert t_solid != pytest.approx(10.0)
+    assert t_solid == pytest.approx(10.0)
+    assert t_solid != pytest.approx(100.0)
+
+
+def test_extract_solidification_time_matches_the_solid_stop_criterion():
+    """The analysis flags the same first row as terminate._check_solid, which
+    stops the run, for rows just above, at and below phi_crit.
+    """
+    from types import SimpleNamespace
+
+    from proteus.utils import terminate
+
+    phi_crit = 0.01
+    phis = [0.5, 0.010000001, 0.01, 0.002]
+    stop_rows = []
+    for phi in phis:
+        handler = SimpleNamespace(
+            hf_row={'Phi_global': phi},
+            config=SimpleNamespace(
+                params=SimpleNamespace(
+                    stop=SimpleNamespace(solid=SimpleNamespace(phi_crit=phi_crit))
+                )
+            ),
+            directories={},
+        )
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr(terminate, 'UpdateStatusfile', lambda *a: None)
+            stop_rows.append(terminate._check_solid(handler))
+    df = pd.DataFrame({'Time': [1.0, 2.0, 3.0, 4.0], 'Phi_global': phis})
+    assert stop_rows == [False, False, True, True]
+    assert extract_solidification_time(df, phi_crit) == pytest.approx(3.0)
 
 
 def test_extract_solidification_time_nan_without_crossing_or_columns():

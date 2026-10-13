@@ -191,11 +191,12 @@ def get_tested_parameters(config: dict, config_fpath: str | Path) -> dict:
 
 
 def extract_solidification_time(output: pd.DataFrame | None, phi_crit: float) -> float:
-    """Return the first time at which ``Phi_global`` drops below ``phi_crit``.
+    """Return the first time at which ``Phi_global`` reaches ``phi_crit`` or below.
 
-    Solidification time is the FIRST crossing of ``Phi_global < phi_crit`` (strict,
-    as in the solidification stop criterion), not the last row. Returns NaN when the
-    case never solidifies, has no results, or lacks the required columns.
+    Solidification time is the FIRST row with ``Phi_global <= phi_crit``, the
+    solidification stop criterion of ``proteus.utils.terminate``, not the last row.
+    Returns NaN when the case never solidifies, has no results, or lacks the
+    required columns.
 
     Parameters
     ----------
@@ -210,7 +211,7 @@ def extract_solidification_time(output: pd.DataFrame | None, phi_crit: float) ->
         log.warning('Missing Phi_global or Time column; cannot find solidification time')
         return np.nan
 
-    solidified = output['Phi_global'] < phi_crit
+    solidified = output['Phi_global'] <= phi_crit
     if not solidified.any():
         return np.nan
     # idxmax returns the first index where the boolean is True (the first crossing).

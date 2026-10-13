@@ -79,9 +79,13 @@ def test_arange_rejects_step_that_cannot_reach_stop(start, stop, step):
 
 
 def test_direct_dedups_sorts_numbers_and_keeps_strings():
-    """direct removes duplicates, sorts numbers, and keeps every string value."""
+    """direct removes duplicates, sorts numbers, and keeps strings in first-seen
+    order (a set would order them by the per-process string hash).
+    """
     assert dimension_direct([3.0, 1.0, 2.0, 1.0]) == pytest.approx([1.0, 2.0, 3.0])
-    assert sorted(dimension_direct(['janus', 'agni', 'janus'])) == ['agni', 'janus']
+    assert dimension_direct(['janus', 'agni', 'janus']) == ['janus', 'agni']
+    assert dimension_direct(['c', 'a', 'b', 'a']) == ['c', 'a', 'b']
+    assert dimension_direct([3.0, 1.0, 3.0], sort=False) == pytest.approx([3.0, 1.0])
     with pytest.raises(ValueError, match='at least one value'):
         dimension_direct([])
 

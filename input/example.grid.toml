@@ -53,7 +53,7 @@ jax_cache = false
     plot_ecdf   = true      # make the ECDF grid plot
     colormap    = "batlowK_r"  # Crameri scientific colour map for numeric values
     # Output columns (runtime_helpfile.csv) to plot; solidification_time is
-    # computed by the analysis (first time Phi_global < params.stop.solid.phi_crit,
+    # computed by the analysis (first time Phi_global <= params.stop.solid.phi_crit,
     # NaN for a case whose solidification stop is disabled). Without this key the
     # default is solidification_time, Phi_global, T_surf, P_surf, atm_kg_per_mol.
     output_variables = [

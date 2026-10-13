@@ -394,14 +394,13 @@ class TestSetDimension:
         assert len(g.dim_avars['d']) == 3
 
     def test_direct_does_not_sort_strings(self, grid_with_mocks):
-        """String values are kept as a set-derived list (no sort branch
-        taken because elements are not numeric).
+        """String values are deduplicated in first-seen order, not sorted, so
+        the case numbering of a string axis does not depend on the string hash.
         """
         g = grid_with_mocks
         g.add_dimension('d', 'atmos_clim.module')
-        g.set_dimension_direct('d', ['agni', 'janus', 'agni'])
-        # Discriminating: deduplicated regardless
-        assert set(g.dim_avars['d']) == {'agni', 'janus'}
+        g.set_dimension_direct('d', ['janus', 'agni', 'janus'])
+        assert g.dim_avars['d'] == ['janus', 'agni']
         assert len(g.dim_avars['d']) == 2
 
 
