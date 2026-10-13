@@ -419,6 +419,8 @@ _REVIEWED_NEUTRAL = frozenset(
         # Read only under from_mantle_redox, which no 2.0 config can select,
         # and its default True is the tracker's previous unconditional step.
         'planet.metal_saturation',
+        # Read only under from_mantle_redox, which no 2.0 config can select.
+        'planet.partition_coefficients',
         # Acts only when a_fe_max_mantle > 0, i.e. under from_mantle_redox,
         # which no 2.0 config can select; a migrated config is unaffected.
         'params.dt.afe_max_rel_change',
