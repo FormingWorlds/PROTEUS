@@ -132,7 +132,7 @@ The installer runs through the following phases automatically:
 4. SOCRATES compilation and `RAD_DIR` setup
 5. AGNI and FastChem setup (Julia atmosphere model + equilibrium chemistry); an AGNI folder that is there already stays, and when its `Manifest.toml` names another minor Julia version (1.12 against 1.13, for example) than the one PROTEUS uses, the installer warns and names `proteus update-all`, which instantiates AGNI again
 6. Python packages (editable installs of all submodules, the SUNDIALS CVODE solver, and PROTEUS itself)
-7. Further modules (Morrigan, VULCAN, atmodeller and Obliqua): a failed module prints a warning with the command to repeat and the installer goes on
+7. Further modules (Morrigan, VULCAN, atmodeller and Obliqua): a failed module prints a warning with the command to repeat and the installer goes on; after the four steps the installer checks again that PROTEUS imports, and stops when it does not
 8. Reference data downloads (by default the essential set: the default-config and tutorial k-tables, stellar spectra and tracks, the PHOENIX grid of the default star, and the interior tables)
 9. Verification via `proteus doctor`
 

@@ -65,17 +65,20 @@ fwl-janus, fwl-mors, fwl-zephyrus, fwl-zalmoxis) and standard module package
 For git-pinned modules (AGNI, SOCRATES, Obliqua), the doctor compares the
 checkout's HEAD commit against the commit SHA pinned in `pyproject.toml` under
 `[tool.proteus.modules]`. A mismatch produces a warning with a fix command. A
-missing AGNI or SOCRATES clone is a failure; a missing or empty Obliqua folder is a
-warning with the fix `bash tools/get_obliqua.sh`. For a module folder that is
+missing or empty AGNI or SOCRATES folder is a failure; a missing or empty Obliqua folder is a
+warning with the fix `bash tools/get_obliqua.sh`. For a module folder with files that is
 not a git clone of its own, the doctor reads no commit (git would answer for
-the repository around the folder) and marks the line
-`[not a git clone of its own]`. For an Obliqua folder that
+the repository around the folder), marks the line
+`[not a git clone of its own]` and warns that the commit cannot be compared with
+the pin; the fix is advice that `proteus update` does not run: move the folder
+away or delete it, then run the setup script of the module. For an Obliqua folder that
 is not at its pin the fix is advice that `proteus update` does not run:
 `bash tools/get_obliqua.sh --force <folder>` replaces the folder with a new
 clone at the pin. The forced form replaces only an Obliqua clone or an empty
 folder: it refuses the PROTEUS folder, your home folder, a folder that holds
-one of them, a folder with files that is not a git clone of its own, and a
-clone of another project. An Obliqua folder at its pin with no `Manifest.toml` gives a warning
+one of them, and a folder with files that is not a git clone of its own. A
+clone of another project stops the script with an error, with or without
+`--force`. An Obliqua folder at its pin with no `Manifest.toml` gives a warning
 that its Julia environment is not instantiated, with the fix
 `bash tools/get_obliqua.sh`. The AGNI fix is
 `bash tools/get_agni.sh`. The SOCRATES fix also rebuilds AGNI,
