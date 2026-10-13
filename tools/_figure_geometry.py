@@ -86,7 +86,7 @@ def _saved_area(fig: Figure, renderer, bbox_inches, pad_inches) -> Bbox:
     """Area of the saved file in the pixel coordinates of the figure.
 
     The pad follows `savefig`: the pads of a constrained layout for `'layout'`, a number
-    as given, and the pad of the active style otherwise.
+    as given (True is 1 inch), and the pad of the active style otherwise.
     """
     if bbox_inches is None:
         bbox_inches = matplotlib.rcParams['savefig.bbox']
@@ -95,7 +95,7 @@ def _saved_area(fig: Figure, renderer, bbox_inches, pad_inches) -> Bbox:
     engine = fig.get_layout_engine()
     if pad_inches == 'layout' and isinstance(engine, ConstrainedLayoutEngine):
         w_pad, h_pad = engine.get()['w_pad'], engine.get()['h_pad']
-    elif isinstance(pad_inches, Real) and not isinstance(pad_inches, bool):
+    elif isinstance(pad_inches, Real):
         w_pad = h_pad = pad_inches
     else:
         w_pad = h_pad = matplotlib.rcParams['savefig.pad_inches']

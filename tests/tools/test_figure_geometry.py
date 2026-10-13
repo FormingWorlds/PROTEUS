@@ -280,16 +280,18 @@ def test_pad_of_the_save_call_reaches_the_measurement():
     assert table['cut_off'] == [(-1, 'text', 'not in layout')]
     matplotlib.rcParams['savefig.pad_inches'] = 3.0
     assert geom.measure(fig, bbox_inches='tight', pad_inches='layout')['cut_off'] == []
-    # A numpy number and a whole number are pads too; True is not the number 1
+    # A numpy number and a whole number are pads too; True is 1 inch, as `savefig` takes it
     for pad in (np.float32(3.0), np.int64(3), 3):
         assert geom.measure(fig, bbox_inches='tight', pad_inches=pad)['cut_off'] == []
     near, _ = _line_figure()
     near.text(0.9, 0.5, 'x').set_in_layout(False)
     matplotlib.rcParams['savefig.pad_inches'] = 0.0
-    assert geom.measure(near, bbox_inches='tight', pad_inches=1.0)['cut_off'] == []
-    assert geom.measure(near, bbox_inches='tight', pad_inches=True)['cut_off'] == [
+    assert geom.measure(near, bbox_inches='tight', pad_inches=True)['cut_off'] == []
+    assert geom.measure(near, bbox_inches='tight', pad_inches=False)['cut_off'] == [
         (-1, 'text', 'x')
     ]
+    matplotlib.rcParams['savefig.pad_inches'] = 1.0
+    assert len(geom.measure(near, bbox_inches='tight', pad_inches=False)['cut_off']) == 1
 
 
 def test_layout_pad_of_a_constrained_layout_sets_the_saved_area():
@@ -305,3 +307,28 @@ def test_layout_pad_of_a_constrained_layout_sets_the_saved_area():
     assert geom.measure(fig, bbox_inches='tight')['cut_off'] == [(-1, 'text', 'edge')]
     fig.set_layout_engine('none')
     assert len(geom.measure(fig, bbox_inches='tight', pad_inches='layout')['cut_off']) == 1
+
+
+def test_scatter_point_that_its_axes_clips_covers_nothing():
+    """A scatter point beyond the view limits counts under a legend only with the clip off."""
+    fig, ax = _line_figure()
+    ax.lines[0].remove()
+    points = ax.scatter([1.25], [0.5])
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    ax.plot([], [], label='entry')
+    ax.legend(loc='center left', bbox_to_anchor=(1.02, 0.5), title='Outside')
+    assert geom.measure(fig)['covered'] == []
+    points.set_clip_on(False)
+    assert geom.measure(fig)['covered'] == [(0, 'legend', 'Outside', 1)]
+    # The points of a hidden axes are not drawn, so they are no data
+    ax.set_visible(False)
+    other = fig.add_axes([0.05, 0.05, 0.1, 0.1])
+    other.plot([], [], label='entry')
+    other.legend(loc='center', bbox_to_anchor=(9.5, 4.5), title='Over the hidden axes')
+    assert geom.measure(fig)['covered'] == []
+    ax.set_visible(True)
+    assert [row[:3] for row in geom.measure(fig)['covered']] == [
+        (0, 'legend', 'Outside'),
+        (1, 'legend', 'Over the hidden axes'),
+    ]

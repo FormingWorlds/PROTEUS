@@ -21,7 +21,8 @@ from __future__ import annotations
 import argparse
 import importlib.metadata
 import importlib.util
-import shutil
+import os
+import re
 import sys
 import tempfile
 import tomllib
@@ -72,6 +73,8 @@ def _entry_fault(fig) -> str | None:
     fault = _table_fault(fig, ENTRY_TYPES)
     if fault:
         return fault
+    if '/' in fig['id'] or not _plain(fig['id']) or not _plain(fig['page']):
+        return '`id` must be a name and `page` a path under the pages folder'
     kind = fig['maker'].rpartition(':')[0]
     if not kind:
         return f'maker `{fig["maker"]}` is not `<kind>:<name>`'
@@ -120,6 +123,8 @@ def load_manifest(path: Path) -> dict:
         raise FigureError(f'{path.name}: {fault}')
     if not 1 <= manifest['avif_quality'] <= 100:
         raise FigureError(f'{path.name}: `avif_quality` must be from 1 to 100')
+    if not re.fullmatch(r'\d+(\.\d+)*', manifest['proteus_mpl']):
+        raise FigureError(f'{path.name}: `proteus_mpl` must be a version such as 1.3.0')
     manifest.setdefault('exempt_pages', [])
     if not all(isinstance(name, str) for name in manifest['exempt_pages']):
         raise FigureError(f'{path.name}: `exempt_pages` must list page names')
@@ -289,23 +294,29 @@ def _draw_variant(fig: dict, variant: str, run_dirs: list[Path], work: Path, pla
 
 
 def _write_entry(fig: dict, drawn: list, out_root: Path, quality: int) -> None:
-    """Encode every drawn variant of an entry, then put the AVIF files into place.
+    """Encode every drawn variant next to its target, then put the AVIF files into place.
 
     A failure of an encode leaves the files in `out_root` as they were.
     """
     from PIL import Image
 
     staged = []
-    for variant, png in drawn:
-        with Image.open(png) as image:
-            image.convert('RGB').save(png.with_suffix('.avif'), 'AVIF', quality=quality)
-            size = f'{image.size[0]} x {image.size[1]} px'
-        target = out_root / f'{fig["asset"]}{SUFFIX[variant]}.avif'
-        staged.append((png.with_suffix('.avif'), target))
-        print(f'{fig["id"]} {variant}: {size} -> {target}')
-    for encoded, target in staged:
-        target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.move(encoded, target)
+    try:
+        for variant, png in drawn:
+            target = out_root / f'{fig["asset"]}{SUFFIX[variant]}.avif'
+            target.parent.mkdir(parents=True, exist_ok=True)
+            part = target.with_name(target.name + '.part')
+            with Image.open(png) as image:
+                staged.append(
+                    (f'{variant}: {image.size[0]} x {image.size[1]} px', part, target)
+                )
+                image.convert('RGB').save(part, 'AVIF', quality=quality)
+        for label, part, target in staged:
+            os.replace(part, target)
+            print(f'{fig["id"]} {label} -> {target}')
+    finally:
+        for _, part, _ in staged:
+            part.unlink(missing_ok=True)
 
 
 def _tree_state(run_dirs: list[Path]) -> dict:

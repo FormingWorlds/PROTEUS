@@ -171,6 +171,16 @@ def test_manifest_fills_the_defaults_of_an_entry(tmp_path):
         ({}, [_entry(runs=None)], 'figure fig_a: has no `runs`'),
         ({}, [_entry(id=None)], 'figure ?: has no `id`'),
         ({}, [_entry(id=['fig_a'])], '`id` must be a string'),
+        (
+            {},
+            [_entry(id='a/b')],
+            '`id` must be a name and `page` a path under the pages folder',
+        ),
+        ({}, [_entry(id='..')], '`id` must be a name and `page` a path under the pages folder'),
+        ({}, [_entry(page='./page_a.md')], '`id` must be a name and `page` a path under'),
+        ({}, [_entry(page='../page_a.md')], '`id` must be a name and `page` a path under'),
+        ({'proteus_mpl': 'abc'}, None, '`proteus_mpl` must be a version such as 1.3.0'),
+        ({'proteus_mpl': '1.3.'}, None, '`proteus_mpl` must be a version such as 1.3.0'),
         ({}, [_entry(page=3)], '`page` must be a string'),
         ({}, [_entry(asset=3)], '`asset` must be a string'),
         ({}, [_entry(maker=3)], '`maker` must be a string'),
@@ -421,7 +431,7 @@ def test_failure_of_the_second_encode_leaves_the_committed_pair(site, monkeypatc
     real_save = Image.Image.save
 
     def save(self, target, *args, **kwargs):
-        if str(target).endswith('.avif') and 'dark' in Path(target).parent.name:
+        if '_dark.avif' in Path(target).name:
             raise OSError('no space left')
         return real_save(self, target, *args, **kwargs)
 
@@ -430,6 +440,7 @@ def test_failure_of_the_second_encode_leaves_the_committed_pair(site, monkeypatc
         tool.make_figures(_manifest(site.toml), site.runs)
     assert (assets / 'fig_a.avif').read_bytes() == b'placeholder'
     assert (assets / 'fig_a_dark.avif').read_bytes() == b'placeholder'
+    assert sorted(p.name for p in assets.iterdir()) == ['fig_a.avif', 'fig_a_dark.avif']
     monkeypatch.setattr(Image.Image, 'save', real_save)
     assert tool.make_figures(_manifest(site.toml), site.runs) == 0
     assert all(len((assets / n).read_bytes()) > 100 for n in ('fig_a.avif', 'fig_a_dark.avif'))
