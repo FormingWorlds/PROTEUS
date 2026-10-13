@@ -93,17 +93,29 @@ chemistry` is `#run-offline-chemistry`). The build replaces each with a
 `############### /` banner, or a comment and the statement after it. A target
 has to match exactly once, so a renamed banner or function fails loudly.
 
-When `proteus.py` or a linked module changes, refresh the ranges in the two
-committed SVGs without rebuilding the figure:
+Line numbers are never maintained by hand. The documentation deploy
+(`.github/workflows/docs.yaml`) runs
 
 ```bash
-python3 tools/figures/code_links.py
+python tools/figures/code_links.py --commit "$GITHUB_SHA"
 ```
 
-PR CI runs `python tools/figures/code_links.py --check`, which fails when a
-range no longer matches the code or a link still carries a hard-coded `#L`
-anchor. `--ref <git ref>` resolves against another revision instead of the work
-tree.
+before building the site, which resolves every target against the commit being
+published and links to that commit (`blob/<sha>/...#L<first>-L<last>`). The
+published diagram therefore always points at the right lines, however much the
+code has moved, and a link opened later still shows the code it was made for.
+A target that no longer resolves falls back to a link to the file, with a
+warning in the deploy log, so the deploy never fails on it.
+
+PR CI runs `python tools/figures/code_links.py --check`, which fails only when a
+target no longer resolves exactly once (a renamed banner, comment or function),
+or when a link carries a hard-coded `#L` anchor. Moving code around does not fail
+it. Renaming a linked banner or function means updating the link in draw.io and
+`arch_final.json` in the same pull request.
+
+Running `python3 tools/figures/code_links.py` without options refreshes the
+`blob/main` ranges in the committed SVGs, for viewing them straight from the
+repository.
 
 ## Module schematic
 

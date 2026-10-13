@@ -802,7 +802,7 @@ jobs:
       - name: Version badge tables current
         run: python tools/generate_version_badges.py --check
 
-      - name: Architecture diagram code links current
+      - name: Architecture diagram code links resolve
         run: python tools/figures/code_links.py --check
 
       - name: Nav targets exist and markers balanced
