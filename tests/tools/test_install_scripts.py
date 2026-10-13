@@ -5376,3 +5376,113 @@ def test_pinned_clone_at_pin_reports_at_the_pinned_commit(tmp_path):
     assert res.returncode == 0, res.stdout + res.stderr
     assert f'TestModule: {folder} is at the pinned commit {sha[:8]}' in res.stdout
     assert 'stays as it is' not in res.stdout
+
+
+@pytest.mark.unit
+def test_morrigan_failed_pip_in_new_clone_leaves_folder(tmp_path):
+    """Verify failing pip in a new Morrigan clone exits 1 and leaves folder in place."""
+    pyproject = (
+        '[project]\nname = "fixture"\ndependencies = []\n'
+        '[project.optional-dependencies]\nmorrigan = ["fwl-morrigan>=26.4.22"]\n'
+    )
+    site = _floor_tag_site(tmp_path, pyproject, {'Morrigan': '26.04.22'})
+    _write_stub(tmp_path / 'stubs', 'pip', '#!/bin/sh\nexit 1\n')
+    res = _run_tool(site, 'get_morrigan.sh')
+    assert res.returncode == 1
+    assert 'ERROR: editable install failed' in res.stderr
+    clone = site['root'] / 'Morrigan'
+    assert clone.is_dir()
+    assert (clone / 'version.txt').exists()
+
+
+@pytest.mark.unit
+def test_morrigan_second_call_after_failed_pip_exits_1(tmp_path):
+    """Verify second Morrigan call after failed pip reports release tag and exits 1."""
+    pyproject = (
+        '[project]\nname = "fixture"\ndependencies = []\n'
+        '[project.optional-dependencies]\nmorrigan = ["fwl-morrigan>=26.4.22"]\n'
+    )
+    site = _floor_tag_site(tmp_path, pyproject, {'Morrigan': '26.04.22'})
+    _write_stub(tmp_path / 'stubs', 'pip', '#!/bin/sh\nexit 1\n')
+    res1 = _run_tool(site, 'get_morrigan.sh')
+    assert res1.returncode == 1
+    clone = site['root'] / 'Morrigan'
+    assert clone.is_dir()
+    res2 = _run_tool(site, 'get_morrigan.sh')
+    assert res2.returncode == 1
+    assert f'fwl-morrigan: {clone} is at the release tag 26.04.22' in res2.stdout
+    assert f'ERROR: pip could not install {clone} (its message is above)' in res2.stderr
+    assert clone.is_dir()
+
+
+@pytest.mark.unit
+def test_vulcan_failed_pip_in_new_clone_leaves_folder(tmp_path):
+    """Verify failing pip in a new VULCAN clone exits 1 and leaves folder in place."""
+    pyproject = (
+        '[project]\nname = "fixture"\ndependencies = []\n'
+        '[project.optional-dependencies]\nvulcan = ["fwl-vulcan>=26.4.22"]\n'
+    )
+    site = _floor_tag_site(tmp_path, pyproject, {'VULCAN': '26.04.22'})
+    _write_stub(tmp_path / 'stubs', 'pip', '#!/bin/sh\nexit 1\n')
+    res = _run_tool(site, 'get_vulcan.sh')
+    assert res.returncode == 1
+    assert 'ERROR: editable install failed' in res.stderr
+    clone = site['root'] / 'VULCAN'
+    assert clone.is_dir()
+    assert (clone / 'fastchem_vulcan').is_dir()
+
+
+@pytest.mark.unit
+def test_vulcan_second_call_after_failed_pip_exits_1(tmp_path):
+    """Verify second VULCAN call after failed pip reports release tag and exits 1."""
+    pyproject = (
+        '[project]\nname = "fixture"\ndependencies = []\n'
+        '[project.optional-dependencies]\nvulcan = ["fwl-vulcan>=26.4.22"]\n'
+    )
+    site = _floor_tag_site(tmp_path, pyproject, {'VULCAN': '26.04.22'})
+    _write_stub(tmp_path / 'stubs', 'pip', '#!/bin/sh\nexit 1\n')
+    res1 = _run_tool(site, 'get_vulcan.sh')
+    assert res1.returncode == 1
+    clone = site['root'] / 'VULCAN'
+    assert clone.is_dir()
+    res2 = _run_tool(site, 'get_vulcan.sh')
+    assert res2.returncode == 1
+    assert f'fwl-vulcan: {clone} is at the release tag 26.04.22' in res2.stdout
+    assert f'fwl-vulcan: the build step ran in the existing folder {clone}' in res2.stdout
+    assert f'ERROR: pip could not install {clone} (its message is above)' in res2.stderr
+    assert clone.is_dir()
+
+
+@pytest.mark.unit
+def test_vulcan_failed_fastchem_make_in_new_clone_leaves_no_folder(tmp_path):
+    """Verify failing fastchem make in a new VULCAN clone exits 1 and leaves no folder."""
+    pyproject = (
+        '[project]\nname = "fixture"\ndependencies = []\n'
+        '[project.optional-dependencies]\nvulcan = ["fwl-vulcan>=26.4.22"]\n'
+    )
+    site = _floor_tag_site(tmp_path, pyproject, {'VULCAN': '26.04.22'})
+    _write_stub(tmp_path / 'stubs', 'make', '#!/bin/sh\nexit 2\n')
+    res = _run_tool(site, 'get_vulcan.sh')
+    assert res.returncode == 1
+    assert 'ERROR: fastchem build failed' in res.stderr
+    assert not (site['root'] / 'VULCAN').exists()
+    assert not any(p.name.startswith('VULCAN.tmp') for p in site['root'].iterdir())
+    assert site['log'].read_text() == ''
+
+
+@pytest.mark.unit
+def test_atmodeller_second_call_after_failed_pip_exits_1(tmp_path):
+    """Verify second atmodeller call after failed pip reports pinned commit and exits 1."""
+    site = _atmodeller_site(tmp_path)
+    _write_stub(site['stubs'], 'pip', '#!/bin/sh\nexit 1\n')
+    res1 = _run_tool(site, 'get_atmodeller.sh')
+    assert res1.returncode == 1
+    clone = site['root'] / 'Atmodeller'
+    assert clone.is_dir()
+    res2 = _run_tool(site, 'get_atmodeller.sh')
+    assert res2.returncode == 1
+    assert (
+        f'atmodeller: {clone} is at the pinned commit {site["target_sha"][:8]}' in res2.stdout
+    )
+    assert f'ERROR: pip could not install {clone} (its message is above)' in res2.stderr
+    assert clone.is_dir()
