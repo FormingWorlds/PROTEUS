@@ -140,6 +140,13 @@ def _contrast(a, b):
     return (max(lum) + 0.05) / (min(lum) + 0.05)
 
 
+def _visible_alpha(colour, alpha):
+    """``alpha``, or at least 0.8 where the colour at ``alpha`` comes close to the surface."""
+    surface = np.array(style_neutral(1))
+    blend = alpha * np.array(to_rgb(colour)) + (1 - alpha) * surface
+    return alpha if _contrast(tuple(blend), style_neutral(1)) >= 1.5 else max(alpha, 0.8)
+
+
 def _bar_edges(colour, is_run):
     """Edge colours of a row of bars: the text colour for the current run; for a
     model the surface colour, or mid grey where the fill is close to the surface."""
@@ -517,7 +524,7 @@ def plot_fig2(intercomp, pe, NS, grid_dir=None):
                         marker='o',
                         linestyle=st.get('ls', '-'),
                         color=st['color'],
-                        alpha=C_ALPHAS[cl],
+                        alpha=_visible_alpha(st['color'], C_ALPHAS[cl]),
                         markersize=6,
                         linewidth=st.get('lw', 1.2),
                         label=label,
@@ -904,7 +911,7 @@ def plot_fig4(intercomp, pe, NS):
                 edgecolor=ec,
                 linewidth=ew,
             )
-            if r == 'atm' and h_vals[i] > 0:
+            if r == 'atm' and h_vals[i] > 0.1 * ylim_top:
                 ax.text(
                     x[i] - width / 2,
                     h_vals[i] * 0.35,
@@ -915,7 +922,7 @@ def plot_fig4(intercomp, pe, NS):
                     fontweight='bold',
                     color=_text_on(h_color),
                 )
-            if r == 'atm' and c_vals[i] > 0:
+            if r == 'atm' and c_vals[i] > 0.1 * ylim_top:
                 ax.text(
                     x[i] + width / 2,
                     c_vals[i] * 0.35,
@@ -974,13 +981,13 @@ def plot_fig6(intercomp, pv, NS):
     ax_abs, ax_rel = axes
 
     T_ref = np.linspace(1400, 4000, 200)
-    grey = style_neutral(FADE_MID_GREY)
+    ink = style_neutral()
     for ls, iw, label in (
         (':', _iw_fischer11, 'Fischer+11'),
         ('--', _iw_oneill02, "O'Neill+02"),
     ):
-        ax_abs.plot(T_ref, iw(T_ref), ls, color=grey, linewidth=1.5, label=label)
-    ax_rel.axhline(0, color=grey, linestyle='--', linewidth=1.0)
+        ax_abs.plot(T_ref, iw(T_ref), ls, color=ink, linewidth=1.5, label=label)
+    ax_rel.axhline(0, color=ink, linestyle='--', linewidth=1.0)
 
     for mk, st in MODELS.items():
         df = _load_chili_csv(intercomp / mk / f'evolution-{mk}-venus-data.csv')
@@ -1649,17 +1656,16 @@ def make_figure(
         For an unknown ``fig_id``, for Figure 5 without model and run data and
         for the grid figure without ``grid_dir``.
     """
-    NS = _new_style(_get_proteus_sha(*map(Path, run_dirs)))
+    grid = Path(grid_dir) if grid_dir else None
+    known = _figures(None, None, None, None, grid)
+    if fig_id == 'chili_grid_solidification' and grid is None:
+        raise ValueError(f'figure {fig_id!r} needs grid_dir')
+    if fig_id not in known:
+        raise ValueError(f'unknown figure {fig_id!r}; known: {", ".join(known)}')
+    NS = _new_style(_get_proteus_sha(*(Path(run) for run in run_dirs if run)))
     pe = _load_proteus_helpfile(Path(earth)) if earth else None
     pv = _load_proteus_helpfile(Path(venus)) if venus else None
-    figs = _figures(
-        ensure_chili_repo(Path(chili_repo)), pe, pv, NS, Path(grid_dir) if grid_dir else None
-    )
-    if fig_id == 'chili_grid_solidification' and not grid_dir:
-        raise ValueError(f'figure {fig_id!r} needs grid_dir')
-    if fig_id not in figs:
-        raise ValueError(f'unknown figure {fig_id!r}; known: {", ".join(figs)}')
-    fig = figs[fig_id]()
+    fig = _figures(ensure_chili_repo(Path(chili_repo)), pe, pv, NS, grid)[fig_id]()
     if fig is None:
         raise ValueError(f'no data for figure {fig_id!r}')
     try:
