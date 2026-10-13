@@ -1980,11 +1980,13 @@ def test_get_lavatmos_version_returns_unknown_without_lava_dir():
 
 
 @pytest.mark.unit
-def test_get_petitradtrans_version_reads_installed_package_metadata():
+def test_get_petitradtrans_version_reads_installed_package_metadata(monkeypatch):
     """_get_petitradtrans_version reads the installed package version without
     importing petitRADTRANS itself."""
     from proteus.utils.coupler import _get_petitradtrans_version
 
+    # Start without the package in sys.modules, whatever ran before this test.
+    monkeypatch.delitem(sys.modules, 'petitRADTRANS', raising=False)
     with patch('importlib.metadata.version', return_value='2.7.7') as mock_version:
         version = _get_petitradtrans_version()
 
@@ -2006,10 +2008,11 @@ def test_get_petitradtrans_version_returns_unknown_without_package():
     with patch(
         'importlib.metadata.version',
         side_effect=PackageNotFoundError('petitRADTRANS'),
-    ):
+    ) as mock_version:
         version = _get_petitradtrans_version()
 
     assert version == 'unknown (petitRADTRANS not installed)'
+    assert [c.args for c in mock_version.call_args_list] == [('petitRADTRANS',)]
 
 
 @pytest.mark.unit
@@ -3678,6 +3681,8 @@ def test_print_module_configuration_logs_versions_for_spider_agni_stack(monkeypa
         return '4.5.6'
 
     monkeypatch.setattr('importlib.metadata.version', _fake_petitradtrans_version)
+    # A None entry makes any `import petitRADTRANS` raise ImportError.
+    monkeypatch.setitem(sys.modules, 'petitRADTRANS', None)
 
     with patch('proteus.utils.coupler.log') as mock_log:
         print_module_configuration(dirs, config, '/tmp/cfg.toml')
