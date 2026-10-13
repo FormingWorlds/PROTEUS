@@ -20,7 +20,35 @@ both, and each label takes the ink that contrasts with the surface it sits on.
 Label positions are stored as measured baselines, so the line breaking is fixed
 in the model rather than left to the typesetter.
 
-To change the diagram, edit `arch_final.json`:
+### Updating from draw.io
+
+The model can be regenerated from a draw.io SVG export of the diagram, so the
+usual way to change the figure is to edit it in draw.io:
+
+1. In draw.io, export the light-mode diagram as SVG (File > Export as > SVG,
+   with "Embed images" on and "Convert labels to SVG" off) and, if the logo
+   changed, the dark-mode export as well.
+2. Regenerate the model and rebuild:
+
+```bash
+python3 tools/figures/extract_drawio.py path/to/export.svg tools/figures/arch_final.json \
+    --logo-dark path/to/dark_logo.png
+bash tools/figures/build_architecture.sh
+```
+
+`extract_drawio.py` renders the export in headless Chromium (Playwright) and
+measures every label line there, so line breaks match draw.io. It maps the
+draw.io colours to the model palette through its `PALETTE` table; a shape in a
+new colour passes through unchanged and needs an entry there (and, if it is a
+neutral, one in `DARK_MAP` in `gen_tikz.py`). Labels keep their italics and
+subscripts from the draw.io HTML. The embedded logo is written to
+`img/arch_light_img00.png`; `--logo-dark` takes the PNG for the dark variant.
+Never commit the draw.io export itself to `docs/assets/`: the build overwrites
+those two files.
+
+### Editing the model by hand
+
+To change the diagram without draw.io, edit `arch_final.json`:
 
 - shapes are `rect` (rounded rectangles, `rx` is the corner radius) and `path`
   (hexagons, the decision rhombus, the archive parallelogram, and every edge),
