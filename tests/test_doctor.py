@@ -117,11 +117,11 @@ def test_git_modules_excludes_standard_git_modules():
 
 
 @pytest.mark.unit
-def test_standard_distributions_matches_standard_module_packages():
+def test_standard_distributions_matches_standard_module_packages(tmp_path):
     """_STANDARD_DISTRIBUTIONS maps the 3 standard modules to their distribution packages."""
     assert set(_STANDARD_DISTRIBUTIONS.values()) == {'fwl-morrigan', 'fwl-vulcan', 'atmodeller'}
     assert set(_STANDARD_DISTRIBUTIONS.values()) == set(STANDARD_MODULE_PACKAGES)
-    assert is_standard_module_installed('NoSuchModule') is False
+    assert is_standard_module_installed('NoSuchModule', tmp_path) is False
 
 
 @pytest.mark.unit
@@ -2018,13 +2018,17 @@ class TestCheckGitModuleStandard:
     def test_obliqua_in_outer_repo_without_own_clone_reports_mark(self, tmp_path):
         """A non-clone Obliqua directory in a git repo does not read the outer repo commit."""
         _init_test_repo(tmp_path)
-        obliqua_dir = tmp_path / 'Obliqua'
+        obliqua_dir = tmp_path / 'Obliqua Copy'
         obliqua_dir.mkdir()
         (obliqua_dir / 'Project.toml').write_text('version = "0.1.0"\n')
         (obliqua_dir / 'Manifest.toml').touch()
+        root = tmp_path / 'repo'
         outer_head = _git_head(str(tmp_path))
         pins = {'obliqua': {'ref': '0' * 40}}
-        with patch('proteus.doctor._module_pins', return_value=pins):
+        with (
+            patch('proteus.doctor._module_pins', return_value=pins),
+            patch('proteus.doctor._repo_root', return_value=root),
+        ):
             r = check_git_module('Obliqua', {'obliqua': str(obliqua_dir)}, required=False)
         assert r.status == WARN
         assert (
@@ -2033,10 +2037,10 @@ class TestCheckGitModuleStandard:
         )
         assert outer_head[:8] not in r.message
         assert 'differs from pin' not in r.message
-        assert 'move ' in r.fix_cmd
-        assert shlex.quote(str(obliqua_dir)) in r.fix_cmd
-        assert 'bash tools/get_obliqua.sh' in r.fix_cmd
-        assert '--force' not in r.fix_cmd
+        assert r.fix_cmd == (
+            f'move {shlex.quote(str(obliqua_dir))} away or delete it, then run: '
+            f'cd {shlex.quote(str(root))} && bash tools/get_obliqua.sh'
+        )
         assert r.auto_fixable is False
 
     def test_obliqua_in_outer_repo_missing_manifest_carries_mark(self, tmp_path):
@@ -2086,14 +2090,16 @@ class TestCheckGitModuleStandard:
     def test_agni_in_outer_repo_without_own_clone_warns_cannot_compare_pin(self, tmp_path):
         """A populated non-clone AGNI folder in a git repo warns that commit cannot be compared."""
         _init_test_repo(tmp_path)
-        agni_dir = tmp_path / 'AGNI'
+        agni_dir = tmp_path / 'AGNI Copy'
         agni_dir.mkdir()
         (agni_dir / 'Project.toml').write_text('version = "1.13.0"\n')
+        root = tmp_path / 'repo'
         outer_head = _git_head(str(tmp_path))
         pins = {'agni': {'ref': 'a' * 40}}
         with (
             patch('proteus.doctor._module_pins', return_value=pins),
             patch('proteus.doctor._get_agni_version', return_value='1.13.0'),
+            patch('proteus.doctor._repo_root', return_value=root),
         ):
             r = check_git_module('AGNI', {'agni': str(agni_dir)}, required=True)
         assert r.status == WARN
@@ -2102,26 +2108,30 @@ class TestCheckGitModuleStandard:
             == '1.13.0 [not a git clone of its own]: the commit cannot be compared with the pin'
         )
         assert outer_head[:8] not in r.message
-        assert 'move ' in r.fix_cmd
-        assert shlex.quote(str(agni_dir)) in r.fix_cmd
-        assert 'bash tools/get_agni.sh' in r.fix_cmd
+        assert r.fix_cmd == (
+            f'move {shlex.quote(str(agni_dir))} away or delete it, then run: '
+            f'cd {shlex.quote(str(root))} && bash tools/get_agni.sh'
+        )
         assert r.auto_fixable is False
 
     def test_socrates_without_own_clone_warns_and_names_rad_dir(self, tmp_path, monkeypatch):
         """A populated non-clone SOCRATES folder warns and includes RAD_DIR in the fix command."""
-        socrates_dir = tmp_path / 'socrates'
+        socrates_dir = tmp_path / 'socrates copy'
         socrates_dir.mkdir()
         (socrates_dir / 'version').write_text('24.07\n')
+        root = tmp_path / 'repo'
         monkeypatch.setenv('RAD_DIR', str(socrates_dir))
-        with patch('proteus.doctor._get_socrates_version', return_value='24.07'):
+        with (
+            patch('proteus.doctor._get_socrates_version', return_value='24.07'),
+            patch('proteus.doctor._repo_root', return_value=root),
+        ):
             r = check_git_module('SOCRATES', {}, required=True)
         assert r.status == WARN
         assert r.message.endswith(': the commit cannot be compared with the pin')
-        assert 'move ' in r.fix_cmd
-        assert shlex.quote(str(socrates_dir)) in r.fix_cmd
-        assert (
+        assert r.fix_cmd == (
+            f'move {shlex.quote(str(socrates_dir))} away or delete it, then run: '
+            f'cd {shlex.quote(str(root))} && '
             'bash tools/get_socrates.sh "$RAD_DIR" && RAD_DIR="$RAD_DIR" bash tools/get_agni.sh 0'
-            in r.fix_cmd
         )
         assert r.auto_fixable is False
 

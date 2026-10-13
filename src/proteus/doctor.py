@@ -1155,18 +1155,17 @@ _STANDARD_DISTRIBUTIONS = {
 }
 
 
-def is_standard_module_installed(name: str, root: Path | str | None = None) -> bool:
+def is_standard_module_installed(name: str, root: Path | str) -> bool:
     """Return whether a standard module is installed.
 
     Delegates to the doctor's installation rules: package discovery for
-    Morrigan, VULCAN and atmodeller, and directory population for Obliqua.
+    Morrigan, VULCAN and atmodeller, and directory population for Obliqua
+    under the PROTEUS repository root ``root``.
     """
     key = name.lower()
     if key in _STANDARD_DISTRIBUTIONS:
         return _installed_version(_STANDARD_DISTRIBUTIONS[key]) is not None
     if key == 'obliqua':
-        if root is None:
-            root = _repo_root()
         path = str(Path(root) / 'Obliqua')
         return _is_git_module_present(path)
     return False
