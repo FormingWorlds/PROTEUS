@@ -267,7 +267,8 @@ def observable_correlation(config: dict) -> dict | None:
 
     Raises:
         ValueError: If `correlate_ratios` is not a bool, or is true together with
-            `[correlation]`, or with no ratio observables.
+            `[correlation]`, with no ratio observables, or with ratio sigmas that
+            differ in dex by more than 1 %.
     """
     correlate_ratios = config.get('correlate_ratios', False)
     if not isinstance(correlate_ratios, bool):
@@ -283,6 +284,18 @@ def observable_correlation(config: dict) -> dict | None:
     if not composition:
         raise ValueError(
             "correlate_ratios = true but no observable is a ratio such as 'C/O_atm'"
+        )
+    # Equal element errors give every ratio the same dex error; sigma is linear here.
+    # 1 % lets rounded linear sigmas through and moves a coefficient by about as much.
+    dex = {
+        k: config['sigma'][k] / (config['observables'][k] * math.log(10.0)) for k in composition
+    }
+    if not math.isclose(min(dex.values()), max(dex.values()), rel_tol=0.01):
+        shown = ', '.join(f'{k}: {v:.3g} dex' for k, v in dex.items())
+        raise ValueError(
+            'correlate_ratios = true assumes the same dex error for every element, so all '
+            f'ratios need the same dex sigma, got {shown}; give equal sigmas, or the '
+            'coefficients in [correlation]'
         )
     correlation = ratio_correlation(composition)
     if correlation:

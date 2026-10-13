@@ -80,7 +80,7 @@ patience   = 0                                    # Stop after this many evaluat
 # "g_obs" = -0.4
 
 # Or, derive the correlations of the abundance-ratio observables (e.g. "C/O_atm") from the elements they share,
-# assuming the same dex error for every element. Needs [sigma].
+# assuming the same dex error for every element. Needs [sigma], equal in dex for every ratio.
 # correlate_ratios = true
 
 # Optional true value of each parameter, when the observables above came from a simulation with known parameters.

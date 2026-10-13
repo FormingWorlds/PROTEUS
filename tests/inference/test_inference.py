@@ -570,7 +570,8 @@ def test_run_inference_rejects_a_bad_table_before_emptying_output(
 def test_run_inference_validates_and_derives_correlation_tables(monkeypatch, tmp_path, caplog):
     """A correlation needs sigma and coefficients in (-1, 1); ``correlate_ratios``
     derives the table from the ratio names instead, and refuses to run without
-    sigma, next to an explicit table, or with no ratio to correlate.
+    sigma, next to an explicit table, with no ratio to correlate, or with ratio
+    sigmas that differ in dex.
     """
     config, previous = _validation_study(
         monkeypatch, tmp_path, observables=_THREE_OBS, correlation={'R_obs': {'T_obs': 0.5}}
@@ -590,7 +591,13 @@ def test_run_inference_validates_and_derives_correlation_tables(monkeypatch, tmp
         **config,
         'ref_config': BASE_CONFIG,
         'observables': {'R_obs': 6.0e6, 'C/O_atm': 0.62, 'S/O_atm': 0.25, 'O/H_atm': 5.4},
-        'sigma': {'R_obs': 1.0e5, 'C/O_atm': 0.1, 'S/O_atm': 0.05, 'O/H_atm': 0.5},
+        # 0.1 dex each, written linearly to 5 figures as the study configs do.
+        'sigma': {
+            'R_obs': 1.0e5,
+            'C/O_atm': 1.4276e-1,
+            'S/O_atm': 5.7565e-2,
+            'O/H_atm': 1.2434,
+        },
         'correlation': None,
         'correlate_ratios': True,
     }
@@ -601,6 +608,24 @@ def test_run_inference_validates_and_derives_correlation_tables(monkeypatch, tmp
         (
             {'observables': {'R_obs': 6.0e6}, 'sigma': {'R_obs': 1.0e5}},
             'no observable is a ratio',
+        ),
+        # With 0.1 and 0.3 dex, independent element errors allow only rho in [-1/3, 0],
+        # so the derived -0.5 would be impossible.
+        (
+            {
+                'sigma': {
+                    'R_obs': 1.0e5,
+                    'C/O_atm': '0.1 dex',
+                    'S/O_atm': '0.1 dex',
+                    'O/H_atm': '0.3 dex',
+                }
+            },
+            'same dex sigma',
+        ),
+        # Equal linear sigmas are unequal in dex when the ratios differ.
+        (
+            {'sigma': {'R_obs': 1.0e5, 'C/O_atm': 0.1, 'S/O_atm': 0.1, 'O/H_atm': 0.1}},
+            'same dex sigma',
         ),
     ):
         with pytest.raises(ValueError, match=match):
