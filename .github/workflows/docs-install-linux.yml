@@ -2,6 +2,7 @@ name: Install from the docs (Linux)
 
 # Runs the commands of docs/How-to/installation.md (Debian / Ubuntu tab); the
 # deviations are listed in .github/docs-install-linux-substitutions.toml.
+# Outside the page, the data folder of the installer is a cache that both machines share.
 
 on:
   workflow_dispatch:
@@ -43,17 +44,38 @@ jobs:
     steps:
       - name: Prepare the bare image
         # Not part of the page: sudo for its apt command, git for the checkout,
-        # python3 for the tool that reads the page.
+        # python3 for the tool that reads the page, zstd for the data cache.
         if: matrix.container != ''
         run: |
           apt-get update
-          apt-get install -y sudo git python3 ca-certificates
-          echo "Machine preparation outside the page: apt-get install -y sudo git python3 ca-certificates" >> "$GITHUB_STEP_SUMMARY"
+          apt-get install -y sudo git python3 ca-certificates zstd
+          echo "Machine preparation outside the page: apt-get install -y sudo git python3 ca-certificates zstd" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Check out the commit under test
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Restore the data folder of the installer
+        # Not part of the page: the data folder is a cache inside the workspace, so both machines
+        # unpack it at the same place; a run downloads only what the cache lacks. Raise v1 in the
+        # key to replace a cache that lacks files.
+        id: data-cache
+        continue-on-error: true
+        uses: actions/cache/restore@v5
+        with:
+          path: fwl-data-cache
+          key: docs-install-data-v1-${{ hashFiles('.github/data-manifest.yaml', 'src/proteus/data/proteus_manifest.toml') }}
+          restore-keys: |
+            docs-install-data-v1-
+
+      - name: Link the data folder of the installer to the cache
+        env:
+          RESTORED_KEY: ${{ steps.data-cache.outputs.cache-matched-key || 'none' }}
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/fwl-data-cache"
+          ln -sfn "$GITHUB_WORKSPACE/fwl-data-cache" "$HOME/FWL_DATA"
+          echo "Machine preparation outside the page: ~/FWL_DATA is a link to a folder that is restored from a cache (restored key: $RESTORED_KEY) and saved after a complete run." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Print the plan
         shell: bash
@@ -87,6 +109,15 @@ jobs:
           mkdir -p "$GITHUB_WORKSPACE/install-artifacts"
           cd "$HOME"
           bash -e "$RUNNER_TEMP/install_steps.sh" 2>&1 | tee "$GITHUB_WORKSPACE/install-artifacts/install_full.log"
+
+      - name: Save the data folder of the installer
+        # Only after a complete run and without an exact key hit: a partial folder is never saved.
+        if: success() && steps.data-cache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v5
+        with:
+          path: fwl-data-cache
+          key: ${{ steps.data-cache.outputs.cache-primary-key }}
 
       - name: Add the timing table to the summary
         if: always()
