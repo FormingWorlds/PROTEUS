@@ -27,11 +27,14 @@ required for offline use.
 
 ## Physical setup
 
-This case takes its star, orbit, albedo, volatile inventories and initial
-thermal state from Table 2 of the CHILI protocol paper. It departs from that
-table in the oxygen fugacity and in the interior structure, which Zalmoxis
-solves from a core mass fraction instead of the fixed planet radius and core
-radius fraction of the protocol:
+This case takes its orbit, albedo, volatile inventories and initial thermal
+state from Table 2 of the CHILI protocol paper. It departs from the protocol in
+the following points. The oxygen fugacity is IW+2. Zalmoxis solves the interior
+structure from a core mass fraction instead of the fixed planet radius and core
+radius fraction of the protocol. The star follows the Spada tracks with the
+solar spectrum, which gives an instellation of ~1005 W m$^{-2}$ at the
+start, against 920 W m$^{-2}$ in Table 2. Radiogenic heating is on
+(~0.2 W m$^{-2}$), while the baseline cases of the protocol have none:
 
 | Parameter | Value |
 |-----------|-------|
@@ -39,6 +42,8 @@ radius fraction of the protocol:
 | Core mass fraction (CHILI: core radius fraction 0.55) | 0.325 |
 | Stellar mass | 1 M$_\odot$ |
 | Starting stellar age | 50 Myr |
+| Instellation at the start (CHILI: 920 W m$^{-2}$) | ~1005 W m$^{-2}$ |
+| Radiogenic heating (CHILI baseline: none) | On |
 | Semi-major axis | 1 AU |
 | Bond albedo | 0.1 |
 | Oxygen fugacity | IW+2 (CHILI case: IW+4) |
@@ -133,8 +138,8 @@ The surface temperature (c, solid) decreases from ~3300 K to
 orange) tracks above it, starting near 4300 K. The decline slows after
 ~10$^5$ yr, when the melt fraction has dropped to ~0.75 and latent
 heat release buffers the cooling. At termination the net interior and
-atmospheric fluxes have fallen to ~140 W m$^{-2}$ (OLR ~360 W m$^{-2}$),
-approaching balance with the absorbed stellar flux.
+atmospheric fluxes have fallen to ~140 W m$^{-2}$ (OLR ~360 W m$^{-2}$,
+absorbed stellar flux ~230 W m$^{-2}$).
 
 ### Atmospheric evolution (b, d)
 
@@ -197,8 +202,8 @@ to ~0.5%.
 ## Next steps
 
 - **Venus analogue**: Run the Venus tutorial
-  (`input/tutorials/tutorial_venus.toml`) with `planet.mass_tot = 0.815`
-  and `orbit.semimajoraxis = 0.723` to explore the effect of higher
+  (`input/tutorials/tutorial_venus.toml`), which sets `planet.mass_tot = 0.815`
+  and `orbit.semimajoraxis = 0.723`, to explore the effect of higher
   instellation on solidification. The config stops that run at 3 Myr, where
   its mantle is still ~15% molten.
 - **CHILI comparison**: See the
@@ -207,8 +212,8 @@ to ~0.5%.
 - **Volatile sensitivity**: Vary `H_budget` between 1.6$\times$10$^{20}$
   and 1.6$\times$10$^{21}$ kg to explore the effect of hydrogen inventory
   on cooling time.
-- **Reduced mantle**: Set `outgas.fO2_shift_IW = -2` to simulate a
-  reduced mantle producing H$_2$-rich instead of H$_2$O-rich atmospheres.
+- **Reduced mantle**: Set `outgas.fO2_shift_IW = -2` to explore a more
+  reduced mantle.
 
 ---
 

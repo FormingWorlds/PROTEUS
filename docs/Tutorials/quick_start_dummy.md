@@ -22,7 +22,7 @@ settings are:
   $\Phi$ = 1). Volatile budget of 10,000 ppmw H, 1000 ppmw C, 500 ppmw N,
   500 ppmw S.
 - **Star**: fixed solar luminosity (no evolution)
-- **Orbit**: 0.5 AU, negligible tidal heating
+- **Orbit**: 0.5 AU, no tidal heating
 - **Interior structure**: Noack & Lasbleis (2020) [^cite-noack2020] analytical
   scaling laws
 - **Interior energetics**: heat-capacity integrator with prescribed solidus
@@ -87,7 +87,7 @@ series. Key columns:
 | `Phi_global` | 1 | Drops from 1.0 to ~0.003, triggering the solidification stop |
 | `P_surf` | bar | Increases from ~7,000 to ~70,000 as volatiles outgas |
 | `F_atm` | W m$^{-2}$ | Net flux at the top of the atmosphere; decreases as the surface cools |
-| `F_int` | W m$^{-2}$ | Interior heat flux; tracks `F_atm`, a few percent above it as the interior loses heat |
+| `F_int` | W m$^{-2}$ | Interior heat flux; the dummy interior takes the `F_atm` of the step before, so it is a few percent above `F_atm` while the flux falls |
 | `M_planet` | kg | Constant throughout (mass conservation) |
 
 ## What to look for
@@ -103,8 +103,9 @@ series. Key columns:
 
 3. **Energy balance**: the net atmospheric flux `F_atm` (grey line in panel
    a, with the OLR in red just above it) and the interior flux (orange
-   dashed) track each other, with `F_int` slightly above `F_atm` as the
-   interior loses heat. The absorbed stellar flux (blue dashed) is
+   dashed) track each other. `F_int` is slightly above `F_atm` because the
+   dummy interior takes the `F_atm` of the step before, and the flux falls
+   with time. The absorbed stellar flux (blue dashed) is
    constant because the star is fixed.
 
 4. **Mass conservation**: `M_planet` should remain constant within rounding.

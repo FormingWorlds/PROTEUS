@@ -121,8 +121,7 @@ The `plot_spectra` diagnostic produces a two-panel PDF figure:
 
 Both panels overlay the baseline spectrum (black) with all per-species
 removed spectra (coloured by species). The figure is saved to
-`plots/plot_spectra_<source>.pdf` (or `.png` depending on `params.out.plot_fmt`),
-with one file per composition source (`outgas`, `profile`, `offchem`).
+`plots/plot_spectra_profile.pdf` (or `.png` depending on `params.out.plot_fmt`).
 
 <figure markdown="span">
   ![Example synthetic spectrum: transit and eclipse depth with per-species overlays](../assets/example_spectrum.png)

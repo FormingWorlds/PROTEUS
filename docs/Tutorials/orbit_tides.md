@@ -11,9 +11,8 @@ execution of simulations to study the effects of tides on planetary orbits.
 - `FWL_DATA` and `RAD_DIR` environment variables set
 - Spectral files downloaded (`proteus get spectral -n Dayspring -b 48`)
 - Solar spectrum downloaded (`proteus get stellar`)
-- Interior data downloaded, including the PALEOS EOS tables for the
-  structure solver
-  (`proteus get interiordata --config-path input/tutorials/tutorial_earth.toml`)
+- Interior data downloaded, including the EOS tables that SPIDER reads
+  (`proteus get interiordata --config-path input/tutorials/tutorial_earth_moon.toml`)
 
 Reference data is also fetched automatically when `proteus start` runs
 without the `--offline` flag, so the download commands above are only
@@ -105,7 +104,8 @@ The config at `input/tutorials/tutorial_earth_moon.toml` sets:
 - **Interior**: SPIDER solves the mantle energy equation on an 80-node radial
   grid. SPIDER also computes the hydrostatic structure using the
   `MgSiO3_Wolf_Bower_2018_1TPa` EOS tables.
-- **Outgassing**: CALLIOPE partitions H$_2$O, CO$_2$, H$_2$, CH$_4$, and CO
+- **Outgassing**: CALLIOPE partitions the hydrogen, carbon, nitrogen and
+  sulfur volatiles (among them H$_2$O, CO$_2$, CO, H$_2$, CH$_4$ and N$_2$)
   between atmosphere and melt at the fO$_2$ = IW+2 buffer.
 - **Atmosphere**: AGNI solves the radiative-convective equilibrium with
   Dayspring 48-band correlated-k opacities and real-gas corrections.
@@ -126,7 +126,7 @@ from a sample of 8 snapshots.
 
 The config limits the run to 8 &times; 10<sup>5</sup> yr of evolution
 (`params.stop.time.maximum`), so the reference run below ends at that time
-(status: *Completed, target time*), with the mantle still around 22%
+(status: *Completed (target time)*), with the mantle still around 22%
 molten ($\Phi \approx 0.22$) rather than fully solidified. Overall, the 
 time steps are small enough to resolve the tidal evolution, but finer 
 time resolution will substantially reduce the jumping behavior in the tidal heating.
@@ -141,10 +141,11 @@ longer to run.
   1.00 AU and 0 (Obliqua evolves the planet-satellite pair; the star-planet
   orbit is not perturbed by it here), so the planet's orbital period holds at
   365.2563 days while its axial (spin) period lengthens from 4.00 h to
-  7.73 h as the satellite despins it. The satellite's semi-major axis climbs
+  7.73 h. The satellite's semi-major axis climbs
   from ~3.5 to ~24.9 Earth radii over the run, with its orbital and axial spin
-  periods rising together from ~9.1 h to ~172 h (i.e. it stays
-  tidally locked). Its eccentricity, 0.05 at the start, is damped away
+  periods rising together from ~9.1 h to ~172 h (in the plotted time range
+  the two agree to within 0.1%, i.e. it stays tidally locked). Its
+  eccentricity, 0.05 at the start, is damped away
   within the first ~20 yr, before the plotted time range.</figcaption>
 </figure>
 
@@ -175,17 +176,21 @@ longer to run.
   ![Love number spectrum evolution](../assets/orbit/orbit_tides_lovenumber_dark.avif#only-dark){ width="100%" }
   <figcaption><b>Degree-2 Love number spectrum evolution (Obliqua).</b>
   The dominant, almost always populated mode is the semidiurnal (n=2, m=2, k=2) tide;
-  its forcing frequency |&sigma;| decreases from
-  ~6.5 &times; 10<sup>-4</sup> to ~4.3 &times; 10<sup>-4</sup> rad
-  s<sup>-1</sup> as the satellite recedes and despins the planet.
-  Re(k<sub>22</sub>) starts near 0.02 and jumps by more than an order of
+  its forcing frequency |&sigma;| rises from
+  ~4.9 &times; 10<sup>-4</sup> to ~6.5 &times; 10<sup>-4</sup> rad
+  s<sup>-1</sup> in the first ~10<sup>3</sup> yr and then decreases to
+  ~4.3 &times; 10<sup>-4</sup> rad s<sup>-1</sup> as the planet despins.
+  Both panels show magnitudes.
+  Re(k<sub>22</sub>) is near 0.02 at 10<sup>3</sup> yr and jumps by more than an order of
   magnitude to ~1.4 once the forcing frequency first sweeps past a
   normal-mode (seismic) resonance around t &approx; 1.5 &times; 10<sup>5</sup> yr,
   then stays in that resonance-affected regime, mostly between ~0.5 and ~1.4.
   It exceeds the seismic-resonance threshold (Re &gt; 1.5, ringed in red)
-  once, at t &approx; 7.9 &times; 10<sup>5</sup> yr, where it peaks at ~3.7,
-  and it changes sign repeatedly in the last 1.5 &times; 10<sup>4</sup> yr of the
-  run. The magnitude of Im(k<sub>22</sub>) is smallest, 10<sup>-3.5</sup>, near
+  once, at t &approx; 7.9 &times; 10<sup>5</sup> yr, where it peaks at ~3.7.
+  It is negative in 14 snapshots, which get no ring: first at
+  t &approx; 7.2 &times; 10<sup>5</sup> yr, and in 12 of the 14 snapshots of
+  the last 1.5 &times; 10<sup>4</sup> yr of the run, with values down to
+  &minus;3.5. The magnitude of Im(k<sub>22</sub>) is smallest, 10<sup>-3.5</sup>, near
   3.4 &times; 10<sup>5</sup> yr, where the tidal heating has its
   minimum.</figcaption>
 </figure>

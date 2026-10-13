@@ -5,8 +5,8 @@ parameter values using the `proteus grid` command. Grid runs are the standard
 approach for parameter studies, sensitivity analyses, and population synthesis.
 
 It uses the all-dummy base configuration (`input/dummy.toml`), so every case
-runs in seconds without any external solver, and the whole grid finishes in a
-couple of minutes on a laptop. The numbers below are therefore illustrative of
+runs in 20 to 100 s without any external solver, and the whole grid finishes in
+about 8 minutes on a workstation with 8 cases in parallel. The numbers below are therefore illustrative of
 the workflow, not physical predictions; see the caveats at the end.
 
 ## How grids work
@@ -126,11 +126,11 @@ The melt-fraction histories split cleanly by orbital distance:
   <figcaption><strong>Figure 1.</strong> Global melt fraction against time for all 27 cases, coloured by orbital distance. The nine innermost cases (0.03 AU) stay fully molten and stop at energy balance; the cases at 0.122 and 0.5 AU cool through the dotted solidification threshold and stop solidified. Heavier planets (longer tracks) take longer to reach either endpoint.</figcaption>
 </figure>
 
-Each input axis controls a distinct output:
+The final state of each case against the input axes:
 
 <figure markdown="span">
   ![Output parameters across the grid](../assets/tutorials/grid/grid_outputs.avif){ width="100%" }
-  <figcaption><strong>Figure 2.</strong> Final-state outputs across the grid, coloured by planet mass; filled circles solidified, open squares stopped at energy balance. (a) Final melt fraction collapses from 1 (molten, 0.03 AU) to near 0 (solidified) with increasing orbital distance. (b) Final surface temperature: the molten 0.03 AU cases sit near 2960 K, while solidified cases pin to the mantle solidus near 1700 K. (c) Stop time rises with planet mass and, for solidified cases, falls with orbital distance. (d) Final surface pressure scales with the hydrogen budget.</figcaption>
+  <figcaption><strong>Figure 2.</strong> Final-state outputs across the grid, coloured by planet mass; filled circles solidified, open squares stopped at energy balance. (a) Final melt fraction collapses from 1 (molten, 0.03 AU) to near 0 (solidified) with increasing orbital distance. (b) Final surface temperature: the molten 0.03 AU cases sit near 2960 K, while solidified cases pin to the mantle solidus near 1700 K. (c) Stop time rises with planet mass and, for solidified cases, falls with orbital distance. (d) Final surface pressure rises with the hydrogen budget and with the planet mass, and is about 10 times lower in the molten 0.03 AU cases.</figcaption>
 </figure>
 
 In words, for this dummy setup:
@@ -143,9 +143,10 @@ In words, for this dummy setup:
 - **Planet mass sets the timescale.** A more massive planet holds more heat and
   takes longer to solidify (roughly 17, 23, and 30 kyr at 0.5 AU for 0.5, 1.0,
   and 2.0 M_earth).
-- **Hydrogen budget sets the surface pressure.** More hydrogen outgasses a
-  thicker atmosphere (surface pressure scales with `H_budget`), but in this
-  dummy setup it does not change the cooling rate or the thermal endpoint.
+- **Hydrogen budget raises the surface pressure.** More hydrogen outgasses a
+  thicker atmosphere (a factor of 6 in surface pressure from 1000 to 9000 ppmw),
+  but in this dummy setup it does not change the cooling rate or the thermal
+  endpoint.
 
 ## Monitoring progress
 

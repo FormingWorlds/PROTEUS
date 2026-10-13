@@ -6,8 +6,7 @@ variables, and reference data downloads in a single command.
 
 !!! info "Prerequisites"
     - Tested in CI: Linux x86_64 (Ubuntu) and macOS on Apple Silicon. Intel macOS and
-      Linux ARM64 are not tested; the Linux Miniconda commands below download the
-      x86_64 installer.
+      Linux ARM64 are not tested.
     - ~20 GB disk space (conda, Julia, reference data, submodules)
     - Standard command-line tools: `curl`, `wget`, `make`
     - Git
@@ -69,7 +68,8 @@ curl -L -O "https://github.com/conda-forge/miniforge/releases/latest/download/Mi
 bash Miniforge3-$(uname)-$(uname -m).sh
 ```
 
-Open a new terminal afterwards, so that `conda` is on your `PATH`.
+Answer `yes` when the installer asks whether to initialize conda for your
+shell. Open a new terminal afterwards, so that `conda` is on your `PATH`.
 
 !!! note "If you use miniconda"
     Miniconda takes its packages from the Anaconda default channels, and conda
