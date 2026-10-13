@@ -132,19 +132,18 @@ PHI_RELAX = 0.01
 
 
 def _get_proteus_sha(*runs):
-    """Commits that made the runs, from their logs, in argument order; 'unknown' for a log without one."""
+    """Commits that made the run folders, from their logs, in argument order; 'unknown' without one."""
     found = []
     for run in runs:
-        log = run / 'proteus_00.log' if run else None
-        if log is None or not log.is_file():
+        if run is None or not run.is_dir():
             continue
-        shas = re.findall(r'PROTEUS git hash\s+([0-9a-f]{8})', log.read_text(errors='replace'))
+        log = run / 'proteus_00.log'
+        text = log.read_text(errors='replace') if log.is_file() else ''
+        shas = re.findall(r'PROTEUS git hash\s+([0-9a-f]{8})', text)
         if not shas:
             print(f'Warning: no commit in {log}', file=sys.stderr)
-        for sha in shas or ['unknown']:
-            if sha not in found:
-                found.append(sha)
-    return '/'.join(found) or 'unknown'
+        found += shas or ['unknown']
+    return '/'.join(dict.fromkeys(found)) or 'unknown'
 
 
 def _new_style(sha):
@@ -363,7 +362,7 @@ def plot_fig1(intercomp, pe, pv, NS, out):
         )
 
     ax.set_xlabel('Time (Myr)')
-    ax.set_ylabel('Melt fraction (by volume; current PROTEUS runs by mass)')
+    ax.set_ylabel('Melt fraction\n(by volume; current runs by mass)')
     ax.set_xscale('log')
     ax.set_xlim(1e-3, 2e1)
     ax.set_ylim(0, 1.05)
@@ -1039,6 +1038,7 @@ def plot_fig6(intercomp, pv, NS, out):
 
     if pv is not None:
         # O2_bar is the oxygen fugacity of the run, which it sets at T_magma
+        pv = pv[pv['O2_bar'] > 0]
         T = pv['T_magma'].values
         log10_fO2 = np.log10(pv['O2_bar'].values)
         kw = dict(
@@ -1670,7 +1670,12 @@ def main():
     matplotlib.rcParams.update(_PLOT_STYLE)
 
     intercomp = ensure_chili_repo(args.chili_repo)
-    grid_runs = sorted(args.grid_dir.glob('chili_grid_earth_*')) if args.grid_dir else []
+    grid_runs = [
+        args.grid_dir / f'chili_grid_earth_{hl}_{cl}'
+        for hl in GRID_H
+        for cl in C_LEVELS
+        if args.grid_dir
+    ]
     sha = _get_proteus_sha(args.proteus_earth, args.proteus_venus, *grid_runs)
     NS = _new_style(sha)
     pe = _load_proteus_helpfile(args.proteus_earth) if args.proteus_earth else None

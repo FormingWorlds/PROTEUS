@@ -82,15 +82,9 @@ def _run_table() -> pd.DataFrame:
 def test_run_label_names_the_commits_of_the_run_logs_in_argument_order(tool, tmp_path):
     """The label gives the commit of each run log once, in the order of the
     arguments, and takes it from the hash line, not from the version line."""
-    runs = {
-        name: _run_with_log(tmp_path / name, sha)
-        for name, sha in (
-            ('a', 'd0c7f08062bdf08631b61225bad460c6d4e381eb'),
-            ('b', '81e1514466a590a9fd97acea99150ea5d978a751'),
-            ('c', '0a1b2c3d4e5f60718293a4b5c6d7e8f901234567'),
-        )
-    }
-    a, b, c = runs['a'], runs['b'], runs['c']
+    a = _run_with_log(tmp_path / 'a', 'd0c7f08062bdf08631b61225bad460c6d4e381eb')
+    b = _run_with_log(tmp_path / 'b', '81e1514466a590a9fd97acea99150ea5d978a751')
+    c = _run_with_log(tmp_path / 'c', '0a1b2c3d4e5f60718293a4b5c6d7e8f901234567')
 
     assert tool._get_proteus_sha(a, None) == 'd0c7f080'
     assert tool._get_proteus_sha(a, a) == 'd0c7f080'
@@ -127,8 +121,11 @@ def test_run_label_is_unknown_for_a_log_without_a_commit(
     assert tool._get_proteus_sha(run) == 'unknown'
     assert 'no commit in' in capsys.readouterr().err
     assert tool._get_proteus_sha(good, run) == 'd0c7f080/unknown'
-    assert tool._get_proteus_sha(tmp_path / 'empty', None) == 'unknown'
+    assert tool._get_proteus_sha(tmp_path / 'empty', good, run) == 'unknown/d0c7f080'
+    assert 'no commit in' in capsys.readouterr().err
+    assert tool._get_proteus_sha(tmp_path / 'not_a_folder', None, good) == 'd0c7f080'
     assert tool._get_proteus_sha() == 'unknown'
+    assert capsys.readouterr().err == ''
 
 
 def test_figure_1_spans_20_myr_and_names_the_run_commit(tool, tmp_path, figures):
@@ -173,7 +170,6 @@ def test_figure_6_draws_the_o2_fugacity_of_the_run_at_its_magma_temperature(
     ax_abs, ax_rel = figures['chili_fig6_fO2_vs_T'].axes
     curve = [line for line in ax_abs.lines if line.get_label() == 'PROTEUS (x)'][0]
     marker = [line for line in ax_abs.lines if line.get_markersize() == 10][0]
-    assert curve.get_label() == 'PROTEUS (x)'
     assert curve.get_xdata() == pytest.approx(run['T_magma'].values)
     assert curve.get_ydata() == pytest.approx(np.log10(run['O2_bar'].values))
     assert curve.get_xdata() != pytest.approx(run['T_surf'].values)
@@ -182,6 +178,26 @@ def test_figure_6_draws_the_o2_fugacity_of_the_run_at_its_magma_temperature(
     relative = [line for line in ax_rel.lines if line.get_label() == 'PROTEUS (x)'][0]
     expected = np.log10(run['O2_bar'].values) - tool._iw_oneill02(run['T_magma'].values)
     assert relative.get_ydata() == pytest.approx(expected)
+    marker_rel = [line for line in ax_rel.lines if line.get_markersize() == 10][0]
+    assert marker_rel.get_xdata() == pytest.approx([1810.0])
+    assert marker_rel.get_ydata() == pytest.approx([expected[-1]])
+
+
+def test_figure_6_has_no_marker_for_a_run_that_ends_above_6_percent_melt(
+    tool, tmp_path, figures
+):
+    """A run that ends at 6.8% melt, as the Nominal Venus run does, gets a curve
+    and no circular marker; a row without O2 is left out of the curve."""
+    run = _run_table()
+    run['Phi_global'] = [1.0, 0.95, 0.068]
+    run.loc[0, 'O2_bar'] = 0.0
+
+    tool.plot_fig6(_comparison_data(tmp_path / 'data'), run, tool._new_style('x'), tmp_path)
+
+    for ax in figures['chili_fig6_fO2_vs_T'].axes:
+        assert [line for line in ax.lines if line.get_markersize() == 10] == []
+        curve = [line for line in ax.lines if line.get_label() == 'PROTEUS (x)'][0]
+        assert curve.get_xdata() == pytest.approx([3100.0, 1810.0])
 
 
 def test_main_labels_the_figures_with_the_commits_of_all_run_folders(
@@ -192,30 +208,39 @@ def test_main_labels_the_figures_with_the_commits_of_all_run_folders(
     earth = _run_with_log(tmp_path / 'earth', 'd0c7f08062bdf08631b61225bad460c6d4e381eb')
     venus = _run_with_log(tmp_path / 'venus', '81e1514466a590a9fd97acea99150ea5d978a751')
     (tmp_path / 'grid').mkdir()
-    _run_with_log(
-        tmp_path / 'grid' / 'chili_grid_earth_Hlow_Clow',
-        '0a1b2c3d4e5f60718293a4b5c6d7e8f901234567',
-    )
-    _run_with_log(tmp_path / 'grid' / 'other_run', 'ffffffff00000000ffffffff00000000ffffffff')
+    for name, sha in (
+        ('Hmid_Clow', '2' * 40),
+        ('Hlow_Chigh', '1' * 40),
+        ('Hlow_Clow', '0' * 40),
+    ):
+        _run_with_log(tmp_path / 'grid' / f'chili_grid_earth_{name}', sha)
+    _run_with_log(tmp_path / 'grid' / 'chili_grid_earth_Hlow_Clow_old', 'f' * 40)
     seen = {}
     for name in [n for n in dir(tool) if n.startswith('plot_')]:
         monkeypatch.setattr(
             tool, name, lambda *args, _name=name, **kwargs: seen.__setitem__(_name, args)
         )
     monkeypatch.setattr(tool, 'ensure_chili_repo', lambda path: path)
-    monkeypatch.setattr(
-        tool.sys,
-        'argv',
-        ['plot', '--proteus-earth', str(earth), '--proteus-venus', str(venus)]
-        + ['--grid-dir', str(tmp_path / 'grid'), '--output', str(tmp_path / 'out')],
-    )
+    argv = ['plot', '--proteus-earth', str(earth), '--proteus-venus', str(venus)]
+    argv += ['--output', str(tmp_path / 'out')]
 
-    tool.main()
+    for grid, label in (
+        (
+            ['--grid-dir', str(tmp_path / 'grid')],
+            'd0c7f080/81e15144/00000000/11111111/22222222',
+        ),
+        ([], 'd0c7f080/81e15144'),
+    ):
+        seen.clear()
+        monkeypatch.setattr(tool.sys, 'argv', argv + grid)
 
-    assert len(seen) == 11
-    for name, args in seen.items():
-        style = args[3] if name == 'plot_fig1' else args[2]
-        assert style['label'] == 'PROTEUS (d0c7f080/81e15144/0a1b2c3d)', name
+        tool.main()
+
+        assert ('plot_grid_timescales' in seen) == bool(grid)
+        assert {'plot_fig1', 'plot_fig6', 'plot_psurf'} <= set(seen)
+        for name, args in seen.items():
+            style = args[3] if name == 'plot_fig1' else args[2]
+            assert style['label'] == f'PROTEUS ({label})', name
 
 
 def test_smooth_uses_a_centred_mean_of_9_points_by_default(tool):
