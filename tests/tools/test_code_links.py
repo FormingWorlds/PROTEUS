@@ -1,15 +1,16 @@
 """Unit tests for ``tools/figures/code_links.py``.
 
 The script resolves the name-based code links of the architecture diagram to
-line ranges. These tests check:
+``blob/main`` links to a single line. These tests check:
 
-* a section banner resolves to its closing banner and wins over a comment
-  that mentions the same words,
-* a ``#`` inside a string is not taken for a comment,
-* a comment resolves to itself and the whole statement after it,
-* a method resolves by qualified name,
-* the error contract: a missing, duplicated or unclosed target raises,
-* the deploy rewrite pins links to a commit and falls back to the file,
+* a section banner resolves to its own line and wins over a docstring or a
+  comment that mentions the same words,
+* a comment resolves to its own line, by full text or by first sentence,
+* a method resolves to its ``def`` by qualified name,
+* the error contract: a missing or duplicated target or file raises,
+* line anchors and foreign links pass through unchanged,
+* the rewrite links to ``main``, and the deploy drops the link of a broken
+  target while a strict run leaves it as it was,
 * every target of the committed diagram resolves in the committed tree.
 """
 
@@ -60,52 +61,65 @@ def links(tmp_path, monkeypatch):
     return mod
 
 
-def test_banner_resolves_to_closing_banner_not_to_mentions(links):
-    """The banner spans lines 7 to 11; the docstring and the lower-case comment do not count."""
-    assert links.resolve_target('pkg/mod.py', 'escape') == (7, 11)
+def test_banner_resolves_to_its_line_not_to_mentions(links):
+    """The banner is line 7; the docstring (line 1) and closing banner (line 11) do not count."""
+    assert links.resolve_target('pkg/mod.py', 'escape') == 7
     # the comment on line 8 slugs to 'escape-is-cheap-here', not 'escape'
-    assert links.resolve_target('pkg/mod.py', 'escape-is-cheap-here') == (8, 9)
+    assert links.resolve_target('pkg/mod.py', 'escape-is-cheap-here') == 8
 
 
-def test_comment_covers_the_whole_following_statement(links):
-    """A comment before an if block resolves to the end of the block, not its first line."""
-    first, last = links.resolve_target('pkg/mod.py', 'apply-impacts-now')
-    assert (first, last) == (13, 16)
-    assert last != 14  # the if header alone
-    assert links.resolve_target('pkg/mod.py', 'apply-impacts-now-then-carry-on') == (13, 16)
+def test_comment_resolves_to_its_own_line(links):
+    """A comment before an if block is line 13, not the if header on line 14."""
+    assert links.resolve_target('pkg/mod.py', 'apply-impacts-now') == 13
+    assert links.resolve_target('pkg/mod.py', 'apply-impacts-now-then-carry-on') == 13
+    with pytest.raises(links.LinkError, match='no function or comment'):
+        links.resolve_target('pkg/mod.py', 'then-carry-on')
 
 
 def test_method_resolves_by_qualified_name(links):
-    """Runner.step resolves to its def and its last line; the bare name does not."""
-    assert links.resolve_target('pkg/mod.py', 'Runner.step') == (5, 18)
+    """Runner.step resolves to its def on line 5; a wrong or bare name does not."""
+    assert links.resolve_target('pkg/mod.py', 'Runner.step') == 5
+    assert links.resolve_target('pkg/mod.py', 'Runner') == 4
     with pytest.raises(links.LinkError, match='no function or comment'):
         links.resolve_target('pkg/mod.py', 'Runner.stop')
+    with pytest.raises(links.LinkError, match='no function or comment'):
+        links.resolve_target('pkg/mod.py', 'step')
 
 
-def test_missing_duplicate_and_unclosed_targets_raise(links, tmp_path):
-    """A target that matches zero or several times, or a banner never closed, is an error."""
+def test_missing_and_duplicate_targets_raise(links, tmp_path):
+    """A target that matches zero or several times, or a missing file, is an error."""
     (tmp_path / 'pkg' / 'dup.py').write_text('# Same note\nx = 1\n# Same note\ny = 2\n')
-    (tmp_path / 'pkg' / 'open.py').write_text('############### OPEN\nx = 1\n')
+    (tmp_path / 'pkg' / 'twice.py').write_text('def f():\n    pass\n\n\ndef f():\n    pass\n')
     with pytest.raises(links.LinkError, match='2 comments match'):
         links.resolve_target('pkg/dup.py', 'same-note')
-    with pytest.raises(links.LinkError, match='never closed'):
-        links.resolve_target('pkg/open.py', 'open')
+    with pytest.raises(links.LinkError, match='2 definitions share'):
+        links.resolve_target('pkg/twice.py', 'f')
     with pytest.raises(links.LinkError, match='does not exist'):
         links.resolve_target('pkg/gone.py', 'escape')
 
 
+def test_unclosed_banner_still_resolves(links, tmp_path):
+    """A link points at one line, so a banner without its closing banner is not an error."""
+    text = 'x = 0\n############### OPEN\nx = 1\n'
+    (tmp_path / 'pkg' / 'open.py').write_text(text)
+    line = links.resolve_target('pkg/open.py', 'open')
+    assert line == 2
+    assert text.splitlines()[line - 1] == '############### OPEN'
+
+
 def test_line_anchors_and_foreign_links_pass_through(links):
-    """Only name-based links into the repository are resolved."""
+    """Only name-based links into the repository are resolved, and they point at main."""
     hard = links.REPO_URL + 'pkg/mod.py#L12'
     other = 'https://example.org/page#section'
     assert links.resolve(hard) == hard
     assert links.resolve(other) == other
-    pinned = links.resolve(links.REPO_URL + 'pkg/mod.py#escape', commit='abc123')
-    assert pinned == f'{links.REPO}/blob/abc123/pkg/mod.py#L7-L11'
+    assert links.resolve(links.REPO_URL + 'pkg/mod.py#escape') == (
+        f'{links.REPO}/blob/main/pkg/mod.py#L7'
+    )
 
 
-def test_deploy_rewrite_pins_commit_and_falls_back_to_file(links, tmp_path, monkeypatch):
-    """--commit rewrites resolvable links to the commit and a broken one to the file."""
+def test_deploy_rewrite_drops_link_of_broken_target(links, tmp_path, monkeypatch):
+    """--deploy links a good target to main and leaves a broken one without an href."""
     good = links.REPO_URL + 'pkg/mod.py#escape'
     bad = links.REPO_URL + 'pkg/mod.py#renamed-away'
     svg = tmp_path / 'fig.svg'
@@ -114,10 +128,36 @@ def test_deploy_rewrite_pins_commit_and_falls_back_to_file(links, tmp_path, monk
         f'<a xlink:href="y" data-target="{bad}"/></svg>'
     )
     monkeypatch.setattr(links, 'SVGS', [svg])
-    problems = links.rewrite(None, 'abc123', lenient=True)
+    problems = links.rewrite(None, lenient=True)
     text = svg.read_text()
-    assert f'{links.REPO}/blob/abc123/pkg/mod.py#L7-L11' in text
-    assert f'xlink:href="{links.REPO}/blob/abc123/pkg/mod.py" data-target="{bad}"' in text
+    assert f'xlink:href="{links.REPO}/blob/main/pkg/mod.py#L7" data-target="{good}"' in text
+    assert f'<a data-target="{bad}"/>' in text
+    assert 'xlink:href="y"' not in text
+    assert len(problems) == 1 and 'renamed-away' in problems[0]
+
+    # once the target exists again, a later run restores the link
+    (tmp_path / 'pkg' / 'mod.py').write_text(SAMPLE + '# Renamed away\n')
+    links.source.cache_clear()
+    assert links.rewrite(None, lenient=True) == []
+    assert f'xlink:href="{links.REPO}/blob/main/pkg/mod.py#L19" data-target="{bad}"' in (
+        svg.read_text()
+    )
+
+
+def test_strict_rewrite_keeps_broken_link_unchanged(links, tmp_path, monkeypatch):
+    """Without --deploy a broken target is reported and its old href kept."""
+    good = links.REPO_URL + 'pkg/mod.py#Runner.step'
+    bad = links.REPO_URL + 'pkg/mod.py#renamed-away'
+    svg = tmp_path / 'fig.svg'
+    svg.write_text(
+        f'<svg><a xlink:href="x" data-target="{good}"/>'
+        f'<a xlink:href="y" data-target="{bad}"/></svg>'
+    )
+    monkeypatch.setattr(links, 'SVGS', [svg])
+    problems = links.rewrite(None, lenient=False)
+    text = svg.read_text()
+    assert f'xlink:href="{links.REPO}/blob/main/pkg/mod.py#L5"' in text
+    assert f'<a xlink:href="y" data-target="{bad}"/>' in text
     assert len(problems) == 1 and 'renamed-away' in problems[0]
 
 
