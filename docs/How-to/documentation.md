@@ -120,6 +120,32 @@ nav:
 !!! info "Documentation files are relative to `docs/` directory"
     Zensical looks for documentation files relative to the `docs/` directory. In `mkdocs.yml`, add files like this: `Tutorials/model_earth.md` and not like this: `docs/Tutorials/model_earth.md`.
 
+## Update the tutorial figures
+
+Every figure of a page under `docs/Tutorials` is drawn by `tools/make_docs_figures.py` from the output folder of a run, as a pair: `<name>.avif` for the light colour scheme of the site and `<name>_dark.avif` for the dark one. Both follow the PROTEUS visual language through the [`proteus-mpl`](https://pypi.org/project/proteus-mpl/) matplotlib style, which the `docs` and `develop` extras install. The manifest `tools/docs_figures.toml` lists the figures.
+
+To redraw the figures, give the folder that holds the run folders named in the manifest:
+
+```console
+python tools/make_docs_figures.py --runs output/
+python tools/make_docs_figures.py --runs output/ --only earth_analogue.md
+```
+
+The second form draws the figures of one page; `--only` also takes the `id` of one figure. The tool reads the run folders and never writes into them. For each figure and variant it prints a table of the text geometry: texts that the saved file cuts off (an error), texts outside the figure box, tick labels that intersect or crowd, and legends or labels that lie on data. Look at both variants of a figure before you commit it. The size of a figure in pixels depends on the matplotlib version, so redraw all figures of a page with the same environment; the tool prints the versions it runs with.
+
+To add a figure:
+
+1. Add a `[[figure]]` table to `tools/docs_figures.toml` with an `id`, the `page`, the `asset` path stem under `docs/assets`, the `runs` (the folder names of every run the figure reads) and the `maker`.
+2. For a plot that `proteus plot` makes, the maker is `proteus:<name>` (`global`, `orbit`, `fluxes_global` or `lovenumber`). For any other plot, write a function in a script under `tools/` and name it as `tools/<script>.py:<function>`. The tool calls it as `maker(run_dirs, out_path, **args)`, where `args` is the `args` table of the entry. The function draws under the active matplotlib style: it sets no font, no surface colour and no neutral colour of its own (`proteus.utils.plot.style_neutral` gives the neutral colours of the active style), takes its series colours from the colour cycle of the style, and saves to `out_path` without a `dpi` argument.
+3. Embed the pair in the page, the light file first:
+
+    ```markdown
+    ![Alt text](../assets/tutorials/my_figure.avif#only-light){ width="100%" }
+    ![Alt text](../assets/tutorials/my_figure_dark.avif#only-dark){ width="100%" }
+    ```
+
+4. Run `python tools/make_docs_figures.py --check`. It needs no run folder and fails when a page embeds an image without a manifest entry, when an entry has no page or lacks a file, or when a page does not embed the two files as a pair. A unit test runs the same check.
+
 ## Before opening a pull request
 
 The `Documentation links and anchors` check on every pull request runs `zensical build --clean --strict`, which aborts the build on a link to a page or an anchor that does not exist. Run the same command locally to see the failure and its file and line before you push. Image paths are not checked, so confirm those in the local preview.

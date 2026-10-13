@@ -53,10 +53,13 @@ including the plots.
 The run creates a directory inside `output/` named with a timestamp
 (`run_<timestamp>_xxxx`, called `<run folder>` below). Check
 `output/<run folder>/plots/plot_global_lin.png` for a multi-panel overview.
-Your output should look similar to this:
+Your output should look similar to this. A run writes its plots in the default
+matplotlib style; the figures of the tutorial pages show the same plots in the
+PROTEUS visual language, in a light and a dark variant.
 
 <figure markdown="span">
-  ![Dummy tutorial output](../assets/tutorials/dummy_global_lin.avif){ width="100%" }
+  ![Dummy tutorial output](../assets/tutorials/dummy_global_lin.avif#only-light){ width="100%" }
+  ![Dummy tutorial output](../assets/tutorials/dummy_global_lin_dark.avif#only-dark){ width="100%" }
   <figcaption><b>All-dummy tutorial output.</b> (a) Heat fluxes: the interior and
   atmospheric fluxes track each other as the planet cools; absorbed stellar
   flux (ASF) is constant. (b) Surface partial pressures: H<sub>2</sub>O dominates
