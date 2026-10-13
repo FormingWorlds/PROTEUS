@@ -40,6 +40,7 @@ def _load(name: str):
 
 
 _load('_figure_geometry')
+pages = _load('_docs_pages')
 tool = _load('make_docs_figures')
 
 MAKER = """
@@ -237,7 +238,7 @@ def test_manifest_of_the_repository_agrees_with_pyproject_and_the_pages():
     for extra in ('docs', 'develop'):
         pins = [d for d in extras[extra] if d.startswith('proteus-mpl')]
         assert pins == [f'proteus-mpl>={manifest["proteus_mpl"]}']
-    assert tool.check_pages(manifest, _REPO_ROOT) == []
+    assert pages.check_pages(manifest, _REPO_ROOT) == []
     assert tool.main(['--check']) == 0
     # Every figure is a pair, and every maker that an entry names can be loaded
     for fig in manifest['figure']:
@@ -585,207 +586,27 @@ def test_run_inputs_reads_the_resolved_config_and_the_helpfile(tmp_path):
     assert hf_all['Time'].tolist() == pytest.approx([0.0, 10.5])
 
 
-# --- check mode -------------------------------------------------------------------
+# --- command line -----------------------------------------------------------------
 
 
-def test_check_passes_on_a_page_with_a_pair(site):
-    """A page that embeds both files of its entry next to each other has no problem."""
-    assert tool.check_pages(_manifest(site.toml), site.repo) == []
-    # A link to a page or a file is not an embedded image
-    page = site.repo / 'docs' / 'Tutorials' / 'page_a.md'
-    page.write_text(page.read_text() + '\nSee [the data](../assets/tutorials/data.png).\n')
-    assert tool.check_pages(_manifest(site.toml), site.repo) == []
-
-
-@pytest.mark.parametrize(
-    'page_text, problems',
-    [
-        (
-            PAIR + '![Other](../assets/tutorials/other.png)\n',
-            ['page_a.md: image docs/assets/tutorials/other.png has no manifest entry'],
-        ),
-        (
-            PAIR + '![Web](https://example.org/a.png)\n',
-            ['page_a.md: image https://example.org/a.png has no manifest entry'],
-        ),
-        (
-            PAIR.splitlines()[0] + '\n',
-            ['fig_a: page_a.md does not embed'],
-        ),
-        (
-            '\n'.join(reversed(PAIR.splitlines())) + '\n',
-            ['fig_a: page_a.md does not embed'],
-        ),
-        (
-            PAIR.replace('\n', '\n![Other](../assets/tutorials/fig_a.avif#only-light)\n', 1),
-            ['fig_a: page_a.md does not embed'],
-        ),
-        (
-            PAIR.replace('#only-light', '').replace('#only-dark', ''),
-            [
-                'page_a.md: image docs/assets/tutorials/fig_a.avif has no manifest entry',
-                'page_a.md: image docs/assets/tutorials/fig_a_dark.avif has no manifest entry',
-                'fig_a: page_a.md does not embed',
-            ],
-        ),
-        ('No figure here.\n', ['fig_a: page_a.md does not embed']),
-    ],
-)
-def test_check_names_each_page_fault(site, page_text, problems):
-    """An image without an entry, a single variant, a wrong order and a split pair are named."""
-    (site.repo / 'docs' / 'Tutorials' / 'page_a.md').write_text(page_text)
-    found = tool.check_pages(_manifest(site.toml), site.repo)
-    assert len(found) == len(problems)
-    assert all(expected in line for expected, line in zip(problems, found))
-
-
-@pytest.mark.parametrize(
-    'line, image',
-    [
-        (
-            '![Other](../assets/tutorials/other.png "A title")',
-            'docs/assets/tutorials/other.png',
-        ),
-        (
-            '![T [K] against t]( ../assets/tutorials/other.png )',
-            'docs/assets/tutorials/other.png',
-        ),
-        (
-            '<img alt="x" src="../assets/tutorials/other.png" width="50%">',
-            'docs/assets/tutorials/other.png',
-        ),
-        ("<IMG SRC='../assets/tutorials/other.png'>", 'docs/assets/tutorials/other.png'),
-        (
-            '<img data-src="lazy.png" src=../assets/tutorials/other.png>',
-            'docs/assets/tutorials/other.png',
-        ),
-        (
-            '![Other][ref]\n\n[ref]: ../assets/tutorials/other.png#only-light',
-            'docs/assets/tutorials/other.png#only-light',
-        ),
-        ('![Ref][]\n\n[REF]: <../assets/tutorials/other>', 'docs/assets/tutorials/other'),
-        ('![Other](<../assets/tutorials/other.png>)', 'docs/assets/tutorials/other.png'),
-        ('![Other](<../assets/tutorials/my other.png>)', 'docs/assets/tutorials/my other.png'),
-        ('![Other](../assets/tutorials/other(1).png)', 'docs/assets/tutorials/other(1).png'),
-        (
-            '  ```\n  code\n  ```\n![Other](../assets/tutorials/other.png)',
-            'docs/assets/tutorials/other.png',
-        ),
-    ],
-    ids=[
-        'title',
-        'brackets in the alt text',
-        'img tag',
-        'capitals',
-        'unquoted src after data-src',
-        'reference',
-        'collapsed reference without a file extension',
-        'angle',
-        'angle with a space',
-        'parentheses',
-        'after an indented fence',
-    ],
-)
-def test_check_sees_an_image_in_every_form_that_a_page_can_use(site, line, image):
-    """An image with a title, in an HTML tag or behind a reference needs a manifest entry too."""
-    page = site.repo / 'docs' / 'Tutorials' / 'page_a.md'
-    page.write_text(f'{PAIR}\n{line}\n')
-    manifest = _manifest(site.toml)
-    assert tool.check_pages(manifest, site.repo) == [
-        f'page_a.md: image {image} has no manifest entry'
-    ]
-    (page.parent / 'more').mkdir()
-    (page.parent / 'more' / 'deep.md').write_text('![Deep](../../assets/tutorials/deep.png)\n')
-    assert tool.check_pages(manifest, site.repo) == [
-        'more/deep.md: image docs/assets/tutorials/deep.png has no manifest entry',
-        f'page_a.md: image {image} has no manifest entry',
-    ]
-
-
-@pytest.mark.parametrize(
-    'text',
-    [
-        '```markdown\n![Example](../assets/tutorials/example.png)\n```',
-        '~~~\n<img src="x.png">\n~~~',
-        '    ```markdown\n    ![In a list](../assets/tutorials/example.png)\n    ```',
-        '````\n```\n![Inner fence](../assets/tutorials/example.png)\n```\n````',
-        '~~~\n```\n![Other fence character](../assets/tutorials/example.png)\n~~~',
-        'Write `![x](../assets/tutorials/example.png)` for an image.',
-        '<!-- ![x](../assets/tutorials/example.png)\n<img src="y.png"> -->',
-        '<img data-src="lazy.png" alt="no src">',
-        'See ![a][missing] and [the guide](other_page.md), or [ref2].\n\n[ref2]: other_page.md',
-    ],
-    ids=[
-        'fence',
-        'tilde fence',
-        'indented fence',
-        'longer fence',
-        'fence of the other character',
-        'inline code',
-        'comment',
-        'data-src only',
-        'links and an undefined reference',
-    ],
-)
-def test_check_reads_no_image_from_code_a_comment_or_a_link(site, text):
-    """Code, a comment, a link and an image reference without a definition embed no image."""
-    page = site.repo / 'docs' / 'Tutorials' / 'page_a.md'
-    page.write_text(f'{text}\n\n{PAIR}')
-    assert tool.check_pages(_manifest(site.toml), site.repo) == []
-    assert tool._page_images(text) == []
-
-
-def test_check_requires_that_the_files_of_a_pair_occur_only_as_a_pair(site):
-    """The same pair twice is still a pair; a third light file alone is not. A fence
-    without an end hides the rest of the page, as the site renders it."""
-    page = site.repo / 'docs' / 'Tutorials' / 'page_a.md'
-    page.write_text(PAIR + PAIR)
-    assert tool.check_pages(_manifest(site.toml), site.repo) == []
-    page.write_text(PAIR + PAIR.splitlines()[0] + '\n')
-    problems = tool.check_pages(_manifest(site.toml), site.repo)
-    assert len(problems) == 1 and 'does not embed' in problems[0]
-    page.write_text(f'```\ncode without an end\n{PAIR}')
-    assert tool._page_images(page.read_text()) == []
-    assert 'does not embed' in tool.check_pages(_manifest(site.toml), site.repo)[0]
-
-
-def test_check_names_a_missing_file_and_a_missing_page(site):
-    """An entry without its dark file, or with a page that does not exist, is a problem."""
-    (site.repo / 'docs' / 'assets' / 'tutorials' / 'fig_a_dark.avif').unlink()
-    lost = _entry(id='fig_b', page='page_b.md', asset='docs/assets/tutorials/fig_b')
-    (site.repo / 'docs' / 'assets' / 'tutorials' / 'fig_b.avif').write_bytes(b'x')
-    found = tool.check_pages(_manifest(site.toml, [_entry(), lost]), site.repo)
-    assert found == [
-        'fig_a: file docs/assets/tutorials/fig_a_dark.avif is missing',
-        'fig_b: file docs/assets/tutorials/fig_b_dark.avif is missing',
-        'fig_b: page page_b.md is exempt or does not exist',
-    ]
-    (site.repo / 'docs' / 'assets' / 'tutorials' / 'fig_b_dark.avif').write_bytes(b'x')
-    (site.repo / 'docs' / 'assets' / 'tutorials' / 'fig_a_dark.avif').write_bytes(b'x')
-    assert tool.check_pages(_manifest(site.toml, [_entry(), lost]), site.repo) == [
-        'fig_b: page page_b.md is exempt or does not exist'
-    ]
-
-
-def test_check_skips_an_exempt_page_and_requires_that_it_exists(site, capsys, monkeypatch):
-    """An exempt page can embed anything; an exempt page that does not exist is a problem."""
+def test_main_check_names_the_exempt_pages_and_fails_on_a_problem(site, capsys):
+    """`--check` prints each exempt page, returns 0 on agreement and 1 with the problems."""
     tutorials = site.repo / 'docs' / 'Tutorials'
     (tutorials / 'old.md').write_text('![Old](../assets/tutorials/old.png)\n')
-    manifest = _manifest(site.toml, exempt_pages=['old.md'])
-    assert tool.check_pages(manifest, site.repo) == []
+    _manifest(site.toml, exempt_pages=['old.md'])
     assert tool.main(['--check', '--manifest', str(site.toml)]) == 0
-    assert 'not checked (exempt): docs/Tutorials/old.md' in capsys.readouterr().out
+    printed = capsys.readouterr().out
+    assert 'not checked (exempt): docs/Tutorials/old.md' in printed
+    assert '1 figures agree with the pages' in printed
 
-    manifest = _manifest(site.toml, exempt_pages=['old.md', 'gone.md', 'page_a.md'])
-    assert tool.check_pages(manifest, site.repo) == [
-        'exempt page gone.md does not exist',
-        'fig_a: page page_a.md is exempt or does not exist',
-    ]
+    _manifest(site.toml, exempt_pages=['old.md', 'gone.md'])
     assert tool.main(['--check', '--manifest', str(site.toml)]) == 1
     assert 'exempt page gone.md does not exist' in capsys.readouterr().out
-
-
-# --- command line -----------------------------------------------------------------
+    _manifest(site.toml)
+    assert tool.main(['--check', '--manifest', str(site.toml)]) == 1
+    assert 'old.md: image docs/assets/tutorials/old.png has no manifest entry' in (
+        capsys.readouterr().out
+    )
 
 
 def test_main_requires_the_run_folder_unless_it_checks(site, capsys):
