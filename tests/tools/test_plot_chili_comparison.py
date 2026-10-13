@@ -300,6 +300,8 @@ def test_figure_6_draws_the_o2_fugacity_of_the_run_at_its_magma_temperature(tool
         assert line.get_ydata() == pytest.approx(buffer(line.get_xdata()))
         assert line.get_linestyle() == {'Fischer+11': ':', "O'Neill+02": '--'}[label]
         assert _hex(line.get_color()) == '#000000'
+    zero = [ln for ln in ax_rel.lines if list(ln.get_ydata()) == [0, 0]][0]
+    assert (_hex(zero.get_color()), zero.get_linestyle()) == ('#000000', '--')
     assert tool._iw_fischer11(2000.0) != pytest.approx(tool._iw_oneill02(2000.0), abs=0.05)
 
 
@@ -432,8 +434,8 @@ def _all_figures(tool, tmp_path):
 def test_each_file_stem_draws_its_own_figure_from_its_own_run(tool, tmp_path):
     """Each file stem gives the figure of its name: the panel count and an axis
     label identify it; Figures 6 and 7 draw the Venus run, the surface pressure
-    figure and Figure 8 the Earth run, and Figure 2 the grid runs; the pale grid
-    line of GOOEY is drawn less transparent than its carbon level asks."""
+    figure and Figure 8 the Earth run, and Figure 2 the grid runs, each grid
+    line at the opacity of its carbon level."""
     figures = _all_figures(tool, tmp_path)
 
     seen = {
@@ -482,7 +484,7 @@ def test_each_file_stem_draws_its_own_figure_from_its_own_run(tool, tmp_path):
     alphas = {
         _hex(ln.get_color()): ln.get_alpha() for ln in panel.lines if ln.get_markersize() == 6
     }
-    assert alphas == {'#bbbbbb': 0.8, '#eb7d0f': 0.45}
+    assert alphas == {'#bbbbbb': 0.45, '#eb7d0f': 0.45}
 
 
 def test_composition_bars_stack_from_zero_and_each_star_sits_on_its_bar(tool, tmp_path):
@@ -561,7 +563,7 @@ def test_gas_colours_follow_the_chili_code_for_h2s_and_o2_and_proteus_for_the_re
     """The 10 gases have the colours of the page; the bars of Figure 5 are
     drawn in them; H and C of Figure 4 take the element colours, each with its
     letter in the neutral colour of more contrast; a bar below a tenth of the
-    axis height has no letter."""
+    axis height has no letter, a bar just above it has one."""
     assert {gas: tool._colour(gas).lower() for gas in tool.GAS_SPECIES} == GAS_COLOURS
     assert (tool._colour('H'), tool._colour('C')) == ('#11B587', '#D20F01')
 
@@ -578,13 +580,19 @@ def test_gas_colours_follow_the_chili_code_for_h2s_and_o2_and_proteus_for_the_re
     texts = budget.axes[0].texts
     letters = {t.get_text(): _hex(t.get_color()) for t in texts if len(t.get_text()) == 1}
     assert letters == {'H': '#000000', 'C': '#ffffff'}
-    small = pd.read_csv(
-        tmp_path / 'more' / 'moai' / 'evolution-moai-earth-data.csv', index_col=0
+    path = tmp_path / 'more' / 'moai' / 'evolution-moai-earth-data.csv'
+    small = pd.read_csv(path, index_col=0)
+    cases = (
+        ('massH_atm(kg)', 4e19, ['C']),
+        ('massC_atm(kg)', 3e19, ['H']),
+        ('massC_atm(kg)', 5e19, ['H', 'C']),
     )
-    small['massH_atm(kg)'] = 3e19
-    small.to_csv(tmp_path / 'more' / 'moai' / 'evolution-moai-earth-data.csv')
-    budget = tool.plot_fig4(tmp_path / 'more', None, tool._new_style('x'))
-    assert [t.get_text() for t in budget.axes[0].texts if len(t.get_text()) == 1] == ['C']
+    for column, height, shown in cases:
+        small[column], kept = height, small[column].copy()
+        small.to_csv(path)
+        budget = tool.plot_fig4(tmp_path / 'more', None, tool._new_style('x'))
+        assert [t.get_text() for t in budget.axes[0].texts if len(t.get_text()) == 1] == shown
+        small[column] = kept
 
 
 def test_submitted_and_current_run_share_the_colour_and_differ_in_line(tool, tmp_path, style):
@@ -654,16 +662,12 @@ def test_grid_figure_draws_both_runs_in_the_proteus_colour(tool, tmp_path, style
 def test_bar_of_a_colour_close_to_the_surface_gets_a_grey_edge(tool):
     """SO2 is close to a dark surface (contrast 1.3), so its bars get a mid grey
     edge there and a surface-coloured edge on a light surface; the bar of the
-    current run has the text colour in both cases. A colour that fades into
-    the surface at a low opacity is drawn at 0.8."""
+    current run has the text colour in both cases."""
     assert tool._contrast('#000000', '#ffffff') == pytest.approx(21.0)
     assert tool._contrast('#333333', '#ffffff') == pytest.approx(12.63, abs=0.005)
     assert tool._contrast('#bbbbbb', '#F2F5F7') == pytest.approx(1.75, abs=0.005)
     assert tool._contrast('#00008B', '#05070B') == pytest.approx(1.32, abs=0.005)
     assert tool._contrast('#05070B', '#00008B') == tool._contrast('#00008B', '#05070B')
-    assert tool._visible_alpha('#bbbbbb', 0.45) == 0.8
-    assert tool._visible_alpha('#bbbbbb', 1.0) == 1.0
-    assert tool._visible_alpha('#4477aa', 0.45) == 0.45
 
     light = [_hex(c) for c in tool._bar_edges('#00008B', [False, True])]
     matplotlib.rcParams.update(DARK_BY_HAND)
@@ -672,10 +676,6 @@ def test_bar_of_a_colour_close_to_the_surface_gets_a_grey_edge(tool):
 
     assert light == ['#ffffff', '#000000']
     assert dark == ['#777a7e', '#e9eef2']
-    assert (tool._visible_alpha('#aa3377', 0.45), tool._visible_alpha('#bbbbbb', 0.45)) == (
-        0.8,
-        0.45,
-    )
     assert water == ['#05070b', '#e9eef2']
 
 
@@ -820,8 +820,17 @@ def test_make_figure_refuses_an_unknown_figure_and_a_figure_without_data(
         tool.make_figure([], out, fig_id='chili_fig10', chili_repo=missing)
     with pytest.raises(ValueError, match="no data for figure 'chili_fig5_venus_atm'"):
         tool.make_figure([], out, fig_id='chili_fig5_venus_atm', chili_repo=repo)
-    with pytest.raises(ValueError, match="figure 'chili_grid_solidification' needs grid_dir"):
-        tool.make_figure([], out, fig_id='chili_grid_solidification', chili_repo=missing)
+    for no_grid in (None, ''):
+        with pytest.raises(
+            ValueError, match="figure 'chili_grid_solidification' needs grid_dir"
+        ):
+            tool.make_figure(
+                [],
+                out,
+                fig_id='chili_grid_solidification',
+                chili_repo=missing,
+                grid_dir=no_grid,
+            )
     assert not out.exists() and not missing.exists()
     (tmp_path / 'a_file').write_text('')
     with pytest.raises(OSError):

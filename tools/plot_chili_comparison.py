@@ -140,13 +140,6 @@ def _contrast(a, b):
     return (max(lum) + 0.05) / (min(lum) + 0.05)
 
 
-def _visible_alpha(colour, alpha):
-    """``alpha``, or at least 0.8 where the colour at ``alpha`` comes close to the surface."""
-    surface = np.array(style_neutral(1))
-    blend = alpha * np.array(to_rgb(colour)) + (1 - alpha) * surface
-    return alpha if _contrast(tuple(blend), style_neutral(1)) >= 1.5 else max(alpha, 0.8)
-
-
 def _bar_edges(colour, is_run):
     """Edge colours of a row of bars: the text colour for the current run; for a
     model the surface colour, or mid grey where the fill is close to the surface."""
@@ -524,7 +517,7 @@ def plot_fig2(intercomp, pe, NS, grid_dir=None):
                         marker='o',
                         linestyle=st.get('ls', '-'),
                         color=st['color'],
-                        alpha=_visible_alpha(st['color'], C_ALPHAS[cl]),
+                        alpha=C_ALPHAS[cl],
                         markersize=6,
                         linewidth=st.get('lw', 1.2),
                         label=label,
