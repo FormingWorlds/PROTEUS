@@ -1560,7 +1560,7 @@ def test_bulk_prescription_takes_the_schaefer_layer_of_each_cell():
 def test_an_unknown_prescription_is_refused_before_the_tracker_starts():
     """A prescription name the tracker does not know raises, and the
     interior keeps no half-built state."""
-    with pytest.raises(ValueError, match='unknown partition-coefficient prescription'):
+    with pytest.raises(ValueError, match='unknown partition-coefficient set'):
         _init_state(_PHI, _MASS, _PRES, 0.1, 'bulk_bse')
     interior = _make_interior()
     config = _make_config(0.1)

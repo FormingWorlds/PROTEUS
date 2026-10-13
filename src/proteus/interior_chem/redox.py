@@ -346,7 +346,7 @@ def _iw_buffer_hirschmann2021(T, P_gpa):
 
 
 def _partition_coefficients(
-    pres, prescription: str = 'mgsio3'
+    pres, coefficient_set: str = 'mgsio3'
 ) -> tuple[np.ndarray, np.ndarray]:
     """Per-cell solid/melt partition coefficients (D_Fe2+, D_Fe3+), ratios of
     mass concentration, for cell pressures ``pres`` [Pa].
@@ -355,17 +355,17 @@ def _partition_coefficients(
     below it. 'bulk_BSE': the bulk value of the Schaefer et al. (2024)
     layer that holds the pressure. Raises ValueError for any other name."""
     P_gpa = np.asarray(pres, dtype=float) / 1e9
-    if prescription == 'mgsio3':
+    if coefficient_set == 'mgsio3':
         brg = P_gpa >= P_CUTOFF_GPA
         return (
             np.where(brg, D_FE2_BRG, D_FE2_SHALLOW),
             np.where(brg, D_FE3_BRG, D_FE3_SHALLOW),
         )
-    if prescription == 'bulk_BSE':
+    if coefficient_set == 'bulk_BSE':
         layer = np.digitize(P_gpa, BULK_P_BOUNDS_GPA)
         return np.asarray(BULK_D_FE2)[layer], np.asarray(BULK_D_FE3)[layer]
     raise ValueError(
-        f'unknown partition-coefficient prescription {prescription!r}; '
+        f'unknown partition-coefficient set {coefficient_set!r}; '
         f'expected one of {PARTITION_PRESCRIPTIONS}'
     )
 
@@ -454,11 +454,11 @@ def _init_state(
     mass: np.ndarray,
     pres: np.ndarray,
     f_0: float,
-    prescription: str = 'mgsio3',
+    coefficient_set: str = 'mgsio3',
 ) -> MeltRedoxState:
     """Step 1-2 (Eq 1-3): seed the global Fe3+/Fe2+ reservoirs from the
     interior state at the first call, and the per-cell partition
-    coefficients of ``prescription`` (config.planet.partition_coefficients)
+    coefficients of ``coefficient_set`` (config.planet.partition_coefficients)
     from the (time-invariant) pressure profile.
 
     W_FET is the ferrous FeO fraction, so it fixes n_Fe2 directly. Fe3+ is
@@ -479,7 +479,7 @@ def _init_state(
     n_fe3_0 = n_fe2_0 * f_0 / (1.0 - f_0)
     w_feo15 = n_fe3_0 * MU_FEO15 / M_melt_0 if M_melt_0 > 0.0 else 0.0
 
-    D_fe2_cell, D_fe3_cell = _partition_coefficients(pres, prescription)
+    D_fe2_cell, D_fe3_cell = _partition_coefficients(pres, coefficient_set)
 
     return MeltRedoxState(
         n_fe3_melt=n_fe3_0,
@@ -909,14 +909,14 @@ def update_melt_redox(interior_o: Interior_t, hf_row: dict, config: Config) -> N
 
     if first_call:
         f_0 = float(config.planet.ferric_fraction_initial)
-        prescription = str(config.planet.partition_coefficients)
-        interior_o.redox_state = _init_state(phi, mass, pres, f_0, prescription)
+        coefficient_set = str(config.planet.partition_coefficients)
+        interior_o.redox_state = _init_state(phi, mass, pres, f_0, coefficient_set)
         log.info(
             'Melt redox tracking initialised: n_FeT_melt=%.3e mol, f_0=%.3f, '
             'partition coefficients %s',
             interior_o.redox_state.n_fe3_melt + interior_o.redox_state.n_fe2_melt,
             f_0,
-            prescription,
+            coefficient_set,
         )
     else:
         state = interior_o.redox_state
