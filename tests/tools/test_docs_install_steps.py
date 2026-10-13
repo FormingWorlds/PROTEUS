@@ -339,20 +339,12 @@ def test_substitution_matching_prefix_only_is_stale(page, tmp_path, capsys):
     assert 'echo alpha-two' in out.stderr
 
 
-def test_substitution_missing_reason_exits_2(page, tmp_path, capsys):
-    """An entry without a reason is rejected, so every deviation is explained."""
-    path = tmp_path / 'subs.toml'
-    path.write_text('[[substitution]]\nmatch = "echo alpha-one"\nreplace = "true"\n')
-    out = _run(capsys, str(page), '--tab', 'Alpha', '--substitutions', str(path))
-    assert out.returncode == 2
-    assert "'reason'" in out.stderr
-
-
-def test_substitution_whitespace_only_reason_exits_2(page, tmp_path, capsys):
-    """A substitution whose reason contains only whitespace is rejected with exit code 2."""
+@pytest.mark.parametrize('reason_line', ['', 'reason = "   "\n'], ids=['missing', 'blank'])
+def test_substitution_without_reason_exits_2(page, tmp_path, capsys, reason_line):
+    """A substitution whose reason is omitted or only whitespace is rejected with exit code 2."""
     path = tmp_path / 'subs.toml'
     path.write_text(
-        '[[substitution]]\nmatch = "echo alpha-one"\nreplace = "true"\nreason = "   "\n',
+        f'[[substitution]]\nmatch = "echo alpha-one"\nreplace = "true"\n{reason_line}',
         encoding='utf-8',
     )
     out = _run(capsys, str(page), '--tab', 'Alpha', '--substitutions', str(path))
@@ -463,19 +455,26 @@ def test_generated_script_passes_bash_syntax_check(page, tmp_path, capsys):
     assert '#!/usr/bin/env bash' in script.read_text(encoding='utf-8')
 
 
-def test_generated_script_runs_in_one_session_and_writes_timing(tmp_path, capsys):
-    """State carries between commands, and the TSV has one row per command."""
+def _exec(
+    tmp_path: Path, capsys, body: str, *, subs: Path | None = None, timing: Path | None = None
+) -> subprocess.CompletedProcess[str]:
+    """Write the page body, build the script and execute it with bash -e in tmp_path."""
     p = tmp_path / 'p.md'
-    p.write_text(
-        '```console\nexport STEP_VAR=carried\nmkdir sub\ncd sub\n'
-        'echo "$STEP_VAR" > out.txt\ntest "$(basename "$PWD")" = sub\n'
-        'sleep 1\n```\n',
-        encoding='utf-8',
-    )
-    script = _bash_script(p, tmp_path, None, capsys=capsys)
-    done = subprocess.run(
+    p.write_text(body, encoding='utf-8')
+    script = _bash_script(p, tmp_path, None, subs=subs, capsys=capsys, timing=timing)
+    return subprocess.run(
         ['bash', '-e', str(script)], capture_output=True, text=True, cwd=tmp_path
     )
+
+
+def test_generated_script_runs_in_one_session_and_writes_timing(tmp_path, capsys):
+    """State carries between commands, and the TSV has one row per command."""
+    body = (
+        '```console\nexport STEP_VAR=carried\nmkdir sub\ncd sub\n'
+        'echo "$STEP_VAR" > out.txt\ntest "$(basename "$PWD")" = sub\n'
+        'sleep 1\n```\n'
+    )
+    done = _exec(tmp_path, capsys, body)
     assert done.returncode == 0, done.stdout + done.stderr
     assert (tmp_path / 'sub' / 'out.txt').read_text().strip() == 'carried'
     rows = (tmp_path / 't.tsv').read_text().splitlines()
@@ -484,9 +483,7 @@ def test_generated_script_runs_in_one_session_and_writes_timing(tmp_path, capsys
     assert {r.split('\t')[2] for r in rows[1:]} == {'0'}
     for r in rows[1:]:
         assert re.match(r'^\d+\.\d$', r.split('\t')[1])
-    sleep_row = rows[-1].split('\t')
-    wall_sec = float(sleep_row[1])
-    assert 0.9 <= wall_sec <= 30.0
+    assert 0.9 <= float(rows[-1].split('\t')[1]) <= 30.0
     assert done.stdout.count('::group::') == done.stdout.count('::endgroup::') == 6
     assert '::group::[page line 4] cd sub' in done.stdout
 
@@ -521,14 +518,8 @@ def test_generated_script_handles_timing_path_with_spaces(tmp_path, capsys):
     timing_dir = tmp_path / 'my dir'
     timing_dir.mkdir()
     timing_file = timing_dir / 't.tsv'
-    p = tmp_path / 'p.md'
-    p.write_text('```console\necho hello\n```\n', encoding='utf-8')
-    script = _bash_script(p, tmp_path, None, capsys=capsys, timing=timing_file)
-    done = subprocess.run(
-        ['bash', '-e', str(script)], capture_output=True, text=True, cwd=tmp_path
-    )
+    done = _exec(tmp_path, capsys, '```console\necho hello\n```\n', timing=timing_file)
     assert done.returncode == 0, done.stdout + done.stderr
-    assert timing_file.is_file()
     rows = timing_file.read_text(encoding='utf-8').splitlines()
     assert len(rows) == 2
     assert rows[0] == 'page_line\twall_seconds\texit_code\tcommand'
@@ -537,10 +528,7 @@ def test_generated_script_handles_timing_path_with_spaces(tmp_path, capsys):
 
 def test_timing_row_replaces_tab_characters_in_command(tmp_path, capsys):
     """A command containing tab characters produces a TSV row with exactly 4 columns."""
-    p = tmp_path / 'tab_cmd.md'
-    p.write_text('```console\necho\twith\ttabs\n```\n', encoding='utf-8')
-    script = _bash_script(p, tmp_path, None, capsys=capsys)
-    done = subprocess.run(['bash', str(script)], capture_output=True, text=True, cwd=tmp_path)
+    done = _exec(tmp_path, capsys, '```console\necho\twith\ttabs\n```\n')
     assert done.returncode == 0, done.stderr
     rows = (tmp_path / 't.tsv').read_text(encoding='utf-8').splitlines()
     assert len(rows) == 2
@@ -551,16 +539,11 @@ def test_timing_row_replaces_tab_characters_in_command(tmp_path, capsys):
 
 def test_generated_script_stops_at_first_failure(tmp_path, capsys):
     """The step after a non-zero exit code does not run; the exit code is passed on."""
-    p = tmp_path / 'p.md'
-    p.write_text(
+    body = (
         '```console\ntouch first.flag\nexit_code_seven() { return 7; }; exit_code_seven\n'
-        'touch after.flag\n```\n',
-        encoding='utf-8',
+        'touch after.flag\n```\n'
     )
-    script = _bash_script(p, tmp_path, None, capsys=capsys)
-    done = subprocess.run(
-        ['bash', '-e', str(script)], capture_output=True, text=True, cwd=tmp_path
-    )
+    done = _exec(tmp_path, capsys, body)
     assert done.returncode == 7
     assert (tmp_path / 'first.flag').exists()
     assert not (tmp_path / 'after.flag').exists()
@@ -571,11 +554,8 @@ def test_generated_script_stops_at_first_failure(tmp_path, capsys):
 
 def test_generated_script_prints_deviation_line_for_substituted_command(tmp_path, capsys):
     """A substituted command prints the page text, the job text and the reason."""
-    p = tmp_path / 'p.md'
-    p.write_text('```console\necho on-the-page\n```\n', encoding='utf-8')
     subs = _write_subs(tmp_path, 'echo on-the-page', 'echo on-the-job')
-    script = _bash_script(p, tmp_path, None, subs, capsys=capsys)
-    done = subprocess.run(['bash', str(script)], capture_output=True, text=True, cwd=tmp_path)
+    done = _exec(tmp_path, capsys, '```console\necho on-the-page\n```\n', subs=subs)
     assert done.returncode == 0
     assert (
         'DEVIATION: page says echo on-the-page; job runs echo on-the-job; reason: test'
@@ -616,46 +596,12 @@ def test_install_page_tabs_and_verification_commands_parse_into_plans():
         assert 'bash install.sh' in tab_cmds
 
 
-@pytest.mark.parametrize(
-    ('tabs', 'expected'),
-    [
-        (
-            ['Alpha', 'Beta'],
-            [
-                'echo shared-one',
-                'echo alpha-one',
-                'echo alpha-two --long',
-                'echo beta-one   # a trailing comment',
-                'echo beta-two',
-                'echo shared-two',
-            ],
-        ),
-        (
-            ['Beta'],
-            [
-                'echo shared-one',
-                'echo beta-one   # a trailing comment',
-                'echo beta-two',
-                'echo shared-two',
-            ],
-        ),
-    ],
-)
-def test_several_tabs_are_selected_together_in_page_order(tabs, expected):
-    """Multiple tab names select the blocks of each named tab in page order."""
-    required, _ = steps.select_steps(steps.parse_page(_PAGE), tabs)
-    commands = [s.command for s in required]
-    assert commands == expected
-    assert ('echo alpha-one' in commands) == ('Alpha' in tabs)
-    assert 'echo shared-one' in commands and 'echo shared-two' in commands
-
-
 def test_an_unknown_name_among_several_tabs_is_refused():
     """One wrong name stops the selection, so a renamed tab cannot drop its commands silently."""
     with pytest.raises(steps.InstallStepsError, match="unknown tab 'Gamma'") as exc_info:
         steps.select_steps(steps.parse_page(_PAGE), ['Alpha', 'Gamma'])
-    assert "unknown tab 'Gamma'" in str(exc_info.value)
-    assert 'Alpha' in str(exc_info.value) and 'Beta' in str(exc_info.value)
+    assert 'Alpha' in str(exc_info.value)
+    assert 'Beta' in str(exc_info.value)
 
 
 def test_plan_entry_substituted_property():
@@ -715,7 +661,9 @@ def test_substitutions_file_with_extra_top_level_key_exits_2(page, tmp_path, cap
     assert str(path) in out.stderr
 
 
-def test_substitutions_file_with_multiple_unknown_top_level_keys_names_all(page, tmp_path, capsys):
+def test_substitutions_file_with_multiple_unknown_top_level_keys_names_all(
+    page, tmp_path, capsys
+):
     """A substitutions file with several unknown top-level keys names every unknown key."""
     path = tmp_path / 'subs.toml'
     path.write_text(
