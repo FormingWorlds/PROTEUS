@@ -1,4 +1,4 @@
-"""Resolve name-based code links in the architecture diagram to line ranges.
+"""Resolve name-based code links in the architecture diagram to line links.
 
 A diagram link names its target instead of a line number::
 
@@ -7,23 +7,21 @@ A diagram link names its target instead of a line number::
 where ``<target>`` is one of
 
 * a function, class or method, by qualified name (``run_zephyrus``,
-  ``Proteus.start``): resolves to its definition;
+  ``Proteus.start``): the line of its ``def`` or ``class``;
 * a comment, as a slug of its text or of its first sentence
   (``interior`` for ``############### INTERIOR``, ``run-offline-chemistry``
-  for ``# Run offline chemistry``).  A section banner resolves to the range up
-  to its closing ``############### /`` banner and takes precedence over other
-  comments; any other comment resolves to the comment and the statement that
-  follows it.  Only real comments count, not ``#`` inside strings.
+  for ``# Run offline chemistry``): the line of that comment.  A section banner
+  wins over other comments with the same words.  Only real comments count,
+  not ``#`` inside strings.
 
-Each target must match exactly once.  Line numbers are never stored: the
-documentation deploy resolves every link against the commit it publishes and
-pins the link to that commit, so the published diagram always points at the
-lines of the code it was built with.
+Each target must match exactly once.  A resolved link is ``blob/<sha>/...#L<n>``:
+the line number is only valid for the commit it was taken from, so the link is
+pinned to that commit, never to ``main``.
 
 Usage:
     python3 tools/figures/code_links.py --check         # every target resolves (PR CI)
-    python3 tools/figures/code_links.py --commit SHA    # pin links to SHA (docs deploy)
-    python3 tools/figures/code_links.py                 # refresh the committed SVGs
+    python3 tools/figures/code_links.py --commit SHA    # pin to SHA (docs deploy)
+    python3 tools/figures/code_links.py                 # pin to origin/main (committed SVGs)
 """
 
 from __future__ import annotations
@@ -97,30 +95,18 @@ def comments(text: str):
             yield tok.start[0], tok.string
 
 
-def statement_after(tree: ast.AST, line: int) -> int:
-    """Last line of the outermost statement that starts first below ``line``."""
-    best = None
-    for node in ast.walk(tree):  # breadth first: an outer statement is seen first
-        if isinstance(node, ast.stmt) and node.lineno > line:
-            if best is None or node.lineno < best.lineno:
-                best = node
-    if best is None:
-        raise LinkError(f'no statement follows line {line}')
-    return best.end_lineno
-
-
-def resolve_target(path: str, target: str, ref: str | None = None) -> tuple[int, int]:
+def resolve_target(path: str, target: str, ref: str | None = None) -> int:
+    """Line of the definition or comment that ``target`` names."""
     text = source(path, ref)
     tree = ast.parse(text)
-    defs = [(a, b) for name, a, b in definitions(tree) if name == target]
+    defs = [a for name, a, _ in definitions(tree) if name == target]
     if len(defs) == 1:
         return defs[0]
     if len(defs) > 1:
         raise LinkError(f'{path}#{target}: {len(defs)} definitions share this name')
 
-    found = list(comments(text))
     banners, others = [], []
-    for i, tok in found:
+    for i, tok in comments(text):
         m = BANNER.match(tok)
         if m:
             if not m.group(1).startswith('/') and slug(m.group(1)) == target:
@@ -134,16 +120,7 @@ def resolve_target(path: str, target: str, ref: str | None = None) -> tuple[int,
     if len(hits) != 1:
         what = 'no function or comment matches' if not hits else f'{len(hits)} comments match'
         raise LinkError(f'{path}#{target}: {what} this target')
-    start = hits[0]
-    if banners:
-        for i, tok in found:
-            m = BANNER.match(tok)
-            if i > start and m:
-                if m.group(1).startswith('/'):
-                    return start, i
-                raise LinkError(f'{path}#{target}: next banner opens before this one closes')
-        raise LinkError(f'{path}#{target}: section banner is never closed')
-    return start, statement_after(tree, start)
+    return hits[0]
 
 
 def split(href: str) -> tuple[str, str] | None:
@@ -158,14 +135,32 @@ def is_symbolic(href: str) -> bool:
     return split(href) is not None
 
 
-def resolve(href: str, ref: str | None = None, commit: str = 'main') -> str:
-    """Turn a name-based link into a line-range link; other links pass through."""
+def rev_parse(ref: str) -> str:
+    res = subprocess.run(
+        ['git', '-C', str(ROOT), 'rev-parse', '--verify', f'{ref}^{{commit}}'],
+        capture_output=True,
+        text=True,
+    )
+    if res.returncode:
+        raise SystemExit(f'error: cannot resolve {ref}; run git fetch origin main first')
+    return res.stdout.strip()
+
+
+def resolve(href: str, ref: str | None, commit: str) -> str:
+    """Turn a name-based link into a line link pinned to ``commit``; other links
+    pass through.  ``ref`` (None for the work tree) must hold the code of ``commit``."""
     parts = split(href)
     if parts is None:
         return href
     path, target = parts
-    a, b = resolve_target(path, target, ref)
-    return f'{REPO}/blob/{commit}/{path}#L{a}-L{b}'
+    line = resolve_target(path, target, ref)
+    return f'{REPO}/blob/{commit}/{path}#L{line}'
+
+
+def unpinned(href: str) -> str:
+    """The file a name-based link points into, for a figure not yet pinned."""
+    parts = split(href)
+    return href if parts is None else f'{REPO_URL}{parts[0]}'
 
 
 def model_links() -> list[str]:
@@ -180,7 +175,7 @@ def validate(ref: str | None) -> list[str]:
             errors.append(f'hard-coded line anchor in arch_final.json: {href}')
             continue
         try:
-            resolve(href, ref)
+            resolve(href, ref, 'main')
         except (LinkError, SyntaxError) as e:
             errors.append(str(e))
     for svg in SVGS:
@@ -220,7 +215,7 @@ def main() -> int:
     mode = ap.add_mutually_exclusive_group()
     mode.add_argument('--check', action='store_true', help='fail if a target does not resolve')
     mode.add_argument('--commit', help='pin the links to this commit; never fails')
-    ap.add_argument('--ref', help='resolve against this git ref instead of the work tree')
+    ap.add_argument('--ref', help='git ref to resolve and pin against (default origin/main)')
     args = ap.parse_args()
 
     if args.check:
@@ -236,7 +231,12 @@ def main() -> int:
         return 1 if errors else 0
 
     lenient = args.commit is not None
-    problems = rewrite(args.ref, args.commit or 'main', lenient)
+    if lenient:
+        ref, commit = args.ref, args.commit  # the deploy checkout is that commit
+    else:
+        ref = args.ref or 'origin/main'
+        commit = rev_parse(ref)
+    problems = rewrite(ref, commit, lenient)
     for p in problems:
         # a GitHub annotation in the docs deploy, a plain message elsewhere
         print(f'::warning::{p}' if lenient else f'error: {p}', file=sys.stderr)
