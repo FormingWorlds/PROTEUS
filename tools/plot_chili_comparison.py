@@ -57,6 +57,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from matplotlib.colors import to_rgb
+from matplotlib.legend_handler import HandlerTuple
 from matplotlib.lines import Line2D
 from matplotlib.ticker import NullFormatter, ScalarFormatter
 
@@ -200,6 +201,45 @@ def _t_surf_axis(ax, tsv, isp, NS, ylim):
     ax2.set_ylim(*ylim)
 
 
+def _cross(colour, size, width):
+    """Legend handle of a cross marker."""
+    return Line2D(
+        [],
+        [],
+        marker='x',
+        color=colour,
+        linestyle='none',
+        markersize=size,
+        markeredgewidth=width,
+    )
+
+
+def _name_ticks(ax, names, is_run):
+    """Model names as x tick labels, the current run in bold in the text colour."""
+    ax.set_xticks(np.arange(len(names)))
+    ax.set_xticklabels(names, fontsize='small', rotation=45, ha='right')
+    for tick, ip in zip(ax.get_xticklabels(), is_run):
+        if ip:
+            tick.set(fontweight='bold', color=style_neutral())
+
+
+def _gas_legend(ax, panels):
+    """Legend on ``ax`` of each gas whose largest bar in ``panels`` is at least 1e-3 of the axis range."""
+    shown = {}
+    for panel in panels:
+        for bars, label in zip(*panel.get_legend_handles_labels()):
+            if max(bar.get_height() for bar in bars) >= 1e-3 * panel.get_ylim()[1]:
+                shown.setdefault(label, bars)
+    ax.legend(
+        shown.values(),
+        shown.keys(),
+        fontsize='small',
+        ncol=3,
+        loc='upper right',
+        framealpha=0.9,
+    )
+
+
 def _new_style(sha):
     return {
         'color': PROTEUS_COLOUR,
@@ -285,7 +325,7 @@ def _load_chili_csv(path):
     return df
 
 
-def _load_proteus_helpfile(output_dir):
+def _load_proteus_helpfile(output_dir, profiles=True):
     hf = output_dir / 'runtime_helpfile.csv'
     if not hf.is_file():
         return None
@@ -297,7 +337,8 @@ def _load_proteus_helpfile(output_dir):
     df = df[df['Time'] > 0]
     if df.empty:
         return None
-    df.attrs['_profiles'] = _extract_profiles(output_dir, df)
+    if profiles:
+        df.attrs['_profiles'] = _extract_profiles(output_dir, df)
     return df
 
 
@@ -461,9 +502,9 @@ def _milestone_time_proteus(df, phi_target):
 def plot_fig2(intercomp, pe, NS, grid_dir=None):
     milestones = [0.95, 0.40, 0.05]
     titles = [
-        r'$\mathbf{(a)}$ Time to reach $\phi$ = 95%',
-        r'$\mathbf{(b)}$ Time to reach $\phi$ = 40%',
-        r'$\mathbf{(c)}$ Time to reach $\phi$ = 5%',
+        r'(a) Time to reach $\phi$ = 95%',
+        r'(b) Time to reach $\phi$ = 40%',
+        r'(c) Time to reach $\phi$ = 5%',
     ]
     fig, axes = plt.subplots(3, 1, figsize=(7, 9), sharex=True, layout='constrained')
 
@@ -510,7 +551,6 @@ def plot_fig2(intercomp, pe, NS, grid_dir=None):
                         t_vals.append(t_m)
 
                 if t_vals:
-                    label = st['label'] if ci == 1 and ax is axes[0] else None
                     ax.plot(
                         t_vals,
                         y_vals,
@@ -520,7 +560,6 @@ def plot_fig2(intercomp, pe, NS, grid_dir=None):
                         alpha=C_ALPHAS[cl],
                         markersize=6,
                         linewidth=st.get('lw', 1.2),
-                        label=label,
                         zorder=3,
                     )
 
@@ -545,7 +584,7 @@ def plot_fig2(intercomp, pe, NS, grid_dir=None):
                 t_vals = []
                 for hi, hl in enumerate(['Hlow', 'Hmid', 'Hhigh']):
                     run = grid_dir / f'chili_grid_earth_{hl}_{cl}'
-                    df = _load_proteus_helpfile(run) if run.is_dir() else None
+                    df = _load_proteus_helpfile(run, profiles=False) if run.is_dir() else None
                     if df is None:
                         continue
                     t_m = _milestone_time_proteus(df, phi_tgt)
@@ -554,7 +593,6 @@ def plot_fig2(intercomp, pe, NS, grid_dir=None):
                         t_vals.append(t_m)
 
                 if t_vals:
-                    label = NS['label'] if ci == 1 and ax is axes[0] else None
                     ax.plot(
                         t_vals,
                         y_vals,
@@ -565,7 +603,6 @@ def plot_fig2(intercomp, pe, NS, grid_dir=None):
                         linewidth=3.0,
                         markeredgecolor=style_neutral(),
                         markeredgewidth=0.6,
-                        label=label,
                         zorder=10,
                     )
 
@@ -576,11 +613,42 @@ def plot_fig2(intercomp, pe, NS, grid_dir=None):
             [r'Nmnl', r'H$_\mathrm{low}$', r'H$_\mathrm{mid}$', r'H$_\mathrm{high}$']
         )
         ax.set_ylim(-0.5, 3.5)
-        ax.set_title(title, loc='left')
+        ax.set_title(title, loc='left', fontweight='bold')
         ax.grid(True, axis='x')
 
     axes[-1].set_xlabel('Earth simulated time [Myr]')
-    _legend_below(fig, axes[0])
+    # One entry per model that is drawn: its grid line and its cross of the nominal case.
+    drawn = {ln.get_color() for ax in axes for ln in ax.lines}
+    entries = {
+        st['label']: (
+            Line2D(
+                [],
+                [],
+                marker='o',
+                markersize=6,
+                color=st['color'],
+                linestyle=st.get('ls', '-'),
+                linewidth=st.get('lw', 1.2),
+            ),
+            _cross(st['color'], 7, 1.5),
+        )
+        for st in MODELS.values()
+        if st['color'] in drawn
+    }
+    if pe is not None or grid_dir is not None:
+        edge = dict(markeredgecolor=style_neutral(), markeredgewidth=0.6)
+        line = Line2D(
+            [], [], marker='o', markersize=9, color=NS['color'], linewidth=3.0, **edge
+        )
+        entries[NS['label']] = (line, _cross(NS['color'], 11, 3.0))
+    fig.legend(
+        entries.values(),
+        entries.keys(),
+        handler_map={tuple: HandlerTuple(ndivide=None)},
+        loc='outside lower center',
+        ncol=3,
+        fontsize='small',
+    )
     return fig
 
 
@@ -658,7 +726,7 @@ def _plot_atm_composition(intercomp, proteus_df, planet, NS):
     """Stacked bar chart of partial pressures at Phi=95% and 5%, matching Nicholls+ layout."""
     phi_targets = [0.95, 0.05]
     planet_cap = planet.capitalize()
-    panel_labels = [r'$\mathbf{(a)}$', r'$\mathbf{(b)}$']
+    panel_labels = ['(a)', '(b)']
     titles = [
         rf'Nominal-{planet_cap} atmosphere at $\phi$ = 95%',
         rf'Nominal-{planet_cap} atmosphere at $\phi$ = 5%',
@@ -720,35 +788,15 @@ def _plot_atm_composition(intercomp, proteus_df, planet, NS):
     for ax, (gas, tsv, isp, present), title, plabel in zip(axes, panels, titles, panel_labels):
         _stack_bars(ax, x, gas, present, isp)
 
-        ax.set_xticks(x)
-        tick_labels = []
-        for n, ip in zip(all_names, is_proteus_global):
-            if ip:
-                tick_labels.append(rf'$\bf{{{n}}}$')
-            else:
-                tick_labels.append(n)
-        ax.set_xticklabels(tick_labels, fontsize='small', rotation=45, ha='right')
-        for tl, ip in zip(ax.get_xticklabels(), is_proteus_global):
-            if ip:
-                tl.set_color(NS['color'])
+        _name_ticks(ax, all_names, is_proteus_global)
         ax.set_ylabel('Partial pressure [bar]')
-        ax.set_title(f'{plabel} {title}')
+        ax.set_title(f'{plabel} {title}', fontweight='bold')
         ax.set_ylim(0, bar_ylim)
         ax.set_xlim(-0.5, n_slots - 0.5)
 
         _t_surf_axis(ax, tsv, isp, NS, t_ylim)
 
-    handles, labels = axes[0].get_legend_handles_labels()
-    seen = set()
-    unique = [(h, la) for h, la in zip(handles, labels) if la not in seen and not seen.add(la)]
-    axes[0].legend(
-        [u[0] for u in unique],
-        [u[1] for u in unique],
-        fontsize='small',
-        ncol=3,
-        loc='upper right',
-        framealpha=0.9,
-    )
+    _gas_legend(axes[0], axes)
     return fig
 
 
@@ -767,17 +815,11 @@ def plot_fig5(intercomp, pv, NS):
     present = [g for g in GAS_SPECIES if np.array(gas[g]).sum() > 0]
     n = len(names)
     x = np.arange(n)
-    is_proteus_global = [ip for ip in isp]
 
     fig, ax = plt.subplots(figsize=(8, 6), layout='constrained')
     _stack_bars(ax, x, gas, present, isp)
 
-    ax.set_xticks(x)
-    tick_labels = [rf'$\bf{{{n}}}$' if ip else n for n, ip in zip(names, is_proteus_global)]
-    ax.set_xticklabels(tick_labels, fontsize='small', rotation=45, ha='right')
-    for tl, ip in zip(ax.get_xticklabels(), is_proteus_global):
-        if ip:
-            tl.set_color(NS['color'])
+    _name_ticks(ax, names, isp)
     ax.set_ylabel('Partial pressure [bar]')
     ax.set_title(r'Nominal-Venus atmosphere at $\phi$ = 5%')
     # Adopt the same axis limits as the Nominal Earth panel (Figure 3b).
@@ -785,17 +827,7 @@ def plot_fig5(intercomp, pv, NS):
 
     _t_surf_axis(ax, tsv, isp, NS, (1500, 4000))
 
-    handles, labels = ax.get_legend_handles_labels()
-    seen = set()
-    unique = [(h, la) for h, la in zip(handles, labels) if la not in seen and not seen.add(la)]
-    ax.legend(
-        [u[0] for u in unique],
-        [u[1] for u in unique],
-        fontsize='small',
-        ncol=3,
-        loc='upper right',
-        framealpha=0.9,
-    )
+    _gas_legend(ax, [ax])
     return fig
 
 
@@ -811,7 +843,7 @@ def plot_fig4(intercomp, pe, NS):
     res_hatches = {'atm': '', 'melt': '..', 'solid': '//'}
     h_color = _colour('H')
     c_color = _colour('C')
-    panel_labels = [r'$\mathbf{(a)}$', r'$\mathbf{(b)}$', r'$\mathbf{(c)}$']
+    panel_labels = ['(a)', '(b)', '(c)']
 
     model_names = []
     is_proteus = []
@@ -935,20 +967,11 @@ def plot_fig4(intercomp, pe, NS):
             f'{plabel} {res_titles[r]}',
             transform=ax.transAxes,
             va='top',
+            fontweight='bold',
         )
         ax.grid(True, axis='y')
 
-    axes[-1].set_xticks(x)
-    tick_labels = []
-    for nm, ip in zip(model_names, is_proteus):
-        if ip:
-            tick_labels.append(rf'$\bf{{{nm}}}$')
-        else:
-            tick_labels.append(nm)
-    axes[-1].set_xticklabels(tick_labels, fontsize='small', rotation=45, ha='right')
-    for tl, ip in zip(axes[-1].get_xticklabels(), is_proteus):
-        if ip:
-            tl.set_color(NS['color'])
+    _name_ticks(axes[-1], model_names, is_proteus)
 
     fig.suptitle(r'Nominal-Earth H,C inventories at $\phi$ = 5%')
     return fig
@@ -1061,10 +1084,11 @@ def plot_fig6(intercomp, pv, NS):
     ax_abs.text(
         0.98,
         0.95,
-        r'$\mathbf{(a)}$ Absolute $f$O$_2$',
+        r'(a) Absolute $f$O$_2$',
         transform=ax_abs.transAxes,
         va='top',
         ha='right',
+        fontweight='bold',
     )
     _legend_below(fig, ax_abs)
     ax_abs.invert_xaxis()
@@ -1077,10 +1101,11 @@ def plot_fig6(intercomp, pv, NS):
     ax_rel.text(
         0.98,
         0.95,
-        r'$\mathbf{(b)}$ Relative $f$O$_2$',
+        r'(b) Relative $f$O$_2$',
         transform=ax_rel.transAxes,
         va='top',
         ha='right',
+        fontweight='bold',
     )
     ax_rel.set_xlim(3300, None)
     ax_rel.set_ylim(bottom=-0.5)
@@ -1094,7 +1119,7 @@ def plot_fig7(intercomp, pv, NS):
     """Volatile retention % vs time for Venus, matching Nicholls+ Fig 7."""
     fig, axes = plt.subplots(2, 1, figsize=(8, 8), sharex=True, layout='constrained')
     ax_h, ax_c = axes
-    panel_labels = [r'$\mathbf{(a)}$', r'$\mathbf{(b)}$']
+    panel_labels = ['(a)', '(b)']
 
     for mk, st in MODELS.items():
         df = _load_chili_csv(intercomp / mk / f'evolution-{mk}-venus-data.csv')
@@ -1200,6 +1225,11 @@ def plot_fig7(intercomp, pv, NS):
     # Single combined legend on the carbon panel: every code plus a
     # melt-fraction marker key (x at phi=95%, o at phi=5%).
     handles, labels = ax_h.get_legend_handles_labels()
+    crosses = {MODELS['proteus']['label']: (8, 1.5), NS['label']: (10, 2.5)}
+    handles = [
+        (h, _cross(PROTEUS_COLOUR, *crosses[la])) if la in crosses else h
+        for h, la in zip(handles, labels)
+    ]
     marker_key = [
         Line2D(
             [],
@@ -1224,6 +1254,7 @@ def plot_fig7(intercomp, pv, NS):
     ax_c.legend(
         handles + marker_key,
         labels + [h.get_label() for h in marker_key],
+        handler_map={tuple: HandlerTuple(ndivide=None)},
         fontsize='x-small',
         ncol=2,
         loc='lower left',
@@ -1297,12 +1328,12 @@ def plot_fig8(intercomp, pe, NS):
         ha='left',
     )
 
-    axes[0].set_title(r'$\mathbf{(a)}$', loc='left')
+    axes[0].set_title('(a)', loc='left', fontweight='bold')
     axes[0].set_xlabel('Melt fraction [vol%]')
     axes[0].set_xlim(100, 0)
     _legend_below(fig, axes[0], ncol=4)
 
-    axes[1].set_title(r'$\mathbf{(b)}$', loc='left')
+    axes[1].set_title('(b)', loc='left', fontweight='bold')
     axes[1].set_xlabel(r'$T_\mathrm{surf}$ [K]')
     axes[1].set_xlim(3400, 1400)
 
@@ -1324,7 +1355,7 @@ def plot_fig9(intercomp, pe, NS):
 
     fig, axes = plt.subplots(3, 1, figsize=(7, 11), sharex=True, layout='constrained')
     ax_t, ax_r, ax_v = axes
-    panel_labels = [r'$\mathbf{(a)}$', r'$\mathbf{(b)}$', r'$\mathbf{(c)}$']
+    panel_labels = ['(a)', '(b)', '(c)']
 
     for mk, st in MODELS.items():
         df = _load_chili_csv(intercomp / mk / f'evolution-{mk}-earth-data.csv')
@@ -1379,7 +1410,6 @@ def plot_fig9(intercomp, pe, NS):
                 **kw,
             )
 
-    _anno_box = dict(boxstyle='round,pad=0.2', fc=style_neutral(1), ec='none', alpha=0.85)
     ax_r.axhline(R_cmb_Mm, color=style_neutral(), linestyle='--', linewidth=1.0)
     ax_r.text(
         0.98,
@@ -1389,7 +1419,6 @@ def plot_fig9(intercomp, pe, NS):
         fontsize='small',
         va='top',
         ha='right',
-        bbox=_anno_box,
     )
     ax_v.axhline(visc_solid, color=style_neutral(), linestyle='--', linewidth=1.0)
     ax_v.text(
@@ -1400,18 +1429,16 @@ def plot_fig9(intercomp, pe, NS):
         fontsize='small',
         va='bottom',
         ha='center',
-        bbox=_anno_box,
     )
     ax_v.axhline(visc_water, color=style_neutral(), linestyle=':', linewidth=1.0)
     ax_v.text(
-        0.98,
-        visc_water,
+        0.5,
+        visc_water / 3,
         'Water STP viscosity',
         transform=ax_v.get_yaxis_transform(),
         fontsize='small',
-        va='bottom',
-        ha='right',
-        bbox=_anno_box,
+        va='top',
+        ha='center',
     )
 
     ax_t.set_ylabel(r'$T_\mathrm{surf}$ [K]')
@@ -1424,7 +1451,7 @@ def plot_fig9(intercomp, pe, NS):
     for ax, plabel in zip(axes, panel_labels):
         ax.set_xlim(100, 0)
         ax.grid(True)
-        ax.set_title(plabel, loc='left')
+        ax.set_title(plabel, loc='left', fontweight='bold')
 
     _legend_below(fig, ax_t)
     return fig
@@ -1518,7 +1545,7 @@ def plot_grid_timescales(intercomp, grid_dir, NS):
         t_vals = []
         for hl in h_levels:
             run = grid_dir / f'chili_grid_earth_{hl}_{cl}'
-            df = _load_proteus_helpfile(run) if run.is_dir() else None
+            df = _load_proteus_helpfile(run, profiles=False) if run.is_dir() else None
             if df is None:
                 continue
             row = _find_row_at_phi(df, 0.05)
@@ -1597,6 +1624,22 @@ def plot_grid_timescales(intercomp, grid_dir, NS):
     return fig
 
 
+# Run folders that each figure of the tutorial page reads, as keywords of make_figure.
+_READS = {
+    'chili_fig1_melt_fraction': ('earth', 'venus'),
+    'chili_fig2_milestones': ('earth', 'grid_dir'),
+    'chili_fig3_atm_composition': ('earth',),
+    'chili_fig4_mass_budgets': ('earth',),
+    'chili_fig5_venus_atm': ('venus',),
+    'chili_fig6_fO2_vs_T': ('venus',),
+    'chili_fig7_volatiles': ('venus',),
+    'chili_fig8_olr': ('earth',),
+    'chili_fig9_geodynamics': ('earth',),
+    'chili_psurf_vs_time': ('earth',),
+    'chili_grid_solidification': ('grid_dir',),
+}
+
+
 def _figures(intercomp, pe, pv, NS, grid_dir):
     """Figures of the tutorial page by file stem, each as a call that draws it."""
     figs = {
@@ -1626,11 +1669,12 @@ def make_figure(
     Parameters
     ----------
     run_dirs : list of Path or str
-        Every run folder that the figure reads; their commits make the run label.
+        Every run folder that the figure reads. The run label comes from the
+        commits of the folders that are read, each of which must be in this list.
     out_path : Path
-        File of the PNG.
+        File of the PNG; its pixel size follows ``savefig.dpi`` of the active style.
     fig_id : str
-        File stem of the figure, a key of ``_figures``.
+        File stem of the figure, a key of ``_READS``.
     chili_repo : Path or str
         Checkout of the CHILI repository.
     earth, venus : Path or str, optional
@@ -1646,27 +1690,47 @@ def make_figure(
     Raises
     ------
     ValueError
-        For an unknown ``fig_id``, for Figure 5 without model and run data and
-        for the grid figure without ``grid_dir``.
+        For an unknown ``fig_id``, for a run folder that the figure reads and
+        that is not given, holds no data or is not in ``run_dirs``, and for a
+        figure that cannot be drawn or written.
+    TypeError
+        For ``run_dirs`` that is None or a single path.
     """
-    grid = Path(grid_dir) if grid_dir else None
-    known = _figures(None, None, None, None, grid)
-    if fig_id == 'chili_grid_solidification' and grid is None:
-        raise ValueError(f'figure {fig_id!r} needs grid_dir')
-    if fig_id not in known:
-        raise ValueError(f'unknown figure {fig_id!r}; known: {", ".join(known)}')
-    NS = _new_style(_get_proteus_sha(*(Path(run) for run in run_dirs if run)))
-    pe = _load_proteus_helpfile(Path(earth)) if earth else None
-    pv = _load_proteus_helpfile(Path(venus)) if venus else None
-    fig = _figures(ensure_chili_repo(Path(chili_repo)), pe, pv, NS, grid)[fig_id]()
-    if fig is None:
-        raise ValueError(f'no data for figure {fig_id!r}')
+    if fig_id not in _READS:
+        raise ValueError(f'unknown figure {fig_id!r}; known: {", ".join(_READS)}')
+    if run_dirs is None or isinstance(run_dirs, (str, Path)):
+        raise TypeError('run_dirs must be a list of run folders')
+    given = {'earth': earth, 'venus': venus, 'grid_dir': grid_dir}
+    for name in _READS[fig_id]:
+        if not given[name]:
+            raise ValueError(f'figure {fig_id!r} needs {name}')
+    read = [Path(given[name]) for name in _READS[fig_id] if name != 'grid_dir']
+    runs = [_load_proteus_helpfile(run, fig_id == 'chili_fig9_geodynamics') for run in read]
+    grid = Path(grid_dir) if 'grid_dir' in _READS[fig_id] else None
+    if grid is not None:
+        grid_runs = [grid / f'chili_grid_earth_{hl}_{cl}' for hl in GRID_H for cl in C_LEVELS]
+        read += [run for run in grid_runs if (run / 'runtime_helpfile.csv').is_file()]
+        runs.append(read[len(runs) :] or None)
+    for name, run in zip(_READS[fig_id], runs):
+        if run is None:
+            raise ValueError(f'no run data in {given[name]} for figure {fig_id!r}')
+    listed = {Path(run).resolve() for run in run_dirs}
+    missing = [str(run) for run in read if run.resolve() not in listed]
+    if missing:
+        raise ValueError(f'run_dirs does not hold these run folders of {fig_id!r}: {missing}')
+    by_name = dict(zip(_READS[fig_id], runs))
+    NS = _new_style(_get_proteus_sha(*read))
+    intercomp = ensure_chili_repo(Path(chili_repo))
+    opened = set(plt.get_fignums())
     try:
+        draw = _figures(intercomp, by_name.get('earth'), by_name.get('venus'), NS, grid)[fig_id]
+        fig = draw()
         Path(out_path).parent.mkdir(parents=True, exist_ok=True)
         fig.savefig(out_path)
-    except Exception:
-        plt.close(fig)
-        raise
+    except Exception as err:
+        for num in set(plt.get_fignums()) - opened:
+            plt.close(num)
+        raise ValueError(f'figure {fig_id!r} could not be made: {err}') from err
     return fig
 
 
