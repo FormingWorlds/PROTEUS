@@ -25,6 +25,14 @@ from ._plot_chili_helpers import (
     _run_table,
 )
 
+BOTH_BASES = 'Melt fraction [%]\n(by volume; current run by mass)'
+
+
+def _filled(ax):
+    """Bar patches of an axes that have a fill, without the outline of a stack."""
+    return [p for p in ax.patches if p.get_facecolor()[3] > 0]
+
+
 pytestmark = [
     pytest.mark.unit,
     pytest.mark.timeout(30),
@@ -150,7 +158,7 @@ def test_each_file_stem_draws_its_own_figure_from_its_own_run(chili_tool, tmp_pa
         ),
         'fig7_volatiles': (2, 'Hydrogen', 'Simulated time [Myr]'),
         'fig8_olr': (2, r'Outgoing LW radiation [W/m$^2$]', r'$T_\mathrm{surf}$ [K]'),
-        'fig9_geodynamics': (3, r'$T_\mathrm{surf}$ [K]', 'Melt fraction [vol%]'),
+        'fig9_geodynamics': (3, r'$T_\mathrm{surf}$ [K]', BOTH_BASES),
         'psurf_vs_time': (1, 'Surface pressure (bar)', 'Time (Myr)'),
         'grid_solidification': (
             1,
@@ -158,6 +166,7 @@ def test_each_file_stem_draws_its_own_figure_from_its_own_run(chili_tool, tmp_pa
             r'H inventory ($\times 10^{20}$ kg)',
         ),
     }
+    assert figures['chili_fig8_olr'].axes[0].get_xlabel() == BOTH_BASES
     assert 'Earth' in figures['chili_fig3_atm_composition'].axes[0].get_title()
     assert 'Venus' in figures['chili_fig5_venus_atm'].axes[0].get_title()
 
@@ -193,23 +202,33 @@ def test_each_file_stem_draws_its_own_figure_from_its_own_run(chili_tool, tmp_pa
 
 
 def test_composition_bars_stack_from_zero_and_each_star_sits_on_its_bar(chili_tool, tmp_path):
-    """Gas segments stack in the order given, a negative partial pressure counts
-    as zero, and the star of each model is at the x position of its bar on a
+    """Gas segments stack in the order given with a thin edge, a negative partial
+    pressure counts as zero, one outline spans the whole stack of the current
+    run, and the star of each model is at the x position of its bar on a
     temperature axis from 1500 to 4000 K in Figure 5."""
     fig, ax = chili_tool.plt.subplots()
     gas = {'H2O': [-1.0, 2.0], 'CO2': [3.0, 4.0]}
 
     chili_tool._stack_bars(ax, np.arange(2), gas, ['H2O', 'CO2'], [False, True])
 
-    assert [p.get_height() for p in ax.patches] == [0.0, 2.0, 3.0, 4.0]
-    assert [p.get_y() for p in ax.patches] == [0.0, 0.0, 0.0, 2.0]
-    assert [p.get_linewidth() for p in ax.patches] == [0.5, 2.0, 0.5, 2.0]
+    segments, outlines = _filled(ax), [p for p in ax.patches if p.get_facecolor()[3] == 0]
+    assert [p.get_height() for p in segments] == [0.0, 2.0, 3.0, 4.0]
+    assert [p.get_y() for p in segments] == [0.0, 0.0, 0.0, 2.0]
+    assert [(p.get_linewidth(), _hex(p.get_edgecolor())) for p in segments] == [
+        (0.5, '#ffffff')
+    ] * 4
+    (outline,) = outlines
+    box = (outline.get_x(), outline.get_y(), outline.get_width(), outline.get_height())
+    assert box == pytest.approx((segments[1].get_x(), 0.0, segments[1].get_width(), 6.0))
+    assert (outline.get_linewidth(), _hex(outline.get_edgecolor())) == (2.0, '#000000')
 
     venus = chili_tool.plot_fig5(
         _comparison_data(tmp_path / 'data'), _run_table(), chili_tool._new_style('x')
     )
     bars, twin = venus.axes
-    assert [p.get_y() for p in bars.patches] == pytest.approx([0, 0, 70, 300, 73, 302.5])
+    assert [p.get_y() for p in _filled(bars)] == pytest.approx([0, 0, 70, 300, 73, 302.5])
+    outlines = [p.get_height() for p in bars.patches if p.get_facecolor()[3] == 0]
+    assert outlines == pytest.approx([302.50002])
     stars = [(ln.get_xdata()[0], ln.get_ydata()[0], ln.get_markersize()) for ln in twin.lines]
     assert stars == [(0, 1700.0, 12), (1, 1800.0, 16)]
     assert twin.get_ylim() == (1500, 4000)
@@ -239,13 +258,13 @@ def test_every_figure_takes_its_neutral_colours_from_the_active_style(
 def test_default_style_keeps_black_and_white_neutrals(chili_tool, tmp_path):
     """Without a style the neutral colours are black, mid grey and white, so
     the reference lines of Figure 8 are black, and the bars have white edges
-    for the models and black edges for the current run (3 gases in Figure 5,
+    for the models and black edges for the current run (1 outline in Figure 5,
     H and C in Figure 4)."""
     figures = _all_figures(chili_tool, tmp_path)
 
     lines = figures['chili_fig8_olr'].axes[1].lines
     assert '#000000' in {_hex(ln.get_color()) for ln in lines if ln.get_linestyle() == '-.'}
-    for stem, of_run in (('fig5_venus_atm', 3), ('fig4_mass_budgets', 2)):
+    for stem, of_run in (('fig5_venus_atm', 1), ('fig4_mass_budgets', 2)):
         edges = [_hex(p.get_edgecolor()) for p in figures[f'chili_{stem}'].axes[0].patches]
         assert set(edges) == {'#ffffff', '#000000'}, stem
         assert edges.count('#000000') == of_run, stem
@@ -282,7 +301,7 @@ def test_gas_colours_follow_the_chili_code_for_h2s_and_o2_and_proteus_for_the_re
         _comparison_data(tmp_path / 'data'), _run_table(), chili_tool._new_style('x')
     )
 
-    faces = {_hex(p.get_facecolor()) for p in fig.axes[0].patches}
+    faces = {_hex(p.get_facecolor()) for p in _filled(fig.axes[0])}
     assert faces == {GAS_COLOURS['H2O'], GAS_COLOURS['O2'], GAS_COLOURS['SO2']}
     budget = chili_tool.plot_fig4(
         _comparison_data(tmp_path / 'more'), _run_table(), chili_tool._new_style('x')
@@ -420,7 +439,8 @@ def test_legend_of_figure_2_names_each_model_that_is_drawn_with_its_cross(chili_
     the current run, each with its grid line and, beside it, the cross of its
     nominal case; the cross of the current run is larger than that of the submitted
     run; a model without data has no entry, and a model with a grid line and
-    no nominal case has one."""
+    no nominal case has one. The current run has no entry when no point of
+    it is drawn: a run that reaches no milestone, or a grid folder without runs."""
     data, grid = _grid_case(tmp_path)
     run = chili_tool._load_proteus_helpfile(_run_folder(tmp_path / 'earth'))
 
@@ -436,6 +456,7 @@ def test_legend_of_figure_2_names_each_model_that_is_drawn_with_its_cross(chili_
     ] * 7 + [(11, 3.0)]
     assert [_hex(ln.get_color()) for ln in crosses] == [*MODEL_COLOURS.values(), '#eb7d0f']
     circles = [ln for ln in legend.findobj(matplotlib.lines.Line2D) if ln.get_marker() == 'o']
+    assert legend.handlelength == pytest.approx(3.6)
     beside = [np.mean(x.get_xdata()) - np.mean(o.get_xdata()) for x, o in zip(crosses, circles)]
     assert len(circles) == 8 and min(beside) > 1
     style = chili_tool._new_style('x')
@@ -450,6 +471,15 @@ def test_legend_of_figure_2_names_each_model_that_is_drawn_with_its_cross(chili_
     table.to_csv(tmp_path / 'few' / 'lincs' / 'evolution-lincs-earth-grid-Hlow-data.csv')
     by_line = chili_tool.plot_fig2(tmp_path / 'few', None, style)
     assert [t.get_text() for t in by_line.legends[0].get_texts()] == ['LINCS', 'MOAI']
+    molten = _run_table().assign(Phi_global=[1.0, 0.99, 0.98])
+    (tmp_path / 'no_grid').mkdir()
+    for early, folder in (
+        (molten, None),
+        (None, tmp_path / 'no_grid'),
+        (molten, tmp_path / 'no_grid'),
+    ):
+        nothing = chili_tool.plot_fig2(tmp_path / 'few', early, style, grid_dir=folder)
+        assert [t.get_text() for t in nothing.legends[0].get_texts()] == ['LINCS', 'MOAI']
 
 
 def test_legend_of_figure_7_shows_the_cross_of_each_proteus_result(chili_tool, tmp_path):
@@ -493,8 +523,8 @@ def test_gas_legend_lists_a_gas_only_where_a_bar_of_it_can_be_seen(chili_tool, t
 
     assert legend(venus) == ['H$_2$O', 'SO$_2$']
     assert legend(earth) == ['H$_2$O', 'O$_2$', 'SO$_2$']
-    assert min(p.get_height() for p in venus.axes[0].patches[-2:]) == pytest.approx(1e-8)
-    assert max(p.get_height() for p in venus.axes[0].patches[-2:]) == pytest.approx(2e-5)
+    oxygen = _filled(venus.axes[0])[-2:]
+    assert sorted(p.get_height() for p in oxygen) == pytest.approx([1e-8, 2e-5])
 
 
 def test_text_is_in_the_font_of_the_style_and_the_run_name_is_bold(
@@ -559,7 +589,8 @@ def test_reference_labels_of_figure_9_have_no_box_and_the_water_label_is_below_i
         1
     ] < 1e-3
     assert water.get_fontsize() < labels['Solid mantle viscosity'].get_fontsize()
-    assert labels['Solid mantle viscosity'].get_va() == 'bottom'
+    solid = labels['Solid mantle viscosity']
+    assert solid.get_va() == 'top' and solid.get_position()[1] < 5e22
 
 
 def test_carbon_levels_of_figure_2_rise_in_opacity(chili_tool, tmp_path):

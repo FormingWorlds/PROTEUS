@@ -8,8 +8,6 @@ from pathlib import Path
 import matplotlib
 import pytest
 
-from ._plot_chili_helpers import DARK_BY_HAND
-
 
 @pytest.fixture(scope='module')
 def chili_tool():
@@ -30,13 +28,10 @@ def chili_figures(chili_tool):
     chili_tool.plt.close('all')
 
 
-@pytest.fixture(params=['dark_by_hand', 'light', 'dark'])
+@pytest.fixture(params=['light', 'dark'])
 def plot_style(request):
-    """A style active for the test: dark colours set by hand, or a proteus-mpl style."""
-    if request.param == 'dark_by_hand':
-        matplotlib.rcParams.update(DARK_BY_HAND)
-    else:
-        import proteus_mpl
+    """A proteus-mpl style, active for the test."""
+    import proteus_mpl
 
-        proteus_mpl.use(request.param)
+    proteus_mpl.use(request.param)
     return request.param

@@ -7,7 +7,9 @@ small tables in a temporary folder.
 from __future__ import annotations
 
 import sys
+import tomllib
 import types
+from pathlib import Path
 
 import matplotlib
 import numpy as np
@@ -183,8 +185,8 @@ def test_smooth_accepts_a_helpfile_column_and_keeps_the_end_points(chili_tool, l
 
 def test_bar_of_a_colour_close_to_the_surface_gets_a_grey_edge(chili_tool):
     """SO2 is close to a dark surface (contrast 1.3), so its bars get a mid grey
-    edge there and a surface-coloured edge on a light surface; the bar of the
-    current run has the text colour in both cases."""
+    edge there and a surface-coloured edge on a light surface; a colour that
+    stands out from the dark surface keeps the surface-coloured edge."""
     assert chili_tool._contrast('#000000', '#ffffff') == pytest.approx(21.0)
     assert chili_tool._contrast('#333333', '#ffffff') == pytest.approx(12.63, abs=0.005)
     assert chili_tool._contrast('#bbbbbb', '#F2F5F7') == pytest.approx(1.75, abs=0.005)
@@ -193,14 +195,12 @@ def test_bar_of_a_colour_close_to_the_surface_gets_a_grey_edge(chili_tool):
         '#00008B', '#05070B'
     )
 
-    light = [_hex(c) for c in chili_tool._bar_edges('#00008B', [False, True])]
+    light = _hex(chili_tool._bar_edge('#00008B'))
     matplotlib.rcParams.update(DARK_BY_HAND)
-    dark = [_hex(c) for c in chili_tool._bar_edges('#00008B', [False, True])]
-    water = [_hex(c) for c in chili_tool._bar_edges('#027FB1', [False, True])]
+    dark = _hex(chili_tool._bar_edge('#00008B'))
+    water = _hex(chili_tool._bar_edge('#027FB1'))
 
-    assert light == ['#ffffff', '#000000']
-    assert dark == ['#777a7e', '#e9eef2']
-    assert water == ['#05070b', '#e9eef2']
+    assert (light, dark, water) == ('#ffffff', '#777a7e', '#05070b')
 
 
 def test_style_option_calls_proteus_mpl_and_the_default_call_does_not_need_it(
@@ -366,6 +366,36 @@ def test_make_figure_refuses_a_figure_without_the_run_that_it_reads(
     assert not out.exists() and not missing.exists()
 
 
+def test_make_figure_stops_for_a_comparison_folder_without_model_data(
+    chili_tool, tmp_path, monkeypatch
+):
+    """A ``chili_repo`` that does not exist, that is no checkout, or whose
+    outputs folder holds no model file stops ``make_figure`` with the name of
+    the folder; nothing is fetched and no folder is made."""
+
+    def no_clone(*args, **kwargs):
+        raise AssertionError('make_figure must not fetch the comparison data')
+
+    monkeypatch.setattr(chili_tool.subprocess, 'run', no_clone)
+    earth = _run_folder(tmp_path / 'earth')
+    (tmp_path / 'not_a_checkout').mkdir()
+    (tmp_path / 'empty' / 'intercomparison' / 'outputs' / 'moai').mkdir(parents=True)
+
+    for name in ('typo', 'not_a_checkout', 'empty'):
+        with pytest.raises(
+            ValueError, match=f'{name}/intercomparison/outputs holds no model data'
+        ):
+            chili_tool.make_figure(
+                [earth],
+                tmp_path / 'figure.png',
+                fig_id='chili_psurf_vs_time',
+                chili_repo=tmp_path / name,
+                earth=earth,
+            )
+    assert not (tmp_path / 'typo').exists() and not (tmp_path / 'figure.png').exists()
+    assert list((tmp_path / 'not_a_checkout').iterdir()) == []
+
+
 def test_make_figure_closes_a_figure_that_it_cannot_draw_or_write(
     chili_tool, tmp_path, monkeypatch
 ):
@@ -392,8 +422,13 @@ def test_make_figure_closes_a_figure_that_it_cannot_draw_or_write(
     venus = _run_folder(tmp_path / 'venus')
     table = _run_table().assign(Phi_global=[1.0, 0.95, 0.068])
     table.to_csv(venus / 'runtime_helpfile.csv', sep=' ', index=False)
-    (tmp_path / 'bare' / 'intercomparison' / 'outputs').mkdir(parents=True)
-    with pytest.raises(ValueError, match='could not be made: no model and no run has data'):
+    earth_only = tmp_path / 'bare' / 'intercomparison' / 'outputs' / 'moai'
+    earth_only.mkdir(parents=True)
+    source = repo / 'intercomparison' / 'outputs' / 'moai' / 'evolution-moai-earth-data.csv'
+    (earth_only / source.name).write_bytes(source.read_bytes())
+    with pytest.raises(
+        ValueError, match='could not be made: no model in .*outputs and no run has'
+    ):
         chili_tool.make_figure(
             [venus],
             tmp_path / 'figure.png',
@@ -435,3 +470,40 @@ def test_interior_profiles_are_read_for_figure_9_only(chili_tool, tmp_path, monk
         )
         assert read == (['earth'] if stem == 'fig9_geodynamics' else []), stem
     assert chili_tool._load_proteus_helpfile(earth).attrs['_profiles'] is empty
+
+
+def test_manifest_entries_of_the_chili_page_agree_with_the_runs_that_make_figure_reads(
+    chili_tool,
+):
+    """Each entry of ``tools/docs_figures.toml`` for the CHILI page has the
+    ``fig_id`` of its ``id`` and the asset of that figure, lists the run folders
+    that ``make_figure`` reads for it (the 9 grid folders for the grid), and
+    gives ``earth``, ``venus`` and ``grid_dir`` where the figure reads them."""
+    manifest = tomllib.loads(
+        (Path(__file__).resolve().parents[2] / 'tools' / 'docs_figures.toml').read_text()
+    )
+    maker = 'tools/plot_chili_comparison.py:make_figure'
+    entries = [fig for fig in manifest['figure'] if fig['maker'] == maker]
+    grid = [
+        f'chili_grid_earth_{h}_{c}'
+        for h in ('Hlow', 'Hmid', 'Hhigh')
+        for c in ('Clow', 'Cmid', 'Chigh')
+    ]
+    folders = {'earth': ['chili_earth'], 'venus': ['chili_venus'], 'grid_dir': grid}
+    places = {
+        'earth': '{runs}/chili_earth',
+        'venus': '{runs}/chili_venus',
+        'grid_dir': '{runs}',
+    }
+
+    assert sorted(fig['id'] for fig in entries) == sorted(chili_tool._READS)
+    assert len(entries) == 11
+    for fig in entries:
+        reads = chili_tool._READS[fig['id']]
+        assert fig['args']['fig_id'] == fig['id'], fig['id']
+        assert fig['asset'] == 'docs/assets/tutorials/chili/' + fig['id'].removeprefix('chili_')
+        assert fig['page'] == 'chili_intercomparison.md', fig['id']
+        assert fig['runs'] == [run for name in reads for run in folders[name]], fig['id']
+        given = {key: value for key, value in fig['args'].items() if key in places}
+        assert given == {name: places[name] for name in reads}, fig['id']
+        assert fig['args']['chili_repo'] == '{chili_repo}', fig['id']

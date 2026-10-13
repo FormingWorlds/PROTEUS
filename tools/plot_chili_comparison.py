@@ -110,6 +110,9 @@ GRID_C_LABELS = {
 
 PHI_RELAX = 0.01
 
+# Axis label of a melt fraction in percent: the intercomparison files give it by volume.
+MELT_LABEL = 'Melt fraction [%]\n(by volume; current run by mass)'
+
 
 def _get_proteus_sha(*runs):
     """Commits that made the run folders, from their logs, in argument order; 'unknown' without one."""
@@ -141,12 +144,10 @@ def _contrast(a, b):
     return (max(lum) + 0.05) / (min(lum) + 0.05)
 
 
-def _bar_edges(colour, is_run):
-    """Edge colours of a row of bars: the text colour for the current run; for a
-    model the surface colour, or mid grey where the fill is close to the surface."""
+def _bar_edge(colour):
+    """Edge colour of a bar segment: the surface colour, or mid grey where the fill is close to it."""
     faint = _contrast(colour, style_neutral(1)) < 1.5
-    other = style_neutral(FADE_MID_GREY if faint else 1)
-    return [style_neutral() if ip else other for ip in is_run]
+    return style_neutral(FADE_MID_GREY if faint else 1)
 
 
 def _legend_below(fig, ax, ncol=3):
@@ -162,7 +163,8 @@ def _text_on(fill):
 
 
 def _stack_bars(ax, x, gas, present, isp):
-    """Stacked partial-pressure bars, one segment per gas of ``present``."""
+    """Stacked partial-pressure bars, one segment per gas of ``present``, with one
+    outline around the whole stack of the current run."""
     bottom = np.zeros(len(x))
     for g in present:
         vals = np.array(gas[g], dtype=float).clip(min=0)
@@ -173,10 +175,12 @@ def _stack_bars(ax, x, gas, present, isp):
             color=_colour(g),
             label=GAS_LABELS.get(g, g),
             width=0.6,
-            edgecolor=_bar_edges(_colour(g), isp),
-            linewidth=[2.0 if ip else 0.5 for ip in isp],
+            edgecolor=_bar_edge(_colour(g)),
+            linewidth=0.5,
         )
         bottom += vals
+    run = np.array(isp, dtype=bool)
+    ax.bar(x[run], bottom[run], width=0.6, fc='none', edgecolor=style_neutral(), linewidth=2.0)
 
 
 def _t_surf_axis(ax, tsv, isp, NS, ylim):
@@ -570,6 +574,7 @@ def plot_fig2(intercomp, pe, NS, grid_dir=None):
         if pe is not None:
             t_nom = _milestone_time_proteus(pe, phi_tgt)
             if not np.isnan(t_nom):
+                drawn.add(NS['label'])
                 ax.plot(
                     t_nom,
                     0,
@@ -596,6 +601,7 @@ def plot_fig2(intercomp, pe, NS, grid_dir=None):
                         t_vals.append(t_m)
 
                 if t_vals:
+                    drawn.add(NS['label'])
                     ax.plot(
                         t_vals,
                         y_vals,
@@ -637,7 +643,7 @@ def plot_fig2(intercomp, pe, NS, grid_dir=None):
         for st in MODELS.values()
         if st['label'] in drawn
     }
-    if pe is not None or grid_dir is not None:
+    if NS['label'] in drawn:
         edge = dict(markeredgecolor=style_neutral(), markeredgewidth=0.6)
         line = Line2D(
             [], [], marker='o', markersize=9, color=NS['color'], linewidth=3.0, **edge
@@ -647,6 +653,7 @@ def plot_fig2(intercomp, pe, NS, grid_dir=None):
         entries.values(),
         entries.keys(),
         handler_map={tuple: HandlerTuple(ndivide=None)},
+        handlelength=3.6,
         loc='outside lower center',
         ncol=3,
         fontsize='small',
@@ -1333,7 +1340,7 @@ def plot_fig8(intercomp, pe, NS):
     )
 
     axes[0].set_title('(a)', loc='left', fontweight='bold')
-    axes[0].set_xlabel('Melt fraction [vol%]')
+    axes[0].set_xlabel(MELT_LABEL)
     axes[0].set_xlim(100, 0)
     _legend_below(fig, axes[0], ncol=4)
 
@@ -1427,11 +1434,11 @@ def plot_fig9(intercomp, pe, NS):
     ax_v.axhline(visc_solid, color=style_neutral(), linestyle='--', linewidth=1.0)
     ax_v.text(
         0.5,
-        visc_solid,
+        visc_solid / 3,
         'Solid mantle viscosity',
         transform=ax_v.get_yaxis_transform(),
         fontsize='small',
-        va='bottom',
+        va='top',
         ha='center',
     )
     ax_v.axhline(visc_water, color=style_neutral(), linestyle=':', linewidth=1.0)
@@ -1450,7 +1457,7 @@ def plot_fig9(intercomp, pe, NS):
     ax_r.set_ylim(2.9, 7.2)
     ax_v.set_ylabel(r'$\eta$ [Pa s]')
     ax_v.set_yscale('log')
-    ax_v.set_xlabel('Melt fraction [vol%]')
+    ax_v.set_xlabel(MELT_LABEL)
 
     for ax, plabel in zip(axes, panel_labels):
         ax.set_xlim(100, 0)
@@ -1685,7 +1692,7 @@ def make_figure(
     fig_id : str
         File stem of the figure, a key of ``_READS``.
     chili_repo : Path or str
-        Checkout of the CHILI repository.
+        Checkout of the CHILI repository; it is not fetched when it is absent.
     earth, venus : Path or str, optional
         Folder of the Nominal Earth and of the Nominal Venus run.
     grid_dir : Path or str, optional
@@ -1699,9 +1706,10 @@ def make_figure(
     Raises
     ------
     ValueError
-        For an unknown ``fig_id``, for a run folder that the figure reads and
-        that is not given, holds no data or is not in ``run_dirs``, and for a
-        figure that cannot be drawn or written.
+        For an unknown ``fig_id``, for a ``chili_repo`` without model data, for
+        a run folder that the figure reads and that is not given, holds no data
+        or is not in ``run_dirs``, and for a figure that cannot be drawn or
+        written.
     TypeError
         For ``run_dirs`` that is None or a single path.
     """
@@ -1727,14 +1735,18 @@ def make_figure(
     if missing:
         raise ValueError(f'run_dirs does not hold these run folders of {fig_id!r}: {missing}')
     by_name = dict(zip(_READS[fig_id], runs))
+    intercomp = Path(chili_repo) / 'intercomparison' / 'outputs'
+    if not any(intercomp.glob('*/evolution-*-data.csv')):
+        raise ValueError(
+            f'{intercomp} holds no model data: give a checkout of the CHILI repository'
+        )
     NS = _new_style(_get_proteus_sha(*read))
-    intercomp = ensure_chili_repo(Path(chili_repo))
     opened = set(plt.get_fignums())
     try:
         draw = _figures(intercomp, by_name.get('earth'), by_name.get('venus'), NS, grid)[fig_id]
         fig = draw()
         if fig is None:
-            raise ValueError('no model and no run has data for it')
+            raise ValueError(f'no model in {intercomp} and no run has data for it')
         Path(out_path).parent.mkdir(parents=True, exist_ok=True)
         fig.savefig(out_path)
     except Exception as err:

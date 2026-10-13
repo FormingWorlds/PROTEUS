@@ -265,7 +265,11 @@ def _draw(fig: dict, run_dirs: list[Path], work: Path, places: dict) -> Path:
     else:
         work.mkdir(parents=True)
         png = work / f'{fig["id"]}.png'
-        _script_maker(kind, name)(run_dirs, png, **args)
+        maker = _script_maker(kind, name)
+        try:
+            maker(run_dirs, png, **args)
+        except Exception as exc:
+            raise FigureError(f'{fig["id"]}: {exc}') from exc
     if not png.is_file():
         raise FigureError(f'{fig["id"]}: the maker wrote no file {png.name}')
     return png
