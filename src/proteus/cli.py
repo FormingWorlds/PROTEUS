@@ -1333,15 +1333,22 @@ def _update_agni(root: Path) -> None:
     click.secho('[+] AGNI updated', fg='green')
 
 
+# (name, folder under the PROTEUS root, setup script)
+_STANDARD_MODULES = (
+    ('Morrigan', 'Morrigan', 'tools/get_morrigan.sh'),
+    ('VULCAN', 'VULCAN', 'tools/get_vulcan.sh'),
+    ('atmodeller', 'Atmodeller', 'tools/get_atmodeller.sh'),
+    ('Obliqua', 'Obliqua', 'tools/get_obliqua.sh'),
+)
+
+
 def _install_module(
     root: Path,
     name: str,
-    folder_name: str,
     script_rel: str,
-    args: list[str] | None = None,
     env: dict | None = None,
 ) -> None:
-    """Install a module if its folder is absent, or warn on failure and proceed.
+    """Run a module setup script, or warn on failure and proceed.
 
     Parameters
     ----------
@@ -1349,23 +1356,13 @@ def _install_module(
         PROTEUS root directory.
     name : str
         Display name of the module.
-    folder_name : str
-        Name of the module directory under root.
     script_rel : str
         Repository-relative path to the install script.
-    args : list of str, optional
-        Arguments passed to the install script.
     env : dict, optional
         Environment variables passed to the subprocess.
     """
-    folder = root / folder_name
-    if folder.exists():
-        click.secho(f'[+] {name} already present', fg='green')
-        return
-    click.secho(f'[+] Installing {name}...', fg='blue')
+    click.secho(f'[+] Setting up {name}...', fg='blue')
     cmd = ['bash', str(root / script_rel)]
-    if args:
-        cmd.extend(args)
     try:
         subprocess.run(
             cmd,
@@ -1488,17 +1485,8 @@ def install_all(export_env: bool, config_path: Path | None):
         click.secho('[+] AGNI already present', fg='green')
 
     # --- Step 4b: Install standard modules ---
-    _install_module(root, 'Morrigan', 'Morrigan', 'tools/get_morrigan.sh')
-    _install_module(root, 'VULCAN', 'VULCAN', 'tools/get_vulcan.sh')
-    _install_module(root, 'atmodeller', 'Atmodeller', 'tools/get_atmodeller.sh')
-    _install_module(
-        root,
-        'Obliqua',
-        'Obliqua',
-        'tools/get_obliqua.sh',
-        args=['0'],
-        env=julia_env,
-    )
+    for name, _folder, script in _STANDARD_MODULES:
+        _install_module(root, name, script, julia_env)
 
     # --- Step 5: Export environment variables ---
     if export_env:
@@ -1601,13 +1589,7 @@ def update_all(export_env: bool, config_path: Path | None):
             click.secho('[!] AGNI not found. Run `proteus install-all`.', fg='yellow')
 
     # --- Step 5b: Check standard modules ---
-    _standard_modules = [
-        ('Morrigan', 'Morrigan', 'tools/get_morrigan.sh'),
-        ('VULCAN', 'VULCAN', 'tools/get_vulcan.sh'),
-        ('atmodeller', 'Atmodeller', 'tools/get_atmodeller.sh'),
-        ('Obliqua', 'Obliqua', 'tools/get_obliqua.sh'),
-    ]
-    for mod_name, mod_folder, mod_script in _standard_modules:
+    for mod_name, mod_folder, mod_script in _STANDARD_MODULES:
         if not (root / mod_folder).exists():
             click.secho(f'[!] {mod_name} not found. Run "bash {mod_script}".', fg='yellow')
 

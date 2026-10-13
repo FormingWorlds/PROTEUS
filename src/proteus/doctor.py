@@ -500,7 +500,7 @@ def _release_tag_note(checkout: str, short: str | None, spec: Requirement | None
     if (
         _floor_version(spec) is None
         or not _is_own_clone(checkout)
-        or (spec and spec.name.lower() in _module_pins())
+        or spec.name.lower() in _module_pins()
     ):
         return ''
     branch = _git_note_output(checkout, 'symbolic-ref', '-q', '--short', 'HEAD')
@@ -608,16 +608,26 @@ def _below_floor_advice(
             f'# {path} is not a git clone of its own, so no git command moves it to the'
             f' release tag; move it away, then run: {replace}'
         )
-    tag = _floor_tag_name(spec, list(_tag_commits(checkout)))
-    if tag:
-        target = f'refs/tags/{shlex.quote(tag)}'
+    ref = _module_pins().get(dist_name.lower(), {}).get('ref')
+    if ref:
+        target = shlex.quote(ref)
+        advice = (
+            f'git -C {path} fetch origin && git -C {path} checkout --detach {target}'
+            f' && pip install -e {path}'
+        )
     else:
-        pins = shlex.quote(str(root / 'tools' / '_module_pins.py'))
-        target = f'"refs/tags/$(git -C {path} tag -l | python {pins} {dist_name} floor-tag)"'
-    advice = (
-        f'git -C {path} fetch --tags && git -C {path} checkout --detach {target}'
-        f' && pip install -e {path}'
-    )
+        tag = _floor_tag_name(spec, list(_tag_commits(checkout)))
+        if tag:
+            target = f'refs/tags/{shlex.quote(tag)}'
+        else:
+            pins = shlex.quote(str(root / 'tools' / '_module_pins.py'))
+            target = (
+                f'"refs/tags/$(git -C {path} tag -l | python {pins} {dist_name} floor-tag)"'
+            )
+        advice = (
+            f'git -C {path} fetch --tags && git -C {path} checkout --detach {target}'
+            f' && pip install -e {path}'
+        )
     if in_folder:
         advice += f'  # or replace the clone: {replace} --force'
     return advice
@@ -910,23 +920,17 @@ def check_python_package(name: str, spec: Requirement | None) -> CheckResult:
         installed = Version(importlib.metadata.version(name))
     except PackageNotFoundError:
         if name in STANDARD_MODULE_PACKAGES:
-            short = name.lower().removeprefix('fwl-')
-            root = _repo_root()
-            fix = f'cd {shlex.quote(str(root))} && bash tools/get_{short}.sh'
-            return CheckResult(
-                name=name,
-                category='versions',
-                status=WARN,
-                message='not installed',
-                fix_cmd=fix,
-            )
-        fix = f'pip install {name}'
+            setup = _setup_command(name)
+            if setup:
+                root = shlex.quote(str(_repo_root()))
+                status, fix = WARN, f'cd {root} && bash {setup}'
+            else:
+                extra = name.lower().removeprefix('fwl-')
+                status, fix = WARN, f'pip install "fwl-proteus[{extra}]"'
+        else:
+            status, fix = FAIL, f'pip install {name}'
         return CheckResult(
-            name=name,
-            category='versions',
-            status=FAIL,
-            message='not installed',
-            fix_cmd=fix,
+            name=name, category='versions', status=status, message='not installed', fix_cmd=fix
         )
 
     # Build status message with editable annotation
@@ -1006,7 +1010,7 @@ def check_python_package(name: str, spec: Requirement | None) -> CheckResult:
     )
 
 
-def check_git_module(name: str, dirs: dict, required: bool = True) -> CheckResult | None:
+def check_git_module(name: str, dirs: dict, required: bool = True) -> CheckResult:
     """Check a git-pinned module (AGNI, SOCRATES, Obliqua) against pyproject.toml ref.
 
     Parameters
@@ -1033,15 +1037,6 @@ def check_git_module(name: str, dirs: dict, required: bool = True) -> CheckResul
         path = dirs.get(dir_key, '')
 
     if not path or not os.path.isdir(path):
-        setup_script = f'bash tools/get_{name.lower()}.sh'
-        if not required:
-            return CheckResult(
-                name=name,
-                category='versions',
-                status=WARN,
-                message='not installed',
-                fix_cmd=setup_script,
-            )
         # Unlike the off-pin case below, this fix is not chained to an AGNI
         # rebuild: a not-installed SOCRATES means RAD_DIR is unset, so the AGNI
         # step would have nowhere to find SOCRATES. The install script prints
@@ -1049,9 +1044,9 @@ def check_git_module(name: str, dirs: dict, required: bool = True) -> CheckResul
         return CheckResult(
             name=name,
             category='versions',
-            status=FAIL,
+            status=FAIL if required else WARN,
             message='not installed',
-            fix_cmd=setup_script,
+            fix_cmd=f'bash tools/get_{name.lower()}.sh',
         )
 
     # Get current version
@@ -1069,39 +1064,50 @@ def check_git_module(name: str, dirs: dict, required: bool = True) -> CheckResul
 
     # Check HEAD against pinned ref
     head = _git_head(path)
+    if pinned_ref and head and head != pinned_ref:
+        # Re-cloning SOCRATES deletes AGNI build products in that tree;
+        # the SOCRATES refresh command chains an AGNI rebuild.
+        refresh = f'bash tools/get_{name.lower()}.sh'
+        auto_fixable = True
+        if name == 'SOCRATES':
+            refresh = (
+                'bash tools/get_socrates.sh "$RAD_DIR" '
+                '&& RAD_DIR="$RAD_DIR" bash tools/get_agni.sh 0'
+            )
+        elif name == 'Obliqua':
+            root = shlex.quote(str(_repo_root()))
+            folder = shlex.quote(os.path.abspath(path))
+            refresh = (
+                f'cd {root} && bash tools/get_obliqua.sh --force {folder}  # replaces the '
+                'folder with a new clone at the pin, which deletes everything in it'
+            )
+            auto_fixable = False
+        return CheckResult(
+            name=name,
+            category='versions',
+            status=WARN,
+            message=(f'{ver} ({head[:8]}) differs from pin ({pinned_ref[:8]})'),
+            fix_cmd=refresh,
+            auto_fixable=auto_fixable,
+        )
+
+    if name == 'Obliqua' and not (Path(path) / 'Manifest.toml').is_file():
+        head_str = f' ({head[:8]})' if head else ''
+        return CheckResult(
+            name=name,
+            category='versions',
+            status=WARN,
+            message=f'{ver}{head_str}: Julia environment not instantiated',
+            fix_cmd='bash tools/get_obliqua.sh',
+        )
+
     if pinned_ref and head:
-        if head == pinned_ref:
-            return CheckResult(
-                name=name,
-                category='versions',
-                status=PASS,
-                message=f'{ver} ({head[:8]})',
-            )
-        else:
-            # Re-cloning the SOCRATES tree deletes the build products AGNI
-            # writes into it: the generated wrappers under socrates/julia/gen
-            # and the compiled libSOCRATES under socrates/julia/lib. AGNI then
-            # fails to precompile until they are rebuilt, so a SOCRATES refresh
-            # chains an AGNI rebuild. Both halves target the tree RAD_DIR points
-            # at: reaching this branch means the SOCRATES checkout resolved from
-            # RAD_DIR exists, so RAD_DIR is non-empty in the environment and the
-            # chained command's references resolve. A custom install path cannot
-            # leave the two out of step. The AGNI step needs Julia; without it
-            # the rebuild fails loudly and the chain reports the failure rather
-            # than masking it.
-            refresh = f'bash tools/get_{name.lower()}.sh'
-            if name == 'SOCRATES':
-                refresh = (
-                    'bash tools/get_socrates.sh "$RAD_DIR" '
-                    '&& RAD_DIR="$RAD_DIR" bash tools/get_agni.sh 0'
-                )
-            return CheckResult(
-                name=name,
-                category='versions',
-                status=WARN,
-                message=(f'{ver} ({head[:8]}) differs from pin ({pinned_ref[:8]})'),
-                fix_cmd=refresh,
-            )
+        return CheckResult(
+            name=name,
+            category='versions',
+            status=PASS,
+            message=f'{ver} ({head[:8]})',
+        )
 
     return CheckResult(
         name=name,
@@ -1220,21 +1226,7 @@ def run_all_checks() -> list[CheckResult]:
         )
 
     # Python package versions (against pyproject.toml pins)
-    for pkg in PYTHON_PACKAGES:
-        try:
-            results.append(check_python_package(pkg, specs.get(pkg)))
-        except Exception as exc:
-            results.append(
-                CheckResult(
-                    name=pkg,
-                    category='versions',
-                    status=FAIL,
-                    message=f'check error: {exc}',
-                )
-            )
-
-    # Standard module packages (against pyproject.toml pins)
-    for pkg in STANDARD_MODULE_PACKAGES:
+    for pkg in (*PYTHON_PACKAGES, *STANDARD_MODULE_PACKAGES):
         try:
             results.append(check_python_package(pkg, specs.get(pkg)))
         except Exception as exc:
@@ -1248,25 +1240,9 @@ def run_all_checks() -> list[CheckResult]:
             )
 
     # Git module versions (against pyproject.toml commit pins)
-    for mod in GIT_MODULES:
+    for mod in (*GIT_MODULES, *OPTIONAL_GIT_MODULES):
         try:
-            results.append(check_git_module(mod, dirs))
-        except Exception as exc:
-            results.append(
-                CheckResult(
-                    name=mod,
-                    category='versions',
-                    status=FAIL,
-                    message=f'check error: {exc}',
-                )
-            )
-
-    # Git-pinned modules checked with a warning on absence.
-    for mod in OPTIONAL_GIT_MODULES:
-        try:
-            result = check_git_module(mod, dirs, required=False)
-            if result is not None:
-                results.append(result)
+            results.append(check_git_module(mod, dirs, mod in GIT_MODULES))
         except Exception as exc:
             results.append(
                 CheckResult(

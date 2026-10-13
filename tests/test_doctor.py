@@ -46,6 +46,7 @@ from proteus.doctor import (
     STANDARD_MODULE_PACKAGES,
     WARN,
     CheckResult,
+    _below_floor_advice,
     _collect_environment_info,
     _conda_build_lines,
     _dependency_specs,
@@ -787,6 +788,42 @@ class TestCheckPythonPackage:
         assert r.message == 'not installed'
         assert script in r.fix_cmd
 
+    @pytest.mark.parametrize(
+        ('pkg', 'extra'),
+        [
+            ('fwl-vulcan', 'vulcan'),
+            ('fwl-morrigan', 'morrigan'),
+            ('atmodeller', 'atmodeller'),
+        ],
+    )
+    def test_absent_standard_module_without_setup_script_suggests_pip_extra(self, pkg, extra):
+        """When setup script is absent, the warning suggests installing the extra."""
+        from importlib.metadata import PackageNotFoundError
+
+        with (
+            patch(
+                'proteus.doctor.importlib.metadata.version',
+                side_effect=PackageNotFoundError(pkg),
+            ),
+            patch('proteus.doctor._setup_command', return_value=None),
+        ):
+            r = check_python_package(pkg, None)
+        assert r.status == WARN
+        assert r.message == 'not installed'
+        assert r.fix_cmd == f'pip install "fwl-proteus[{extra}]"'
+
+    def test_absent_mandatory_package_still_fails(self):
+        """A missing mandatory Python package still returns FAIL."""
+        from importlib.metadata import PackageNotFoundError
+
+        with patch(
+            'proteus.doctor.importlib.metadata.version',
+            side_effect=PackageNotFoundError('fwl-mors'),
+        ):
+            r = check_python_package('fwl-mors', None)
+        assert r.status == FAIL
+        assert r.fix_cmd == 'pip install fwl-mors'
+
     def test_editable_annotation_included(self):
         """Editable installs show the checkout path and git hash."""
         from packaging.requirements import Requirement
@@ -1324,6 +1361,32 @@ class TestReleaseTagNote:
         assert 'PROTEUS expects' not in r.message
         assert 'release tag' not in r.message
 
+    def test_below_floor_advice_for_pinned_commit_module(self, tmp_path):
+        """A module with a commit pin suggests checkout of the ref without tag lookup."""
+        from packaging.requirements import Requirement
+
+        checkout = tmp_path / 'Atmodeller'
+        _init_test_repo(checkout)
+        spec = Requirement('atmodeller>=1.0.2')
+        pins = {'atmodeller': {'ref': '77e81aac5147bad7eec727fba5b299e055db2d4d'}}
+        with (
+            patch('proteus.doctor._repo_root', return_value=tmp_path),
+            patch('proteus.doctor._module_pins', return_value=pins),
+        ):
+            adv = _below_floor_advice(
+                'atmodeller', str(checkout), spec, 'tools/get_atmodeller.sh'
+            )
+        path_q = shlex.quote(os.path.abspath(str(checkout)))
+        ref_q = shlex.quote('77e81aac5147bad7eec727fba5b299e055db2d4d')
+        expected = (
+            f'git -C {path_q} fetch origin && git -C {path_q} checkout --detach '
+            f'{ref_q} && pip install -e {path_q}'
+        )
+        assert adv.startswith(expected)
+        assert 'tools/get_atmodeller.sh --force' in adv
+        assert '--tags' not in adv
+        assert 'refs/tags' not in adv
+
 
 class TestGitHelpers:
     """Git helper functions."""
@@ -1701,6 +1764,7 @@ class TestCheckGitModuleInstallState:
         modules with no getter at all.
         """
         pins = {'obliqua': {'ref': 'a' * 40}}
+        (tmp_path / 'Manifest.toml').touch()
         with (
             patch('proteus.doctor._module_pins', return_value=pins),
             patch('proteus.doctor._git_head', return_value='a' * 40),
@@ -1802,6 +1866,7 @@ class TestCheckGitModuleOptional:
         checkout gets verified.
         """
         pins = {'obliqua': {'ref': 'a' * 40}}
+        (tmp_path / 'Manifest.toml').touch()
         with (
             patch('proteus.doctor._module_pins', return_value=pins),
             patch('proteus.doctor._git_head', return_value='a' * 40),
@@ -1812,17 +1877,76 @@ class TestCheckGitModuleOptional:
         assert r.fix_cmd is None
 
     def test_present_optional_module_off_pin_still_warns(self, tmp_path):
-        """An installed-but-off-pin optional module still gets the normal
-        WARN + refresh suggestion, not a silent pass."""
+        """An installed-but-off-pin optional module gets advice and auto_fixable=False."""
+        pins = {'obliqua': {'ref': 'a' * 40}}
+        root = tmp_path / 'repo'
+        root.mkdir()
+        obliqua_dir = tmp_path / 'Obliqua'
+        obliqua_dir.mkdir()
+        with (
+            patch('proteus.doctor._repo_root', return_value=root),
+            patch('proteus.doctor._module_pins', return_value=pins),
+            patch('proteus.doctor._git_head', return_value='b' * 40),
+            patch('proteus.doctor._get_obliqua_version', return_value='0.1.0'),
+        ):
+            r = check_git_module('Obliqua', {'obliqua': str(obliqua_dir)}, required=False)
+        assert r is not None
+        assert r.status == WARN
+        assert r.auto_fixable is False
+        expected_fix = (
+            f'cd {shlex.quote(str(root))} && bash tools/get_obliqua.sh --force '
+            f'{shlex.quote(os.path.abspath(str(obliqua_dir)))}  # replaces the folder with a '
+            'new clone at the pin, which deletes everything in it'
+        )
+        assert r.fix_cmd == expected_fix
+        with (
+            patch('proteus.doctor._module_pins', return_value={'agni': {'ref': 'a' * 40}}),
+            patch('proteus.doctor._git_head', return_value='b' * 40),
+        ):
+            agni_r = check_git_module('AGNI', {'agni': str(tmp_path)}, required=True)
+        assert agni_r.auto_fixable is True
+
+    def test_obliqua_missing_manifest_warns_julia_not_instantiated(self, tmp_path):
+        """An on-pin Obliqua folder without Manifest.toml warns with automatic fix."""
         pins = {'obliqua': {'ref': 'a' * 40}}
         with (
+            patch('proteus.doctor._module_pins', return_value=pins),
+            patch('proteus.doctor._git_head', return_value='a' * 40),
+            patch('proteus.doctor._get_obliqua_version', return_value='0.1.0'),
+        ):
+            r = check_git_module('Obliqua', {'obliqua': str(tmp_path)}, required=False)
+        assert r.status == WARN
+        assert r.auto_fixable is True
+        assert r.message == '0.1.0 (aaaaaaaa): Julia environment not instantiated'
+        assert r.fix_cmd == 'bash tools/get_obliqua.sh'
+
+    def test_obliqua_missing_manifest_without_git_head(self, tmp_path):
+        """When git returns no head, the message omits the head commit."""
+        pins = {'obliqua': {'ref': 'a' * 40}}
+        with (
+            patch('proteus.doctor._module_pins', return_value=pins),
+            patch('proteus.doctor._git_head', return_value=None),
+            patch('proteus.doctor._get_obliqua_version', return_value='0.1.0'),
+        ):
+            r = check_git_module('Obliqua', {'obliqua': str(tmp_path)}, required=False)
+        assert r.status == WARN
+        assert r.auto_fixable is True
+        assert r.message == '0.1.0: Julia environment not instantiated'
+        assert r.fix_cmd == 'bash tools/get_obliqua.sh'
+
+    def test_obliqua_off_pin_takes_precedence_over_missing_manifest(self, tmp_path):
+        """Off-pin warning takes precedence over missing Manifest.toml."""
+        pins = {'obliqua': {'ref': 'a' * 40}}
+        with (
+            patch('proteus.doctor._repo_root', return_value=tmp_path),
             patch('proteus.doctor._module_pins', return_value=pins),
             patch('proteus.doctor._git_head', return_value='b' * 40),
         ):
             r = check_git_module('Obliqua', {'obliqua': str(tmp_path)}, required=False)
-        assert r is not None
         assert r.status == WARN
-        assert 'get_obliqua.sh' in r.fix_cmd
+        assert r.auto_fixable is False
+        assert 'differs from pin' in r.message
+        assert '--force' in r.fix_cmd
 
     def test_run_all_checks_warns_obliqua_when_not_installed(self, tmp_path):
         """End to end: with no Obliqua checkout, run_all_checks returns WARN."""
@@ -1855,6 +1979,7 @@ class TestCheckGitModuleOptional:
         not whether an installed optional module is reported at all.
         """
         pins = {'obliqua': {'ref': 'a' * 40}}
+        (tmp_path / 'Manifest.toml').touch()
         with (
             patch('proteus.doctor._dependency_specs', return_value={}),
             patch('proteus.doctor._module_pins', return_value=pins),
@@ -2083,6 +2208,43 @@ class TestUpdateEntry:
         assert 'none of them have an automatic fix' in out
         # Discrimination: a warning-only run is still healthy (True), unlike a FAIL.
         assert result is True
+
+    def test_update_entry_with_absent_vulcan_dry_run_and_real(self, capsys, tmp_path):
+        """With fwl-vulcan absent, dry run prints setup command and real run executes it."""
+        from importlib.metadata import PackageNotFoundError
+
+        (tmp_path / 'tools').mkdir()
+        (tmp_path / 'tools' / 'get_vulcan.sh').touch()
+
+        with (
+            patch('proteus.doctor._repo_root', return_value=tmp_path),
+            patch(
+                'proteus.doctor.importlib.metadata.version',
+                side_effect=PackageNotFoundError('fwl-vulcan'),
+            ),
+            patch('proteus.doctor._editable_checkout_path', return_value=None),
+        ):
+            r = check_python_package('fwl-vulcan', None)
+
+        assert r.status == WARN
+        assert r.auto_fixable is True
+        assert 'bash tools/get_vulcan.sh' in r.fix_cmd
+
+        recorder = Mock(return_value=0)
+        with (
+            patch('proteus.doctor._repo_root', return_value=tmp_path),
+            patch('proteus.doctor.run_all_checks', return_value=[r]),
+            patch('proteus.doctor._run_fix_command', recorder),
+            patch('proteus.doctor.doctor_entry', return_value=True),
+        ):
+            update_entry(dry_run=True)
+            out = capsys.readouterr().out
+            assert 'Dry run' in out
+            assert 'bash tools/get_vulcan.sh' in out
+            recorder.assert_not_called()
+
+            update_entry(dry_run=False)
+            recorder.assert_called_once_with(r.fix_cmd, tmp_path)
 
 
 class TestGitAndJuliaHelpers:
