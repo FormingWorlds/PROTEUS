@@ -20,6 +20,7 @@ import numpy as np  # noqa: E402
 import pytest  # noqa: E402
 from matplotlib.colors import to_rgba  # noqa: E402
 from matplotlib.markers import MarkerStyle  # noqa: E402
+from PIL import Image  # noqa: E402
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -31,8 +32,9 @@ _spec.loader.exec_module(tool)
 GRID_CASES = [
     (0, 0.5, 0.03, 1000.0, 14),
     (1, 2.0, 0.03, 9000.0, 14),
-    (2, 0.5, 0.5, 1000.0, 10),
-    (3, 2.0, 0.5, 9000.0, 10),
+    (2, 0.5, 0.1225, 5000.0, 10),
+    (3, 0.5, 0.5, 1000.0, 10),
+    (4, 2.0, 0.5, 9000.0, 10),
 ]
 
 
@@ -52,26 +54,32 @@ def _write_case(grid_dir: Path, index: int, mass, distance, h_budget, status, ph
         f'[params.stop.solid]\n{solid}\n'
     )
     (case_dir / 'status').write_text(f'{status}\nCompleted\n')
+    headers = ['Step', 'Time', 'F_atm', 'Phi_global', 'T_surf', 'P_surf', 'M_atm']
     # 2 rows of the initial stage (Time = 0), then 3 rows; P_surf differs distinctly from H_budget
     last_phi = 0.02 if status == tool.STATUS_SOLIDIFIED else 1.0
     last_t_surf = 1700.0 + 100.0 * distance + 50.0 * mass
     last_p_surf = 7.5 * h_budget + 100.0 * mass
     rows = [
-        (0.0, 1.0, 4000.0, 0.1 * h_budget),
-        (0.0, 1.0, 4000.0, 0.1 * h_budget),
-        (10.0, 1.0, 3500.0, 0.5 * h_budget),
-        (1.0e3 * mass, 0.5, 2500.0, 0.8 * h_budget),
-        (2.0e4 * mass, last_phi, last_t_surf, last_p_surf),
+        (0, 0.0, 100.0, 1.0, 4000.0, 0.1 * h_budget, 1.0e20),
+        (1, 0.0, 100.0, 1.0, 4000.0, 0.1 * h_budget, 1.0e20),
+        (2, 10.0, 80.0, 1.0, 3500.0, 0.5 * h_budget, 1.0e20),
+        (3, 1.0e3 * mass, 50.0, 0.5, 2500.0, 0.8 * h_budget, 1.0e20),
+        (4, 2.0e4 * mass, 10.0, last_phi, last_t_surf, last_p_surf, 1.0e20),
     ]
-    text = 'Time Phi_global T_surf P_surf\n' + ''.join(
-        ' '.join(f'{v:.8e}' for v in r) + '\n' for r in rows
+    text = (
+        '\t'.join(headers)
+        + '\n'
+        + ''.join(
+            '\t'.join(f'{v:.8e}' if isinstance(v, float) else str(v) for v in r) + '\n'
+            for r in rows
+        )
     )
     (case_dir / 'runtime_helpfile.csv').write_text(text)
 
 
 @pytest.fixture
 def grid_dir(tmp_path):
-    """A grid of 4 cases: 2 masses at 2 distances, the inner pair stopped at energy balance."""
+    """A grid of cases at multiple masses and distances with energy balance and solidified stops."""
     grid = tmp_path / 'grid'
     for c in GRID_CASES:
         _write_case(grid, *c)
@@ -81,7 +89,7 @@ def grid_dir(tmp_path):
 def test_load_cases_reads_inputs_stop_and_science_rows(grid_dir):
     """Each record holds the swept inputs, the status code and the rows after Time = 0."""
     cases = tool.load_cases(grid_dir)
-    assert len(cases) == 4
+    assert len(cases) == 5
     expected_inputs = [(m, d, h, s) for _, m, d, h, s in GRID_CASES]
     assert [
         (c['mass'], c['distance'], c['H_budget'], c['status']) for c in cases
@@ -89,7 +97,7 @@ def test_load_cases_reads_inputs_stop_and_science_rows(grid_dir):
     assert all(c['H_mode'] == 'ppmw' and c['phi_crit'] == pytest.approx(0.03) for c in cases)
     # The 2 rows of the initial stage are dropped
     assert all(len(c['hf']) == 3 and c['hf']['Time'].min() > 0 for c in cases)
-    assert cases[3]['hf']['Time'].iloc[-1] == pytest.approx(4.0e4)
+    assert cases[4]['hf']['Time'].iloc[-1] == pytest.approx(4.0e4)
 
 
 def test_load_cases_gives_no_threshold_when_the_stop_is_off(tmp_path):
@@ -102,12 +110,12 @@ def test_load_cases_gives_no_threshold_when_the_stop_is_off(tmp_path):
 
 def test_load_cases_skips_case_with_rows_of_the_initial_stage_only(grid_dir, capsys):
     """A case with rows of the initial stage only is skipped and named on the terminal."""
-    _write_case(grid_dir, 4, 1.0, 0.5, 5000.0, 10)
-    helpfile = grid_dir / 'case_000004' / 'runtime_helpfile.csv'
+    _write_case(grid_dir, 5, 1.0, 0.5, 5000.0, 10)
+    helpfile = grid_dir / 'case_000005' / 'runtime_helpfile.csv'
     helpfile.write_text(''.join(helpfile.read_text().splitlines(keepends=True)[:3]))
     cases = tool.load_cases(grid_dir)
-    assert [c['mass'] for c in cases] == [0.5, 2.0, 0.5, 2.0]
-    assert 'Skipped case_000004: no row after the initial stage' in capsys.readouterr().out
+    assert [c['mass'] for c in cases] == [m for _, m, _, _, _ in GRID_CASES]
+    assert 'Skipped case_000005: no row after the initial stage' in capsys.readouterr().out
 
 
 @pytest.mark.parametrize('filename', ['init_coupler.toml', 'status', 'runtime_helpfile.csv'])
@@ -116,17 +124,17 @@ def test_load_cases_skips_case_with_missing_or_empty_required_file(
     grid_dir, capsys, filename, empty
 ):
     """A case with one required file missing or empty is skipped and named on the terminal."""
-    _write_case(grid_dir, 4, 1.0, 0.5, 5000.0, 10)
-    target = grid_dir / 'case_000004' / filename
+    _write_case(grid_dir, 5, 1.0, 0.5, 5000.0, 10)
+    target = grid_dir / 'case_000005' / filename
     if empty:
         target.write_text('')
     else:
         target.unlink()
     cases = tool.load_cases(grid_dir)
-    assert len(cases) == 4
-    assert [c['mass'] for c in cases] == [0.5, 2.0, 0.5, 2.0]
+    assert len(cases) == 5
+    assert [c['mass'] for c in cases] == [m for _, m, _, _, _ in GRID_CASES]
     printed = capsys.readouterr().out
-    assert 'Skipped case_000004: an output file is missing or empty' in printed
+    assert 'Skipped case_000005: an output file is missing or empty' in printed
 
 
 def test_load_cases_without_a_case_folder_raises(tmp_path):
@@ -149,16 +157,23 @@ def test_tracks_draw_the_threshold_of_the_config(grid_dir, tmp_path):
     assert list(flat[0].get_ydata()) == pytest.approx([0.03, 0.03])
     assert [t.get_text() for t in ax.texts] == [r'solidification ($\Phi$ = 0.03)']
     assert ax.get_xscale() == 'log'
-    # 4 tracks, 2 colours (one per distance), and the legend names both distances
+    assert ax.get_xlabel() == 'Time [yr]'
+    assert ax.get_ylabel() == r'Global melt fraction $\Phi_{\rm global}$'
+    # 5 tracks, 3 colours (one per distance), and the legend names all 3 distances
     tracks = [ln for ln in ax.lines if ln.get_linestyle() == '-']
-    assert len(tracks) == 4 and len({ln.get_color() for ln in tracks}) == 2
+    assert len(tracks) == 5 and len({ln.get_color() for ln in tracks}) == 3
+    dist_colors = {0.03: tool.WONG[0], 0.1225: tool.WONG[1], 0.5: tool.WONG[2]}
     for c, track in zip(cases, tracks):
         assert list(track.get_xdata()) == pytest.approx(list(c['hf']['Time']))
         assert list(track.get_ydata()) == pytest.approx(list(c['hf']['Phi_global']))
-        expected_color = tool.WONG[0] if c['distance'] == pytest.approx(0.03) else tool.WONG[1]
-        assert track.get_color() == expected_color
-    assert [t.get_text() for t in ax.get_legend().get_texts()] == ['0.03 AU', '0.5 AU']
-    assert [ln.get_color() for ln in ax.get_legend().get_lines()] == tool.WONG[:2]
+        assert track.get_color() == dist_colors[c['distance']]
+    assert [t.get_text() for t in ax.get_legend().get_texts()] == [
+        '0.03 AU',
+        '0.122 AU',
+        '0.5 AU',
+    ]
+    assert [ln.get_color() for ln in ax.get_legend().get_lines()] == tool.WONG[:3]
+    assert pytest.approx(200, abs=1) == Image.open(out).info['dpi'][0]
     assert out.stat().st_size > 0
     plt.close(fig)
 
@@ -179,20 +194,41 @@ def test_outputs_give_pressure_in_bar_against_the_budget(grid_dir, tmp_path):
     cases = tool.load_cases(grid_dir)
     fig = tool.plot_outputs(cases, out)
     ax_d = fig.axes[3]
-    assert ax_d.get_title(loc='left') == r'(d) Final $P_{\rm surf}$ [bar]'
-    assert ax_d.get_xlabel() == 'H budget [ppmw]'
     assert ax_d.get_yscale() == 'log'
     # All 3 distance panels use log scale on the x axis
     assert all(fig.axes[i].get_xscale() == 'log' for i in (0, 1, 2))
     expected = [
-        sorted((d, 0.02 if s == 10 else 1.0) for _, _, d, _, s in GRID_CASES),
-        sorted((d, 1700.0 + 100.0 * d + 50.0 * m) for _, m, d, _, _ in GRID_CASES),
-        sorted((d, 2.0e4 * m) for _, m, d, _, _ in GRID_CASES),
-        sorted((h, 7.5 * h + 100.0 * m) for _, m, _, h, _ in GRID_CASES),
+        (
+            r'(a) Final melt fraction $\Phi_{\rm global}$',
+            'Orbital distance [AU]',
+            '',
+            sorted((d, 0.02 if s == 10 else 1.0) for _, _, d, _, s in GRID_CASES),
+        ),
+        (
+            r'(b) Final $T_{\rm surf}$ [K]',
+            'Orbital distance [AU]',
+            '',
+            sorted((d, 1700.0 + 100.0 * d + 50.0 * m) for _, m, d, _, _ in GRID_CASES),
+        ),
+        (
+            '(c) Stop time [yr]',
+            'Orbital distance [AU]',
+            '',
+            sorted((d, 2.0e4 * m) for _, m, d, _, _ in GRID_CASES),
+        ),
+        (
+            r'(d) Final $P_{\rm surf}$ [bar]',
+            'H budget [ppmw]',
+            '',
+            sorted((h, 7.5 * h + 100.0 * m) for _, m, _, h, _ in GRID_CASES),
+        ),
     ]
-    for ax, exp in zip(fig.axes, expected):
+    for ax, (title, xlabel, ylabel, exp_pts) in zip(fig.axes, expected):
+        assert ax.get_title(loc='left') == title
+        assert ax.get_xlabel() == xlabel
+        assert ax.get_ylabel() == ylabel
         pts = sorted(tuple(c.get_offsets()[0]) for c in ax.collections)
-        assert pts == pytest.approx(exp)
+        assert pts == pytest.approx(exp_pts)
     # Assert point colour of each case against expected mass colour
     for ax in fig.axes:
         for c, coll in zip(cases, ax.collections):
@@ -201,18 +237,19 @@ def test_outputs_give_pressure_in_bar_against_the_budget(grid_dir, tmp_path):
                 assert np.allclose(coll.get_facecolors()[0], to_rgba(expected_hex))
             else:
                 assert np.allclose(coll.get_edgecolors()[0], to_rgba(expected_hex))
+    assert pytest.approx(200, abs=1) == Image.open(out).info['dpi'][0]
     assert out.stat().st_size > 0
     plt.close(fig)
 
 
 def test_outputs_mark_the_stop_reason(grid_dir, tmp_path):
     """Solidified cases are filled circles, the others open squares; an unknown status is named by its code."""
-    _write_case(grid_dir, 4, 2.0, 0.5, 5000.0, 13)
+    _write_case(grid_dir, 5, 2.0, 0.5, 5000.0, 13)
     cases = tool.load_cases(grid_dir)
     fig = tool.plot_outputs(cases, tmp_path / 'outputs.png')
     filled = [len(c.get_facecolors()) > 0 for c in fig.axes[0].collections]
     assert filled == [c['status'] == tool.STATUS_SOLIDIFIED for c in cases]
-    assert filled.count(True) == 2 and filled.count(False) == 3
+    assert filled.count(True) == 3 and filled.count(False) == 3
     # Check marker paths on scatter points
     p_s = MarkerStyle('s').get_path().transformed(MarkerStyle('s').get_transform())
     p_o = MarkerStyle('o').get_path().transformed(MarkerStyle('o').get_transform())
@@ -254,6 +291,10 @@ def test_main_uses_default_png_format_and_output_folder(grid_dir, tmp_path, monk
         'grid_tracks.png',
     ]
     assert all(p.stat().st_size > 0 for p in default_out.iterdir())
+    assert all(
+        pytest.approx(200, abs=1) == Image.open(p).info['dpi'][0]
+        for p in default_out.glob('*.png')
+    )
     # A second call into the existing folder succeeds
     tool.main([str(grid_dir)])
     assert sorted(p.name for p in default_out.iterdir()) == [
