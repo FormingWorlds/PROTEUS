@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pytest
@@ -921,3 +922,42 @@ def test_the_orbit_plots_take_their_neutral_colours_from_the_style(draw_real, tm
     (fig,) = draw_real(orbit_mod.plot_lovenumber, out, [1000, 2000], data, 'png', rc=style.rc)
     for ax in fig.axes[:2]:
         assert to_rgb(ax.lines[0].get_color()) == pytest.approx(to_rgb(style.mid_grey))
+
+
+# Title and font settings of a presentation style: large, bold, left-aligned titles.
+_STYLE_TITLES = {
+    'font.size': 14.5,
+    'legend.fontsize': 14.5,
+    'axes.titlesize': 18,
+    'axes.titleweight': 'bold',
+    'axes.titlelocation': 'left',
+}
+
+
+@pytest.mark.parametrize('rc', [None, _STYLE_TITLES], ids=['default_titles', 'style_titles'])
+def test_plot_lovenumber_legend_is_clear_of_the_panel_titles(draw_real, tmp_path, rc):
+    """The figure legend of the resonance marker lies above both panel titles,
+    for centred titles and for the large left-aligned titles of a style."""
+    data = [_make_lovenumber_ds(1e-2, 2e-3), _make_lovenumber_ds(1.5e-2, 3e-3)]
+
+    (fig,) = draw_real(
+        orbit_mod.plot_lovenumber, str(tmp_path), [1000, 2000], data, 'png', rc=rc
+    )
+    fig.set_dpi(200)
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    (legend,) = fig.legends
+    box = legend.get_window_extent(renderer)
+    titles = [
+        t.get_window_extent(renderer)
+        for ax in fig.axes
+        for t in (ax.title, ax._left_title)
+        if t.get_text()
+    ]
+
+    assert len(titles) == 2
+    assert all(box.y0 >= t.y1 for t in titles)
+    # The legend is above the canvas: only a tight save, 0.1 in of pad, keeps it in the image.
+    image = plt.imread(tmp_path / 'plots' / 'plot_lovenumber.png')
+    tight = fig.get_tightbbox(renderer)
+    assert image.shape[0] == pytest.approx((tight.height + 0.2) * 200, abs=2)

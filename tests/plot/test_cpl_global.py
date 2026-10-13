@@ -17,7 +17,7 @@ from unittest.mock import MagicMock
 import numpy as np
 import pandas as pd
 import pytest
-from matplotlib.colors import to_rgb, to_rgba
+from matplotlib.colors import to_rgb
 
 import proteus.plot.cpl_global as global_mod
 
@@ -89,10 +89,11 @@ def test_plot_global_entry_invokes_plot_global_twice_for_log_and_linear_axes(
     assert captured_calls[0]['config'] is handler.config
 
 
-def _full_helpfile(n=8):
+def _full_helpfile(n=8, n_gases=1):
     """A synthetic runtime_helpfile.csv with every column ``plot_global``
-    reads. One gas (H2O) is present (vmr >= 1e-10) so the per-volatile
-    branch is exercised; the others sit below the presence threshold.
+    reads. The first ``n_gases`` gases are present (vmr >= 1e-10), each at
+    its own level, so the per-volatile branch is exercised; the others sit
+    below the presence threshold.
     """
     from proteus.utils.constants import gas_list
 
@@ -112,12 +113,12 @@ def _full_helpfile(n=8):
         'Phi_global': np.linspace(1.0, 0.0, n),
         'P_surf': np.linspace(300.0, 100.0, n),
     }
-    for vol in gas_list:
-        is_present = vol == 'H2O'
+    for i, vol in enumerate(gas_list):
+        is_present = i < n_gases
         base[f'{vol}_vmr'] = np.full(n, 0.5 if is_present else 1e-12)
-        base[f'{vol}_bar'] = np.full(n, 50.0 if is_present else 0.0)
+        base[f'{vol}_bar'] = np.full(n, 50.0 / 2**i if is_present else 0.0)
         base[f'{vol}_mol_atm'] = np.full(n, 1.0e22 if is_present else 0.0)
-        base[f'{vol}_mol_total'] = np.full(n, 2.0e22 if is_present else 0.0)
+        base[f'{vol}_mol_total'] = np.full(n, (2.0 + i) * 1.0e22 if is_present else 0.0)
     return pd.DataFrame(base)
 
 
@@ -186,8 +187,7 @@ def test_plot_global_writes_linear_axes_figure(monkeypatch, tmp_path):
 def test_plot_global_takes_its_neutral_colours_from_the_style(draw_real, tmp_path, style):
     """On real axes the total pressure line has the text colour of the style, the
     net atmosphere flux, surface temperature and melt fraction curves its dark
-    grey, and the 6 panel labels a box in its axes face colour: black, '#444444'
-    and white in the default style."""
+    grey: black and '#444444' in the default style."""
     (tmp_path / 'plots').mkdir()
     config = _make_config()
     config.interior_struct.core_frac = 0.325
@@ -196,7 +196,7 @@ def test_plot_global_takes_its_neutral_colours_from_the_style(draw_real, tmp_pat
         global_mod.plot_global, _full_helpfile(), str(tmp_path), config, rc=style.rc
     )
 
-    panel = {ax.texts[0].get_text()[:3]: ax for ax in fig.axes}
+    panel = {ax.get_title(loc='left')[:3]: ax for ax in fig.axes}
     assert sorted(panel) == ['(a)', '(b)', '(c)', '(d)', '(e)', '(f)']
     line = {ln.get_label(): ln for ax in fig.axes for ln in ax.lines}
     assert to_rgb(line['Total'].get_color()) == pytest.approx(to_rgb(style.text))
@@ -204,8 +204,137 @@ def test_plot_global_takes_its_neutral_colours_from_the_style(draw_real, tmp_pat
     for curve in curves:
         assert to_rgb(curve.get_color()) == pytest.approx(to_rgb(style.dark_grey))
     for ax in fig.axes:
-        box = ax.texts[0].get_bbox_patch()
-        assert box.get_facecolor() == pytest.approx(to_rgba(style.face, 0.5))
-        assert box.get_edgecolor() == pytest.approx(to_rgba(style.face, 0.5))
+        assert to_rgb(ax._left_title.get_color()) == pytest.approx(to_rgb(style.text))
     # Module and species colours do not follow the style.
     assert to_rgb(panel['(c)'].lines[0].get_color()) == pytest.approx(to_rgb('#ff7f0e'))
+
+
+# Font sizes of a presentation style, larger than the matplotlib defaults.
+_LARGE_FONTS = {'font.size': 14.5, 'axes.labelsize': 18, 'legend.fontsize': 14.5}
+
+
+@pytest.mark.parametrize('logt', [True, False], ids=['log_time', 'linear_time'])
+@pytest.mark.parametrize('rc', [None, _LARGE_FONTS], ids=['default_fonts', 'large_fonts'])
+@pytest.mark.parametrize('n_gases', [1, 6, 7], ids=['one_gas', 'six_gases', 'seven_gases'])
+def test_plot_global_text_boxes_do_not_collide(draw_real, tmp_path, logt, rc, n_gases):
+    """Text geometry of the drawn figure, for both time axes, two font sizes and
+    1, 6 and 7 gases (the gas legend has 1 column up to 6 gases). No tick labels of
+    different panels intersect and none lies in a data area; only the x tick labels
+    at the inner column edges are turned; each panel label is outside every data
+    area and clear of every legend, tick label and other panel label; no two axis
+    labels intersect; the y label of the top row is no taller than its panel; and
+    each legend lies on no more curves than its best place needs."""
+    (tmp_path / 'plots').mkdir()
+    config = _make_config()
+    config.interior_struct.core_frac = 0.325
+    config.params.out.plot_fmt = 'png'
+
+    (fig,) = draw_real(
+        global_mod.plot_global,
+        _full_helpfile(n_gases=n_gases),
+        str(tmp_path),
+        config,
+        logt=logt,
+        rc=rc,
+    )
+    # Measure the figure as savefig draws it.
+    fig.set_dpi(200)
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+
+    ticks = []
+    for i, ax in enumerate(fig.axes):
+        for axis, lim in ((ax.xaxis, ax.get_xlim()), (ax.yaxis, ax.get_ylim())):
+            for tick in axis.get_major_ticks():
+                if not min(lim) <= tick.get_loc() <= max(lim):
+                    continue
+                for label in (tick.label1, tick.label2):
+                    if label.get_visible() and label.get_text():
+                        ticks.append((i, label.get_text(), label.get_window_extent(renderer)))
+    # Guard: the labels were found, so an empty list of collisions means something.
+    assert len({i for i, _, _ in ticks}) == 6
+    legends = [ax.get_legend() for ax in fig.axes if ax.get_legend() is not None]
+    assert len(legends) == 3
+    assert legends[2]._ncols == (1 if n_gases <= 6 else 2)
+    titles = [ax._left_title for ax in fig.axes]
+    boxes = [t.get_window_extent(renderer) for t in titles]
+    top_left = fig.axes[0]
+    under = [
+        sum(
+            line.get_transform()
+            .transform_path(line.get_path())
+            .intersects_bbox(ax.get_legend().get_window_extent(renderer), filled=False)
+            for line in ax.lines
+        )
+        for ax in (fig.axes[0], fig.axes[4], fig.axes[5])
+    ]
+    # Curves under each legend at its best place in this helpfile, as measured: lines
+    # that cross the whole panel leave the mantle and the one-column gas legend no free place.
+    bounds = (0, (1 if logt else 0) + (1 if rc else 0), {1: 0, 6: 2, 7: 0}[n_gases])
+    # Alignment of every x tick label in view of the bottom row, left to right.
+    aligned = [
+        [
+            label.get_horizontalalignment()
+            for label in ax.get_xticklabels()
+            if min(ax.get_xlim()) <= label.get_position()[0] <= max(ax.get_xlim())
+        ]
+        for ax in (fig.axes[4], fig.axes[5])
+    ]
+    tick_boxes = [box for _, _, box in ticks]
+    label_boxes = [
+        axis.label.get_window_extent(renderer)
+        for ax in fig.axes
+        for axis in (ax.xaxis, ax.yaxis)
+        if axis.label.get_text()
+    ]
+
+    found = {
+        'panel labels': [t.get_text()[:3] for t in titles],
+        'tick labels that intersect': [
+            (a[1], b[1])
+            for n, a in enumerate(ticks)
+            for b in ticks[n + 1 :]
+            if a[0] != b[0] and a[2].overlaps(b[2])
+        ],
+        'x label alignments that differ from the centre': [
+            (col, n - len(row), ha)
+            for col, row in enumerate(aligned)
+            for n, ha in enumerate(row)
+            if ha != 'center'
+        ],
+        'panel labels on a tick label or on each other': sum(
+            a.overlaps(b) for n, a in enumerate(boxes) for b in boxes[n + 1 :] + tick_boxes
+        ),
+        'panel labels in a data area': sum(
+            b.overlaps(ax.bbox) for b in boxes for ax in fig.axes
+        ),
+        'tick labels in a data area': sum(
+            b.overlaps(ax.bbox) for b in tick_boxes for ax in fig.axes
+        ),
+        'axis labels on each other': sum(
+            a.overlaps(b) for n, a in enumerate(label_boxes) for b in label_boxes[n + 1 :]
+        ),
+        'panel labels under a legend': sum(
+            b.overlaps(leg.get_window_extent(renderer)) for b in boxes for leg in legends
+        ),
+        'top y label taller than its panel': bool(
+            top_left.yaxis.label.get_window_extent(renderer).height > top_left.bbox.height
+        ),
+        'legends on more curves than their best place needs': [
+            (n, bound) for n, bound in zip(under, bounds) if n > bound
+        ],
+    }
+    assert found == {
+        'panel labels': ['(a)', '(b)', '(c)', '(d)', '(e)', '(f)'],
+        'tick labels that intersect': [],
+        # Last label of the left column; first of the right column in log time only.
+        'x label alignments that differ from the centre': [(0, -1, 'right')]
+        + ([(1, -len(aligned[1]), 'left')] if logt else []),
+        'panel labels on a tick label or on each other': 0,
+        'panel labels in a data area': 0,
+        'tick labels in a data area': 0,
+        'axis labels on each other': 0,
+        'panel labels under a legend': 0,
+        'top y label taller than its panel': False,
+        'legends on more curves than their best place needs': [],
+    }
