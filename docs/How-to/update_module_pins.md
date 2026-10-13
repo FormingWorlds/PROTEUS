@@ -176,7 +176,7 @@ checks out the pinned SHA, the check reads `ok`.
 The `ref` field accepts a commit SHA, a tag, or a branch name. They trade
 reproducibility against convenience:
 
-- **Commit SHA** (AGNI, SOCRATES, SPIDER, Obliqua): fully reproducible. The
+- **Commit SHA** (AGNI, SOCRATES, SPIDER, Obliqua, atmodeller): fully reproducible. The
   same PROTEUS commit always builds the same external source. Use this for
   any module whose exact state affects simulation results.
 - **Tag**: reproducible as long as the upstream tag is not moved. Convenient
@@ -194,7 +194,10 @@ follow upstream, not a default.
     `[project.optional-dependencies]`. Their setup scripts check out the git tag
     matching that floor for a new clone, so the clone and the published release
     hold the same code. Do not add a second pin for these in
-    `[tool.proteus.modules]`.
+    `[tool.proteus.modules]`. atmodeller is the exception: it has a floor in
+    `[project.optional-dependencies]` and a commit `ref` under
+    `[tool.proteus.modules.atmodeller]`, which the installer clones. A bump
+    of atmodeller changes both.
 
 ### Case 4: change the PETSc archive
 

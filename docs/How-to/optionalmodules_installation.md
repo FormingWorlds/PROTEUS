@@ -3,6 +3,9 @@
 !!! info "Install PROTEUS first"
     Please follow the [quick installation guide](installation.md) or [manual installation guide](manual_installation.md) before installing optional modules.
 
+!!! note "Set up by the installer"
+    `bash install.sh` sets up Obliqua, atmodeller, VULCAN and Morrigan. Their sections on this page repeat that step by hand.
+
 ## SPIDER and PETSc {#optional-setup-petsc}
 
 SPIDER is a C-based interior thermal evolution solver. It requires PETSc
@@ -55,7 +58,8 @@ bash tools/get_obliqua.sh
 ```
 
 The options `--register` (adds Obliqua to the default Julia environment) and
-`--test` (runs its own tests) exist.
+`--test` (runs its own tests) exist. `--force` replaces an Obliqua clone with a
+new one at the pin, and refuses a folder that is not an Obliqua clone.
 
 ## Synthetic observations (PetitRADTRANS)
 
@@ -73,7 +77,10 @@ bash tools/get_prt.sh
 
 The installer sets atmodeller up automatically as an editable clone in `Atmodeller/`.
 [atmodeller](https://github.com/djbower/atmodeller) is an alternative to
-CALLIOPE, selected with `outgas.module = "atmodeller"`. To repeat the setup step by hand:
+CALLIOPE, selected with `outgas.module = "atmodeller"`. The clone comes from
+[FormingWorlds/atmodeller](https://github.com/FormingWorlds/atmodeller) at the
+commit that `pyproject.toml` pins under `[tool.proteus.modules.atmodeller]`.
+To repeat the setup step by hand:
 
 ```console
 bash tools/get_atmodeller.sh

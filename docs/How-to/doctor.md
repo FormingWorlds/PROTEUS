@@ -65,11 +65,17 @@ fwl-janus, fwl-mors, fwl-zephyrus, fwl-zalmoxis) and standard module package
 For git-pinned modules (AGNI, SOCRATES, Obliqua), the doctor compares the
 checkout's HEAD commit against the commit SHA pinned in `pyproject.toml` under
 `[tool.proteus.modules]`. A mismatch produces a warning with a fix command. A
-missing AGNI or SOCRATES clone is a failure; a missing Obliqua clone is a
-warning with the fix `bash tools/get_obliqua.sh`. For an Obliqua folder that
+missing AGNI or SOCRATES clone is a failure; a missing or empty Obliqua folder is a
+warning with the fix `bash tools/get_obliqua.sh`. For a module folder that is
+not a git clone of its own, the doctor reads no commit (git would answer for
+the repository around the folder) and marks the line
+`[not a git clone of its own]`. For an Obliqua folder that
 is not at its pin the fix is advice that `proteus update` does not run:
 `bash tools/get_obliqua.sh --force <folder>` replaces the folder with a new
-clone at the pin. An Obliqua folder at its pin with no `Manifest.toml` gives a warning
+clone at the pin. The forced form replaces only an Obliqua clone or an empty
+folder: it refuses the PROTEUS folder, your home folder, a folder that holds
+one of them, a folder with files that is not a git clone of its own, and a
+clone of another project. An Obliqua folder at its pin with no `Manifest.toml` gives a warning
 that its Julia environment is not instantiated, with the fix
 `bash tools/get_obliqua.sh`. The AGNI fix is
 `bash tools/get_agni.sh`. The SOCRATES fix also rebuilds AGNI,
@@ -166,7 +172,7 @@ This lists the fixable issues and their commands but does not execute anything.
 |-------|-----------|
 | Missing required Python package | `pip install <name>` |
 | Missing Morrigan, VULCAN or atmodeller | `bash tools/get_morrigan.sh`, `bash tools/get_vulcan.sh` or `bash tools/get_atmodeller.sh` |
-| Missing Obliqua, or an Obliqua folder with no instantiated Julia environment | `bash tools/get_obliqua.sh` |
+| Missing or empty Obliqua folder, or an Obliqua folder with no instantiated Julia environment | `bash tools/get_obliqua.sh` |
 | Outdated Python package (editable git clone of its own, without a setup script) | `cd <checkout> && git pull && pip install -e .` |
 | Outdated Python package (wheel) | `pip install -U "<name>>=<version>"` |
 | Missing AGNI | `bash tools/get_agni.sh` |
@@ -207,10 +213,14 @@ This lists the fixable issues and their commands but does not execute anything.
   with a new one; for atmodeller the commands check out the pinned commit,
   not a release tag. Run the one you want by hand. A folder that is not a git
   clone of its own gets no git command, which would act on the repository
-  around it: only the `--force` replacement, or the advice to move it away.
+  around it: only the `--force` replacement or, for atmodeller and Obliqua,
+  the advice to move it away or delete it and run the setup script again.
   An Obliqua folder that is not at its pin is not changed either: the doctor
   shows `bash tools/get_obliqua.sh --force <folder>`, which replaces the
-  folder with a new clone at the pin.
+  folder with a new clone at the pin. `bash tools/get_obliqua.sh` prints the
+  two git commands that move the clone to the pin by hand, and after them
+  `bash tools/get_obliqua.sh`, which sets up the Julia environment at that
+  commit.
 
 !!! warning "Source install required"
     `proteus update` requires a source install (git clone). If PROTEUS was
@@ -234,10 +244,11 @@ and refreshes the reference data, verifying environment variables and disk
 space before proceeding. Pass `--export-env` to set the environment variables
 again in the active conda environment and in `.proteus-env.sh`. It runs no git command in the Python module
 clones (MORS, JANUS, CALLIOPE, ZEPHYRUS, Aragog, Zalmoxis, Morrigan, VULCAN,
-atmodeller) and none in Obliqua, and for a folder of the last four that is
-absent it prints the setup command; as
+atmodeller) and none in Obliqua, and for one of the last four that is not
+installed it prints the setup command; as
 with `bash install.sh`, its pip step installs the PyPI release in place of a
-clone that is older than the minimum version. To move a clone to its release
+clone of MORS, JANUS, CALLIOPE, ZEPHYRUS, Aragog or Zalmoxis that is older
+than the minimum version, and it does not touch Morrigan, VULCAN and atmodeller. To move a clone to its release
 tag after a version change, run the commands that `bash install.sh` prints for
 a clone that is not at its tag, or the module's setup script with `--force`.
 Use this after pulling new code when several

@@ -190,11 +190,12 @@ is not affected: there is nothing to lose, so the next install refreshes it
 without asking.
 
 The setup scripts of the Python modules (MORS, JANUS, CALLIOPE, ZEPHYRUS,
-Aragog, Zalmoxis, VULCAN and Morrigan) never give these two messages: without
+Aragog, Zalmoxis, VULCAN, Morrigan and atmodeller) never give these two messages: without
 `--force` they install a module folder that is already there as it is
 (`get_vulcan.sh` first runs `make` in its `fastchem_vulcan` folder) and print
-the commands that move it to its release tag or replace it; an empty folder
-gets a new clone. They stop with an error when the pip install of the folder
+the commands that move it to its release tag (for atmodeller, its pinned commit) or replace it; an empty folder
+gets a new clone. `get_obliqua.sh` does the same for an Obliqua folder, and
+instantiates its Julia environment in place of the pip install. They stop with an error when the pip install of the folder
 fails, and `get_vulcan.sh` stops when the folder has no `fastchem_vulcan`
 folder or its `make` fails.
 

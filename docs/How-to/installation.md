@@ -128,7 +128,7 @@ The installer runs through the following phases automatically:
 
 1. Pre-flight checks (OS, disk space, Python version, system dependencies)
 2. Julia check, and Julia 1.13 through juliaup when your default Julia is another version or you have none
-3. Environment variables (`FWL_DATA`, `PYTHON_JULIAPKG_EXE`, and in phases 4 and 5 `RAD_DIR` and, for a built FastChem, `FC_DIR`): the installer writes each to `.proteus-env.sh` in the PROTEUS folder as it sets it, and sets them all in the active conda environment in one step after phase 7, before the data downloads of phase 8; a value that holds a single quote stays in `.proteus-env.sh` only. It edits no shell start file
+3. Environment variables (`FWL_DATA`, `PYTHON_JULIAPKG_EXE`, and in phases 4 and 5 `RAD_DIR` and, for a built FastChem, `FC_DIR`): the installer writes each to `.proteus-env.sh` in the PROTEUS folder as it sets it, and sets them all in the active conda environment in one step at the end of phase 6, after the check that PROTEUS imports and before the further modules of phase 7; a value that holds a single quote stays in `.proteus-env.sh` only. It edits no shell start file
 4. SOCRATES compilation and `RAD_DIR` setup
 5. AGNI and FastChem setup (Julia atmosphere model + equilibrium chemistry); an AGNI folder that is there already stays, and when its `Manifest.toml` names another minor Julia version (1.12 against 1.13, for example) than the one PROTEUS uses, the installer warns and names `proteus update-all`, which instantiates AGNI again
 6. Python packages (editable installs of all submodules, the SUNDIALS CVODE solver, and PROTEUS itself)
@@ -136,7 +136,9 @@ The installer runs through the following phases automatically:
 8. Reference data downloads (by default the essential set: the default-config and tutorial k-tables, stellar spectra and tracks, the PHOENIX grid of the default star, and the interior tables)
 9. Verification via `proteus doctor`
 
-The installer adds atmodeller and VULCAN, which are under the GPL version 3, Morrigan (Apache 2.0) and Obliqua (MIT) as separate clones beside PROTEUS (Apache 2.0).
+The installer clones the four further modules into the PROTEUS folder, each under its own licence: atmodeller (GPL-3.0), VULCAN (GPL-3.0), Morrigan (Apache-2.0) and Obliqua (MIT). PROTEUS itself is under Apache-2.0.
+
+The installer and the setup scripts in `tools/` test the SSH access to GitHub without a question on the terminal. When the test fails (no key that GitHub accepts, a key with a passphrase that no SSH agent holds, or no host key of github.com on this machine), they clone over HTTPS.
 
 The installer prints one line per build step and writes the full build output to `install_<date>_<time>.log` (for example `install_20261011_142530.log`) in the PROTEUS folder; when a step fails, it also prints the last 40 lines of that step's output.
 
