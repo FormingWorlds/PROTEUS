@@ -344,7 +344,7 @@
       "class": "TimeStepParams",
       "type": "float",
       "accepts_none": false,
-      "default": "10000.0",
+      "default": "100.0",
       "choices": null,
       "bounds": [
         {
@@ -4283,7 +4283,7 @@
           "value": 1
         }
       ],
-      "description": "Fraction of the planet's interior radius corresponding to the core.",
+      "description": "Core fraction of the planet, by mass or by radius (see core_frac_mode). With module = 'zalmoxis' the core mass is this fraction of the planet mass without the volatile inventories that the outgassing takes as inputs (H, C, N, S, noble gases; O when it is an input), or without their atmosphere part with zalmoxis.dry_mantle = false. It is set when the init stage ends and then kept.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -4302,7 +4302,7 @@
         "mass"
       ],
       "bounds": null,
-      "description": "How core_frac is interpreted. 'radius': fraction of planet radius. 'mass': fraction of total planet mass. Only 'radius' is supported when module = 'spider'. The zalmoxis module always interprets core_frac as a mass fraction and ignores this flag (a warning is emitted at runtime if 'radius' is set with module = 'zalmoxis').",
+      "description": "How core_frac is interpreted. 'radius': fraction of planet radius. 'mass': mass fraction, of planet.mass_tot with module = 'dummy' and of the mass that core_frac names with module = 'zalmoxis'. Only 'radius' is supported when module = 'spider'. The zalmoxis module always interprets core_frac as a mass fraction and ignores this flag (a warning is emitted at runtime if 'radius' is set with module = 'zalmoxis').",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -4779,7 +4779,7 @@
       "default": "true",
       "choices": null,
       "bounds": null,
-      "description": "Structure EOS assumes a dry mantle. Set False for melt-fraction-aware dissolved-volatile mixing in the mantle density (per-shell volatile profile); the dissolved mass then stays inside the interior mass target.",
+      "description": "Structure EOS assumes a dry mantle. Set False for melt-fraction-aware dissolved-volatile mixing in the mantle density (per-shell volatile profile); the dissolved mass then stays inside the interior mass target and inside the mass that core_frac refers to.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 5,
@@ -7393,7 +7393,7 @@
       "class": "Outgas",
       "type": "float",
       "accepts_none": false,
-      "default": "4.0",
+      "default": "2.0",
       "choices": null,
       "bounds": [
         {
@@ -7426,7 +7426,7 @@
           "value": 0.0
         }
       ],
-      "description": "Minimum threshold for element mass [kg]. Outgassing treats H, C, N or S below it as absent; escape sets a non-noble element total below it to zero, except on a mantle frozen with params.stop.solid.freeze_volatiles. Noble gases are exempt.",
+      "description": "Minimum threshold for element mass [kg]. Outgassing treats H, C, N or S below it as absent; escape empties a non-noble element whose reachable mass (its total less the mass trapped in the solid) is below it, down to the trapped mass, except on a mantle frozen with params.stop.solid.freeze_volatiles. Noble gases are exempt.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -7506,6 +7506,343 @@
         }
       ],
       "description": "Absolute tolerance for the volatile equilibrium solver.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "outgas.trap_mode",
+      "toml_section": "outgas",
+      "class": "Outgas",
+      "type": "str",
+      "accepts_none": false,
+      "default": "\"none\"",
+      "choices": [
+        "none",
+        "front"
+      ],
+      "bounds": null,
+      "description": "Solid-phase volatile trapping during mantle crystallisation. Choices: 'none' (off) and 'front' (F_tl from the drainage of melt across the freezing front the interior solver resolves; needs `interior_energetics.module = 'aragog'`). The disaggregation melt fraction that tops the front is `interior_energetics.rfront_loc`, the melt fraction of the solver's own rheological transition, not a separate field.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "outgas.trap_phi_min",
+      "toml_section": "outgas",
+      "class": "Outgas",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.01",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0.0
+        },
+        {
+          "op": "<",
+          "value": 1.0
+        }
+      ],
+      "description": "Porosity below which a node counts as solid [1]. Needed because the density-derived porosity never reaches exactly zero.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "outgas.trap_mush_log10visc",
+      "toml_section": "outgas",
+      "class": "Outgas",
+      "type": "float",
+      "accepts_none": false,
+      "default": "-1.0",
+      "choices": null,
+      "bounds": null,
+      "description": "Log10 viscosity of the mush near the solidus [log10(Pa s)], entering the matrix deformation time. Negative selects the default of 20, mid-range of the 18 to 22 the literature allows.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "outgas.trap_n_front_min",
+      "toml_section": "outgas",
+      "class": "Outgas",
+      "type": "int",
+      "accepts_none": false,
+      "default": "3",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 2
+        }
+      ],
+      "description": "Fewest nodes a freezing front must span before its drainage is integrated rather than bounded above.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "outgas.trap_max_front_fraction",
+      "toml_section": "outgas",
+      "class": "Outgas",
+      "type": "float",
+      "accepts_none": false,
+      "default": "1.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0.0
+        },
+        {
+          "op": "<=",
+          "value": 1.0
+        }
+      ],
+      "description": "Largest fraction of the mantle thickness the front may occupy before its drainage is bounded above instead of integrated [1]. The default of 1 sets no limit: where percolation controls the drainage, the retained fraction depends on the ratio of drainage speed to front speed and not on the front thickness, and a thicker front only lengthens the residence time.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "outgas.D_const_H2O",
+      "toml_section": "outgas",
+      "class": "Outgas",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0017",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0.0
+        }
+      ],
+      "description": "Crystal/melt partition coefficient of H2O [1], D = w_solid / w_liquid.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "outgas.D_const_CO2",
+      "toml_section": "outgas",
+      "class": "Outgas",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0.0
+        }
+      ],
+      "description": "Crystal/melt partition coefficient of CO2 [1], D = w_solid / w_liquid.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "outgas.D_const_O2",
+      "toml_section": "outgas",
+      "class": "Outgas",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0.0
+        }
+      ],
+      "description": "Crystal/melt partition coefficient of O2 [1], D = w_solid / w_liquid.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "outgas.D_const_H2",
+      "toml_section": "outgas",
+      "class": "Outgas",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0.0
+        }
+      ],
+      "description": "Crystal/melt partition coefficient of H2 [1], D = w_solid / w_liquid.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "outgas.D_const_CH4",
+      "toml_section": "outgas",
+      "class": "Outgas",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0.0
+        }
+      ],
+      "description": "Crystal/melt partition coefficient of CH4 [1], D = w_solid / w_liquid.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "outgas.D_const_CO",
+      "toml_section": "outgas",
+      "class": "Outgas",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0.0
+        }
+      ],
+      "description": "Crystal/melt partition coefficient of CO [1], D = w_solid / w_liquid.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "outgas.D_const_N2",
+      "toml_section": "outgas",
+      "class": "Outgas",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0.0
+        }
+      ],
+      "description": "Crystal/melt partition coefficient of N2 [1], D = w_solid / w_liquid.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "outgas.D_const_NH3",
+      "toml_section": "outgas",
+      "class": "Outgas",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0.0
+        }
+      ],
+      "description": "Crystal/melt partition coefficient of NH3 [1], D = w_solid / w_liquid.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "outgas.D_const_S2",
+      "toml_section": "outgas",
+      "class": "Outgas",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0.0
+        }
+      ],
+      "description": "Crystal/melt partition coefficient of S2 [1], D = w_solid / w_liquid.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "outgas.D_const_SO2",
+      "toml_section": "outgas",
+      "class": "Outgas",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0.0
+        }
+      ],
+      "description": "Crystal/melt partition coefficient of SO2 [1], D = w_solid / w_liquid.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "outgas.D_const_H2S",
+      "toml_section": "outgas",
+      "class": "Outgas",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0.0
+        }
+      ],
+      "description": "Crystal/melt partition coefficient of H2S [1], D = w_solid / w_liquid.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -11112,7 +11449,26 @@
         "zephyrus"
       ],
       "bounds": null,
-      "description": "How impact atmosphere loss is computed. Choices: None (no impact atmosphere loss at all: the target keeps its atmosphere and a volatile-bearing impactor delivers its whole content), \"constant\" (the fixed fraction below), \"zephyrus\" (the giant-impact erosion scaling law of Kegerreis et al. 2020, evaluated by ``zephyrus.collision.mass_loss`` from each impact's collision parameters). One fraction governs both bodies at each impact: the target loses that fraction of its atmosphere, and a volatile-bearing impactor loses the same fraction of its atmospheric part and delivers the remainder. PROTEUS itself ships no impact loss physics.",
+      "description": "How impact atmosphere loss is computed. Choices: None (no impact atmosphere loss at all: the target keeps its atmosphere and a volatile-bearing impactor delivers its whole content), \"constant\" (the fixed fraction below), \"zephyrus\" (the giant-impact erosion scaling laws evaluated by ``zephyrus.collision.impact_loss`` from each impact's collision parameters). One fraction governs both bodies at each impact: the target loses that fraction of its atmosphere, and a volatile-bearing impactor loses the same fraction of its atmospheric part and delivers the remainder. PROTEUS itself ships no impact loss physics.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "accretion.atmloss_law",
+      "toml_section": "accretion",
+      "class": "Accretion",
+      "type": "str",
+      "accepts_none": false,
+      "default": "\"roche2026\"",
+      "choices": [
+        "kegerreis2020",
+        "roche2026"
+      ],
+      "bounds": null,
+      "description": "Which erosion scaling law to evaluate when ``atmloss_module = 'zephyrus'``. Choices: \"roche2026\" (Roche et al. 2026, arXiv:2610.06077, parameterized by impact angle, mass ratio, contact velocity, target mass, radius ratio, and target atmospheric fraction), \"kegerreis2020\" (Kegerreis et al. 2020, doi:10.3847/2041-8213/abb5fb, parameterized by impact angle, contact velocity, mass ratio, radii, and bulk densities). The default is \"roche2026\". Both laws are calibrated on H2-He atmospheres (Kegerreis et al. 2020 used the HM80 equation of state; Roche et al. 2026, Sect. 2.1). For atmospheres of higher mean molecular weight (H2O, CO2, O2), the shock-driven loss is an upper limit for a given envelope mass (Roche et al. 2026, Sect. 4.3). The law covers the immediate shock- and vapour-plume-driven loss only; it neglects later thermally driven loss (an outflow driven by heat from the post-impact interior, Biersteker & Schlichting 2021), so for primordial H2-He envelopes the total loss can be higher (Roche et al. 2026, Sect. 4.1); that later loss becomes negligible for envelopes of higher mean molecular weight. Conversely, envelope miscibility may lead to overestimating loss from massive young envelopes (Roche et al. 2026, Sect. 4.1). The atmospheric mass fraction f_atm is computed from the running planet state as the sum of ``<e>_kg_atm`` over ``M_planet`` across all elements including rock vapour. Rock vapour adds to the envelope mass the scaling law sees, but PROTEUS does not debit stripped rock vapour because its inventory re-equilibrates with the magma ocean at each step. With ``roche2026``, an airless target (m_atm = 0) returns f_loss = 0 so an impactor delivers its full volatile content. An atmosphere with f_atm between 1e-6 and below 0.0099 (1 % tolerance) is flagged and extrapolated without a clamp; f_atm below the 1e-6 stability bound is evaluated at 1e-6, and the resulting fraction depends on the collision parameters. When parameters are clamped, only the fit terms use the clamped value while v_esc, Q'_R, and the mass ratio use the raw collision state. When the far-field term predicts loss without impact energy, the 'X_FF_zero_energy' flag is set; this flag can fire inside the fitted range (for high gamma at f_atm 0.01 to 0.1) and is common below f_atm 0.01.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -11610,6 +11966,18 @@
         "interior_struct"
       ],
       "doc": "Require a PALEOS or temperature-dependent energetics key for SPIDER or Aragog."
+    },
+    {
+      "validator": "front_trapping_requires_aragog",
+      "module": "_config.py",
+      "attached_to": [
+        "outgas"
+      ],
+      "touches": [
+        "interior_energetics.module",
+        "outgas"
+      ],
+      "doc": "Front trapping reads the freezing front the Aragog interior resolves."
     },
     {
       "validator": "instmethod_dummy",

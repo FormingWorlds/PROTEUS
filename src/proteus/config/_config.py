@@ -205,7 +205,7 @@ def check_module_dependencies(instance, attribute, value):
             instance.outgas.module == 'calliope',
             'calliope',
             'outgas.module = "calliope" requires the calliope package. '
-            'Install with: git clone git@github.com:FormingWorlds/CALLIOPE && pip install -e CALLIOPE/.',
+            'Install with: bash tools/get_python_module.sh CALLIOPE',
         ),
         'atmodeller': (
             instance.outgas.module == 'atmodeller',
@@ -401,6 +401,18 @@ def boreas_requires_atmosphere(instance, attribute, value):
         raise ValueError(
             'escape.module = "boreas" requires a radiative atmosphere model (agni or janus), '
             'not atmos_clim.module = "dummy". BOREAS needs per-level T/P/composition profiles.'
+        )
+
+
+def front_trapping_requires_aragog(instance, attribute, value):
+    """Front trapping reads the freezing front the Aragog interior resolves."""
+    trap_mode = getattr(instance.outgas, 'trap_mode', 'none')
+    interior = instance.interior_energetics.module
+    if trap_mode == 'front' and interior != 'aragog':
+        raise ValueError(
+            'outgas.trap_mode = "front" requires interior_energetics.module = "aragog", '
+            f'not "{interior}". The front scheme reads the melt fraction, density and '
+            'pressure profiles that only the Aragog interior exports.'
         )
 
 
@@ -724,7 +736,7 @@ class Config:
             dummy_struct_mantle_eos,
         ),
     )
-    outgas: Outgas = field(factory=Outgas)
+    outgas: Outgas = field(factory=Outgas, validator=(front_trapping_requires_aragog,))
     atmos_clim: AtmosClim = field(factory=AtmosClim)
     atmos_chem: AtmosChem = field(factory=AtmosChem)
     escape: Escape = field(

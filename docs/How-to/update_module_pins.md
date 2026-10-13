@@ -63,7 +63,9 @@ matching lines in SPIDER.
 
 1. **Edit the pin in `pyproject.toml`.**
     - PyPI module: change the floor in `[project] dependencies`, for example
-      `fwl-calliope>=26.06.01`.
+      `fwl-calliope>=26.06.01`. For a module that a setup script clones at
+      its release tag, run `bash tools/check_floor_tags.sh` after the bump: it
+      fails unless each module remote has exactly one tag for its floor.
     - Git module: change the `ref` in `[tool.proteus.modules.<name>]` to the new
       commit SHA, tag, or branch.
 
@@ -78,8 +80,16 @@ matching lines in SPIDER.
     `pyproject.toml`.
 
 3. **Bring your own installation into line with the new pin:**
-    - PyPI module: `proteus update` (or `pip install -U "<name>>=<version>"` for
-      a wheel install).
+    - PyPI module installed as a wheel: `proteus update`, which runs
+      `pip install -U "<name>>=<version>"`.
+    - PyPI module in an editable clone that a setup script makes (MORS, JANUS,
+      CALLIOPE, ZEPHYRUS, Aragog, Zalmoxis): `proteus update` does not change
+      the clone. `proteus doctor` prints the commands that move it to the
+      release tag of the new floor and, for the clone in the module's folder of
+      the PROTEUS root, the setup script with `--force` that replaces it; run
+      one of them by hand. The doctor does not check VULCAN and Morrigan; for
+      their clones, `bash tools/get_vulcan.sh` or `bash tools/get_morrigan.sh`
+      prints the same commands.
     - Git module: `bash tools/get_<module>.sh` (for SOCRATES, add `--force` to
       discard local modifications to the checkout, that is, changes to tracked
       files or commits not pushed to a remote; the compiled build tree is left
@@ -119,16 +129,20 @@ Then refresh the badges and re-sync:
 
 ```console
 python tools/generate_version_badges.py
-proteus update          # pulls the new release into the active environment
+proteus update          # installs the new release in place of a wheel install
 proteus doctor          # fwl-calliope now reports ok
 ```
 
-For an editable checkout on a tracking branch (such as CALLIOPE), `proteus
-update` runs `git pull && pip install -e .` in the checkout instead of fetching
-a wheel. Packages installed by a `tools/get_<name>.sh` script (aragog,
-zalmoxis) are pinned to a version tag and so sit on a detached HEAD, where
-`git pull` cannot advance; for those `proteus update` re-runs the setup script,
-which fetches and checks out the tag matching the new floor.
+An editable CALLIOPE clone that `install.sh` or
+`bash tools/get_python_module.sh CALLIOPE` made sits on a detached HEAD at the
+release tag of the old floor, and `proteus update` does not change it. Its
+doctor check fails and shows as its fix the commands that fetch the tags, check
+out the release tag of the new floor and reinstall the clone, and
+`bash tools/get_python_module.sh CALLIOPE --force`, which replaces the clone
+with a new one; run one of them by hand. Aragog and Zalmoxis, with their own
+setup scripts, get the same advice. `proteus update` runs
+`git pull && pip install -e .` only in an editable checkout of a package
+without a setup script, such as fwl-io.
 
 ### Case 2: move a git module to a new commit
 
@@ -175,8 +189,8 @@ follow upstream, not a default.
     VULCAN and Morrigan, like fwl-aragog and fwl-zalmoxis, are single-source
     PyPI packages, so they are pinned only by their floor in
     `[project.optional-dependencies]`. Their setup scripts check out the git tag
-    matching that floor, so the editable checkout and the published release
-    cannot diverge. Do not add a second pin for these in
+    matching that floor for a new clone, so the clone and the published release
+    hold the same code. Do not add a second pin for these in
     `[tool.proteus.modules]`.
 
 ### Case 4: change the PETSc archive
@@ -208,10 +222,15 @@ git pull
 proteus update
 ```
 
-This re-syncs every module whose installed version no longer satisfies the new
-pin. When several components move at once (for example after a large merge),
-`proteus update-all` performs a full refresh of the whole stack. Both commands
-are documented in [Diagnose and update](doctor.md).
+For each package the doctor checks whose installed version is below the new
+pin, `proteus update` installs the new release in place of a wheel install and
+runs `git pull && pip install -e .` in an editable checkout without a setup
+script. For an editable module clone that a setup script makes, it only shows
+the commands that move the clone to its release tag or replace it, which you
+run by hand. When several components move at once (for example
+after a large merge), `proteus update-all` refreshes the PROTEUS install,
+SOCRATES, AGNI and the reference data, and runs no git command in the module
+clones. Both commands are documented in [Diagnose and update](doctor.md).
 
 ---
 

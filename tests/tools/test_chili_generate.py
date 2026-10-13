@@ -1,7 +1,7 @@
 """Lockstep tests for the CHILI intercomparison generator.
 
-The tutorial configs are the single source of truth for the CHILI
-cases (tools/chili_generate.py). These tests pin that contract:
+The tutorial configs are the base of the CHILI cases
+(tools/chili_generate.py). These tests pin that contract:
 
 - each generated case equals its tutorial base on every config field
   outside its declared delta list, via the real config loader;
@@ -65,24 +65,26 @@ def test_generated_cases_match_tutorials_outside_their_deltas():
 
     The contract that keeps the intercomparison and the tutorials in
     lockstep: a physics field changed in only one of the two surfaces
-    appears here as an undeclared difference. The earth case also pins
-    the boundary from the other side: its only difference is the
-    output path, so the nominal CHILI Earth IS the tutorial Earth.
+    appears here as an undeclared difference. The nominal cases also pin
+    the boundary from the other side: they differ from their tutorial in
+    the output path and the redox state only, and the redox state differs
+    in every case.
     """
     gen = _load_generator()
     for name, spec in gen.CASE_DELTAS.items():
         tut = _read_config(str(REPO / 'input' / 'tutorials' / spec['base']))
         case = _read_config(str(REPO / 'input' / 'chili' / 'intercomp' / f'{name}.toml'))
         diffs = set(_diff_paths(tut, case))
-        declared = set(spec['set'].keys())
-        undeclared = diffs - declared
+        assert 'outgas.fO2_shift_IW' in diffs, name
+        declared = gen.case_deltas(name)
+        undeclared = diffs - set(declared)
         assert not undeclared, f'{name}: differs from tutorial outside its deltas: {undeclared}'
         # Every declared delta must land in the loaded config with its
         # declared value: a generator regression that dropped a delta
         # would leave the tutorial value in place. Deltas that coincide
         # with the base value (a documented pin, e.g. tr1b age_ini) are
         # covered by the same direct comparison.
-        for dotted, want in spec['set'].items():
+        for dotted, want in declared.items():
             got = case
             for part in dotted.split('.'):
                 got = getattr(got, part)
@@ -93,9 +95,40 @@ def test_generated_cases_match_tutorials_outside_their_deltas():
                 assert got == pytest.approx(want, rel=1e-12), f'{name}: {dotted}={got!r}'
             else:
                 assert got == want, f'{name}: {dotted}={got!r}, want {want!r}'
-    # Discrimination: the nominal cases are single-delta by design.
-    assert set(gen.CASE_DELTAS['earth']['set']) == {'params.out.path'}
-    assert set(gen.CASE_DELTAS['venus']['set']) == {'params.out.path'}
+    # Discrimination: the nominal cases carry these deltas and no other.
+    nominal = {'params.out.path', 'outgas.fO2_shift_IW'}
+    assert set(gen.case_deltas('earth')) == nominal
+    assert set(gen.case_deltas('venus')) == nominal | {'params.stop.time.maximum'}
+    assert set(gen.CASE_DELTAS) == {'earth', 'venus', 'tr1b', 'tr1e', 'tr1a'}
+
+
+def test_a_case_cannot_set_its_own_redox_state():
+    """The redox state of the protocol is one value for all cases."""
+    gen = _load_generator()
+    assert 'outgas.fO2_shift_IW' not in gen.CASE_DELTAS['tr1a']['set']
+    assert gen.case_deltas('tr1a')['outgas.fO2_shift_IW'] == pytest.approx(4.0)
+    gen.CASE_DELTAS['tr1a']['set']['outgas.fO2_shift_IW'] = 3.0
+    with pytest.raises(ValueError, match='tr1a: PROTOCOL_FO2_SHIFT_IW'):
+        gen.generate_case('tr1a')
+
+
+@pytest.mark.parametrize('failure', ['case', 'grid'])
+def test_a_refused_case_leaves_every_generated_file_as_it_was(tmp_path, failure):
+    """A case or a grid spec that cannot be rendered stops ``main`` before any write."""
+    gen = _load_generator()
+    gen.OUTDIR = str(tmp_path)
+    gen.main()
+    files = sorted(tmp_path.iterdir())
+    assert len(files) == 7
+    for p in files:
+        p.write_text('stale')
+    if failure == 'case':
+        gen.CASE_DELTAS['tr1a']['set']['outgas.fO2_shift_IW'] = 3.0
+    else:
+        gen.generate_grid = lambda planet: (_ for _ in ()).throw(ValueError('venus grid'))
+    with pytest.raises(ValueError, match='tr1a' if failure == 'case' else 'venus grid'):
+        gen.main()
+    assert [p.read_text() for p in sorted(tmp_path.iterdir())] == ['stale'] * 7
 
 
 def test_grid_axes_match_standalone_grid_configs():
@@ -120,6 +153,7 @@ def test_grid_axes_match_standalone_grid_configs():
     for f in files:
         with open(f, 'rb') as hdl:
             cfg = tomllib.load(hdl)
+        assert cfg['outgas']['fO2_shift_IW'] == pytest.approx(gen.PROTOCOL_FO2_SHIFT_IW), f.name
         ele = cfg['planet']['elements']
         budgets.add((float(ele['H_budget']), float(ele['C_budget'])))
     expected = {(h, c) for h in h_axis for c in c_axis}

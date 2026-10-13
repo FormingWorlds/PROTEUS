@@ -28,6 +28,7 @@ import logging
 import math
 import os
 import re
+import shutil
 import sys
 import tempfile
 import types
@@ -49,6 +50,7 @@ from proteus.utils.coupler import (
     GetHelpfileCoreKeys,
     GetHelpfileDiagnosticKeys,
     GetHelpfileKeys,
+    GetHelpfileTrappingKeys,
     GetPostprocessingKeys,
     HelpfileFormatError,
     HelpfileRow,
@@ -327,17 +329,22 @@ def test_extend_helpfile_warns_on_unknown_keys(caplog):
     row = ZeroHelpfileRow()
     row['_transient_scratch'] = 3000.0  # private transient key: must not warn
     row['core_state_initial'] = 'liquid'  # allowlisted string key: must not warn
+    row['M_int_target'] = 5.9e24  # allowlisted structure mass target [kg]: must not warn
+    row['O_kg_user_ic'] = 1.0e21  # allowlisted oxygen budget [kg]: must not warn
+    row['M_int_target_prev'] = 1.0  # allowlisted name plus a suffix: must warn
     row['nonsense_future_key'] = 1.0  # genuine drift: must warn
     hf = CreateHelpfileFromDict(ZeroHelpfileRow())
 
     with caplog.at_level(logging.WARNING, logger='fwl.proteus.utils.coupler'):
-        ExtendHelpfile(hf, row)
+        extended = ExtendHelpfile(hf, row)
 
     warns = [r for r in caplog.records if r.levelno >= logging.WARNING]
     joined = '\n'.join(r.message for r in warns)
     assert 'nonsense_future_key' in joined, f'Expected unknown-key warning, got: {joined!r}'
     assert '_transient_scratch' not in joined, 'Private key leaked into warning'
-    assert 'core_state_initial' not in joined, 'Allowlisted key triggered warning'
+    # The warning lists exactly the two undeclared keys, so no allowlisted key is in it.
+    assert "['M_int_target_prev', 'nonsense_future_key']" in joined
+    assert list(extended.columns) == GetHelpfileKeys()
 
 
 @pytest.mark.unit
@@ -1071,6 +1078,54 @@ def test_helpfile_without_diagnostic_column_resumes_with_zero_fill(caplog):
         # frame extends without a key gap.
         extended = ExtendHelpfile(hf, {**hf.iloc[-1].to_dict(), 'T_cmb_node': 4321.0})
         assert extended['T_cmb_node'].iloc[-1] == pytest.approx(4321.0)
+
+
+@pytest.mark.unit
+def test_helpfile_written_before_trapping_resumes_with_nothing_trapped(caplog):
+    """A run written before the solid-phase trapping columns existed resumes.
+
+    Such a run trapped nothing, and zero is the value every trapping column
+    holds in a run that never trapped, so the reader fills them with zeros
+    through the same path as ``RESUMABLE_ZERO_FILL_KEYS`` and says so, and the
+    run continues whatever ``trap_mode`` it resumes under. Every other column
+    keeps the value the file holds.
+    """
+    from proteus.utils.constants import noble_gases, vol_element_list, vol_list
+
+    trapping = GetHelpfileTrappingKeys()
+    reservoirs = {f'{n}_kg_trapped' for n in (*vol_list, *vol_element_list, *noble_gases)}
+    assert reservoirs <= set(trapping)
+    assert {'trap_F_tl', 'trap_kg_cumulative', 'trap_branch'} <= set(trapping)
+    # Discrimination: the reservoirs trapping moves mass between stay core.
+    for core in ('H2O_kg_solid', 'H_kg_total', 'Phi_global', 'T_cmb_node'):
+        assert core not in trapping
+    # They are core columns that may be read as zero, not optional ones.
+    assert set(trapping) <= set(GetHelpfileCoreKeys())
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        _write_drifted_helpfile(tmpdir, trapping, n_rows=3)
+        with caplog.at_level(logging.INFO, logger='fwl.proteus.utils.coupler'):
+            hf = ReadHelpfileFromCSV(tmpdir)
+
+        assert len(hf) == 3
+        assert set(GetHelpfileKeys()) <= set(hf.columns)
+        for key in trapping:
+            assert (hf[key] == 0.0).all(), key
+        assert hf['H2O_kg_solid'].iloc[-1] > 0.0
+        messages = [r.getMessage() for r in caplog.records]
+        assert any(f'predates {len(trapping)} column(s)' in m for m in messages)
+
+        # A row appended on resume carries the full schema.
+        extended = ExtendHelpfile(hf, {**hf.iloc[-1].to_dict(), 'H2O_kg_trapped': 1.0e18})
+        assert extended['H2O_kg_trapped'].iloc[-1] == pytest.approx(1.0e18, rel=1e-12)
+
+    # Error contract: the zero-fill never excuses a missing core column.
+    with tempfile.TemporaryDirectory() as tmpdir:
+        _write_drifted_helpfile(tmpdir, [*trapping, 'H2O_kg_solid'])
+        with pytest.raises(HelpfileSchemaDriftError) as excinfo:
+            ReadHelpfileFromCSV(tmpdir)
+        assert 'H2O_kg_solid' in str(excinfo.value)
+        assert 'before 1 column(s)' in str(excinfo.value)
 
 
 @pytest.mark.unit
@@ -1925,10 +1980,11 @@ def test_get_lavatmos_version_returns_unknown_without_lava_dir():
 
 
 @pytest.mark.unit
-def test_get_julia_version_with_mock():
+def test_get_julia_version_with_mock(monkeypatch):
     """Test that _get_julia_version parses julia --version output."""
     from proteus.utils.coupler import _get_julia_version
 
+    monkeypatch.delenv('PYTHON_JULIAPKG_EXE', raising=False)
     with patch('subprocess.check_output') as mock_check_output:
         mock_check_output.return_value = b'julia version 1.9.3\n'
 
@@ -1937,6 +1993,105 @@ def test_get_julia_version_with_mock():
         assert version == '1.9.3'
         assert isinstance(version, str)
         mock_check_output.assert_called_once_with(['julia', '--version'])
+
+
+def _julia_version_stub(directory, version: str):
+    """Write an executable ``julia`` in ``directory`` that prints ``julia version <version>``."""
+    directory.mkdir(parents=True)
+    exe = directory / 'julia'
+    exe.write_text(f'#!/bin/sh\necho "julia version {version}"\n')
+    exe.chmod(0o755)
+    return exe
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('bound', 'expected'),
+    [
+        ('executable', '1.13.1'),
+        ('unset', '1.12.6'),
+        ('not-executable', 'unknown (PYTHON_JULIAPKG_EXE=<bound> is not an executable file)'),
+    ],
+    ids=['bound-1.13-beside-path-1.12', 'path-1.12-only', 'bound-not-executable'],
+)
+def test_get_julia_version_names_the_julia_proteus_uses(monkeypatch, tmp_path, bound, expected):
+    """The run log names the Julia of PYTHON_JULIAPKG_EXE when it is set, else the PATH one.
+
+    The 2 stubs differ in the minor version, the field PROTEUS checks, so
+    a function that asks the default Julia gives 1.12.6 in the first case. A
+    set variable that names no executable file is reported as such, not as the
+    PATH version, because juliacall does not fall back to PATH.
+    """
+    from proteus.utils.coupler import _get_julia_version
+
+    path_julia = _julia_version_stub(tmp_path / 'default' / 'bin', '1.12.6')
+    bound_julia = _julia_version_stub(tmp_path / 'julia-1.13.1' / 'bin', '1.13.1')
+    monkeypatch.setenv('PATH', os.pathsep.join([str(path_julia.parent), '/usr/bin', '/bin']))
+    if bound == 'unset':
+        monkeypatch.delenv('PYTHON_JULIAPKG_EXE', raising=False)
+    else:
+        if bound == 'not-executable':
+            bound_julia.chmod(0o644)
+        monkeypatch.setenv('PYTHON_JULIAPKG_EXE', str(bound_julia))
+
+    version = _get_julia_version()
+
+    assert version == expected.replace('<bound>', str(bound_julia))
+    # The default Julia stays first on PATH, so 1.13.1 can only come from the variable.
+    assert shutil.which('julia') == str(path_julia)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'script',
+    ['#!/bin/sh\nexit 3\n', '#!/bin/sh\n', 'no program, no interpreter line\n'],
+    ids=['exits-non-zero', 'prints-nothing', 'cannot-execute'],
+)
+def test_get_julia_version_of_a_broken_bound_binary_is_a_note(monkeypatch, tmp_path, script):
+    """A bound binary that fails, prints nothing or cannot run gives the unknown note, no exception.
+
+    These raise CalledProcessError, IndexError and OSError; the run log's
+    system line must not stop ``proteus start``.
+    """
+    from proteus.utils.coupler import _get_julia_version
+
+    exe = tmp_path / 'bin' / 'julia'
+    exe.parent.mkdir()
+    exe.write_text(script)
+    exe.chmod(0o755)
+    monkeypatch.setenv('PYTHON_JULIAPKG_EXE', str(exe))
+
+    version = _get_julia_version()
+
+    assert version == f'unknown ({exe} --version reported no version)'
+    assert not version[0].isdigit()
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('bound', ['unset', 'missing-file'])
+def test_get_julia_version_without_any_julia_names_what_is_missing(
+    monkeypatch, tmp_path, bound
+):
+    """With no julia on PATH the log says Julia is not installed, or names the unusable variable."""
+    from proteus.utils.coupler import _get_julia_version
+
+    empty = tmp_path / 'empty-bin'
+    empty.mkdir()
+    monkeypatch.setenv('PATH', str(empty))
+    missing = tmp_path / 'no-such' / 'julia'
+    if bound == 'unset':
+        monkeypatch.delenv('PYTHON_JULIAPKG_EXE', raising=False)
+    else:
+        monkeypatch.setenv('PYTHON_JULIAPKG_EXE', str(missing))
+
+    version = _get_julia_version()
+
+    assert version == (
+        'unknown (julia not installed)'
+        if bound == 'unset'
+        else f'unknown (PYTHON_JULIAPKG_EXE={missing} is not an executable file)'
+    )
+    assert shutil.which('julia') is None
 
 
 # =============================================================================

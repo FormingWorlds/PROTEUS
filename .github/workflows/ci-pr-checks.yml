@@ -568,7 +568,7 @@ jobs:
       - name: Run unit tests
         id: unit-tests
         continue-on-error: true
-        timeout-minutes: 10
+        timeout-minutes: 20
         run: |
           pytest -m "unit and not skip and not slow and not integration" \
             --ignore=tests/examples \

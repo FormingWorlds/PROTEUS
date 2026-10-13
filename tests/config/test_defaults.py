@@ -59,12 +59,12 @@ def test_dt_params_defaults():
 
     Verifies time-stepping defaults are set for stable integration:
     - method: adaptive (safest for general use)
-    - limits: 3e2 yr to 1e7 yr (covers typical geological timescales)
+    - limits: 1e2 yr to 1e7 yr (covers typical geological timescales)
     - adaptive tolerance: 10% change per step (standard stability/speed trade-off)
     """
     dt = TimeStepParams()
     assert dt.method == 'adaptive'
-    assert dt.minimum == pytest.approx(1e4, rel=1e-12)  # Minimum step 300 years
+    assert dt.minimum == pytest.approx(1e2, rel=1e-12)  # Minimum step 100 years
     assert dt.minimum_rel == pytest.approx(1e-5, rel=1e-12)  # Relative minimum precision
     assert dt.maximum == pytest.approx(1e7, rel=1e-12)  # Maximum step 10 Myr
     assert dt.initial == pytest.approx(3e1, rel=1e-12)  # Start with 1000 years
@@ -500,3 +500,99 @@ def test_a_core_module_core_without_the_zalmoxis_structure_is_refused_when_built
     assert AragogCoreModule(c_light=0.046).c_light == pytest.approx(0.046)
     with pytest.raises(ValueError):
         AragogCoreModule(c_light=1.0)
+
+
+@pytest.mark.unit
+def test_the_default_redox_state_is_two_log_units_above_iron_wustite():
+    """``outgas.fO2_shift_IW`` defaults to IW+2. ``all_options.toml``,
+    ``minimal.toml``, ``minimal_quick.toml`` and the Earth and Venus tutorials set that value, the 5
+    CHILI intercomparison cases keep the protocol's IW+4, and a user value is
+    accepted on [-12, 12] and refused half a unit beyond either end."""
+    from helpers import PROTEUS_ROOT
+
+    from proteus.config import read_config_object
+    from proteus.config._outgas import Outgas
+
+    assert Outgas().fO2_shift_IW == pytest.approx(2.0)
+    want = {f: 2.0 for f in ('all_options.toml', 'minimal.toml', 'minimal_quick.toml')}
+    want |= {f'tutorials/tutorial_{p}.toml': 2.0 for p in ('earth', 'venus')}
+    want |= {
+        f'chili/intercomp/{c}.toml': 4.0 for c in ('earth', 'venus', 'tr1b', 'tr1e', 'tr1a')
+    }
+    for name, shift in want.items():
+        cfg = read_config_object(PROTEUS_ROOT / 'input' / name)
+        assert cfg.outgas.fO2_shift_IW == pytest.approx(shift), name
+    # Edge and error contract: both bounds are inclusive.
+    for edge in (-12.0, 12.0):
+        assert Outgas(fO2_shift_IW=edge).fO2_shift_IW == pytest.approx(edge)
+    for beyond in (-12.5, 12.5):
+        with pytest.raises(ValueError):
+            Outgas(fO2_shift_IW=beyond)
+
+
+@pytest.mark.unit
+def test_the_time_limits_of_the_tutorials():
+    """The Venus tutorial stops at 3 Myr, the Earth and Moon tutorial at 0.8 Myr
+    and the 9 standalone CHILI grid configs at 15 Myr; the Earth tutorial and
+    the CHILI Venus case keep 5 Gyr."""
+    from helpers import PROTEUS_ROOT
+
+    from proteus.config import read_config_object
+
+    want = {'venus': 3.0e6, 'earth_moon': 8.0e5, 'earth': 5.0e9}
+    for name, limit in want.items():
+        cfg = read_config_object(PROTEUS_ROOT / 'input' / 'tutorials' / f'tutorial_{name}.toml')
+        assert cfg.params.stop.time.maximum == pytest.approx(limit, rel=1e-12), name
+    case = read_config_object(PROTEUS_ROOT / 'input' / 'chili' / 'intercomp' / 'venus.toml')
+    assert case.params.stop.time.maximum == pytest.approx(5.0e9, rel=1e-12)
+    for name in (
+        f'earth_{h}_{c}' for h in ('Hlow', 'Hmid', 'Hhigh') for c in ('Clow', 'Cmid', 'Chigh')
+    ):
+        cfg = read_config_object(
+            PROTEUS_ROOT / 'input' / 'tutorials' / 'chili_grid' / f'{name}.toml'
+        )
+        assert cfg.params.stop.time.maximum == pytest.approx(1.5e7, rel=1e-12), name
+
+
+@pytest.mark.unit
+def test_a_config_without_the_redox_key_loads_the_default(tmp_path):
+    """``input/minimal.toml`` with its ``fO2_shift_IW`` line removed loads IW+2."""
+    from helpers import PROTEUS_ROOT
+
+    from proteus.config import read_config_object
+
+    lines = (PROTEUS_ROOT / 'input' / 'minimal.toml').read_text().splitlines(keepends=True)
+    kept = [line for line in lines if 'fO2_shift_IW' not in line]
+    assert len(kept) == len(lines) - 1
+    (tmp_path / 'minimal.toml').write_text(''.join(kept))
+    assert read_config_object(tmp_path / 'minimal.toml').outgas.fO2_shift_IW == pytest.approx(
+        2.0
+    )
+
+
+@pytest.mark.unit
+def test_the_minimal_examples_set_the_keys_their_runs_need():
+    """``input/minimal.toml`` and ``input/minimal_quick.toml`` set the keys that keep
+    their runs sound: carbon keeps the atmosphere, the step floor and the static
+    structure resolve the molten stage, and the stop is at a melt fraction of 0.05. The
+    quick file also names the grey atmosphere of its run. The carbon mode, the stop,
+    the structure interval and the grey atmosphere differ from their defaults, so a file
+    that loses one of those keys fails here."""
+    from helpers import PROTEUS_ROOT
+
+    from proteus.config import read_config_object
+
+    cfgs = {
+        n: read_config_object(PROTEUS_ROOT / 'input' / n)
+        for n in ('minimal.toml', 'minimal_quick.toml')
+    }
+    for name, cfg in cfgs.items():
+        assert cfg.planet.elements.C_mode == 'kg', name
+        assert cfg.planet.elements.C_budget > 0.0, name
+        assert cfg.params.dt.minimum == pytest.approx(100.0), name
+        assert cfg.params.stop.solid.phi_crit == pytest.approx(0.05), name
+        assert cfg.interior_struct.zalmoxis.update_interval == pytest.approx(0.0), name
+    assert cfgs['minimal.toml'].atmos_clim.module == 'agni'
+    quick = cfgs['minimal_quick.toml'].atmos_clim
+    assert (quick.module, quick.rayleigh) == ('dummy', False)
+    assert quick.dummy.gamma == pytest.approx(0.8)
