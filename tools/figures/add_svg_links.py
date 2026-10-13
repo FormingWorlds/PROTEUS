@@ -5,9 +5,9 @@ re-attached here as an overlay of transparent rectangles, one per linked shape,
 in the figure's own coordinate system.  The overlay is appended last so it sits
 above the artwork and receives the clicks.
 
-Name-based code links are resolved to line ranges here (see code_links.py);
-each link keeps its target in ``data-target`` so the ranges can be refreshed
-later without rebuilding the figure.
+Name-based code links are resolved to a line on ``main`` here (see
+code_links.py); each link keeps its target in ``data-target`` so the line can be
+refreshed later without rebuilding the figure.
 """
 
 from __future__ import annotations

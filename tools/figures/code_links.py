@@ -148,12 +148,6 @@ def resolve(href: str, ref: str | None = None) -> str:
     return f'{REPO_URL}{path}#L{resolve_target(path, target, ref)}'
 
 
-def unpinned(href: str) -> str:
-    """The file a name-based link points into, for a figure not yet pinned."""
-    parts = split(href)
-    return href if parts is None else f'{REPO_URL}{parts[0]}'
-
-
 def model_links() -> list[str]:
     items = json.loads((HERE / 'arch_final.json').read_text())['items']
     return sorted({it['href'] for it in items if it.get('href')})

@@ -89,23 +89,22 @@ the section banners in `Proteus.start` (`############### INTERIOR` is
 `#interior`, `############### ORBIT AND TIDES` is `#orbit-and-tides`), and any
 other comment is matched by its text or first sentence (`# Run offline
 chemistry` is `#run-offline-chemistry`). The build replaces each with a
-`#L<first>-L<last>` range: the whole function, the banner up to its closing
-`############### /` banner, or a comment and the statement after it. A target
-has to match exactly once, so a renamed banner or function fails loudly.
+`blob/main/...#L<n>` link to one line: the `def` or `class` line, the banner, or
+the comment. A target has to match exactly once, so a renamed banner or function
+fails loudly.
 
 Line numbers are never maintained by hand. The documentation deploy
 (`.github/workflows/docs.yaml`) runs
 
 ```bash
-python tools/figures/code_links.py --commit "$GITHUB_SHA"
+python tools/figures/code_links.py --deploy
 ```
 
-before building the site, which resolves every target against the commit being
-published and links to that commit (`blob/<sha>/...#L<first>-L<last>`). The
-published diagram therefore always points at the right lines, however much the
-code has moved, and a link opened later still shows the code it was made for.
-A target that no longer resolves falls back to a link to the file, with a
-warning in the deploy log, so the deploy never fails on it.
+before building the site, which resolves every target against the `main`
+checkout being published. The deploy runs on every push to `main`, so the
+published links follow `main` as the code moves; between a push and the end of
+its deploy a link can be a few lines off. A target that no longer resolves loses
+its link, with a warning in the deploy log, so the deploy never fails on it.
 
 PR CI runs `python tools/figures/code_links.py --check`, which fails only when a
 target no longer resolves exactly once (a renamed banner, comment or function),
@@ -114,8 +113,8 @@ it. Renaming a linked banner or function means updating the link in draw.io and
 `arch_final.json` in the same pull request.
 
 Running `python3 tools/figures/code_links.py` without options refreshes the
-`blob/main` ranges in the committed SVGs, for viewing them straight from the
-repository.
+`blob/main` lines in the committed SVGs from `origin/main` (run `git fetch
+origin main` first), for viewing them straight from the repository.
 
 ## Module schematic
 
