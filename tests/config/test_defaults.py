@@ -531,6 +531,30 @@ def test_the_default_redox_state_is_two_log_units_above_iron_wustite():
 
 
 @pytest.mark.unit
+def test_the_time_limits_of_the_tutorials():
+    """The Venus tutorial stops at 3 Myr, the Earth and Moon tutorial at 0.8 Myr
+    and the 9 standalone CHILI grid configs at 15 Myr; the Earth tutorial and
+    the CHILI Venus case keep 5 Gyr."""
+    from helpers import PROTEUS_ROOT
+
+    from proteus.config import read_config_object
+
+    want = {'venus': 3.0e6, 'earth_moon': 8.0e5, 'earth': 5.0e9}
+    for name, limit in want.items():
+        cfg = read_config_object(PROTEUS_ROOT / 'input' / 'tutorials' / f'tutorial_{name}.toml')
+        assert cfg.params.stop.time.maximum == pytest.approx(limit, rel=1e-12), name
+    case = read_config_object(PROTEUS_ROOT / 'input' / 'chili' / 'intercomp' / 'venus.toml')
+    assert case.params.stop.time.maximum == pytest.approx(5.0e9, rel=1e-12)
+    for name in (
+        f'earth_{h}_{c}' for h in ('Hlow', 'Hmid', 'Hhigh') for c in ('Clow', 'Cmid', 'Chigh')
+    ):
+        cfg = read_config_object(
+            PROTEUS_ROOT / 'input' / 'tutorials' / 'chili_grid' / f'{name}.toml'
+        )
+        assert cfg.params.stop.time.maximum == pytest.approx(1.5e7, rel=1e-12), name
+
+
+@pytest.mark.unit
 def test_a_config_without_the_redox_key_loads_the_default(tmp_path):
     """``input/minimal.toml`` with its ``fO2_shift_IW`` line removed loads IW+2."""
     from helpers import PROTEUS_ROOT

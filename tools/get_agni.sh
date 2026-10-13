@@ -12,13 +12,14 @@
 
 set -euo pipefail
 
+# Shared helpers: see tools/_get_common.sh.
+source "$(dirname "${BASH_SOURCE[0]}")/_get_common.sh" || exit 1
+use_proteus_julia
+
 if ! command -v julia >/dev/null 2>&1; then
     echo "ERROR: julia is not on PATH. Install Julia first (see https://www.h-nicholls.space/AGNI/dev/howto/getting_started/)." >&2
     exit 1
 fi
-
-# Shared helpers: see tools/_get_common.sh.
-source "$(dirname "${BASH_SOURCE[0]}")/_get_common.sh" || exit 1
 
 ag_url="${AGNI_GIT_URL:-$(python "$proteus_tools_dir/_module_pins.py" agni url)}"
 ag_ref="${AGNI_GIT_REF:-$(python "$proteus_tools_dir/_module_pins.py" agni ref)}"

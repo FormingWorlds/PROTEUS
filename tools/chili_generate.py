@@ -4,8 +4,9 @@
 The tutorial configs are the base of the CHILI cases:
 ``input/tutorials/tutorial_earth.toml`` and
 ``input/tutorials/tutorial_venus.toml`` hold the Earth and Venus setups
-of the protocol, except the redox state, which they set to IW+2. This
-script derives every case config from them by applying only the deltas
+of the protocol, except the redox state, which they set to IW+2, and the
+end time of the Venus tutorial, which is 3 Myr. This script derives
+every case config from them by applying only the deltas
 listed in ``CASE_DELTAS`` below and the protocol's redox state, so the
 generated cases and the tutorials cannot drift apart in any other
 field; the grid specs sweep the ``GRID_AXES``. The standalone grid
@@ -20,7 +21,8 @@ under ``input/chili/intercomp/`` must equal a fresh regeneration.
 Cases
 -----
 - ``earth.toml`` / ``venus.toml``: tutorial configs with the output
-  path and the protocol's redox state set.
+  path and the protocol's redox state set; ``venus.toml`` also keeps an
+  end time of 5 Gyr.
 - ``earth.grid.toml`` / ``venus.grid.toml``: ``proteus grid`` specs
   sweeping the protocol H and C inventories around the nominal cases.
 - ``tr1b.toml`` / ``tr1e.toml`` / ``tr1a.toml``: TRAPPIST-1 b, e, and
@@ -65,6 +67,8 @@ CASE_DELTAS: dict[str, dict] = {
         'base': 'tutorial_venus.toml',
         'set': {
             'params.out.path': 'chili_venus',
+            # The tutorial stops at 3 Myr; the value is written as in the tutorial files.
+            'params.stop.time.maximum': tomlkit.value('5e9'),
         },
     },
     # TRAPPIST-1 cases (protocol Table 4). Flux scaling follows the

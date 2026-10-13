@@ -229,6 +229,72 @@ def get_proteus_dir():
     return root
 
 
+def proteus_julia_exe() -> str | None:
+    """Return the Julia binary PROTEUS uses when ``PYTHON_JULIAPKG_EXE`` names one.
+
+    Returns
+    -------
+    str or None
+        ``PYTHON_JULIAPKG_EXE`` when it points at an executable file, else None.
+        juliacall uses the ``julia`` on ``PATH`` only when the variable is unset
+        or empty; when it is set to anything else, juliacall fails at import.
+    """
+    exe = os.environ.get('PYTHON_JULIAPKG_EXE')
+    if exe and os.path.isfile(exe) and os.access(exe, os.X_OK):
+        return exe
+    return None
+
+
+def link_proteus_julia(root: Path) -> Path | None:
+    """Link ``<root>/.proteus-julia/julia`` to the Julia PROTEUS uses.
+
+    The folder holds that one link, so that putting it first on ``PATH``
+    makes a bare ``julia`` the bound binary, whatever its own name, without
+    putting the other programs of the binary's folder (a ``python``) first.
+
+    Parameters
+    ----------
+    root : Path
+        PROTEUS source tree.
+
+    Returns
+    -------
+    Path or None
+        The folder, or None when ``proteus_julia_exe`` names no binary.
+    """
+    exe = proteus_julia_exe()
+    if exe is None:
+        return None
+    folder = root / '.proteus-julia'
+    folder.mkdir(exist_ok=True)
+    link = folder / 'julia'
+    link.unlink(missing_ok=True)
+    link.symlink_to(os.path.abspath(exe))
+    return folder
+
+
+# Environment variables that make git answer for another repository than the one -C names.
+GIT_REPO_ENV = (
+    'GIT_DIR',
+    'GIT_WORK_TREE',
+    'GIT_INDEX_FILE',
+    'GIT_COMMON_DIR',
+    'GIT_NAMESPACE',
+)
+
+
+def git_env() -> dict[str, str]:
+    """Return the environment of a git call in a checkout.
+
+    Returns
+    -------
+    dict of str to str
+        ``os.environ`` without the keys of ``GIT_REPO_ENV``, so that
+        ``git -C <path>`` reads the repository at ``<path>``.
+    """
+    return {key: value for key, value in os.environ.items() if key not in GIT_REPO_ENV}
+
+
 def snapshot_path_for_time(data_dir: str, time: float, suffix: str) -> str:
     """Return the snapshot path for a time, preferring the sub-year name.
 

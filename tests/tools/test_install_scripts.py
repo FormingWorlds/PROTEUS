@@ -2281,6 +2281,8 @@ def test_script_clones_the_expected_destination(tmp_path, script, argv, dest, ur
         'LAVA_DIR': '',
     }
     env.pop('GIT_SSH_COMMAND', None)
+    # The stub julia stands in for every Julia, so a bound Julia of the host must not lead PATH.
+    env.pop('PYTHON_JULIAPKG_EXE', None)
 
     subprocess.run(
         ['bash', str(root / 'tools' / script), *(a.format(root=root) for a in argv)],
@@ -2550,6 +2552,7 @@ def _run_install_block(tmp_path, marker: str, *, exit_code: int):
     (stubs / 'python').chmod(0o755)
     snippet = (
         'info() { :; }\nwarn() { echo "WARN: $1" >&2; }\ndie() { echo "DIE: $1" >&2; exit 1; }\n'
+        + _install_sh_block('run_logged() {')
         + _install_sh_block(marker)
         + 'echo REACHED\n'
     )
@@ -3320,6 +3323,31 @@ class TestPairedModuleRerun:
         assert sorted(q.name for q in plain.iterdir()) == ['notes.txt']
         assert _git_calls(site, 'clone') == []
         assert site['log'].read_text().splitlines() == [f'install -U -e {plain}']
+
+
+def test_module_without_a_paired_branch_rule_gets_the_stay_line(tmp_path):
+    """MORS pairs no branch: its clone on a branch named like the PROTEUS feature branch, which
+    its origin has, gets the stay line with the hand commands and the summary entry of any
+    other branch, and no paired-branch line; the clone stays on the branch."""
+    site = _paired_site(tmp_path, 'MORS', 'fwl-mors')
+    site['env']['GITHUB_HEAD_REF'] = _PAIRED_BRANCH
+    assert _run_tool(site, 'get_python_module.sh', 'MORS').returncode == 0
+    clone = site['root'] / 'MORS'
+    git(clone, 'checkout', '-q', '-b', _PAIRED_BRANCH, f'origin/{_PAIRED_BRANCH}')
+    stays = tmp_path / 'stays.txt'
+    site['env']['PROTEUS_CLONE_STAYS'] = str(stays)
+
+    result = _run_tool(site, 'get_python_module.sh', 'MORS')
+    assert result.returncode == 0, result.stdout + result.stderr
+    out = result.stdout.splitlines()
+    assert (
+        f'fwl-mors: {clone} stays as it is: on branch {_PAIRED_BRANCH}, on a line of history'
+        ' without the tag; PROTEUS expects the release tag 26.04.22'
+    ) in out
+    assert f'        git -C {clone} checkout --detach refs/tags/26.04.22' in out
+    assert 'is on the paired branch' not in result.stdout
+    assert stays.read_text() == f'MORS (branch {_PAIRED_BRANCH}, other history)\n'
+    assert git(clone, 'rev-parse', 'HEAD') == site['paired']
 
 
 # Each module with a setup script: the script, its arguments, the clone folder and the distribution.
@@ -4322,3 +4350,371 @@ def test_manual_install_page_names_existing_scripts_and_modules():
 # ---------------------------------------------------------------------------
 # Portable-flag rewrite and guards (tools/get_socrates.sh)
 # ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# The Julia PROTEUS uses: use_proteus_julia and the setup scripts that run julia
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('strict', [True, False], ids=['strict', 'lenient'])
+@pytest.mark.parametrize('kind', ['unset', 'empty'], ids=str)
+def test_use_proteus_julia_changes_nothing_without_the_variable(tmp_path, kind, strict):
+    """With PYTHON_JULIAPKG_EXE unset or empty, PATH and stdout stay as they are, status 0.
+
+    The unset case runs under ``set -u`` as well, where a bare expansion of
+    the variable would stop the script.
+    """
+    env = {k: v for k, v in os.environ.items() if k != 'PYTHON_JULIAPKG_EXE'}
+    env['PATH'] = '/usr/bin:/bin'
+    if kind == 'empty':
+        env['PYTHON_JULIAPKG_EXE'] = ''
+    res = _run_bash(
+        _with_common('use_proteus_julia\nprintf "PATH=%s\\n" "$PATH"\n', strict=strict),
+        env=env,
+    )
+    assert res.returncode == 0, res.stderr
+    assert res.stdout.splitlines() == ['PATH=/usr/bin:/bin']
+    assert res.stderr == ''
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('kind', ['missing', 'not-executable', 'directory'], ids=str)
+def test_use_proteus_julia_stops_on_a_variable_that_names_no_executable_file(tmp_path, kind):
+    """A set PYTHON_JULIAPKG_EXE that names no executable file returns 1 with one error line.
+
+    juliacall fails at import with such a value, so the default Julia on PATH
+    must not stand in for it; PATH stays as it is and nothing is linked.
+    """
+    target = {
+        'missing': str(tmp_path / 'none' / 'julia'),
+        'not-executable': str(_write_stub(tmp_path, 'julia', '#!/bin/sh\n')),
+        'directory': str(tmp_path),
+    }[kind]
+    if kind == 'not-executable':
+        Path(target).chmod(0o644)
+    env = {**os.environ, 'PATH': '/usr/bin:/bin', 'PYTHON_JULIAPKG_EXE': target}
+    res = _run_bash(
+        _with_common('use_proteus_julia || echo "STATUS=$?"\nprintf "PATH=%s\\n" "$PATH"\n'),
+        env=env,
+    )
+    assert res.returncode == 0, res.stderr
+    assert res.stdout.splitlines() == ['STATUS=1', 'PATH=/usr/bin:/bin']
+    assert res.stderr.splitlines() == [
+        f'ERROR: PYTHON_JULIAPKG_EXE={target} is not an executable file; point it at the '
+        'Julia PROTEUS uses, or unset it to use the Julia on PATH.'
+    ]
+
+
+def _common_copy(tmp_path: Path) -> Path:
+    """Copy ``tools/_get_common.sh`` into ``tmp_path/proteus/tools``; return the copy.
+
+    Sourced there, its ``proteus_root`` is ``tmp_path/proteus``, so the
+    ``.proteus-julia`` folder that use_proteus_julia makes lands under ``tmp_path``.
+    """
+    tools = tmp_path / 'proteus' / 'tools'
+    tools.mkdir(parents=True)
+    shutil.copy(COMMON_LIB, tools / '_get_common.sh')
+    return tools / '_get_common.sh'
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('strict', [True, False], ids=['strict', 'lenient'])
+def test_use_proteus_julia_puts_the_bound_julia_first_on_path(tmp_path, strict):
+    """An executable PYTHON_JULIAPKG_EXE is a bare julia, through the folder .proteus-julia.
+
+    PATH holds a second julia, which a bare julia would find without the
+    helper; the helper prints one line that names the bound binary, and the
+    folder first on PATH holds the one link julia to it.
+    """
+    common = _common_copy(tmp_path)
+    other = tmp_path / 'default' / 'bin'
+    other.mkdir(parents=True)
+    _write_stub(other, 'julia', '#!/bin/sh\necho default\n')
+    bound_dir = tmp_path / 'julia-1.13.1' / 'bin'
+    bound_dir.mkdir(parents=True)
+    bound = _write_stub(bound_dir, 'julia', '#!/bin/sh\necho bound\n')
+    env = {**os.environ, 'PATH': f'{other}:/usr/bin:/bin', 'PYTHON_JULIAPKG_EXE': str(bound)}
+    prelude = 'set -euo pipefail\n' if strict else ''
+    res = _run_bash(
+        f'{prelude}source "{common}"\nuse_proteus_julia\nprintf "PATH=%s\\n" "$PATH"\njulia\n',
+        env=env,
+    )
+    assert res.returncode == 0, res.stderr
+    link_dir = os.path.realpath(tmp_path / 'proteus') + '/.proteus-julia'
+    assert res.stdout.splitlines() == [
+        f'Julia: {bound} (PYTHON_JULIAPKG_EXE)',
+        f'PATH={link_dir}:{other}:/usr/bin:/bin',
+        'bound',
+    ]
+    assert os.listdir(link_dir) == ['julia']
+    assert os.path.realpath(Path(link_dir) / 'julia') == os.path.realpath(bound)
+
+
+@pytest.mark.unit
+def test_use_proteus_julia_shadows_no_other_program_of_the_binary_folder(tmp_path):
+    """A bound julia-1.13 in a folder with a python: bare julia is it, python stays the env's.
+
+    The folder of the binary (a shared one such as /opt/homebrew/bin) also holds
+    a python, and the binary is not named julia; a bare julia on PATH is another
+    version. After the helper, julia runs the bound binary and python the env's.
+    A second call with another binary moves the link.
+    """
+    common = _common_copy(tmp_path)
+    shared = tmp_path / 'shared' / 'bin'
+    shared.mkdir(parents=True)
+    bound = _write_stub(shared, 'julia-1.13', '#!/bin/sh\necho bound-1.13\n')
+    _write_stub(shared, 'python', '#!/bin/sh\necho shared-python\n')
+    env_bin = tmp_path / 'env' / 'bin'
+    env_bin.mkdir(parents=True)
+    _write_stub(env_bin, 'python', '#!/bin/sh\necho env-python\n')
+    _write_stub(env_bin, 'julia', '#!/bin/sh\necho path-julia-1.10\n')
+    newer = _write_stub(tmp_path / 'shared', 'julia-1.13.2', '#!/bin/sh\necho bound-1.13.2\n')
+    env = {**os.environ, 'PATH': f'{env_bin}:/usr/bin:/bin', 'PYTHON_JULIAPKG_EXE': str(bound)}
+    script = (
+        f'set -euo pipefail\nsource "{common}"\n'
+        'use_proteus_julia >/dev/null\njulia\npython\n'
+        f'PYTHON_JULIAPKG_EXE={shlex.quote(str(newer))}\n'
+        'use_proteus_julia >/dev/null\njulia\n'
+    )
+    res = _run_bash(script, env=env)
+    assert res.returncode == 0, res.stderr
+    assert res.stdout.splitlines() == ['bound-1.13', 'env-python', 'bound-1.13.2']
+    assert os.listdir(tmp_path / 'proteus' / '.proteus-julia') == ['julia']
+
+
+def _julia_site(tmp_path: Path, bound: bool) -> dict:
+    """A PROTEUS copy, local AGNI and Obliqua remotes and two logging julia stubs.
+
+    The julia on PATH logs ``path-julia <args>``, writes a marker file and
+    exits ``PATH_JULIA_RC`` (1 when ``bound``, else 0). With ``bound``,
+    PYTHON_JULIAPKG_EXE names a second stub in another folder that logs
+    ``bound-julia <args>`` and exits 0; without it the variable is unset.
+    The AGNI remote carries a ``src/get_agni.sh`` that calls julia once, as
+    AGNI's own script does, so the run shows which julia a child script finds.
+    """
+    root = _fake_checkout(tmp_path)
+    remotes = tmp_path / 'remotes'
+    remotes.mkdir()
+    for repo, files in (
+        ('AGNI', {'src/get_agni.sh': 'julia --project=. -e "instantiate $1"\n'}),
+        ('Obliqua', {'Project.toml': 'name = "Obliqua"\n'}),
+    ):
+        work = tmp_path / 'work' / repo
+        for name, text in files.items():
+            (work / name).parent.mkdir(parents=True, exist_ok=True)
+            (work / name).write_text(text)
+        git(work, 'init', '-q', '-b', 'main')
+        git(work, 'add', '.')
+        git(work, 'commit', '-q', '-m', 'initial')
+        git(work, 'tag', 'v1.0.0')
+        git(remotes, 'clone', '-q', '--bare', str(work), str(remotes / f'{repo}.git'))
+    log = tmp_path / 'julia.log'
+    log.write_text('')
+    marker = tmp_path / 'path-julia-ran'
+    stubs = tmp_path / 'stubs'
+    stubs.mkdir()
+    _write_stub(
+        stubs,
+        'julia',
+        '#!/bin/sh\necho "path-julia $*" >> "$STUB_LOG"\n'
+        ': > "$STUB_MARKER"\nexit "$PATH_JULIA_RC"\n',
+    )
+    env = {k: v for k, v in os.environ.items() if k != 'PYTHON_JULIAPKG_EXE'}
+    env.update(
+        {
+            'PATH': f'{stubs}:{os.environ["PATH"]}',
+            'STUB_LOG': str(log),
+            'STUB_MARKER': str(marker),
+            'PATH_JULIA_RC': '1' if bound else '0',
+            'AGNI_GIT_URL': str(remotes / 'AGNI.git'),
+            'AGNI_GIT_REF': 'v1.0.0',
+            'OBLIQUA_GIT_URL': str(remotes / 'Obliqua.git'),
+            'OBLIQUA_GIT_REF': 'v1.0.0',
+            'GIT_CEILING_DIRECTORIES': str(tmp_path),
+        }
+    )
+    exe = None
+    if bound:
+        bound_dir = tmp_path / 'juliaup' / 'julia-1.13.1' / 'bin'
+        bound_dir.mkdir(parents=True)
+        exe = _write_stub(
+            bound_dir, 'julia', '#!/bin/sh\necho "bound-julia $*" >> "$STUB_LOG"\nexit 0\n'
+        )
+        env['PYTHON_JULIAPKG_EXE'] = str(exe)
+    return {'root': root, 'env': env, 'log': log, 'marker': marker, 'exe': exe}
+
+
+# The julia calls each script makes with the argument 0, in order; LovePy's
+# Pkg.add names the URL and ref of its pin, so only its prefix is pinned.
+_JULIA_CALLS = {
+    'get_agni.sh': ['--project=. -e instantiate 0'],
+    'get_obliqua.sh': [
+        '--project=. -e using Pkg; Pkg.resolve(); Pkg.instantiate()',
+        '-e using Pkg; Pkg.add(path=".")',
+        '-e using Obliqua; println("Installed to: "*pathof(Obliqua))',
+    ],
+    'get_lovepy.sh': [
+        '-e using Pkg; Pkg.add(url="https://github.com/nichollsh/LovePy", rev="',
+        '-e using LovePy; println("Installed to: "*pathof(LovePy))',
+    ],
+}
+
+
+def _run_julia_script(site: dict, script: str) -> subprocess.CompletedProcess:
+    """Run ``tools/<script> 0`` of the site copy, from outside the copy."""
+    return subprocess.run(
+        ['bash', str(site['root'] / 'tools' / script), '0'],
+        cwd=site['root'].parent,
+        env=site['env'],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+
+
+def _julia_calls(site: dict, who: str) -> list[str]:
+    """The arguments of each logged call of the ``who`` julia, in order."""
+    lines = site['log'].read_text().splitlines()
+    return [ln.partition(' ')[2] for ln in lines if ln.partition(' ')[0] == who]
+
+
+def _matches(calls: list[str], expected: list[str]) -> bool:
+    """Whether each call equals its expected text, or starts with it for the Pkg.add of LovePy."""
+    return len(calls) == len(expected) and all(
+        c == e or (e.endswith('rev="') and c.startswith(e))
+        for c, e in zip(calls, expected, strict=True)
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('script', sorted(_JULIA_CALLS))
+def test_setup_script_runs_the_bound_julia_and_never_the_path_one(tmp_path, script):
+    """With PYTHON_JULIAPKG_EXE set, every julia call of the script reaches that binary.
+
+    The julia on PATH would exit 1 and leave a marker file; neither happens,
+    the script finishes, and the bound stub got each call in order. For
+    AGNI the call comes from the cloned ``src/get_agni.sh``, a child script,
+    so the PATH the helper sets reaches it as well.
+    """
+    site = _julia_site(tmp_path, bound=True)
+    res = _run_julia_script(site, script)
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert not site['marker'].exists(), site['log'].read_text()
+    assert _julia_calls(site, 'path-julia') == []
+    calls = _julia_calls(site, 'bound-julia')
+    assert _matches(calls, _JULIA_CALLS[script]), calls
+    assert res.stdout.splitlines().count(f'Julia: {site["exe"]} (PYTHON_JULIAPKG_EXE)') == 1
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('script', sorted(_JULIA_CALLS))
+def test_setup_script_with_an_unusable_bound_julia_stops_before_any_julia(tmp_path, script):
+    """A PYTHON_JULIAPKG_EXE that names a missing file stops the script with status 1.
+
+    The julia on PATH, another version, would install into the wrong Julia; it
+    runs no call, and the error names the variable. get_lovepy.sh has no
+    ``set -e``, so it stops through ``use_proteus_julia || exit 1``.
+    """
+    site = _julia_site(tmp_path, bound=False)
+    missing = tmp_path / 'juliaup' / 'gone' / 'julia'
+    site['env']['PYTHON_JULIAPKG_EXE'] = str(missing)
+    res = _run_julia_script(site, script)
+    assert res.returncode == 1, res.stdout + res.stderr
+    assert not site['marker'].exists()
+    assert site['log'].read_text() == ''
+    assert f'ERROR: PYTHON_JULIAPKG_EXE={missing} is not an executable file' in res.stderr
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('script', sorted(_JULIA_CALLS))
+def test_setup_script_without_a_bound_julia_runs_the_path_one(tmp_path, script):
+    """Without PYTHON_JULIAPKG_EXE the script runs the julia on PATH and names no bound Julia."""
+    site = _julia_site(tmp_path, bound=False)
+    res = _run_julia_script(site, script)
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert site['marker'].exists()
+    calls = _julia_calls(site, 'path-julia')
+    assert _matches(calls, _JULIA_CALLS[script]), calls
+    assert 'PYTHON_JULIAPKG_EXE' not in res.stdout + res.stderr
+
+
+@pytest.mark.unit
+def test_every_setup_script_that_runs_julia_calls_use_proteus_julia_first():
+    """Each tools script whose code runs julia calls use_proteus_julia before its first julia.
+
+    get_agni.sh counts through the ``src/get_agni.sh`` of AGNI that it runs;
+    test_docker_image.sh runs julia inside the container, not on the host.
+    """
+    # Guard the guard: a renamed helper would make every script fail the same way.
+    assert 'use_proteus_julia' in _library_function_names()
+    runs_julia = {}
+    for script in sorted(TOOLS_DIR.glob('*.sh')):
+        lines = _code_lines(script)
+        julia = [i for i, code in lines if re.search(r'(^|[\s(=])julia(\s|$)', code)]
+        julia += [i for i, code in lines if 'src/get_agni.sh' in code]
+        if script.name == 'test_docker_image.sh' or not julia:
+            continue
+        helper = [
+            i
+            for i, code in lines
+            if code in ('use_proteus_julia', 'use_proteus_julia || exit 1')
+        ]
+        runs_julia[script.name] = bool(helper) and helper[0] < min(julia)
+    assert runs_julia == {'get_agni.sh': True, 'get_lovepy.sh': True, 'get_obliqua.sh': True}
+
+
+# The pages whose commands set a variable in the env `proteus`, which manual_installation.md makes.
+_CONDA_VAR_PAGES = (
+    'manual_installation.md',
+    'optionalmodules_installation.md',
+    'troubleshooting.md',
+)
+
+
+@pytest.mark.unit
+def test_printed_and_documented_conda_var_commands_name_their_env(tmp_path):
+    """Each `conda env config vars set` that a script prints or a page gives names its env.
+
+    Without `-n` or `-p`, conda writes to the active env, which is base when the
+    user types the command in a new shell. With an env active, a script prints
+    the literal `-p "$CONDA_PREFIX"`, not the path of the env it ran in; with no
+    env active it prints `-n <your environment>`, because an empty prefix is an
+    error. The pages name `-n proteus`. A scan that finds no line fails.
+    """
+    printed = {}
+    for active in (True, False):
+        env = {'PATH': '/usr/bin:/bin', 'HOME': str(tmp_path)}
+        if active:
+            env['CONDA_PREFIX'] = '/envs/where-the-script-ran'
+        for script in sorted(TOOLS_DIR.glob('get_*.sh')):
+            lines = script.read_text().splitlines()
+            for i, line in enumerate(lines):
+                if 'conda env config vars set' in line and line.lstrip().startswith('echo '):
+                    assert lines[i - 1].startswith("env_opt='-p "), script.name
+                    out = subprocess.run(
+                        ['bash', '-c', lines[i - 1] + '\n' + line],
+                        capture_output=True,
+                        text=True,
+                        env=env,
+                        timeout=10,
+                    )
+                    printed[(script.name, active)] = out.stdout.strip()
+    assert sorted(name for name, _ in printed) == sorted(
+        ['get_lavatmos.sh', 'get_petsc.sh', 'get_socrates.sh'] * 2
+    )
+    for (name, active), text in printed.items():
+        option = '-p "$CONDA_PREFIX" ' if active else '-n <your environment> '
+        assert text.startswith('conda env config vars set ' + option), (name, active, text)
+        assert 'where-the-script-ran' not in text
+    docs = TOOLS_DIR.parent / 'docs' / 'How-to'
+    commands = [
+        (page, line)
+        for page in _CONDA_VAR_PAGES
+        for line in (docs / page).read_text().splitlines()
+        if line.startswith('conda env config vars set')
+    ]
+    assert len(commands) == 6
+    named = 'conda env config vars set -n proteus '
+    assert [c for c in commands if not c[1].startswith(named)] == []
