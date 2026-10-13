@@ -1140,8 +1140,8 @@ def check_git_module(name: str, dirs: dict, required: bool = True) -> CheckResul
             name=name,
             category='versions',
             status=WARN,
-            message=f'{ver}: the commit cannot be compared with the pin',
-            fix_cmd=move_away_fix,
+            message=f'{ver}: the commit cannot be read',
+            fix_cmd=f'git -C {shlex.quote(path)} log -1  # when this shows no commit: {move_away_fix}',
             auto_fixable=False,
         )
 
@@ -1151,13 +1151,16 @@ def check_git_module(name: str, dirs: dict, required: bool = True) -> CheckResul
         refresh = setup_cmd
         auto_fixable = True
         if name == 'Obliqua':
-            root = shlex.quote(str(_repo_root()))
-            folder = shlex.quote(os.path.abspath(path))
-            refresh = (
-                f'cd {root} && bash tools/get_obliqua.sh --force {folder}  # replaces the '
-                'folder with a new clone at the pin, which deletes everything in it'
-            )
             auto_fixable = False
+            if os.path.isfile(os.path.join(path, '.git')):
+                refresh = move_away_fix
+            else:
+                root = shlex.quote(str(_repo_root()))
+                folder = shlex.quote(os.path.abspath(path))
+                refresh = (
+                    f'cd {root} && bash tools/get_obliqua.sh --force {folder}  # replaces the '
+                    'folder with a new clone at the pin, which deletes everything in it'
+                )
         return CheckResult(
             name=name,
             category='versions',

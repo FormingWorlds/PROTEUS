@@ -2303,8 +2303,9 @@ class TestCheckGitModuleStandard:
         ):
             r = check_git_module('AGNI', {'agni': str(agni_dir)}, required=True)
         assert r.status == WARN
-        assert r.message == '1.13.0: the commit cannot be compared with the pin'
+        assert r.message == '1.13.0: the commit cannot be read'
         assert r.fix_cmd == (
+            f'git -C {shlex.quote(str(agni_dir))} log -1  # when this shows no commit: '
             f'move {shlex.quote(str(agni_dir))} away or delete it, then run: '
             f'cd {shlex.quote(str(root))} && bash tools/get_agni.sh'
         )
@@ -2326,8 +2327,9 @@ class TestCheckGitModuleStandard:
         ):
             r = check_git_module('Obliqua', {'obliqua': str(obliqua_dir)}, required=False)
         assert r.status == WARN
-        assert r.message == '0.1.0: the commit cannot be compared with the pin'
+        assert r.message == '0.1.0: the commit cannot be read'
         assert r.fix_cmd == (
+            f'git -C {shlex.quote(str(obliqua_dir))} log -1  # when this shows no commit: '
             f'move {shlex.quote(str(obliqua_dir))} away or delete it, then run: '
             f'cd {shlex.quote(str(root))} && bash tools/get_obliqua.sh'
         )
@@ -2351,12 +2353,71 @@ class TestCheckGitModuleStandard:
         ):
             r = check_git_module('Obliqua', {'obliqua': str(obliqua_dir)}, required=False)
         assert r.status == WARN
-        assert r.message == '0.1.0: the commit cannot be compared with the pin'
+        assert r.message == '0.1.0: the commit cannot be read'
         assert r.fix_cmd == (
+            f'git -C {shlex.quote(str(obliqua_dir))} log -1  # when this shows no commit: '
             f'move {shlex.quote(str(obliqua_dir))} away or delete it, then run: '
             f'cd {shlex.quote(str(root))} && bash tools/get_obliqua.sh'
         )
         assert 'Julia environment not instantiated' not in r.message
+        assert r.auto_fixable is False
+
+    def test_obliqua_worktree_off_pin_gives_move_away_advice_without_force(self, tmp_path):
+        """An Obliqua git worktree off pin gives move away advice instead of force re-clone."""
+        root = tmp_path / 'repo'
+        root.mkdir()
+        clone = tmp_path / 'clone'
+        clone.mkdir()
+        subprocess.run(['git', 'init'], cwd=clone, check=True, capture_output=True)
+        subprocess.run(
+            ['git', 'config', 'user.name', 'Tester'], cwd=clone, check=True, capture_output=True
+        )
+        subprocess.run(
+            ['git', 'config', 'user.email', 'tester@example.com'],
+            cwd=clone,
+            check=True,
+            capture_output=True,
+        )
+        (clone / 'Project.toml').write_text('name = "Obliqua"\nversion = "0.1.0"\n')
+        (clone / 'Manifest.toml').write_text('manifest_format = "2.0"\n')
+        subprocess.run(['git', 'add', '.'], cwd=clone, check=True, capture_output=True)
+        subprocess.run(
+            ['git', 'commit', '-m', 'commit 1'], cwd=clone, check=True, capture_output=True
+        )
+        commit1 = subprocess.check_output(
+            ['git', 'rev-parse', 'HEAD'], cwd=clone, text=True
+        ).strip()
+        (clone / 'extra.txt').write_text('extra\n')
+        subprocess.run(['git', 'add', '.'], cwd=clone, check=True, capture_output=True)
+        subprocess.run(
+            ['git', 'commit', '-m', 'commit 2'], cwd=clone, check=True, capture_output=True
+        )
+        commit2 = subprocess.check_output(
+            ['git', 'rev-parse', 'HEAD'], cwd=clone, text=True
+        ).strip()
+
+        wt = tmp_path / 'wt'
+        subprocess.run(
+            ['git', 'worktree', 'add', str(wt), commit1],
+            cwd=clone,
+            check=True,
+            capture_output=True,
+        )
+
+        pins = {'obliqua': {'ref': commit2}}
+        with (
+            patch('proteus.doctor._module_pins', return_value=pins),
+            patch('proteus.doctor._repo_root', return_value=root),
+        ):
+            r = check_git_module('Obliqua', {'obliqua': str(wt)}, required=False)
+
+        assert r.status == WARN
+        assert 'differs from pin' in r.message
+        assert r.fix_cmd == (
+            f'move {shlex.quote(str(wt))} away or delete it, then run: '
+            f'cd {shlex.quote(str(root))} && bash tools/get_obliqua.sh'
+        )
+        assert '--force' not in r.fix_cmd
         assert r.auto_fixable is False
 
     def test_unpinned_module_clone_without_commit_passes(self, tmp_path):
