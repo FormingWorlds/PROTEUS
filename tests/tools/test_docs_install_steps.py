@@ -46,6 +46,7 @@ echo shared-one
 
     ```console
     echo alpha-one
+    # a whole-line comment to skip
     echo alpha-two \\
       --long
     ```
@@ -54,11 +55,17 @@ echo shared-one
 
     ```console
     echo beta-one   # a trailing comment
+    echo beta-two \\
     ```
 
 !!! note "Optional"
     ```console
     echo optional-shared
+    ```
+
+??? note "Collapsible"
+    ```console
+    echo optional-collapsible
     ```
 
 === "Alpha"
@@ -86,10 +93,13 @@ def page(tmp_path: Path) -> Path:
     return path
 
 
-def _run(*args: str) -> subprocess.CompletedProcess[str]:
-    """Run the tool as a subprocess and capture its output."""
-    return subprocess.run(
-        [sys.executable, str(_TOOL), *args], capture_output=True, text=True, check=False
+def _run(capsys, *args: str) -> subprocess.CompletedProcess[str]:
+    """Run steps.main in-process, capturing stdout/stderr and exit code."""
+    capsys.readouterr()
+    rc = steps.main(list(args))
+    captured = capsys.readouterr()
+    return subprocess.CompletedProcess(
+        args=list(args), returncode=rc, stdout=captured.out, stderr=captured.err
     )
 
 
@@ -103,9 +113,21 @@ def _write_subs(tmp_path: Path, match: str, replace: str = 'true') -> Path:
     return path
 
 
-def test_tab_selection_keeps_shared_blocks_and_selected_tab_only(page):
+def test_cli_subprocess_invocation(page):
+    """Running the tool as a subprocess executes __main__ and exits 0."""
+    out = subprocess.run(
+        [sys.executable, str(_TOOL), str(page), '--tab', 'Alpha'],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert out.returncode == 0
+    assert 'echo alpha-one' in out.stdout
+
+
+def test_tab_selection_keeps_shared_blocks_and_selected_tab_only(page, capsys):
     """Alpha gets the shared blocks and its own, in page order, and no Beta command."""
-    out = _run(str(page), '--tab', 'Alpha')
+    out = _run(capsys, str(page), '--tab', 'Alpha')
     assert out.returncode == 0
     assert out.stdout.splitlines() == [
         'echo shared-one',
@@ -113,47 +135,72 @@ def test_tab_selection_keeps_shared_blocks_and_selected_tab_only(page):
         'echo alpha-two --long',
         'echo shared-two',
     ]
-    assert 'beta-one' not in out.stdout
+    assert 'beta-one' not in out.stdout and 'beta-two' not in out.stdout
+    assert '# a whole-line comment to skip' not in out.stdout
 
 
-def test_other_tab_does_not_see_first_tab_commands(page):
-    """Beta gets its own command and the shared ones, none of Alpha's."""
-    out = _run(str(page), '--tab', 'Beta')
+def test_other_tab_does_not_see_first_tab_commands(page, capsys):
+    """Beta gets its own commands and the shared ones, none of Alpha's."""
+    out = _run(capsys, str(page), '--tab', 'Beta')
     assert out.returncode == 0
-    assert 'echo beta-one   # a trailing comment' in out.stdout.splitlines()
+    assert out.stdout.splitlines() == [
+        'echo shared-one',
+        'echo beta-one   # a trailing comment',
+        'echo beta-two',
+        'echo shared-two',
+    ]
     assert 'alpha' not in out.stdout
 
 
-def test_unknown_tab_exits_2_and_names_known_tabs(page):
+def test_unknown_tab_exits_2_and_names_known_tabs(page, capsys):
     """A tab name that is not on the page is a structural error."""
-    out = _run(str(page), '--tab', 'Gamma')
+    out = _run(capsys, str(page), '--tab', 'Gamma')
     assert out.returncode == 2
     assert 'unknown tab' in out.stderr
     assert 'Alpha' in out.stderr and 'Beta' in out.stderr
     assert out.stdout == ''
 
 
-def test_page_without_console_block_exits_2(tmp_path):
+def test_page_without_console_block_exits_2(tmp_path, capsys):
     """A page with no console block cannot yield a plan."""
     path = tmp_path / 'empty.md'
     path.write_text('# Title\n\nNo commands here.\n\n```python\nx = 1\n```\n', encoding='utf-8')
-    out = _run(str(path))
+    out = _run(capsys, str(path))
     assert out.returncode == 2
     assert 'no console block' in out.stderr
+    assert out.stdout == ''
 
 
-def test_admonition_blocks_are_skipped_and_listed(page):
+def test_unreadable_page_file_exits_2_and_names_file(tmp_path, capsys):
+    """An unreadable or non-existent page file causes an exit code of 2 naming the file."""
+    missing = tmp_path / 'nonexistent_page.md'
+    out = _run(capsys, str(missing))
+    assert out.returncode == 2
+    assert str(missing) in out.stderr
+    assert 'cannot read' in out.stderr
+
+
+def test_admonition_blocks_are_skipped_and_listed(page, capsys):
     """Admonition blocks are optional: not in the plan, listed with --list-skipped."""
-    plan = _run(str(page), '--tab', 'Alpha').stdout
+    plan = _run(capsys, str(page), '--tab', 'Alpha').stdout
     assert 'optional' not in plan
-    listing = _run(str(page), '--tab', 'Alpha', '--list-skipped').stdout.splitlines()
-    assert len(listing) == 2
+    listing = _run(capsys, str(page), '--tab', 'Alpha', '--list-skipped').stdout.splitlines()
+    assert len(listing) == 3
     assert listing[0].endswith('(note) echo optional-shared')
-    assert listing[1].endswith('(tip) echo optional-alpha')
-    # An admonition under the other tab's header does not leak into Beta's list.
-    beta = _run(str(page), '--tab', 'Beta', '--list-skipped').stdout
+    assert listing[1].endswith('(note) echo optional-collapsible')
+    assert listing[2].endswith('(tip) echo optional-alpha')
+    beta = _run(capsys, str(page), '--tab', 'Beta', '--list-skipped').stdout
     assert 'optional-alpha' not in beta
-    assert 'optional-shared' in beta
+    assert 'optional-shared' in beta and 'optional-collapsible' in beta
+
+
+def test_list_skipped_with_no_optional_steps(tmp_path, capsys):
+    """Listing skipped steps on a page without admonitions reports no optional steps."""
+    p = tmp_path / 'no_opt.md'
+    p.write_text('```console\necho standalone\n```\n', encoding='utf-8')
+    out = _run(capsys, str(p), '--list-skipped')
+    assert out.returncode == 0
+    assert out.stdout == 'No optional steps.\n'
 
 
 def test_line_numbers_are_page_lines_of_each_command(page):
@@ -162,85 +209,208 @@ def test_line_numbers_are_page_lines_of_each_command(page):
     lines = _PAGE.splitlines()
     for step in required:
         assert lines[step.line - 1].strip().lstrip('$ ').startswith(step.command.split(' ')[0])
-    assert [s.line for s in required] == [4, 10, 11, 38]
+    assert [s.line for s in required] == [4, 10, 12, 45]
     assert lines[9].strip() == 'echo alpha-one'
-    assert lines[10].strip() == 'echo alpha-two \\'
-    assert lines[37].strip() == '$ echo shared-two'
+    assert lines[11].strip() == 'echo alpha-two \\'
+    assert lines[44].strip() == '$ echo shared-two'
 
 
-def test_substitution_replaces_command_and_table_shows_deviation(page, tmp_path):
+def test_substitution_replaces_command_and_table_shows_deviation(page, tmp_path, capsys):
     """A matching substitution changes the job command and shows its reason."""
     subs = _write_subs(tmp_path, 'echo alpha-one', 'echo replaced')
-    out = _run(str(page), '--tab', 'Alpha', '--substitutions', str(subs), '--format', 'table')
+    out = _run(
+        capsys, str(page), '--tab', 'Alpha', '--substitutions', str(subs), '--format', 'table'
+    )
     assert out.returncode == 0
     assert '| 10 | `echo alpha-one` | `echo replaced` | test |' in out.stdout
     assert '| 4 | `echo shared-one` | as written |  |' in out.stdout
 
 
-def test_substitution_matches_command_with_its_page_comment(page, tmp_path):
+def test_substitution_matches_command_with_its_page_comment(page, tmp_path, capsys):
     """The match may be the command text as on the page, trailing comment included."""
     subs = _write_subs(tmp_path, 'echo beta-one   # a trailing comment', 'echo replaced')
-    out = _run(str(page), '--tab', 'Beta', '--substitutions', str(subs), '--format', 'table')
+    out = _run(
+        capsys, str(page), '--tab', 'Beta', '--substitutions', str(subs), '--format', 'table'
+    )
     assert out.returncode == 0
     assert '`echo replaced`' in out.stdout
     assert '(page comment: `# a trailing comment`)' in out.stdout
 
 
-def test_stale_substitution_exits_2(page, tmp_path):
+def test_substitution_matches_command_without_page_comment(page, tmp_path, capsys):
+    """A substitution match without the trailing comment applies to the page command."""
+    subs = _write_subs(tmp_path, 'echo beta-one', 'echo replaced-beta')
+    out = _run(
+        capsys,
+        str(page),
+        '--tab',
+        'Beta',
+        '--substitutions',
+        str(subs),
+        '--format',
+        'commands',
+    )
+    assert out.returncode == 0
+    assert 'echo replaced-beta' in out.stdout.splitlines()
+    assert 'echo beta-one' not in out.stdout
+
+
+def test_commands_format_prints_job_command_when_substituted(page, tmp_path, capsys):
+    """The commands format prints the substituted job command rather than the page command."""
+    subs = _write_subs(tmp_path, 'echo alpha-one', 'echo replaced-alpha')
+    out = _run(
+        capsys,
+        str(page),
+        '--tab',
+        'Alpha',
+        '--substitutions',
+        str(subs),
+        '--format',
+        'commands',
+    )
+    assert out.returncode == 0
+    assert 'echo replaced-alpha' in out.stdout.splitlines()
+    assert 'echo alpha-one' not in out.stdout
+
+
+def test_stale_substitution_exits_2(page, tmp_path, capsys):
     """A match that is not on the page fails the run, so a page change is caught."""
     subs = _write_subs(tmp_path, 'echo alpha-one-renamed')
-    out = _run(str(page), '--tab', 'Alpha', '--substitutions', str(subs), '--format', 'script')
+    out = _run(
+        capsys, str(page), '--tab', 'Alpha', '--substitutions', str(subs), '--format', 'script'
+    )
     assert out.returncode == 2
     assert 'matches no command on the page' in out.stderr
     assert out.stdout == ''
 
 
-def test_substitution_for_other_tab_command_is_stale(page, tmp_path):
+def test_substitution_for_other_tab_command_is_stale(page, tmp_path, capsys):
     """A match that exists only on another tab is stale for the selected tab."""
     subs = _write_subs(tmp_path, 'echo beta-one   # a trailing comment')
-    out = _run(str(page), '--tab', 'Alpha', '--substitutions', str(subs))
+    out = _run(capsys, str(page), '--tab', 'Alpha', '--substitutions', str(subs))
     assert out.returncode == 2
+    assert 'matches no command on the page' in out.stderr
+    assert 'echo beta-one' in out.stderr
 
 
-def test_substitution_missing_reason_exits_2(page, tmp_path):
+def test_substitution_matching_prefix_only_is_stale(page, tmp_path, capsys):
+    """A substitution whose match is only a prefix of a command is rejected as stale."""
+    subs = _write_subs(tmp_path, 'echo alpha-two', 'echo replaced')
+    out = _run(capsys, str(page), '--tab', 'Alpha', '--substitutions', str(subs))
+    assert out.returncode == 2
+    assert 'matches no command on the page' in out.stderr
+    assert 'echo alpha-two' in out.stderr
+
+
+def test_substitution_missing_reason_exits_2(page, tmp_path, capsys):
     """An entry without a reason is rejected, so every deviation is explained."""
     path = tmp_path / 'subs.toml'
     path.write_text('[[substitution]]\nmatch = "echo alpha-one"\nreplace = "true"\n')
-    out = _run(str(page), '--tab', 'Alpha', '--substitutions', str(path))
+    out = _run(capsys, str(page), '--tab', 'Alpha', '--substitutions', str(path))
     assert out.returncode == 2
     assert "'reason'" in out.stderr
 
 
-def _bash_script(page: Path, tmp_path: Path, tab: str | None, subs: Path | None = None) -> Path:
+def test_substitution_whitespace_only_reason_exits_2(page, tmp_path, capsys):
+    """A substitution whose reason contains only whitespace is rejected with exit code 2."""
+    path = tmp_path / 'subs.toml'
+    path.write_text(
+        '[[substitution]]\nmatch = "echo alpha-one"\nreplace = "true"\nreason = "   "\n',
+        encoding='utf-8',
+    )
+    out = _run(capsys, str(page), '--tab', 'Alpha', '--substitutions', str(path))
+    assert out.returncode == 2
+    assert "'reason'" in out.stderr
+
+
+def test_duplicate_substitution_match_exits_2(page, tmp_path, capsys):
+    """Duplicate substitution match entries in one table are rejected with exit code 2."""
+    path = tmp_path / 'subs.toml'
+    path.write_text(
+        '[[substitution]]\nmatch = "echo alpha-one"\nreplace = "true"\nreason = "first"\n\n'
+        '[[substitution]]\nmatch = "echo alpha-one"\nreplace = "false"\nreason = "second"\n',
+        encoding='utf-8',
+    )
+    out = _run(capsys, str(page), '--tab', 'Alpha', '--substitutions', str(path))
+    assert out.returncode == 2
+    assert 'repeats a match' in out.stderr
+
+
+def test_missing_substitutions_file_exits_2_and_names_file(page, tmp_path, capsys):
+    """A missing substitutions file causes an exit code of 2 naming the missing file."""
+    missing = tmp_path / 'nonexistent_subs.toml'
+    out = _run(capsys, str(page), '--tab', 'Alpha', '--substitutions', str(missing))
+    assert out.returncode == 2
+    assert str(missing) in out.stderr
+    assert 'cannot read substitutions' in out.stderr
+
+
+def test_invalid_toml_substitutions_file_exits_2(page, tmp_path, capsys):
+    """A malformed TOML substitutions file causes an exit code of 2 with an error message."""
+    bad_toml = tmp_path / 'bad.toml'
+    bad_toml.write_text('[[substitution\nmatch = broken', encoding='utf-8')
+    out = _run(capsys, str(page), '--tab', 'Alpha', '--substitutions', str(bad_toml))
+    assert out.returncode == 2
+    assert 'cannot read substitutions' in out.stderr
+
+
+def test_table_format_escapes_pipe_characters_in_commands(tmp_path, capsys):
+    """Commands and reasons with pipe characters are escaped with a backslash in tables."""
+    page_file = tmp_path / 'pipe.md'
+    page_file.write_text('```console\necho hello | tr a-z A-Z\n```\n', encoding='utf-8')
+    subs = tmp_path / 'subs.toml'
+    subs.write_text(
+        '[[substitution]]\nmatch = "echo hello | tr a-z A-Z"\n'
+        'replace = "cat a | cat b"\nreason = "pipe | test"\n',
+        encoding='utf-8',
+    )
+    out = _run(capsys, str(page_file), '--substitutions', str(subs), '--format', 'table')
+    assert out.returncode == 0
+    assert r'`echo hello \| tr a-z A-Z`' in out.stdout
+    assert r'`cat a \| cat b`' in out.stdout
+    assert r'pipe \| test' in out.stdout
+
+
+def _bash_script(
+    page: Path, tmp_path: Path, tab: str | None, subs: Path | None = None, capsys=None
+) -> Path:
     """Generate the script for ``tab`` into ``tmp_path`` and return its path."""
     args = [str(page), '--format', 'script', '--timing', str(tmp_path / 't.tsv')]
     if tab is not None:
         args += ['--tab', tab]
     if subs is not None:
         args += ['--substitutions', str(subs)]
-    out = _run(*args)
+    if capsys is not None:
+        out = _run(capsys, *args)
+    else:
+        out = subprocess.run(
+            [sys.executable, str(_TOOL), *args], capture_output=True, text=True, check=False
+        )
     assert out.returncode == 0, out.stderr
     script = tmp_path / 'run.sh'
     script.write_text(out.stdout, encoding='utf-8')
     return script
 
 
-def test_generated_script_passes_bash_syntax_check(page, tmp_path):
+def test_generated_script_passes_bash_syntax_check(page, tmp_path, capsys):
     """The generated script parses with ``bash -n``."""
-    script = _bash_script(page, tmp_path, 'Alpha')
+    script = _bash_script(page, tmp_path, 'Alpha', capsys=capsys)
     done = subprocess.run(['bash', '-n', str(script)], capture_output=True, text=True)
     assert done.returncode == 0, done.stderr
+    assert script.is_file()
+    assert '#!/usr/bin/env bash' in script.read_text(encoding='utf-8')
 
 
-def test_generated_script_runs_in_one_session_and_writes_timing(tmp_path):
+def test_generated_script_runs_in_one_session_and_writes_timing(tmp_path, capsys):
     """State carries between commands, and the TSV has one row per command."""
-    page = tmp_path / 'p.md'
-    page.write_text(
+    p = tmp_path / 'p.md'
+    p.write_text(
         '```console\nexport STEP_VAR=carried\nmkdir sub\ncd sub\n'
-        'echo "$STEP_VAR" > out.txt\ntest "$(basename "$PWD")" = sub\n```\n',
+        'echo "$STEP_VAR" > out.txt\ntest "$(basename "$PWD")" = sub\n'
+        'sleep 1\n```\n',
         encoding='utf-8',
     )
-    script = _bash_script(page, tmp_path, None)
+    script = _bash_script(p, tmp_path, None, capsys=capsys)
     done = subprocess.run(
         ['bash', '-e', str(script)], capture_output=True, text=True, cwd=tmp_path
     )
@@ -248,21 +418,25 @@ def test_generated_script_runs_in_one_session_and_writes_timing(tmp_path):
     assert (tmp_path / 'sub' / 'out.txt').read_text().strip() == 'carried'
     rows = (tmp_path / 't.tsv').read_text().splitlines()
     assert rows[0] == 'page_line\twall_seconds\texit_code\tcommand'
-    assert [r.split('\t')[0] for r in rows[1:]] == ['2', '3', '4', '5', '6']
+    assert [r.split('\t')[0] for r in rows[1:]] == ['2', '3', '4', '5', '6', '7']
     assert {r.split('\t')[2] for r in rows[1:]} == {'0'}
-    assert done.stdout.count('::group::') == done.stdout.count('::endgroup::') == 5
+    sleep_row = rows[-1].split('\t')
+    wall_sec = float(sleep_row[1])
+    assert 0.9 <= wall_sec <= 10.0
+    assert not sleep_row[1].startswith('-')
+    assert done.stdout.count('::group::') == done.stdout.count('::endgroup::') == 6
     assert '::group::[page line 4] cd sub' in done.stdout
 
 
-def test_generated_script_stops_at_first_failure(tmp_path):
+def test_generated_script_stops_at_first_failure(tmp_path, capsys):
     """The step after a non-zero exit code does not run; the exit code is passed on."""
-    page = tmp_path / 'p.md'
-    page.write_text(
+    p = tmp_path / 'p.md'
+    p.write_text(
         '```console\ntouch first.flag\nexit_code_seven() { return 7; }; exit_code_seven\n'
         'touch after.flag\n```\n',
         encoding='utf-8',
     )
-    script = _bash_script(page, tmp_path, None)
+    script = _bash_script(p, tmp_path, None, capsys=capsys)
     done = subprocess.run(
         ['bash', '-e', str(script)], capture_output=True, text=True, cwd=tmp_path
     )
@@ -274,12 +448,12 @@ def test_generated_script_stops_at_first_failure(tmp_path):
     assert '::error::[page line 3] exit code 7' in done.stdout
 
 
-def test_generated_script_prints_deviation_line_for_substituted_command(tmp_path):
+def test_generated_script_prints_deviation_line_for_substituted_command(tmp_path, capsys):
     """A substituted command prints the page text, the job text and the reason."""
-    page = tmp_path / 'p.md'
-    page.write_text('```console\necho on-the-page\n```\n', encoding='utf-8')
+    p = tmp_path / 'p.md'
+    p.write_text('```console\necho on-the-page\n```\n', encoding='utf-8')
     subs = _write_subs(tmp_path, 'echo on-the-page', 'echo on-the-job')
-    script = _bash_script(page, tmp_path, None, subs)
+    script = _bash_script(p, tmp_path, None, subs, capsys=capsys)
     done = subprocess.run(['bash', str(script)], capture_output=True, text=True, cwd=tmp_path)
     assert done.returncode == 0
     assert (
@@ -290,9 +464,10 @@ def test_generated_script_prints_deviation_line_for_substituted_command(tmp_path
     assert '::group::[page line 2] echo on-the-page' in done.stdout
 
 
-def test_committed_substitutions_match_the_install_page():
+def test_committed_substitutions_match_the_install_page(capsys):
     """Every committed substitution matches a command on the Ubuntu tab of the page."""
     out = _run(
+        capsys,
         str(_REPO_ROOT / 'docs' / 'How-to' / 'installation.md'),
         '--tab',
         'Debian / Ubuntu',
@@ -316,20 +491,54 @@ def test_committed_substitutions_match_the_install_page():
                 'echo alpha-one',
                 'echo alpha-two --long',
                 'echo beta-one   # a trailing comment',
+                'echo beta-two',
+                'echo shared-two',
             ],
         ),
-        (['Beta'], ['echo shared-one', 'echo beta-one   # a trailing comment']),
+        (
+            ['Beta'],
+            [
+                'echo shared-one',
+                'echo beta-one   # a trailing comment',
+                'echo beta-two',
+                'echo shared-two',
+            ],
+        ),
     ],
 )
 def test_several_tabs_are_selected_together_in_page_order(tabs, expected):
-    """A page with two tab sets needs two names; each name adds its blocks, in page order."""
+    """Multiple tab names select the blocks of each named tab in page order."""
     required, _ = steps.select_steps(steps.parse_page(_PAGE), tabs)
     commands = [s.command for s in required]
-    assert commands[: len(expected)] == expected
+    assert commands == expected
     assert ('echo alpha-one' in commands) == ('Alpha' in tabs)
+    assert 'echo shared-one' in commands and 'echo shared-two' in commands
 
 
 def test_an_unknown_name_among_several_tabs_is_refused():
     """One wrong name stops the selection, so a renamed tab cannot drop its commands silently."""
-    with pytest.raises(steps.InstallStepsError, match="unknown tab 'Gamma'"):
+    with pytest.raises(steps.InstallStepsError, match="unknown tab 'Gamma'") as exc_info:
         steps.select_steps(steps.parse_page(_PAGE), ['Alpha', 'Gamma'])
+    assert "unknown tab 'Gamma'" in str(exc_info.value)
+    assert 'Alpha' in str(exc_info.value) and 'Beta' in str(exc_info.value)
+
+
+def test_plan_entry_substituted_property():
+    """PlanEntry.substituted is true only when the job command differs from the step command."""
+    step = steps.Step(1, 'echo original', None, None)
+    entry_same = steps.PlanEntry(step, 'echo original', '')
+    entry_diff = steps.PlanEntry(step, 'echo replacement', 'reason')
+    assert not entry_same.substituted
+    assert entry_diff.substituted
+
+
+def test_tab_with_no_required_commands_exits_2(tmp_path, capsys):
+    """A tab containing only optional steps and no required command raises an error."""
+    p = tmp_path / 'only_optional.md'
+    p.write_text(
+        '=== "Gamma"\n\n    !!! note "Only optional"\n        ```console\n        echo opt\n        ```\n',
+        encoding='utf-8',
+    )
+    out = _run(capsys, str(p), '--tab', 'Gamma')
+    assert out.returncode == 2
+    assert 'no console block found for the selection' in out.stderr
