@@ -776,6 +776,7 @@ _PLAIN_HELPFILE_READERS = {
     'src/proteus/utils/coupler.py',
     'tools/plot_chili_comparison.py',
     'tools/plot_energy_balance.py',
+    'tools/plot_grid_tutorial.py',
     'tools/plot_tutorial.py',
 }
 
