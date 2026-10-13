@@ -2703,16 +2703,21 @@ PYTHON_MODULE_SCRIPT = TOOLS_DIR / 'get_python_module.sh'
 MANUAL_INSTALL_MD = TOOLS_DIR.parent / 'docs' / 'How-to' / 'manual_installation.md'
 
 
-def _bare_remote(remotes: Path, repo: str, tag: str) -> tuple[str, str]:
+def _bare_remote(
+    remotes: Path, repo: str, tag: str, files: dict[str, str] | None = None
+) -> tuple[str, str]:
     """Publish ``remotes/FormingWorlds/<repo>.git`` with 3 commits and ``tag`` on the second.
 
     Every commit carries ``version.txt`` and ``fastchem_vulcan/Makefile``, so
-    the VULCAN build step finds its directory. Returns the tagged commit and
-    the tip, which differ, so a clone left on the branch is told apart.
+    the VULCAN build step finds its directory; ``files`` maps further file names
+    to their text. Returns the tagged commit and the tip, which differ, so a
+    clone left on the branch is told apart.
     """
     work = remotes.parent / 'work' / repo
     (work / 'fastchem_vulcan').mkdir(parents=True)
     (work / 'fastchem_vulcan' / 'Makefile').write_text('all:\n')
+    for name, text in (files or {}).items():
+        (work / name).write_text(text)
     git(work, 'init', '-q', '-b', 'main')
     for i in range(3):
         (work / 'version.txt').write_text(f'{i}\n')
@@ -2733,7 +2738,9 @@ def _tag_the_tip(site: dict, repo: str, tag: str = '26.11.01') -> None:
     git(site['root'].parent / 'remotes' / 'FormingWorlds' / f'{repo}.git', 'tag', tag, 'main')
 
 
-def _floor_tag_site(tmp_path: Path, pyproject: str, remotes: dict[str, str]) -> dict:
+def _floor_tag_site(
+    tmp_path: Path, pyproject: str, remotes: dict[str, str], files: dict[str, str] | None = None
+) -> dict:
     """A PROTEUS copy, local bare remotes, and stubs for pip, make and ssh.
 
     The copy holds the shipped scripts, the helper library and the pin
@@ -2751,7 +2758,8 @@ def _floor_tag_site(tmp_path: Path, pyproject: str, remotes: dict[str, str]) -> 
     base = tmp_path / 'remotes'
     (base / 'FormingWorlds').mkdir(parents=True)
     shas = {
-        repo: _bare_remote(base / 'FormingWorlds', repo, tag) for repo, tag in remotes.items()
+        repo: _bare_remote(base / 'FormingWorlds', repo, tag, files)
+        for repo, tag in remotes.items()
     }
     stubs = tmp_path / 'stubs'
     stubs.mkdir()
@@ -4729,80 +4737,78 @@ def test_printed_and_documented_conda_var_commands_name_their_env(tmp_path):
     assert [c for c in commands if not c[1].startswith(named)] == []
 
 
-def _atmodeller_site(tmp_path: Path) -> dict:
-    """Prepare a test site with an atmodeller bare remote and stubs.
+def _pinned_module_site(
+    tmp_path: Path, repo: str, files: dict[str, str], pyproject: str
+) -> dict:
+    """A ``_floor_tag_site`` for a module that ``pyproject`` pins by commit.
 
-    Parameters
-    ----------
-    tmp_path : Path
-        Temporary test directory.
-
-    Returns
-    -------
-    dict
-        Site mapping with root, target_sha, tip_sha, log, env, stubs, and remotes.
+    ``files`` are the files of the remote; ``@REF@`` in ``pyproject`` stands for the
+    pinned commit, the second of the 3 commits of the remote, and the tip is the third.
+    The remote has no tag, so ``git describe`` names a commit by its hash.
     """
-    root = tmp_path / 'PROTEUS'
-    (root / 'tools').mkdir(parents=True)
-    for src in [*TOOLS_DIR.glob('get_*.sh'), COMMON_LIB, TOOLS_DIR / '_module_pins.py']:
-        shutil.copy2(src, root / 'tools' / src.name)
-    base = tmp_path / 'remotes'
-    (base / 'FormingWorlds').mkdir(parents=True)
-    work = tmp_path / 'work' / 'atmodeller'
-    work.mkdir(parents=True)
-    git(work, 'init', '-q', '-b', 'main')
-    (work / 'pyproject.toml').write_text('[project]\nname = "atmodeller"\nversion = "1.0.2"\n')
-    git(work, 'add', '.')
-    git(work, 'commit', '-q', '-m', 'initial')
-    target_sha = git(work, 'rev-parse', 'HEAD')
-    (work / 'extra.txt').write_text('extra\n')
-    git(work, 'add', '.')
-    git(work, 'commit', '-q', '-m', 'second')
-    tip_sha = git(work, 'rev-parse', 'HEAD')
-    git(
-        base / 'FormingWorlds',
-        'clone',
-        '-q',
-        '--bare',
-        str(work),
-        str(base / 'FormingWorlds' / 'atmodeller.git'),
-    )
-    ref = target_sha
+    site = _floor_tag_site(tmp_path, '', {repo: 'unused'}, files)
+    target, tip = site['shas'][repo]
+    remotes = tmp_path / 'remotes' / 'FormingWorlds'
+    git(remotes / f'{repo}.git', 'tag', '-d', 'unused')
+    (site['root'] / 'pyproject.toml').write_text(pyproject.replace('@REF@', target))
+    return {
+        **site,
+        'target_sha': target,
+        'tip_sha': tip,
+        'stubs': tmp_path / 'stubs',
+        'remotes': remotes,
+    }
+
+
+def _atmodeller_site(tmp_path: Path) -> dict:
+    """A pinned-commit site for atmodeller, with the pip stub of ``_floor_tag_site``."""
     pyproject = (
         '[project]\nname = "fixture"\ndependencies = []\n'
         '[project.optional-dependencies]\natmodeller = ["atmodeller>=1.0.2"]\n'
         '[tool.proteus.modules.atmodeller]\n'
         'url = "https://github.com/FormingWorlds/atmodeller.git"\n'
-        f'ref = "{ref}"\n'
+        'ref = "@REF@"\n'
     )
-    (root / 'pyproject.toml').write_text(pyproject)
-    stubs = tmp_path / 'stubs'
-    stubs.mkdir()
-    log = tmp_path / 'pip.log'
+    files = {'pyproject.toml': '[project]\nname = "atmodeller"\nversion = "1.0.2"\n'}
+    return _pinned_module_site(tmp_path, 'atmodeller', files, pyproject)
+
+
+def _obliqua_site(tmp_path: Path) -> dict:
+    """A pinned-commit site for Obliqua; its julia stub fails on ``FAIL_JULIA_PATTERN``."""
+    pyproject = (
+        '[project]\nname = "fixture"\ndependencies = []\n'
+        '[tool.proteus.modules.obliqua]\n'
+        'url = "https://github.com/FormingWorlds/Obliqua.git"\n'
+        'ref = "@REF@"\n'
+    )
+    files = {
+        'Project.toml': 'name = "Obliqua"\nuuid = "12345678-1234-1234-1234-123456789abc"\n',
+    }
+    site = _pinned_module_site(tmp_path, 'Obliqua', files, pyproject)
+    log = tmp_path / 'julia.log'
     log.write_text('')
-    _write_stub(stubs, 'pip', '#!/bin/sh\necho "$@" >> "$STUB_PIP_LOG"\n')
-    _write_stub(stubs, 'ssh', '#!/bin/sh\nexit 255\n')
-    env = {
-        **os.environ,
-        'PATH': f'{stubs}{os.pathsep}{os.environ["PATH"]}',
-        'STUB_PIP_LOG': str(log),
-        'PROTEUS_MODULE_GIT_BASE': f'{base}/',
-        'GIT_CONFIG_COUNT': '1',
-        'GIT_CONFIG_KEY_0': f'url.{base}/.insteadOf',
-        'GIT_CONFIG_VALUE_0': 'https://github.com/',
-        'GIT_CEILING_DIRECTORIES': str(tmp_path),
-    }
-    for name in ('GIT_SSH_COMMAND', 'GITHUB_HEAD_REF', 'GITHUB_REF_NAME'):
-        env.pop(name, None)
-    return {
-        'root': Path(os.path.realpath(root)),
-        'target_sha': target_sha,
-        'tip_sha': tip_sha,
-        'log': log,
-        'env': env,
-        'stubs': stubs,
-        'remotes': base / 'FormingWorlds',
-    }
+    _write_stub(
+        site['stubs'],
+        'julia',
+        '#!/bin/sh\n'
+        'echo "$@" >> "$STUB_JULIA_LOG"\n'
+        'if [ ! -f "Project.toml" ]; then\n'
+        '    echo "ERROR: no Project.toml in $PWD" >&2\n'
+        '    exit 1\n'
+        'fi\n'
+        'case "$*" in\n'
+        '    *"Pkg.instantiate"*) echo "# Manifest generated" > Manifest.toml ;;\n'
+        'esac\n'
+        'if [ -n "${FAIL_JULIA_PATTERN:-}" ]; then\n'
+        '    case "$*" in\n'
+        '        *"$FAIL_JULIA_PATTERN"*) exit 1 ;;\n'
+        '    esac\n'
+        'fi\n'
+        'exit 0\n',
+    )
+    site['env'].pop('PYTHON_JULIAPKG_EXE', None)
+    site['env']['STUB_JULIA_LOG'] = str(log)
+    return {**site, 'log': log}
 
 
 @pytest.mark.unit
@@ -4875,8 +4881,8 @@ def test_atmodeller_existing_folder_off_pin_stays_and_advises(tmp_path):
 
 
 _MODULE_SITES = (
-    ('get_atmodeller.sh', lambda path: _atmodeller_site(path), 'Atmodeller', 'atmodeller.git'),
-    ('get_obliqua.sh', lambda path: _obliqua_site(path), 'Obliqua', 'Obliqua.git'),
+    ('get_atmodeller.sh', _atmodeller_site, 'Atmodeller', 'atmodeller.git'),
+    ('get_obliqua.sh', _obliqua_site, 'Obliqua', 'Obliqua.git'),
 )
 
 
@@ -5090,106 +5096,6 @@ def test_atmodeller_folder_is_ignored_by_git():
         assert res.stdout.strip() == name
 
 
-def _obliqua_site(tmp_path: Path) -> dict:
-    """Prepare a test site with an Obliqua bare remote and stubs.
-
-    Parameters
-    ----------
-    tmp_path : Path
-        Temporary test directory.
-
-    Returns
-    -------
-    dict
-        Site mapping with root, target_sha, tip_sha, log, env, stubs, and remotes.
-    """
-    root = tmp_path / 'PROTEUS'
-    (root / 'tools').mkdir(parents=True)
-    for src in [*TOOLS_DIR.glob('get_*.sh'), COMMON_LIB, TOOLS_DIR / '_module_pins.py']:
-        shutil.copy2(src, root / 'tools' / src.name)
-    base = tmp_path / 'remotes'
-    (base / 'FormingWorlds').mkdir(parents=True)
-    work = tmp_path / 'work' / 'Obliqua'
-    work.mkdir(parents=True)
-    git(work, 'init', '-q', '-b', 'main')
-    (work / 'Project.toml').write_text(
-        'name = "Obliqua"\nuuid = "12345678-1234-1234-1234-123456789abc"\n'
-    )
-    git(work, 'add', '.')
-    git(work, 'commit', '-q', '-m', 'initial')
-    target_sha = git(work, 'rev-parse', 'HEAD')
-    (work / 'extra.txt').write_text('extra\n')
-    git(work, 'add', '.')
-    git(work, 'commit', '-q', '-m', 'second')
-    tip_sha = git(work, 'rev-parse', 'HEAD')
-    git(
-        base / 'FormingWorlds',
-        'clone',
-        '-q',
-        '--bare',
-        str(work),
-        str(base / 'FormingWorlds' / 'Obliqua.git'),
-    )
-    ref = target_sha
-    pyproject = (
-        '[project]\nname = "fixture"\ndependencies = []\n'
-        '[tool.proteus.modules.obliqua]\n'
-        'url = "https://github.com/FormingWorlds/Obliqua.git"\n'
-        f'ref = "{ref}"\n'
-    )
-    (root / 'pyproject.toml').write_text(pyproject)
-    stubs = tmp_path / 'stubs'
-    stubs.mkdir()
-    log = tmp_path / 'julia.log'
-    log.write_text('')
-    _write_stub(
-        stubs,
-        'julia',
-        '#!/bin/sh\n'
-        'echo "$@" >> "$STUB_JULIA_LOG"\n'
-        'if [ ! -f "Project.toml" ]; then\n'
-        '    echo "ERROR: no Project.toml in $PWD" >&2\n'
-        '    exit 1\n'
-        'fi\n'
-        'case "$*" in\n'
-        '    *"Pkg.instantiate"*) echo "# Manifest generated" > Manifest.toml ;;\n'
-        'esac\n'
-        'if [ -n "${FAIL_JULIA_PATTERN:-}" ]; then\n'
-        '    case "$*" in\n'
-        '        *"$FAIL_JULIA_PATTERN"*) exit 1 ;;\n'
-        '    esac\n'
-        'fi\n'
-        'exit 0\n',
-    )
-    _write_stub(stubs, 'ssh', '#!/bin/sh\nexit 255\n')
-    env = {
-        **os.environ,
-        'PATH': f'{stubs}{os.pathsep}{os.environ["PATH"]}',
-        'STUB_JULIA_LOG': str(log),
-        'PROTEUS_MODULE_GIT_BASE': f'{base}/',
-        'GIT_CONFIG_COUNT': '1',
-        'GIT_CONFIG_KEY_0': f'url.{base}/.insteadOf',
-        'GIT_CONFIG_VALUE_0': 'https://github.com/',
-        'GIT_CEILING_DIRECTORIES': str(tmp_path),
-    }
-    for name in (
-        'GIT_SSH_COMMAND',
-        'GITHUB_HEAD_REF',
-        'GITHUB_REF_NAME',
-        'PYTHON_JULIAPKG_EXE',
-    ):
-        env.pop(name, None)
-    return {
-        'root': Path(os.path.realpath(root)),
-        'target_sha': target_sha,
-        'tip_sha': tip_sha,
-        'log': log,
-        'env': env,
-        'stubs': stubs,
-        'remotes': base / 'FormingWorlds',
-    }
-
-
 @pytest.mark.unit
 def test_obliqua_new_clone_and_instantiate(tmp_path):
     """Verify new clone resolves, instantiates, and skips default environment registration."""
@@ -5302,16 +5208,11 @@ def test_obliqua_unknown_option_exits_1_before_clone(tmp_path):
     assert site['log'].read_text() == ''
 
 
-@pytest.mark.unit
-def test_pinned_clone_without_git_folder_reports_not_a_git_clone(tmp_path):
-    """Verify a folder without .git reports not a git clone and advice omits git commands."""
-    folder = tmp_path / 'custom_clone'
-    folder.mkdir()
-    (folder / 'file.txt').write_text('content\n')
+def _report_clone_state(folder: Path, pin: str) -> subprocess.CompletedProcess:
+    """Run ``report_clone_state`` of the helper library on ``folder`` against the commit ``pin``."""
     script = (
         'source tools/_get_common.sh\n'
-        f'report_clone_state TestModule {shlex.quote(str(folder))} get_test.sh '
-        '"abcdef1234567890abcdef1234567890abcdef12"\n'
+        f'report_clone_state TestModule {shlex.quote(str(folder))} get_test.sh {pin}\n'
     )
     res = subprocess.run(
         ['bash', '-c', script],
@@ -5321,6 +5222,16 @@ def test_pinned_clone_without_git_folder_reports_not_a_git_clone(tmp_path):
         timeout=10,
     )
     assert res.returncode == 0, res.stdout + res.stderr
+    return res
+
+
+@pytest.mark.unit
+def test_pinned_clone_without_git_folder_reports_not_a_git_clone(tmp_path):
+    """Verify a folder without .git reports not a git clone and advice omits git commands."""
+    folder = tmp_path / 'custom_clone'
+    folder.mkdir()
+    (folder / 'file.txt').write_text('content\n')
+    res = _report_clone_state(folder, 'abcdef1234567890abcdef1234567890abcdef12')
     expected_stay = (
         f'TestModule: {folder} stays as it is: not a git clone; '
         'not at the pinned commit abcdef12'
@@ -5346,63 +5257,42 @@ def test_pinned_clone_at_pin_reports_at_the_pinned_commit(tmp_path):
     git(folder, 'add', '.')
     git(folder, 'commit', '-q', '-m', 'initial')
     sha = git(folder, 'rev-parse', 'HEAD')
-    script = (
-        'source tools/_get_common.sh\n'
-        f'report_clone_state TestModule {shlex.quote(str(folder))} get_test.sh "{sha}"\n'
-    )
-    res = subprocess.run(
-        ['bash', '-c', script],
-        cwd=Path(__file__).resolve().parents[2],
-        capture_output=True,
-        text=True,
-        timeout=10,
-    )
-    assert res.returncode == 0, res.stdout + res.stderr
+    res = _report_clone_state(folder, sha)
     assert f'TestModule: {folder} is at the pinned commit {sha[:8]}' in res.stdout
     assert 'stays as it is' not in res.stdout
 
 
 @pytest.mark.unit
-def test_morrigan_second_call_after_failed_pip_exits_1(tmp_path):
-    """Verify second Morrigan call after failed pip reports release tag and exits 1."""
+@pytest.mark.parametrize(
+    ('repo', 'dist', 'extra', 'built'),
+    [
+        ('Morrigan', 'fwl-morrigan', 'morrigan', False),
+        ('VULCAN', 'fwl-vulcan', 'vulcan', True),
+    ],
+)
+def test_second_call_after_failed_pip_exits_1(tmp_path, repo, dist, extra, built):
+    """Verify the second call after a failed pip reports the release tag and exits 1."""
     pyproject = (
         '[project]\nname = "fixture"\ndependencies = []\n'
-        '[project.optional-dependencies]\nmorrigan = ["fwl-morrigan>=26.4.22"]\n'
+        f'[project.optional-dependencies]\n{extra} = ["{dist}>=26.4.22"]\n'
     )
-    site = _floor_tag_site(tmp_path, pyproject, {'Morrigan': '26.04.22'})
+    site = _floor_tag_site(tmp_path, pyproject, {repo: '26.04.22'})
     _write_stub(tmp_path / 'stubs', 'pip', '#!/bin/sh\nexit 1\n')
-    res1 = _run_tool(site, 'get_morrigan.sh')
+    script = f'get_{extra}.sh'
+    res1 = _run_tool(site, script)
     assert res1.returncode == 1
     assert 'ERROR: editable install failed' in res1.stderr
-    clone = site['root'] / 'Morrigan'
+    clone = site['root'] / repo
     assert clone.is_dir()
     assert (clone / 'version.txt').exists()
-    res2 = _run_tool(site, 'get_morrigan.sh')
+    if repo == 'VULCAN':
+        assert (clone / 'fastchem_vulcan').is_dir()
+    res2 = _run_tool(site, script)
     assert res2.returncode == 1
-    assert f'fwl-morrigan: {clone} is at the release tag 26.04.22' in res2.stdout
-    assert f'ERROR: pip could not install {clone} (its message is above)' in res2.stderr
-    assert clone.is_dir()
-
-
-@pytest.mark.unit
-def test_vulcan_second_call_after_failed_pip_exits_1(tmp_path):
-    """Verify second VULCAN call after failed pip reports release tag and exits 1."""
-    pyproject = (
-        '[project]\nname = "fixture"\ndependencies = []\n'
-        '[project.optional-dependencies]\nvulcan = ["fwl-vulcan>=26.4.22"]\n'
-    )
-    site = _floor_tag_site(tmp_path, pyproject, {'VULCAN': '26.04.22'})
-    _write_stub(tmp_path / 'stubs', 'pip', '#!/bin/sh\nexit 1\n')
-    res1 = _run_tool(site, 'get_vulcan.sh')
-    assert res1.returncode == 1
-    assert 'ERROR: editable install failed' in res1.stderr
-    clone = site['root'] / 'VULCAN'
-    assert clone.is_dir()
-    assert (clone / 'fastchem_vulcan').is_dir()
-    res2 = _run_tool(site, 'get_vulcan.sh')
-    assert res2.returncode == 1
-    assert f'fwl-vulcan: {clone} is at the release tag 26.04.22' in res2.stdout
-    assert f'fwl-vulcan: the build step ran in the existing folder {clone}' in res2.stdout
+    assert f'{dist}: {clone} is at the release tag 26.04.22' in res2.stdout
+    assert (
+        f'{dist}: the build step ran in the existing folder {clone}' in res2.stdout
+    ) is built
     assert f'ERROR: pip could not install {clone} (its message is above)' in res2.stderr
     assert clone.is_dir()
 
@@ -5471,25 +5361,6 @@ def test_obliqua_relative_destination_path(tmp_path):
     assert dest.is_dir()
     assert re.search(r'Obliqua at [0-9a-f]{7,}', res.stdout)
     assert 'fatal:' not in res.stderr
-
-
-@pytest.mark.unit
-def test_obliqua_custom_destination_off_pin_advises_custom_folder(tmp_path):
-    """Verify advice names the custom folder path in the force command when off pin."""
-    site = _obliqua_site(tmp_path)
-    custom = site['root'] / 'custom' / 'Obliqua'
-    assert _run_tool(site, 'get_obliqua.sh', str(custom)).returncode == 0
-    git(custom, 'checkout', '-q', 'main')
-    res = _run_tool(site, 'get_obliqua.sh', str(custom))
-    assert res.returncode == 0, res.stdout + res.stderr
-    lines = [ln.strip() for ln in res.stdout.splitlines()]
-    q_dest = shlex.quote(str(custom))
-    idx_fetch = lines.index(f'git -C {custom} fetch origin')
-    idx_checkout = lines.index(f'git -C {custom} checkout --detach {site["target_sha"]}')
-    idx_step = lines.index(f'bash tools/get_obliqua.sh {q_dest}')
-    idx_force = lines.index(f'bash tools/get_obliqua.sh {q_dest} --force')
-    assert idx_fetch < idx_checkout < idx_step < idx_force
-    assert 'bash tools/get_obliqua.sh --force\n' not in res.stdout
 
 
 @pytest.mark.unit
@@ -5619,17 +5490,25 @@ def test_obliqua_test_failed_pkg_test_exits_1(tmp_path):
 
 
 @pytest.mark.unit
-def test_obliqua_custom_destination_with_space_off_pin_advises_escaped_path(tmp_path):
-    """Verify custom destination path with spaces is escaped with backslashes in advice."""
+@pytest.mark.parametrize('folder', ['custom', 'custom path'], ids=['plain', 'with space'])
+def test_obliqua_custom_destination_off_pin_advises_escaped_path(tmp_path, folder):
+    """Verify the advice names the custom folder, with spaces escaped by backslashes."""
     site = _obliqua_site(tmp_path)
-    custom = site['root'] / 'custom path' / 'Obliqua'
+    custom = site['root'] / folder / 'Obliqua'
     assert _run_tool(site, 'get_obliqua.sh', str(custom)).returncode == 0
     git(custom, 'checkout', '-q', 'main')
     res = _run_tool(site, 'get_obliqua.sh', str(custom))
     assert res.returncode == 0, res.stdout + res.stderr
-    expected_path = str(custom).replace(' ', r'\ ')
-    assert f'bash tools/get_obliqua.sh {expected_path} --force' in res.stdout
-    assert f'bash tools/get_obliqua.sh {custom} --force' not in res.stdout
+    lines = [ln.strip() for ln in res.stdout.splitlines()]
+    escaped = str(custom).replace(' ', r'\ ')
+    idx_fetch = lines.index(f'git -C {escaped} fetch origin')
+    idx_checkout = lines.index(f'git -C {escaped} checkout --detach {site["target_sha"]}')
+    idx_step = lines.index(f'bash tools/get_obliqua.sh {escaped}')
+    idx_force = lines.index(f'bash tools/get_obliqua.sh {escaped} --force')
+    assert idx_fetch < idx_checkout < idx_step < idx_force
+    assert 'bash tools/get_obliqua.sh --force' not in [ln.strip() for ln in lines]
+    if ' ' in folder:
+        assert f'bash tools/get_obliqua.sh {custom} --force' not in res.stdout
 
 
 # ===================================================================

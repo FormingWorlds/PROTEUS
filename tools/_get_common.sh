@@ -537,6 +537,21 @@ _swap_interrupted() {
     exit "$3"
 }
 
+# Usage: clone_at_ref <url> <ref> <dest>. Clones <url> beside <dest>, checks out <ref> and swaps the
+# clone in at <dest>, so that <dest> stays as it is when a step fails; sets tmp_clone. Exits 1 on failure.
+clone_at_ref() {
+    local url="$1" ref="$2" dest="$3"
+    tmp_clone="${dest%/}.tmp.$$"
+    rm -rf "$tmp_clone"
+    trap 'rm -rf "$tmp_clone"' EXIT
+    git clone "$url" "$tmp_clone" ||
+        { echo "ERROR: git clone failed$(unchanged_note "$dest")" >&2; exit 1; }
+    git -C "$tmp_clone" checkout --quiet "$ref" ||
+        { echo "ERROR: git checkout failed$(unchanged_note "$dest")" >&2; exit 1; }
+    swap_in_checkout "$tmp_clone" "$dest" || exit 1
+    trap - EXIT
+}
+
 # Download <dest> from the first of the urls that serves a file with the given
 # SHA-256, skipping an empty url. Exits 1, with every url's failure named on
 # stderr, when none does.

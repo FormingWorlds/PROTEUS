@@ -1292,14 +1292,12 @@ install_further_module "VULCAN" bash tools/get_vulcan.sh
 install_further_module "atmodeller" bash tools/get_atmodeller.sh
 install_further_module "Obliqua" bash tools/get_obliqua.sh
 
-if [ -n "$FURTHER_STAYS" ]; then
-    if [ -s "$FURTHER_STAYS" ]; then
-        warn "Not at their release tag or pinned commit:" \
-            "$(awk 'NR > 1 {printf ", "} {printf "%s", $0}' "$FURTHER_STAYS"). Each stays as it is; the" \
-            "commands printed above move a clone to its tag or pin, or replace it."
-    fi
-    rm -f "$FURTHER_STAYS"
+if [ -s "$FURTHER_STAYS" ]; then
+    warn "Not at their release tag or pinned commit:" \
+        "$(awk 'NR > 1 {printf ", "} {printf "%s", $0}' "$FURTHER_STAYS"). Each stays as it is; the" \
+        "commands printed above move a clone to its tag or pin, or replace it."
 fi
+rm -f "$FURTHER_STAYS"
 
 # ===================================================================
 # Phase 8: Reference data

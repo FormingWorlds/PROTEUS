@@ -70,20 +70,8 @@ if [ "$get_force" != true ] && { [ -e "$dest" ] || [ -L "$dest" ]; } &&
     LD_LIBRARY_PATH="" julia --project=. -e 'using Pkg; Pkg.instantiate()' ||
         { echo "ERROR: julia instantiate failed in $dest" >&2; exit 1; }
 else
-    # The new clone replaces the checkout only once it is at the pinned commit.
-    tmp_clone="${dest%/}.tmp.$$"
-    rm -rf "$tmp_clone"
-    trap 'rm -rf "$tmp_clone"' EXIT
-
     echo "Cloning Obliqua ($ob_url @ $ob_ref) into $dest..."
-    git clone "$ob_url" "$tmp_clone" ||
-        { echo "ERROR: git clone failed$(unchanged_note "$dest")" >&2; exit 1; }
-
-    git -C "$tmp_clone" checkout --quiet "$ob_ref" ||
-        { echo "ERROR: git checkout failed$(unchanged_note "$dest")" >&2; exit 1; }
-
-    swap_in_checkout "$tmp_clone" "$dest" || exit 1
-    trap - EXIT
+    clone_at_ref "$ob_url" "$ob_ref" "$dest"
 
     cd "$dest"
     echo "Obliqua at $(git -C "$dest" rev-parse --short HEAD)"
