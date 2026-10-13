@@ -100,8 +100,9 @@ changelog = "https://github.com/FormingWorlds/PROTEUS/releases"
 # Optional physics backends installed on demand via pip install "fwl-proteus[<extra>]".
 # atmodeller and vulcan are licensed GPL-3.0; morrigan is Apache-2.0.
 
-# atmodeller: alternative outgassing backend (Bower+2025, ApJ 995:59),
-# selected via outgas.module = "atmodeller". Pulls JAX + equinox.
+# atmodeller: alternative outgassing module (Bower+2025, ApJ 995:59),
+# selected via outgas.module = "atmodeller". Also installable editable
+# via tools/get_atmodeller.sh.
 atmodeller = ["atmodeller>=1.0.2"]
 # vulcan: atmospheric photochemistry backend, selected via
 # atmos_chem.module = "vulcan". Also installable editable via
@@ -280,6 +281,12 @@ ref = "c32965865c2c6bb1ba27b94e958a36982d74b0bf"
 # SPIDER; the pin still matters for local installs and future CI.
 url = "https://github.com/FormingWorlds/SPIDER.git"
 ref = "c9a3fd4301c7008291d4f4921506d36b6288f8ca"
+
+[tool.proteus.modules.atmodeller]
+# Volatile outgassing module selected by outgas.module = "atmodeller".
+# Cloned and installed editable by tools/get_atmodeller.sh.
+url = "https://github.com/FormingWorlds/atmodeller.git"
+ref = "77e81aac5147bad7eec727fba5b299e055db2d4d"
 
 # VULCAN has no entry here on purpose: like fwl-aragog and fwl-zalmoxis,
 # it is a single-source PyPI package. tools/get_vulcan.sh checks out the

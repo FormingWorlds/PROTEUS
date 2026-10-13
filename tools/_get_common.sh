@@ -339,10 +339,35 @@ _commit_text() {
     esac
 }
 
-# Usage: report_clone_state <distribution> <clone-dir> <script-label>. Reads <clone-dir> with read-only
+# Usage: _report_pinned_clone <distribution> <clone-dir> <script-label> <pin>. Reports an existing
+# clone against a commit pin and prints advice when HEAD does not match the pin commit.
+_report_pinned_clone() {
+    local dist="$1" dir="${2%/}" label="$3" pin="$4" head pin_commit found qdir qref
+    head=$(git -C "$dir" rev-parse --verify --quiet HEAD 2>/dev/null) || head=""
+    pin_commit=$(git -C "$dir" rev-parse --verify --quiet "$pin^{commit}" \
+        2>/dev/null) || pin_commit=""
+    if [ -n "$head" ] && [ "$head" = "$pin_commit" ]; then
+        echo "$dist: $dir is at the pinned commit ${pin:0:8}$(_local_changes_note "$dir")"
+        return 0
+    fi
+    found=$(_commit_text "$dir" "$head")
+    echo "$dist: $dir stays as it is: $found; not at the pinned commit ${pin:0:8}"
+    record_clone_stays "$dir" "commit ${head:0:7}"
+    qdir=$(printf '%q' "$dir")
+    qref=$(printf '%q' "$pin")
+    echo "    From the PROTEUS folder, move it to the pinned commit by hand with:"
+    echo "        git -C $qdir fetch origin"
+    echo "        git -C $qdir checkout --detach $qref"
+    echo "        pip install -e $qdir"
+    echo "    Or replace it with a new clone, which deletes everything in it, with:"
+    echo "        bash tools/$label --force"
+}
+
+# Usage: report_clone_state <dist> <clone-dir> <label> [pin]. Reads <clone-dir> with read-only
 # git calls; prints one line for a clone at its tag, newer than it or on the paired branch (with
 # get_pairs_branch=true; 2 lines and a summary entry when HEAD lacks the tag), else stay and advice.
 report_clone_state() {
+    [ -n "${4:-}" ] && { _report_pinned_clone "$1" "$2" "$3" "$4"; return 0; }
     local dist="$1" dir="${2%/}" label="$3" tag="" tag_commit="" head="" rel="" branch=""
     local found summary readable=false
     if [ ! -e "$dir/.git" ] && [ ! -L "$dir/.git" ]; then
@@ -406,16 +431,16 @@ is_empty_dir() {
     [ -z "$entries" ]
 }
 
-# Usage: install_existing_clone <distribution> <clone-dir> <script-label> [prepare-function]. Returns
+# Usage: install_existing_clone <dist> <clone-dir> <label> [prepare-fn] [pin]. Returns
 # under --force or with nothing or an empty folder at <clone-dir>; else reports what is there, runs the
 # prepare function on it, installs it editable as it is and exits 0. No git call writes to it.
 install_existing_clone() {
-    local dist="$1" dir="${2%/}" label="$3" prepare="${4:-}"
+    local dist="$1" dir="${2%/}" label="$3" prepare="${4:-}" pin="${5:-}"
     if [ "${get_force:-false}" = true ] || { [ ! -e "$dir" ] && [ ! -L "$dir" ]; } ||
         is_empty_dir "$dir"; then
         return 0
     fi
-    report_clone_state "$dist" "$dir" "$label"
+    report_clone_state "$dist" "$dir" "$label" "$pin"
     if [ -n "$prepare" ]; then
         "$prepare" "$dir" || exit 1
         echo "$dist: the build step ran in the existing folder $dir"

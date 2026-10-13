@@ -4718,3 +4718,272 @@ def test_printed_and_documented_conda_var_commands_name_their_env(tmp_path):
     assert len(commands) == 6
     named = 'conda env config vars set -n proteus '
     assert [c for c in commands if not c[1].startswith(named)] == []
+
+
+def _atmodeller_site(tmp_path: Path, pin_ref: str | None = None) -> dict:
+    """Prepare a test site with an atmodeller bare remote and stubs.
+
+    Parameters
+    ----------
+    tmp_path : Path
+        Temporary test directory.
+    pin_ref : str, optional
+        Commit SHA to configure in pyproject.toml table.
+
+    Returns
+    -------
+    dict
+        Site mapping with root, target_sha, tip_sha, log, env, stubs, and remotes.
+    """
+    root = tmp_path / 'PROTEUS'
+    (root / 'tools').mkdir(parents=True)
+    for src in [*TOOLS_DIR.glob('get_*.sh'), COMMON_LIB, TOOLS_DIR / '_module_pins.py']:
+        shutil.copy2(src, root / 'tools' / src.name)
+    base = tmp_path / 'remotes'
+    (base / 'FormingWorlds').mkdir(parents=True)
+    work = tmp_path / 'work' / 'atmodeller'
+    work.mkdir(parents=True)
+    git(work, 'init', '-q', '-b', 'main')
+    (work / 'pyproject.toml').write_text('[project]\nname = "atmodeller"\nversion = "1.0.2"\n')
+    git(work, 'add', '.')
+    git(work, 'commit', '-q', '-m', 'initial')
+    target_sha = git(work, 'rev-parse', 'HEAD')
+    (work / 'extra.txt').write_text('extra\n')
+    git(work, 'add', '.')
+    git(work, 'commit', '-q', '-m', 'second')
+    tip_sha = git(work, 'rev-parse', 'HEAD')
+    git(
+        base / 'FormingWorlds',
+        'clone',
+        '-q',
+        '--bare',
+        str(work),
+        str(base / 'FormingWorlds' / 'atmodeller.git'),
+    )
+    ref = pin_ref if pin_ref is not None else target_sha
+    pyproject = (
+        '[project]\nname = "fixture"\ndependencies = []\n'
+        '[project.optional-dependencies]\natmodeller = ["atmodeller>=1.0.2"]\n'
+        '[tool.proteus.modules.atmodeller]\n'
+        'url = "https://github.com/FormingWorlds/atmodeller.git"\n'
+        f'ref = "{ref}"\n'
+    )
+    (root / 'pyproject.toml').write_text(pyproject)
+    stubs = tmp_path / 'stubs'
+    stubs.mkdir()
+    log = tmp_path / 'pip.log'
+    log.write_text('')
+    _write_stub(stubs, 'pip', '#!/bin/sh\necho "$@" >> "$STUB_PIP_LOG"\n')
+    _write_stub(stubs, 'ssh', '#!/bin/sh\nexit 255\n')
+    env = {
+        **os.environ,
+        'PATH': f'{stubs}{os.pathsep}{os.environ["PATH"]}',
+        'STUB_PIP_LOG': str(log),
+        'PROTEUS_MODULE_GIT_BASE': f'{base}/',
+        'GIT_CONFIG_COUNT': '1',
+        'GIT_CONFIG_KEY_0': f'url.{base}/.insteadOf',
+        'GIT_CONFIG_VALUE_0': 'https://github.com/',
+        'GIT_CEILING_DIRECTORIES': str(tmp_path),
+    }
+    for name in ('GIT_SSH_COMMAND', 'GITHUB_HEAD_REF', 'GITHUB_REF_NAME'):
+        env.pop(name, None)
+    return {
+        'root': Path(os.path.realpath(root)),
+        'target_sha': target_sha,
+        'tip_sha': tip_sha,
+        'log': log,
+        'env': env,
+        'stubs': stubs,
+        'remotes': base / 'FormingWorlds',
+    }
+
+
+@pytest.mark.unit
+def test_atmodeller_single_pin_in_pyproject():
+    """Verify atmodeller pin configuration in pyproject.toml and get_atmodeller.sh."""
+    repo_root = Path(__file__).resolve().parents[2]
+    data = tomllib.loads((repo_root / 'pyproject.toml').read_text(encoding='utf-8'))
+    deps = data['project']['dependencies']
+    assert not any('atmodeller' in d.lower() for d in deps), (
+        'atmodeller is not a mandatory dependency'
+    )
+    extras = data['project']['optional-dependencies']
+    assert any(r.startswith('atmodeller>=') for r in extras.get('atmodeller', [])), (
+        'atmodeller extra keeps floor'
+    )
+    table = data['tool']['proteus']['modules']['atmodeller']
+    assert table['url'] == 'https://github.com/FormingWorlds/atmodeller.git'
+    assert table['ref'] == '77e81aac5147bad7eec727fba5b299e055db2d4d'
+    script = (repo_root / 'tools' / 'get_atmodeller.sh').read_text(encoding='utf-8')
+    assert 'resolve_module_pin atmodeller' in script
+    assert 'https://' not in script
+    assert '77e81aac' not in script
+
+
+@pytest.mark.unit
+def test_atmodeller_new_clone_and_editable_install(tmp_path):
+    """Verify new clone lands at pinned commit and installs editable in Atmodeller."""
+    site = _atmodeller_site(tmp_path)
+    res = _run_tool(site, 'get_atmodeller.sh')
+    assert res.returncode == 0, res.stdout + res.stderr
+    clone = site['root'] / 'Atmodeller'
+    assert clone.is_dir()
+    assert git(clone, 'rev-parse', 'HEAD') == site['target_sha']
+    pip_log = site['log'].read_text()
+    assert f'install -U -e {clone}' in pip_log
+
+
+@pytest.mark.unit
+def test_atmodeller_existing_folder_at_pin_stays_and_installs(tmp_path):
+    """Verify an existing folder at the pinned commit stays and is reinstalled."""
+    site = _atmodeller_site(tmp_path)
+    assert _run_tool(site, 'get_atmodeller.sh').returncode == 0
+    clone = site['root'] / 'Atmodeller'
+    (clone / 'local_note.txt').write_text('keep me\n')
+    res = _run_tool(site, 'get_atmodeller.sh')
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert f'atmodeller: {clone} is at the pinned commit {site["target_sha"][:8]}' in res.stdout
+    assert (clone / 'local_note.txt').read_text() == 'keep me\n'
+    assert git(clone, 'rev-parse', 'HEAD') == site['target_sha']
+
+
+@pytest.mark.unit
+def test_atmodeller_existing_folder_off_pin_stays_and_advises(tmp_path):
+    """Verify an existing folder off-pin stays and advice names both commands."""
+    site = _atmodeller_site(tmp_path)
+    assert _run_tool(site, 'get_atmodeller.sh').returncode == 0
+    clone = site['root'] / 'Atmodeller'
+    git(clone, 'checkout', '-q', 'main')
+    res = _run_tool(site, 'get_atmodeller.sh')
+    assert res.returncode == 0, res.stdout + res.stderr
+    target_short = site['target_sha'][:8]
+    assert (
+        f'atmodeller: {clone} stays as it is: commit {site["tip_sha"][:7]}; not at the pinned commit {target_short}'
+        in res.stdout
+    )
+    assert f'git -C {clone} fetch origin' in res.stdout
+    assert f'git -C {clone} checkout --detach {site["target_sha"]}' in res.stdout
+    assert f'pip install -e {clone}' in res.stdout
+    assert 'bash tools/get_atmodeller.sh --force' in res.stdout
+    assert git(clone, 'rev-parse', 'HEAD') == site['tip_sha']
+
+
+@pytest.mark.unit
+def test_atmodeller_failed_clone_leaves_existing_folder_unchanged(tmp_path):
+    """Verify failing clone exits 1 and leaves existing folder unchanged."""
+    site = _atmodeller_site(tmp_path)
+    assert _run_tool(site, 'get_atmodeller.sh').returncode == 0
+    clone = site['root'] / 'Atmodeller'
+    (clone / 'canary.txt').write_text('original\n')
+    before = tree_snapshot(clone)
+    remote = site['remotes'] / 'atmodeller.git'
+    remote.rename(site['remotes'] / 'atmodeller.moved')
+    res = _run_tool(site, 'get_atmodeller.sh', '--force')
+    assert res.returncode == 1
+    assert 'ERROR: git clone failed' in res.stderr
+    assert tree_snapshot(clone) == before
+
+
+@pytest.mark.unit
+def test_atmodeller_failed_checkout_leaves_existing_folder_unchanged(tmp_path):
+    """Verify failing checkout exits 1 and leaves existing folder unchanged."""
+    site = _atmodeller_site(tmp_path)
+    assert _run_tool(site, 'get_atmodeller.sh').returncode == 0
+    clone = site['root'] / 'Atmodeller'
+    before = tree_snapshot(clone)
+    pyproject = site['root'] / 'pyproject.toml'
+    pyproject.write_text(pyproject.read_text().replace(site['target_sha'], '0' * 40))
+    res = _run_tool(site, 'get_atmodeller.sh', '--force')
+    assert res.returncode == 1
+    assert 'ERROR: git checkout failed' in res.stderr
+    assert tree_snapshot(clone) == before
+
+
+@pytest.mark.unit
+def test_atmodeller_failed_pip_exits_1(tmp_path):
+    """Verify failing pip exits 1 and reports error."""
+    site = _atmodeller_site(tmp_path)
+    _write_stub(site['stubs'], 'pip', '#!/bin/sh\nexit 1\n')
+    res = _run_tool(site, 'get_atmodeller.sh')
+    assert res.returncode == 1
+    assert 'ERROR: editable install failed' in res.stderr
+
+
+@pytest.mark.unit
+def test_atmodeller_force_replaces_existing_folder(tmp_path):
+    """Verify --force replaces off-pin folder with a fresh clone at the pin."""
+    site = _atmodeller_site(tmp_path)
+    assert _run_tool(site, 'get_atmodeller.sh').returncode == 0
+    clone = site['root'] / 'Atmodeller'
+    git(clone, 'checkout', '-q', 'main')
+    (clone / 'untracked.txt').write_text('delete me\n')
+    res = _run_tool(site, 'get_atmodeller.sh', '--force')
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert git(clone, 'rev-parse', 'HEAD') == site['target_sha']
+    assert not (clone / 'untracked.txt').exists()
+
+
+@pytest.mark.unit
+def test_atmodeller_reads_url_and_ref_from_table(tmp_path):
+    """Verify script resolves git URL and ref directly from pyproject table."""
+    site = _atmodeller_site(tmp_path, pin_ref='77e81aac5147bad7eec727fba5b299e055db2d4d')
+    res = _run_tool(site, 'get_atmodeller.sh')
+    assert res.returncode == 1
+    assert 'ERROR: git checkout failed' in res.stderr
+
+
+@pytest.mark.unit
+def test_atmodeller_script_holds_no_hardcoded_url_or_commit():
+    """Verify get_atmodeller.sh contains no hardcoded URL or commit hash."""
+    repo_root = Path(__file__).resolve().parents[2]
+    script = (repo_root / 'tools' / 'get_atmodeller.sh').read_text(encoding='utf-8')
+    assert 'https://' not in script
+    assert 'git@github.com' not in script
+    assert not re.search(r'[0-9a-f]{40}', script)
+
+
+@pytest.mark.unit
+def test_atmodeller_existing_folder_missing_pin_commit_advises(tmp_path):
+    """Verify an existing folder missing the pin commit stays and advice is printed."""
+    site = _atmodeller_site(tmp_path)
+    assert _run_tool(site, 'get_atmodeller.sh').returncode == 0
+    clone = site['root'] / 'Atmodeller'
+    pyproject = site['root'] / 'pyproject.toml'
+    fake_sha = 'a' * 40
+    pyproject.write_text(pyproject.read_text().replace(site['target_sha'], fake_sha))
+    res = _run_tool(site, 'get_atmodeller.sh')
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert f'not at the pinned commit {fake_sha[:8]}' in res.stdout
+    assert f'git -C {clone} checkout --detach {fake_sha}' in res.stdout
+    assert git(clone, 'rev-parse', 'HEAD') == site['target_sha']
+
+
+@pytest.mark.unit
+def test_atmodeller_existing_folder_abbreviated_pin_resolves_and_installs(tmp_path):
+    """Verify an abbreviated pin hash matching HEAD resolves and installs."""
+    site = _atmodeller_site(tmp_path)
+    assert _run_tool(site, 'get_atmodeller.sh').returncode == 0
+    clone = site['root'] / 'Atmodeller'
+    short_pin = site['target_sha'][:12]
+    pyproject = site['root'] / 'pyproject.toml'
+    pyproject.write_text(pyproject.read_text().replace(site['target_sha'], short_pin))
+    res = _run_tool(site, 'get_atmodeller.sh')
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert f'atmodeller: {clone} is at the pinned commit {short_pin[:8]}' in res.stdout
+    assert git(clone, 'rev-parse', 'HEAD') == site['target_sha']
+
+
+@pytest.mark.unit
+def test_atmodeller_folder_is_ignored_by_git():
+    """Verify .gitignore ignores all case forms of the atmodeller directory."""
+    repo_root = Path(__file__).resolve().parents[2]
+    for name in ('atmodeller', 'Atmodeller', 'ATMODELLER'):
+        res = subprocess.run(
+            ['git', 'check-ignore', name],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        assert res.returncode == 0
+        assert res.stdout.strip() == name
