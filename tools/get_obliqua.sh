@@ -41,21 +41,42 @@ while :; do
 done
 [ -n "$dest" ] || dest="/"
 
-exists=false
-if [ -e "$dest" ] || [ -L "$dest" ]; then exists=true; fi
-
-if [ "$exists" = true ]; then
-    real=$(cd "$dest" 2>/dev/null && pwd -P) || real=""
-    if [ -z "$real" ]; then
-        echo "ERROR: $dest is a file, a broken link or a folder that cannot be entered; move it away or delete it by hand; it is unchanged" >&2
+# The physical path: the deepest folder of the path that exists, resolved, plus the rest of the path.
+base="$dest"
+rest=""
+while [ ! -d "$base" ]; do
+    if [ -e "$base" ] || [ -L "$base" ]; then
+        echo "ERROR: $base is a file, a broken link or a folder that cannot be entered; move it away or delete it by hand; it is unchanged" >&2
         exit 1
     fi
+    part="${base##*/}"
+    base="${base%/*}"
+    [ -n "$base" ] || base="/"
+    case "$part" in
+        "") ;;
+        .|..)
+            echo "ERROR: $dest goes through a folder that does not exist and then through '$part'; give the path of the folder itself; nothing is changed" >&2
+            exit 1 ;;
+        *) rest="$part${rest:+/$rest}" ;;
+    esac
+done
+real=$(cd "$base" 2>/dev/null && pwd -P) || real=""
+if [ -z "$real" ]; then
+    echo "ERROR: $base is a file, a broken link or a folder that cannot be entered; move it away or delete it by hand; it is unchanged" >&2
+    exit 1
+fi
+exists=false
+if [ -z "$rest" ]; then exists=true; fi
+dest="${real%/}${rest:+/$rest}"
+[ -n "$dest" ] || dest="/"
+
+if [ "$exists" = true ]; then
     # The PROTEUS folder, the home folder and a folder that holds one of them are never the Obliqua folder.
     for keep in "$proteus_root" "${HOME:-}"; do
         [ -n "$keep" ] || continue
         up=$(cd "$keep" 2>/dev/null && pwd -P) || continue
         while :; do
-            if [ "$up" -ef "$real" ]; then
+            if [ "$up" -ef "$dest" ]; then
                 echo "ERROR: $dest is $keep or a folder that holds it, and cannot be the Obliqua folder; it is unchanged" >&2
                 exit 1
             fi
@@ -63,17 +84,24 @@ if [ "$exists" = true ]; then
             up=$(dirname "$up")
         done
     done
-    # A link to a folder stands for that folder.
-    dest="$real"
     if ! is_empty_dir "$dest" && ! grep -q '^name = "Obliqua"' "$dest/Project.toml" 2>/dev/null; then
         echo "ERROR: $dest is not an Obliqua project (no Project.toml that names Obliqua); move it away or delete it by hand; it is unchanged" >&2
         exit 1
     fi
-    if [ "$get_force" = true ] && ! is_empty_dir "$dest" && ! is_own_clone "$dest"; then
-        echo "ERROR: $dest holds files and is not a git clone of its own; move it away or delete it by hand; it is unchanged" >&2
-        exit 1
+    if [ "$get_force" = true ] && ! is_empty_dir "$dest"; then
+        if [ -f "$dest/.git" ]; then
+            echo "ERROR: $dest is a git worktree or submodule (its .git is a file); remove it with git worktree remove first; it is unchanged" >&2
+            exit 1
+        fi
+        if ! is_own_clone "$dest" || ! git -C "$dest" rev-parse --verify --quiet HEAD >/dev/null 2>&1; then
+            echo "ERROR: $dest holds files and is not a git clone of its own with a commit; move it away or delete it by hand; it is unchanged" >&2
+            exit 1
+        fi
     fi
 fi
+
+# The forced replace is for the Obliqua clone that the checks saw: a path that was absent or empty gets no forced swap.
+if [ "$exists" != true ] || is_empty_dir "$dest"; then get_force=false; fi
 
 if ! command -v julia >/dev/null 2>&1; then
     echo "ERROR: julia is not on PATH. Install Julia first (see https://github.com/FormingWorlds/Obliqua)." >&2

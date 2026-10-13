@@ -2798,11 +2798,13 @@ def _default_signals() -> None:
         signal.pthread_sigmask(signal.SIG_UNBLOCK, [sig])
 
 
-def _run_tool(site: dict, script: str, *argv: str) -> subprocess.CompletedProcess:
+def _run_tool(
+    site: dict, script: str, *argv: str, cwd: Path | None = None
+) -> subprocess.CompletedProcess:
     """Run ``tools/<script>`` of the site copy with ``argv``, from outside the copy."""
     return subprocess.run(
         ['bash', str(site['root'] / 'tools' / script), *argv],
-        cwd=site['root'].parent,
+        cwd=site['root'].parent if cwd is None else cwd,
         env=site['env'],
         capture_output=True,
         text=True,
@@ -5411,7 +5413,11 @@ def test_pinned_clone_unresolvable_head(tmp_path):
     assert 'a HEAD that git cannot resolve' in res.stdout
     assert 'commit ;' not in res.stdout
     assert stays.read_text().splitlines() == ['Atmodeller (HEAD unknown)']
-    assert 'bash tools/get_atmodeller.sh --force' in res.stdout
+    assert (
+        '    From the PROTEUS folder, move it away or delete it by hand, then run:\n'
+        '        bash tools/get_atmodeller.sh\n'
+    ) in res.stdout
+    assert '--force' not in res.stdout
 
 
 @pytest.mark.unit
@@ -5569,11 +5575,10 @@ def test_obliqua_force_refuses_site_root_aliases(tmp_path, alias_mode):
             'trailing-slash': f'{site["root"]}/',
         }
         target_path = path_forms[alias_mode]
-    expected_dest = target_path.rstrip('/')
     res = _run_tool(site, 'get_obliqua.sh', '--force', target_path)
     assert res.returncode == 1, res.stdout + res.stderr
     assert (
-        f'ERROR: {expected_dest} is {site["root"]} or a folder that holds it, and cannot be the Obliqua folder; it is unchanged'
+        f'ERROR: {site["root"]} is {site["root"]} or a folder that holds it, and cannot be the Obliqua folder; it is unchanged'
         in res.stderr
     )
     assert sorted(p.name for p in site['root'].iterdir()) == before_names
@@ -5761,20 +5766,37 @@ def test_obliqua_git_init_only_folder_without_force_refused(tmp_path):
 
 
 @pytest.mark.unit
-def test_obliqua_uncommitted_clone_with_project_toml_advises_and_force_replaces(tmp_path):
-    """Verify uncommitted clone with Obliqua Project.toml advises --force and --force succeeds."""
+def test_obliqua_uncommitted_clone_with_project_toml_advises_move_and_force_refused(tmp_path):
+    """Verify uncommitted clone with Obliqua Project.toml advises manual removal and refuses --force."""
     site = _obliqua_site(tmp_path)
+    fake_home = tmp_path / 'home'
+    fake_home.mkdir()
+    site['env']['HOME'] = str(fake_home)
     target = site['root'] / 'Obliqua'
     target.mkdir()
     git(target, 'init', '-q', '-b', 'main')
     (target / 'Project.toml').write_text('name = "Obliqua"\nuuid = "1234"\n')
+    user_file = target / 'user.txt'
+    user_file.write_text('keep user file\n')
     res_no_force = _run_tool(site, 'get_obliqua.sh')
     assert res_no_force.returncode == 0, res_no_force.stdout + res_no_force.stderr
-    assert 'bash tools/get_obliqua.sh --force' in res_no_force.stdout
+    assert (
+        '    From the PROTEUS folder, move it away or delete it by hand, then run:\n'
+        '        bash tools/get_obliqua.sh\n'
+    ) in res_no_force.stdout
+    assert '--force' not in res_no_force.stdout
+    site['log'].write_text('')
+    before_names = sorted(p.name for p in target.iterdir())
     res_force = _run_tool(site, 'get_obliqua.sh', '--force')
-    assert res_force.returncode == 0, res_force.stdout + res_force.stderr
-    assert git(target, 'rev-parse', 'HEAD') == site['target_sha']
-    assert (target / 'Project.toml').is_file()
+    assert res_force.returncode == 1, res_force.stdout + res_force.stderr
+    assert (
+        f'ERROR: {target} holds files and is not a git clone of its own with a commit; move it away or delete it by hand; it is unchanged'
+        in res_force.stderr
+    )
+    assert sorted(p.name for p in target.iterdir()) == before_names
+    assert user_file.read_text() == 'keep user file\n'
+    assert _temp_or_old_entries(tmp_path) == []
+    assert site['log'].read_text() == ''
 
 
 @pytest.mark.unit
@@ -5837,7 +5859,7 @@ def test_obliqua_force_refuses_plain_copy_inside_git_repo(tmp_path, empty_git_di
     res = _run_tool(site, 'get_obliqua.sh', '--force')
     assert res.returncode == 1, res.stdout + res.stderr
     assert (
-        f'ERROR: {target} holds files and is not a git clone of its own; move it away or delete it by hand; it is unchanged'
+        f'ERROR: {target} holds files and is not a git clone of its own with a commit; move it away or delete it by hand; it is unchanged'
         in res.stderr
     )
     assert (target / 'copy.txt').read_text() == 'copied file\n'
@@ -6336,3 +6358,235 @@ def test_obliqua_refuses_filesystem_root_without_force(tmp_path):
     )
     assert git_log.read_text() == ''
     assert julia_log.read_text() == ''
+
+
+def _temp_or_old_entries(root: Path) -> list[Path]:
+    """Return paths up to 3 levels under ``root`` whose name holds ``.tmp.`` or ``.old.``."""
+    dirs = [root, *root.glob('*'), *root.glob('*/*')]
+    return [
+        p
+        for d in dirs
+        if d.is_dir()
+        for p in d.iterdir()
+        if '.tmp.' in p.name or '.old.' in p.name
+    ]
+
+
+def _setup_missing_middle_case(
+    tmp_path: Path, site: dict, case: str
+) -> tuple[str, Path, Path, Path]:
+    """Set up one of the three missing-middle-folder dotdot targets under ``tmp_path``."""
+    fake_home = tmp_path / 'home'
+    fake_home.mkdir(exist_ok=True)
+    site['env']['HOME'] = str(fake_home)
+    if case == 'victim':
+        pointed = tmp_path / 'victim'
+        pointed.mkdir()
+        marker = pointed / 'precious.txt'
+        missing = tmp_path / 'nx'
+        dest_arg = f'{tmp_path}/nx/../victim'
+    elif case == 'home':
+        pointed = fake_home
+        marker = pointed / 'precious.txt'
+        missing = tmp_path / 'zz'
+        dest_arg = f'{tmp_path}/zz/../home'
+    else:
+        pointed = site['root'] / 'tools'
+        marker = pointed / 'precious.txt'
+        missing = site['root'] / 'nonexist'
+        dest_arg = f'{site["root"]}/nonexist/../tools'
+    marker.write_text('precious bytes\n')
+    return dest_arg, pointed, marker, missing
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'case', ['victim', 'home', 'root-tools'], ids=['victim', 'home', 'root-tools']
+)
+def test_obliqua_force_refuses_missing_middle_folder_with_dotdot(tmp_path, case):
+    """Verify --force refuses paths traversing a non-existent folder and .. without replacing targets."""
+    site = _obliqua_site(tmp_path)
+    dest_arg, pointed, marker, missing = _setup_missing_middle_case(tmp_path, site, case)
+    before_names = sorted(p.name for p in pointed.iterdir())
+    res = _run_tool(site, 'get_obliqua.sh', '--force', dest_arg)
+    assert res.returncode == 1, res.stdout + res.stderr
+    assert (
+        f"ERROR: {dest_arg} goes through a folder that does not exist and then through '..'; give the path of the folder itself; nothing is changed"
+        in res.stderr
+    )
+    assert sorted(p.name for p in pointed.iterdir()) == before_names
+    assert marker.read_text() == 'precious bytes\n'
+    assert not missing.exists()
+    assert _temp_or_old_entries(tmp_path) == []
+    assert site['log'].read_text() == ''
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'case', ['victim', 'home', 'root-tools'], ids=['victim', 'home', 'root-tools']
+)
+def test_obliqua_without_force_refuses_missing_middle_folder_with_dotdot(tmp_path, case):
+    """Verify get_obliqua.sh without --force refuses paths traversing a non-existent folder and .."""
+    site = _obliqua_site(tmp_path)
+    dest_arg, pointed, marker, missing = _setup_missing_middle_case(tmp_path, site, case)
+    before_names = sorted(p.name for p in pointed.iterdir())
+    res = _run_tool(site, 'get_obliqua.sh', dest_arg)
+    assert res.returncode == 1, res.stdout + res.stderr
+    assert (
+        f"ERROR: {dest_arg} goes through a folder that does not exist and then through '..'; give the path of the folder itself; nothing is changed"
+        in res.stderr
+    )
+    assert sorted(p.name for p in pointed.iterdir()) == before_names
+    assert marker.read_text() == 'precious bytes\n'
+    assert not missing.exists()
+    assert _temp_or_old_entries(tmp_path) == []
+    assert site['log'].read_text() == ''
+
+
+@pytest.mark.unit
+def test_obliqua_force_refuses_relative_missing_middle_folder_with_dotdot(tmp_path):
+    """Verify --force refuses a relative destination traversing a missing folder and .."""
+    site = _obliqua_site(tmp_path)
+    fake_home = tmp_path / 'home'
+    fake_home.mkdir()
+    site['env']['HOME'] = str(fake_home)
+    sub = tmp_path / 'sub'
+    sub.mkdir()
+    victim = tmp_path / 'victim'
+    victim.mkdir()
+    marker = victim / 'precious.txt'
+    marker.write_text('precious bytes\n')
+    missing = tmp_path / 'x'
+    before_names = sorted(p.name for p in victim.iterdir())
+    res = _run_tool(site, 'get_obliqua.sh', '--force', '../x/../victim', cwd=sub)
+    assert res.returncode == 1, res.stdout + res.stderr
+    assert (
+        f"ERROR: {sub}/../x/../victim goes through a folder that does not exist and then through '..'; give the path of the folder itself; nothing is changed"
+        in res.stderr
+    )
+    assert sorted(p.name for p in victim.iterdir()) == before_names
+    assert marker.read_text() == 'precious bytes\n'
+    assert not missing.exists()
+    assert _temp_or_old_entries(tmp_path) == []
+    assert site['log'].read_text() == ''
+
+
+@pytest.mark.unit
+def test_obliqua_force_replaces_clone_via_existing_dotdot_path(tmp_path):
+    """Verify --force replaces an off-pin Obliqua clone when all folders in a .. path exist."""
+    site = _obliqua_site(tmp_path)
+    fake_home = tmp_path / 'home'
+    fake_home.mkdir()
+    site['env']['HOME'] = str(fake_home)
+    there = tmp_path / 'there'
+    there.mkdir()
+    clone = tmp_path / 'clone'
+    assert _run_tool(site, 'get_obliqua.sh', str(clone)).returncode == 0
+    git(clone, 'checkout', '-q', site['tip_sha'])
+    marker = clone / 'local_marker.txt'
+    marker.write_text('remove me\n')
+    res = _run_tool(site, 'get_obliqua.sh', '--force', f'{there}/../clone')
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert git(clone, 'rev-parse', 'HEAD') == site['target_sha']
+    assert not marker.exists()
+    assert _temp_or_old_entries(tmp_path) == []
+
+
+@pytest.mark.unit
+def test_obliqua_force_on_new_destination_refuses_folder_appearing_during_clone(tmp_path):
+    """Verify --force on an absent destination does not overwrite a folder created during git clone."""
+    site = _obliqua_site(tmp_path)
+    fake_home = tmp_path / 'home'
+    fake_home.mkdir()
+    site['env']['HOME'] = str(fake_home)
+    real_git = shutil.which('git')
+    assert real_git is not None
+    target = tmp_path / 'new_obliqua'
+    late_file = target / 'late.txt'
+    _write_stub(
+        site['stubs'],
+        'git',
+        '#!/bin/sh\n'
+        'if [ "${1:-}" = "clone" ]; then\n'
+        f'    mkdir -p {shlex.quote(str(target))}\n'
+        f'    printf "late bytes\\n" > {shlex.quote(str(late_file))}\n'
+        'fi\n'
+        f'exec {shlex.quote(real_git)} "$@"\n',
+    )
+    res = _run_tool(site, 'get_obliqua.sh', '--force', str(target))
+    assert res.returncode == 1, res.stdout + res.stderr
+    assert (
+        f'ERROR: {target} appeared while the new clone was made; it is unchanged' in res.stderr
+    )
+    assert sorted(p.name for p in target.iterdir()) == ['late.txt']
+    assert late_file.read_text() == 'late bytes\n'
+    assert _temp_or_old_entries(tmp_path) == []
+    assert site['log'].read_text() == ''
+
+
+@pytest.mark.unit
+def test_obliqua_force_refuses_git_worktree(tmp_path):
+    """Verify --force refuses a destination whose .git is a file such as a git worktree."""
+    site = _obliqua_site(tmp_path)
+    fake_home = tmp_path / 'home'
+    fake_home.mkdir()
+    site['env']['HOME'] = str(fake_home)
+    clone = site['root'] / 'Obliqua'
+    assert _run_tool(site, 'get_obliqua.sh').returncode == 0
+    wt = tmp_path / 'wt'
+    git(clone, 'worktree', 'add', '-q', '--detach', str(wt))
+    marker = wt / 'wt_marker.txt'
+    marker.write_text('worktree bytes\n')
+    before_names = sorted(p.name for p in wt.iterdir())
+    site['log'].write_text('')
+    res = _run_tool(site, 'get_obliqua.sh', '--force', str(wt))
+    assert res.returncode == 1, res.stdout + res.stderr
+    assert (
+        f'ERROR: {wt} is a git worktree or submodule (its .git is a file); remove it with git worktree remove first; it is unchanged'
+        in res.stderr
+    )
+    assert sorted(p.name for p in wt.iterdir()) == before_names
+    assert marker.read_text() == 'worktree bytes\n'
+    assert str(wt) in git(clone, 'worktree', 'list')
+    assert _temp_or_old_entries(tmp_path) == []
+    assert site['log'].read_text() == ''
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('force_args', [(), ('--force',)], ids=['no-force', 'force'])
+def test_obliqua_refuses_file_in_middle_of_path(tmp_path, force_args):
+    """Verify get_obliqua.sh refuses a destination path that has a regular file as an ancestor."""
+    site = _obliqua_site(tmp_path)
+    fake_home = tmp_path / 'home'
+    fake_home.mkdir()
+    site['env']['HOME'] = str(fake_home)
+    afile = tmp_path / 'afile'
+    afile.write_text('middle file bytes\n')
+    before_names = sorted(p.name for p in tmp_path.iterdir())
+    res = _run_tool(site, 'get_obliqua.sh', *force_args, f'{afile}/x/Obliqua')
+    assert res.returncode == 1, res.stdout + res.stderr
+    assert (
+        f'ERROR: {afile} is a file, a broken link or a folder that cannot be entered; move it away or delete it by hand; it is unchanged'
+        in res.stderr
+    )
+    assert sorted(p.name for p in tmp_path.iterdir()) == before_names
+    assert afile.is_file()
+    assert afile.read_text() == 'middle file bytes\n'
+    assert _temp_or_old_entries(tmp_path) == []
+    assert site['log'].read_text() == ''
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('force_args', [(), ('--force',)], ids=['no-force', 'force'])
+def test_obliqua_clones_into_nested_missing_destination(tmp_path, force_args):
+    """Verify get_obliqua.sh clones into a missing destination two levels below an existing folder."""
+    site = _obliqua_site(tmp_path)
+    fake_home = tmp_path / 'home'
+    fake_home.mkdir()
+    site['env']['HOME'] = str(fake_home)
+    target = tmp_path / 'a' / 'b' / 'Obliqua'
+    res = _run_tool(site, 'get_obliqua.sh', *force_args, str(target))
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert target.is_dir()
+    assert git(target, 'rev-parse', 'HEAD') == site['target_sha']
+    assert _temp_or_old_entries(tmp_path) == []
