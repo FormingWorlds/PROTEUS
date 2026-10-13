@@ -159,6 +159,21 @@ def test_composition_bars_hold_o2_of_the_models_and_of_the_run(tool, tmp_path):
     assert 'O2' in tool.GAS_LABELS and 'O2' in tool.GAS_COLORS
 
 
+def test_figure_3_names_each_panel_in_its_title_and_draws_o2(tool, tmp_path, figures):
+    """Figure 3 carries the panel label in the title of each panel, clear of the
+    data, and its 95% panel has an O2 bar segment of the current run."""
+    tool.plot_fig3(
+        _comparison_data(tmp_path / 'data'), _run_table(), tool._new_style('x'), tmp_path
+    )
+
+    panel_a, panel_b = figures['chili_fig3_atm_composition'].axes[:2]
+    assert '(a)' in panel_a.get_title() and '95%' in panel_a.get_title()
+    assert '(b)' in panel_b.get_title() and '5%' in panel_b.get_title()
+    assert [text.get_text() for text in panel_a.texts + panel_b.texts] == []
+    heights = [patch.get_height() for patch in panel_a.patches]
+    assert 128.0 in heights and 0.25 in heights
+
+
 def test_figure_6_draws_the_o2_fugacity_of_the_run_at_its_magma_temperature(
     tool, tmp_path, figures
 ):
@@ -182,6 +197,8 @@ def test_figure_6_draws_the_o2_fugacity_of_the_run_at_its_magma_temperature(
     marker_rel = [line for line in ax_rel.lines if line.get_markersize() == 10][0]
     assert marker_rel.get_xdata() == pytest.approx([1810.0])
     assert marker_rel.get_ydata() == pytest.approx([expected[-1]])
+    assert ax_rel.get_ylim()[0] == pytest.approx(-0.5)
+    assert ax_rel.get_legend() is None and ax_abs.get_legend() is not None
 
 
 def test_figure_6_has_no_marker_for_a_run_that_ends_above_6_percent_melt(

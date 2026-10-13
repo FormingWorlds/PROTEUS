@@ -366,7 +366,7 @@ def plot_fig1(intercomp, pe, pv, NS, out):
     ax.set_xscale('log')
     ax.set_xlim(1e-3, 2e1)
     ax.set_ylim(0, 1.05)
-    ax.legend(fontsize=8, ncol=2, loc='upper right', framealpha=0.9)
+    ax.legend(fontsize=8, ncol=3, loc='upper center', bbox_to_anchor=(0.5, -0.16))
     _save(fig, out, 'chili_fig1_melt_fraction')
 
 
@@ -694,10 +694,9 @@ def _plot_atm_composition(intercomp, proteus_df, planet, NS, out, fig_name):
             if ip:
                 tl.set_color(NS['color'])
         ax.set_ylabel('Partial pressure [bar]')
-        ax.set_title(title, fontsize=12)
+        ax.set_title(f'{plabel} {title}', fontsize=12)
         ax.set_ylim(0, bar_ylim)
         ax.set_xlim(-0.5, n_slots - 0.5)
-        ax.text(0.02, 0.93, plabel, transform=ax.transAxes, fontsize=14, va='top')
 
         ax2 = ax.twinx()
         for i, (t, ip) in enumerate(zip(tsv, isp)):
@@ -1101,8 +1100,7 @@ def plot_fig6(intercomp, pv, NS, out):
         ha='right',
     )
     ax_rel.set_xlim(3300, None)
-    ax_rel.set_ylim(bottom=0)
-    ax_rel.legend(fontsize=7, ncol=2, loc='lower left', framealpha=0.9)
+    ax_rel.set_ylim(bottom=-0.5)
     ax_rel.grid(alpha=0.15)
 
     fig.tight_layout()
