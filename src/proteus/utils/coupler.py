@@ -1089,8 +1089,8 @@ def GetHelpfileKeys():
         'O_res',                 # O mass-balance residual [kg]
         'O_vapourised_kg',         # oxygen released by rock vapourisation (LavAtmos) [kg]
 
-        # Melt-redox tracker (planet.fO2_source = "from_mantle_redox", else 0);
-        # a_fe_max_cell_mantle is -1 when no cell was tested.
+        # Columns of the melt Fe3+/Fe2+ redox tracker, 0 unless fO2_source is
+        # from_mantle_redox; a_fe_max_cell_mantle is -1 when no cell was tested.
         'a_fe_max_mantle',  # largest per-cell Fe-metal activity [1]
         'a_fe_max_cell_mantle',  # index of that cell (-1: none tested) [1]
         'fO2_shift_IW_mantle',  # tracked-melt-redox surface Delta-IW [log10 bar]
