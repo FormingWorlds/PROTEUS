@@ -230,6 +230,7 @@ def test_main_writes_a_png_and_a_pdf_for_each_figure_with_data(tool, tmp_path, m
     """``main`` saves each figure that a function returns as PNG and as PDF and
     closes it; a function without a figure leaves no file. Figure 5 without
     a model and without a run gives no figure."""
+    figure_5 = tool.plot_fig5
     _main_arguments(tool, tmp_path, monkeypatch)
     monkeypatch.setattr(tool, 'plot_psurf', lambda *args: tool.plt.figure())
 
@@ -239,7 +240,8 @@ def test_main_writes_a_png_and_a_pdf_for_each_figure_with_data(tool, tmp_path, m
     assert written == ['chili_psurf_vs_time.pdf', 'chili_psurf_vs_time.png']
     assert tool.plt.get_fignums() == []
     (tmp_path / 'no_models').mkdir()
-    assert tool.plot_fig5(tmp_path / 'no_models', None, tool._new_style('x')) is None
+    assert figure_5(tmp_path / 'no_models', None, tool._new_style('x')) is None
+    assert figure_5 is not tool.plot_fig5
     assert tool.plt.get_fignums() == []
 
 
@@ -273,8 +275,9 @@ def test_make_figure_writes_the_png_at_the_dpi_of_the_style_and_labels_it_with_t
 
 def test_make_figure_reads_the_grid_runs_and_names_their_commits(tool, tmp_path):
     """The grid figure reads the grid run folders with a helpfile; the label
-    holds their commits in the order of the grid, not of ``run_dirs``, and a
-    grid run that ``run_dirs`` does not list is refused."""
+    holds their commits in the order of the grid, not of ``run_dirs``; a grid
+    folder without a helpfile is not read; a grid run that ``run_dirs`` does
+    not list is refused."""
     data, grid = _grid_case(tmp_path)
     repo = tmp_path / 'repo'
     (repo / 'intercomparison').mkdir(parents=True)
@@ -284,6 +287,7 @@ def test_make_figure_reads_the_grid_runs_and_names_their_commits(tool, tmp_path)
         _run_folder(grid / 'chili_grid_earth_Hlow_Chigh', '1' * 40),
         grid / 'chili_grid_earth_Hlow_Clow',
     ]
+    _run_with_log(grid / 'chili_grid_earth_Hmid_Clow', '2' * 40)
     out = tmp_path / 'grid.png'
 
     fig = tool.make_figure(
@@ -333,6 +337,8 @@ def test_make_figure_refuses_a_figure_without_the_run_that_it_reads(
         for stem in stems:
             with pytest.raises(ValueError, match=f"figure 'chili_{stem}' needs {name}"):
                 make(f'chili_{stem}', venus=earth if name == 'earth' else None)
+    with pytest.raises(ValueError, match="figure 'chili_fig1_melt_fraction' needs venus"):
+        make('chili_fig1_melt_fraction', [earth], earth=earth)
     for no_grid in (None, ''):
         with pytest.raises(ValueError, match="figure 'chili_fig2_milestones' needs grid_dir"):
             make('chili_fig2_milestones', [earth], earth=earth, grid_dir=no_grid)
