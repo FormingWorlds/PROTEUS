@@ -6776,3 +6776,41 @@ def test_obliqua_resolves_symlink_before_dotdot_when_name_exists_beside_link(
     assert sorted(p.name for p in shell_name.iterdir()) == before_names
     assert marker.read_text() == 'beside link bytes\n'
     assert _temp_or_old_entries(tmp_path) == []
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('force_args', [(), ('--force',)], ids=['no-force', 'force'])
+def test_obliqua_refuses_symlink_to_folder_ending_with_line_break(tmp_path, force_args):
+    """Verify get_obliqua.sh refuses a symlink to a folder whose name ends with a line break."""
+    site = _obliqua_site(tmp_path)
+    fake_home = tmp_path / 'home'
+    fake_home.mkdir()
+    site['env']['HOME'] = str(fake_home)
+    d = tmp_path / 'd'
+    d.mkdir()
+    nl_clone = d / 'nl'
+    assert _run_tool(site, 'get_obliqua.sh', str(nl_clone)).returncode == 0
+    clone_marker = nl_clone / 'clone_marker.txt'
+    clone_marker.write_text('clone marker bytes\n')
+    clone_head = git(nl_clone, 'rev-parse', 'HEAD')
+    nl_newline_str = str(d) + '/nl\n'
+    os.mkdir(nl_newline_str)
+    nl_newline_marker = os.path.join(nl_newline_str, 'newline_marker.txt')
+    with open(nl_newline_marker, 'w', encoding='utf-8') as f:
+        f.write('newline marker bytes\n')
+    link = d / 'link'
+    os.symlink(nl_newline_str, str(link))
+    site['log'].write_text('')
+    res = _run_tool(site, 'get_obliqua.sh', *force_args, str(link))
+    assert res.returncode == 1, res.stdout + res.stderr
+    assert (
+        f'ERROR: {link} resolves to a folder whose path ends with a line break; nothing is changed'
+        in res.stderr
+    )
+    assert clone_marker.read_text() == 'clone marker bytes\n'
+    assert git(nl_clone, 'rev-parse', 'HEAD') == clone_head
+    with open(nl_newline_marker, encoding='utf-8') as f:
+        assert f.read() == 'newline marker bytes\n'
+    assert link.is_symlink()
+    assert _temp_or_old_entries(tmp_path) == []
+    assert site['log'].read_text() == ''

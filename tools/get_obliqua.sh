@@ -66,6 +66,10 @@ if [ -z "$real" ]; then
     echo "ERROR: $base is a file, a broken link or a folder that cannot be entered; move it away or delete it by hand; it is unchanged" >&2
     exit 1
 fi
+if ! [ "$real" -ef "$base" ]; then
+    echo "ERROR: $base resolves to a folder whose path ends with a line break; nothing is changed" >&2
+    exit 1
+fi
 exists=false
 if [ -z "$rest" ]; then exists=true; fi
 dest="${real%/}${rest:+/$rest}"
