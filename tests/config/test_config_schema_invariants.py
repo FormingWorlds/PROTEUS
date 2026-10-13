@@ -362,9 +362,7 @@ def test_check_module_dependencies_raises_when_vulcan_missing():
 
 @pytest.mark.unit
 def test_check_module_dependencies_raises_when_morrigan_missing():
-    """If accretion.module = morrigan and the package is unavailable, raise
-    ImportError naming the install hint and setup script.
-    """
+    """Raise ImportError naming install hint when Morrigan is unavailable."""
     instance = _make_config_instance(**{'accretion.module': 'morrigan'})
 
     real_import = importlib.import_module

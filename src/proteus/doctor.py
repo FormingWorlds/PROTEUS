@@ -1017,11 +1017,11 @@ def check_python_package(name: str, spec: Requirement | None) -> CheckResult:
     )
 
 
-def _is_git_module_present(path: str, required: bool = True) -> bool:
+def _is_git_module_present(path: str) -> bool:
     """Return whether a git module directory is populated."""
     if not path or not os.path.isdir(path):
         return False
-    return required or bool(os.listdir(path))
+    return bool(os.listdir(path))
 
 
 def check_git_module(name: str, dirs: dict, required: bool = True) -> CheckResult:
@@ -1050,17 +1050,16 @@ def check_git_module(name: str, dirs: dict, required: bool = True) -> CheckResul
     else:
         path = dirs.get(dir_key, '')
 
-    if not _is_git_module_present(path, required=required):
-        # Unlike the off-pin case below, this fix is not chained to an AGNI
-        # rebuild: a not-installed SOCRATES means RAD_DIR is unset, so the AGNI
-        # step would have nowhere to find SOCRATES. The install script prints
-        # the AGNI follow-up once SOCRATES is in place.
+    if not _is_git_module_present(path):
+        # Unlike the off-pin case below, this fix is not chained to an AGNI rebuild:
+        # RAD_DIR can be unset, and get_socrates.sh prints the AGNI follow-up once built.
+        arg = ' "$RAD_DIR"' if dir_key == 'socrates' and path and os.path.isdir(path) else ''
         return CheckResult(
             name=name,
             category='versions',
             status=FAIL if required else WARN,
             message='not installed',
-            fix_cmd=f'bash tools/get_{name.lower()}.sh',
+            fix_cmd=f'bash tools/get_{dir_key}.sh{arg}',
         )
 
     # Get current version
@@ -1077,22 +1076,23 @@ def check_git_module(name: str, dirs: dict, required: bool = True) -> CheckResul
         ver = '?'
 
     # Check HEAD against pinned ref
-    if not _is_own_clone(path):
+    is_own = _is_own_clone(path)
+    if not is_own:
         ver = f'{ver} [not a git clone of its own]'
         head = None
     else:
         head = _git_head(path)
+    setup_cmd = (
+        'bash tools/get_socrates.sh "$RAD_DIR" && RAD_DIR="$RAD_DIR" bash tools/get_agni.sh 0'
+        if name == 'SOCRATES'
+        else f'bash tools/get_{dir_key}.sh'
+    )
     if pinned_ref and head and head != pinned_ref:
         # Re-cloning SOCRATES deletes AGNI build products in that tree;
         # the SOCRATES refresh command chains an AGNI rebuild.
-        refresh = f'bash tools/get_{name.lower()}.sh'
+        refresh = setup_cmd
         auto_fixable = True
-        if name == 'SOCRATES':
-            refresh = (
-                'bash tools/get_socrates.sh "$RAD_DIR" '
-                '&& RAD_DIR="$RAD_DIR" bash tools/get_agni.sh 0'
-            )
-        elif name == 'Obliqua':
+        if name == 'Obliqua':
             root = shlex.quote(str(_repo_root()))
             folder = shlex.quote(os.path.abspath(path))
             refresh = (
@@ -1117,6 +1117,19 @@ def check_git_module(name: str, dirs: dict, required: bool = True) -> CheckResul
             status=WARN,
             message=f'{ver}{head_str}: Julia environment not instantiated',
             fix_cmd='bash tools/get_obliqua.sh',
+        )
+
+    if not is_own:
+        return CheckResult(
+            name=name,
+            category='versions',
+            status=WARN,
+            message=f'{ver}: the commit cannot be compared with the pin',
+            fix_cmd=(
+                f'move {shlex.quote(path)} away or delete it, then run: '
+                f'cd {shlex.quote(str(_repo_root()))} && {setup_cmd}'
+            ),
+            auto_fixable=False,
         )
 
     if pinned_ref and head:
@@ -1155,7 +1168,7 @@ def is_standard_module_installed(name: str, root: Path | str | None = None) -> b
         if root is None:
             root = _repo_root()
         path = str(Path(root) / 'Obliqua')
-        return _is_git_module_present(path, required=False)
+        return _is_git_module_present(path)
     return False
 
 

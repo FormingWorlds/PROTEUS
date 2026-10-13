@@ -2637,6 +2637,14 @@ def test_install_all_runs_standard_module_scripts(monkeypatch, tmp_path, present
 
     res = runner.invoke(cli.cli, ['install-all'])
     assert res.exit_code == 0
+    expected_lines = [
+        '[+] Setting up Morrigan...',
+        '[+] Setting up VULCAN...',
+        '[+] Setting up atmodeller...',
+        '[+] Setting up Obliqua...',
+    ]
+    indices = [res.output.index(line) for line in expected_lines]
+    assert indices == sorted(indices)
     _assert_module_runs(
         calls,
         tmp_path,
@@ -3535,6 +3543,19 @@ def test_update_all_standard_module_warning_includes_cd_root(monkeypatch, tmp_pa
     assert res.exit_code == 0
     assert f'cd {tmp_path} && ' in res.output
     assert '[!] Obliqua not found. Run "cd ' in res.output
+
+
+@pytest.mark.unit
+def test_update_all_quotes_root_with_space(monkeypatch, tmp_path):
+    """update-all quotes root directory containing space in warning advice."""
+    root = tmp_path / 'proteus root'
+    _standard_modules_test_site(monkeypatch, root)
+
+    res = runner.invoke(cli.cli, ['update-all'])
+    assert res.exit_code == 0
+    expected = f"cd '{root}' && bash tools/get_obliqua.sh"
+    assert expected in res.output
+    assert f'cd {root} && ' not in res.output
 
 
 @pytest.mark.unit

@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import logging
 import os
+import shlex
 import sys
 from difflib import get_close_matches
 from pathlib import Path
@@ -1585,10 +1586,11 @@ def update_all(export_env: bool, config_path: Path | None):
     from .doctor import is_standard_module_installed
 
     # --- Step 5b: Check standard modules ---
+    quoted_root = shlex.quote(str(root))
     for mod_name, _mod_folder, mod_script in _STANDARD_MODULES:
         if not is_standard_module_installed(mod_name, root):
             click.secho(
-                f'[!] {mod_name} not found. Run "cd {root} && bash {mod_script}".',
+                f'[!] {mod_name} not found. Run "cd {quoted_root} && bash {mod_script}".',
                 fg='yellow',
             )
 

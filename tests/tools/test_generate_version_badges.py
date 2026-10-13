@@ -142,9 +142,7 @@ def test_pypi_row_pins_the_committed_requirement():
 
 
 def test_optional_table_atmodeller_row_and_no_backends():
-    """The rendered atmodeller row carries the commit badge and repository URL
-    read from pyproject.toml, and no row in the table contains the word 'backend'.
-    """
+    """The rendered atmodeller row carries commit badge and no backend text."""
     cfg = tomllib.loads((_REPO_ROOT / 'pyproject.toml').read_text())
     modules = cfg.get('tool', {}).get('proteus', {}).get('modules', {})
     extras = cfg['project'].get('optional-dependencies', {})

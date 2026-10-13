@@ -86,21 +86,17 @@ pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 
 @pytest.fixture
-def mock_own_clone():
-    """Mock _is_own_clone to True for tests with synthetic checkouts."""
+def mock_own_clone(tmp_path):
+    """Populate synthetic checkout and mock _is_own_clone to True."""
+    (tmp_path / '.keep').touch()
     with patch('proteus.doctor._is_own_clone', return_value=True):
         yield
 
 
 @pytest.mark.unit
 def test_python_packages_excludes_standard_module_packages():
-    """`proteus doctor` must list standard package extras in STANDARD_MODULE_PACKAGES.
-
-    The packages in STANDARD_MODULE_PACKAGES (fwl-vulcan, atmodeller, fwl-morrigan)
-    are package extras with setup scripts, so listing them in PYTHON_PACKAGES
-    would make doctor report an uninstalled failure instead of a warning with
-    their setup command.
-    """
+    """`proteus doctor` must list standard package extras in STANDARD_MODULE_PACKAGES."""
+    assert set(STANDARD_MODULE_PACKAGES) == {'fwl-vulcan', 'atmodeller', 'fwl-morrigan'}
     assert set(STANDARD_MODULE_PACKAGES).isdisjoint(PYTHON_PACKAGES), (
         f'doctor must not check standard module extras as mandatory: '
         f'{set(STANDARD_MODULE_PACKAGES) & set(PYTHON_PACKAGES)}'
@@ -113,12 +109,7 @@ def test_python_packages_excludes_standard_module_packages():
 
 @pytest.mark.unit
 def test_git_modules_excludes_standard_git_modules():
-    """`proteus doctor` must not check Obliqua as a mandatory git module.
-
-    Obliqua is a standard module with a setup script; listing it in GIT_MODULES
-    would make doctor report a failure instead of a warning when absent. It
-    belongs in STANDARD_GIT_MODULES instead.
-    """
+    """`proteus doctor` must not check Obliqua as a mandatory git module."""
     assert 'Obliqua' not in GIT_MODULES
     assert 'Obliqua' in STANDARD_GIT_MODULES
     assert {'AGNI', 'SOCRATES'} <= set(GIT_MODULES)
@@ -1735,7 +1726,7 @@ class TestCheckGitModulePinMismatch:
         ran = mock_fix.call_args_list[0].args[0]
         assert 'get_socrates.sh' in ran and 'get_agni.sh' in ran
         # Discrimination: a regression dropping the AGNI step would still run
-        # the SOCRATES half, so assert the chain survived end to end.
+        # the SOCRATES half, so assert the chain survived in full.
         assert '&&' in ran
 
 
@@ -1894,10 +1885,10 @@ class TestCheckGitModuleInstallState:
         assert 'get_socrates.sh' in r.fix_cmd
 
 
-class TestCheckGitModuleOptional:
+class TestCheckGitModuleStandard:
     """check_git_module(required=False): Obliqua's not-required contract."""
 
-    def test_missing_optional_module_warns_when_not_required(self):
+    def test_missing_standard_module_warns_when_not_required(self):
         """A missing checkout with required=False returns a WARN CheckResult."""
         with patch('proteus.doctor._module_pins', return_value={}):
             res = check_git_module('Obliqua', {}, required=False)
@@ -1920,8 +1911,8 @@ class TestCheckGitModuleOptional:
         assert r.status == FAIL
         assert r.message == 'not installed'
 
-    def test_present_optional_module_on_pin_still_reports_pass(self, tmp_path, mock_own_clone):
-        """Once actually installed, an optional module IS checked and
+    def test_present_standard_module_on_pin_still_reports_pass(self, tmp_path, mock_own_clone):
+        """Once actually installed, a standard module IS checked and
         pin-compared normally (PASS on a matching HEAD) -- ``required``
         only controls the missing-checkout case, not whether an existing
         checkout gets verified.
@@ -1937,8 +1928,8 @@ class TestCheckGitModuleOptional:
         assert r.status == PASS
         assert r.fix_cmd is None
 
-    def test_present_optional_module_off_pin_still_warns(self, tmp_path, mock_own_clone):
-        """An installed-but-off-pin optional module gets advice and auto_fixable=False."""
+    def test_present_standard_module_off_pin_still_warns(self, tmp_path, mock_own_clone):
+        """An installed-but-off-pin standard module gets advice and auto_fixable=False."""
         pins = {'obliqua': {'ref': 'a' * 40}}
         root = tmp_path / 'repo'
         root.mkdir()
@@ -2010,8 +2001,8 @@ class TestCheckGitModuleOptional:
         assert 'differs from pin' in r.message
         assert '--force' in r.fix_cmd
 
-    def test_empty_optional_module_folder_in_git_repo_counts_as_not_installed(self, tmp_path):
-        """An empty optional module folder in a git repo counts as not installed."""
+    def test_empty_standard_module_folder_in_git_repo_counts_as_not_installed(self, tmp_path):
+        """An empty standard module folder in a git repo counts as not installed."""
         _init_test_repo(tmp_path)
         obliqua_dir = tmp_path / 'Obliqua'
         obliqua_dir.mkdir()
@@ -2035,11 +2026,18 @@ class TestCheckGitModuleOptional:
         pins = {'obliqua': {'ref': '0' * 40}}
         with patch('proteus.doctor._module_pins', return_value=pins):
             r = check_git_module('Obliqua', {'obliqua': str(obliqua_dir)}, required=False)
-        assert r.status == PASS
-        assert '[not a git clone of its own]' in r.message
+        assert r.status == WARN
+        assert (
+            r.message
+            == '0.1.0 [not a git clone of its own]: the commit cannot be compared with the pin'
+        )
         assert outer_head[:8] not in r.message
         assert 'differs from pin' not in r.message
-        assert r.fix_cmd is None
+        assert 'move ' in r.fix_cmd
+        assert shlex.quote(str(obliqua_dir)) in r.fix_cmd
+        assert 'bash tools/get_obliqua.sh' in r.fix_cmd
+        assert '--force' not in r.fix_cmd
+        assert r.auto_fixable is False
 
     def test_obliqua_in_outer_repo_missing_manifest_carries_mark(self, tmp_path):
         """A non-clone Obliqua directory missing Manifest.toml warns with the mark."""
@@ -2053,6 +2051,8 @@ class TestCheckGitModuleOptional:
         assert r.status == WARN
         assert 'Julia environment not instantiated' in r.message
         assert '[not a git clone of its own]' in r.message
+        assert r.fix_cmd == 'bash tools/get_obliqua.sh'
+        assert r.auto_fixable is True
 
     def test_obliqua_own_clone_off_pin_gives_forced_advice(self, tmp_path):
         """An Obliqua directory that is its own clone warns and advises --force when off pin."""
@@ -2071,21 +2071,69 @@ class TestCheckGitModuleOptional:
         assert r.fix_cmd is not None and '--force' in r.fix_cmd
         assert r.auto_fixable is False
 
-    def test_empty_required_module_folder_in_git_repo_does_not_count_as_not_installed(
-        self, tmp_path
-    ):
-        """An empty required module folder in a git repo does not count as not installed."""
+    def test_empty_required_module_folder_in_git_repo_counts_as_not_installed(self, tmp_path):
+        """An empty required module folder in a git repo counts as not installed."""
         _init_test_repo(tmp_path)
         agni_dir = tmp_path / 'AGNI'
         agni_dir.mkdir()
         pins = {'agni': {'ref': 'a' * 40}}
+        with patch('proteus.doctor._module_pins', return_value=pins):
+            r = check_git_module('AGNI', {'agni': str(agni_dir)}, required=True)
+        assert r.status == FAIL
+        assert r.message == 'not installed'
+        assert r.fix_cmd == 'bash tools/get_agni.sh'
+
+    def test_agni_in_outer_repo_without_own_clone_warns_cannot_compare_pin(self, tmp_path):
+        """A populated non-clone AGNI folder in a git repo warns that commit cannot be compared."""
+        _init_test_repo(tmp_path)
+        agni_dir = tmp_path / 'AGNI'
+        agni_dir.mkdir()
+        (agni_dir / 'Project.toml').write_text('version = "1.13.0"\n')
+        outer_head = _git_head(str(tmp_path))
+        pins = {'agni': {'ref': 'a' * 40}}
         with (
             patch('proteus.doctor._module_pins', return_value=pins),
-            patch('proteus.doctor._get_agni_version', return_value='1.0.0'),
+            patch('proteus.doctor._get_agni_version', return_value='1.13.0'),
         ):
             r = check_git_module('AGNI', {'agni': str(agni_dir)}, required=True)
-        assert r.message != 'not installed'
-        assert '[not a git clone of its own]' in r.message
+        assert r.status == WARN
+        assert (
+            r.message
+            == '1.13.0 [not a git clone of its own]: the commit cannot be compared with the pin'
+        )
+        assert outer_head[:8] not in r.message
+        assert 'move ' in r.fix_cmd
+        assert shlex.quote(str(agni_dir)) in r.fix_cmd
+        assert 'bash tools/get_agni.sh' in r.fix_cmd
+        assert r.auto_fixable is False
+
+    def test_socrates_without_own_clone_warns_and_names_rad_dir(self, tmp_path, monkeypatch):
+        """A populated non-clone SOCRATES folder warns and includes RAD_DIR in the fix command."""
+        socrates_dir = tmp_path / 'socrates'
+        socrates_dir.mkdir()
+        (socrates_dir / 'version').write_text('24.07\n')
+        monkeypatch.setenv('RAD_DIR', str(socrates_dir))
+        with patch('proteus.doctor._get_socrates_version', return_value='24.07'):
+            r = check_git_module('SOCRATES', {}, required=True)
+        assert r.status == WARN
+        assert r.message.endswith(': the commit cannot be compared with the pin')
+        assert 'move ' in r.fix_cmd
+        assert shlex.quote(str(socrates_dir)) in r.fix_cmd
+        assert (
+            'bash tools/get_socrates.sh "$RAD_DIR" && RAD_DIR="$RAD_DIR" bash tools/get_agni.sh 0'
+            in r.fix_cmd
+        )
+        assert r.auto_fixable is False
+
+    def test_empty_socrates_rad_dir_not_installed_names_rad_dir(self, tmp_path, monkeypatch):
+        """An empty RAD_DIR folder reports SOCRATES not installed with RAD_DIR in the fix command."""
+        socrates_dir = tmp_path / 'socrates'
+        socrates_dir.mkdir()
+        monkeypatch.setenv('RAD_DIR', str(socrates_dir))
+        r = check_git_module('SOCRATES', {}, required=True)
+        assert r.status == FAIL
+        assert r.message == 'not installed'
+        assert r.fix_cmd == 'bash tools/get_socrates.sh "$RAD_DIR"'
 
     def test_run_all_checks_warns_obliqua_when_not_installed(self, tmp_path):
         """With no Obliqua checkout, run_all_checks returns WARN."""
@@ -2115,7 +2163,7 @@ class TestCheckGitModuleOptional:
         must include its CheckResult in the top-level report -- the
         counterpart to the omitted-when-absent case above, confirming
         ``required=False`` only changes the missing-checkout behaviour,
-        not whether an installed optional module is reported at all.
+        not whether an installed standard module is reported at all.
         """
         pins = {'obliqua': {'ref': 'a' * 40}}
         (tmp_path / 'Manifest.toml').touch()
@@ -2133,8 +2181,8 @@ class TestCheckGitModuleOptional:
         assert len(obliqua_results) == 1
         assert obliqua_results[0].status == PASS
 
-    def test_run_all_checks_reports_check_error_for_optional_module_that_raises(self):
-        """A crash inside the optional-module loop must degrade to a FAIL
+    def test_run_all_checks_reports_check_error_for_standard_module_that_raises(self):
+        """A crash inside the standard-module loop must degrade to a FAIL
         CheckResult (the same recovery pattern the mandatory-module loop
         already has), not propagate and abort every other check.
         """
@@ -2143,14 +2191,14 @@ class TestCheckGitModuleOptional:
             patch('proteus.doctor._module_pins', return_value={}),
             patch(
                 'proteus.doctor.check_git_module',
-                side_effect=RuntimeError('boom_optional_xyz'),
+                side_effect=RuntimeError('boom_standard_xyz'),
             ),
         ):
             results = run_all_checks()
         obliqua_results = [r for r in results if r.name == 'Obliqua']
         assert len(obliqua_results) == 1
         assert obliqua_results[0].status == FAIL
-        assert 'boom_optional_xyz' in obliqua_results[0].message
+        assert 'boom_standard_xyz' in obliqua_results[0].message
 
 
 def _mixed_results() -> list[CheckResult]:
@@ -2347,6 +2395,33 @@ class TestUpdateEntry:
         assert 'none of them have an automatic fix' in out
         # Discrimination: a warning-only run is still healthy (True), unlike a FAIL.
         assert result is True
+
+    def test_update_entry_runs_no_command_for_non_clone_git_module_warning(
+        self, capsys, tmp_path
+    ):
+        """update_entry runs no fix command for a non-clone git module warning."""
+        _init_test_repo(tmp_path)
+        agni_dir = tmp_path / 'AGNI'
+        agni_dir.mkdir()
+        (agni_dir / 'Project.toml').write_text('version = "1.13.0"\n')
+        pins = {'agni': {'ref': 'a' * 40}}
+        with (
+            patch('proteus.doctor._module_pins', return_value=pins),
+            patch('proteus.doctor._get_agni_version', return_value='1.13.0'),
+        ):
+            r = check_git_module('AGNI', {'agni': str(agni_dir)}, required=True)
+        runner = Mock(return_value=0)
+        with (
+            patch('proteus.doctor.run_all_checks', return_value=[r]),
+            patch('proteus.doctor._run_fix_command', runner),
+            patch('proteus.doctor.doctor_entry', return_value=True),
+        ):
+            result = update_entry(dry_run=False)
+        out = capsys.readouterr().out
+        assert result is True
+        runner.assert_not_called()
+        assert 'none of them have an automatic fix' in out
+        assert 'tools/get_agni.sh' in out
 
     def test_update_entry_with_absent_vulcan_dry_run_and_real(self, capsys, tmp_path):
         """With fwl-vulcan absent, dry run prints setup command and real run executes it."""
