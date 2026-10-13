@@ -71,13 +71,17 @@ not a git clone of its own, the doctor reads no commit (git would answer for
 the repository around the folder), marks the line
 `[not a git clone of its own]` and warns that the commit cannot be compared with
 the pin; the fix is advice that `proteus update` does not run: move the folder
-away or delete it, then run the setup script of the module. For an Obliqua folder that
+away or delete it, then run the setup script of the module. A file or a broken
+link at the path of a module counts as not installed, with the advice to delete
+it and run the setup script; an Obliqua path that holds a clone of another
+project gets the move-away advice too. For an Obliqua folder that
 is not at its pin the fix is advice that `proteus update` does not run:
 `bash tools/get_obliqua.sh --force <folder>` replaces the folder with a new
-clone at the pin. The script refuses the PROTEUS folder, your home folder and
-a folder that holds one of them as its destination, and stops for a clone of
-another project, with or without `--force`. The forced form also refuses a
-folder with files that is not a git clone of its own. An Obliqua folder at its pin with no `Manifest.toml` gives a warning
+clone at the pin. With or without `--force`, the script refuses the PROTEUS
+folder, your home folder and a folder that holds one of them as its
+destination, a file or a broken link, and a folder with files that is not an
+Obliqua project. The forced form also refuses a
+folder with files that is not a git clone of its own. An Obliqua clone at its pin with no `Manifest.toml` gives a warning
 that its Julia environment is not instantiated, with the fix
 `bash tools/get_obliqua.sh`. The AGNI fix is
 `bash tools/get_agni.sh`. The SOCRATES fix also rebuilds AGNI,
@@ -215,8 +219,11 @@ This lists the fixable issues and their commands but does not execute anything.
   with a new one; for atmodeller the commands check out the pinned commit,
   not a release tag. Run the one you want by hand. A folder that is not a git
   clone of its own gets no git command, which would act on the repository
-  around it: only the `--force` replacement or, for atmodeller and Obliqua,
-  the advice to move it away or delete it and run the setup script again.
+  around it. When it is the module's own folder of the PROTEUS root, the
+  doctor shows the `--force` replacement for a module with a release tag, and
+  for atmodeller, which a commit pins, the advice to move it away or delete it
+  and run the setup script again, as `get_atmodeller.sh` prints it; a folder
+  elsewhere gets the advice to move it away.
   An Obliqua folder that is not at its pin is not changed either: the doctor
   shows `bash tools/get_obliqua.sh --force <folder>`, which replaces the
   folder with a new clone at the pin. `bash tools/get_obliqua.sh` prints the

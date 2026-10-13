@@ -138,7 +138,7 @@ The installer runs through the following phases automatically:
 
 The installer clones the four further modules into the PROTEUS folder, each under its own licence: atmodeller (GPL-3.0), VULCAN (GPL-3.0), Morrigan (Apache-2.0) and Obliqua (MIT). PROTEUS itself is under Apache-2.0.
 
-The installer and the setup scripts in `tools/` test the SSH access to GitHub without a question on the terminal. When the test fails (no key that GitHub accepts, a key with a passphrase that no SSH agent holds, or no host key of github.com on this machine), they clone over HTTPS.
+The installer and the setup scripts that can clone over SSH (those of the Python modules, SOCRATES, LavAtmos and ThermoEngineLite) test the SSH access to GitHub without a question on the terminal. When the test fails (no key that GitHub accepts, a key with a passphrase that no SSH agent holds, or no host key of github.com on this machine), they clone over HTTPS. `get_agni.sh`, `get_obliqua.sh` and `get_spider.sh` have no SSH test: they clone the HTTPS URL that `pyproject.toml` gives.
 
 The installer prints one line per build step and writes the full build output to `install_<date>_<time>.log` (for example `install_20261011_142530.log`) in the PROTEUS folder; when a step fails, it also prints the last 40 lines of that step's output.
 

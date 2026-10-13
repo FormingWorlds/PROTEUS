@@ -59,7 +59,12 @@ bash tools/get_obliqua.sh
 
 The options `--register` (adds Obliqua to the default Julia environment) and
 `--test` (runs its own tests) exist. `--force` replaces an Obliqua clone with a
-new one at the pin, and refuses a folder that is not an Obliqua clone.
+new one at the pin. The script accepts an empty folder and a path that does
+not exist, and a link to a folder stands for that folder. With or without
+`--force` it refuses the PROTEUS folder, your home folder and a folder that
+holds one of them, a file or a broken link, and a folder with files that is
+not an Obliqua project; with `--force` it also refuses a folder with files
+that is not a git clone of its own.
 
 ## Synthetic observations (PetitRADTRANS)
 
@@ -80,6 +85,8 @@ The installer sets atmodeller up automatically as an editable clone in `Atmodell
 CALLIOPE, selected with `outgas.module = "atmodeller"`. The clone comes from
 [FormingWorlds/atmodeller](https://github.com/FormingWorlds/atmodeller) at the
 commit that `pyproject.toml` pins under `[tool.proteus.modules.atmodeller]`.
+`bash tools/get_atmodeller.sh --force` replaces whatever is in `Atmodeller/`
+with a new clone, also a folder with files that is not a git clone.
 To repeat the setup step by hand:
 
 ```console

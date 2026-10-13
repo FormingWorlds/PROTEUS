@@ -195,7 +195,12 @@ Aragog, Zalmoxis, VULCAN, Morrigan and atmodeller) never give these two messages
 (`get_vulcan.sh` first runs `make` in its `fastchem_vulcan` folder) and print
 the commands that move it to its release tag (for atmodeller, its pinned commit) or replace it; an empty folder
 gets a new clone. `get_obliqua.sh` does the same for an Obliqua folder, and
-instantiates its Julia environment in place of the pip install. They stop with an error when the pip install of the folder
+instantiates its Julia environment in place of the pip install; a link to a
+folder stands for that folder. It stops, with or without `--force`, for the
+PROTEUS folder, your home folder and a folder that holds one of them, for a
+file or a broken link, and for a folder with files that is not an Obliqua
+project; with `--force` it also stops for a folder with files that is not a
+git clone of its own. They stop with an error when the pip install of the folder
 fails, and `get_vulcan.sh` stops when the folder has no `fastchem_vulcan`
 folder or its `make` fails.
 

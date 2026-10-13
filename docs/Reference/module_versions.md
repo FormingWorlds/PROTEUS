@@ -41,9 +41,9 @@ pinned commit.
 | Obliqua | Multi-phase tidal response (Julia) | [![Obliqua](https://img.shields.io/badge/Obliqua-ee1ef40d-green)](https://github.com/FormingWorlds/Obliqua/commit/ee1ef40deaac47e1ba9e6d344a8541f500bb9e94){target="_blank" rel="noopener"} | [Docs](https://proteus-framework.org/Obliqua/) |
 <!-- END GIT_TABLE -->
 
-### Modules from package extras
+### Further modules
 
-`bash install.sh` sets up atmodeller, VULCAN, Morrigan and Obliqua. In `pyproject.toml`, atmodeller, VULCAN and Morrigan are package extras with a version floor. The installer clones atmodeller at the commit under `[tool.proteus.modules.atmodeller]`; the table above gives the commit of Obliqua.
+`bash install.sh` sets up atmodeller, VULCAN, Morrigan and Obliqua. In `pyproject.toml`, atmodeller, VULCAN and Morrigan are package extras with a version floor. The installer clones atmodeller at the commit under `[tool.proteus.modules.atmodeller]`; the table above gives the commit of Obliqua. LovePy follows the branch under `[tool.proteus.modules.lovepy]`.
 
 <!-- BEGIN OPTIONAL_TABLE -->
 | Module | Role | Pin | Docs |
