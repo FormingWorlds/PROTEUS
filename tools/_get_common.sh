@@ -107,18 +107,11 @@ guard_dirty_checkout() {
 }
 
 # Report whether GitHub accepts an SSH key, as "true" or "false" on stdout.
-#
-# `ssh -T git@github.com` exits 1 when the key is accepted (GitHub refuses
-# the interactive shell it was asked for) and 255 when it is not, so exit
-# code 1 is the success signal. The probe honours GIT_SSH_COMMAND, so a
-# caller such as CI can make it non-interactive and fast-failing; the
-# expansion is unquoted so that its options reach ssh as separate words,
-# which means an option value containing a space does not survive. Its own
-# output is sent to stderr, where the user still sees it, so that it
-# cannot contaminate the answer read by a command substitution.
+# Probes non-interactively with BatchMode=yes and ConnectTimeout=10.
+# Exit code 1 signals success (GitHub authenticates the key and refuses a shell).
 github_use_ssh() {
     local rc=0
-    ${GIT_SSH_COMMAND:-ssh} -T git@github.com >&2 || rc=$?
+    ${GIT_SSH_COMMAND:-ssh} -o BatchMode=yes -o ConnectTimeout=10 -T git@github.com >&2 || rc=$?
     if [ "$rc" -eq 1 ]; then
         echo true
     else
@@ -342,7 +335,7 @@ _commit_text() {
 # Usage: _report_pinned_clone <distribution> <clone-dir> <script-label> <pin>. Reports an existing
 # clone against a commit pin and prints advice when HEAD does not match the pin commit.
 _report_pinned_clone() {
-    local dist="$1" dir="${2%/}" label="$3" pin="$4" head="" pin_commit="" found="" summary=""
+    local dist="$1" dir="${2%/}" label="$3" pin="$4" head="" pin_commit="" found="" summary="" own=false
     local qdir qref
     if [ ! -e "$dir/.git" ] && [ ! -L "$dir/.git" ]; then
         found="not a git clone"
@@ -351,6 +344,7 @@ _report_pinned_clone() {
         found="not a readable git clone"
         summary="$found"
     else
+        own=true
         head=$(git -C "$dir" rev-parse --verify --quiet HEAD 2>/dev/null) || head=""
         pin_commit=$(git -C "$dir" rev-parse --verify --quiet "$pin^{commit}" \
             2>/dev/null) || pin_commit=""
@@ -376,12 +370,18 @@ _report_pinned_clone() {
         echo "        git -C $qdir checkout --detach $qref"
         if [ -f "$dir/pyproject.toml" ] || [ -f "$dir/setup.py" ]; then
             echo "        pip install -e $qdir"
+        elif [ -f "$dir/Project.toml" ]; then
+            echo "        bash tools/$label"
         fi
         echo "    Or replace it with a new clone, which deletes everything in it, with:"
-    else
+        echo "        bash tools/$label --force"
+    elif [ "$own" = true ]; then
         echo "    From the PROTEUS folder, replace it with a new clone, which deletes everything in it, with:"
+        echo "        bash tools/$label --force"
+    else
+        echo "    From the PROTEUS folder, move it away or delete it by hand, then run:"
+        echo "        bash tools/$label"
     fi
-    echo "        bash tools/$label --force"
 }
 
 # Usage: report_clone_state <dist> <clone-dir> <label> [pin]. Reads <clone-dir> with read-only

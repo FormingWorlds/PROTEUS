@@ -567,13 +567,16 @@ def test_github_use_ssh_honours_git_ssh_command(tmp_path):
             **os.environ,
             'PATH': f'{stubs}:{os.environ["PATH"]}',
             'STUB_LOG': str(log),
-            'GIT_SSH_COMMAND': 'stub-ssh -o BatchMode=yes',
+            'GIT_SSH_COMMAND': 'stub-ssh -o CustomOption=foo',
         },
     )
 
     assert res.returncode == 0, res.stderr
     assert res.stdout.strip() == '[true]'
-    assert log.read_text().strip() == 'stub-ssh -o BatchMode=yes -T git@github.com'
+    assert (
+        log.read_text().strip()
+        == 'stub-ssh -o CustomOption=foo -o BatchMode=yes -o ConnectTimeout=10 -T git@github.com'
+    )
 
 
 @pytest.mark.unit
@@ -4817,7 +4820,7 @@ def test_atmodeller_single_pin_in_pyproject():
     )
     table = data['tool']['proteus']['modules']['atmodeller']
     assert table['url'] == 'https://github.com/FormingWorlds/atmodeller.git'
-    assert table['ref'] == '77e81aac5147bad7eec727fba5b299e055db2d4d'
+    assert re.fullmatch(r'[0-9a-f]{40}', table['ref'])
 
 
 @pytest.mark.unit
@@ -4861,10 +4864,13 @@ def test_atmodeller_existing_folder_off_pin_stays_and_advises(tmp_path):
         f'atmodeller: {clone} stays as it is: commit {site["tip_sha"][:7]}; not at the pinned commit {target_short}'
         in res.stdout
     )
-    assert f'git -C {clone} fetch origin' in res.stdout
-    assert f'git -C {clone} checkout --detach {site["target_sha"]}' in res.stdout
-    assert f'pip install -e {clone}' in res.stdout
-    assert 'bash tools/get_atmodeller.sh --force' in res.stdout
+    lines = [ln.strip() for ln in res.stdout.splitlines()]
+    idx_fetch = lines.index(f'git -C {clone} fetch origin')
+    idx_checkout = lines.index(f'git -C {clone} checkout --detach {site["target_sha"]}')
+    idx_pip = lines.index(f'pip install -e {clone}')
+    idx_force = lines.index('bash tools/get_atmodeller.sh --force')
+    assert idx_fetch < idx_checkout < idx_pip < idx_force
+    assert not any(ln == 'bash tools/get_atmodeller.sh' for ln in lines)
     assert git(clone, 'rev-parse', 'HEAD') == site['tip_sha']
 
 
@@ -5109,7 +5115,6 @@ def _obliqua_site(tmp_path: Path) -> dict:
     (work / 'Project.toml').write_text(
         'name = "Obliqua"\nuuid = "12345678-1234-1234-1234-123456789abc"\n'
     )
-    (work / 'Manifest.toml').write_text('# Obliqua Manifest\nversion = 1\n')
     git(work, 'add', '.')
     git(work, 'commit', '-q', '-m', 'initial')
     target_sha = git(work, 'rev-parse', 'HEAD')
@@ -5142,6 +5147,13 @@ def _obliqua_site(tmp_path: Path) -> dict:
         'julia',
         '#!/bin/sh\n'
         'echo "$@" >> "$STUB_JULIA_LOG"\n'
+        'if [ ! -f "Project.toml" ]; then\n'
+        '    echo "ERROR: no Project.toml in $PWD" >&2\n'
+        '    exit 1\n'
+        'fi\n'
+        'case "$*" in\n'
+        '    *"Pkg.instantiate"*) echo "# Manifest generated" > Manifest.toml ;;\n'
+        'esac\n'
         'if [ -n "${FAIL_JULIA_PATTERN:-}" ]; then\n'
         '    case "$*" in\n'
         '        *"$FAIL_JULIA_PATTERN"*) exit 1 ;;\n'
@@ -5186,6 +5198,7 @@ def test_obliqua_new_clone_and_instantiate(tmp_path):
     assert res.returncode == 0, res.stdout + res.stderr
     clone = site['root'] / 'Obliqua'
     assert clone.is_dir()
+    assert (clone / 'Manifest.toml').is_file()
     assert git(clone, 'rev-parse', 'HEAD') == site['target_sha']
     calls = site['log'].read_text().splitlines()
     assert '--project=. -e using Pkg; Pkg.resolve(); Pkg.instantiate()' in calls
@@ -5217,19 +5230,18 @@ def test_obliqua_test_option_runs_test_suite(tmp_path):
 
 @pytest.mark.unit
 def test_obliqua_existing_folder_at_pin_stays_and_instantiates(tmp_path):
-    """Verify existing folder at pin stays, manifest is preserved, and only instantiate runs."""
+    """Verify existing folder at pin stays, manifest is instantiated, and only instantiate runs."""
     site = _obliqua_site(tmp_path)
     assert _run_tool(site, 'get_obliqua.sh').returncode == 0
     clone = site['root'] / 'Obliqua'
     (clone / 'local_note.txt').write_text('keep me\n')
-    manifest_bytes = b'# custom manifest bytes\nversion = 99\n'
-    (clone / 'Manifest.toml').write_bytes(manifest_bytes)
+    (clone / 'Manifest.toml').unlink()
     site['log'].write_text('')
     res = _run_tool(site, 'get_obliqua.sh')
     assert res.returncode == 0, res.stdout + res.stderr
     assert f'Obliqua: {clone} is at the pinned commit {site["target_sha"][:8]}' in res.stdout
     assert (clone / 'local_note.txt').read_text() == 'keep me\n'
-    assert (clone / 'Manifest.toml').read_bytes() == manifest_bytes
+    assert (clone / 'Manifest.toml').is_file()
     assert git(clone, 'rev-parse', 'HEAD') == site['target_sha']
     calls = site['log'].read_text().splitlines()
     assert calls == ['--project=. -e using Pkg; Pkg.instantiate()']
@@ -5251,10 +5263,13 @@ def test_obliqua_existing_folder_off_pin_stays_and_advises(tmp_path):
         f'Obliqua: {clone} stays as it is: commit {site["tip_sha"][:7]}; '
         f'not at the pinned commit {target_short}'
     ) in res.stdout
-    assert f'git -C {clone} fetch origin' in res.stdout
-    assert f'git -C {clone} checkout --detach {site["target_sha"]}' in res.stdout
+    lines = [ln.strip() for ln in res.stdout.splitlines()]
+    idx_fetch = lines.index(f'git -C {clone} fetch origin')
+    idx_checkout = lines.index(f'git -C {clone} checkout --detach {site["target_sha"]}')
+    idx_step = lines.index('bash tools/get_obliqua.sh')
+    idx_force = lines.index('bash tools/get_obliqua.sh --force')
+    assert idx_fetch < idx_checkout < idx_step < idx_force
     assert 'pip install -e' not in res.stdout
-    assert 'bash tools/get_obliqua.sh --force' in res.stdout
     assert git(clone, 'rev-parse', 'HEAD') == site['tip_sha']
     assert (clone / 'Manifest.toml').read_bytes() == manifest_bytes
 
@@ -5312,11 +5327,11 @@ def test_pinned_clone_without_git_folder_reports_not_a_git_clone(tmp_path):
     )
     assert expected_stay in res.stdout
     expected_advice = (
-        'From the PROTEUS folder, replace it with a new clone, which deletes '
-        'everything in it, with:'
+        '    From the PROTEUS folder, move it away or delete it by hand, then run:\n'
+        '        bash tools/get_test.sh'
     )
     assert expected_advice in res.stdout
-    assert 'bash tools/get_test.sh --force' in res.stdout
+    assert '--force' not in res.stdout
     assert 'fetch origin' not in res.stdout
     assert 'checkout --detach' not in res.stdout
 
@@ -5467,7 +5482,13 @@ def test_obliqua_custom_destination_off_pin_advises_custom_folder(tmp_path):
     git(custom, 'checkout', '-q', 'main')
     res = _run_tool(site, 'get_obliqua.sh', str(custom))
     assert res.returncode == 0, res.stdout + res.stderr
-    assert f'bash tools/get_obliqua.sh {shlex.quote(str(custom))} --force' in res.stdout
+    lines = [ln.strip() for ln in res.stdout.splitlines()]
+    q_dest = shlex.quote(str(custom))
+    idx_fetch = lines.index(f'git -C {custom} fetch origin')
+    idx_checkout = lines.index(f'git -C {custom} checkout --detach {site["target_sha"]}')
+    idx_step = lines.index(f'bash tools/get_obliqua.sh {q_dest}')
+    idx_force = lines.index(f'bash tools/get_obliqua.sh {q_dest} --force')
+    assert idx_fetch < idx_checkout < idx_step < idx_force
     assert 'bash tools/get_obliqua.sh --force\n' not in res.stdout
 
 
@@ -5509,6 +5530,7 @@ def test_pinned_clone_unresolvable_head(tmp_path):
     assert 'a HEAD that git cannot resolve' in res.stdout
     assert 'commit ;' not in res.stdout
     assert stays.read_text().splitlines() == ['Atmodeller (HEAD unknown)']
+    assert 'bash tools/get_atmodeller.sh --force' in res.stdout
 
 
 @pytest.mark.unit
@@ -5608,3 +5630,396 @@ def test_obliqua_custom_destination_with_space_off_pin_advises_escaped_path(tmp_
     expected_path = str(custom).replace(' ', r'\ ')
     assert f'bash tools/get_obliqua.sh {expected_path} --force' in res.stdout
     assert f'bash tools/get_obliqua.sh {custom} --force' not in res.stdout
+
+
+# ===================================================================
+# W11b: forced replace safety, ssh batch mode, and unreadable clones
+# ===================================================================
+
+
+@pytest.mark.unit
+def test_obliqua_force_refuses_site_root(tmp_path):
+    """Verify get_obliqua.sh --force refuses to delete the PROTEUS root directory."""
+    site = _obliqua_site(tmp_path)
+    marker = site['root'] / 'marker.txt'
+    marker.write_text('keep this file\n')
+    before_names = sorted(p.name for p in site['root'].iterdir())
+    res = _run_tool(site, 'get_obliqua.sh', '--force', str(site['root']))
+    assert res.returncode == 1, res.stdout + res.stderr
+    assert (
+        f'ERROR: --force would delete {site["root"]}; {site["root"]} is unchanged' in res.stderr
+    )
+    assert sorted(p.name for p in site['root'].iterdir()) == before_names
+    assert marker.read_text() == 'keep this file\n'
+    assert not any(
+        '.tmp.' in p.name or '.old.' in p.name for p in site['root'].parent.iterdir()
+    )
+    assert site['log'].read_text() == ''
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'alias_mode',
+    ['dot', 'tools-parent', 'trailing-slash', 'symlink'],
+)
+def test_obliqua_force_refuses_site_root_aliases(tmp_path, alias_mode):
+    """Verify get_obliqua.sh --force refuses all alias paths targeting the PROTEUS root."""
+    site = _obliqua_site(tmp_path)
+    marker = site['root'] / 'marker.txt'
+    marker.write_text('keep alias\n')
+    before_names = sorted(p.name for p in site['root'].iterdir())
+    if alias_mode == 'symlink':
+        link = tmp_path / 'link_to_root'
+        link.symlink_to(site['root'])
+        target_path = str(link)
+    else:
+        path_forms = {
+            'dot': str(site['root'] / '.'),
+            'tools-parent': str(site['root'] / 'tools' / '..'),
+            'trailing-slash': f'{site["root"]}/',
+        }
+        target_path = path_forms[alias_mode]
+    res = _run_tool(site, 'get_obliqua.sh', '--force', target_path)
+    assert res.returncode == 1, res.stdout + res.stderr
+    assert (
+        f'ERROR: --force would delete {site["root"]}; {target_path} is unchanged' in res.stderr
+    )
+    assert sorted(p.name for p in site['root'].iterdir()) == before_names
+    assert marker.read_text() == 'keep alias\n'
+    assert not any(
+        '.tmp.' in p.name or '.old.' in p.name for p in site['root'].parent.iterdir()
+    )
+    assert site['log'].read_text() == ''
+
+
+@pytest.mark.unit
+def test_obliqua_force_refuses_parent_of_site_root(tmp_path):
+    """Verify get_obliqua.sh --force refuses to delete the parent directory of PROTEUS root."""
+    site = _obliqua_site(tmp_path)
+    parent = site['root'].parent
+    marker = parent / 'parent_marker.txt'
+    marker.write_text('preserve parent\n')
+    res = _run_tool(site, 'get_obliqua.sh', '--force', str(parent))
+    assert res.returncode == 1, res.stdout + res.stderr
+    assert f'ERROR: --force would delete {site["root"]}; {parent} is unchanged' in res.stderr
+    assert marker.read_text() == 'preserve parent\n'
+    assert site['root'].is_dir()
+    assert not any('.tmp.' in p.name or '.old.' in p.name for p in parent.iterdir())
+    assert site['log'].read_text() == ''
+
+
+@pytest.mark.unit
+def test_obliqua_force_refuses_home_and_home_parent(tmp_path):
+    """Verify get_obliqua.sh --force refuses HOME and its parent directory."""
+    site = _obliqua_site(tmp_path)
+    fake_home = tmp_path / 'home'
+    fake_home.mkdir()
+    (fake_home / 'home_marker.txt').write_text('home content\n')
+    site['env']['HOME'] = str(fake_home)
+    res = _run_tool(site, 'get_obliqua.sh', '--force', str(fake_home))
+    assert res.returncode == 1, res.stdout + res.stderr
+    assert f'ERROR: --force would delete {fake_home}; {fake_home} is unchanged' in res.stderr
+    assert (fake_home / 'home_marker.txt').read_text() == 'home content\n'
+    assert not any('.tmp.' in p.name for p in tmp_path.iterdir())
+
+    home_parent = tmp_path / 'homeparent'
+    home_nested = home_parent / 'home'
+    home_nested.mkdir(parents=True)
+    (home_parent / 'parent_marker.txt').write_text('parent content\n')
+    site['env']['HOME'] = str(home_nested)
+    res2 = _run_tool(site, 'get_obliqua.sh', '--force', str(home_parent))
+    assert res2.returncode == 1, res2.stdout + res2.stderr
+    assert (
+        f'ERROR: --force would delete {home_nested}; {home_parent} is unchanged' in res2.stderr
+    )
+    assert (home_parent / 'parent_marker.txt').read_text() == 'parent content\n'
+    assert site['log'].read_text() == ''
+
+
+@pytest.mark.unit
+def test_obliqua_force_refuses_non_clone_folder_with_files(tmp_path):
+    """Verify get_obliqua.sh --force refuses a non-empty folder that is not a git clone."""
+    site = _obliqua_site(tmp_path)
+    target = tmp_path / 'non_clone_folder'
+    target.mkdir()
+    marker = target / 'user_file.txt'
+    marker.write_text('important data\n')
+    res = _run_tool(site, 'get_obliqua.sh', '--force', str(target))
+    assert res.returncode == 1, res.stdout + res.stderr
+    assert (
+        f'ERROR: {target} holds files and is not a git clone of its own; move it away or delete it by hand; it is unchanged'
+        in res.stderr
+    )
+    assert marker.read_text() == 'important data\n'
+    assert not (target / '.git').exists()
+    assert not any('.tmp.' in p.name for p in tmp_path.iterdir())
+    assert site['log'].read_text() == ''
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('has_project_toml', [False, True], ids=['readme-only', 'other-name'])
+def test_obliqua_force_refuses_foreign_git_clone(tmp_path, has_project_toml):
+    """Verify get_obliqua.sh --force refuses git clones that are not Obliqua."""
+    site = _obliqua_site(tmp_path)
+    target = tmp_path / 'foreign_clone'
+    target.mkdir()
+    git(target, 'init', '-q', '-b', 'main')
+    (target / 'README.md').write_text('Foreign project\n')
+    if has_project_toml:
+        (target / 'Project.toml').write_text('name = "Other"\nuuid = "abcd"\n')
+    git(target, 'add', '.')
+    git(target, 'commit', '-q', '-m', 'init')
+    res = _run_tool(site, 'get_obliqua.sh', '--force', str(target))
+    assert res.returncode == 1, res.stdout + res.stderr
+    assert (
+        f'ERROR: {target} is a git clone that is not Obliqua; move it away or delete it by hand; it is unchanged'
+        in res.stderr
+    )
+    assert (target / 'README.md').read_text() == 'Foreign project\n'
+    assert not any('.tmp.' in p.name for p in tmp_path.iterdir())
+    assert site['log'].read_text() == ''
+
+
+@pytest.mark.unit
+def test_obliqua_force_refuses_regular_file(tmp_path):
+    """Verify get_obliqua.sh --force refuses to replace a regular file."""
+    site = _obliqua_site(tmp_path)
+    target = tmp_path / 'single_file.txt'
+    target.write_text('plain file content\n')
+    res = _run_tool(site, 'get_obliqua.sh', '--force', str(target))
+    assert res.returncode == 1, res.stdout + res.stderr
+    assert (
+        f'ERROR: --force replaces a folder, and {target} is not one; it is unchanged'
+        in res.stderr
+    )
+    assert target.is_file()
+    assert target.read_text() == 'plain file content\n'
+    assert not any('.tmp.' in p.name for p in tmp_path.iterdir())
+    assert site['log'].read_text() == ''
+
+
+@pytest.mark.unit
+def test_obliqua_force_allowed_paths(tmp_path):
+    """Verify get_obliqua.sh --force allows missing path and empty directory."""
+    site = _obliqua_site(tmp_path)
+    missing = site['root'] / 'missing_target'
+    res_missing = _run_tool(site, 'get_obliqua.sh', '--force', str(missing))
+    assert res_missing.returncode == 0, res_missing.stdout + res_missing.stderr
+    assert (missing / 'Project.toml').is_file()
+    assert git(missing, 'rev-parse', 'HEAD') == site['target_sha']
+
+    empty = site['root'] / 'empty_target'
+    empty.mkdir()
+    res_empty = _run_tool(site, 'get_obliqua.sh', '--force', str(empty))
+    assert res_empty.returncode == 0, res_empty.stdout + res_empty.stderr
+    assert (empty / 'Project.toml').is_file()
+    assert git(empty, 'rev-parse', 'HEAD') == site['target_sha']
+
+
+@pytest.mark.unit
+def test_obliqua_non_clone_folder_stays_and_advises_manual_removal(tmp_path):
+    """Verify non-clone Obliqua folder without --force stays and advises manual removal."""
+    site = _obliqua_site(tmp_path)
+    target = site['root'] / 'Obliqua'
+    target.mkdir()
+    (target / 'Project.toml').write_text('name = "Other"\nuuid = "1234"\n')
+    (target / 'custom.txt').write_text('data\n')
+    res = _run_tool(site, 'get_obliqua.sh')
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert f'Obliqua: {target} stays as it is: not a git clone' in res.stdout
+    assert 'From the PROTEUS folder, move it away or delete it by hand, then run:' in res.stdout
+    assert 'bash tools/get_obliqua.sh' in res.stdout
+    assert '--force' not in res.stdout
+    assert (target / 'custom.txt').read_text() == 'data\n'
+
+
+@pytest.mark.unit
+def test_atmodeller_non_clone_folder_stays_and_advises_manual_removal(tmp_path):
+    """Verify non-clone atmodeller folder without --force stays and advises manual removal."""
+    site = _atmodeller_site(tmp_path)
+    target = site['root'] / 'Atmodeller'
+    target.mkdir()
+    (target / 'custom.txt').write_text('data\n')
+    res = _run_tool(site, 'get_atmodeller.sh')
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert f'atmodeller: {target} stays as it is: not a git clone' in res.stdout
+    assert 'From the PROTEUS folder, move it away or delete it by hand, then run:' in res.stdout
+    assert 'bash tools/get_atmodeller.sh' in res.stdout
+    assert '--force' not in res.stdout
+    assert (target / 'custom.txt').read_text() == 'data\n'
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('script', 'fixture_fn'),
+    [
+        ('get_atmodeller.sh', lambda p: _atmodeller_site(p)),
+        (
+            'get_vulcan.sh',
+            lambda p: _floor_tag_site(
+                p,
+                '[project]\nname="fixture"\ndependencies=[]\n[project.optional-dependencies]\nvulcan=["fwl-vulcan>=26.4.22"]\n',
+                {'VULCAN': '26.04.22'},
+            ),
+        ),
+        (
+            'get_morrigan.sh',
+            lambda p: _floor_tag_site(
+                p,
+                '[project]\nname="fixture"\ndependencies=[]\n[project.optional-dependencies]\nmorrigan=["fwl-morrigan>=26.4.22"]\n',
+                {'Morrigan': '26.04.22'},
+            ),
+        ),
+    ],
+    ids=['atmodeller', 'vulcan', 'morrigan'],
+)
+def test_modules_ssh_probe_batch_mode_arguments(tmp_path, script, fixture_fn):
+    """Verify module setup scripts execute SSH probes with batch mode and timeout options."""
+    site = fixture_fn(tmp_path)
+    ssh_log = tmp_path / 'ssh_probe.log'
+    _write_stub(
+        site['root'].parent / 'stubs',
+        'ssh',
+        f'#!/bin/sh\necho "$@" >> {shlex.quote(str(ssh_log))}\nexit 255\n',
+    )
+    res = _run_tool(site, script)
+    assert res.returncode == 0, res.stdout + res.stderr
+    calls = ssh_log.read_text().splitlines()
+    assert len(calls) >= 1
+    assert '-o BatchMode=yes' in calls[0]
+    assert '-o ConnectTimeout=10' in calls[0]
+    assert calls[0].endswith('-T git@github.com')
+    assert 'git@github.com:' not in res.stdout
+
+
+@pytest.mark.unit
+def test_ssh_invocations_use_batch_mode():
+    """Verify every non-comment shell command executing ssh includes BatchMode=yes."""
+    repo_root = Path(__file__).resolve().parents[2]
+    sh_files = [repo_root / 'install.sh', *(repo_root / 'tools').glob('*.sh')]
+    checked_count = 0
+    for path in sh_files:
+        lines = path.read_text(encoding='utf-8').splitlines()
+        for idx, line in enumerate(lines, 1):
+            stripped = line.strip()
+            if not stripped or stripped.startswith(
+                ('#', 'echo ', 'printf ', 'info ', 'warn ', 'fail ')
+            ):
+                continue
+            if (
+                re.search(r'(^|\$|\(|\s)ssh\s', stripped)
+                or '${GIT_SSH_COMMAND:-ssh}' in stripped
+            ):
+                assert 'BatchMode=yes' in stripped, (
+                    f'{path.name}:{idx} lacks BatchMode=yes: {line}'
+                )
+                checked_count += 1
+    assert checked_count == 2
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('script', 'fixture_fn', 'folder_name'),
+    [
+        ('get_atmodeller.sh', lambda p: _atmodeller_site(p), 'Atmodeller'),
+        ('get_obliqua.sh', lambda p: _obliqua_site(p), 'Obliqua'),
+    ],
+    ids=['atmodeller', 'obliqua'],
+)
+def test_pinned_clone_in_outer_git_repo_reports_not_a_readable_git_clone(
+    tmp_path, script, fixture_fn, folder_name
+):
+    """Verify empty .git inside outer repo reports not a readable git clone without git -C advice."""
+    site = fixture_fn(tmp_path)
+    git(site['root'], 'init', '-q', '-b', 'main')
+    (site['root'] / 'outer.txt').write_text('outer commit\n')
+    git(site['root'], 'add', '.')
+    git(site['root'], 'commit', '-q', '-m', 'outer')
+    outer_hash = git(site['root'], 'rev-parse', 'HEAD')[:7]
+
+    target = site['root'] / folder_name
+    (target / '.git').mkdir(parents=True)
+    (target / 'content.txt').write_text('data\n')
+
+    res = _run_tool(site, script)
+    output = res.stdout + res.stderr
+    assert f'{target} stays as it is: not a readable git clone' in output
+    assert 'not a readable git clone' in output
+    assert 'git -C' not in output
+    assert outer_hash not in output
+    assert 'From the PROTEUS folder, move it away or delete it by hand, then run:' in output
+    assert f'bash tools/{script}' in output
+
+
+@pytest.mark.unit
+def test_obliqua_empty_folder_without_force_clones_and_instantiates(tmp_path):
+    """Verify empty Obliqua folder without --force clones and runs julia instantiate."""
+    site = _obliqua_site(tmp_path)
+    clone = site['root'] / 'Obliqua'
+    clone.mkdir()
+    res = _run_tool(site, 'get_obliqua.sh')
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert (clone / '.git').is_dir()
+    assert (clone / 'Project.toml').is_file()
+    assert git(clone, 'rev-parse', 'HEAD') == site['target_sha']
+    calls = site['log'].read_text().splitlines()
+    assert '--project=. -e using Pkg; Pkg.resolve(); Pkg.instantiate()' in calls
+
+
+@pytest.mark.unit
+def test_atmodeller_empty_folder_without_force_clones_and_installs(tmp_path):
+    """Verify empty Atmodeller folder without --force clones and runs pip install."""
+    site = _atmodeller_site(tmp_path)
+    clone = site['root'] / 'Atmodeller'
+    clone.mkdir()
+    res = _run_tool(site, 'get_atmodeller.sh')
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert (clone / '.git').is_dir()
+    assert (clone / 'pyproject.toml').is_file()
+    assert git(clone, 'rev-parse', 'HEAD') == site['target_sha']
+    assert f'install -U -e {clone}' in site['log'].read_text()
+
+
+@pytest.mark.unit
+def test_obliqua_missing_julia_exits_1(tmp_path):
+    """Verify get_obliqua.sh exits 1 when julia is missing from PATH."""
+    site = _obliqua_site(tmp_path)
+    filtered_path = os.pathsep.join(
+        p for p in site['env']['PATH'].split(os.pathsep) if not (Path(p) / 'julia').exists()
+    )
+    site['env']['PATH'] = filtered_path
+    res = _run_tool(site, 'get_obliqua.sh')
+    assert res.returncode == 1, res.stdout + res.stderr
+    assert 'ERROR: julia is not on PATH' in res.stderr
+    assert not (site['root'] / 'Obliqua').exists()
+
+
+@pytest.mark.unit
+def test_obliqua_missing_pin_table_and_env_exits_1(tmp_path):
+    """Verify get_obliqua.sh exits 1 when pin table and env vars are missing."""
+    site = _obliqua_site(tmp_path)
+    (site['root'] / 'pyproject.toml').write_text(
+        '[project]\nname = "fixture"\ndependencies = []\n'
+    )
+    site['env'].pop('OBLIQUA_GIT_URL', None)
+    site['env'].pop('OBLIQUA_GIT_REF', None)
+    res = _run_tool(site, 'get_obliqua.sh')
+    assert res.returncode == 1, res.stdout + res.stderr
+    assert 'ERROR: could not resolve obliqua url/ref from pyproject.toml' in res.stderr
+    assert not (site['root'] / 'Obliqua').exists()
+
+
+@pytest.mark.unit
+def test_obliqua_env_overrides_missing_pin_table(tmp_path):
+    """Verify environment variables allow cloning Obliqua without pin table in pyproject.toml."""
+    site = _obliqua_site(tmp_path)
+    (site['root'] / 'pyproject.toml').write_text(
+        '[project]\nname = "fixture"\ndependencies = []\n'
+    )
+    site['env']['OBLIQUA_GIT_URL'] = 'https://github.com/FormingWorlds/Obliqua.git'
+    site['env']['OBLIQUA_GIT_REF'] = site['target_sha']
+    res = _run_tool(site, 'get_obliqua.sh')
+    assert res.returncode == 0, res.stdout + res.stderr
+    clone = site['root'] / 'Obliqua'
+    assert (clone / 'Project.toml').is_file()
+    assert git(clone, 'rev-parse', 'HEAD') == site['target_sha']

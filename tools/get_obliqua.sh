@@ -31,13 +31,31 @@ case "$dest" in
     *) dest="$PWD/$dest" ;;
 esac
 
+if [ "$get_force" = true ] && { [ -e "$dest" ] || [ -L "$dest" ]; }; then
+    real=$(cd "$dest" 2>/dev/null && pwd -P) || real=""
+    [ -n "$real" ] || { echo "ERROR: --force replaces a folder, and $dest is not one; it is unchanged" >&2; exit 1; }
+    for keep in "$proteus_root" "${HOME:-}"; do
+        [ -n "$keep" ] || continue
+        keep_real=$(cd "$keep" 2>/dev/null && pwd -P) || continue
+        case "$keep_real/" in
+            "${real%/}/"*) echo "ERROR: --force would delete $keep; $dest is unchanged" >&2; exit 1 ;;
+        esac
+    done
+    if ! is_empty_dir "$dest"; then
+        is_own_clone "$dest" ||
+            { echo "ERROR: $dest holds files and is not a git clone of its own; move it away or delete it by hand; it is unchanged" >&2; exit 1; }
+        grep -q '^name = "Obliqua"' "$dest/Project.toml" 2>/dev/null ||
+            { echo "ERROR: $dest is a git clone that is not Obliqua; move it away or delete it by hand; it is unchanged" >&2; exit 1; }
+    fi
+fi
+
 if ! command -v julia >/dev/null 2>&1; then
     echo "ERROR: julia is not on PATH. Install Julia first (see https://github.com/FormingWorlds/Obliqua)." >&2
     exit 1
 fi
 
-ob_url="${OBLIQUA_GIT_URL:-$(python "$proteus_tools_dir/_module_pins.py" obliqua url)}"
-ob_ref="${OBLIQUA_GIT_REF:-$(python "$proteus_tools_dir/_module_pins.py" obliqua ref)}"
+ob_url="${OBLIQUA_GIT_URL:-$(python "$proteus_tools_dir/_module_pins.py" obliqua url || true)}"
+ob_ref="${OBLIQUA_GIT_REF:-$(python "$proteus_tools_dir/_module_pins.py" obliqua ref || true)}"
 if [ -z "$ob_url" ] || [ -z "$ob_ref" ]; then
     echo "ERROR: could not resolve obliqua url/ref from pyproject.toml" >&2
     exit 1

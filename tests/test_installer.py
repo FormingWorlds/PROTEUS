@@ -3982,8 +3982,13 @@ class TestFurtherModulesPhase:
         """The shipped lines of install.sh for the further modules phase."""
         lines = INSTALL_SH.read_text().splitlines()
         start = next(i for i, ln in enumerate(lines) if ln.startswith('FAILED_MODULES=""'))
-        end = next(
-            i for i, ln in enumerate(lines) if ln.startswith('# Verify the installation')
+        end = (
+            next(
+                i
+                for i, ln in enumerate(lines)
+                if i > start and ln.startswith('# Phase 8: Reference data')
+            )
+            - 1
         )
         return '\n'.join(lines[start:end]) + '\n'
 
@@ -4167,19 +4172,19 @@ class TestFurtherModulesPhase:
         assert 'Not at their release tag or pinned commit:' not in (res.stdout + res.stderr)
 
     def test_installer_phase_order_and_binding_positions(self):
-        """Phase 7 lies between develop install and verify, and bind_install_vars precedes phase 8."""
+        """Order of verify, bind_install_vars and further modules in install.sh."""
         lines = INSTALL_SH.read_text().splitlines()
-        idx_develop = next(
-            i for i, ln in enumerate(lines) if 'pip install -e ".[develop]"' in ln
-        )
-        idx_phase7 = next(i for i, ln in enumerate(lines) if 'phase 7 "Further modules"' in ln)
+        idx_phase6 = next(i for i, ln in enumerate(lines) if ln == 'CURRENT_PHASE=6')
         idx_verify = next(i for i, ln in enumerate(lines) if ln == 'verify_proteus_import')
         idx_bind = next(i for i, ln in enumerate(lines) if ln == 'bind_install_vars')
-        idx_phase8 = next(i for i, ln in enumerate(lines) if 'phase 8 "Reference data"' in ln)
-        assert idx_develop < idx_phase7
-        assert idx_phase7 < idx_verify
-        assert idx_verify < idx_bind
-        assert idx_bind < idx_phase8
+        idx_phase7 = next(i for i, ln in enumerate(lines) if ln == 'CURRENT_PHASE=7')
+        idx_first_module = next(
+            i for i, ln in enumerate(lines) if ln.startswith('install_further_module "')
+        )
+        assert idx_verify < idx_bind < idx_phase7 < idx_first_module
+        assert not any(
+            ln.startswith('CURRENT_PHASE=') for ln in lines[idx_phase6 + 1 : idx_verify]
+        )
 
     def test_phase_seven_further_module_scripts_list_and_files(self):
         """Phase 7 further module invocations match the four expected scripts in order and files exist."""

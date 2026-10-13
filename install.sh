@@ -1259,6 +1259,14 @@ python -c "from scikits_odes_sundials.cvode import CVODE, CV_RootFunction, Statu
 info "Setting up pre-commit hooks..."
 pre-commit install -f 2>&1 || warn "pre-commit install failed (non-critical)"
 
+# Verify the installation (captures the error and self-heals the conda MPI clash)
+verify_proteus_import
+info "Python packages installed"
+
+# The Julia fall-back of verify_proteus_import sets the last variable, so every variable is bound
+# here; an interrupt in a later phase then leaves them bound.
+bind_install_vars
+
 # ===================================================================
 # Phase 7: Further modules (Morrigan, VULCAN, atmodeller, Obliqua)
 # ===================================================================
@@ -1292,14 +1300,6 @@ if [ -n "$FURTHER_STAYS" ]; then
     fi
     rm -f "$FURTHER_STAYS"
 fi
-
-# Verify the installation (captures the error and self-heals the conda MPI clash)
-verify_proteus_import
-info "Python packages installed"
-
-# The Julia 1.11 fall-back of verify_proteus_import sets the last variable, so every variable is
-# recorded here, and an interrupted data download leaves them bound.
-bind_install_vars
 
 # ===================================================================
 # Phase 8: Reference data
