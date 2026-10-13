@@ -198,9 +198,10 @@ gets a new clone. `get_obliqua.sh` does the same for an Obliqua folder, and
 instantiates its Julia environment in place of the pip install; a link to a
 folder stands for that folder. It stops, with or without `--force`, for the
 PROTEUS folder, your home folder and a folder that holds one of them, for a
-file or a broken link, and for a folder with files that is not an Obliqua
+file or a broken link, for a path that goes through a folder that does not
+exist and then through `.` or `..`, and for a folder with files that is not an Obliqua
 project; with `--force` it also stops for a folder with files that is not a
-git clone of its own. They stop with an error when the pip install of the folder
+git clone of its own with a commit, and for a git worktree. They stop with an error when the pip install of the folder
 fails, and `get_vulcan.sh` stops when the folder has no `fastchem_vulcan`
 folder or its `make` fails.
 

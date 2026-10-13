@@ -62,9 +62,10 @@ The options `--register` (adds Obliqua to the default Julia environment) and
 new one at the pin. The script accepts an empty folder and a path that does
 not exist, and a link to a folder stands for that folder. With or without
 `--force` it refuses the PROTEUS folder, your home folder and a folder that
-holds one of them, a file or a broken link, and a folder with files that is
+holds one of them, a file or a broken link, a path that goes through a folder
+that does not exist and then through `.` or `..`, and a folder with files that is
 not an Obliqua project; with `--force` it also refuses a folder with files
-that is not a git clone of its own.
+that is not a git clone of its own with a commit, and a git worktree.
 
 ## Synthetic observations (PetitRADTRANS)
 
