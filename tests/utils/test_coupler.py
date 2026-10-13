@@ -774,8 +774,10 @@ _PLAIN_HELPFILE_READERS = {
     'src/proteus/plot/cpl_structure.py',
     'src/proteus/plot/cpl_visual.py',
     'src/proteus/utils/coupler.py',
+    'tools/make_docs_figures.py',
     'tools/plot_chili_comparison.py',
     'tools/plot_energy_balance.py',
+    'tools/plot_grid_tutorial.py',
     'tools/plot_tutorial.py',
 }
 

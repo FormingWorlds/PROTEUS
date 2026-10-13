@@ -2,7 +2,9 @@
 
 !!! warning "Experimental"
     Installing with [pixi](https://pixi.sh) is an experimental alternative to
-    conda. It may change or be removed.
+    conda. It may change or be removed, and it is not yet recommended for new
+    users: for a first install, follow the conda steps of the
+    [installation guide](installation.md).
 
 pixi builds the Python environment from the `pixi.toml` in the PROTEUS
 repository, so it replaces only the conda steps of the
