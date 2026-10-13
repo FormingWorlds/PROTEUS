@@ -1,18 +1,7 @@
 #!/bin/bash
-# Download and setup Aragog as an editable sibling checkout.
-#
-# Clones FormingWorlds/aragog into ./aragog/ inside the PROTEUS root and
-# installs it editable into the active Python environment. The editable
-# install takes precedence over the PyPI fwl-aragog pin on sys.path, so
-# any local edits to aragog/src/ are picked up by `import aragog` without
-# reinstalling.
-#
-# Checkout target: if PROTEUS is on a feature branch that aragog also has,
-# the matching aragog branch is installed so the paired code is exercised
-# together; otherwise the checkout is pinned to the fwl-aragog version floor
-# declared in pyproject.toml. The default branch (main) and a detached HEAD
-# always take the floor tag. To develop against the latest aragog, run
-# `git checkout main` inside ./aragog and reinstall.
+# Clone Aragog into ./aragog/ and install it editable. A new clone, and the one --force puts in
+# place of an old one, takes the Aragog branch named like the PROTEUS feature branch, if any, else
+# the fwl-aragog floor tag. An existing folder is installed as it is; only --force replaces it.
 
 echo "Set up Aragog..."
 
@@ -22,23 +11,15 @@ source "$(dirname "${BASH_SOURCE[0]}")/_get_common.sh" || exit 1
 # Path to PROTEUS folder
 root="$proteus_root"
 
-# Paired-branch detection. When PROTEUS is on a feature branch and aragog has a
-# branch of the same name, install that aragog branch so CI exercises the real
-# paired code instead of the released floor tag. In GitHub Actions the branch is
-# GITHUB_HEAD_REF (pull_request) or GITHUB_REF_NAME (push / workflow_dispatch);
-# locally it is the checked-out branch. The default branch and a detached HEAD
-# never pair, so main and tag builds keep the floor tag.
-proteus_branch="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}"
-if [ -z "$proteus_branch" ]; then
-    proteus_branch=$(git -C "$root" rev-parse --abbrev-ref HEAD 2>/dev/null)
-fi
-
 get_parse_args "$@"
+get_pairs_branch=true
 workpath="$root/aragog/"
-guard_dirty_checkout "$workpath" get_aragog.sh
+install_existing_clone fwl-aragog "$workpath" get_aragog.sh
 
-# Make room
-rm -rf "$workpath"
+# The new clone replaces the checkout only once it is on its branch or release tag.
+tmp_clone="${workpath%/}.tmp.$$"
+rm -rf "$tmp_clone"
+trap 'rm -rf "$tmp_clone"' EXIT
 
 # Check SSH access to GitHub
 use_ssh=$(github_use_ssh)
@@ -50,45 +31,17 @@ if [ "$use_ssh" = true ]; then
 else
     uri="https://github.com/FormingWorlds/aragog.git"
 fi
-echo "    $uri -> $workpath"
-git clone "$uri" "$workpath" || { echo "ERROR: git clone failed" >&2; exit 1; }
+echo "    $uri -> $tmp_clone"
+git clone "$uri" "$tmp_clone" ||
+    { echo "ERROR: git clone failed$(unchanged_note "$workpath")" >&2; exit 1; }
 
-cd "$workpath" || { echo "ERROR: cannot enter $workpath" >&2; exit 1; }
+checkout_paired_or_floor fwl-aragog "$tmp_clone" aragog
 
-# If PROTEUS is on a feature branch that aragog also has, install that branch;
-# otherwise pin to the fwl-aragog version floor declared in PROTEUS's
-# pyproject.toml, so main/tag builds are reproducible and unaffected. The full
-# clone above already fetched every aragog branch, so the pairing test reads the
-# local remote-tracking refs (no extra network round-trip, nothing to flake).
-match_branch=""
-case "$proteus_branch" in
-    '' | HEAD | main | master)
-        : ;;  # default branch or detached HEAD never pairs
-    *)
-        if git rev-parse --verify --quiet "refs/remotes/origin/$proteus_branch" >/dev/null; then
-            match_branch="$proteus_branch"
-        fi
-        ;;
-esac
-
-if [ -n "$match_branch" ]; then
-    git checkout "$match_branch" || { echo "ERROR: cannot checkout aragog branch $match_branch" >&2; exit 1; }
-    echo "PROTEUS is on branch '$proteus_branch'; installed paired aragog branch at $(git rev-parse --short HEAD)"
-else
-    floor=$(grep -oE 'fwl-aragog>=[0-9][0-9.]*' "$root/pyproject.toml" | head -1 | sed 's/.*>=//')
-    if [ -n "$floor" ]; then
-        echo "Pinning to fwl-aragog floor: $floor"
-        git checkout "tags/$floor" || { echo "ERROR: cannot checkout tag $floor" >&2; exit 1; }
-    else
-        echo "WARNING: could not read fwl-aragog floor from pyproject.toml; using HEAD" >&2
-    fi
-fi
+swap_in_checkout "$tmp_clone" "$workpath" || exit 1
+trap - EXIT
 
 # Install aragog package as editable
-pip install -U -e . || { echo "ERROR: editable install failed" >&2; exit 1; }
-
-# Back to old folder
-cd "$root"
+pip install -U -e "${workpath%/}" || { echo "ERROR: editable install failed" >&2; exit 1; }
 
 # Done
 echo "Done!"

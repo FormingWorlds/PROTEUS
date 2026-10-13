@@ -24,6 +24,7 @@ nav:
               - Overview: How-to/usage.md
               - Running and output: How-to/usage_running.md
               - Initial thermal conditions: How-to/usage_initial_conditions.md
+              - Core evolution: How-to/usage_core_evolution.md
               - Parameter grids: How-to/usage_grids.md
               - Postprocessing and chemistry: How-to/usage_postprocessing.md
               - Choose stellar spectrum: How-to/switch_spectrum.md
@@ -100,6 +101,9 @@ nav:
           - Outgas:
               - H2-MgSiO3 binodal (binodal.py): Validation/outgas/binodal.md
               - Rock-vapour molar masses (lavatmos.py): Validation/outgas/lavatmos.md
+              - Melt drainage across the freezing front (compaction.py): Validation/outgas/compaction.md
+              - Burial ledger for remelting (burial_ledger.py): Validation/outgas/burial_ledger.md
+              - Solid-phase volatile trapping (trapping.py): Validation/outgas/trapping.md
           - Star:
               - Stellar luminosity and instellation (star.py): Validation/star/star.md
               - Stellar wrapper dispatch (wrapper.py): Validation/star/wrapper.md

@@ -78,9 +78,29 @@ _DROP_PREFIXES = (
 # decision: pin it (OVERRIDES) or certify it neutral (add it here).
 _REVIEWED_NEUTRAL = frozenset(
     {
+        # Solid-phase volatile trapping. Inert on a migrated config:
+        # trap_mode defaults to 'none', so the partition coefficients and
+        # the front parameters are never read and behaviour is unchanged.
+        'outgas.trap_phi_min',
+        'outgas.trap_mush_log10visc',
+        'outgas.trap_n_front_min',
+        'outgas.trap_max_front_fraction',
+        'outgas.trap_mode',
+        'outgas.D_const_CH4',
+        'outgas.D_const_CO',
+        'outgas.D_const_CO2',
+        'outgas.D_const_H2',
+        'outgas.D_const_H2O',
+        'outgas.D_const_H2S',
+        'outgas.D_const_N2',
+        'outgas.D_const_NH3',
+        'outgas.D_const_O2',
+        'outgas.D_const_S2',
+        'outgas.D_const_SO2',
         # Accretion defaults to inactive with zero impactor budgets, zero
         # loss fractions, and unread dummy/morrigan sub-blocks.
         'accretion.atmloss_frac',
+        'accretion.atmloss_law',
         'accretion.atmloss_module',
         'accretion.dummy.eccentricity',
         'accretion.dummy.timeline_path',
@@ -139,6 +159,29 @@ _REVIEWED_NEUTRAL = frozenset(
         'interior_energetics.aragog.atol_temperature_equivalent',
         'interior_energetics.aragog.backend',
         'interior_energetics.aragog.core_bc',
+        # The core budget is read only when core_bc = "core_module",
+        # and a migrated config keeps core_bc at its default, so none of
+        # these values reaches the run.
+        'interior_energetics.aragog.core_module.alpha',
+        'interior_energetics.aragog.core_module.alpha_c',
+        'interior_energetics.aragog.core_module.c_light',
+        'interior_energetics.aragog.core_module.c_p',
+        'interior_energetics.aragog.core_module.depression',
+        'interior_energetics.aragog.core_module.ds_fusion',
+        'interior_energetics.aragog.core_module.f_ohm',
+        'interior_energetics.aragog.core_module.flux_geometry',
+        'interior_energetics.aragog.core_module.k_core',
+        'interior_energetics.aragog.core_module.layer_base_fraction',
+        'interior_energetics.aragog.core_module.layer_g_mix',
+        'interior_energetics.aragog.core_module.layer_k_mix',
+        'interior_energetics.aragog.core_module.light_element_fraction',
+        'interior_energetics.aragog.core_module.melting_curve',
+        'interior_energetics.aragog.core_module.q_radio',
+        'interior_energetics.aragog.core_module.ra_crit_cmb',
+        'interior_energetics.aragog.core_module.stratification',
+        'interior_energetics.aragog.core_module.t_m0',
+        'interior_energetics.aragog.core_module.t_m1',
+        'interior_energetics.aragog.core_module.t_m2',
         'interior_energetics.aragog.entropy_step_cap',
         'interior_energetics.aragog.phase_boundary_entropy_margin',
         'interior_energetics.aragog.phase_boundary_cap',

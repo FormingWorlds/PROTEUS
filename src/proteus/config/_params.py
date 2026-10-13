@@ -232,7 +232,7 @@ class TimeStepParams:
     scale_decr: float = field(default=0.8, validator=(gt(0), lt(1)))
     window: int = field(default=3, validator=ge(1))
 
-    minimum: float = field(default=1e4, validator=gt(0))
+    minimum: float = field(default=1e2, validator=gt(0))
     minimum_rel: float = field(default=1e-5, validator=gt(0))
     maximum: float = field(default=1e7, validator=gt(0))
     maximum_rel: float = field(default=1.0, validator=ge(0))

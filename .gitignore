@@ -9,6 +9,8 @@ prt/
 # Installer logs
 install_*.log
 proteus_doctor*.log
+.proteus-env.sh
+.proteus-julia/
 
 # Model files
 #############
@@ -103,6 +105,9 @@ Boreas
 morrigan
 Morrigan
 MORRIGAN
+# The new clone and the old copy that a module setup script makes next to the module folder
+/*.tmp.[0-9]*
+/*.old.[0-9]*
 
 # misc
 ######

@@ -25,8 +25,10 @@ import pandas as pd
 from proteus.utils.constants import (
     element_list,
     gas_list,
+    noble_gases,
     secs_per_hour,
     secs_per_minute,
+    vol_element_list,
     vol_gas_list,
     vol_list,
 )
@@ -152,14 +154,32 @@ def _get_obliqua_version(dirs: dict):
     return obliqua_meta['version']
 
 
-def _get_julia_version():
+def _get_julia_version() -> str:
+    """Return the version of the Julia that PROTEUS uses.
+
+    That is ``PYTHON_JULIAPKG_EXE`` when it is set, else the ``julia`` on
+    ``PATH``; juliacall does not fall back to ``PATH`` from a set variable.
+
+    Returns
+    -------
+    str
+        The version, for example ``1.13.1``, or a note that no Julia was found,
+        that ``PYTHON_JULIAPKG_EXE`` names no executable file, or that the
+        binary reported no version (it failed, printed nothing or could not run).
     """
-    Get the installed Julia version
-    """
+    from proteus.utils.helper import proteus_julia_exe
+
+    raw = os.environ.get('PYTHON_JULIAPKG_EXE')
+    exe = proteus_julia_exe()
+    if raw and exe is None:
+        return f'unknown (PYTHON_JULIAPKG_EXE={raw} is not an executable file)'
+    exe = exe or 'julia'
     try:
-        return subprocess.check_output(['julia', '--version']).decode('utf-8').split()[-1]
+        return subprocess.check_output([exe, '--version']).decode('utf-8').split()[-1]
     except FileNotFoundError:
         return 'unknown (julia not installed)'
+    except (subprocess.CalledProcessError, IndexError, OSError):
+        return f'unknown ({exe} --version reported no version)'
 
 
 def _get_lavatmos_version() -> str:
@@ -184,6 +204,23 @@ def _get_thermoengine_version() -> str:
     except ImportError:
         return 'unknown (thermoengine not installed)'
     return thermoengine.__version__
+
+
+def _get_petitradtrans_version() -> str:
+    """
+    Get the installed petitRADTRANS version.
+
+    Reads package metadata instead of importing petitRADTRANS directly: the
+    editable meson-python install re-runs its build step on first import in
+    each new process, which races between parallel runs sharing the install.
+    """
+
+    from importlib.metadata import PackageNotFoundError, version
+
+    try:
+        return version('petitRADTRANS')
+    except PackageNotFoundError:
+        return 'unknown (petitRADTRANS not installed)'
 
 
 def validate_module_versions(dirs: dict, config: Config):
@@ -448,9 +485,7 @@ def print_module_configuration(dirs: dict, config: Config, config_path: str):
     # Observations synthesis module
     write = 'Observe module    %s' % config.observe.module
     if config.observe.module == 'petitRADTRANS':
-        from petitRADTRANS import __version__ as obs_version
-
-        write += ' version ' + obs_version
+        write += ' version ' + _get_petitradtrans_version()
 
     log.info(write)
 
@@ -576,6 +611,10 @@ def assert_mass_conservation(
     atol_frac: float = 1e-6,
     *,
     require_atm_le_planet: bool = True,
+    check_element_closure: bool = False,
+    derived_elements: tuple[str, ...] = (),
+    closure_rtol: float | None = None,
+    closure_atol_kg: float = 1.0,
 ) -> None:
     """Runtime invariant: the per-species kg_atm sum matches M_vol_atm, and
     M_atm <= M_planet unless the caller disables that half.
@@ -604,13 +643,40 @@ def assert_mass_conservation(
         Whether to enforce M_atm <= M_planet. Ignored when the row carries no
         vapour column: rock vapour is the only mass the relaxation excuses, so
         with M_vaps == 0 the invariant is enforced either way.
+    check_element_closure : bool
+        Whether to also require that each element's ``_kg_total`` equals the
+        sum of its atmospheric, liquid and solid reservoirs. The main loop sets
+        it when solid-phase trapping is on, which is the bookkeeping it
+        guards; without trapping, desiccation empties the reservoirs and keeps
+        the totals, so the closure does not hold and is not asked for.
+    derived_elements : tuple of str
+        Elements whose whole-planet total the chemistry recomputes rather than
+        conserving, so the per-element reservoir closure does not apply to
+        them. Supplied by ``outgas.trapping.derived_total_elements``.
+    closure_rtol : float or None
+        Relative tolerance for the per-element reservoir closure only. The
+        atmospheric and liquid reservoirs come out of a nonlinear chemistry
+        solve that converges to its own relative tolerance, while the total is
+        carried forward from the escape chain, so the two can agree no more
+        tightly than the solver does. The closure is therefore checked against
+        ``max(atol_frac, closure_rtol)``; the main loop supplies
+        ``config.outgas.solver_rtol``. ``atol_frac`` itself, and with it the
+        atmosphere-mass and species-sum invariants, is unchanged.
+    closure_atol_kg : float
+        Absolute tolerance of the per-element closure [kg]: a mismatch is
+        refused once it exceeds both this and the relative tolerance times the
+        total. It admits the trace melt mass the chemistry can leave of an
+        element the run does not carry, a few hundredths of a kilogram, and
+        nothing a bookkeeping error produces.
 
     Raises
     ------
     RuntimeError
         If the per-species kg_atm sum over vol_gas_list disagrees with
         M_vol_atm by more than ``atol_frac``. When ``require_atm_le_planet``,
-        raises if M_atm relatively exceeds M_planet.
+        raises if M_atm relatively exceeds M_planet. When
+        ``check_element_closure``, raises if an element's reservoirs do not sum
+        to its total.
     """
     M_atm = float(hf_row.get('M_atm', 0.0))
     M_planet = float(hf_row.get('M_planet', 0.0))
@@ -688,6 +754,34 @@ def assert_mass_conservation(
                 f'(relative difference {rel * 100:.3f}%). One of the '
                 f'gas-species kg_atm fields is stale or the M_vol_atm sum '
                 f'loop is missing a species.'
+            )
+
+    # Invariant 3, with trapping on: each element total equals the sum of its
+    # reservoirs, so a debit without its credit fails here. Elements the run
+    # never carried are skipped; the tolerance is set out in the docstring.
+    if not check_element_closure:
+        return
+    closure_tol = max(atol_frac, float(closure_rtol)) if closure_rtol else atol_frac
+    for e in element_list:
+        if e in derived_elements:
+            # A total the chemistry recomputes is not a conserved budget.
+            continue
+        total = float(hf_row.get(f'{e}_kg_total', 0.0))
+        if not np.isfinite(total) or total <= 0.0:
+            continue
+        parts = sum(float(hf_row.get(f'{e}_kg_{r}', 0.0)) for r in ('atm', 'liquid', 'solid'))
+        if not np.isfinite(parts):
+            continue
+        rel = abs(parts - total) / total
+        if abs(parts - total) > max(closure_atol_kg, closure_tol * total):
+            raise RuntimeError(
+                f'Per-element reservoir closure failed for {e}: '
+                f'{e}_kg_total={total:.6e} kg but atm+liquid+solid='
+                f'{parts:.6e} kg (relative difference {rel * 100:.4f}%). '
+                f'atm={float(hf_row.get(f"{e}_kg_atm", 0.0)):.3e}, '
+                f'liquid={float(hf_row.get(f"{e}_kg_liquid", 0.0)):.3e}, '
+                f'solid={float(hf_row.get(f"{e}_kg_solid", 0.0)):.3e} kg. '
+                f'A reservoir was debited without the matching credit.'
             )
 
 
@@ -793,6 +887,7 @@ RESUMABLE_ZERO_FILL_KEYS = frozenset(
     {
         'esc_kg_cumulative',
         'M_accreted_rock',
+        'M_core_target',
         'M_desiccated',
         'M_volatile_change',
         'n_impacts_applied',
@@ -876,8 +971,8 @@ def GetHelpfileKeys():
         # Temperatures
         'T_surf',           # global surface temperature [K]
         'T_magma',          # global outgassing temperature [K]
-        'T_cmb',           # core temperature, bottom mantle cell [K]
-        'T_cmb_node',      # temperature at the core-mantle boundary basic node [K]
+        'T_cmb',           # core temperature: the bottom mantle cell, or the core state with core_bc = core_module or bower2018 [K]
+        'T_cmb_node',      # mantle temperature at the core-mantle boundary basic node; with core_bc = core_module the temperature of the bottom-cell entropy at P_cmb, so the CMB contrast is T_cmb - T_cmb_node, or core_T_top - T_cmb_node with stratification [K]
         'T_eqm',            # grey radiative equilibrium temperature [K]
         'T_skin',           # grey radiative skin temperature [K]
         'T_surface_initial',  # self-consistent T_surf from accretion mode [K]
@@ -914,10 +1009,20 @@ def GetHelpfileKeys():
         'RF_depth',         # depth of rheological front [1]
         'M_core',           # dry mass of core [kg]
         'M_mantle',         # dry mass of mantle [kg]
+        'M_core_target',    # core mass target of the Zalmoxis structure; 0 with another structure module [kg]
         'M_mantle_solid',   # dry mass of solid-phase mantle [kg]
         'M_mantle_liquid',  # dry mass of liquid-phase mantle [kg]
         'T_pot',            # characteristic mantle potential temperature [K]
         'boundary_layer_thickness',  # thermal boundary layer thickness [m]
+
+        # Core evolution diagnostic keys for core_module mode
+        'core_r_icb',           # inner-core boundary radius; computed only with core_bc = core_module, 0 otherwise [m]
+        'core_C_eff',           # core effective heat capacity incl. nucleation terms; computed only with core_bc = core_module, 0 otherwise [J K-1]
+        'core_dynamo_margin',   # entropy margin for dynamo action; computed only with core_bc = core_module, 0 otherwise [W K-1]
+        'core_B_rms',           # rms field (CHR09; superadiabatic reference flux, 0 when subadiabatic); computed only with core_bc = core_module, 0 otherwise [T]
+        'core_regime',          # crystallisation code: 0 fully liquid, 1 freezing from the centre outwards, 4 fully frozen; 2 (from the top) and 3 (snow) do not appear, Aragog ends the run at such a state; computed only with core_bc = core_module, 0 otherwise [1]
+        'core_strat_depth',     # thermally stratified layer depth below the CMB; computed only with core_bc = core_module, 0 otherwise [m]
+        'core_T_top',           # temperature at the top of the core, the top shell cell with stratification, else T_cmb; computed only with core_bc = core_module, 0 otherwise [K]
 
         # Energy-conservation columns: cumulative integrals of entropy-transported
         # heat against boundary-flux and source predictions in the live EOS frame.
@@ -937,11 +1042,17 @@ def GetHelpfileKeys():
         'step_dE_compression_J',  # per-call structure-re-solve compression work [J] (diagnostic)
         'step_dE_state_heat_J',  # per-call entropy-transported heat content change [J]
         'step_dE_impact_J',  # giant-impact re-melt heat injection [J] (both residual sides)
+        'step_dE_impact_core_J',  # giant-impact core heat: the T_core lift under the refitted profile, on the first kept row after the impact; computed only with core_bc = core_module, 0 otherwise [J]
+        'step_dE_impact_core_refit_J',  # giant-impact core refit content change at the pre-impact T_core (the added iron's heat from the profile reference), on the first kept row after the impact; computed only with core_bc = core_module, 0 otherwise [J]
+        'step_dE_struct_core_J',  # change of the core heat content across the structure updates since the last kept interior call (core mass and total entropy kept), positive when the heat content rises; the rule keeps entropy and the heat content is an energy, so with an inner core the term also holds the latent and gravitational energy of the mass that freezes or melts at the update, which the rule does not put into the core, and the change of the reference from which each budget counts that energy; computed only with core_bc = core_module, 0 otherwise [J]
         'E_state_heat_cons_J',  # cumulative sum of step_dE_state_heat_J across rows [J]
         'dE_predicted_cons_J',  # cumulative sum of boundary fluxes + live-density step_dE_Q_*_J [J]
         'E_residual_cons_J',    # E_state_heat_cons_J - dE_predicted_cons_J [J]
         'E_residual_cons_frac', # E_residual_cons_J / max(|E_state_heat_cons_J|, 1 J) [1]
         'solver_residual_J',    # cumulative entropy-ODE LHS-RHS residual [J]
+        'step_dE_core_J',       # core heat change over the call net of its internal source, plus the jump of the heat content since the last kept call; computed only with core_bc = core_module, 0 otherwise [J]
+        'E_core_residual_J',    # cumulative core ledger: sum(step_dE_core_J + step_dE_F_cmb_J - step_dE_impact_core_J - step_dE_impact_core_refit_J - step_dE_struct_core_J); computed only with core_bc = core_module, 0 otherwise [J]
+        'E_core_residual_frac', # E_core_residual_J / max(sum(|step_dE_F_cmb_J| + |the 3 booked terms|), 1 J); a booked term equals the jump it explains by construction, so the fraction checks the bookkeeping of those terms and the solver's core heat against its CMB flux; computed only with core_bc = core_module, 0 otherwise [1]
         'Cp_eff',           # effective mantle heat capacity [J kg-1 K-1]
 
         # Host star properties
@@ -1001,6 +1112,21 @@ def GetHelpfileKeys():
         'esc_clamp_frac',   # requested per-step loss / escapable reservoir [1]
         'esc_step_kg',      # loss applied on this step, after the cap [kg]
 
+        # Solid-phase volatile trapping
+        'trap_dM_RM',       # mantle mass crystallised this step, negative when it remelted [kg]
+        'trap_F_tl',        # trapped melt fraction applied this step [1]
+        'trap_kg_step',     # volatile mass buried this step, negative when remelting released it [kg]
+        'trap_kg_cumulative',  # net volatile mass buried since the run began [kg]
+        'trap_branch',      # drainage regime code: 0 no front (a freezing step still buries by crystal partitioning), 1 Darcy, 2 matrix, 3 guard, 6 no interior state, 7 remelting [1]
+        'trap_tau_D',       # percolation time at the top of the front [yr]
+        'trap_tau_s',       # matrix deformation time [yr]
+        'trap_t_res',       # parcel residence time in the front [yr]
+        'trap_n_front',     # nodes spanned by the freezing front [1]
+        'trap_L_front',     # freezing-front thickness [m]
+        'trap_v_front',     # freezing-front speed [m s-1]
+        'trap_front_courant',  # front advance over one step, in front thicknesses [1]
+        'trap_w_matrix_over_vf',  # matrix speed over front speed [1]
+
         # Giant-impact accretion ledger: cumulative rock mass added to interior
         # mass anchor to enable reconstruction on resume.
         'M_accreted_rock',  # cumulative rock mass added by giant impacts [kg]
@@ -1009,6 +1135,15 @@ def GetHelpfileKeys():
         # Element mass the Zalmoxis whole-planet target adds to mass_tot (Zalmoxis only).
         'M_volatile_change',  # cumulative element mass added to the Zalmoxis target [kg]: delivered (rock O and init-stage impacts excluded) minus stripped minus escaped (rock vapour and sub-threshold zeroing included) minus removed at desiccation
     ]
+
+    # Share of the solid-mantle reservoir that trapping owns. The chemistry
+    # writes the rest of `_kg_solid`, its own condensate, on every solve.
+    for s in vol_list:
+        keys.append(s + '_kg_trapped')  # mass trapped in the solid mantle [kg]
+    for e in vol_element_list:
+        keys.append(e + '_kg_trapped')  # mass trapped in the solid mantle [kg]
+    for s in noble_gases:
+        keys.append(s + '_kg_trapped')  # mass trapped in the solid mantle [kg]
 
     # gases from outgassing
     for s in gas_list:
@@ -1091,6 +1226,56 @@ def ZeroHelpfileRow():
     for k in GetHelpfileKeys():
         out[k] = 0.0
     return out
+
+
+# Heat booked into the core between interior calls, on the row of the next kept call.
+_CORE_BOOKED_KEYS = (
+    'step_dE_impact_core_J',
+    'step_dE_impact_core_refit_J',
+    'step_dE_struct_core_J',
+)
+
+
+def _finite_abs_sum(values) -> float:
+    """Sum of the absolute values of the finite entries of ``values``."""
+    values = np.abs(np.asarray(values, dtype=float))
+    return float(values[np.isfinite(values)].sum())
+
+
+def _populate_core_residual(current_hf: pd.DataFrame, new_row: dict) -> None:
+    """Fill the cumulative core ledger of ``new_row`` in place (Aragog core_module).
+
+    ``E_core_residual_J`` accumulates ``step_dE_core_J + step_dE_F_cmb_J`` minus the
+    booked terms ``step_dE_impact_core_J``, ``step_dE_impact_core_refit_J`` and
+    ``step_dE_struct_core_J``: the change of the core's heat content must equal the heat
+    it gives the mantle plus what a giant impact and a structure update book into it. An
+    unbooked jump of the heat content or a mismatched CMB flux integral shows here; a
+    booking is computed where the core changes and the jump where the next call starts,
+    so the ledger shows a missing or repeated booking. ``E_core_residual_frac`` divides
+    by ``max(sum(|step_dE_F_cmb_J| + |booked terms|), 1 J)`` over the rows with
+    ``core_C_eff != 0`` (0.0 is the unwritten value; other rows keep 0), a sum that only
+    grows. A non-finite term carries the previous residual unchanged, with a warning.
+    """
+    if float(new_row.get('core_C_eff', 0.0)) == 0.0:
+        new_row['E_core_residual_J'] = new_row['E_core_residual_frac'] = 0.0
+        return
+    terms = [float(new_row.get(k, 0.0)) for k in ('step_dE_core_J', 'step_dE_F_cmb_J')]
+    booked = [float(new_row.get(k, 0.0)) for k in _CORE_BOOKED_KEYS]
+    prev, scale = 0.0, _finite_abs_sum([terms[1], *booked])
+    if len(current_hf) and 'E_core_residual_J' in current_hf:
+        prev = np.nan_to_num(float(current_hf['E_core_residual_J'].iloc[-1]))
+        rows = current_hf['core_C_eff'].to_numpy(dtype=float) != 0.0
+        for key in ('step_dE_F_cmb_J', *_CORE_BOOKED_KEYS):
+            if key in current_hf:
+                scale += _finite_abs_sum(current_hf[key].to_numpy(dtype=float)[rows])
+    inc = terms[0] + terms[1] - sum(booked)
+    if not np.isfinite(inc):
+        log.warning(
+            'core ledger term is not finite at t=%s yr; residual carried', new_row.get('Time')
+        )
+        inc = 0.0
+    new_row['E_core_residual_J'] = prev + inc
+    new_row['E_core_residual_frac'] = new_row['E_core_residual_J'] / max(scale, 1.0)
 
 
 def _populate_energy_residual(current_hf: pd.DataFrame, new_row: dict) -> None:
@@ -1237,6 +1422,17 @@ def _populate_energy_residual(current_hf: pd.DataFrame, new_row: dict) -> None:
     new_row['solver_residual_J'] = solver_resid_prev + solver_inc
 
 
+# Keys that modules write into hf_row and that are not helpfile columns;
+# ExtendHelpfile leaves them out of the CSV without a warning.
+_ALLOWED_NON_SCHEMA_KEYS = frozenset(
+    {
+        'core_state_initial',  # string: 'liquid'/'mixed'/'solid'
+        'M_int_target',  # mass target of the latest structure solve [kg]
+        'O_kg_user_ic',  # user oxygen budget [kg]; check_ic_oxygen_budget sets it to -1.0
+    }
+)
+
+
 def ExtendHelpfile(current_hf: pd.DataFrame, new_row: dict):
     """
     Extend helpfile with new row of variables
@@ -1254,6 +1450,7 @@ def ExtendHelpfile(current_hf: pd.DataFrame, new_row: dict):
     # columns stay at 0.0 too, signalling "diagnostic not available for
     # this run" to downstream plotting.
     _populate_energy_residual(current_hf, new_row)
+    _populate_core_residual(current_hf, new_row)
 
     # Validate keys. We guard in both directions:
     # - Missing keys (schema expects but new_row lacks) are a real bug (a
@@ -1269,20 +1466,6 @@ def ExtendHelpfile(current_hf: pd.DataFrame, new_row: dict):
     schema = set(GetHelpfileKeys())
 
     row_keys = {k for k in new_row.keys() if not k.startswith('_')}
-    # Known non-numeric / non-persistent keys that are written into hf_row
-    # but deliberately not tracked in the helpfile CSV schema.
-    _ALLOWED_NON_SCHEMA_KEYS = frozenset(
-        {
-            'core_state_initial',  # string: 'liquid'/'mixed'/'solid'
-            # IC consistency sentinel for the issue #677 oxygen-budget
-            # check. Set by calc_target_elemental_inventories, consumed
-            # and reset to -1.0 by check_ic_oxygen_budget on the first
-            # outgas call. Intentionally not persisted to the CSV
-            # because subsequent runs (or resumed runs) re-derive it
-            # from the config on the next IC pass.
-            'O_kg_user_ic',
-        }
-    )
     missing_keys = schema - row_keys
     unknown_keys = row_keys - schema - _ALLOWED_NON_SCHEMA_KEYS
     if missing_keys:
@@ -1499,13 +1682,25 @@ def _describe_missing_columns(missing: list[str]) -> str:
     return shown
 
 
-# Derived diagnostic columns that nothing reads back to build state. A
-# helpfile written before one of them joined the schema still resumes: the
-# reader backfills these with zeros. Add a column here only if no module,
-# resume path or solver consumes it.
+# Diagnostic columns a resumed helpfile that predates them gets as zeros; add one only if no
+# module or resume path reads it back, except the core ledger's core_C_eff and
+# E_core_residual_J, which a helpfile from before the core module has no rows for.
 _DIAGNOSTIC_KEYS = (
     'dEdt_orb',
     'T_cmb_node',
+    'core_r_icb',
+    'core_C_eff',
+    'core_dynamo_margin',
+    'core_B_rms',
+    'core_regime',
+    'core_strat_depth',
+    'core_T_top',
+    'step_dE_impact_core_J',
+    'step_dE_impact_core_refit_J',
+    'step_dE_struct_core_J',
+    'step_dE_core_J',
+    'E_core_residual_J',
+    'E_core_residual_frac',
     # Melt-redox tracker outputs (interior_chem/redox.py): written each step,
     # read by no module (the tracker keeps its own state on Interior_t).
     'a_fe_max_mantle',
@@ -1531,6 +1726,23 @@ def GetHelpfileDiagnosticKeys():
         Column names, all of which are also in `GetHelpfileKeys()`.
     """
     return list(_DIAGNOSTIC_KEYS)
+
+
+def GetHelpfileTrappingKeys():
+    """
+    Helpfile columns written by solid-phase volatile trapping.
+
+    A run that never trapped holds zero in every one of them, which is also
+    what a run written before they existed has trapped. `ReadHelpfileFromCSV`
+    therefore reads them as zero, like `RESUMABLE_ZERO_FILL_KEYS`, and such a
+    run resumes.
+
+    Returns
+    -------
+    list of str
+        Column names, all of which are also in `GetHelpfileKeys()`.
+    """
+    return [k for k in GetHelpfileKeys() if k.startswith('trap_') or k.endswith('_kg_trapped')]
 
 
 def GetHelpfileCoreKeys():
@@ -1646,7 +1858,8 @@ def ReadHelpfileFromCSV(output_dir: str, *, required_columns: list[str] | None =
     hf_all = read_helpfile_table(fpath)
 
     missing = sorted(set(required_columns) - set(hf_all.columns))
-    fillable = [key for key in missing if key in RESUMABLE_ZERO_FILL_KEYS]
+    zero_fill = RESUMABLE_ZERO_FILL_KEYS | set(GetHelpfileTrappingKeys())
+    fillable = [key for key in missing if key in zero_fill]
     unfillable = sorted(set(missing) - set(fillable))
 
     if unfillable:

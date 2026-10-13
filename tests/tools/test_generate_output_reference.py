@@ -11,6 +11,7 @@ joined matrix (``generate_output_reference``). These tests exercise:
   albedo-to-bond_albedo merge rename,
 * complete producer coverage: every column attributed or listed unresolved,
 * module-conditionality pins for backend-specific columns,
+* every literal key the structure modules write is declared or private,
 * the missing-function error contract and check-mode drift detection.
 
 See ``docs/How-to/testing.md`` and ``docs/Explanations/test_framework.md``
@@ -117,8 +118,7 @@ def test_every_column_attributed_or_listed_unresolved(matrix):
     expected_unresolved_reads = [
         'src/proteus/atmos_clim/agni.py::_validate_surface_state:dynamic key name',
         'src/proteus/escape/common.py::calc_unfract_fluxes:dynamic key e + key',
-        "src/proteus/escape/wrapper.py::calc_new_elements:dynamic key f'{e}{key}'",
-        "src/proteus/escape/wrapper.py::escapable_mass:dynamic key f'{e}{key}'",
+        "src/proteus/escape/wrapper.py::reservoir_mass:dynamic key f'{element}{key}'",
         'src/proteus/observe/petitRADTRANS.py::_get_mix:dynamic key key',
         "src/proteus/outgas/atmodeller.py::_populate_volatile_element_reservoirs:dynamic key f'{sp}_kg_{r}'",
         'src/proteus/outgas/atmodeller.py::calc_surface_pressures_atmodeller:dynamic key key',
@@ -126,6 +126,7 @@ def test_every_column_attributed_or_listed_unresolved(matrix):
         'src/proteus/plot/cpl_global.py::plot_global:dynamic key k',
         'src/proteus/plot/cpl_orbit.py::_plot_orbit_snapshot:dynamic key ecc_col',
         'src/proteus/plot/cpl_orbit.py::_plot_orbit_snapshot:dynamic key sma_col',
+        "src/proteus/utils/coupler.py::assert_mass_conservation:dynamic key f'{e}_kg_{r}'",
     ]
     actual_reads = sorted(
         f'{e["file"]}::{e["function"]}:{e["reason"]}' for e in matrix['unresolved_events']
@@ -275,6 +276,28 @@ def test_committed_page_and_json_are_current(matrix):
     assert _gor.JSON_PATH.read_text() == _docgen.dump_json(matrix)
     unitless = [k['name'] for k in matrix['keys'] if not k['unit']]
     assert unitless == []
+
+
+def test_structure_modules_write_only_declared_keys():
+    """Each literal ``hf_row[...]`` key written under ``interior_struct/`` is a
+    helpfile column or an allowlisted non-schema key, unless it is private, and
+    the scan reports no unresolved ``hf_row`` write there. Each allowlisted key
+    has a writer and is no column. An undeclared key would make
+    ``ExtendHelpfile`` warn on every row."""
+    coupler = importlib.import_module('proteus.utils.coupler')
+    scan = _scan.scan_tree()
+    allowed, schema = coupler._ALLOWED_NON_SCHEMA_KEYS, set(coupler.GetHelpfileKeys())
+    written = {
+        key
+        for rel, _func, key in scan['writes']
+        if rel.startswith('interior_struct/') and not key.startswith('_')
+    }
+    assert 'M_int' in written  # the scan sees the structure writers
+    assert sorted(written - schema - allowed) == []
+    unresolved_writes = [u for u in scan['unresolved'] if u[3] == 'write']
+    assert [u for u in unresolved_writes if u[0].startswith('interior_struct/')] == []
+    assert allowed <= {key for _rel, _func, key in scan['writes']}
+    assert not allowed & schema
 
 
 def test_declared_scan_tables_are_all_live(monkeypatch):
