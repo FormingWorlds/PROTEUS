@@ -536,7 +536,7 @@ def test_failure_in_the_second_variant_leaves_the_first_unwritten(site):
     out = site.repo / 'out'
     first = _entry(id='fig_0', asset='docs/assets/tutorials/fig_0')
     failing = _entry(maker='tools/fake_maker.py:fail_in_dark')
-    with pytest.raises(RuntimeError, match='no dark figure'):
+    with pytest.raises(tool.FigureError, match='fig_a: RuntimeError: no dark figure'):
         tool.make_figures(_manifest(site.toml, [first, failing]), site.runs, out)
     assert _files(out) == [
         'docs/assets/tutorials/fig_0.avif',
@@ -730,3 +730,62 @@ def test_main_draws_into_the_repository_and_reports_a_fault(site, capsys):
     code = tool.main(['--manifest', str(site.toml), '--runs', str(site.runs), '--only', 'x'])
     assert code == 1
     assert 'ERROR: no figure with id or page `x`' in capsys.readouterr().err
+
+
+def test_main_reports_an_error_of_a_maker_as_its_own_error_line(site, capsys):
+    """An exception of a maker ends the command with exit code 1 and one `ERROR:` line that
+    names the figure, with no traceback, and leaves no file of that figure."""
+    _manifest(site.toml, [_entry(maker='tools/fake_maker.py:fail_in_dark')])
+    assert tool.main(['--manifest', str(site.toml), '--runs', str(site.runs)]) == 1
+    printed = capsys.readouterr()
+    assert printed.err.strip() == 'ERROR: fig_a: RuntimeError: no dark figure'
+    assert 'Traceback' not in printed.out + printed.err
+    assets = site.repo / 'docs' / 'assets' / 'tutorials'
+    assert (assets / 'fig_a.avif').read_bytes() == b'placeholder'
+
+
+@pytest.mark.parametrize(
+    'script, maker, message',
+    [
+        (None, 'proteus:global', 'fig_a: FileNotFoundError: no data in run_a'),
+        (
+            "raise RuntimeError('no import')\n",
+            'tools/bad.py:draw',
+            'fig_a: RuntimeError: no import',
+        ),
+        ('def draw(:\n', 'tools/bad.py:draw', 'fig_a: SyntaxError: '),
+    ],
+)
+def test_main_reports_every_failure_of_a_maker_as_one_error_line(
+    site, capsys, monkeypatch, script, maker, message
+):
+    """A `proteus plot` maker that fails, a maker script that raises at import and a maker
+    script with a syntax error each give exit code 1 and one `ERROR:` line, with no traceback."""
+
+    def no_data(run_dir, out_dir, **args):
+        raise FileNotFoundError(f'no data in {run_dir.name}')
+
+    monkeypatch.setitem(tool.PROTEUS_MAKERS, 'global', no_data)
+    if script:
+        (site.repo / 'tools' / 'bad.py').write_text(script)
+    _manifest(site.toml, [_entry(maker=maker)])
+    assert tool.main(['--manifest', str(site.toml), '--runs', str(site.runs)]) == 1
+    printed = capsys.readouterr()
+    assert printed.err.startswith(f'ERROR: {message}') and printed.err.count('\n') == 1
+    assert 'Traceback' not in printed.out + printed.err
+
+
+@pytest.mark.parametrize('stop', [KeyboardInterrupt, SystemExit])
+def test_interrupt_of_a_maker_is_not_reported_as_a_figure_error(site, monkeypatch, stop):
+    """An interrupt or an exit inside a maker leaves the tool as it is, and an error of the
+    tool itself keeps its text without a second figure id."""
+
+    def stopped(run_dir, out_dir, **args):
+        raise stop()
+
+    monkeypatch.setitem(tool.PROTEUS_MAKERS, 'global', stopped)
+    with pytest.raises(stop):
+        tool.make_figures(_manifest(site.toml, [_entry(maker='proteus:global')]), site.runs)
+    with pytest.raises(tool.FigureError) as err:
+        tool.make_figures(_manifest(site.toml, [_entry(maker='proteus:absent')]), site.runs)
+    assert str(err.value) == 'fig_a: no `proteus plot` maker named absent'

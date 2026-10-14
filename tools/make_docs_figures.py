@@ -257,15 +257,20 @@ def _draw(fig: dict, run_dirs: list[Path], work: Path, places: dict) -> Path:
     """Call the maker of an entry under the active style; return the PNG it wrote."""
     kind, name = fig['maker'].rsplit(':', 1)
     args = _fill(fig['args'], fig['id'], places)
-    if kind == 'proteus':
-        if name not in PROTEUS_MAKERS:
-            raise FigureError(f'{fig["id"]}: no `proteus plot` maker named {name}')
-        (work / 'plots').mkdir(parents=True)
-        png = work / 'plots' / PROTEUS_MAKERS[name](run_dirs[0], work, **args)
-    else:
-        work.mkdir(parents=True)
-        png = work / f'{fig["id"]}.png'
-        _script_maker(kind, name)(run_dirs, png, **args)
+    try:
+        if kind == 'proteus':
+            if name not in PROTEUS_MAKERS:
+                raise FigureError(f'{fig["id"]}: no `proteus plot` maker named {name}')
+            (work / 'plots').mkdir(parents=True)
+            png = work / 'plots' / PROTEUS_MAKERS[name](run_dirs[0], work, **args)
+        else:
+            work.mkdir(parents=True)
+            png = work / f'{fig["id"]}.png'
+            _script_maker(kind, name)(run_dirs, png, **args)
+    except FigureError:
+        raise
+    except Exception as exc:
+        raise FigureError(f'{fig["id"]}: {type(exc).__name__}: {exc}') from exc
     if not png.is_file():
         raise FigureError(f'{fig["id"]}: the maker wrote no file {png.name}')
     return png
