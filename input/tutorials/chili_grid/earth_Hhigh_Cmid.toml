@@ -1,5 +1,5 @@
 # PROTEUS CHILI grid case Hhigh Cmid: Earth at IW+4 with H = 1.60e+21 kg and C = 2.73e+20 kg (Lichtenberg et al. 2026, PSJ 7:108, Table 3).
-# The run stops at 5% melt by mass or after 1 Gyr of model time; the energy-balance stop is off.
+# The run stops at 5% melt by mass or after 1 Gyr of model time; the energy-balance, escape and wall-clock stops are off.
 # Run: proteus start --offline -c input/tutorials/chili_grid/earth_Hhigh_Cmid.toml
 
 config_version = "3.0"
@@ -24,6 +24,12 @@ config_version = "3.0"
     [params.stop.solid]
         phi_crit = 0.05
     [params.stop.radeqm]
+        enabled = false
+    [params.stop.escape]
+        enabled = false
+    [params.stop.iters]
+        maximum = 1000000
+    [params.stop.clock]
         enabled = false
 
 [star]

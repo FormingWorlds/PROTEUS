@@ -534,7 +534,7 @@ def test_the_default_redox_state_is_two_log_units_above_iron_wustite():
 def test_the_time_limits_of_the_tutorials():
     """The Venus tutorial stops at 3 Myr, the Earth and Moon tutorial at 0.8 Myr
     and the Earth tutorial at 5 Gyr. The 5 CHILI cases and the 9 standalone CHILI
-    grid configs stop at 5% melt or 1 Gyr, with the energy-balance stop off."""
+    grid configs stop at 5% melt or 1 Gyr only."""
     from helpers import PROTEUS_ROOT
 
     from proteus.config import read_config_object
@@ -556,6 +556,9 @@ def test_the_time_limits_of_the_tutorials():
         assert stop.time.maximum == pytest.approx(1.0e9, rel=1e-12), path.name
         assert stop.radeqm.enabled is False, path.name
         assert stop.solid.phi_crit == pytest.approx(0.05, rel=1e-12), path.name
+        assert stop.escape.enabled is False, path.name
+        assert stop.iters.maximum == 1000000, path.name
+        assert stop.clock.enabled is False, path.name
 
 
 @pytest.mark.unit

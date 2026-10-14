@@ -127,10 +127,13 @@ CASE_DELTAS: dict[str, dict] = {
 PROTOCOL_FO2_SHIFT_IW = 4.0
 
 # Every case stops at 5% melt by mass (the tutorial value of phi_crit) or after 1 Gyr of
-# model time, with the energy-balance stop off.
+# model time; the energy-balance, escape and wall-clock stops are off.
 PROTOCOL_STOP = {
     'params.stop.time.maximum': tomlkit.value('1e9'),
     'params.stop.radeqm.enabled': False,
+    'params.stop.escape.enabled': False,
+    'params.stop.iters.maximum': 1000000,
+    'params.stop.clock.enabled': False,
 }
 
 # Protocol H and C inventory axes [kg] for the grid sweeps. The

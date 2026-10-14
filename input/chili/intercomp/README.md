@@ -6,11 +6,12 @@ tutorial configs: `earth.toml` and `venus.toml` equal
 from the output path, the oxygen fugacity and the stop rule. Every case
 here sets the oxygen fugacity to the protocol value IW+4; the tutorials
 set IW+2. Every case stops at 5% melt by mass or after 1 Gyr of model
-time, with the energy-balance stop (`params.stop.radeqm`) off. The
-TRAPPIST-1 cases (`tr1b`, `tr1e`, `tr1a`) derive from the Earth base
-with the protocol's star and orbit settings; escape is disabled there because ZEPHYRUS
-pairs only with the Spada evolution tracks while a 0.09 M_sun star needs
-Baraffe, and the escape treatment for those cases awaits a protocol
+time: the energy-balance, escape and wall-clock stops are off, and the
+iteration limit is 1000000. The TRAPPIST-1 cases (`tr1b`, `tr1e`,
+`tr1a`) derive from the Earth base with the protocol's star and orbit
+settings; the escape module is off there (`escape.module = "none"`)
+because ZEPHYRUS pairs only with the Spada evolution tracks while a
+0.09 M_sun star needs Baraffe, and the escape treatment for those cases awaits a protocol
 decision. The `*.grid.toml` files are `proteus grid` specs sweeping the
 protocol H and C inventories.
 
