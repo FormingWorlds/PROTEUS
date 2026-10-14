@@ -3090,6 +3090,96 @@ def test_it_timing_records_orbit_module_wall_time(tmp_path, monkeypatch, caplog)
     assert any('escape=' in msg for msg in timing_records)
 
 
+# Step names proteus-bench turns into series; a renamed or dropped name splits a series
+INIT_TIMING_KEYS = ['data', 'structure', 'equilibrate', 'stellar', 'orbit', 'other', 'total']
+IT_TIMING_KEYS = {
+    'interior',
+    'structure',
+    'orbit',
+    'stellar',
+    'escape',
+    'outgas',
+    'trapping',
+    'atmos',
+    'chem',
+    'write',
+    'plots',
+    'archive',
+    'other',
+    'total',
+}
+
+
+def test_timing_lines_keep_the_format_proteus_bench_parses(tmp_path, monkeypatch, caplog):
+    """Under ``PROTEUS_TIMING`` the run logs one ``[INIT_TIMING]`` line before the first
+    ``[IT_TIMING] iter=N init_stage=0|1`` line, both followed by space-separated
+    ``key=<seconds, 3 decimals>`` fields ending in ``other`` and ``total``. proteus-bench
+    reads these lines to time a run, so a change of format breaks it. ``[INIT_TIMING]``
+    has its steps in a fixed order, leaving out the ones that did not run (here
+    ``equilibrate``); every ``[IT_TIMING]`` key is a known stage name. In each line the
+    steps plus ``other`` add up to ``total``. ``init_stage`` is the state when the
+    iteration began: the first ``init_loops + 1`` iterations run in the init stage,
+    including the one at whose end PROTEUS clears it.
+    """
+    import re
+
+    monkeypatch.setattr('proteus.proteus._IT_TIMING_ENABLED', True)
+    p = _make_main_loop_proteus(tmp_path, plot_mod=1, write_mod=1, dt_write_rel=0.0)
+    with caplog.at_level(logging.INFO, logger='fwl.proteus.proteus'):
+        _run_main_loop_capturing_plots(p, stop_at_loop=6)
+
+    timing = [r.message for r in caplog.records if r.message.startswith(('[INIT_', '[IT_'))]
+    assert timing[0].startswith('[INIT_TIMING] ')
+    assert sum(m.startswith('[INIT_TIMING]') for m in timing) == 1
+    line = re.compile(
+        r'(\[INIT_TIMING\]|\[IT_TIMING\] iter=\d+ init_stage=[01])( \w+=\d+\.\d{3})+'
+    )
+    stages = []
+    for message in timing:
+        assert line.fullmatch(message), message
+        fields = dict(f.split('=') for f in message.split('] ')[1].split())
+        if 'init_stage' in fields:
+            stages.append(int(fields.pop('init_stage')))
+            fields.pop('iter')
+            assert set(fields) <= IT_TIMING_KEYS, message
+        else:
+            assert list(fields) == [k for k in INIT_TIMING_KEYS if k != 'equilibrate'], message
+        assert list(fields)[-2:] == ['other', 'total'], message
+        steps = sum(float(v) for k, v in fields.items() if k != 'total')
+        assert steps == pytest.approx(float(fields['total']), abs=0.01), message
+    init_loops = p.loops['init_loops']
+    assert stages[: init_loops + 1] == [1] * (init_loops + 1)
+    assert stages[init_loops + 1 :] and set(stages[init_loops + 1 :]) == {0}
+
+
+def test_init_timing_line_times_the_zalmoxis_equilibration(tmp_path, monkeypatch, caplog):
+    """With Zalmoxis equilibration on, ``[INIT_TIMING]`` has every step, ``equilibrate``
+    timed around the call: a call that takes at least 0.05 s logs at least 0.050.
+    """
+    import re
+    import time as _time
+
+    monkeypatch.setattr('proteus.proteus._IT_TIMING_ENABLED', True)
+    p = _make_main_loop_proteus(tmp_path, plot_mod=1, write_mod=1, dt_write_rel=0.0)
+    p.config.interior_struct.module = 'zalmoxis'
+    p.config.interior_struct.zalmoxis.equilibrate_init = True
+    with (
+        caplog.at_level(logging.INFO, logger='fwl.proteus.proteus'),
+        patch(
+            'proteus.interior_energetics.wrapper.equilibrate_initial_state',
+            side_effect=lambda *_: _time.sleep(0.05),
+        ) as equilibrate,
+    ):
+        _run_main_loop_capturing_plots(p, stop_at_loop=4)
+
+    equilibrate.assert_called_once()
+    (line,) = [r.message for r in caplog.records if r.message.startswith('[INIT_TIMING]')]
+    seconds = float(re.search(r' equilibrate=(\d+\.\d{3})', line)[1])
+    assert seconds >= 0.05
+    keys = [field.split('=')[0] for field in line.split('] ')[1].split()]
+    assert keys == INIT_TIMING_KEYS
+
+
 # =======================================================================================
 # SECTION: mass conservation across a multi-iteration run
 # =======================================================================================
