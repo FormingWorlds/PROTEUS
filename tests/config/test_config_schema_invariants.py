@@ -284,10 +284,16 @@ def test_check_module_dependencies_raises_when_atmodeller_missing():
     with patch('importlib.import_module', side_effect=_fake_import):
         with pytest.raises(ImportError, match=r'fwl-proteus\[atmodeller\]') as excinfo:
             check_module_dependencies(instance, None, None)
-    # The hint must name the GPL-3.0 license of the optional backend, since the
-    # PROTEUS core is Apache-2.0 and the licensing difference matters to users.
+    # The hint must name the GPL-3.0 license and setup script before pip install.
     msg = str(excinfo.value)
-    assert 'GPL-3.0' in msg and 'outgas.module' in msg
+    assert 'outgas.module = "atmodeller"' in msg
+    assert 'needs the atmodeller package (GPL-3.0 licensed), which is not installed.' in msg
+    assert 'bash install.sh sets it up;' in msg
+    assert msg.index('bash tools/get_atmodeller.sh in the PROTEUS folder') < msg.index(
+        'pip install "fwl-proteus[atmodeller]"'
+    )
+    assert 'optional' not in msg
+    assert 'backend' not in msg
     # Discrimination: the original ImportError must be chained as __cause__ so
     # users see the "No module named 'atmodeller'" detail. A regression that
     # re-raised a bare ImportError without `raise ... from e` would lose the
@@ -341,11 +347,45 @@ def test_check_module_dependencies_raises_when_vulcan_missing():
     # The message must name atmos_chem.module (not, e.g., outgas) so the vulcan
     # branch is the one that fired, and must carry the GPL-3.0 license notice.
     msg = str(excinfo.value)
-    assert 'atmos_chem.module' in msg and 'vulcan' in msg
-    assert 'GPL-3.0' in msg
+    assert 'atmos_chem.module = "vulcan"' in msg
+    assert 'needs the VULCAN package (GPL-3.0 licensed), which is not installed.' in msg
+    assert 'bash install.sh sets it up;' in msg
+    assert msg.index('bash tools/get_vulcan.sh in the PROTEUS folder') < msg.index(
+        'pip install "fwl-proteus[vulcan]"'
+    )
+    assert 'optional' not in msg
+    assert 'backend' not in msg
     # The chained cause preserves the underlying import failure detail.
     assert excinfo.value.__cause__ is not None
     assert 'vulcan' in str(excinfo.value.__cause__)
+
+
+@pytest.mark.unit
+def test_check_module_dependencies_raises_when_morrigan_missing():
+    """Raise ImportError naming install hint when Morrigan is unavailable."""
+    instance = _make_config_instance(**{'accretion.module': 'morrigan'})
+
+    real_import = importlib.import_module
+
+    def _fake_import(name):
+        if name == 'morrigan':
+            raise ImportError("No module named 'morrigan'")
+        return real_import(name)
+
+    with patch('importlib.import_module', side_effect=_fake_import):
+        with pytest.raises(ImportError, match=r'fwl-proteus\[morrigan\]') as excinfo:
+            check_module_dependencies(instance, None, None)
+    msg = str(excinfo.value)
+    assert 'accretion.module = "morrigan"' in msg
+    assert 'needs the morrigan package, which is not installed.' in msg
+    assert 'bash install.sh sets it up;' in msg
+    assert msg.index('bash tools/get_morrigan.sh in the PROTEUS folder') < msg.index(
+        'pip install "fwl-proteus[morrigan]"'
+    )
+    assert 'optional' not in msg
+    assert 'backend' not in msg
+    assert excinfo.value.__cause__ is not None
+    assert 'morrigan' in str(excinfo.value.__cause__)
 
 
 @pytest.mark.unit

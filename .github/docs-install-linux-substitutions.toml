@@ -1,0 +1,17 @@
+# Deviations of the Linux install job from docs/How-to/installation.md. A `match`
+# that is not on the page fails the job; a command with no entry runs as written.
+
+[[substitution]]
+match = "sudo apt install gfortran libnetcdff-dev build-essential curl wget git cmake unzip"
+replace = "sudo apt-get install -y gfortran libnetcdff-dev build-essential curl wget git cmake unzip"
+reason = "A runner has no terminal to confirm the install."
+
+[[substitution]]
+match = "bash Miniforge3-$(uname)-$(uname -m).sh"
+replace = "bash Miniforge3-$(uname)-$(uname -m).sh -b -p ~/miniforge3 && ~/miniforge3/bin/conda init bash && source ~/miniforge3/etc/profile.d/conda.sh"
+reason = "The Miniforge installer is interactive and a runner has no terminal; conda is made available to this shell session, which stands for the new terminal of the page."
+
+[[substitution]]
+match = "git clone https://github.com/FormingWorlds/PROTEUS.git"
+replace = 'git clone "$GITHUB_WORKSPACE" PROTEUS'
+reason = "The job tests the checked-out commit, not the default branch."
