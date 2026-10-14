@@ -122,9 +122,11 @@ def test_check_obliqua_handles_import_error_cleanly(monkeypatch, tmp_path):
 
 
 def test_check_obliqua_with_a_loader_reports_its_error_and_imports_nothing(
+    monkeypatch,
     tmp_path,
 ):
-    """Obliqua loader wrapper passes custom path mapping and catches runtime errors."""
+    """Obliqua loader wrapper uses custom loader and imports nothing."""
+    monkeypatch.setitem(sys.modules, 'proteus.orbit.obliqua', None)
     before_keys = set(sys.modules.keys())
 
     received_dirs: list[dict[str, str]] = []

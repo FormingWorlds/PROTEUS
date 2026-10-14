@@ -906,14 +906,14 @@ def _init_test_repo(path):
     )
     (path / 'f.txt').write_text('x')
     subprocess.run(['git', '-C', p, 'add', '.'], check=True, capture_output=True)
-    subprocess.run(['git', '-C', p, 'commit', '-m', 'init'], check=True, capture_output=True)
+    git(path, 'commit', '-q', '-m', 'init')
 
 
 def _git_commit_all(path, message):
     """Stage and commit everything in the repo at the given path."""
     p = str(path)
     subprocess.run(['git', '-C', p, 'add', '.'], check=True, capture_output=True)
-    subprocess.run(['git', '-C', p, 'commit', '-m', message], check=True, capture_output=True)
+    git(path, 'commit', '-q', '-m', message)
 
 
 def _detached_clone(tmp_path, checkout, late_tag: str) -> list[str]:
@@ -2368,41 +2368,19 @@ class TestCheckGitModuleStandard:
         root.mkdir()
         clone = tmp_path / 'clone'
         clone.mkdir()
-        subprocess.run(['git', 'init'], cwd=clone, check=True, capture_output=True)
-        subprocess.run(
-            ['git', 'config', 'user.name', 'Tester'], cwd=clone, check=True, capture_output=True
-        )
-        subprocess.run(
-            ['git', 'config', 'user.email', 'tester@example.com'],
-            cwd=clone,
-            check=True,
-            capture_output=True,
-        )
+        git(clone, 'init', '-q')
         (clone / 'Project.toml').write_text('name = "Obliqua"\nversion = "0.1.0"\n')
         (clone / 'Manifest.toml').write_text('manifest_format = "2.0"\n')
-        subprocess.run(['git', 'add', '.'], cwd=clone, check=True, capture_output=True)
-        subprocess.run(
-            ['git', 'commit', '-m', 'commit 1'], cwd=clone, check=True, capture_output=True
-        )
-        commit1 = subprocess.check_output(
-            ['git', 'rev-parse', 'HEAD'], cwd=clone, text=True
-        ).strip()
+        git(clone, 'add', '.')
+        git(clone, 'commit', '-q', '-m', 'commit 1')
+        commit1 = git(clone, 'rev-parse', 'HEAD')
         (clone / 'extra.txt').write_text('extra\n')
-        subprocess.run(['git', 'add', '.'], cwd=clone, check=True, capture_output=True)
-        subprocess.run(
-            ['git', 'commit', '-m', 'commit 2'], cwd=clone, check=True, capture_output=True
-        )
-        commit2 = subprocess.check_output(
-            ['git', 'rev-parse', 'HEAD'], cwd=clone, text=True
-        ).strip()
+        git(clone, 'add', '.')
+        git(clone, 'commit', '-q', '-m', 'commit 2')
+        commit2 = git(clone, 'rev-parse', 'HEAD')
 
         wt = tmp_path / 'wt'
-        subprocess.run(
-            ['git', 'worktree', 'add', str(wt), commit1],
-            cwd=clone,
-            check=True,
-            capture_output=True,
-        )
+        git(clone, 'worktree', 'add', str(wt), commit1)
 
         pins = {'obliqua': {'ref': commit2}}
         with (
