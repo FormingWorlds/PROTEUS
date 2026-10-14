@@ -22,13 +22,8 @@ in the model rather than left to the typesetter.
 
 ### Updating from draw.io
 
-The model can be regenerated from a draw.io SVG export of the diagram, so the
-usual way to change the figure is to edit it in draw.io:
-
-1. In draw.io, export the light-mode diagram as SVG (File > Export as > SVG,
-   with "Embed images" on and "Convert labels to SVG" off) and, if the logo
-   changed, the dark-mode export as well.
-2. Regenerate the model and rebuild:
+Edit the diagram in draw.io, export it as SVG (File > Export as > SVG, "Embed
+images" on, "Convert labels to SVG" off), then regenerate the model and rebuild:
 
 ```bash
 python3 tools/figures/extract_drawio.py path/to/export.svg tools/figures/arch_final.json \
@@ -36,15 +31,11 @@ python3 tools/figures/extract_drawio.py path/to/export.svg tools/figures/arch_fi
 bash tools/figures/build_architecture.sh
 ```
 
-`extract_drawio.py` renders the export in headless Chromium (Playwright) and
-measures every label line there, so line breaks match draw.io. It maps the
-draw.io colours to the model palette through its `PALETTE` table; a shape in a
-new colour passes through unchanged and needs an entry there (and, if it is a
-neutral, one in `DARK_MAP` in `gen_tikz.py`). Labels keep their italics and
-subscripts from the draw.io HTML. The embedded logo is written to
-`img/arch_light_img00.png`; `--logo-dark` takes the PNG for the dark variant.
-Never commit the draw.io export itself to `docs/assets/`: the build overwrites
-those two files.
+`extract_drawio.py` measures the labels in headless Chromium (Playwright), so
+line breaks match draw.io. A shape in a new colour needs an entry in its
+`PALETTE` (and, for a neutral, in `DARK_MAP` in `gen_tikz.py`). It overwrites
+the logos in `img/` with the ones in the export. Do not commit the export to
+`docs/assets/`.
 
 ### Editing the model by hand
 
@@ -75,70 +66,38 @@ ink recomputed by contrast.
 
 ### Code links
 
-Links into the code name their target instead of a line number, so they survive
-edits elsewhere in the file. In draw.io (and in `arch_final.json`) a link is
-written as
+A link into the code names its target instead of a line, so it survives edits:
 
 ```
 https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/proteus.py#interior
 ```
 
-with the part after `#` being either a function, class or method name
-(`run_zephyrus`, `Proteus.start`) or a slug of a comment: the loop stages use
-the section banners in `Proteus.start` (`############### INTERIOR` is
-`#interior`, `############### ORBIT AND TIDES` is `#orbit-and-tides`), and any
-other comment is matched by its text or first sentence (`# Run offline
-chemistry` is `#run-offline-chemistry`). The build replaces each with a
-`blob/main/...#L<n>` link to one line: the `def` or `class` line, the banner, or
-the comment. A target has to match exactly once, so a renamed banner or function
-fails loudly.
+The part after `#` is a function, class or method (`Proteus.start`) or the slug
+of a comment (`############### ORBIT AND TIDES` is `#orbit-and-tides`, `# Run
+offline chemistry` is `#run-offline-chemistry`), and must match exactly once.
 
-Line numbers are never maintained by hand. The documentation deploy
-(`.github/workflows/docs.yaml`) runs
-
-```bash
-python tools/figures/code_links.py --deploy
-```
-
-before building the site, which resolves every target against the `main`
-checkout being published. The deploy runs on every push to `main`, so the
-published links follow `main` as the code moves; between a push and the end of
-its deploy a link can be a few lines off. A target that no longer resolves loses
-its link, with a warning in the deploy log, so the deploy never fails on it.
-
-PR CI runs `python tools/figures/code_links.py --check`, which fails only when a
-target no longer resolves exactly once (a renamed banner, comment or function),
-or when a link carries a hard-coded `#L` anchor. Moving code around does not fail
-it. Renaming a linked banner or function means updating the link in draw.io and
-`arch_final.json` in the same pull request.
-
-Running `python3 tools/figures/code_links.py` without options refreshes the
-`blob/main` lines in the committed SVGs from `origin/main` (run `git fetch
-origin main` first), for viewing them straight from the repository.
+- The docs deploy runs `code_links.py --deploy`, which turns each target into a
+  `#L<n>` link on `main`. A target that no longer resolves loses its link, with
+  a warning.
+- PR CI runs `code_links.py --check`, which fails on a target that no longer
+  resolves or a hard-coded `#L` anchor. Renaming a linked function or banner
+  means updating the link in draw.io and `arch_final.json`.
+- `code_links.py` without options refreshes the lines in the committed SVGs from
+  `origin/main`.
 
 ## Module schematic
 
 `docs/assets/proteus_modules_schematic.svg` and its dark counterpart are drawn
-in draw.io; the editable diagram is embedded in each file's `content`
-attribute. Their labels are native SVG text rather than HTML in a `foreignObject`
-with a raster fallback, so every renderer, not just a browser, shows the current
-wording. Re-exporting from draw.io restores the HTML-plus-raster form, so after
-each export:
-
-1. In draw.io, export both variants as SVG (File > Export as > SVG) with
-   "Include a copy of my diagram" and "Embed images" on, and "Convert labels to
-   SVG" off: draw.io's own conversion drops italics and subscripts.
-2. Convert the labels in place:
+in draw.io, with the editable diagram embedded in each file. Their labels are
+native SVG text, so every renderer shows them, not only browsers. After
+exporting both variants (File > Export as > SVG, "Include a copy of my diagram"
+on, "Convert labels to SVG" off, as it drops italics and subscripts), convert
+the labels:
 
 ```bash
 python3 tools/figures/svg_labels_to_text.py docs/assets/proteus_modules_schematic.svg
 python3 tools/figures/svg_labels_to_text.py docs/assets/proteus_modules_schematic_darkmode.svg
 ```
 
-`svg_labels_to_text.py` lays each label out in headless Chromium (Playwright),
-as `extract_drawio.py` does, and writes it as one `<text>` per line with its
-italics, bold and subscripts; the rest of the file is left untouched. It warns
-when the export does not embed the diagram. The line breaks are fixed at
-conversion, so it lays the labels out in Arial or a font with the same widths
-(Liberation Sans, Arimo, Nimbus Sans) and stops if none is installed; with a
-wider fallback font, labels that fit on one line in draw.io would wrap.
+The script needs Playwright and Arial or a font with Arial's widths (Liberation
+Sans, Arimo, Nimbus Sans); otherwise labels wrap differently than in draw.io.

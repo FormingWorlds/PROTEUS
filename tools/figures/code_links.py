@@ -1,29 +1,15 @@
-"""Resolve name-based code links in the architecture diagram to line links.
+"""Resolve the name-based code links of the architecture diagram to line links.
 
-A diagram link names its target instead of a line number::
-
-    https://github.com/FormingWorlds/PROTEUS/blob/main/<path>#<target>
-
-where ``<target>`` is one of
-
-* a function, class or method, by qualified name (``run_zephyrus``,
-  ``Proteus.start``): the line of its ``def`` or ``class``;
-* a comment, as a slug of its text or of its first sentence
-  (``interior`` for ``############### INTERIOR``, ``run-offline-chemistry``
-  for ``# Run offline chemistry``): the line of that comment.  A section banner
-  wins over other comments with the same words.  Only real comments count,
-  not ``#`` inside strings.
-
-Each target must match exactly once.  A resolved link is
-``blob/main/...#L<n>`` with the line read from ``main`` itself: the docs deploy
-runs on every push to ``main`` and resolves against that checkout, so the
-published links follow ``main`` as it moves.  A target that ``main`` no longer
-has is left without a link, and the deploy warns about it.
+A link names its target instead of a line, as
+``https://github.com/FormingWorlds/PROTEUS/blob/main/<path>#<target>``, where
+``<target>`` is a function, class or method (``Proteus.start``) or the slug of
+a comment (``interior`` for ``############### INTERIOR``). It must match
+exactly once; a section banner wins over other comments.
 
 Usage:
-    python3 tools/figures/code_links.py --check     # every target resolves (PR CI)
-    python3 tools/figures/code_links.py --deploy    # resolve against this main checkout
-    python3 tools/figures/code_links.py             # resolve against origin/main
+    python3 tools/figures/code_links.py --check    # every target resolves (PR CI)
+    python3 tools/figures/code_links.py --deploy   # resolve against this checkout (docs deploy)
+    python3 tools/figures/code_links.py            # resolve against origin/main
 """
 
 from __future__ import annotations
@@ -119,7 +105,7 @@ def resolve_target(path: str, target: str, ref: str | None = None) -> int:
         first_sentence = re.split(r'(?<=\.)\s', body)[0]
         if target in (slug(body), slug(first_sentence)):
             others.append(i)
-    hits = banners or others  # a section banner wins over a passing mention
+    hits = banners or others
     if len(hits) != 1:
         what = 'no function or comment matches' if not hits else f'{len(hits)} comments match'
         raise LinkError(f'{path}#{target}: {what} this target')
@@ -134,13 +120,9 @@ def split(href: str) -> tuple[str, str] | None:
     return None if LINE_ANCHOR.match(target) else (path, target)
 
 
-def is_symbolic(href: str) -> bool:
-    return split(href) is not None
-
-
 def resolve(href: str, ref: str | None = None) -> str:
-    """Turn a name-based link into a ``blob/main`` line link, reading the line from
-    ``ref`` (None for the work tree); other links pass through."""
+    """Line link for a name-based link, read from ``ref`` (None: the work tree);
+    other links pass through."""
     parts = split(href)
     if parts is None:
         return href
@@ -170,8 +152,8 @@ def validate(ref: str | None) -> list[str]:
 
 
 def rewrite(ref: str | None, lenient: bool) -> list[str]:
-    """Rewrite the links in the SVGs.  With ``lenient``, a target that does not
-    resolve loses its link instead of failing; otherwise it is left as it was."""
+    """Re-resolve the links in the SVGs. A broken target loses its link when
+    ``lenient`` and is left as it was otherwise."""
     problems = []
     for svg in SVGS:
         text = svg.read_text()
@@ -212,8 +194,7 @@ def main() -> int:
             print(f'error: {e}', file=sys.stderr)
         if errors:
             print(
-                'Fix the target in draw.io and arch_final.json, or restore the '
-                'renamed function or comment (see tools/figures/README.md).',
+                'Update the link in draw.io and arch_final.json (tools/figures/README.md).',
                 file=sys.stderr,
             )
         return 1 if errors else 0
@@ -222,7 +203,6 @@ def main() -> int:
     ref = args.ref if lenient else (args.ref or 'origin/main')
     problems = rewrite(ref, lenient)
     for p in problems:
-        # a GitHub annotation in the docs deploy, a plain message elsewhere
         if lenient:
             print(f'::warning::{p}; this box has no link until the diagram is updated')
         else:

@@ -1,21 +1,11 @@
 """Extract the diagram model (arch_final.json) from a draw.io SVG export.
 
-The export is rendered in headless Chromium so that every label's line breaks
-and line boxes are measured from the same HTML layout draw.io uses, rather than
-re-derived.  Shapes and edges are read from the SVG elements with their
-computed colours; the 0.5 px translate draw.io applies to crisp up strokes is
-folded into the coordinates.
-
-Colours are written in the model palette: draw.io colours are passed through
-``PALETTE`` (draw.io colour -> model colour), so the diagram can be edited in
-draw.io's own colours while the figure keeps the tuned palette that
-``gen_tikz.py`` maps to dark mode.
+The export is rendered in headless Chromium, so labels keep draw.io's line
+breaks. draw.io colours are mapped to the model palette through ``PALETTE``,
+which ``gen_tikz.py`` maps to dark mode.
 
 Usage:
-    python3 tools/figures/extract_drawio.py EXPORT.svg arch_final.json \
-        [--logo-light PNG --logo-dark PNG]
-
-Requires playwright with a Chromium build.
+    python3 tools/figures/extract_drawio.py EXPORT.svg arch_final.json [--logo-dark PNG]
 """
 
 from __future__ import annotations
@@ -282,7 +272,6 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('svg')
     ap.add_argument('out')
-    ap.add_argument('--logo-light')
     ap.add_argument('--logo-dark')
     args = ap.parse_args()
 

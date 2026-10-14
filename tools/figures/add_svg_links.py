@@ -5,9 +5,8 @@ re-attached here as an overlay of transparent rectangles, one per linked shape,
 in the figure's own coordinate system.  The overlay is appended last so it sits
 above the artwork and receives the clicks.
 
-Name-based code links are resolved to a line on ``main`` here (see
-code_links.py); each link keeps its target in ``data-target`` so the line can be
-refreshed later without rebuilding the figure.
+Name-based code links are resolved to a line (code_links.py) and keep their
+target in ``data-target``, so the line can be refreshed without a rebuild.
 """
 
 from __future__ import annotations
@@ -18,7 +17,7 @@ import sys
 from html import escape
 from pathlib import Path
 
-from code_links import REPO_URL, is_symbolic, resolve
+from code_links import resolve, split
 
 
 def main(svg_path, links_path, out_path, fig_w=1412.0, fig_h=1415.0):
@@ -39,10 +38,12 @@ def main(svg_path, links_path, out_path, fig_w=1412.0, fig_h=1415.0):
             continue
         seen.add(key)
         target = lb['href']
-        title = target.split('/blob/main/')[-1].split('/tree/main/')[-1]
-        if is_symbolic(target):
-            path, name = target[len(REPO_URL) :].split('#', 1)
-            title = f'{path}: {name}'
+        parts = split(target)
+        title = (
+            f'{parts[0]}: {parts[1]}'
+            if parts
+            else target.split('/blob/main/')[-1].split('/tree/main/')[-1]
+        )
         rows.append(
             f'<a xlink:href="{escape(resolve(target), quote=True)}" '
             f'data-target="{escape(target, quote=True)}" target="_blank">'

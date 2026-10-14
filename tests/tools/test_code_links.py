@@ -1,17 +1,9 @@
 """Unit tests for ``tools/figures/code_links.py``.
 
-The script resolves the name-based code links of the architecture diagram to
-``blob/main`` links to a single line. These tests check:
-
-* a section banner resolves to its own line and wins over a docstring or a
-  comment that mentions the same words,
-* a comment resolves to its own line, by full text or by first sentence,
-* a method resolves to its ``def`` by qualified name,
-* the error contract: a missing or duplicated target or file raises,
-* line anchors and foreign links pass through unchanged,
-* the rewrite links to ``main``, and the deploy drops the link of a broken
-  target while a strict run leaves it as it was,
-* every target of the committed diagram resolves in the committed tree.
+Checks that banners, comments and methods resolve to their own line, that a
+missing or ambiguous target raises, that other links pass through, that the
+deploy drops a broken link while a strict run keeps it, and that every link of
+the committed diagram resolves.
 """
 
 from __future__ import annotations
