@@ -55,13 +55,9 @@ dependencies = [
     # requires (Zalmoxis #79), on top of the JAX structure path for
     # unified PALEOS and wet mantles (Zalmoxis #78).
     "fwl-zalmoxis>=26.09.21",
-    # The default Aragog interior solver runs on JAX: its eos/phase/solver
-    # modules are equinox Modules, so jax, jaxlib, and equinox are needed by
-    # a standard run, not only by the optional atmodeller backend. The three
-    # are held to the combination the default Aragog numerics are validated
-    # against: equinox 0.13.8 on jax and jaxlib below 0.10. Lifting any of
-    # these bounds requires revalidating the Aragog entropy solve against the
-    # current pin before the newer versions are trusted for grid production.
+    # Aragog (the default interior solver) and atmodeller run on JAX and equinox. The three are
+    # held to the combination the Aragog numerics are validated against (equinox 0.13.8 on jax
+    # and jaxlib below 0.10); lift a bound only after the Aragog entropy solve is validated again.
     "jax<0.10",
     "jaxlib<0.10",
     "equinox==0.13.8",
@@ -97,13 +93,15 @@ documentation = "https://proteus-framework.org/proteus/"
 changelog = "https://github.com/FormingWorlds/PROTEUS/releases"
 
 [project.optional-dependencies]
-# Optional physics backends installed on demand via pip install "fwl-proteus[<extra>]".
+# Physics extras: pip install "fwl-proteus[<extra>]" takes them from PyPI; bash install.sh sets
+# up atmodeller, vulcan and morrigan as editable clones with tools/get_<name>.sh.
 # atmodeller and vulcan are licensed GPL-3.0; morrigan is Apache-2.0.
 
-# atmodeller: alternative outgassing backend (Bower+2025, ApJ 995:59),
-# selected via outgas.module = "atmodeller". Pulls JAX + equinox.
+# atmodeller: alternative outgassing module (Bower+2025, ApJ 995:59),
+# selected via outgas.module = "atmodeller". Also installable editable
+# via tools/get_atmodeller.sh.
 atmodeller = ["atmodeller>=1.0.2"]
-# vulcan: atmospheric photochemistry backend, selected via
+# vulcan: atmospheric photochemistry module, selected via
 # atmos_chem.module = "vulcan". Also installable editable via
 # tools/get_vulcan.sh.
 vulcan = ["fwl-vulcan>=26.04.22"]
@@ -282,6 +280,12 @@ ref = "c32965865c2c6bb1ba27b94e958a36982d74b0bf"
 # SPIDER; the pin still matters for local installs and future CI.
 url = "https://github.com/FormingWorlds/SPIDER.git"
 ref = "c9a3fd4301c7008291d4f4921506d36b6288f8ca"
+
+[tool.proteus.modules.atmodeller]
+# Volatile outgassing module selected by outgas.module = "atmodeller".
+# Cloned and installed editable by tools/get_atmodeller.sh.
+url = "https://github.com/FormingWorlds/atmodeller.git"
+ref = "77e81aac5147bad7eec727fba5b299e055db2d4d"
 
 # VULCAN has no entry here on purpose: like fwl-aragog and fwl-zalmoxis,
 # it is a single-source PyPI package. tools/get_vulcan.sh checks out the

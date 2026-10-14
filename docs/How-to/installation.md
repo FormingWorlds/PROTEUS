@@ -142,25 +142,30 @@ The installer runs through the following phases automatically:
 
 1. Pre-flight checks (OS, disk space, Python version, system dependencies)
 2. Julia check, and Julia 1.13 through juliaup when your default Julia is another version or you have none
-3. Environment variables (`FWL_DATA`, `PYTHON_JULIAPKG_EXE`, and in phases 4 and 5 `RAD_DIR` and, for a built FastChem, `FC_DIR`): the installer writes each to `.proteus-env.sh` in the PROTEUS folder as it sets it, and sets them all in the active conda environment in one step at the end of phase 6, before the data downloads of phase 7; a value that holds a single quote stays in `.proteus-env.sh` only. It edits no shell start file
+3. Environment variables (`FWL_DATA`, `PYTHON_JULIAPKG_EXE`, and in phases 4 and 5 `RAD_DIR` and, for a built FastChem, `FC_DIR`): the installer writes each to `.proteus-env.sh` in the PROTEUS folder as it sets it, and sets them all in the active conda environment in one step at the end of phase 6, after the check that PROTEUS imports and before the further modules of phase 7; a value that holds a single quote stays in `.proteus-env.sh` only. It edits no shell start file
 4. SOCRATES compilation and `RAD_DIR` setup
 5. AGNI and FastChem setup (Julia atmosphere model + equilibrium chemistry); an AGNI folder that is there already stays, and when its `Manifest.toml` names another minor Julia version (1.12 against 1.13, for example) than the one PROTEUS uses, the installer warns and names `proteus update-all`, which instantiates AGNI again
 6. Python packages (editable installs of all submodules, the SUNDIALS CVODE solver, and PROTEUS itself)
-7. Reference data downloads (by default the essential set: the default-config and tutorial k-tables, stellar spectra and tracks, the PHOENIX grid of the default star, and the interior tables)
-8. Verification via `proteus doctor`
+7. Further modules (Morrigan, VULCAN, atmodeller and Obliqua): a failed module prints a warning with the command to repeat and the installer goes on; after the four steps the installer checks again that PROTEUS imports, and stops when it does not
+8. Reference data downloads (by default the essential set: the default-config and tutorial k-tables, stellar spectra and tracks, the PHOENIX grid of the default star, and the interior tables)
+9. Verification via `proteus doctor`
+
+The installer clones the four further modules into the PROTEUS folder, each under its own licence: atmodeller (GPL-3.0), VULCAN (GPL-3.0), Morrigan (Apache-2.0) and Obliqua (MIT). PROTEUS itself is under Apache-2.0.
+
+The installer and the setup scripts that can clone over SSH (those of the Python modules, SOCRATES, LavAtmos and ThermoEngineLite) test the SSH access to GitHub without a question on the terminal. When the test fails (no key that GitHub accepts, a key with a passphrase that no SSH agent holds, or no host key of github.com on this machine), they clone over HTTPS. `get_agni.sh`, `get_obliqua.sh` and `get_spider.sh` have no SSH test: they clone the HTTPS URL that `pyproject.toml` gives.
 
 The installer prints one line per build step and writes the full build output to `install_<date>_<time>.log` (for example `install_20261011_142530.log`) in the PROTEUS folder; when a step fails, it also prints the last 40 lines of that step's output.
 
 PROTEUS runs on Julia 1.13. When your default Julia is another version, the installer adds Julia 1.13 through juliaup beside it and does not change your default. When you have no Julia, the installer installs juliaup with Julia 1.13 and does not put it on your `PATH`: PROTEUS finds it through `PYTHON_JULIAPKG_EXE`, and to use `julia` in your terminal, add `~/.juliaup/bin` to your `PATH`. When neither `julia` nor juliaup is on your `PATH`, the installer takes juliaup from `~/.juliaup/bin`; when there is none either but a juliaup configuration exists (`juliaup/juliaup.json` under `JULIAUP_DEPOT_PATH`, by default `~/.julia`), the installer stops and asks you to put your juliaup on your `PATH`, so that a second juliaup does not change your default. PROTEUS and the setup scripts in `tools/` find Julia 1.13 through `PYTHON_JULIAPKG_EXE`, so a bare `julia` in your terminal is still your own default.
 
-The installer installs every Python module (MORS, JANUS, CALLIOPE, ZEPHYRUS, Aragog and Zalmoxis) and PROTEUS itself in editable mode, each from a clone in the PROTEUS folder, so a change in a clone takes effect without a new install. fwl-io, which downloads the reference data, is installed from PyPI.
+The installer installs every Python module (MORS, JANUS, CALLIOPE, ZEPHYRUS, Aragog, Zalmoxis, Morrigan, VULCAN and atmodeller) and PROTEUS itself in editable mode, each from a clone in the PROTEUS folder, so a change in a clone takes effect without a new install. fwl-io, which downloads the reference data, is installed from PyPI.
 
-- A new module clone is at the release tag of the module's minimum version in `pyproject.toml`.
+- A new module clone is at the release tag of the module's minimum version in `pyproject.toml`; a new atmodeller or Obliqua clone is at the commit that `pyproject.toml` pins under `[tool.proteus.modules]`.
 - A new Aragog or Zalmoxis clone takes the branch of the same name instead when PROTEUS is on a feature branch that the module also has.
-- Running the installer again does not update a module clone that is already there. It installs the clone as it is and names each one that is not at its tag, with the commands that move it to the tag and reinstall it, and the command that replaces it with a new clone, for example `bash tools/get_python_module.sh MORS --force`.
+- Running the installer again does not update a module clone that is already there. It installs the clone as it is and names each one that is not at its tag or pinned commit, with the commands that move it there and reinstall it, and the command that replaces it with a new clone, for example `bash tools/get_python_module.sh MORS --force`.
 
 !!! note "The one exception: a clone older than the minimum version"
-    If a clone that stays is older than the minimum version, the PROTEUS install that follows replaces its editable install with the release from PyPI. PROTEUS then imports that release, not the clone, and `proteus doctor` shows the version without the `[editable @ ...]` mark. To use the clone again, move it to its tag and reinstall it, or replace it with a new clone, with the commands that the installer prints.
+    If a clone of MORS, JANUS, CALLIOPE, ZEPHYRUS, Aragog or Zalmoxis that stays is older than the minimum version, the PROTEUS install that follows replaces its editable install with the release from PyPI. PROTEUS then imports that release, not the clone, and `proteus doctor` shows the version without the `[editable @ ...]` mark. To use the clone again, move it to its tag and reinstall it, or replace it with a new clone, with the commands that the installer prints.
 
 !!! note "Developing a module"
     To develop a module, switch its clone to a branch and install it again, for example:
@@ -197,12 +202,12 @@ phases.
 !!! tip "CLI alternative: `proteus install-all`"
     If PROTEUS is already importable in your environment, `proteus install-all`
     performs the same setup from the CLI: it installs the SUNDIALS CVODE solver and the required
-    submodules (SOCRATES, and AGNI at the commit PROTEUS pins, through `tools/get_agni.sh` as the installer does), downloads reference data, including the PHOENIX grid of the default star (about 1 GB), checks for sufficient
+    submodules (SOCRATES, and AGNI at the commit PROTEUS pins, through `tools/get_agni.sh` as the installer does), runs the setup scripts of Morrigan, VULCAN, atmodeller and Obliqua (a script that fails gives a warning and the command goes on), downloads reference data, including the PHOENIX grid of the default star (about 1 GB), checks for sufficient
     disk space, creates `FWL_DATA` if needed, and sets the environment variables. It prints the
     version of the Julia that PROTEUS uses and warns when it is not 1.13, as `proteus update-all` does.
 
     - Pass `--export-env` to set the environment variables in the active conda environment and write them to `.proteus-env.sh`, as the installer does. It sets nothing in `base`, keeps a value that holds a single quote in `.proteus-env.sh` only, records `RAD_DIR` only for a folder that holds a built SOCRATES (`<PROTEUS root>/socrates`, else the `RAD_DIR` you have set), `FC_DIR` only for a built FastChem, and `PYTHON_JULIAPKG_EXE` only when it already names an executable Julia; `bash install.sh` selects Julia 1.13 and sets it.
-    - To refresh an existing installation later, use `proteus update-all` (see [Diagnose and update](doctor.md)). It runs no git command in the Python module clones; as with `bash install.sh`, its pip step installs the PyPI release in place of a clone that is older than the minimum version. To move a clone to its release tag after a version change, run the commands that `bash install.sh` prints for a clone that is not at its tag, or the module's setup script with `--force`.
+    - To refresh an existing installation later, use `proteus update-all` (see [Diagnose and update](doctor.md)). It runs no git command in the Python module clones; as with `bash install.sh`, its pip step installs the PyPI release in place of a clone of MORS, JANUS, CALLIOPE, ZEPHYRUS, Aragog or Zalmoxis that is older than the minimum version. To move a clone to its release tag after a version change, run the commands that `bash install.sh` prints for a clone that is not at its tag, or the module's setup script with `--force`.
     
     Both commands operate on the PROTEUS source tree, which they locate from the
     installed package (editable installs) or, for a plain wheel install, from

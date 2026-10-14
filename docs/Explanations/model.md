@@ -113,7 +113,7 @@ The outgassing module computes the thermodynamic equilibrium partitioning of vol
 
 **[CALLIOPE](https://proteus-framework.org/CALLIOPE/)** (Python) solves for the equilibrium partial pressures and dissolved volatile concentrations given the mantle temperature, melt fraction, and total element inventories for H, C, N, S, and O [^cite-bower2019]. It uses parameterised solubility laws and an fO2 buffer (configurable as an IW offset) to compute the redox state [^cite-nicholls2024]. CALLIOPE handles the full set of major volcanic gases (H$_2$O, CO$_2$, H$_2$, CO, N$_2$, SO$_2$, S$_2$, CH$_4$).
 
-**[atmodeller](https://github.com/djbower/atmodeller)** (Python/JAX) is an alternative outgassing backend that uses a real-gas equation of state and a more detailed thermochemical treatment [^cite-bower2025]. atmodeller provides an independent cross-check on CALLIOPE for the same volatile partitioning problem.
+**[atmodeller](https://github.com/djbower/atmodeller)** (Python/JAX) is an alternative outgassing module that uses a real-gas equation of state and a more detailed thermochemical treatment [^cite-bower2025]. atmodeller provides an independent cross-check on CALLIOPE for the same volatile partitioning problem.
 
 **[LavAtmos](https://github.com/FormingWorlds/LavAtmos)** (Python) is an optional addition, enabled with `outgas.vapourise = true`, that computes the thermodynamic vapourisation equilibrium of the surface melt [^cite-vanbuchem2023] and adds the resulting rock-vapour species to the volatile outgassing [^cite-vanbuchem2025]. Vapourisation is a distinct process from outgassing. It uses the FastChem equilibrium chemistry solver and requires [ThermoEngineLite](https://github.com/FormingWorlds/ThermoEngineLite) for melt thermodynamics. 
 

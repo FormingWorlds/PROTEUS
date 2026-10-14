@@ -9,8 +9,8 @@ execution of simulations to study the effects of tides on planetary orbits.
 
 - PROTEUS installed with `bash install.sh` (see the
   [installation guide](../How-to/installation.md)), which builds AGNI and
-  SOCRATES
-- SPIDER (with PETSc) and Obliqua, which the installer does not build
+  SOCRATES and sets up Obliqua
+- SPIDER (with PETSc), which the installer does not build
   (commands below)
 - `FWL_DATA` and `RAD_DIR` environment variables set
 - Spectral files downloaded (`proteus get spectral -n Dayspring -b 48`)
@@ -23,14 +23,16 @@ without the `--offline` flag, so the download commands above are only
 required for offline use.
 
 The config uses SPIDER for the interior structure and energetics and Obliqua
-for the tides. Build them after the standard install, from the PROTEUS folder
+for the tides. Build SPIDER after the standard install, from the PROTEUS folder
 with the `proteus` environment active:
 
 ```bash
 bash tools/get_petsc.sh
 bash tools/get_spider.sh
-bash tools/get_obliqua.sh
 ```
+
+The installer sets up Obliqua. When `proteus doctor` reports Obliqua as not
+installed, run `bash tools/get_obliqua.sh` from the PROTEUS folder.
 
 The [optional modules](../How-to/optionalmodules_installation.md) page
 describes each step.

@@ -643,10 +643,8 @@ runs:
       run: |
         set -euo pipefail
         python -m pip install --upgrade pip
-        # Install the optional vulcan + atmodeller backends and the
-        # inference extra alongside the develop extras so their tests run
-        # in CI rather than skip. All three are optional for end users (a
-        # standard run uses calliope and no Bayesian optimisation).
+        # Install the vulcan, atmodeller and inference extras with the
+        # develop extras so that their tests run in CI rather than skip.
         pip install -e ".[develop,vulcan,atmodeller,inference]"
 
     # ------------------------------------------------------------------

@@ -1180,7 +1180,7 @@ phase 6 "Python submodules"
 # ssh -T returns non-zero even on success (exit 1, "does not provide shell
 # access"), so the capture must stay inside an if to survive set -e; a bare
 # assignment would abort the script.
-if ssh_test_out=$(ssh -T -o BatchMode=yes git@github.com 2>&1); then
+if ssh_test_out=$(ssh -T -o BatchMode=yes -o ConnectTimeout=10 git@github.com 2>&1); then
     ssh_test_rc=0
 else
     ssh_test_rc=$?
@@ -1263,15 +1263,54 @@ pre-commit install -f 2>&1 || warn "pre-commit install failed (non-critical)"
 verify_proteus_import
 info "Python packages installed"
 
-# The Julia 1.11 fall-back of verify_proteus_import sets the last variable, so every variable is
-# recorded here, and an interrupted data download leaves them bound.
+# The Julia fall-back of verify_proteus_import sets the last variable, so every variable is bound
+# here; an interrupt in a later phase then leaves them bound.
 bind_install_vars
 
 # ===================================================================
-# Phase 7: Reference data
+# Phase 7: Further modules (Morrigan, VULCAN, atmodeller, Obliqua)
 # ===================================================================
 CURRENT_PHASE=7
-phase 7 "Reference data"
+phase 7 "Further modules"
+
+# Usage: install_further_module <name> <command...>. A module of this phase that fails does not
+# stop the installer: the warning names the command to repeat, and the end of the run lists it.
+FAILED_MODULES=""
+FURTHER_STAYS=$(mktemp "${TMPDIR:-/tmp}/proteus-clone-stays.XXXXXX") || FURTHER_STAYS=""
+install_further_module() {
+    local name="$1"
+    shift
+    if ! run_logged "Setting up $name" env PROTEUS_CLONE_STAYS="$FURTHER_STAYS" "$@"; then
+        warn "$name is not installed: its setup step failed (see the output above). The installer" \
+            "goes on without it. To repeat the step, run from $SCRIPT_DIR:  $*"
+        FAILED_MODULES="${FAILED_MODULES}${FAILED_MODULES:+; }$name ($*)"
+    fi
+}
+
+install_further_module "Morrigan" bash tools/get_morrigan.sh
+install_further_module "VULCAN" bash tools/get_vulcan.sh
+install_further_module "atmodeller" bash tools/get_atmodeller.sh
+install_further_module "Obliqua" bash tools/get_obliqua.sh
+
+if [ -s "$FURTHER_STAYS" ]; then
+    warn "Not at their release tag or pinned commit:" \
+        "$(awk 'NR > 1 {printf ", "} {printf "%s", $0}' "$FURTHER_STAYS"). Each stays as it is; the" \
+        "commands printed above move a clone to its tag or pin, or replace it."
+fi
+rm -f "$FURTHER_STAYS"
+
+# A setup step above can change a package that PROTEUS imports.
+if ! import_log=$(python3 -c "import proteus" 2>&1); then
+    fail "PROTEUS does not import after the setup steps of Morrigan, VULCAN, atmodeller and Obliqua. Error output:"
+    printf '%s\n' "$import_log"
+    die "PROTEUS imported before these steps and does not import now (see the error above).${FAILED_MODULES:+ Steps that failed: $FAILED_MODULES.}"
+fi
+
+# ===================================================================
+# Phase 8: Reference data
+# ===================================================================
+CURRENT_PHASE=8
+phase 8 "Reference data"
 
 case "$DATA_MODE" in
     essential)
@@ -1306,10 +1345,10 @@ case "$DATA_MODE" in
 esac
 
 # ===================================================================
-# Phase 8: Verification
+# Phase 9: Verification
 # ===================================================================
-CURRENT_PHASE=8
-phase 8 "Verification"
+CURRENT_PHASE=9
+phase 9 "Verification"
 
 info "Running proteus doctor..."
 echo ""
@@ -1324,6 +1363,11 @@ printf "${GREEN}${BOLD}Installation complete!${NC}\n"
 echo ""
 note_old_shell_exports
 print_next_steps
+if [ -n "$FAILED_MODULES" ]; then
+    echo ""
+    warn "Not installed: $FAILED_MODULES. Fix the error of each one and run its command from" \
+        "$SCRIPT_DIR; proteus doctor lists what is missing."
+fi
 echo ""
 echo "For SPIDER (legacy interior module), run separately:"
 echo "  bash tools/get_petsc.sh && bash tools/get_spider.sh"

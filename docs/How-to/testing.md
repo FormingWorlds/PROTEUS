@@ -18,9 +18,9 @@ pytest --cov=src --cov-report=html      # Generate coverage report
 open htmlcov/index.html                 # View coverage in browser
 ```
 
-Tests covering an optional backend skip when that backend is absent, so
+Tests covering package extras skip when that extra is absent, so
 `[develop]` alone runs fewer tests than CI does. To match the CI selection
-locally, install the optional extras as well:
+locally, install the extras as well:
 
 ```bash
 pip install -e ".[develop,vulcan,atmodeller,inference]"

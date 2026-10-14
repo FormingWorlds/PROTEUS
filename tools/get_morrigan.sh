@@ -1,7 +1,7 @@
 #!/bin/bash
-# Clone Morrigan into ./Morrigan/ at the tag of the fwl-morrigan floor and install it editable; an
-# existing folder is installed as it is, and --force replaces it. For standard installations, use
-# `pip install "fwl-proteus[morrigan]"`.
+# The installer sets Morrigan up. The script clones it into ./Morrigan/ at the tag of the
+# fwl-morrigan floor in pyproject.toml and installs it editable. An existing folder is installed as
+# it is; --force replaces it.
 
 set -euo pipefail
 
