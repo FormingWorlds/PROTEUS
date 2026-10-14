@@ -122,5 +122,20 @@ origin main` first), for viewing them straight from the repository.
 in draw.io; the editable diagram is embedded in each file's `content`
 attribute. Their labels are native SVG text rather than HTML in a `foreignObject`
 with a raster fallback, so every renderer, not just a browser, shows the current
-wording. Re-exporting from draw.io restores the HTML-plus-raster form, and the
-labels then have to be converted back.
+wording. Re-exporting from draw.io restores the HTML-plus-raster form, so after
+each export:
+
+1. In draw.io, export both variants as SVG (File > Export as > SVG) with
+   "Include a copy of my diagram" and "Embed images" on, and "Convert labels to
+   SVG" off: draw.io's own conversion drops italics and subscripts.
+2. Convert the labels in place:
+
+```bash
+python3 tools/figures/svg_labels_to_text.py docs/assets/proteus_modules_schematic.svg
+python3 tools/figures/svg_labels_to_text.py docs/assets/proteus_modules_schematic_darkmode.svg
+```
+
+`svg_labels_to_text.py` lays each label out in headless Chromium (Playwright),
+as `extract_drawio.py` does, and writes it as one `<text>` per line with its
+italics, bold and subscripts; the rest of the file is left untouched. It warns
+when the export does not embed the diagram.
