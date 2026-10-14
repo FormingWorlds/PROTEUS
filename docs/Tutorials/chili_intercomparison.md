@@ -62,8 +62,7 @@ volume.
     row: Venus at 17.3 Myr with 6.7% of melt, the grid runs at 18.3 to 19.2 Myr with 7.3 to 8.4%,
     and TRAPPIST-1 b at 19.0 Myr with 18.5%. The TRAPPIST-1 &alpha; run is shown to its last row, at 11.1 Myr
     with 55.7% of melt: over its last 5 Myr its melt fraction decreased by about 0.002
-    percentage points per Myr, and its net atmospheric flux was 0.25 W m$^{-2}$,
-    against 0.13 W m$^{-2}$ of radiogenic heating. The six runs that had not reached 5% melt ran with the
+    percentage points per Myr, and its net atmospheric flux was 0.25 W m$^{-2}$. The six runs that had not reached 5% melt ran with the
     energy-balance, escape and wall-clock stops on up to the end of their first
     part, at 3.1 to 15.0 Myr, and were resumed from their last snapshot
     under the stop rule above. The runs do not follow the long-term
@@ -82,9 +81,10 @@ volume.
 - Interior data downloaded, including the PALEOS EOS tables
   (`proteus get interiordata --config-path input/chili/intercomp/earth.toml`)
 - `git` (to clone the CHILI comparison data)
-- Allow from about 3 hours to about a day per run that reaches 5% melt, depending on the
-  case and the hardware; a run that stays partly molten advances in steps of at most
-  4000 yr (`params.dt.mushy_maximum`) and needs about 250,000 steps to reach 1 Gyr
+- The runs on this page that reached 5% melt took about 3 hours to about a day of wall
+  time; the others had used up to about 1.4 days when the data were copied.
+  A run that stays partly molten takes steps of at most 4000 yr (`params.dt.mushy_maximum`),
+  so at least 250,000 steps to reach 1 Gyr
 
 The commands below run with `--offline`, which skips the automatic
 reference-data check, so all data must be on disk beforehand. Drop the
@@ -347,7 +347,9 @@ informative because the two come from different model configurations. The
 protocol fixes the inputs that both share: a bulk-silicate-Earth
 composition, oxygen fugacity at IW+4, a Bond albedo of 0.1, and a 50 Myr
 stellar age [^cite-lichtenberg2026]. The two differ in the interior
-modules and in the stop criteria.
+modules and in the limits of the stop rule: the submitted configs stop
+after 4.517 Gyr (6.6 and 7.55 Gyr for the TRAPPIST-1 cases) or 9000
+iterations, the configs here after 1 Gyr or 1,000,000 iterations.
 
 The PROTEUS results submitted to the intercomparison were computed with an
 earlier version of PROTEUS, not the configuration documented here. The
