@@ -5,8 +5,8 @@ parameter values using the `proteus grid` command. Grid runs are the standard
 approach for parameter studies, sensitivity analyses, and population synthesis.
 
 It uses the all-dummy base configuration (`input/dummy.toml`), so every case
-runs in seconds without any external solver, and the whole grid finishes in a
-couple of minutes on a laptop. The numbers below are therefore illustrative of
+needs no external solver and its coupling loop takes 20 to 100 s, and the whole
+grid finishes in about 8 minutes on a workstation with 8 cases in parallel. The numbers below are therefore illustrative of
 the workflow, not physical predictions; see the caveats at the end.
 
 ## How grids work
@@ -112,18 +112,30 @@ Which one triggers depends on orbital distance, as shown below.
 
 ## Results
 
+Both figures below come from `tools/plot_grid_tutorial.py`, which reads the case
+folders of the grid:
+
+```bash
+python tools/plot_grid_tutorial.py output/tutorial_grid/ --output output_files/grid_plots/
+```
+
+Add `--style light` or `--style dark` for the look of the figures on this page; this
+needs the `proteus-mpl` package.
+
 The melt-fraction histories split cleanly by orbital distance:
 
 <figure markdown="span">
-  ![Melt-fraction cooling tracks](../assets/tutorials/grid/grid_tracks.avif){ width="90%" }
+  ![Melt-fraction cooling tracks](../assets/tutorials/grid/grid_tracks.avif#only-light){ width="90%" }
+  ![Melt-fraction cooling tracks](../assets/tutorials/grid/grid_tracks_dark.avif#only-dark){ width="90%" }
   <figcaption><strong>Figure 1.</strong> Global melt fraction against time for all 27 cases, coloured by orbital distance. The nine innermost cases (0.03 AU) stay fully molten and stop at energy balance; the cases at 0.122 and 0.5 AU cool through the dotted solidification threshold and stop solidified. Heavier planets (longer tracks) take longer to reach either endpoint.</figcaption>
 </figure>
 
-Each input axis controls a distinct output:
+The final state of each case against the input axes:
 
 <figure markdown="span">
-  ![Output parameters across the grid](../assets/tutorials/grid/grid_outputs.avif){ width="100%" }
-  <figcaption><strong>Figure 2.</strong> Final-state outputs across the grid, coloured by planet mass; filled circles solidified, open squares stopped at energy balance. (a) Final melt fraction collapses from 1 (molten, 0.03 AU) to near 0 (solidified) with increasing orbital distance. (b) Final surface temperature: the molten 0.03 AU cases sit near 2950 K, while solidified cases pin to the mantle solidus near 1700 K. (c) Stop time rises with planet mass and, for solidified cases, falls with orbital distance. (d) Final surface pressure scales with the hydrogen budget.</figcaption>
+  ![Output parameters across the grid](../assets/tutorials/grid/grid_outputs.avif#only-light){ width="100%" }
+  ![Output parameters across the grid](../assets/tutorials/grid/grid_outputs_dark.avif#only-dark){ width="100%" }
+  <figcaption><strong>Figure 2.</strong> Final-state outputs across the grid, coloured by planet mass; filled circles solidified, open squares stopped at energy balance. (a) Final melt fraction collapses from 1 (molten, 0.03 AU) to near 0 (solidified) with increasing orbital distance. (b) Final surface temperature: the molten 0.03 AU cases sit near 2960 K, while solidified cases pin to the mantle solidus near 1700 K. (c) Stop time rises with planet mass and, for solidified cases, falls with orbital distance. (d) Final surface pressure rises with the hydrogen budget and with the planet mass, and is about 10 times lower in the molten 0.03 AU cases.</figcaption>
 </figure>
 
 In words, for this dummy setup:
@@ -132,13 +144,14 @@ In words, for this dummy setup:
   mantle above its liquidus, so the planet never solidifies and stops at energy
   balance. Farther out it solidifies. Among the solidified cases, a closer orbit
   gives a *longer* cooling time, because absorbed instellation partly offsets the
-  surface cooling (for 1 M_earth: 32 kyr at 0.122 AU versus 23 kyr at 0.5 AU).
+  surface cooling (for 1 M_earth: 31 kyr at 0.122 AU versus 23 kyr at 0.5 AU).
 - **Planet mass sets the timescale.** A more massive planet holds more heat and
-  takes longer to solidify (roughly 19, 23, and 28 kyr at 0.5 AU for 0.5, 1.0,
+  takes longer to solidify (roughly 17, 23, and 30 kyr at 0.5 AU for 0.5, 1.0,
   and 2.0 M_earth).
-- **Hydrogen budget sets the surface pressure.** More hydrogen outgasses a
-  thicker atmosphere (surface pressure scales with `H_budget`), but in this
-  dummy setup it does not change the cooling rate or the thermal endpoint.
+- **Hydrogen budget raises the surface pressure.** More hydrogen outgasses a
+  thicker atmosphere (a factor of 6 in surface pressure from 1000 to 9000 ppmw),
+  but in this dummy setup it does not change the cooling rate or the thermal
+  endpoint.
 
 ## Monitoring progress
 

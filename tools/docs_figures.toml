@@ -1,0 +1,188 @@
+# Figures of the tutorial pages. `python tools/make_docs_figures.py --runs <folder>` draws
+# each entry as `<asset>.avif` (light) and `<asset>_dark.avif` (dark) with proteus-mpl.
+# How to add a figure: docs/How-to/documentation.md, "Update the tutorial figures".
+
+# Lowest version of proteus-mpl that the tool accepts; equal to the floor in pyproject.toml.
+proteus_mpl = "1.3.0"
+avif_quality = 80
+pages = "docs/Tutorials"
+# Pages whose figures do not come from this tool; `--check` names and skips them.
+exempt_pages = []
+
+# Run of input/dummy.toml; PROTEUS names its folder after the start time: give it with --run.
+[[figure]]
+id = "dummy_global_lin"
+page = "quick_start_dummy.md"
+asset = "docs/assets/tutorials/dummy_global_lin"
+runs = ["quick_start"]
+maker = "proteus:global"
+args = { logt = false, tmin = 1e3 }
+
+# Run of input/tutorials/tutorial_earth.toml.
+[[figure]]
+id = "earth_global_log"
+page = "earth_analogue.md"
+asset = "docs/assets/tutorials/earth_global_log"
+runs = ["tutorial_earth"]
+maker = "proteus:global"
+args = { logt = true, tmin = 1e3 }
+
+# Grid of input/tutorials/tutorial_grid.toml (`proteus grid`).
+[[figure]]
+id = "grid_tracks"
+page = "parameter_grid.md"
+asset = "docs/assets/tutorials/grid/grid_tracks"
+runs = ["tutorial_grid"]
+maker = "tools/plot_grid_tutorial.py:make_tracks"
+
+# Grid of input/tutorials/tutorial_grid.toml (`proteus grid`).
+[[figure]]
+id = "grid_outputs"
+page = "parameter_grid.md"
+asset = "docs/assets/tutorials/grid/grid_outputs"
+runs = ["tutorial_grid"]
+maker = "tools/plot_grid_tutorial.py:make_outputs"
+
+# Run of input/tutorials/tutorial_earth_moon.toml, which ends at 8e5 yr.
+[[figure]]
+id = "orbit_tides_orbit"
+page = "orbit_tides.md"
+asset = "docs/assets/orbit/orbit_tides_orbit"
+runs = ["tutorial_earth_moon"]
+maker = "proteus:orbit"
+
+# Run of input/tutorials/tutorial_earth_moon.toml, which ends at 8e5 yr.
+[[figure]]
+id = "orbit_tides_fluxes_global"
+page = "orbit_tides.md"
+asset = "docs/assets/orbit/orbit_tides_fluxes_global"
+runs = ["tutorial_earth_moon"]
+maker = "proteus:fluxes_global"
+
+# Run of input/tutorials/tutorial_earth_moon.toml, which ends at 8e5 yr.
+[[figure]]
+id = "orbit_tides_lovenumber"
+page = "orbit_tides.md"
+asset = "docs/assets/orbit/orbit_tides_lovenumber"
+runs = ["tutorial_earth_moon"]
+maker = "proteus:lovenumber"
+
+# Runs of input/chili/intercomp/earth.toml and input/chili/intercomp/venus.toml.
+[[figure]]
+id = "chili_fig1_melt_fraction"
+page = "chili_intercomparison.md"
+asset = "docs/assets/tutorials/chili/fig1_melt_fraction"
+runs = ["chili_earth", "chili_venus"]
+maker = "tools/plot_chili_comparison.py:make_figure"
+args = { fig_id = "chili_fig1_melt_fraction", chili_repo = "{chili_repo}", earth = "{runs}/chili_earth", venus = "{runs}/chili_venus" }
+
+# Run of input/chili/intercomp/earth.toml and of the 9 configs in input/tutorials/chili_grid/.
+[[figure]]
+id = "chili_fig2_milestones"
+page = "chili_intercomparison.md"
+asset = "docs/assets/tutorials/chili/fig2_milestones"
+runs = [
+    "chili_earth",
+    "chili_grid_earth_Hlow_Clow",
+    "chili_grid_earth_Hlow_Cmid",
+    "chili_grid_earth_Hlow_Chigh",
+    "chili_grid_earth_Hmid_Clow",
+    "chili_grid_earth_Hmid_Cmid",
+    "chili_grid_earth_Hmid_Chigh",
+    "chili_grid_earth_Hhigh_Clow",
+    "chili_grid_earth_Hhigh_Cmid",
+    "chili_grid_earth_Hhigh_Chigh",
+]
+maker = "tools/plot_chili_comparison.py:make_figure"
+args = { fig_id = "chili_fig2_milestones", chili_repo = "{chili_repo}", earth = "{runs}/chili_earth", grid_dir = "{runs}" }
+
+# Run of input/chili/intercomp/earth.toml.
+[[figure]]
+id = "chili_fig3_atm_composition"
+page = "chili_intercomparison.md"
+asset = "docs/assets/tutorials/chili/fig3_atm_composition"
+runs = ["chili_earth"]
+maker = "tools/plot_chili_comparison.py:make_figure"
+args = { fig_id = "chili_fig3_atm_composition", chili_repo = "{chili_repo}", earth = "{runs}/chili_earth" }
+
+# Run of input/chili/intercomp/earth.toml.
+[[figure]]
+id = "chili_fig4_mass_budgets"
+page = "chili_intercomparison.md"
+asset = "docs/assets/tutorials/chili/fig4_mass_budgets"
+runs = ["chili_earth"]
+maker = "tools/plot_chili_comparison.py:make_figure"
+args = { fig_id = "chili_fig4_mass_budgets", chili_repo = "{chili_repo}", earth = "{runs}/chili_earth" }
+
+# Run of input/chili/intercomp/venus.toml.
+[[figure]]
+id = "chili_fig5_venus_atm"
+page = "chili_intercomparison.md"
+asset = "docs/assets/tutorials/chili/fig5_venus_atm"
+runs = ["chili_venus"]
+maker = "tools/plot_chili_comparison.py:make_figure"
+args = { fig_id = "chili_fig5_venus_atm", chili_repo = "{chili_repo}", venus = "{runs}/chili_venus" }
+
+# Run of input/chili/intercomp/venus.toml.
+[[figure]]
+id = "chili_fig6_fO2_vs_T"
+page = "chili_intercomparison.md"
+asset = "docs/assets/tutorials/chili/fig6_fO2_vs_T"
+runs = ["chili_venus"]
+maker = "tools/plot_chili_comparison.py:make_figure"
+args = { fig_id = "chili_fig6_fO2_vs_T", chili_repo = "{chili_repo}", venus = "{runs}/chili_venus" }
+
+# Run of input/chili/intercomp/venus.toml.
+[[figure]]
+id = "chili_fig7_volatiles"
+page = "chili_intercomparison.md"
+asset = "docs/assets/tutorials/chili/fig7_volatiles"
+runs = ["chili_venus"]
+maker = "tools/plot_chili_comparison.py:make_figure"
+args = { fig_id = "chili_fig7_volatiles", chili_repo = "{chili_repo}", venus = "{runs}/chili_venus" }
+
+# Run of input/chili/intercomp/earth.toml.
+[[figure]]
+id = "chili_fig8_olr"
+page = "chili_intercomparison.md"
+asset = "docs/assets/tutorials/chili/fig8_olr"
+runs = ["chili_earth"]
+maker = "tools/plot_chili_comparison.py:make_figure"
+args = { fig_id = "chili_fig8_olr", chili_repo = "{chili_repo}", earth = "{runs}/chili_earth" }
+
+# Run of input/chili/intercomp/earth.toml.
+[[figure]]
+id = "chili_fig9_geodynamics"
+page = "chili_intercomparison.md"
+asset = "docs/assets/tutorials/chili/fig9_geodynamics"
+runs = ["chili_earth"]
+maker = "tools/plot_chili_comparison.py:make_figure"
+args = { fig_id = "chili_fig9_geodynamics", chili_repo = "{chili_repo}", earth = "{runs}/chili_earth" }
+
+# Run of input/chili/intercomp/earth.toml.
+[[figure]]
+id = "chili_psurf_vs_time"
+page = "chili_intercomparison.md"
+asset = "docs/assets/tutorials/chili/psurf_vs_time"
+runs = ["chili_earth"]
+maker = "tools/plot_chili_comparison.py:make_figure"
+args = { fig_id = "chili_psurf_vs_time", chili_repo = "{chili_repo}", earth = "{runs}/chili_earth" }
+
+# Runs of the 9 configs in input/tutorials/chili_grid/.
+[[figure]]
+id = "chili_grid_solidification"
+page = "chili_intercomparison.md"
+asset = "docs/assets/tutorials/chili/grid_solidification"
+runs = [
+    "chili_grid_earth_Hlow_Clow",
+    "chili_grid_earth_Hlow_Cmid",
+    "chili_grid_earth_Hlow_Chigh",
+    "chili_grid_earth_Hmid_Clow",
+    "chili_grid_earth_Hmid_Cmid",
+    "chili_grid_earth_Hmid_Chigh",
+    "chili_grid_earth_Hhigh_Clow",
+    "chili_grid_earth_Hhigh_Cmid",
+    "chili_grid_earth_Hhigh_Chigh",
+]
+maker = "tools/plot_chili_comparison.py:make_figure"
+args = { fig_id = "chili_grid_solidification", chili_repo = "{chili_repo}", grid_dir = "{runs}" }
