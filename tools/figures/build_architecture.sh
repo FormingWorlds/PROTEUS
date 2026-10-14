@@ -36,7 +36,8 @@ for mode in light dark; do
   fi
   pdftocairo -svg "$work/arch_$mode.pdf" "$work/arch_$mode.svg"
   python3 "$here/add_svg_links.py" \
-    "$work/arch_$mode.svg" "$work/arch_$mode.links.json" "$work/final_$mode.svg"
+    "$work/arch_$mode.svg" "$work/arch_$mode.links.json" "$work/final_$mode.svg" \
+    $(python3 -c 'import json,sys; m=json.load(open(sys.argv[1]))["meta"]; print(m["width"], m["height"])' "$here/arch_final.json")
 done
 
 cp "$work/final_light.svg" "$assets/proteus_architecture.svg"

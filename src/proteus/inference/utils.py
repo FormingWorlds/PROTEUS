@@ -229,9 +229,16 @@ def print_results(D, logs, config, output, n_init):
         log.info(f'{k:28s}   {tru:8.4e}    {obs:8.4e}    {dif:+.3f}')
     log.info(' ')
 
-    log.info(f'{"Parameter":28s} | Best fitting value')
-    for i, k in enumerate(param_keys):
-        log.info(f'{k:28s}   {input[k]:g}')
+    # True parameters are known when the observables came from a known simulation
+    truth = config.get('truth')
+    if truth is None:
+        log.info(f'{"Parameter":28s} | Best fitting value')
+        for k in param_keys:
+            log.info(f'{k:28s}   {input[k]:g}')
+    else:
+        log.info(f'{"Parameter":28s} |    True     |  Best fit')
+        for k in param_keys:
+            log.info(f'{k:28s}   {truth[k]:8.4e}    {input[k]:8.4e}')
     log.info(' ')
 
     # Log parameter statistics
@@ -251,31 +258,49 @@ def print_results(D, logs, config, output, n_init):
     return in_path
 
 
-def get_acqf(name: str, gp: SingleTaskGP, best: float):
+def get_acqf(name: str, gp: SingleTaskGP, best: float, X_pending: torch.Tensor | None = None):
     """Build the acquisition function.
 
     Supports 'UCB', 'LogEI', and 'LogPI' acquisition functions.
     See docs: https://botorch.readthedocs.io/en/latest/acquisition.html
+
+    With `X_pending`, each becomes its Monte Carlo version, which scores a
+    candidate jointly with the points other workers are still evaluating, so a
+    candidate next to one of them gains little. For LogPI that version is
+    qProbabilityOfImprovement, the probability itself rather than its log.
 
     Parameters
     ----------
     - name (str): Name of the acquisition function.
     - gp (SingleTaskGP): Fitted Gaussian Process model.
     - best (float): Current best observed value for EI/PI.
+    - X_pending (torch.Tensor | None): Points being evaluated, shape (n, d).
 
     Returns
     ----------
     - AcquisitionFunction: The constructed acquisition function.
     """
     if name == 'UCB':
+        if X_pending is not None:
+            from botorch.acquisition.monte_carlo import qUpperConfidenceBound
+
+            return qUpperConfidenceBound(gp, beta=2.0, X_pending=X_pending)
         from botorch.acquisition.analytic import UpperConfidenceBound
 
         return UpperConfidenceBound(gp, beta=2.0)
     elif name == 'LogEI':
+        if X_pending is not None:
+            from botorch.acquisition.logei import qLogExpectedImprovement
+
+            return qLogExpectedImprovement(gp, best_f=best, X_pending=X_pending)
         from botorch.acquisition.analytic import LogExpectedImprovement
 
         return LogExpectedImprovement(gp, best_f=best)
     elif name == 'LogPI':
+        if X_pending is not None:
+            from botorch.acquisition.monte_carlo import qProbabilityOfImprovement
+
+            return qProbabilityOfImprovement(gp, best_f=best, X_pending=X_pending)
         from botorch.acquisition.analytic import LogProbabilityOfImprovement
 
         return LogProbabilityOfImprovement(gp, best_f=best)

@@ -49,6 +49,17 @@ _FAILURE_COLUMNS = (
 )
 
 
+def _render(value) -> str:
+    """One parameter value, short enough to sit on a shared line.
+    A sweep is over numbers, so numbers get the compact form.
+    """
+    if isinstance(value, bool):
+        return str(value)
+    if isinstance(value, (int, float)):
+        return f'{value:g}'
+    return str(value)
+
+
 @dataclass(eq=False)
 class ProteusRunFailure(RuntimeError):
     """A single child PROTEUS run that did not produce a usable result.
@@ -107,7 +118,7 @@ class ProteusRunFailure(RuntimeError):
         if self.console_path:
             lines.append(f'    console    = {self.console_path}')
         if self.parameters:
-            pretty = ', '.join(f'{k}={v:g}' for k, v in sorted(self.parameters.items()))
+            pretty = ', '.join(f'{k}={_render(v)}' for k, v in sorted(self.parameters.items()))
             lines.append(f'    parameters = {pretty}')
         return '\n'.join(lines)
 
