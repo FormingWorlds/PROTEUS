@@ -5,6 +5,7 @@ against shared data, checkpointing as they go, and the orchestration around them
 from __future__ import annotations
 
 import logging
+import math
 import os
 import time
 from functools import partial
@@ -15,6 +16,7 @@ import torch
 
 from proteus.inference.BO import BO_step, init_locs
 from proteus.inference.failures import ProteusRunFailure
+from proteus.inference.objective import close_worker_runner
 from proteus.inference.utils import get_kernel, load_dataset_csv, save_dataset_csv
 from proteus.utils.coupler import get_proteus_directories
 from proteus.utils.logs import attach_worker_logfile
@@ -22,6 +24,37 @@ from proteus.utils.logs import attach_worker_logfile
 # Tensor dtype for all computations
 dtype = torch.double
 log = logging.getLogger('fwl.' + __name__)
+
+
+# Smallest rise of the best objective that resets the `patience` count
+PATIENCE_MIN_GAIN = 0.01
+
+
+def evaluations_since_improvement(
+    Y: torch.Tensor, n_init: int, min_gain: float = PATIENCE_MIN_GAIN
+) -> int:
+    """Evaluations since the best objective last rose by more than `min_gain`.
+
+    The best of the initial samples is the first reference. Small rises add up: the
+    reference moves only once the best has risen by more than the threshold in total.
+
+    Parameters
+    ----------
+    - Y (torch.Tensor): Objective values in evaluation order, initial samples first.
+    - n_init (int): Number of initial samples at the start of `Y`.
+    - min_gain (float): Smallest rise of the best objective that counts as an
+      improvement, in objective units (-log10 of chi-squared).
+
+    Returns
+    ----------
+    - int: Optimisation steps completed after the last improvement.
+    """
+    y = Y.reshape(-1).tolist()
+    ref, last = max(y[:n_init], default=-math.inf), n_init - 1
+    for i in range(n_init, len(y)):
+        if y[i] > ref + min_gain:
+            ref, last = y[i], i
+    return len(y) - 1 - last
 
 
 def checkpoint(D: dict, logs: list, Ts: list, output_dir: str) -> None:
@@ -86,6 +119,8 @@ def worker(
     log_level: int = logging.INFO,
     stop=None,
     aborts=None,
+    patience: int = 0,
+    converged=None,
 ) -> None:
     """Worker subprocess that performs asynchronous BO steps.
 
@@ -94,8 +129,9 @@ def worker(
       2. Calls BO_step to propose and evaluate a new point.
       3. Logs timing and performance metrics.
       4. Updates shared data, busy points, and checkpoints.
-    Runs until the total number of observations reaches max_len, or until
-    `stop` is set because a worker's run failed under `abort_on_failure`.
+    Runs until the total number of observations reaches max_len, until
+    `stop` is set because a worker's run failed under `abort_on_failure`, or
+    until `converged` is set because the best objective stopped improving.
 
     Parameters
     ----------
@@ -119,6 +155,10 @@ def worker(
       another evaluation.
     - aborts (Manager.list | None): Receives the failure that set `stop`, so
       the parent can raise it once every worker has exited.
+    - patience (int): Stop the study once this many evaluations pass without the
+      best objective rising by more than PATIENCE_MIN_GAIN; 0 never stops.
+    - converged (Manager.Event | None): Set by the worker that finds the
+      `patience` limit reached, and checked like `stop`.
 
     Returns
     ----------
@@ -146,6 +186,8 @@ def worker(
             log_list,
             output_dir,
             stop,
+            patience,
+            converged,
         )
     except ProteusRunFailure as failure:
         # Only raised out of the objective under `abort_on_failure`.
@@ -169,6 +211,10 @@ def worker(
         except Exception:
             log.warning(f'Worker {worker_id} could not release its busy point')
 
+        # Stop the PROTEUS process this worker was reusing, if it had one, so
+        # that a study which ends early leaves nothing running behind it.
+        close_worker_runner()
+
 
 def _worker_loop(
     process_fun,
@@ -185,8 +231,10 @@ def _worker_loop(
     log_list,
     output_dir: str,
     stop=None,
+    patience: int = 0,
+    converged=None,
 ) -> None:
-    """Run BO iterations until the evaluation budget is reached.
+    """Run BO iterations until the evaluation budget or the patience is reached.
 
     The body of `worker`, separated so that failure reporting and busy-point
     release wrap every exit path.
@@ -214,6 +262,9 @@ def _worker_loop(
         if stop is not None and stop.is_set():
             log.info(f'Worker {worker_id} exiting: the study is stopping on a failed run')
             break
+        if converged is not None and converged.is_set():
+            log.info(f'Worker {worker_id} exiting: the best objective stopped improving')
+            break
 
         # For the first iteration, use provided initial point
         x_in = x_init if task_id == 0 else None
@@ -236,6 +287,8 @@ def _worker_loop(
             D_shared['X'] = X
             Y = torch.cat((D_shared['Y'], y_new), dim=0)
             D_shared['Y'] = Y
+            # Evaluated now, so no longer pending for the other workers.
+            B.pop(worker_id, None)
 
             # Record end timestamp
             T.append(t_end)
@@ -270,6 +323,18 @@ def _worker_loop(
         current_best = Y.max().item()
         log.info(f'Step {step:5d}, best objective = {current_best:+.5f}')
 
+        if (
+            patience
+            and converged is not None
+            and not converged.is_set()
+            and evaluations_since_improvement(Y, n_init) >= patience
+        ):
+            log.info(
+                f'Stopping the study: the best objective has not risen by more than '
+                f'{PATIENCE_MIN_GAIN} in {patience} evaluations'
+            )
+            converged.set()
+
         task_id += 1
 
 
@@ -285,6 +350,9 @@ def parallel_process(
     observables: dict,
     parameters: dict,
     failure_codes: list[int],
+    sigma: dict | None = None,
+    correlation: dict | None = None,
+    patience: int = 0,
 ) -> tuple[dict, list, list]:
     """Orchestrate parallel asynchronous Bayesian optimization.
 
@@ -305,6 +373,11 @@ def parallel_process(
     - parameters (dict):  Parameters (keys) with bounds (values) for inference.
     - failure_codes (list[int]): PROTEUS status codes that complete normally but
       that this run excludes from the fit.
+    - sigma (dict | None): Uncertainty of each observable, or None for the
+      relative-difference objective.
+    - correlation (dict | None): Correlations between the observable uncertainties.
+    - patience (int): Evaluations without improvement after which the study
+      stops; 0 runs the full budget.
 
     Returns
     ----------
@@ -321,6 +394,8 @@ def parallel_process(
         ref_config=ref_config,
         output=output,
         failure_codes=failure_codes,
+        sigma=sigma,
+        correlation=correlation,
     )
 
     # Build kernel
@@ -353,6 +428,8 @@ def parallel_process(
     # which also leaves that failure in `aborts` for the parent to re-raise.
     stop = mgr.Event()
     aborts = mgr.list()
+    # Set by the first worker that finds the `patience` limit reached
+    converged = mgr.Event()
     log_list = mgr.list([None] * n_init)  # no logs from init data
 
     # Generate initial candidate locations and busy-map
@@ -396,6 +473,8 @@ def parallel_process(
                 worker_log_level,
                 stop,
                 aborts,
+                patience,
+                converged,
             ),
         )
         p.start()
@@ -420,6 +499,11 @@ def parallel_process(
     D_final = dict(D_shared)
     logs = list(log_list)
     T_elapsed = [t - T0 for t in list(T)]
+    if converged.is_set():
+        log.info(
+            f'Stopped early by patience after {len(D_final["X"]) - n_init} of '
+            f'{max_len - n_init} optimisation steps'
+        )
 
     # A worker that dies mid-run leaves the run looking complete. Report.
     died = [wid for wid, p in enumerate(procs) if p.exitcode != 0]

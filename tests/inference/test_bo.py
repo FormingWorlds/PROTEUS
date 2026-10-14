@@ -20,6 +20,8 @@ References:
 
 from __future__ import annotations
 
+import warnings
+
 import pytest
 
 # The Bayesian-optimisation stack ships as the optional `inference` extra,
@@ -58,7 +60,6 @@ class _DummyGP:
         return _Posterior()
 
 
-@pytest.mark.unit
 def test_unit_bounds_returns_hypercube_tensor():
     """``unit_bounds(d)`` returns a (2, d) tensor whose rows are all-zeros
     and all-ones, i.e. the lower and upper corners of the d-dimensional
@@ -70,7 +71,6 @@ def test_unit_bounds_returns_hypercube_tensor():
     assert bounds[1].tolist() == [1.0, 1.0, 1.0]
 
 
-@pytest.mark.unit
 def test_bo_step_with_x_in_skips_gp_fitting():
     """When ``BO_step`` is called with an explicit ``x_in`` (an
     externally-suggested candidate), it skips the GP fit + acquisition
@@ -100,7 +100,6 @@ def test_bo_step_with_x_in_skips_gp_fitting():
     assert B[0][0, 0].item() == pytest.approx(0.4)
 
 
-@pytest.mark.unit
 def test_bo_step_raises_for_unknown_acquisition(monkeypatch):
     """An unsupported acquisition function name raises ValueError with
     'Unsupported acquisition function' rather than silently dispatching to
@@ -141,7 +140,6 @@ def test_bo_step_raises_for_unknown_acquisition(monkeypatch):
     assert f_calls == []
 
 
-@pytest.mark.unit
 def test_bo_step_ucb_path_computes_distance(monkeypatch):
     """The UCB acquisition path returns the proposed candidate, the
     evaluated ``y`` at that candidate, and the minimum distance to any
@@ -150,7 +148,10 @@ def test_bo_step_ucb_path_computes_distance(monkeypatch):
     monkeypatch.setattr(bo_mod, 'SingleTaskGP', lambda **kwargs: _DummyGP())
     monkeypatch.setattr(bo_mod, 'ExactMarginalLogLikelihood', lambda _lik, _gp: object())
     monkeypatch.setattr(bo_mod, 'fit_gpytorch_mll', lambda *args, **kwargs: None)
-    monkeypatch.setattr(bo_mod, 'get_acqf', lambda *args, **kwargs: object())
+    pending = []
+    monkeypatch.setattr(
+        bo_mod, 'get_acqf', lambda *args, X_pending=None: pending.append(X_pending)
+    )
     monkeypatch.setattr(
         bo_mod,
         'optimize_acqf',
@@ -179,21 +180,24 @@ def test_bo_step_ucb_path_computes_distance(monkeypatch):
 
     assert y[0, 0].item() == pytest.approx(0.9)
     assert dist == pytest.approx(0.5)
+    # Only worker 1's point is pending; worker 0's own entry is excluded
+    assert pending[0].tolist() == [[0.3]]
 
 
-@pytest.mark.unit
 def test_init_locs_returns_batch_candidates(monkeypatch):
     """init_locs(n, D) returns an (n, d) tensor for n workers by calling
     optimize_acqf once per worker with q=1 and stacking the results.
 
-    Analytic acquisition functions require q=1; each candidate is
-    optimised independently.
+    Each call gets the candidates chosen before it as pending points.
     """
     monkeypatch.setattr(bo_mod, 'get_kernel', lambda *args, **kwargs: object())
     monkeypatch.setattr(bo_mod, 'SingleTaskGP', lambda **kwargs: _DummyGP())
     monkeypatch.setattr(bo_mod, 'ExactMarginalLogLikelihood', lambda _lik, _gp: object())
     monkeypatch.setattr(bo_mod, 'fit_gpytorch_mll', lambda *args, **kwargs: None)
-    monkeypatch.setattr(bo_mod, 'get_acqf', lambda *args, **kwargs: object())
+    pending = []
+    monkeypatch.setattr(
+        bo_mod, 'get_acqf', lambda *args, X_pending=None: pending.append(X_pending)
+    )
 
     q_values: list = []
     results = [
@@ -221,9 +225,10 @@ def test_init_locs_returns_batch_candidates(monkeypatch):
     assert tuple(out.shape) == (2, 1)
     assert out[0, 0].item() == pytest.approx(0.2)
     assert out[1, 0].item() == pytest.approx(0.7)
+    assert pending[0] is None
+    assert pending[1].tolist() == [[0.2]]
 
 
-@pytest.mark.unit
 def test_plot_iter_writes_figure(tmp_path):
     """``plot_iter`` writes the BO-iteration diagnostic figure to disk
     under the given directory and filename. Verifies the file-IO leg of
@@ -262,7 +267,6 @@ def test_plot_iter_writes_figure(tmp_path):
 # patching import targets.
 
 
-@pytest.mark.unit
 @pytest.mark.physics_invariant
 def test_get_acqf_ucb_uses_beta_2():
     """get_acqf('UCB') returns an UpperConfidenceBound with beta=2.0.
@@ -284,7 +288,6 @@ def test_get_acqf_ucb_uses_beta_2():
     assert result.beta.item() != pytest.approx(0.0)
 
 
-@pytest.mark.unit
 @pytest.mark.physics_invariant
 def test_get_acqf_log_ei_forwards_best_f():
     """get_acqf('LogEI') returns a LogExpectedImprovement anchored at best_f.
@@ -304,7 +307,6 @@ def test_get_acqf_log_ei_forwards_best_f():
     assert abs(result.best_f.item()) > 0.1
 
 
-@pytest.mark.unit
 @pytest.mark.physics_invariant
 def test_get_acqf_log_pi_forwards_best_f():
     """get_acqf('LogPI') returns a LogProbabilityOfImprovement anchored at best_f.
@@ -324,7 +326,6 @@ def test_get_acqf_log_pi_forwards_best_f():
     assert abs(result.best_f.item()) > 0.1
 
 
-@pytest.mark.unit
 def test_get_acqf_raises_for_unsupported_name():
     """get_acqf raises ValueError for names outside {'UCB', 'LogEI', 'LogPI'}.
 
@@ -350,7 +351,6 @@ def test_get_acqf_raises_for_unsupported_name():
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 @pytest.mark.physics_invariant
 def test_init_locs_propagates_acqf_to_log_pi(monkeypatch):
     """init_locs with acqf='LogPI' passes 'LogPI' to get_acqf for every worker slot.
@@ -362,7 +362,7 @@ def test_init_locs_propagates_acqf_to_log_pi(monkeypatch):
     """
     acqf_names: list = []
 
-    def _mock_get_acqf(name, gp, best):
+    def _mock_get_acqf(name, gp, best, X_pending=None):
         acqf_names.append(name)
         return object()
 
@@ -447,7 +447,6 @@ def _patched_bo_step_deps(monkeypatch, candidate=0.8):
     monkeypatch.setattr(bo_mod, 'plot_iter', lambda **kwargs: None)
 
 
-@pytest.mark.unit
 def test_bo_step_identifies_busy_points_by_worker_id_not_position(monkeypatch):
     """Busy points are matched to their owner by worker id. Once a worker has
     stopped and released its claim, the remaining entries no longer sit at the
@@ -490,7 +489,6 @@ def test_bo_step_identifies_busy_points_by_worker_id_not_position(monkeypatch):
     assert abs(dist - 0.05) > 0.02
 
 
-@pytest.mark.unit
 def test_bo_step_reports_no_distance_when_no_other_worker_is_busy(monkeypatch):
     """With no other worker running, there is no nearest busy point and the
     distance is undefined rather than zero. This is the steady state of a
@@ -532,3 +530,224 @@ def test_bo_step_reports_no_distance_when_no_other_worker_is_busy(monkeypatch):
         worker_id=0,
     )
     assert dist2 is None
+
+
+def _two_peak_data():
+    """1D data around two unsampled maxima, at x = 0.2 (higher) and x = 0.8."""
+    X = torch.tensor([[0.0], [0.1], [0.3], [0.5], [0.7], [0.9], [1.0]], dtype=torch.double)
+    Y = torch.exp(-(((X - 0.2) / 0.1) ** 2)) + 0.8 * torch.exp(-(((X - 0.8) / 0.1) ** 2))
+    return {'X': X, 'Y': Y}
+
+
+def _fitted_gp(D):
+    """GP on `D` with fixed hyperparameters, so the test needs no fit."""
+    from botorch.models import SingleTaskGP
+
+    gp = SingleTaskGP(D['X'], D['Y'], train_Yvar=torch.full_like(D['Y'], 1e-4))
+    gp.covar_module.lengthscale = 0.1  # the width of the peaks in _two_peak_data
+    return gp.eval()
+
+
+def _propose(gp, D, X_pending, name='LogEI'):
+    from botorch.optim import optimize_acqf
+
+    torch.manual_seed(0)  # fixes the Monte Carlo base samples of the batch versions
+    acqf = bo_mod.get_acqf(name, gp, D['Y'].max().item(), X_pending=X_pending)
+    x, _ = optimize_acqf(acqf, bo_mod.unit_bounds(1), q=1, num_restarts=2, raw_samples=64)
+    return x
+
+
+def test_get_acqf_with_pending_uses_monte_carlo_versions():
+    """With pending points, LogEI, UCB and LogPI become qLogEI, qUCB and qPI
+    holding those points, with best_f carried over where it applies."""
+    from botorch.acquisition.logei import qLogExpectedImprovement
+    from botorch.acquisition.monte_carlo import (
+        qProbabilityOfImprovement,
+        qUpperConfidenceBound,
+    )
+
+    D = _two_peak_data()
+    gp = _fitted_gp(D)
+    pending = torch.tensor([[0.2]], dtype=torch.double)
+
+    ei = bo_mod.get_acqf('LogEI', gp, best=0.73, X_pending=pending)
+    ucb = bo_mod.get_acqf('UCB', gp, best=0.73, X_pending=pending)
+    pi = bo_mod.get_acqf('LogPI', gp, best=0.73, X_pending=pending)
+
+    assert isinstance(ei, qLogExpectedImprovement)
+    assert ei.best_f.item() == pytest.approx(0.73)
+    assert isinstance(ucb, qUpperConfidenceBound)
+    assert isinstance(pi, qProbabilityOfImprovement)
+    assert pi.best_f.item() == pytest.approx(0.73)
+    for acqf in (ei, ucb, pi):
+        assert acqf.X_pending.tolist() == [[0.2]]
+
+
+# PI peaks beside the best observation at x = 0.1, EI further into the peak.
+@pytest.mark.parametrize(('name', 'x_first'), [('LogEI', 0.2), ('LogPI', 0.12)])
+def test_pending_point_moves_the_proposal_away(name, x_first):
+    """The acquisition proposes the same point again while it is busy unless
+    that point is pending; with it pending, the proposal moves to the other
+    maximum.
+
+    Without pending points, two workers would both propose a point on the
+    higher peak at 0.2.
+    """
+    D = _two_peak_data()
+    gp = _fitted_gp(D)
+
+    first = _propose(gp, D, X_pending=None, name=name)
+    again = _propose(gp, D, X_pending=None, name=name)
+    second = _propose(gp, D, X_pending=first, name=name)
+
+    assert first.item() == pytest.approx(x_first, abs=0.05)
+    assert again.item() == pytest.approx(first.item(), abs=1e-3), 'without pending: a duplicate'
+    assert second.item() == pytest.approx(0.8, abs=0.05), 'with pending: the other maximum'
+
+
+# botorch 0.18.1 warning texts, as they appear in an inference log
+_FIRST_TRY = (
+    'Optimization failed in `gen_candidates_scipy` with the following warning(s):\n'
+    "[OptimizationWarning('Optimization failed within `scipy.optimize.minimize` with "
+    "status 2 and message ABNORMAL: .'), OptimizationWarning('Optimization failed within "
+    "`scipy.optimize.minimize` with status 2 and message ABNORMAL: .')]\n"
+    'Trying again with a new set of initial conditions.'
+)
+_SECOND_TRY = (
+    'Optimization failed on the second try, after generating a new set of initial conditions.'
+)
+
+
+def _patch_optimizer(monkeypatch, *messages):
+    """Make optimize_acqf emit `messages` as (text, category) warnings and return x = [[0.25, 0.75]]."""
+
+    def _optimize(**kwargs):
+        for text, category in messages:
+            warnings.warn(text, category)
+        return torch.tensor([[0.25, 0.75]], dtype=torch.double), None
+
+    monkeypatch.setattr(bo_mod, 'optimize_acqf', _optimize)
+
+
+def test_optimize_acqf_logged_folds_both_retry_warnings_into_one_warning_line(
+    monkeypatch, caplog, recwarn
+):
+    """Both botorch retry warnings become one WARNING log line naming the worker,
+    the failed starts and the candidate, and neither is re-raised as a warning.
+    """
+    _patch_optimizer(monkeypatch, (_FIRST_TRY, RuntimeWarning), (_SECOND_TRY, RuntimeWarning))
+
+    with caplog.at_level('INFO', logger='fwl.proteus.inference.BO'):
+        x = bo_mod.optimize_acqf_logged(acq_function=None, d=2, who='worker 3')
+
+    assert x.tolist() == [[0.25, 0.75]]
+    assert len(caplog.records) == 1
+    rec = caplog.records[0]
+    assert rec.levelname == 'WARNING'
+    assert rec.getMessage() == (
+        'Acquisition optimiser (worker 3): L-BFGS-B stopped early in 2 start(s) '
+        '[status 2 (ABNORMAL)], failed again after a retry; proposing x = [0.25, 0.75]'
+    )
+    assert len(recwarn) == 0
+
+
+def test_optimize_acqf_logged_reports_successful_retry_at_info(monkeypatch, caplog):
+    """A first-try failure that the retry fixes is logged at INFO, not WARNING."""
+    _patch_optimizer(monkeypatch, (_FIRST_TRY, RuntimeWarning))
+
+    with caplog.at_level('INFO', logger='fwl.proteus.inference.BO'):
+        bo_mod.optimize_acqf_logged(acq_function=None, d=2, who='initial point 0')
+
+    assert [r.levelname for r in caplog.records] == ['INFO']
+    assert 'the retry succeeded' in caplog.records[0].getMessage()
+    assert 'initial point 0' in caplog.records[0].getMessage()
+
+
+_NO_STATUS = (
+    "OptimizationWarning('Optimization failed within `scipy.optimize.minimize` with no "
+    "status returned to `res.`')"
+)
+
+
+def test_optimize_acqf_logged_names_starts_that_returned_no_status(monkeypatch, caplog):
+    """A start that returned no status is counted and named, alone and next to
+    a status failure, not logged as '0 start(s) []'."""
+    head = 'Optimization failed in `gen_candidates_scipy` with the following warning(s):\n['
+    tail = ']\nTrying again with a new set of initial conditions.'
+    status = (
+        "OptimizationWarning('Optimization failed within `scipy.optimize.minimize` with "
+        "status 2 and message ABNORMAL: .')"
+    )
+
+    with caplog.at_level('INFO', logger='fwl.proteus.inference.BO'):
+        _patch_optimizer(monkeypatch, (head + _NO_STATUS + tail, RuntimeWarning))
+        bo_mod.optimize_acqf_logged(acq_function=None, d=2, who='worker 1')
+        _patch_optimizer(
+            monkeypatch, (head + _NO_STATUS + ', ' + status + tail, RuntimeWarning)
+        )
+        bo_mod.optimize_acqf_logged(acq_function=None, d=2, who='worker 1')
+
+    lines = [r.getMessage() for r in caplog.records]
+    assert lines[0].startswith(
+        'Acquisition optimiser (worker 1): L-BFGS-B stopped early in 1 start(s) '
+        '[no status returned], the retry succeeded'
+    )
+    assert 'in 2 start(s) [no status returned, status 2 (ABNORMAL)]' in lines[1]
+
+
+def test_optimize_acqf_logged_falls_back_to_a_plain_line_for_an_unknown_format(
+    monkeypatch, caplog
+):
+    """An unparseable first-try warning is still logged, without a count or reasons."""
+    _patch_optimizer(
+        monkeypatch,
+        (
+            'Optimization failed in `gen_candidates_scipy` with the following warning(s):\n[]',
+            RuntimeWarning,
+        ),
+    )
+
+    with caplog.at_level('INFO', logger='fwl.proteus.inference.BO'):
+        bo_mod.optimize_acqf_logged(acq_function=None, d=2, who='worker 2')
+
+    assert [r.getMessage() for r in caplog.records] == [
+        'Acquisition optimiser (worker 2): L-BFGS-B stopped early, the retry succeeded; '
+        'proposing x = [0.25, 0.75]'
+    ]
+
+
+def test_optimize_acqf_logged_passes_each_other_warning_on_once(monkeypatch):
+    """A warning repeated on every BO step is passed on once; a different one
+    still is."""
+    monkeypatch.setattr(bo_mod, '_PASSED_ON', set())
+    _patch_optimizer(monkeypatch, ('GP fit is ill-conditioned', UserWarning))
+
+    with warnings.catch_warnings(record=True) as seen:
+        warnings.simplefilter('default')
+        for _ in range(3):
+            bo_mod.optimize_acqf_logged(acq_function=None, d=2, who='worker 0')
+        _patch_optimizer(monkeypatch, ('input is not standardised', UserWarning))
+        bo_mod.optimize_acqf_logged(acq_function=None, d=2, who='worker 0')
+
+    assert [str(w.message) for w in seen] == [
+        'GP fit is ill-conditioned',
+        'input is not standardised',
+    ]
+
+
+def test_optimize_acqf_logged_passes_other_warnings_through_and_logs_nothing(
+    monkeypatch, caplog
+):
+    """A warning that is not botorch's retry message is re-raised unchanged and
+    produces no log line; a clean optimisation logs nothing either.
+    """
+    monkeypatch.setattr(bo_mod, '_PASSED_ON', set())
+    _patch_optimizer(monkeypatch, ('GP fit is ill-conditioned', UserWarning))
+
+    with caplog.at_level('INFO', logger='fwl.proteus.inference.BO'):
+        with pytest.warns(UserWarning, match='ill-conditioned'):
+            bo_mod.optimize_acqf_logged(acq_function=None, d=2, who='worker 0')
+        _patch_optimizer(monkeypatch)
+        bo_mod.optimize_acqf_logged(acq_function=None, d=2, who='worker 0')
+
+    assert caplog.records == []
