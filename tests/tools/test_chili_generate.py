@@ -145,6 +145,9 @@ def test_every_chili_config_stops_only_by_the_protocol_rule():
     }
     want = attrs.asdict(StopParams())
     assert want['stall'] == {'enabled': True, 'maximum': 150}
+    assert want['solid']['enabled'] is True
+    assert want['time']['enabled'] is True
+    assert want['strict'] is False
     for dotted, value in gen.PROTOCOL_STOP.items():
         table, key = dotted.split('.')[2:]
         want[table][key] = value
