@@ -96,9 +96,9 @@ def test_generated_cases_match_tutorials_outside_their_deltas():
             else:
                 assert got == want, f'{name}: {dotted}={got!r}, want {want!r}'
     # Discrimination: the nominal cases carry these deltas and no other.
-    nominal = {'params.out.path', 'outgas.fO2_shift_IW'}
+    nominal = {'params.out.path', 'outgas.fO2_shift_IW', *gen.PROTOCOL_STOP}
     assert set(gen.case_deltas('earth')) == nominal
-    assert set(gen.case_deltas('venus')) == nominal | {'params.stop.time.maximum'}
+    assert set(gen.case_deltas('venus')) == nominal
     assert set(gen.CASE_DELTAS) == {'earth', 'venus', 'tr1b', 'tr1e', 'tr1a'}
 
 
@@ -110,6 +110,14 @@ def test_a_case_cannot_set_its_own_redox_state():
     gen.CASE_DELTAS['tr1a']['set']['outgas.fO2_shift_IW'] = 3.0
     with pytest.raises(ValueError, match='tr1a: PROTOCOL_FO2_SHIFT_IW'):
         gen.generate_case('tr1a')
+
+
+def test_a_case_cannot_set_its_own_stop_rule():
+    """The stop rule of the protocol is one rule for all cases."""
+    gen = _load_generator()
+    gen.CASE_DELTAS['venus']['set']['params.stop.time.maximum'] = 5e9
+    with pytest.raises(ValueError, match=r"venus: .*\['params.stop.time.maximum'\]"):
+        gen.generate_case('venus')
 
 
 @pytest.mark.parametrize('failure', ['case', 'grid'])

@@ -20,10 +20,12 @@ config_version = "3.0"
     mushy_upper   = 0.99
 
     [params.stop.time]
-        maximum = 7550000000.0
+        maximum = 1e9
         [params.stop.solid]
         phi_crit = 0.05
 
+    [params.stop.radeqm]
+    enabled = false
 [star]
     module  = "mors"
     mass    = 0.0898

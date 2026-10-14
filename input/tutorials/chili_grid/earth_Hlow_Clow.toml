@@ -1,5 +1,5 @@
 # PROTEUS CHILI grid case Hlow Clow: Earth at IW+4 with H = 1.60e+20 kg and C = 1.36e+20 kg (Lichtenberg et al. 2026, PSJ 7:108, Table 3).
-# The run stops at a melt fraction of 0.05, at energy balance, or at 15 Myr of model time.
+# The run stops at 5% melt by mass or after 1 Gyr of model time; the energy-balance stop is off.
 # Run: proteus start --offline -c input/tutorials/chili_grid/earth_Hlow_Clow.toml
 
 config_version = "3.0"
@@ -20,9 +20,11 @@ config_version = "3.0"
     mushy_upper   = 0.99
 
     [params.stop.time]
-        maximum = 1.5e7
+        maximum = 1e9
     [params.stop.solid]
         phi_crit = 0.05
+    [params.stop.radeqm]
+        enabled = false
 
 [star]
     module  = "mors"
