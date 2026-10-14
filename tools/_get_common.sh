@@ -28,6 +28,24 @@ proteus_root=$(portable_realpath "$proteus_tools_dir/..")
 # Each git call must answer for the folder its -C names, not for a repository these variables name.
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_NAMESPACE
 
+# Put <PROTEUS root>/.proteus-julia, whose one entry is a link julia to PYTHON_JULIAPKG_EXE, first
+# on PATH, so that a bare julia is the Julia PROTEUS uses; unset or empty changes nothing, and a
+# value that names no executable file returns 1 with an error.
+use_proteus_julia() {
+    local exe="${PYTHON_JULIAPKG_EXE:-}" dir="$proteus_root/.proteus-julia" target
+    [ -n "$exe" ] || return 0
+    if [ ! -f "$exe" ] || [ ! -x "$exe" ]; then
+        echo "ERROR: PYTHON_JULIAPKG_EXE=$exe is not an executable file; point it at the Julia PROTEUS uses, or unset it to use the Julia on PATH." >&2
+        return 1
+    fi
+    target="$(cd "$(dirname "$exe")" && pwd)/$(basename "$exe")"
+    mkdir -p "$dir" && ln -sfn "$target" "$dir/julia" \
+        || { echo "ERROR: could not link $dir/julia to $target." >&2; return 1; }
+    PATH="$dir:$PATH"
+    export PATH
+    echo "Julia: $exe (PYTHON_JULIAPKG_EXE)"
+}
+
 # Split the script's arguments into the --force switch and an optional
 # install-path positional, reported as get_force (true / false) and
 # get_install_path (empty when no path was given). Scripts with a fixed
@@ -89,18 +107,11 @@ guard_dirty_checkout() {
 }
 
 # Report whether GitHub accepts an SSH key, as "true" or "false" on stdout.
-#
-# `ssh -T git@github.com` exits 1 when the key is accepted (GitHub refuses
-# the interactive shell it was asked for) and 255 when it is not, so exit
-# code 1 is the success signal. The probe honours GIT_SSH_COMMAND, so a
-# caller such as CI can make it non-interactive and fast-failing; the
-# expansion is unquoted so that its options reach ssh as separate words,
-# which means an option value containing a space does not survive. Its own
-# output is sent to stderr, where the user still sees it, so that it
-# cannot contaminate the answer read by a command substitution.
+# Probes non-interactively with BatchMode=yes and ConnectTimeout=10.
+# Exit code 1 signals success (GitHub authenticates the key and refuses a shell).
 github_use_ssh() {
     local rc=0
-    ${GIT_SSH_COMMAND:-ssh} -T git@github.com >&2 || rc=$?
+    ${GIT_SSH_COMMAND:-ssh} -o BatchMode=yes -o ConnectTimeout=10 -T git@github.com >&2 || rc=$?
     if [ "$rc" -eq 1 ]; then
         echo true
     else
@@ -321,10 +332,65 @@ _commit_text() {
     esac
 }
 
-# Usage: report_clone_state <distribution> <clone-dir> <script-label>. Reads <clone-dir> with read-only
+# Usage: _report_pinned_clone <distribution> <clone-dir> <script-label> <pin>. Reports an existing
+# clone against a commit pin and prints advice when HEAD does not match the pin commit (with
+# get_refuses_git_file=true, omits --force when .git is a file).
+_report_pinned_clone() {
+    local dist="$1" dir="${2%/}" label="$3" pin="$4" head="" pin_commit="" found="" summary=""
+    local qdir qref
+    if [ ! -e "$dir/.git" ] && [ ! -L "$dir/.git" ]; then
+        found="not a git clone"
+        summary="$found"
+    elif ! is_own_clone "$dir"; then
+        found="not a readable git clone"
+        summary="$found"
+    else
+        head=$(git -C "$dir" rev-parse --verify --quiet HEAD 2>/dev/null) || head=""
+        pin_commit=$(git -C "$dir" rev-parse --verify --quiet "$pin^{commit}" \
+            2>/dev/null) || pin_commit=""
+        if [ -n "$head" ] && [ "$head" = "$pin_commit" ]; then
+            echo "$dist: $dir is at the pinned commit ${pin:0:8}$(_local_changes_note "$dir")"
+            return 0
+        fi
+        if [ -z "$head" ]; then
+            found="a HEAD that git cannot resolve"
+            summary="HEAD unknown"
+        else
+            found=$(_commit_text "$dir" "$head")
+            summary="commit ${head:0:7}"
+        fi
+    fi
+    echo "$dist: $dir stays as it is: $found; not at the pinned commit ${pin:0:8}"
+    record_clone_stays "$dir" "$summary"
+    qdir=$(printf '%q' "$dir")
+    if [ -n "$head" ]; then
+        qref=$(printf '%q' "$pin")
+        echo "    From the PROTEUS folder, move it to the pinned commit by hand with:"
+        echo "        git -C $qdir fetch origin"
+        echo "        git -C $qdir checkout --detach $qref"
+        if [ -f "$dir/pyproject.toml" ] || [ -f "$dir/setup.py" ]; then
+            echo "        pip install -e $qdir"
+        elif [ -f "$dir/Project.toml" ]; then
+            echo "        bash tools/$label"
+        fi
+        if [ -f "$dir/.git" ] && [ "${get_refuses_git_file:-false}" = true ]; then
+            echo "    Or move it away or delete it by hand, then run:"
+            echo "        bash tools/$label"
+        else
+            echo "    Or replace it with a new clone, which deletes everything in it, with:"
+            echo "        bash tools/$label --force"
+        fi
+    else
+        echo "    From the PROTEUS folder, move it away or delete it by hand, then run:"
+        echo "        bash tools/$label"
+    fi
+}
+
+# Usage: report_clone_state <dist> <clone-dir> <label> [pin]. Reads <clone-dir> with read-only
 # git calls; prints one line for a clone at its tag, newer than it or on the paired branch (with
 # get_pairs_branch=true; 2 lines and a summary entry when HEAD lacks the tag), else stay and advice.
 report_clone_state() {
+    [ -n "${4:-}" ] && { _report_pinned_clone "$1" "$2" "$3" "$4"; return 0; }
     local dist="$1" dir="${2%/}" label="$3" tag="" tag_commit="" head="" rel="" branch=""
     local found summary readable=false
     if [ ! -e "$dir/.git" ] && [ ! -L "$dir/.git" ]; then
@@ -388,16 +454,16 @@ is_empty_dir() {
     [ -z "$entries" ]
 }
 
-# Usage: install_existing_clone <distribution> <clone-dir> <script-label> [prepare-function]. Returns
+# Usage: install_existing_clone <dist> <clone-dir> <label> [prepare-fn] [pin]. Returns
 # under --force or with nothing or an empty folder at <clone-dir>; else reports what is there, runs the
 # prepare function on it, installs it editable as it is and exits 0. No git call writes to it.
 install_existing_clone() {
-    local dist="$1" dir="${2%/}" label="$3" prepare="${4:-}"
+    local dist="$1" dir="${2%/}" label="$3" prepare="${4:-}" pin="${5:-}"
     if [ "${get_force:-false}" = true ] || { [ ! -e "$dir" ] && [ ! -L "$dir" ]; } ||
         is_empty_dir "$dir"; then
         return 0
     fi
-    report_clone_state "$dist" "$dir" "$label"
+    report_clone_state "$dist" "$dir" "$label" "$pin"
     if [ -n "$prepare" ]; then
         "$prepare" "$dir" || exit 1
         echo "$dist: the build step ran in the existing folder $dir"
@@ -471,6 +537,21 @@ _swap_interrupted() {
         echo "ERROR: interrupted while replacing $2; the old checkout is at $1" >&2
     fi
     exit "$3"
+}
+
+# Usage: clone_at_ref <url> <ref> <dest>. Clones <url> beside <dest>, checks out <ref> and swaps the
+# clone in at <dest>, so that <dest> stays as it is when a step fails; sets tmp_clone. Exits 1 on failure.
+clone_at_ref() {
+    local url="$1" ref="$2" dest="$3"
+    tmp_clone="${dest%/}.tmp.$$"
+    rm -rf "$tmp_clone"
+    trap 'rm -rf "$tmp_clone"' EXIT
+    git clone "$url" "$tmp_clone" ||
+        { echo "ERROR: git clone failed$(unchanged_note "$dest")" >&2; exit 1; }
+    git -C "$tmp_clone" checkout --quiet "$ref" ||
+        { echo "ERROR: git checkout failed$(unchanged_note "$dest")" >&2; exit 1; }
+    swap_in_checkout "$tmp_clone" "$dest" || exit 1
+    trap - EXIT
 }
 
 # Download <dest> from the first of the urls that serves a file with the given

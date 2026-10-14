@@ -113,7 +113,7 @@ def plot_global(
     axs = (ax_tl, ax_cl, ax_bl, ax_tr, ax_cr, ax_br)  # flatten
 
     # Set y-labels
-    ax_tl.set_ylabel('Upward flux [W m$^{-2}$]')
+    ax_tl.set_ylabel('Upward flux\n[W m$^{-2}$]')
     ax_cl.set_ylabel(r'$T_\mathrm{s}$ [K]')
     ax_bl.set_ylabel('Planet fraction')
     ax_tr.set_ylabel(r'$p_{\mathrm{i}}$ [bar]')
@@ -134,19 +134,9 @@ def plot_global(
         '(d) Surface gas mole fraction',
         '(f) Volatile partitioning into interior',
     ]
-    box, grey = style_neutral(1.0), style_neutral(FADE_DARK_GREY)
-    for i, ax in enumerate(axs):
-        ax.text(
-            0.011,
-            0.015,
-            ax_titles[i],
-            transform=ax.transAxes,
-            horizontalalignment='left',
-            verticalalignment='bottom',
-            fontsize=11,
-            zorder=20,
-            bbox=dict(fc=box, ec=box, alpha=0.5, pad=0.1, boxstyle='round'),
-        )
+    grey = style_neutral(FADE_DARK_GREY)
+    for ax, title in zip(axs, ax_titles):
+        ax.set_title(title, loc='left', fontsize=11)
 
     # Move right subplots y-axes to right side
     for ax in (ax_tr, ax_cr, ax_br):
@@ -207,7 +197,7 @@ def plot_global(
     ax_tl.plot(
         hf['Time'], F_asf, color=get_colour('ASF'), lw=lw, alpha=al, label='ASF', ls='dashed'
     )
-    ax_tl.legend(loc='center left', **leg_kwargs)
+    ax_tl.legend(loc='best', ncol=2, **leg_kwargs)
     ymin, ymax = 0.0, 100.0
     for k in ('F_int', 'F_atm', 'F_olr', 'F_tidal', 'F_radio', F_asf):
         if type(k) is str:
@@ -253,7 +243,7 @@ def plot_global(
         label=r'Melt fraction',
     )
 
-    ax_bl.legend(loc='center left', **leg_kwargs)
+    ax_bl.legend(loc='best', **leg_kwargs)
     ax_bl.set_ylim(0.0, 1.01)
 
     # PLOT ax_tr
@@ -329,13 +319,17 @@ def plot_global(
     else:
         # small legend -> keep inside axis
         ncol = 1 if leg_length <= 6 else 2
-        leg = ax_br.legend(
-            loc='center left', ncol=ncol, bbox_to_anchor=(0.02, 0.5), fontsize=10, **leg_kwargs
-        )
+        leg = ax_br.legend(loc='best', ncol=ncol, fontsize=10, **leg_kwargs)
     leg.set_zorder(999)
 
     # Save plot
-    fig.subplots_adjust(wspace=0.05, hspace=0.1)
+    fig.subplots_adjust(wspace=0.05, hspace=0.2)
+
+    # Turn the x tick labels at the inner edges of the two columns away from each other
+    for ax, side, ha in ((ax_bl, 1, 'right'), (ax_br, 0, 'left')):
+        for label in ax.get_xticklabels():
+            if np.isclose(label.get_position()[0], ax.get_xlim()[side]):
+                label.set_horizontalalignment(ha)
     plt_name = 'plot_global'
     if logt:
         plt_name += '_log'

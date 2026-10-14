@@ -28,7 +28,6 @@ from proteus.inference.failures import ProteusRunFailure  # noqa: E402
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 
-@pytest.mark.unit
 def test_create_init_falls_back_to_n_workers_when_init_samps_less_than_one(monkeypatch):
     """When ``init_samps < 1``, ``create_init`` falls back to the number of
     workers rather than raising an error. The fallback allows the caller to
@@ -37,7 +36,16 @@ def test_create_init_falls_back_to_n_workers_when_init_samps_less_than_one(monke
     received: list = []
 
     def _mock_bounds(
-        output, ref_config, parameters, observables, n, seed, n_workers, failure_codes
+        output,
+        ref_config,
+        parameters,
+        observables,
+        n,
+        seed,
+        n_workers,
+        failure_codes,
+        sigma=None,
+        correlation=None,
     ):
         received.append(n)
         return n
@@ -61,7 +69,6 @@ def test_create_init_falls_back_to_n_workers_when_init_samps_less_than_one(monke
     assert result == 4
 
 
-@pytest.mark.unit
 def test_create_init_routes_to_sample_from_bounds(monkeypatch):
     """``create_init`` with ``init_grid='none'`` dispatches to
     ``sample_from_bounds`` (Halton-sequence sampling of the parameter
@@ -90,7 +97,6 @@ def test_create_init_routes_to_sample_from_bounds(monkeypatch):
     assert grid_calls == []
 
 
-@pytest.mark.unit
 def test_create_init_routes_to_sample_from_grid(monkeypatch, tmp_path):
     """``create_init`` with a non-'none' ``init_grid`` dispatches to
     ``sample_from_grid`` and resolves the grid path through the output root,
@@ -106,7 +112,9 @@ def test_create_init_routes_to_sample_from_grid(monkeypatch, tmp_path):
         lambda outdir: {'output': str(tmp_path / 'output' / outdir)},
     )
 
-    def fake_sample_from_grid(output, params, observables, grid_dir):
+    def fake_sample_from_grid(
+        output, params, observables, grid_dir, sigma=None, correlation=None
+    ):
         observed['grid_dir'] = grid_dir
         return 6
 
@@ -127,7 +135,6 @@ def test_create_init_routes_to_sample_from_grid(monkeypatch, tmp_path):
     assert observed['grid_dir'] == str(tmp_path / 'output' / 'my_grid')
 
 
-@pytest.mark.unit
 def test_sample_from_grid_builds_and_saves_dataset(monkeypatch, tmp_path):
     """``sample_from_grid`` walks each ``case_N/`` subdirectory, reads
     the case parameters from ``init_coupler.toml``, reads the observable
@@ -164,7 +171,6 @@ def test_sample_from_grid_builds_and_saves_dataset(monkeypatch, tmp_path):
     assert len(data) == 2
 
 
-@pytest.mark.unit
 def test_sample_from_grid_skips_a_case_whose_helpfile_row_is_ragged(
     monkeypatch, tmp_path, caplog
 ):
@@ -199,7 +205,6 @@ def test_sample_from_grid_skips_a_case_whose_helpfile_row_is_ragged(
     assert pd.read_csv(output_dir / 'init.csv')['x_0'].tolist() == pytest.approx([0.2, 0.3])
 
 
-@pytest.mark.unit
 def test_sample_from_grid_skips_a_case_without_a_helpfile(monkeypatch, tmp_path, caplog):
     """A case with no helpfile, or with a directory in its place, is skipped like an
     unreadable one. The directory case pins the OSError half of the except clause."""
@@ -231,7 +236,6 @@ def test_sample_from_grid_skips_a_case_without_a_helpfile(monkeypatch, tmp_path,
     assert pd.read_csv(output_dir / 'init.csv')['x_0'].tolist() == pytest.approx([0.4])
 
 
-@pytest.mark.unit
 def test_sample_from_grid_refuses_a_grid_with_no_readable_case(monkeypatch, tmp_path, caplog):
     """A grid whose cases are all empty or header-only raises instead of writing an
     empty dataset, and the warning for each case names it."""
@@ -257,7 +261,41 @@ def test_sample_from_grid_refuses_a_grid_with_no_readable_case(monkeypatch, tmp_
     assert not (tmp_path / 'out' / 'init.csv').exists()
 
 
-@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_sample_from_grid_scores_with_observable_correlation(monkeypatch, tmp_path):
+    """Grid cases are scored by the correlated chi-squared, with the helpfile row
+    (a pandas Series) matched to the matrix by name: u = (2, 2), rho = 0.6 gives 5.
+    """
+    grid_dir = tmp_path / 'grid'
+    output_dir = tmp_path / 'output'
+    output_dir.mkdir(parents=True)
+    case = grid_dir / 'case_0'
+    case.mkdir(parents=True)
+    pd.DataFrame([{'T_obs': 450.0, 'R_obs': 7.0e6}]).to_csv(
+        case / 'runtime_helpfile.csv', sep=' ', index=False
+    )
+    (case / 'init_coupler.toml').write_text(
+        toml.dumps({'planet': {'mass_tot': 1.0}}), encoding='utf-8'
+    )
+    monkeypatch.setattr(
+        init_mod, 'get_proteus_directories', lambda _output: {'output': str(output_dir)}
+    )
+
+    init_mod.sample_from_grid(
+        output='ignored',
+        params={'planet.mass_tot': [0.0, 10.0]},
+        observables={'R_obs': 6.0e6, 'T_obs': 400.0},
+        grid_dir=str(grid_dir),
+        sigma={'R_obs': 5.0e5, 'T_obs': 25.0},
+        correlation={'R_obs': {'T_obs': 0.6}},
+    )
+
+    y = pd.read_csv(output_dir / 'init.csv')['y'].iloc[0]
+    assert y == pytest.approx(-np.log10(5.0 + 1e-10), rel=1e-9)
+    # Correlation guard: the independent chi-squared of 8 is 0.2 lower.
+    assert abs(y + np.log10(8.0)) > 0.1
+
+
 def test_sample_from_bounds_rejects_invalid_worker_count():
     """``sample_from_bounds`` rejects ``n_workers < 1`` with an
     'at least 1' message, so a misconfigured worker pool fails loudly
@@ -302,7 +340,6 @@ def test_sample_from_bounds_rejects_invalid_worker_count():
         )
 
 
-@pytest.mark.unit
 def test_sample_from_bounds_caps_workers_and_saves(monkeypatch, tmp_path):
     """``sample_from_bounds`` caps the worker pool at ``cpu_count - 1``
     (3 in this test, with cpu_count=4 mocked) regardless of the user's
@@ -378,7 +415,6 @@ def test_sample_from_bounds_caps_workers_and_saves(monkeypatch, tmp_path):
     assert captured['pool_timeout'] > 0
 
 
-@pytest.mark.unit
 def test_a_failed_initial_sample_stops_the_samples_not_yet_started(monkeypatch):
     """Under `abort_on_failure` the first failed run fails the whole initial
     batch, so the samples still queued must not each run a simulation first.
@@ -421,7 +457,6 @@ def test_a_failed_initial_sample_stops_the_samples_not_yet_started(monkeypatch):
         init_mod.f_aug(x, 3, args)
 
 
-@pytest.mark.unit
 def test_real_halton_accepts_rng_keyword_and_is_deterministic():
     """Check halton sampler accepts rng and behaves pseudo-deterministically.
 

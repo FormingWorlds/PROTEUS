@@ -956,3 +956,77 @@ def test_energetics_eos_key_gives_a_non_mgsio3_paleos_mantle_the_mgsio3_pair(man
     from proteus.utils.helper import energetics_eos_key
 
     assert energetics_eos_key(mantle) == key
+
+
+# =============================================================================
+# Test: git_env() and link_proteus_julia()
+# =============================================================================
+
+
+def test_git_env_drops_the_variables_that_name_another_repository(monkeypatch):
+    """git_env keeps PATH and HOME and drops GIT_DIR, GIT_WORK_TREE and GIT_INDEX_FILE.
+
+    GIT_AUTHOR_NAME also starts with GIT_ but names no repository, so it stays.
+    """
+    from proteus.utils.helper import GIT_REPO_ENV, git_env
+
+    for name in ('GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE'):
+        monkeypatch.setenv(name, f'/other/{name}')
+    monkeypatch.setenv('GIT_AUTHOR_NAME', 'tester')
+    env = git_env()
+    assert GIT_REPO_ENV == (
+        'GIT_DIR',
+        'GIT_WORK_TREE',
+        'GIT_INDEX_FILE',
+        'GIT_COMMON_DIR',
+        'GIT_NAMESPACE',
+    )
+    assert not set(GIT_REPO_ENV) & set(env)
+    assert env['GIT_AUTHOR_NAME'] == 'tester'
+    assert env['PATH'] == os.environ['PATH']
+    assert os.environ['GIT_DIR'] == '/other/GIT_DIR'
+
+
+@pytest.mark.parametrize('kind', ['unset', 'missing', 'not-executable'])
+def test_link_proteus_julia_makes_no_folder_without_a_usable_binary(
+    monkeypatch, tmp_path, kind
+):
+    """Without an executable PYTHON_JULIAPKG_EXE the function returns None and makes nothing."""
+    from proteus.utils.helper import link_proteus_julia
+
+    exe = tmp_path / 'bin' / 'julia'
+    if kind == 'unset':
+        monkeypatch.delenv('PYTHON_JULIAPKG_EXE', raising=False)
+    else:
+        if kind == 'not-executable':
+            exe.parent.mkdir()
+            exe.write_text('#!/bin/sh\n')
+            exe.chmod(0o644)
+        monkeypatch.setenv('PYTHON_JULIAPKG_EXE', str(exe))
+    assert link_proteus_julia(tmp_path) is None
+    assert not (tmp_path / '.proteus-julia').exists()
+
+
+def test_link_proteus_julia_links_one_julia_and_moves_it_on_a_second_call(
+    monkeypatch, tmp_path
+):
+    """The folder holds one link `julia` to the bound binary; a second binary replaces it.
+
+    The binaries are named julia-1.13 and julia-1.13.2, so a bare julia finds
+    them only through the link.
+    """
+    from proteus.utils.helper import link_proteus_julia
+
+    first, second = tmp_path / 'julia-1.13', tmp_path / 'julia-1.13.2'
+    for exe in (first, second):
+        exe.write_text('#!/bin/sh\n')
+        exe.chmod(0o755)
+    monkeypatch.setenv('PYTHON_JULIAPKG_EXE', str(first))
+    folder = link_proteus_julia(tmp_path)
+    assert folder == tmp_path / '.proteus-julia'
+    assert os.listdir(folder) == ['julia']
+    assert os.readlink(folder / 'julia') == str(first)
+    monkeypatch.setenv('PYTHON_JULIAPKG_EXE', str(second))
+    assert link_proteus_julia(tmp_path) == folder
+    assert os.readlink(folder / 'julia') == str(second)
+    assert shutil.which('julia', path=str(folder)) == str(folder / 'julia')

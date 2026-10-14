@@ -8,8 +8,9 @@ to production runs.
 
 ## Prerequisites
 
-- PROTEUS installed (`pip install -e ".[develop]"`)
-- `FWL_DATA` environment variable set
+- PROTEUS installed with `bash install.sh` (see the
+  [installation guide](../How-to/installation.md)); the installer sets
+  `FWL_DATA` in the `proteus` conda environment
 
 No external solvers, spectral files, or EOS data are required.
 
@@ -22,7 +23,7 @@ settings are:
   $\Phi$ = 1). Volatile budget of 10,000 ppmw H, 1000 ppmw C, 500 ppmw N,
   500 ppmw S.
 - **Star**: fixed solar luminosity (no evolution)
-- **Orbit**: 0.5 AU, weak tidal heating
+- **Orbit**: 0.5 AU, no tidal heating
 - **Interior structure**: Noack & Lasbleis (2020) [^cite-noack2020] analytical
   scaling laws
 - **Interior energetics**: heat-capacity integrator with prescribed solidus
@@ -44,17 +45,21 @@ conda activate proteus
 proteus start --offline -c input/dummy.toml
 ```
 
-The `--offline` flag skips data downloads. The run takes about a minute,
+The `--offline` flag skips data downloads. The run takes less than a minute,
 including the plots.
 
 ## Expected output
 
-The run creates a directory inside `output/` named with a timestamp.
-Check `plots/plot_global_lin.png` for a multi-panel overview. Your
-output should look similar to this:
+The run creates a directory inside `output/` named with a timestamp
+(`run_<timestamp>_xxxx`, called `<run folder>` below). Check
+`output/<run folder>/plots/plot_global_lin.png` for a multi-panel overview.
+Your output should look similar to this. A run writes its plots in the default
+matplotlib style; the figures of the tutorial pages show the same plots in the
+PROTEUS visual language, in a light and a dark variant.
 
 <figure markdown="span">
-  ![Dummy tutorial output](../assets/tutorials/dummy_global_lin.avif){ width="100%" }
+  ![Dummy tutorial output](../assets/tutorials/dummy_global_lin.avif#only-light){ width="100%" }
+  ![Dummy tutorial output](../assets/tutorials/dummy_global_lin_dark.avif#only-dark){ width="100%" }
   <figcaption><b>All-dummy tutorial output.</b> (a) Heat fluxes: the interior and
   atmospheric fluxes track each other as the planet cools; absorbed stellar
   flux (ASF) is constant. (b) Surface partial pressures: H<sub>2</sub>O dominates
@@ -69,11 +74,15 @@ output should look similar to this:
   interior to the atmosphere.</figcaption>
 </figure>
 
-To regenerate these plots from your own output:
+To regenerate these plots from your own output, pass the resolved config
+that the run wrote into its folder:
 
 ```bash
-proteus plot -c input/dummy.toml all
+proteus plot -c output/<run folder>/init_coupler.toml all
 ```
+
+`input/dummy.toml` sets `params.out.path = "auto"`, so the plot command
+with that file would look for a new run folder.
 
 ## Understanding the helpfile
 
@@ -86,8 +95,8 @@ series. Key columns:
 | `T_magma` | K | Decreases monotonically from 4000 to ~1700 |
 | `Phi_global` | 1 | Drops from 1.0 to ~0.003, triggering the solidification stop |
 | `P_surf` | bar | Increases from ~7,000 to ~70,000 as volatiles outgas |
-| `F_atm` | W m$^{-2}$ | Outgoing longwave radiation; decreases as the surface cools |
-| `F_int` | W m$^{-2}$ | Interior heat flux; tracks `F_atm`, a few percent above it as the interior loses heat |
+| `F_atm` | W m$^{-2}$ | Net flux at the top of the atmosphere; decreases as the surface cools |
+| `F_int` | W m$^{-2}$ | Interior heat flux; the dummy interior takes the `F_atm` of the step before, so it is a few percent above `F_atm` while the flux falls |
 | `M_planet` | kg | Constant throughout (mass conservation) |
 
 ## What to look for
@@ -101,9 +110,11 @@ series. Key columns:
    in panel (f) decreases. This is the core coupling feedback that the
    production modules (CALLIOPE, Aragog) compute with full thermodynamics.
 
-3. **Energy balance**: the OLR (red line in panel a) and interior flux
-   (orange dashed) track each other, with `F_int` slightly above `F_atm` as
-   the interior loses heat. The absorbed stellar flux (blue dashed) is
+3. **Energy balance**: the net atmospheric flux `F_atm` (grey line in panel
+   a, with the OLR in red just above it) and the interior flux (orange
+   dashed) track each other. `F_int` is slightly above `F_atm` because the
+   dummy interior takes the `F_atm` of the step before, and the flux falls
+   with time. The absorbed stellar flux (blue dashed) is
    constant because the star is fixed.
 
 4. **Mass conservation**: `M_planet` should remain constant within rounding.
@@ -117,8 +128,11 @@ series. Key columns:
 - **Enable escape**: set `escape.dummy.rate = 1e4` and
   `params.stop.escape.enabled = true` to see atmospheric mass loss
 - **Change volatile inventory**: increase `H_budget` to 50,000 ppmw for a
-  thicker steam atmosphere, or decrease it to 1,000 ppmw for faster
-  solidification
+  thicker steam atmosphere, or decrease it to 1,000 ppmw for a thinner one
+  (~11,000 bar at the end of the run, against ~74,000 bar here). The
+  solidification time stays the same, because the grey atmosphere uses a
+  fixed greenhouse factor (see the
+  [parameter grid tutorial](parameter_grid.md))
 - **Move to production modules**: the [Earth analogue tutorial](earth_analogue.md)
   uses Aragog, Zalmoxis, CALLIOPE, and AGNI for a quantitatively meaningful
   simulation

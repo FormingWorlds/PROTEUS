@@ -5,6 +5,8 @@ platform. If you encounter errors that you cannot solve via the standard
 step-by-step guide or the advice below,
 [contact the developers](../Community/contact.md).
 
+`install.sh` prints one line per build step on the terminal. The full output of every step, where the install errors below appear, is in the log file `install_<date>_<time>.log` in the PROTEUS folder; a failed step also prints its last 40 lines, and `bash install.sh --verbose` shows all of it on the terminal.
+
 ### Quick error index
 
 | Error / symptom | Section |
@@ -154,7 +156,8 @@ python -m pip install -U -e .
 
 An install script that replaces its checkout on every run (SOCRATES, SPIDER,
 BOREAS, LavAtmos, ThermoEngineLite) stops rather than delete one that holds
-work you would not get back:
+work you would not get back (under `install.sh` the message is in the last lines of
+the failed step and in the log file `install_<date>_<time>.log`):
 
 ```console
 ERROR: /path/to/socrates has uncommitted changes or commits not on a remote.
@@ -187,11 +190,21 @@ is not affected: there is nothing to lose, so the next install refreshes it
 without asking.
 
 The setup scripts of the Python modules (MORS, JANUS, CALLIOPE, ZEPHYRUS,
-Aragog, Zalmoxis, VULCAN and Morrigan) never give these two messages: without
+Aragog, Zalmoxis, VULCAN, Morrigan and atmodeller) never give these two messages: without
 `--force` they install a module folder that is already there as it is
 (`get_vulcan.sh` first runs `make` in its `fastchem_vulcan` folder) and print
-the commands that move it to its release tag or replace it; an empty folder
-gets a new clone. They stop with an error when the pip install of the folder
+the commands that move it to its release tag (for atmodeller, its pinned commit) or replace it; an empty folder
+gets a new clone. `get_obliqua.sh` does the same for an Obliqua folder (for
+a folder whose `.git` is a file it names no replace command: move that
+folder away or delete it by hand), and
+instantiates its Julia environment in place of the pip install; a link to a
+folder stands for that folder. It stops, with or without `--force`, for the
+PROTEUS folder, your home folder and a folder that holds one of them, for a
+file or a broken link, for a path that holds a line break, for a path that
+goes through a folder that does not
+exist and then through `.` or `..`, and for a folder with files that is not an Obliqua
+project; with `--force` it also stops for a folder with files that is not a
+git clone of its own with a commit, and for a folder whose `.git` is a file (a git worktree or a submodule). They stop with an error when the pip install of the folder
 fails, and `get_vulcan.sh` stops when the folder has no `fastchem_vulcan`
 folder or its `make` fails.
 
@@ -209,13 +222,16 @@ This happens when compiling SPIDER within a Python environment that is incompati
 
 ### Julia compatibility error {#julia-compatibility-error}
 
-There are incompatibilities between Python and some versions of Julia. Supported Julia versions are **1.11.x, 1.12.x and 1.13.x**. Support for 1.11 is deprecated and will be dropped in a future release; `install.sh` and `proteus doctor` warn when they find it. Newer releases are untested and may fail when juliacall resolves shared libraries.
+There are incompatibilities between Python and some versions of Julia. PROTEUS runs on Julia **1.13.x**: `install.sh` adds 1.13 through juliaup beside a default Julia of another version, and `proteus doctor` warns on any other version. The one exception: when the import of PROTEUS fails on `OpenSSL_jll` because Python links an OpenSSL older than 3.5, `install.sh` binds Julia 1.11; run `conda install -c conda-forge 'openssl>=3.5'` first to use 1.13. Obliqua, the tides module, installs only on 1.11 or 1.13. Newer releases are untested and may fail when juliacall resolves shared libraries.
 
-You must use **Python 3.12** with a supported Julia to avoid these problems:
+You must use **Python 3.12** with a supported Julia to avoid these problems. Add Julia 1.13
+beside your default Julia, which stays as it is, and point `PYTHON_JULIAPKG_EXE` at its binary
+in your conda environment:
 
 ```console
 juliaup add 1.13
-juliaup default 1.13
+conda env config vars set -n proteus PYTHON_JULIAPKG_EXE="$(julia +1.13 --startup-file=no -e 'print(joinpath(Sys.BINDIR, "julia"))')"
+conda deactivate && conda activate proteus
 ```
 
 ---
@@ -329,7 +345,7 @@ Install Python via Homebrew and use pip to manage packages, rather than Conda.
 
 ### Errors during the SOCRATES compilation {#errors-during-the-socrates-compilation}
 
-One of the following errors happen during the SOCRATES compilation:
+One of the following errors happen during the SOCRATES compilation (with `install.sh`, they are in its log file `install_<date>_<time>.log` in the PROTEUS folder):
 
 1. `clang (LLVM option parsing): Unknown command line argument '-x86-pad-for-align=false'.  Try: 'clang (LLVM option parsing) --help'`
 2. `clang (LLVM option parsing): Did you mean '--x86-slh-loads=false'?`

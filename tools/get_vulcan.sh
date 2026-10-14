@@ -1,7 +1,7 @@
 #!/bin/bash
-# Clone VULCAN (optional atmospheric chemistry) into ./VULCAN/ at the release tag of the fwl-vulcan
-# floor in pyproject.toml, build fastchem and install it editable. An existing folder is built and
-# installed as it is; --force replaces it.
+# The installer sets VULCAN up. The script clones it into ./VULCAN/ at the release tag of the
+# fwl-vulcan floor in pyproject.toml, builds fastchem and installs it editable. An existing
+# folder is built and installed as it is; --force replaces it.
 
 set -euo pipefail
 

@@ -37,7 +37,6 @@ def _counts(line: str) -> list[str]:
     return re.findall(r'\d+(?:\.\d+)?', line)
 
 
-@pytest.mark.unit
 def test_failure_summary_is_one_line_and_names_where_the_detail_is_kept():
     """The line a study logs for each unscored run identifies the run, names
     the status code and points at the output folder, and stays on one line
@@ -101,7 +100,6 @@ def test_failure_summary_is_one_line_and_names_where_the_detail_is_kept():
     assert 'status 11' in excluded_line
 
 
-@pytest.mark.unit
 def test_proteus_run_failure_survives_the_trip_back_from_a_pool_worker():
     """A failure raised inside a pool worker is pickled and re-raised in the
     parent process. Every reported field must survive that round trip, or the
@@ -149,7 +147,6 @@ def test_proteus_run_failure_survives_the_trip_back_from_a_pool_worker():
     assert 'failed for worker=2' not in restored_excluded.report()
 
 
-@pytest.mark.unit
 def test_failure_records_round_trip_into_one_table(tmp_path):
     """Each worker appends its own row to the study's failure table, and the
     rows are read back ordered by worker then iteration whatever order they
@@ -221,7 +218,6 @@ def test_failure_records_round_trip_into_one_table(tmp_path):
     assert failures_mod.read_failure_records(tmp_path) == []
 
 
-@pytest.mark.unit
 def test_a_row_cannot_land_ahead_of_the_header_another_writer_is_adding(tmp_path):
     """Two workers that fail together must both end up in the table. The first
     to open the file finds it empty and adds the header. A second writer that
@@ -281,7 +277,6 @@ def test_a_row_cannot_land_ahead_of_the_header_another_writer_is_adding(tmp_path
     assert [r['worker'] for r in failures_mod.read_failure_records(tmp_path)] == [2]
 
 
-@pytest.mark.unit
 def test_recording_a_failure_never_masks_the_failure_it_records(tmp_path):
     """Bookkeeping must not bring down a study. When the record cannot be
     written the writer reports that it could not, and the caller still has the
@@ -307,7 +302,6 @@ def test_recording_a_failure_never_masks_the_failure_it_records(tmp_path):
     assert failures_mod.read_failure_records(tmp_path / 'never_ran') == []
 
 
-@pytest.mark.unit
 def test_summarise_failures_tabulates_causes_and_warns_on_every_real_failure(tmp_path, caplog):
     """The end-of-study tally turns the per-run rows into one table and one
     breakdown by cause, and warns whenever a run produced nothing usable. The
@@ -367,7 +361,6 @@ def test_summarise_failures_tabulates_causes_and_warns_on_every_real_failure(tmp
     assert _counts(warnings[0].message) == ['3', '4', '75.0', '3', '0']
 
 
-@pytest.mark.unit
 def test_summarise_failures_counts_excluded_outcomes_apart_from_failures(tmp_path, caplog):
     """A run that completed on a status the study excludes is tallied, but not
     as a fault. Folding the two together would tell the user that a study whose
@@ -456,7 +449,6 @@ def test_summarise_failures_counts_excluded_outcomes_apart_from_failures(tmp_pat
     assert '2 of 4' in '\n'.join(r.message for r in caplog.records)
 
 
-@pytest.mark.unit
 def test_summarise_failures_reports_a_clean_study_without_writing_a_table(tmp_path, caplog):
     """A study in which nothing failed says so and writes no table. An empty
     failures.csv would suggest the accounting had run and found nothing to
@@ -473,7 +465,6 @@ def test_summarise_failures_reports_a_clean_study_without_writing_a_table(tmp_pa
     assert not [r for r in caplog.records if r.levelname in ('WARNING', 'ERROR')]
 
 
-@pytest.mark.unit
 def test_summarise_failures_labels_the_logfile_sample_and_counts_the_whole_study(
     tmp_path, caplog
 ):
@@ -544,3 +535,41 @@ def test_summarise_failures_labels_the_logfile_sample_and_counts_the_whole_study
     with caplog.at_level(logging.INFO, logger='fwl.proteus.inference.failures'):
         failures_mod.summarise_failures(str(tmp_path), n_attempted=20)
     assert not [r for r in caplog.records if r.message.startswith('Logfiles (')]
+
+
+def test_failure_report_renders_a_parameter_that_is_not_a_number():
+    """A report is what is left to read when an evaluation has gone wrong, so it
+    renders whatever the study put in front of it. A sweep is over numbers and
+    they keep their compact form, but a value of another kind is shown as it
+    stands rather than ending the worker that was trying to describe its own
+    failure.
+    """
+    failure = failures_mod.ProteusRunFailure(
+        reason='the simulator exited with an error',
+        worker=3,
+        iter=7,
+        out_dir='/study/workers/w_3/i_7',
+        exit_code=1,
+        status=22,
+        parameters={
+            'planet.mass_tot': 1.25,
+            'params.out.plot_mod': 'none',
+            'params.out.archive_mod': 0,
+            'atmos_clim.surf_greyalbedo': True,
+            'star.mass': 1234567.0,
+        },
+    )
+
+    rendered = failure.report()
+
+    assert 'params.out.plot_mod=none' in rendered
+    assert 'planet.mass_tot=1.25' in rendered
+    # Discrimination: numbers are not simply passed through `str`. The compact
+    # form is what keeps a wide sweep on a readable line, so a regression that
+    # rendered everything as `str` would show 1234567.0 here.
+    assert 'star.mass=1.23457e+06' in rendered
+    assert 'star.mass=1234567.0' not in rendered
+    # A bool is an int in Python, so the compact form would render it as 1 or 0
+    # and lose which switch was set. Edge case worth pinning separately.
+    assert 'atmos_clim.surf_greyalbedo=True' in rendered
+    assert 'params.out.archive_mod=0' in rendered

@@ -6,11 +6,10 @@ variables, and reference data downloads in a single command.
 
 !!! info "Prerequisites"
     - Tested in CI: Linux x86_64 (Ubuntu) and macOS on Apple Silicon. Intel macOS and
-      Linux ARM64 are not tested; the Linux Miniconda commands below download the
-      x86_64 installer.
+      Linux ARM64 are not tested.
     - ~20 GB disk space (conda, Julia, reference data, submodules)
     - Standard command-line tools: `curl`, `wget`, `make`
-    - Git with SSH key configured ([GitHub SSH setup](https://docs.github.com/en/authentication/connecting-to-github-with-ssh))
+    - Git
     - Internet connection for initial setup and data downloads
     - Allow ~60 minutes for a full installation including all submodules
 
@@ -19,9 +18,6 @@ On Windows, install PROTEUS under
 configuration, some steps may differ. If you run into problems, check the
 [Troubleshooting](troubleshooting.md) page or
 [contact the developers](../Community/contact.md).
-
-!!! note "macOS users"
-    macOS Catalina (10.15) and later uses `zsh` as the default shell. Replace `.bashrc` with `.zshrc` throughout these instructions if you are using the default shell.
 
 ---
 
@@ -40,6 +36,7 @@ Install the required system libraries for your platform. See the
 === "Debian / Ubuntu"
 
     ```console
+    sudo apt update
     sudo apt install gfortran libnetcdff-dev build-essential curl wget git cmake unzip
     ```
 
@@ -57,52 +54,48 @@ Install the required system libraries for your platform. See the
 
 ## 2. Clone PROTEUS and set up Python environment
 
-!!! tip "Using pixi instead of conda"
+!!! tip "Experimental: pixi instead of conda"
     PROTEUS can also be installed into a [pixi](https://pixi.sh) environment,
-    which replaces the conda steps below. See [Install with pixi](pixi.md)
-    (experimental).
+    which replaces the conda steps below. This route is experimental and not yet
+    recommended for new users: if you install PROTEUS for the first time, follow
+    the conda steps of this page. See [Install with pixi](pixi.md).
 
 Python **3.12** is required, and is installed via
-[miniconda](https://www.anaconda.com/docs/getting-started/miniconda/install)
-or [miniforge](https://github.com/conda-forge/miniforge). If you do not have [miniconda](https://www.anaconda.com/docs/getting-started/miniconda/install)
-or [miniforge](https://github.com/conda-forge/miniforge) installed yet:
+[miniforge](https://github.com/conda-forge/miniforge) or
+[miniconda](https://www.anaconda.com/docs/getting-started/miniconda/install). If you have neither yet, install miniforge
+(the same two commands on macOS and Linux):
 
-=== "macOS (Homebrew)"
+```console
+curl -L -O "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh"
+bash Miniforge3-$(uname)-$(uname -m).sh
+```
 
-    ```console
-    curl -L -O "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh"
-    bash Miniforge3-$(uname)-$(uname -m).sh
-    ```
+Answer `yes` when the installer asks whether to initialize conda for your
+shell. Open a new terminal afterwards, so that `conda` is on your `PATH`.
 
-=== "Debian / Ubuntu"
-
-    ```console
-    mkdir -p ~/miniconda3
-    wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda3/miniconda.sh
-    bash ~/miniconda3/miniconda.sh
-    rm ~/miniconda3/miniconda.sh
-    ```
-
-=== "Fedora / RHEL"
-
-    ```console
-    mkdir -p ~/miniconda3
-    wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda3/miniconda.sh
-    bash ~/miniconda3/miniconda.sh
-    rm ~/miniconda3/miniconda.sh
-    ```
+!!! note "If you use miniconda"
+    Miniconda takes its packages from the Anaconda default channels, and conda
+    creates an environment from them only after you accept their terms of
+    service. When conda stops with that message, run the `conda tos accept`
+    commands that it prints, then repeat the step.
 
 !!! note "Install miniconda/miniforge in your personal directory"
     Installing miniconda/miniforge in your personal directory gives you full control over your environment and is recommended even on clusters (see the cluster guides: [Kapteyn](kapteyn_cluster_guide.md), [Habrok](habrok_cluster_guide.md), [Snellius](snellius_cluster_guide.md), [Cambridge IoA](ioa_cluster_guide.md)). 
 
-Then clone PROTEUS and create a conda environment with Python 3.12:
+Then clone PROTEUS:
 
 ```console
-git clone git@github.com:FormingWorlds/PROTEUS.git
+git clone https://github.com/FormingWorlds/PROTEUS.git
 cd PROTEUS
-conda create -n proteus python=3.12
-conda activate proteus
 ```
+
+!!! tip "Cloning over SSH"
+    To push changes back to GitHub, clone over SSH instead. This needs an
+    [SSH key registered with GitHub](https://docs.github.com/en/authentication/connecting-to-github-with-ssh):
+
+    ```console
+    git clone git@github.com:FormingWorlds/PROTEUS.git
+    ```
 
 ## 3. Run the installer
 
@@ -110,22 +103,69 @@ conda activate proteus
 bash install.sh
 ```
 
-!!! warning "Remove old Julia installations"
-    Issues might arise if you already have Julia installed via your system manager (and not the official installer). In that case, please uninstall Julia _before running the installer_ and remove old Julia entries from your `PATH`.
+!!! note "Conda environment"
+    The installer makes a conda environment named `proteus` with Python 3.12, or uses
+    the one of that name, when no environment or only `base` is active. When an
+    environment named `proteus` already exists and none is active, the installer
+    installs into it; pass `--conda-env <name>` to use another one. Run in a terminal,
+    with its output not redirected, it first asks whether to install into that existing
+    environment: `y` or `yes` goes on, and any other answer stops it before it changes
+    anything. It does not make
+    an environment over an existing folder of that name, such as the folder of an
+    environment `PROTEUS` on a file system that ignores case: it stops and names that
+    folder. To use an environment of your own, activate it before `bash install.sh`.
+    With Miniconda, conda can refuse to make the environment until you accept the terms
+    of service of its default channels: run the `conda tos accept` commands that conda
+    prints, then run `bash install.sh` again.
+
+!!! warning "Julia from a system package manager"
+    The installer adds Julia 1.13 only through juliaup. It stops when all three of these hold:
+
+    - a `julia` is on your `PATH`, for example from your system package manager (not the official installer);
+    - that `julia` is not version 1.13;
+    - no juliaup is on your `PATH`.
+
+    A juliaup in `~/.juliaup/bin` that is not on your `PATH` counts only when no `julia` is on it.
+
+    In that case, install juliaup with the [official installer](https://julialang.org/downloads/):
+
+    ```console
+    curl -fsSL https://install.julialang.org | sh
+    ```
+
+    Open a new terminal, so that juliaup is on your `PATH`, and run `bash install.sh` again. The installer then adds Julia 1.13 through juliaup when your default Julia is another version. The other way is to uninstall that Julia and remove its entries from your `PATH` before you run the installer again.
+
+    A `PYTHON_JULIAPKG_EXE` that names a Julia 1.13 is kept. When it names a launcher, such as the `julia` of juliaup, the installer keeps the binary that the launcher runs.
 
 
 The installer runs through the following phases automatically:
 
 1. Pre-flight checks (OS, disk space, Python version, system dependencies)
-2. Julia installation and version pinning (1.13)
-3. Environment variables (`FWL_DATA`, `PYTHON_JULIAPKG_EXE`)
+2. Julia check, and Julia 1.13 through juliaup when your default Julia is another version or you have none
+3. Environment variables (`FWL_DATA`, `PYTHON_JULIAPKG_EXE`, and in phases 4 and 5 `RAD_DIR` and, for a built FastChem, `FC_DIR`): the installer writes each to `.proteus-env.sh` in the PROTEUS folder as it sets it, and sets them all in the active conda environment in one step at the end of phase 6, after the check that PROTEUS imports and before the further modules of phase 7; a value that holds a single quote stays in `.proteus-env.sh` only. It edits no shell start file
 4. SOCRATES compilation and `RAD_DIR` setup
-5. AGNI and FastChem setup (Julia atmosphere model + equilibrium chemistry)
+5. AGNI and FastChem setup (Julia atmosphere model + equilibrium chemistry); an AGNI folder that is there already stays, and when its `Manifest.toml` names another minor Julia version (1.12 against 1.13, for example) than the one PROTEUS uses, the installer warns and names `proteus update-all`, which instantiates AGNI again
 6. Python packages (editable installs of all submodules, the SUNDIALS CVODE solver, and PROTEUS itself)
-7. Reference data downloads (by default the essential set: the default-config and tutorial k-tables, stellar spectra and tracks, the PHOENIX grid of the default star, and the interior tables)
-8. Verification via `proteus doctor`
+7. Further modules (Morrigan, VULCAN, atmodeller and Obliqua): a failed module prints a warning with the command to repeat and the installer goes on; after the four steps the installer checks again that PROTEUS imports, and stops when it does not
+8. Reference data downloads (by default the essential set: the default-config and tutorial k-tables, stellar spectra and tracks, the PHOENIX grid of the default star, and the interior tables)
+9. Verification via `proteus doctor`
 
-A new Python module clone (MORS, JANUS, CALLIOPE, ZEPHYRUS, Aragog and Zalmoxis) is at the release tag of the module's minimum version in `pyproject.toml`; a new Aragog or Zalmoxis clone takes the branch of the same name instead when PROTEUS is on a feature branch that the module also has. Running the installer again does not update a module clone that is already there: it installs the clone as it is and names each one that is not at its tag, with the commands that move it to the tag and reinstall it, and the command that replaces it with a new clone, for example `bash tools/get_python_module.sh MORS --force`. If such a clone is older than the minimum version, the PROTEUS install that follows replaces its editable install with the release from PyPI: PROTEUS then imports that release, not the clone, and `proteus doctor` shows the version without the `[editable @ ...]` mark.
+The installer clones the four further modules into the PROTEUS folder, each under its own licence: atmodeller (GPL-3.0), VULCAN (GPL-3.0), Morrigan (Apache-2.0) and Obliqua (MIT). PROTEUS itself is under Apache-2.0.
+
+The installer and the setup scripts that can clone over SSH (those of the Python modules, SOCRATES, LavAtmos and ThermoEngineLite) test the SSH access to GitHub without a question on the terminal. When the test fails (no key that GitHub accepts, a key with a passphrase that no SSH agent holds, or no host key of github.com on this machine), they clone over HTTPS. `get_agni.sh`, `get_obliqua.sh` and `get_spider.sh` have no SSH test: they clone the HTTPS URL that `pyproject.toml` gives.
+
+The installer prints one line per build step and writes the full build output to `install_<date>_<time>.log` (for example `install_20261011_142530.log`) in the PROTEUS folder; when a step fails, it also prints the last 40 lines of that step's output.
+
+PROTEUS runs on Julia 1.13. When your default Julia is another version, the installer adds Julia 1.13 through juliaup beside it and does not change your default. When you have no Julia, the installer installs juliaup with Julia 1.13 and does not put it on your `PATH`: PROTEUS finds it through `PYTHON_JULIAPKG_EXE`, and to use `julia` in your terminal, add `~/.juliaup/bin` to your `PATH`. When neither `julia` nor juliaup is on your `PATH`, the installer takes juliaup from `~/.juliaup/bin`; when there is none either but a juliaup configuration exists (`juliaup/juliaup.json` under `JULIAUP_DEPOT_PATH`, by default `~/.julia`), the installer stops and asks you to put your juliaup on your `PATH`, so that a second juliaup does not change your default. PROTEUS and the setup scripts in `tools/` find Julia 1.13 through `PYTHON_JULIAPKG_EXE`, so a bare `julia` in your terminal is still your own default.
+
+The installer installs every Python module (MORS, JANUS, CALLIOPE, ZEPHYRUS, Aragog, Zalmoxis, Morrigan, VULCAN and atmodeller) and PROTEUS itself in editable mode, each from a clone in the PROTEUS folder, so a change in a clone takes effect without a new install. fwl-io, which downloads the reference data, is installed from PyPI.
+
+- A new module clone is at the release tag of the module's minimum version in `pyproject.toml`; a new atmodeller or Obliqua clone is at the commit that `pyproject.toml` pins under `[tool.proteus.modules]`.
+- A new Aragog or Zalmoxis clone takes the branch of the same name instead when PROTEUS is on a feature branch that the module also has.
+- Running the installer again does not update a module clone that is already there. It installs the clone as it is and names each one that is not at its tag or pinned commit, with the commands that move it there and reinstall it, and the command that replaces it with a new clone, for example `bash tools/get_python_module.sh MORS --force`.
+
+!!! note "The one exception: a clone older than the minimum version"
+    If a clone of MORS, JANUS, CALLIOPE, ZEPHYRUS, Aragog or Zalmoxis that stays is older than the minimum version, the PROTEUS install that follows replaces its editable install with the release from PyPI. PROTEUS then imports that release, not the clone, and `proteus doctor` shows the version without the `[editable @ ...]` mark. To use the clone again, move it to its tag and reinstall it, or replace it with a new clone, with the commands that the installer prints.
 
 !!! note "Developing a module"
     To develop a module, switch its clone to a branch and install it again, for example:
@@ -155,16 +195,19 @@ phases.
 |---|---|
 | `--all-data` | Download all reference data (~10-20 GB) instead of the essential set (~3 GB) |
 | `--no-data` | Skip data downloads entirely (download later with `proteus get`) |
-| `-i` / `--interactive` | Interactive mode (prompt for choices; default is non-interactive) |
+| `-i` / `--interactive` | Interactive mode (prompt for choices; default is non-interactive, except that an existing environment `proteus`, with no environment active, brings 1 question in a terminal, which `--conda-env proteus` answers in advance) |
+| `--verbose` | Show the full build output on the terminal as well as in the log file |
+| `--conda-env <name>` | The conda environment to use, or to make, when no environment or only `base` is active (default: `proteus`) |
 
 !!! tip "CLI alternative: `proteus install-all`"
     If PROTEUS is already importable in your environment, `proteus install-all`
     performs the same setup from the CLI: it installs the SUNDIALS CVODE solver and the required
-    submodules (SOCRATES, AGNI), downloads reference data, checks for sufficient
-    disk space, creates `FWL_DATA` if needed, and sets the environment variables. 
+    submodules (SOCRATES, and AGNI at the commit PROTEUS pins, through `tools/get_agni.sh` as the installer does), runs the setup scripts of Morrigan, VULCAN, atmodeller and Obliqua (a script that fails gives a warning and the command goes on), downloads reference data, including the PHOENIX grid of the default star (about 1 GB), checks for sufficient
+    disk space, creates `FWL_DATA` if needed, and sets the environment variables. It prints the
+    version of the Julia that PROTEUS uses and warns when it is not 1.13, as `proteus update-all` does.
 
-    - Pass `--export-env` to write the environment variables to your shell rc file. 
-    - To refresh an existing installation later, use `proteus update-all` (see [Diagnose and update](doctor.md)). It runs no git command in the Python module clones; as with `bash install.sh`, its pip step installs the PyPI release in place of a clone that is older than the minimum version. To move a clone to its release tag after a version change, run the commands that `bash install.sh` prints for a clone that is not at its tag, or the module's setup script with `--force`.
+    - Pass `--export-env` to set the environment variables in the active conda environment and write them to `.proteus-env.sh`, as the installer does. It sets nothing in `base`, keeps a value that holds a single quote in `.proteus-env.sh` only, records `RAD_DIR` only for a folder that holds a built SOCRATES (`<PROTEUS root>/socrates`, else the `RAD_DIR` you have set), `FC_DIR` only for a built FastChem, and `PYTHON_JULIAPKG_EXE` only when it already names an executable Julia; `bash install.sh` selects Julia 1.13 and sets it.
+    - To refresh an existing installation later, use `proteus update-all` (see [Diagnose and update](doctor.md)). It runs no git command in the Python module clones; as with `bash install.sh`, its pip step installs the PyPI release in place of a clone of MORS, JANUS, CALLIOPE, ZEPHYRUS, Aragog or Zalmoxis that is older than the minimum version. To move a clone to its release tag after a version change, run the commands that `bash install.sh` prints for a clone that is not at its tag, or the module's setup script with `--force`.
     
     Both commands operate on the PROTEUS source tree, which they locate from the
     installed package (editable installs) or, for a plain wheel install, from
@@ -173,14 +216,18 @@ phases.
 
 ## 4. Verify and run
 
-After the installer finishes, source your shell configuration and run the
+After the installer finishes, activate the environment and run the
 quick-start test:
 
 ```console
-source ~/.zshrc   # or ~/.bashrc, depending on your shell
 conda activate proteus
 proteus start --offline -c input/dummy.toml
 ```
+
+Conda loads the environment variables of an environment when it activates it,
+and activating the environment that is already active does not load them. If an
+environment of your own was active when you ran the installer, run
+`conda deactivate` first; the installer prints the exact line at its end.
 
 If this produces output in `output/run_<timestamp>_xxxx/`, your installation is working.
 See the [Quick start tutorial](../Tutorials/quick_start_dummy.md) for a guided walkthrough.
@@ -196,3 +243,20 @@ See the [Quick start tutorial](../Tutorials/quick_start_dummy.md) for a guided w
     ```
 
     See [SPIDER installation](optionalmodules_installation.md#optional-setup-petsc) for details.
+
+!!! note "Shell start files of an earlier install"
+    An earlier install wrote `export FWL_DATA=...`, `RAD_DIR`, `PYTHON_JULIAPKG_EXE`
+    and `FC_DIR` lines into a shell start file such as `~/.zshrc` or `~/.bashrc`.
+    The installer leaves them as they are and names each one at the end of its run.
+    Conda sets the values of the environment when it activates it, after the shell
+    start file was read, so inside the activated environment they win, and conda
+    prints a warning at activation when a value that your shell start file sets
+    differs from the one bound to the environment. You can delete the
+    old lines by hand; while they stay, a shell without the activated environment
+    still gets the old values.
+
+## Uninstall
+
+Removing the conda environment (`conda deactivate`, then `conda env remove -n proteus`)
+removes the environment variables with it; delete the PROTEUS folder and the
+`FWL_DATA` folder by hand.

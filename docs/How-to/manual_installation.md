@@ -20,8 +20,11 @@ configuration, some steps may differ. If you run into problems, check the
 [Troubleshooting](troubleshooting.md) page or
 [contact the developers](../Community/contact.md).
 
-!!! tip "macOS users"
-    macOS Catalina (10.15) and later uses `zsh` as the default shell. Replace `.bashrc` with `.zshrc` throughout these instructions if you are using the default shell.
+!!! tip "Environment variables"
+    The steps below set each PROTEUS environment variable in the conda environment
+    `proteus` with `conda env config vars set -n proteus`, as `install.sh` does,
+    not in a shell start file. Conda sets the variables when it activates the
+    environment, so each step ends with `conda deactivate && conda activate proteus`.
 
 ---
 
@@ -44,8 +47,11 @@ Install the required system packages for your platform before proceeding.
 !!! tip "Using pixi instead of conda"
     PROTEUS can also be installed into a [pixi](https://pixi.sh) environment,
     which replaces the conda steps below. See [Install with pixi](pixi.md)
-    (experimental). With pixi, skip the `conda activate proteus` lines in the
-    steps below.
+    (experimental). With pixi, skip the conda lines in the steps below
+    (`conda activate`, `conda deactivate` and `conda env config vars set`); write
+    each variable instead as an `export NAME='value'` line to `.proteus-env.sh`
+    in the PROTEUS folder, and run `source .proteus-env.sh` in each new shell,
+    as [Install with pixi](pixi.md) describes.
 
 Python **3.12** is required, and is installed via
 [miniconda](https://www.anaconda.com/docs/getting-started/miniconda/install)
@@ -95,11 +101,12 @@ the official installer:
 ```console
 curl -fsSL https://install.julialang.org | sh
 ```
-After installing, pin to Julia 1.13, which is the version exercised by CI:
+After installing, add Julia 1.13, which is the version exercised by CI. Your
+default Julia stays as it is; PROTEUS finds 1.13 through `PYTHON_JULIAPKG_EXE`
+below:
 
 ```console
 juliaup add 1.13
-juliaup default 1.13
 ```
 
 !!! warning "Do **not** use your package manager"
@@ -108,51 +115,24 @@ juliaup default 1.13
     uninstall the old version first and remove old Julia entries from your
     `PATH`.
 
-Set the Julia environment variable:
+Set the Julia environment variable to the binary of Julia 1.13, not to the
+juliaup launcher:
 
-!!! note "Reactivate the environment after `source`"
-    With conda's default settings, sourcing your shell configuration re-runs
-    conda's initialisation, which switches back to the `base` environment.
-    Run `conda activate proteus` after each `source` command on this page.
-
-=== "bash"
-
-    ```console
-    echo "export PYTHON_JULIAPKG_EXE=$(which julia)" >> ~/.bashrc
-    source ~/.bashrc
-    conda activate proteus
-    ```
-
-=== "zsh"
-
-    ```console
-    echo "export PYTHON_JULIAPKG_EXE=$(which julia)" >> ~/.zshrc
-    source ~/.zshrc
-    conda activate proteus
-    ```
+```console
+conda env config vars set -n proteus PYTHON_JULIAPKG_EXE="$(julia +1.13 --startup-file=no -e 'print(joinpath(Sys.BINDIR, "julia"))')"
+conda deactivate && conda activate proteus
+```
 
 ## 4. Create environment variables and clone PROTEUS
 
 The `FWL_DATA` environment variable points to the folder where PROTEUS stores
 reference data. This variable must always be set.
 
-=== "bash"
-
-    ```console
-    mkdir -p /your/local/path/FWL_DATA
-    echo "export FWL_DATA=/your/local/path/FWL_DATA/" >> "$HOME/.bashrc"
-    source "$HOME/.bashrc"
-    conda activate proteus
-    ```
-
-=== "zsh"
-
-    ```console
-    mkdir -p /your/local/path/FWL_DATA
-    echo "export FWL_DATA=/your/local/path/FWL_DATA/" >> "$HOME/.zshrc"
-    source "$HOME/.zshrc"
-    conda activate proteus
-    ```
+```console
+mkdir -p /your/local/path/FWL_DATA
+conda env config vars set -n proteus FWL_DATA=/your/local/path/FWL_DATA/
+conda deactivate && conda activate proteus
+```
 
 Clone the repository:
 
@@ -183,21 +163,10 @@ bash tools/get_socrates.sh
 
 Set `RAD_DIR` to point to the SOCRATES installation:
 
-=== "bash"
-
-    ```console
-    echo "export RAD_DIR=$PWD/socrates/" >> "$HOME/.bashrc"
-    source "$HOME/.bashrc"
-    conda activate proteus
-    ```
-
-=== "zsh"
-
-    ```console
-    echo "export RAD_DIR=$PWD/socrates/" >> "$HOME/.zshrc"
-    source "$HOME/.zshrc"
-    conda activate proteus
-    ```
+```console
+conda env config vars set -n proteus RAD_DIR="$PWD/socrates/"
+conda deactivate && conda activate proteus
+```
 
 ## 6. Install AGNI and FastChem
 
@@ -224,21 +193,10 @@ the true location).
 
 Set the FastChem environment variable:
 
-=== "bash"
-
-    ```console
-    echo "export FC_DIR=$PWD/AGNI/fastchem/" >> "$HOME/.bashrc"
-    source "$HOME/.bashrc"
-    conda activate proteus
-    ```
-
-=== "zsh"
-
-    ```console
-    echo "export FC_DIR=$PWD/AGNI/fastchem/" >> "$HOME/.zshrc"
-    source "$HOME/.zshrc"
-    conda activate proteus
-    ```
+```console
+conda env config vars set -n proteus FC_DIR="$PWD/AGNI/fastchem/"
+conda deactivate && conda activate proteus
+```
 
 ## 7. Install Python submodules
 
@@ -298,8 +256,18 @@ bash tools/get_cvode.sh
 python -m pip install -e ".[develop]"
 ```
 
-The optional backends and the parameter-inference stack are not part of this
-install, and their tests skip without them. To match what CI runs:
+VULCAN, atmodeller, Morrigan, Obliqua and the parameter-inference stack are not part of this
+install, and the tests of VULCAN, atmodeller and the inference stack skip without them. To
+set up the four modules as `bash install.sh` does:
+
+```console
+bash tools/get_morrigan.sh
+bash tools/get_vulcan.sh
+bash tools/get_atmodeller.sh
+bash tools/get_obliqua.sh
+```
+
+To match what CI runs, which takes VULCAN and atmodeller from PyPI:
 
 ```console
 python -m pip install -e ".[develop,vulcan,atmodeller,inference]"

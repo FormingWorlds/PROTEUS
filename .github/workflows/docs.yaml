@@ -46,6 +46,8 @@ jobs:
         run: python tools/cache_badges.py --out docs/badges/
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Resolve the architecture diagram code links against main
+        run: python tools/figures/code_links.py --deploy
       - run: zensical build --clean
       - uses: actions/upload-pages-artifact@v4
         with:

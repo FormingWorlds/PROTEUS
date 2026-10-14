@@ -20,7 +20,26 @@ both, and each label takes the ink that contrasts with the surface it sits on.
 Label positions are stored as measured baselines, so the line breaking is fixed
 in the model rather than left to the typesetter.
 
-To change the diagram, edit `arch_final.json`:
+### Updating from draw.io
+
+Edit the diagram in draw.io, export it as SVG (File > Export as > SVG, "Embed
+images" on), then regenerate the model and rebuild:
+
+```bash
+python3 tools/figures/extract_drawio.py path/to/export.svg tools/figures/arch_final.json \
+    --logo-dark path/to/dark_logo.png
+bash tools/figures/build_architecture.sh
+```
+
+`extract_drawio.py` measures the labels in headless Chromium (Playwright), so
+line breaks match draw.io. A shape in a new colour needs an entry in its
+`PALETTE` (and, for a neutral, in `DARK_MAP` in `gen_tikz.py`). It overwrites
+the logos in `img/` with the ones in the export. Do not commit the export to
+`docs/assets/`.
+
+### Editing the model by hand
+
+To change the diagram without draw.io, edit `arch_final.json`:
 
 - shapes are `rect` (rounded rectangles, `rx` is the corner radius) and `path`
   (hexagons, the decision rhombus, the archive parallelogram, and every edge),
@@ -45,15 +64,39 @@ surface underneath it: on a chip whose colour is the same in both modes it keeps
 the ink given here, and only a label whose surface changes between modes has its
 ink recomputed by contrast.
 
-The loop-stage boxes link to the call site in `src/proteus/proteus.py` that runs
-them, and module boxes link to the file that implements them. Both are line
-anchors on `main` and are worth re-checking when the loop is restructured.
+### Code links
+
+A link into the code names its target instead of a line, so it survives edits:
+
+```
+https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/proteus.py#interior
+```
+
+The part after `#` is a function, class or method (`Proteus.start`) or the slug
+of a comment (`############### ORBIT AND TIDES` is `#orbit-and-tides`, `# Run
+offline chemistry` is `#run-offline-chemistry`), and must match exactly once.
+
+- The docs deploy runs `code_links.py --deploy`, which turns each target into a
+  `#L<n>` link on `main`. A target that no longer resolves loses its link, with
+  a warning.
+- PR CI runs `code_links.py --check`, which fails on a target that no longer
+  resolves or a hard-coded `#L` anchor. Renaming a linked function or banner
+  means updating the link in draw.io and `arch_final.json`.
+- `code_links.py` without options refreshes the lines in the committed SVGs from
+  `origin/main`.
 
 ## Module schematic
 
 `docs/assets/proteus_modules_schematic.svg` and its dark counterpart are drawn
-in draw.io; the editable diagram is embedded in each file's `content`
-attribute. Their labels are native SVG text rather than HTML in a `foreignObject`
-with a raster fallback, so every renderer, not just a browser, shows the current
-wording. Re-exporting from draw.io restores the HTML-plus-raster form, and the
-labels then have to be converted back.
+in draw.io, with the editable diagram embedded in each file. Their labels are
+native SVG text, so every renderer shows them, not only browsers. After
+exporting both variants (File > Export as > SVG, "Embed images" and "Include a
+copy of my diagram" on), convert the labels:
+
+```bash
+python3 tools/figures/svg_labels_to_text.py docs/assets/proteus_modules_schematic.svg
+python3 tools/figures/svg_labels_to_text.py docs/assets/proteus_modules_schematic_darkmode.svg
+```
+
+The script needs Playwright and Arial or a font with Arial's widths (Liberation
+Sans, Arimo, Nimbus Sans); otherwise labels wrap differently than in draw.io.
