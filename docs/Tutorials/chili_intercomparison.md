@@ -33,9 +33,10 @@ The CHILI intercomparison defines three solar system test cases:
 | Nominal Venus | 0.815 M$_\oplus$ at 0.723 AU | Higher instellation |
 | Earth grid | 3 $\times$ 3 H/C inventory variations | Volatile sensitivity |
 
-All cases start fully molten at 50 Myr stellar age with BSE composition,
-fO$_2$ = IW+4, and Bond albedo = 0.1. The protocol asks for a run until
-solidification, or for at most 1 Gyr [^cite-lichtenberg2026]. Each run
+All cases start fully molten at 50 Myr stellar age (TRAPPIST-1 &alpha;
+at 1 Gyr) with BSE composition, fO$_2$ = IW+4, and Bond albedo = 0.1. The
+protocol asks for a run until solidification, or for at most 1 Gyr, for
+the Earth and Venus cases [^cite-lichtenberg2026]. Each run on this page
 stops when its melt fraction falls to 5% by mass
 (`params.stop.solid.phi_crit = 0.05`) or after 1 Gyr of model time
 (`params.stop.time.maximum = 1e9`). The energy-balance, escape and
@@ -53,13 +54,15 @@ volume.
     The figures and numbers on this page come from the runs as they
     were on 14 October 2026 (16:51 CEST). The Nominal Earth run, the six low-H and mid-H runs of
     the Earth grid and the TRAPPIST-1 e run reached the 5% melt threshold.
-    They still cool at that point: their net atmospheric flux is
+    They ran with the energy-balance, escape and wall-clock stops on, and
+    the 5% melt stop is the one that ended each of them. They still cool at that point: their net atmospheric flux is
     27 to 692 W m$^{-2}$, against about 0.2 W m$^{-2}$ of radiogenic
     heating. The Nominal Venus run, the three high-H runs of the Earth grid and the
     TRAPPIST-1 b run had not reached it at that time and are shown to their last
     row: Venus at 17.3 Myr with 6.7% of melt, the grid runs at 18.3 to 19.2 Myr with 7.3 to 8.4%,
     and TRAPPIST-1 b at 19.0 Myr with 18.5%. The TRAPPIST-1 &alpha; run is shown to its last row, at 11.1 Myr
-    with 55.7% of melt. The runs do not follow the long-term
+    with 55.7% of melt: over its last 10 Myr its melt fraction changed by 0.68
+    percentage points, and its net flux was 0.12 W m$^{-2}$. The runs do not follow the long-term
     solid-state evolution of the mantle or the loss of the atmosphere
     after their end. The PROTEUS results in the CHILI paper and the
     results shown here come from different versions of the code and from
@@ -75,7 +78,8 @@ volume.
 - Interior data downloaded, including the PALEOS EOS tables
   (`proteus get interiordata --config-path input/chili/intercomp/earth.toml`)
 - `git` (to clone the CHILI comparison data)
-- Allow 2 hours to about a day of CPU time per run, depending on the case and the hardware
+- Allow from about 3 hours to about a day per run, depending on the case and the hardware;
+  a run that does not reach 5% melt can run for several days
 
 The commands below run with `--offline`, which skips the automatic
 reference-data check, so all data must be on disk beforehand. Drop the
@@ -188,7 +192,7 @@ comparison stays reproducible without editing the script.
 <figure markdown="span">
   ![CHILI Fig 1](../assets/tutorials/chili/fig1_melt_fraction.avif#only-light){ width="100%" }
   ![CHILI Fig 1](../assets/tutorials/chili/fig1_melt_fraction_dark.avif#only-dark){ width="100%" }
-  <figcaption><strong>Figure 1.</strong> Melt fraction vs time for the CHILI Nominal Earth (solid lines) and Nominal Venus (dashed lines) cases. In the Earth files of the intercomparison the first melt fraction after t = 0 is 0.93 to 1.00. Six of the seven models reach a 5% melt fraction between 0.011 Myr (PACMAN) and 2.0 Myr (NEONGOOEY); the submitted PROTEUS CHILI run ends at 0.47 Myr with 6.1%. The Venus curves of PROTEUS CHILI and LINCS end at 39.3 and 49.3 Myr. The curves of the current PROTEUS runs show the melt fraction by mass; the curves of the intercomparison data show it by volume. The current PROTEUS Earth run reaches a melt fraction of 5% by mass at 2.44 Myr (6.2% by volume). The current PROTEUS Venus run had not reached a 5% melt fraction at its last row: its melt fraction levels off, and its curve ends at 17.3 Myr with 6.7% of melt by mass (8.2% by volume).</figcaption>
+  <figcaption><strong>Figure 1.</strong> Melt fraction vs time for the CHILI Nominal Earth (solid lines) and Nominal Venus (dashed lines) cases. In the Earth files of the intercomparison the first melt fraction after t = 0 is 0.93 to 1.00. Six of the seven models reach a 5% melt fraction between 0.011 Myr (PACMAN) and 2.0 Myr (NEONGOOEY); the submitted PROTEUS CHILI run ends at 0.47 Myr with 6.1%. The Venus curves of PROTEUS CHILI and LINCS end at 39.3 and 49.3 Myr. The curves of the current PROTEUS runs show the melt fraction by mass; the curves of the intercomparison data show it by volume. The current PROTEUS Earth run reaches a melt fraction of 5% by mass at 2.44 Myr (6.2% by volume). The current PROTEUS Venus run had not reached a 5% melt fraction at its last row: its melt fraction decreases by about 0.02 percentage points per Myr over its last 5 Myr, and its curve ends at 17.3 Myr with 6.7% of melt by mass (8.2% by volume).</figcaption>
 </figure>
 
 ## Solidification milestones
@@ -296,10 +300,9 @@ done
 ```
 
 !!! warning "Runtime"
-    The run time grows with the hydrogen inventory. The high-H cases (10 Earth oceans) are the slowest, and the runs shown
-    here had not reached 5% melt after 18.3 to 19.2 Myr of model time:
-    under the thick steam atmosphere the OLR stays below
-    300 W m$^{-2}$ once the melt fraction is 12% or lower.
+    The high-H cases (10 Earth oceans) cool the slowest: under the thick steam atmosphere the OLR stays below
+    300 W m$^{-2}$ once the melt fraction is 12% or lower, and the runs
+    shown here had not reached 5% melt after 18.3 to 19.2 Myr of model time.
 
 ### Grid results
 
