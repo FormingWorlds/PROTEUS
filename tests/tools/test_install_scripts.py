@@ -4886,6 +4886,28 @@ def test_atmodeller_existing_folder_off_pin_stays_and_advises(tmp_path):
     assert git(clone, 'rev-parse', 'HEAD') == site['tip_sha']
 
 
+@pytest.mark.unit
+def test_atmodeller_worktree_off_pin_stays_and_advises_force(tmp_path):
+    """Verify an off-pin atmodeller git worktree stays and advice names the forced command."""
+    site = _atmodeller_site(tmp_path)
+    assert _run_tool(site, 'get_atmodeller.sh').returncode == 0
+    folder = site['root'] / 'Atmodeller'
+    base = tmp_path / 'base_clone'
+    shutil.move(str(folder), str(base))
+    git(base, 'worktree', 'add', '-q', '--detach', str(folder), site['tip_sha'])
+    assert (folder / '.git').is_file()
+    res = _run_tool(site, 'get_atmodeller.sh')
+    assert res.returncode == 0, res.stdout + res.stderr
+    lines = [ln.strip() for ln in res.stdout.splitlines()]
+    idx_fetch = lines.index(f'git -C {folder} fetch origin')
+    idx_checkout = lines.index(f'git -C {folder} checkout --detach {site["target_sha"]}')
+    idx_pip = lines.index(f'pip install -e {folder}')
+    idx_force = lines.index('bash tools/get_atmodeller.sh --force')
+    assert idx_fetch < idx_checkout < idx_pip < idx_force
+    assert 'Or move it away or delete it by hand, then run:' not in res.stdout
+    assert git(folder, 'rev-parse', 'HEAD') == site['tip_sha']
+
+
 _MODULE_SITES = (
     ('get_atmodeller.sh', _atmodeller_site, 'Atmodeller', 'atmodeller.git'),
     ('get_obliqua.sh', _obliqua_site, 'Obliqua', 'Obliqua.git'),
@@ -6803,10 +6825,7 @@ def test_obliqua_refuses_symlink_to_folder_ending_with_line_break(tmp_path, forc
     site['log'].write_text('')
     res = _run_tool(site, 'get_obliqua.sh', *force_args, str(link))
     assert res.returncode == 1, res.stdout + res.stderr
-    assert (
-        f'ERROR: {link} resolves to a folder whose path ends with a line break; nothing is changed'
-        in res.stderr
-    )
+    assert f'ERROR: {link} resolves to another folder; nothing is changed' in res.stderr
     assert clone_marker.read_text() == 'clone marker bytes\n'
     assert git(nl_clone, 'rev-parse', 'HEAD') == clone_head
     with open(nl_newline_marker, encoding='utf-8') as f:

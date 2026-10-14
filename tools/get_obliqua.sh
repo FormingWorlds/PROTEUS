@@ -67,7 +67,7 @@ if [ -z "$real" ]; then
     exit 1
 fi
 if ! [ "$real" -ef "$base" ]; then
-    echo "ERROR: $base resolves to a folder whose path ends with a line break; nothing is changed" >&2
+    echo "ERROR: $base resolves to another folder; nothing is changed" >&2
     exit 1
 fi
 exists=false
@@ -124,6 +124,7 @@ if [ "$get_force" != true ] && [ "$exists" = true ] &&
     ! is_empty_dir "$dest"; then
     label="get_obliqua.sh"
     [ "$dest" -ef "$proteus_root/Obliqua" ] || label="get_obliqua.sh $(printf '%q' "$dest")"
+    get_refuses_git_file=true
     report_clone_state Obliqua "$dest" "$label" "$ob_ref"
     cd "$dest"
     LD_LIBRARY_PATH="" julia --project=. -e 'using Pkg; Pkg.instantiate()' ||

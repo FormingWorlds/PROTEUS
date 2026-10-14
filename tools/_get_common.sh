@@ -333,7 +333,8 @@ _commit_text() {
 }
 
 # Usage: _report_pinned_clone <distribution> <clone-dir> <script-label> <pin>. Reports an existing
-# clone against a commit pin and prints advice when HEAD does not match the pin commit.
+# clone against a commit pin and prints advice when HEAD does not match the pin commit (with
+# get_refuses_git_file=true, omits --force when .git is a file).
 _report_pinned_clone() {
     local dist="$1" dir="${2%/}" label="$3" pin="$4" head="" pin_commit="" found="" summary=""
     local qdir qref
@@ -372,7 +373,7 @@ _report_pinned_clone() {
         elif [ -f "$dir/Project.toml" ]; then
             echo "        bash tools/$label"
         fi
-        if [ -f "$dir/.git" ]; then
+        if [ -f "$dir/.git" ] && [ "${get_refuses_git_file:-false}" = true ]; then
             echo "    Or move it away or delete it by hand, then run:"
             echo "        bash tools/$label"
         else
