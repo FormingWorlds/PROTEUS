@@ -15,7 +15,8 @@ Labels are laid out in Arial or, where Arial is not installed, a font with
 Arial's advance widths (Liberation Sans, Arimo, Nimbus Sans). Chromium would
 otherwise fall back to a wider font and break lines that fit in draw.io, and
 the breaks are fixed in the output, so the script stops if none of these fonts
-is installed.
+is installed. Each face gets Arial's ascent, descent and line gap, because
+HTML centres a line by those and Nimbus Sans, for one, has other values.
 
 Everything outside the ``<switch>`` elements is copied byte for byte; a label
 without visible text is dropped together with its raster.
@@ -67,16 +68,18 @@ ARIAL_FACES = {
         'NimbusSans-BoldItalic',
     ],
 }
+# Arial's hhea metrics (1854, 434 and 67 of 2048 units per em)
+ARIAL_VERTICAL = 'ascent-override: 90.53%; descent-override: 21.19%; line-gap-override: 3.27%;'
 
 FONTS_JS = r"""
-async (faces) => {
+async ([faces, vertical]) => {
   // map Arial and Helvetica to the first installed font with Arial's metrics
   const css = [];
   for (const [weight, style, names] of faces) {
     const src = names.map(n => `local("${n}")`).join(', ');
     for (const family of ['Arial', 'Helvetica']) {
       css.push(`@font-face { font-family: "${family}"; font-weight: ${weight}; ` +
-               `font-style: ${style}; src: ${src}; }`);
+               `font-style: ${style}; src: ${src}; ${vertical} }`);
     }
   }
   const el = document.createElementNS('http://www.w3.org/2000/svg', 'style');
@@ -244,7 +247,7 @@ def main():
         page.goto(path.as_uri())
         page.wait_for_timeout(300)
         faces = [[w, st, names] for (w, st), names in ARIAL_FACES.items()]
-        missing = page.evaluate(FONTS_JS, faces)
+        missing = page.evaluate(FONTS_JS, [faces, ARIAL_VERTICAL])
         if missing:
             browser.close()
             raise SystemExit(
