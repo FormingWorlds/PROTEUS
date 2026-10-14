@@ -6056,7 +6056,7 @@ def test_atmodeller_non_clone_folder_stays_and_advises_manual_removal(tmp_path):
 @pytest.mark.parametrize(
     ('script', 'fixture_fn'),
     [
-        ('get_atmodeller.sh', lambda p: _atmodeller_site(p)),
+        ('get_atmodeller.sh', _atmodeller_site),
         (
             'get_vulcan.sh',
             lambda p: _floor_tag_site(
@@ -6130,8 +6130,8 @@ def test_ssh_invocations_use_batch_mode():
 @pytest.mark.parametrize(
     ('script', 'fixture_fn', 'folder_name'),
     [
-        ('get_atmodeller.sh', lambda p: _atmodeller_site(p), 'Atmodeller'),
-        ('get_obliqua.sh', lambda p: _obliqua_site(p), 'Obliqua'),
+        ('get_atmodeller.sh', _atmodeller_site, 'Atmodeller'),
+        ('get_obliqua.sh', _obliqua_site, 'Obliqua'),
     ],
     ids=['atmodeller', 'obliqua'],
 )
@@ -6191,14 +6191,31 @@ def test_atmodeller_empty_folder_without_force_clones_and_installs(tmp_path):
     assert f'install -U -e {clone}' in site['log'].read_text()
 
 
+def _path_without_tool(path: str, tool: str, scratch: Path) -> str:
+    """Return ``path`` with each folder that holds ``tool`` replaced by links to its other entries."""
+    parts = []
+    for index, folder in enumerate(path.split(os.pathsep)):
+        if not folder or not os.path.lexists(os.path.join(folder, tool)):
+            parts.append(folder)
+            continue
+        mirror = scratch / f'path_{index}'
+        mirror.mkdir(parents=True)
+        for entry in Path(folder).iterdir():
+            if entry.name != tool:
+                (mirror / entry.name).symlink_to(entry)
+        parts.append(str(mirror))
+    return os.pathsep.join(parts)
+
+
 @pytest.mark.unit
 def test_obliqua_missing_julia_exits_1(tmp_path):
     """Verify get_obliqua.sh exits 1 when julia is missing from PATH."""
     site = _obliqua_site(tmp_path)
-    filtered_path = os.pathsep.join(
-        p for p in site['env']['PATH'].split(os.pathsep) if not (Path(p) / 'julia').exists()
+    site['env']['PATH'] = _path_without_tool(
+        site['env']['PATH'], 'julia', tmp_path / 'no_julia'
     )
-    site['env']['PATH'] = filtered_path
+    assert shutil.which('julia', path=site['env']['PATH']) is None
+    assert shutil.which('bash', path=site['env']['PATH']) is not None
     res = _run_tool(site, 'get_obliqua.sh')
     assert res.returncode == 1, res.stdout + res.stderr
     assert 'ERROR: julia is not on PATH' in res.stderr
