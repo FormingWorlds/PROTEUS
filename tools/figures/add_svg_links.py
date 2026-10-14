@@ -4,6 +4,9 @@ The PDF-to-SVG converter drops link annotations, so the clickable areas are
 re-attached here as an overlay of transparent rectangles, one per linked shape,
 in the figure's own coordinate system.  The overlay is appended last so it sits
 above the artwork and receives the clicks.
+
+Name-based code links are resolved to a line (code_links.py) and keep their
+target in ``data-target``, so the line can be refreshed without a rebuild.
 """
 
 from __future__ import annotations
@@ -13,6 +16,8 @@ import re
 import sys
 from html import escape
 from pathlib import Path
+
+from code_links import resolve, split
 
 
 def main(svg_path, links_path, out_path, fig_w=1412.0, fig_h=1415.0):
@@ -32,9 +37,16 @@ def main(svg_path, links_path, out_path, fig_w=1412.0, fig_h=1415.0):
         if key in seen:
             continue
         seen.add(key)
-        title = lb['href'].split('/blob/main/')[-1].split('/tree/main/')[-1]
+        target = lb['href']
+        parts = split(target)
+        title = (
+            f'{parts[0]}: {parts[1]}'
+            if parts
+            else target.split('/blob/main/')[-1].split('/tree/main/')[-1]
+        )
         rows.append(
-            f'<a xlink:href="{escape(lb["href"], quote=True)}" target="_blank">'
+            f'<a xlink:href="{escape(resolve(target), quote=True)}" '
+            f'data-target="{escape(target, quote=True)}" target="_blank">'
             f'<rect x="{lb["x"] * sx:.3f}" y="{lb["y"] * sy:.3f}" '
             f'width="{lb["w"] * sx:.3f}" height="{lb["h"] * sy:.3f}" '
             f'fill="none" pointer-events="all">'
