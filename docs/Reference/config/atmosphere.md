@@ -224,6 +224,22 @@ steady-state mixing ratios from a chemical reaction network.
 | `save_frames` | bool | `false` | Save simulation state as plots. |
 | `yconv_cri` | float | `0.05` | Steady state - max change in mixing ratio over test period. |
 | `slope_cri` | float | `0.0001` | Steady state - max rate of change of mixing ratio over test period. |
+| `yconv_min` | float | `0.5` | Steady state - alternative max change in mixing ratio, accepted when the rate of change is also below VULCAN's diffusion-limited slope. Must be > 0. |
+| `st_factor` | float | `0.5` | Steady state - the test period starts at this fraction of the elapsed model time, in (0, 1). Must be > 0 and < 1. |
+| `conv_step` | int | `100` | Steady state - maximum number of solver steps the test period reaches back. Must be > 0. |
+| `use_vm_mol` | bool | `false` | Use the upwind scheme for molecular diffusion. |
+| `use_vz` | bool | `true` | Include vertical advection at the constant updraft velocity `atmos_chem.updraft_const`. |
+| `use_condense` | bool | `false` | Include condensation. |
+| `use_settling` | bool | `false` | Include gravitational settling of condensates. |
+| `runtime` | float | `1e+22` | Maximum integrated model time \[s\]. Must be > 0. |
+| `dttry` | float | `1e-08` | Initial solver timestep \[s\]. Must be > 0. |
+| `dt_min` | float | `1e-10` | Minimum solver timestep \[s\]. Must be > 0. |
+| `atol` | float | `0.1` | Absolute tolerance on number density \[cm-3\]. Must be > 0. |
+| `mtol` | float | `1e-22` | Mixing ratio below which a species is ignored in the truncation error. Must be > 0. |
+| `mtol_conv` | float | `1e-20` | Mixing ratio below which a species is ignored in the steady-state test. Must be > 0. |
+| `flux_atol` | float | `1.0` | Absolute tolerance on the actinic flux \[photons cm-2 s-1 nm-1\]. Must be > 0. |
+| `rtol` | float | `0.9` | Relative tolerance for adjusting the solver step size. Must be > 0. |
+| `post_conden_rtol` | float | `0.1` | Relative tolerance used once condensation stops. Must be > 0. |
 <!-- END GENERATED: config-table [atmos_chem.vulcan] -->
 
 ## Constraints

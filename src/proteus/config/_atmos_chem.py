@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from attrs import define, field
-from attrs.validators import in_
+from attrs.validators import gt, in_, lt
 
 from ._converters import none_if_none
 
@@ -30,6 +30,38 @@ class Vulcan:
         Steady state - max change in mixing ratio over test period
     slope_cri : float
         Steady state - max rate of change of mixing ratio over test period
+    yconv_min : float
+        Steady state - alternative max change in mixing ratio, accepted when the rate of change is also below VULCAN's diffusion-limited slope.
+    st_factor : float
+        Steady state - the test period starts at this fraction of the elapsed model time, in (0, 1).
+    conv_step : int
+        Steady state - maximum number of solver steps the test period reaches back.
+    use_vm_mol : bool
+        Use the upwind scheme for molecular diffusion.
+    use_vz : bool
+        Include vertical advection at the constant updraft velocity `atmos_chem.updraft_const`.
+    use_condense : bool
+        Include condensation.
+    use_settling : bool
+        Include gravitational settling of condensates.
+    runtime : float
+        Maximum integrated model time [s].
+    dttry : float
+        Initial solver timestep [s].
+    dt_min : float
+        Minimum solver timestep [s].
+    atol : float
+        Absolute tolerance on number density [cm-3].
+    mtol : float
+        Mixing ratio below which a species is ignored in the truncation error.
+    mtol_conv : float
+        Mixing ratio below which a species is ignored in the steady-state test.
+    flux_atol : float
+        Absolute tolerance on the actinic flux [photons cm-2 s-1 nm-1].
+    rtol : float
+        Relative tolerance for adjusting the solver step size.
+    post_conden_rtol : float
+        Relative tolerance used once condensation stops.
     """
 
     clip_fl: float = field(default=1e-20)
@@ -41,6 +73,22 @@ class Vulcan:
     save_frames: bool = field(default=False)
     yconv_cri: float = field(default=0.05)
     slope_cri: float = field(default=1e-4)
+    yconv_min: float = field(default=0.5, validator=gt(0))
+    st_factor: float = field(default=0.5, validator=(gt(0), lt(1)))
+    conv_step: int = field(default=100, validator=gt(0))
+    use_vm_mol: bool = field(default=False)
+    use_vz: bool = field(default=True)
+    use_condense: bool = field(default=False)
+    use_settling: bool = field(default=False)
+    runtime: float = field(default=1e22, validator=gt(0))
+    dttry: float = field(default=1e-8, validator=gt(0))
+    dt_min: float = field(default=1e-10, validator=gt(0))
+    atol: float = field(default=0.1, validator=gt(0))
+    mtol: float = field(default=1e-22, validator=gt(0))
+    mtol_conv: float = field(default=1e-20, validator=gt(0))
+    flux_atol: float = field(default=1.0, validator=gt(0))
+    rtol: float = field(default=0.9, validator=gt(0))
+    post_conden_rtol: float = field(default=0.1, validator=gt(0))
 
 
 @define
@@ -77,9 +125,6 @@ class AtmosChem:
     when: str = field(default='manually', validator=in_(('manually', 'offline', 'online')))
     photo_on: bool = field(default=True)
     Kzz_on: bool = field(default=True)
-    # Include `str` in the union so cattrs accepts the literal "none"
-    # sentinel before the `none_if_none` converter maps it to Python None.
-    # Same pattern as Mors.rot_period and OutputParams.plot_mod.
     Kzz_const: float | str | None = field(default=None, converter=none_if_none)
     moldiff_on: bool = field(default=True)
     updraft_const: float = field(default=0.0)

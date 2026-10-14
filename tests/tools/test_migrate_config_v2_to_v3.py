@@ -147,6 +147,24 @@ _REVIEWED_NEUTRAL = frozenset(
         'atmos_clim.agni.wl_obs',
         'atmos_clim.dummy.fixed_flux',
         'atmos_clim.janus.cloud_alpha',
+        # VULCAN solver options; each default is the value the wrapper set
+        # before the option was exposed, so a migrated config runs unchanged.
+        'atmos_chem.vulcan.atol',
+        'atmos_chem.vulcan.conv_step',
+        'atmos_chem.vulcan.dt_min',
+        'atmos_chem.vulcan.dttry',
+        'atmos_chem.vulcan.flux_atol',
+        'atmos_chem.vulcan.mtol',
+        'atmos_chem.vulcan.mtol_conv',
+        'atmos_chem.vulcan.post_conden_rtol',
+        'atmos_chem.vulcan.rtol',
+        'atmos_chem.vulcan.runtime',
+        'atmos_chem.vulcan.st_factor',
+        'atmos_chem.vulcan.use_condense',
+        'atmos_chem.vulcan.use_settling',
+        'atmos_chem.vulcan.use_vm_mol',
+        'atmos_chem.vulcan.use_vz',
+        'atmos_chem.vulcan.yconv_min',
         # Inert while escape.hill_clamp is pinned off for migrated configs.
         'escape.hill_clamp_frac',
         # The per-step escape cap and its step floor apply at their measured

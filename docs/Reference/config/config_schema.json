@@ -10146,6 +10146,326 @@
       "group_qualifier": null
     },
     {
+      "path": "atmos_chem.vulcan.yconv_min",
+      "toml_section": "atmos_chem.vulcan",
+      "class": "Vulcan",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.5",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Steady state - alternative max change in mixing ratio, accepted when the rate of change is also below VULCAN's diffusion-limited slope.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "atmos_chem.vulcan.st_factor",
+      "toml_section": "atmos_chem.vulcan",
+      "class": "Vulcan",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.5",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        },
+        {
+          "op": "<",
+          "value": 1
+        }
+      ],
+      "description": "Steady state - the test period starts at this fraction of the elapsed model time, in (0, 1).",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "atmos_chem.vulcan.conv_step",
+      "toml_section": "atmos_chem.vulcan",
+      "class": "Vulcan",
+      "type": "int",
+      "accepts_none": false,
+      "default": "100",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Steady state - maximum number of solver steps the test period reaches back.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "atmos_chem.vulcan.use_vm_mol",
+      "toml_section": "atmos_chem.vulcan",
+      "class": "Vulcan",
+      "type": "bool",
+      "accepts_none": false,
+      "default": "false",
+      "choices": null,
+      "bounds": null,
+      "description": "Use the upwind scheme for molecular diffusion.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "atmos_chem.vulcan.use_vz",
+      "toml_section": "atmos_chem.vulcan",
+      "class": "Vulcan",
+      "type": "bool",
+      "accepts_none": false,
+      "default": "true",
+      "choices": null,
+      "bounds": null,
+      "description": "Include vertical advection at the constant updraft velocity `atmos_chem.updraft_const`.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "atmos_chem.vulcan.use_condense",
+      "toml_section": "atmos_chem.vulcan",
+      "class": "Vulcan",
+      "type": "bool",
+      "accepts_none": false,
+      "default": "false",
+      "choices": null,
+      "bounds": null,
+      "description": "Include condensation.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "atmos_chem.vulcan.use_settling",
+      "toml_section": "atmos_chem.vulcan",
+      "class": "Vulcan",
+      "type": "bool",
+      "accepts_none": false,
+      "default": "false",
+      "choices": null,
+      "bounds": null,
+      "description": "Include gravitational settling of condensates.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "atmos_chem.vulcan.runtime",
+      "toml_section": "atmos_chem.vulcan",
+      "class": "Vulcan",
+      "type": "float",
+      "accepts_none": false,
+      "default": "1e+22",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Maximum integrated model time [s].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "atmos_chem.vulcan.dttry",
+      "toml_section": "atmos_chem.vulcan",
+      "class": "Vulcan",
+      "type": "float",
+      "accepts_none": false,
+      "default": "1e-08",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Initial solver timestep [s].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "atmos_chem.vulcan.dt_min",
+      "toml_section": "atmos_chem.vulcan",
+      "class": "Vulcan",
+      "type": "float",
+      "accepts_none": false,
+      "default": "1e-10",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Minimum solver timestep [s].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "atmos_chem.vulcan.atol",
+      "toml_section": "atmos_chem.vulcan",
+      "class": "Vulcan",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.1",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Absolute tolerance on number density [cm-3].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "atmos_chem.vulcan.mtol",
+      "toml_section": "atmos_chem.vulcan",
+      "class": "Vulcan",
+      "type": "float",
+      "accepts_none": false,
+      "default": "1e-22",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Mixing ratio below which a species is ignored in the truncation error.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "atmos_chem.vulcan.mtol_conv",
+      "toml_section": "atmos_chem.vulcan",
+      "class": "Vulcan",
+      "type": "float",
+      "accepts_none": false,
+      "default": "1e-20",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Mixing ratio below which a species is ignored in the steady-state test.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "atmos_chem.vulcan.flux_atol",
+      "toml_section": "atmos_chem.vulcan",
+      "class": "Vulcan",
+      "type": "float",
+      "accepts_none": false,
+      "default": "1.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Absolute tolerance on the actinic flux [photons cm-2 s-1 nm-1].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "atmos_chem.vulcan.rtol",
+      "toml_section": "atmos_chem.vulcan",
+      "class": "Vulcan",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.9",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Relative tolerance for adjusting the solver step size.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "atmos_chem.vulcan.post_conden_rtol",
+      "toml_section": "atmos_chem.vulcan",
+      "class": "Vulcan",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.1",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Relative tolerance used once condensation stops.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
       "path": "atmos_chem.when",
       "toml_section": "atmos_chem",
       "class": "AtmosChem",

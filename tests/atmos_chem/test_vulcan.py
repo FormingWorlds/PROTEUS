@@ -19,6 +19,9 @@ Physics tested:
   defines in the installed VULCAN, and no field VULCAN does not define
 - Surface boundary file: the fixed mixing ratios VULCAN reads from
   bot_BC_flux_file equal the use_fix_sp_bot dict the solver applies
+- Config pass-through: each [atmos_chem.vulcan] solver option reaches the
+  VULCAN Config unchanged, and the AGNI options of the RCE solver follow
+  [atmos_clim] and [atmos_clim.agni]
 
 Related documentation:
 - docs/How-to/testing.md: Running, writing, and marking tests; coverage and CI
@@ -82,6 +85,28 @@ def _make_mock_config(*, network='CHO', photo_on=True, atmos_module='agni'):
     config.atmos_chem.vulcan.save_frames = False
     config.atmos_chem.vulcan.yconv_cri = 0.05
     config.atmos_chem.vulcan.slope_cri = 1e-4
+    config.atmos_chem.vulcan.yconv_min = 0.5
+    config.atmos_chem.vulcan.st_factor = 0.5
+    config.atmos_chem.vulcan.conv_step = 100
+    config.atmos_chem.vulcan.use_vm_mol = False
+    config.atmos_chem.vulcan.use_vz = True
+    config.atmos_chem.vulcan.use_condense = False
+    config.atmos_chem.vulcan.use_settling = False
+    config.atmos_chem.vulcan.runtime = 1e22
+    config.atmos_chem.vulcan.dttry = 1e-8
+    config.atmos_chem.vulcan.dt_min = 1e-10
+    config.atmos_chem.vulcan.atol = 0.1
+    config.atmos_chem.vulcan.mtol = 1e-22
+    config.atmos_chem.vulcan.mtol_conv = 1e-20
+    config.atmos_chem.vulcan.flux_atol = 1.0
+    config.atmos_chem.vulcan.rtol = 0.9
+    config.atmos_chem.vulcan.post_conden_rtol = 0.1
+    config.atmos_clim.rayleigh = True
+    config.atmos_clim.surf_greyalbedo = 0.1
+    config.atmos_clim.num_levels = 50
+    config.atmos_clim.agni.solution_atol = 0.5
+    config.atmos_clim.agni.solution_rtol = 0.15
+    config.atmos_clim.agni.solve_energy = True
     config.atmos_chem.photo_on = photo_on
     config.atmos_chem.moldiff_on = True
     config.atmos_chem.updraft_const = 0.0
@@ -90,6 +115,7 @@ def _make_mock_config(*, network='CHO', photo_on=True, atmos_module='agni'):
     config.orbit.zenith_angle = 48.0
     config.orbit.s0_factor = 0.5
     config.params.out.logging = 'INFO'
+    config.params.out.plot_fmt = 'png'
     return config
 
 
@@ -109,6 +135,7 @@ def _make_mock_hf_row(*, year=1000.0):
         'eccentricity': 0.0,
         'R_int': 6.371e6,
         'gravity': 9.81,
+        'T_surf': 1500.0,
     }
     # Add element mass entries for all elements in element_list
     from proteus.utils.constants import element_list, vol_list
@@ -965,3 +992,63 @@ def test_run_vulcan_bottom_boundary_file_matches_fixed_surface_mixing_ratios(
         assert vcfg.use_fix_sp_bot is not vcfg.const_mix
     else:
         assert from_file == {}
+
+
+@pytest.mark.unit
+def test_run_vulcan_passes_solver_options_and_agni_settings_to_vulcan_config(tmp_path):
+    """Each [atmos_chem.vulcan] solver option reaches the VULCAN Config, the
+    AGNI settings of VULCAN's RCE solver follow the PROTEUS AGNI config, and
+    the plot format follows params.out.plot_fmt.
+
+    Every option gets a distinct non-default value, so a swapped pair (atol
+    with rtol, mtol with mtol_conv, agni_atol with agni_rtol) or a value left
+    at its hard-coded default fails. dt_max follows runtime by a factor 1e-4.
+    """
+    config = _make_mock_config()
+    config.atmos_chem.vulcan.make_funs = False
+    opts = {
+        'use_vm_mol': True,
+        'use_vz': False,
+        'use_condense': True,
+        'use_settling': True,
+        'st_factor': 0.3,
+        'conv_step': 250,
+        'yconv_min': 0.07,
+        'runtime': 3.0e18,
+        'dttry': 2.0e-7,
+        'dt_min': 4.0e-11,
+        'atol': 0.02,
+        'mtol': 3.0e-23,
+        'mtol_conv': 5.0e-21,
+        'flux_atol': 0.6,
+        'rtol': 0.35,
+        'post_conden_rtol': 0.08,
+    }
+    for key, val in opts.items():
+        setattr(config.atmos_chem.vulcan, key, val)
+    config.params.out.plot_fmt = 'pdf'
+    config.atmos_clim.rayleigh = False
+    config.atmos_clim.surf_greyalbedo = 0.27
+    config.atmos_clim.num_levels = 73
+    config.atmos_clim.agni.solution_atol = 0.4
+    config.atmos_clim.agni.solution_rtol = 0.12
+    config.atmos_clim.agni.solve_energy = True
+
+    result, vcfg = _run_online_with_recording_config(
+        tmp_path, config, _make_mock_hf_row(year=700.0)
+    )
+
+    assert result is True
+    for key, val in opts.items():
+        assert getattr(vcfg, key) == val, key
+    assert vcfg.plot_fmt == 'pdf'
+    assert vcfg.use_rayleigh is False
+    assert vcfg.surf_albedo == pytest.approx(0.27, rel=1e-12)
+    assert vcfg.agni_nlev == 73
+    assert vcfg.agni_atol == pytest.approx(0.4, rel=1e-12)
+    assert vcfg.agni_rtol == pytest.approx(0.12, rel=1e-12)
+    assert vcfg.solve_rce is True
+    assert vcfg.Tsurf_guess == pytest.approx(1500.0, rel=1e-12)  # K, from hf_row
+    assert vcfg.dt_max == pytest.approx(3.0e14, rel=1e-12)
+    # The RCE solver stays off, so the AGNI settings do not change the run.
+    assert vcfg.agni_call_frq == 0
