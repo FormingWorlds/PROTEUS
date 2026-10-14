@@ -18,8 +18,8 @@ module is distributed.
 | Pin type | Where it lives in `pyproject.toml` | Pin value | Modules |
 |----------|------------------------------------|-----------|---------|
 | PyPI floor | `[project] dependencies` | Minimum version bound, e.g. `fwl-aragog>=26.05.13` | fwl-janus, fwl-mors, fwl-calliope, fwl-zephyrus, fwl-aragog, fwl-zalmoxis |
-| PyPI floor (optional) | `[project.optional-dependencies]` | Minimum version bound on an optional backend | fwl-vulcan, atmodeller, fwl-morrigan |
-| Git ref | `[tool.proteus.modules.<name>]` | Exact commit SHA, tag, or branch in a `ref` field | AGNI, SOCRATES, SPIDER, BOREAS, LovePy, Obliqua |
+| PyPI floor (extras) | `[project.optional-dependencies]` | Minimum version bound on a package extra | fwl-vulcan, atmodeller, fwl-morrigan |
+| Git ref | `[tool.proteus.modules.<name>]` | Exact commit SHA, tag, or branch in a `ref` field | AGNI, SOCRATES, SPIDER, BOREAS, LovePy, Obliqua, atmodeller |
 
 
 A third entry, PETSc, is pinned in `[tool.proteus.modules.petsc]` by the SHA-256
@@ -52,8 +52,8 @@ Everything in PROTEUS reads from the same table, so a pin is changed in
   pins.
 - **`proteus doctor`** and **`proteus update`** compare an installation against
   the pins and report or apply fixes (see [Diagnose and update](doctor.md)).
-  Git-commit drift is checked for AGNI and SOCRATES; the other git modules are
-  pinned but not drift-checked by the doctor.
+  Git-commit drift is checked for AGNI, SOCRATES and Obliqua; the other git
+  modules are pinned but not drift-checked by the doctor.
 
 Because of this, bumping a module is a single-line edit followed by a badge
 refresh and a local re-sync; a PETSc archive change is three lines here and the
@@ -83,17 +83,22 @@ matching lines in SPIDER.
     - PyPI module installed as a wheel: `proteus update`, which runs
       `pip install -U "<name>>=<version>"`.
     - PyPI module in an editable clone that a setup script makes (MORS, JANUS,
-      CALLIOPE, ZEPHYRUS, Aragog, Zalmoxis): `proteus update` does not change
-      the clone. `proteus doctor` prints the commands that move it to the
-      release tag of the new floor and, for the clone in the module's folder of
-      the PROTEUS root, the setup script with `--force` that replaces it; run
-      one of them by hand. The doctor does not check VULCAN and Morrigan; for
-      their clones, `bash tools/get_vulcan.sh` or `bash tools/get_morrigan.sh`
-      prints the same commands.
+      CALLIOPE, ZEPHYRUS, Aragog, Zalmoxis, Morrigan, VULCAN):
+      `proteus update` does not change the clone. `proteus doctor` prints the
+      commands that move it to the release tag of the new floor and, for the
+      clone in the module's folder of the PROTEUS root, the setup script with
+      `--force` that replaces it; run one of them by hand. The atmodeller
+      clone is pinned by a commit: `bash tools/get_atmodeller.sh` prints the
+      commands that move it to the pin, and `proteus doctor` prints them for a
+      clone below the floor.
     - Git module: `bash tools/get_<module>.sh` (for SOCRATES, add `--force` to
       discard local modifications to the checkout, that is, changes to tracked
       files or commits not pushed to a remote; the compiled build tree is left
-      in place).
+      in place). An existing Obliqua folder stays as it is: `proteus doctor`
+      prints `bash tools/get_obliqua.sh --force <folder>`, which replaces the
+      folder with a new clone at the pin; run it by hand. For a folder whose `.git` is a file
+      (a git worktree or a submodule) it prints the advice to move the
+      folder away or delete it.
 
 4. **Verify:**
 
@@ -173,7 +178,7 @@ checks out the pinned SHA, the check reads `ok`.
 The `ref` field accepts a commit SHA, a tag, or a branch name. They trade
 reproducibility against convenience:
 
-- **Commit SHA** (AGNI, SOCRATES, SPIDER, Obliqua): fully reproducible. The
+- **Commit SHA** (AGNI, SOCRATES, SPIDER, Obliqua, atmodeller): fully reproducible. The
   same PROTEUS commit always builds the same external source. Use this for
   any module whose exact state affects simulation results.
 - **Tag**: reproducible as long as the upstream tag is not moved. Convenient
@@ -191,7 +196,10 @@ follow upstream, not a default.
     `[project.optional-dependencies]`. Their setup scripts check out the git tag
     matching that floor for a new clone, so the clone and the published release
     hold the same code. Do not add a second pin for these in
-    `[tool.proteus.modules]`.
+    `[tool.proteus.modules]`. atmodeller is the exception: it has a floor in
+    `[project.optional-dependencies]` and a commit `ref` under
+    `[tool.proteus.modules.atmodeller]`, which the installer clones. A bump
+    of atmodeller changes both.
 
 ### Case 4: change the PETSc archive
 

@@ -56,16 +56,15 @@ guide pages.
 1. Install the required system libraries:
 
     ```console
+    sudo apt update
     sudo apt install libnetcdff-dev gfortran build-essential cmake unzip curl wget git
     ```
 
-2. Install [miniconda](https://www.anaconda.com/docs/getting-started/miniconda/install#linux):
+2. Install [miniforge](https://github.com/conda-forge/miniforge):
 
     ```console
-    mkdir -p ~/miniconda3
-    wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda3/miniconda.sh
-    bash ~/miniconda3/miniconda.sh
-    rm ~/miniconda3/miniconda.sh
+    curl -L -O "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh"
+    bash Miniforge3-$(uname)-$(uname -m).sh
     ```
 
     Choose an install folder where you have plenty of disk space. Follow
@@ -80,13 +79,11 @@ guide pages.
         lapack lapack-devel lapack-static make cmake unzip curl wget git
     ```
 
-2. Install [miniconda](https://www.anaconda.com/docs/getting-started/miniconda/install#linux):
+2. Install [miniforge](https://github.com/conda-forge/miniforge):
 
     ```console
-    mkdir -p ~/miniconda3
-    wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda3/miniconda.sh
-    bash ~/miniconda3/miniconda.sh
-    rm ~/miniconda3/miniconda.sh
+    curl -L -O "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh"
+    bash Miniforge3-$(uname)-$(uname -m).sh
     ```
 
 ## Microsoft Windows
