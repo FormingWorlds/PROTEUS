@@ -113,7 +113,7 @@ def _module_pins() -> dict[str, dict]:
 
 
 def _dependency_specs() -> dict[str, Requirement | None]:
-    """Return [project] dependencies as {name: Requirement|None} for FWL packages.
+    """Return dependencies as {name: Requirement|None} for FWL and standard packages.
 
     PEP 508 URL requirements (``name @ git+https://...``) parse into a
     Requirement with an empty specifier set. We still record them so that
@@ -135,13 +135,22 @@ def _dependency_specs() -> dict[str, Requirement | None]:
             continue
         if 'fwl-' in req.name:
             result[req.name] = req
+    opt_deps = cfg.get('project', {}).get('optional-dependencies', {})
+    for extra_deps in opt_deps.values():
+        for dep_str in extra_deps:
+            try:
+                req = Requirement(dep_str)
+            except Exception:
+                continue
+            if req.name in STANDARD_MODULE_PACKAGES:
+                result[req.name] = req
     return result
 
 
 def _get_script_for_package(dist_name: str) -> str | None:
     """Return the ``tools/get_<name>.sh`` setup script for an FWL package.
 
-    Some FWL packages (aragog, zalmoxis, vulcan, morrigan, boreas) have a
+    Some FWL packages (aragog, zalmoxis, vulcan, morrigan, atmodeller, boreas) have a
     setup script of their own; MORS, JANUS, CALLIOPE and ZEPHYRUS share
     ``tools/get_python_module.sh`` (``_setup_command``).
 
@@ -287,11 +296,14 @@ _PYTHON_MODULE_REPOS = {
     'fwl-zephyrus': 'ZEPHYRUS',
 }
 
-# The folder in the PROTEUS root that a setup script clones each module of PYTHON_PACKAGES into.
+# The folder in the PROTEUS root that a setup script clones each module into.
 _MODULE_FOLDERS = {
     **_PYTHON_MODULE_REPOS,
     'fwl-aragog': 'aragog',
     'fwl-zalmoxis': 'Zalmoxis',
+    'fwl-morrigan': 'Morrigan',
+    'fwl-vulcan': 'VULCAN',
+    'atmodeller': 'Atmodeller',
 }
 
 # The modules whose setup script gives a new clone the branch named like the PROTEUS feature branch.
@@ -354,6 +366,15 @@ def _is_own_clone(path: str) -> bool:
         return os.path.samefile(top[1].strip(), path)
     except OSError:
         return False
+
+
+def _names_obliqua(path: str) -> bool:
+    """Return whether the Project.toml of a folder names Obliqua, as get_obliqua.sh tests it."""
+    try:
+        text = Path(path, 'Project.toml').read_text(encoding='utf-8', errors='replace')
+    except OSError:
+        return False
+    return re.search(r'^name = "Obliqua"', text, flags=re.MULTILINE) is not None
 
 
 def _floor_version(spec: Requirement | None) -> str | None:
@@ -485,7 +506,11 @@ def _release_tag_note(checkout: str, short: str | None, spec: Requirement | None
         branch, without a single ``>=`` floor, or when the checkout is not a
         clone of its own that git can read.
     """
-    if _floor_version(spec) is None or not _is_own_clone(checkout):
+    if (
+        _floor_version(spec) is None
+        or not _is_own_clone(checkout)
+        or spec.name.lower() in _module_pins()
+    ):
         return ''
     branch = _git_note_output(checkout, 'symbolic-ref', '-q', '--short', 'HEAD')
     if branch is None or branch[0] not in (0, 1):
@@ -575,31 +600,44 @@ def _below_floor_advice(
         One line of shell commands with absolute, shell-quoted paths, and
         a comment that names the replacement when the checkout resolves to
         ``<root>/<module folder>``; for a folder that is not a clone of its
-        own, the replacement with a comment, or a comment alone.
+        own, the replacement with a comment, the move-away advice, or a
+        comment alone.
+        A module with a commit pin in ``[tool.proteus.modules]`` gets the
+        checkout of that commit in place of the release tag.
     """
     path = shlex.quote(os.path.abspath(checkout))
     root = _repo_root()
     folder = _MODULE_FOLDERS.get(dist_name.lower())
     in_folder = bool(folder) and os.path.realpath(checkout) == os.path.realpath(root / folder)
     replace = f'cd {shlex.quote(str(root))} && bash {setup}'
+    ref = _module_pins().get(dist_name.lower(), {}).get('ref')
     if not _is_own_clone(checkout):
         if in_folder:
+            if ref:
+                return f'move {path} away or delete it by hand, then run: {replace}'
             return (
                 f'{replace} --force  # {path} is not a git clone of its own; this replaces it'
                 ' with a new clone, which deletes everything in it'
             )
+        target_name = 'its pinned commit' if ref else 'the release tag'
         return (
-            f'# {path} is not a git clone of its own, so no git command moves it to the'
-            f' release tag; move it away, then run: {replace}'
+            f'# {path} is not a git clone of its own, so no git command moves it to'
+            f' {target_name}; move it away, then run: {replace}'
         )
-    tag = _floor_tag_name(spec, list(_tag_commits(checkout)))
-    if tag:
-        target = f'refs/tags/{shlex.quote(tag)}'
+    if ref:
+        fetch, target = 'origin', shlex.quote(ref)
     else:
-        pins = shlex.quote(str(root / 'tools' / '_module_pins.py'))
-        target = f'"refs/tags/$(git -C {path} tag -l | python {pins} {dist_name} floor-tag)"'
+        fetch = '--tags'
+        tag = _floor_tag_name(spec, list(_tag_commits(checkout)))
+        if tag:
+            target = f'refs/tags/{shlex.quote(tag)}'
+        else:
+            pins = shlex.quote(str(root / 'tools' / '_module_pins.py'))
+            target = (
+                f'"refs/tags/$(git -C {path} tag -l | python {pins} {dist_name} floor-tag)"'
+            )
     advice = (
-        f'git -C {path} fetch --tags && git -C {path} checkout --detach {target}'
+        f'git -C {path} fetch {fetch} && git -C {path} checkout --detach {target}'
         f' && pip install -e {path}'
     )
     if in_folder:
@@ -888,18 +926,30 @@ def check_cvode() -> CheckResult:
     )
 
 
+def _installed_version(name: str) -> Version | None:
+    """Return the installed version of a distribution, or None when it is not installed."""
+    try:
+        return Version(importlib.metadata.version(name))
+    except PackageNotFoundError:
+        return None
+
+
 def check_python_package(name: str, spec: Requirement | None) -> CheckResult:
     """Check a Python package against the pyproject.toml version spec."""
-    try:
-        installed = Version(importlib.metadata.version(name))
-    except PackageNotFoundError:
-        fix = f'pip install {name}'
+    installed = _installed_version(name)
+    if installed is None:
+        status, fix = FAIL, f'pip install {name}'
+        if name in STANDARD_MODULE_PACKAGES:
+            setup = _setup_command(name)
+            extra = name.lower().removeprefix('fwl-')
+            status = WARN
+            fix = (
+                f'cd {shlex.quote(str(_repo_root()))} && bash {setup}'
+                if setup
+                else f'pip install "fwl-proteus[{extra}]"'
+            )
         return CheckResult(
-            name=name,
-            category='versions',
-            status=FAIL,
-            message='not installed',
-            fix_cmd=fix,
+            name=name, category='versions', status=status, message='not installed', fix_cmd=fix
         )
 
     # Build status message with editable annotation
@@ -979,7 +1029,14 @@ def check_python_package(name: str, spec: Requirement | None) -> CheckResult:
     )
 
 
-def check_git_module(name: str, dirs: dict, required: bool = True) -> CheckResult | None:
+def _is_git_module_present(path: str) -> bool:
+    """Return whether a git module directory is populated."""
+    if not path or not os.path.isdir(path):
+        return False
+    return bool(os.listdir(path))
+
+
+def check_git_module(name: str, dirs: dict, required: bool = True) -> CheckResult:
     """Check a git-pinned module (AGNI, SOCRATES, Obliqua) against pyproject.toml ref.
 
     Parameters
@@ -990,9 +1047,9 @@ def check_git_module(name: str, dirs: dict, required: bool = True) -> CheckResul
     dirs : dict
         Directory mapping from `get_proteus_directories()`.
     required : bool
-        AGNI/SOCRATES are mandatory for a standard install, so a missing
-        checkout is a FAIL. Optional tidal-heating backends (Obliqua) are
-        not needed unless the user opts into them.
+        When True (AGNI, SOCRATES), a missing checkout returns a FAIL result.
+        When False (Obliqua), a missing checkout returns a WARN result with
+        its setup command.
     """
     pins = _module_pins()
     pin = pins.get(name.lower(), {})
@@ -1005,20 +1062,28 @@ def check_git_module(name: str, dirs: dict, required: bool = True) -> CheckResul
     else:
         path = dirs.get(dir_key, '')
 
-    if not path or not os.path.isdir(path):
-        if not required:
-            return None
-        # Unlike the off-pin case below, this fix is not chained to an AGNI
-        # rebuild: a not-installed SOCRATES means RAD_DIR is unset, so the AGNI
-        # step would have nowhere to find SOCRATES. The install script prints
-        # the AGNI follow-up once SOCRATES is in place.
-        setup_script = f'bash tools/get_{name.lower()}.sh'
+    if not _is_git_module_present(path):
+        # Unlike the off-pin case below, this fix is not chained to an AGNI rebuild:
+        # RAD_DIR can be unset, and get_socrates.sh prints the AGNI follow-up once built.
+        arg = ' "$RAD_DIR"' if dir_key == 'socrates' and path else ''
+        if path and os.path.lexists(path) and not os.path.isdir(path):
+            return CheckResult(
+                name=name,
+                category='versions',
+                status=FAIL if required else WARN,
+                message='not installed: a file or a broken link is at its path',
+                fix_cmd=(
+                    f'delete {shlex.quote(path)}, then run: '
+                    f'cd {shlex.quote(str(_repo_root()))} && bash tools/get_{dir_key}.sh{arg}'
+                ),
+                auto_fixable=False,
+            )
         return CheckResult(
             name=name,
             category='versions',
-            status=FAIL,
+            status=FAIL if required else WARN,
             message='not installed',
-            fix_cmd=setup_script,
+            fix_cmd=f'bash tools/get_{dir_key}.sh{arg}',
         )
 
     # Get current version
@@ -1035,40 +1100,93 @@ def check_git_module(name: str, dirs: dict, required: bool = True) -> CheckResul
         ver = '?'
 
     # Check HEAD against pinned ref
-    head = _git_head(path)
-    if pinned_ref and head:
-        if head == pinned_ref:
-            return CheckResult(
-                name=name,
-                category='versions',
-                status=PASS,
-                message=f'{ver} ({head[:8]})',
-            )
-        else:
-            # Re-cloning the SOCRATES tree deletes the build products AGNI
-            # writes into it: the generated wrappers under socrates/julia/gen
-            # and the compiled libSOCRATES under socrates/julia/lib. AGNI then
-            # fails to precompile until they are rebuilt, so a SOCRATES refresh
-            # chains an AGNI rebuild. Both halves target the tree RAD_DIR points
-            # at: reaching this branch means the SOCRATES checkout resolved from
-            # RAD_DIR exists, so RAD_DIR is non-empty in the environment and the
-            # chained command's references resolve. A custom install path cannot
-            # leave the two out of step. The AGNI step needs Julia; without it
-            # the rebuild fails loudly and the chain reports the failure rather
-            # than masking it.
-            refresh = f'bash tools/get_{name.lower()}.sh'
-            if name == 'SOCRATES':
+    is_own = _is_own_clone(path)
+    if not is_own:
+        ver = f'{ver} [not a git clone of its own]'
+        head = None
+    else:
+        head = _git_head(path)
+    setup_cmd = (
+        'bash tools/get_socrates.sh "$RAD_DIR" && RAD_DIR="$RAD_DIR" bash tools/get_agni.sh 0'
+        if name == 'SOCRATES'
+        else f'bash tools/get_{dir_key}.sh'
+    )
+    move_away_fix = (
+        f'move {shlex.quote(path)} away or delete it, then run: '
+        f'cd {shlex.quote(str(_repo_root()))} && {setup_cmd}'
+    )
+    if not is_own:
+        return CheckResult(
+            name=name,
+            category='versions',
+            status=WARN,
+            message=f'{ver}: the commit cannot be compared with the pin',
+            fix_cmd=move_away_fix,
+            auto_fixable=False,
+        )
+
+    if name == 'Obliqua' and not _names_obliqua(path):
+        return CheckResult(
+            name=name,
+            category='versions',
+            status=WARN,
+            message=f'{ver}: a git clone of another project (its Project.toml does not name Obliqua)',
+            fix_cmd=move_away_fix,
+            auto_fixable=False,
+        )
+
+    if pinned_ref and head is None:
+        return CheckResult(
+            name=name,
+            category='versions',
+            status=WARN,
+            message=f'{ver}: the commit cannot be read',
+            fix_cmd=f'git -C {shlex.quote(path)} log -1  # when this shows no commit: {move_away_fix}',
+            auto_fixable=False,
+        )
+
+    if pinned_ref and head and head != pinned_ref:
+        # Re-cloning SOCRATES deletes AGNI build products in that tree;
+        # the SOCRATES refresh command chains an AGNI rebuild.
+        refresh = setup_cmd
+        auto_fixable = True
+        if name == 'Obliqua':
+            auto_fixable = False
+            if os.path.isfile(os.path.join(path, '.git')):
+                refresh = move_away_fix
+            else:
+                root = shlex.quote(str(_repo_root()))
+                folder = shlex.quote(os.path.abspath(path))
                 refresh = (
-                    'bash tools/get_socrates.sh "$RAD_DIR" '
-                    '&& RAD_DIR="$RAD_DIR" bash tools/get_agni.sh 0'
+                    f'cd {root} && bash tools/get_obliqua.sh --force {folder}  # replaces the '
+                    'folder with a new clone at the pin, which deletes everything in it'
                 )
-            return CheckResult(
-                name=name,
-                category='versions',
-                status=WARN,
-                message=(f'{ver} ({head[:8]}) differs from pin ({pinned_ref[:8]})'),
-                fix_cmd=refresh,
-            )
+        return CheckResult(
+            name=name,
+            category='versions',
+            status=WARN,
+            message=(f'{ver} ({head[:8]}) differs from pin ({pinned_ref[:8]})'),
+            fix_cmd=refresh,
+            auto_fixable=auto_fixable,
+        )
+
+    if name == 'Obliqua' and not (Path(path) / 'Manifest.toml').is_file():
+        head_str = f' ({head[:8]})' if head else ''
+        return CheckResult(
+            name=name,
+            category='versions',
+            status=WARN,
+            message=f'{ver}{head_str}: Julia environment not instantiated',
+            fix_cmd='bash tools/get_obliqua.sh',
+        )
+
+    if pinned_ref and head:
+        return CheckResult(
+            name=name,
+            category='versions',
+            status=PASS,
+            message=f'{ver} ({head[:8]})',
+        )
 
     return CheckResult(
         name=name,
@@ -1076,6 +1194,41 @@ def check_git_module(name: str, dirs: dict, required: bool = True) -> CheckResul
         status=PASS,
         message=f'{ver}',
     )
+
+
+_STANDARD_DISTRIBUTIONS = {
+    'morrigan': 'fwl-morrigan',
+    'vulcan': 'fwl-vulcan',
+    'atmodeller': 'atmodeller',
+}
+
+
+def is_standard_module_installed(name: str, root: Path | str) -> bool:
+    """Return whether a standard module is installed.
+
+    Delegates to the doctor's installation rules: package discovery for
+    Morrigan, VULCAN and atmodeller, and directory population for Obliqua
+    under the PROTEUS repository root ``root``.
+
+    Parameters
+    ----------
+    name : str
+        The standard module name.
+    root : Path or str
+        The PROTEUS repository root directory.
+
+    Returns
+    -------
+    bool
+        True when the standard module is installed, False otherwise.
+    """
+    key = name.lower()
+    if key in _STANDARD_DISTRIBUTIONS:
+        return _installed_version(_STANDARD_DISTRIBUTIONS[key]) is not None
+    if key == 'obliqua':
+        path = str(Path(root) / 'Obliqua')
+        return _is_git_module_present(path)
+    return False
 
 
 # ─── Main entry points ──────────────────────────────────────────────
@@ -1088,10 +1241,8 @@ ENVIRONMENT_VARS = [
     ('PYTHON_JULIAPKG_EXE', True, None),
 ]
 
-# Mandatory Python packages checked by `proteus doctor`. The optional
-# backends (fwl-vulcan, atmodeller) are deliberately excluded: they are
-# not required for a standard run, so doctor must not report them as
-# missing when a user has not installed them.
+# Mandatory Python packages checked by doctor. An absent package in this list
+# is a failure.
 PYTHON_PACKAGES = [
     'fwl-proteus',
     'fwl-io',
@@ -1103,8 +1254,16 @@ PYTHON_PACKAGES = [
     'fwl-zalmoxis',
 ]
 
+# An absent package in this list gives a warning with its setup script,
+# or with the package extra when the tree has no setup script.
+STANDARD_MODULE_PACKAGES = [
+    'fwl-morrigan',
+    'fwl-vulcan',
+    'atmodeller',
+]
+
 GIT_MODULES = ['AGNI', 'SOCRATES']
-OPTIONAL_GIT_MODULES = ['Obliqua']
+STANDARD_GIT_MODULES = ['Obliqua']
 
 
 def run_all_checks() -> list[CheckResult]:
@@ -1182,7 +1341,7 @@ def run_all_checks() -> list[CheckResult]:
         )
 
     # Python package versions (against pyproject.toml pins)
-    for pkg in PYTHON_PACKAGES:
+    for pkg in (*PYTHON_PACKAGES, *STANDARD_MODULE_PACKAGES):
         try:
             results.append(check_python_package(pkg, specs.get(pkg)))
         except Exception as exc:
@@ -1196,25 +1355,9 @@ def run_all_checks() -> list[CheckResult]:
             )
 
     # Git module versions (against pyproject.toml commit pins)
-    for mod in GIT_MODULES:
+    for mod in (*GIT_MODULES, *STANDARD_GIT_MODULES):
         try:
-            results.append(check_git_module(mod, dirs))
-        except Exception as exc:
-            results.append(
-                CheckResult(
-                    name=mod,
-                    category='versions',
-                    status=FAIL,
-                    message=f'check error: {exc}',
-                )
-            )
-
-    # Optional git-pinned modules: only reported when actually installed.
-    for mod in OPTIONAL_GIT_MODULES:
-        try:
-            result = check_git_module(mod, dirs, required=False)
-            if result is not None:
-                results.append(result)
+            results.append(check_git_module(mod, dirs, mod in GIT_MODULES))
         except Exception as exc:
             results.append(
                 CheckResult(
@@ -1272,6 +1415,8 @@ _ENV_PACKAGES = (
     'fwl-aragog',
     'fwl-zalmoxis',
     'fwl-vulcan',
+    'fwl-morrigan',
+    'atmodeller',
     'juliacall',
     'juliapkg',
     'jax',

@@ -139,3 +139,23 @@ def test_pypi_row_pins_the_committed_requirement():
     row = next(line for line in table.split('\n') if line.startswith('| fwl-aragog'))
     assert f'%3E%3D{floor}' in row  # URL-encoded >=floor inside the badge image
     assert f'/project/fwl-aragog/{floor}/' in row  # release link targets the floor
+
+
+def test_optional_table_atmodeller_row_and_no_backends():
+    """The rendered atmodeller row carries commit badge and no backend text."""
+    cfg = tomllib.loads((_REPO_ROOT / 'pyproject.toml').read_text())
+    modules = cfg.get('tool', {}).get('proteus', {}).get('modules', {})
+    extras = cfg['project'].get('optional-dependencies', {})
+    atmodeller_spec = modules['atmodeller']
+    ref = atmodeller_spec['ref']
+    short_ref = ref[:8]
+    repo_url = atmodeller_spec['url'].removesuffix('.git')
+
+    table = _gvb._build_optional_table(extras, modules)
+    assert 'backend' not in table
+    row = next(line for line in table.split('\n') if line.startswith('| atmodeller'))
+    assert short_ref in row
+    assert f'{repo_url}/commit/{ref}' in row
+    assert f'-{short_ref}-' in row
+    assert f'[GitHub]({repo_url})' in row
+    assert 'djbower' not in row

@@ -210,19 +210,18 @@ def check_module_dependencies(instance, attribute, value):
         'atmodeller': (
             instance.outgas.module == 'atmodeller',
             'atmodeller',
-            'outgas.module = "atmodeller" requires the optional atmodeller package '
-            '(GPL-3.0 licensed). The standard outgassing backend is calliope and '
-            'needs no extra install. '
-            'Install atmodeller with: pip install "fwl-proteus[atmodeller]" '
-            '(or pip install "atmodeller>=1.0.0").',
+            'outgas.module = "atmodeller" needs the atmodeller package (GPL-3.0 licensed), '
+            'which is not installed. bash install.sh sets it up; to add it alone, run '
+            'bash tools/get_atmodeller.sh in the PROTEUS folder, or pip install '
+            '"fwl-proteus[atmodeller]".',
         ),
         'vulcan': (
             instance.atmos_chem.module == 'vulcan',
             'vulcan',
-            'atmos_chem.module = "vulcan" requires the optional VULCAN package '
-            '(GPL-3.0 licensed). VULCAN is not needed for a standard PROTEUS run. '
-            'Install it with: pip install "fwl-proteus[vulcan]" '
-            '(or bash tools/get_vulcan.sh for an editable checkout).',
+            'atmos_chem.module = "vulcan" needs the VULCAN package (GPL-3.0 licensed), '
+            'which is not installed. bash install.sh sets it up; to add it alone, run '
+            'bash tools/get_vulcan.sh in the PROTEUS folder, or pip install '
+            '"fwl-proteus[vulcan]".',
         ),
         'boreas': (
             instance.escape.module == 'boreas',
@@ -233,11 +232,9 @@ def check_module_dependencies(instance, attribute, value):
         'morrigan': (
             instance.accretion.module == 'morrigan',
             'morrigan',
-            'accretion.module = "morrigan" requires the optional morrigan package, '
-            'which runs the giant-impact model. Morrigan is not needed for a '
-            'standard PROTEUS run. Install it with: pip install '
-            '"fwl-proteus[morrigan]" (or bash tools/get_morrigan.sh for an '
-            'editable checkout).',
+            'accretion.module = "morrigan" needs the morrigan package, which is not installed. '
+            'bash install.sh sets it up; to add it alone, run bash tools/get_morrigan.sh '
+            'in the PROTEUS folder, or pip install "fwl-proteus[morrigan]".',
         ),
     }
 
