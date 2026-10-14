@@ -15,22 +15,30 @@ Physics tested:
 - Stellar input closure: star.dat and orbit_radius share the flux-weighted
   distance a (1 - e^2)^(1/4), so VULCAN's own dilution returns the stored
   top-of-atmosphere spectrum on an eccentric orbit
+- Config contract: PROTEUS sets every field that `vulcan.Config.__init__`
+  defines in the installed VULCAN, and no field VULCAN does not define
+- Surface boundary file: the fixed mixing ratios VULCAN reads from
+  bot_BC_flux_file equal the use_fix_sp_bot dict the solver applies
 
 Related documentation:
 - docs/How-to/testing.md: Running, writing, and marking tests; coverage and CI
 - docs/Explanations/test_framework.md: Test tiers, physics invariants, and quality rules
 
 Mocking strategy:
-- Mock the entire `vulcan` package (not available in CI)
+- Mock the entire `vulcan` package (not available in CI); the config
+  contract test reads the installed VULCAN's config.py source instead
 - Mock file I/O (np.loadtxt, glob, pickle, read_atmosphere_data)
 - Mock os.makedirs, shutil.rmtree to avoid filesystem side effects
 """
 
 from __future__ import annotations
 
+import ast
 import importlib
+import importlib.util
 import pickle
 import sys
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -81,6 +89,7 @@ def _make_mock_config(*, network='CHO', photo_on=True, atmos_module='agni'):
     config.atmos_chem.Kzz_const = None
     config.orbit.zenith_angle = 48.0
     config.orbit.s0_factor = 0.5
+    config.params.out.logging = 'INFO'
     return config
 
 
@@ -166,15 +175,15 @@ def test_run_vulcan_offline_non_agni():
     dirs = {'output': '/tmp/test', 'output/offchem': '/tmp/test/offchem'}
     hf_row = _make_mock_hf_row()
 
-    mock_vulcan_package.main.reset_mock()
+    mock_vulcan_package.run_vulcan.reset_mock()
     result = run_vulcan(dirs, config, hf_row)
 
     assert result is False
     # Discrimination: the guard must short-circuit BEFORE any VULCAN solver
     # call. A regression that returned False from a later code path would
     # still satisfy the False return but would have dispatched into the
-    # mocked vulcan package. Assert vulcan.main was not called.
-    mock_vulcan_package.main.assert_not_called()
+    # mocked vulcan package. Assert vulcan.run_vulcan was not called.
+    mock_vulcan_package.run_vulcan.assert_not_called()
 
 
 @pytest.mark.unit
@@ -188,15 +197,15 @@ def test_run_vulcan_online_non_agni():
     dirs = {'output': '/tmp/test', 'output/offchem': '/tmp/test/offchem'}
     hf_row = _make_mock_hf_row()
 
-    mock_vulcan_package.main.reset_mock()
+    mock_vulcan_package.run_vulcan.reset_mock()
     result = run_vulcan(dirs, config, hf_row, online=True)
 
     assert result is False
     # Discrimination: parallel arm to the offline guard. The guard must
     # short-circuit before any VULCAN solver call regardless of mode. A
     # regression that conditioned the guard on `not online` would let the
-    # online path through and would invoke vulcan.main on a janus config.
-    mock_vulcan_package.main.assert_not_called()
+    # online path through and would invoke vulcan.run_vulcan on a janus config.
+    mock_vulcan_package.run_vulcan.assert_not_called()
 
 
 @pytest.mark.unit
@@ -245,7 +254,7 @@ def test_run_vulcan_online_per_snapshot_filenames(
 
     # Mock VULCAN Config and solver
     mock_vulcan_package.Config.return_value = MagicMock()
-    mock_vulcan_package.main.return_value = None
+    mock_vulcan_package.run_vulcan.return_value = None
     mock_vulcan_package.make_chem_funs.make_all.return_value = None
 
     # Create the expected per-snapshot result pickle
@@ -308,7 +317,7 @@ def test_run_vulcan_online_make_funs_once(
     mock_loadtxt.return_value = np.array([[200.0, 1e-5], [300.0, 1e-4], [400.0, 1e-3]])
 
     mock_vulcan_package.Config.return_value = MagicMock()
-    mock_vulcan_package.main.return_value = None
+    mock_vulcan_package.run_vulcan.return_value = None
     mock_vulcan_package.make_chem_funs.make_all.reset_mock()
 
     # Create result pickle for first call
@@ -380,7 +389,7 @@ def test_run_vulcan_online_missing_result_file(
     mock_loadtxt.return_value = np.array([[200.0, 1e-5], [300.0, 1e-4], [400.0, 1e-3]])
 
     mock_vulcan_package.Config.return_value = MagicMock()
-    mock_vulcan_package.main.return_value = None
+    mock_vulcan_package.run_vulcan.return_value = None
 
     if hasattr(run_vulcan, '_made'):
         del run_vulcan._made
@@ -437,7 +446,7 @@ def test_run_vulcan_offline_unrecognised_network(
     mock_loadtxt.return_value = np.array([[200.0, 1e-5], [300.0, 1e-4], [400.0, 1e-3]])
 
     mock_vulcan_package.Config.return_value = MagicMock()
-    mock_vulcan_package.main.reset_mock()
+    mock_vulcan_package.run_vulcan.reset_mock()
 
     result = run_vulcan(dirs, config, hf_row)
 
@@ -445,8 +454,8 @@ def test_run_vulcan_offline_unrecognised_network(
     # Discrimination: the unrecognised-network branch must short-circuit
     # BEFORE the solver invocation. A regression that fell through to a
     # default network (e.g. silently coerced 'INVALID' to 'CHO') would
-    # have invoked vulcan.main and would not return False.
-    mock_vulcan_package.main.assert_not_called()
+    # have invoked vulcan.run_vulcan and would not return False.
+    mock_vulcan_package.run_vulcan.assert_not_called()
 
 
 @pytest.mark.unit
@@ -499,7 +508,7 @@ def test_run_vulcan_online_network_selection(
 
     mock_vcfg = MagicMock()
     mock_vulcan_package.Config.return_value = mock_vcfg
-    mock_vulcan_package.main.return_value = None
+    mock_vulcan_package.run_vulcan.return_value = None
 
     # Create result pickle
     result_file = offchem_dir / 'vulcan_400.pkl'
@@ -583,7 +592,7 @@ def test_run_vulcan_boundary_pressures_use_level_edges(
 
     mock_vcfg = MagicMock()
     mock_vulcan_package.Config.return_value = mock_vcfg
-    mock_vulcan_package.main.return_value = None
+    mock_vulcan_package.run_vulcan.return_value = None
 
     result_file = offchem_dir / 'vulcan_700.pkl'
     vulcan_result = _make_mock_vulcan_result()
@@ -649,7 +658,7 @@ def test_run_vulcan_star_file_and_orbit_radius_share_the_flux_weighted_distance(
 
     mock_vcfg = MagicMock()
     mock_vulcan_package.Config.return_value = mock_vcfg
-    mock_vulcan_package.main.return_value = None
+    mock_vulcan_package.run_vulcan.return_value = None
     with open(offchem_dir / 'vulcan_700.pkl', 'wb') as f:
         pickle.dump(_make_mock_vulcan_result(), f)
     if hasattr(run_vulcan, '_made'):
@@ -712,7 +721,7 @@ def test_run_vulcan_online_uses_exist_ok(
     mock_loadtxt.return_value = np.array([[200.0, 1e-5], [300.0, 1e-4], [400.0, 1e-3]])
 
     mock_vulcan_package.Config.return_value = MagicMock()
-    mock_vulcan_package.main.return_value = None
+    mock_vulcan_package.run_vulcan.return_value = None
 
     result_file = offchem_dir / 'vulcan_600.pkl'
     vulcan_result = _make_mock_vulcan_result()
@@ -754,7 +763,7 @@ def test_run_vulcan_no_atmosphere_files_returns_false(
 
     mock_read_atmos.return_value = None
     mock_latest.return_value = None
-    mock_vulcan_package.main.reset_mock()
+    mock_vulcan_package.run_vulcan.reset_mock()
 
     result = run_vulcan(dirs, config, hf_row)
 
@@ -762,7 +771,7 @@ def test_run_vulcan_no_atmosphere_files_returns_false(
     # The fallback was attempted (exact-time read failed) ...
     mock_latest.assert_called_once()
     # ... and the solver was never reached.
-    mock_vulcan_package.main.assert_not_called()
+    mock_vulcan_package.run_vulcan.assert_not_called()
 
 
 @pytest.mark.unit
@@ -789,7 +798,7 @@ def test_run_vulcan_falls_back_to_latest_available_time(
 
     mock_read_atmos.return_value = None  # both the exact and fallback reads fail
     mock_latest.return_value = 42.0
-    mock_vulcan_package.main.reset_mock()
+    mock_vulcan_package.run_vulcan.reset_mock()
 
     result = run_vulcan(dirs, config, hf_row)
 
@@ -800,4 +809,159 @@ def test_run_vulcan_falls_back_to_latest_available_time(
     second_times = mock_read_atmos.call_args_list[1].args[1]
     assert first_times == [1000.0]
     assert second_times == [42.0]
-    mock_vulcan_package.main.assert_not_called()
+    mock_vulcan_package.run_vulcan.assert_not_called()
+
+
+class _RecordingConfig:
+    """Stand-in for `vulcan.Config` that records which fields are assigned.
+
+    It has no defaults, so a field PROTEUS reads without setting raises
+    AttributeError, as a missing field would.
+    """
+
+    def __init__(self):
+        object.__setattr__(self, 'assigned', set())
+
+    def __setattr__(self, name, value):
+        self.assigned.add(name)
+        object.__setattr__(self, name, value)
+
+
+def _installed_vulcan_config_fields() -> set[str]:
+    """Names of the fields `Config.__init__` sets in the installed VULCAN.
+
+    Parsed from config.py, because this module replaces `vulcan` in
+    sys.modules with a mock. Skips when VULCAN is not installed.
+    """
+    saved = sys.modules.pop('vulcan', None)
+    try:
+        spec = importlib.util.find_spec('vulcan')
+    finally:
+        if saved is not None:
+            sys.modules['vulcan'] = saved
+    if spec is None or not spec.submodule_search_locations:
+        pytest.skip('VULCAN is not installed')
+
+    tree = ast.parse(Path(spec.submodule_search_locations[0], 'config.py').read_text())
+    config_cls = next(
+        n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == 'Config'
+    )
+    init = next(
+        n for n in config_cls.body if isinstance(n, ast.FunctionDef) and n.name == '__init__'
+    )
+    fields = set()
+    for node in ast.walk(init):
+        targets = node.targets if isinstance(node, ast.Assign) else []
+        if isinstance(node, (ast.AnnAssign, ast.AugAssign)):
+            targets = [node.target]
+        for target in targets:
+            if (
+                isinstance(target, ast.Attribute)
+                and isinstance(target.value, ast.Name)
+                and target.value.id == 'self'
+            ):
+                fields.add(target.attr)
+    return fields
+
+
+def _run_online_with_recording_config(tmp_path, config, hf_row):
+    """Run run_vulcan in online mode with mocked I/O; return the result and config."""
+    year = int(hf_row['Time'])
+    offchem_dir = tmp_path / 'offchem'
+    offchem_dir.mkdir(parents=True, exist_ok=True)
+    dirs = {'output': str(tmp_path), 'output/offchem': str(offchem_dir)}
+    with open(offchem_dir / f'vulcan_{year}.pkl', 'wb') as f:
+        pickle.dump(_make_mock_vulcan_result(), f)
+
+    vcfg = _RecordingConfig()
+    mock_vulcan_package.Config.return_value = vcfg
+    mock_vulcan_package.run_vulcan.reset_mock()
+    if hasattr(run_vulcan, '_made'):
+        del run_vulcan._made
+
+    with (
+        patch('proteus.atmos_chem.vulcan.read_atmosphere_data') as mock_read_atmos,
+        patch('proteus.atmos_chem.vulcan.glob.glob') as mock_glob,
+        patch('proteus.atmos_chem.vulcan.np.loadtxt') as mock_loadtxt,
+        patch('proteus.atmos_chem.vulcan.np.savetxt'),
+    ):
+        mock_read_atmos.return_value = [_make_mock_atmos()]
+        mock_glob.return_value = [str(tmp_path / 'data' / f'{year}.sflux')]
+        mock_loadtxt.return_value = np.array([[200.0, 1e-5], [300.0, 1e-4], [400.0, 1e-3]])
+        result = run_vulcan(dirs, config, hf_row, online=True)
+    return result, vcfg
+
+
+@pytest.mark.unit
+def test_run_vulcan_sets_every_field_of_the_installed_vulcan_config(tmp_path):
+    """PROTEUS sets every field of the installed VULCAN Config, and only those.
+
+    Contract: a field PROTEUS leaves unset runs at VULCAN's own default (for
+    example its HD 189733b boundary files), and a field VULCAN does not
+    define (a misspelling such as save_types for save_type) is silently
+    ignored. Both show only in a coupled run. Fails when VULCAN adds or
+    renames a Config field until the wrapper is updated to match.
+    """
+    fields = _installed_vulcan_config_fields()
+    # Guard against a parser that finds nothing, which would pass vacuously.
+    assert {'network', 'out_name', 'atom_list'} <= fields
+
+    result, vcfg = _run_online_with_recording_config(
+        tmp_path, _make_mock_config(), _make_mock_hf_row(year=800.0)
+    )
+
+    assert result is True
+    mock_vulcan_package.run_vulcan.assert_called_once_with(vcfg, True)
+    assert sorted(fields - vcfg.assigned) == [], 'VULCAN Config fields PROTEUS does not set'
+    assert sorted(vcfg.assigned - fields) == [], 'fields PROTEUS sets that VULCAN lacks'
+    # PROTEUS parses the pickle output, so it must be requested.
+    assert 'pickle' in vcfg.save_type
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('fix_surf', [True, False], ids=['fixed_surface', 'free_surface'])
+def test_run_vulcan_bottom_boundary_file_matches_fixed_surface_mixing_ratios(
+    tmp_path, fix_surf
+):
+    """The fixed surface mixing ratios VULCAN reads from bot_BC_flux_file equal
+    the use_fix_sp_bot dict its solver applies, which holds the surface VMRs.
+
+    VULCAN reads the file (species in column 1, fixed VMR in column 4) when
+    use_fix_sp_bot is non-empty and the dict in its solver, so the two must
+    agree. Asymmetric VMRs (0.6, 0.3) catch a swapped species; N2 below
+    clip_vmr must be absent. With a free surface no species is fixed.
+    """
+    config = _make_mock_config()
+    config.atmos_chem.vulcan.make_funs = False
+    config.atmos_chem.vulcan.fix_surf = fix_surf
+    hf_row = _make_mock_hf_row(year=900.0)
+    hf_row['H2O_vmr'] = 0.6
+    hf_row['CO2_vmr'] = 0.3
+    hf_row['N2_vmr'] = 1e-12  # below clip_vmr = 1e-10
+
+    result, vcfg = _run_online_with_recording_config(tmp_path, config, hf_row)
+    assert result is True
+
+    # Parse as VULCAN's BC_flux does: skip comments and blank lines.
+    rows = [
+        line.split()
+        for line in Path(vcfg.bot_BC_flux_file).read_text().splitlines()
+        if line.strip() and not line.startswith('#')
+    ]
+    from_file = {row[0]: float(row[3]) for row in rows}
+    assert from_file == pytest.approx(vcfg.use_fix_sp_bot, rel=1e-8)
+    top_rows = [
+        line
+        for line in Path(vcfg.top_BC_flux_file).read_text().splitlines()
+        if line.strip() and not line.startswith('#')
+    ]
+    assert top_rows == []
+
+    if fix_surf:
+        assert from_file['H2O'] == pytest.approx(0.6, rel=1e-8)
+        assert from_file['CO2'] == pytest.approx(0.3, rel=1e-8)
+        assert 'N2' not in from_file
+        # A copy: VULCAN may add species to use_fix_sp_bot during the run.
+        assert vcfg.use_fix_sp_bot is not vcfg.const_mix
+    else:
+        assert from_file == {}

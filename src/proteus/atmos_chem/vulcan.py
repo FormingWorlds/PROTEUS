@@ -28,6 +28,20 @@ VULCAN_NAME = 'vulcan.pkl'
 OUTPUT_NAME = 'vulcan.csv'
 
 
+def _write_boundary_file(fpath: str, fixed_vmr: dict) -> None:
+    """Write a VULCAN boundary-condition file.
+
+    Each row is: species, flux (cm-2 s-1), deposition velocity (cm s-1) and
+    fixed volume mixing ratio, the columns VULCAN reads from `bot_BC_flux_file`.
+    Fluxes and deposition velocities are zero; only the fixed mixing ratios
+    (dimensionless) in `fixed_vmr` are prescribed.
+    """
+    with open(fpath, 'w') as hdl:
+        hdl.write('# species  flux(cm-2 s-1)  vdep(cm s-1)  fixed_vmr\n')
+        for gas, vmr in fixed_vmr.items():
+            hdl.write(f'{gas}  0.0  0.0  {vmr:.8e}\n')
+
+
 def run_vulcan(dirs: dict, config: Config, hf_row: dict, *, online: bool = False) -> bool:
     """
     Run VULCAN chemical kinetics on the current atmospheric state.
@@ -259,6 +273,8 @@ def run_vulcan(dirs: dict, config: Config, hf_row: dict, *, online: bool = False
     vcfg.atom_list = ele_arr
     vcfg.use_photo = config.atmos_chem.photo_on
     vcfg.use_ion = False
+    vcfg.use_lowT_limit_rates = False
+    vcfg.remove_list = []  # reactions switched off, none
 
     # Parse atmospheric composition into string, work out background gas
     backs = {'H2': 0.0, 'N2': 0.0, 'O2': 0.0, 'CO2': 0.0}
@@ -279,16 +295,30 @@ def run_vulcan(dirs: dict, config: Config, hf_row: dict, *, online: bool = False
     vcfg.scat_sp = sct_arr
     vcfg.T_cross_sp = []
 
-    # Surface boundary condition
+    # Elemental abundances, only read with ini_mix 'eq' or 'const_lowt' (VULCAN defaults)
+    vcfg.use_solar = True
+    vcfg.fastchem_met_scale = 1.0
+    vcfg.O_H = 5.37e-4
+    vcfg.C_H = 2.95e-4
+    vcfg.N_H = 7.08e-5
+    vcfg.S_H = 1.41e-5
+    vcfg.He_H = 0.0838
+
+    # Surface boundary condition; a copy, because VULCAN can add species to this dict
     vcfg.use_botflux = False
     if config.atmos_chem.vulcan.fix_surf:
-        vcfg.use_fix_sp_bot = vcfg.const_mix
+        vcfg.use_fix_sp_bot = dict(vcfg.const_mix)
     else:
         vcfg.use_fix_sp_bot = {}
+    vcfg.bot_BC_flux_file = os.path.join(vulcan_out, 'bc_bot.dat')
+    _write_boundary_file(vcfg.bot_BC_flux_file, vcfg.use_fix_sp_bot)
 
     # TOA boundary condition
     vcfg.use_topflux = False
+    vcfg.top_BC_flux_file = os.path.join(vulcan_out, 'bc_top.dat')
+    _write_boundary_file(vcfg.top_BC_flux_file, {})
     vcfg.diff_esc = []  # species for diffusion-limit escape at TOA
+    vcfg.max_flux = 1e13  # cap on diffusion-limited escape flux (cm-2 s-1)
 
     # Set background gas
     vcfg.atm_base = max(backs, key=backs.get)
@@ -304,6 +334,8 @@ def run_vulcan(dirs: dict, config: Config, hf_row: dict, *, online: bool = False
     vcfg.P_t = float(np.amin(atmos['pl'])) * 10
     vcfg.atm_type = 'file'
     vcfg.atm_file = prof_write
+    vcfg.para_anaTP = [120.0, 1500.0, 0.1, 0.02, 1.0, 1.0]  # unused with atm_type 'file'
+    vcfg.Tiso = 1000.0  # unused with atm_type 'file'
     vcfg.rocky = True
     vcfg.Rp = hf_row['R_int'] * 100.0  # Planetary radius (cm)
     vcfg.gs = hf_row['gravity'] * 100  # surface gravity (cm/s^2)
@@ -315,9 +347,18 @@ def run_vulcan(dirs: dict, config: Config, hf_row: dict, *, online: bool = False
     vcfg.sl_angle = config.orbit.zenith_angle * np.pi / 180.0  # the zenith angle
     vcfg.f_diurnal = config.orbit.s0_factor
 
+    # Photochemistry: Eddington coefficient, wavelength bins (nm), flux update frequency
+    vcfg.edd = 0.5
+    vcfg.dbin1 = 0.1
+    vcfg.dbin2 = 2.0
+    vcfg.dbin_12trans = 240.0
+    vcfg.ini_update_photo_frq = 100
+    vcfg.final_update_photo_frq = 5
+
     # Mixing processes
     vcfg.update_frq = 50  # frequency for updating dz and dzi due to change of mu
     vcfg.use_moldiff = config.atmos_chem.moldiff_on
+    vcfg.use_vm_mol = False
     vcfg.use_vz = True
     vcfg.vz_prof = 'const'  # Options: 'const' or 'file'
     vcfg.const_vz = config.atmos_chem.updraft_const  # (cm/s)
@@ -329,15 +370,21 @@ def run_vulcan(dirs: dict, config: Config, hf_row: dict, *, online: bool = False
         # if None, will get Kzz from profile
         vcfg.Kzz_prof = 'file'
         vcfg.const_Kzz = 1e5  # <- dummy value, will be replaced when VULCAN is run
+    vcfg.K_max = 1e5  # only read with Kzz_prof 'Pfunc'
+    vcfg.K_p_lev = 0.1  # only read with Kzz_prof 'Pfunc'
 
     # Condensation
     vcfg.use_condense = False
     vcfg.use_settling = False
     vcfg.start_conden_time = 1e10
+    vcfg.stop_conden_time = 1e10
     vcfg.condense_sp = []
     vcfg.non_gas_sp = []
+    vcfg.r_p = {}
+    vcfg.rho_p = {}
     vcfg.fix_species = []
-    vcfg.fix_species_time = 0
+    vcfg.fix_species_from_coldtrap_lev = False
+    vcfg.humidity = 1.0
 
     # Convergence
     vcfg.st_factor = 0.5
@@ -345,47 +392,66 @@ def run_vulcan(dirs: dict, config: Config, hf_row: dict, *, online: bool = False
     vcfg.yconv_cri = config.atmos_chem.vulcan.yconv_cri  # check steady-state
     vcfg.slope_cri = config.atmos_chem.vulcan.slope_cri  # check steady-state
     vcfg.yconv_min = 0.5
+    vcfg.conver_ignore = []
 
     # Time-stepping
-    vcfg.ode_solver = 'Ros2'
     vcfg.trun_min = 1e2
     vcfg.runtime = 1.0e22
     vcfg.use_print_prog = True
     vcfg.use_print_delta = False
     vcfg.print_prog_num = 100  # print the progress every x steps
-    vcfg.dttry = 1.0e-6
-    vcfg.dt_min = 1.0e-8
+    vcfg.dttry = 1.0e-8
+    vcfg.dt_min = 1.0e-10
     vcfg.dt_max = vcfg.runtime * 1e-4
     vcfg.dt_var_max = 2.0
     vcfg.dt_var_min = 0.5
     vcfg.count_min = 120
     vcfg.count_max = int(3e4)
     vcfg.atol = 1.0e-1  # Decrease this if the solutions are not stable
+    vcfg.mtol = 1.0e-22
+    vcfg.mtol_conv = 1.0e-20
+    vcfg.flux_atol = 1.0  # actinic flux tolerance (photons cm-2 s-1 nm-1)
     vcfg.rtol = 0.9  # relative tolerence for adjusting the stepsize
+    vcfg.post_conden_rtol = 0.1
+    vcfg.rtol_min = 0.02
+    vcfg.rtol_max = 2.5
+    vcfg.use_adapt_rtol = True
     vcfg.pos_cut = 0
     vcfg.nega_cut = -1.0
     vcfg.loss_eps = 1e-1
     vcfg.flux_cri = 0.1
 
-    # Self-consistent RCE solver
+    # Self-consistent RCE solver; the AGNI settings below are unused while it is off
     vcfg.agni_call_frq = 0
+    vcfg.spectral_file = 'greygas'
+    vcfg.use_rayleigh = False
+    vcfg.surf_albedo = 0.0
+    vcfg.Tsurf_guess = 2000.0
+    vcfg.agni_atol = 1e-3
+    vcfg.agni_rtol = 1e-3
+    vcfg.agni_nlev = 60
+    vcfg.solve_rce = False
 
-    # Folders
+    # Folders and output; PROTEUS reads back the pickle
+    vcfg.log_level = config.params.out.logging
     vcfg.clean_output = False
     vcfg.output_dir = vulcan_out
     vcfg.plot_dir = vulcan_plt
-    vcfg.movie_dir = vulcan_plt + '/frames/'
     vcfg.out_name = vulcan_pkl
+    vcfg.save_type = ['netcdf', 'pickle']
+    vcfg.save_evolution = False
+    vcfg.save_evo_frq = 10
 
     # Plotting
+    vcfg.plot_dpi = 150
+    vcfg.plot_fmt = 'png'
     vcfg.plot_TP = config.atmos_chem.vulcan.save_frames
     vcfg.use_live_plot = config.atmos_chem.vulcan.save_frames
-    vcfg.use_save_movie = config.atmos_chem.vulcan.save_frames
-    vcfg.save_movie_rate = 20
+    vcfg.live_plot_frq = 50
+    vcfg.use_plot_end = True
+    vcfg.use_plot_evo = True
     vcfg.plot_spec = plt_arr
     vcfg.plot_height = False
-    vcfg.save_evolution = False
-    vcfg.output_humanread = False
 
     # ------------------------------------------------------------
     # RUN VULCAN
