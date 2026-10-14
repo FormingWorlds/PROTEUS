@@ -5,12 +5,10 @@ The tutorial configs are the base of the CHILI cases:
 ``input/tutorials/tutorial_earth.toml`` and
 ``input/tutorials/tutorial_venus.toml`` hold the Earth and Venus setups
 of the protocol, except the redox state, which they set to IW+2, and the
-stop rule. This script derives
-every case config from them by applying only the deltas
-listed in ``CASE_DELTAS`` below and the protocol's redox state and stop
-rule, so the
-generated cases and the tutorials cannot drift apart in any other
-field; the grid specs sweep the ``GRID_AXES``. The standalone grid
+stop rule. This script derives every case config from them by applying
+only the deltas listed in ``CASE_DELTAS`` below and the protocol's redox
+state and stop rule, so the generated cases and the tutorials cannot
+drift apart in any other field; the grid specs sweep the ``GRID_AXES``. The standalone grid
 configs under ``input/tutorials/chili_grid/`` are not generated and
 hold the protocol values by hand. The unit tests in
 ``tests/tools/test_chili_generate.py`` enforce that contract:
@@ -43,6 +41,7 @@ Writes the configs to ``input/chili/intercomp/``.
 
 from __future__ import annotations
 
+import copy
 import os
 
 import tomlkit
@@ -52,8 +51,8 @@ TUTORIALS = os.path.join(ROOT, 'input', 'tutorials')
 OUTDIR = os.path.join(ROOT, 'input', 'chili', 'intercomp')
 
 # Per-case deltas applied on top of the tutorial base config. Keys are dotted config
-# paths; every path listed here, and the redox state that ``case_deltas`` adds for all
-# cases, is exempt from the equality contract with the tutorial base.
+# paths; every path listed here, and the redox state and stop rule that ``case_deltas``
+# adds for all cases, is exempt from the equality contract with the tutorial base.
 CASE_DELTAS: dict[str, dict] = {
     # Nominal cases: the tutorials at the protocol's redox state, written
     # to the intercomparison output folders.
@@ -126,9 +125,10 @@ CASE_DELTAS: dict[str, dict] = {
 # [log10 units], whatever the tutorial base sets.
 PROTOCOL_FO2_SHIFT_IW = 4.0
 
-# Every case stops at 5% melt by mass (the tutorial value of phi_crit) or after 1 Gyr of
-# model time; the energy-balance, escape and wall-clock stops are off.
+# Every case stops at 5% melt by mass or after 1 Gyr of model time; the energy-balance,
+# escape and wall-clock stops are off.
 PROTOCOL_STOP = {
+    'params.stop.solid.phi_crit': 0.05,
     'params.stop.time.maximum': tomlkit.value('1e9'),
     'params.stop.radeqm.enabled': False,
     'params.stop.escape.enabled': False,
@@ -161,7 +161,7 @@ def _set_dotted(doc, dotted: str, value) -> None:
     node = doc
     for k in keys[:-1]:
         node = node.setdefault(k, tomlkit.table())
-    node[keys[-1]] = value
+    node[keys[-1]] = copy.deepcopy(value)
 
 
 def case_deltas(name: str) -> dict:

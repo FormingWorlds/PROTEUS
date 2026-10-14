@@ -11,9 +11,9 @@ iteration limit is 1000000. The TRAPPIST-1 cases (`tr1b`, `tr1e`,
 `tr1a`) derive from the Earth base with the protocol's star and orbit
 settings; the escape module is off there (`escape.module = "none"`)
 because ZEPHYRUS pairs only with the Spada evolution tracks while a
-0.09 M_sun star needs Baraffe, and the escape treatment for those cases awaits a protocol
-decision. The `*.grid.toml` files are `proteus grid` specs sweeping the
-protocol H and C inventories.
+0.09 M_sun star needs Baraffe, and the escape treatment for those cases
+awaits a protocol decision. The `*.grid.toml` files are `proteus grid`
+specs sweeping the protocol H and C inventories.
 
 In every case `star.bol_scale` keeps its default of 1: the MORS track
 luminosity is used directly, as in the tutorial configs, rather than
@@ -21,11 +21,12 @@ rescaling the bolometric flux to match a different track family at the
 starting age.
 
 Do not edit these files by hand. Change the tutorial configs, the
-delta tables, `PROTOCOL_FO2_SHIFT_IW` or `PROTOCOL_STOP` in `tools/chili_generate.py`,
-rerun the generator, and commit the result. The standalone grid configs
-under `input/tutorials/chili_grid/` are not generated: they hold the
-protocol's oxygen fugacity, inventories and stop rule by hand, and the
-grid specs here take the stop rule from `earth.toml` and `venus.toml`.
+delta tables, `PROTOCOL_FO2_SHIFT_IW` or `PROTOCOL_STOP` in
+`tools/chili_generate.py`, rerun the generator, and commit the result.
+The standalone grid configs under `input/tutorials/chili_grid/` are not
+generated: they hold the protocol's oxygen fugacity, inventories and
+stop rule by hand, and the grid specs here take the stop rule from
+`earth.toml` and `venus.toml`.
 `tests/tools/test_chili_generate.py` fails CI on any drift between the
 tutorials, these files, and the standalone grid configs.
 

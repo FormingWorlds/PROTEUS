@@ -67,8 +67,8 @@ def test_generated_cases_match_tutorials_outside_their_deltas():
     lockstep: a physics field changed in only one of the two surfaces
     appears here as an undeclared difference. The nominal cases also pin
     the boundary from the other side: they differ from their tutorial in
-    the output path and the redox state only, and the redox state differs
-    in every case.
+    the output path, the redox state and the stop rule only, and the redox
+    state differs in every case.
     """
     gen = _load_generator()
     for name, spec in gen.CASE_DELTAS.items():
@@ -112,12 +112,47 @@ def test_a_case_cannot_set_its_own_redox_state():
         gen.generate_case('tr1a')
 
 
-def test_a_case_cannot_set_its_own_stop_rule():
+@pytest.mark.parametrize('key', list(_load_generator().PROTOCOL_STOP))
+def test_a_case_cannot_set_its_own_stop_rule(key):
     """The stop rule of the protocol is one rule for all cases."""
     gen = _load_generator()
-    gen.CASE_DELTAS['venus']['set']['params.stop.time.maximum'] = 5e9
-    with pytest.raises(ValueError, match=r"venus: .*\['params.stop.time.maximum'\]"):
+    gen.CASE_DELTAS['venus']['set'][key] = 1
+    with pytest.raises(ValueError, match=rf"venus: .*\['{key}'\]"):
         gen.generate_case('venus')
+
+
+def test_every_chili_config_stops_only_by_the_protocol_rule():
+    """The 5 cases and the 9 grid configs carry the default stop block plus PROTOCOL_STOP.
+
+    The whole ``params.stop`` is compared, so a criterion turned on or off
+    outside the protocol keys (solid.enabled, strict, stall) fails as well.
+    """
+    from proteus.config._params import StopParams
+
+    gen = _load_generator()
+    want = attrs.asdict(StopParams())
+    for dotted, value in gen.PROTOCOL_STOP.items():
+        table, key = dotted.split('.')[2:]
+        want[table][key] = value
+    assert want['solid']['phi_crit'] != attrs.asdict(StopParams())['solid']['phi_crit']
+    files = [REPO / 'input' / 'chili' / 'intercomp' / f'{n}.toml' for n in gen.CASE_DELTAS]
+    files += sorted((REPO / 'input' / 'tutorials' / 'chili_grid').glob('earth_H*_C*.toml'))
+    assert len(files) == 14
+    for path in files:
+        assert attrs.asdict(_read_config(str(path)).params.stop) == want, path.name
+
+
+def test_protocol_values_are_fresh_items_in_each_case(tmp_path, monkeypatch):
+    """A comment on a replaced tutorial line does not travel into the next case."""
+    for name in ('tutorial_earth.toml', 'tutorial_venus.toml'):
+        (tmp_path / name).write_text((REPO / 'input' / 'tutorials' / name).read_text())
+    venus = tmp_path / 'tutorial_venus.toml'
+    venus.write_text(venus.read_text().replace('maximum = 3e6', 'maximum = 3e6  # venus note'))
+    gen = _load_generator()
+    monkeypatch.setattr(gen, 'TUTORIALS', str(tmp_path))
+    assert '# venus note' in venus.read_text()
+    gen.generate_case('venus')
+    assert '# venus note' not in gen.generate_case('tr1b')
 
 
 @pytest.mark.parametrize('failure', ['case', 'grid'])
