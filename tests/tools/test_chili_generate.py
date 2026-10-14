@@ -7,6 +7,8 @@ The tutorial configs are the base of the CHILI cases
   outside its declared delta list, via the real config loader;
 - the grid-spec inventory axes match the standalone grid configs under
   input/tutorials/chili_grid/;
+- every CHILI config carries the default stop block plus PROTOCOL_STOP,
+  and PROTOCOL_STOP holds the protocol values;
 - the committed files under input/chili/intercomp/ equal a fresh
   regeneration, so a tutorial retune without regeneration fails CI.
 
@@ -19,6 +21,7 @@ from __future__ import annotations
 
 import importlib.util
 import logging
+import re
 from pathlib import Path
 
 import attrs
@@ -112,12 +115,14 @@ def test_a_case_cannot_set_its_own_redox_state():
         gen.generate_case('tr1a')
 
 
-@pytest.mark.parametrize('key', list(_load_generator().PROTOCOL_STOP))
+@pytest.mark.parametrize('key', _load_generator().PROTOCOL_STOP)
 def test_a_case_cannot_set_its_own_stop_rule(key):
     """The stop rule of the protocol is one rule for all cases."""
     gen = _load_generator()
+    assert key not in gen.CASE_DELTAS['venus']['set']
+    assert gen.case_deltas('venus')[key] == gen.PROTOCOL_STOP[key]
     gen.CASE_DELTAS['venus']['set'][key] = 1
-    with pytest.raises(ValueError, match=rf"venus: .*\['{key}'\]"):
+    with pytest.raises(ValueError, match=rf"venus: .*\['{re.escape(key)}'\]"):
         gen.generate_case('venus')
 
 
@@ -130,11 +135,19 @@ def test_every_chili_config_stops_only_by_the_protocol_rule():
     from proteus.config._params import StopParams
 
     gen = _load_generator()
+    assert gen.PROTOCOL_STOP == {
+        'params.stop.solid.phi_crit': pytest.approx(0.05, rel=1e-12),
+        'params.stop.time.maximum': pytest.approx(1.0e9, rel=1e-12),
+        'params.stop.radeqm.enabled': False,
+        'params.stop.escape.enabled': False,
+        'params.stop.iters.maximum': 1000000,
+        'params.stop.clock.enabled': False,
+    }
     want = attrs.asdict(StopParams())
+    assert want['stall'] == {'enabled': True, 'maximum': 150}
     for dotted, value in gen.PROTOCOL_STOP.items():
         table, key = dotted.split('.')[2:]
         want[table][key] = value
-    assert want['solid']['phi_crit'] != attrs.asdict(StopParams())['solid']['phi_crit']
     files = [REPO / 'input' / 'chili' / 'intercomp' / f'{n}.toml' for n in gen.CASE_DELTAS]
     files += sorted((REPO / 'input' / 'tutorials' / 'chili_grid').glob('earth_H*_C*.toml'))
     assert len(files) == 14

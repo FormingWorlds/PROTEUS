@@ -8,14 +8,15 @@ of the protocol, except the redox state, which they set to IW+2, and the
 stop rule. This script derives every case config from them by applying
 only the deltas listed in ``CASE_DELTAS`` below and the protocol's redox
 state and stop rule, so the generated cases and the tutorials cannot
-drift apart in any other field; the grid specs sweep the ``GRID_AXES``. The standalone grid
-configs under ``input/tutorials/chili_grid/`` are not generated and
-hold the protocol values by hand. The unit tests in
-``tests/tools/test_chili_generate.py`` enforce that contract:
-each generated config must equal its tutorial base on every field
-outside its delta list, the grid axes must match the standalone grid
-configs under ``input/tutorials/chili_grid/``, and the committed files
-under ``input/chili/intercomp/`` must equal a fresh regeneration.
+drift apart in any other field; the grid specs sweep the ``GRID_AXES``.
+The standalone grid configs under ``input/tutorials/chili_grid/`` are not
+generated and hold the protocol values by hand. The unit tests in
+``tests/tools/test_chili_generate.py`` enforce that contract: each
+generated config must equal its tutorial base on every field outside its
+delta list, the grid axes must match the standalone grid configs, every
+CHILI config must carry the default stop block plus ``PROTOCOL_STOP``,
+and the committed files under ``input/chili/intercomp/`` must equal a
+fresh regeneration.
 
 Cases
 -----
@@ -161,6 +162,7 @@ def _set_dotted(doc, dotted: str, value) -> None:
     node = doc
     for k in keys[:-1]:
         node = node.setdefault(k, tomlkit.table())
+    # A fresh item per document: tomlkit moves a replaced line's comment onto the item.
     node[keys[-1]] = copy.deepcopy(value)
 
 
