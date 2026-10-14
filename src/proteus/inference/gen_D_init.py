@@ -77,6 +77,7 @@ def create_init(config):
             config['failure_codes'],
             sigma=config.get('sigma'),
             correlation=config.get('correlation'),
+            student_t_dof=config.get('student_t_dof'),
         )
 
     # read from grid
@@ -90,6 +91,7 @@ def create_init(config):
             init_grid,
             sigma=config.get('sigma'),
             correlation=config.get('correlation'),
+            student_t_dof=config.get('student_t_dof'),
         )
 
     return n_init
@@ -102,6 +104,7 @@ def sample_from_grid(
     grid_dir: str,
     sigma: dict | None = None,
     correlation: dict | None = None,
+    student_t_dof: float | None = None,
 ):
     """Build initial BO data from an existing PROTEUS grid.
 
@@ -118,6 +121,7 @@ def sample_from_grid(
     - grid_dir (str): Directory containing `case_*` precomputed runs.
     - sigma (dict | None): Uncertainty of each observable, passed to `eval_obj`.
     - correlation (dict | None): Correlations between the observable uncertainties.
+    - student_t_dof (float | None): Student-t degrees of freedom, passed to `eval_obj`.
 
     Returns
     ----------
@@ -184,7 +188,7 @@ def sample_from_grid(
         obs_y = helps[i].iloc[-1][observables.keys()].T
 
         # Evaluate objective and store (float)
-        Y[i] = eval_obj(obs_y, observables, sigma, whitener)
+        Y[i] = eval_obj(obs_y, observables, sigma, whitener, student_t_dof)
 
     log.info(f'Generated initial dataset with {nsamp} points in {dims}-dim space')
 
@@ -234,6 +238,7 @@ def f_aug(x, iter, builder_args):
         failure_codes=builder_args['failure_codes'],
         sigma=builder_args.get('sigma'),
         correlation=builder_args.get('correlation'),
+        student_t_dof=builder_args.get('student_t_dof'),
     )
     try:
         return f(x)
@@ -268,6 +273,7 @@ def sample_from_bounds(
     failure_codes: list[int],
     sigma: dict | None = None,
     correlation: dict | None = None,
+    student_t_dof: float | None = None,
 ) -> int:
     """Generate initial BO data by evaluating Halton samples in parameter space.
 
@@ -284,6 +290,7 @@ def sample_from_bounds(
       that this study excludes from the fit.
     - sigma (dict | None): Uncertainty of each observable, passed to `eval_obj`.
     - correlation (dict | None): Correlations between the observable uncertainties.
+    - student_t_dof (float | None): Student-t degrees of freedom, passed to `eval_obj`.
 
     Returns
     ----------
@@ -309,6 +316,7 @@ def sample_from_bounds(
         failure_codes=failure_codes,
         sigma=sigma,
         correlation=correlation,
+        student_t_dof=student_t_dof,
     )
 
     # Halton points in [0, 1]^d, shape [nsamp, dims], each axis normalised to its bounds

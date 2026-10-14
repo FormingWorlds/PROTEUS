@@ -736,19 +736,8 @@ def test_run_inference_validates_and_derives_correlation_tables(monkeypatch, tmp
     assert 'share no element' in caplog.text
 
 
-def test_run_inference_passes_the_validated_tables_to_the_workers(monkeypatch, tmp_path):
-    """The study runs with the validated sigma, the derived correlation and the
-    patience from the config, not with their defaults or the raw config values.
-    """
-    config, _ = _validation_study(
-        monkeypatch,
-        tmp_path,
-        n_steps=3,
-        observables={'R_obs': 6.0e6, 'C/O_atm': 0.62, 'O/H_atm': 5.4},
-        sigma={'R_obs': 1.0e5, 'C/O_atm': '0.1 dex', 'O/H_atm': '0.1 dex'},
-        correlate_ratios=True,
-        patience=7,
-    )
+def _worker_arguments(monkeypatch, config) -> dict:
+    """Run the study up to the workers and return the arguments they receive."""
     monkeypatch.setattr(inference_mod, 'create_init', lambda cfg: 2)
     received = {}
 
@@ -763,6 +752,23 @@ def test_run_inference_passes_the_validated_tables_to_the_workers(monkeypatch, t
     monkeypatch.setattr(inference_mod, 'parallel_process', _capture)
     with pytest.raises(_StopAtWorkers):
         inference_mod.run_inference(config)
+    return received
+
+
+def test_run_inference_passes_the_validated_tables_to_the_workers(monkeypatch, tmp_path):
+    """The study runs with the validated sigma, the derived correlation and the
+    patience from the config, not with their defaults or the raw config values.
+    """
+    config, _ = _validation_study(
+        monkeypatch,
+        tmp_path,
+        n_steps=3,
+        observables={'R_obs': 6.0e6, 'C/O_atm': 0.62, 'O/H_atm': 5.4},
+        sigma={'R_obs': 1.0e5, 'C/O_atm': '0.1 dex', 'O/H_atm': '0.1 dex'},
+        correlate_ratios=True,
+        patience=7,
+    )
+    received = _worker_arguments(monkeypatch, config)
 
     # A dex sigma reaches the workers in the observable's units: 0.1 * true * ln 10.
     assert received['sigma'] == pytest.approx(
@@ -778,6 +784,47 @@ def test_run_inference_passes_the_validated_tables_to_the_workers(monkeypatch, t
     assert received['patience'] == 7
     # n_steps on top of the initial samples
     assert received['max_len'] == 5
+
+
+def test_run_inference_passes_student_t_dof_to_the_workers(monkeypatch, tmp_path):
+    """objective = "student-t" reaches the workers as its dof, 4.0 by default."""
+    config, _ = _validation_study(
+        monkeypatch,
+        tmp_path,
+        observables=_THREE_OBS,
+        sigma=_THREE_SIGMA,
+        objective='student-t',
+    )
+    received = _worker_arguments(monkeypatch, config)
+
+    assert received['student_t_dof'] == pytest.approx(4.0, rel=1e-12)
+    assert type(received['student_t_dof']) is float
+
+
+def test_validate_objective_accepts_chi2_and_student_t_and_rejects_others():
+    """chi-2 (the default) gives None; student-t gives its dof as a float. An unknown
+    objective, a dof with chi-2, a bad dof, a missing sigma and any correlation table
+    (even the empty one correlate_ratios can derive) are refused.
+    """
+    sigma = {'R_obs': 1.0e5}
+    validate = inference_mod.validate_objective
+    assert validate(None, None, None, None) is None
+    assert validate('chi-2', None, sigma, {'R_obs': {'T_obs': 0.5}}) is None
+    assert validate('student-t', None, sigma, None) == pytest.approx(4.0, rel=1e-12)
+    assert validate('student-t', 0.5, sigma, None) == pytest.approx(0.5, rel=1e-12)
+    for bad in ('gaussian', 'Student-t', 'chi2'):
+        with pytest.raises(ValueError, match='objective must be one of'):
+            validate(bad, None, sigma, None)
+    with pytest.raises(ValueError, match='student_t_dof needs objective'):
+        validate('chi-2', 4, sigma, None)
+    for bad in (True, '4', 0, -1.0, math.inf, math.nan):
+        with pytest.raises(ValueError, match='student_t_dof must be a positive'):
+            validate('student-t', bad, sigma, None)
+    with pytest.raises(ValueError, match='needs \\[sigma\\]'):
+        validate('student-t', None, None, None)
+    for corr in ({'R_obs': {'T_obs': 0.5}}, {}):
+        with pytest.raises(ValueError, match='cannot be combined'):
+            validate('student-t', 4, sigma, corr)
 
 
 def test_validate_truth_returns_ordered_floats_and_rejects_bad_tables():

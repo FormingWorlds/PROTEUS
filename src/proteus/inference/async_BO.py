@@ -353,6 +353,7 @@ def parallel_process(
     sigma: dict | None = None,
     correlation: dict | None = None,
     patience: int = 0,
+    student_t_dof: float | None = None,
 ) -> tuple[dict, list, list]:
     """Orchestrate parallel asynchronous Bayesian optimization.
 
@@ -378,6 +379,8 @@ def parallel_process(
     - correlation (dict | None): Correlations between the observable uncertainties.
     - patience (int): Evaluations without improvement after which the study
       stops; 0 runs the full budget.
+    - student_t_dof (float | None): Student-t degrees of freedom, or None for
+      Gaussian errors.
 
     Returns
     ----------
@@ -396,6 +399,7 @@ def parallel_process(
         failure_codes=failure_codes,
         sigma=sigma,
         correlation=correlation,
+        student_t_dof=student_t_dof,
     )
 
     # Build kernel

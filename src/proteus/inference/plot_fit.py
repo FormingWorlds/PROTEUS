@@ -47,7 +47,11 @@ RATIO_CLIP = (1e-2, 1e2)
 
 
 def collect_case_observables(
-    directory, obs: dict, sigma: dict | None = None, correlation: dict | None = None
+    directory,
+    obs: dict,
+    sigma: dict | None = None,
+    correlation: dict | None = None,
+    student_t_dof: float | None = None,
 ) -> pd.DataFrame:
     """Read the final observables and fit quality of every case on disk.
 
@@ -83,7 +87,7 @@ def collect_case_observables(
                 'case': f'w{w}_i{i}',
                 'excluded': (w, i) in excluded,
                 **sim,
-                'J': float(eval_obj(sim, obs, sigma, whitener)),
+                'J': float(eval_obj(sim, obs, sigma, whitener, student_t_dof)),
             }
         )
 

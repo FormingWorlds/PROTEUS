@@ -105,6 +105,21 @@ def test_collect_case_observables_scores_with_observable_correlation(tmp_path):
     assert independent.loc[0, 'J'] == pytest.approx(-np.log10(8.0 + 1e-10), rel=1e-9)
 
 
+@pytest.mark.physics_invariant
+def test_collect_case_observables_scores_with_student_t(tmp_path):
+    """The plotted J uses the optimiser's Student-t: u = (2, 2), nu = 3 gives
+    8 ln(7/3) = 6.78, not the Gaussian 8.
+    """
+    obs = {'R_obs': 6.0e6, 'T_obs': 400.0}
+    sigma = {'R_obs': 5.0e5, 'T_obs': 25.0}
+    _write_case(tmp_path, 0, 0, {'R_obs': 7.0e6, 'T_obs': 450.0})
+
+    df = plot_fit_mod.collect_case_observables(tmp_path, obs, sigma, None, 3.0)
+
+    assert df.loc[0, 'J'] == pytest.approx(-np.log10(8.0 * np.log(7.0 / 3.0) + 1e-10), rel=1e-9)
+    assert abs(df.loc[0, 'J'] + np.log10(8.0)) > 0.05
+
+
 def test_collect_case_observables_marks_recorded_failures_as_excluded(tmp_path):
     """Cases listed in the failure table are flagged, scored ones are not.
 

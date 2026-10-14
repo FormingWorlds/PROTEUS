@@ -457,7 +457,7 @@ def log_warp(sq_dist):
     return warped_dist
 
 
-def eval_obj(sim_dict, tru_dict, sigma=None, whitener=None):
+def eval_obj(sim_dict, tru_dict, sigma=None, whitener=None, student_t_dof=None):
     """Evaluate objective value from simulated and target observables.
 
     The metric compares each observable in either linear or log space,
@@ -467,6 +467,9 @@ def eval_obj(sim_dict, tru_dict, sigma=None, whitener=None):
     With `whitener`, the sum of squares becomes the correlated chi-squared
     u^T R^-1 u; R applies unchanged to log-space observables.
 
+    With `student_t_dof` (nu), each u^2 becomes (nu + 1) ln(1 + u^2 / nu), -2 ln of
+    a Student-t density up to a constant; sigma is then its scale.
+
     Parameters
     ----------
     - sim_dict (dict): Simulated observable values.
@@ -475,6 +478,8 @@ def eval_obj(sim_dict, tru_dict, sigma=None, whitener=None):
       like `sim_dict` and in the same units as the observable. If None, the
       relative-difference objective is used.
     - whitener (CorrelationWhitener, optional): Observable correlations; needs `sigma`.
+    - student_t_dof (float, optional): Degrees of freedom of independent Student-t
+      errors; needs `sigma` and excludes `whitener`.
 
     Returns
     ----------
@@ -488,6 +493,8 @@ def eval_obj(sim_dict, tru_dict, sigma=None, whitener=None):
             raise KeyError(f'No sigma given for observables: {missing}')
     if whitener is not None and sigma is None:
         raise ValueError('correlation needs sigma: the correlation matrix scales sigma')
+    if student_t_dof is not None and (sigma is None or whitener is not None):
+        raise ValueError('student_t_dof needs sigma and no correlation')
 
     sim_vals = []
     tru_vals = []
@@ -523,7 +530,10 @@ def eval_obj(sim_dict, tru_dict, sigma=None, whitener=None):
         sigma_tensor = torch.tensor(sig_vals, dtype=dtype).reshape(1, -1)
         diff = (sim - true_y) / sigma_tensor
 
-    if whitener is None:
+    if student_t_dof is not None:
+        terms = (student_t_dof + 1.0) * torch.log1p(diff**2 / student_t_dof)
+        sq_dist = terms.sum(dim=1, keepdim=True)
+    elif whitener is None:
         sq_dist = (diff**2).sum(dim=1, keepdim=True)
     else:
         sq_dist = whitener.chi_squared(list(sim_dict.keys()), diff)
@@ -608,6 +618,7 @@ def J(
     failure_codes: list[int] = [],
     sigma: dict | None = None,
     whitener: CorrelationWhitener | None = None,
+    student_t_dof: float | None = None,
 ) -> torch.Tensor:
     """Run PROTEUS, and then compute the objective value for a given normalized input.
 
@@ -617,7 +628,7 @@ def J(
         J = -log_10(sum((1 - sim/true)^2) + eps)
 
     or, when `sigma` is given, the same with sum(((sim - true) / sigma)^2),
-    correlated by `whitener` if given.
+    correlated by `whitener` or replaced by the Student-t sum if given.
 
     Parameters
     ----------
@@ -632,6 +643,7 @@ def J(
       that this study excludes from the fit.
     - sigma (dict | None): Uncertainty of each observable, passed to `eval_obj`.
     - whitener (CorrelationWhitener | None): Observable correlations, passed to `eval_obj`.
+    - student_t_dof (float | None): Student-t degrees of freedom, passed to `eval_obj`.
 
     Returns
     ----------
@@ -683,7 +695,7 @@ def J(
         return _handle_unscored(failure, output)
 
     # Compute value of objective function given these results
-    return eval_obj(sim_vals, true_observables, sigma, whitener)
+    return eval_obj(sim_vals, true_observables, sigma, whitener, student_t_dof)
 
 
 def _handle_unscored(failure: ProteusRunFailure, output: str) -> torch.Tensor:
@@ -727,6 +739,7 @@ def prot_builder(
     failure_codes: list[int] = [],
     sigma: dict | None = None,
     correlation: dict | None = None,
+    student_t_dof: float | None = None,
 ) -> callable:
     """Factory returning a BO-compatible objective function for PROTEUS inference.
 
@@ -744,6 +757,7 @@ def prot_builder(
       that this study excludes from the fit.
     - sigma (dict | None): Uncertainty of each observable, passed to `eval_obj`.
     - correlation (dict | None): Observable correlations, factored once here.
+    - student_t_dof (float | None): Student-t degrees of freedom, passed to `eval_obj`.
 
     Returns
     ----------
@@ -782,6 +796,7 @@ def prot_builder(
             failure_codes=failure_codes,
             sigma=sigma,
             whitener=whitener,
+            student_t_dof=student_t_dof,
         )
 
         # Check J is finite

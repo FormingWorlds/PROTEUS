@@ -552,6 +552,62 @@ def test_eval_obj_correlation_kept_for_log_observables():
     assert abs(chi2 - 2.0) > 0.5  # rho ignored
 
 
+def _deviance(sim, tru, sigma, dof):
+    """Invert `log_warp` to recover the Student-t sum that `eval_obj` minimises."""
+    return 10 ** (-objective_mod.eval_obj(sim, tru, sigma, None, dof).item())
+
+
+@pytest.mark.physics_invariant
+def test_eval_obj_student_t_matches_closed_form_and_tends_to_chi_squared(monkeypatch):
+    """Each residual u adds (nu + 1) ln(1 + u^2 / nu); as nu grows this tends to u^2."""
+    monkeypatch.setattr(objective_mod, 'variable_is_logarithmic', lambda key: False)
+    tru = {'R_obs': 6.0e6, 'T_obs': 400.0}
+    sigma = {'R_obs': 5.0e5, 'T_obs': 25.0}
+    sim = {'R_obs': 7.0e6, 'T_obs': 400.0}  # u = (2, 0)
+
+    # 4 ln(7/3) = 3.389; the Gaussian chi-squared is 4.
+    expected = 4.0 * math.log(7.0 / 3.0)
+    assert _deviance(sim, tru, sigma, 3.0) == pytest.approx(expected, rel=1e-9)
+    assert abs(expected - 4.0) > 0.5
+    # Without the (nu + 1) factor the sum would be ln(7/3) = 0.85.
+    assert abs(expected - math.log(7.0 / 3.0)) > 2.0
+    assert _deviance(sim, tru, sigma, 1.0e8) == pytest.approx(4.0, rel=1e-6)
+
+
+@pytest.mark.physics_invariant
+def test_eval_obj_student_t_prefers_one_outlier_over_a_spread_misfit(monkeypatch):
+    """u = (10, 0, 0) loses to u = (3, 3, 3) under chi-squared (100 vs 27) and wins
+    under Student-t with nu = 3 (4 ln(103/3) = 14.1 vs 12 ln 4 = 16.6).
+    """
+    monkeypatch.setattr(objective_mod, 'variable_is_logarithmic', lambda key: False)
+    tru = {'R_obs': 0.0, 'T_obs': 0.0, 'g_obs': 0.0}
+    sigma = {'R_obs': 1.0, 'T_obs': 1.0, 'g_obs': 1.0}
+    outlier = {'R_obs': 10.0, 'T_obs': 0.0, 'g_obs': 0.0}
+    spread = {'R_obs': 3.0, 'T_obs': 3.0, 'g_obs': 3.0}
+
+    def J(sim, dof):
+        return objective_mod.eval_obj(sim, tru, sigma, None, dof).item()
+
+    assert J(spread, None) > J(outlier, None)
+    assert J(outlier, 3.0) > J(spread, 3.0)
+    assert _deviance(outlier, tru, sigma, 3.0) == pytest.approx(
+        4.0 * math.log(103.0 / 3.0), rel=1e-9
+    )
+    assert _deviance(spread, tru, sigma, 3.0) == pytest.approx(12.0 * math.log(4.0), rel=1e-9)
+
+
+def test_eval_obj_student_t_needs_sigma_and_no_correlation():
+    """Student-t errors are scaled by sigma and independent, so both misuses raise."""
+    tru, sim = {'R_obs': 6.0e6, 'T_obs': 400.0}, {'R_obs': 7.0e6, 'T_obs': 450.0}
+    sigma = {'R_obs': 5.0e5, 'T_obs': 25.0}
+    whitener = CorrelationWhitener(list(tru), {'R_obs': {'T_obs': 0.6}})
+
+    with pytest.raises(ValueError, match='student_t_dof needs sigma'):
+        objective_mod.eval_obj(sim, tru, None, None, 4.0)
+    with pytest.raises(ValueError, match='no correlation'):
+        objective_mod.eval_obj(sim, tru, sigma, whitener, 4.0)
+
+
 def test_eval_obj_compares_element_ratios_in_log_only_with_sigma():
     """Without sigma C/O_atm stays linear, as before; with sigma it is compared in dex."""
     tru, sim = {'C/O_atm': 0.5}, {'C/O_atm': 0.25}

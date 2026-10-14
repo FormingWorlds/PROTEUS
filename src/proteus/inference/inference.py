@@ -145,6 +145,35 @@ def validate_patience(patience) -> int:
     return patience
 
 
+OBJECTIVES = ('chi-2', 'student-t')
+DEFAULT_STUDENT_T_DOF = 4.0
+
+
+def validate_objective(
+    objective, dof, sigma: dict | None, correlation: dict | None
+) -> float | None:
+    """Check `objective` and `student_t_dof`; returns the Student-t dof, or None for chi-2."""
+    objective = 'chi-2' if objective is None else objective
+    if objective not in OBJECTIVES:
+        raise ValueError(f'objective must be one of {OBJECTIVES}, got {objective!r}')
+    if objective == 'chi-2':
+        if dof is not None:
+            raise ValueError('student_t_dof needs objective = "student-t"')
+        return None
+    dof = DEFAULT_STUDENT_T_DOF if dof is None else dof
+    if isinstance(dof, bool) or not isinstance(dof, (int, float)) or not 0 < dof < math.inf:
+        raise ValueError(f'student_t_dof must be a positive finite number, got {dof!r}')
+    if sigma is None:
+        raise ValueError(
+            'objective "student-t" needs [sigma]: sigma is the scale of each error'
+        )
+    if correlation is not None:
+        raise ValueError(
+            'objective "student-t" cannot be combined with [correlation] or correlate_ratios'
+        )
+    return float(dof)
+
+
 def validate_truth(parameters: dict, truth: dict | None) -> dict | None:
     """Check the ground-truth parameter values given in the inference config.
 
@@ -356,6 +385,14 @@ def run_inference(config):
         config['observables'], config['sigma'], observable_correlation(config)
     )
 
+    # Chi-squared or, with objective = "student-t", Student-t errors
+    config['student_t_dof'] = validate_objective(
+        config.get('objective'),
+        config.get('student_t_dof'),
+        config['sigma'],
+        config['correlation'],
+    )
+
     # Optional true value of each parameter, for studies of a known simulation
     config['truth'] = validate_truth(config['parameters'], config.get('truth'))
 
@@ -445,6 +482,8 @@ def run_inference(config):
             if config.get('correlate_ratios')
             else ', correlated'
         )
+    if config['student_t_dof'] is not None:
+        objective = f'Student-t (dof = {config["student_t_dof"]:g})'
     log.info(f'    objective     = {objective}')
     log.info(' ')
     t_0 = time.perf_counter()
@@ -465,6 +504,7 @@ def run_inference(config):
         config['sigma'],
         config['correlation'],
         config['patience'],
+        config['student_t_dof'],
     )
 
     t_1 = time.perf_counter()
@@ -489,7 +529,11 @@ def run_inference(config):
     plotBO.plot_result_objective(D_final, config['parameters'], n_init, dirs['output'])
     plotBO.plot_result_correlation(config['parameters'], config['observables'], dirs['output'])
     cases = plot_fit.collect_case_observables(
-        dirs['output'], config['observables'], config['sigma'], config['correlation']
+        dirs['output'],
+        config['observables'],
+        config['sigma'],
+        config['correlation'],
+        config['student_t_dof'],
     )
     plot_fit.plot_result_observables(cases, config['observables'], dirs['output'], best_config)
     if config['truth'] is not None:

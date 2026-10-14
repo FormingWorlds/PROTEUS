@@ -120,6 +120,16 @@ For element-ratio observables (such as `C/O_atm` and `O/H_atm`), `correlate_rati
 
 When posterior samples, e.g. from a retrieval, exist, their correlation matrix in `[correlation]` is the best input; `correlate_ratios` can be set when nothing better is known.
 
+### Student-t errors
+
+`objective` selects the error model: `"chi-2"` (the default, Gaussian errors) or `"student-t"`. With `objective = "student-t"`, each observable's error follows a Student-t distribution with `student_t_dof = nu` degrees of freedom (default 4). It needs `[sigma]` and cannot be combined with `[correlation]` or `correlate_ratios`, because the errors are taken as independent. Each squared residual `u^2` is replaced by
+
+```
+(nu + 1) * ln(1 + u^2 / nu),    u = (sim - true) / sigma
+```
+
+which is `-2 ln` of the Student-t density up to a constant, and tends to `u^2` as `nu` grows. A residual of many sigma then grows only logarithmically, so one observable the model cannot match does not dominate the fit. Small `nu` (3 to 5) gives heavy tails; `nu = 1` is the Cauchy distribution. Under a Student-t, `sigma` is the scale of the error, not its standard deviation, which is `sigma * sqrt(nu / (nu - 2))` for `nu > 2`.
+
 ### Known true parameters
 
 When the target observables were extracted from a simulation whose parameters you know (a
