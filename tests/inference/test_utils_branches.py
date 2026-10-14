@@ -124,6 +124,39 @@ def test_get_obs_returns_observable_subset_under_normal_atmosphere(tmp_path):
     assert result['H2O_vmr'] == pytest.approx(0.42)
 
 
+def test_get_obs_reads_a_tab_file_with_an_empty_field_in_place(tmp_path):
+    """A tab-separated helpfile whose NaN is an empty field keeps every value in its
+    column; a whitespace split would move H2O_vmr into the empty column."""
+    from proteus.inference.utils import get_obs
+
+    csv = tmp_path / 'runtime_helpfile.csv'
+    csv.write_text('P_surf\tR_xuv\tH2O_vmr\n1.5e7\t\t0.42\n', encoding='utf-8')
+
+    result = get_obs(str(csv), observables=['P_surf', 'H2O_vmr'])
+
+    assert result['H2O_vmr'] == pytest.approx(0.42)
+    assert result['P_surf'] == pytest.approx(1.5e7)
+
+
+def test_get_obs_and_print_results_refuse_a_header_only_helpfile(tmp_path):
+    """Both readers pass min_rows=1, so a helpfile with a header and no rows raises
+    HelpfileFormatError rather than an IndexError from the last-row lookup."""
+    from proteus.inference.utils import get_obs, print_results
+    from proteus.utils.coupler import HelpfileFormatError
+
+    wdir = tmp_path / 'workers' / 'w_0' / 'i_0'
+    wdir.mkdir(parents=True)
+    (wdir / 'runtime_helpfile.csv').write_text('P_surf\tH2O_vmr\n', encoding='utf-8')
+    (wdir / 'init_coupler.toml').write_text('[planet]\nmass_tot = 1.0\n')
+    D = {'X': torch.tensor([[0.5]]), 'Y': torch.tensor([[1.0]])}
+    config = {'observables': {'H2O_vmr': 0.9}, 'parameters': {'planet.mass_tot': [0.5, 1.5]}}
+
+    with pytest.raises(HelpfileFormatError, match='0 data rows'):
+        get_obs(str(wdir / 'runtime_helpfile.csv'), observables=['H2O_vmr'])
+    with pytest.raises(HelpfileFormatError, match='0 data rows'):
+        print_results(D, [{'worker': 0, 'task_id': 0}], config, str(tmp_path), n_init=0)
+
+
 def test_get_obs_zeroes_vmr_and_mmw_when_atmosphere_has_escaped(tmp_path):
     """When P_surf is below 1e-30 the atmosphere has effectively
     escaped; ``get_obs`` overwrites every ``*_vmr`` and the mean
@@ -171,10 +204,8 @@ def test_print_results_returns_best_input_toml_path_and_logs_summary(tmp_path, c
     """
     from proteus.inference.utils import print_results
 
-    # Build a workspace with three runs: indices 0..2. Mark the first as
-    # the initial guess (n_init=1) so only entries 1 and 2 are eligible
-    # for the best-case selection. Entry 1 carries the largest Y and
-    # therefore must be picked.
+    # Three runs; the first is the initial guess (n_init=1), so only entries
+    # 1 and 2 are eligible. Entry 1 has the largest Y and must be picked.
     _make_worker_dir(tmp_path, worker=0, iteration=0, obs_value=0.1, param_value=0.5)
     best_dir = _make_worker_dir(tmp_path, worker=0, iteration=1, obs_value=0.9, param_value=1.0)
     _make_worker_dir(tmp_path, worker=0, iteration=2, obs_value=0.5, param_value=1.5)
@@ -291,6 +322,95 @@ def test_get_kernel_raises_for_unknown_kernel_name():
     with pytest.raises(ValueError, match='Unknown kernel'):
         get_kernel('', d=2)
 
-    # Edge: case-sensitive — 'rbf' is not 'RBF'.
+    # Edge: case-sensitive, 'rbf' is not 'RBF'.
     with pytest.raises(ValueError, match='Unknown kernel'):
         get_kernel('rbf', d=2)
+
+
+# ---------------------------------------------------------------------------
+# Accounting for the evaluations that failed
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_print_results_reads_the_best_run_helpfile_in_place(tmp_path, caplog):
+    """The best run's helpfile is read through the exact reader: an empty field
+    before H2O_vmr leaves the reported best-fit value at 0.9, not NaN."""
+    from proteus.inference.utils import print_results
+
+    wdir = tmp_path / 'workers' / 'w_0' / 'i_0'
+    wdir.mkdir(parents=True)
+    (wdir / 'runtime_helpfile.csv').write_text(
+        'P_surf\tR_xuv\tH2O_vmr\n1.0e7\t\t0.9\n', encoding='utf-8'
+    )
+    (wdir / 'init_coupler.toml').write_text('[planet]\nmass_tot = 1.0\n')
+    D = {'X': torch.tensor([[0.5]]), 'Y': torch.tensor([[1.0]])}
+    config = {'observables': {'H2O_vmr': 0.9}, 'parameters': {'planet.mass_tot': [0.5, 1.5]}}
+
+    with caplog.at_level(logging.INFO, logger='fwl.proteus.inference.utils'):
+        print_results(D, [{'worker': 0, 'task_id': 0}], config, str(tmp_path), n_init=0)
+
+    line = next(rec.message for rec in caplog.records if rec.message.startswith('H2O_vmr'))
+    assert '9.0000e-01    9.0000e-01' in line
+    assert 'nan' not in line
+
+
+def test_print_results_counts_unscored_runs_and_refuses_a_study_with_no_fit(tmp_path, caplog):
+    """Evaluations that failed, and those that completed on an excluded status,
+    both carry the failure score rather than a fit quality, so the summary says
+    how many of them there were. The objective value alone cannot tell the two
+    apart, so the wording covers both. When no optimisation evaluation produced
+    a fit quality there is no best fit at all, and the summary stops rather than
+    reporting the least-bad run as an inference result.
+    """
+    from proteus.inference.objective import BAD_OBJ_VALUE
+    from proteus.inference.utils import print_results
+
+    _make_worker_dir(tmp_path, worker=0, iteration=0, obs_value=0.1, param_value=0.5)
+    _make_worker_dir(tmp_path, worker=0, iteration=1, obs_value=0.9, param_value=1.0)
+    best_dir = _make_worker_dir(tmp_path, worker=0, iteration=2, obs_value=0.5, param_value=1.5)
+
+    logs = [
+        {'worker': 0, 'task_id': 0},
+        {'worker': 0, 'task_id': 1},
+        {'worker': 0, 'task_id': 2},
+    ]
+    config = {
+        'observables': {'H2O_vmr': 0.9},
+        'parameters': {'planet.mass_tot': [0.5, 1.5]},
+    }
+
+    # One of the two optimisation evaluations failed; the other is still the
+    # best fit and must be reported normally.
+    D = {
+        'X': torch.tensor([[0.0], [1.0], [0.5]]),
+        'Y': torch.tensor([[-1.0], [BAD_OBJ_VALUE], [2.0]]),
+    }
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.inference.utils'):
+        result = print_results(D, logs, config, str(tmp_path), n_init=1)
+    assert str(best_dir / 'init_coupler.toml') == str(result)
+    assert any(
+        '1 of 2 optimisation evaluations carry the failure score' in r.message
+        for r in caplog.records
+    )
+
+    # Discrimination: the same study with no failure score present reports no
+    # count, so the message above tracks the data and is not emitted always.
+    caplog.clear()
+    D_clean = {
+        'X': torch.tensor([[0.0], [1.0], [0.5]]),
+        'Y': torch.tensor([[-1.0], [1.0], [2.0]]),
+    }
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.inference.utils'):
+        print_results(D_clean, logs, config, str(tmp_path), n_init=1)
+    assert not [r for r in caplog.records if 'carry the failure score' in r.message]
+
+    # No optimisation evaluation produced a fit quality: nothing to report.
+    D_dead = {
+        'X': torch.tensor([[0.0], [1.0], [0.5]]),
+        'Y': torch.tensor([[-1.0], [BAD_OBJ_VALUE], [BAD_OBJ_VALUE]]),
+    }
+    with pytest.raises(
+        RuntimeError, match='None of the 2 optimisation evaluations produced a fit quality'
+    ):
+        print_results(D_dead, logs, config, str(tmp_path), n_init=1)

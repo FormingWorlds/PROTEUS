@@ -190,7 +190,7 @@ config_version = "3.0"
         # Outer mass-radius solver
         outer_solver          = "newton"     # newton (Newton + brentq bracketing) | picard (damped fixed-point)
         use_jax               = true         # JAX path for structure solver
-        use_anderson           = false       # Anderson Type-II Picard acceleration on density loop
+        use_anderson           = true        # Anderson Type-II Picard acceleration on density loop
 
         # Solver tolerances
         solver_tol_outer      = 3e-3         # relative tolerance for mass convergence
@@ -480,8 +480,8 @@ config_version = "3.0"
 
 # Atmospheric chemistry (post-processing)
 [atmos_chem]
-    # Default off: VULCAN is an optional GPL-3.0 backend, install with
-    # `pip install "fwl-proteus[vulcan]"` then set module = "vulcan".
+    # Default off: VULCAN (GPL-3.0) is set up by `bash install.sh`,
+    # or alone with `bash tools/get_vulcan.sh`.
     module                    = "none"       # none | vulcan | dummy
     when                      = "manually"   # manually | offline | online
 

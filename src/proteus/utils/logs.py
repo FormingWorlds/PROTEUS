@@ -207,6 +207,51 @@ def bootstrap_logger(level: str = 'INFO'):
     return custom_logger
 
 
+def attach_worker_logfile(logpath: str, level_code: int = logging.INFO):
+    """Attach an appending file handler to the 'fwl' logger if it has none.
+
+    A worker process started with the 'spawn' method (default on macOS)
+    re-imports the package instead of inheriting the parent's logging
+    configuration. Records it emits then find no handler and fall through to
+    ``logging.lastResort``, which writes to stderr, so nothing the worker
+    reports reaches the study logfile, including the traceback of a worker
+    that dies. Under 'fork', the parent's handlers are inherited already
+    and this is a no-op.
+
+    The file is opened in append mode, where ``setup_logger`` recreates it:
+    the parent owns the logfile, and a worker must add to it rather than
+    truncate the record of the run so far.
+
+    Parameters
+    ----------
+    logpath : str
+        Path of the logfile the parent's logger is already writing.
+    level_code : int
+        Numeric log level, read from the parent's logger before the worker
+        starts, so the worker honours the level the study was run at.
+
+    Returns
+    -------
+    logging.Logger
+        The 'fwl' logger.
+    """
+    custom_logger = logging.getLogger('fwl')
+
+    # Do not touch an already-configured logger. Under 'fork' this process
+    # inherited the parent's handlers, and adding a second one would write
+    # every worker line to the logfile twice.
+    if custom_logger.handlers:
+        return custom_logger
+
+    fh = logging.FileHandler(logpath, mode='a')
+    fh.setFormatter(logging.Formatter('[ %(levelname)-5s ] %(message)s'))
+    fh.setLevel(level_code)
+    custom_logger.addHandler(fh)
+    custom_logger.setLevel(level_code)
+
+    return custom_logger
+
+
 def GetCurrentLogfileIndex(output_dir: str):
     """
     Get the index of the current logfile, returning -1 if none exists

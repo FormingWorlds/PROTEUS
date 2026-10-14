@@ -59,12 +59,12 @@ def test_dt_params_defaults():
 
     Verifies time-stepping defaults are set for stable integration:
     - method: adaptive (safest for general use)
-    - limits: 3e2 yr to 1e7 yr (covers typical geological timescales)
+    - limits: 1e2 yr to 1e7 yr (covers typical geological timescales)
     - adaptive tolerance: 10% change per step (standard stability/speed trade-off)
     """
     dt = TimeStepParams()
     assert dt.method == 'adaptive'
-    assert dt.minimum == pytest.approx(1e4, rel=1e-12)  # Minimum step 300 years
+    assert dt.minimum == pytest.approx(1e2, rel=1e-12)  # Minimum step 100 years
     assert dt.minimum_rel == pytest.approx(1e-5, rel=1e-12)  # Relative minimum precision
     assert dt.maximum == pytest.approx(1e7, rel=1e-12)  # Maximum step 10 Myr
     assert dt.initial == pytest.approx(3e1, rel=1e-12)  # Start with 1000 years
@@ -304,3 +304,295 @@ def test_aragog_defaults():
     # field. ``TypeError`` from attrs' ``__init__``.
     with _pt.raises(TypeError):
         Aragog(dilatation=True)
+
+
+def test_aragog_core_module_defaults_and_mode_validator():
+    """Verify core-module sub-config defaults and validator bounds."""
+    from proteus.config._interior import AragogCoreModule
+
+    aragog = Aragog()
+    cm = aragog.core_module
+    assert not hasattr(cm, 'rho_cen')
+    assert not hasattr(cm, 'length_scale')
+    with pytest.raises(TypeError):
+        AragogCoreModule(rho_cen=12500.0)
+    with pytest.raises(TypeError):
+        AragogCoreModule(length_scale=7272e3)
+    assert cm.melting_curve == 'iron'
+    assert cm.light_element_fraction == pytest.approx(0.0)  # pure iron
+    assert cm.q_radio == pytest.approx(0.0)
+    assert cm.ds_fusion == pytest.approx(172.8, rel=1e-6)  # 1.16 k_B/atom of Fe
+
+    assert Aragog(core_bc='core_module').core_bc == 'core_module'
+    with pytest.raises(ValueError):
+        Aragog(core_bc='core_reservoir')
+    with pytest.raises(ValueError):
+        AragogCoreModule(light_element_fraction=1.0)  # bound is exclusive
+    with pytest.raises(ValueError):
+        AragogCoreModule(melting_curve='cubic')
+
+    # Diagnostics fields: Nimmo (2015) conductivity default, ohmic
+    # fraction bounded on (0, 1], and the two printed CHR09 geometries.
+    assert cm.k_core == pytest.approx(130.0)
+    assert cm.f_ohm == pytest.approx(1.0)
+    assert cm.flux_geometry == 'const_flux'
+    with pytest.raises(ValueError):
+        AragogCoreModule(k_core=0.0)
+    with pytest.raises(ValueError):
+        AragogCoreModule(f_ohm=1.5)  # bound is inclusive at 1
+    with pytest.raises(ValueError):
+        AragogCoreModule(f_ohm=0.0)  # bound is exclusive at 0
+    with pytest.raises(ValueError):
+        AragogCoreModule(flux_geometry='spherical_cow')
+
+    # CMB boundary-layer critical Rayleigh number: Thiriet et al. (2019) Table 2 default.
+    assert cm.ra_crit_cmb == pytest.approx(450.0)
+    assert AragogCoreModule(ra_crit_cmb=1000.0).ra_crit_cmb == pytest.approx(1000.0)
+    for bad in (0.0, float('inf'), float('nan')):
+        with pytest.raises(ValueError):
+            AragogCoreModule(ra_crit_cmb=bad)
+
+
+def test_aragog_phase_boundary_cap_defaults_to_rate_and_rejects_other_values():
+    """The schema default is 'rate'; 'fixed' is kept; anything else is rejected at load."""
+    assert Aragog().phase_boundary_cap == 'rate'
+    assert Aragog(phase_boundary_cap='fixed').phase_boundary_cap == 'fixed'
+    for bad in ('Rate', '', 'adaptive'):
+        with pytest.raises(ValueError, match='phase_boundary_cap'):
+            Aragog(phase_boundary_cap=bad)
+
+
+@pytest.mark.parametrize(
+    ('module', 'expected'),
+    [('aragog', 1e-8), ('spider', 1e-10), ('dummy', 1e-10), ('boundary', 1e-10)],
+)
+def test_unset_interior_rtol_resolves_per_module(module, expected):
+    """An unset rtol resolves to 1e-8 for Aragog and 1e-10 otherwise; an explicit value is kept."""
+    assert Interior(module=module).rtol == pytest.approx(expected)
+    assert Interior(module=module, rtol=3e-9).rtol == pytest.approx(3e-9)
+
+
+def test_deprecated_rtol_alias_overrides_the_aragog_default():
+    """num_tolerance still copies into rtol for Aragog, with its deprecation warning."""
+    with pytest.warns(DeprecationWarning, match='num_tolerance'):
+        assert Interior(module='aragog', num_tolerance=1e-6).rtol == pytest.approx(1e-6)
+
+
+@pytest.mark.parametrize(
+    ('curve', 'fraction', 'depression', 'refused'),
+    [
+        ('iron', 0.1, 9.9, False),
+        ('iron', 0.0, 50.0, False),
+        ('iron', 0.1, 10.0, True),
+        ('iron', 0.5, 3.0, True),
+        ('iron', 0.0, float('inf'), True),
+        ('quadratic', 0.5, 3.0, False),
+    ],
+)
+def test_an_iron_melting_curve_depressed_to_zero_is_refused_at_config_load(
+    curve, fraction, depression, refused
+):
+    """The iron melting curve scales with 1 - depression * light_element_fraction, so a
+    product of 1 or more, or one that is not a number, is refused when the config is
+    built; the quadratic curve does not read the two keys."""
+    from proteus.config._interior import AragogCoreModule
+
+    kwargs = dict(melting_curve=curve, light_element_fraction=fraction, depression=depression)
+    if refused:
+        with pytest.raises(ValueError, match='must be below 1'):
+            AragogCoreModule(**kwargs)
+    else:
+        assert AragogCoreModule(**kwargs).depression == depression
+
+
+def test_a_change_of_one_melting_curve_key_is_not_checked_against_the_old_other_key():
+    """A grid sets the keys of a config one by one, so the product is checked when the
+    config is built, not at each change: the step from (0.4, 2.0) to (0.1, 5.0) passes
+    through a pair above 1 and must not stop."""
+    from proteus.config._interior import AragogCoreModule
+
+    core = AragogCoreModule(light_element_fraction=0.4, depression=2.0)
+    core.depression = 5.0
+    core.light_element_fraction = 0.1
+    assert core.depression * core.light_element_fraction == pytest.approx(0.5)
+    with pytest.raises(ValueError, match='must be below 1'):
+        AragogCoreModule(light_element_fraction=0.4, depression=5.0)
+
+
+@pytest.mark.parametrize(
+    ('struct', 'core_bc', 'stratified', 'solver', 'interval', 'ic', 'refused'),
+    [
+        ('zalmoxis', 'core_module', False, 'cvode', 1.0e9, 'adiabatic', None),
+        ('zalmoxis', 'core_module', True, 'bdf', 0.0, 'liquidus_super', None),
+        ('dummy', 'energy_balance', True, 'radau', 1.0e9, 'adiabatic', None),
+        ('zalmoxis', 'energy_balance', False, 'const', 0.0, 'liquidus_super', None),
+        ('zalmoxis', 'core_module', False, 'const', 0.0, 'liquidus_super', 'const_properties'),
+        (
+            'dummy',
+            'core_module',
+            False,
+            'cvode',
+            0.0,
+            'liquidus_super',
+            'needs interior_struct',
+        ),
+        ('spider', 'core_module', False, 'cvode', 0.0, 'liquidus_super', "not 'spider'"),
+        ('zalmoxis', 'core_module', True, 'radau', 0.0, 'liquidus_super', "not 'radau'"),
+        ('zalmoxis', 'core_module', True, 'bdf', 300.0, 'liquidus_super', 'solved once'),
+        ('zalmoxis', 'core_module', True, 'bdf', 0.0, 'adiabatic', 'solved once'),
+    ],
+)
+def test_core_module_requirements_are_checked_at_config_load(
+    struct, core_bc, stratified, solver, interval, ic, refused
+):
+    """The core_module core needs the Zalmoxis structure, which provides the core mass and
+    the central pressure of its profile fit, and its resolved shell does not run on Radau.
+    A stratified core needs a structure that is solved once: structure updates off and the
+    initial condition that has no baseline re-solve, because the core is carried across a
+    structure update with a heat content that a stratified budget does not give. Constant
+    properties (the solver name 'const' here) load no entropy tables, which the CMB flux
+    of the core model needs. Another core boundary is not checked."""
+    from types import SimpleNamespace
+
+    from proteus.config._config import check_core_module_requirements
+
+    instance = SimpleNamespace(
+        planet=SimpleNamespace(temperature_mode=ic),
+        interior_struct=SimpleNamespace(
+            module=struct, zalmoxis=SimpleNamespace(update_interval=interval)
+        ),
+        interior_energetics=SimpleNamespace(
+            module='aragog',
+            const_properties=solver == 'const',
+            aragog=SimpleNamespace(
+                core_bc=core_bc,
+                solver_method=solver,
+                core_module=SimpleNamespace(stratification=stratified),
+            ),
+        ),
+    )
+    if refused:
+        with pytest.raises(ValueError, match=refused):
+            check_core_module_requirements(instance, None, None)
+    else:
+        assert check_core_module_requirements(instance, None, None) is None
+    instance.interior_energetics.module = 'spider'
+    assert check_core_module_requirements(instance, None, None) is None
+
+
+def test_a_core_module_core_without_the_zalmoxis_structure_is_refused_when_built():
+    """Building a configuration runs the core_module check: the dummy structure is refused,
+    the Zalmoxis structure builds, and a light-element mass fraction of 1 is out of range."""
+    import attrs
+    from helpers import PROTEUS_ROOT
+
+    from proteus.config import read_config_object
+    from proteus.config._interior import AragogCoreModule
+
+    cfg = read_config_object(PROTEUS_ROOT / 'input' / 'all_options.toml')
+    aragog = attrs.evolve(cfg.interior_energetics.aragog, core_bc='core_module')
+    interior = attrs.evolve(cfg.interior_energetics, module='aragog', aragog=aragog)
+    built = attrs.evolve(cfg, interior_energetics=interior)
+    assert built.interior_struct.module == 'zalmoxis'
+    with pytest.raises(ValueError, match="needs interior_struct.module = 'zalmoxis'"):
+        dummy = attrs.evolve(cfg.interior_struct, module='dummy', melting_dir='Monteux-600')
+        attrs.evolve(built, interior_struct=dummy)
+    assert AragogCoreModule(c_light=0.046).c_light == pytest.approx(0.046)
+    with pytest.raises(ValueError):
+        AragogCoreModule(c_light=1.0)
+
+
+@pytest.mark.unit
+def test_the_default_redox_state_is_two_log_units_above_iron_wustite():
+    """``outgas.fO2_shift_IW`` defaults to IW+2. ``all_options.toml``,
+    ``minimal.toml``, ``minimal_quick.toml`` and the Earth and Venus tutorials set that value, the 5
+    CHILI intercomparison cases keep the protocol's IW+4, and a user value is
+    accepted on [-12, 12] and refused half a unit beyond either end."""
+    from helpers import PROTEUS_ROOT
+
+    from proteus.config import read_config_object
+    from proteus.config._outgas import Outgas
+
+    assert Outgas().fO2_shift_IW == pytest.approx(2.0)
+    want = {f: 2.0 for f in ('all_options.toml', 'minimal.toml', 'minimal_quick.toml')}
+    want |= {f'tutorials/tutorial_{p}.toml': 2.0 for p in ('earth', 'venus')}
+    want |= {
+        f'chili/intercomp/{c}.toml': 4.0 for c in ('earth', 'venus', 'tr1b', 'tr1e', 'tr1a')
+    }
+    for name, shift in want.items():
+        cfg = read_config_object(PROTEUS_ROOT / 'input' / name)
+        assert cfg.outgas.fO2_shift_IW == pytest.approx(shift), name
+    # Edge and error contract: both bounds are inclusive.
+    for edge in (-12.0, 12.0):
+        assert Outgas(fO2_shift_IW=edge).fO2_shift_IW == pytest.approx(edge)
+    for beyond in (-12.5, 12.5):
+        with pytest.raises(ValueError):
+            Outgas(fO2_shift_IW=beyond)
+
+
+@pytest.mark.unit
+def test_the_time_limits_of_the_tutorials():
+    """The Venus tutorial stops at 3 Myr, the Earth and Moon tutorial at 0.8 Myr
+    and the 9 standalone CHILI grid configs at 15 Myr; the Earth tutorial and
+    the CHILI Venus case keep 5 Gyr."""
+    from helpers import PROTEUS_ROOT
+
+    from proteus.config import read_config_object
+
+    want = {'venus': 3.0e6, 'earth_moon': 8.0e5, 'earth': 5.0e9}
+    for name, limit in want.items():
+        cfg = read_config_object(PROTEUS_ROOT / 'input' / 'tutorials' / f'tutorial_{name}.toml')
+        assert cfg.params.stop.time.maximum == pytest.approx(limit, rel=1e-12), name
+    case = read_config_object(PROTEUS_ROOT / 'input' / 'chili' / 'intercomp' / 'venus.toml')
+    assert case.params.stop.time.maximum == pytest.approx(5.0e9, rel=1e-12)
+    for name in (
+        f'earth_{h}_{c}' for h in ('Hlow', 'Hmid', 'Hhigh') for c in ('Clow', 'Cmid', 'Chigh')
+    ):
+        cfg = read_config_object(
+            PROTEUS_ROOT / 'input' / 'tutorials' / 'chili_grid' / f'{name}.toml'
+        )
+        assert cfg.params.stop.time.maximum == pytest.approx(1.5e7, rel=1e-12), name
+
+
+@pytest.mark.unit
+def test_a_config_without_the_redox_key_loads_the_default(tmp_path):
+    """``input/minimal.toml`` with its ``fO2_shift_IW`` line removed loads IW+2."""
+    from helpers import PROTEUS_ROOT
+
+    from proteus.config import read_config_object
+
+    lines = (PROTEUS_ROOT / 'input' / 'minimal.toml').read_text().splitlines(keepends=True)
+    kept = [line for line in lines if 'fO2_shift_IW' not in line]
+    assert len(kept) == len(lines) - 1
+    (tmp_path / 'minimal.toml').write_text(''.join(kept))
+    assert read_config_object(tmp_path / 'minimal.toml').outgas.fO2_shift_IW == pytest.approx(
+        2.0
+    )
+
+
+@pytest.mark.unit
+def test_the_minimal_examples_set_the_keys_their_runs_need():
+    """``input/minimal.toml`` and ``input/minimal_quick.toml`` set the keys that keep
+    their runs sound: carbon keeps the atmosphere, the step floor and the static
+    structure resolve the molten stage, and the stop is at a melt fraction of 0.05. The
+    quick file also names the grey atmosphere of its run. The carbon mode, the stop,
+    the structure interval and the grey atmosphere differ from their defaults, so a file
+    that loses one of those keys fails here."""
+    from helpers import PROTEUS_ROOT
+
+    from proteus.config import read_config_object
+
+    cfgs = {
+        n: read_config_object(PROTEUS_ROOT / 'input' / n)
+        for n in ('minimal.toml', 'minimal_quick.toml')
+    }
+    for name, cfg in cfgs.items():
+        assert cfg.planet.elements.C_mode == 'kg', name
+        assert cfg.planet.elements.C_budget > 0.0, name
+        assert cfg.params.dt.minimum == pytest.approx(100.0), name
+        assert cfg.params.stop.solid.phi_crit == pytest.approx(0.05), name
+        assert cfg.interior_struct.zalmoxis.update_interval == pytest.approx(0.0), name
+    assert cfgs['minimal.toml'].atmos_clim.module == 'agni'
+    quick = cfgs['minimal_quick.toml'].atmos_clim
+    assert (quick.module, quick.rayleigh) == ('dummy', False)
+    assert quick.dummy.gamma == pytest.approx(0.8)

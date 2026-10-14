@@ -219,6 +219,7 @@ def test_aragog_enum_fields_pinned_as_set_under_zalmoxis_pair():
         'energy_balance',
         'gradient',
         'bower2018',
+        'core_module',
     }
     assert set(fields.phase_smoothing.validator.options) == {'tanh', 'cubic_hermite'}
     assert set(fields.solver_method.validator.options) == {'cvode', 'radau', 'bdf'}
@@ -416,10 +417,12 @@ def test_zalmoxis_2layer_non_tdep_requires_zero_mantle_mass_fraction():
             ),
             **_base_config_kwargs(),
         )
-    # T-dep mantle EOS (WolfBower2018) round-trips the same value.
+    # T-dep mantle EOS (WolfBower2018) round-trips the same value; without a PALEOS
+    # table set Aragog reads the melting curves named by melting_dir.
     cfg = Config(
         interior_struct=Struct(
             module='zalmoxis',
+            melting_dir='Monteux-600',
             zalmoxis=Zalmoxis(
                 mantle_eos='WolfBower2018:MgSiO3',
                 mantle_mass_fraction=0.4,

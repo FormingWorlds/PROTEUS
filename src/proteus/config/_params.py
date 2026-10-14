@@ -111,7 +111,10 @@ class TimeStepParams:
     max_growth_factor: float
         Cap on the dt growth ratio between consecutive steps [dimensionless].
         Bounds dtswitch / dtprev, preventing large jumps that can wedge the
-        interior solver; 0 (default) disables the cap.
+        interior solver; 0 (default) disables the cap. After a step that
+        landed on a giant impact, dtprev is the larger of that step and
+        ``min(dtfloor, last step that did not land on an impact)``, or
+        dtfloor when there is no such step.
     maximum_rel: float
         Time-fraction allowance added to ``dt.maximum`` on every step
         [dimensionless]. The effective per-step cap is the sum
@@ -184,6 +187,24 @@ class TimeStepParams:
         Replacement speed-up factor applied while the hysteresis
         counter is active. Must be ``>= 1.0`` and ``<= SFINC``
         (1.6). Default 1.1 (gentle ramp-up).
+    impact_maximum: float
+        Ceiling [yr] for the step that reaches a scheduled giant
+        impact. Such a step is otherwise clamped only to the time left
+        before the impact, which after a long quiescent phase can
+        itself be large. With the ceiling set, a reaching step longer
+        than ``max(impact_maximum, dtfloor)`` (dtfloor = dt.minimum +
+        dt.minimum_rel * Time) is cut to an equal fraction of the time
+        left; later steps are evaluated again, and the step that lands
+        is no longer than ``max(impact_maximum, dtfloor)``. Set to 0
+        (default) to disable. Independent of this setting, the step
+        that lands on an impact can be shorter than dtfloor, a step
+        ending at most 1e-3 yr short of an impact is extended onto it
+        (unless the step already reaches stop.time.maximum), and an
+        impact is applied at the end of the first step that reaches its
+        time. Impacts each less than 1e-3 yr after the one before form a
+        chain that the step aims at the last of, so an impact in a chain
+        can be applied later than its time by up to the chain span; a
+        chain spanning 1e-3 yr or more is logged as a warning.
     """
 
     starspec: float = field(default=1e8, validator=ge(0))
@@ -200,7 +221,7 @@ class TimeStepParams:
     scale_decr: float = field(default=0.8, validator=(gt(0), lt(1)))
     window: int = field(default=3, validator=ge(1))
 
-    minimum: float = field(default=1e4, validator=gt(0))
+    minimum: float = field(default=1e2, validator=gt(0))
     minimum_rel: float = field(default=1e-5, validator=gt(0))
     maximum: float = field(default=1e7, validator=gt(0))
     maximum_rel: float = field(default=1.0, validator=ge(0))
@@ -230,6 +251,7 @@ class TimeStepParams:
     )
     hysteresis_iters: int = field(default=0, validator=ge(0))
     hysteresis_sfinc: float = field(default=1.1, validator=ge(1.0))
+    impact_maximum: float = field(default=0.0, validator=ge(0))
 
     # Cap on dt growth ratio between consecutive steps. Bounds
     # dtswitch / dtprev to at most max_growth_factor, preventing

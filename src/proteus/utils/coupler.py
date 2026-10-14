@@ -4,8 +4,10 @@
 from __future__ import annotations
 
 import glob
+import io
 import json
 import logging
+import math
 import os
 import subprocess
 from datetime import datetime
@@ -23,8 +25,10 @@ import pandas as pd
 from proteus.utils.constants import (
     element_list,
     gas_list,
+    noble_gases,
     secs_per_hour,
     secs_per_minute,
+    vol_element_list,
     vol_gas_list,
     vol_list,
 )
@@ -150,14 +154,32 @@ def _get_obliqua_version(dirs: dict):
     return obliqua_meta['version']
 
 
-def _get_julia_version():
+def _get_julia_version() -> str:
+    """Return the version of the Julia that PROTEUS uses.
+
+    That is ``PYTHON_JULIAPKG_EXE`` when it is set, else the ``julia`` on
+    ``PATH``; juliacall does not fall back to ``PATH`` from a set variable.
+
+    Returns
+    -------
+    str
+        The version, for example ``1.13.1``, or a note that no Julia was found,
+        that ``PYTHON_JULIAPKG_EXE`` names no executable file, or that the
+        binary reported no version (it failed, printed nothing or could not run).
     """
-    Get the installed Julia version
-    """
+    from proteus.utils.helper import proteus_julia_exe
+
+    raw = os.environ.get('PYTHON_JULIAPKG_EXE')
+    exe = proteus_julia_exe()
+    if raw and exe is None:
+        return f'unknown (PYTHON_JULIAPKG_EXE={raw} is not an executable file)'
+    exe = exe or 'julia'
     try:
-        return subprocess.check_output(['julia', '--version']).decode('utf-8').split()[-1]
+        return subprocess.check_output([exe, '--version']).decode('utf-8').split()[-1]
     except FileNotFoundError:
         return 'unknown (julia not installed)'
+    except (subprocess.CalledProcessError, IndexError, OSError):
+        return f'unknown ({exe} --version reported no version)'
 
 
 def _get_lavatmos_version() -> str:
@@ -182,6 +204,23 @@ def _get_thermoengine_version() -> str:
     except ImportError:
         return 'unknown (thermoengine not installed)'
     return thermoengine.__version__
+
+
+def _get_petitradtrans_version() -> str:
+    """
+    Get the installed petitRADTRANS version.
+
+    Reads package metadata instead of importing petitRADTRANS directly: the
+    editable meson-python install re-runs its build step on first import in
+    each new process, which races between parallel runs sharing the install.
+    """
+
+    from importlib.metadata import PackageNotFoundError, version
+
+    try:
+        return version('petitRADTRANS')
+    except PackageNotFoundError:
+        return 'unknown (petitRADTRANS not installed)'
 
 
 def validate_module_versions(dirs: dict, config: Config):
@@ -446,9 +485,7 @@ def print_module_configuration(dirs: dict, config: Config, config_path: str):
     # Observations synthesis module
     write = 'Observe module    %s' % config.observe.module
     if config.observe.module == 'petitRADTRANS':
-        from petitRADTRANS import __version__ as obs_version
-
-        write += ' version ' + obs_version
+        write += ' version ' + _get_petitradtrans_version()
 
     log.info(write)
 
@@ -522,8 +559,10 @@ def print_citation(config: Config):
         case _:
             pass
 
-    # Delivery module
+    # Accretion module
     match config.accretion.module:
+        case 'morrigan':
+            _cite('Kimura et al. (2025)', 'https://doi.org/10.3847/1538-4357/ade992')
         case _:
             pass
 
@@ -572,6 +611,10 @@ def assert_mass_conservation(
     atol_frac: float = 1e-6,
     *,
     require_atm_le_planet: bool = True,
+    check_element_closure: bool = False,
+    derived_elements: tuple[str, ...] = (),
+    closure_rtol: float | None = None,
+    closure_atol_kg: float = 1.0,
 ) -> None:
     """Runtime invariant: the per-species kg_atm sum matches M_vol_atm, and
     M_atm <= M_planet unless the caller disables that half.
@@ -600,13 +643,40 @@ def assert_mass_conservation(
         Whether to enforce M_atm <= M_planet. Ignored when the row carries no
         vapour column: rock vapour is the only mass the relaxation excuses, so
         with M_vaps == 0 the invariant is enforced either way.
+    check_element_closure : bool
+        Whether to also require that each element's ``_kg_total`` equals the
+        sum of its atmospheric, liquid and solid reservoirs. The main loop sets
+        it when solid-phase trapping is on, which is the bookkeeping it
+        guards; without trapping, desiccation empties the reservoirs and keeps
+        the totals, so the closure does not hold and is not asked for.
+    derived_elements : tuple of str
+        Elements whose whole-planet total the chemistry recomputes rather than
+        conserving, so the per-element reservoir closure does not apply to
+        them. Supplied by ``outgas.trapping.derived_total_elements``.
+    closure_rtol : float or None
+        Relative tolerance for the per-element reservoir closure only. The
+        atmospheric and liquid reservoirs come out of a nonlinear chemistry
+        solve that converges to its own relative tolerance, while the total is
+        carried forward from the escape chain, so the two can agree no more
+        tightly than the solver does. The closure is therefore checked against
+        ``max(atol_frac, closure_rtol)``; the main loop supplies
+        ``config.outgas.solver_rtol``. ``atol_frac`` itself, and with it the
+        atmosphere-mass and species-sum invariants, is unchanged.
+    closure_atol_kg : float
+        Absolute tolerance of the per-element closure [kg]: a mismatch is
+        refused once it exceeds both this and the relative tolerance times the
+        total. It admits the trace melt mass the chemistry can leave of an
+        element the run does not carry, a few hundredths of a kilogram, and
+        nothing a bookkeeping error produces.
 
     Raises
     ------
     RuntimeError
         If the per-species kg_atm sum over vol_gas_list disagrees with
         M_vol_atm by more than ``atol_frac``. When ``require_atm_le_planet``,
-        raises if M_atm relatively exceeds M_planet.
+        raises if M_atm relatively exceeds M_planet. When
+        ``check_element_closure``, raises if an element's reservoirs do not sum
+        to its total.
     """
     M_atm = float(hf_row.get('M_atm', 0.0))
     M_planet = float(hf_row.get('M_planet', 0.0))
@@ -684,6 +754,34 @@ def assert_mass_conservation(
                 f'(relative difference {rel * 100:.3f}%). One of the '
                 f'gas-species kg_atm fields is stale or the M_vol_atm sum '
                 f'loop is missing a species.'
+            )
+
+    # Invariant 3, with trapping on: each element total equals the sum of its
+    # reservoirs, so a debit without its credit fails here. Elements the run
+    # never carried are skipped; the tolerance is set out in the docstring.
+    if not check_element_closure:
+        return
+    closure_tol = max(atol_frac, float(closure_rtol)) if closure_rtol else atol_frac
+    for e in element_list:
+        if e in derived_elements:
+            # A total the chemistry recomputes is not a conserved budget.
+            continue
+        total = float(hf_row.get(f'{e}_kg_total', 0.0))
+        if not np.isfinite(total) or total <= 0.0:
+            continue
+        parts = sum(float(hf_row.get(f'{e}_kg_{r}', 0.0)) for r in ('atm', 'liquid', 'solid'))
+        if not np.isfinite(parts):
+            continue
+        rel = abs(parts - total) / total
+        if abs(parts - total) > max(closure_atol_kg, closure_tol * total):
+            raise RuntimeError(
+                f'Per-element reservoir closure failed for {e}: '
+                f'{e}_kg_total={total:.6e} kg but atm+liquid+solid='
+                f'{parts:.6e} kg (relative difference {rel * 100:.4f}%). '
+                f'atm={float(hf_row.get(f"{e}_kg_atm", 0.0)):.3e}, '
+                f'liquid={float(hf_row.get(f"{e}_kg_liquid", 0.0)):.3e}, '
+                f'solid={float(hf_row.get(f"{e}_kg_solid", 0.0)):.3e} kg. '
+                f'A reservoir was debited without the matching credit.'
             )
 
 
@@ -783,8 +881,24 @@ def CreateLockFile(output_dir: str):
     return keepalive_file
 
 
+# Schema columns a resumed run may read as zero when its helpfile predates them.
+# Other columns carry physical state, where zero is invalid; see ReadHelpfileFromCSV.
+RESUMABLE_ZERO_FILL_KEYS = frozenset(
+    {
+        'esc_kg_cumulative',
+        'M_accreted_rock',
+        'M_core_target',
+        'M_desiccated',
+        'M_volatile_change',
+        'n_impacts_applied',
+        'step_dE_impact_J',
+    }
+)
+
+
 def GetHelpfileKeys():
     """
+
     Variables to be held in the helpfile.
 
     All dimensional quantites should be stored in SI units, except those noted below.
@@ -807,6 +921,7 @@ def GetHelpfileKeys():
         'orbital_period',   # orbital duration [s]
         'eccentricity',     # orbital eccentricity [1]
         'ecc_dot_planet',   # eccentricity derivative [1 s-1]
+        'dEdt_orb',         # orbital energy rate of a prescribed track [W]
         'plan_star_am',     # angular momentum of star+planet [kg m2 s-1]
         'axial_period',     # day length of planet around its axis [s]
 
@@ -853,8 +968,8 @@ def GetHelpfileKeys():
         # Temperatures
         'T_surf',           # global surface temperature [K]
         'T_magma',          # global outgassing temperature [K]
-        'T_cmb',           # core temperature, bottom mantle cell [K]
-        'T_cmb_node',      # temperature at the core-mantle boundary basic node [K]
+        'T_cmb',           # core temperature: the bottom mantle cell, or the core state with core_bc = core_module or bower2018 [K]
+        'T_cmb_node',      # mantle temperature at the core-mantle boundary basic node; with core_bc = core_module the temperature of the bottom-cell entropy at P_cmb, so the CMB contrast is T_cmb - T_cmb_node, or core_T_top - T_cmb_node with stratification [K]
         'T_eqm',            # grey radiative equilibrium temperature [K]
         'T_skin',           # grey radiative skin temperature [K]
         'T_surface_initial',  # self-consistent T_surf from accretion mode [K]
@@ -891,49 +1006,24 @@ def GetHelpfileKeys():
         'RF_depth',         # depth of rheological front [1]
         'M_core',           # dry mass of core [kg]
         'M_mantle',         # dry mass of mantle [kg]
+        'M_core_target',    # core mass target of the Zalmoxis structure; 0 with another structure module [kg]
         'M_mantle_solid',   # dry mass of solid-phase mantle [kg]
         'M_mantle_liquid',  # dry mass of liquid-phase mantle [kg]
         'T_pot',            # characteristic mantle potential temperature [K]
         'boundary_layer_thickness',  # thermal boundary layer thickness [m]
 
-        # Energy-conservation columns: per-call integrals plus their
-        # cumulative residual. The residual pairs the entropy-transported
-        # heat (state side) against the boundary-flux and source prediction
-        # (predicted side), both in the live EOS density frame ``ρ(P,S)``:
-        #   E_state_heat_cons_J = Σ step_dE_state_heat_J across rows [J]
-        #   dE_predicted_cons_J = Σ (step_dE_F_int_J + step_dE_F_cmb_J
-        #                            + step_dE_Q_radio_J + step_dE_Q_tidal_J)
-        #   E_residual_cons_J   = E_state_heat_cons_J - dE_predicted_cons_J
-        #   E_residual_cons_frac = E_residual_cons_J / max(|E_state_heat_cons_J|, 1 J)
-        # This closes to about a percent of the cumulative cooling (largest
-        # near full melt and at crystallisation-front / structure-remesh
-        # steps), not to machine precision; that floor is the lever-rule
-        # vs tanh-blended phase density difference. The ``_cons`` suffix on
-        # these column names pairs them for readability and does not mean
-        # they use the frozen-mass ``step_dE_Q_*_cons_J`` variants.
-        # ``E_state_cons_J`` (frozen-mass enthalpy) and ``E_state_J``
-        # (state-mass enthalpy) are diagnostic snapshots only; do NOT build a
-        # residual on either. ``E_state_cons_J`` also indicates whether an
-        # EOS-aware interior module ran (non-zero), which populates the
-        # residual columns.
-        # ``solver_residual_J`` is the entropy-equation self-consistency
-        # check: the discrete flux divergence telescopes to the boundary
-        # fluxes, so it is machine-zero by construction and a non-zero
-        # value flags a divergence-assembly bug; it carries the
-        # machine-precision conservation guarantee. ``E_th_mantle`` is the
-        # ``m × Cp_apparent × T`` proxy with phase-dependent jumps in the
-        # mushy zone, not for conservation use. ``Q_radio_W`` / ``Q_tidal_W``
-        # are instantaneous mantle-integrated source powers in watts (do NOT
-        # integrate trapezoidally; spike-prone at CVODE phase-boundary
-        # moments). ``F_cmb`` is the analogous instantaneous CMB heat flux.
-        # The conservation primitive is the per-call integral set computed by
-        # Aragog over its CVODE sub-step trajectory:
-        #   step_dE_F_int_J        = -∫ F_int * A_int dt   [J]
-        #   step_dE_F_cmb_J        = +∫ F_cmb * A_cmb dt   [J]
-        #   step_dE_Q_*_J          = +∫ Q_* dt             [J] (live-density)
-        #   step_dE_Q_*_cons_J     = +∫ Q_* dt             [J] (frozen-mass)
-        #   step_dE_state_heat_J   = ∫ Σ ρ T dS            [J]
-        #   step_solver_residual_J = ∫ (LHS - RHS) dt      [J]
+        # Core evolution diagnostic keys for core_module mode
+        'core_r_icb',           # inner-core boundary radius; computed only with core_bc = core_module, 0 otherwise [m]
+        'core_C_eff',           # core effective heat capacity incl. nucleation terms; computed only with core_bc = core_module, 0 otherwise [J K-1]
+        'core_dynamo_margin',   # entropy margin for dynamo action; computed only with core_bc = core_module, 0 otherwise [W K-1]
+        'core_B_rms',           # rms field (CHR09; superadiabatic reference flux, 0 when subadiabatic); computed only with core_bc = core_module, 0 otherwise [T]
+        'core_regime',          # crystallisation code: 0 fully liquid, 1 freezing from the centre outwards, 4 fully frozen; 2 (from the top) and 3 (snow) do not appear, Aragog ends the run at such a state; computed only with core_bc = core_module, 0 otherwise [1]
+        'core_strat_depth',     # thermally stratified layer depth below the CMB; computed only with core_bc = core_module, 0 otherwise [m]
+        'core_T_top',           # temperature at the top of the core, the top shell cell with stratification, else T_cmb; computed only with core_bc = core_module, 0 otherwise [K]
+
+        # Energy-conservation columns: cumulative integrals of entropy-transported
+        # heat against boundary-flux and source predictions in the live EOS frame.
+        # Booked impact heat is symmetric on both sides, not closed by residual.
         'E_th_mantle',      # thermal-energy proxy [J] (do not use for conservation)
         'E_state_J',         # state-mass integrated mantle enthalpy [J] (diagnostic only)
         'E_state_cons_J',    # frozen-mass integrated mantle enthalpy [J] (diagnostic only)
@@ -948,11 +1038,18 @@ def GetHelpfileKeys():
         'step_solver_residual_J',  # per-call entropy-ODE LHS-RHS [J]
         'step_dE_compression_J',  # per-call structure-re-solve compression work [J] (diagnostic)
         'step_dE_state_heat_J',  # per-call entropy-transported heat content change [J]
+        'step_dE_impact_J',  # giant-impact re-melt heat injection [J] (both residual sides)
+        'step_dE_impact_core_J',  # giant-impact core heat: the T_core lift under the refitted profile, on the first kept row after the impact; computed only with core_bc = core_module, 0 otherwise [J]
+        'step_dE_impact_core_refit_J',  # giant-impact core refit content change at the pre-impact T_core (the added iron's heat from the profile reference), on the first kept row after the impact; computed only with core_bc = core_module, 0 otherwise [J]
+        'step_dE_struct_core_J',  # change of the core heat content across the structure updates since the last kept interior call (core mass and total entropy kept), positive when the heat content rises; the rule keeps entropy and the heat content is an energy, so with an inner core the term also holds the latent and gravitational energy of the mass that freezes or melts at the update, which the rule does not put into the core, and the change of the reference from which each budget counts that energy; computed only with core_bc = core_module, 0 otherwise [J]
         'E_state_heat_cons_J',  # cumulative sum of step_dE_state_heat_J across rows [J]
         'dE_predicted_cons_J',  # cumulative sum of boundary fluxes + live-density step_dE_Q_*_J [J]
         'E_residual_cons_J',    # E_state_heat_cons_J - dE_predicted_cons_J [J]
         'E_residual_cons_frac', # E_residual_cons_J / max(|E_state_heat_cons_J|, 1 J) [1]
         'solver_residual_J',    # cumulative entropy-ODE LHS-RHS residual [J]
+        'step_dE_core_J',       # core heat change over the call net of its internal source, plus the jump of the heat content since the last kept call; computed only with core_bc = core_module, 0 otherwise [J]
+        'E_core_residual_J',    # cumulative core ledger: sum(step_dE_core_J + step_dE_F_cmb_J - step_dE_impact_core_J - step_dE_impact_core_refit_J - step_dE_struct_core_J); computed only with core_bc = core_module, 0 otherwise [J]
+        'E_core_residual_frac', # E_core_residual_J / max(sum(|step_dE_F_cmb_J| + |the 3 booked terms|), 1 J); a booked term equals the jump it explains by construction, so the fraction checks the bookkeeping of those terms and the solver's core heat against its CMB flux; computed only with core_bc = core_module, 0 otherwise [1]
         'Cp_eff',           # effective mantle heat capacity [J kg-1 K-1]
 
         # Host star properties
@@ -1007,13 +1104,11 @@ def GetHelpfileKeys():
         'O_res',                 # O mass-balance residual [kg]
         'O_vapourised_kg',         # oxygen released by rock vapourisation (LavAtmos) [kg]
 
-        # Desiccation escape balance. Read by `check_desiccation`.
-        # M_vol_initial is the summed *_kg_total (oxygen included) captured on
-        # the first escape call; esc_kg_cumulative is the mass each step took
-        # out of those inventories, never more than it was allowed to remove.
-        # Both persist to the CSV so a resume keeps the check's state.
+        # Desiccation escape-balance baseline (M_vol_initial) and cumulative
+        # loss ledger (esc_kg_cumulative) across escape and impact stripping.
         'M_vol_initial',    # bulk volatile inventory baseline [kg]
-        'esc_kg_cumulative', # cumulative escaped mass [kg]
+        'esc_kg_cumulative', # cumulative mass lost to space [kg] (escape + impact stripping)
+        'M_desiccated',     # element mass removed at desiccation without escape [kg]
 
         # Loss the bulk rate asked for on this step, as a fraction of the
         # reservoir escape draws from. Values above the per-step cap mark a
@@ -1021,7 +1116,39 @@ def GetHelpfileKeys():
         # distinguishable from one that ran down on its own.
         'esc_clamp_frac',   # requested per-step loss / escapable reservoir [1]
         'esc_step_kg',      # loss applied on this step, after the cap [kg]
-        ]
+
+        # Solid-phase volatile trapping
+        'trap_dM_RM',       # mantle mass crystallised this step, negative when it remelted [kg]
+        'trap_F_tl',        # trapped melt fraction applied this step [1]
+        'trap_kg_step',     # volatile mass buried this step, negative when remelting released it [kg]
+        'trap_kg_cumulative',  # net volatile mass buried since the run began [kg]
+        'trap_branch',      # drainage regime code: 0 no front (a freezing step still buries by crystal partitioning), 1 Darcy, 2 matrix, 3 guard, 6 no interior state, 7 remelting [1]
+        'trap_tau_D',       # percolation time at the top of the front [yr]
+        'trap_tau_s',       # matrix deformation time [yr]
+        'trap_t_res',       # parcel residence time in the front [yr]
+        'trap_n_front',     # nodes spanned by the freezing front [1]
+        'trap_L_front',     # freezing-front thickness [m]
+        'trap_v_front',     # freezing-front speed [m s-1]
+        'trap_front_courant',  # front advance over one step, in front thicknesses [1]
+        'trap_w_matrix_over_vf',  # matrix speed over front speed [1]
+
+        # Giant-impact accretion ledger: cumulative rock mass added to interior
+        # mass anchor to enable reconstruction on resume.
+        'M_accreted_rock',  # cumulative rock mass added by giant impacts [kg]
+        'n_impacts_applied',  # count of giant impacts applied [1]
+
+        # Element mass the Zalmoxis whole-planet target adds to mass_tot (Zalmoxis only).
+        'M_volatile_change',  # cumulative element mass added to the Zalmoxis target [kg]: delivered (rock O and init-stage impacts excluded) minus stripped minus escaped (rock vapour and sub-threshold zeroing included) minus removed at desiccation
+    ]
+
+    # Share of the solid-mantle reservoir that trapping owns. The chemistry
+    # writes the rest of `_kg_solid`, its own condensate, on every solve.
+    for s in vol_list:
+        keys.append(s + '_kg_trapped')  # mass trapped in the solid mantle [kg]
+    for e in vol_element_list:
+        keys.append(e + '_kg_trapped')  # mass trapped in the solid mantle [kg]
+    for s in noble_gases:
+        keys.append(s + '_kg_trapped')  # mass trapped in the solid mantle [kg]
 
     # gases from outgassing
     for s in gas_list:
@@ -1106,6 +1233,56 @@ def ZeroHelpfileRow():
     return out
 
 
+# Heat booked into the core between interior calls, on the row of the next kept call.
+_CORE_BOOKED_KEYS = (
+    'step_dE_impact_core_J',
+    'step_dE_impact_core_refit_J',
+    'step_dE_struct_core_J',
+)
+
+
+def _finite_abs_sum(values) -> float:
+    """Sum of the absolute values of the finite entries of ``values``."""
+    values = np.abs(np.asarray(values, dtype=float))
+    return float(values[np.isfinite(values)].sum())
+
+
+def _populate_core_residual(current_hf: pd.DataFrame, new_row: dict) -> None:
+    """Fill the cumulative core ledger of ``new_row`` in place (Aragog core_module).
+
+    ``E_core_residual_J`` accumulates ``step_dE_core_J + step_dE_F_cmb_J`` minus the
+    booked terms ``step_dE_impact_core_J``, ``step_dE_impact_core_refit_J`` and
+    ``step_dE_struct_core_J``: the change of the core's heat content must equal the heat
+    it gives the mantle plus what a giant impact and a structure update book into it. An
+    unbooked jump of the heat content or a mismatched CMB flux integral shows here; a
+    booking is computed where the core changes and the jump where the next call starts,
+    so the ledger shows a missing or repeated booking. ``E_core_residual_frac`` divides
+    by ``max(sum(|step_dE_F_cmb_J| + |booked terms|), 1 J)`` over the rows with
+    ``core_C_eff != 0`` (0.0 is the unwritten value; other rows keep 0), a sum that only
+    grows. A non-finite term carries the previous residual unchanged, with a warning.
+    """
+    if float(new_row.get('core_C_eff', 0.0)) == 0.0:
+        new_row['E_core_residual_J'] = new_row['E_core_residual_frac'] = 0.0
+        return
+    terms = [float(new_row.get(k, 0.0)) for k in ('step_dE_core_J', 'step_dE_F_cmb_J')]
+    booked = [float(new_row.get(k, 0.0)) for k in _CORE_BOOKED_KEYS]
+    prev, scale = 0.0, _finite_abs_sum([terms[1], *booked])
+    if len(current_hf) and 'E_core_residual_J' in current_hf:
+        prev = np.nan_to_num(float(current_hf['E_core_residual_J'].iloc[-1]))
+        rows = current_hf['core_C_eff'].to_numpy(dtype=float) != 0.0
+        for key in ('step_dE_F_cmb_J', *_CORE_BOOKED_KEYS):
+            if key in current_hf:
+                scale += _finite_abs_sum(current_hf[key].to_numpy(dtype=float)[rows])
+    inc = terms[0] + terms[1] - sum(booked)
+    if not np.isfinite(inc):
+        log.warning(
+            'core ledger term is not finite at t=%s yr; residual carried', new_row.get('Time')
+        )
+        inc = 0.0
+    new_row['E_core_residual_J'] = prev + inc
+    new_row['E_core_residual_frac'] = new_row['E_core_residual_J'] / max(scale, 1.0)
+
+
 def _populate_energy_residual(current_hf: pd.DataFrame, new_row: dict) -> None:
     """Fill the cumulative energy-conservation columns of ``new_row`` in place.
 
@@ -1121,6 +1298,21 @@ def _populate_energy_residual(current_hf: pd.DataFrame, new_row: dict) -> None:
     and the state side is the entropy-transported heat content change
 
         step_dE_state_heat_J   = ∫ Σ rho T dS over the call [J].
+
+    A giant-impact mantle re-melt contributes ``step_dE_impact_J``, the
+    heat the re-melt injects evaluated in the same ``rho T dS`` frame
+    over the entropy jump from the end-of-step to the re-melted profile, on the
+    pre-impact solver mesh (the impactor's own heat content arrives as
+    part of the new initial condition and is not booked). It is added to
+    BOTH cumulatives: to the state side because the jump falls between
+    solver calls, so no per-call state integral carries it, and to the
+    predicted side because the impact is an energy source. The residual
+    is therefore invariant across an impact for any booked value, which
+    means it cannot validate the injection's magnitude; the column
+    quantifies a defined convention rather than a residual-checked
+    quantity. The relative residual can spike on the impact row when the
+    injection nearly cancels the cumulative state heat in its
+    denominator; the absolute residual is the diagnostic there.
 
     The heating sources use the live-density (state-mass) Q variants so
     they share the ``rho(P,S)`` frame the state side integrates; the
@@ -1178,23 +1370,18 @@ def _populate_energy_residual(current_hf: pd.DataFrame, new_row: dict) -> None:
             new_row.setdefault(k, 0.0)
         return
 
-    # Predicted (boundary + source) increment from Aragog [J]. Sign is
-    # already baked into each step delta (positive = energy added to the
-    # mantle). The heating sources use the live-density (state-mass) Q
-    # variants so they share the same mass frame as the entropy-transported
-    # heat on the state side, which integrates rho(P,S). Surface and CMB
-    # fluxes are area-weighted and frame-independent. The compression term
-    # is informational and is deliberately excluded: the state side carries
-    # the full thermodynamic content via Σ rho T dS.
+    # Booked impact heat is symmetric on both sides, not checked for closure.
+    dE_impact_inc = float(new_row.get('step_dE_impact_J', 0.0))
+
     dE_inc_cons = (
         float(new_row.get('step_dE_F_int_J', 0.0))
         + float(new_row.get('step_dE_F_cmb_J', 0.0))
         + float(new_row.get('step_dE_Q_radio_J', 0.0))
         + float(new_row.get('step_dE_Q_tidal_J', 0.0))
+        + dE_impact_inc
     )
-    # State increment [J]: the entropy-transported heat content change over
-    # the call, Σ rho T dS by EOS quadrature (step_dE_state_heat_J).
-    dE_state_heat_inc = float(new_row.get('step_dE_state_heat_J', 0.0))
+    # State increment [J]: entropy-transported heat (Σ rho T dS) plus impact heat.
+    dE_state_heat_inc = float(new_row.get('step_dE_state_heat_J', 0.0)) + dE_impact_inc
     solver_inc = float(new_row.get('step_solver_residual_J', 0.0))
 
     n_prior = len(current_hf)
@@ -1240,6 +1427,17 @@ def _populate_energy_residual(current_hf: pd.DataFrame, new_row: dict) -> None:
     new_row['solver_residual_J'] = solver_resid_prev + solver_inc
 
 
+# Keys that modules write into hf_row and that are not helpfile columns;
+# ExtendHelpfile leaves them out of the CSV without a warning.
+_ALLOWED_NON_SCHEMA_KEYS = frozenset(
+    {
+        'core_state_initial',  # string: 'liquid'/'mixed'/'solid'
+        'M_int_target',  # mass target of the latest structure solve [kg]
+        'O_kg_user_ic',  # user oxygen budget [kg]; check_ic_oxygen_budget sets it to -1.0
+    }
+)
+
+
 def ExtendHelpfile(current_hf: pd.DataFrame, new_row: dict):
     """
     Extend helpfile with new row of variables
@@ -1257,6 +1455,7 @@ def ExtendHelpfile(current_hf: pd.DataFrame, new_row: dict):
     # columns stay at 0.0 too, signalling "diagnostic not available for
     # this run" to downstream plotting.
     _populate_energy_residual(current_hf, new_row)
+    _populate_core_residual(current_hf, new_row)
 
     # Validate keys. We guard in both directions:
     # - Missing keys (schema expects but new_row lacks) are a real bug (a
@@ -1272,20 +1471,6 @@ def ExtendHelpfile(current_hf: pd.DataFrame, new_row: dict):
     schema = set(GetHelpfileKeys())
 
     row_keys = {k for k in new_row.keys() if not k.startswith('_')}
-    # Known non-numeric / non-persistent keys that are written into hf_row
-    # but deliberately not tracked in the helpfile CSV schema.
-    _ALLOWED_NON_SCHEMA_KEYS = frozenset(
-        {
-            'core_state_initial',  # string: 'liquid'/'mixed'/'solid'
-            # IC consistency sentinel for the issue #677 oxygen-budget
-            # check. Set by calc_target_elemental_inventories, consumed
-            # and reset to -1.0 by check_ic_oxygen_budget on the first
-            # outgas call. Intentionally not persisted to the CSV
-            # because subsequent runs (or resumed runs) re-derive it
-            # from the config on the next IC pass.
-            'O_kg_user_ic',
-        }
-    )
     missing_keys = schema - row_keys
     unknown_keys = row_keys - schema - _ALLOWED_NON_SCHEMA_KEYS
     if missing_keys:
@@ -1341,7 +1526,9 @@ def WriteHelpfileToCSV(output_dir: str, current_hf: pd.DataFrame):
     fpath = os.path.join(output_dir, 'runtime_helpfile.csv')
     tmp_path = fpath + '.tmp'
     try:
-        current_hf.to_csv(tmp_path, index=False, sep='\t', float_format='%.10e')
+        # pandas writes each float as its shortest repr, which read_helpfile_table reads
+        # back exactly; NaN is a token, as an empty field would vanish in the split.
+        current_hf.to_csv(tmp_path, index=False, sep='\t', na_rep='nan')
         os.replace(tmp_path, fpath)
     except BaseException:
         # Best-effort temp cleanup; never let it mask the original error.
@@ -1361,6 +1548,100 @@ class HelpfileSchemaDriftError(Exception):
 def helpfile_path(output_dir: str) -> str:
     """Path to the helpfile of a run directory."""
     return os.path.join(output_dir, 'runtime_helpfile.csv')
+
+
+class HelpfileFormatError(ValueError):
+    """A helpfile that cannot be read as a table of one row per step."""
+
+
+def read_helpfile_table(path: str | os.PathLike, *, min_rows: int = 0) -> pd.DataFrame:
+    """Read a helpfile table with every float exactly as it was written.
+
+    A file whose header holds a tab, as the writer makes it, is split on tabs, so
+    an empty field reads as NaN in its own column; a file without tabs is split on
+    runs of whitespace. ``float_precision='round_trip'`` returns each float bit for
+    bit. The writer ends every line with a newline, so a file without one may have a
+    cut last row and is refused. A NUL byte or a lone carriage return anywhere in the
+    file is reported first; otherwise the error names the first defect by line.
+
+    Parameters
+    ----------
+    path : str or os.PathLike
+        Path to a ``runtime_helpfile.csv``.
+    min_rows : int
+        Fewest data rows the caller needs.
+
+    Returns
+    -------
+    pd.DataFrame
+        One row per written step.
+
+    Raises
+    ------
+    HelpfileFormatError
+        For a file with no header, a last line without its newline, a NUL byte or a
+        lone carriage return, fewer rows than ``min_rows``, a row whose field
+        count differs from the header, bytes that are not UTF-8, text pandas cannot
+        tokenise, a table pandas reads with other row or column counts than the
+        lines hold, or a column of text. In a space-separated file an empty field,
+        as some files hold for a NaN, would vanish and move the later values left,
+        so its row is refused. The underlying error is chained.
+    """
+    with open(path, 'rb') as f:
+        data = f.read()
+    sep, n_columns, n_rows = None, 0, 0
+    n_lines = data.count(b'\n') + (not data.endswith(b'\n'))
+    unix = data.replace(b'\r\n', b'\n')
+    bad = min((i for i in (unix.find(b'\x00'), unix.find(b'\r')) if i >= 0), default=-1)
+    if bad >= 0:
+        bad_line = unix.count(b'\n', 0, bad) + 1
+        raise HelpfileFormatError(
+            f'{path}, line {bad_line}: a NUL byte or a lone carriage return'
+        )
+    for line_number, raw in enumerate(data.split(b'\n'), start=1):
+        try:
+            line = raw.decode('utf-8')
+        except UnicodeDecodeError as err:
+            raise HelpfileFormatError(f'{path}, line {line_number}: not UTF-8 text') from err
+        # In a tab file a tab-only line is a row of empty fields, not a blank line.
+        if not (line.strip(' \r') if sep else line.strip()):
+            continue
+        if not n_columns:
+            sep = '\t' if '\t' in line else None
+            n_columns = len(line.split(sep))
+            continue
+        n_fields = len(line.split(sep))
+        if n_fields != n_columns:
+            raise HelpfileFormatError(
+                f'{path}, line {line_number}: {n_fields} fields against '
+                f'{n_columns} columns, so the values cannot be placed'
+            )
+        n_rows += 1
+    if not n_columns:
+        raise HelpfileFormatError(f'{path}, line {n_lines}: no header line')
+    if not data.endswith(b'\n'):
+        raise HelpfileFormatError(
+            f'{path}, line {n_lines}: the file does not end with a newline, so its last '
+            'line may be cut; remove an incomplete last line, and add a newline only to a '
+            'line you have checked is complete'
+        )
+    if n_rows < min_rows:
+        raise HelpfileFormatError(
+            f'{path}, line {n_lines}: {n_rows} data rows, {min_rows} needed'
+        )
+    try:
+        table = pd.read_csv(io.BytesIO(data), sep=sep or r'\s+', float_precision='round_trip')
+    except pd.errors.EmptyDataError as err:
+        raise HelpfileFormatError(f'{path}, line 1: no columns to parse') from err
+    except pd.errors.ParserError as err:
+        raise HelpfileFormatError(f'{path}: {err}') from err
+    text_columns = list(table.select_dtypes(exclude='number').columns) if n_rows else []
+    if table.shape != (n_rows, n_columns) or text_columns:
+        raise HelpfileFormatError(
+            f'{path}, lines 1 to {n_lines}: pandas read {table.shape[0]} rows of '
+            f'{table.shape[1]} columns against {n_rows} of {n_columns}, text in {text_columns[:3]}'
+        )
+    return table
 
 
 class HelpfileRow(dict):
@@ -1406,15 +1687,31 @@ def _describe_missing_columns(missing: list[str]) -> str:
     return shown
 
 
-# Derived diagnostic columns that nothing reads back to build state. A
-# helpfile written before one of them joined the schema still resumes: the
-# reader backfills these with zeros. Add a column here only if no module,
-# resume path or solver consumes it.
-_DIAGNOSTIC_KEYS = ('T_cmb_node',)
+# Diagnostic columns a resumed helpfile that predates them gets as zeros; add one only if no
+# module or resume path reads it back, except the core ledger's core_C_eff and
+# E_core_residual_J, which a helpfile from before the core module has no rows for.
+_DIAGNOSTIC_KEYS = (
+    'dEdt_orb',
+    'T_cmb_node',
+    'core_r_icb',
+    'core_C_eff',
+    'core_dynamo_margin',
+    'core_B_rms',
+    'core_regime',
+    'core_strat_depth',
+    'core_T_top',
+    'step_dE_impact_core_J',
+    'step_dE_impact_core_refit_J',
+    'step_dE_struct_core_J',
+    'step_dE_core_J',
+    'E_core_residual_J',
+    'E_core_residual_frac',
+)
 
 
 def GetHelpfileDiagnosticKeys():
     """
+
     Helpfile columns that are derived diagnostics, not simulation state.
 
     A helpfile that lacks one of these is still resumable, because no module
@@ -1426,6 +1723,23 @@ def GetHelpfileDiagnosticKeys():
         Column names, all of which are also in `GetHelpfileKeys()`.
     """
     return list(_DIAGNOSTIC_KEYS)
+
+
+def GetHelpfileTrappingKeys():
+    """
+    Helpfile columns written by solid-phase volatile trapping.
+
+    A run that never trapped holds zero in every one of them, which is also
+    what a run written before they existed has trapped. `ReadHelpfileFromCSV`
+    therefore reads them as zero, like `RESUMABLE_ZERO_FILL_KEYS`, and such a
+    run resumes.
+
+    Returns
+    -------
+    list of str
+        Column names, all of which are also in `GetHelpfileKeys()`.
+    """
+    return [k for k in GetHelpfileKeys() if k.startswith('trap_') or k.endswith('_kg_trapped')]
 
 
 def GetHelpfileCoreKeys():
@@ -1453,7 +1767,8 @@ _POSTPROCESSING_FIXED_KEYS = (
     'atm_kg_per_mol',
     'R_star',
     'T_star',
-    'separation',
+    'semimajorax',
+    'eccentricity',
 )
 
 
@@ -1486,15 +1801,14 @@ def ReadHelpfileFromCSV(output_dir: str, *, required_columns: list[str] | None =
     """
     Read helpfile from disk CSV file to DataFrame
 
-    A helpfile written before the output schema gained a column carries
-    neither that column nor any value for it. The entry points that turn a
-    stored run back into simulation state, resume and the two postprocessing
-    commands, all seed a working row from the last line of this table, so
-    the shortfall is caught here rather than in each of them. How much of
-    the schema a caller needs differs, which is what `required_columns` is
-    for. Readers that pull named columns straight out of the file, such as
-    the plotting and inference code, do not come through this function and
-    are not covered.
+    A run started under an earlier schema writes a helpfile without the columns
+    added since. Resume and the two postprocessing commands all seed a working
+    row from the last line of this table, and ``ExtendHelpfile`` rejects a row
+    missing any schema key, so the shortfall is handled here rather than in each
+    caller. How much of the schema a caller needs differs, which is what
+    ``required_columns`` sets. The inference readers and the scripts in ``tools/``
+    read the file through ``read_helpfile_table`` as well; the plot readers under
+    ``proteus.plot`` and three plotting tools read it with pandas directly.
 
     A shortfall in the core columns is reported rather than filled. The
     diagnostic columns of `GetHelpfileDiagnosticKeys()` are the exception:
@@ -1527,7 +1841,9 @@ def ReadHelpfileFromCSV(output_dir: str, *, required_columns: list[str] | None =
     Raises
     ------
     HelpfileSchemaDriftError
-        The file does not carry every required column.
+        A required column that carries physical state is absent from the file.
+    HelpfileFormatError
+        From ``read_helpfile_table``, for a file that cannot be read as a table.
     """
     if required_columns is None:
         required_columns = GetHelpfileCoreKeys()
@@ -1535,16 +1851,34 @@ def ReadHelpfileFromCSV(output_dir: str, *, required_columns: list[str] | None =
     fpath = helpfile_path(output_dir)
     if not os.path.exists(fpath):
         raise Exception("Cannot find helpfile at '%s'" % fpath)
-    hf_all = pd.read_csv(fpath, sep=r'\s+')
+
+    hf_all = read_helpfile_table(fpath)
 
     missing = sorted(set(required_columns) - set(hf_all.columns))
-    if missing:
+    zero_fill = RESUMABLE_ZERO_FILL_KEYS | set(GetHelpfileTrappingKeys())
+    fillable = [key for key in missing if key in zero_fill]
+    unfillable = sorted(set(missing) - set(fillable))
+
+    if unfillable:
         raise HelpfileSchemaDriftError(
             "Helpfile '%s' was written before %d column(s) of the current output "
-            'schema existed: %s. Run this configuration again from t=0, or read '
-            'this run with the PROTEUS version that wrote it.'
-            % (fpath, len(missing), _describe_missing_columns(missing))
+            'schema existed that carry physical state and cannot be reconstructed: %s. '
+            'Run this configuration again from t=0, or read this run with the '
+            'PROTEUS version that wrote it.'
+            % (fpath, len(unfillable), _describe_missing_columns(unfillable))
         )
+
+    if fillable:
+        log.warning(
+            'Helpfile predates %d column(s) in the current schema, and they are read '
+            'as zero for the rest of this run: %s. Zero is exact for a column that '
+            'resets every step; for one that accumulates, any history from before '
+            'this column existed is not recoverable.',
+            len(fillable),
+            ', '.join(sorted(fillable)),
+        )
+        zeros_fillable = pd.DataFrame(0.0, index=hf_all.index, columns=fillable)
+        hf_all = pd.concat([hf_all, zeros_fillable], axis=1)
 
     backfill = [k for k in GetHelpfileDiagnosticKeys() if k not in hf_all.columns]
     if backfill:
@@ -1613,6 +1947,7 @@ def _snapshot_time(path: str) -> float | None:
     lets a resume tell whether a file is the row's own state or one a later
     step left under the same name.
 
+
     Parameters
     ----------
     path : str
@@ -1621,8 +1956,8 @@ def _snapshot_time(path: str) -> float | None:
     Returns
     -------
     float or None
-        The recorded time, or None when the file records none, which is what
-        a directory written before the field existed looks like.
+        The recorded time [yr], None when the file records no time variable,
+        or NaN when the recorded time is malformed or non-finite.
     """
     # Imported outside the try for the same reason as the readability probe:
     # a missing netCDF4 must raise rather than read as "no file records a
@@ -1632,12 +1967,27 @@ def _snapshot_time(path: str) -> float | None:
     try:
         if path.endswith('.json'):
             with open(path) as fh:
-                recorded = json.load(fh).get('time_years')
-            return None if recorded is None else float(recorded)
+                data = json.load(fh)
+            if not isinstance(data, dict):
+                return float('nan')
+            if 'time_years' not in data or data['time_years'] is None:
+                return None
+            try:
+                val = float(data['time_years'])
+                return val if math.isfinite(val) else float('nan')
+            except (ValueError, TypeError):
+                return float('nan')
         with Dataset(path) as ds:
             if 'time' not in ds.variables:
                 return None
-            return float(ds['time'][0])
+            try:
+                var = ds.variables['time']
+                if var.size == 0:
+                    return float('nan')
+                val = float(var[0] if var.ndim > 0 else var[()])
+                return val if math.isfinite(val) else float('nan')
+            except (ValueError, TypeError, IndexError):
+                return float('nan')
     except Exception:
         # Unreadable is not this function's call to make: the readability
         # probe reports that, and reporting it here as well would turn a
@@ -1651,9 +2001,11 @@ def _snapshot_belongs_to(path: str, time: float) -> bool:
     True when the file records that time, and also when it records none: a
     file without the field cannot be told apart from its neighbours, so it is
     accepted on its name, which is the behaviour every directory written
-    before the field existed relies on. True as well once the simulation time
-    is large enough that the helpfile's own precision cannot separate two rows
-    inside one filename, which is a few Gyr in.
+    before the field existed relies on. The margin is four times the 5e-11
+    relative shift an 11-digit helpfile (one from a run that wrote fewer digits)
+    puts on a time, so such a file still resumes. Above about 2.5 Gyr it exceeds
+    the one-year name bucket, so the check accepts on the file name alone for every
+    file: the code cannot tell an 11-digit helpfile from an exact one.
 
     Parameters
     ----------
@@ -1670,16 +2022,11 @@ def _snapshot_belongs_to(path: str, time: float) -> bool:
     recorded = _snapshot_time(path)
     if recorded is None:
         return True
+    if not math.isfinite(recorded):
+        return False
 
-    # The row's time has been through the helpfile, which serialises at
-    # '%.10e' and so holds eleven significant digits: a round trip moves it by
-    # up to 4.94e-11 of its own magnitude. The margin has to clear that, and a
-    # factor of four does, while staying as tight as the stored data allows.
-    resolution = 5.0e-11 * max(1.0, abs(time))
-    tolerance = 4.0 * resolution
-
-    # Past a few Gyr the helpfile precision itself exceeds the one-year name
-    # bucket, so no margin separates two rows in it: accept on name instead.
+    tolerance = 4.0 * 5.0e-11 * max(1.0, abs(time))
+    # Past this the margin exceeds the one-year name bucket and separates no two rows.
     if tolerance >= 0.5:
         return True
 
@@ -1751,7 +2098,9 @@ def select_resumable_snapshot(
     truncated to that row. Once a resumable row is found, the quarantined
     files are deleted: the helpfile is truncated below their rows, so they
     can never back a resume and would otherwise be swept into the final
-    data archive.
+    data archive. The Zalmoxis structure copies of the dropped rows
+    (``<time>_zalmoxis.dat``) are deleted with them, except a name the kept row
+    shares.
 
     Each half is probed with the candidate names for its writer. The interior
     name depends on the module: Aragog uses the sub-year form ``'884p700_int.nc'``
@@ -1771,6 +2120,7 @@ def select_resumable_snapshot(
     that is present it is what the row is matched against: a file left by a
     different step is not accepted as this row's half, and the walk continues
     past it. A file that carries no recorded time is accepted on its name.
+
 
     Parameters
     ----------
@@ -1857,6 +2207,11 @@ def select_resumable_snapshot(
             if os.path.exists(dst):
                 os.remove(dst)
         log.info('Deleted %d quarantined snapshot file(s)', len(quarantined))
+    kept = format_subyear_time(times[keep_idx])
+    for name in {format_subyear_time(t) for t in times[keep_idx + 1 :]} - {kept}:
+        # A dropped row's structure copy (Zalmoxis + Aragog) goes with its snapshot,
+        # unless it shares the kept row's name (rows under 1e-3 yr apart).
+        safe_rm(os.path.join(data_dir, name + '_zalmoxis.dat'))
     if not dropped:
         return hf_all, []
     return hf_all.iloc[: keep_idx + 1].reset_index(drop=True), sorted(dropped)

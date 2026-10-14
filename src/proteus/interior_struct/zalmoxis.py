@@ -1,10 +1,11 @@
 # Zalmoxis interior module
 from __future__ import annotations
 
+import copy
 import functools
 import hashlib
+import importlib.util
 import logging
-import math
 import os
 import re
 import shutil
@@ -13,23 +14,48 @@ from collections import OrderedDict
 from pathlib import Path
 
 import numpy as np
-import platformdirs
 from scipy.interpolate import interp1d
 from zalmoxis.mixing import _PALEOS_UNIFIED_NAMES
 from zalmoxis.solver import main
 
 from proteus.config import Config
-from proteus.interior_struct.common import solvus_radius
+from proteus.data import (
+    EOS_CHABRIER_2021,
+    EOS_PALEOS_H2O,
+    EOS_PALEOS_IRON,
+    EOS_PALEOS_MGSIO3,
+    EOS_PALEOS_MGSIO3_UNIFIED,
+    EOS_RTPRESS_100TPA,
+    EOS_SEAGER_2007,
+    EOS_WOLF_BOWER_2018,
+    dataset_dir,
+)
+from proteus.interior_struct.common import solvus_radius, stored_core_target
 from proteus.utils.constants import (
     FEI2021_LIQUIDUS_P_CALIB_PA,
     PALEOS_EOS_PREFIXES,
+    PALEOS_REGISTRY_KEYS,
+    TDEP_EOS_PREFIXES,
+    VOLATILE_EOS_MAP,
     M_earth,
     R_earth,
     element_list,
+    noble_gases,
+    vol_element_list,
 )
-from proteus.utils.data import get_zalmoxis_eos_dir, get_zalmoxis_melting_curves
-
-FWL_DATA_DIR = Path(os.environ.get('FWL_DATA', platformdirs.user_data_dir('fwl_data')))
+from proteus.utils.data import RELOCATE_HINT, GetFWLData, get_zalmoxis_melting_curves
+from proteus.utils.helper import (
+    MissingReferenceData,
+    _strip_fraction_tokens,
+    energetics_eos_key,
+    eos_components,
+    format_subyear_time,
+    generates_paleos_tables,
+    is_mgsio3,
+    paleos_companion_keys,
+    snapshot_path_for_time,
+    twophase_registry_key,
+)
 
 # Set up logging
 log = logging.getLogger('fwl.' + __name__)
@@ -99,6 +125,9 @@ _SUPERLIQ_CACHE: _LRUDict = _LRUDict()
 # Traceback-free copies of anchor failures that depend only on the key
 # (InitialConditionError and wrapped numerical errors), keyed like _SUPERLIQ_CACHE.
 _SUPERLIQ_FAILED: _LRUDict = _LRUDict()
+# PALEOS-API registry entries once resolved, by key: a resolve runs git, and the
+# EOS check runs before every structure solve on a fresh registry.
+_PALEOS_API_RESOLVED: dict[str, dict] = {}
 
 # CMB temperature [K] of the most recently solved super-liquidus adiabat. A
 # structure solve driven by an external temperature source discards this anchor
@@ -199,14 +228,6 @@ def _structure_cache_key(config):
         config.interior_struct.core_frac,
         config.interior_struct.zalmoxis.mantle_mass_fraction,
     )
-
-
-# Mapping from PROTEUS volatile species to Zalmoxis EOS component names.
-# Only species with Zalmoxis EOS tables are included.
-_VOLATILE_EOS_MAP = {
-    'H2O': 'PALEOS:H2O',
-    'H2': 'Chabrier:H',
-}
 
 
 def get_zalmoxis_output_filepath(outdir: str):
@@ -365,6 +386,86 @@ def validate_zalmoxis_output_schema(
             )
 
 
+def mesh_radius_tolerance(R_core, R_int):
+    """Tolerance [m] on the radial bounds of a mesh between ``R_core`` and ``R_int`` [m]:
+    that of Aragog's ``EntropySolver.reset()``, ``max(1 m, 1e-9 * (R_int - R_core))``."""
+    return np.maximum(1.0, 1.0e-9 * (R_int - R_core))
+
+
+def zalmoxis_mesh_gaps(output_path: str, hf_row: dict) -> tuple[float, float, float] | None:
+    """Compare a mesh file's radial bounds with a helpfile row.
+
+    The tolerance is that of Aragog's ``EntropySolver.reset()``,
+    ``max(1 m, 1e-9 * (R_int - R_core))``, applied to both bounds in both
+    directions; an 11-digit helpfile rounds the radii by at most 5e-5 m below
+    1e7 m and 5e-4 m up to 1e8 m.
+
+    Parameters
+    ----------
+    output_path : str
+        Path to ``zalmoxis_output.dat``, its ``.prev`` backup or a saved copy.
+    hf_row : dict
+        Helpfile row holding ``R_core`` and ``R_int`` [m].
+
+    Returns
+    -------
+    tuple of float or None
+        ``(file r[0] - R_core, file r[-1] - R_int, tolerance)`` in metres, or
+        None unless the file ends with a newline and holds at least two finite
+        5-column rows with strictly increasing radii.
+    """
+    try:
+        text = Path(output_path).read_text()
+        data = np.loadtxt(text.splitlines(), ndmin=2) if text.strip() else None
+    except (OSError, ValueError):
+        return None
+    if data is None:
+        return None
+    r = data[:, 0]
+    if (
+        not text.endswith('\n')
+        or data.shape[1] != 5
+        or r.size < 2
+        or not np.isfinite(data).all()
+        or (np.diff(r) <= 0).any()
+    ):
+        return None
+    atol = float(mesh_radius_tolerance(hf_row['R_core'], hf_row['R_int']))
+    return r[0] - hf_row['R_core'], r[-1] - hf_row['R_int'], atol
+
+
+def copy_zalmoxis_output(src: str, dst: str) -> None:
+    """Copy through a temporary file, so ``dst`` is never partial if the process stops."""
+    tmp = dst + '.tmp'
+    try:
+        shutil.copy2(src, tmp)
+        os.replace(tmp, dst)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
+
+
+def save_zalmoxis_output_snapshot(outdir: str, time: float) -> None:
+    """Copy ``zalmoxis_output.dat`` to ``data/<time>_zalmoxis.dat``.
+
+    The copy is written only next to the row's ``<time>_int.nc``, so archiving
+    and pruning treat it as part of that snapshot.
+
+    Parameters
+    ----------
+    outdir : str
+        Run output directory.
+    time : float
+        Simulated time of the helpfile row being written [yr].
+    """
+    src = get_zalmoxis_output_filepath(outdir)
+    data = os.path.join(outdir, 'data')
+    if os.path.isfile(src) and os.path.isfile(snapshot_path_for_time(data, time, '_int.nc')):
+        copy_zalmoxis_output(
+            src, os.path.join(data, format_subyear_time(time) + '_zalmoxis.dat')
+        )
+
+
 def build_volatile_profile(hf_row: dict, mantle_eos: str):
     """Build a VolatileProfile from helpfile volatile masses.
 
@@ -423,7 +524,7 @@ def build_volatile_profile(hf_row: dict, mantle_eos: str):
     w_solid = {}
     has_nonzero = False
 
-    for species, eos_name in _VOLATILE_EOS_MAP.items():
+    for species, eos_name in VOLATILE_EOS_MAP.items():
         kg_liq = float(hf_row.get(f'{species}_kg_liquid', 0.0))
         kg_sol = float(hf_row.get(f'{species}_kg_solid', 0.0))
 
@@ -681,7 +782,7 @@ def _anchor_failure_deferred(config: Config) -> bool:
     """Whether a failed P-T anchor in a structure solve can fall back.
 
     ``compute_initial_entropy`` re-solves the anchor at the converged P_cmb only
-    for a PALEOS mantle under spider or aragog energetics; everywhere else no
+    for a generated PALEOS table set under spider or aragog energetics; everywhere else no
     later step does, so the failure must propagate.
 
     Parameters
@@ -694,8 +795,9 @@ def _anchor_failure_deferred(config: Config) -> bool:
     bool
         True when the initial entropy re-solves the anchor.
     """
-    mantle_eos = str(getattr(config.interior_struct.zalmoxis, 'mantle_eos', ''))
-    return mantle_eos.startswith(PALEOS_EOS_PREFIXES) and (
+    from proteus.utils.helper import generates_paleos_tables
+
+    return generates_paleos_tables(config.interior_struct) and (
         config.interior_energetics.module in ('spider', 'aragog')
     )
 
@@ -766,7 +868,7 @@ def solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
     except InitialConditionError as exc:
         _SUPERLIQ_FAILED[key] = InitialConditionError(str(exc))
         raise
-    except ANCHOR_PASSTHROUGH_ERRORS:
+    except (ZalmoxisMissingEOSFilesError, *ANCHOR_PASSTHROUGH_ERRORS):
         raise
     except ANCHOR_NUMERICAL_ERRORS as exc:
         msg = (
@@ -873,8 +975,8 @@ def _solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
         return cached
 
     mat_dicts = load_zalmoxis_material_dictionaries()
-    solid_eos, liquid_eos = resolve_2phase_mgsio3_paths(mantle_eos, mat_dicts)
-    eos_file = mat_dicts.get(mantle_eos, {}).get('eos_file', '') or solid_eos or ''
+    solid_eos, liquid_eos = resolve_2phase_mgsio3_paths(mantle_eos, mat_dicts, required=True)
+    eos_file = energetics_entry(mantle_eos, mat_dicts)[1].get('eos_file') or solid_eos or ''
     melt_funcs = load_zalmoxis_solidus_liquidus_functions(mantle_eos, config)
     if melt_funcs is not None:
         sol_func, liq_func = melt_funcs
@@ -1213,6 +1315,49 @@ def _solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
     return out
 
 
+def _structure_target_masses(config: Config, hf_row: dict) -> tuple[float, float, float]:
+    """Planet mass, volatile mass outside the structure, and its kept part [kg].
+
+    The volatile mass (O included) is the full inventory with ``dry_mantle``, else only the
+    atmosphere, since the wet-mantle EOS holds the dissolved mass. The kept part holds the
+    inventories that are inputs of the outgassing call; one that the call derives (O from a
+    fixed fO2, rock vapour) is mantle mass. Element columns absent from the row count as 0.
+    """
+    from proteus.interior_struct.common import volatile_mass_change
+    from proteus.outgas.wrapper import outgassing_derives_o_kg_total
+
+    # mass_tot is the rock anchor; the ledger adds what impacts and escape moved.
+    total_planet_mass = config.planet.mass_tot * M_earth + volatile_mass_change(hf_row)
+    kept = set(vol_element_list + noble_gases)
+    if outgassing_derives_o_kg_total(config):
+        kept.discard('O')
+    dry_mantle = config.interior_struct.zalmoxis.dry_mantle
+    M_volatiles = M_kept = 0.0
+    for e in element_list:
+        # literal suffixes: the output reference reads the column names from this file
+        if dry_mantle:
+            mass = float(hf_row.get(e + '_kg_total', 0.0))
+        else:
+            mass = float(hf_row.get(e + '_kg_atm', 0.0))
+        M_volatiles += mass
+        if e in kept:
+            M_kept += mass
+    return total_planet_mass, M_volatiles, M_kept
+
+
+def set_core_target_at_init_end(config: Config, hf_row: dict) -> None:
+    """Set ``M_core_target`` from the row when the init stage ends.
+
+    The kept inventories of that row are the ones the evolution starts with. A structure
+    solve of the init stage can see others: none without ``equilibrate_init``, and moving
+    ones with a wet mantle or a volatile budget given as a pressure or a concentration.
+    """
+    struct = config.interior_struct
+    if struct.module == 'zalmoxis':
+        total_planet_mass, _, M_kept = _structure_target_masses(config, hf_row)
+        hf_row['M_core_target'] = struct.core_frac * (total_planet_mass - M_kept)
+
+
 def load_zalmoxis_configuration(
     config: Config,
     hf_row: dict,
@@ -1250,8 +1395,7 @@ def load_zalmoxis_configuration(
             config.interior_struct.core_frac,
         )
 
-    # Setup target planet mass (input parameter) as the total mass of the planet (dry mass + volatiles) [kg]
-    total_planet_mass = config.planet.mass_tot * M_earth
+    total_planet_mass, M_volatiles, M_kept = _structure_target_masses(config, hf_row)
 
     log.debug(
         'Total target planet mass (dry mass + volatiles): %s kg '
@@ -1262,40 +1406,11 @@ def load_zalmoxis_configuration(
         config.interior_struct.zalmoxis.ice_layer_eos or 'none',
     )
 
-    # Calculate the volatile mass excluded from the structure target.
-    # Whole-planet oxygen accounting (issue #677): atmospheric+dissolved O
-    # is summed alongside H/C/N/S so the dry-mass target passed to
-    # Zalmoxis correctly reserves space for the O that CALLIOPE places in
-    # atmospheric H2O, CO2, SO2, etc. Mantle FeO-bound O remains in M_int
-    # implicitly via the PALEOS density tables; we do not double-count it.
-    # With dry_mantle the full inventory is excluded (the mantle EOS
-    # represents bare silicate). When the mantle EOS carries dissolved
-    # volatiles (dry_mantle = false), only the atmospheric inventory may
-    # be excluded: the dissolved mass is already part of the wet-mantle
-    # EOS, and subtracting it again would remove it twice. Note this
-    # keeps ALL dissolved species inside the target, while the EOS blend
-    # only represents those in _VOLATILE_EOS_MAP (H2O in practice); the
-    # dissolved mass of unmapped species (CO2, CH4, N2, S2) lands in the
-    # silicate remainder fraction and is packed at silicate density.
-    # Mass stays exact, compressibility is misrepresented; the radius
-    # error scales as (dissolved mass fraction) x (density contrast) and
-    # is negligible at typical inventories. Escaped mass is already
-    # debited from the *_kg_* inventories and needs no separate term.
-    # Defensive .get(): some pre-IC paths invoke Zalmoxis before
-    # calc_target_elemental_inventories has populated all element columns.
-    dry_mantle = config.interior_struct.zalmoxis.dry_mantle
-    M_volatiles = 0.0
-    for e in element_list:
-        if dry_mantle:
-            M_volatiles += float(hf_row.get(e + '_kg_total', 0.0))
-        else:
-            M_volatiles += float(hf_row.get(e + '_kg_atm', 0.0))
-
     log.debug(f'Volatile mass: {M_volatiles} kg')
     log.debug(
         'Mass budget: total=%.6e kg (%.4f M_earth), volatiles=%.6e kg (%.2f%%)',
         total_planet_mass,
-        config.planet.mass_tot,
+        total_planet_mass / M_earth,
         M_volatiles,
         100.0 * M_volatiles / total_planet_mass if total_planet_mass > 0 else 0,
     )
@@ -1304,6 +1419,41 @@ def load_zalmoxis_configuration(
     planet_mass = total_planet_mass - M_volatiles
 
     log.debug(f'Target planet mass (dry mass): {planet_mass} kg ')
+
+    # At Time = 0 the core takes core_frac of the planet without its kept volatiles; the
+    # mantle is the rest of the structure target.
+    core_frac = config.interior_struct.core_frac
+    core_base, stored = total_planet_mass - M_kept, 0.0
+    # At Time > 0 the core keeps the stored mass: no inventory that leaves the planet or
+    # the mantle moves mass across the core-mantle boundary. An impact adds to the row.
+    if float(hf_row.get('Time') or 0.0) > 0.0:
+        stored = stored_core_target(hf_row)
+        if stored <= 0.0:
+            core_base = planet_mass
+            log.warning(
+                'The row holds no M_core_target: the core mass is set from the structure '
+                'target of the row of this solve, %.6e kg, and kept from there.',
+                core_frac * core_base,
+            )
+    core_mass = stored if stored > 0.0 else core_frac * core_base
+    if not 0.0 < core_mass < planet_mass:
+        raise ValueError(
+            f'The structure target leaves no mantle: {planet_mass:.4e} kg for the interior, '
+            f'{core_mass:.4e} kg of it core, after {M_volatiles:.4e} kg of volatiles are '
+            f'taken from a planet of {total_planet_mass:.4e} kg. Lower outgas.fO2_shift_IW '
+            'or the volatile budgets.'
+        )
+    # core_frac times a ratio: the solver gets core_frac itself when the ratio is 1
+    if stored > 0.0:
+        core_mass_fraction = stored / planet_mass
+    else:
+        core_mass_fraction = core_frac * (core_base / planet_mass)
+    zc = config.interior_struct.zalmoxis
+    if zc.ice_layer_eos is not None and core_mass_fraction + zc.mantle_mass_fraction >= 1:
+        raise ValueError(
+            f'The structure target leaves no ice layer: the core is {core_mass_fraction:.4f} of '
+            f'it and zalmoxis.mantle_mass_fraction is {zc.mantle_mass_fraction:.4f}.'
+        )
 
     # Build per-layer EOS config dict from PROTEUS config fields
     layer_eos_config = {
@@ -1319,7 +1469,6 @@ def load_zalmoxis_configuration(
     mzf = config.interior_struct.zalmoxis.mushy_zone_factor
     mushy_zone_factors = _build_mushy_zone_factors(layer_eos_config, mzf)
 
-    zc = config.interior_struct.zalmoxis
     log.debug(
         'Zalmoxis config: num_layers=%d, outer_solver=%s, tol_outer=%.1e, '
         'tol_inner=%.1e, use_jax=%s, use_anderson=%s',
@@ -1354,9 +1503,17 @@ def load_zalmoxis_configuration(
         check_zalmoxis_eos_files(layer_eos_config, load_zalmoxis_material_dictionaries())
         raise
 
+    log.debug(
+        'Core target: %.9e kg, %.9f of the structure target (Time = %s yr)',
+        core_mass,
+        core_mass_fraction,
+        hf_row.get('Time'),
+    )
+
     return {
         'planet_mass': planet_mass,
-        'core_mass_fraction': config.interior_struct.core_frac,
+        'core_mass_fraction': core_mass_fraction,
+        'core_mass_target': core_mass,
         'core_frac_mode': config.interior_struct.core_frac_mode,
         'mantle_mass_fraction': config.interior_struct.zalmoxis.mantle_mass_fraction,
         # For the structure solve, 'accretion' and 'isentropic' both reduce
@@ -1396,9 +1553,8 @@ def load_zalmoxis_configuration(
         'tolerance_inner': config.interior_struct.zalmoxis.solver_tol_inner,
         'max_iterations_outer': config.interior_struct.zalmoxis.solver_max_iter_outer,
         'max_iterations_inner': config.interior_struct.zalmoxis.solver_max_iter_inner,
-        # JAX+diffrax structure path and Anderson Picard acceleration,
-        # both opt-in and defaulting off. See `Zalmoxis.use_jax` /
-        # `Zalmoxis.use_anderson` in proteus.config._struct.
+        # JAX diffrax structure path and Anderson Picard acceleration both
+        # default on. See Zalmoxis.use_jax and use_anderson in config._struct.
         'use_jax': config.interior_struct.zalmoxis.use_jax,
         'use_anderson': config.interior_struct.zalmoxis.use_anderson,
         # outer mass-radius solver dispatch ('newton' default |
@@ -1585,10 +1741,10 @@ def load_zalmoxis_material_dictionaries():
     """Build an EOS registry dict with file paths pointing to FWL_DATA.
 
     Returns the same dict format as Zalmoxis ``EOS_REGISTRY``, but with
-    every ``eos_file`` path resolved under ``FWL_DATA/zalmoxis_eos/``
-    instead of ``ZALMOXIS_ROOT/data/``.  This ensures that Zalmoxis,
-    when called from PROTEUS, reads EOS data from the central FWL_DATA
-    location managed by ``download_zalmoxis_eos()``.
+    every ``eos_file`` path resolved to its fwl-io dataset directory in
+    ``FWL_DATA`` instead of ``ZALMOXIS_ROOT/data/``. The data root is the one
+    ``download_zalmoxis_eos()`` fetches into, so Zalmoxis, when called from
+    PROTEUS, reads the files that were fetched.
 
     Returns
     -------
@@ -1596,19 +1752,15 @@ def load_zalmoxis_material_dictionaries():
         Flat dict keyed by EOS identifier string (e.g.
         ``"Seager2007:iron"``, ``"PALEOS:MgSiO3"``, ``"Chabrier:H"``).
     """
-    eos_base = get_zalmoxis_eos_dir()
-
-    # Seager2007 paths (also in the EOS_material_properties location)
-    seager_dir = eos_base / 'EOS_Seager2007'
-    if not seager_dir.exists():
-        seager_dir = FWL_DATA_DIR / 'EOS_material_properties' / 'EOS_Seager2007'
+    root = GetFWLData()
+    seager_dir = dataset_dir(EOS_SEAGER_2007, data_root=root)
 
     _seager_iron = {'eos_file': str(seager_dir / 'eos_seager07_iron.txt')}
     _seager_silicate = {'eos_file': str(seager_dir / 'eos_seager07_silicate.txt')}
     _seager_water = {'eos_file': str(seager_dir / 'eos_seager07_water.txt')}
 
     # Wolf & Bower 2018
-    wb_dir = eos_base / 'EOS_WolfBower2018_1TPa'
+    wb_dir = dataset_dir(EOS_WOLF_BOWER_2018, data_root=root)
     _wb_melted = {
         'eos_file': str(wb_dir / 'density_melt.dat'),
         'adiabat_grad_file': str(wb_dir / 'adiabat_temp_grad_melt.dat'),
@@ -1616,15 +1768,16 @@ def load_zalmoxis_material_dictionaries():
     _wb_solid = {'eos_file': str(wb_dir / 'density_solid.dat')}
 
     # RTPress 100 TPa
-    rt_dir = eos_base / 'EOS_RTPress_melt_100TPa'
+    rt_dir = dataset_dir(EOS_RTPRESS_100TPA, data_root=root)
     _rt_melted = {
         'eos_file': str(rt_dir / 'density_melt.dat'),
         'adiabat_grad_file': str(rt_dir / 'adiabat_temp_grad_melt.dat'),
     }
 
-    # PALEOS 2-phase MgSiO3 (separate solid/liquid, Zenodo 19680050).
-    # 150 pts/decade (default) and 600 pts/decade (highres) variants.
-    paleos2ph_dir = eos_base / 'EOS_PALEOS_MgSiO3'
+    # PALEOS 2-phase MgSiO3 (separate solid/liquid, Zenodo 19680050): the
+    # 150 pts/decade (default) and 600 pts/decade (highres) pairs share one dataset.
+    paleos2ph_dir = dataset_dir(EOS_PALEOS_MGSIO3, data_root=root)
+    paleos2ph_hr_dir = paleos2ph_dir
     _paleos2ph_melted = {
         'eos_file': str(paleos2ph_dir / 'paleos_mgsio3_tables_pt_proteus_liquid.dat'),
         'format': 'paleos',
@@ -1634,33 +1787,41 @@ def load_zalmoxis_material_dictionaries():
         'format': 'paleos',
     }
     _paleos2ph_melted_highres = {
-        'eos_file': str(paleos2ph_dir / 'paleos_mgsio3_tables_pt_proteus_liquid_highres.dat'),
+        'eos_file': str(
+            paleos2ph_hr_dir / 'paleos_mgsio3_tables_pt_proteus_liquid_highres.dat'
+        ),
         'format': 'paleos',
     }
     _paleos2ph_solid_highres = {
-        'eos_file': str(paleos2ph_dir / 'paleos_mgsio3_tables_pt_proteus_solid_highres.dat'),
+        'eos_file': str(paleos2ph_hr_dir / 'paleos_mgsio3_tables_pt_proteus_solid_highres.dat'),
         'format': 'paleos',
     }
 
-    # PALEOS unified tables
+    # PALEOS unified tables, one dataset per material
     _paleos_iron = {
-        'eos_file': str(eos_base / 'EOS_PALEOS_iron' / 'paleos_iron_eos_table_pt.dat'),
+        'eos_file': str(
+            dataset_dir(EOS_PALEOS_IRON, data_root=root) / 'paleos_iron_eos_table_pt.dat'
+        ),
         'format': 'paleos_unified',
     }
     _paleos_mgsio3 = {
         'eos_file': str(
-            eos_base / 'EOS_PALEOS_MgSiO3_unified' / 'paleos_mgsio3_eos_table_pt.dat'
+            dataset_dir(EOS_PALEOS_MGSIO3_UNIFIED, data_root=root)
+            / 'paleos_mgsio3_eos_table_pt.dat'
         ),
         'format': 'paleos_unified',
     }
     _paleos_h2o = {
-        'eos_file': str(eos_base / 'EOS_PALEOS_H2O' / 'paleos_water_eos_table_pt.dat'),
+        'eos_file': str(
+            dataset_dir(EOS_PALEOS_H2O, data_root=root) / 'paleos_water_eos_table_pt.dat'
+        ),
         'format': 'paleos_unified',
     }
 
     # Chabrier H/He
+    chabrier_dir = dataset_dir(EOS_CHABRIER_2021, data_root=root)
     _chabrier_h = {
-        'eos_file': str(eos_base / 'EOS_Chabrier2021_HHe' / 'chabrier2021_H.dat'),
+        'eos_file': str(chabrier_dir / 'EOS_Chabrier2021_HHe' / 'chabrier2021_H.dat'),
         'format': 'paleos_unified',
     }
 
@@ -1753,27 +1914,6 @@ def load_zalmoxis_material_dictionaries():
     }
 
 
-def _strip_fraction_tokens(component: str) -> str:
-    """Strip trailing mass-fraction tokens from an EOS component string.
-
-    Extended mantle EOS strings carry per-component fractions, e.g.
-    ``'PALEOS:MgSiO3:0.9800'``; the registry key is the prefix without
-    the numeric token. Only finite numbers count as fraction tokens:
-    ``'nan'`` and ``'inf'`` parse as floats but are never written by
-    the EOS extension, so they stay part of the identifier.
-    """
-    tokens = component.split(':')
-    while tokens:
-        try:
-            value = float(tokens[-1])
-        except ValueError:
-            break
-        if not math.isfinite(value):
-            break
-        tokens.pop()
-    return ':'.join(tokens)
-
-
 #: EOS names whose density blend applies a configured mushy_zone_factor.
 #: Imported from Zalmoxis so both sides read the same list.
 _UNIFIED_PALEOS_MATERIALS = _PALEOS_UNIFIED_NAMES
@@ -1816,20 +1956,75 @@ def _build_mushy_zone_factors(layer_eos_config: dict, mzf: float) -> dict:
     }
 
 
-class ZalmoxisMissingEOSFilesError(RuntimeError):
+class ZalmoxisMissingEOSFilesError(RuntimeError, MissingReferenceData):
     """A layer's configured EOS identifier names a table file absent on disk."""
 
 
-def check_zalmoxis_eos_files(layer_eos_config: dict, mat_dicts: dict) -> None:
+def _paleos_installed() -> bool:
+    """Whether the paleos package, which builds the PALEOS-API tables, is importable."""
+    return importlib.util.find_spec('paleos') is not None
+
+
+_PALEOS_API_FIX = (
+    'They are generated at start from the paleos package '
+    '(https://github.com/maraattia/PALEOS), not downloaded: install it in this '
+    'environment or choose a PALEOS or PALEOS-2phase EOS.'
+)
+
+
+def _table_paths(entry: dict) -> list[str]:
+    """Table paths of a resolved registry entry and of its phase sub-entries."""
+    subs = [entry, *(v for v in entry.values() if isinstance(v, dict))]
+    return [s['eos_file'] for s in subs if s.get('eos_file')]
+
+
+def resolve_paleos_api(key: str, entry: dict) -> None:
+    """Materialise a PALEOS-API registry entry in place, once per process.
+
+    A resolve runs git to read the paleos version, and the EOS check runs before
+    every structure solve on a fresh registry, so resolved entries are kept by key.
+    A kept entry whose tables were removed is resolved again, which rebuilds them.
+
+    Parameters
+    ----------
+    key : str
+        Registry key of the entry, e.g. ``'PALEOS-API-2phase:MgSiO3'``.
+    entry : dict
+        Its registry entry, updated in place with the table paths.
+
+    Raises
+    ------
+    ZalmoxisMissingEOSFilesError
+        When the paleos package is not installed, since the resolver's worker pool
+        would then restart forever instead of failing.
+    """
+    cached = _PALEOS_API_RESOLVED.pop(key, None)
+    if cached and all(os.path.isfile(p) for p in _table_paths(cached)):
+        _PALEOS_API_RESOLVED[key] = cached
+        entry.update(copy.deepcopy(cached))
+        return
+    if not _paleos_installed():
+        raise ZalmoxisMissingEOSFilesError(
+            f'PALEOS-API tables not built:\n  {key} (the paleos package is not installed)\n'
+            f'{_PALEOS_API_FIX}'
+        )
+    from zalmoxis.eos.paleos_api_cache import resolve_registry_entry
+
+    resolve_registry_entry(entry)
+    _PALEOS_API_RESOLVED[key] = copy.deepcopy(entry)
+
+
+def check_zalmoxis_eos_files(
+    layer_eos_config: dict, mat_dicts: dict, paleos_companions: bool = False
+) -> None:
     """Fail fast when a selected EOS table file is missing on disk.
 
     Walks the registry entries selected by ``layer_eos_config`` and
     collects every referenced table path that does not exist, then
     raises one actionable error. Without this check the solver emits
     one read error per shell and ends in a non-convergence failure that
-    hides the real cause. Registry entries without an ``eos_file``
-    (PALEOS-API live tabulation) generate their tables on demand and
-    are skipped.
+    hides the real cause. PALEOS-API entries (live tabulation) are
+    materialised here, so a failed build stops the run before any solve.
 
     Parameters
     ----------
@@ -1837,6 +2032,8 @@ def check_zalmoxis_eos_files(layer_eos_config: dict, mat_dicts: dict) -> None:
         Per-layer EOS identifier strings (``'core'``, ``'mantle'``, ...).
     mat_dicts : dict
         EOS registry from :func:`load_zalmoxis_material_dictionaries`.
+    paleos_companions : bool
+        Also require the :func:`paleos_companion_keys` of the mantle.
 
     Raises
     ------
@@ -1844,67 +2041,188 @@ def check_zalmoxis_eos_files(layer_eos_config: dict, mat_dicts: dict) -> None:
         If any selected EOS table file is missing, naming every missing
         path and the command that downloads them.
     """
+    from zalmoxis.eos.dispatch import _is_paleos_api
+
+    selected = [
+        (role, key)
+        for role, identifier in layer_eos_config.items()
+        for key in eos_components(identifier)
+    ]
+    if paleos_companions:
+        companions = paleos_companion_keys(layer_eos_config.get('mantle', ''))
+        selected += [('mantle', key) for key in companions]
     missing: set[str] = set()
-    for layer_role, identifier in layer_eos_config.items():
-        for component in str(identifier).split('+'):
-            entry = mat_dicts.get(_strip_fraction_tokens(component))
-            if entry is None:
-                # Unknown identifiers fail later with a registry error.
+    unbuilt: set[str] = set()
+    for layer_role, key in selected:
+        entry = mat_dicts.get(key)
+        if entry is None:
+            # Unknown identifiers fail later with a registry error.
+            continue
+        api = key in _PALEOS_API_RESOLVED or _is_paleos_api(entry)
+        if api:
+            try:
+                resolve_paleos_api(key, entry)
+            except ZalmoxisMissingEOSFilesError:
+                unbuilt.add(f'{key} (the paleos package is not installed)')
                 continue
-            # Flat entries carry 'eos_file' directly; nested entries map
-            # layer roles (core / melted_mantle / ...) to flat entries. A
-            # nested 'core' sub-entry is skipped only when the entry has
-            # other role-specific sub-entries to use instead; a single-key
-            # 'core' entry is read regardless of which role points at it.
-            if 'eos_file' in entry:
-                subentries = [entry]
-            else:
-                has_other_roles = any(role != 'core' for role in entry)
-                subentries = [
-                    sub
-                    for role, sub in entry.items()
-                    if role != 'core' or layer_role == 'core' or not has_other_roles
-                ]
-            for sub in subentries:
-                if not isinstance(sub, dict):
-                    continue
-                for field in ('eos_file', 'adiabat_grad_file'):
-                    path = sub.get(field)
-                    if path and not os.path.isfile(path):
-                        missing.add(path)
+            except Exception as exc:
+                unbuilt.add(f'{key} ({type(exc).__name__}: {exc})')
+                continue
+        # Nested entries map layer roles to flat entries; their 'core' sub-entry
+        # counts only for the core role or when it is the only sub-entry.
+        if 'eos_file' in entry:
+            subentries = [entry]
+        else:
+            has_other_roles = any(role != 'core' for role in entry)
+            subentries = [
+                sub
+                for role, sub in entry.items()
+                if role != 'core' or layer_role == 'core' or not has_other_roles
+            ]
+        for sub in subentries:
+            if not isinstance(sub, dict):
+                continue
+            for field in ('eos_file', 'adiabat_grad_file'):
+                path = sub.get(field)
+                if path and not os.path.isfile(path) and api:
+                    # A generated table removed since it was built is built again.
+                    _PALEOS_API_RESOLVED.pop(key, None)
+                    unbuilt.add(f'{key} ({path} not found)')
+                elif path and not os.path.isfile(path):
+                    missing.add(path)
+    parts = []
     if missing:
-        listing = '\n  '.join(sorted(missing))
-        raise ZalmoxisMissingEOSFilesError(
-            f'Interior EOS table file(s) not found:\n  {listing}\n'
+        parts.append(
+            f'Interior EOS table file(s) not found:\n  {"\n  ".join(sorted(missing))}\n'
             'Download them with '
             '`proteus get interiordata --config-path <config.toml>`, '
-            'or run `proteus start` once without --offline.'
+            f'or run `proteus start` once without --offline. {RELOCATE_HINT}'
         )
+    if unbuilt:
+        parts.append(
+            f'PALEOS-API tables not built:\n  {"\n  ".join(sorted(unbuilt))}\n{_PALEOS_API_FIX}'
+        )
+    if parts:
+        raise ZalmoxisMissingEOSFilesError('\n'.join(parts))
 
 
-def twophase_registry_key(mantle_eos: str) -> str:
-    """Return the 2-phase MgSiO3 registry key matching a mantle EOS name.
+def energetics_entry(mantle_eos: str, mat_dicts: dict) -> tuple[str | None, dict]:
+    """Energetics key of a mantle EOS and its registry entry (empty when absent)."""
+    key = energetics_eos_key(mantle_eos)
+    return key, mat_dicts.get(key or '', {})
+
+
+def require_paleos_tables(config: Config, outdir: str) -> None:
+    """Stop the run before any solve when a table of its EOS set is missing.
+
+    Requires every table file of the core, mantle and ice-layer EOS and,
+    for a mantle with a PALEOS component, the MgSiO3 2-phase pair; a resumed
+    SPIDER run that keeps its P-S tables is held only to its layer tables. The
+    liquidus_super initial adiabat requires the pair for any mantle. With
+    ``dry_mantle = false`` the dissolved-volatile tables are also required. A
+    mantle with a non-MgSiO3 component gets one WARNING that names the tables
+    its energetics and its liquidus_super initial adiabat use.
+
+    Parameters
+    ----------
+    config : Config
+        Configuration object with struct.zalmoxis settings.
+    outdir : str
+        The run output directory.
+
+    Raises
+    ------
+    ZalmoxisMissingEOSFilesError
+        Naming every missing file and the command that downloads it.
+    """
+    zc = config.interior_struct.zalmoxis
+    layers = {'core': zc.core_eos, 'mantle': zc.mantle_eos}
+    if zc.ice_layer_eos is not None:
+        layers['ice_layer'] = zc.ice_layer_eos
+    if not zc.dry_mantle:
+        # Dissolved volatiles join the mantle EOS during the run.
+        layers['volatiles'] = '+'.join(VOLATILE_EOS_MAP.values())
+    mat_dicts = load_zalmoxis_material_dictionaries()
+    # Runs before the accreted mass is restored: no mass check and no report here.
+    kept = config.params.resume and _resumed_ps_tables(outdir, None)
+    liquidus_super = config.planet.temperature_mode == 'liquidus_super'
+    if liquidus_super:
+        layers['anchor'] = twophase_registry_key(zc.mantle_eos)
+    # Aragog re-solves the initial condition on the pair when the mesh changes.
+    check_zalmoxis_eos_files(
+        layers,
+        mat_dicts,
+        paleos_companions=not kept or config.interior_energetics.module == 'aragog',
+    )
+    components = eos_components(zc.mantle_eos)
+    mixture = len(set(components)) > 1
+    if all(is_mgsio3(c) for c in components):
+        return
+    uses = []
+    if config.interior_energetics.module in ('spider', 'aragog'):
+        if not generates_paleos_tables(config.interior_struct):
+            uses.append(
+                'the energetics use the eos_dir P-S tables (by default Wolf and Bower 2018) '
+                'and the melting_dir curves'
+            )
+        else:
+            uses.append(
+                'the energetics and melting curves are PALEOS MgSiO3 '
+                f'({energetics_eos_key(zc.mantle_eos)}, solidus = '
+                f'{zc.mushy_zone_factor:.2f} x PALEOS liquidus)'
+            )
+    if liquidus_super:
+        uses.append('the liquidus_super initial adiabat is solved on the MgSiO3 2-phase tables')
+    if uses:
+        head = (
+            'the non-MgSiO3 components enter only the structure density; '
+            if mixture
+            else 'the structure uses its density, while '
+        )
+        log.warning('mantle_eos=%s: %s%s', zc.mantle_eos, head, '; '.join(uses))
+
+
+def resolve_2phase_mgsio3_paths(mantle_eos: str, mat_dicts: dict, required: bool = False):
+    """Return the 2-phase MgSiO3 table paths, stopping on a missing one when required.
 
     Parameters
     ----------
     mantle_eos : str
-        Configured mantle EOS name.
+        Configured mantle EOS.
+    mat_dicts : dict
+        Zalmoxis material dictionaries.
+    required : bool
+        Raise instead of returning None for a missing table. The initial-condition
+        solves that read the pair always set it, the surface-entropy lookup sets it
+        for a generated PALEOS table set, and the P-S export leaves it off.
 
     Returns
     -------
-    str
-        ``'PALEOS-API-2phase:MgSiO3'`` for the PALEOS-API family,
-        ``'PALEOS-2phase:MgSiO3-highres'`` for the high-resolution shipped
-        tables, and ``'PALEOS-2phase:MgSiO3'`` otherwise.
+    tuple[str | None, str | None]
+        See :func:`_twophase_mgsio3_paths`.
+
+    Raises
+    ------
+    ZalmoxisMissingEOSFilesError
+        If ``required`` and a table of the pair is not available.
     """
-    if mantle_eos.startswith(('PALEOS-API:', 'PALEOS-API-2phase:')):
-        return 'PALEOS-API-2phase:MgSiO3'
-    if mantle_eos == 'PALEOS-2phase:MgSiO3-highres':
-        return 'PALEOS-2phase:MgSiO3-highres'
-    return 'PALEOS-2phase:MgSiO3'
+    paths = _twophase_mgsio3_paths(mantle_eos, mat_dicts)
+    if required and None in paths:
+        missing = [p for p, ok in zip(('solid', 'liquid'), paths) if ok is None]
+        key = twophase_registry_key(mantle_eos)
+        fix = (
+            _PALEOS_API_FIX
+            if key.startswith('PALEOS-API')
+            else 'Download them with `proteus get interiordata --config-path <config.toml>`. '
+            + RELOCATE_HINT
+        )
+        raise ZalmoxisMissingEOSFilesError(
+            f'PALEOS 2-phase MgSiO3 tables {key} not available: {", ".join(missing)}. {fix}'
+        )
+    return paths
 
 
-def resolve_2phase_mgsio3_paths(mantle_eos: str, mat_dicts: dict):
+def _twophase_mgsio3_paths(mantle_eos: str, mat_dicts: dict):
     """Return (solid_eos_path, liquid_eos_path) for the 2-phase MgSiO3 tables.
 
     Selects the API key (``PALEOS-API-2phase:MgSiO3``) when ``mantle_eos``
@@ -1940,15 +2258,12 @@ def resolve_2phase_mgsio3_paths(mantle_eos: str, mat_dicts: dict):
         return None, None
     if use_api:
         try:
-            from zalmoxis.eos.paleos_api_cache import resolve_registry_entry
-
-            resolve_registry_entry(twophase)
-        except (ImportError, ModuleNotFoundError) as e:
+            resolve_paleos_api(twophase_key, twophase)
+        except (ImportError, ZalmoxisMissingEOSFilesError) as e:
             log.warning(
-                'resolve_2phase_mgsio3_paths: PALEOS-API resolver unavailable '
-                '(%s); cannot materialise %s tables.',
-                e,
+                'resolve_2phase_mgsio3_paths: cannot materialise %s tables (%s).',
                 twophase_key,
+                e,
             )
             return None, None
     solid_eos = twophase.get('solid_mantle', {}).get('eos_file', '')
@@ -1965,7 +2280,9 @@ def load_zalmoxis_solidus_liquidus_functions(mantle_eos: str, config: Config):
     1. Temperature-dependent density in the mushy zone (WolfBower2018, RTPress).
     2. phi(r) blending in VolatileProfile (any EOS with dissolved volatiles).
 
-    For WolfBower2018/RTPress100TPa, loads SPIDER-format P-T files from FWL_DATA.
+    The curves follow the energetics key of the mantle EOS
+    (:func:`proteus.utils.helper.energetics_eos_key`), the same key as the
+    energetics. For WolfBower2018/RTPress100TPa, loads SPIDER-format P-T files from FWL_DATA.
     For PALEOS unified and PALEOS-2phase, the liquidus comes from the analytic
     Belonoshko+2005 / Fei+2021 curve (Zalmoxis ``'PALEOS-liquidus'``) which is
     the basis Zalmoxis uses for MgSiO3 phase separation, and the solidus is
@@ -1986,20 +2303,14 @@ def load_zalmoxis_solidus_liquidus_functions(mantle_eos: str, config: Config):
     tuple or None
         (solidus_func, liquidus_func) callable P [Pa] -> T [K], or None.
     """
-    _TDEP_PREFIXES = ('WolfBower2018', 'RTPress100TPa')
-    if mantle_eos.startswith(_TDEP_PREFIXES):
+    key = energetics_eos_key(mantle_eos) or ''
+    if key.startswith(TDEP_EOS_PREFIXES):
         return get_zalmoxis_melting_curves(config)
 
-    # PALEOS unified and PALEOS-2phase: both use the same analytic Belonoshko+2005 /
-    # Fei+2021 melting curve (`PALEOS-liquidus`) as the basis for MgSiO3 phase
-    # separation. The unified path uses it for in-table density interpolation;
-    # the 2-phase path uses it inside `_compute_paleos_dtdp` to weight nabla_ad
-    # across the solid/liquid blend (mixing.py:_compute_paleos_dtdp). The solidus
-    # is derived as `liquidus * mushy_zone_factor` so the mushy band lines up with
-    # the unified PALEOS density interpolation. Without these curves, the
-    # 2-phase nabla_ad call fails and Zalmoxis structure solve diverges; the
-    # unified path falls back to phi=0.5 everywhere in VolatileProfile.
-    if mantle_eos.startswith(PALEOS_EOS_PREFIXES):
+    # PALEOS unified and 2-phase share the analytic PALEOS-liquidus (Belonoshko+2005 /
+    # Fei+2021), with solidus = mushy_zone_factor x liquidus. The 2-phase nabla_ad needs
+    # both curves, and without them the unified path falls back to phi = 0.5.
+    if key.startswith(PALEOS_EOS_PREFIXES):
         try:
             from zalmoxis.melting_curves import (
                 derive_solidus_from_liquidus,
@@ -2191,14 +2502,27 @@ def read_ps_cache_pointer(outdir: str) -> str | None:
 _PS_RESUME_REPORTED: set[str] = set()
 
 
-def _resumed_ps_tables(outdir: str, current_key) -> dict | None:
-    """Return the P-S tables a resumed run already uses, whatever their key.
+def _ps_p_max(config: Config) -> float:
+    """Upper pressure of the P-S lookup grid for the current planet mass [Pa].
+
+    It must cover the planet's P_cmb; the 10 TPa cap covers very massive rocky
+    planets (see interior_energetics/aragog.py for the matching cap).
+    """
+    return min(1.0e13, 150e9 * float(config.planet.mass_tot or 1.0) + 200e9)
+
+
+def _resumed_ps_tables(
+    outdir: str, current_key, p_max: float | None = None, dropped: list | None = None
+) -> dict | None:
+    """Return the P-S tables a resumed run already uses, unless the planet mass changed.
 
     Looks in the per-run ``data/spider_eos`` directory, then in the shared
     cache directory recorded by :func:`_write_ps_cache_pointer`, for a marker
     with both phase-boundary files. A resumed run continues on these tables
-    even when the current key differs, so it does not switch tables part way
-    through its evolution. The first time a directory is kept in a process,
+    even when its settings or the table generator changed, so it does not
+    switch tables part way through its evolution. Tables built for another
+    ``P_max``, that is another planet mass (an impact, or a resume before
+    one), are not kept. The first time a directory is kept in a process,
     ``current_key()`` is called and a differing key is logged at WARNING with
     both keys, naming the generator identity when only that differs or the
     marker predates it. When ``current_key()`` raises, the tables are still
@@ -2208,9 +2532,14 @@ def _resumed_ps_tables(outdir: str, current_key) -> dict | None:
     ----------
     outdir : str
         The run output directory.
-    current_key : callable
+    current_key : callable or None
         No-argument callable returning the key the current code would build
         (from :func:`_ps_cache_key`); it raises when that key cannot be built.
+        None skips the report.
+    p_max : float, optional
+        ``P_max`` of the current planet mass [Pa]; None keeps tables of any mass.
+    dropped : list, optional
+        Receives each directory not kept because of its ``P_max``.
 
     Returns
     -------
@@ -2234,7 +2563,20 @@ def _resumed_ps_tables(outdir: str, current_key) -> dict | None:
                 stored = f.read().strip()
         except OSError:
             continue
-        if eos_dir not in _PS_RESUME_REPORTED:
+        built = re.search(r'P_max=([^_]+)', stored)
+        # 1e-6 covers the 7-digit key and the mass rounding of an 11-digit helpfile.
+        if p_max is not None and built and abs(float(built.group(1)) / p_max - 1) > 1e-6:
+            log.info(
+                'Planet mass changed since the P-S tables in %s were built (P_max %s Pa, '
+                'now %.6e Pa); they are not kept',
+                eos_dir,
+                built.group(1),
+                p_max,
+            )
+            if dropped is not None:
+                dropped.append(eos_dir)
+            continue
+        if current_key is not None and eos_dir not in _PS_RESUME_REPORTED:
             _PS_RESUME_REPORTED.add(eos_dir)
             _report_kept_ps_tables(eos_dir, stored, current_key)
         return {
@@ -2428,7 +2770,7 @@ class _NoPSTables(ValueError):
         self.level = level
 
 
-def _ps_table_inputs(config: Config, eos_entry: dict, mat_dicts: dict):
+def _ps_table_inputs(config: Config, mantle_eos: str, eos_entry: dict, mat_dicts: dict):
     """Resolve the PALEOS files and the cache key of the P-S tables.
 
     Materialises PALEOS-API entries, which can build their tables on a cold
@@ -2438,8 +2780,10 @@ def _ps_table_inputs(config: Config, eos_entry: dict, mat_dicts: dict):
     ----------
     config : Config
         Configuration object with struct.zalmoxis settings.
+    mantle_eos : str
+        Energetics key of the mantle EOS (:func:`energetics_eos_key`).
     eos_entry : dict
-        Registry entry of the mantle EOS.
+        Registry entry of that key.
     mat_dicts : dict
         Zalmoxis material dictionaries.
 
@@ -2453,21 +2797,18 @@ def _ps_table_inputs(config: Config, eos_entry: dict, mat_dicts: dict):
     _NoPSTables
         When the mantle EOS is not PALEOS or its files are missing.
     """
-    mantle_eos = config.interior_struct.zalmoxis.mantle_eos
     # PALEOS-API live tabulation: materialise cached .dat paths in place so the
     # downstream format / eos_file lookups see concrete paths. No-op for
     # non-PALEOS-API entries. First call on a cold cache triggers generation.
     from zalmoxis.eos.dispatch import _is_paleos_api
 
     if _is_paleos_api(eos_entry):
-        from zalmoxis.eos.paleos_api_cache import resolve_registry_entry
-
         log.info(
             'PALEOS-API live tabulation: resolving cached tables for %s '
             '(cold-cache build may take up to ~1 h at 600 pts/decade)',
             mantle_eos,
         )
-        resolve_registry_entry(eos_entry)
+        resolve_paleos_api(mantle_eos, eos_entry)
 
     # Detect format: paleos_unified vs PALEOS-2phase (nested dict).
     is_unified = eos_entry.get('format') == 'paleos_unified'
@@ -2492,17 +2833,8 @@ def _ps_table_inputs(config: Config, eos_entry: dict, mat_dicts: dict):
         solid_eos = eos_entry['solid_mantle'].get('eos_file', '')
         liquid_eos = eos_entry['melted_mantle'].get('eos_file', '')
     else:
-        # Unified mantle: also look for sibling 2-phase tables to harden
-        # the property surfaces (avoids interpolation across the melting
-        # curve discontinuity in the unified table). Use the API-aware
-        # helper so PALEOS-API unified runs pull API 2-phase tables
-        # rather than silently pulling shipped Zenodo ones.
-        # Net effect for PALEOS:MgSiO3: the structure solve uses the unified
-        # table, but the per-phase property/density surfaces are taken from
-        # these two-phase tables when present. If they are absent the code
-        # below falls back to the unified table alone (entropy near the
-        # melting curve is then less reliable). The solidus stays synthetic
-        # (mushy_zone_factor * liquidus) in both cases.
+        # Unified mantle: the property surfaces come from the 2-phase pair of the
+        # same family (API or shipped), which generate_spider_tables requires.
         solid_eos, liquid_eos = resolve_2phase_mgsio3_paths(mantle_eos, mat_dicts)
 
     solid_eos = solid_eos if solid_eos and os.path.isfile(solid_eos) else None
@@ -2526,14 +2858,7 @@ def _ps_table_inputs(config: Config, eos_entry: dict, mat_dicts: dict):
             f'PALEOS-2phase entry {mantle_eos} is missing its solid or liquid file'
         )
 
-    # Determine pressure range from planet mass (higher mass needs wider range)
-    mass_tot = config.planet.mass_tot or 1.0
-    # P_max for the SPIDER P-S lookup grid. Must cover the actual P_cmb
-    # of the planet; the 10 TPa cap covers very massive rocky planets
-    # (mass_tot well above 2) without hitting the table edge. See
-    # interior_energetics/aragog.py for the matching cap and the
-    # comment on EOS / melting-curve calibration ranges.
-    P_max = min(1.0e13, 150e9 * mass_tot + 200e9)
+    P_max = _ps_p_max(config)
 
     # Table resolution from config
     nP = config.interior_struct.zalmoxis.lookup_nP
@@ -2556,16 +2881,18 @@ def _ps_table_inputs(config: Config, eos_entry: dict, mat_dicts: dict):
     return eos_file, solid_eos, liquid_eos, is_twophase, P_max, cache_key
 
 
-def _ps_resume_key(config: Config, eos_entry: dict | None, mat_dicts: dict) -> str:
+def _ps_resume_key(
+    config: Config, key: str | None, eos_entry: dict | None, mat_dicts: dict
+) -> str:
     """Current P-S cache key for the resume warning, without building PALEOS-API tables."""
     from zalmoxis.eos.dispatch import _is_paleos_api
 
-    if eos_entry is None:
+    if not eos_entry:
         mantle_eos = config.interior_struct.zalmoxis.mantle_eos
         raise _NoPSTables(f'mantle EOS {mantle_eos} is not in the material dictionary')
     if _is_paleos_api(eos_entry):
         raise ValueError('a PALEOS-API mantle EOS is not resolved on resume')
-    return _ps_table_inputs(config, eos_entry, mat_dicts)[-1]
+    return _ps_table_inputs(config, key, eos_entry, mat_dicts)[-1]
 
 
 def generate_spider_tables(config: Config, outdir: str):
@@ -2581,8 +2908,7 @@ def generate_spider_tables(config: Config, outdir: str):
     1. ``paleos_unified`` (e.g. ``PALEOS:MgSiO3``): the structural backbone is
        the single unified P-T table covering both phases plus mushy zone, while
        the per-phase property surfaces are built from the sibling two-phase
-       solid + liquid tables when those are present (see the unified branch
-       below), so the densities stay resolved across the melting-curve
+       solid + liquid tables, so the densities stay resolved across the melting-curve
        discontinuity. The solidus is derived from ``mushy_zone_factor *
        liquidus`` (default 0.8, the constant Stixrude 2014 solidus/liquidus
        ratio applied to the PALEOS liquidus); the liquidus is the analytic
@@ -2596,6 +2922,7 @@ def generate_spider_tables(config: Config, outdir: str):
 
     For non-PALEOS EOS types (WolfBower2018, RTPress100TPa), returns None
     and the caller is expected to fall back on pre-existing SPIDER tables.
+    A PALEOS mantle with a missing table raises instead.
 
     Parameters
     ----------
@@ -2612,6 +2939,11 @@ def generate_spider_tables(config: Config, outdir: str):
     dict or None
         Keys ``'eos_dir'``, ``'solidus_path'``, ``'liquidus_path'`` with
         absolute paths. Returns None if the mantle EOS is not PALEOS.
+
+    Raises
+    ------
+    ZalmoxisMissingEOSFilesError
+        When a table of a PALEOS mantle or its MgSiO3 2-phase pair is missing.
     """
     from zalmoxis.eos_export import generate_spider_eos_tables, generate_spider_phase_boundaries
     from zalmoxis.melting_curves import (
@@ -2623,24 +2955,30 @@ def generate_spider_tables(config: Config, outdir: str):
 
     # Use FWL_DATA paths (not ZALMOXIS_ROOT) for EOS file lookup
     mat_dicts = load_zalmoxis_material_dictionaries()
-    eos_entry = mat_dicts.get(mantle_eos)
+    key, eos_entry = energetics_entry(mantle_eos, mat_dicts)
 
     # A resumed run stays on the tables it started with; the key only feeds the warning.
     if config.params.resume:
+        dropped = []
         resumed = _resumed_ps_tables(
-            outdir, lambda: _ps_resume_key(config, eos_entry, mat_dicts)
+            outdir,
+            lambda: _ps_resume_key(config, key, eos_entry, mat_dicts),
+            _ps_p_max(config),
+            dropped,
         )
         if resumed is not None:
             return resumed
 
-    if eos_entry is None:
+    if not eos_entry or key not in PALEOS_REGISTRY_KEYS:
         log.info(
-            'Mantle EOS %s not found in material dictionary; using pre-existing SPIDER tables.',
+            'Mantle EOS %s has no PALEOS table set; using pre-existing SPIDER tables.',
             mantle_eos,
         )
         return None
+    if paleos_companion_keys(mantle_eos):
+        check_zalmoxis_eos_files({'mantle': mantle_eos}, mat_dicts, paleos_companions=True)
     try:
-        inputs = _ps_table_inputs(config, eos_entry, mat_dicts)
+        inputs = _ps_table_inputs(config, key, eos_entry, mat_dicts)
     except _NoPSTables as exc:
         log.log(exc.level, 'No PALEOS P-S tables: %s; using pre-existing SPIDER tables.', exc)
         return None
@@ -2649,7 +2987,8 @@ def generate_spider_tables(config: Config, outdir: str):
         log.info('Using PALEOS-2phase tables for entropy-IC table generation')
     nP = config.interior_struct.zalmoxis.lookup_nP
     nS = config.interior_struct.zalmoxis.lookup_nS
-    if config.params.resume:
+    # Tables dropped for a mass change were reported by _resumed_ps_tables.
+    if config.params.resume and not dropped:
         log.warning(
             'Resumed run has no kept P-S entropy tables in %s or at its shared-cache '
             'pointer; it continues on the tables of the current key %s, built now if absent',
@@ -2799,6 +3138,20 @@ def generate_spider_tables(config: Config, outdir: str):
     }
 
 
+def dissolved_h2_mass(hf_row: dict) -> float:
+    """Mass of H2 dissolved in the melt [kg].
+
+    The species total less the atmospheric and solid reservoirs. The solid
+    reservoir holds any H2 trapped in the crystallising mantle, which the
+    species total includes but the melt does not.
+    """
+    return (
+        float(hf_row.get('H2_kg_total', 0.0))
+        - float(hf_row.get('H2_kg_atm', 0.0))
+        - float(hf_row.get('H2_kg_solid', 0.0))
+    )
+
+
 def compute_structure_mass_desync(radii, density, mass_enclosed) -> float:
     """Relative divergence between the density-profile mass integral and the
     structure ODE accumulator total.
@@ -2882,7 +3235,7 @@ def zalmoxis_solver(
     temperature_mode_override : str or None, optional
         Local override for ``config.planet.temperature_mode``. Lets callers
         force a different structure-solve mode without mutating the shared
-        Config object (see proteus rules §"Config mutability"). When None,
+        Config object (see AGENTS.md, "Physics and coupling contract"). When None,
         the Config value is used. Currently used by
         ``determine_interior_radius_with_zalmoxis`` to force ``adiabatic``
         for SPIDER coupling with a T-dependent mantle EOS.
@@ -2973,27 +3326,14 @@ def zalmoxis_solver(
     if config_params.get('use_jax') and 'wall_timeout' not in config_params:
         config_params['wall_timeout'] = 3600.0
 
-    # JAX structure path gate: the JAX wrapper's P-indexed adiabat
-    # tabulation collapses for P-ignoring callables (see
-    # tools/benchmarks/bench_coupled_tempfunc.py).
-    # The fix is to pass ``temperature_arrays=(r_arr, T_arr)`` instead,
-    # which routes the RHS to the r-indexed branch. We have arrays from
-    # ``update_structure_from_interior`` but NOT from PROTEUS init or
-    # equilibration (Zalmoxis constructs its own internal linear/adiabat
-    # guess for those, and that guess also ignores P). For calls with
-    # neither arrays nor a caller-provided callable, keep the defensive
-    # downgrade to the numpy path; the one-time init/equilibration cost
-    # (~70 s each, ~2-4 calls) is negligible against a 3-4 h full run.
+    # Disable JAX for calls without temperature data across all outer solvers;
+    # internal temperature mode converges differently. Keep Anderson as configured.
     if temperature_function is None and temperature_arrays is None:
-        if config_params.get('use_jax') or config_params.get('use_anderson'):
+        if config_params.get('use_jax'):
             log.debug(
-                'Zalmoxis call has no temperature_function or '
-                'temperature_arrays: disabling use_jax and use_anderson '
-                'for this call (the internal T-dispatch path collapses '
-                'for P-ignoring callables).'
+                'Disabling use_jax for call without temperature profile; keeping use_anderson.'
             )
             config_params['use_jax'] = False
-            config_params['use_anderson'] = False
 
     # Run structure solve: use miscibility wrapper when enabled
     mat_dicts = load_zalmoxis_material_dictionaries()
@@ -3058,9 +3398,7 @@ def zalmoxis_solver(
 
         # Build H2 mass targets from current volatile inventories
         h2_mass_targets = {}
-        H2_kg_total = float(hf_row.get('H2_kg_total', 0.0))
-        H2_kg_atm = float(hf_row.get('H2_kg_atm', 0.0))
-        H2_kg_dissolved = H2_kg_total - H2_kg_atm
+        H2_kg_dissolved = dissolved_h2_mass(hf_row)
         if H2_kg_dissolved > 0:
             h2_mass_targets['Chabrier:H'] = H2_kg_dissolved
 
@@ -3419,9 +3757,9 @@ def zalmoxis_solver(
         hf_row['struct_mass_desync_frac'],
     )
 
-    # Cache density for next call's Picard seeding. Used by both numpy
-    # and JAX paths when use_anderson=False (Anderson + warm-start
-    # oscillates, see the warm-start gate above).
+    # Cache density for next call's Picard seeding. Applied on the numpy path
+    # regardless of use_anderson, and withheld on the JAX-arrays path where
+    # warm-starts drive Anderson into oscillation.
     _density_cache['density'] = density.copy()
     _density_cache['radii'] = np.asarray(radii).copy()
     _density_cache['key'] = _structure_cache_key(config)
@@ -3472,7 +3810,7 @@ def zalmoxis_solver(
     if _effective_temp_mode == 'accretion':
         from zalmoxis.energetics import initial_thermal_state
 
-        cmf = config.interior_struct.core_frac
+        cmf = config_params['core_mass_fraction']
         mantle_eos = config.interior_struct.zalmoxis.mantle_eos
 
         # Build PALEOS-derived nabla_ad and C_p when PALEOS EOS is configured.
@@ -3614,15 +3952,10 @@ def zalmoxis_solver(
         hf_row['T_surf'] = temperature[-1]
     hf_row['P_center'] = model_results.get('p_center')
     hf_row['P_cmb'] = float(pressure[cmb_index])
-    # Expose the dry mass target Zalmoxis converged toward, so the
-    # wrapper can enforce a mass-anchor contract
-    # |M_int / M_int_target - 1| < _MASS_ANCHOR_TOL post-acceptance.
-    # Zalmoxis' internal solver_tol_outer (default 3e-3) is a numerical
-    # tolerance, not a coupling contract: it leaves room for ~0.3 % drift
-    # between hf_row['M_int'] and the conserved planet mass. The wrapper
-    # check tightens this to 1e-3 to satisfy the <0.1 % conservation
-    # target for the 1-10 M_Earth coupling.
+    # The mass target of this solve. The energetics wrapper treats a structure with
+    # |M_int / M_int_target - 1| above _ZALMOXIS_MASS_ANCHOR_TOL as not converged.
     hf_row['M_int_target'] = float(config_params.get('planet_mass', 0.0))
+    hf_row['M_core_target'] = float(config_params.get('core_mass_target', 0.0))
 
     # Self-consistent core density from Zalmoxis structure
     if cmb_radius > 0:

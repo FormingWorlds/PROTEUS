@@ -1144,6 +1144,62 @@ def test_run_escape_zephyrus_zeroes_elemental_rates_when_unfract_raises():
     assert 1e3 < hf_row['esc_rate_total'] < 1e7
 
 
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_a_thin_atmosphere_does_not_erase_the_dissolved_inventory():
+    """A below-threshold atmosphere leaves the whole-planet budgets alone.
+
+    Physical scenario: a wet planet whose atmosphere has almost all dissolved
+    back into the magma ocean. The escape reservoir is the atmosphere, which is
+    what sizes the loss, but what the function returns is written straight into
+    ``<e>_kg_total`` by its only caller (``run_escape``). Returning the
+    atmospheric masses when the atmosphere is too thin to lose anything would
+    therefore overwrite the whole-planet totals with them and delete the
+    dissolved inventory, which escape never touched.
+
+    Discrimination: the returned budgets are compared against the totals, and
+    the totals are eleven orders of magnitude above the atmospheric masses, so
+    a returned reservoir dict cannot pass on a rounding edge. The same call
+    with ``reservoir='bulk'`` cannot discriminate at all, because there the two
+    dicts are the same by construction, which is why this uses ``'outgas'``.
+    """
+    from proteus.escape.wrapper import calc_new_elements
+
+    # Dissolved-dominated: 1e21 kg of H in the planet, 1e5 kg of it in the air.
+    hf_row = {
+        'esc_rate_total': 1e4,  # kg s-1
+        'H_kg_total': 1.0e21,
+        'C_kg_total': 1.0e19,
+        'N_kg_total': 1.0e18,
+        'S_kg_total': 1.0e17,
+        'O_kg_total': 1.0e20,
+        'H_kg_atm': 1.0e5,
+        'C_kg_atm': 1.0e4,
+        'N_kg_atm': 1.0e3,
+        'S_kg_atm': 1.0e2,
+        'O_kg_atm': 1.0e4,
+    }
+    totals_before = {e: v for e, v in hf_row.items() if e.endswith('_kg_total')}
+
+    # The atmosphere sums to ~1.1e5 kg, far below the threshold.
+    tgt = calc_new_elements(hf_row, dt=500.0, reservoir='outgas', min_thresh=1.0e10)
+
+    for element in ('H', 'C', 'N', 'S', 'O'):
+        assert tgt[element] == pytest.approx(totals_before[f'{element}_kg_total'], rel=1e-12), (
+            f'{element} came back as its atmospheric mass rather than its '
+            'whole-planet total, so the caller would write the thin atmosphere '
+            'over the dissolved inventory and desiccate the planet on paper'
+        )
+        # Discrimination: the atmospheric value is nowhere near the total.
+        assert tgt[element] > 1.0e3 * hf_row[f'{element}_kg_atm']
+
+    # An element the run does not track comes back as zero rather than raising.
+    assert tgt['Kr'] == pytest.approx(0.0)
+
+    # The row itself is not mutated by the sizing call.
+    assert hf_row['H_kg_total'] == pytest.approx(1.0e21, rel=1e-12)
+
+
 # =======================================================================================
 # SECTION: limit_escape_step(), per-step cap on the mass escape may remove
 # =======================================================================================
@@ -2091,3 +2147,244 @@ def test_module_default_cap_matches_the_schema_default():
     # copies to something outside the documented range still fails here.
     assert ESCAPE_STEP_MAX_FRAC == pytest.approx(0.25, rel=1e-12)
     assert 0.0 < ESCAPE_STEP_MAX_FRAC <= 1.0
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize('frozen', [True, False], ids=['frozen_mantle', 'molten_mantle'])
+def test_an_element_escaping_below_the_threshold_on_a_frozen_mantle_keeps_its_columns(frozen):
+    """On a frozen mantle an element whose total escapes below the outgassing
+    threshold keeps that total, so it still equals its atmosphere plus melt plus
+    solid after the atmosphere is rescaled.
+
+    Physical scenario: N escaping from the atmosphere above a crystallized mantle.
+    No outgassing solve follows on that path to repartition a zeroed total, so a
+    zero would leave the atmospheric N in place. Edge case: the same step on a
+    molten mantle, where the solve that follows repartitions, keeps the floor.
+    """
+    from proteus.escape.wrapper import run_escape
+    from proteus.outgas.wrapper import run_crystallized
+    from proteus.utils.constants import element_list
+
+    thresh = 1.0e10
+    hf = {f'{e}_kg_{r}': 0.0 for e in element_list for r in ('atm', 'liquid', 'solid', 'total')}
+    hf.update(H_kg_atm=4.0e12, H_kg_solid=6.0e12, H_kg_total=1.0e13)
+    hf.update(N_kg_atm=1.2e10, N_kg_total=1.2e10, N2_kg_atm=1.2e10, H2_kg_atm=4.0e12)
+    hf.update(M_atm=4.012e12, P_surf=1.0, esc_kg_cumulative=0.0, M_vol_initial=1.0012e13)
+    config = MagicMock()
+    config.escape.module = 'dummy'
+    config.escape.reservoir = 'outgas'
+    config.escape.dummy.rate = 1.0e5  # kg/s, capped at a quarter of the atmosphere
+    config.escape.step_max_frac = 0.25
+    config.escape.step_dt_floor_frac = 1.0e-3
+    config.outgas.mass_thresh = thresh
+    config.outgas.vapourise = False
+
+    run_escape(config, hf, dt=1.0e4, atmosphere_only=frozen)
+    if not frozen:
+        # The repartitioning solve owns the columns on this path; the floor stays.
+        assert hf['N_kg_total'] == 0.0
+        return
+    run_crystallized(config, hf, dt=1.0e4)
+
+    # Discrimination: a real quarter loss takes N from above the threshold to below it.
+    assert (
+        hf['N_kg_total'] == pytest.approx(0.75 * 1.2e10, rel=1e-12)
+        and hf['N_kg_total'] < thresh
+    )
+    for e in ('H', 'N'):
+        cols = hf[f'{e}_kg_atm'] + hf[f'{e}_kg_liquid'] + hf[f'{e}_kg_solid']
+        assert cols == pytest.approx(hf[f'{e}_kg_total'], rel=1e-12)
+    assert hf['esc_kg_cumulative'] == pytest.approx(0.25 * 4.012e12, rel=1e-12)
+    assert hf['esc_kg_cumulative'] == pytest.approx(
+        1.0012e13 - hf['H_kg_total'] - hf['N_kg_total'], rel=1e-12
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize(
+    'H_kg,N_kg', [(4.0e17, 3.0e16), (1.5e16, 1.0e16)], ids=['large', 'small']
+)
+def test_a_frozen_mantle_escapes_to_desiccation_with_closed_books(H_kg, N_kg):
+    """Over every frozen step until desiccation each element total equals its
+    columns and the books close: initial = totals + escaped + removed at
+    desiccation, the Zalmoxis target follows the totals, and the row is still
+    desiccated when checked again, as on resume.
+
+    Physical scenario: an insoluble H2 and N2 atmosphere over a crystallized mantle
+    at the default outgassing threshold of 1e16 kg. Edge case: the small inventory,
+    where the mass left below the threshold is comparable to the mass escaped.
+    """
+    from proteus.escape.wrapper import readable_total, run_escape
+    from proteus.interior_struct.common import debit_escaped_mass
+    from proteus.outgas.wrapper import check_desiccation, run_crystallized, run_desiccated
+    from proteus.utils.constants import element_list
+
+    initial = H_kg + N_kg
+    hf = {f'{e}_kg_{r}': 0.0 for e in element_list for r in ('atm', 'liquid', 'solid', 'total')}
+    hf.update(H_kg_atm=H_kg, H_kg_total=H_kg, N_kg_atm=N_kg, N_kg_total=N_kg)
+    hf.update(H2_kg_atm=H_kg, N2_kg_atm=N_kg, M_atm=initial, P_surf=1.0)
+    hf.update(esc_kg_cumulative=0.0, M_vol_initial=initial, M_desiccated=0.0)
+    hf.update(M_volatile_change=0.0, atm_kg_per_mol=0.002, Phi_global=0.5)
+    config = MagicMock()
+    config.escape.module = 'dummy'
+    config.escape.reservoir = 'outgas'
+    config.escape.dummy.rate = 1.0e9  # kg/s, capped at a quarter of the atmosphere
+    config.escape.step_max_frac = 0.25
+    config.escape.step_dt_floor_frac = 1.0e-3
+    config.outgas.mass_thresh = 1.0e16
+    config.outgas.vapourise = False
+    config.interior_struct.module = 'zalmoxis'
+
+    for _ in range(100):
+        if check_desiccation(config, hf):
+            break
+        kg_before = readable_total(hf)
+        run_escape(config, hf, dt=1.0e4, atmosphere_only=True)
+        debit_escaped_mass(config, hf, kg_before - readable_total(hf))
+        run_crystallized(config, hf, dt=1.0e4)
+        for e in ('H', 'N'):
+            cols = hf[f'{e}_kg_atm'] + hf[f'{e}_kg_liquid'] + hf[f'{e}_kg_solid']
+            assert cols == pytest.approx(hf[f'{e}_kg_total'], rel=1e-9)
+        assert hf['esc_kg_cumulative'] == pytest.approx(initial - readable_total(hf), rel=1e-9)
+    else:
+        pytest.fail('no desiccation within 100 frozen steps')
+    residual = readable_total(hf)
+    # Discrimination: N was left below the threshold, not zeroed.
+    assert 0.0 < hf['N_kg_total'] < 1.0e16 and residual > 0.0
+
+    run_desiccated({}, config, hf, False)
+
+    assert all(hf[f'{e}_kg_{r}'] == 0.0 for e in ('H', 'N') for r in ('atm', 'total'))
+    assert hf['M_desiccated'] == pytest.approx(residual, rel=1e-12)
+    assert hf['esc_kg_cumulative'] + hf['M_desiccated'] == pytest.approx(initial, rel=1e-9)
+    assert hf['M_volatile_change'] == pytest.approx(-initial, rel=1e-9)
+    assert check_desiccation(config, hf)
+
+
+@pytest.mark.unit
+def test_a_new_escape_baseline_clears_the_desiccation_ledger():
+    """Mass removed before the escape baseline is not part of it, so taking the
+    baseline clears M_desiccated with esc_kg_cumulative and a later wipe is refused.
+
+    Physical scenario: a planet that desiccated before escape first ran, then
+    received volatiles from an impact. Edge case: the wipe is smaller than the
+    mass booked before the baseline.
+    """
+    from proteus.escape.wrapper import run_escape
+    from proteus.outgas.wrapper import check_desiccation
+    from proteus.utils.constants import element_list
+
+    hf = {f'{e}_kg_{r}': 0.0 for e in element_list for r in ('atm', 'liquid', 'solid', 'total')}
+    hf.update(H_kg_atm=8.0e15, H_kg_total=8.0e15, H2_kg_atm=8.0e15, M_atm=8.0e15)
+    hf.update(M_vol_initial=0.0, esc_kg_cumulative=0.0, M_desiccated=5.0e15)
+    config = MagicMock()
+    config.escape.module = 'dummy'
+    config.escape.reservoir = 'outgas'
+    config.escape.dummy.rate = 1.0
+    config.escape.step_max_frac = 0.25
+    config.escape.step_dt_floor_frac = 1.0e-3
+    config.outgas.mass_thresh = 1.0e16
+
+    run_escape(config, hf, dt=1.0, atmosphere_only=True)
+    assert hf['M_vol_initial'] == pytest.approx(8.0e15, rel=1e-12)
+    assert hf['M_desiccated'] == 0.0
+
+    hf['H_kg_total'] = 4.0e15  # an upstream wipe, no escape
+    assert check_desiccation(config, hf) is False
+
+
+def _molten_row_with_trapped_n(n_trapped: float, **values) -> dict:
+    """Molten-mantle row: 1.2e16 kg of N reachable in the atmosphere, more locked
+    in the solid, and a 4e17 kg H atmosphere that keeps the planet wet."""
+    from proteus.utils.constants import element_list
+
+    hf = {f'{e}_kg_{r}': 0.0 for e in element_list for r in ('atm', 'liquid', 'solid', 'total')}
+    hf.update(H_kg_atm=4.0e17, H_kg_total=4.0e17, H2_kg_atm=4.0e17)
+    hf.update(N_kg_atm=1.2e16, N_kg_solid=n_trapped, N_kg_trapped=n_trapped)
+    hf.update(N_kg_total=1.2e16 + n_trapped, N2_kg_atm=1.2e16)
+    hf.update(M_atm=4.12e17, P_surf=1.0, esc_kg_cumulative=0.0, M_vol_initial=4.12e17)
+    hf.update(trap_branch=0.0, trap_kg_step=0.0)
+    hf.update(values)
+    return hf
+
+
+def _quarter_loss_config():
+    """Dummy escape capped at a quarter of the atmosphere, at mass_thresh 1e16 kg."""
+    config = MagicMock()
+    config.escape.module = 'dummy'
+    config.escape.reservoir = 'outgas'
+    config.escape.dummy.rate = 1.0e9  # kg/s, capped at a quarter of the atmosphere
+    config.escape.step_max_frac = 0.25
+    config.escape.step_dt_floor_frac = 1.0e-3
+    config.outgas.mass_thresh = 1.0e16
+    config.outgas.vapourise = False
+    return config
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_the_escape_floor_reads_the_reachable_mass_whatever_is_trapped():
+    """Two molten-mantle runs that differ only in how much N trapping locked, 5e14
+    or 1.1e16 kg, lose a quarter of their 1.2e16 kg of atmospheric N in one step.
+    The reachable 9e15 kg is then below mass_thresh in both, so both empty it to
+    the locked mass, and the desiccation gate, which reads the same reachable
+    mass, agrees that N is depleted in both. Flooring on the whole total instead
+    would empty the first run's N and keep the second's."""
+    from proteus.escape.wrapper import run_escape
+    from proteus.outgas.trapping import escapable_inventory
+
+    config = _quarter_loss_config()
+    totals = {}
+    for trapped in (5.0e14, 1.1e16):
+        hf = _molten_row_with_trapped_n(trapped)
+        run_escape(config, hf, dt=1.0e4, atmosphere_only=False)
+        totals[trapped] = hf['N_kg_total']
+        assert hf['N_kg_total'] == pytest.approx(trapped, rel=1e-12)
+        assert escapable_inventory(hf, 'N') == pytest.approx(0.0, abs=0.0)
+        # The wet H atmosphere is far above the threshold and keeps its total
+        # less the quarter that escaped.
+        assert hf['H_kg_total'] == pytest.approx(0.75 * 4.0e17, rel=1e-9)
+    # Discrimination: the whole totals after the loss, 9.5e15 and 2e16 kg, sit on
+    # either side of mass_thresh, so a whole-total floor would split the runs.
+    assert 9.0e15 + 5.0e14 < 1.0e16 < 9.0e15 + 1.1e16
+    assert totals[1.1e16] - totals[5.0e14] == pytest.approx(1.1e16 - 5.0e14, rel=1e-12)
+
+    # Edge case: on a frozen mantle the floor is off, as on main, and the
+    # reachable remainder stays.
+    frozen = _molten_row_with_trapped_n(5.0e14)
+    run_escape(config, frozen, dt=1.0e4, atmosphere_only=True)
+    assert frozen['N_kg_total'] == pytest.approx(9.0e15 + 5.0e14, rel=1e-9)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_the_escape_floor_is_off_on_a_step_a_remelt_returned_mass():
+    """A remelt that returns buried N to the melt resupplies it. Flooring the
+    reachable remainder on that step would delete the release whenever it is
+    small, so a slow remelt would keep less than a fast one; on such a step the
+    floor is off and escape only debits its quarter. A step that released
+    nothing keeps the floor, however its branch code reads."""
+    from proteus.escape.wrapper import run_escape
+    from proteus.outgas.compaction import BRANCH_REMELT
+    from proteus.outgas.trapping import remelt_returned_mass
+
+    config = _quarter_loss_config()
+    remelt = _molten_row_with_trapped_n(5.0e14, trap_branch=float(BRANCH_REMELT))
+    remelt['trap_kg_step'] = -2.0e14
+    assert remelt_returned_mass(remelt)
+    run_escape(config, remelt, dt=1.0e4, atmosphere_only=False)
+    assert remelt['N_kg_total'] == pytest.approx(9.0e15 + 5.0e14, rel=1e-9)
+
+    # Error contract: a remelt branch that released nothing, a burial step, and
+    # an unreadable branch code all keep the floor.
+    for values in (
+        {'trap_branch': float(BRANCH_REMELT), 'trap_kg_step': 0.0},
+        {'trap_branch': 1.0, 'trap_kg_step': 3.0e14},
+        {'trap_branch': float('nan'), 'trap_kg_step': -2.0e14},
+    ):
+        hf = _molten_row_with_trapped_n(5.0e14, **values)
+        assert not remelt_returned_mass(hf)
+        run_escape(config, hf, dt=1.0e4, atmosphere_only=False)
+        assert hf['N_kg_total'] == pytest.approx(5.0e14, rel=1e-12)

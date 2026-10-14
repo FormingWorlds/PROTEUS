@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from proteus.config._atmos_clim import valid_agni, valid_rayleigh
+from proteus.config._atmos_clim import valid_agni, valid_p_obs, valid_rayleigh
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -255,6 +255,58 @@ def test_valid_agni_rejects_p_top_above_p_obs():
     # so the rejection is the p_top/p_obs ordering specifically.
     instance.p_top = 1e-5
     assert valid_agni(instance, attribute=None, value=None) is None
+
+
+@pytest.mark.unit
+def test_valid_agni_skips_p_obs_ordering_check_when_p_obs_is_none():
+    """p_obs=None (AGNI determines the photosphere from optical depth,
+    issue #694) has no fixed pressure to compare against p_top, so the
+    ordering check must not raise regardless of p_top.
+
+    Discrimination: the same p_top=1e-2 rejected in
+    test_valid_agni_rejects_p_top_above_p_obs (against a numeric p_obs of
+    1e-3) must pass here once p_obs is None, so the guard is specifically
+    the numeric-comparison path, not a blanket bypass of the whole function.
+    """
+    instance = _make_agni_instance(p_top=1e-2, p_obs=None)
+    assert valid_agni(instance, attribute=None, value=None) is None
+    # Discrimination: setting p_obs back to a numeric value below p_top on
+    # this same instance raises, so the bypass above is specifically about
+    # p_obs=None, not a coincidental pass from some other field.
+    instance.p_obs = 1e-3
+    with pytest.raises(ValueError, match='p_obs'):
+        valid_agni(instance, attribute=None, value=None)
+
+
+@pytest.mark.unit
+def test_valid_p_obs_accepts_none_only_for_agni():
+    """p_obs=None delegates the photosphere to AGNI's optical-depth
+    determination (issue #694), which only AGNI implements; JANUS and the
+    dummy module have no equivalent, so None is rejected for them.
+    """
+    instance = SimpleNamespace(module='agni')
+    assert valid_p_obs(instance, attribute=None, value=None) is None
+
+    for other_module in ('janus', 'dummy'):
+        instance = SimpleNamespace(module=other_module)
+        with pytest.raises(ValueError, match='agni'):
+            valid_p_obs(instance, attribute=None, value=None)
+
+
+@pytest.mark.unit
+def test_valid_p_obs_rejects_non_positive_numeric_value():
+    """A numeric p_obs must be a positive pressure; zero or negative values
+    are not physical pressure levels.
+
+    Edge case: exactly zero is rejected, not just negative values.
+    """
+    instance = SimpleNamespace(module='agni')
+    with pytest.raises(ValueError, match='p_obs'):
+        valid_p_obs(instance, attribute=None, value=0.0)
+    with pytest.raises(ValueError, match='p_obs'):
+        valid_p_obs(instance, attribute=None, value=-1e-3)
+    # Discrimination: a small but positive value passes.
+    assert valid_p_obs(instance, attribute=None, value=1e-10) is None
 
 
 @pytest.mark.unit

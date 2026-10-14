@@ -109,8 +109,9 @@ spectrum in `tides_o`).
 
 | Model | Evolves | Reference | Notes |
 |---|---|---|---|
-| `sp0d` | `semimajorax`, `eccentricity` | Driscoll & Barnes (2015)[^cite-driscoll2015], Eq. 15-16 | Closed-form two-ODE system in `(a, e)` only; no spin dynamics, so it is **not** angular-momentum-conserving by construction. |
+| `sp0d` | `semimajorax`, `eccentricity`, `axial_period` (locked to the orbital period) | Driscoll & Barnes (2015)[^cite-driscoll2015], Eq. 15-16 | Closed-form two-ODE system in `(a, e)` only; no spin dynamics, so it is **not** angular-momentum-conserving by construction. The spin stays synchronous, so `orbit.axial_period` must be unset. |
 | `sp1d` | `axial_period`, `semimajorax`, `eccentricity`, `plan_star_am` | Correia & Valente (2022)[^cite-correia2022] | Vectorial, Hansen-coefficient formulation restricted to planetary tides (star assumed non-dissipative). Genuinely angular-momentum-conserving; verified by dedicated tests. |
+| `parameterized` | `semimajorax`, `eccentricity`, `axial_period` (locked to the orbital period), `dEdt_orb` | Postolec et al. (2026)[^cite-postolec2026], Eq. 1-4 | Prescribed migration track, not a tidal model: the orbit is a closed-form function of time, no tidal force is computed, and no angular momentum is exchanged with the interior (no tidal heating). Use it to impose a migration history, not to derive one. Giant impacts are rejected (`accretion.module = 'none'` is required). |
 
 ??? note "sp0d in a nutshell - Driscoll & Barnes (2015)"
     Written for rocky planets around M dwarfs, where the habitable zone
@@ -129,8 +130,118 @@ spectrum in `tides_o`).
     into classical tidal theory, and it means spin and orbit are evolved
     together as one system, exchanging angular momentum internally.
 
-Both integrate with `scipy.solve_ivp` (`orbit.solver.*` controls method 
-and tolerances). 
+`sp0d` and `sp1d` integrate with `scipy.solve_ivp` (`orbit.solver.*` controls
+method and tolerances). `parameterized` solves nothing: after `time_migration` it sets the orbit from a
+closed form in time, with parameters chosen by the user.
+
+??? note "parameterized in a nutshell"
+    The other two star-planet models derive the orbit from a tidal
+    torque. This parameterized one imposes one instead, and does not compute 
+    any physics. The user chooses where the planet starts, where it ends up, 
+    when the migration happens and how long it takes. After `time_migration`
+    the orbit follows that closed form. It is the right tool to use when 
+    testing the influence of a migration history in a simulation without 
+    computing any tidal forces, for instance when asking how an atmosphere 
+    responds to a prescribed change in instellation.
+
+Configured under `[orbit.parameterized]`:
+
+| Key | Meaning | Unit |
+|---|---|---|
+| `migration` | `none`, `instant`, `sigmoid` or `high_ecc` | -- |
+| `sma_final` | semi-major axis approached after it | au |
+| `time_migration` | epoch at which migration begins | yr |
+| `tau_migration` | length of the migration window for `sigmoid`, decay constant for `high_ecc` | yr |
+
+The track starts from `a_0 = orbit.semimajoraxis` and `orbit.eccentricity`,
+which seed the orbit at the initial condition as for every other star-planet
+model; the track is evaluated from the first step after it. The initial
+condition spans `Time <= 1` yr, so `time_migration` must be greater than 1 yr. Setting the orbit
+from a target flux (`orbit.instellation_method = 'inst'`) is rejected at
+config load, since it would give the run a second starting orbit.
+
+A law writes only the orbital elements it sets: `instant` and `sigmoid` the
+semi-major axis, `high_ecc` the semi-major axis and the eccentricity. `none`,
+and every law before `time_migration`, leave the orbit as the previous step
+left it. 
+
+`sigmoid` holds the orbit until `time_migration`, carries it to `sma_final`
+over the following `tau_migration` along the cubic `3u^2 - 2u^3`, and holds
+it there afterwards.
+
+`high_ecc` circularises at constant orbital angular momentum (Postolec et al. 2026)[^cite-postolec2026]: it excites the
+eccentricity to `sqrt(1 - sma_final / a_0)` at the migration epoch and
+then decays it, until the orbit reaches `sma_final`. The eccentricity jumps discontinuously at
+`time_migration` from `orbit.eccentricity` to its excited value. That step is
+physical, since a scattering or Kozai event is fast compared with the orbital
+evolution that follows.
+
+The migration window must also be resolved by the timestep. `sigmoid` and
+`high_ecc` are sampled wherever the coupled loop happens to step, and nothing
+aligns a step to `time_migration`. If `tau_migration` spans fewer than three
+timesteps the track is sampled at little more than its endpoints and silently
+degenerates to `instant`; the orbit module logs a warning when that happens.
+
+### Spin, stellar flux and impacts on a prescribed track
+
+No torque acts on the spin, so the planet stays synchronous: `axial_period`
+is set to the current orbital period at every step, and AGNI and the breakup
+check read that value. `orbit.axial_period` must be unset, for `sp0d` as well,
+which evolves no spin either.
+
+On an eccentric orbit the stellar flux is averaged over the orbit as
+`<1/r^2> = 1 / (a^2 sqrt(1 - e^2))`, which is the flux at the distance
+`a (1 - e^2)^(1/4)`. Every module that scales a flux by distance uses that
+distance: the bolometric and XUV instellation, the stored stellar spectrum,
+the eclipse depth, VULCAN's `star.dat` and `orbit_radius`, and the
+stellar-surface flux petitRADTRANS recovers from the stored spectrum.
+F_ins is refreshed every `params.dt.starinst` and the stored spectrum every
+`params.dt.starspec`. While the orbit evolves, petitRADTRANS and VULCAN undo
+the latest stored spectrum at the current distance, so their stellar flux is
+off by the square of the ratio of the current distance to the one the file
+was written at. AGNI is not affected: it takes only the spectral shape from
+the file and its heating from F_ins.
+The time-averaged separation `a (1 + e^2 / 2)` stays in use for geometry
+only (the Roche-limit checks and the orbit plots). This applies to every
+eccentric run, not only to `parameterized`.
+
+Giant impacts are rejected at config load (`accretion.module = 'none'` is
+required): after `time_migration` the track sets the semi-major axis from
+its own parameters every step, so an impact's new semi-major axis would be
+overwritten while its change in eccentricity persisted.
+
+### Where the orbital energy goes
+
+The track changes the orbital energy `E = -G M_star M_planet / (2 a)` but
+deposits that energy nowhere: no tidal heating reaches the interior and the
+energy balance of the planet does not include it. The helpfile column
+`dEdt_orb` \[W\] records the rate the track implies,
+`dE/dt = G M_star M_planet (da/dt) / (2 a^2)`, negative while the orbit
+shrinks. It is zero for `none`, outside the migration window and for
+`instant`, whose step releases its energy at a single time.
+
+For `high_ecc` the rate is largest in magnitude at `time_migration`, where
+it equals `2 dE / tau_migration`, with `dE = E(sma_final) - E(a_0) =
+-(G M_star M_planet / 2) (1/sma_final - 1/a_0)` the whole energy change
+(negative for inward migration), and it then decays as
+`exp(-2 (t - time_migration) / tau_migration)`. The eccentricity step at
+`time_migration` changes the orbital angular momentum instantly while
+leaving the energy unchanged, since `a` is still `a_0` there.
+
+### Visualizing the four parameterized regimes
+
+Each regime was run as a dummy PROTEUS simulation and compared against the
+closed form in `src/proteus/orbit/parameterized.py`:
+
+![Parameterized orbital migration regimes](../assets/orbit/orbit_parameterized_migration.avif#only-light){ width="100%" }
+![Parameterized orbital migration regimes](../assets/orbit/orbit_parameterized_migration_dark.avif#only-dark){ width="100%" }
+
+Semi-major axis (top) and eccentricity (bottom) for the four regimes, with
+`orbit.semimajoraxis = 2.0` au, `sma_final = 0.8` au, `time_migration = 1e3` yr and
+`tau_migration = 1e4` yr. The dashed vertical line marks the migration epoch
+and the shaded band spans one `tau_migration` after it. The dotted horizontal
+lines in the top panel mark the starting and final orbits, `a_0 = orbit.semimajoraxis`
+and `a_f = sma_final`.
 
 ## Planet-satellite models (`orbit.planet_satellite_model`)
 
@@ -195,6 +306,7 @@ model reads the scalar path, a `1d` model reads `tides_o` directly.
 |---|---|---|
 | `sp0d` | `hf_row['Imk2']` | `dummy`, `lovepy`, `obliqua` (requires `orbit.obliqua.n == [2]`) |
 | `sp1d` | `tides_o`, (`primary='planet', perturber='star'`) | `lovepy`, `obliqua` |
+| `parameterized` | -- | none (`orbit.module = 'none'` is required) |
 | `ps0d` | `hf_row['F_tidal']` | `dummy`, `lovepy`, `obliqua` |
 | `ps1d` | `tides_o`, (both `primary='planet', perturber='satellite'` and `primary='satellite', perturber='planet'`) | `lovepy`, `obliqua` |
 | `ps1d_evec` | Same as `ps1d`, plus `evection_angle` | `lovepy`, `obliqua` (Note that `lovepy` breaks down at high eccentricities, so it is not recommended for this case) |
@@ -401,3 +513,5 @@ Orbital and rotational state feed three physical stopping conditions
  [^cite-korenaga2023]: Korenaga, J., *[Rapid tidal dissipation explains the extended lunar magma ocean](https://doi.org/10.1016/j.icarus.2023.115564)*, Icarus, 400, 115564, 2023.
 
  [^cite-rufu2020]: Rufu, R. & Canup, R.M., *[Evection resonance as a possible cause for lunar inclination](https://doi.org/10.1029/2019JE006312)*, Journal of Geophysical Research: Planets, 125, e2019JE006312, 2020.
+
+[^cite-postolec2026]: Postolec, E., Lichtenberg, T., Teske, J.K., Nicholls, H., Attia, M., Piette, A., Dang, L., Wallack, N.L., Plotnykov, M., McGinty, A., Boucher, S., Peng, B. & Valencia, D., *[Evolutionary pathways toward survival of a thick CO2- or SO2-rich atmosphere on the lava world TOI-561 b](https://doi.org/10.48550/arXiv.2609.03144)*, submitted to The Astrophysical Journal, arXiv:2609.03144, 2026.

@@ -1,13 +1,5 @@
-"""Bayesian optimization core functions.
-
-This module provides utility functions and the core BO_step function
-for fitting Gaussian processes, optimizing acquisition functions,
-and plotting results during Bayesian optimization.
-
-Functions:
-    unit_bounds: Generate unit hypercube bounds for acquisition optimization.
-    plot_iter: Visualize GP posterior and acquisition function at each iteration.
-    BO_step: Execute a single Bayesian optimization step with timing and logging.
+"""Bayesian optimisation steps: fit a GP, optimise the acquisition function, and
+evaluate the objective at the chosen point.
 """
 
 from __future__ import annotations
@@ -42,9 +34,7 @@ def unit_bounds(d):
     ----------
     - torch.Tensor: Tensor of shape (2, d) where row 0 is zeros and row 1 is ones.
     """
-    # Build bounds [[0,...,0], [1,...,1]]
-    bounds = torch.tensor([[0] * d, [1] * d], dtype=dtype)
-    return bounds
+    return torch.tensor([[0] * d, [1] * d], dtype=dtype)
 
 
 def BO_step(D, B, f, k, acqf, lock, worker_id, x_in=None):
@@ -77,11 +67,12 @@ def BO_step(D, B, f, k, acqf, lock, worker_id, x_in=None):
         with lock:
             X = D['X']
             Y = D['Y']
-            busys = list(B.values())
+            # Select by key, not by position: a worker that has finished or
+            # stopped is absent from B, so the position of an entry in the
+            # values list does not identify the worker that owns it.
+            busys = [v for wid, v in B.items() if wid != worker_id]
 
         t_1_lock = time.perf_counter()
-
-        busys = torch.cat(busys, dim=0)
 
         d = X.shape[-1]
 
@@ -122,10 +113,14 @@ def BO_step(D, B, f, k, acqf, lock, worker_id, x_in=None):
 
         t_1_ac = time.perf_counter()
 
-        mask = torch.ones(busys.size(0), dtype=torch.bool)
-        mask[worker_id] = False
-        b = busys[mask]
-        dist = torch.min(torch.cdist(b, x)).item()
+        # Distance to the nearest point another worker is currently evaluating.
+        # Undefined when no other worker is busy
+        if busys:
+            b = torch.cat(busys, dim=0)
+            dist = torch.min(torch.cdist(b, x)).item()
+        else:
+            b = torch.zeros((0, d), dtype=dtype)
+            dist = None
 
         if d == 1:
             plot_iter(
@@ -267,8 +262,6 @@ def plot_iter(gp, acqf, X, Y, next_x, busys, dir, name):
     ax[0].plot(xs.detach().flatten(), mu, color='black', linewidth=0.5, label='post mean')
     ax[0].fill_between(xs.detach().flatten(), mu - 2 * sig, mu + 2 * sig, alpha=0.25)
     ax[0].scatter(X.flatten(), Y.flatten(), s=5, label='data', color='blue')
-    # fs = objective(xs).flatten()
-    # ax[0].plot(xs.detach().flatten(), fs, color = "grey", label = "f", linewidth = 0.5)
 
     ax[1].plot(xs.detach().flatten(), ac, color='cornflowerblue', label='acqf')
     a = acqf(next_x).detach().flatten()

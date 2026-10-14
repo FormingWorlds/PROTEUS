@@ -17,7 +17,7 @@ Invariants asserted:
 - ``R_int`` is consistent with the Earth-like scale (5.5e6-6.5e6 m
   for 1 M_Earth at a typical mantle density).
 - ``M_int`` mass closure: ``M_int + M_atm`` matches ``M_planet``
-  within rel=1e-3 (conservation invariant, §2 carve-out).
+  within rel=1e-3 (conservation invariant; tests/AGENTS.md, Discriminating values).
 - ``R_core / R_int`` lands in [0.55, 0.75] for cmf=0.55 under
   PALEOS:MgSiO3 mantle + PALEOS:iron core. Zalmoxis treats the
   configured ``core_frac`` as mass fraction regardless of
@@ -249,6 +249,27 @@ def test_zalmoxis_dummy_two_timesteps(proteus_multi_timestep_run):
         f'R_core/R_int = {ratio:.3f} outside the [0.55, 0.75] band '
         f'expected for cmf = 0.55 (PROTEUS interprets core_frac as '
         f'mass fraction regardless of core_frac_mode)'
+    )
+
+    # The core target is core_frac of the planet without its kept volatiles. With the dummy
+    # outgassing every volatile inventory is an input, oxygen too, so all of them are kept.
+    from proteus.utils.constants import M_earth, noble_gases, vol_element_list
+
+    cfg = runner.config
+    kept = sum(float(final.get(f'{e}_kg_total', 0.0)) for e in vol_element_list + noble_gases)
+    planet = cfg.planet.mass_tot * M_earth + float(final['M_volatile_change'])
+    core_target = float(final['M_core_target'])
+    assert kept > 1.0e-3 * planet, f'kept volatiles too small to test the rule: {kept:.3e} kg'
+    assert core_target == pytest.approx(
+        cfg.interior_struct.core_frac * (planet - kept), rel=1e-9
+    )
+    # M_core is the mass inside the first node at or above the boundary: below the target by
+    # the mass tolerance at most, above it by one mantle shell at most (about 1.6 % of the
+    # core at 150 levels; 2 % leaves a margin).
+    tol = cfg.interior_struct.zalmoxis.solver_tol_outer
+    snap = float(final['M_core']) / core_target
+    assert 1.0 - tol <= snap <= 1.0 + tol + 0.02, (
+        f'M_core / M_core_target = {snap:.5f} outside the mass tolerance plus one mantle shell'
     )
 
     # P_center, P_cmb positive and bounded. Earth: P_center ~ 3.6e11

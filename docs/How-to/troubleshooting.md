@@ -5,16 +5,22 @@ platform. If you encounter errors that you cannot solve via the standard
 step-by-step guide or the advice below,
 [contact the developers](../Community/contact.md).
 
+`install.sh` prints one line per build step on the terminal. The full output of every step, where the install errors below appear, is in the log file `install_<date>_<time>.log` in the PROTEUS folder; a failed step also prints its last 40 lines, and `bash install.sh --verbose` shows all of it on the terminal.
+
 ### Quick error index
 
 | Error / symptom | Section |
 |---|---|
 | `Aragog retry ladder exhausted` / T_core jumps >1500 K on coupled runs | [Numerically fragile coupled runs](#numerically-fragile-coupled-runs) |
 | `was written before N column(s) of the current output schema existed` | [Resuming an older run](#resuming-a-run-written-by-an-older-proteus) |
+| `Resume: no Zalmoxis structure file matches the helpfile row` | [Resume stops on the Zalmoxis structure](#resume-stops-no-zalmoxis-structure-file-matches-the-row) |
+| `Resume: the interior snapshot at t = ... is on an earlier structure` | [A resumed run and the uninterrupted run](#a-resumed-run-and-the-uninterrupted-run) |
+| `Resume: a structure update was pending at the stop` | [A resumed run and the uninterrupted run](#a-resumed-run-and-the-uninterrupted-run) |
 | Simulation fails to converge (general) | [Stabilise a simulation](stabilise_run.md) |
 | `Aragog needs the SUNDIALS CVODE solver` / `scikits_odes_sundials.cvode cannot be imported` | [Aragog stops at setup](#aragog-stops-at-setup-cvode-cannot-be-imported) |
 | `Permission denied (publickey)` | [SSH keys](#cannot-clone-module-or-permission-denied-publickey) |
 | `Out-of-date modules detected` | [Module updates](#out-of-date-modules-detected) |
+| `Refusing to delete it` during an install | [Module checkout kept](#an-install-refuses-to-replace-a-module-checkout) |
 | Slow Zenodo downloads | [Data downloads](#data-download-errors-or-slow-zenodo-downloads) |
 | `libudev.so.1` not found | [libudev](#libudevso1-not-found) |
 | `OpenSSL_jll` / Julia error | [Julia compatibility](#julia-compatibility-error) |
@@ -78,6 +84,31 @@ Either run the configuration again from `t = 0`, or check out the PROTEUS versio
 
 To keep a long run resumable across an upgrade, note the PROTEUS version it was launched with and stay on it until the run finishes.
 
+### Resume stops: no Zalmoxis structure file matches the row {#resume-stops-no-zalmoxis-structure-file-matches-the-row}
+
+`proteus start --resume` on a Zalmoxis + Aragog run stops with status 20 and a message such as:
+
+```text
+Resume: no Zalmoxis structure file matches the helpfile row at t = 6.020140e+02 yr
+within max(1 m, 1e-9 of the mantle thickness); zalmoxis_output.dat: R_core +8.513e+03 m,
+R_int -5.486e+04 m; ...
+```
+
+A structure solve rewrites `data/zalmoxis_output.dat` at once, while the helpfile and the snapshots are written only on snapshot iterations, so a stopped run can hold a structure newer than the row it resumes from. PROTEUS tries three files in this order: the copy saved with that row (`data/<time>_zalmoxis.dat`), `data/zalmoxis_output.dat`, and its backup `data/zalmoxis_output.dat.prev`. The run resumes on the first one whose inner and outer radii match the row within the tolerance in the message. When none of them matches, or none of them exists, run the configuration again from `t = 0`.
+
+### A resumed run and the uninterrupted run {#a-resumed-run-and-the-uninterrupted-run}
+
+A Zalmoxis + Aragog run solves the structure after the interior step of an iteration, and Aragog takes the new mesh at the start of the next iteration. A run that stops between the two leaves an interior snapshot on the earlier structure and a helpfile row on the new one. On resume, PROTEUS builds Aragog on the earlier structure, restores the snapshot, and then makes the same structure update as a running loop. The first resumed step then records the compression work of that update (`step_dE_compression_J`) and carries the entropy to the new mesh by mass parcel, as the uninterrupted run does.
+
+This needs a mesh file of the earlier structure: the copy saved with its row (`data/<time>_zalmoxis.dat`), `data/zalmoxis_output.dat.prev`, or the copy saved with an older row on the same structure. With a snapshot on every iteration (`params.out.write_mod = 1`), one of them is present after a normal stop. With sparser snapshots, it is present only when the run stopped before the next structure solve, and the landing row of a giant impact keeps no copy. A resume that continues without the update gives one of two warnings:
+
+```text
+Resume: the interior snapshot at t = 3.220037e+02 yr is on an earlier structure (...) and no row with a mesh file of that structure is left.
+Resume: a structure update was pending at the stop. With core_bc = 'core_module' the solver is built on the structure of the row and the update is not replayed from the earlier mesh
+```
+
+The first appears when no mesh file of the earlier structure is left. The second appears for a core boundary condition other than `energy_balance`, and when a giant impact landed between the snapshot and the row. In both cases, the run continues on the structure of its row: the first resumed step records no compression work, and the entropy is handed over by node. The resumed run then differs from the uninterrupted one from that step on. A structure update that moves both radii by less than 1 m is not detected and is handled in the same way, without a warning. A snapshot with no entropy profile on the node count of the run gives neither warning: the run starts from a fresh initial condition on its row, as on any resume with such a snapshot. If the solver is built on the earlier structure and the snapshot entropy does not fit its cells, the resume stops with an error, and the run must start again from t = 0.
+
 ### Cannot clone module, or Permission denied (publickey) {#cannot-clone-module-or-permission-denied-publickey}
 
 Have you added your SSH key to GitHub? See these pages for guidance:
@@ -121,24 +152,65 @@ git pull
 python -m pip install -U -e .
 ```
 
+### An install refuses to replace a module checkout {#an-install-refuses-to-replace-a-module-checkout}
+
+An install script that replaces its checkout on every run (SOCRATES, SPIDER,
+BOREAS, LavAtmos, ThermoEngineLite) stops rather than delete one that holds
+work you would not get back (under `install.sh` the message is in the last lines of
+the failed step and in the log file `install_<date>_<time>.log`):
+
+```console
+ERROR: /path/to/socrates has uncommitted changes or commits not on a remote.
+       Refusing to delete it. Commit and push your work, or run
+       bash tools/get_socrates.sh --force  to discard the checkout.
+```
+
+Commit and push the work, and the next run replaces the checkout normally.
+
+`install.sh` and `proteus install-all` never pass `--force`, so they cannot
+step over this for you. To discard the checkout deliberately, run the script
+the message names by hand, from the PROTEUS folder:
+
+```console
+bash tools/get_socrates.sh --force
+```
+
+A second message reports a checkout git cannot read at all, from a truncated
+copy or a clone interrupted after it started writing refs:
+
+```console
+ERROR: git could not report the state of /path/to/socrates, so whether
+       it holds local work is unknown. Refusing to delete it.
+       Inspect the checkout, or run
+       bash tools/get_socrates.sh --force  to discard it.
+```
+
+The same `--force` discards it. A clone killed before it committed anything
+is not affected: there is nothing to lose, so the next install refreshes it
+without asking.
+
+The setup scripts of the Python modules (MORS, JANUS, CALLIOPE, ZEPHYRUS,
+Aragog, Zalmoxis, VULCAN, Morrigan and atmodeller) never give these two messages: without
+`--force` they install a module folder that is already there as it is
+(`get_vulcan.sh` first runs `make` in its `fastchem_vulcan` folder) and print
+the commands that move it to its release tag (for atmodeller, its pinned commit) or replace it; an empty folder
+gets a new clone. `get_obliqua.sh` does the same for an Obliqua folder (for
+a folder whose `.git` is a file it names no replace command: move that
+folder away or delete it by hand), and
+instantiates its Julia environment in place of the pip install; a link to a
+folder stands for that folder. It stops, with or without `--force`, for the
+PROTEUS folder, your home folder and a folder that holds one of them, for a
+file or a broken link, for a path that holds a line break, for a path that
+goes through a folder that does not
+exist and then through `.` or `..`, and for a folder with files that is not an Obliqua
+project; with `--force` it also stops for a folder with files that is not a
+git clone of its own with a commit, and for a folder whose `.git` is a file (a git worktree or a submodule). They stop with an error when the pip install of the folder
+fails, and `get_vulcan.sh` stops when the folder has no `fastchem_vulcan`
+folder or its `make` fails.
+
 ### Data download errors or slow Zenodo downloads {#data-download-errors-or-slow-zenodo-downloads}
 
-PROTEUS automatically downloads input data files from Zenodo. The code works without an API token using public access, but you can optionally configure a token for enhanced rate limits.
-
-??? tip "Optional: Configure a Zenodo API token"
-    If you encounter rate limiting errors or slow downloads, you can set up a Zenodo API token:
-
-    1. Get a personal access token from [Zenodo](https://zenodo.org/account/settings/applications/tokens/new/)
-    2. Configure it:
-        ```console
-        pystow set zenodo api_token <your-token>
-        ```
-    3. Verify it's configured:
-        ```console
-        pystow get zenodo api_token
-        ```
-
-    The token is optional. PROTEUS uses public access by default and falls back gracefully if the token is unavailable.
+PROTEUS downloads input data through fwl-io from Zenodo, without an API token. A file that Zenodo does not serve is fetched from its DataverseNL mirror (every dataset except the PHOENIX spectra has one), and every file is checked against the committed registry. When neither source serves a file, the error lists the failure from each source: a timeout, a connection error or an HTTP 429 or 5xx clears if you retry later; a 404 or a checksum mismatch from both sources does not, so report it as an issue. `fwl-io check proteus` lists what is missing or corrupt among the datasets PROTEUS declares in its own manifest.
 
 ### PETSc complains about being in the wrong directory
 
@@ -150,13 +222,16 @@ This happens when compiling SPIDER within a Python environment that is incompati
 
 ### Julia compatibility error {#julia-compatibility-error}
 
-There are incompatibilities between Python and some versions of Julia. Supported Julia versions are **1.11.x, 1.12.x and 1.13.x**. Support for 1.11 is deprecated and will be dropped in a future release; `install.sh` and `proteus doctor` warn when they find it. Newer releases are untested and may fail when juliacall resolves shared libraries.
+There are incompatibilities between Python and some versions of Julia. PROTEUS runs on Julia **1.13.x**: `install.sh` adds 1.13 through juliaup beside a default Julia of another version, and `proteus doctor` warns on any other version. The one exception: when the import of PROTEUS fails on `OpenSSL_jll` because Python links an OpenSSL older than 3.5, `install.sh` binds Julia 1.11; run `conda install -c conda-forge 'openssl>=3.5'` first to use 1.13. Obliqua, the tides module, installs only on 1.11 or 1.13. Newer releases are untested and may fail when juliacall resolves shared libraries.
 
-You must use **Python 3.12** with a supported Julia to avoid these problems:
+You must use **Python 3.12** with a supported Julia to avoid these problems. Add Julia 1.13
+beside your default Julia, which stays as it is, and point `PYTHON_JULIAPKG_EXE` at its binary
+in your conda environment:
 
 ```console
 juliaup add 1.13
-juliaup default 1.13
+conda env config vars set -n proteus PYTHON_JULIAPKG_EXE="$(julia +1.13 --startup-file=no -e 'print(joinpath(Sys.BINDIR, "julia"))')"
+conda deactivate && conda activate proteus
 ```
 
 ---
@@ -204,7 +279,7 @@ xcode-select --install
         cd petsc
         ./configure \
            PETSC_ARCH=arch-darwin-c-opt \
-           LDFLAGS="-L$(brew --prefix)/lib -Wl,-w" \
+           LDFLAGS="-Wl,-w" \
            --with-debugging=0 \
            --with-fc=0 \
            --with-cxx=0 \
@@ -219,7 +294,19 @@ xcode-select --install
         make PETSC_DIR=$(pwd) PETSC_ARCH=arch-darwin-c-opt check
         ```
 
-    Tested on M1 Ultra (macOS 15.6.1), M2 (macOS 26.2), and M4 Max (macOS 26.3).
+    With `LDFLAGS="-Wl,-w"`, `get_petsc.sh` was tested on M1 Ultra (macOS 26.6.2). The earlier command, which also passed the Homebrew library path, was tested on M1 Ultra (macOS 15.6.1), M2 (macOS 26.2), and M4 Max (macOS 26.3).
+
+### PETSc configure: "Downloaded sundials2 could not be used"
+
+PETSc configure on macOS stops with:
+
+```
+Downloaded sundials2 could not be used. Please check install in .../arch-darwin-c-opt
+```
+
+and `configure.log` reports `_CVDense` and `_CVSpgmr` as undefined symbols.
+
+A SUNDIALS 7 from Homebrew is in the linker search path ahead of the SUNDIALS 2.5 that PETSc downloads, and SUNDIALS 7 has no `CVDense`. `get_petsc.sh` passes no Homebrew library path, so on Apple Silicon, where Homebrew lives in `/opt/homebrew`, PETSc builds with a Homebrew SUNDIALS installed. On an Intel Mac, Homebrew installs into `/usr/local/lib`, which the linker searches by default, so a Homebrew SUNDIALS can still hide the downloaded one there. `brew list --versions sundials` shows whether Homebrew's SUNDIALS is installed.
 
 ### PETSc tests error (network configuration)
 
@@ -258,7 +345,7 @@ Install Python via Homebrew and use pip to manage packages, rather than Conda.
 
 ### Errors during the SOCRATES compilation {#errors-during-the-socrates-compilation}
 
-One of the following errors happen during the SOCRATES compilation:
+One of the following errors happen during the SOCRATES compilation (with `install.sh`, they are in its log file `install_<date>_<time>.log` in the PROTEUS folder):
 
 1. `clang (LLVM option parsing): Unknown command line argument '-x86-pad-for-align=false'.  Try: 'clang (LLVM option parsing) --help'`
 2. `clang (LLVM option parsing): Did you mean '--x86-slh-loads=false'?`

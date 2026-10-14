@@ -5,21 +5,26 @@ control each step, follow the manual procedure below. These steps cover the
 same ground as the installer script.
 
 !!! info "Prerequisites"
-    - macOS (Intel or Apple Silicon) or Linux
+    - Tested in CI: Linux x86_64 (Ubuntu) and macOS on Apple Silicon. Intel macOS and
+      Linux ARM64 are not tested; the Linux Miniconda commands below download the
+      x86_64 installer.
     - ~20 GB disk space (conda, Julia, reference data, submodules)
-    - Standard command-line tools: `curl`, `wget`
+    - Standard command-line tools: `curl`, `wget`, `make`
     - Git with SSH key configured ([GitHub SSH setup](https://docs.github.com/en/authentication/connecting-to-github-with-ssh))
     - Internet connection for initial setup and data downloads
     - Allow ~60 minutes for a full installation including all submodules
 
-PROTEUS runs on macOS and Linux. Windows users should install via
+On Windows, install PROTEUS under
 [WSL2](local_machine_guide.md#microsoft-windows). Depending on your system
 configuration, some steps may differ. If you run into problems, check the
 [Troubleshooting](troubleshooting.md) page or
 [contact the developers](../Community/contact.md).
 
-!!! tip "macOS users"
-    macOS Catalina (10.15) and later uses `zsh` as the default shell. Replace `.bashrc` with `.zshrc` throughout these instructions if you are using the default shell.
+!!! tip "Environment variables"
+    The steps below set each PROTEUS environment variable in the conda environment
+    `proteus` with `conda env config vars set -n proteus`, as `install.sh` does,
+    not in a shell start file. Conda sets the variables when it activates the
+    environment, so each step ends with `conda deactivate && conda activate proteus`.
 
 ---
 
@@ -42,7 +47,11 @@ Install the required system packages for your platform before proceeding.
 !!! tip "Using pixi instead of conda"
     PROTEUS can also be installed into a [pixi](https://pixi.sh) environment,
     which replaces the conda steps below. See [Install with pixi](pixi.md)
-    (experimental).
+    (experimental). With pixi, skip the conda lines in the steps below
+    (`conda activate`, `conda deactivate` and `conda env config vars set`); write
+    each variable instead as an `export NAME='value'` line to `.proteus-env.sh`
+    in the PROTEUS folder, and run `source .proteus-env.sh` in each new shell,
+    as [Install with pixi](pixi.md) describes.
 
 Python **3.12** is required, and is installed via
 [miniconda](https://www.anaconda.com/docs/getting-started/miniconda/install)
@@ -92,11 +101,12 @@ the official installer:
 ```console
 curl -fsSL https://install.julialang.org | sh
 ```
-After installing, pin to Julia 1.13, which is the version exercised by CI:
+After installing, add Julia 1.13, which is the version exercised by CI. Your
+default Julia stays as it is; PROTEUS finds 1.13 through `PYTHON_JULIAPKG_EXE`
+below:
 
 ```console
 juliaup add 1.13
-juliaup default 1.13
 ```
 
 !!! warning "Do **not** use your package manager"
@@ -105,42 +115,24 @@ juliaup default 1.13
     uninstall the old version first and remove old Julia entries from your
     `PATH`.
 
-Set the Julia environment variable:
+Set the Julia environment variable to the binary of Julia 1.13, not to the
+juliaup launcher:
 
-=== "bash"
-
-    ```console
-    echo "export PYTHON_JULIAPKG_EXE=$(which julia)" >> ~/.bashrc
-    source ~/.bashrc
-    ```
-
-=== "zsh"
-
-    ```console
-    echo "export PYTHON_JULIAPKG_EXE=$(which julia)" >> ~/.zshrc
-    source ~/.zshrc
-    ```
+```console
+conda env config vars set -n proteus PYTHON_JULIAPKG_EXE="$(julia +1.13 --startup-file=no -e 'print(joinpath(Sys.BINDIR, "julia"))')"
+conda deactivate && conda activate proteus
+```
 
 ## 4. Create environment variables and clone PROTEUS
 
 The `FWL_DATA` environment variable points to the folder where PROTEUS stores
 reference data. This variable must always be set.
 
-=== "bash"
-
-    ```console
-    mkdir -p /your/local/path/FWL_DATA
-    echo "export FWL_DATA=/your/local/path/FWL_DATA/" >> "$HOME/.bashrc"
-    source "$HOME/.bashrc"
-    ```
-
-=== "zsh"
-
-    ```console
-    mkdir -p /your/local/path/FWL_DATA
-    echo "export FWL_DATA=/your/local/path/FWL_DATA/" >> "$HOME/.zshrc"
-    source "$HOME/.zshrc"
-    ```
+```console
+mkdir -p /your/local/path/FWL_DATA
+conda env config vars set -n proteus FWL_DATA=/your/local/path/FWL_DATA/
+conda deactivate && conda activate proteus
+```
 
 Clone the repository:
 
@@ -153,12 +145,14 @@ cd PROTEUS
 
 [SOCRATES](https://github.com/FormingWorlds/SOCRATES) is a Fortran spectral radiative transfer code used by [AGNI](https://www.h-nicholls.space/AGNI/) and [JANUS](https://proteus-framework.org/JANUS/).
 
-!!! note "Fortran compiler and NetCDF"
-    SOCRATES requires `gfortran` (version 9+) and the NetCDF Fortran
-    development libraries. Verify they are available:
+!!! note "Fortran compiler, NetCDF, and make"
+    SOCRATES requires `gfortran` (version 9+), the NetCDF Fortran
+    development libraries, and `make`. Verify they are available:
 
     ```console
+    which make
     which gfortran
+    which nc-config
     which nf-config
     nf-config --version
     ```
@@ -169,19 +163,10 @@ bash tools/get_socrates.sh
 
 Set `RAD_DIR` to point to the SOCRATES installation:
 
-=== "bash"
-
-    ```console
-    echo "export RAD_DIR=$PWD/socrates/" >> "$HOME/.bashrc"
-    source "$HOME/.bashrc"
-    ```
-
-=== "zsh"
-
-    ```console
-    echo "export RAD_DIR=$PWD/socrates/" >> "$HOME/.zshrc"
-    source "$HOME/.zshrc"
-    ```
+```console
+conda env config vars set -n proteus RAD_DIR="$PWD/socrates/"
+conda deactivate && conda activate proteus
+```
 
 ## 6. Install AGNI and FastChem
 
@@ -208,40 +193,30 @@ the true location).
 
 Set the FastChem environment variable:
 
-=== "bash"
-
-    ```console
-    echo "export FC_DIR=$PWD/AGNI/fastchem/" >> "$HOME/.bashrc"
-    source "$HOME/.bashrc"
-    ```
-
-=== "zsh"
-
-    ```console
-    echo "export FC_DIR=$PWD/AGNI/fastchem/" >> "$HOME/.zshrc"
-    source "$HOME/.zshrc"
-    ```
+```console
+conda env config vars set -n proteus FC_DIR="$PWD/AGNI/fastchem/"
+conda deactivate && conda activate proteus
+```
 
 ## 7. Install Python submodules
 
-Clone and install each submodule in editable mode:
+Clone and install each submodule in editable mode. Each command clones the
+module at the release tag that matches its minimum version in
+`pyproject.toml` and installs it editable, the same code that `install.sh`
+installs.
 
 ```console
 # MORS - stellar evolution (https://proteus-framework.org/MORS/)
-git clone git@github.com:FormingWorlds/MORS
-python -m pip install -e MORS/.
+bash tools/get_python_module.sh MORS
 
 # JANUS - 1D convective atmosphere (https://proteus-framework.org/JANUS/)
-git clone git@github.com:FormingWorlds/JANUS
-python -m pip install -e JANUS/.
+bash tools/get_python_module.sh JANUS
 
 # CALLIOPE - volatile outgassing (https://proteus-framework.org/CALLIOPE/)
-git clone git@github.com:FormingWorlds/CALLIOPE
-python -m pip install -e CALLIOPE/.
+bash tools/get_python_module.sh CALLIOPE
 
 # ZEPHYRUS - atmospheric escape (https://github.com/FormingWorlds/ZEPHYRUS)
-git clone git@github.com:FormingWorlds/ZEPHYRUS
-python -m pip install -e ZEPHYRUS/.
+bash tools/get_python_module.sh ZEPHYRUS
 
 # Aragog - interior thermal evolution (https://proteus-framework.org/aragog/)
 bash tools/get_aragog.sh
@@ -250,18 +225,30 @@ bash tools/get_aragog.sh
 bash tools/get_zalmoxis.sh
 ```
 
+Aragog integrates with the SUNDIALS CVODE solver by default, so install it
+too (this needs the active conda environment); only Aragog on its default
+`solver_method = "cvode"` needs it:
+
+```console
+bash tools/get_cvode.sh
+```
+
 !!! info "Editable checkouts override PyPI versions"
     `fwl-aragog` and `fwl-zalmoxis` are listed as PyPI dependencies in
     `pyproject.toml` as a fallback for users who install PROTEUS without
     cloning submodules. The editable sibling checkouts take precedence on
     `sys.path`. Run `proteus doctor` to confirm which versions are active.
 
-!!! warning "Local changes block checkout refreshes"
-    The `tools/get_*.sh` scripts refuse to replace a checkout that has
-    uncommitted changes to tracked files or commits not pushed to a
-    remote. Commit and push your work first, or pass `--force` to the
-    script (e.g. `bash tools/get_aragog.sh --force`) to discard the
-    checkout deliberately.
+!!! warning "A module folder that is already there is kept"
+    Run again, these commands keep a module folder that is already there,
+    whatever it holds: they run no git command that changes it, delete or
+    replace nothing in it, install it as it is and print the commands that
+    move it to its release tag by hand. The editable install can still
+    write files of its own into the folder (for example a version file or
+    an `.egg-info` folder), and `get_vulcan.sh` builds fastchem in it. An
+    empty folder gets a new clone. Pass `--force` (e.g.
+    `bash tools/get_aragog.sh --force`) to delete the folder and clone the
+    module again.
 
 ## 8. Install PROTEUS
 
@@ -269,8 +256,18 @@ bash tools/get_zalmoxis.sh
 python -m pip install -e ".[develop]"
 ```
 
-The optional backends and the parameter-inference stack are not part of this
-install, and their tests skip without them. To match what CI runs:
+VULCAN, atmodeller, Morrigan, Obliqua and the parameter-inference stack are not part of this
+install, and the tests of VULCAN, atmodeller and the inference stack skip without them. To
+set up the four modules as `bash install.sh` does:
+
+```console
+bash tools/get_morrigan.sh
+bash tools/get_vulcan.sh
+bash tools/get_atmodeller.sh
+bash tools/get_obliqua.sh
+```
+
+To match what CI runs, which takes VULCAN and atmodeller from PyPI:
 
 ```console
 python -m pip install -e ".[develop,vulcan,atmodeller,inference]"
@@ -285,24 +282,27 @@ pre-commit install -f
 ## 10. Download reference data
 
 Download the essential reference data files (the default-config and
-tutorial k-tables, stellar spectra, and the interior tables, including
-the structure-solver EOS):
+tutorial k-tables, stellar spectra, the PHOENIX grid of the default star,
+and the interior tables, including the structure-solver EOS):
 
 ```console
 proteus get spectral -n Honeyside -b 48
 proteus get spectral -n Dayspring -b 48
 proteus get stellar
+proteus get phoenix --feh 0.0 --alpha 0.0
 proteus get interiordata
 ```
+
+The PHOENIX grid is in the essential set because the default star, which a
+config without a `[star]` section uses, takes its spectrum from it.
 
 Running `proteus get spectral` without arguments downloads every
 spectral file group (~10 GB).
 
-For additional datasets (MUSCLES spectra, PHOENIX models), use:
+For additional datasets (MUSCLES spectra, reference data), use:
 
 ```console
 proteus get muscles --all
-proteus get phoenix --feh 0.0 --alpha 0.0
 proteus get reference
 ```
 

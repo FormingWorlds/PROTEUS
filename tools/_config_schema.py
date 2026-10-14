@@ -36,6 +36,7 @@ CONFIG_DIR = REPO_ROOT / 'src' / 'proteus' / 'config'
 ANNOTATION_OVERRIDES = {
     'planet.R_int_override': 'float',
     'orbit.axial_period': 'float',
+    'orbit.parameterized.sma_final': 'float',
     'orbit.satellite.axial_period_sat': 'float',
     'interior_struct.zalmoxis.ice_layer_eos': 'str',
     'interior_struct.core_density': 'float | str',
@@ -266,7 +267,7 @@ def _display_type(field, hint, path: str, accepts_none: bool) -> str:
     'or none' is appended when the converter maps 'none' to None.
     """
     if path in ANNOTATION_OVERRIDES:
-        base_names = [ANNOTATION_OVERRIDES[path]]
+        base_names = [n.strip() for n in ANNOTATION_OVERRIDES[path].split('|')]
         saw_none = False
     elif hint is not None:
         origin = typing.get_origin(hint)
@@ -289,7 +290,7 @@ def _display_type(field, hint, path: str, accepts_none: bool) -> str:
         base_names = parts
     else:
         raise _docgen.DocgenError(f'field "{path}" has no recoverable type annotation')
-    base = ' | '.join(base_names)
+    base = ' or '.join(base_names)
     if accepts_none or saw_none:
         base += ' or none'
     return base

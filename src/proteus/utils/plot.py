@@ -52,6 +52,7 @@ _preset_colours = {
     'Mg': '#996633',
     'Na': '#ccff00',
     'Ti': '#0d2959',
+    'V': '#ff6600',
     'K': '#2e8b57',
     'Al': '#5e2172',
     'Ca': '#167A9B',
@@ -152,6 +153,36 @@ def _generate_colour(gas: str):
     colour = f'#{red:02x}{gre:02x}{blu:02x}'
 
     return colour
+
+
+# Fades that give the greys '#444444' and '#808080' in the default (black on white) style.
+FADE_DARK_GREY = 0x44 / 0xFF
+FADE_MID_GREY = 0x80 / 0xFF
+
+
+def style_neutral(fade: float = 0.0) -> tuple[float, float, float]:
+    """Neutral colour of the active matplotlib style, read when it is called.
+
+    Parameters
+    ----------
+    fade : float
+        Position between the text colour (0) and the axes face colour (1) of the
+        style, mixed linearly in RGB. A transparent axes face stands for the
+        figure face colour.
+
+    Returns
+    -------
+    tuple of float
+        RGB colour: black, grey and white in the default style, and their
+        counterparts in a dark style.
+    """
+    from matplotlib import colors, rcParams
+
+    face = colors.to_rgba(rcParams['axes.facecolor'])
+    if face[3] == 0.0:
+        face = colors.to_rgba(rcParams['figure.facecolor'])
+    text = colors.to_rgb(rcParams['text.color'])
+    return tuple(t + fade * (f - t) for t, f in zip(text, face))
 
 
 def get_colour(thing: str):

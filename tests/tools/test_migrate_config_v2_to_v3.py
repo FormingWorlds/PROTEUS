@@ -78,16 +78,73 @@ _DROP_PREFIXES = (
 # decision: pin it (OVERRIDES) or certify it neutral (add it here).
 _REVIEWED_NEUTRAL = frozenset(
     {
+        # Solid-phase volatile trapping. Inert on a migrated config:
+        # trap_mode defaults to 'none', so the partition coefficients and
+        # the front parameters are never read and behaviour is unchanged.
+        'outgas.trap_phi_min',
+        'outgas.trap_mush_log10visc',
+        'outgas.trap_n_front_min',
+        'outgas.trap_max_front_fraction',
+        'outgas.trap_mode',
+        'outgas.D_const_CH4',
+        'outgas.D_const_CO',
+        'outgas.D_const_CO2',
+        'outgas.D_const_H2',
+        'outgas.D_const_H2O',
+        'outgas.D_const_H2S',
+        'outgas.D_const_N2',
+        'outgas.D_const_NH3',
+        'outgas.D_const_O2',
+        'outgas.D_const_S2',
+        'outgas.D_const_SO2',
+        # Accretion defaults to inactive with zero impactor budgets, zero
+        # loss fractions, and unread dummy/morrigan sub-blocks.
+        'accretion.atmloss_frac',
+        'accretion.atmloss_law',
+        'accretion.atmloss_module',
+        'accretion.dummy.eccentricity',
+        'accretion.dummy.timeline_path',
+        'accretion.dummy.impact_parameter',
+        'accretion.dummy.mass_accreted',
+        'accretion.dummy.num_impacts',
+        'accretion.dummy.time_last',
+        'accretion.dummy.timescale',
+        'accretion.timeline.timeline_path',
+        'accretion.impactor_volatiles',
+        'accretion.impactor_C_ppmw',
+        'accretion.impactor_H_ppmw',
+        'accretion.impactor_N_ppmw',
+        'accretion.impactor_O_ppmw',
+        'accretion.impactor_S_ppmw',
+        'accretion.morrigan.density',
+        'accretion.morrigan.eccentricity_init',
+        'accretion.morrigan.evolution_time',
+        'accretion.morrigan.impact_angle',
+        'accretion.morrigan.inner_cutoff',
+        'accretion.morrigan.inner_edge',
+        'accretion.morrigan.mass_equal',
+        'accretion.morrigan.masses',
+        'accretion.morrigan.num_planets',
+        'accretion.morrigan.seed',
+        'accretion.morrigan.selector',
+        'accretion.morrigan.selector_value',
+        'accretion.morrigan.spacing',
+        'accretion.time_offset',
         'atmos_clim.aerosols_enabled',
+        'atmos_clim.agni.aerosol_r_eff',
+        'atmos_clim.agni.aerosol_sigma_g',
         'atmos_clim.agni.grey_opacity_lw',
         'atmos_clim.agni.grey_opacity_sw',
         'atmos_clim.agni.hydrograv_constg',
+        'atmos_clim.agni.hydrograv_hilldr',
         'atmos_clim.agni.hydrograv_maxdr',
         'atmos_clim.agni.hydrograv_mindr',
         'atmos_clim.agni.hydrograv_ming',
         'atmos_clim.agni.hydrograv_selfg',
         'atmos_clim.agni.hydrograv_steps',
         'atmos_clim.agni.spectral_file',
+        'atmos_clim.agni.tau_obs',
+        'atmos_clim.agni.wl_obs',
         'atmos_clim.dummy.fixed_flux',
         'atmos_clim.janus.cloud_alpha',
         # Inert while escape.hill_clamp is pinned off for migrated configs.
@@ -102,8 +159,32 @@ _REVIEWED_NEUTRAL = frozenset(
         'interior_energetics.aragog.atol_temperature_equivalent',
         'interior_energetics.aragog.backend',
         'interior_energetics.aragog.core_bc',
+        # The core budget is read only when core_bc = "core_module",
+        # and a migrated config keeps core_bc at its default, so none of
+        # these values reaches the run.
+        'interior_energetics.aragog.core_module.alpha',
+        'interior_energetics.aragog.core_module.alpha_c',
+        'interior_energetics.aragog.core_module.c_light',
+        'interior_energetics.aragog.core_module.c_p',
+        'interior_energetics.aragog.core_module.depression',
+        'interior_energetics.aragog.core_module.ds_fusion',
+        'interior_energetics.aragog.core_module.f_ohm',
+        'interior_energetics.aragog.core_module.flux_geometry',
+        'interior_energetics.aragog.core_module.k_core',
+        'interior_energetics.aragog.core_module.layer_base_fraction',
+        'interior_energetics.aragog.core_module.layer_g_mix',
+        'interior_energetics.aragog.core_module.layer_k_mix',
+        'interior_energetics.aragog.core_module.light_element_fraction',
+        'interior_energetics.aragog.core_module.melting_curve',
+        'interior_energetics.aragog.core_module.q_radio',
+        'interior_energetics.aragog.core_module.ra_crit_cmb',
+        'interior_energetics.aragog.core_module.stratification',
+        'interior_energetics.aragog.core_module.t_m0',
+        'interior_energetics.aragog.core_module.t_m1',
+        'interior_energetics.aragog.core_module.t_m2',
         'interior_energetics.aragog.entropy_step_cap',
         'interior_energetics.aragog.phase_boundary_entropy_margin',
+        'interior_energetics.aragog.phase_boundary_cap',
         'interior_energetics.aragog.phase_smoothing',
         'interior_energetics.aragog.phi_step_cap',
         'interior_energetics.aragog.scalar_gravity_override',
@@ -203,6 +284,13 @@ _REVIEWED_NEUTRAL = frozenset(
         'orbit.satellite.c_factor_sat',
         'orbit.satellite.axial_period_sat',
         'orbit.satellite.love_number_sat',
+        # The prescribed migration track (orbit.parameterized.*) is new in
+        # 3.0 and defaults to migration = "none" with no endpoints set, so a
+        # migrated config keeps a fixed orbit until the user opts in.
+        'orbit.parameterized.migration',
+        'orbit.parameterized.sma_final',
+        'orbit.parameterized.time_migration',
+        'orbit.parameterized.tau_migration',
         # Obliqua (orbit.obliqua.*) has no 2.0 analogue at all; every field
         # is new and stays at its 3.0 default for a migrated config.
         'orbit.obliqua.store_3D',
@@ -302,6 +390,9 @@ _REVIEWED_NEUTRAL = frozenset(
         'outgas.vapourise',
         'params.dt.hysteresis_iters',
         'params.dt.hysteresis_sfinc',
+        # The giant-impact landing-step cap defaults to 0 (disabled), and a
+        # migrated config schedules no impacts, so it never engages.
+        'params.dt.impact_maximum',
         'params.dt.max_growth_factor',
         'params.dt.mushy_maximum',
         'params.dt.mushy_upper',
@@ -846,15 +937,7 @@ def test_clean_spider_config_warns_only_about_legacy_observe_synthesis():
     assert report.warnings == ['Unmapped 2.0 field (left out): observe.synthesis'], (
         report.warnings
     )
-
-    # The warning is reserved for fields main's 2.0 loader actually read. A key
-    # that was never part of the 2.0 schema had no effect on the 2.0 run, so
-    # dropping it is faithful and silent; warning on it would bury the one
-    # field that does need the user's attention.
-    v2 = _minimal_spider_v2()
-    v2['interior']['ghost_field'] = 1.0
-    _, ghost_report = _translate(v2)
-    assert ghost_report.warnings == report.warnings
+    assert report.dropped_unknown == []
 
 
 def test_grid_axis_renames():
@@ -884,3 +967,132 @@ def test_grid_axis_renames():
     assert out['ref_config'] == 'input/base.toml'  # header preserved
     assert out['planet.elements.H_budget']['step'] == pytest.approx(5e3)
     assert any('H_mode' in w for w in report.warnings)
+
+
+def test_translated_key_outside_the_schema_is_refused_by_name(monkeypatch):
+    """A 3.0 path the translation emits but the schema lacks stops the migration and is named."""
+    from proteus.config.orphans import UnknownConfigKeyError
+
+    monkeypatch.setitem(mig.OVERRIDES, 'planet.mass_totl', 2.0)
+    with pytest.raises(UnknownConfigKeyError, match=r'"planet\.mass_totl"') as exc:
+        mig.translate(_minimal_spider_v2())
+    assert 'in the migrated 3.0 config' in str(exc.value)
+
+
+def test_main_writes_nothing_when_a_translated_key_is_refused(monkeypatch, tmp_path, capsys):
+    """The command exits 1, names the key on stderr and leaves no output file."""
+    v2_path, out_path = tmp_path / 'v2.toml', tmp_path / 'v3.toml'
+    mig._dump_toml(_minimal_spider_v2(), v2_path)
+    monkeypatch.setitem(mig.OVERRIDES, 'planet.mass_totl', 2.0)
+    assert mig.main([str(v2_path), '-o', str(out_path)]) == 1
+    assert not out_path.exists()
+    err = capsys.readouterr().err
+    assert '"planet.mass_totl"' in err and 'fault in the migration tables' in err
+
+
+def test_translated_scalar_on_a_section_is_refused_as_misdeclared(monkeypatch):
+    """A translated value where the schema expects a section is refused and named."""
+    from proteus.config.orphans import UnknownConfigKeyError
+
+    monkeypatch.setitem(mig.OVERRIDES, 'planet', 1.0)
+    with pytest.raises(UnknownConfigKeyError, match='Misdeclared configuration section') as exc:
+        mig.translate(_minimal_spider_v2())
+    assert '"planet"' in str(exc.value)
+
+
+def test_main_runs_without_julia(tmp_path):
+    """The command migrates a 2.0 file in a fresh interpreter that cannot import juliacall."""
+    import subprocess
+
+    v2_path, out_path = tmp_path / 'v2.toml', tmp_path / 'v3.toml'
+    mig._dump_toml(_minimal_spider_v2(), v2_path)
+    root = Path(__file__).resolve().parents[2]
+    code = (
+        "import sys; sys.modules['juliacall'] = None; "
+        f'sys.path[:0] = [{str(root / "tools")!r}, {str(root / "src")!r}]; '
+        'import migrate_config_v2_to_v3 as m; '
+        f'sys.exit(m.main([{str(v2_path)!r}, "-o", {str(out_path)!r}]))'
+    )
+    run = subprocess.run([sys.executable, '-c', code], capture_output=True, text=True)
+    assert run.returncode == 0, run.stderr[-2000:]
+    assert out_path.exists()
+
+
+def _with_zalmoxis(v2):
+    v2['struct']['module'] = 'zalmoxis'
+    v2['struct']['zalmoxis'] = {'mantle_eos': 'WolfBower2018:MgSiO3', 'ghost_field': 1.0}
+
+
+def _with_aragog(v2):
+    v2['interior']['module'] = 'aragog'
+    v2['interior']['aragog'] = {'ghost_field': 1.0}
+
+
+def _with_inactive_aragog(v2):
+    v2['interior']['aragog'] = {'ghost_field': 1.0, 'num_levels': 50}
+
+
+def _with_ghosts(v2):
+    v2['interior']['ghost_field'] = 1.0
+    v2['delivery']['volatiles'] = {'XYZ': 1.0}
+
+
+@pytest.mark.parametrize(
+    'edit, names',
+    [
+        (_with_ghosts, ['delivery.volatiles.XYZ', 'interior.ghost_field']),
+        (_with_zalmoxis, ['struct.zalmoxis.ghost_field']),
+        (_with_aragog, ['interior.aragog.ghost_field']),
+        (_with_inactive_aragog, ['interior.aragog.ghost_field']),
+    ],
+    ids=['section', 'zalmoxis', 'aragog', 'inactive_block'],
+)
+def test_unknown_2_0_key_is_left_out_and_named(edit, names):
+    """A user key outside the 2.0 schema is left out, listed by name and not warned about."""
+    clean = _minimal_spider_v2()
+    edit(clean)
+    for name in names:
+        section, _, key = name.rpartition('.')
+        node = clean
+        for part in section.split('.'):
+            node = node[part]
+        del node[key]
+    _, clean_report = _translate(clean)
+    v2 = _minimal_spider_v2()
+    edit(v2)
+    flat, report = _translate(v2)
+    assert not set(names) & set(flat)
+    assert sorted(report.dropped_unknown) == names
+    assert f'Left out (not in the 2.0 schema): {report.dropped_unknown}' in report.text()
+    assert report.warnings == clean_report.warnings
+    assert report.dropped_inactive == clean_report.dropped_inactive
+
+
+def test_main_prints_the_left_out_keys(tmp_path, capsys):
+    """The command writes the migrated file and lists the left-out keys on stdout."""
+    v2 = _minimal_spider_v2()
+    _with_ghosts(v2)
+    v2_path, out_path = tmp_path / 'v2.toml', tmp_path / 'v3.toml'
+    mig._dump_toml(v2, v2_path)
+    assert mig.main([str(v2_path), '-o', str(out_path)]) == 0
+    out = capsys.readouterr().out
+    assert (
+        "Left out (not in the 2.0 schema): ['interior.ghost_field', 'delivery.volatiles.XYZ']"
+        in out
+    )
+
+
+@pytest.mark.parametrize('field, value', [('mass', 'heavy'), ('age_ini', [1, 2])])
+def test_wrong_typed_value_is_refused_by_the_schema(field, value, tmp_path):
+    """A 2.0 field holding a value of the wrong type fails 3.0 structuring and nothing is written."""
+    import cattrs
+
+    v2 = _minimal_spider_v2()
+    v2['star'][field] = value
+    with pytest.raises(cattrs.errors.ClassValidationError):
+        mig.translate(v2)
+    v2_path, out_path = tmp_path / 'v2.toml', tmp_path / 'v3.toml'
+    mig._dump_toml(v2, v2_path)
+    with pytest.raises(cattrs.errors.ClassValidationError):
+        mig.main([str(v2_path), '-o', str(out_path)])
+    assert not out_path.exists()

@@ -3,6 +3,9 @@
 !!! info "Install PROTEUS first"
     Please follow the [quick installation guide](installation.md) or [manual installation guide](manual_installation.md) before installing optional modules.
 
+!!! note "Set up by the installer"
+    `bash install.sh` sets up Obliqua, atmodeller, VULCAN and Morrigan. Their sections on this page repeat that step by hand.
+
 ## SPIDER and PETSc {#optional-setup-petsc}
 
 SPIDER is a C-based interior thermal evolution solver. It requires PETSc
@@ -21,7 +24,8 @@ bash tools/get_spider.sh
 
 === "Linux"
 
-    The PETSc script downloads a pre-compiled version from OSF and configures
+    The PETSc script downloads the PETSc 3.19.0 source archive from Zenodo (or its
+    DataverseNL mirror), checks its SHA-256, builds it and configures
     `PETSC_DIR` and `PETSC_ARCH` automatically.
 
     !!! note "Fedora / RHEL"
@@ -30,7 +34,7 @@ bash tools/get_spider.sh
 
 === "macOS"
 
-    The script detects Apple Silicon vs Intel and uses Homebrew's MPI. If you
+    The script uses the MPI on your PATH, for example Homebrew's Open MPI. If you
     encounter issues, see
     [Troubleshooting: PETSc on Apple Silicon](troubleshooting.md#petsc-compilation-fails-on-apple-silicon).
 
@@ -45,12 +49,25 @@ bash tools/get_lovepy.sh
 
 ## Multi-phase tidal response (Obliqua)
 
-Obliqua computes the multi-phase tidal response of the planet from its
-interior structure and rheology. It is written in Julia.
+The installer sets Obliqua up automatically. Obliqua computes the multi-phase
+tidal response of the planet from its interior structure and rheology. It is
+written in Julia. To repeat the setup step by hand:
 
 ```console
 bash tools/get_obliqua.sh
 ```
+
+The options `--register` (adds Obliqua to the default Julia environment) and
+`--test` (runs its own tests) exist. `--force` replaces an Obliqua clone with a
+new one at the pin. The script accepts an empty folder and a path that does
+not exist, and a link to a folder stands for that folder. With or without
+`--force` it refuses the PROTEUS folder, your home folder and a folder that
+holds one of them, a file or a broken link, a path that holds a line break,
+a path that goes through a folder
+that does not exist and then through `.` or `..`, and a folder with files that is
+not an Obliqua project; with `--force` it also refuses a folder with files
+that is not a git clone of its own with a commit, and a folder whose `.git` is a
+file (a git worktree or a submodule).
 
 ## Synthetic observations (PetitRADTRANS)
 
@@ -66,9 +83,20 @@ bash tools/get_prt.sh
 
 ## Alternative outgassing (atmodeller)
 
-[atmodeller](https://github.com/djbower/atmodeller) is an optional
-alternative to CALLIOPE, selected with `outgas.module = "atmodeller"`. It is
-not installed with PROTEUS by default; a standard run uses CALLIOPE.
+The installer sets atmodeller up automatically as an editable clone in `Atmodeller/`.
+[atmodeller](https://github.com/djbower/atmodeller) is an alternative to
+CALLIOPE, selected with `outgas.module = "atmodeller"`. The clone comes from
+[FormingWorlds/atmodeller](https://github.com/FormingWorlds/atmodeller) at the
+commit that `pyproject.toml` pins under `[tool.proteus.modules.atmodeller]`.
+`bash tools/get_atmodeller.sh --force` replaces whatever is in `Atmodeller/`
+with a new clone, also a folder with files that is not a git clone.
+To repeat the setup step by hand:
+
+```console
+bash tools/get_atmodeller.sh
+```
+
+For an installation without the installer, install the package via its extra:
 
 ```console
 pip install "fwl-proteus[atmodeller]"
@@ -99,11 +127,12 @@ bash tools/get_lavatmos.sh
     ThermoEngineLite compiles a C++/Python extension and requires `clang` and
     `pip` on `PATH`. Compilation takes around 20 minutes.
 
-`get_lavatmos.sh` clones the checkout but does not export an environment
-variable for you. Export the printed path and add it to your shell rc file:
+`get_lavatmos.sh` clones the checkout but does not set an environment
+variable for you. Set the printed path in your conda environment:
 
 ```console
-export LAVA_DIR='<path-to-LavAtmos>/'
+conda env config vars set -n proteus LAVA_DIR='<path-to-LavAtmos>/'
+conda deactivate && conda activate proteus
 ```
 
 See [`input/tutorials/tutorial_vapourise.toml`](https://github.com/FormingWorlds/PROTEUS/blob/main/input/tutorials/tutorial_vapourise.toml) for an example configuration.
@@ -134,20 +163,48 @@ package; every other command is unaffected. See the
 
 ## Atmospheric chemistry (VULCAN)
 
-VULCAN is an optional atmospheric-photochemistry backend, selected with
-`atmos_chem.module = "vulcan"`. It is not required for a standard PROTEUS
-run. Install it from PyPI:
-
-```console
-pip install "fwl-proteus[vulcan]"
-```
-
-For local development, install as an editable checkout instead:
+The installer sets VULCAN up automatically as an editable clone in `VULCAN/`.
+VULCAN is an atmospheric photochemistry module, selected with
+`atmos_chem.module = "vulcan"`. To repeat the setup step by hand:
 
 ```console
 bash tools/get_vulcan.sh
 ```
 
+For an installation without the installer, install the package via its extra:
+
+```console
+pip install "fwl-proteus[vulcan]"
+```
+
 !!! warning "License"
     VULCAN is distributed under the GPL-3.0 license; review its terms
     before installing.
+
+## Protoplanet accretion (Morrigan)
+
+The installer sets Morrigan up automatically as an editable clone in `Morrigan/`.
+Morrigan is a giant-impact accretion module, selected with
+`accretion.module = "morrigan"`. It evolves a system of planetary embryos
+through orbital crossings and collisions and returns the impact history
+that the coupled run replays. To repeat the setup step by hand:
+
+```console
+bash tools/get_morrigan.sh
+```
+
+For an installation without the installer, install the package via its extra:
+
+```console
+pip install "fwl-proteus[morrigan]"
+```
+
+An accretion run needs an interior module that can re-melt the mantle
+after an impact. Aragog is the production choice; SPIDER is refused at
+configuration load because it has no re-melt path.
+
+Two accretion modules need no installation at all. `accretion.module =
+"dummy"` builds an impact history from scaling laws, and `accretion.module
+= "timeline"` replays one from a file, which is how a published or
+externally computed impact history drives a run. Both apply the same
+impact physics as the dynamical model.

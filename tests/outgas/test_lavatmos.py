@@ -29,6 +29,7 @@ import pytest
 from calliope.oxygen_fugacity import OxygenFugacity
 
 import proteus.outgas.lavatmos as lavatmos_mod
+from proteus.utils.helper import mol_to_ele
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -124,6 +125,32 @@ def _fake_run_lavatmos_factory(pbar, mu, co2_vmr, h2o_vmr, o2_vmr):
             f.write(f'{pbar} {mu} {co2_vmr} {h2o_vmr} {o2_vmr}\n')
 
     return _fake
+
+
+@pytest.mark.physics_invariant
+def test_species_table_mg2_and_na2_are_correct_homonuclear_formulas():
+    """The real `_SPECIES_TABLE` rows added for Mg2 and Na2 decompose to the
+    correct atom counts and carry a physically correct molar weight.
+
+    Physical scenario: Mg2 and Na2 are homonuclear diatomic rock-vapour
+    species newly adopted to match AGNI's supported species set; their
+    FastChem formula string must actually mean "two atoms of that element",
+    not a mistranscribed single atom or a different element.
+    """
+    mg2 = lavatmos_mod.species_lib['Mg2']
+    na2 = lavatmos_mod.species_lib['Na2']
+
+    assert mol_to_ele(mg2.fc_name) == {'Mg': 2}
+    assert mol_to_ele(na2.fc_name) == {'Na': 2}
+
+    # Reference molar masses: Mg = 24.305, Na = 22.990 g/mol (IUPAC).
+    assert mg2.weight == pytest.approx(2 * 24.305, rel=1e-3)
+    assert na2.weight == pytest.approx(2 * 22.990, rel=1e-3)
+
+    # Discrimination guard: a mistranscribed single-atom formula ('Mg'/'Na'
+    # instead of 'Mg2'/'Na2') would give exactly half these weights.
+    assert mg2.weight != pytest.approx(24.305, rel=1e-3)
+    assert na2.weight != pytest.approx(22.990, rel=1e-3)
 
 
 @pytest.mark.physics_invariant

@@ -24,6 +24,7 @@ nav:
               - Overview: How-to/usage.md
               - Running and output: How-to/usage_running.md
               - Initial thermal conditions: How-to/usage_initial_conditions.md
+              - Core evolution: How-to/usage_core_evolution.md
               - Parameter grids: How-to/usage_grids.md
               - Postprocessing and chemistry: How-to/usage_postprocessing.md
               - Choose stellar spectrum: How-to/switch_spectrum.md
@@ -67,6 +68,7 @@ nav:
           - Interior structure and energetics: Reference/config/interior.md
           - Atmosphere and chemistry: Reference/config/atmosphere.md
           - Escape and outgassing: Reference/config/escape_outgas.md
+          - Accretion: Reference/config/accretion.md
           - Observations: Reference/config/observe.md
       - Melting curves: Reference/melting_curves.md
       - Module map: Reference/module_map.md
@@ -80,6 +82,9 @@ nav:
           - Interior energetics wrapper: Reference/api/interior_energetics_wrapper.md
       - Validation:
           - Overview: Validation/index.md
+          - Accretion:
+              - Analytical accretion (dummy.py): Validation/accretion/dummy.md
+              - Impact atmosphere-loss dispatch (wrapper.py): Validation/accretion/wrapper.md
           - Atmosphere climate:
               - Transparent black-body limit (agni.py): Validation/atmos_clim/agni.md
           - Interior structure:
@@ -89,9 +94,13 @@ nav:
               - Satellite angular momentum (satellite.py): Validation/orbit/satellite.md
               - Orbit module wrapper (wrapper.py): Validation/orbit/wrapper.md
               - Tidal Love-number lookup (obliqua.py): Validation/orbit/obliqua.md
+              - Prescribed migration laws (parameterized.py): Validation/orbit/parameterized.md
           - Outgas:
               - H2-MgSiO3 binodal (binodal.py): Validation/outgas/binodal.md
               - Rock-vapour molar masses (lavatmos.py): Validation/outgas/lavatmos.md
+              - Melt drainage across the freezing front (compaction.py): Validation/outgas/compaction.md
+              - Burial ledger for remelting (burial_ledger.py): Validation/outgas/burial_ledger.md
+              - Solid-phase volatile trapping (trapping.py): Validation/outgas/trapping.md
           - Star:
               - Stellar luminosity and instellation (star.py): Validation/star/star.md
               - Stellar wrapper dispatch (wrapper.py): Validation/star/wrapper.md
@@ -117,6 +126,7 @@ nav:
       - Obliqua: https://proteus-framework.org/Obliqua/
       - VULCAN: https://proteus-framework.org/VULCAN/
       - Zalmoxis: https://proteus-framework.org/Zalmoxis/
+      - Morrigan: https://proteus-framework.org/Morrigan/
       - Aragog: https://proteus-framework.org/aragog/
       - SPIDER: https://proteus-framework.org/SPIDER/
       - Atmodeller: https://atmodeller.readthedocs.io/en/latest/

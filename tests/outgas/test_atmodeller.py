@@ -215,15 +215,15 @@ def test_element_budget_survives_outgas_reservoir_escape():
     assert (h_budget - tgt['H']) > 0.01 * h_budget  # a real, resolvable debit
     assert tgt['H'] == pytest.approx(expected_h, rel=1e-9)
 
-    # Discrimination: an empty atmospheric reservoir gives escape nothing to draw
-    # on, so the whole-planet budget is left alone rather than debited. The two
-    # debits are a resolvable percent of the budget apart, not a tolerance width.
+    # An empty atmospheric reservoir provides no escape losses,
+    # preserving the planet-level budget without collapsing to zero.
     empty_row = dict(hf_row)
     for e in element_mmw:
         empty_row[f'{e}_kg_atm'] = 0.0
     tgt_empty = calc_new_elements(empty_row, dt=dt, reservoir='outgas')
     assert (h_budget - tgt_empty['H']) == pytest.approx(0.0, abs=1e-6)
     assert tgt_empty['H'] == pytest.approx(h_budget, rel=1e-12)
+    assert tgt_empty['H'] > 1.0e20  # discriminates against the zero collapse
 
 
 @pytest.mark.physics_invariant
@@ -264,15 +264,16 @@ def test_o2_endpoint_keeps_live_budget_no_false_desiccation():
     # the O2 endpoint.
     assert tgt['O'] > 0.99 * 9.0e21
 
-    # Discrimination: with no O in the atmospheric reservoir escape has nothing to
-    # draw on, so the budget is untouched. Pinning the two debits rather than the
-    # two totals separates them by the full escape mass, well clear of tolerance.
+    # With no atmospheric oxygen, escape draws nothing and preserves
+    # the total oxygen budget against false refusal.
     o_budget = hf_row['O_kg_total']
     empty_row = dict(hf_row)
     for e in element_mmw:
         empty_row[f'{e}_kg_atm'] = 0.0
     tgt_empty = calc_new_elements(empty_row, dt=1.0, reservoir='outgas')
     assert (o_budget - tgt_empty['O']) == pytest.approx(0.0, abs=1e-6)
+    assert tgt_empty['O'] == pytest.approx(o_budget, rel=1e-12)
+    assert tgt_empty['O'] > 8.0e21  # discriminates against the zero collapse
     # rel=1e-4 because the debit is a 3e10 kg difference between two 9e21 kg
     # totals, where double precision resolves only about 2e6 kg (rel 6e-5).
     assert (o_budget - tgt['O']) == pytest.approx(1.0e3 * secs_per_year * 1.0, rel=1e-4)

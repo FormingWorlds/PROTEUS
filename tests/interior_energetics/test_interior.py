@@ -72,11 +72,9 @@ def test_calculate_simple_mantle_mass_no_core():
     # Full sphere volume: (4/3) * pi * r^3
     expected_mass = (4 * np.pi / 3) * radius**3 * density
     assert mantle_mass == pytest.approx(expected_mass, rel=1e-10)
-    # Section 3 positivity: mass must be positive Kelvin-free SI quantity.
-    # A regression that forgot the (1 - core_frac**3) factor still gives
-    # the same result at core_frac=0, so positivity alone is weak; pair
-    # with a scale guard against a missing 4/3 factor (which would shift
-    # the result by ~24%).
+    # Positivity (tests/AGENTS.md, Physics modules). Weak alone: a missing (1 - core_frac**3)
+    # factor gives the same result at core_frac=0, so a scale guard follows for a
+    # missing 4/3 factor (~24 % shift).
     assert mantle_mass > 0.0
     naive_no_43 = np.pi * radius**3 * density
     assert abs(mantle_mass - naive_no_43) > 0.1 * expected_mass
@@ -544,7 +542,7 @@ def test_run_dummy_int_heat_radiogening():
 
     assert output['F_radio'] == pytest.approx(expected_F_radio, rel=1e-8)
     # Positivity: outgoing radiogenic flux must be non-negative for
-    # non-negative heat_internal (Section 3 positivity invariant).
+    # non-negative heat_internal (positivity invariant, tests/AGENTS.md, Physics modules).
     assert output['F_radio'] > 0.0
     # Linear scaling discrimination: doubling heat_internal doubles
     # F_radio at fixed geometry. A regression that squared the per-kg
@@ -582,7 +580,7 @@ def test_run_dummy_int_heat_tidaling_enabled():
 
     assert output['F_tidal'] == pytest.approx(expected_F_tidal, rel=1e-8)
     # Positivity: non-zero tidal specific power must produce a strictly
-    # positive F_tidal (Section 3 positivity).
+    # positive F_tidal (positivity, tests/AGENTS.md, Physics modules).
     assert output['F_tidal'] > 0.0
     # Discrimination: F_tidal must NOT collapse to zero when the gate
     # is open and tides[0] > 0. A regression that swapped the gate

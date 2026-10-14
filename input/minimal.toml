@@ -1,10 +1,16 @@
-# PROTEUS: minimal configuration example
-# Demonstrates how little a config file needs: just a few science-critical
-# parameters (planet mass, orbit, volatiles, redox). Everything else uses
-# defaults (see all_options.toml). Empty sections can be omitted entirely.
+# PROTEUS minimal example: an Earth-mass planet at 1 AU cools from a magma ocean until the mantle is solid.
+# Run: proteus start -c input/minimal.toml (about 1 h of CPU time; the first output rows appear after several minutes).
+# Every option that is not set here takes its default (see all_options.toml).
 
 # Config file format version
 config_version = "3.0"
+
+[params]
+    [params.dt]
+        minimum = 100.0              # [yr]
+        rtol    = 0.2                # relative tolerance of the adaptive step on the flux and the melt fraction; default 0.1
+    [params.stop.solid]
+        phi_crit = 0.05              # melt fraction at which the mantle counts as solidified
 
 [orbit]
     semimajoraxis = 1.0              # [AU]
@@ -16,8 +22,13 @@ config_version = "3.0"
         O_mode   = "ic_chemistry"  # ic_chemistry | ppmw | kg | FeO_mantle_wt_pct
         O_budget = 0.0           # ignored for ic_chemistry mode
         H_mode   = "oceans"
-        H_budget = 0.5               # [Earth oceans]
+        H_budget = 0.5               # [Earth oceans]; a small inventory keeps the AGNI run short
+        C_mode   = "kg"
+        C_budget = 2.73e20           # [kg of carbon]
+
+[interior_struct.zalmoxis]
+    update_interval = 0.0            # [yr]; 0 keeps the structure of the initial state
 
 [outgas]
     module       = "calliope"        # explicit pin so the file is robust to schema-default changes
-    fO2_shift_IW = 4                 # [log10 delta IW]
+    fO2_shift_IW = 2                 # offset from IW [log10 units]

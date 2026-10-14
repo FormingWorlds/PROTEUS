@@ -12,6 +12,9 @@ Physics tested:
 - One-time network compilation optimization in online mode (_made attribute)
 - Output file parsing and CSV writing
 - Directory handling differences between offline (wipe) and online (exist_ok)
+- Stellar input closure: star.dat and orbit_radius share the flux-weighted
+  distance a (1 - e^2)^(1/4), so VULCAN's own dilution returns the stored
+  top-of-atmosphere spectrum on an eccentric orbit
 
 Related documentation:
 - docs/How-to/testing.md: Running, writing, and marking tests; coverage and CI
@@ -93,6 +96,8 @@ def _make_mock_hf_row(*, year=1000.0):
         'Time': year,
         'R_star': 6.96e8,
         'separation': 1.496e11,
+        'semimajorax': 1.496e11,
+        'eccentricity': 0.0,
         'R_int': 6.371e6,
         'gravity': 9.81,
     }
@@ -598,6 +603,73 @@ def test_run_vulcan_boundary_pressures_use_level_edges(
     # Sanity: not the buggy values from atmos['p'].
     assert mock_vcfg.P_b != pytest.approx(1.0e6)
     assert mock_vcfg.P_t != pytest.approx(1.0e2)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+@patch('proteus.atmos_chem.vulcan.read_atmosphere_data')
+@patch('proteus.atmos_chem.vulcan.glob.glob')
+@patch('proteus.atmos_chem.vulcan.np.loadtxt')
+@patch('proteus.atmos_chem.vulcan.np.savetxt')
+@patch('proteus.atmos_chem.vulcan.os.makedirs')
+def test_run_vulcan_star_file_and_orbit_radius_share_the_flux_weighted_distance(
+    mock_makedirs,
+    mock_savetxt,
+    mock_loadtxt,
+    mock_glob,
+    mock_read_atmos,
+    tmp_path,
+):
+    """On an eccentric orbit star.dat holds the stellar-surface spectrum and
+    orbit_radius the distance VULCAN dilutes it by, both at the flux-weighted
+    distance a (1 - e^2)^(1/4) the stored spectrum was written at.
+
+    Invariant: VULCAN's top-of-atmosphere flux, star.dat times
+    (R_star / orbit_radius)^2, equals the stored spectrum. At e = 0.8 the
+    time-averaged separation a (1 + e^2 / 2) is 2.9 times further in flux
+    terms, so a star.dat undone with it would be 2.9 times too bright.
+    """
+    from proteus.utils.constants import AU, R_sun
+
+    config = _make_mock_config()
+    config.atmos_chem.vulcan.make_funs = False
+    hf_row = _make_mock_hf_row(year=700.0)
+    hf_row['semimajorax'] = 0.029 * AU
+    hf_row['eccentricity'] = 0.8
+    hf_row['separation'] = 0.029 * AU * (1.0 + 0.5 * 0.8**2)
+    d_flux = 0.029 * AU * (1.0 - 0.8**2) ** 0.25
+
+    offchem_dir = tmp_path / 'offchem'
+    offchem_dir.mkdir(parents=True, exist_ok=True)
+    dirs = {'output': str(tmp_path), 'output/offchem': str(offchem_dir)}
+    mock_read_atmos.return_value = [_make_mock_atmos()]
+    mock_glob.return_value = [str(tmp_path / 'data' / '700.sflux')]
+    toa_flux = np.array([1e-5, 1e-4, 1e-3])
+    mock_loadtxt.return_value = np.array([[200.0, 300.0, 400.0], toa_flux]).T
+
+    mock_vcfg = MagicMock()
+    mock_vulcan_package.Config.return_value = mock_vcfg
+    mock_vulcan_package.main.return_value = None
+    with open(offchem_dir / 'vulcan_700.pkl', 'wb') as f:
+        pickle.dump(_make_mock_vulcan_result(), f)
+    if hasattr(run_vulcan, '_made'):
+        del run_vulcan._made
+
+    run_vulcan(dirs, config, hf_row, online=True)
+
+    star_call = [c for c in mock_savetxt.call_args_list if str(c.args[0]).endswith('star.dat')]
+    assert len(star_call) == 1
+    star_fl = star_call[0].args[1][:, 1]
+    np.testing.assert_allclose(star_fl, toa_flux * (d_flux / hf_row['R_star']) ** 2, rtol=1e-12)
+    assert mock_vcfg.orbit_radius == pytest.approx(d_flux / AU, rel=1e-12)
+    # Closure: VULCAN's own dilution returns the stored top-of-atmosphere flux.
+    r_star_m = mock_vcfg.r_star * R_sun
+    np.testing.assert_allclose(
+        star_fl * (r_star_m / (mock_vcfg.orbit_radius * AU)) ** 2, toa_flux
+    )
+    # Guard: undoing the separation would make star.dat 2.9 times brighter.
+    wrong = toa_flux * (hf_row['separation'] / hf_row['R_star']) ** 2
+    np.testing.assert_allclose(wrong / star_fl, 2.90, rtol=0.01)
 
 
 @pytest.mark.unit

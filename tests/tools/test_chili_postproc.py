@@ -82,6 +82,24 @@ def test_postproc_once_raises_when_helpfile_missing(tmp_path):
 
 
 @pytest.mark.unit
+def test_postproc_once_keeps_old_output_when_the_helpfile_has_no_rows(tmp_path):
+    """A header-only helpfile is refused before the previous chili/ folder is removed."""
+    from proteus.utils.coupler import HelpfileFormatError
+
+    chili_postproc = _load_chili_postproc_module()
+    simdir = tmp_path / 'case_header_only'
+    (simdir / 'chili').mkdir(parents=True)
+    (simdir / 'chili' / 'previous.csv').write_text('kept\n')
+    (simdir / 'runtime_helpfile.csv').write_text('Time\tT_surf\n', encoding='utf-8')
+    (simdir / 'init_coupler.toml').write_text('[params]\n')
+
+    with pytest.raises(HelpfileFormatError, match='0 data rows'):
+        chili_postproc.postproc_once(str(simdir), plot=False)
+
+    assert (simdir / 'chili' / 'previous.csv').read_text() == 'kept\n'
+
+
+@pytest.mark.unit
 def test_postproc_once_writes_protocol_scalars(tmp_path, monkeypatch):
     """The scalar path writes the CHILI-MIP evolution CSV from a helpfile.
 

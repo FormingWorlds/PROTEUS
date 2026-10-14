@@ -2,7 +2,9 @@
 
 !!! warning "Experimental"
     Installing with [pixi](https://pixi.sh) is an experimental alternative to
-    conda. It may change or be removed.
+    conda. It may change or be removed, and it is not yet recommended for new
+    users: for a first install, follow the conda steps of the
+    [installation guide](installation.md).
 
 pixi builds the Python environment from the `pixi.toml` in the PROTEUS
 repository, so it replaces only the conda steps of the
@@ -10,7 +12,7 @@ repository, so it replaces only the conda steps of the
 
 1. Install the system packages as in step 1 of the
    [installation guide](installation.md), and install pixi.
-2. Clone PROTEUS as in step 2, but skip `conda create` and `conda activate`.
+2. Clone PROTEUS as in step 2; you do not need miniconda or miniforge.
 3. Run the installer through pixi instead of `bash install.sh`:
 
     ```console
@@ -20,10 +22,13 @@ repository, so it replaces only the conda steps of the
     `pixi run` creates the environment on first use, so there is no separate
     setup step.
 
-Afterwards, prefix commands with `pixi run`, or use `pixi shell` for an
-activated shell:
+The installer writes the environment variables (`FWL_DATA`, `RAD_DIR`, `FC_DIR`,
+`PYTHON_JULIAPKG_EXE`) to `.proteus-env.sh` in the PROTEUS folder, not into the
+pixi environment. Load them in each new shell, then prefix commands with
+`pixi run`, or use `pixi shell` for an activated shell:
 
 ```console
+source .proteus-env.sh
 pixi run proteus start --offline -c input/dummy.toml
 ```
 

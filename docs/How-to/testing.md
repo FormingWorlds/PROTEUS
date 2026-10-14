@@ -18,9 +18,9 @@ pytest --cov=src --cov-report=html      # Generate coverage report
 open htmlcov/index.html                 # View coverage in browser
 ```
 
-Tests covering an optional backend skip when that backend is absent, so
+Tests covering package extras skip when that extra is absent, so
 `[develop]` alone runs fewer tests than CI does. To match the CI selection
-locally, install the optional extras as well:
+locally, install the extras as well:
 
 ```bash
 pip install -e ".[develop,vulcan,atmodeller,inference]"
@@ -128,7 +128,9 @@ Shared fixtures live in `tests/conftest.py`:
 
 - `EarthLikeParams`, `UltraHotSuperEarthParams`, `IntermediateSuperEarthParams`:
   pre-configured parameter sets
-- `config_earth`, `config_minimal`, `config_dummy`: paths to test configs
+- `config_earth`, `config_minimal`, `config_dummy`: paths to test configs. Use
+  `config_dummy` for a smoke test; a run of `config_minimal` takes about 1 h of
+  CPU time, so tests load that file and do not run it
 - `tmp_path`: pytest built-in for temporary directories
 
 ### Optional dependencies

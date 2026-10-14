@@ -345,11 +345,12 @@ def test_set_child_timeout_stores_in_env(monkeypatch):
 
 
 def test_run_proteus_wraps_timeout_as_runtime_error(monkeypatch, tmp_path):
-    """subprocess.TimeoutExpired is wrapped as RuntimeError with a 'timed out'
-    message so the inference harness receives a consistent error type.
+    """A run that exceeds its time limit is reported as a ProteusRunFailure
+    naming the limit, so the harness receives one error type for every fault
+    that is specific to a single run.
 
     Discrimination: a regression that re-raised the raw TimeoutExpired would
-    break the except-RuntimeError handler in the BO worker loop.
+    escape the handler in the objective wrapper and kill the worker.
     """
     import subprocess
 
@@ -365,7 +366,7 @@ def test_run_proteus_wraps_timeout_as_runtime_error(monkeypatch, tmp_path):
 
     monkeypatch.setattr(obj_mod.subprocess, 'run', _fake_run)
 
-    with pytest.raises(RuntimeError, match='timed out') as exc_info:
+    with pytest.raises(obj_mod.ProteusRunFailure, match='timeout') as exc_info:
         obj_mod.run_proteus(
             parameters={},
             worker=0,
@@ -375,6 +376,12 @@ def test_run_proteus_wraps_timeout_as_runtime_error(monkeypatch, tmp_path):
             output='dummy_output',
         )
     assert isinstance(exc_info.value.__cause__, subprocess.TimeoutExpired)
+    # A wedged run never returns an exit code, so the report must omit it
+    # rather than invent one that would read as a crash.
+    assert exc_info.value.exit_code is None
+    # The failure stays a RuntimeError, which is what the surrounding code
+    # and any existing caller catches.
+    assert isinstance(exc_info.value, RuntimeError)
 
 
 # --------------------------------------------------------------------------

@@ -53,7 +53,7 @@ PYPI_META = {
         'https://github.com/FormingWorlds/ZEPHYRUS',
         'GitHub',
     ),
-    # fwl-vulcan is an optional backend (see OPTIONAL below), not a mandatory
+    # fwl-vulcan is a package extra (see OPTIONAL below), not a mandatory
     # PyPI dependency, so it is intentionally absent from this table.
 }
 
@@ -106,11 +106,11 @@ OPTIONAL = [
     ),
     (
         'atmodeller',
-        'Alternative outgassing backend (GPL-3.0)',
+        'Alternative outgassing module (GPL-3.0)',
         None,
         'blue',
         None,
-        'https://github.com/djbower/atmodeller',
+        None,
         'GitHub',
         ('atmodeller', 'atmodeller'),
     ),
@@ -123,6 +123,16 @@ OPTIONAL = [
         'https://github.com/FormingWorlds/VULCAN',
         'GitHub',
         ('vulcan', 'fwl-vulcan'),
+    ),
+    (
+        'Morrigan',
+        'Protoplanet accretion via giant impacts',
+        None,
+        'blue',
+        None,
+        'https://github.com/FormingWorlds/Morrigan',
+        'GitHub',
+        ('morrigan', 'fwl-morrigan'),
     ),
 ]
 
@@ -197,7 +207,9 @@ def _optional_pin_from_extra(extras: dict, extra_key: str, dist_name: str):
     return None, None
 
 
-def _build_optional_table(extras: dict) -> str:
+def _build_optional_table(extras: dict, modules: dict | None = None) -> str:
+    if modules is None:
+        modules = {}
     rows = []
     for name, role, pin_val, color, pin_link, doc_url, doc_label, extra in OPTIONAL:
         if extra is not None:
@@ -206,6 +218,13 @@ def _build_optional_table(extras: dict) -> str:
             badge = _badge(name, pin_val, color, pin_link)
         else:
             badge = 'n/a'
+        if extra is not None:
+            pin = modules.get(name.lower(), {})
+            if pin.get('ref') and pin.get('url'):
+                doc_url = pin['url'].removesuffix('.git')
+                badge += ' ' + _badge(
+                    name, pin['ref'][:8], 'green', f'{doc_url}/commit/{pin["ref"]}'
+                )
         rows.append(f'| {name} | {role} | {badge} | [{doc_label}]({doc_url}) |')
     return '| Module | Role | Pin | Docs |\n|--------|------|-----|------|\n' + '\n'.join(rows)
 
@@ -267,7 +286,7 @@ def main() -> int:
             content, 'GIT_TABLE', _build_git_table(modules)
         )
         content = _docgen.replace_between_markers(
-            content, 'OPTIONAL_TABLE', _build_optional_table(extras)
+            content, 'OPTIONAL_TABLE', _build_optional_table(extras, modules)
         )
     except _docgen.DocgenError as exc:
         print(f'[x] {exc}', file=sys.stderr)
