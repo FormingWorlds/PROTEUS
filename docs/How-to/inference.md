@@ -143,6 +143,12 @@ synthetic retrieval test), an optional `[truth]` table records those parameters 
 
 The table does not change the optimisation; it adds a True column to the results summary and the `result_parameters.png` plot.
 
+### Posterior samples
+
+With `[sigma]`, every objective form (chi-squared, correlated chi-squared, Student-t) is `S = -2 ln L` up to a constant, so `ln L = -10^(-J) / 2` up to a constant. At the end of the study a GP is fitted to `J` of the scored evaluations, and `posterior_samples` (default 2000, `0` is off) parameter samples are drawn from `L` at the GP mean, by importance resampling of 10^6 uniform draws. The prior is uniform over the sampled ranges, log-uniform for log10-scaled parameters such as `planet.elements.H_budget`. The log reports the effective sample size, with a warning when it is below the number of samples.
+
+The posterior ignores the GP's own uncertainty, so it is only as good as the GP near the best fit: check that the study converged (`perf_bestval.png`) before using it.
+
 ### Parallel Processing
 
 - Multiple workers run simultaneously, each performing BO steps
@@ -194,6 +200,7 @@ The system generates several outputs in:
 - `logs.csv`: Detailed logs of each BO step
 - `Ts.csv`: Timestamps for performance analysis
 - `init.csv`: Data used as an initial guess for starting the optimisation
+- `posterior.csv`: Only with `[sigma]`. Posterior samples, one column per parameter (see [Posterior samples](#posterior-samples))
 - `failures.csv`: One row per simulation that failed or was excluded, written only when there is at least one (see [Failed and excluded simulations](#failed-and-excluded-simulations))
 
 ### Plots
@@ -215,6 +222,7 @@ Plots prefixed with `result_` show the results of the optimisation.
 - `result_correlation.png`: Scatter plot observables for each parameter, at each sample.
 - `result_objective.png`: Value of objective `J` for each parameter, at each sample.
 - `result_observables.png`: Final observables of every sample as a ratio to their target.
+- `result_posterior.png`: Only with `[sigma]`. Corner plot of the posterior samples.
 - `result_parameters.png`: Only with a `[truth]` table. Every sample, the truth and the best fit placed within each parameter's sampled range.
 
 ### Results Summary

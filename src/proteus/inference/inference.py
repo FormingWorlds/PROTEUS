@@ -49,6 +49,7 @@ from proteus.inference.objective import (
     validate_sigma,
     worker_spectral_cache,
 )
+from proteus.inference.posterior import validate_posterior_samples, write_posterior
 from proteus.inference.utils import print_results, str_time
 from proteus.utils.coupler import get_proteus_directories, variable_is_logarithmic
 from proteus.utils.helper import safe_rm
@@ -399,6 +400,11 @@ def run_inference(config):
     # Optional early stop once the best objective stops improving
     config['patience'] = validate_patience(config.get('patience', 0))
 
+    # Posterior samples from the GP surrogate; on by default with [sigma]
+    config['posterior_samples'] = validate_posterior_samples(
+        config.get('posterior_samples'), config['sigma']
+    )
+
     # How each worker runs its evaluations, validated before the output folder is emptied.
     set_dispatch(config.get('dispatch'), config.get('runner_max_jobs'))
 
@@ -485,6 +491,7 @@ def run_inference(config):
     if config['student_t_dof'] is not None:
         objective = f'Student-t (dof = {config["student_t_dof"]:g})'
     log.info(f'    objective     = {objective}')
+    log.info(f'    posterior     = {config["posterior_samples"] or "off"} samples')
     log.info(' ')
     t_0 = time.perf_counter()
 
@@ -543,6 +550,10 @@ def run_inference(config):
 
     # Make PROTEUS plots for best fitting case
     plotBO.plot_proteus(best_config)
+
+    # Last, so that a failed GP fit here cannot cost the outputs above
+    if config['posterior_samples']:
+        write_posterior(config, D_final, dirs['output'])
 
     # Done
     log.info(f'Inference completed at {str_time()}')

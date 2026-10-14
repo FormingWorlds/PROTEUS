@@ -30,6 +30,7 @@ import proteus.inference.async_BO as async_BO  # noqa: E402
 import proteus.inference.inference as inference_mod  # noqa: E402
 from proteus.config import UnknownConfigKeyError  # noqa: E402
 from proteus.inference.failures import ABORT_ON_FAILURE_ENV  # noqa: E402
+from proteus.inference.posterior import DEFAULT_POSTERIOR_SAMPLES  # noqa: E402
 from proteus.inference.objective import (  # noqa: E402
     _CHILD_TIMEOUT_ENV as CHILD_TIMEOUT_ENV,
 )
@@ -951,3 +952,21 @@ def test_validate_patience_accepts_whole_numbers_and_rejects_others():
     for bad in (-1, 2.5, True, '50'):
         with pytest.raises(ValueError, match='patience must be a whole number'):
             inference_mod.validate_patience(bad)
+
+
+def test_run_inference_sets_posterior_samples_before_emptying_output(monkeypatch, tmp_path):
+    """posterior_samples without [sigma] is refused before the output is emptied;
+    with [sigma] it defaults on.
+    """
+    config, previous = _validation_study(
+        monkeypatch, tmp_path, observables={'R_obs': 6.0e6}, posterior_samples=500
+    )
+    with pytest.raises(ValueError, match=r'needs \[sigma\]'):
+        inference_mod.run_inference(config)
+    assert previous.read_text(encoding='utf-8') == 'x_0,y\n0.5,1.0\n'
+
+    del config['posterior_samples']
+    config['sigma'] = {'R_obs': 1.0e5}
+    with pytest.raises(RuntimeError, match='stop after validation'):
+        inference_mod.run_inference(config)
+    assert config['posterior_samples'] == DEFAULT_POSTERIOR_SAMPLES
