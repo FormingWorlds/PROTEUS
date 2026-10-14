@@ -36,16 +36,15 @@ The CHILI intercomparison defines three solar system test cases:
 All cases start fully molten at 50 Myr stellar age (TRAPPIST-1 &alpha;
 at 1 Gyr) with BSE composition, fO$_2$ = IW+4, and Bond albedo = 0.1. The
 protocol asks for a run until solidification, or for at most 1 Gyr, for
-the Earth and Venus cases [^cite-lichtenberg2026]. Each run on this page
-stops when its melt fraction falls to 5% by mass
+the Earth and Venus cases [^cite-lichtenberg2026]. The configs in
+`input/chili/intercomp/` and `input/tutorials/chili_grid/` stop a run
+when its melt fraction falls to 5% by mass
 (`params.stop.solid.phi_crit = 0.05`) or after 1 Gyr of model time
-(`params.stop.time.maximum = 1e9`). The energy-balance, escape and
-wall-clock stops are off (`params.stop.radeqm.enabled`,
+(`params.stop.time.maximum = 1e9`), with the energy-balance, escape and
+wall-clock stops off (`params.stop.radeqm.enabled`,
 `params.stop.escape.enabled` and `params.stop.clock.enabled` are
 `false`). The runs submitted to the intercomparison also stop at 5% melt,
-with the energy-balance and escape stops off. The nine grid configs in
-`input/tutorials/chili_grid/` and the files in `input/chili/intercomp/`
-set this rule. Melt fractions of the
+with the energy-balance and escape stops off. Melt fractions of the
 current PROTEUS runs are by mass on this page unless stated otherwise,
 and the figures show the melt fractions of the intercomparison data by
 volume.
@@ -54,15 +53,20 @@ volume.
     The figures and numbers on this page come from the runs as they
     were on 14 October 2026 (16:51 CEST). The Nominal Earth run, the six low-H and mid-H runs of
     the Earth grid and the TRAPPIST-1 e run reached the 5% melt threshold.
-    They ran with the energy-balance, escape and wall-clock stops on, and
-    the 5% melt stop is the one that ended each of them. They still cool at that point: their net atmospheric flux is
+    They ran with the energy-balance, escape and wall-clock stops on and a
+    time limit of 5 Gyr (7.55 Gyr for TRAPPIST-1 e), and the 5% melt stop
+    ended each of them. They still cool at that point: their net atmospheric flux is
     27 to 692 W m$^{-2}$, against about 0.2 W m$^{-2}$ of radiogenic
     heating. The Nominal Venus run, the three high-H runs of the Earth grid and the
     TRAPPIST-1 b run had not reached it at that time and are shown to their last
     row: Venus at 17.3 Myr with 6.7% of melt, the grid runs at 18.3 to 19.2 Myr with 7.3 to 8.4%,
     and TRAPPIST-1 b at 19.0 Myr with 18.5%. The TRAPPIST-1 &alpha; run is shown to its last row, at 11.1 Myr
-    with 55.7% of melt: over its last 10 Myr its melt fraction changed by 0.68
-    percentage points, and its net flux was 0.12 W m$^{-2}$. The runs do not follow the long-term
+    with 55.7% of melt: over its last 5 Myr its melt fraction decreased by about 0.002
+    percentage points per Myr, and its net atmospheric flux was 0.25 W m$^{-2}$,
+    against 0.13 W m$^{-2}$ of radiogenic heating. The six runs that had not reached 5% melt ran with the
+    energy-balance, escape and wall-clock stops on up to the end of their first
+    part, at 3.1 to 15.0 Myr, and were resumed from their last snapshot
+    under the stop rule above. The runs do not follow the long-term
     solid-state evolution of the mantle or the loss of the atmosphere
     after their end. The PROTEUS results in the CHILI paper and the
     results shown here come from different versions of the code and from
@@ -78,8 +82,9 @@ volume.
 - Interior data downloaded, including the PALEOS EOS tables
   (`proteus get interiordata --config-path input/chili/intercomp/earth.toml`)
 - `git` (to clone the CHILI comparison data)
-- Allow from about 3 hours to about a day per run, depending on the case and the hardware;
-  a run that does not reach 5% melt can run for several days
+- Allow from about 3 hours to about a day per run that reaches 5% melt, depending on the
+  case and the hardware; a run that stays partly molten advances in steps of at most
+  4000 yr (`params.dt.mushy_maximum`) and needs about 250,000 steps to reach 1 Gyr
 
 The commands below run with `--offline`, which skips the automatic
 reference-data check, so all data must be on disk beforehand. Drop the
@@ -342,8 +347,7 @@ informative because the two come from different model configurations. The
 protocol fixes the inputs that both share: a bulk-silicate-Earth
 composition, oxygen fugacity at IW+4, a Bond albedo of 0.1, and a 50 Myr
 stellar age [^cite-lichtenberg2026]. The two differ in the interior
-modules; both stop at a melt fraction of 5%, with the energy balance stop
-criterion off.
+modules and in the stop criteria.
 
 The PROTEUS results submitted to the intercomparison were computed with an
 earlier version of PROTEUS, not the configuration documented here. The
