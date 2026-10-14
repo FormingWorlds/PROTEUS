@@ -463,7 +463,7 @@ def plot_fig1(intercomp, pe, pv, NS):
     ax.set_xlabel('Time (Myr)')
     ax.set_ylabel('Melt fraction\n(by volume; current runs by mass)')
     ax.set_xscale('log')
-    ax.set_xlim(1e-3, 2e1)
+    ax.set_xlim(1e-3, 1e2)
     ax.set_ylim(0, 1.05)
     _legend_below(fig, ax)
     return fig

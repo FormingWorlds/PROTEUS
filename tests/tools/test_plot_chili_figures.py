@@ -40,8 +40,8 @@ pytestmark = [
 ]
 
 
-def test_figure_1_spans_20_myr_and_names_the_run_commit(chili_tool, tmp_path):
-    """Figure 1 reaches 20 Myr, so a run that ends at 11.3 Myr is drawn in full;
+def test_figure_1_spans_100_myr_and_names_the_run_commit(chili_tool, tmp_path):
+    """Figure 1 reaches 100 Myr, so a run that ends at 11.3 Myr is drawn in full;
     its legend names the commit of the run and its y label names both bases."""
     style = chili_tool._new_style('d0c7f080')
 
@@ -50,7 +50,7 @@ def test_figure_1_spans_20_myr_and_names_the_run_commit(chili_tool, tmp_path):
     )
 
     ax = fig.axes[0]
-    assert ax.get_xlim() == pytest.approx((1e-3, 2e1))
+    assert ax.get_xlim() == pytest.approx((1e-3, 1e2))
     assert ax.get_xlim()[1] > _run_table()['Time'].iloc[-1] / 1e6
     labels = [text.get_text() for text in fig.legends[0].get_texts()]
     assert labels == ['MOAI', 'PROTEUS (d0c7f080) Earth', 'PROTEUS (d0c7f080) Venus']
