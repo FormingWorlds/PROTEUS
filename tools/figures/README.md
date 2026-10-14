@@ -23,7 +23,7 @@ in the model rather than left to the typesetter.
 ### Updating from draw.io
 
 Edit the diagram in draw.io, export it as SVG (File > Export as > SVG, "Embed
-images" on, "Convert labels to SVG" off), then regenerate the model and rebuild:
+images" on), then regenerate the model and rebuild:
 
 ```bash
 python3 tools/figures/extract_drawio.py path/to/export.svg tools/figures/arch_final.json \
@@ -90,9 +90,8 @@ offline chemistry` is `#run-offline-chemistry`), and must match exactly once.
 `docs/assets/proteus_modules_schematic.svg` and its dark counterpart are drawn
 in draw.io, with the editable diagram embedded in each file. Their labels are
 native SVG text, so every renderer shows them, not only browsers. After
-exporting both variants (File > Export as > SVG, "Include a copy of my diagram"
-on, "Convert labels to SVG" off, as it drops italics and subscripts), convert
-the labels:
+exporting both variants (File > Export as > SVG, "Embed images" and "Include a
+copy of my diagram" on), convert the labels:
 
 ```bash
 python3 tools/figures/svg_labels_to_text.py docs/assets/proteus_modules_schematic.svg
