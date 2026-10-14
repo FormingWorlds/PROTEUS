@@ -96,7 +96,9 @@ matching lines in SPIDER.
       files or commits not pushed to a remote; the compiled build tree is left
       in place). An existing Obliqua folder stays as it is: `proteus doctor`
       prints `bash tools/get_obliqua.sh --force <folder>`, which replaces the
-      folder with a new clone at the pin; run it by hand.
+      folder with a new clone at the pin; run it by hand. For a folder whose `.git` is a file
+      (a git worktree or a submodule) it prints the advice to move the
+      folder away or delete it.
 
 4. **Verify:**
 

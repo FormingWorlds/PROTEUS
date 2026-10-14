@@ -71,16 +71,22 @@ not a git clone of its own, the doctor reads no commit (git would answer for
 the repository around the folder), marks the line
 `[not a git clone of its own]` and warns that the commit cannot be compared with
 the pin; the fix is advice that `proteus update` does not run: move the folder
-away or delete it, then run the setup script of the module. A clone with no
-commit at the path of a pinned module gets the same warning. A file or a broken
+away or delete it, then run the setup script of the module. For a clone of
+its own whose commit git cannot read, at the path of a pinned module, the
+doctor warns that the commit cannot be read; the fix is advice too: it names
+`git -C <folder> log -1` first and, for the case that this shows no commit,
+the same move-away advice. A file or a broken
 link at the path of a module counts as not installed, with the advice to delete
 it and run the setup script; an Obliqua path that holds a clone of another
 project gets the move-away advice too. For an Obliqua folder that
 is not at its pin the fix is advice that `proteus update` does not run:
 `bash tools/get_obliqua.sh --force <folder>` replaces the folder with a new
-clone at the pin. With or without `--force`, the script refuses the PROTEUS
+clone at the pin; for a folder whose `.git` is a file (a git worktree or a
+submodule), which the forced form refuses, the fix is the move-away advice.
+With or without `--force`, the script refuses the PROTEUS
 folder, your home folder and a folder that holds one of them as its
-destination, a file or a broken link, a path that goes through a folder that
+destination, a file or a broken link, a path that holds a line break, a path
+that goes through a folder that
 does not exist and then through `.` or `..`, and a folder with files that is not an
 Obliqua project. The forced form also refuses a
 folder with files that is not a git clone of its own with a commit, and a folder whose `.git` is a file (a git worktree or a submodule). An Obliqua clone at its pin with no `Manifest.toml` gives a warning
@@ -228,7 +234,8 @@ This lists the fixable issues and their commands but does not execute anything.
   elsewhere gets the advice to move it away.
   An Obliqua folder that is not at its pin is not changed either: the doctor
   shows `bash tools/get_obliqua.sh --force <folder>`, which replaces the
-  folder with a new clone at the pin. `bash tools/get_obliqua.sh` prints the
+  folder with a new clone at the pin, or, for a folder whose `.git` is a file,
+  the advice to move it away or delete it. `bash tools/get_obliqua.sh` prints the
   two git commands that move the clone to the pin by hand, and after them
   `bash tools/get_obliqua.sh`, which sets up the Julia environment at that
   commit.

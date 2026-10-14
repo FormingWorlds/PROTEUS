@@ -194,11 +194,14 @@ Aragog, Zalmoxis, VULCAN, Morrigan and atmodeller) never give these two messages
 `--force` they install a module folder that is already there as it is
 (`get_vulcan.sh` first runs `make` in its `fastchem_vulcan` folder) and print
 the commands that move it to its release tag (for atmodeller, its pinned commit) or replace it; an empty folder
-gets a new clone. `get_obliqua.sh` does the same for an Obliqua folder, and
+gets a new clone. `get_obliqua.sh` does the same for an Obliqua folder (for
+a folder whose `.git` is a file it names no replace command: move that
+folder away or delete it by hand), and
 instantiates its Julia environment in place of the pip install; a link to a
 folder stands for that folder. It stops, with or without `--force`, for the
 PROTEUS folder, your home folder and a folder that holds one of them, for a
-file or a broken link, for a path that goes through a folder that does not
+file or a broken link, for a path that holds a line break, for a path that
+goes through a folder that does not
 exist and then through `.` or `..`, and for a folder with files that is not an Obliqua
 project; with `--force` it also stops for a folder with files that is not a
 git clone of its own with a commit, and for a folder whose `.git` is a file (a git worktree or a submodule). They stop with an error when the pip install of the folder
