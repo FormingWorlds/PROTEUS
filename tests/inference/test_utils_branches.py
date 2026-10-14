@@ -235,12 +235,42 @@ def test_print_results_returns_best_input_toml_path_and_logs_summary(tmp_path, c
     assert any('Best case was step 1' in rec.message for rec in caplog.records)
 
 
+def test_print_results_reports_true_parameters_beside_best_fit(tmp_path, caplog):
+    """With a ``[truth]`` table the parameter summary lists the true value
+    beside the best-fit value; without one the true column is absent.
+    """
+    from proteus.inference.utils import print_results
+
+    _make_worker_dir(tmp_path, worker=0, iteration=0, obs_value=0.1, param_value=0.5)
+    _make_worker_dir(tmp_path, worker=0, iteration=1, obs_value=0.9, param_value=1.25)
+    D = {'X': torch.tensor([[0.0], [0.75]]), 'Y': torch.tensor([[-1.0], [5.0]])}
+    logs = [{'worker': 0, 'task_id': 0}, {'worker': 0, 'task_id': 1}]
+    config = {
+        'observables': {'H2O_vmr': 0.9},
+        'parameters': {'planet.mass_tot': [0.5, 1.5]},
+        'truth': {'planet.mass_tot': 1.1},
+    }
+
+    with caplog.at_level(logging.INFO, logger='fwl.proteus.inference.utils'):
+        print_results(D, logs, config, str(tmp_path), n_init=1)
+    rows = [r.message for r in caplog.records if r.message.startswith('planet.mass_tot')]
+    assert len(rows) == 2  # the summary row and the ensemble-statistics row
+    assert '1.1000e+00' in rows[0] and '1.2500e+00' in rows[0]
+    # The true value precedes the best fit, as the header states.
+    assert rows[0].index('1.1000e+00') < rows[0].index('1.2500e+00')
+
+    caplog.clear()
+    del config['truth']
+    with caplog.at_level(logging.INFO, logger='fwl.proteus.inference.utils'):
+        print_results(D, logs, config, str(tmp_path), n_init=1)
+    assert not any('True' in r.message and 'Parameter' in r.message for r in caplog.records)
+
+
 # ---------------------------------------------------------------------------
 # get_kernel: Matern branches and error contract
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 def test_get_kernel_mat12_returns_matern_with_nu_half():
     """get_kernel('MAT1/2', d) builds a once-differentiable Matern kernel (nu=0.5)."""
     from gpytorch.kernels import MaternKernel
@@ -258,7 +288,6 @@ def test_get_kernel_mat12_returns_matern_with_nu_half():
     assert result.lengthscale.shape[-1] == 2
 
 
-@pytest.mark.unit
 def test_get_kernel_mat32_returns_matern_with_nu_three_halves():
     """get_kernel('MAT3/2', d) builds a once-mean-square-differentiable Matern (nu=1.5).
 
@@ -280,7 +309,6 @@ def test_get_kernel_mat32_returns_matern_with_nu_three_halves():
     assert result.lengthscale.shape[-1] == 3
 
 
-@pytest.mark.unit
 def test_get_kernel_mat52_returns_matern_with_nu_five_halves():
     """get_kernel('MAT5/2', d) builds a twice-mean-square-differentiable Matern (nu=2.5).
 
@@ -302,7 +330,6 @@ def test_get_kernel_mat52_returns_matern_with_nu_five_halves():
     assert result.lengthscale.shape[-1] == 1
 
 
-@pytest.mark.unit
 def test_get_kernel_raises_for_unknown_kernel_name():
     """get_kernel raises ValueError for names outside the documented set.
 
@@ -332,7 +359,6 @@ def test_get_kernel_raises_for_unknown_kernel_name():
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 def test_print_results_reads_the_best_run_helpfile_in_place(tmp_path, caplog):
     """The best run's helpfile is read through the exact reader: an empty field
     before H2O_vmr leaves the reported best-fit value at 0.9, not NaN."""

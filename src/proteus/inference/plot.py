@@ -1,11 +1,7 @@
-"""Visualization utilities for asynchronous Bayesian optimization.
+"""Plots of the optimiser's own data: worker timelines, convergence, and the
+objective and observables of every sample against the parameters.
 
-This module provides functions to visualize worker execution timelines,
-timing distributions, and optimization performance metrics.
-
-Functions:
-    plot_times: Plot per-worker task timelines and histograms of timing metrics.
-    plot_res: Plot regret and best observed value vs. time and iteration.
+The best-fit comparisons with the targets and the truth are in `plot_fit`.
 """
 
 from __future__ import annotations
