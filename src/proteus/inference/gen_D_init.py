@@ -15,6 +15,7 @@ import toml
 import torch
 from scipy.stats.qmc import Halton
 
+from proteus.inference.correlation import CorrelationWhitener
 from proteus.inference.objective import child_timeout_s, eval_obj, prot_builder
 from proteus.inference.transforms import normalize_parameters
 from proteus.inference.utils import save_dataset_csv
@@ -74,6 +75,8 @@ def create_init(config):
             config['seed'],
             config['n_workers'],
             config['failure_codes'],
+            sigma=config.get('sigma'),
+            correlation=config.get('correlation'),
         )
 
     # read from grid
@@ -81,13 +84,25 @@ def create_init(config):
         log.info('Source for initial guess: pre-computed grid')
         log.info(f'    grid = {init_grid}')
         n_init = sample_from_grid(
-            config['output'], config['parameters'], config['observables'], init_grid
+            config['output'],
+            config['parameters'],
+            config['observables'],
+            init_grid,
+            sigma=config.get('sigma'),
+            correlation=config.get('correlation'),
         )
 
     return n_init
 
 
-def sample_from_grid(output: str, params: dict, observables: dict, grid_dir: str):
+def sample_from_grid(
+    output: str,
+    params: dict,
+    observables: dict,
+    grid_dir: str,
+    sigma: dict | None = None,
+    correlation: dict | None = None,
+):
     """Build initial BO data from an existing PROTEUS grid.
 
     Reads `case_*` directories in `grid_dir`, extracts parameter values from
@@ -101,11 +116,16 @@ def sample_from_grid(output: str, params: dict, observables: dict, grid_dir: str
     - params (dict): Parameter bounds used for normalization.
     - observables (dict): Target observables used for objective evaluation.
     - grid_dir (str): Directory containing `case_*` precomputed runs.
+    - sigma (dict | None): Uncertainty of each observable, passed to `eval_obj`.
+    - correlation (dict | None): Correlations between the observable uncertainties.
 
     Returns
     ----------
     - int: Number of initial samples written.
     """
+    whitener = (
+        None if correlation is None else CorrelationWhitener(list(observables), correlation)
+    )
 
     # We need evaluate the objective function at each grid point to provide initial samples
     #     They are normalised to [0,1] within the bounds of each parameter's axis
@@ -164,7 +184,7 @@ def sample_from_grid(output: str, params: dict, observables: dict, grid_dir: str
         obs_y = helps[i].iloc[-1][observables.keys()].T
 
         # Evaluate objective and store (float)
-        Y[i] = eval_obj(obs_y, observables)
+        Y[i] = eval_obj(obs_y, observables, sigma, whitener)
 
     log.info(f'Generated initial dataset with {nsamp} points in {dims}-dim space')
 
@@ -212,6 +232,8 @@ def f_aug(x, iter, builder_args):
         ref_config=builder_args['ref_config'],
         output=builder_args['output'],
         failure_codes=builder_args['failure_codes'],
+        sigma=builder_args.get('sigma'),
+        correlation=builder_args.get('correlation'),
     )
     try:
         return f(x)
@@ -244,6 +266,8 @@ def sample_from_bounds(
     seed: int,
     n_workers: int,
     failure_codes: list[int],
+    sigma: dict | None = None,
+    correlation: dict | None = None,
 ) -> int:
     """Generate initial BO data by evaluating Halton samples in parameter space.
 
@@ -258,6 +282,8 @@ def sample_from_bounds(
     - n_workers (int): Number of parallel workers to use for evaluation.
     - failure_codes (list[int]): PROTEUS status codes that complete normally but
       that this study excludes from the fit.
+    - sigma (dict | None): Uncertainty of each observable, passed to `eval_obj`.
+    - correlation (dict | None): Correlations between the observable uncertainties.
 
     Returns
     ----------
@@ -281,6 +307,8 @@ def sample_from_bounds(
         ref_config=ref_config,
         output=output,
         failure_codes=failure_codes,
+        sigma=sigma,
+        correlation=correlation,
     )
 
     # Halton points in [0, 1]^d, shape [nsamp, dims], each axis normalised to its bounds

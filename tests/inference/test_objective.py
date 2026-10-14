@@ -11,6 +11,7 @@ from __future__ import annotations
 import csv
 import functools
 import logging
+import math
 import subprocess
 
 import pandas as pd
@@ -26,11 +27,11 @@ pytest.importorskip('gpytorch')
 
 import proteus.inference.failures as failures_mod  # noqa: E402
 import proteus.inference.objective as objective_mod  # noqa: E402
+from proteus.inference.correlation import CorrelationWhitener  # noqa: E402
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 
-@pytest.mark.unit
 def test_log_warp_monotonic_decreasing_in_squared_distance():
     """``log_warp(sq_dist)`` returns -log10(sq_dist + 1e-10): values
     closer to the target (sq_dist near 0) score higher than distant
@@ -49,7 +50,6 @@ def test_log_warp_monotonic_decreasing_in_squared_distance():
     assert -0.5 < score_far.item() < 0.5
 
 
-@pytest.mark.unit
 def test_log_warp_finite_at_exact_zero():
     """``log_warp(0.0)`` does not diverge: the 1e-10 offset guarantees
     finite output. Discrimination: a regression that removed the offset
@@ -61,7 +61,6 @@ def test_log_warp_finite_at_exact_zero():
     assert 9 < val.item() < 11
 
 
-@pytest.mark.unit
 def test_update_toml_updates_nested_keys(tmp_path):
     """``update_toml`` applies dotted-key overrides on the loaded config
     (e.g. ``section.value=2``) and creates intermediate nesting for keys
@@ -83,7 +82,6 @@ def test_update_toml_updates_nested_keys(tmp_path):
     assert loaded['new']['branch']['leaf'] == 3
 
 
-@pytest.mark.unit
 @pytest.mark.parametrize('enabled', [True, False], ids=['cache-on', 'cache-off'])
 @pytest.mark.parametrize(
     'ref_cache', [None, 'none', '/my/cache'], ids=['unset', 'none', 'path']
@@ -131,7 +129,6 @@ def test_run_proteus_takes_the_spectral_cache_from_the_inference_switch(
     assert written['planet']['mass_tot'] == pytest.approx(2.0)
 
 
-@pytest.mark.unit
 def test_spectral_cache_switch_defaults_to_on(monkeypatch):
     """Workers started without the switch recorded share the cache, and only
     an explicit "0" turns it off.
@@ -146,7 +143,6 @@ def test_spectral_cache_switch_defaults_to_on(monkeypatch):
     assert objective_mod.worker_spectral_cache('study', False) == 'none'
 
 
-@pytest.mark.unit
 def test_apply_nested_updates_mutates_in_place_and_rejects_value_paths():
     """``apply_nested_updates`` writes dotted keys into the dict it was given,
     creating the sections a new key needs, and refuses a path that descends
@@ -172,7 +168,6 @@ def test_apply_nested_updates_mutates_in_place_and_rejects_value_paths():
     assert config['section']['value'] == 2
 
 
-@pytest.mark.unit
 def test_run_proteus_success_handles_escaped_atmosphere(monkeypatch, tmp_path):
     """``run_proteus`` handles the escaped-atmosphere case (P_surf=0):
     the observable dictionary is populated with zeros instead of NaN,
@@ -227,7 +222,6 @@ def test_run_proteus_success_handles_escaped_atmosphere(monkeypatch, tmp_path):
     assert status != 20
 
 
-@pytest.mark.unit
 def test_run_proteus_raises_when_command_missing(monkeypatch, tmp_path):
     """A ``FileNotFoundError`` from ``subprocess.run`` (i.e. the proteus
     binary is not on PATH) is wrapped as ``RuntimeError`` with a
@@ -266,7 +260,6 @@ def test_run_proteus_raises_when_command_missing(monkeypatch, tmp_path):
     assert len(run_calls) == 1
 
 
-@pytest.mark.unit
 def test_run_proteus_raises_when_command_fails(monkeypatch, tmp_path):
     """A non-zero exit from the proteus binary is reported as a
     ``ProteusRunFailure`` naming the run, its exit code, and the status the
@@ -335,7 +328,6 @@ def test_run_proteus_raises_when_command_fails(monkeypatch, tmp_path):
     assert str(console) in rendered
 
 
-@pytest.mark.unit
 def test_run_proteus_raises_on_missing_observable(monkeypatch, tmp_path):
     """Requesting an observable that the simulator did not write to the
     helpfile raises ``KeyError`` with a 'Requested observable' message,
@@ -381,7 +373,6 @@ def test_run_proteus_raises_on_missing_observable(monkeypatch, tmp_path):
     assert status == objective_mod.STATUS_MISSING
 
 
-@pytest.mark.unit
 @pytest.mark.physics_invariant
 def test_eval_obj_mixes_log_and_linear_variables(monkeypatch):
     """``eval_obj`` evaluates log-relative residuals for log-scaled
@@ -417,7 +408,6 @@ def test_eval_obj_mixes_log_and_linear_variables(monkeypatch):
     assert value_match.item() == pytest.approx(10.0, rel=1e-6)
 
 
-@pytest.mark.unit
 def test_eval_obj_handles_zero_true_value():
     """Zero-valued observables should use an EPS_CLIP offset denominator
     to avoid division-by-zero.
@@ -441,7 +431,210 @@ def test_eval_obj_handles_zero_true_value():
     assert torch.isfinite(value).all()
 
 
-@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_eval_obj_sigma_matched_by_key_not_order(monkeypatch):
+    """With ``sigma``, each residual is divided by the uncertainty of the
+    same observable, looked up by name, so a ``sigma`` dict listed in a
+    different order than the observables gives the same chi-squared.
+    A missing entry is rejected rather than silently misaligned.
+    """
+    monkeypatch.setattr(objective_mod, 'variable_is_logarithmic', lambda key: False)
+
+    sim = {'R_obs': 7.0e6, 'T_obs': 450.0}
+    tru = {'R_obs': 6.0e6, 'T_obs': 400.0}
+    # Listed in the reverse order of `sim`. The two sigmas differ by 2e4, so
+    # pairing them by position instead of by name changes the result.
+    sigma = {'T_obs': 25.0, 'R_obs': 5.0e5}
+
+    value = objective_mod.eval_obj(sim, tru, sigma)
+
+    # (1e6 / 5e5)^2 + (50 / 25)^2 = 4 + 4 = 8
+    expected_sq = 8.0
+    assert value.item() == pytest.approx(-math.log10(expected_sq + 1e-10))
+    # Order guard: pairing by position gives (1e6/25)^2 + (50/5e5)^2 = 1.6e9,
+    # an objective about 8.3 lower.
+    wrong_sq = (1.0e6 / 25.0) ** 2 + (50.0 / 5.0e5) ** 2
+    assert abs(value.item() + math.log10(wrong_sq)) > 5.0
+    # Relative-error guard: the default objective gives (1/6)^2 + (1/8)^2,
+    # which differs from the chi-squared result.
+    assert abs(value.item() - objective_mod.eval_obj(sim, tru).item()) > 1.0
+
+    # Limit input: sim == tru gives zero chi-squared, hence -log10(1e-10) = 10.
+    assert objective_mod.eval_obj(tru, tru, sigma).item() == pytest.approx(10.0, rel=1e-6)
+
+    # Error contract: an observable without a sigma is named in the error.
+    with pytest.raises(KeyError, match='T_obs'):
+        objective_mod.eval_obj(sim, tru, {'R_obs': 5.0e5})
+
+
+@pytest.mark.physics_invariant
+def test_eval_obj_sigma_converted_to_dex_for_log_observables():
+    """For an observable compared in log space, ``sigma`` is given in the
+    observable's own units and converted to dex as sigma / (x ln 10). A
+    model one sigma above the target then scores chi-squared of about one,
+    as it does for a linear observable.
+    """
+    # atm_kg_per_mol is log-scaled, R_obs linear (utils.coupler).
+    tru = {'atm_kg_per_mol': 0.02, 'R_obs': 6.0e6}
+    sigma = {'atm_kg_per_mol': 0.002, 'R_obs': 1.0e5}
+    # A factor-of-two miss on the log observable, sim exact on the linear one,
+    # so the log term is the whole chi-squared.
+    sim = {'atm_kg_per_mol': 0.04, 'R_obs': 6.0e6}
+
+    value = objective_mod.eval_obj(sim, tru, sigma)
+
+    sig_dex = 0.002 / (0.02 * math.log(10.0))
+    expected_sq = (math.log10(2.0) / sig_dex) ** 2  # ~48.0
+    assert value.item() == pytest.approx(-math.log10(expected_sq + 1e-10), rel=1e-9)
+    # Unit guard: using sigma unconverted (as if already in dex) gives
+    # (0.301 / 0.002)^2 ~ 2.3e4, an objective ~2.7 lower.
+    wrong_raw = (math.log10(2.0) / 0.002) ** 2
+    assert abs(value.item() + math.log10(wrong_raw)) > 2.0
+    # Space guard: a linear comparison gives (0.02 / 0.002)^2 = 100, ~0.3 lower.
+    wrong_lin = (0.02 / 0.002) ** 2
+    assert abs(value.item() + math.log10(wrong_lin)) > 0.2
+
+    # Small-sigma limit, where the first-order conversion is accurate: one
+    # sigma above the target on each observable gives chi-squared of 2.
+    small = {'atm_kg_per_mol': 2.0e-5, 'R_obs': 1.0e5}
+    one_up = {k: tru[k] + small[k] for k in tru}
+    chi2 = 10 ** (-objective_mod.eval_obj(one_up, tru, small).item())
+    # Exact for R_obs; ln(1.001)/0.001 = 0.9995 for the log term, hence 2e-3 rel.
+    assert chi2 == pytest.approx(2.0, rel=2e-3)
+    assert chi2 < 2.0  # a symmetric dex sigma overstates the upward distance
+
+
+def _chi2(sim, tru, sigma, correlation=None):
+    """Chi-squared from `eval_obj`, undoing its -log10 warp (exact while chi2 >> 1e-10)."""
+    whitener = None if correlation is None else CorrelationWhitener(list(tru), correlation)
+    return 10 ** (-objective_mod.eval_obj(sim, tru, sigma, whitener).item())
+
+
+@pytest.mark.physics_invariant
+def test_eval_obj_correlation_matches_bivariate_chi_squared(monkeypatch):
+    """Two correlated observables give (u1^2 - 2 rho u1 u2 + u2^2) / (1 - rho^2),
+    with u = (sim - true) / sigma, whatever order they are listed in.
+    """
+    monkeypatch.setattr(objective_mod, 'variable_is_logarithmic', lambda key: False)
+    tru = {'R_obs': 6.0e6, 'T_obs': 400.0}
+    sigma = {'R_obs': 5.0e5, 'T_obs': 25.0}
+    sim = {'R_obs': 7.0e6, 'T_obs': 450.0}  # u = (2, 2)
+    corr = {'R_obs': {'T_obs': 0.6}}
+
+    # (4 - 4.8 + 4) / 0.64 = 5; ignoring rho gives 8, flipping its sign 20.
+    assert _chi2(sim, tru, sigma, corr) == pytest.approx(5.0, rel=1e-9)
+    assert _chi2(sim, tru, sigma) == pytest.approx(8.0, rel=1e-9)
+    # Residuals and pair listed in reverse order.
+    sim_rev = {'T_obs': 450.0, 'R_obs': 7.0e6}
+    assert _chi2(sim_rev, tru, sigma, {'T_obs': {'R_obs': 0.6}}) == pytest.approx(5.0, rel=1e-9)
+    # rho = 0 reproduces the independent chi-squared.
+    assert _chi2(sim, tru, sigma, {'R_obs': {'T_obs': 0.0}}) == pytest.approx(8.0, rel=1e-9)
+    # A residual against the correlation, u = (2, -2), costs more: (4 + 4.8 + 4) / 0.64.
+    anti = {'R_obs': 7.0e6, 'T_obs': 350.0}
+    assert _chi2(anti, tru, sigma, corr) == pytest.approx(20.0, rel=1e-9)
+
+    with pytest.raises(ValueError, match='needs sigma'):
+        objective_mod.eval_obj(sim, tru, None, CorrelationWhitener(list(tru), corr))
+
+
+@pytest.mark.physics_invariant
+def test_eval_obj_correlation_kept_for_log_observables():
+    """A log-space observable's sigma is converted to dex, its correlation used unchanged."""
+    # atm_kg_per_mol is log-scaled, R_obs linear (utils.coupler).
+    tru = {'atm_kg_per_mol': 0.02, 'R_obs': 6.0e6}
+    sigma = {'atm_kg_per_mol': 2.0e-5, 'R_obs': 1.0e5}
+    # One sigma above the target on both, so u = (1, 1) exactly.
+    sim = {'atm_kg_per_mol': 0.02 * 10 ** (2.0e-5 / (0.02 * math.log(10.0))), 'R_obs': 6.1e6}
+
+    chi2 = _chi2(sim, tru, sigma, {'atm_kg_per_mol': {'R_obs': -0.5}})
+
+    assert chi2 == pytest.approx((1 + 1 + 1) / (1 - 0.25), rel=1e-9)  # 4
+    assert abs(chi2 - 2.0) > 0.5  # rho ignored
+
+
+def test_eval_obj_compares_element_ratios_in_log_only_with_sigma():
+    """Without sigma C/O_atm stays linear, as before; with sigma it is compared in dex."""
+    tru, sim = {'C/O_atm': 0.5}, {'C/O_atm': 0.25}
+
+    # Linear relative residual 1 - 0.25/0.5 = 0.5; a log one would be 1 - 2 = -1.
+    assert _chi2(sim, tru, None) == pytest.approx(0.25, rel=1e-6)
+
+    # Log: (log10 0.5) / (0.05 / (0.5 ln 10)) = 6.93, so chi2 = 48.0; linear would give 25.
+    expected = (math.log10(2.0) * 0.5 * math.log(10.0) / 0.05) ** 2
+    chi2 = _chi2(sim, tru, {'C/O_atm': 0.05})
+    assert chi2 == pytest.approx(expected, rel=1e-9)
+    assert abs(chi2 - 25.0) > 20.0
+
+
+def test_validate_sigma_accepts_complete_table_and_rejects_bad_entries():
+    """``validate_sigma`` returns the uncertainties as floats when every
+    observable has one, passes None through, and refuses a table with a
+    missing, unknown, non-positive or non-finite entry, or a log-scaled
+    observable whose value cannot be converted to dex.
+    """
+    obs = {'R_obs': 6.0e6, 'atm_kg_per_mol': 0.02}
+
+    out = objective_mod.validate_sigma(obs, {'atm_kg_per_mol': 1, 'R_obs': 1.0e5})
+    assert out == {'atm_kg_per_mol': pytest.approx(1.0), 'R_obs': pytest.approx(1.0e5)}
+    assert all(isinstance(v, float) for v in out.values())
+    # No table selects the relative-difference objective.
+    assert objective_mod.validate_sigma(obs, None) is None
+
+    with pytest.raises(ValueError, match='atm_kg_per_mol'):
+        objective_mod.validate_sigma(obs, {'R_obs': 1.0e5})
+    with pytest.raises(ValueError, match='not observables.*T_obs'):
+        objective_mod.validate_sigma(obs, {'R_obs': 1.0e5, 'atm_kg_per_mol': 1e-3, 'T_obs': 5})
+    for bad in (0.0, -1.0e5, float('nan'), float('inf')):
+        with pytest.raises(ValueError, match="sigma for 'R_obs'"):
+            objective_mod.validate_sigma(obs, {'R_obs': bad, 'atm_kg_per_mol': 1e-3})
+    # A zero target on a log-scaled observable has no finite dex conversion.
+    with pytest.raises(ValueError, match='log space'):
+        objective_mod.validate_sigma(
+            {'R_obs': 6.0e6, 'atm_kg_per_mol': 0.0}, {'R_obs': 1.0e5, 'atm_kg_per_mol': 1e-3}
+        )
+    # The same zero on a linear observable is fine: no conversion is made.
+    lin = objective_mod.validate_sigma({'R_obs': 0.0}, {'R_obs': 1.0e5})
+    assert lin['R_obs'] == pytest.approx(1.0e5)
+
+
+def test_validate_sigma_takes_dex_strings_for_log_compared_observables():
+    """'0.1 dex' is used as exactly 0.1 dex: a simulated C/O 0.1 dex above the
+    target gives chi2 = 1 (J = 0) and 0.2 dex below gives chi2 = 4. Dex on a linearly
+    compared observable, and strings that are not '<number> dex', are refused."""
+    obs = {'R_obs': 6.0e6, 'C/O_atm': 0.33}
+    out = objective_mod.validate_sigma(obs, {'R_obs': 1.0e5, 'C/O_atm': ' 0.1 dex '})
+    assert out['C/O_atm'] == pytest.approx(0.1 * 0.33 * math.log(10.0))
+    sim = {'R_obs': 6.0e6, 'C/O_atm': 0.33 * 10**0.1}
+    J = objective_mod.eval_obj(sim, obs, sigma=out).item()
+    assert J == pytest.approx(0.0, abs=1e-9)
+    # Two sigma off in dex gives chi2 = 4, not 2 (a missing square) or 1 (no scaling)
+    sim['C/O_atm'] = 0.33 * 10**-0.2
+    J = objective_mod.eval_obj(sim, obs, sigma=out).item()
+    assert J == pytest.approx(-math.log10(4.0), abs=1e-9)
+
+    with pytest.raises(ValueError, match="'R_obs' is compared linearly"):
+        objective_mod.validate_sigma(obs, {'R_obs': '0.1 dex', 'C/O_atm': '0.1 dex'})
+    for bad in ('abc dex', '0.1 bar', '-0.1 dex', '0 dex', 'nan dex'):
+        with pytest.raises(ValueError, match="sigma for 'C/O_atm'"):
+            objective_mod.validate_sigma(obs, {'R_obs': 1.0e5, 'C/O_atm': bad})
+
+
+def test_validate_sigma_warns_when_a_linear_sigma_converts_poorly_to_dex(caplog):
+    """A linear sigma above 30 % of a log-compared value logs a warning that suggests
+    dex; 20 %, a dex entry and a large sigma on a linear observable do not."""
+    obs = {'R_obs': 6.0e6, 'C/O_atm': 0.5}
+    logger = 'fwl.proteus.inference.objective'
+    with caplog.at_level('WARNING', logger=logger):
+        objective_mod.validate_sigma(obs, {'R_obs': 4.0e6, 'C/O_atm': 0.1})
+        objective_mod.validate_sigma(obs, {'R_obs': 1.0e5, 'C/O_atm': '0.3 dex'})
+    assert caplog.records == []
+    with caplog.at_level('WARNING', logger=logger):
+        objective_mod.validate_sigma(obs, {'R_obs': 1.0e5, 'C/O_atm': 0.2})
+    messages = [r.getMessage() for r in caplog.records]
+    assert len(messages) == 1
+    assert "sigma for 'C/O_atm' is 40% of its value" in messages[0]
+
+
 def test_prot_builder_unnormalizes_and_calls_J(monkeypatch):
     """``prot_builder`` returns a closure that un-normalises an x in
     [0, 1]^d to the physical parameter ranges (so x=0.5 with bounds
@@ -473,7 +666,6 @@ def test_prot_builder_unnormalizes_and_calls_J(monkeypatch):
     assert captured['x'][0, 1].item() == pytest.approx(2.5)
 
 
-@pytest.mark.unit
 def test_prot_builder_unnormalizes_log_scaled_parameter(monkeypatch):
     """Surface pressure spans orders of magnitude, so log scaling must round-trip."""
     captured = {}
@@ -505,7 +697,6 @@ def test_prot_builder_unnormalizes_log_scaled_parameter(monkeypatch):
 # ============================================================================
 
 
-@pytest.mark.unit
 def test_run_proteus_failure_distinguishes_a_missing_status_from_a_generic_error(
     monkeypatch, tmp_path
 ):
@@ -564,7 +755,6 @@ def test_run_proteus_failure_distinguishes_a_missing_status_from_a_generic_error
     assert excinfo.value.status == 21
 
 
-@pytest.mark.unit
 def test_run_proteus_failure_points_at_the_simulator_logfile(monkeypatch, tmp_path):
     """When the failed run left a logfile, the report names it. That file holds
     the traceback the simulator captured for itself, and is the only place the
@@ -601,7 +791,6 @@ def test_run_proteus_failure_points_at_the_simulator_logfile(monkeypatch, tmp_pa
     assert 'proteus_01.log' in excinfo.value.report()
 
 
-@pytest.mark.unit
 def test_run_proteus_reports_a_clean_exit_that_produced_no_output(monkeypatch, tmp_path):
     """A run that exits zero but writes no readable helpfile is reported as a
     failed sample rather than crashing the study with a bare parser error. That
@@ -667,7 +856,6 @@ def test_run_proteus_reports_a_clean_exit_that_produced_no_output(monkeypatch, t
     assert obs['P_surf'] == pytest.approx(2.5)
 
 
-@pytest.mark.unit
 def test_J_scores_a_failed_run_badly_and_keeps_the_study_running(monkeypatch, tmp_path, caplog):
     """A parameter combination the simulator cannot integrate is scored as a
     poor sample so the sweep continues, and the failure is reported once in
@@ -736,7 +924,6 @@ def test_J_scores_a_failed_run_badly_and_keeps_the_study_running(monkeypatch, tm
         )
 
 
-@pytest.mark.unit
 def test_J_scores_a_clean_run_that_stopped_in_an_error_state(monkeypatch, tmp_path, caplog):
     """A run that exits cleanly but records an error status is scored badly and
     named in the log. Status 25 is the only error code reachable this way: it
@@ -803,7 +990,6 @@ def test_J_scores_a_clean_run_that_stopped_in_an_error_state(monkeypatch, tmp_pa
     assert good.item() - objective_mod.BAD_OBJ_VALUE > 25.0
 
 
-@pytest.mark.unit
 def test_J_aborts_on_a_clean_run_that_stopped_in_an_error_state(monkeypatch, tmp_path):
     """`abort_on_failure` stops the study on a run that exited cleanly but
     recorded an error status, the same way it stops on a run that crashed.
@@ -881,7 +1067,6 @@ def test_J_aborts_on_a_clean_run_that_stopped_in_an_error_state(monkeypatch, tmp
     assert scored.item() < -10.0
 
 
-@pytest.mark.unit
 def test_J_treats_the_documented_error_codes_as_failures(monkeypatch, tmp_path):
     """The failure range covers the error statuses the simulator can record."""
     monkeypatch.setenv(failures_mod.ABORT_ON_FAILURE_ENV, '0')
@@ -929,7 +1114,6 @@ def test_J_treats_the_documented_error_codes_as_failures(monkeypatch, tmp_path):
     assert _score(objective_mod.STATUS_MISSING) == pytest.approx(objective_mod.BAD_OBJ_VALUE)
 
 
-@pytest.mark.unit
 def test_J_separates_an_excluded_outcome_from_a_failed_run(monkeypatch, tmp_path, caplog):
     """A status named in `failure_codes` marks an outcome the study does not fit
     against, not a fault. A run stopped by its clock limit (status 11) completed
@@ -1010,7 +1194,6 @@ def test_J_separates_an_excluded_outcome_from_a_failed_run(monkeypatch, tmp_path
 # ============================================================================
 
 
-@pytest.mark.unit
 def test_run_output_dir_names_the_folder_the_simulator_is_given(monkeypatch, tmp_path):
     """The per-evaluation folder is derived in one place, so the path a failure
     report names is the path the simulator was told to write to. Initial
@@ -1033,7 +1216,6 @@ def test_run_output_dir_names_the_folder_the_simulator_is_given(monkeypatch, tmp
     assert rel_init != rel
 
 
-@pytest.mark.unit
 def test_J_records_clean_exit_failures_through_the_real_simulator_wrapper(
     monkeypatch, tmp_path
 ):
@@ -1122,3 +1304,334 @@ def test_J_records_clean_exit_failures_through_the_real_simulator_wrapper(
     # The study tally counts the three unscored runs. An unreadable table would
     # report zero here and describe every evaluation as usable.
     assert failures_mod.summarise_failures(str(tmp_path / 'study'), n_attempted=4) == 3
+
+
+@pytest.fixture
+def clean_dispatch(monkeypatch):
+    """Keep a test's dispatch setting out of the rest of the session.
+
+    `monkeypatch.delenv` records no undo for a variable that was unset, so the
+    value is pinned with `setenv` before a test is allowed to change it.
+    """
+    monkeypatch.setenv('PROTEUS_INFERENCE_DISPATCH', objective_mod.DISPATCH_SUBPROCESS)
+    monkeypatch.setenv('PROTEUS_INFERENCE_RUNNER_MAX_JOBS', '0')
+    return monkeypatch
+
+
+def _stub_runner(monkeypatch, out_abs, outcome, seen=None):
+    """Point `run_proteus` at a runner returning `outcome`, recording its calls."""
+
+    class _Runner:
+        def run(self, config_path, timeout):
+            if seen is not None:
+                seen.append((str(config_path), timeout))
+            return outcome
+
+    monkeypatch.setattr(
+        objective_mod, 'get_proteus_directories', lambda _path: {'output': str(out_abs)}
+    )
+    monkeypatch.setattr(objective_mod, 'update_toml', lambda *args, **kwargs: None)
+    monkeypatch.setattr(objective_mod, 'worker_runner', lambda _console: _Runner())
+    monkeypatch.setenv('PROTEUS_INFERENCE_DISPATCH', 'runner')
+
+
+def test_worker_runner_is_one_instance_per_process_until_closed(clean_dispatch, tmp_path):
+    """Every evaluation in a worker gets the same runner, its console fixed at
+    the first; closing stops it, and the next call builds a fresh one.
+    """
+    clean_dispatch.setattr(objective_mod, '_RUNNER', None)
+    clean_dispatch.setenv('PROTEUS_INFERENCE_RUNNER_MAX_JOBS', '25')
+    stopped = []
+
+    first = objective_mod.worker_runner(tmp_path / 'a_console.log')
+    clean_dispatch.setattr(first, 'stop', lambda: stopped.append(first))
+    again = objective_mod.worker_runner(tmp_path / 'b_console.log')
+
+    assert again is first
+    assert first.console == tmp_path / 'a_console.log'
+    assert first.max_jobs == 25
+
+    objective_mod.close_worker_runner()
+    assert stopped == [first]
+    assert objective_mod._RUNNER is None
+    fresh = objective_mod.worker_runner(tmp_path / 'b_console.log')
+    assert fresh is not first
+    assert fresh.console == tmp_path / 'b_console.log'
+    # A second close with nothing started is a no-op.
+    objective_mod.close_worker_runner()
+    objective_mod.close_worker_runner()
+    assert objective_mod._RUNNER is None
+
+
+@pytest.mark.parametrize('value', ['many', '', '2.5'], ids=['word', 'empty', 'float'])
+def test_worker_runner_reads_a_bad_max_jobs_as_no_limit(clean_dispatch, tmp_path, value):
+    """A max_jobs the environment cannot give as an int means no limit,
+    rather than failing every evaluation of the worker.
+    """
+    clean_dispatch.setattr(objective_mod, '_RUNNER', None)
+    clean_dispatch.setenv('PROTEUS_INFERENCE_RUNNER_MAX_JOBS', value)
+
+    runner = objective_mod.worker_runner(tmp_path / 'console.log')
+
+    assert runner.max_jobs == 0
+    assert runner._proc is None  # built lazily: nothing runs until the first job
+
+
+def test_set_dispatch_rejects_an_unknown_mode(clean_dispatch):
+    """Error contract: a misspelled dispatch is refused where the study is
+    configured, and leaves the mode already in force untouched.
+    """
+    objective_mod.set_dispatch(objective_mod.DISPATCH_RUNNER, max_jobs=25)
+    assert objective_mod.dispatch_mode() == 'runner'
+
+    with pytest.raises(ValueError, match='sub-process'):
+        objective_mod.set_dispatch('sub-process')
+
+    assert objective_mod.dispatch_mode() == 'runner'
+
+
+def test_dispatch_defaults_to_one_process_per_evaluation(clean_dispatch):
+    """A study that asks for nothing, and one whose environment carries a value
+    this version does not know, both get the long-standing behaviour.
+    """
+    clean_dispatch.delenv('PROTEUS_INFERENCE_DISPATCH')
+    assert objective_mod.dispatch_mode() == 'subprocess'
+
+    clean_dispatch.setenv('PROTEUS_INFERENCE_DISPATCH', 'from-a-newer-version')
+    assert objective_mod.dispatch_mode() == 'subprocess'
+
+    # None is the same as not asking, and clears a mode set earlier.
+    objective_mod.set_dispatch(objective_mod.DISPATCH_RUNNER)
+    objective_mod.set_dispatch(None)
+    assert objective_mod.dispatch_mode() == 'subprocess'
+
+
+def test_run_proteus_reuses_a_process_when_dispatch_is_runner(clean_dispatch, tmp_path):
+    """The evaluation goes to the worker's reused process, no new `proteus
+    start` is launched, and the observables come back as on the default path.
+    """
+    out_abs = tmp_path / 'sim'
+    out_abs.mkdir(parents=True)
+    pd.DataFrame([{'P_surf': 1.2e5, 'T_surf': 1400.0}]).to_csv(
+        out_abs / 'runtime_helpfile.csv', sep=' ', index=False
+    )
+
+    calls = []
+    _stub_runner(clean_dispatch, out_abs, outcome=None, seen=calls)
+    clean_dispatch.setattr(
+        objective_mod.subprocess,
+        'run',
+        lambda *args, **kwargs: pytest.fail('the runner dispatch must not start a new process'),
+    )
+    clean_dispatch.setenv('PROTEUS_INFERENCE_CHILD_TIMEOUT_S', '900')
+
+    obs, _status = objective_mod.run_proteus(
+        parameters={},
+        worker=3,
+        iter=4,
+        observables=['P_surf', 'T_surf'],
+        ref_config='reference.toml',
+        output='dummy_output',
+    )
+
+    # The per-run timeout is carried through, so a wedged simulation is still
+    # bounded when it runs inside a reused process.
+    assert calls == [(str(out_abs / 'input.toml'), pytest.approx(900.0))]
+    assert obs['P_surf'] == pytest.approx(1.2e5)
+    assert obs['T_surf'] == pytest.approx(1400.0)
+
+
+def test_runner_dispatch_reports_failures_like_a_failed_child(clean_dispatch, tmp_path):
+    """A run the reused process could not complete carries the same failure
+    type, reason and exit code as one that ran on its own, and names the
+    per-worker console file the runner dispatch actually writes.
+    """
+    out_abs = tmp_path / 'sim'
+    out_abs.mkdir(parents=True)
+    _stub_runner(clean_dispatch, out_abs, outcome=('exceeded the 900.0 s timeout', None))
+
+    with pytest.raises(failures_mod.ProteusRunFailure) as excinfo:
+        objective_mod.run_proteus(
+            parameters={},
+            worker=3,
+            iter=4,
+            observables=['P_surf'],
+            ref_config='reference.toml',
+            output='dummy_output',
+        )
+
+    failure = excinfo.value
+    assert failure.reason == 'exceeded the 900.0 s timeout'
+    # None, not 0: stopped rather than ended on its own, and the report has to
+    # keep those apart.
+    assert failure.exit_code is None
+    assert (failure.worker, failure.iter) == (3, 4)
+    # One console file per worker, so its name carries no iteration.
+    assert failure.console_path.endswith(f'runner{failures_mod.CHILD_CONSOLE_SUFFIX}')
+
+
+def test_runner_dispatch_gives_each_initial_sampling_process_its_own_console(
+    clean_dispatch, tmp_path
+):
+    """Initial samples all run as worker -1 from several pool processes, so the
+    console file the runner is handed names the process. A shared name would
+    interleave their output and send every failure report to one mixed file.
+    """
+    out_abs = tmp_path / 'sim'
+    out_abs.mkdir(parents=True)
+    _stub_runner(clean_dispatch, out_abs, outcome=('exceeded the 900.0 s timeout', None))
+    consoles = []
+    runner = objective_mod.worker_runner
+    clean_dispatch.setattr(
+        objective_mod,
+        'worker_runner',
+        lambda console: consoles.append(console) or runner(console),
+    )
+
+    def failed_console(pid):
+        clean_dispatch.setattr(objective_mod.os, 'getpid', lambda: pid)
+        with pytest.raises(failures_mod.ProteusRunFailure) as excinfo:
+            objective_mod.run_proteus(
+                parameters={},
+                worker=-1,
+                iter=0,
+                observables=['P_surf'],
+                ref_config='reference.toml',
+                output='dummy_output',
+            )
+        return excinfo.value.console_path
+
+    first, second = failed_console(1111), failed_console(2222)
+
+    assert first != second
+    assert first.endswith(f'runner_1111{failures_mod.CHILD_CONSOLE_SUFFIX}')
+    assert second.endswith(f'runner_2222{failures_mod.CHILD_CONSOLE_SUFFIX}')
+    # The report points at the file the runner was given, not a guess at it.
+    assert [str(c) for c in consoles] == [first, second]
+
+
+def test_run_proteus_leaves_the_callers_parameter_dict_as_it_was_passed(monkeypatch, tmp_path):
+    """The run-specific config entries the simulator needs are added to the
+    config it is given, not to the dict the caller passed in. The caller keeps
+    that dict to describe the point it evaluated, so a string-valued config
+    entry appearing in it turns the record of a swept point into a mixture of
+    swept values and fixed plumbing.
+    """
+    out_abs = tmp_path / 'sim'
+    out_abs.mkdir(parents=True)
+    pd.DataFrame([{'P_surf': 1.0e5, 'R_obs': 9.25e6}]).to_csv(
+        out_abs / 'runtime_helpfile.csv', sep=' ', index=False
+    )
+
+    written = []
+    monkeypatch.setattr(
+        objective_mod, 'get_proteus_directories', lambda _path: {'output': str(out_abs)}
+    )
+    monkeypatch.setattr(
+        objective_mod,
+        'update_toml',
+        lambda _config_file, values, _output_file: written.append(dict(values)),
+    )
+    monkeypatch.setattr(objective_mod.subprocess, 'run', lambda *args, **kwargs: None)
+
+    swept = {'planet.mass_tot': 3.25, 'struct.corefrac': 0.55}
+    before = dict(swept)
+    objective_mod.run_proteus(
+        parameters=swept,
+        worker=1,
+        iter=2,
+        observables=['R_obs'],
+        ref_config='reference.toml',
+        output='dummy_output',
+    )
+
+    assert swept == before
+    # Named explicitly, because these are the entries that carry strings and so
+    # the ones whose leakage breaks a numeric-only consumer.
+    assert 'params.out.path' not in swept
+    assert 'params.out.plot_mod' not in swept
+
+    # Discrimination: the entries are absent from the caller's dict because
+    # they went into the copy, not because they stopped being written. A
+    # regression that dropped the injection would leave the simulator writing
+    # into the reference config's own output folder.
+    config = written[0]
+    assert config['params.out.path'].endswith('workers/w_1/i_2')
+    assert config['params.out.plot_mod'] == 'none'
+    assert config['planet.mass_tot'] == pytest.approx(3.25)
+
+    # Edge case: a study that sweeps nothing still gets a fully populated
+    # config, and still gets its empty dict back unchanged.
+    empty = {}
+    objective_mod.run_proteus(
+        parameters=empty,
+        worker=1,
+        iter=2,
+        observables=['R_obs'],
+        ref_config='reference.toml',
+        output='dummy_output',
+    )
+    assert empty == {}
+    assert set(objective_mod._FIXED_PARAMETER_KEYS) <= set(written[-1])
+
+
+@pytest.mark.physics_invariant
+def test_J_reports_a_clean_exit_failure_with_only_the_swept_values(
+    monkeypatch, tmp_path, caplog
+):
+    """A run that exits cleanly on an error status is scored, recorded and
+    reported in full, with the swept point named and the fixed config entries
+    left out. The report is built on every such evaluation whatever the log
+    level, so a value it cannot render ends the worker that was evaluating it.
+
+    The simulator is driven through the real wrapper rather than a stand-in, so
+    the parameter dict the report receives is the one the wrapper leaves behind.
+    """
+    study = tmp_path / 'study'
+    study.mkdir(parents=True)
+    pd.DataFrame([{'P_surf': 1.0e5, 'R_obs': 9.25e6}]).to_csv(
+        study / 'runtime_helpfile.csv', sep=' ', index=False
+    )
+    # Status 25: stopped through the keepalive file, which the simulator
+    # reports by writing the code and then terminating normally.
+    (study / 'status').write_text('25\n')
+
+    monkeypatch.setattr(
+        objective_mod, 'get_proteus_directories', lambda _path: {'output': str(study)}
+    )
+    monkeypatch.setattr(objective_mod, 'update_toml', lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(objective_mod.subprocess, 'run', lambda *args, **kwargs: None)
+    monkeypatch.setenv(failures_mod.ABORT_ON_FAILURE_ENV, '0')
+
+    with caplog.at_level(logging.DEBUG, logger='fwl.proteus.inference.objective'):
+        value = objective_mod.J(
+            x=torch.tensor([[3.25]], dtype=torch.double),
+            parameters=['planet.mass_tot'],
+            true_observables={'R_obs': 9.25e6},
+            worker=1,
+            iter=2,
+            output='dummy_output',
+            ref_config='reference.toml',
+        )
+
+    assert value.item() == pytest.approx(objective_mod.BAD_OBJ_VALUE)
+    # Sign and scale guards: the failure score sits below anything the warped
+    # objective can return for a real match, whose ceiling is -log10(EPS_CLIP).
+    assert value.item() < 0
+    assert (
+        objective_mod.BAD_OBJ_VALUE
+        < -objective_mod.log_warp(torch.zeros((1, 1), dtype=torch.double)).item()
+    )
+
+    reported = '\n'.join(record.getMessage() for record in caplog.records)
+    assert 'planet.mass_tot=3.25' in reported
+    # The fixed entries are plumbing, identical for every evaluation, and one
+    # of them is the study-wide spectral cache path. A report naming them tells
+    # the reader nothing and hides the point that actually failed.
+    assert 'spectral_cache' not in reported
+    assert 'plot_mod' not in reported
+
+    recorded = failures_mod.read_failure_records(study)
+    assert [r['status'] for r in recorded] == [25]
+    assert recorded[0]['planet.mass_tot'] == pytest.approx(3.25)
+    assert 'params.out.path' not in recorded[0]
