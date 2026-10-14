@@ -11,6 +11,12 @@ keeps them centred. Line breaks, positions and colours are the ones Chromium
 lays out, including colours given with ``light-dark()``, which resolve by the
 ``color-scheme`` of the export.
 
+Labels are laid out in Arial or, where Arial is not installed, a font with
+Arial's advance widths (Liberation Sans, Arimo, Nimbus Sans). Chromium would
+otherwise fall back to a wider font and break lines that fit in draw.io, and
+the breaks are fixed in the output, so the script stops if none of these fonts
+is installed.
+
 Everything outside the ``<switch>`` elements is copied byte for byte; a label
 without visible text is dropped together with its raster.
 
@@ -32,6 +38,59 @@ from playwright.sync_api import sync_playwright
 
 FONT_FAMILY = 'Arial, Helvetica, sans-serif'
 HEADER = '<!-- Labels are native SVG text, so every renderer shows the same wording. -->\n'
+
+# Arial and the fonts that share its advance widths, as local() font names
+ARIAL_FACES = {
+    ('normal', 'normal'): ['Arial', 'ArialMT', 'Liberation Sans', 'Arimo', 'Nimbus Sans'],
+    ('bold', 'normal'): [
+        'Arial Bold',
+        'Arial-BoldMT',
+        'Liberation Sans Bold',
+        'Arimo Bold',
+        'Nimbus Sans Bold',
+        'NimbusSans-Bold',
+    ],
+    ('normal', 'italic'): [
+        'Arial Italic',
+        'Arial-ItalicMT',
+        'Liberation Sans Italic',
+        'Arimo Italic',
+        'Nimbus Sans Italic',
+        'NimbusSans-Italic',
+    ],
+    ('bold', 'italic'): [
+        'Arial Bold Italic',
+        'Arial-BoldItalicMT',
+        'Liberation Sans Bold Italic',
+        'Arimo Bold Italic',
+        'Nimbus Sans Bold Italic',
+        'NimbusSans-BoldItalic',
+    ],
+}
+
+FONTS_JS = r"""
+async (faces) => {
+  // map Arial and Helvetica to the first installed font with Arial's metrics
+  const css = [];
+  for (const [weight, style, names] of faces) {
+    const src = names.map(n => `local("${n}")`).join(', ');
+    for (const family of ['Arial', 'Helvetica']) {
+      css.push(`@font-face { font-family: "${family}"; font-weight: ${weight}; ` +
+               `font-style: ${style}; src: ${src}; }`);
+    }
+  }
+  const el = document.createElementNS('http://www.w3.org/2000/svg', 'style');
+  el.textContent = css.join('\n');
+  document.documentElement.prepend(el);
+  const missing = [];
+  for (const [weight, style] of faces) {
+    const got = await document.fonts.load(`${style} ${weight} 12px Arial`).catch(() => []);
+    if (!got.length) missing.push(`${weight} ${style}`);
+  }
+  await document.fonts.ready;
+  return missing;
+}
+"""
 
 JS = r"""
 () => {
@@ -184,6 +243,14 @@ def main():
         page = browser.new_page()
         page.goto(path.as_uri())
         page.wait_for_timeout(300)
+        faces = [[w, st, names] for (w, st), names in ARIAL_FACES.items()]
+        missing = page.evaluate(FONTS_JS, faces)
+        if missing:
+            browser.close()
+            raise SystemExit(
+                f'no font with Arial metrics for {", ".join(missing)}; install Arial '
+                'or Liberation Sans, or line breaks would differ from draw.io'
+            )
         labels = page.evaluate(JS)
         browser.close()
 

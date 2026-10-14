@@ -138,4 +138,7 @@ python3 tools/figures/svg_labels_to_text.py docs/assets/proteus_modules_schemati
 `svg_labels_to_text.py` lays each label out in headless Chromium (Playwright),
 as `extract_drawio.py` does, and writes it as one `<text>` per line with its
 italics, bold and subscripts; the rest of the file is left untouched. It warns
-when the export does not embed the diagram.
+when the export does not embed the diagram. The line breaks are fixed at
+conversion, so it lays the labels out in Arial or a font with the same widths
+(Liberation Sans, Arimo, Nimbus Sans) and stops if none is installed; with a
+wider fallback font, labels that fit on one line in draw.io would wrap.
