@@ -17,8 +17,10 @@ Physics tested:
   top-of-atmosphere spectrum on an eccentric orbit
 - Config contract: PROTEUS sets every field that `vulcan.Config.__init__`
   defines in the installed VULCAN, and no field VULCAN does not define
-- Surface boundary file: the fixed mixing ratios VULCAN reads from
-  bot_BC_flux_file equal the use_fix_sp_bot dict the solver applies
+- Boundary files: bot_BC_flux_file and top_BC_flux_file are written in every
+  run with the surface VMRs and zero fluxes; with a fixed surface the VMRs
+  VULCAN reads from bot_BC_flux_file equal the use_fix_sp_bot dict the solver
+  applies, and with a free surface no flag makes VULCAN read either file
 - Config pass-through: each [atmos_chem.vulcan] solver option reaches the
   VULCAN Config unchanged, and the AGNI options of the RCE solver follow
   [atmos_clim] and [atmos_clim.agni]
@@ -947,16 +949,15 @@ def test_run_vulcan_sets_every_field_of_the_installed_vulcan_config(tmp_path):
 
 @pytest.mark.unit
 @pytest.mark.parametrize('fix_surf', [True, False], ids=['fixed_surface', 'free_surface'])
-def test_run_vulcan_bottom_boundary_file_matches_fixed_surface_mixing_ratios(
-    tmp_path, fix_surf
-):
-    """The fixed surface mixing ratios VULCAN reads from bot_BC_flux_file equal
-    the use_fix_sp_bot dict its solver applies, which holds the surface VMRs.
+def test_run_vulcan_boundary_files_hold_surface_mixing_ratios(tmp_path, fix_surf):
+    """Both boundary files list the surface VMRs above clip_vmr with zero flux
+    and deposition velocity, and VULCAN reads them only where PROTEUS fixes them.
 
-    VULCAN reads the file (species in column 1, fixed VMR in column 4) when
-    use_fix_sp_bot is non-empty and the dict in its solver, so the two must
-    agree. Asymmetric VMRs (0.6, 0.3) catch a swapped species; N2 below
-    clip_vmr must be absent. With a free surface no species is fixed.
+    VULCAN reads bot_BC_flux_file (species in column 1, fixed VMR in column 4)
+    when use_fix_sp_bot is non-empty, so with a fixed surface the file must
+    agree with that dict. With a free surface the dict is empty and the flux
+    flags are off, so neither file is read. Asymmetric VMRs (0.6, 0.3) catch a
+    swapped species; N2 below clip_vmr must be absent.
     """
     config = _make_mock_config()
     config.atmos_chem.vulcan.make_funs = False
@@ -969,29 +970,34 @@ def test_run_vulcan_bottom_boundary_file_matches_fixed_surface_mixing_ratios(
     result, vcfg = _run_online_with_recording_config(tmp_path, config, hf_row)
     assert result is True
 
-    # Parse as VULCAN's BC_flux does: skip comments and blank lines.
-    rows = [
-        line.split()
-        for line in Path(vcfg.bot_BC_flux_file).read_text().splitlines()
-        if line.strip() and not line.startswith('#')
-    ]
-    from_file = {row[0]: float(row[3]) for row in rows}
-    assert from_file == pytest.approx(vcfg.use_fix_sp_bot, rel=1e-8)
-    top_rows = [
-        line
-        for line in Path(vcfg.top_BC_flux_file).read_text().splitlines()
-        if line.strip() and not line.startswith('#')
-    ]
-    assert top_rows == []
+    def _parse(fpath):
+        # Parse as VULCAN's BC_flux does: skip comments and blank lines.
+        rows = [
+            line.split()
+            for line in Path(fpath).read_text().splitlines()
+            if line.strip() and not line.startswith('#')
+        ]
+        return {row[0]: tuple(float(v) for v in row[1:4]) for row in rows}
 
+    bot = _parse(vcfg.bot_BC_flux_file)
+    top = _parse(vcfg.top_BC_flux_file)
+    assert top == bot
+    assert all(flux == 0.0 and vdep == 0.0 for flux, vdep, _ in bot.values())
+
+    bot_vmr = {sp: vals[2] for sp, vals in bot.items()}
+    assert bot_vmr == pytest.approx(vcfg.const_mix, rel=1e-8)
+    assert bot_vmr['H2O'] == pytest.approx(0.6, rel=1e-8)
+    assert bot_vmr['CO2'] == pytest.approx(0.3, rel=1e-8)
+    assert 'N2' not in bot_vmr
+    assert all(0.0 < vmr <= 1.0 for vmr in bot_vmr.values())
+
+    # Neither flux boundary is active, so VULCAN reads the files only for use_fix_sp_bot.
+    assert vcfg.use_botflux is False
+    assert vcfg.use_topflux is False
     if fix_surf:
-        assert from_file['H2O'] == pytest.approx(0.6, rel=1e-8)
-        assert from_file['CO2'] == pytest.approx(0.3, rel=1e-8)
-        assert 'N2' not in from_file
-        # A copy: VULCAN may add species to use_fix_sp_bot during the run.
-        assert vcfg.use_fix_sp_bot is not vcfg.const_mix
+        assert bot_vmr == pytest.approx(vcfg.use_fix_sp_bot, rel=1e-8)
     else:
-        assert from_file == {}
+        assert vcfg.use_fix_sp_bot == {}
 
 
 @pytest.mark.unit
