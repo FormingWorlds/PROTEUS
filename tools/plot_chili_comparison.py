@@ -1706,7 +1706,8 @@ def make_figure(
     Raises
     ------
     ValueError
-        For an unknown ``fig_id``, for a ``chili_repo`` without model data, for
+        For an unknown ``fig_id``, for a ``chili_repo`` that lacks the evolution
+        file of a model, for
         a run folder that the figure reads and that is not given, holds no data
         or is not in ``run_dirs``, and for a figure that cannot be drawn or
         written.
@@ -1736,9 +1737,13 @@ def make_figure(
         raise ValueError(f'run_dirs does not hold these run folders of {fig_id!r}: {missing}')
     by_name = dict(zip(_READS[fig_id], runs))
     intercomp = Path(chili_repo) / 'intercomparison' / 'outputs'
-    if not any(any((intercomp / mk).glob(f'evolution-{mk}-*-data.csv')) for mk in MODELS):
+    absent = [
+        mk for mk in MODELS if not any((intercomp / mk).glob(f'evolution-{mk}-*-data.csv'))
+    ]
+    if absent:
         raise ValueError(
-            f'{intercomp} holds no model data: give a checkout of the CHILI repository'
+            f'{intercomp} holds no evolution file of {", ".join(absent)}: '
+            'give a checkout of the CHILI repository'
         )
     NS = _new_style(_get_proteus_sha(*read))
     opened = set(plt.get_fignums())

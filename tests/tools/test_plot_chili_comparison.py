@@ -18,6 +18,8 @@ import pytest
 
 from ._plot_chili_helpers import (
     DARK_BY_HAND,
+    MODEL_COLOURS,
+    MODEL_KEYS,
     _comparison_data,
     _grid_case,
     _hex,
@@ -28,6 +30,8 @@ from ._plot_chili_helpers import (
     _run_table,
     _run_with_log,
 )
+
+ALL_SEVEN = 'gooey, neongooey, proteus, pacman, lincs, moai, planatmo'
 
 pytestmark = [
     pytest.mark.unit,
@@ -275,8 +279,8 @@ def test_make_figure_writes_the_png_at_the_dpi_of_the_style_and_labels_it_with_t
 
     assert _png_width(out) == 350
     labels = [ln.get_label() for ln in fig.axes[0].lines]
-    assert labels == ['MOAI', 'PROTEUS (d0c7f080)']
-    assert fig.axes[0].lines[1].get_ydata() == pytest.approx([25.0, 140.0, 310.0])
+    assert labels == [*MODEL_COLOURS, 'PROTEUS (d0c7f080)']
+    assert fig.axes[0].lines[-1].get_ydata() == pytest.approx([25.0, 140.0, 310.0])
     assert _hex(fig.get_facecolor()) == '#05070b'
     assert len(fig.legends) == 0 and fig.axes[0].get_legend() is not None
 
@@ -370,9 +374,10 @@ def test_make_figure_stops_for_a_comparison_folder_without_model_data(
     chili_tool, tmp_path, monkeypatch
 ):
     """A ``chili_repo`` that does not exist, that is no checkout, or whose
-    outputs folder holds no file of one of the 7 models (an empty model folder,
-    a file of another name, a folder of an unknown model) stops ``make_figure``
-    with the name of the folder; nothing is fetched and no folder is made."""
+    outputs folder lacks the evolution file of a model (an empty model folder,
+    a file of another name, a folder of an unknown model, 1 model of the 7)
+    stops ``make_figure`` with the folder and the models that are absent;
+    nothing is fetched and no folder is made."""
 
     def no_clone(*args, **kwargs):
         raise AssertionError('make_figure must not fetch the comparison data')
@@ -386,10 +391,14 @@ def test_make_figure_stops_for_a_comparison_folder_without_model_data(
         (other / folder).mkdir(parents=True)
         (other / folder / file).write_text('t(yr),phi(vol_frac)\n1.0,0.5\n')
 
-    for name in ('typo', 'not_a_checkout', 'empty', 'other_files'):
-        with pytest.raises(
-            ValueError, match=f'{name}/intercomparison/outputs holds no model data'
-        ):
+    _comparison_data(tmp_path / 'one_model' / 'intercomparison' / 'outputs')
+    six = 'gooey, neongooey, proteus, pacman, lincs, planatmo'
+    absent = {'typo': ALL_SEVEN, 'not_a_checkout': ALL_SEVEN, 'empty': ALL_SEVEN}
+    absent |= {'other_files': ALL_SEVEN, 'one_model': six}
+
+    for name, models in absent.items():
+        message = f'{name}/intercomparison/outputs holds no evolution file of {models}: give'
+        with pytest.raises(ValueError, match=message):
             chili_tool.make_figure(
                 [earth],
                 tmp_path / 'figure.png',
@@ -427,10 +436,13 @@ def test_make_figure_closes_a_figure_that_it_cannot_draw_or_write(
     venus = _run_folder(tmp_path / 'venus')
     table = _run_table().assign(Phi_global=[1.0, 0.95, 0.068])
     table.to_csv(venus / 'runtime_helpfile.csv', sep=' ', index=False)
-    earth_only = tmp_path / 'bare' / 'intercomparison' / 'outputs' / 'moai'
-    earth_only.mkdir(parents=True)
-    source = repo / 'intercomparison' / 'outputs' / 'moai' / 'evolution-moai-earth-data.csv'
-    (earth_only / source.name).write_bytes(source.read_bytes())
+    for model in MODEL_KEYS:
+        earth_only = tmp_path / 'bare' / 'intercomparison' / 'outputs' / model
+        earth_only.mkdir(parents=True)
+        source = (
+            repo / 'intercomparison' / 'outputs' / model / f'evolution-{model}-earth-data.csv'
+        )
+        (earth_only / source.name).write_bytes(source.read_bytes())
     with pytest.raises(
         ValueError, match='could not be made: no model in .*outputs and no run has'
     ):
@@ -475,6 +487,43 @@ def test_interior_profiles_are_read_for_figure_9_only(chili_tool, tmp_path, monk
         )
         assert read == (['earth'] if stem == 'fig9_geodynamics' else []), stem
     assert chili_tool._load_proteus_helpfile(earth).attrs['_profiles'] is empty
+
+
+def test_command_line_fetches_the_comparison_data_only_when_the_checkout_lacks_it(
+    chili_tool, tmp_path, monkeypatch
+):
+    """``main`` asks git for a clone of the CHILI repository into ``--chili-repo``
+    when that folder holds no ``intercomparison/outputs``, and asks for nothing
+    when the folder is there."""
+    fetch = chili_tool.ensure_chili_repo
+    calls = []
+    monkeypatch.setattr(chili_tool.subprocess, 'run', lambda cmd, **kw: calls.append((cmd, kw)))
+    for name, wanted in (('absent', 1), ('present', 0)):
+        repo = tmp_path / name
+        if name == 'present':
+            (repo / 'intercomparison' / 'outputs').mkdir(parents=True)
+        seen = _main_arguments(chili_tool, tmp_path, monkeypatch, '--chili-repo', str(repo))
+        monkeypatch.setattr(chili_tool, 'ensure_chili_repo', fetch)
+        calls.clear()
+
+        chili_tool.main()
+
+        assert len(calls) == wanted and len(seen) == 10, name
+    command = [
+        'git',
+        'clone',
+        '--depth',
+        '1',
+        chili_tool.CHILI_REPO_URL,
+        str(tmp_path / 'absent'),
+    ]
+    monkeypatch.setattr(
+        chili_tool.sys, 'argv', ['plot', '--chili-repo', str(tmp_path / 'absent')]
+    )
+    for name in [n for n in dir(chili_tool) if n.startswith('plot_')]:
+        monkeypatch.setattr(chili_tool, name, lambda *args, **kwargs: None)
+    chili_tool.main()
+    assert calls == [(command, {'check': True})]
 
 
 def test_manifest_entries_of_the_chili_page_agree_with_the_runs_that_make_figure_reads(

@@ -202,7 +202,7 @@ def _png_width(path: Path) -> int:
     return int.from_bytes(data[16:20], 'big')
 
 
-def _repo(tmp_path: Path, models=('moai',)) -> Path:
+def _repo(tmp_path: Path, models=MODEL_KEYS) -> Path:
     """A checkout folder of the comparison data with files of ``models``."""
     _comparison_data(tmp_path / 'repo' / 'intercomparison' / 'outputs', models=models)
     return tmp_path / 'repo'

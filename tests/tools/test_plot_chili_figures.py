@@ -264,7 +264,8 @@ def test_default_style_keeps_black_and_white_neutrals(chili_tool, tmp_path):
 
     lines = figures['chili_fig8_olr'].axes[1].lines
     assert '#000000' in {_hex(ln.get_color()) for ln in lines if ln.get_linestyle() == '-.'}
-    for stem in ('fig2_milestones', 'fig3_atm_composition', 'fig8_olr', 'fig9_geodynamics'):
+    stems = ('fig2_milestones', 'fig3_atm_composition', 'fig4_mass_budgets')
+    for stem in (*stems, 'fig7_volatiles', 'fig8_olr', 'fig9_geodynamics'):
         heading = figures[f'chili_{stem}'].axes[0]
         title = heading.title if heading.get_title() else heading._left_title
         assert title.get_fontweight() == 'bold', stem
