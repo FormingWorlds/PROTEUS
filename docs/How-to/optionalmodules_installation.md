@@ -125,7 +125,10 @@ bash tools/get_lavatmos.sh
 
 !!! warning "ThermoEngineLite build requirements"
     ThermoEngineLite compiles a C++/Python extension and requires `clang` and
-    `pip` on `PATH`. Compilation takes around 20 minutes.
+    `pip` on `PATH`, plus the GNU Scientific Library (GSL) headers and
+    libraries (`conda install -c conda-forge gsl`, `brew install gsl` on macOS,
+    or `sudo apt install libgsl-dev` on Debian/Ubuntu). Compilation takes
+    around 20 minutes.
 
 `get_lavatmos.sh` clones the checkout but does not set an environment
 variable for you. Set the printed path in your conda environment:
