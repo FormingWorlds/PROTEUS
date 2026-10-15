@@ -1432,7 +1432,7 @@ def test_postprocessing_hands_the_physics_module_a_reporting_row(tmp_path):
         with ExitStack() as stack:
             stack.enter_context(patch.object(type(p), 'extract_archives'))
             stack.enter_context(
-                patch('proteus.utils.coupler.vulcan_below_floor', return_value=False)
+                patch('proteus.utils.coupler.vulcan_floor_fix', return_value=None)
             )
             stack.enter_context(
                 patch('proteus.utils.coupler.ReadHelpfileFromCSV', return_value=_make_hf_df())
@@ -1479,7 +1479,7 @@ def test_postprocessing_refuses_a_helpfile_that_predates_schema_columns(tmp_path
         with ExitStack() as stack:
             mock_extract = stack.enter_context(patch.object(type(p), 'extract_archives'))
             stack.enter_context(
-                patch('proteus.utils.coupler.vulcan_below_floor', return_value=False)
+                patch('proteus.utils.coupler.vulcan_floor_fix', return_value=None)
             )
             mock_read = stack.enter_context(
                 patch('proteus.utils.coupler.ReadHelpfileFromCSV', side_effect=drift)
@@ -2123,7 +2123,10 @@ def test_offline_chemistry_stops_on_vulcan_below_floor(tmp_path):
         patch('proteus.utils.coupler.ReadHelpfileFromCSV') as mock_read,
         patch('proteus.atmos_chem.wrapper.run_chemistry') as mock_chem,
     ):
-        with pytest.raises(EnvironmentError, match='VULCAN is below its minimum version'):
+        with pytest.raises(
+            EnvironmentError,
+            match=r'VULCAN is below its minimum version; fix: pip install -U "fwl-vulcan>=26.10.14"',
+        ):
             p.offline_chemistry()
     assert mock_read.call_count == 0
     assert mock_chem.call_count == 0
