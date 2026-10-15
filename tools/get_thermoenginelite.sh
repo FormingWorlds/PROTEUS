@@ -23,18 +23,30 @@ get_parse_args "$@"
 workpath="$root/ThermoEngineLite/"
 
 # Locate GSL (conda, CPATH, Homebrew, /usr/include, /usr/local/include).
+# GSL_SYS_INCLUDE and GSL_LOCAL_INCLUDE are test hooks for offline unit tests.
 _cpath_gsl_dir() {
     local d IFS=:
+    set -f
     for d in ${CPATH:-}; do
-        [ -n "$d" ] && [ -f "$d/gsl/gsl_multiroots.h" ] && { printf '%s\n' "$d"; return 0; }
+        case "$d" in
+            /*) [ -f "$d/gsl/gsl_multiroots.h" ] && { set +f; printf '%s\n' "$d"; return 0; } ;;
+        esac
     done
+    set +f
     return 1
 }
+gsl_lib=""
 if [ -n "${CONDA_PREFIX:-}" ] && [ -f "$CONDA_PREFIX/include/gsl/gsl_multiroots.h" ]; then
     gsl_include="$CONDA_PREFIX/include"
     gsl_lib="$CONDA_PREFIX/lib"
 elif cpath_gsl=$(_cpath_gsl_dir); then
     gsl_include="$cpath_gsl"
+    for gsl_cand in "$cpath_gsl/../lib"/libgsl.dylib "$cpath_gsl/../lib"/libgsl.so "$cpath_gsl/../lib"/libgsl.so.* "$cpath_gsl/../lib"/libgsl.a; do
+        if [ -f "$gsl_cand" ]; then
+            gsl_lib="$cpath_gsl/../lib"
+            break
+        fi
+    done
 elif command -v brew >/dev/null 2>&1 \
     && brew_gsl=$(brew --prefix gsl 2>/dev/null) \
     && [ -n "$brew_gsl" ] \

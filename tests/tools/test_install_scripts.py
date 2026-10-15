@@ -6905,6 +6905,8 @@ def _thermoenginelite_site(tmp_path: Path) -> dict:
         'fi\n'
         'exit 0\n',
     )
+    site['env'].pop('CPATH', None)
+    site['env'].pop('LIBRARY_PATH', None)
     site['env']['CONDA_PREFIX'] = str(conda_prefix)
     site['env']['GSL_SYS_INCLUDE'] = str(tmp_path / 'no_usr_include')
     site['env']['GSL_LOCAL_INCLUDE'] = str(tmp_path / 'no_usr_local_include')
@@ -6926,7 +6928,22 @@ def test_thermoenginelite_missing_gsl_exits_1_before_clone(tmp_path):
     site = _thermoenginelite_site(tmp_path)
     empty_conda = tmp_path / 'empty_conda'
     (empty_conda / 'include' / 'gsl').mkdir(parents=True)
+    empty_cpath = tmp_path / 'empty_cpath'
+    (empty_cpath / 'gsl').mkdir(parents=True)
+    rel_inc = tmp_path / 'rel_inc' / 'gsl'
+    rel_inc.mkdir(parents=True)
+    (rel_inc / 'gsl_multiroots.h').write_text('')
+    glob_hit = tmp_path / 'glob_hit' / 'gsl'
+    glob_hit.mkdir(parents=True)
+    (glob_hit / 'gsl_multiroots.h').write_text('')
+    empty_sys = tmp_path / 'empty_sys_include'
+    (empty_sys / 'gsl').mkdir(parents=True)
+    empty_local = tmp_path / 'empty_local_include'
+    (empty_local / 'gsl').mkdir(parents=True)
     site['env']['CONDA_PREFIX'] = str(empty_conda)
+    site['env']['CPATH'] = f'rel_inc:{tmp_path}/glob_*:{empty_cpath}'
+    site['env']['GSL_SYS_INCLUDE'] = str(empty_sys)
+    site['env']['GSL_LOCAL_INCLUDE'] = str(empty_local)
     site['env']['PATH'] = _path_without_tool(site['env']['PATH'], 'brew', tmp_path / 'no_brew')
     assert shutil.which('brew', path=site['env']['PATH']) is None
     assert shutil.which('bash', path=site['env']['PATH']) is not None
@@ -7040,12 +7057,17 @@ def test_thermoenginelite_homebrew_missing_header_or_failing_brew(tmp_path):
 
 @pytest.mark.unit
 def test_thermoenginelite_accepts_user_cpath_and_usr_local_include(tmp_path):
-    """Verify user-supplied CPATH and GSL_LOCAL_INCLUDE satisfy the GSL header check."""
+    """Verify user-supplied CPATH (with or without ../lib/libgsl.*) and GSL_LOCAL_INCLUDE satisfy the check."""
     site = _thermoenginelite_site(tmp_path)
     site['env']['CONDA_PREFIX'] = str(tmp_path / 'empty_conda')
-    user_inc = tmp_path / 'custom_gsl' / 'include'
+    user_prefix = tmp_path / 'custom_gsl'
+    user_inc = user_prefix / 'include'
+    user_lib = user_prefix / 'lib'
     (user_inc / 'gsl').mkdir(parents=True)
     (user_inc / 'gsl' / 'gsl_multiroots.h').write_text('')
+    user_lib.mkdir(parents=True)
+    libgsl_dylib = user_lib / 'libgsl.dylib'
+    libgsl_dylib.write_text('')
     hb_gsl = tmp_path / 'hb_gsl'
     (hb_gsl / 'include' / 'gsl').mkdir(parents=True)
     (hb_gsl / 'include' / 'gsl' / 'gsl_multiroots.h').write_text('')
@@ -7053,8 +7075,20 @@ def test_thermoenginelite_accepts_user_cpath_and_usr_local_include(tmp_path):
     site['env']['CPATH'] = f'/other/inc:{user_inc}'
     site['env']['LIBRARY_PATH'] = '/custom/lib'
 
-    res_cpath = _run_tool(site, 'get_thermoenginelite.sh')
-    assert res_cpath.returncode == 0, res_cpath.stdout + res_cpath.stderr
+    res_cpath_with_lib = _run_tool(site, 'get_thermoenginelite.sh')
+    assert res_cpath_with_lib.returncode == 0, (
+        res_cpath_with_lib.stdout + res_cpath_with_lib.stderr
+    )
+    assert site['make_log'].read_text().splitlines() == [
+        'ARGS=devinstall',
+        f'CPATH=/other/inc:{user_inc}',
+        f'LIBRARY_PATH={user_inc}/../lib:/custom/lib',
+    ]
+
+    site['make_log'].write_text('')
+    libgsl_dylib.unlink()
+    res_cpath_no_lib = _run_tool(site, 'get_thermoenginelite.sh', '--force')
+    assert res_cpath_no_lib.returncode == 0, res_cpath_no_lib.stdout + res_cpath_no_lib.stderr
     assert site['make_log'].read_text().splitlines() == [
         'ARGS=devinstall',
         f'CPATH=/other/inc:{user_inc}',
