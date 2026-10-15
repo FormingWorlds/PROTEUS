@@ -3661,6 +3661,7 @@ def test_print_module_configuration_logs_versions_for_spider_agni_stack(monkeypa
         'proteus': '/tmp/proteus',
         'output': '/tmp/out',
         'rad': '/tmp/rad',
+        'temp': '/tmp/tmpdir',
     }
 
     monkeypatch.setattr(coupler_mod, '_get_git_revision', lambda _d: 'abc123')
@@ -3690,6 +3691,7 @@ def test_print_module_configuration_logs_versions_for_spider_agni_stack(monkeypa
         print_module_configuration(dirs, config, '/tmp/cfg.toml')
         messages = [str(call) for call in mock_log.info.call_args_list]
         assert any('PROTEUS version' in m for m in messages)
+        assert any('Temporary path    /tmp/tmpdir' in m for m in messages)
         assert any('Interior module   spider version' in m for m in messages)
         assert any('PETSc' in m for m in messages)
         assert any('Atmos_clim module agni version' in m for m in messages)
@@ -3717,7 +3719,12 @@ def test_print_module_configuration_logs_versions_for_aragog_janus_zephyrus(monk
         atmos_chem=types.SimpleNamespace(module='dummy'),
         observe=types.SimpleNamespace(module='dummy'),
     )
-    dirs = {'proteus': '/tmp/proteus', 'output': '/tmp/out', 'rad': '/tmp/rad'}
+    dirs = {
+        'proteus': '/tmp/proteus',
+        'output': '/tmp/out',
+        'rad': '/tmp/rad',
+        'temp': '/tmp/tmpdir',
+    }
 
     monkeypatch.setattr(coupler_mod, '_get_git_revision', lambda _d: 'def456')
     monkeypatch.setattr(coupler_mod, '_get_socrates_version', lambda: '24.1.0')
@@ -4220,7 +4227,12 @@ def test_print_module_configuration_logs_obliqua_version_and_julia(monkeypatch):
         atmos_chem=types.SimpleNamespace(module='dummy'),
         observe=types.SimpleNamespace(module='dummy'),
     )
-    dirs = {'proteus': '/tmp/proteus', 'output': '/tmp/out', 'rad': '/tmp/rad'}
+    dirs = {
+        'proteus': '/tmp/proteus',
+        'output': '/tmp/out',
+        'rad': '/tmp/rad',
+        'temp': '/tmp/tmpdir',
+    }
 
     monkeypatch.setattr(coupler_mod, '_get_git_revision', lambda _d: 'abc123')
     monkeypatch.setattr(coupler_mod, '_get_obliqua_version', lambda _d: '0.1.0')
@@ -4235,7 +4247,8 @@ def test_print_module_configuration_logs_obliqua_version_and_julia(monkeypatch):
 
 @pytest.mark.unit
 def test_print_citation_agni_and_manual_mode_cover_noop_cases():
-    """Cover print_citation match-case no-op arms and chemistry manual gate."""
+    """Cover print_citation match-case no-op arms; VULCAN is cited in manual mode,
+    because the user runs the selected chemistry module on the output afterwards."""
     config = types.SimpleNamespace(
         atmos_clim=types.SimpleNamespace(module='agni'),
         interior_energetics=types.SimpleNamespace(module='aragog'),
@@ -4253,7 +4266,7 @@ def test_print_citation_agni_and_manual_mode_cover_noop_cases():
         messages = [str(call) for call in mock_log.info.call_args_list]
         assert any('Nicholls et al. (2025)' in m for m in messages)
         assert not any('Mollière et al. (2019)' in m for m in messages)
-        assert not any('Tsai et al. (2021)' in m for m in messages)
+        assert any('Tsai et al. (2021)' in m for m in messages)
 
 
 @pytest.mark.unit
