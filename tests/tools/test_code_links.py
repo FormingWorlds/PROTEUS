@@ -189,6 +189,7 @@ def test_main_checks_the_ref_once(links, tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(links, 'SVGS', [svg])
     assert links.ref_problem('HEAD').startswith('git rev-parse failed for HEAD: fatal')
     _commit_tree(tmp_path)
+    assert links.ref_problem('HEAD') is None
     assert links.main(['--check', '--ref', 'nonexist']) == 1
     assert capsys.readouterr().err == 'error: nonexist is not a commit of this repository\n'
     assert links.main(['--ref', 'origin/nope']) == 1
