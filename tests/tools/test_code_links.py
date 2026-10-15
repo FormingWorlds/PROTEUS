@@ -40,6 +40,19 @@ class Runner:
 '''
 
 
+def _commit_tree(root):
+    """Make ``root`` a git repository with one commit of everything in it."""
+    import subprocess
+
+    git = ['git', '-C', str(root), '-c', 'user.name=t', '-c', 'user.email=t@t']
+    for step in (
+        ['init', '-q'],
+        ['add', '.'],
+        ['-c', 'commit.gpgsign=false', 'commit', '-qm', 's'],
+    ):
+        subprocess.run([*git, *step], check=True)
+
+
 @pytest.fixture
 def links(tmp_path, monkeypatch):
     """The module with its source root pointed at a sample tree."""
@@ -128,34 +141,25 @@ def test_line_anchors_and_foreign_links_pass_through(links):
 def test_file_link_checks_existence_without_reading_the_file(links, tmp_path):
     """A text or binary file passes and a query is ignored; a directory, a missing
     file or a path that is not plain fails; in the work tree and at a git ref alike."""
-    import subprocess
-
     (tmp_path / 'pkg' / 'logo.png').write_bytes(b'\x89PNG\r\n\x1a\n\x00\xff')
-    git = ['git', '-C', str(tmp_path), '-c', 'user.name=t', '-c', 'user.email=t@t']
-    for step in (
-        ['init', '-q'],
-        ['add', '.'],
-        ['-c', 'commit.gpgsign=false', 'commit', '-qm', 's'],
-    ):
-        subprocess.run([*git, *step], check=True)
+    _commit_tree(tmp_path)
     for ref in (None, 'HEAD'):
         for ok in ('pkg/mod.py', 'pkg/logo.png', 'pkg/mod.py?plain=1'):
             assert links.resolve(links.REPO_URL + ok, ref) == links.REPO_URL + ok
         named = links.REPO_URL + 'pkg/mod.py?plain=1#escape'
         assert links.resolve(named, ref) == links.REPO_URL + 'pkg/mod.py#L7'
-        for bad in ('pkg', 'pkg/gone.py', 'pkg#escape'):
-            with pytest.raises(links.LinkError, match='pkg(/gone.py)?: file does not exist'):
+        for bad, path in (
+            ('pkg', 'pkg'),
+            ('pkg/gone.py', 'pkg/gone.py'),
+            ('pkg#escape', 'pkg'),
+        ):
+            with pytest.raises(links.LinkError, match=f'^{path}: file does not exist'):
                 links.resolve(links.REPO_URL + bad, ref)
         with pytest.raises(links.LinkError, match='pkg/logo.png: not a text file'):
             links.resolve(links.REPO_URL + 'pkg/logo.png#escape', ref)
         for odd in ('/etc/hosts', 'pkg/../pkg/mod.py', 'pkg/mod.py/', 'pkg//mod.py'):
             with pytest.raises(links.LinkError, match='not a plain path'):
                 links.resolve(links.REPO_URL + odd, ref)
-    for ok in ('pkg/mod.py', 'pkg/mod.py#escape'):
-        with pytest.raises(
-            links.LinkError, match='nonexist is not a commit of this repository'
-        ):
-            links.resolve(links.REPO_URL + ok, 'nonexist')
 
 
 def test_banner_and_comment_of_one_slug_resolve_by_kind(links, tmp_path):
@@ -172,6 +176,30 @@ def test_banner_and_comment_of_one_slug_resolve_by_kind(links, tmp_path):
         links.resolve_target('pkg/clash.py', 'comment-notes')
     (tmp_path / 'pkg' / 'closing.py').write_text('############### / COMMENT NOTES\n# Notes\n')
     assert links.resolve_target('pkg/closing.py', 'comment-notes') == 2
+
+
+def test_main_checks_the_ref_once(links, tmp_path, monkeypatch, capsys):
+    """An unknown ref gives one error before any link is read (with the fetch hint for
+    an origin/ ref); a deploy then warns, leaves the SVGs as they are and succeeds; any
+    other git failure shows git's message; an empty --ref is refused."""
+    svg = tmp_path / 'fig.svg'
+    svg.write_text(
+        f'<svg><a xlink:href="x" data-target="{links.REPO_URL}pkg/mod.py#escape"/></svg>'
+    )
+    monkeypatch.setattr(links, 'SVGS', [svg])
+    assert links.ref_problem('HEAD').startswith('git rev-parse failed for HEAD: fatal')
+    _commit_tree(tmp_path)
+    assert links.main(['--check', '--ref', 'nonexist']) == 1
+    assert capsys.readouterr().err == 'error: nonexist is not a commit of this repository\n'
+    assert links.main(['--ref', 'origin/nope']) == 1
+    assert capsys.readouterr().err.endswith('; run git fetch origin main\n')
+    assert links.main(['--deploy', '--ref', 'nonexist']) == 0
+    assert capsys.readouterr().out == (
+        '::warning::nonexist is not a commit of this repository; the SVG links are left as they are\n'
+    )
+    assert 'xlink:href="x"' in svg.read_text()
+    with pytest.raises(SystemExit):
+        links.main(['--ref', ''])
 
 
 def test_validate_reports_missing_file_and_svg_out_of_step(links, tmp_path, monkeypatch):
@@ -197,12 +225,6 @@ def test_validate_reports_missing_file_and_svg_out_of_step(links, tmp_path, monk
         f'b.svg: links not in arch_final.json: {extra}',
         'c.svg: no name-based links; rebuild the figure',
     ]
-    assert links.validate('nonexist') == ['nonexist is not a commit of this repository']
-    before = [svg.read_text() for svg in svgs]
-    assert links.rewrite('nonexist', lenient=True) == [
-        'nonexist is not a commit of this repository'
-    ]
-    assert [svg.read_text() for svg in svgs] == before
 
 
 def test_deploy_rewrite_drops_link_of_broken_target(links, tmp_path, monkeypatch):
@@ -220,7 +242,7 @@ def test_deploy_rewrite_drops_link_of_broken_target(links, tmp_path, monkeypatch
     assert f'xlink:href="{links.REPO}/blob/main/pkg/mod.py#L7" data-target="{good}"' in text
     assert f'<a data-target="{bad}"/>' in text
     assert 'xlink:href="y"' not in text
-    assert len(problems) == 1 and 'renamed-away' in problems[0]
+    assert len(problems) == 1 and problems[0].endswith(f' [{bad}]')
 
     # once the target exists again, a later run restores the link
     (tmp_path / 'pkg' / 'mod.py').write_text(SAMPLE + '# Renamed away\n')

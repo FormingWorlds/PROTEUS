@@ -47,31 +47,29 @@ def slug(text: str) -> str:
     return re.sub(r'[^a-z0-9]+', '-', text.lower()).strip('-')
 
 
-def plain_path(path: str) -> None:
-    """Raise LinkError unless ``path`` is a plain path inside the repository."""
-    if {'', '.', '..'} & set(path.split('/')):
-        raise LinkError(f'{path}: not a plain path inside the repository')
-
-
-@lru_cache(maxsize=None)
 def ref_problem(ref: str) -> str | None:
     """Why git does not know ``ref`` as a commit, None when it does."""
     res = subprocess.run(
         ['git', '-C', str(ROOT), 'rev-parse', '--verify', '--quiet', f'{ref}^{{commit}}'],
         capture_output=True,
+        text=True,
     )
-    hint = '; run git fetch origin main' if ref.startswith('origin/') else ''
-    return None if res.returncode == 0 else f'{ref} is not a commit of this repository{hint}'
+    if res.returncode == 0:
+        return None
+    if res.returncode == 1:
+        hint = '; run git fetch origin main' if ref.startswith('origin/') else ''
+        return f'{ref} is not a commit of this repository{hint}'
+    return f'git rev-parse failed for {ref}: {res.stderr.strip()}'
 
 
 def require_file(path: str, ref: str | None) -> None:
-    """Raise LinkError unless ``path`` is a file in the work tree (``ref`` None) or at ``ref``."""
-    plain_path(path)
+    """Raise LinkError unless ``path`` is a plain path to a file in the work tree
+    (``ref`` None) or at ``ref``."""
+    if {'', '.', '..'} & set(path.split('/')):
+        raise LinkError(f'{path}: not a plain path inside the repository')
     if ref is None:
         found = (ROOT / path).is_file()
     else:
-        if problem := ref_problem(ref):
-            raise LinkError(problem)
         res = subprocess.run(
             ['git', '-C', str(ROOT), 'cat-file', '-t', f'{ref}:{path}'],
             capture_output=True,
@@ -182,8 +180,6 @@ def model_links() -> list[str]:
 
 
 def validate(ref: str | None) -> list[str]:
-    if ref is not None and (problem := ref_problem(ref)):
-        return [problem]
     errors, model = [], set(model_links())
     for href in sorted(model):
         if href.startswith(REPO) and LINE_ANCHOR.match(href.partition('#')[2]):
@@ -210,8 +206,6 @@ def validate(ref: str | None) -> list[str]:
 def rewrite(ref: str | None, lenient: bool) -> list[str]:
     """Re-resolve the links in the SVGs. A broken target loses its link when
     ``lenient`` and is left as it was otherwise."""
-    if ref is not None and (problem := ref_problem(ref)):
-        return [problem]
     problems = []
     for svg in SVGS:
         text = svg.read_text()
@@ -221,7 +215,7 @@ def rewrite(ref: str | None, lenient: bool) -> list[str]:
             try:
                 new = resolve(target, ref)
             except (LinkError, SyntaxError) as e:
-                problems.append(str(e))
+                problems.append(f'{e} [{target}]')
                 if not lenient:
                     return m.group(0)
                 return f'<a data-target="{m.group(2)}"'  # no href: not clickable
@@ -234,7 +228,7 @@ def rewrite(ref: str | None, lenient: bool) -> list[str]:
     return sorted(set(problems))
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     mode = ap.add_mutually_exclusive_group()
     mode.add_argument('--check', action='store_true', help='fail if a target does not resolve')
@@ -244,7 +238,17 @@ def main() -> int:
         help='resolve against the work tree (a main checkout); a missing target loses its link',
     )
     ap.add_argument('--ref', help='git ref to read the code from (default origin/main)')
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
+    if args.ref == '':
+        ap.error('--ref must name a commit')
+    lenient = args.deploy
+    ref = args.ref if args.check or lenient else (args.ref or 'origin/main')
+    if ref is not None and (problem := ref_problem(ref)):
+        if lenient:
+            print(f'::warning::{problem}; the SVG links are left as they are')
+            return 0
+        print(f'error: {problem}', file=sys.stderr)
+        return 1
 
     if args.check:
         errors = validate(args.ref)
@@ -257,8 +261,6 @@ def main() -> int:
             )
         return 1 if errors else 0
 
-    lenient = args.deploy
-    ref = args.ref if lenient else (args.ref or 'origin/main')
     problems = rewrite(ref, lenient)
     for p in problems:
         if lenient:
