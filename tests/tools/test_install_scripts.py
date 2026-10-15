@@ -6878,6 +6878,9 @@ def _thermoenginelite_site(tmp_path: Path) -> dict:
         'make',
         '#!/bin/sh\n'
         'mkdir -p thermoengine\n'
+        'if [ "${STUB_MAKE_CLONE_REGULAR:-0}" = "1" ]; then\n'
+        '    printf "__version__ = \'0.0\'\\n" > thermoengine/__init__.py\n'
+        'fi\n'
         'printf "ARGS=%s\\nCPATH=%s\\nLIBRARY_PATH=%s\\n" "$*" "${CPATH:-}" "${LIBRARY_PATH:-}" >> "$STUB_MAKE_LOG"\n'
         'if [ "${STUB_MAKE_FAIL:-0}" = "1" ]; then\n'
         '    exit 2\n'
@@ -6995,3 +6998,19 @@ def test_thermoenginelite_import_check_runs_outside_clone_and_requires_file(tmp_
         'ERROR: ThermoEngineLite failed to install into your Python environment.'
         in res_ns.stderr
     )
+
+
+@pytest.mark.unit
+def test_thermoenginelite_import_check_rejects_regular_package_in_clone(tmp_path):
+    """Verify get_thermoenginelite.sh exits 1 when thermoengine/__init__.py exists only in the clone."""
+    site = _thermoenginelite_site(tmp_path)
+    site['env']['STUB_MAKE_SKIP_INSTALL'] = '1'
+    site['env']['STUB_MAKE_CLONE_REGULAR'] = '1'
+    res = _run_tool(site, 'get_thermoenginelite.sh')
+    assert res.returncode == 1, res.stdout + res.stderr
+    assert (
+        'ERROR: ThermoEngineLite failed to install into your Python environment.' in res.stderr
+    )
+    clone = site['root'] / 'ThermoEngineLite'
+    assert (clone / 'thermoengine' / '__init__.py').is_file()
+    assert not (site['site_packages'] / 'thermoengine').exists()
