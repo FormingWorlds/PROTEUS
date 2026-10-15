@@ -608,18 +608,10 @@ def plot_result_correlation(pars: dict, obs: dict, directory):
     Y = np.array(Y, dtype=float).reshape(-1, n_obs)
 
     # Make plot
-    fig, axs = plt.subplots(n_obs, n_par, figsize=(2.7 * n_par, 2.7 * n_obs))
+    fig, axs = plt.subplots(n_obs, n_par, figsize=(2.7 * n_par, 2.7 * n_obs), squeeze=False)
     for i in range(n_par):
         for j in range(n_obs):
-            # handle axis
-            if n_par == 1 and n_obs == 1:
-                ax = axs
-            elif n_par == 1:
-                ax = axs[j]
-            elif n_obs == 1:
-                ax = axs[i]
-            else:
-                ax = axs[j, i]
+            ax = axs[j, i]
 
             # plot data
             xx = X[:, i]
@@ -644,24 +636,12 @@ def plot_result_correlation(pars: dict, obs: dict, directory):
             if j < n_obs - 1:
                 ax.set_xticklabels([])
 
-    # Legend
-    if n_obs == 1 or n_par == 1:
-        axs[0].legend()
-    else:
-        axs[0, 0].legend()
-
-    # Axis labels
-    if n_par == 1 or n_obs == 1:
-        axs[0].set_xlabel(par_keys[0], fontsize=10)
-    else:
-        for i in range(n_par):
-            axs[-1, i].set_xlabel(par_keys[i], fontsize=10)
-
-    if n_obs == 1 or n_par == 1:
-        axs[0].set_ylabel(obs_keys[0], fontsize=10)
-    else:
-        for j in range(n_obs):
-            axs[j, 0].set_ylabel(obs_keys[j], fontsize=10)
+    # Legend and axis labels on the outer panels
+    axs[0, 0].legend()
+    for i in range(n_par):
+        axs[-1, i].set_xlabel(par_keys[i], fontsize=10)
+    for j in range(n_obs):
+        axs[j, 0].set_ylabel(obs_keys[j], fontsize=10)
 
     # Decorate
     fig.subplots_adjust(wspace=0.02, hspace=0.02)
