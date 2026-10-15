@@ -634,11 +634,11 @@ def plot_result_correlation(pars: dict, obs: dict, directory):
             if i == 0:
                 ax.set_ylabel(obs_keys[j], fontsize=10)
             else:
-                ax.set_yticklabels([])
+                ax.tick_params(axis='y', which='both', labelleft=False)
             if j == n_obs - 1:
                 ax.set_xlabel(par_keys[i], fontsize=10)
             else:
-                ax.set_xticklabels([])
+                ax.tick_params(axis='x', which='both', labelbottom=False)
 
     axs[0, 0].legend()
 

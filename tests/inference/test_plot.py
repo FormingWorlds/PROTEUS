@@ -14,8 +14,9 @@ regression. Tests here cover the five public functions:
     helpfile handling.
   - ``plot_proteus``: dispatch over ``plot_dispatch`` with skip set.
 
-Matplotlib is mocked at the module-attribute level (``plot_mod.plt``) so no
-figure is rendered and ``savefig`` is captured as a call assertion.
+Most tests mock matplotlib at the module-attribute level (``plot_mod.plt``) and
+capture ``savefig`` as a call assertion; the grid-shape tests render real figures
+through ``_record_grids``.
 
 References:
   - docs/How-to/testing.md
@@ -50,6 +51,7 @@ pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 def _record_grids(monkeypatch):
     """Render real figures and return the list each ``plt.subplots`` call adds its axes grid to."""
+    monkeypatch.setattr(plot_mod, 'dpi', 30)
     grids = []
     real_subplots = plot_mod.plt.subplots
 
@@ -747,20 +749,30 @@ def test_plot_result_correlation_skips_a_case_that_died_during_start_up(
 @pytest.mark.parametrize(('n_par', 'n_obs'), [(1, 1), (1, 2), (2, 1), (2, 2)])
 def test_plot_result_correlation_renders_any_grid_shape(tmp_path, monkeypatch, n_par, n_obs):
     """A real figure for every grid shape: panel (j, i) plots parameter i against
-    observable j with the observed value as a line and a log y axis for ``P_surf``;
-    only the bottom row and the first column carry labels and tick labels, and only
-    the top-left panel a legend."""
+    observable j with the observed value as a line and log axes for the log-scaled
+    keys; only the bottom row and the first column carry labels and tick labels (major
+    and minor), and only the top-left panel the legend."""
     pars = dict(
-        list({'planet.mass_tot': [0.7, 3.0], 'planet.radius': [0.5, 2.0]}.items())[:n_par]
+        list({'planet.mass_tot': [0.7, 3.0], 'orbit.semimajoraxis': [0.01, 1.0]}.items())[
+            :n_par
+        ]
     )
     obs = dict(list({'P_surf': 1.0, 'T_eqm': 260.0}.items())[:n_obs])
-    X = np.array([[1.5 + 0.1 * c, 1.0 + c] for c in range(3)])
+    scale = {
+        k: 'log' if k in ('orbit.semimajoraxis', 'P_surf') else 'linear' for k in [*pars, *obs]
+    }
+    X = np.array([[1.5 + 0.1 * c, 0.02 * 2**c] for c in range(3)])
     Y = np.array([[1.0 + c, 250.0 + 10 * c] for c in range(3)])
     for c in range(3):
         case = tmp_path / 'workers' / 'w_0' / f'i_{c}'
         case.mkdir(parents=True)
         (case / 'init_coupler.toml').write_text(
-            toml.dumps({'planet': dict(zip(('mass_tot', 'radius'), X[c].tolist()))})
+            toml.dumps(
+                {
+                    'planet': {'mass_tot': float(X[c, 0])},
+                    'orbit': {'semimajoraxis': float(X[c, 1])},
+                }
+            )
         )
         pd.DataFrame([{'P_surf': Y[c, 0], 'T_eqm': Y[c, 1]}]).to_csv(
             case / 'runtime_helpfile.csv', sep=' ', index=False
@@ -778,12 +790,14 @@ def test_plot_result_correlation_renders_any_grid_shape(tmp_path, monkeypatch, n
         offsets = np.column_stack([X[:, i], Y[:, j]])
         np.testing.assert_allclose(ax.collections[0].get_offsets(), offsets)
         assert ax.lines[0].get_ydata()[0] == pytest.approx(list(obs.values())[j])
-        assert ax.get_yscale() == ('log' if j == 0 else 'linear')
+        assert ax.get_xscale() == scale[list(pars)[i]]
+        assert ax.get_yscale() == scale[list(obs)[j]]
         assert ax.get_xlabel() == (list(pars)[i] if j == n_obs - 1 else '')
         assert ax.get_ylabel() == (list(obs)[j] if i == 0 else '')
-        assert any(t.get_text() for t in ax.get_xticklabels()) == (j == n_obs - 1)
-        assert any(t.get_text() for t in ax.get_yticklabels()) == (i == 0)
+        assert any(t.get_text() for t in ax.get_xticklabels(which='both')) == (j == n_obs - 1)
+        assert any(t.get_text() for t in ax.get_yticklabels(which='both')) == (i == 0)
         assert (ax.get_legend() is not None) == (i == j == 0)
+    assert [t.get_text() for t in axs[0, 0].get_legend().get_texts()] == ['Observed']
 
 
 # ---------------------------------------------------------------------------
