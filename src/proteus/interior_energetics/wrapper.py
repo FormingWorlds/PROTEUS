@@ -2128,7 +2128,6 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
         output = AragogRunner._build_helpfile_output(
             molten_out,
             hf_row,
-            interior_o=interior_o,
             surface_d=config.atmos_clim.surface_d,
             surface_bc_mode=config.interior_energetics.surface_bc_mode,
         )

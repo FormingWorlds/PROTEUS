@@ -2218,7 +2218,6 @@ class AragogRunner:
             output = self._build_helpfile_output(
                 out,
                 hf_row,
-                interior_o=interior_o,
                 surface_d=self._config.atmos_clim.surface_d,
                 surface_bc_mode=self._config.interior_energetics.surface_bc_mode,
             )
@@ -2749,11 +2748,13 @@ class AragogRunner:
     def _build_helpfile_output(
         out: SolverOutput,
         hf_row: dict,
-        interior_o=None,
         surface_d: float = 0.0,
         surface_bc_mode: str = 'flux',
     ) -> dict:
         """Build the PROTEUS helpfile dict from SolverOutput.
+
+        ``F_radio`` and ``F_tidal`` are the solver's radiogenic and tidal powers
+        (``Q_radio_W``, ``Q_tidal_W``) at the time of ``out`` over the surface area.
 
         Parameters
         ----------
@@ -2761,10 +2762,6 @@ class AragogRunner:
             Aragog solver output.
         hf_row : dict
             Current helpfile row.
-        interior_o : Interior_t, optional
-            Interior object. When provided, the tidal heating flux is the
-            tidal array (per kg of ``rho_stag``, the density passed to the
-            tidal module) times the cell masses over the surface area.
         surface_d : float, optional
             Surface depth offset passed through to the output dict.
         surface_bc_mode : str, optional
@@ -2782,14 +2779,9 @@ class AragogRunner:
             out.status,
         )
 
-        # F_radio is the radiogenic power the solver heats with, not out.F_heat_total
         area_surf = 4.0 * np.pi * float(out.r_basic[-1]) ** 2
-        F_tidal = 0.0
-        if interior_o is not None and hasattr(interior_o, 'tides'):
-            tides = np.asarray(interior_o.tides)
-            if tides.size > 0 and np.any(tides > 0):
-                F_tidal = float(np.dot(tides[: len(out.mass_stag)], out.mass_stag)) / area_surf
         F_radio = float(out.Q_radio_total) / area_surf
+        F_tidal = float(out.Q_tidal_total) / area_surf
 
         return {
             'M_mantle': out.M_mantle,

@@ -3148,38 +3148,28 @@ def test_paleos_melting_curves_follow_mzf_in_reused_outdir(tmp_path):
 @pytest.mark.unit
 @pytest.mark.physics_invariant
 def test_heating_columns_are_the_solver_powers():
-    """F_radio and F_tidal times the surface area are the solver powers Q_radio_W and
-    Q_tidal_W, on cell masses rho_stag * V that differ from the structural M_mantle.
-    The tidal module returns a volumetric power divided by rho_stag, so F_tidal times
-    the area gives back its volume integral, and F_tidal is 0 without tides."""
+    """F_radio and F_tidal times the surface area are the solver's radiogenic and tidal
+    powers, on cell masses rho_stag * V that differ from the structural M_mantle, not
+    the radionuclide heat per kg times M_mantle; F_tidal is 0 when the solver applies no
+    tidal heat."""
     from proteus.interior_energetics.aragog import AragogRunner
 
     r = np.linspace(3.5e6, 6.4e6, 6)
     vol = 4.0 / 3.0 * np.pi * np.diff(r**3)
-    rho_stag = np.array([5600.0, 5100.0, 4700.0, 4300.0, 3900.0])
-    mass = rho_stag * vol
+    mass = np.array([5600.0, 5100.0, 4700.0, 4300.0, 3900.0]) * vol
     q_vol = np.array([4.0e-8, 1.0e-8, 3.0e-9, 9.0e-10, 2.0e-10])  # W m-3
-    source = _k40()
-    out = MagicMock(r_basic=r, vol=vol, mass_stag=mass, M_mantle=0.9 * mass.sum())
-    out.Q_radio_total = source.get_heating(1000.0) * mass.sum()
+    q_radio = _k40().get_heating(1000.0) * mass.sum()
+    out = MagicMock(r_basic=r, mass_stag=mass, M_mantle=0.9 * mass.sum(), Q_radio_total=q_radio)
     out.T_core, out.T_basic = 3800.0, np.linspace(4100.0, 3000.0, len(r))
-    mesh = SimpleNamespace(staggered_effective_density=0.9 * rho_stag)
-    solver = SimpleNamespace(
-        evaluator=SimpleNamespace(mesh=mesh), parameters=SimpleNamespace(radionuclides=[source])
-    )
     area = 4.0 * np.pi * r[-1] ** 2
     rows = []
-    for tides in (q_vol / rho_stag, np.zeros_like(q_vol)):
-        out.Q_tidal_total = float(np.dot(tides, mass))
-        interior_o = SimpleNamespace(tides=tides, aragog_solver=solver)
+    for q_tidal in (float(np.dot(q_vol, vol)), 0.0):
+        out.Q_tidal_total = q_tidal
         with patch('proteus.interior_energetics.aragog._estimate_T_pot', return_value=3000.0):
-            rows.append(
-                AragogRunner._build_helpfile_output(
-                    out, {'F_atm': 1e5, 'Time': 1000.0}, interior_o=interior_o
-                )
-            )
+            rows.append(AragogRunner._build_helpfile_output(out, {'F_atm': 1e5}))
 
     for res in rows:
+        assert res['F_radio'] * area == pytest.approx(q_radio, rel=1e-12)
         assert res['F_radio'] * area == pytest.approx(res['Q_radio_W'], rel=1e-12)
         assert res['F_tidal'] * area == pytest.approx(res['Q_tidal_W'], rel=1e-12, abs=0.0)
     assert rows[0]['F_tidal'] * area == pytest.approx(np.dot(q_vol, vol), rel=1e-12)
