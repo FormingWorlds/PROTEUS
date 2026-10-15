@@ -110,6 +110,12 @@ export PROTEUS_OUTPUT_PATH=/scratch/$USER/proteus_output
 
 With that set, a run whose `params.out.path` is `trial1` lands in `/scratch/$USER/proteus_output/trial1/`, and its `data/`, `observe/`, `offchem/`, and `plots/` subfolders follow. Use an absolute path; `~` and `$VAR` references are expanded. Leaving the variable unset (or empty) keeps the default `<PROTEUS>/output/` location, so existing setups are unaffected. Only the run output moves: input files and the code tree are unchanged. When resuming or plotting a relocated run, keep the same `PROTEUS_OUTPUT_PATH` in the environment so PROTEUS looks in the right place.
 
+## Timing a run
+
+For a quick look at where the wall time of a run goes, set `PROTEUS_TIMING=1` before `proteus start`. The log then gets one `[INIT_TIMING]` line before the main loop, with the seconds spent in each init step (data check, structure solve, equilibration, star, orbit), and one `[IT_TIMING]` line per iteration, with the seconds spent in each module and `init_stage=1` for the first iterations, while the model settles. Each line ends with `other` (time not in a listed step) and `total`. A step that did not run is left out: `structure` and `equilibrate` on a resumed run, `equilibrate` without the Zalmoxis equilibration, and in `[IT_TIMING]` a module that was not called in that iteration. Independently of `PROTEUS_TIMING`, every Aragog run logs `[BACKEND] aragog solver=<name>`, the integrator that runs. PROTEUS reads the variable once at start-up, and leaving it unset costs nothing measurable.
+
+To track performance over a longer time, use [proteus-bench](https://github.com/egpbos/proteus-bench) instead. It runs PROTEUS with timing switched on, records the timings together with the exact code, module versions and machine, and publishes a dashboard that compares each run with earlier ones, by date or by PROTEUS commit, and flags regressions.
+
 ## Archiving output files
 
 A simulation can generate a large number of files, which becomes a problem when running large [parameter grids](usage_grids.md). The `params.out.archive_mod` configuration option tells PROTEUS when to gather a run's output files into `.tar` archives.
