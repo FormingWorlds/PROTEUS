@@ -3657,7 +3657,7 @@ def test_validate_module_versions_skips_vulcan_without_chemistry(tmp_path):
         patch('proteus.utils.coupler.UpdateStatusfile') as mock_update,
     ):
         validate_module_versions({'rad': str(tmp_path)}, config)
-    mock_check.assert_not_called()
+    assert mock_check.call_count == 0
     assert mock_update.call_count == 0
 
 

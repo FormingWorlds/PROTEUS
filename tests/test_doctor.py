@@ -1019,6 +1019,7 @@ class TestBelowFloorFixes:
             patch('proteus.doctor._editable_checkout_path', return_value=None),
         ):
             lines = below_floor_fixes()
+            assert check_python_package('fwl-aragog', specs['fwl-aragog']).status == FAIL
         assert lines == [
             'fwl-janus: pip install -U "fwl-janus>=26.10.15"',
             'fwl-vulcan: pip install -U "fwl-vulcan>=26.10.14"',
