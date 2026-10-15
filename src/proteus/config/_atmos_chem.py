@@ -68,7 +68,7 @@ class Vulcan:
     clip_vmr: float = field(default=1e-10)
     make_funs: bool = field(default=True)
     ini_mix: str = field(default='profile', validator=in_(('profile', 'outgas')))
-    fix_surf: bool = field(default=False)
+    fix_surf: bool = field(default=True)
     network: str = field(default='SNCHO', validator=in_(('CHO', 'NCHO', 'SNCHO')))
     save_frames: bool = field(default=False)
     yconv_cri: float = field(default=0.05)

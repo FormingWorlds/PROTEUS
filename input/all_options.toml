@@ -891,7 +891,7 @@ config_version = "3.0"
         # Setup
         network               = "SNCHO"      # chemical network: CHO | NCHO | SNCHO
         ini_mix               = "profile"    # initial mixing ratios: profile | outgas
-        fix_surf              = false        # hold surface mixing ratios fixed
+        fix_surf              = true         # hold surface mixing ratios fixed
         make_funs             = true         # generate reaction network functions
 
         # Processes
