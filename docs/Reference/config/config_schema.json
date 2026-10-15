@@ -10068,7 +10068,7 @@
       "class": "Vulcan",
       "type": "bool",
       "accepts_none": false,
-      "default": "true",
+      "default": "false",
       "choices": null,
       "bounds": null,
       "description": "Fix the surface mixing ratios based on outgassed composition.",

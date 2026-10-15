@@ -146,3 +146,15 @@ def test_vulcan_ini_mix_refuses_an_unknown_option():
     with pytest.raises(ValueError, match='ini_mix'):
         Vulcan(ini_mix='bogus')
     assert Vulcan().ini_mix == 'profile'
+
+
+@pytest.mark.unit
+def test_vulcan_defaults_start_from_the_profile_with_a_free_surface():
+    """By default VULCAN starts from the climate profile with free surface
+    mixing ratios, so 'previous', which needs a fixed surface, has to be
+    chosen together with fix_surf = true."""
+    vul = Vulcan()
+    assert vul.ini_mix == 'profile'
+    assert vul.fix_surf is False
+    with pytest.raises(ValueError, match='requires fix_surf = true'):
+        Vulcan(ini_mix='previous')

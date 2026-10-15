@@ -225,7 +225,7 @@ steady-state mixing ratios from a chemical reaction network.
 | `clip_vmr` | float | `1e-10` | Neglect species with surface VMR < clip_vmr. |
 | `make_funs` | bool | `true` | Make functions from chemical network. |
 | `ini_mix` | str | `"profile"` | Initial mixing ratios. Options: profile (the climate profile), outgas (the surface mixing ratios at every level), previous (the result of the latest earlier chemistry snapshot, interpolated in log pressure; needs fix_surf = true; falls back to profile when there is none). Choices: `"profile"`, `"outgas"`, `"previous"`. |
-| `fix_surf` | bool | `true` | Fix the surface mixing ratios based on outgassed composition. |
+| `fix_surf` | bool | `false` | Fix the surface mixing ratios based on outgassed composition. |
 | `network` | str | `"SNCHO"` | Chemical network. Options: CHO, NCHO, SNCHO. Choices: `"CHO"`, `"NCHO"`, `"SNCHO"`. |
 | `save_frames` | bool | `false` | Save simulation state as plots. |
 | `yconv_cri` | float | `0.05` | Steady state - max change in mixing ratio over test period. |

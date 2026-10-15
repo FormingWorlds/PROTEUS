@@ -126,7 +126,7 @@ class Vulcan:
         default='profile',
         validator=(in_(('profile', 'outgas', 'previous')), valid_ini_mix),
     )
-    fix_surf: bool = field(default=True)
+    fix_surf: bool = field(default=False)
     network: str = field(default='SNCHO', validator=in_(('CHO', 'NCHO', 'SNCHO')))
     save_frames: bool = field(default=False)
     yconv_cri: float = field(default=0.05)
