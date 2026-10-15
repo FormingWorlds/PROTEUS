@@ -2796,17 +2796,16 @@ class AragogRunner:
         # current sim time so the helpfile column for each source is
         # physically correct rather than recovered by subtraction.
         area_surf = 4.0 * np.pi * float(out.r_basic[-1]) ** 2
+        F_tidal = 0.0
+        if interior_o is not None and hasattr(interior_o, 'tides'):
+            tides = np.asarray(interior_o.tides)
+            if tides.size > 0 and np.any(tides > 0):
+                # tides are per kg of the density given to the tidal module, the solver's
+                F_tidal = float(np.dot(tides[: len(out.mass_stag)], out.mass_stag)) / area_surf
+        F_radio = 0.0
         solver_obj = (
             getattr(interior_o, 'aragog_solver', None) if interior_o is not None else None
         )
-        F_tidal = 0.0
-        if solver_obj is not None and hasattr(interior_o, 'tides'):
-            tides = np.asarray(interior_o.tides)
-            if tides.size > 0 and np.any(tides > 0):
-                # Structural cell masses, the mass F_radio uses (they sum to M_mantle)
-                rho = np.ravel(solver_obj.evaluator.mesh.staggered_effective_density)
-                F_tidal = float(np.dot(tides[: len(rho)], rho * np.ravel(out.vol))) / area_surf
-        F_radio = 0.0
         if solver_obj is not None:
             radionuclides = getattr(solver_obj.parameters, 'radionuclides', [])
             if radionuclides:

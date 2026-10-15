@@ -1328,17 +1328,15 @@ def ReadSPIDER(dirs: dict, config: Config, R_int: float, interior_o: Interior_t)
     Htidal_s = json_file.get_dict_values(['data', 'Htidal_s'])
     mass_s = json_file.get_dict_values(['data', 'mass_s'])
 
+    # The entropy equation heats rho_s * volume_s per cell; tides are per kg of rho_s
+    rho_s = json_file.get_dict_values(['data', 'rho_s'])
+    rho_vol = rho_s * json_file.get_dict_values(['data', 'volume_s'])
+
     # Tidal heating
-    output['F_tidal'] = np.dot(Htidal_s, mass_s) / area_b[0]
+    output['F_tidal'] = np.dot(Htidal_s, rho_vol) / area_b[0]
 
     # Radiogenic heating
     output['F_radio'] = np.dot(Hradio_s, mass_s) / area_b[0]
-
-    # Power the solver integrates: its entropy equation heats rho_s * volume_s per cell
-    rho_vol = np.multiply(
-        json_file.get_dict_values(['data', 'rho_s']),
-        json_file.get_dict_values(['data', 'volume_s']),
-    )
     output['Q_radio_W'] = float(np.dot(Hradio_s, rho_vol))
     output['Q_tidal_W'] = float(np.dot(Htidal_s, rho_vol))
 

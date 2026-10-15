@@ -2175,6 +2175,10 @@
         {
           "file": "src/proteus/interior_energetics/aragog.py",
           "condition": "interior_energetics.module = \"aragog\""
+        },
+        {
+          "file": "src/proteus/interior_energetics/spider.py",
+          "condition": "interior_energetics.module = \"spider\""
         }
       ],
       "consumers": [],
@@ -2190,6 +2194,10 @@
         {
           "file": "src/proteus/interior_energetics/aragog.py",
           "condition": "interior_energetics.module = \"aragog\""
+        },
+        {
+          "file": "src/proteus/interior_energetics/spider.py",
+          "condition": "interior_energetics.module = \"spider\""
         }
       ],
       "consumers": [],

@@ -2171,9 +2171,10 @@ def test_read_spider_basic(tmp_path):
 @pytest.mark.unit
 @pytest.mark.physics_invariant
 def test_read_spider_solver_power_uses_rho_s_volume_s(tmp_path):
-    """Q_radio_W and Q_tidal_W are the powers SPIDER's entropy equation heats with,
-    H times rho_s * volume_s per cell, while F_radio and F_tidal keep the structural
-    mass_s; the fixture has rho_s * volume_s different from mass_s in every cell."""
+    """Q_radio_W, Q_tidal_W and F_tidal use rho_s * volume_s per cell, the mass SPIDER's
+    entropy equation heats and the one the tidal heating is per kg of, so F_tidal times
+    the area gives back the volumetric tidal power; F_radio keeps the structural mass_s.
+    The fixture has rho_s * volume_s different from mass_s in every cell."""
     import json
 
     from proteus.interior_energetics.common import Interior_t
@@ -2190,7 +2191,7 @@ def test_read_spider_solver_power_uses_rho_s_volume_s(tmp_path):
         'rho_s': 3000.0 + 250.0 * n,
         'volume_s': 1.2e20 * (1.0 - 0.04 * n),
         'Hradio_s': 1.0e-12 * (1.0 + 0.1 * n),
-        'Htidal_s': 2.0e-12 * (1.0 + 0.3 * n),
+        'Htidal_s': 6.0e-9 * (1.0 + 0.3 * n) / (3000.0 + 250.0 * n),  # q_vol / rho_s
     }
     for key, values in fields.items():
         doc['data'][key]['values'] = values.tolist()
@@ -2214,8 +2215,9 @@ def test_read_spider_solver_power_uses_rho_s_volume_s(tmp_path):
     assert output['F_radio'] == pytest.approx(
         np.dot(fields['Hradio_s'], fields['mass_s']) / area
     )
-    assert output['F_tidal'] == pytest.approx(
-        np.dot(fields['Htidal_s'], fields['mass_s']) / area
+    q_vol = fields['Htidal_s'] * fields['rho_s']
+    assert output['F_tidal'] * area == pytest.approx(
+        np.dot(q_vol, fields['volume_s']), rel=1e-12
     )
 
 

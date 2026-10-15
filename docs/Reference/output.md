@@ -215,8 +215,8 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | `E_th_mantle` | `J` | thermal-energy proxy (do not use for conservation) | `interior_energetics/aragog.py`<br>`interior_energetics/aragog_jax.py`<br>`interior_energetics/spider.py` | interior_energetics.module = "aragog"; interior_energetics.module = "spider" |   |
 | `E_state_J` | `J` | state-mass integrated mantle enthalpy (diagnostic only) | `interior_energetics/aragog.py` | interior_energetics.module = "aragog" |   |
 | `E_state_cons_J` | `J` | frozen-mass integrated mantle enthalpy (diagnostic only) | `interior_energetics/aragog.py` | interior_energetics.module = "aragog" | utils |
-| `Q_radio_W` | `W` | instantaneous mantle-integrated radiogenic power | `interior_energetics/aragog.py` | interior_energetics.module = "aragog" |   |
-| `Q_tidal_W` | `W` | instantaneous mantle-integrated tidal power | `interior_energetics/aragog.py` | interior_energetics.module = "aragog" |   |
+| `Q_radio_W` | `W` | instantaneous mantle-integrated radiogenic power | `interior_energetics/aragog.py`<br>`interior_energetics/spider.py` | interior_energetics.module = "aragog"; interior_energetics.module = "spider" |   |
+| `Q_tidal_W` | `W` | instantaneous mantle-integrated tidal power | `interior_energetics/aragog.py`<br>`interior_energetics/spider.py` | interior_energetics.module = "aragog"; interior_energetics.module = "spider" |   |
 | `step_dE_F_int_J` | `J` | per-call ∫ -F_int*A_int dt | `interior_energetics/aragog.py`<br>`interior_energetics/wrapper.py` | interior_energetics.module = "aragog" | utils |
 | `step_dE_F_cmb_J` | `J` | per-call ∫ +F_cmb*A_cmb dt | `interior_energetics/aragog.py`<br>`interior_energetics/wrapper.py` | interior_energetics.module = "aragog" | utils |
 | `step_dE_Q_radio_J` | `J` | per-call ∫ +Q_radio dt (live-density, predicted side) | `interior_energetics/aragog.py`<br>`interior_energetics/wrapper.py` | interior_energetics.module = "aragog" | utils |
