@@ -456,7 +456,7 @@ def plot_result_objective(D, parameters, n_init, directory, yclip=-12):
     ymin = min(0.0, np.amin(Y)) - 0.1
 
     # Plot
-    fig, axs = plt.subplots(2, d, figsize=(2.7 * d, 3.2))
+    fig, axs = plt.subplots(2, d, figsize=(2.7 * d, 3.2), squeeze=False)
     axs[0, 0].set_ylabel('Histogram')
     axs[1, 0].set_ylabel(ylbl)
 

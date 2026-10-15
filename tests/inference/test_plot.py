@@ -529,6 +529,36 @@ def test_plot_result_objective_logarithmic_x_axis_branch(tmp_path, monkeypatch):
     assert cells[(1, 1)].set_xscale.call_count == 0
 
 
+@pytest.mark.parametrize('d', [1, 2])
+def test_plot_result_objective_renders_any_parameter_count(tmp_path, monkeypatch, d):
+    """A real figure is written for one parameter as for two.
+
+    By default matplotlib squeezes a (2, 1) axes grid to 1-D; the function
+    indexes ``axs[row, col]``, so the grid must stay 2-D for ``d = 1``.
+    """
+    import matplotlib
+
+    matplotlib.use('Agg')
+    shapes = []
+    real_subplots = plot_mod.plt.subplots
+
+    def _recording_subplots(*args, **kwargs):
+        fig, axs = real_subplots(*args, **kwargs)
+        shapes.append(np.shape(axs))
+        return fig, axs
+
+    monkeypatch.setattr(plot_mod.plt, 'subplots', _recording_subplots)
+    (tmp_path / 'plots').mkdir()
+    parameters = dict(list({'a': [0.0, 1.0], 'b': [2.0, 5.0]}.items())[:d])
+    D = {'X': np.random.default_rng(1).random((6, d)), 'Y': np.linspace(-0.5, 0.9, 6)}
+
+    plot_mod.plot_result_objective(D, parameters, n_init=2, directory=str(tmp_path))
+
+    assert shapes == [(2, d)]
+    out = tmp_path / 'plots' / f'result_objective.{plot_mod.fmt}'
+    assert out.stat().st_size > 0
+
+
 # ---------------------------------------------------------------------------
 # plot_result_correlation
 # ---------------------------------------------------------------------------
