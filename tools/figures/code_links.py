@@ -122,9 +122,11 @@ def split(href: str) -> tuple[str, str] | None:
 
 def resolve(href: str, ref: str | None = None) -> str:
     """Line link for a name-based link, read from ``ref`` (None: the work tree);
-    other links pass through."""
+    other links pass through, a link to a repository file only when the file exists."""
     parts = split(href)
     if parts is None:
+        if href.startswith(REPO_URL) and '#' not in href:
+            source(href[len(REPO_URL) :], ref)
         return href
     path, target = parts
     return f'{REPO_URL}{path}#L{resolve_target(path, target, ref)}'

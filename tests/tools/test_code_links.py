@@ -110,6 +110,13 @@ def test_line_anchors_and_foreign_links_pass_through(links):
     )
 
 
+def test_file_link_must_name_an_existing_file(links):
+    """A link to a repository file passes through only while the file exists."""
+    assert links.resolve(links.REPO_URL + 'pkg/mod.py') == links.REPO_URL + 'pkg/mod.py'
+    with pytest.raises(links.LinkError, match='pkg/gone.py: file does not exist'):
+        links.resolve(links.REPO_URL + 'pkg/gone.py')
+
+
 def test_deploy_rewrite_drops_link_of_broken_target(links, tmp_path, monkeypatch):
     """--deploy links a good target to main and leaves a broken one without an href."""
     good = links.REPO_URL + 'pkg/mod.py#escape'
