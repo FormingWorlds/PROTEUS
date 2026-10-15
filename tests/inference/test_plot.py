@@ -547,7 +547,9 @@ def test_plot_result_objective_logarithmic_x_axis_branch(tmp_path, monkeypatch):
 
 @pytest.mark.parametrize('d', [1, 2])
 def test_plot_result_objective_renders_any_parameter_count(tmp_path, monkeypatch, d):
-    """A real figure is written for one parameter as for two.
+    """A real figure is written for one parameter as for two: a 2.7 d by 3.2 inch
+    grid with histograms on the top row, which carries no tick labels and the best
+    value as title, and the objective below, with y tick labels on the first panel only.
 
     By default matplotlib squeezes a (2, 1) axes grid to 1-D; the function
     indexes ``axs[row, col]``, so the grid must stay 2-D for ``d = 1``.
@@ -559,8 +561,21 @@ def test_plot_result_objective_renders_any_parameter_count(tmp_path, monkeypatch
 
     plot_mod.plot_result_objective(D, parameters, n_init=2, directory=str(tmp_path))
 
-    assert grids[0].shape == (2, d)
-    assert [ax.get_xlabel() for ax in grids[0][1]] == list(parameters)
+    axs = grids[0]
+    axs[0, 0].figure.canvas.draw()
+    assert axs.shape == (2, d)
+    assert tuple(axs[0, 0].figure.get_size_inches()) == pytest.approx((2.7 * d, 3.2))
+    assert (axs[0, 0].get_ylabel(), axs[1, 0].get_ylabel()) == (
+        'Histogram',
+        'Value of objective',
+    )
+    assert [ax.get_xlabel() for ax in axs[1]] == list(parameters)
+    for i in range(d):
+        assert axs[0, i].patches
+        assert not any(t.get_text() for t in axs[0, i].get_xticklabels())
+        assert not any(t.get_text() for t in axs[0, i].get_yticklabels())
+        assert any(t.get_text() for t in axs[1, i].get_yticklabels()) == (i == 0)
+        assert axs[0, i].get_title().startswith('Best: ') == (i == 0)
     out = tmp_path / 'plots' / f'result_objective.{plot_mod.fmt}'
     assert out.stat().st_size > 0
 
@@ -786,6 +801,9 @@ def test_plot_result_correlation_renders_any_grid_shape(tmp_path, monkeypatch, n
     axs = grids[0]
     axs[0, 0].figure.canvas.draw()
     assert axs.shape == (n_obs, n_par)
+    assert tuple(axs[0, 0].figure.get_size_inches()) == pytest.approx(
+        (2.7 * n_par, 2.7 * n_obs)
+    )
     for (j, i), ax in np.ndenumerate(axs):
         offsets = np.column_stack([X[:, i], Y[:, j]])
         np.testing.assert_allclose(ax.collections[0].get_offsets(), offsets)
