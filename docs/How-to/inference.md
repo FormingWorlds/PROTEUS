@@ -191,6 +191,10 @@ The kernel is an analytical function used by the Gaussian processes to represent
 
 See docs [here](https://botorch.readthedocs.io/en/latest/models.html#module-botorch.models.kernels.categorical).
 
+### Input warping
+
+With `input_warp = true` (default `false`), the Gaussian process maps each parameter, in the unit cube, through a learned Kumaraswamy CDF $w(x) = 1 - (1 - x^a)^b$ before the kernel sees it ([BoTorch `Warp`](https://botorch.readthedocs.io/en/latest/models.html#botorch.models.transforms.input.Warp)). The shapes $a$ and $b$ are fitted for each parameter together with the kernel hyperparameters, under a log-normal prior centred on $a = b = 1$, where the warp does nothing. A warp lets one lengthscale resolve a narrow region of good fits in one part of a parameter range and a flat region in another. It adds two hyperparameters per parameter, so with few evaluations it can also fit noise; compare a study with and without it before relying on it. The posterior samples are drawn from a separate surrogate without the warp.
+
 ## Output
 
 The system generates several outputs in:

@@ -283,7 +283,7 @@ def test_parallel_process_happy_path_with_mocked_manager(monkeypatch, tmp_path):
     assert logs == [None]
     assert elapsed == []
     # The initial proposals use the configured kernel, not the init_locs default
-    assert init_kwargs == {'acqf': 'LogEI', 'kernel': 'MAT3/2'}
+    assert init_kwargs == {'acqf': 'LogEI', 'kernel': 'MAT3/2', 'input_warp': False}
 
 
 # ============================================================================

@@ -954,6 +954,27 @@ def test_validate_patience_accepts_whole_numbers_and_rejects_others():
             inference_mod.validate_patience(bad)
 
 
+def test_validate_input_warp_accepts_booleans_and_rejects_others():
+    """true and false pass unchanged. 1, 0, the string "true" and None are
+    refused, so a TOML typo does not silently switch the warp on or off."""
+    assert inference_mod.validate_input_warp(True) is True
+    assert inference_mod.validate_input_warp(False) is False
+    for bad in (1, 0, 'true', None):
+        with pytest.raises(ValueError, match='input_warp must be true or false'):
+            inference_mod.validate_input_warp(bad)
+
+
+def test_run_inference_passes_input_warp_to_the_workers(monkeypatch, tmp_path):
+    """input_warp reaches the workers: off when the config leaves it out, on when set."""
+    for setting, expected in (({}, False), ({'input_warp': True}, True)):
+        study_dir = tmp_path / str(expected)
+        study_dir.mkdir()
+        config, _ = _validation_study(
+            monkeypatch, study_dir, observables={'R_obs': 6.0e6}, **setting
+        )
+        assert _worker_arguments(monkeypatch, config)['input_warp'] is expected
+
+
 def test_run_inference_sets_posterior_samples_before_emptying_output(monkeypatch, tmp_path):
     """posterior_samples without [sigma] is refused before the output is emptied;
     with [sigma] it defaults on.

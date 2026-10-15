@@ -751,3 +751,55 @@ def test_optimize_acqf_logged_passes_other_warnings_through_and_logs_nothing(
         bo_mod.optimize_acqf_logged(acq_function=None, d=2, who='worker 0')
 
     assert caplog.records == []
+
+
+# ============================================================================
+# init_locs with the input warp on
+# ============================================================================
+
+
+@pytest.mark.physics_invariant
+def test_init_locs_with_input_warp_scores_the_whole_box_and_proposes_inside_it(
+    monkeypatch,
+):
+    """With input_warp=True the GP that init_locs builds carries the Kumaraswamy
+    warp. With a strong warp of x0 (a = 0.3, b = 4, steep at x0 = 0, as a fit to
+    a narrow feature there gives) the real LogEI is finite over a grid that
+    includes the box corners, where the warp has its steepest slope, and both
+    proposals lie inside the unit cube. The hyperparameter fit is mocked, and
+    the acquisition search is a grid argmax so the test fits the unit time limit.
+    """
+    torch.manual_seed(0)
+    built = []
+    real_gp = bo_mod.SingleTaskGP
+
+    def _capture(**kwargs):
+        built.append(real_gp(**kwargs))
+        built[-1].input_transform.initialize(
+            concentration1=torch.tensor([0.3, 1.0], dtype=torch.double),
+            concentration0=torch.tensor([4.0, 1.0], dtype=torch.double),
+        )
+        return built[-1]
+
+    grid = torch.cartesian_prod(*[torch.linspace(0.0, 1.0, 9, dtype=torch.double)] * 2)
+    scores = []
+
+    def _grid_argmax(acq_function, **_kwargs):
+        values = acq_function(grid.unsqueeze(1)).detach()
+        scores.append(values)
+        return grid[int(values.argmax())].unsqueeze(0), values.max()
+
+    monkeypatch.setattr(bo_mod, 'SingleTaskGP', _capture)
+    monkeypatch.setattr(bo_mod, 'fit_gpytorch_mll', lambda *args, **kwargs: None)
+    monkeypatch.setattr(bo_mod, 'optimize_acqf', _grid_argmax)
+    X = torch.rand(16, 2, dtype=torch.double)
+    Y = (torch.tanh((X[:, 0] - 0.15) / 0.02) - X[:, 1]).unsqueeze(-1)
+
+    out = bo_mod.init_locs(2, {'X': X, 'Y': Y}, acqf='LogEI', kernel='MAT5/2', input_warp=True)
+
+    assert type(built[0].input_transform).__name__ == 'Warp'
+    assert len(scores) == 2
+    assert all(bool(torch.isfinite(v).all()) for v in scores)
+    assert tuple(out.shape) == (2, 2)
+    assert float(out.min()) >= 0.0
+    assert float(out.max()) <= 1.0
