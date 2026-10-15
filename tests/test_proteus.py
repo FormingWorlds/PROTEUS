@@ -3180,6 +3180,49 @@ def test_init_timing_line_times_the_zalmoxis_equilibration(tmp_path, monkeypatch
     assert keys == INIT_TIMING_KEYS
 
 
+def test_timing_lines_absent_when_timing_is_off(tmp_path, monkeypatch, caplog):
+    """With ``PROTEUS_TIMING`` unset the run logs no ``[INIT_TIMING]`` and no
+    ``[IT_TIMING]`` line, while its other INFO lines still reach the log."""
+    monkeypatch.setattr('proteus.proteus._IT_TIMING_ENABLED', False)
+    p = _make_main_loop_proteus(tmp_path, plot_mod=1, write_mod=1, dt_write_rel=0.0)
+    with caplog.at_level(logging.INFO, logger='fwl.proteus.proteus'):
+        _run_main_loop_capturing_plots(p, stop_at_loop=6)
+
+    messages = [r.message for r in caplog.records if r.name == 'fwl.proteus.proteus']
+    assert p.loops['total'] >= 6
+    assert messages
+    assert not [m for m in messages if m.startswith(('[INIT_TIMING]', '[IT_TIMING]'))]
+
+
+def test_init_timing_line_on_resume_leaves_out_structure_and_equilibrate(
+    tmp_path, monkeypatch, caplog
+):
+    """A resumed run takes its structure from the snapshot, so its ``[INIT_TIMING]``
+    line has the other steps in their fixed order and no ``structure`` or
+    ``equilibrate``, even with the Zalmoxis equilibration switched on."""
+    monkeypatch.setattr('proteus.proteus._IT_TIMING_ENABLED', True)
+    p = _make_proteus_instance(tmp_path, struct_module='zalmoxis', interior_module='aragog')
+    p.config.interior_struct.zalmoxis.equilibrate_init = True
+    (tmp_path / 'data').mkdir(exist_ok=True)
+    with caplog.at_level(logging.INFO, logger='fwl.proteus.proteus'):
+        _resume_with_patches(
+            p,
+            _make_hf_df(),
+            patch('proteus.star.wrapper.init_star'),
+            patch('proteus.orbit.wrapper.init_orbit'),
+            patch('proteus.accretion.wrapper.init_accretion', return_value=[]),
+            patch('proteus.accretion.wrapper.restore_accretion_state'),
+            patch('proteus.proteus.setup_logger'),
+            patch.object(type(p), '_resync_zalmoxis_mesh'),
+            # The line precedes the main loop; stop at its first call.
+            patch('proteus.proteus.is_write_snapshot', side_effect=_StopAfterMeshRestore),
+        )
+
+    (line,) = [r.message for r in caplog.records if r.message.startswith('[INIT_TIMING]')]
+    keys = [field.split('=')[0] for field in line.split('] ')[1].split()]
+    assert keys == [k for k in INIT_TIMING_KEYS if k not in ('structure', 'equilibrate')]
+
+
 # =======================================================================================
 # SECTION: mass conservation across a multi-iteration run
 # =======================================================================================
