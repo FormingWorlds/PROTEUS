@@ -3188,6 +3188,10 @@ def test_init_timing_line_times_the_zalmoxis_equilibration(tmp_path, monkeypatch
         ({'PROTEUS_TIMING': '0'}, False),
         ({'PROTEUS_TIMING': 'off'}, False),
         ({'PROTEUS_TIMING_X': '1'}, False),
+        ({'PROTEUS_TIMING': 'false'}, False),
+        ({'PROTEUS_TIMING': 'no'}, False),
+        ({'PROTEUS_TIMING': '2'}, False),
+        ({'PROTEUS_TIMING': ' 1'}, False),
         ({'PROTEUS_TIMING': '1'}, True),
         ({'PROTEUS_TIMING': 'True'}, True),
         ({'PROTEUS_TIMING': 'YES'}, True),
@@ -3199,6 +3203,35 @@ def test_timing_switch_reads_proteus_timing(environ, enabled):
     from proteus.proteus import _timing_enabled
 
     assert _timing_enabled(environ) is enabled
+
+
+@pytest.mark.parametrize(('value', 'enabled'), [('1', True), ('off', False)])
+def test_timing_flag_is_read_from_the_environment_at_import(value, enabled):
+    """A fresh interpreter that imports ``proteus.proteus`` with ``PROTEUS_TIMING`` set
+    has the module flag the variable asks for (Julia stubbed, it is not needed)."""
+    import os
+    import subprocess
+
+    import proteus.proteus as mod
+
+    code = (
+        "import sys, types; sys.modules['juliacall'] = types.SimpleNamespace(Main=None); "
+        'import proteus.proteus as m; print(m.__file__, m._IT_TIMING_ENABLED)'
+    )
+    env = {
+        **os.environ,
+        'PROTEUS_TIMING': value,
+        'PYTHONPATH': str(Path(mod.__file__).parents[1]),
+    }
+    out = subprocess.run(
+        [sys.executable, '-c', code],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=25,
+        check=True,
+    )
+    assert out.stdout.split() == [mod.__file__, str(enabled)]
 
 
 def test_timing_lines_absent_when_timing_is_off(tmp_path, monkeypatch, caplog):

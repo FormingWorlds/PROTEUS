@@ -5,6 +5,7 @@ import logging
 import os
 import sys
 import time
+from collections.abc import Mapping
 from datetime import datetime
 from pathlib import Path
 
@@ -43,12 +44,13 @@ from proteus.utils.logs import (
 )
 
 
-def _timing_enabled(environ=os.environ) -> bool:
-    """Whether ``PROTEUS_TIMING`` asks for the [INIT_TIMING] and [IT_TIMING] lines."""
+def _timing_enabled(environ: Mapping[str, str]) -> bool:
+    """Whether ``PROTEUS_TIMING`` asks for the [INIT_TIMING] and [IT_TIMING] lines;
+    read once, when this module is imported."""
     return environ.get('PROTEUS_TIMING', '').lower() in ('1', 'true', 'yes', 'on')
 
 
-_IT_TIMING_ENABLED = _timing_enabled()
+_IT_TIMING_ENABLED = _timing_enabled(os.environ)
 
 # Consecutive iterations without a converged atmosphere after which a run ends,
 # whatever the interior is doing, and always above the streak the atmosphere
