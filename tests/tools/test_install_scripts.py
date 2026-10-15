@@ -1294,6 +1294,83 @@ def test_socrates_cache_key_covers_every_file_the_build_reads():
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize(
+    'step, build_cmd',
+    [
+        ('Build SOCRATES (cache miss)', 'bash tools/get_socrates.sh --force'),
+        ('Build AGNI (Pkg.instantiate)', 'julia --project=. deps/build.jl nodata'),
+    ],
+    ids=['socrates step', 'agni step'],
+)
+@pytest.mark.parametrize(
+    'ld_mode', [0o755, 0o644, None], ids=['clt ld', 'clt ld not executable', 'no clt ld']
+)
+@pytest.mark.parametrize(
+    'preset',
+    [None, '/Applications/Xcode.app/Contents/Developer'],
+    ids=['no preset', 'xcode preset'],
+)
+def test_socrates_links_use_ld_from_the_clt_folder(tmp_path, step, build_cmd, ld_mode, preset):
+    """The steps that link SOCRATES export DEVELOPER_DIR=<CLT> when the CLT has an ld.
+
+    SOCRATES links with -L to the Command Line Tools SDK, and an Xcode ld
+    older than that SDK cannot read its libSystem.tbd. The test runs the
+    step script up to its build command, with the CLT path moved to a
+    temporary folder and julia stubbed, and reads the variable in a child
+    process at the point where the build would start.
+    """
+    clt = '/Library/Developer/CommandLineTools'
+    action = (TOOLS_DIR.parent / '.github/actions/setup-proteus/action.yml').read_text(
+        encoding='utf-8'
+    )
+    body = action.split(f'- name: {step}\n', 1)[1].split('\n    - name: ', 1)[0]
+    lines = [ln.strip() for ln in body.splitlines()]
+    assert lines.count(build_cmd) == 1, f'{step}: expected one {build_cmd!r} line'
+    run = lines[lines.index('run: |') + 1 : lines.index(build_cmd)]
+
+    fake = tmp_path / 'CLT'
+    (fake / 'usr/bin').mkdir(parents=True)
+    if ld_mode is not None:
+        (fake / 'usr/bin/ld').write_text('#!/bin/sh\n')
+        (fake / 'usr/bin/ld').chmod(ld_mode)
+    (tmp_path / 'stub').mkdir()
+    (tmp_path / 'stub/julia').write_text('#!/bin/sh\n')
+    (tmp_path / 'stub/julia').chmod(0o755)
+    (tmp_path / 'AGNI').mkdir()
+    script = '\n'.join(run).replace(clt, str(fake)) + '\nprintenv DEVELOPER_DIR || echo unset\n'
+    env = {'PATH': f'{tmp_path}/stub:{os.environ["PATH"]}', 'GITHUB_WORKSPACE': str(tmp_path)}
+    if preset:
+        env['DEVELOPER_DIR'] = preset
+    out = subprocess.check_output(['bash', '-c', script], cwd=tmp_path, env=env, text=True)
+    assert out.strip() == (str(fake) if ld_mode == 0o755 else preset or 'unset')
+
+
+@pytest.mark.unit
+def test_developer_dir_is_set_only_in_the_socrates_link_steps():
+    """DEVELOPER_DIR occurs only as the export inside the two SOCRATES link steps.
+
+    A GITHUB_ENV write, a step or job env entry, or a third step would move
+    later steps (pip, Julia, the test tiers) to the Command Line Tools.
+    """
+    action = (TOOLS_DIR.parent / '.github/actions/setup-proteus/action.yml').read_text(
+        encoding='utf-8'
+    )
+    head, *steps = action.split('\n    - name: ')
+    found = [
+        (step.split('\n', 1)[0], line.strip())
+        for step in steps
+        for line in step.splitlines()
+        if 'DEVELOPER_DIR' in line
+    ]
+    export = 'export DEVELOPER_DIR=/Library/Developer/CommandLineTools'
+    assert 'DEVELOPER_DIR' not in head
+    assert found == [
+        ('Build SOCRATES (cache miss)', export),
+        ('Build AGNI (Pkg.instantiate)', export),
+    ]
+
+
+@pytest.mark.unit
 def test_ci_setup_installs_every_declared_extra():
     """The CI setup action must install extras whose keys exist in pyproject.
 
