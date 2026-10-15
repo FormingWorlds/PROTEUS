@@ -574,8 +574,9 @@ def reference():
 @click.option(
     '--clean',
     is_flag=True,
-    help='Remove the melting curves and interior_lookup_tables/Melting_curves/<name>, '
-    'then fetch the curves again',
+    help='Remove the Wolf and Bower 2018 curves and the served curve that melting_dir names, '
+    'with its folder interior_lookup_tables/Melting_curves/<melting_dir> and the generated '
+    'P-S files in it, then fetch the curves again',
 )
 def interiordata(config_path: Path, clean: bool):
     """Get interior lookup tables, melting curves, and structure EOS tables

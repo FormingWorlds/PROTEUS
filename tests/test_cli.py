@@ -611,7 +611,8 @@ def test_get_interiordata_calls_the_downloads(monkeypatch, tmp_path, args, clean
 @pytest.mark.unit
 def test_get_interiordata_fetches_only_missing_or_damaged_files(monkeypatch, tmp_path):
     """Through the real fwl-io fetcher, a second call requests nothing, a damaged file is
-    requested again, and ``--clean`` requests every melting-curve file."""
+    requested again, and ``--clean`` requests every melting-curve file and removes the local
+    folder of the configured curve, but no other local folder."""
     import hashlib
     import types
 
@@ -657,9 +658,11 @@ def test_get_interiordata_fetches_only_missing_or_damaged_files(monkeypatch, tmp
         for key in (MELTING_MONTEUX_MINUS600, MELTING_WOLF_BOWER_2018)
     )
     every = sorted(f'{d}/{n}' for d in (monteux, wolf_bower) for n in body)
-    generated = tmp_path / 'interior_lookup_tables/Melting_curves/Monteux-600/solidus_P-S.dat'
-    generated.parent.mkdir(parents=True)
-    generated.write_text('0 3000\n')
+    local = tmp_path / 'interior_lookup_tables/Melting_curves'
+    generated, other = local / 'Monteux-600/solidus_P-S.dat', local / 'MyCurve/solidus.dat'
+    for path in (generated, other):
+        path.parent.mkdir(parents=True)
+        path.write_text('0 3000\n')
     assert get() == every
     assert get() == []
     (tmp_path / monteux / 'solidus.dat').write_text('x')
@@ -667,6 +670,7 @@ def test_get_interiordata_fetches_only_missing_or_damaged_files(monkeypatch, tmp
     assert generated.is_file()
     assert get('--clean') == every
     assert not generated.exists()
+    assert other.is_file()
 
 
 def assert_refusal_logged_as_error(caplog, key: str) -> None:
