@@ -24,24 +24,23 @@ workpath="$root/ThermoEngineLite/"
 
 # Locate GSL (conda, CPATH, Homebrew, /usr/include, /usr/local/include).
 # GSL_SYS_INCLUDE and GSL_LOCAL_INCLUDE are test hooks for offline unit tests.
-_cpath_gsl_dir() {
-    local d IFS=:
+_cpath_gsl_dir() (
+    IFS=:
     set -f
     for d in ${CPATH:-}; do
         case "$d" in
-            /*) [ -f "$d/gsl/gsl_multiroots.h" ] && { set +f; printf '%s\n' "$d"; return 0; } ;;
+            /*) [ -f "$d/gsl/gsl_multiroots.h" ] && { printf '%s\n' "$d"; exit 0; } ;;
         esac
     done
-    set +f
-    return 1
-}
+    exit 1
+)
 gsl_lib=""
 if [ -n "${CONDA_PREFIX:-}" ] && [ -f "$CONDA_PREFIX/include/gsl/gsl_multiroots.h" ]; then
     gsl_include="$CONDA_PREFIX/include"
     gsl_lib="$CONDA_PREFIX/lib"
 elif cpath_gsl=$(_cpath_gsl_dir); then
     gsl_include="$cpath_gsl"
-    for gsl_cand in "$cpath_gsl/../lib"/libgsl.dylib "$cpath_gsl/../lib"/libgsl.so "$cpath_gsl/../lib"/libgsl.so.* "$cpath_gsl/../lib"/libgsl.a; do
+    for gsl_cand in "$cpath_gsl/../lib"/libgsl.{dylib,so,so.*,a}; do
         if [ -f "$gsl_cand" ]; then
             gsl_lib="$cpath_gsl/../lib"
             break
@@ -107,7 +106,8 @@ if ! make devinstall; then
 fi
 
 # Verify import outside the clone so ./thermoengine does not shadow site-packages.
-if ! (cd / && python -c "import thermoengine; assert thermoengine.__file__" >/dev/null 2>&1); then
+if ! import_err=$(cd / && python -c "import thermoengine; assert thermoengine.__file__" 2>&1); then
+    [ -n "$import_err" ] && printf '%s\n' "$import_err" >&2
     echo "ERROR: ThermoEngineLite failed to install into your Python environment." >&2
     echo "       Check the output above for errors." >&2
     exit 1

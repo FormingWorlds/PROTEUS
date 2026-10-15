@@ -2115,6 +2115,7 @@ _INSTALL_STUB_COMMANDS = (
     'nc-config',
     'nf-config',
     'mpicc',
+    'brew',
 )
 
 # script, arguments, expected destination, expected clone URL, ssh probe exit.
@@ -2295,10 +2296,13 @@ def test_script_clones_the_expected_destination(tmp_path, script, argv, dest, ur
         'PATH': f'{stubs}:{os.environ["PATH"]}',
         'STUB_LOG': str(log),
         'CONDA_PREFIX': str(root / 'conda'),
+        'GSL_SYS_INCLUDE': str(tmp_path / 'no_usr_include'),
+        'GSL_LOCAL_INCLUDE': str(tmp_path / 'no_usr_local_include'),
         # Both are read before the scripts would sleep on a warning.
         'RAD_DIR': '',
         'LAVA_DIR': '',
     }
+    env.pop('CPATH', None)
     env.pop('GIT_SSH_COMMAND', None)
     # The stub julia stands in for every Julia, so a bound Julia of the host must not lead PATH.
     env.pop('PYTHON_JULIAPKG_EXE', None)
@@ -6907,6 +6911,7 @@ def _thermoenginelite_site(tmp_path: Path) -> dict:
     )
     site['env'].pop('CPATH', None)
     site['env'].pop('LIBRARY_PATH', None)
+    site['env']['PATH'] = _path_without_tool(site['env']['PATH'], 'brew', tmp_path / 'no_brew')
     site['env']['CONDA_PREFIX'] = str(conda_prefix)
     site['env']['GSL_SYS_INCLUDE'] = str(tmp_path / 'no_usr_include')
     site['env']['GSL_LOCAL_INCLUDE'] = str(tmp_path / 'no_usr_local_include')
@@ -6944,7 +6949,6 @@ def test_thermoenginelite_missing_gsl_exits_1_before_clone(tmp_path):
     site['env']['CPATH'] = f'rel_inc:{tmp_path}/glob_*:{empty_cpath}'
     site['env']['GSL_SYS_INCLUDE'] = str(empty_sys)
     site['env']['GSL_LOCAL_INCLUDE'] = str(empty_local)
-    site['env']['PATH'] = _path_without_tool(site['env']['PATH'], 'brew', tmp_path / 'no_brew')
     assert shutil.which('brew', path=site['env']['PATH']) is None
     assert shutil.which('bash', path=site['env']['PATH']) is not None
     res = _run_tool(site, 'get_thermoenginelite.sh')
@@ -7000,7 +7004,6 @@ def test_thermoenginelite_finds_gsl_in_system_include(tmp_path):
     """Verify GSL_SYS_INCLUDE sets CPATH without exporting an empty or colon-prefixed LIBRARY_PATH."""
     site = _thermoenginelite_site(tmp_path)
     site['env']['CONDA_PREFIX'] = str(tmp_path / 'empty_conda')
-    site['env']['PATH'] = _path_without_tool(site['env']['PATH'], 'brew', tmp_path / 'no_brew')
     sys_inc = tmp_path / 'sys_include'
     (sys_inc / 'gsl').mkdir(parents=True)
     (sys_inc / 'gsl' / 'gsl_multiroots.h').write_text('')
@@ -7098,7 +7101,7 @@ def test_thermoenginelite_accepts_user_cpath_and_usr_local_include(tmp_path):
     site['make_log'].write_text('')
     site['env'].pop('CPATH', None)
     site['env'].pop('LIBRARY_PATH', None)
-    site['env']['PATH'] = _path_without_tool(site['env']['PATH'], 'brew', tmp_path / 'no_brew')
+    (site['stubs'] / 'brew').unlink()
     local_inc = tmp_path / 'usr_local_include'
     (local_inc / 'gsl').mkdir(parents=True)
     (local_inc / 'gsl' / 'gsl_multiroots.h').write_text('')
@@ -7123,28 +7126,45 @@ def test_thermoenginelite_make_failure_exits_1(tmp_path):
     site['env']['STUB_MAKE_FAIL'] = '1'
     res = _run_tool(site, 'get_thermoenginelite.sh')
     assert res.returncode == 1, res.stdout + res.stderr
+    assert f'CPATH={site["conda_prefix"]}/include' in site['make_log'].read_text().splitlines()
     assert 'ERROR: ThermoEngineLite failed to compile (make devinstall failed).' in res.stderr
 
 
 @pytest.mark.unit
 def test_thermoenginelite_import_check_runs_outside_clone_and_requires_file(tmp_path):
-    """Verify get_thermoenginelite.sh rejects namespace-only thermoengine directories inside or outside the clone."""
+    """Verify get_thermoenginelite.sh rejects namespace-only thermoengine directories and prints import errors."""
     site = _thermoenginelite_site(tmp_path)
     site['env']['STUB_MAKE_SKIP_INSTALL'] = '1'
     res = _run_tool(site, 'get_thermoenginelite.sh')
     assert res.returncode == 1, res.stdout + res.stderr
+    assert f'CPATH={site["conda_prefix"]}/include' in site['make_log'].read_text().splitlines()
     assert (
         'ERROR: ThermoEngineLite failed to install into your Python environment.' in res.stderr
     )
     clone = site['root'] / 'ThermoEngineLite'
     assert (clone / 'thermoengine').is_dir()
 
+    site['make_log'].write_text('')
     (site['site_packages'] / 'thermoengine').mkdir()
     res_ns = _run_tool(site, 'get_thermoenginelite.sh', '--force')
     assert res_ns.returncode == 1, res_ns.stdout + res_ns.stderr
+    assert f'CPATH={site["conda_prefix"]}/include' in site['make_log'].read_text().splitlines()
     assert (
         'ERROR: ThermoEngineLite failed to install into your Python environment.'
         in res_ns.stderr
+    )
+
+    site['make_log'].write_text('')
+    (site['site_packages'] / 'thermoengine' / '__init__.py').write_text(
+        "raise ImportError('xyz-marker')\n"
+    )
+    res_err = _run_tool(site, 'get_thermoenginelite.sh', '--force')
+    assert res_err.returncode == 1, res_err.stdout + res_err.stderr
+    assert f'CPATH={site["conda_prefix"]}/include' in site['make_log'].read_text().splitlines()
+    assert 'xyz-marker' in res_err.stderr
+    assert (
+        'ERROR: ThermoEngineLite failed to install into your Python environment.'
+        in res_err.stderr
     )
 
 
@@ -7156,6 +7176,7 @@ def test_thermoenginelite_import_check_rejects_regular_package_in_clone(tmp_path
     site['env']['STUB_MAKE_CLONE_REGULAR'] = '1'
     res = _run_tool(site, 'get_thermoenginelite.sh')
     assert res.returncode == 1, res.stdout + res.stderr
+    assert f'CPATH={site["conda_prefix"]}/include' in site['make_log'].read_text().splitlines()
     assert (
         'ERROR: ThermoEngineLite failed to install into your Python environment.' in res.stderr
     )
