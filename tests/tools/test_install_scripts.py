@@ -1294,6 +1294,51 @@ def test_socrates_cache_key_covers_every_file_the_build_reads():
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize(
+    'step, build_cmd',
+    [
+        ('Build SOCRATES (cache miss)', 'bash tools/get_socrates.sh --force'),
+        ('Build AGNI (Pkg.instantiate)', 'julia --project=. deps/build.jl nodata'),
+    ],
+)
+@pytest.mark.parametrize('has_ld', [True, False])
+def test_socrates_links_use_ld_from_the_clt_folder(tmp_path, step, build_cmd, has_ld):
+    """The steps that link SOCRATES export DEVELOPER_DIR=<CLT> when the CLT has an ld.
+
+    SOCRATES links with -L to the Command Line Tools SDK, and an Xcode ld
+    older than that SDK cannot read its libSystem.tbd. The test runs the
+    step's DEVELOPER_DIR block with the CLT path moved to a temporary folder
+    and reads the variable in a child process, as the linker would.
+    """
+    clt = '/Library/Developer/CommandLineTools'
+    action = (TOOLS_DIR.parent / '.github/actions/setup-proteus/action.yml').read_text(
+        encoding='utf-8'
+    )
+    body = action.split(f'- name: {step}\n', 1)[1].split('\n    - name: ', 1)[0]
+    lines = [ln.strip() for ln in body.splitlines()]
+    start = lines.index(f'if [ -x {clt}/usr/bin/ld ]; then')
+    end = lines.index('fi', start)
+    build = lines.index(build_cmd)
+    assert end < build
+
+    fake = tmp_path / 'CLT'
+    (fake / 'usr/bin').mkdir(parents=True)
+    if has_ld:
+        (fake / 'usr/bin/ld').write_text('#!/bin/sh\n')
+        (fake / 'usr/bin/ld').chmod(0o755)
+    script = '\n'.join(lines[start : end + 1]).replace(clt, str(fake))
+    script += '\nenv | grep "^DEVELOPER_DIR=" || echo unset\n'
+    out = subprocess.run(
+        ['bash', '-c', script],
+        env={'PATH': os.environ['PATH']},
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    assert out == (f'DEVELOPER_DIR={fake}' if has_ld else 'unset')
+
+
+@pytest.mark.unit
 def test_ci_setup_installs_every_declared_extra():
     """The CI setup action must install extras whose keys exist in pyproject.
 
