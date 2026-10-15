@@ -615,7 +615,6 @@ def test_get_interiordata_fetches_only_missing_or_damaged_files(monkeypatch, tmp
     import hashlib
     import types
 
-    import fwl_io
     import fwl_io.fetch
     import requests
 
@@ -641,6 +640,7 @@ def test_get_interiordata_fetches_only_missing_or_damaged_files(monkeypatch, tmp
     monkeypatch.setattr(fwl_io.fetch.Fetcher, '_retrieve_once', serve)
     monkeypatch.setattr(requests.Session, 'send', no_network)
     monkeypatch.delenv('FWL_DATA_CACHE', raising=False)
+    monkeypatch.delenv('FWL_IO_OFFLINE', raising=False)
     monkeypatch.setattr('proteus.utils.data.GetFWLData', lambda: tmp_path)
     struct = types.SimpleNamespace(module='dummy', melting_dir='Monteux-600')
     config = types.SimpleNamespace(interior_struct=struct)
@@ -657,11 +657,16 @@ def test_get_interiordata_fetches_only_missing_or_damaged_files(monkeypatch, tmp
         for key in (MELTING_MONTEUX_MINUS600, MELTING_WOLF_BOWER_2018)
     )
     every = sorted(f'{d}/{n}' for d in (monteux, wolf_bower) for n in body)
+    generated = tmp_path / 'interior_lookup_tables/Melting_curves/Monteux-600/solidus_P-S.dat'
+    generated.parent.mkdir(parents=True)
+    generated.write_text('0 3000\n')
     assert get() == every
     assert get() == []
     (tmp_path / monteux / 'solidus.dat').write_text('x')
     assert get() == [f'{monteux}/solidus.dat']
+    assert generated.is_file()
     assert get('--clean') == every
+    assert not generated.exists()
 
 
 def assert_refusal_logged_as_error(caplog, key: str) -> None:
@@ -1483,9 +1488,7 @@ def test_update_input_data_refuses_an_unknown_config_key_before_downloading(
 
     downloads = []
     monkeypatch.setattr(
-        cli,
-        'download_sufficient_data',
-        lambda configuration, clean=False: downloads.append(clean),
+        cli, 'download_sufficient_data', lambda cfg, clean=False: downloads.append(clean)
     )
 
     with open(PROTEUS_ROOT / 'input' / 'dummy.toml', 'rb') as f:

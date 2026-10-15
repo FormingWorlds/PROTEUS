@@ -572,12 +572,16 @@ def reference():
     help='Path to the TOML config file',
 )
 @click.option(
-    '--clean', is_flag=True, help='Remove the melting curves first and fetch them again'
+    '--clean',
+    is_flag=True,
+    help='Remove the melting curves and interior_lookup_tables/Melting_curves/<name>, '
+    'then fetch the curves again',
 )
 def interiordata(config_path: Path, clean: bool):
     """Get interior lookup tables, melting curves, and structure EOS tables
 
-    Files already present with their registry checksum are not fetched again.
+    Files already present with their registry checksum are not fetched again;
+    --clean refetches the melting curves only.
     """
     from .utils.data import (
         download_eos_dynamic,
