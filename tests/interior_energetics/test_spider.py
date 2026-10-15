@@ -2193,7 +2193,9 @@ def test_read_spider_solver_power_uses_rho_s_volume_s(tmp_path):
         'Hradio_s': 1.0e-12 * (1.0 + 0.1 * n),
         'Htidal_s': 6.0e-9 * (1.0 + 0.3 * n) / (3000.0 + 250.0 * n),  # q_vol / rho_s
     }
-    for key, values in fields.items():
+    radius_b = np.linspace(6.4e6, 3.5e6, 11)  # surface to CMB, as SPIDER orders them
+    fields_b = {'area_b': 4.0 * np.pi * radius_b**2, 'radius_b': radius_b}
+    for key, values in {**fields, **fields_b}.items():
         doc['data'][key]['values'] = values.tolist()
     path.write_text(json.dumps(doc))
     rho_vol = fields['rho_s'] * fields['volume_s']
@@ -2211,7 +2213,7 @@ def test_read_spider_solver_power_uses_rho_s_volume_s(tmp_path):
 
     assert output['Q_radio_W'] == pytest.approx(np.dot(fields['Hradio_s'], rho_vol), rel=1e-12)
     assert output['Q_tidal_W'] == pytest.approx(np.dot(fields['Htidal_s'], rho_vol), rel=1e-12)
-    area = 5.1e14
+    area = fields_b['area_b'][0]  # the surface node
     assert output['F_radio'] == pytest.approx(
         np.dot(fields['Hradio_s'], fields['mass_s']) / area
     )

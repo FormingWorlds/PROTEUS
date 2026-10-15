@@ -3149,28 +3149,35 @@ def test_paleos_melting_curves_follow_mzf_in_reused_outdir(tmp_path):
 @pytest.mark.physics_invariant
 def test_f_tidal_is_the_volumetric_tidal_power():
     """The tidal module returns a volumetric power divided by the density it was given,
-    the solver's; F_tidal times the surface area gives back the integral of that power
-    over the cell volumes, also where the solver density differs from the structure's."""
+    rho_stag; F_tidal times the surface area gives back the integral of that power over
+    the cell volumes, also where the mesh's structural density is 10 % lower, and is 0
+    without tides."""
     from proteus.interior_energetics.aragog import AragogRunner
 
     r = np.linspace(3.5e6, 6.4e6, 6)
     vol = 4.0 / 3.0 * np.pi * np.diff(r**3)
-    rho_solver = np.array([5600.0, 5100.0, 4700.0, 4300.0, 3900.0])
+    rho_stag = np.array([5600.0, 5100.0, 4700.0, 4300.0, 3900.0])
     q_vol = np.array([4.0e-8, 1.0e-8, 3.0e-9, 9.0e-10, 2.0e-10])  # W m-3
     out = MagicMock(
-        r_basic=r, vol=vol, mass_stag=rho_solver * vol, M_mantle=4.0e24, T_core=3800.0
+        r_basic=r, vol=vol, mass_stag=rho_stag * vol, M_mantle=4.0e24, T_core=3800.0
     )
     out.T_basic = np.linspace(4100.0, 3000.0, len(r))
-    interior_o = SimpleNamespace(tides=q_vol / rho_solver, aragog_solver=None)
-    with patch('proteus.interior_energetics.aragog._estimate_T_pot', return_value=3000.0):
-        res = AragogRunner._build_helpfile_output(out, {'F_atm': 1e5}, interior_o=interior_o)
-
-    area = 4.0 * np.pi * r[-1] ** 2
-    assert res['F_tidal'] * area == pytest.approx(np.dot(q_vol, vol), rel=1e-12)
-    structural = 0.9 * rho_solver * vol  # a structure density 10 % below the solver's
-    assert res['F_tidal'] * area != pytest.approx(
-        np.dot(q_vol / rho_solver, structural), rel=1e-3
+    mesh = SimpleNamespace(staggered_effective_density=0.9 * rho_stag)
+    solver = SimpleNamespace(
+        evaluator=SimpleNamespace(mesh=mesh), parameters=SimpleNamespace(radionuclides=[])
     )
+    area = 4.0 * np.pi * r[-1] ** 2
+    fluxes = []
+    for tides in (q_vol / rho_stag, np.zeros_like(q_vol)):
+        interior_o = SimpleNamespace(tides=tides, aragog_solver=solver)
+        with patch('proteus.interior_energetics.aragog._estimate_T_pot', return_value=3000.0):
+            res = AragogRunner._build_helpfile_output(
+                out, {'F_atm': 1e5}, interior_o=interior_o
+            )
+        fluxes.append(res['F_tidal'])
+
+    assert fluxes[0] * area == pytest.approx(np.dot(q_vol, vol), rel=1e-12)
+    assert fluxes[1] == 0.0
 
 
 @pytest.mark.unit

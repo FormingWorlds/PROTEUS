@@ -1329,16 +1329,16 @@ def ReadSPIDER(dirs: dict, config: Config, R_int: float, interior_o: Interior_t)
     mass_s = json_file.get_dict_values(['data', 'mass_s'])
 
     # The entropy equation heats rho_s * volume_s per cell; tides are per kg of rho_s
-    rho_s = json_file.get_dict_values(['data', 'rho_s'])
-    rho_vol = rho_s * json_file.get_dict_values(['data', 'volume_s'])
+    vshell = json_file.get_dict_values(['data', 'volume_s'])
+    mshell = json_file.get_dict_values(['data', 'rho_s']) * vshell
 
     # Tidal heating
-    output['F_tidal'] = np.dot(Htidal_s, rho_vol) / area_b[0]
+    output['F_tidal'] = np.dot(Htidal_s, mshell) / area_b[0]
 
     # Radiogenic heating
     output['F_radio'] = np.dot(Hradio_s, mass_s) / area_b[0]
-    output['Q_radio_W'] = float(np.dot(Hradio_s, rho_vol))
-    output['Q_tidal_W'] = float(np.dot(Htidal_s, rho_vol))
+    output['Q_radio_W'] = float(np.dot(Hradio_s, mshell))
+    output['Q_tidal_W'] = float(np.dot(Htidal_s, mshell))
 
     # Arrays at current time
     interior_o.phi = np.array(json_file.get_dict_values(['data', 'phi_s']))
@@ -1348,9 +1348,6 @@ def ReadSPIDER(dirs: dict, config: Config, R_int: float, interior_o: Interior_t)
     interior_o.mass = np.array(json_file.get_dict_values(['data', 'mass_s']))
     interior_o.temp = np.array(json_file.get_dict_values(['data', 'temp_s']))
     interior_o.pres = np.array(json_file.get_dict_values(['data', 'pressure_s']))
-
-    vshell = json_file.get_dict_values(['data', 'volume_s'])
-    mshell = interior_o.density * vshell
 
     # Entropy at each layer [J kg-1 K]
     entropy = np.array(json_file.get_dict_values(['data', 'S_s']))

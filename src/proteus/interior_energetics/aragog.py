@@ -2764,9 +2764,9 @@ class AragogRunner:
         hf_row : dict
             Current helpfile row.
         interior_o : Interior_t, optional
-            Interior object. When provided, tidal heating flux is
-            computed from the tidal array (matching SPIDER's
-            Htidal_s * mass_s / area convention).
+            Interior object. When provided, the tidal heating flux is the
+            tidal array (per kg of ``rho_stag``, the density passed to the
+            tidal module) times the cell masses over the surface area.
         surface_d : float, optional
             Surface depth offset passed through to the output dict.
         surface_bc_mode : str, optional
@@ -2788,19 +2788,14 @@ class AragogRunner:
             out.status,
         )
 
-        # Split total heating into radiogenic and tidal components.
-        # SPIDER reports radio and tidal separately (Hradio_s, Htidal_s
-        # integrated over cell masses). Aragog's ``out.F_heat_total`` is
-        # the combined flux summed over the source terms (radio + tidal).
-        # Compute F_radio analytically from the radionuclides at the
-        # current sim time so the helpfile column for each source is
-        # physically correct rather than recovered by subtraction.
+        # Radiogenic and tidal fluxes are kept apart; F_radio comes from the
+        # radionuclides at the row's time, not from out.F_heat_total.
         area_surf = 4.0 * np.pi * float(out.r_basic[-1]) ** 2
         F_tidal = 0.0
         if interior_o is not None and hasattr(interior_o, 'tides'):
             tides = np.asarray(interior_o.tides)
             if tides.size > 0 and np.any(tides > 0):
-                # tides are per kg of the density given to the tidal module, the solver's
+                # tides are per kg of rho_stag, the density passed to the tidal module
                 F_tidal = float(np.dot(tides[: len(out.mass_stag)], out.mass_stag)) / area_surf
         F_radio = 0.0
         solver_obj = (
