@@ -17,7 +17,7 @@ import vulcan
 from proteus.atmos_clim.common import find_latest_atmosphere_time, read_atmosphere_data
 from proteus.star.wrapper import flux_weighted_distance, scale_spectrum_to_stellar_surface
 from proteus.utils.constants import AU, R_sun, element_list, vol_list
-from proteus.utils.helper import find_nearest, format_subyear_time
+from proteus.utils.helper import find_nearest, format_subyear_time, mol_to_ele
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -279,9 +279,16 @@ def run_vulcan(dirs: dict, config: Config, hf_row: dict, *, online: bool = False
     backs = {'H2': 0.0, 'N2': 0.0, 'O2': 0.0, 'CO2': 0.0}
     vcfg.const_mix = {}
     for gas in vol_list:
+        # drop gases not in the network
+        if len(set(mol_to_ele(gas).keys()) - set(ele_arr)) > 0:
+            continue
+
+        # set potential background gases
         vmr = hf_row[gas + '_vmr']
         if gas in backs.keys():
             backs[gas] = vmr
+
+        # set constant mixing ratio and bottom BC if above the threshold
         if vmr > config.atmos_chem.vulcan.clip_vmr:
             vcfg.const_mix[gas] = vmr
 

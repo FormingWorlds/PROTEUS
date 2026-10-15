@@ -394,8 +394,11 @@ def print_module_configuration(dirs: dict, config: Config, config_path: str):
     log.info('PROTEUS version   ' + proteus_version)
     log.info('PROTEUS location  ' + dirs['proteus'])
     log.info('PROTEUS git hash  ' + _get_git_revision(dirs['proteus']))
+    log.info(' ')
+
     log.info('Config file       ' + str(config_path))
     log.info('Output path       ' + dirs['output'])
+    log.info('Temporary path    ' + dirs['temp'])
     log.info(' ')
 
     # Interior module
@@ -574,12 +577,11 @@ def print_citation(config: Config):
             pass
 
     # Atmospheric chemistry module
-    if config.atmos_chem.when != 'manually':
-        match config.atmos_chem.module:
-            case 'vulcan':
-                _cite('Tsai et al. (2021)', 'https://doi.org/10.3847/1538-4357/ac29bc')
-            case _:
-                pass
+    match config.atmos_chem.module:
+        case 'vulcan':
+            _cite('Tsai et al. (2021)', 'https://doi.org/10.3847/1538-4357/ac29bc')
+        case _:
+            pass
 
 
 def print_header():
@@ -2642,7 +2644,7 @@ def set_directories(config: Config) -> dict[str, str]:
         suffix = secrets.token_hex(2)  # 4 hex chars
         outdir = f'run_{stamp}_{suffix}'
         config.params.out.path = outdir
-        log.info('Auto output path: %s', outdir)
+        log.debug('Auto output path: %s', outdir)
 
     dirs = get_proteus_directories(outdir=outdir)
 
@@ -2674,7 +2676,7 @@ def set_directories(config: Config) -> dict[str, str]:
         dirs['temp'] = dirs['output']
     else:
         dirs['temp'] = create_tmp_folder()
-    log.info(f'Temporary-file working dir: {dirs["temp"]}')
+    log.debug(f'Temporary-file working dir: {dirs["temp"]}')
 
     # Get abspaths
     for key in dirs.keys():
