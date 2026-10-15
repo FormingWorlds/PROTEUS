@@ -1346,6 +1346,31 @@ def test_socrates_links_use_ld_from_the_clt_folder(tmp_path, step, build_cmd, ld
 
 
 @pytest.mark.unit
+def test_developer_dir_is_set_only_in_the_socrates_link_steps():
+    """DEVELOPER_DIR occurs only as the export inside the two SOCRATES link steps.
+
+    A GITHUB_ENV write, a step or job env entry, or a third step would move
+    later steps (pip, Julia, the test tiers) to the Command Line Tools.
+    """
+    action = (TOOLS_DIR.parent / '.github/actions/setup-proteus/action.yml').read_text(
+        encoding='utf-8'
+    )
+    head, *steps = action.split('\n    - name: ')
+    found = [
+        (step.split('\n', 1)[0], line.strip())
+        for step in steps
+        for line in step.splitlines()
+        if 'DEVELOPER_DIR' in line
+    ]
+    export = 'export DEVELOPER_DIR=/Library/Developer/CommandLineTools'
+    assert 'DEVELOPER_DIR' not in head
+    assert found == [
+        ('Build SOCRATES (cache miss)', export),
+        ('Build AGNI (Pkg.instantiate)', export),
+    ]
+
+
+@pytest.mark.unit
 def test_ci_setup_installs_every_declared_extra():
     """The CI setup action must install extras whose keys exist in pyproject.
 
