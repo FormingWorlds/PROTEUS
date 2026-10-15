@@ -48,21 +48,18 @@ pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 # ---------------------------------------------------------------------------
 
 
-def _record_figures(monkeypatch):
-    """Render real figures and return the list each ``plt.subplots`` call adds to."""
-    import matplotlib.pyplot as plt
-
-    monkeypatch.setattr(plot_mod, 'plt', plt)
-    figs = []
-    real_subplots = plt.subplots
+def _record_grids(monkeypatch):
+    """Render real figures and return the list each ``plt.subplots`` call adds its axes grid to."""
+    grids = []
+    real_subplots = plot_mod.plt.subplots
 
     def _subplots(*args, **kwargs):
         fig, axs = real_subplots(*args, **kwargs)
-        figs.append(fig)
+        grids.append(axs)
         return fig, axs
 
-    monkeypatch.setattr(plt, 'subplots', _subplots)
-    return figs
+    monkeypatch.setattr(plot_mod.plt, 'subplots', _subplots)
+    return grids
 
 
 def _make_logs(n_init: int = 0, n_extra: int = 5, x_dim: int = 1):
@@ -553,15 +550,15 @@ def test_plot_result_objective_renders_any_parameter_count(tmp_path, monkeypatch
     By default matplotlib squeezes a (2, 1) axes grid to 1-D; the function
     indexes ``axs[row, col]``, so the grid must stay 2-D for ``d = 1``.
     """
-    figs = _record_figures(monkeypatch)
+    grids = _record_grids(monkeypatch)
     (tmp_path / 'plots').mkdir()
     parameters = dict(list({'a': [0.0, 1.0], 'b': [2.0, 5.0]}.items())[:d])
     D = {'X': np.random.default_rng(1).random((6, d)), 'Y': np.linspace(-0.5, 0.9, 6)}
 
     plot_mod.plot_result_objective(D, parameters, n_init=2, directory=str(tmp_path))
 
-    assert len(figs[0].axes) == 2 * d
-    assert [ax.get_xlabel() for ax in figs[0].axes[d:]] == list(parameters)
+    assert grids[0].shape == (2, d)
+    assert [ax.get_xlabel() for ax in grids[0][1]] == list(parameters)
     out = tmp_path / 'plots' / f'result_objective.{plot_mod.fmt}'
     assert out.stat().st_size > 0
 
@@ -749,33 +746,44 @@ def test_plot_result_correlation_skips_a_case_that_died_during_start_up(
 
 @pytest.mark.parametrize(('n_par', 'n_obs'), [(1, 1), (1, 2), (2, 1), (2, 2)])
 def test_plot_result_correlation_renders_any_grid_shape(tmp_path, monkeypatch, n_par, n_obs):
-    """A real figure for every grid shape: one panel per parameter and observable,
-    each with one point per case, parameter names under the bottom row and
-    observable names left of the first column."""
+    """A real figure for every grid shape: panel (j, i) plots parameter i against
+    observable j with the observed value as a line and a log y axis for ``P_surf``;
+    only the bottom row and the first column carry labels and tick labels, and only
+    the top-left panel a legend."""
     pars = dict(
         list({'planet.mass_tot': [0.7, 3.0], 'planet.radius': [0.5, 2.0]}.items())[:n_par]
     )
     obs = dict(list({'P_surf': 1.0, 'T_eqm': 260.0}.items())[:n_obs])
-    for i in range(3):
-        case = tmp_path / 'workers' / 'w_0' / f'i_{i}'
+    X = np.array([[1.5 + 0.1 * c, 1.0 + c] for c in range(3)])
+    Y = np.array([[1.0 + c, 250.0 + 10 * c] for c in range(3)])
+    for c in range(3):
+        case = tmp_path / 'workers' / 'w_0' / f'i_{c}'
         case.mkdir(parents=True)
         (case / 'init_coupler.toml').write_text(
-            toml.dumps({'planet': {'mass_tot': 1.5 + 0.1 * i, 'radius': 1.0 + i}})
+            toml.dumps({'planet': dict(zip(('mass_tot', 'radius'), X[c].tolist()))})
         )
-        pd.DataFrame([{'P_surf': 1.0 + i, 'T_eqm': 250.0 + 10 * i}]).to_csv(
+        pd.DataFrame([{'P_surf': Y[c, 0], 'T_eqm': Y[c, 1]}]).to_csv(
             case / 'runtime_helpfile.csv', sep=' ', index=False
         )
     (tmp_path / 'plots').mkdir()
-    figs = _record_figures(monkeypatch)
+    grids = _record_grids(monkeypatch)
 
     plot_mod.plot_result_correlation(pars, obs, str(tmp_path))
 
     assert (tmp_path / 'plots' / f'result_correlation.{plot_mod.fmt}').stat().st_size > 0
-    axes = np.array(figs[0].axes).reshape(n_obs, n_par)
-    assert all(len(ax.collections[0].get_offsets()) == 3 for ax in axes.flat)
-    assert [ax.get_xlabel() for ax in axes[-1]] == list(pars)
-    assert [ax.get_ylabel() for ax in axes[:, 0]] == list(obs)
-    assert not any(ax.get_xlabel() for ax in axes[:-1].flat)
+    axs = grids[0]
+    axs[0, 0].figure.canvas.draw()
+    assert axs.shape == (n_obs, n_par)
+    for (j, i), ax in np.ndenumerate(axs):
+        offsets = np.column_stack([X[:, i], Y[:, j]])
+        np.testing.assert_allclose(ax.collections[0].get_offsets(), offsets)
+        assert ax.lines[0].get_ydata()[0] == pytest.approx(list(obs.values())[j])
+        assert ax.get_yscale() == ('log' if j == 0 else 'linear')
+        assert ax.get_xlabel() == (list(pars)[i] if j == n_obs - 1 else '')
+        assert ax.get_ylabel() == (list(obs)[j] if i == 0 else '')
+        assert any(t.get_text() for t in ax.get_xticklabels()) == (j == n_obs - 1)
+        assert any(t.get_text() for t in ax.get_yticklabels()) == (i == 0)
+        assert (ax.get_legend() is not None) == (i == j == 0)
 
 
 # ---------------------------------------------------------------------------

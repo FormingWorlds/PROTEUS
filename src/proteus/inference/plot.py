@@ -630,18 +630,17 @@ def plot_result_correlation(pars: dict, obs: dict, directory):
             if variable_is_logarithmic(par_keys[i]):
                 ax.set_xscale('log')
 
-            # hide tick labels
-            if i >= 1:
+            # label the outer panels, hide tick labels elsewhere
+            if i == 0:
+                ax.set_ylabel(obs_keys[j], fontsize=10)
+            else:
                 ax.set_yticklabels([])
-            if j < n_obs - 1:
+            if j == n_obs - 1:
+                ax.set_xlabel(par_keys[i], fontsize=10)
+            else:
                 ax.set_xticklabels([])
 
-    # Legend and axis labels on the outer panels
     axs[0, 0].legend()
-    for i in range(n_par):
-        axs[-1, i].set_xlabel(par_keys[i], fontsize=10)
-    for j in range(n_obs):
-        axs[j, 0].set_ylabel(obs_keys[j], fontsize=10)
 
     # Decorate
     fig.subplots_adjust(wspace=0.02, hspace=0.02)
