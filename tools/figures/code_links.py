@@ -114,6 +114,8 @@ def comments(text: str):
 def resolve_target(path: str, target: str, ref: str | None = None) -> int:
     """Line of the definition, banner or (with ``comment:``) comment that ``target`` names."""
     text = source(path, ref)
+    if not path.endswith('.py'):
+        raise LinkError(f'{path}: not Python source')
     try:
         tree = ast.parse(text)
     except SyntaxError:

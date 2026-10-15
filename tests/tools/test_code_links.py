@@ -282,20 +282,24 @@ def test_errors_name_their_link_in_check_and_rewrite(links, tmp_path, monkeypatc
     """A hard-coded #L link in the model, an empty target and a name link into a file
     that is not Python source are errors that name the link, in --check and in the
     SVG rewrite."""
-    (tmp_path / 'pkg' / 'notes.md').write_text('# Notes\n\nSome (text\n')
+    (tmp_path / 'pkg' / 'notes.md').write_text('# notes\n')  # parses as Python
+    (tmp_path / 'pkg' / 'broken.py').write_text('def (\n')
     hard = links.REPO_URL + 'pkg/mod.py#L12'
     empty = links.REPO_URL + 'pkg/mod.py#comment:'
-    prose = links.REPO_URL + 'pkg/notes.md#notes'
-    monkeypatch.setattr(links, 'model_links', lambda: sorted([hard, empty, prose]))
+    prose = links.REPO_URL + 'pkg/notes.md#comment:notes'
+    broken = links.REPO_URL + 'pkg/broken.py#f'
+    monkeypatch.setattr(links, 'model_links', lambda: sorted([hard, empty, prose, broken]))
     svg = tmp_path / 'fig.svg'
-    svg.write_text(''.join(f'<a data-target="{h}"/>' for h in (hard, empty, prose)))
+    svg.write_text(''.join(f'<a data-target="{h}"/>' for h in (hard, empty, prose, broken)))
     monkeypatch.setattr(links, 'SVGS', [svg])
     assert links.validate(None) == [
+        f'pkg/broken.py: not Python source [{broken}]',
         f'hard-coded line anchor in arch_final.json: {hard}',
         f'pkg/mod.py#comment:: empty target [{empty}]',
         f'pkg/notes.md: not Python source [{prose}]',
     ]
     assert links.rewrite(None, lenient=True) == [
+        f'pkg/broken.py: not Python source [{broken}]',
         f'pkg/mod.py#comment:: empty target [{empty}]',
         f'pkg/notes.md: not Python source [{prose}]',
     ]
