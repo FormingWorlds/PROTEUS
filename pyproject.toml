@@ -104,7 +104,7 @@ atmodeller = ["atmodeller>=1.0.2"]
 # vulcan: atmospheric photochemistry module, selected via
 # atmos_chem.module = "vulcan". Also installable editable via
 # tools/get_vulcan.sh.
-vulcan = ["fwl-vulcan>=26.10.14"]
+vulcan = ["fwl-vulcan>=26.10.16"]
 # morrigan: protoplanet accretion module for giant-impact timelines,
 # selected via accretion.module = "morrigan". Also installable editable
 # via tools/get_morrigan.sh.
