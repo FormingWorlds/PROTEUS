@@ -47,8 +47,22 @@ def slug(text: str) -> str:
     return re.sub(r'[^a-z0-9]+', '-', text.lower()).strip('-')
 
 
+def plain_path(path: str) -> str:
+    """``path`` if it is a plain path inside the repository, else LinkError."""
+    parts = path.split('/')
+    if not path or path.startswith('/') or {'', '.', '..'} & set(parts):
+        raise LinkError(f'{path}: not a plain path inside the repository')
+    return path
+
+
+def ref_error(path: str, ref: str, stderr: str) -> LinkError:
+    hint = '; run git fetch origin main' if ref.startswith('origin/') else ''
+    return LinkError(f'{path} not found at {ref}{hint}: {stderr.strip()}')
+
+
 @lru_cache(maxsize=None)
 def source(path: str, ref: str | None) -> str:
+    plain_path(path)
     if ref is None:
         file = ROOT / path
         if not file.is_file():
@@ -58,13 +72,13 @@ def source(path: str, ref: str | None) -> str:
         ['git', '-C', str(ROOT), 'show', f'{ref}:{path}'], capture_output=True, text=True
     )
     if res.returncode:
-        hint = '; run git fetch origin main' if ref.startswith('origin/') else ''
-        raise LinkError(f'{path} not found at {ref}{hint}: {res.stderr.strip()}')
+        raise ref_error(path, ref, res.stderr)
     return res.stdout
 
 
 def require_file(path: str, ref: str | None) -> None:
     """Raise LinkError unless ``path`` is a file in the work tree (``ref`` None) or at ``ref``."""
+    plain_path(path)
     if ref is None:
         found = (ROOT / path).is_file()
     else:
@@ -73,6 +87,8 @@ def require_file(path: str, ref: str | None) -> None:
             capture_output=True,
             text=True,
         )
+        if 'invalid object name' in res.stderr:
+            raise ref_error(path, ref, res.stderr)
         found = res.stdout.strip() == 'blob'
     if not found:
         raise LinkError(f'{path}: file does not exist' + (f' at {ref}' if ref else ''))
@@ -116,7 +132,7 @@ def resolve_target(path: str, target: str, ref: str | None = None) -> int:
         if m:
             if not m.group(1).startswith('/') and slug(m.group(1)) == name:
                 banners.append(i)
-            if slug(m.group(1)) == target != name:
+            if not m.group(1).startswith('/') and slug(m.group(1)) == target != name:
                 raise LinkError(
                     f'{path}#{target}: the banner on line {i} reads as a comment link'
                 )
@@ -145,7 +161,7 @@ def split(href: str) -> tuple[str, str] | None:
     if not href.startswith(REPO_URL) or '#' not in href:
         return None
     path, target = href[len(REPO_URL) :].split('#', 1)
-    return None if LINE_ANCHOR.match(target) else (path, target)
+    return None if LINE_ANCHOR.match(target) else (path.partition('?')[0], target)
 
 
 def resolve(href: str, ref: str | None = None) -> str:
@@ -166,8 +182,8 @@ def model_links() -> list[str]:
 
 
 def validate(ref: str | None) -> list[str]:
-    errors = []
-    for href in model_links():
+    errors, model = [], set(model_links())
+    for href in sorted(model):
         if href.startswith(REPO) and LINE_ANCHOR.match(href.partition('#')[2]):
             errors.append(f'hard-coded line anchor in arch_final.json: {href}')
             continue
@@ -179,9 +195,13 @@ def validate(ref: str | None) -> list[str]:
         targets = {unescape(m.group(2)) for m in SVG_LINK.finditer(svg.read_text())}
         if not targets:
             errors.append(f'{svg.name}: no name-based links; rebuild the figure')
-        elif targets != set(model_links()):
-            diff = ', '.join(sorted(targets ^ set(model_links())))
-            errors.append(f'{svg.name}: links differ from arch_final.json: {diff}')
+            continue
+        for what, links in (
+            ('missing', model - targets),
+            ('not in arch_final.json', targets - model),
+        ):
+            if links:
+                errors.append(f'{svg.name}: links {what}: {", ".join(sorted(links))}')
     return errors
 
 
