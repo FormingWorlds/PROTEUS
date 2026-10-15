@@ -609,12 +609,14 @@ def test_get_interiordata_calls_the_downloads(monkeypatch, tmp_path, args, clean
 
 
 @pytest.mark.unit
-def test_get_interiordata_fetches_only_missing_or_damaged_files(monkeypatch, tmp_path):
+@pytest.mark.parametrize('melting_dir', ['Monteux-600', 'Wolf_Bower+2018'])
+def test_get_interiordata_fetches_only_missing_or_damaged_files(
+    monkeypatch, tmp_path, melting_dir
+):
     """Through the real fwl-io fetcher, a second call requests nothing, a damaged file is
-    requested again, and ``--clean`` requests every melting-curve file and removes the local
-    folder of the configured curve, but no other local folder."""
+    requested again, and ``--clean`` requests each melting-curve file once and removes the
+    local folder of the configured curve, but no other local folder."""
     import hashlib
-    import types
 
     import fwl_io.fetch
     import requests
@@ -643,7 +645,7 @@ def test_get_interiordata_fetches_only_missing_or_damaged_files(monkeypatch, tmp
     monkeypatch.delenv('FWL_DATA_CACHE', raising=False)
     monkeypatch.delenv('FWL_IO_OFFLINE', raising=False)
     monkeypatch.setattr('proteus.utils.data.GetFWLData', lambda: tmp_path)
-    struct = types.SimpleNamespace(module='dummy', melting_dir='Monteux-600')
+    struct = types.SimpleNamespace(module='dummy', melting_dir=melting_dir)
     config = types.SimpleNamespace(interior_struct=struct)
     monkeypatch.setattr(cli, 'read_config_object', lambda path: config)
 
@@ -653,20 +655,22 @@ def test_get_interiordata_fetches_only_missing_or_damaged_files(monkeypatch, tmp
         assert res.exit_code == 0, res.output
         return sorted(requested)
 
-    monteux, wolf_bower = (
-        dataset_dir(key, data_root=tmp_path).relative_to(tmp_path)
-        for key in (MELTING_MONTEUX_MINUS600, MELTING_WOLF_BOWER_2018)
-    )
-    every = sorted(f'{d}/{n}' for d in (monteux, wolf_bower) for n in body)
+    served = {
+        'Monteux-600': MELTING_MONTEUX_MINUS600,
+        'Wolf_Bower+2018': MELTING_WOLF_BOWER_2018,
+    }
+    keys = {MELTING_WOLF_BOWER_2018, served[melting_dir]}
+    dirs = sorted(dataset_dir(k, data_root=tmp_path).relative_to(tmp_path) for k in keys)
+    every = sorted(f'{d}/{n}' for d in dirs for n in body)
     local = tmp_path / 'interior_lookup_tables/Melting_curves'
-    generated, other = local / 'Monteux-600/solidus_P-S.dat', local / 'MyCurve/solidus.dat'
+    generated, other = local / melting_dir / 'solidus_P-S.dat', local / 'MyCurve/solidus.dat'
     for path in (generated, other):
         path.parent.mkdir(parents=True)
         path.write_text('0 3000\n')
     assert get() == every
     assert get() == []
-    (tmp_path / monteux / 'solidus.dat').write_text('x')
-    assert get() == [f'{monteux}/solidus.dat']
+    (tmp_path / dirs[0] / 'solidus.dat').write_text('x')
+    assert get() == [f'{dirs[0]}/solidus.dat']
     assert generated.is_file()
     assert get('--clean') == every
     assert not generated.exists()
@@ -1492,7 +1496,7 @@ def test_update_input_data_refuses_an_unknown_config_key_before_downloading(
 
     downloads = []
     monkeypatch.setattr(
-        cli, 'download_sufficient_data', lambda cfg, clean=False: downloads.append(clean)
+        cli, 'download_sufficient_data', lambda configuration: downloads.append(configuration)
     )
 
     with open(PROTEUS_ROOT / 'input' / 'dummy.toml', 'rb') as f:
@@ -1514,7 +1518,7 @@ def test_update_input_data_refuses_an_unknown_config_key_before_downloading(
     with open(good, 'w') as f:
         tomlkit.dump(raw, f)
     assert cli._update_input_data(good) is True
-    assert downloads == [False]
+    assert len(downloads) == 1
 
 
 def test_grid_dry_run_passes_test_run_flag(monkeypatch, tmp_path):
@@ -1978,8 +1982,8 @@ def test_update_input_data_returns_true_when_config_exists(monkeypatch, tmp_path
         received.append(('read', Path(path)))
         return {'fake': 'configuration'}
 
-    def fake_download_sufficient_data(configuration, clean=False):
-        received.append(('dl', configuration, clean))
+    def fake_download_sufficient_data(configuration):
+        received.append(('dl', configuration))
 
     monkeypatch.setattr(cli, 'read_config_object', fake_read_config_object)
     monkeypatch.setattr(cli, 'download_sufficient_data', fake_download_sufficient_data)
@@ -1990,8 +1994,7 @@ def test_update_input_data_returns_true_when_config_exists(monkeypatch, tmp_path
     assert len(received) == 2
     assert received[0][0] == 'read'
     assert received[1][0] == 'dl'
-    # Present files are kept: fwl-io fetches only missing or damaged ones
-    assert received[1][2] is False
+    assert received[1] == ('dl', {'fake': 'configuration'})
 
 
 # ---------------------------

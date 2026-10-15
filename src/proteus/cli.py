@@ -576,7 +576,7 @@ def reference():
     is_flag=True,
     help='Remove the Wolf and Bower 2018 curves and the served curve that melting_dir names, '
     'with its folder interior_lookup_tables/Melting_curves/<melting_dir> and the generated '
-    'P-S files in it, then fetch the curves again',
+    'P-S files in it, then fetch the curves again; a failed fetch leaves no curves',
 )
 def interiordata(config_path: Path, clean: bool):
     """Get interior lookup tables, melting curves, and structure EOS tables
@@ -592,10 +592,11 @@ def interiordata(config_path: Path, clean: bool):
         needs_spider_ps_tables,
     )
 
-    download_interior_lookuptables(clean=clean)
-
     configuration = read_config_object(config_path)
     download_melting_curves(configuration, clean=clean)
+    # A Wolf_Bower+2018 melting_dir is this dataset, already cleaned and fetched above
+    melting_dir = getattr(getattr(configuration, 'interior_struct', None), 'melting_dir', None)
+    download_interior_lookuptables(clean=clean and melting_dir != 'Wolf_Bower+2018')
 
     # Structure-solver EOS tables (e.g. the PALEOS set) for the config's
     # Zalmoxis setup. Without these on disk, an offline run fails inside
