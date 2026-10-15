@@ -410,8 +410,8 @@ runs:
         # selects) non-interactive and fast-failing; the runner has no
         # GitHub SSH key, so the probe fails and the script uses HTTPS.
         export GIT_SSH_COMMAND='ssh -o StrictHostKeyChecking=no -o ConnectTimeout=1 -o BatchMode=yes'
-        # SOCRATES links with -L to the Command Line Tools SDK, so ld (and as, ar)
-        # must come from the same folder: an older Xcode ld cannot read a newer SDK.
+        # SOCRATES links with -L to the Command Line Tools SDK, so ld must come from
+        # the same folder (as and ar follow it): an older Xcode ld cannot read a newer SDK.
         if [ -x /Library/Developer/CommandLineTools/usr/bin/ld ]; then
           export DEVELOPER_DIR=/Library/Developer/CommandLineTools
         fi

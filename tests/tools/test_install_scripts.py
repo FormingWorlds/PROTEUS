@@ -1302,7 +1302,8 @@ def test_socrates_cache_key_covers_every_file_the_build_reads():
     ],
 )
 @pytest.mark.parametrize('ld_mode', [0o755, 0o644, None])
-def test_socrates_links_use_ld_from_the_clt_folder(tmp_path, step, build_cmd, ld_mode):
+@pytest.mark.parametrize('preset', [None, '/Applications/Xcode.app/Contents/Developer'])
+def test_socrates_links_use_ld_from_the_clt_folder(tmp_path, step, build_cmd, ld_mode, preset):
     """The steps that link SOCRATES export DEVELOPER_DIR=<CLT> when the CLT has an ld.
 
     SOCRATES links with -L to the Command Line Tools SDK, and an Xcode ld
@@ -1329,16 +1330,11 @@ def test_socrates_links_use_ld_from_the_clt_folder(tmp_path, step, build_cmd, ld
     (tmp_path / 'stub/julia').chmod(0o755)
     (tmp_path / 'AGNI').mkdir()
     script = '\n'.join(run).replace(clt, str(fake)) + '\nprintenv DEVELOPER_DIR || echo unset\n'
-    out = subprocess.check_output(
-        ['bash', '-c', script],
-        cwd=tmp_path,
-        env={
-            'PATH': f'{tmp_path}/stub:{os.environ["PATH"]}',
-            'GITHUB_WORKSPACE': str(tmp_path),
-        },
-        text=True,
-    ).strip()
-    assert out == (str(fake) if ld_mode == 0o755 else 'unset')
+    env = {'PATH': f'{tmp_path}/stub:{os.environ["PATH"]}', 'GITHUB_WORKSPACE': str(tmp_path)}
+    if preset:
+        env['DEVELOPER_DIR'] = preset
+    out = subprocess.check_output(['bash', '-c', script], cwd=tmp_path, env=env, text=True)
+    assert out.strip() == (str(fake) if ld_mode == 0o755 else preset or 'unset')
 
 
 @pytest.mark.unit
