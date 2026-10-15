@@ -1479,6 +1479,9 @@ def test_get_sufficient_zalmoxis_wolf_bower(
     )
     # SPIDER dynamic EOS still downloaded separately
     mock_dyn.assert_called_once()
+    # The data step never cleans, so present melting curves are kept
+    _m_il.assert_called_once_with()
+    _m_mc.assert_called_once_with(config)
 
 
 @pytest.mark.unit
