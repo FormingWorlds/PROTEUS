@@ -218,7 +218,7 @@ def _write_result_csv(csv_file: str, result: dict) -> None:
 
 
 def run_vulcan(
-    dirs: dict, config: Config, hf_row: dict, *, network_state: dict | None = None
+    dirs: dict, config: Config, hf_row: dict, *, network_compiled: bool = False
 ) -> bool:
     """
     Run VULCAN chemical kinetics on the atmosphere snapshot at hf_row['Time'].
@@ -237,10 +237,9 @@ def run_vulcan(
         Configuration object.
     hf_row : dict
         Helpfile row at the snapshot time.
-    network_state : dict | None
-        State shared by the snapshots of one sequence. The chemical network is
-        compiled (with `atmos_chem.vulcan.make_funs`) until a VULCAN run has
-        succeeded, which sets its 'compiled' entry. None compiles every time.
+    network_compiled : bool
+        Whether an earlier run of this sequence has compiled the chemical
+        network already. If not, it is compiled (with `atmos_chem.vulcan.make_funs`).
 
     Returns
     ----------
@@ -589,11 +588,7 @@ def run_vulcan(
     # RUN VULCAN
     # ------------------------------------------------------------
 
-    # Compile the chemical network until one run of the sequence has succeeded
-    if network_state is None:
-        network_state = {}
-    compiled = network_state.get('compiled', False)
-    vulcan.run_vulcan(vcfg, config.atmos_chem.vulcan.make_funs and not compiled)
+    vulcan.run_vulcan(vcfg, config.atmos_chem.vulcan.make_funs and not network_compiled)
 
     # ------------------------------------------------------------
     # READ AND PARSE OUTPUT FILES
@@ -604,7 +599,6 @@ def run_vulcan(
     if not os.path.exists(vulcan_cdf_src):
         log.warning(f'Could not find output file {vulcan_cdf_src}')
         return False
-    network_state['compiled'] = True
     log.debug("Moving VULCAN NetCDF output to '%s'" % vulcan_cdf_dst)
     shutil.move(vulcan_cdf_src, vulcan_cdf_dst)
 

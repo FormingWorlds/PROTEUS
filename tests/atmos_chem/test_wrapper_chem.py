@@ -158,15 +158,14 @@ def test_run_chemistry_all_runs_in_ascending_time(tmp_path):
     assert [c[1] for c in calls] == pytest.approx([3000.0, 2250.0, 1500.0])
 
 
-def test_run_chemistry_vulcan_snapshots_share_one_network_state(tmp_path):
-    """The VULCAN runs of one call get the same network_state dict, so a
-    network compiled by a successful run is reused by the later ones, and a
-    second call starts from a new, empty state."""
-    states = []
+def test_run_chemistry_vulcan_compiles_the_network_on_the_first_snapshot_only(tmp_path):
+    """Only the first VULCAN run of a call compiles the network: a failed run
+    stops the sequence, so every later run follows a run that compiled it.
+    A second call compiles it again, and the dummy backend gets no such flag."""
+    compiled = []
 
-    def run(dirs, config, hf_row, *, network_state=None):
-        states.append(network_state)
-        network_state['compiled'] = True  # as after a successful VULCAN run
+    def run(dirs, config, hf_row, **kwargs):
+        compiled.append(kwargs)
         os.makedirs(dirs['output/offchem'], exist_ok=True)
         fpath = os.path.join(dirs['output/offchem'], chem_csv_name('vulcan', hf_row['Time']))
         pd.DataFrame({'tmp': [hf_row['T_surf']], 'p': [1.0e5]}).to_csv(
@@ -176,13 +175,17 @@ def test_run_chemistry_vulcan_snapshots_share_one_network_state(tmp_path):
 
     config = _make_config(module='vulcan', times='all')
     with patch('proteus.atmos_chem.vulcan.run_vulcan', side_effect=run):
-        run_chemistry(_dirs(tmp_path), config, _helpfile([0.0, 10.0]))
+        run_chemistry(_dirs(tmp_path), config, _helpfile([0.0, 10.0, 250.0]))
         run_chemistry(_dirs(tmp_path), config, _helpfile([0.0, 10.0]))
 
-    assert len(states) == 4
-    assert states[0] is states[1]
-    assert states[2] is states[3]
-    assert states[0] is not states[2]
+    flags = [kw['network_compiled'] for kw in compiled]
+    assert flags == [False, True, True, False, True]
+
+    run_dummy, _ = _fake_backend(tmp_path)
+    with patch('proteus.atmos_chem.dummy.run_dummy_chem', side_effect=run_dummy) as dummy:
+        run_chemistry(_dirs(tmp_path), _make_config(times='all'), _helpfile([0.0, 10.0]))
+    assert all(call.kwargs == {} for call in dummy.call_args_list)
+    assert dummy.call_count == 2
 
 
 def test_run_chemistry_failed_snapshot_stops_the_sequence(tmp_path):

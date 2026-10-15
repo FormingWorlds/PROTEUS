@@ -13,8 +13,8 @@ Contracts and invariants tested:
   (12.32 yr is 12p320)
 - CSV values: pressure dyn cm-2 to Pa, height cm to m, Kzz on the interior
   interfaces, rows from the top of the column down, condensates left out
-- Network compilation: with make_funs, VULCAN compiles the network until a
-  run of the sequence has succeeded (network_state), and never without it
+- Network compilation: with make_funs, VULCAN compiles the network unless an
+  earlier run of the sequence has (network_compiled), and never without it
 - NetCDF reader: VULCAN's values come back in CGS, bottom up, with the
   filled Kzz ends as NaN
 - Initial composition: vmrs.dat is on VULCAN's own grid, from the bottom of
@@ -276,7 +276,7 @@ def _write_sflux(tmp_path, year, flux=(1e-5, 1e-4, 1e-3)):
     (data / f'{int(year)}.sflux').write_text('# WL(nm) Flux\n' + rows + '\n')
 
 
-def _run(tmp_path, config, hf_row, *, network_state=None, atmos=None, solver='netcdf'):
+def _run(tmp_path, config, hf_row, *, network_compiled=False, atmos=None, solver='netcdf'):
     """Run run_vulcan on mocked atmosphere input; return the result, config and dirs.
 
     `solver='netcdf'` makes the mocked VULCAN write a result NetCDF, None makes
@@ -294,7 +294,7 @@ def _run(tmp_path, config, hf_row, *, network_state=None, atmos=None, solver='ne
     try:
         with patch('proteus.atmos_chem.vulcan.read_atmosphere_data') as mock_read_atmos:
             mock_read_atmos.return_value = [atmos if atmos is not None else _make_mock_atmos()]
-            result = run_vulcan(dirs, config, hf_row, network_state=network_state)
+            result = run_vulcan(dirs, config, hf_row, network_compiled=network_compiled)
     finally:
         mock_vulcan_package.run_vulcan.side_effect = None
     return result, vcfg, dirs
@@ -498,50 +498,23 @@ def test_run_vulcan_writes_only_netcdf_and_no_pickle(tmp_path):
 
 
 @pytest.mark.unit
-def test_run_vulcan_compiles_the_network_until_a_run_succeeds(tmp_path):
-    """With make_funs, the network is compiled by VULCAN's own solver call
-    until one run of the sequence has succeeded: a failed run (no NetCDF)
-    leaves it to be compiled again, and after a success it is not compiled.
-    PROTEUS never compiles it a second time through make_chem_funs."""
-    config = _make_mock_config()
-    state = {}
-
-    # A failed first run compiles but does not mark the network as ready
-    result, vcfg, _ = _run(
-        tmp_path, config, _make_mock_hf_row(year=100.0), network_state=state, solver=None
-    )
-    assert result is False
-    mock_vulcan_package.run_vulcan.assert_called_once_with(vcfg, True)
-    assert state.get('compiled', False) is False
-
-    # The next run compiles again, and succeeds
-    result, vcfg, _ = _run(tmp_path, config, _make_mock_hf_row(year=200.0), network_state=state)
-    assert result is True
-    mock_vulcan_package.run_vulcan.assert_called_once_with(vcfg, True)
-    assert state['compiled'] is True
-
-    # After a success the network is reused
-    result, vcfg, _ = _run(tmp_path, config, _make_mock_hf_row(year=300.0), network_state=state)
-    assert result is True
-    mock_vulcan_package.run_vulcan.assert_called_once_with(vcfg, False)
-    mock_vulcan_package.make_chem_funs.make_all.assert_not_called()
-
-
-@pytest.mark.unit
 @pytest.mark.parametrize(
-    'make_funs,state,expected',
-    [(False, {}, False), (False, {'compiled': True}, False), (True, None, True)],
-    ids=['make_funs_off', 'make_funs_off_after_success', 'no_shared_state'],
+    'make_funs,network_compiled,expected',
+    [(True, False, True), (True, True, False), (False, False, False), (False, True, False)],
+    ids=['first_run', 'network_already_compiled', 'make_funs_off', 'make_funs_off_compiled'],
 )
-def test_run_vulcan_network_compilation_follows_make_funs_and_state(
-    tmp_path, make_funs, state, expected
+def test_run_vulcan_compiles_the_network_only_when_needed(
+    tmp_path, make_funs, network_compiled, expected
 ):
-    """Without make_funs the network is never compiled, and without a shared
-    state (None) every call compiles it."""
+    """VULCAN's own solver call compiles the network when make_funs is on and
+    no earlier run of the sequence compiled it, and never with make_funs off.
+    PROTEUS never compiles it a second time through make_chem_funs."""
     config = _make_mock_config()
     config.atmos_chem.vulcan.make_funs = make_funs
 
-    result, vcfg, _ = _run(tmp_path, config, _make_mock_hf_row(year=300.0), network_state=state)
+    result, vcfg, _ = _run(
+        tmp_path, config, _make_mock_hf_row(year=300.0), network_compiled=network_compiled
+    )
 
     assert result is True
     mock_vulcan_package.run_vulcan.assert_called_once_with(vcfg, expected)

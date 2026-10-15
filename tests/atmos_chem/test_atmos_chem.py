@@ -280,7 +280,7 @@ def test_run_chemistry_vulcan_end_returns_final_state(patched_run_vulcan, tmp_pa
     patched_run_vulcan.assert_called_once()
     args, kwargs = patched_run_vulcan.call_args
     assert args[0] is dirs and args[1] is config
-    assert args[2]['Time'] == pytest.approx(1000.0) and kwargs == {'network_state': {}}
+    assert args[2]['Time'] == pytest.approx(1000.0) and kwargs == {'network_compiled': False}
     assert result['tmp'].iloc[-1] == pytest.approx(1500.0)
     assert np.all(result['tmp'] > 0.0) and np.all(np.diff(result['p']) > 0.0)
 

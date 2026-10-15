@@ -1,7 +1,6 @@
 # Generic atmospheric chemistry wrapper
 from __future__ import annotations
 
-import functools
 import logging
 import os
 import shutil
@@ -64,10 +63,7 @@ def run_chemistry(dirs: dict, config: Config, hf_all: pd.DataFrame) -> pd.DataFr
 
     # Resolve the runner function (lazy imports keep heavy backends optional)
     if module == 'vulcan':
-        from proteus.atmos_chem.vulcan import run_vulcan
-
-        # The snapshots of this call share the state of the network compilation
-        _run = functools.partial(run_vulcan, network_state={})
+        from proteus.atmos_chem.vulcan import run_vulcan as _run
     elif module == 'dummy':
         from proteus.atmos_chem.dummy import run_dummy_chem as _run
     else:
@@ -100,7 +96,9 @@ def run_chemistry(dirs: dict, config: Config, hf_all: pd.DataFrame) -> pd.DataFr
         snapshot = helpfile_row_at(hf_all, time)
         snapshot['Time'] = time
         hf_row = HelpfileRow(snapshot, helpfile_path(dirs['output']))
-        if not _run(dirs, config, hf_row):
+        # A failed run stops the sequence, so a later run follows a success
+        extra = {'network_compiled': i > 0} if module == 'vulcan' else {}
+        if not _run(dirs, config, hf_row, **extra):
             raise RuntimeError('%s chemistry failed at t=%.3e yr' % (module, time))
 
     # The fixed name holds the latest result
