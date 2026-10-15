@@ -3181,58 +3181,54 @@ def test_init_timing_line_times_the_zalmoxis_equilibration(tmp_path, monkeypatch
 
 
 @pytest.mark.parametrize(
-    ('environ', 'enabled'),
+    ('value', 'enabled'),
     [
-        ({}, False),
-        ({'PROTEUS_TIMING': ''}, False),
-        ({'PROTEUS_TIMING': '0'}, False),
-        ({'PROTEUS_TIMING': 'off'}, False),
-        ({'PROTEUS_TIMING_X': '1'}, False),
-        ({'PROTEUS_TIMING': 'false'}, False),
-        ({'PROTEUS_TIMING': 'no'}, False),
-        ({'PROTEUS_TIMING': '2'}, False),
-        ({'PROTEUS_TIMING': ' 1'}, False),
-        ({'PROTEUS_TIMING': '1'}, True),
-        ({'PROTEUS_TIMING': 'True'}, True),
-        ({'PROTEUS_TIMING': 'YES'}, True),
-        ({'PROTEUS_TIMING': 'on'}, True),
+        (None, False),
+        ('', False),
+        ('0', False),
+        ('off', False),
+        ('false', False),
+        ('no', False),
+        ('2', False),
+        (' 1', False),
+        ('1', True),
+        ('True', True),
+        ('YES', True),
+        ('on', True),
     ],
 )
-def test_timing_switch_reads_proteus_timing(environ, enabled):
-    """Timing is on for 1, true, yes or on in any case, and off otherwise or when unset."""
+def test_timing_switch_reads_proteus_timing(value, enabled):
+    """Timing is on for 1, true, yes or on in any case, off otherwise or when unset,
+    and only the variable PROTEUS_TIMING counts."""
     from proteus.proteus import _timing_enabled
 
+    environ = {} if value is None else {'PROTEUS_TIMING': value}
     assert _timing_enabled(environ) is enabled
+    assert _timing_enabled({'PROTEUS_TIMINGS': value or '1'}) is False
 
 
 @pytest.mark.parametrize(
-    ('value', 'enabled'), [('1', True), ('yes', True), ('off', False), ('maybe', False)]
+    ('value', 'enabled'),
+    [(None, False), ('1', True), ('yes', True), ('off', False), ('maybe', False)],
 )
 def test_timing_flag_is_read_from_the_environment_at_import(value, enabled, monkeypatch):
-    """A fresh interpreter that imports ``proteus.proteus`` with ``PROTEUS_TIMING`` set
-    has the module flag the variable asks for. The flag is read at import, so only a
-    new process can show it; Julia is stubbed there, it is not needed."""
-    import json
-    import os
-    import subprocess
+    """Loading proteus/proteus.py with PROTEUS_TIMING set, or unset, gives the module
+    flag the variable asks for: the flag is read at import, so the test loads the
+    file again under a throwaway name (Julia stubbed, it is not needed)."""
+    import importlib.util
 
     import proteus.proteus as mod
 
-    code = (
-        'import json, sys; from unittest.mock import MagicMock; '
-        "sys.modules['juliacall'] = MagicMock(); "
-        'import proteus.proteus as m; print(json.dumps([m.__file__, m._IT_TIMING_ENABLED]))'
-    )
-    src = str(Path(mod.__file__).parents[1])
-    monkeypatch.setenv('PROTEUS_TIMING', value)
-    monkeypatch.setenv(
-        'PYTHONPATH', os.pathsep.join(filter(None, [src, os.environ.get('PYTHONPATH')]))
-    )
-    out = subprocess.run(
-        [sys.executable, '-c', code], capture_output=True, text=True, timeout=25
-    )
-    assert out.returncode == 0, out.stderr
-    assert json.loads(out.stdout.splitlines()[-1]) == [mod.__file__, enabled]
+    if value is None:
+        monkeypatch.delenv('PROTEUS_TIMING', raising=False)
+    else:
+        monkeypatch.setenv('PROTEUS_TIMING', value)
+    monkeypatch.setitem(sys.modules, 'juliacall', MagicMock())
+    spec = importlib.util.spec_from_file_location('_proteus_timing_probe', mod.__file__)
+    probe = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(probe)
+    assert probe._IT_TIMING_ENABLED is enabled
+    assert sys.modules['proteus.proteus'] is mod  # the probe leaves the real module alone
 
 
 def test_timing_lines_absent_when_timing_is_off(tmp_path, monkeypatch, caplog):

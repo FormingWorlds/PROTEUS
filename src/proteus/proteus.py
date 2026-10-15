@@ -45,11 +45,22 @@ from proteus.utils.logs import (
 
 
 def _timing_enabled(environ: Mapping[str, str]) -> bool:
-    """Whether ``PROTEUS_TIMING`` asks for the [INIT_TIMING] and [IT_TIMING] lines;
-    read once, when this module is imported."""
+    """Whether an environment asks for the [INIT_TIMING] and [IT_TIMING] log lines.
+
+    Parameters
+    ----------
+    environ : Mapping[str, str]
+        Environment variables, such as ``os.environ``.
+
+    Returns
+    -------
+    bool
+        True when ``PROTEUS_TIMING`` is 1, true, yes or on, in any case.
+    """
     return environ.get('PROTEUS_TIMING', '').lower() in ('1', 'true', 'yes', 'on')
 
 
+# Read once, when this module is imported
 _IT_TIMING_ENABLED = _timing_enabled(os.environ)
 
 # Consecutive iterations without a converged atmosphere after which a run ends,
