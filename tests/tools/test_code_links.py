@@ -151,6 +151,8 @@ def test_file_link_checks_existence_without_reading_the_file(links, tmp_path):
                 links.resolve(links.REPO_URL + odd, ref)
     with pytest.raises(links.LinkError, match='pkg/mod.py not found at nonexist: fatal'):
         links.resolve(links.REPO_URL + 'pkg/mod.py', 'nonexist')
+    with pytest.raises(links.LinkError, match='pkg/mod.py not found at nonexist: fatal'):
+        links.resolve(links.REPO_URL + 'pkg/mod.py#escape', 'nonexist')
 
 
 def test_banner_and_comment_of_one_slug_resolve_by_kind(links, tmp_path):
