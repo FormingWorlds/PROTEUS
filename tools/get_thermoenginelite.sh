@@ -22,21 +22,29 @@ root="$proteus_root"
 get_parse_args "$@"
 workpath="$root/ThermoEngineLite/"
 
-# Locate GSL headers and libraries (conda env, Homebrew, or /usr/include/gsl).
-# GSL_SYS_INCLUDE lets offline unit tests hide a host /usr/include/gsl on Linux.
-gsl_include=""
-gsl_lib=""
-if [ -n "${CONDA_PREFIX:-}" ] && [ -d "$CONDA_PREFIX/include/gsl" ]; then
+# Locate GSL (conda, CPATH, Homebrew, /usr/include, /usr/local/include).
+_cpath_gsl_dir() {
+    local d IFS=:
+    for d in ${CPATH:-}; do
+        [ -n "$d" ] && [ -f "$d/gsl/gsl_multiroots.h" ] && { printf '%s\n' "$d"; return 0; }
+    done
+    return 1
+}
+if [ -n "${CONDA_PREFIX:-}" ] && [ -f "$CONDA_PREFIX/include/gsl/gsl_multiroots.h" ]; then
     gsl_include="$CONDA_PREFIX/include"
     gsl_lib="$CONDA_PREFIX/lib"
+elif cpath_gsl=$(_cpath_gsl_dir); then
+    gsl_include="$cpath_gsl"
 elif command -v brew >/dev/null 2>&1 \
     && brew_gsl=$(brew --prefix gsl 2>/dev/null) \
     && [ -n "$brew_gsl" ] \
-    && [ -d "$brew_gsl/include/gsl" ]; then
+    && [ -f "$brew_gsl/include/gsl/gsl_multiroots.h" ]; then
     gsl_include="$brew_gsl/include"
     gsl_lib="$brew_gsl/lib"
-elif [ -d "${GSL_SYS_INCLUDE:-/usr/include}/gsl" ]; then
+elif [ -f "${GSL_SYS_INCLUDE:-/usr/include}/gsl/gsl_multiroots.h" ]; then
     gsl_include="${GSL_SYS_INCLUDE:-/usr/include}"
+elif [ -f "${GSL_LOCAL_INCLUDE:-/usr/local/include}/gsl/gsl_multiroots.h" ]; then
+    gsl_include="${GSL_LOCAL_INCLUDE:-/usr/local/include}"
 else
     echo "ERROR: GSL headers (gsl/gsl_multiroots.h) not found." >&2
     echo "       Install GSL first, for example:" >&2
@@ -45,8 +53,11 @@ else
     echo "         sudo apt install libgsl-dev" >&2
     exit 1
 fi
-export CPATH="$gsl_include${CPATH:+:$CPATH}"
-if [ -n "$gsl_lib" ]; then
+case ":${CPATH:-}:" in
+    *":$gsl_include:"*) export CPATH ;;
+    *) export CPATH="$gsl_include${CPATH:+:$CPATH}" ;;
+esac
+if [ -n "${gsl_lib:-}" ]; then
     export LIBRARY_PATH="$gsl_lib${LIBRARY_PATH:+:$LIBRARY_PATH}"
 fi
 
@@ -84,7 +95,7 @@ if ! make devinstall; then
 fi
 
 # Verify import outside the clone so ./thermoengine does not shadow site-packages.
-if ! (cd / && python -c "import thermoengine; assert getattr(thermoengine, '__file__', None)" >/dev/null 2>&1); then
+if ! (cd / && python -c "import thermoengine; assert thermoengine.__file__" >/dev/null 2>&1); then
     echo "ERROR: ThermoEngineLite failed to install into your Python environment." >&2
     echo "       Check the output above for errors." >&2
     exit 1
