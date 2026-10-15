@@ -3147,6 +3147,63 @@ def test_paleos_melting_curves_follow_mzf_in_reused_outdir(tmp_path):
 
 @pytest.mark.unit
 @pytest.mark.physics_invariant
+@pytest.mark.parametrize('mass_coordinates', [True, False])
+def test_f_tidal_uses_the_structural_cell_mass_of_f_radio(mass_coordinates):
+    """On a real Aragog mesh from a Zalmoxis profile, F_tidal weights the per-kg tidal
+    heating by the structural cell masses (effective density times volume), the mass
+    F_radio uses, not by the solver's live cell mass. With mass coordinates the
+    structural masses sum to M_mantle exactly, so equal per-kg heating gives equal
+    fluxes; without them the effective density is a node mean (2e-5 off)."""
+    from aragog.mesh import Mesh
+    from aragog.parser import _MeshParameters
+
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    profile = np.loadtxt(
+        Path(__file__).parents[1] / 'data/integration/zalmoxis_resume_mesh/zalmoxis_output.dat'
+    )
+    params = _MeshParameters(
+        outer_radius=profile[-1, 0],
+        inner_radius=profile[0, 0],
+        number_of_nodes=40,
+        mixing_length_profile='constant',
+        core_density=1.0e4,
+        eos_method=2,
+        mass_coordinates=mass_coordinates,
+    )
+    params.eos_radius, params.eos_pressure, params.eos_density, params.eos_gravity = profile[
+        :, :4
+    ].T
+    mesh = Mesh(SimpleNamespace(mesh=params))
+    r = mesh.basic.radii.ravel()
+    vol = 4.0 / 3.0 * np.pi * np.diff(r**3)
+    structural = np.ravel(mesh.staggered_effective_density) * vol
+    M_mantle = float(np.diff(mesh.eos.get_mass_within_radii(r[[0, -1]]).ravel())[0])
+    rtol = 1e-12 if mass_coordinates else 1e-4
+    assert structural.sum() == pytest.approx(M_mantle, rel=rtol)
+
+    h = 3.0e-12  # W/kg, the same per-kg rate for tides and radionuclides
+    out = MagicMock(r_basic=r, vol=vol, M_mantle=M_mantle, T_core=3800.0)
+    out.T_basic = np.linspace(4100.0, 3000.0, len(r))
+    out.mass_stag = structural * np.linspace(1.0, 1.4, len(vol))  # solver frame
+    solver = SimpleNamespace(
+        evaluator=SimpleNamespace(mesh=mesh),
+        parameters=SimpleNamespace(radionuclides=[SimpleNamespace(get_heating=lambda t: h)]),
+    )
+    interior_o = SimpleNamespace(tides=np.full(len(vol), h), aragog_solver=solver)
+    with patch('proteus.interior_energetics.aragog._estimate_T_pot', return_value=3000.0):
+        res = AragogRunner._build_helpfile_output(
+            out, {'F_atm': 1e5, 'Time': 0.0}, interior_o=interior_o
+        )
+
+    area = 4.0 * np.pi * r[-1] ** 2
+    assert res['F_tidal'] == pytest.approx(h * structural.sum() / area, rel=1e-12)
+    assert res['F_tidal'] == pytest.approx(res['F_radio'], rel=rtol)
+    assert res['F_tidal'] < h * out.mass_stag.sum() / area
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_helpfile_output_t_cmb_node_is_cmb_basic_node():
     """``T_cmb_node`` is the first basic-node temperature, ``T_cmb`` the bottom cell.
 

@@ -2169,6 +2169,57 @@ def test_read_spider_basic(tmp_path):
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_read_spider_solver_power_uses_rho_s_volume_s(tmp_path):
+    """Q_radio_W and Q_tidal_W are the powers SPIDER's entropy equation heats with,
+    H times rho_s * volume_s per cell, while F_radio and F_tidal keep the structural
+    mass_s; the fixture has rho_s * volume_s different from mass_s in every cell."""
+    import json
+
+    from proteus.interior_energetics.common import Interior_t
+    from proteus.interior_energetics.spider import ReadSPIDER
+
+    data_dir = tmp_path / 'data'
+    data_dir.mkdir()
+    path = data_dir / '0.json'
+    _make_spider_json(str(path), step=0, num_stag=10, num_basic=11)
+    doc = json.loads(path.read_text())
+    n = np.arange(10)
+    fields = {
+        'mass_s': 4.0e23 * (1.0 + 0.05 * n),
+        'rho_s': 3000.0 + 250.0 * n,
+        'volume_s': 1.2e20 * (1.0 - 0.04 * n),
+        'Hradio_s': 1.0e-12 * (1.0 + 0.1 * n),
+        'Htidal_s': 2.0e-12 * (1.0 + 0.3 * n),
+    }
+    for key, values in fields.items():
+        doc['data'][key]['values'] = values.tolist()
+    path.write_text(json.dumps(doc))
+    rho_vol = fields['rho_s'] * fields['volume_s']
+    assert not np.allclose(rho_vol, fields['mass_s'], rtol=0.05)
+
+    interior_o = Interior_t(11)
+    P_vals, S_vals = np.linspace(0, 135e9, 3), np.linspace(2000, 3200, 4)
+    lookup = np.zeros((4, 3, 3))
+    lookup[:, :, 0], lookup[:, :, 1], lookup[:, :, 2] = P_vals, S_vals[:, None], 4000.0
+    interior_o.lookup_rho_melt = lookup
+    config = MagicMock()
+    config.planet.prevent_warming = False
+    dirs = {'output': str(tmp_path), 'output/data': str(data_dir)}
+    _, output = ReadSPIDER(dirs, config, R_int=6.371e6, interior_o=interior_o)
+
+    assert output['Q_radio_W'] == pytest.approx(np.dot(fields['Hradio_s'], rho_vol), rel=1e-12)
+    assert output['Q_tidal_W'] == pytest.approx(np.dot(fields['Htidal_s'], rho_vol), rel=1e-12)
+    area = 5.1e14
+    assert output['F_radio'] == pytest.approx(
+        np.dot(fields['Hradio_s'], fields['mass_s']) / area
+    )
+    assert output['F_tidal'] == pytest.approx(
+        np.dot(fields['Htidal_s'], fields['mass_s']) / area
+    )
+
+
+@pytest.mark.unit
 def test_read_spider_cmb_pressure_and_flux(tmp_path):
     """ReadSPIDER reads P_cmb and F_cmb from the last basic node.
 
