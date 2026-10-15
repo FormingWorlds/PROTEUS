@@ -571,8 +571,14 @@ def reference():
     default=Path('input/all_options.toml'),
     help='Path to the TOML config file',
 )
-def interiordata(config_path: Path):
-    """Get interior lookup tables, melting curves, and structure EOS tables"""
+@click.option(
+    '--clean', is_flag=True, help='Remove the melting curves first and fetch them again'
+)
+def interiordata(config_path: Path, clean: bool):
+    """Get interior lookup tables, melting curves, and structure EOS tables
+
+    Files already present with their registry checksum are not fetched again.
+    """
     from .utils.data import (
         download_eos_dynamic,
         download_interior_lookuptables,
@@ -581,10 +587,10 @@ def interiordata(config_path: Path):
         needs_spider_ps_tables,
     )
 
-    download_interior_lookuptables(clean=True)
+    download_interior_lookuptables(clean=clean)
 
     configuration = read_config_object(config_path)
-    download_melting_curves(configuration, clean=True)
+    download_melting_curves(configuration, clean=clean)
 
     # Structure-solver EOS tables (e.g. the PALEOS set) for the config's
     # Zalmoxis setup. Without these on disk, an offline run fails inside
@@ -1038,7 +1044,7 @@ def _update_input_data(config_path: Path):
     if config_path.exists():
         # Only try data download if a config file is present.
         configuration = read_config_object(config_path)
-        download_sufficient_data(configuration, clean=True)
+        download_sufficient_data(configuration)
         click.secho('[+] Additional data has been downloaded.', fg='green')
         return True
 
