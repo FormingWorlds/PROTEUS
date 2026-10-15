@@ -74,10 +74,12 @@ https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/proteus.py#interi
 
 The part after `#` is a function, class or method (`Proteus.start`), the slug of
 a section banner (`############### ORBIT AND TIDES` is `#orbit-and-tides`) or,
-with the prefix `comment-`, the slug of another comment (`# Run offline
-chemistry` is `#comment-run-offline-chemistry`), and must match exactly once. A
+with the prefix `comment:`, the slug of another comment (`# Run offline
+chemistry` is `#comment:run-offline-chemistry`), and must match exactly once. A
 target without the prefix never matches an ordinary comment, so renaming a
 banner fails the check instead of moving the link to a comment of that name.
+Links to a file under `blob/main` must name a file that exists; `tree/` links
+are not checked.
 
 - The docs deploy runs `code_links.py --deploy`, which turns each target into a
   `#L<n>` link on `main`. A target that no longer resolves loses its link, with

@@ -4,7 +4,9 @@ A link names its target instead of a line, as
 ``https://github.com/FormingWorlds/PROTEUS/blob/main/<path>#<target>``, where
 ``<target>`` is a function, class or method (``Proteus.start``), the slug of a
 section banner (``interior`` for ``############### INTERIOR``) or, with the
-prefix ``comment-``, the slug of another comment. It must match exactly once.
+prefix ``comment:``, the slug of another comment. It must match exactly once.
+Links to a file under ``blob/main`` must name an existing file; ``tree/`` links
+pass through unchecked.
 
 Usage:
     python3 tools/figures/code_links.py --check    # every target resolves (PR CI)
@@ -70,12 +72,8 @@ def require_file(path: str, ref: str | None) -> None:
     if ref is None:
         found = (ROOT / path).is_file()
     else:
-        res = subprocess.run(
-            ['git', '-C', str(ROOT), 'cat-file', '-t', f'{ref}:{path}'],
-            capture_output=True,
-            text=True,
-        )
-        found = res.stdout.strip() == 'blob'
+        git = ['git', '-C', str(ROOT), 'cat-file', '-t', f'{ref}:{path}']
+        found = subprocess.run(git, capture_output=True, text=True).stdout.strip() == 'blob'
     if not found:
         raise LinkError(f'{path}: file does not exist' + (f' at {ref}' if ref else ''))
 
@@ -114,43 +112,45 @@ def comments(text: str):
 
 
 def resolve_target(path: str, target: str, ref: str | None = None) -> int:
-    """Line of the definition, banner or (with ``comment-``) comment that ``target`` names."""
+    """Line of the definition, banner or (with ``comment:``) comment that ``target`` names."""
     text = source(path, ref)
-    tree = ast.parse(text)
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        raise LinkError(f'{path}: not Python source') from None
     defs = [a for name, a, _ in definitions(tree) if name == target]
     if len(defs) == 1:
         return defs[0]
     if len(defs) > 1:
         raise LinkError(f'{path}#{target}: {len(defs)} definitions share this name')
 
-    name = target.removeprefix('comment-')
+    is_comment = target.startswith('comment:')
+    name = target.removeprefix('comment:')
+    if not name:
+        raise LinkError(f'{path}#{target}: empty target')
     banners, others = [], []
     for i, tok in comments(text):
         m = BANNER.match(tok)
         if m:
             if not m.group(1).startswith('/') and slug(m.group(1)) == name:
                 banners.append(i)
-            if not m.group(1).startswith('/') and slug(m.group(1)) == target != name:
-                raise LinkError(
-                    f'{path}#{target}: the banner on line {i} reads as a comment link'
-                )
             continue
         body = tok.lstrip('#').strip()
         first_sentence = re.split(r'(?<=\.)\s', body)[0]
         if name in (slug(body), slug(first_sentence)):
             others.append(i)
-    hits = others if name != target else banners
+    hits = others if is_comment else banners
     if len(hits) == 1:
         return hits[0]
     if hits:
-        kind = 'comments' if name != target else 'banners'
+        kind = 'comments' if is_comment else 'banners'
         raise LinkError(f'{path}#{target}: {len(hits)} {kind} match this target')
     hint = ''
-    if name == target and others:
-        hint = f'; line {others[0]} is a comment, not a banner: link it as #comment-{name}'
-    elif name != target and banners:
+    if not is_comment and others:
+        hint = f'; line {others[0]} is a comment, not a banner: link it as #comment:{name}'
+    elif is_comment and banners:
         hint = f'; line {banners[0]} is a banner: link it as #{name}'
-    what = 'comment' if name != target else 'function or banner'
+    what = 'comment' if is_comment else 'function or banner'
     raise LinkError(f'{path}#{target}: no {what} matches this target{hint}')
 
 
@@ -164,11 +164,11 @@ def split(href: str) -> tuple[str, str] | None:
 
 def resolve(href: str, ref: str | None = None) -> str:
     """Line link for a name-based link, read from ``ref`` (None: the work tree);
-    other links pass through, a link to a repository file only when the file exists."""
+    other links pass through, a ``blob/main`` link only when its file exists."""
     parts = split(href)
     if parts is None:
-        if href.startswith(REPO_URL) and '#' not in href:
-            require_file(href[len(REPO_URL) :].partition('?')[0], ref)
+        if href.startswith(REPO_URL):
+            require_file(href[len(REPO_URL) :].partition('#')[0].partition('?')[0], ref)
         return href
     path, target = parts
     return f'{REPO_URL}{path}#L{resolve_target(path, target, ref)}'
@@ -188,7 +188,7 @@ def validate(ref: str | None) -> list[str]:
             continue
         try:
             resolve(href, ref)
-        except (LinkError, SyntaxError) as e:
+        except LinkError as e:
             errors.append(f'{e} [{href}]')
     for svg in SVGS:
         targets = {unescape(m.group(2)) for m in SVG_LINK.finditer(svg.read_text())}
@@ -215,7 +215,7 @@ def rewrite(ref: str | None, lenient: bool) -> list[str]:
             target = unescape(m.group(2))
             try:
                 new = resolve(target, ref)
-            except (LinkError, SyntaxError) as e:
+            except LinkError as e:
                 problems.append(f'{e} [{target}]')
                 if not lenient:
                     return m.group(0)

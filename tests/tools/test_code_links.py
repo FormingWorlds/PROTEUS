@@ -9,6 +9,8 @@ the committed diagram resolves.
 from __future__ import annotations
 
 import importlib.util
+import json
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -42,8 +44,6 @@ class Runner:
 
 def _commit_tree(root):
     """Make ``root`` a git repository with one commit of everything in it."""
-    import subprocess
-
     git = ['git', '-C', str(root), '-c', 'user.name=t', '-c', 'user.email=t@t']
     for step in (
         ['init', '-q'],
@@ -70,15 +70,15 @@ def test_banner_resolves_to_its_line_not_to_mentions(links):
     """The banner is line 7; the docstring (line 1) and closing banner (line 11) do not count."""
     assert links.resolve_target('pkg/mod.py', 'escape') == 7
     # the comment on line 8 slugs to 'escape-is-cheap-here', not 'escape'
-    assert links.resolve_target('pkg/mod.py', 'comment-escape-is-cheap-here') == 8
+    assert links.resolve_target('pkg/mod.py', 'comment:escape-is-cheap-here') == 8
 
 
 def test_comment_resolves_to_its_own_line(links):
     """A comment before an if block is line 13, not the if header on line 14."""
-    assert links.resolve_target('pkg/mod.py', 'comment-apply-impacts-now') == 13
-    assert links.resolve_target('pkg/mod.py', 'comment-apply-impacts-now-then-carry-on') == 13
+    assert links.resolve_target('pkg/mod.py', 'comment:apply-impacts-now') == 13
+    assert links.resolve_target('pkg/mod.py', 'comment:apply-impacts-now-then-carry-on') == 13
     with pytest.raises(links.LinkError, match='no comment matches'):
-        links.resolve_target('pkg/mod.py', 'comment-then-carry-on')
+        links.resolve_target('pkg/mod.py', 'comment:then-carry-on')
 
 
 def test_banner_and_comment_targets_never_stand_in_for_each_other(links, tmp_path):
@@ -90,10 +90,10 @@ def test_banner_and_comment_targets_never_stand_in_for_each_other(links, tmp_pat
         links.resolve_target('pkg/renamed.py', 'escape')
     assert str(err.value) == (
         'pkg/renamed.py#escape: no function or banner matches this target; '
-        'line 19 is a comment, not a banner: link it as #comment-escape'
+        'line 19 is a comment, not a banner: link it as #comment:escape'
     )
     with pytest.raises(links.LinkError, match='line 7 is a banner: link it as #escape'):
-        links.resolve_target('pkg/mod.py', 'comment-escape')
+        links.resolve_target('pkg/mod.py', 'comment:escape')
 
 
 def test_method_resolves_by_qualified_name(links):
@@ -111,7 +111,7 @@ def test_missing_and_duplicate_targets_raise(links, tmp_path):
     (tmp_path / 'pkg' / 'dup.py').write_text('# Same note\nx = 1\n# Same note\ny = 2\n')
     (tmp_path / 'pkg' / 'twice.py').write_text('def f():\n    pass\n\n\ndef f():\n    pass\n')
     with pytest.raises(links.LinkError, match='2 comments match'):
-        links.resolve_target('pkg/dup.py', 'comment-same-note')
+        links.resolve_target('pkg/dup.py', 'comment:same-note')
     with pytest.raises(links.LinkError, match='2 definitions share'):
         links.resolve_target('pkg/twice.py', 'f')
     with pytest.raises(links.LinkError, match='does not exist'):
@@ -162,20 +162,34 @@ def test_file_link_checks_existence_without_reading_the_file(links, tmp_path):
                 links.resolve(links.REPO_URL + odd, ref)
 
 
+def test_file_check_reads_the_tree_or_the_ref(links, tmp_path):
+    """A file added after the commit exists in the work tree only and a committed file
+    deleted from the tree exists at the ref only; a #L link gets the same check."""
+    _commit_tree(tmp_path)
+    (tmp_path / 'pkg' / 'new.py').write_text('x = 1\n')
+    (tmp_path / 'pkg' / 'mod.py').unlink()
+    new, old = links.REPO_URL + 'pkg/new.py', links.REPO_URL + 'pkg/mod.py#L12'
+    assert links.resolve(new) == new
+    assert links.resolve(old, 'HEAD') == old
+    with pytest.raises(links.LinkError, match='^pkg/new.py: file does not exist at HEAD$'):
+        links.resolve(new, 'HEAD')
+    with pytest.raises(links.LinkError, match='^pkg/mod.py: file does not exist$'):
+        links.resolve(old)
+
+
 def test_banner_and_comment_of_one_slug_resolve_by_kind(links, tmp_path):
     """With a banner and a comment of the same slug each kind finds its own line;
-    two banners of one slug, or a banner that reads as a comment link, are errors."""
+    two banners of one slug are an error; a banner whose text starts with COMMENT and a
+    comment of the rest of its slug are both linkable."""
     (tmp_path / 'pkg' / 'both.py').write_text('############### ESCAPE\nx = 1\n# Escape\n')
     assert links.resolve_target('pkg/both.py', 'escape') == 1
-    assert links.resolve_target('pkg/both.py', 'comment-escape') == 3
+    assert links.resolve_target('pkg/both.py', 'comment:escape') == 3
     (tmp_path / 'pkg' / 'two.py').write_text('############### A\nx = 1\n############### A\n')
     with pytest.raises(links.LinkError, match='2 banners match'):
         links.resolve_target('pkg/two.py', 'a')
-    (tmp_path / 'pkg' / 'clash.py').write_text('############### COMMENT NOTES\n# Notes\n')
-    with pytest.raises(links.LinkError, match='banner on line 1 reads as a comment link'):
-        links.resolve_target('pkg/clash.py', 'comment-notes')
-    (tmp_path / 'pkg' / 'closing.py').write_text('############### / COMMENT NOTES\n# Notes\n')
-    assert links.resolve_target('pkg/closing.py', 'comment-notes') == 2
+    (tmp_path / 'pkg' / 'notes.py').write_text('############### COMMENT NOTES\n# Notes\n')
+    assert links.resolve_target('pkg/notes.py', 'comment-notes') == 1
+    assert links.resolve_target('pkg/notes.py', 'comment:notes') == 2
 
 
 def test_main_checks_the_ref_once(links, tmp_path, monkeypatch, capsys):
@@ -207,8 +221,6 @@ def test_main_reads_the_tree_each_mode_names(links, tmp_path, monkeypatch, capsy
     """--check reads the work tree, or --ref; the refresh run reads origin/main; --deploy
     reads the work tree. The work tree moves the ESCAPE banner down a line and adds a NEW
     banner that the committed tree lacks, so each mode shows which tree it read."""
-    import subprocess
-
     escape, new = links.REPO_URL + 'pkg/mod.py#escape', links.REPO_URL + 'pkg/mod.py#new'
     monkeypatch.setattr(links, 'model_links', lambda: [escape, new])
     svg = tmp_path / 'fig.svg'
@@ -266,10 +278,50 @@ def test_validate_reports_missing_file_and_svg_out_of_step(links, tmp_path, monk
     assert [svg.read_text() for svg in svgs] == before  # --check writes nothing
 
 
+def test_errors_name_their_link_in_check_and_rewrite(links, tmp_path, monkeypatch):
+    """A hard-coded #L link in the model, an empty target and a name link into a file
+    that is not Python source are errors that name the link, in --check and in the
+    SVG rewrite."""
+    (tmp_path / 'pkg' / 'notes.md').write_text('# Notes\n\nSome (text\n')
+    hard = links.REPO_URL + 'pkg/mod.py#L12'
+    empty = links.REPO_URL + 'pkg/mod.py#comment:'
+    prose = links.REPO_URL + 'pkg/notes.md#notes'
+    monkeypatch.setattr(links, 'model_links', lambda: sorted([hard, empty, prose]))
+    svg = tmp_path / 'fig.svg'
+    svg.write_text(''.join(f'<a data-target="{h}"/>' for h in (hard, empty, prose)))
+    monkeypatch.setattr(links, 'SVGS', [svg])
+    assert links.validate(None) == [
+        f'hard-coded line anchor in arch_final.json: {hard}',
+        f'pkg/mod.py#comment:: empty target [{empty}]',
+        f'pkg/notes.md: not Python source [{prose}]',
+    ]
+    assert links.rewrite(None, lenient=True) == [
+        f'pkg/mod.py#comment:: empty target [{empty}]',
+        f'pkg/notes.md: not Python source [{prose}]',
+    ]
+
+
+def test_add_svg_links_stops_with_the_link_error(tmp_path, monkeypatch):
+    """Building the SVG overlay with a link to a missing file stops with the link error
+    and the place to fix it, not with a traceback."""
+    monkeypatch.syspath_prepend(str(_FIGURES))
+    import add_svg_links
+
+    (tmp_path / 'in.svg').write_text('<svg viewBox="0 0 10 10"></svg>')
+    gone = add_svg_links.resolve.__globals__['REPO_URL'] + 'src/proteus/no_such_module.py'
+    entry = {'x': 1.0, 'y': 1.0, 'w': 1.0, 'h': 1.0, 'href': gone}
+    (tmp_path / 'links.json').write_text(json.dumps([entry]))
+    with pytest.raises(
+        SystemExit, match='no_such_module.py: file does not exist; fix the link'
+    ):
+        add_svg_links.main(tmp_path / 'in.svg', tmp_path / 'links.json', tmp_path / 'out.svg')
+    assert not (tmp_path / 'out.svg').exists()
+
+
 def test_deploy_rewrite_drops_link_of_broken_target(links, tmp_path, monkeypatch):
     """--deploy links a good target to main and leaves a broken one without an href."""
     good = links.REPO_URL + 'pkg/mod.py#escape'
-    bad = links.REPO_URL + 'pkg/mod.py#comment-renamed-away'
+    bad = links.REPO_URL + 'pkg/mod.py#comment:renamed-away'
     svg = tmp_path / 'fig.svg'
     svg.write_text(
         f'<svg><a xlink:href="x" data-target="{good}"/>'

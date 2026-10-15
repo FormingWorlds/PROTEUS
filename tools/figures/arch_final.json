@@ -1012,7 +1012,7 @@
   {
    "kind": "rect",
    "cell": "v9_n4nsvPIJri3uECA1a-17",
-   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/proteus.py#comment-apply-giant-impacts-due-in-this-step",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/proteus.py#comment:apply-giant-impacts-due-in-this-step",
    "fill": "#A38F7A",
    "fill_opacity": 1,
    "stroke": "#10151B",
@@ -1027,7 +1027,7 @@
   {
    "kind": "text",
    "cell": "v9_n4nsvPIJri3uECA1a-17",
-   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/proteus.py#comment-apply-giant-impacts-due-in-this-step",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/proteus.py#comment:apply-giant-impacts-due-in-this-step",
    "align": "center",
    "mlines": [
     {
@@ -1508,7 +1508,7 @@
   {
    "kind": "path",
    "cell": "ixJzbOgBluzLFn6TTAe7-22",
-   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/proteus.py#comment-check-for-convergence",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/proteus.py#comment:check-for-convergence",
    "fill": "#FDFDFE",
    "fill_opacity": 1,
    "stroke": "#10151B",
@@ -2074,7 +2074,7 @@
   {
    "kind": "rect",
    "cell": "ixJzbOgBluzLFn6TTAe7-23",
-   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/proteus.py#comment-run-offline-chemistry",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/proteus.py#comment:run-offline-chemistry",
    "fill": "#1B6FA8",
    "fill_opacity": 1,
    "stroke": "#10151B",
@@ -2089,7 +2089,7 @@
   {
    "kind": "text",
    "cell": "ixJzbOgBluzLFn6TTAe7-23",
-   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/proteus.py#comment-run-offline-chemistry",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/proteus.py#comment:run-offline-chemistry",
    "align": "center",
    "mlines": [
     {
@@ -3907,7 +3907,7 @@
   {
    "kind": "path",
    "cell": "v9_n4nsvPIJri3uECA1a-90",
-   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/star/wrapper.py#comment-prepare-mors",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/star/wrapper.py#comment:prepare-mors",
    "fill": "#E0A32E",
    "fill_opacity": 1,
    "stroke": "#10151B",
@@ -3918,7 +3918,7 @@
   {
    "kind": "text",
    "cell": "v9_n4nsvPIJri3uECA1a-90",
-   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/star/wrapper.py#comment-prepare-mors",
+   "href": "https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/star/wrapper.py#comment:prepare-mors",
    "align": "center",
    "mlines": [
     {
