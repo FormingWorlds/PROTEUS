@@ -547,35 +547,46 @@ def test_plot_result_objective_logarithmic_x_axis_branch(tmp_path, monkeypatch):
 
 @pytest.mark.parametrize('d', [1, 2])
 def test_plot_result_objective_renders_any_parameter_count(tmp_path, monkeypatch, d):
-    """A real figure is written for one parameter as for two: a 2.7 d by 3.2 inch
-    grid with histograms on the top row, which carries no tick labels and the best
-    value as title, and the objective below, with y tick labels on the first panel only.
+    """A real figure is written for one parameter as for two.
 
     By default matplotlib squeezes a (2, 1) axes grid to 1-D; the function
     indexes ``axs[row, col]``, so the grid must stay 2-D for ``d = 1``.
     """
+    from matplotlib.colors import to_rgb
+
     grids = _record_grids(monkeypatch)
     (tmp_path / 'plots').mkdir()
     parameters = dict(list({'a': [0.0, 1.0], 'b': [2.0, 5.0]}.items())[:d])
-    D = {'X': np.random.default_rng(1).random((6, d)), 'Y': np.linspace(-0.5, 0.9, 6)}
-
-    plot_mod.plot_result_objective(D, parameters, n_init=2, directory=str(tmp_path))
+    X = np.random.default_rng(1).random((6, d))
+    Y = np.array([0.1, -0.5, 0.4, 0.9, 0.2, 0.6])  # best sample 3, after the 2 initial ones
+    plot_mod.plot_result_objective(
+        {'X': X, 'Y': Y}, parameters, n_init=2, directory=str(tmp_path)
+    )
 
     axs = grids[0]
     axs[0, 0].figure.canvas.draw()
     assert axs.shape == (2, d)
     assert tuple(axs[0, 0].figure.get_size_inches()) == pytest.approx((2.7 * d, 3.2))
-    assert (axs[0, 0].get_ylabel(), axs[1, 0].get_ylabel()) == (
-        'Histogram',
-        'Value of objective',
-    )
+    assert axs[0, 0].get_ylabel() == 'Histogram'
+    assert axs[1, 0].get_ylabel() == 'Value of objective'
     assert [ax.get_xlabel() for ax in axs[1]] == list(parameters)
-    for i in range(d):
-        assert axs[0, i].patches
+    colours = [to_rgb(c) for c in 'cckmkk']
+    for i, (lo, hi) in enumerate(parameters.values()):
+        x = lo + (hi - lo) * X[:, i]
+        points = axs[1, i].collections[-1]
+        np.testing.assert_allclose(points.get_offsets(), np.column_stack([x, Y]))
+        np.testing.assert_allclose(points.get_facecolors()[:, :3], colours)
+        assert len(axs[0, i].patches) == 2 * 11  # later and initial samples, 11 bins each
+        bars = {to_rgb(c): 0.0 for c in 'kc'}
+        for bar in axs[0, i].patches:
+            bars[bar.get_facecolor()[:3]] += bar.get_height()
+        assert bars == {to_rgb('k'): 4.0, to_rgb('c'): 2.0}  # 4 later samples under 2 initial
+        best = [ln.get_xdata()[0] for ln in axs[0, i].lines if ln.get_color() == 'm']
+        assert best == pytest.approx([x[3]])
+        assert axs[0, i].get_title() == ('Best: ' if i == 0 else '') + f'{x[3]:g}'
         assert not any(t.get_text() for t in axs[0, i].get_xticklabels())
         assert not any(t.get_text() for t in axs[0, i].get_yticklabels())
         assert any(t.get_text() for t in axs[1, i].get_yticklabels()) == (i == 0)
-        assert axs[0, i].get_title().startswith('Best: ') == (i == 0)
     out = tmp_path / 'plots' / f'result_objective.{plot_mod.fmt}'
     assert out.stat().st_size > 0
 
