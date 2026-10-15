@@ -83,8 +83,10 @@ banner fails the check instead of moving the link to a comment of that name.
   `#L<n>` link on `main`. A target that no longer resolves loses its link, with
   a warning.
 - PR CI runs `code_links.py --check`, which fails on a target that no longer
-  resolves, a link to a file that does not exist, or a hard-coded `#L` anchor. Renaming a linked function or banner
-  means updating the link in draw.io and `arch_final.json`.
+  resolves, a link to a file that does not exist, a hard-coded `#L` anchor, or
+  an SVG whose `data-target` links differ from `arch_final.json`. Renaming a
+  linked function or banner means updating the link in draw.io, in
+  `arch_final.json` and in the `data-target` of both SVGs.
 - `code_links.py` without options refreshes the lines in the committed SVGs from
   `origin/main`.
 

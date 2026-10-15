@@ -63,6 +63,21 @@ def source(path: str, ref: str | None) -> str:
     return res.stdout
 
 
+def require_file(path: str, ref: str | None) -> None:
+    """Raise LinkError unless ``path`` is a file in the work tree (``ref`` None) or at ``ref``."""
+    if ref is None:
+        found = (ROOT / path).is_file()
+    else:
+        res = subprocess.run(
+            ['git', '-C', str(ROOT), 'cat-file', '-t', f'{ref}:{path}'],
+            capture_output=True,
+            text=True,
+        )
+        found = res.stdout.strip() == 'blob'
+    if not found:
+        raise LinkError(f'{path}: file does not exist' + (f' at {ref}' if ref else ''))
+
+
 def definitions(tree: ast.AST):
     """Yield (qualified name, first line, last line) of every def and class."""
     stack = [(tree, '')]
@@ -85,7 +100,7 @@ def comments(text: str):
 
 
 def resolve_target(path: str, target: str, ref: str | None = None) -> int:
-    """Line of the definition or comment that ``target`` names."""
+    """Line of the definition, banner or (with ``comment-``) comment that ``target`` names."""
     text = source(path, ref)
     tree = ast.parse(text)
     defs = [a for name, a, _ in definitions(tree) if name == target]
@@ -101,6 +116,10 @@ def resolve_target(path: str, target: str, ref: str | None = None) -> int:
         if m:
             if not m.group(1).startswith('/') and slug(m.group(1)) == name:
                 banners.append(i)
+            if slug(m.group(1)) == target != name:
+                raise LinkError(
+                    f'{path}#{target}: the banner on line {i} reads as a comment link'
+                )
             continue
         body = tok.lstrip('#').strip()
         first_sentence = re.split(r'(?<=\.)\s', body)[0]
@@ -110,7 +129,8 @@ def resolve_target(path: str, target: str, ref: str | None = None) -> int:
     if len(hits) == 1:
         return hits[0]
     if hits:
-        raise LinkError(f'{path}#{target}: {len(hits)} comments match this target')
+        kind = 'comments' if name != target else 'banners'
+        raise LinkError(f'{path}#{target}: {len(hits)} {kind} match this target')
     hint = ''
     if name == target and others:
         hint = f'; line {others[0]} is a comment, not a banner: link it as #comment-{name}'
@@ -134,7 +154,7 @@ def resolve(href: str, ref: str | None = None) -> str:
     parts = split(href)
     if parts is None:
         if href.startswith(REPO_URL) and '#' not in href:
-            source(href[len(REPO_URL) :], ref)
+            require_file(href[len(REPO_URL) :].partition('?')[0], ref)
         return href
     path, target = parts
     return f'{REPO_URL}{path}#L{resolve_target(path, target, ref)}'
@@ -156,8 +176,12 @@ def validate(ref: str | None) -> list[str]:
         except (LinkError, SyntaxError) as e:
             errors.append(str(e))
     for svg in SVGS:
-        if not SVG_LINK.search(svg.read_text()):
+        targets = {unescape(m.group(2)) for m in SVG_LINK.finditer(svg.read_text())}
+        if not targets:
             errors.append(f'{svg.name}: no name-based links; rebuild the figure')
+        elif targets != set(model_links()):
+            diff = ', '.join(sorted(targets ^ set(model_links())))
+            errors.append(f'{svg.name}: links differ from arch_final.json: {diff}')
     return errors
 
 

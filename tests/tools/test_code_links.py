@@ -132,6 +132,51 @@ def test_file_link_must_name_an_existing_file(links):
         links.resolve(links.REPO_URL + 'pkg/gone.py')
 
 
+def test_file_link_checks_existence_without_reading_the_file(links, tmp_path):
+    """A binary file passes, a query is ignored, a directory fails, in the work tree
+    and at a git ref alike."""
+    import subprocess
+
+    (tmp_path / 'pkg' / 'logo.png').write_bytes(b'\x89PNG\r\n\x1a\n\x00\xff')
+    git = ['git', '-C', str(tmp_path), '-c', 'user.name=t', '-c', 'user.email=t@t']
+    subprocess.run([*git, 'init', '-q'], check=True)
+    subprocess.run([*git, 'add', '.'], check=True)
+    subprocess.run([*git, 'commit', '-q', '-m', 'sample'], check=True)
+    for ref in (None, 'HEAD'):
+        for ok in ('pkg/logo.png', 'pkg/mod.py?plain=1'):
+            assert links.resolve(links.REPO_URL + ok, ref) == links.REPO_URL + ok
+        for bad in ('pkg', 'pkg/gone.py'):
+            with pytest.raises(links.LinkError, match=f'{bad}: file does not exist'):
+                links.resolve(links.REPO_URL + bad, ref)
+
+
+def test_banner_and_comment_of_one_slug_resolve_by_kind(links, tmp_path):
+    """With a banner and a comment of the same slug each kind finds its own line;
+    two banners of one slug, or a banner that reads as a comment link, are errors."""
+    (tmp_path / 'pkg' / 'both.py').write_text('############### ESCAPE\nx = 1\n# Escape\n')
+    assert links.resolve_target('pkg/both.py', 'escape') == 1
+    assert links.resolve_target('pkg/both.py', 'comment-escape') == 3
+    (tmp_path / 'pkg' / 'two.py').write_text('############### A\nx = 1\n############### A\n')
+    with pytest.raises(links.LinkError, match='2 banners match'):
+        links.resolve_target('pkg/two.py', 'a')
+    (tmp_path / 'pkg' / 'clash.py').write_text('############### COMMENT NOTES\n# Notes\n')
+    with pytest.raises(links.LinkError, match='banner on line 1 reads as a comment link'):
+        links.resolve_target('pkg/clash.py', 'comment-notes')
+
+
+def test_validate_reports_missing_file_and_svg_out_of_step(links, tmp_path, monkeypatch):
+    """--check names a link to a missing file and an SVG whose links differ from the model."""
+    good, gone = links.REPO_URL + 'pkg/mod.py#escape', links.REPO_URL + 'pkg/gone.py'
+    monkeypatch.setattr(links, 'model_links', lambda: sorted([good, gone]))
+    svg = tmp_path / 'fig.svg'
+    svg.write_text(f'<svg><a xlink:href="x" data-target="{good}"/></svg>')
+    monkeypatch.setattr(links, 'SVGS', [svg])
+    assert links.validate(None) == [
+        'pkg/gone.py: file does not exist',
+        f'fig.svg: links differ from arch_final.json: {gone}',
+    ]
+
+
 def test_deploy_rewrite_drops_link_of_broken_target(links, tmp_path, monkeypatch):
     """--deploy links a good target to main and leaves a broken one without an href."""
     good = links.REPO_URL + 'pkg/mod.py#escape'
