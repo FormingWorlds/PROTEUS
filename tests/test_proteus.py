@@ -3180,6 +3180,27 @@ def test_init_timing_line_times_the_zalmoxis_equilibration(tmp_path, monkeypatch
     assert keys == INIT_TIMING_KEYS
 
 
+@pytest.mark.parametrize(
+    ('environ', 'enabled'),
+    [
+        ({}, False),
+        ({'PROTEUS_TIMING': ''}, False),
+        ({'PROTEUS_TIMING': '0'}, False),
+        ({'PROTEUS_TIMING': 'off'}, False),
+        ({'PROTEUS_TIMING_X': '1'}, False),
+        ({'PROTEUS_TIMING': '1'}, True),
+        ({'PROTEUS_TIMING': 'True'}, True),
+        ({'PROTEUS_TIMING': 'YES'}, True),
+        ({'PROTEUS_TIMING': 'on'}, True),
+    ],
+)
+def test_timing_switch_reads_proteus_timing(environ, enabled):
+    """Timing is on for 1, true, yes or on in any case, and off otherwise or when unset."""
+    from proteus.proteus import _timing_enabled
+
+    assert _timing_enabled(environ) is enabled
+
+
 def test_timing_lines_absent_when_timing_is_off(tmp_path, monkeypatch, caplog):
     """With ``PROTEUS_TIMING`` unset the run logs no ``[INIT_TIMING]`` and no
     ``[IT_TIMING]`` line, while its other INFO lines still reach the log."""
@@ -3204,6 +3225,7 @@ def test_init_timing_line_on_resume_leaves_out_structure_and_equilibrate(
     p = _make_proteus_instance(tmp_path, struct_module='zalmoxis', interior_module='aragog')
     p.config.interior_struct.zalmoxis.equilibrate_init = True
     (tmp_path / 'data').mkdir(exist_ok=True)
+    solve, equilibrate = MagicMock(), MagicMock()
     with caplog.at_level(logging.INFO, logger='fwl.proteus.proteus'):
         _resume_with_patches(
             p,
@@ -3214,10 +3236,14 @@ def test_init_timing_line_on_resume_leaves_out_structure_and_equilibrate(
             patch('proteus.accretion.wrapper.restore_accretion_state'),
             patch('proteus.proteus.setup_logger'),
             patch.object(type(p), '_resync_zalmoxis_mesh'),
+            patch('proteus.interior_energetics.wrapper.solve_structure', solve),
+            patch('proteus.interior_energetics.wrapper.equilibrate_initial_state', equilibrate),
             # The line precedes the main loop; stop at its first call.
             patch('proteus.proteus.is_write_snapshot', side_effect=_StopAfterMeshRestore),
         )
 
+    solve.assert_not_called()
+    equilibrate.assert_not_called()
     (line,) = [r.message for r in caplog.records if r.message.startswith('[INIT_TIMING]')]
     keys = [field.split('=')[0] for field in line.split('] ')[1].split()]
     assert keys == [k for k in INIT_TIMING_KEYS if k not in ('structure', 'equilibrate')]

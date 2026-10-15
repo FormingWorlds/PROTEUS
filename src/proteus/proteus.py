@@ -42,7 +42,13 @@ from proteus.utils.logs import (
     setup_logger,
 )
 
-_IT_TIMING_ENABLED = os.environ.get('PROTEUS_TIMING', '').lower() in ('1', 'true', 'yes', 'on')
+
+def _timing_enabled(environ=os.environ) -> bool:
+    """Whether ``PROTEUS_TIMING`` asks for the [INIT_TIMING] and [IT_TIMING] lines."""
+    return environ.get('PROTEUS_TIMING', '').lower() in ('1', 'true', 'yes', 'on')
+
+
+_IT_TIMING_ENABLED = _timing_enabled()
 
 # Consecutive iterations without a converged atmosphere after which a run ends,
 # whatever the interior is doing, and always above the streak the atmosphere
