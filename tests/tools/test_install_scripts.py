@@ -1300,9 +1300,16 @@ def test_socrates_cache_key_covers_every_file_the_build_reads():
         ('Build SOCRATES (cache miss)', 'bash tools/get_socrates.sh --force'),
         ('Build AGNI (Pkg.instantiate)', 'julia --project=. deps/build.jl nodata'),
     ],
+    ids=['socrates step', 'agni step'],
 )
-@pytest.mark.parametrize('ld_mode', [0o755, 0o644, None])
-@pytest.mark.parametrize('preset', [None, '/Applications/Xcode.app/Contents/Developer'])
+@pytest.mark.parametrize(
+    'ld_mode', [0o755, 0o644, None], ids=['clt ld', 'clt ld not executable', 'no clt ld']
+)
+@pytest.mark.parametrize(
+    'preset',
+    [None, '/Applications/Xcode.app/Contents/Developer'],
+    ids=['no preset', 'xcode preset'],
+)
 def test_socrates_links_use_ld_from_the_clt_folder(tmp_path, step, build_cmd, ld_mode, preset):
     """The steps that link SOCRATES export DEVELOPER_DIR=<CLT> when the CLT has an ld.
 
@@ -1318,6 +1325,7 @@ def test_socrates_links_use_ld_from_the_clt_folder(tmp_path, step, build_cmd, ld
     )
     body = action.split(f'- name: {step}\n', 1)[1].split('\n    - name: ', 1)[0]
     lines = [ln.strip() for ln in body.splitlines()]
+    assert lines.count(build_cmd) == 1, f'{step}: expected one {build_cmd!r} line'
     run = lines[lines.index('run: |') + 1 : lines.index(build_cmd)]
 
     fake = tmp_path / 'CLT'
