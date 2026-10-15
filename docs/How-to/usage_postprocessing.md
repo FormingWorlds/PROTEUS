@@ -32,7 +32,7 @@ After a fatal error the snapshots written so far stay on disk, and `proteus offc
 |---|---|---|
 | `"end"` (default) | The final state of the simulation | 1 |
 | `"all"` | Every atmosphere snapshot, `data/<time>_atm.nc` | One per snapshot |
-| `[t1, t2, ...]` | For each time [yr], the atmosphere snapshot nearest it; a snapshot nearest two times runs once | Up to the length of the list |
+| `[t1, t2, ...]` | For each time (yr), the atmosphere snapshot nearest it; a snapshot nearest two times runs once | Up to the length of the list |
 
 The snapshots run in order of increasing time. Which atmosphere snapshots exist is set by `params.out.write_mod` and `params.out.dt_write_rel`. An atmosphere module that writes no snapshots (the dummy) leaves the helpfile times as the snapshots. Each run uses the helpfile row of its own snapshot for the surface composition, the stellar spectrum and the planet radius and gravity. A snapshot without an atmosphere (zero surface pressure, as after desiccation) is left out, both at the end of a run and with `proteus offchem`. If a run fails, the sequence stops with an error; the results of the snapshots before it are kept.
 
@@ -55,13 +55,13 @@ Snapshot times in file names use the sub-year form of the other snapshots: `12p3
 | File | Content |
 |---|---|
 | `data/<time>_chem.nc` | VULCAN NetCDF output of one snapshot, in CGS units: structure, mixing ratios (`x_gas`), number densities, reaction rates and element conservation |
-| `offchem/<module>_<time>.csv` | Table of one snapshot, from the top of the atmosphere down: temperature `tmp` [K], pressure `p` [Pa], height `z` [m], `Kzz` [cm2 s-1] and the mixing ratio of each gas |
+| `offchem/<module>_<time>.csv` | Table of one snapshot, from the top of the atmosphere down: temperature `tmp` (K), pressure `p` (Pa), height `z` (m), `Kzz` (cm2 s-1) and the mixing ratio of each gas |
 | `offchem/<module>.csv` | Copy of the table at the latest snapshot processed |
 | `offchem/mix.*`, `offchem/evo.*` | VULCAN's plots of the mixing ratios and their evolution, for the latest snapshot processed (each run overwrites them) |
 
 Each chemistry call first clears `offchem/` (and its VULCAN input files), while the `data/*_chem.nc` files are kept. At the end of a run the `_chem.nc` files are packed into `data/data.tar` with the other snapshots when archiving is on (`params.out.archive_mod`). Before chemistry runs, at the end of a run or with `proteus offchem`, an existing archive is unpacked. VULCAN logs into the PROTEUS log file (`proteus_*.log`, or `offchem.log` for `proteus offchem`), and each run starts with a line naming its snapshot time.
 
-The synthetic observations with `observe.source = "offchem"` read the table at their own time, the end of the run, so `atmos_chem.times` has to include the end for them. The chemistry plot (`plots/plot_chem_atmosphere.*`) shows the latest chemistry snapshot at its own pressures, together with the atmosphere snapshot nearest it. `plot_chem_atmosphere(..., time=t)` in `proteus.plot.cpl_chem_atmosphere` plots the chemistry snapshot nearest the time `t` [yr] instead.
+The synthetic observations with `observe.source = "offchem"` read the table at their own time, the end of the run, so `atmos_chem.times` has to include the end for them. The chemistry plot (`plots/plot_chem_atmosphere.*`) shows the latest chemistry snapshot at its own pressures, together with the atmosphere snapshot nearest it. `plot_chem_atmosphere(..., time=t)` in `proteus.plot.cpl_chem_atmosphere` plots the chemistry snapshot nearest the time `t` (yr) instead.
 
 ### Examples
 
