@@ -2192,6 +2192,7 @@ def test_read_spider_solver_power_uses_rho_s_volume_s(tmp_path):
         'volume_s': 1.2e20 * (1.0 - 0.04 * n),
         'Hradio_s': 1.0e-12 * (1.0 + 0.1 * n),
         'Htidal_s': 6.0e-9 * (1.0 + 0.3 * n) / (3000.0 + 250.0 * n),  # q_vol / rho_s
+        'phi_s': 0.1 + 0.05 * n,
     }
     radius_b = np.linspace(6.4e6, 3.5e6, 11)  # surface to CMB, as SPIDER orders them
     fields_b = {'area_b': 4.0 * np.pi * radius_b**2, 'radius_b': radius_b}
@@ -2220,6 +2221,10 @@ def test_read_spider_solver_power_uses_rho_s_volume_s(tmp_path):
     q_vol = fields['Htidal_s'] * fields['rho_s']
     assert output['F_tidal'] * area == pytest.approx(
         np.dot(q_vol, fields['volume_s']), rel=1e-12
+    )
+    melt_volume = fields['phi_s'] * rho_vol / 4000.0  # the fixture's melt density
+    assert output['Phi_global_vol'] == pytest.approx(
+        melt_volume.sum() / fields['volume_s'].sum()
     )
 
 
