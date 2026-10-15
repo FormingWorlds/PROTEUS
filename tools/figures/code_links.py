@@ -180,6 +180,7 @@ def model_links() -> list[str]:
 
 
 def validate(ref: str | None) -> list[str]:
+    """Errors of the model and SVG links; ``ref`` (None: the work tree) is already checked."""
     errors, model = [], set(model_links())
     for href in sorted(model):
         if href.startswith(REPO) and LINE_ANCHOR.match(href.partition('#')[2]):
@@ -205,7 +206,7 @@ def validate(ref: str | None) -> list[str]:
 
 def rewrite(ref: str | None, lenient: bool) -> list[str]:
     """Re-resolve the links in the SVGs. A broken target loses its link when
-    ``lenient`` and is left as it was otherwise."""
+    ``lenient`` and is left as it was otherwise; ``ref`` is already checked."""
     problems = []
     for svg in SVGS:
         text = svg.read_text()

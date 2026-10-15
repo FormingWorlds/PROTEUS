@@ -203,6 +203,42 @@ def test_main_checks_the_ref_once(links, tmp_path, monkeypatch, capsys):
         links.main(['--ref', ''])
 
 
+def test_main_reads_the_tree_each_mode_names(links, tmp_path, monkeypatch, capsys):
+    """--check reads the work tree, or --ref; the refresh run reads origin/main; --deploy
+    reads the work tree. The work tree moves the ESCAPE banner down a line and adds a NEW
+    banner that the committed tree lacks, so each mode shows which tree it read."""
+    import subprocess
+
+    escape, new = links.REPO_URL + 'pkg/mod.py#escape', links.REPO_URL + 'pkg/mod.py#new'
+    monkeypatch.setattr(links, 'model_links', lambda: [escape, new])
+    svg = tmp_path / 'fig.svg'
+    svg.write_text(
+        f'<svg><a xlink:href="a" data-target="{escape}"/><a xlink:href="b" data-target="{new}"/></svg>'
+    )
+    monkeypatch.setattr(links, 'SVGS', [svg])
+    _commit_tree(tmp_path)
+    subprocess.run(
+        ['git', '-C', str(tmp_path), 'update-ref', 'refs/remotes/origin/main', 'HEAD'],
+        check=True,
+    )
+    (tmp_path / 'pkg' / 'mod.py').write_text('############### NEW\n' + SAMPLE)
+    links.source.cache_clear()
+
+    assert links.main(['--check']) == 0
+    assert links.main(['--check', '--ref', 'HEAD']) == 1
+    assert 'pkg/mod.py#new: no function or banner matches' in capsys.readouterr().err
+    assert links.main([]) == 1
+    assert (
+        f'xlink:href="{links.REPO_URL}pkg/mod.py#L7" data-target="{escape}"' in svg.read_text()
+    )
+    assert f'xlink:href="b" data-target="{new}"' in svg.read_text()
+    assert links.main(['--deploy']) == 0
+    assert f'xlink:href="{links.REPO_URL}pkg/mod.py#L1" data-target="{new}"' in svg.read_text()
+    assert (
+        f'xlink:href="{links.REPO_URL}pkg/mod.py#L8" data-target="{escape}"' in svg.read_text()
+    )
+
+
 def test_validate_reports_missing_file_and_svg_out_of_step(links, tmp_path, monkeypatch):
     """--check names a link to a missing file, and per SVG the model links it lacks,
     the links it has beyond the model (escaped as in the SVG), or no links at all."""
