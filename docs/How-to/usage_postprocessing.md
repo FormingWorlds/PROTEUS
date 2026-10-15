@@ -15,7 +15,7 @@ Two options set the chemistry runs: `atmos_chem.mode` sets **whether** they run 
 | `atmos_chem.mode` | At the end of `proteus start` | With `proteus offchem -c [cfgfile]` |
 |---|---|---|
 | `"none"` (default) | Not run | Runs at `atmos_chem.times` |
-| `"offline"` | Runs at `atmos_chem.times` once the simulation stops on a termination criterion; not after a fatal error, and not after desiccation | Runs at `atmos_chem.times` |
+| `"offline"` | Runs at `atmos_chem.times` once the simulation stops on a termination criterion; not after a fatal error | Runs at `atmos_chem.times` |
 | `"online"` | Rejected when the config is loaded: not yet implemented | Rejected |
 
 `mode = "offline"` needs a chemistry module; a config with `mode = "offline"` and `module = "none"` is rejected. `proteus offchem` runs the chemistry whatever the mode, so a finished run can be postprocessed with other chemistry settings (for example another network, or photochemistry off) without running the evolution again:
@@ -34,7 +34,7 @@ After a fatal error the snapshots written so far stay on disk, and `proteus offc
 | `"all"` | Every atmosphere snapshot, `data/<time>_atm.nc` | One per snapshot |
 | `[t1, t2, ...]` | For each time [yr], the atmosphere snapshot nearest it; a snapshot nearest two times runs once | Up to the length of the list |
 
-The snapshots run in order of increasing time. Which atmosphere snapshots exist is set by `params.out.write_mod` and `params.out.dt_write_rel`. An atmosphere module that writes no snapshots (the dummy) leaves the helpfile times as the snapshots. Each run uses the helpfile row of its own snapshot for the surface composition, the stellar spectrum and the planet radius and gravity. If one run fails, it is logged and skipped, and the others continue.
+The snapshots run in order of increasing time. Which atmosphere snapshots exist is set by `params.out.write_mod` and `params.out.dt_write_rel`. An atmosphere module that writes no snapshots (the dummy) leaves the helpfile times as the snapshots. Each run uses the helpfile row of its own snapshot for the surface composition, the stellar spectrum and the planet radius and gravity. A snapshot without an atmosphere (zero surface pressure, as after desiccation) is left out, both at the end of a run and with `proteus offchem`. If a run fails, the sequence stops with an error; the results of the snapshots before it are kept.
 
 ### Initial composition: `atmos_chem.vulcan.ini_mix`
 
@@ -56,11 +56,12 @@ Snapshot times in file names use the sub-year form of the other snapshots: `12p3
 |---|---|
 | `data/<time>_chem.nc` | VULCAN NetCDF output of one snapshot, in CGS units: structure, mixing ratios (`x_gas`), number densities, reaction rates and element conservation |
 | `offchem/<module>_<time>.csv` | Table of one snapshot, from the top of the atmosphere down: temperature `tmp` [K], pressure `p` [Pa], height `z` [m], `Kzz` [cm2 s-1] and the mixing ratio of each gas |
-| `offchem/<module>.csv` | Copy of the table at the latest snapshot processed, read by the synthetic observations (`observe.source = "offchem"`) and the chemistry plot |
+| `offchem/<module>.csv` | Copy of the table at the latest snapshot processed |
+| `offchem/mix.*`, `offchem/evo.*` | VULCAN's plots of the mixing ratios and their evolution, for the latest snapshot processed (each run overwrites them) |
 
-Each chemistry call first clears `offchem/` (and its VULCAN input files), while the `data/*_chem.nc` files are kept. At the end of a run the `_chem.nc` files are packed into `data/data.tar` with the other snapshots when archiving is on (`params.out.archive_mod`); `proteus offchem` unpacks the archive first. VULCAN logs into the PROTEUS log file (`proteus_*.log`, or `offchem.log` for `proteus offchem`), and each run starts with a line naming its snapshot time.
+Each chemistry call first clears `offchem/` (and its VULCAN input files), while the `data/*_chem.nc` files are kept. At the end of a run the `_chem.nc` files are packed into `data/data.tar` with the other snapshots when archiving is on (`params.out.archive_mod`). Before chemistry runs, at the end of a run or with `proteus offchem`, an existing archive is unpacked. VULCAN logs into the PROTEUS log file (`proteus_*.log`, or `offchem.log` for `proteus offchem`), and each run starts with a line naming its snapshot time.
 
-The chemistry plot (`plots/plot_chem_atmosphere.*`) shows the latest chemistry snapshot, together with the atmosphere snapshot nearest it. `plot_chem_atmosphere(..., time=t)` in `proteus.plot.cpl_chem_atmosphere` plots the chemistry snapshot nearest the time `t` [yr] instead.
+The synthetic observations with `observe.source = "offchem"` read the table at their own time, the end of the run, so `atmos_chem.times` has to include the end for them. The chemistry plot (`plots/plot_chem_atmosphere.*`) shows the latest chemistry snapshot at its own pressures, together with the atmosphere snapshot nearest it. `plot_chem_atmosphere(..., time=t)` in `proteus.plot.cpl_chem_atmosphere` plots the chemistry snapshot nearest the time `t` [yr] instead.
 
 ### Examples
 

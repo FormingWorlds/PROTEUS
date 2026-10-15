@@ -69,35 +69,6 @@ def helpfile_row_at(hf_all: pd.DataFrame, time: float) -> dict:
     return hf_all.iloc[idx].to_dict()
 
 
-def read_vulcan_netcdf(fpath: str) -> dict:
-    """Read the result of a VULCAN run from its NetCDF output file.
-
-    Values are in the CGS units VULCAN writes: pressure in dyn cm-2, height in
-    cm, Kzz in cm2 s-1. Arrays are ordered from the bottom of the column up.
-
-    Parameters
-    ----------
-    fpath : str
-        Path to a ``*_chem.nc`` file written by VULCAN.
-
-    Returns
-    -------
-    dict
-        'p' and 'tmp' at layer centres [nz], 'pl', 'zl' and 'Kzz' at the
-        interfaces [nz+1] (Kzz is defined only on the nz-1 interior ones, and
-        NaN at the bottom and top), 'species' (list of str) and 'x_gas',
-        the volume mixing ratios [nz, number of species].
-    """
-    import netCDF4 as nc
-
-    with nc.Dataset(fpath) as ds:
-        out = {}
-        for key in ('p', 'pl', 'tmp', 'zl', 'Kzz', 'x_gas'):
-            out[key] = np.ma.filled(ds.variables[key][:].astype(float), np.nan)
-        out['species'] = [str(sp) for sp in ds.variables['species'][:]]
-    return out
-
-
 def read_result(outdir: str, module: str, filename: str | None = None) -> pd.DataFrame:
     """
     Read chemistry model output file and return as DataFrame.

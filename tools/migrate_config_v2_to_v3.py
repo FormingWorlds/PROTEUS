@@ -291,8 +291,8 @@ _IC_FIELDS = {
     'interior.dummy.ini_tmagma',
 }
 
-# Chemistry scheduling field consumed by the chemistry-schedule handler: 3.0
-# split 2.0's `when` into `mode` (whether) and `times` (which snapshots).
+# Chemistry scheduling field consumed by the chemistry-schedule handler. The
+# current schema replaced `when` with `mode` (whether) and `times` (which snapshots).
 _CHEM_WHEN = 'atmos_chem.when'
 
 # Orbit-evolution fields consumed by the orbit-dispatch handler: 2.0's bool
@@ -656,9 +656,12 @@ def _handle_temperature_mode(eff_v2, explicit, v3, active, report):
 def _handle_chem_schedule(eff_v2, v3, report):
     """Map 2.0 atmos_chem.when onto 3.0 atmos_chem.mode and atmos_chem.times.
 
-    2.0 'manually' ran nothing and 'offline' ran once on the final state.
-    2.0 'online' post-processed every snapshot from inside the main loop; 3.0
-    runs the same calculation on every snapshot after the simulation.
+    'manually' ran nothing and 'offline' ran once on the final state.
+    'online' ran on each snapshot from inside the main loop while the planet
+    was not desiccated. mode 'offline' with times 'all' runs on the same
+    snapshots after the simulation, and on the final state too. The results
+    can differ: the climate-profile initial composition was read upside down
+    before, and is now read the right way up.
     """
     when = eff_v2.get(_CHEM_WHEN, 'manually')
     module = eff_v2.get('atmos_chem.module')
@@ -673,7 +676,8 @@ def _handle_chem_schedule(eff_v2, v3, report):
         v3['atmos_chem.times'] = 'all'
         report.warnings.append(
             "atmos_chem.when = 'online' became mode = 'offline' with times = 'all': "
-            'every snapshot is post-processed after the simulation, not during it.'
+            'every snapshot with an atmosphere is post-processed after the '
+            'simulation, not during it, and the results can differ from the old ones.'
         )
 
 

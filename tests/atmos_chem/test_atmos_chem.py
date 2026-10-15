@@ -255,25 +255,32 @@ def test_run_chemistry_invalid_module(tmp_path):
 def test_run_chemistry_vulcan_end_returns_final_state(patched_run_vulcan, tmp_path):
     """
     With module='vulcan' and times='end', run_vulcan runs once, on the final
-    helpfile row, with the config passed through unchanged and first=True.
+    helpfile row, with the config passed through unchanged and a new, empty
+    network-compilation state.
 
     Physics: the returned profile is the final state (surface 1500 K, not
     the 3000 K of the first row), with positive temperatures and pressures
     increasing downwards.
     """
-    patched_run_vulcan.side_effect = lambda dirs, config, hf_row, first: _write_vulcan_csv(
+    patched_run_vulcan.side_effect = lambda dirs, config, hf_row, **_: _write_vulcan_csv(
         dirs, hf_row
     )
     config = _vulcan_config(times='end')
     dirs = _dirs(tmp_path)
-    hf_all = pd.DataFrame({'Time': [0.0, 50.0, 1000.0], 'T_surf': [3000.0, 2200.0, 1500.0]})
+    hf_all = pd.DataFrame(
+        {
+            'Time': [0.0, 50.0, 1000.0],
+            'T_surf': [3000.0, 2200.0, 1500.0],
+            'P_surf': [300.0, 200.0, 100.0],  # bar
+        }
+    )
 
     result = run_chemistry(dirs, config, hf_all)
 
     patched_run_vulcan.assert_called_once()
     args, kwargs = patched_run_vulcan.call_args
     assert args[0] is dirs and args[1] is config
-    assert args[2]['Time'] == pytest.approx(1000.0) and kwargs == {'first': True}
+    assert args[2]['Time'] == pytest.approx(1000.0) and kwargs == {'network_state': {}}
     assert result['tmp'].iloc[-1] == pytest.approx(1500.0)
     assert np.all(result['tmp'] > 0.0) and np.all(np.diff(result['p']) > 0.0)
 
@@ -286,10 +293,16 @@ def test_run_chemistry_vulcan_all_writes_one_csv_per_snapshot(patched_run_vulcan
     each distinct helpfile time; each run leaves its own sub-year named CSV
     and 'vulcan.csv' holds the latest one.
     """
-    patched_run_vulcan.side_effect = lambda dirs, config, hf_row, first: _write_vulcan_csv(
+    patched_run_vulcan.side_effect = lambda dirs, config, hf_row, **_: _write_vulcan_csv(
         dirs, hf_row
     )
-    hf_all = pd.DataFrame({'Time': [0.0, 0.0, 12.32], 'T_surf': [3100.0, 3000.0, 2500.0]})
+    hf_all = pd.DataFrame(
+        {
+            'Time': [0.0, 0.0, 12.32],
+            'T_surf': [3100.0, 3000.0, 2500.0],
+            'P_surf': [300.0, 300.0, 100.0],  # bar
+        }
+    )
 
     result = run_chemistry(_dirs(tmp_path), _vulcan_config(times='all'), hf_all)
 
@@ -304,21 +317,21 @@ def test_run_chemistry_vulcan_all_writes_one_csv_per_snapshot(patched_run_vulcan
 @pytest.mark.unit
 @patch('proteus.atmos_chem.wrapper.read_result')
 @patch('proteus.atmos_chem.vulcan.run_vulcan')
-def test_run_chemistry_returns_none_when_backend_fails(
+def test_run_chemistry_raises_when_backend_fails(
     patched_run_vulcan, patched_read_result, tmp_path
 ):
-    """run_chemistry must short-circuit when run_vulcan returns False.
+    """run_chemistry stops with RuntimeError when run_vulcan returns False.
 
     A False return from the backend signals "no output NetCDF / unrecognised
-    network / wrong atmos module". The wrapper must surface that to the
-    caller as None, not silently masquerade as a successful but empty run
-    by hitting read_result on a file that was never written.
+    network / wrong atmos module". The wrapper raises rather than reading a
+    file that was never written, and writes no 'vulcan.csv' copy.
     """
     patched_run_vulcan.return_value = False
-    hf_all = pd.DataFrame({'Time': [1000.0], 'T_surf': [1500.0]})
+    hf_all = pd.DataFrame({'Time': [1000.0], 'T_surf': [1500.0], 'P_surf': [100.0]})
 
-    result = run_chemistry(_dirs(tmp_path), _vulcan_config(), hf_all)
+    with pytest.raises(RuntimeError, match='vulcan chemistry failed'):
+        run_chemistry(_dirs(tmp_path), _vulcan_config(), hf_all)
 
-    assert result is None
     patched_run_vulcan.assert_called_once()
     patched_read_result.assert_not_called()
+    assert not (tmp_path / 'offchem' / 'vulcan.csv').exists()

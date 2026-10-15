@@ -1145,5 +1145,7 @@ def test_chem_when_maps_to_mode_and_times(module, when, mode, times):
     assert flat.get('atmos_chem.mode', 'none') == mode
     assert flat.get('atmos_chem.times', 'end') == times
     assert 'atmos_chem.when' not in flat
-    online_warned = any("'online'" in w for w in report.warnings)
-    assert online_warned is (when == 'online' and module != 'none')
+    online_warnings = [w for w in report.warnings if "'online'" in w]
+    assert bool(online_warnings) is (when == 'online' and module != 'none')
+    # The warning says the post-processed results need not match the old run
+    assert all('can differ' in w for w in online_warnings)

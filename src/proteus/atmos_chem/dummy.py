@@ -175,7 +175,7 @@ def _build_profiles(hf_row, config, num_levels=50):
     return result
 
 
-def run_dummy_chem(dirs: dict, config: Config, hf_row: dict, *, first: bool = True) -> bool:
+def run_dummy_chem(dirs: dict, config: Config, hf_row: dict) -> bool:
     """Run dummy atmospheric chemistry and write CSV output.
 
     Writes ``offchem/dummy_<time>.csv``, with the time [yr] in the sub-year
@@ -189,9 +189,6 @@ def run_dummy_chem(dirs: dict, config: Config, hf_row: dict, *, first: bool = Tr
         PROTEUS configuration.
     hf_row : dict
         Helpfile row (read only).
-    first : bool
-        Whether this is the first snapshot of a sequence. Unused; it keeps the
-        signature of the VULCAN backend.
 
     Returns
     -------

@@ -290,10 +290,10 @@ def test_dummy_chem_keeps_other_snapshots_in_offchem(tmp_path):
     config = _make_config()
     assert not (tmp_path / 'offchem').exists()
 
-    for i, time in enumerate((0.5, 2000.0)):
+    for time in (0.5, 2000.0):
         hf_row = _make_hf_row()
         hf_row['Time'] = time
-        assert run_dummy_chem(dirs, config, hf_row, first=(i == 0)) is True
+        assert run_dummy_chem(dirs, config, hf_row) is True
 
     names = sorted(f.name for f in (tmp_path / 'offchem').iterdir())
     assert names == ['dummy_0p500.csv', 'dummy_2000p000.csv']

@@ -156,6 +156,8 @@ def plot_chem_atmosphere(
             atm_offchem = read_result(output_dir, chem_module)
     has_offchem = atm_offchem is not None
     if has_offchem:
+        # The chemistry grid is its own, so its profiles are drawn at its pressures
+        p_offchem = atm_offchem['p'].to_numpy() * 1e-5  # Pa to bar
         atm_offchem.drop(columns=['tmp', 'p', 'z', 'Kzz'], inplace=True)
 
     # Atmosphere snapshot nearest the chemistry snapshot, else the final one
@@ -212,8 +214,7 @@ def plot_chem_atmosphere(
             xarr = list(atm_offchem[gas].values)
             if np.amax(xarr) >= xmin:
                 vmr = float(xarr[-1])  # prefer vmr from offline chemistry
-                n = min(len(xarr), len(parr))
-                ax1.plot(xarr[:n], parr[:n], ls='solid', color=col, lw=_lw, alpha=al)
+                ax1.plot(xarr, p_offchem, ls='solid', color=col, lw=_lw, alpha=al)
 
         # create legend entry and store surface vmr
         if vmr > 0.0:

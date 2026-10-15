@@ -571,11 +571,9 @@ class Proteus:
             zalmoxis_module._clear_superliquidus_cache()
 
         # Import things needed to run PROTEUS
-        #    atmospheric chemistry
         #    giant-impact accretion
         from proteus.accretion.common import landing_time
         from proteus.accretion.wrapper import init_accretion, restore_accretion_state
-        from proteus.atmos_chem.wrapper import run_chemistry
 
         #    atmosphere solver
         from proteus.atmos_clim import run_atmosphere
@@ -1647,15 +1645,7 @@ class Proteus:
         if self.config.atmos_chem.mode == 'offline':
             log.info(' ')
             PrintSeparator()
-            if self.desiccated:
-                log.warning('Cannot calculate atmospheric chemistry after desiccation')
-            else:
-                # Earlier snapshots may have been moved into the data archive
-                if (self.config.atmos_chem.times != 'end') and (
-                    self.config.params.out.archive_mod is not None
-                ):
-                    self.extract_archives()
-                run_chemistry(self.directories, self.config, self.hf_all)
+            self._postprocess_chemistry(self.hf_all)
 
         # Synthetic observations
         if self.config.observe.module is not None:
@@ -1745,6 +1735,19 @@ class Proteus:
 
         run_observe(hf_row, self.config, self.directories)
 
+    def _postprocess_chemistry(self, hf_all):
+        """Run atmospheric chemistry at the snapshots set by `atmos_chem.times`.
+
+        The one chemistry stage for the end of a run and for `proteus offchem`.
+        Snapshots in the data archive are unpacked first, and snapshots without
+        an atmosphere (after desiccation) are left out by `run_chemistry`.
+        """
+        from proteus.atmos_chem.wrapper import run_chemistry
+
+        if archive.archive_exists(self.directories['output/data'], ignore_warnings=True):
+            self.extract_archives()
+        return run_chemistry(self.directories, self.config, hf_all)
+
     def offline_chemistry(self):
         # Load data from helpfile. Read it before unpacking the archive, so a
         # run this cannot postprocess is left archived as it was found.
@@ -1758,13 +1761,8 @@ class Proteus:
         if len(hf_all) < 1:
             raise Exception('Simulation is too short to be postprocessed')
 
-        # Extract archived data
-        self.extract_archives()
-
         # Run offline chemistry at atmos_chem.times, whatever atmos_chem.mode is
-        from proteus.atmos_chem.wrapper import run_chemistry
-
-        result = run_chemistry(self.directories, self.config, hf_all)
+        result = self._postprocess_chemistry(hf_all)
 
         # Refresh the chemistry plot
         if result is not None:

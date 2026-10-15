@@ -7,10 +7,14 @@ simulation, whatever ``atmos_chem.mode`` is.
 Invariants tested:
   - Guard: no module returns None without touching the output folder
   - Error contract: unknown module raises ValueError and records status 20
-  - Sequence: snapshots run in ascending time, the network flag `first` is
-    true for the first one only, and each run gets the helpfile row of its time
-  - Output: the latest successful snapshot is copied to '<module>.csv'; a
-    failed snapshot is skipped; no success leaves no '<module>.csv'
+  - Sequence: snapshots run in ascending time, and each run gets the
+    helpfile row of its time; the VULCAN runs of one call share one
+    network-compilation state
+  - Output: the last snapshot is copied to '<module>.csv'
+  - Error contract: a failed snapshot raises RuntimeError and stops the
+    sequence; the earlier results stay, and no '<module>.csv' is written
+  - Desiccation: snapshots without an atmosphere (P_surf <= 0 or NaN) are
+    left out; with none left, nothing runs
   - The offchem folder is cleared once, at the start
   - The real dummy backend gives mixing ratios that sum to 1 on every level
 
@@ -75,8 +79,8 @@ def _fake_backend(tmp_path, fail_at=()):
     """
     calls = []
 
-    def run(dirs, config, hf_row, *, first=True):
-        calls.append((float(hf_row['Time']), float(hf_row['T_surf']), first))
+    def run(dirs, config, hf_row):
+        calls.append((float(hf_row['Time']), float(hf_row['T_surf'])))
         if hf_row['Time'] in fail_at:
             return False
         os.makedirs(dirs['output/offchem'], exist_ok=True)
@@ -128,22 +132,21 @@ def test_run_chemistry_unknown_module_raises_and_records_status(tmp_path):
 
 
 def test_run_chemistry_end_runs_the_backend_once(tmp_path):
-    """times = 'end' runs the backend once, on the final helpfile row, with
-    first = True, and returns that result, also copied to '<module>.csv'."""
+    """times = 'end' runs the backend once, on the final helpfile row, and
+    returns that result, also copied to '<module>.csv'."""
     run, calls = _fake_backend(tmp_path)
     hf_all = _helpfile([0.0, 10.0, 250.0])
 
     with patch('proteus.atmos_chem.dummy.run_dummy_chem', side_effect=run):
         result = run_chemistry(_dirs(tmp_path), _make_config(times='end'), hf_all)
 
-    assert calls == [(250.0, pytest.approx(1500.0), True)]
+    assert calls == [(250.0, pytest.approx(1500.0))]
     assert result['tmp'].iloc[0] == pytest.approx(1500.0)
     assert (tmp_path / 'offchem' / 'dummy.csv').exists()
 
 
-def test_run_chemistry_all_runs_in_ascending_time_with_first_once(tmp_path):
-    """times = 'all' runs every snapshot in ascending time; only the first
-    call has first = True (the network is compiled once), and each call gets
+def test_run_chemistry_all_runs_in_ascending_time(tmp_path):
+    """times = 'all' runs every snapshot in ascending time, and each call gets
     the helpfile row of its own time, not the final one."""
     run, calls = _fake_backend(tmp_path)
     hf_all = _helpfile([0.0, 10.0, 250.0])  # T_surf 3000, 2250, 1500 K
@@ -152,42 +155,88 @@ def test_run_chemistry_all_runs_in_ascending_time_with_first_once(tmp_path):
         run_chemistry(_dirs(tmp_path), _make_config(times='all'), hf_all)
 
     assert [c[0] for c in calls] == [0.0, 10.0, 250.0]
-    assert [c[2] for c in calls] == [True, False, False]
     assert [c[1] for c in calls] == pytest.approx([3000.0, 2250.0, 1500.0])
 
 
-def test_run_chemistry_skips_a_failed_snapshot_and_copies_the_latest_success(tmp_path):
-    """A snapshot whose backend fails is skipped, the sequence goes on, and
-    '<module>.csv' holds the latest successful snapshot, not the failed last one.
+def test_run_chemistry_vulcan_snapshots_share_one_network_state(tmp_path):
+    """The VULCAN runs of one call get the same network_state dict, so a
+    network compiled by a successful run is reused by the later ones, and a
+    second call starts from a new, empty state."""
+    states = []
 
-    The last snapshot (250 yr) fails, so the copy must come from 10 yr
-    (T_surf 2250 K) and not 250 yr (1500 K).
+    def run(dirs, config, hf_row, *, network_state=None):
+        states.append(network_state)
+        network_state['compiled'] = True  # as after a successful VULCAN run
+        os.makedirs(dirs['output/offchem'], exist_ok=True)
+        fpath = os.path.join(dirs['output/offchem'], chem_csv_name('vulcan', hf_row['Time']))
+        pd.DataFrame({'tmp': [hf_row['T_surf']], 'p': [1.0e5]}).to_csv(
+            fpath, sep='\t', index=False
+        )
+        return True
+
+    config = _make_config(module='vulcan', times='all')
+    with patch('proteus.atmos_chem.vulcan.run_vulcan', side_effect=run):
+        run_chemistry(_dirs(tmp_path), config, _helpfile([0.0, 10.0]))
+        run_chemistry(_dirs(tmp_path), config, _helpfile([0.0, 10.0]))
+
+    assert len(states) == 4
+    assert states[0] is states[1]
+    assert states[2] is states[3]
+    assert states[0] is not states[2]
+
+
+def test_run_chemistry_failed_snapshot_stops_the_sequence(tmp_path):
+    """A snapshot whose backend fails raises RuntimeError naming the module
+    and time, and the later snapshots do not run. The earlier result stays
+    on disk, and no '<module>.csv' copy is written.
+
+    The middle snapshot (10 yr) fails, so 250 yr must not run.
     """
-    run, calls = _fake_backend(tmp_path, fail_at=(250.0,))
+    run, calls = _fake_backend(tmp_path, fail_at=(10.0,))
     hf_all = _helpfile([0.0, 10.0, 250.0])
+
+    with patch('proteus.atmos_chem.dummy.run_dummy_chem', side_effect=run):
+        with pytest.raises(RuntimeError, match=r'dummy chemistry failed at t=1\.000e\+01 yr'):
+            run_chemistry(_dirs(tmp_path), _make_config(times='all'), hf_all)
+
+    assert [c[0] for c in calls] == [0.0, 10.0]
+    assert (tmp_path / 'offchem' / 'dummy_0p000.csv').exists()
+    assert not (tmp_path / 'offchem' / 'dummy_250p000.csv').exists()
+    assert not (tmp_path / 'offchem' / 'dummy.csv').exists()
+
+
+def test_run_chemistry_leaves_out_snapshots_without_an_atmosphere(tmp_path):
+    """Snapshots whose helpfile row has no atmosphere (P_surf <= 0, as after
+    desiccation, or NaN) are left out; the others run, and the last of them
+    is copied to '<module>.csv'.
+
+    The rows at 10 yr (P_surf 0) and 250 yr (NaN) are left out, so the copy
+    must come from 100 yr (T_surf 2000 K) and not the final 250 yr row.
+    """
+    run, calls = _fake_backend(tmp_path)
+    hf_all = _helpfile([0.0, 10.0, 100.0, 250.0])  # T_surf 3000, 2500, 2000, 1500 K
+    hf_all['P_surf'] = [100.0, 0.0, 50.0, np.nan]
 
     with patch('proteus.atmos_chem.dummy.run_dummy_chem', side_effect=run):
         result = run_chemistry(_dirs(tmp_path), _make_config(times='all'), hf_all)
 
-    assert len(calls) == 3
-    assert result['tmp'].iloc[0] == pytest.approx(2250.0)
-    fixed = pd.read_csv(tmp_path / 'offchem' / 'dummy.csv', sep='\t')
-    assert fixed['tmp'].iloc[0] == pytest.approx(2250.0)
-    assert not (tmp_path / 'offchem' / 'dummy_250p000.csv').exists()
+    assert [c[0] for c in calls] == [0.0, 100.0]
+    assert result['tmp'].iloc[0] == pytest.approx(2000.0)
+    assert not (tmp_path / 'offchem' / 'dummy_10p000.csv').exists()
 
 
-def test_run_chemistry_all_failures_return_none_without_fixed_file(tmp_path):
-    """When every snapshot fails, run_chemistry returns None and writes no
-    '<module>.csv', so no reader picks up a result that does not exist."""
-    run, calls = _fake_backend(tmp_path, fail_at=(0.0, 10.0))
+def test_run_chemistry_all_snapshots_desiccated_runs_nothing(tmp_path):
+    """When every snapshot is desiccated (P_surf = 0), run_chemistry returns
+    None without calling the backend or writing '<module>.csv'."""
+    run, calls = _fake_backend(tmp_path)
+    hf_all = _helpfile([0.0, 10.0])
+    hf_all['P_surf'] = 0.0
 
     with patch('proteus.atmos_chem.dummy.run_dummy_chem', side_effect=run):
-        result = run_chemistry(
-            _dirs(tmp_path), _make_config(times='all'), _helpfile([0.0, 10.0])
-        )
+        result = run_chemistry(_dirs(tmp_path), _make_config(times='all'), hf_all)
 
     assert result is None
-    assert len(calls) == 2
+    assert calls == []
     assert not (tmp_path / 'offchem' / 'dummy.csv').exists()
 
 

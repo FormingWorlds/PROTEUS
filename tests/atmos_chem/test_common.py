@@ -1,7 +1,7 @@
 """Unit tests for ``proteus.atmos_chem.common``.
 
 Exercises ``read_result`` (chemistry CSV reader), ``chem_csv_name``,
-``resolve_chemistry_times``, ``helpfile_row_at`` and ``read_vulcan_netcdf``.
+``resolve_chemistry_times`` and ``helpfile_row_at``.
 
 Invariants tested:
   - Correct file path construction from module name and optional filename
@@ -11,7 +11,6 @@ Invariants tested:
   - Snapshot names use the sub-year time token
   - Resolved chemistry times are existing snapshots, ascending, without duplicates
   - The helpfile row used for a snapshot is the nearest in time
-  - VULCAN NetCDF values come back in CGS, bottom up, with filled Kzz ends as NaN
 
 Testing standards:
   - docs/How-to/testing.md
@@ -30,10 +29,8 @@ from proteus.atmos_chem.common import (
     chem_csv_name,
     helpfile_row_at,
     read_result,
-    read_vulcan_netcdf,
     resolve_chemistry_times,
 )
-from tests.helpers._vulcan_netcdf import vulcan_layers, write_vulcan_netcdf
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -261,48 +258,3 @@ def test_helpfile_row_at_takes_the_last_of_repeated_init_rows():
 
     assert row['T_surf'] == pytest.approx(3050.0, abs=1e-12)
     assert row['T_surf'] != pytest.approx(3200.0, abs=1.0)  # the first init row
-
-
-# -----------------------------------------------------------------------
-# VULCAN NetCDF reader
-# -----------------------------------------------------------------------
-
-
-@pytest.mark.physics_invariant
-def test_read_vulcan_netcdf_returns_cgs_columns_bottom_up(tmp_path):
-    """The reader returns VULCAN's arrays unchanged in CGS, bottom up: layer
-    pressures decrease with height and stay positive, Kzz is NaN on the
-    bottom and top interfaces that VULCAN fills, and x_gas keeps one column
-    per species in the order of the species names.
-
-    An asymmetric composition (0.6, 0.3, 0.1) catches a transposed x_gas.
-    """
-    layers = vulcan_layers(P_b=1.0e8, P_t=1.0e2, nz=6)
-    species = ['H2O', 'CO2', 'H2O_l_s']
-    x_gas = np.tile([0.6, 0.3, 0.1], (6, 1))
-    fpath = str(tmp_path / '12p320_chem.nc')
-    write_vulcan_netcdf(fpath, layers, species, x_gas)
-
-    out = read_vulcan_netcdf(fpath)
-
-    assert out['species'] == species
-    assert out['x_gas'].shape == (6, 3)
-    np.testing.assert_allclose(out['x_gas'][:, 0], 0.6, rtol=1e-12)
-    np.testing.assert_allclose(out['x_gas'].sum(axis=1), 1.0, rtol=1e-12)
-    # dyn cm-2 as stored: a Pa conversion would give 1e7 at the bottom
-    np.testing.assert_allclose(out['p'], layers['p'], rtol=1e-12)
-    assert out['p'][0] == pytest.approx(1.0e8, rel=1e-12)
-    assert np.all(out['p'] > 0.0) and np.all(np.diff(out['p']) < 0.0)
-    np.testing.assert_allclose(out['tmp'], layers['tmp'], rtol=1e-12)
-    np.testing.assert_allclose(out['zl'], layers['zl'], rtol=1e-12)
-    assert np.isnan(out['Kzz'][0]) and np.isnan(out['Kzz'][-1])
-    np.testing.assert_allclose(out['Kzz'][1:-1], layers['Kzz'], rtol=1e-12)
-
-
-def test_read_vulcan_netcdf_missing_file_raises(tmp_path):
-    """A missing NetCDF raises rather than returning an empty result, and the
-    reader creates nothing in its place."""
-    fpath = tmp_path / 'missing_chem.nc'
-    with pytest.raises(FileNotFoundError):
-        read_vulcan_netcdf(str(fpath))
-    assert not fpath.exists()

@@ -1438,10 +1438,15 @@ def test_postprocessing_hands_the_physics_module_a_reporting_row(tmp_path):
         mock_observe = stack.enter_context(patch('proteus.observe.wrapper.run_observe'))
         p.observe()
     with ExitStack() as stack:
+        # A backend that writes nothing fails the snapshot, which stops the
+        # sequence after the row has been handed over
         mock_backend = stack.enter_context(
             patch('proteus.atmos_chem.dummy.run_dummy_chem', return_value=False)
         )
-        run_chemistry(p.directories, p.config, _make_hf_df())
+        # P_surf > 0: a snapshot with an atmosphere, which the wrapper keeps
+        hf = _make_hf_df().assign(P_surf=50.0)
+        with pytest.raises(RuntimeError, match='dummy chemistry failed'):
+            run_chemistry(p.directories, p.config, hf)
 
     for method, mock_call in (('observe', mock_observe), ('chemistry', mock_backend)):
         # Select the row by type: an unwrapped row yields no match, which is
@@ -2944,40 +2949,40 @@ def test_plot_cadence_is_independent_of_write_snapshot_gate(tmp_path):
 
 
 @pytest.mark.parametrize(
-    ('mode', 'times', 'archive_mod', 'desiccated', 'n_chem', 'n_extract'),
+    ('mode', 'times', 'has_archive', 'desiccated', 'n_chem', 'n_extract'),
     [
-        (None, 'all', None, False, 0, 0),
-        ('offline', 'end', 1, False, 1, 0),
-        ('offline', 'all', None, False, 1, 0),
-        ('offline', 'all', 1, False, 1, 1),
-        ('offline', [5.0, 50.0], 1, False, 1, 1),
-        ('offline', 'all', 1, True, 0, 0),
+        (None, 'all', True, False, 0, 0),
+        ('offline', 'end', False, False, 1, 0),
+        ('offline', 'end', True, False, 1, 1),
+        ('offline', 'all', True, False, 1, 1),
+        ('offline', [5.0, 50.0], False, False, 1, 0),
+        ('offline', 'all', True, True, 1, 1),
     ],
     ids=[
         'mode_none_runs_nothing',
-        'end_needs_no_archive',
-        'all_without_archive',
-        'all_unpacks_archive',
-        'listed_times_unpack_archive',
-        'desiccated_planet_skips',
+        'end_without_archive',
+        'end_unpacks_an_existing_archive',
+        'all_unpacks_an_existing_archive',
+        'listed_times_without_archive',
+        'desiccated_planet_still_runs_the_stage',
     ],
 )
 def test_offline_chemistry_runs_once_after_the_main_loop(
-    tmp_path, mode, times, archive_mod, desiccated, n_chem, n_extract
+    tmp_path, mode, times, has_archive, desiccated, n_chem, n_extract
 ):
     """Chemistry runs only after the simulation ends, once, with the whole
     helpfile, whatever atmos_chem.times holds; nothing runs inside the loop.
 
-    The archive is unpacked first only when earlier snapshots are needed
-    (times other than 'end') and archiving is on; a desiccated planet and
-    mode none run no chemistry.
+    The archive is unpacked first exactly when one exists. A desiccated planet
+    still reaches run_chemistry, which leaves out the snapshots without an
+    atmosphere itself; mode none runs no chemistry.
     """
     from proteus.proteus import Proteus
 
     p = _make_main_loop_proteus(tmp_path, plot_mod=None, write_mod=1, dt_write_rel=0.0)
     p.config.atmos_chem.mode = mode
     p.config.atmos_chem.times = times
-    p.config.params.out.archive_mod = archive_mod
+    p.config.params.out.archive_mod = None
 
     chem_calls = []
 
@@ -2985,11 +2990,13 @@ def test_offline_chemistry_runs_once_after_the_main_loop(
         chem_calls.append((p.loops['total'], p.finished_both, hf_all))
 
     mock_extract = MagicMock()
+    mock_archive = MagicMock()
+    mock_archive.archive_exists.return_value = has_archive
     plot_calls = _run_main_loop_capturing_plots(
         p,
         patch('proteus.atmos_chem.wrapper.run_chemistry', side_effect=_record_chem),
         patch.object(Proteus, 'extract_archives', mock_extract),
-        patch('proteus.proteus.archive'),
+        patch('proteus.proteus.archive', mock_archive),
         patch('proteus.outgas.wrapper.check_desiccation', return_value=desiccated),
         patch('proteus.outgas.wrapper.desiccated_after_trapping', return_value=desiccated),
         stop_at_loop=4,
@@ -3002,8 +3009,43 @@ def test_offline_chemistry_runs_once_after_the_main_loop(
         assert finished is True
         assert loops_total == 4
         assert hf_all is p.hf_all
+    if n_chem:
+        # The archive is looked for in the data folder, without a warning
+        mock_archive.archive_exists.assert_called_with(
+            p.directories['output/data'], ignore_warnings=True
+        )
     # The loop itself still ran its iterations
     assert len(plot_calls) == 0 or plot_calls[-1][1] is True
+
+
+@pytest.mark.parametrize('has_archive', [True, False], ids=['archived', 'loose'])
+def test_offline_chemistry_command_uses_the_end_of_run_stage(tmp_path, has_archive):
+    """proteus offchem goes through the same stage as the end of a run: the
+    archive is unpacked only when one exists, and run_chemistry receives the
+    whole helpfile read from disk, whatever atmos_chem.mode is."""
+    from proteus.proteus import Proteus
+
+    p = _make_proteus_instance(tmp_path)
+    p.config.atmos_chem.mode = None
+    hf = _make_hf_df()
+    mock_archive = MagicMock()
+    mock_archive.archive_exists.return_value = has_archive
+    with ExitStack() as stack:
+        stack.enter_context(patch('proteus.utils.coupler.ReadHelpfileFromCSV', return_value=hf))
+        mock_extract = stack.enter_context(patch.object(Proteus, 'extract_archives'))
+        stack.enter_context(patch('proteus.proteus.archive', mock_archive))
+        stage = stack.enter_context(
+            patch.object(Proteus, '_postprocess_chemistry', wraps=p._postprocess_chemistry)
+        )
+        mock_chem = stack.enter_context(
+            patch('proteus.atmos_chem.wrapper.run_chemistry', return_value=None)
+        )
+        result = p.offline_chemistry()
+
+    assert result is None
+    stage.assert_called_once()
+    assert mock_chem.call_args.args[2] is hf
+    assert mock_extract.call_count == (1 if has_archive else 0)
 
 
 @pytest.mark.parametrize('t_impact, lands', [(1.0e8 / 3.0, True), (float('inf'), False)])

@@ -9,11 +9,8 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-# Import VULCAN
-import vulcan
-
 # Import PROTEUS
-from proteus.atmos_chem.common import chem_csv_name, read_vulcan_netcdf
+from proteus.atmos_chem.common import chem_csv_name
 from proteus.atmos_clim.common import read_atmosphere_data
 from proteus.star.wrapper import flux_weighted_distance, scale_spectrum_to_stellar_surface
 from proteus.utils.constants import (
@@ -75,6 +72,35 @@ def _write_boundary_file(fpath: str, fixed_vmr: dict) -> None:
         hdl.write('# species  flux(cm-2 s-1)  vdep(cm s-1)  fixed_vmr\n')
         for gas, vmr in fixed_vmr.items():
             hdl.write(f'{gas}  0.0  0.0  {vmr:.8e}\n')
+
+
+def read_vulcan_netcdf(fpath: str) -> dict:
+    """Read the result of a VULCAN run from its NetCDF output file.
+
+    Values are in the CGS units VULCAN writes: pressure in dyn cm-2, height in
+    cm, Kzz in cm2 s-1. Arrays are ordered from the bottom of the column up.
+
+    Parameters
+    ----------
+    fpath : str
+        Path to a ``*_chem.nc`` file written by VULCAN.
+
+    Returns
+    -------
+    dict
+        'p' and 'tmp' at layer centres [nz], 'pl', 'zl' and 'Kzz' at the
+        interfaces [nz+1] (Kzz is defined only on the nz-1 interior ones, and
+        NaN at the bottom and top), 'species' (list of str) and 'x_gas',
+        the volume mixing ratios [nz, number of species].
+    """
+    import netCDF4 as nc
+
+    with nc.Dataset(fpath) as ds:
+        out = {}
+        for key in ('p', 'pl', 'tmp', 'zl', 'Kzz', 'x_gas'):
+            out[key] = np.ma.filled(ds.variables[key][:].astype(float), np.nan)
+        out['species'] = [str(sp) for sp in ds.variables['species'][:]]
+    return out
 
 
 def network_settings(config: Config) -> tuple[str, list, list, list] | None:
@@ -191,14 +217,17 @@ def _write_result_csv(csv_file: str, result: dict) -> None:
     np.savetxt(csv_file, arr, delimiter='\t', fmt='%.8e', header=header, comments='')
 
 
-def run_vulcan(dirs: dict, config: Config, hf_row: dict, *, first: bool = True) -> bool:
+def run_vulcan(
+    dirs: dict, config: Config, hf_row: dict, *, network_state: dict | None = None
+) -> bool:
     """
     Run VULCAN chemical kinetics on the atmosphere snapshot at hf_row['Time'].
 
-    VULCAN writes only its NetCDF output, which is moved to
+    VULCAN writes its result as NetCDF only (no pickle), which is moved to
     ``data/<time>_chem.nc``. PROTEUS reads it back and writes
     ``offchem/vulcan_<time>.csv``. The time [yr] is in the sub-year form of
-    `format_subyear_time`.
+    `format_subyear_time`. VULCAN also draws ``offchem/mix.*`` and
+    ``offchem/evo.*`` for each run, which the next run overwrites.
 
     Parameters
     ----------
@@ -208,15 +237,19 @@ def run_vulcan(dirs: dict, config: Config, hf_row: dict, *, first: bool = True) 
         Configuration object.
     hf_row : dict
         Helpfile row at the snapshot time.
-    first : bool
-        Whether this is the first snapshot of a sequence. The chemical network
-        is compiled only then (with `atmos_chem.vulcan.make_funs`).
+    network_state : dict | None
+        State shared by the snapshots of one sequence. The chemical network is
+        compiled (with `atmos_chem.vulcan.make_funs`) until a VULCAN run has
+        succeeded, which sets its 'compiled' entry. None compiles every time.
 
     Returns
     ----------
     success : bool
         Did VULCAN run successfully?
     """
+
+    # Imported here, so that reading VULCAN output does not need the package
+    import vulcan
 
     log.debug(f'Using VULCAN from: {vulcan.__file__}')
     log.debug(f'    version {vulcan.__version__}')
@@ -531,7 +564,7 @@ def run_vulcan(dirs: dict, config: Config, hf_row: dict, *, first: bool = True) 
     vcfg.agni_nlev = config.atmos_clim.num_levels
     vcfg.solve_rce = config.atmos_clim.agni.solve_energy
 
-    # Folders and output; PROTEUS reads back the pickle
+    # Folders and output; PROTEUS reads back the NetCDF file
     vcfg.log_level = config.params.out.logging
     vcfg.clean_output = False
     vcfg.output_dir = vulcan_out
@@ -556,8 +589,11 @@ def run_vulcan(dirs: dict, config: Config, hf_row: dict, *, first: bool = True) 
     # RUN VULCAN
     # ------------------------------------------------------------
 
-    # Compile the chemical network once per sequence of snapshots
-    vulcan.run_vulcan(vcfg, config.atmos_chem.vulcan.make_funs and first)
+    # Compile the chemical network until one run of the sequence has succeeded
+    if network_state is None:
+        network_state = {}
+    compiled = network_state.get('compiled', False)
+    vulcan.run_vulcan(vcfg, config.atmos_chem.vulcan.make_funs and not compiled)
 
     # ------------------------------------------------------------
     # READ AND PARSE OUTPUT FILES
@@ -568,6 +604,7 @@ def run_vulcan(dirs: dict, config: Config, hf_row: dict, *, first: bool = True) 
     if not os.path.exists(vulcan_cdf_src):
         log.warning(f'Could not find output file {vulcan_cdf_src}')
         return False
+    network_state['compiled'] = True
     log.debug("Moving VULCAN NetCDF output to '%s'" % vulcan_cdf_dst)
     shutil.move(vulcan_cdf_src, vulcan_cdf_dst)
 

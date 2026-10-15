@@ -8,7 +8,6 @@ import os
 
 import numpy as np
 
-from proteus.atmos_chem.common import read_vulcan_netcdf
 from proteus.config import read_config
 from proteus.utils.helper import list_snapshot_times, snapshot_path_for_time
 
@@ -54,6 +53,8 @@ def offchem_read_year(output_dir, year, mx_clip_min=1e-30, mx_clip_max=1.0, read
     fpath = snapshot_path_for_time(os.path.join(output_dir, 'data'), year, '_chem.nc')
     if not os.path.isfile(fpath):
         raise FileNotFoundError(f'No VULCAN snapshot found at {fpath}')
+    from proteus.atmos_chem.vulcan import read_vulcan_netcdf
+
     result = read_vulcan_netcdf(fpath)
 
     year_data = {'year': float(year)}

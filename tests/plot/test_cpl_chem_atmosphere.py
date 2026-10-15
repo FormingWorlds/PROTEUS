@@ -623,3 +623,41 @@ def test_plot_chem_atmosphere_returns_early_without_atmosphere_snapshots(tmp_pat
         result = plot_chem_atmosphere(outdir, 'vulcan', plot_format='png')
     assert result is None
     mock_read.assert_not_called()
+
+
+@pytest.mark.unit
+def test_plot_chem_atmosphere_draws_chemistry_at_its_own_pressures(tmp_path):
+    """The chemistry grid is not the climate grid: VULCAN layers are log-spaced
+    while AGNI levels crowd towards the surface. Each chemistry profile is drawn
+    against the pressures of its own CSV [Pa to bar], not the AGNI levels.
+
+    AGNI levels at 10, 1e3, 3e3 and 1e7 Pa and chemistry layers at 20, 2e4 and
+    9e6 Pa share no value, so drawing on the wrong grid shows in every point.
+    """
+    outdir = _snapshot_dir(tmp_path, chem_tokens=('20p000',))
+    (tmp_path / 'offchem' / 'vulcan_20p000.csv').write_text(
+        'tmp p z Kzz H2O\n300 2e1 2e5 1e5 1e-3\n900 2e4 1e5 1e5 1e-2\n2000 9e6 0 1e5 1e-1\n'
+    )
+    profile = {
+        'pl': np.array([1e1, 1e3, 3e3, 1e7]),
+        'tmpl': np.array([300.0, 500.0, 900.0, 2000.0]),
+        'H2O_vmr': np.array([1e-4, 1e-4, 1e-4]),
+    }
+    fig, ax1, ax2 = MagicMock(), MagicMock(), MagicMock()
+    ax1.get_legend_handles_labels.return_value = ([MagicMock()], ['H2O'])
+    with (
+        patch('proteus.plot.cpl_chem_atmosphere.plt.subplots', return_value=(fig, (ax1, ax2))),
+        patch('proteus.plot.cpl_chem_atmosphere.read_ncdf_profile', return_value=profile),
+    ):
+        plot_chem_atmosphere(outdir, 'vulcan', plot_format='png', plot_gases=['H2O'])
+
+    # Solid lines with data; the legend entry is an empty solid line
+    solid = [
+        c for c in ax1.plot.call_args_list if c.kwargs.get('ls') == 'solid' and len(c.args[0])
+    ]
+    assert len(solid) == 1
+    x, y = (np.asarray(a, dtype=float) for a in solid[0].args)
+    np.testing.assert_allclose(x, [1e-3, 1e-2, 1e-1])
+    np.testing.assert_allclose(y, [2e-4, 2e-1, 9e1], rtol=1e-12)
+    # Discrimination: not the AGNI level pressures, cut or not to the profile length
+    assert not np.allclose(y, profile['pl'][: len(y)] * 1e-5)
