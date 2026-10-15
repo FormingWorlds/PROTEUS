@@ -1,46 +1,99 @@
 # Postprocessing and chemistry
 
-After a PROTEUS simulation has run, its atmospheric state can be postprocessed to compute detailed chemistry, synthetic observations, and multi-angle thermal profiles. Atmospheric chemistry can also be coupled live during a run. This page covers all three workflows.
+After a PROTEUS simulation has run, its atmospheric state can be postprocessed to compute detailed chemistry, synthetic observations, and multi-angle thermal profiles. This page covers all three workflows.
 
 ## Atmospheric chemistry with VULCAN
 
-PROTEUS can couple to the [VULCAN](https://github.com/FormingWorlds/VULCAN) chemical kinetics model to compute atmospheric composition. The `atmos_chem.when` configuration variable controls **when** chemistry is calculated. There are three modes:
+PROTEUS can run the [VULCAN](https://github.com/FormingWorlds/VULCAN) chemical kinetics model on the atmospheric state it has simulated. Chemistry is always computed **after** the PROTEUS simulation, never inside its time loop: each run takes one atmosphere snapshot (its temperature-pressure profile, eddy diffusion and composition) and the star and planet at that time, and integrates the kinetics to a steady state. The chemistry does not feed back on the climate or the evolution. Coupled (online) chemistry is not yet implemented.
 
-| Mode | `atmos_chem.when` | Description |
-|------|-------------------|-------------|
-| Manually | `"manually"` | Chemistry is skipped during simulation. Run it yourself afterwards via the CLI. |
-| Offline | `"offline"` | Chemistry runs once automatically after the simulation finishes, on the final atmospheric state. |
-| Online | `"online"` | Chemistry runs at every output snapshot during the simulation, coupled to the evolving atmosphere. |
+VULCAN needs `atmos_chem.module = "vulcan"` and the AGNI atmosphere (`atmos_clim.module = "agni"`). `atmos_chem.module = "dummy"` writes parameterised profiles in the same format without a kinetics solver, for testing.
 
-All three modes require `atmos_chem.module = "vulcan"` and the AGNI atmosphere module (`atmos_clim.module = "agni"`).
+Two options set the chemistry runs: `atmos_chem.mode` sets **whether** they run automatically, and `atmos_chem.times` sets **which snapshots** they run on.
 
-### Manually mode (default)
+### When chemistry runs: `atmos_chem.mode`
 
-When `atmos_chem.when = "manually"` (the default), no chemistry is calculated during or after the simulation. You can run it yourself at any time using the CLI:
+| `atmos_chem.mode` | At the end of `proteus start` | With `proteus offchem -c [cfgfile]` |
+|---|---|---|
+| `"none"` (default) | Not run | Runs at `atmos_chem.times` |
+| `"offline"` | Runs at `atmos_chem.times` once the simulation stops on a termination criterion; not after a fatal error, and not after desiccation | Runs at `atmos_chem.times` |
+| `"online"` | Rejected when the config is loaded: not yet implemented | Rejected |
+
+`mode = "offline"` needs a chemistry module; a config with `mode = "offline"` and `module = "none"` is rejected. `proteus offchem` runs the chemistry whatever the mode, so a finished run can be postprocessed with other chemistry settings (for example another network, or photochemistry off) without running the evolution again:
 
 ```console
 proteus offchem -c [cfgfile]
 ```
 
-This is useful when you want to experiment with different chemistry settings (for example network or photochemistry) without re-running the full simulation.
+After a fatal error the snapshots written so far stay on disk, and `proteus offchem` can postprocess them.
 
-### Offline mode
+### Which snapshots: `atmos_chem.times`
 
-When `atmos_chem.when = "offline"`, PROTEUS automatically runs VULCAN once after the main simulation loop completes. It uses the final atmospheric temperature-pressure profile and composition as input. Results are written to `offchem/vulcan.csv` in the output directory.
+| `atmos_chem.times` | Snapshots processed | Number of chemistry runs |
+|---|---|---|
+| `"end"` (default) | The final state of the simulation | 1 |
+| `"all"` | Every atmosphere snapshot, `data/<time>_atm.nc` | One per snapshot |
+| `[t1, t2, ...]` | For each time [yr], the atmosphere snapshot nearest it; a snapshot nearest two times runs once | Up to the length of the list |
 
-This is the recommended mode for most use cases: it adds chemistry as a post-processing step with minimal overhead.
+The snapshots run in order of increasing time. Which atmosphere snapshots exist is set by `params.out.write_mod` and `params.out.dt_write_rel`. An atmosphere module that writes no snapshots (the dummy) leaves the helpfile times as the snapshots. Each run uses the helpfile row of its own snapshot for the surface composition, the stellar spectrum and the planet radius and gravity. If one run fails, it is logged and skipped, and the others continue.
 
-### Online mode
+### Initial composition: `atmos_chem.vulcan.ini_mix`
 
-When `atmos_chem.when = "online"`, PROTEUS runs VULCAN at every output snapshot (controlled by `params.out.write_mod` and `params.out.dt_write_rel`) during the main simulation loop. This couples the chemistry to the evolving thermal state of the atmosphere.
+VULCAN integrates from an initial composition to a steady state, and the initial composition changes how many steps it needs to converge.
 
-Key differences from offline mode:
+| `ini_mix` | Initial composition | Requirement |
+|---|---|---|
+| `"profile"` (default) | The mixing ratio profile of the atmosphere snapshot, interpolated in log pressure onto the VULCAN grid | |
+| `"outgas"` | The outgassed surface mixing ratios at every level | |
+| `"previous"` | The result of the latest earlier chemistry snapshot (`data/<time>_chem.nc` with a smaller time), interpolated in log pressure onto the VULCAN grid. Falls back to `"profile"` when there is none, as for the first snapshot | `atmos_chem.vulcan.fix_surf = true` |
 
-- **Per-snapshot output**: Each snapshot produces its own output file (`vulcan_{year}.csv`) rather than a single `vulcan.csv`.
-- **One-time network compilation**: The chemical reaction network is compiled only once on the first snapshot, then reused for subsequent snapshots.
-- **Skipped when desiccated**: If the planet loses its entire volatile inventory, online chemistry is skipped for subsequent snapshots.
+`"previous"` is meant for `times = "all"` or a list, where consecutive snapshots are close in time and in composition, to help convergence. It needs a fixed surface composition (`fix_surf = true`), so that the outgassed surface mixing ratios of each snapshot, not the composition carried over from the earlier one, set the lower boundary. The earlier result can come from an earlier chemistry call on the same run directory, since `data/*_chem.nc` is kept between calls.
 
-Online mode is more expensive but captures the time evolution of atmospheric chemistry alongside the thermal evolution.
+### Output files
+
+Snapshot times in file names use the sub-year form of the other snapshots: `12p320` for t = 12.32 yr.
+
+| File | Content |
+|---|---|
+| `data/<time>_chem.nc` | VULCAN NetCDF output of one snapshot, in CGS units: structure, mixing ratios (`x_gas`), number densities, reaction rates and element conservation |
+| `offchem/<module>_<time>.csv` | Table of one snapshot, from the top of the atmosphere down: temperature `tmp` [K], pressure `p` [Pa], height `z` [m], `Kzz` [cm2 s-1] and the mixing ratio of each gas |
+| `offchem/<module>.csv` | Copy of the table at the latest snapshot processed, read by the synthetic observations (`observe.source = "offchem"`) and the chemistry plot |
+
+Each chemistry call first clears `offchem/` (and its VULCAN input files), while the `data/*_chem.nc` files are kept. At the end of a run the `_chem.nc` files are packed into `data/data.tar` with the other snapshots when archiving is on (`params.out.archive_mod`); `proteus offchem` unpacks the archive first. VULCAN logs into the PROTEUS log file (`proteus_*.log`, or `offchem.log` for `proteus offchem`), and each run starts with a line naming its snapshot time.
+
+The chemistry plot (`plots/plot_chem_atmosphere.*`) shows the latest chemistry snapshot, together with the atmosphere snapshot nearest it. `plot_chem_atmosphere(..., time=t)` in `proteus.plot.cpl_chem_atmosphere` plots the chemistry snapshot nearest the time `t` [yr] instead.
+
+### Examples
+
+Run VULCAN once on the final state, automatically at the end of the simulation:
+
+```toml
+[atmos_chem]
+    module = "vulcan"
+    mode   = "offline"
+    times  = "end"
+```
+
+Postprocess every snapshot, each run starting from the result of the one before:
+
+```toml
+[atmos_chem]
+    module = "vulcan"
+    mode   = "offline"
+    times  = "all"
+
+    [atmos_chem.vulcan]
+        ini_mix  = "previous"
+        fix_surf = true
+```
+
+Run nothing automatically, then postprocess three chosen times with `proteus offchem -c [cfgfile]`:
+
+```toml
+[atmos_chem]
+    module = "vulcan"
+    mode   = "none"
+    times  = [1e3, 1e5, 1e7]   # yr
+```
 
 ### Chemistry configuration
 

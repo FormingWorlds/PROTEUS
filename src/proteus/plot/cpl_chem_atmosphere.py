@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import glob
 import logging
 import os
 from typing import TYPE_CHECKING
@@ -9,10 +8,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.ticker import LogLocator
 
-from proteus.atmos_chem.common import read_result
-from proteus.atmos_clim.common import read_ncdf_profile
+from proteus.atmos_chem.common import chem_csv_name, read_result
+from proteus.atmos_clim.common import list_atmosphere_times, read_ncdf_profile
 from proteus.utils.constants import gas_list, vap_list
-from proteus.utils.helper import parse_subyear_time
+from proteus.utils.helper import find_nearest, list_snapshot_times, snapshot_path_for_time
 from proteus.utils.plot import get_colour, latexify
 
 if TYPE_CHECKING:
@@ -105,6 +104,7 @@ def plot_chem_atmosphere(
     plot_gases: list = None,
     plot_offchem: bool = True,
     xmin: float = 1e-10,
+    time: float | None = None,
 ):
     """
     Plot the chemical composition of the atmosphere.
@@ -123,6 +123,10 @@ def plot_chem_atmosphere(
         Whether to plot offline chemistry results.
     xmin : float, optional
         Minimum VMR for x-axis of the plot.
+    time : float, optional
+        Time [yr] to plot. The chemistry snapshot nearest it is drawn, with the
+        atmosphere snapshot nearest that. None draws the final chemistry
+        snapshot, or the final atmosphere snapshot when there is no chemistry.
     """
     log.info('Plot atmosphere chemical composition')
 
@@ -135,30 +139,38 @@ def plot_chem_atmosphere(
     # Remove duplicates, preserving order
     plot_gases = list(dict.fromkeys(plot_gases))
 
-    # Get last output NetCDF file
-    files = glob.glob(os.path.join(output_dir, 'data', '*_atm.nc'))
-    if len(files) == 0:
+    # Chemistry snapshot: the final one, or the one nearest the requested time
+    atm_offchem = None
+    target = time
+    use_offchem = plot_offchem and (chem_module is not None) and (chem_module != 'none')
+    if use_offchem:
+        offchem_dir = os.path.join(output_dir, 'offchem')
+        chem_times = list_snapshot_times(offchem_dir, '.csv', prefix=f'{chem_module}_')
+        if chem_times:
+            target = chem_times[-1] if time is None else find_nearest(chem_times, time)[0]
+            atm_offchem = read_result(
+                output_dir, chem_module, filename=chem_csv_name(chem_module, target)
+            )
+        else:
+            # Output without per-snapshot files holds only the fixed name
+            atm_offchem = read_result(output_dir, chem_module)
+    has_offchem = atm_offchem is not None
+    if has_offchem:
+        atm_offchem.drop(columns=['tmp', 'p', 'z', 'Kzz'], inplace=True)
+
+    # Atmosphere snapshot nearest the chemistry snapshot, else the final one
+    atm_times = list_atmosphere_times(output_dir)
+    if len(atm_times) == 0:
         log.warning('No atmosphere NetCDF files found in output folder')
         return
-    nc_fpath = max(files, key=lambda f: parse_subyear_time(os.path.basename(f).split('_')[0]))
+    year = atm_times[-1] if target is None else float(find_nearest(atm_times, target)[0])
+    nc_fpath = snapshot_path_for_time(os.path.join(output_dir, 'data'), year, '_atm.nc')
     atm_profile = read_ncdf_profile(
         nc_fpath, extra_keys=['pl', 'tmpl', 'x_gas', 'cloud_mmr', 'aer_mmr', 'aerosols']
     )
 
     parr = atm_profile['pl'] * 1e-5  # convert to bar
     tarr = atm_profile['tmpl']  # temperature profile
-
-    # Get year
-    year = parse_subyear_time(nc_fpath.split('/')[-1].split('_atm')[0])
-
-    # Read offline chemistry output if available and requested
-    if plot_offchem and (chem_module is not None) and (chem_module != 'none'):
-        atm_offchem = read_result(output_dir, chem_module)
-        has_offchem = atm_offchem is not None
-        if has_offchem:
-            atm_offchem.drop(columns=['tmp', 'p', 'z', 'Kzz'], inplace=True)
-    else:
-        has_offchem = False
 
     # init plot with two panels
     scale = 1.15

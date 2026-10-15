@@ -356,7 +356,8 @@ It selects **SPIDER** for the interior thermal evolution
 (`interior.module = "spider"`) and the structure calculation built into
 that version (`struct.module = "self"`), together with AGNI, CALLIOPE,
 ZEPHYRUS and MORS. It names VULCAN for the atmospheric chemistry, set to
-run only on request (`atmos_chem.when = "manually"`). Its energy balance
+run only on request (`atmos_chem.when = "manually"` in that version,
+`atmos_chem.mode = "none"` now). Its energy balance
 stop criterion is switched off. See
 Lichtenberg et al. (2026) [^cite-lichtenberg2026] and Nicholls et al.
 (2026) [^cite-nicholls2026] for further details.

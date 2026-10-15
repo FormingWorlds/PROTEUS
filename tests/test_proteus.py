@@ -1414,8 +1414,11 @@ def test_postprocessing_hands_the_physics_module_a_reporting_row(tmp_path):
 
     The required set is written by hand and can fall behind the code, so the
     row itself has to say what is wrong for anything the set does not cover.
-    An ordinary dict would reach the same read as a bare KeyError.
+    An ordinary dict would reach the same read as a bare KeyError. observe()
+    wraps its row itself; offline_chemistry() hands the whole helpfile to
+    run_chemistry, which wraps the row of each snapshot before the backend.
     """
+    from proteus.atmos_chem.wrapper import run_chemistry
     from proteus.utils.coupler import (
         GetPostprocessingKeys,
         HelpfileRow,
@@ -1423,24 +1426,27 @@ def test_postprocessing_hands_the_physics_module_a_reporting_row(tmp_path):
     )
 
     p = _make_proteus_instance(tmp_path)
-    p.config.atmos_chem.module = 'vulcan'
+    p.directories['output/offchem'] = str(tmp_path / 'offchem')
+    p.config.atmos_chem.module = 'dummy'
+    p.config.atmos_chem.times = 'end'
 
-    for method, wrapper in (
-        ('observe', 'proteus.observe.wrapper.run_observe'),
-        ('offline_chemistry', 'proteus.atmos_chem.wrapper.run_chemistry'),
-    ):
-        with ExitStack() as stack:
-            stack.enter_context(patch.object(type(p), 'extract_archives'))
-            stack.enter_context(
-                patch('proteus.utils.coupler.ReadHelpfileFromCSV', return_value=_make_hf_df())
-            )
-            mock_wrapper = stack.enter_context(patch(wrapper))
-            getattr(p, method)()
+    with ExitStack() as stack:
+        stack.enter_context(patch.object(type(p), 'extract_archives'))
+        stack.enter_context(
+            patch('proteus.utils.coupler.ReadHelpfileFromCSV', return_value=_make_hf_df())
+        )
+        mock_observe = stack.enter_context(patch('proteus.observe.wrapper.run_observe'))
+        p.observe()
+    with ExitStack() as stack:
+        mock_backend = stack.enter_context(
+            patch('proteus.atmos_chem.dummy.run_dummy_chem', return_value=False)
+        )
+        run_chemistry(p.directories, p.config, _make_hf_df())
 
-        # The two wrappers take the row in different positions, so select it
-        # by type. An unwrapped row yields no match, which is the regression
-        # this guards: it would reach the synthesis code as a bare dict.
-        handed = [a for a in mock_wrapper.call_args.args if isinstance(a, HelpfileRow)]
+    for method, mock_call in (('observe', mock_observe), ('chemistry', mock_backend)):
+        # Select the row by type: an unwrapped row yields no match, which is
+        # the regression this guards, a bare dict reaching the synthesis code.
+        handed = [a for a in mock_call.call_args.args if isinstance(a, HelpfileRow)]
         assert len(handed) == 1, method
         row = handed[0]
 
@@ -1451,7 +1457,7 @@ def test_postprocessing_hands_the_physics_module_a_reporting_row(tmp_path):
             row[absent]
 
         # Discrimination: the columns the run does carry still read normally,
-        # so the wrapper reports a shortfall rather than blocking every read.
+        # and both receive the last row of the helpfile.
         assert row['T_magma'] == pytest.approx(2200.0), method
 
 
@@ -2044,8 +2050,8 @@ def test_observe_raises_on_empty_helpfile(tmp_path):
 
 
 def test_offline_chemistry_dispatches_to_run_chemistry_and_returns_result(tmp_path):
-    """Proteus.offline_chemistry() must dispatch to run_chemistry
-    and return its result verbatim.
+    """Proteus.offline_chemistry() must dispatch to run_chemistry with the
+    full helpfile and return its result verbatim.
 
     Discriminating: pin the return propagation. A regression that
     discarded the return value or wrapped it in a dict would fail
@@ -2067,16 +2073,13 @@ def test_offline_chemistry_dispatches_to_run_chemistry_and_returns_result(tmp_pa
     # A successful (non-None) result must refresh the chemistry plot once,
     # with the Proteus handler passed through.
     mock_plot.assert_called_once_with(p)
-    # Discrimination: verify the last-row dict was passed (not the
-    # full DataFrame). A regression that passed df would land args[2]
-    # as a pandas object, not a dict.
+    # The whole helpfile is passed, so run_chemistry can pick the row of
+    # every snapshot in atmos_chem.times, not only the last one.
     args = mock_chem.call_args.args
-    assert isinstance(args[2], dict)
-    assert args[2]['Phi_global'] == pytest.approx(0.7)
-    # iloc[0] would land at Phi_global=1.0; iloc[1] at 0.85. Reject
-    # both so the test discriminates the correct last-row pick.
-    assert args[2]['Phi_global'] != pytest.approx(1.0)
-    assert args[2]['Phi_global'] != pytest.approx(0.85)
+    assert args[0] is p.directories
+    assert args[1] is p.config
+    assert args[2] is df
+    assert len(args[2]) == 3
 
 
 def test_offline_chemistry_skips_plot_when_chemistry_returns_none(tmp_path):
@@ -2714,10 +2717,9 @@ def _make_main_loop_proteus(tmp_path, *, plot_mod, write_mod, dt_write_rel, vapo
 
     `interior_energetics.module` / `interior_struct.module` are set to
     'dummy' so the Zalmoxis structure-update and SPIDER-specific branches
-    are no-ops; `observe.module=None`, `accretion.module=None` and a
-    non-'online'/'offline' atmos_chem.when skip the postprocessing and
-    impact branches. None of these short-circuits touch the plot-gating
-    condition under test.
+    are no-ops; `observe.module=None`, `accretion.module=None` and
+    `atmos_chem.mode=None` skip the postprocessing and impact branches.
+    None of these short-circuits touch the plot-gating condition under test.
 
     `vapourise` selects which half of the mass-conservation invariant the loop
     enforces: with it True the M_atm <= M_planet half is replaced by a warning,
@@ -2737,7 +2739,7 @@ def _make_main_loop_proteus(tmp_path, *, plot_mod, write_mod, dt_write_rel, vapo
     config.orbit.module = None
     config.observe.module = None
     config.accretion.module = None
-    config.atmos_chem.when = 'never'
+    config.atmos_chem.mode = None
     config.outgas.vapourise = vapourise
     config.planet.temperature_mode = 'isothermal'
     config.planet.volatile_mode = 'elements'
@@ -2939,6 +2941,69 @@ def test_plot_cadence_is_independent_of_write_snapshot_gate(tmp_path):
         'not also a write_mod snapshot -- the plot cadence must not depend '
         'on the write/archive snapshot gate'
     )
+
+
+@pytest.mark.parametrize(
+    ('mode', 'times', 'archive_mod', 'desiccated', 'n_chem', 'n_extract'),
+    [
+        (None, 'all', None, False, 0, 0),
+        ('offline', 'end', 1, False, 1, 0),
+        ('offline', 'all', None, False, 1, 0),
+        ('offline', 'all', 1, False, 1, 1),
+        ('offline', [5.0, 50.0], 1, False, 1, 1),
+        ('offline', 'all', 1, True, 0, 0),
+    ],
+    ids=[
+        'mode_none_runs_nothing',
+        'end_needs_no_archive',
+        'all_without_archive',
+        'all_unpacks_archive',
+        'listed_times_unpack_archive',
+        'desiccated_planet_skips',
+    ],
+)
+def test_offline_chemistry_runs_once_after_the_main_loop(
+    tmp_path, mode, times, archive_mod, desiccated, n_chem, n_extract
+):
+    """Chemistry runs only after the simulation ends, once, with the whole
+    helpfile, whatever atmos_chem.times holds; nothing runs inside the loop.
+
+    The archive is unpacked first only when earlier snapshots are needed
+    (times other than 'end') and archiving is on; a desiccated planet and
+    mode none run no chemistry.
+    """
+    from proteus.proteus import Proteus
+
+    p = _make_main_loop_proteus(tmp_path, plot_mod=None, write_mod=1, dt_write_rel=0.0)
+    p.config.atmos_chem.mode = mode
+    p.config.atmos_chem.times = times
+    p.config.params.out.archive_mod = archive_mod
+
+    chem_calls = []
+
+    def _record_chem(dirs, config, hf_all):
+        chem_calls.append((p.loops['total'], p.finished_both, hf_all))
+
+    mock_extract = MagicMock()
+    plot_calls = _run_main_loop_capturing_plots(
+        p,
+        patch('proteus.atmos_chem.wrapper.run_chemistry', side_effect=_record_chem),
+        patch.object(Proteus, 'extract_archives', mock_extract),
+        patch('proteus.proteus.archive'),
+        patch('proteus.outgas.wrapper.check_desiccation', return_value=desiccated),
+        patch('proteus.outgas.wrapper.desiccated_after_trapping', return_value=desiccated),
+        stop_at_loop=4,
+    )
+
+    assert len(chem_calls) == n_chem
+    assert mock_extract.call_count == n_extract
+    for loops_total, finished, hf_all in chem_calls:
+        # Called after the loop has ended, on the final helpfile
+        assert finished is True
+        assert loops_total == 4
+        assert hf_all is p.hf_all
+    # The loop itself still ran its iterations
+    assert len(plot_calls) == 0 or plot_calls[-1][1] is True
 
 
 @pytest.mark.parametrize('t_impact, lands', [(1.0e8 / 3.0, True), (float('inf'), False)])
@@ -3634,7 +3699,7 @@ def _make_resume_main_loop_proteus(tmp_path, interior_module='spider', miscibili
     config.orbit.module = None
     config.observe.module = None
     config.accretion.module = None
-    config.atmos_chem.when = 'never'
+    config.atmos_chem.mode = None
     config.outgas.vapourise = True
     config.planet.temperature_mode = 'isothermal'
     config.planet.volatile_mode = 'elements'

@@ -1783,10 +1783,9 @@ def GetPostprocessingKeys():
     are held to this set rather than to the whole of `GetHelpfileKeys()`.
     An archived run stays readable after a schema addition it never used.
 
-    VULCAN indexes a per-element atmospheric mass and a per-gas volume
-    mixing ratio directly, so those expand from the element and volatile
-    lists. Both are fixed module constants, which keeps this set the same
-    for every run, as the full schema is.
+    VULCAN indexes a per-gas volume mixing ratio directly, so those expand
+    from the volatile list. It is a fixed module constant, which keeps this
+    set the same for every run, as the full schema is.
 
     Returns
     -------
@@ -1794,7 +1793,6 @@ def GetPostprocessingKeys():
         Column names, all of which are also in `GetHelpfileKeys()`.
     """
     keys = list(_POSTPROCESSING_FIXED_KEYS)
-    keys += [e + '_kg_atm' for e in element_list]
     keys += [g + '_vmr' for g in vol_list]
     return keys
 

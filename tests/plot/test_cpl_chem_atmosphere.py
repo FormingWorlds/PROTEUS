@@ -23,30 +23,30 @@ pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 
 @pytest.mark.unit
-@patch('proteus.plot.cpl_chem_atmosphere.glob.glob')
-def test_plot_chem_atmosphere_no_files(mock_glob):
+@patch('proteus.plot.cpl_chem_atmosphere.list_atmosphere_times')
+def test_plot_chem_atmosphere_no_files(mock_atm_times):
     """
     plot_chem_atmosphere returns early when no NetCDF files found.
 
     Physical scenario: simulation hasn't run yet or output was deleted.
     """
-    mock_glob.return_value = []
+    mock_atm_times.return_value = []
 
     # Should return without error
     result = plot_chem_atmosphere('output_dir', 'vulcan', plot_format='png')
     assert result is None  # empty-file-list branch must yield None silently
-    # Discriminating check: the glob lookup was actually attempted; a regression
+    # Discriminating check: the snapshot lookup was actually attempted; a regression
     # that short-circuited before checking for files would have left the mock
     # uncalled.
-    mock_glob.assert_called()
+    mock_atm_times.assert_called()
 
 
 @pytest.mark.unit
 @patch('proteus.plot.cpl_chem_atmosphere.plt.subplots')
 @patch('proteus.plot.cpl_chem_atmosphere.read_ncdf_profile')
-@patch('proteus.plot.cpl_chem_atmosphere.glob.glob')
+@patch('proteus.plot.cpl_chem_atmosphere.list_atmosphere_times')
 @patch('proteus.plot.cpl_chem_atmosphere.os.path.join')
-def test_plot_chem_atmosphere_basic(mock_join, mock_glob, mock_read, mock_subplots):
+def test_plot_chem_atmosphere_basic(mock_join, mock_atm_times, mock_read, mock_subplots):
     """
     Test basic plot generation with gas species only.
 
@@ -54,7 +54,7 @@ def test_plot_chem_atmosphere_basic(mock_join, mock_glob, mock_read, mock_subplo
     (H2O, CO2, N2, etc.) from AGNI NetCDF output.
     """
     # Mock file discovery
-    mock_glob.return_value = ['output_dir/data/100_atm.nc']
+    mock_atm_times.return_value = [100.0]
     mock_join.return_value = 'output_dir/plots/plot_chem_atmosphere.png'
 
     # Mock NetCDF read with typical gas species
@@ -113,16 +113,16 @@ def test_plot_chem_atmosphere_basic(mock_join, mock_glob, mock_read, mock_subplo
 @pytest.mark.unit
 @patch('proteus.plot.cpl_chem_atmosphere.plt.subplots')
 @patch('proteus.plot.cpl_chem_atmosphere.read_ncdf_profile')
-@patch('proteus.plot.cpl_chem_atmosphere.glob.glob')
+@patch('proteus.plot.cpl_chem_atmosphere.list_atmosphere_times')
 @patch('proteus.plot.cpl_chem_atmosphere.os.path.join')
-def test_plot_chem_atmosphere_with_clouds(mock_join, mock_glob, mock_read, mock_subplots):
+def test_plot_chem_atmosphere_with_clouds(mock_join, mock_atm_times, mock_read, mock_subplots):
     """
     Test plot generation including cloud profiles.
 
     Physical scenario: water clouds form in the atmosphere when cloud_enabled=True.
     The plot should show cloud mass mixing ratio and area fraction in panel 2.
     """
-    mock_glob.return_value = ['output_dir/data/500_atm.nc']
+    mock_atm_times.return_value = [500.0]
     mock_join.return_value = 'output_dir/plots/plot_chem_atmosphere.png'
 
     # Mock NetCDF with cloud data
@@ -158,9 +158,11 @@ def test_plot_chem_atmosphere_with_clouds(mock_join, mock_glob, mock_read, mock_
 @pytest.mark.unit
 @patch('proteus.plot.cpl_chem_atmosphere.plt.subplots')
 @patch('proteus.plot.cpl_chem_atmosphere.read_ncdf_profile')
-@patch('proteus.plot.cpl_chem_atmosphere.glob.glob')
+@patch('proteus.plot.cpl_chem_atmosphere.list_atmosphere_times')
 @patch('proteus.plot.cpl_chem_atmosphere.os.path.join')
-def test_plot_chem_atmosphere_with_aerosols(mock_join, mock_glob, mock_read, mock_subplots):
+def test_plot_chem_atmosphere_with_aerosols(
+    mock_join, mock_atm_times, mock_read, mock_subplots
+):
     """
     Test plot generation including aerosol profiles with species names.
 
@@ -168,7 +170,7 @@ def test_plot_chem_atmosphere_with_aerosols(mock_join, mock_glob, mock_read, moc
     are present when aerosols_enabled=True. Should appear in panel 2 with proper
     labels for each aerosol species.
     """
-    mock_glob.return_value = ['output_dir/data/1000_atm.nc']
+    mock_atm_times.return_value = [1000.0]
     mock_join.return_value = 'output_dir/plots/plot_chem_atmosphere.png'
 
     # Mock NetCDF with multiple aerosol species
@@ -210,10 +212,10 @@ def test_plot_chem_atmosphere_with_aerosols(mock_join, mock_glob, mock_read, moc
 @patch('proteus.plot.cpl_chem_atmosphere.plt.subplots')
 @patch('proteus.plot.cpl_chem_atmosphere.read_result')
 @patch('proteus.plot.cpl_chem_atmosphere.read_ncdf_profile')
-@patch('proteus.plot.cpl_chem_atmosphere.glob.glob')
+@patch('proteus.plot.cpl_chem_atmosphere.list_atmosphere_times')
 @patch('proteus.plot.cpl_chem_atmosphere.os.path.join')
 def test_plot_chem_atmosphere_with_offchem(
-    mock_join, mock_glob, mock_read, mock_read_result, mock_subplots
+    mock_join, mock_atm_times, mock_read, mock_read_result, mock_subplots
 ):
     """
     Test plot with offline chemistry results.
@@ -222,7 +224,7 @@ def test_plot_chem_atmosphere_with_offchem(
     kinetics; results are overlaid as solid lines on top of equilibrium
     chemistry (dashed lines).
     """
-    mock_glob.return_value = ['output_dir/data/100_atm.nc']
+    mock_atm_times.return_value = [100.0]
     mock_join.return_value = 'output_dir/plots/plot_chem_atmosphere.png'
 
     # Mock NetCDF read
@@ -273,15 +275,15 @@ def test_plot_chem_atmosphere_with_offchem(
 @pytest.mark.unit
 @patch('proteus.plot.cpl_chem_atmosphere.plt.subplots')
 @patch('proteus.plot.cpl_chem_atmosphere.read_ncdf_profile')
-@patch('proteus.plot.cpl_chem_atmosphere.glob.glob')
-def test_plot_chem_atmosphere_temperature_overlay(mock_glob, mock_read, mock_subplots):
+@patch('proteus.plot.cpl_chem_atmosphere.list_atmosphere_times')
+def test_plot_chem_atmosphere_temperature_overlay(mock_atm_times, mock_read, mock_subplots):
     """
     Test that temperature profiles are added to both panels.
 
     Physical scenario: temperature provides critical context for interpreting
     gas abundances (condensation fronts) and cloud/aerosol distributions.
     """
-    mock_glob.return_value = ['output_dir/data/100_atm.nc']
+    mock_atm_times.return_value = [100.0]
 
     # Mock NetCDF with temperature gradient
     mock_read.return_value = {
@@ -322,8 +324,8 @@ def test_plot_chem_atmosphere_temperature_overlay(mock_glob, mock_read, mock_sub
 @pytest.mark.unit
 @patch('proteus.plot.cpl_chem_atmosphere.plt.subplots')
 @patch('proteus.plot.cpl_chem_atmosphere.read_ncdf_profile')
-@patch('proteus.plot.cpl_chem_atmosphere.glob.glob')
-def test_plot_chem_atmosphere_time_annotation(mock_glob, mock_read, mock_subplots):
+@patch('proteus.plot.cpl_chem_atmosphere.list_atmosphere_times')
+def test_plot_chem_atmosphere_time_annotation(mock_atm_times, mock_read, mock_subplots):
     """
     Test that simulation time is annotated on the plot.
 
@@ -331,7 +333,7 @@ def test_plot_chem_atmosphere_time_annotation(mock_glob, mock_read, mock_subplot
     timestamping each plot.
     """
     # Filename encodes time: 5000_atm.nc = 5000 years
-    mock_glob.return_value = ['output_dir/data/5000_atm.nc']
+    mock_atm_times.return_value = [5000.0]
 
     mock_read.return_value = {
         'pl': np.array([1e8, 1e7]),
@@ -365,15 +367,15 @@ def test_plot_chem_atmosphere_time_annotation(mock_glob, mock_read, mock_subplot
 @pytest.mark.unit
 @patch('proteus.plot.cpl_chem_atmosphere.plt.subplots')
 @patch('proteus.plot.cpl_chem_atmosphere.read_ncdf_profile')
-@patch('proteus.plot.cpl_chem_atmosphere.glob.glob')
-def test_plot_chem_atmosphere_clouds_and_aerosols(mock_glob, mock_read, mock_subplots):
+@patch('proteus.plot.cpl_chem_atmosphere.list_atmosphere_times')
+def test_plot_chem_atmosphere_clouds_and_aerosols(mock_atm_times, mock_read, mock_subplots):
     """
     Test plotting with both clouds and aerosols present.
 
     Physical scenario: Atmosphere with both water clouds and aerosol particles
     (e.g., sulfate aerosols in a Venus-like atmosphere with H2SO4 clouds).
     """
-    mock_glob.return_value = ['output_dir/data/200_atm.nc']
+    mock_atm_times.return_value = [200.0]
 
     # Mock with both cloud and aerosol data
     mock_read.return_value = {
@@ -411,15 +413,15 @@ def test_plot_chem_atmosphere_clouds_and_aerosols(mock_glob, mock_read, mock_sub
 @pytest.mark.unit
 @patch('proteus.plot.cpl_chem_atmosphere.plt.subplots')
 @patch('proteus.plot.cpl_chem_atmosphere.read_ncdf_profile')
-@patch('proteus.plot.cpl_chem_atmosphere.glob.glob')
-def test_plot_chem_atmosphere_no_aerosols_key(mock_glob, mock_read, mock_subplots):
+@patch('proteus.plot.cpl_chem_atmosphere.list_atmosphere_times')
+def test_plot_chem_atmosphere_no_aerosols_key(mock_atm_times, mock_read, mock_subplots):
     """
     Test plotting when aerosols key is missing (backward compatibility).
 
     Physical scenario: Reading output from older simulation without aerosol
     support. Should handle gracefully and plot other data.
     """
-    mock_glob.return_value = ['output_dir/data/100_atm.nc']
+    mock_atm_times.return_value = [100.0]
 
     # Mock without aerosols key (older output format)
     mock_read.return_value = {
@@ -453,9 +455,9 @@ def test_plot_chem_atmosphere_no_aerosols_key(mock_glob, mock_read, mock_subplot
 @pytest.mark.unit
 @patch('proteus.plot.cpl_chem_atmosphere.plt.subplots')
 @patch('proteus.plot.cpl_chem_atmosphere.read_ncdf_profile')
-@patch('proteus.plot.cpl_chem_atmosphere.glob.glob')
+@patch('proteus.plot.cpl_chem_atmosphere.list_atmosphere_times')
 def test_agni_aerosols_take_the_colour_and_name_of_their_gas(
-    mock_glob, mock_read, mock_subplots, caplog
+    mock_atm_times, mock_read, mock_subplots, caplog
 ):
     """An aerosol named as a gas, in any case, is drawn as that gas, with no fall-back."""
     gases = ('Fe', 'FeO', 'MgO', 'NH3', 'SiO', 'SiO2')
@@ -468,7 +470,7 @@ def test_agni_aerosols_take_the_colour_and_name_of_their_gas(
         profile[name + '_mmr'] = np.array([1e-8, 5e-8, 1e-9])
     for g in gases:
         profile[g + '_vmr'] = np.array([1e-3, 1e-4, 1e-5])
-    mock_glob.return_value = ['output_dir/data/1000_atm.nc']
+    mock_atm_times.return_value = [1000.0]
     mock_read.return_value = profile
     ax1, ax2 = MagicMock(), MagicMock()
     mock_subplots.return_value = (MagicMock(), (ax1, ax2))
@@ -495,3 +497,129 @@ def test_an_aerosol_matches_one_gas_apart_from_case_or_none():
     assert _aerosol_gas('Feo', ['CO', 'FeO']) == 'FeO'
     assert _aerosol_gas('soot', ['CO', 'H2O']) is None
     assert _aerosol_gas('soot', []) is None
+
+
+# ---------------------------------------------------------------------------
+# Snapshot selection: final chemistry snapshot by default, nearest with `time`
+# ---------------------------------------------------------------------------
+
+# Atmosphere snapshots at 10, 20 and 30.5 yr; chemistry only at 10 and 20 yr, so
+# the latest atmosphere snapshot (30.5 yr) has no chemistry partner.
+_ATM_TOKENS = ('10p000', '20p000', '30p500')
+_CHEM_TOKENS = ('10p000', '20p000')
+
+
+def _profile():
+    """A three-level AGNI profile, as read_ncdf_profile returns it [Pa, K]."""
+    return {
+        'pl': np.array([1e3, 1e5, 1e7]),
+        'tmpl': np.array([300.0, 900.0, 2000.0]),
+        'H2O_vmr': np.array([1e-3, 1e-4]),
+    }
+
+
+def _snapshot_dir(tmp_path, chem_tokens=_CHEM_TOKENS, legacy=False):
+    """Create empty atmosphere snapshots and chemistry CSVs under tmp_path.
+
+    Each chemistry CSV holds an H2O mixing ratio that encodes its time, so the
+    file read can be identified from its content.
+    """
+    (tmp_path / 'data').mkdir()
+    (tmp_path / 'offchem').mkdir()
+    (tmp_path / 'plots').mkdir()
+    for token in _ATM_TOKENS:
+        (tmp_path / 'data' / f'{token}_atm.nc').write_text('')
+    names = [f'vulcan_{token}.csv' for token in chem_tokens]
+    if legacy:
+        names = ['vulcan.csv']
+    for name in names:
+        (tmp_path / 'offchem' / name).write_text(
+            'tmp p z Kzz H2O\n300 1e3 1e4 1e5 1e-6\n2000 1e7 0 1e5 1e-6\n'
+        )
+    return str(tmp_path)
+
+
+def _run_plot(outdir, **kwargs):
+    """Run plot_chem_atmosphere with the profile reader and the figure mocked.
+
+    Returns the path given to read_ncdf_profile, the filename given to
+    read_result (None for the default name), and the time annotation text.
+    """
+    from proteus.atmos_chem.common import read_result
+
+    fig, ax1, ax2 = MagicMock(), MagicMock(), MagicMock()
+    ax1.get_legend_handles_labels.return_value = ([MagicMock()], ['H2O'])
+    with (
+        patch('proteus.plot.cpl_chem_atmosphere.plt.subplots', return_value=(fig, (ax1, ax2))),
+        patch(
+            'proteus.plot.cpl_chem_atmosphere.read_ncdf_profile', return_value=_profile()
+        ) as mock_read,
+        patch('proteus.plot.cpl_chem_atmosphere.read_result', wraps=read_result) as mock_rr,
+    ):
+        plot_chem_atmosphere(outdir, 'vulcan', plot_format='png', **kwargs)
+    nc_path = mock_read.call_args[0][0]
+    rr_name = mock_rr.call_args.kwargs.get('filename') if mock_rr.called else 'not called'
+    annotation = ax1.text.call_args[0][2]
+    return nc_path, rr_name, annotation
+
+
+@pytest.mark.unit
+def test_plot_chem_atmosphere_defaults_to_final_chemistry_snapshot(tmp_path):
+    """Without `time`, the final chemistry snapshot (20 yr) is drawn with the
+    atmosphere snapshot at the same time, not the latest one (30.5 yr)."""
+    nc_path, rr_name, annotation = _run_plot(_snapshot_dir(tmp_path))
+    assert rr_name == 'vulcan_20p000.csv'
+    assert nc_path.endswith('20p000_atm.nc')
+    assert '2.00e+01' in annotation
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('time', 'token'),
+    [(14.0, '10p000'), (16.0, '20p000'), (1.0e6, '20p000')],
+    ids=['nearer_earlier_snapshot', 'nearer_later_snapshot', 'beyond_last_snapshot'],
+)
+def test_plot_chem_atmosphere_time_picks_nearest_chemistry_snapshot(tmp_path, time, token):
+    """A requested time between two chemistry snapshots draws the nearer one,
+    and the atmosphere snapshot read is the one at that chemistry time."""
+    nc_path, rr_name, _ = _run_plot(_snapshot_dir(tmp_path), time=time)
+    assert rr_name == f'vulcan_{token}.csv'
+    assert nc_path.endswith(f'{token}_atm.nc')
+    # The 30.5 yr atmosphere snapshot has no chemistry and is never chosen
+    assert '30p500' not in nc_path
+
+
+@pytest.mark.unit
+def test_plot_chem_atmosphere_without_chemistry_uses_latest_atmosphere(tmp_path):
+    """With chemistry off, the latest atmosphere snapshot is drawn, or the one
+    nearest `time` when given, and no chemistry file is read."""
+    outdir = _snapshot_dir(tmp_path)
+    nc_path, rr_name, annotation = _run_plot(outdir, plot_offchem=False)
+    assert nc_path.endswith('30p500_atm.nc')
+    assert rr_name == 'not called'
+    assert '3.05e+01' in annotation
+
+    # 12 yr lies nearest the 10 yr atmosphere snapshot
+    nc_path, _, _ = _run_plot(outdir, plot_offchem=False, time=12.0)
+    assert nc_path.endswith('10p000_atm.nc')
+
+
+@pytest.mark.unit
+def test_plot_chem_atmosphere_falls_back_to_legacy_fixed_name(tmp_path):
+    """Output holding only the fixed-name vulcan.csv is read through the default
+    name, drawn with the latest atmosphere snapshot."""
+    nc_path, rr_name, _ = _run_plot(_snapshot_dir(tmp_path, legacy=True))
+    assert rr_name is None
+    assert nc_path.endswith('30p500_atm.nc')
+
+
+@pytest.mark.unit
+def test_plot_chem_atmosphere_returns_early_without_atmosphere_snapshots(tmp_path):
+    """Chemistry CSVs without any atmosphere snapshot give no plot and no read."""
+    outdir = _snapshot_dir(tmp_path)
+    for token in _ATM_TOKENS:
+        (tmp_path / 'data' / f'{token}_atm.nc').unlink()
+    with patch('proteus.plot.cpl_chem_atmosphere.read_ncdf_profile') as mock_read:
+        result = plot_chem_atmosphere(outdir, 'vulcan', plot_format='png')
+    assert result is None
+    mock_read.assert_not_called()

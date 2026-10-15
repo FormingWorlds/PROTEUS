@@ -466,7 +466,7 @@ def _unhandled_v2_fields(paths):
             continue
         if path in mig.REMOVED:
             continue
-        if path == 'observe.synthesis':
+        if path == 'observe.synthesis' or path == mig._CHEM_WHEN:
             continue
         if path.startswith(_DROP_PREFIXES) or path == 'struct.zalmoxis':
             continue
@@ -526,6 +526,8 @@ def _compute_pm(v3_defaults):
         'planet.volatile_mode',
         'planet.R_int_override',
         'interior_struct.core_frac_mode',
+        'atmos_chem.mode',
+        'atmos_chem.times',
         'config_version',
     }
     return set(v3_defaults) - landed
@@ -1115,3 +1117,33 @@ def test_wrong_typed_value_is_refused_by_the_schema(field, value, tmp_path):
     with pytest.raises(cattrs.errors.ClassValidationError):
         mig.main([str(v2_path), '-o', str(out_path)])
     assert not out_path.exists()
+
+
+@pytest.mark.parametrize(
+    ('module', 'when', 'mode', 'times'),
+    [
+        ('vulcan', 'manually', 'none', 'end'),
+        ('vulcan', 'offline', 'offline', 'end'),
+        ('vulcan', 'online', 'offline', 'all'),
+        ('none', 'offline', 'none', 'end'),
+    ],
+    ids=[
+        'manual_runs_nothing',
+        'offline_runs_at_end',
+        'online_runs_every_snapshot',
+        'no_module',
+    ],
+)
+def test_chem_when_maps_to_mode_and_times(module, when, mode, times):
+    """2.0 atmos_chem.when becomes the 3.0 mode and times pair, and is not
+    carried over itself, since 3.0 refuses it as an unknown key. Without a
+    module there is nothing to run, so mode is none whatever when said."""
+    v2 = _minimal_spider_v2()
+    v2['atmos_chem'] = {'module': module, 'when': when}
+    flat, report = _translate(v2)
+    # The emitted config leaves out a field at its 3.0 default ('none', 'end')
+    assert flat.get('atmos_chem.mode', 'none') == mode
+    assert flat.get('atmos_chem.times', 'end') == times
+    assert 'atmos_chem.when' not in flat
+    online_warned = any("'online'" in w for w in report.warnings)
+    assert online_warned is (when == 'online' and module != 'none')

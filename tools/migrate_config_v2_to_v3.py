@@ -291,6 +291,10 @@ _IC_FIELDS = {
     'interior.dummy.ini_tmagma',
 }
 
+# Chemistry scheduling field consumed by the chemistry-schedule handler: 3.0
+# split 2.0's `when` into `mode` (whether) and `times` (which snapshots).
+_CHEM_WHEN = 'atmos_chem.when'
+
 # Orbit-evolution fields consumed by the orbit-dispatch handler: 2.0's bool
 # flags do not reduce to a single rename, since 3.0 replaced each with a
 # string-valued model choice (and split the satellite block out under
@@ -649,6 +653,30 @@ def _handle_temperature_mode(eff_v2, explicit, v3, active, report):
             )
 
 
+def _handle_chem_schedule(eff_v2, v3, report):
+    """Map 2.0 atmos_chem.when onto 3.0 atmos_chem.mode and atmos_chem.times.
+
+    2.0 'manually' ran nothing and 'offline' ran once on the final state.
+    2.0 'online' post-processed every snapshot from inside the main loop; 3.0
+    runs the same calculation on every snapshot after the simulation.
+    """
+    when = eff_v2.get(_CHEM_WHEN, 'manually')
+    module = eff_v2.get('atmos_chem.module')
+    if (when == 'manually') or (module in (None, 'none')):
+        v3['atmos_chem.mode'] = 'none'
+        v3['atmos_chem.times'] = 'end'
+    elif when == 'offline':
+        v3['atmos_chem.mode'] = 'offline'
+        v3['atmos_chem.times'] = 'end'
+    else:
+        v3['atmos_chem.mode'] = 'offline'
+        v3['atmos_chem.times'] = 'all'
+        report.warnings.append(
+            "atmos_chem.when = 'online' became mode = 'offline' with times = 'all': "
+            'every snapshot is post-processed after the simulation, not during it.'
+        )
+
+
 def _handle_orbit_dispatch(eff_v2, explicit, v3, report):
     """Map 2.0's boolean orbit.evolve/orbit.satellite flags to 3.0's
     string-valued star_planet_model/planet_satellite_model dispatch.
@@ -748,6 +776,7 @@ def translate(v2_toml: dict):
             or v2_path in _IC_FIELDS
             or v2_path in atmos_hoist_src
             or v2_path in _ORBIT_FIELDS
+            or v2_path == _CHEM_WHEN
         ):
             continue
         if v2_path.startswith('delivery.volatiles.'):
@@ -806,6 +835,7 @@ def translate(v2_toml: dict):
     _handle_atmos_hoist(eff_v2, explicit, v3, active, report)
     _handle_temperature_mode(eff_v2, explicit, v3, active, report)
     _handle_orbit_dispatch(eff_v2, explicit, v3, report)
+    _handle_chem_schedule(eff_v2, v3, report)
 
     # derived fields with no 2.0 source
     if v3.get('interior_struct.module') == 'spider':

@@ -251,39 +251,49 @@ def test_dummy_chem_zero_atmosphere():
 
 
 @pytest.mark.unit
-def test_dummy_chem_writes_csv(tmp_path):
-    """run_dummy_chem writes a CSV file in VULCAN-compatible format."""
-    hf_row = _make_hf_row()
-    config = _make_config()
-    dirs = {'output': str(tmp_path)}
+@pytest.mark.physics_invariant
+def test_dummy_chem_writes_subyear_named_csv(tmp_path):
+    """run_dummy_chem writes offchem/dummy_<time>.csv with the sub-year time
+    token, in the VULCAN-compatible column layout, with positive pressures
+    and mixing ratios that sum to 1 on every level.
 
-    success = run_dummy_chem(dirs, config, hf_row)
-    assert success is True
-
-    csv_path = tmp_path / 'offchem' / 'dummy.csv'
-    assert csv_path.exists()
-
-    # Read and check structure
+    t = 12.32 yr resolves the sub-year token ('12p320') against the old
+    whole-year name ('dummy_12.csv') and the fixed name ('dummy.csv').
+    """
     import pandas as pd
 
-    df = pd.read_csv(csv_path, delimiter=r'\s+')
-    assert 'tmp' in df.columns
-    assert 'p' in df.columns
-    assert 'H2O' in df.columns
-    assert 'O' in df.columns
+    hf_row = _make_hf_row()
+    hf_row['Time'] = 12.32
+    dirs = {'output': str(tmp_path)}
+
+    assert run_dummy_chem(dirs, _make_config(), hf_row) is True
+
+    offchem = tmp_path / 'offchem'
+    assert sorted(f.name for f in offchem.iterdir()) == ['dummy_12p320.csv']
+    df = pd.read_csv(offchem / 'dummy_12p320.csv', delimiter=r'\s+')
+    assert list(df.columns[:4]) == ['tmp', 'p', 'z', 'Kzz']
     assert len(df) == 50
+    assert np.all(df['p'] > 0.0) and np.all(df['tmp'] > 0.0)
+    vmr_sum = df[[sp for sp in _ALL_SPECIES]].sum(axis=1).to_numpy()
+    np.testing.assert_allclose(vmr_sum, 1.0, rtol=1e-6)  # file holds 9 significant digits
 
 
 @pytest.mark.unit
-def test_dummy_chem_online_mode(tmp_path):
-    """Online mode writes per-snapshot CSV files."""
-    hf_row = _make_hf_row()
-    hf_row['Time'] = 5000.0
-    config = _make_config()
+def test_dummy_chem_keeps_other_snapshots_in_offchem(tmp_path):
+    """Two snapshots in a row both stay on disk: the backend no longer clears
+    the offchem folder, which the wrapper does once per sequence.
+
+    A file left by another snapshot must survive, and the first call must
+    create the folder when it does not exist yet.
+    """
     dirs = {'output': str(tmp_path)}
+    config = _make_config()
+    assert not (tmp_path / 'offchem').exists()
 
-    success = run_dummy_chem(dirs, config, hf_row, online=True)
-    assert success is True
+    for i, time in enumerate((0.5, 2000.0)):
+        hf_row = _make_hf_row()
+        hf_row['Time'] = time
+        assert run_dummy_chem(dirs, config, hf_row, first=(i == 0)) is True
 
-    csv_path = tmp_path / 'offchem' / 'dummy_5000.csv'
-    assert csv_path.exists()
+    names = sorted(f.name for f in (tmp_path / 'offchem').iterdir())
+    assert names == ['dummy_0p500.csv', 'dummy_2000p000.csv']

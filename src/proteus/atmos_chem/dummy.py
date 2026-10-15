@@ -16,10 +16,11 @@ from __future__ import annotations
 
 import logging
 import os
-import shutil
 from typing import TYPE_CHECKING
 
 import numpy as np
+
+from proteus.atmos_chem.common import chem_csv_name
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -174,8 +175,11 @@ def _build_profiles(hf_row, config, num_levels=50):
     return result
 
 
-def run_dummy_chem(dirs: dict, config: Config, hf_row: dict, *, online: bool = False) -> bool:
+def run_dummy_chem(dirs: dict, config: Config, hf_row: dict, *, first: bool = True) -> bool:
     """Run dummy atmospheric chemistry and write CSV output.
+
+    Writes ``offchem/dummy_<time>.csv``, with the time [yr] in the sub-year
+    form of `format_subyear_time`.
 
     Parameters
     ----------
@@ -185,8 +189,9 @@ def run_dummy_chem(dirs: dict, config: Config, hf_row: dict, *, online: bool = F
         PROTEUS configuration.
     hf_row : dict
         Helpfile row (read only).
-    online : bool
-        If True, write per-snapshot file (dummy_{time}.csv).
+    first : bool
+        Whether this is the first snapshot of a sequence. Unused; it keeps the
+        signature of the VULCAN backend.
 
     Returns
     -------
@@ -194,15 +199,8 @@ def run_dummy_chem(dirs: dict, config: Config, hf_row: dict, *, online: bool = F
         True if successful.
     """
     outdir = os.path.join(dirs['output'], 'offchem')
-
-    if online:
-        os.makedirs(outdir, exist_ok=True)
-        csv_name = f'dummy_{int(hf_row["Time"])}.csv'
-    else:
-        if os.path.exists(outdir):
-            shutil.rmtree(outdir)
-        os.makedirs(outdir)
-        csv_name = 'dummy.csv'
+    os.makedirs(outdir, exist_ok=True)
+    csv_name = chem_csv_name('dummy', float(hf_row['Time']))
 
     csv_path = os.path.join(outdir, csv_name)
 

@@ -1151,8 +1151,6 @@ class Proteus:
         self.agni_deadlock_count = 0
 
         # Main loop
-        # Collects the index of the snapshots that already underwent a VULCAN calculation to avoid repeating:
-        vulcan_completed_loops = set()
         UpdateStatusfile(self.directories, 1)
         if _IT_TIMING_ENABLED:
             _init_wall = time.perf_counter() - _t_start
@@ -1527,23 +1525,6 @@ class Proteus:
 
             ############### / ATMOSPHERE CLIMATE
 
-            ############### ONLINE ATMOSPHERIC CHEMISTRY
-            if (
-                self.config.atmos_chem.when == 'online'
-            ):  # checking if the toml file says online at atmos_chem and then when
-                if (
-                    is_snapshot and not self.desiccated
-                ):  # checking if the loop is a snapshot and runs VULCAN
-                    if self.loops['total'] not in vulcan_completed_loops:
-                        _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
-                        run_chemistry(self.directories, self.config, self.hf_row)
-                        if _IT_TIMING_ENABLED:
-                            _t_mod['chem'] = time.perf_counter() - _t0
-                        vulcan_completed_loops.add(
-                            self.loops['total']
-                        )  # adds it to the completed loops/snapshots
-            ############### / ONLINE ATMOSPHERIC CHEMISTRY
-
             ############### HOUSEKEEPING AND CONVERGENCE CHECK
 
             PrintHalfSeparator()
@@ -1662,13 +1643,19 @@ class Proteus:
         write_atmosphere_snapshot(self.atmos_o, self.config, self.directories, self.hf_row)
 
         # Run offline chemistry
-        if self.config.atmos_chem.when == 'offline':
+        # at the snapshots set by atmos_chem.times
+        if self.config.atmos_chem.mode == 'offline':
             log.info(' ')
             PrintSeparator()
             if self.desiccated:
                 log.warning('Cannot calculate atmospheric chemistry after desiccation')
             else:
-                run_chemistry(self.directories, self.config, self.hf_row)
+                # Earlier snapshots may have been moved into the data archive
+                if (self.config.atmos_chem.times != 'end') and (
+                    self.config.params.out.archive_mod is not None
+                ):
+                    self.extract_archives()
+                run_chemistry(self.directories, self.config, self.hf_all)
 
         # Synthetic observations
         if self.config.observe.module is not None:
@@ -1761,12 +1748,7 @@ class Proteus:
     def offline_chemistry(self):
         # Load data from helpfile. Read it before unpacking the archive, so a
         # run this cannot postprocess is left archived as it was found.
-        from proteus.utils.coupler import (
-            GetPostprocessingKeys,
-            HelpfileRow,
-            ReadHelpfileFromCSV,
-            helpfile_path,
-        )
+        from proteus.utils.coupler import GetPostprocessingKeys, ReadHelpfileFromCSV
 
         hf_all = ReadHelpfileFromCSV(
             self.directories['output'], required_columns=GetPostprocessingKeys()
@@ -1779,16 +1761,10 @@ class Proteus:
         # Extract archived data
         self.extract_archives()
 
-        # Get last row. Wrapped so a column outside the postprocessing set,
-        # which the check above does not cover, still reports itself.
-        hf_row = HelpfileRow(
-            hf_all.iloc[-1].to_dict(), helpfile_path(self.directories['output'])
-        )
-
-        # Run offline chemistry, typically invoked via CLI
+        # Run offline chemistry at atmos_chem.times, whatever atmos_chem.mode is
         from proteus.atmos_chem.wrapper import run_chemistry
 
-        result = run_chemistry(self.directories, self.config, hf_row)
+        result = run_chemistry(self.directories, self.config, hf_all)
 
         # Refresh the chemistry plot
         if result is not None:

@@ -1,15 +1,18 @@
 """Unit tests for ``proteus.atmos_chem.wrapper``.
 
-Exercises the ``run_chemistry`` dispatch function, which routes to
-the correct atmospheric chemistry backend (vulcan, dummy, none) based
-on the config and scheduling mode (offline, online, manually).
+Exercises ``run_chemistry``, which post-processes the snapshots set by
+``atmos_chem.times`` with the configured chemistry backend after the
+simulation, whatever ``atmos_chem.mode`` is.
 
 Invariants tested:
-  - Guard: no module or 'none' module returns None without side effects
-  - Guard: 'manually' scheduling returns None
-  - Error contract: unknown module raises ValueError
-  - Error contract: unknown scheduling mode raises ValueError
-  - Dispatch: correct backend is called for vulcan/dummy in offline/online mode
+  - Guard: no module returns None without touching the output folder
+  - Error contract: unknown module raises ValueError and records status 20
+  - Sequence: snapshots run in ascending time, the network flag `first` is
+    true for the first one only, and each run gets the helpfile row of its time
+  - Output: the latest successful snapshot is copied to '<module>.csv'; a
+    failed snapshot is skipped; no success leaves no '<module>.csv'
+  - The offchem folder is cleared once, at the start
+  - The real dummy backend gives mixing ratios that sum to 1 on every level
 
 Testing standards:
   - docs/How-to/testing.md
@@ -18,194 +21,213 @@ Testing standards:
 
 from __future__ import annotations
 
+import os
 from unittest.mock import MagicMock, patch
 
+import numpy as np
+import pandas as pd
 import pytest
 
+from proteus.atmos_chem.common import chem_csv_name
+from proteus.atmos_chem.dummy import _ALL_SPECIES
 from proteus.atmos_chem.wrapper import run_chemistry
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 
-def _make_config(module: str | None = 'none', when: str = 'offline') -> MagicMock:
+def _make_config(module: str | None = 'dummy', times='end') -> MagicMock:
     """Build a minimal mock config for run_chemistry."""
     config = MagicMock()
     config.atmos_chem.module = module
-    config.atmos_chem.when = when
+    config.atmos_chem.times = times
+    config.atmos_clim.p_top = 1e-6  # bar, read by the dummy backend
     return config
 
 
-# -----------------------------------------------------------------------
-# Guard: disabled module
-# -----------------------------------------------------------------------
+def _dirs(tmp_path) -> dict:
+    """Output directories as PROTEUS sets them up."""
+    return {'output': str(tmp_path), 'output/offchem': str(tmp_path / 'offchem')}
 
 
-def test_run_chemistry_none_module_returns_none():
-    """When atmos_chem.module is None, run_chemistry returns None
-    without calling any backend.
+def _helpfile(times) -> pd.DataFrame:
+    """Helpfile rows with a physically plausible surface state at each time [yr].
 
-    Edge case: chemistry is disabled in the config. The config converter
-    maps the TOML string 'none' to Python None before dispatch, so None is
-    the value the wrapper actually receives.
+    T_surf falls with time, so each row is told apart by its temperature.
     """
-    config = _make_config(module=None)
-    hf_row = {'Time': 100}
-    result = run_chemistry(dirs={}, config=config, hf_row=hf_row)
-    assert result is None
-    assert hf_row['Time'] == 100  # hf_row untouched
-
-
-def test_run_chemistry_empty_module_returns_none():
-    """When atmos_chem.module is empty string, run_chemistry returns
-    None. Guards against misconfigured TOML where module = ''.
-    """
-    config = _make_config(module='')
-    hf_row = {'Time': 200}
-    result = run_chemistry(dirs={}, config=config, hf_row=hf_row)
-    assert result is None
-    assert hf_row['Time'] == 200  # hf_row untouched
-
-
-# -----------------------------------------------------------------------
-# Guard: manual scheduling
-# -----------------------------------------------------------------------
-
-
-def test_run_chemistry_manually_skips():
-    """When atmos_chem.when is 'manually', run_chemistry returns None
-    even with a valid module configured.
-
-    This mode is for user-triggered post-processing, not automatic
-    per-timestep execution.
-    """
-    config = _make_config(module='vulcan', when='manually')
-    hf_row = {'Time': 300}
-    result = run_chemistry(dirs={}, config=config, hf_row=hf_row)
-    assert result is None
-    assert hf_row['Time'] == 300  # no side effect on hf_row
-
-
-# -----------------------------------------------------------------------
-# Error contract: unknown module
-# -----------------------------------------------------------------------
-
-
-def test_run_chemistry_unknown_module_raises(tmp_path):
-    """An unrecognised module name raises ValueError after recording status.
-
-    The dispatch uses an if/elif/else chain; the else branch must
-    raise, not silently return None, and the run's status file must
-    record the error state so monitoring sees the truth instead of a
-    stale "Running" entry.
-    """
-    config = _make_config(module='nonexistent_chem', when='offline')
-    hf_row = {'Time': 400}
-    with pytest.raises(ValueError, match='Invalid atmos_chem module'):
-        run_chemistry(dirs={'output': str(tmp_path)}, config=config, hf_row=hf_row)
-    assert hf_row['Time'] == 400  # no hf_row side effect before raise
-    status = (tmp_path / 'status').read_text()
-    assert status.splitlines()[0].strip() == '20'  # error status recorded
-
-
-# -----------------------------------------------------------------------
-# Error contract: unknown scheduling mode
-# -----------------------------------------------------------------------
-
-
-def test_run_chemistry_unknown_when_raises(tmp_path):
-    """An unrecognised scheduling mode raises ValueError after recording status.
-
-    Valid modes are 'offline', 'online', 'manually'. Anything else
-    must raise after the backend import succeeds, with the error state
-    recorded in the run's status file.
-    """
-    config = _make_config(module='dummy', when='invalid_schedule')
-    hf_row = {'Time': 500}
-    with pytest.raises(ValueError, match='Invalid atmos_chem.when'):
-        run_chemistry(dirs={'output': str(tmp_path)}, config=config, hf_row=hf_row)
-    assert hf_row['Time'] == 500  # no hf_row side effect before raise
-    status = (tmp_path / 'status').read_text()
-    assert status.splitlines()[0].strip() == '20'  # error status recorded
-
-
-# -----------------------------------------------------------------------
-# Dispatch: offline mode
-# -----------------------------------------------------------------------
-
-
-@patch('proteus.atmos_chem.dummy.run_dummy_chem', return_value=True)
-@patch('proteus.atmos_chem.wrapper.read_result')
-def test_run_chemistry_dummy_offline_dispatches_correctly(mock_read, mock_run):
-    """In offline mode with the dummy backend, run_chemistry calls
-    run_dummy_chem without the online flag and reads the default
-    '<module>.csv' file.
-
-    Discrimination: online mode would pass online=True and construct
-    a timestep-specific filename.
-    """
-    import pandas as pd
-
-    mock_read.return_value = pd.DataFrame({'species': ['H2O'], 'vmr': [0.01]})
-    config = _make_config(module='dummy', when='offline')
-    dirs = {'output': '/fake/output'}
-
-    result = run_chemistry(dirs=dirs, config=config, hf_row={})
-
-    mock_run.assert_called_once()
-    # In offline mode, filename should be None (default)
-    mock_read.assert_called_once_with('/fake/output', 'dummy', filename=None)
-    assert result is not None
-    assert len(result) == 1
-
-
-# -----------------------------------------------------------------------
-# Dispatch: online mode
-# -----------------------------------------------------------------------
-
-
-@patch('proteus.atmos_chem.dummy.run_dummy_chem', return_value=True)
-@patch('proteus.atmos_chem.wrapper.read_result')
-def test_run_chemistry_dummy_online_constructs_timestep_filename(mock_read, mock_run):
-    """In online mode, run_chemistry passes online=True to the backend
-    and constructs a timestep-specific filename 'dummy_<Time>.csv'.
-
-    Discrimination: offline mode would use filename=None.
-    """
-    import pandas as pd
-
-    mock_read.return_value = pd.DataFrame({'species': ['CO2'], 'vmr': [0.001]})
-    config = _make_config(module='dummy', when='online')
-    dirs = {'output': '/fake/output'}
-    hf_row = {'Time': 5000}
-
-    result = run_chemistry(dirs=dirs, config=config, hf_row=hf_row)
-
-    # online=True passed to the backend
-    mock_run.assert_called_once()
-    call_kwargs = mock_run.call_args
-    assert call_kwargs[1].get('online') is True or (
-        len(call_kwargs[0]) >= 4 and call_kwargs[0][3] is True
+    n = len(times)
+    return pd.DataFrame(
+        {
+            'Time': times,
+            'T_surf': np.linspace(3000.0, 1500.0, n),
+            'P_surf': np.full(n, 100.0),  # bar
+            'gravity': np.full(n, 9.81),
+            'atm_kg_per_mol': np.full(n, 0.018),
+            'H2O_vmr': np.full(n, 0.9),
+            'CO2_vmr': np.full(n, 0.1),
+        }
     )
-    # Timestep-specific filename
-    mock_read.assert_called_once_with('/fake/output', 'dummy', filename='dummy_5000.csv')
-    assert result is not None
 
 
-# -----------------------------------------------------------------------
-# Backend failure
-# -----------------------------------------------------------------------
+def _fake_backend(tmp_path, fail_at=()):
+    """A backend that writes one CSV per snapshot, holding T_surf of its row.
 
-
-@patch('proteus.atmos_chem.dummy.run_dummy_chem', return_value=False)
-def test_run_chemistry_backend_failure_returns_none(mock_run):
-    """When the backend returns False (solver failure), run_chemistry
-    returns None without attempting to read output.
-
-    Edge case: VULCAN fails to converge, or the dummy backend
-    encounters an error.
+    Returns False, writing nothing, at the times in `fail_at`.
     """
-    config = _make_config(module='dummy', when='offline')
-    hf_row = {'Time': 600}
-    result = run_chemistry(dirs={'output': '/fake'}, config=config, hf_row=hf_row)
+    calls = []
+
+    def run(dirs, config, hf_row, *, first=True):
+        calls.append((float(hf_row['Time']), float(hf_row['T_surf']), first))
+        if hf_row['Time'] in fail_at:
+            return False
+        os.makedirs(dirs['output/offchem'], exist_ok=True)
+        fpath = os.path.join(
+            dirs['output/offchem'], chem_csv_name(config.atmos_chem.module, hf_row['Time'])
+        )
+        pd.DataFrame({'tmp': [hf_row['T_surf']], 'p': [1.0e5]}).to_csv(
+            fpath, sep='\t', index=False
+        )
+        return True
+
+    return run, calls
+
+
+# -----------------------------------------------------------------------
+# Guards and error contract
+# -----------------------------------------------------------------------
+
+
+@pytest.mark.parametrize('module', [None, ''], ids=['module_none', 'module_empty'])
+def test_run_chemistry_without_module_returns_none(tmp_path, module):
+    """With no chemistry module, run_chemistry returns None and leaves the
+    output folder alone: no offchem folder is created or cleared."""
+    stale = tmp_path / 'offchem' / 'keep.csv'
+    stale.parent.mkdir()
+    stale.write_text('x')
+
+    result = run_chemistry(_dirs(tmp_path), _make_config(module=module), _helpfile([0.0]))
+
     assert result is None
-    assert hf_row['Time'] == 600  # no side effect on failure
+    assert stale.read_text() == 'x'
+
+
+def test_run_chemistry_unknown_module_raises_and_records_status(tmp_path):
+    """An unrecognised module raises ValueError naming it, records error
+    status 20 in the run's status file, and runs nothing."""
+    with pytest.raises(ValueError, match='nonexistent_chem'):
+        run_chemistry(
+            _dirs(tmp_path), _make_config(module='nonexistent_chem'), _helpfile([0.0])
+        )
+    status = (tmp_path / 'status').read_text()
+    assert status.splitlines()[0].strip() == '20'
+    assert not (tmp_path / 'offchem').exists()
+
+
+# -----------------------------------------------------------------------
+# Sequence of snapshots
+# -----------------------------------------------------------------------
+
+
+def test_run_chemistry_end_runs_the_backend_once(tmp_path):
+    """times = 'end' runs the backend once, on the final helpfile row, with
+    first = True, and returns that result, also copied to '<module>.csv'."""
+    run, calls = _fake_backend(tmp_path)
+    hf_all = _helpfile([0.0, 10.0, 250.0])
+
+    with patch('proteus.atmos_chem.dummy.run_dummy_chem', side_effect=run):
+        result = run_chemistry(_dirs(tmp_path), _make_config(times='end'), hf_all)
+
+    assert calls == [(250.0, pytest.approx(1500.0), True)]
+    assert result['tmp'].iloc[0] == pytest.approx(1500.0)
+    assert (tmp_path / 'offchem' / 'dummy.csv').exists()
+
+
+def test_run_chemistry_all_runs_in_ascending_time_with_first_once(tmp_path):
+    """times = 'all' runs every snapshot in ascending time; only the first
+    call has first = True (the network is compiled once), and each call gets
+    the helpfile row of its own time, not the final one."""
+    run, calls = _fake_backend(tmp_path)
+    hf_all = _helpfile([0.0, 10.0, 250.0])  # T_surf 3000, 2250, 1500 K
+
+    with patch('proteus.atmos_chem.dummy.run_dummy_chem', side_effect=run):
+        run_chemistry(_dirs(tmp_path), _make_config(times='all'), hf_all)
+
+    assert [c[0] for c in calls] == [0.0, 10.0, 250.0]
+    assert [c[2] for c in calls] == [True, False, False]
+    assert [c[1] for c in calls] == pytest.approx([3000.0, 2250.0, 1500.0])
+
+
+def test_run_chemistry_skips_a_failed_snapshot_and_copies_the_latest_success(tmp_path):
+    """A snapshot whose backend fails is skipped, the sequence goes on, and
+    '<module>.csv' holds the latest successful snapshot, not the failed last one.
+
+    The last snapshot (250 yr) fails, so the copy must come from 10 yr
+    (T_surf 2250 K) and not 250 yr (1500 K).
+    """
+    run, calls = _fake_backend(tmp_path, fail_at=(250.0,))
+    hf_all = _helpfile([0.0, 10.0, 250.0])
+
+    with patch('proteus.atmos_chem.dummy.run_dummy_chem', side_effect=run):
+        result = run_chemistry(_dirs(tmp_path), _make_config(times='all'), hf_all)
+
+    assert len(calls) == 3
+    assert result['tmp'].iloc[0] == pytest.approx(2250.0)
+    fixed = pd.read_csv(tmp_path / 'offchem' / 'dummy.csv', sep='\t')
+    assert fixed['tmp'].iloc[0] == pytest.approx(2250.0)
+    assert not (tmp_path / 'offchem' / 'dummy_250p000.csv').exists()
+
+
+def test_run_chemistry_all_failures_return_none_without_fixed_file(tmp_path):
+    """When every snapshot fails, run_chemistry returns None and writes no
+    '<module>.csv', so no reader picks up a result that does not exist."""
+    run, calls = _fake_backend(tmp_path, fail_at=(0.0, 10.0))
+
+    with patch('proteus.atmos_chem.dummy.run_dummy_chem', side_effect=run):
+        result = run_chemistry(
+            _dirs(tmp_path), _make_config(times='all'), _helpfile([0.0, 10.0])
+        )
+
+    assert result is None
+    assert len(calls) == 2
+    assert not (tmp_path / 'offchem' / 'dummy.csv').exists()
+
+
+def test_run_chemistry_clears_offchem_once_at_the_start(tmp_path):
+    """A file left in offchem by an earlier call is removed, while the files
+    of this call's earlier snapshots survive its later ones."""
+    stale = tmp_path / 'offchem' / 'dummy_999p000.csv'
+    stale.parent.mkdir()
+    stale.write_text('stale')
+    run, _ = _fake_backend(tmp_path)
+
+    with patch('proteus.atmos_chem.dummy.run_dummy_chem', side_effect=run):
+        run_chemistry(_dirs(tmp_path), _make_config(times='all'), _helpfile([0.0, 10.0]))
+
+    names = sorted(f.name for f in (tmp_path / 'offchem').iterdir())
+    assert names == ['dummy.csv', 'dummy_0p000.csv', 'dummy_10p000.csv']
+    assert not stale.exists()
+
+
+# -----------------------------------------------------------------------
+# Real dummy backend
+# -----------------------------------------------------------------------
+
+
+@pytest.mark.physics_invariant
+def test_run_chemistry_with_dummy_backend_at_listed_times(tmp_path):
+    """With the real dummy backend and a list of times, each requested time
+    maps to the nearest helpfile time (no atmosphere snapshots exist), the
+    duplicates collapse, and the returned profile has positive pressures and
+    mixing ratios summing to 1 on every level.
+
+    Requests 4 and 6 yr both map to 5 yr; 90 yr maps to 100 yr.
+    """
+    hf_all = _helpfile([0.0, 5.0, 100.0])
+    config = _make_config(times=[4.0, 6.0, 90.0])
+
+    result = run_chemistry(_dirs(tmp_path), config, hf_all)
+
+    names = sorted(f.name for f in (tmp_path / 'offchem').iterdir())
+    assert names == ['dummy.csv', 'dummy_100p000.csv', 'dummy_5p000.csv']
+    assert np.all(result['p'] > 0.0)
+    vmr_sum = result[list(_ALL_SPECIES)].sum(axis=1).to_numpy()
+    np.testing.assert_allclose(vmr_sum, 1.0, rtol=1e-6)  # file holds 9 significant digits

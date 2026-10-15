@@ -878,7 +878,8 @@ config_version = "3.0"
     # Default off: VULCAN (GPL-3.0) is set up by `bash install.sh`,
     # or alone with `bash tools/get_vulcan.sh`.
     module                    = "none"       # none | vulcan | dummy
-    when                      = "manually"   # manually | offline | online
+    mode                      = "none"       # none | offline (online is not yet implemented)
+    times                     = "end"        # end | all | list of times [yr]
 
     # Transport processes
     photo_on                  = true         # photochemistry
@@ -890,7 +891,7 @@ config_version = "3.0"
     [atmos_chem.vulcan]
         # Setup
         network               = "SNCHO"      # chemical network: CHO | NCHO | SNCHO
-        ini_mix               = "profile"    # initial mixing ratios: profile | outgas
+        ini_mix               = "profile"    # initial mixing ratios: profile | outgas | previous
         fix_surf              = true         # hold surface mixing ratios fixed
         make_funs             = true         # generate reaction network functions
 
