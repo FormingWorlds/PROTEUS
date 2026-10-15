@@ -253,13 +253,13 @@ def test_parallel_process_happy_path_with_mocked_manager(monkeypatch, tmp_path):
             'Y': torch.tensor([[0.2]], dtype=torch.double),
         },
     )
-    monkeypatch.setattr(
-        async_mod,
-        'init_locs',
-        lambda n_workers, _D_shared, acqf='LogEI': torch.tensor(
-            [[0.2], [0.8]], dtype=torch.double
-        )[:n_workers],
-    )
+    init_kwargs = {}
+
+    def _fake_init_locs(n_workers, _D_shared, **kwargs):
+        init_kwargs.update(kwargs)
+        return torch.tensor([[0.2], [0.8]], dtype=torch.double)[:n_workers]
+
+    monkeypatch.setattr(async_mod, 'init_locs', _fake_init_locs)
     monkeypatch.setattr(async_mod, 'get_kernel', lambda *args, **kwargs: object())
 
     D_final, logs, elapsed = async_mod.parallel_process(
@@ -282,6 +282,8 @@ def test_parallel_process_happy_path_with_mocked_manager(monkeypatch, tmp_path):
     assert D_final['Y'].shape == (3, 1)
     assert logs == [None]
     assert elapsed == []
+    # The initial proposals use the configured kernel, not the init_locs default
+    assert init_kwargs == {'acqf': 'LogEI', 'kernel': 'MAT3/2'}
 
 
 # ============================================================================
@@ -326,7 +328,7 @@ def _mocked_parallel_process_env(monkeypatch, tmp_path, fake_process_cls, n_init
     monkeypatch.setattr(
         async_mod,
         'init_locs',
-        lambda n_workers, _D_shared, acqf='LogEI': torch.tensor(
+        lambda n_workers, _D_shared, **_kwargs: torch.tensor(
             [[0.2], [0.8]], dtype=torch.double
         )[:n_workers],
     )
