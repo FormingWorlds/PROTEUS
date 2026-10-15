@@ -224,11 +224,12 @@ def _get_petitradtrans_version() -> str:
 
 
 def vulcan_below_floor(config: Config) -> bool:
-    """Return True, after logging the fix command, when the config uses a VULCAN below its floor.
+    """Return True, after logging the fix command, when the config runs a VULCAN below its floor.
 
     The floor is the ``fwl-vulcan`` requirement in ``pyproject.toml``, read by the doctor.
+    With ``when = 'manually'`` VULCAN never runs, so there is nothing to check.
     """
-    if config.atmos_chem.module != 'vulcan':
+    if config.atmos_chem.module != 'vulcan' or config.atmos_chem.when == 'manually':
         return False
     from proteus.doctor import FAIL, _dependency_specs, check_python_package
 

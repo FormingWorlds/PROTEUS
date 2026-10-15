@@ -2112,6 +2112,7 @@ def test_offline_chemistry_stops_on_vulcan_below_floor(tmp_path):
 
     p = _make_proteus_instance(tmp_path)
     p.config.atmos_chem.module = 'vulcan'
+    p.config.atmos_chem.when = 'offline'
     with (
         patch(
             'proteus.doctor._dependency_specs',

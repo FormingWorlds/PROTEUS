@@ -3627,6 +3627,7 @@ def test_validate_module_versions_checks_vulcan_floor(tmp_path, caplog, installe
     config = _all_dummy_modules_config()
     config.interior_energetics.module = 'dummy'
     config.atmos_chem.module = 'vulcan'
+    config.atmos_chem.when = 'offline'
     spec = {'fwl-vulcan': Requirement('fwl-vulcan>=26.10.14')}
     with (
         patch('proteus.doctor._dependency_specs', return_value=spec),
@@ -3645,13 +3646,15 @@ def test_validate_module_versions_checks_vulcan_floor(tmp_path, caplog, installe
     assert any(fix in r.getMessage() for r in caplog.records) == raises
 
 
-def test_validate_module_versions_skips_vulcan_without_chemistry(tmp_path):
-    """A config without VULCAN never checks the VULCAN version."""
+@pytest.mark.parametrize(('module', 'when'), [(None, 'offline'), ('vulcan', 'manually')])
+def test_validate_module_versions_skips_vulcan_without_chemistry(tmp_path, module, when):
+    """A config that never runs VULCAN (no module, or when = 'manually') never checks it."""
     from proteus.utils.coupler import validate_module_versions
 
     config = _all_dummy_modules_config()
     config.interior_energetics.module = 'dummy'
-    config.atmos_chem.module = None
+    config.atmos_chem.module = module
+    config.atmos_chem.when = when
     with (
         patch('proteus.doctor.check_python_package') as mock_check,
         patch('proteus.utils.coupler.UpdateStatusfile') as mock_update,
