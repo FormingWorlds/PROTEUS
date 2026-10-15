@@ -69,6 +69,7 @@ from proteus.doctor import (
     _setup_command,
     _Tee,
     _write_failure_log,
+    below_floor_fixes,
     check_cvode,
     check_env_var,
     check_fwl_data,
@@ -983,6 +984,45 @@ def _check_editable_mors(checkout) -> CheckResult:
         patch('proteus.doctor._imported_package_dir', return_value=None),
     ):
         return check_python_package('fwl-mors', Requirement('fwl-mors>=26.10.6'))
+
+
+class TestBelowFloorFixes:
+    """The installer's list of installed packages below their version floor."""
+
+    def test_lists_only_installed_packages_below_their_floor(self):
+        """VULCAN and JANUS below their floor give a line each; at or above, or absent, give none.
+
+        Discrimination: an absent fwl-aragog is a FAIL in check_python_package,
+        so dropping the installed guard adds its line; at-floor fwl-mors pins the bound as >=.
+        """
+        from packaging.requirements import Requirement
+
+        specs = {
+            n: Requirement(r)
+            for n, r in [
+                ('fwl-vulcan', 'fwl-vulcan>=26.10.14'),
+                ('fwl-janus', 'fwl-janus>=26.10.15'),
+                ('fwl-mors', 'fwl-mors>=26.6.1'),
+                ('fwl-aragog', 'fwl-aragog>=26.5.13'),
+            ]
+        }
+        versions = {'fwl-vulcan': '26.4.22', 'fwl-janus': '24.11.5', 'fwl-mors': '26.6.1'}
+
+        def version(name):
+            if name not in versions:
+                raise importlib.metadata.PackageNotFoundError(name)
+            return versions[name]
+
+        with (
+            patch('proteus.doctor._dependency_specs', return_value=specs),
+            patch('proteus.doctor.importlib.metadata.version', side_effect=version),
+            patch('proteus.doctor._editable_checkout_path', return_value=None),
+        ):
+            lines = below_floor_fixes()
+        assert lines == [
+            'fwl-janus: pip install -U "fwl-janus>=26.10.15"',
+            'fwl-vulcan: pip install -U "fwl-vulcan>=26.10.14"',
+        ]
 
 
 class TestReleaseTagNote:

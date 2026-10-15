@@ -3611,6 +3611,56 @@ def test_validate_module_versions_accepts_compatible_versions(tmp_path):
     assert mock_update.call_count == 0
 
 
+@pytest.mark.parametrize(
+    ('installed', 'raises'), [('26.4.22', True), ('26.10.14', False), ('26.10.15', False)]
+)
+def test_validate_module_versions_checks_vulcan_floor(tmp_path, caplog, installed, raises):
+    """With atmos_chem.module = 'vulcan', a VULCAN below the pyproject floor stops the start.
+
+    Discrimination: the floor is read from the vulcan extra through the doctor, so the
+    stop names its fix command; at the floor (>=) and above, the start goes on.
+    """
+    from packaging.requirements import Requirement
+
+    from proteus.utils.coupler import validate_module_versions
+
+    config = _all_dummy_modules_config()
+    config.interior_energetics.module = 'dummy'
+    config.atmos_chem.module = 'vulcan'
+    spec = {'fwl-vulcan': Requirement('fwl-vulcan>=26.10.14')}
+    with (
+        patch('proteus.doctor._dependency_specs', return_value=spec),
+        patch('proteus.doctor.importlib.metadata.version', return_value=installed),
+        patch('proteus.doctor._editable_checkout_path', return_value=None),
+        patch('proteus.utils.coupler.UpdateStatusfile') as mock_update,
+        caplog.at_level('ERROR', logger='fwl.proteus.utils.coupler'),
+    ):
+        if raises:
+            with pytest.raises(EnvironmentError, match='Out-of-date modules'):
+                validate_module_versions({'rad': str(tmp_path)}, config)
+        else:
+            validate_module_versions({'rad': str(tmp_path)}, config)
+    assert mock_update.call_count == int(raises)
+    fix = 'Fix: pip install -U "fwl-vulcan>=26.10.14"'
+    assert any(fix in r.getMessage() for r in caplog.records) == raises
+
+
+def test_validate_module_versions_skips_vulcan_without_chemistry(tmp_path):
+    """A config without VULCAN never checks the VULCAN version."""
+    from proteus.utils.coupler import validate_module_versions
+
+    config = _all_dummy_modules_config()
+    config.interior_energetics.module = 'dummy'
+    config.atmos_chem.module = None
+    with (
+        patch('proteus.doctor.check_python_package') as mock_check,
+        patch('proteus.utils.coupler.UpdateStatusfile') as mock_update,
+    ):
+        validate_module_versions({'rad': str(tmp_path)}, config)
+    mock_check.assert_not_called()
+    assert mock_update.call_count == 0
+
+
 def test_validate_module_versions_skips_check_when_no_pinned_minimum(tmp_path):
     """When the resolver finds no pinned minimum (the dep string does
     not name the module), the inner _valid_ver helper short-circuits

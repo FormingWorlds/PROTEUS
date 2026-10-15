@@ -349,6 +349,15 @@ def validate_module_versions(dirs: dict, config: Config):
     if config.orbit.module == 'obliqua':
         valid &= _valid_ver(_get_obliqua_version(dirs), OBLIQUA_MIN_VERSION, 'Obliqua')
 
+    # Atmospheric chemistry module: its floor sits in an extra, which _get_expver misreads
+    if config.atmos_chem.module == 'vulcan':
+        from proteus.doctor import FAIL, _dependency_specs, check_python_package
+
+        vulcan = check_python_package('fwl-vulcan', _dependency_specs().get('fwl-vulcan'))
+        if vulcan.status == FAIL:
+            log.error(f'VULCAN module is out of date: {vulcan.message}. Fix: {vulcan.fix_cmd}')
+            valid = False
+
     # Exit
     if not valid:
         UpdateStatusfile(dirs, 20)
