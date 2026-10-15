@@ -1301,14 +1301,15 @@ def test_socrates_cache_key_covers_every_file_the_build_reads():
         ('Build AGNI (Pkg.instantiate)', 'julia --project=. deps/build.jl nodata'),
     ],
 )
-@pytest.mark.parametrize('has_ld', [True, False])
-def test_socrates_links_use_ld_from_the_clt_folder(tmp_path, step, build_cmd, has_ld):
+@pytest.mark.parametrize('ld_mode', [0o755, 0o644, None])
+def test_socrates_links_use_ld_from_the_clt_folder(tmp_path, step, build_cmd, ld_mode):
     """The steps that link SOCRATES export DEVELOPER_DIR=<CLT> when the CLT has an ld.
 
     SOCRATES links with -L to the Command Line Tools SDK, and an Xcode ld
     older than that SDK cannot read its libSystem.tbd. The test runs the
-    step's DEVELOPER_DIR block with the CLT path moved to a temporary folder
-    and reads the variable in a child process, as the linker would.
+    step script up to its build command, with the CLT path moved to a
+    temporary folder and julia stubbed, and reads the variable in a child
+    process at the point where the build would start.
     """
     clt = '/Library/Developer/CommandLineTools'
     action = (TOOLS_DIR.parent / '.github/actions/setup-proteus/action.yml').read_text(
@@ -1316,26 +1317,28 @@ def test_socrates_links_use_ld_from_the_clt_folder(tmp_path, step, build_cmd, ha
     )
     body = action.split(f'- name: {step}\n', 1)[1].split('\n    - name: ', 1)[0]
     lines = [ln.strip() for ln in body.splitlines()]
-    start = lines.index(f'if [ -x {clt}/usr/bin/ld ]; then')
-    end = lines.index('fi', start)
-    build = lines.index(build_cmd)
-    assert end < build
+    run = lines[lines.index('run: |') + 1 : lines.index(build_cmd)]
 
     fake = tmp_path / 'CLT'
     (fake / 'usr/bin').mkdir(parents=True)
-    if has_ld:
+    if ld_mode is not None:
         (fake / 'usr/bin/ld').write_text('#!/bin/sh\n')
-        (fake / 'usr/bin/ld').chmod(0o755)
-    script = '\n'.join(lines[start : end + 1]).replace(clt, str(fake))
-    script += '\nenv | grep "^DEVELOPER_DIR=" || echo unset\n'
-    out = subprocess.run(
+        (fake / 'usr/bin/ld').chmod(ld_mode)
+    (tmp_path / 'stub').mkdir()
+    (tmp_path / 'stub/julia').write_text('#!/bin/sh\n')
+    (tmp_path / 'stub/julia').chmod(0o755)
+    (tmp_path / 'AGNI').mkdir()
+    script = '\n'.join(run).replace(clt, str(fake)) + '\nprintenv DEVELOPER_DIR || echo unset\n'
+    out = subprocess.check_output(
         ['bash', '-c', script],
-        env={'PATH': os.environ['PATH']},
-        capture_output=True,
+        cwd=tmp_path,
+        env={
+            'PATH': f'{tmp_path}/stub:{os.environ["PATH"]}',
+            'GITHUB_WORKSPACE': str(tmp_path),
+        },
         text=True,
-        check=True,
-    ).stdout.strip()
-    assert out == (f'DEVELOPER_DIR={fake}' if has_ld else 'unset')
+    ).strip()
+    assert out == (str(fake) if ld_mode == 0o755 else 'unset')
 
 
 @pytest.mark.unit
