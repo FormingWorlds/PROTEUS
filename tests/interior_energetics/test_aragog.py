@@ -3147,37 +3147,43 @@ def test_paleos_melting_curves_follow_mzf_in_reused_outdir(tmp_path):
 
 @pytest.mark.unit
 @pytest.mark.physics_invariant
-def test_f_tidal_is_the_volumetric_tidal_power():
-    """The tidal module returns a volumetric power divided by the density it was given,
-    rho_stag; F_tidal times the surface area gives back the integral of that power over
-    the cell volumes, also where the mesh's structural density is 10 % lower, and is 0
-    without tides."""
+def test_heating_columns_are_the_solver_powers():
+    """F_radio and F_tidal times the surface area are the solver powers Q_radio_W and
+    Q_tidal_W, on cell masses rho_stag * V that differ from the structural M_mantle.
+    The tidal module returns a volumetric power divided by rho_stag, so F_tidal times
+    the area gives back its volume integral, and F_tidal is 0 without tides."""
     from proteus.interior_energetics.aragog import AragogRunner
 
     r = np.linspace(3.5e6, 6.4e6, 6)
     vol = 4.0 / 3.0 * np.pi * np.diff(r**3)
     rho_stag = np.array([5600.0, 5100.0, 4700.0, 4300.0, 3900.0])
+    mass = rho_stag * vol
     q_vol = np.array([4.0e-8, 1.0e-8, 3.0e-9, 9.0e-10, 2.0e-10])  # W m-3
-    out = MagicMock(
-        r_basic=r, vol=vol, mass_stag=rho_stag * vol, M_mantle=4.0e24, T_core=3800.0
-    )
-    out.T_basic = np.linspace(4100.0, 3000.0, len(r))
+    source = _k40()
+    out = MagicMock(r_basic=r, vol=vol, mass_stag=mass, M_mantle=0.9 * mass.sum())
+    out.Q_radio_total = source.get_heating(1000.0) * mass.sum()
+    out.T_core, out.T_basic = 3800.0, np.linspace(4100.0, 3000.0, len(r))
     mesh = SimpleNamespace(staggered_effective_density=0.9 * rho_stag)
     solver = SimpleNamespace(
-        evaluator=SimpleNamespace(mesh=mesh), parameters=SimpleNamespace(radionuclides=[])
+        evaluator=SimpleNamespace(mesh=mesh), parameters=SimpleNamespace(radionuclides=[source])
     )
     area = 4.0 * np.pi * r[-1] ** 2
-    fluxes = []
+    rows = []
     for tides in (q_vol / rho_stag, np.zeros_like(q_vol)):
+        out.Q_tidal_total = float(np.dot(tides, mass))
         interior_o = SimpleNamespace(tides=tides, aragog_solver=solver)
         with patch('proteus.interior_energetics.aragog._estimate_T_pot', return_value=3000.0):
-            res = AragogRunner._build_helpfile_output(
-                out, {'F_atm': 1e5}, interior_o=interior_o
+            rows.append(
+                AragogRunner._build_helpfile_output(
+                    out, {'F_atm': 1e5, 'Time': 1000.0}, interior_o=interior_o
+                )
             )
-        fluxes.append(res['F_tidal'])
 
-    assert fluxes[0] * area == pytest.approx(np.dot(q_vol, vol), rel=1e-12)
-    assert fluxes[1] == 0.0
+    for res in rows:
+        assert res['F_radio'] * area == pytest.approx(res['Q_radio_W'], rel=1e-12)
+        assert res['F_tidal'] * area == pytest.approx(res['Q_tidal_W'], rel=1e-12, abs=0.0)
+    assert rows[0]['F_tidal'] * area == pytest.approx(np.dot(q_vol, vol), rel=1e-12)
+    assert rows[1]['F_tidal'] == 0.0
 
 
 @pytest.mark.unit
@@ -4957,84 +4963,6 @@ def _k40(t0_years=0.0):
         heat_production=k40['heatprod'],
         half_life_years=k40['halflife'],
     )
-
-
-def _solver_output(dt_actual):
-    """A solver output of a 4e24 kg mantle below a surface at 6.4e6 m."""
-    out = MagicMock()
-    out.dt_actual, out.status, out.M_mantle = dt_actual, 0, 4.0e24
-    out.T_core, out.T_magma, out.Phi_global = 3800.0, 3000.0, 0.5
-    out.T_basic = np.array([4100.0, 3900.0, 3500.0, 3000.0])
-    out.r_basic = np.array([3.5e6, 4.5e6, 5.5e6, 6.4e6])
-    out.mass_stag = np.ones(3)
-    return out
-
-
-@pytest.mark.unit
-@pytest.mark.physics_invariant
-def test_the_radiogenic_heat_is_sampled_at_the_end_of_the_step(tmp_path):
-    """A step of 500 yr from 1000 yr, after a step of 20 yr, reports the K-40
-    heat at 1500 yr, the time of the row it writes: ``F_radio`` is the decay law
-    at 1500 yr times the mantle mass over the surface area, and it differs from
-    the value at 1020 yr (the time plus the previous step) by the decay over 480 yr."""
-    from proteus.interior_energetics.aragog import AragogRunner
-
-    source = _k40()
-    solver = SimpleNamespace(
-        parameters=SimpleNamespace(radionuclides=[source]), _S0=np.array([7300.0])
-    )
-    runner = AragogRunner.__new__(AragogRunner)
-    runner._config, runner._use_jax = MagicMock(), False
-    runner._config.interior_energetics.aragog.core_bc = 'energy_balance'
-    runner._solve_with_retry = lambda hf_row, interior_o, S0: _solver_output(500.0)
-    runner._store_profiles = lambda interior_o, out: None
-    interior_o = SimpleNamespace(aragog_solver=solver, dt=20.0, tides=np.zeros(3))
-    hf_row = {'Time': 1000.0, 'F_atm': 1.0e5}
-
-    with patch('proteus.interior_energetics.aragog._estimate_T_pot', return_value=3000.0):
-        sim_time, output = runner.run_solver(
-            hf_row, interior_o, {'output': str(tmp_path)}, False
-        )
-
-    area = 4.0 * np.pi * 6.4e6**2
-    assert sim_time == pytest.approx(1500.0)
-    assert output['F_radio'] == pytest.approx(source.get_heating(1500.0) * 4.0e24 / area)
-    # Decay law: K-40 loses 2**(-480 / half-life) between 1020 yr and 1500 yr, 2.7e-7.
-    at_1020 = source.get_heating(1020.0) * 4.0e24 / area
-    decay = 2.0 ** (-480.0 / source.half_life_years)
-    assert output['F_radio'] / at_1020 == pytest.approx(decay, rel=1e-13)
-    assert 1.0e-7 < 1.0 - output['F_radio'] / at_1020 < 1.0e-6
-    assert output['F_radio'] > 0.0
-
-
-@pytest.mark.unit
-@pytest.mark.physics_invariant
-def test_a_state_with_no_step_reports_the_radiogenic_heat_at_the_time_of_its_row():
-    """Without an end time the output builder samples at the time of the row, as
-    for the re-melted state of an impact row, whatever the stored step length is;
-    without radionuclides the heat is zero."""
-    from proteus.interior_energetics.aragog import AragogRunner
-
-    source = _k40()
-    area = 4.0 * np.pi * 6.4e6**2
-    heat = {}
-    for label, sources, t_end in (
-        ('row', [source], None),
-        ('end', [source], 1500.0),
-        ('off', [], None),
-    ):
-        solver = SimpleNamespace(parameters=SimpleNamespace(radionuclides=sources))
-        interior_o = SimpleNamespace(aragog_solver=solver, dt=20.0, tides=np.zeros(3))
-        with patch('proteus.interior_energetics.aragog._estimate_T_pot', return_value=3000.0):
-            res = AragogRunner._build_helpfile_output(
-                _solver_output(0.0), {'Time': 1000.0, 'F_atm': 1.0e5}, interior_o, t_end=t_end
-            )
-        heat[label] = res['F_radio']
-
-    assert heat['row'] == pytest.approx(source.get_heating(1000.0) * 4.0e24 / area, rel=1e-13)
-    assert heat['end'] == pytest.approx(source.get_heating(1500.0) * 4.0e24 / area, rel=1e-13)
-    assert heat['row'] > heat['end'] > 0.0  # the source decays
-    assert heat['off'] == pytest.approx(0.0, abs=1e-30)
 
 
 def _two_column_solution(last_column):

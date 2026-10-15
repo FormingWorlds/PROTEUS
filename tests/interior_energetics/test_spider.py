@@ -2171,10 +2171,10 @@ def test_read_spider_basic(tmp_path):
 @pytest.mark.unit
 @pytest.mark.physics_invariant
 def test_read_spider_solver_power_uses_rho_s_volume_s(tmp_path):
-    """Q_radio_W, Q_tidal_W and F_tidal use rho_s * volume_s per cell, the mass SPIDER's
-    entropy equation heats and the one the tidal heating is per kg of, so F_tidal times
-    the area gives back the volumetric tidal power; F_radio keeps the structural mass_s.
-    The fixture has rho_s * volume_s different from mass_s in every cell."""
+    """Q_radio_W and Q_tidal_W use rho_s * volume_s per cell, the mass SPIDER's entropy
+    equation heats and the one the tidal heating is per kg of; F_radio and F_tidal are
+    those powers over the surface area, so F_tidal times the area gives back the
+    volumetric tidal power. The fixture has rho_s * volume_s different from mass_s."""
     import json
 
     from proteus.interior_energetics.common import Interior_t
@@ -2215,9 +2215,8 @@ def test_read_spider_solver_power_uses_rho_s_volume_s(tmp_path):
     assert output['Q_radio_W'] == pytest.approx(np.dot(fields['Hradio_s'], rho_vol), rel=1e-12)
     assert output['Q_tidal_W'] == pytest.approx(np.dot(fields['Htidal_s'], rho_vol), rel=1e-12)
     area = fields_b['area_b'][0]  # the surface node
-    assert output['F_radio'] == pytest.approx(
-        np.dot(fields['Hradio_s'], fields['mass_s']) / area
-    )
+    assert output['F_radio'] * area == pytest.approx(output['Q_radio_W'], rel=1e-12)
+    assert output['F_tidal'] * area == pytest.approx(output['Q_tidal_W'], rel=1e-12)
     q_vol = fields['Htidal_s'] * fields['rho_s']
     assert output['F_tidal'] * area == pytest.approx(
         np.dot(q_vol, fields['volume_s']), rel=1e-12

@@ -2221,7 +2221,6 @@ class AragogRunner:
                 interior_o=interior_o,
                 surface_d=self._config.atmos_clim.surface_d,
                 surface_bc_mode=self._config.interior_energetics.surface_bc_mode,
-                t_end=sim_time,
             )
 
             core_module = self._config.interior_energetics.aragog.core_bc == 'core_module'
@@ -2753,7 +2752,6 @@ class AragogRunner:
         interior_o=None,
         surface_d: float = 0.0,
         surface_bc_mode: str = 'flux',
-        t_end: float | None = None,
     ) -> dict:
         """Build the PROTEUS helpfile dict from SolverOutput.
 
@@ -2775,10 +2773,6 @@ class AragogRunner:
             ``F_atm``. In ``'grey_body'`` mode Aragog computes its own
             surface flux, so ``F_int`` is taken from the surface heat-flux
             node instead.
-        t_end : float, optional
-            End of the step [yr], at which the radiogenic heat ``F_radio`` is
-            sampled. The time of ``hf_row`` when not given, for a state with
-            no step.
         """
         log.info(
             'Aragog entropy: T_surf=%.0f K, T_cmb=%.0f K, Phi=%.3f, status=%d',
@@ -2788,27 +2782,14 @@ class AragogRunner:
             out.status,
         )
 
-        # Radiogenic and tidal fluxes are kept apart; F_radio comes from the
-        # radionuclides at the row's time, not from out.F_heat_total.
+        # F_radio is the radiogenic power the solver heats with, not out.F_heat_total
         area_surf = 4.0 * np.pi * float(out.r_basic[-1]) ** 2
         F_tidal = 0.0
         if interior_o is not None and hasattr(interior_o, 'tides'):
             tides = np.asarray(interior_o.tides)
             if tides.size > 0 and np.any(tides > 0):
-                # tides are per kg of rho_stag, the density passed to the tidal module
                 F_tidal = float(np.dot(tides[: len(out.mass_stag)], out.mass_stag)) / area_surf
-        F_radio = 0.0
-        solver_obj = (
-            getattr(interior_o, 'aragog_solver', None) if interior_o is not None else None
-        )
-        if solver_obj is not None:
-            radionuclides = getattr(solver_obj.parameters, 'radionuclides', [])
-            if radionuclides:
-                # The radiogenic heat is sampled at the time of the row this output goes
-                # to: the end of the step, or the time of ``hf_row`` for a state with no step.
-                t_end_yr = float(hf_row.get('Time', 0.0)) if t_end is None else float(t_end)
-                H_radio_per_kg = sum(float(r.get_heating(t_end_yr)) for r in radionuclides)
-                F_radio = H_radio_per_kg * float(out.M_mantle) / area_surf
+        F_radio = float(out.Q_radio_total) / area_surf
 
         return {
             'M_mantle': out.M_mantle,
