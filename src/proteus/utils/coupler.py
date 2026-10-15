@@ -223,6 +223,22 @@ def _get_petitradtrans_version() -> str:
         return 'unknown (petitRADTRANS not installed)'
 
 
+def vulcan_problem(config: Config) -> str | None:
+    """Return what is wrong with VULCAN and its fix, when the config runs VULCAN.
+
+    The check is the doctor's: VULCAN missing, or below the ``fwl-vulcan`` floor in
+    ``pyproject.toml``. With ``when = 'manually'`` VULCAN never runs, so nothing is checked.
+    """
+    if config.atmos_chem.module != 'vulcan' or config.atmos_chem.when == 'manually':
+        return None
+    from proteus.doctor import PASS, _dependency_specs, check_python_package
+
+    vulcan = check_python_package('fwl-vulcan', _dependency_specs().get('fwl-vulcan'))
+    if vulcan.status == PASS:
+        return None
+    return f'VULCAN module is missing or out of date: {vulcan.message}. Fix: {vulcan.fix_cmd}'
+
+
 def validate_module_versions(dirs: dict, config: Config):
     """Raise if module versions are incompatible."""
 
@@ -348,6 +364,11 @@ def validate_module_versions(dirs: dict, config: Config):
     # Orbit module
     if config.orbit.module == 'obliqua':
         valid &= _valid_ver(_get_obliqua_version(dirs), OBLIQUA_MIN_VERSION, 'Obliqua')
+
+    # Atmospheric chemistry module: its floor sits in an extra, which _get_expver misreads
+    if problem := vulcan_problem(config):
+        log.error(problem)
+        valid = False
 
     # Exit
     if not valid:
