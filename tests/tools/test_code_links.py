@@ -219,6 +219,7 @@ def test_validate_reports_missing_file_and_svg_out_of_step(links, tmp_path, monk
     monkeypatch.setattr(links, 'SVGS', svgs)
     (tmp_path / 'pkg' / 'mod.py').unlink()
     links.source.cache_clear()
+    before = [svg.read_text() for svg in svgs]
     assert links.validate(None) == [
         f'pkg/mod.py: file does not exist [{good}]',
         f'pkg/mod.py: file does not exist [{gone}]',
@@ -226,6 +227,7 @@ def test_validate_reports_missing_file_and_svg_out_of_step(links, tmp_path, monk
         f'b.svg: links not in arch_final.json: {extra}',
         'c.svg: no name-based links; rebuild the figure',
     ]
+    assert [svg.read_text() for svg in svgs] == before  # --check writes nothing
 
 
 def test_deploy_rewrite_drops_link_of_broken_target(links, tmp_path, monkeypatch):
