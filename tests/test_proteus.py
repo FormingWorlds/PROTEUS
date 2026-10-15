@@ -1424,6 +1424,7 @@ def test_postprocessing_hands_the_physics_module_a_reporting_row(tmp_path):
 
     p = _make_proteus_instance(tmp_path)
     p.config.atmos_chem.module = 'vulcan'
+    p.config.atmos_chem.when = 'manually'
 
     for method, wrapper in (
         ('observe', 'proteus.observe.wrapper.run_observe'),
@@ -1431,9 +1432,6 @@ def test_postprocessing_hands_the_physics_module_a_reporting_row(tmp_path):
     ):
         with ExitStack() as stack:
             stack.enter_context(patch.object(type(p), 'extract_archives'))
-            stack.enter_context(
-                patch('proteus.utils.coupler.vulcan_floor_fix', return_value=None)
-            )
             stack.enter_context(
                 patch('proteus.utils.coupler.ReadHelpfileFromCSV', return_value=_make_hf_df())
             )
@@ -1470,6 +1468,7 @@ def test_postprocessing_refuses_a_helpfile_that_predates_schema_columns(tmp_path
 
     p = _make_proteus_instance(tmp_path)
     p.config.atmos_chem.module = 'vulcan'
+    p.config.atmos_chem.when = 'manually'
     drift = HelpfileSchemaDriftError('predates 1 column(s): R_xuv')
 
     for method, wrapper in (
@@ -1478,9 +1477,6 @@ def test_postprocessing_refuses_a_helpfile_that_predates_schema_columns(tmp_path
     ):
         with ExitStack() as stack:
             mock_extract = stack.enter_context(patch.object(type(p), 'extract_archives'))
-            stack.enter_context(
-                patch('proteus.utils.coupler.vulcan_floor_fix', return_value=None)
-            )
             mock_read = stack.enter_context(
                 patch('proteus.utils.coupler.ReadHelpfileFromCSV', side_effect=drift)
             )
