@@ -57,24 +57,39 @@ def test_banner_resolves_to_its_line_not_to_mentions(links):
     """The banner is line 7; the docstring (line 1) and closing banner (line 11) do not count."""
     assert links.resolve_target('pkg/mod.py', 'escape') == 7
     # the comment on line 8 slugs to 'escape-is-cheap-here', not 'escape'
-    assert links.resolve_target('pkg/mod.py', 'escape-is-cheap-here') == 8
+    assert links.resolve_target('pkg/mod.py', 'comment-escape-is-cheap-here') == 8
 
 
 def test_comment_resolves_to_its_own_line(links):
     """A comment before an if block is line 13, not the if header on line 14."""
-    assert links.resolve_target('pkg/mod.py', 'apply-impacts-now') == 13
-    assert links.resolve_target('pkg/mod.py', 'apply-impacts-now-then-carry-on') == 13
-    with pytest.raises(links.LinkError, match='no function or comment'):
-        links.resolve_target('pkg/mod.py', 'then-carry-on')
+    assert links.resolve_target('pkg/mod.py', 'comment-apply-impacts-now') == 13
+    assert links.resolve_target('pkg/mod.py', 'comment-apply-impacts-now-then-carry-on') == 13
+    with pytest.raises(links.LinkError, match='no comment matches'):
+        links.resolve_target('pkg/mod.py', 'comment-then-carry-on')
+
+
+def test_banner_and_comment_targets_never_stand_in_for_each_other(links, tmp_path):
+    """A renamed banner fails, naming the comment that would have caught the link; a
+    comment target does not resolve to a banner of the same name."""
+    renamed = SAMPLE.replace('############### ESCAPE\n', '############### LOSSES\n', 1)
+    (tmp_path / 'pkg' / 'renamed.py').write_text(renamed + '# Escape\n')
+    with pytest.raises(links.LinkError) as err:
+        links.resolve_target('pkg/renamed.py', 'escape')
+    assert str(err.value) == (
+        'pkg/renamed.py#escape: no function or banner matches this target; '
+        'line 19 is a comment, not a banner: link it as #comment-escape'
+    )
+    with pytest.raises(links.LinkError, match='line 7 is a banner: link it as #escape'):
+        links.resolve_target('pkg/mod.py', 'comment-escape')
 
 
 def test_method_resolves_by_qualified_name(links):
     """Runner.step resolves to its def on line 5; a wrong or bare name does not."""
     assert links.resolve_target('pkg/mod.py', 'Runner.step') == 5
     assert links.resolve_target('pkg/mod.py', 'Runner') == 4
-    with pytest.raises(links.LinkError, match='no function or comment'):
+    with pytest.raises(links.LinkError, match='no function or banner'):
         links.resolve_target('pkg/mod.py', 'Runner.stop')
-    with pytest.raises(links.LinkError, match='no function or comment'):
+    with pytest.raises(links.LinkError, match='no function or banner'):
         links.resolve_target('pkg/mod.py', 'step')
 
 
@@ -83,7 +98,7 @@ def test_missing_and_duplicate_targets_raise(links, tmp_path):
     (tmp_path / 'pkg' / 'dup.py').write_text('# Same note\nx = 1\n# Same note\ny = 2\n')
     (tmp_path / 'pkg' / 'twice.py').write_text('def f():\n    pass\n\n\ndef f():\n    pass\n')
     with pytest.raises(links.LinkError, match='2 comments match'):
-        links.resolve_target('pkg/dup.py', 'same-note')
+        links.resolve_target('pkg/dup.py', 'comment-same-note')
     with pytest.raises(links.LinkError, match='2 definitions share'):
         links.resolve_target('pkg/twice.py', 'f')
     with pytest.raises(links.LinkError, match='does not exist'):
@@ -120,7 +135,7 @@ def test_file_link_must_name_an_existing_file(links):
 def test_deploy_rewrite_drops_link_of_broken_target(links, tmp_path, monkeypatch):
     """--deploy links a good target to main and leaves a broken one without an href."""
     good = links.REPO_URL + 'pkg/mod.py#escape'
-    bad = links.REPO_URL + 'pkg/mod.py#renamed-away'
+    bad = links.REPO_URL + 'pkg/mod.py#comment-renamed-away'
     svg = tmp_path / 'fig.svg'
     svg.write_text(
         f'<svg><a xlink:href="x" data-target="{good}"/>'

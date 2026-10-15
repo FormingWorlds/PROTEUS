@@ -2,9 +2,9 @@
 
 A link names its target instead of a line, as
 ``https://github.com/FormingWorlds/PROTEUS/blob/main/<path>#<target>``, where
-``<target>`` is a function, class or method (``Proteus.start``) or the slug of
-a comment (``interior`` for ``############### INTERIOR``). It must match
-exactly once; a section banner wins over other comments.
+``<target>`` is a function, class or method (``Proteus.start``), the slug of a
+section banner (``interior`` for ``############### INTERIOR``) or, with the
+prefix ``comment-``, the slug of another comment. It must match exactly once.
 
 Usage:
     python3 tools/figures/code_links.py --check    # every target resolves (PR CI)
@@ -94,22 +94,30 @@ def resolve_target(path: str, target: str, ref: str | None = None) -> int:
     if len(defs) > 1:
         raise LinkError(f'{path}#{target}: {len(defs)} definitions share this name')
 
+    name = target.removeprefix('comment-')
     banners, others = [], []
     for i, tok in comments(text):
         m = BANNER.match(tok)
         if m:
-            if not m.group(1).startswith('/') and slug(m.group(1)) == target:
+            if not m.group(1).startswith('/') and slug(m.group(1)) == name:
                 banners.append(i)
             continue
         body = tok.lstrip('#').strip()
         first_sentence = re.split(r'(?<=\.)\s', body)[0]
-        if target in (slug(body), slug(first_sentence)):
+        if name in (slug(body), slug(first_sentence)):
             others.append(i)
-    hits = banners or others
-    if len(hits) != 1:
-        what = 'no function or comment matches' if not hits else f'{len(hits)} comments match'
-        raise LinkError(f'{path}#{target}: {what} this target')
-    return hits[0]
+    hits = others if name != target else banners
+    if len(hits) == 1:
+        return hits[0]
+    if hits:
+        raise LinkError(f'{path}#{target}: {len(hits)} comments match this target')
+    hint = ''
+    if name == target and others:
+        hint = f'; line {others[0]} is a comment, not a banner: link it as #comment-{name}'
+    elif name != target and banners:
+        hint = f'; line {banners[0]} is a banner: link it as #{name}'
+    what = 'comment' if name != target else 'function or banner'
+    raise LinkError(f'{path}#{target}: no {what} matches this target{hint}')
 
 
 def split(href: str) -> tuple[str, str] | None:

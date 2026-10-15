@@ -72,15 +72,18 @@ A link into the code names its target instead of a line, so it survives edits:
 https://github.com/FormingWorlds/PROTEUS/blob/main/src/proteus/proteus.py#interior
 ```
 
-The part after `#` is a function, class or method (`Proteus.start`) or the slug
-of a comment (`############### ORBIT AND TIDES` is `#orbit-and-tides`, `# Run
-offline chemistry` is `#run-offline-chemistry`), and must match exactly once.
+The part after `#` is a function, class or method (`Proteus.start`), the slug of
+a section banner (`############### ORBIT AND TIDES` is `#orbit-and-tides`) or,
+with the prefix `comment-`, the slug of another comment (`# Run offline
+chemistry` is `#comment-run-offline-chemistry`), and must match exactly once. A
+target without the prefix never matches an ordinary comment, so renaming a
+banner fails the check instead of moving the link to a comment of that name.
 
 - The docs deploy runs `code_links.py --deploy`, which turns each target into a
   `#L<n>` link on `main`. A target that no longer resolves loses its link, with
   a warning.
 - PR CI runs `code_links.py --check`, which fails on a target that no longer
-  resolves or a hard-coded `#L` anchor. Renaming a linked function or banner
+  resolves, a link to a file that does not exist, or a hard-coded `#L` anchor. Renaming a linked function or banner
   means updating the link in draw.io and `arch_final.json`.
 - `code_links.py` without options refreshes the lines in the committed SVGs from
   `origin/main`.
