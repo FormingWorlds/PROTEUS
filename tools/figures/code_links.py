@@ -47,33 +47,21 @@ def slug(text: str) -> str:
     return re.sub(r'[^a-z0-9]+', '-', text.lower()).strip('-')
 
 
-def plain_path(path: str) -> str:
-    """``path`` if it is a plain path inside the repository, else LinkError."""
-    parts = path.split('/')
-    if not path or path.startswith('/') or {'', '.', '..'} & set(parts):
+def plain_path(path: str) -> None:
+    """Raise LinkError unless ``path`` is a plain path inside the repository."""
+    if {'', '.', '..'} & set(path.split('/')):
         raise LinkError(f'{path}: not a plain path inside the repository')
-    return path
-
-
-def ref_error(path: str, ref: str, stderr: str) -> LinkError:
-    hint = '; run git fetch origin main' if ref.startswith('origin/') else ''
-    return LinkError(f'{path} not found at {ref}{hint}: {stderr.strip()}')
 
 
 @lru_cache(maxsize=None)
-def source(path: str, ref: str | None) -> str:
-    plain_path(path)
-    if ref is None:
-        file = ROOT / path
-        if not file.is_file():
-            raise LinkError(f'{path}: file does not exist')
-        return file.read_text()
+def ref_problem(ref: str) -> str | None:
+    """Why git does not know ``ref`` as a commit, None when it does."""
     res = subprocess.run(
-        ['git', '-C', str(ROOT), 'show', f'{ref}:{path}'], capture_output=True, text=True
+        ['git', '-C', str(ROOT), 'rev-parse', '--verify', '--quiet', f'{ref}^{{commit}}'],
+        capture_output=True,
     )
-    if res.returncode:
-        raise ref_error(path, ref, res.stderr)
-    return res.stdout
+    hint = '; run git fetch origin main' if ref.startswith('origin/') else ''
+    return None if res.returncode == 0 else f'{ref} is not a commit of this repository{hint}'
 
 
 def require_file(path: str, ref: str | None) -> None:
@@ -82,16 +70,28 @@ def require_file(path: str, ref: str | None) -> None:
     if ref is None:
         found = (ROOT / path).is_file()
     else:
+        if problem := ref_problem(ref):
+            raise LinkError(problem)
         res = subprocess.run(
             ['git', '-C', str(ROOT), 'cat-file', '-t', f'{ref}:{path}'],
             capture_output=True,
             text=True,
         )
-        if 'invalid object name' in res.stderr:
-            raise ref_error(path, ref, res.stderr)
         found = res.stdout.strip() == 'blob'
     if not found:
         raise LinkError(f'{path}: file does not exist' + (f' at {ref}' if ref else ''))
+
+
+@lru_cache(maxsize=None)
+def source(path: str, ref: str | None) -> str:
+    require_file(path, ref)
+    try:
+        if ref is None:
+            return (ROOT / path).read_text()
+        git = ['git', '-C', str(ROOT), 'show', f'{ref}:{path}']
+        return subprocess.run(git, capture_output=True, text=True).stdout
+    except UnicodeDecodeError:
+        raise LinkError(f'{path}: not a text file') from None
 
 
 def definitions(tree: ast.AST):
@@ -182,6 +182,8 @@ def model_links() -> list[str]:
 
 
 def validate(ref: str | None) -> list[str]:
+    if ref is not None and (problem := ref_problem(ref)):
+        return [problem]
     errors, model = [], set(model_links())
     for href in sorted(model):
         if href.startswith(REPO) and LINE_ANCHOR.match(href.partition('#')[2]):
@@ -190,7 +192,7 @@ def validate(ref: str | None) -> list[str]:
         try:
             resolve(href, ref)
         except (LinkError, SyntaxError) as e:
-            errors.append(str(e))
+            errors.append(f'{e} [{href}]')
     for svg in SVGS:
         targets = {unescape(m.group(2)) for m in SVG_LINK.finditer(svg.read_text())}
         if not targets:
@@ -208,6 +210,8 @@ def validate(ref: str | None) -> list[str]:
 def rewrite(ref: str | None, lenient: bool) -> list[str]:
     """Re-resolve the links in the SVGs. A broken target loses its link when
     ``lenient`` and is left as it was otherwise."""
+    if ref is not None and (problem := ref_problem(ref)):
+        return [problem]
     problems = []
     for svg in SVGS:
         text = svg.read_text()

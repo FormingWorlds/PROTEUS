@@ -143,16 +143,19 @@ def test_file_link_checks_existence_without_reading_the_file(links, tmp_path):
             assert links.resolve(links.REPO_URL + ok, ref) == links.REPO_URL + ok
         named = links.REPO_URL + 'pkg/mod.py?plain=1#escape'
         assert links.resolve(named, ref) == links.REPO_URL + 'pkg/mod.py#L7'
-        for bad in ('pkg', 'pkg/gone.py'):
-            with pytest.raises(links.LinkError, match=f'{bad}: file does not exist'):
+        for bad in ('pkg', 'pkg/gone.py', 'pkg#escape'):
+            with pytest.raises(links.LinkError, match='pkg(/gone.py)?: file does not exist'):
                 links.resolve(links.REPO_URL + bad, ref)
+        with pytest.raises(links.LinkError, match='pkg/logo.png: not a text file'):
+            links.resolve(links.REPO_URL + 'pkg/logo.png#escape', ref)
         for odd in ('/etc/hosts', 'pkg/../pkg/mod.py', 'pkg/mod.py/', 'pkg//mod.py'):
             with pytest.raises(links.LinkError, match='not a plain path'):
                 links.resolve(links.REPO_URL + odd, ref)
-    with pytest.raises(links.LinkError, match='pkg/mod.py not found at nonexist: fatal'):
-        links.resolve(links.REPO_URL + 'pkg/mod.py', 'nonexist')
-    with pytest.raises(links.LinkError, match='pkg/mod.py not found at nonexist: fatal'):
-        links.resolve(links.REPO_URL + 'pkg/mod.py#escape', 'nonexist')
+    for ok in ('pkg/mod.py', 'pkg/mod.py#escape'):
+        with pytest.raises(
+            links.LinkError, match='nonexist is not a commit of this repository'
+        ):
+            links.resolve(links.REPO_URL + ok, 'nonexist')
 
 
 def test_banner_and_comment_of_one_slug_resolve_by_kind(links, tmp_path):
@@ -188,12 +191,18 @@ def test_validate_reports_missing_file_and_svg_out_of_step(links, tmp_path, monk
     (tmp_path / 'pkg' / 'mod.py').unlink()
     links.source.cache_clear()
     assert links.validate(None) == [
-        'pkg/mod.py: file does not exist',
-        'pkg/mod.py: file does not exist',
+        f'pkg/mod.py: file does not exist [{good}]',
+        f'pkg/mod.py: file does not exist [{gone}]',
         f'a.svg: links missing: {gone}',
         f'b.svg: links not in arch_final.json: {extra}',
         'c.svg: no name-based links; rebuild the figure',
     ]
+    assert links.validate('nonexist') == ['nonexist is not a commit of this repository']
+    before = [svg.read_text() for svg in svgs]
+    assert links.rewrite('nonexist', lenient=True) == [
+        'nonexist is not a commit of this repository'
+    ]
+    assert [svg.read_text() for svg in svgs] == before
 
 
 def test_deploy_rewrite_drops_link_of_broken_target(links, tmp_path, monkeypatch):
