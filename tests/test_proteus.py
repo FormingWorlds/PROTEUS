@@ -2121,7 +2121,7 @@ def test_offline_chemistry_stops_on_vulcan_below_floor(tmp_path):
     ):
         with pytest.raises(
             EnvironmentError,
-            match=r'VULCAN is below its minimum version; fix: pip install -U "fwl-vulcan>=26.10.14"',
+            match=r'26\.4\.22 \(requires >=26\.10\.14\)\. Fix: pip install -U "fwl-vulcan>=26\.10\.14"',
         ):
             p.offline_chemistry()
     assert mock_read.call_count == 0

@@ -1276,14 +1276,9 @@ def below_floor_fixes() -> list[str]:
         that is installed at a version below its ``pyproject.toml`` minimum.
     """
     specs = _dependency_specs()
-    lines = []
-    for pkg in (*PYTHON_PACKAGES, *STANDARD_MODULE_PACKAGES):
-        if _installed_version(pkg) is None:
-            continue
-        result = check_python_package(pkg, specs.get(pkg))
-        if result.status == FAIL:
-            lines.append(f'{pkg}: {result.fix_cmd}')
-    return lines
+    pkgs = (*PYTHON_PACKAGES, *STANDARD_MODULE_PACKAGES)
+    results = {p: check_python_package(p, specs.get(p)) for p in pkgs if _installed_version(p)}
+    return [f'{p}: {r.fix_cmd}' for p, r in results.items() if r.status == FAIL]
 
 
 def run_all_checks() -> list[CheckResult]:

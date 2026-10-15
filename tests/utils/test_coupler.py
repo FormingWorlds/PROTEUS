@@ -3612,14 +3612,22 @@ def test_validate_module_versions_accepts_compatible_versions(tmp_path):
 
 
 @pytest.mark.parametrize(
-    ('installed', 'raises'), [('26.4.22', True), ('26.10.14', False), ('26.10.15', False)]
+    ('installed', 'fix'),
+    [
+        ('26.4.22', 'Fix: pip install -U "fwl-vulcan>=26.10.14"'),
+        (None, '&& bash tools/get_vulcan.sh'),
+        ('26.10.14', None),
+        ('26.10.15', None),
+    ],
 )
-def test_validate_module_versions_checks_vulcan_floor(tmp_path, caplog, installed, raises):
-    """With atmos_chem.module = 'vulcan', a VULCAN below the pyproject floor stops the start.
+def test_validate_module_versions_checks_vulcan_floor(tmp_path, caplog, installed, fix):
+    """With atmos_chem.module = 'vulcan', a VULCAN missing or below the floor stops the start.
 
     Discrimination: the floor is read from the vulcan extra through the doctor, so the
-    stop names its fix command; at the floor (>=) and above, the start goes on.
+    stop logs its fix command once; at the floor (>=) and above, the start goes on.
     """
+    from importlib.metadata import PackageNotFoundError
+
     from packaging.requirements import Requirement
 
     from proteus.utils.coupler import validate_module_versions
@@ -3629,21 +3637,27 @@ def test_validate_module_versions_checks_vulcan_floor(tmp_path, caplog, installe
     config.atmos_chem.module = 'vulcan'
     config.atmos_chem.when = 'offline'
     spec = {'fwl-vulcan': Requirement('fwl-vulcan>=26.10.14')}
+    version = PackageNotFoundError('fwl-vulcan') if installed is None else None
     with (
         patch('proteus.doctor._dependency_specs', return_value=spec),
-        patch('proteus.doctor.importlib.metadata.version', return_value=installed),
+        patch(
+            'proteus.doctor.importlib.metadata.version',
+            return_value=installed,
+            side_effect=version,
+        ),
         patch('proteus.doctor._editable_checkout_path', return_value=None),
         patch('proteus.utils.coupler.UpdateStatusfile') as mock_update,
         caplog.at_level('ERROR', logger='fwl.proteus.utils.coupler'),
     ):
-        if raises:
+        if fix:
             with pytest.raises(EnvironmentError, match='Out-of-date modules'):
                 validate_module_versions({'rad': str(tmp_path)}, config)
         else:
             validate_module_versions({'rad': str(tmp_path)}, config)
-    assert mock_update.call_count == int(raises)
-    fix = 'Fix: pip install -U "fwl-vulcan>=26.10.14"'
-    assert any(fix in r.getMessage() for r in caplog.records) == raises
+    assert mock_update.call_count == int(fix is not None)
+    logged = [r.getMessage() for r in caplog.records if 'VULCAN' in r.getMessage()]
+    assert len(logged) == int(fix is not None)
+    assert fix is None or fix in logged[0]
 
 
 @pytest.mark.parametrize(('module', 'when'), [(None, 'offline'), ('vulcan', 'manually')])

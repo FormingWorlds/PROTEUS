@@ -377,34 +377,48 @@ class TestBelowFloorStop:
     """The Verification phase stops only when a module is below its version floor."""
 
     @staticmethod
-    def _run(tmp_path, stub_body: str) -> subprocess.CompletedProcess:
-        """Run the floor block of Phase 9 with a stub python3 that records its call."""
+    def _run(tmp_path, stub_body: str, failed: str = '') -> subprocess.CompletedProcess:
+        """Run the floor block of Phase 9 and die with a stub python3 that records its call."""
         bindir = tmp_path / 'bin'
         bindir.mkdir()
         stub = bindir / 'python3'
         stub.write_text(f'#!/bin/bash\nprintf "%s" "$*" > {tmp_path}/argv\n{stub_body}\n')
         stub.chmod(0o755)
-        script = _install_sh_blocks('# Only a module below') + 'echo after-floor-check\n'
+        script = (
+            f'CURRENT_PHASE=9\nFAILED_MODULES={shlex.quote(failed)}\ncollect_env_info() {{ :; }}\n'
+            + _install_sh_blocks('die()', '# Only a module below')
+            + 'echo after-floor-check\n'
+        )
         return _run_with_helpers(script, PATH=f'{bindir}:{os.environ["PATH"]}')
 
-    def test_below_floor_exits_1_with_each_fix_command(self, tmp_path):
-        """Two modules below their floor: exit 1, one FAIL line with the fix of each, no later step."""
+    def test_below_floor_dies_with_each_fix_command(self, tmp_path):
+        """Two modules below their floor: one FAIL line each, then die with the failed modules.
+
+        Discrimination: a stray stdout line of the import carries no prefix, so it never
+        becomes a FAIL line; the Phase 7 summary of failed modules reaches the stop.
+        """
         out = self._run(
-            tmp_path, "echo 'fwl-janus: fix-janus'; echo 'fwl-vulcan: bash tools/get_vulcan.sh'"
+            tmp_path,
+            "echo 'juliapkg: stray line'; echo 'below-floor: fwl-janus: fix-janus'; "
+            "echo 'below-floor: fwl-vulcan: bash tools/get_vulcan.sh'",
+            failed='AGNI (bash tools/get_agni.sh)',
         )
         assert out.returncode == 1, out.stdout
         assert 'below_floor_fixes' in (tmp_path / 'argv').read_text()
-        assert out.stderr.count('[FAIL]') == 2
+        assert out.stderr.count('[FAIL]') == 3
         assert 'Below its minimum version: fwl-janus: fix-janus' in out.stderr
         assert 'Below its minimum version: fwl-vulcan: bash tools/get_vulcan.sh' in out.stderr
-        assert 'Run its fix command, then: proteus doctor' in out.stdout
+        assert 'stray line' not in out.stderr
+        assert 'Not installed: AGNI (bash tools/get_agni.sh).' in out.stderr
+        assert 'Installation failed at Phase 9.' in out.stdout
         assert 'after-floor-check' not in out.stdout
 
     @pytest.mark.parametrize(
-        ('stub_body', 'warned'), [('exit 0', False), ('echo boom >&2; exit 1', True)]
+        ('stub_body', 'warned'),
+        [('exit 0', False), ("echo 'stray line'", False), ('echo boom >&2; exit 1', True)],
     )
     def test_no_module_below_floor_keeps_exit_0(self, tmp_path, stub_body, warned):
-        """No module below its floor, or a failed check, keeps exit 0 (the ci-pixi and page paths)."""
+        """No module below its floor, a stray line, or a failed check keep exit 0 (ci-pixi)."""
         out = self._run(tmp_path, stub_body)
         assert out.returncode == 0, out.stderr
         assert 'after-floor-check' in out.stdout

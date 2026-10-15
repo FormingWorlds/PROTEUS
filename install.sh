@@ -1355,12 +1355,12 @@ echo ""
 proteus doctor 2>&1 || true
 echo ""
 # Only a module below its version floor stops the install; other doctor failures keep exit 0.
-BELOW_FLOOR=$(python3 -c 'from proteus.doctor import below_floor_fixes; print("\n".join(below_floor_fixes()))') \
+BELOW_FLOOR=$(python3 -c 'from proteus.doctor import below_floor_fixes
+for line in below_floor_fixes(): print("below-floor:", line)' | sed -n 's/^below-floor: //p') \
     || { warn "Could not check the module versions; run: proteus doctor"; BELOW_FLOOR=""; }
 if [ -n "$BELOW_FLOOR" ]; then
     while IFS= read -r line; do fail "Below its minimum version: $line"; done <<< "$BELOW_FLOOR"
-    echo "PROTEUS needs a newer release of each module above. Run its fix command, then: proteus doctor"
-    exit 1
+    die "PROTEUS needs a newer release of each module above; run its fix command.${FAILED_MODULES:+ Not installed: $FAILED_MODULES.}"
 fi
 
 # ===================================================================
