@@ -3205,33 +3205,34 @@ def test_timing_switch_reads_proteus_timing(environ, enabled):
     assert _timing_enabled(environ) is enabled
 
 
-@pytest.mark.parametrize(('value', 'enabled'), [('1', True), ('off', False)])
-def test_timing_flag_is_read_from_the_environment_at_import(value, enabled):
+@pytest.mark.parametrize(
+    ('value', 'enabled'), [('1', True), ('yes', True), ('off', False), ('maybe', False)]
+)
+def test_timing_flag_is_read_from_the_environment_at_import(value, enabled, monkeypatch):
     """A fresh interpreter that imports ``proteus.proteus`` with ``PROTEUS_TIMING`` set
-    has the module flag the variable asks for (Julia stubbed, it is not needed)."""
+    has the module flag the variable asks for. The flag is read at import, so only a
+    new process can show it; Julia is stubbed there, it is not needed."""
+    import json
     import os
     import subprocess
 
     import proteus.proteus as mod
 
     code = (
-        "import sys, types; sys.modules['juliacall'] = types.SimpleNamespace(Main=None); "
-        'import proteus.proteus as m; print(m.__file__, m._IT_TIMING_ENABLED)'
+        'import json, sys; from unittest.mock import MagicMock; '
+        "sys.modules['juliacall'] = MagicMock(); "
+        'import proteus.proteus as m; print(json.dumps([m.__file__, m._IT_TIMING_ENABLED]))'
     )
-    env = {
-        **os.environ,
-        'PROTEUS_TIMING': value,
-        'PYTHONPATH': str(Path(mod.__file__).parents[1]),
-    }
+    src = str(Path(mod.__file__).parents[1])
+    monkeypatch.setenv('PROTEUS_TIMING', value)
+    monkeypatch.setenv(
+        'PYTHONPATH', os.pathsep.join(filter(None, [src, os.environ.get('PYTHONPATH')]))
+    )
     out = subprocess.run(
-        [sys.executable, '-c', code],
-        env=env,
-        capture_output=True,
-        text=True,
-        timeout=25,
-        check=True,
+        [sys.executable, '-c', code], capture_output=True, text=True, timeout=25
     )
-    assert out.stdout.split() == [mod.__file__, str(enabled)]
+    assert out.returncode == 0, out.stderr
+    assert json.loads(out.stdout.splitlines()[-1]) == [mod.__file__, enabled]
 
 
 def test_timing_lines_absent_when_timing_is_off(tmp_path, monkeypatch, caplog):
