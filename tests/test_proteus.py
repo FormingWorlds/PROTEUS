@@ -1432,6 +1432,9 @@ def test_postprocessing_hands_the_physics_module_a_reporting_row(tmp_path):
         with ExitStack() as stack:
             stack.enter_context(patch.object(type(p), 'extract_archives'))
             stack.enter_context(
+                patch('proteus.utils.coupler.vulcan_below_floor', return_value=False)
+            )
+            stack.enter_context(
                 patch('proteus.utils.coupler.ReadHelpfileFromCSV', return_value=_make_hf_df())
             )
             mock_wrapper = stack.enter_context(patch(wrapper))
@@ -1475,6 +1478,9 @@ def test_postprocessing_refuses_a_helpfile_that_predates_schema_columns(tmp_path
     ):
         with ExitStack() as stack:
             mock_extract = stack.enter_context(patch.object(type(p), 'extract_archives'))
+            stack.enter_context(
+                patch('proteus.utils.coupler.vulcan_below_floor', return_value=False)
+            )
             mock_read = stack.enter_context(
                 patch('proteus.utils.coupler.ReadHelpfileFromCSV', side_effect=drift)
             )
@@ -2098,6 +2104,28 @@ def test_offline_chemistry_skips_plot_when_chemistry_returns_none(tmp_path):
     mock_chem.assert_called_once()
     assert result is None
     mock_plot.assert_not_called()
+
+
+def test_offline_chemistry_stops_on_vulcan_below_floor(tmp_path):
+    """proteus offchem with a VULCAN below its pyproject floor stops before any file is read."""
+    from packaging.requirements import Requirement
+
+    p = _make_proteus_instance(tmp_path)
+    p.config.atmos_chem.module = 'vulcan'
+    with (
+        patch(
+            'proteus.doctor._dependency_specs',
+            return_value={'fwl-vulcan': Requirement('fwl-vulcan>=26.10.14')},
+        ),
+        patch('proteus.doctor.importlib.metadata.version', return_value='26.4.22'),
+        patch('proteus.doctor._editable_checkout_path', return_value=None),
+        patch('proteus.utils.coupler.ReadHelpfileFromCSV') as mock_read,
+        patch('proteus.atmos_chem.wrapper.run_chemistry') as mock_chem,
+    ):
+        with pytest.raises(EnvironmentError, match='VULCAN is below its minimum version'):
+            p.offline_chemistry()
+    assert mock_read.call_count == 0
+    assert mock_chem.call_count == 0
 
 
 def test_offline_chemistry_raises_on_empty_helpfile(tmp_path):

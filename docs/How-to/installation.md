@@ -148,7 +148,7 @@ The installer runs through the following phases automatically:
 6. Python packages (editable installs of all submodules, the SUNDIALS CVODE solver, and PROTEUS itself)
 7. Further modules (Morrigan, VULCAN, atmodeller and Obliqua): a failed module prints a warning with the command to repeat and the installer goes on; after the four steps the installer checks again that PROTEUS imports, and stops when it does not
 8. Reference data downloads (by default the essential set: the default-config and tutorial k-tables, stellar spectra and tracks, the PHOENIX grid of the default star, and the interior tables)
-9. Verification via `proteus doctor`: when an installed module is still below its minimum version, for example a VULCAN clone that stays, the installer prints the fix command of each such module and stops with exit status 1
+9. Verification via `proteus doctor`: when an installed Python module is still below its minimum version in `pyproject.toml`, for example a VULCAN clone that stays, the installer prints the fix command of each such module and stops with exit status 1
 
 The installer clones the four further modules into the PROTEUS folder, each under its own licence: atmodeller (GPL-3.0), VULCAN (GPL-3.0), Morrigan (Apache-2.0) and Obliqua (MIT). PROTEUS itself is under Apache-2.0.
 

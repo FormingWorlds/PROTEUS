@@ -4133,6 +4133,7 @@ def test_validate_module_versions_spider_stack_passes_with_unpinned_dep(monkeypa
         escape=types.SimpleNamespace(module='zephyrus'),
         star=types.SimpleNamespace(module='mors'),
         orbit=types.SimpleNamespace(module='dummy'),
+        atmos_chem=types.SimpleNamespace(module=None),
     )
     requires = [
         'numpy',
@@ -4179,6 +4180,7 @@ def test_validate_module_versions_raises_for_old_janus_in_spider_stack(monkeypat
         escape=types.SimpleNamespace(module='dummy'),
         star=types.SimpleNamespace(module='dummy'),
         orbit=types.SimpleNamespace(module='dummy'),
+        atmos_chem=types.SimpleNamespace(module=None),
     )
     monkeypatch.setitem(sys.modules, 'janus', types.SimpleNamespace(__version__='0.1.0'))
 
@@ -4208,6 +4210,7 @@ def test_validate_module_versions_raises_for_old_obliqua(tmp_path):
         escape=types.SimpleNamespace(module='dummy'),
         star=types.SimpleNamespace(module='dummy'),
         orbit=types.SimpleNamespace(module='obliqua'),
+        atmos_chem=types.SimpleNamespace(module=None),
     )
     obliqua_dir = tmp_path / 'Obliqua'
     obliqua_dir.mkdir()
@@ -4241,6 +4244,7 @@ def test_validate_module_versions_accepts_current_obliqua(tmp_path):
         escape=types.SimpleNamespace(module='dummy'),
         star=types.SimpleNamespace(module='dummy'),
         orbit=types.SimpleNamespace(module='obliqua'),
+        atmos_chem=types.SimpleNamespace(module=None),
     )
     obliqua_dir = tmp_path / 'Obliqua'
     obliqua_dir.mkdir()

@@ -378,17 +378,13 @@ class TestBelowFloorStop:
 
     @staticmethod
     def _run(tmp_path, stub_body: str) -> subprocess.CompletedProcess:
-        """Run the floor block of Phase 9 with die and a stub python3 that records its call."""
+        """Run the floor block of Phase 9 with a stub python3 that records its call."""
         bindir = tmp_path / 'bin'
         bindir.mkdir()
         stub = bindir / 'python3'
         stub.write_text(f'#!/bin/bash\nprintf "%s" "$*" > {tmp_path}/argv\n{stub_body}\n')
         stub.chmod(0o755)
-        script = (
-            'CURRENT_PHASE=9\ncollect_env_info() { :; }\n'
-            + _install_sh_blocks('die()', '# Only a module below')
-            + 'echo after-floor-check\n'
-        )
+        script = _install_sh_blocks('# Only a module below') + 'echo after-floor-check\n'
         return _run_with_helpers(script, PATH=f'{bindir}:{os.environ["PATH"]}')
 
     def test_below_floor_exits_1_with_each_fix_command(self, tmp_path):
@@ -398,10 +394,10 @@ class TestBelowFloorStop:
         )
         assert out.returncode == 1, out.stdout
         assert 'below_floor_fixes' in (tmp_path / 'argv').read_text()
-        assert out.stderr.count('[FAIL]') == 3
+        assert out.stderr.count('[FAIL]') == 2
         assert 'Below its minimum version: fwl-janus: fix-janus' in out.stderr
         assert 'Below its minimum version: fwl-vulcan: bash tools/get_vulcan.sh' in out.stderr
-        assert 'Run its fix command, then: proteus doctor' in out.stderr
+        assert 'Run its fix command, then: proteus doctor' in out.stdout
         assert 'after-floor-check' not in out.stdout
 
     @pytest.mark.parametrize(

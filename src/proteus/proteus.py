@@ -1766,7 +1766,13 @@ class Proteus:
             HelpfileRow,
             ReadHelpfileFromCSV,
             helpfile_path,
+            vulcan_below_floor,
         )
+
+        if vulcan_below_floor(self.config):
+            raise EnvironmentError(
+                'VULCAN is below its minimum version; run the fix command above'
+            )
 
         hf_all = ReadHelpfileFromCSV(
             self.directories['output'], required_columns=GetPostprocessingKeys()

@@ -223,6 +223,22 @@ def _get_petitradtrans_version() -> str:
         return 'unknown (petitRADTRANS not installed)'
 
 
+def vulcan_below_floor(config: Config) -> bool:
+    """Return True, after logging the fix command, when the config uses a VULCAN below its floor.
+
+    The floor is the ``fwl-vulcan`` requirement in ``pyproject.toml``, read by the doctor.
+    """
+    if config.atmos_chem.module != 'vulcan':
+        return False
+    from proteus.doctor import FAIL, _dependency_specs, check_python_package
+
+    vulcan = check_python_package('fwl-vulcan', _dependency_specs().get('fwl-vulcan'))
+    if vulcan.status != FAIL:
+        return False
+    log.error(f'VULCAN module is out of date: {vulcan.message}. Fix: {vulcan.fix_cmd}')
+    return True
+
+
 def validate_module_versions(dirs: dict, config: Config):
     """Raise if module versions are incompatible."""
 
@@ -350,13 +366,7 @@ def validate_module_versions(dirs: dict, config: Config):
         valid &= _valid_ver(_get_obliqua_version(dirs), OBLIQUA_MIN_VERSION, 'Obliqua')
 
     # Atmospheric chemistry module: its floor sits in an extra, which _get_expver misreads
-    if config.atmos_chem.module == 'vulcan':
-        from proteus.doctor import FAIL, _dependency_specs, check_python_package
-
-        vulcan = check_python_package('fwl-vulcan', _dependency_specs().get('fwl-vulcan'))
-        if vulcan.status == FAIL:
-            log.error(f'VULCAN module is out of date: {vulcan.message}. Fix: {vulcan.fix_cmd}')
-            valid = False
+    valid &= not vulcan_below_floor(config)
 
     # Exit
     if not valid:

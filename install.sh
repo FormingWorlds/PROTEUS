@@ -1359,7 +1359,8 @@ BELOW_FLOOR=$(python3 -c 'from proteus.doctor import below_floor_fixes; print("\
     || { warn "Could not check the module versions; run: proteus doctor"; BELOW_FLOOR=""; }
 if [ -n "$BELOW_FLOOR" ]; then
     while IFS= read -r line; do fail "Below its minimum version: $line"; done <<< "$BELOW_FLOOR"
-    die "PROTEUS needs a newer release of each module above. Run its fix command, then: proteus doctor"
+    echo "PROTEUS needs a newer release of each module above. Run its fix command, then: proteus doctor"
+    exit 1
 fi
 
 # ===================================================================
