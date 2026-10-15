@@ -60,7 +60,7 @@ def _timing_enabled(environ: Mapping[str, str]) -> bool:
     return environ.get('PROTEUS_TIMING', '').lower() in ('1', 'true', 'yes', 'on')
 
 
-# Read once, when this module is imported
+# Read once, when this module is imported; a test re-executes this file to check it
 _IT_TIMING_ENABLED = _timing_enabled(os.environ)
 
 # Consecutive iterations without a converged atmosphere after which a run ends,

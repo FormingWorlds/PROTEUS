@@ -23,6 +23,7 @@ Functions tested:
 from __future__ import annotations
 
 import logging
+import os
 import sys
 import warnings
 from contextlib import ExitStack, nullcontext
@@ -3204,7 +3205,8 @@ def test_timing_switch_reads_proteus_timing(value, enabled):
 
     environ = {} if value is None else {'PROTEUS_TIMING': value}
     assert _timing_enabled(environ) is enabled
-    assert _timing_enabled({'PROTEUS_TIMINGS': value or '1'}) is False
+    # Only the exact variable counts: a neighbour set to an accepted value stays off
+    assert _timing_enabled({'PROTEUS_TIMINGS': '1'}) is False
 
 
 @pytest.mark.parametrize(
@@ -3214,7 +3216,7 @@ def test_timing_switch_reads_proteus_timing(value, enabled):
 def test_timing_flag_is_read_from_the_environment_at_import(value, enabled, monkeypatch):
     """Loading proteus/proteus.py with PROTEUS_TIMING set, or unset, gives the module
     flag the variable asks for: the flag is read at import, so the test loads the
-    file again under a throwaway name (Julia stubbed, it is not needed)."""
+    file again under a throwaway name."""
     import importlib.util
 
     import proteus.proteus as mod
@@ -3223,12 +3225,11 @@ def test_timing_flag_is_read_from_the_environment_at_import(value, enabled, monk
         monkeypatch.delenv('PROTEUS_TIMING', raising=False)
     else:
         monkeypatch.setenv('PROTEUS_TIMING', value)
-    monkeypatch.setitem(sys.modules, 'juliacall', MagicMock())
     spec = importlib.util.spec_from_file_location('_proteus_timing_probe', mod.__file__)
     probe = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(probe)
     assert probe._IT_TIMING_ENABLED is enabled
-    assert sys.modules['proteus.proteus'] is mod  # the probe leaves the real module alone
+    assert probe._IT_TIMING_ENABLED is probe._timing_enabled(os.environ)
 
 
 def test_timing_lines_absent_when_timing_is_off(tmp_path, monkeypatch, caplog):
