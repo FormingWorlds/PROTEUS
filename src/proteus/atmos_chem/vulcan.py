@@ -16,13 +16,47 @@ import vulcan
 # Import PROTEUS
 from proteus.atmos_clim.common import find_latest_atmosphere_time, read_atmosphere_data
 from proteus.star.wrapper import flux_weighted_distance, scale_spectrum_to_stellar_surface
-from proteus.utils.constants import AU, R_sun, element_list, vol_list
+from proteus.utils.constants import (
+    AU,
+    CHEM_CONDENSATE_DENSITY,
+    R_sun,
+    element_list,
+    vol_list,
+)
 from proteus.utils.helper import find_nearest, format_subyear_time, mol_to_ele
 
 if TYPE_CHECKING:
     from proteus.config import Config
 
 log = logging.getLogger('fwl.' + __name__)
+
+
+def network_condensation(network_path: str) -> dict[str, str]:
+    """Condensation reactions of a VULCAN chemical network file.
+
+    Reads the reactions listed after the `# condensation` header, as VULCAN
+    does, up to the next reaction-type header.
+
+    Returns
+    ----------
+    pairs : dict
+        Condensate species name, keyed by the name of the gas that condenses.
+    """
+    pairs = {}
+    in_section = False
+    with open(network_path) as hdl:
+        for line in hdl:
+            if line.startswith('#'):
+                if line.startswith('# condensation'):
+                    in_section = True
+                elif line.startswith(('# radiative', '# photo', '# ionisation')):
+                    in_section = False
+                continue
+            if in_section and '[' in line:
+                reaction = line.partition('[')[-1].rpartition(']')[0]
+                gas, _, product = reaction.partition('->')
+                pairs[gas.strip()] = product.strip()
+    return pairs
 
 
 def _write_boundary_file(fpath: str, fixed_vmr: dict) -> None:
@@ -147,7 +181,7 @@ def run_vulcan(dirs: dict, config: Config, hf_row: dict, *, online: bool = False
 
     # Output folder
     vulcan_out = dirs['output/offchem']
-    vulcan_plt = dirs['output/offchem']
+    vulcan_plt = os.path.join(dirs['output/offchem'], '')  # VULCAN appends file names
     log.debug('Writing VULCAN input data')
 
     # Find a reasonable file for the stellar flux
@@ -279,14 +313,14 @@ def run_vulcan(dirs: dict, config: Config, hf_row: dict, *, online: bool = False
     backs = {'H2': 0.0, 'N2': 0.0, 'O2': 0.0, 'CO2': 0.0}
     vcfg.const_mix = {}
     for gas in vol_list:
-        # drop gases not in the network
-        if len(set(mol_to_ele(gas).keys()) - set(ele_arr)) > 0:
-            continue
-
-        # set potential background gases
+        # set potential background gases, also from outside the network
         vmr = hf_row[gas + '_vmr']
         if gas in backs.keys():
             backs[gas] = vmr
+
+        # drop gases not in the network
+        if len(set(mol_to_ele(gas).keys()) - set(ele_arr)) > 0:
+            continue
 
         # set constant mixing ratio and bottom BC if above the threshold
         if vmr > config.atmos_chem.vulcan.clip_vmr:
@@ -301,8 +335,9 @@ def run_vulcan(dirs: dict, config: Config, hf_row: dict, *, online: bool = False
     vcfg.scat_sp = sct_arr
     vcfg.T_cross_sp = []
 
-    # Elemental abundances, only read with ini_mix 'eq' or 'const_lowt' (VULCAN defaults)
-    vcfg.use_solar = True
+    # Elemental abundances (VULCAN defaults), read only with ini_mix 'eq' or 'const_lowt';
+    # use_solar is off, so those modes take these values instead of VULCAN's solar table.
+    vcfg.use_solar = False
     vcfg.fastchem_met_scale = 1.0
     vcfg.O_H = 5.37e-4
     vcfg.C_H = 2.95e-4
@@ -332,7 +367,8 @@ def run_vulcan(dirs: dict, config: Config, hf_row: dict, *, online: bool = False
 
     # TP profile.
     vcfg.nz = len(p_arr)
-    vcfg.P_b = float(np.amax(atmos['pl'])) * 10  # convert bar to dyne/cm^2
+    # level edges 'pl', not cell centres 'p', so the column is not cut by half a cell
+    vcfg.P_b = float(np.amax(atmos['pl'])) * 10  # convert Pa to dyne/cm^2
     vcfg.P_t = float(np.amin(atmos['pl'])) * 10
     vcfg.atm_type = 'file'
     vcfg.atm_file = prof_write
@@ -375,15 +411,29 @@ def run_vulcan(dirs: dict, config: Config, hf_row: dict, *, online: bool = False
     vcfg.K_max = 1e5  # only read with Kzz_prof 'Pfunc'
     vcfg.K_p_lev = 0.1  # only read with Kzz_prof 'Pfunc'
 
-    # Condensation
+    # Condensation of every gas in the network that VULCAN can condense
     vcfg.use_condense = config.atmos_chem.vulcan.use_condense
     vcfg.use_settling = config.atmos_chem.vulcan.use_settling
+    conden = {}
+    if vcfg.use_condense:
+        conden = {
+            gas: product
+            for gas, product in network_condensation(vcfg.network).items()
+            if gas in CHEM_CONDENSATE_DENSITY
+        }
+        if not conden:
+            log.warning(f"Network '{network_file}' has no condensation VULCAN supports")
+        log.debug(f'Condensing species: {list(conden.keys())}')
+    elif vcfg.use_settling:
+        log.warning('VULCAN settling has no effect without condensation')
     vcfg.start_conden_time = 1e10
     vcfg.stop_conden_time = 1e10
-    vcfg.condense_sp = []
-    vcfg.non_gas_sp = []
-    vcfg.r_p = {}
-    vcfg.rho_p = {}
+    vcfg.condense_sp = list(conden.keys())
+    vcfg.non_gas_sp = list(conden.values())
+    vcfg.r_p = {conden[gas]: config.atmos_chem.vulcan.r_p for gas in conden}  # (cm)
+    vcfg.rho_p = {conden[gas]: CHEM_CONDENSATE_DENSITY[gas] for gas in conden}  # (g cm-3)
+    vcfg.use_relax = []  # VULCAN reads these two with condensation, its Config omits them
+    vcfg.use_ini_cold_trap = False
     vcfg.fix_species = []
     vcfg.fix_species_from_coldtrap_lev = False
     vcfg.humidity = 1.0

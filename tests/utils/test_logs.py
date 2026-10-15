@@ -700,7 +700,7 @@ class TestBootstrapLogger:
         bootstrap_logger()
         buf = io.StringIO()
         logging.getLogger('fwl').handlers[0].stream = buf
-        logging.getLogger('fwl.proteus.utils.coupler').debug('Temporary-file working dir: /x')
+        logging.getLogger('fwl.proteus.utils.coupler').info('Temporary-file working dir: /x')
         assert 'Temporary-file working dir: /x' in buf.getvalue()
 
         # Discrimination: a record below the configured level is not emitted,

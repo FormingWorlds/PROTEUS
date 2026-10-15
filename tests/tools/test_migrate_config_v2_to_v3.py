@@ -147,8 +147,8 @@ _REVIEWED_NEUTRAL = frozenset(
         'atmos_clim.agni.wl_obs',
         'atmos_clim.dummy.fixed_flux',
         'atmos_clim.janus.cloud_alpha',
-        # VULCAN solver options; each default is the value the wrapper set
-        # before the option was exposed, so a migrated config runs unchanged.
+        # VULCAN options keep the values it ran with, except dttry and dt_min (100x smaller,
+        # the adaptive step's start and floor); r_p acts only with use_condense.
         'atmos_chem.vulcan.atol',
         'atmos_chem.vulcan.conv_step',
         'atmos_chem.vulcan.dt_min',
@@ -157,6 +157,7 @@ _REVIEWED_NEUTRAL = frozenset(
         'atmos_chem.vulcan.mtol',
         'atmos_chem.vulcan.mtol_conv',
         'atmos_chem.vulcan.post_conden_rtol',
+        'atmos_chem.vulcan.r_p',
         'atmos_chem.vulcan.rtol',
         'atmos_chem.vulcan.runtime',
         'atmos_chem.vulcan.st_factor',

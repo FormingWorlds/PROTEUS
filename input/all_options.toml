@@ -896,9 +896,10 @@ config_version = "3.0"
 
         # Processes
         use_vz                = true         # vertical advection at updraft_const
-        use_vm_mol            = false        # upwind scheme for molecular diffusion
-        use_condense          = false        # condensation
+        use_vm_mol            = false        # upwind molecular diffusion; must be false
+        use_condense          = false        # condense every gas the network can
         use_settling          = false        # gravitational settling of condensates
+        r_p                   = 5e-3         # condensate particle radius [cm]
 
         # Convergence
         yconv_cri             = 0.05         # convergence criterion (mixing ratios)

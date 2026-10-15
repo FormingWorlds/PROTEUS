@@ -24,6 +24,11 @@ Physics tested:
 - Config pass-through: each [atmos_chem.vulcan] solver option reaches the
   VULCAN Config unchanged, and the AGNI options of the RCE solver follow
   [atmos_clim] and [atmos_clim.agni]
+- Network filter: a gas with an element outside the network is not fixed at
+  the surface, while the background gas is still chosen from all gases
+- Condensation: every gas of the network that VULCAN can condense is
+  included, with the configured radius and a condensed-phase density
+- NetCDF output: VULCAN's NetCDF is moved to data/<time>_chem.nc
 
 Related documentation:
 - docs/How-to/testing.md: Running, writing, and marking tests; coverage and CI
@@ -63,7 +68,12 @@ import proteus.atmos_chem.vulcan as _vulcan_mod  # noqa: E402
 
 importlib.reload(_vulcan_mod)  # Force re-import with the real vulcan mock
 
-from proteus.atmos_chem.vulcan import run_vulcan  # noqa: E402
+from proteus.atmos_chem.vulcan import (  # noqa: E402
+    network_condensation,
+    run_vulcan,
+)
+from proteus.utils.constants import CHEM_CONDENSATE_DENSITY  # noqa: E402
+from proteus.utils.helper import format_subyear_time  # noqa: E402
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -94,6 +104,7 @@ def _make_mock_config(*, network='CHO', photo_on=True, atmos_module='agni'):
     config.atmos_chem.vulcan.use_vz = True
     config.atmos_chem.vulcan.use_condense = False
     config.atmos_chem.vulcan.use_settling = False
+    config.atmos_chem.vulcan.r_p = 5e-3
     config.atmos_chem.vulcan.runtime = 1e22
     config.atmos_chem.vulcan.dttry = 1e-8
     config.atmos_chem.vulcan.dt_min = 1e-10
@@ -942,7 +953,10 @@ def test_run_vulcan_sets_every_field_of_the_installed_vulcan_config(tmp_path):
     assert result is True
     mock_vulcan_package.run_vulcan.assert_called_once_with(vcfg, True)
     assert sorted(fields - vcfg.assigned) == [], 'VULCAN Config fields PROTEUS does not set'
-    assert sorted(vcfg.assigned - fields) == [], 'fields PROTEUS sets that VULCAN lacks'
+    # VULCAN reads these two with condensation on, but its Config does not define them.
+    assert sorted(vcfg.assigned - fields) == ['use_ini_cold_trap', 'use_relax'], (
+        'fields PROTEUS sets that VULCAN lacks'
+    )
     # PROTEUS parses the pickle output, so it must be requested.
     assert 'pickle' in vcfg.save_type
 
@@ -1001,7 +1015,9 @@ def test_run_vulcan_boundary_files_hold_surface_mixing_ratios(tmp_path, fix_surf
 
 
 @pytest.mark.unit
-def test_run_vulcan_passes_solver_options_and_agni_settings_to_vulcan_config(tmp_path):
+def test_run_vulcan_passes_solver_options_and_agni_settings_to_vulcan_config(
+    tmp_path, monkeypatch
+):
     """Each [atmos_chem.vulcan] solver option reaches the VULCAN Config, the
     AGNI settings of VULCAN's RCE solver follow the PROTEUS AGNI config, and
     the plot format follows params.out.plot_fmt.
@@ -1012,8 +1028,8 @@ def test_run_vulcan_passes_solver_options_and_agni_settings_to_vulcan_config(tmp
     """
     config = _make_mock_config()
     config.atmos_chem.vulcan.make_funs = False
+    _write_network(tmp_path, monkeypatch, 'CHO_photo_network.txt', '')
     opts = {
-        'use_vm_mol': True,
         'use_vz': False,
         'use_condense': True,
         'use_settling': True,
@@ -1058,3 +1074,224 @@ def test_run_vulcan_passes_solver_options_and_agni_settings_to_vulcan_config(tmp
     assert vcfg.dt_max == pytest.approx(3.0e14, rel=1e-12)
     # The RCE solver stays off, so the AGNI settings do not change the run.
     assert vcfg.agni_call_frq == 0
+
+
+# Network file in VULCAN's layout: condensation reactions sit between the
+# special and the photodissociation sections, which both hold 'A -> B' lines too.
+_NETWORK_WITH_CONDENSATION = """# 2-body reactions
+1 [ OH + H2 -> H2O + H                 ]   3.57E-16    1.52      1740.0
+
+# special cases
+# id	# Reactions
+1027 [  OH + CH3 + M -> CH3OH + M         ]
+
+# reverse stops
+# condensation
+1029 [  S8 -> S8_l_s                      ]
+1031 [  S4 -> S4_l_s                      ]
+1033 [  H2O -> H2O_l_s                    ]
+
+# photo disscoiation (no reversals!)
+# id	# Reactions                                     sp		br_index
+1035 [ H2O -> H + OH                      ]       		H2O		1
+"""
+
+
+def _write_network(tmp_path, monkeypatch, name, text):
+    """Write a network file into a stand-in VULCAN thermo folder and point the mock at it."""
+    thermo = tmp_path / 'thermo'
+    thermo.mkdir(exist_ok=True)
+    (thermo / name).write_text(text)
+    monkeypatch.setattr(mock_vulcan_package.paths, 'THERMO_DIR', str(thermo))
+    return thermo / name
+
+
+@pytest.mark.unit
+def test_network_condensation_reads_only_the_condensation_section(tmp_path):
+    """Only the reactions under '# condensation' are returned, keyed by the gas
+    that condenses; the photodissociation H2O -> H + OH below it and the
+    reactions above it are not."""
+    fpath = tmp_path / 'network.txt'
+    fpath.write_text(_NETWORK_WITH_CONDENSATION)
+
+    pairs = network_condensation(str(fpath))
+
+    assert pairs == {'S8': 'S8_l_s', 'S4': 'S4_l_s', 'H2O': 'H2O_l_s'}
+    # A file without the section has no condensation.
+    fpath.write_text(_NETWORK_WITH_CONDENSATION.replace('# condensation', '# other'))
+    assert network_condensation(str(fpath)) == {}
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_run_vulcan_condenses_every_supported_gas_of_the_network(tmp_path, monkeypatch):
+    """With use_condense, VULCAN condenses each gas of the network that it has
+    saturation data for (S8, H2O here, not S4), as particles of the configured
+    radius and a condensed-phase density.
+
+    Invariant: every particle density lies between ammonia ice (0.8 g cm-3) and
+    graphite (2.3 g cm-3); a density in kg m-3 would be 1000 times larger.
+    """
+    config = _make_mock_config(network='SNCHO')
+    config.atmos_chem.vulcan.make_funs = False
+    config.atmos_chem.vulcan.use_condense = True
+    config.atmos_chem.vulcan.use_settling = True
+    config.atmos_chem.vulcan.r_p = 2.5e-4  # cm
+    _write_network(tmp_path, monkeypatch, 'SNCHO_photo_network.txt', _NETWORK_WITH_CONDENSATION)
+
+    result, vcfg = _run_online_with_recording_config(
+        tmp_path, config, _make_mock_hf_row(year=650.0)
+    )
+
+    assert result is True
+    assert vcfg.condense_sp == ['S8', 'H2O']
+    assert vcfg.non_gas_sp == ['S8_l_s', 'H2O_l_s']
+    assert vcfg.r_p == pytest.approx({'S8_l_s': 2.5e-4, 'H2O_l_s': 2.5e-4}, rel=1e-12)
+    assert vcfg.rho_p == pytest.approx({'S8_l_s': 2.07, 'H2O_l_s': 1.0}, rel=1e-12)
+    assert all(0.8 <= CHEM_CONDENSATE_DENSITY[gas] <= 2.3 for gas in CHEM_CONDENSATE_DENSITY)
+    # VULCAN reads both without defining them; relaxation and the cold trap stay off.
+    assert vcfg.use_relax == []
+    assert vcfg.use_ini_cold_trap is False
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'use_condense,network,text',
+    [
+        (False, 'SNCHO', _NETWORK_WITH_CONDENSATION),
+        (True, 'CHO', '# 2-body reactions\n1 [ OH + H2 -> H2O + H ] 3.57E-16 1.52 1740.0\n'),
+    ],
+    ids=['condensation_off', 'network_without_condensation'],
+)
+def test_run_vulcan_without_condensation_sets_no_condensates(
+    tmp_path, monkeypatch, use_condense, network, text
+):
+    """With condensation off, or a network that has no condensation reaction,
+    no gas condenses and no particle is defined; the second case warns."""
+    config = _make_mock_config(network=network)
+    config.atmos_chem.vulcan.make_funs = False
+    config.atmos_chem.vulcan.use_condense = use_condense
+    _write_network(tmp_path, monkeypatch, f'{network}_photo_network.txt', text)
+
+    with patch('proteus.atmos_chem.vulcan.log') as mock_log:
+        result, vcfg = _run_online_with_recording_config(
+            tmp_path, config, _make_mock_hf_row(year=660.0)
+        )
+
+    assert result is True
+    assert (vcfg.condense_sp, vcfg.non_gas_sp, vcfg.r_p, vcfg.rho_p) == ([], [], {}, {})
+    assert mock_log.warning.called is use_condense
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'network,kept',
+    [
+        ('CHO', set()),
+        ('NCHO', {'N2', 'NH3'}),
+        ('SNCHO', {'N2', 'NH3', 'S2', 'SO2', 'H2S'}),
+    ],
+)
+def test_run_vulcan_fixes_only_gases_whose_elements_are_in_the_network(tmp_path, network, kept):
+    """A gas with an element outside the network is neither in const_mix nor
+    fixed at the surface nor written to the boundary file, because VULCAN
+    stops on a species the network does not hold. N and S gases sit well above
+    clip_vmr, so only the network decides whether they are kept."""
+    config = _make_mock_config(network=network)
+    config.atmos_chem.vulcan.make_funs = False
+    config.atmos_chem.vulcan.fix_surf = True
+    hf_row = _make_mock_hf_row(year=670.0)
+    candidates = {'N2', 'NH3', 'S2', 'SO2', 'H2S'}
+    for gas in candidates:
+        hf_row[gas + '_vmr'] = 1e-3  # 1e7 times clip_vmr
+
+    result, vcfg = _run_online_with_recording_config(tmp_path, config, hf_row)
+
+    assert result is True
+    assert set(vcfg.const_mix) & candidates == kept
+    assert set(vcfg.use_fix_sp_bot) & candidates == kept
+    rows = Path(vcfg.bot_BC_flux_file).read_text().splitlines()
+    in_file = {row.split()[0] for row in rows if row.strip() and not row.startswith('#')}
+    assert in_file & candidates == kept
+    # The CHO gases are kept in every network.
+    assert {'H2O', 'CO2', 'H2', 'CO', 'CH4', 'O2'} <= set(vcfg.const_mix)
+
+
+@pytest.mark.unit
+def test_run_vulcan_background_gas_counts_gases_outside_the_network(tmp_path):
+    """An N2-dominated atmosphere has N2 as background gas also with the CHO
+    network, which drops N2 itself: VULCAN takes the molecular-diffusion law
+    from atm_base. Choosing among network gases only would give CO2."""
+    config = _make_mock_config(network='CHO')
+    config.atmos_chem.vulcan.make_funs = False
+    hf_row = _make_mock_hf_row(year=680.0)
+    hf_row['N2_vmr'] = 0.7
+    hf_row['CO2_vmr'] = 0.2
+    hf_row['H2_vmr'] = 0.01
+
+    result, vcfg = _run_online_with_recording_config(tmp_path, config, hf_row)
+
+    assert result is True
+    assert vcfg.atm_base == 'N2'
+    assert 'N2' not in vcfg.const_mix
+
+
+@pytest.mark.unit
+def test_run_vulcan_online_moves_netcdf_to_data_folder(tmp_path):
+    """In online mode VULCAN's per-snapshot vulcan_<int year>.nc moves to
+    data/<year with sub-year precision>_chem.nc and leaves the offchem folder.
+    The year 1234.5 tells the sub-year name from the integer one."""
+    config = _make_mock_config()
+    config.atmos_chem.vulcan.make_funs = False
+    hf_row = _make_mock_hf_row(year=1234.5)
+    (tmp_path / 'data').mkdir()
+    src = tmp_path / 'offchem' / 'vulcan_1234.nc'
+    src.parent.mkdir()
+    src.write_bytes(b'netcdf-test')
+
+    result, _ = _run_online_with_recording_config(tmp_path, config, hf_row)
+
+    assert result is True
+    dst = tmp_path / 'data' / '1234p500_chem.nc'
+    assert format_subyear_time(1234.5) + '_chem.nc' == dst.name
+    assert dst.read_bytes() == b'netcdf-test'
+    assert not src.exists()
+    assert not (tmp_path / 'data' / '1234_chem.nc').exists()
+
+
+@pytest.mark.unit
+def test_run_vulcan_offline_moves_netcdf_to_data_folder(tmp_path):
+    """In offline mode the offchem folder is wiped before VULCAN runs, and the
+    vulcan.nc that VULCAN writes moves to data/<year>_chem.nc."""
+    config = _make_mock_config()
+    config.atmos_chem.vulcan.make_funs = False
+    hf_row = _make_mock_hf_row(year=2000.0)
+    (tmp_path / 'data').mkdir()
+    offchem = tmp_path / 'offchem'
+    dirs = {'output': str(tmp_path), 'output/offchem': str(offchem)}
+
+    def _fake_vulcan(*_args):
+        # VULCAN writes both outputs into the freshly created offchem folder.
+        (offchem / 'vulcan.nc').write_bytes(b'netcdf-offline')
+        with open(offchem / 'vulcan.pkl', 'wb') as f:
+            pickle.dump(_make_mock_vulcan_result(), f)
+
+    mock_vulcan_package.Config.return_value = _RecordingConfig()
+    mock_vulcan_package.run_vulcan.side_effect = _fake_vulcan
+    try:
+        with (
+            patch('proteus.atmos_chem.vulcan.read_atmosphere_data') as mock_read_atmos,
+            patch('proteus.atmos_chem.vulcan.glob.glob') as mock_glob,
+            patch('proteus.atmos_chem.vulcan.np.loadtxt') as mock_loadtxt,
+            patch('proteus.atmos_chem.vulcan.np.savetxt'),
+        ):
+            mock_read_atmos.return_value = [_make_mock_atmos()]
+            mock_glob.return_value = [str(tmp_path / 'data' / '2000.sflux')]
+            mock_loadtxt.return_value = np.array([[200.0, 1e-5], [300.0, 1e-4], [400.0, 1e-3]])
+            result = run_vulcan(dirs, config, hf_row)
+    finally:
+        mock_vulcan_package.run_vulcan.side_effect = None
+
+    assert result is True
+    assert (tmp_path / 'data' / '2000p000_chem.nc').read_bytes() == b'netcdf-offline'
+    assert not (offchem / 'vulcan.nc').exists()

@@ -6,6 +6,15 @@ from attrs.validators import gt, in_, lt
 from ._converters import none_if_none
 
 
+def valid_use_vm_mol(instance, attribute, value):
+    """Refuse the upwind molecular-diffusion scheme, which VULCAN aborts on."""
+    if value:
+        raise ValueError(
+            f'{attribute.name}=true is not supported; '
+            'VULCAN upwind scheme for molecular diffusion is in development'
+        )
+
+
 @define
 class Vulcan:
     """VULCAN chemistry module.
@@ -37,13 +46,15 @@ class Vulcan:
     conv_step : int
         Steady state - maximum number of solver steps the test period reaches back.
     use_vm_mol : bool
-        Use the upwind scheme for molecular diffusion.
+        Use the upwind scheme for molecular diffusion. Must be false, because VULCAN does not support it yet.
     use_vz : bool
         Include vertical advection at the constant updraft velocity `atmos_chem.updraft_const`.
     use_condense : bool
-        Include condensation.
+        Include condensation of every gas that the selected network can condense.
     use_settling : bool
-        Include gravitational settling of condensates.
+        Include gravitational settling of the condensate particles. Has an effect only with `use_condense`.
+    r_p : float
+        Default radius of every condensate particle [cm].
     runtime : float
         Maximum integrated model time [s].
     dttry : float
@@ -76,10 +87,11 @@ class Vulcan:
     yconv_min: float = field(default=0.5, validator=gt(0))
     st_factor: float = field(default=0.5, validator=(gt(0), lt(1)))
     conv_step: int = field(default=100, validator=gt(0))
-    use_vm_mol: bool = field(default=False)
+    use_vm_mol: bool = field(default=False, validator=valid_use_vm_mol)
     use_vz: bool = field(default=True)
     use_condense: bool = field(default=False)
     use_settling: bool = field(default=False)
+    r_p: float = field(default=5e-3, validator=gt(0))
     runtime: float = field(default=1e22, validator=gt(0))
     dttry: float = field(default=1e-8, validator=gt(0))
     dt_min: float = field(default=1e-10, validator=gt(0))

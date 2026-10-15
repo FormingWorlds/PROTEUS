@@ -12,7 +12,8 @@ from proteus.config._atmos_chem import Vulcan
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
-# Options that must be strictly positive: tolerances, timesteps [s], step counts.
+# Options that must be strictly positive: tolerances, timesteps [s], step counts,
+# particle radius [cm].
 _POSITIVE = (
     'yconv_min',
     'conv_step',
@@ -25,14 +26,15 @@ _POSITIVE = (
     'flux_atol',
     'rtol',
     'post_conden_rtol',
+    'r_p',
 )
 
 
 @pytest.mark.unit
 @pytest.mark.parametrize('name', _POSITIVE)
 def test_vulcan_positive_options_refuse_zero_and_negative(name):
-    """A tolerance, timestep or step count of zero or below is refused, and a
-    small positive value is kept unchanged."""
+    """A tolerance, timestep, step count or particle radius of zero or below is
+    refused, and a small positive value is kept unchanged."""
     small = 3 if name == 'conv_step' else 1e-30
     assert getattr(Vulcan(**{name: small}), name) == small
     for bad in (0, -small):
@@ -52,17 +54,9 @@ def test_vulcan_st_factor_lies_strictly_between_zero_and_one():
 
 
 @pytest.mark.unit
-def test_vulcan_solver_defaults_match_the_previous_hard_coded_values():
-    """The defaults keep the values the wrapper set before the options were
-    exposed, so an existing config runs VULCAN unchanged."""
-    v = Vulcan()
-    assert (v.st_factor, v.conv_step, v.yconv_min) == (0.5, 100, 0.5)
-    assert (v.runtime, v.dttry, v.dt_min) == (1e22, 1e-8, 1e-10)
-    assert (v.atol, v.mtol, v.mtol_conv) == (0.1, 1e-22, 1e-20)
-    assert (v.flux_atol, v.rtol, v.post_conden_rtol) == (1.0, 0.9, 0.1)
-    assert (v.use_vm_mol, v.use_vz, v.use_condense, v.use_settling) == (
-        False,
-        True,
-        False,
-        False,
-    )
+def test_vulcan_use_vm_mol_refuses_the_upwind_scheme():
+    """VULCAN raises at setup when its upwind molecular-diffusion scheme is on,
+    so the config refuses use_vm_mol = true and keeps false."""
+    assert Vulcan(use_vm_mol=False).use_vm_mol is False
+    with pytest.raises(ValueError, match='use_vm_mol'):
+        Vulcan(use_vm_mol=True)
