@@ -2249,6 +2249,8 @@ def _fake_checkout(tmp_path) -> Path:
         lib.mkdir(parents=True)
         (lib / 'libpetsc.dylib').write_text('')
         (lib / 'libpetsc.so').write_text('')
+    (root / 'conda' / 'include' / 'gsl').mkdir(parents=True)
+    (root / 'conda' / 'lib').mkdir(parents=True)
     return root
 
 
@@ -2291,6 +2293,7 @@ def test_script_clones_the_expected_destination(tmp_path, script, argv, dest, ur
         **os.environ,
         'PATH': f'{stubs}:{os.environ["PATH"]}',
         'STUB_LOG': str(log),
+        'CONDA_PREFIX': str(root / 'conda'),
         # Both are read before the scripts would sleep on a warning.
         'RAD_DIR': '',
         'LAVA_DIR': '',
@@ -6850,3 +6853,145 @@ def test_obliqua_refuses_symlink_to_folder_ending_with_line_break(tmp_path, forc
     assert link.is_symlink()
     assert _temp_or_old_entries(tmp_path) == []
     assert site['log'].read_text() == ''
+
+
+def _thermoenginelite_site(tmp_path: Path) -> dict:
+    """A pinned-commit site for ThermoEngineLite with stubbed clang, make, and PYTHONPATH."""
+    pyproject = (
+        '[project]\nname = "fixture"\ndependencies = []\n'
+        '[tool.proteus.modules.thermoenginelite]\n'
+        'url = "https://github.com/FormingWorlds/ThermoEngineLite"\n'
+        'ref = "@REF@"\n'
+    )
+    files = {'Makefile': 'devinstall:\n'}
+    site = _pinned_module_site(tmp_path, 'ThermoEngineLite', files, pyproject)
+    make_log = tmp_path / 'make.log'
+    make_log.write_text('')
+    site_pkgs = tmp_path / 'site_packages'
+    site_pkgs.mkdir()
+    conda_prefix = tmp_path / 'conda'
+    (conda_prefix / 'include' / 'gsl').mkdir(parents=True)
+    (conda_prefix / 'lib').mkdir(parents=True)
+    _write_stub(site['stubs'], 'clang', '#!/bin/sh\nexit 0\n')
+    _write_stub(
+        site['stubs'],
+        'make',
+        '#!/bin/sh\n'
+        'mkdir -p thermoengine\n'
+        'printf "ARGS=%s\\nCPATH=%s\\nLIBRARY_PATH=%s\\n" "$*" "${CPATH:-}" "${LIBRARY_PATH:-}" >> "$STUB_MAKE_LOG"\n'
+        'if [ "${STUB_MAKE_FAIL:-0}" = "1" ]; then\n'
+        '    exit 2\n'
+        'fi\n'
+        'if [ "${STUB_MAKE_SKIP_INSTALL:-0}" != "1" ]; then\n'
+        '    mkdir -p "$STUB_SITE_PACKAGES/thermoengine"\n'
+        '    printf "__version__ = \'0.0\'\\n" > "$STUB_SITE_PACKAGES/thermoengine/__init__.py"\n'
+        'fi\n'
+        'exit 0\n',
+    )
+    site['env']['CONDA_PREFIX'] = str(conda_prefix)
+    site['env']['GSL_SYS_INCLUDE'] = str(tmp_path / 'no_usr_include')
+    site['env']['PYTHONPATH'] = str(site_pkgs)
+    site['env']['STUB_MAKE_LOG'] = str(make_log)
+    site['env']['STUB_SITE_PACKAGES'] = str(site_pkgs)
+    return {
+        **site,
+        'make_log': make_log,
+        'site_packages': site_pkgs,
+        'conda_prefix': conda_prefix,
+    }
+
+
+@pytest.mark.unit
+def test_thermoenginelite_missing_gsl_exits_1_before_clone(tmp_path):
+    """Verify get_thermoenginelite.sh exits 1 before cloning when no GSL headers are found."""
+    site = _thermoenginelite_site(tmp_path)
+    site['env']['CONDA_PREFIX'] = str(tmp_path / 'empty_conda')
+    site['env']['PATH'] = _path_without_tool(site['env']['PATH'], 'brew', tmp_path / 'no_brew')
+    assert shutil.which('brew', path=site['env']['PATH']) is None
+    assert shutil.which('bash', path=site['env']['PATH']) is not None
+    res = _run_tool(site, 'get_thermoenginelite.sh')
+    assert res.returncode == 1, res.stdout + res.stderr
+    assert 'ERROR: GSL headers (gsl/gsl_multiroots.h) not found.' in res.stderr
+    assert 'conda install -c conda-forge gsl' in res.stderr
+    assert 'brew install gsl' in res.stderr
+    assert 'sudo apt install libgsl-dev' in res.stderr
+    assert not (site['root'] / 'ThermoEngineLite').exists()
+    assert site['make_log'].read_text() == ''
+
+
+@pytest.mark.unit
+def test_thermoenginelite_finds_gsl_in_conda_prefix(tmp_path):
+    """Verify get_thermoenginelite.sh prefers CONDA_PREFIX/include/gsl and passes CPATH and LIBRARY_PATH."""
+    site = _thermoenginelite_site(tmp_path)
+    hb_gsl = tmp_path / 'hb_gsl'
+    (hb_gsl / 'include' / 'gsl').mkdir(parents=True)
+    (hb_gsl / 'lib').mkdir(parents=True)
+    _write_stub(site['stubs'], 'brew', f'#!/bin/sh\necho "{hb_gsl}"\n')
+    res = _run_tool(site, 'get_thermoenginelite.sh')
+    assert res.returncode == 0, res.stdout + res.stderr
+    clone = site['root'] / 'ThermoEngineLite'
+    assert (clone / '.git').is_dir()
+    assert git(clone, 'rev-parse', 'HEAD') == site['target_sha']
+    log_text = site['make_log'].read_text()
+    assert 'ARGS=devinstall' in log_text
+    assert f'CPATH={site["conda_prefix"]}/include' in log_text
+    assert f'LIBRARY_PATH={site["conda_prefix"]}/lib' in log_text
+
+
+@pytest.mark.unit
+def test_thermoenginelite_finds_gsl_in_homebrew(tmp_path):
+    """Verify get_thermoenginelite.sh falls back to brew --prefix gsl when conda has no GSL."""
+    site = _thermoenginelite_site(tmp_path)
+    site['env']['CONDA_PREFIX'] = str(tmp_path / 'empty_conda')
+    hb_gsl = tmp_path / 'hb_gsl'
+    (hb_gsl / 'include' / 'gsl').mkdir(parents=True)
+    (hb_gsl / 'lib').mkdir(parents=True)
+    _write_stub(
+        site['stubs'],
+        'brew',
+        f'#!/bin/sh\nif [ "$*" = "--prefix gsl" ]; then echo "{hb_gsl}"; exit 0; fi\nexit 1\n',
+    )
+    res = _run_tool(site, 'get_thermoenginelite.sh')
+    assert res.returncode == 0, res.stdout + res.stderr
+    clone = site['root'] / 'ThermoEngineLite'
+    assert (clone / '.git').is_dir()
+    assert git(clone, 'rev-parse', 'HEAD') == site['target_sha']
+    log_text = site['make_log'].read_text()
+    assert 'ARGS=devinstall' in log_text
+    assert f'CPATH={hb_gsl}/include' in log_text
+    assert f'LIBRARY_PATH={hb_gsl}/lib' in log_text
+
+
+@pytest.mark.unit
+def test_thermoenginelite_make_failure_exits_1(tmp_path):
+    """Verify get_thermoenginelite.sh exits 1 when make devinstall fails."""
+    site = _thermoenginelite_site(tmp_path)
+    pkg = site['site_packages'] / 'thermoengine'
+    pkg.mkdir()
+    (pkg / '__init__.py').write_text('__version__ = "0.0"\n')
+    site['env']['STUB_MAKE_FAIL'] = '1'
+    res = _run_tool(site, 'get_thermoenginelite.sh')
+    assert res.returncode == 1, res.stdout + res.stderr
+    assert 'ERROR: ThermoEngineLite failed to compile (make devinstall failed).' in res.stderr
+
+
+@pytest.mark.unit
+def test_thermoenginelite_import_check_runs_outside_clone_and_requires_file(tmp_path):
+    """Verify get_thermoenginelite.sh rejects namespace-only thermoengine directories inside or outside the clone."""
+    site = _thermoenginelite_site(tmp_path)
+    site['env']['STUB_MAKE_SKIP_INSTALL'] = '1'
+    res = _run_tool(site, 'get_thermoenginelite.sh')
+    assert res.returncode == 1, res.stdout + res.stderr
+    assert (
+        'ERROR: ThermoEngineLite failed to install into your Python environment.' in res.stderr
+    )
+    clone = site['root'] / 'ThermoEngineLite'
+    assert (clone / 'thermoengine').is_dir()
+
+    (site['site_packages'] / 'thermoengine').mkdir()
+    res_ns = _run_tool(site, 'get_thermoenginelite.sh', '--force')
+    assert res_ns.returncode == 1, res_ns.stdout + res_ns.stderr
+    assert (
+        'ERROR: ThermoEngineLite failed to install into your Python environment.'
+        in res_ns.stderr
+    )
