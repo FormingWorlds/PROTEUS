@@ -71,7 +71,10 @@ def df_intersect(df1, df2):
 
 
 def git(cwd: Path, *args: str) -> str:
-    """Run git in ``cwd`` with a fixed identity and no signing; return its stdout.
+    """Run git in ``cwd`` with a fixed identity and no global or system config; return its stdout.
+
+    A developer's global config (``tag.gpgsign``, hooks, templates) would
+    otherwise change what the scratch repositories of a test contain.
 
     Parameters
     ----------
@@ -86,9 +89,9 @@ def git(cwd: Path, *args: str) -> str:
         The standard output, stripped.
     """
     result = subprocess.run(
-        ['git', '-c', 'user.email=t@e.st', '-c', 'user.name=t', '-c', 'commit.gpgsign=false']
-        + list(args),
+        ['git', '-c', 'user.email=t@e.st', '-c', 'user.name=t', *args],
         cwd=cwd,
+        env={**os.environ, 'GIT_CONFIG_GLOBAL': os.devnull, 'GIT_CONFIG_NOSYSTEM': '1'},
         check=True,
         capture_output=True,
         text=True,
