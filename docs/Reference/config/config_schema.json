@@ -10235,7 +10235,7 @@
       "class": "Vulcan",
       "type": "bool",
       "accepts_none": false,
-      "default": "true",
+      "default": "false",
       "choices": null,
       "bounds": null,
       "description": "Include vertical advection at the constant updraft velocity `atmos_chem.updraft_const`.",

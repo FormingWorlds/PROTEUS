@@ -135,7 +135,7 @@ class Vulcan:
     st_factor: float = field(default=0.5, validator=(gt(0), lt(1)))
     conv_step: int = field(default=100, validator=gt(0))
     use_vm_mol: bool = field(default=False, validator=valid_use_vm_mol)
-    use_vz: bool = field(default=True)
+    use_vz: bool = field(default=False)
     use_condense: bool = field(default=False)
     use_settling: bool = field(default=False)
     r_p: float = field(default=5e-3, validator=gt(0))

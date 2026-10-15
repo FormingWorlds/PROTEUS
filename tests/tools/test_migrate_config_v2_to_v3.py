@@ -164,7 +164,6 @@ _REVIEWED_NEUTRAL = frozenset(
         'atmos_chem.vulcan.use_condense',
         'atmos_chem.vulcan.use_settling',
         'atmos_chem.vulcan.use_vm_mol',
-        'atmos_chem.vulcan.use_vz',
         'atmos_chem.vulcan.yconv_min',
         # Inert while escape.hill_clamp is pinned off for migrated configs.
         'escape.hill_clamp_frac',
@@ -1149,3 +1148,18 @@ def test_chem_when_maps_to_mode_and_times(module, when, mode, times):
     assert bool(online_warnings) is (when == 'online' and module != 'none')
     # The warning says the post-processed results need not match the old run
     assert all('can differ' in w for w in online_warnings)
+
+
+def test_vulcan_vertical_advection_is_pinned_on_for_migrated_configs():
+    """2.0 always ran VULCAN with vertical advection at updraft_const. The 3.0
+    default turns it off, so a migrated config pins it on and keeps a nonzero
+    2.0 updraft; an explicit 3.0 choice is not needed to reproduce 2.0."""
+    v3_defaults, _ = _v3()
+    assert v3_defaults['atmos_chem.vulcan.use_vz'] is False
+    assert mig.OVERRIDES['atmos_chem.vulcan.use_vz'] is True
+
+    v2 = _minimal_spider_v2()
+    v2['atmos_chem'] = {'module': 'vulcan', 'when': 'offline', 'updraft_const': 5.0}
+    flat, _ = _translate(v2)
+    assert flat['atmos_chem.vulcan.use_vz'] is True
+    assert flat['atmos_chem.updraft_const'] == pytest.approx(5.0)

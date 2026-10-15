@@ -234,7 +234,7 @@ steady-state mixing ratios from a chemical reaction network.
 | `st_factor` | float | `0.5` | Steady state - the test period starts at this fraction of the elapsed model time, in (0, 1). Must be > 0 and < 1. |
 | `conv_step` | int | `100` | Steady state - maximum number of solver steps the test period reaches back. Must be > 0. |
 | `use_vm_mol` | bool | `false` | Use the upwind scheme for molecular diffusion. Must be false, because VULCAN does not support it yet. |
-| `use_vz` | bool | `true` | Include vertical advection at the constant updraft velocity `atmos_chem.updraft_const`. |
+| `use_vz` | bool | `false` | Include vertical advection at the constant updraft velocity `atmos_chem.updraft_const`. |
 | `use_condense` | bool | `false` | Include condensation of every gas that the selected network can condense. |
 | `use_settling` | bool | `false` | Include gravitational settling of the condensate particles. Has an effect only with `use_condense`. |
 | `r_p` | float | `0.005` | Default radius of every condensate particle \[cm\]. Must be > 0. |

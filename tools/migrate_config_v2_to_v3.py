@@ -265,6 +265,9 @@ OVERRIDES = {
     # (not configurable); the 3.0 default of 10.0 K would relax that cap for
     # migrated tidal-heating runs. Pin 4.0 to reproduce 2.0 behaviour.
     'interior_energetics.tmagma_tides_step': 4.0,
+    # 2.0 always ran VULCAN with vertical advection at updraft_const; the 3.0
+    # default turns it off, which would drop a nonzero 2.0 updraft.
+    'atmos_chem.vulcan.use_vz': True,
 }
 
 # Element-budget fields consumed by the element handler (not mapped directly).

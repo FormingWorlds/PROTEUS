@@ -896,7 +896,7 @@ config_version = "3.0"
         make_funs             = true         # generate reaction network functions
 
         # Processes
-        use_vz                = true         # vertical advection at updraft_const
+        use_vz                = false        # vertical advection at updraft_const
         use_vm_mol            = false        # upwind molecular diffusion; must be false
         use_condense          = false        # condense every gas the network can
         use_settling          = false        # gravitational settling of condensates
