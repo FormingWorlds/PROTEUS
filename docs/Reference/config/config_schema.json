@@ -3363,7 +3363,7 @@
           "value": 0
         }
       ],
-      "description": "Initial magma surface temperature [K] (isothermal, linear, adiabatic). Ignored when temperature_mode = 'isentropic', 'adiabatic_from_cmb', or 'liquidus_super'.",
+      "description": "Initial magma surface temperature [K] (isothermal, linear, adiabatic). With 'isentropic' the Zalmoxis structure solve anchors its surface adiabat at it, while the energetics start from ini_entropy. With 'adiabatic_from_cmb' it is the first-guess surface temperature of the structure solve and the temperature of its core nodes. With 'liquidus_super' the structure solve takes the surface temperature of the solved super-liquidus adiabat instead, and tsurf_init is used only when that solve fails and the CMB anchor falls back.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,

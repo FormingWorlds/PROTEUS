@@ -778,6 +778,48 @@ def _resolve_zalmoxis_cmb_temperature(
     return float(res['cmb_T'])
 
 
+def _resolve_zalmoxis_surface_temperature(
+    config: Config,
+    hf_row: dict,
+    mode: str,
+    external_temperature_source: bool = False,
+) -> float:
+    """Resolve surface_temperature for the Zalmoxis structure call.
+
+    For 'liquidus_super', returns the surface temperature of the solved
+    super-liquidus adiabat, the same memoised solve that gives the CMB anchor
+    (:func:`_resolve_zalmoxis_cmb_temperature`). Zalmoxis seeds its first-guess
+    profile, its centre-temperature cap and its zero-pressure nodes with this
+    value. Returns ``config.planet.tsurf_init`` for every other mode, for a
+    structure solve driven by an external temperature source, and when the
+    anchor solve fails and the CMB anchor falls back.
+
+    Parameters
+    ----------
+    config : Config
+        PROTEUS configuration.
+    hf_row : dict
+        Helpfile row; ``hf_row['P_cmb']`` is used when populated.
+    mode : str
+        PROTEUS temperature mode of this structure call.
+    external_temperature_source : bool
+        True when an evolved T(r) profile drives the structure solve.
+
+    Returns
+    -------
+    float
+        Surface temperature [K].
+    """
+    if mode != 'liquidus_super' or external_temperature_source:
+        return float(config.planet.tsurf_init)
+    from proteus.interior_energetics.common import InitialConditionError
+
+    try:
+        return float(solve_superliquidus_adiabat(config, hf_row)['surface_T'])
+    except InitialConditionError:
+        return float(config.planet.tsurf_init)
+
+
 def _anchor_failure_deferred(config: Config) -> bool:
     """Whether a failed P-T anchor in a structure solve can fall back.
 
@@ -1492,12 +1534,13 @@ def load_zalmoxis_configuration(
     # FileNotFoundError. That check never inspects the melting-curve
     # directory a WolfBower2018/RTPress100TPa mantle also needs, so a
     # missing one re-raises unconverted here and in zalmoxis_solver itself.
+    mode = temperature_mode_override or config.planet.temperature_mode
     try:
         cmb_temperature = _resolve_zalmoxis_cmb_temperature(
-            config,
-            hf_row,
-            temperature_mode_override or config.planet.temperature_mode,
-            external_temperature_source=external_temperature_source,
+            config, hf_row, mode, external_temperature_source=external_temperature_source
+        )
+        surface_temperature = _resolve_zalmoxis_surface_temperature(
+            config, hf_row, mode, external_temperature_source=external_temperature_source
         )
     except FileNotFoundError:
         check_zalmoxis_eos_files(layer_eos_config, load_zalmoxis_material_dictionaries())
@@ -1539,7 +1582,7 @@ def load_zalmoxis_configuration(
         'temperature_mode': _resolve_zalmoxis_temperature_mode(
             temperature_mode_override or config.planet.temperature_mode
         ),
-        'surface_temperature': config.planet.tsurf_init,
+        'surface_temperature': surface_temperature,
         'cmb_temperature': cmb_temperature,
         'center_temperature': config.planet.tcenter_init,
         'temp_profile_file': None,

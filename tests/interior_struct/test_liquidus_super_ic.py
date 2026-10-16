@@ -810,6 +810,63 @@ class TestLoadZalmoxisConfigurationLiquidusSuper:
         # The reused anchor, not tcmb_init.
         assert cp['cmb_temperature'] == pytest.approx(8765.0)
         assert cp['cmb_temperature'] != pytest.approx(6000.0)
+        assert cp['surface_temperature'] == pytest.approx(4000.0)
+
+    def test_surface_temperature_is_solved_adiabat_surface(self, monkeypatch):
+        """liquidus_super hands Zalmoxis the surface T of the solved adiabat, not
+        tsurf_init (4000 K reached Zalmoxis on main, outside the W&B melt table).
+        """
+        from proteus.interior_struct.zalmoxis import load_zalmoxis_configuration
+
+        config = _make_full_mock_config(temperature_mode='liquidus_super', tsurf_init=4000.0)
+        _stub_target_surface_pressure(monkeypatch)
+        _stub_solver(monkeypatch, cmb_T=8765.0)
+        cp = load_zalmoxis_configuration(config, _make_hf_row(P_cmb=135e9))
+        assert cp['surface_temperature'] == pytest.approx(4241.0)
+        assert cp['surface_temperature'] != pytest.approx(4000.0)
+        assert cp['surface_temperature'] < cp['cmb_temperature']
+
+    @pytest.mark.parametrize(
+        'mode',
+        ['isothermal', 'linear', 'adiabatic', 'accretion', 'isentropic', 'adiabatic_from_cmb'],
+    )
+    def test_surface_temperature_is_tsurf_init_for_other_modes(self, monkeypatch, mode):
+        """Every other mode passes tsurf_init exactly and never runs the super-liquidus solve."""
+        import proteus.interior_struct.zalmoxis as zmod
+        from proteus.interior_struct.zalmoxis import load_zalmoxis_configuration
+
+        def fail_solve(config, hf_row):
+            raise AssertionError('super-liquidus solve must not run for ' + mode)
+
+        config = _make_full_mock_config(temperature_mode=mode, tsurf_init=3456.7)
+        _stub_target_surface_pressure(monkeypatch)
+        monkeypatch.setattr(zmod, 'solve_superliquidus_adiabat', fail_solve)
+        cp = load_zalmoxis_configuration(config, _make_hf_row(P_cmb=135e9))
+        assert cp['surface_temperature'] == config.planet.tsurf_init
+        assert isinstance(cp['surface_temperature'], float)
+
+    def test_surface_temperature_falls_back_with_the_cmb_anchor(self, monkeypatch):
+        """A failed anchor solve that the CMB anchor tolerates leaves tsurf_init in place."""
+        import proteus.interior_struct.zalmoxis as zmod
+        from proteus.interior_energetics.common import InitialConditionError
+
+        def failing_solve(config, hf_row):
+            raise InitialConditionError('no molten adiabat at this P_cmb')
+
+        config = _make_full_mock_config(temperature_mode='liquidus_super', tsurf_init=3900.0)
+        monkeypatch.setattr(zmod, 'solve_superliquidus_adiabat', failing_solve)
+        T = zmod._resolve_zalmoxis_surface_temperature(
+            config, {'P_cmb': 135e9}, 'liquidus_super'
+        )
+        assert T == pytest.approx(3900.0)
+        _stub_solver(monkeypatch)
+        T_ext = zmod._resolve_zalmoxis_surface_temperature(
+            config, {'P_cmb': 135e9}, 'liquidus_super', external_temperature_source=True
+        )
+        assert T_ext == pytest.approx(3900.0)
+        assert zmod._resolve_zalmoxis_surface_temperature(
+            config, {'P_cmb': 135e9}, 'liquidus_super'
+        ) == pytest.approx(4241.0)
 
 
 # ----------------------------------------------------------------------

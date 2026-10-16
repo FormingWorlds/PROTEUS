@@ -270,8 +270,13 @@ class Planet:
             every structure module.
     tsurf_init: float
         Initial magma surface temperature [K] (isothermal, linear, adiabatic).
-        Ignored when temperature_mode = 'isentropic', 'adiabatic_from_cmb',
-        or 'liquidus_super'.
+        With 'isentropic' the Zalmoxis structure solve anchors its surface
+        adiabat at it, while the energetics start from ini_entropy. With
+        'adiabatic_from_cmb' it is the first-guess surface temperature of the
+        structure solve and the temperature of its core nodes. With
+        'liquidus_super' the structure solve takes the surface temperature of
+        the solved super-liquidus adiabat instead, and tsurf_init is used only
+        when that solve fails and the CMB anchor falls back.
     tcmb_init: float
         Initial core-mantle boundary temperature [K] (adiabatic_from_cmb).
         The mantle adiabat is anchored at this temperature at P = P_cmb
@@ -376,7 +381,7 @@ class Planet:
 
     # Isentropic IC: set the initial specific entropy directly. Used when
     # temperature_mode = 'isentropic' (CHILI protocol). The interior solver
-    # maps S -> T(P) via its own EOS table; tsurf_init is ignored.
+    # maps S -> T(P) via its own EOS table.
     ini_entropy: float = field(default=3900.0, validator=gt(0))
     ini_dsdr: float = field(default=-4.698e-6, validator=_validate_ini_dsdr)
 
