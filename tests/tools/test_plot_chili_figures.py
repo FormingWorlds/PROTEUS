@@ -40,8 +40,8 @@ pytestmark = [
 ]
 
 
-def test_figure_1_spans_20_myr_and_names_the_run_commit(chili_tool, tmp_path):
-    """Figure 1 reaches 20 Myr, so a run that ends at 11.3 Myr is drawn in full;
+def test_figure_1_spans_100_myr_and_names_the_run_commit(chili_tool, tmp_path):
+    """Figure 1 reaches 100 Myr, so a run that ends at 11.3 Myr is drawn in full;
     its legend names the commit of the run and its y label names both bases."""
     style = chili_tool._new_style('d0c7f080')
 
@@ -50,7 +50,7 @@ def test_figure_1_spans_20_myr_and_names_the_run_commit(chili_tool, tmp_path):
     )
 
     ax = fig.axes[0]
-    assert ax.get_xlim() == pytest.approx((1e-3, 2e1))
+    assert ax.get_xlim() == pytest.approx((1e-3, 1e2))
     assert ax.get_xlim()[1] > _run_table()['Time'].iloc[-1] / 1e6
     labels = [text.get_text() for text in fig.legends[0].get_texts()]
     assert labels == ['MOAI', 'PROTEUS (d0c7f080) Earth', 'PROTEUS (d0c7f080) Venus']
@@ -114,8 +114,8 @@ def test_figure_6_draws_the_o2_fugacity_of_the_run_at_its_magma_temperature(
 
 
 def test_figure_6_has_no_marker_for_a_run_that_ends_above_6_percent_melt(chili_tool, tmp_path):
-    """A run that ends at 6.8% melt, as the Nominal Venus run does, gets a curve
-    and no circular marker; a row without O2 is left out of the curve."""
+    """A run that ends at 6.8% melt gets a curve and no circular marker; a row
+    without O2 is left out of the curve."""
     run = _run_table()
     run['Phi_global'] = [1.0, 0.95, 0.068]
     run.loc[0, 'O2_bar'] = 0.0

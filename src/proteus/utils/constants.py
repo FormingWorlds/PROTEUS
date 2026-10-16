@@ -77,6 +77,17 @@ electron_molar_mass = 5.4858e-4
 # Supported volatiles
 vol_list = ['H2O', 'CO2', 'O2', 'H2', 'CH4', 'CO', 'N2', 'NH3', 'S2', 'SO2', 'H2S']
 
+# Gases VULCAN can condense (it has their saturation pressure and growth rate),
+# with the bulk density of their condensate particles [g cm-3].
+CHEM_CONDENSATE_DENSITY = {
+    'C': 2.26,  # graphite
+    'H2O': 1.0,  # liquid water, VULCAN's own value
+    'H2SO4': 1.83,  # liquid sulfuric acid
+    'NH3': 0.82,  # ammonia ice
+    'S2': 2.07,  # orthorhombic sulfur
+    'S8': 2.07,  # orthorhombic sulfur
+}
+
 # Supported vapours
 vap_list = [
     'SiO',

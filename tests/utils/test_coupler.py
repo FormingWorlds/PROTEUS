@@ -3611,6 +3611,73 @@ def test_validate_module_versions_accepts_compatible_versions(tmp_path):
     assert mock_update.call_count == 0
 
 
+@pytest.mark.parametrize(
+    ('installed', 'fix'),
+    [
+        ('26.4.22', 'Fix: pip install -U "fwl-vulcan>=26.10.14"'),
+        (None, '&& bash tools/get_vulcan.sh'),
+        ('26.10.14', None),
+        ('26.10.15', None),
+    ],
+)
+def test_validate_module_versions_checks_vulcan_floor(tmp_path, caplog, installed, fix):
+    """With atmos_chem.module = 'vulcan', a VULCAN missing or below the floor stops the start.
+
+    Discrimination: the floor is read from the vulcan extra through the doctor, so the
+    stop logs its fix command once; at the floor (>=) and above, the start goes on.
+    """
+    from importlib.metadata import PackageNotFoundError
+
+    from packaging.requirements import Requirement
+
+    from proteus.utils.coupler import validate_module_versions
+
+    config = _all_dummy_modules_config()
+    config.interior_energetics.module = 'dummy'
+    config.atmos_chem.module = 'vulcan'
+    config.atmos_chem.when = 'offline'
+    spec = {'fwl-vulcan': Requirement('fwl-vulcan>=26.10.14')}
+    version = PackageNotFoundError('fwl-vulcan') if installed is None else None
+    with (
+        patch('proteus.doctor._dependency_specs', return_value=spec),
+        patch(
+            'proteus.doctor.importlib.metadata.version',
+            return_value=installed,
+            side_effect=version,
+        ),
+        patch('proteus.doctor._editable_checkout_path', return_value=None),
+        patch('proteus.utils.coupler.UpdateStatusfile') as mock_update,
+        caplog.at_level('ERROR', logger='fwl.proteus.utils.coupler'),
+    ):
+        if fix:
+            with pytest.raises(EnvironmentError, match='Out-of-date modules'):
+                validate_module_versions({'rad': str(tmp_path)}, config)
+        else:
+            validate_module_versions({'rad': str(tmp_path)}, config)
+    assert mock_update.call_count == int(fix is not None)
+    logged = [r.getMessage() for r in caplog.records if 'VULCAN' in r.getMessage()]
+    assert len(logged) == int(fix is not None)
+    assert fix is None or fix in logged[0]
+
+
+@pytest.mark.parametrize(('module', 'when'), [(None, 'offline'), ('vulcan', 'manually')])
+def test_validate_module_versions_skips_vulcan_without_chemistry(tmp_path, module, when):
+    """A config that never runs VULCAN (no module, or when = 'manually') never checks it."""
+    from proteus.utils.coupler import validate_module_versions
+
+    config = _all_dummy_modules_config()
+    config.interior_energetics.module = 'dummy'
+    config.atmos_chem.module = module
+    config.atmos_chem.when = when
+    with (
+        patch('proteus.doctor.check_python_package') as mock_check,
+        patch('proteus.utils.coupler.UpdateStatusfile') as mock_update,
+    ):
+        validate_module_versions({'rad': str(tmp_path)}, config)
+    assert mock_check.call_count == 0
+    assert mock_update.call_count == 0
+
+
 def test_validate_module_versions_skips_check_when_no_pinned_minimum(tmp_path):
     """When the resolver finds no pinned minimum (the dep string does
     not name the module), the inner _valid_ver helper short-circuits
@@ -3661,6 +3728,7 @@ def test_print_module_configuration_logs_versions_for_spider_agni_stack(monkeypa
         'proteus': '/tmp/proteus',
         'output': '/tmp/out',
         'rad': '/tmp/rad',
+        'temp': '/tmp/tmpdir',
     }
 
     monkeypatch.setattr(coupler_mod, '_get_git_revision', lambda _d: 'abc123')
@@ -3690,6 +3758,7 @@ def test_print_module_configuration_logs_versions_for_spider_agni_stack(monkeypa
         print_module_configuration(dirs, config, '/tmp/cfg.toml')
         messages = [str(call) for call in mock_log.info.call_args_list]
         assert any('PROTEUS version' in m for m in messages)
+        assert any('Temporary path    /tmp/tmpdir' in m for m in messages)
         assert any('Interior module   spider version' in m for m in messages)
         assert any('PETSc' in m for m in messages)
         assert any('Atmos_clim module agni version' in m for m in messages)
@@ -3717,7 +3786,12 @@ def test_print_module_configuration_logs_versions_for_aragog_janus_zephyrus(monk
         atmos_chem=types.SimpleNamespace(module='dummy'),
         observe=types.SimpleNamespace(module='dummy'),
     )
-    dirs = {'proteus': '/tmp/proteus', 'output': '/tmp/out', 'rad': '/tmp/rad'}
+    dirs = {
+        'proteus': '/tmp/proteus',
+        'output': '/tmp/out',
+        'rad': '/tmp/rad',
+        'temp': '/tmp/tmpdir',
+    }
 
     monkeypatch.setattr(coupler_mod, '_get_git_revision', lambda _d: 'def456')
     monkeypatch.setattr(coupler_mod, '_get_socrates_version', lambda: '24.1.0')
@@ -4076,6 +4150,7 @@ def test_validate_module_versions_spider_stack_passes_with_unpinned_dep(monkeypa
         escape=types.SimpleNamespace(module='zephyrus'),
         star=types.SimpleNamespace(module='mors'),
         orbit=types.SimpleNamespace(module='dummy'),
+        atmos_chem=types.SimpleNamespace(module=None),
     )
     requires = [
         'numpy',
@@ -4122,6 +4197,7 @@ def test_validate_module_versions_raises_for_old_janus_in_spider_stack(monkeypat
         escape=types.SimpleNamespace(module='dummy'),
         star=types.SimpleNamespace(module='dummy'),
         orbit=types.SimpleNamespace(module='dummy'),
+        atmos_chem=types.SimpleNamespace(module=None),
     )
     monkeypatch.setitem(sys.modules, 'janus', types.SimpleNamespace(__version__='0.1.0'))
 
@@ -4151,6 +4227,7 @@ def test_validate_module_versions_raises_for_old_obliqua(tmp_path):
         escape=types.SimpleNamespace(module='dummy'),
         star=types.SimpleNamespace(module='dummy'),
         orbit=types.SimpleNamespace(module='obliqua'),
+        atmos_chem=types.SimpleNamespace(module=None),
     )
     obliqua_dir = tmp_path / 'Obliqua'
     obliqua_dir.mkdir()
@@ -4184,6 +4261,7 @@ def test_validate_module_versions_accepts_current_obliqua(tmp_path):
         escape=types.SimpleNamespace(module='dummy'),
         star=types.SimpleNamespace(module='dummy'),
         orbit=types.SimpleNamespace(module='obliqua'),
+        atmos_chem=types.SimpleNamespace(module=None),
     )
     obliqua_dir = tmp_path / 'Obliqua'
     obliqua_dir.mkdir()
@@ -4220,7 +4298,12 @@ def test_print_module_configuration_logs_obliqua_version_and_julia(monkeypatch):
         atmos_chem=types.SimpleNamespace(module='dummy'),
         observe=types.SimpleNamespace(module='dummy'),
     )
-    dirs = {'proteus': '/tmp/proteus', 'output': '/tmp/out', 'rad': '/tmp/rad'}
+    dirs = {
+        'proteus': '/tmp/proteus',
+        'output': '/tmp/out',
+        'rad': '/tmp/rad',
+        'temp': '/tmp/tmpdir',
+    }
 
     monkeypatch.setattr(coupler_mod, '_get_git_revision', lambda _d: 'abc123')
     monkeypatch.setattr(coupler_mod, '_get_obliqua_version', lambda _d: '0.1.0')
@@ -4235,7 +4318,8 @@ def test_print_module_configuration_logs_obliqua_version_and_julia(monkeypatch):
 
 @pytest.mark.unit
 def test_print_citation_agni_and_manual_mode_cover_noop_cases():
-    """Cover print_citation match-case no-op arms and chemistry manual gate."""
+    """Cover print_citation match-case no-op arms; VULCAN is cited in manual mode,
+    because the user runs the selected chemistry module on the output afterwards."""
     config = types.SimpleNamespace(
         atmos_clim=types.SimpleNamespace(module='agni'),
         interior_energetics=types.SimpleNamespace(module='aragog'),
@@ -4253,7 +4337,7 @@ def test_print_citation_agni_and_manual_mode_cover_noop_cases():
         messages = [str(call) for call in mock_log.info.call_args_list]
         assert any('Nicholls et al. (2025)' in m for m in messages)
         assert not any('Mollière et al. (2019)' in m for m in messages)
-        assert not any('Tsai et al. (2021)' in m for m in messages)
+        assert any('Tsai et al. (2021)' in m for m in messages)
 
 
 @pytest.mark.unit

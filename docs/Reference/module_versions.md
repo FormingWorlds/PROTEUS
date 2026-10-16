@@ -18,7 +18,7 @@ in `[project] dependencies`. Click a badge to view the pinned release.
 <!-- BEGIN PYPI_TABLE -->
 | Module | Role | Pin | Docs |
 |--------|------|-----|------|
-| fwl-janus | 1D convective atmosphere | [![fwl-janus](https://img.shields.io/badge/fwl--janus-%3E%3D26.10.08-blue)](https://pypi.org/project/fwl-janus/26.10.08/){target="_blank" rel="noopener"} | [Docs](https://proteus-framework.org/JANUS/) |
+| fwl-janus | 1D convective atmosphere | [![fwl-janus](https://img.shields.io/badge/fwl--janus-%3E%3D26.10.15-blue)](https://pypi.org/project/fwl-janus/26.10.15/){target="_blank" rel="noopener"} | [Docs](https://proteus-framework.org/JANUS/) |
 | fwl-mors | Stellar evolution | [![fwl-mors](https://img.shields.io/badge/fwl--mors-%3E%3D26.10.6-blue)](https://pypi.org/project/fwl-mors/26.10.6/){target="_blank" rel="noopener"} | [Docs](https://proteus-framework.org/MORS/) |
 | fwl-calliope | Volatile outgassing | [![fwl-calliope](https://img.shields.io/badge/fwl--calliope-%3E%3D26.10.05-blue)](https://pypi.org/project/fwl-calliope/26.10.05/){target="_blank" rel="noopener"} | [Docs](https://proteus-framework.org/CALLIOPE/) |
 | fwl-zephyrus | Atmospheric escape | [![fwl-zephyrus](https://img.shields.io/badge/fwl--zephyrus-%3E%3D26.10.10-blue)](https://pypi.org/project/fwl-zephyrus/26.10.10/){target="_blank" rel="noopener"} | [GitHub](https://github.com/FormingWorlds/ZEPHYRUS) |
@@ -50,7 +50,7 @@ pinned commit.
 |--------|------|-----|------|
 | LovePy | Solid-phase tidal heating (Julia) | [![LovePy](https://img.shields.io/badge/LovePy-main-lightgrey)](https://github.com/nichollsh/LovePy){target="_blank" rel="noopener"} | [GitHub](https://github.com/nichollsh/LovePy) |
 | atmodeller | Alternative outgassing module (GPL-3.0) | [![atmodeller](https://img.shields.io/badge/atmodeller-%3E%3D1.0.2-blue)](https://pypi.org/project/atmodeller/1.0.2/){target="_blank" rel="noopener"} [![atmodeller](https://img.shields.io/badge/atmodeller-77e81aac-green)](https://github.com/FormingWorlds/atmodeller/commit/77e81aac5147bad7eec727fba5b299e055db2d4d){target="_blank" rel="noopener"} | [GitHub](https://github.com/FormingWorlds/atmodeller) |
-| VULCAN | Atmospheric chemistry (GPL-3.0) | [![VULCAN](https://img.shields.io/badge/VULCAN-%3E%3D26.04.22-blue)](https://pypi.org/project/fwl-vulcan/26.04.22/){target="_blank" rel="noopener"} | [GitHub](https://github.com/FormingWorlds/VULCAN) |
+| VULCAN | Atmospheric chemistry (GPL-3.0) | [![VULCAN](https://img.shields.io/badge/VULCAN-%3E%3D26.10.14-blue)](https://pypi.org/project/fwl-vulcan/26.10.14/){target="_blank" rel="noopener"} | [GitHub](https://github.com/FormingWorlds/VULCAN) |
 | Morrigan | Protoplanet accretion via giant impacts | [![Morrigan](https://img.shields.io/badge/Morrigan-%3E%3D26.07.27-blue)](https://pypi.org/project/fwl-morrigan/26.07.27/){target="_blank" rel="noopener"} | [GitHub](https://github.com/FormingWorlds/Morrigan) |
 <!-- END OPTIONAL_TABLE -->
 

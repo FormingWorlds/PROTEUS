@@ -1266,6 +1266,21 @@ GIT_MODULES = ['AGNI', 'SOCRATES']
 STANDARD_GIT_MODULES = ['Obliqua']
 
 
+def below_floor_fixes() -> list[str]:
+    """Return ``'<package>: <fix>'`` for each installed package below its version floor.
+
+    Returns
+    -------
+    list of str
+        One line per package of ``PYTHON_PACKAGES`` and ``STANDARD_MODULE_PACKAGES``
+        that is installed at a version below its ``pyproject.toml`` minimum.
+    """
+    specs = _dependency_specs()
+    pkgs = (*PYTHON_PACKAGES, *STANDARD_MODULE_PACKAGES)
+    results = {p: check_python_package(p, specs.get(p)) for p in pkgs if _installed_version(p)}
+    return [f'{p}: {r.fix_cmd}' for p, r in results.items() if r.status == FAIL]
+
+
 def run_all_checks() -> list[CheckResult]:
     """Run all diagnostic checks. Returns a flat list of results.
 
