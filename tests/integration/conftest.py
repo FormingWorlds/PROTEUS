@@ -164,7 +164,7 @@ def proteus_multi_timestep_run():
                 was_offline = runner.config.params.offline
                 runner.config.params.offline = False
                 try:
-                    download_sufficient_data(runner.config, clean=False)
+                    download_sufficient_data(runner.config)
                 except OSError:
                     pass  # e.g. no network; test will fail with FileNotFoundError if data missing
                 finally:

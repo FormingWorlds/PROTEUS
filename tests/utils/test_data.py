@@ -1467,7 +1467,7 @@ def test_get_sufficient_zalmoxis_wolf_bower(
     config.interior_struct.zalmoxis.core_eos = 'Seager2007:iron'
     config.interior_struct.zalmoxis.ice_layer_eos = ''
 
-    _get_sufficient(config, clean=False)
+    _get_sufficient(config)
 
     # Zalmoxis EOS download called with the full EOS identifiers
     mock_zalmoxis_eos.assert_called_once_with(
@@ -1479,6 +1479,9 @@ def test_get_sufficient_zalmoxis_wolf_bower(
     )
     # SPIDER dynamic EOS still downloaded separately
     mock_dyn.assert_called_once()
+    # The data step never cleans, so present melting curves are kept
+    _m_il.assert_called_once_with()
+    _m_mc.assert_called_once_with(config)
 
 
 @pytest.mark.unit
@@ -1505,19 +1508,19 @@ def test_get_sufficient_dummy_structure_fetches_ps_tables_without_eos_dir(
     config.interior_struct.module = 'dummy'
     config.interior_struct.eos_dir = None
 
-    _get_sufficient(config, clean=False)
+    _get_sufficient(config)
     assert mock_dyn.call_count == 1
 
     # Discrimination: Zalmoxis with a PALEOS mantle generates its own tables.
     mock_dyn.reset_mock()
     config.interior_struct.module = 'zalmoxis'
     config.interior_struct.zalmoxis.mantle_eos = 'PALEOS:MgSiO3'
-    _get_sufficient(config, clean=False)
+    _get_sufficient(config)
     assert mock_dyn.call_count == 0
 
     # A mixture with a Wolf and Bower MgSiO3 component reads the fetched set.
     config.interior_struct.zalmoxis.mantle_eos = 'WolfBower2018:MgSiO3:0.9+PALEOS:H2O:0.1'
-    _get_sufficient(config, clean=False)
+    _get_sufficient(config)
     assert mock_dyn.call_count == 1
 
 
@@ -1592,7 +1595,7 @@ def test_get_sufficient_zalmoxis_seager_only(
     config.interior_struct.zalmoxis.core_eos = 'Seager2007:iron'
     config.interior_struct.zalmoxis.ice_layer_eos = ''
 
-    _get_sufficient(config, clean=False)
+    _get_sufficient(config)
 
     mock_zalmoxis_eos.assert_called_once_with(
         mantle_eos='Seager2007:MgSiO3',
@@ -1639,7 +1642,7 @@ def test_get_sufficient_zalmoxis_paleos(
     config.interior_struct.zalmoxis.core_eos = 'PALEOS:iron'
     config.interior_struct.zalmoxis.ice_layer_eos = 'PALEOS:H2O'
 
-    _get_sufficient(config, clean=False)
+    _get_sufficient(config)
 
     mock_zalmoxis_eos.assert_called_once_with(
         mantle_eos='PALEOS:MgSiO3',
@@ -2334,7 +2337,7 @@ def test_get_sufficient_agni_skips_group_band_lookup_when_spectral_file_set(monk
         interior_struct=SimpleNamespace(module='dummy'),
     )
 
-    data_mod._get_sufficient(config, clean=False)
+    data_mod._get_sufficient(config)
 
     # Only the Honeyside high-res post-processing file gets downloaded.
     assert spectral_calls == [('Honeyside', '4096')]
@@ -2386,7 +2389,7 @@ def test_get_sufficient_agni_downloads_group_and_bands_when_no_spectral_file(mon
         interior_struct=SimpleNamespace(module='dummy'),
     )
 
-    data_mod._get_sufficient(config, clean=False)
+    data_mod._get_sufficient(config)
 
     # Honeyside post-processing file + the resolved group/bands file.
     assert spectral_calls == [('Honeyside', '4096'), ('Frostflow', '256')]
@@ -2440,7 +2443,7 @@ def test_get_sufficient_janus_always_downloads_group_and_bands(monkeypatch):
         interior_struct=SimpleNamespace(module='dummy'),
     )
 
-    data_mod._get_sufficient(config, clean=False)
+    data_mod._get_sufficient(config)
 
     assert ('Frostflow', '256') in spectral_calls
     assert lookup_calls == [1]
@@ -2449,7 +2452,7 @@ def test_get_sufficient_janus_always_downloads_group_and_bands(monkeypatch):
     # since download_spectral_file refuses it with a ValueError.
     monkeypatch.setattr(atmos_common, 'get_spfile_name_and_bands', lambda *_: ('MyGroup', '48'))
     spectral_calls.clear()
-    data_mod._get_sufficient(config, clean=False)
+    data_mod._get_sufficient(config)
     assert spectral_calls == [('Honeyside', '4096')]
 
 
@@ -2663,7 +2666,7 @@ def test_download_sufficient_data_offline_skips_download(monkeypatch):
     config = MagicMock()
     config.params.offline = True
 
-    download_sufficient_data(config, clean=False)
+    download_sufficient_data(config)
 
     assert called == []
     # Discrimination: the function returned cleanly; no exception raised
@@ -2692,7 +2695,7 @@ def test_download_sufficient_data_oserror_is_caught(monkeypatch, caplog):
 
     with caplog.at_level('WARNING'):
         # Should NOT raise
-        download_sufficient_data(config, clean=False)
+        download_sufficient_data(config)
     # Discrimination: _get_sufficient was invoked exactly once (so the
     # offline branch did NOT short-circuit). The OSError was caught and
     # logged as a warning, not re-raised.
@@ -2721,7 +2724,7 @@ def test_download_sufficient_data_non_oserror_propagates(monkeypatch):
     config.params.offline = False
 
     with pytest.raises(RuntimeError, match='something else'):
-        download_sufficient_data(config, clean=False)
+        download_sufficient_data(config)
     # Discrimination: _get_sufficient was invoked once; RuntimeError
     # propagated rather than being caught like OSError would.
     assert call_count['n'] == 1

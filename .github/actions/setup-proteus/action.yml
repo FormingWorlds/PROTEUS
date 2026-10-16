@@ -410,6 +410,11 @@ runs:
         # selects) non-interactive and fast-failing; the runner has no
         # GitHub SSH key, so the probe fails and the script uses HTTPS.
         export GIT_SSH_COMMAND='ssh -o StrictHostKeyChecking=no -o ConnectTimeout=1 -o BatchMode=yes'
+        # SOCRATES links with -L to the Command Line Tools SDK, so ld must come from
+        # the same folder (as and ar follow it): an older Xcode ld cannot read a newer SDK.
+        if [ -x /Library/Developer/CommandLineTools/usr/bin/ld ]; then
+          export DEVELOPER_DIR=/Library/Developer/CommandLineTools
+        fi
         # --force: never block on the dirty-tree guard; CI checkouts are
         # disposable.
         bash tools/get_socrates.sh --force
@@ -595,6 +600,11 @@ runs:
         # Pkg.instantiate honours the stale manifest instead of
         # re-resolving, leaving those packages uninstalled.
         export RAD_DIR="$GITHUB_WORKSPACE/socrates"
+        # deps/build.jl links libSOCRATES_C with the same CLT SDK -L as the
+        # SOCRATES build, so ld comes from the same folder here too.
+        if [ -x /Library/Developer/CommandLineTools/usr/bin/ld ]; then
+          export DEVELOPER_DIR=/Library/Developer/CommandLineTools
+        fi
         cd AGNI
         if [ -f Manifest.toml ]; then
           mver=$(grep -m1 '^julia_version' Manifest.toml | grep -oE '[0-9]+\.[0-9]+' | head -1)
@@ -781,7 +791,7 @@ runs:
                 cfg = read_config_object(cfg_path)
                 if cfg_path.endswith('aragog_janus.toml'):
                     cfg.atmos_clim.module = 'agni'
-                download_sufficient_data(cfg, clean=False)
+                download_sufficient_data(cfg)
             except Exception as exc:
                 print(f'warning: download_sufficient_data({cfg_path}) -> {exc}')
 

@@ -1478,6 +1478,7 @@ def test_postprocessing_refuses_a_helpfile_that_predates_schema_columns(tmp_path
 
     p = _make_proteus_instance(tmp_path)
     p.config.atmos_chem.module = 'vulcan'
+    p.config.atmos_chem.when = 'manually'
     drift = HelpfileSchemaDriftError('predates 1 column(s): R_xuv')
 
     for method, wrapper in (
@@ -2106,6 +2107,32 @@ def test_offline_chemistry_skips_plot_when_chemistry_returns_none(tmp_path):
     mock_chem.assert_called_once()
     assert result is None
     mock_plot.assert_not_called()
+
+
+def test_offline_chemistry_stops_on_vulcan_below_floor(tmp_path):
+    """proteus offchem with a VULCAN below its pyproject floor stops before any file is read."""
+    from packaging.requirements import Requirement
+
+    p = _make_proteus_instance(tmp_path)
+    p.config.atmos_chem.module = 'vulcan'
+    p.config.atmos_chem.when = 'offline'
+    with (
+        patch(
+            'proteus.doctor._dependency_specs',
+            return_value={'fwl-vulcan': Requirement('fwl-vulcan>=26.10.14')},
+        ),
+        patch('proteus.doctor.importlib.metadata.version', return_value='26.4.22'),
+        patch('proteus.doctor._editable_checkout_path', return_value=None),
+        patch('proteus.utils.coupler.ReadHelpfileFromCSV') as mock_read,
+        patch('proteus.atmos_chem.wrapper.run_chemistry') as mock_chem,
+    ):
+        with pytest.raises(
+            EnvironmentError,
+            match=r'26\.4\.22 \(requires >=26\.10\.14\)\. Fix: pip install -U "fwl-vulcan>=26\.10\.14"',
+        ):
+            p.offline_chemistry()
+    assert mock_read.call_count == 0
+    assert mock_chem.call_count == 0
 
 
 def test_offline_chemistry_raises_on_empty_helpfile(tmp_path):

@@ -1751,7 +1751,14 @@ class Proteus:
     def offline_chemistry(self):
         # Load data from helpfile. Read it before unpacking the archive, so a
         # run this cannot postprocess is left archived as it was found.
-        from proteus.utils.coupler import GetPostprocessingKeys, ReadHelpfileFromCSV
+        from proteus.utils.coupler import (
+            GetPostprocessingKeys,
+            ReadHelpfileFromCSV,
+            vulcan_problem,
+        )
+
+        if problem := vulcan_problem(self.config):
+            raise EnvironmentError(problem)
 
         hf_all = ReadHelpfileFromCSV(
             self.directories['output'], required_columns=GetPostprocessingKeys()
