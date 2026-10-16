@@ -33,43 +33,43 @@ The CHILI intercomparison defines three solar system test cases:
 | Nominal Venus | 0.815 M$_\oplus$ at 0.723 AU | Higher instellation |
 | Earth grid | 3 $\times$ 3 H/C inventory variations | Volatile sensitivity |
 
-All cases start fully molten at 50 Myr stellar age with BSE composition,
-fO$_2$ = IW+4, and Bond albedo = 0.1. Each run ends at the first stop
-criterion that it meets. Two of them matter on this page: a melt fraction
-of 5% by mass (`params.stop.solid.phi_crit = 0.05`), and a global energy balance,
-in which the net atmospheric flux differs from the radiogenic and tidal
-heating by no more than about 1 W m$^{-2}$ (`params.stop.radeqm`, enabled
-by default with `atol = 1.0` and `rtol = 0.001`). The runs behind the
-figures of this page that had met neither criterion at 15 Myr of model
-time were ended at that time. The nine grid configs in
-`input/tutorials/chili_grid/` set this bound for a new run
-(`params.stop.time.maximum = 1.5e7`); a run that reaches it ends with the
-status "Completed (target time)". The protocol asks for a run until
-solidification, or for at most 1 Gyr, for the Earth and Venus cases
-[^cite-lichtenberg2026]. The files in `input/chili/intercomp/` set an end
-time of 5 Gyr for Earth and Venus, 7.55 Gyr for TRAPPIST-1 b and e, and
-6.6 Gyr for TRAPPIST-1 &alpha;. Melt fractions of the
+All cases start fully molten at 50 Myr stellar age (TRAPPIST-1 &alpha;
+at 1 Gyr) with BSE composition, fO$_2$ = IW+4, and Bond albedo = 0.1. The
+protocol asks for a run until solidification, or for at most 1 Gyr, for
+the Earth and Venus cases [^cite-lichtenberg2026]. The configs in
+`input/chili/intercomp/` and `input/tutorials/chili_grid/` stop a run
+when its melt fraction falls to 5% by mass
+(`params.stop.solid.phi_crit = 0.05`) or after 1 Gyr of model time
+(`params.stop.time.maximum = 1e9`), with the energy-balance, escape and
+wall-clock stops off (`params.stop.radeqm.enabled`,
+`params.stop.escape.enabled` and `params.stop.clock.enabled` are
+`false`). The runs submitted to the intercomparison also stop at 5% melt,
+with the energy-balance and escape stops off. Melt fractions of the
 current PROTEUS runs are by mass on this page unless stated otherwise,
 and the figures show the melt fractions of the intercomparison data by
 volume.
 
 !!! note "How far the runs on this page go"
-    Each run on this page ends at the first stop criterion that it meets,
-    or at 15 Myr. The Nominal Earth run, the six low-H and mid-H runs of
-    the Earth grid and the TRAPPIST-1 e run end at the 5% melt threshold.
-    They still cool at that point: their net atmospheric flux is 27 to
-    692 W m$^{-2}$, against about 0.2 W m$^{-2}$ of radiogenic heating.
-    The Nominal Venus run and the TRAPPIST-1 &alpha; run end in global
-    energy balance, with a net flux of 1.2 and 1.1 W m$^{-2}$ and part of
-    the mantle molten. The three high-H runs of the Earth grid and the
-    TRAPPIST-1 b run were ended at 15 Myr, the grid runs with 8.2 to 9.4%
-    of melt by mass and a net flux of 16.5 to 18.1 W m$^{-2}$, TRAPPIST-1 b
-    with 20% and 24.4 W m$^{-2}$. The runs do not follow the long-term
+    The figures and numbers on this page come from the runs as they
+    were on 16 October 2026 at 05:30 CEST. The Nominal Earth run, the six low-H and mid-H runs of
+    the Earth grid and the TRAPPIST-1 e run reached the 5% melt threshold.
+    They ran with the energy-balance, escape and wall-clock stops on and a
+    time limit of 5 Gyr (7.55 Gyr for TRAPPIST-1 e), and the 5% melt stop
+    ended each of them. They still cool at that point: their net atmospheric flux is
+    27 to 692 W m$^{-2}$, against about 0.2 W m$^{-2}$ of radiogenic
+    heating. The Nominal Venus run, the three high-H runs of the Earth grid and the
+    TRAPPIST-1 b run had not reached it at that time and are shown to their last
+    row: Venus at 48.3 Myr with 6.0% of melt, the grid runs at 38.3 to 40.9 Myr with 6.2 to 7.1%,
+    and TRAPPIST-1 b at 39.2 Myr with 13.7%. The TRAPPIST-1 &alpha; run was stopped by hand at 12.1 Myr, before it reached 5% melt or 1 Gyr, with 55.7% of
+    melt: over its last 5 Myr its melt fraction decreased by about 0.002
+    percentage points per Myr, and its net atmospheric flux was 0.24 W m$^{-2}$. The six runs that had not reached 5% melt ran with the
+    energy-balance, escape and wall-clock stops on up to the end of their first
+    part, at 3.1 to 15.0 Myr, and were resumed from their last snapshot
+    under the stop rule above. The runs do not follow the long-term
     solid-state evolution of the mantle or the loss of the atmosphere
-    after their end. Differences
-    between the PROTEUS results in the CHILI paper and the results shown
-    here come from the continued development of the code and from a
-    different set of sub-modules in the current configuration (see
+    after their end. The PROTEUS results in the CHILI paper and the
+    results shown here come from different versions of the code and from
+    different sets of sub-modules (see
     [Current PROTEUS configuration vs the CHILI submission](#current-proteus-configuration-vs-the-chili-submission)).
 
 ## Prerequisites
@@ -81,7 +81,10 @@ volume.
 - Interior data downloaded, including the PALEOS EOS tables
   (`proteus get interiordata --config-path input/chili/intercomp/earth.toml`)
 - `git` (to clone the CHILI comparison data)
-- Allow 2 hours to about a day of CPU time per run, depending on the case and the hardware
+- The runs on this page that reached 5% melt took about 3 hours to about a day of wall
+  time; the others had used up to about 2.9 days when the data were copied.
+  A run that stays partly molten takes steps of at most 4000 yr (`params.dt.mushy_maximum`),
+  so at least 250,000 steps to reach 1 Gyr
 
 The commands below run with `--offline`, which skips the automatic
 reference-data check, so all data must be on disk beforehand. Drop the
@@ -112,18 +115,18 @@ Monitor progress with `tail -f output/chili_earth/proteus_00.log`
     Earth and Venus, TRAPPIST-1 b/e/&alpha;, and the H/C inventory grid
     specs). A nominal case equals its tutorial config in every field
     except the output path, the redox state, which the generator sets to
-    the protocol value IW+4, and for Venus the end time, which stays at
-    5 Gyr; unit tests keep the two in lockstep.
+    the protocol value IW+4, and the stop rule above, which the generator
+    sets for every case; unit tests keep the two in lockstep.
     TRAPPIST-1 &alpha; is the extreme case of the protocol, a fictitious
     lava world at 6.75 $\times$ 10$^{-4}$ AU, inside the Roche limit of
     the star [^cite-lichtenberg2026]. PROTEUS runs this case and warns
     during the run that the planet orbits within the Roche limit, spins
     faster than the breakup rate, and has an atmosphere beyond the Hill
     radius. The TRAPPIST-1 configs set the escape module to `none`. In
-    the runs of this release, TRAPPIST-1 &alpha; reaches global energy
-    balance at 3.1 Myr with 56% of melt by mass, TRAPPIST-1 e reaches the
-    5% threshold at 9.0 Myr, and TRAPPIST-1 b was ended at 15 Myr with
-    20% of melt by mass.
+    the runs shown here, TRAPPIST-1 &alpha; was stopped by hand at 12.1 Myr with 55.7% of melt by
+    mass, TRAPPIST-1 e reached the 5%
+    threshold at 9.0 Myr, and TRAPPIST-1 b had 13.7% of melt by mass at
+    its last row, at 39.2 Myr.
     After a run, convert the output to the CHILI-MIP submission format
     with `python tools/chili_postproc.py <output_dir>`.
 
@@ -194,7 +197,7 @@ comparison stays reproducible without editing the script.
 <figure markdown="span">
   ![CHILI Fig 1](../assets/tutorials/chili/fig1_melt_fraction.avif#only-light){ width="100%" }
   ![CHILI Fig 1](../assets/tutorials/chili/fig1_melt_fraction_dark.avif#only-dark){ width="100%" }
-  <figcaption><strong>Figure 1.</strong> Melt fraction vs time for the CHILI Nominal Earth (solid lines) and Nominal Venus (dashed lines) cases. In the Earth files of the intercomparison the first melt fraction after t = 0 is 0.93 to 1.00. Six of the seven models reach a 5% melt fraction between 0.011 Myr (PACMAN) and 2.0 Myr (NEONGOOEY); the submitted PROTEUS CHILI run ends at 0.47 Myr with 6.1%. Two Venus curves of the intercomparison end after the 20 Myr range of the time axis: PROTEUS CHILI at 39.3 Myr and LINCS at 49.3 Myr. The curves of the current PROTEUS runs show the melt fraction by mass; the curves of the intercomparison data show it by volume. The current PROTEUS Earth run reaches a melt fraction of 5% by mass at 2.44 Myr (6.2% by volume). The current PROTEUS Venus run does not reach a 5% melt fraction: its melt fraction levels off, and the run ends in global energy balance at 11.3 Myr with 6.8% of melt by mass (8.3% by volume).</figcaption>
+  <figcaption><strong>Figure 1.</strong> Melt fraction vs time for the CHILI Nominal Earth (solid lines) and Nominal Venus (dashed lines) cases. In the Earth files of the intercomparison the first melt fraction after t = 0 is 0.93 to 1.00. Six of the seven models reach a 5% melt fraction between 0.011 Myr (PACMAN) and 2.0 Myr (NEONGOOEY); the submitted PROTEUS CHILI run ends at 0.47 Myr with 6.1%. The Venus curves of PROTEUS CHILI and LINCS end at 39.3 and 49.3 Myr. The curves of the current PROTEUS runs show the melt fraction by mass; the curves of the intercomparison data show it by volume. The current PROTEUS Earth run reaches a melt fraction of 5% by mass at 2.44 Myr (6.2% by volume). The current PROTEUS Venus run had not reached a 5% melt fraction at its last row: its melt fraction decreases by about 0.02 percentage points per Myr over its last 5 Myr, and its curve ends at 48.3 Myr with 6.0% of melt by mass (7.4% by volume).</figcaption>
 </figure>
 
 ## Solidification milestones
@@ -202,7 +205,7 @@ comparison stays reproducible without editing the script.
 <figure markdown="span">
   ![CHILI Fig 2](../assets/tutorials/chili/fig2_milestones.avif#only-light){ width="100%" }
   ![CHILI Fig 2](../assets/tutorials/chili/fig2_milestones_dark.avif#only-dark){ width="100%" }
-  <figcaption><strong>Figure 2.</strong> Time to reach melt fraction milestones for all Earth scenarios. (a) 95%, (b) 40%, (c) 5% melt fraction. The y-axis spans H inventories from the Nominal case (bottom) to H<sub>high</sub> (10 EO, top). C inventory is encoded as marker opacity (faint = C<sub>low</sub>, medium = C<sub>mid</sub>, full = C<sub>high</sub>). Connected scatter points trace the three H levels for each model at a given C level. The current PROTEUS run (orange, thick solid lines, edged markers) stands out from the CHILI intercomparison ensemble; the submitted PROTEUS CHILI runs have the same orange with thin dashed lines. Nominal Earth cases appear as crosses at the bottom of each panel, and the larger orange cross is that of the current run. A current PROTEUS run that has not reached a milestone when it ends has no marker in that panel. The submitted PROTEUS CHILI runs end above 5% melt by volume, and their points in panel (c) mark the last archived row.</figcaption>
+  <figcaption><strong>Figure 2.</strong> Time to reach melt fraction milestones for all Earth scenarios. (a) 95%, (b) 40%, (c) 5% melt fraction. The y-axis spans H inventories from the Nominal case (bottom) to H<sub>high</sub> (10 EO, top). C inventory is encoded as marker opacity (faint = C<sub>low</sub>, medium = C<sub>mid</sub>, full = C<sub>high</sub>). Connected scatter points trace the three H levels for each model at a given C level. The current PROTEUS run (orange, thick solid lines, edged markers) stands out from the CHILI intercomparison ensemble; the submitted PROTEUS CHILI runs have the same orange with thin dashed lines. Nominal Earth cases appear as crosses at the bottom of each panel, and the larger orange cross is that of the current run. A current PROTEUS run that has not reached a milestone at its last row has no marker in that panel. The submitted PROTEUS CHILI runs end above 5% melt by volume, and their points in panel (c) mark the last archived row.</figcaption>
 </figure>
 
 ## Atmospheric composition
@@ -226,7 +229,7 @@ comparison stays reproducible without editing the script.
 <figure markdown="span">
   ![CHILI Fig 5](../assets/tutorials/chili/fig5_venus_atm.avif#only-light){ width="100%" }
   ![CHILI Fig 5](../assets/tutorials/chili/fig5_venus_atm_dark.avif#only-dark){ width="100%" }
-  <figcaption><strong>Figure 5.</strong> Atmospheric composition for the Nominal Venus case at 5% melt fraction. Stacked bars show gas partial pressures &#91;bar&#93;; grey stars mark surface temperature (right axis). A current PROTEUS run that reaches a 5% melt fraction is drawn as an outlined bar with a bold label next to the submitted PROTEUS CHILI result. The current run does not reach a 5% melt fraction, so the figure has no bar for it: it ends in global energy balance at 11.3 Myr with a melt fraction of 6.8% by mass (8.3% by volume), a surface temperature of 1800 K and a surface pressure of 384 bar (321 bar H<sub>2</sub>O and 56 bar CO<sub>2</sub>). The bar of the submitted PROTEUS CHILI result is its last row, at a melt fraction of 6.2% by volume (4.9% by mass).</figcaption>
+  <figcaption><strong>Figure 5.</strong> Atmospheric composition for the Nominal Venus case at 5% melt fraction. Stacked bars show gas partial pressures &#91;bar&#93;; grey stars mark surface temperature (right axis). A current PROTEUS run is drawn as an outlined bar at its first row with a melt fraction of 5% or less, or else of 6% or less, with a bold label next to the submitted PROTEUS CHILI result. The current run has no row with a melt fraction of 6% or less, so the figure has no bar for it: at 48.3 Myr, its last row, it has a melt fraction of 6.03% by mass (7.4% by volume), a surface temperature of 1789 K and a surface pressure of 349 bar (298 bar H<sub>2</sub>O and 45 bar CO<sub>2</sub>). The bar of the submitted PROTEUS CHILI result is its last row, at a melt fraction of 6.2% by volume (4.9% by mass).</figcaption>
 </figure>
 
 ## Oxygen fugacity
@@ -234,7 +237,7 @@ comparison stays reproducible without editing the script.
 <figure markdown="span">
   ![CHILI Fig 6](../assets/tutorials/chili/fig6_fO2_vs_T.avif#only-light){ width="100%" }
   ![CHILI Fig 6](../assets/tutorials/chili/fig6_fO2_vs_T_dark.avif#only-dark){ width="100%" }
-  <figcaption><strong>Figure 6.</strong> Oxygen fugacity of the Nominal Venus simulations of the four intercomparison models whose files give a value (GOOEY, PROTEUS CHILI, PACMAN, MOAI) and of the current PROTEUS run, plotted as a function of degassing temperature. The intercomparison curves are drawn against the surface temperature. (a) Absolute fO<sub>2</sub> compared to the iron-wustite buffer parameterizations of Fischer et al. (2011, dotted) and O'Neill & Eggins (2002, dashed). (b) Relative fO<sub>2</sub> as delta-IW referenced to O'Neill+02. Circular markers indicate, for each intercomparison model that reaches a melt fraction of 7% or less, its row closest to 5%. The curve of the current PROTEUS run (orange, thick line) is the O<sub>2</sub> partial pressure of the run, which CALLIOPE sets equal to the oxygen fugacity, against the magma temperature at which the run degasses; it equals IW+4 on the buffer of Fischer et al. (2011) at that temperature. Referenced to O'Neill & Eggins (2002) in panel (b) it lies at 5.2 at 3300 K, where the axis starts, and at 4.0 at 1800 K; the hotter rows of the run, up to 4272 K, lie before the axis. It has no circular marker: a current run is marked at its first row with a melt fraction of 5% or less, or else of 6% or less, and this run ends at 6.8%. The orange circle at 1692 K is the marker of the submitted PROTEUS CHILI run, whose thin dashed curve has the colour of the current run. In panel (b) the GOOEY curve lies below the buffer between 3299 and 3182 K, down to -0.20, and the MOAI curve between 2968 and 2942 K, down to -0.06. The legend below the panels holds for both.</figcaption>
+  <figcaption><strong>Figure 6.</strong> Oxygen fugacity of the Nominal Venus simulations of the four intercomparison models whose files give a value (GOOEY, PROTEUS CHILI, PACMAN, MOAI) and of the current PROTEUS run, plotted as a function of degassing temperature. The intercomparison curves are drawn against the surface temperature. (a) Absolute fO<sub>2</sub> compared to the iron-wustite buffer parameterizations of Fischer et al. (2011, dotted) and O'Neill & Eggins (2002, dashed). (b) Relative fO<sub>2</sub> as delta-IW referenced to O'Neill+02. Circular markers indicate, for each intercomparison model that reaches a melt fraction of 7% or less, its row closest to 5%. The curve of the current PROTEUS run (orange, thick line) is the O<sub>2</sub> partial pressure of the run, which CALLIOPE sets equal to the oxygen fugacity, against the magma temperature at which the run degasses; it equals IW+4 on the buffer of Fischer et al. (2011) at that temperature. Referenced to O'Neill & Eggins (2002) in panel (b) it lies at 5.2 at 3300 K, where the axis starts, and at 4.0 at 1789 K, its last row; the hotter rows of the run, up to 4272 K, lie before the axis. It has no circular marker: a current run is marked at its first row with a melt fraction of 5% or less, or else of 6% or less, and the last row of this run has 6.03%. The orange circle at 1692 K is the marker of the submitted PROTEUS CHILI run, whose thin dashed curve has the colour of the current run. In panel (b) the GOOEY curve lies below the buffer between 3299 and 3182 K, down to -0.20, and the MOAI curve between 2968 and 2942 K, down to -0.06. The legend below the panels holds for both.</figcaption>
 </figure>
 
 ## Volatile retention
@@ -242,7 +245,7 @@ comparison stays reproducible without editing the script.
 <figure markdown="span">
   ![CHILI Fig 7](../assets/tutorials/chili/fig7_volatiles.avif#only-light){ width="100%" }
   ![CHILI Fig 7](../assets/tutorials/chili/fig7_volatiles_dark.avif#only-dark){ width="100%" }
-  <figcaption><strong>Figure 7.</strong> Relative amounts of the initial (a) hydrogen and (b) carbon inventories retained in the Nominal Venus case as a function of simulation time, with atoms lost from the planet by hydrodynamic escape. Crosses mark 95% melt fraction and circles mark, for each intercomparison model that reaches a melt fraction of 7% or less, its row closest to 5%. The submitted PROTEUS CHILI run (thin, dashed) extends to 39 Myr, where its melt fraction is 6.2% by volume (4.9% by mass) and it retains 63% of its hydrogen and 28% of its carbon. The current PROTEUS run (thick, solid, labelled with the commit of the runs) ends in global energy balance at 11.3 Myr, where it retains 97.3% of its hydrogen and 92.8% of its carbon; it has no circle, because it ends above a melt fraction of 6%, and the figure makes no statement on the escape after that time.</figcaption>
+  <figcaption><strong>Figure 7.</strong> Relative amounts of the initial (a) hydrogen and (b) carbon inventories retained in the Nominal Venus case as a function of simulation time, with atoms lost from the planet by hydrodynamic escape. Crosses mark 95% melt fraction and circles mark, for each intercomparison model that reaches a melt fraction of 7% or less, its row closest to 5%. The submitted PROTEUS CHILI run (thin, dashed) extends to 39 Myr, where its melt fraction is 6.2% by volume (4.9% by mass) and it retains 63% of its hydrogen and 28% of its carbon. The curve of the current PROTEUS run (thick, solid, labelled with the commit of the runs) ends at its last row, at 48.3 Myr, where the run retains 87.5% of its hydrogen and 75.8% of its carbon; it has no circle, because its melt fraction there, 6.03%, is above 6%, and the figure makes no statement on the escape after that time.</figcaption>
 </figure>
 
 ## Outgoing longwave radiation
@@ -302,41 +305,39 @@ done
 ```
 
 !!! warning "Runtime"
-    In the runs of this release the low-H cases took 2.1 to 2.3 hours of
-    CPU time and the mid-H cases 6.3 to 8.2 hours. The high-H cases
-    (10 Earth oceans) took 19.2 to 21.0 hours, because they ran to
-    15 Myr without reaching 5% melt: under the thick steam atmosphere the OLR stays below
-    300 W m$^{-2}$ once the melt fraction is 12% or lower.
+    The high-H cases (10 Earth oceans) cool the slowest: under the thick steam atmosphere the OLR stays below
+    300 W m$^{-2}$ once the melt fraction is 12% or lower, and the runs
+    shown here had not reached 5% melt after 38.3 to 40.9 Myr of model time.
 
 ### Grid results
 
-Time at which each grid run of this release first reaches a melt
+Time at which each grid run shown here first reaches a melt
 fraction of 5% by mass:
 
 | | C$_\mathrm{low}$ | C$_\mathrm{mid}$ | C$_\mathrm{high}$ |
 |---|---|---|---|
 | **H$_\mathrm{low}$** (1 EO) | 0.81 Myr | 0.84 Myr | 0.92 Myr |
 | **H$_\mathrm{mid}$** (5 EO) | 5.55 Myr | 5.28 Myr | 4.89 Myr |
-| **H$_\mathrm{high}$** (10 EO) | not reached (9.4%) | not reached (9.1%) | not reached (8.2%) |
+| **H$_\mathrm{high}$** (10 EO) | not reached (7.1%) | not reached (6.6%) | not reached (6.2%) |
 
-The three high-H runs were ended at 15 Myr; the table gives their
-melt fraction at that time.
+The three high-H runs had not reached 5% melt at their last row, at
+38.3 to 40.9 Myr; the table gives their melt fraction there.
 
 The hydrogen inventory is the primary control on the solidification
 time. From 1 to 5 EO the time to 5% melt rises by a factor of 5.3 to
-6.8, and at 10 EO no run reaches 5% melt within 15 Myr. The carbon
+6.8. At 10 EO no run had reached 5% melt after 38.3 to 40.9 Myr. The carbon
 effect is secondary and changes sign. At low H, more carbon slows the
 cooling (0.81 to 0.92 Myr): at a melt fraction of 30% the OLR falls
 from 5525 to 4235 W m$^{-2}$ from low to high C. At mid H the order
 reverses (5.55 to 4.89 Myr): at a melt fraction of 30% the OLR rises
 from 1115 to 1323 W m$^{-2}$ from low to high C. The
-high-H runs follow the order of the mid-H runs: at 15 Myr the melt
+high-H runs follow the order of the mid-H runs: at their last row the melt
 fraction is lower for a higher carbon inventory.
 
 <figure markdown="span">
   ![CHILI grid solidification](../assets/tutorials/chili/grid_solidification.avif#only-light){ width="80%" }
   ![CHILI grid solidification](../assets/tutorials/chili/grid_solidification_dark.avif#only-dark){ width="80%" }
-  <figcaption><strong>Figure 11.</strong> Time at which the current PROTEUS grid runs reach 5% melt by mass (solid lines, filled markers) as a function of hydrogen inventory for the three carbon levels (opacity and marker shape), on logarithmic axes. The high-H runs were ended at 15 Myr above this threshold and have no marker. Where the submitted PROTEUS CHILI grid runs reach 5% melt by volume they are overlaid as dashed lines with open markers; the runs archived in the comparison repository stop just above that threshold, so no submitted points appear here. The carbon-inventory dependence reverses sign between the low-H and mid-H cases (see text).</figcaption>
+  <figcaption><strong>Figure 11.</strong> Time at which the current PROTEUS grid runs reach 5% melt by mass (solid lines, filled markers) as a function of hydrogen inventory for the three carbon levels (opacity and marker shape), on logarithmic axes. The high-H runs had not reached this threshold at their last row (38.3 to 40.9 Myr) and have no marker. Where the submitted PROTEUS CHILI grid runs reach 5% melt by volume they are overlaid as dashed lines with open markers; the runs archived in the comparison repository stop just above that threshold, so no submitted points appear here. The carbon-inventory dependence reverses sign between the low-H and mid-H cases (see text).</figcaption>
 </figure>
 
 ## Current PROTEUS configuration vs the CHILI submission
@@ -346,7 +347,9 @@ informative because the two come from different model configurations. The
 protocol fixes the inputs that both share: a bulk-silicate-Earth
 composition, oxygen fugacity at IW+4, a Bond albedo of 0.1, and a 50 Myr
 stellar age [^cite-lichtenberg2026]. The two differ in the interior
-modules and in the stop criteria.
+modules and in the limits of the stop rule: the submitted configs stop
+after 4.517 Gyr (6.6 and 7.55 Gyr for the TRAPPIST-1 cases) or 9000
+iterations, the configs here after 1 Gyr or 1,000,000 iterations.
 
 The PROTEUS results submitted to the intercomparison were computed with an
 earlier version of PROTEUS, not the configuration documented here. The
@@ -370,8 +373,7 @@ SPIDER and integrates the same specific-entropy equation for a two-phase,
 partially molten mantle with a mixing-length convective closure. Zalmoxis
 solves the layered interior (mass, radius, density profile, and
 core-mantle-boundary radius) directly and supplies the pressure-entropy
-equation-of-state tables that Aragog reads. The energy balance stop
-criterion is enabled in this configuration.
+equation-of-state tables that Aragog reads.
 
 The configuration also departs from the protocol table in two inputs.
 The protocol fixes a planet radius (1 R$_\oplus$ for Earth, 0.95
@@ -386,21 +388,18 @@ start.
 
 ### The Nominal Venus case
 
-The Nominal Venus case does not reach the solidification criterion. The
-run ends on the energy balance criterion at 11.3 Myr, with a melt fraction
-of 0.068 by mass (0.083 by volume). An earlier version of this page gave
-2.22 Myr for Venus. That run also ended on the energy balance criterion,
-at a melt fraction of 0.052 by mass (0.063 by volume). The run submitted to the intercomparison ends at 39 Myr with a melt
-fraction of 0.062 by volume (0.049 by mass).
+The Nominal Venus run had not reached the solidification criterion at
+its last row, at 48.3 Myr, where its melt fraction is
+0.060 by mass (0.074 by volume). The run submitted to the
+intercomparison ends at 39 Myr with a melt fraction of 0.062 by volume
+(0.049 by mass).
 
-The earlier result of this page and the current one differ in the
-treatment of melt-solid separation in the interior module. The earlier run
-used a grain size of 0.1 m and the viscosity of the melt in the separation
-velocity. The current configuration uses a grain size of 1 mm and the
-viscosity of the melt-solid mixture
-(`interior_energetics.aragog.separation_viscosity = "mixture"`). In the
-current run the mantle crystallises as a mush with melt at all depths: at the end of the
-run every node of the mantle still holds melt, between 2% and 36%.
+For the melt-solid separation in the interior module, the configuration
+uses a grain size of 1 mm (`interior_energetics.grain_size = 1e-3`) and
+the viscosity of the melt-solid mixture
+(`interior_energetics.aragog.separation_viscosity = "mixture"`). In this
+run the mantle crystallises as a mush with melt at all depths: at its last
+row every node of the mantle still holds melt, between 2% and 34%.
 
 ## Takeaways
 
@@ -411,8 +410,8 @@ and interior convection. PROTEUS couples a radiative-convective atmosphere,
 equilibrium outgassing, and a 1D interior solver, and follows the magma
 ocean from the molten state to the first stop criterion that a run meets,
 while tracking the volatiles exchanged between the mantle and the
-atmosphere. The four runs of this page that met no criterion were ended
-at 15 Myr.
+atmosphere. The runs of this page that had not reached 5% melt are shown
+to their last row.
 
 The point of this tutorial is to place the current PROTEUS against that
 published ensemble on demand. The comparison figures are drawn from the

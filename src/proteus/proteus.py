@@ -1785,7 +1785,11 @@ class Proteus:
             HelpfileRow,
             ReadHelpfileFromCSV,
             helpfile_path,
+            vulcan_problem,
         )
+
+        if problem := vulcan_problem(self.config):
+            raise EnvironmentError(problem)
 
         hf_all = ReadHelpfileFromCSV(
             self.directories['output'], required_columns=GetPostprocessingKeys()
