@@ -2441,6 +2441,38 @@ def test_zalmoxis_solver_withholds_callable_on_jax_viable_eos(
     assert 0.0 < cmb_radius < hf_row['R_int']
 
 
+@pytest.mark.parametrize('mantle_eos', ['PALEOS-2phase:MgSiO3', 'PALEOS:MgSiO3'])
+def test_zalmoxis_solver_passes_callable_on_jax_viable_eos_without_jax(
+    tmp_path, monkeypatch, mantle_eos
+):
+    """With ``use_jax=False`` a JAX-viable mantle still gets the callable.
+
+    The Zalmoxis numpy path reads ``temperature_arrays`` only with
+    ``use_jax``, so the evolved T(r) reaches it through
+    ``temperature_function`` alone. Withholding the callable here would
+    make every structure solve return the internal linear guess.
+    """
+    model_for_arrays = _plausible_model_results()
+    r_arr, t_arr = _cooled_mantle_arrays(model_for_arrays)
+
+    def tf(r, P):
+        return float(np.interp(r, r_arr, t_arr))
+
+    main_mock, rho_mock, _, hf_row, _, cmb_radius, _ = _run_gate_solver(
+        tmp_path, monkeypatch, mantle_eos, (r_arr, t_arr), tf, use_jax=False
+    )
+
+    kwargs = main_mock.call_args.kwargs
+    assert main_mock.call_args.args[0]['use_jax'] is False
+    assert kwargs['temperature_function'] is tf
+    passed_r, passed_t = kwargs['temperature_arrays']
+    np.testing.assert_allclose(passed_r, r_arr, rtol=0, atol=0)
+    np.testing.assert_allclose(passed_t, t_arr, rtol=0, atol=0)
+    # The column rebuild belongs to the arrays-via-JAX path only.
+    assert rho_mock.call_count == 0
+    assert 0.0 < cmb_radius < hf_row['R_int']
+
+
 def test_zalmoxis_solver_init_adiabat_arrays_take_jax_dispatch(tmp_path, monkeypatch):
     """IC adiabat calls with sampled arrays dispatch like evolved re-solves.
 
