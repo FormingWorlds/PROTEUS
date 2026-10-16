@@ -293,7 +293,6 @@ def test_stop_block_layout_is_stable():
             "multi-line value.*'v = \\['",
         ),
         ('[params.stop.time]\nnote = """\n  a\n"""\n[star]\n', 'multi-line value'),
-        ('[params.stop.a]\nk=\n[star]\n', 'not valid TOML'),
         (
             'd = """\n[params.stop.time]"""\n[params.stop.time]\nm = 1\n[star]\ny = 1\n',
             'changes a parsed value',
@@ -305,14 +304,13 @@ def test_stop_block_layout_is_stable():
         'array',
         'nested_array_last_table',
         'string',
-        'invalid_toml',
         'stop_header_inside_a_string',
     ],
 )
 def test_stop_block_layout_refuses_what_it_cannot_place(text, match):
-    """Invalid TOML, a missing stop table, a split block, a multi-line value (also a nested
-    array in the last table) or a layout that changes a value stops the generator and names
-    the case; a stop header inside a string elsewhere reaches the value check."""
+    """A missing stop table, a split block, a multi-line value (also a nested array in the
+    last table) or a layout that changes a value stops the generator and names the case; a
+    stop header inside a string before the first stop table reaches the value check."""
     with pytest.raises(ValueError, match='case_x: .*' + match):
         _load_generator()._format_stop_block(text, 'case_x')
 
@@ -340,6 +338,29 @@ def test_stop_block_layout_keeps_comments_and_values():
     assert gen._format_stop_block('[a]\n[params.stop.time]\nmaximum = 1', 'case_x') == (
         '[a]\n    [params.stop.time]\n        maximum = 1\n'
     )
+
+
+def test_stop_block_is_only_the_stop_child_tables():
+    """A [params.stop] parent table before the block and a [params.stopwatch] table after it
+    keep their place and indent; only the [params.stop.*] tables are laid out."""
+    gen = _load_generator()
+    text = '[params.stop]\nx = 1\n[params.stop.time]\nm = 1\n[params.stopwatch]\ny = 2\n[star]\nz = 3'
+    assert gen._format_stop_block(text, 'case_x') == (
+        '[params.stop]\nx = 1\n    [params.stop.time]\n        m = 1\n\n[params.stopwatch]\ny = 2\n[star]\nz = 3'
+    )
+
+
+def test_a_base_that_is_not_valid_toml_names_the_case(tmp_path, monkeypatch):
+    """A tutorial base that tomlkit cannot parse stops the case with its name and base file."""
+    for name in ('tutorial_earth.toml', 'tutorial_venus.toml'):
+        (tmp_path / name).write_text((REPO / 'input' / 'tutorials' / name).read_text())
+    venus = tmp_path / 'tutorial_venus.toml'
+    venus.write_text(venus.read_text() + '\n[broken\n')
+    gen = _load_generator()
+    monkeypatch.setattr(gen, 'TUTORIALS', str(tmp_path))
+    with pytest.raises(ValueError, match='venus: tutorial_venus.toml is not valid TOML'):
+        gen.generate_case('venus')
+    assert gen.generate_case('earth').startswith('# CHILI intercomparison case: earth')
 
 
 def test_readme_and_page_name_the_stall_and_iteration_limits_of_the_configs():

@@ -180,14 +180,11 @@ def _format_stop_block(text: str, name: str) -> str:
     Raises
     ------
     ValueError
-        If the text is not valid TOML or has no stop table, the stop tables
-        are split by another table, a stop key holds a multi-line value, or
-        the layout changes a parsed value.
+        If the text has no stop table, the stop tables are split by another
+        table, a stop key holds a multi-line value, or the layout changes a
+        parsed value.
     """
-    try:
-        before = tomllib.loads(text)
-    except tomllib.TOMLDecodeError as exc:
-        raise ValueError(f'{name}: the config is not valid TOML: {exc}') from None
+    before = tomllib.loads(text)
     lines = text.split('\n')
     heads = [i for i, ln in enumerate(lines) if ln.strip().startswith('[params.stop.')]
     if not heads:
@@ -251,7 +248,10 @@ def generate_case(name: str) -> str:
     base_path = os.path.join(TUTORIALS, spec['base'])
     with open(base_path) as f:
         text = f.read()
-    doc = tomlkit.parse(text)
+    try:
+        doc = tomlkit.parse(text)
+    except tomlkit.exceptions.ParseError as exc:
+        raise ValueError(f'{name}: {spec["base"]} is not valid TOML: {exc}') from None
     for dotted, value in case_deltas(name).items():
         _set_dotted(doc, dotted, value)
     rendered = _format_stop_block(tomlkit.dumps(doc), name)
