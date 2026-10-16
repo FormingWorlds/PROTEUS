@@ -68,8 +68,9 @@ volume.
     under the stop rule above. The runs used the Aragog convective switch at
     $\partial S/\partial r < 0$ (`convective_threshold = 0`); the configurations
     on this page use the default threshold of $10^{-6}$ J kg$^{-1}$ K$^{-1}$ m$^{-1}$,
-    which gives the band just above $\partial S/\partial r = 0$ the eddy-diffusivity
-    floor. The runs do not follow the long-term
+    which drives unstable nodes by at least that gradient and gives the band just
+    above $\partial S/\partial r = 0$ the eddy-diffusivity floor. The runs do not
+    follow the long-term
     solid-state evolution of the mantle or the loss of the atmosphere
     after their end. The PROTEUS results in the CHILI paper and the
     results shown here come from different versions of the code and from
