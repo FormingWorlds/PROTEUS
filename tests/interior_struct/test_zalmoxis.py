@@ -293,7 +293,7 @@ def test_load_zalmoxis_configuration_converts_missing_table_error(monkeypatch):
         raise ZalmoxisMissingEOSFilesError('missing table')
 
     monkeypatch.setattr(
-        zalmoxis_wrapper, '_resolve_zalmoxis_cmb_temperature', _raise_file_not_found
+        zalmoxis_wrapper, '_resolve_zalmoxis_anchor_temperatures', _raise_file_not_found
     )
     monkeypatch.setattr(zalmoxis_wrapper, 'check_zalmoxis_eos_files', _raise_missing_eos)
     monkeypatch.setattr(
@@ -330,7 +330,7 @@ def test_load_zalmoxis_configuration_reraises_unconverted_file_error(monkeypatch
         raise FileNotFoundError('melting curves directory not found')
 
     monkeypatch.setattr(
-        zalmoxis_wrapper, '_resolve_zalmoxis_cmb_temperature', _raise_file_not_found
+        zalmoxis_wrapper, '_resolve_zalmoxis_anchor_temperatures', _raise_file_not_found
     )
     monkeypatch.setattr(zalmoxis_wrapper, 'check_zalmoxis_eos_files', lambda *a, **k: None)
     monkeypatch.setattr(zalmoxis_wrapper, 'load_zalmoxis_material_dictionaries', lambda: {})

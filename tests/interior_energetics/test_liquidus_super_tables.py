@@ -90,6 +90,7 @@ def _config(delta=200.0, module='spider', melting_dir='Monteux-600'):
             delta_T_super=delta,
             ini_dsdr=0.0,
             mass_tot=1.0,
+            tsurf_init=4000.0,
         ),
         interior_energetics=SimpleNamespace(module='spider'),
         interior_struct=SimpleNamespace(

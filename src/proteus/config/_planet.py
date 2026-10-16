@@ -269,14 +269,16 @@ class Planet:
             which the interior solver also uses for its melt fraction, for
             every structure module.
     tsurf_init: float
-        Initial magma surface temperature [K] (isothermal, linear, adiabatic).
-        With 'isentropic' the Zalmoxis structure solve anchors its surface
-        adiabat at it, while the energetics start from ini_entropy. With
-        'adiabatic_from_cmb' it is the first-guess surface temperature of the
-        structure solve and the temperature of its core nodes. With
+        Initial magma surface temperature [K] (isothermal, linear, adiabatic,
+        accretion), and the temperature of the initial flux guess when
+        interior_energetics.flux_guess < 0. With 'isentropic' the Zalmoxis
+        structure solve anchors its surface adiabat at it, while the energetics
+        start from ini_entropy. With 'adiabatic_from_cmb' it is the surface end
+        of the structure solve's first-guess temperature profile. With
         'liquidus_super' the structure solve takes the surface temperature of
-        the solved super-liquidus adiabat instead, and tsurf_init is used only
-        when that solve fails and the CMB anchor falls back.
+        the solved super-liquidus adiabat together with its CMB temperature,
+        also when it falls back to the last solved anchor; it takes tsurf_init
+        only where it takes tcmb_init.
     tcmb_init: float
         Initial core-mantle boundary temperature [K] (adiabatic_from_cmb).
         The mantle adiabat is anchored at this temperature at P = P_cmb

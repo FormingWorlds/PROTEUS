@@ -136,6 +136,8 @@ _PALEOS_API_RESOLVED: dict[str, dict] = {}
 # repeating the scan-and-bisection at a drifted P_cmb. None until the first
 # solve completes.
 _SUPERLIQ_LAST_ANCHOR: float | None = None
+# Surface temperature of the solve that set _SUPERLIQ_LAST_ANCHOR.
+_SUPERLIQ_LAST_SURFACE: float | None = None
 # (delta_T_super, mantle_eos) of the solve that set _SUPERLIQ_LAST_ANCHOR.
 _SUPERLIQ_LAST_ANCHOR_FOR: tuple | None = None
 
@@ -151,7 +153,8 @@ def _clear_superliquidus_cache() -> None:
     Also clears ``common._ANCHOR_CAP_WARNED``, the anchor-cap warnings that
     share the lifetime of these solves.
     """
-    global _SUPERLIQ_LAST_ANCHOR, _SUPERLIQ_LAST_ANCHOR_FOR, _JAX_NONVIABLE_LOGGED
+    global _SUPERLIQ_LAST_ANCHOR, _SUPERLIQ_LAST_ANCHOR_FOR, _SUPERLIQ_LAST_SURFACE
+    global _JAX_NONVIABLE_LOGGED
     from proteus.interior_energetics.common import _ANCHOR_CAP_WARNED
 
     _SUPERLIQ_CACHE.clear()
@@ -159,6 +162,7 @@ def _clear_superliquidus_cache() -> None:
     _ANCHOR_CAP_WARNED.clear()
     _SUPERLIQ_LAST_ANCHOR = None
     _SUPERLIQ_LAST_ANCHOR_FOR = None
+    _SUPERLIQ_LAST_SURFACE = None
     _JAX_NONVIABLE_LOGGED = False
 
 
@@ -664,9 +668,8 @@ def _resolve_zalmoxis_temperature_mode(mode: str) -> str:
     - all other modes pass through unchanged.
 
     The 'liquidus_super' mapping pairs with
-    :func:`_resolve_zalmoxis_cmb_temperature`, which supplies the CMB
-    temperature of the solved super-liquidus adiabat as the anchor for
-    Zalmoxis's upward integration.
+    :func:`_resolve_zalmoxis_anchor_temperatures`, which supplies the CMB and
+    surface temperatures of the solved super-liquidus adiabat.
     """
     if mode in ('accretion', 'isentropic'):
         return 'adiabatic'
@@ -675,68 +678,77 @@ def _resolve_zalmoxis_temperature_mode(mode: str) -> str:
     return mode
 
 
-def _resolve_zalmoxis_cmb_temperature(
+def _resolve_zalmoxis_anchor_temperatures(
     config: Config,
     hf_row: dict,
     mode: str,
     external_temperature_source: bool = False,
-) -> float:
-    """Resolve cmb_temperature for the Zalmoxis structure call.
+) -> tuple[float, float]:
+    """Resolve cmb_temperature and surface_temperature for the Zalmoxis structure call.
 
-    For 'liquidus_super', returns the CMB temperature of the solved
+    For 'liquidus_super', returns the CMB and surface temperatures of one solved
     super-liquidus adiabat (see :func:`solve_superliquidus_adiabat`), using
     hf_row['P_cmb'] when populated or a Noack & Lasbleis (2020) mass-aware
     P_cmb estimate on the very first call; the next structure iteration
-    recomputes it against the converged Zalmoxis P_cmb. The energetics IC is
-    solved separately on the P-S tables (compute_initial_entropy).
+    recomputes it against the converged Zalmoxis P_cmb. Zalmoxis anchors its
+    upward integration at the CMB value and starts its first-guess profile,
+    its centre-temperature cap and its zero-pressure nodes from the surface
+    value. The energetics IC is solved separately on the P-S tables
+    (compute_initial_entropy).
 
     When ``external_temperature_source`` is set the structure solve is driven
     by an evolved T(r) profile (or the super-liquidus adiabat callable during
-    the IC re-solve) rather than the internal temperature-mode dispatch, so the
-    super-liquidus CMB anchor is not the temperature source for this call and
-    the solved value is discarded. Those calls reuse the anchor the
-    internal-dispatch IC solve already produced and skip the scan-and-bisection;
-    when no anchor was solved for the same ``delta_T_super`` and mantle EOS they
-    fall back to ``config.planet.tcmb_init``. This
-    avoids re-solving (and possibly raising the unreachable-superheat error) on
-    every evolution re-solve over a value nothing consumes.
+    the IC re-solve) rather than the internal temperature-mode dispatch. Those
+    calls reuse the pair the internal-dispatch IC solve already produced and
+    skip the scan-and-bisection; when no anchor was solved for the same
+    ``delta_T_super`` and mantle EOS they fall back to ``config.planet.tcmb_init``
+    and ``config.planet.tsurf_init``. This avoids re-solving (and possibly
+    raising the unreachable-superheat error) on every evolution re-solve.
 
     With a PALEOS mantle and spider or aragog energetics, if the anchor
     fails at this P_cmb (``InitialConditionError``, which includes numerical
-    integration failures), the last solved anchor for the same
-    ``delta_T_super`` and mantle EOS, or else ``config.planet.tcmb_init``,
-    is used with a warning. The initial entropy then re-solves the anchor at
-    the P_cmb of the structure it gets, which after this fallback is the
-    fallback structure, and decides whether a molten state exists; it is
-    solved before the equilibration loop and again after it. Otherwise the
-    error propagates, since no later step re-solves the anchor. A resumed
-    run that restores the entropy snapshot re-solves neither the structure
-    anchor nor the initial entropy; an Aragog resume that falls back to a
-    fresh initial entropy solves it again at the current P_cmb.
+    integration failures), the last solved pair for the same ``delta_T_super``
+    and mantle EOS, or else ``tcmb_init`` and ``tsurf_init``, is used with a
+    warning. The initial entropy then re-solves the anchor at the P_cmb of the
+    structure it gets, which after this fallback is the fallback structure, and
+    decides whether a molten state exists; it is solved before the
+    equilibration loop and again after it. Otherwise the error propagates,
+    since no later step re-solves the anchor. A resumed run that restores the
+    entropy snapshot re-solves neither the structure anchor nor the initial
+    entropy; an Aragog resume that falls back to a fresh initial entropy
+    solves it again at the current P_cmb.
 
-    For all other modes, returns config.planet.tcmb_init verbatim.
+    For all other modes, returns ``config.planet.tcmb_init`` and
+    ``config.planet.tsurf_init`` verbatim.
     """
     if mode != 'liquidus_super':
-        return config.planet.tcmb_init
+        return config.planet.tcmb_init, float(config.planet.tsurf_init)
+
+    def last_pair(reason: str) -> tuple[float, float, str]:
+        # The last pair stands in only for the same superheat and mantle EOS.
+        if (
+            _SUPERLIQ_LAST_ANCHOR is not None
+            and _SUPERLIQ_LAST_ANCHOR_FOR == _superliq_anchor_for(config)
+        ):
+            surface = (
+                _SUPERLIQ_LAST_SURFACE
+                if _SUPERLIQ_LAST_SURFACE is not None
+                else config.planet.tsurf_init
+            )
+            return float(_SUPERLIQ_LAST_ANCHOR), float(surface), 'the last solved anchor'
+        return float(config.planet.tcmb_init), float(config.planet.tsurf_init), reason
 
     if external_temperature_source:
-        anchor = _SUPERLIQ_LAST_ANCHOR
-        # Reuse the anchor only for the superheat and mantle EOS it was solved for.
-        if anchor is not None and _SUPERLIQ_LAST_ANCHOR_FOR == _superliq_anchor_for(config):
-            log.debug(
-                'liquidus_super: structure solve uses an external temperature '
-                'source; reusing the last solved CMB anchor T_cmb=%.0f K and '
-                'skipping the super-liquidus re-solve.',
-                anchor,
-            )
-            return float(anchor)
+        cmb_T, surface_T, source = last_pair('tcmb_init and tsurf_init')
         log.debug(
-            'liquidus_super: structure solve uses an external temperature '
-            'source with no super-liquidus solve for this superheat and mantle '
-            'EOS; using tcmb_init=%.0f K as the unconsumed CMB anchor.',
-            float(config.planet.tcmb_init),
+            'liquidus_super: structure solve uses an external temperature source; '
+            'using %s (T_cmb=%.0f K, T_surf=%.0f K) as the unconsumed anchor and '
+            'skipping the super-liquidus re-solve.',
+            source,
+            cmb_T,
+            surface_T,
         )
-        return float(config.planet.tcmb_init)
+        return cmb_T, surface_T
 
     # Anchor the Zalmoxis structure-solve adiabat at the CMB temperature of the
     # P-T super-liquidus adiabat. The energetics IC is solved on the P-S
@@ -752,21 +764,18 @@ def _resolve_zalmoxis_cmb_temperature(
         from proteus.utils.structure_estimate import resolve_P_cmb
 
         P_cmb, estimated = resolve_P_cmb(hf_row, config)
-        # The last anchor stands in only for the same superheat and mantle EOS.
-        fallback = _SUPERLIQ_LAST_ANCHOR
-        source = 'the last solved anchor'
-        if fallback is None or _SUPERLIQ_LAST_ANCHOR_FOR != _superliq_anchor_for(config):
-            fallback, source = float(config.planet.tcmb_init), 'tcmb_init'
+        cmb_T, surface_T, source = last_pair('tcmb_init and tsurf_init')
         log.warning(
             'liquidus_super CMB anchor for Zalmoxis: no P-T anchor at %sP_cmb=%.0f GPa '
-            '(%s); using %s, T_cmb=%.0f K, for this structure solve.',
+            '(%s); using %s, T_cmb=%.0f K and T_surf=%.0f K, for this structure solve.',
             'the estimated ' if estimated else '',
             P_cmb / 1e9,
             exc,
             source,
-            float(fallback),
+            cmb_T,
+            surface_T,
         )
-        return float(fallback)
+        return cmb_T, surface_T
     log.info(
         'liquidus_super CMB anchor for Zalmoxis: T_cmb=%.0f K (fully molten, '
         '%.0f K above the liquidus; surface T=%.0f K, P_cmb=%.0f GPa).',
@@ -775,49 +784,19 @@ def _resolve_zalmoxis_cmb_temperature(
         res['surface_T'],
         res['P_cmb'] / 1e9,
     )
-    return float(res['cmb_T'])
+    return float(res['cmb_T']), float(res['surface_T'])
 
 
-def _resolve_zalmoxis_surface_temperature(
+def _resolve_zalmoxis_cmb_temperature(
     config: Config,
     hf_row: dict,
     mode: str,
     external_temperature_source: bool = False,
 ) -> float:
-    """Resolve surface_temperature for the Zalmoxis structure call.
-
-    For 'liquidus_super', returns the surface temperature of the solved
-    super-liquidus adiabat, the same memoised solve that gives the CMB anchor
-    (:func:`_resolve_zalmoxis_cmb_temperature`). Zalmoxis seeds its first-guess
-    profile, its centre-temperature cap and its zero-pressure nodes with this
-    value. Returns ``config.planet.tsurf_init`` for every other mode, for a
-    structure solve driven by an external temperature source, and when the
-    anchor solve fails and the CMB anchor falls back.
-
-    Parameters
-    ----------
-    config : Config
-        PROTEUS configuration.
-    hf_row : dict
-        Helpfile row; ``hf_row['P_cmb']`` is used when populated.
-    mode : str
-        PROTEUS temperature mode of this structure call.
-    external_temperature_source : bool
-        True when an evolved T(r) profile drives the structure solve.
-
-    Returns
-    -------
-    float
-        Surface temperature [K].
-    """
-    if mode != 'liquidus_super' or external_temperature_source:
-        return float(config.planet.tsurf_init)
-    from proteus.interior_energetics.common import InitialConditionError
-
-    try:
-        return float(solve_superliquidus_adiabat(config, hf_row)['surface_T'])
-    except InitialConditionError:
-        return float(config.planet.tsurf_init)
+    """CMB temperature of :func:`_resolve_zalmoxis_anchor_temperatures`."""
+    return _resolve_zalmoxis_anchor_temperatures(
+        config, hf_row, mode, external_temperature_source
+    )[0]
 
 
 def _anchor_failure_deferred(config: Config) -> bool:
@@ -1008,11 +987,12 @@ def _solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
 
     mantle_eos = config.interior_struct.zalmoxis.mantle_eos
     P_surface = 1e5  # 1 bar surface anchor for the adiabat
-    global _SUPERLIQ_LAST_ANCHOR, _SUPERLIQ_LAST_ANCHOR_FOR
+    global _SUPERLIQ_LAST_ANCHOR, _SUPERLIQ_LAST_ANCHOR_FOR, _SUPERLIQ_LAST_SURFACE
     _cache_key = _superliq_cache_key(config, P_cmb)
     if _cache_key in _SUPERLIQ_CACHE:
         cached = dict(_SUPERLIQ_CACHE[_cache_key])
         _SUPERLIQ_LAST_ANCHOR = float(cached['cmb_T'])
+        _SUPERLIQ_LAST_SURFACE = float(cached['surface_T'])
         _SUPERLIQ_LAST_ANCHOR_FOR = _superliq_anchor_for(config)
         return cached
 
@@ -1353,6 +1333,7 @@ def _solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
     }
     _SUPERLIQ_CACHE[_cache_key] = dict(out)
     _SUPERLIQ_LAST_ANCHOR = float(out['cmb_T'])
+    _SUPERLIQ_LAST_SURFACE = float(out['surface_T'])
     _SUPERLIQ_LAST_ANCHOR_FOR = _superliq_anchor_for(config)
     return out
 
@@ -1536,10 +1517,7 @@ def load_zalmoxis_configuration(
     # missing one re-raises unconverted here and in zalmoxis_solver itself.
     mode = temperature_mode_override or config.planet.temperature_mode
     try:
-        cmb_temperature = _resolve_zalmoxis_cmb_temperature(
-            config, hf_row, mode, external_temperature_source=external_temperature_source
-        )
-        surface_temperature = _resolve_zalmoxis_surface_temperature(
+        cmb_temperature, surface_temperature = _resolve_zalmoxis_anchor_temperatures(
             config, hf_row, mode, external_temperature_source=external_temperature_source
         )
     except FileNotFoundError:
@@ -1579,9 +1557,7 @@ def load_zalmoxis_configuration(
         # iteration. temperature_mode_override lets SPIDER coupling force
         # adiabatic without mutating the shared Config object (see proteus
         # rules §"Config mutability").
-        'temperature_mode': _resolve_zalmoxis_temperature_mode(
-            temperature_mode_override or config.planet.temperature_mode
-        ),
+        'temperature_mode': _resolve_zalmoxis_temperature_mode(mode),
         'surface_temperature': surface_temperature,
         'cmb_temperature': cmb_temperature,
         'center_temperature': config.planet.tcenter_init,
