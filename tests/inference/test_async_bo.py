@@ -260,7 +260,6 @@ def test_parallel_process_happy_path_with_mocked_manager(monkeypatch, tmp_path):
         return torch.tensor([[0.2], [0.8]], dtype=torch.double)[:n_workers]
 
     monkeypatch.setattr(async_mod, 'init_locs', _fake_init_locs)
-    monkeypatch.setattr(async_mod, 'get_kernel', lambda *args, **kwargs: object())
 
     D_final, logs, elapsed = async_mod.parallel_process(
         objective_builder=lambda **kwargs: lambda x: x,
@@ -332,7 +331,6 @@ def _mocked_parallel_process_env(monkeypatch, tmp_path, fake_process_cls, n_init
             [[0.2], [0.8]], dtype=torch.double
         )[:n_workers],
     )
-    monkeypatch.setattr(async_mod, 'get_kernel', lambda *args, **kwargs: object())
 
 
 def test_parallel_process_reports_a_worker_that_stopped_early(monkeypatch, tmp_path, caplog):

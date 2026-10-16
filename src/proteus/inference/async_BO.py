@@ -404,14 +404,10 @@ def parallel_process(
         student_t_dof=student_t_dof,
     )
 
-    # Build kernel
-    d = len(parameters)
-    kernel_name = kernel
-    kernel = get_kernel(kernel, d)
-
+    get_kernel(kernel, len(parameters))  # fails early on an unknown kernel name
     process_fun = partial(
         BO_step,
-        k=kernel,
+        kernel=kernel,
         acqf=acqf,
         input_warp=input_warp,
     )
@@ -442,7 +438,7 @@ def parallel_process(
 
     # Generate initial candidate locations and busy-map
     X_init = init_locs(  # (n_workers, d)
-        n_workers, D_shared, acqf=acqf, kernel=kernel_name, input_warp=input_warp
+        n_workers, D_shared, acqf=acqf, kernel=kernel, input_warp=input_warp
     )
     B = mgr.dict()
 
