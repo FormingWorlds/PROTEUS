@@ -964,7 +964,8 @@ def test_the_stored_pair_follows_the_most_recent_solve(monkeypatch):
             configs[dT], {'P_cmb': 1.5e11}, 'liquidus_super'
         )
         seen.append(len(adiabats))
-        first = first or pairs[dT]
+        if first is None:
+            first = pairs[dT]
         assert (zmod._SUPERLIQ_LAST_ANCHOR, zmod._SUPERLIQ_LAST_SURFACE) == pytest.approx(
             pairs[dT]
         )

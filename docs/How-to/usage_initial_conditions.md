@@ -48,8 +48,8 @@ parameter:
 | `adiabatic` | an adiabat anchored at the surface | `tsurf_init` |
 | `isothermal` | a uniform temperature | `tsurf_init` |
 | `linear` | a surface-to-centre gradient | `tsurf_init`, `tcenter_init` |
-| `accretion` | accretion energetics | `f_accretion`, `f_differentiation`; `tsurf_init` for the structure |
-| `isentropic` | the specific entropy directly | `ini_entropy`, `ini_dsdr`; `tsurf_init` for the structure |
+| `accretion` | accretion energetics | `f_accretion`, `f_differentiation` |
+| `isentropic` | the specific entropy directly | `ini_entropy`, `ini_dsdr` |
 
 The default `liquidus_super` solves for the single adiabat that is fully molten
 throughout the mantle with a controlled superheat margin (see below). The
@@ -66,6 +66,34 @@ defaults to 500 K:
     temperature_mode = "liquidus_super"   # the default; shown here for clarity
     delta_T_super    = 500.0              # [K] above the liquidus at the core-mantle boundary
 ```
+
+### Where `tsurf_init` enters
+
+In every mode, `planet.tsurf_init` is the initial magma temperature of the dummy
+and boundary energetics, the floor of their re-melt after a giant impact, and
+the temperature of the initial flux guess when `interior_energetics.flux_guess`
+is negative. Its other uses depend on the mode:
+
+| Mode | Structure solve | Spider and Aragog energetics |
+|------|-----------------|------------------------------|
+| `isothermal`, `linear`, `adiabatic` | surface temperature of the Zalmoxis solve and of the dummy structure | initial magma surface temperature; the Aragog re-melt after an impact takes it again |
+| `isentropic` | surface temperature of the Zalmoxis solve and of the dummy structure | not used; they start from `ini_entropy` |
+| `accretion` | surface temperature of the Zalmoxis solve; not used by the dummy structure | the accretion thermal state that the Zalmoxis solve writes; `tsurf_init` when that state is absent |
+| `adiabatic_from_cmb` | Zalmoxis: surface end of the first-guess profile, temperature of zero-pressure nodes, and temperature of the structure nodes below the CMB; not used by the dummy structure | not used; the entropy comes from `tcmb_init` at the CMB |
+| `liquidus_super` | Zalmoxis takes the surface and CMB temperatures of the solved super-liquidus adiabat in the `adiabatic_from_cmb` roles; see below for `tsurf_init` | not used; they start on the solved adiabat |
+
+In `liquidus_super`, the structure solve takes `tsurf_init` together with
+`tcmb_init` only when no super-liquidus pair was solved for the same
+`delta_T_super` and mantle EOS: on a call driven by an external temperature
+source (in a resumed run until the next anchor solve), where the external
+profile sets $T(r)$, and on a P-T anchor failure that a later step re-solves (a
+PALEOS mantle with spider or aragog energetics).
+
+The structure nodes below the CMB are part of the Zalmoxis profile only; the
+energetics set their own core temperature. With Aragog and a Zalmoxis PALEOS
+mantle, a fresh run also compares its entropy initial condition with an
+adiabat anchored at `tsurf_init` (at the accretion surface temperature when
+Zalmoxis wrote one), in every mode but `liquidus_super`; this check only logs and writes a diagnostic file.
 
 ## What to favour
 

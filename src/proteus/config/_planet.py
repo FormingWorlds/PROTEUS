@@ -272,27 +272,9 @@ class Planet:
         Initial surface temperature [K]. In every mode it is the initial magma
         temperature of the dummy and boundary energetics, the floor of their
         re-melt after a giant impact, and the temperature of the initial flux
-        guess when interior_energetics.flux_guess < 0; in every mode but
-        'liquidus_super' it also anchors the Aragog entropy cross-check, a
-        diagnostic. Per mode it is also:
-        'isothermal', 'linear', 'adiabatic': the surface temperature of the dummy
-        structure and of the Zalmoxis structure solve, and with spider or aragog
-        energetics the initial magma surface temperature, which the Aragog
-        re-melt after an impact takes again.
-        'isentropic': the surface temperature of the dummy structure and of the
-        Zalmoxis structure solve; spider and aragog start from ini_entropy.
-        'accretion': the surface temperature of the Zalmoxis structure solve;
-        spider and aragog take the accretion thermal state that solve writes,
-        and tsurf_init with any other structure.
-        'adiabatic_from_cmb': in the Zalmoxis structure solve the surface end of
-        the first-guess profile, the temperature of zero-pressure nodes and the
-        core temperature of the CMB-anchored adiabat.
-        'liquidus_super': no further use; the Zalmoxis structure solve takes the
-        surface and CMB temperatures of the solved super-liquidus adiabat in the
-        'adiabatic_from_cmb' roles. A call driven by an external temperature
-        source passes the last solved pair for the same delta_T_super and mantle
-        EOS, or else tsurf_init and tcmb_init, and the external profile sets
-        T(r).
+        guess when interior_energetics.flux_guess < 0. Its other uses depend on
+        temperature_mode; the How-to page on initial thermal conditions lists
+        them per mode.
     tcmb_init: float
         Initial core-mantle boundary temperature [K] (adiabatic_from_cmb).
         The mantle adiabat is anchored at this temperature at P = P_cmb

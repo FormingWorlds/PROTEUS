@@ -688,7 +688,8 @@ def _resolve_zalmoxis_anchor_temperatures(
     P_cmb estimate on the very first call; the next structure iteration
     recomputes it against the converged Zalmoxis P_cmb. Zalmoxis anchors its
     upward integration at the CMB value and takes the surface value for its
-    first-guess profile, its zero-pressure nodes and its core temperature. The energetics IC is solved separately on the P-S tables
+    first-guess profile, its zero-pressure nodes and its nodes below the CMB.
+    The energetics IC is solved separately on the P-S tables
     (compute_initial_entropy).
 
     When ``external_temperature_source`` is set the structure solve is driven
