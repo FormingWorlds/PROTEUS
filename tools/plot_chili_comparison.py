@@ -684,8 +684,8 @@ def _collect_atm_panel(intercomp, proteus_df, planet, phi_tgt, NS):
             subset = df[idx]
             row = subset.loc[(phi[subset.index] - phi_tgt).abs().idxmin()]
         else:
-            # Run never reaches the target melt fraction; use its closest
-            # approach (final snapshot) so the model still appears.
+            # Run never reaches the window; use its row of lowest melt
+            # fraction so the model still appears.
             row = df.loc[phi.idxmin()]
         entry = {
             'name': st['label'],

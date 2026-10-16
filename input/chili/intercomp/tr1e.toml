@@ -21,20 +21,17 @@ config_version = "3.0"
 
     [params.stop.time]
         maximum = 1e9
-        [params.stop.solid]
+    [params.stop.solid]
         phi_crit = 0.05
-
     [params.stop.radeqm]
-    enabled = false
-
+        enabled = false
     [params.stop.escape]
-    enabled = false
-
+        enabled = false
     [params.stop.iters]
-    maximum = 1000000
-
+        maximum = 1000000
     [params.stop.clock]
-    enabled = false
+        enabled = false
+
 [star]
     module  = "mors"
     mass    = 0.0898
