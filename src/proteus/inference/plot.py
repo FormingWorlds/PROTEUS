@@ -456,7 +456,7 @@ def plot_result_objective(D, parameters, n_init, directory, yclip=-12):
     ymin = min(0.0, np.amin(Y)) - 0.1
 
     # Plot
-    fig, axs = plt.subplots(2, d, figsize=(2.7 * d, 3.2))
+    fig, axs = plt.subplots(2, d, figsize=(2.7 * d, 3.2), squeeze=False)
     axs[0, 0].set_ylabel('Histogram')
     axs[1, 0].set_ylabel(ylbl)
 
@@ -608,18 +608,10 @@ def plot_result_correlation(pars: dict, obs: dict, directory):
     Y = np.array(Y, dtype=float).reshape(-1, n_obs)
 
     # Make plot
-    fig, axs = plt.subplots(n_obs, n_par, figsize=(2.7 * n_par, 2.7 * n_obs))
+    fig, axs = plt.subplots(n_obs, n_par, figsize=(2.7 * n_par, 2.7 * n_obs), squeeze=False)
     for i in range(n_par):
         for j in range(n_obs):
-            # handle axis
-            if n_par == 1 and n_obs == 1:
-                ax = axs
-            elif n_par == 1:
-                ax = axs[j]
-            elif n_obs == 1:
-                ax = axs[i]
-            else:
-                ax = axs[j, i]
+            ax = axs[j, i]
 
             # plot data
             xx = X[:, i]
@@ -638,30 +630,17 @@ def plot_result_correlation(pars: dict, obs: dict, directory):
             if variable_is_logarithmic(par_keys[i]):
                 ax.set_xscale('log')
 
-            # hide tick labels
-            if i >= 1:
-                ax.set_yticklabels([])
-            if j < n_obs - 1:
-                ax.set_xticklabels([])
+            # label the outer panels, hide tick labels elsewhere
+            if i == 0:
+                ax.set_ylabel(obs_keys[j], fontsize=10)
+            else:
+                ax.tick_params(axis='y', which='both', labelleft=False)
+            if j == n_obs - 1:
+                ax.set_xlabel(par_keys[i], fontsize=10)
+            else:
+                ax.tick_params(axis='x', which='both', labelbottom=False)
 
-    # Legend
-    if n_obs == 1 or n_par == 1:
-        axs[0].legend()
-    else:
-        axs[0, 0].legend()
-
-    # Axis labels
-    if n_par == 1 or n_obs == 1:
-        axs[0].set_xlabel(par_keys[0], fontsize=10)
-    else:
-        for i in range(n_par):
-            axs[-1, i].set_xlabel(par_keys[i], fontsize=10)
-
-    if n_obs == 1 or n_par == 1:
-        axs[0].set_ylabel(obs_keys[0], fontsize=10)
-    else:
-        for j in range(n_obs):
-            axs[j, 0].set_ylabel(obs_keys[j], fontsize=10)
+    axs[0, 0].legend()
 
     # Decorate
     fig.subplots_adjust(wspace=0.02, hspace=0.02)
