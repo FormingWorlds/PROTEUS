@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 
 from proteus.config._params import StopSolid
+from proteus.grid.analyse_options import read_post_processing_options
 from proteus.grid.dimensions import dimension_values
 from proteus.grid.manage import grid_dimension_keys
 from proteus.grid.summarise import status_category
@@ -31,26 +32,6 @@ CSV_MODES = {
     'running_error': ('Running', 'Error', 'Unknown'),
 }
 
-# Outputs drawn in the ECDF plot when [post_processing] sets no output_variables.
-DEFAULT_OUTPUT_VARIABLES = (
-    'solidification_time',
-    'Phi_global',
-    'T_surf',
-    'P_surf',
-    'atm_kg_per_mol',
-)
-
-# Keys accepted in the [post_processing] table, with their expected types.
-POST_PROCESSING_OPTIONS = {
-    'update_csv': bool,
-    'plot_status': bool,
-    'plot_ecdf': bool,
-    'colormap': str,
-    'colourmap': str,
-    'output_variables': list,
-    'plot_format': str,
-}
-
 
 def get_grid_name(grid_dir: str | Path) -> str:
     """Return the grid name (final component of the grid directory path)."""
@@ -66,13 +47,14 @@ def resolve_grid_dir(config: dict) -> Path:
     ValueError
         If ``output`` is ``'auto'``: the grid manager turns that into a unique
         timestamped folder at run time, so the name cannot be recovered from the
-        config. Point grid-analyse at a grid config with a fixed ``output``.
+        config. Pass the grid folder with ``-o`` instead.
     """
     output = str(config['output']).strip().strip('/')
     if output.lower() == 'auto':
         raise ValueError(
-            "Cannot analyse a grid whose output is 'auto': the run folder name is "
-            'generated at run time. Set output to the actual grid run folder name.'
+            "Cannot find the grid folder from a config whose output is 'auto': the "
+            'folder name is generated at run time. Pass the grid folder instead, as in '
+            "'proteus grid-analyse -o output/<grid folder>'."
         )
     return (Path(get_proteus_dir()) / 'output' / output).resolve()
 
@@ -137,8 +119,29 @@ def _load_case_config(index: int, case_dir: Path) -> tuple[dict, str]:
     return {}, ''
 
 
-def _load_case(index: int, case_dir: Path) -> dict:
-    """Load one case's status, config and runtime helpfile (tolerantly)."""
+def _read_case_helpfile(index: int, case_dir: Path) -> pd.DataFrame | None:
+    """Return a case's runtime helpfile, or None if it is absent or unreadable.
+
+    Read through the coupler's exact reader, which refuses a cut or malformed file
+    (for example a run killed mid-write) instead of returning a partial last row.
+    """
+    runtime_file = Path(helpfile_path(case_dir))
+    if not runtime_file.exists():
+        log.warning('Case %06d has no runtime_helpfile.csv', index)
+        return None
+    try:
+        return read_helpfile_table(runtime_file)
+    except (OSError, HelpfileFormatError) as exc:
+        log.warning('Case %06d: cannot read runtime_helpfile.csv: %s', index, exc)
+        return None
+
+
+def _load_case(index: int, case_dir: Path, base_solid: dict) -> dict:
+    """Load one case's status and config, and reduce its helpfile to the summary values.
+
+    The helpfile is read, reduced to its final row and solidification time, and
+    dropped, so a grid of long runs never holds more than one helpfile in memory.
+    """
     # Status code is read tolerantly (ReadStatus returns STATUS_MISSING if absent).
     code = ReadStatus(case_dir)
     comment = CommentFromStatus(code) if code >= 0 else 'Missing status file'
@@ -146,19 +149,9 @@ def _load_case(index: int, case_dir: Path) -> dict:
         log.warning('Case %06d has no readable status file', index)
 
     init_params, config_source = _load_case_config(index, case_dir)
-
-    # Read through the coupler's exact reader, which refuses a cut or malformed file
-    # (for example a run killed mid-write) instead of returning a partial last row.
-    output = None
-    runtime_file = Path(helpfile_path(case_dir))
-    if runtime_file.exists():
-        try:
-            output = read_helpfile_table(runtime_file)
-        except (OSError, HelpfileFormatError) as exc:
-            log.warning('Case %06d: cannot read runtime_helpfile.csv: %s', index, exc)
-    else:
-        log.warning('Case %06d has no runtime_helpfile.csv', index)
-
+    output = _read_case_helpfile(index, case_dir)
+    solid = _case_solid_settings(init_params, base_solid)
+    final_row = {} if output is None or output.empty else output.iloc[-1].to_dict()
     return {
         'index': index,
         'status_code': code,
@@ -166,17 +159,23 @@ def _load_case(index: int, case_dir: Path) -> dict:
         'category': status_category(code),
         'init_params': init_params,
         'config_source': config_source,
-        'output': output,
+        'final_row': final_row,
+        'solidification_time': extract_solidification_time(output, solid['phi_crit']),
+        'solid_stop_enabled': solid['enabled'],
     }
 
 
-def load_grid_cases(grid_dir: str | Path) -> list[dict]:
-    """Load status, config and final results for every case in a grid.
+def load_grid_cases(grid_dir: str | Path, base_solid: dict | None = None) -> list[dict]:
+    """Load status, config and summary results for every case in a grid.
 
     Parameters
     ----------
     grid_dir : str or Path
         Grid output directory containing the ``case_*`` folders.
+    base_solid : dict or None
+        ``{'enabled': bool, 'phi_crit': float}`` for a case whose config omits
+        ``params.stop.solid`` (normally the base config's values; default the
+        schema defaults).
 
     Returns
     -------
@@ -185,12 +184,23 @@ def load_grid_cases(grid_dir: str | Path) -> list[dict]:
         ``index`` (int), ``status_code`` (int), ``status`` (str comment),
         ``category`` (str), ``init_params`` (dict from init_coupler.toml, else
         from the grid's cfgs/case_<N>.toml), ``config_source`` (str, the file it
-        came from, empty if neither is readable) and ``output``
-        (pandas.DataFrame from runtime_helpfile.csv, or None).
+        came from, empty if neither is readable), ``final_row`` (dict of the last
+        runtime-helpfile row, empty without a readable helpfile),
+        ``solidification_time`` (float, see :func:`extract_solidification_time`)
+        and ``solid_stop_enabled`` (bool).
     """
+    if base_solid is None:
+        base_solid = {'enabled': DEFAULT_SOLID_ENABLED, 'phi_crit': DEFAULT_PHI_CRIT}
     grid_dir = Path(grid_dir)
-    cases = [_load_case(index, path) for index, path in _case_folders(grid_dir)]
+    cases = [_load_case(index, path, base_solid) for index, path in _case_folders(grid_dir)]
     log.info("Loaded %d cases from '%s'", len(cases), grid_dir)
+    stop_off = [c['index'] for c in cases if not c['solid_stop_enabled']]
+    if stop_off:
+        log.info(
+            '%d case(s) ran with the solidification stop disabled; their '
+            'solidification_time is still the first time Phi_global <= phi_crit',
+            len(stop_off),
+        )
     return cases
 
 
@@ -222,8 +232,9 @@ def extract_solidification_time(output: pd.DataFrame | None, phi_crit: float) ->
 
     Solidification time is the FIRST row with ``Phi_global <= phi_crit``, the
     solidification stop criterion of ``proteus.utils.terminate``, not the last row.
-    Returns NaN when the case never solidifies, has no results, or lacks the
-    required columns.
+    It is found the same way when the solidification stop is disabled (a grid with
+    a fixed end time), since the run then continues past the crossing. Returns NaN
+    when the case never solidifies, has no results, or lacks the required columns.
 
     Parameters
     ----------
@@ -245,19 +256,16 @@ def extract_solidification_time(output: pd.DataFrame | None, phi_crit: float) ->
     return float(output.loc[solidified.idxmax(), 'Time'])
 
 
-def _case_solidification_time(case: dict, base_solid: dict) -> float:
-    """Return a case's solidification time, or NaN if its solid stop is disabled."""
-    solid = _dig(case['init_params'], 'params.stop.solid', {})
-    enabled = solid.get('enabled', base_solid['enabled'])
-    if not enabled:
-        return np.nan
-    phi_crit = solid.get('phi_crit', base_solid['phi_crit'])
-    return extract_solidification_time(case['output'], phi_crit)
+def _case_solid_settings(init_params: dict, base_solid: dict) -> dict:
+    """Return a case's solidification stop ``{'enabled', 'phi_crit'}``, base values filling gaps."""
+    solid = _dig(init_params, 'params.stop.solid', {})
+    return {
+        'enabled': bool(solid.get('enabled', base_solid['enabled'])),
+        'phi_crit': float(solid.get('phi_crit', base_solid['phi_crit'])),
+    }
 
 
-def build_summary_dataframe(
-    cases: list[dict], param_paths: list[str], base_solid: dict | None = None
-) -> pd.DataFrame:
+def build_summary_dataframe(cases: list[dict], param_paths: list[str]) -> pd.DataFrame:
     """Assemble one summary row per case: status, tested parameters, final outputs.
 
     Parameters
@@ -266,10 +274,6 @@ def build_summary_dataframe(
         Output of :func:`load_grid_cases`.
     param_paths : list of str
         Swept grid-parameter paths to record per case (from each case's config).
-    base_solid : dict or None
-        ``{'enabled': bool, 'phi_crit': float}`` for a case whose init_coupler.toml
-        omits ``params.stop.solid`` (normally the base config's values; default
-        the schema defaults).
 
     Returns
     -------
@@ -277,11 +281,8 @@ def build_summary_dataframe(
         One row per case. Columns: ``case_number``, ``status``,
         ``status_category``, ``config_source``, the tested parameters, every
         runtime-helpfile column at the final row, and ``solidification_time``
-        (NaN when the case never solidified or its solidification stop
-        criterion was disabled).
+        (NaN when the case never reached ``Phi_global <= phi_crit``).
     """
-    if base_solid is None:
-        base_solid = {'enabled': DEFAULT_SOLID_ENABLED, 'phi_crit': DEFAULT_PHI_CRIT}
     records = []
     for case in cases:
         record = {
@@ -290,17 +291,11 @@ def build_summary_dataframe(
             'status_category': case['category'],
             'config_source': case.get('config_source', ''),
         }
-
         # Tested parameter values actually used by this case.
         for path in param_paths:
             record[path] = _dig(case['init_params'], path, np.nan)
-
-        # Final-row outputs (all helpfile columns), if the case produced any.
-        output = case['output']
-        if output is not None and not output.empty:
-            record.update(output.iloc[-1].to_dict())
-
-        record['solidification_time'] = _case_solidification_time(case, base_solid)
+        record.update(case['final_row'])
+        record['solidification_time'] = case['solidification_time']
         records.append(record)
 
     return pd.DataFrame(records)
@@ -332,45 +327,6 @@ def write_summary_csvs(summary: pd.DataFrame, out_dir: str | Path) -> dict[str, 
         log.info('Wrote %d cases to %s', len(subset), path.name)
         written[mode] = path
     return written
-
-
-def _check_post_processing_table(table) -> None:
-    """Raise ValueError for a [post_processing] table with unknown keys or bad types."""
-    if not isinstance(table, dict):
-        raise ValueError(f'[post_processing] must be a table, got {type(table).__name__}')
-    unknown = sorted(set(table) - set(POST_PROCESSING_OPTIONS))
-    if unknown:
-        raise ValueError(
-            f'Unknown key(s) {unknown} in [post_processing]; accepted keys are '
-            f'{sorted(POST_PROCESSING_OPTIONS)}'
-        )
-    for key, value in table.items():
-        expected = POST_PROCESSING_OPTIONS[key]
-        if not isinstance(value, expected):
-            raise ValueError(
-                f'[post_processing].{key} must be a {expected.__name__}, '
-                f'got {value!r} ({type(value).__name__})'
-            )
-    outputs = table.get('output_variables', [])
-    if not all(isinstance(v, str) for v in outputs):
-        raise ValueError('[post_processing].output_variables must be a list of strings')
-    if {'colormap', 'colourmap'} <= set(table) and table['colormap'] != table['colourmap']:
-        raise ValueError('[post_processing] sets both colormap and colourmap differently')
-
-
-def _read_post_processing_options(config: dict) -> dict:
-    """Return the validated ``[post_processing]`` options with defaults filled in."""
-    table = config.get('post_processing', {})
-    _check_post_processing_table(table)
-    opts = dict(table)
-    opts.setdefault('update_csv', True)
-    opts.setdefault('plot_status', True)
-    opts.setdefault('plot_ecdf', True)
-    # Accept both spellings; 'colormap' matches matplotlib, 'colourmap' the UK style.
-    opts['colormap'] = opts.get('colormap', opts.pop('colourmap', None))
-    opts.setdefault('output_variables', list(DEFAULT_OUTPUT_VARIABLES))
-    opts.setdefault('plot_format', None)
-    return opts
 
 
 def _read_ref_config(grid_dir: Path) -> dict:
@@ -422,12 +378,12 @@ def _extract_csvs(grid_dir: Path, tested_params: dict, ref: dict, update: bool) 
     """Write (or, when ``update`` is false, locate) the three summary CSVs."""
     extracted_dir = grid_dir / 'post_processing' / 'extracted_data'
     if update:
-        cases = load_grid_cases(grid_dir)
+        cases = load_grid_cases(grid_dir, _resolve_base_solid(ref))
         if not cases:
             raise FileNotFoundError(
                 f"No case_<N> folders in '{grid_dir}': no grid case has started yet."
             )
-        summary = build_summary_dataframe(cases, list(tested_params), _resolve_base_solid(ref))
+        summary = build_summary_dataframe(cases, list(tested_params))
         return write_summary_csvs(summary, extracted_dir)
 
     csv_paths = {m: extracted_dir / f'final_extracted_data_{m}.csv' for m in CSV_MODES}
@@ -440,8 +396,33 @@ def _extract_csvs(grid_dir: Path, tested_params: dict, ref: dict, update: bool) 
     return csv_paths
 
 
-def analyse_grid(config_path: str | Path) -> None:
-    """Post-process a PROTEUS grid from its ``.grid.toml`` config.
+def _resolve_inputs(config_path: Path | None, grid_dir: Path | None) -> tuple[dict, Path, Path]:
+    """Return (config, config path, grid folder) from a grid file, a grid folder or both.
+
+    With only a grid folder, its copy.grid.toml (saved at launch) is the config.
+    With both, the folder is analysed with the options of the given file.
+    """
+    if config_path is None and grid_dir is None:
+        raise ValueError('Give a grid config (-c), a grid folder (-o) or both')
+    if config_path is None:
+        config_path = Path(grid_dir) / 'copy.grid.toml'
+        if not config_path.exists():
+            raise FileNotFoundError(
+                f"No copy.grid.toml in '{grid_dir}'; pass the grid file with -c as well."
+            )
+    config_path = Path(config_path)
+    with config_path.open('rb') as f:
+        config = tomllib.load(f)
+    grid_dir = resolve_grid_dir(config) if grid_dir is None else Path(grid_dir).resolve()
+    if not grid_dir.is_dir():
+        raise FileNotFoundError(f"Grid output directory not found: '{grid_dir}'")
+    return config, config_path, grid_dir
+
+
+def analyse_grid(
+    config_path: str | Path | None = None, grid_dir: str | Path | None = None
+) -> None:
+    """Post-process a PROTEUS grid from its ``.grid.toml`` config or its output folder.
 
     Reads the optional ``[post_processing]`` table for its options, extracts
     per-case final-row results into summary CSVs, and (optionally) makes the
@@ -449,17 +430,15 @@ def analyse_grid(config_path: str | Path) -> None:
 
     Parameters
     ----------
-    config_path : str or Path
-        Path to the grid config file (the same ``.grid.toml`` used to run the grid).
+    config_path : str, Path or None
+        Grid config file (the same ``.grid.toml`` used to run the grid). Without
+        ``grid_dir`` its ``output`` names the grid folder, so it cannot be ``'auto'``.
+    grid_dir : str, Path or None
+        Grid output folder. Without ``config_path`` its ``copy.grid.toml`` gives
+        the options.
     """
-    config_path = Path(config_path)
-    with config_path.open('rb') as f:
-        config = tomllib.load(f)
-
-    opts = _read_post_processing_options(config)
-    grid_dir = resolve_grid_dir(config)
-    if not grid_dir.is_dir():
-        raise FileNotFoundError(f"Grid output directory not found: '{grid_dir}'")
+    config, config_path, grid_dir = _resolve_inputs(config_path, grid_dir)
+    opts = read_post_processing_options(config)
     log.info("Analysing grid '%s' at '%s'", get_grid_name(grid_dir), grid_dir)
 
     tested_params = _run_tested_parameters(config, config_path, grid_dir)

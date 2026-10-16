@@ -27,6 +27,7 @@ from proteus.config import (
     read_config_object,
 )
 from proteus.config._interior import _TOL_UNSET, default_rtol, rtol_is_set
+from proteus.grid.analyse_options import check_post_processing_table
 from proteus.grid.dimensions import (
     DIMENSION_METHODS,
     dimension_arange,
@@ -612,8 +613,8 @@ done
 
 
 # Top-level keys of a grid file that set up the grid; every other key names a dimension.
-# `post_processing` is the optional table read by `proteus grid-analyse`; it is a grid
-# setting here so `proteus grid` accepts a grid file that carries it.
+# `post_processing` is the optional table read by `proteus grid-analyse`; `proteus grid`
+# checks it at launch, so a typo stops the grid before any case runs.
 GRID_SETTINGS = frozenset(
     {
         'output',
@@ -704,6 +705,7 @@ def grid_from_config(config_fpath: str, test_run: bool = False, check_interval: 
     with open(config_fpath, 'r') as file:
         config = toml.load(file)
     dimension_keys = grid_dimension_keys(config, config_fpath)
+    check_post_processing_table(config.get('post_processing', {}))
 
     # Output folder name, created inside `PROTEUS/output/`
     folder = str(config['output'])

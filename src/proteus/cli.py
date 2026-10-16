@@ -749,16 +749,34 @@ cli.add_command(observe)
 
 
 @click.command()
-@config_option
-def grid_analyse(config_path: Path):
+@click.option(
+    '-c',
+    '--config',
+    'config_path',
+    type=click.Path(exists=True, dir_okay=False, path_type=Path, resolve_path=True),
+    default=None,
+    help='Grid config file; its [post_processing] table sets the options',
+)
+@click.option(
+    '-o',
+    '--output',
+    'output_path',
+    type=click.Path(exists=True, file_okay=False, path_type=Path, resolve_path=True),
+    default=None,
+    help='Grid output folder; without -c its copy.grid.toml sets the options',
+)
+def grid_analyse(config_path: Path | None, output_path: Path | None):
     """Analyse a PROTEUS grid as a post-processing step: extract summary CSVs and make grid plots.
 
-    config_path : path to the grid .toml file (the same one used to run the grid;
-    its optional [post_processing] table configures the analysis).
+    Give the grid output folder (-o), the grid .toml file used to run the grid (-c),
+    or both. The optional [post_processing] table of the grid file configures the
+    analysis; with -o alone it is read from the copy.grid.toml in the folder.
     """
+    if config_path is None and output_path is None:
+        raise click.UsageError('Give the grid folder with -o, the grid file with -c, or both.')
     from proteus.grid.analyse import analyse_grid
 
-    analyse_grid(config_path)
+    analyse_grid(config_path, output_path)
 
 
 cli.add_command(grid_analyse)

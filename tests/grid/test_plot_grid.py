@@ -5,9 +5,15 @@ Covers the ECDF/status plotting helpers without a display:
   solidified) keep the curve below 100 %
 - a log-preset output with zeros is drawn on a 0 + log (symlog) axis, zeros at 0
 - the output unit scale is applied once to the plotted values
-- status bars are coloured by category and ordered by category then count, with a
-  'Not started' bar for grid cases that have no folder
-- the colour map's light end is trimmed to 2:1 contrast on white, whichever end it is
+- status bars are horizontal, coloured by category with the cycle colour nearest
+  green, blue and red of the active style, and ordered by category then count,
+  with a 'Not started' bar for grid cases that have no folder
+- each end of the colour map is trimmed to 2:1 contrast against the axes face
+  colour of the style, light or dark
+- a few swept values take the cycle colours and a legend; more take the colour map
+  and a colourbar whose labels are exactly the swept values
+- the plots follow the active style (proteus-mpl light or dark via the style key)
+  instead of forcing ticks, edges or greys
 - plot format resolution, output-variable validation and the figure files
 
 Testing standards:
@@ -26,21 +32,25 @@ import pytest
 matplotlib.use('Agg')  # headless backend for file-only tests
 
 from proteus.grid.plot_grid import (  # noqa: E402
-    CATEGORY_COLOURS,
     ECDF_LINEWIDTH,
-    MAX_CURVE_LUMINANCE,
-    _luminance,
+    MIN_CURVE_CONTRAST,
+    _contrast,
+    _hue_distance,
     _plot_cell,
     _set_axis_scale,
     _trim_colourmap,
     _value_colours,
     axis_scale,
+    category_colours,
     clean_series,
     count_not_started,
     ecdf,
+    ecdf_figsize,
+    label_colourbar,
     make_grid_plots,
     plot_ecdf_grid,
     plot_status_summary,
+    plot_style,
     resolve_plot_format,
     status_counts,
     validate_output_variables,
@@ -153,63 +163,127 @@ def test_zero_plus_log_axis_draws_zero_cases_at_zero():
 # ---------------------------------------------------------------------------
 
 
-def test_value_colours_numeric_linear_and_log_norms():
-    """Numeric values get a continuous norm; with log_norm, 10 sits halfway between
-    1 and 100 (a linear norm would put it at 0.0909).
-    """
-    cmap = get_colourmap('viridis')
-    _, is_numeric, norm = _value_colours([0.5, 1.0, 2.0], log_norm=False, cmap=cmap)
-    assert is_numeric
-    assert norm(1.0) == pytest.approx(1.0 / 3.0)
-    _, _, log_norm = _value_colours([1.0, 10.0, 100.0], log_norm=True, cmap=cmap)
-    assert log_norm(10.0) == pytest.approx(0.5)
+# Swept values of the tutorial grid (input/tutorials/tutorial_grid.toml).
+SEMIMAJORAXIS = [0.03, 0.1224744871391589, 0.5]
+H_BUDGET = [1000.0, 5000.0, 9000.0]
+WHITE, BLACK = (1.0, 1.0, 1.0), (0.0, 0.0, 0.0)
 
 
-def test_value_colours_degenerate_and_non_positive_log_ranges():
-    """A single tested value still maps to a finite colour, and a log norm over a
-    range including 0 falls back to a linear norm rather than failing.
+def test_value_colours_few_values_take_the_cycle_and_a_legend():
+    """Three swept values (fewer than the 10 colours of the default cycle) take the
+    first three cycle colours in rising order and no norm (a legend); a value read
+    back from the CSV with a changed last digit still gets its colour.
+    """
+    cycle = [
+        matplotlib.colors.to_rgb(c)
+        for c in matplotlib.rcParams['axes.prop_cycle'].by_key()['color']
+    ]
+    colour_of, norm = _value_colours(SEMIMAJORAXIS, log_norm=True, cmap=get_colourmap())
+    assert norm is None
+    assert [colour_of(v) for v in SEMIMAJORAXIS] == cycle[:3]
+    assert colour_of(0.12247448713915894) == cycle[1]
+
+
+def test_value_colours_many_numeric_values_take_a_log_or_linear_norm():
+    """Twelve values (more than the cycle) take the colour map through a norm; with
+    log_norm, 0.1 sits halfway between 0.01 and 1 (a linear norm puts it at 0.09).
+    A string axis with as many values still gets a legend, one colour per value.
     """
     cmap = get_colourmap('viridis')
-    colour_of, _, _ = _value_colours([0.7], log_norm=False, cmap=cmap)
+    many_log = list(np.logspace(-2, 0, 12))
+    _, norm = _value_colours(many_log, log_norm=True, cmap=cmap)
+    assert isinstance(norm, matplotlib.colors.LogNorm)
+    assert norm(0.1) == pytest.approx(0.5)
+    _, lin = _value_colours(many_log, log_norm=False, cmap=cmap)
+    assert lin(0.1) == pytest.approx((0.1 - 0.01) / 0.99)
+    names = [f'module_{i:02d}' for i in range(12)]
+    colour_of, str_norm = _value_colours(names, log_norm=False, cmap=cmap)
+    assert str_norm is None
+    assert len({colour_of(n) for n in names}) == 12
+
+
+def test_value_colours_single_and_string_values():
+    """A single tested value still maps to a finite colour, and two string values
+    (janus, agni) each take their own cycle colour, unknown strings a grey.
+    """
+    colour_of, _ = _value_colours([0.7], log_norm=False, cmap=get_colourmap())
     assert np.all(np.isfinite(colour_of(0.7)))
-    _, _, norm = _value_colours([0.0, 1.0], log_norm=True, cmap=cmap)
-    assert not isinstance(norm, matplotlib.colors.LogNorm)
-    assert norm(0.5) == pytest.approx(0.5)
-
-
-def test_value_colours_string_uses_discrete_legend_mapping():
-    """String values are non-numeric with no norm, and each maps to its own colour."""
-    colour_of, is_numeric, norm = _value_colours(
-        ['janus', 'agni'], log_norm=False, cmap=get_colourmap('viridis')
-    )
-    assert not is_numeric
+    colour_of, norm = _value_colours(['janus', 'agni'], log_norm=False, cmap=get_colourmap())
     assert norm is None
     assert colour_of('agni') != colour_of('janus')
+    assert colour_of('vulcan') not in (colour_of('agni'), colour_of('janus'))
 
 
 @pytest.mark.parametrize(
-    'name, light_end', [('viridis', 1.0), ('batlowK_r', 0.0)], ids=['light_top', 'light_bottom']
+    'name, face, trimmed_end',
+    [('viridis', WHITE, 1.0), ('batlowK_r', WHITE, 0.0), ('batlowK_r', BLACK, 1.0)],
+    ids=['light_top_on_white', 'light_bottom_on_white', 'dark_top_on_black'],
 )
-def test_trim_colourmap_makes_the_light_end_visible(name, light_end):
-    """The light end is cut until it has 2:1 contrast on white (luminance <= 0.475),
-    whichever side it is on; the dark end is untouched. The old fixed 15 % trim left
-    batlowK_r at luminance ~0.6, a faint pink.
+def test_trim_colourmap_cuts_the_end_that_vanishes_on_the_face(name, face, trimmed_end):
+    """The end too close to the face colour is cut until it has 2:1 contrast with
+    it, and not much further; the other end is untouched. On a dark face it is the
+    dark end of batlowK_r that goes, which a trim against white would keep.
     """
     cmap = get_colourmap(name)
-    trimmed = _trim_colourmap(cmap)
-    dark_end = 1.0 - light_end
-    assert _luminance(cmap(light_end)) > 0.7  # untrimmed light end is too pale
-    assert _luminance(trimmed(light_end)) <= MAX_CURVE_LUMINANCE + 0.01
-    assert _luminance(trimmed(light_end)) > MAX_CURVE_LUMINANCE - 0.05  # not over-trimmed
-    assert trimmed(dark_end)[:3] == pytest.approx(cmap(dark_end)[:3], abs=0.01)
+    trimmed = _trim_colourmap(cmap, face)
+    kept_end = 1.0 - trimmed_end
+    assert _contrast(cmap(trimmed_end), face) < MIN_CURVE_CONTRAST  # untrimmed end vanishes
+    assert _contrast(trimmed(trimmed_end), face) >= MIN_CURVE_CONTRAST - 0.02
+    assert _contrast(trimmed(trimmed_end), face) < MIN_CURVE_CONTRAST + 0.3  # not over-trimmed
+    assert trimmed(kept_end)[:3] == pytest.approx(cmap(kept_end)[:3], abs=0.01)
 
 
-def test_trim_colourmap_leaves_a_map_with_dark_ends_unchanged():
-    """A diverging map (vik) is dark at both ends, so nothing is trimmed."""
+def test_trim_colourmap_leaves_a_map_with_contrasting_ends_unchanged():
+    """A diverging map (vik) is dark at both ends, so nothing is cut on white."""
     cmap = get_colourmap('vik')
-    trimmed = _trim_colourmap(cmap)
+    trimmed = _trim_colourmap(cmap, WHITE)
     assert trimmed(0.0)[:3] == pytest.approx(cmap(0.0)[:3], abs=0.01)
     assert trimmed(1.0)[:3] == pytest.approx(cmap(1.0)[:3], abs=0.01)
+
+
+def _colourbar(values, norm):
+    """Return a figure and a colourbar over ``values`` labelled by label_colourbar."""
+    fig, ax = plt.subplots()
+    mappable = matplotlib.cm.ScalarMappable(norm=norm, cmap=get_colourmap())
+    cbar = fig.colorbar(mappable, ax=ax)
+    label_colourbar(cbar, values)
+    fig.canvas.draw()
+    return fig, cbar
+
+
+@pytest.mark.parametrize(
+    'values, labels',
+    [(SEMIMAJORAXIS, ['0.03', '0.1225', '0.5']), (H_BUDGET, ['1000', '5000', '9000'])],
+    ids=['semimajoraxis_logspace', 'h_budget_linspace'],
+)
+def test_colourbar_labels_every_swept_value_on_a_log_norm(values, labels):
+    """On a log colour scale the default ticks label only some values (0.1225 alone
+    for orbit.semimajoraxis, 10^3 for H_budget) and add minor ticks at values not in
+    the grid; the labelled colourbar shows exactly the swept values and no minor tick.
+    """
+    norm = matplotlib.colors.LogNorm(vmin=min(values), vmax=max(values))
+    fig, cbar = _colourbar(values, norm)
+    try:
+        assert [t.get_text() for t in cbar.ax.get_yticklabels()] == labels
+        assert cbar.ax.get_yticks() == pytest.approx(values)
+        assert len(cbar.ax.yaxis.get_minorticklocs()) == 0
+    finally:
+        plt.close(fig)
+
+
+def test_colourbar_with_many_values_labels_a_subset_of_them():
+    """Twenty swept values keep a tick each, but only every 3rd is labelled (at most
+    8 labels), and each label is one of the swept values.
+    """
+    values = list(np.linspace(1.0, 20.0, 20))
+    fig, cbar = _colourbar(values, matplotlib.colors.Normalize(1.0, 20.0))
+    try:
+        texts = [t.get_text() for t in cbar.ax.get_yticklabels()]
+        assert len(texts) == 20
+        shown = [t for t in texts if t]
+        assert shown == ['1', '4', '7', '10', '13', '16', '19']
+    finally:
+        plt.close(fig)
 
 
 # ---------------------------------------------------------------------------
@@ -253,23 +327,90 @@ def test_status_counts_without_category_column_is_unknown():
         status_counts(pd.DataFrame({'x': [1]}))
 
 
-def test_plot_status_summary_colours_bars_by_category(tmp_path, monkeypatch):
-    """Each bar takes its category colour, so the same status keeps its colour
-    across grids; the file is written with the requested extension.
+def test_plot_status_summary_draws_horizontal_bars_in_category_colours(tmp_path, monkeypatch):
+    """Bars are horizontal, so long statuses sit one under the other as y labels in
+    category order (top to bottom), and take their category colour; the file is
+    written with the requested extension.
     """
     seen = {}
-    real_bar = matplotlib.axes.Axes.bar
+    real_savefig = matplotlib.figure.Figure.savefig
 
-    def spy_bar(self, x, height, *args, **kwargs):
-        seen['colours'] = kwargs.get('color')
-        return real_bar(self, x, height, *args, **kwargs)
+    def spy_savefig(fig, *args, **kwargs):
+        ax = fig.axes[0]
+        seen['labels'] = [t.get_text() for t in ax.get_yticklabels()]
+        seen['colours'] = [p.get_facecolor()[:3] for p in ax.patches]
+        seen['inverted'] = ax.yaxis_inverted()
+        return real_savefig(fig, *args, **kwargs)
 
-    monkeypatch.setattr(matplotlib.axes.Axes, 'bar', spy_bar)
+    monkeypatch.setattr(matplotlib.figure.Figure, 'savefig', spy_savefig)
     out = plot_status_summary(_status_frame(), tmp_path, 'demo', 'pdf', n_not_started=1)
     assert out.name == 'summary_grid_statuses.pdf'
     assert out.exists()
-    assert seen['colours'] == [CATEGORY_COLOURS[c] for c in
-                               ('Completed', 'Completed', 'Error', 'Not started')]  # fmt: skip
+    assert seen['labels'] == ['Completed (solidified)', 'Completed (target time)',
+                              'Error (Atmosphere model)', 'Not started']  # fmt: skip
+    assert seen['inverted']  # first category at the top
+    palette = category_colours()
+    expected = [palette[c] for c in ('Completed', 'Completed', 'Error', 'Not started')]
+    assert seen['colours'] == [pytest.approx(c) for c in expected]
+
+
+def test_category_colours_pick_green_blue_red_from_the_cycle():
+    """In the default matplotlib cycle Completed is its green (C2), Running its blue
+    (C0) and Error its red (C3), not simply the first three cycle colours (blue,
+    orange, green); the greys sit between the text and face colours.
+    """
+    with matplotlib.rc_context(
+        {'axes.prop_cycle': matplotlib.rcParamsDefault['axes.prop_cycle']}
+    ):
+        cycle = [
+            matplotlib.colors.to_rgb(c)
+            for c in matplotlib.rcParams['axes.prop_cycle'].by_key()['color']
+        ]
+        colours = category_colours()
+    assert colours['Completed'] == cycle[2]
+    assert colours['Running'] == cycle[0]
+    assert colours['Error'] == cycle[3]
+    assert colours['Unknown'] == pytest.approx((0.5, 0.5, 0.5), abs=0.01)
+    assert colours['Not started'] == pytest.approx((0.75, 0.75, 0.75), abs=0.01)
+    assert _hue_distance(colours['Error'], 0.0) < 10.0
+
+
+@pytest.mark.parametrize('variant', ['light', 'dark'])
+def test_proteus_mpl_style_colours_stand_out_on_its_face(variant):
+    """In both proteus-mpl variants the status colours are distinct, green, blue and
+    red hues, and every curve colour (cycle and trimmed map) has 2:1 contrast with
+    the face, which black curves and edges on the dark face would not have.
+    """
+    pytest.importorskip('proteus_mpl')
+    with plot_style(variant):
+        face = matplotlib.colors.to_rgb(matplotlib.rcParams['axes.facecolor'])
+        colours = category_colours()
+        cmap = _trim_colourmap(get_colourmap('batlowK_r'))
+    assert len({colours[c] for c in ('Completed', 'Running', 'Error')}) == 3
+    assert _hue_distance(colours['Completed'], 120.0) < 40.0
+    assert _hue_distance(colours['Running'], 210.0) < 40.0
+    assert _hue_distance(colours['Error'], 0.0) < 40.0
+    assert (
+        min(_contrast(cmap(t), face) for t in np.linspace(0, 1, 11))
+        >= MIN_CURVE_CONTRAST - 0.02
+    )
+    if variant == 'dark':
+        assert _contrast(BLACK, face) < MIN_CURVE_CONTRAST  # why black is not used
+
+
+def test_plot_style_restores_the_settings_and_needs_proteus_mpl(monkeypatch):
+    """The style applies only inside the block, and without proteus-mpl the style
+    key raises an ImportError naming the package instead of plotting unstyled.
+    """
+    before = matplotlib.rcParams['axes.facecolor']
+    with plot_style(None):
+        matplotlib.rcParams['axes.facecolor'] = '#123456'
+    assert matplotlib.rcParams['axes.facecolor'] == before
+    monkeypatch.setitem(__import__('sys').modules, 'proteus_mpl', None)
+    with pytest.raises(ImportError, match='pip install proteus-mpl'):
+        with plot_style('dark'):
+            pass
+    assert matplotlib.rcParams['axes.facecolor'] == before
 
 
 def test_count_not_started_uses_product_of_axis_lengths(caplog):
@@ -330,6 +471,54 @@ def test_plot_ecdf_grid_writes_numeric_and_string_rows(tmp_path):
     assert out.exists()
     with pytest.raises(ValueError, match='at least one tested parameter'):
         plot_ecdf_grid(df, {'orbit.eccentricity': [0.1]}, ['P_surf'], tmp_path, 'demo')
+
+
+def test_ecdf_grid_follows_the_style_and_labels_the_swept_values(tmp_path, monkeypatch):
+    """With the tutorial orbital distances, the legend reads 0.03, 0.1225 and 0.5
+    (not only 0.1225), the curves take the cycle colours, and the panels keep the
+    style's ticks: outward and without top ticks under a style that sets them so,
+    where the old fixed inward ticks on all four sides would show.
+    """
+    df = pd.DataFrame({'orbit.semimajoraxis': SEMIMAJORAXIS * 2,
+                       'T_surf': [2900.0, 1800.0, 1500.0, 3000.0, 1900.0, 1450.0]})  # fmt: skip
+    seen = {}
+    real_savefig = matplotlib.figure.Figure.savefig
+
+    def spy_savefig(fig, *args, **kwargs):
+        ax = fig.axes[0]
+        seen['legend'] = [t.get_text() for t in ax.get_legend().get_texts()]
+        seen['colours'] = [matplotlib.colors.to_rgb(line.get_color()) for line in ax.lines]
+        seen['top_ticks'] = ax.xaxis.get_major_ticks()[0].tick2line.get_visible()
+        seen['direction'] = ax.xaxis.get_major_ticks()[0]._tickdir
+        return real_savefig(fig, *args, **kwargs)
+
+    monkeypatch.setattr(matplotlib.figure.Figure, 'savefig', spy_savefig)
+    with matplotlib.rc_context({'xtick.direction': 'out', 'xtick.top': False}):
+        cycle = [
+            matplotlib.colors.to_rgb(c)
+            for c in matplotlib.rcParams['axes.prop_cycle'].by_key()['color']
+        ]
+        plot_ecdf_grid(df, {'orbit.semimajoraxis': SEMIMAJORAXIS}, ['T_surf'], tmp_path, 'tut')
+    assert seen['legend'] == ['0.03', '0.1225', '0.5']
+    assert seen['colours'] == cycle[:3]
+    assert seen['top_ticks'] is False
+    assert seen['direction'] == 'out'
+
+
+@pytest.mark.parametrize(
+    'font, rows, cols, expected',
+    [(10.0, 4, 5, (18.0, 10.4)), (10.0, 1, 1, (3.6, 4.0)), (14.5, 1, 2, (10.44, 5.8))],
+    ids=['default_font_four_rows', 'default_font_one_row', 'proteus_mpl_font_one_row'],
+)
+def test_ecdf_figsize_scales_panels_with_the_font(font, rows, cols, expected):
+    """Panels are 3.6 x 2.6 inch at 10 pt and grow with the font (14.5 pt in
+    proteus-mpl), and one row is at least 0.4 inch per pt tall so the 48-character
+    y label fits; a fixed 2.6 inch row would cut it in the proteus-mpl style.
+    """
+    with matplotlib.rc_context({'font.size': font}):
+        size = ecdf_figsize(rows, cols)
+    assert size == pytest.approx(expected)
+    assert size[0] / cols == pytest.approx(3.6 * font / 10.0)  # panel width follows the font
 
 
 def _summary_csvs(tmp_path, completed_rows):

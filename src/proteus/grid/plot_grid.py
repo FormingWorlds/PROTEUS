@@ -1,8 +1,10 @@
 # Status-summary and ECDF grid plots for a post-processed PROTEUS grid.
 from __future__ import annotations
 
+import colorsys
 import logging
 import math
+from contextlib import contextmanager
 from pathlib import Path
 
 import matplotlib as mpl
@@ -11,34 +13,73 @@ import numpy as np
 import pandas as pd
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
-from proteus.utils.plot import get_colourmap, get_label, get_log_scale, get_scale
+from proteus.grid.analyse_options import SUPPORTED_PLOT_FORMATS
+from proteus.utils.plot import (
+    FADE_MID_GREY,
+    get_colourmap,
+    get_label,
+    get_log_scale,
+    get_scale,
+    style_neutral,
+)
 
 log = logging.getLogger('fwl.' + __name__)
 
-# Image formats the grid plots may be saved as.
-SUPPORTED_PLOT_FORMATS = ('png', 'pdf')
-
-# Status-bar colours, fixed per status category so a category keeps its colour from
-# grid to grid. Wong colour-blind-safe palette (Wong 2011, Nat. Methods 8, 441),
-# with neutral greys for cases whose outcome is unknown or that never started.
-CATEGORY_COLOURS = {
-    'Completed': '#009E73',  # bluish green
-    'Running': '#56B4E9',  # sky blue
-    'Error': '#D55E00',  # vermillion
-    'Unknown': '#999999',  # grey
-    'Not started': '#DDDDDD',  # light grey
+# Hue [degrees] each status category looks for in the colour cycle of the active style,
+# so Completed stays green, Running blue and Error red in any style.
+CATEGORY_HUES = {
+    'Completed': 120.0,
+    'Running': 210.0,
+    'Error': 0.0,
 }
-# Bar order of the status categories, left to right.
-CATEGORY_ORDER = tuple(CATEGORY_COLOURS)
+# Bar order of the status categories, top to bottom.
+CATEGORY_ORDER = (*CATEGORY_HUES, 'Unknown', 'Not started')
+# A cycle colour below this HSV saturation or value is a neutral, not a hue.
+MIN_HUE_SATURATION = 0.25
+MIN_HUE_VALUE = 0.25
+# Grey of the 'Not started' bar, between the text (0) and face (1) colour of the style.
+FADE_LIGHT_GREY = 0.75
 
-# ECDF curve colours must stand out on white: the lighter end of a colour map is
-# trimmed until its colour has a contrast of at least 2:1 against white (relative
-# luminance <= 0.475), trimming at most MAX_COLOURMAP_TRIM of the map.
-MAX_CURVE_LUMINANCE = 0.475
+# An ECDF curve colour keeps a contrast of at least 2:1 against the axes face colour
+# of the style: each end of a colour map is trimmed (at most MAX_COLOURMAP_TRIM of
+# the map) until it does.
+MIN_CURVE_CONTRAST = 2.0
 MAX_COLOURMAP_TRIM = 0.35
 
 # Line width [pt] of the ECDF curves and of their legend entries.
 ECDF_LINEWIDTH = 3.0
+
+# Least ECDF figure height [inch per pt of font size]: the 48-character shared y label
+# (about 0.5 em per character) fits beside one row.
+MIN_ECDF_HEIGHT_PER_PT = 0.4
+
+# Most labelled ticks on a colourbar; with more swept values every k-th one is labelled.
+MAX_COLOURBAR_LABELS = 8
+
+
+@contextmanager
+def plot_style(style: str | None):
+    """Draw inside the proteus-mpl ``style`` ('light' or 'dark'), or the active style.
+
+    The matplotlib settings are restored on exit.
+    """
+    with plt.rc_context():
+        if style is not None:
+            try:
+                import proteus_mpl
+            except ImportError as exc:
+                raise ImportError(
+                    '[post_processing].style needs the proteus-mpl package '
+                    '(pip install proteus-mpl)'
+                ) from exc
+            proteus_mpl.use(style)
+        yield
+
+
+def _cycle_colours() -> list:
+    """Return the colours of the active style's colour cycle as RGB tuples."""
+    cycle = mpl.rcParams['axes.prop_cycle'].by_key().get('color', [])
+    return [mpl.colors.to_rgb(c) for c in cycle] or [style_neutral()]
 
 
 def _luminance(rgba) -> float:
@@ -48,30 +89,60 @@ def _luminance(rgba) -> float:
     return float(linear @ np.array([0.2126, 0.7152, 0.0722]))
 
 
-def _trim_colourmap(cmap):
-    """Return ``cmap`` without its too-light end, so every curve colour is visible.
+def _contrast(a, b) -> float:
+    """Return the WCAG contrast ratio (1 to 21) between two colours."""
+    hi, lo = sorted((_luminance(a), _luminance(b)), reverse=True)
+    return (hi + 0.05) / (lo + 0.05)
 
-    The lighter of the two ends is cut back to the first colour with luminance
-    <= MAX_CURVE_LUMINANCE (at most MAX_COLOURMAP_TRIM of the map); a map whose
-    ends are both dark enough is returned unchanged.
+
+def _trim_colourmap(cmap, face=None):
+    """Return ``cmap`` without the ends that are too close to the ``face`` colour.
+
+    Each end is cut back to the first colour with contrast >= MIN_CURVE_CONTRAST
+    against ``face`` (default the axes face colour of the active style), at most
+    MAX_COLOURMAP_TRIM of the map; a map whose ends both stand out is unchanged.
     """
-    light_top = _luminance(cmap(1.0)) >= _luminance(cmap(0.0))
+    face = style_neutral(1.0) if face is None else face
     steps = np.linspace(0.0, MAX_COLOURMAP_TRIM, 71)
-    trim = next(
-        (
-            t
-            for t in steps
-            if _luminance(cmap(1.0 - t if light_top else t)) <= MAX_CURVE_LUMINANCE
-        ),
-        MAX_COLOURMAP_TRIM,
-    )
-    base = np.linspace(0.0, 1.0 - trim, 256) if light_top else np.linspace(trim, 1.0, 256)
+
+    def trim(end):
+        position = (lambda t: t) if end == 0 else (lambda t: 1.0 - t)
+        return next(
+            (t for t in steps if _contrast(cmap(position(t)), face) >= MIN_CURVE_CONTRAST),
+            MAX_COLOURMAP_TRIM,
+        )
+
+    base = np.linspace(trim(0), 1.0 - trim(1), 256)
     return mpl.colors.LinearSegmentedColormap.from_list(f'{cmap.name}_trim', cmap(base))
 
 
-def _apply_axis_style(ax) -> None:
-    """Apply the PROTEUS tick style: inward ticks on all four sides."""
-    ax.tick_params(direction='in', which='both', top=True, right=True)
+def _hue_distance(rgb, hue: float) -> float:
+    """Return the angle [degrees] between the hue of ``rgb`` and ``hue``."""
+    delta = abs(colorsys.rgb_to_hsv(*rgb)[0] * 360.0 - hue) % 360.0
+    return min(delta, 360.0 - delta)
+
+
+def category_colours() -> dict:
+    """Return the bar colour of each status category in the active style.
+
+    Completed, Running and Error take the cycle colour nearest in hue to green,
+    blue and red (each a different one); Unknown and Not started take greys
+    between the text and face colours of the style.
+    """
+    cycle = _cycle_colours()
+    chromatic = [
+        c
+        for c in cycle
+        if colorsys.rgb_to_hsv(*c)[1] >= MIN_HUE_SATURATION
+        and colorsys.rgb_to_hsv(*c)[2] >= MIN_HUE_VALUE
+    ]
+    colours = {}
+    for category, hue in CATEGORY_HUES.items():
+        free = [c for c in chromatic if c not in colours.values()] or cycle
+        colours[category] = min(free, key=lambda c: _hue_distance(c, hue))
+    colours['Unknown'] = style_neutral(FADE_MID_GREY)
+    colours['Not started'] = style_neutral(FADE_LIGHT_GREY)
+    return colours
 
 
 def status_counts(df: pd.DataFrame, n_not_started: int = 0) -> pd.DataFrame:
@@ -115,7 +186,10 @@ def plot_status_summary(
     plot_format: str = 'png',
     n_not_started: int = 0,
 ) -> Path:
-    """Plot the number of grid cases per final status, coloured by status category.
+    """Plot the number of grid cases per final status as horizontal bars.
+
+    Bars are coloured by status category (:func:`category_colours`) and listed top
+    to bottom in category order, so long status names never overlap.
 
     Parameters
     ----------
@@ -137,32 +211,30 @@ def plot_status_summary(
     """
     counts = status_counts(df, n_not_started)
     total = int(counts['count'].sum())
-    labels = [s.replace(' (', '\n(') for s in counts['status']]
-    colours = [CATEGORY_COLOURS.get(c, CATEGORY_COLOURS['Unknown']) for c in counts['category']]
+    palette = category_colours()
+    colours = [palette.get(c, palette['Unknown']) for c in counts['category']]
 
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     out_file = out_dir / f'summary_grid_statuses.{plot_format}'
 
-    fig, ax = plt.subplots(figsize=(max(7.0, 1.6 * len(counts)), 6.0))
+    fig, ax = plt.subplots(figsize=(9.0, 1.5 + 0.55 * len(counts)))
     try:
-        bars = ax.bar(labels, counts['count'], color=colours, edgecolor='black')
+        bars = ax.barh(counts['status'], counts['count'], color=colours)
         for bar, count in zip(bars, counts['count']):
             pct = 100.0 * count / total if total else 0.0
-            ax.text(
-                bar.get_x() + bar.get_width() / 2,
-                count,
+            ax.annotate(
                 f'{count} ({pct:.1f}%)',
-                ha='center',
-                va='bottom',
-                fontsize=11,
+                (bar.get_width(), bar.get_y() + bar.get_height() / 2),
+                xytext=(4, 0),
+                textcoords='offset points',
+                va='center',
             )
+        ax.invert_yaxis()
         ax.set_title(f'Status summary for grid {grid_name} ({total} cases)')
-        ax.set_xlabel('Final simulation status')
-        ax.set_ylabel('Number of simulations')
-        ax.margins(y=0.12)
-        ax.grid(alpha=0.2, axis='y')
-        _apply_axis_style(ax)
+        ax.set_xlabel('Number of simulations')
+        ax.margins(x=0.2)
+        ax.grid(False, axis='y')
         fig.tight_layout()
         fig.savefig(out_file, dpi=200, bbox_inches='tight')
     finally:
@@ -225,29 +297,48 @@ def _set_axis_scale(ax, scale: str, linthresh: float | None, values: pd.Series) 
             ax.set_xlim(left=-0.2 * linthresh)
 
 
+def value_label(value) -> str:
+    """Return the label of a swept value: 4 significant digits for a number."""
+    if isinstance(value, (int, float, np.number)) and not isinstance(value, (bool, np.bool_)):
+        return f'{float(value):.4g}'
+    return str(value)
+
+
+def _is_numeric(values) -> bool:
+    """Return whether swept values are numbers (booleans count as labels)."""
+    return np.issubdtype(np.asarray(values).dtype, np.number)
+
+
 def _value_colours(values, log_norm: bool, cmap):
-    """Return (colour_of, is_numeric, norm) for colouring one parameter's values.
+    """Return (colour_of, norm) for colouring the curves of one parameter's values.
 
-    For numeric values a continuous norm drives a colourbar; for string values a
-    discrete colour per value drives a legend (norm is None).
+    Up to the length of the style's colour cycle, each value takes a cycle colour
+    and the row gets a legend (norm is None). More numeric values take the colour
+    map through a continuous norm that drives a colourbar; more string values take
+    evenly spaced colours of the map and a legend.
     """
-    is_numeric = np.issubdtype(np.asarray(values).dtype, np.number)
-    if is_numeric:
-        vmin, vmax = float(min(values)), float(max(values))
-        if vmin == vmax:
-            vmin, vmax = vmin - 1e-9, vmax + 1e-9
-        norm = (
-            mpl.colors.LogNorm(vmin=vmin, vmax=vmax)
-            if log_norm and vmin > 0
-            else mpl.colors.Normalize(vmin=vmin, vmax=vmax)
-        )
-        return (lambda v: cmap(norm(v))), True, norm
+    numeric = _is_numeric(values)
+    uniques = sorted(set(values)) if numeric else sorted({str(v) for v in values})
+    cycle = _cycle_colours()
+    if len(uniques) <= len(cycle) or not numeric:
+        if len(uniques) <= len(cycle):
+            palette = cycle[: len(uniques)]
+        else:
+            palette = [cmap(t) for t in np.linspace(0.0, 1.0, len(uniques))]
+        if numeric:
+            # Nearest swept value, so a float changed on the CSV round-trip still matches.
+            grid = np.asarray(uniques, dtype=float)
+            return (lambda v: palette[int(np.argmin(np.abs(grid - float(v))))]), None
+        lookup = dict(zip(uniques, palette))
+        return (lambda v: lookup.get(str(v), style_neutral(FADE_MID_GREY))), None
 
-    uniques = sorted({str(v) for v in values})
-    discrete = cmap.resampled(max(len(uniques), 1))
-    lookup = {val: discrete(i) for i, val in enumerate(uniques)}
-    # Grey fallback for a value not among the tested set (should not happen).
-    return (lambda v: lookup.get(str(v), (0.5, 0.5, 0.5, 1.0))), False, None
+    vmin, vmax = float(uniques[0]), float(uniques[-1])
+    norm = (
+        mpl.colors.LogNorm(vmin=vmin, vmax=vmax)
+        if log_norm and vmin > 0
+        else mpl.colors.Normalize(vmin=vmin, vmax=vmax)
+    )
+    return (lambda v: cmap(norm(v))), norm
 
 
 def _plot_cell(ax, df, param, value, output, colour):
@@ -263,6 +354,18 @@ def _plot_cell(ax, df, param, value, output, colour):
     return True
 
 
+def ecdf_figsize(n_rows: int, n_cols: int) -> tuple[float, float]:
+    """Return the ECDF figure size [inch], with panels that grow with the style's font.
+
+    A panel is 3.6 x 2.6 inch at a 10 pt font and scales with ``font.size``; the
+    height is at least MIN_ECDF_HEIGHT_PER_PT times the font size, so the shared
+    y label fits beside a single row.
+    """
+    scale = float(mpl.rcParams['font.size']) / 10.0
+    height = max(2.6 * scale * n_rows, MIN_ECDF_HEIGHT_PER_PT * mpl.rcParams['font.size'])
+    return 3.6 * scale * n_cols, height
+
+
 def plot_ecdf_grid(
     df: pd.DataFrame,
     tested_params: dict,
@@ -275,9 +378,10 @@ def plot_ecdf_grid(
     """Plot a grid of ECDF panels: one row per tested parameter, one column per output.
 
     Within a panel, one ECDF curve is drawn per tested value of the row parameter,
-    coloured by that value (a colourbar for numeric parameters, a legend for string
-    parameters). Each curve is a percentage of all cases with that value, so it
-    levels off below 100 % when some cases have no value for the output.
+    coloured by that value (see :func:`_value_colours`: a legend for a few values
+    or string values, a colourbar labelled at the swept values otherwise). Each
+    curve is a percentage of all cases with that value, so it levels off below
+    100 % when some cases have no value for the output.
 
     Parameters
     ----------
@@ -292,8 +396,8 @@ def plot_ecdf_grid(
     grid_name : str
         Grid name, used in the output filename.
     colourmap : str or None
-        Colour map name for numeric parameter values (scientific map via
-        :func:`proteus.utils.plot.get_colourmap`).
+        Colour map name for parameters with more values than the colour cycle
+        (scientific map via :func:`proteus.utils.plot.get_colourmap`).
     plot_format : str
         Image format extension.
 
@@ -309,13 +413,13 @@ def plot_ecdf_grid(
     if not params or not outputs:
         raise ValueError('Need at least one tested parameter and one output to plot')
 
-    # Trim the palest end of the colour map so a top-of-range curve stays visible.
+    # Trim the ends of the colour map that would vanish against the axes face colour.
     cmap = _trim_colourmap(get_colourmap(colourmap))
     n_rows, n_cols = len(params), len(outputs)
     fig, axes = plt.subplots(
         n_rows,
         n_cols,
-        figsize=(3.6 * n_cols, 2.6 * n_rows),
+        figsize=ecdf_figsize(n_rows, n_cols),
         squeeze=False,
         sharey=True,
     )
@@ -330,8 +434,8 @@ def plot_ecdf_grid(
         fig.tight_layout()
         # Add the colourbar or legend after the layout, outside the rightmost panel,
         # so every data panel keeps an identical size.
-        for ax, param, values, is_numeric, norm, colour_of in row_keys:
-            _add_row_key(fig, ax, param, values, is_numeric, norm, cmap, colour_of)
+        for ax, param, values, norm, colour_of in row_keys:
+            _add_row_key(fig, ax, param, values, norm, cmap, colour_of)
         fig.savefig(out_file, dpi=200, bbox_inches='tight')
     finally:
         plt.close(fig)
@@ -342,8 +446,8 @@ def plot_ecdf_grid(
 def _draw_ecdf_rows(axes, df, params, tested_params, outputs, cmap) -> list:
     """Draw every ECDF panel and return the key data of each parameter row.
 
-    Each returned tuple is (rightmost axes, param, swept values, is_numeric, norm,
-    colour_of), the arguments :func:`_add_row_key` needs after the layout.
+    Each returned tuple is (rightmost axes, param, swept values, norm, colour_of),
+    the arguments :func:`_add_row_key` needs after the layout.
     """
     n_rows = len(params)
     scaled = {out: df[out] * get_scale(out) for out in outputs}
@@ -351,7 +455,11 @@ def _draw_ecdf_rows(axes, df, params, tested_params, outputs, cmap) -> list:
     row_keys = []
     for i, param in enumerate(params):
         values = tested_params[param]
-        colour_of, is_numeric, norm = _value_colours(values, get_log_scale(param), cmap)
+        # A parameter is coloured on a log scale by the same rule as a log axis.
+        log_norm = _is_numeric(values) and (
+            axis_scale(pd.Series(values, dtype=float), get_log_scale(param))[0] == 'log'
+        )
+        colour_of, norm = _value_colours(values, log_norm, cmap)
 
         # Iterate the values actually present in the column (not the in-memory
         # swept list) so a float that changed on the CSV round-trip still matches.
@@ -363,22 +471,33 @@ def _draw_ecdf_rows(axes, df, params, tested_params, outputs, cmap) -> list:
                 _plot_cell(ax, df, param, value, output, colour_of(value))
             _set_axis_scale(ax, *scales[output], scaled[output])
             ax.set_ylim(0, 100)
-            ax.grid(alpha=0.3)
-            _apply_axis_style(ax)
             if i == n_rows - 1:
                 ax.set_xlabel(get_label(output))
 
-        row_keys.append((axes[i][-1], param, values, is_numeric, norm, colour_of))
+        row_keys.append((axes[i][-1], param, values, norm, colour_of))
     return row_keys
 
 
-def _add_row_key(fig, ax, param, values, is_numeric, norm, cmap, colour_of) -> None:
-    """Attach a colourbar (numeric) or legend (string) labelling a parameter row.
+def label_colourbar(cbar, values) -> None:
+    """Put the colourbar ticks at the swept ``values``, labelled, with no minor ticks.
+
+    With more than MAX_COLOURBAR_LABELS values every k-th tick is labelled, so the
+    labels never collide; every tick still marks a swept value.
+    """
+    ticks = sorted({float(v) for v in values})
+    step = max(1, math.ceil(len(ticks) / MAX_COLOURBAR_LABELS))
+    labels = [value_label(t) if k % step == 0 else '' for k, t in enumerate(ticks)]
+    cbar.set_ticks(ticks, labels=labels)
+    cbar.minorticks_off()
+
+
+def _add_row_key(fig, ax, param, values, norm, cmap, colour_of) -> None:
+    """Attach a colourbar (``norm`` set) or legend labelling a parameter row.
 
     The key sits in an axes anchored just outside ``ax`` (not stolen from it), so
     the data panels all keep the same size whether a row uses a colourbar or a legend.
     """
-    if is_numeric:
+    if norm is not None:
         cax = inset_axes(
             ax,
             width='5%',
@@ -391,20 +510,22 @@ def _add_row_key(fig, ax, param, values, is_numeric, norm, cmap, colour_of) -> N
         mappable = mpl.cm.ScalarMappable(cmap=cmap, norm=norm)
         cbar = fig.colorbar(mappable, cax=cax)
         cbar.set_label(get_label(param))
-        cbar.set_ticks(sorted(set(values)))
-    else:
-        handles = [
-            mpl.lines.Line2D([0], [0], color=colour_of(v), lw=ECDF_LINEWIDTH, label=str(v))
-            for v in sorted({str(v) for v in values})
-        ]
-        ax.legend(
-            handles=handles,
-            title=get_label(param),
-            fontsize=8,
-            bbox_to_anchor=(1.03, 1.0),
-            loc='upper left',
-            borderaxespad=0.0,
-        )
+        label_colourbar(cbar, values)
+        return
+
+    uniques = sorted(set(values)) if _is_numeric(values) else sorted({str(v) for v in values})
+    handles = [
+        mpl.lines.Line2D([0], [0], color=colour_of(v), lw=ECDF_LINEWIDTH, label=value_label(v))
+        for v in uniques
+    ]
+    ax.legend(
+        handles=handles,
+        title=get_label(param),
+        fontsize='small',
+        bbox_to_anchor=(1.03, 1.0),
+        loc='upper left',
+        borderaxespad=0.0,
+    )
 
 
 def validate_output_variables(df: pd.DataFrame, requested_outputs: list) -> list:
@@ -473,7 +594,7 @@ def make_grid_plots(opts, csv_paths, tested_params, grid_dir, base_fmt=None) -> 
     ----------
     opts : dict
         Validated ``[post_processing]`` options (``plot_status``, ``plot_ecdf``,
-        ``output_variables``, ``colormap``, ``plot_format``).
+        ``output_variables``, ``colormap``, ``plot_format``, ``style``).
     csv_paths : dict
         Paths of the 'all' and 'completed' summary CSVs.
     tested_params : dict
@@ -487,13 +608,17 @@ def make_grid_plots(opts, csv_paths, tested_params, grid_dir, base_fmt=None) -> 
     plots_dir = Path(grid_dir) / 'post_processing' / 'grid_plots'
     plot_format = resolve_plot_format(opts['plot_format'], base_fmt)
 
-    if opts['plot_status']:
-        df_all = pd.read_csv(csv_paths['all'], sep='\t')
-        n_not_started = count_not_started(df_all, tested_params)
-        plot_status_summary(df_all, plots_dir, grid_name, plot_format, n_not_started)
+    with plot_style(opts.get('style')):
+        if opts['plot_status']:
+            df_all = pd.read_csv(csv_paths['all'], sep='\t')
+            n_not_started = count_not_started(df_all, tested_params)
+            plot_status_summary(df_all, plots_dir, grid_name, plot_format, n_not_started)
+        if opts['plot_ecdf']:
+            _make_ecdf_plot(opts, csv_paths, tested_params, plots_dir, grid_name, plot_format)
 
-    if not opts['plot_ecdf']:
-        return
+
+def _make_ecdf_plot(opts, csv_paths, tested_params, plots_dir, grid_name, plot_format):
+    """Draw the ECDF grid plot from the 'completed' CSV, skipping a grid with none."""
     df_completed = pd.read_csv(csv_paths['completed'], sep='\t')
     if df_completed.empty:
         log.warning('No completed cases; skipping the ECDF plot')

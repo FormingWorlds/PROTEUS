@@ -999,6 +999,40 @@ class TestGridFromConfig:
         assert '"planet.mass_tot"' in str(exc.value)
         assert old.read_text() == 'kept\n'
 
+    @pytest.mark.parametrize(
+        ('table', 'match'),
+        [
+            ({'plot_ecfd': True}, 'Unknown key'),
+            ({'style': 'midnight'}, 'style'),
+            ({'colormap': 'batlowK_rr'}, 'colour map'),
+        ],
+        ids=['misspelt_key', 'unknown_style', 'misspelt_colour_map'],
+    )
+    def test_bad_post_processing_table_stops_the_grid_at_launch(
+        self, fake_proteus_dir, monkeypatch, table, match
+    ):
+        """A misspelt [post_processing] key or value stops `proteus grid` before the
+        grid is built (no Grid, no output folder), not only `grid-analyse` after the
+        grid has run; a valid table lets the grid start.
+        """
+        (fake_proteus_dir / 'base.toml').write_text('# base\n')
+        grid_path = _write_grid_toml(
+            fake_proteus_dir / 'g.toml',
+            dimensions={'post_processing': table, 'planet.mass_tot': _DIM},
+        )
+        built = mock.MagicMock(return_value=mock.MagicMock(size=1))
+        monkeypatch.setattr(gm, 'Grid', built)
+        with pytest.raises(ValueError, match=match):
+            grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
+        assert built.call_count == 0
+        assert not (fake_proteus_dir / 'output' / 'unit_grid').exists()
+        _write_grid_toml(
+            grid_path,
+            dimensions={'post_processing': {'style': 'dark'}, 'planet.mass_tot': _DIM},
+        )
+        grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
+        assert built.call_count == 1
+
     def test_relative_symlink_rejected(self, fake_proteus_dir):
         """Non-absolute ``symlink`` path is refused with RuntimeError.
 
@@ -1439,9 +1473,8 @@ def test_shipped_grid_files_pass_the_key_check(rel_path):
 
 
 def test_grid_settings_match_the_keys_grid_from_config_reads(fake_proteus_dir, monkeypatch):
-    """GRID_SETTINGS holds the settings grid_from_config reads plus the two it
-    only accepts (config_version and the post_processing table, both read by
-    other tools, not the grid manager)."""
+    """GRID_SETTINGS holds the settings grid_from_config reads plus config_version,
+    which it only accepts; the post_processing table is read to check it at launch."""
 
     class Recorder(dict):
         def __getitem__(self, key):
@@ -1459,10 +1492,7 @@ def test_grid_settings_match_the_keys_grid_from_config_reads(fake_proteus_dir, m
     monkeypatch.setattr(gm, 'Grid', mock.MagicMock(return_value=mock.MagicMock(size=1)))
     grid_from_config(str(fake_proteus_dir / 'g.toml'), test_run=True, check_interval=0.0)
     assert 'planet.mass_tot' in read
-    assert read - {'planet.mass_tot'} == gm.GRID_SETTINGS - {
-        'config_version',
-        'post_processing',
-    }
+    assert read - {'planet.mass_tot'} == gm.GRID_SETTINGS - {'config_version'}
 
 
 # ---------------------------------------------------------------------------

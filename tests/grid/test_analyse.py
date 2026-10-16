@@ -2,12 +2,15 @@
 
 Covers the grid post-processing extraction with small grids built under tmp_path:
 - solidification time is the FIRST row with Phi_global <= phi_crit (the stop
-  criterion), uses each case's own phi_crit, and is NaN when the case's
+  criterion), uses each case's own phi_crit, and is still found when the case's
   solidification stop is disabled
+- each case keeps only its final helpfile row and solidification time, not the
+  whole helpfile
 - tested-parameter axes come from copy.grid.toml when present, and the
   [post_processing] table is never read as an axis
 - the summary CSVs filter cases by status category (Unknown goes to running_error)
 - the [post_processing] table is validated and filled with documented defaults
+- a grid folder (-o) is analysed with its copy.grid.toml, even for output = "auto"
 - an empty grid, stray case_* entries and missing files are handled explicitly
 
 Testing standards:
@@ -26,10 +29,8 @@ import pytest
 from proteus.grid import analyse as ga
 from proteus.grid import plot_grid
 from proteus.grid.analyse import (
-    DEFAULT_OUTPUT_VARIABLES,
     DEFAULT_PHI_CRIT,
     _dig,
-    _read_post_processing_options,
     _resolve_base_solid,
     analyse_grid,
     build_summary_dataframe,
@@ -39,6 +40,10 @@ from proteus.grid.analyse import (
     load_grid_cases,
     resolve_grid_dir,
     write_summary_csvs,
+)
+from proteus.grid.analyse_options import DEFAULT_OUTPUT_VARIABLES
+from proteus.grid.analyse_options import (
+    read_post_processing_options as _read_post_processing_options,
 )
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
@@ -80,8 +85,10 @@ def test_resolve_grid_dir_strips_slashes_under_proteus_output(tmp_path, monkeypa
 
 
 def test_resolve_grid_dir_rejects_auto_output():
-    """An 'auto' output cannot be analysed (the run folder name is unknowable)."""
-    with pytest.raises(ValueError, match='auto'):
+    """An 'auto' output names no folder (it is generated at launch), so the error
+    points to the -o option instead.
+    """
+    with pytest.raises(ValueError, match='grid-analyse -o'):
         resolve_grid_dir({'output': 'auto'})
     with pytest.raises(ValueError, match='auto'):
         resolve_grid_dir({'output': 'AUTO'})  # case-insensitive
@@ -168,14 +175,16 @@ def test_extract_solidification_time_nan_without_crossing_or_columns():
     assert np.isnan(extract_solidification_time(pd.DataFrame({'Phi_global': [0.0]}), 0.005))
 
 
-def _case(index, category, status, init_params=None, output=None):
+def _case(index, category, status, init_params=None, final_row=None, t_solid=np.nan):
     """Return one case dict as load_grid_cases builds it."""
     return {
         'index': index,
         'status': status,
         'category': category,
         'init_params': init_params or {},
-        'output': output,
+        'final_row': final_row or {},
+        'solidification_time': t_solid,
+        'solid_stop_enabled': True,
     }
 
 
@@ -190,37 +199,78 @@ def _phi_series():
     )
 
 
-def test_build_summary_uses_each_case_phi_crit_and_solid_enabled_flag():
+def _solid_toml(phi_crit=None, enabled=None):
+    """Return init_coupler.toml text with a mass and an optional [params.stop.solid]."""
+    lines = ['[planet]', 'mass_tot = 1.0']
+    if phi_crit is not None or enabled is not None:
+        lines.append('[params.stop.solid]')
+    if phi_crit is not None:
+        lines.append(f'phi_crit = {phi_crit}')
+    if enabled is not None:
+        lines.append(f'enabled = {str(enabled).lower()}')
+    return '\n'.join(lines) + '\n'
+
+
+def test_load_grid_cases_uses_each_case_phi_crit_and_ignores_the_stop_switch(tmp_path, caplog):
     """Case 0 sets phi_crit = 0.005 (solidifies at 50 yr); case 1 omits it and uses
-    the base 0.01 (20 yr); case 2 disabled its solid stop, so its time is NaN even
-    though Phi crosses. Ignoring the per-case value would give 20 yr for case 0.
+    the base 0.01 (20 yr); case 2 ran with its solid stop disabled and phi_crit =
+    0.005, so it still solidifies at 50 yr (a fixed-end-time grid), with one info
+    line. Ignoring the per-case value would give 20 yr for cases 0 and 2.
     """
-
-    def solid(enabled):
-        return {'params': {'stop': {'solid': {'phi_crit': 0.005, 'enabled': enabled}}}}
-
-    cases = [
-        _case(0, 'Completed', 'Completed (solidified)', output=_phi_series(),
-              init_params=solid(True)),
-        _case(1, 'Completed', 'Completed (solidified)', output=_phi_series()),
-        _case(2, 'Completed', 'Completed (target time)', output=_phi_series(),
-              init_params=solid(False)),
-    ]  # fmt: skip
-    df = build_summary_dataframe(cases, [], {'enabled': True, 'phi_crit': 0.01})
-    assert df.loc[0, 'solidification_time'] == pytest.approx(50.0)
-    assert df.loc[1, 'solidification_time'] == pytest.approx(20.0)
-    assert np.isnan(df.loc[2, 'solidification_time'])
+    for index, text in enumerate(
+        [_solid_toml(0.005, True), _solid_toml(), _solid_toml(0.005, False)]
+    ):
+        case_dir = _write_case(tmp_path, index, status=10, helpfile=_phi_series())
+        (case_dir / 'init_coupler.toml').write_text(text)
+    with caplog.at_level('INFO'):
+        cases = load_grid_cases(tmp_path, {'enabled': True, 'phi_crit': 0.01})
+    df = build_summary_dataframe(cases, [])
+    assert df['solidification_time'].tolist() == pytest.approx([50.0, 20.0, 50.0])
+    assert [c['solid_stop_enabled'] for c in cases] == [True, True, False]
+    assert any('1 case(s) ran with the solidification stop disabled' in r.message
+               for r in caplog.records)  # fmt: skip
 
 
-def test_build_summary_base_disabled_solid_stop_gives_nan():
-    """A case without its own solid settings inherits a disabled base stop: NaN."""
-    df = build_summary_dataframe(
-        [_case(0, 'Completed', 'Completed', output=_phi_series())],
-        [],
-        {'enabled': False, 'phi_crit': 0.01},
+def test_base_disabled_solid_stop_still_gives_a_solidification_time(tmp_path):
+    """A case without its own solid settings inherits a disabled base stop; its
+    solidification time is still the first crossing of the base phi_crit (20 yr),
+    not NaN, and its final row is recorded. A case that never reaches phi_crit
+    stays NaN.
+    """
+    case_dir = _write_case(tmp_path, 0, status=13, helpfile=_phi_series())
+    (case_dir / 'init_coupler.toml').write_text(_solid_toml())
+    hot = _phi_series().assign(Phi_global=[1.0, 0.9, 0.8])
+    (_write_case(tmp_path, 1, status=13, helpfile=hot) / 'init_coupler.toml').write_text(
+        _solid_toml()
     )
-    assert np.isnan(df.loc[0, 'solidification_time'])
+    df = build_summary_dataframe(
+        load_grid_cases(tmp_path, {'enabled': False, 'phi_crit': 0.01}), []
+    )
+    assert df.loc[0, 'solidification_time'] == pytest.approx(20.0)
     assert df.loc[0, 'P_surf'] == pytest.approx(5.0)  # final row still recorded
+    assert np.isnan(df.loc[1, 'solidification_time'])
+
+
+def test_load_grid_cases_keeps_only_the_summary_of_each_helpfile(tmp_path):
+    """No case holds its helpfile after loading: only the final row (a dict, the
+    last of 2000 rows) and the solidification time, so memory does not grow with
+    the length of the runs. The summary matches the full helpfile.
+    """
+    n_rows = 2000
+    long_run = pd.DataFrame(
+        {
+            'Time': np.linspace(1.0, 2.0e6, n_rows),
+            'Phi_global': np.linspace(1.0, 0.0, n_rows),
+            'T_surf': np.linspace(3000.0, 1500.0, n_rows),
+        }
+    )
+    _write_case(tmp_path, 0, status=10, mass=1.0, helpfile=long_run)
+    (case,) = load_grid_cases(tmp_path)
+    assert not any(isinstance(v, (pd.DataFrame, pd.Series)) for v in case.values())
+    assert case['final_row'] == pytest.approx(long_run.iloc[-1].to_dict())
+    assert case['final_row']['T_surf'] == pytest.approx(1500.0)  # last row, not first
+    first = long_run.loc[long_run['Phi_global'] <= 0.005, 'Time'].iloc[0]
+    assert case['solidification_time'] == pytest.approx(first)
 
 
 def test_build_summary_records_params_final_row_and_category():
@@ -229,7 +279,7 @@ def test_build_summary_records_params_final_row_and_category():
     """
     cases = [
         _case(0, 'Completed', 'Completed (solidified)', {'planet': {'mass_tot': 1.5}},
-              _phi_series()),
+              _phi_series().iloc[-1].to_dict(), 50.0),
         _case(1, 'Error', 'Error (Interior model)', {'planet': {'mass_tot': 2.5}}),
     ]  # fmt: skip
     df = build_summary_dataframe(cases, ['planet.mass_tot'])
@@ -289,6 +339,7 @@ def test_post_processing_defaults_when_table_absent():
     assert opts['output_variables'][0] == 'solidification_time'
     assert opts['colormap'] is None
     assert opts['plot_format'] is None
+    assert opts['style'] is None
 
 
 def test_post_processing_accepts_both_colourmap_spellings():
@@ -317,9 +368,13 @@ def test_post_processing_accepts_both_colourmap_spellings():
         ({'output_variables': 'T_surf'}, 'output_variables must be a list'),
         ({'output_variables': ['T_surf', 3]}, 'list of strings'),
         (True, 'must be a table'),
+        ({'style': 'grey'}, 'style'),
+        ({'plot_format': 'svg'}, 'plot_format'),
+        ({'colormap': 'batlowk_r'}, 'colour map'),
     ],
-    ids=['typo_key', 'string_bool', 'scalar_outputs', 'non_string_output', 'not_a_table'],
-)
+    ids=['typo_key', 'string_bool', 'scalar_outputs', 'non_string_output', 'not_a_table',
+         'unknown_style', 'unsupported_format', 'misspelt_colour_map'],
+)  # fmt: skip
 def test_post_processing_rejects_invalid_tables(table, match):
     """A typo or wrong type in [post_processing] raises with the offending key,
     instead of being ignored ('false' as a string would otherwise be truthy).
@@ -327,6 +382,8 @@ def test_post_processing_rejects_invalid_tables(table, match):
     with pytest.raises(ValueError, match=match):
         _read_post_processing_options({'post_processing': table})
     assert _read_post_processing_options({'post_processing': {}})['plot_ecdf'] is True
+    valid = {'style': 'dark', 'plot_format': 'PDF', 'colormap': 'cmc.batlowK_r'}
+    assert _read_post_processing_options({'post_processing': valid})['style'] == 'dark'
 
 
 def test_get_tested_parameters_reads_axes_but_not_post_processing():
@@ -379,7 +436,9 @@ def test_load_grid_cases_skips_stray_entries_and_tolerates_missing_files(tmp_pat
     assert [c['category'] for c in cases] == ['Completed', 'Unknown']
     assert cases[0]['status'] == 'Completed (solidified)'
     assert cases[0]['init_params']['planet']['mass_tot'] == pytest.approx(1.0)
-    assert cases[1]['output'] is None
+    assert cases[0]['final_row']['P_surf'] == pytest.approx(5.0)
+    assert cases[1]['final_row'] == {}
+    assert np.isnan(cases[1]['solidification_time'])
 
 
 def test_case_that_failed_before_init_coupler_reads_its_grid_config(tmp_path, caplog):
@@ -411,7 +470,7 @@ def test_load_grid_cases_refuses_a_cut_helpfile(tmp_path, caplog):
     (case_dir / 'runtime_helpfile.csv').write_text('Time\tPhi_global\n1.0\t0.9\n2.0')
     with caplog.at_level('WARNING'):
         cases = load_grid_cases(tmp_path)
-    assert cases[0]['output'] is None
+    assert cases[0]['final_row'] == {}
     assert cases[0]['category'] == 'Error'
     assert any('cannot read runtime_helpfile.csv' in rec.message for rec in caplog.records)
 
@@ -576,3 +635,53 @@ def test_analyse_grid_with_both_plots_off_only_writes_csvs(tmp_path, monkeypatch
         'final_extracted_data_running_error.csv',
     ]
     assert not (grid_dir / 'post_processing' / 'grid_plots').exists()
+
+
+def test_analyse_grid_from_a_folder_reads_its_copy_grid_with_auto_output(tmp_path, monkeypatch):
+    """The documented example has output = "auto": given the grid folder alone, the
+    analysis takes the axes and the [post_processing] options from its
+    copy.grid.toml and writes the CSVs, where -c alone would stop on 'auto'.
+    """
+    grid_dir = tmp_path / 'grid_20261016_120000_abcd'
+    grid_dir.mkdir()
+    copy = _SETTINGS_TOML.replace('output = "g"', 'output = "auto"')
+    (grid_dir / 'copy.grid.toml').write_text(
+        f'{copy}\n[post_processing]\nplot_format = "png"\n{_COPY_AXIS}'
+    )
+    _write_case(grid_dir, 0, status=10, mass=0.5, helpfile=_phi_series())
+    calls = []
+    monkeypatch.setattr(plot_grid, 'make_grid_plots', lambda *a, **k: calls.append(a))
+    with pytest.raises(ValueError, match='grid-analyse -o'):
+        analyse_grid(grid_dir / 'copy.grid.toml')
+    analyse_grid(grid_dir=grid_dir)
+    all_df = pd.read_csv(
+        grid_dir / 'post_processing' / 'extracted_data' / 'final_extracted_data_all.csv',
+        sep='\t',
+    )
+    assert all_df['planet.mass_tot'].tolist() == pytest.approx([0.5])
+    opts, _, tested, out_dir, _ = calls[0]
+    assert opts['plot_format'] == 'png'
+    assert tested['planet.mass_tot'] == pytest.approx([0.5, 1.0, 2.0])
+    assert out_dir == grid_dir.resolve()
+
+
+def test_analyse_grid_folder_with_config_uses_the_config_options(tmp_path, monkeypatch):
+    """With both a grid folder and a grid file, the folder is analysed with the
+    options of the file (here no plots), while the axes still come from the copy.
+    A folder without copy.grid.toml and no file raises before writing anything.
+    """
+    config, grid_dir = _grid_project(
+        tmp_path, monkeypatch, copy_axis=_COPY_AXIS,
+        post='[post_processing]\nplot_status = false\nplot_ecdf = false\n',
+    )  # fmt: skip
+    _write_case(grid_dir, 0, status=10, mass=0.5, helpfile=_phi_series())
+    calls = []
+    monkeypatch.setattr(plot_grid, 'make_grid_plots', lambda *a, **k: calls.append(a))
+    analyse_grid(config, grid_dir)
+    assert calls == []
+    assert (grid_dir / 'post_processing' / 'extracted_data').is_dir()
+    bare = tmp_path / 'bare'
+    bare.mkdir()
+    with pytest.raises(FileNotFoundError, match='No copy.grid.toml'):
+        analyse_grid(grid_dir=bare)
+    assert not (bare / 'post_processing').exists()
