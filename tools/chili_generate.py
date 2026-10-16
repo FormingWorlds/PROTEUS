@@ -44,6 +44,7 @@ from __future__ import annotations
 
 import copy
 import os
+import re
 
 import tomlkit
 
@@ -177,14 +178,25 @@ def _format_stop_block(text: str) -> str:
     Raises
     ------
     ValueError
-        If the block holds a comment, which this layout cannot place.
+        If the text has no stop table, or the block holds a line that is not a
+        stop header or a one-line ``key = value`` (a full-line comment, a
+        multi-line or a string value).
     """
     lines = text.split('\n')
-    start = next(i for i, ln in enumerate(lines) if ln.strip().startswith('[params.stop.'))
-    end = next(i for i in range(start, len(lines)) if lines[i].startswith('['))
+    start = next(
+        (i for i, ln in enumerate(lines) if ln.strip().startswith('[params.stop.')), None
+    )
+    if start is None:
+        raise ValueError('no [params.stop.*] table to lay out')
+    end = next(
+        (i for i in range(start + 1, len(lines)) if lines[i].startswith('[')), len(lines)
+    )
     block = [ln.strip() for ln in lines[start:end] if ln.strip()]
-    if any(ln.startswith('#') for ln in block):
-        raise ValueError('a comment in the [params.stop] block cannot be laid out')
+    line_ok = re.compile(r'\[params\.stop\.\w+\]|\w+ = [^\[\]"\']+')
+    if bad := [ln for ln in block if not line_ok.fullmatch(ln)]:
+        raise ValueError(
+            f'the [params.stop] block holds a line this layout cannot place: {bad[0]!r}'
+        )
     block = [(' ' * 4 if ln.startswith('[') else ' ' * 8) + ln for ln in block]
     return '\n'.join(lines[:start] + block + [''] + lines[end:])
 
@@ -213,7 +225,8 @@ def generate_case(name: str) -> str:
     everything outside the delta list stays byte-identical to the base,
     apart from the leading comment block, which is replaced with a
     case-specific header (the tutorial header describes the tutorial,
-    not the derived case).
+    not the derived case), and the indentation of the stop block
+    (``_format_stop_block``).
     """
     spec = CASE_DELTAS[name]
     base_path = os.path.join(TUTORIALS, spec['base'])

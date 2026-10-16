@@ -43,10 +43,11 @@ when its melt fraction falls to 5% by mass
 (`params.stop.time.maximum = 1e9`), with the energy-balance, escape and
 wall-clock stops off (`params.stop.radeqm.enabled`,
 `params.stop.escape.enabled` and `params.stop.clock.enabled` are
-`false`). Two limits stay on: the stall stop ends a run after 150
-consecutive iterations without a converged atmosphere solve
-(`params.stop.stall.maximum`), and the iteration limit ends it after
-1,000,000 iterations (`params.stop.iters.maximum`). The runs submitted to the intercomparison also stop at 5% melt,
+`false`). Two limits stay on: the stall stop ends a run as an error
+(status code 22) after 150 consecutive iterations without a converged
+atmosphere solve (`params.stop.stall.maximum`), and the iteration limit
+ends it after 1,000,000 iterations (`params.stop.iters.maximum`). The runs
+submitted to the intercomparison also stop at 5% melt,
 with the energy-balance and escape stops off. Melt fractions of the
 current PROTEUS runs are by mass on this page unless stated otherwise,
 and the figures show the melt fractions of the intercomparison data by
