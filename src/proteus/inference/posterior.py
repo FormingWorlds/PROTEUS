@@ -16,14 +16,14 @@ import pandas as pd
 import torch
 from botorch.fit import fit_gpytorch_mll
 from botorch.models import SingleTaskGP
-from botorch.models.transforms import Normalize, Standardize
+from botorch.models.transforms import Standardize
 from botorch.optim.fit import fit_gpytorch_mll_torch
 from gpytorch.mlls import ExactMarginalLogLikelihood
 
 from proteus.inference.objective import BAD_OBJ_VALUE
 from proteus.inference.plot import dpi, fmt
 from proteus.inference.transforms import unnormalize_parameters
-from proteus.inference.utils import get_kernel
+from proteus.inference.utils import get_kernel, make_input_transform
 from proteus.utils.coupler import variable_is_logarithmic
 
 log = logging.getLogger('fwl.' + __name__)
@@ -54,8 +54,10 @@ def validate_posterior_samples(n, sigma: dict | None) -> int:
     return n
 
 
-def fit_surrogate(X: torch.Tensor, Y: torch.Tensor, kernel: str, seed: int) -> SingleTaskGP:
-    """Fit a GP to the scored evaluations, as BO_step does."""
+def fit_surrogate(
+    X: torch.Tensor, Y: torch.Tensor, kernel: str, seed: int, input_warp: bool = False
+) -> SingleTaskGP:
+    """Fit a GP to the scored evaluations, as BO_step does, with its input warp if any."""
     scored = Y[:, 0] > BAD_OBJ_VALUE
     X, Y = X[scored], Y[scored]
     d = X.shape[-1]
@@ -68,7 +70,7 @@ def fit_surrogate(X: torch.Tensor, Y: torch.Tensor, kernel: str, seed: int) -> S
         train_Y=Y,
         covar_module=get_kernel(kernel, d),
         train_Yvar=torch.full_like(Y, GP_NOISE),
-        input_transform=Normalize(d=d),
+        input_transform=make_input_transform(d, input_warp),
         outcome_transform=Standardize(m=1),
     )
     fit_gpytorch_mll(
@@ -161,11 +163,17 @@ def importance_resample(
 
 
 def sample_posterior(
-    D: dict, parameters: dict, kernel: str, n_samples: int, seed: int, n_proposal: int
+    D: dict,
+    parameters: dict,
+    kernel: str,
+    n_samples: int,
+    seed: int,
+    n_proposal: int,
+    input_warp: bool = False,
 ) -> tuple[pd.DataFrame, float]:
     """Posterior samples in config units, one column per parameter, and the ESS."""
     keys = list(parameters)
-    gp = fit_surrogate(D['X'], D['Y'], kernel, seed)
+    gp = fit_surrogate(D['X'], D['Y'], kernel, seed, input_warp)
     U, ess = importance_resample(
         lambda Z: gp_mean(gp, Z), len(keys), n_samples, n_proposal, seed
     )
@@ -224,7 +232,13 @@ def write_posterior(config: dict, D: dict, directory: str) -> pd.DataFrame:
     n = config['posterior_samples']
     log.info(f'Sampling {n} posterior samples from the GP surrogate')
     samples, ess = sample_posterior(
-        D, config['parameters'], config['kernel'], n, config['seed'], N_PROPOSAL
+        D,
+        config['parameters'],
+        config['kernel'],
+        n,
+        config['seed'],
+        N_PROPOSAL,
+        config.get('input_warp', False),
     )
     log.info(f'    effective sample size: {ess:.0f}')
     if ess < n:

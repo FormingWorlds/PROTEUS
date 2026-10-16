@@ -142,6 +142,20 @@ def test_fit_surrogate_leaves_failed_evaluations_out(no_hyperfit):
     assert post.gp_mean(gp, X[5:10]).min().item() > -5.0
 
 
+def test_fit_surrogate_uses_the_input_warp_of_the_study(no_hyperfit):
+    """With input_warp the posterior GP warps its inputs as the BO GP did; without it
+    the inputs are only normalised, as before.
+    """
+    from botorch.models.transforms.input import Normalize, Warp
+
+    X, Y = _study_data()
+    warped = post.fit_surrogate(X, Y, 'MAT3/2', seed=0, input_warp=True)
+    plain = post.fit_surrogate(X, Y, 'MAT3/2', seed=0)
+    assert isinstance(warped.input_transform, Warp)
+    assert isinstance(plain.input_transform, Normalize)
+    assert len(no_hyperfit) == 2
+
+
 def test_fit_surrogate_refuses_too_few_scored_evaluations(no_hyperfit):
     """Two scored points in two parameters raise before any fit."""
     X, Y = _study_data(n=6)
