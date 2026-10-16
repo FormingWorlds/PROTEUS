@@ -79,8 +79,8 @@ dependencies = [
     "sympy",
     "astropy",
     "toml",
-    # 26.10.12 pins a DataverseNL mirror for every shared dataset, PHOENIX included.
-    "fwl-io>=26.10.12",
+    # 26.10.16 pins the RTPress melt tables at Zenodo 18822022 (DataverseNL QLCEBW).
+    "fwl-io>=26.10.16",
     "packaging",
 ]
 
