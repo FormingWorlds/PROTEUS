@@ -215,6 +215,16 @@ def tex_escape(s: str) -> str:
     return ''.join(TEX_ESCAPE.get(ch, ch) for ch in s)
 
 
+# Glyphs outside the T1 text font: Greek from the sans math alphabet, Unicode
+# subscript digits as real subscripts.
+GLYPHS = {'Φ': r'\ensuremath{\mathsf{\Phi}}'}
+GLYPHS.update({chr(0x2080 + i): rf'\textsubscript{{{i}}}' for i in range(10)})
+
+
+def tex_glyphs(s: str) -> str:
+    return ''.join(GLYPHS.get(ch, ch) for ch in s)
+
+
 def tex_text(s: str, subscripts: bool) -> str:
     """Escape a label, optionally promoting ``X_sub`` to a real subscript."""
     if subscripts:
@@ -230,10 +240,28 @@ def tex_text(s: str, subscripts: bool) -> str:
         s = ''.join(out)
     else:
         s = tex_escape(s)
-    # the only non-ASCII glyph in the figure; the text font carries no Greek, so
-    # it is set from the sans math alphabet
-    s = s.replace('Φ', r'\ensuremath{\mathsf{\Phi}}')
-    return s
+    return tex_glyphs(s)
+
+
+def tex_runs(runs) -> str:
+    """Typeset a line given as styled runs (italic, subscript, superscript)."""
+    out = []
+    for r in runs:
+        t = tex_glyphs(tex_escape(r['text']))
+        if r.get('italic') and r['text'].strip():
+            t = rf'\textit{{{t}}}'
+        if r.get('sub'):
+            t = rf'\textsubscript{{{t}}}'
+        elif r.get('sup'):
+            t = rf'\textsuperscript{{{t}}}'
+        out.append(t)
+    return ''.join(out)
+
+
+def tex_line(line, subscripts: bool) -> str:
+    if line.get('runs'):
+        return tex_runs(line['runs'])
+    return tex_text(line['text'], subscripts)
 
 
 def font_cmd(size: float) -> str:
@@ -436,7 +464,7 @@ def emit(items, meta, mode: str, *, subscripts: bool, links: bool) -> str:
                 ]
                 body.append(
                     f'\\node[{", ".join(opts)}] at ({f(xpos)},{f(base)}) '
-                    f'{{{tex_text(ln["text"], subscripts)}}};'
+                    f'{{{tex_line(ln, subscripts)}}};'
                 )
 
         elif kind == 'image' and it.get('file'):
@@ -450,6 +478,8 @@ def emit(items, meta, mode: str, *, subscripts: bool, links: bool) -> str:
             iw, ih = Image.open(HERE / path).size
             scale = min(it['w'] / iw, it['h'] / ih)
             dw, dh = iw * scale, ih * scale
+            if it.get('stretch'):  # preserveAspectRatio="none"
+                dw, dh = it['w'], it['h']
             body.append(
                 f'\\node[inner sep=0, outer sep=0, anchor=north west] at '
                 f'({f(it["x"] + (it["w"] - dw) / 2)},{f(it["y"] + (it["h"] - dh) / 2)}) '

@@ -1424,6 +1424,7 @@ def test_postprocessing_hands_the_physics_module_a_reporting_row(tmp_path):
 
     p = _make_proteus_instance(tmp_path)
     p.config.atmos_chem.module = 'vulcan'
+    p.config.atmos_chem.when = 'manually'
 
     for method, wrapper in (
         ('observe', 'proteus.observe.wrapper.run_observe'),
@@ -1467,6 +1468,7 @@ def test_postprocessing_refuses_a_helpfile_that_predates_schema_columns(tmp_path
 
     p = _make_proteus_instance(tmp_path)
     p.config.atmos_chem.module = 'vulcan'
+    p.config.atmos_chem.when = 'manually'
     drift = HelpfileSchemaDriftError('predates 1 column(s): R_xuv')
 
     for method, wrapper in (
@@ -2098,6 +2100,32 @@ def test_offline_chemistry_skips_plot_when_chemistry_returns_none(tmp_path):
     mock_chem.assert_called_once()
     assert result is None
     mock_plot.assert_not_called()
+
+
+def test_offline_chemistry_stops_on_vulcan_below_floor(tmp_path):
+    """proteus offchem with a VULCAN below its pyproject floor stops before any file is read."""
+    from packaging.requirements import Requirement
+
+    p = _make_proteus_instance(tmp_path)
+    p.config.atmos_chem.module = 'vulcan'
+    p.config.atmos_chem.when = 'offline'
+    with (
+        patch(
+            'proteus.doctor._dependency_specs',
+            return_value={'fwl-vulcan': Requirement('fwl-vulcan>=26.10.14')},
+        ),
+        patch('proteus.doctor.importlib.metadata.version', return_value='26.4.22'),
+        patch('proteus.doctor._editable_checkout_path', return_value=None),
+        patch('proteus.utils.coupler.ReadHelpfileFromCSV') as mock_read,
+        patch('proteus.atmos_chem.wrapper.run_chemistry') as mock_chem,
+    ):
+        with pytest.raises(
+            EnvironmentError,
+            match=r'26\.4\.22 \(requires >=26\.10\.14\)\. Fix: pip install -U "fwl-vulcan>=26\.10\.14"',
+        ):
+            p.offline_chemistry()
+    assert mock_read.call_count == 0
+    assert mock_chem.call_count == 0
 
 
 def test_offline_chemistry_raises_on_empty_helpfile(tmp_path):
@@ -3088,6 +3116,96 @@ def test_it_timing_records_orbit_module_wall_time(tmp_path, monkeypatch, caplog)
     assert len(timing_records) > 0, 'no [IT_TIMING] log line was emitted'
     assert any('orbit=' in msg for msg in timing_records)
     assert any('escape=' in msg for msg in timing_records)
+
+
+# Step names proteus-bench turns into series; a renamed or dropped name splits a series
+INIT_TIMING_KEYS = ['data', 'structure', 'equilibrate', 'stellar', 'orbit', 'other', 'total']
+IT_TIMING_KEYS = {
+    'interior',
+    'structure',
+    'orbit',
+    'stellar',
+    'escape',
+    'outgas',
+    'trapping',
+    'atmos',
+    'chem',
+    'write',
+    'plots',
+    'archive',
+    'other',
+    'total',
+}
+
+
+def test_timing_lines_keep_the_format_proteus_bench_parses(tmp_path, monkeypatch, caplog):
+    """Under ``PROTEUS_TIMING`` the run logs one ``[INIT_TIMING]`` line before the first
+    ``[IT_TIMING] iter=N init_stage=0|1`` line, both followed by space-separated
+    ``key=<seconds, 3 decimals>`` fields ending in ``other`` and ``total``. proteus-bench
+    reads these lines to time a run, so a change of format breaks it. ``[INIT_TIMING]``
+    has its steps in a fixed order, leaving out the ones that did not run (here
+    ``equilibrate``); every ``[IT_TIMING]`` key is a known stage name. In each line the
+    steps plus ``other`` add up to ``total``. ``init_stage`` is the state when the
+    iteration began: the first ``init_loops + 1`` iterations run in the init stage,
+    including the one at whose end PROTEUS clears it.
+    """
+    import re
+
+    monkeypatch.setattr('proteus.proteus._IT_TIMING_ENABLED', True)
+    p = _make_main_loop_proteus(tmp_path, plot_mod=1, write_mod=1, dt_write_rel=0.0)
+    with caplog.at_level(logging.INFO, logger='fwl.proteus.proteus'):
+        _run_main_loop_capturing_plots(p, stop_at_loop=6)
+
+    timing = [r.message for r in caplog.records if r.message.startswith(('[INIT_', '[IT_'))]
+    assert timing[0].startswith('[INIT_TIMING] ')
+    assert sum(m.startswith('[INIT_TIMING]') for m in timing) == 1
+    line = re.compile(
+        r'(\[INIT_TIMING\]|\[IT_TIMING\] iter=\d+ init_stage=[01])( \w+=\d+\.\d{3})+'
+    )
+    stages = []
+    for message in timing:
+        assert line.fullmatch(message), message
+        fields = dict(f.split('=') for f in message.split('] ')[1].split())
+        if 'init_stage' in fields:
+            stages.append(int(fields.pop('init_stage')))
+            fields.pop('iter')
+            assert set(fields) <= IT_TIMING_KEYS, message
+        else:
+            assert list(fields) == [k for k in INIT_TIMING_KEYS if k != 'equilibrate'], message
+        assert list(fields)[-2:] == ['other', 'total'], message
+        steps = sum(float(v) for k, v in fields.items() if k != 'total')
+        assert steps == pytest.approx(float(fields['total']), abs=0.01), message
+    init_loops = p.loops['init_loops']
+    assert stages[: init_loops + 1] == [1] * (init_loops + 1)
+    assert stages[init_loops + 1 :] and set(stages[init_loops + 1 :]) == {0}
+
+
+def test_init_timing_line_times_the_zalmoxis_equilibration(tmp_path, monkeypatch, caplog):
+    """With Zalmoxis equilibration on, ``[INIT_TIMING]`` has every step, ``equilibrate``
+    timed around the call: a call that takes at least 0.05 s logs at least 0.050.
+    """
+    import re
+    import time as _time
+
+    monkeypatch.setattr('proteus.proteus._IT_TIMING_ENABLED', True)
+    p = _make_main_loop_proteus(tmp_path, plot_mod=1, write_mod=1, dt_write_rel=0.0)
+    p.config.interior_struct.module = 'zalmoxis'
+    p.config.interior_struct.zalmoxis.equilibrate_init = True
+    with (
+        caplog.at_level(logging.INFO, logger='fwl.proteus.proteus'),
+        patch(
+            'proteus.interior_energetics.wrapper.equilibrate_initial_state',
+            side_effect=lambda *_: _time.sleep(0.05),
+        ) as equilibrate,
+    ):
+        _run_main_loop_capturing_plots(p, stop_at_loop=4)
+
+    equilibrate.assert_called_once()
+    (line,) = [r.message for r in caplog.records if r.message.startswith('[INIT_TIMING]')]
+    seconds = float(re.search(r' equilibrate=(\d+\.\d{3})', line)[1])
+    assert seconds >= 0.05
+    keys = [field.split('=')[0] for field in line.split('] ')[1].split()]
+    assert keys == INIT_TIMING_KEYS
 
 
 # =======================================================================================

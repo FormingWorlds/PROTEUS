@@ -44,7 +44,7 @@ classifiers = [
 dependencies = [
     "attrs",
     "cattrs",
-    "fwl-janus>=26.10.08",
+    "fwl-janus>=26.10.15",
     "fwl-mors>=26.10.6",
     "fwl-calliope>=26.10.05",
     "fwl-zephyrus>=26.10.10",
@@ -104,7 +104,7 @@ atmodeller = ["atmodeller>=1.0.2"]
 # vulcan: atmospheric photochemistry module, selected via
 # atmos_chem.module = "vulcan". Also installable editable via
 # tools/get_vulcan.sh.
-vulcan = ["fwl-vulcan>=26.04.22"]
+vulcan = ["fwl-vulcan>=26.10.14"]
 # morrigan: protoplanet accretion module for giant-impact timelines,
 # selected via accretion.module = "morrigan". Also installable editable
 # via tools/get_morrigan.sh.

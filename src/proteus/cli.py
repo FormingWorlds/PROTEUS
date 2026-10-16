@@ -571,8 +571,19 @@ def reference():
     default=Path('input/all_options.toml'),
     help='Path to the TOML config file',
 )
-def interiordata(config_path: Path):
-    """Get interior lookup tables, melting curves, and structure EOS tables"""
+@click.option(
+    '--clean',
+    is_flag=True,
+    help='Remove the Wolf and Bower 2018 curves and the served curve that melting_dir names, '
+    'with its folder interior_lookup_tables/Melting_curves/<melting_dir> and the generated '
+    'P-S files in it, then fetch the curves again; a failed fetch leaves no curves',
+)
+def interiordata(config_path: Path, clean: bool):
+    """Get interior lookup tables, melting curves, and structure EOS tables
+
+    Files already present with their registry checksum are not fetched again;
+    --clean refetches the melting curves only.
+    """
     from .utils.data import (
         download_eos_dynamic,
         download_interior_lookuptables,
@@ -581,10 +592,11 @@ def interiordata(config_path: Path):
         needs_spider_ps_tables,
     )
 
-    download_interior_lookuptables(clean=True)
-
     configuration = read_config_object(config_path)
-    download_melting_curves(configuration, clean=True)
+    download_melting_curves(configuration, clean=clean)
+    # A Wolf_Bower+2018 melting_dir is this dataset, already cleaned and fetched above
+    melting_dir = getattr(getattr(configuration, 'interior_struct', None), 'melting_dir', None)
+    download_interior_lookuptables(clean=clean and melting_dir != 'Wolf_Bower+2018')
 
     # Structure-solver EOS tables (e.g. the PALEOS set) for the config's
     # Zalmoxis setup. Without these on disk, an offline run fails inside
@@ -1058,7 +1070,7 @@ def _update_input_data(config_path: Path):
     if config_path.exists():
         # Only try data download if a config file is present.
         configuration = read_config_object(config_path)
-        download_sufficient_data(configuration, clean=True)
+        download_sufficient_data(configuration)
         click.secho('[+] Additional data has been downloaded.', fg='green')
         return True
 
