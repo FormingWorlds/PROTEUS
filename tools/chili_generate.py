@@ -170,25 +170,37 @@ def _set_dotted(doc, dotted: str, value) -> None:
 def _format_stop_block(text: str, name: str) -> str:
     """Lay out the ``[params.stop.*]`` tables of case ``name`` as the grid configs do.
 
-    Each stop header sits at 4 spaces and every other line of its table at 8,
-    with no blank line inside the block and one blank line before the next
-    table; comment lines that end the block stay outside it. tomlkit appends
-    new tables at the indent of the last one it saw, so the block is rewritten
-    from its own lines, and the parsed TOML must be the same before and after.
+    Each stop header sits at 4 spaces and each key line or comment line of its
+    table at 8, with no blank line inside the block and one blank line before
+    the next table; comment lines that end the block stay outside it. tomlkit
+    appends new tables at the indent of the last one it saw, so the block is
+    rewritten from its own lines, and the parsed TOML must be the same before
+    and after.
 
     Raises
     ------
     ValueError
         If the text has no stop table, the stop tables are split by another
-        table, or the layout changes a parsed value.
+        table, a stop key holds a multi-line value, or the layout changes a
+        parsed value.
     """
     lines = text.split('\n')
     heads = [i for i, ln in enumerate(lines) if ln.strip().startswith('[params.stop.')]
     if not heads:
         raise ValueError(f'{name}: no [params.stop.*] table to lay out')
-    end = next(
-        (i for i in range(heads[0], len(lines)) if _is_other_table(lines[i])), len(lines)
-    )
+    end = len(lines)
+    for i in range(heads[0], len(lines)):
+        s = lines[i].strip()
+        if s.startswith('[') and not s.startswith('[params.stop.'):
+            end = i
+            break
+        if s and not s.startswith(('#', '[')):
+            try:
+                tomllib.loads(s)
+            except tomllib.TOMLDecodeError:
+                raise ValueError(
+                    f'{name}: a multi-line stop value cannot be laid out: {s!r}'
+                ) from None
     if heads[-1] >= end:
         raise ValueError(f'{name}: the [params.stop.*] tables are not in one block')
     while not lines[end - 1].strip() or lines[end - 1].strip().startswith('#'):
@@ -198,15 +210,10 @@ def _format_stop_block(text: str, name: str) -> str:
     while end < len(lines) and not lines[end].strip():
         end += 1
     out = '\n'.join(lines[: heads[0]] + block + [''] + lines[end:])
-    if tomllib.loads(out) != tomllib.loads(text):
+    # repr, not ==: it keeps key order and compares a nan value equal to itself.
+    if repr(tomllib.loads(out)) != repr(tomllib.loads(text)):
         raise ValueError(f'{name}: the stop-block layout changes a parsed value')
     return out
-
-
-def _is_other_table(line: str) -> bool:
-    """Whether ``line`` is a table header other than a ``[params.stop.*]`` table."""
-    s = line.strip()
-    return s.startswith('[') and not s.startswith('[params.stop.')
 
 
 def case_deltas(name: str) -> dict:

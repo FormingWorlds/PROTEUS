@@ -279,42 +279,46 @@ def test_stop_block_layout_is_stable():
 @pytest.mark.parametrize(
     ('text', 'match'),
     [
-        ('[a]\n    x = 1\n', 'case_x: no \\[params.stop'),
+        ('[a]\n    x = 1\n', 'no \\[params.stop'),
         (
             '[params.stop.time]\nm = 1\n[params.dt]\nx = 1\n[params.stop.solid]\np = 0.1\n',
-            'case_x: .* not in one block',
+            'not in one block',
         ),
         (
-            '[params.stop.time]\nnote = """\n  a\n"""\n[star]\n',
-            'case_x: .* changes a parsed value',
+            '[params.stop.time]\nv = [\n  1,\n]\n[params.stop.iters]\nm = 2\n[star]\n',
+            "multi-line stop value .*'v = \\['",
         ),
+        (
+            '[params.stop.iters]\nv = [\n  [1, 2],\n  [3]\n]\n[star]\n',
+            "multi-line stop value .*'v = \\['",
+        ),
+        ('[params.stop.time]\nnote = """\n  a\n"""\n[star]\n', 'multi-line stop value'),
     ],
-    ids=['no_stop_table', 'split_block', 'indented_multi_line_string'],
+    ids=['no_stop_table', 'split_block', 'array', 'nested_array_last_table', 'string'],
 )
 def test_stop_block_layout_refuses_what_it_cannot_place(text, match):
-    """A missing stop table, a split block, or a layout that would change a value (the
-    indentation inside a multi-line string) stops the generator and names the case."""
-    with pytest.raises(ValueError, match=match):
+    """A missing stop table, a split block or a multi-line value, also a nested array in the
+    last table, stops the generator and names the case."""
+    with pytest.raises(ValueError, match='case_x: .*' + match):
         _load_generator()._format_stop_block(text, 'case_x')
 
 
 def test_stop_block_layout_keeps_comments_and_values():
     """Inline comments, a comment ending in '{', aligned and dashed keys, a comment line and
-    a multi-line array keep their values; a comment that ends the block stays outside it."""
+    a nan value keep their values; a comment that ends the block stays outside it."""
     import tomllib
 
     gen = _load_generator()
     text = (
-        '[a]\nx = 1\n[params.stop.time]  # t\nmaximum  = 1e9  # cap {\n[params.stop.iters]\n'
-        '# note\nmax-x = [\n  1,\n  2,\n]\n\n# star\n[star]\ny = 2'
+        '[a]\nx = nan\n[params.stop.time]  # t\nmaximum  = 1e9  # cap {\n[params.stop.iters]\n'
+        '# note\nmax-x = [1, 2]\n\n# star\n[star]\ny = 2'
     )
     out = gen._format_stop_block(text, 'case_x')
     assert out == (
-        '[a]\nx = 1\n    [params.stop.time]  # t\n        maximum  = 1e9  # cap {\n'
-        '    [params.stop.iters]\n        # note\n        max-x = [\n        1,\n        2,\n'
-        '        ]\n\n# star\n[star]\ny = 2'
+        '[a]\nx = nan\n    [params.stop.time]  # t\n        maximum  = 1e9  # cap {\n'
+        '    [params.stop.iters]\n        # note\n        max-x = [1, 2]\n\n# star\n[star]\ny = 2'
     )
-    assert tomllib.loads(out) == tomllib.loads(text)
+    assert repr(tomllib.loads(out)) == repr(tomllib.loads(text))
     assert tomllib.loads(out)['params']['stop'] == {
         'time': {'maximum': 1e9},
         'iters': {'max-x': [1, 2]},
