@@ -791,7 +791,7 @@ runs:
                 cfg = read_config_object(cfg_path)
                 if cfg_path.endswith('aragog_janus.toml'):
                     cfg.atmos_clim.module = 'agni'
-                download_sufficient_data(cfg, clean=False)
+                download_sufficient_data(cfg)
             except Exception as exc:
                 print(f'warning: download_sufficient_data({cfg_path}) -> {exc}')
 

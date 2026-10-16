@@ -108,7 +108,7 @@ def _ensure_aragog_data(runner):
     was_offline = runner.config.params.offline
     runner.config.params.offline = False
     try:
-        download_sufficient_data(runner.config, clean=False)
+        download_sufficient_data(runner.config)
         # The P-S tables use these siblings of the unified table when present.
         download_zalmoxis_eos('PALEOS-2phase:MgSiO3')
     except OSError:

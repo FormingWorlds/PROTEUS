@@ -564,9 +564,10 @@ def test_get_solar_wraps_downloader_exception(monkeypatch, tmp_path):
 
 
 @pytest.mark.unit
-def test_get_interiordata_calls_clean_downloads(monkeypatch, tmp_path):
+@pytest.mark.parametrize('args, clean', [([], False), (['--clean'], True)])
+def test_get_interiordata_calls_the_downloads(monkeypatch, tmp_path, args, clean):
     """``proteus get interiordata`` reads the config and triggers BOTH interior lookup tables
-    AND melting-curve downloads, passing the config object through.
+    AND melting-curve downloads, passing the config object through; only ``--clean`` cleans.
     """
     runner = CliRunner()
     calls = []
@@ -596,15 +597,84 @@ def test_get_interiordata_calls_clean_downloads(monkeypatch, tmp_path):
     cfg = tmp_path / 'cfg.toml'
     cfg.write_text("this content won't be parsed because we patched read_config_object")
 
-    res = runner.invoke(cli.cli, ['get', 'interiordata', '--config-path', str(cfg)])
+    res = runner.invoke(cli.cli, ['get', 'interiordata', '--config-path', str(cfg), *args])
     assert res.exit_code == 0
 
-    assert ('interior', True) in calls
+    assert ('interior', clean) in calls
     assert ('read_cfg', cfg) in calls
-    assert ('melt', {'fake': 'config'}, True) in calls
+    assert ('melt', {'fake': 'config'}, clean) in calls
     # No structure module in the fake config: the Zalmoxis EOS download
     # must not be attempted.
     assert not any(c[0] == 'zalmoxis_eos' for c in calls)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('melting_dir', ['Monteux-600', 'Wolf_Bower+2018'])
+def test_get_interiordata_fetches_only_missing_or_damaged_files(
+    monkeypatch, tmp_path, melting_dir
+):
+    """Through the real fwl-io fetcher, a second call requests nothing, a damaged file is
+    requested again, and ``--clean`` requests each melting-curve file once and removes the
+    local folder of the configured curve, but no other local folder."""
+    import hashlib
+
+    import fwl_io.fetch
+    import requests
+
+    from proteus.data import MELTING_MONTEUX_MINUS600, MELTING_WOLF_BOWER_2018, dataset_dir
+
+    body = {'solidus.dat': b'0 1500\n', 'liquidus.dat': b'0 2500\n'}
+    registry = {n: 'sha256:' + hashlib.sha256(b).hexdigest() for n, b in body.items()}
+    requested = []
+
+    def serve(self, mirror, fname, known_hash, into_dir):
+        requested.append(f'{self.rel_dir}/{fname}')
+        out = Path(into_dir) / fname
+        out.write_bytes(body[fname])
+        return str(out)
+
+    def no_network(*args, **kwargs):
+        raise AssertionError('network request')
+
+    create = fwl_io.create_fetcher
+    monkeypatch.setattr(
+        'fwl_io.create_fetcher', lambda **kw: create(**kw | {'registry': registry})
+    )
+    monkeypatch.setattr(fwl_io.fetch.Fetcher, '_retrieve_once', serve)
+    monkeypatch.setattr(requests.Session, 'send', no_network)
+    monkeypatch.delenv('FWL_DATA_CACHE', raising=False)
+    monkeypatch.delenv('FWL_IO_OFFLINE', raising=False)
+    monkeypatch.setattr('proteus.utils.data.GetFWLData', lambda: tmp_path)
+    struct = types.SimpleNamespace(module='dummy', melting_dir=melting_dir)
+    config = types.SimpleNamespace(interior_struct=struct)
+    monkeypatch.setattr(cli, 'read_config_object', lambda path: config)
+
+    def get(*args):
+        requested.clear()
+        res = CliRunner().invoke(cli.cli, ['get', 'interiordata', *args])
+        assert res.exit_code == 0, res.output
+        return sorted(requested)
+
+    served = {
+        'Monteux-600': MELTING_MONTEUX_MINUS600,
+        'Wolf_Bower+2018': MELTING_WOLF_BOWER_2018,
+    }
+    keys = {MELTING_WOLF_BOWER_2018, served[melting_dir]}
+    dirs = sorted(dataset_dir(k, data_root=tmp_path).relative_to(tmp_path) for k in keys)
+    every = sorted(f'{d}/{n}' for d in dirs for n in body)
+    local = tmp_path / 'interior_lookup_tables/Melting_curves'
+    generated, other = local / melting_dir / 'solidus_P-S.dat', local / 'MyCurve/solidus.dat'
+    for path in (generated, other):
+        path.parent.mkdir(parents=True)
+        path.write_text('0 3000\n')
+    assert get() == every
+    assert get() == []
+    (tmp_path / dirs[0] / 'solidus.dat').write_text('x')
+    assert get() == [f'{dirs[0]}/solidus.dat']
+    assert generated.is_file()
+    assert get('--clean') == every
+    assert not generated.exists()
+    assert other.is_file()
 
 
 def assert_refusal_logged_as_error(caplog, key: str) -> None:
@@ -1426,7 +1496,7 @@ def test_update_input_data_refuses_an_unknown_config_key_before_downloading(
 
     downloads = []
     monkeypatch.setattr(
-        cli, 'download_sufficient_data', lambda configuration, clean: downloads.append(clean)
+        cli, 'download_sufficient_data', lambda configuration: downloads.append(configuration)
     )
 
     with open(PROTEUS_ROOT / 'input' / 'dummy.toml', 'rb') as f:
@@ -1448,7 +1518,7 @@ def test_update_input_data_refuses_an_unknown_config_key_before_downloading(
     with open(good, 'w') as f:
         tomlkit.dump(raw, f)
     assert cli._update_input_data(good) is True
-    assert downloads == [True]
+    assert len(downloads) == 1
 
 
 def test_grid_dry_run_passes_test_run_flag(monkeypatch, tmp_path):
@@ -1912,8 +1982,8 @@ def test_update_input_data_returns_true_when_config_exists(monkeypatch, tmp_path
         received.append(('read', Path(path)))
         return {'fake': 'configuration'}
 
-    def fake_download_sufficient_data(configuration, clean):
-        received.append(('dl', configuration, clean))
+    def fake_download_sufficient_data(configuration):
+        received.append(('dl', configuration))
 
     monkeypatch.setattr(cli, 'read_config_object', fake_read_config_object)
     monkeypatch.setattr(cli, 'download_sufficient_data', fake_download_sufficient_data)
@@ -1924,8 +1994,7 @@ def test_update_input_data_returns_true_when_config_exists(monkeypatch, tmp_path
     assert len(received) == 2
     assert received[0][0] == 'read'
     assert received[1][0] == 'dl'
-    # clean kwarg threaded as True
-    assert received[1][2] is True
+    assert received[1] == ('dl', {'fake': 'configuration'})
 
 
 # ---------------------------
