@@ -44,6 +44,7 @@ from __future__ import annotations
 
 import copy
 import os
+import tomllib
 
 import tomlkit
 
@@ -166,38 +167,46 @@ def _set_dotted(doc, dotted: str, value) -> None:
     node[keys[-1]] = copy.deepcopy(value)
 
 
-def _format_stop_block(text: str) -> str:
-    """Lay out the ``[params.stop.*]`` tables as the grid configs do.
+def _format_stop_block(text: str, name: str) -> str:
+    """Lay out the ``[params.stop.*]`` tables of case ``name`` as the grid configs do.
 
-    Each stop header sits at 4 spaces and its keys at 8, with no blank line
-    inside the block and one blank line before the next table or comment.
-    tomlkit appends new tables at the indent of the last one it saw, so the
-    block is rewritten from its own lines; no value text changes.
+    Each stop header sits at 4 spaces and every other line of its table at 8,
+    with no blank line inside the block and one blank line before the next
+    table; comment lines that end the block stay outside it. tomlkit appends
+    new tables at the indent of the last one it saw, so the block is rewritten
+    from its own lines, and the parsed TOML must be the same before and after.
 
     Raises
     ------
     ValueError
         If the text has no stop table, the stop tables are split by another
-        table or a comment line, or a key line opens a multi-line value.
+        table, or the layout changes a parsed value.
     """
     lines = text.split('\n')
     heads = [i for i, ln in enumerate(lines) if ln.strip().startswith('[params.stop.')]
     if not heads:
-        raise ValueError('no [params.stop.*] table to lay out')
-    end = heads[0]
-    while end < len(lines):
-        s = lines[end].strip()
-        if s.startswith('#') or (s.startswith('[') and not s.startswith('[params.stop.')):
-            break
-        end += 1
+        raise ValueError(f'{name}: no [params.stop.*] table to lay out')
+    end = next(
+        (i for i in range(heads[0], len(lines)) if _is_other_table(lines[i])), len(lines)
+    )
     if heads[-1] >= end:
-        raise ValueError('the [params.stop.*] tables are not in one block')
+        raise ValueError(f'{name}: the [params.stop.*] tables are not in one block')
+    while not lines[end - 1].strip() or lines[end - 1].strip().startswith('#'):
+        end -= 1
     block = [ln.strip() for ln in lines[heads[0] : end] if ln.strip()]
-    keys = [ln for ln in block if not ln.startswith('[')]
-    if bad := [ln for ln in keys if '=' not in ln or ln.endswith(('[', '{', '"""', "'''"))]:
-        raise ValueError(f'a line of the [params.stop.*] block cannot be laid out: {bad[0]!r}')
     block = [(' ' * 4 if ln.startswith('[') else ' ' * 8) + ln for ln in block]
-    return '\n'.join(lines[: heads[0]] + block + [''] + lines[end:])
+    while end < len(lines) and not lines[end].strip():
+        end += 1
+    out = '\n'.join(lines[: heads[0]] + block + [''] + lines[end:])
+    if tomllib.loads(out) != tomllib.loads(text):
+        raise ValueError(f'{name}: the stop-block layout changes a parsed value')
+    return out
+
+
+def _is_other_table(line: str) -> bool:
+    """Whether ``line`` is a table header other than a ``[params.stop.*]`` table."""
+    s = line.strip()
+    return s.startswith('[') and not s.startswith('[params.stop.')
 
 
 def case_deltas(name: str) -> dict:
@@ -234,7 +243,7 @@ def generate_case(name: str) -> str:
     doc = tomlkit.parse(text)
     for dotted, value in case_deltas(name).items():
         _set_dotted(doc, dotted, value)
-    rendered = _format_stop_block(tomlkit.dumps(doc))
+    rendered = _format_stop_block(tomlkit.dumps(doc), name)
 
     # Replace the tutorial's leading comment block (everything up to
     # the first non-comment, non-blank line) with the case header.

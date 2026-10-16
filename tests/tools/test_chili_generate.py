@@ -269,47 +269,57 @@ def test_generated_stop_block_has_the_grid_layout():
     assert _stop_block(grid)[-2:] == ['', '[star]']
 
 
-def test_stop_block_layout_is_stable_and_refuses_comments():
-    """Laying out an already laid-out block changes nothing; a comment in the block is refused."""
+def test_stop_block_layout_is_stable():
+    """Laying out an already laid-out case changes nothing."""
     gen = _load_generator()
     text = gen.generate_case('earth')
-    assert gen._format_stop_block(text) == text
-    bad = text.replace(
-        '    [params.stop.iters]\n', '    [params.stop.iters]\n        # cap\n', 1
-    )
-    assert bad != text
-    with pytest.raises(ValueError, match='not in one block'):
-        gen._format_stop_block(bad)
+    assert gen._format_stop_block(text, 'earth') == text
 
 
 @pytest.mark.parametrize(
     ('text', 'match'),
     [
-        ('[a]\n    x = 1\n', 'no \\[params.stop'),
-        ('[a]\n    [params.stop.time]\n        v = [\n            1,\n        ]\n', 'v = \\['),
+        ('[a]\n    x = 1\n', 'case_x: no \\[params.stop'),
         (
             '[params.stop.time]\nm = 1\n[params.dt]\nx = 1\n[params.stop.solid]\np = 0.1\n',
-            'one block',
+            'case_x: .* not in one block',
+        ),
+        (
+            '[params.stop.time]\nnote = """\n  a\n"""\n[star]\n',
+            'case_x: .* changes a parsed value',
         ),
     ],
-    ids=['no_stop_table', 'multi_line_value', 'split_block'],
+    ids=['no_stop_table', 'split_block', 'indented_multi_line_string'],
 )
 def test_stop_block_layout_refuses_what_it_cannot_place(text, match):
-    """A missing stop table, a multi-line value or a split block stops the generator."""
+    """A missing stop table, a split block, or a layout that would change a value (the
+    indentation inside a multi-line string) stops the generator and names the case."""
     with pytest.raises(ValueError, match=match):
-        _load_generator()._format_stop_block(text)
+        _load_generator()._format_stop_block(text, 'case_x')
 
 
-def test_stop_block_at_column_0_and_at_the_end_of_a_file_is_laid_out():
-    """Column-0 stop tables get the grid layout with their comments and spacing; a comment
-    after the block stays outside it; a block that ends the file gets a closing blank line."""
+def test_stop_block_layout_keeps_comments_and_values():
+    """Inline comments, a comment ending in '{', aligned and dashed keys, a comment line and
+    a multi-line array keep their values; a comment that ends the block stays outside it."""
+    import tomllib
+
     gen = _load_generator()
-    text = "[a]\n[params.stop.time]  # t\nmaximum  = 1  # don't [x]\n[params.stop.iters]\nmax-x = 2\n\n# star\n[star]\nx = 1"
-    assert gen._format_stop_block(text) == (
-        "[a]\n    [params.stop.time]  # t\n        maximum  = 1  # don't [x]\n"
-        '    [params.stop.iters]\n        max-x = 2\n\n# star\n[star]\nx = 1'
+    text = (
+        '[a]\nx = 1\n[params.stop.time]  # t\nmaximum  = 1e9  # cap {\n[params.stop.iters]\n'
+        '# note\nmax-x = [\n  1,\n  2,\n]\n\n# star\n[star]\ny = 2'
     )
-    assert gen._format_stop_block('[a]\n[params.stop.time]\nmaximum = 1') == (
+    out = gen._format_stop_block(text, 'case_x')
+    assert out == (
+        '[a]\nx = 1\n    [params.stop.time]  # t\n        maximum  = 1e9  # cap {\n'
+        '    [params.stop.iters]\n        # note\n        max-x = [\n        1,\n        2,\n'
+        '        ]\n\n# star\n[star]\ny = 2'
+    )
+    assert tomllib.loads(out) == tomllib.loads(text)
+    assert tomllib.loads(out)['params']['stop'] == {
+        'time': {'maximum': 1e9},
+        'iters': {'max-x': [1, 2]},
+    }
+    assert gen._format_stop_block('[a]\n[params.stop.time]\nmaximum = 1', 'case_x') == (
         '[a]\n    [params.stop.time]\n        maximum = 1\n'
     )
 
