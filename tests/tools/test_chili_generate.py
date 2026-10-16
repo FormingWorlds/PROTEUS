@@ -286,19 +286,33 @@ def test_stop_block_layout_is_stable():
         ),
         (
             '[params.stop.time]\nv = [\n  1,\n]\n[params.stop.iters]\nm = 2\n[star]\n',
-            "multi-line stop value .*'v = \\['",
+            "multi-line value.*'v = \\['",
         ),
         (
             '[params.stop.iters]\nv = [\n  [1, 2],\n  [3]\n]\n[star]\n',
-            "multi-line stop value .*'v = \\['",
+            "multi-line value.*'v = \\['",
         ),
-        ('[params.stop.time]\nnote = """\n  a\n"""\n[star]\n', 'multi-line stop value'),
+        ('[params.stop.time]\nnote = """\n  a\n"""\n[star]\n', 'multi-line value'),
+        ('[params.stop.a]\nk=\n[star]\n', 'not valid TOML'),
+        (
+            'd = """\n[params.stop.time]"""\n[params.stop.time]\nm = 1\n[star]\ny = 1\n',
+            'changes a parsed value',
+        ),
     ],
-    ids=['no_stop_table', 'split_block', 'array', 'nested_array_last_table', 'string'],
+    ids=[
+        'no_stop_table',
+        'split_block',
+        'array',
+        'nested_array_last_table',
+        'string',
+        'invalid_toml',
+        'stop_header_inside_a_string',
+    ],
 )
 def test_stop_block_layout_refuses_what_it_cannot_place(text, match):
-    """A missing stop table, a split block or a multi-line value, also a nested array in the
-    last table, stops the generator and names the case."""
+    """Invalid TOML, a missing stop table, a split block, a multi-line value (also a nested
+    array in the last table) or a layout that changes a value stops the generator and names
+    the case; a stop header inside a string elsewhere reaches the value check."""
     with pytest.raises(ValueError, match='case_x: .*' + match):
         _load_generator()._format_stop_block(text, 'case_x')
 

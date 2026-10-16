@@ -180,10 +180,14 @@ def _format_stop_block(text: str, name: str) -> str:
     Raises
     ------
     ValueError
-        If the text has no stop table, the stop tables are split by another
-        table, a stop key holds a multi-line value, or the layout changes a
-        parsed value.
+        If the text is not valid TOML or has no stop table, the stop tables
+        are split by another table, a stop key holds a multi-line value, or
+        the layout changes a parsed value.
     """
+    try:
+        before = tomllib.loads(text)
+    except tomllib.TOMLDecodeError as exc:
+        raise ValueError(f'{name}: the config is not valid TOML: {exc}') from None
     lines = text.split('\n')
     heads = [i for i, ln in enumerate(lines) if ln.strip().startswith('[params.stop.')]
     if not heads:
@@ -199,7 +203,7 @@ def _format_stop_block(text: str, name: str) -> str:
                 tomllib.loads(s)
             except tomllib.TOMLDecodeError:
                 raise ValueError(
-                    f'{name}: a multi-line stop value cannot be laid out: {s!r}'
+                    f'{name}: a stop line does not parse on its own (multi-line value): {s!r}'
                 ) from None
     if heads[-1] >= end:
         raise ValueError(f'{name}: the [params.stop.*] tables are not in one block')
@@ -211,7 +215,7 @@ def _format_stop_block(text: str, name: str) -> str:
         end += 1
     out = '\n'.join(lines[: heads[0]] + block + [''] + lines[end:])
     # repr, not ==: it keeps key order and compares a nan value equal to itself.
-    if repr(tomllib.loads(out)) != repr(tomllib.loads(text)):
+    if repr(tomllib.loads(out)) != repr(before):
         raise ValueError(f'{name}: the stop-block layout changes a parsed value')
     return out
 
