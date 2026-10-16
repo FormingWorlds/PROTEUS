@@ -69,7 +69,8 @@ NAMED_RECORD = '23197931'
 MUSCLES_RECORD = '17802209'
 PHOENIX_RECORD = '17674612'
 WOLF_BOWER_RECORD = '17417017'
-RTPRESS_RECORD = '18819027'
+# Zenodo 18819027 and 18822022 hold the same RTPress files; the fwl-io manifest pins either.
+RTPRESS_RECORDS = {'18819027', '18822022'}
 PALEOS_2PHASE_RECORD = '19680050'
 PALEOS_UNIFIED_RECORD = '22776069'
 CHABRIER_RECORD = '19135021'
@@ -81,7 +82,7 @@ MELTING_WOLF_BOWER_2018_RECORD = '15728072'
 # Datasets PROTEUS reads from the fwl-io shared manifest: key -> (subdir, record).
 SHARED_DATASETS = {
     EOS_WOLF_BOWER_2018: ('interior/eos/wolf_bower_2018_1tpa', WOLF_BOWER_RECORD),
-    EOS_RTPRESS_100TPA: ('interior/eos/rtpress_melt_100tpa', RTPRESS_RECORD),
+    EOS_RTPRESS_100TPA: ('interior/eos/rtpress_melt_100tpa', RTPRESS_RECORDS),
     EOS_PALEOS_MGSIO3: ('interior/eos/paleos_mgsio3', PALEOS_2PHASE_RECORD),
     EOS_PALEOS_IRON: ('interior/eos/paleos_iron', PALEOS_UNIFIED_RECORD),
     EOS_PALEOS_MGSIO3_UNIFIED: ('interior/eos/paleos_mgsio3_unified', PALEOS_UNIFIED_RECORD),
@@ -223,7 +224,8 @@ def test_shared_datasets_resolve_through_the_fwl_io_manifest():
     for key, (subdir, record) in SHARED_DATASETS.items():
         assert key in shared, f'{key} is not declared in the fwl-io shared manifest'
         assert _dataset(key).subdir == subdir
-        assert _dataset(key).zenodo == f'10.5281/zenodo.{record}'
+        records = {record} if isinstance(record, str) else record
+        assert _dataset(key).zenodo in {f'10.5281/zenodo.{r}' for r in records}
     for (group, bands), record in SPECTRAL_RECORDS.items():
         assert shared[spectral_file_key(group, bands)].zenodo == f'10.5281/zenodo.{record}'
     # Discrimination: none of these keys is PROTEUS-owned, so a lookup that only
@@ -371,7 +373,10 @@ def test_dataset_dir_is_versioned(tmp_path):
         tmp_path / 'atmos_clim' / 'surface_albedos' / 'hammond_2024' / f'r{HAMMOND_2024_RECORD}'
     )
     for key, (subdir, record) in SHARED_DATASETS.items():
-        assert dataset_dir(key, data_root=tmp_path) == tmp_path / subdir / f'r{record}'
+        records = {record} if isinstance(record, str) else record
+        assert dataset_dir(key, data_root=tmp_path) in {
+            tmp_path / subdir / f'r{r}' for r in records
+        }
     assert dataset_dir(STELLAR_SPECTRA_PHOENIX, data_root=tmp_path) == (
         tmp_path / 'star' / 'spectra' / 'phoenix' / f'r{PHOENIX_RECORD}'
     )

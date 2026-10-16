@@ -17,8 +17,7 @@ checksum registry committed beside that manifest,
 and places the files in a version directory named for the record, so a re-pinned
 deposit lands beside its predecessor rather than overwriting it. Every request
 carries a connect and read timeout, and a transient failure is retried with
-backoff. For every dataset except the PHOENIX spectra, which have no mirror yet, a
-file that Zenodo does not serve is fetched from the
+backoff. A file that Zenodo does not serve is fetched from the
 [DataverseNL](https://dataverse.nl/dataverse/Proteus_Fr) mirror the manifest pins
 beside the record, and checked against the same registry.
 Data several models read (spectral files, stellar spectra, equations of state,
