@@ -250,7 +250,7 @@ def test_a_run_stopped_on_an_impact_resumes_from_before_it(tmp_path):
     # cannot stall the solve.
     leg1.config.params.offline = False
     try:
-        download_sufficient_data(leg1.config, clean=False)
+        download_sufficient_data(leg1.config)
     finally:
         leg1.config.params.offline = True
 
@@ -421,7 +421,7 @@ def test_accretion_resume_matches_uninterrupted_run(tmp_path):
     runner_a = _make_runner(dir_uninterrupted, LEG2_STOP_TIME)
     runner_a.config.params.offline = False
     try:
-        download_sufficient_data(runner_a.config, clean=False)
+        download_sufficient_data(runner_a.config)
     finally:
         runner_a.config.params.offline = True
     runner_a.start(resume=False, offline=True)
@@ -479,7 +479,7 @@ def test_accretion_resume_with_sparse_snapshots_completes_past_impact(tmp_path, 
     leg1.config.params.out.write_mod = 2
     leg1.config.params.offline = False
     try:
-        download_sufficient_data(leg1.config, clean=False)
+        download_sufficient_data(leg1.config)
     finally:
         leg1.config.params.offline = True
     leg1.start(resume=False, offline=True)
