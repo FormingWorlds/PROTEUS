@@ -2170,6 +2170,7 @@ def _run_gate_solver(
     outer_solver=None,
     use_jax=None,
     config_edit=None,
+    density_cache=None,
 ):
     """Invoke zalmoxis_solver with the heavy solve mocked out.
 
@@ -2215,6 +2216,8 @@ def _run_gate_solver(
         Value for ``config.interior_struct.zalmoxis.use_jax``.
     config_edit : callable, optional
         Called with the mock config before the solve, for a field with no keyword here.
+    density_cache : dict, optional
+        Initial ``_density_cache`` (the density seed); the default is an empty cache.
     """
     from proteus.interior_struct import zalmoxis as zalmoxis_wrapper
 
@@ -2252,7 +2255,7 @@ def _run_gate_solver(
     monkeypatch.setattr(
         zalmoxis_wrapper,
         '_density_cache',
-        {'density': None, 'radii': None, 'key': None},
+        density_cache or {'density': None, 'radii': None, 'key': None},
     )
 
     def _fake_density(P, mats, eos, T, sol, liq, interpolation_functions=None, **kwargs):
@@ -2493,6 +2496,78 @@ def test_zalmoxis_solver_init_adiabat_arrays_take_jax_dispatch(tmp_path, monkeyp
 
     assert 0.0 < hf_row['M_core'] < hf_row['M_int']
     assert 0.0 < cmb_radius < hf_row['R_int']
+
+
+def _density_seed(key):
+    """Density-seed cache entry for the planet ``key`` (4 identifiable nodes)."""
+    return {'density': np.full(4, 5000.0), 'radii': np.linspace(0.0, 6.4e6, 4), 'key': key}
+
+
+@pytest.mark.parametrize('mantle_eos', ['PALEOS-2phase:MgSiO3', 'PALEOS:MgSiO3'])
+def test_zalmoxis_solver_withholds_warm_start_on_jax_viable_eos(
+    tmp_path, monkeypatch, mantle_eos
+):
+    """The JAX-arrays path gets neither the density seed nor the central-pressure hint.
+
+    The seed belongs to this planet and ``P_center`` is set, so both would reach
+    the solve if the temperature-source dispatch did not withhold them.
+    """
+    from proteus.interior_struct.zalmoxis import _structure_cache_key
+
+    r_arr, t_arr = _cooled_mantle_arrays(_plausible_model_results())
+
+    def tf(r, P):
+        return float(np.interp(r, r_arr, t_arr))
+
+    main_mock, *_ = _run_gate_solver(
+        tmp_path,
+        monkeypatch,
+        mantle_eos,
+        (r_arr, t_arr),
+        tf,
+        hf_extra={'P_center': 2.9e11},
+        density_cache=_density_seed(_structure_cache_key(_gate_config(mantle_eos))),
+    )
+
+    assert main_mock.call_count == 1
+    kwargs = main_mock.call_args.kwargs
+    assert kwargs['temperature_function'] is None
+    assert kwargs['initial_density'] is None
+    assert kwargs['initial_radii'] is None
+    assert kwargs['p_center_hint'] is None
+
+
+def test_zalmoxis_solver_ignores_density_seed_of_another_planet(tmp_path, monkeypatch):
+    """A cached seed keyed to a planet of twice the mass never seeds this solve.
+
+    The numpy path still takes the central-pressure hint, so the warm start is
+    active and only the planet key keeps the seed out.
+    """
+    from proteus.interior_struct.zalmoxis import _structure_cache_key
+
+    config = _gate_config('PALEOS:MgSiO3')
+    key = _structure_cache_key(config)
+    other = (2.0 * key[0],) + key[1:]
+    r_arr, t_arr = _cooled_mantle_arrays(_plausible_model_results())
+
+    def tf(r, P):
+        return float(np.interp(r, r_arr, t_arr))
+
+    main_mock, *_ = _run_gate_solver(
+        tmp_path,
+        monkeypatch,
+        'PALEOS:MgSiO3',
+        (r_arr, t_arr),
+        tf,
+        use_jax=False,
+        hf_extra={'P_center': 2.9e11},
+        density_cache=_density_seed(other),
+    )
+
+    kwargs = main_mock.call_args.kwargs
+    assert kwargs['p_center_hint'] == pytest.approx(2.9e11, rel=1e-15)
+    assert kwargs['initial_density'] is None
+    assert kwargs['initial_radii'] is None
 
 
 def test_zalmoxis_solver_withholds_callable_on_wet_in_envelope_profile(tmp_path, monkeypatch):
