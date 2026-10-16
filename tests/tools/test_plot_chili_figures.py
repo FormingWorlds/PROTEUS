@@ -238,8 +238,13 @@ def test_composition_bars_stack_from_zero_and_each_star_sits_on_its_bar(chili_to
 
 @pytest.mark.parametrize(
     ('phis', 'outline'),
-    [((0.058, 0.052), [224.50002]), ((0.058, 0.049), [113.50002]), ((0.0603, 0.0603), [])],
-    ids=['first_row_in_6pc_window', 'row_at_5pc_wins', 'ends_at_6.03pc'],
+    [
+        ((0.058, 0.052), [224.50002]),
+        ((0.049, 0.03), [224.50002]),
+        ((0.058, 0.049), [113.50002]),
+        ((0.0603, 0.0603), []),
+    ],
+    ids=['first_row_in_6pc_window', 'first_row_at_5pc', 'row_at_5pc_wins', 'ends_at_6.03pc'],
 )
 def test_figure_5_bar_of_a_current_run_between_5_and_6_percent(
     chili_tool, tmp_path, phis, outline
@@ -263,12 +268,14 @@ def test_figure_5_bar_of_a_current_run_between_5_and_6_percent(
 
 
 def test_figure_5_bar_of_a_model_is_its_row_closest_to_5_percent_below_7(chili_tool, tmp_path):
-    """A model bar takes the row closest to 5% among rows at or below 7% (5.2%, not 6.8% or 1%);
-    a model with no such row, as PlanAtMO, takes its row of lowest melt fraction, which need
-    not be the last."""
+    """A model bar takes the row closest to 5% among rows at or below 7%: 6.5% beats 2%,
+    7.5% is outside, 5.2% beats 6.8% and 1%. A model with no such row, as PlanAtMO, takes
+    its row of lowest melt fraction, neither its first nor its last (the t = 0 row is dropped)."""
     for name, phi in (
+        ('gooey', [0.5, 0.065, 0.02, 0.3]),
+        ('pacman', [0.5, 0.075, 0.02, 0.3]),
         ('moai', [0.5, 0.068, 0.052, 0.01]),
-        ('planatmo', [0.5, 0.164, 0.2, 0.3]),
+        ('planatmo', [0.5, 0.3, 0.164, 0.2]),
     ):
         table = pd.DataFrame(
             {
@@ -285,10 +292,10 @@ def test_figure_5_bar_of_a_model_is_its_row_closest_to_5_percent_below_7(chili_t
         tmp_path, None, 'venus', 0.05, {}
     )
 
-    assert names == ['MOAI', 'PlanAtMO']
-    assert gas['H2O'] == pytest.approx([30.0, 20.0])
-    assert t_surf == pytest.approx([2200.0, 2600.0])
-    assert is_proteus == [False, False]
+    assert names == ['GOOEY', 'PACMAN', 'MOAI', 'PlanAtMO']
+    assert gas['H2O'] == pytest.approx([20.0, 30.0, 30.0, 30.0])
+    assert t_surf == pytest.approx([2600.0, 2200.0, 2200.0, 2200.0])
+    assert is_proteus == [False] * 4
 
 
 def test_every_figure_takes_its_neutral_colours_from_the_active_style(

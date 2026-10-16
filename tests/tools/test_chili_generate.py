@@ -278,7 +278,7 @@ def test_stop_block_layout_is_stable_and_refuses_comments():
         '    [params.stop.iters]\n', '    [params.stop.iters]\n        # cap\n', 1
     )
     assert bad != text
-    with pytest.raises(ValueError, match="cannot place: '# cap'"):
+    with pytest.raises(ValueError, match='not in one block'):
         gen._format_stop_block(bad)
 
 
@@ -287,47 +287,49 @@ def test_stop_block_layout_is_stable_and_refuses_comments():
     [
         ('[a]\n    x = 1\n', 'no \\[params.stop'),
         ('[a]\n    [params.stop.time]\n        v = [\n            1,\n        ]\n', 'v = \\['),
-        ('[a]\n    [params.stop.time]\n        name = "x"\n[star]\n', 'name = "x"'),
+        (
+            '[params.stop.time]\nm = 1\n[params.dt]\nx = 1\n[params.stop.solid]\np = 0.1\n',
+            'one block',
+        ),
     ],
-    ids=['no_stop_table', 'multi_line_value', 'string_value'],
+    ids=['no_stop_table', 'multi_line_value', 'split_block'],
 )
 def test_stop_block_layout_refuses_what_it_cannot_place(text, match):
-    """A missing stop table, a multi-line value or a string value stops the generator."""
+    """A missing stop table, a multi-line value or a split block stops the generator."""
     with pytest.raises(ValueError, match=match):
         _load_generator()._format_stop_block(text)
 
 
-def test_stop_block_at_the_end_of_a_file_and_at_column_0_is_laid_out():
-    """A block that ends the file or sits at column 0 gets the grid layout; an inline
-    comment stays on its line."""
+def test_stop_block_at_column_0_and_at_the_end_of_a_file_is_laid_out():
+    """Column-0 stop tables get the grid layout with their comments and spacing; a comment
+    after the block stays outside it; a block that ends the file gets a closing blank line."""
     gen = _load_generator()
-    assert gen._format_stop_block('[a]\n[params.stop.time]\nmaximum = 1  # note') == (
-        '[a]\n    [params.stop.time]\n        maximum = 1  # note\n'
+    text = "[a]\n[params.stop.time]  # t\nmaximum  = 1  # don't [x]\n[params.stop.iters]\nmax-x = 2\n\n# star\n[star]\nx = 1"
+    assert gen._format_stop_block(text) == (
+        "[a]\n    [params.stop.time]  # t\n        maximum  = 1  # don't [x]\n"
+        '    [params.stop.iters]\n        max-x = 2\n\n# star\n[star]\nx = 1'
+    )
+    assert gen._format_stop_block('[a]\n[params.stop.time]\nmaximum = 1') == (
+        '[a]\n    [params.stop.time]\n        maximum = 1\n'
     )
 
 
 def test_readme_and_page_name_the_stall_and_iteration_limits_of_the_configs():
-    """The stall and iteration numbers in the README and on the page are those the 14 configs load."""
+    """README and page give the stall stop (150 iterations, status code 22) and the iteration
+    limit (1000000) that the 14 configs load; the configs take the stall stop from its default."""
     readme = (REPO / 'input' / 'chili' / 'intercomp' / 'README.md').read_text()
     page = (REPO / 'docs' / 'Tutorials' / 'chili_intercomparison.md').read_text()
-    stall = {
-        int(re.search(r'after (\d+)\s+consecutive iterations', x).group(1))
-        for x in (readme, page)
-    }
-    iters = {
-        int(re.search(r'iteration limit of\s+(\d+)', readme).group(1)),
-        int(
-            re.search(r'after\s+([\d,]+)\s+iterations \(`params', page)
-            .group(1)
-            .replace(',', '')
-        ),
-    }
+    for name, text in (('README', readme), ('page', page)):
+        flat = ' '.join(text.split())
+        assert 'as an error (status code 22) after 150 consecutive iterations' in flat, name
+    assert 'iteration limit of 1000000' in ' '.join(readme.split())
+    assert 'after 1,000,000 iterations (`params.stop.iters.maximum`)' in ' '.join(page.split())
     paths = sorted((REPO / 'input' / 'chili' / 'intercomp').glob('*.toml'))
     paths += sorted((REPO / 'input' / 'tutorials' / 'chili_grid').glob('*.toml'))
     cfgs = [_read_config(str(f)) for f in paths if not f.name.endswith('.grid.toml')]
     assert len(cfgs) == 14
-    assert {(c.params.stop.stall.enabled, c.params.stop.stall.maximum) for c in cfgs} == {
-        (True, *stall)
+    loaded = {
+        (c.params.stop.stall.enabled, c.params.stop.stall.maximum, c.params.stop.iters.maximum)
+        for c in cfgs
     }
-    assert {c.params.stop.iters.maximum for c in cfgs} == iters
-    assert stall == {150} and iters == {1000000}
+    assert loaded == {(True, 150, 1000000)}

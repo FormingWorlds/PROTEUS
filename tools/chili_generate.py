@@ -44,7 +44,6 @@ from __future__ import annotations
 
 import copy
 import os
-import re
 
 import tomlkit
 
@@ -171,34 +170,34 @@ def _format_stop_block(text: str) -> str:
     """Lay out the ``[params.stop.*]`` tables as the grid configs do.
 
     Each stop header sits at 4 spaces and its keys at 8, with no blank line
-    inside the block and one blank line before the next top-level table.
+    inside the block and one blank line before the next table or comment.
     tomlkit appends new tables at the indent of the last one it saw, so the
     block is rewritten from its own lines; no value text changes.
 
     Raises
     ------
     ValueError
-        If the text has no stop table, or the block holds a line that is not a
-        stop header or a one-line ``key = value`` (a full-line comment, a
-        multi-line or a string value).
+        If the text has no stop table, the stop tables are split by another
+        table or a comment line, or a key line opens a multi-line value.
     """
     lines = text.split('\n')
-    start = next(
-        (i for i, ln in enumerate(lines) if ln.strip().startswith('[params.stop.')), None
-    )
-    if start is None:
+    heads = [i for i, ln in enumerate(lines) if ln.strip().startswith('[params.stop.')]
+    if not heads:
         raise ValueError('no [params.stop.*] table to lay out')
-    end = next(
-        (i for i in range(start + 1, len(lines)) if lines[i].startswith('[')), len(lines)
-    )
-    block = [ln.strip() for ln in lines[start:end] if ln.strip()]
-    line_ok = re.compile(r'\[params\.stop\.\w+\]|\w+ = [^\[\]"\']+')
-    if bad := [ln for ln in block if not line_ok.fullmatch(ln)]:
-        raise ValueError(
-            f'the [params.stop] block holds a line this layout cannot place: {bad[0]!r}'
-        )
+    end = heads[0]
+    while end < len(lines):
+        s = lines[end].strip()
+        if s.startswith('#') or (s.startswith('[') and not s.startswith('[params.stop.')):
+            break
+        end += 1
+    if heads[-1] >= end:
+        raise ValueError('the [params.stop.*] tables are not in one block')
+    block = [ln.strip() for ln in lines[heads[0] : end] if ln.strip()]
+    keys = [ln for ln in block if not ln.startswith('[')]
+    if bad := [ln for ln in keys if '=' not in ln or ln.endswith(('[', '{', '"""', "'''"))]:
+        raise ValueError(f'a line of the [params.stop.*] block cannot be laid out: {bad[0]!r}')
     block = [(' ' * 4 if ln.startswith('[') else ' ' * 8) + ln for ln in block]
-    return '\n'.join(lines[:start] + block + [''] + lines[end:])
+    return '\n'.join(lines[: heads[0]] + block + [''] + lines[end:])
 
 
 def case_deltas(name: str) -> dict:
