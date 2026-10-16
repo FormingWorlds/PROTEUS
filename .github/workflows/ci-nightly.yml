@@ -53,8 +53,13 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
+        include:
+          - os: macos-latest
+            unit_minutes: 45
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    # A cold SOCRATES and Julia cache adds about 8 min to the macOS setup, which
+    # with a 17-20 min unit tier passes 30 min; Linux finishes in 13-21 min.
+    timeout-minutes: ${{ matrix.unit_minutes || 30 }}
     env:
       COVERAGE_FILE: .coverage.unit.${{ matrix.os }}
     steps:

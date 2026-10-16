@@ -23,6 +23,7 @@ Functions tested:
 from __future__ import annotations
 
 import logging
+import os
 import sys
 import warnings
 from contextlib import ExitStack, nullcontext
@@ -3312,6 +3313,108 @@ def test_init_timing_line_times_the_zalmoxis_equilibration(tmp_path, monkeypatch
     assert seconds >= 0.05
     keys = [field.split('=')[0] for field in line.split('] ')[1].split()]
     assert keys == INIT_TIMING_KEYS
+
+
+@pytest.mark.parametrize(
+    ('value', 'enabled'),
+    [
+        (None, False),
+        ('', False),
+        ('0', False),
+        ('off', False),
+        ('false', False),
+        ('no', False),
+        ('2', False),
+        (' 1', False),
+        ('10', False),
+        ('onward', False),
+        ('yes please', False),
+        ('1', True),
+        ('True', True),
+        ('YES', True),
+        ('on', True),
+    ],
+)
+def test_timing_switch_reads_proteus_timing(value, enabled):
+    """Timing is on for 1, true, yes or on in any case, off otherwise or when unset,
+    and only the variable PROTEUS_TIMING counts."""
+    from proteus.proteus import _timing_enabled
+
+    environ = {} if value is None else {'PROTEUS_TIMING': value}
+    assert _timing_enabled(environ) is enabled
+    # Only the exact variable counts: a neighbour set to an accepted value stays off
+    assert _timing_enabled({'PROTEUS_TIMINGS': '1'}) is False
+
+
+@pytest.mark.parametrize(
+    ('value', 'enabled'),
+    [(None, False), ('1', True), ('yes', True), ('off', False), ('maybe', False)],
+)
+def test_timing_flag_is_read_from_the_environment_at_import(value, enabled, monkeypatch):
+    """Loading proteus/proteus.py with PROTEUS_TIMING set, or unset, gives the module
+    flag the variable asks for: the flag is read at import, so the test loads the
+    file again under a throwaway name."""
+    import importlib.util
+
+    import proteus.proteus as mod
+
+    if value is None:
+        monkeypatch.delenv('PROTEUS_TIMING', raising=False)
+    else:
+        monkeypatch.setenv('PROTEUS_TIMING', value)
+    spec = importlib.util.spec_from_file_location('_proteus_timing_probe', mod.__file__)
+    probe = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(probe)
+    assert probe._IT_TIMING_ENABLED is enabled
+    assert probe._IT_TIMING_ENABLED is probe._timing_enabled(os.environ)
+
+
+def test_timing_lines_absent_when_timing_is_off(tmp_path, monkeypatch, caplog):
+    """With ``PROTEUS_TIMING`` unset the run logs no ``[INIT_TIMING]`` and no
+    ``[IT_TIMING]`` line, while its other INFO lines still reach the log."""
+    monkeypatch.setattr('proteus.proteus._IT_TIMING_ENABLED', False)
+    p = _make_main_loop_proteus(tmp_path, plot_mod=1, write_mod=1, dt_write_rel=0.0)
+    with caplog.at_level(logging.INFO, logger='fwl.proteus.proteus'):
+        _run_main_loop_capturing_plots(p, stop_at_loop=6)
+
+    messages = [r.message for r in caplog.records if r.name == 'fwl.proteus.proteus']
+    assert p.loops['total'] >= 6
+    assert messages
+    assert not [m for m in messages if m.startswith(('[INIT_TIMING]', '[IT_TIMING]'))]
+
+
+def test_init_timing_line_on_resume_leaves_out_structure_and_equilibrate(
+    tmp_path, monkeypatch, caplog
+):
+    """A resumed run takes its structure from the snapshot, so its ``[INIT_TIMING]``
+    line has the other steps in their fixed order and no ``structure`` or
+    ``equilibrate``, even with the Zalmoxis equilibration switched on."""
+    monkeypatch.setattr('proteus.proteus._IT_TIMING_ENABLED', True)
+    p = _make_proteus_instance(tmp_path, struct_module='zalmoxis', interior_module='aragog')
+    p.config.interior_struct.zalmoxis.equilibrate_init = True
+    (tmp_path / 'data').mkdir(exist_ok=True)
+    solve, equilibrate = MagicMock(), MagicMock()
+    with caplog.at_level(logging.INFO, logger='fwl.proteus.proteus'):
+        _resume_with_patches(
+            p,
+            _make_hf_df(),
+            patch('proteus.star.wrapper.init_star'),
+            patch('proteus.orbit.wrapper.init_orbit'),
+            patch('proteus.accretion.wrapper.init_accretion', return_value=[]),
+            patch('proteus.accretion.wrapper.restore_accretion_state'),
+            patch('proteus.proteus.setup_logger'),
+            patch.object(type(p), '_resync_zalmoxis_mesh'),
+            patch('proteus.interior_energetics.wrapper.solve_structure', solve),
+            patch('proteus.interior_energetics.wrapper.equilibrate_initial_state', equilibrate),
+            # The line precedes the main loop; stop at its first call.
+            patch('proteus.proteus.is_write_snapshot', side_effect=_StopAfterMeshRestore),
+        )
+
+    solve.assert_not_called()
+    equilibrate.assert_not_called()
+    (line,) = [r.message for r in caplog.records if r.message.startswith('[INIT_TIMING]')]
+    keys = [field.split('=')[0] for field in line.split('] ')[1].split()]
+    assert keys == [k for k in INIT_TIMING_KEYS if k not in ('structure', 'equilibrate')]
 
 
 # =======================================================================================
