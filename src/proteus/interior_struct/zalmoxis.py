@@ -129,14 +129,10 @@ _SUPERLIQ_FAILED: _LRUDict = _LRUDict()
 # EOS check runs before every structure solve on a fresh registry.
 _PALEOS_API_RESOLVED: dict[str, dict] = {}
 
-# CMB temperature [K] of the most recently solved super-liquidus adiabat. A
-# structure solve driven by an external temperature source discards this anchor
-# (the external T(r) is the temperature source), so those calls reuse the value
-# the internal-dispatch initial-condition solve already produced instead of
-# repeating the scan-and-bisection at a drifted P_cmb. None until the first
-# solve completes.
+# CMB and surface temperatures [K] of the latest super-liquidus solve. External-source
+# structure solves and deferred anchor failures reuse this pair for the same
+# (delta_T_super, mantle_eos) instead of solving again. None before the first solve.
 _SUPERLIQ_LAST_ANCHOR: float | None = None
-# Surface temperature of the solve that set _SUPERLIQ_LAST_ANCHOR.
 _SUPERLIQ_LAST_SURFACE: float | None = None
 # (delta_T_super, mantle_eos) of the solve that set _SUPERLIQ_LAST_ANCHOR.
 _SUPERLIQ_LAST_ANCHOR_FOR: tuple | None = None
@@ -730,11 +726,7 @@ def _resolve_zalmoxis_anchor_temperatures(
             _SUPERLIQ_LAST_ANCHOR,
             _SUPERLIQ_LAST_SURFACE,
         ) and _SUPERLIQ_LAST_ANCHOR_FOR == _superliq_anchor_for(config):
-            return (
-                float(_SUPERLIQ_LAST_ANCHOR),
-                _SUPERLIQ_LAST_SURFACE,
-                'the last solved anchor',
-            )
+            return _SUPERLIQ_LAST_ANCHOR, _SUPERLIQ_LAST_SURFACE, 'the last solved anchor'
         tcmb, tsurf = float(config.planet.tcmb_init), float(config.planet.tsurf_init)
         return tcmb, tsurf, 'tcmb_init and tsurf_init'
 
@@ -766,7 +758,7 @@ def _resolve_zalmoxis_anchor_temperatures(
         P_cmb, estimated = resolve_P_cmb(hf_row, config)
         cmb_T, surface_T, source = last_pair()
         log.warning(
-            'liquidus_super CMB anchor for Zalmoxis: no P-T anchor at %sP_cmb=%.0f GPa '
+            'liquidus_super anchor for Zalmoxis: no P-T anchor at %sP_cmb=%.0f GPa '
             '(%s); using %s, T_cmb=%.0f K and T_surf=%.0f K, for this structure solve.',
             'the estimated ' if estimated else '',
             P_cmb / 1e9,
@@ -777,7 +769,7 @@ def _resolve_zalmoxis_anchor_temperatures(
         )
         return cmb_T, surface_T
     log.info(
-        'liquidus_super CMB anchor for Zalmoxis: T_cmb=%.0f K (fully molten, '
+        'liquidus_super anchor for Zalmoxis: T_cmb=%.0f K (fully molten, '
         '%.0f K above the liquidus; surface T=%.0f K, P_cmb=%.0f GPa).',
         res['cmb_T'],
         res['achieved_superheat'],
@@ -1387,9 +1379,10 @@ def load_zalmoxis_configuration(
         external_temperature_source: True when the caller passes an external
             temperature function or array so the structure solve follows an
             evolved T(r) instead of the internal temperature-mode dispatch. In
-            'liquidus_super' mode this lets ``cmb_temperature`` reuse the last
-            solved super-liquidus anchor rather than re-solving it, since the
-            anchor is not consumed when an external source drives the solve.
+            'liquidus_super' mode this lets ``cmb_temperature`` and
+            ``surface_temperature`` reuse the last solved super-liquidus pair
+            rather than re-solving it, since the anchor is not consumed when an
+            external source drives the solve.
     Returns:
         dict: A dictionary containing the Zalmoxis configuration parameters.
     """
@@ -3255,11 +3248,8 @@ def zalmoxis_solver(
         Path to the SPIDER mesh file, or None if ``num_spider_nodes == 0``.
     """
 
-    # Load the Zalmoxis configuration parameters. Flag an external temperature
-    # source so 'liquidus_super' skips re-solving the super-liquidus CMB anchor
-    # on this call: an evolved T(r) (or the IC adiabat callable) drives the
-    # structure here, so the anchor is discarded and reusing the last solved
-    # value avoids the scan-and-bisection on every re-solve.
+    # An external temperature source drives this structure solve, so 'liquidus_super'
+    # reuses the last solved CMB and surface pair instead of solving the anchor again.
     external_temperature_source = (
         temperature_function is not None or temperature_arrays is not None
     )

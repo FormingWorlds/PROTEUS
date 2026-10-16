@@ -277,15 +277,17 @@ class Planet:
         of the structure solve's first-guess temperature profile. With
         'liquidus_super' the structure solve takes the surface temperature of
         the solved super-liquidus adiabat together with its CMB temperature,
-        also when it falls back to the last solved anchor; it takes tsurf_init
-        only where it takes tcmb_init.
+        also when it reuses the last solved pair for the same delta_T_super
+        and mantle EOS; it takes tsurf_init only where it takes tcmb_init.
     tcmb_init: float
         Initial core-mantle boundary temperature [K] (adiabatic_from_cmb).
         The mantle adiabat is anchored at this temperature at P = P_cmb
-        and integrated outward to the surface. With liquidus_super, the
-        Zalmoxis structure, a PALEOS mantle and spider or aragog energetics
-        it is also the core-mantle boundary temperature of a structure solve
-        whose P-T anchor fails before any anchor is solved.
+        and integrated outward to the surface. With liquidus_super the
+        Zalmoxis structure takes it, together with tsurf_init, when no
+        super-liquidus pair was solved for the same delta_T_super and mantle
+        EOS: on a call driven by an external temperature source, and on a P-T
+        anchor failure that a later step re-solves (a PALEOS mantle with spider
+        or aragog energetics).
     tcenter_init: float
         Center temperature [K] (linear only).
     f_accretion: float

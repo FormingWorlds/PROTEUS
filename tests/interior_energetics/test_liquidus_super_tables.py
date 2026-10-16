@@ -1287,9 +1287,9 @@ def test_structure_anchor_raise_falls_back_and_the_ic_at_the_final_p_cmb_decides
     assert P_estimate > P_limit  # the first structure solve hits the raise
 
     with caplog.at_level('WARNING', logger='fwl.proteus.interior_struct.zalmoxis'):
-        T_cmb = zal._resolve_zalmoxis_anchor_temperatures(cfg, {}, 'liquidus_super')[0]
+        T_cmb, T_surf = zal._resolve_zalmoxis_anchor_temperatures(cfg, {}, 'liquidus_super')
 
-    assert T_cmb == pytest.approx(6000.0)
+    assert (T_cmb, T_surf) == pytest.approx((6000.0, 4000.0))
     msgs = [r.getMessage() for r in caplog.records if 'no P-T anchor' in r.getMessage()]
     assert len(msgs) == 1
     assert f'the estimated P_cmb={P_estimate / 1e9:.0f} GPa' in msgs[0]
@@ -1321,11 +1321,11 @@ def test_structure_anchor_raise_reuses_the_last_solved_anchor(monkeypatch, caplo
     monkeypatch.setattr(zal, '_SUPERLIQ_LAST_ANCHOR_FOR', zal._superliq_anchor_for(cfg))
 
     with caplog.at_level('WARNING', logger='fwl.proteus.interior_struct.zalmoxis'):
-        T_cmb = zal._resolve_zalmoxis_anchor_temperatures(
+        T_cmb, T_surf = zal._resolve_zalmoxis_anchor_temperatures(
             cfg, {'P_cmb': P_CMB}, 'liquidus_super'
-        )[0]
+        )
 
-    assert T_cmb == pytest.approx(8765.0)
+    assert (T_cmb, T_surf) == pytest.approx((8765.0, 4241.0))
     msgs = [r.getMessage() for r in caplog.records if 'no P-T anchor' in r.getMessage()]
     assert len(msgs) == 1
     assert 'at P_cmb=100 GPa' in msgs[0]
@@ -1636,10 +1636,10 @@ def test_structure_anchor_raise_propagates_for_a_non_paleos_mantle(monkeypatch):
     cfg.interior_struct.zalmoxis.mantle_eos = 'PALEOS-2phase:MgSiO3'
     monkeypatch.setattr(zal, '_SUPERLIQ_LAST_ANCHOR', None)
     monkeypatch.setattr(zal, '_SUPERLIQ_LAST_SURFACE', None)
-    T_cmb = zal._resolve_zalmoxis_anchor_temperatures(cfg, {'P_cmb': P_CMB}, 'liquidus_super')[
-        0
-    ]
-    assert T_cmb == pytest.approx(6000.0)
+    T_cmb, T_surf = zal._resolve_zalmoxis_anchor_temperatures(
+        cfg, {'P_cmb': P_CMB}, 'liquidus_super'
+    )
+    assert (T_cmb, T_surf) == pytest.approx((6000.0, 4000.0))
 
 
 def test_structure_anchor_integration_error_falls_back(monkeypatch, caplog):
@@ -1658,11 +1658,11 @@ def test_structure_anchor_integration_error_falls_back(monkeypatch, caplog):
     cfg.planet.tcmb_init = 6000.0
 
     with caplog.at_level('WARNING', logger='fwl.proteus.interior_struct.zalmoxis'):
-        T_cmb = zal._resolve_zalmoxis_anchor_temperatures(
+        T_cmb, T_surf = zal._resolve_zalmoxis_anchor_temperatures(
             cfg, {'P_cmb': P_CMB}, 'liquidus_super'
-        )[0]
+        )
 
-    assert T_cmb == pytest.approx(6000.0)
+    assert (T_cmb, T_surf) == pytest.approx((6000.0, 4000.0))
     assert any('ValueError: f(a)' in r.getMessage() for r in caplog.records)
     # A first raise at a new key chains the ValueError itself.
     with pytest.raises(common.InitialConditionError, match='ValueError: f') as exc:
@@ -1750,10 +1750,10 @@ def test_structure_anchor_raise_propagates_without_an_ic_re_solve(monkeypatch, c
     cfg.interior_energetics.module = 'spider'
     monkeypatch.setattr(zal, '_SUPERLIQ_LAST_ANCHOR', None)
     monkeypatch.setattr(zal, '_SUPERLIQ_LAST_SURFACE', None)
-    T_cmb = zal._resolve_zalmoxis_anchor_temperatures(cfg, {'P_cmb': P_CMB}, 'liquidus_super')[
-        0
-    ]
-    assert T_cmb == pytest.approx(6000.0)
+    T_cmb, T_surf = zal._resolve_zalmoxis_anchor_temperatures(
+        cfg, {'P_cmb': P_CMB}, 'liquidus_super'
+    )
+    assert (T_cmb, T_surf) == pytest.approx((6000.0, 4000.0))
 
 
 def test_clamp_warning_says_unknown_without_mantle_radii(fake_tables, caplog):
