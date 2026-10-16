@@ -166,6 +166,29 @@ def _set_dotted(doc, dotted: str, value) -> None:
     node[keys[-1]] = copy.deepcopy(value)
 
 
+def _format_stop_block(text: str) -> str:
+    """Lay out the ``[params.stop.*]`` tables as the grid configs do.
+
+    Each stop header sits at 4 spaces and its keys at 8, with no blank line
+    inside the block and one blank line before the next top-level table.
+    tomlkit appends new tables at the indent of the last one it saw, so the
+    block is rewritten from its own lines; no value text changes.
+
+    Raises
+    ------
+    ValueError
+        If the block holds a comment, which this layout cannot place.
+    """
+    lines = text.split('\n')
+    start = next(i for i, ln in enumerate(lines) if ln.strip().startswith('[params.stop.'))
+    end = next(i for i in range(start, len(lines)) if lines[i].startswith('['))
+    block = [ln.strip() for ln in lines[start:end] if ln.strip()]
+    if any(ln.startswith('#') for ln in block):
+        raise ValueError('a comment in the [params.stop] block cannot be laid out')
+    block = [(' ' * 4 if ln.startswith('[') else ' ' * 8) + ln for ln in block]
+    return '\n'.join(lines[:start] + block + [''] + lines[end:])
+
+
 def case_deltas(name: str) -> dict:
     """Deltas of case ``name``: its ``CASE_DELTAS`` entries and the protocol's redox state and stop rule.
 
@@ -199,7 +222,7 @@ def generate_case(name: str) -> str:
     doc = tomlkit.parse(text)
     for dotted, value in case_deltas(name).items():
         _set_dotted(doc, dotted, value)
-    rendered = tomlkit.dumps(doc)
+    rendered = _format_stop_block(tomlkit.dumps(doc))
 
     # Replace the tutorial's leading comment block (everything up to
     # the first non-comment, non-blank line) with the case header.

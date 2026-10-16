@@ -41,17 +41,17 @@ pytestmark = [
 
 
 def test_figure_1_spans_100_myr_and_names_the_run_commit(chili_tool, tmp_path):
-    """Figure 1 reaches 100 Myr, so a run that ends at 11.3 Myr is drawn in full;
+    """Figure 1 reaches 100 Myr, so a Venus run that ends at 48 Myr is drawn in full;
     its legend names the commit of the run and its y label names both bases."""
     style = chili_tool._new_style('d0c7f080')
+    venus = _run_table()
+    venus.loc[2, 'Time'] = 4.8e7
 
-    fig = chili_tool.plot_fig1(
-        _comparison_data(tmp_path / 'data'), _run_table(), _run_table(), style
-    )
+    fig = chili_tool.plot_fig1(_comparison_data(tmp_path / 'data'), _run_table(), venus, style)
 
     ax = fig.axes[0]
     assert ax.get_xlim() == pytest.approx((1e-3, 1e2))
-    assert ax.get_xlim()[1] > _run_table()['Time'].iloc[-1] / 1e6
+    assert ax.get_xlim()[1] > venus['Time'].iloc[-1] / 1e6 > 20.0
     labels = [text.get_text() for text in fig.legends[0].get_texts()]
     assert labels == ['MOAI', 'PROTEUS (d0c7f080) Earth', 'PROTEUS (d0c7f080) Venus']
     assert ax.get_ylabel() == 'Melt fraction\n(by volume; current runs by mass)'
@@ -232,6 +232,30 @@ def test_composition_bars_stack_from_zero_and_each_star_sits_on_its_bar(chili_to
     stars = [(ln.get_xdata()[0], ln.get_ydata()[0], ln.get_markersize()) for ln in twin.lines]
     assert stars == [(0, 1700.0, 12), (1, 1800.0, 16)]
     assert twin.get_ylim() == (1500, 4000)
+
+
+@pytest.mark.parametrize(
+    ('phi_last', 'outline'),
+    [(0.055, [224.50002]), (0.06, [224.50002]), (0.0603, [])],
+    ids=['5.5pc', '6.0pc_edge', '6.03pc'],
+)
+def test_figure_5_bar_of_a_current_run_between_5_and_6_percent(
+    chili_tool, tmp_path, phi_last, outline
+):
+    """A current run with no row at or below 5% melt by mass gets its outlined bar at
+    its first row at or below 6%; a run that ends at 6.03% gets no bar."""
+    run = _run_table()
+    run.loc[2, ['Phi_global', 'H2O_bar']] = [phi_last, 222.0]
+
+    fig = chili_tool.plot_fig5(
+        _comparison_data(tmp_path / 'data'), run, chili_tool._new_style('x')
+    )
+
+    bars, twin = fig.axes
+    heights = [p.get_height() for p in bars.patches if p.get_facecolor()[3] == 0]
+    assert heights == pytest.approx(outline)
+    assert len(twin.lines) == 1 + len(outline)
+    assert [ln.get_markersize() for ln in twin.lines] == [12] + [16] * len(outline)
 
 
 def test_every_figure_takes_its_neutral_colours_from_the_active_style(

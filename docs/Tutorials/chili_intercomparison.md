@@ -43,7 +43,10 @@ when its melt fraction falls to 5% by mass
 (`params.stop.time.maximum = 1e9`), with the energy-balance, escape and
 wall-clock stops off (`params.stop.radeqm.enabled`,
 `params.stop.escape.enabled` and `params.stop.clock.enabled` are
-`false`). The runs submitted to the intercomparison also stop at 5% melt,
+`false`). Two limits stay on: the stall stop ends a run after 150
+consecutive iterations without a converged atmosphere solve
+(`params.stop.stall.maximum`), and the iteration limit ends it after
+1,000,000 iterations (`params.stop.iters.maximum`). The runs submitted to the intercomparison also stop at 5% melt,
 with the energy-balance and escape stops off. Melt fractions of the
 current PROTEUS runs are by mass on this page unless stated otherwise,
 and the figures show the melt fractions of the intercomparison data by
@@ -229,7 +232,7 @@ comparison stays reproducible without editing the script.
 <figure markdown="span">
   ![CHILI Fig 5](../assets/tutorials/chili/fig5_venus_atm.avif#only-light){ width="100%" }
   ![CHILI Fig 5](../assets/tutorials/chili/fig5_venus_atm_dark.avif#only-dark){ width="100%" }
-  <figcaption><strong>Figure 5.</strong> Atmospheric composition for the Nominal Venus case at 5% melt fraction. Stacked bars show gas partial pressures &#91;bar&#93;; grey stars mark surface temperature (right axis). A current PROTEUS run is drawn as an outlined bar at its first row with a melt fraction of 5% or less, or else of 6% or less, with a bold label next to the submitted PROTEUS CHILI result. The current run has no row with a melt fraction of 6% or less, so the figure has no bar for it: at 48.3 Myr, its last row, it has a melt fraction of 6.03% by mass (7.4% by volume), a surface temperature of 1789 K and a surface pressure of 349 bar (298 bar H<sub>2</sub>O and 45 bar CO<sub>2</sub>). The bar of the submitted PROTEUS CHILI result is its last row, at a melt fraction of 6.2% by volume (4.9% by mass).</figcaption>
+  <figcaption><strong>Figure 5.</strong> Atmospheric composition for the Nominal Venus case at 5% melt fraction. Stacked bars show gas partial pressures &#91;bar&#93;; grey stars mark surface temperature (right axis). A current PROTEUS run is drawn as an outlined bar with a bold label next to the submitted PROTEUS CHILI result, at its first row with a melt fraction of 5% or less by mass, or else of 6% or less. The current run has no such row, so the figure has no bar for it: at 48.3 Myr, its last row, it has a melt fraction of 6.03% by mass (7.4% by volume), a surface temperature of 1789 K and a surface pressure of 349 bar (298 bar H<sub>2</sub>O and 45 bar CO<sub>2</sub>). The bar of the submitted PROTEUS CHILI result is its last row, at a melt fraction of 6.2% by volume (4.9% by mass). The bar of each intercomparison model is its row closest to 5% by volume among the rows at or below 7%; PlanAtMO has no such row, so its bar is its row of lowest melt fraction, its last row, at 16.4% by volume and 0.084 Myr.</figcaption>
 </figure>
 
 ## Oxygen fugacity

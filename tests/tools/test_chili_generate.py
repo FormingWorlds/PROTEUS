@@ -250,3 +250,38 @@ def test_committed_intercomp_files_match_regeneration():
     )
     assert perturbed != gen.generate_case('earth')  # the perturbation landed
     assert tomllib.loads(perturbed) != tomllib.loads((outdir / 'earth.toml').read_text())
+
+
+def _stop_block(text):
+    """Lines from the first [params.stop.*] header to the [star] header, inclusive."""
+    lines = text.split('\n')
+    start = next(i for i, ln in enumerate(lines) if ln.strip().startswith('[params.stop.'))
+    end = lines.index('[star]')
+    return lines[start : end + 1]
+
+
+def test_generated_stop_block_has_the_grid_layout():
+    """Each case lays out its stop tables as the grid configs do, so both read alike."""
+    gen = _load_generator()
+    grid = (REPO / 'input' / 'tutorials' / 'chili_grid' / 'earth_Hlow_Clow.toml').read_text()
+    for name in gen.CASE_DELTAS:
+        block = _stop_block(gen.generate_case(name))
+        assert block == _stop_block(grid), name
+        assert all(ln.startswith('    [params.stop.') for ln in block[:-2:2]), name
+        assert all(
+            ln.startswith('        ') and not ln.startswith('         ') for ln in block[1:-2:2]
+        ), name
+        assert block[-2:] == ['', '[star]'], name
+
+
+def test_stop_block_layout_is_stable_and_refuses_comments():
+    """Laying out an already laid-out block changes nothing; a comment in the block is refused."""
+    gen = _load_generator()
+    text = gen.generate_case('earth')
+    assert gen._format_stop_block(text) == text
+    bad = text.replace(
+        '    [params.stop.iters]\n', '    [params.stop.iters]\n        # cap\n', 1
+    )
+    assert bad != text
+    with pytest.raises(ValueError, match='comment'):
+        gen._format_stop_block(bad)
