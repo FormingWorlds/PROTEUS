@@ -60,7 +60,7 @@ volume.
     heating. The Nominal Venus run, the three high-H runs of the Earth grid and the
     TRAPPIST-1 b run had not reached it at that time and are shown to their last
     row: Venus at 48.3 Myr with 6.0% of melt, the grid runs at 38.3 to 40.9 Myr with 6.2 to 7.1%,
-    and TRAPPIST-1 b at 39.2 Myr with 13.7%. The TRAPPIST-1 &alpha; run was stopped by a termination request at 12.1 Myr, before it reached 5% melt or 1 Gyr, with 55.7% of
+    and TRAPPIST-1 b at 39.2 Myr with 13.7%. The TRAPPIST-1 &alpha; run was stopped by hand at 12.1 Myr, before it reached 5% melt or 1 Gyr, with 55.7% of
     melt: over its last 5 Myr its melt fraction decreased by about 0.002
     percentage points per Myr, and its net atmospheric flux was 0.24 W m$^{-2}$. The six runs that had not reached 5% melt ran with the
     energy-balance, escape and wall-clock stops on up to the end of their first
@@ -123,7 +123,7 @@ Monitor progress with `tail -f output/chili_earth/proteus_00.log`
     during the run that the planet orbits within the Roche limit, spins
     faster than the breakup rate, and has an atmosphere beyond the Hill
     radius. The TRAPPIST-1 configs set the escape module to `none`. In
-    the runs shown here, TRAPPIST-1 &alpha; was stopped by a termination request at 12.1 Myr with 55.7% of melt by
+    the runs shown here, TRAPPIST-1 &alpha; was stopped by hand at 12.1 Myr with 55.7% of melt by
     mass, TRAPPIST-1 e reached the 5%
     threshold at 9.0 Myr, and TRAPPIST-1 b had 13.7% of melt by mass at
     its last row, at 39.2 Myr.
@@ -229,7 +229,7 @@ comparison stays reproducible without editing the script.
 <figure markdown="span">
   ![CHILI Fig 5](../assets/tutorials/chili/fig5_venus_atm.avif#only-light){ width="100%" }
   ![CHILI Fig 5](../assets/tutorials/chili/fig5_venus_atm_dark.avif#only-dark){ width="100%" }
-  <figcaption><strong>Figure 5.</strong> Atmospheric composition for the Nominal Venus case at 5% melt fraction. Stacked bars show gas partial pressures &#91;bar&#93;; grey stars mark surface temperature (right axis). A current PROTEUS run that reaches a 5% melt fraction is drawn as an outlined bar with a bold label next to the submitted PROTEUS CHILI result. The current run had not reached a 5% melt fraction at its last row, so the figure has no bar for it: at 48.3 Myr it has a melt fraction of 6.0% by mass (7.4% by volume), a surface temperature of 1789 K and a surface pressure of 349 bar (298 bar H<sub>2</sub>O and 45 bar CO<sub>2</sub>). The bar of the submitted PROTEUS CHILI result is its last row, at a melt fraction of 6.2% by volume (4.9% by mass).</figcaption>
+  <figcaption><strong>Figure 5.</strong> Atmospheric composition for the Nominal Venus case at 5% melt fraction. Stacked bars show gas partial pressures &#91;bar&#93;; grey stars mark surface temperature (right axis). A current PROTEUS run that reaches a 5% melt fraction is drawn as an outlined bar with a bold label next to the submitted PROTEUS CHILI result. The bar is taken at the first row with a melt fraction of 5% or less, or else of 6% or less; the current run has no such row, so the figure has no bar for it: at 48.3 Myr, its last row, it has a melt fraction of 6.03% by mass (7.4% by volume), a surface temperature of 1789 K and a surface pressure of 349 bar (298 bar H<sub>2</sub>O and 45 bar CO<sub>2</sub>). The bar of the submitted PROTEUS CHILI result is its last row, at a melt fraction of 6.2% by volume (4.9% by mass).</figcaption>
 </figure>
 
 ## Oxygen fugacity
