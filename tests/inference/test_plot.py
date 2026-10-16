@@ -14,8 +14,9 @@ regression. Tests here cover the five public functions:
     helpfile handling.
   - ``plot_proteus``: dispatch over ``plot_dispatch`` with skip set.
 
-Matplotlib is mocked at the module-attribute level (``plot_mod.plt``) so no
-figure is rendered and ``savefig`` is captured as a call assertion.
+Most tests mock matplotlib at the module-attribute level (``plot_mod.plt``) and
+capture ``savefig`` as a call assertion; the grid-shape tests render real figures
+through ``_record_grids``.
 
 References:
   - docs/How-to/testing.md
@@ -46,6 +47,21 @@ pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 # ---------------------------------------------------------------------------
 # Shared helpers
 # ---------------------------------------------------------------------------
+
+
+def _record_grids(monkeypatch):
+    """Render real figures and return the list each ``plt.subplots`` call adds its axes grid to."""
+    monkeypatch.setattr(plot_mod, 'dpi', 30)
+    grids = []
+    real_subplots = plot_mod.plt.subplots
+
+    def _subplots(*args, **kwargs):
+        fig, axs = real_subplots(*args, **kwargs)
+        grids.append(axs)
+        return fig, axs
+
+    monkeypatch.setattr(plot_mod.plt, 'subplots', _subplots)
+    return grids
 
 
 def _make_logs(n_init: int = 0, n_extra: int = 5, x_dim: int = 1):
@@ -529,6 +545,52 @@ def test_plot_result_objective_logarithmic_x_axis_branch(tmp_path, monkeypatch):
     assert cells[(1, 1)].set_xscale.call_count == 0
 
 
+@pytest.mark.parametrize('d', [1, 2])
+def test_plot_result_objective_renders_any_parameter_count(tmp_path, monkeypatch, d):
+    """A real figure is written for one parameter as for two.
+
+    By default matplotlib squeezes a (2, 1) axes grid to 1-D; the function
+    indexes ``axs[row, col]``, so the grid must stay 2-D for ``d = 1``.
+    """
+    from matplotlib.colors import to_rgb
+
+    grids = _record_grids(monkeypatch)
+    (tmp_path / 'plots').mkdir()
+    parameters = dict(list({'a': [0.0, 1.0], 'b': [2.0, 5.0]}.items())[:d])
+    X = np.random.default_rng(1).random((6, d))
+    Y = np.array([0.1, -0.5, 0.4, 0.9, 0.2, 0.6])  # best sample 3, after the 2 initial ones
+    plot_mod.plot_result_objective(
+        {'X': X, 'Y': Y}, parameters, n_init=2, directory=str(tmp_path)
+    )
+
+    axs = grids[0]
+    axs[0, 0].figure.canvas.draw()
+    assert axs.shape == (2, d)
+    assert tuple(axs[0, 0].figure.get_size_inches()) == pytest.approx((2.7 * d, 3.2))
+    assert axs[0, 0].get_ylabel() == 'Histogram'
+    assert axs[1, 0].get_ylabel() == 'Value of objective'
+    assert [ax.get_xlabel() for ax in axs[1]] == list(parameters)
+    colours = [to_rgb(c) for c in 'cckmkk']
+    for i, (lo, hi) in enumerate(parameters.values()):
+        x = lo + (hi - lo) * X[:, i]
+        points = axs[1, i].collections[-1]
+        np.testing.assert_allclose(points.get_offsets(), np.column_stack([x, Y]))
+        np.testing.assert_allclose(points.get_facecolors()[:, :3], colours)
+        assert len(axs[0, i].patches) == 2 * 11  # later and initial samples, 11 bins each
+        bars = {to_rgb(c): 0.0 for c in 'kc'}
+        for bar in axs[0, i].patches:
+            bars[bar.get_facecolor()[:3]] += bar.get_height()
+        assert bars == {to_rgb('k'): 4.0, to_rgb('c'): 2.0}  # 4 later samples under 2 initial
+        best = [ln.get_xdata()[0] for ln in axs[0, i].lines if ln.get_color() == 'm']
+        assert best == pytest.approx([x[3]])
+        assert axs[0, i].get_title() == ('Best: ' if i == 0 else '') + f'{x[3]:g}'
+        assert not any(t.get_text() for t in axs[0, i].get_xticklabels())
+        assert not any(t.get_text() for t in axs[0, i].get_yticklabels())
+        assert any(t.get_text() for t in axs[1, i].get_yticklabels()) == (i == 0)
+    out = tmp_path / 'plots' / f'result_objective.{plot_mod.fmt}'
+    assert out.stat().st_size > 0
+
+
 # ---------------------------------------------------------------------------
 # plot_result_correlation
 # ---------------------------------------------------------------------------
@@ -710,186 +772,61 @@ def test_plot_result_correlation_skips_a_case_that_died_during_start_up(
     assert (len(xx), len(yy)) == (0, 0)
 
 
-def test_plot_result_correlation_two_par_two_obs_uses_2d_axes(monkeypatch, tmp_path):
-    """n_par > 1 and n_obs > 1 takes the ``axs[j, i]`` 2D indexing branch.
-
-    The single-par / single-obs cases collapse to a 1D axis array; the 2D
-    case uses ``axs[j, i]`` and applies the outer-rim label loop.
-    """
-    workers = tmp_path / 'workers'
-    for i in range(2):
-        case = workers / 'w_0' / f'i_{i}'
+@pytest.mark.parametrize(('n_par', 'n_obs'), [(1, 1), (1, 2), (2, 1), (2, 2)])
+def test_plot_result_correlation_renders_any_grid_shape(tmp_path, monkeypatch, n_par, n_obs):
+    """A real figure for every grid shape: panel (j, i) plots parameter i against
+    observable j with the observed value as a line and log axes for the log-scaled
+    keys; only the bottom row and the first column carry labels and tick labels (major
+    and minor), and only the top-left panel the legend."""
+    pars = dict(
+        list({'planet.mass_tot': [0.7, 3.0], 'orbit.semimajoraxis': [0.01, 1.0]}.items())[
+            :n_par
+        ]
+    )
+    obs = dict(list({'P_surf': 1.0, 'T_eqm': 260.0}.items())[:n_obs])
+    scale = {
+        k: 'log' if k in ('orbit.semimajoraxis', 'P_surf') else 'linear' for k in [*pars, *obs]
+    }
+    X = np.array([[1.5 + 0.1 * c, 0.02 * 2**c] for c in range(3)])
+    Y = np.array([[1.0 + c, 250.0 + 10 * c] for c in range(3)])
+    for c in range(3):
+        case = tmp_path / 'workers' / 'w_0' / f'i_{c}'
         case.mkdir(parents=True)
         (case / 'init_coupler.toml').write_text(
-            toml.dumps({'planet': {'mass_tot': 1.5 + 0.1 * i, 'radius': 1.0}}),
-            encoding='utf-8',
+            toml.dumps(
+                {
+                    'planet': {'mass_tot': float(X[c, 0])},
+                    'orbit': {'semimajoraxis': float(X[c, 1])},
+                }
+            )
         )
-        pd.DataFrame([{'P_surf': 1.0 * (i + 1), 'T_eqm': 250.0 + 10 * i}]).to_csv(
+        pd.DataFrame([{'P_surf': Y[c, 0], 'T_eqm': Y[c, 1]}]).to_csv(
             case / 'runtime_helpfile.csv', sep=' ', index=False
         )
+    (tmp_path / 'plots').mkdir()
+    grids = _record_grids(monkeypatch)
 
-    # 2D axs: support both axs[j, i] tuple indexing (with negative indices
-    # for the outer-rim label loop) and axs[i] single index.
-    n = 2
-    cells = {}
-    for j in range(n):
-        for i in range(n):
-            cells[(j, i)] = MagicMock(name=f'ax[{j},{i}]')
+    plot_mod.plot_result_correlation(pars, obs, str(tmp_path))
 
-    def _axs_lookup(key):
-        if isinstance(key, tuple):
-            j, i = key
-            if j < 0:
-                j += n
-            if i < 0:
-                i += n
-            return cells[(j, i)]
-        return MagicMock()
-
-    axs = MagicMock(name='axs')
-    axs.__getitem__.side_effect = _axs_lookup
-    fig = MagicMock()
-    mock_plt = MagicMock()
-    mock_plt.subplots.return_value = (fig, axs)
-    monkeypatch.setattr(plot_mod, 'plt', mock_plt)
-    monkeypatch.setattr(plot_mod, 'variable_is_logarithmic', lambda _k: False)
-
-    plot_mod.plot_result_correlation(
-        pars={'planet.mass_tot': [0.7, 3.0], 'planet.radius': [0.5, 2.0]},
-        obs={'P_surf': 1.0, 'T_eqm': 260.0},
-        directory=str(tmp_path),
+    assert (tmp_path / 'plots' / f'result_correlation.{plot_mod.fmt}').stat().st_size > 0
+    axs = grids[0]
+    axs[0, 0].figure.canvas.draw()
+    assert axs.shape == (n_obs, n_par)
+    assert tuple(axs[0, 0].figure.get_size_inches()) == pytest.approx(
+        (2.7 * n_par, 2.7 * n_obs)
     )
-
-    # Legend lands on axs[0, 0] in the 2D branch.
-    cells[(0, 0)].legend.assert_called_once()
-    fig.savefig.assert_called_once()
-    # The mock does not resolve negative keys like axs[-1, i], so instead of
-    # the outer-rim labels, pin the set_xticklabels calls across the grid.
-    total_xtick_hide = sum(c.set_xticklabels.call_count for c in cells.values())
-    # Top row hides x-tick labels: j=0 for both i=0 and i=1.
-    assert total_xtick_hide >= 2
-
-
-def test_plot_result_correlation_single_par_multi_obs_uses_1d_axs(monkeypatch, tmp_path):
-    """``n_par == 1`` with ``n_obs > 1`` takes the ``ax = axs[j]`` branch.
-
-    Confirms the 1D-axes branch fires for the asymmetric (1, K) grid and
-    the inner loop indexes by observable, not by parameter.
-    """
-    workers = tmp_path / 'workers'
-    for i in range(2):
-        case = workers / 'w_0' / f'i_{i}'
-        case.mkdir(parents=True)
-        (case / 'init_coupler.toml').write_text(
-            toml.dumps({'planet': {'mass_tot': 1.5 + 0.1 * i}}),
-            encoding='utf-8',
-        )
-        pd.DataFrame([{'P_surf': 1.0 + i, 'T_eqm': 250.0 + 10 * i}]).to_csv(
-            case / 'runtime_helpfile.csv', sep=' ', index=False
-        )
-
-    cells = {0: MagicMock(name='ax[0]'), 1: MagicMock(name='ax[1]')}
-    axs = MagicMock(name='axs')
-    axs.__getitem__.side_effect = lambda k: cells[k]
-    fig = MagicMock()
-    mock_plt = MagicMock()
-    mock_plt.subplots.return_value = (fig, axs)
-    monkeypatch.setattr(plot_mod, 'plt', mock_plt)
-    monkeypatch.setattr(plot_mod, 'variable_is_logarithmic', lambda _k: False)
-
-    plot_mod.plot_result_correlation(
-        pars={'planet.mass_tot': [0.7, 3.0]},
-        obs={'P_surf': 1.0, 'T_eqm': 260.0},
-        directory=str(tmp_path),
-    )
-
-    # axs[0] and axs[1] each got exactly one scatter (one per observable).
-    assert cells[0].scatter.call_count == 1
-    assert cells[1].scatter.call_count == 1
-    fig.savefig.assert_called_once()
-
-
-def test_plot_result_correlation_multi_par_single_obs_uses_1d_axs(monkeypatch, tmp_path):
-    """``n_obs == 1`` with ``n_par > 1`` takes the ``ax = axs[i]`` branch.
-
-    Mirror of the previous test for the (K, 1) grid.
-    """
-    workers = tmp_path / 'workers'
-    for i in range(2):
-        case = workers / 'w_0' / f'i_{i}'
-        case.mkdir(parents=True)
-        (case / 'init_coupler.toml').write_text(
-            toml.dumps({'planet': {'mass_tot': 1.5 + 0.1 * i, 'radius': 1.0 + i}}),
-            encoding='utf-8',
-        )
-        pd.DataFrame([{'P_surf': 1.0 + i}]).to_csv(
-            case / 'runtime_helpfile.csv', sep=' ', index=False
-        )
-
-    cells = {0: MagicMock(name='ax[0]'), 1: MagicMock(name='ax[1]')}
-    axs = MagicMock(name='axs')
-    axs.__getitem__.side_effect = lambda k: cells[k]
-    fig = MagicMock()
-    mock_plt = MagicMock()
-    mock_plt.subplots.return_value = (fig, axs)
-    monkeypatch.setattr(plot_mod, 'plt', mock_plt)
-    monkeypatch.setattr(plot_mod, 'variable_is_logarithmic', lambda _k: False)
-
-    plot_mod.plot_result_correlation(
-        pars={'planet.mass_tot': [0.7, 3.0], 'planet.radius': [0.5, 2.0]},
-        obs={'P_surf': 1.0},
-        directory=str(tmp_path),
-    )
-
-    # axs[0] and axs[1] each got exactly one scatter (one per parameter).
-    assert cells[0].scatter.call_count == 1
-    assert cells[1].scatter.call_count == 1
-    fig.savefig.assert_called_once()
-
-
-def test_plot_result_correlation_single_par_single_obs_uses_scalar_axes(monkeypatch, tmp_path):
-    """The ``n_par == 1 and n_obs == 1`` branch dispatches on the scalar ax.
-
-    With a single parameter and a single observable, ``plt.subplots(1, 1)``
-    returns a single Axes (not an array). The function takes the
-    ``ax = axs`` branch and the labels / legend go on that single axis.
-    """
-    workers = tmp_path / 'workers'
-    case = workers / 'w_0' / 'i_0'
-    case.mkdir(parents=True)
-    (case / 'init_coupler.toml').write_text(
-        toml.dumps({'planet': {'mass_tot': 1.5}}),
-        encoding='utf-8',
-    )
-    pd.DataFrame([{'P_surf': 1.0}]).to_csv(case / 'runtime_helpfile.csv', sep=' ', index=False)
-
-    # Single Axes (scalar). plot_result_correlation uses ax = axs in this
-    # branch and then calls scatter / axhline / set_xlabel / set_ylabel /
-    # set_xscale / set_yscale / legend on it.
-    axis = MagicMock(name='ax_scalar')
-    fig = MagicMock()
-    mock_plt = MagicMock()
-    mock_plt.subplots.return_value = (fig, axis)
-    monkeypatch.setattr(plot_mod, 'plt', mock_plt)
-    monkeypatch.setattr(plot_mod, 'variable_is_logarithmic', lambda _k: False)
-
-    plot_mod.plot_result_correlation(
-        pars={'planet.mass_tot': [0.7, 3.0]},
-        obs={'P_surf': 1.0},
-        directory=str(tmp_path),
-    )
-
-    # In the scalar branch the legend / xlabel / ylabel calls go through
-    # axs[0]; the MagicMock supports subscripting and __getitem__ returns a
-    # sub-mock. Confirm savefig fired exactly once and lands in plots/.
-    fig.savefig.assert_called_once()
-    save_path = fig.savefig.call_args_list[0].args[0]
-    assert 'result_correlation' in save_path
-    assert 'plots' in save_path
-    # The single Axes was used for the scatter (which lives in the
-    # inner loop). With one case, one parameter, one observable, scatter
-    # must have been called exactly once.
-    assert axis.scatter.call_count == 1
+    for (j, i), ax in np.ndenumerate(axs):
+        offsets = np.column_stack([X[:, i], Y[:, j]])
+        np.testing.assert_allclose(ax.collections[0].get_offsets(), offsets)
+        assert ax.lines[0].get_ydata()[0] == pytest.approx(list(obs.values())[j])
+        assert ax.get_xscale() == scale[list(pars)[i]]
+        assert ax.get_yscale() == scale[list(obs)[j]]
+        assert ax.get_xlabel() == (list(pars)[i] if j == n_obs - 1 else '')
+        assert ax.get_ylabel() == (list(obs)[j] if i == 0 else '')
+        assert any(t.get_text() for t in ax.get_xticklabels(which='both')) == (j == n_obs - 1)
+        assert any(t.get_text() for t in ax.get_yticklabels(which='both')) == (i == 0)
+        assert (ax.get_legend() is not None) == (i == j == 0)
+    assert [t.get_text() for t in axs[0, 0].get_legend().get_texts()] == ['Observed']
 
 
 # ---------------------------------------------------------------------------

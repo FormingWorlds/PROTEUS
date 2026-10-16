@@ -17,7 +17,7 @@ import sys
 from html import escape
 from pathlib import Path
 
-from code_links import resolve, split
+from code_links import LinkError, resolve, split
 
 
 def main(svg_path, links_path, out_path, fig_w=1412.0, fig_h=1415.0):
@@ -44,8 +44,12 @@ def main(svg_path, links_path, out_path, fig_w=1412.0, fig_h=1415.0):
             if parts
             else target.split('/blob/main/')[-1].split('/tree/main/')[-1]
         )
+        try:
+            href = resolve(target)
+        except LinkError as e:
+            raise SystemExit(f'{e}; fix the link in arch_final.json (tools/figures/README.md)')
         rows.append(
-            f'<a xlink:href="{escape(resolve(target), quote=True)}" '
+            f'<a xlink:href="{escape(href, quote=True)}" '
             f'data-target="{escape(target, quote=True)}" target="_blank">'
             f'<rect x="{lb["x"] * sx:.3f}" y="{lb["y"] * sy:.3f}" '
             f'width="{lb["w"] * sx:.3f}" height="{lb["h"] * sy:.3f}" '
