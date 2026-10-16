@@ -7,8 +7,8 @@ from the output path, the oxygen fugacity and the stop rule. Every case
 here sets the oxygen fugacity to the protocol value IW+4; the tutorials
 set IW+2. Every case stops at 5% melt by mass or after 1 Gyr of model
 time: the energy-balance, escape and wall-clock stops are off. Two limits
-stay on: the stall stop, which ends a run as an error (status code 22)
-after 150 consecutive iterations without a converged atmosphere solve
+stay on: the stall stop, which ends a run as an error after 150
+consecutive iterations without a converged atmosphere solve
 (`params.stop.stall.maximum`), and the iteration limit of 1000000
 (`params.stop.iters.maximum`). The TRAPPIST-1 cases (`tr1b`, `tr1e`,
 `tr1a`) derive from the Earth base with the protocol's star and orbit

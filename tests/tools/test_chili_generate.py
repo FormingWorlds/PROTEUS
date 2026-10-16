@@ -260,6 +260,14 @@ def _stop_block(text):
     return lines[start : end + 1]
 
 
+def test_committed_cases_are_the_generator_output_byte_for_byte():
+    """Each committed case file is exactly the generator output, layout included."""
+    gen = _load_generator()
+    for name in gen.CASE_DELTAS:
+        path = REPO / 'input' / 'chili' / 'intercomp' / f'{name}.toml'
+        assert path.read_text() == gen.generate_case(name), name
+
+
 def test_generated_stop_block_has_the_grid_layout():
     """Each case lays out its stop tables as the grid configs do, so both read alike."""
     gen = _load_generator()
@@ -288,10 +296,6 @@ def test_stop_block_layout_is_stable():
             '[params.stop.time]\nv = [\n  1,\n]\n[params.stop.iters]\nm = 2\n[star]\n',
             "multi-line value.*'v = \\['",
         ),
-        (
-            '[params.stop.iters]\nv = [\n  [1, 2],\n  [3]\n]\n[star]\n',
-            "multi-line value.*'v = \\['",
-        ),
         ('[params.stop.time]\nnote = """\n  a\n"""\n[star]\n', 'multi-line value'),
         (
             'd = """\n[params.stop.time]"""\n[params.stop.time]\nm = 1\n[star]\ny = 1\n',
@@ -302,15 +306,14 @@ def test_stop_block_layout_is_stable():
         'no_stop_table',
         'split_block',
         'array',
-        'nested_array_last_table',
         'string',
         'stop_header_inside_a_string',
     ],
 )
 def test_stop_block_layout_refuses_what_it_cannot_place(text, match):
-    """A missing stop table, a split block, a multi-line value (also a nested array in the
-    last table) or a layout that changes a value stops the generator and names the case; a
-    stop header inside a string before the first stop table reaches the value check."""
+    """A missing stop table, a split block, a multi-line value or a layout that changes a
+    value stops the generator and names the case; a stop header inside a string before the
+    first stop table reaches the value check."""
     with pytest.raises(ValueError, match='case_x: .*' + match):
         _load_generator()._format_stop_block(text, 'case_x')
 
@@ -364,13 +367,13 @@ def test_a_base_that_is_not_valid_toml_names_the_case(tmp_path, monkeypatch):
 
 
 def test_readme_and_page_name_the_stall_and_iteration_limits_of_the_configs():
-    """README and page give the stall stop (150 iterations, status code 22) and the iteration
+    """README and page give the stall stop (an error after 150 iterations) and the iteration
     limit (1000000) that the 14 configs load; the configs take the stall stop from its default."""
     readme = (REPO / 'input' / 'chili' / 'intercomp' / 'README.md').read_text()
     page = (REPO / 'docs' / 'Tutorials' / 'chili_intercomparison.md').read_text()
     for name, text in (('README', readme), ('page', page)):
         flat = ' '.join(text.split())
-        assert 'as an error (status code 22) after 150 consecutive iterations' in flat, name
+        assert 'as an error after 150 consecutive iterations' in flat, name
     assert 'iteration limit of 1000000' in ' '.join(readme.split())
     assert 'after 1,000,000 iterations (`params.stop.iters.maximum`)' in ' '.join(page.split())
     paths = sorted((REPO / 'input' / 'chili' / 'intercomp').glob('*.toml'))

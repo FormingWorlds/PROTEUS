@@ -241,8 +241,8 @@ def generate_case(name: str) -> str:
     everything outside the delta list stays byte-identical to the base,
     apart from the leading comment block, which is replaced with a
     case-specific header (the tutorial header describes the tutorial,
-    not the derived case), and the indentation of the stop block
-    (``_format_stop_block``).
+    not the derived case), and the layout of the stop block (indentation
+    and blank lines, ``_format_stop_block``).
     """
     spec = CASE_DELTAS[name]
     base_path = os.path.join(TUTORIALS, spec['base'])
