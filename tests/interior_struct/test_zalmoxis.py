@@ -2542,6 +2542,7 @@ def test_zalmoxis_solver_withholds_warm_start_on_jax_viable_eos(
         'interior_struct.core_frac',
         'interior_struct.zalmoxis.mantle_mass_fraction',
     ],
+    ids=['same_planet', 'other_mass', 'other_core_frac', 'other_mantle_fraction'],
 )
 def test_zalmoxis_solver_seeds_only_from_the_same_planet(tmp_path, monkeypatch, field):
     """The numpy path takes the cached density seed only when the planet key matches.
