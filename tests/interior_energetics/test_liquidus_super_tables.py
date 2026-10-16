@@ -1357,14 +1357,12 @@ def test_last_anchor_fallback_is_keyed_on_superheat_and_mantle_eos(monkeypatch, 
     cfg_c.interior_struct.zalmoxis.mantle_eos = 'PALEOS:MgSiO3'
 
     with caplog.at_level('WARNING', logger='fwl.proteus.interior_struct.zalmoxis'):
-        T = [
-            zal._resolve_zalmoxis_anchor_temperatures(cfg, {'P_cmb': P_CMB}, 'liquidus_super')[
-                0
-            ]
+        pairs = [
+            zal._resolve_zalmoxis_anchor_temperatures(cfg, {'P_cmb': P_CMB}, 'liquidus_super')
             for cfg in (cfg_a, cfg_b, cfg_c)
         ]
 
-    assert T == pytest.approx([8765.0, 6000.0, 6000.0])
+    assert pairs == [(8765.0, 4241.0), (6000.0, 4000.0), (6000.0, 4000.0)]
     msgs = [r.getMessage() for r in caplog.records if 'no P-T anchor' in r.getMessage()]
     assert 'the last solved anchor' in msgs[0]
     assert all('using tcmb_init' in m for m in msgs[1:])

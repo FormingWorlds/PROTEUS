@@ -3363,7 +3363,7 @@
           "value": 0
         }
       ],
-      "description": "Initial magma surface temperature [K] (isothermal, linear, adiabatic, accretion), and the temperature of the initial flux guess when interior_energetics.flux_guess < 0. With 'isentropic' the Zalmoxis structure solve anchors its surface adiabat at it, while the energetics start from ini_entropy. With 'adiabatic_from_cmb' it is the surface end of the structure solve's first-guess temperature profile. With 'liquidus_super' the structure solve takes the surface temperature of the solved super-liquidus adiabat together with its CMB temperature, also when it reuses the last solved pair for the same delta_T_super and mantle EOS; it takes tsurf_init only where it takes tcmb_init.",
+      "description": "Initial surface temperature [K]. In every mode it is the initial magma temperature of the dummy and boundary energetics, the floor of their re-melt after a giant impact, the surface temperature of the dummy structure, the surface temperature of the Aragog adiabatic initial condition (ic 3), and the temperature of the initial flux guess when interior_energetics.flux_guess < 0. With spider or aragog energetics it is the initial magma surface temperature in the isothermal, linear and adiabatic modes. With 'accretion' it seeds only the structure solve and the flux guess; the accretion thermal state sets the initial surface temperature. With 'isentropic' the Zalmoxis structure solve and the dummy structure anchor their surface adiabat at it, while spider and aragog energetics start from ini_entropy. With 'adiabatic_from_cmb' the Zalmoxis structure solve takes it as the surface end of its first-guess profile, in the centre-temperature cap max(5 tsurf_init, 3000 K), as the temperature of zero-pressure nodes and as the core temperature of the CMB-anchored adiabat. With 'liquidus_super' the structure solve takes, in these roles, the surface temperature of the solved super-liquidus adiabat together with its CMB temperature, also when it reuses the last solved pair for the same delta_T_super and mantle EOS; it takes tsurf_init only where it takes tcmb_init.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -3384,7 +3384,7 @@
           "value": 0
         }
       ],
-      "description": "Initial core-mantle boundary temperature [K] (adiabatic_from_cmb). The mantle adiabat is anchored at this temperature at P = P_cmb and integrated outward to the surface. With liquidus_super the Zalmoxis structure takes it, together with tsurf_init, when no super-liquidus pair was solved for the same delta_T_super and mantle EOS: on a call driven by an external temperature source, and on a P-T anchor failure that a later step re-solves (a PALEOS mantle with spider or aragog energetics).",
+      "description": "Initial core-mantle boundary temperature [K] (adiabatic_from_cmb). The mantle adiabat is anchored at this temperature at P = P_cmb and integrated outward to the surface. With liquidus_super the Zalmoxis structure takes it, together with tsurf_init, when no super-liquidus pair was solved for the same delta_T_super and mantle EOS: on a call driven by an external temperature source (in a resumed run until the next anchor solve), and on a P-T anchor failure that a later step re-solves (a PALEOS mantle with spider or aragog energetics).",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,

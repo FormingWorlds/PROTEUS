@@ -699,7 +699,9 @@ def _resolve_zalmoxis_anchor_temperatures(
     skip the scan-and-bisection; when no anchor was solved for the same
     ``delta_T_super`` and mantle EOS they fall back to ``config.planet.tcmb_init``
     and ``config.planet.tsurf_init``. This avoids re-solving (and possibly
-    raising the unreachable-superheat error) on every evolution re-solve.
+    raising the unreachable-superheat error) on every evolution re-solve. A
+    resumed run starts with no stored pair, so these calls take ``tcmb_init``
+    and ``tsurf_init`` until the next anchor solve.
 
     With a PALEOS mantle and spider or aragog energetics, if the anchor
     fails at this P_cmb (``InitialConditionError``, which includes numerical
@@ -734,7 +736,7 @@ def _resolve_zalmoxis_anchor_temperatures(
         cmb_T, surface_T, source = last_pair()
         log.debug(
             'liquidus_super: structure solve uses an external temperature source; '
-            'using %s (T_cmb=%.0f K, T_surf=%.0f K) as the unconsumed anchor and '
+            'using %s (T_cmb=%.0f K, T_surf=%.0f K) as the anchor pair of the solve and '
             'skipping the super-liquidus re-solve.',
             source,
             cmb_T,
@@ -1518,26 +1520,8 @@ def load_zalmoxis_configuration(
         'core_mass_target': core_mass,
         'core_frac_mode': config.interior_struct.core_frac_mode,
         'mantle_mass_fraction': config.interior_struct.zalmoxis.mantle_mass_fraction,
-        # For the structure solve, 'accretion' and 'isentropic' both reduce
-        # to 'adiabatic' inside Zalmoxis. Zalmoxis only solves the structure
-        # (M-R via hydrostatic + EOS); the entropy IC for Aragog/SPIDER is
-        # set independently from config.planet.ini_entropy. 'accretion'
-        # delays White+Li T-profile until after structure converges;
-        # 'isentropic' (CHILI protocol) means the energetics solver
-        # consumes ini_entropy, not the Zalmoxis T-profile, so the choice
-        # of structure-solve T is decoupled from the IC. 'adiabatic_from_cmb'
-        # is passed through to Zalmoxis with the CMB-anchor temperature so
-        # the structure-side T(r) integrates upward from T_cmb at R_cmb,
-        # matching the entropy that the energetics solver receives via
-        # compute_initial_entropy. 'liquidus_super' maps to
-        # 'adiabatic_from_cmb' here, with cmb_temperature derived from the
-        # Fei+2021 liquidus at the converged P_cmb (or a Noack & Lasbleis
-        # (2020) mass-aware P_cmb estimate on the very first call before
-        # Zalmoxis has populated P_cmb) plus delta_T_super. The anchor is
-        # recomputed against the converged P_cmb on the next structure
-        # iteration. temperature_mode_override lets SPIDER coupling force
-        # adiabatic without mutating the shared Config object (see proteus
-        # rules §"Config mutability").
+        # Mode mapping in _resolve_zalmoxis_temperature_mode; the anchor pair (CMB, surface)
+        # in _resolve_zalmoxis_anchor_temperatures. The energetics IC is solved separately.
         'temperature_mode': _resolve_zalmoxis_temperature_mode(mode),
         'surface_temperature': surface_temperature,
         'cmb_temperature': cmb_temperature,
