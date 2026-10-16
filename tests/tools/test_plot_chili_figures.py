@@ -114,8 +114,8 @@ def test_figure_6_draws_the_o2_fugacity_of_the_run_at_its_magma_temperature(
 
 
 def test_figure_6_has_no_marker_for_a_run_that_ends_above_6_percent_melt(chili_tool, tmp_path):
-    """A run that ends at 6.8% melt, as the Nominal Venus run does, gets a curve
-    and no circular marker; a row without O2 is left out of the curve."""
+    """A run that ends at 6.8% melt gets a curve and no circular marker; a row
+    without O2 is left out of the curve."""
     run = _run_table()
     run['Phi_global'] = [1.0, 0.95, 0.068]
     run.loc[0, 'O2_bar'] = 0.0
