@@ -295,6 +295,12 @@ def test_aragog_defaults():
     assert Aragog(
         phase_boundary_entropy_margin=350.0
     ).phase_boundary_entropy_margin == pytest.approx(350.0)
+    # Convective threshold D: 1e-6 by default, 0.0 is the dS/dr < 0 switch.
+    assert a.convective_threshold == pytest.approx(1.0e-6)
+    assert Aragog(convective_threshold=0.0).convective_threshold == 0.0
+    for bad in (-1.0e-6, float('nan'), float('inf')):
+        with pytest.raises(ValueError, match='convective_threshold'):
+            Aragog(convective_threshold=bad)
     import pytest as _pt
 
     with _pt.raises(ValueError):

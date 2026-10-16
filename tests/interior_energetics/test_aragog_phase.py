@@ -106,6 +106,7 @@ def _make_full_config(*, separation_viscosity: str = 'mixture'):
     ie.eddy_diffusivity_thermal = 0.13
     ie.eddy_diffusivity_chemical = 0.07
     ie.kappah_floor = 1.0e-6
+    ie.aragog.convective_threshold = 3.0e-7
     ie.aragog.phase_smoothing = 'cubic_hermite'
     return config
 
@@ -254,6 +255,7 @@ def test_jax_only_fields_carry_configured_values():
     assert jax_params.eddy_diff_thermal == pytest.approx(ie.eddy_diffusivity_thermal)
     assert jax_params.eddy_diff_chemical == pytest.approx(ie.eddy_diffusivity_chemical)
     assert jax_params.kappah_floor == pytest.approx(ie.kappah_floor)
+    assert jax_params.convective_threshold == pytest.approx(ie.aragog.convective_threshold)
     assert jax_params.phase_smoothing_tanh == pytest.approx(0.0)
     assert float(jax_params.conduction) == pytest.approx(0.0)
     assert float(jax_params.convection) == pytest.approx(0.0)

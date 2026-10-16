@@ -511,6 +511,7 @@ config_version = "3.0"
         solver_method                 = "cvode"  # cvode (SUNDIALS, required unless a scipy solver is chosen) | radau (scipy) | bdf (scipy)
         atol_temperature_equivalent   = 1.0e-8   # CVODE atol [K]
         phase_smoothing               = "tanh"   # phase-boundary smoothing: tanh | cubic_hermite
+        convective_threshold          = 1.0e-6   # entropy gradient [J/kg/K/m] below which a node convects; 0 is the dS/dr < 0 switch
         separation_viscosity          = "mixture" # gravitational-separation drag viscosity: melt (SPIDER parity) | mixture (keeps the CMB temperature from collapsing in coupled caps-off runs)
         core_bc                       = "energy_balance"  # CMB condition: energy_balance | quasi_steady | gradient | bower2018 | core_module
         tolerance_struct              = 100      # absolute mass tolerance [kg] for the radius secant solver

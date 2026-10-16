@@ -92,6 +92,9 @@ class _PhaseParamsInputs:
     eddy_diff_thermal, eddy_diff_chemical, kappah_floor : float
         JAX-only eddy diffusivities and the mixing-length diffusivity
         floor.
+    convective_threshold : float
+        JAX-only entropy gradient below which a node convects; the numpy
+        solver takes it through the energy parameters.
     phase_smoothing : str
         JAX-only phase-boundary smoothing selection ('tanh' or
         'cubic_hermite').
@@ -128,6 +131,7 @@ class _PhaseParamsInputs:
     eddy_diff_thermal: float
     eddy_diff_chemical: float
     kappah_floor: float
+    convective_threshold: float
     phase_smoothing: str
 
 
@@ -179,6 +183,7 @@ def _phase_params_from_config(config: Config) -> _PhaseParamsInputs:
         eddy_diff_thermal=float(ie.eddy_diffusivity_thermal),
         eddy_diff_chemical=float(ie.eddy_diffusivity_chemical),
         kappah_floor=float(ie.kappah_floor),
+        convective_threshold=float(ie.aragog.convective_threshold),
         phase_smoothing=ie.aragog.phase_smoothing,
     )
 
@@ -269,6 +274,7 @@ def build_jax_phase_params(config: Config) -> PhaseParams:
         eddy_diff_thermal=inputs.eddy_diff_thermal,
         eddy_diff_chemical=inputs.eddy_diff_chemical,
         kappah_floor=inputs.kappah_floor,
+        convective_threshold=inputs.convective_threshold,
         bottom_up_grav_sep=_JAX_BOTTOM_UP_GRAV_SEP,
         phase_smoothing=inputs.phase_smoothing,
         phase_smoothing_width=_JAX_PHASE_SMOOTHING_WIDTH,

@@ -5490,6 +5490,31 @@
       "group_qualifier": null
     },
     {
+      "path": "interior_energetics.aragog.convective_threshold",
+      "toml_section": "interior_energetics.aragog",
+      "class": "Aragog",
+      "type": "float",
+      "accepts_none": false,
+      "default": "1e-06",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0
+        },
+        {
+          "op": "<",
+          "value": Infinity
+        }
+      ],
+      "description": "Entropy gradient D [J/kg/K/m] below which a node convects. A node with dS/dr < D takes the mixing-length eddy diffusivity of |dS/dr| and the kappa_h floor, so a node just on the stable side (0 <= dS/dr < D) keeps mixing and its gradient relaxes towards zero; a node above D does not convect. 0.0 gives the dS/dr < 0 switch of SPIDER.",
+      "doc_source": "field_docstring",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
       "path": "interior_energetics.aragog.solver_method",
       "toml_section": "interior_energetics.aragog",
       "class": "Aragog",

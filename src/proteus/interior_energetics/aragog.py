@@ -1002,6 +1002,7 @@ class AragogRunner:
             tidal=config.interior_energetics.heat_tidal,
             tidal_array=interior_o.tides,
             kappah_floor=config.interior_energetics.kappah_floor,
+            convective_threshold=float(ar.convective_threshold),
             # Bridge the PROTEUS schema knob onto the numpy/scipy RHS
             # path. The JAX path consumes the same value via PhaseParams
             # (see `aragog_jax.py`); without this passthrough, a non-

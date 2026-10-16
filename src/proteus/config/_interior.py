@@ -349,6 +349,12 @@ class Aragog:
     while Aragog's own default stays 'melt' for SPIDER parity. The
     regime boundaries are the porosities where adjacent permeability
     laws cross (Bower et al. 2018, section 2.1, Eqs. 13a to 13c)."""
+    convective_threshold: float = field(default=1.0e-6, validator=[ge(0), lt(math.inf)])
+    """Entropy gradient D [J/kg/K/m] below which a node convects. A node with
+    dS/dr < D takes the mixing-length eddy diffusivity of |dS/dr| and the
+    kappa_h floor, so a node just on the stable side (0 <= dS/dr < D) keeps
+    mixing and its gradient relaxes towards zero; a node above D does not
+    convect. 0.0 gives the dS/dr < 0 switch of SPIDER."""
     solver_method: str = field(
         default='cvode',
         validator=in_(('cvode', 'radau', 'bdf')),

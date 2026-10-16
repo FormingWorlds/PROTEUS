@@ -653,6 +653,33 @@ def test_setup_solver_threads_phase_boundary_margin(tmp_path):
     assert threaded[350.0] != pytest.approx(threaded[200.0])
 
 
+@pytest.mark.unit
+def test_setup_solver_threads_convective_threshold(tmp_path):
+    """setup_solver passes aragog.convective_threshold into _EnergyParameters
+    unchanged, including 0.0 (the dS/dr < 0 switch), so the numpy solver uses
+    the same D as the JAX phase parameters."""
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    threaded = {}
+    for requested in (0.0, 3.0e-6):
+        config = _make_aragog_config(struct_module='spider')
+        config.interior_energetics.aragog.convective_threshold = requested
+        run_dir = tmp_path / f'run_{requested}'
+        hf_row, interior_o = _spider_fallback_scaffold(run_dir)
+        mock_ep = create_autospec(_paired_energy_stub)
+        with (
+            patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', run_dir),
+            patch('proteus.interior_energetics.aragog.Parameters'),
+            patch('proteus.interior_energetics.aragog.EntropySolver'),
+            patch('proteus.interior_energetics.aragog._cached_entropy_eos', return_value=_EOS),
+            patch('proteus.interior_energetics.aragog._EnergyParameters', mock_ep),
+        ):
+            AragogRunner.setup_solver(config, hf_row, interior_o, str(tmp_path))
+        threaded[requested] = mock_ep.call_args.kwargs['convective_threshold']
+
+    assert threaded == {0.0: 0.0, 3.0e-6: 3.0e-6}
+
+
 def _run_setup_solver(tmp_path, config, energy_stub):
     """Run setup_solver against a stubbed _EnergyParameters; return the stub and the logger."""
     from proteus.interior_energetics.aragog import AragogRunner
