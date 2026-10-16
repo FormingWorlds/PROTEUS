@@ -700,7 +700,7 @@ def _resolve_zalmoxis_anchor_temperatures(
     ``delta_T_super`` and mantle EOS they fall back to ``config.planet.tcmb_init``
     and ``config.planet.tsurf_init``. This avoids re-solving (and possibly
     raising the unreachable-superheat error) on every evolution re-solve. A
-    resumed run starts with no stored pair, so these calls take ``tcmb_init``
+    resumed run starts with no stored pair, so these calls pass ``tcmb_init``
     and ``tsurf_init`` until the next anchor solve.
 
     With a PALEOS mantle and spider or aragog energetics, if the anchor
@@ -736,7 +736,7 @@ def _resolve_zalmoxis_anchor_temperatures(
         cmb_T, surface_T, source = last_pair()
         log.debug(
             'liquidus_super: structure solve uses an external temperature source; '
-            'using %s (T_cmb=%.0f K, T_surf=%.0f K) as the anchor pair of the solve and '
+            'passing %s (T_cmb=%.0f K, T_surf=%.0f K) to the solve and '
             'skipping the super-liquidus re-solve.',
             source,
             cmb_T,

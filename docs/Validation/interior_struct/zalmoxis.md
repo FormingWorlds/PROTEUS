@@ -19,7 +19,7 @@ liquidus. For a PALEOS mantle the liquidus comes from the Zalmoxis
 `melting_curves` fit: the Belonoshko et al. (2005) branch below 2.55 GPa and the
 Fei et al. (2021) branch above it. For a WolfBower2018 or RTPress100TPa mantle it
 is the melting curve that `interior_struct.melting_dir` selects, from P-T files in
-`FWL_DATA`. The reference-pinned test fixes the Fei et al. (2021) high-pressure
+`FWL_DATA`; without `melting_dir` it is the same fit as for a PALEOS mantle. The reference-pinned test fixes the Fei et al. (2021) high-pressure
 value at the 1 M$_\oplus$ reference pressure so any change to the upstream
 Zalmoxis fit forces a re-validation of the superheat the solve evaluates.
 Companion tests in the same file check branch continuity at the 2.55 GPa

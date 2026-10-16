@@ -358,7 +358,9 @@ class TestExternalTemperatureSourceSkipsResolve:
         # Discrimination: the freshly solved value, not the stale cached anchor.
         assert abs(T - 9999.0) > 100.0
 
-    @pytest.mark.parametrize('stored', [(8765.0, None), (None, 4241.0)])
+    @pytest.mark.parametrize(
+        'stored', [(8765.0, None), (None, 4241.0)], ids=['cmb_only', 'surface_only']
+    )
     def test_half_set_stored_pair_falls_back_to_the_config_pair(self, monkeypatch, stored):
         """One stored value without the other is no pair: the external path takes tcmb_init
         and tsurf_init together, never a stored value with a config value."""
@@ -945,11 +947,10 @@ def test_the_stored_pair_follows_the_most_recent_solve(monkeypatch):
     zmod._clear_superliquidus_cache()
     import zalmoxis.eos_export as eos_export
 
-    adiabats, adiabat = [], eos_export.compute_entropy_adiabat
+    adiabats, seen, adiabat = [], [], eos_export.compute_entropy_adiabat
     monkeypatch.setattr(
         eos_export, 'compute_entropy_adiabat', lambda **k: adiabats.append(1) or adiabat(**k)
     )
-    new_adiabats = []
     configs = {}
     for dT in (500.0, 300.0):  # the synthetic adiabat puts the surface at 3700 K + dT
         configs[dT] = _make_full_mock_config(
@@ -958,16 +959,15 @@ def test_the_stored_pair_follows_the_most_recent_solve(monkeypatch):
         configs[dT].interior_struct.zalmoxis.mantle_eos = 'PALEOS:MgSiO3'
     pairs = {}
     for dT in (500.0, 300.0, 500.0):  # the third call is a cache hit
-        n = len(adiabats)
         pairs[dT] = zmod._resolve_zalmoxis_anchor_temperatures(
             configs[dT], {'P_cmb': 1.5e11}, 'liquidus_super'
         )
-        new_adiabats.append(len(adiabats) - n)
+        seen.append(len(adiabats))
         assert (zmod._SUPERLIQ_LAST_ANCHOR, zmod._SUPERLIQ_LAST_SURFACE) == pytest.approx(
             pairs[dT]
         )
     assert pairs[500.0][1] - pairs[300.0][1] == pytest.approx(200.0, abs=40.0)
-    assert new_adiabats[0] > 0 and new_adiabats[1] > 0 and new_adiabats[2] == 0  # cache hit
+    assert 0 < seen[0] < seen[1] == seen[2]  # the third call adds no adiabat
 
     def failing_solve(config, hf_row):
         raise InitialConditionError('no molten adiabat at this P_cmb')
