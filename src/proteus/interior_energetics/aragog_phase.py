@@ -93,7 +93,7 @@ class _PhaseParamsInputs:
         JAX-only eddy diffusivities and the mixing-length diffusivity
         floor.
     convective_threshold : float
-        JAX-only entropy gradient below which a node convects; the numpy
+        JAX-only entropy gradient below which the kappa_h floor applies; the numpy
         solver takes it through the energy parameters.
     phase_smoothing : str
         JAX-only phase-boundary smoothing selection ('tanh' or

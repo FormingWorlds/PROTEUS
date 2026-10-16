@@ -350,13 +350,12 @@ class Aragog:
     regime boundaries are the porosities where adjacent permeability
     laws cross (Bower et al. 2018, section 2.1, Eqs. 13a to 13c)."""
     convective_threshold: float = field(default=1.0e-6, validator=[ge(0), lt(math.inf)])
-    """Entropy gradient D [J/kg/K/m] below which a node convects. A node with
-    dS/dr < D takes the mixing-length eddy diffusivity of |dS/dr| and the
-    kappa_h floor, so a node just on the stable side (0 <= dS/dr < D) keeps
-    mixing; a node above D does not convect. The switch is a hard mask: the
-    flux jumps at D and a stable gradient close to D is pushed away from it
-    (see the Aragog heat transport docs). 0.0 gives the dS/dr < 0 switch of
-    SPIDER."""
+    """Entropy gradient D [J/kg/K/m] below which the Aragog kappa_h floor applies.
+    The mixing-length drive acts only where dS/dr < 0, so a node just on the
+    stable side (0 <= dS/dr < D) keeps the floor diffusivity alone, with a
+    downward flux of at most rho*T*kappah_floor*D; a node above D gets neither.
+    The switch is a hard mask (see the Aragog heat transport docs). 0.0 gives the
+    dS/dr < 0 switch of SPIDER for the floor as well."""
     solver_method: str = field(
         default='cvode',
         validator=in_(('cvode', 'radau', 'bdf')),
