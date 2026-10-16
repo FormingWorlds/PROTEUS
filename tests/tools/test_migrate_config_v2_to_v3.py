@@ -558,6 +558,17 @@ def test_kappah_floor_and_maximum_rel_overrides():
     assert mig.OVERRIDES['params.dt.maximum_rel'] == 0.0
 
 
+def test_convective_threshold_pinned_to_the_2_0_switch():
+    """A migrated config pins the Aragog convective threshold to 0.0, the dS/dr < 0
+    switch of 2.0, where the live 3.0 default is 1e-6."""
+    flat, _ = _translate(_minimal_spider_v2())
+    assert flat['interior_energetics.aragog.convective_threshold'] == 0.0
+    v3_defaults, _ = _v3()
+    assert v3_defaults['interior_energetics.aragog.convective_threshold'] == pytest.approx(
+        1.0e-6
+    )
+
+
 def test_hill_clamp_override_reproduces_unclipped_2_0_escape():
     """2.0 sized escape from the unmodified XUV radius; the 3.0 default clips
     it to the Hill radius. The override pins the clip off, so a migrated

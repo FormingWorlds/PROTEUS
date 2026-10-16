@@ -677,7 +677,8 @@ def test_setup_solver_threads_convective_threshold(tmp_path):
             AragogRunner.setup_solver(config, hf_row, interior_o, str(tmp_path))
         threaded[requested] = mock_ep.call_args.kwargs['convective_threshold']
 
-    assert threaded == {0.0: 0.0, 3.0e-6: 3.0e-6}
+    assert threaded[0.0] == 0.0
+    assert threaded[3.0e-6] == pytest.approx(3.0e-6, rel=0.0)
 
 
 def _run_setup_solver(tmp_path, config, energy_stub):
