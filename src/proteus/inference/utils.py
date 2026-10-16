@@ -262,8 +262,12 @@ def print_results(D, logs, config, output, n_init):
 def get_acqf(name: str, gp: SingleTaskGP, best: float, X_pending: torch.Tensor | None = None):
     """Build the acquisition function.
 
-    Supports 'UCB', 'LogEI', and 'LogPI' acquisition functions.
+    Supports 'UCB', 'LogEI', 'LogPI' and 'TS' acquisition functions.
     See docs: https://botorch.readthedocs.io/en/latest/acquisition.html
+
+    'TS' is Thompson sampling: one function drawn from the GP posterior, whose
+    maximum is the next point. Each call draws a new function, so the workers
+    spread out without `X_pending`, and `best` is not used.
 
     With `X_pending`, each becomes its Monte Carlo version, which scores a
     candidate jointly with the points other workers are still evaluating, so a
@@ -305,6 +309,10 @@ def get_acqf(name: str, gp: SingleTaskGP, best: float, X_pending: torch.Tensor |
         from botorch.acquisition.analytic import LogProbabilityOfImprovement
 
         return LogProbabilityOfImprovement(gp, best_f=best)
+    elif name == 'TS':
+        from botorch.acquisition.thompson_sampling import PathwiseThompsonSampling
+
+        return PathwiseThompsonSampling(gp)
     else:
         raise ValueError(f'Unsupported acquisition function: {name}')
 

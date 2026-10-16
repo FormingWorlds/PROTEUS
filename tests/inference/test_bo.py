@@ -8,6 +8,7 @@ propagation, and the ``plot_iter`` file-I/O leg.
 Physics invariants exercised:
   - Acquisition-parameter contract: correct beta (UCB) and best_f
     (LogEI, LogPI) are forwarded; wrong values shift the optimisation target.
+  - Thompson sampling: draws at a point spread as the GP posterior does.
   - Error-before-evaluation: unsupported acqf raises before any objective
     call so no evaluation budget is wasted.
   - Distance metric: UCB path returns the correct minimum distance to
@@ -371,6 +372,44 @@ def test_get_acqf_log_pi_forwards_best_f():
     assert abs(result.best_f.item()) > 0.1
 
 
+def _small_gp():
+    """A 1-D GP on four points with fixed hyperparameters, in evaluation mode."""
+    from botorch.models import SingleTaskGP
+
+    X = torch.tensor([[0.05], [0.3], [0.6], [0.95]], dtype=torch.double)
+    Y = torch.tensor([[0.2], [1.0], [-0.4], [0.3]], dtype=torch.double)
+    gp = SingleTaskGP(X, Y, train_Yvar=torch.full_like(Y, 1e-4))
+    gp.covar_module.lengthscale = 0.2
+    return gp.eval()
+
+
+@pytest.mark.physics_invariant
+def test_get_acqf_thompson_draws_spread_as_the_posterior():
+    """get_acqf('TS') draws a new posterior function per call: at x = 0.45, between
+    two data points, 20 draws scatter about the GP posterior mean with its spread.
+
+    A posterior-mean acquisition, or one draw reused for every call, has no spread.
+    """
+    from botorch.acquisition.thompson_sampling import PathwiseThompsonSampling
+
+    gp = _small_gp()
+    x = torch.tensor([[[0.45]]], dtype=torch.double)
+    torch.manual_seed(0)
+    acqs = [bo_mod.get_acqf('TS', gp, best=0.0) for _ in range(20)]
+    with torch.no_grad():
+        v = torch.cat([a(x).reshape(-1) for a in acqs])
+        post = gp.posterior(x[0])
+    m, s = post.mean.item(), post.variance.sqrt().item()
+
+    assert isinstance(acqs[0], PathwiseThompsonSampling)
+    assert s > 0.1  # the point is far enough from the data to be uncertain
+    # 20 draws: the sample mean is within 4 standard errors, 4 s / sqrt(20)
+    assert v.mean().item() == pytest.approx(m, abs=4 * s / 20**0.5)
+    # the sample sd of 20 draws scatters by about 16 %; random features add a little
+    assert v.std().item() == pytest.approx(s, rel=0.5)
+    assert v.std().item() > 0.5 * s
+
+
 def test_get_acqf_raises_for_unsupported_name():
     """get_acqf raises ValueError for names outside {'UCB', 'LogEI', 'LogPI'}.
 
@@ -386,8 +425,8 @@ def test_get_acqf_raises_for_unsupported_name():
 
     # Discrimination: a regression that always raises would still satisfy the
     # two assertions above. Verify each supported name succeeds without raising.
-    for name in ('UCB', 'LogEI', 'LogPI'):
-        result = bo_mod.get_acqf(name, _DummyGP(), best=0.5)
+    for name in ('UCB', 'LogEI', 'LogPI', 'TS'):
+        result = bo_mod.get_acqf(name, _small_gp(), best=0.5)
         assert result is not None, f'Supported name {name!r} unexpectedly returned None'
 
 
