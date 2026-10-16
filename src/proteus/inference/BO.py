@@ -30,6 +30,10 @@ log = logging.getLogger('fwl.' + __name__)
 # registry, so the default once-per-location filter would repeat them every step.
 _PASSED_ON: set[tuple] = set()
 
+# Above this fitted lengthscale (inputs scaled to [0, 1]) the GP is near linear in a
+# parameter, so the acquisition peaks on one of its bounds; that parameter is drawn instead.
+IRRELEVANT_LENGTHSCALE = 1.5
+
 
 def unit_bounds(d):
     """Generate unit hypercube bounds for d-dimensional input.
@@ -45,7 +49,26 @@ def unit_bounds(d):
     return torch.tensor([[0] * d, [1] * d], dtype=dtype)
 
 
-def optimize_acqf_logged(acq_function, d: int, who: str) -> torch.Tensor:
+def random_irrelevant(gp, d: int, who: str) -> dict[int, float] | None:
+    """Random values for the parameters the fitted GP treats as irrelevant.
+
+    A lengthscale above IRRELEVANT_LENGTHSCALE makes the GP near linear in that
+    parameter, so every proposal would sit on one of its bounds. Returns them as
+    `fixed_features` for `optimize_acqf`, or None when every parameter is relevant.
+    """
+    ls = gp.covar_module.lengthscale.detach().reshape(-1)
+    fixed = {i: torch.rand(1).item() for i in range(d) if ls[i] > IRRELEVANT_LENGTHSCALE}
+    if fixed:
+        log.debug(
+            f'{who}: GP lengthscale above {IRRELEVANT_LENGTHSCALE} for x_{list(fixed)}; '
+            'drawing them at random'
+        )
+    return fixed or None
+
+
+def optimize_acqf_logged(
+    acq_function, d: int, who: str, fixed_features: dict[int, float] | None = None
+) -> torch.Tensor:
     """Maximise the acquisition, logging botorch's L-BFGS-B retry warnings as one line.
 
     botorch keeps the best candidate even when the retry fails. Other warnings pass through.
@@ -55,6 +78,7 @@ def optimize_acqf_logged(acq_function, d: int, who: str) -> torch.Tensor:
     - acq_function (AcquisitionFunction): Acquisition function to maximise.
     - d (int): Number of parameters.
     - who (str): Caller named in the log line, e.g. 'worker 3'.
+    - fixed_features (dict | None): Parameters held at the given values, by index.
 
     Returns
     ----------
@@ -69,6 +93,7 @@ def optimize_acqf_logged(acq_function, d: int, who: str) -> torch.Tensor:
             num_restarts=10,
             raw_samples=1000 * d,
             options={'maxiter': 1000},
+            fixed_features=fixed_features,
         )
 
     failed, second = None, False
@@ -176,7 +201,8 @@ def BO_step(D, B, f, kernel, acqf, lock, worker_id, x_in=None, input_warp=False)
         b = torch.cat(busys, dim=0) if busys else torch.zeros((0, d), dtype=dtype)
         acqf_f = get_acqf(acqf, gp, best, X_pending=b if busys else None)
 
-        x = optimize_acqf_logged(acqf_f, d, f'worker {worker_id}')
+        who = f'worker {worker_id}'
+        x = optimize_acqf_logged(acqf_f, d, who, random_irrelevant(gp, d, who))
 
         t_1_ac = time.perf_counter()
 
@@ -285,7 +311,8 @@ def init_locs(
     for _ in range(n_workers):
         pending = torch.cat(candidates, dim=0) if candidates else None
         acqf_f = get_acqf(acqf, gp, best, X_pending=pending)
-        candidates.append(optimize_acqf_logged(acqf_f, d, f'initial point {len(candidates)}'))
+        who = f'initial point {len(candidates)}'
+        candidates.append(optimize_acqf_logged(acqf_f, d, who, random_irrelevant(gp, d, who)))
 
     return torch.cat(candidates, dim=0)  # (n_workers, d)
 
