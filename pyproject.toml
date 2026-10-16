@@ -79,9 +79,8 @@ dependencies = [
     "sympy",
     "astropy",
     "toml",
-    # 26.10.7.1 declares the Seager 2007 EOS and Zeng 2019 mass-radius data and pins
-    # the Named stellar spectra v2 in its shared manifest, which PROTEUS reads.
-    "fwl-io>=26.10.7.1",
+    # 26.10.12 pins a DataverseNL mirror for every shared dataset, PHOENIX included.
+    "fwl-io>=26.10.12",
     "packaging",
 ]
 
