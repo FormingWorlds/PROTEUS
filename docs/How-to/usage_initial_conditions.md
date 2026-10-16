@@ -48,8 +48,8 @@ parameter:
 | `adiabatic` | an adiabat anchored at the surface | `tsurf_init` |
 | `isothermal` | a uniform temperature | `tsurf_init` |
 | `linear` | a surface-to-centre gradient | `tsurf_init`, `tcenter_init` |
-| `accretion` | accretion energetics | `f_accretion`, `f_differentiation` |
-| `isentropic` | the specific entropy directly | `ini_entropy`, `ini_dsdr` |
+| `accretion` | accretion energetics | `f_accretion`, `f_differentiation`; `tsurf_init` for the structure |
+| `isentropic` | the specific entropy directly | `ini_entropy`, `ini_dsdr`; `tsurf_init` for the structure |
 
 The default `liquidus_super` solves for the single adiabat that is fully molten
 throughout the mantle with a controlled superheat margin (see below). The

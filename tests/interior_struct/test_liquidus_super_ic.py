@@ -958,16 +958,19 @@ def test_the_stored_pair_follows_the_most_recent_solve(monkeypatch):
         )
         configs[dT].interior_struct.zalmoxis.mantle_eos = 'PALEOS:MgSiO3'
     pairs = {}
+    first = None
     for dT in (500.0, 300.0, 500.0):  # the third call is a cache hit
         pairs[dT] = zmod._resolve_zalmoxis_anchor_temperatures(
             configs[dT], {'P_cmb': 1.5e11}, 'liquidus_super'
         )
         seen.append(len(adiabats))
+        first = first or pairs[dT]
         assert (zmod._SUPERLIQ_LAST_ANCHOR, zmod._SUPERLIQ_LAST_SURFACE) == pytest.approx(
             pairs[dT]
         )
     assert pairs[500.0][1] - pairs[300.0][1] == pytest.approx(200.0, abs=40.0)
     assert 0 < seen[0] < seen[1] == seen[2]  # the third call adds no adiabat
+    assert pairs[500.0] == pytest.approx(first)  # the cache hit returns the first solve
 
     def failing_solve(config, hf_row):
         raise InitialConditionError('no molten adiabat at this P_cmb')
