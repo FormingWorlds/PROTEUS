@@ -724,22 +724,22 @@ def _resolve_zalmoxis_anchor_temperatures(
     if mode != 'liquidus_super':
         return config.planet.tcmb_init, float(config.planet.tsurf_init)
 
-    def last_pair(reason: str) -> tuple[float, float, str]:
+    def last_pair() -> tuple[float, float, str]:
         # The last pair stands in only for the same superheat and mantle EOS.
-        if (
-            _SUPERLIQ_LAST_ANCHOR is not None
-            and _SUPERLIQ_LAST_ANCHOR_FOR == _superliq_anchor_for(config)
-        ):
-            surface = (
-                _SUPERLIQ_LAST_SURFACE
-                if _SUPERLIQ_LAST_SURFACE is not None
-                else config.planet.tsurf_init
+        if None not in (
+            _SUPERLIQ_LAST_ANCHOR,
+            _SUPERLIQ_LAST_SURFACE,
+        ) and _SUPERLIQ_LAST_ANCHOR_FOR == _superliq_anchor_for(config):
+            return (
+                float(_SUPERLIQ_LAST_ANCHOR),
+                _SUPERLIQ_LAST_SURFACE,
+                'the last solved anchor',
             )
-            return float(_SUPERLIQ_LAST_ANCHOR), float(surface), 'the last solved anchor'
-        return float(config.planet.tcmb_init), float(config.planet.tsurf_init), reason
+        tcmb, tsurf = float(config.planet.tcmb_init), float(config.planet.tsurf_init)
+        return tcmb, tsurf, 'tcmb_init and tsurf_init'
 
     if external_temperature_source:
-        cmb_T, surface_T, source = last_pair('tcmb_init and tsurf_init')
+        cmb_T, surface_T, source = last_pair()
         log.debug(
             'liquidus_super: structure solve uses an external temperature source; '
             'using %s (T_cmb=%.0f K, T_surf=%.0f K) as the unconsumed anchor and '
@@ -764,7 +764,7 @@ def _resolve_zalmoxis_anchor_temperatures(
         from proteus.utils.structure_estimate import resolve_P_cmb
 
         P_cmb, estimated = resolve_P_cmb(hf_row, config)
-        cmb_T, surface_T, source = last_pair('tcmb_init and tsurf_init')
+        cmb_T, surface_T, source = last_pair()
         log.warning(
             'liquidus_super CMB anchor for Zalmoxis: no P-T anchor at %sP_cmb=%.0f GPa '
             '(%s); using %s, T_cmb=%.0f K and T_surf=%.0f K, for this structure solve.',
@@ -785,18 +785,6 @@ def _resolve_zalmoxis_anchor_temperatures(
         res['P_cmb'] / 1e9,
     )
     return float(res['cmb_T']), float(res['surface_T'])
-
-
-def _resolve_zalmoxis_cmb_temperature(
-    config: Config,
-    hf_row: dict,
-    mode: str,
-    external_temperature_source: bool = False,
-) -> float:
-    """CMB temperature of :func:`_resolve_zalmoxis_anchor_temperatures`."""
-    return _resolve_zalmoxis_anchor_temperatures(
-        config, hf_row, mode, external_temperature_source
-    )[0]
 
 
 def _anchor_failure_deferred(config: Config) -> bool:

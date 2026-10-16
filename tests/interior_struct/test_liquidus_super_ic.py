@@ -6,7 +6,7 @@ Covers:
     mapping (liquidus_super -> adiabatic_from_cmb, accretion/isentropic
     -> adiabatic, others pass through).
 
-(2) ``_resolve_zalmoxis_cmb_temperature``: liquidus_super delegates to the
+(2) ``_resolve_zalmoxis_anchor_temperatures``: liquidus_super delegates to the
     super-liquidus solve and returns the solved adiabat's CMB temperature;
     every other mode echoes ``tcmb_init`` verbatim.
 
@@ -158,12 +158,14 @@ class TestResolveZalmoxisCMBTemperature:
         super-liquidus solve or consult ``hf_row['P_cmb']``.
         """
         from proteus.interior_struct.zalmoxis import (
-            _resolve_zalmoxis_cmb_temperature,
+            _resolve_zalmoxis_anchor_temperatures,
         )
 
         cfg = _make_minimal_config(tcmb_init=7199.0, temperature_mode='adiabatic_from_cmb')
         # hf_row carries a P_cmb value but it must NOT be consulted here.
-        T = _resolve_zalmoxis_cmb_temperature(cfg, {'P_cmb': 135e9}, 'adiabatic_from_cmb')
+        T = _resolve_zalmoxis_anchor_temperatures(cfg, {'P_cmb': 135e9}, 'adiabatic_from_cmb')[
+            0
+        ]
         assert T == pytest.approx(7199.0)
         # Discrimination: must be exactly tcmb_init, not diverted into the
         # liquidus_super solve (which ignores tcmb_init and returns a much
@@ -194,7 +196,9 @@ class TestResolveZalmoxisCMBTemperature:
 
         monkeypatch.setattr(zmod, 'solve_superliquidus_adiabat', fake_solve)
         cfg = _make_minimal_config(delta_T_super=500.0, tcmb_init=6000.0)
-        T = zmod._resolve_zalmoxis_cmb_temperature(cfg, {'P_cmb': 6.7e11}, 'liquidus_super')
+        T = zmod._resolve_zalmoxis_anchor_temperatures(
+            cfg, {'P_cmb': 6.7e11}, 'liquidus_super'
+        )[0]
         assert T == pytest.approx(8765.0)
         # The resolver must use the solve result, not tcmb_init.
         assert T != pytest.approx(6000.0)
@@ -244,16 +248,17 @@ class TestExternalTemperatureSourceSkipsResolve:
         # Simulate the internal-dispatch IC solve having recorded the anchor.
         cfg = _make_minimal_config(tcmb_init=6000.0)
         monkeypatch.setattr(zmod, '_SUPERLIQ_LAST_ANCHOR', 8765.0)
+        monkeypatch.setattr(zmod, '_SUPERLIQ_LAST_SURFACE', 4241.0)
         monkeypatch.setattr(zmod, '_SUPERLIQ_LAST_ANCHOR_FOR', zmod._superliq_anchor_for(cfg))
 
         # P_cmb has drifted from the 6.7e11 the anchor was solved at; the
         # external path must not re-solve regardless of the drift.
-        T = zmod._resolve_zalmoxis_cmb_temperature(
+        T = zmod._resolve_zalmoxis_anchor_temperatures(
             cfg,
             {'P_cmb': 6.73e11},
             'liquidus_super',
             external_temperature_source=True,
-        )
+        )[0]
         assert calls['n'] == 0, 'the super-liquidus solve must be skipped on the external path'
         assert T == pytest.approx(8765.0)
         # Discrimination: the reused value is the solved anchor, not the much
@@ -269,14 +274,15 @@ class TestExternalTemperatureSourceSkipsResolve:
         calls = {'n': 0}
         monkeypatch.setattr(zmod, 'solve_superliquidus_adiabat', self._counting_solve(calls))
         monkeypatch.setattr(zmod, '_SUPERLIQ_LAST_ANCHOR', None)
+        monkeypatch.setattr(zmod, '_SUPERLIQ_LAST_SURFACE', None)
         cfg = _make_minimal_config(tcmb_init=6000.0)
 
-        T = zmod._resolve_zalmoxis_cmb_temperature(
+        T = zmod._resolve_zalmoxis_anchor_temperatures(
             cfg,
             {'P_cmb': 6.7e11},
             'liquidus_super',
             external_temperature_source=True,
-        )
+        )[0]
         assert calls['n'] == 0, 'the solve must be skipped even with no cached anchor'
         assert T == pytest.approx(6000.0)
         # Discrimination: the fallback is tcmb_init, not the 8765 K the solve
@@ -297,13 +303,14 @@ class TestExternalTemperatureSourceSkipsResolve:
         cfg = _make_minimal_config(delta_T_super=500.0, tcmb_init=6000.0)
         cfg.interior_struct.zalmoxis.mantle_eos = cfg_old.interior_struct.zalmoxis.mantle_eos
         monkeypatch.setattr(zmod, '_SUPERLIQ_LAST_ANCHOR', 8765.0)
+        monkeypatch.setattr(zmod, '_SUPERLIQ_LAST_SURFACE', 4241.0)
         monkeypatch.setattr(
             zmod, '_SUPERLIQ_LAST_ANCHOR_FOR', zmod._superliq_anchor_for(cfg_old)
         )
 
-        T = zmod._resolve_zalmoxis_cmb_temperature(
+        T = zmod._resolve_zalmoxis_anchor_temperatures(
             cfg, {'P_cmb': 6.7e11}, 'liquidus_super', external_temperature_source=True
-        )
+        )[0]
         assert calls['n'] == 0, 'the external path must not solve the anchor'
         assert T == pytest.approx(6000.0)
         # Discrimination: the 200 K-superheat anchor (8765 K) is far from the fallback.
@@ -316,9 +323,9 @@ class TestExternalTemperatureSourceSkipsResolve:
         monkeypatch.setattr(
             zmod, '_SUPERLIQ_LAST_ANCHOR_FOR', zmod._superliq_anchor_for(cfg_old)
         )
-        T_eos = zmod._resolve_zalmoxis_cmb_temperature(
+        T_eos = zmod._resolve_zalmoxis_anchor_temperatures(
             cfg_eos, {'P_cmb': 6.7e11}, 'liquidus_super', external_temperature_source=True
-        )
+        )[0]
         assert T_eos == pytest.approx(6000.0)
         assert calls['n'] == 0, 'the external path must not solve the anchor'
 
@@ -335,14 +342,15 @@ class TestExternalTemperatureSourceSkipsResolve:
         )
         # A stale anchor is present, but the internal path must ignore it.
         monkeypatch.setattr(zmod, '_SUPERLIQ_LAST_ANCHOR', 9999.0)
+        monkeypatch.setattr(zmod, '_SUPERLIQ_LAST_SURFACE', 4241.0)
         cfg = _make_minimal_config(tcmb_init=6000.0)
 
-        T = zmod._resolve_zalmoxis_cmb_temperature(
+        T = zmod._resolve_zalmoxis_anchor_temperatures(
             cfg,
             {'P_cmb': 6.7e11},
             'liquidus_super',
             external_temperature_source=False,
-        )
+        )[0]
         assert calls['n'] == 1, 'internal dispatch must re-solve the anchor'
         assert T == pytest.approx(8765.0)
         # Discrimination: the freshly solved value, not the stale cached anchor.
@@ -796,6 +804,7 @@ class TestLoadZalmoxisConfigurationLiquidusSuper:
         monkeypatch.setattr(zmod, 'solve_superliquidus_adiabat', counting_solve)
         # The internal-dispatch IC solve has already recorded the anchor.
         monkeypatch.setattr(zmod, '_SUPERLIQ_LAST_ANCHOR', 8765.0)
+        monkeypatch.setattr(zmod, '_SUPERLIQ_LAST_SURFACE', 4241.0)
         monkeypatch.setattr(
             zmod, '_SUPERLIQ_LAST_ANCHOR_FOR', zmod._superliq_anchor_for(config)
         )
@@ -810,9 +819,7 @@ class TestLoadZalmoxisConfigurationLiquidusSuper:
         # The reused anchor, not tcmb_init.
         assert cp['cmb_temperature'] == pytest.approx(8765.0)
         assert cp['cmb_temperature'] != pytest.approx(6000.0)
-        assert cp['surface_temperature'] == pytest.approx(
-            4000.0
-        )  # no stored surface: tsurf_init
+        assert cp['surface_temperature'] == pytest.approx(4241.0)  # the stored pair
 
     @pytest.mark.physics_invariant
     def test_surface_temperature_is_the_solved_adiabat_surface(self, monkeypatch):
@@ -884,7 +891,7 @@ class TestLoadZalmoxisConfigurationLiquidusSuper:
 
     @pytest.mark.parametrize(
         ('stored', 'want'),
-        [((8765.0, 4241.0), (8765.0, 4241.0)), (None, (6000.0, 3900.0))],
+        [((8765.0, 4241.0), (8765.0, 4241.0)), ((None, None), (6000.0, 3900.0))],
         ids=['last_solved_pair', 'no_pair_config_values'],
     )
     def test_deferred_anchor_failure_falls_back_to_one_pair(self, monkeypatch, stored, want):
@@ -895,7 +902,7 @@ class TestLoadZalmoxisConfigurationLiquidusSuper:
         config = _make_full_mock_config(
             temperature_mode='liquidus_super', tsurf_init=3900.0, tcmb_init=6000.0
         )
-        cmb, surf = stored if stored else (None, None)
+        cmb, surf = stored
         monkeypatch.setattr(zmod, '_SUPERLIQ_LAST_ANCHOR', cmb)
         monkeypatch.setattr(zmod, '_SUPERLIQ_LAST_SURFACE', surf)
         monkeypatch.setattr(
@@ -904,21 +911,42 @@ class TestLoadZalmoxisConfigurationLiquidusSuper:
         cp = zmod.load_zalmoxis_configuration(config, _make_hf_row(P_cmb=135e9))
         assert (cp['cmb_temperature'], cp['surface_temperature']) == pytest.approx(want)
 
-    def test_external_source_reuses_the_last_solved_pair(self, monkeypatch):
-        """An external temperature source reuses the stored CMB and surface pair, solve-free."""
-        zmod = self._failing_solve(monkeypatch)
-        config = _make_full_mock_config(temperature_mode='liquidus_super', tsurf_init=3900.0)
-        monkeypatch.setattr(zmod, '_SUPERLIQ_LAST_ANCHOR', 8765.0)
-        monkeypatch.setattr(zmod, '_SUPERLIQ_LAST_SURFACE', 4241.0)
-        monkeypatch.setattr(
-            zmod, '_SUPERLIQ_LAST_ANCHOR_FOR', zmod._superliq_anchor_for(config)
+
+def test_the_stored_pair_follows_the_most_recent_solve(monkeypatch):
+    """A fresh solve and a cache hit both store the CMB and surface temperatures they return,
+    so a deferred failure afterwards falls back to the pair of the most recent solve."""
+    import proteus.interior_struct.zalmoxis as zmod
+    from proteus.interior_energetics.common import InitialConditionError
+
+    _install_fake_solver_deps(monkeypatch)
+    zmod._clear_superliquidus_cache()
+    configs = {}
+    for dT in (500.0, 300.0):  # the synthetic adiabat puts the surface at 3700 K + dT
+        configs[dT] = _make_full_mock_config(
+            temperature_mode='liquidus_super', delta_T_super=dT
         )
-        cp = zmod.load_zalmoxis_configuration(
-            config, _make_hf_row(P_cmb=135e9), external_temperature_source=True
+        configs[dT].interior_struct.zalmoxis.mantle_eos = 'PALEOS:MgSiO3'
+    pairs = {}
+    for dT in (500.0, 300.0, 500.0):  # the third call is a cache hit
+        pairs[dT] = zmod._resolve_zalmoxis_anchor_temperatures(
+            configs[dT], {'P_cmb': 1.5e11}, 'liquidus_super'
         )
-        assert (cp['cmb_temperature'], cp['surface_temperature']) == pytest.approx(
-            (8765.0, 4241.0)
+        assert (zmod._SUPERLIQ_LAST_ANCHOR, zmod._SUPERLIQ_LAST_SURFACE) == pytest.approx(
+            pairs[dT]
         )
+    assert pairs[500.0][1] - pairs[300.0][1] == pytest.approx(200.0, abs=40.0)
+
+    def failing_solve(config, hf_row):
+        raise InitialConditionError('no molten adiabat at this P_cmb')
+
+    monkeypatch.setattr(zmod, 'solve_superliquidus_adiabat', failing_solve)
+    monkeypatch.setattr(zmod, '_anchor_failure_deferred', lambda config: True)
+    got = zmod._resolve_zalmoxis_anchor_temperatures(
+        configs[500.0], {'P_cmb': 6.0e11}, 'liquidus_super'
+    )
+    assert got == pytest.approx(pairs[500.0])
+    zmod._clear_superliquidus_cache()
+    assert (zmod._SUPERLIQ_LAST_ANCHOR, zmod._SUPERLIQ_LAST_SURFACE) == (None, None)
 
 
 # ----------------------------------------------------------------------

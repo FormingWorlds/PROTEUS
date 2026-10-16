@@ -3,7 +3,7 @@
 ## Source under test
 `src/proteus/interior_struct/zalmoxis.py` (the `liquidus_super` initial-condition path:
 `solve_superliquidus_adiabat`, `_resolve_zalmoxis_temperature_mode`,
-`_resolve_zalmoxis_cmb_temperature`, `load_zalmoxis_configuration`).
+`_resolve_zalmoxis_anchor_temperatures`, `load_zalmoxis_configuration`).
 
 ## Reference-pinned tests
 
