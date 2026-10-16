@@ -44,6 +44,7 @@ from __future__ import annotations
 
 import copy
 import os
+import tomllib
 
 import tomlkit
 
@@ -166,6 +167,56 @@ def _set_dotted(doc, dotted: str, value) -> None:
     node[keys[-1]] = copy.deepcopy(value)
 
 
+def _format_stop_block(text: str, name: str) -> str:
+    """Lay out the ``[params.stop.*]`` tables of case ``name`` as the grid configs do.
+
+    Each stop header sits at 4 spaces and each key line or comment line of its
+    table at 8, with no blank line inside the block and one blank line before
+    the next table; comment lines that end the block stay outside it. tomlkit
+    appends new tables at the indent of the last one it saw, so the block is
+    rewritten from its own lines, and the parsed TOML must be the same before
+    and after.
+
+    Raises
+    ------
+    ValueError
+        If the text has no stop table, the stop tables are split by another
+        table, a stop key holds a multi-line value, or the layout changes a
+        parsed value.
+    """
+    before = tomllib.loads(text)
+    lines = text.split('\n')
+    heads = [i for i, ln in enumerate(lines) if ln.strip().startswith('[params.stop.')]
+    if not heads:
+        raise ValueError(f'{name}: no [params.stop.*] table to lay out')
+    end = len(lines)
+    for i in range(heads[0], len(lines)):
+        s = lines[i].strip()
+        if s.startswith('[') and not s.startswith('[params.stop.'):
+            end = i
+            break
+        if s and not s.startswith(('#', '[')):
+            try:
+                tomllib.loads(s)
+            except tomllib.TOMLDecodeError:
+                raise ValueError(
+                    f'{name}: a stop line does not parse on its own (multi-line value): {s!r}'
+                ) from None
+    if heads[-1] >= end:
+        raise ValueError(f'{name}: the [params.stop.*] tables are not in one block')
+    while not lines[end - 1].strip() or lines[end - 1].strip().startswith('#'):
+        end -= 1
+    block = [ln.strip() for ln in lines[heads[0] : end] if ln.strip()]
+    block = [(' ' * 4 if ln.startswith('[') else ' ' * 8) + ln for ln in block]
+    while end < len(lines) and not lines[end].strip():
+        end += 1
+    out = '\n'.join(lines[: heads[0]] + block + [''] + lines[end:])
+    # repr, not ==: it keeps key order and compares a nan value equal to itself.
+    if repr(tomllib.loads(out)) != repr(before):
+        raise ValueError(f'{name}: the stop-block layout changes a parsed value')
+    return out
+
+
 def case_deltas(name: str) -> dict:
     """Deltas of case ``name``: its ``CASE_DELTAS`` entries and the protocol's redox state and stop rule.
 
@@ -190,16 +241,20 @@ def generate_case(name: str) -> str:
     everything outside the delta list stays byte-identical to the base,
     apart from the leading comment block, which is replaced with a
     case-specific header (the tutorial header describes the tutorial,
-    not the derived case).
+    not the derived case), and the layout of the stop block (indentation
+    and blank lines, ``_format_stop_block``).
     """
     spec = CASE_DELTAS[name]
     base_path = os.path.join(TUTORIALS, spec['base'])
     with open(base_path) as f:
         text = f.read()
-    doc = tomlkit.parse(text)
+    try:
+        doc = tomlkit.parse(text)
+    except tomlkit.exceptions.ParseError as exc:
+        raise ValueError(f'{name}: {spec["base"]} is not valid TOML: {exc}') from None
     for dotted, value in case_deltas(name).items():
         _set_dotted(doc, dotted, value)
-    rendered = tomlkit.dumps(doc)
+    rendered = _format_stop_block(tomlkit.dumps(doc), name)
 
     # Replace the tutorial's leading comment block (everything up to
     # the first non-comment, non-blank line) with the case header.
