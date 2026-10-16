@@ -353,8 +353,10 @@ class Aragog:
     """Entropy gradient D [J/kg/K/m] below which a node convects. A node with
     dS/dr < D takes the mixing-length eddy diffusivity of |dS/dr| and the
     kappa_h floor, so a node just on the stable side (0 <= dS/dr < D) keeps
-    mixing and its gradient relaxes towards zero; a node above D does not
-    convect. 0.0 gives the dS/dr < 0 switch of SPIDER."""
+    mixing; a node above D does not convect. The switch is a hard mask: the
+    flux jumps at D and a stable gradient close to D is pushed away from it
+    (see the Aragog heat transport docs). 0.0 gives the dS/dr < 0 switch of
+    SPIDER."""
     solver_method: str = field(
         default='cvode',
         validator=in_(('cvode', 'radau', 'bdf')),

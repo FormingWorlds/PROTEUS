@@ -992,6 +992,7 @@ class AragogRunner:
                 entropy_step_cap,
             )
             _effective_caps_logged = True
+        log.info('Aragog convective threshold D = %.3g J/kg/K/m', ar.convective_threshold)
 
         energy_kwargs = dict(
             conduction=config.interior_energetics.trans_conduction,
