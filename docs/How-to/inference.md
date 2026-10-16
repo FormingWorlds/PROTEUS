@@ -145,7 +145,7 @@ The table does not change the optimisation; it adds a True column to the results
 
 ### Posterior samples
 
-With `[sigma]`, every objective form (chi-squared, correlated chi-squared, Student-t) is `S = -2 ln L` up to a constant, so `ln L = -10^(-J) / 2` up to a constant. At the end of the study a GP is fitted to `J` of the scored evaluations, and `posterior_samples` (default 2000, `0` is off) parameter samples are drawn from `L` at the GP mean, by importance resampling of 10^6 uniform draws. The prior is uniform over the sampled ranges, log-uniform for log10-scaled parameters such as `planet.elements.H_budget`. The log reports the effective sample size, with a warning when it is below the number of samples.
+With `[sigma]`, every objective form (chi-squared, correlated chi-squared, Student-t) is `S = -2 ln L` up to a constant, so `ln L = -10^(-J) / 2` up to a constant. At the end of the study a GP is fitted to `J` of the scored evaluations, and `posterior_samples` (default 2000, `0` is off) parameter samples are drawn from `L` at the GP mean, by importance resampling of 10^6 uniform draws. When the posterior is so narrow that these give fewer effective samples than requested, up to five more rounds draw from a Gaussian mixture centred on the best-weighted draws (with a 10 % uniform share), until they do. The prior is uniform over the sampled ranges, log-uniform for log10-scaled parameters such as `planet.elements.H_budget`. The log reports the effective sample size, with a warning when it stays below the number of samples.
 
 The posterior ignores the GP's own uncertainty, so it is only as good as the GP near the best fit: check that the study converged (`perf_bestval.png`) before using it.
 
