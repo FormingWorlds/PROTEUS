@@ -57,22 +57,35 @@ MIN_ECDF_HEIGHT_PER_PT = 0.4
 MAX_COLOURBAR_LABELS = 8
 
 
+def _import_proteus_mpl(required: bool):
+    """Return the proteus_mpl module, or None when it is absent and not ``required``."""
+    try:
+        import proteus_mpl
+    except ImportError as exc:
+        if required:
+            raise ImportError(
+                '[post_processing].style needs the proteus-mpl package '
+                '(pip install proteus-mpl)'
+            ) from exc
+        log.info('proteus-mpl is not installed; the grid plots use the matplotlib style')
+        return None
+    return proteus_mpl
+
+
 @contextmanager
 def plot_style(style: str | None):
-    """Draw inside the proteus-mpl ``style`` ('light' or 'dark'), or the active style.
+    """Draw inside the proteus-mpl ``style`` ('light' or 'dark') or the active style.
 
-    The matplotlib settings are restored on exit.
+    ``'matplotlib'`` keeps the active matplotlib style. ``None`` (the key unset)
+    means 'light' when proteus-mpl is installed and the active style otherwise;
+    an explicit 'light' or 'dark' without proteus-mpl raises ImportError. The
+    matplotlib settings are restored on exit.
     """
     with plt.rc_context():
-        if style is not None:
-            try:
-                import proteus_mpl
-            except ImportError as exc:
-                raise ImportError(
-                    '[post_processing].style needs the proteus-mpl package '
-                    '(pip install proteus-mpl)'
-                ) from exc
-            proteus_mpl.use(style)
+        if style != 'matplotlib':
+            proteus_mpl = _import_proteus_mpl(required=style is not None)
+            if proteus_mpl is not None:
+                proteus_mpl.use(style or 'light')
         yield
 
 

@@ -398,19 +398,49 @@ def test_proteus_mpl_style_colours_stand_out_on_its_face(variant):
         assert _contrast(BLACK, face) < MIN_CURVE_CONTRAST  # why black is not used
 
 
-def test_plot_style_restores_the_settings_and_needs_proteus_mpl(monkeypatch):
-    """The style applies only inside the block, and without proteus-mpl the style
-    key raises an ImportError naming the package instead of plotting unstyled.
+def test_plot_style_restores_the_settings_and_needs_proteus_mpl(monkeypatch, caplog):
+    """The style applies only inside the block. Without proteus-mpl an explicit
+    'dark' raises an ImportError naming the package, while the unset key falls back
+    to the active style with an info line instead of failing.
     """
     before = matplotlib.rcParams['axes.facecolor']
-    with plot_style(None):
+    with plot_style('matplotlib'):
         matplotlib.rcParams['axes.facecolor'] = '#123456'
     assert matplotlib.rcParams['axes.facecolor'] == before
     monkeypatch.setitem(__import__('sys').modules, 'proteus_mpl', None)
     with pytest.raises(ImportError, match='pip install proteus-mpl'):
         with plot_style('dark'):
             pass
+    with caplog.at_level('INFO'), plot_style(None):
+        assert matplotlib.rcParams['axes.facecolor'] == before
+    assert any('proteus-mpl is not installed' in r.message for r in caplog.records)
     assert matplotlib.rcParams['axes.facecolor'] == before
+
+
+def test_unset_style_is_proteus_mpl_light_and_matplotlib_keeps_the_active_style():
+    """With proteus-mpl installed the unset key draws in its light variant (the
+    Paper face #F2F5F7 and its colour cycle), the same as style = "light"; the
+    'matplotlib' value keeps the active style's white face and default cycle.
+    """
+    pytest.importorskip('proteus_mpl')
+    with plot_style(None):
+        unset = (matplotlib.rcParams['axes.facecolor'], _cycle())
+    with plot_style('light'):
+        light = (matplotlib.rcParams['axes.facecolor'], _cycle())
+    with matplotlib.rc_context(matplotlib.rcParamsDefault), plot_style('matplotlib'):
+        plain = (matplotlib.rcParams['axes.facecolor'], _cycle())
+    assert unset == light
+    assert matplotlib.colors.to_hex(unset[0]).upper() == '#F2F5F7'
+    assert plain[0] == 'white'
+    assert plain[1] != light[1]
+
+
+def _cycle():
+    """Return the colour cycle of the active style as hex strings."""
+    return [
+        matplotlib.colors.to_hex(c)
+        for c in matplotlib.rcParams['axes.prop_cycle'].by_key()['color']
+    ]
 
 
 def test_count_not_started_uses_product_of_axis_lengths(caplog):

@@ -51,7 +51,7 @@ jax_cache = false
     plot_status = true      # make the status-summary bar plot
     plot_ecdf   = true      # make the ECDF grid plot
     colormap    = "batlowK_r"  # colour map for a parameter with many values
-    # style = "light"          # "light" or "dark" proteus-mpl style (pip install proteus-mpl)
+    # style = "dark"           # "light" (default with proteus-mpl), "dark" or "matplotlib"
     # Output columns (runtime_helpfile.csv) to plot; solidification_time is
     # computed by the analysis (first time Phi_global <= params.stop.solid.phi_crit,
     # also when the solidification stop is disabled). Without this key the

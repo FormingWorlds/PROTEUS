@@ -26,8 +26,9 @@ POST_PROCESSING_OPTIONS = {
 # Image formats the grid plots may be saved as.
 SUPPORTED_PLOT_FORMATS = ('png', 'pdf')
 
-# Variants of the proteus-mpl style that [post_processing].style may load.
-PLOT_STYLES = ('light', 'dark')
+# Values of [post_processing].style: a proteus-mpl variant, or 'matplotlib' for the
+# active matplotlib style. Unset means 'light' when proteus-mpl is installed.
+PLOT_STYLES = ('light', 'dark', 'matplotlib')
 
 
 def _check_values(table: dict) -> None:

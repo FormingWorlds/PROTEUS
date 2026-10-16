@@ -174,7 +174,7 @@ The `[post_processing]` table accepts:
 | `colormap` | Colour map for a parameter with more values than the colour cycle of the plot style: a Crameri scientific colour map from `cmcrameri` (for example `"batlowK_r"`, `"batlow"`, `"vik"`) or any matplotlib colour map (`colourmap` is also accepted). Defaults to `batlowK_r`. |
 | `output_variables` | List of `runtime_helpfile.csv` columns to plot, plus the derived `solidification_time`. Defaults to `solidification_time`, `Phi_global`, `T_surf`, `P_surf` and `atm_kg_per_mol`. |
 | `plot_format` | Image format (`"png"` or `"pdf"`); defaults to the base config's `params.out.plot_fmt`, then `"png"`. |
-| `style` | `"light"` or `"dark"`: draw the plots in that variant of the [`proteus-mpl`](https://pypi.org/project/proteus-mpl/) style of the documentation figures (needs `pip install proteus-mpl`, included in the `develop` and `docs` extras). Without it the plots follow the active matplotlib style. |
+| `style` | `"light"` or `"dark"` draws the plots in that variant of the [`proteus-mpl`](https://pypi.org/project/proteus-mpl/) style of the documentation figures (needs `pip install proteus-mpl`, included in the `develop` and `docs` extras); `"matplotlib"` keeps the active matplotlib style. Unset, the plots use `"light"` when `proteus-mpl` is installed and the matplotlib style otherwise. |
 
 `solidification_time` is computed by the analysis as the first time a case's `Phi_global` is at or below its `params.stop.solid.phi_crit` (the solidification stop criterion). It is computed the same way when that stop criterion (`params.stop.solid.enabled`) is disabled, for example in a grid that runs every case to a fixed end time, and is empty (NaN) only for a case that never reached `phi_crit`.
 

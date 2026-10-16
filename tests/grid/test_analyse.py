@@ -368,7 +368,7 @@ def test_post_processing_accepts_both_colourmap_spellings():
         ({'output_variables': 'T_surf'}, 'output_variables must be a list'),
         ({'output_variables': ['T_surf', 3]}, 'list of strings'),
         (True, 'must be a table'),
-        ({'style': 'grey'}, 'style'),
+        ({'style': 'default'}, 'style'),
         ({'plot_format': 'svg'}, 'plot_format'),
         ({'colormap': 'batlowk_r'}, 'colour map'),
     ],
