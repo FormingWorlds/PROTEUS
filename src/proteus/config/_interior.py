@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import numbers
 import warnings
 
 from attrs import define, field
@@ -42,6 +43,12 @@ def _gt0_or_unset(instance, attribute, value):
         return
     if value <= 0:
         raise ValueError(f'`{attribute.name}` must be greater than 0, got {value}')
+
+
+def _real_not_bool(instance, attribute, value):
+    """Refuse a bool (TOML `true` would load as 1.0) and any non-real value."""
+    if isinstance(value, bool) or not isinstance(value, numbers.Real):
+        raise ValueError(f'`{attribute.name}` must be a real number, got {value!r}')
 
 
 def _step_cap_valid(instance, attribute, value):
@@ -349,7 +356,9 @@ class Aragog:
     while Aragog's own default stays 'melt' for SPIDER parity. The
     regime boundaries are the porosities where adjacent permeability
     laws cross (Bower et al. 2018, section 2.1, Eqs. 13a to 13c)."""
-    convective_threshold: float = field(default=1.0e-6, validator=[ge(0), lt(math.inf)])
+    convective_threshold: float = field(
+        default=1.0e-6, validator=[_real_not_bool, ge(0), lt(math.inf)]
+    )
     """Entropy gradient D [J/kg/K/m] of the Aragog convective switch. The
     mixing-length drive acts only where dS/dr < 0 and uses max(|dS/dr|, D)
     there, so an unstable node gets at least the eddy diffusivities of a
