@@ -336,3 +336,113 @@ def check_energy_invariants(
             )
 
     return violations
+
+
+def check_structure_invariants(
+    hf_row: dict,
+    config: Config,
+) -> list[InvariantViolation]:
+    """Evaluate structure mass self-consistency and target invariants on ``hf_row`` (status 31).
+
+    Checks ``struct_mass_desync_frac`` against the warning threshold (default ``5.0e-3``,
+    ``report_only=True``) and stop threshold (default ``1.0e-2``, ``report_only=False``),
+    interior mass ``M_int`` against ``M_int_target`` (when ``M_int_target > 0``), and
+    core mass ``M_core`` against ``M_core_target`` (when ``M_core_target > 0``).
+
+    Parameters
+    ----------
+    hf_row : dict
+        Current helpfile row dictionary.
+    config : Config
+        PROTEUS configuration object.
+
+    Returns
+    -------
+    list[InvariantViolation]
+        Detected structure mass and target violations.
+    """
+    inv_cfg = config.invariants
+    time_yr = float(hf_row.get('Time', 0.0))
+    m_int = float(hf_row.get('M_int', 0.0))
+    m_core = float(hf_row.get('M_core', 0.0))
+    r_int = float(hf_row.get('R_int', 0.0))
+    r_core = float(hf_row.get('R_core', 0.0))
+
+    violations: list[InvariantViolation] = []
+    desync = float(hf_row.get('struct_mass_desync_frac', 0.0))
+    warn_tol = float(inv_cfg.struct_mass_desync_warn_rtol)
+    stop_tol = float(inv_cfg.struct_mass_desync_rtol)
+    if not np.isfinite(desync) or desync > stop_tol:
+        violations.append(
+            InvariantViolation(
+                name='struct_mass_desync_frac',
+                status_code=STATUS_ERROR_MASS_INVARIANT,
+                value=desync,
+                tolerance=stop_tol,
+                message=(
+                    f'Time={time_yr:.6e} yr: struct_mass_desync_frac={desync:.6e} '
+                    f'exceeds stop tol={stop_tol:.6e} '
+                    f'(M_int={m_int:.6e} kg, R_int={r_int:.6e} m, R_core={r_core:.6e} m)'
+                ),
+                report_only=False,
+            )
+        )
+    elif desync > warn_tol:
+        violations.append(
+            InvariantViolation(
+                name='struct_mass_desync_frac',
+                status_code=STATUS_ERROR_MASS_INVARIANT,
+                value=desync,
+                tolerance=warn_tol,
+                message=(
+                    f'Time={time_yr:.6e} yr: struct_mass_desync_frac={desync:.6e} '
+                    f'exceeds warn tol={warn_tol:.6e} '
+                    f'(M_int={m_int:.6e} kg, R_int={r_int:.6e} m, R_core={r_core:.6e} m)'
+                ),
+                report_only=True,
+            )
+        )
+
+    m_int_target = float(hf_row.get('M_int_target', 0.0))
+    if np.isfinite(m_int_target) and m_int_target > 0.0:
+        int_rel_err = abs(m_int / m_int_target - 1.0) if np.isfinite(m_int) else float('nan')
+        int_tol = float(inv_cfg.interior_mass_target_rtol)
+        if not np.isfinite(int_rel_err) or int_rel_err > int_tol:
+            violations.append(
+                InvariantViolation(
+                    name='M_int_target_rel_err',
+                    status_code=STATUS_ERROR_MASS_INVARIANT,
+                    value=int_rel_err,
+                    tolerance=int_tol,
+                    message=(
+                        f'Time={time_yr:.6e} yr: |M_int / M_int_target - 1|={int_rel_err:.6e} '
+                        f'exceeds tol={int_tol:.6e} '
+                        f'(M_int={m_int:.6e} kg, M_int_target={m_int_target:.6e} kg)'
+                    ),
+                    report_only=False,
+                )
+            )
+
+    m_core_target = float(hf_row.get('M_core_target', 0.0))
+    if np.isfinite(m_core_target) and m_core_target > 0.0:
+        core_rel_err = (
+            abs(m_core / m_core_target - 1.0) if np.isfinite(m_core) else float('nan')
+        )
+        core_tol = float(inv_cfg.core_mass_target_rtol)
+        if not np.isfinite(core_rel_err) or core_rel_err > core_tol:
+            violations.append(
+                InvariantViolation(
+                    name='M_core_target_rel_err',
+                    status_code=STATUS_ERROR_MASS_INVARIANT,
+                    value=core_rel_err,
+                    tolerance=core_tol,
+                    message=(
+                        f'Time={time_yr:.6e} yr: |M_core / M_core_target - 1|={core_rel_err:.6e} '
+                        f'exceeds tol={core_tol:.6e} '
+                        f'(M_core={m_core:.6e} kg, M_core_target={m_core_target:.6e} kg)'
+                    ),
+                    report_only=False,
+                )
+            )
+
+    return violations
