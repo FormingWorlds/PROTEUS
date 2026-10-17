@@ -37,6 +37,7 @@ from proteus.utils.helper import (
     is_write_snapshot,
     multiple,
 )
+from proteus.utils.invariants import check_row_invariants
 from proteus.utils.logs import (
     GetCurrentLogfileIndex,
     GetLogfilePath,
@@ -1581,6 +1582,14 @@ class Proteus:
                 self.hf_row['Time'] = 0.0
             else:
                 self.interior_o.ic = 2
+
+            # Validate run-row physical invariants before recording the row
+            check_row_invariants(
+                self.hf_row,
+                self.config,
+                hf_all=self.hf_all if self.loops['total'] > 1 else None,
+                directories=self.directories,
+            )
 
             # Update full helpfile
             if self.loops['total'] > 1:

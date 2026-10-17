@@ -602,7 +602,8 @@
         "observe",
         "orbit",
         "outgas",
-        "plot"
+        "plot",
+        "utils"
       ],
       "consumers_possible": []
     },
@@ -631,7 +632,8 @@
         "interior_energetics",
         "interior_struct",
         "orbit",
-        "outgas"
+        "outgas",
+        "utils"
       ],
       "consumers_possible": []
     },
@@ -712,7 +714,8 @@
       "consumers": [
         "interior_energetics",
         "interior_struct",
-        "main loop"
+        "main loop",
+        "utils"
       ],
       "consumers_possible": []
     },
@@ -917,7 +920,8 @@
         }
       ],
       "consumers": [
-        "interior_struct"
+        "interior_struct",
+        "utils"
       ],
       "consumers_possible": []
     },
@@ -1754,7 +1758,8 @@
       ],
       "consumers": [
         "interior_energetics",
-        "plot"
+        "plot",
+        "utils"
       ],
       "consumers_possible": []
     },
@@ -1788,7 +1793,8 @@
       ],
       "consumers": [
         "interior_energetics",
-        "interior_struct"
+        "interior_struct",
+        "utils"
       ],
       "consumers_possible": []
     },
@@ -1849,7 +1855,8 @@
       ],
       "consumers": [
         "accretion",
-        "interior_struct"
+        "interior_struct",
+        "utils"
       ],
       "consumers_possible": []
     },
@@ -2479,7 +2486,9 @@
           "condition": "always"
         }
       ],
-      "consumers": [],
+      "consumers": [
+        "utils"
+      ],
       "consumers_possible": []
     },
     {
@@ -2509,7 +2518,9 @@
           "condition": "always"
         }
       ],
-      "consumers": [],
+      "consumers": [
+        "utils"
+      ],
       "consumers_possible": []
     },
     {
@@ -2539,7 +2550,9 @@
           "condition": "always"
         }
       ],
-      "consumers": [],
+      "consumers": [
+        "utils"
+      ],
       "consumers_possible": []
     },
     {
@@ -2592,7 +2605,9 @@
           "condition": "always"
         }
       ],
-      "consumers": [],
+      "consumers": [
+        "utils"
+      ],
       "consumers_possible": []
     },
     {
@@ -3249,7 +3264,8 @@
       "consumers": [
         "accretion",
         "escape",
-        "outgas"
+        "outgas",
+        "utils"
       ],
       "consumers_possible": []
     },
@@ -3272,7 +3288,8 @@
       "consumers": [
         "accretion",
         "escape",
-        "outgas"
+        "outgas",
+        "utils"
       ],
       "consumers_possible": []
     },
@@ -3293,7 +3310,8 @@
         }
       ],
       "consumers": [
-        "outgas"
+        "outgas",
+        "utils"
       ],
       "consumers_possible": []
     },
@@ -26277,6 +26295,12 @@
       "kind": "read",
       "reason": "dynamic key f'{e}_kg_{r}'",
       "function": "assert_mass_conservation"
+    },
+    {
+      "file": "src/proteus/utils/invariants.py",
+      "kind": "read",
+      "reason": "dynamic key f'{e}_kg_{r}'",
+      "function": "check_volatile_invariants"
     }
   ]
 }

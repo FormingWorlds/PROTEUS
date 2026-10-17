@@ -667,3 +667,132 @@ def check_volatile_invariants(
                 )
 
     return violations
+
+
+def check_state_bounds_invariants(
+    hf_row: dict,
+    config: Config,
+) -> list[InvariantViolation]:
+    """Evaluate physical state bounds on ``T_surf``, ``T_magma``, ``P_surf``, and ``Phi_global`` (status 32).
+
+    Parameters
+    ----------
+    hf_row : dict
+        Current helpfile row dictionary.
+    config : Config
+        PROTEUS configuration object.
+
+    Returns
+    -------
+    list[InvariantViolation]
+        Detected state-bounds violations.
+    """
+    inv_cfg = config.invariants
+    time_yr = float(hf_row.get('Time', 0.0))
+    violations: list[InvariantViolation] = []
+
+    t_surf = float(hf_row.get('T_surf', float('nan')))
+    if not (np.isfinite(t_surf) and t_surf > 0.0):
+        violations.append(
+            InvariantViolation(
+                name='T_surf_bounds',
+                status_code=STATUS_ERROR_STATE_BOUNDS_INVARIANT,
+                value=t_surf,
+                tolerance=0.0,
+                message=f'Time={time_yr:.6e} yr: T_surf={t_surf:.6e} K violates T_surf > 0.0 K',
+                report_only=False,
+            )
+        )
+
+    t_magma = float(hf_row.get('T_magma', float('nan')))
+    t_magma_max = float(inv_cfg.t_magma_max)
+    if not (np.isfinite(t_magma) and 0.0 < t_magma < t_magma_max):
+        violations.append(
+            InvariantViolation(
+                name='T_magma_bounds',
+                status_code=STATUS_ERROR_STATE_BOUNDS_INVARIANT,
+                value=t_magma,
+                tolerance=t_magma_max,
+                message=(
+                    f'Time={time_yr:.6e} yr: T_magma={t_magma:.6e} K violates '
+                    f'0.0 < T_magma < {t_magma_max:.6e} K'
+                ),
+                report_only=False,
+            )
+        )
+
+    m_atm = float(hf_row.get('M_atm', 0.0))
+    p_surf = float(hf_row.get('P_surf', float('nan')))
+    has_atm = np.isfinite(m_atm) and m_atm > 0.0
+    valid_p = np.isfinite(p_surf) and (p_surf > 0.0 if has_atm else p_surf >= 0.0)
+    if not valid_p:
+        req = '> 0.0' if has_atm else '>= 0.0'
+        violations.append(
+            InvariantViolation(
+                name='P_surf_bounds',
+                status_code=STATUS_ERROR_STATE_BOUNDS_INVARIANT,
+                value=p_surf,
+                tolerance=0.0,
+                message=(
+                    f'Time={time_yr:.6e} yr: P_surf={p_surf:.6e} bar violates '
+                    f'P_surf {req} bar (M_atm={m_atm:.6e} kg)'
+                ),
+                report_only=False,
+            )
+        )
+
+    phi_atol = float(inv_cfg.phi_global_atol)
+    phi_global = float(hf_row.get('Phi_global', float('nan')))
+    if not (np.isfinite(phi_global) and -phi_atol <= phi_global <= 1.0 + phi_atol):
+        violations.append(
+            InvariantViolation(
+                name='Phi_global_bounds',
+                status_code=STATUS_ERROR_STATE_BOUNDS_INVARIANT,
+                value=phi_global,
+                tolerance=phi_atol,
+                message=(
+                    f'Time={time_yr:.6e} yr: Phi_global={phi_global:.6e} violates '
+                    f'[-{phi_atol:.6e}, {1.0 + phi_atol:.6e}]'
+                ),
+                report_only=False,
+            )
+        )
+
+    return violations
+
+
+def check_row_invariants(
+    hf_row: dict,
+    config: Config,
+    hf_all: pd.DataFrame | None = None,
+    directories: dict | None = None,
+) -> list[InvariantViolation]:
+    """Evaluate all run-row invariants on ``hf_row`` and dispatch according to ``config.invariants.mode``.
+
+    Parameters
+    ----------
+    hf_row : dict
+        Current helpfile row dictionary before appending to ``hf_all``.
+    config : Config
+        PROTEUS configuration object.
+    hf_all : pd.DataFrame or None, optional
+        Accumulated helpfile table prior to appending ``hf_row``.
+    directories : dict or None, optional
+        PROTEUS run directories dictionary for status-file updates under ``mode == 'stop'``.
+
+    Returns
+    -------
+    list[InvariantViolation]
+        Processed violations (empty when ``mode == 'off'``).
+    """
+    inv_cfg = getattr(config, 'invariants', None)
+    mode = getattr(inv_cfg, 'mode', 'report') if inv_cfg is not None else 'report'
+    if mode == 'off':
+        return []
+
+    violations: list[InvariantViolation] = []
+    violations.extend(check_energy_invariants(hf_row, config, hf_all))
+    violations.extend(check_structure_invariants(hf_row, config))
+    violations.extend(check_volatile_invariants(hf_row, config))
+    violations.extend(check_state_bounds_invariants(hf_row, config))
+    return handle_violations(violations, mode=mode, directories=directories)
