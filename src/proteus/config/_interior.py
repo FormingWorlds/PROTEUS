@@ -366,8 +366,10 @@ class Aragog:
     the stable side (0 <= dS/dr < D) keeps the floor alone, with a downward
     flux of at most rho*T*kappah_floor*D. Both switches are hard masks (see the
     Aragog heat transport docs). The default 0.0 gives the plain dS/dr < 0 switch of
-    SPIDER; with D > 0, kappa_h jumps at dS/dr = 0 from the floor to the value at D,
-    which can stall CVODE at a node whose gradient stays near 0."""
+    SPIDER. D > 0 removes the two end states of some coupled calls under that switch,
+    but kappa_h then jumps at dS/dr = 0 from the floor to the mixing-length value at D
+    (where that is above the floor), which can stall CVODE at a node whose gradient
+    stays near 0."""
     solver_method: str = field(
         default='cvode',
         validator=in_(('cvode', 'radau', 'bdf')),

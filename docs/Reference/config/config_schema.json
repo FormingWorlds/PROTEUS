@@ -5507,7 +5507,7 @@
           "value": Infinity
         }
       ],
-      "description": "Entropy gradient D [J/kg/K/m] of the Aragog convective switch. The mixing-length drive acts only where dS/dr < 0 and uses max(|dS/dr|, D) there, so an unstable node gets at least the eddy diffusivities of a gradient D. The kappa_h floor applies wherever dS/dr < D, so a node just on the stable side (0 <= dS/dr < D) keeps the floor alone, with a downward flux of at most rho*T*kappah_floor*D. Both switches are hard masks (see the Aragog heat transport docs). The default 0.0 gives the plain dS/dr < 0 switch of SPIDER; with D > 0, kappa_h jumps at dS/dr = 0 from the floor to the value at D, which can stall CVODE at a node whose gradient stays near 0.",
+      "description": "Entropy gradient D [J/kg/K/m] of the Aragog convective switch. The mixing-length drive acts only where dS/dr < 0 and uses max(|dS/dr|, D) there, so an unstable node gets at least the eddy diffusivities of a gradient D. The kappa_h floor applies wherever dS/dr < D, so a node just on the stable side (0 <= dS/dr < D) keeps the floor alone, with a downward flux of at most rho*T*kappah_floor*D. Both switches are hard masks (see the Aragog heat transport docs). The default 0.0 gives the plain dS/dr < 0 switch of SPIDER. D > 0 removes the two end states of some coupled calls under that switch, but kappa_h then jumps at dS/dr = 0 from the floor to the mixing-length value at D (where that is above the floor), which can stall CVODE at a node whose gradient stays near 0.",
       "doc_source": "field_docstring",
       "group_order": 0,
       "group_position": 0,
