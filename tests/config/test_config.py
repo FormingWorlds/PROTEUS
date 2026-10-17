@@ -205,8 +205,9 @@ def test_toml_bool_convective_threshold_is_refused(tmp_path, value):
         ] = value
 
     path = _write_variant(tmp_path, 'bool_d.toml', _bool)
-    with pytest.raises(ValueError, match='convective_threshold'):
+    with pytest.raises(ValueError, match='convective_threshold') as excinfo:
         read_config_object(path)
+    assert repr(value) in str(excinfo.value)
 
 
 @pytest.mark.unit
