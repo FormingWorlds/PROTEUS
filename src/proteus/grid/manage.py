@@ -27,6 +27,14 @@ from proteus.config import (
     read_config_object,
 )
 from proteus.config._interior import _TOL_UNSET, default_rtol, rtol_is_set
+from proteus.grid.analyse_options import check_post_processing_table
+from proteus.grid.dimensions import (
+    DIMENSION_METHODS,
+    dimension_arange,
+    dimension_direct,
+    dimension_linspace,
+    dimension_logspace,
+)
 from proteus.utils.helper import get_proteus_dir, recursive_setattr
 from proteus.utils.logs import setup_logger
 
@@ -177,18 +185,14 @@ class Grid:
 
     # Set a dimension by linspace
     def set_dimension_linspace(self, name: str, start: float, stop: float, count: int):
-        self.dim_avars[name] = list(np.linspace(start, stop, count))
-        self.dim_avars[name] = [float(v) for v in self.dim_avars[name]]
+        self.dim_avars[name] = dimension_linspace(start, stop, count)
         log.debug(
             "Dimension '%s' linspace: %d points in [%.6g, %.6g]", name, count, start, stop
         )
 
     # Set a dimension by arange (inclusive of endpoint)
     def set_dimension_arange(self, name: str, start: float, stop: float, step: float):
-        self.dim_avars[name] = list(np.arange(start, stop, step))
-        if not np.isclose(self.dim_avars[name][-1], stop):
-            self.dim_avars[name].append(stop)
-        self.dim_avars[name] = [float(v) for v in self.dim_avars[name]]
+        self.dim_avars[name] = dimension_arange(start, stop, step)
         log.debug(
             "Dimension '%s' arange: %d points in [%.6g, %.6g] (step=%.6g)",
             name,
@@ -200,22 +204,18 @@ class Grid:
 
     # Set a dimension by logspace
     def set_dimension_logspace(self, name: str, start: float, stop: float, count: int):
-        self.dim_avars[name] = list(np.logspace(np.log10(start), np.log10(stop), count))
-        self.dim_avars[name] = [float(v) for v in self.dim_avars[name]]
+        self.dim_avars[name] = dimension_logspace(start, stop, count)
         log.debug(
             "Dimension '%s' logspace: %d points in [%.6g, %.6g]", name, count, start, stop
         )
 
     # Set a dimension directly
     def set_dimension_direct(self, name: str, values: list, sort: bool = True):
-        the_list = list(set(values))  # remove duplicates
-        if (not isinstance(values[0], str)) and sort:  # sort if numeric
-            the_list = sorted(the_list)
-        self.dim_avars[name] = the_list
+        self.dim_avars[name] = dimension_direct(values, sort)
         log.debug(
             "Dimension '%s' direct: %d values (deduplicated from %d)",
             name,
-            len(the_list),
+            len(self.dim_avars[name]),
             len(values),
         )
 
@@ -613,6 +613,8 @@ done
 
 
 # Top-level keys of a grid file that set up the grid; every other key names a dimension.
+# `post_processing` is the optional table read by `proteus grid-analyse`; `proteus grid`
+# checks it at launch, so a typo stops the grid before any case runs.
 GRID_SETTINGS = frozenset(
     {
         'output',
@@ -624,16 +626,9 @@ GRID_SETTINGS = frozenset(
         'max_mem',
         'jax_cache',
         'config_version',
+        'post_processing',
     }
 )
-
-# Keys each dimension method reads from its table, in the order of its Grid setter.
-DIMENSION_METHODS = {
-    'direct': ('values',),
-    'linspace': ('start', 'stop', 'count'),
-    'logspace': ('start', 'stop', 'count'),
-    'arange': ('start', 'stop', 'step'),
-}
 
 
 def _dimension_kind(key: str, value) -> str:
@@ -710,6 +705,7 @@ def grid_from_config(config_fpath: str, test_run: bool = False, check_interval: 
     with open(config_fpath, 'r') as file:
         config = toml.load(file)
     dimension_keys = grid_dimension_keys(config, config_fpath)
+    check_post_processing_table(config.get('post_processing', {}))
 
     # Output folder name, created inside `PROTEUS/output/`
     folder = str(config['output'])

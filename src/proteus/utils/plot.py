@@ -12,6 +12,7 @@ import numpy as np
 from proteus.utils.archive import archive_exists
 from proteus.utils.constants import vap_list
 from proteus.utils.helper import mol_to_ele, parse_subyear_time
+from proteus.utils.plot_quantities import PRESET_QUANTITIES
 
 log = logging.getLogger('fwl.' + __name__)
 
@@ -103,6 +104,85 @@ _preset_colours = {
     'naclflm': '#fca1ff',
     'nacljet': '#ee29f5',
 }
+
+
+def get_label(quant: str) -> str:
+    """Return a display-ready plot label for a grid quantity.
+
+    Parameters
+    ----------
+    quant : str
+        Grid config path (input parameter) or helpfile column (output).
+
+    Returns
+    -------
+    str
+        The preset label, or the last dotted component of ``quant`` when no
+        preset exists (so an unlabelled quantity still reads sensibly).
+    """
+    if quant in PRESET_QUANTITIES:
+        return PRESET_QUANTITIES[quant].label
+    return quant.split('.')[-1]
+
+
+def get_scale(quant: str) -> float:
+    """Return the multiplicative plot scale for a grid quantity (1.0 if unset)."""
+    if quant in PRESET_QUANTITIES:
+        return PRESET_QUANTITIES[quant].scale
+    return 1.0
+
+
+def get_log_scale(quant: str) -> bool:
+    """Return whether a grid quantity is plotted on a log axis.
+
+    A quantity without a preset follows ``utils.coupler.variable_is_logarithmic``,
+    the convention the inference tools use (for example any ``*_vmr`` column).
+    """
+    if quant in PRESET_QUANTITIES:
+        return PRESET_QUANTITIES[quant].log
+    # Imported here because proteus.utils.coupler imports this module.
+    from proteus.utils.coupler import variable_is_logarithmic
+
+    return variable_is_logarithmic(quant)
+
+
+# Default colour map for grid parameter values: a Crameri scientific colour map
+# (perceptually uniform, colour-blind friendly), as used across the PROTEUS plots.
+DEFAULT_COLOURMAP = 'batlowK_r'
+
+
+def get_colourmap(name: str | None = None):
+    """Return a matplotlib Colormap for colouring grid parameter values.
+
+    ``name`` may be a Crameri scientific colour map from cmcrameri (for example
+    'batlowK_r', 'batlow', 'vik'; the 'cmc.' prefix is optional) or any colour
+    map registered with matplotlib (for example 'viridis'). Falls back to
+    ``DEFAULT_COLOURMAP`` when ``name`` is empty or not recognised.
+
+    Parameters
+    ----------
+    name : str or None
+        Requested colour map name.
+
+    Returns
+    -------
+    matplotlib.colors.Colormap
+        The resolved colour map.
+    """
+    import cmcrameri.cm  # noqa: F401  (registers the 'cmc.<name>' colour maps)
+    import matplotlib as mpl
+
+    def _lookup(key):
+        for candidate in (key, f'cmc.{key}'):
+            if candidate in mpl.colormaps:
+                return mpl.colormaps[candidate]
+        return None
+
+    cmap = _lookup(name or DEFAULT_COLOURMAP)
+    if cmap is None:
+        log.warning("Unknown colourmap '%s'; falling back to '%s'", name, DEFAULT_COLOURMAP)
+        cmap = _lookup(DEFAULT_COLOURMAP)
+    return cmap
 
 
 def _generate_colour(gas: str):

@@ -26,6 +26,7 @@ import toml
 
 from proteus.config import UnknownConfigKeyError, read_config_object
 from proteus.grid import manage as gm
+from proteus.grid.dimensions import dimension_values
 from proteus.grid.manage import (
     Grid,
     _thread_target,
@@ -393,14 +394,13 @@ class TestSetDimension:
         assert len(g.dim_avars['d']) == 3
 
     def test_direct_does_not_sort_strings(self, grid_with_mocks):
-        """String values are kept as a set-derived list (no sort branch
-        taken because elements are not numeric).
+        """String values are deduplicated in first-seen order, not sorted, so
+        the case numbering of a string axis does not depend on the string hash.
         """
         g = grid_with_mocks
         g.add_dimension('d', 'atmos_clim.module')
-        g.set_dimension_direct('d', ['agni', 'janus', 'agni'])
-        # Discriminating: deduplicated regardless
-        assert set(g.dim_avars['d']) == {'agni', 'janus'}
+        g.set_dimension_direct('d', ['janus', 'agni', 'janus'])
+        assert g.dim_avars['d'] == ['janus', 'agni']
         assert len(g.dim_avars['d']) == 2
 
 
@@ -999,6 +999,40 @@ class TestGridFromConfig:
         assert '"planet.mass_tot"' in str(exc.value)
         assert old.read_text() == 'kept\n'
 
+    @pytest.mark.parametrize(
+        ('table', 'match'),
+        [
+            ({'plot_ecfd': True}, 'Unknown key'),
+            ({'style': 'midnight'}, 'style'),
+            ({'colormap': 'batlowK_rr'}, 'colour map'),
+        ],
+        ids=['misspelt_key', 'unknown_style', 'misspelt_colour_map'],
+    )
+    def test_bad_post_processing_table_stops_the_grid_at_launch(
+        self, fake_proteus_dir, monkeypatch, table, match
+    ):
+        """A misspelt [post_processing] key or value stops `proteus grid` before the
+        grid is built (no Grid, no output folder), not only `grid-analyse` after the
+        grid has run; a valid table lets the grid start.
+        """
+        (fake_proteus_dir / 'base.toml').write_text('# base\n')
+        grid_path = _write_grid_toml(
+            fake_proteus_dir / 'g.toml',
+            dimensions={'post_processing': table, 'planet.mass_tot': _DIM},
+        )
+        built = mock.MagicMock(return_value=mock.MagicMock(size=1))
+        monkeypatch.setattr(gm, 'Grid', built)
+        with pytest.raises(ValueError, match=match):
+            grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
+        assert built.call_count == 0
+        assert not (fake_proteus_dir / 'output' / 'unit_grid').exists()
+        _write_grid_toml(
+            grid_path,
+            dimensions={'post_processing': {'style': 'dark'}, 'planet.mass_tot': _DIM},
+        )
+        grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
+        assert built.call_count == 1
+
     def test_relative_symlink_rejected(self, fake_proteus_dir):
         """Non-absolute ``symlink`` path is refused with RuntimeError.
 
@@ -1439,7 +1473,8 @@ def test_shipped_grid_files_pass_the_key_check(rel_path):
 
 
 def test_grid_settings_match_the_keys_grid_from_config_reads(fake_proteus_dir, monkeypatch):
-    """GRID_SETTINGS holds the settings grid_from_config reads plus config_version."""
+    """GRID_SETTINGS holds the settings grid_from_config reads plus config_version,
+    which it only accepts; the post_processing table is read to check it at launch."""
 
     class Recorder(dict):
         def __getitem__(self, key):
@@ -1458,3 +1493,25 @@ def test_grid_settings_match_the_keys_grid_from_config_reads(fake_proteus_dir, m
     grid_from_config(str(fake_proteus_dir / 'g.toml'), test_run=True, check_interval=0.0)
     assert 'planet.mass_tot' in read
     assert read - {'planet.mass_tot'} == gm.GRID_SETTINGS - {'config_version'}
+
+
+# ---------------------------------------------------------------------------
+# Grid setters and the shared axis builders (proteus.grid.dimensions)
+# ---------------------------------------------------------------------------
+
+
+class TestDimensionValues:
+    """Grid setters use the axis builders shared with the grid analysis."""
+
+    def test_grid_setter_and_dimension_values_agree(self, grid_with_mocks):
+        """A Grid axis and dimension_values build identical values for one table,
+        so the grid run and its analysis see the same swept values.
+        """
+        g = grid_with_mocks
+        g.add_dimension('e', 'orbit.eccentricity')
+        g.set_dimension_logspace('e', 1e-3, 1e-1, 3)
+        expected = dimension_values(
+            {'method': 'logspace', 'start': 1e-3, 'stop': 1e-1, 'count': 3}
+        )
+        assert g.dim_avars['e'] == expected
+        assert expected == pytest.approx([1e-3, 1e-2, 1e-1])  # correct endpoints/spacing

@@ -188,3 +188,64 @@ def test_sample_output_parses_subyear_times(mock_glob):
     assert 30.8 in t
     assert all(isinstance(time, float) for time in t)
     assert all(path.endswith('_atm.nc') for path in f)
+
+
+# ---------------------------------------------------------------------------
+# Grid-quantity label / scale / log / colourmap helpers
+# ---------------------------------------------------------------------------
+
+
+def test_get_label_uses_preset_then_falls_back_to_last_path_component():
+    """get_label returns the preset display label, or the final dotted component
+    when a quantity has no preset (so an unlabelled axis still reads sensibly).
+    """
+    from proteus.utils.plot import get_label
+
+    assert get_label('P_surf') == r'$P_{\rm surf}$ [bar]'
+    assert get_label('some.unregistered.field') == 'field'
+
+
+def test_get_scale_converts_known_units_else_identity():
+    """get_scale returns the preset unit conversion, defaulting to 1.0 when unset.
+
+    rho_obs is kg/m^3 scaled to g/cm^3 (factor 1e-3); an unknown quantity is 1.0.
+    """
+    from proteus.utils.plot import get_scale
+
+    assert get_scale('rho_obs') == pytest.approx(1.0e-3)
+    assert get_scale('atm_kg_per_mol') == pytest.approx(1.0e3)
+    assert get_scale('unregistered_quantity') == pytest.approx(1.0)
+
+
+def test_get_log_scale_flags_only_log_quantities():
+    """get_log_scale is True for log-axis quantities and False otherwise/by default.
+
+    Signed fluxes (F_int, F_atm) and F_tidal (zero without tides) are linear, so a
+    log axis does not hide their non-positive values; F_olr is always positive.
+    """
+    from proteus.utils.plot import get_log_scale
+
+    assert get_log_scale('P_surf') is True
+    assert get_log_scale('F_olr') is True
+    assert get_log_scale('T_surf') is False
+    assert [get_log_scale(f) for f in ('F_int', 'F_atm', 'F_net', 'F_tidal')] == [False] * 4
+    assert get_log_scale('unregistered_quantity') is False
+    # Without a preset, the inference convention applies (compositional columns).
+    assert get_log_scale('XYZ_vmr') is True
+
+
+def test_get_colourmap_resolves_crameri_and_matplotlib_names(caplog):
+    """get_colourmap resolves Crameri maps with or without the 'cmc.' prefix and any
+    matplotlib map, defaults to batlowK_r, and warns before falling back.
+    """
+    from proteus.utils.plot import DEFAULT_COLOURMAP, get_colourmap
+
+    assert DEFAULT_COLOURMAP == 'batlowK_r'
+    assert get_colourmap('vik').name == get_colourmap('cmc.vik').name
+    assert 'vik' in get_colourmap('vik').name
+    assert get_colourmap('viridis').name == 'viridis'
+    assert 'batlowK_r' in get_colourmap(None).name
+    with caplog.at_level('WARNING'):
+        fallback = get_colourmap('definitely_not_a_colourmap')
+    assert 'batlowK_r' in fallback.name
+    assert any('colourmap' in rec.message.lower() for rec in caplog.records)

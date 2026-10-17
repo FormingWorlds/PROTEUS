@@ -4233,3 +4233,40 @@ def test_get_continues_when_the_logfile_cannot_be_opened(monkeypatch, tmp_path):
         assert len(logging.getLogger('fwl').handlers) == 1
     finally:
         logging.getLogger('fwl').handlers.clear()
+
+
+def test_grid_analyse_passes_the_config_path(monkeypatch, tmp_path):
+    """grid-analyse hands the resolved -c path to analyse_grid; a missing file is
+    refused by the option check before any analysis runs.
+    """
+    cfg = tmp_path / 'g.grid.toml'
+    cfg.write_text('')
+    calls = []
+    monkeypatch.setattr('proteus.grid.analyse.analyse_grid', lambda *a: calls.append(a))
+    res = runner.invoke(cli.cli, ['grid-analyse', '-c', str(cfg)])
+    assert res.exit_code == 0, res.output
+    assert calls == [(cfg.resolve(), None)]
+    res = runner.invoke(cli.cli, ['grid-analyse', '-c', str(tmp_path / 'missing.toml')])
+    assert res.exit_code != 0
+    assert len(calls) == 1
+
+
+def test_grid_analyse_takes_a_grid_folder_and_needs_c_or_o(monkeypatch, tmp_path):
+    """-o hands the resolved grid folder to analyse_grid, alone or with -c; with
+    neither option the command stops with a usage error before any analysis runs.
+    """
+    grid_dir = tmp_path / 'grid_20261016_120000_abcd'
+    grid_dir.mkdir()
+    cfg = tmp_path / 'g.grid.toml'
+    cfg.write_text('')
+    calls = []
+    monkeypatch.setattr('proteus.grid.analyse.analyse_grid', lambda *a: calls.append(a))
+    res = runner.invoke(cli.cli, ['grid-analyse', '-o', str(grid_dir)])
+    assert res.exit_code == 0, res.output
+    res = runner.invoke(cli.cli, ['grid-analyse', '-o', str(grid_dir), '-c', str(cfg)])
+    assert res.exit_code == 0, res.output
+    assert calls == [(None, grid_dir.resolve()), (cfg.resolve(), grid_dir.resolve())]
+    res = runner.invoke(cli.cli, ['grid-analyse'])
+    assert res.exit_code == 2
+    assert '-o' in res.output
+    assert len(calls) == 2
