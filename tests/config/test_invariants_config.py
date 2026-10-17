@@ -92,7 +92,7 @@ def test_hypothesis_invariants_mode_rejects_arbitrary_strings(bad_mode):
 @given(
     field_name=st.sampled_from(_STRICT_POSITIVE_FIELDS),
     bad_val=st.one_of(
-        st.floats(max_value=0.0, allow_nan=True, allow_infinity=True),
+        st.floats(max_value=0.0, allow_nan=False, allow_infinity=True),
         st.just(float('nan')),
         st.just(float('inf')),
         st.just(float('-inf')),
@@ -139,7 +139,7 @@ def test_hypothesis_strict_positive_tolerances_accept_valid_positive_floats(
 @given(
     field_name=st.sampled_from(_NON_NEGATIVE_FIELDS),
     bad_val=st.one_of(
-        st.floats(max_value=-1.0e-15, allow_nan=True, allow_infinity=True),
+        st.floats(max_value=-1.0e-15, allow_nan=False, allow_infinity=True),
         st.just(float('nan')),
         st.just(float('inf')),
         st.just(float('-inf')),
@@ -154,7 +154,7 @@ def test_hypothesis_non_negative_tolerances_reject_negative_and_non_finite(field
 @settings(max_examples=30, deadline=None)
 @given(
     bad_factor=st.one_of(
-        st.floats(max_value=0.999999, allow_nan=True, allow_infinity=True),
+        st.floats(max_value=0.999999, allow_nan=False, allow_infinity=True),
         st.just(float('nan')),
         st.just(float('inf')),
         st.just(float('-inf')),

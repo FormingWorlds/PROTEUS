@@ -938,3 +938,25 @@ config_version = "3.0"
         include_rayleigh      = true         # include Rayleigh scattering contributions.
         include_cia           = true         # include collision-induced absorption contributions.
         silent                = true        # suppress petitRADTRANS stdout/stderr during Radtrans initialization
+
+# Run-row invariant verification
+[invariants]
+    mode                            = "report" # off | report | stop
+    energy_residual_rtol            = 2.6e-4   # cumulative coupled energy residual tolerance against gross throughput
+    energy_residual_coarse_dt_rtol  = 5.0e-4   # cumulative coupled energy residual tolerance when params.dt.rtol >= 0.2
+    step_energy_rtol                = 1.0e-4   # per-step energy residual increment tolerance outside S_min
+    step_energy_smin_rtol           = 2.5e-4   # per-step energy residual increment tolerance when clipped to S_min
+    solver_residual_rtol            = 1.0e-12  # Aragog ODE solver internal energy residual tolerance
+    core_residual_rtol              = 1.0e-4   # CMB core cooling ledger residual tolerance
+    struct_mass_desync_warn_rtol    = 5.0e-3   # warning threshold on struct_mass_desync_frac
+    struct_mass_desync_rtol         = 1.0e-2   # stop threshold on struct_mass_desync_frac
+    interior_mass_target_rtol       = 3.0e-3   # relative tolerance on M_int vs M_int_target at structure update
+    core_mass_target_rtol           = 2.0e-2   # relative tolerance on M_core vs M_core_target at structure update
+    element_closure_rtol            = 2.5e-4   # relative tolerance on element reservoir closure
+    element_closure_atol_kg         = 1.0      # absolute floor on element reservoir closure [kg]
+    volatile_gas_sum_rtol           = 1.0e-6   # relative tolerance on volatile gas species sum vs M_vol_atm
+    planet_mass_cap_rtol            = 1.0e-6   # relative tolerance on M_atm <= M_planet
+    escape_bound_factor             = 1.5      # multiplicative bound on element loss relative to esc_kg_cumulative
+    escape_bound_atol_kg            = 1.0e3    # absolute tolerance on element loss relative to esc_kg_cumulative [kg]
+    t_magma_max                     = 1.0e6    # strict upper bound on T_magma [K]
+    phi_global_atol                 = 1.0e-6   # absolute tolerance around [0, 1] for Phi_global

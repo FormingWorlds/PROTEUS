@@ -12031,6 +12031,404 @@
       "group_qualifier": null
     },
     {
+      "path": "invariants.mode",
+      "toml_section": "invariants",
+      "class": "Invariants",
+      "type": "str",
+      "accepts_none": false,
+      "default": "\"report\"",
+      "choices": [
+        "off",
+        "report",
+        "stop"
+      ],
+      "bounds": null,
+      "description": "Enforcement mode for run-row invariants: ``'off'``, ``'report'``, or ``'stop'``.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "invariants.energy_residual_rtol",
+      "toml_section": "invariants",
+      "class": "Invariants",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.00026",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0.0
+        }
+      ],
+      "description": "Relative tolerance on cumulative coupled energy residual against gross throughput [-].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "invariants.energy_residual_coarse_dt_rtol",
+      "toml_section": "invariants",
+      "class": "Invariants",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0005",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0.0
+        }
+      ],
+      "description": "Relative tolerance on cumulative coupled energy residual when ``params.dt.rtol >= 0.2`` [-].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "invariants.step_energy_rtol",
+      "toml_section": "invariants",
+      "class": "Invariants",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0001",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0.0
+        }
+      ],
+      "description": "Relative tolerance on per-step energy residual increment outside the entropy floor [-].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "invariants.step_energy_smin_rtol",
+      "toml_section": "invariants",
+      "class": "Invariants",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.00025",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0.0
+        }
+      ],
+      "description": "Relative tolerance on per-step energy residual increment when clipped to ``S_min`` [-].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "invariants.solver_residual_rtol",
+      "toml_section": "invariants",
+      "class": "Invariants",
+      "type": "float",
+      "accepts_none": false,
+      "default": "1e-12",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0.0
+        }
+      ],
+      "description": "Relative tolerance on the Aragog ODE solver internal energy residual [-].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "invariants.core_residual_rtol",
+      "toml_section": "invariants",
+      "class": "Invariants",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.0001",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0.0
+        }
+      ],
+      "description": "Relative tolerance on the CMB core cooling ledger residual [-].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "invariants.struct_mass_desync_warn_rtol",
+      "toml_section": "invariants",
+      "class": "Invariants",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.005",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0.0
+        }
+      ],
+      "description": "Warning threshold on ``struct_mass_desync_frac`` [-].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "invariants.struct_mass_desync_rtol",
+      "toml_section": "invariants",
+      "class": "Invariants",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.01",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0.0
+        }
+      ],
+      "description": "Stop threshold on ``struct_mass_desync_frac`` [-].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "invariants.interior_mass_target_rtol",
+      "toml_section": "invariants",
+      "class": "Invariants",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.003",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0.0
+        }
+      ],
+      "description": "Relative tolerance on ``M_int`` versus ``M_int_target`` at a structure update row [-].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "invariants.core_mass_target_rtol",
+      "toml_section": "invariants",
+      "class": "Invariants",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.02",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0.0
+        }
+      ],
+      "description": "Relative tolerance on ``M_core`` versus ``M_core_target`` at a structure update row [-].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "invariants.element_closure_rtol",
+      "toml_section": "invariants",
+      "class": "Invariants",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.00025",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0.0
+        }
+      ],
+      "description": "Relative tolerance on per-element reservoir closure ``atm + magma + solid = total`` [-].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "invariants.element_closure_atol_kg",
+      "toml_section": "invariants",
+      "class": "Invariants",
+      "type": "float",
+      "accepts_none": false,
+      "default": "1.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0.0
+        }
+      ],
+      "description": "Absolute floor on per-element reservoir closure [kg].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "invariants.volatile_gas_sum_rtol",
+      "toml_section": "invariants",
+      "class": "Invariants",
+      "type": "float",
+      "accepts_none": false,
+      "default": "1e-06",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0.0
+        }
+      ],
+      "description": "Relative tolerance on volatile gas species sum versus ``M_vol_atm`` [-].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "invariants.planet_mass_cap_rtol",
+      "toml_section": "invariants",
+      "class": "Invariants",
+      "type": "float",
+      "accepts_none": false,
+      "default": "1e-06",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0.0
+        }
+      ],
+      "description": "Relative tolerance on ``M_atm <= M_planet`` [-].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "invariants.escape_bound_factor",
+      "toml_section": "invariants",
+      "class": "Invariants",
+      "type": "float",
+      "accepts_none": false,
+      "default": "1.5",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 1.0
+        }
+      ],
+      "description": "Multiplicative bound on element loss relative to ``esc_kg_cumulative`` [-].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "invariants.escape_bound_atol_kg",
+      "toml_section": "invariants",
+      "class": "Invariants",
+      "type": "float",
+      "accepts_none": false,
+      "default": "1000.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0.0
+        }
+      ],
+      "description": "Absolute tolerance on element loss relative to ``esc_kg_cumulative`` [kg].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "invariants.t_magma_max",
+      "toml_section": "invariants",
+      "class": "Invariants",
+      "type": "float",
+      "accepts_none": false,
+      "default": "1000000.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0.0
+        }
+      ],
+      "description": "Strict upper bound on ``T_magma`` [K].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "invariants.phi_global_atol",
+      "toml_section": "invariants",
+      "class": "Invariants",
+      "type": "float",
+      "accepts_none": false,
+      "default": "1e-06",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 0.0
+        }
+      ],
+      "description": "Absolute tolerance around ``[0, 1]`` for ``Phi_global`` [-].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
       "path": "config_version",
       "toml_section": "",
       "class": "Config",
@@ -12621,6 +13019,39 @@
         "trans_mixing"
       ],
       "doc": "SPIDER requires at least one energy transport term to be enabled."
+    },
+    {
+      "validator": "coarse_dt_energy_ge_base",
+      "module": "_invariants.py",
+      "attached_to": [
+        "invariants.energy_residual_coarse_dt_rtol"
+      ],
+      "touches": [
+        "energy_residual_rtol"
+      ],
+      "doc": "Require coarse-step energy tolerance to be at least energy_residual_rtol."
+    },
+    {
+      "validator": "desync_stop_ge_warn",
+      "module": "_invariants.py",
+      "attached_to": [
+        "invariants.struct_mass_desync_rtol"
+      ],
+      "touches": [
+        "struct_mass_desync_warn_rtol"
+      ],
+      "doc": "Require structure mass desync stop tolerance to be at least the warning tolerance."
+    },
+    {
+      "validator": "step_energy_smin_ge_base",
+      "module": "_invariants.py",
+      "attached_to": [
+        "invariants.step_energy_smin_rtol"
+      ],
+      "touches": [
+        "step_energy_rtol"
+      ],
+      "doc": "Require S_min step energy tolerance to be at least step_energy_rtol."
     },
     {
       "validator": "max_bigger_than_min",

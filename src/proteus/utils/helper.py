@@ -566,6 +566,12 @@ def CommentFromStatus(status: int):
             desc = 'Error (Escape model)'
         case 29:
             desc = 'Completed (planet evaporated)'
+        case 30:
+            desc = 'Error (Energy conservation invariant)'
+        case 31:
+            desc = 'Error (Mass conservation invariant)'
+        case 32:
+            desc = 'Error (State bounds invariant)'
         # Default case
         case _:
             desc = 'UNHANDLED STATUS (%d)' % status

@@ -11,6 +11,7 @@ from ._atmos_clim import AtmosClim
 from ._converters import dict_replace_none
 from ._escape import Escape
 from ._interior import _STEP_CAP_FIELDS, Interior
+from ._invariants import Invariants
 from ._observe import Observe
 from ._orbit import Orbit
 from ._outgas import Outgas
@@ -695,6 +696,8 @@ class Config:
         Late accretion / delivery model selection.
     observe: Observe
         Synthetic observations.
+    invariants: Invariants
+        Run-row invariant verification settings and tolerances.
     """
 
     params: Params = field(factory=Params)
@@ -742,6 +745,7 @@ class Config:
     )
     accretion: Accretion = field(factory=Accretion)
     observe: Observe = field(factory=Observe, validator=(observe_resolved_atmosphere,))
+    invariants: Invariants = field(factory=Invariants)
 
     config_version: str = field(
         default='3.0',
