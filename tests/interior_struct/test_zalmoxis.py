@@ -2170,6 +2170,7 @@ def _run_gate_solver(
     outer_solver=None,
     use_jax=None,
     config_edit=None,
+    density_cache=None,
 ):
     """Invoke zalmoxis_solver with the heavy solve mocked out.
 
@@ -2215,6 +2216,8 @@ def _run_gate_solver(
         Value for ``config.interior_struct.zalmoxis.use_jax``.
     config_edit : callable, optional
         Called with the mock config before the solve, for a field with no keyword here.
+    density_cache : dict, optional
+        Initial ``_density_cache`` (the density seed); the default is an empty cache.
     """
     from proteus.interior_struct import zalmoxis as zalmoxis_wrapper
 
@@ -2252,7 +2255,7 @@ def _run_gate_solver(
     monkeypatch.setattr(
         zalmoxis_wrapper,
         '_density_cache',
-        {'density': None, 'radii': None, 'key': None},
+        density_cache or {'density': None, 'radii': None, 'key': None},
     )
 
     def _fake_density(P, mats, eos, T, sol, liq, interpolation_functions=None, **kwargs):
@@ -2439,6 +2442,53 @@ def test_zalmoxis_solver_withholds_callable_on_jax_viable_eos(
     # Boundedness of the structure scalars still holds on this path.
     assert 0.0 < hf_row['M_core'] < hf_row['M_int']
     assert 0.0 < cmb_radius < hf_row['R_int']
+
+
+@pytest.mark.parametrize('mantle_eos', ['PALEOS-2phase:MgSiO3', 'PALEOS:MgSiO3'])
+def test_zalmoxis_solver_passes_callable_on_jax_viable_eos_without_jax(
+    tmp_path, monkeypatch, mantle_eos
+):
+    """With ``use_jax=False`` a JAX-viable mantle still gets the callable.
+
+    The numpy path reads ``temperature_arrays`` only with ``use_jax``, so the
+    evolved T(r) reaches Zalmoxis through ``temperature_function`` alone, and
+    the numpy warm start (density seed and central-pressure hint) applies.
+    """
+    from proteus.interior_struct import zalmoxis as zalmoxis_wrapper
+
+    r_arr, t_arr = _cooled_mantle_arrays(_plausible_model_results())
+    seed = {
+        'density': np.full(4, 5000.0),
+        'radii': np.linspace(0.0, 6.4e6, 4),
+        'key': zalmoxis_wrapper._structure_cache_key(_gate_config(mantle_eos)),
+    }
+
+    def tf(r, P):
+        return float(np.interp(r, r_arr, t_arr))
+
+    main_mock, rho_mock, *_ = _run_gate_solver(
+        tmp_path,
+        monkeypatch,
+        mantle_eos,
+        (r_arr, t_arr),
+        tf,
+        use_jax=False,
+        hf_extra={'P_center': 2.9e11},
+        density_cache=dict(seed),
+    )
+
+    assert main_mock.call_count == 1
+    kwargs = main_mock.call_args.kwargs
+    assert main_mock.call_args.args[0]['use_jax'] is False
+    assert kwargs['temperature_function'] is tf
+    passed_r, passed_t = kwargs['temperature_arrays']
+    np.testing.assert_allclose(passed_r, r_arr, rtol=0, atol=0)
+    np.testing.assert_allclose(passed_t, t_arr, rtol=0, atol=0)
+    # The column rebuild belongs to the arrays-via-JAX path only.
+    assert rho_mock.call_count == 0
+    assert kwargs['p_center_hint'] == pytest.approx(2.9e11, rel=1e-15)
+    assert kwargs['initial_density'] is seed['density']
+    assert kwargs['initial_radii'] is seed['radii']
 
 
 def test_zalmoxis_solver_init_adiabat_arrays_take_jax_dispatch(tmp_path, monkeypatch):
