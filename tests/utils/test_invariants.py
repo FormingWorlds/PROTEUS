@@ -19,6 +19,7 @@ from proteus.utils.invariants import (
     STATUS_ERROR_STATE_BOUNDS_INVARIANT,
     InvariantViolation,
     InvariantViolationError,
+    check_energy_invariants,
     handle_violations,
 )
 
@@ -114,3 +115,248 @@ def test_handle_violations_stop_mode_handles_report_only_vs_stopping(tmp_path, c
     status_lines = (tmp_path / 'status').read_text().splitlines()
     assert status_lines[0].strip() == '31'
     assert status_lines[1].strip() == 'Error (Mass conservation invariant)'
+
+
+def _make_mock_config(
+    *,
+    mode: str = 'report',
+    dt_rtol: float = 0.1,
+    dt_minimum: float = 1.0,
+    fO2_source: str = 'user_constant',
+    vapourise: bool = False,
+):
+    """Build a minimal config object carrying ``invariants``, ``params.dt``, ``planet``, ``outgas``."""
+    from types import SimpleNamespace
+
+    from proteus.config._invariants import Invariants
+
+    return SimpleNamespace(
+        invariants=Invariants(mode=mode),
+        params=SimpleNamespace(dt=SimpleNamespace(rtol=dt_rtol, minimum=dt_minimum)),
+        planet=SimpleNamespace(fO2_source=fO2_source),
+        outgas=SimpleNamespace(vapourise=vapourise),
+    )
+
+
+def test_check_energy_invariants_row4_flux_cancellation_passes_under_gross_denom():
+    """Opposite-sign F_int and F_cmb on row 4 pass when normalized by gross throughput."""
+    import pandas as pd
+
+    cfg = _make_mock_config(dt_rtol=0.1, dt_minimum=1.0)
+    hf_all = pd.DataFrame(
+        [
+            {
+                'Time': 1.0,
+                'E_state_cons_J': 1.0e31,
+                'E_state_heat_cons_J': 0.0,
+                'step_dE_F_int_J': 0.0,
+                'step_dE_F_cmb_J': 0.0,
+                'step_dE_Q_radio_J': 0.0,
+                'step_dE_Q_tidal_J': 0.0,
+            }
+        ]
+    )
+    # Net state heat is 2.48e27 J while gross flux sum is 1.116e28 J;
+    # raw |E_residual_cons_frac| = 7.98e-4 > 2.6e-4, but gross ratio is 1.77e-4 <= 2.6e-4.
+    hf_row = {
+        'Time': 2.0,
+        'T_surf': 3340.0,
+        'T_magma': 4268.0,
+        'Phi_global': 1.0,
+        'RF_depth': 0.0,
+        'E_state_cons_J': 1.0e31,
+        'E_state_heat_cons_J': 2.48e27,
+        'dE_predicted_cons_J': 2.47802e27,
+        'E_residual_cons_J': 1.98e24,
+        'E_residual_cons_frac': 1.98e24 / 2.48e27,
+        'step_dE_state_heat_J': 2.48e27,
+        'step_dE_F_int_J': -4.34e27,
+        'step_dE_F_cmb_J': 6.82e27,
+        'step_dE_Q_radio_J': 0.0,
+        'step_dE_Q_tidal_J': 0.0,
+        'solver_residual_J': 1.0e12,
+        'core_C_eff': 0.0,
+        'E_core_residual_frac': 0.0,
+    }
+    assert check_energy_invariants(hf_row, cfg, hf_all) == []
+
+
+def test_check_energy_invariants_coupled_residual_and_coarse_dt_scaling(tmp_path):
+    """Coupled energy residual fires above 2.6e-4 (or 5.0e-4 for coarse dt) and is report-only."""
+    import pandas as pd
+
+    hf_all = pd.DataFrame(
+        [
+            {
+                'Time': 10.0,
+                'E_state_cons_J': 1.0e31,
+                'E_state_heat_cons_J': -1.0e30,
+                'step_dE_F_int_J': -1.0e30,
+                'step_dE_F_cmb_J': 0.0,
+                'step_dE_Q_radio_J': 0.0,
+                'step_dE_Q_tidal_J': 0.0,
+            }
+        ]
+    )
+    hf_row = {
+        'Time': 20.0,
+        'T_surf': 2500.0,
+        'T_magma': 3000.0,
+        'Phi_global': 1.0,
+        'RF_depth': 0.0,
+        'E_state_cons_J': 9.0e30,
+        'E_state_heat_cons_J': -2.0e30,
+        'dE_predicted_cons_J': -2.0007e30,
+        'E_residual_cons_J': 7.0e26,  # 7.0e26 / 2.0e30 = 3.5e-4
+        'E_residual_cons_frac': -3.5e-4,
+        'step_dE_state_heat_J': -1.0e30,
+        'step_dE_F_int_J': -1.0e30,
+        'step_dE_F_cmb_J': 0.0,
+        'step_dE_Q_radio_J': 0.0,
+        'step_dE_Q_tidal_J': 0.0,
+        'solver_residual_J': 0.0,
+        'core_C_eff': 0.0,
+        'E_core_residual_frac': 0.0,
+    }
+
+    cfg_std = _make_mock_config(mode='stop', dt_rtol=0.1, dt_minimum=1.0)
+    v_std = check_energy_invariants(hf_row, cfg_std, hf_all)
+    assert len(v_std) == 1
+    assert v_std[0].name == 'E_residual_cons_frac_gross'
+    assert v_std[0].status_code == STATUS_ERROR_ENERGY_INVARIANT
+    assert v_std[0].report_only is True
+    assert v_std[0].value == pytest.approx(3.5e-4)
+    assert v_std[0].tolerance == pytest.approx(2.6e-4)
+    assert '3.500000e-04' in v_std[0].message
+    assert '2.600000e-04' in v_std[0].message
+
+    # Ruling 1: energy violations never stop a run even under mode == 'stop'
+    dirs = {'output': str(tmp_path)}
+    out = handle_violations(v_std, mode='stop', directories=dirs)
+    assert out == v_std
+    assert not (tmp_path / 'status').exists()
+
+    # Coarse dt (rtol >= 0.2) relaxes threshold to 5.0e-4
+    cfg_coarse = _make_mock_config(mode='stop', dt_rtol=0.2, dt_minimum=100.0)
+    assert check_energy_invariants(hf_row, cfg_coarse, hf_all) == []
+
+    hf_row_high = dict(hf_row, E_residual_cons_J=1.2e27)  # 1.2e27 / 2.0e30 = 6.0e-4 > 5.0e-4
+    v_coarse = check_energy_invariants(hf_row_high, cfg_coarse, hf_all)
+    assert len(v_coarse) == 1
+    assert v_coarse[0].tolerance == pytest.approx(5.0e-4)
+    assert v_coarse[0].report_only is True
+
+
+def test_check_energy_invariants_step_increment_outside_and_on_smin():
+    """Step energy increment checks 1.0e-4 in smooth single-phase and 2.5e-4 on S_min."""
+    import pandas as pd
+
+    cfg = _make_mock_config(dt_rtol=0.1, dt_minimum=1.0)
+    hf_all = pd.DataFrame(
+        [
+            {
+                'Time': 100.0,
+                'E_state_cons_J': 1.0e31,
+                'E_state_heat_cons_J': -1.0e30,
+                'step_dE_F_int_J': -1.0e30,
+                'step_dE_F_cmb_J': 0.0,
+                'step_dE_Q_radio_J': 0.0,
+                'step_dE_Q_tidal_J': 0.0,
+            }
+        ]
+    )
+    # Step increment mismatch is 3.6e26 / 2.0e30 = 1.8e-4 (> 1.0e-4, <= 2.5e-4),
+    # while cumulative E_residual_cons_J is kept at 1.8e-4 (<= 2.6e-4).
+    hf_row_warm = {
+        'Time': 200.0,
+        'T_surf': 2200.0,
+        'T_magma': 2800.0,
+        'Phi_global': 1.0,
+        'RF_depth': 0.0,
+        'E_state_cons_J': 9.0e30,
+        'E_state_heat_cons_J': -2.0e30,
+        'dE_predicted_cons_J': -2.00036e30,
+        'E_residual_cons_J': 3.6e26,
+        'E_residual_cons_frac': -1.8e-4,
+        'step_dE_state_heat_J': -1.0e30,
+        'step_dE_F_int_J': -1.00036e30,
+        'step_dE_F_cmb_J': 0.0,
+        'step_dE_Q_radio_J': 0.0,
+        'step_dE_Q_tidal_J': 0.0,
+        'solver_residual_J': 0.0,
+        'core_C_eff': 0.0,
+        'E_core_residual_frac': 0.0,
+    }
+    v_warm = check_energy_invariants(hf_row_warm, cfg, hf_all)
+    assert len(v_warm) == 1
+    assert v_warm[0].name == 'step_dE_inc_frac'
+    assert v_warm[0].status_code == STATUS_ERROR_ENERGY_INVARIANT
+    assert v_warm[0].report_only is True
+    assert v_warm[0].value == pytest.approx(3.6e26 / 2.00036e30)
+    assert v_warm[0].tolerance == pytest.approx(1.0e-4)
+
+    # On the S_min floor (T_magma == 300.488 K), 1.8e-4 <= 2.5e-4 passes:
+    hf_row_smin = dict(hf_row_warm, T_surf=300.488, T_magma=300.488)
+    assert check_energy_invariants(hf_row_smin, cfg, hf_all) == []
+
+    # Exceeding 2.5e-4 on S_min (e.g. 2.55e-4 <= 2.6e-4) fires step_dE_inc_frac with tol 2.5e-4:
+    hf_row_smin_bad = dict(
+        hf_row_smin,
+        step_dE_F_int_J=-1.00051e30,
+        E_residual_cons_J=5.1e26,
+    )
+    v_smin = check_energy_invariants(hf_row_smin_bad, cfg, hf_all)
+    assert len(v_smin) == 1
+    assert v_smin[0].name == 'step_dE_inc_frac'
+    assert v_smin[0].tolerance == pytest.approx(2.5e-4)
+    assert v_smin[0].report_only is True
+
+
+def test_check_energy_invariants_solver_and_core_ledger_residuals():
+    """Entropy ODE solver residual (> 1e-12) and core ledger residual (> 1e-4) report."""
+    import pandas as pd
+
+    cfg = _make_mock_config(dt_rtol=0.1, dt_minimum=1.0)
+    hf_all = pd.DataFrame(
+        [
+            {
+                'Time': 100.0,
+                'E_state_cons_J': 1.0e31,
+                'E_state_heat_cons_J': -1.0e30,
+                'step_dE_F_int_J': -1.0e30,
+                'step_dE_F_cmb_J': 0.0,
+                'step_dE_Q_radio_J': 0.0,
+                'step_dE_Q_tidal_J': 0.0,
+            }
+        ]
+    )
+    hf_row = {
+        'Time': 200.0,
+        'T_surf': 2200.0,
+        'T_magma': 2800.0,
+        'Phi_global': 1.0,
+        'RF_depth': 0.0,
+        'E_state_cons_J': 9.0e30,
+        'E_state_heat_cons_J': -2.0e30,
+        'dE_predicted_cons_J': -2.0e30,
+        'E_residual_cons_J': 0.0,
+        'E_residual_cons_frac': 0.0,
+        'step_dE_state_heat_J': -1.0e30,
+        'step_dE_F_int_J': -1.0e30,
+        'step_dE_F_cmb_J': 0.0,
+        'step_dE_Q_radio_J': 0.0,
+        'step_dE_Q_tidal_J': 0.0,
+        'solver_residual_J': 1.0e19,  # 1.0e19 / 2.0e30 = 5.0e-12 > 1.0e-12
+        'core_C_eff': 1.0e27,
+        'E_core_residual_frac': -2.0e-4,  # |-2.0e-4| > 1.0e-4
+    }
+    violations = check_energy_invariants(hf_row, cfg, hf_all)
+    names = [v.name for v in violations]
+    assert names == ['solver_residual_frac', 'E_core_residual_frac']
+    for v in violations:
+        assert v.status_code == STATUS_ERROR_ENERGY_INVARIANT
+        assert v.report_only is True
+    assert violations[0].value == pytest.approx(5.0e-12)
+    assert violations[0].tolerance == pytest.approx(1.0e-12)
+    assert violations[1].value == pytest.approx(2.0e-4)
+    assert violations[1].tolerance == pytest.approx(1.0e-4)
