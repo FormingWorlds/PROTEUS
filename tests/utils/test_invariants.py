@@ -636,3 +636,108 @@ def test_check_volatile_invariants_escape_cumulative_bound():
     # When cumulative escape accounts for the loss (lost <= 1.5 * esc + 1e3), no violation:
     row_ok_loss = dict(row_bad_loss, esc_kg_cumulative=1.0e21)
     assert check_volatile_invariants(row_ok_loss, cfg) == []
+
+
+def test_check_state_bounds_invariants_temperatures_pressure_and_melt_fraction():
+    """State bounds checks enforce T_surf > 0, 0 < T_magma < 1e6, P_surf >= 0 (> 0 if M_atm > 0), and Phi_global in [-1e-6, 1+1e-6]."""
+    from proteus.utils.invariants import check_state_bounds_invariants
+
+    cfg = _make_mock_config()
+    clean_row = {
+        'Time': 4000.0,
+        'T_surf': 1500.0,
+        'T_magma': 2000.0,
+        'P_surf': 100.0,
+        'M_atm': 1.0e21,
+        'Phi_global': 0.5,
+    }
+    assert check_state_bounds_invariants(clean_row, cfg) == []
+
+    # P_surf == 0.0 passes when M_atm == 0.0, and fails when M_atm > 0.0:
+    assert check_state_bounds_invariants(dict(clean_row, P_surf=0.0, M_atm=0.0), cfg) == []
+    v_p_zero = check_state_bounds_invariants(dict(clean_row, P_surf=0.0, M_atm=1.0e20), cfg)
+    assert len(v_p_zero) == 1
+    assert v_p_zero[0].name == 'P_surf_bounds'
+    assert v_p_zero[0].status_code == STATUS_ERROR_STATE_BOUNDS_INVARIANT
+    assert v_p_zero[0].report_only is False
+
+    # Negative P_surf fails even when M_atm == 0.0:
+    v_p_neg = check_state_bounds_invariants(dict(clean_row, P_surf=-1.0e-9, M_atm=0.0), cfg)
+    assert len(v_p_neg) == 1
+    assert v_p_neg[0].name == 'P_surf_bounds'
+
+    # T_surf <= 0 or NaN fails:
+    for bad_t in (0.0, -50.0, float('nan')):
+        v_ts = check_state_bounds_invariants(dict(clean_row, T_surf=bad_t), cfg)
+        assert len(v_ts) == 1
+        assert v_ts[0].name == 'T_surf_bounds'
+        assert v_ts[0].status_code == STATUS_ERROR_STATE_BOUNDS_INVARIANT
+        assert v_ts[0].report_only is False
+
+    # T_magma <= 0, >= 1.0e6, or NaN fails:
+    for bad_tm in (0.0, -10.0, 1.0e6, 2.0e6, float('nan')):
+        v_tm = check_state_bounds_invariants(dict(clean_row, T_magma=bad_tm), cfg)
+        assert len(v_tm) == 1
+        assert v_tm[0].name == 'T_magma_bounds'
+        assert v_tm[0].status_code == STATUS_ERROR_STATE_BOUNDS_INVARIANT
+        assert v_tm[0].tolerance == pytest.approx(1.0e6)
+        assert v_tm[0].report_only is False
+
+    # Phi_global within [-1e-6, 1 + 1e-6] passes; outside or NaN fails:
+    for ok_phi in (-1.0e-6, 0.0, 1.0, 1.0 + 1.0e-6):
+        assert check_state_bounds_invariants(dict(clean_row, Phi_global=ok_phi), cfg) == []
+    for bad_phi in (-2.0e-6, 1.0 + 2.0e-6, float('nan')):
+        v_phi = check_state_bounds_invariants(dict(clean_row, Phi_global=bad_phi), cfg)
+        assert len(v_phi) == 1
+        assert v_phi[0].name == 'Phi_global_bounds'
+        assert v_phi[0].status_code == STATUS_ERROR_STATE_BOUNDS_INVARIANT
+        assert v_phi[0].tolerance == pytest.approx(1.0e-6)
+        assert v_phi[0].report_only is False
+
+
+def test_check_row_invariants_orchestrates_modes_and_status_file(
+    tmp_path, caplog: pytest.LogCaptureFixture
+):
+    """check_row_invariants evaluates all row checks and applies mode dispatch."""
+    from proteus.utils.invariants import check_row_invariants
+
+    dirs = {'output': str(tmp_path)}
+    bad_row = {
+        'Time': 5000.0,
+        'T_surf': -10.0,  # State bounds status 32 (stopping)
+        'T_magma': 2000.0,
+        'P_surf': 100.0,
+        'M_atm': 1.0e21,
+        'M_planet': 6.0e24,
+        'M_vol_atm': 1.0e21,
+        'M_vaps': 0.0,
+        'H2O_kg_atm': 1.0e21,
+        'Phi_global': 0.5,
+        'struct_mass_desync_frac': 3.0e-3,
+        'M_int': 5.972e24,
+        'M_int_target': 5.972e24,
+        'M_core': 1.940e24,
+        'M_core_target': 1.940e24,
+    }
+
+    # Mode 'off' returns [] without logging or writing status file:
+    cfg_off = _make_mock_config(mode='off')
+    assert check_row_invariants(bad_row, cfg_off, directories=dirs) == []
+    assert not (tmp_path / 'status').exists()
+
+    # Mode 'report' logs WARNING and returns the violation without raising:
+    cfg_rep = _make_mock_config(mode='report')
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.utils.invariants'):
+        v_rep = check_row_invariants(bad_row, cfg_rep, directories=dirs)
+    assert len(v_rep) == 1
+    assert v_rep[0].name == 'T_surf_bounds'
+    assert not (tmp_path / 'status').exists()
+
+    # Mode 'stop' writes status 32 and raises InvariantViolationError:
+    cfg_stop = _make_mock_config(mode='stop')
+    with pytest.raises(InvariantViolationError) as exc_info:
+        check_row_invariants(bad_row, cfg_stop, directories=dirs)
+    assert exc_info.value.status_code == 32
+    status_lines = (tmp_path / 'status').read_text(encoding='utf-8').splitlines()
+    assert status_lines[0] == '32'
+    assert status_lines[1] == 'Error (State bounds invariant)'
