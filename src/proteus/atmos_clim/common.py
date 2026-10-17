@@ -1,7 +1,6 @@
 # Common atmosphere climate model functions
 from __future__ import annotations
 
-import glob
 import logging
 import os
 from enum import Enum, auto
@@ -12,7 +11,7 @@ import numpy as np
 from proteus.utils.helper import (
     UpdateStatusfile,
     find_nearest,
-    parse_subyear_time,
+    list_snapshot_times,
     snapshot_path_for_time,
 )
 
@@ -298,6 +297,22 @@ def read_atmosphere_data(output_dir: str, times: list, extra_keys=[]):
     return profiles
 
 
+def list_atmosphere_times(output_dir: str) -> list[float]:
+    """Return the times of the ``*_atm.nc`` snapshots on disk.
+
+    Arguments
+    ----------
+        output_dir : str
+            Path to PROTEUS output folder.
+
+    Returns
+    ----------
+        list of float
+            Snapshot times [yr] in ascending order. Empty if none are found.
+    """
+    return list_snapshot_times(os.path.join(output_dir, 'data'), '_atm.nc')
+
+
 def find_latest_atmosphere_time(output_dir: str) -> float | None:
     """Return the largest available ``*_atm.nc`` snapshot time on disk.
 
@@ -311,22 +326,10 @@ def find_latest_atmosphere_time(output_dir: str) -> float | None:
         float or None
             Largest snapshot time [yr]. None if no snapshots found.
     """
-
-    # Find netcdf files and get times from their names
-    ncs = glob.glob(os.path.join(output_dir, 'data', '*_atm.nc'))
-    times = []
-    for f in ncs:
-        try:
-            times.append(parse_subyear_time(os.path.basename(f).split('_atm')[0]))
-        except ValueError:
-            log.warning(f"Could not parse time from NetCDF file '{f}'")
-
-    # Return None if no files found
+    times = list_atmosphere_times(output_dir)
     if not times:
         return None
-
-    # Return latest (max) time
-    return float(max(times))
+    return float(times[-1])
 
 
 def get_spfile_name_and_bands(config: Config):

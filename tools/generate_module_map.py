@@ -260,10 +260,10 @@ SUB_DISPATCHES = [
     ),
     (
         'Atmospheric chemistry',
-        '`atmos_chem.when`',
+        '`atmos_chem.mode`',
         'atmos_chem/wrapper.py',
         'run_chemistry',
-        "runs the network 'online' during the loop, 'offline' afterwards, or 'manually'",
+        "runs the network after the simulation ('offline') at the snapshots set by `atmos_chem.times`",
     ),
 ]
 

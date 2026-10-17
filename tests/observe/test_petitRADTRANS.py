@@ -47,6 +47,11 @@ def _install_fake_petitradtrans(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setitem(sys.modules, 'petitRADTRANS.radtrans', fake_radtrans)
 
 
+def _chem_csv_name(module: str, time: float) -> str:
+    """Stand-in for atmos_chem.common.chem_csv_name: the sub-year file name."""
+    return '%s_%s.csv' % (module, ('%.3f' % time).replace('.', 'p'))
+
+
 def _import_backend(monkeypatch: pytest.MonkeyPatch):
     _install_fake_petitradtrans(monkeypatch)
 
@@ -697,9 +702,14 @@ def test_atm_profile_and_offchem_helpers(monkeypatch, tmp_path):
     fake_atmos_chem = types.ModuleType('proteus.atmos_chem')
     fake_atmos_chem.__path__ = []
     fake_atmos_chem_common = types.ModuleType('proteus.atmos_chem.common')
-    fake_atmos_chem_common.read_result = lambda *_a, **_k: pd.DataFrame(
-        {'tmp': [300.0], 'p': [1.0e5], 'z': [0.0], 'H2': [0.7]}
-    )
+    read_kwargs = []
+
+    def _read_result(*_a, **kwargs):
+        read_kwargs.append(kwargs)
+        return pd.DataFrame({'tmp': [300.0], 'p': [1.0e5], 'z': [0.0], 'H2': [0.7]})
+
+    fake_atmos_chem_common.read_result = _read_result
+    fake_atmos_chem_common.chem_csv_name = _chem_csv_name
     monkeypatch.setitem(sys.modules, 'proteus.atmos_chem', fake_atmos_chem)
     monkeypatch.setitem(sys.modules, 'proteus.atmos_chem.common', fake_atmos_chem_common)
 
@@ -707,9 +717,11 @@ def test_atm_profile_and_offchem_helpers(monkeypatch, tmp_path):
     profile = mod._get_atm_profile(outdir, {'Time': 1})
     assert profile['marker'] == 1
     np.testing.assert_allclose(profile['p'], np.array([1.0]))
-    offchem = mod._get_atm_offchem(outdir, {'R_int': 10.0}, 'vulcan')
+    offchem = mod._get_atm_offchem(outdir, {'R_int': 10.0, 'Time': 12.32}, 'vulcan')
     assert list(offchem.columns) == ['tmpl', 'pl', 'rl', 'H2']
     assert offchem['rl'].iloc[0] == pytest.approx(10.0)
+    # The table read is the one at the observed time, not the fixed name
+    assert read_kwargs == [{'filename': 'vulcan_12p320.csv'}]
 
 
 def test_get_atm_profile_returns_none_when_no_data(monkeypatch):
@@ -749,14 +761,57 @@ def test_get_atm_offchem_returns_none_when_no_result(monkeypatch):
 
     fake_atmos_chem_common = types.ModuleType('proteus.atmos_chem.common')
     fake_atmos_chem_common.read_result = MagicMock(return_value=None)
+    fake_atmos_chem_common.chem_csv_name = _chem_csv_name
     fake_atmos_chem = types.ModuleType('proteus.atmos_chem')
     fake_atmos_chem.__path__ = []
     monkeypatch.setitem(sys.modules, 'proteus.atmos_chem', fake_atmos_chem)
     monkeypatch.setitem(sys.modules, 'proteus.atmos_chem.common', fake_atmos_chem_common)
 
-    result = mod._get_atm_offchem('/out', {'R_int': 10.0}, 'vulcan')
+    result = mod._get_atm_offchem('/out', {'R_int': 10.0, 'Time': 5.0}, 'vulcan')
     assert result is None
     fake_atmos_chem_common.read_result.assert_called_once()
+
+    # With no chemistry module there is nothing to read, and no read is tried
+    assert mod._get_atm_offchem('/out', {'R_int': 10.0, 'Time': 5.0}, None) is None
+    fake_atmos_chem_common.read_result.assert_called_once()
+
+
+def test_get_atm_offchem_ignores_chemistry_at_another_time(monkeypatch, caplog):
+    """The composition and the planet come from the same time: with chemistry
+    only at 5 yr and in the fixed-name copy, an observation at 12.32 yr finds
+    no result and says which time it needed, rather than pairing the 5 yr
+    profile with the 12.32 yr planet."""
+    mod = _import_backend(monkeypatch)
+
+    on_disk = {
+        'vulcan.csv': pd.DataFrame({'tmp': [1.0], 'p': [1.0], 'z': [0.0], 'H2': [0.5]}),
+        'vulcan_5p000.csv': pd.DataFrame({'tmp': [2.0], 'p': [2.0], 'z': [0.0], 'H2': [0.6]}),
+    }
+
+    def _read_result(outdir, module, filename=None):
+        frame = on_disk.get(filename or f'{module}.csv')
+        return None if frame is None else frame.copy()
+
+    fake_atmos_chem_common = types.ModuleType('proteus.atmos_chem.common')
+    fake_atmos_chem_common.read_result = _read_result
+    fake_atmos_chem_common.chem_csv_name = _chem_csv_name
+    fake_atmos_chem = types.ModuleType('proteus.atmos_chem')
+    fake_atmos_chem.__path__ = []
+    monkeypatch.setitem(sys.modules, 'proteus.atmos_chem', fake_atmos_chem)
+    monkeypatch.setitem(sys.modules, 'proteus.atmos_chem.common', fake_atmos_chem_common)
+
+    hf_row = {'R_int': 10.0, 'Time': 12.32}
+    with caplog.at_level('WARNING'):
+        assert mod._get_atm_offchem('/out', hf_row, 'vulcan') is None
+    assert '1.232e+01' in caplog.text
+
+    # Once the table at 12.32 yr exists, it is the one read
+    on_disk['vulcan_12p320.csv'] = pd.DataFrame(
+        {'tmp': [3.0], 'p': [3.0], 'z': [5.0], 'H2': [0.7]}
+    )
+    found = mod._get_atm_offchem('/out', hf_row, 'vulcan')
+    assert found['tmpl'].iloc[0] == pytest.approx(3.0)
+    assert found['rl'].iloc[0] == pytest.approx(15.0)
 
 
 def test_load_stellar_toa_flux_raises_when_missing_files(monkeypatch, tmp_path):
@@ -1148,6 +1203,7 @@ def test_eclipse_depth_offchem_uses_latest_sflux_and_writes_output(monkeypatch, 
     monkeypatch.setitem(sys.modules, 'proteus.observe.common', observe_common)
 
     atmos_chem_common = types.ModuleType('proteus.atmos_chem.common')
+    atmos_chem_common.chem_csv_name = _chem_csv_name
     atmos_chem_common.read_result = lambda *_a, **_k: pd.DataFrame(
         {
             'tmp': [300.0, 200.0],

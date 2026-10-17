@@ -1381,7 +1381,7 @@ def test_proteus_start_clears_the_superliquidus_caches(monkeypatch):
     zal._SUPERLIQ_FAILED[(100000, 500.0, 'x')] = common.InitialConditionError('old')
 
     # Stop start() at its first import after the cache clear.
-    monkeypatch.setitem(sys.modules, 'proteus.atmos_chem.wrapper', None)
+    monkeypatch.setitem(sys.modules, 'proteus.accretion.common', None)
     with pytest.raises(ImportError):
         Proteus.start(object.__new__(Proteus))
     assert zal._SUPERLIQ_LAST_ANCHOR is None

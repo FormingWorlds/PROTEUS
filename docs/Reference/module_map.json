@@ -74,9 +74,9 @@
       ],
       "sub_dispatches": [
         {
-          "switch": "`atmos_chem.when`",
+          "switch": "`atmos_chem.mode`",
           "entry": "src/proteus/atmos_chem/wrapper.py:run_chemistry",
-          "doc": "runs the network 'online' during the loop, 'offline' afterwards, or 'manually'"
+          "doc": "runs the network after the simulation ('offline') at the snapshots set by `atmos_chem.times`"
         }
       ]
     },
