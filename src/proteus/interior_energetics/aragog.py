@@ -1056,7 +1056,7 @@ class AragogRunner:
                 )
             elif _key.startswith('PALEOS:'):
                 # IC=3 on the entropy tables; _verify_entropy_ic then compares it with an
-                # independent PALEOS inversion and corrects a difference above 1%.
+                # independent PALEOS adiabat and logs a difference above 1%.
                 initial_condition_temperature_profile = 3
                 init_file_temperature_profile = ''
             else:
