@@ -102,22 +102,18 @@ def _log_mixture(U: torch.Tensor, centres: torch.Tensor, chol: torch.Tensor) -> 
     d = U.shape[-1]
     inv = torch.linalg.inv(chol).T
     log_norm = -0.5 * d * np.log(2 * np.pi) - torch.log(torch.diagonal(chol)).sum()
+    log_uniform = torch.tensor(np.log(DEFENSIVE), dtype=dtype)
     out = []
     for i in range(0, len(U), 10_000):
         z = (U[i : i + 10_000, None, :] - centres[None]) @ inv
         gauss = torch.logsumexp(log_norm - 0.5 * (z**2).sum(-1), dim=1) - np.log(len(centres))
-        out.append(
-            torch.logaddexp(
-                gauss + np.log(1 - DEFENSIVE), torch.full_like(gauss, np.log(DEFENSIVE))
-            )
-        )
+        out.append(torch.logaddexp(gauss + np.log(1 - DEFENSIVE), log_uniform))
     return torch.cat(out)
 
 
 def _refined_draws(U, w, g) -> tuple[torch.Tensor, torch.Tensor]:
-    """Draws in the unit cube from a Gaussian mixture on the weighted draws U, and their
-    log proposal density. Each component has the weighted covariance of U, narrowed by
-    Silverman's factor, plus SD_FLOOR**2."""
+    """Draws in the unit cube from a Gaussian mixture on the weighted draws U, with their
+    log proposal density."""
     d = U.shape[-1]
     p = w / w.sum()
     mu = p @ U
@@ -140,12 +136,9 @@ def _refined_draws(U, w, g) -> tuple[torch.Tensor, torch.Tensor]:
 def importance_resample(
     objective, d: int, n_samples: int, n_proposal: int, seed: int
 ) -> tuple[torch.Tensor, float]:
-    """Resample draws in the unit cube by L = exp(-10**(-Y) / 2), refining the proposal.
-
-    The first n_proposal draws are uniform. While their effective sample size is below
-    n_samples, up to ADAPT_ROUNDS rounds draw from a Gaussian mixture on the weighted
-    draws instead (`_refined_draws`), so a posterior far narrower than the cube still
-    gets enough distinct samples. Returns the samples (n_samples, d) and the final ESS.
+    """Resample draws in the unit cube by L = exp(-10**(-Y) / 2): n_proposal uniform draws,
+    then up to ADAPT_ROUNDS refined rounds while the effective sample size is below
+    n_samples. Returns the samples (n_samples, d) and the final ESS.
     """
     g = torch.Generator().manual_seed(seed)
     U = torch.rand(n_proposal, d, generator=g, dtype=dtype)

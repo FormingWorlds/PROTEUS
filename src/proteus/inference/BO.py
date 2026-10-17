@@ -50,12 +50,8 @@ def unit_bounds(d):
 
 
 def random_irrelevant(gp, d: int, who: str) -> dict[int, float] | None:
-    """Random values for the parameters the fitted GP treats as irrelevant.
-
-    A lengthscale above IRRELEVANT_LENGTHSCALE makes the GP near linear in that
-    parameter, so every proposal would sit on one of its bounds. Returns them as
-    `fixed_features` for `optimize_acqf`, or None when every parameter is relevant.
-    """
+    """Random values, as `fixed_features`, for the parameters whose fitted lengthscale
+    exceeds IRRELEVANT_LENGTHSCALE; None when there are none."""
     ls = gp.covar_module.lengthscale.detach().reshape(-1)
     fixed = {i: torch.rand(1).item() for i in range(d) if ls[i] > IRRELEVANT_LENGTHSCALE}
     if fixed:

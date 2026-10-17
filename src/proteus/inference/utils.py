@@ -264,9 +264,8 @@ def get_acqf(name: str, gp: SingleTaskGP, best: float, X_pending: torch.Tensor |
     Supports 'UCB', 'LogEI', 'LogPI' and 'TS' acquisition functions.
     See docs: https://botorch.readthedocs.io/en/latest/acquisition.html
 
-    'TS' is Thompson sampling: one function drawn from the GP posterior, whose
-    maximum is the next point. Each call draws a new function, so the workers
-    spread out without `X_pending`, and `best` is not used.
+    'TS' is Thompson sampling: the maximum of one function drawn from the GP. Each call
+    draws anew, so workers spread out without `X_pending`; `best` is unused.
 
     With `X_pending`, each becomes its Monte Carlo version, which scores a
     candidate jointly with the points other workers are still evaluating, so a
