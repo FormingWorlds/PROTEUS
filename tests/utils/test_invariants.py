@@ -124,6 +124,8 @@ def _make_mock_config(
     dt_minimum: float = 1.0,
     fO2_source: str = 'user_constant',
     vapourise: bool = False,
+    solver_rtol: float = 1.0e-4,
+    mass_thresh: float = 1.0e10,
 ):
     """Build a minimal config object carrying ``invariants``, ``params.dt``, ``planet``, ``outgas``."""
     from types import SimpleNamespace
@@ -134,7 +136,11 @@ def _make_mock_config(
         invariants=Invariants(mode=mode),
         params=SimpleNamespace(dt=SimpleNamespace(rtol=dt_rtol, minimum=dt_minimum)),
         planet=SimpleNamespace(fO2_source=fO2_source),
-        outgas=SimpleNamespace(vapourise=vapourise),
+        outgas=SimpleNamespace(
+            vapourise=vapourise,
+            solver_rtol=solver_rtol,
+            mass_thresh=mass_thresh,
+        ),
     )
 
 
@@ -469,3 +475,164 @@ def test_check_structure_invariants_interior_and_core_mass_targets():
     assert violations[0].tolerance == pytest.approx(3.0e-3)
     assert violations[1].value == pytest.approx(abs(1.990e24 / 1.940e24 - 1.0))
     assert violations[1].tolerance == pytest.approx(2.0e-2)
+
+
+def test_check_volatile_invariants_clean_row_and_fO2_buffered_oxygen():
+    """Volatile closure skips O under user_constant fO2 and checks O under from_O_budget."""
+    from proteus.utils.invariants import check_volatile_invariants
+
+    hf_row = {
+        'Time': 2000.0,
+        'M_planet': 6.0e24,
+        'M_int': 5.9e24,
+        'M_ele': 1.0e23,
+        'M_atm': 1.0e21,
+        'M_vol_atm': 1.0e21,
+        'M_vaps': 0.0,
+        'H2O_kg_atm': 6.0e20,
+        'CO2_kg_atm': 4.0e20,
+        'H_kg_total': 1.0e20,
+        'H_kg_atm': 6.0e19,
+        'H_kg_liquid': 3.0e19,
+        'H_kg_solid': 1.0e19,
+        'C_kg_total': 2.0e20,
+        'C_kg_atm': 1.1e20,
+        'C_kg_liquid': 9.0e19,
+        'C_kg_solid': 0.0,
+        # Oxygen reservoirs differ by 20% from O_kg_total:
+        'O_kg_total': 1.0e23,
+        'O_kg_atm': 4.0e22,
+        'O_kg_liquid': 4.0e22,
+        'O_kg_solid': 0.0,
+        'M_vol_initial': 0.0,
+        'esc_kg_cumulative': 0.0,
+    }
+    # Under default user_constant fO2, O is skipped (Ruling 3):
+    cfg_user = _make_mock_config(fO2_source='user_constant', vapourise=False)
+    assert check_volatile_invariants(hf_row, cfg_user) == []
+
+    # Under from_O_budget (without vapourise), O is authoritative and fails closure:
+    cfg_obud = _make_mock_config(fO2_source='from_O_budget', vapourise=False)
+    v_obud = check_volatile_invariants(hf_row, cfg_obud)
+    assert len(v_obud) == 1
+    assert v_obud[0].name == 'O_reservoir_closure'
+    assert v_obud[0].status_code == STATUS_ERROR_MASS_INVARIANT
+    assert v_obud[0].value == pytest.approx(0.20)
+    assert v_obud[0].tolerance == pytest.approx(2.5e-4)
+    assert v_obud[0].report_only is False
+
+    # Pre-IC row with M_planet <= 0.0 skips checks cleanly:
+    assert check_volatile_invariants(dict(hf_row, M_planet=0.0), cfg_obud) == []
+
+
+def test_check_volatile_invariants_element_closure_and_gas_sum():
+    """Unbuffered element reservoir closure (> 2.5e-4 and > 1 kg) and gas sum (> 1e-6) fail."""
+    from proteus.utils.invariants import check_volatile_invariants
+
+    cfg = _make_mock_config(fO2_source='user_constant', vapourise=False)
+    base_row = {
+        'Time': 2500.0,
+        'M_planet': 6.0e24,
+        'M_atm': 1.0e21,
+        'M_vol_atm': 1.0e21,
+        'M_vaps': 0.0,
+        'H2O_kg_atm': 1.0e21,
+        'H_kg_total': 1.0e20,
+        'H_kg_atm': 5.0e19,
+        'H_kg_liquid': 5.0e19,
+        'H_kg_solid': 0.0,
+    }
+    # Perturb H_kg_atm by 3.0e-4 * H_kg_total (> 2.5e-4):
+    row_h_bad = dict(base_row, H_kg_atm=5.0e19 + 3.0e16)
+    v_h = check_volatile_invariants(row_h_bad, cfg)
+    assert len(v_h) == 1
+    assert v_h[0].name == 'H_reservoir_closure'
+    assert v_h[0].status_code == STATUS_ERROR_MASS_INVARIANT
+    assert v_h[0].value == pytest.approx(3.0e-4)
+    assert v_h[0].tolerance == pytest.approx(2.5e-4)
+    assert v_h[0].report_only is False
+
+    # Trace mismatch <= 1.0 kg (e.g. 0.5 kg on a 100 kg total, where rel = 5e-3 > 2.5e-4) passes:
+    row_trace = dict(
+        base_row,
+        H_kg_total=100.0,
+        H_kg_atm=50.5,
+        H_kg_liquid=50.0,
+        H_kg_solid=0.0,
+    )
+    assert check_volatile_invariants(row_trace, cfg) == []
+
+    # Perturb H2O_kg_atm so species sum differs from M_vol_atm by 5.0e-6 > 1.0e-6:
+    row_gas_bad = dict(base_row, H2O_kg_atm=1.0e21 * (1.0 - 5.0e-6))
+    v_gas = check_volatile_invariants(row_gas_bad, cfg)
+    assert len(v_gas) == 1
+    assert v_gas[0].name == 'M_vol_atm_species_sum'
+    assert v_gas[0].status_code == STATUS_ERROR_MASS_INVARIANT
+    assert v_gas[0].value == pytest.approx(5.0e-6)
+    assert v_gas[0].tolerance == pytest.approx(1.0e-6)
+    assert v_gas[0].report_only is False
+
+
+def test_check_volatile_invariants_planet_mass_cap_and_vapourise():
+    """M_atm > M_planet * (1 + 1e-6) stops without vapourise and warns past M_vaps with vapourise."""
+    from proteus.utils.invariants import check_volatile_invariants
+
+    cfg_no_vap = _make_mock_config(vapourise=False)
+    row_cap = {
+        'Time': 3000.0,
+        'M_planet': 1.0e24,
+        'M_atm': 1.0e24 * (1.0 + 5.0e-6),
+        'M_vol_atm': 1.0e21,
+        'M_vaps': 0.0,
+        'H2O_kg_atm': 1.0e21,
+    }
+    v_stop = check_volatile_invariants(row_cap, cfg_no_vap)
+    assert len(v_stop) == 1
+    assert v_stop[0].name == 'M_atm_planet_cap'
+    assert v_stop[0].status_code == STATUS_ERROR_MASS_INVARIANT
+    assert v_stop[0].value == pytest.approx(5.0e-6)
+    assert v_stop[0].tolerance == pytest.approx(1.0e-6)
+    assert v_stop[0].report_only is False
+
+    # With vapourise=True and M_vaps = 1e22: excess <= M_vaps passes, excess > M_vaps warns:
+    cfg_vap = _make_mock_config(vapourise=True)
+    row_vap_ok = dict(row_cap, M_atm=1.005e24, M_vaps=1.0e22)
+    assert check_volatile_invariants(row_vap_ok, cfg_vap) == []
+
+    row_vap_warn = dict(row_cap, M_atm=1.015e24, M_vaps=1.0e22)
+    v_warn = check_volatile_invariants(row_vap_warn, cfg_vap)
+    assert len(v_warn) == 1
+    assert v_warn[0].name == 'M_atm_planet_cap'
+    assert v_warn[0].status_code == STATUS_ERROR_MASS_INVARIANT
+    assert v_warn[0].value == pytest.approx((1.015e24 - 1.0e24 - 1.0e22) / 1.0e24)
+    assert v_warn[0].tolerance == pytest.approx(1.0e-6)
+    assert v_warn[0].report_only is True
+
+
+def test_check_volatile_invariants_escape_cumulative_bound():
+    """Unexplained volatile loss > 1.5 * esc_kg_cumulative + 1e3 kg raises stopping status-31 violation."""
+    from proteus.utils.invariants import check_volatile_invariants
+
+    cfg = _make_mock_config(fO2_source='from_O_budget', vapourise=False)
+    row_bad_loss = {
+        'Time': 3500.0,
+        'M_planet': 6.0e24,
+        'M_atm': 0.0,
+        'M_vol_atm': 0.0,
+        'M_vaps': 0.0,
+        'M_vol_initial': 1.0e21,
+        'M_desiccated': 0.0,
+        'esc_kg_cumulative': 1.0e15,
+        'H_kg_total': 0.0,
+    }
+    v_loss = check_volatile_invariants(row_bad_loss, cfg)
+    assert len(v_loss) == 1
+    assert v_loss[0].name == 'escape_cumulative_bound'
+    assert v_loss[0].status_code == STATUS_ERROR_MASS_INVARIANT
+    assert v_loss[0].value == pytest.approx(1.0e21)
+    assert v_loss[0].tolerance == pytest.approx(1.5 * 1.0e15 + 1.0e3)
+    assert v_loss[0].report_only is False
+
+    # When cumulative escape accounts for the loss (lost <= 1.5 * esc + 1e3), no violation:
+    row_ok_loss = dict(row_bad_loss, esc_kg_cumulative=1.0e21)
+    assert check_volatile_invariants(row_ok_loss, cfg) == []
