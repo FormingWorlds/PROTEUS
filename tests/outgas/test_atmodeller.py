@@ -805,3 +805,40 @@ def test_mol_columns_derived_from_kg_when_solve_omits_mole_count():
     assert hf_row['CO2_mol_atm'] == pytest.approx(co2_gas_mass / co2_mmw, rel=1e-9)
     assert hf_row['CO2_mol_total'] == pytest.approx(co2_total_mass / co2_mmw, rel=1e-9)
     assert hf_row['CO2_mol_solid'] == 0.0
+
+
+@pytest.mark.unit
+def test_mantle_redox_offset_sets_the_atmodeller_fugacity_constraint():
+    """Under from_mantle_redox the O2 fugacity constraint is the IW buffer
+    shifted by the tracked melt-redox offset, not the configured one."""
+    pytest.importorskip('atmodeller')
+    import atmodeller.thermodata
+
+    config = _make_user_constant_config(-2.5)
+    config.planet.fO2_source = 'from_mantle_redox'
+    hf_row = _hf_row_with_HS_budget()
+    hf_row['fO2_shift_IW_mantle'] = 1.7
+
+    out = MagicMock()
+    out.quick_look.return_value = {'H2O_g': np.array(40.0), 'O2_g': np.array(1.0e-6)}
+    out.total_pressure.return_value = np.array(40.0)
+    out.asdict.return_value = {
+        'H2O_g': {'dissolved_mass': np.array(1.0e20), 'gas_mass': np.array(1.0e18)},
+        'O2_g': {'log10dIW_1_bar': np.array(1.7), 'gas_mass': np.array(1.0e10)},
+    }
+    fake_model = MagicMock()
+    fake_model.output = out
+
+    from proteus.outgas.atmodeller import _MODEL_CACHE
+
+    _MODEL_CACHE.clear()
+    real_buffer = atmodeller.thermodata.IronWustiteBuffer
+    with (
+        patch('atmodeller.EquilibriumModel', return_value=fake_model),
+        patch('atmodeller.thermodata.IronWustiteBuffer', side_effect=real_buffer) as buffer,
+    ):
+        calc_surface_pressures_atmodeller({'output': '/tmp/test'}, config, hf_row)
+    _MODEL_CACHE.clear()
+
+    shifts = [c.args[0] for c in buffer.call_args_list]
+    assert shifts and all(s == pytest.approx(1.7) for s in shifts)

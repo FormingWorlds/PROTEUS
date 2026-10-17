@@ -133,6 +133,17 @@ class TimeStepParams:
         cap, in which case ``maximum`` applies throughout. A
         typical value for Aragog at 1 M_E is ~4e3 yr; see
         ``input/tutorials/tutorial_earth.toml``.
+    afe_max_rel_change: float
+        Largest relative change of the Fe-metal activity
+        (``a_fe_max_mantle``, melt-redox tracker) allowed between two
+        consecutive steps [dimensionless]. The next step is capped at
+        ``dt_prev * afe_max_rel_change / |Δa_Fe / a_Fe|``, the change of
+        the last step extrapolated at its own rate, and not below
+        ``minimum + minimum_rel * Time``. Applies only while both of the
+        last two steps tested a cell (``a_fe_max_mantle > 0``), i.e. under
+        ``planet.fO2_source = "from_mantle_redox"`` with
+        ``planet.metal_saturation = true``. Default 0.03; 0 disables the
+        cap.
     mushy_upper: float
         Upper bound of the mushy regime [dimensionless melt
         fraction]. When ``Phi_global < mushy_upper`` AND
@@ -260,6 +271,10 @@ class TimeStepParams:
     # stability-sensitive runs is 3.0; CHILI Aragog
     # sets this to smooth the initial 10x dt jump that can wedge CVODE.
     max_growth_factor: float = field(default=0.0, validator=ge(0))
+
+    # Cap on the relative change of the Fe-metal activity between steps
+    # (melt-redox tracker, a_fe_max_mantle). 0 disables it.
+    afe_max_rel_change: float = field(default=0.03, validator=ge(0))
 
 
 @define

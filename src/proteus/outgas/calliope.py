@@ -61,7 +61,10 @@ def construct_options(dirs: dict, config: Config, hf_row: dict):
     # Surface properties
     solvevol_inp['T_magma'] = hf_row['T_magma']
 
-    solvevol_inp['fO2_shift_IW'] = config.outgas.fO2_shift_IW
+    if config.planet.fO2_source == 'from_mantle_redox':
+        solvevol_inp['fO2_shift_IW'] = float(hf_row['fO2_shift_IW_mantle'])
+    else:
+        solvevol_inp['fO2_shift_IW'] = config.outgas.fO2_shift_IW
 
     # Volatile inventory
     for s in vol_list:
@@ -446,15 +449,14 @@ def calc_surface_pressures(dirs: dict, config: Config, hf_row: dict):
     if config.planet.fO2_source == 'from_O_budget':
         hf_row['O_kg_total'] = float(target['O'])
 
-    # Plumb the derived IW-buffer offset and O-mass residual into hf_row.
-    # For the 'from_O_budget' source the solver returns these as part of
-    # solvevol_result;
-    # for the user_constant path the buffer offset is the user-supplied
-    # config.outgas.fO2_shift_IW (echoed for column uniformity) and there
-    # is no O residual (O is an output, not a constraint).
+    # Derived offset and O residual: solved for 'from_O_budget'; otherwise the offset
+    # used as the constraint is echoed, and O is an output, so its residual is 0.
     if config.planet.fO2_source == 'from_O_budget':
         hf_row['fO2_shift_IW_derived'] = float(solvevol_result['fO2_shift_derived'])
         hf_row['O_res'] = float(solvevol_result['O_res'])
+    elif config.planet.fO2_source == 'from_mantle_redox':
+        hf_row['fO2_shift_IW_derived'] = float(hf_row['fO2_shift_IW_mantle'])
+        hf_row['O_res'] = 0.0
     else:
         hf_row['fO2_shift_IW_derived'] = float(config.outgas.fO2_shift_IW)
         hf_row['O_res'] = 0.0

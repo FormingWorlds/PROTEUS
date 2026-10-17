@@ -15,6 +15,7 @@ test inventoried here.
 | Accretion | `accretion/dummy.py` | [Analytical accretion](accretion/dummy.md) |
 | Accretion | `accretion/wrapper.py` | [Impact atmosphere-loss dispatch](accretion/wrapper.md) |
 | Atmosphere climate | `atmos_clim/agni.py` | [Transparent black-body limit](atmos_clim/agni.md) |
+| Interior chemistry | `interior_chem/redox.py` | [Melt Fe3+/Fe2+ against Schaefer et al. (2024)](interior_chem/redox.md) |
 | Interior structure | `interior_struct/zalmoxis.py` | [Liquidus-super IC anchor](interior_struct/zalmoxis.md) |
 | Orbit | `orbit/orbit.py` | [Orbital evolution](orbit/orbit.md) |
 | Orbit | `orbit/parameterized.py` | [Prescribed migration laws](orbit/parameterized.md) |
