@@ -741,3 +741,36 @@ def test_check_row_invariants_orchestrates_modes_and_status_file(
     status_lines = (tmp_path / 'status').read_text(encoding='utf-8').splitlines()
     assert status_lines[0] == '32'
     assert status_lines[1] == 'Error (State bounds invariant)'
+
+    # Unknown mode raises ValueError:
+    with pytest.raises(ValueError, match="Unknown invariants.mode 'invalid'"):
+        handle_violations(v_rep, mode='invalid')
+
+    # Non-finite volatile fields and zero E_state_cons_J:
+    import pandas as pd
+
+    from proteus.utils.invariants import check_volatile_invariants
+
+    assert (
+        check_energy_invariants({'E_state_cons_J': 0.0}, cfg_rep, pd.DataFrame([{'Time': 0.0}]))
+        == []
+    )
+    v_nan_vol = check_volatile_invariants(
+        {
+            'Time': 5000.0,
+            'M_planet': 6.0e24,
+            'M_atm': float('nan'),
+            'M_vol_atm': float('nan'),
+            'M_vaps': 0.0,
+            'H_kg_total': float('nan'),
+            'C_kg_total': 1.0e20,
+            'C_kg_atm': float('nan'),
+        },
+        cfg_rep,
+    )
+    assert [v.name for v in v_nan_vol] == [
+        'M_atm_planet_cap',
+        'M_vol_atm_species_sum',
+        'H_reservoir_closure',
+        'C_reservoir_closure',
+    ]

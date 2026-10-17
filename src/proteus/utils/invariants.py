@@ -627,11 +627,7 @@ def check_volatile_invariants(
                 )
             )
 
-    m_init_raw = hf_row.get('M_vol_initial', None)
-    try:
-        m_init = float(m_init_raw) if m_init_raw is not None else 0.0
-    except (TypeError, ValueError):
-        m_init = 0.0
+    m_init = float(hf_row.get('M_vol_initial', 0.0) or 0.0)
     if np.isfinite(m_init) and m_init > 0.0:
         mass_thresh = float(getattr(getattr(config, 'outgas', None), 'mass_thresh', 1.0e10))
         fO2_source = getattr(getattr(config, 'planet', None), 'fO2_source', 'user_constant')
@@ -640,9 +636,8 @@ def check_volatile_invariants(
             for e in vol_element_list + noble_gases
         )
         if fO2_source == 'from_O_budget' or all_vol_depleted:
-            removed = float(hf_row.get('M_desiccated', 0.0))
-            if not np.isfinite(removed):
-                removed = 0.0
+            removed_raw = float(hf_row.get('M_desiccated', 0.0))
+            removed = removed_raw if np.isfinite(removed_raw) else 0.0
             cur_m_ele = readable_total(hf_row)
             lost = m_init - cur_m_ele - removed
             esc_cum = float(hf_row.get('esc_kg_cumulative', 0.0))

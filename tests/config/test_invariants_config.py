@@ -10,11 +10,14 @@ from __future__ import annotations
 import math
 
 import pytest
-from hypothesis import given, settings
-from hypothesis import strategies as st
 
 from proteus.config import Config, read_config_object, structure_config
 from proteus.config._invariants import Invariants
+
+hypothesis = pytest.importorskip('hypothesis')
+given = hypothesis.given
+settings = hypothesis.settings
+st = hypothesis.strategies
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
