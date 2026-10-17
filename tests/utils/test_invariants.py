@@ -360,3 +360,112 @@ def test_check_energy_invariants_solver_and_core_ledger_residuals():
     assert violations[0].tolerance == pytest.approx(1.0e-12)
     assert violations[1].value == pytest.approx(2.0e-4)
     assert violations[1].tolerance == pytest.approx(1.0e-4)
+
+
+def test_check_structure_invariants_clean_row_and_zero_targets():
+    """Co-converged structure row within desync and target tolerances returns no violations."""
+    from proteus.utils.invariants import check_structure_invariants
+
+    cfg = _make_mock_config()
+    hf_row = {
+        'Time': 500.0,
+        'struct_mass_desync_frac': 3.2e-3,
+        'M_int': 5.9722e24,
+        'M_int_target': 5.9720e24,
+        'M_core': 1.960e24,
+        'M_core_target': 1.940e24,
+        'R_int': 6.371e6,
+        'R_core': 3.480e6,
+    }
+    assert check_structure_invariants(hf_row, cfg) == []
+
+    # When targets are 0.0 (non-Zalmoxis or dummy structure), target checks do not fire:
+    hf_row_no_target = {
+        'Time': 500.0,
+        'struct_mass_desync_frac': 0.0,
+        'M_int': 5.972e24,
+        'M_int_target': 0.0,
+        'M_core': 1.940e24,
+        'M_core_target': 0.0,
+    }
+    assert check_structure_invariants(hf_row_no_target, cfg) == []
+
+
+def test_check_structure_invariants_desync_warn_and_stop_thresholds(
+    tmp_path, caplog: pytest.LogCaptureFixture
+):
+    """Desync in (5e-3, 1e-2] warns with report_only=True; > 1e-2 stops with status 31."""
+    from proteus.utils.invariants import check_structure_invariants
+
+    cfg = _make_mock_config()
+    hf_warn = {
+        'Time': 1000.0,
+        'struct_mass_desync_frac': 7.0e-3,
+        'M_int': 5.972e24,
+        'M_int_target': 5.972e24,
+        'M_core': 1.940e24,
+        'M_core_target': 1.940e24,
+        'R_int': 6.371e6,
+        'R_core': 3.480e6,
+    }
+    v_warn = check_structure_invariants(hf_warn, cfg)
+    assert len(v_warn) == 1
+    assert v_warn[0].name == 'struct_mass_desync_frac'
+    assert v_warn[0].status_code == STATUS_ERROR_MASS_INVARIANT
+    assert v_warn[0].value == pytest.approx(7.0e-3)
+    assert v_warn[0].tolerance == pytest.approx(5.0e-3)
+    assert v_warn[0].report_only is True
+
+    dirs = {'output': str(tmp_path)}
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.utils.invariants'):
+        out = handle_violations(v_warn, mode='stop', directories=dirs)
+    assert len(out) == 1
+    assert not (tmp_path / 'status').exists()
+
+    hf_stop = dict(hf_warn, struct_mass_desync_frac=1.2e-2)
+    v_stop = check_structure_invariants(hf_stop, cfg)
+    assert len(v_stop) == 1
+    assert v_stop[0].name == 'struct_mass_desync_frac'
+    assert v_stop[0].status_code == STATUS_ERROR_MASS_INVARIANT
+    assert v_stop[0].value == pytest.approx(1.2e-2)
+    assert v_stop[0].tolerance == pytest.approx(1.0e-2)
+    assert v_stop[0].report_only is False
+
+    with pytest.raises(InvariantViolationError) as exc_info:
+        handle_violations(v_stop, mode='stop', directories=dirs)
+    assert exc_info.value.status_code == 31
+    status_lines = (tmp_path / 'status').read_text(encoding='utf-8').splitlines()
+    assert status_lines[0] == '31'
+    assert status_lines[1] == 'Error (Mass conservation invariant)'
+
+    hf_nan = dict(hf_warn, struct_mass_desync_frac=float('nan'))
+    v_nan = check_structure_invariants(hf_nan, cfg)
+    assert len(v_nan) == 1
+    assert v_nan[0].report_only is False
+    assert v_nan[0].tolerance == pytest.approx(1.0e-2)
+
+
+def test_check_structure_invariants_interior_and_core_mass_targets():
+    """Interior mass target (> 3e-3) and core mass target (> 2e-2) raise stopping status-31 violations."""
+    from proteus.utils.invariants import check_structure_invariants
+
+    cfg = _make_mock_config()
+    hf_bad = {
+        'Time': 1500.0,
+        'struct_mass_desync_frac': 3.0e-3,
+        'M_int': 5.996e24,  # |5.996 / 5.972 - 1| = 4.0188e-3 > 3.0e-3
+        'M_int_target': 5.972e24,
+        'M_core': 1.990e24,  # |1.990 / 1.940 - 1| = 2.5773e-2 > 2.0e-2
+        'M_core_target': 1.940e24,
+        'R_int': 6.371e6,
+        'R_core': 3.480e6,
+    }
+    violations = check_structure_invariants(hf_bad, cfg)
+    assert [v.name for v in violations] == ['M_int_target_rel_err', 'M_core_target_rel_err']
+    for v in violations:
+        assert v.status_code == STATUS_ERROR_MASS_INVARIANT
+        assert v.report_only is False
+    assert violations[0].value == pytest.approx(abs(5.996e24 / 5.972e24 - 1.0))
+    assert violations[0].tolerance == pytest.approx(3.0e-3)
+    assert violations[1].value == pytest.approx(abs(1.990e24 / 1.940e24 - 1.0))
+    assert violations[1].tolerance == pytest.approx(2.0e-2)
