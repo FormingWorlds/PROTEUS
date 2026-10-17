@@ -36,6 +36,17 @@ def _is_explicit_zero(value: object) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool) and value == 0.0
 
 
+def _check_convective_threshold(raw: dict) -> None:
+    """Refuse a TOML bool for the Aragog convective threshold, which cattrs loads as 1.0."""
+    ie = raw.get('interior_energetics')
+    aragog = ie.get('aragog') if isinstance(ie, dict) else None
+    if isinstance(aragog, dict) and isinstance(aragog.get('convective_threshold'), bool):
+        raise ValueError(
+            '`interior_energetics.aragog.convective_threshold` must be a real number, '
+            f'got {aragog["convective_threshold"]!r}'
+        )
+
+
 def _check_step_cap_zeros(raw: dict, path: Path | str) -> None:
     """Reject an explicit 0.0 for an Aragog step-cap field.
 
@@ -116,6 +127,7 @@ def structure_config(raw: dict, path: Path | str) -> Config:
     """
 
     _check_step_cap_zeros(raw, path)
+    _check_convective_threshold(raw)
 
     try:
         obj = cattrs.structure(raw, Config)

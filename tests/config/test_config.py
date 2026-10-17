@@ -195,6 +195,21 @@ def test_structure_config_drops_an_unknown_key_and_applies_the_default(tmp_path)
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize('value', [True, False])
+def test_toml_bool_convective_threshold_is_refused(tmp_path, value):
+    """A TOML bool for the Aragog convective threshold is refused, not loaded as 1.0 or 0.0."""
+
+    def _bool(raw):
+        raw.setdefault('interior_energetics', {}).setdefault('aragog', {})[
+            'convective_threshold'
+        ] = value
+
+    path = _write_variant(tmp_path, 'bool_d.toml', _bool)
+    with pytest.raises(ValueError, match='convective_threshold'):
+        read_config_object(path)
+
+
+@pytest.mark.unit
 def test_read_config_object_names_the_unknown_key_before_a_bad_value(tmp_path):
     """An unknown key is reported ahead of a value that fails validation.
 
