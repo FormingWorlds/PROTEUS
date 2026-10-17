@@ -251,8 +251,8 @@ OVERRIDES = {
     # 2.0 never passed -kappah_floor to SPIDER; the 3.0 default 10.0 would add a
     # near-solidus eddy-diffusivity floor that 2.0 runs did not apply.
     'interior_energetics.kappah_floor': 0.0,
-    # 2.0 used the plain dS/dr < 0 switch in Aragog; the 3.0 default D = 1e-6 adds
-    # a minimum drive and a floor band.
+    # 2.0 used the plain dS/dr < 0 switch in Aragog, the 3.0 default D = 0; the pin
+    # keeps a migrated config on that switch.
     'interior_energetics.aragog.convective_threshold': 0.0,
     # 2.0 capped the time-step strictly at dt.maximum (timestep.py min(dt, max)).
     # 3.0 adds dt.maximum + maximum_rel * Time with a default maximum_rel of 1.0,

@@ -69,12 +69,7 @@ volume.
     percentage points per Myr, and its net atmospheric flux was 0.24 W m$^{-2}$. The six runs that had not reached 5% melt ran with the
     energy-balance, escape and wall-clock stops on up to the end of their first
     part, at 3.1 to 15.0 Myr, and were resumed from their last snapshot
-    under the stop rule above. The runs used the Aragog convective switch at
-    $\partial S/\partial r < 0$ (`convective_threshold = 0`); the configurations
-    on this page use the default threshold of $10^{-6}$ J kg$^{-1}$ K$^{-1}$ m$^{-1}$,
-    which drives unstable nodes by at least that gradient and gives the band just
-    above $\partial S/\partial r = 0$ the eddy-diffusivity floor. The runs do not
-    follow the long-term
+    under the stop rule above. The runs do not follow the long-term
     solid-state evolution of the mantle or the loss of the atmosphere
     after their end. The PROTEUS results in the CHILI paper and the
     results shown here come from different versions of the code and from
