@@ -354,7 +354,6 @@ def parallel_process(
     correlation: dict | None = None,
     patience: int = 0,
     student_t_dof: float | None = None,
-    input_warp: bool = False,
 ) -> tuple[dict, list, list]:
     """Orchestrate parallel asynchronous Bayesian optimization.
 
@@ -382,7 +381,6 @@ def parallel_process(
       stops; 0 runs the full budget.
     - student_t_dof (float | None): Student-t degrees of freedom, or None for
       Gaussian errors.
-    - input_warp (bool): Whether the GP warps its inputs.
 
     Returns
     ----------
@@ -409,7 +407,6 @@ def parallel_process(
         BO_step,
         kernel=kernel,
         acqf=acqf,
-        input_warp=input_warp,
     )
 
     # Absolute path to shared output dir
@@ -437,9 +434,7 @@ def parallel_process(
     log_list = mgr.list([None] * n_init)  # no logs from init data
 
     # Generate initial candidate locations and busy-map
-    X_init = init_locs(  # (n_workers, d)
-        n_workers, D_shared, acqf=acqf, kernel=kernel, input_warp=input_warp
-    )
+    X_init = init_locs(n_workers, D_shared, acqf=acqf, kernel=kernel)  # (n_workers, d)
     B = mgr.dict()
 
     # Shared list for end times

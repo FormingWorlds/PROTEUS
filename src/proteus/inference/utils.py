@@ -17,7 +17,6 @@ import pandas as pd
 import toml
 import torch
 from botorch.models import SingleTaskGP
-from botorch.models.transforms.input import Normalize, Warp
 from gpytorch.constraints.constraints import GreaterThan
 from gpytorch.kernels import MaternKernel, RBFKernel
 from gpytorch.priors.torch_priors import LogNormalPrior
@@ -374,43 +373,6 @@ def get_kernel(kernel: str, d: int) -> MaternKernel | RBFKernel:
         raise ValueError('Unknown kernel, choices are RBF or MAT{1/2, 3/2, 5/2}')
     return get_kernel_w_prior(
         ard_num_dims=d, use_rbf_kernel=nus[kernel] is None, nu=nus[kernel]
-    )
-
-
-# Prior on both Kumaraswamy shape parameters of the input warp, centred on the
-# identity (a = b = 1), as in the BoTorch input-warping tutorial
-WARP_PRIOR_LOC = 0.0
-WARP_PRIOR_SCALE = sqrt(0.75)
-
-
-def make_input_transform(d: int, warp: bool) -> Normalize | Warp:
-    """Build the GP input transform.
-
-    Without `warp` this is the `Normalize` the GP has always used. With `warp`
-    each input is mapped through a learned Kumaraswamy CDF w(x) = 1 - (1 - x^a)^b
-    (`botorch.models.transforms.input.Warp`) on the unit cube where the BO samples,
-    with the bounds fixed: without them `Warp` would stretch the training data to
-    fill [0, 1] and shift the warp as new points arrive. The shapes a and b are
-    fitted per input with the GP hyperparameters, so one lengthscale can resolve a
-    narrow feature in one part of an input range and a flat region in another.
-
-    Parameters
-    ----------
-    - d (int): Number of input dimensions.
-    - warp (bool): Whether to warp each input.
-
-    Returns
-    ----------
-    - Normalize | Warp: Input transform for SingleTaskGP.
-    """
-    if not warp:
-        return Normalize(d=d)
-    return Warp(
-        d=d,
-        indices=list(range(d)),
-        bounds=torch.stack([torch.zeros(d, dtype=dtype), torch.ones(d, dtype=dtype)]),
-        concentration1_prior=LogNormalPrior(WARP_PRIOR_LOC, WARP_PRIOR_SCALE),
-        concentration0_prior=LogNormalPrior(WARP_PRIOR_LOC, WARP_PRIOR_SCALE),
     )
 
 

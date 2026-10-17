@@ -146,17 +146,6 @@ def validate_patience(patience) -> int:
     return patience
 
 
-def validate_input_warp(input_warp) -> bool:
-    """Check `input_warp`, whether the GP learns a warp of each input.
-
-    Raises:
-        ValueError: If it is not true or false.
-    """
-    if not isinstance(input_warp, bool):
-        raise ValueError(f'input_warp must be true or false, got {input_warp!r}')
-    return input_warp
-
-
 OBJECTIVES = ('chi-2', 'student-t')
 DEFAULT_STUDENT_T_DOF = 4.0
 
@@ -411,9 +400,6 @@ def run_inference(config):
     # Optional early stop once the best objective stops improving
     config['patience'] = validate_patience(config.get('patience', 0))
 
-    # Optional learned warp of each GP input
-    config['input_warp'] = validate_input_warp(config.get('input_warp', False))
-
     # Posterior samples from the GP surrogate; on by default with [sigma]
     config['posterior_samples'] = validate_posterior_samples(
         config.get('posterior_samples'), config['sigma']
@@ -493,7 +479,6 @@ def run_inference(config):
     if config['patience']:
         log.info(f'    patience      = {config["patience"]} evaluations')
     log.info(f'    kernel        = {config["kernel"]}')
-    log.info(f'    input warp    = {"on" if config["input_warp"] else "off"}')
     log.info(f'    acquisition   = {config["acqf"]}')
     log.info(f'    dispatch      = {dispatch_mode()}')
     objective = 'chi-squared' if config['sigma'] else 'relative'
@@ -527,7 +512,6 @@ def run_inference(config):
         config['correlation'],
         config['patience'],
         config['student_t_dof'],
-        config['input_warp'],
     )
 
     t_1 = time.perf_counter()

@@ -15,12 +15,12 @@ import matplotlib.pyplot as plt
 import torch
 from botorch.fit import fit_gpytorch_mll
 from botorch.models import SingleTaskGP
-from botorch.models.transforms import Standardize
+from botorch.models.transforms import Normalize, Standardize
 from botorch.optim import optimize_acqf
 from botorch.optim.fit import fit_gpytorch_mll_torch
 from gpytorch.mlls import ExactMarginalLogLikelihood
 
-from proteus.inference.utils import get_acqf, get_kernel, make_input_transform
+from proteus.inference.utils import get_acqf, get_kernel
 
 # Set tensor dtype for consistent precision
 dtype = torch.double
@@ -132,7 +132,7 @@ def _failed_starts(text: str) -> str:
     return f' in {starts} start(s) [{", ".join(sorted(reasons))}]'
 
 
-def BO_step(D, B, f, kernel, acqf, lock, worker_id, x_in=None, input_warp=False):
+def BO_step(D, B, f, kernel, acqf, lock, worker_id, x_in=None):
     """Perform a single Bayesian optimization step.
 
     Fits a GP to current data, optimizes an acquisition function,
@@ -149,7 +149,6 @@ def BO_step(D, B, f, kernel, acqf, lock, worker_id, x_in=None, input_warp=False)
     - lock (multiprocessing.Lock): Lock for synchronizing shared state.
     - worker_id (int): ID of the calling worker.
     - x_in (torch.Tensor, optional): Initial input for the first iteration.
-    - input_warp (bool): Whether the GP warps its inputs (`make_input_transform`).
 
     Returns
     ----------
@@ -181,7 +180,7 @@ def BO_step(D, B, f, kernel, acqf, lock, worker_id, x_in=None, input_warp=False)
             train_Y=Y,
             covar_module=get_kernel(kernel, d),
             train_Yvar=torch.full_like(Y, noise),
-            input_transform=make_input_transform(d, input_warp),
+            input_transform=Normalize(d=d),
             outcome_transform=Standardize(m=1),
         )
 
@@ -258,11 +257,7 @@ def BO_step(D, B, f, kernel, acqf, lock, worker_id, x_in=None, input_warp=False)
 
 
 def init_locs(
-    n_workers: int,
-    D: dict,
-    acqf: str = 'LogEI',
-    kernel: str = 'RBF',
-    input_warp: bool = False,
+    n_workers: int, D: dict, acqf: str = 'LogEI', kernel: str = 'RBF'
 ) -> torch.Tensor:
     """Generate initial sample locations for each worker using the configured acqf.
 
@@ -275,7 +270,6 @@ def init_locs(
     - D (dict): Shared dict with keys 'X' and 'Y' containing observed data.
     - acqf (str): Name of the acquisition function to use.
     - kernel (str): Kernel type ('RBF', 'MAT1/2', 'MAT3/2', 'MAT5/2').
-    - input_warp (bool): Whether the GP warps its inputs (`make_input_transform`).
 
     Returns
     ----------
@@ -294,7 +288,7 @@ def init_locs(
         train_X=X,
         train_Y=Y,
         covar_module=kernel,
-        input_transform=make_input_transform(d, input_warp),
+        input_transform=Normalize(d=d),
         outcome_transform=Standardize(m=1),
         train_Yvar=torch.full_like(Y, noise),
     )
