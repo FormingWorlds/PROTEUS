@@ -638,6 +638,21 @@ def test_check_volatile_invariants_escape_cumulative_bound():
     row_ok_loss = dict(row_bad_loss, esc_kg_cumulative=1.0e21)
     assert check_volatile_invariants(row_ok_loss, cfg) == []
 
+    # When M_desiccated credits the removed volatile mass (lost = 1e21 - 0 - 1e21 = 0 <= esc_tol), no violation:
+    row_desiccated_credit = dict(row_bad_loss, M_desiccated=1.0e21)
+    assert check_volatile_invariants(row_desiccated_credit, cfg) == []
+
+    # Non-finite M_desiccated must raise a named escape_cumulative_bound violation rather than defaulting to 0.0:
+    for bad_des in (float('nan'), float('inf'), float('-inf')):
+        row_bad_des = dict(row_ok_loss, M_desiccated=bad_des)
+        v_bad_des = check_volatile_invariants(row_bad_des, cfg)
+        assert len(v_bad_des) == 1
+        assert v_bad_des[0].name == 'escape_cumulative_bound'
+        assert v_bad_des[0].status_code == STATUS_ERROR_MASS_INVARIANT
+        assert v_bad_des[0].report_only is False
+        assert 'M_desiccated' in v_bad_des[0].message
+        assert 'not finite' in v_bad_des[0].message
+
     # Under default fO2_source='user_constant', M_vol_initial includes buffered O
     # exchanged with the mantle prior to desiccation, so escape_cumulative_bound
     # must not fire even when all volatile inventories are depleted.
