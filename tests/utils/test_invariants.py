@@ -653,6 +653,44 @@ def test_check_volatile_invariants_calliope_mass_thresh_vs_atmodeller_floor():
     assert v_atm_floor[0].tolerance == pytest.approx(1.0 / 100.0)
 
 
+def test_check_volatile_invariants_calliope_zero_parts_threshold():
+    """Under calliope with parts = 0, elements below mass_thresh / (1 - rtol) pass and above are reported."""
+    from proteus.utils.invariants import check_volatile_invariants
+
+    cfg = _make_mock_config(
+        outgas_module='calliope',
+        mass_thresh=1.0e16,
+        fO2_source='user_constant',
+        vapourise=False,
+    )
+    mass_thresh = float(cfg.outgas.mass_thresh)
+    rtol = float(cfg.invariants.element_closure_rtol)
+    # Zero parts closure condition: total > mass_thresh + rtol * total <=> total > mass_thresh / (1 - rtol)
+    total_crit = mass_thresh / (1.0 - rtol)
+
+    base_row = {
+        'Time': 100.0,
+        'M_planet': 6.0e24,
+        'M_atm': 1.0e21,
+        'M_vol_atm': 1.0e21,
+        'M_vaps': 0.0,
+        'H2O_kg_atm': 1.0e21,
+        'H_kg_atm': 0.0,
+        'H_kg_liquid': 0.0,
+        'H_kg_solid': 0.0,
+    }
+
+    row_just_below = dict(base_row, H_kg_total=total_crit * (1.0 - 1.0e-6))
+    assert check_volatile_invariants(row_just_below, cfg) == []
+
+    row_just_above = dict(base_row, H_kg_total=total_crit * (1.0 + 1.0e-6))
+    v_above = check_volatile_invariants(row_just_above, cfg)
+    assert len(v_above) == 1
+    assert v_above[0].name == 'H_reservoir_closure'
+    assert v_above[0].status_code == STATUS_ERROR_MASS_INVARIANT
+    assert v_above[0].report_only is False
+
+
 def test_check_volatile_invariants_planet_mass_cap_and_vapourise():
     """M_atm > M_planet * (1 + 1e-6) stops without vapourise and warns past M_vaps with vapourise."""
     from proteus.utils.invariants import check_volatile_invariants
