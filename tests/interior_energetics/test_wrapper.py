@@ -7388,6 +7388,34 @@ def test_an_accepted_state_error_ends_the_run_with_status_34(caplog):
     assert 'entropy_table: basic 79' in caplog.text
 
 
+def test_the_real_aragog_error_ends_the_run_with_status_34(caplog):
+    """The installed aragog's own AcceptedStateError is caught: status 34, re-raised as itself."""
+    es = pytest.importorskip('aragog.solver.entropy_solver')
+    if not hasattr(es, 'AcceptedStateError'):
+        pytest.skip('this aragog has no accepted-state checks')
+    from proteus.interior_energetics.wrapper import run_interior
+
+    config = _make_run_interior_config(prevent_warming=False, module='aragog')
+    hf_all, hf_row = _make_run_interior_state()
+    interior_o = _mock_interior_o()
+    interior_o.ic = 2
+    runner = MagicMock()
+    runner.run_solver.side_effect = es.AcceptedStateError(
+        'entropy_table', 'basic 0', 1.0, 99.0, 100.0
+    )
+    with (
+        patch('proteus.interior_energetics.aragog.AragogRunner', return_value=runner),
+        patch('proteus.interior_energetics.wrapper.UpdateStatusfile') as status,
+        patch('proteus.interior_energetics.wrapper.update_planet_mass'),
+        patch('proteus.interior_energetics.timestep.next_step', return_value=10.0),
+        caplog.at_level(logging.ERROR),
+        pytest.raises(Exception) as raised,
+    ):
+        run_interior({}, config, hf_all, dict(hf_row), interior_o, MagicMock())
+    assert type(raised.value) is es.AcceptedStateError
+    assert [c.args[1] for c in status.call_args_list] == [34]
+
+
 @pytest.mark.unit
 def test_a_stalled_interior_ends_the_run_instead_of_being_absorbed():
     """A stall is passed up; an ordinary solver failure is still absorbed.
