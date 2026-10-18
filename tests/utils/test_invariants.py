@@ -602,6 +602,8 @@ def test_check_volatile_invariants_calliope_mass_thresh_vs_atmodeller_floor():
     }
     row_just_below = dict(base_n_row, N_kg_atm=4.0e18 + 1.09e16)
     assert check_volatile_invariants(row_just_below, cfg_cal) == []
+    row_exact_bound = dict(base_n_row, N_kg_atm=4.0e18 + 1.10e16)
+    assert check_volatile_invariants(row_exact_bound, cfg_cal) == []
 
     row_just_above = dict(base_n_row, N_kg_atm=4.0e18 + 1.11e16)
     v_above = check_volatile_invariants(row_just_above, cfg_cal)
