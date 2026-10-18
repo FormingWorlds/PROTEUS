@@ -204,8 +204,8 @@ def test_invariants_section_loads_from_toml_and_rejects_orphan_keys(tmp_path):
     assert isinstance(structure_config({'config_version': '3.0'}, valid_toml), Config)
 
 
-def test_removed_energy_residual_coarse_dt_rtol_is_rejected(tmp_path):
-    """Setting the removed energy_residual_coarse_dt_rtol field is rejected as an unknown key."""
+def test_energy_residual_coarse_dt_rtol_key_is_rejected(tmp_path):
+    """An energy_residual_coarse_dt_rtol key in [invariants] is rejected as an unknown key."""
     from helpers import PROTEUS_ROOT
 
     dummy_text = (PROTEUS_ROOT / 'input' / 'dummy.toml').read_text()
