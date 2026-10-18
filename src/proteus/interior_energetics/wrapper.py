@@ -2466,6 +2466,11 @@ def run_interior(
     elif config.interior_energetics.module == 'aragog':
         from proteus.interior_energetics.aragog import AragogRunner, InteriorStalledError
 
+        try:
+            from aragog.solver.entropy_solver import AcceptedStateError
+        except ImportError:  # an aragog without the accepted-state checks
+            AcceptedStateError = ()
+
         with _core_module_status(config, dirs):
             runner = AragogRunner(config, dirs, hf_row, hf_all, interior_o)
         try:
@@ -2481,6 +2486,10 @@ def run_interior(
             # InteriorStalledError indicates zero progress across successful steps.
             # Do not absorb it under the consecutive retry failure counter.
             UpdateStatusfile(dirs, 21)
+            raise
+        except AcceptedStateError as e:
+            log.error('Aragog accepted state out of bounds: %s', e)
+            UpdateStatusfile(dirs, 34)
             raise
         except RuntimeError as e:
             interior_o.aragog_fail_count += 1

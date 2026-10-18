@@ -566,6 +566,8 @@ def CommentFromStatus(status: int):
             desc = 'Error (Escape model)'
         case 29:
             desc = 'Completed (planet evaporated)'
+        case 34:
+            desc = 'Error (Interior accepted state)'
         # Default case
         case _:
             desc = 'UNHANDLED STATUS (%d)' % status
