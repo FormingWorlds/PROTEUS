@@ -60,6 +60,7 @@ description. The codes are:
 | 26 | Error: tidal module |
 | 27 | Error: outgassing module |
 | 28 | Error: escape module |
+| 33 | Error: the Zalmoxis structure breaks a physical invariant |
 
 ## Helpfile columns
 
