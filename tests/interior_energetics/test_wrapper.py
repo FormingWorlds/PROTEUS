@@ -7960,3 +7960,29 @@ def test_remelt_aragog_leaves_the_core_temperature_alone_without_the_core_module
 
     assert solver.set_calls == []
     assert solver._T_core_init is None
+
+
+def test_an_older_aragog_keeps_the_retry_ladder_path():
+    """With an aragog that has no AcceptedStateError, a RuntimeError still counts as a failed
+    retry ladder: the fail count rises and no status 34 is written."""
+    import types
+
+    from proteus.interior_energetics.wrapper import run_interior
+
+    config = _make_run_interior_config(prevent_warming=False, module='aragog')
+    hf_all, hf_row = _make_run_interior_state()
+    interior_o = _mock_interior_o()
+    interior_o.ic = 2
+    interior_o.aragog_fail_count = 0
+    runner = MagicMock()
+    runner.run_solver.side_effect = RuntimeError('Aragog retry ladder exhausted')
+    with (
+        patch.dict('sys.modules', {'aragog.solver.entropy_solver': types.ModuleType('old')}),
+        patch('proteus.interior_energetics.aragog.AragogRunner', return_value=runner),
+        patch('proteus.interior_energetics.wrapper.UpdateStatusfile') as status,
+        patch('proteus.interior_energetics.wrapper.update_planet_mass'),
+        patch('proteus.interior_energetics.timestep.next_step', return_value=10.0),
+    ):
+        run_interior({}, config, hf_all, dict(hf_row), interior_o, MagicMock())
+    assert interior_o.aragog_fail_count == 1
+    assert 34 not in [c.args[1] for c in status.call_args_list]
