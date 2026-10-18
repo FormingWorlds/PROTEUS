@@ -778,8 +778,8 @@ class AragogRunner:
                 refit_core_at_reset(hf_row, interior_o, solver)
             else:
                 aragog_core.carry_core_across_update(hf_row, interior_o, solver, before)
-        # Restore entropy from previous solve. Known gap: cached _last_entropy
-        # is not bounds-checked against the regenerated [S_min, S_max].
+        # Restore entropy from the previous solve; aragog checks this start against
+        # the regenerated [S_min, S_max] on the next call.
         if hasattr(interior_o, '_last_entropy') and interior_o._last_entropy is not None:
             interior_o.aragog_solver.set_initial_entropy(interior_o._last_entropy)
 
