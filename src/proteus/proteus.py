@@ -654,6 +654,8 @@ class Proteus:
             UpdatePlots,
             WriteHelpfileToCSV,
             ZeroHelpfileRow,
+            _populate_core_residual,
+            _populate_energy_residual,
             assert_mass_conservation,
             assert_surface_pressure_consistency,
             print_citation,
@@ -1582,6 +1584,10 @@ class Proteus:
                 self.hf_row['Time'] = 0.0
             else:
                 self.interior_o.ic = 2
+
+            if self.loops['total'] > 1 and hasattr(self.hf_all, 'columns'):
+                _populate_energy_residual(self.hf_all, self.hf_row)
+                _populate_core_residual(self.hf_all, self.hf_row)
 
             # Validate run-row physical invariants before recording the row
             check_row_invariants(
