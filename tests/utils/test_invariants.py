@@ -916,14 +916,17 @@ def test_populate_energy_and_core_residuals_idempotent_across_double_call_and_ex
     _populate_energy_residual(current_hf, new_row)
     _populate_core_residual(current_hf, new_row)
     first_pass = {k: repr(new_row[k]) for k in cumulative_keys}
+    first_pass_float = {k: repr(float(new_row[k])) for k in cumulative_keys}
     first_pass_all = {k: repr(v) for k, v in new_row.items()}
 
     _populate_energy_residual(current_hf, new_row)
     _populate_core_residual(current_hf, new_row)
     second_pass = {k: repr(new_row[k]) for k in cumulative_keys}
+    second_pass_float = {k: repr(float(new_row[k])) for k in cumulative_keys}
     second_pass_all = {k: repr(v) for k, v in new_row.items()}
 
     assert second_pass == first_pass
+    assert second_pass_float == first_pass_float
     assert second_pass_all == first_pass_all
 
     extended_hf = ExtendHelpfile(current_hf, new_row)
@@ -931,4 +934,4 @@ def test_populate_energy_and_core_residuals_idempotent_across_double_call_and_ex
     df_last_row = {k: repr(float(extended_hf[k].iloc[-1])) for k in cumulative_keys}
 
     assert after_extend == first_pass
-    assert df_last_row == first_pass
+    assert df_last_row == first_pass_float
