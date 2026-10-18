@@ -126,6 +126,7 @@ def _make_mock_config(
     vapourise: bool = False,
     solver_rtol: float = 1.0e-4,
     mass_thresh: float = 1.0e10,
+    outgas_module: str = 'atmodeller',
 ):
     """Build a minimal config object carrying ``invariants``, ``params.dt``, ``planet``, ``outgas``."""
     from types import SimpleNamespace
@@ -137,6 +138,7 @@ def _make_mock_config(
         params=SimpleNamespace(dt=SimpleNamespace(rtol=dt_rtol, minimum=dt_minimum)),
         planet=SimpleNamespace(fO2_source=fO2_source),
         outgas=SimpleNamespace(
+            module=outgas_module,
             vapourise=vapourise,
             solver_rtol=solver_rtol,
             mass_thresh=mass_thresh,
@@ -572,6 +574,79 @@ def test_check_volatile_invariants_element_closure_and_gas_sum():
     assert v_gas[0].value == pytest.approx(5.0e-6)
     assert v_gas[0].tolerance == pytest.approx(1.0e-6)
     assert v_gas[0].report_only is False
+
+
+def test_check_volatile_invariants_calliope_mass_thresh_vs_atmodeller_floor():
+    """CALLIOPE element closure uses outgas.mass_thresh + rtol * total; atmodeller keeps max(atol_kg, rtol * total)."""
+    from proteus.utils.invariants import check_volatile_invariants
+
+    # For N_kg_total = 4.0e18 kg and rtol = 2.5e-4, rtol * total = 1.0e15 kg.
+    # Under calliope with mass_thresh = 1.0e16 kg, tol_e = 1.0e16 + 1.0e15 = 1.1e16 kg.
+    cfg_cal = _make_mock_config(
+        outgas_module='calliope',
+        mass_thresh=1.0e16,
+        fO2_source='user_constant',
+        vapourise=False,
+    )
+    base_n_row = {
+        'Time': 2600.0,
+        'M_planet': 6.0e24,
+        'M_atm': 1.0e21,
+        'M_vol_atm': 1.0e21,
+        'M_vaps': 0.0,
+        'H2O_kg_atm': 1.0e21,
+        'N_kg_total': 4.0e18,
+        'N_kg_atm': 4.0e18,
+        'N_kg_liquid': 0.0,
+        'N_kg_solid': 0.0,
+    }
+    row_just_below = dict(base_n_row, N_kg_atm=4.0e18 + 1.09e16)
+    assert check_volatile_invariants(row_just_below, cfg_cal) == []
+
+    row_just_above = dict(base_n_row, N_kg_atm=4.0e18 + 1.11e16)
+    v_above = check_volatile_invariants(row_just_above, cfg_cal)
+    assert len(v_above) == 1
+    assert v_above[0].name == 'N_reservoir_closure'
+    assert v_above[0].status_code == STATUS_ERROR_MASS_INVARIANT
+    assert v_above[0].value == pytest.approx(1.11e16 / 4.0e18)
+    assert v_above[0].tolerance == pytest.approx(1.1e16 / 4.0e18)
+    assert v_above[0].report_only is False
+
+    # Changing outgas.mass_thresh to 2.0e16 kg raises tol_e to 2.1e16 kg:
+    cfg_cal_wider = _make_mock_config(
+        outgas_module='calliope',
+        mass_thresh=2.0e16,
+        fO2_source='user_constant',
+        vapourise=False,
+    )
+    assert check_volatile_invariants(row_just_above, cfg_cal_wider) == []
+    row_above_wider = dict(base_n_row, N_kg_atm=4.0e18 + 2.11e16)
+    v_wider = check_volatile_invariants(row_above_wider, cfg_cal_wider)
+    assert len(v_wider) == 1
+    assert v_wider[0].name == 'N_reservoir_closure'
+    assert v_wider[0].value == pytest.approx(2.11e16 / 4.0e18)
+    assert v_wider[0].tolerance == pytest.approx(2.1e16 / 4.0e18)
+
+    # Under atmodeller, outgas.mass_thresh is not added and the 1.0 kg floor governs:
+    cfg_atm = _make_mock_config(
+        outgas_module='atmodeller',
+        mass_thresh=1.0e16,
+        fO2_source='user_constant',
+        vapourise=False,
+    )
+    v_atm_n = check_volatile_invariants(row_just_below, cfg_atm)
+    assert len(v_atm_n) == 1
+    assert v_atm_n[0].name == 'N_reservoir_closure'
+    assert v_atm_n[0].tolerance == pytest.approx(2.5e-4)
+
+    row_atm_floor_ok = dict(base_n_row, N_kg_total=100.0, N_kg_atm=100.9)
+    assert check_volatile_invariants(row_atm_floor_ok, cfg_atm) == []
+    row_atm_floor_bad = dict(base_n_row, N_kg_total=100.0, N_kg_atm=101.1)
+    v_atm_floor = check_volatile_invariants(row_atm_floor_bad, cfg_atm)
+    assert len(v_atm_floor) == 1
+    assert v_atm_floor[0].name == 'N_reservoir_closure'
+    assert v_atm_floor[0].value == pytest.approx(1.1 / 100.0)
+    assert v_atm_floor[0].tolerance == pytest.approx(1.0 / 100.0)
 
 
 def test_check_volatile_invariants_planet_mass_cap_and_vapourise():
