@@ -12064,7 +12064,7 @@
           "value": 0.0
         }
       ],
-      "description": "Relative tolerance on cumulative coupled energy residual against gross throughput [-]. Sized above the ``2.51e-4`` maximum gross-normalized residual in post-closure runs after the first post-initialisation step on default time-step configurations.",
+      "description": "Relative tolerance on cumulative coupled energy residual against gross throughput [-]. Sized above the ``2.51e-4`` maximum gross-normalized residual across the 53 post-closure baseline corpus runs (coarser-step configs ``input/minimal.toml`` and ``minimal_quick`` reach ``2.37e-3`` and ``4.69e-4``).",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -12295,7 +12295,7 @@
           "value": 0.0
         }
       ],
-      "description": "Relative tolerance on volatile gas species sum versus ``M_vol_atm`` [-], matching ``coupler.assert_mass_conservation``. Helpfiles without ``M_vol_atm`` fail the gas-sum check.",
+      "description": "Relative tolerance on volatile gas species sum versus ``M_vol_atm`` [-], matching ``coupler.assert_mass_conservation``. Helpfiles without ``M_vol_atm`` fail the ``M_vol_atm_species_sum`` check.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,

@@ -58,9 +58,12 @@ class InvariantViolation:
     report_only: bool = False
 
 
+_CROSSING_SUPPRESSED_NAMES: frozenset[str] = frozenset({'E_residual_cons_frac_gross'})
+
+
 @dataclass
 class InvariantTracker:
-    """Per-run tracker that logs repeated violations on rising-edge crossings and summarizes counts.
+    """Per-run tracker that suppresses repeated cumulative warnings and summarizes counts and maxima.
 
     Attributes
     ----------
@@ -68,12 +71,15 @@ class InvariantTracker:
         Invariant names violated on the immediately preceding row.
     row_counts : dict[str, int]
         Total number of rows on which each invariant name was violated.
+    max_values : dict[str, float]
+        Maximum observed magnitude ``|value|`` (or non-finite value) for each invariant name.
     rows_with_violations : int
         Total number of rows with at least one invariant violation.
     """
 
     active_names: set[str] = field(default_factory=set)
     row_counts: dict[str, int] = field(default_factory=dict)
+    max_values: dict[str, float] = field(default_factory=dict)
     rows_with_violations: int = 0
 
     def record_row(self, violations: Sequence[InvariantViolation]) -> set[str]:
@@ -86,14 +92,25 @@ class InvariantTracker:
         rising = current - self.active_names
         for name in current:
             self.row_counts[name] = self.row_counts.get(name, 0) + 1
+        for v in violations:
+            mag = abs(v.value) if np.isfinite(v.value) else v.value
+            if v.name not in self.max_values:
+                self.max_values[v.name] = mag
+            else:
+                prev = self.max_values[v.name]
+                if not np.isfinite(mag) or (np.isfinite(prev) and mag > prev):
+                    self.max_values[v.name] = mag
         self.active_names = current
         return rising
 
     def log_summary(self) -> None:
-        """Emit a single end-of-run summary line when at least one row had violations."""
+        """Emit a single end-of-run summary line with count and maximum value per invariant name."""
         if not self.row_counts:
             return
-        counts = ', '.join(f'{name}={cnt}' for name, cnt in self.row_counts.items())
+        counts = ', '.join(
+            f'{name}={cnt} (max={self.max_values.get(name, 0.0):.6e})'
+            for name, cnt in self.row_counts.items()
+        )
         log.warning(
             'Invariant summary: %d row(s) with violations (%s)',
             self.rows_with_violations,
@@ -131,6 +148,26 @@ class InvariantViolationError(RuntimeError):
         )
 
 
+def _emit_report_warning(
+    v: InvariantViolation,
+    rising: set[str],
+    tracker: InvariantTracker | None,
+) -> None:
+    """Emit a warning for ``v``, suppressing repeated cumulative rows while keeping per-row logs."""
+    if v.name in _CROSSING_SUPPRESSED_NAMES:
+        if v.name not in rising:
+            return
+        if tracker is not None:
+            log.warning(
+                'Invariant report [%s]: %s (count=%d)',
+                v.name,
+                v.message,
+                tracker.row_counts.get(v.name, 1),
+            )
+            return
+    log.warning('Invariant report [%s]: %s', v.name, v.message)
+
+
 def handle_violations(
     violations: Sequence[InvariantViolation],
     mode: str = 'report',
@@ -150,7 +187,7 @@ def handle_violations(
         occurs under ``mode == 'stop'``, writes ``primary.status_code`` to the run
         status file before raising :class:`InvariantViolationError`.
     tracker : InvariantTracker or None, optional
-        Optional per-run tracker suppressing duplicate log lines on consecutive rows.
+        Optional per-run tracker suppressing duplicate cumulative log lines on consecutive rows.
 
     Returns
     -------
@@ -180,15 +217,13 @@ def handle_violations(
 
     if mode == 'report':
         for v in violations:
-            if v.name in rising:
-                log.warning('Invariant report [%s]: %s', v.name, v.message)
+            _emit_report_warning(v, rising, tracker)
         return list(violations)
 
     stopping: list[InvariantViolation] = []
     for v in violations:
         if v.report_only:
-            if v.name in rising:
-                log.warning('Invariant report [%s]: %s', v.name, v.message)
+            _emit_report_warning(v, rising, tracker)
         else:
             log.error('Invariant violation [%s]: %s', v.name, v.message)
             stopping.append(v)
@@ -578,6 +613,7 @@ def check_volatile_invariants(
         )
 
     cap_tol = float(inv_cfg.planet_mass_cap_rtol)
+    m_atm_eff = 0.0 if (np.isfinite(m_atm) and abs(m_atm) <= closure_atol_kg) else m_atm
     if not (np.isfinite(m_planet) and np.isfinite(m_atm) and np.isfinite(m_vaps)):
         violations.append(
             InvariantViolation(
@@ -593,7 +629,7 @@ def check_volatile_invariants(
             )
         )
     elif m_planet > 0.0 and (not vapourise or m_vaps <= 0.0):
-        rel_excess = m_atm / m_planet - 1.0
+        rel_excess = m_atm_eff / m_planet - 1.0
         if rel_excess > cap_tol:
             violations.append(
                 InvariantViolation(
@@ -610,7 +646,7 @@ def check_volatile_invariants(
                 )
             )
     elif m_planet > 0.0:
-        unexplained_rel = (m_atm - m_planet - m_vaps) / m_planet
+        unexplained_rel = (m_atm_eff - m_planet - m_vaps) / m_planet
         if unexplained_rel > cap_tol:
             violations.append(
                 InvariantViolation(
@@ -680,22 +716,24 @@ def check_volatile_invariants(
                         report_only=False,
                     )
                 )
-        elif summed != m_vol_atm:
+        else:
             diff_gas = abs(summed - m_vol_atm)
-            violations.append(
-                InvariantViolation(
-                    name='M_vol_atm_species_sum',
-                    status_code=STATUS_ERROR_MASS_INVARIANT,
-                    value=diff_gas,
-                    tolerance=gas_tol,
-                    message=(
-                        f'Time={time_yr:.6e} yr: |sum_s(s_kg_atm) - M_vol_atm|='
-                        f'{diff_gas:.6e} kg with non-positive scale={scale:.6e} kg '
-                        f'(M_vol_atm={m_vol_atm:.6e} kg, sum_s={summed:.6e} kg)'
-                    ),
-                    report_only=False,
+            if diff_gas > closure_atol_kg:
+                violations.append(
+                    InvariantViolation(
+                        name='M_vol_atm_species_sum',
+                        status_code=STATUS_ERROR_MASS_INVARIANT,
+                        value=diff_gas,
+                        tolerance=closure_atol_kg,
+                        message=(
+                            f'Time={time_yr:.6e} yr: |sum_s(s_kg_atm) - M_vol_atm|='
+                            f'{diff_gas:.6e} kg exceeds element_closure_atol_kg='
+                            f'{closure_atol_kg:.6e} kg with non-positive scale={scale:.6e} kg '
+                            f'(M_vol_atm={m_vol_atm:.6e} kg, sum_s={summed:.6e} kg)'
+                        ),
+                        report_only=False,
+                    )
                 )
-            )
 
     outgas_cfg = getattr(config, 'outgas', None)
     is_calliope = getattr(outgas_cfg, 'module', None) == 'calliope'
@@ -704,8 +742,6 @@ def check_volatile_invariants(
     if vapourise:
         derived.add('O')
     for e in element_list:
-        if e in derived:
-            continue
         for r in ('atm', 'liquid', 'solid'):
             r_mass = float(hf_row.get(f'{e}_kg_{r}', 0.0))
             if np.isfinite(r_mass) and r_mass < -closure_atol_kg:
@@ -722,6 +758,8 @@ def check_volatile_invariants(
                         report_only=False,
                     )
                 )
+        if e in derived:
+            continue
         total = float(hf_row.get(f'{e}_kg_total', 0.0))
         if not np.isfinite(total):
             violations.append(
@@ -880,17 +918,18 @@ def check_state_bounds_invariants(
             )
         )
 
+    closure_atol_kg = float(inv_cfg.element_closure_atol_kg)
     m_atm = float(hf_row.get('M_atm', 0.0))
     p_surf = float(hf_row.get('P_surf', float('nan')))
-    if not np.isfinite(m_atm) or m_atm < 0.0:
+    if not np.isfinite(m_atm) or m_atm < -closure_atol_kg:
         valid_p = False
-        req = '== 0.0 bar with M_atm >= 0.0 kg'
-    elif m_atm == 0.0:
+        req = f'== 0.0 bar with M_atm >= {-closure_atol_kg:.6e} kg'
+    elif abs(m_atm) <= closure_atol_kg:
         valid_p = np.isfinite(p_surf) and p_surf == 0.0
-        req = '== 0.0'
+        req = '== 0.0 bar'
     else:
         valid_p = np.isfinite(p_surf) and p_surf > 0.0
-        req = '> 0.0'
+        req = '> 0.0 bar'
     if not valid_p:
         violations.append(
             InvariantViolation(
@@ -900,7 +939,7 @@ def check_state_bounds_invariants(
                 tolerance=0.0,
                 message=(
                     f'Time={time_yr:.6e} yr: P_surf={p_surf:.6e} bar violates '
-                    f'P_surf {req} bar (M_atm={m_atm:.6e} kg)'
+                    f'P_surf {req} (M_atm={m_atm:.6e} kg)'
                 ),
                 report_only=False,
             )

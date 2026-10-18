@@ -1187,506 +1187,519 @@ class Proteus:
             _t_init['total'] = _init_wall
             _initstr = ' '.join(f'{k}={v:.3f}' for k, v in _t_init.items())
             log.info('[INIT_TIMING] %s', _initstr)
-        while not self.finished_both:
-            # Determine whether this iteration is a data-write snapshot.
-            # Conditions that are individually sufficient:
-            #   1. iteration count matches write_mod, or
-            #   2. time elapsed since the last write (>dt_write_rel * Time)
-            is_snapshot = is_write_snapshot(
-                self.loops['total'],
-                self.config.params.out.write_mod,
-                self.config.params.out.dt_write_rel,
-                self.hf_row.get('Time', 0.0),
-                self.last_write_time,
-            )
-            # New rows
-            if self.loops['total'] > 0:
-                # Create new row to hold the updated variables. This will be
-                #    overwritten by the routines below.
-                self.hf_row = self.hf_all.iloc[-1].to_dict()
-
-                # Reset per-step impact heat at each row to prevent carrying forward
-                # previous step heat terms across iterations.
-                self.hf_row['step_dE_impact_J'] = 0.0
-                self.hf_row['step_dE_impact_core_J'] = 0.0
-                self.hf_row['step_dE_impact_core_refit_J'] = 0.0
-            log.info(' ')
-            PrintSeparator()
-            log.info('Loop counters')
-            log.info('current    init    maximum')
-            log.info(
-                ' %6d    %4d     %6d '
-                % (
+        try:
+            while not self.finished_both:
+                # Determine whether this iteration is a data-write snapshot.
+                # Conditions that are individually sufficient:
+                #   1. iteration count matches write_mod, or
+                #   2. time elapsed since the last write (>dt_write_rel * Time)
+                is_snapshot = is_write_snapshot(
                     self.loops['total'],
-                    self.loops['init_loops'],
-                    self.loops['total_loops'],
+                    self.config.params.out.write_mod,
+                    self.config.params.out.dt_write_rel,
+                    self.hf_row.get('Time', 0.0),
+                    self.last_write_time,
                 )
-            )
+                # New rows
+                if self.loops['total'] > 0:
+                    # Create new row to hold the updated variables. This will be
+                    #    overwritten by the routines below.
+                    self.hf_row = self.hf_all.iloc[-1].to_dict()
 
-            # Per-iter module wall-time breakdown (opt-in, see _IT_TIMING_ENABLED
-            # at module top). Populated as modules run; emitted as one
-            # `[IT_TIMING]` log line at the end of the iter.
-            _t_iter_start = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
-            # PROTEUS clears init_stage at the end of the last init iteration, before logging
-            _iter_init_stage = self.init_stage
-            _t_mod: dict[str, float] = {}
+                    # Reset per-step impact heat at each row to prevent carrying forward
+                    # previous step heat terms across iterations.
+                    self.hf_row['step_dE_impact_J'] = 0.0
+                    self.hf_row['step_dE_impact_core_J'] = 0.0
+                    self.hf_row['step_dE_impact_core_refit_J'] = 0.0
+                log.info(' ')
+                PrintSeparator()
+                log.info('Loop counters')
+                log.info('current    init    maximum')
+                log.info(
+                    ' %6d    %4d     %6d '
+                    % (
+                        self.loops['total'],
+                        self.loops['init_loops'],
+                        self.loops['total_loops'],
+                    )
+                )
 
-            ############### INTERIOR
-            PrintHalfSeparator()
+                # Per-iter module wall-time breakdown (opt-in, see _IT_TIMING_ENABLED
+                # at module top). Populated as modules run; emitted as one
+                # `[IT_TIMING]` log line at the end of the iter.
+                _t_iter_start = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
+                # PROTEUS clears init_stage at the end of the last init iteration, before logging
+                _iter_init_stage = self.init_stage
+                _t_mod: dict[str, float] = {}
 
-            # Tell the time-stepper the landing time of the next giant impact (the
-            # end of its chain), so it can shorten the step to land on it.
-            t_next_impact = landing_time(self.impact_events, self.hf_row['Time'])
-            self.interior_o.t_next_impact = t_next_impact
+                ############### INTERIOR
+                PrintHalfSeparator()
 
-            # Evolve interior
-            _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
-            run_interior(
-                self.directories,
-                self.config,
-                self.hf_all,
-                self.hf_row,
-                self.interior_o,
-                atmos_o=self.atmos_o,
-                write_data=is_snapshot,
-            )
-            if _IT_TIMING_ENABLED:
-                _t_mod['interior'] = time.perf_counter() - _t0
+                # Tell the time-stepper the landing time of the next giant impact (the
+                # end of its chain), so it can shorten the step to land on it.
+                t_next_impact = landing_time(self.impact_events, self.hf_row['Time'])
+                self.interior_o.t_next_impact = t_next_impact
 
-            # Advance current time in main loop according to interior step
-            self._advance_to_step_end(t_next_impact)
-
-            # Apply giant impacts due in this step. Remove applied events
-            # so each fires exactly once, including across init iterations.
-            if self.impact_events:
-                from proteus.accretion.wrapper import apply_due_impacts
-
-                apply_due_impacts(self, is_snapshot)
-
-            # One-time structure baseline in the interior-fed callable
-            # representation (dynamic and static runs share an identical start).
-            # Static runs perform no further structure solves; dynamic runs
-            # continue in the block below.
-            self._solve_structure_baseline_if_needed()
-
-            # Re-compute structure if Zalmoxis feedback is active
-            if (
-                not self.init_stage
-                and self.config.interior_struct.module == 'zalmoxis'
-                and self.config.interior_struct.zalmoxis.update_interval > 0
-            ):
-                from proteus.interior_energetics.wrapper import update_structure_from_interior
-
+                # Evolve interior
                 _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
-                (
-                    self.last_struct_time,
-                    self.last_struct_Tmagma,
-                    self.last_struct_Phi,
-                ) = update_structure_from_interior(
+                run_interior(
                     self.directories,
                     self.config,
-                    self.hf_row,
-                    self.interior_o,
-                    self.last_struct_time,
-                    self.last_struct_Tmagma,
-                    self.last_struct_Phi,
-                )
-                if _IT_TIMING_ENABLED:
-                    _t_mod['structure'] = time.perf_counter() - _t0
-                # gc.collect() already called inside update_structure_from_interior()
-
-                # Count down the resume-settling structure-re-solve window once
-                # per loop. When it reaches zero the guard disengages and the
-                # normal dynamic re-solve cadence resumes. Only ever armed on the
-                # resume path, so a fresh run never decrements (the key is absent).
-                if self.directories.get('_resume_struct_settle_loops', 0) > 0:
-                    self.directories['_resume_struct_settle_loops'] -= 1
-
-            ############### / INTERIOR AND STRUCTURE
-
-            ############### VOLATILE TRAPPING
-            # The front has moved and any structure re-solve is done, and escape and
-            # outgassing have not read the inventories yet, so all of them see the burial.
-            _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
-            trapping_step = run_trapping(
-                self.config,
-                self.hf_row,
-                self.hf_all,
-                self.interior_o,
-                init_stage=self.init_stage,
-            )
-            # Mass a remelt returns to a desiccated planet must reach escape and outgassing.
-            self.desiccated = desiccated_after_trapping(
-                self.config, self.hf_row, self.desiccated, trapping_step
-            )
-            if _IT_TIMING_ENABLED:
-                _t_mod['trapping'] = time.perf_counter() - _t0
-
-            ############### / VOLATILE TRAPPING
-
-            ############### ORBIT AND TIDES
-            PrintHalfSeparator()
-            _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
-            run_orbit(self.hf_row, self.config, self.directories, self.tides_o, self.interior_o)
-            if _IT_TIMING_ENABLED:
-                _t_mod['orbit'] = time.perf_counter() - _t0
-
-            ############### / ORBIT AND TIDES
-
-            ############### STELLAR FLUX MANAGEMENT
-            PrintHalfSeparator()
-            log.info('Stellar flux management...')
-            _t0_stellar = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
-            update_stellar_spectrum = False
-
-            # Ensure stellar quantities are updated when time-step is clamped.
-            if getattr(self.interior_o, 'timestep_clamped', False):
-                self.sinst_prev = -np.inf
-
-            # Calculate new instellation and radius
-            if (
-                abs(self.hf_row['Time'] - self.sinst_prev) > self.config.params.dt.starinst
-            ) or (self.loops['total'] == 0):
-                self.sinst_prev = self.hf_row['Time']
-
-                update_stellar_quantities(
-                    self.hf_row, self.config, stellar_track=self.stellar_track
-                )
-
-            if (
-                abs(self.hf_row['Time'] - self.sspec_prev) > self.config.params.dt.starspec
-            ) or (self.loops['total'] == 0):
-                self.sspec_prev = self.hf_row['Time']
-                update_stellar_spectrum = True
-
-                # Get the new spectrum using the appropriate module
-                log.info('Updating stellar spectrum')
-                self.star_wl, self.star_fl = get_new_spectrum(
-                    # Required variables
-                    self.hf_row['age_star'],
-                    self.config,
-                    # Variables needed for mors.spada
-                    star_struct_modern=self.star_struct,
-                    star_props_modern=self.star_props,
-                    # Variables needed for mors.baraffe
-                    stellar_track=self.stellar_track,
-                    modern_wl=self.star_modern_wl,
-                    modern_fl=self.star_modern_fl,
-                )
-
-                # Scale fluxes from 1 AU to TOA. This uses the same orbital
-                # average as F_ins and F_xuv, so the spectrum and the scalar
-                # fluxes derived from the same star agree on an eccentric orbit.
-                self.star_fl = scale_spectrum_to_toa(
-                    self.star_fl, flux_weighted_distance(self.hf_row)
-                )
-
-                # Save spectrum to file
-                write_spectrum(
-                    self.star_wl, self.star_fl, self.hf_row, self.directories['output']
-                )
-
-            else:
-                log.info('Updated spectrum not required')
-
-            if _IT_TIMING_ENABLED:
-                _t_mod['stellar'] = time.perf_counter() - _t0_stellar
-
-            ############### / STELLAR FLUX MANAGEMENT
-
-            ############### ESCAPE
-            _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
-            if self._run_escape_step() and _IT_TIMING_ENABLED:
-                _t_mod['escape'] = time.perf_counter() - _t0
-
-            ############### / ESCAPE
-
-            ############### OUTGASSING
-            PrintHalfSeparator()
-            _t0_outgas = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
-
-            # Recalculate mass targets during init phase, since these will be adjusted
-            #    depending on the true melt fraction and T_magma found by SPIDER at runtime.
-            if self.init_stage:
-                calc_target_elemental_inventories(self.directories, self.config, self.hf_row)
-
-            else:
-                # Check crystallization under equilibrium melting curves.
-                # Defer evaluation on an impact step while the mantle relaxes.
-                self._check_crystallization()
-
-                # Check desiccation (can happen even if crystallized, via escape)
-                if not self.desiccated:
-                    self.desiccated = check_desiccation(self.config, self.hf_row)
-
-            # Handle volatile exchange
-            log.info('Solving for atmosphere composition...')
-            first_iter = self.init_stage
-            if self.desiccated:
-                # no volatiles
-                run_desiccated(self.directories, self.config, self.hf_row, first_iter)
-
-            elif self.crystallized:
-                # post solidification
-                run_crystallized(self.config, self.hf_row, self.interior_o.dt)
-
-            else:
-                run_outgassing_and_vapourisation(
-                    self.directories, self.config, self.hf_row, first_iter
-                )
-
-                # Issue #677 IC consistency check. Fires once at the first
-                # outgas call (subsequent init_stage calls find the sentinel
-                # set to -1 and skip). Compares the user-supplied O_budget
-                # against CALLIOPE's equilibrium-derived O_kg_total; hard-
-                # fails on >50% divergence. Skipped when O_mode='ic_chemistry'
-                # or when planet.fO2_source != 'user_constant' (a derived
-                # fO2 makes the user O budget authoritative, so there is
-                # no divergence).
-                from proteus.outgas.wrapper import check_ic_oxygen_budget
-
-                check_ic_oxygen_budget(self.config, self.hf_row)
-
-            # Add mass of total tracked element mass (M_ele) to total mass of mantle+core
-            update_planet_mass(self.hf_row)
-
-            # Vapourisation moves non-volatile mass into M_atm that M_planet
-            # does not track, so only the M_atm <= M_planet half is dropped in
-            # that mode. An excess larger than the vapour column explains still
-            # warns, and PrintCurrentState reports the vapour budget every
-            # iteration. Non-conservation is a simplification of vapourisation.
-            from proteus.outgas.trapping import derived_total_elements, trapping_active
-
-            assert_mass_conservation(
-                self.hf_row,
-                require_atm_le_planet=not self.config.outgas.vapourise,
-                check_element_closure=trapping_active(self.config),
-                derived_elements=derived_total_elements(self.config),
-                closure_rtol=self.config.outgas.solver_rtol,
-            )
-
-            # P_surf = P_vol + P_vap, and P_vap == 0 when rock
-            # vapourisation is disabled. Cheap end-of-outgas guardrail against
-            # a code path updating P_surf without keeping the partial
-            # pressures in sync.
-            assert_surface_pressure_consistency(self.config, self.hf_row)
-
-            if _IT_TIMING_ENABLED:
-                _t_mod['outgas'] = time.perf_counter() - _t0_outgas
-
-            ############### / OUTGASSING
-
-            ############### ATMOSPHERE CLIMATE
-            PrintHalfSeparator()
-            _t0_atmos = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
-
-            # When global_miscibility is enabled, the atmosphere lower
-            # boundary is the solvus (binodal surface), not the magma
-            # ocean surface. Override the hf_row values that AGNI reads
-            # so the atmosphere is computed from the solvus outward.
-            # Save originals to restore after the atmosphere step.
-            _saved_atm_bc = {}
-            R_sol = solvus_radius(
-                self.config,
-                self.hf_row.get('R_solvus'),
-                self.hf_row['R_int'],
-                R_inner=self.hf_row.get('R_core') or 0.0,
-            )
-            if R_sol is not None:
-                _saved_atm_bc = {
-                    'T_surf': self.hf_row['T_surf'],
-                    'P_surf': self.hf_row['P_surf'],
-                    'R_int': self.hf_row['R_int'],
-                    'T_magma': self.hf_row['T_magma'],
-                }
-                self.hf_row['T_surf'] = self.hf_row['T_solvus']
-                self.hf_row['T_magma'] = self.hf_row['T_solvus']
-                self.hf_row['P_surf'] = self.hf_row['P_solvus'] * 1e-5  # Pa -> bar
-                self.hf_row['R_int'] = R_sol
-
-            try:
-                run_atmosphere(
-                    self.atmos_o,
-                    self.config,
-                    self.directories,
-                    self.loops,
-                    self.star_wl,
-                    self.star_fl,
-                    update_stellar_spectrum,
                     self.hf_all,
                     self.hf_row,
+                    self.interior_o,
+                    atmos_o=self.atmos_o,
                     write_data=is_snapshot,
                 )
-            finally:
-                # Restore the overridden hf_row values even if the atmosphere
-                # step raises, so a caught exception cannot leave the row in
-                # the solvus frame for the rest of the iteration.
-                if _saved_atm_bc:
-                    for key, val in _saved_atm_bc.items():
-                        self.hf_row[key] = val
+                if _IT_TIMING_ENABLED:
+                    _t_mod['interior'] = time.perf_counter() - _t0
 
-            # Atmosphere-interior coupling deadlock detection.
-            # If the atmosphere solver failed AND the interior state has
-            # not moved since the previous committed row, increment the
-            # deadlock counter. After `agni_deadlock_max` consecutive such
-            # iterations, abort the run with status 22 ("Atmosphere model
-            # error"). This catches the case where AGNI returns "Maximum
-            # attempts" with no converged solution and the coupling layer
-            # would otherwise silently freeze indefinitely.
-            #
-            # The "frozen" criterion uses bit-exact equality for T_magma and
-            # Phi_global (which truly do not move in a deadlocked interior)
-            # but a small relative tolerance for F_atm (1e-6) so that jittery
-            # AGNI non-convergence noise on the same physical state still
-            # registers as frozen. Without the F_atm tolerance, the detector
-            # would silently miss deadlocks where AGNI returns slightly
-            # different non-converged values on each retry.
-            #
-            # Guard: hf_all is None until the first row is appended at the
-            # bottom of the loop body. On a fresh run's first iteration
-            # there is no "previous" row to compare against, so the
-            # deadlock detector cannot fire yet, so count the failure but do
-            # not abort.
-            self._check_atmosphere_deadlock()
+                # Advance current time in main loop according to interior step
+                self._advance_to_step_end(t_next_impact)
 
-            if _IT_TIMING_ENABLED:
-                _t_mod['atmos'] = time.perf_counter() - _t0_atmos
+                # Apply giant impacts due in this step. Remove applied events
+                # so each fires exactly once, including across init iterations.
+                if self.impact_events:
+                    from proteus.accretion.wrapper import apply_due_impacts
 
-            ############### / ATMOSPHERE CLIMATE
+                    apply_due_impacts(self, is_snapshot)
 
-            ############### ONLINE ATMOSPHERIC CHEMISTRY
-            if (
-                self.config.atmos_chem.when == 'online'
-            ):  # checking if the toml file says online at atmos_chem and then when
+                # One-time structure baseline in the interior-fed callable
+                # representation (dynamic and static runs share an identical start).
+                # Static runs perform no further structure solves; dynamic runs
+                # continue in the block below.
+                self._solve_structure_baseline_if_needed()
+
+                # Re-compute structure if Zalmoxis feedback is active
                 if (
-                    is_snapshot and not self.desiccated
-                ):  # checking if the loop is a snapshot and runs VULCAN
-                    if self.loops['total'] not in vulcan_completed_loops:
-                        _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
-                        run_chemistry(self.directories, self.config, self.hf_row)
-                        if _IT_TIMING_ENABLED:
-                            _t_mod['chem'] = time.perf_counter() - _t0
-                        vulcan_completed_loops.add(
-                            self.loops['total']
-                        )  # adds it to the completed loops/snapshots
-            ############### / ONLINE ATMOSPHERIC CHEMISTRY
+                    not self.init_stage
+                    and self.config.interior_struct.module == 'zalmoxis'
+                    and self.config.interior_struct.zalmoxis.update_interval > 0
+                ):
+                    from proteus.interior_energetics.wrapper import (
+                        update_structure_from_interior,
+                    )
 
-            ############### HOUSEKEEPING AND CONVERGENCE CHECK
+                    _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
+                    (
+                        self.last_struct_time,
+                        self.last_struct_Tmagma,
+                        self.last_struct_Phi,
+                    ) = update_structure_from_interior(
+                        self.directories,
+                        self.config,
+                        self.hf_row,
+                        self.interior_o,
+                        self.last_struct_time,
+                        self.last_struct_Tmagma,
+                        self.last_struct_Phi,
+                    )
+                    if _IT_TIMING_ENABLED:
+                        _t_mod['structure'] = time.perf_counter() - _t0
+                    # gc.collect() already called inside update_structure_from_interior()
 
-            PrintHalfSeparator()
+                    # Count down the resume-settling structure-re-solve window once
+                    # per loop. When it reaches zero the guard disengages and the
+                    # normal dynamic re-solve cadence resumes. Only ever armed on the
+                    # resume path, so a fresh run never decrements (the key is absent).
+                    if self.directories.get('_resume_struct_settle_loops', 0) > 0:
+                        self.directories['_resume_struct_settle_loops'] -= 1
 
-            # Update model wall-clock runtime
-            run_time = datetime.now() - start_time
-            self.hf_row['runtime'] = float(run_time.total_seconds())
+                ############### / INTERIOR AND STRUCTURE
 
-            # Adjust total iteration counters
-            self.loops['total'] += 1
-
-            self._end_init_stage_if_due()
-
-            # Keep time at zero during init stage
-            if self.init_stage:
-                self.hf_row['Time'] = 0.0
-            else:
-                self.interior_o.ic = 2
-
-            has_hf_history = self.loops['total'] > 1 and hasattr(self.hf_all, 'columns')
-            if has_hf_history:
-                _populate_energy_residual(self.hf_all, self.hf_row)
-                _populate_core_residual(self.hf_all, self.hf_row)
-
-            prev_hf = self.hf_all if has_hf_history else None
-            if self.loops['total'] > 1:
-                self.hf_all = ExtendHelpfile(self.hf_all, self.hf_row)
-            else:
-                self.hf_all = CreateHelpfileFromDict(self.hf_row)
-
-            # Validate run-row physical invariants; on a stopping violation,
-            # flush the failing row and prior rows to disk before raising.
-            try:
-                check_row_invariants(
-                    self.hf_row,
+                ############### VOLATILE TRAPPING
+                # The front has moved and any structure re-solve is done, and escape and
+                # outgassing have not read the inventories yet, so all of them see the burial.
+                _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
+                trapping_step = run_trapping(
                     self.config,
-                    hf_all=prev_hf,
-                    directories=self.directories,
-                    tracker=self._invariant_tracker,
+                    self.hf_row,
+                    self.hf_all,
+                    self.interior_o,
+                    init_stage=self.init_stage,
                 )
-            except InvariantViolationError:
-                self._save_zalmoxis_output()
-                WriteHelpfileToCSV(self.directories['output'], self.hf_all)
-                self._invariant_tracker.log_summary()
-                raise
-
-            # Write helpfile to disk (gated by is_snapshot, which
-            # combines write_mod iteration check and dt_write time check)
-            if is_snapshot:
-                _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
-                self._save_zalmoxis_output()
-                WriteHelpfileToCSV(self.directories['output'], self.hf_all)
-                if _IT_TIMING_ENABLED:
-                    _t_mod['write'] = time.perf_counter() - _t0
-                self.last_write_time = self.hf_row.get('Time', 0.0)
-
-            # Print info to terminal and log file
-            PrintCurrentState(self.hf_row)
-
-            # Check for convergence
-            if not self.init_stage:
-                log.info('Checking convergence criteria')
-                check_termination(self)
-
-            # Make plots
-            if (
-                multiple(self.loops['total'], self.config.params.out.plot_mod)
-                and not self.finished_both
-            ):
-                log.info('Making plots')
-                _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
-                UpdatePlots(self.hf_all, self.directories, self.config)
-                if _IT_TIMING_ENABLED:
-                    _t_mod['plots'] = time.perf_counter() - _t0
-
-            # Update or create data archive
-            if (
-                is_snapshot
-                and multiple(self.loops['total'], self.config.params.out.archive_mod)
-                and not self.finished_both
-            ):
-                log.info('Updating archive of model output data')
-                _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
-                # pack new timestamped snapshots into data.tar, keeping the
-                # originals loose; the fixed-name runtime files and EOS table
-                # directories are left out so they are not re-appended (and so
-                # duplicated) on every archive cycle
-                archive.update(
-                    self.directories['output/data'], remove_files=False, snapshots_only=True
+                # Mass a remelt returns to a desiccated planet must reach escape and outgassing.
+                self.desiccated = desiccated_after_trapping(
+                    self.config, self.hf_row, self.desiccated, trapping_step
                 )
-                # prune archived snapshots older than the cutoff; fixed-name
-                # runtime files needed by the interior modules (mesh and EOS
-                # hand-off files) stay in place
-                archive.remove_old(self.directories['output/data'], self.hf_row['Time'] * 0.99)
                 if _IT_TIMING_ENABLED:
-                    _t_mod['archive'] = time.perf_counter() - _t0
+                    _t_mod['trapping'] = time.perf_counter() - _t0
 
-            # Emit one line per iter with the module wall-time breakdown.
-            # The "other" bucket captures un-instrumented slices (helpfile
-            # bookkeeping, plot checks, logging, deadlock detection, etc.).
-            if _IT_TIMING_ENABLED:
-                _iter_wall = time.perf_counter() - _t_iter_start
-                _accounted = sum(_t_mod.values())
-                _t_mod['other'] = max(0.0, _iter_wall - _accounted)
-                _t_mod['total'] = _iter_wall
-                _modstr = ' '.join(f'{k}={v:.3f}' for k, v in _t_mod.items())
-                log.info(
-                    '[IT_TIMING] iter=%d init_stage=%d %s',
-                    self.loops['total'],
-                    _iter_init_stage,
-                    _modstr,
+                ############### / VOLATILE TRAPPING
+
+                ############### ORBIT AND TIDES
+                PrintHalfSeparator()
+                _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
+                run_orbit(
+                    self.hf_row, self.config, self.directories, self.tides_o, self.interior_o
+                )
+                if _IT_TIMING_ENABLED:
+                    _t_mod['orbit'] = time.perf_counter() - _t0
+
+                ############### / ORBIT AND TIDES
+
+                ############### STELLAR FLUX MANAGEMENT
+                PrintHalfSeparator()
+                log.info('Stellar flux management...')
+                _t0_stellar = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
+                update_stellar_spectrum = False
+
+                # Ensure stellar quantities are updated when time-step is clamped.
+                if getattr(self.interior_o, 'timestep_clamped', False):
+                    self.sinst_prev = -np.inf
+
+                # Calculate new instellation and radius
+                if (
+                    abs(self.hf_row['Time'] - self.sinst_prev) > self.config.params.dt.starinst
+                ) or (self.loops['total'] == 0):
+                    self.sinst_prev = self.hf_row['Time']
+
+                    update_stellar_quantities(
+                        self.hf_row, self.config, stellar_track=self.stellar_track
+                    )
+
+                if (
+                    abs(self.hf_row['Time'] - self.sspec_prev) > self.config.params.dt.starspec
+                ) or (self.loops['total'] == 0):
+                    self.sspec_prev = self.hf_row['Time']
+                    update_stellar_spectrum = True
+
+                    # Get the new spectrum using the appropriate module
+                    log.info('Updating stellar spectrum')
+                    self.star_wl, self.star_fl = get_new_spectrum(
+                        # Required variables
+                        self.hf_row['age_star'],
+                        self.config,
+                        # Variables needed for mors.spada
+                        star_struct_modern=self.star_struct,
+                        star_props_modern=self.star_props,
+                        # Variables needed for mors.baraffe
+                        stellar_track=self.stellar_track,
+                        modern_wl=self.star_modern_wl,
+                        modern_fl=self.star_modern_fl,
+                    )
+
+                    # Scale fluxes from 1 AU to TOA. This uses the same orbital
+                    # average as F_ins and F_xuv, so the spectrum and the scalar
+                    # fluxes derived from the same star agree on an eccentric orbit.
+                    self.star_fl = scale_spectrum_to_toa(
+                        self.star_fl, flux_weighted_distance(self.hf_row)
+                    )
+
+                    # Save spectrum to file
+                    write_spectrum(
+                        self.star_wl, self.star_fl, self.hf_row, self.directories['output']
+                    )
+
+                else:
+                    log.info('Updated spectrum not required')
+
+                if _IT_TIMING_ENABLED:
+                    _t_mod['stellar'] = time.perf_counter() - _t0_stellar
+
+                ############### / STELLAR FLUX MANAGEMENT
+
+                ############### ESCAPE
+                _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
+                if self._run_escape_step() and _IT_TIMING_ENABLED:
+                    _t_mod['escape'] = time.perf_counter() - _t0
+
+                ############### / ESCAPE
+
+                ############### OUTGASSING
+                PrintHalfSeparator()
+                _t0_outgas = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
+
+                # Recalculate mass targets during init phase, since these will be adjusted
+                #    depending on the true melt fraction and T_magma found by SPIDER at runtime.
+                if self.init_stage:
+                    calc_target_elemental_inventories(
+                        self.directories, self.config, self.hf_row
+                    )
+
+                else:
+                    # Check crystallization under equilibrium melting curves.
+                    # Defer evaluation on an impact step while the mantle relaxes.
+                    self._check_crystallization()
+
+                    # Check desiccation (can happen even if crystallized, via escape)
+                    if not self.desiccated:
+                        self.desiccated = check_desiccation(self.config, self.hf_row)
+
+                # Handle volatile exchange
+                log.info('Solving for atmosphere composition...')
+                first_iter = self.init_stage
+                if self.desiccated:
+                    # no volatiles
+                    run_desiccated(self.directories, self.config, self.hf_row, first_iter)
+
+                elif self.crystallized:
+                    # post solidification
+                    run_crystallized(self.config, self.hf_row, self.interior_o.dt)
+
+                else:
+                    run_outgassing_and_vapourisation(
+                        self.directories, self.config, self.hf_row, first_iter
+                    )
+
+                    # Issue #677 IC consistency check. Fires once at the first
+                    # outgas call (subsequent init_stage calls find the sentinel
+                    # set to -1 and skip). Compares the user-supplied O_budget
+                    # against CALLIOPE's equilibrium-derived O_kg_total; hard-
+                    # fails on >50% divergence. Skipped when O_mode='ic_chemistry'
+                    # or when planet.fO2_source != 'user_constant' (a derived
+                    # fO2 makes the user O budget authoritative, so there is
+                    # no divergence).
+                    from proteus.outgas.wrapper import check_ic_oxygen_budget
+
+                    check_ic_oxygen_budget(self.config, self.hf_row)
+
+                # Add mass of total tracked element mass (M_ele) to total mass of mantle+core
+                update_planet_mass(self.hf_row)
+
+                # Vapourisation moves non-volatile mass into M_atm that M_planet
+                # does not track, so only the M_atm <= M_planet half is dropped in
+                # that mode. An excess larger than the vapour column explains still
+                # warns, and PrintCurrentState reports the vapour budget every
+                # iteration. Non-conservation is a simplification of vapourisation.
+                from proteus.outgas.trapping import derived_total_elements, trapping_active
+
+                assert_mass_conservation(
+                    self.hf_row,
+                    require_atm_le_planet=not self.config.outgas.vapourise,
+                    check_element_closure=trapping_active(self.config),
+                    derived_elements=derived_total_elements(self.config),
+                    closure_rtol=self.config.outgas.solver_rtol,
                 )
 
-            ############### / HOUSEKEEPING AND CONVERGENCE CHECK
+                # P_surf = P_vol + P_vap, and P_vap == 0 when rock
+                # vapourisation is disabled. Cheap end-of-outgas guardrail against
+                # a code path updating P_surf without keeping the partial
+                # pressures in sync.
+                assert_surface_pressure_consistency(self.config, self.hf_row)
 
-        self._invariant_tracker.log_summary()
+                if _IT_TIMING_ENABLED:
+                    _t_mod['outgas'] = time.perf_counter() - _t0_outgas
+
+                ############### / OUTGASSING
+
+                ############### ATMOSPHERE CLIMATE
+                PrintHalfSeparator()
+                _t0_atmos = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
+
+                # When global_miscibility is enabled, the atmosphere lower
+                # boundary is the solvus (binodal surface), not the magma
+                # ocean surface. Override the hf_row values that AGNI reads
+                # so the atmosphere is computed from the solvus outward.
+                # Save originals to restore after the atmosphere step.
+                _saved_atm_bc = {}
+                R_sol = solvus_radius(
+                    self.config,
+                    self.hf_row.get('R_solvus'),
+                    self.hf_row['R_int'],
+                    R_inner=self.hf_row.get('R_core') or 0.0,
+                )
+                if R_sol is not None:
+                    _saved_atm_bc = {
+                        'T_surf': self.hf_row['T_surf'],
+                        'P_surf': self.hf_row['P_surf'],
+                        'R_int': self.hf_row['R_int'],
+                        'T_magma': self.hf_row['T_magma'],
+                    }
+                    self.hf_row['T_surf'] = self.hf_row['T_solvus']
+                    self.hf_row['T_magma'] = self.hf_row['T_solvus']
+                    self.hf_row['P_surf'] = self.hf_row['P_solvus'] * 1e-5  # Pa -> bar
+                    self.hf_row['R_int'] = R_sol
+
+                try:
+                    run_atmosphere(
+                        self.atmos_o,
+                        self.config,
+                        self.directories,
+                        self.loops,
+                        self.star_wl,
+                        self.star_fl,
+                        update_stellar_spectrum,
+                        self.hf_all,
+                        self.hf_row,
+                        write_data=is_snapshot,
+                    )
+                finally:
+                    # Restore the overridden hf_row values even if the atmosphere
+                    # step raises, so a caught exception cannot leave the row in
+                    # the solvus frame for the rest of the iteration.
+                    if _saved_atm_bc:
+                        for key, val in _saved_atm_bc.items():
+                            self.hf_row[key] = val
+
+                # Atmosphere-interior coupling deadlock detection.
+                # If the atmosphere solver failed AND the interior state has
+                # not moved since the previous committed row, increment the
+                # deadlock counter. After `agni_deadlock_max` consecutive such
+                # iterations, abort the run with status 22 ("Atmosphere model
+                # error"). This catches the case where AGNI returns "Maximum
+                # attempts" with no converged solution and the coupling layer
+                # would otherwise silently freeze indefinitely.
+                #
+                # The "frozen" criterion uses bit-exact equality for T_magma and
+                # Phi_global (which truly do not move in a deadlocked interior)
+                # but a small relative tolerance for F_atm (1e-6) so that jittery
+                # AGNI non-convergence noise on the same physical state still
+                # registers as frozen. Without the F_atm tolerance, the detector
+                # would silently miss deadlocks where AGNI returns slightly
+                # different non-converged values on each retry.
+                #
+                # Guard: hf_all is None until the first row is appended at the
+                # bottom of the loop body. On a fresh run's first iteration
+                # there is no "previous" row to compare against, so the
+                # deadlock detector cannot fire yet, so count the failure but do
+                # not abort.
+                self._check_atmosphere_deadlock()
+
+                if _IT_TIMING_ENABLED:
+                    _t_mod['atmos'] = time.perf_counter() - _t0_atmos
+
+                ############### / ATMOSPHERE CLIMATE
+
+                ############### ONLINE ATMOSPHERIC CHEMISTRY
+                if (
+                    self.config.atmos_chem.when == 'online'
+                ):  # checking if the toml file says online at atmos_chem and then when
+                    if (
+                        is_snapshot and not self.desiccated
+                    ):  # checking if the loop is a snapshot and runs VULCAN
+                        if self.loops['total'] not in vulcan_completed_loops:
+                            _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
+                            run_chemistry(self.directories, self.config, self.hf_row)
+                            if _IT_TIMING_ENABLED:
+                                _t_mod['chem'] = time.perf_counter() - _t0
+                            vulcan_completed_loops.add(
+                                self.loops['total']
+                            )  # adds it to the completed loops/snapshots
+                ############### / ONLINE ATMOSPHERIC CHEMISTRY
+
+                ############### HOUSEKEEPING AND CONVERGENCE CHECK
+
+                PrintHalfSeparator()
+
+                # Update model wall-clock runtime
+                run_time = datetime.now() - start_time
+                self.hf_row['runtime'] = float(run_time.total_seconds())
+
+                # Adjust total iteration counters
+                self.loops['total'] += 1
+
+                self._end_init_stage_if_due()
+
+                # Keep time at zero during init stage
+                if self.init_stage:
+                    self.hf_row['Time'] = 0.0
+                else:
+                    self.interior_o.ic = 2
+
+                has_hf_history = self.loops['total'] > 1 and hasattr(self.hf_all, 'columns')
+                if has_hf_history:
+                    _populate_energy_residual(self.hf_all, self.hf_row)
+                    _populate_core_residual(self.hf_all, self.hf_row)
+
+                prev_hf = self.hf_all if has_hf_history else None
+                if self.loops['total'] > 1:
+                    self.hf_all = ExtendHelpfile(self.hf_all, self.hf_row)
+                else:
+                    self.hf_all = CreateHelpfileFromDict(self.hf_row)
+
+                # Validate run-row physical invariants; on a stopping violation,
+                # flush the failing row and prior rows to disk before raising.
+                try:
+                    check_row_invariants(
+                        self.hf_row,
+                        self.config,
+                        hf_all=prev_hf,
+                        directories=self.directories,
+                        tracker=self._invariant_tracker,
+                    )
+                except InvariantViolationError as exc:
+                    log.error(
+                        'Failing hf_row on invariant stop (%s): %s',
+                        exc.invariant_name,
+                        {k: self.hf_row[k] for k in sorted(self.hf_row)},
+                    )
+                    self._save_zalmoxis_output()
+                    WriteHelpfileToCSV(self.directories['output'], self.hf_all)
+                    raise
+
+                # Write helpfile to disk (gated by is_snapshot, which
+                # combines write_mod iteration check and dt_write time check)
+                if is_snapshot:
+                    _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
+                    self._save_zalmoxis_output()
+                    WriteHelpfileToCSV(self.directories['output'], self.hf_all)
+                    if _IT_TIMING_ENABLED:
+                        _t_mod['write'] = time.perf_counter() - _t0
+                    self.last_write_time = self.hf_row.get('Time', 0.0)
+
+                # Print info to terminal and log file
+                PrintCurrentState(self.hf_row)
+
+                # Check for convergence
+                if not self.init_stage:
+                    log.info('Checking convergence criteria')
+                    check_termination(self)
+
+                # Make plots
+                if (
+                    multiple(self.loops['total'], self.config.params.out.plot_mod)
+                    and not self.finished_both
+                ):
+                    log.info('Making plots')
+                    _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
+                    UpdatePlots(self.hf_all, self.directories, self.config)
+                    if _IT_TIMING_ENABLED:
+                        _t_mod['plots'] = time.perf_counter() - _t0
+
+                # Update or create data archive
+                if (
+                    is_snapshot
+                    and multiple(self.loops['total'], self.config.params.out.archive_mod)
+                    and not self.finished_both
+                ):
+                    log.info('Updating archive of model output data')
+                    _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
+                    # pack new timestamped snapshots into data.tar, keeping the
+                    # originals loose; the fixed-name runtime files and EOS table
+                    # directories are left out so they are not re-appended (and so
+                    # duplicated) on every archive cycle
+                    archive.update(
+                        self.directories['output/data'], remove_files=False, snapshots_only=True
+                    )
+                    # prune archived snapshots older than the cutoff; fixed-name
+                    # runtime files needed by the interior modules (mesh and EOS
+                    # hand-off files) stay in place
+                    archive.remove_old(
+                        self.directories['output/data'], self.hf_row['Time'] * 0.99
+                    )
+                    if _IT_TIMING_ENABLED:
+                        _t_mod['archive'] = time.perf_counter() - _t0
+
+                # Emit one line per iter with the module wall-time breakdown.
+                # The "other" bucket captures un-instrumented slices (helpfile
+                # bookkeeping, plot checks, logging, deadlock detection, etc.).
+                if _IT_TIMING_ENABLED:
+                    _iter_wall = time.perf_counter() - _t_iter_start
+                    _accounted = sum(_t_mod.values())
+                    _t_mod['other'] = max(0.0, _iter_wall - _accounted)
+                    _t_mod['total'] = _iter_wall
+                    _modstr = ' '.join(f'{k}={v:.3f}' for k, v in _t_mod.items())
+                    log.info(
+                        '[IT_TIMING] iter=%d init_stage=%d %s',
+                        self.loops['total'],
+                        _iter_init_stage,
+                        _modstr,
+                    )
+
+                ############### / HOUSEKEEPING AND CONVERGENCE CHECK
+        finally:
+            self._invariant_tracker.log_summary()
 
         # Write conditions at the end of simulation
         log.info('Writing data')

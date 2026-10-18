@@ -45,8 +45,9 @@ class Invariants:
         Enforcement mode for run-row invariants: ``'off'``, ``'report'``, or ``'stop'``.
     energy_residual_rtol: float
         Relative tolerance on cumulative coupled energy residual against gross throughput [-].
-        Sized above the ``2.51e-4`` maximum gross-normalized residual in post-closure runs
-        after the first post-initialisation step on default time-step configurations.
+        Sized above the ``2.51e-4`` maximum gross-normalized residual across the 53 post-closure
+        baseline corpus runs (coarser-step configs ``input/minimal.toml`` and ``minimal_quick``
+        reach ``2.37e-3`` and ``4.69e-4``).
     step_energy_rtol: float
         Relative tolerance on per-step energy residual increment normalized by per-step gross flux
         outside the ``301 K`` temperature clip [-]. In post-closure default runs outside the
@@ -87,7 +88,8 @@ class Invariants:
         and is only as tight as ``outgas.mass_thresh``.
     volatile_gas_sum_rtol: float
         Relative tolerance on volatile gas species sum versus ``M_vol_atm`` [-], matching
-        ``coupler.assert_mass_conservation``. Helpfiles without ``M_vol_atm`` fail the gas-sum check.
+        ``coupler.assert_mass_conservation``. Helpfiles without ``M_vol_atm`` fail the
+        ``M_vol_atm_species_sum`` check.
     planet_mass_cap_rtol: float
         Relative tolerance on ``M_atm <= M_planet`` [-], matching ``coupler.assert_mass_conservation``.
     escape_bound_factor: float

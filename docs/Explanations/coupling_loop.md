@@ -180,7 +180,7 @@ prevent the mass budget from silently diverging.
 
 With `outgas.vapourise = true`, rock vapour enters the atmosphere without being taken from the interior, so the first mass conservation check is not applied. See [Model description](model.md#whole-planet-mass-is-not-conserved-when-vapourisation-is-enabled).
 
-Because `assert_mass_conservation` runs inside `run_outgassing`, it executes before the end-of-iteration `check_row_invariants` pass and raises `RuntimeError` regardless of `invariants.mode` (see [Execution and output](../Reference/config/params.md#run-row-invariants-invariants)).
+Because `assert_mass_conservation` runs in the main loop after `update_planet_mass` (`Proteus.start`), it executes before the end-of-iteration `check_row_invariants` pass and raises `RuntimeError` regardless of `invariants.mode` (including on per-element reservoir closure at `outgas.solver_rtol` when solid-phase volatile trapping is active; see [Execution and output](../Reference/config/params.md#run-row-invariants-invariants)).
 
 ## Deadlock detection
 
