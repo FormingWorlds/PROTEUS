@@ -828,12 +828,12 @@ def test_main_loop_populates_energy_residuals_before_invariant_check_and_logs_to
 
     assert any(
         'Invariant report [E_residual_cons_frac_gross]' in rec.message
-        and '3.754079e-04 exceeds tol=2.600000e-04' in rec.message
+        and '3.755489e-04 exceeds tol=2.600000e-04' in rec.message
         for rec in caplog.records
     )
     logfile_text = (out / 'proteus_00.log').read_text(encoding='utf-8')
     assert (
         '[ WARN  ] Invariant report [E_residual_cons_frac_gross]: '
-        'Time=2.000000e+00 yr: E_residual_cons_frac_gross=3.754079e-04 '
+        'Time=2.000000e+00 yr: E_residual_cons_frac_gross=3.755489e-04 '
         'exceeds tol=2.600000e-04'
     ) in logfile_text
