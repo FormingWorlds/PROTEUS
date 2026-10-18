@@ -943,7 +943,6 @@ config_version = "3.0"
 [invariants]
     mode                            = "report" # off | report | stop
     energy_residual_rtol            = 2.6e-4   # cumulative coupled energy residual tolerance against gross throughput
-    energy_residual_coarse_dt_rtol  = 5.0e-4   # cumulative coupled energy residual tolerance when params.dt.rtol >= 0.2
     step_energy_rtol                = 1.0e-4   # per-step energy residual increment tolerance outside S_min
     step_energy_smin_rtol           = 2.5e-4   # per-step energy residual increment tolerance when clipped to S_min
     solver_residual_rtol            = 1.0e-12  # Aragog ODE solver internal energy residual tolerance

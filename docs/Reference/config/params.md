@@ -217,7 +217,6 @@ to be satisfied for two consecutive iterations before terminating.
 |---|---|---|---|
 | `mode` | str | `"report"` | Enforcement mode for run-row invariants: ``'off'``, ``'report'``, or ``'stop'``. Choices: `"off"`, `"report"`, `"stop"`. |
 | `energy_residual_rtol` | float | `0.00026` | Relative tolerance on cumulative coupled energy residual against gross throughput \[-\]. Must be > 0.0. |
-| `energy_residual_coarse_dt_rtol` | float | `0.0005` | Relative tolerance on cumulative coupled energy residual when ``params.dt.rtol >= 0.2`` \[-\]. Must be > 0.0. |
 | `step_energy_rtol` | float | `0.0001` | Relative tolerance on per-step energy residual increment outside the entropy floor \[-\]. Must be > 0.0. |
 | `step_energy_smin_rtol` | float | `0.00025` | Relative tolerance on per-step energy residual increment when clipped to ``S_min`` \[-\]. Must be > 0.0. |
 | `solver_residual_rtol` | float | `1e-12` | Relative tolerance on the Aragog ODE solver internal energy residual \[-\]. Must be > 0.0. |
@@ -247,7 +246,6 @@ Cross-field constraints enforced when the config file loads:
 - Reject accretion runs that also vapourise rock into the atmosphere.
 - Reject an Aragog core_module core that its structure or solver cannot serve.
 - Check that required external packages are importable for the selected modules.
-- Require coarse-step energy tolerance to be at least energy_residual_rtol.
 - Require structure mass desync stop tolerance to be at least the warning tolerance.
 - The maximum must exceed the minimum on the same section.
 - Reject giant impacts with the parameterized star-planet model.

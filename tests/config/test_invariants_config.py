@@ -23,7 +23,6 @@ pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 _STRICT_POSITIVE_FIELDS = (
     'energy_residual_rtol',
-    'energy_residual_coarse_dt_rtol',
     'step_energy_rtol',
     'step_energy_smin_rtol',
     'solver_residual_rtol',
@@ -52,7 +51,6 @@ def test_invariants_config_defaults_match_ruling_and_p1():
     assert isinstance(inv, Invariants)
     assert inv.mode == 'report'
     assert inv.energy_residual_rtol == pytest.approx(2.6e-4, rel=1e-12)
-    assert inv.energy_residual_coarse_dt_rtol == pytest.approx(5.0e-4, rel=1e-12)
     assert inv.step_energy_rtol == pytest.approx(1.0e-4, rel=1e-12)
     assert inv.step_energy_smin_rtol == pytest.approx(2.5e-4, rel=1e-12)
     assert inv.solver_residual_rtol == pytest.approx(1.0e-12, rel=1e-12)
@@ -129,10 +127,6 @@ def test_hypothesis_strict_positive_tolerances_accept_valid_positive_floats(
         kwargs['step_energy_smin_rtol'] = max(pos_val * 2.0, 2.5e-4)
     elif field_name == 'step_energy_smin_rtol':
         kwargs['step_energy_rtol'] = min(pos_val * 0.5, 1.0e-4)
-    elif field_name == 'energy_residual_rtol':
-        kwargs['energy_residual_coarse_dt_rtol'] = max(pos_val * 2.0, 5.0e-4)
-    elif field_name == 'energy_residual_coarse_dt_rtol':
-        kwargs['energy_residual_rtol'] = min(pos_val * 0.5, 2.6e-4)
     inv = Invariants(**kwargs)
     assert math.isfinite(getattr(inv, field_name))
     assert getattr(inv, field_name) == pytest.approx(pos_val, rel=1e-12)
@@ -188,8 +182,6 @@ def test_invariants_cross_field_ordering_validators():
         Invariants(struct_mass_desync_warn_rtol=1.0e-2, struct_mass_desync_rtol=5.0e-3)
     with pytest.raises(ValueError, match='step_energy_smin_rtol'):
         Invariants(step_energy_rtol=2.5e-4, step_energy_smin_rtol=1.0e-4)
-    with pytest.raises(ValueError, match='energy_residual_coarse_dt_rtol'):
-        Invariants(energy_residual_rtol=5.0e-4, energy_residual_coarse_dt_rtol=2.6e-4)
 
 
 def test_invariants_section_loads_from_toml_and_rejects_orphan_keys(tmp_path):
@@ -210,3 +202,19 @@ def test_invariants_section_loads_from_toml_and_rejects_orphan_keys(tmp_path):
     with pytest.raises(ValueError, match='invariants.nonexistent_tol'):
         read_config_object(orphan_toml)
     assert isinstance(structure_config({'config_version': '3.0'}, valid_toml), Config)
+
+
+def test_removed_energy_residual_coarse_dt_rtol_is_rejected(tmp_path):
+    """Setting the removed energy_residual_coarse_dt_rtol field is rejected as an unknown key."""
+    from helpers import PROTEUS_ROOT
+
+    dummy_text = (PROTEUS_ROOT / 'input' / 'dummy.toml').read_text()
+    coarse_toml = tmp_path / 'coarse_inv.toml'
+    coarse_toml.write_text(
+        dummy_text + '\n[invariants]\nenergy_residual_coarse_dt_rtol = 5.0e-4\n'
+    )
+    with pytest.raises(ValueError, match='invariants.energy_residual_coarse_dt_rtol'):
+        read_config_object(coarse_toml)
+
+    with pytest.raises(TypeError, match='energy_residual_coarse_dt_rtol'):
+        Invariants(energy_residual_coarse_dt_rtol=5.0e-4)  # type: ignore[call-arg]

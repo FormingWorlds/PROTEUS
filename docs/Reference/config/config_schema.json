@@ -12072,27 +12072,6 @@
       "group_qualifier": null
     },
     {
-      "path": "invariants.energy_residual_coarse_dt_rtol",
-      "toml_section": "invariants",
-      "class": "Invariants",
-      "type": "float",
-      "accepts_none": false,
-      "default": "0.0005",
-      "choices": null,
-      "bounds": [
-        {
-          "op": ">",
-          "value": 0.0
-        }
-      ],
-      "description": "Relative tolerance on cumulative coupled energy residual when ``params.dt.rtol >= 0.2`` [-].",
-      "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
-      "group_qualifier": null
-    },
-    {
       "path": "invariants.step_energy_rtol",
       "toml_section": "invariants",
       "class": "Invariants",
@@ -13019,17 +12998,6 @@
         "trans_mixing"
       ],
       "doc": "SPIDER requires at least one energy transport term to be enabled."
-    },
-    {
-      "validator": "coarse_dt_energy_ge_base",
-      "module": "_invariants.py",
-      "attached_to": [
-        "invariants.energy_residual_coarse_dt_rtol"
-      ],
-      "touches": [
-        "energy_residual_rtol"
-      ],
-      "doc": "Require coarse-step energy tolerance to be at least energy_residual_rtol."
     },
     {
       "validator": "desync_stop_ge_warn",

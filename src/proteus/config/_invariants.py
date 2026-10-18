@@ -17,15 +17,6 @@ def finite_float(instance, attribute, value) -> None:
         raise ValueError(f"'{attribute.name}' must be a finite number, got {value!r}.")
 
 
-def coarse_dt_energy_ge_base(instance, attribute, value) -> None:
-    """Require coarse-step energy tolerance to be at least energy_residual_rtol."""
-    if value < instance.energy_residual_rtol:
-        raise ValueError(
-            f"'energy_residual_coarse_dt_rtol' ({value}) must be >= "
-            f"'energy_residual_rtol' ({instance.energy_residual_rtol})."
-        )
-
-
 def step_energy_smin_ge_base(instance, attribute, value) -> None:
     """Require S_min step energy tolerance to be at least step_energy_rtol."""
     if value < instance.step_energy_rtol:
@@ -54,8 +45,6 @@ class Invariants:
         Enforcement mode for run-row invariants: ``'off'``, ``'report'``, or ``'stop'``.
     energy_residual_rtol: float
         Relative tolerance on cumulative coupled energy residual against gross throughput [-].
-    energy_residual_coarse_dt_rtol: float
-        Relative tolerance on cumulative coupled energy residual when ``params.dt.rtol >= 0.2`` [-].
     step_energy_rtol: float
         Relative tolerance on per-step energy residual increment outside the entropy floor [-].
     step_energy_smin_rtol: float
@@ -93,10 +82,6 @@ class Invariants:
     mode: str = field(default='report', validator=in_(('off', 'report', 'stop')))
 
     energy_residual_rtol: float = field(default=2.6e-4, validator=(finite_float, gt(0.0)))
-    energy_residual_coarse_dt_rtol: float = field(
-        default=5.0e-4,
-        validator=(finite_float, gt(0.0), coarse_dt_energy_ge_base),
-    )
     step_energy_rtol: float = field(default=1.0e-4, validator=(finite_float, gt(0.0)))
     step_energy_smin_rtol: float = field(
         default=2.5e-4,

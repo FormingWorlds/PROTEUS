@@ -284,7 +284,6 @@ _REVIEWED_NEUTRAL = frozenset(
         'invariants.core_residual_rtol',
         'invariants.element_closure_atol_kg',
         'invariants.element_closure_rtol',
-        'invariants.energy_residual_coarse_dt_rtol',
         'invariants.energy_residual_rtol',
         'invariants.escape_bound_atol_kg',
         'invariants.escape_bound_factor',
