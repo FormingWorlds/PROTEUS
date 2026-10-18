@@ -74,8 +74,8 @@ def summarise(pgrid_dir: str, tgt_status: str = None):
     gen_cases = {
         # Broad categories
         'Running': list(range(0, 10, 1)),
-        'Completed': list(range(10, 20, 1)),
-        'Error': list(range(20, 30, 1)),
+        'Completed': list(range(10, 20, 1)) + [29],
+        'Error': list(range(20, 29, 1)) + list(range(30, 35, 1)),
         'All': list(range(0, 100, 1)),
         # Narrower categories
         'Solidified': [10],
