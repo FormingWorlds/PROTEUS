@@ -7357,6 +7357,37 @@ def test_the_remelt_injection_is_weighed_against_the_impact_energy(caplog):
 
 
 @pytest.mark.unit
+def test_an_accepted_state_error_ends_the_run_with_status_34(caplog):
+    """An aragog accepted-state error is passed up with status 34 and a named log line."""
+    from proteus.interior_energetics.wrapper import run_interior
+
+    class AcceptedStateError(ValueError):
+        pass
+
+    config = _make_run_interior_config(prevent_warming=False, module='aragog')
+    hf_all, hf_row = _make_run_interior_state()
+    interior_o = _mock_interior_o()
+    interior_o.ic = 2
+    runner = MagicMock()
+    runner.run_solver.side_effect = AcceptedStateError('entropy_table: basic 79 at t=921 yr')
+    with (
+        patch(
+            'aragog.solver.entropy_solver.AcceptedStateError', AcceptedStateError, create=True
+        ),
+        patch('proteus.interior_energetics.aragog.AragogRunner', return_value=runner),
+        patch('proteus.interior_energetics.wrapper.UpdateStatusfile') as status,
+        patch('proteus.interior_energetics.wrapper.update_planet_mass'),
+        patch('proteus.interior_energetics.timestep.next_step', return_value=10.0),
+        caplog.at_level(logging.ERROR),
+        pytest.raises(AcceptedStateError),
+    ):
+        run_interior({}, config, hf_all, dict(hf_row), interior_o, MagicMock())
+    assert [c.args[1] for c in status.call_args_list] == [34]
+    assert interior_o.aragog_fail_count == 0
+    assert 'entropy_table: basic 79' in caplog.text
+
+
+@pytest.mark.unit
 def test_a_stalled_interior_ends_the_run_instead_of_being_absorbed():
     """A stall is passed up; an ordinary solver failure is still absorbed.
 

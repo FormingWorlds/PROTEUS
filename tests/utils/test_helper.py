@@ -390,6 +390,12 @@ class TestCommentFromStatus:
         assert 'Error' in CommentFromStatus(21)
 
     @pytest.mark.unit
+    def test_status_interior_accepted_state_error(self):
+        """Status 34: an accepted interior state left its bounds."""
+        assert CommentFromStatus(34) == 'Error (Interior accepted state)'
+        assert CommentFromStatus(34) != CommentFromStatus(21)
+
+    @pytest.mark.unit
     def test_status_atmosphere_error(self):
         """Status 22: Atmosphere model error."""
         assert 'Atmosphere' in CommentFromStatus(22)
