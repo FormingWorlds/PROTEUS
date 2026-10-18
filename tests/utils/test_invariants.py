@@ -188,7 +188,7 @@ def test_check_energy_invariants_row4_flux_cancellation_passes_under_gross_denom
 
 
 def test_check_energy_invariants_coupled_residual_and_coarse_dt_scaling(tmp_path):
-    """Coupled energy residual fires above 2.6e-4 (or 5.0e-4 for coarse dt) and is report-only."""
+    """Coupled energy residual fires above 2.6e-4 for all time-step settings and is report-only."""
     import pandas as pd
 
     hf_all = pd.DataFrame(
@@ -236,21 +236,22 @@ def test_check_energy_invariants_coupled_residual_and_coarse_dt_scaling(tmp_path
     assert '3.500000e-04' in v_std[0].message
     assert '2.600000e-04' in v_std[0].message
 
-    # Ruling 1: energy violations never stop a run even under mode == 'stop'
+    # Energy violations never stop a run even under mode == 'stop'
     dirs = {'output': str(tmp_path)}
     out = handle_violations(v_std, mode='stop', directories=dirs)
     assert out == v_std
     assert not (tmp_path / 'status').exists()
 
-    # Coarse dt (rtol >= 0.2) relaxes threshold to 5.0e-4
-    cfg_coarse = _make_mock_config(mode='stop', dt_rtol=0.2, dt_minimum=100.0)
-    assert check_energy_invariants(hf_row, cfg_coarse, hf_all) == []
-
-    hf_row_high = dict(hf_row, E_residual_cons_J=1.2e27)  # 1.2e27 / 2.0e30 = 6.0e-4 > 5.0e-4
-    v_coarse = check_energy_invariants(hf_row_high, cfg_coarse, hf_all)
-    assert len(v_coarse) == 1
-    assert v_coarse[0].tolerance == pytest.approx(5.0e-4)
-    assert v_coarse[0].report_only is True
+    # A minimal.toml row (dt_rtol=0.2, dt_minimum=100.0) at gross residual 4.7e-4
+    # must be reported against the single 2.6e-4 report threshold.
+    cfg_minimal = _make_mock_config(mode='stop', dt_rtol=0.2, dt_minimum=100.0)
+    hf_row_minimal = dict(hf_row, E_residual_cons_J=9.4e26)  # 9.4e26 / 2.0e30 = 4.7e-4 > 2.6e-4
+    v_minimal = check_energy_invariants(hf_row_minimal, cfg_minimal, hf_all)
+    assert len(v_minimal) == 1
+    assert v_minimal[0].name == 'E_residual_cons_frac_gross'
+    assert v_minimal[0].value == pytest.approx(4.7e-4)
+    assert v_minimal[0].tolerance == pytest.approx(2.6e-4)
+    assert v_minimal[0].report_only is True
 
 
 def test_check_energy_invariants_step_increment_outside_and_on_smin():
