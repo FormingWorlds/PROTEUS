@@ -127,6 +127,7 @@ def test_every_column_attributed_or_listed_unresolved(matrix):
         'src/proteus/plot/cpl_orbit.py::_plot_orbit_snapshot:dynamic key ecc_col',
         'src/proteus/plot/cpl_orbit.py::_plot_orbit_snapshot:dynamic key sma_col',
         "src/proteus/utils/coupler.py::assert_mass_conservation:dynamic key f'{e}_kg_{r}'",
+        "src/proteus/utils/invariants.py::check_volatile_invariants:dynamic key f'{e}_kg_{r}'",
     ]
     actual_reads = sorted(
         f'{e["file"]}::{e["function"]}:{e["reason"]}' for e in matrix['unresolved_events']

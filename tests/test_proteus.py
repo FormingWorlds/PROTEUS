@@ -51,6 +51,7 @@ def _make_proteus_instance(
     stall_maximum=STALL_MAX_CONFIGURED,
 ):
     """Build a Proteus object with mocked config and directories."""
+    from proteus.config._invariants import Invariants
     from proteus.config._params import StopStall
     from proteus.proteus import Proteus
 
@@ -74,6 +75,7 @@ def _make_proteus_instance(
     # this branch, so it has to carry the types and validators a run gives it,
     # and an unset mock integer would read as a stall cap of one iteration.
     config.params.stop.stall = StopStall(enabled=stall_enabled, maximum=stall_maximum)
+    config.invariants = Invariants()
 
     directories = {
         'output': str(tmp_path),
@@ -2754,6 +2756,7 @@ def _make_main_loop_proteus(tmp_path, *, plot_mod, write_mod, dt_write_rel, vapo
     that leave `update_planet_mass` mocked keep M_planet at zero, which
     short-circuits the invariant before either half runs.
     """
+    from proteus.config._invariants import Invariants
     from proteus.config._params import StopStall
     from proteus.proteus import Proteus
 
@@ -2785,6 +2788,7 @@ def _make_main_loop_proteus(tmp_path, *, plot_mod, write_mod, dt_write_rel, vapo
     # Left as a mock attribute this reads as a cap of one iteration, which
     # would end a loop test on the first unconverged solve.
     config.params.stop.stall = StopStall(enabled=True, maximum=STALL_MAX_CONFIGURED)
+    config.invariants = Invariants()
     config.params.dt.starinst = 1e8
     config.params.dt.starspec = 1e8
 
@@ -3752,6 +3756,7 @@ def _make_resume_main_loop_proteus(tmp_path, interior_module='spider', miscibili
     resume setup completes. ``interior_module`` selects the energetics
     module and ``miscibility`` the Zalmoxis global_miscibility switch.
     """
+    from proteus.config._invariants import Invariants
     from proteus.config._params import StopStall
     from proteus.proteus import Proteus
 
@@ -3781,6 +3786,7 @@ def _make_resume_main_loop_proteus(tmp_path, interior_module='spider', miscibili
     config.params.stop.solid.freeze_volatiles = False
     config.params.stop.solid.phi_crit = 0.01
     config.params.stop.stall = StopStall(enabled=True, maximum=STALL_MAX_CONFIGURED)
+    config.invariants = Invariants()
     config.params.dt.starinst = 1e8
     config.params.dt.starspec = 1e8
 
