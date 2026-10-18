@@ -2,7 +2,8 @@
 Unit tests for Bayesian optimization core utilities.
 
 Covers: ``unit_bounds``, ``get_acqf`` dispatch and error contract,
-``BO_step`` with explicit x_in / UCB path and a fresh kernel per fit, ``init_locs`` with acqf
+``BO_step`` with explicit x_in / UCB path and a fresh kernel per fit,
+random values for parameters the GP treats as irrelevant, ``init_locs`` with acqf
 propagation, and the ``plot_iter`` file-I/O leg.
 
 Physics invariants exercised:
@@ -52,6 +53,8 @@ class _DummyGP:
 
     def __init__(self):
         self.likelihood = object()
+        # Short lengthscales: every parameter relevant, none drawn at random
+        self.covar_module = type('K', (), {'lengthscale': torch.full((1, 8), 0.5)})()
 
     def posterior(self, xs):
         class _Posterior:
@@ -228,6 +231,55 @@ def test_bo_step_builds_a_new_kernel_for_every_fit(monkeypatch):
     assert built == [('MAT1/2', 1), ('MAT1/2', 1)]
     assert len(used) == 2
     assert used[0] is not used[1]  # a shared kernel would carry its fit into the next one
+
+
+def test_random_irrelevant_draws_only_parameters_above_the_threshold():
+    """Parameters with a fitted lengthscale above IRRELEVANT_LENGTHSCALE get a value
+    in [0, 1]; one exactly at the threshold, or below it, is left to the optimiser.
+    """
+    gp = type('G', (), {})()
+    gp.covar_module = type('K', (), {})()
+    gp.covar_module.lengthscale = torch.tensor([[0.2, 2.0, 1.5, 3.0]], dtype=torch.double)
+    torch.manual_seed(3)
+    fixed = bo_mod.random_irrelevant(gp, 4, 'test')
+    torch.manual_seed(3)
+    again = bo_mod.random_irrelevant(gp, 4, 'test')
+
+    assert bo_mod.IRRELEVANT_LENGTHSCALE == pytest.approx(1.5, rel=1e-12)
+    assert sorted(fixed) == [1, 3]
+    assert all(0.0 <= v <= 1.0 for v in fixed.values())
+    assert fixed == again  # drawn from the torch generator, so a seed repeats it
+    gp.covar_module.lengthscale = torch.full((1, 4), 0.3, dtype=torch.double)
+    assert bo_mod.random_irrelevant(gp, 4, 'test') is None
+
+
+@pytest.mark.physics_invariant
+def test_irrelevant_parameter_is_drawn_instead_of_pinned_to_a_bound():
+    """A GP that barely depends on x_1 (lengthscale 5) puts the LogEI maximum on the
+    x_1 = 1 bound; with x_1 drawn at random the proposal leaves the bound, and x_0
+    still goes to the optimum near 0.3.
+    """
+    from botorch.models import SingleTaskGP
+
+    g = torch.Generator().manual_seed(0)
+    X = torch.rand(20, 2, generator=g, dtype=torch.double)
+    Y = (-10 * (X[:, :1] - 0.3) ** 2 + 0.05 * X[:, 1:]).double()
+    gp = SingleTaskGP(X, Y, train_Yvar=torch.full_like(Y, 1e-4))
+    gp.covar_module.lengthscale = torch.tensor([[0.2, 5.0]], dtype=torch.double)
+    gp.eval()
+    acq = bo_mod.get_acqf('LogEI', gp, best=Y.max().item())
+
+    torch.manual_seed(1)
+    plain = bo_mod.optimize_acqf_logged(acq, 2, 'test')[0]
+    torch.manual_seed(1)
+    fixed = bo_mod.random_irrelevant(gp, 2, 'test')
+    drawn = bo_mod.optimize_acqf_logged(acq, 2, 'test', fixed)[0]
+
+    assert plain[1].item() > 1 - 1e-6  # the near-linear direction pins it to a bound
+    assert list(fixed) == [1]
+    assert drawn[1].item() == pytest.approx(fixed[1], abs=1e-12)
+    assert 1e-3 < drawn[1].item() < 1 - 1e-3
+    assert drawn[0].item() == pytest.approx(0.3, abs=0.1)
 
 
 def test_init_locs_returns_batch_candidates(monkeypatch):
