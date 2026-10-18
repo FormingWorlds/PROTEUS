@@ -5452,6 +5452,25 @@
       "group_qualifier": null
     },
     {
+      "path": "interior_energetics.aragog.top_node",
+      "toml_section": "interior_energetics.aragog",
+      "class": "Aragog",
+      "type": "str",
+      "accepts_none": false,
+      "default": "\"linear\"",
+      "choices": [
+        "linear",
+        "limited"
+      ],
+      "bounds": null,
+      "description": "Entropy of the top basic node, which sets T_magma. 'linear' (default) extrapolates the top two cells; 'limited' takes the smaller of the top cell step and the next one (minmod) and the top cell where that node leaves the entropy table.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
       "path": "interior_energetics.aragog.phase_smoothing",
       "toml_section": "interior_energetics.aragog",
       "class": "Aragog",
