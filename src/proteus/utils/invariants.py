@@ -227,19 +227,7 @@ def check_energy_invariants(
     denom_gross = max(abs_e_state_heat, hist_gross + step_gross, 1.0)
 
     inv_cfg = config.invariants
-    dt_cfg = getattr(getattr(config, 'params', None), 'dt', None)
-    is_coarse_dt = bool(
-        dt_cfg is not None
-        and (
-            float(getattr(dt_cfg, 'rtol', 0.1)) >= 0.2
-            or float(getattr(dt_cfg, 'minimum', 0.0)) >= 100.0
-        )
-    )
-    eff_energy_rtol = (
-        float(inv_cfg.energy_residual_coarse_dt_rtol)
-        if is_coarse_dt
-        else float(inv_cfg.energy_residual_rtol)
-    )
+    eff_energy_rtol = float(inv_cfg.energy_residual_rtol)
 
     violations: list[InvariantViolation] = []
     e_res_j = float(hf_row.get('E_residual_cons_J', 0.0))
@@ -286,8 +274,6 @@ def check_energy_invariants(
             if on_phase_kink
             else float(inv_cfg.step_energy_rtol)
         )
-        if is_coarse_dt:
-            step_tol = max(step_tol, float(inv_cfg.energy_residual_coarse_dt_rtol))
         if not np.isfinite(step_err) or step_err > step_tol:
             violations.append(
                 InvariantViolation(
