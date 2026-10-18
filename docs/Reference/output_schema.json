@@ -1758,8 +1758,7 @@
       ],
       "consumers": [
         "interior_energetics",
-        "plot",
-        "utils"
+        "plot"
       ],
       "consumers_possible": []
     },
@@ -26295,6 +26294,18 @@
       "kind": "read",
       "reason": "dynamic key f'{e}_kg_{r}'",
       "function": "assert_mass_conservation"
+    },
+    {
+      "file": "src/proteus/utils/invariants.py",
+      "kind": "read",
+      "reason": "dynamic key key",
+      "function": "check_energy_invariants"
+    },
+    {
+      "file": "src/proteus/utils/invariants.py",
+      "kind": "read",
+      "reason": "dynamic key f'{e}_kg_{r}'",
+      "function": "check_volatile_invariants"
     },
     {
       "file": "src/proteus/utils/invariants.py",
