@@ -4217,6 +4217,33 @@ def test_setup_solver_passes_no_core_module_params_on_default_config(tmp_path):
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize('top_node', ['linear', 'limited'])
+def test_setup_solver_passes_the_limited_top_node_only(tmp_path, top_node):
+    """The limited top node reaches the aragog boundary conditions; the default linear node is
+    not passed, so an aragog without the option still builds them."""
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    config = _make_aragog_config(struct_module='zalmoxis')
+    config.interior_energetics.aragog.top_node = top_node
+    hf_row, interior_o = _spider_fallback_scaffold(tmp_path)
+    hf_row.update(R_core=3.48e6)
+
+    with (
+        patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path),
+        patch(
+            'proteus.interior_energetics.aragog._BoundaryConditionsParameters'
+        ) as mock_bc_cls,
+        patch('proteus.interior_energetics.aragog.Parameters'),
+        patch('proteus.interior_energetics.aragog.EntropySolver'),
+        patch('proteus.interior_energetics.aragog._cached_entropy_eos'),
+    ):
+        AragogRunner.setup_solver(config, hf_row, interior_o, str(tmp_path))
+
+    kwargs = mock_bc_cls.call_args.kwargs
+    assert kwargs.get('top_node') == (None if top_node == 'linear' else 'limited')
+
+
+@pytest.mark.unit
 def test_core_module_snapshot_and_resume_preserves_t_core_and_gradient(tmp_path):
     """Resume with core_bc='core_module' preserves both T_core and dSdr_cmb.
 
