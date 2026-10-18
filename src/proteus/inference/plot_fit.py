@@ -428,20 +428,15 @@ def _padded(bounds, log_axis: bool, frac: float = 0.03) -> tuple[float, float]:
 def _posterior_axes(ax, i: int, j: int, keys: list, pars: dict):
     """Limits a little past the bounds (dotted), scales, ticks and labels of one corner panel."""
     n = len(keys)
-    for k, lim, scale, axline, axis in (
-        (keys[j], ax.set_xlim, ax.set_xscale, ax.axvline, ax.xaxis),
-        (keys[i], ax.set_ylim, ax.set_yscale, ax.axhline, ax.yaxis),
-    ):
-        if axis is ax.yaxis and i == j:
-            continue
+    for k, a in [(keys[j], 'x')] + ([(keys[i], 'y')] if i != j else []):
         log_axis = variable_is_logarithmic(k)
-        lim(*_padded(pars[k], log_axis))
+        getattr(ax, f'set_{a}lim')(*_padded(pars[k], log_axis))
         for v in pars[k]:
-            axline(v, color='0.75', lw=0.5, ls=':', zorder=0)
+            (ax.axvline if a == 'x' else ax.axhline)(v, color='0.75', lw=0.5, ls=':', zorder=0)
         if log_axis:
-            scale('log')
+            getattr(ax, f'set_{a}scale')('log')
         else:
-            axis.set_major_locator(MaxNLocator(4, prune='both'))
+            getattr(ax, f'{a}axis').set_major_locator(MaxNLocator(4, prune='both'))
     if i == n - 1:
         ax.set_xlabel(PARAM_LABELS.get(keys[j], keys[j]))
     else:

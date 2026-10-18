@@ -103,7 +103,7 @@ def optimize_acqf_logged(
             return_best_only=False,
         )
     starts = starts.reshape(-1, d)[torch.argsort(values.reshape(-1), descending=True)]
-    if avoid is not None and len(avoid):
+    if avoid is not None:
         starts = starts[torch.cdist(starts, avoid).min(dim=1).values >= MIN_SEPARATION]
     if len(starts):
         x = starts[:1]
