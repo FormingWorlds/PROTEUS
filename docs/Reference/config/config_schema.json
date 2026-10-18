@@ -5463,7 +5463,7 @@
         "limited"
       ],
       "bounds": null,
-      "description": "Entropy of the top basic node, which sets T_magma. 'linear' (default) extrapolates the top two cells; 'limited' takes the smaller of the top cell step and the next one (minmod) and the top cell where that node leaves the entropy table.",
+      "description": "Entropy of the top basic node, which sets T_magma. 'linear' (default) extrapolates the top two cells; 'limited' takes the smaller of the top cell step and the next one (minmod) and blends into the top cell near a table edge, so the node stays in the table (not on core_bc 'gradient').",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
