@@ -159,7 +159,7 @@ def test_bo_step_ucb_path_computes_distance(monkeypatch):
     monkeypatch.setattr(
         bo_mod,
         'optimize_acqf',
-        lambda **kwargs: (torch.tensor([[0.8]], dtype=torch.double), None),
+        lambda **kwargs: (torch.tensor([[0.8]], dtype=torch.double), torch.zeros(1)),
     )
     monkeypatch.setattr(bo_mod, 'plot_iter', lambda **kwargs: None)
 
@@ -210,7 +210,7 @@ def test_bo_step_builds_a_new_kernel_for_every_fit(monkeypatch):
     monkeypatch.setattr(
         bo_mod,
         'optimize_acqf',
-        lambda **kwargs: (torch.tensor([[0.5]], dtype=torch.double), None),
+        lambda **kwargs: (torch.tensor([[0.5]], dtype=torch.double), torch.zeros(1)),
     )
     monkeypatch.setattr(bo_mod, 'plot_iter', lambda **kwargs: None)
     D = {
@@ -282,6 +282,63 @@ def test_irrelevant_parameter_is_drawn_instead_of_pinned_to_a_bound():
     assert drawn[0].item() == pytest.approx(0.3, abs=0.1)
 
 
+def _restarts(monkeypatch, points, values):
+    """Make optimize_acqf return the given restart candidates (n, d) with their values."""
+    X = torch.tensor(points, dtype=torch.double)[:, None, :]
+    v = torch.tensor(values, dtype=torch.double)
+    monkeypatch.setattr(bo_mod, 'optimize_acqf', lambda **kwargs: (X, v))
+
+
+def test_optimize_acqf_logged_takes_the_best_restart_clear_of_existing_points(monkeypatch):
+    """Restarts are ranked by acquisition value; one within MIN_SEPARATION of an avoided
+    point is skipped, so the proposal is the best restart that is not a near-repeat.
+    """
+    avoid = torch.tensor([[0.5, 0.5]], dtype=torch.double)
+    _restarts(monkeypatch, [[0.2, 0.8], [0.5, 0.502], [0.9, 0.1]], [0.4, 0.9, 0.1])
+
+    assert bo_mod.MIN_SEPARATION == pytest.approx(0.005, rel=1e-12)
+    x = bo_mod.optimize_acqf_logged(None, 2, 'test', avoid=avoid)
+    assert x.tolist() == [[0.2, 0.8]]  # 0.9 is the best value but 0.002 from the point
+    assert bo_mod.optimize_acqf_logged(None, 2, 'test').tolist() == [[0.5, 0.502]]
+
+
+def test_optimize_acqf_logged_proposes_at_random_when_every_restart_repeats(monkeypatch):
+    """With every restart near an avoided point, the proposal is a random point in the cube."""
+    avoid = torch.tensor([[0.5, 0.5]], dtype=torch.double)
+    _restarts(monkeypatch, [[0.5, 0.5], [0.501, 0.5]], [1.0, 0.5])
+    torch.manual_seed(0)
+    x = bo_mod.optimize_acqf_logged(None, 2, 'test', avoid=avoid)
+
+    assert x.shape == (1, 2)
+    assert torch.all((x >= 0) & (x <= 1))
+    assert torch.cdist(x, avoid).item() >= bo_mod.MIN_SEPARATION
+
+
+def test_pending_point_at_the_acquisition_maximum_is_not_proposed_again():
+    """A real LogEI maximum, once evaluated or pending, is not proposed a second time:
+    the next proposal lies at least MIN_SEPARATION from it.
+    """
+    from botorch.models import SingleTaskGP
+
+    g = torch.Generator().manual_seed(0)
+    X = torch.rand(15, 2, generator=g, dtype=torch.double)
+    Y = (-10 * ((X - 0.4) ** 2).sum(dim=1, keepdim=True)).double()
+    gp = SingleTaskGP(X, Y, train_Yvar=torch.full_like(Y, 1e-4))
+    gp.covar_module.lengthscale = torch.tensor([[0.3, 0.3]], dtype=torch.double)
+    gp.eval()
+    acq = bo_mod.get_acqf('LogEI', gp, best=Y.max().item())
+
+    torch.manual_seed(1)
+    first = bo_mod.optimize_acqf_logged(acq, 2, 'test', avoid=X)
+    torch.manual_seed(1)
+    again = bo_mod.optimize_acqf_logged(acq, 2, 'test', avoid=torch.cat([X, first]))
+    torch.manual_seed(1)
+    unguarded = bo_mod.optimize_acqf_logged(acq, 2, 'test')
+
+    assert torch.cdist(unguarded, first).item() < bo_mod.MIN_SEPARATION  # would repeat it
+    assert torch.cdist(again, torch.cat([X, first])).min().item() >= bo_mod.MIN_SEPARATION
+
+
 def test_init_locs_returns_batch_candidates(monkeypatch):
     """init_locs(n, D) returns an (n, d) tensor for n workers by calling
     optimize_acqf once per worker with q=1 and stacking the results.
@@ -308,7 +365,7 @@ def test_init_locs_returns_batch_candidates(monkeypatch):
         q_values.append(kwargs.get('q'))
         result = results[call_idx[0]]
         call_idx[0] += 1
-        return (result, None)
+        return (result, torch.zeros(1))
 
     monkeypatch.setattr(bo_mod, 'optimize_acqf', _mock_optimize)
 
@@ -517,7 +574,7 @@ def test_init_locs_propagates_acqf_to_log_pi(monkeypatch):
     def _mock_optimize(**kw):
         result = results[call_idx[0]]
         call_idx[0] += 1
-        return (result, None)
+        return (result, torch.zeros(1))
 
     monkeypatch.setattr(bo_mod, 'optimize_acqf', _mock_optimize)
 
@@ -578,7 +635,7 @@ def _patched_bo_step_deps(monkeypatch, candidate=0.8):
     monkeypatch.setattr(
         bo_mod,
         'optimize_acqf',
-        lambda **kwargs: (torch.tensor([[candidate]], dtype=torch.double), None),
+        lambda **kwargs: (torch.tensor([[candidate]], dtype=torch.double), torch.zeros(1)),
     )
     monkeypatch.setattr(bo_mod, 'plot_iter', lambda **kwargs: None)
 
@@ -760,7 +817,7 @@ def _patch_optimizer(monkeypatch, *messages):
     def _optimize(**kwargs):
         for text, category in messages:
             warnings.warn(text, category)
-        return torch.tensor([[0.25, 0.75]], dtype=torch.double), None
+        return torch.tensor([[0.25, 0.75]], dtype=torch.double), torch.zeros(1)
 
     monkeypatch.setattr(bo_mod, 'optimize_acqf', _optimize)
 

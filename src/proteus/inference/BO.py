@@ -34,6 +34,9 @@ _PASSED_ON: set[tuple] = set()
 # parameter, so the acquisition peaks on one of its bounds; that parameter is drawn instead.
 IRRELEVANT_LENGTHSCALE = 1.5
 
+# A proposal closer than this (unit cube) to an evaluated or pending point adds almost nothing
+MIN_SEPARATION = 0.005
+
 
 def unit_bounds(d):
     """Generate unit hypercube bounds for d-dimensional input.
@@ -63,11 +66,17 @@ def random_irrelevant(gp, d: int, who: str) -> dict[int, float] | None:
 
 
 def optimize_acqf_logged(
-    acq_function, d: int, who: str, fixed_features: dict[int, float] | None = None
+    acq_function,
+    d: int,
+    who: str,
+    fixed_features: dict[int, float] | None = None,
+    avoid: torch.Tensor | None = None,
 ) -> torch.Tensor:
     """Maximise the acquisition, logging botorch's L-BFGS-B retry warnings as one line.
 
-    botorch keeps the best candidate even when the retry fails. Other warnings pass through.
+    The proposal is the best restart at least MIN_SEPARATION from every point in `avoid`,
+    or a uniform random point when every restart is closer. botorch keeps the best
+    candidate even when the retry fails. Other warnings pass through.
 
     Parameters
     ----------
@@ -75,6 +84,7 @@ def optimize_acqf_logged(
     - d (int): Number of parameters.
     - who (str): Caller named in the log line, e.g. 'worker 3'.
     - fixed_features (dict | None): Parameters held at the given values, by index.
+    - avoid (torch.Tensor | None): Evaluated and pending points, shape (n, d).
 
     Returns
     ----------
@@ -82,7 +92,7 @@ def optimize_acqf_logged(
     """
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter('always')
-        x, _ = optimize_acqf(
+        starts, values = optimize_acqf(
             acq_function=acq_function,
             bounds=unit_bounds(d),
             q=1,
@@ -90,6 +100,17 @@ def optimize_acqf_logged(
             raw_samples=1000 * d,
             options={'maxiter': 1000},
             fixed_features=fixed_features,
+            return_best_only=False,
+        )
+    starts = starts.reshape(-1, d)[torch.argsort(values.reshape(-1), descending=True)]
+    if avoid is not None and len(avoid):
+        starts = starts[torch.cdist(starts, avoid).min(dim=1).values >= MIN_SEPARATION]
+    if len(starts):
+        x = starts[:1]
+    else:
+        x = torch.rand(1, d, dtype=dtype)
+        log.debug(
+            f'{who}: every restart within {MIN_SEPARATION} of a point; proposing at random'
         )
 
     failed, second = None, False
@@ -197,7 +218,9 @@ def BO_step(D, B, f, kernel, acqf, lock, worker_id, x_in=None):
         acqf_f = get_acqf(acqf, gp, best, X_pending=b if busys else None)
 
         who = f'worker {worker_id}'
-        x = optimize_acqf_logged(acqf_f, d, who, random_irrelevant(gp, d, who))
+        x = optimize_acqf_logged(
+            acqf_f, d, who, random_irrelevant(gp, d, who), avoid=torch.cat([X, b])
+        )
 
         t_1_ac = time.perf_counter()
 
@@ -302,7 +325,10 @@ def init_locs(
         pending = torch.cat(candidates, dim=0) if candidates else None
         acqf_f = get_acqf(acqf, gp, best, X_pending=pending)
         who = f'initial point {len(candidates)}'
-        candidates.append(optimize_acqf_logged(acqf_f, d, who, random_irrelevant(gp, d, who)))
+        avoid = torch.cat([X, *candidates])
+        candidates.append(
+            optimize_acqf_logged(acqf_f, d, who, random_irrelevant(gp, d, who), avoid=avoid)
+        )
 
     return torch.cat(candidates, dim=0)  # (n_workers, d)
 
