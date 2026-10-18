@@ -778,8 +778,8 @@ class AragogRunner:
                 refit_core_at_reset(hf_row, interior_o, solver)
             else:
                 aragog_core.carry_core_across_update(hf_row, interior_o, solver, before)
-        # Restore entropy from the previous solve; with the entropy EOS, aragog checks
-        # the cells, the top node and a CMB node that a rate uses on its next call.
+        # Restore entropy from the previous solve; with the entropy EOS and outside the
+        # gradient core, aragog checks every cell and basic node of it on its next call.
         if hasattr(interior_o, '_last_entropy') and interior_o._last_entropy is not None:
             interior_o.aragog_solver.set_initial_entropy(interior_o._last_entropy)
 
