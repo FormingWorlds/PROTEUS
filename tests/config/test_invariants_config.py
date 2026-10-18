@@ -1,8 +1,8 @@
 """Unit and Hypothesis property tests for the ``[invariants]`` config schema.
 
-Verifies default values from P1 and Rulings 1-3, type enforcement, bound
-validation (rejecting zero or negative tolerances where disallowed, NaNs,
-infinities, booleans, and invalid modes), and cross-field ordering rules.
+Verifies default values, type enforcement, bound validation (rejecting zero
+or negative tolerances where disallowed, NaNs, infinities, booleans, and
+invalid modes), and cross-field ordering rules.
 """
 
 from __future__ import annotations
@@ -44,8 +44,8 @@ _NON_NEGATIVE_FIELDS = (
 )
 
 
-def test_invariants_config_defaults_match_ruling_and_p1():
-    """Default ``Invariants`` values match Ruling 1-3 and P1 derived tolerances."""
+def test_invariants_config_default_values():
+    """Default ``Invariants`` values match configured tolerances."""
     cfg = Config()
     inv = cfg.invariants
     assert isinstance(inv, Invariants)
@@ -218,3 +218,62 @@ def test_energy_residual_coarse_dt_rtol_key_is_rejected(tmp_path):
 
     with pytest.raises(TypeError, match='energy_residual_coarse_dt_rtol'):
         Invariants(energy_residual_coarse_dt_rtol=5.0e-4)  # type: ignore[call-arg]
+
+
+@settings(max_examples=30, deadline=None)
+@given(
+    base_rtol=st.floats(
+        min_value=1.0e-8, max_value=1.0e-2, allow_nan=False, allow_infinity=False
+    ),
+    scale=st.floats(min_value=2.0, max_value=10.0, allow_nan=False, allow_infinity=False),
+)
+def test_hypothesis_step_energy_rtol_ordering_and_non_kink_dispatch(base_rtol, scale):
+    """``step_energy_rtol`` governs mushy rows above 301 K while ``step_energy_smin_rtol`` governs T <= 301 K."""
+    from types import SimpleNamespace
+
+    import pandas as pd
+
+    from proteus.utils.invariants import check_energy_invariants
+
+    smin_rtol = base_rtol * scale
+    inv = Invariants(step_energy_rtol=base_rtol, step_energy_smin_rtol=smin_rtol)
+    cfg = SimpleNamespace(invariants=inv)
+    hf_all = pd.DataFrame(
+        [
+            {
+                'Time': 100.0,
+                'E_state_cons_J': 1.0e31,
+                'E_state_heat_cons_J': -1.0e30,
+                'step_dE_F_int_J': -1.0e30,
+                'step_dE_F_cmb_J': 0.0,
+                'step_dE_Q_radio_J': 0.0,
+                'step_dE_Q_tidal_J': 0.0,
+            }
+        ]
+    )
+    mid_frac = base_rtol * 1.5
+    step_gross = 1.0e28
+    hf_row = {
+        'Time': 200.0,
+        'T_surf': 1500.0,
+        'T_magma': 2200.0,
+        'Phi_global': 0.5,
+        'RF_depth': 0.3,
+        'E_state_cons_J': 1.0e31,
+        'E_state_heat_cons_J': -1.01e30,
+        'E_residual_cons_J': 0.0,
+        'step_dE_state_heat_J': -step_gross * (1.0 - mid_frac),
+        'step_dE_F_int_J': -step_gross,
+        'step_dE_F_cmb_J': 0.0,
+        'step_dE_Q_radio_J': 0.0,
+        'step_dE_Q_tidal_J': 0.0,
+        'solver_residual_J': 0.0,
+        'core_C_eff': 0.0,
+    }
+    v_non_kink = check_energy_invariants(hf_row, cfg, hf_all)
+    assert [v.name for v in v_non_kink] == ['step_dE_inc_frac']
+    assert v_non_kink[0].tolerance == pytest.approx(base_rtol)
+    assert v_non_kink[0].value == pytest.approx(mid_frac)
+
+    hf_row_kink = dict(hf_row, T_surf=300.5)
+    assert check_energy_invariants(hf_row_kink, cfg, hf_all) == []

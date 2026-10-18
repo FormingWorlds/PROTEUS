@@ -146,8 +146,8 @@ def _make_mock_config(
     )
 
 
-def test_check_energy_invariants_row4_flux_cancellation_passes_under_gross_denom():
-    """Opposite-sign F_int and F_cmb on row 4 pass when normalized by gross throughput."""
+def test_check_energy_invariants_flux_cancellation_passes_under_gross_denom():
+    """Opposite-sign F_int and F_cmb pass when normalized by gross throughput."""
     import pandas as pd
 
     cfg = _make_mock_config(dt_rtol=0.1, dt_minimum=1.0)
@@ -257,38 +257,39 @@ def test_check_energy_invariants_coupled_residual_and_coarse_dt_scaling(tmp_path
 
 
 def test_check_energy_invariants_step_increment_outside_and_on_smin():
-    """Step energy increment checks 1.0e-4 in smooth single-phase and 2.5e-4 on S_min."""
+    """Step energy increment divides by own step_gross with 1 J floor and uses 2.5e-4 only on T <= 301 K."""
     import pandas as pd
 
     cfg = _make_mock_config(dt_rtol=0.1, dt_minimum=1.0)
+    # Give hf_all a large cumulative history (1.0e32 J) so cumulative dilution would hide a 1.8e-4 step error:
     hf_all = pd.DataFrame(
         [
             {
                 'Time': 100.0,
                 'E_state_cons_J': 1.0e31,
-                'E_state_heat_cons_J': -1.0e30,
-                'step_dE_F_int_J': -1.0e30,
+                'E_state_heat_cons_J': -1.0e32,
+                'step_dE_F_int_J': -1.0e32,
                 'step_dE_F_cmb_J': 0.0,
                 'step_dE_Q_radio_J': 0.0,
                 'step_dE_Q_tidal_J': 0.0,
             }
         ]
     )
-    # Step increment mismatch is 3.6e26 / 2.0e30 = 1.8e-4 (> 1.0e-4, <= 2.5e-4),
-    # while cumulative E_residual_cons_J is kept at 1.8e-4 (<= 2.6e-4).
+    # Step gross is 1.00018e30 J and step_diff is 1.8e26 J -> step_err = 1.8e26 / 1.00018e30 = 1.799676e-4.
+    # Even with Phi_global=0.5 and RF_depth=0.3, T > 301 K must use step_energy_rtol = 1.0e-4.
     hf_row_warm = {
         'Time': 200.0,
         'T_surf': 2200.0,
         'T_magma': 2800.0,
-        'Phi_global': 1.0,
-        'RF_depth': 0.0,
+        'Phi_global': 0.5,
+        'RF_depth': 0.3,
         'E_state_cons_J': 9.0e30,
-        'E_state_heat_cons_J': -2.0e30,
-        'dE_predicted_cons_J': -2.00036e30,
-        'E_residual_cons_J': 3.6e26,
-        'E_residual_cons_frac': -1.8e-4,
+        'E_state_heat_cons_J': -1.01e32,
+        'dE_predicted_cons_J': -1.0100018e32,
+        'E_residual_cons_J': 1.8e26,
+        'E_residual_cons_frac': -1.8e-6,
         'step_dE_state_heat_J': -1.0e30,
-        'step_dE_F_int_J': -1.00036e30,
+        'step_dE_F_int_J': -1.00018e30,
         'step_dE_F_cmb_J': 0.0,
         'step_dE_Q_radio_J': 0.0,
         'step_dE_Q_tidal_J': 0.0,
@@ -301,24 +302,39 @@ def test_check_energy_invariants_step_increment_outside_and_on_smin():
     assert v_warm[0].name == 'step_dE_inc_frac'
     assert v_warm[0].status_code == STATUS_ERROR_ENERGY_INVARIANT
     assert v_warm[0].report_only is True
-    assert v_warm[0].value == pytest.approx(3.6e26 / 2.00036e30)
+    assert v_warm[0].value == pytest.approx(1.8e26 / 1.00018e30)
     assert v_warm[0].tolerance == pytest.approx(1.0e-4)
 
-    # On the S_min floor (T_magma == 300.488 K), 1.8e-4 <= 2.5e-4 passes:
+    # On the S_min floor (T_magma == 300.488 K <= 301.0 K), ~1.8e-4 <= 2.5e-4 passes:
     hf_row_smin = dict(hf_row_warm, T_surf=300.488, T_magma=300.488)
     assert check_energy_invariants(hf_row_smin, cfg, hf_all) == []
 
-    # Exceeding 2.5e-4 on S_min (e.g. 2.55e-4 <= 2.6e-4) fires step_dE_inc_frac with tol 2.5e-4:
+    # Exceeding 2.5e-4 on S_min (e.g. 3.0e26 / 1.0003e30 > 2.5e-4) fires step_dE_inc_frac with tol 2.5e-4:
     hf_row_smin_bad = dict(
         hf_row_smin,
-        step_dE_F_int_J=-1.00051e30,
-        E_residual_cons_J=5.1e26,
+        step_dE_F_int_J=-1.00030e30,
+        E_residual_cons_J=3.0e26,
     )
     v_smin = check_energy_invariants(hf_row_smin_bad, cfg, hf_all)
     assert len(v_smin) == 1
     assert v_smin[0].name == 'step_dE_inc_frac'
+    assert v_smin[0].value == pytest.approx(3.0e26 / 1.00030e30)
     assert v_smin[0].tolerance == pytest.approx(2.5e-4)
     assert v_smin[0].report_only is True
+
+    # Zero-flux step uses the 1.0 J floor: step_diff == 0.0 passes, step_diff == 1.0 fails with value 1.0:
+    hf_row_zero_ok = dict(
+        hf_row_warm,
+        E_residual_cons_J=0.0,
+        step_dE_state_heat_J=0.0,
+        step_dE_F_int_J=0.0,
+    )
+    assert check_energy_invariants(hf_row_zero_ok, cfg, hf_all) == []
+    hf_row_zero_bad = dict(hf_row_zero_ok, step_dE_state_heat_J=1.0)
+    v_zero_bad = check_energy_invariants(hf_row_zero_bad, cfg, hf_all)
+    assert len(v_zero_bad) == 1
+    assert v_zero_bad[0].name == 'step_dE_inc_frac'
+    assert v_zero_bad[0].value == pytest.approx(1.0)
 
 
 def test_check_energy_invariants_solver_and_core_ledger_residuals():
@@ -510,7 +526,7 @@ def test_check_volatile_invariants_clean_row_and_fO2_buffered_oxygen():
         'M_vol_initial': 0.0,
         'esc_kg_cumulative': 0.0,
     }
-    # Under default user_constant fO2, O is skipped (Ruling 3):
+    # Under default user_constant fO2, O is skipped:
     cfg_user = _make_mock_config(fO2_source='user_constant', vapourise=False)
     assert check_volatile_invariants(hf_row, cfg_user) == []
 
@@ -524,8 +540,9 @@ def test_check_volatile_invariants_clean_row_and_fO2_buffered_oxygen():
     assert v_obud[0].tolerance == pytest.approx(2.5e-4)
     assert v_obud[0].report_only is False
 
-    # Pre-IC row with M_planet <= 0.0 skips checks cleanly:
-    assert check_volatile_invariants(dict(hf_row, M_planet=0.0), cfg_obud) == []
+    # Non-positive M_planet emits a named M_planet_bounds violation without skipping closure checks:
+    v_zero_mp = check_volatile_invariants(dict(hf_row, M_planet=0.0), cfg_obud)
+    assert [v.name for v in v_zero_mp] == ['M_planet_bounds', 'O_reservoir_closure']
 
 
 def test_check_volatile_invariants_element_closure_and_gas_sum():
@@ -918,7 +935,7 @@ def test_check_row_invariants_orchestrates_modes_and_status_file(
 def test_main_loop_populates_energy_residuals_before_invariant_check_and_logs_to_proteus_log(
     tmp_path, monkeypatch, caplog: pytest.LogCaptureFixture
 ):
-    """Main loop must populate cumulative energy residuals on hf_row before check_row_invariants so proteus_00.log records row-4 report lines."""
+    """Main loop must populate cumulative energy residuals on hf_row before check_row_invariants so proteus_00.log records report lines."""
     from pathlib import Path
 
     import proteus.interior_energetics.wrapper as interior_wrapper
@@ -1067,3 +1084,273 @@ def test_populate_energy_and_core_residuals_idempotent_across_double_call_and_ex
 
     assert after_extend == first_pass
     assert df_last_row == first_pass_float
+
+
+def test_check_volatile_invariants_vapourise_exempts_oxygen_while_checking_c_n_s():
+    """With outgas.vapourise=True and fO2_source='from_O_budget', O is exempt while C, N, S closure fires."""
+    from proteus.utils.invariants import check_volatile_invariants
+
+    row = {
+        'Time': 2100.0,
+        'M_planet': 6.0e24,
+        'M_atm': 1.0e21,
+        'M_vol_atm': 1.0e21,
+        'M_vaps': 1.0e20,
+        'H2O_kg_atm': 1.0e21,
+        'O_kg_total': 1.0e23,
+        'O_kg_atm': 4.0e22,
+        'O_kg_liquid': 4.0e22,
+        'O_kg_solid': 0.0,
+        'C_kg_total': 4.666e21,
+        'C_kg_atm': 2.040e21,
+        'C_kg_liquid': 2.666e21,
+        'C_kg_solid': 0.0,
+        'N_kg_total': 1.0e19,
+        'N_kg_atm': 1.01e19,
+        'N_kg_liquid': 0.0,
+        'N_kg_solid': 0.0,
+        'S_kg_total': 5.0e19,
+        'S_kg_atm': 5.05e19,
+        'S_kg_liquid': 0.0,
+        'S_kg_solid': 0.0,
+        'M_vol_initial': 0.0,
+        'esc_kg_cumulative': 0.0,
+    }
+    cfg_vap = _make_mock_config(fO2_source='from_O_budget', vapourise=True)
+    v_vap = check_volatile_invariants(row, cfg_vap)
+    assert [v.name for v in v_vap] == [
+        'C_reservoir_closure',
+        'N_reservoir_closure',
+        'S_reservoir_closure',
+    ]
+    assert all(not v.report_only for v in v_vap)
+
+    # Canary: without vapourise=True, O_reservoir_closure also fires:
+    cfg_no_vap = _make_mock_config(fO2_source='from_O_budget', vapourise=False)
+    v_no_vap = check_volatile_invariants(row, cfg_no_vap)
+    assert 'O_reservoir_closure' in [v.name for v in v_no_vap]
+
+
+def test_check_volatile_and_state_bounds_negative_masses_and_zero_atm_psurf():
+    """Negative masses below -element_closure_atol_kg, M_planet <= 0, and P_surf > 0 at M_atm == 0 fail."""
+    from proteus.utils.invariants import (
+        check_state_bounds_invariants,
+        check_volatile_invariants,
+    )
+
+    cfg = _make_mock_config(fO2_source='user_constant', vapourise=False)
+    clean_row = {
+        'Time': 3000.0,
+        'T_surf': 1500.0,
+        'T_magma': 2000.0,
+        'P_surf': 100.0,
+        'Phi_global': 0.5,
+        'M_planet': 6.0e24,
+        'M_atm': 1.0e21,
+        'M_vol_atm': 1.0e21,
+        'M_vaps': 0.0,
+        'H2O_kg_atm': 1.0e21,
+        'H_kg_total': 1.0e20,
+        'H_kg_atm': 5.0e19,
+        'H_kg_liquid': 5.0e19,
+        'H_kg_solid': 0.0,
+    }
+
+    # P_surf > 0 with M_atm == 0.0 fails P_surf_bounds:
+    v_psurf = check_state_bounds_invariants(dict(clean_row, M_atm=0.0, P_surf=250.0), cfg)
+    assert [v.name for v in v_psurf] == ['P_surf_bounds']
+    assert v_psurf[0].status_code == STATUS_ERROR_STATE_BOUNDS_INVARIANT
+    assert v_psurf[0].report_only is False
+
+    # Negative M_atm with P_surf == 0.0 fails both state-bounds and volatile checks:
+    v_neg_matm_sb = check_state_bounds_invariants(
+        dict(clean_row, M_atm=-1.0e20, P_surf=0.0), cfg
+    )
+    assert [v.name for v in v_neg_matm_sb] == ['P_surf_bounds']
+
+    # Negative M_atm, M_vol_atm, species, total, and reservoir masses below -element_closure_atol_kg fail:
+    v_neg_vol = check_volatile_invariants(
+        dict(
+            clean_row,
+            M_planet=-6.0e24,
+            M_atm=-1.0e21,
+            M_vol_atm=-1.0e21,
+            H2O_kg_atm=-1.0e21,
+            H_kg_total=-1.0e20,
+            H_kg_atm=-1.0e20,
+            C_kg_total=1.0e20,
+            C_kg_atm=-5.0e19,
+            C_kg_liquid=1.5e20,
+            C_kg_solid=0.0,
+        ),
+        cfg,
+    )
+    names = [v.name for v in v_neg_vol]
+    assert 'M_planet_bounds' in names
+    assert 'M_atm_bounds' in names
+    assert 'M_vol_atm_bounds' in names
+    assert 'H2O_kg_atm_bounds' in names
+    assert 'H_reservoir_closure' in names
+    assert 'H_kg_atm_bounds' in names
+    assert 'C_kg_atm_bounds' in names
+    assert all(
+        'element_closure_atol_kg' in v.message for v in v_neg_vol if v.name != 'M_planet_bounds'
+    )
+
+    # scale <= 0 with summed != M_vol_atm fires M_vol_atm_species_sum:
+    v_neg_sum = check_volatile_invariants(
+        dict(clean_row, M_vol_atm=0.0, H2O_kg_atm=-10.0),
+        cfg,
+    )
+    assert 'M_vol_atm_species_sum' in [v.name for v in v_neg_sum]
+
+
+def test_check_energy_invariants_non_finite_inputs_emit_named_violations():
+    """Non-finite E_state_cons_J, core_C_eff, and step_dE_* inputs emit named status-30 violations."""
+    import pandas as pd
+
+    cfg = _make_mock_config()
+    hf_all = pd.DataFrame(
+        [
+            {
+                'Time': 100.0,
+                'E_state_cons_J': 1.0e31,
+                'E_state_heat_cons_J': -1.0e30,
+                'step_dE_F_int_J': -1.0e30,
+                'step_dE_F_cmb_J': 0.0,
+                'step_dE_Q_radio_J': 0.0,
+                'step_dE_Q_tidal_J': 0.0,
+            }
+        ]
+    )
+    base_row = {
+        'Time': 200.0,
+        'T_surf': 2200.0,
+        'T_magma': 2800.0,
+        'Phi_global': 1.0,
+        'RF_depth': 0.0,
+        'E_state_cons_J': 9.0e30,
+        'E_state_heat_cons_J': -2.0e30,
+        'E_residual_cons_J': 0.0,
+        'step_dE_state_heat_J': -1.0e30,
+        'step_dE_F_int_J': -1.0e30,
+        'step_dE_F_cmb_J': 0.0,
+        'step_dE_Q_radio_J': 0.0,
+        'step_dE_Q_tidal_J': 0.0,
+        'solver_residual_J': 0.0,
+        'core_C_eff': 1.0e26,
+        'step_dE_core_J': 0.0,
+        'E_core_residual_frac': 0.0,
+    }
+
+    v_nan_state = check_energy_invariants(
+        dict(base_row, E_state_cons_J=float('nan')), cfg, hf_all
+    )
+    assert 'E_state_cons_J' in [v.name for v in v_nan_state]
+    assert all(
+        v.status_code == STATUS_ERROR_ENERGY_INVARIANT and v.report_only for v in v_nan_state
+    )
+
+    v_nan_core = check_energy_invariants(
+        dict(base_row, core_C_eff=float('nan'), E_core_residual_frac=0.5),
+        cfg,
+        hf_all,
+    )
+    assert 'core_C_eff' in [v.name for v in v_nan_core]
+    assert 'E_core_residual_frac' in [v.name for v in v_nan_core]
+
+    v_nan_step_core = check_energy_invariants(
+        dict(base_row, step_dE_core_J=float('nan')),
+        cfg,
+        hf_all,
+    )
+    assert 'step_dE_core_J' in [v.name for v in v_nan_step_core]
+
+
+@pytest.mark.parametrize('write_mod', [1, 3])
+def test_stop_mode_flushes_failing_row_and_prior_rows_regardless_of_write_mod(
+    tmp_path, monkeypatch, write_mod: int
+):
+    """In mode == 'stop', the failing row and all prior rows are flushed to runtime_helpfile.csv regardless of write_mod."""
+    from pathlib import Path
+
+    import pandas as pd
+
+    import proteus.interior_energetics.wrapper as interior_wrapper
+    from proteus import Proteus
+
+    out = tmp_path / f'run_wm{write_mod}'
+    dummy_toml = Path(__file__).resolve().parents[2] / 'input' / 'dummy.toml'
+    text = dummy_toml.read_text(encoding='utf-8')
+    cfg_path = tmp_path / f'stop_flush_{write_mod}.toml'
+    cfg_path.write_text(text.replace('path = "auto"', f'path = "{out}"', 1), encoding='utf-8')
+
+    runner = Proteus(config_path=cfg_path)
+    config = runner.config
+    config.invariants.mode = 'stop'
+    config.atmos_chem.module = None
+    config.params.stop.solid.enabled = False
+    config.params.stop.iters.minimum = 1
+    config.params.stop.time.minimum = 0.0
+    config.params.stop.time.maximum = 500.0
+    config.params.out.write_mod = write_mod
+    config.params.out.plot_mod = None
+    config.params.out.archive_mod = 'none'
+
+    real_interior = interior_wrapper.run_interior
+
+    # Trigger a stopping violation on total loop 5 (not divisible by write_mod=3):
+    def interior(dirs, cfg_, hf_all, hf_row, interior_o, *args, **kwargs):
+        real_interior(dirs, cfg_, hf_all, hf_row, interior_o, *args, **kwargs)
+        if runner.loops['total'] == 4:
+            hf_row['T_magma'] = 2.0e6
+
+    monkeypatch.setattr(interior_wrapper, 'run_interior', interior)
+    with pytest.raises(InvariantViolationError) as exc_info:
+        runner.start(resume=False, offline=True)
+    assert exc_info.value.status_code == 32
+    assert exc_info.value.invariant_name == 'T_magma_bounds'
+
+    csv_path = out / 'runtime_helpfile.csv'
+    assert csv_path.exists()
+    df_disk = pd.read_csv(csv_path, sep=r'\s+')
+    assert len(df_disk) == 5
+    assert float(df_disk['T_magma'].iloc[-1]) == pytest.approx(2.0e6)
+
+
+def test_invariant_tracker_reports_on_crossing_counts_rows_and_logs_summary(
+    tmp_path, caplog: pytest.LogCaptureFixture
+):
+    """Repeated violations log only on the rising-edge crossing and emit a total-row summary at the end."""
+    from proteus.utils.invariants import InvariantTracker
+
+    tracker = InvariantTracker()
+    v_energy = InvariantViolation(
+        name='E_residual_cons_frac_gross',
+        status_code=STATUS_ERROR_ENERGY_INVARIANT,
+        value=4.0e-4,
+        tolerance=2.6e-4,
+        message='Time=1.0e+02 yr: E_residual_cons_frac_gross=4.000000e-04 exceeds tol=2.600000e-04',
+        report_only=True,
+    )
+    dirs = {'output': str(tmp_path)}
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.utils.invariants'):
+        # Row 1: crossing into violation -> logs 1 report line
+        handle_violations([v_energy], mode='report', directories=dirs, tracker=tracker)
+        # Rows 2 and 3: still violating -> suppressed per-row warning, count increments
+        handle_violations([v_energy], mode='report', directories=dirs, tracker=tracker)
+        handle_violations([v_energy], mode='report', directories=dirs, tracker=tracker)
+        # Row 4: clean -> resets active state
+        handle_violations([], mode='report', directories=dirs, tracker=tracker)
+        # Row 5: second crossing -> logs a 2nd report line
+        handle_violations([v_energy], mode='report', directories=dirs, tracker=tracker)
+        tracker.log_summary()
+
+    report_msgs = [r.message for r in caplog.records if 'Invariant report [' in r.message]
+    summary_msgs = [r.message for r in caplog.records if 'Invariant summary:' in r.message]
+    assert len(report_msgs) == 2
+    assert tracker.row_counts['E_residual_cons_frac_gross'] == 4
+    assert tracker.rows_with_violations == 4
+    assert len(summary_msgs) == 1
+    assert '4 row(s) with violations' in summary_msgs[0]
+    assert 'E_residual_cons_frac_gross=4' in summary_msgs[0]
