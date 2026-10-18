@@ -638,6 +638,12 @@ def test_check_volatile_invariants_escape_cumulative_bound():
     row_ok_loss = dict(row_bad_loss, esc_kg_cumulative=1.0e21)
     assert check_volatile_invariants(row_ok_loss, cfg) == []
 
+    # Under default fO2_source='user_constant', M_vol_initial includes buffered O
+    # exchanged with the mantle prior to desiccation, so escape_cumulative_bound
+    # must not fire even when all volatile inventories are depleted.
+    cfg_user = _make_mock_config(fO2_source='user_constant', vapourise=False)
+    assert check_volatile_invariants(row_bad_loss, cfg_user) == []
+
 
 def test_check_state_bounds_invariants_temperatures_pressure_and_melt_fraction():
     """State bounds checks enforce T_surf > 0, 0 < T_magma < 1e6, P_surf >= 0 (> 0 if M_atm > 0), and Phi_global in [-1e-6, 1+1e-6]."""
