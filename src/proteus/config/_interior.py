@@ -270,6 +270,12 @@ class AragogCoreModule:
             )
 
 
+def _top_node_core(inst, top_node: str) -> None:
+    """Refuse the limited top node on the gradient core, as aragog does."""
+    if top_node == 'limited' and inst.core_bc == 'gradient':
+        raise ValueError("top_node = 'limited' is not available on core_bc = 'gradient'")
+
+
 @define
 class Aragog:
     """Aragog-specific parameters.
@@ -334,7 +340,13 @@ class Aragog:
             ('quasi_steady', 'energy_balance', 'gradient', 'bower2018', 'core_module')
         ),
     )
-    top_node: str = field(default='linear', validator=in_(('linear', 'limited')))
+    top_node: str = field(
+        default='linear',
+        validator=[
+            in_(('linear', 'limited')),
+            lambda inst, _attr, value: _top_node_core(inst, value),
+        ],
+    )
     phase_smoothing: str = field(
         default='tanh',
         validator=in_(('tanh', 'cubic_hermite')),
