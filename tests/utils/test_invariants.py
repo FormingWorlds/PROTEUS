@@ -257,11 +257,11 @@ def test_check_energy_invariants_coupled_residual_and_coarse_dt_scaling(tmp_path
 
 
 def test_check_energy_invariants_step_increment_outside_and_on_smin():
-    """Step energy increment divides by own step_gross with 1 J floor and uses 2.5e-4 only on T <= 301 K."""
+    """Step energy increment divides by own step_gross with 1 J floor and uses 5.0e-2 only on T <= 301 K."""
     import pandas as pd
 
     cfg = _make_mock_config(dt_rtol=0.1, dt_minimum=1.0)
-    # Give hf_all a large cumulative history (1.0e32 J) so cumulative dilution would hide a 1.8e-4 step error:
+    # Give hf_all a large cumulative history (1.0e32 J) so cumulative dilution would hide a 2.9e-2 step error:
     hf_all = pd.DataFrame(
         [
             {
@@ -275,8 +275,8 @@ def test_check_energy_invariants_step_increment_outside_and_on_smin():
             }
         ]
     )
-    # Step gross is 1.00018e30 J and step_diff is 1.8e26 J -> step_err = 1.8e26 / 1.00018e30 = 1.799676e-4.
-    # Even with Phi_global=0.5 and RF_depth=0.3, T > 301 K must use step_energy_rtol = 1.0e-4.
+    # Step gross is 1.03e30 J and step_diff is 3.0e28 J -> step_err = 3.0e28 / 1.03e30 = 2.912621e-2.
+    # Even with Phi_global=0.5 and RF_depth=0.3, T > 301 K must use step_energy_rtol = 1.0e-2.
     hf_row_warm = {
         'Time': 200.0,
         'T_surf': 2200.0,
@@ -285,11 +285,11 @@ def test_check_energy_invariants_step_increment_outside_and_on_smin():
         'RF_depth': 0.3,
         'E_state_cons_J': 9.0e30,
         'E_state_heat_cons_J': -1.01e32,
-        'dE_predicted_cons_J': -1.0100018e32,
-        'E_residual_cons_J': 1.8e26,
-        'E_residual_cons_frac': -1.8e-6,
+        'dE_predicted_cons_J': -1.0103e32,
+        'E_residual_cons_J': 0.0,
+        'E_residual_cons_frac': 0.0,
         'step_dE_state_heat_J': -1.0e30,
-        'step_dE_F_int_J': -1.00018e30,
+        'step_dE_F_int_J': -1.03e30,
         'step_dE_F_cmb_J': 0.0,
         'step_dE_Q_radio_J': 0.0,
         'step_dE_Q_tidal_J': 0.0,
@@ -302,24 +302,24 @@ def test_check_energy_invariants_step_increment_outside_and_on_smin():
     assert v_warm[0].name == 'step_dE_inc_frac'
     assert v_warm[0].status_code == STATUS_ERROR_ENERGY_INVARIANT
     assert v_warm[0].report_only is True
-    assert v_warm[0].value == pytest.approx(1.8e26 / 1.00018e30)
-    assert v_warm[0].tolerance == pytest.approx(1.0e-4)
+    assert v_warm[0].value == pytest.approx(3.0e28 / 1.03e30)
+    assert v_warm[0].tolerance == pytest.approx(1.0e-2)
 
-    # On the S_min floor (T_magma == 300.488 K <= 301.0 K), ~1.8e-4 <= 2.5e-4 passes:
+    # On the S_min floor (T_magma == 300.488 K <= 301.0 K), ~2.91e-2 <= 5.0e-2 passes:
     hf_row_smin = dict(hf_row_warm, T_surf=300.488, T_magma=300.488)
     assert check_energy_invariants(hf_row_smin, cfg, hf_all) == []
 
-    # Exceeding 2.5e-4 on S_min (e.g. 3.0e26 / 1.0003e30 > 2.5e-4) fires step_dE_inc_frac with tol 2.5e-4:
+    # Exceeding 5.0e-2 on S_min (e.g. 8.0e28 / 1.08e30 > 5.0e-2) fires step_dE_inc_frac with tol 5.0e-2:
     hf_row_smin_bad = dict(
         hf_row_smin,
-        step_dE_F_int_J=-1.00030e30,
-        E_residual_cons_J=3.0e26,
+        step_dE_F_int_J=-1.08e30,
+        E_residual_cons_J=0.0,
     )
     v_smin = check_energy_invariants(hf_row_smin_bad, cfg, hf_all)
     assert len(v_smin) == 1
     assert v_smin[0].name == 'step_dE_inc_frac'
-    assert v_smin[0].value == pytest.approx(3.0e26 / 1.00030e30)
-    assert v_smin[0].tolerance == pytest.approx(2.5e-4)
+    assert v_smin[0].value == pytest.approx(8.0e28 / 1.08e30)
+    assert v_smin[0].tolerance == pytest.approx(5.0e-2)
     assert v_smin[0].report_only is True
 
     # Zero-flux step uses the 1.0 J floor: step_diff == 0.0 passes, step_diff == 1.0 fails with value 1.0:

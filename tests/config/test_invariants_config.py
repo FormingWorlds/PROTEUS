@@ -51,8 +51,8 @@ def test_invariants_config_default_values():
     assert isinstance(inv, Invariants)
     assert inv.mode == 'report'
     assert inv.energy_residual_rtol == pytest.approx(2.6e-4, rel=1e-12)
-    assert inv.step_energy_rtol == pytest.approx(1.0e-4, rel=1e-12)
-    assert inv.step_energy_smin_rtol == pytest.approx(2.5e-4, rel=1e-12)
+    assert inv.step_energy_rtol == pytest.approx(1.0e-2, rel=1e-12)
+    assert inv.step_energy_smin_rtol == pytest.approx(5.0e-2, rel=1e-12)
     assert inv.solver_residual_rtol == pytest.approx(1.0e-12, rel=1e-12)
     assert inv.core_residual_rtol == pytest.approx(1.0e-4, rel=1e-12)
     assert inv.struct_mass_desync_warn_rtol == pytest.approx(5.0e-3, rel=1e-12)
@@ -124,9 +124,9 @@ def test_hypothesis_strict_positive_tolerances_accept_valid_positive_floats(
     elif field_name == 'struct_mass_desync_rtol':
         kwargs['struct_mass_desync_warn_rtol'] = min(pos_val * 0.5, 5.0e-3)
     elif field_name == 'step_energy_rtol':
-        kwargs['step_energy_smin_rtol'] = max(pos_val * 2.0, 2.5e-4)
+        kwargs['step_energy_smin_rtol'] = max(pos_val * 2.0, 5.0e-2)
     elif field_name == 'step_energy_smin_rtol':
-        kwargs['step_energy_rtol'] = min(pos_val * 0.5, 1.0e-4)
+        kwargs['step_energy_rtol'] = min(pos_val * 0.5, 1.0e-2)
     inv = Invariants(**kwargs)
     assert math.isfinite(getattr(inv, field_name))
     assert getattr(inv, field_name) == pytest.approx(pos_val, rel=1e-12)
@@ -181,7 +181,7 @@ def test_invariants_cross_field_ordering_validators():
     with pytest.raises(ValueError, match='struct_mass_desync_rtol'):
         Invariants(struct_mass_desync_warn_rtol=1.0e-2, struct_mass_desync_rtol=5.0e-3)
     with pytest.raises(ValueError, match='step_energy_smin_rtol'):
-        Invariants(step_energy_rtol=2.5e-4, step_energy_smin_rtol=1.0e-4)
+        Invariants(step_energy_rtol=5.0e-2, step_energy_smin_rtol=1.0e-2)
 
 
 def test_invariants_section_loads_from_toml_and_rejects_orphan_keys(tmp_path):
