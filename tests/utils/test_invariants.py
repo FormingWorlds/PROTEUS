@@ -610,6 +610,7 @@ def test_check_volatile_invariants_calliope_mass_thresh_vs_atmodeller_floor():
     assert v_above[0].status_code == STATUS_ERROR_MASS_INVARIANT
     assert v_above[0].value == pytest.approx(1.11e16 / 4.0e18)
     assert v_above[0].tolerance == pytest.approx(1.1e16 / 4.0e18)
+    assert 'exceeds tol=2.750000e-03' in v_above[0].message
     assert v_above[0].report_only is False
 
     # Changing outgas.mass_thresh to 2.0e16 kg raises tol_e to 2.1e16 kg:
@@ -626,6 +627,7 @@ def test_check_volatile_invariants_calliope_mass_thresh_vs_atmodeller_floor():
     assert v_wider[0].name == 'N_reservoir_closure'
     assert v_wider[0].value == pytest.approx(2.11e16 / 4.0e18)
     assert v_wider[0].tolerance == pytest.approx(2.1e16 / 4.0e18)
+    assert 'exceeds tol=5.250000e-03' in v_wider[0].message
 
     # Under atmodeller, outgas.mass_thresh is not added and the 1.0 kg floor governs:
     cfg_atm = _make_mock_config(
