@@ -7962,12 +7962,13 @@ def test_remelt_aragog_leaves_the_core_temperature_alone_without_the_core_module
     assert solver._T_core_init is None
 
 
-def test_an_older_aragog_keeps_the_retry_ladder_path():
+def test_an_older_aragog_keeps_the_retry_ladder_path(monkeypatch):
     """With an aragog that has no AcceptedStateError, a RuntimeError still counts as a failed
     retry ladder: the fail count rises and no status 34 is written."""
-    import types
-
+    es = pytest.importorskip('aragog.solver.entropy_solver')
     from proteus.interior_energetics.wrapper import run_interior
+
+    monkeypatch.delattr(es, 'AcceptedStateError', raising=False)
 
     config = _make_run_interior_config(prevent_warming=False, module='aragog')
     hf_all, hf_row = _make_run_interior_state()
@@ -7977,7 +7978,6 @@ def test_an_older_aragog_keeps_the_retry_ladder_path():
     runner = MagicMock()
     runner.run_solver.side_effect = RuntimeError('Aragog retry ladder exhausted')
     with (
-        patch.dict('sys.modules', {'aragog.solver.entropy_solver': types.ModuleType('old')}),
         patch('proteus.interior_energetics.aragog.AragogRunner', return_value=runner),
         patch('proteus.interior_energetics.wrapper.UpdateStatusfile') as status,
         patch('proteus.interior_energetics.wrapper.update_planet_mass'),
