@@ -305,13 +305,17 @@ def test_check_energy_invariants_step_increment_outside_and_on_smin():
     assert v_warm[0].value == pytest.approx(3.0e28 / 1.03e30)
     assert v_warm[0].tolerance == pytest.approx(1.0e-2)
 
-    # On the S_min floor (T_magma == 300.488 K <= 301.0 K), ~2.91e-2 <= 5.0e-2 passes:
+    # On the S_min floor (both temperatures, T_magma-only, or T_surf-only <= 301.0 K), ~2.91e-2 <= 5.0e-2 passes:
     hf_row_smin = dict(hf_row_warm, T_surf=300.488, T_magma=300.488)
     assert check_energy_invariants(hf_row_smin, cfg, hf_all) == []
+    hf_row_tmagma_only = dict(hf_row_warm, T_surf=1500.0, T_magma=300.488)
+    assert check_energy_invariants(hf_row_tmagma_only, cfg, hf_all) == []
+    hf_row_tsurf_only = dict(hf_row_warm, T_surf=300.488, T_magma=1500.0)
+    assert check_energy_invariants(hf_row_tsurf_only, cfg, hf_all) == []
 
-    # Exceeding 5.0e-2 on S_min (e.g. 8.0e28 / 1.08e30 > 5.0e-2) fires step_dE_inc_frac with tol 5.0e-2:
+    # Exceeding 5.0e-2 on T_magma-only S_min (8.0e28 / 1.08e30 > 5.0e-2) fires step_dE_inc_frac with tol 5.0e-2:
     hf_row_smin_bad = dict(
-        hf_row_smin,
+        hf_row_tmagma_only,
         step_dE_F_int_J=-1.08e30,
         E_residual_cons_J=0.0,
     )
@@ -1134,7 +1138,7 @@ def test_check_volatile_invariants_vapourise_exempts_oxygen_while_checking_c_n_s
 
 
 def test_check_volatile_and_state_bounds_negative_masses_and_zero_atm_psurf():
-    """Negative masses below -element_closure_atol_kg, M_planet <= 0, and P_surf > 0 at M_atm == 0 fail."""
+    """Negative masses below -element_closure_atol_kg, M_planet <= 0, and P_surf > 0 at |M_atm| <= atol fail."""
     from proteus.utils.invariants import (
         check_state_bounds_invariants,
         check_volatile_invariants,
@@ -1158,17 +1162,38 @@ def test_check_volatile_and_state_bounds_negative_masses_and_zero_atm_psurf():
         'H_kg_solid': 0.0,
     }
 
-    # P_surf > 0 with M_atm == 0.0 fails P_surf_bounds:
+    # |M_atm| <= element_closure_atol_kg (1.0 kg) counts as zero in both volatile and state-bounds checks:
+    for m_atm_tiny in (-0.5, 0.0, 0.5):
+        row_tiny_zero_p = dict(
+            clean_row,
+            M_atm=m_atm_tiny,
+            M_vol_atm=0.0,
+            H2O_kg_atm=0.0,
+            P_surf=0.0,
+        )
+        assert check_state_bounds_invariants(row_tiny_zero_p, cfg) == []
+        assert check_volatile_invariants(row_tiny_zero_p, cfg) == []
+
+    # P_surf > 0 with |M_atm| <= atol fails P_surf_bounds:
     v_psurf = check_state_bounds_invariants(dict(clean_row, M_atm=0.0, P_surf=250.0), cfg)
     assert [v.name for v in v_psurf] == ['P_surf_bounds']
     assert v_psurf[0].status_code == STATUS_ERROR_STATE_BOUNDS_INVARIANT
     assert v_psurf[0].report_only is False
+    assert 'kg bar' not in v_psurf[0].message
 
-    # Negative M_atm with P_surf == 0.0 fails both state-bounds and volatile checks:
+    # Negative M_atm below -element_closure_atol_kg with P_surf == 0.0 fails state-bounds with clean message:
     v_neg_matm_sb = check_state_bounds_invariants(
         dict(clean_row, M_atm=-1.0e20, P_surf=0.0), cfg
     )
     assert [v.name for v in v_neg_matm_sb] == ['P_surf_bounds']
+    assert 'violates P_surf == 0.0 bar with M_atm >=' in v_neg_matm_sb[0].message
+    assert 'kg bar' not in v_neg_matm_sb[0].message
+
+    # Derived elements (O under user_constant or vapourise) are still bound-checked on reservoirs:
+    v_o_bound = check_volatile_invariants(
+        dict(clean_row, O_kg_liquid=-1.0e20, O_kg_total=1.0e23), cfg
+    )
+    assert [v.name for v in v_o_bound] == ['O_kg_liquid_bounds']
 
     # Negative M_atm, M_vol_atm, species, total, and reservoir masses below -element_closure_atol_kg fail:
     v_neg_vol = check_volatile_invariants(
@@ -1199,12 +1224,23 @@ def test_check_volatile_and_state_bounds_negative_masses_and_zero_atm_psurf():
         'element_closure_atol_kg' in v.message for v in v_neg_vol if v.name != 'M_planet_bounds'
     )
 
-    # scale <= 0 with summed != M_vol_atm fires M_vol_atm_species_sum:
+    # Zero/non-positive scale species-sum branch compares against element_closure_atol_kg (1.0 kg)
+    # and reports element_closure_atol_kg as tolerance:
+    assert (
+        check_volatile_invariants(
+            dict(clean_row, M_vol_atm=0.0, H2O_kg_atm=-0.5),
+            cfg,
+        )
+        == []
+    )
     v_neg_sum = check_volatile_invariants(
         dict(clean_row, M_vol_atm=0.0, H2O_kg_atm=-10.0),
         cfg,
     )
-    assert 'M_vol_atm_species_sum' in [v.name for v in v_neg_sum]
+    species_sum_vs = [v for v in v_neg_sum if v.name == 'M_vol_atm_species_sum']
+    assert len(species_sum_vs) == 1
+    assert species_sum_vs[0].value == pytest.approx(10.0)
+    assert species_sum_vs[0].tolerance == pytest.approx(1.0)
 
 
 def test_check_energy_invariants_non_finite_inputs_emit_named_violations():
@@ -1271,9 +1307,9 @@ def test_check_energy_invariants_non_finite_inputs_emit_named_violations():
 
 @pytest.mark.parametrize('write_mod', [1, 3])
 def test_stop_mode_flushes_failing_row_and_prior_rows_regardless_of_write_mod(
-    tmp_path, monkeypatch, write_mod: int
+    tmp_path, monkeypatch, caplog: pytest.LogCaptureFixture, write_mod: int
 ):
-    """In mode == 'stop', the failing row and all prior rows are flushed to runtime_helpfile.csv regardless of write_mod."""
+    """In mode == 'stop', the failing row is logged before CSV fill and flushed to runtime_helpfile.csv."""
     from pathlib import Path
 
     import pandas as pd
@@ -1307,29 +1343,44 @@ def test_stop_mode_flushes_failing_row_and_prior_rows_regardless_of_write_mod(
     def interior(dirs, cfg_, hf_all, hf_row, interior_o, *args, **kwargs):
         real_interior(dirs, cfg_, hf_all, hf_row, interior_o, *args, **kwargs)
         if runner.loops['total'] == 4:
-            hf_row['T_magma'] = 2.0e6
+            hf_row['T_magma'] = 2.0e6 if write_mod == 1 else float('nan')
 
     monkeypatch.setattr(interior_wrapper, 'run_interior', interior)
-    with pytest.raises(InvariantViolationError) as exc_info:
-        runner.start(resume=False, offline=True)
+    with caplog.at_level(logging.ERROR, logger='fwl.proteus.proteus'):
+        with pytest.raises(InvariantViolationError) as exc_info:
+            runner.start(resume=False, offline=True)
     assert exc_info.value.status_code == 32
-    assert exc_info.value.invariant_name == 'T_magma_bounds'
+    assert exc_info.value.invariant_name == (
+        'T_magma_bounds' if write_mod == 1 else 'T_surf_bounds'
+    )
+
+    flush_logs = [
+        r.message for r in caplog.records if 'Failing hf_row on invariant stop' in r.message
+    ]
+    assert len(flush_logs) == 1
+    if write_mod == 1:
+        assert "'T_magma': 2000000.0" in flush_logs[0]
+    else:
+        assert "'T_magma': nan" in flush_logs[0]
 
     csv_path = out / 'runtime_helpfile.csv'
     assert csv_path.exists()
     df_disk = pd.read_csv(csv_path, sep=r'\s+')
     assert len(df_disk) == 5
-    assert float(df_disk['T_magma'].iloc[-1]) == pytest.approx(2.0e6)
+    if write_mod == 1:
+        assert float(df_disk['T_magma'].iloc[-1]) == pytest.approx(2.0e6)
+    else:
+        assert float(df_disk['T_magma'].iloc[-1]) == pytest.approx(0.0)
 
 
 def test_invariant_tracker_reports_on_crossing_counts_rows_and_logs_summary(
     tmp_path, caplog: pytest.LogCaptureFixture
 ):
-    """Repeated violations log only on the rising-edge crossing and emit a total-row summary at the end."""
+    """Crossing suppression applies only to E_residual_cons_frac_gross with running count; per-step checks log every row and summary includes max."""
     from proteus.utils.invariants import InvariantTracker
 
     tracker = InvariantTracker()
-    v_energy = InvariantViolation(
+    v_energy_1 = InvariantViolation(
         name='E_residual_cons_frac_gross',
         status_code=STATUS_ERROR_ENERGY_INVARIANT,
         value=4.0e-4,
@@ -1337,24 +1388,113 @@ def test_invariant_tracker_reports_on_crossing_counts_rows_and_logs_summary(
         message='Time=1.0e+02 yr: E_residual_cons_frac_gross=4.000000e-04 exceeds tol=2.600000e-04',
         report_only=True,
     )
+    v_energy_2 = InvariantViolation(
+        name='E_residual_cons_frac_gross',
+        status_code=STATUS_ERROR_ENERGY_INVARIANT,
+        value=6.0e-4,
+        tolerance=2.6e-4,
+        message='Time=2.0e+02 yr: E_residual_cons_frac_gross=6.000000e-04 exceeds tol=2.600000e-04',
+        report_only=True,
+    )
+    v_step_1 = InvariantViolation(
+        name='step_dE_inc_frac',
+        status_code=STATUS_ERROR_ENERGY_INVARIANT,
+        value=2.0e-2,
+        tolerance=1.0e-2,
+        message='Time=1.0e+02 yr: step_dE_inc_frac=2.000000e-02 exceeds tol=1.000000e-02',
+        report_only=True,
+    )
+    v_step_2 = InvariantViolation(
+        name='step_dE_inc_frac',
+        status_code=STATUS_ERROR_ENERGY_INVARIANT,
+        value=5.0e-1,
+        tolerance=1.0e-2,
+        message='Time=2.0e+02 yr: step_dE_inc_frac=5.000000e-01 exceeds tol=1.000000e-02',
+        report_only=True,
+    )
     dirs = {'output': str(tmp_path)}
     with caplog.at_level(logging.WARNING, logger='fwl.proteus.utils.invariants'):
-        # Row 1: crossing into violation -> logs 1 report line
-        handle_violations([v_energy], mode='report', directories=dirs, tracker=tracker)
-        # Rows 2 and 3: still violating -> suppressed per-row warning, count increments
-        handle_violations([v_energy], mode='report', directories=dirs, tracker=tracker)
-        handle_violations([v_energy], mode='report', directories=dirs, tracker=tracker)
+        # Row 1: crossing into violation -> logs both E_residual_cons_frac_gross (count=1) and step_dE_inc_frac
+        handle_violations(
+            [v_energy_1, v_step_1], mode='report', directories=dirs, tracker=tracker
+        )
+        # Rows 2 and 3: E_residual_cons_frac_gross suppressed, but step_dE_inc_frac logs on every row
+        handle_violations(
+            [v_energy_2, v_step_2], mode='report', directories=dirs, tracker=tracker
+        )
+        handle_violations([v_energy_1], mode='report', directories=dirs, tracker=tracker)
         # Row 4: clean -> resets active state
         handle_violations([], mode='report', directories=dirs, tracker=tracker)
-        # Row 5: second crossing -> logs a 2nd report line
-        handle_violations([v_energy], mode='report', directories=dirs, tracker=tracker)
+        # Row 5: second crossing of E_residual_cons_frac_gross -> logs with (count=4)
+        handle_violations([v_energy_1], mode='report', directories=dirs, tracker=tracker)
         tracker.log_summary()
 
-    report_msgs = [r.message for r in caplog.records if 'Invariant report [' in r.message]
+    energy_msgs = [
+        r.message
+        for r in caplog.records
+        if 'Invariant report [E_residual_cons_frac_gross]' in r.message
+    ]
+    step_msgs = [
+        r.message for r in caplog.records if 'Invariant report [step_dE_inc_frac]' in r.message
+    ]
     summary_msgs = [r.message for r in caplog.records if 'Invariant summary:' in r.message]
-    assert len(report_msgs) == 2
+    assert len(energy_msgs) == 2
+    assert '(count=1)' in energy_msgs[0]
+    assert '(count=4)' in energy_msgs[1]
+    assert len(step_msgs) == 2
+    assert '5.000000e-01' in step_msgs[1]
     assert tracker.row_counts['E_residual_cons_frac_gross'] == 4
+    assert tracker.row_counts['step_dE_inc_frac'] == 2
     assert tracker.rows_with_violations == 4
     assert len(summary_msgs) == 1
     assert '4 row(s) with violations' in summary_msgs[0]
-    assert 'E_residual_cons_frac_gross=4' in summary_msgs[0]
+    assert 'E_residual_cons_frac_gross=4 (max=6.000000e-04)' in summary_msgs[0]
+    assert 'step_dE_inc_frac=2 (max=5.000000e-01)' in summary_msgs[0]
+
+
+def test_main_loop_logs_invariant_summary_on_module_exception(
+    tmp_path, monkeypatch, caplog: pytest.LogCaptureFixture
+):
+    """When a module raises mid-loop, try/finally around the main loop still emits the invariant summary."""
+    from pathlib import Path
+
+    import proteus.interior_energetics.wrapper as interior_wrapper
+    from proteus import Proteus
+    from proteus.interior_energetics.common import Interior_t
+
+    monkeypatch.setattr(Interior_t, '_load_ps_table', lambda self, *a, **kw: None)
+    out = tmp_path / 'run_exc'
+    dummy_toml = Path(__file__).resolve().parents[2] / 'input' / 'dummy.toml'
+    text = dummy_toml.read_text(encoding='utf-8')
+    cfg_path = tmp_path / 'exc_summary.toml'
+    cfg_path.write_text(text.replace('path = "auto"', f'path = "{out}"', 1), encoding='utf-8')
+
+    runner = Proteus(config_path=cfg_path)
+    config = runner.config
+    config.invariants.mode = 'report'
+    config.atmos_chem.module = None
+    config.params.stop.solid.enabled = False
+    config.params.stop.iters.minimum = 1
+    config.params.stop.time.minimum = 0.0
+    config.params.stop.time.maximum = 500.0
+    config.params.out.plot_mod = None
+    config.params.out.archive_mod = 'none'
+
+    real_interior = interior_wrapper.run_interior
+
+    def interior(dirs, cfg_, hf_all, hf_row, interior_o, *args, **kwargs):
+        real_interior(dirs, cfg_, hf_all, hf_row, interior_o, *args, **kwargs)
+        if runner.loops['total'] in (1, 2):
+            hf_row['Phi_global'] = 1.5
+        elif runner.loops['total'] == 3:
+            raise RuntimeError('simulated interior solver failure')
+
+    monkeypatch.setattr(interior_wrapper, 'run_interior', interior)
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.utils.invariants'):
+        with pytest.raises(RuntimeError, match='simulated interior solver failure'):
+            runner.start(resume=False, offline=True)
+
+    summary_msgs = [r.message for r in caplog.records if 'Invariant summary:' in r.message]
+    assert len(summary_msgs) == 1
+    assert '2 row(s) with violations' in summary_msgs[0]
+    assert 'Phi_global_bounds=2 (max=1.500000e+00)' in summary_msgs[0]
