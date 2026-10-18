@@ -804,7 +804,7 @@ def test_main_loop_populates_energy_residuals_before_invariant_check_and_logs_to
     config.params.stop.solid.enabled = False
     config.params.stop.iters.minimum = 1
     config.params.stop.time.minimum = 0.0
-    config.params.stop.time.maximum = 1.0e9
+    config.params.stop.time.maximum = 2.0
     config.params.out.plot_mod = None
     config.params.out.archive_mod = 'none'
 
@@ -820,12 +820,21 @@ def test_main_loop_populates_energy_residuals_before_invariant_check_and_logs_to
         hf_row['step_dE_F_cmb_J'] = 4.409505110494009e27
         hf_row['step_dE_Q_radio_J'] = 0.0
         hf_row['step_dE_Q_tidal_J'] = 0.0
-        cfg_.params.stop.time.maximum = float(hf_row['Time'])
+        hf_row['core_C_eff'] = 1.0e26
+        hf_row['step_dE_core_J'] = -4.407e27
 
     monkeypatch.setattr(interior_wrapper, 'run_interior', interior)
     with caplog.at_level(logging.WARNING, logger='fwl.proteus.utils.invariants'):
         runner.start(resume=False, offline=True)
 
+    assert runner.hf_row['E_residual_cons_J'] == pytest.approx(2.807814e24, rel=1e-5)
+    assert float(runner.hf_all['E_residual_cons_J'].iloc[-1]) == pytest.approx(
+        2.807814e24, rel=1e-5
+    )
+    assert runner.hf_row['E_core_residual_frac'] == pytest.approx(5.681160e-4, rel=1e-5)
+    assert float(runner.hf_all['E_core_residual_frac'].iloc[-1]) == pytest.approx(
+        5.681160e-4, rel=1e-5
+    )
     assert any(
         'Invariant report [E_residual_cons_frac_gross]' in rec.message
         and '3.755489e-04 exceeds tol=2.600000e-04' in rec.message
@@ -836,4 +845,9 @@ def test_main_loop_populates_energy_residuals_before_invariant_check_and_logs_to
         '[ WARNING ] Invariant report [E_residual_cons_frac_gross]: '
         'Time=2.000000e+00 yr: E_residual_cons_frac_gross=3.755489e-04 '
         'exceeds tol=2.600000e-04'
+    ) in logfile_text
+    assert (
+        '[ WARNING ] Invariant report [E_core_residual_frac]: '
+        'Time=2.000000e+00 yr: |E_core_residual_frac|=5.681160e-04 '
+        'exceeds tol=1.000000e-04'
     ) in logfile_text

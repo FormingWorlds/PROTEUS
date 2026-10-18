@@ -1585,7 +1585,8 @@ class Proteus:
             else:
                 self.interior_o.ic = 2
 
-            if self.loops['total'] > 1 and hasattr(self.hf_all, 'columns'):
+            has_hf_history = self.loops['total'] > 1 and hasattr(self.hf_all, 'columns')
+            if has_hf_history:
                 _populate_energy_residual(self.hf_all, self.hf_row)
                 _populate_core_residual(self.hf_all, self.hf_row)
 
@@ -1593,7 +1594,7 @@ class Proteus:
             check_row_invariants(
                 self.hf_row,
                 self.config,
-                hf_all=self.hf_all if self.loops['total'] > 1 else None,
+                hf_all=self.hf_all if has_hf_history else None,
                 directories=self.directories,
             )
 
