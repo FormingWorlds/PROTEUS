@@ -36,3 +36,10 @@ def test_the_gradient_core_refuses_the_limited_top_node_at_load():
     assert Aragog(core_bc='gradient').top_node == 'linear'
     with pytest.raises(ValueError, match='top_node'):
         Aragog(core_bc='gradient', top_node='limited')
+
+
+def test_a_later_gradient_core_refuses_the_limited_top_node():
+    """The pair is refused whichever field is assigned last."""
+    a = Aragog(top_node='limited')
+    with pytest.raises(ValueError, match='top_node'):
+        a.core_bc = 'gradient'
