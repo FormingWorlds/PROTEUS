@@ -883,6 +883,7 @@ class AragogRunner:
                 config, hf_row, interior_o, outdir
             )
 
+        limited_top = config.interior_energetics.aragog.top_node == 'limited'
         boundary_conditions = _BoundaryConditionsParameters(
             # 4 = prescribed heat flux (PROTEUS coupling mode, from hf_row['F_atm'])
             # 1 = native grey-body (emissivity * sigma * (T^4 - T_eqm^4))
@@ -909,6 +910,8 @@ class AragogRunner:
             # core BC mode (the 'energy_balance' option is available)
             core_bc=core_bc_str,
             core_module_params=core_module_params,
+            # an aragog without the option builds the default linear top node
+            **({'top_node': 'limited'} if limited_top else {}),
         )
 
         # Define the inner_radius for the mesh.

@@ -314,6 +314,11 @@ class Aragog:
                            crystallisation regimes, and dynamo energetics
                            (aragog.core), coupled through a boundary-layer
                            CMB flux in the core-mantle temperature contrast.
+    top_node: str
+        Entropy of the top basic node, which sets T_magma. 'linear' (default)
+        extrapolates the top two cells; 'limited' takes the smaller of the top
+        cell step and the next one (minmod) and the top cell where that node
+        leaves the entropy table.
     """
 
     mass_coordinates: bool = field(default=True)
@@ -329,6 +334,7 @@ class Aragog:
             ('quasi_steady', 'energy_balance', 'gradient', 'bower2018', 'core_module')
         ),
     )
+    top_node: str = field(default='linear', validator=in_(('linear', 'limited')))
     phase_smoothing: str = field(
         default='tanh',
         validator=in_(('tanh', 'cubic_hermite')),
