@@ -149,7 +149,7 @@ def _failed_starts(text: str) -> str:
     return f' in {starts} start(s) [{", ".join(sorted(reasons))}]'
 
 
-def BO_step(D, B, f, kernel, acqf, lock, worker_id, x_in=None):
+def BO_step(D, B, f, k, acqf, lock, worker_id, x_in=None):
     """Perform a single Bayesian optimization step.
 
     Fits a GP to current data, optimizes an acquisition function,
@@ -160,8 +160,7 @@ def BO_step(D, B, f, kernel, acqf, lock, worker_id, x_in=None):
     - D (dict): Shared dict containing 'X' and 'Y' lists of data.
     - B (dict): Shared dict mapping worker IDs to busy input points.
     - f (callable): Objective function to evaluate.
-    - kernel (str): Kernel type ('RBF', 'MAT1/2', 'MAT3/2', 'MAT5/2'), built afresh at
-      each fit so that no fit starts from the hyperparameters of the previous one.
+    - k (Kernel): GPyTorch kernel for the GP covariance.
     - acqf (str): Acquisition function.
     - lock (multiprocessing.Lock): Lock for synchronizing shared state.
     - worker_id (int): ID of the calling worker.
@@ -195,7 +194,7 @@ def BO_step(D, B, f, kernel, acqf, lock, worker_id, x_in=None):
         gp = SingleTaskGP(
             train_X=X,
             train_Y=Y,
-            covar_module=get_kernel(kernel, d),
+            covar_module=k,
             train_Yvar=torch.full_like(Y, noise),
             input_transform=Normalize(d=d),
             outcome_transform=Standardize(m=1),

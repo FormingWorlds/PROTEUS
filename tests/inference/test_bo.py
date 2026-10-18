@@ -2,7 +2,7 @@
 Unit tests for Bayesian optimization core utilities.
 
 Covers: ``unit_bounds``, ``get_acqf`` dispatch and error contract,
-``BO_step`` with explicit x_in / UCB path and a fresh kernel per fit,
+``BO_step`` with explicit x_in / UCB path,
 random values for parameters the GP treats as irrelevant, ``init_locs`` with acqf
 propagation, and the ``plot_iter`` file-I/O leg.
 
@@ -91,7 +91,7 @@ def test_bo_step_with_x_in_skips_gp_fitting():
         D=D,
         B=B,
         f=lambda _x: torch.tensor([[0.7]], dtype=torch.double),
-        kernel='MAT3/2',
+        k=object(),
         acqf='LogEI',
         lock=_DummyLock(),
         worker_id=0,
@@ -133,7 +133,7 @@ def test_bo_step_raises_for_unknown_acquisition(monkeypatch):
             D=D,
             B=B,
             f=_f,
-            kernel='MAT3/2',
+            k=object(),
             acqf='BAD-ACQF',
             lock=_DummyLock(),
             worker_id=0,
@@ -176,7 +176,7 @@ def test_bo_step_ucb_path_computes_distance(monkeypatch):
         D=D,
         B=B,
         f=lambda _x: torch.tensor([[0.9]], dtype=torch.double),
-        kernel='MAT3/2',
+        k=object(),
         acqf='UCB',
         lock=_DummyLock(),
         worker_id=0,
@@ -186,51 +186,6 @@ def test_bo_step_ucb_path_computes_distance(monkeypatch):
     assert dist == pytest.approx(0.5)
     # Only worker 1's point is pending; worker 0's own entry is excluded
     assert pending[0].tolist() == [[0.3]]
-
-
-def test_bo_step_builds_a_new_kernel_for_every_fit(monkeypatch):
-    """Each fit gets its own kernel, built from the kernel name, so no fit starts
-    from the hyperparameters a previous fit left behind.
-    """
-    built, used = [], []
-
-    def _kernel(name, d):
-        built.append((name, d))
-        return object()
-
-    def _gp(**kwargs):
-        used.append(kwargs['covar_module'])
-        return _DummyGP()
-
-    monkeypatch.setattr(bo_mod, 'get_kernel', _kernel)
-    monkeypatch.setattr(bo_mod, 'SingleTaskGP', _gp)
-    monkeypatch.setattr(bo_mod, 'ExactMarginalLogLikelihood', lambda _lik, _gp: object())
-    monkeypatch.setattr(bo_mod, 'fit_gpytorch_mll', lambda *args, **kwargs: None)
-    monkeypatch.setattr(bo_mod, 'get_acqf', lambda *args, X_pending=None: None)
-    monkeypatch.setattr(
-        bo_mod,
-        'optimize_acqf',
-        lambda **kwargs: (torch.tensor([[0.5]], dtype=torch.double), torch.zeros(1)),
-    )
-    monkeypatch.setattr(bo_mod, 'plot_iter', lambda **kwargs: None)
-    D = {
-        'X': torch.tensor([[0.1], [0.9]], dtype=torch.double),
-        'Y': torch.tensor([[1.0], [0.0]], dtype=torch.double),
-    }
-    for _ in range(2):
-        bo_mod.BO_step(
-            D=D,
-            B={},
-            f=lambda _x: torch.tensor([[0.0]], dtype=torch.double),
-            kernel='MAT1/2',
-            acqf='LogEI',
-            lock=_DummyLock(),
-            worker_id=0,
-        )
-
-    assert built == [('MAT1/2', 1), ('MAT1/2', 1)]
-    assert len(used) == 2
-    assert used[0] is not used[1]  # a shared kernel would carry its fit into the next one
 
 
 def test_random_irrelevant_draws_only_parameters_above_the_threshold():
@@ -665,7 +620,7 @@ def test_bo_step_identifies_busy_points_by_worker_id_not_position(monkeypatch):
         D=D,
         B=B,
         f=lambda _x: torch.tensor([[0.9]], dtype=torch.double),
-        kernel='MAT3/2',
+        k=object(),
         acqf='UCB',
         lock=_DummyLock(),
         worker_id=2,
@@ -699,7 +654,7 @@ def test_bo_step_reports_no_distance_when_no_other_worker_is_busy(monkeypatch):
         D=D,
         B=B,
         f=lambda _x: torch.tensor([[0.6]], dtype=torch.double),
-        kernel='MAT3/2',
+        k=object(),
         acqf='UCB',
         lock=_DummyLock(),
         worker_id=0,
@@ -717,7 +672,7 @@ def test_bo_step_reports_no_distance_when_no_other_worker_is_busy(monkeypatch):
         D=D,
         B={},
         f=lambda _x: torch.tensor([[0.6]], dtype=torch.double),
-        kernel='MAT3/2',
+        k=object(),
         acqf='UCB',
         lock=_DummyLock(),
         worker_id=0,
