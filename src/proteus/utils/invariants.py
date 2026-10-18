@@ -9,11 +9,9 @@ from typing import TYPE_CHECKING, Sequence
 import numpy as np
 
 from proteus.escape.wrapper import readable_total
-from proteus.outgas.trapping import derived_total_elements, escapable_inventory
+from proteus.outgas.trapping import derived_total_elements
 from proteus.utils.constants import (
     element_list,
-    noble_gases,
-    vol_element_list,
     vol_gas_list,
 )
 from proteus.utils.helper import UpdateStatusfile
@@ -615,13 +613,8 @@ def check_volatile_invariants(
 
     m_init = float(hf_row.get('M_vol_initial', 0.0) or 0.0)
     if np.isfinite(m_init) and m_init > 0.0:
-        mass_thresh = float(getattr(getattr(config, 'outgas', None), 'mass_thresh', 1.0e10))
         fO2_source = getattr(getattr(config, 'planet', None), 'fO2_source', 'user_constant')
-        all_vol_depleted = all(
-            escapable_inventory(hf_row, e) <= mass_thresh
-            for e in vol_element_list + noble_gases
-        )
-        if fO2_source == 'from_O_budget' or all_vol_depleted:
+        if fO2_source == 'from_O_budget':
             removed_raw = float(hf_row.get('M_desiccated', 0.0))
             removed = removed_raw if np.isfinite(removed_raw) else 0.0
             cur_m_ele = readable_total(hf_row)
