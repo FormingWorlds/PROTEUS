@@ -7379,9 +7379,10 @@ def test_an_accepted_state_error_ends_the_run_with_status_34(caplog):
         patch('proteus.interior_energetics.wrapper.update_planet_mass'),
         patch('proteus.interior_energetics.timestep.next_step', return_value=10.0),
         caplog.at_level(logging.ERROR),
-        pytest.raises(AcceptedStateError),
+        pytest.raises(Exception) as raised,
     ):
         run_interior({}, config, hf_all, dict(hf_row), interior_o, MagicMock())
+    assert type(raised.value) is AcceptedStateError  # re-raised as itself, not swallowed
     assert [c.args[1] for c in status.call_args_list] == [34]
     assert interior_o.aragog_fail_count == 0
     assert 'entropy_table: basic 79' in caplog.text
