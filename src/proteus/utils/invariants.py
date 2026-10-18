@@ -615,8 +615,7 @@ def check_volatile_invariants(
     if np.isfinite(m_init) and m_init > 0.0:
         fO2_source = getattr(getattr(config, 'planet', None), 'fO2_source', 'user_constant')
         if fO2_source == 'from_O_budget':
-            removed_raw = float(hf_row.get('M_desiccated', 0.0))
-            removed = removed_raw if np.isfinite(removed_raw) else 0.0
+            removed = float(hf_row.get('M_desiccated', 0.0))
             cur_m_ele = readable_total(hf_row)
             lost = m_init - cur_m_ele - removed
             esc_cum = float(hf_row.get('esc_kg_cumulative', 0.0))
@@ -624,18 +623,26 @@ def check_volatile_invariants(
                 inv_cfg.escape_bound_atol_kg
             )
             if not np.isfinite(lost) or not np.isfinite(esc_tol) or lost > esc_tol:
+                if not np.isfinite(removed):
+                    msg = (
+                        f'Time={time_yr:.6e} yr: M_desiccated={removed} is not finite '
+                        f'in escape_cumulative_bound '
+                        f'(M_vol_initial={m_init:.6e} kg, cur_M_ele={cur_m_ele:.6e} kg)'
+                    )
+                else:
+                    msg = (
+                        f'Time={time_yr:.6e} yr: volatile loss={lost:.6e} kg exceeds '
+                        f'escape bound={esc_tol:.6e} kg '
+                        f'(M_vol_initial={m_init:.6e} kg, cur_M_ele={cur_m_ele:.6e} kg, '
+                        f'M_desiccated={removed:.6e} kg, esc_kg_cumulative={esc_cum:.6e} kg)'
+                    )
                 violations.append(
                     InvariantViolation(
                         name='escape_cumulative_bound',
                         status_code=STATUS_ERROR_MASS_INVARIANT,
                         value=lost,
                         tolerance=esc_tol,
-                        message=(
-                            f'Time={time_yr:.6e} yr: volatile loss={lost:.6e} kg exceeds '
-                            f'escape bound={esc_tol:.6e} kg '
-                            f'(M_vol_initial={m_init:.6e} kg, cur_M_ele={cur_m_ele:.6e} kg, '
-                            f'esc_kg_cumulative={esc_cum:.6e} kg)'
-                        ),
+                        message=msg,
                         report_only=False,
                     )
                 )
