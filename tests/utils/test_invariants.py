@@ -781,3 +781,59 @@ def test_check_row_invariants_orchestrates_modes_and_status_file(
         'H_reservoir_closure',
         'C_reservoir_closure',
     ]
+
+
+def test_main_loop_populates_energy_residuals_before_invariant_check_and_logs_to_proteus_log(
+    tmp_path, monkeypatch, caplog: pytest.LogCaptureFixture
+):
+    """Main loop must populate cumulative energy residuals on hf_row before check_row_invariants so proteus_00.log records row-4 report lines."""
+    from pathlib import Path
+
+    import proteus.interior_energetics.wrapper as interior_wrapper
+    from proteus import Proteus
+
+    out = tmp_path / 'run'
+    dummy_toml = Path(__file__).resolve().parents[2] / 'input' / 'dummy.toml'
+    text = dummy_toml.read_text(encoding='utf-8')
+    cfg_path = tmp_path / 'loop_energy_report.toml'
+    cfg_path.write_text(text.replace('path = "auto"', f'path = "{out}"', 1), encoding='utf-8')
+
+    runner = Proteus(config_path=cfg_path)
+    config = runner.config
+    config.atmos_chem.module = None
+    config.params.stop.solid.enabled = False
+    config.params.stop.iters.minimum = 1
+    config.params.stop.time.minimum = 0.0
+    config.params.stop.time.maximum = 1.0e9
+    config.params.out.plot_mod = None
+    config.params.out.archive_mod = 'none'
+
+    real_interior = interior_wrapper.run_interior
+
+    def interior(dirs, cfg_, hf_all, hf_row, interior_o, *args, **kwargs):
+        real_interior(dirs, cfg_, hf_all, hf_row, interior_o, *args, **kwargs)
+        if runner.init_stage:
+            return
+        hf_row['E_state_cons_J'] = 6.95e31
+        hf_row['step_dE_state_heat_J'] = 1.3452580147953664e27
+        hf_row['step_dE_F_int_J'] = -3.067054909352445e27
+        hf_row['step_dE_F_cmb_J'] = 4.409505110494009e27
+        hf_row['step_dE_Q_radio_J'] = 0.0
+        hf_row['step_dE_Q_tidal_J'] = 0.0
+        cfg_.params.stop.time.maximum = float(hf_row['Time'])
+
+    monkeypatch.setattr(interior_wrapper, 'run_interior', interior)
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.utils.invariants'):
+        runner.start(resume=False, offline=True)
+
+    assert any(
+        'Invariant report [E_residual_cons_frac_gross]' in rec.message
+        and '3.754079e-04 exceeds tol=2.600000e-04' in rec.message
+        for rec in caplog.records
+    )
+    logfile_text = (out / 'proteus_00.log').read_text(encoding='utf-8')
+    assert (
+        '[ WARN  ] Invariant report [E_residual_cons_frac_gross]: '
+        'Time=2.000000e+00 yr: E_residual_cons_frac_gross=3.754079e-04 '
+        'exceeds tol=2.600000e-04'
+    ) in logfile_text
