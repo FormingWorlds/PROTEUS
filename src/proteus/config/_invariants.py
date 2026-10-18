@@ -64,11 +64,12 @@ class Invariants:
     element_closure_rtol: float
         Relative tolerance on per-element reservoir closure ``atm + magma + solid = total`` [-].
         For ``outgas.module = 'calliope'``, the tolerance is ``outgas.mass_thresh + element_closure_rtol * total``
-        (only as tight as ``outgas.mass_thresh``; open item Q-CALLIOPE-ATOL).
+        (only as tight as ``outgas.mass_thresh``, which is larger than typical noble-gas inventories).
     element_closure_atol_kg: float
-        Absolute floor on per-element reservoir closure for ``atmodeller`` and solid-trapping bookkeeping [kg].
+        Absolute floor on per-element reservoir closure for ``atmodeller`` and solid-trapping bookkeeping [kg],
+        and lower-bound floor ``-element_closure_atol_kg`` on volatile and reservoir masses.
         For ``outgas.module = 'calliope'``, the closure check uses ``outgas.mass_thresh + element_closure_rtol * total``
-        and is only as tight as ``outgas.mass_thresh`` (open item Q-CALLIOPE-ATOL).
+        and is only as tight as ``outgas.mass_thresh``.
     volatile_gas_sum_rtol: float
         Relative tolerance on volatile gas species sum versus ``M_vol_atm`` [-].
     planet_mass_cap_rtol: float

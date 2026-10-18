@@ -940,7 +940,9 @@ def test_main_loop_populates_energy_residuals_before_invariant_check_and_logs_to
 
     import proteus.interior_energetics.wrapper as interior_wrapper
     from proteus import Proteus
+    from proteus.interior_energetics.common import Interior_t
 
+    monkeypatch.setattr(Interior_t, '_load_ps_table', lambda self, *a, **kw: None)
     out = tmp_path / 'run'
     dummy_toml = Path(__file__).resolve().parents[2] / 'input' / 'dummy.toml'
     text = dummy_toml.read_text(encoding='utf-8')
@@ -1278,7 +1280,9 @@ def test_stop_mode_flushes_failing_row_and_prior_rows_regardless_of_write_mod(
 
     import proteus.interior_energetics.wrapper as interior_wrapper
     from proteus import Proteus
+    from proteus.interior_energetics.common import Interior_t
 
+    monkeypatch.setattr(Interior_t, '_load_ps_table', lambda self, *a, **kw: None)
     out = tmp_path / f'run_wm{write_mod}'
     dummy_toml = Path(__file__).resolve().parents[2] / 'input' / 'dummy.toml'
     text = dummy_toml.read_text(encoding='utf-8')

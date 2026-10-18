@@ -37,7 +37,11 @@ from proteus.utils.helper import (
     is_write_snapshot,
     multiple,
 )
-from proteus.utils.invariants import check_row_invariants
+from proteus.utils.invariants import (
+    InvariantTracker,
+    InvariantViolationError,
+    check_row_invariants,
+)
 from proteus.utils.logs import (
     GetCurrentLogfileIndex,
     GetLogfilePath,
@@ -165,6 +169,7 @@ class Proteus:
 
         # Helpfile variables from all previous iterations
         self.hf_all = None
+        self._invariant_tracker = InvariantTracker()
 
         # Caps on the two abort paths. Fixed for the run rather than reset per
         # start, unlike the counters they are compared with. The stall cap is a
@@ -1590,21 +1595,27 @@ class Proteus:
                 _populate_energy_residual(self.hf_all, self.hf_row)
                 _populate_core_residual(self.hf_all, self.hf_row)
 
-            # Validate run-row physical invariants before recording the row
-            check_row_invariants(
-                self.hf_row,
-                self.config,
-                hf_all=self.hf_all if has_hf_history else None,
-                directories=self.directories,
-            )
-
-            # Update full helpfile
+            prev_hf = self.hf_all if has_hf_history else None
             if self.loops['total'] > 1:
-                # append row
                 self.hf_all = ExtendHelpfile(self.hf_all, self.hf_row)
             else:
-                # first iter => generate new HF from dict
                 self.hf_all = CreateHelpfileFromDict(self.hf_row)
+
+            # Validate run-row physical invariants; on a stopping violation,
+            # flush the failing row and prior rows to disk before raising.
+            try:
+                check_row_invariants(
+                    self.hf_row,
+                    self.config,
+                    hf_all=prev_hf,
+                    directories=self.directories,
+                    tracker=self._invariant_tracker,
+                )
+            except InvariantViolationError:
+                self._save_zalmoxis_output()
+                WriteHelpfileToCSV(self.directories['output'], self.hf_all)
+                self._invariant_tracker.log_summary()
+                raise
 
             # Write helpfile to disk (gated by is_snapshot, which
             # combines write_mod iteration check and dt_write time check)
@@ -1674,6 +1685,8 @@ class Proteus:
                 )
 
             ############### / HOUSEKEEPING AND CONVERGENCE CHECK
+
+        self._invariant_tracker.log_summary()
 
         # Write conditions at the end of simulation
         log.info('Writing data')

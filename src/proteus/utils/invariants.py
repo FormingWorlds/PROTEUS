@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Sequence
 
 import numpy as np
@@ -26,6 +26,7 @@ log = logging.getLogger('fwl.' + __name__)
 STATUS_ERROR_ENERGY_INVARIANT: int = 30
 STATUS_ERROR_MASS_INVARIANT: int = 31
 STATUS_ERROR_STATE_BOUNDS_INVARIANT: int = 32
+STEP_GROSS_FLOOR_J: float = 1.0
 
 
 @dataclass(frozen=True)
@@ -55,6 +56,49 @@ class InvariantViolation:
     tolerance: float
     message: str
     report_only: bool = False
+
+
+@dataclass
+class InvariantTracker:
+    """Per-run tracker that logs repeated violations on rising-edge crossings and summarizes counts.
+
+    Attributes
+    ----------
+    active_names : set[str]
+        Invariant names violated on the immediately preceding row.
+    row_counts : dict[str, int]
+        Total number of rows on which each invariant name was violated.
+    rows_with_violations : int
+        Total number of rows with at least one invariant violation.
+    """
+
+    active_names: set[str] = field(default_factory=set)
+    row_counts: dict[str, int] = field(default_factory=dict)
+    rows_with_violations: int = 0
+
+    def record_row(self, violations: Sequence[InvariantViolation]) -> set[str]:
+        """Record ``violations`` for the current row and return rising-edge names."""
+        if not violations:
+            self.active_names.clear()
+            return set()
+        self.rows_with_violations += 1
+        current = {v.name for v in violations}
+        rising = current - self.active_names
+        for name in current:
+            self.row_counts[name] = self.row_counts.get(name, 0) + 1
+        self.active_names = current
+        return rising
+
+    def log_summary(self) -> None:
+        """Emit a single end-of-run summary line when at least one row had violations."""
+        if not self.row_counts:
+            return
+        counts = ', '.join(f'{name}={cnt}' for name, cnt in self.row_counts.items())
+        log.warning(
+            'Invariant summary: %d row(s) with violations (%s)',
+            self.rows_with_violations,
+            counts,
+        )
 
 
 class InvariantViolationError(RuntimeError):
@@ -91,6 +135,7 @@ def handle_violations(
     violations: Sequence[InvariantViolation],
     mode: str = 'report',
     directories: dict | None = None,
+    tracker: InvariantTracker | None = None,
 ) -> list[InvariantViolation]:
     """Process run-row invariant violations according to the configured mode.
 
@@ -104,6 +149,8 @@ def handle_violations(
         PROTEUS run directories dictionary; when provided and a stopping violation
         occurs under ``mode == 'stop'``, writes ``primary.status_code`` to the run
         status file before raising :class:`InvariantViolationError`.
+    tracker : InvariantTracker or None, optional
+        Optional per-run tracker suppressing duplicate log lines on consecutive rows.
 
     Returns
     -------
@@ -115,23 +162,33 @@ def handle_violations(
     InvariantViolationError
         When ``mode == 'stop'`` and at least one violation has ``report_only=False``.
     """
-    if mode == 'off' or not violations:
+    if mode == 'off':
+        return []
+    if not violations:
+        if tracker is not None:
+            tracker.record_row(())
         return []
 
-    if mode == 'report':
-        for v in violations:
-            log.warning('Invariant report [%s]: %s', v.name, v.message)
-        return list(violations)
-
-    if mode != 'stop':
+    if mode not in ('report', 'stop'):
         raise ValueError(
             f"Unknown invariants.mode {mode!r}; expected 'off', 'report', or 'stop'."
         )
 
+    rising = (
+        tracker.record_row(violations) if tracker is not None else {v.name for v in violations}
+    )
+
+    if mode == 'report':
+        for v in violations:
+            if v.name in rising:
+                log.warning('Invariant report [%s]: %s', v.name, v.message)
+        return list(violations)
+
     stopping: list[InvariantViolation] = []
     for v in violations:
         if v.report_only:
-            log.warning('Invariant report [%s]: %s', v.name, v.message)
+            if v.name in rising:
+                log.warning('Invariant report [%s]: %s', v.name, v.message)
         else:
             log.error('Invariant violation [%s]: %s', v.name, v.message)
             stopping.append(v)
@@ -143,6 +200,19 @@ def handle_violations(
         raise InvariantViolationError(primary, stopping)
 
     return list(violations)
+
+
+_ENERGY_FINITE_INPUT_KEYS: tuple[str, ...] = (
+    'E_state_cons_J',
+    'E_state_heat_cons_J',
+    'step_dE_state_heat_J',
+    'step_dE_F_int_J',
+    'step_dE_F_cmb_J',
+    'step_dE_Q_radio_J',
+    'step_dE_Q_tidal_J',
+    'step_dE_core_J',
+    'core_C_eff',
+)
 
 
 def check_energy_invariants(
@@ -174,10 +244,27 @@ def check_energy_invariants(
         return []
 
     e_state_cons = float(hf_row.get('E_state_cons_J', 0.0))
-    if not np.isfinite(e_state_cons) or e_state_cons == 0.0:
+    if e_state_cons == 0.0:
         return []
 
     time_yr = float(hf_row.get('Time', 0.0))
+    violations: list[InvariantViolation] = []
+    for key in _ENERGY_FINITE_INPUT_KEYS:
+        if key not in hf_row:
+            continue
+        raw_val = float(hf_row.get(key, 0.0))
+        if not np.isfinite(raw_val):
+            violations.append(
+                InvariantViolation(
+                    name=key,
+                    status_code=STATUS_ERROR_ENERGY_INVARIANT,
+                    value=raw_val,
+                    tolerance=0.0,
+                    message=f'Time={time_yr:.6e} yr: {key}={raw_val} is not finite',
+                    report_only=True,
+                )
+            )
+
     f_int = float(hf_row.get('step_dE_F_int_J', 0.0))
     f_cmb = float(hf_row.get('step_dE_F_cmb_J', 0.0))
     q_rad = float(hf_row.get('step_dE_Q_radio_J', 0.0))
@@ -190,34 +277,16 @@ def check_energy_invariants(
     )
 
     hist_gross = 0.0
-    if 'step_dE_F_int_J' in hf_all:
-        hist_gross += float(
-            np.sum(
-                np.abs(np.nan_to_num(hf_all['step_dE_F_int_J'].to_numpy(dtype=float), nan=0.0))
+    for col in (
+        'step_dE_F_int_J',
+        'step_dE_F_cmb_J',
+        'step_dE_Q_radio_J',
+        'step_dE_Q_tidal_J',
+    ):
+        if col in hf_all:
+            hist_gross += float(
+                np.sum(np.abs(np.nan_to_num(hf_all[col].to_numpy(dtype=float), nan=0.0)))
             )
-        )
-    if 'step_dE_F_cmb_J' in hf_all:
-        hist_gross += float(
-            np.sum(
-                np.abs(np.nan_to_num(hf_all['step_dE_F_cmb_J'].to_numpy(dtype=float), nan=0.0))
-            )
-        )
-    if 'step_dE_Q_radio_J' in hf_all:
-        hist_gross += float(
-            np.sum(
-                np.abs(
-                    np.nan_to_num(hf_all['step_dE_Q_radio_J'].to_numpy(dtype=float), nan=0.0)
-                )
-            )
-        )
-    if 'step_dE_Q_tidal_J' in hf_all:
-        hist_gross += float(
-            np.sum(
-                np.abs(
-                    np.nan_to_num(hf_all['step_dE_Q_tidal_J'].to_numpy(dtype=float), nan=0.0)
-                )
-            )
-        )
 
     e_state_heat = float(hf_row.get('E_state_heat_cons_J', 0.0))
     abs_e_state_heat = abs(e_state_heat) if np.isfinite(e_state_heat) else 0.0
@@ -227,7 +296,6 @@ def check_energy_invariants(
     inv_cfg = config.invariants
     eff_energy_rtol = float(inv_cfg.energy_residual_rtol)
 
-    violations: list[InvariantViolation] = []
     e_res_j = float(hf_row.get('E_residual_cons_J', 0.0))
     e_res_frac_gross = abs(e_res_j) / denom_gross if np.isfinite(e_res_j) else float('nan')
     if not np.isfinite(e_res_frac_gross) or e_res_frac_gross > eff_energy_rtol:
@@ -256,16 +324,12 @@ def check_energy_invariants(
         dE_state_heat = float(hf_row.get('step_dE_state_heat_J', 0.0))
         dE_inc_cons = f_int + f_cmb + q_rad + q_tid
         step_diff = abs(dE_state_heat - dE_inc_cons)
-        step_err = step_diff / denom_gross if np.isfinite(step_diff) else float('nan')
+        denom_step = max(step_gross, STEP_GROSS_FLOOR_J)
+        step_err = step_diff / denom_step if np.isfinite(step_diff) else float('nan')
         t_surf = float(hf_row.get('T_surf', 1000.0))
         t_magma = float(hf_row.get('T_magma', 1000.0))
-        phi_glob = float(hf_row.get('Phi_global', 1.0))
-        rf_depth = float(hf_row.get('RF_depth', 0.0))
-        on_phase_kink = (
-            (np.isfinite(t_surf) and t_surf <= 301.0)
-            or (np.isfinite(t_magma) and t_magma <= 301.0)
-            or (np.isfinite(phi_glob) and 0.0 < phi_glob < 1.0)
-            or (np.isfinite(rf_depth) and 0.0 < rf_depth < 1.0)
+        on_phase_kink = (np.isfinite(t_surf) and t_surf <= 301.0) or (
+            np.isfinite(t_magma) and t_magma <= 301.0
         )
         step_tol = (
             float(inv_cfg.step_energy_smin_rtol)
@@ -283,7 +347,7 @@ def check_energy_invariants(
                         f'Time={time_yr:.6e} yr: step_dE_inc_frac={step_err:.6e} '
                         f'exceeds tol={step_tol:.6e} '
                         f'(step_dE_state_heat_J={dE_state_heat:.6e} J, '
-                        f'dE_inc_cons={dE_inc_cons:.6e} J)'
+                        f'dE_inc_cons={dE_inc_cons:.6e} J, step_gross={step_gross:.6e} J)'
                     ),
                     report_only=True,
                 )
@@ -308,7 +372,7 @@ def check_energy_invariants(
         )
 
     core_c_eff = float(hf_row.get('core_C_eff', 0.0))
-    if np.isfinite(core_c_eff) and core_c_eff != 0.0:
+    if core_c_eff != 0.0:
         core_res_raw = float(hf_row.get('E_core_residual_frac', 0.0))
         core_res_frac = abs(core_res_raw) if np.isfinite(core_res_raw) else float('nan')
         core_tol = float(inv_cfg.core_residual_rtol)
@@ -461,14 +525,57 @@ def check_volatile_invariants(
     inv_cfg = config.invariants
     time_yr = float(hf_row.get('Time', 0.0))
     m_planet = float(hf_row.get('M_planet', 0.0))
-    if np.isfinite(m_planet) and m_planet <= 0.0:
-        return []
-
     m_atm = float(hf_row.get('M_atm', 0.0))
     m_vol_atm = float(hf_row.get('M_vol_atm', 0.0))
     m_vaps = float(hf_row.get('M_vaps', 0.0))
     vapourise = bool(getattr(getattr(config, 'outgas', None), 'vapourise', False))
+    closure_rtol = float(inv_cfg.element_closure_rtol)
+    closure_atol_kg = float(inv_cfg.element_closure_atol_kg)
     violations: list[InvariantViolation] = []
+
+    if np.isfinite(m_planet) and m_planet <= 0.0:
+        violations.append(
+            InvariantViolation(
+                name='M_planet_bounds',
+                status_code=STATUS_ERROR_MASS_INVARIANT,
+                value=m_planet,
+                tolerance=0.0,
+                message=(
+                    f'Time={time_yr:.6e} yr: M_planet={m_planet:.6e} kg violates M_planet > 0.0 kg'
+                ),
+                report_only=False,
+            )
+        )
+
+    if np.isfinite(m_atm) and m_atm < -closure_atol_kg:
+        violations.append(
+            InvariantViolation(
+                name='M_atm_bounds',
+                status_code=STATUS_ERROR_MASS_INVARIANT,
+                value=m_atm,
+                tolerance=closure_atol_kg,
+                message=(
+                    f'Time={time_yr:.6e} yr: M_atm={m_atm:.6e} kg < '
+                    f'-element_closure_atol_kg ({-closure_atol_kg:.6e} kg)'
+                ),
+                report_only=False,
+            )
+        )
+
+    if np.isfinite(m_vol_atm) and m_vol_atm < -closure_atol_kg:
+        violations.append(
+            InvariantViolation(
+                name='M_vol_atm_bounds',
+                status_code=STATUS_ERROR_MASS_INVARIANT,
+                value=m_vol_atm,
+                tolerance=closure_atol_kg,
+                message=(
+                    f'Time={time_yr:.6e} yr: M_vol_atm={m_vol_atm:.6e} kg < '
+                    f'-element_closure_atol_kg ({-closure_atol_kg:.6e} kg)'
+                ),
+                report_only=False,
+            )
+        )
 
     cap_tol = float(inv_cfg.planet_mass_cap_rtol)
     if not (np.isfinite(m_planet) and np.isfinite(m_atm) and np.isfinite(m_vaps)):
@@ -485,7 +592,7 @@ def check_volatile_invariants(
                 report_only=False,
             )
         )
-    elif not vapourise or m_vaps <= 0.0:
+    elif m_planet > 0.0 and (not vapourise or m_vaps <= 0.0):
         rel_excess = m_atm / m_planet - 1.0
         if rel_excess > cap_tol:
             violations.append(
@@ -502,7 +609,7 @@ def check_volatile_invariants(
                     report_only=False,
                 )
             )
-    else:
+    elif m_planet > 0.0:
         unexplained_rel = (m_atm - m_planet - m_vaps) / m_planet
         if unexplained_rel > cap_tol:
             violations.append(
@@ -522,7 +629,24 @@ def check_volatile_invariants(
             )
 
     gas_tol = float(inv_cfg.volatile_gas_sum_rtol)
-    summed = sum(float(hf_row.get(f'{s}_kg_atm', 0.0)) for s in vol_gas_list)
+    summed = 0.0
+    for s in vol_gas_list:
+        s_mass = float(hf_row.get(f'{s}_kg_atm', 0.0))
+        summed += s_mass
+        if np.isfinite(s_mass) and s_mass < -closure_atol_kg:
+            violations.append(
+                InvariantViolation(
+                    name=f'{s}_kg_atm_bounds',
+                    status_code=STATUS_ERROR_MASS_INVARIANT,
+                    value=s_mass,
+                    tolerance=closure_atol_kg,
+                    message=(
+                        f'Time={time_yr:.6e} yr: {s}_kg_atm={s_mass:.6e} kg < '
+                        f'-element_closure_atol_kg ({-closure_atol_kg:.6e} kg)'
+                    ),
+                    report_only=False,
+                )
+            )
     if not (np.isfinite(m_vol_atm) and np.isfinite(summed)):
         violations.append(
             InvariantViolation(
@@ -556,9 +680,23 @@ def check_volatile_invariants(
                         report_only=False,
                     )
                 )
+        elif summed != m_vol_atm:
+            diff_gas = abs(summed - m_vol_atm)
+            violations.append(
+                InvariantViolation(
+                    name='M_vol_atm_species_sum',
+                    status_code=STATUS_ERROR_MASS_INVARIANT,
+                    value=diff_gas,
+                    tolerance=gas_tol,
+                    message=(
+                        f'Time={time_yr:.6e} yr: |sum_s(s_kg_atm) - M_vol_atm|='
+                        f'{diff_gas:.6e} kg with non-positive scale={scale:.6e} kg '
+                        f'(M_vol_atm={m_vol_atm:.6e} kg, sum_s={summed:.6e} kg)'
+                    ),
+                    report_only=False,
+                )
+            )
 
-    closure_rtol = float(inv_cfg.element_closure_rtol)
-    closure_atol_kg = float(inv_cfg.element_closure_atol_kg)
     outgas_cfg = getattr(config, 'outgas', None)
     is_calliope = getattr(outgas_cfg, 'module', None) == 'calliope'
     calliope_mass_thresh = float(outgas_cfg.mass_thresh) if is_calliope else 0.0
@@ -568,6 +706,22 @@ def check_volatile_invariants(
     for e in element_list:
         if e in derived:
             continue
+        for r in ('atm', 'liquid', 'solid'):
+            r_mass = float(hf_row.get(f'{e}_kg_{r}', 0.0))
+            if np.isfinite(r_mass) and r_mass < -closure_atol_kg:
+                violations.append(
+                    InvariantViolation(
+                        name=f'{e}_kg_{r}_bounds',
+                        status_code=STATUS_ERROR_MASS_INVARIANT,
+                        value=r_mass,
+                        tolerance=closure_atol_kg,
+                        message=(
+                            f'Time={time_yr:.6e} yr: {e}_kg_{r}={r_mass:.6e} kg < '
+                            f'-element_closure_atol_kg ({-closure_atol_kg:.6e} kg)'
+                        ),
+                        report_only=False,
+                    )
+                )
         total = float(hf_row.get(f'{e}_kg_total', 0.0))
         if not np.isfinite(total):
             violations.append(
@@ -577,6 +731,21 @@ def check_volatile_invariants(
                     value=float('nan'),
                     tolerance=closure_rtol,
                     message=f'Time={time_yr:.6e} yr: {e}_kg_total={total} is not finite',
+                    report_only=False,
+                )
+            )
+            continue
+        if total < -closure_atol_kg:
+            violations.append(
+                InvariantViolation(
+                    name=f'{e}_reservoir_closure',
+                    status_code=STATUS_ERROR_MASS_INVARIANT,
+                    value=total,
+                    tolerance=closure_atol_kg,
+                    message=(
+                        f'Time={time_yr:.6e} yr: {e}_kg_total={total:.6e} kg < '
+                        f'-element_closure_atol_kg ({-closure_atol_kg:.6e} kg)'
+                    ),
                     report_only=False,
                 )
             )
@@ -713,10 +882,16 @@ def check_state_bounds_invariants(
 
     m_atm = float(hf_row.get('M_atm', 0.0))
     p_surf = float(hf_row.get('P_surf', float('nan')))
-    has_atm = np.isfinite(m_atm) and m_atm > 0.0
-    valid_p = np.isfinite(p_surf) and (p_surf > 0.0 if has_atm else p_surf >= 0.0)
+    if not np.isfinite(m_atm) or m_atm < 0.0:
+        valid_p = False
+        req = '== 0.0 bar with M_atm >= 0.0 kg'
+    elif m_atm == 0.0:
+        valid_p = np.isfinite(p_surf) and p_surf == 0.0
+        req = '== 0.0'
+    else:
+        valid_p = np.isfinite(p_surf) and p_surf > 0.0
+        req = '> 0.0'
     if not valid_p:
-        req = '> 0.0' if has_atm else '>= 0.0'
         violations.append(
             InvariantViolation(
                 name='P_surf_bounds',
@@ -756,6 +931,7 @@ def check_row_invariants(
     config: Config,
     hf_all: pd.DataFrame | None = None,
     directories: dict | None = None,
+    tracker: InvariantTracker | None = None,
 ) -> list[InvariantViolation]:
     """Evaluate all run-row invariants on ``hf_row`` and dispatch according to ``config.invariants.mode``.
 
@@ -769,6 +945,8 @@ def check_row_invariants(
         Accumulated helpfile table prior to appending ``hf_row``.
     directories : dict or None, optional
         PROTEUS run directories dictionary for status-file updates under ``mode == 'stop'``.
+    tracker : InvariantTracker or None, optional
+        Cross-row state tracker for rising-edge report logging and total-row counting.
 
     Returns
     -------
@@ -785,4 +963,4 @@ def check_row_invariants(
     violations.extend(check_structure_invariants(hf_row, config))
     violations.extend(check_volatile_invariants(hf_row, config))
     violations.extend(check_state_bounds_invariants(hf_row, config))
-    return handle_violations(violations, mode=mode, directories=directories)
+    return handle_violations(violations, mode=mode, directories=directories, tracker=tracker)
