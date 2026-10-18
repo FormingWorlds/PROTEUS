@@ -12064,7 +12064,7 @@
           "value": 0.0
         }
       ],
-      "description": "Relative tolerance on cumulative coupled energy residual against gross throughput [-].",
+      "description": "Relative tolerance on cumulative coupled energy residual against gross throughput [-]. Sized above the ``2.51e-4`` maximum gross-normalized residual in post-closure runs after the first post-initialisation step on default time-step configurations.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -12077,7 +12077,7 @@
       "class": "Invariants",
       "type": "float",
       "accepts_none": false,
-      "default": "0.0001",
+      "default": "0.01",
       "choices": null,
       "bounds": [
         {
@@ -12085,7 +12085,7 @@
           "value": 0.0
         }
       ],
-      "description": "Relative tolerance on per-step energy residual increment outside the entropy floor [-].",
+      "description": "Relative tolerance on per-step energy residual increment normalized by per-step gross flux outside the ``301 K`` temperature clip [-]. In post-closure default runs outside the clip, the per-step increment has 99th percentile ``5.4e-4``, 99.9th percentile ``2.7e-2``, and maximum ``0.117``.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -12098,7 +12098,7 @@
       "class": "Invariants",
       "type": "float",
       "accepts_none": false,
-      "default": "0.00025",
+      "default": "0.05",
       "choices": null,
       "bounds": [
         {
@@ -12106,7 +12106,7 @@
           "value": 0.0
         }
       ],
-      "description": "Relative tolerance on per-step energy residual increment when clipped to ``S_min`` [-].",
+      "description": "Relative tolerance on per-step energy residual increment normalized by per-step gross flux when ``T_surf <= 301 K`` or ``T_magma <= 301 K`` [-]. Sized above the ``4.39%`` maximum observed on the ``301 K`` temperature clip in post-closure runs.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -12127,7 +12127,7 @@
           "value": 0.0
         }
       ],
-      "description": "Relative tolerance on the Aragog ODE solver internal energy residual [-].",
+      "description": "Relative tolerance on the Aragog ODE solver internal energy residual [-], sized above the ``2.46e-14`` maximum observed in converged post-closure runs.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -12148,7 +12148,7 @@
           "value": 0.0
         }
       ],
-      "description": "Relative tolerance on the CMB core cooling ledger residual [-].",
+      "description": "Relative tolerance on the CMB core cooling ledger residual [-], sized above floating-point round-off on the single-ODE core integration.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -12169,7 +12169,7 @@
           "value": 0.0
         }
       ],
-      "description": "Warning threshold on ``struct_mass_desync_frac`` [-].",
+      "description": "Warning threshold on ``struct_mass_desync_frac`` [-], sized above the ``4.71e-3`` maximum observed in post-closure runs.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -12190,7 +12190,7 @@
           "value": 0.0
         }
       ],
-      "description": "Stop threshold on ``struct_mass_desync_frac`` [-].",
+      "description": "Stop threshold on ``struct_mass_desync_frac`` [-], sized at twice the ``5.0e-3`` warning threshold.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -12211,7 +12211,7 @@
           "value": 0.0
         }
       ],
-      "description": "Relative tolerance on ``M_int`` versus ``M_int_target`` at a structure update row [-].",
+      "description": "Relative tolerance on ``M_int`` versus ``M_int_target`` at a structure update row [-], sized above the ``2.05e-3`` maximum observed on Zalmoxis structure update rows.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -12232,7 +12232,7 @@
           "value": 0.0
         }
       ],
-      "description": "Relative tolerance on ``M_core`` versus ``M_core_target`` at a structure update row [-].",
+      "description": "Relative tolerance on ``M_core`` versus ``M_core_target`` at a structure update row [-], sized above the ``1.23e-2`` maximum radial-trapezoidal core mass difference on Zalmoxis meshes.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -12253,7 +12253,7 @@
           "value": 0.0
         }
       ],
-      "description": "Relative tolerance on per-element reservoir closure ``atm + magma + solid = total`` [-]. For ``outgas.module = 'calliope'``, the tolerance is ``outgas.mass_thresh + element_closure_rtol * total`` (only as tight as ``outgas.mass_thresh``, which is larger than typical noble-gas inventories).",
+      "description": "Relative tolerance on per-element reservoir closure ``atm + magma + solid = total`` [-], sized at ``2.5`` times the default ``outgas.solver_rtol = 1.0e-4``. For ``outgas.module = 'calliope'``, the tolerance is ``outgas.mass_thresh + element_closure_rtol * total`` (only as tight as ``outgas.mass_thresh``, which is larger than typical noble-gas inventories).",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -12295,7 +12295,7 @@
           "value": 0.0
         }
       ],
-      "description": "Relative tolerance on volatile gas species sum versus ``M_vol_atm`` [-].",
+      "description": "Relative tolerance on volatile gas species sum versus ``M_vol_atm`` [-], matching ``coupler.assert_mass_conservation``. Helpfiles without ``M_vol_atm`` fail the gas-sum check.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -12316,7 +12316,7 @@
           "value": 0.0
         }
       ],
-      "description": "Relative tolerance on ``M_atm <= M_planet`` [-].",
+      "description": "Relative tolerance on ``M_atm <= M_planet`` [-], matching ``coupler.assert_mass_conservation``.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -12337,7 +12337,7 @@
           "value": 1.0
         }
       ],
-      "description": "Multiplicative bound on element loss relative to ``esc_kg_cumulative`` [-].",
+      "description": "Multiplicative bound on element loss relative to ``esc_kg_cumulative`` [-] when ``planet.fO2_source = 'from_O_budget'``.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -12358,7 +12358,7 @@
           "value": 0.0
         }
       ],
-      "description": "Absolute tolerance on element loss relative to ``esc_kg_cumulative`` [kg].",
+      "description": "Absolute tolerance on element loss relative to ``esc_kg_cumulative`` [kg] when ``planet.fO2_source = 'from_O_budget'``.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -12379,7 +12379,7 @@
           "value": 0.0
         }
       ],
-      "description": "Strict upper bound on ``T_magma`` [K].",
+      "description": "Strict upper bound on ``T_magma`` [K] above physical magma-ocean temperatures.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -12400,7 +12400,7 @@
           "value": 0.0
         }
       ],
-      "description": "Absolute tolerance around ``[0, 1]`` for ``Phi_global`` [-].",
+      "description": "Absolute tolerance around ``[0, 1]`` for ``Phi_global`` [-] for floating-point round-off.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,

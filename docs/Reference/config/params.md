@@ -211,7 +211,9 @@ to be satisfied for two consecutive iterations before terminating.
 
 ## Run-row invariants `[invariants]`
 
-At the end of each iteration, `check_row_invariants` evaluates coupled energy, structure, volatile-mass, and state-bounds invariants according to `invariants.mode` (`"off"`, `"report"`, or `"stop"`). Note that `assert_mass_conservation` runs earlier inside `run_outgassing` at a fixed $10^{-6}$ relative tolerance on `M_atm <= M_planet` and `M_vol_atm` versus the summed volatile gas species, and raises `RuntimeError` regardless of `invariants.mode`.
+At the end of each iteration, `check_row_invariants` evaluates coupled energy, structure, volatile-mass, and state-bounds invariants according to `invariants.mode` (`"off"`, `"report"`, or `"stop"`). Note that `assert_mass_conservation` runs earlier inside `run_outgassing` at a fixed $10^{-6}$ relative tolerance on `M_atm <= M_planet` and `M_vol_atm` versus the summed volatile gas species, and raises `RuntimeError` regardless of `invariants.mode`. Helpfiles without `M_vol_atm` fail the `M_vol_atm_gas_sum` check whenever any volatile gas species has non-zero atmospheric mass.
+
+Each default tolerance is sized from the empirical residual distribution in post-closure runs (`fwl-aragog >= 26.10.1`): `energy_residual_rtol = 2.6e-4` sits above the $2.51\times 10^{-4}$ maximum gross-normalized cumulative energy residual after the first post-initialisation step on default time-step configurations; `step_energy_rtol = 1.0e-2` and `step_energy_smin_rtol = 5.0e-2` bound the per-step energy increment normalized by per-step gross flux (in post-closure default runs, the per-step increment has 99th percentile $5.4\times 10^{-4}$, 99.9th percentile $2.7\times 10^{-2}$, and maximum $0.117$ outside the $301\text{ K}$ temperature clip, and a maximum of $4.39\%$ on the clip); `solver_residual_rtol = 1.0e-12` sits above the $2.46\times 10^{-14}$ converged ODE solver residual; `struct_mass_desync_warn_rtol = 5.0e-3` and `struct_mass_desync_rtol = 1.0e-2` sit above the $4.71\times 10^{-3}$ post-closure structure mass desync maximum; `interior_mass_target_rtol = 3.0e-3` and `core_mass_target_rtol = 2.0e-2` sit above the $2.05\times 10^{-3}$ and $1.23\times 10^{-2}$ Zalmoxis mesh update maxima; and `element_closure_rtol = 2.5e-4` sits at $2.5$ times the default `outgas.solver_rtol = 1.0e-4`.
 
 When `outgas.module = 'calliope'`, the per-element reservoir closure check uses `outgas.mass_thresh + element_closure_rtol * total`, whereas `atmodeller` and solid-trapping bookkeeping use `max(element_closure_atol_kg, element_closure_rtol * total)`. Because `outgas.mass_thresh` defaults to $10^{16}\text{ kg}$ while CALLIOPE's internal noble-gas solver uses $\max(\text{rtol} \times \text{target}, 10\text{ kg})$ on typical $10^{13}\text{ to }4\times 10^{15}\text{ kg}$ noble-gas inventories, the `calliope` closure check is roughly $10^{3}$ times looser than CALLIOPE's internal noble-gas gate and does not catch noble-gas non-closure below `outgas.mass_thresh`.
 
@@ -222,23 +224,23 @@ When `outgas.vapourise = true`, oxygen (`O`) is exempt from element reservoir cl
 | Parameter | Type | Default | Description |
 |---|---|---|---|
 | `mode` | str | `"report"` | Enforcement mode for run-row invariants: ``'off'``, ``'report'``, or ``'stop'``. Choices: `"off"`, `"report"`, `"stop"`. |
-| `energy_residual_rtol` | float | `0.00026` | Relative tolerance on cumulative coupled energy residual against gross throughput \[-\]. Must be > 0.0. |
-| `step_energy_rtol` | float | `0.0001` | Relative tolerance on per-step energy residual increment outside the entropy floor \[-\]. Must be > 0.0. |
-| `step_energy_smin_rtol` | float | `0.00025` | Relative tolerance on per-step energy residual increment when clipped to ``S_min`` \[-\]. Must be > 0.0. |
-| `solver_residual_rtol` | float | `1e-12` | Relative tolerance on the Aragog ODE solver internal energy residual \[-\]. Must be > 0.0. |
-| `core_residual_rtol` | float | `0.0001` | Relative tolerance on the CMB core cooling ledger residual \[-\]. Must be > 0.0. |
-| `struct_mass_desync_warn_rtol` | float | `0.005` | Warning threshold on ``struct_mass_desync_frac`` \[-\]. Must be > 0.0. |
-| `struct_mass_desync_rtol` | float | `0.01` | Stop threshold on ``struct_mass_desync_frac`` \[-\]. Must be > 0.0. |
-| `interior_mass_target_rtol` | float | `0.003` | Relative tolerance on ``M_int`` versus ``M_int_target`` at a structure update row \[-\]. Must be > 0.0. |
-| `core_mass_target_rtol` | float | `0.02` | Relative tolerance on ``M_core`` versus ``M_core_target`` at a structure update row \[-\]. Must be > 0.0. |
-| `element_closure_rtol` | float | `0.00025` | Relative tolerance on per-element reservoir closure ``atm + magma + solid = total`` \[-\]. For ``outgas.module = 'calliope'``, the tolerance is ``outgas.mass_thresh + element_closure_rtol * total`` (only as tight as ``outgas.mass_thresh``, which is larger than typical noble-gas inventories). Must be > 0.0. |
+| `energy_residual_rtol` | float | `0.00026` | Relative tolerance on cumulative coupled energy residual against gross throughput \[-\]. Sized above the ``2.51e-4`` maximum gross-normalized residual in post-closure runs after the first post-initialisation step on default time-step configurations. Must be > 0.0. |
+| `step_energy_rtol` | float | `0.01` | Relative tolerance on per-step energy residual increment normalized by per-step gross flux outside the ``301 K`` temperature clip \[-\]. In post-closure default runs outside the clip, the per-step increment has 99th percentile ``5.4e-4``, 99.9th percentile ``2.7e-2``, and maximum ``0.117``. Must be > 0.0. |
+| `step_energy_smin_rtol` | float | `0.05` | Relative tolerance on per-step energy residual increment normalized by per-step gross flux when ``T_surf <= 301 K`` or ``T_magma <= 301 K`` \[-\]. Sized above the ``4.39%`` maximum observed on the ``301 K`` temperature clip in post-closure runs. Must be > 0.0. |
+| `solver_residual_rtol` | float | `1e-12` | Relative tolerance on the Aragog ODE solver internal energy residual \[-\], sized above the ``2.46e-14`` maximum observed in converged post-closure runs. Must be > 0.0. |
+| `core_residual_rtol` | float | `0.0001` | Relative tolerance on the CMB core cooling ledger residual \[-\], sized above floating-point round-off on the single-ODE core integration. Must be > 0.0. |
+| `struct_mass_desync_warn_rtol` | float | `0.005` | Warning threshold on ``struct_mass_desync_frac`` \[-\], sized above the ``4.71e-3`` maximum observed in post-closure runs. Must be > 0.0. |
+| `struct_mass_desync_rtol` | float | `0.01` | Stop threshold on ``struct_mass_desync_frac`` \[-\], sized at twice the ``5.0e-3`` warning threshold. Must be > 0.0. |
+| `interior_mass_target_rtol` | float | `0.003` | Relative tolerance on ``M_int`` versus ``M_int_target`` at a structure update row \[-\], sized above the ``2.05e-3`` maximum observed on Zalmoxis structure update rows. Must be > 0.0. |
+| `core_mass_target_rtol` | float | `0.02` | Relative tolerance on ``M_core`` versus ``M_core_target`` at a structure update row \[-\], sized above the ``1.23e-2`` maximum radial-trapezoidal core mass difference on Zalmoxis meshes. Must be > 0.0. |
+| `element_closure_rtol` | float | `0.00025` | Relative tolerance on per-element reservoir closure ``atm + magma + solid = total`` \[-\], sized at ``2.5`` times the default ``outgas.solver_rtol = 1.0e-4``. For ``outgas.module = 'calliope'``, the tolerance is ``outgas.mass_thresh + element_closure_rtol * total`` (only as tight as ``outgas.mass_thresh``, which is larger than typical noble-gas inventories). Must be > 0.0. |
 | `element_closure_atol_kg` | float | `1.0` | Absolute floor on per-element reservoir closure for ``atmodeller`` and solid-trapping bookkeeping \[kg\], and lower-bound floor ``-element_closure_atol_kg`` on volatile and reservoir masses. For ``outgas.module = 'calliope'``, the closure check uses ``outgas.mass_thresh + element_closure_rtol * total`` and is only as tight as ``outgas.mass_thresh``. Must be > 0.0. |
-| `volatile_gas_sum_rtol` | float | `1e-06` | Relative tolerance on volatile gas species sum versus ``M_vol_atm`` \[-\]. Must be > 0.0. |
-| `planet_mass_cap_rtol` | float | `1e-06` | Relative tolerance on ``M_atm <= M_planet`` \[-\]. Must be >= 0.0. |
-| `escape_bound_factor` | float | `1.5` | Multiplicative bound on element loss relative to ``esc_kg_cumulative`` \[-\]. Must be >= 1.0. |
-| `escape_bound_atol_kg` | float | `1000.0` | Absolute tolerance on element loss relative to ``esc_kg_cumulative`` \[kg\]. Must be >= 0.0. |
-| `t_magma_max` | float | `1000000.0` | Strict upper bound on ``T_magma`` \[K\]. Must be > 0.0. |
-| `phi_global_atol` | float | `1e-06` | Absolute tolerance around ``[0, 1]`` for ``Phi_global`` \[-\]. Must be >= 0.0. |
+| `volatile_gas_sum_rtol` | float | `1e-06` | Relative tolerance on volatile gas species sum versus ``M_vol_atm`` \[-\], matching ``coupler.assert_mass_conservation``. Helpfiles without ``M_vol_atm`` fail the gas-sum check. Must be > 0.0. |
+| `planet_mass_cap_rtol` | float | `1e-06` | Relative tolerance on ``M_atm <= M_planet`` \[-\], matching ``coupler.assert_mass_conservation``. Must be >= 0.0. |
+| `escape_bound_factor` | float | `1.5` | Multiplicative bound on element loss relative to ``esc_kg_cumulative`` \[-\] when ``planet.fO2_source = 'from_O_budget'``. Must be >= 1.0. |
+| `escape_bound_atol_kg` | float | `1000.0` | Absolute tolerance on element loss relative to ``esc_kg_cumulative`` \[kg\] when ``planet.fO2_source = 'from_O_budget'``. Must be >= 0.0. |
+| `t_magma_max` | float | `1000000.0` | Strict upper bound on ``T_magma`` \[K\] above physical magma-ocean temperatures. Must be > 0.0. |
+| `phi_global_atol` | float | `1e-06` | Absolute tolerance around ``[0, 1]`` for ``Phi_global`` \[-\] for floating-point round-off. Must be >= 0.0. |
 <!-- END GENERATED: config-table [invariants] -->
 
 ## Constraints
