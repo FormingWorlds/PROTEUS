@@ -559,6 +559,9 @@ def check_volatile_invariants(
 
     closure_rtol = float(inv_cfg.element_closure_rtol)
     closure_atol_kg = float(inv_cfg.element_closure_atol_kg)
+    outgas_cfg = getattr(config, 'outgas', None)
+    is_calliope = getattr(outgas_cfg, 'module', None) == 'calliope'
+    calliope_mass_thresh = float(outgas_cfg.mass_thresh) if is_calliope else 0.0
     derived = set(derived_total_elements(config))
     if vapourise:
         derived.add('O')
@@ -595,16 +598,22 @@ def check_volatile_invariants(
             continue
         diff = abs(parts - total)
         rel_closure = diff / total
-        if diff > max(closure_atol_kg, closure_rtol * total):
+        tol_e = (
+            calliope_mass_thresh + closure_rtol * total
+            if is_calliope
+            else max(closure_atol_kg, closure_rtol * total)
+        )
+        eff_rel_tol = tol_e / total
+        if diff > tol_e:
             violations.append(
                 InvariantViolation(
                     name=f'{e}_reservoir_closure',
                     status_code=STATUS_ERROR_MASS_INVARIANT,
                     value=rel_closure,
-                    tolerance=closure_rtol,
+                    tolerance=eff_rel_tol,
                     message=(
                         f'Time={time_yr:.6e} yr: |({e}_atm+{e}_liquid+{e}_solid) - {e}_total| / '
-                        f'{e}_total={rel_closure:.6e} exceeds tol={closure_rtol:.6e} '
+                        f'{e}_total={rel_closure:.6e} exceeds tol={eff_rel_tol:.6e} '
                         f'(total={total:.6e} kg, reservoirs={parts:.6e} kg)'
                     ),
                     report_only=False,

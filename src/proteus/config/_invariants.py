@@ -63,8 +63,12 @@ class Invariants:
         Relative tolerance on ``M_core`` versus ``M_core_target`` at a structure update row [-].
     element_closure_rtol: float
         Relative tolerance on per-element reservoir closure ``atm + magma + solid = total`` [-].
+        For ``outgas.module = 'calliope'``, the tolerance is ``outgas.mass_thresh + element_closure_rtol * total``
+        (only as tight as ``outgas.mass_thresh``; open item Q-CALLIOPE-ATOL).
     element_closure_atol_kg: float
-        Absolute floor on per-element reservoir closure [kg].
+        Absolute floor on per-element reservoir closure for ``atmodeller`` and solid-trapping bookkeeping [kg].
+        For ``outgas.module = 'calliope'``, the closure check uses ``outgas.mass_thresh + element_closure_rtol * total``
+        and is only as tight as ``outgas.mass_thresh`` (open item Q-CALLIOPE-ATOL).
     volatile_gas_sum_rtol: float
         Relative tolerance on volatile gas species sum versus ``M_vol_atm`` [-].
     planet_mass_cap_rtol: float

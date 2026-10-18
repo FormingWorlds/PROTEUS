@@ -12253,7 +12253,7 @@
           "value": 0.0
         }
       ],
-      "description": "Relative tolerance on per-element reservoir closure ``atm + magma + solid = total`` [-].",
+      "description": "Relative tolerance on per-element reservoir closure ``atm + magma + solid = total`` [-]. For ``outgas.module = 'calliope'``, the tolerance is ``outgas.mass_thresh + element_closure_rtol * total`` (only as tight as ``outgas.mass_thresh``; open item Q-CALLIOPE-ATOL).",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -12274,7 +12274,7 @@
           "value": 0.0
         }
       ],
-      "description": "Absolute floor on per-element reservoir closure [kg].",
+      "description": "Absolute floor on per-element reservoir closure for ``atmodeller`` and solid-trapping bookkeeping [kg]. For ``outgas.module = 'calliope'``, the closure check uses ``outgas.mass_thresh + element_closure_rtol * total`` and is only as tight as ``outgas.mass_thresh`` (open item Q-CALLIOPE-ATOL).",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
