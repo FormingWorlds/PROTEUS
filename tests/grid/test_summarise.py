@@ -142,6 +142,70 @@ def test_summarise_prints_none_for_empty_general_category(tmp_path, caplog):
     assert '(None)' in caplog.text
 
 
+@pytest.mark.parametrize('code', [30, 31, 32, 33, 34])
+def test_summarise_groups_invariant_codes_30_to_34_under_error(tmp_path, caplog, code):
+    """Invariant violation status codes 30 through 34 belong to the Error
+    category and must not appear under Completed or Running.
+
+    Discrimination: an upper bound of 30 on the Error range drops codes
+    30..34 from Error summaries and prints '(None)' instead of Case 0.
+    """
+    grid = _make_grid(tmp_path, statuses=[code])
+
+    caplog.clear()
+    with caplog.at_level(logging.INFO, logger='fwl'):
+        assert summarise_mod.summarise(str(grid), tgt_status='Error') is True
+    error_section = caplog.text.split('Error cases:')[1]
+    assert f'Case 0     : Code {code}' in error_section
+    assert '(None)' not in error_section
+
+    caplog.clear()
+    with caplog.at_level(logging.INFO, logger='fwl'):
+        assert summarise_mod.summarise(str(grid), tgt_status='Completed') is True
+    completed_section = caplog.text.split('Completed cases:')[1]
+    assert f'Code {code}' not in completed_section
+    assert '(None)' in completed_section
+
+    caplog.clear()
+    with caplog.at_level(logging.INFO, logger='fwl'):
+        assert summarise_mod.summarise(str(grid), tgt_status='Running') is True
+    running_section = caplog.text.split('Running cases:')[1]
+    assert f'Code {code}' not in running_section
+    assert '(None)' in running_section
+
+
+def test_summarise_groups_evaporated_status_29_under_completed_not_error(tmp_path, caplog):
+    """Status 29 ('Completed (planet evaporated)') is grouped under
+    Completed (10-19 and 29) and excluded from Error (20-28 and 30-34)
+    and Running (0-9).
+
+    Discrimination: leaving 29 inside range(20, 30) misclassifies an
+    evaporated planet as an Error case and omits it from Completed.
+    """
+    grid = _make_grid(tmp_path, statuses=[29])
+
+    caplog.clear()
+    with caplog.at_level(logging.INFO, logger='fwl'):
+        assert summarise_mod.summarise(str(grid), tgt_status='Completed') is True
+    completed_section = caplog.text.split('Completed cases:')[1]
+    assert 'Case 0     : Code 29 - Completed (planet evaporated)' in completed_section
+    assert '(None)' not in completed_section
+
+    caplog.clear()
+    with caplog.at_level(logging.INFO, logger='fwl'):
+        assert summarise_mod.summarise(str(grid), tgt_status='Error') is True
+    error_section = caplog.text.split('Error cases:')[1]
+    assert 'Code 29' not in error_section
+    assert '(None)' in error_section
+
+    caplog.clear()
+    with caplog.at_level(logging.INFO, logger='fwl'):
+        assert summarise_mod.summarise(str(grid), tgt_status='Running') is True
+    running_section = caplog.text.split('Running cases:')[1]
+    assert 'Code 29' not in running_section
+    assert '(None)' in running_section
+
+
 # ---------------------------------------------------------------------------
 # tgt_status: code= dispatch
 # ---------------------------------------------------------------------------
