@@ -851,3 +851,84 @@ def test_main_loop_populates_energy_residuals_before_invariant_check_and_logs_to
         'Time=2.000000e+00 yr: |E_core_residual_frac|=5.681160e-04 '
         'exceeds tol=1.000000e-04'
     ) in logfile_text
+
+
+@pytest.mark.unit
+def test_populate_energy_and_core_residuals_idempotent_across_double_call_and_extend_helpfile():
+    """Calling _populate_energy_residual and _populate_core_residual twice on the same
+    (current_hf, new_row) and then via ExtendHelpfile must leave every cumulative column
+    bit-equal (repr).
+    """
+    from proteus.utils.coupler import (
+        CreateHelpfileFromDict,
+        ExtendHelpfile,
+        ZeroHelpfileRow,
+        _populate_core_residual,
+        _populate_energy_residual,
+    )
+
+    prior_row = ZeroHelpfileRow()
+    prior_row['Time'] = 100.0
+    prior_row['E_state_cons_J'] = 6.90e31
+    prior_row['E_state_heat_cons_J'] = -5.123456789012345e29
+    prior_row['dE_predicted_cons_J'] = -5.123489012345678e29
+    prior_row['E_residual_cons_J'] = (
+        prior_row['E_state_heat_cons_J'] - prior_row['dE_predicted_cons_J']
+    )
+    prior_row['E_residual_cons_frac'] = prior_row['E_residual_cons_J'] / abs(
+        prior_row['E_state_heat_cons_J']
+    )
+    prior_row['solver_residual_J'] = 1.234567890123456e14
+    prior_row['core_C_eff'] = 1.15e26
+    prior_row['step_dE_F_cmb_J'] = 8.765432109876543e28
+    prior_row['step_dE_impact_core_J'] = 2.5e27
+    prior_row['E_core_residual_J'] = -4.321098765432109e24
+    prior_row['E_core_residual_frac'] = prior_row['E_core_residual_J'] / (
+        prior_row['step_dE_F_cmb_J'] + prior_row['step_dE_impact_core_J']
+    )
+    current_hf = CreateHelpfileFromDict(prior_row)
+
+    new_row = ZeroHelpfileRow()
+    new_row['Time'] = 200.0
+    new_row['E_state_cons_J'] = 6.88e31
+    new_row['step_dE_state_heat_J'] = -2.345678901234567e28
+    new_row['step_dE_F_int_J'] = -3.456789012345678e28
+    new_row['step_dE_F_cmb_J'] = 1.101110110111011e28
+    new_row['step_dE_Q_radio_J'] = 9.876543210987654e25
+    new_row['step_dE_Q_tidal_J'] = 1.234567890123456e25
+    new_row['step_dE_impact_J'] = 5.0e26
+    new_row['step_solver_residual_J'] = -3.456789012345678e13
+    new_row['core_C_eff'] = 1.15e26
+    new_row['step_dE_core_J'] = -1.131110110111011e28
+    new_row['step_dE_impact_core_J'] = -3.0e26
+    new_row['step_dE_struct_core_J'] = 1.25e25
+
+    cumulative_keys = (
+        'E_state_heat_cons_J',
+        'dE_predicted_cons_J',
+        'E_residual_cons_J',
+        'E_residual_cons_frac',
+        'solver_residual_J',
+        'E_core_residual_J',
+        'E_core_residual_frac',
+    )
+
+    _populate_energy_residual(current_hf, new_row)
+    _populate_core_residual(current_hf, new_row)
+    first_pass = {k: repr(new_row[k]) for k in cumulative_keys}
+    first_pass_all = {k: repr(v) for k, v in new_row.items()}
+
+    _populate_energy_residual(current_hf, new_row)
+    _populate_core_residual(current_hf, new_row)
+    second_pass = {k: repr(new_row[k]) for k in cumulative_keys}
+    second_pass_all = {k: repr(v) for k, v in new_row.items()}
+
+    assert second_pass == first_pass
+    assert second_pass_all == first_pass_all
+
+    extended_hf = ExtendHelpfile(current_hf, new_row)
+    after_extend = {k: repr(new_row[k]) for k in cumulative_keys}
+    df_last_row = {k: repr(float(extended_hf[k].iloc[-1])) for k in cumulative_keys}
+
+    assert after_extend == first_pass
+    assert df_last_row == first_pass
