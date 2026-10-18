@@ -1,10 +1,12 @@
-"""Plots comparing the best fit with the targets and, if known, the true parameters.
+"""Plots comparing the best fit with the targets and, if known, the true parameters, and
+the posterior corner plot.
 
-`collect_case_observables` reads each case's helpfile once; both plots take its frame.
+`collect_case_observables` reads each case's helpfile once; both best-fit plots take its frame.
 """
 
 from __future__ import annotations
 
+import itertools
 import logging
 import os
 from pathlib import Path
@@ -13,11 +15,15 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import toml
+import torch
+from matplotlib.ticker import MaxNLocator
+from scipy.stats import gaussian_kde
 
 from proteus.inference.correlation import CorrelationWhitener
 from proteus.inference.failures import read_failure_records
-from proteus.inference.objective import EPS_CLIP, eval_obj
+from proteus.inference.objective import BAD_OBJ_VALUE, EPS_CLIP, eval_obj
 from proteus.inference.plot import dpi, fmt
+from proteus.inference.transforms import normalize_parameters, unnormalize_parameters
 from proteus.inference.utils import get_obs
 from proteus.utils.coupler import variable_is_logarithmic
 from proteus.utils.helper import recursive_get
@@ -44,6 +50,17 @@ OBS_STYLE = {
 
 # Range of the simulated/target ratio axis.
 RATIO_CLIP = (1e-2, 1e2)
+
+# Posterior corner plot: fills of the 95 and 68 % regions, and KDE grid points per axis
+POST_FILLS = ['#cfe3f1', '#7fb3d9']
+POST_GRID = 120
+PARAM_LABELS = {
+    'interior_struct.core_frac': 'core radius fraction',
+    'outgas.fO2_shift_IW': 'fO$_2$ (ΔIW, log$_{10}$)',
+    'planet.elements.H_budget': 'H budget (ppmw)',
+    'planet.elements.C_budget': 'C/H (mass ratio)',
+    'planet.elements.S_budget': 'S/H (mass ratio)',
+}
 
 
 def collect_case_observables(
@@ -379,3 +396,200 @@ def plot_result_parameters(
         bbox_inches='tight',
     )
     plt.close(fig)
+
+
+def _reflected_kde(U: np.ndarray, G: np.ndarray) -> np.ndarray:
+    """Gaussian KDE of unit-cube samples U (n, k) at points G (m, k), reflected at 0 and 1
+    in every dimension so that mass against a bound stays inside the cube."""
+    kde = gaussian_kde(U.T)
+    maps = (lambda x: x, lambda x: -x, lambda x: 2 - x)
+    return sum(
+        kde(np.column_stack([f(G[:, i]) for i, f in enumerate(fs)]).T)
+        for fs in itertools.product(maps, repeat=U.shape[1])
+    )
+
+
+def _mass_levels(Z: np.ndarray, masses=(0.95, 0.68)) -> list[float]:
+    """Density thresholds that enclose the given probability masses of a gridded density."""
+    z = np.sort(Z.ravel())[::-1]
+    c = np.cumsum(z) / z.sum()
+    return [z[np.searchsorted(c, m)] for m in masses]
+
+
+def _padded(bounds, log_axis: bool, frac: float = 0.03) -> tuple[float, float]:
+    """Axis limits a few percent beyond the bounds, so points on a bound stay visible."""
+    lo, hi = bounds
+    if log_axis:
+        f = (hi / lo) ** frac
+        return lo / f, hi * f
+    return lo - frac * (hi - lo), hi + frac * (hi - lo)
+
+
+def _posterior_axes(ax, i: int, j: int, keys: list, pars: dict):
+    """Limits a little past the bounds (dotted), scales, ticks and labels of one corner panel."""
+    n = len(keys)
+    for k, lim, scale, axline, axis in (
+        (keys[j], ax.set_xlim, ax.set_xscale, ax.axvline, ax.xaxis),
+        (keys[i], ax.set_ylim, ax.set_yscale, ax.axhline, ax.yaxis),
+    ):
+        if axis is ax.yaxis and i == j:
+            continue
+        log_axis = variable_is_logarithmic(k)
+        lim(*_padded(pars[k], log_axis))
+        for v in pars[k]:
+            axline(v, color='0.75', lw=0.5, ls=':', zorder=0)
+        if log_axis:
+            scale('log')
+        else:
+            axis.set_major_locator(MaxNLocator(4, prune='both'))
+    if i == n - 1:
+        ax.set_xlabel(PARAM_LABELS.get(keys[j], keys[j]))
+    else:
+        ax.tick_params(labelbottom=False)
+    if j == 0 and i > 0:
+        ax.set_ylabel(PARAM_LABELS.get(keys[i], keys[i]))
+    elif i != j:
+        ax.tick_params(labelleft=False)
+
+
+def _posterior_legend(fig, n_init: int, n_bo: int, chi2_best: float, truth: bool):
+    """Legend of the posterior corner plot."""
+    blue = WONG['blue']
+    handles = [
+        plt.Rectangle((0, 0), 1, 1, fc=POST_FILLS[1], ec=blue, label='posterior, 68 % region'),
+        plt.Rectangle(
+            (0, 0), 1, 1, fc=POST_FILLS[0], ec=blue, lw=0.6, label='posterior, 95 % region'
+        ),
+        plt.Line2D(
+            [],
+            [],
+            marker='s',
+            ls='',
+            mfc='none',
+            mec='0.55',
+            label=f'initial samples ({n_init})',
+        ),
+        plt.Line2D(
+            [], [], marker='o', ls='', ms=3, color='0.15', alpha=0.6, label=f'BO steps ({n_bo})'
+        ),
+        plt.Line2D(
+            [],
+            [],
+            marker='D',
+            ls='',
+            ms=6,
+            mfc='white',
+            mec='k',
+            label=f'best fit (χ² = {chi2_best:.3g}), dotted on diagonal',
+        ),
+    ]
+    if truth:
+        handles.append(
+            plt.Line2D(
+                [],
+                [],
+                marker='*',
+                ls='',
+                ms=12,
+                color=WONG['vermillion'],
+                mec='k',
+                label='truth',
+            )
+        )
+    fig.legend(
+        handles=handles,
+        loc='upper right',
+        bbox_to_anchor=(0.95, 0.93),
+        frameon=False,
+        fontsize=10,
+    )
+
+
+def plot_result_posterior(
+    samples: pd.DataFrame, D: dict, n_init: int, pars: dict, truth: dict | None, directory
+):
+    """Corner plot of the posterior as 68 and 95 % credible regions, with every scored
+    evaluation, the best fit and, if known, the truth drawn on top.
+
+    Parameters
+    ----------
+    - samples (pd.DataFrame): Posterior samples in config units, one column per parameter.
+    - D (dict): Study data, 'X' in the unit cube and 'Y'; the first n_init rows are initial.
+    - n_init (int): Number of initial samples.
+    - pars (dict): Parameter names and bounds.
+    - truth (dict | None): True value of each parameter.
+    - directory (str): Base dir where the inference was performed.
+    """
+    keys = list(pars)
+    n = len(keys)
+    bounds = torch.tensor([pars[k] for k in keys], dtype=torch.double).T
+    Up = normalize_parameters(torch.tensor(samples[keys].to_numpy()), bounds, keys).numpy()
+    X = unnormalize_parameters(D['X'], bounds, keys).numpy()
+    y = D['Y'].numpy().ravel()
+    scored = y > BAD_OBJ_VALUE
+    init = np.arange(len(y)) < n_init
+    best = X[np.argmax(y)]
+    g = np.linspace(0, 1, POST_GRID)
+    grid = unnormalize_parameters(
+        torch.tensor(np.tile(g[:, None], (1, n))), bounds, keys
+    ).numpy()
+    tv = [truth[k] for k in keys] if truth is not None else None
+    red = WONG['vermillion']
+
+    with plt.rc_context(OBS_STYLE | {'font.size': 9}):
+        fig, axs = plt.subplots(n, n, figsize=(11, 11), squeeze=False)
+        for i, j in itertools.product(range(n), range(n)):
+            ax = axs[i, j]
+            if j > i:
+                ax.set_visible(False)
+                continue
+            if i == j:
+                dens = _reflected_kde(Up[:, [j]], g[:, None])
+                ax.fill_between(grid[:, j], dens, color=POST_FILLS[1], lw=0)
+                ax.plot(grid[:, j], dens, color=WONG['blue'], lw=1.2)
+                ax.axvline(best[j], color='k', lw=0.8, ls=':')
+                if tv is not None:
+                    ax.axvline(tv[j], color=red, lw=1.2)
+                ax.set_ylim(0, dens.max() * 1.1)
+                ax.set_yticks([])
+            else:
+                G0, G1 = np.meshgrid(g, g)
+                Z = _reflected_kde(Up[:, [j, i]], np.column_stack([G0.ravel(), G1.ravel()]))
+                Z = Z.reshape(G0.shape)
+                l95, l68 = _mass_levels(Z)
+                RX, RY = np.meshgrid(grid[:, j], grid[:, i])
+                ax.contourf(
+                    RX, RY, Z, levels=[l95, l68, Z.max() * 1.01], colors=POST_FILLS, zorder=1
+                )
+                ax.contour(
+                    RX,
+                    RY,
+                    Z,
+                    levels=[l95, l68],
+                    colors=WONG['blue'],
+                    linewidths=[0.6, 0.9],
+                    zorder=2,
+                )
+                s = scored & init
+                ax.scatter(
+                    X[s, j], X[s, i], s=10, marker='s', fc='none', ec='0.55', lw=0.5, zorder=3
+                )
+                s = scored & ~init
+                ax.scatter(X[s, j], X[s, i], s=4, color='0.15', alpha=0.45, lw=0, zorder=3)
+                if tv is not None:
+                    ax.axvline(tv[j], color=red, lw=0.7, ls='--', zorder=4)
+                    ax.axhline(tv[i], color=red, lw=0.7, ls='--', zorder=4)
+                    ax.scatter(
+                        tv[j], tv[i], marker='*', s=150, color=red, ec='k', lw=0.6, zorder=6
+                    )
+                ax.scatter(
+                    best[j], best[i], marker='D', s=30, fc='white', ec='k', lw=0.9, zorder=7
+                )
+            _posterior_axes(ax, i, j, keys, pars)
+
+        _posterior_legend(fig, n_init, len(y) - n_init, 10 ** -y.max(), tv is not None)
+        fig.subplots_adjust(
+            left=0.08, right=0.97, bottom=0.07, top=0.97, wspace=0.07, hspace=0.07
+        )
+        fig.savefig(os.path.join(directory, 'plots', f'result_posterior.{fmt}'), dpi=dpi)
+        plt.close(fig)

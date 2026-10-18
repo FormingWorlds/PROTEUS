@@ -553,7 +553,10 @@ def run_inference(config):
 
     # Last, so that a failed GP fit here cannot cost the outputs above
     if config['posterior_samples']:
-        write_posterior(config, D_final, dirs['output'])
+        samples = write_posterior(config, D_final, dirs['output'])
+        plot_fit.plot_result_posterior(
+            samples, D_final, n_init, config['parameters'], config['truth'], dirs['output']
+        )
 
     # Done
     log.info(f'Inference completed at {str_time()}')

@@ -220,10 +220,9 @@ def test_validate_posterior_samples_rejects(n, sigma, match):
 # ---------------------------------------------------------------------------
 
 
-def test_write_posterior_writes_samples_and_corner_plot(tmp_path, monkeypatch, no_hyperfit):
+def test_write_posterior_writes_the_samples(tmp_path, monkeypatch, no_hyperfit):
     """posterior.csv holds the requested samples in bounds, centred on the best fit."""
     monkeypatch.setattr(post, 'N_PROPOSAL', 50_000)
-    (tmp_path / 'plots').mkdir()
     X, Y = _study_data(n=60)
     parameters = {'interior_struct.core_frac': [0.3, 0.7], 'outgas.fO2_shift_IW': [-4.0, 4.0]}
     config = {
@@ -242,4 +241,3 @@ def test_write_posterior_writes_samples_and_corner_plot(tmp_path, monkeypatch, n
     # objective centred at unit (0.3, 0.7): core_frac 0.42, fO2 1.6
     assert disk['interior_struct.core_frac'].median() == pytest.approx(0.42, abs=0.03)
     assert disk['outgas.fO2_shift_IW'].median() == pytest.approx(1.6, abs=0.5)
-    assert (tmp_path / 'plots' / f'result_posterior.{post.fmt}').stat().st_size > 1000

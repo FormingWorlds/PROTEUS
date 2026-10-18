@@ -225,7 +225,7 @@ Plots prefixed with `result_` show the results of the optimisation.
 - `result_correlation.png`: Scatter plot observables for each parameter, at each sample.
 - `result_objective.png`: Value of objective `J` for each parameter, at each sample.
 - `result_observables.png`: Final observables of every sample as a ratio to their target.
-- `result_posterior.png`: Only with `[sigma]`. Corner plot of the posterior samples.
+- `result_posterior.png`: Only with `[sigma]`. Corner plot of the posterior as 68 and 95 % credible regions, with every evaluation, the best fit and, if given, the truth on top.
 - `result_parameters.png`: Only with a `[truth]` table. Every sample, the truth and the best fit placed within each parameter's sampled range.
 
 ### Results Summary
