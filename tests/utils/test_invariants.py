@@ -2748,8 +2748,8 @@ def test_nan_species_and_nan_mplanet_stop_in_check_volatile_invariants():
 
 
 def test_ic_adiabat_rollback_resets_and_resume_rollback_persistence(tmp_path, monkeypatch):
-    """IC adiabat rollback restores M_int_target without setting _structure_rollback, wrapper resets clear it, and resume_structure_stale restores both stale and up-step rollback flags."""
-    import inspect
+    """IC adiabat rollback restores M_int_target and M_core_target without setting _structure_rollback, wrapper resets clear it, and resume_structure_stale restores both stale and up-step rollback flags."""
+    from pathlib import Path
 
     import numpy as np
     import pandas as pd
@@ -2758,7 +2758,11 @@ def test_ic_adiabat_rollback_resets_and_resume_rollback_persistence(tmp_path, mo
     import proteus.interior_struct.zalmoxis as zalmoxis_mod
     import proteus.outgas.wrapper as outgas_wrap
     from proteus.config import Config
-    from proteus.interior_energetics.common import Interior_t
+    from proteus.interior_energetics.common import (
+        Interior_t,
+        get_file_structure_rollback,
+        get_file_structure_stale,
+    )
     from proteus.utils.invariants import check_row_invariants
 
     monkeypatch.setattr(Interior_t, '_load_ps_table', lambda self, *a, **kw: None)
@@ -2777,14 +2781,15 @@ def test_ic_adiabat_rollback_resets_and_resume_rollback_persistence(tmp_path, mo
     cfg.interior_struct.zalmoxis.equilibrate_max_iter = 1
     cfg.interior_struct.zalmoxis.equilibrate_tol = 0.01
 
-    # 1. determine_interior_radius_with_zalmoxis has no dead int_o.structure_rollback_active writes:
-    det_src = inspect.getsource(int_wrap.determine_interior_radius_with_zalmoxis)
-    assert 'int_o.structure_rollback_active' not in det_src
+    assert 'M_int_target' in int_wrap._ADIABAT_IC_RESTORE_KEYS
+    assert 'M_core_target' in int_wrap._ADIABAT_IC_RESTORE_KEYS
 
-    # 2. _solve_structure_with_adiabat_or_rollback: rollback restores M_int and M_int_target without setting _structure_rollback=True
+    # 1. _solve_structure_with_adiabat_or_rollback: rollback restores M_int, M_int_target, M_core, and M_core_target without setting _structure_rollback=True
     def failing_adiabat_solver(config, outdir, hf_row, **kwargs):
         hf_row['M_int'] = 6.20e24
         hf_row['M_int_target'] = 6.20e24
+        hf_row['M_core'] = 2.50e24
+        hf_row['M_core_target'] = 2.50e24
         hf_row['R_int'] = 6.50e6
         raise RuntimeError('simulated adiabat IC non-convergence')
 
@@ -2795,6 +2800,7 @@ def test_ic_adiabat_rollback_resets_and_resume_rollback_persistence(tmp_path, mo
         'M_int': 5.97e24,
         'M_int_target': 5.97e24,
         'M_core': 1.94e24,
+        'M_core_target': 1.94e24,
         'M_mantle': 4.03e24,
         'P_surf': 100.0,
         'P_cmb': 1.35e11,
@@ -2809,9 +2815,11 @@ def test_ic_adiabat_rollback_resets_and_resume_rollback_persistence(tmp_path, mo
     assert ok_rb is False
     assert ic_row['M_int'] == pytest.approx(5.97e24)
     assert ic_row['M_int_target'] == pytest.approx(5.97e24)
+    assert ic_row['M_core'] == pytest.approx(1.94e24)
+    assert ic_row['M_core_target'] == pytest.approx(1.94e24)
     assert ic_row.get('_structure_rollback', False) is False
 
-    # 3. _solve_structure_with_adiabat_or_rollback: success clears _structure_rollback=False
+    # 2. _solve_structure_with_adiabat_or_rollback: success clears _structure_rollback=False
     def succeeding_adiabat_solver(config, outdir, hf_row, **kwargs):
         hf_row['R_int'] = 6.40e6
         hf_row['M_int'] = 5.97e24
@@ -2826,7 +2834,7 @@ def test_ic_adiabat_rollback_resets_and_resume_rollback_persistence(tmp_path, mo
     assert ok_succ is True
     assert ic_row_ok['_structure_rollback'] is False
 
-    # 4. determine_interior_radius_with_zalmoxis clears _structure_rollback=False (including when IC adiabat rolls back)
+    # 3. determine_interior_radius_with_zalmoxis clears _structure_rollback=False (including when IC adiabat rolls back)
     monkeypatch.setattr(
         zalmoxis_mod,
         'generate_spider_tables',
@@ -2852,6 +2860,7 @@ def test_ic_adiabat_rollback_resets_and_resume_rollback_persistence(tmp_path, mo
             hf_row['M_int'] = 5.97e24
             hf_row['M_int_target'] = 5.97e24
             hf_row['M_core'] = 1.94e24
+            hf_row['M_core_target'] = 1.94e24
             hf_row['P_cmb'] = 1.35e11
             return 3.48e6, None
         raise RuntimeError('adiabat pass failed')
@@ -2863,7 +2872,7 @@ def test_ic_adiabat_rollback_resets_and_resume_rollback_persistence(tmp_path, mo
     )
     assert det_row['_structure_rollback'] is False
 
-    # 5. equilibrate_initial_state resets _structure_rollback=False on both fallback (ok=False) and linear (adiabat_tfunc=None) branches
+    # 4. equilibrate_initial_state resets _structure_rollback=False on both fallback (ok=False) and linear (adiabat_tfunc=None) branches
     monkeypatch.setattr(outgas_wrap, 'calc_target_elemental_inventories', lambda *a, **kw: None)
     monkeypatch.setattr(outgas_wrap, 'run_outgassing', lambda *a, **kw: None)
     monkeypatch.setattr(
@@ -2883,17 +2892,35 @@ def test_ic_adiabat_rollback_resets_and_resume_rollback_persistence(tmp_path, mo
     assert eq_row_linear['_structure_rollback'] is False
     monkeypatch.undo()
 
-    # 6. resume_structure_stale restores both structure_stale=True -> structure_rollback_active=True
-    # and up-step reject (structure_stale=False, structure_rollback_active=True) across disk:
+    # 5. resume_structure_stale restores missing-rollback-file fallback from structure_stale.dat (older-tip run),
+    # and write_structure_stale writes structure_rollback.dat purely from structure_rollback_active:
     monkeypatch.setattr(Interior_t, '_load_ps_table', lambda self, *a, **kw: None)
+    Path(get_file_structure_rollback(str(tmp_path))).unlink(missing_ok=True)
+    Path(get_file_structure_stale(str(tmp_path))).write_text('1\n', encoding='utf-8')
+    older_stale_reader = Interior_t(5)
+    older_stale_reader.resume_structure_stale(str(tmp_path))
+    assert older_stale_reader.structure_stale is True
+    assert older_stale_reader.structure_rollback_active is True
+
+    Path(get_file_structure_stale(str(tmp_path))).write_text('0\n', encoding='utf-8')
+    older_fresh_reader = Interior_t(5)
+    older_fresh_reader.structure_rollback_active = True
+    older_fresh_reader.resume_structure_stale(str(tmp_path))
+    assert older_fresh_reader.structure_stale is False
+    assert older_fresh_reader.structure_rollback_active is False
+
     stale_writer = Interior_t(5)
     stale_writer.structure_stale = True
+    stale_writer.structure_rollback_active = False
     stale_writer.write_structure_stale(str(tmp_path))
-
+    assert (
+        Path(get_file_structure_rollback(str(tmp_path))).read_text(encoding='utf-8').strip()
+        == '0'
+    )
     stale_reader = Interior_t(5)
     stale_reader.resume_structure_stale(str(tmp_path))
     assert stale_reader.structure_stale is True
-    assert stale_reader.structure_rollback_active is True
+    assert stale_reader.structure_rollback_active is False
 
     # Up-step reject through update_structure_from_interior persists structure_rollback_active=True while structure_stale=False:
     def fake_upstep(config, outdir, hf_row, **kwargs):

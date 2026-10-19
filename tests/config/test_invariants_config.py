@@ -317,6 +317,7 @@ def test_invariants_docstrings_have_no_file_line_refs_and_document_gates():
 
     from helpers import PROTEUS_ROOT
 
+    from proteus.interior_energetics.wrapper import _ZALMOXIS_MAX_CONSECUTIVE_FAILS
     from proteus.utils import invariants as inv_mod
 
     invariants_cfg_src = (
@@ -332,10 +333,21 @@ def test_invariants_docstrings_have_no_file_line_refs_and_document_gates():
     assert re.search(r'\.py:\d', params_md) is None
     assert '_ZALMOXIS_MAX_CONSECUTIVE_FAILS' not in invariants_cfg_src
     assert '_ZALMOXIS_MAX_CONSECUTIVE_FAILS' not in params_md
-    assert '_baseline_structure_done' not in invariants_cfg_src
-    assert '_baseline_structure_done' not in params_md
+    expected_abort = f'{_ZALMOXIS_MAX_CONSECUTIVE_FAILS} consecutive failed solves'
+    assert expected_abort in invariants_cfg_src
+    assert expected_abort in invariants_util_src
+    assert expected_abort in params_md
+    assert 'restarts on a resume' in invariants_cfg_src
+    assert 'restarts on a resume' in invariants_util_src
+    assert 'restarts on a resume' in params_md
+    assert '_baseline_structure_done' in params_md
+    assert 'while `structure_stale` is `True`' not in params_md
     assert 'mesh_surface_pressure_state' in invariants_cfg_src
     assert 'solver.parameters.mesh.surface_pressure' in invariants_cfg_src
     assert 'total <= outgas.mass_thresh' in invariants_cfg_src
-    assert 'when M_vaps > 0' in invariants_cfg_src
+    assert 'skip\n        reservoir closure when M_vaps > 0' not in invariants_cfg_src
+    assert (
+        'skip\n        reservoir closure and, when ``M_vaps > 0``, an atmosphere excess'
+        in invariants_cfg_src
+    )
     assert 'solve_structure' in invariants_cfg_src
