@@ -251,21 +251,24 @@ def fwl_io_problem() -> str | None:
 
     from proteus.data import FWL_IO_FLOOR
 
-    fix = f'pip install -U "fwl-io>={FWL_IO_FLOOR}"'
+    fix = (
+        f'pip install -U "fwl-io>={FWL_IO_FLOOR}", or in an editable fwl-io checkout '
+        'git pull && pip install -e .'
+    )
+    installed = None
     try:
         installed = version('fwl-io')
-    except PackageNotFoundError:
-        return f'fwl-io is not installed. Fix: {fix}'
-    try:
         if Version(installed) >= Version(FWL_IO_FLOOR):
             return None
-    except InvalidVersion:
+    except PackageNotFoundError:
+        return f'fwl-io is not installed. Fix: {fix}'
+    except (InvalidVersion, TypeError):  # TypeError: a dist-info without a version
         log.warning(
             f'cannot parse the installed fwl-io version {installed!r}; '
             f'PROTEUS needs fwl-io>={FWL_IO_FLOOR}'
         )
         return None
-    return f'fwl-io {installed} is older than PROTEUS needs ({FWL_IO_FLOOR}). Fix: {fix}'
+    return f'fwl-io {installed} is below the version PROTEUS needs ({FWL_IO_FLOOR}). Fix: {fix}'
 
 
 def validate_module_versions(dirs: dict, config: Config):

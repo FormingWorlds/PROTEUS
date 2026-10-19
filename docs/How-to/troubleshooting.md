@@ -130,7 +130,7 @@ Uncaught exception
 OSError: Out-of-date modules detected. Refer to the Troubleshooting guide on the wiki
 ```
 
-This means one of the required PROTEUS modules is outdated on your machine. You need to update the named module before running PROTEUS again.
+This means one of the required PROTEUS modules is outdated on your machine. You need to update the named module before running PROTEUS again. For fwl-io, which downloads the reference data, the error line reads `fwl-io (INSTALLED VER) is below the version PROTEUS needs (REQUIRED VER)` and names the command that updates it.
 
 You can check which modules are out of date by running:
 
