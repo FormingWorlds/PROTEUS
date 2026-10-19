@@ -37,7 +37,7 @@ ADAPT_ROUNDS = 5
 ADAPT_PROPOSAL = 200_000  # draws per refined round
 ADAPT_CENTRES = 200  # Gaussian components, centred on draws picked by weight
 DEFENSIVE = 0.1  # uniform share of a refined proposal, so that no weight can blow up
-SD_FLOOR = 0.01  # added to the proposal sd, in the unit cube
+SD_FLOOR = 0.01  # its square is added to the proposal variance, in the unit cube
 
 
 def validate_posterior_samples(n, sigma: dict | None) -> int:
@@ -178,7 +178,7 @@ def write_posterior(config: dict, D: dict, directory: str) -> pd.DataFrame:
 
     q = samples.quantile([0.05, 0.5, 0.95])
     for k in samples.columns:
-        log.info(f'    {k:30s} 5/50/95 %: ' + '  '.join(f'{v:.4g}' for v in q[k]))
+        log.info(f'    {k:30s} 5/50/95%: ' + '  '.join(f'{v:.4g}' for v in q[k]))
 
     samples.to_csv(os.path.join(directory, 'posterior.csv'), index=False)
     return samples
