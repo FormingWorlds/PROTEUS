@@ -891,8 +891,6 @@ def check_volatile_invariants(
                 )
             )
             continue
-        if e in derived:
-            continue
         if total < -closure_atol_kg:
             violations.append(
                 InvariantViolation(
@@ -907,6 +905,8 @@ def check_volatile_invariants(
                     report_only=False,
                 )
             )
+            continue
+        if e in derived:
             continue
         diff = abs(parts - total)
         pos_total = max(total, 0.0)
