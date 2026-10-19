@@ -239,6 +239,35 @@ def vulcan_problem(config: Config) -> str | None:
     return f'VULCAN module is missing or out of date: {vulcan.message}. Fix: {vulcan.fix_cmd}'
 
 
+def fwl_io_problem() -> str | None:
+    """Return why the installed fwl-io is below ``FWL_IO_FLOOR``, with the fix, or None.
+
+    Every run reads its datasets through fwl-io, so the check holds for every config.
+    A version string that does not parse is no evidence of an old fwl-io: it only warns.
+    """
+    from importlib.metadata import PackageNotFoundError, version
+
+    from packaging.version import InvalidVersion, Version
+
+    from proteus.data import FWL_IO_FLOOR
+
+    fix = f'pip install -U "fwl-io>={FWL_IO_FLOOR}"'
+    try:
+        installed = version('fwl-io')
+    except PackageNotFoundError:
+        return f'fwl-io is not installed. Fix: {fix}'
+    try:
+        if Version(installed) >= Version(FWL_IO_FLOOR):
+            return None
+    except InvalidVersion:
+        log.warning(
+            f'cannot parse the installed fwl-io version {installed!r}; '
+            f'PROTEUS needs fwl-io>={FWL_IO_FLOOR}'
+        )
+        return None
+    return f'fwl-io {installed} is older than PROTEUS needs ({FWL_IO_FLOOR}). Fix: {fix}'
+
+
 def validate_module_versions(dirs: dict, config: Config):
     """Raise if module versions are incompatible."""
 
@@ -364,6 +393,11 @@ def validate_module_versions(dirs: dict, config: Config):
     # Orbit module
     if config.orbit.module == 'obliqua':
         valid &= _valid_ver(_get_obliqua_version(dirs), OBLIQUA_MIN_VERSION, 'Obliqua')
+
+    # Data layer: every dataset is read through fwl-io
+    if problem := fwl_io_problem():
+        log.error(problem)
+        valid = False
 
     # Atmospheric chemistry module: its floor sits in an extra, which _get_expver misreads
     if problem := vulcan_problem(config):

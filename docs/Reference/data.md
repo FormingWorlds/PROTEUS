@@ -26,6 +26,11 @@ ships; data only PROTEUS reads is declared in `src/proteus/data/proteus_manifest
 A data folder in the older layout is brought into this one as described in
 [Upgrading an older data folder](#upgrading-an-older-data-folder).
 
+`proteus start` stops when the installed fwl-io is older than the version PROTEUS requires,
+and names the `pip install -U` command that updates it. To see whether Zenodo holds a newer
+release of the PALEOS tables than the one the manifest pins, run
+`fwl-io latest --prefix interior.eos.paleos`: it prints a STALE line for each such dataset.
+
 | Dataset | Provisioned by | Downloaded by |
 |---|---|---|
 | Stellar spectra (solar, named stars, MUSCLES) | fwl-io | `proteus get solar`, `proteus get muscles` |

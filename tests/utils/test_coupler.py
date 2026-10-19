@@ -3646,6 +3646,8 @@ def test_validate_module_versions_checks_vulcan_floor(tmp_path, caplog, installe
             side_effect=version,
         ),
         patch('proteus.doctor._editable_checkout_path', return_value=None),
+        # The version patch above is global; the fwl-io check is tested on its own.
+        patch('proteus.utils.coupler.fwl_io_problem', return_value=None),
         patch('proteus.utils.coupler.UpdateStatusfile') as mock_update,
         caplog.at_level('ERROR', logger='fwl.proteus.utils.coupler'),
     ):
