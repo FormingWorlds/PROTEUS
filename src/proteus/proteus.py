@@ -1189,10 +1189,8 @@ class Proteus:
             log.info('[INIT_TIMING] %s', _initstr)
         try:
             while not self.finished_both:
-                # Determine whether this iteration is a data-write snapshot.
-                # Conditions that are individually sufficient:
-                #   1. iteration count matches write_mod, or
-                #   2. time elapsed since the last write (>dt_write_rel * Time)
+                # Snapshot when the iteration count matches write_mod or the
+                # time since the last write exceeds dt_write_rel * Time.
                 is_snapshot = is_write_snapshot(
                     self.loops['total'],
                     self.config.params.out.write_mod,
@@ -1264,10 +1262,8 @@ class Proteus:
 
                     apply_due_impacts(self, is_snapshot)
 
-                # One-time structure baseline in the interior-fed callable
-                # representation (dynamic and static runs share an identical start).
-                # Static runs perform no further structure solves; dynamic runs
-                # continue in the block below.
+                # Solve the one-time callable-representation structure baseline
+                # so dynamic and static runs share an identical starting radius.
                 self._solve_structure_baseline_if_needed()
 
                 # Re-compute structure if Zalmoxis feedback is active
@@ -1298,10 +1294,9 @@ class Proteus:
                         _t_mod['structure'] = time.perf_counter() - _t0
                     # gc.collect() already called inside update_structure_from_interior()
 
-                    # Count down the resume-settling structure-re-solve window once
-                    # per loop. When it reaches zero the guard disengages and the
-                    # normal dynamic re-solve cadence resumes. Only ever armed on the
-                    # resume path, so a fresh run never decrements (the key is absent).
+                    # Decrement the resume-settling structure-re-solve window once
+                    # per loop until normal dynamic re-solve cadence resumes (armed
+                    # on the resume path only).
                     if self.directories.get('_resume_struct_settle_loops', 0) > 0:
                         self.directories['_resume_struct_settle_loops'] -= 1
 
@@ -1442,14 +1437,9 @@ class Proteus:
                         self.directories, self.config, self.hf_row, first_iter
                     )
 
-                    # Issue #677 IC consistency check. Fires once at the first
-                    # outgas call (subsequent init_stage calls find the sentinel
-                    # set to -1 and skip). Compares the user-supplied O_budget
-                    # against CALLIOPE's equilibrium-derived O_kg_total; hard-
-                    # fails on >50% divergence. Skipped when O_mode='ic_chemistry'
-                    # or when planet.fO2_source != 'user_constant' (a derived
-                    # fO2 makes the user O budget authoritative, so there is
-                    # no divergence).
+                    # One-time initial-condition check comparing user-supplied
+                    # O_budget against CALLIOPE's equilibrium-derived O_kg_total
+                    # when O_mode != 'ic_chemistry' and fO2_source == 'user_constant'.
                     from proteus.outgas.wrapper import check_ic_oxygen_budget
 
                     check_ic_oxygen_budget(self.config, self.hf_row)
@@ -1457,11 +1447,9 @@ class Proteus:
                 # Add mass of total tracked element mass (M_ele) to total mass of mantle+core
                 update_planet_mass(self.hf_row)
 
-                # Vapourisation moves non-volatile mass into M_atm that M_planet
-                # does not track, so only the M_atm <= M_planet half is dropped in
-                # that mode. An excess larger than the vapour column explains still
-                # warns, and PrintCurrentState reports the vapour budget every
-                # iteration. Non-conservation is a simplification of vapourisation.
+                # Vapourisation adds untracked rock vapour to M_atm, so drop the
+                # M_atm <= M_planet requirement in that mode (an excess beyond
+                # M_vaps still logs a warning).
                 from proteus.outgas.trapping import derived_total_elements, trapping_active
 
                 assert_mass_conservation(
@@ -1472,10 +1460,8 @@ class Proteus:
                     closure_rtol=self.config.outgas.solver_rtol,
                 )
 
-                # P_surf = P_vol + P_vap, and P_vap == 0 when rock
-                # vapourisation is disabled. Cheap end-of-outgas guardrail against
-                # a code path updating P_surf without keeping the partial
-                # pressures in sync.
+                # Verify P_surf == P_vol + P_vap and P_vap == 0 when rock
+                # vapourisation is disabled.
                 assert_surface_pressure_consistency(self.config, self.hf_row)
 
                 if _IT_TIMING_ENABLED:
@@ -1487,11 +1473,9 @@ class Proteus:
                 PrintHalfSeparator()
                 _t0_atmos = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
 
-                # When global_miscibility is enabled, the atmosphere lower
-                # boundary is the solvus (binodal surface), not the magma
-                # ocean surface. Override the hf_row values that AGNI reads
-                # so the atmosphere is computed from the solvus outward.
-                # Save originals to restore after the atmosphere step.
+                # With global_miscibility enabled, override the boundary keys
+                # AGNI reads so the atmosphere is solved from the solvus outward,
+                # and restore the originals afterwards.
                 _saved_atm_bc = {}
                 R_sol = solvus_radius(
                     self.config,
@@ -1532,28 +1516,8 @@ class Proteus:
                         for key, val in _saved_atm_bc.items():
                             self.hf_row[key] = val
 
-                # Atmosphere-interior coupling deadlock detection.
-                # If the atmosphere solver failed AND the interior state has
-                # not moved since the previous committed row, increment the
-                # deadlock counter. After `agni_deadlock_max` consecutive such
-                # iterations, abort the run with status 22 ("Atmosphere model
-                # error"). This catches the case where AGNI returns "Maximum
-                # attempts" with no converged solution and the coupling layer
-                # would otherwise silently freeze indefinitely.
-                #
-                # The "frozen" criterion uses bit-exact equality for T_magma and
-                # Phi_global (which truly do not move in a deadlocked interior)
-                # but a small relative tolerance for F_atm (1e-6) so that jittery
-                # AGNI non-convergence noise on the same physical state still
-                # registers as frozen. Without the F_atm tolerance, the detector
-                # would silently miss deadlocks where AGNI returns slightly
-                # different non-converged values on each retry.
-                #
-                # Guard: hf_all is None until the first row is appended at the
-                # bottom of the loop body. On a fresh run's first iteration
-                # there is no "previous" row to compare against, so the
-                # deadlock detector cannot fire yet, so count the failure but do
-                # not abort.
+                # Abort with status 22 on an atmosphere-interior coupling
+                # deadlock or consecutive unresolved atmosphere stall.
                 self._check_atmosphere_deadlock()
 
                 if _IT_TIMING_ENABLED:
@@ -1665,10 +1629,9 @@ class Proteus:
                 ):
                     log.info('Updating archive of model output data')
                     _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
-                    # pack new timestamped snapshots into data.tar, keeping the
-                    # originals loose; the fixed-name runtime files and EOS table
-                    # directories are left out so they are not re-appended (and so
-                    # duplicated) on every archive cycle
+                    # Pack new timestamped snapshots into data.tar while keeping
+                    # loose copies and excluding fixed-name runtime files and EOS
+                    # table directories.
                     archive.update(
                         self.directories['output/data'], remove_files=False, snapshots_only=True
                     )
