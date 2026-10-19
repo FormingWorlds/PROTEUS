@@ -650,16 +650,18 @@ def check_structure_invariants(
     Checks ``struct_mass_desync_frac`` against the warning threshold (default ``5.0e-3``,
     ``report_only=True``) and stop threshold (default ``1.0e-2``, ``report_only=False``),
     interior mass ``M_int`` against ``M_int_target`` (when ``M_int_target > 0``, backing up
-    ``_ZALMOXIS_MASS_ANCHOR_TOL`` on ``determine_interior_radius_with_zalmoxis``,
-    ``equilibrate_initial_state``, and ``update_structure_from_interior`` rollbacks restoring
-    ``_saved_structure``, or when ``interior_mass_target_rtol < 3.0e-3``), and core mass
-    ``M_core`` against ``M_core_target`` (when ``M_core_target > 0``). On init-stage rows
-    before the post-init baseline structure solve (``init_stage=True``, or ``Time <= 1.0`` yr
-    when ``init_stage`` is omitted; a failed baseline solve leaves ``_baseline_structure_done``
-    ``False`` and ``structure_stale`` ``True``, keeping ``init_stage=True`` until a solve
-    succeeds, at most ``_ZALMOXIS_MAX_CONSECUTIVE_FAILS`` rows), finite structure mismatches
-    are reported with ``report_only=True`` and do not stop the run. On a row that follows a
-    Zalmoxis structure rollback (``hf_row['_structure_rollback']`` or
+    the ``3.0e-3`` Zalmoxis mass-anchor tolerance on ``determine_interior_radius_with_zalmoxis``,
+    ``equilibrate_initial_state``, the post-init giant-impact structure re-solve in
+    ``apply_impact`` calling ``solve_structure(thermal_solve=False)``, and
+    ``update_structure_from_interior`` rollbacks restoring ``_saved_structure``, or when
+    ``interior_mass_target_rtol < 3.0e-3``), and core mass ``M_core`` against ``M_core_target``
+    (when ``M_core_target > 0``). On init-stage rows before the post-init baseline structure
+    solve (``init_stage=True``, or ``Time <= 1.0`` yr when ``init_stage`` is omitted; a failed
+    baseline solve leaves ``_baseline_structure_done`` ``False`` and ``structure_stale``
+    ``True``, keeping ``init_stage=True`` until the baseline solve succeeds, and Zalmoxis
+    aborts after 8 consecutive failed solves), finite structure mismatches are reported with
+    ``report_only=True`` and do not stop the run. While a Zalmoxis structure rollback remains
+    active until the next accepted re-solve (``hf_row['_structure_rollback']`` or
     ``interior_o.structure_rollback_active``), finite ``M_int_target_rel_err`` and
     ``M_core_target_rel_err`` violations are also emitted with ``report_only=True``.
 
@@ -788,17 +790,17 @@ def check_volatile_invariants(
     (``M_atm <= M_planet``) and volatile species-sum consistency (``M_vol_atm == sum(s_kg_atm)``)
     are enforced earlier in every iteration by ``coupler.assert_mass_conservation``, which
     raises ``RuntimeError`` caught in ``Proteus.start`` to write status 31; under
-    ``outgas.vapourise = true`` an atmosphere excess above ``M_vaps`` only logs a warning.
-    Element reservoir closure skips oxygen under ``planet.fO2_source = 'user_constant'``,
-    skips ``noble_gases`` (``He, Ne, Ar, Kr, Xe``) when ``outgas.module = 'dummy'`` (because
-    the dummy outgassing module only partitions ``H, C, N, S``), and, when ``outgas.vapourise``
-    is enabled, skips ``vap_element_list`` (``Si, Mg, Fe, Na, Al, Ti, Ca, K, V``, whose totals
-    stay zero while rock vapour enters the atmosphere) and ``LAVATMOS_OVERWRITTEN_ELEMENTS``
-    (``input_eles`` in ``lavatmos.py``, namely ``H, C, N, S, O`` and ``noble_gases``:
-    ``lavatmos`` keeps ``O_kg_atm`` from the volatile outgassing step while storing
-    post-vapourisation O in ``Omass_after_vapourise``, and overwrites the atmospheric masses
-    of ``H, C, N, S`` and ``noble_gases`` from gas-phase equilibrium without updating their
-    element totals).
+    ``outgas.vapourise = true`` when ``M_vaps > 0`` an atmosphere excess above ``M_vaps`` only
+    logs a warning. Element reservoir closure skips oxygen under
+    ``planet.fO2_source = 'user_constant'``, skips ``noble_gases`` (``He, Ne, Ar, Kr, Xe``) when
+    ``outgas.module = 'dummy'`` (because the dummy outgassing module only partitions
+    ``H, C, N, S``), and, when ``outgas.vapourise`` is enabled, skips ``vap_element_list``
+    (``Si, Mg, Fe, Na, Al, Ti, Ca, K, V``, whose totals stay zero while rock vapour enters the
+    atmosphere when ``M_vaps > 0``) and ``LAVATMOS_OVERWRITTEN_ELEMENTS`` (``input_eles`` in
+    ``lavatmos.py``, namely ``H, C, N, S, O`` and ``noble_gases``: ``lavatmos`` keeps
+    ``O_kg_atm`` from the volatile outgassing step while storing post-vapourisation O in
+    ``Omass_after_vapourise``, and overwrites the atmospheric masses of ``H, C, N, S`` and
+    ``noble_gases`` from gas-phase equilibrium without updating their element totals).
 
     Parameters
     ----------

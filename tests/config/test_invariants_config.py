@@ -311,8 +311,11 @@ def test_hypothesis_step_energy_rtol_ordering_and_non_kink_dispatch(
 
 
 def test_invariants_docstrings_have_no_file_line_refs_and_document_gates():
-    """Verify docstrings carry no file:line references and state the atmodeller and Zalmoxis gates."""
+    """Verify docstrings and config reference carry no file:line or private constant refs and state the atmodeller, vapourise, and impact gates."""
+    import re
     from pathlib import Path
+
+    from helpers import PROTEUS_ROOT
 
     from proteus.utils import invariants as inv_mod
 
@@ -320,12 +323,19 @@ def test_invariants_docstrings_have_no_file_line_refs_and_document_gates():
         Path(inv_mod.__file__).resolve().parents[1] / 'config' / '_invariants.py'
     ).read_text(encoding='utf-8')
     invariants_util_src = Path(inv_mod.__file__).read_text(encoding='utf-8')
+    params_md = (PROTEUS_ROOT / 'docs' / 'Reference' / 'config' / 'params.md').read_text(
+        encoding='utf-8'
+    )
 
-    assert 'aragog.py:' not in invariants_cfg_src
-    assert 'aragog.py:' not in invariants_util_src
+    assert re.search(r'\.py:\d', invariants_cfg_src) is None
+    assert re.search(r'\.py:\d', invariants_util_src) is None
+    assert re.search(r'\.py:\d', params_md) is None
+    assert '_ZALMOXIS_MAX_CONSECUTIVE_FAILS' not in invariants_cfg_src
+    assert '_ZALMOXIS_MAX_CONSECUTIVE_FAILS' not in params_md
+    assert '_baseline_structure_done' not in invariants_cfg_src
+    assert '_baseline_structure_done' not in params_md
     assert 'mesh_surface_pressure_state' in invariants_cfg_src
     assert 'solver.parameters.mesh.surface_pressure' in invariants_cfg_src
     assert 'total <= outgas.mass_thresh' in invariants_cfg_src
-    assert '_ZALMOXIS_MAX_CONSECUTIVE_FAILS' in (
-        inv_mod.check_structure_invariants.__doc__ or ''
-    )
+    assert 'when M_vaps > 0' in invariants_cfg_src
+    assert 'solve_structure' in invariants_cfg_src

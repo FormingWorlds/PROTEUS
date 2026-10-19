@@ -91,23 +91,26 @@ class Invariants:
     struct_mass_desync_rtol: float
         Stop threshold on post-init ``struct_mass_desync_frac`` [-], sized at twice the
         ``5.0e-3`` warning threshold (init-stage rows before the post-init baseline structure
-        solve are report-only; a failed baseline solve keeps ``init_stage=True`` until a solve
-        succeeds, for at most ``_ZALMOXIS_MAX_CONSECUTIVE_FAILS`` rows).
+        solve are report-only; a failed baseline solve keeps ``init_stage=True`` until the
+        baseline solve succeeds, and Zalmoxis aborts after 8 consecutive failed solves).
     interior_mass_target_rtol: float
         Relative tolerance on ``M_int`` versus ``M_int_target`` at a Zalmoxis structure row [-],
-        matching ``_ZALMOXIS_MASS_ANCHOR_TOL = 3.0e-3`` in ``interior_energetics/wrapper.py`` and
-        acting as a backstop on solve paths where ``_ZALMOXIS_MASS_ANCHOR_TOL`` does not guard
-        ``hf_row`` (the linear-guess initial solve in ``determine_interior_radius_with_zalmoxis``
-        and ``equilibrate_initial_state``, and ``update_structure_from_interior`` rollbacks where
-        ``_saved_structure`` restores ``M_int`` without clearing ``M_int_target``, which are
-        emitted with ``report_only=True``) or when configured tighter than ``3.0e-3``.
+        matching the ``3.0e-3`` Zalmoxis mass-anchor tolerance in ``interior_energetics/wrapper.py``
+        and acting as a backstop on solve paths that do not run a post-solve mass-anchor check
+        (the linear-guess initial solve in ``determine_interior_radius_with_zalmoxis`` and
+        ``equilibrate_initial_state``, the post-init giant-impact structure re-solve in
+        ``apply_impact`` calling ``solve_structure(thermal_solve=False)``, and
+        ``update_structure_from_interior`` rollbacks that restore ``M_int`` without clearing
+        ``M_int_target``, which are emitted with ``report_only=True`` while a structure rollback
+        remains active until the next accepted re-solve) or when configured tighter than
+        ``3.0e-3``.
     core_mass_target_rtol: float
         Relative tolerance on ``M_core`` versus ``M_core_target`` at a structure update row [-],
         sized at about ``1.6`` times the radial-trapezoidal core mass difference on
         ``a627_default`` (not one of the 68 runs): maximum ``1.565e-2``, 99th percentile
         ``1.518e-2`` (``1.004e-2`` maximum and ``9.79e-3`` 99th percentile across the 68
-        finished post-closure default runs; ``report_only=True`` on init-stage rows and rows
-        following a Zalmoxis structure rollback).
+        finished post-closure default runs; ``report_only=True`` on init-stage rows and while a
+        Zalmoxis structure rollback remains active until the next accepted re-solve).
     element_closure_rtol: float
         Relative tolerance on per-element reservoir closure ``atm + magma + solid = total`` [-],
         sized at ``2.5`` times the default ``outgas.solver_rtol = 1.0e-4``.
@@ -121,7 +124,7 @@ class Invariants:
         ``outgas.module = 'dummy'``, noble gases (``He, Ne, Ar, Kr, Xe``) skip reservoir
         closure because the dummy outgassing module only partitions ``H, C, N, S``. Under
         ``outgas.vapourise = true``, rock-vapour and ``lavatmos``-overwritten elements skip
-        reservoir closure and an atmosphere excess above ``M_vaps`` in
+        reservoir closure when M_vaps > 0 and an atmosphere excess above ``M_vaps`` in
         ``coupler.assert_mass_conservation`` only logs a warning.
     element_closure_atol_kg: float
         Absolute floor on per-element reservoir closure when the ``outgas.mass_thresh``

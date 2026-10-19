@@ -1139,12 +1139,96 @@ def get_file_tides(outdir: str):
     return os.path.join(outdir, 'data', 'tides_recent.dat')
 
 
-# Path to location at which to persist the stale-structure flag. The flag is a
-# per-run interior-state bit that must survive a resume: a run that fell back to
-# the previous structure on a Zalmoxis non-convergence, then crashed, must come
-# back knowing its on-disk mesh is stale rather than assuming it is fresh.
-def get_file_structure_stale(outdir: str):
+# Path to location at which to persist the stale-structure flag across resume.
+def get_file_structure_stale(outdir: str) -> str:
+    """Return path to the persisted stale-structure flag file.
+
+    Parameters
+    ----------
+    outdir : str
+        Run output directory.
+
+    Returns
+    -------
+    str
+        Path to ``data/structure_stale.dat``.
+    """
     return os.path.join(outdir, 'data', 'structure_stale.dat')
+
+
+def get_file_structure_rollback(outdir: str) -> str:
+    """Return path to the persisted structure-rollback flag file.
+
+    Parameters
+    ----------
+    outdir : str
+        Run output directory.
+
+    Returns
+    -------
+    str
+        Path to ``data/structure_rollback.dat``.
+    """
+    return os.path.join(outdir, 'data', 'structure_rollback.dat')
+
+
+def get_file_baseline_structure_done(outdir: str) -> str:
+    """Return path to the persisted baseline-structure-done flag file.
+
+    Parameters
+    ----------
+    outdir : str
+        Run output directory.
+
+    Returns
+    -------
+    str
+        Path to ``data/baseline_structure_done.dat``.
+    """
+    return os.path.join(outdir, 'data', 'baseline_structure_done.dat')
+
+
+def write_baseline_structure_done(outdir: str, done: bool) -> None:
+    """Persist ``_baseline_structure_done`` under ``<outdir>/data/``.
+
+    Parameters
+    ----------
+    outdir : str
+        Run output directory.
+    done : bool
+        Whether the post-init Zalmoxis baseline structure solve has succeeded.
+    """
+    try:
+        with open(get_file_baseline_structure_done(outdir), 'w') as hdl:
+            hdl.write('%d\n' % (1 if done else 0))
+    except OSError as exc:
+        log.warning('Could not persist baseline-structure flag file: %s', exc)
+
+
+def resume_baseline_structure_done(outdir: str, *, default: bool = True) -> bool:
+    """Restore ``_baseline_structure_done`` from ``<outdir>/data/`` on resume.
+
+    Parameters
+    ----------
+    outdir : str
+        Run output directory.
+    default : bool, optional
+        Fallback value when the flag file is absent or unreadable.
+
+    Returns
+    -------
+    bool
+        Restored baseline-structure completion flag.
+    """
+    path = get_file_baseline_structure_done(outdir)
+    if not os.path.exists(path):
+        return bool(default)
+    try:
+        with open(path) as hdl:
+            return bool(int(hdl.read().strip()))
+    except (ValueError, OSError):
+        log.warning('Could not parse baseline-structure flag file; using default')
+        return bool(default)
 
 
 # Structure for holding interior variables at the current time-step
@@ -1157,11 +1241,6 @@ class Interior_t:
         self.dt = 1.0
 
         # Consecutive solver-failure counters, reset on each success.
-        # Per-run state by construction: every run builds a fresh
-        # Interior_t, so concurrent Proteus instances in one Python
-        # process (grid ensembles, notebooks, test sessions) cannot
-        # share failure streaks. The abort thresholds live in
-        # interior_energetics/wrapper.py.
         self.zalmoxis_fail_count = 0
         self.spider_fail_count = 0
         self.aragog_fail_count = 0
@@ -1170,16 +1249,10 @@ class Interior_t:
         # pairs in years, tracking phase-change stalls across valid solves.
         self.aragog_step_progress: list[tuple[float, float]] = []
 
-        # True when the interior is running on a fallback (previous-step)
-        # structure because the last Zalmoxis re-solve did not converge; set on
-        # that fall-back and cleared on the next successful re-solve. Downstream
-        # consumers (Aragog's stale-mesh visibility counter, the baseline-commit
-        # guard) read it here rather than from hf_row so it stays out of the
-        # floats-only helpfile schema. Persisted to disk (write_structure_stale)
-        # and restored on resume (resume_structure_stale) so a crash right after
-        # a fall-back does not resume believing the on-disk mesh is fresh.
+        # True when the interior is running on a fallback structure after a
+        # failed Zalmoxis re-solve; persisted via write_structure_stale.
         self.structure_stale = False
-        # True when the latest structure re-solve rolled back to _saved_structure.
+        # True while a Zalmoxis structure rollback or monotonic-radius reject remains active.
         self.structure_rollback_active = False
 
         # Cumulative SPIDER time [yr]. Used by the CVode failure
@@ -1397,34 +1470,55 @@ class Interior_t:
                 hdl.write('%.7e %.7e \n' % (self.phi[i], self.tides[i]))
 
     def write_structure_stale(self, outdir: str):
-        # Persist the stale-structure flag so a resumed run recovers it. Written
-        # whenever the flag changes (the Zalmoxis success and fall-back paths in
-        # wrapper.py), so the on-disk value tracks the in-memory one. A write
-        # failure (disk full, absent data/ directory) must not abort the run or,
-        # on the fall-back path, skip the mesh and zalmoxis_output.dat rollback
-        # that follows this call: the flag is only a resume-visibility bit, so
-        # log and continue rather than propagate.
+        """Persist ``structure_stale`` and ``structure_rollback_active`` to disk.
+
+        Parameters
+        ----------
+        outdir : str
+            Run output directory.
+        """
+        rollback = bool(
+            getattr(self, 'structure_rollback_active', False) or self.structure_stale
+        )
         try:
             with open(get_file_structure_stale(outdir), 'w') as hdl:
                 hdl.write('%d\n' % (1 if self.structure_stale else 0))
+            with open(get_file_structure_rollback(outdir), 'w') as hdl:
+                hdl.write('%d\n' % (1 if rollback else 0))
         except OSError as exc:
             log.warning('Could not persist stale-structure flag file: %s', exc)
 
     def resume_structure_stale(self, outdir: str):
-        # Restore the stale-structure flag from disk on resume; a missing or
-        # malformed file means no fall-back was recorded, so the mesh stays fresh.
+        """Restore ``structure_stale`` and ``structure_rollback_active`` on resume.
+
+        Parameters
+        ----------
+        outdir : str
+            Run output directory.
+        """
         path = get_file_structure_stale(outdir)
         if not os.path.exists(path):
             self.structure_stale = False
-            self.structure_rollback_active = False
+        else:
+            try:
+                with open(path) as hdl:
+                    self.structure_stale = bool(int(hdl.read().strip()))
+            except (ValueError, OSError):
+                log.warning('Could not parse stale-structure flag file; assuming fresh')
+                self.structure_stale = False
+
+        rb_path = get_file_structure_rollback(outdir)
+        if not os.path.exists(rb_path):
+            self.structure_rollback_active = self.structure_stale
             return
         try:
-            with open(path) as hdl:
-                self.structure_stale = bool(int(hdl.read().strip()))
+            with open(rb_path) as hdl:
+                self.structure_rollback_active = (
+                    bool(int(hdl.read().strip())) or self.structure_stale
+                )
         except (ValueError, OSError):
-            log.warning('Could not parse stale-structure flag file; assuming fresh')
-            self.structure_stale = False
-        self.structure_rollback_active = self.structure_stale
+            log.warning('Could not parse structure-rollback flag file; using stale flag')
+            self.structure_rollback_active = self.structure_stale
 
     def update_rheology(self, visc: bool = False):
         # Update shear and bulk moduli arrays based on the melt fraction at each layer.

@@ -1511,11 +1511,9 @@ def _solve_structure_with_adiabat_or_rollback(
                 f'adiabat IC re-solve produced an invalid R_int={R_int_adiabat}.'
             )
     except (RuntimeError, ValueError, FloatingPointError) as exc:
-        # Restore the structure-defining hf_row keys AND the on-disk
-        # zalmoxis_output.dat, so the next run_interior reads a mesh that is
-        # consistent with the restored hf_row state.
+        # Restore the structure-defining hf_row keys and on-disk zalmoxis_output.dat
+        # so the next run_interior reads a mesh consistent with hf_row.
         hf_row.update(saved)
-        hf_row['_structure_rollback'] = True
         try:
             _output_prev = _output_zalmoxis_path + '.prev'
             if os.path.isfile(_output_prev):
@@ -1680,7 +1678,6 @@ def determine_interior_radius_with_zalmoxis(
         temperature_mode_override=_temp_mode_override,
     )
     hf_row['_structure_rollback'] = False
-    int_o.structure_rollback_active = False
 
     # Re-solve liquidus_super IC structure against the true super-liquidus adiabat T(P)
     # over the converged P_cmb range; SPIDER manages its own T(r) and is excluded.
@@ -1688,7 +1685,6 @@ def determine_interior_radius_with_zalmoxis(
         spider_mesh_file = _resolve_adiabatic_ic_structure(
             config, outdir, hf_row, num_spider_nodes, spider_mesh_file
         )
-        int_o.structure_rollback_active = bool(hf_row.get('_structure_rollback', False))
 
     # Store mesh file path for subsequent SPIDER calls
     if spider_mesh_file:
@@ -3253,6 +3249,7 @@ def update_structure_from_interior(
             hf_row.update(_saved_structure)
             hf_row['_structure_rollback'] = True
             interior_o.structure_rollback_active = True
+            interior_o.write_structure_stale(dirs['output'])
             # Restore zalmoxis_output.dat from its pre-call .prev snapshot so the
             # next solver reads the retained previous geometry, not the rejected
             # up-step geometry the solver just wrote.

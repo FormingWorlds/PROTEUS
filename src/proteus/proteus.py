@@ -355,8 +355,8 @@ class Proteus:
 
         When the post-init forced Zalmoxis baseline solve fails and falls back
         (``interior_o.structure_stale`` is ``True``), ``_baseline_structure_done``
-        remains ``False`` so ``init_stage`` stays ``True`` until a structure solve
-        succeeds (at most ``_ZALMOXIS_MAX_CONSECUTIVE_FAILS`` rows).
+        remains ``False`` so ``init_stage`` stays ``True`` until the baseline solve
+        succeeds (Zalmoxis aborts after 8 consecutive failed solves).
         """
         return bool(
             iter_init_stage
@@ -396,6 +396,7 @@ class Proteus:
         ):
             return
 
+        from proteus.interior_energetics.common import write_baseline_structure_done
         from proteus.interior_energetics.wrapper import (
             _use_superliquidus_adiabat_ic,
             update_structure_from_interior,
@@ -403,6 +404,7 @@ class Proteus:
 
         if _use_superliquidus_adiabat_ic(self.config):
             self._baseline_structure_done = True
+            write_baseline_structure_done(self.directories['output'], True)
             return
 
         new_time, new_Tmagma, new_Phi = update_structure_from_interior(
@@ -419,12 +421,14 @@ class Proteus:
         # Commit the baseline only when the solve converged. On a fall-back the
         # structure is the stale initial-condition one; retry on the next step.
         if self.interior_o.structure_stale:
+            write_baseline_structure_done(self.directories['output'], False)
             return
 
         self.last_struct_time = new_time
         self.last_struct_Tmagma = new_Tmagma
         self.last_struct_Phi = new_Phi
         self._baseline_structure_done = True
+        write_baseline_structure_done(self.directories['output'], True)
 
     def _match_ps_tables_to_mass(self):
         """Point a resumed run at the P-S tables of its restored planet mass.
@@ -870,6 +874,12 @@ class Proteus:
             self.interior_o.structure_rollback_active = bool(
                 self.hf_row.get('_structure_rollback', False)
             )
+            if hasattr(self.interior_o, 'write_structure_stale'):
+                self.interior_o.write_structure_stale(self.directories['output'])
+            if self.config.interior_struct.module == 'zalmoxis':
+                from proteus.interior_energetics.common import write_baseline_structure_done
+
+                write_baseline_structure_done(self.directories['output'], False)
             _t_init['structure'] = time.perf_counter() - _t0
 
             # Initialize structure-update sentinels so the first dynamic
@@ -937,6 +947,11 @@ class Proteus:
                     self.hf_row,
                     self.directories['output'],
                 )
+                self.interior_o.structure_rollback_active = bool(
+                    self.hf_row.get('_structure_rollback', False)
+                )
+                if hasattr(self.interior_o, 'write_structure_stale'):
+                    self.interior_o.write_structure_stale(self.directories['output'])
                 _t_init['equilibrate'] = time.perf_counter() - _t0
                 # Update sentinels with post-equilibration state
                 self.last_struct_Tmagma = self.hf_row.get('T_magma', np.inf)
@@ -1057,20 +1072,22 @@ class Proteus:
             if self.config.orbit.module is not None:
                 self.interior_o.resume_tides(self.directories['output'])
 
-            # Restore the stale-structure flag so a resume that lands on a
-            # fall-back Zalmoxis mesh keeps the stale-step accounting instead of
-            # silently reading fresh.
+            # Restore the stale-structure and rollback flags from disk on resume.
             self.interior_o.resume_structure_stale(self.directories['output'])
 
             # Set loop counters
             self.loops['total'] = len(self.hf_all)
             self.init_stage = False
-            # A resumed run continues from its on-disk structure; do not solve
-            # the init baseline mid-evolution, which would inject a spurious
-            # radius step (and would un-freeze a static run). For runs first
-            # launched on this code path the on-disk structure is already the
-            # callable-representation baseline.
-            self._baseline_structure_done = True
+            # Restore baseline-structure completion so an uncommitted baseline retries.
+            if self.config.interior_struct.module == 'zalmoxis':
+                from proteus.interior_energetics.common import resume_baseline_structure_done
+
+                self._baseline_structure_done = resume_baseline_structure_done(
+                    self.directories['output'],
+                    default=not self.interior_o.structure_stale,
+                )
+            else:
+                self._baseline_structure_done = True
 
             # Restore Zalmoxis mesh path for resumed SPIDER runs
             if (

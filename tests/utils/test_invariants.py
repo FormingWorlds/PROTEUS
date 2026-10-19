@@ -2610,24 +2610,35 @@ def test_resolve_ps_table_path_uses_zalmoxis_ps_cache_pointer_name(tmp_path):
     assert resolved == table_path.resolve()
 
 
-def test_import_proteus_does_not_eagerly_load_aragog_zalmoxis_or_netcdf4():
-    """Importing proteus.proteus and proteus.utils.invariants does not load aragog, zalmoxis, or netCDF4."""
+def test_import_proteus_does_not_eagerly_load_aragog_zalmoxis_or_netcdf4(tmp_path):
+    """Importing proteus.proteus and proteus.utils.invariants from repo src with juliacall stubbed does not load aragog, zalmoxis, or netCDF4."""
     import json
+    import os
     import subprocess
     import sys
+    from pathlib import Path
 
+    repo_src = Path(__file__).resolve().parents[2] / 'src'
     code = (
-        'import json, sys, proteus.proteus, proteus.utils.invariants; '
+        'import json, sys, types; '
+        'sys.path.insert(0, %r); '
+        "jl = types.ModuleType('juliacall'); jl.Main = types.SimpleNamespace(); sys.modules['juliacall'] = jl; "
+        'import proteus, proteus.proteus, proteus.utils.invariants; '
         'mods = ["proteus.interior_energetics.aragog", "proteus.interior_struct.zalmoxis", "netCDF4"]; '
-        'print(json.dumps({m: (m in sys.modules) for m in mods}))'
-    )
+        'print(json.dumps({"file": proteus.__file__, "loaded": {m: (m in sys.modules) for m in mods}}))'
+    ) % str(repo_src)
+    env = dict(os.environ, PYTHONPATH=str(repo_src))
     proc = subprocess.run(
         [sys.executable, '-c', code],
+        cwd=str(tmp_path),
+        env=env,
         check=True,
         capture_output=True,
         text=True,
     )
-    loaded = json.loads(proc.stdout.strip())
+    payload = json.loads(proc.stdout.strip())
+    assert Path(payload['file']).resolve().is_relative_to(repo_src.resolve())
+    loaded = payload['loaded']
     assert loaded == {
         'proteus.interior_energetics.aragog': False,
         'proteus.interior_struct.zalmoxis': False,
@@ -2734,3 +2745,207 @@ def test_nan_species_and_nan_mplanet_stop_in_check_volatile_invariants():
     with pytest.raises(InvariantViolationError) as exc_mp:
         check_row_invariants(dict(base_row, M_planet=float('nan')), cfg)
     assert exc_mp.value.invariant_name == 'M_planet_bounds'
+
+
+def test_ic_adiabat_rollback_resets_and_resume_rollback_persistence(tmp_path, monkeypatch):
+    """IC adiabat rollback restores M_int_target without setting _structure_rollback, wrapper resets clear it, and resume_structure_stale restores both stale and up-step rollback flags."""
+    import inspect
+
+    import numpy as np
+    import pandas as pd
+
+    import proteus.interior_energetics.wrapper as int_wrap
+    import proteus.interior_struct.zalmoxis as zalmoxis_mod
+    import proteus.outgas.wrapper as outgas_wrap
+    from proteus.config import Config
+    from proteus.interior_energetics.common import Interior_t
+    from proteus.utils.invariants import check_row_invariants
+
+    monkeypatch.setattr(Interior_t, '_load_ps_table', lambda self, *a, **kw: None)
+    data_dir = tmp_path / 'data'
+    data_dir.mkdir(parents=True)
+    (data_dir / 'zalmoxis_output.dat').write_text('0.0 0.0\n', encoding='utf-8')
+    dirs = {'output': str(tmp_path), 'output/data': str(data_dir)}
+
+    cfg = Config()
+    cfg.invariants.mode = 'stop'
+    cfg.interior_struct.module = 'zalmoxis'
+    cfg.interior_energetics.module = 'aragog'
+    cfg.planet.temperature_mode = 'liquidus_super'
+    cfg.interior_struct.zalmoxis.mantle_eos = 'PALEOS-2phase:MgSiO3'
+    cfg.interior_struct.zalmoxis.dry_mantle = True
+    cfg.interior_struct.zalmoxis.equilibrate_max_iter = 1
+    cfg.interior_struct.zalmoxis.equilibrate_tol = 0.01
+
+    # 1. determine_interior_radius_with_zalmoxis has no dead int_o.structure_rollback_active writes:
+    det_src = inspect.getsource(int_wrap.determine_interior_radius_with_zalmoxis)
+    assert 'int_o.structure_rollback_active' not in det_src
+
+    # 2. _solve_structure_with_adiabat_or_rollback: rollback restores M_int and M_int_target without setting _structure_rollback=True
+    def failing_adiabat_solver(config, outdir, hf_row, **kwargs):
+        hf_row['M_int'] = 6.20e24
+        hf_row['M_int_target'] = 6.20e24
+        hf_row['R_int'] = 6.50e6
+        raise RuntimeError('simulated adiabat IC non-convergence')
+
+    monkeypatch.setattr(zalmoxis_mod, 'zalmoxis_solver', failing_adiabat_solver)
+    ic_row = {
+        'R_int': 6.37e6,
+        'R_core': 3.48e6,
+        'M_int': 5.97e24,
+        'M_int_target': 5.97e24,
+        'M_core': 1.94e24,
+        'M_mantle': 4.03e24,
+        'P_surf': 100.0,
+        'P_cmb': 1.35e11,
+        'P_center': 3.6e11,
+        'gravity': 9.81,
+        'rho_avg': 5515.0,
+    }
+    mesh_rb, ok_rb = int_wrap._solve_structure_with_adiabat_or_rollback(
+        cfg, str(tmp_path), ic_row, 0, lambda r, p: 3000.0
+    )
+    assert mesh_rb is None
+    assert ok_rb is False
+    assert ic_row['M_int'] == pytest.approx(5.97e24)
+    assert ic_row['M_int_target'] == pytest.approx(5.97e24)
+    assert ic_row.get('_structure_rollback', False) is False
+
+    # 3. _solve_structure_with_adiabat_or_rollback: success clears _structure_rollback=False
+    def succeeding_adiabat_solver(config, outdir, hf_row, **kwargs):
+        hf_row['R_int'] = 6.40e6
+        hf_row['M_int'] = 5.97e24
+        hf_row['M_int_target'] = 5.97e24
+        return 3.48e6, None
+
+    monkeypatch.setattr(zalmoxis_mod, 'zalmoxis_solver', succeeding_adiabat_solver)
+    ic_row_ok = dict(ic_row, _structure_rollback=True)
+    _, ok_succ = int_wrap._solve_structure_with_adiabat_or_rollback(
+        cfg, str(tmp_path), ic_row_ok, 0, lambda r, p: 3000.0
+    )
+    assert ok_succ is True
+    assert ic_row_ok['_structure_rollback'] is False
+
+    # 4. determine_interior_radius_with_zalmoxis clears _structure_rollback=False (including when IC adiabat rolls back)
+    monkeypatch.setattr(
+        zalmoxis_mod,
+        'generate_spider_tables',
+        lambda cfg, outdir: {
+            'eos_dir': str(tmp_path),
+            'solidus_path': str(tmp_path),
+            'liquidus_path': str(tmp_path),
+        },
+    )
+    monkeypatch.setattr(
+        int_wrap,
+        '_build_superliquidus_adiabat_tp',
+        lambda cfg, row, pmax: (lambda r, p: 3000.0, np.array([1e5]), np.array([3000.0])),
+    )
+    call_idx = 0
+
+    def linear_ok_then_adiabat_fail(config, outdir, hf_row, **kwargs):
+        nonlocal call_idx
+        call_idx += 1
+        if call_idx == 1:
+            hf_row['R_int'] = 6.37e6
+            hf_row['R_core'] = 3.48e6
+            hf_row['M_int'] = 5.97e24
+            hf_row['M_int_target'] = 5.97e24
+            hf_row['M_core'] = 1.94e24
+            hf_row['P_cmb'] = 1.35e11
+            return 3.48e6, None
+        raise RuntimeError('adiabat pass failed')
+
+    monkeypatch.setattr(zalmoxis_mod, 'zalmoxis_solver', linear_ok_then_adiabat_fail)
+    det_row = dict(ic_row, _structure_rollback=True)
+    int_wrap.determine_interior_radius_with_zalmoxis(
+        dirs, cfg, pd.DataFrame(), det_row, str(tmp_path), thermal_solve=False
+    )
+    assert det_row['_structure_rollback'] is False
+
+    # 5. equilibrate_initial_state resets _structure_rollback=False on both fallback (ok=False) and linear (adiabat_tfunc=None) branches
+    monkeypatch.setattr(outgas_wrap, 'calc_target_elemental_inventories', lambda *a, **kw: None)
+    monkeypatch.setattr(outgas_wrap, 'run_outgassing', lambda *a, **kw: None)
+    monkeypatch.setattr(
+        int_wrap,
+        '_solve_structure_with_adiabat_or_rollback',
+        lambda *a, **kw: (None, False),
+    )
+    monkeypatch.setattr(zalmoxis_mod, 'zalmoxis_solver', succeeding_adiabat_solver)
+
+    eq_row_fallback = dict(ic_row, _structure_rollback=True)
+    int_wrap.equilibrate_initial_state(dirs, cfg, eq_row_fallback, str(tmp_path))
+    assert eq_row_fallback['_structure_rollback'] is False
+
+    monkeypatch.setattr(int_wrap, '_use_superliquidus_adiabat_ic', lambda c: False)
+    eq_row_linear = dict(ic_row, _structure_rollback=True)
+    int_wrap.equilibrate_initial_state(dirs, cfg, eq_row_linear, str(tmp_path))
+    assert eq_row_linear['_structure_rollback'] is False
+    monkeypatch.undo()
+
+    # 6. resume_structure_stale restores both structure_stale=True -> structure_rollback_active=True
+    # and up-step reject (structure_stale=False, structure_rollback_active=True) across disk:
+    monkeypatch.setattr(Interior_t, '_load_ps_table', lambda self, *a, **kw: None)
+    stale_writer = Interior_t(5)
+    stale_writer.structure_stale = True
+    stale_writer.write_structure_stale(str(tmp_path))
+
+    stale_reader = Interior_t(5)
+    stale_reader.resume_structure_stale(str(tmp_path))
+    assert stale_reader.structure_stale is True
+    assert stale_reader.structure_rollback_active is True
+
+    # Up-step reject through update_structure_from_interior persists structure_rollback_active=True while structure_stale=False:
+    def fake_upstep(config, outdir, hf_row, **kwargs):
+        hf_row['R_int'] = 6.37e6 * 1.005
+        hf_row['M_int_target'] = 5.97e24 * 1.006
+        hf_row['M_int'] = 5.97e24 * 1.006
+        hf_row['M_core_target'] = 1.94e24 * 1.04
+        hf_row['M_core'] = 1.94e24 * 1.04
+        return 3.48e6, None
+
+    monkeypatch.setattr(zalmoxis_mod, 'zalmoxis_solver', fake_upstep)
+    upstep_int = Interior_t(10)
+    upstep_int.ic = 2
+    upstep_int.radius = np.linspace(3.48e6, 6.37e6, 11)
+    upstep_int.temp = np.linspace(4000.0, 2500.0, 10)
+    upstep_row = dict(
+        ic_row,
+        Time=200.0,
+        T_surf=2000.0,
+        T_magma=2500.0,
+        T_cmb=4000.0,
+        Phi_global=0.8,
+        M_planet=5.972e24,
+        M_atm=1.0e20,
+        M_vol_atm=1.0e20,
+        M_vaps=0.0,
+        H2O_kg_atm=1.0e20,
+        M_core_target=1.94e24,
+        struct_mass_desync_frac=1.0e-3,
+    )
+    int_wrap.update_structure_from_interior(
+        dirs,
+        cfg,
+        upstep_row,
+        upstep_int,
+        last_struct_time=0.0,
+        last_Tmagma=2600.0,
+        last_Phi=0.85,
+        force=True,
+    )
+    assert upstep_int.structure_stale is False
+    assert upstep_int.structure_rollback_active is True
+
+    resumed_after_upstep = Interior_t(10)
+    resumed_after_upstep.resume_structure_stale(str(tmp_path))
+    assert resumed_after_upstep.structure_stale is False
+    assert resumed_after_upstep.structure_rollback_active is True
+
+    # On the resumed run, the schema row (without _structure_rollback) stays report_only=True in stop mode:
+    resumed_row = {k: v for k, v in upstep_row.items() if k != '_structure_rollback'}
+    v_resumed = check_row_invariants(
+        resumed_row, cfg, init_stage=False, interior_o=resumed_after_upstep
+    )
+    assert [v.name for v in v_resumed] == ['M_int_target_rel_err', 'M_core_target_rel_err']
+    assert all(v.report_only for v in v_resumed)

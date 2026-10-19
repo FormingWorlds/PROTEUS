@@ -610,6 +610,11 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
         handler.directories['output'],
         thermal_solve=False,
     )
+    handler.interior_o.structure_rollback_active = bool(
+        hf_row.get('_structure_rollback', False)
+    )
+    if hasattr(handler.interior_o, 'write_structure_stale'):
+        handler.interior_o.write_structure_stale(handler.directories['output'])
 
     # Restore the conserved volatile budgets over the mass-scaled values the
     # structure solve wrote, so the growth adds rock, not volatiles.
