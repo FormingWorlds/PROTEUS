@@ -11,6 +11,7 @@ import numpy as np
 
 from proteus.escape.wrapper import readable_total
 from proteus.interior_energetics.aragog import mesh_surface_pressure_state
+from proteus.interior_struct.zalmoxis import PS_CACHE_POINTER_NAME
 from proteus.outgas.trapping import derived_total_elements
 from proteus.utils.constants import (
     element_list,
@@ -322,7 +323,8 @@ def _resolve_ps_table_path(directories: dict | None) -> Path | None:
         cand = Path(data_dir) / 'spider_eos' / 'temperature_solid.dat'
         if cand.is_file():
             return cand.resolve()
-        ptr = Path(data_dir) / 'spider_eos_cache.txt'
+        # Written by zalmoxis._write_ps_cache_pointer (PS_CACHE_POINTER_NAME) on shared-cache runs.
+        ptr = Path(data_dir) / PS_CACHE_POINTER_NAME
         if ptr.is_file():
             target_dir = ptr.read_text(encoding='utf-8').strip()
             if target_dir:
