@@ -1047,6 +1047,34 @@ def test_ps_table_inputs_needs_paleos_for_a_paleos_api_mantle(monkeypatch):
     hang.resolve_registry_entry.assert_not_called()
 
 
+@pytest.mark.parametrize('fmt', ['paleos_api', 'paleos_api_2phase'])
+def test_lowt_extension_refuses_a_paleos_api_mantle_before_building_it(monkeypatch, fmt):
+    """The extension is made for the shipped PALEOS solid table: a PALEOS-API mantle with the
+    switch on is refused by name before its tables are built; with the switch off it is built."""
+    from types import SimpleNamespace
+
+    from proteus.interior_struct import zalmoxis as zmod
+
+    built = MagicMock(side_effect=AssertionError('resolver called'))
+    monkeypatch.setattr(zmod, 'resolve_paleos_api', built)
+    if fmt == 'paleos_api':
+        entry = {'format': fmt, 'material': 'mgsio3'}
+    else:
+        entry = {r: {'format': fmt} for r in ('solid_mantle', 'melted_mantle')}
+
+    def config(lowt):
+        return SimpleNamespace(
+            interior_struct=SimpleNamespace(zalmoxis=SimpleNamespace(lowt_extension=lowt))
+        )
+
+    with pytest.raises(ValueError, match='does not support a PALEOS-API mantle'):
+        zmod._ps_table_inputs(config(True), 'PALEOS-API:MgSiO3', entry, {})
+    built.assert_not_called()
+    with pytest.raises(AssertionError, match='resolver called'):
+        zmod._ps_table_inputs(config(False), 'PALEOS-API:MgSiO3', entry, {})
+    assert built.call_count == 1
+
+
 def test_a_removed_paleos_api_table_is_built_again(tmp_path, monkeypatch):
     """A PALEOS-API table removed after its entry was resolved is built again by the next
     check; a build that leaves no table is reported as not built, never as a download."""
