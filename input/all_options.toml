@@ -371,6 +371,7 @@ config_version = "3.0"
         mantle_eos            = "PALEOS:MgSiO3"  # "<source>:<material>"
         ice_layer_eos         = "none"       # "none" = 2-layer model (core + mantle)
         mushy_zone_factor     = 0.8          # solidus/liquidus ratio [0.7-1.0] (PALEOS only)
+        lowt_extension        = false        # solid P-S tables below 300 K (PALEOS MgSiO3, P < 12 GPa)
         mantle_mass_fraction  = 0            # 0 = auto (1 - core_frac) for 2-layer models
 
         # Grid

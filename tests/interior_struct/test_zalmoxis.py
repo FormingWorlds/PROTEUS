@@ -4524,6 +4524,7 @@ def _lowt_stubbed_run(tmp_path, monkeypatch, *, lowt, write_ext=True):
     def _bounds(**kw):
         from pathlib import Path
 
+        Path(kw['output_dir']).mkdir(parents=True, exist_ok=True)
         for name in ('solidus_P-S.dat', 'liquidus_P-S.dat'):
             (Path(kw['output_dir']) / name).write_text('NEW')
 
