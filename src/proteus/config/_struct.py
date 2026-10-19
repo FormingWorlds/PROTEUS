@@ -161,7 +161,8 @@ class Zalmoxis:
         the table build. For 1 Earth mass and the default
         1350 x 280 nodes the coldest tabulated cell is near 67 K, and between
         the two lowest entropy nodes the table temperature deviates from a
-        direct inversion by at most 2.6 % up to 0.1 GPa.
+        direct inversion by at most 2.7 % wherever both nodes hold inverted
+        cells (up to 6.7 GPa).
     mantle_mass_fraction: float
         Fraction of the planet's interior mass corresponding to the mantle.
         Required for 3-layer models (with ice layer) and for T-dependent
