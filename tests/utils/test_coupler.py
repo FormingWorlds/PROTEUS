@@ -3549,6 +3549,7 @@ def _all_dummy_modules_config():
     return config
 
 
+@pytest.mark.usefixtures('fwl_io_current')
 def test_validate_module_versions_raises_when_module_out_of_date(tmp_path):
     """A required module at a version older than the pinned minimum
     triggers an EnvironmentError pointing at the troubleshooting URL.
@@ -3585,6 +3586,7 @@ def test_validate_module_versions_raises_when_module_out_of_date(tmp_path):
     assert args[1] == 20
 
 
+@pytest.mark.usefixtures('fwl_io_current')
 def test_validate_module_versions_accepts_compatible_versions(tmp_path):
     """Installed version above the expected minimum: no raise, no
     status-file write.
@@ -3620,6 +3622,7 @@ def test_validate_module_versions_accepts_compatible_versions(tmp_path):
         ('26.10.15', None),
     ],
 )
+@pytest.mark.usefixtures('fwl_io_current')
 def test_validate_module_versions_checks_vulcan_floor(tmp_path, caplog, installed, fix):
     """With atmos_chem.module = 'vulcan', a VULCAN missing or below the floor stops the start.
 
@@ -3661,6 +3664,7 @@ def test_validate_module_versions_checks_vulcan_floor(tmp_path, caplog, installe
 
 
 @pytest.mark.parametrize(('module', 'when'), [(None, 'offline'), ('vulcan', 'manually')])
+@pytest.mark.usefixtures('fwl_io_current')
 def test_validate_module_versions_skips_vulcan_without_chemistry(tmp_path, module, when):
     """A config that never runs VULCAN (no module, or when = 'manually') never checks it."""
     from proteus.utils.coupler import validate_module_versions
@@ -3678,6 +3682,7 @@ def test_validate_module_versions_skips_vulcan_without_chemistry(tmp_path, modul
     assert mock_update.call_count == 0
 
 
+@pytest.mark.usefixtures('fwl_io_current')
 def test_validate_module_versions_skips_check_when_no_pinned_minimum(tmp_path):
     """When the resolver finds no pinned minimum (the dep string does
     not name the module), the inner _valid_ver helper short-circuits
@@ -4132,6 +4137,7 @@ def test_set_directories_sets_rad_and_temp_for_non_debug(monkeypatch):
 
 
 @pytest.mark.unit
+@pytest.mark.usefixtures('fwl_io_current')
 def test_validate_module_versions_spider_stack_passes_with_unpinned_dep(monkeypatch, tmp_path):
     """A spider stack above its pins passes, and the pin itself is inclusive.
 
@@ -4185,6 +4191,7 @@ def test_validate_module_versions_spider_stack_passes_with_unpinned_dep(monkeypa
 
 
 @pytest.mark.unit
+@pytest.mark.usefixtures('fwl_io_current')
 def test_validate_module_versions_raises_for_old_janus_in_spider_stack(monkeypatch, tmp_path):
     """Cover out-of-date log/raise path with spider interior and old janus."""
     from proteus.utils.coupler import validate_module_versions
@@ -4211,6 +4218,7 @@ def test_validate_module_versions_raises_for_old_janus_in_spider_stack(monkeypat
 
 
 @pytest.mark.unit
+@pytest.mark.usefixtures('fwl_io_current')
 def test_validate_module_versions_raises_for_old_obliqua(tmp_path):
     """Obliqua is Julia-backed (no pip package metadata), so its check
     mirrors AGNI's: version read from the checkout's own Project.toml via
@@ -4245,6 +4253,7 @@ def test_validate_module_versions_raises_for_old_obliqua(tmp_path):
 
 
 @pytest.mark.unit
+@pytest.mark.usefixtures('fwl_io_current')
 def test_validate_module_versions_accepts_current_obliqua(tmp_path):
     """The boundary case: an installed Obliqua exactly at
     ``OBLIQUA_MIN_VERSION`` passes (the comparison is inclusive), and no
@@ -5867,11 +5876,10 @@ def test_core_ledger_is_zero_without_the_core_module():
     assert row['E_core_residual_frac'] == 0.0
 
 
-@pytest.fixture(autouse=True)
-def _fwl_io_current(request, monkeypatch):
-    """Keep the fwl-io floor check out of every test that is not about it."""
-    if 'fwl_io' not in request.node.name:
-        monkeypatch.setattr('proteus.utils.coupler.fwl_io_problem', lambda: None)
+@pytest.fixture
+def fwl_io_current(monkeypatch):
+    """Keep the fwl-io floor check out of a module-version test that is not about it."""
+    monkeypatch.setattr('proteus.utils.coupler.fwl_io_problem', lambda: None)
 
 
 _MISSING = object()
@@ -5886,39 +5894,75 @@ def _fwl_io_installed(installed):
             raise AssertionError(f'unexpected package {name}')
         if installed is _MISSING:
             raise PackageNotFoundError(name)
+        if isinstance(installed, Exception):
+            raise installed
         return installed
 
     return patch('importlib.metadata.version', side_effect=fake)
 
 
-def _below_floor():
-    """Versions below FWL_IO_FLOOR: an older release, the floor's pre-releases, a dev build."""
+_BELOW = {
+    'older-release': '26.10.7.1',
+    'floor-rc': '{floor}rc1',
+    'floor-dev': '{floor}.dev3',
+    'dev-build': '0.0.0.dev0',
+}
+_AT_OR_ABOVE = {
+    'floor': '{floor}',
+    'floor-patch': '{floor}.1',
+    'floor-post': '{floor}.post1',
+    'floor-post-dev': '{floor}.post1.dev8',
+    'floor-local': '{floor}+local',
+    'later': '99.1.1',
+}
+
+
+def _versions(table):
+    """The versions of ``table`` with FWL_IO_FLOOR filled in, as pytest params with ids."""
     from proteus.data import FWL_IO_FLOOR
 
-    return ['26.10.7.1', f'{FWL_IO_FLOOR}rc1', f'{FWL_IO_FLOOR}.dev3', '0.0.0.dev0']
+    return [pytest.param(v.format(floor=FWL_IO_FLOOR), id=k) for k, v in table.items()]
 
 
-def _at_or_above_floor():
-    """Versions at or above FWL_IO_FLOOR: the floor, its patch and post releases, a later year."""
-    from proteus.data import FWL_IO_FLOOR
-
-    return [FWL_IO_FLOOR, f'{FWL_IO_FLOOR}.1', f'{FWL_IO_FLOOR}.post1', '99.1.1']
-
-
-@pytest.mark.parametrize('installed', _below_floor())
+@pytest.mark.parametrize('installed', _versions(_BELOW))
 def test_fwl_io_problem_names_the_upgrade_below_the_floor(installed):
     """An fwl-io below FWL_IO_FLOOR gives a problem that names both versions and the upgrade command."""
     from proteus.data import FWL_IO_FLOOR
+    from proteus.doctor import FAIL, CheckResult
     from proteus.utils.coupler import fwl_io_problem
 
-    with _fwl_io_installed(installed):
+    seen = []
+
+    def doctor(name, spec):
+        seen.append((name, str(spec)))
+        return CheckResult(
+            name=name, category='versions', status=FAIL, message='', fix_cmd='FIX'
+        )
+
+    with _fwl_io_installed(installed), patch('proteus.doctor.check_python_package', doctor):
         problem = fwl_io_problem()
-    assert f'fwl-io {installed} is below the version PROTEUS needs ({FWL_IO_FLOOR})' in problem
-    assert f'pip install -U "fwl-io>={FWL_IO_FLOOR}"' in problem
-    assert 'pip install -e .' in problem
+    assert (
+        problem
+        == f'fwl-io {installed} is below the version PROTEUS needs ({FWL_IO_FLOOR}). Fix: FIX'
+    )
+    assert seen == [('fwl-io', f'fwl-io>={FWL_IO_FLOOR}')]
 
 
-@pytest.mark.parametrize('installed', _at_or_above_floor())
+def test_fwl_io_problem_falls_back_to_pip_when_the_doctor_fails():
+    """If the doctor cannot build its fix, the message names the pip upgrade."""
+    from proteus.data import FWL_IO_FLOOR
+    from proteus.utils.coupler import fwl_io_problem
+
+    def doctor(name, spec):
+        raise RuntimeError('no metadata')
+
+    with _fwl_io_installed('26.10.7.1'), patch('proteus.doctor.check_python_package', doctor):
+        problem = fwl_io_problem()
+    assert problem.endswith(f'Fix: pip install -U "fwl-io>={FWL_IO_FLOOR}"')
+    assert '26.10.7.1' in problem
+
+
+@pytest.mark.parametrize('installed', _versions(_AT_OR_ABOVE))
 def test_fwl_io_problem_is_none_at_or_above_the_floor(installed):
     """An fwl-io at or above FWL_IO_FLOOR passes; the floor itself is the limit input."""
     from proteus.utils.coupler import fwl_io_problem
@@ -5936,12 +5980,14 @@ def test_fwl_io_problem_reports_a_missing_package():
 
     with _fwl_io_installed(_MISSING):
         problem = fwl_io_problem()
-    assert 'fwl-io is not installed' in problem
-    assert f'"fwl-io>={FWL_IO_FLOOR}"' in problem
+    assert problem == f'fwl-io is not installed. Fix: pip install "fwl-io>={FWL_IO_FLOOR}"'
+    assert 'git pull' not in problem
 
 
 @pytest.mark.parametrize(
-    'installed', ['unknown', '', 'twenty-six', None], ids=['word', 'empty', 'spelled', 'none']
+    'installed',
+    ['unknown', '', 'twenty-six', None, KeyError('Version')],
+    ids=['word', 'empty', 'spelled', 'none', 'no-field'],
 )
 def test_fwl_io_problem_warns_on_an_unparsable_version(installed, caplog):
     """A version that does not parse, or a dist-info without one, only warns."""
@@ -5950,34 +5996,59 @@ def test_fwl_io_problem_warns_on_an_unparsable_version(installed, caplog):
     with caplog.at_level(logging.WARNING, logger='fwl'), _fwl_io_installed(installed):
         problem = fwl_io_problem()
     assert problem is None
-    assert f'cannot parse the installed fwl-io version {installed!r}' in caplog.text
+    levels = [
+        r.levelno for r in caplog.records if 'cannot parse the installed' in r.getMessage()
+    ]
+    assert levels == [logging.WARNING]
 
 
 @pytest.mark.parametrize(
-    'installed, stops',
-    [('26.10.7.1', True), (_MISSING, True), ('unknown', False)],
-    ids=['old', 'missing', 'unparsable'],
+    'installed, line',
+    [
+        ('26.10.7.1', 'is below the version PROTEUS needs'),
+        (_MISSING, 'fwl-io is not installed'),
+    ],
+    ids=['old', 'missing'],
 )
-def test_validate_module_versions_and_the_fwl_io_floor(tmp_path, caplog, installed, stops):
-    """At start an old or missing fwl-io stops with status 20 and logs the fix; an unparsable
-    version only warns and the start goes on."""
+def test_validate_module_versions_stops_on_an_old_or_missing_fwl_io(
+    tmp_path, caplog, installed, line
+):
+    """At start an old or missing fwl-io stops with status 20 and one ERROR line with the fix."""
+    from proteus.doctor import FAIL, CheckResult
+    from proteus.utils.coupler import validate_module_versions
+
+    config = _all_dummy_modules_config()
+    config.interior_energetics.module = 'dummy'
+    fix = CheckResult(
+        name='fwl-io', category='versions', status=FAIL, message='', fix_cmd='FIX'
+    )
+    with (
+        _fwl_io_installed(installed),
+        patch('proteus.doctor.check_python_package', return_value=fix),
+        patch('proteus.utils.coupler.UpdateStatusfile') as mock_update,
+        caplog.at_level(logging.WARNING, logger='fwl'),
+    ):
+        with pytest.raises(EnvironmentError, match='Out-of-date modules'):
+            validate_module_versions({'rad': str(tmp_path)}, config)
+    mock_update.assert_called_once_with({'rad': str(tmp_path)}, 20)
+    errors = [r.getMessage() for r in caplog.records if r.levelno == logging.ERROR]
+    assert len(errors) == 1 and line in errors[0] and 'Fix: ' in errors[0]
+
+
+def test_validate_module_versions_goes_on_with_an_unparsable_fwl_io(tmp_path, caplog):
+    """An fwl-io version that does not parse warns once and the start goes on."""
     from proteus.utils.coupler import validate_module_versions
 
     config = _all_dummy_modules_config()
     config.interior_energetics.module = 'dummy'
     with (
-        _fwl_io_installed(installed),
+        _fwl_io_installed('unknown'),
         patch('proteus.utils.coupler.UpdateStatusfile') as mock_update,
         caplog.at_level(logging.WARNING, logger='fwl'),
     ):
-        if stops:
-            with pytest.raises(EnvironmentError, match='Out-of-date modules'):
-                validate_module_versions({'rad': str(tmp_path)}, config)
-        else:
-            assert validate_module_versions({'rad': str(tmp_path)}, config) is None
-    if stops:
-        mock_update.assert_called_once_with({'rad': str(tmp_path)}, 20)
-        assert 'pip install -U "fwl-io>=' in caplog.text
-    else:
-        assert mock_update.call_count == 0
-        assert 'cannot parse the installed fwl-io version' in caplog.text
+        assert validate_module_versions({'rad': str(tmp_path)}, config) is None
+    assert mock_update.call_count == 0
+    levels = [
+        r.levelno for r in caplog.records if 'cannot parse the installed' in r.getMessage()
+    ]
+    assert levels == [logging.WARNING]
