@@ -796,6 +796,8 @@ def test_exact_threshold_boundary_rows_and_strict_inequalities(tmp_path):
     }
     viols_kink = check_energy_invariants(row_kink_exact, cfg, hf_all, directories=dirs)
     assert not any(v.name == 'step_dE_inc_frac' for v in viols_kink)
+    viols_kink_orch = check_row_invariants(row_kink_exact, cfg, hf_all=hf_all, directories=dirs)
+    assert not any(v.name == 'step_dE_inc_frac' for v in viols_kink_orch)
 
     # 2. Desync == stop_tol (0.01) does not trigger stopping violation
     row_desync_exact = {'Time': 10.0, 'struct_mass_desync_frac': 0.01}
@@ -2262,8 +2264,11 @@ def test_smin_clip_per_run_ps_table_interpolation_and_caching(tmp_path, monkeypa
         '5.387347119067780726e-06', '9.999999999999999999e-05'
     )
     (bad_eos / 'temperature_solid.dat').write_text(bad_text, encoding='utf-8')
-    with pytest.raises(ValueError, match='S_min'):
+    try:
         inv_mod._smin_clip_temp_k({'P_surf': 1.0}, {'spider_eos_dir': str(bad_eos)})
+        assert False, 'expected ValueError when first block does not hold S_min'
+    except ValueError as exc:
+        assert 'S_min' in str(exc)
 
 
 def test_lavatmos_overwritten_elements_match_source_and_skip_under_vapourise():
@@ -2316,7 +2321,7 @@ def test_lavatmos_overwritten_elements_match_source_and_skip_under_vapourise():
         'Si_kg_solid': 0.0,
         'Si_kg_total': 0.0,
     }
-    assert check_row_invariants(row_vap, cfg_vap_stop) == []
+    assert check_volatile_invariants(row_vap, cfg_vap_stop) == []
     for elem in set(vap_element_list) | set(inv_mod.LAVATMOS_OVERWRITTEN_ELEMENTS):
         assert (
             check_volatile_invariants(
