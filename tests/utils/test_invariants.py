@@ -2406,3 +2406,21 @@ def test_smin_table_cache_key_includes_size_mtime_and_head_bytes(tmp_path):
     table_file.write_text(bad_second_block, encoding='utf-8')
     os.utime(table_file, ns=(st0.st_atime_ns, st0.st_mtime_ns + 1_000_000))
     assert inv_mod._smin_clip_temp_k({'P_surf': 1.0}, dirs) is None
+
+
+def test_resolve_ps_table_path_uses_zalmoxis_ps_cache_pointer_name(tmp_path):
+    """Verify _resolve_ps_table_path reads the pointer file written by zalmoxis._write_ps_cache_pointer."""
+    from proteus.interior_struct.zalmoxis import PS_CACHE_POINTER_NAME, _write_ps_cache_pointer
+    from proteus.utils import invariants as inv_mod
+
+    assert inv_mod.PS_CACHE_POINTER_NAME == PS_CACHE_POINTER_NAME == 'spider_eos_cache.txt'
+
+    out_dir = tmp_path / 'run_out'
+    cache_dir = tmp_path / 'shared_ps_cache'
+    cache_dir.mkdir(parents=True)
+    table_path = cache_dir / 'temperature_solid.dat'
+    table_path.write_text('# 1 1 1\n0.0 0.0 300.0\n', encoding='utf-8')
+
+    _write_ps_cache_pointer(str(out_dir), str(cache_dir))
+    resolved = inv_mod._resolve_ps_table_path({'output': str(out_dir)})
+    assert resolved == table_path.resolve()
