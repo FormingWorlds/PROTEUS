@@ -1587,6 +1587,7 @@ class Proteus:
                                 and not self._baseline_structure_done
                             )
                         ),
+                        interior_o=self.interior_o,
                     )
                 except InvariantViolationError as exc:
                     log.error(

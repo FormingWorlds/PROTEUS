@@ -5,11 +5,12 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Sequence
+from typing import TYPE_CHECKING, Any, Sequence
 
 import numpy as np
 
 from proteus.escape.wrapper import readable_total
+from proteus.interior_energetics.aragog import mesh_surface_pressure_state
 from proteus.outgas.trapping import derived_total_elements
 from proteus.utils.constants import (
     element_list,
@@ -31,8 +32,8 @@ STATUS_ERROR_ENERGY_INVARIANT: int = 30
 STATUS_ERROR_MASS_INVARIANT: int = 31
 STATUS_ERROR_STATE_BOUNDS_INVARIANT: int = 32
 STEP_GROSS_FLOOR_J: float = 1.0
-# 0.5 K margin above T(P_surf, S_min) bounds low-pressure P-S linear interpolation error (<= 9.5e-3 K)
-# and static-mesh vs row P_surf drift (<= 0.071 K on S_min-clipped corpus rows; < 0.5 K to 1,748 bar).
+# 0.5 K margin above T(p, S_min) evaluated at the fixed Aragog mesh surface pressure
+# (or P_surf fallback) bounds low-pressure P-S linear interpolation error (<= 9.5e-3 K).
 EOS_SMIN_CLIP_MARGIN_K: float = 0.5
 LAVATMOS_OVERWRITTEN_ELEMENTS: tuple[str, ...] = (*vol_element_list, *noble_gases)
 _SMIN_TABLE_CACHE: dict[tuple[str, bytes], tuple[np.ndarray, np.ndarray, float]] = {}
@@ -396,8 +397,20 @@ def _parse_smin_temp_block(table_path: Path) -> tuple[np.ndarray, np.ndarray, fl
     return p_pa, t_k, s_min
 
 
-def _smin_clip_temp_k(hf_row: dict, directories: dict | None) -> float | None:
-    """Evaluate ``T(P_surf, S_min) + EOS_SMIN_CLIP_MARGIN_K`` at the row's ``P_surf``."""
+def _smin_clip_temp_k(
+    hf_row: dict,
+    directories: dict | None,
+    *,
+    interior_o: Any = None,
+) -> float | None:
+    """Evaluate ``T(p, S_min) + EOS_SMIN_CLIP_MARGIN_K`` at the fixed Aragog mesh surface pressure.
+
+    Reads the top-node mesh surface pressure ``solver.parameters.mesh.surface_pressure``
+    set at solver setup (``src/proteus/interior_energetics/aragog.py:958``) via
+    :func:`~proteus.interior_energetics.aragog.mesh_surface_pressure_state`
+    (``src/proteus/interior_energetics/aragog.py:3121-3142``), falling back to
+    ``hf_row['P_surf']`` in bar only when no solver state is available.
+    """
     table_path = _resolve_ps_table_path(directories)
     if table_path is None:
         return None
@@ -415,10 +428,16 @@ def _smin_clip_temp_k(hf_row: dict, directories: dict | None) -> float | None:
             log.warning('Failed to load P-S EOS table %s for S_min clip: %s', table_path, exc)
         return None
     p_pa, t_k, _ = cached
-    p_surf_bar = float(hf_row.get('P_surf', 1.0))
-    if not np.isfinite(p_surf_bar):
-        return None
-    t_smin_k = float(np.interp(p_surf_bar * 1.0e5, p_pa, t_k))
+    solver = getattr(interior_o, 'aragog_solver', None)
+    mesh_p_pa = mesh_surface_pressure_state(solver)
+    if mesh_p_pa is not None and np.isfinite(mesh_p_pa) and mesh_p_pa >= 0.0:
+        p_eval_pa = float(mesh_p_pa)
+    else:
+        p_surf_bar = float(hf_row.get('P_surf', 1.0))
+        if not np.isfinite(p_surf_bar):
+            return None
+        p_eval_pa = p_surf_bar * 1.0e5
+    t_smin_k = float(np.interp(p_eval_pa, p_pa, t_k))
     return t_smin_k + EOS_SMIN_CLIP_MARGIN_K
 
 
@@ -427,6 +446,8 @@ def check_energy_invariants(
     config: Config,
     hf_all: pd.DataFrame | None = None,
     directories: dict | None = None,
+    *,
+    interior_o: Any = None,
 ) -> list[InvariantViolation]:
     """Evaluate coupled energy conservation invariants on ``hf_row`` (status 30).
 
@@ -445,6 +466,9 @@ def check_energy_invariants(
     directories : dict or None, optional
         PROTEUS run directories dictionary used to locate and cache the run's P-S
         EOS table ``temperature_solid.dat`` for the ``S_min`` clip threshold.
+    interior_o : Interior_t or None, optional
+        PROTEUS interior state wrapper used to read the fixed Aragog mesh surface
+        pressure when evaluating ``T(p, S_min)``.
 
     Returns
     -------
@@ -540,7 +564,7 @@ def check_energy_invariants(
         denom_step = max(step_gross, STEP_GROSS_FLOOR_J)
         step_err = step_diff / denom_step if np.isfinite(step_diff) else float('nan')
         t_magma = float(hf_row.get('T_magma', 1000.0))
-        smin_clip_k = _smin_clip_temp_k(hf_row, directories)
+        smin_clip_k = _smin_clip_temp_k(hf_row, directories, interior_o=interior_o)
         on_phase_kink = (
             smin_clip_k is not None and np.isfinite(t_magma) and t_magma <= smin_clip_k
         )
@@ -1100,6 +1124,7 @@ def check_row_invariants(
     tracker: InvariantTracker | None = None,
     *,
     init_stage: bool | None = None,
+    interior_o: Any = None,
 ) -> list[InvariantViolation]:
     """Evaluate all run-row invariants on ``hf_row`` and dispatch according to ``config.invariants.mode``.
 
@@ -1118,6 +1143,9 @@ def check_row_invariants(
     init_stage : bool or None, optional
         Whether the row belongs to the init stage prior to the post-init baseline
         structure solve. When ``None``, inferred from ``Time <= 1.0`` yr.
+    interior_o : Interior_t or None, optional
+        PROTEUS interior state wrapper used to read the fixed Aragog mesh surface
+        pressure when evaluating ``T(p, S_min)``.
 
     Returns
     -------
@@ -1130,7 +1158,11 @@ def check_row_invariants(
         return []
 
     violations: list[InvariantViolation] = []
-    violations.extend(check_energy_invariants(hf_row, config, hf_all, directories=directories))
+    violations.extend(
+        check_energy_invariants(
+            hf_row, config, hf_all, directories=directories, interior_o=interior_o
+        )
+    )
     violations.extend(check_structure_invariants(hf_row, config, init_stage=init_stage))
     violations.extend(check_volatile_invariants(hf_row, config))
     violations.extend(check_state_bounds_invariants(hf_row, config))
