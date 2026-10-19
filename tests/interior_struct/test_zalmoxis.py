@@ -4466,6 +4466,13 @@ _PS_COMMON = dict(
 )
 
 
+def _ps_lowt_common(tmp_path):
+    """_PS_COMMON with a solid table on disk, as the extension requires."""
+    solid = tmp_path / 's.dat'
+    solid.write_text('# PALEOS solid\n1e5 300 1 2\n')
+    return {**_PS_COMMON, 'solid_eos': str(solid)}
+
+
 def test_ps_cache_key_without_lowt_extension_is_unchanged():
     """No extension file gives the key of a call without the argument, so caches stay valid."""
     from proteus.interior_struct.zalmoxis import _ps_cache_key
@@ -4479,16 +4486,35 @@ def test_ps_cache_key_follows_lowt_extension_path_and_content(tmp_path):
     """The extension adds its path and a digest of its content to the key."""
     from proteus.interior_struct.zalmoxis import _ps_cache_key
 
+    common = _ps_lowt_common(tmp_path)
     a, b = tmp_path / 'a.dat', tmp_path / 'b.dat'
     a.write_text('# ext 1\n1 2 3\n')
     b.write_text('# ext 1\n1 2 3\n')
-    base = _ps_cache_key(**_PS_COMMON, generator='g')
-    key_a = _ps_cache_key(**_PS_COMMON, generator='g', lowt_file=str(a))
+    base = _ps_cache_key(**common, generator='g')
+    key_a = _ps_cache_key(**common, generator='g', lowt_file=str(a))
     assert key_a != base
-    assert key_a == _ps_cache_key(**_PS_COMMON, generator='g', lowt_file=str(a))
-    assert _ps_cache_key(**_PS_COMMON, generator='g', lowt_file=str(b)) != key_a
+    assert key_a == _ps_cache_key(**common, generator='g', lowt_file=str(a))
+    assert _ps_cache_key(**common, generator='g', lowt_file=str(b)) != key_a
     a.write_text('# ext 1\n1 2 4\n')
-    assert _ps_cache_key(**_PS_COMMON, generator='g', lowt_file=str(a)) != key_a
+    assert _ps_cache_key(**common, generator='g', lowt_file=str(a)) != key_a
+
+
+def test_ps_cache_key_with_the_extension_follows_the_solid_table_data(tmp_path):
+    """With the extension the key changes with the data of the PALEOS solid table at the same
+    path, not with its header; without the extension only the path enters the key."""
+    from proteus.interior_struct.zalmoxis import _ps_cache_key
+
+    common = _ps_lowt_common(tmp_path)
+    solid = tmp_path / 's.dat'
+    ext = tmp_path / 'a.dat'
+    ext.write_text('# ext\n1 2 3\n')
+    on = _ps_cache_key(**common, generator='g', lowt_file=str(ext))
+    off = _ps_cache_key(**common, generator='g')
+    solid.write_text('# PALEOS solid, new header\n1e5 300 1 2\n')
+    assert _ps_cache_key(**common, generator='g', lowt_file=str(ext)) == on
+    solid.write_text('# PALEOS solid\n1e5 300 1 3\n')
+    assert _ps_cache_key(**common, generator='g', lowt_file=str(ext)) != on
+    assert _ps_cache_key(**common, generator='g') == off
 
 
 def _zalmoxis_ps_tables(
@@ -4601,13 +4627,14 @@ def test_ps_cache_key_ignores_the_header_of_the_extension(tmp_path):
     """A new header line (a generation time) on the same data keeps the key; new data changes it."""
     from proteus.interior_struct.zalmoxis import _ps_cache_key
 
+    common = _ps_lowt_common(tmp_path)
     a = tmp_path / 'a.dat'
     a.write_text('# Generated: 1\n1 2 3\n')
-    key = _ps_cache_key(**_PS_COMMON, generator='g', lowt_file=str(a))
+    key = _ps_cache_key(**common, generator='g', lowt_file=str(a))
     a.write_text('# Generated: 2\n1 2 3\n')
-    assert _ps_cache_key(**_PS_COMMON, generator='g', lowt_file=str(a)) == key
+    assert _ps_cache_key(**common, generator='g', lowt_file=str(a)) == key
     a.write_text('# Generated: 2\n1 2 4\n')
-    assert _ps_cache_key(**_PS_COMMON, generator='g', lowt_file=str(a)) != key
+    assert _ps_cache_key(**common, generator='g', lowt_file=str(a)) != key
 
 
 def test_cache_marker_of_the_run_follows_the_switch(tmp_path, monkeypatch):
