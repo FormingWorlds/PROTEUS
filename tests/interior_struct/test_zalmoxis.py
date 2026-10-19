@@ -4451,3 +4451,116 @@ def test_dissolved_h2_excludes_the_share_trapped_in_the_solid_mantle():
     assert dissolved_h2_mass(no_solid) == pytest.approx(4.0e20, rel=1e-12)
     # Limit: an empty row has no dissolved H2, so no target is built from it.
     assert dissolved_h2_mass({}) == pytest.approx(0.0, abs=0.0)
+
+
+_PS_COMMON = dict(
+    P_max=3.5e11,
+    nP=8,
+    nS=8,
+    mzf=0.8,
+    layout='unified',
+    mantle_eos='PALEOS:MgSiO3',
+    eos_file='/d/u.dat',
+    solid_eos='/d/s.dat',
+    liquid_eos='/d/l.dat',
+)
+
+
+def test_ps_cache_key_without_lowt_extension_is_unchanged():
+    """No extension file gives the key of a call without the argument, so caches stay valid."""
+    from proteus.interior_struct.zalmoxis import _ps_cache_key
+
+    base = _ps_cache_key(**_PS_COMMON, generator='g')
+    assert _ps_cache_key(**_PS_COMMON, generator='g', lowt_file=None) == base
+    assert base.startswith('P_max=3.500000e+11_nP=8_nS=8_mzf=0.8_layout=unified_eos=')
+
+
+def test_ps_cache_key_follows_lowt_extension_path_and_content(tmp_path):
+    """The extension adds its path and a digest of its content to the key."""
+    from proteus.interior_struct.zalmoxis import _ps_cache_key
+
+    a, b = tmp_path / 'a.dat', tmp_path / 'b.dat'
+    a.write_text('# ext 1\n1 2 3\n')
+    b.write_text('# ext 1\n1 2 3\n')
+    base = _ps_cache_key(**_PS_COMMON, generator='g')
+    key_a = _ps_cache_key(**_PS_COMMON, generator='g', lowt_file=str(a))
+    assert key_a != base
+    assert key_a == _ps_cache_key(**_PS_COMMON, generator='g', lowt_file=str(a))
+    assert _ps_cache_key(**_PS_COMMON, generator='g', lowt_file=str(b)) != key_a
+    a.write_text('# ext 2\n1 2 3\n')
+    assert _ps_cache_key(**_PS_COMMON, generator='g', lowt_file=str(a)) != key_a
+
+
+def _lowt_stubbed_run(tmp_path, monkeypatch, *, lowt, write_ext=True):
+    """generate_spider_tables on a two-phase entry with stubbed generators."""
+    import zalmoxis.eos_export
+    import zalmoxis.melting_curves
+
+    from proteus.interior_struct import zalmoxis as zmod
+
+    monkeypatch.delenv('PROTEUS_PS_CACHE_DIR', raising=False)
+    solid, liquid = tmp_path / 'solid.dat', tmp_path / 'liquid.dat'
+    solid.write_text('solid')
+    liquid.write_text('liquid')
+    if write_ext:
+        (tmp_path / zmod.LOWT_EXTENSION_FILE).write_text('extension')
+    entry = {
+        'format': 'paleos_unified',
+        'eos_file': str(solid),
+    }
+    monkeypatch.setattr(
+        zmod, 'load_zalmoxis_material_dictionaries', lambda: {'PALEOS:MgSiO3': entry}
+    )
+    monkeypatch.setattr(
+        zmod, 'resolve_2phase_mgsio3_paths', lambda *a: (str(solid), str(liquid))
+    )
+    monkeypatch.setattr(
+        zalmoxis.melting_curves,
+        'get_solidus_liquidus_functions',
+        lambda **kw: (None, lambda P: 3000.0),
+    )
+    monkeypatch.setattr(zalmoxis.melting_curves, 'derive_solidus_from_liquidus', lambda f, m: f)
+
+    def _bounds(**kw):
+        from pathlib import Path
+
+        for name in ('solidus_P-S.dat', 'liquidus_P-S.dat'):
+            (Path(kw['output_dir']) / name).write_text('NEW')
+
+    tables = MagicMock()
+    monkeypatch.setattr(zalmoxis.eos_export, 'generate_spider_phase_boundaries', _bounds)
+    monkeypatch.setattr(zalmoxis.eos_export, 'generate_spider_eos_tables', tables)
+    config = MagicMock()
+    config.interior_struct.zalmoxis.mantle_eos = 'PALEOS:MgSiO3'
+    config.interior_struct.zalmoxis.mushy_zone_factor = 0.8
+    config.interior_struct.zalmoxis.lookup_nP = 8
+    config.interior_struct.zalmoxis.lookup_nS = 8
+    config.interior_struct.zalmoxis.lowt_extension = lowt
+    config.planet.mass_tot = 1.0
+    config.params.resume = False
+    out = zmod.generate_spider_tables(config, str(tmp_path / 'run'))
+    return out, tables, zmod
+
+
+def test_generate_spider_tables_passes_the_extension_only_when_on(tmp_path, monkeypatch):
+    """With the switch on, the solid extension next to the solid table reaches the generator."""
+    out, tables, zmod = _lowt_stubbed_run(tmp_path, monkeypatch, lowt=True)
+    kw = tables.call_args.kwargs
+    assert kw['solid_lowt_file'] == str(tmp_path / zmod.LOWT_EXTENSION_FILE)
+    assert out is not None
+
+
+def test_generate_spider_tables_without_the_extension_passes_no_argument(tmp_path, monkeypatch):
+    """With the switch off, the generator call is the one an older Zalmoxis accepts."""
+    _, tables, _ = _lowt_stubbed_run(tmp_path, monkeypatch, lowt=False)
+    assert 'solid_lowt_file' not in tables.call_args.kwargs
+    assert tables.call_count == 1
+
+
+def test_lowt_extension_without_its_file_is_an_error(tmp_path, monkeypatch):
+    """The switch on and no extension file stops the table build instead of ignoring the switch."""
+    from proteus.interior_struct.zalmoxis import ZalmoxisMissingEOSFilesError
+
+    with pytest.raises(ZalmoxisMissingEOSFilesError, match='low-temperature'):
+        _lowt_stubbed_run(tmp_path, monkeypatch, lowt=True, write_ext=False)
+    assert not (tmp_path / 'run' / 'data' / 'spider_eos' / 'temperature_solid.dat').exists()
