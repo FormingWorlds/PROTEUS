@@ -2171,6 +2171,7 @@ def _run_gate_solver(
     use_jax=None,
     config_edit=None,
     density_cache=None,
+    solve=None,
 ):
     """Invoke zalmoxis_solver with the heavy solve mocked out.
 
@@ -2285,6 +2286,8 @@ def _run_gate_solver(
             side_effect=mixed_side_effect or _fake_mixed_density,
         ) as mixed_mock,
     ):
+        if solve is not None:  # a caller of zalmoxis_solver: (config, outdir, hf_row, tf)
+            return solve(config, str(tmp_path), hf_row, tf)
         cmb_radius, mesh_file = zalmoxis_wrapper.zalmoxis_solver(
             config,
             str(tmp_path),
