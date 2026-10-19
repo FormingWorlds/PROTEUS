@@ -2350,12 +2350,19 @@ def test_smin_clip_per_run_ps_table_interpolation_and_caching(tmp_path, monkeypa
         M_vaps=0.0,
     )
     with caplog.at_level(logging.WARNING, logger='fwl.proteus.utils.invariants'):
-        viols_bad_1 = check_row_invariants(
-            row_report, cfg, hf_all, directories={'spider_eos_dir': str(bad_eos)}
-        )
-        viols_bad_2 = check_row_invariants(
-            row_report, cfg, hf_all, directories={'spider_eos_dir': str(bad_eos)}
-        )
+        try:
+            assert (
+                inv_mod._smin_clip_temp_k({'P_surf': 1.0}, {'spider_eos_dir': str(bad_eos)})
+                is None
+            )
+            viols_bad_1 = check_row_invariants(
+                row_report, cfg, hf_all, directories={'spider_eos_dir': str(bad_eos)}
+            )
+            viols_bad_2 = check_row_invariants(
+                row_report, cfg, hf_all, directories={'spider_eos_dir': str(bad_eos)}
+            )
+        except ValueError as exc:
+            pytest.fail(f'unexpected ValueError on bad table: {exc}')
     step_bad = [v for v in viols_bad_1 if v.name == 'step_dE_inc_frac']
     assert len(step_bad) == 1
     assert step_bad[0].tolerance == pytest.approx(0.01)
@@ -2377,12 +2384,19 @@ def test_smin_clip_per_run_ps_table_interpolation_and_caching(tmp_path, monkeypa
 
     monkeypatch.setattr(inv_mod, '_read_smin_block_bytes', raising_oserror)
     with caplog.at_level(logging.WARNING, logger='fwl.proteus.utils.invariants'):
-        viols_os_1 = check_row_invariants(
-            row_report, cfg, hf_all, directories={'spider_eos_dir': str(os_err_eos)}
-        )
-        viols_os_2 = check_row_invariants(
-            row_report, cfg, hf_all, directories={'spider_eos_dir': str(os_err_eos)}
-        )
+        try:
+            assert (
+                inv_mod._smin_clip_temp_k({'P_surf': 1.0}, {'spider_eos_dir': str(os_err_eos)})
+                is None
+            )
+            viols_os_1 = check_row_invariants(
+                row_report, cfg, hf_all, directories={'spider_eos_dir': str(os_err_eos)}
+            )
+            viols_os_2 = check_row_invariants(
+                row_report, cfg, hf_all, directories={'spider_eos_dir': str(os_err_eos)}
+            )
+        except OSError as exc:
+            pytest.fail(f'unexpected OSError on unreadable table: {exc}')
     step_os = [v for v in viols_os_1 if v.name == 'step_dE_inc_frac']
     assert len(step_os) == 1
     assert step_os[0].tolerance == pytest.approx(0.01)
