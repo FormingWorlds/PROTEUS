@@ -78,7 +78,11 @@ _VALUE_CHANGE_RELOG_NAMES: frozenset[str] = frozenset(
 _CROSSING_SUPPRESSED_NAMES: frozenset[str] = _VALUE_CHANGE_RELOG_NAMES | frozenset(
     {
         'E_residual_cons_frac_gross',
+        'solver_residual_frac',
+        'E_core_residual_frac',
+        'step_dE_inc_frac',
         'escape_cumulative_bound',
+        *(f'{e}_reservoir_closure' for e in element_list),
     }
 )
 
