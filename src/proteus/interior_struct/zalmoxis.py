@@ -2797,6 +2797,8 @@ def _ps_table_inputs(config: Config, mantle_eos: str, eos_entry: dict, mat_dicts
 
     Raises
     ------
+    ValueError
+        When ``lowt_extension`` is on and the mantle EOS is PALEOS-API.
     _NoPSTables
         When the mantle EOS is not PALEOS or its files are missing.
     ZalmoxisMissingEOSFilesError
@@ -2809,6 +2811,11 @@ def _ps_table_inputs(config: Config, mantle_eos: str, eos_entry: dict, mat_dicts
     from zalmoxis.eos.dispatch import _is_paleos_api
 
     if _is_paleos_api(eos_entry):
+        if config.interior_struct.zalmoxis.lowt_extension is True:
+            raise ValueError(
+                f'lowt_extension does not support a PALEOS-API mantle EOS ({mantle_eos}): the '
+                'extension is made for the shipped PALEOS solid table'
+            )
         log.info(
             'PALEOS-API live tabulation: resolving cached tables for %s '
             '(cold-cache build may take up to ~1 h at 600 pts/decade)',
