@@ -251,23 +251,31 @@ def fwl_io_problem() -> str | None:
 
     from proteus.data import FWL_IO_FLOOR
 
-    fix = (
-        f'pip install -U "fwl-io>={FWL_IO_FLOOR}", or in an editable fwl-io checkout '
-        'git pull && pip install -e .'
-    )
     installed = None
     try:
         installed = version('fwl-io')
         if Version(installed) >= Version(FWL_IO_FLOOR):
             return None
     except PackageNotFoundError:
-        return f'fwl-io is not installed. Fix: {fix}'
-    except (InvalidVersion, TypeError):  # TypeError: a dist-info without a version
+        return f'fwl-io is not installed. Fix: pip install "fwl-io>={FWL_IO_FLOOR}"'
+    except (InvalidVersion, TypeError, KeyError):  # TypeError, KeyError: no version field
         log.warning(
             f'cannot parse the installed fwl-io version {installed!r}; '
             f'PROTEUS needs fwl-io>={FWL_IO_FLOOR}'
         )
         return None
+    fix = f'pip install -U "fwl-io>={FWL_IO_FLOOR}"'
+    try:  # the doctor's fix knows an editable checkout; it is advice, so a failure keeps pip
+        from packaging.requirements import Requirement
+
+        from proteus.doctor import check_python_package
+
+        fix = (
+            check_python_package('fwl-io', Requirement(f'fwl-io>={FWL_IO_FLOOR}')).fix_cmd
+            or fix
+        )
+    except Exception as exc:
+        log.debug(f'the doctor could not build the fwl-io fix: {exc}')
     return f'fwl-io {installed} is below the version PROTEUS needs ({FWL_IO_FLOOR}). Fix: {fix}'
 
 
