@@ -2366,3 +2366,43 @@ def test_smin_clip_temp_k_uses_fixed_aragog_mesh_surface_pressure_with_p_surf_fa
     )
     assert [v.name for v in viols_with_solver] == ['step_dE_inc_frac']
     assert viols_with_solver[0].tolerance == pytest.approx(cfg.invariants.step_energy_rtol)
+
+
+def test_smin_table_cache_key_includes_size_mtime_and_head_bytes(tmp_path):
+    """Verify _SMIN_TABLE_CACHE keys on (path_key, st_size, st_mtime_ns, head_bytes) and invalidates when size or mtime changes."""
+    import os
+
+    from proteus.utils import invariants as inv_mod
+
+    inv_mod._SMIN_TABLE_CACHE.clear()
+    inv_mod._SMIN_TABLE_WARNED_PATHS.clear()
+
+    eos_dir = tmp_path / 'eos_cache_key'
+    eos_dir.mkdir()
+    table_file = eos_dir / 'temperature_solid.dat'
+    base_table = (
+        '# 5 2 2\n'
+        '# Pressure [nondim], Entropy [nondim], Quantity [nondim]\n'
+        '# column * scaling factor = SI units\n'
+        '# scaling factors (constant) for each column given on line below\n'
+        '# 1000000000.0 4824266.84604467 1000.0\n'
+        '1.0e-04 2.0e-05 3.000000e-01\n'
+        '1.0e+01 2.0e-05 3.100000e-01\n'
+        '1.0e-04 3.0e-05 3.500000e-01\n'
+        '1.0e+01 3.0e-05 3.600000e-01\n'
+    )
+    table_file.write_text(base_table, encoding='utf-8')
+    st0 = table_file.stat()
+    head0 = inv_mod._read_smin_block_bytes(table_file)
+    dirs = {'spider_eos_dir': str(eos_dir)}
+
+    clip0 = inv_mod._smin_clip_temp_k({'P_surf': 1.0}, dirs)
+    assert clip0 == pytest.approx(300.5)
+    expected_key = (str(table_file.resolve()), st0.st_size, st0.st_mtime_ns, head0)
+    assert expected_key in inv_mod._SMIN_TABLE_CACHE
+
+    # Changing the second block (beyond head_bytes) with a new mtime or size invalidates cache:
+    bad_second_block = base_table.replace('3.0e-05', '1.0e-05')
+    table_file.write_text(bad_second_block, encoding='utf-8')
+    os.utime(table_file, ns=(st0.st_atime_ns, st0.st_mtime_ns + 1_000_000))
+    assert inv_mod._smin_clip_temp_k({'P_surf': 1.0}, dirs) is None
