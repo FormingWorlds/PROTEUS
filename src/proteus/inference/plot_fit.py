@@ -51,7 +51,7 @@ OBS_STYLE = {
 # Range of the simulated/target ratio axis.
 RATIO_CLIP = (1e-2, 1e2)
 
-# Posterior corner plot: fills of the 95 and 68 % regions, and KDE grid points per axis
+# Posterior corner plot: fills of the 95 and 68% regions, and KDE grid points per axis
 POST_FILLS = ['#cfe3f1', '#7fb3d9']
 POST_GRID = 120
 PARAM_LABELS = {
@@ -451,9 +451,9 @@ def _posterior_legend(fig, n_init: int, n_bo: int, chi2_best: float, truth: bool
     """Legend of the posterior corner plot."""
     blue = WONG['blue']
     handles = [
-        plt.Rectangle((0, 0), 1, 1, fc=POST_FILLS[1], ec=blue, label='posterior, 68 % region'),
+        plt.Rectangle((0, 0), 1, 1, fc=POST_FILLS[1], ec=blue, label='posterior, 68% region'),
         plt.Rectangle(
-            (0, 0), 1, 1, fc=POST_FILLS[0], ec=blue, lw=0.6, label='posterior, 95 % region'
+            (0, 0), 1, 1, fc=POST_FILLS[0], ec=blue, lw=0.6, label='posterior, 95% region'
         ),
         plt.Line2D(
             [],
@@ -503,7 +503,7 @@ def _posterior_legend(fig, n_init: int, n_bo: int, chi2_best: float, truth: bool
 def plot_result_posterior(
     samples: pd.DataFrame, D: dict, n_init: int, pars: dict, truth: dict | None, directory
 ):
-    """Corner plot of the posterior as 68 and 95 % credible regions, with every scored
+    """Corner plot of the posterior as 68 and 95% credible regions, with every scored
     evaluation, the best fit and, if known, the truth drawn on top.
 
     Parameters

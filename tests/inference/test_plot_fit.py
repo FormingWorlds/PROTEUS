@@ -423,8 +423,8 @@ def test_reflected_kde_keeps_uniform_mass_inside_the_cube():
 
 
 def test_mass_levels_enclose_the_requested_probability():
-    """On a gridded 2-D standard normal, the region above each level holds 95 and 68 %
-    of the mass; the 68 % region is the 1.515-sigma circle, not the 1-sigma one (39 %).
+    """On a gridded 2-D standard normal, the region above each level holds 95 and 68%
+    of the mass; the 68% region is the 1.515-sigma circle, not the 1-sigma one (39%).
     """
     x = np.linspace(-5, 5, 401)
     XX, YY = np.meshgrid(x, x)
