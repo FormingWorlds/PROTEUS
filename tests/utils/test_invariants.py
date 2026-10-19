@@ -745,24 +745,35 @@ def test_check_volatile_invariants_calliope_mass_thresh_vs_atmodeller_floor():
     assert v_wider[0].tolerance == pytest.approx(2.1e16 / 4.0e18)
     assert 'exceeds tol=5.250000e-03' in v_wider[0].message
 
-    # Under atmodeller, outgas.mass_thresh is not added and the 1.0 kg floor governs:
+    # Under atmodeller, CHONS (like N) also use outgas.mass_thresh, whereas noble gases (like He)
+    # stay strict with the 1.0 kg floor:
     cfg_atm = _make_mock_config(
         outgas_module='atmodeller',
         mass_thresh=1.0e16,
         fO2_source='user_constant',
         vapourise=False,
     )
-    v_atm_n = check_volatile_invariants(row_just_below, cfg_atm)
-    assert len(v_atm_n) == 1
-    assert v_atm_n[0].name == 'N_reservoir_closure'
-    assert v_atm_n[0].tolerance == pytest.approx(2.5e-4)
+    assert check_volatile_invariants(row_just_below, cfg_atm) == []
+    assert len(check_volatile_invariants(row_just_above, cfg_atm)) == 1
 
-    row_atm_floor_ok = dict(base_n_row, N_kg_total=100.0, N_kg_atm=100.9)
+    row_he_below = dict(
+        base_n_row, N_kg_total=0.0, N_kg_atm=0.0, He_kg_total=4.0e18, He_kg_atm=4.0e18 + 1.09e16
+    )
+    v_atm_he = check_volatile_invariants(row_he_below, cfg_atm)
+    assert len(v_atm_he) == 1
+    assert v_atm_he[0].name == 'He_reservoir_closure'
+    assert v_atm_he[0].tolerance == pytest.approx(2.5e-4)
+
+    row_atm_floor_ok = dict(
+        base_n_row, N_kg_total=0.0, N_kg_atm=0.0, He_kg_total=100.0, He_kg_atm=100.9
+    )
     assert check_volatile_invariants(row_atm_floor_ok, cfg_atm) == []
-    row_atm_floor_bad = dict(base_n_row, N_kg_total=100.0, N_kg_atm=101.1)
+    row_atm_floor_bad = dict(
+        base_n_row, N_kg_total=0.0, N_kg_atm=0.0, He_kg_total=100.0, He_kg_atm=101.1
+    )
     v_atm_floor = check_volatile_invariants(row_atm_floor_bad, cfg_atm)
     assert len(v_atm_floor) == 1
-    assert v_atm_floor[0].name == 'N_reservoir_closure'
+    assert v_atm_floor[0].name == 'He_reservoir_closure'
     assert v_atm_floor[0].value == pytest.approx(1.1 / 100.0)
     assert v_atm_floor[0].tolerance == pytest.approx(1.0 / 100.0)
 
