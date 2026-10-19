@@ -256,9 +256,28 @@ def test_check_energy_invariants_coupled_residual_and_coarse_dt_scaling(tmp_path
     assert v_minimal[0].report_only is True
 
 
-def test_check_energy_invariants_step_increment_outside_and_on_smin():
-    """Step energy increment divides by own step_gross with 1 J floor and uses 5.0e-2 only on T <= 301 K."""
+def test_check_energy_invariants_step_increment_outside_and_on_smin(tmp_path):
+    """Step energy increment divides by own step_gross with 1 J floor and uses 5.0e-2 only on T <= T(P_surf, S_min) + 0.5 K."""
     import pandas as pd
+
+    eos_dir = tmp_path / 'spider_eos'
+    eos_dir.mkdir()
+    (eos_dir / 'temperature_solid.dat').write_text(
+        '# 5 3 2\n'
+        '# Pressure [nondim], Entropy [nondim], Quantity [nondim]\n'
+        '# column * scaling factor = SI units\n'
+        '# scaling factors (constant) for each column given on line below\n'
+        '# 1000000000.0 4824266.84604467 1000.0\n'
+        '1.000000000000000048e-04 2.199633491194133387e-05 3.023416715158805945e-01\n'
+        '2.595513713862120375e-01 2.199633491194133387e-05 3.030318461324150170e-01\n'
+        '5.190027427724240860e-01 2.199633491194133387e-05 3.037198468914933946e-01\n'
+        '1.000000000000000048e-04 3.860484461686001134e-05 3.023416715158805945e-01\n'
+        '2.595513713862120375e-01 3.860484461686001134e-05 3.030318461324150170e-01\n'
+        '5.190027427724240860e-01 3.860484461686001134e-05 3.037198468914933946e-01\n',
+        encoding='utf-8',
+    )
+    dirs = {'spider_eos_dir': str(eos_dir)}
+    clip_k = 302.3416715158805945 + 0.5
 
     cfg = _make_mock_config(dt_rtol=0.1, dt_minimum=1.0)
     # Give hf_all a large cumulative history (1.0e32 J) so cumulative dilution would hide a 2.9e-2 step error:
@@ -276,9 +295,10 @@ def test_check_energy_invariants_step_increment_outside_and_on_smin():
         ]
     )
     # Step gross is 1.03e30 J and step_diff is 3.0e28 J -> step_err = 3.0e28 / 1.03e30 = 2.912621e-2.
-    # Even with Phi_global=0.5 and RF_depth=0.3, T > 301 K must use step_energy_rtol = 1.0e-2.
+    # Above T(P_surf, S_min) + 0.5 K, check_energy_invariants uses step_energy_rtol = 1.0e-2.
     hf_row_warm = {
         'Time': 200.0,
+        'P_surf': 1.0,
         'T_surf': 2200.0,
         'T_magma': 2800.0,
         'Phi_global': 0.5,
@@ -297,7 +317,7 @@ def test_check_energy_invariants_step_increment_outside_and_on_smin():
         'core_C_eff': 0.0,
         'E_core_residual_frac': 0.0,
     }
-    v_warm = check_energy_invariants(hf_row_warm, cfg, hf_all)
+    v_warm = check_energy_invariants(hf_row_warm, cfg, hf_all, directories=dirs)
     assert len(v_warm) == 1
     assert v_warm[0].name == 'step_dE_inc_frac'
     assert v_warm[0].status_code == STATUS_ERROR_ENERGY_INVARIANT
@@ -305,20 +325,29 @@ def test_check_energy_invariants_step_increment_outside_and_on_smin():
     assert v_warm[0].value == pytest.approx(3.0e28 / 1.03e30)
     assert v_warm[0].tolerance == pytest.approx(1.0e-2)
 
-    # On the S_min floor (T_magma <= 301.0 K), ~2.91e-2 <= 5.0e-2 passes; T_surf-only <= 301.0 K with warm T_magma uses 1.0e-2 and fails:
-    hf_row_smin = dict(hf_row_warm, T_surf=300.488, T_magma=300.488)
-    assert check_energy_invariants(hf_row_smin, cfg, hf_all) == []
-    assert check_energy_invariants(dict(hf_row_warm, T_magma=260.0), cfg, hf_all) == []
-    assert check_energy_invariants(dict(hf_row_warm, T_magma=301.0), cfg, hf_all) == []
+    # On the S_min floor (T_magma <= clip_k), ~2.91e-2 <= 5.0e-2 passes; without a table, 1.0e-2 applies:
+    hf_row_smin = dict(hf_row_warm, T_surf=302.342, T_magma=302.342)
+    assert check_energy_invariants(hf_row_smin, cfg, hf_all, directories=dirs) == []
+    assert len(check_energy_invariants(hf_row_smin, cfg, hf_all)) == 1
+    assert (
+        check_energy_invariants(dict(hf_row_warm, T_magma=260.0), cfg, hf_all, directories=dirs)
+        == []
+    )
+    assert (
+        check_energy_invariants(
+            dict(hf_row_warm, T_magma=clip_k), cfg, hf_all, directories=dirs
+        )
+        == []
+    )
     v_above_clip = check_energy_invariants(
-        dict(hf_row_warm, T_magma=301.0 + 1.0e-6), cfg, hf_all
+        dict(hf_row_warm, T_magma=clip_k + 1.0e-6), cfg, hf_all, directories=dirs
     )
     assert len(v_above_clip) == 1
     assert v_above_clip[0].tolerance == pytest.approx(1.0e-2)
-    hf_row_tmagma_only = dict(hf_row_warm, T_surf=1500.0, T_magma=300.488)
-    assert check_energy_invariants(hf_row_tmagma_only, cfg, hf_all) == []
-    hf_row_tsurf_only = dict(hf_row_warm, T_surf=300.488, T_magma=1500.0)
-    v_tsurf_only = check_energy_invariants(hf_row_tsurf_only, cfg, hf_all)
+    hf_row_tmagma_only = dict(hf_row_warm, T_surf=1500.0, T_magma=302.342)
+    assert check_energy_invariants(hf_row_tmagma_only, cfg, hf_all, directories=dirs) == []
+    hf_row_tsurf_only = dict(hf_row_warm, T_surf=302.342, T_magma=1500.0)
+    v_tsurf_only = check_energy_invariants(hf_row_tsurf_only, cfg, hf_all, directories=dirs)
     assert len(v_tsurf_only) == 1
     assert v_tsurf_only[0].name == 'step_dE_inc_frac'
     assert v_tsurf_only[0].tolerance == pytest.approx(1.0e-2)
@@ -329,7 +358,7 @@ def test_check_energy_invariants_step_increment_outside_and_on_smin():
         step_dE_F_int_J=-1.08e30,
         E_residual_cons_J=0.0,
     )
-    v_smin = check_energy_invariants(hf_row_smin_bad, cfg, hf_all)
+    v_smin = check_energy_invariants(hf_row_smin_bad, cfg, hf_all, directories=dirs)
     assert len(v_smin) == 1
     assert v_smin[0].name == 'step_dE_inc_frac'
     assert v_smin[0].value == pytest.approx(8.0e28 / 1.08e30)
@@ -796,7 +825,9 @@ def test_check_volatile_invariants_calliope_zero_parts_threshold():
     assert v_zero_tot[0].report_only is False
 
     # Under vapourise=True, rock-vapour elements have total=0 by design and do not fail closure,
-    # while a volatile element (H) with total=0 and 5.0e19 kg in reservoirs still stops:
+    # whereas with vapourise=False a rock-vapour or volatile leak with total=0 stops:
+    from proteus.utils.constants import vap_element_list
+
     cfg_vap_stop = _make_mock_config(
         mode='stop',
         outgas_module='calliope',
@@ -804,25 +835,27 @@ def test_check_volatile_invariants_calliope_zero_parts_threshold():
         fO2_source='user_constant',
         vapourise=True,
     )
-    row_vap_si = dict(
-        base_row,
-        M_atm=1.03e21,
-        M_vaps=3.0e19,
-        Si_kg_total=0.0,
-        Si_kg_atm=3.0e19,
-    )
-    assert check_volatile_invariants(row_vap_si, cfg_vap_stop) == []
-    assert (
-        handle_violations(check_volatile_invariants(row_vap_si, cfg_vap_stop), mode='stop')
-        == []
-    )
+    for elem in vap_element_list:
+        row_vap_elem = dict(
+            base_row,
+            M_atm=1.03e21,
+            M_vaps=3.0e19,
+            **{f'{elem}_kg_total': 0.0, f'{elem}_kg_atm': 3.0e19},
+        )
+        assert check_volatile_invariants(row_vap_elem, cfg_vap_stop) == []
+        assert (
+            handle_violations(
+                check_volatile_invariants(row_vap_elem, cfg_vap_stop), mode='stop'
+            )
+            == []
+        )
 
-    row_vap_h_leak = dict(row_vap_si, H_kg_total=0.0, H_kg_atm=5.0e19)
-    v_vap_h = check_volatile_invariants(row_vap_h_leak, cfg_vap_stop)
-    assert [v.name for v in v_vap_h] == ['H_reservoir_closure']
+    row_novap_si_leak = dict(base_row, Si_kg_total=0.0, Si_kg_atm=5.0e19)
+    v_novap_si = check_volatile_invariants(row_novap_si_leak, cfg_cal_1e10)
+    assert [v.name for v in v_novap_si] == ['Si_reservoir_closure']
     with pytest.raises(InvariantViolationError) as exc_info:
-        handle_violations(v_vap_h, mode='stop')
-    assert exc_info.value.invariant_name == 'H_reservoir_closure'
+        handle_violations(v_novap_si, mode='stop')
+    assert exc_info.value.invariant_name == 'Si_reservoir_closure'
 
     # Under atmodeller, zero-total leak compares against element_closure_atol_kg (1.0 kg):
     cfg_atm = _make_mock_config(
@@ -1241,16 +1274,20 @@ def test_populate_energy_and_core_residuals_idempotent_across_double_call_and_ex
 
 
 def test_check_volatile_invariants_vapourise_exempts_oxygen_while_checking_c_n_s():
-    """With outgas.vapourise=True and fO2_source='from_O_budget', O is exempt while C, N, S closure fires."""
-    from proteus.utils.invariants import check_volatile_invariants
+    """With outgas.vapourise=True, lavatmos-overwritten elements are exempt from closure; without vapourise, closure fires."""
+    from proteus.utils.invariants import check_volatile_invariants, handle_violations
 
     row = {
         'Time': 2100.0,
         'M_planet': 6.0e24,
-        'M_atm': 1.0e21,
-        'M_vol_atm': 1.0e21,
+        'M_atm': 1.0e21 + 1.5e17,
+        'M_vol_atm': 1.0e21 + 1.5e17,
         'M_vaps': 1.0e20,
         'H2O_kg_atm': 1.0e21,
+        'H_kg_total': 1.0e20,
+        'H_kg_atm': 1.5e20,
+        'H_kg_liquid': 0.0,
+        'H_kg_solid': 0.0,
         'O_kg_total': 1.0e23,
         'O_kg_atm': 4.0e22,
         'O_kg_liquid': 4.0e22,
@@ -1267,22 +1304,30 @@ def test_check_volatile_invariants_vapourise_exempts_oxygen_while_checking_c_n_s
         'S_kg_atm': 5.05e19,
         'S_kg_liquid': 0.0,
         'S_kg_solid': 0.0,
+        'He_kg_total': 1.0e17,
+        'He_kg_atm': 1.5e17,
+        'He_kg_liquid': 0.0,
+        'He_kg_solid': 0.0,
         'M_vol_initial': 0.0,
         'esc_kg_cumulative': 0.0,
     }
-    cfg_vap = _make_mock_config(fO2_source='from_O_budget', vapourise=True)
+    cfg_vap = _make_mock_config(mode='stop', fO2_source='from_O_budget', vapourise=True)
     v_vap = check_volatile_invariants(row, cfg_vap)
-    assert [v.name for v in v_vap] == [
+    assert v_vap == []
+    assert handle_violations(v_vap, mode='stop') == []
+
+    # Canary: without vapourise=True, H, O, C, N, S, and He closure violations fire:
+    cfg_no_vap = _make_mock_config(fO2_source='from_O_budget', vapourise=False)
+    v_no_vap = check_volatile_invariants(row, cfg_no_vap)
+    assert [v.name for v in v_no_vap] == [
+        'H_reservoir_closure',
+        'O_reservoir_closure',
         'C_reservoir_closure',
         'N_reservoir_closure',
         'S_reservoir_closure',
+        'He_reservoir_closure',
     ]
-    assert all(not v.report_only for v in v_vap)
-
-    # Canary: without vapourise=True, O_reservoir_closure also fires:
-    cfg_no_vap = _make_mock_config(fO2_source='from_O_budget', vapourise=False)
-    v_no_vap = check_volatile_invariants(row, cfg_no_vap)
-    assert 'O_reservoir_closure' in [v.name for v in v_no_vap]
+    assert all(not v.report_only for v in v_no_vap)
 
 
 def test_check_volatile_and_state_bounds_negative_masses_and_zero_atm_psurf():
@@ -1632,8 +1677,7 @@ def test_invariant_tracker_reports_on_crossing_counts_rows_and_logs_summary(
     assert 'struct_mass_desync_frac=3 (max=6.000000e-03)' in summary_msgs[0]
     assert 'step_dE_inc_frac=2 (max=5.000000e-01)' in summary_msgs[0]
 
-    # Suppression is keyed on (name, report_only) and structure-solve value changes re-log:
-    # desync 6e-3, 6e-3, 5e-2 logs the 6e-3 warning once and logs the 5e-2 escalation row (and stops in stop mode):
+    # Structure-solve value changes re-log: desync 6e-3, 6e-3, 5e-2 logs the 6e-3 warning once and logs the 5e-2 escalation row:
     caplog.clear()
     esc_tracker = InvariantTracker()
     v_desync_stop = InvariantViolation(

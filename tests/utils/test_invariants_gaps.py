@@ -752,11 +752,18 @@ def test_vapourise_with_zero_mvaps_and_matm_exceeds_mplanet_stops():
     assert matching[0].report_only is False
 
 
-def test_exact_threshold_boundary_rows_and_strict_inequalities():
+def test_exact_threshold_boundary_rows_and_strict_inequalities(tmp_path):
     """Verify exact-threshold rows behave correctly under strict vs non-strict inequalities."""
     cfg = _make_mock_config()
+    eos_dir = tmp_path / 'eos_kink'
+    eos_dir.mkdir()
+    (eos_dir / 'temperature_solid.dat').write_text(
+        FIXTURE_PS_RUN_20261018_131253_EA68, encoding='utf-8'
+    )
+    dirs = {'spider_eos_dir': str(eos_dir)}
+    exact_clip = 302.3416715158806 + 0.5
 
-    # 1. Kink boundary: T_magma == 301.0 uses step_energy_smin_rtol (0.05)
+    # 1. Kink boundary: T_magma == T(1 bar, S_min) + 0.5 K uses step_energy_smin_rtol (0.05)
     hf_all = pd.DataFrame(
         [
             {
@@ -772,8 +779,9 @@ def test_exact_threshold_boundary_rows_and_strict_inequalities():
     )
     row_kink_exact = {
         'Time': 20.0,
+        'P_surf': 1.0,
         'T_surf': 2500.0,
-        'T_magma': 301.0,
+        'T_magma': exact_clip,
         'Phi_global': 0.5,
         'E_state_cons_J': 1.0e31,
         'E_state_heat_cons_J': 1.0e26,
@@ -786,7 +794,7 @@ def test_exact_threshold_boundary_rows_and_strict_inequalities():
         'solver_residual_J': 0.0,
         'core_C_eff': 0.0,
     }
-    viols_kink = check_energy_invariants(row_kink_exact, cfg, hf_all)
+    viols_kink = check_energy_invariants(row_kink_exact, cfg, hf_all, directories=dirs)
     assert not any(v.name == 'step_dE_inc_frac' for v in viols_kink)
 
     # 2. Desync == stop_tol (0.01) does not trigger stopping violation
@@ -1774,3 +1782,665 @@ def test_config_validators_assertion_kills():
     except ValueError as exc:
         assert False, f'planet_mass_cap_rtol=0.0 was rejected: {exc}'
     assert cfg.planet_mass_cap_rtol == 0.0
+
+
+FIXTURE_PS_RUN_20261018_131253_EA68 = (
+    '# 5 3 2\n'
+    '# Pressure [nondim], Entropy [nondim], Quantity [nondim]\n'
+    '# column * scaling factor = SI units\n'
+    '# scaling factors (constant) for each column given on line below\n'
+    '# 1000000000.0 4824266.84604467 1000.0\n'
+    '1.000000000000000048e-04 2.199633491194133387e-05 3.023416715158805945e-01\n'
+    '2.595513713862120375e-01 2.199633491194133387e-05 3.030318461324150170e-01\n'
+    '5.190027427724240860e-01 2.199633491194133387e-05 3.037198468914933946e-01\n'
+    '1.000000000000000048e-04 3.860484461686001134e-05 3.023416715158805945e-01\n'
+    '2.595513713862120375e-01 3.860484461686001134e-05 3.030318461324150170e-01\n'
+    '5.190027427724240860e-01 3.860484461686001134e-05 3.037198468914933946e-01\n'
+)
+
+FIXTURE_PS_TUTORIAL_EARTH = (
+    '# 5 3 2\n'
+    '# Pressure [nondim], Entropy [nondim], Quantity [nondim]\n'
+    '# column * scaling factor = SI units\n'
+    '# scaling factors (constant) for each column given on line below\n'
+    '# 1000000000.0 4824266.84604467 1000.0\n'
+    '1.000000000000000048e-04 2.199633491194133387e-05 3.232078753841440277e-01\n'
+    '2.595513713862120375e-01 2.199633491194133387e-05 3.239502207971426961e-01\n'
+    '5.190027427724240860e-01 2.199633491194133387e-05 3.246735911791558959e-01\n'
+    '1.000000000000000048e-04 3.620883727604810447e-05 3.232078753841440277e-01\n'
+    '2.595513713862120375e-01 3.620883727604810447e-05 3.239502207971426961e-01\n'
+    '5.190027427724240860e-01 3.620883727604810447e-05 3.246735911791558959e-01\n'
+)
+
+FIXTURE_PS_TUTORIAL_EARTH_MOON = (
+    '# 5 3 2\n'
+    '# Pressure, Entropy, Quantity\n'
+    '# column * scaling factor should be SI units\n'
+    '# scaling factors (constant) for each column given on line below\n'
+    '# 1000000000.0 4824266.84604467 1.0\n'
+    '0.000000000000000000e+00\t-1.757487587703751225e-05\t2.600000000000000000e+02\n'
+    '5.000012580964521280e-01\t-1.757487587703751225e-05\t2.611294099185590767e+02\n'
+    '9.999984283795089191e-01\t-1.757487587703751225e-05\t2.622503654916838514e+02\n'
+    '0.000000000000000000e+00\t-4.306167780593163587e-06\t2.900000000000000000e+02\n'
+    '5.000012580964521280e-01\t-4.306167780593163587e-06\t2.912634485376959219e+02\n'
+    '9.999984283795089191e-01\t-4.306167780593163587e-06\t2.925174355485420392e+02\n'
+)
+
+FIXTURE_PS_LOW_T_SMIN_2599 = (
+    '# 5 3 2\n'
+    '# Pressure [nondim], Entropy [nondim], Quantity [nondim]\n'
+    '# column * scaling factor = SI units\n'
+    '# scaling factors (constant) for each column given on line below\n'
+    '# 1000000000.0 4824266.84604467 1000.0\n'
+    '1.000000000000000048e-04 5.387347119067780726e-06 2.851250000000000000e-01\n'
+    '2.595513713862120375e-01 5.387347119067780726e-06 2.858150000000000000e-01\n'
+    '5.190027427724240860e-01 5.387347119067780726e-06 2.865050000000000000e-01\n'
+    '1.000000000000000048e-04 2.199633491194133387e-05 3.023416715158805945e-01\n'
+    '2.595513713862120375e-01 2.199633491194133387e-05 3.030318461324150170e-01\n'
+    '5.190027427724240860e-01 2.199633491194133387e-05 3.037198468914933946e-01\n'
+)
+
+FIXTURE_REAL_ROWS = {
+    'run_20261018_131253_ea68': {
+        'Time': 32.0,
+        'M_planet': 5.971837965919076e24,
+        'M_vaps': 0.0,
+        'M_atm': 2.3927000045964503e21,
+        'M_vol_atm': 2.3927000045964503e21,
+        'M_vol_initial': 0.0,
+        'esc_kg_cumulative': 0.0,
+        'M_desiccated': 0.0,
+        'H2O_kg_atm': 4.818153654011604e17,
+        'CO2_kg_atm': 5.48133596233104e20,
+        'O2_kg_atm': 1.6293822322839511e21,
+        'H2_kg_atm': 3315127877816527.0,
+        'CH4_kg_atm': 21571.34812841389,
+        'CO_kg_atm': 2.1469904558611625e20,
+        'H_kg_atm': 5.723287613365085e16,
+        'H_kg_liquid': 7.74427671238664e19,
+        'H_kg_total': 7.75e19,
+        'O_kg_atm': 2.1509200320879812e21,
+        'O_kg_liquid': 6.898789120972752e20,
+        'O_kg_total': 2.840798944185256e21,
+        'C_kg_atm': 2.416593578040179e20,
+        'C_kg_liquid': 3.134064219568384e19,
+        'C_kg_total': 2.73e20,
+        'Si_kg_atm': 0.0,
+        'Si_kg_liquid': 0.0,
+        'Si_kg_solid': 0.0,
+        'Si_kg_total': 0.0,
+        'Mg_kg_atm': 0.0,
+        'Mg_kg_liquid': 0.0,
+        'Mg_kg_solid': 0.0,
+        'Mg_kg_total': 0.0,
+        'Fe_kg_atm': 0.0,
+        'Fe_kg_liquid': 0.0,
+        'Fe_kg_solid': 0.0,
+        'Fe_kg_total': 0.0,
+        'Na_kg_atm': 0.0,
+        'Na_kg_liquid': 0.0,
+        'Na_kg_solid': 0.0,
+        'Na_kg_total': 0.0,
+        'Al_kg_atm': 0.0,
+        'Al_kg_liquid': 0.0,
+        'Al_kg_solid': 0.0,
+        'Al_kg_total': 0.0,
+        'Ti_kg_atm': 0.0,
+        'Ti_kg_liquid': 0.0,
+        'Ti_kg_solid': 0.0,
+        'Ti_kg_total': 0.0,
+        'Ca_kg_atm': 0.0,
+        'Ca_kg_liquid': 0.0,
+        'Ca_kg_solid': 0.0,
+        'Ca_kg_total': 0.0,
+        'K_kg_atm': 0.0,
+        'K_kg_liquid': 0.0,
+        'K_kg_solid': 0.0,
+        'K_kg_total': 0.0,
+        'V_kg_atm': 0.0,
+        'V_kg_liquid': 0.0,
+        'V_kg_solid': 0.0,
+        'V_kg_total': 0.0,
+    },
+    'tutorial_earth': {
+        'Time': 12.0,
+        'M_planet': 5.971876383413712e24,
+        'M_vaps': 0.0,
+        'M_atm': 2.4969900423922676e21,
+        'M_vol_atm': 2.496990042392267e21,
+        'M_vol_initial': 0.0,
+        'esc_kg_cumulative': 0.0,
+        'M_desiccated': 0.0,
+        'H2O_kg_atm': 1.7758460177386754e19,
+        'CO2_kg_atm': 5.485865377718051e20,
+        'O2_kg_atm': 1.7155219666956764e21,
+        'H2_kg_atm': 1.2201093232301552e17,
+        'CH4_kg_atm': 28246699.50572676,
+        'CO_kg_atm': 2.150010668150476e20,
+        'H_kg_atm': 2.1092787717625777e18,
+        'H_kg_liquid': 4.678907212282374e20,
+        'H_kg_total': 4.6999999999999993e20,
+        'O_kg_atm': 2.2529019355724757e21,
+        'O_kg_liquid': 3.787871717267085e21,
+        'O_kg_total': 6.040773652839561e21,
+        'C_kg_atm': 2.419124825228833e20,
+        'C_kg_liquid': 3.108751747710883e19,
+        'C_kg_total': 2.7299999999999997e20,
+        'Si_kg_atm': 0.0,
+        'Si_kg_liquid': 0.0,
+        'Si_kg_solid': 0.0,
+        'Si_kg_total': 0.0,
+        'Mg_kg_atm': 0.0,
+        'Mg_kg_liquid': 0.0,
+        'Mg_kg_solid': 0.0,
+        'Mg_kg_total': 0.0,
+        'Fe_kg_atm': 0.0,
+        'Fe_kg_liquid': 0.0,
+        'Fe_kg_solid': 0.0,
+        'Fe_kg_total': 0.0,
+        'Na_kg_atm': 0.0,
+        'Na_kg_liquid': 0.0,
+        'Na_kg_solid': 0.0,
+        'Na_kg_total': 0.0,
+        'Al_kg_atm': 0.0,
+        'Al_kg_liquid': 0.0,
+        'Al_kg_solid': 0.0,
+        'Al_kg_total': 0.0,
+        'Ti_kg_atm': 0.0,
+        'Ti_kg_liquid': 0.0,
+        'Ti_kg_solid': 0.0,
+        'Ti_kg_total': 0.0,
+        'Ca_kg_atm': 0.0,
+        'Ca_kg_liquid': 0.0,
+        'Ca_kg_solid': 0.0,
+        'Ca_kg_total': 0.0,
+        'K_kg_atm': 0.0,
+        'K_kg_liquid': 0.0,
+        'K_kg_solid': 0.0,
+        'K_kg_total': 0.0,
+        'V_kg_atm': 0.0,
+        'V_kg_liquid': 0.0,
+        'V_kg_solid': 0.0,
+        'V_kg_total': 0.0,
+    },
+    'tutorial_earth_moon': {
+        'Time': 11.0,
+        'M_planet': 5.978726775281167e24,
+        'M_vaps': 0.0,
+        'M_atm': 2.6028961394114576e21,
+        'M_vol_atm': 2.6028961394114576e21,
+        'M_vol_initial': 0.0,
+        'esc_kg_cumulative': 0.0,
+        'M_desiccated': 0.0,
+        'H2O_kg_atm': 1.5699182466617856e19,
+        'CO2_kg_atm': 1.1374281849304044e21,
+        'O2_kg_atm': 1.4252171112474018e20,
+        'H2_kg_atm': 1.14425141213347e17,
+        'CH4_kg_atm': 454031036.0429061,
+        'CO_kg_atm': 4.353173105948544e20,
+        'N2_kg_atm': 2.9606306505322195e20,
+        'NH3_kg_atm': 31189492346513.355,
+        'S2_kg_atm': 1.6825607814574755e17,
+        'SO2_kg_atm': 5.755800552380738e20,
+        'H2S_kg_atm': 3917594239721642.5,
+        'H_kg_atm': 1.8714861935559204e18,
+        'H_kg_liquid': 6.181285138064441e20,
+        'H_kg_total': 6.2e20,
+        'O_kg_atm': 1.5195642056240047e21,
+        'O_kg_liquid': 5.206024191223649e21,
+        'O_kg_total': 6.725588396847654e21,
+        'C_kg_atm': 4.970904052362512e20,
+        'C_kg_liquid': 1.229095947637486e20,
+        'C_kg_total': 6.2e20,
+        'N_kg_atm': 2.9606309070475264e20,
+        'N_kg_liquid': 1.3936909295247268e19,
+        'N_kg_total': 3.0999999999999993e20,
+        'S_kg_atm': 2.8820459210580155e20,
+        'S_kg_liquid': 3.3179540789419835e20,
+        'S_kg_total': 6.199999999999999e20,
+        'Si_kg_atm': 0.0,
+        'Si_kg_liquid': 0.0,
+        'Si_kg_solid': 0.0,
+        'Si_kg_total': 0.0,
+        'Mg_kg_atm': 0.0,
+        'Mg_kg_liquid': 0.0,
+        'Mg_kg_solid': 0.0,
+        'Mg_kg_total': 0.0,
+        'Fe_kg_atm': 0.0,
+        'Fe_kg_liquid': 0.0,
+        'Fe_kg_solid': 0.0,
+        'Fe_kg_total': 0.0,
+        'Na_kg_atm': 0.0,
+        'Na_kg_liquid': 0.0,
+        'Na_kg_solid': 0.0,
+        'Na_kg_total': 0.0,
+        'Al_kg_atm': 0.0,
+        'Al_kg_liquid': 0.0,
+        'Al_kg_solid': 0.0,
+        'Al_kg_total': 0.0,
+        'Ti_kg_atm': 0.0,
+        'Ti_kg_liquid': 0.0,
+        'Ti_kg_solid': 0.0,
+        'Ti_kg_total': 0.0,
+        'Ca_kg_atm': 0.0,
+        'Ca_kg_liquid': 0.0,
+        'Ca_kg_solid': 0.0,
+        'Ca_kg_total': 0.0,
+        'K_kg_atm': 0.0,
+        'K_kg_liquid': 0.0,
+        'K_kg_solid': 0.0,
+        'K_kg_total': 0.0,
+        'V_kg_atm': 0.0,
+        'V_kg_liquid': 0.0,
+        'V_kg_solid': 0.0,
+        'V_kg_total': 0.0,
+    },
+    'run_20261018_072515_c63d': {
+        'Time': 32.0,
+        'M_planet': 5.971896581983356e24,
+        'M_vaps': 0.0,
+        'M_atm': 2.479770912985214e21,
+        'M_vol_atm': 2.479770912985214e21,
+        'M_vol_initial': 0.0,
+        'esc_kg_cumulative': 0.0,
+        'M_desiccated': 0.0,
+        'H2O_kg_atm': 1.7376303638004652e19,
+        'CO2_kg_atm': 5.485809317108935e20,
+        'O2_kg_atm': 1.6987224597552077e21,
+        'H2_kg_atm': 1.1942269468348742e17,
+        'CH4_kg_atm': 27191898.159797955,
+        'CO_kg_atm': 2.149717951863974e20,
+        'H_kg_atm': 2.0639251505691924e18,
+        'H_kg_liquid': 4.6293607484943073e20,
+        'H_kg_total': 4.65e20,
+        'O_kg_atm': 2.2357427726804543e21,
+        'O_kg_liquid': 3.748584751416915e21,
+        'O_kg_total': 5.984327524097369e21,
+        'C_kg_atm': 2.4189840054296828e20,
+        'C_kg_liquid': 3.1101599457031594e19,
+        'C_kg_total': 2.7299999999999997e20,
+        'Si_kg_atm': 0.0,
+        'Si_kg_liquid': 0.0,
+        'Si_kg_solid': 0.0,
+        'Si_kg_total': 0.0,
+        'Mg_kg_atm': 0.0,
+        'Mg_kg_liquid': 0.0,
+        'Mg_kg_solid': 0.0,
+        'Mg_kg_total': 0.0,
+        'Fe_kg_atm': 0.0,
+        'Fe_kg_liquid': 0.0,
+        'Fe_kg_solid': 0.0,
+        'Fe_kg_total': 0.0,
+        'Na_kg_atm': 0.0,
+        'Na_kg_liquid': 0.0,
+        'Na_kg_solid': 0.0,
+        'Na_kg_total': 0.0,
+        'Al_kg_atm': 0.0,
+        'Al_kg_liquid': 0.0,
+        'Al_kg_solid': 0.0,
+        'Al_kg_total': 0.0,
+        'Ti_kg_atm': 0.0,
+        'Ti_kg_liquid': 0.0,
+        'Ti_kg_solid': 0.0,
+        'Ti_kg_total': 0.0,
+        'Ca_kg_atm': 0.0,
+        'Ca_kg_liquid': 0.0,
+        'Ca_kg_solid': 0.0,
+        'Ca_kg_total': 0.0,
+        'K_kg_atm': 0.0,
+        'K_kg_liquid': 0.0,
+        'K_kg_solid': 0.0,
+        'K_kg_total': 0.0,
+        'V_kg_atm': 0.0,
+        'V_kg_liquid': 0.0,
+        'V_kg_solid': 0.0,
+        'V_kg_total': 0.0,
+    },
+}
+
+
+def test_smin_clip_per_run_ps_table_interpolation_and_caching(tmp_path, monkeypatch):
+    """Verify per-row T(P_surf, S_min) + 0.5 K clip from cached P-S tables and no-table fallback.
+
+    The 0.5 K margin (EOS_SMIN_CLIP_MARGIN_K) bounds the smooth low-pressure P-S linear
+    interpolation error (<= 9.488e-03 K) and static-mesh vs row P_surf offset (-0.004201 K
+    to +0.071245 K across S_min-clipped corpus rows; < 0.5 K for |P_mesh - P_surf| <= 1,748 bar),
+    remaining well below the first unclipped entropy-grid step (+22.74 K to +30.00 K).
+    """
+    import proteus.utils.invariants as inv_mod
+
+    assert not hasattr(inv_mod, 'EOS_SMIN_TEMP_CLIP_K')
+    assert inv_mod.EOS_SMIN_CLIP_MARGIN_K == pytest.approx(0.5)
+
+    cfg = _make_mock_config()
+    hf_all = pd.DataFrame(
+        [
+            {
+                'Time': 10.0,
+                'E_state_cons_J': 1.0e31,
+                'E_state_heat_cons_J': 1.0e26,
+                'step_dE_F_int_J': 1.0e24,
+                'step_dE_F_cmb_J': 0.0,
+                'step_dE_Q_radio_J': 0.0,
+                'step_dE_Q_tidal_J': 0.0,
+            }
+        ]
+    )
+    base_row = {
+        'Time': 20.0,
+        'P_surf': 1.0,
+        'T_surf': 2500.0,
+        'Phi_global': 0.5,
+        'E_state_cons_J': 1.0e31,
+        'E_state_heat_cons_J': 1.0e26,
+        'step_dE_state_heat_J': 1.03e24,
+        'step_dE_F_int_J': 1.0e24,
+        'step_dE_F_cmb_J': 0.0,
+        'step_dE_Q_radio_J': 0.0,
+        'step_dE_Q_tidal_J': 0.0,
+        'E_residual_cons_J': 0.0,
+        'solver_residual_J': 0.0,
+        'core_C_eff': 0.0,
+    }
+
+    cases = [
+        ('ea68', FIXTURE_PS_RUN_20261018_131253_EA68, 1.0, 302.3416715158806 + 0.5),
+        ('tutorial_earth', FIXTURE_PS_TUTORIAL_EARTH, 1.0, 323.20787538414403 + 0.5),
+        ('wb_moon', FIXTURE_PS_TUTORIAL_EARTH_MOON, 0.0, 260.0 + 0.5),
+        ('low_t_2599', FIXTURE_PS_LOW_T_SMIN_2599, 1.0, 285.125 + 0.5),
+    ]
+    for label, table_text, p_surf_bar, clip_k in cases:
+        eos_dir = tmp_path / f'eos_{label}'
+        eos_dir.mkdir()
+        (eos_dir / 'temperature_solid.dat').write_text(table_text, encoding='utf-8')
+        dirs = {'spider_eos_dir': str(eos_dir)}
+
+        v_below = check_energy_invariants(
+            dict(base_row, P_surf=p_surf_bar, T_magma=clip_k - 1.0e-6),
+            cfg,
+            hf_all,
+            directories=dirs,
+        )
+        assert not any(v.name == 'step_dE_inc_frac' for v in v_below)
+
+        v_exact = check_energy_invariants(
+            dict(base_row, P_surf=p_surf_bar, T_magma=clip_k),
+            cfg,
+            hf_all,
+            directories=dirs,
+        )
+        assert not any(v.name == 'step_dE_inc_frac' for v in v_exact)
+
+        v_above = check_energy_invariants(
+            dict(base_row, P_surf=p_surf_bar, T_magma=clip_k + 1.0e-6),
+            cfg,
+            hf_all,
+            directories=dirs,
+        )
+        step_viols = [v for v in v_above if v.name == 'step_dE_inc_frac']
+        assert len(step_viols) == 1
+        assert step_viols[0].tolerance == pytest.approx(0.01)
+
+    # Evaluate T(P_surf, S_min) per row at the row's P_surf:
+    dirs_ea68 = {'spider_eos_dir': str(tmp_path / 'eos_ea68')}
+    # At P_surf = 1.0 bar, clip = 302.841672 K, so T_magma = 303.2 K violates (> clip).
+    v_low_p = check_energy_invariants(
+        dict(base_row, P_surf=1.0, T_magma=303.2), cfg, hf_all, directories=dirs_ea68
+    )
+    assert any(v.name == 'step_dE_inc_frac' for v in v_low_p)
+    # At P_surf = 2595.513714 bar (2.595514e8 Pa), T(P_surf, S_min) = 303.031846 K and clip = 303.531846 K.
+    v_high_p = check_energy_invariants(
+        dict(base_row, P_surf=2595.5137138621204, T_magma=303.2),
+        cfg,
+        hf_all,
+        directories=dirs_ea68,
+    )
+    assert not any(v.name == 'step_dE_inc_frac' for v in v_high_p)
+
+    # Clamping P_surf below P_min (0 bar -> 1e5 Pa) and above P_max (1e4 bar -> 5.190027e8 Pa):
+    assert inv_mod._smin_clip_temp_k({'P_surf': 0.0}, dirs_ea68) == pytest.approx(
+        302.3416715158806 + 0.5
+    )
+    assert inv_mod._smin_clip_temp_k({'P_surf': 1.0e4}, dirs_ea68) == pytest.approx(
+        303.7198468914934 + 0.5
+    )
+
+    # No-table case (directories=None or missing file): clip rule does not apply.
+    v_no_table = check_energy_invariants(
+        dict(base_row, T_magma=250.0), cfg, hf_all, directories=None
+    )
+    assert any(v.name == 'step_dE_inc_frac' for v in v_no_table)
+    v_missing_dir = check_energy_invariants(
+        dict(base_row, T_magma=250.0),
+        cfg,
+        hf_all,
+        directories={'spider_eos_dir': str(tmp_path / 'nonexistent_eos')},
+    )
+    assert any(v.name == 'step_dE_inc_frac' for v in v_missing_dir)
+
+    # Caching keyed by (path, mtime): reading two rows on the same file parses the file once.
+    inv_mod._SMIN_TABLE_CACHE.clear()
+    parse_calls = []
+    real_parse = inv_mod._parse_smin_temp_block
+
+    def counting_parse(path):
+        parse_calls.append(str(path))
+        return real_parse(path)
+
+    monkeypatch.setattr(inv_mod, '_parse_smin_temp_block', counting_parse)
+    check_energy_invariants(
+        dict(base_row, P_surf=1.0, T_magma=302.5), cfg, hf_all, directories=dirs_ea68
+    )
+    check_energy_invariants(
+        dict(base_row, P_surf=100.0, T_magma=302.5), cfg, hf_all, directories=dirs_ea68
+    )
+    assert len(parse_calls) == 1
+
+    # Fallback via output/data/spider_eos_cache.txt pointer:
+    out_data = tmp_path / 'out_data'
+    out_data.mkdir()
+    (out_data / 'spider_eos_cache.txt').write_text(
+        str(tmp_path / 'eos_tutorial_earth') + '\n', encoding='utf-8'
+    )
+    assert inv_mod._smin_clip_temp_k(
+        {'P_surf': 1.0}, {'output/data': str(out_data)}
+    ) == pytest.approx(323.20787538414403 + 0.5)
+    assert len(parse_calls) == 2
+
+    # First block must hold S_min = min(S) across the table:
+    bad_eos = tmp_path / 'eos_bad_order'
+    bad_eos.mkdir()
+    bad_text = FIXTURE_PS_LOW_T_SMIN_2599.replace(
+        '5.387347119067780726e-06', '9.999999999999999999e-05'
+    )
+    (bad_eos / 'temperature_solid.dat').write_text(bad_text, encoding='utf-8')
+    with pytest.raises(ValueError, match='S_min'):
+        inv_mod._smin_clip_temp_k({'P_surf': 1.0}, {'spider_eos_dir': str(bad_eos)})
+
+
+def test_lavatmos_overwritten_elements_match_source_and_skip_under_vapourise():
+    """Verify LAVATMOS_OVERWRITTEN_ELEMENTS matches lavatmos.py input_eles and skips closure under vapourise."""
+    import ast
+
+    from proteus.utils import invariants as inv_mod
+    from proteus.utils.constants import noble_gases, vap_element_list, vol_element_list
+
+    lavatmos_path = Path(inv_mod.__file__).resolve().parents[1] / 'outgas' / 'lavatmos.py'
+    tree = ast.parse(lavatmos_path.read_text(encoding='utf-8'))
+    found_input_eles = None
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name) and target.id == 'input_eles':
+                    found_input_eles = node.value
+                    break
+    assert found_input_eles is not None
+    # In lavatmos.py: input_eles = ['H', 'C', 'N', 'S', 'O'] + list(noble_gases)
+    assert isinstance(found_input_eles, ast.BinOp)
+    left_elts = [elt.value for elt in found_input_eles.left.elts]
+    assert set(left_elts) == set(vol_element_list)
+    assert set(inv_mod.LAVATMOS_OVERWRITTEN_ELEMENTS) == set(left_elts) | set(noble_gases)
+
+    # Post-vapourise row where lavatmos.py:584-586 overwrites H_kg_atm and Ar_kg_atm after totals at line 555:
+    cfg_vap_stop = _make_mock_config(mode='stop', fO2_source='from_O_budget', vapourise=True)
+    row_vap = {
+        'Time': 100.0,
+        'P_surf': 100.0,
+        'T_surf': 2500.0,
+        'T_magma': 2500.0,
+        'Phi_global': 0.8,
+        'M_planet': 6.0e24,
+        'M_vaps': 3.0e19,
+        'M_vol_atm': 5.2e19,
+        'M_atm': 8.2e19,
+        'H2_kg_atm': 5.0e19,
+        'Ar_kg_atm': 2.0e18,
+        'SiO_kg_atm': 3.0e19,
+        'H_kg_atm': 5.0e19,
+        'H_kg_liquid': 0.0,
+        'H_kg_solid': 0.0,
+        'H_kg_total': 1.0e19,
+        'Ar_kg_liquid': 0.0,
+        'Ar_kg_solid': 0.0,
+        'Ar_kg_total': 0.0,
+        'Si_kg_atm': 3.0e19,
+        'Si_kg_liquid': 0.0,
+        'Si_kg_solid': 0.0,
+        'Si_kg_total': 0.0,
+    }
+    assert check_row_invariants(row_vap, cfg_vap_stop) == []
+    for elem in set(vap_element_list) | set(inv_mod.LAVATMOS_OVERWRITTEN_ELEMENTS):
+        assert (
+            check_volatile_invariants(
+                dict(row_vap, **{f'{elem}_kg_total': 1.0e20}), cfg_vap_stop
+            )
+            == []
+        )
+
+    # Reservoir bounds checks ({e}_kg_{r}_bounds) remain active for overwritten elements:
+    with pytest.raises(InvariantViolationError) as exc_info:
+        check_row_invariants(dict(row_vap, H_kg_atm=-5.0), cfg_vap_stop)
+    assert any(v.name == 'H_kg_atm_bounds' for v in exc_info.value.violations)
+
+
+@pytest.mark.parametrize('vapourise', [False, True])
+@pytest.mark.parametrize(
+    ('bad_key', 'bad_val', 'expected_name'),
+    [
+        ('Si_kg_atm', float('nan'), 'Si_reservoir_closure'),
+        ('Si_kg_atm', float('-inf'), 'Si_reservoir_closure'),
+        ('Si_kg_total', float('nan'), 'Si_reservoir_closure'),
+        ('O_kg_liquid', float('nan'), 'O_reservoir_closure'),
+    ],
+)
+def test_non_finite_excluded_element_masses_emit_status_31(
+    vapourise, bad_key, bad_val, expected_name
+):
+    """Non-finite {e}_kg_{atm,liquid,solid,total} of any element in element_list is a status 31 violation before the derived skip."""
+    cfg = _make_mock_config(mode='stop', fO2_source='user_constant', vapourise=vapourise)
+    base_row = {
+        'Time': 50.0,
+        'M_planet': 6.0e24,
+        'M_atm': 1.0e20,
+        'M_vol_atm': 1.0e20,
+        'M_vaps': 0.0,
+        'H2O_kg_atm': 1.0e20,
+        bad_key: bad_val,
+    }
+    viols = check_volatile_invariants(base_row, cfg)
+    closure_viols = [v for v in viols if v.name == expected_name]
+    assert len(closure_viols) == 1
+    assert closure_viols[0].status_code == STATUS_ERROR_MASS_INVARIANT
+    assert closure_viols[0].report_only is False
+
+
+def test_rock_vapour_exclusion_gated_on_vapourise_and_real_rows_pass():
+    """Verify rock-vapour exclusion applies only under outgas.vapourise and 4 real non-vapourise rows pass."""
+    from proteus.utils.constants import vap_element_list
+
+    cfg_stop = _make_mock_config(
+        mode='stop', fO2_source='user_constant', vapourise=False, outgas_module='calliope'
+    )
+    base_row = {
+        'Time': 100.0,
+        'P_surf': 100.0,
+        'T_surf': 2000.0,
+        'T_magma': 2000.0,
+        'Phi_global': 0.5,
+        'M_planet': 6.0e24,
+        'M_atm': 1.0e20,
+        'M_vol_atm': 1.0e20,
+        'M_vaps': 0.0,
+        'H2O_kg_atm': 1.0e20,
+    }
+
+    # 1. Vapourise off, Si_kg_atm = 1e20, total = 0 -> stop mode stops with Si_reservoir_closure:
+    with pytest.raises(InvariantViolationError) as exc_atm:
+        check_row_invariants(dict(base_row, Si_kg_atm=1.0e20, Si_kg_total=0.0), cfg_stop)
+    assert [v.name for v in exc_atm.value.violations] == ['Si_reservoir_closure']
+    assert exc_atm.value.status_code == STATUS_ERROR_MASS_INVARIANT
+
+    # 2. Vapourise off, rock mass in liquid or solid while atm = 0 and total = 0 -> closure fires:
+    viols_liq = check_volatile_invariants(
+        dict(base_row, Si_kg_liquid=1.0e18, Si_kg_atm=0.0, Si_kg_total=0.0), cfg_stop
+    )
+    assert [v.name for v in viols_liq] == ['Si_reservoir_closure']
+    viols_sol = check_volatile_invariants(
+        dict(base_row, Mg_kg_solid=1.0e18, Mg_kg_atm=0.0, Mg_kg_total=0.0), cfg_stop
+    )
+    assert [v.name for v in viols_sol] == ['Mg_reservoir_closure']
+
+    # 3. Replay 1 script-copied row from each of the 4 real non-vapourise runs:
+    rock_cols = [
+        f'{e}_kg_{r}' for e in vap_element_list for r in ('atm', 'liquid', 'solid', 'total')
+    ]
+    assert len(rock_cols) == 36
+    assert len(FIXTURE_REAL_ROWS) == 4
+    for run_name, row_dict in FIXTURE_REAL_ROWS.items():
+        assert all(row_dict[col] == 0.0 for col in rock_cols), run_name
+        viols_real = check_volatile_invariants(row_dict, cfg_stop)
+        assert viols_real == [], f'{run_name}: {viols_real}'
+
+
+def test_tracker_relogs_finite_to_nonfinite_and_nan_inf_transitions(caplog):
+    """Tracker re-logs transitions between finite and non-finite values and between NaN and +-inf."""
+    tracker = InvariantTracker()
+    seq = [3.0e-4, float('nan'), float('nan'), 5.0e-4]
+
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.utils.invariants'):
+        for val in seq:
+            v = InvariantViolation(
+                name='E_residual_cons_frac_gross',
+                status_code=30,
+                value=val,
+                tolerance=2.0e-4,
+                message=f'E_residual_cons_frac_gross={val:.6e}',
+                report_only=False,
+            )
+            handle_violations([v], mode='report', tracker=tracker)
+
+    records = [r for r in caplog.records if 'E_residual_cons_frac_gross' in r.message]
+    assert len(records) == 2
+    assert '3.000000e-04' in records[0].message
+    assert 'nan' in records[1].message.lower()
+
+    # Verify NaN -> +inf -> +inf -> -inf transitions also re-log on change and suppress on exact repeat:
+    caplog.clear()
+    nonfinite_seq = [float('nan'), float('inf'), float('inf'), float('-inf')]
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.utils.invariants'):
+        for val in nonfinite_seq:
+            v = InvariantViolation(
+                name='E_residual_cons_frac_gross',
+                status_code=30,
+                value=val,
+                tolerance=2.0e-4,
+                message=f'E_residual_cons_frac_gross={val}',
+                report_only=False,
+            )
+            handle_violations([v], mode='report', tracker=tracker)
+
+    nf_records = [r for r in caplog.records if 'E_residual_cons_frac_gross' in r.message]
+    assert len(nf_records) == 3
+    assert 'nan' in nf_records[0].message.lower()
+    assert 'inf' in nf_records[1].message
+    assert '-inf' in nf_records[2].message

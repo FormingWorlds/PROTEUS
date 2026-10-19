@@ -220,6 +220,27 @@ def test_energy_residual_coarse_dt_rtol_key_is_rejected(tmp_path):
         Invariants(energy_residual_coarse_dt_rtol=5.0e-4)  # type: ignore[call-arg]
 
 
+@pytest.fixture(scope='module')
+def _smin_eos_dirs(tmp_path_factory):
+    """Build a module-scoped P-S fixture table directory for S_min clip tests."""
+    eos_dir = tmp_path_factory.mktemp('spider_eos_cfg')
+    (eos_dir / 'temperature_solid.dat').write_text(
+        '# 5 3 2\n'
+        '# Pressure [nondim], Entropy [nondim], Quantity [nondim]\n'
+        '# column * scaling factor = SI units\n'
+        '# scaling factors (constant) for each column given on line below\n'
+        '# 1000000000.0 4824266.84604467 1000.0\n'
+        '1.000000000000000048e-04 2.199633491194133387e-05 3.023416715158805945e-01\n'
+        '2.595513713862120375e-01 2.199633491194133387e-05 3.030318461324150170e-01\n'
+        '5.190027427724240860e-01 2.199633491194133387e-05 3.037198468914933946e-01\n'
+        '1.000000000000000048e-04 3.860484461686001134e-05 3.023416715158805945e-01\n'
+        '2.595513713862120375e-01 3.860484461686001134e-05 3.030318461324150170e-01\n'
+        '5.190027427724240860e-01 3.860484461686001134e-05 3.037198468914933946e-01\n',
+        encoding='utf-8',
+    )
+    return {'spider_eos_dir': str(eos_dir)}
+
+
 @settings(max_examples=30, deadline=None)
 @given(
     base_rtol=st.floats(
@@ -227,8 +248,10 @@ def test_energy_residual_coarse_dt_rtol_key_is_rejected(tmp_path):
     ),
     scale=st.floats(min_value=2.0, max_value=10.0, allow_nan=False, allow_infinity=False),
 )
-def test_hypothesis_step_energy_rtol_ordering_and_non_kink_dispatch(base_rtol, scale):
-    """``step_energy_rtol`` governs mushy rows above 301 K while ``step_energy_smin_rtol`` governs T <= 301 K."""
+def test_hypothesis_step_energy_rtol_ordering_and_non_kink_dispatch(
+    _smin_eos_dirs, base_rtol, scale
+):
+    """``step_energy_rtol`` governs mushy rows above the S_min clip while ``step_energy_smin_rtol`` governs T <= T(P_surf, S_min) + 0.5 K."""
     from types import SimpleNamespace
 
     import pandas as pd
@@ -255,6 +278,7 @@ def test_hypothesis_step_energy_rtol_ordering_and_non_kink_dispatch(base_rtol, s
     step_gross = 1.0e28
     hf_row = {
         'Time': 200.0,
+        'P_surf': 1.0,
         'T_surf': 1500.0,
         'T_magma': 2200.0,
         'Phi_global': 0.5,
@@ -270,11 +294,16 @@ def test_hypothesis_step_energy_rtol_ordering_and_non_kink_dispatch(base_rtol, s
         'solver_residual_J': 0.0,
         'core_C_eff': 0.0,
     }
-    v_non_kink = check_energy_invariants(hf_row, cfg, hf_all)
+    v_non_kink = check_energy_invariants(hf_row, cfg, hf_all, directories=_smin_eos_dirs)
     assert [v.name for v in v_non_kink] == ['step_dE_inc_frac']
-    v_tsurf_cold = check_energy_invariants(dict(hf_row, T_surf=300.5), cfg, hf_all)
+    v_tsurf_cold = check_energy_invariants(
+        dict(hf_row, T_surf=302.342), cfg, hf_all, directories=_smin_eos_dirs
+    )
     assert [v.name for v in v_tsurf_cold] == ['step_dE_inc_frac']
     assert v_tsurf_cold[0].tolerance == pytest.approx(base_rtol)
 
-    hf_row_kink = dict(hf_row, T_magma=300.5)
-    assert check_energy_invariants(hf_row_kink, cfg, hf_all) == []
+    hf_row_kink = dict(hf_row, T_magma=302.342)
+    assert check_energy_invariants(hf_row_kink, cfg, hf_all, directories=_smin_eos_dirs) == []
+    assert [
+        v.name for v in check_energy_invariants(hf_row_kink, cfg, hf_all, directories=None)
+    ] == ['step_dE_inc_frac']
