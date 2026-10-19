@@ -610,9 +610,10 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
         handler.directories['output'],
         thermal_solve=False,
     )
-    handler.interior_o.structure_rollback_active = bool(
-        hf_row.get('_structure_rollback', False)
-    )
+    rb_flag = bool(hf_row.get('_structure_rollback', False))
+    handler.interior_o.structure_rollback_active = rb_flag
+    if not rb_flag:
+        handler.interior_o.structure_stale = False
     if hasattr(handler.interior_o, 'write_structure_stale'):
         handler.interior_o.write_structure_stale(handler.directories['output'])
 

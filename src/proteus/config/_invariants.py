@@ -92,7 +92,8 @@ class Invariants:
         Stop threshold on post-init ``struct_mass_desync_frac`` [-], sized at twice the
         ``5.0e-3`` warning threshold (init-stage rows before the post-init baseline structure
         solve are report-only; a failed baseline solve keeps ``init_stage=True`` until the
-        baseline solve succeeds, and Zalmoxis aborts after 8 consecutive failed solves).
+        baseline solve succeeds, and Zalmoxis aborts after 8 consecutive failed solves, a
+        per-process count that restarts on a resume).
     interior_mass_target_rtol: float
         Relative tolerance on ``M_int`` versus ``M_int_target`` at a Zalmoxis structure row [-],
         matching the ``3.0e-3`` Zalmoxis mass-anchor tolerance in ``interior_energetics/wrapper.py``
@@ -124,8 +125,9 @@ class Invariants:
         ``outgas.module = 'dummy'``, noble gases (``He, Ne, Ar, Kr, Xe``) skip reservoir
         closure because the dummy outgassing module only partitions ``H, C, N, S``. Under
         ``outgas.vapourise = true``, rock-vapour and ``lavatmos``-overwritten elements skip
-        reservoir closure when M_vaps > 0 and an atmosphere excess above ``M_vaps`` in
+        reservoir closure and, when ``M_vaps > 0``, an atmosphere excess above ``M_vaps`` in
         ``coupler.assert_mass_conservation`` only logs a warning.
+
     element_closure_atol_kg: float
         Absolute floor on per-element reservoir closure when the ``outgas.mass_thresh``
         relaxation does not apply [kg], and lower-bound floor ``-element_closure_atol_kg`` on

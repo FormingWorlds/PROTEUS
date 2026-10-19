@@ -659,8 +659,10 @@ def check_structure_invariants(
     solve (``init_stage=True``, or ``Time <= 1.0`` yr when ``init_stage`` is omitted; a failed
     baseline solve leaves ``_baseline_structure_done`` ``False`` and ``structure_stale``
     ``True``, keeping ``init_stage=True`` until the baseline solve succeeds, and Zalmoxis
-    aborts after 8 consecutive failed solves), finite structure mismatches are reported with
+    aborts after 8 consecutive failed solves, a per-process count that restarts on a resume),
+    finite structure mismatches are reported with
     ``report_only=True`` and do not stop the run. While a Zalmoxis structure rollback remains
+
     active until the next accepted re-solve (``hf_row['_structure_rollback']`` or
     ``interior_o.structure_rollback_active``), finite ``M_int_target_rel_err`` and
     ``M_core_target_rel_err`` violations are also emitted with ``report_only=True``.

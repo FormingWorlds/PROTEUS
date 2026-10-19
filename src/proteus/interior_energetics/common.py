@@ -1477,9 +1477,7 @@ class Interior_t:
         outdir : str
             Run output directory.
         """
-        rollback = bool(
-            getattr(self, 'structure_rollback_active', False) or self.structure_stale
-        )
+        rollback = bool(getattr(self, 'structure_rollback_active', False))
         try:
             with open(get_file_structure_stale(outdir), 'w') as hdl:
                 hdl.write('%d\n' % (1 if self.structure_stale else 0))
@@ -1513,9 +1511,7 @@ class Interior_t:
             return
         try:
             with open(rb_path) as hdl:
-                self.structure_rollback_active = (
-                    bool(int(hdl.read().strip())) or self.structure_stale
-                )
+                self.structure_rollback_active = bool(int(hdl.read().strip()))
         except (ValueError, OSError):
             log.warning('Could not parse structure-rollback flag file; using stale flag')
             self.structure_rollback_active = self.structure_stale

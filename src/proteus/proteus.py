@@ -356,7 +356,8 @@ class Proteus:
         When the post-init forced Zalmoxis baseline solve fails and falls back
         (``interior_o.structure_stale`` is ``True``), ``_baseline_structure_done``
         remains ``False`` so ``init_stage`` stays ``True`` until the baseline solve
-        succeeds (Zalmoxis aborts after 8 consecutive failed solves).
+        succeeds (Zalmoxis aborts after 8 consecutive failed solves, a per-process
+        count that restarts on a resume).
         """
         return bool(
             iter_init_stage
@@ -373,7 +374,9 @@ class Proteus:
         the structure once from the converged initial interior profile, so they
         share an identical, self-consistent starting radius rather than the
         structure-solver's own initial-condition adiabat. The baseline is solved
-        once per run; resumed runs and already-baselined runs are a no-op.
+        once per run; already-baselined runs are a no-op, and a resumed run
+        retries only a baseline recorded as not done.
+
 
         A failed forced solve restores the initial-condition structure and flags
         it stale; in that case the baseline is left unmarked so the next
@@ -1074,6 +1077,8 @@ class Proteus:
 
             # Restore the stale-structure and rollback flags from disk on resume.
             self.interior_o.resume_structure_stale(self.directories['output'])
+            if dropped_snapshots:
+                self.interior_o.structure_rollback_active = True
 
             # Set loop counters
             self.loops['total'] = len(self.hf_all)
@@ -1083,8 +1088,7 @@ class Proteus:
                 from proteus.interior_energetics.common import resume_baseline_structure_done
 
                 self._baseline_structure_done = resume_baseline_structure_done(
-                    self.directories['output'],
-                    default=not self.interior_o.structure_stale,
+                    self.directories['output']
                 )
             else:
                 self._baseline_structure_done = True

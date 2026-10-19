@@ -1337,6 +1337,7 @@ _ADIABAT_IC_RESTORE_KEYS = (
     'M_int',
     'M_core',
     'M_int_target',
+    'M_core_target',
     'P_surf',
     'P_center',
     'P_cmb',

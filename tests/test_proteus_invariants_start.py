@@ -595,13 +595,16 @@ def test_proteus_start_zalmoxis_failed_baseline_keeps_row_4_init_stage_true_and_
         == '0'
     )
 
-    real_select = proteus_mod.select_resumable_snapshot
+    import proteus.utils.coupler as coupler_mod
+
+    real_select = coupler_mod.select_resumable_snapshot
 
     def fake_select_drops_snapshot(outdir, hf_all, **kwargs):
         trimmed, _ = real_select(outdir, hf_all, **kwargs)
         return trimmed.iloc[:-1].copy(), [float(trimmed.iloc[-1]['Time'])]
 
-    monkeypatch.setattr(proteus_mod, 'select_resumable_snapshot', fake_select_drops_snapshot)
+    monkeypatch.setattr(coupler_mod, 'select_resumable_snapshot', fake_select_drops_snapshot)
+
     dropped_resume = Proteus(config_path=cfg_path)
     dropped_resume.config.invariants.mode = 'report'
     dropped_resume.config.interior_struct.module = 'zalmoxis'

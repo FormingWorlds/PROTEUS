@@ -12190,7 +12190,7 @@
           "value": 0.0
         }
       ],
-      "description": "Stop threshold on post-init ``struct_mass_desync_frac`` [-], sized at twice the ``5.0e-3`` warning threshold (init-stage rows before the post-init baseline structure solve are report-only; a failed baseline solve keeps ``init_stage=True`` until the baseline solve succeeds, and Zalmoxis aborts after 8 consecutive failed solves).",
+      "description": "Stop threshold on post-init ``struct_mass_desync_frac`` [-], sized at twice the ``5.0e-3`` warning threshold (init-stage rows before the post-init baseline structure solve are report-only; a failed baseline solve keeps ``init_stage=True`` until the baseline solve succeeds, and Zalmoxis aborts after 8 consecutive failed solves, a per-process count that restarts on a resume).",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -12253,7 +12253,7 @@
           "value": 0.0
         }
       ],
-      "description": "Relative tolerance on per-element reservoir closure ``atm + magma + solid = total`` [-], sized at ``2.5`` times the default ``outgas.solver_rtol = 1.0e-4``. For ``outgas.module = 'calliope'``, and for ``H, C, N, S, O`` under ``outgas.module = 'atmodeller'`` when ``total <= outgas.mass_thresh``, the tolerance is ``outgas.mass_thresh + element_closure_rtol * max(total, 0)`` (only as tight as ``outgas.mass_thresh``; a zero-budget leak is seen above ``mass_thresh``, whereas ``atmodeller`` elements with ``total > outgas.mass_thresh`` and noble gases under ``atmodeller`` stay strict at ``max(element_closure_atol_kg, element_closure_rtol * max(total, 0))``). Under ``outgas.module = 'dummy'``, noble gases (``He, Ne, Ar, Kr, Xe``) skip reservoir closure because the dummy outgassing module only partitions ``H, C, N, S``. Under ``outgas.vapourise = true``, rock-vapour and ``lavatmos``-overwritten elements skip reservoir closure when M_vaps > 0 and an atmosphere excess above ``M_vaps`` in ``coupler.assert_mass_conservation`` only logs a warning.",
+      "description": "Relative tolerance on per-element reservoir closure ``atm + magma + solid = total`` [-], sized at ``2.5`` times the default ``outgas.solver_rtol = 1.0e-4``. For ``outgas.module = 'calliope'``, and for ``H, C, N, S, O`` under ``outgas.module = 'atmodeller'`` when ``total <= outgas.mass_thresh``, the tolerance is ``outgas.mass_thresh + element_closure_rtol * max(total, 0)`` (only as tight as ``outgas.mass_thresh``; a zero-budget leak is seen above ``mass_thresh``, whereas ``atmodeller`` elements with ``total > outgas.mass_thresh`` and noble gases under ``atmodeller`` stay strict at ``max(element_closure_atol_kg, element_closure_rtol * max(total, 0))``). Under ``outgas.module = 'dummy'``, noble gases (``He, Ne, Ar, Kr, Xe``) skip reservoir closure because the dummy outgassing module only partitions ``H, C, N, S``. Under ``outgas.vapourise = true``, rock-vapour and ``lavatmos``-overwritten elements skip reservoir closure and, when ``M_vaps > 0``, an atmosphere excess above ``M_vaps`` in ``coupler.assert_mass_conservation`` only logs a warning.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
