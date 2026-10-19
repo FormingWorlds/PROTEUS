@@ -163,7 +163,9 @@ class Zalmoxis:
         the two lowest entropy nodes the table temperature deviates from a
         direct inversion by at most 2.65 % on these default pressure columns
         (both nodes inverted up to 6.75 GPa); no default column lies between
-        6.75 and 7.0 GPa, where the deviation reaches 19 % at 6.92 GPa.
+        6.75 and 7.0 GPa, where the deviation reaches 19 % at 6.92 GPa. With
+        the switch on, Aragog logs its minimum heat capacity warning (about
+        104 J/kg/K, above its runtime floor of 100) at each coupling iteration.
     mantle_mass_fraction: float
         Fraction of the planet's interior mass corresponding to the mantle.
         Required for 3-layer models (with ice layer) and for T-dependent
