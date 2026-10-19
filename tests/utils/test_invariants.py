@@ -857,20 +857,24 @@ def test_check_volatile_invariants_calliope_zero_parts_threshold():
         handle_violations(v_novap_si, mode='stop')
     assert exc_info.value.invariant_name == 'Si_reservoir_closure'
 
-    # Under atmodeller, zero-total leak compares against element_closure_atol_kg (1.0 kg):
+    # Under atmodeller, CHONS uses mass_thresh while noble gases compare against element_closure_atol_kg (1.0 kg):
     cfg_atm = _make_mock_config(
         outgas_module='atmodeller',
+        mass_thresh=1.0e10,
         fO2_source='user_constant',
         vapourise=False,
     )
+    assert check_volatile_invariants(row_zero_tot_pass, cfg_atm) == []
     assert (
-        check_volatile_invariants(dict(base_row, H_kg_total=0.0, H_kg_atm=0.5), cfg_atm) == []
+        check_volatile_invariants(dict(base_row, He_kg_total=0.0, He_kg_atm=0.5), cfg_atm) == []
     )
-    v_atm_zero = check_volatile_invariants(row_zero_tot_pass, cfg_atm)
-    assert len(v_atm_zero) == 1
-    assert v_atm_zero[0].name == 'H_reservoir_closure'
-    assert v_atm_zero[0].value == pytest.approx(9.8e9)
-    assert v_atm_zero[0].tolerance == pytest.approx(1.0)
+    v_atm_he_zero = check_volatile_invariants(
+        dict(base_row, He_kg_total=0.0, He_kg_atm=9.8e9), cfg_atm
+    )
+    assert len(v_atm_he_zero) == 1
+    assert v_atm_he_zero[0].name == 'He_reservoir_closure'
+    assert v_atm_he_zero[0].value == pytest.approx(9.8e9)
+    assert v_atm_he_zero[0].tolerance == pytest.approx(1.0)
 
 
 def test_check_volatile_invariants_planet_mass_cap_and_vapourise():
@@ -1917,3 +1921,53 @@ def test_init_stage_structure_desync_reports_without_stopping_in_stop_mode(
         'M_core_target_rel_err',
     ]
     assert all(v.report_only for v in v_init_t)
+
+
+def test_atmodeller_mass_thresh_for_chons_and_strict_noble_gases():
+    """Under atmodeller, CHONS use mass_thresh + rtol * total while noble gases stay strict."""
+    from proteus.utils.constants import noble_gases, vol_element_list
+    from proteus.utils.invariants import check_volatile_invariants
+
+    mass_thresh = 1.0e16
+    cfg = _make_mock_config(
+        mode='stop',
+        outgas_module='atmodeller',
+        mass_thresh=mass_thresh,
+        fO2_source='from_O_budget',
+        vapourise=False,
+    )
+    rtol = float(cfg.invariants.element_closure_rtol)
+    total_crit = mass_thresh / (1.0 - rtol)
+
+    base_row = {
+        'Time': 100.0,
+        'M_planet': 6.0e24,
+        'M_atm': 1.0e21,
+        'M_vol_atm': 1.0e21,
+        'M_vaps': 0.0,
+        'H2O_kg_atm': 1.0e21,
+    }
+
+    for elem in vol_element_list:
+        row_below = dict(base_row, **{f'{elem}_kg_total': total_crit * (1.0 - 1.0e-6)})
+        assert check_volatile_invariants(row_below, cfg) == []
+
+        row_above = dict(base_row, **{f'{elem}_kg_total': total_crit * (1.0 + 1.0e-6)})
+        v_above = check_volatile_invariants(row_above, cfg)
+        assert [v.name for v in v_above] == [f'{elem}_reservoir_closure']
+        assert v_above[0].report_only is False
+
+    for gas in noble_gases:
+        # Noble gases remain strict even when 0 < total <= mass_thresh
+        row_noble_sub = dict(base_row, **{f'{gas}_kg_total': 1.0e14})
+        v_noble = check_volatile_invariants(row_noble_sub, cfg)
+        assert [v.name for v in v_noble] == [f'{gas}_reservoir_closure']
+        assert v_noble[0].value == pytest.approx(1.0)
+        assert v_noble[0].tolerance == pytest.approx(rtol)
+        assert v_noble[0].report_only is False
+
+        row_noble_ok = dict(
+            base_row,
+            **{f'{gas}_kg_total': 1.0e14, f'{gas}_kg_atm': 1.0e14 * (1.0 - 0.5 * rtol)},
+        )
+        assert check_volatile_invariants(row_noble_ok, cfg) == []
