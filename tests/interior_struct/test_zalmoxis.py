@@ -2183,7 +2183,8 @@ def _run_gate_solver(
     evaluator (``calculate_mixed_density``, wet mantle nodes). The two
     fakes differ by a constant ``_MIXED_DENSITY_OFFSET`` at equal
     (P, T), so a written column discriminates which evaluator produced
-    it. Returns the mocks and the hf_row.
+    it. Returns the mocks, the hf_row, the model results and what the
+    solver returns, or with ``solve`` what ``solve`` returns.
 
     Parameters
     ----------
@@ -2219,6 +2220,9 @@ def _run_gate_solver(
         Called with the mock config before the solve, for a field with no keyword here.
     density_cache : dict, optional
         Initial ``_density_cache`` (the density seed); the default is an empty cache.
+    solve : callable, optional
+        A caller of ``zalmoxis_solver``, ``solve(config, outdir, hf_row)``, run inside the
+        patches in place of the direct call; its return value is returned.
     """
     from proteus.interior_struct import zalmoxis as zalmoxis_wrapper
 
@@ -2286,8 +2290,8 @@ def _run_gate_solver(
             side_effect=mixed_side_effect or _fake_mixed_density,
         ) as mixed_mock,
     ):
-        if solve is not None:  # a caller of zalmoxis_solver: (config, outdir, hf_row, tf)
-            return solve(config, str(tmp_path), hf_row, tf)
+        if solve is not None:
+            return solve(config, str(tmp_path), hf_row)
         cmb_radius, mesh_file = zalmoxis_wrapper.zalmoxis_solver(
             config,
             str(tmp_path),

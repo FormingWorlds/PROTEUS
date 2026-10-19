@@ -1,23 +1,42 @@
-"""A Zalmoxis structure that breaks an invariant stops the run with status 33."""
+"""A Zalmoxis structure that breaks an invariant stops the run with status 33.
+
+These tests check an error contract (the exception that reaches each caller and the status
+file), not a physical bound, so they carry no physics_invariant marker.
+"""
 
 from __future__ import annotations
 
 import logging
+from unittest.mock import patch
 
 import pytest
-from zalmoxis.invariants import StructureInvariantError
 
-from proteus.interior_energetics.wrapper import _solve_structure_with_adiabat_or_rollback
+from proteus.interior_energetics.wrapper import (
+    _solve_structure_with_adiabat_or_rollback,
+    update_structure_from_interior,
+)
+from tests.interior_energetics.test_wrapper_adiabat_ic import (
+    _monotonic_config,
+    _monotonic_dirs,
+    _monotonic_hf_row,
+    _monotonic_interior_o,
+)
 from tests.interior_struct.test_zalmoxis import _run_gate_solver
 
+StructureInvariantError = pytest.importorskip('zalmoxis.invariants').StructureInvariantError
+
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
+
+def _invariant_error():
+    return StructureInvariantError('breaks cmb_mass: deviation 1.0e+00')
 
 
 @pytest.mark.parametrize(
     'error, status',
     [
-        (StructureInvariantError('breaks cmb_mass: deviation 1.0e+00'), '33'),
-        (RuntimeError('not converged'), None),
+        pytest.param(_invariant_error(), '33', id='invariant_error_writes_33'),
+        pytest.param(RuntimeError('not converged'), None, id='non_converged_writes_no_status'),
     ],
 )
 def test_only_an_invariant_error_writes_status_33(tmp_path, monkeypatch, caplog, error, status):
@@ -34,20 +53,83 @@ def test_only_an_invariant_error_writes_status_33(tmp_path, monkeypatch, caplog,
         assert 'breaks an invariant' in caplog.text and 'breaks cmb_mass' in caplog.text
 
 
+def _resolve(config, outdir, hf_row):
+    return _solve_structure_with_adiabat_or_rollback(
+        config, outdir, hf_row, 0, lambda r, P: 3000.0
+    )
+
+
+@pytest.mark.parametrize(
+    'error',
+    [
+        pytest.param(RuntimeError('not converged'), id='runtime_error_rolls_back'),
+        pytest.param(ValueError('bad table'), id='value_error_rolls_back'),
+        pytest.param(FloatingPointError('overflow'), id='floating_point_error_rolls_back'),
+    ],
+)
+def test_the_adiabat_resolve_rolls_back_a_solver_failure(tmp_path, monkeypatch, error):
+    """The rollback this harness reaches returns (None, False) and writes no status."""
+    result = _run_gate_solver(
+        tmp_path, monkeypatch, 'Seager2007:silicate', None, None, [error], solve=_resolve
+    )
+    assert result == (None, False)
+    assert not (tmp_path / 'status').exists()
+
+
 def test_an_invariant_error_passes_the_rollback_of_the_adiabat_resolve(tmp_path, monkeypatch):
     """The adiabat re-solve rolls back a RuntimeError, ValueError or FloatingPointError; an
     invariant error is none of these, so it reaches the caller and status 33 stays."""
-    error = StructureInvariantError('breaks cmb_mass: deviation 1.0e+00')
-
-    def resolve(config, outdir, hf_row, tf):
-        return _solve_structure_with_adiabat_or_rollback(
-            config, outdir, hf_row, 0, lambda r, P: 3000.0
-        )
-
+    error = _invariant_error()
     with pytest.raises(StructureInvariantError) as raised:
         _run_gate_solver(
-            tmp_path, monkeypatch, 'Seager2007:silicate', None, None, [error], solve=resolve
+            tmp_path, monkeypatch, 'Seager2007:silicate', None, None, [error], solve=_resolve
         )
     assert raised.value is error
     lines = (tmp_path / 'status').read_text().splitlines()
     assert lines == ['33', 'Error (Interior structure invariant)']
+
+
+@pytest.mark.parametrize(
+    'error, fails',
+    [
+        pytest.param(_invariant_error(), 0, id='invariant_error_stops_the_evolution'),
+        pytest.param(RuntimeError('not converged'), 1, id='runtime_error_keeps_the_structure'),
+    ],
+)
+def test_the_evolution_resolve_lets_only_an_invariant_error_through(tmp_path, error, fails):
+    """The time-step re-solve counts a RuntimeError and keeps the previous structure; an
+    invariant error reaches the caller and does not count as a convergence failure."""
+    config = _monotonic_config(module='aragog', temperature_mode='liquidus_super')
+    interior_o = _monotonic_interior_o()
+    dirs, _ = _monotonic_dirs(tmp_path, 'PREV GEOMETRY\n')
+    hf_row = _monotonic_hf_row(1.2007e7, M_target=5.972e24)
+    before = dict(hf_row)
+    with patch('proteus.interior_struct.zalmoxis.zalmoxis_solver', side_effect=error):
+        if fails:
+            update_structure_from_interior(dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8)
+            assert hf_row['R_int'] == before['R_int']
+        else:
+            with pytest.raises(StructureInvariantError) as raised:
+                update_structure_from_interior(
+                    dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8
+                )
+            assert raised.value is error
+    assert interior_o.zalmoxis_fail_count == fails
+
+
+def test_a_status_file_that_cannot_be_written_does_not_hide_the_invariant_error(
+    tmp_path, monkeypatch, caplog
+):
+    """A failed status write is logged; the invariant error still reaches the caller."""
+    error = _invariant_error()
+    with (
+        patch(
+            'proteus.interior_struct.zalmoxis.UpdateStatusfile',
+            side_effect=OSError('read-only output'),
+        ),
+        caplog.at_level(logging.ERROR),
+        pytest.raises(StructureInvariantError) as raised,
+    ):
+        _run_gate_solver(tmp_path, monkeypatch, 'Seager2007:silicate', None, None, [error])
+    assert raised.value is error
+    assert 'read-only output' in caplog.text
