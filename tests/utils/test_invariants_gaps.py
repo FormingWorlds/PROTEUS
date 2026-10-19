@@ -9,6 +9,7 @@ swaps, zero-M_vaps vapourise stops, and exact inequality boundaries.
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -2112,7 +2113,7 @@ FIXTURE_REAL_ROWS = {
 }
 
 
-def test_smin_clip_per_run_ps_table_interpolation_and_caching(tmp_path, monkeypatch):
+def test_smin_clip_per_run_ps_table_interpolation_and_caching(tmp_path, monkeypatch, caplog):
     """Verify per-row T(P_surf, S_min) + 0.5 K clip from cached P-S tables and no-table fallback.
 
     The 0.5 K margin (EOS_SMIN_CLIP_MARGIN_K) bounds the smooth low-pressure P-S linear
@@ -2122,7 +2123,6 @@ def test_smin_clip_per_run_ps_table_interpolation_and_caching(tmp_path, monkeypa
     """
     import proteus.utils.invariants as inv_mod
 
-    assert not hasattr(inv_mod, 'EOS_SMIN_TEMP_CLIP_K')
     assert inv_mod.EOS_SMIN_CLIP_MARGIN_K == pytest.approx(0.5)
 
     cfg = _make_mock_config()
@@ -2231,7 +2231,7 @@ def test_smin_clip_per_run_ps_table_interpolation_and_caching(tmp_path, monkeypa
     )
     assert any(v.name == 'step_dE_inc_frac' for v in v_missing_dir)
 
-    # Caching keyed by (path, mtime): reading two rows on the same file parses the file once.
+    # Caching keyed by (path, head_bytes): reading two rows on the same file parses the file once.
     inv_mod._SMIN_TABLE_CACHE.clear()
     parse_calls = []
     real_parse = inv_mod._parse_smin_temp_block
@@ -2259,19 +2259,94 @@ def test_smin_clip_per_run_ps_table_interpolation_and_caching(tmp_path, monkeypa
         {'P_surf': 1.0}, {'output/data': str(out_data)}
     ) == pytest.approx(323.20787538414403 + 0.5)
     assert len(parse_calls) == 2
+    monkeypatch.setattr(inv_mod, '_parse_smin_temp_block', real_parse)
 
-    # First block must hold S_min = min(S) across the table:
+    # Resolver fallbacks with {'output/data': str(d)} only and {'output': str(run)} only:
+    direct_data = tmp_path / 'direct_out_data'
+    (direct_data / 'spider_eos').mkdir(parents=True)
+    (direct_data / 'spider_eos' / 'temperature_solid.dat').write_text(
+        FIXTURE_PS_RUN_20261018_131253_EA68, encoding='utf-8'
+    )
+    assert inv_mod._smin_clip_temp_k(
+        {'P_surf': 1.0}, {'output/data': str(direct_data)}
+    ) == pytest.approx(302.3416715158806 + 0.5)
+
+    run_root = tmp_path / 'run_root_only'
+    (run_root / 'data' / 'spider_eos').mkdir(parents=True)
+    (run_root / 'data' / 'spider_eos' / 'temperature_solid.dat').write_text(
+        FIXTURE_PS_TUTORIAL_EARTH_MOON, encoding='utf-8'
+    )
+    assert inv_mod._smin_clip_temp_k(
+        {'P_surf': 0.0}, {'output': str(run_root)}
+    ) == pytest.approx(260.0 + 0.5)
+
+    # In-place rewrite with a new table and the same mtime (os.utime) returns the new clip:
+    rewrite_eos = tmp_path / 'eos_rewrite'
+    rewrite_eos.mkdir()
+    rewrite_file = rewrite_eos / 'temperature_solid.dat'
+    rewrite_file.write_text(FIXTURE_PS_RUN_20261018_131253_EA68, encoding='utf-8')
+    orig_stat = rewrite_file.stat()
+    assert inv_mod._smin_clip_temp_k(
+        {'P_surf': 1.0}, {'spider_eos_dir': str(rewrite_eos)}
+    ) == pytest.approx(302.3416715158806 + 0.5)
+    rewrite_file.write_text(FIXTURE_PS_TUTORIAL_EARTH, encoding='utf-8')
+    os.utime(rewrite_file, ns=(orig_stat.st_atime_ns, orig_stat.st_mtime_ns))
+    assert inv_mod._smin_clip_temp_k(
+        {'P_surf': 1.0}, {'spider_eos_dir': str(rewrite_eos)}
+    ) == pytest.approx(323.20787538414403 + 0.5)
+
+    # 2 paths with the same mtime (os.utime) return their own clips:
+    same_mtime_a = tmp_path / 'eos_same_mtime_a'
+    same_mtime_b = tmp_path / 'eos_same_mtime_b'
+    same_mtime_a.mkdir()
+    same_mtime_b.mkdir()
+    file_a = same_mtime_a / 'temperature_solid.dat'
+    file_b = same_mtime_b / 'temperature_solid.dat'
+    file_a.write_text(FIXTURE_PS_RUN_20261018_131253_EA68, encoding='utf-8')
+    file_b.write_text(FIXTURE_PS_TUTORIAL_EARTH, encoding='utf-8')
+    stat_a = file_a.stat()
+    os.utime(file_b, ns=(stat_a.st_atime_ns, stat_a.st_mtime_ns))
+    assert inv_mod._smin_clip_temp_k(
+        {'P_surf': 1.0}, {'spider_eos_dir': str(same_mtime_a)}
+    ) == pytest.approx(302.3416715158806 + 0.5)
+    assert inv_mod._smin_clip_temp_k(
+        {'P_surf': 1.0}, {'spider_eos_dir': str(same_mtime_b)}
+    ) == pytest.approx(323.20787538414403 + 0.5)
+
+    # First block must hold S_min = min(S) across the Wolf & Bower table (+64.0 J/(kg K) block spacing):
     bad_eos = tmp_path / 'eos_bad_order'
     bad_eos.mkdir()
-    bad_text = FIXTURE_PS_LOW_T_SMIN_2599.replace(
-        '5.387347119067780726e-06', '9.999999999999999999e-05'
+    wb_lines = FIXTURE_PS_TUTORIAL_EARTH_MOON.splitlines(keepends=True)
+    swapped_wb_text = ''.join(wb_lines[:5] + wb_lines[8:11] + wb_lines[5:8])
+    bad_file = bad_eos / 'temperature_solid.dat'
+    bad_file.write_text(swapped_wb_text, encoding='utf-8')
+    with pytest.raises(ValueError, match='S_min'):
+        inv_mod._parse_smin_temp_block(bad_file)
+
+    # In report mode, a malformed/swapped table gives no clip (None), logs one warning per path, and does not raise:
+    caplog.clear()
+    row_report = dict(
+        base_row,
+        T_magma=250.0,
+        M_planet=6.0e24,
+        M_atm=1.0e20,
+        M_vol_atm=1.0e20,
+        H2O_kg_atm=1.0e20,
+        M_vaps=0.0,
     )
-    (bad_eos / 'temperature_solid.dat').write_text(bad_text, encoding='utf-8')
-    try:
-        inv_mod._smin_clip_temp_k({'P_surf': 1.0}, {'spider_eos_dir': str(bad_eos)})
-        assert False, 'expected ValueError when first block does not hold S_min'
-    except ValueError as exc:
-        assert 'S_min' in str(exc)
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.utils.invariants'):
+        viols_bad_1 = check_row_invariants(
+            row_report, cfg, hf_all, directories={'spider_eos_dir': str(bad_eos)}
+        )
+        viols_bad_2 = check_row_invariants(
+            row_report, cfg, hf_all, directories={'spider_eos_dir': str(bad_eos)}
+        )
+    step_bad = [v for v in viols_bad_1 if v.name == 'step_dE_inc_frac']
+    assert len(step_bad) == 1
+    assert step_bad[0].tolerance == pytest.approx(0.01)
+    assert len([v for v in viols_bad_2 if v.name == 'step_dE_inc_frac']) == 1
+    table_warns = [r for r in caplog.records if str(bad_file.resolve()) in r.message]
+    assert len(table_warns) == 1
 
 
 def test_lavatmos_overwritten_elements_match_source_and_skip_under_vapourise():
@@ -2291,13 +2366,15 @@ def test_lavatmos_overwritten_elements_match_source_and_skip_under_vapourise():
                     found_input_eles = node.value
                     break
     assert found_input_eles is not None
-    # In lavatmos.py: input_eles = ['H', 'C', 'N', 'S', 'O'] + list(noble_gases)
+    # In lavatmos.py: input_eles = ['H', 'C', 'N', 'S', 'O'] + noble_gases
     assert isinstance(found_input_eles, ast.BinOp)
+    assert isinstance(found_input_eles.right, ast.Name)
+    assert found_input_eles.right.id == 'noble_gases'
     left_elts = [elt.value for elt in found_input_eles.left.elts]
     assert set(left_elts) == set(vol_element_list)
     assert set(inv_mod.LAVATMOS_OVERWRITTEN_ELEMENTS) == set(left_elts) | set(noble_gases)
 
-    # Post-vapourise row where lavatmos.py:584-586 overwrites H_kg_atm and Ar_kg_atm after totals at line 555:
+    # Post-vapourise row: lavatmos.py:567-586 keeps O_kg_atm and overwrites H/C/N/S/noble_gases after line 555:
     cfg_vap_stop = _make_mock_config(mode='stop', fO2_source='from_O_budget', vapourise=True)
     row_vap = {
         'Time': 100.0,
@@ -2348,6 +2425,8 @@ def test_lavatmos_overwritten_elements_match_source_and_skip_under_vapourise():
         ('Si_kg_atm', float('nan'), 'Si_reservoir_closure'),
         ('Si_kg_atm', float('-inf'), 'Si_reservoir_closure'),
         ('Si_kg_total', float('nan'), 'Si_reservoir_closure'),
+        ('Si_kg_total', float('inf'), 'Si_reservoir_closure'),
+        ('Si_kg_total', float('-inf'), 'Si_reservoir_closure'),
         ('O_kg_liquid', float('nan'), 'O_reservoir_closure'),
     ],
 )
@@ -2377,7 +2456,7 @@ def test_non_finite_excluded_element_masses_emit_status_31(
 
 
 def test_rock_vapour_exclusion_gated_on_vapourise_and_real_rows_pass():
-    """Verify rock-vapour exclusion applies only under outgas.vapourise and 4 real non-vapourise rows pass."""
+    """Verify rock-vapour exclusion applies only under outgas.vapourise and real-row false-stop replay passes."""
     from proteus.utils.constants import vap_element_list
 
     cfg_stop = _make_mock_config(
@@ -2412,7 +2491,7 @@ def test_rock_vapour_exclusion_gated_on_vapourise_and_real_rows_pass():
     )
     assert [v.name for v in viols_sol] == ['Mg_reservoir_closure']
 
-    # 3. Replay 1 script-copied row from each of the 4 real non-vapourise runs:
+    # 3. Real-row false-stop replay across 1 script-copied row from each of the 4 real non-vapourise runs:
     rock_cols = [
         f'{e}_kg_{r}' for e in vap_element_list for r in ('atm', 'liquid', 'solid', 'total')
     ]
