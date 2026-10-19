@@ -36,7 +36,7 @@ STEP_GROSS_FLOOR_J: float = 1.0
 # (or P_surf fallback) bounds low-pressure P-S linear interpolation error (<= 9.5e-3 K).
 EOS_SMIN_CLIP_MARGIN_K: float = 0.5
 LAVATMOS_OVERWRITTEN_ELEMENTS: tuple[str, ...] = (*vol_element_list, *noble_gases)
-_SMIN_TABLE_CACHE: dict[tuple[str, bytes], tuple[np.ndarray, np.ndarray, float]] = {}
+_SMIN_TABLE_CACHE: dict[tuple[str, int, int, bytes], tuple[np.ndarray, np.ndarray, float]] = {}
 _SMIN_TABLE_WARNED_PATHS: set[str] = set()
 
 
@@ -416,8 +416,9 @@ def _smin_clip_temp_k(
         return None
     path_key = str(table_path)
     try:
+        st = table_path.stat()
         head_bytes = _read_smin_block_bytes(table_path)
-        cache_key = (path_key, head_bytes)
+        cache_key = (path_key, int(st.st_size), int(st.st_mtime_ns), head_bytes)
         cached = _SMIN_TABLE_CACHE.get(cache_key)
         if cached is None:
             cached = _parse_smin_temp_block(table_path)
