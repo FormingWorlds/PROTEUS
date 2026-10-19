@@ -929,8 +929,12 @@ def check_volatile_invariants(
                 )
 
     outgas_cfg = getattr(config, 'outgas', None)
-    is_calliope = getattr(outgas_cfg, 'module', None) == 'calliope'
-    calliope_mass_thresh = float(outgas_cfg.mass_thresh) if is_calliope else 0.0
+    outgas_module = getattr(outgas_cfg, 'module', None)
+    is_calliope = outgas_module == 'calliope'
+    is_atmodeller = outgas_module == 'atmodeller'
+    outgas_mass_thresh = (
+        float(outgas_cfg.mass_thresh) if (is_calliope or is_atmodeller) else 0.0
+    )
     derived = set(derived_total_elements(config))
     if vapourise:
         derived.update(vap_element_list)
@@ -997,9 +1001,10 @@ def check_volatile_invariants(
             continue
         diff = abs(parts - total)
         pos_total = max(total, 0.0)
+        use_mass_thresh = is_calliope or (is_atmodeller and e in vol_element_list)
         tol_e = (
-            calliope_mass_thresh + closure_rtol * pos_total
-            if is_calliope
+            outgas_mass_thresh + closure_rtol * pos_total
+            if use_mass_thresh
             else max(closure_atol_kg, closure_rtol * pos_total)
         )
         if diff > tol_e:

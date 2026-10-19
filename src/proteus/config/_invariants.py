@@ -102,14 +102,19 @@ class Invariants:
     element_closure_rtol: float
         Relative tolerance on per-element reservoir closure ``atm + magma + solid = total`` [-],
         sized at ``2.5`` times the default ``outgas.solver_rtol = 1.0e-4``.
-        For ``outgas.module = 'calliope'``, the tolerance is ``outgas.mass_thresh + element_closure_rtol * max(total, 0)``
-        (only as tight as ``outgas.mass_thresh``, which is larger than typical noble-gas inventories;
-        a zero-budget leak is seen above ``mass_thresh``).
+        For ``outgas.module = 'calliope'``, and for ``H, C, N, S, O`` under
+        ``outgas.module = 'atmodeller'``, the tolerance is
+        ``outgas.mass_thresh + element_closure_rtol * max(total, 0)`` (only as tight as
+        ``outgas.mass_thresh``; a zero-budget leak is seen above ``mass_thresh``, whereas
+        noble gases under ``atmodeller`` stay strict at
+        ``max(element_closure_atol_kg, element_closure_rtol * max(total, 0))``).
     element_closure_atol_kg: float
-        Absolute floor on per-element reservoir closure when ``outgas.module != 'calliope'`` [kg],
-        and lower-bound floor ``-element_closure_atol_kg`` on volatile and reservoir masses.
-        For ``outgas.module = 'calliope'``, the closure check uses ``outgas.mass_thresh + element_closure_rtol * max(total, 0)``
-        and is only as tight as ``outgas.mass_thresh`` (a zero-budget leak is seen above ``mass_thresh``).
+        Absolute floor on per-element reservoir closure when the ``outgas.mass_thresh``
+        relaxation does not apply [kg], and lower-bound floor ``-element_closure_atol_kg`` on
+        volatile and reservoir masses. For ``outgas.module = 'calliope'``, and for
+        ``H, C, N, S, O`` under ``outgas.module = 'atmodeller'``, the closure check uses
+        ``outgas.mass_thresh + element_closure_rtol * max(total, 0)`` (a zero-budget leak is
+        seen above ``mass_thresh``).
     volatile_gas_sum_rtol: float
         Relative tolerance on volatile gas species sum versus ``M_vol_atm`` [-], matching
         ``coupler.assert_mass_conservation``. Helpfiles without ``M_vol_atm`` fail the
