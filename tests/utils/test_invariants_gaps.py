@@ -1827,8 +1827,8 @@ FIXTURE_PS_TUTORIAL_EARTH_MOON = (
     '# scaling factors (constant) for each column given on line below\n'
     '# 1000000000.0 4824266.84604467 1.0\n'
     '0.000000000000000000e+00\t-1.757487587703751225e-05\t2.600000000000000000e+02\n'
-    '5.000012580964521280e-01\t-1.757487587703751225e-05\t2.611294099185590767e+02\n'
-    '9.999984283795089191e-01\t-1.757487587703751225e-05\t2.622503654916838514e+02\n'
+    '5.000012580964521280e-01\t-1.757487634872620987e-05\t2.611294099185590767e+02\n'
+    '9.999984283795089191e-01\t-1.757487513486408613e-05\t2.622503654916838514e+02\n'
     '0.000000000000000000e+00\t-4.306167780593163587e-06\t2.900000000000000000e+02\n'
     '5.000012580964521280e-01\t-4.306167780593163587e-06\t2.912634485376959219e+02\n'
     '9.999984283795089191e-01\t-4.306167780593163587e-06\t2.925174355485420392e+02\n'
@@ -2360,6 +2360,10 @@ def test_non_finite_excluded_element_masses_emit_status_31(
     assert len(closure_viols) == 1
     assert closure_viols[0].status_code == STATUS_ERROR_MASS_INVARIANT
     assert closure_viols[0].report_only is False
+    if bad_val != bad_val:
+        assert closure_viols[0].value != closure_viols[0].value
+    else:
+        assert closure_viols[0].value == bad_val
 
 
 def test_rock_vapour_exclusion_gated_on_vapourise_and_real_rows_pass():
