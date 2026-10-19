@@ -2037,3 +2037,90 @@ def test_dummy_outgas_skips_noble_gas_reservoir_closure():
     row_neg_noble = dict(base_row, Ar_kg_total=1.0e14, Ar_kg_liquid=-5.0)
     v_neg = check_volatile_invariants(row_neg_noble, cfg_dummy)
     assert [v.name for v in v_neg] == ['Ar_kg_liquid_bounds']
+
+
+def test_smin_clip_temp_k_one_row_and_two_column_tables_warn_once_without_raising(
+    tmp_path, caplog: pytest.LogCaptureFixture
+):
+    """A 1-row or 2-column P-S table gives no clip and one warning per path in report mode."""
+    import pandas as pd
+
+    from proteus.utils.invariants import _smin_clip_temp_k, check_row_invariants
+
+    hdr_lines = (
+        '# 5 2 1\n'
+        '# Pressure [nondim], Entropy [nondim], Quantity [nondim]\n'
+        '# column * scaling factor = SI units\n'
+        '# scaling factors (constant) for each column given on line below\n'
+        '# 1000000000.0 4824266.84604467 1000.0\n'
+    )
+    dir_1row = tmp_path / 'eos_1row'
+    dir_1row.mkdir()
+    (dir_1row / 'temperature_solid.dat').write_text(
+        hdr_lines + '1.0e-04 2.199633e-05 3.023417e-01\n',
+        encoding='utf-8',
+    )
+
+    dir_2col = tmp_path / 'eos_2col'
+    dir_2col.mkdir()
+    (dir_2col / 'temperature_solid.dat').write_text(
+        hdr_lines + '1.0e-04 2.199633e-05\n2.595514e-01 2.199633e-05\n',
+        encoding='utf-8',
+    )
+
+    cfg = _make_mock_config(mode='report')
+    hf_all = pd.DataFrame(
+        [
+            {
+                'Time': 100.0,
+                'E_state_cons_J': 1.0e31,
+                'E_state_heat_cons_J': -1.0e30,
+                'step_dE_F_int_J': -1.0e30,
+                'step_dE_F_cmb_J': 0.0,
+                'step_dE_Q_radio_J': 0.0,
+                'step_dE_Q_tidal_J': 0.0,
+            }
+        ]
+    )
+    step_gross = 1.0e28
+    row = {
+        'Time': 200.0,
+        'P_surf': 1.0,
+        'T_surf': 300.0,
+        'T_magma': 300.0,
+        'Phi_global': 0.0,
+        'M_planet': 6.0e24,
+        'M_atm': 1.0e21,
+        'M_vol_atm': 1.0e21,
+        'M_vaps': 0.0,
+        'H2O_kg_atm': 1.0e21,
+        'E_state_cons_J': 1.0e31,
+        'E_state_heat_cons_J': -1.01e30,
+        'E_residual_cons_J': 0.0,
+        'step_dE_state_heat_J': -step_gross * (1.0 - 0.02),
+        'step_dE_F_int_J': -step_gross,
+        'step_dE_F_cmb_J': 0.0,
+        'step_dE_Q_radio_J': 0.0,
+        'step_dE_Q_tidal_J': 0.0,
+        'solver_residual_J': 0.0,
+        'core_C_eff': 0.0,
+    }
+
+    for label, eos_dir in (('1row', dir_1row), ('2col', dir_2col)):
+        caplog.clear()
+        dirs = {'spider_eos_dir': str(eos_dir)}
+        with caplog.at_level(logging.WARNING, logger='fwl.proteus.utils.invariants'):
+            try:
+                clip = _smin_clip_temp_k(row, dirs)
+                v1 = check_row_invariants(row, cfg, hf_all=hf_all, directories=dirs)
+                v2 = check_row_invariants(row, cfg, hf_all=hf_all, directories=dirs)
+            except (IndexError, ValueError, OSError) as exc:
+                pytest.fail(f'{label} table raised {type(exc).__name__} in report mode: {exc}')
+        assert clip is None
+        assert [v.name for v in v1] == ['step_dE_inc_frac']
+        assert v1[0].tolerance == pytest.approx(cfg.invariants.step_energy_rtol)
+        assert [v.name for v in v2] == ['step_dE_inc_frac']
+        warn_msgs = [
+            r.message for r in caplog.records if 'Failed to load P-S EOS table' in r.message
+        ]
+        assert len(warn_msgs) == 1
