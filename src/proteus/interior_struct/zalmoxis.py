@@ -1998,6 +1998,29 @@ def resolve_paleos_api(key: str, entry: dict) -> None:
     _PALEOS_API_RESOLVED[key] = copy.deepcopy(entry)
 
 
+def _release_errors() -> tuple[type[Exception], ...]:
+    """Return the Zalmoxis errors for a PALEOS table or PALEOS code that is not the pinned
+    release, those this Zalmoxis has; they stop a run unchanged.
+
+    Returns
+    -------
+    tuple of type
+        ``StaleTableError`` and ``PaleosVersionError`` where Zalmoxis defines them.
+    """
+    errors = []
+    for module, name in (
+        ('zalmoxis.eos.registry_guard', 'StaleTableError'),
+        ('zalmoxis.eos.paleos_api', 'PaleosVersionError'),
+    ):
+        try:
+            error = getattr(importlib.import_module(module), name, None)
+        except ImportError:
+            continue
+        if isinstance(error, type) and issubclass(error, BaseException):
+            errors.append(error)
+    return tuple(errors)
+
+
 def check_zalmoxis_eos_files(
     layer_eos_config: dict, mat_dicts: dict, paleos_companions: bool = False
 ) -> None:
@@ -2024,6 +2047,9 @@ def check_zalmoxis_eos_files(
     ZalmoxisMissingEOSFilesError
         If any selected EOS table file is missing, naming every missing
         path and the command that downloads them.
+    StaleTableError, PaleosVersionError
+        Unchanged from Zalmoxis, when a PALEOS table or the PALEOS code is not the
+        pinned release.
     """
     from zalmoxis.eos.dispatch import _is_paleos_api
 
@@ -2046,6 +2072,8 @@ def check_zalmoxis_eos_files(
         if api:
             try:
                 resolve_paleos_api(key, entry)
+            except _release_errors():
+                raise
             except ZalmoxisMissingEOSFilesError:
                 unbuilt.add(f'{key} (the paleos package is not installed)')
                 continue
