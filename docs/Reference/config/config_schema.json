@@ -12386,6 +12386,17 @@
       "doc": "The low-temperature solid extension is run only with the Aragog interior."
     },
     {
+      "validator": "lowt_extension_requires_ps_tables",
+      "module": "_config.py",
+      "attached_to": [
+        "interior_energetics"
+      ],
+      "touches": [
+        "interior_struct"
+      ],
+      "doc": "The low-temperature solid extension acts on the P-S tables that the SPIDER structure skips."
+    },
+    {
       "validator": "obliqua_requires_perturber",
       "module": "_config.py",
       "attached_to": [

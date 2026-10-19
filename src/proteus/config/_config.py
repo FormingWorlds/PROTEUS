@@ -425,6 +425,18 @@ def lowt_extension_requires_aragog(instance, attribute, value):
         )
 
 
+def lowt_extension_requires_ps_tables(instance, attribute, value):
+    """The low-temperature solid extension acts on the P-S tables that the SPIDER structure skips."""
+    struct = instance.interior_struct
+    zalmoxis = getattr(struct, 'zalmoxis', None)
+    if getattr(zalmoxis, 'lowt_extension', False) is True and struct.module == 'spider':
+        raise ValueError(
+            'interior_struct.zalmoxis.lowt_extension = true requires interior_struct.module = '
+            '"zalmoxis" or "dummy", not "spider": the SPIDER structure keeps its static tables and '
+            'never builds the P-S tables the extension acts on.'
+        )
+
+
 def observe_resolved_atmosphere(instance, attribute, value):
     """Synthetic observations require a spatially resolved atmosphere (not dummy)."""
     if (instance.observe.module is not None) and (instance.atmos_clim.module == 'dummy'):
@@ -744,6 +756,7 @@ class Config:
             aragog_needs_melting_curves,
             dummy_struct_mantle_eos,
             lowt_extension_requires_aragog,
+            lowt_extension_requires_ps_tables,
         ),
     )
     outgas: Outgas = field(factory=Outgas, validator=(front_trapping_requires_aragog,))

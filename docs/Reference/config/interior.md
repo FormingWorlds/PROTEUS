@@ -475,6 +475,7 @@ Cross-field constraints enforced when the config file loads:
 - Check the mantle EOS that the dummy structure hands to SPIDER or Aragog.
 - Require a PALEOS or temperature-dependent energetics key for SPIDER or Aragog.
 - The low-temperature solid extension is run only with the Aragog interior.
+- The low-temperature solid extension acts on the P-S tables that the SPIDER structure skips.
 - Interior tidal heating requires an tides module to be enabled.
 - Aragog requires at least one energy transport term to be enabled.
 - Validate Boundary backend's solidus/liquidus ordering.
