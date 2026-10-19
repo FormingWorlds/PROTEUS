@@ -81,8 +81,9 @@ def test_invariants_mode_accepts_valid_choices(valid_mode):
 )
 def test_hypothesis_invariants_mode_rejects_arbitrary_strings(bad_mode):
     """Any string outside ``{'off', 'report', 'stop'}`` is rejected for ``mode``."""
-    with pytest.raises((ValueError, TypeError)):
+    with pytest.raises((ValueError, TypeError)) as exc_info:
         Invariants(mode=bad_mode)
+    assert 'mode' in str(exc_info.value)
 
 
 @settings(max_examples=40, deadline=None)
@@ -99,8 +100,9 @@ def test_hypothesis_strict_positive_tolerances_reject_non_positive_and_non_finit
     field_name, bad_val
 ):
     """Strictly positive tolerance fields reject ``<= 0``, ``NaN``, and ``+/-inf``."""
-    with pytest.raises((ValueError, TypeError)):
+    with pytest.raises((ValueError, TypeError)) as exc_info:
         Invariants(**{field_name: bad_val})
+    assert field_name in str(exc_info.value)
 
 
 @settings(max_examples=40, deadline=None)
@@ -140,8 +142,9 @@ def test_hypothesis_strict_positive_tolerances_accept_valid_positive_floats(
 )
 def test_hypothesis_non_negative_tolerances_reject_negative_and_non_finite(field_name, bad_val):
     """Non-negative tolerance fields reject ``< 0``, ``NaN``, and ``+/-inf``."""
-    with pytest.raises((ValueError, TypeError)):
+    with pytest.raises((ValueError, TypeError)) as exc_info:
         Invariants(**{field_name: bad_val})
+    assert field_name in str(exc_info.value)
 
 
 @settings(max_examples=30, deadline=None)
@@ -155,8 +158,9 @@ def test_hypothesis_non_negative_tolerances_reject_negative_and_non_finite(field
 )
 def test_hypothesis_escape_bound_factor_rejects_below_one_and_non_finite(bad_factor):
     """``escape_bound_factor`` must be finite and ``>= 1.0``."""
-    with pytest.raises((ValueError, TypeError)):
+    with pytest.raises((ValueError, TypeError)) as exc_info:
         Invariants(escape_bound_factor=bad_factor)
+    assert 'escape_bound_factor' in str(exc_info.value)
 
 
 @pytest.mark.parametrize(
@@ -168,8 +172,9 @@ def test_invariants_numeric_fields_reject_booleans_and_non_numeric_types(
     field_name, bad_type_val
 ):
     """Numeric tolerance fields reject booleans, strings, ``None``, and containers."""
-    with pytest.raises((ValueError, TypeError)):
+    with pytest.raises((ValueError, TypeError)) as exc_info:
         Invariants(**{field_name: bad_type_val})
+    assert field_name in str(exc_info.value)
 
 
 def test_invariants_cross_field_ordering_validators():

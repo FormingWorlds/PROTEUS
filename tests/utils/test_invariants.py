@@ -187,6 +187,11 @@ def test_check_energy_invariants_flux_cancellation_passes_under_gross_denom():
         'E_core_residual_frac': 0.0,
     }
     assert check_energy_invariants(hf_row, cfg, hf_all) == []
+    hf_row_large = dict(hf_row, E_residual_cons_J=5.0e24, E_residual_cons_frac=5.0e24 / 2.48e27)
+    assert any(
+        'E_residual_cons_frac' in v.name
+        for v in check_energy_invariants(hf_row_large, cfg, hf_all)
+    )
 
 
 def test_check_energy_invariants_coupled_residual_and_coarse_dt_scaling(tmp_path):

@@ -253,6 +253,9 @@ def test_energy_invariants_flux_terms_q_radio_and_q_tidal():
     violations = check_energy_invariants(hf_row, cfg, hf_all)
     step_viols = [v for v in violations if v.name == 'step_dE_inc_frac']
     assert step_viols == []
+    hf_row_mismatch = dict(hf_row, step_dE_state_heat_J=total_inc - q_rad)
+    viols_mismatch = check_energy_invariants(hf_row_mismatch, cfg, hf_all)
+    assert any(v.name == 'step_dE_inc_frac' for v in viols_mismatch)
 
 
 def test_energy_invariants_history_gross_mixed_sign_abs():
@@ -301,6 +304,9 @@ def test_energy_invariants_history_gross_mixed_sign_abs():
     violations = check_energy_invariants(hf_row, cfg, hf_all)
     cum_viols = [v for v in violations if v.name == 'E_residual_cons_frac_gross']
     assert cum_viols == []
+    hf_row_high = dict(hf_row, E_residual_cons_J=5.0e23)
+    viols_high = check_energy_invariants(hf_row_high, cfg, hf_all)
+    assert any(v.name == 'E_residual_cons_frac_gross' for v in viols_high)
 
 
 def test_energy_invariants_solver_residual_uses_denom_gross_when_net_heat_small():
@@ -340,6 +346,9 @@ def test_energy_invariants_solver_residual_uses_denom_gross_when_net_heat_small(
     violations = check_energy_invariants(hf_row, cfg, hf_all)
     sol_viols = [v for v in violations if v.name == 'solver_residual_frac']
     assert sol_viols == []
+    hf_row_high = dict(hf_row, solver_residual_J=5.0e16)
+    viols_high = check_energy_invariants(hf_row_high, cfg, hf_all)
+    assert any(v.name == 'solver_residual_frac' for v in viols_high)
 
 
 def test_energy_invariants_all_zero_energy_row_and_empty_hf_all():
@@ -528,6 +537,7 @@ def test_non_finite_guards_on_individual_checks(
 
     matching = [v for v in viols if v.name == expected_name]
     assert len(matching) == 1
+    assert matching[0].status_code in (30, 31, 32)
 
 
 # ---------------------------------------------------------------------------
@@ -676,11 +686,9 @@ def test_config_equal_default_swaps_detected():
 @pytest.mark.parametrize('bad_mode', ['warn', 'Stop', 'STOP', ''])
 def test_config_mode_near_misses_rejected(bad_mode):
     """Verify near-miss mode strings are rejected by Invariants validator."""
-    try:
+    with pytest.raises((ValueError, TypeError)) as exc_info:
         Invariants(mode=bad_mode)
-        assert False, f'expected ValueError/TypeError for mode {bad_mode}'
-    except (ValueError, TypeError):
-        pass
+    assert 'mode' in str(exc_info.value)
 
 
 def test_config_non_negative_fields_accept_zero():
@@ -714,6 +722,7 @@ def test_log_summary_emits_nothing_on_clean_run(
 
     inv_records = [r for r in caplog.records if 'Invariant' in r.message]
     assert inv_records == []
+    assert tracker.row_counts == {}
 
 
 def test_exact_threshold_boundary_rows_and_strict_inequalities(tmp_path):
@@ -838,11 +847,12 @@ def test_stop_mode_emits_error_log_line(caplog):
         message='test error log message',
         report_only=False,
     )
-    with caplog.at_level(logging.ERROR, logger='fwl.proteus.utils.invariants'):
-        try:
-            handle_violations([v_stop], mode='stop')
-        except InvariantViolationError:
-            pass
+    with (
+        caplog.at_level(logging.ERROR, logger='fwl.proteus.utils.invariants'),
+        pytest.raises(InvariantViolationError) as exc_info,
+    ):
+        handle_violations([v_stop], mode='stop')
+    assert 'test_stop_err' in str(exc_info.value)
     assert any(
         r.levelno == logging.ERROR and 'Invariant violation [test_stop_err]' in r.getMessage()
         for r in caplog.records
@@ -1416,6 +1426,9 @@ def test_energy_invariants_e_res_frac_gross_exact_boundary():
     }
     viols = check_energy_invariants(hf_row, cfg, hf_all)
     assert not any(v.name == 'E_residual_cons_frac_gross' for v in viols)
+    hf_row_viol = dict(hf_row, E_residual_cons_J=(tol * 1.01) * denom)
+    viols_above = check_energy_invariants(hf_row_viol, cfg, hf_all)
+    assert any(v.name == 'E_residual_cons_frac_gross' for v in viols_above)
 
 
 def test_volatile_invariants_total_at_negative_closure_atol_boundary():
@@ -1435,6 +1448,9 @@ def test_volatile_invariants_total_at_negative_closure_atol_boundary():
     }
     viols = check_volatile_invariants(row, cfg)
     assert not any(v.name == 'H_reservoir_closure' for v in viols)
+    row_viol = dict(row, H_kg_total=-1.0001e10, H_kg_atm=-1.0001e10)
+    viols_beyond = check_volatile_invariants(row_viol, cfg)
+    assert any(v.name == 'H_reservoir_closure' for v in viols_beyond)
 
 
 def test_handle_violations_stop_mode_does_not_raise_on_report_only():
