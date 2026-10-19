@@ -156,8 +156,9 @@ class Zalmoxis:
         50 K on the rows below 12 GPa (file
         ``paleos_mgsio3_tables_pt_proteus_solid_lowT.dat`` next to the solid
         table). PALEOS values are used wherever the solid table has them.
-        Applies to the P-S tables of the PALEOS MgSiO3 mantle; a missing
-        extension file stops the table build. For 1 Earth mass and the default
+        Applies to the P-S tables of the PALEOS MgSiO3 mantle and needs
+        interior_energetics.module = 'aragog'; a missing extension file stops
+        the table build. For 1 Earth mass and the default
         1350 x 280 nodes the coldest tabulated cell is near 67 K, and between
         the two lowest entropy nodes the table temperature deviates from a
         direct inversion by at most 2.6 % up to 0.1 GPa.

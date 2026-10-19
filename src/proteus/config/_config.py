@@ -413,6 +413,18 @@ def front_trapping_requires_aragog(instance, attribute, value):
         )
 
 
+def lowt_extension_requires_aragog(instance, attribute, value):
+    """The low-temperature solid extension is run only with the Aragog interior."""
+    zalmoxis = getattr(instance.interior_struct, 'zalmoxis', None)
+    interior = instance.interior_energetics.module
+    if getattr(zalmoxis, 'lowt_extension', False) is True and interior != 'aragog':
+        raise ValueError(
+            'interior_struct.zalmoxis.lowt_extension = true requires '
+            f'interior_energetics.module = "aragog", not "{interior}": the extension gives the '
+            'solid P-S table more entropy nodes than the melt table.'
+        )
+
+
 def observe_resolved_atmosphere(instance, attribute, value):
     """Synthetic observations require a spatially resolved atmosphere (not dummy)."""
     if (instance.observe.module is not None) and (instance.atmos_clim.module == 'dummy'):
@@ -731,6 +743,7 @@ class Config:
             energetics_needs_a_thermal_mantle_eos,
             aragog_needs_melting_curves,
             dummy_struct_mantle_eos,
+            lowt_extension_requires_aragog,
         ),
     )
     outgas: Outgas = field(factory=Outgas, validator=(front_trapping_requires_aragog,))
