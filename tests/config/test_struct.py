@@ -410,3 +410,23 @@ def test_lowt_extension_property_only_bools_pass():
 
     _check()
     assert Zalmoxis(lowt_extension=False).lowt_extension is False
+
+
+@pytest.mark.parametrize('toml_value', ['"false"', '"true"', '1', '0', '1.0'])
+def test_lowt_extension_from_a_toml_file_refuses_a_value_that_is_not_a_bool(
+    tmp_path, toml_value
+):
+    """The config reader does not cast a TOML string or number for the switch to a bool."""
+    from pathlib import Path
+
+    from proteus.config import read_config_object
+
+    base = (Path(__file__).parents[2] / 'input' / 'all_options.toml').read_text()
+    line = '        lowt_extension        = false'
+    assert base.count(line) == 1
+    path = tmp_path / 'cfg.toml'
+    path.write_text(base.replace(line, f'        lowt_extension        = {toml_value}'))
+    with pytest.raises(Exception, match='lowt_extension'):
+        read_config_object(path)
+    path.write_text(base.replace(line, '        lowt_extension        = true'))
+    assert read_config_object(path).interior_struct.zalmoxis.lowt_extension is True
