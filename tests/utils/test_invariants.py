@@ -1828,3 +1828,92 @@ def test_main_loop_logs_invariant_summary_on_module_exception(
     assert len(summary_msgs) == 1
     assert '2 row(s) with violations' in summary_msgs[0]
     assert 'Phi_global_bounds=2 (max=1.500000e+00)' in summary_msgs[0]
+
+
+def test_init_stage_structure_desync_reports_without_stopping_in_stop_mode(
+    caplog: pytest.LogCaptureFixture,
+):
+    """Init-stage rows before the baseline structure solve report desync without stopping in stop mode."""
+    from proteus.utils.invariants import (
+        InvariantTracker,
+        InvariantViolationError,
+        check_row_invariants,
+        check_structure_invariants,
+    )
+
+    cfg = _make_mock_config(mode='stop')
+    tracker = InvariantTracker()
+    row0 = {
+        'Time': 0.0,
+        'T_surf': 3500.0,
+        'T_magma': 3500.0,
+        'P_surf': 100.0,
+        'Phi_global': 1.0,
+        'M_atm': 1.0e21,
+        'M_planet': 7.973078065748122e24,
+        'M_vol_atm': 1.0e21,
+        'M_vaps': 0.0,
+        'H2O_kg_atm': 1.0e21,
+        'M_int': 6.0320092652009745e24,
+        'M_core': 1.9410688005471474e24,
+        'R_int': 6.365225673558478e6,
+        'R_core': 3.504850166865783e6,
+        'struct_mass_desync_frac': 1.123330005012071e-2,
+    }
+
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.utils.invariants'):
+        try:
+            v0 = check_row_invariants(row0, cfg, tracker=tracker)
+        except InvariantViolationError as exc:
+            pytest.fail(f'init-stage row 0 raised InvariantViolationError: {exc}')
+    assert len(v0) == 1
+    assert v0[0].name == 'struct_mass_desync_frac'
+    assert v0[0].report_only is True
+    report_lines = [
+        r.message
+        for r in caplog.records
+        if 'Invariant report [struct_mass_desync_frac]' in r.message
+    ]
+    assert len(report_lines) == 1
+
+    # Final init-stage iteration at Time=1.0 yr stays report_only before baseline structure solve
+    row3 = dict(row0, Time=1.0)
+    try:
+        v3 = check_row_invariants(row3, cfg, tracker=tracker, init_stage=True)
+    except InvariantViolationError as exc:
+        pytest.fail(f'init-stage row 3 raised InvariantViolationError: {exc}')
+    assert len(v3) == 1
+    assert v3[0].report_only is True
+
+    # Post-baseline row 4 at Time=2.0 yr with resolved baseline structure passes cleanly
+    row4 = dict(
+        row0,
+        Time=2.0,
+        M_int=5.970155248957322e24,
+        M_core=1.9409866756544637e24,
+        R_int=6.371213878930453e6,
+        R_core=3.504800733997288e6,
+        struct_mass_desync_frac=1.7210924886631676e-3,
+    )
+    assert check_row_invariants(row4, cfg, tracker=tracker, init_stage=False) == []
+
+    # The same 1.123e-2 desync on a post-baseline row stops in stop mode
+    post_bad = dict(row0, Time=2.0)
+    with pytest.raises(InvariantViolationError) as exc_info:
+        check_row_invariants(post_bad, cfg, tracker=tracker, init_stage=False)
+    assert exc_info.value.status_code == 31
+    assert exc_info.value.invariant_name == 'struct_mass_desync_frac'
+
+    # Target mismatches on an init-stage row are also report-only, while NaN still stops
+    init_targets = dict(
+        row0,
+        M_int_target=5.970155248957322e24,
+        M_core_target=1.800e24,
+    )
+    v_init_t = check_structure_invariants(init_targets, cfg, init_stage=True)
+    assert [v.name for v in v_init_t] == [
+        'struct_mass_desync_frac',
+        'M_int_target_rel_err',
+        'M_core_target_rel_err',
+    ]
+    assert all(v.report_only for v in v_init_t)
