@@ -2282,3 +2282,87 @@ def test_crossing_suppressed_names_log_once_across_n_identical_rows(
         )
         assert '(count=1)' in msgs[0]
         assert tracker.row_counts[name] == n_rows
+
+
+def test_smin_clip_temp_k_uses_fixed_aragog_mesh_surface_pressure_with_p_surf_fallback(
+    tmp_path,
+):
+    """Evaluate T(p, S_min) at the fixed Aragog mesh surface pressure, falling back to P_surf only when no solver state exists."""
+    from types import SimpleNamespace
+
+    import pandas as pd
+
+    from proteus.utils.invariants import _smin_clip_temp_k, check_row_invariants
+
+    eos_dir = tmp_path / 'eos'
+    eos_dir.mkdir()
+    table_text = (
+        '# 5 2 1\n'
+        '# Pressure [nondim], Entropy [nondim], Quantity [nondim]\n'
+        '# column * scaling factor = SI units\n'
+        '# scaling factors (constant) for each column given on line below\n'
+        '# 1000000000.0 4824266.84604467 1000.0\n'
+        '1.0e-04 2.199633e-05 3.000000e-01\n'
+        '1.0e+01 2.199633e-05 4.000000e-01\n'
+    )
+    (eos_dir / 'temperature_solid.dat').write_text(table_text, encoding='utf-8')
+    dirs = {'spider_eos_dir': str(eos_dir), 'output': str(tmp_path)}
+
+    # Solver mesh surface pressure fixed at 1 bar (1e5 Pa -> T_smin = 300.0 K, clip = 300.5 K),
+    # while row P_surf has evolved to 1e5 bar (1e10 Pa -> T_smin = 400.0 K, clip = 400.5 K).
+    interior_o = SimpleNamespace(
+        aragog_solver=SimpleNamespace(
+            parameters=SimpleNamespace(mesh=SimpleNamespace(surface_pressure=1.0e5))
+        )
+    )
+    row = {
+        'Time': 200.0,
+        'E_state_cons_J': 1.0e31,
+        'E_state_heat_cons_J': -1.03e30,
+        'step_dE_state_heat_J': -3.0e28,
+        'step_dE_F_int_J': -1.0e30,
+        'step_dE_F_cmb_J': 0.0,
+        'step_dE_Q_radio_J': 0.0,
+        'step_dE_Q_tidal_J': 0.0,
+        'T_magma': 350.0,
+        'T_surf': 300.0,
+        'P_surf': 1.0e5,
+        'Phi_global': 0.0,
+        'M_planet': 6.0e24,
+        'M_int': 6.0e24,
+        'M_int_target': 6.0e24,
+        'M_core': 2.0e24,
+        'M_core_target': 2.0e24,
+        'M_atm': 1.0e21,
+        'M_vol_atm': 1.0e21,
+        'M_vaps': 0.0,
+    }
+    # With solver state present: evaluated at mesh surface_pressure = 1e5 Pa -> clip = 300.5 K
+    assert _smin_clip_temp_k(row, dirs, interior_o=interior_o) == pytest.approx(300.5)
+    # Without solver state: falls back to row P_surf = 1e5 bar (1e10 Pa) -> clip = 400.5 K
+    assert _smin_clip_temp_k(row, dirs, interior_o=None) == pytest.approx(400.5)
+
+    # Through check_row_invariants: T_magma = 350.0 K is above the 300.5 K mesh clip, so
+    # step_energy_rtol (0.01) applies when interior_o is passed, whereas fallback (400.5 K)
+    # would treat 350.0 K as on the S_min clip (step_energy_smin_rtol = 0.05).
+    cfg = _make_mock_config(mode='report')
+    hf_all = pd.DataFrame(
+        [
+            {
+                'Time': 100.0,
+                'E_state_cons_J': 1.0e31,
+                'E_state_heat_cons_J': -1.0e30,
+                'step_dE_F_int_J': -1.0e30,
+                'step_dE_F_cmb_J': 0.0,
+                'step_dE_Q_radio_J': 0.0,
+                'step_dE_Q_tidal_J': 0.0,
+            }
+        ]
+    )
+    # Set step_dE_state_heat_J = -9.7e29 J vs dE_inc_cons = -1.0e30 J -> step_err = 0.03 (between 0.01 and 0.05)
+    row_step = dict(row, step_dE_state_heat_J=-9.7e29)
+    viols_with_solver = check_row_invariants(
+        row_step, cfg, hf_all=hf_all, directories=dirs, interior_o=interior_o
+    )
+    assert [v.name for v in viols_with_solver] == ['step_dE_inc_frac']
+    assert viols_with_solver[0].tolerance == pytest.approx(cfg.invariants.step_energy_rtol)
