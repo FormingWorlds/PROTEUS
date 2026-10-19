@@ -12,6 +12,7 @@ from proteus.escape.wrapper import readable_total
 from proteus.outgas.trapping import derived_total_elements
 from proteus.utils.constants import (
     element_list,
+    vap_element_list,
     vol_gas_list,
 )
 from proteus.utils.helper import UpdateStatusfile
@@ -27,6 +28,7 @@ STATUS_ERROR_ENERGY_INVARIANT: int = 30
 STATUS_ERROR_MASS_INVARIANT: int = 31
 STATUS_ERROR_STATE_BOUNDS_INVARIANT: int = 32
 STEP_GROSS_FLOOR_J: float = 1.0
+# 0.5 K above the 300.488 K surface temperature at S_min = 106.116 J/(kg K) in PALEOS-2phase MgSiO3
 EOS_SMIN_TEMP_CLIP_K: float = 301.0
 
 
@@ -59,11 +61,17 @@ class InvariantViolation:
     report_only: bool = False
 
 
-_CROSSING_SUPPRESSED_NAMES: frozenset[str] = frozenset(
+_VALUE_CHANGE_RELOG_NAMES: frozenset[str] = frozenset(
     {
-        'E_residual_cons_frac_gross',
         'struct_mass_desync_frac',
         'M_core_target_rel_err',
+        'M_int_target_rel_err',
+    }
+)
+_CROSSING_SUPPRESSED_NAMES: frozenset[str] = _VALUE_CHANGE_RELOG_NAMES | frozenset(
+    {
+        'E_residual_cons_frac_gross',
+        'escape_cumulative_bound',
     }
 )
 
@@ -76,6 +84,8 @@ class InvariantTracker:
     ----------
     active_names : set[str]
         Invariant names violated on the immediately preceding row.
+    active_state : dict[tuple[str, bool], float]
+        Mapping from ``(name, report_only)`` to the violation value on the preceding row.
     row_counts : dict[str, int]
         Total number of rows in the violating state per invariant name (including
         carried-forward rows between Zalmoxis structure updates).
@@ -89,6 +99,7 @@ class InvariantTracker:
     """
 
     active_names: set[str] = field(default_factory=set)
+    active_state: dict[tuple[str, bool], float] = field(default_factory=dict)
     row_counts: dict[str, int] = field(default_factory=dict)
     max_values: dict[str, float] = field(default_factory=dict)
     nonfinite_counts: dict[str, int] = field(default_factory=dict)
@@ -98,10 +109,24 @@ class InvariantTracker:
         """Record ``violations`` for the current row and return rising-edge names."""
         if not violations:
             self.active_names.clear()
+            self.active_state.clear()
             return set()
         self.rows_with_violations += 1
         current = {v.name for v in violations}
-        rising = current - self.active_names
+        rising: set[str] = set()
+        next_state: dict[tuple[str, bool], float] = {}
+        for v in violations:
+            key = (v.name, v.report_only)
+            next_state[key] = v.value
+            if key not in self.active_state:
+                rising.add(v.name)
+            elif v.name in _VALUE_CHANGE_RELOG_NAMES:
+                prev_val = self.active_state[key]
+                same_val = (
+                    not np.isfinite(v.value) and not np.isfinite(prev_val)
+                ) or v.value == prev_val
+                if not same_val:
+                    rising.add(v.name)
         for name in current:
             self.row_counts[name] = self.row_counts.get(name, 0) + 1
         for v in violations:
@@ -115,6 +140,7 @@ class InvariantTracker:
                 if v.name not in self.max_values:
                     self.max_values[v.name] = mag
         self.active_names = current
+        self.active_state = next_state
         return rising
 
     def log_summary(self) -> None:
@@ -757,7 +783,7 @@ def check_volatile_invariants(
     outgas_cfg = getattr(config, 'outgas', None)
     is_calliope = getattr(outgas_cfg, 'module', None) == 'calliope'
     calliope_mass_thresh = float(outgas_cfg.mass_thresh) if is_calliope else 0.0
-    derived = set(derived_total_elements(config))
+    derived = set(derived_total_elements(config)) | set(vap_element_list)
     if vapourise:
         derived.add('O')
     for e in element_list:

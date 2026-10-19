@@ -529,7 +529,7 @@ def test_check_structure_invariants_interior_and_core_mass_targets():
     from proteus.utils.invariants import check_structure_invariants
 
     cfg = _make_mock_config()
-    # A 2.06e-2 core mass difference (above 2.0e-2 and a627_default's 1.565e-2, below 2.5e-2) passes:
+    # A 2.06e-2 core mass difference (above 2.0e-2 and the 1.565e-2 Zalmoxis maximum, below 2.5e-2) passes:
     hf_ok_core = {
         'Time': 1500.0,
         'struct_mass_desync_frac': 3.0e-3,

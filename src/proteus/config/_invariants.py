@@ -58,7 +58,9 @@ class Invariants:
     step_energy_smin_rtol: float
         Relative tolerance on per-step energy residual increment normalized by per-step gross flux
         when ``T_magma <= 301 K`` (0.5 K above the ``300.488 K`` surface-pressure temperature at
-        the ``S_min`` floor of the Wolf & Bower 2018 1 TPa MgSiO3 P-S table) [-] (report-only).
+        the ``S_min = 106.116 J kg^-1 K^-1`` floor of the PALEOS-2phase ``MgSiO3`` solid EOS table
+        ``zalmoxis_eos/EOS_PALEOS_MgSiO3/paleos_mgsio3_tables_pt_proteus_solid.dat``, and above the
+        ``260.0 K`` ``S_min`` floor of the Wolf & Bower 2018 1 TPa ``MgSiO3`` solid table) [-] (report-only).
         Sized above the ``4.39%`` maximum observed on the ``301 K`` temperature clip in
         post-closure runs.
     solver_residual_rtol: float
@@ -81,9 +83,10 @@ class Invariants:
         sized above the ``2.05e-3`` maximum observed on Zalmoxis structure update rows.
     core_mass_target_rtol: float
         Relative tolerance on ``M_core`` versus ``M_core_target`` at a structure update row [-],
-        sized at ``1.6`` times the ``1.565e-2`` maximum radial-trapezoidal core mass difference
-        on ``a627_default`` (99th percentile ``1.518e-2``; ``1.004e-2`` maximum and ``9.79e-3``
-        99th percentile across 68 finished post-closure default runs).
+        sized at about ``1.6`` times the ``1.565e-2`` maximum radial-trapezoidal core mass
+        difference on a default 1 M_Earth Zalmoxis structure run (99th percentile ``1.518e-2``;
+        ``1.004e-2`` maximum and ``9.79e-3`` 99th percentile across 68 finished post-closure
+        default runs).
     element_closure_rtol: float
         Relative tolerance on per-element reservoir closure ``atm + magma + solid = total`` [-],
         sized at ``2.5`` times the default ``outgas.solver_rtol = 1.0e-4``.
