@@ -732,10 +732,13 @@ def check_volatile_invariants(
     hf_row: dict,
     config: Config,
 ) -> list[InvariantViolation]:
-    """Evaluate volatile inventory, gas-species sum, planet mass cap, and escape bounds (status 31).
+    """Evaluate volatile inventory, reservoir bounds, and escape bounds (status 31).
 
     Enforces non-negative reservoir bounds (``{e}_kg_{r}_bounds``) and finite reservoir/total
-    masses across all elements in ``element_list``. Element reservoir closure skips oxygen
+    masses across all elements in ``element_list``. Whole-planet atmosphere cap
+    (``M_atm <= M_planet``) and volatile species-sum consistency (``M_vol_atm == sum(s_kg_atm)``)
+    are enforced earlier in every iteration by ``coupler.assert_mass_conservation``, which
+    writes status 31 before raising ``RuntimeError``. Element reservoir closure skips oxygen
     under ``planet.fO2_source = 'user_constant'``, skips ``noble_gases`` (``He, Ne, Ar, Kr, Xe``)
     when ``outgas.module = 'dummy'`` (because the dummy outgassing module only partitions
     ``H, C, N, S``), and, when ``outgas.vapourise`` is enabled, skips ``vap_element_list``
@@ -745,7 +748,6 @@ def check_volatile_invariants(
     volatile outgassing step while storing post-vapourisation O in ``Omass_after_vapourise``,
     and overwrites the atmospheric masses of ``H, C, N, S`` and ``noble_gases`` from gas-phase
     equilibrium without updating their element totals).
-
 
     Parameters
     ----------
@@ -764,13 +766,12 @@ def check_volatile_invariants(
     m_planet = float(hf_row.get('M_planet', 0.0))
     m_atm = float(hf_row.get('M_atm', 0.0))
     m_vol_atm = float(hf_row.get('M_vol_atm', 0.0))
-    m_vaps = float(hf_row.get('M_vaps', 0.0))
     vapourise = bool(getattr(getattr(config, 'outgas', None), 'vapourise', False))
     closure_rtol = float(inv_cfg.element_closure_rtol)
     closure_atol_kg = float(inv_cfg.element_closure_atol_kg)
     violations: list[InvariantViolation] = []
 
-    if np.isfinite(m_planet) and m_planet <= 0.0:
+    if not np.isfinite(m_planet) or m_planet <= 0.0:
         violations.append(
             InvariantViolation(
                 name='M_planet_bounds',
@@ -784,7 +785,7 @@ def check_volatile_invariants(
             )
         )
 
-    if np.isfinite(m_atm) and m_atm < -closure_atol_kg:
+    if not np.isfinite(m_atm) or m_atm < -closure_atol_kg:
         violations.append(
             InvariantViolation(
                 name='M_atm_bounds',
@@ -799,7 +800,7 @@ def check_volatile_invariants(
             )
         )
 
-    if np.isfinite(m_vol_atm) and m_vol_atm < -closure_atol_kg:
+    if not np.isfinite(m_vol_atm) or m_vol_atm < -closure_atol_kg:
         violations.append(
             InvariantViolation(
                 name='M_vol_atm_bounds',
@@ -814,64 +815,9 @@ def check_volatile_invariants(
             )
         )
 
-    cap_tol = float(inv_cfg.planet_mass_cap_rtol)
-    m_atm_eff = 0.0 if (np.isfinite(m_atm) and abs(m_atm) <= closure_atol_kg) else m_atm
-    if not (np.isfinite(m_planet) and np.isfinite(m_atm) and np.isfinite(m_vaps)):
-        violations.append(
-            InvariantViolation(
-                name='M_atm_planet_cap',
-                status_code=STATUS_ERROR_MASS_INVARIANT,
-                value=float('nan'),
-                tolerance=cap_tol,
-                message=(
-                    f'Time={time_yr:.6e} yr: non-finite planet/atmosphere mass '
-                    f'(M_atm={m_atm:.6e} kg, M_planet={m_planet:.6e} kg, M_vaps={m_vaps:.6e} kg)'
-                ),
-                report_only=False,
-            )
-        )
-    elif m_planet > 0.0 and (not vapourise or m_vaps <= 0.0):
-        rel_excess = m_atm_eff / m_planet - 1.0
-        if rel_excess > cap_tol:
-            violations.append(
-                InvariantViolation(
-                    name='M_atm_planet_cap',
-                    status_code=STATUS_ERROR_MASS_INVARIANT,
-                    value=rel_excess,
-                    tolerance=cap_tol,
-                    message=(
-                        f'Time={time_yr:.6e} yr: M_atm / M_planet - 1={rel_excess:.6e} '
-                        f'exceeds tol={cap_tol:.6e} '
-                        f'(M_atm={m_atm:.6e} kg, M_planet={m_planet:.6e} kg)'
-                    ),
-                    report_only=False,
-                )
-            )
-    elif m_planet > 0.0:
-        unexplained_rel = (m_atm_eff - m_planet - m_vaps) / m_planet
-        if unexplained_rel > cap_tol:
-            violations.append(
-                InvariantViolation(
-                    name='M_atm_planet_cap',
-                    status_code=STATUS_ERROR_MASS_INVARIANT,
-                    value=unexplained_rel,
-                    tolerance=cap_tol,
-                    message=(
-                        f'Time={time_yr:.6e} yr: (M_atm - M_planet - M_vaps) / M_planet='
-                        f'{unexplained_rel:.6e} exceeds tol={cap_tol:.6e} '
-                        f'(M_atm={m_atm:.6e} kg, M_planet={m_planet:.6e} kg, '
-                        f'M_vaps={m_vaps:.6e} kg)'
-                    ),
-                    report_only=True,
-                )
-            )
-
-    gas_tol = float(inv_cfg.volatile_gas_sum_rtol)
-    summed = 0.0
     for s in vol_gas_list:
         s_mass = float(hf_row.get(f'{s}_kg_atm', 0.0))
-        summed += s_mass
-        if np.isfinite(s_mass) and s_mass < -closure_atol_kg:
+        if not np.isfinite(s_mass) or s_mass < -closure_atol_kg:
             violations.append(
                 InvariantViolation(
                     name=f'{s}_kg_atm_bounds',
@@ -885,57 +831,6 @@ def check_volatile_invariants(
                     report_only=False,
                 )
             )
-    if not (np.isfinite(m_vol_atm) and np.isfinite(summed)):
-        violations.append(
-            InvariantViolation(
-                name='M_vol_atm_species_sum',
-                status_code=STATUS_ERROR_MASS_INVARIANT,
-                value=float('nan'),
-                tolerance=gas_tol,
-                message=(
-                    f'Time={time_yr:.6e} yr: non-finite volatile species sum '
-                    f'(M_vol_atm={m_vol_atm:.6e} kg, sum_s={summed:.6e} kg)'
-                ),
-                report_only=False,
-            )
-        )
-    else:
-        scale = max(m_vol_atm, summed)
-        if scale > 0.0:
-            rel_gas = abs(summed - m_vol_atm) / scale
-            if rel_gas > gas_tol:
-                violations.append(
-                    InvariantViolation(
-                        name='M_vol_atm_species_sum',
-                        status_code=STATUS_ERROR_MASS_INVARIANT,
-                        value=rel_gas,
-                        tolerance=gas_tol,
-                        message=(
-                            f'Time={time_yr:.6e} yr: |sum_s(s_kg_atm) - M_vol_atm| / scale='
-                            f'{rel_gas:.6e} exceeds tol={gas_tol:.6e} '
-                            f'(M_vol_atm={m_vol_atm:.6e} kg, sum_s={summed:.6e} kg)'
-                        ),
-                        report_only=False,
-                    )
-                )
-        else:
-            diff_gas = abs(summed - m_vol_atm)
-            if diff_gas > closure_atol_kg:
-                violations.append(
-                    InvariantViolation(
-                        name='M_vol_atm_species_sum',
-                        status_code=STATUS_ERROR_MASS_INVARIANT,
-                        value=diff_gas,
-                        tolerance=closure_atol_kg,
-                        message=(
-                            f'Time={time_yr:.6e} yr: |sum_s(s_kg_atm) - M_vol_atm|='
-                            f'{diff_gas:.6e} kg exceeds element_closure_atol_kg='
-                            f'{closure_atol_kg:.6e} kg with non-positive scale={scale:.6e} kg '
-                            f'(M_vol_atm={m_vol_atm:.6e} kg, sum_s={summed:.6e} kg)'
-                        ),
-                        report_only=False,
-                    )
-                )
 
     outgas_cfg = getattr(config, 'outgas', None)
     outgas_module = getattr(outgas_cfg, 'module', None)

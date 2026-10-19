@@ -12169,7 +12169,7 @@
           "value": 0.0
         }
       ],
-      "description": "Warning threshold on ``struct_mass_desync_frac`` [-], sized above the ``4.71e-3`` maximum observed in post-closure runs.",
+      "description": "Warning threshold on ``struct_mass_desync_frac`` [-], sized above the ``4.71e-3`` post-baseline maximum (``3.33e-3`` maximum after the post-init baseline structure solve when non-default structure configurations are included; init-stage rows before the baseline solve reach ``1.123e-2`` and are report-only).",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -12190,7 +12190,7 @@
           "value": 0.0
         }
       ],
-      "description": "Stop threshold on ``struct_mass_desync_frac`` [-], sized at twice the ``5.0e-3`` warning threshold.",
+      "description": "Stop threshold on post-init ``struct_mass_desync_frac`` [-], sized at twice the ``5.0e-3`` warning threshold (init-stage rows before the post-init baseline structure solve are report-only).",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -12253,7 +12253,7 @@
           "value": 0.0
         }
       ],
-      "description": "Relative tolerance on per-element reservoir closure ``atm + magma + solid = total`` [-], sized at ``2.5`` times the default ``outgas.solver_rtol = 1.0e-4``. For ``outgas.module = 'calliope'``, the tolerance is ``outgas.mass_thresh + element_closure_rtol * max(total, 0)`` (only as tight as ``outgas.mass_thresh``, which is larger than typical noble-gas inventories; a zero-budget leak is seen above ``mass_thresh``).",
+      "description": "Relative tolerance on per-element reservoir closure ``atm + magma + solid = total`` [-], sized at ``2.5`` times the default ``outgas.solver_rtol = 1.0e-4``. For ``outgas.module = 'calliope'``, and for ``H, C, N, S, O`` under ``outgas.module = 'atmodeller'``, the tolerance is ``outgas.mass_thresh + element_closure_rtol * max(total, 0)`` (only as tight as ``outgas.mass_thresh``; a zero-budget leak is seen above ``mass_thresh``, whereas noble gases under ``atmodeller`` stay strict at ``max(element_closure_atol_kg, element_closure_rtol * max(total, 0))``). Under ``outgas.module = 'dummy'``, noble gases (``He, Ne, Ar, Kr, Xe``) skip reservoir closure because the dummy outgassing module only partitions ``H, C, N, S``.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -12274,49 +12274,7 @@
           "value": 0.0
         }
       ],
-      "description": "Absolute floor on per-element reservoir closure when ``outgas.module != 'calliope'`` [kg], and lower-bound floor ``-element_closure_atol_kg`` on volatile and reservoir masses. For ``outgas.module = 'calliope'``, the closure check uses ``outgas.mass_thresh + element_closure_rtol * max(total, 0)`` and is only as tight as ``outgas.mass_thresh`` (a zero-budget leak is seen above ``mass_thresh``).",
-      "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
-      "group_qualifier": null
-    },
-    {
-      "path": "invariants.volatile_gas_sum_rtol",
-      "toml_section": "invariants",
-      "class": "Invariants",
-      "type": "float",
-      "accepts_none": false,
-      "default": "1e-06",
-      "choices": null,
-      "bounds": [
-        {
-          "op": ">",
-          "value": 0.0
-        }
-      ],
-      "description": "Relative tolerance on volatile gas species sum versus ``M_vol_atm`` [-], matching ``coupler.assert_mass_conservation``. Helpfiles without ``M_vol_atm`` fail the ``M_vol_atm_species_sum`` check.",
-      "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
-      "group_qualifier": null
-    },
-    {
-      "path": "invariants.planet_mass_cap_rtol",
-      "toml_section": "invariants",
-      "class": "Invariants",
-      "type": "float",
-      "accepts_none": false,
-      "default": "1e-06",
-      "choices": null,
-      "bounds": [
-        {
-          "op": ">=",
-          "value": 0.0
-        }
-      ],
-      "description": "Relative tolerance on ``M_atm <= M_planet`` [-], matching ``coupler.assert_mass_conservation``.",
+      "description": "Absolute floor on per-element reservoir closure when the ``outgas.mass_thresh`` relaxation does not apply [kg], and lower-bound floor ``-element_closure_atol_kg`` on volatile and reservoir masses. For ``outgas.module = 'calliope'``, and for ``H, C, N, S, O`` under ``outgas.module = 'atmodeller'``, the closure check uses ``outgas.mass_thresh + element_closure_rtol * max(total, 0)`` (a zero-budget leak is seen above ``mass_thresh``).",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,

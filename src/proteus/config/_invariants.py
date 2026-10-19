@@ -117,12 +117,6 @@ class Invariants:
         ``H, C, N, S, O`` under ``outgas.module = 'atmodeller'``, the closure check uses
         ``outgas.mass_thresh + element_closure_rtol * max(total, 0)`` (a zero-budget leak is
         seen above ``mass_thresh``).
-    volatile_gas_sum_rtol: float
-        Relative tolerance on volatile gas species sum versus ``M_vol_atm`` [-], matching
-        ``coupler.assert_mass_conservation``. Helpfiles without ``M_vol_atm`` fail the
-        ``M_vol_atm_species_sum`` check.
-    planet_mass_cap_rtol: float
-        Relative tolerance on ``M_atm <= M_planet`` [-], matching ``coupler.assert_mass_conservation``.
     escape_bound_factor: float
         Multiplicative bound on element loss relative to ``esc_kg_cumulative`` [-] when
         ``planet.fO2_source = 'from_O_budget'`` (report-only because sub-threshold element
@@ -160,8 +154,6 @@ class Invariants:
 
     element_closure_rtol: float = field(default=2.5e-4, validator=(finite_float, gt(0.0)))
     element_closure_atol_kg: float = field(default=1.0, validator=(finite_float, gt(0.0)))
-    volatile_gas_sum_rtol: float = field(default=1.0e-6, validator=(finite_float, gt(0.0)))
-    planet_mass_cap_rtol: float = field(default=1.0e-6, validator=(finite_float, ge(0.0)))
     escape_bound_factor: float = field(default=1.5, validator=(finite_float, ge(1.0)))
     escape_bound_atol_kg: float = field(default=1.0e3, validator=(finite_float, ge(0.0)))
 

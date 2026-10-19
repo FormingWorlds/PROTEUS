@@ -638,6 +638,7 @@ def assert_mass_conservation(
     derived_elements: tuple[str, ...] = (),
     closure_rtol: float | None = None,
     closure_atol_kg: float = 1.0,
+    directories: dict | None = None,
 ) -> None:
     """Runtime invariant: the per-species kg_atm sum matches M_vol_atm, and
     M_atm <= M_planet unless the caller disables that half.
@@ -691,6 +692,9 @@ def assert_mass_conservation(
         total. It admits the trace melt mass the chemistry can leave of an
         element the run does not carry, a few hundredths of a kilogram, and
         nothing a bookkeeping error produces.
+    directories : Mapping[str, str] or None
+        Optional simulation directories dictionary; when provided with an
+        ``'output'`` key, writes status code ``31`` before raising ``RuntimeError``.
 
     Raises
     ------
@@ -705,28 +709,23 @@ def assert_mass_conservation(
     M_planet = float(hf_row.get('M_planet', 0.0))
     M_vol_atm = float(hf_row.get('M_vol_atm', 0.0))
 
-    # A non-finite mass slips past every comparison below, because both
-    # `nan <= 0.0` and `nan > nan` are False, so neither the short-circuit nor
-    # the breach test fires and the row reports clean. Refuse it here instead of
-    # returning a verdict on a row this cannot actually check.
+    # Refuse non-finite masses before any comparison, since nan <= 0.0 and
+    # nan > nan are both False.
     for name, value in (
         ('M_atm', M_atm),
         ('M_planet', M_planet),
         ('M_vol_atm', M_vol_atm),
     ):
         if not np.isfinite(value):
+            if directories is not None and 'output' in directories:
+                UpdateStatusfile(directories, 31)
             raise RuntimeError(
                 f'Mass conservation cannot be checked: {name}={value} is not '
                 f'finite. An upstream step wrote a non-finite mass, so the '
                 f'reservoir it came from needs checking before the run goes on.'
             )
 
-    # Pre-IC short-circuit: M_planet == 0 means the structure solve has
-    # not yet populated the hf_row. The invariants are not meaningful
-    # before update_planet_mass has run, so we skip silently. The runtime
-    # call site fires this AFTER update_planet_mass so M_planet > 0 in
-    # normal operation; this branch only protects against direct invocation
-    # in tests or in odd resume paths.
+    # Pre-IC short-circuit when update_planet_mass has not yet populated hf_row.
     if M_planet <= 0.0:
         return
 
@@ -736,6 +735,8 @@ def assert_mass_conservation(
     # Invariant 1: atmosphere mass <= total planet mass.
     if require_atm_le_planet or M_vaps <= 0.0:
         if breached:
+            if directories is not None and 'output' in directories:
+                UpdateStatusfile(directories, 31)
             raise RuntimeError(
                 f'Mass conservation violation (issue #677 regression?): '
                 f'M_atm={M_atm:.3e} kg exceeds M_planet={M_planet:.3e} kg '
@@ -745,9 +746,7 @@ def assert_mass_conservation(
                 f'calc_target_elemental_inventories, and load_zalmoxis_configuration.'
             )
     else:
-        # Vapourised rock can cause the atmosphere mass to exceed past
-        # the planet mass, so an excess larger than M_vaps is not explained by
-        # vapourisation and should raise a warning here.
+        # With vapourisation enabled, warn if the excess over M_planet exceeds M_vaps.
         if M_atm - M_planet > M_vaps + M_planet * atol_frac:
             log.warning(
                 'Atmosphere mass exceeds planet mass by %.3e kg, more than the '
@@ -757,20 +756,15 @@ def assert_mass_conservation(
                 M_vaps,
             )
 
-    # Invariant 2: M_vol_atm stays in sync with the per-species kg_atm fields
-    # it is summed from. This guards against a future reordering that mutates
-    # a species kg_atm after M_vol_atm is computed without refreshing it.
-    # The sum runs over vol_gas_list (gas_list minus the rock vapours), which
-    # is the documented definition of M_vol_atm: volatiles and noble gases in
-    # the atmosphere, rock vapour excluded. Summing over vol_list alone would
-    # drop the noble gases and fire spuriously on any run that carries a
-    # noble inventory; summing over the full gas_list would pull in the rock
-    # vapour that M_vol_atm deliberately excludes.
+    # Invariant 2: M_vol_atm matches the sum of volatile and noble-gas species
+    # masses over vol_gas_list (rock vapour excluded).
     summed = sum(float(hf_row.get(s + '_kg_atm', 0.0)) for s in vol_gas_list)
     scale = max(M_vol_atm, summed)
     if scale > 0.0:
         rel = abs(summed - M_vol_atm) / scale
         if rel > atol_frac:
+            if directories is not None and 'output' in directories:
+                UpdateStatusfile(directories, 31)
             raise RuntimeError(
                 f'M_vol_atm bookkeeping inconsistency: M_vol_atm='
                 f'{M_vol_atm:.3e} kg but sum_s(s_kg_atm)={summed:.3e} kg '
@@ -780,8 +774,7 @@ def assert_mass_conservation(
             )
 
     # Invariant 3, with trapping on: each element total equals the sum of its
-    # reservoirs, so a debit without its credit fails here. Elements the run
-    # never carried are skipped; the tolerance is set out in the docstring.
+    # reservoirs, so a debit without its credit fails here.
     if not check_element_closure:
         return
     closure_tol = max(atol_frac, float(closure_rtol)) if closure_rtol else atol_frac
@@ -797,6 +790,8 @@ def assert_mass_conservation(
             continue
         rel = abs(parts - total) / total
         if abs(parts - total) > max(closure_atol_kg, closure_tol * total):
+            if directories is not None and 'output' in directories:
+                UpdateStatusfile(directories, 31)
             raise RuntimeError(
                 f'Per-element reservoir closure failed for {e}: '
                 f'{e}_kg_total={total:.6e} kg but atm+liquid+solid='

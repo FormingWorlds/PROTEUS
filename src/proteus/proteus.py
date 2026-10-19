@@ -1450,13 +1450,18 @@ class Proteus:
                 # M_vaps still logs a warning).
                 from proteus.outgas.trapping import derived_total_elements, trapping_active
 
-                assert_mass_conservation(
-                    self.hf_row,
-                    require_atm_le_planet=not self.config.outgas.vapourise,
-                    check_element_closure=trapping_active(self.config),
-                    derived_elements=derived_total_elements(self.config),
-                    closure_rtol=self.config.outgas.solver_rtol,
-                )
+                try:
+                    assert_mass_conservation(
+                        self.hf_row,
+                        require_atm_le_planet=not self.config.outgas.vapourise,
+                        check_element_closure=trapping_active(self.config),
+                        derived_elements=derived_total_elements(self.config),
+                        closure_rtol=self.config.outgas.solver_rtol,
+                        directories=self.directories,
+                    )
+                except RuntimeError:
+                    UpdateStatusfile(self.directories, 31)
+                    raise
 
                 # Verify P_surf == P_vol + P_vap and P_vap == 0 when rock
                 # vapourisation is disabled.

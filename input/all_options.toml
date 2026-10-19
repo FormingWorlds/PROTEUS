@@ -953,8 +953,6 @@ config_version = "3.0"
     core_mass_target_rtol           = 2.5e-2   # relative tolerance on M_core vs M_core_target at structure update
     element_closure_rtol            = 2.5e-4   # relative tolerance on element reservoir closure
     element_closure_atol_kg         = 1.0      # absolute floor on element reservoir closure [kg]
-    volatile_gas_sum_rtol           = 1.0e-6   # relative tolerance on volatile gas species sum vs M_vol_atm
-    planet_mass_cap_rtol            = 1.0e-6   # relative tolerance on M_atm <= M_planet
     escape_bound_factor             = 1.5      # multiplicative bound on element loss relative to esc_kg_cumulative
     escape_bound_atol_kg            = 1.0e3    # absolute tolerance on element loss relative to esc_kg_cumulative [kg]
     t_magma_max                     = 1.0e6    # strict upper bound on T_magma [K]

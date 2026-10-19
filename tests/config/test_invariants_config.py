@@ -33,12 +33,10 @@ _STRICT_POSITIVE_FIELDS = (
     'core_mass_target_rtol',
     'element_closure_rtol',
     'element_closure_atol_kg',
-    'volatile_gas_sum_rtol',
     't_magma_max',
 )
 
 _NON_NEGATIVE_FIELDS = (
-    'planet_mass_cap_rtol',
     'escape_bound_atol_kg',
     'phi_global_atol',
 )
@@ -61,8 +59,6 @@ def test_invariants_config_default_values():
     assert inv.core_mass_target_rtol == pytest.approx(2.5e-2, rel=1e-12)
     assert inv.element_closure_rtol == pytest.approx(2.5e-4, rel=1e-12)
     assert inv.element_closure_atol_kg == pytest.approx(1.0, rel=1e-12)
-    assert inv.volatile_gas_sum_rtol == pytest.approx(1.0e-6, rel=1e-12)
-    assert inv.planet_mass_cap_rtol == pytest.approx(1.0e-6, rel=1e-12)
     assert inv.escape_bound_factor == pytest.approx(1.5, rel=1e-12)
     assert inv.escape_bound_atol_kg == pytest.approx(1.0e3, rel=1e-12)
     assert inv.t_magma_max == pytest.approx(1.0e6, rel=1e-12)

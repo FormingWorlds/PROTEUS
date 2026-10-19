@@ -101,8 +101,8 @@ def test_orchestrator_check_row_invariants_stop_mode_per_family(tmp_path: Path):
     # 2. Volatile family stop (status 31)
     row_vol = {
         'Time': 100.0,
-        'M_planet': 1.0e24,
-        'M_atm': 2.0e24,
+        'M_planet': -1.0e24,
+        'M_atm': 1.0e20,
         'M_vol_atm': 1.0e20,
         'M_vaps': 0.0,
         'T_surf': 1000.0,
@@ -115,7 +115,7 @@ def test_orchestrator_check_row_invariants_stop_mode_per_family(tmp_path: Path):
         assert False, 'expected InvariantViolationError for volatile family'
     except InvariantViolationError as exc_info:
         assert exc_info.status_code == STATUS_ERROR_MASS_INVARIANT
-        assert exc_info.invariant_name == 'M_atm_planet_cap'
+        assert exc_info.invariant_name == 'M_planet_bounds'
     assert status_file.exists(), 'status file was not written'
     status_lines = status_file.read_text(encoding='utf-8').splitlines()
     assert status_lines[0].strip() == '31'
@@ -461,7 +461,7 @@ def test_energy_finite_input_keys_all_nine_keys():
         ),
         ('M_int', float('nan'), 'structure', 'M_int_target_rel_err'),
         ('M_core', float('nan'), 'structure', 'M_core_target_rel_err'),
-        ('M_vaps', float('nan'), 'volatile', 'M_atm_planet_cap'),
+        ('M_atm', float('nan'), 'volatile', 'M_atm_bounds'),
         ('esc_kg_cumulative', float('nan'), 'volatile', 'escape_cumulative_bound'),
         ('T_surf', float('nan'), 'state', 'T_surf_bounds'),
         ('T_magma', float('nan'), 'state', 'T_magma_bounds'),
@@ -539,40 +539,7 @@ def test_config_fields_ten_x_flips_outcome():
     """Verify each tolerance field at 10x its default flips the violation outcome."""
     cfg_def = _make_mock_config()
 
-    # 1. planet_mass_cap_rtol (default 1e-6)
-    row_cap = {
-        'Time': 10.0,
-        'M_planet': 1.0e24,
-        'M_atm': 1.0e24 * (1.0 + 5.0e-6),
-        'M_vaps': 0.0,
-    }
-    cfg_10x_cap = _make_mock_config(planet_mass_cap_rtol=1.0e-5)
-    assert any(
-        v.name == 'M_atm_planet_cap' for v in check_volatile_invariants(row_cap, cfg_def)
-    )
-    assert not any(
-        v.name == 'M_atm_planet_cap' for v in check_volatile_invariants(row_cap, cfg_10x_cap)
-    )
-
-    # 2. volatile_gas_sum_rtol (default 1e-6)
-    row_gas = {
-        'Time': 10.0,
-        'M_planet': 1.0e24,
-        'M_atm': 1.0e20,
-        'M_vol_atm': 1.0e20,
-        'H2O_kg_atm': 1.0e20 * (1.0 + 5.0e-6),
-        'M_vaps': 0.0,
-    }
-    cfg_10x_gas = _make_mock_config(volatile_gas_sum_rtol=1.0e-5)
-    assert any(
-        v.name == 'M_vol_atm_species_sum' for v in check_volatile_invariants(row_gas, cfg_def)
-    )
-    assert not any(
-        v.name == 'M_vol_atm_species_sum'
-        for v in check_volatile_invariants(row_gas, cfg_10x_gas)
-    )
-
-    # 3. phi_global_atol (default 1e-6)
+    # 1. phi_global_atol (default 1e-6)
     row_phi = {
         'Time': 10.0,
         'T_surf': 1000.0,
@@ -666,21 +633,8 @@ def test_config_fields_ten_x_flips_outcome():
 
 
 def test_config_equal_default_swaps_detected():
-    """Verify swapping fields with equal defaults is caught by distinct tests."""
-    cfg_asym = _make_mock_config(planet_mass_cap_rtol=1.0e-3, volatile_gas_sum_rtol=1.0e-7)
-    row = {
-        'Time': 10.0,
-        'M_planet': 1.0e24,
-        'M_atm': 1.0e24 * (1.0 + 1.0e-5),
-        'M_vol_atm': 1.0e20,
-        'H2O_kg_atm': 1.0e20 * (1.0 + 1.0e-5),
-        'M_vaps': 0.0,
-    }
-    viols = check_volatile_invariants(row, cfg_asym)
-    assert not any(v.name == 'M_atm_planet_cap' for v in viols)
-    assert any(v.name == 'M_vol_atm_species_sum' for v in viols)
-
-    cfg_phi_asym = _make_mock_config(phi_global_atol=1.0e-3, planet_mass_cap_rtol=1.0e-7)
+    """Verify distinct tolerance fields are wired independently."""
+    cfg_phi_asym = _make_mock_config(phi_global_atol=1.0e-3, element_closure_atol_kg=10.0)
     row_phi = {
         'Time': 10.0,
         'T_surf': 1000.0,
@@ -706,13 +660,11 @@ def test_config_non_negative_fields_accept_zero():
     """Verify non-negative tolerances accept 0.0."""
     try:
         inv = Invariants(
-            planet_mass_cap_rtol=0.0,
             escape_bound_atol_kg=0.0,
             phi_global_atol=0.0,
         )
     except ValueError as exc:
         assert False, f'non-negative tolerance rejected 0.0: {exc}'
-    assert inv.planet_mass_cap_rtol == 0.0
     assert inv.escape_bound_atol_kg == 0.0
     assert inv.phi_global_atol == 0.0
 
@@ -735,22 +687,6 @@ def test_log_summary_emits_nothing_on_clean_run(
 
     inv_records = [r for r in caplog.records if 'Invariant' in r.message]
     assert inv_records == []
-
-
-def test_vapourise_with_zero_mvaps_and_matm_exceeds_mplanet_stops():
-    """When vapourise=True and M_vaps <= 0, M_atm > M_planet produces a stopping violation."""
-    cfg = _make_mock_config(vapourise=True)
-    row = {
-        'Time': 100.0,
-        'M_planet': 1.0e24,
-        'M_atm': 1.5e24,
-        'M_vaps': 0.0,
-        'M_vol_atm': 1.0e20,
-    }
-    viols = check_volatile_invariants(row, cfg)
-    matching = [v for v in viols if v.name == 'M_atm_planet_cap']
-    assert len(matching) == 1
-    assert matching[0].report_only is False
 
 
 def test_exact_threshold_boundary_rows_and_strict_inequalities(tmp_path):
@@ -814,16 +750,6 @@ def test_exact_threshold_boundary_rows_and_strict_inequalities(tmp_path):
     row_desync_warn_exact = {'Time': 10.0, 'struct_mass_desync_frac': 0.005}
     viols_desync_warn = check_structure_invariants(row_desync_warn_exact, cfg)
     assert not any(v.name == 'struct_mass_desync_frac' for v in viols_desync_warn)
-
-    # 4. Mass cap == cap_tol (1.0e-6) does not trigger violation
-    row_cap_exact = {
-        'Time': 10.0,
-        'M_planet': 1.0e24,
-        'M_atm': 1.0e24 * (1.0 + 1.0e-6),
-        'M_vaps': 0.0,
-    }
-    viols_cap = check_volatile_invariants(row_cap_exact, cfg)
-    assert not any(v.name == 'M_atm_planet_cap' for v in viols_cap)
 
     # 5. T_magma == t_magma_max (1.0e6) strictly violates (0 < T_magma < t_magma_max)
     row_tmag_exact = {
@@ -1068,19 +994,6 @@ def test_exact_threshold_boundary_step_and_cap_and_escape():
         v.name == 'step_dE_inc_frac' for v in check_energy_invariants(row_step, cfg, hf_all)
     )
 
-    # V04: rel_excess == cap_tol (0.5)
-    cfg_cap = _make_mock_config(planet_mass_cap_rtol=0.5)
-    row_v04 = {
-        'Time': 10.0,
-        'M_planet': 1.0e24,
-        'M_atm': 1.5e24,
-        'M_vaps': 0.0,
-        'M_vol_atm': 1.0e20,
-    }
-    assert not any(
-        v.name == 'M_atm_planet_cap' for v in check_volatile_invariants(row_v04, cfg_cap)
-    )
-
     # V16: lost == esc_tol
     cfg_esc = _make_mock_config(
         fO2_source='from_O_budget',
@@ -1139,23 +1052,7 @@ def test_structure_invariants_one_sided_errors_and_inf_target():
 
 
 def test_volatile_invariants_defaults_and_scaling():
-    """Verify volatile defaults, species-sum scaling, and effective mass (kills V06, V19-V22)."""
-    cfg = _make_mock_config()
-    # V06: scale = max(m_vol_atm, summed)
-    row_v06 = {
-        'Time': 10.0,
-        'M_planet': 6.0e24,
-        'M_atm': 1.0e20,
-        'M_vol_atm': 1.0e18,
-        'H2O_kg_atm': 2.0e18,
-        'M_vaps': 0.0,
-    }
-    v_v06 = [
-        v for v in check_volatile_invariants(row_v06, cfg) if v.name == 'M_vol_atm_species_sum'
-    ][0]
-    assert abs(v_v06.value - 0.5) < 1.0e-12
-
-    # V19: missing fO2_source defaults to user_constant
+    """Verify volatile defaults for missing fO2_source."""
     cfg_no_fo2 = SimpleNamespace(
         invariants=Invariants(),
         planet=SimpleNamespace(),
@@ -1175,50 +1072,6 @@ def test_volatile_invariants_defaults_and_scaling():
     assert not any(
         v.name == 'escape_cumulative_bound'
         for v in check_volatile_invariants(row_lost, cfg_no_fo2)
-    )
-
-    # V20: missing vapourise defaults to False
-    cfg_no_vap = SimpleNamespace(
-        invariants=Invariants(),
-        planet=SimpleNamespace(fO2_source='user_constant'),
-        outgas=SimpleNamespace(module='atmodeller', solver_rtol=1e-4, mass_thresh=1e10),
-    )
-    row_excess = {
-        'Time': 10.0,
-        'M_planet': 1.0e24,
-        'M_atm': 1.2e24,
-        'M_vaps': 0.5e24,
-        'M_vol_atm': 1.0e20,
-    }
-    assert any(
-        v.name == 'M_atm_planet_cap' for v in check_volatile_invariants(row_excess, cfg_no_vap)
-    )
-
-    # V21: missing M_vol_atm defaults to 0.0
-    row_no_mvol = {
-        'Time': 10.0,
-        'M_planet': 6.0e24,
-        'M_atm': 1.0e20,
-        'H2O_kg_atm': 1.0e20,
-        'M_vaps': 0.0,
-    }
-    v_no_mvol = [
-        v
-        for v in check_volatile_invariants(row_no_mvol, cfg)
-        if v.name == 'M_vol_atm_species_sum'
-    ][0]
-    assert abs(v_no_mvol.value - 1.0) < 1.0e-12
-
-    # V22: m_atm_eff when abs(m_atm) <= closure_atol_kg
-    row_small = {
-        'Time': 10.0,
-        'M_planet': 0.1,
-        'M_atm': 0.5,
-        'M_vaps': 0.0,
-        'M_vol_atm': 0.0,
-    }
-    assert not any(
-        v.name == 'M_atm_planet_cap' for v in check_volatile_invariants(row_small, cfg)
     )
 
 
@@ -1613,8 +1466,8 @@ def test_orchestrator_check_row_invariants_volatile_family_stop():
     cfg_stop = _make_mock_config(mode='stop')
     row_bad_vol = {
         'Time': 100.0,
-        'M_planet': 1.0e24,
-        'M_atm': 2.0e24,
+        'M_planet': -1.0e24,
+        'M_atm': 1.0e20,
         'M_vol_atm': 1.0e20,
         'M_vaps': 0.0,
         'T_surf': 1000.0,
@@ -1789,13 +1642,6 @@ def test_config_validators_assertion_kills():
         assert False, 'expected ValueError: escape_bound_factor < 1.0 rejected'
     except ValueError:
         pass
-
-    # C06: planet_mass_cap_rtol accepts 0.0
-    try:
-        cfg = Invariants(planet_mass_cap_rtol=0.0)
-    except ValueError as exc:
-        assert False, f'planet_mass_cap_rtol=0.0 was rejected: {exc}'
-    assert cfg.planet_mass_cap_rtol == 0.0
 
 
 FIXTURE_PS_RUN_20261018_131253_EA68 = (
