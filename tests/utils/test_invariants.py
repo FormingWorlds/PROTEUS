@@ -679,15 +679,10 @@ def test_check_volatile_invariants_element_closure_and_gas_sum():
     )
     assert check_volatile_invariants(row_trace, cfg) == []
 
-    # Perturb H2O_kg_atm so species sum differs from M_vol_atm by 5.0e-6 > 1.0e-6:
+    # Perturbing H2O_kg_atm relative to M_vol_atm is checked by assert_mass_conservation,
+    # not duplicated in check_volatile_invariants:
     row_gas_bad = dict(base_row, H2O_kg_atm=1.0e21 * (1.0 - 5.0e-6))
-    v_gas = check_volatile_invariants(row_gas_bad, cfg)
-    assert len(v_gas) == 1
-    assert v_gas[0].name == 'M_vol_atm_species_sum'
-    assert v_gas[0].status_code == STATUS_ERROR_MASS_INVARIANT
-    assert v_gas[0].value == pytest.approx(5.0e-6)
-    assert v_gas[0].tolerance == pytest.approx(1.0e-6)
-    assert v_gas[0].report_only is False
+    assert check_volatile_invariants(row_gas_bad, cfg) == []
 
 
 def test_check_volatile_invariants_calliope_mass_thresh_vs_atmodeller_floor():
@@ -892,8 +887,15 @@ def test_check_volatile_invariants_calliope_zero_parts_threshold():
     assert v_atm_he_zero[0].tolerance == pytest.approx(1.0)
 
 
-def test_check_volatile_invariants_planet_mass_cap_and_vapourise():
-    """M_atm > M_planet * (1 + 1e-6) stops without vapourise and warns past M_vaps with vapourise."""
+def test_assert_mass_conservation_writes_status_31_and_no_duplicate_cap_or_species_sum(
+    tmp_path, monkeypatch
+):
+    """assert_mass_conservation writes status 31 before raising through Proteus.start, and check_volatile_invariants does not duplicate M_atm_planet_cap or M_vol_atm_species_sum."""
+    from pathlib import Path
+
+    from proteus import Proteus
+    from proteus.interior_energetics.common import Interior_t
+    from proteus.utils.coupler import assert_mass_conservation
     from proteus.utils.invariants import check_volatile_invariants
 
     cfg_no_vap = _make_mock_config(vapourise=False)
@@ -905,27 +907,49 @@ def test_check_volatile_invariants_planet_mass_cap_and_vapourise():
         'M_vaps': 0.0,
         'H2O_kg_atm': 1.0e21,
     }
-    v_stop = check_volatile_invariants(row_cap, cfg_no_vap)
-    assert len(v_stop) == 1
-    assert v_stop[0].name == 'M_atm_planet_cap'
-    assert v_stop[0].status_code == STATUS_ERROR_MASS_INVARIANT
-    assert v_stop[0].value == pytest.approx(5.0e-6)
-    assert v_stop[0].tolerance == pytest.approx(1.0e-6)
-    assert v_stop[0].report_only is False
+    assert check_volatile_invariants(row_cap, cfg_no_vap) == []
 
-    # With vapourise=True and M_vaps = 1e22: excess <= M_vaps passes, excess > M_vaps warns:
-    cfg_vap = _make_mock_config(vapourise=True)
-    row_vap_ok = dict(row_cap, M_atm=1.005e24, M_vaps=1.0e22)
-    assert check_volatile_invariants(row_vap_ok, cfg_vap) == []
+    dirs_direct = {'output': str(tmp_path)}
+    with pytest.raises(RuntimeError, match='Mass conservation violation'):
+        assert_mass_conservation(row_cap, directories=dirs_direct)
+    status_direct = (tmp_path / 'status').read_text(encoding='utf-8').splitlines()
+    assert status_direct[0].strip() == '31'
+    assert status_direct[1].strip() == 'Error (Mass conservation invariant)'
 
-    row_vap_warn = dict(row_cap, M_atm=1.015e24, M_vaps=1.0e22)
-    v_warn = check_volatile_invariants(row_vap_warn, cfg_vap)
-    assert len(v_warn) == 1
-    assert v_warn[0].name == 'M_atm_planet_cap'
-    assert v_warn[0].status_code == STATUS_ERROR_MASS_INVARIANT
-    assert v_warn[0].value == pytest.approx((1.015e24 - 1.0e24 - 1.0e22) / 1.0e24)
-    assert v_warn[0].tolerance == pytest.approx(1.0e-6)
-    assert v_warn[0].report_only is True
+    # Verify through Proteus.start that when M_atm exceeds M_planet, assert_mass_conservation
+    # writes status 31 before raising RuntimeError:
+    monkeypatch.setattr(Interior_t, '_load_ps_table', lambda self, *a, **kw: None)
+    out_dir = tmp_path / 'run_mass_cap_31'
+    dummy_toml = Path(__file__).resolve().parents[2] / 'input' / 'dummy.toml'
+    cfg_path = tmp_path / 'dummy_mass_cap.toml'
+    cfg_path.write_text(
+        dummy_toml.read_text(encoding='utf-8').replace(
+            'path = "auto"', f'path = "{out_dir}"', 1
+        ),
+        encoding='utf-8',
+    )
+    runner = Proteus(config_path=cfg_path)
+    runner.config.params.stop.solid.enabled = False
+    runner.config.params.stop.iters.minimum = 1
+    runner.config.params.stop.iters.maximum = 3
+    runner.config.params.out.plot_mod = None
+    runner.config.params.out.archive_mod = 'none'
+
+    import proteus.interior_energetics.wrapper as int_wrap
+
+    real_update = int_wrap.update_planet_mass
+
+    def corrupt_mass(hf_row):
+        real_update(hf_row)
+        hf_row['M_atm'] = 1.0e30
+
+    monkeypatch.setattr(int_wrap, 'update_planet_mass', corrupt_mass)
+    with pytest.raises(RuntimeError, match='Mass conservation violation'):
+        runner.start(resume=False, offline=True)
+
+    status_lines = (out_dir / 'status').read_text(encoding='utf-8').splitlines()
+    assert status_lines[0].strip() == '31'
+    assert status_lines[1].strip() == 'Error (Mass conservation invariant)'
 
 
 def test_check_volatile_invariants_escape_cumulative_bound(
@@ -1140,8 +1164,8 @@ def test_check_row_invariants_orchestrates_modes_and_status_file(
         cfg_rep,
     )
     assert [v.name for v in v_nan_vol] == [
-        'M_atm_planet_cap',
-        'M_vol_atm_species_sum',
+        'M_atm_bounds',
+        'M_vol_atm_bounds',
         'H_reservoir_closure',
         'C_reservoir_closure',
     ]
@@ -1438,8 +1462,7 @@ def test_check_volatile_and_state_bounds_negative_masses_and_zero_atm_psurf():
         'element_closure_atol_kg' in v.message for v in v_neg_vol if v.name != 'M_planet_bounds'
     )
 
-    # Zero/non-positive scale species-sum branch compares against element_closure_atol_kg (1.0 kg)
-    # and reports element_closure_atol_kg as tolerance:
+    # Negative species mass within element_closure_atol_kg (1.0 kg) passes, and below -1.0 kg emits H2O_kg_atm_bounds:
     assert (
         check_volatile_invariants(
             dict(clean_row, M_vol_atm=0.0, H2O_kg_atm=-0.5),
@@ -1451,10 +1474,9 @@ def test_check_volatile_and_state_bounds_negative_masses_and_zero_atm_psurf():
         dict(clean_row, M_vol_atm=0.0, H2O_kg_atm=-10.0),
         cfg,
     )
-    species_sum_vs = [v for v in v_neg_sum if v.name == 'M_vol_atm_species_sum']
-    assert len(species_sum_vs) == 1
-    assert species_sum_vs[0].value == pytest.approx(10.0)
-    assert species_sum_vs[0].tolerance == pytest.approx(1.0)
+    assert [v.name for v in v_neg_sum] == ['H2O_kg_atm_bounds']
+    assert v_neg_sum[0].value == pytest.approx(-10.0)
+    assert v_neg_sum[0].tolerance == pytest.approx(1.0)
 
 
 def test_check_energy_invariants_non_finite_inputs_emit_named_violations():
