@@ -157,8 +157,13 @@ class Zalmoxis:
         ``paleos_mgsio3_tables_pt_proteus_solid_lowT.dat`` next to the solid
         table). PALEOS values are used wherever the solid table has them.
         Applies to the P-S tables of the PALEOS MgSiO3 mantle and needs
-        interior_energetics.module = 'aragog'; a missing extension file stops
-        the table build. For 1 Earth mass and the default
+        interior_energetics.module = 'aragog' and interior_struct.module
+        'zalmoxis' or 'dummy'; a PALEOS-API mantle is refused. The standard
+        data set does not hold the extension file: write it with Zalmoxis's
+        tools/converters/paleos_lowt_extension.py (--paleos-src, --table, and
+        --out with the file name above in the folder of the solid table; see
+        the Zalmoxis coupling page). A missing extension file stops the table
+        build. For 1 Earth mass and the default
         1350 x 280 nodes the coldest tabulated cell is near 67 K, and between
         the two lowest entropy nodes the table temperature deviates from a
         direct inversion by at most 2.65 % on these default pressure columns
