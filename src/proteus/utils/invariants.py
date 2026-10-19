@@ -35,7 +35,8 @@ STEP_GROSS_FLOOR_J: float = 1.0
 # and static-mesh vs row P_surf drift (<= 0.071 K on S_min-clipped corpus rows; < 0.5 K to 1,748 bar).
 EOS_SMIN_CLIP_MARGIN_K: float = 0.5
 LAVATMOS_OVERWRITTEN_ELEMENTS: tuple[str, ...] = (*vol_element_list, *noble_gases)
-_SMIN_TABLE_CACHE: dict[tuple[str, int], tuple[np.ndarray, np.ndarray, float]] = {}
+_SMIN_TABLE_CACHE: dict[tuple[str, bytes], tuple[np.ndarray, np.ndarray, float]] = {}
+_SMIN_TABLE_WARNED_PATHS: set[str] = set()
 
 
 @dataclass(frozen=True)
@@ -326,6 +327,22 @@ def _resolve_ps_table_path(directories: dict | None) -> Path | None:
     return None
 
 
+def _read_smin_block_bytes(table_path: Path) -> bytes:
+    """Read the header and first ``n_P`` lines of ``table_path`` as raw bytes.
+
+    Reading the header plus the first ``n_P`` lines transfers 101 kB (1,355 lines,
+    0.14-0.15 ms/row) on PALEOS-2phase tables and 154 kB (2,025 lines, 0.20 ms/row)
+    on the Wolf & Bower 2018 1 TPa solid table.
+    """
+    with open(table_path, 'rb') as f:
+        first_line = f.readline()
+        hdr = first_line.decode('utf-8', errors='replace').strip().lstrip('#').split()
+        n_hdr_str, n_p_str, *_ = (*hdr, '', '')
+        n_hdr, n_p = int(n_hdr_str), int(n_p_str)
+        lines = [first_line, *(f.readline() for _ in range(n_hdr - 1 + n_p))]
+    return b''.join(lines)
+
+
 def _parse_smin_temp_block(table_path: Path) -> tuple[np.ndarray, np.ndarray, float]:
     """Parse ``temperature_solid.dat`` once and return ``(P_pa, T_k, S_min)`` for the ``S_min`` block.
 
@@ -347,11 +364,13 @@ def _parse_smin_temp_block(table_path: Path) -> tuple[np.ndarray, np.ndarray, fl
     """
     with open(table_path, encoding='utf-8') as f:
         hdr = f.readline().strip().lstrip('#').split()
-        n_hdr, n_p = int(hdr[0]), int(hdr[1])
+        n_hdr_str, n_p_str, *_ = (*hdr, '', '')
+        n_hdr, n_p = int(n_hdr_str), int(n_p_str)
         scale_line = ''
         for _ in range(n_hdr - 1):
             scale_line = f.readline()
-        scales = [float(x) for x in scale_line.strip().lstrip('#').split()]
+        s0, s1, s2, *_ = (*scale_line.strip().lstrip('#').split(), '', '', '')
+        scales = (float(s0), float(s1), float(s2))
     data = np.loadtxt(table_path, skiprows=n_hdr)
     first_block = data[:n_p]
     s_all = data[:, 1] * scales[1]
@@ -371,18 +390,24 @@ def _smin_clip_temp_k(hf_row: dict, directories: dict | None) -> float | None:
     table_path = _resolve_ps_table_path(directories)
     if table_path is None:
         return None
-    stat = table_path.stat()
-    cache_key = (str(table_path), stat.st_mtime_ns)
-    cached = _SMIN_TABLE_CACHE.get(cache_key)
-    if cached is None:
-        cached = _parse_smin_temp_block(table_path)
-        _SMIN_TABLE_CACHE[cache_key] = cached
+    path_key = str(table_path)
+    try:
+        head_bytes = _read_smin_block_bytes(table_path)
+        cache_key = (path_key, head_bytes)
+        cached = _SMIN_TABLE_CACHE.get(cache_key)
+        if cached is None:
+            cached = _parse_smin_temp_block(table_path)
+            _SMIN_TABLE_CACHE[cache_key] = cached
+    except (OSError, ValueError) as exc:
+        if path_key not in _SMIN_TABLE_WARNED_PATHS:
+            _SMIN_TABLE_WARNED_PATHS.add(path_key)
+            log.warning('Failed to load P-S EOS table %s for S_min clip: %s', table_path, exc)
+        return None
     p_pa, t_k, _ = cached
     p_surf_bar = float(hf_row.get('P_surf', 1.0))
     if not np.isfinite(p_surf_bar):
         return None
-    p_surf_pa = float(np.clip(p_surf_bar * 1.0e5, p_pa[0], p_pa[-1]))
-    t_smin_k = float(np.interp(p_surf_pa, p_pa, t_k))
+    t_smin_k = float(np.interp(p_surf_bar * 1.0e5, p_pa, t_k))
     return t_smin_k + EOS_SMIN_CLIP_MARGIN_K
 
 
@@ -694,8 +719,11 @@ def check_volatile_invariants(
     under ``planet.fO2_source = 'user_constant'`` and, when ``outgas.vapourise`` is enabled,
     skips ``vap_element_list`` (``Si, Mg, Fe, Na, Al, Ti, Ca, K, V``, whose totals stay zero
     while rock vapour enters the atmosphere) and ``LAVATMOS_OVERWRITTEN_ELEMENTS``
-    (``H, C, N, S, O`` and ``noble_gases``, whose atmospheric element masses ``lavatmos``
-    overwrites from gas-phase equilibrium without updating the element totals).
+    (``input_eles`` in ``lavatmos.py``, namely ``H, C, N, S, O`` and ``noble_gases``:
+    ``lavatmos`` keeps ``O_kg_atm`` from the volatile outgassing step while storing
+    post-vapourisation O in ``Omass_after_vapourise``, and overwrites the atmospheric masses
+    of ``H, C, N, S`` and ``noble_gases`` from gas-phase equilibrium without updating their
+    element totals).
 
     Parameters
     ----------

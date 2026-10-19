@@ -2210,13 +2210,15 @@ def test_smin_clip_per_run_ps_table_interpolation_and_caching(tmp_path, monkeypa
     )
     assert not any(v.name == 'step_dE_inc_frac' for v in v_high_p)
 
-    # Clamping P_surf below P_min (0 bar -> 1e5 Pa) and above P_max (1e4 bar -> 5.190027e8 Pa):
+    # Clamping P_surf below P_min (0 bar -> 1e5 Pa) and above P_max (1e4 bar -> 5.190027e8 Pa), and non-finite P_surf:
     assert inv_mod._smin_clip_temp_k({'P_surf': 0.0}, dirs_ea68) == pytest.approx(
         302.3416715158806 + 0.5
     )
     assert inv_mod._smin_clip_temp_k({'P_surf': 1.0e4}, dirs_ea68) == pytest.approx(
         303.7198468914934 + 0.5
     )
+    assert inv_mod._smin_clip_temp_k({'P_surf': float('nan')}, dirs_ea68) is None
+    assert inv_mod._smin_clip_temp_k({'P_surf': float('inf')}, dirs_ea68) is None
 
     # No-table case (directories=None or missing file): clip rule does not apply.
     v_no_table = check_energy_invariants(
@@ -2233,6 +2235,7 @@ def test_smin_clip_per_run_ps_table_interpolation_and_caching(tmp_path, monkeypa
 
     # Caching keyed by (path, head_bytes): reading two rows on the same file parses the file once.
     inv_mod._SMIN_TABLE_CACHE.clear()
+    inv_mod._SMIN_TABLE_WARNED_PATHS.clear()
     parse_calls = []
     real_parse = inv_mod._parse_smin_temp_block
 
@@ -2291,9 +2294,21 @@ def test_smin_clip_per_run_ps_table_interpolation_and_caching(tmp_path, monkeypa
     ) == pytest.approx(302.3416715158806 + 0.5)
     rewrite_file.write_text(FIXTURE_PS_TUTORIAL_EARTH, encoding='utf-8')
     os.utime(rewrite_file, ns=(orig_stat.st_atime_ns, orig_stat.st_mtime_ns))
+    assert inv_mod._read_smin_block_bytes(rewrite_file) == ''.join(
+        FIXTURE_PS_TUTORIAL_EARTH.splitlines(keepends=True)[:8]
+    ).encode('utf-8')
     assert inv_mod._smin_clip_temp_k(
         {'P_surf': 1.0}, {'spider_eos_dir': str(rewrite_eos)}
     ) == pytest.approx(323.20787538414403 + 0.5)
+    # Rewriting only the last (n_P-th) row of the S_min block with the same mtime also invalidates cache:
+    te_modified_last_row = FIXTURE_PS_TUTORIAL_EARTH.replace(
+        '3.246735911791558959e-01', '3.500000000000000000e-01', 1
+    )
+    rewrite_file.write_text(te_modified_last_row, encoding='utf-8')
+    os.utime(rewrite_file, ns=(orig_stat.st_atime_ns, orig_stat.st_mtime_ns))
+    assert inv_mod._smin_clip_temp_k(
+        {'P_surf': 1.0e4}, {'spider_eos_dir': str(rewrite_eos)}
+    ) == pytest.approx(350.0 + 0.5)
 
     # 2 paths with the same mtime (os.utime) return their own clips:
     same_mtime_a = tmp_path / 'eos_same_mtime_a'
@@ -2347,6 +2362,33 @@ def test_smin_clip_per_run_ps_table_interpolation_and_caching(tmp_path, monkeypa
     assert len([v for v in viols_bad_2 if v.name == 'step_dE_inc_frac']) == 1
     table_warns = [r for r in caplog.records if str(bad_file.resolve()) in r.message]
     assert len(table_warns) == 1
+
+    # Second path raising OSError also falls back to no clip and logs one warning for its own path:
+    os_err_eos = tmp_path / 'eos_os_error'
+    os_err_eos.mkdir()
+    os_err_file = os_err_eos / 'temperature_solid.dat'
+    os_err_file.write_text(FIXTURE_PS_RUN_20261018_131253_EA68, encoding='utf-8')
+    real_read_head = inv_mod._read_smin_block_bytes
+
+    def raising_oserror(path):
+        if Path(path).resolve() == os_err_file.resolve():
+            raise OSError('simulated table I/O failure')
+        return real_read_head(path)
+
+    monkeypatch.setattr(inv_mod, '_read_smin_block_bytes', raising_oserror)
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.utils.invariants'):
+        viols_os_1 = check_row_invariants(
+            row_report, cfg, hf_all, directories={'spider_eos_dir': str(os_err_eos)}
+        )
+        viols_os_2 = check_row_invariants(
+            row_report, cfg, hf_all, directories={'spider_eos_dir': str(os_err_eos)}
+        )
+    step_os = [v for v in viols_os_1 if v.name == 'step_dE_inc_frac']
+    assert len(step_os) == 1
+    assert step_os[0].tolerance == pytest.approx(0.01)
+    assert len([v for v in viols_os_2 if v.name == 'step_dE_inc_frac']) == 1
+    os_warns = [r for r in caplog.records if str(os_err_file.resolve()) in r.message]
+    assert len(os_warns) == 1
 
 
 def test_lavatmos_overwritten_elements_match_source_and_skip_under_vapourise():

@@ -92,10 +92,10 @@ class Invariants:
         sized above the ``2.05e-3`` maximum observed on Zalmoxis structure update rows.
     core_mass_target_rtol: float
         Relative tolerance on ``M_core`` versus ``M_core_target`` at a structure update row [-],
-        sized at about ``1.6`` times the ``1.565e-2`` maximum radial-trapezoidal core mass
-        difference on the default 1 M_Earth Zalmoxis structure run ``a627_default`` (99th
-        percentile ``1.518e-2``, which lies outside the 68 finished post-closure default runs;
-        ``1.004e-2`` maximum and ``9.79e-3`` 99th percentile across those 68 runs).
+        sized at about ``1.6`` times the radial-trapezoidal core mass difference on
+        ``a627_default`` (not one of the 68 runs): maximum ``1.565e-2``, 99th percentile
+        ``1.518e-2`` (``1.004e-2`` maximum and ``9.79e-3`` 99th percentile across the 68
+        finished post-closure default runs).
     element_closure_rtol: float
         Relative tolerance on per-element reservoir closure ``atm + magma + solid = total`` [-],
         sized at ``2.5`` times the default ``outgas.solver_rtol = 1.0e-4``.
