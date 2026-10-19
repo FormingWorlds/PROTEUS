@@ -1594,6 +1594,47 @@ def test_lowt_extension_requires_a_structure_that_builds_the_ps_tables():
 
 
 @pytest.mark.unit
+def test_lowt_extension_ps_tables_property_refuses_only_spider_with_the_switch_on():
+    """Over any structure module name and any switch value, the check refuses exactly the switch
+    set to True with interior_struct.module = 'spider', and a missing Zalmoxis section passes."""
+    from hypothesis import example, given, settings
+    from hypothesis import strategies as st
+
+    from proteus.config._config import lowt_extension_requires_ps_tables
+
+    lowt_values = st.one_of(
+        st.booleans(), st.integers(), st.floats(allow_nan=True), st.text(), st.none()
+    )
+    modules = st.one_of(st.sampled_from(['spider', 'zalmoxis', 'dummy']), st.text())
+
+    @settings(max_examples=300, deadline=None)
+    @given(modules, lowt_values, st.booleans())
+    @example('spider', 1, True)
+    @example('spider', 1.0, True)
+    @example('spider', 'true', True)
+    @example('spider', True, False)
+    @example('dummy', True, True)
+    def _check(module, lowt, has_section):
+        cfg = SimpleNamespace(
+            interior_struct=SimpleNamespace(
+                module=module,
+                zalmoxis=SimpleNamespace(lowt_extension=lowt) if has_section else None,
+            )
+        )
+        if has_section and lowt is True and module == 'spider':
+            with pytest.raises(ValueError, match='requires interior_struct.module'):
+                lowt_extension_requires_ps_tables(cfg, None, None)
+        else:
+            try:
+                result = lowt_extension_requires_ps_tables(cfg, None, None)
+            except ValueError as exc:
+                pytest.fail(f'refused {module!r} with {lowt!r}: {exc}')
+            assert result is None
+
+    _check()
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize('lowt', [True, False])
 def test_lowt_extension_structure_check_runs_when_a_config_file_is_read(tmp_path, lowt):
     """Reading input/planets/toi561b.toml (SPIDER structure) with the Aragog interior refuses the
