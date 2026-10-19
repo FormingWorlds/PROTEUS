@@ -1722,11 +1722,12 @@ def test_estimate_tau_drain_nan_or_invalid_state_logs_once_per_run_and_returns_i
     config, interior_o, _ = _make_tau_drain_fixture(s_top=float('nan'))
     io_none = _make_interior_o()
     io_none.aragog_solver = None
-    assert _estimate_tau_drain(config, {'F_atm': 500.0, 'T_surf': 1500.0}, io_none) == float(
-        'inf'
-    )
 
     with caplog.at_level(logging.WARNING, logger='fwl.proteus.interior_energetics.timestep'):
+        assert _estimate_tau_drain(
+            config, {'F_atm': 500.0, 'T_surf': 1500.0}, io_none
+        ) == float('inf')
+        assert [r.getMessage() for r in caplog.records if 'tau_drain' in r.getMessage()] == []
         first = _estimate_tau_drain(config, {'F_atm': 500.0, 'T_surf': 1500.0}, interior_o)
         second = _estimate_tau_drain(config, {'F_atm': 500.0, 'T_surf': 1500.0}, interior_o)
 
@@ -1756,15 +1757,20 @@ def test_estimate_tau_drain_cp_eff_choice_at_phi_0p60_boundary():
     cfg_high, io_high, _ = _make_tau_drain_fixture(
         phi_top=0.61, cp_live=2400.0, cp_solid_at_1800=1200.0
     )
+    cfg_cp_lt_solid, io_cp_lt_solid, _ = _make_tau_drain_fixture(
+        phi_top=0.59, cp_live=900.0, cp_solid_at_1800=1200.0
+    )
 
     row = {'F_atm': 500.0, 'T_surf': 1500.0}
     tau_low = _estimate_tau_drain(cfg_low, row, io_low)
     tau_edge = _estimate_tau_drain(cfg_edge, row, io_edge)
     tau_high = _estimate_tau_drain(cfg_high, row, io_high)
+    tau_cp_lt_solid = _estimate_tau_drain(cfg_cp_lt_solid, row, io_cp_lt_solid)
 
     assert _TAU_DRAIN_PHI_GATE == pytest.approx(0.60, rel=1e-12)
     assert tau_low == pytest.approx(tau_edge, rel=1e-12)
     assert tau_high == pytest.approx(2.0 * tau_low, rel=1e-12)
+    assert tau_cp_lt_solid == pytest.approx(0.75 * tau_low, rel=1e-12)
 
 
 @pytest.mark.unit
@@ -1941,18 +1947,100 @@ def test_estimate_tau_drain_missing_aragog_attr_warns_once_and_returns_inf(
     }
 
     cfg, io, solver = _make_tau_drain_fixture(with_solution=with_solution)
+    if attr_name == '_solution':
+        solver._S0 = None
+    elif attr_name == '_S0':
+        delattr(solver, '_solution')
     obj = solver if target == 'solver' else solver.entropy_eos
     delattr(obj, attr_name)
 
     with caplog.at_level(logging.WARNING, logger='fwl.proteus.interior_energetics.timestep'):
         first = _estimate_tau_drain(cfg, {'F_atm': 500.0, 'T_surf': 1500.0}, io)
-        second = _estimate_tau_drain(cfg, {'F_atm': 500.0, 'T_surf': 1500.0}, io)
+        second = _estimate_tau_drain(
+            config=cfg, hf_row={'F_atm': 500.0, 'T_surf': 1500.0}, interior_o=io
+        )
 
     assert first == float('inf')
     assert second == float('inf')
     warns = [r.getMessage() for r in caplog.records if 'tau_drain' in r.getMessage()]
     assert len(warns) == 1
     assert getattr(io, '_tau_drain_invalid_warned', False) is True
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_estimate_tau_drain_presolve_without_solution_attr_and_gradient_core_bc(caplog):
+    """Before first solve (_solution attribute absent), _S0 is used cleanly including gradient core_bc."""
+    import logging
+
+    from proteus.interior_energetics.timestep import _estimate_tau_drain
+    from proteus.utils.constants import secs_per_year
+
+    cfg, io, solver = _make_tau_drain_fixture(
+        s_top=1000.0,
+        phi_top=0.0,
+        s_min=106.116,
+        cp_live=1100.0,
+        rel_dT=0.08,
+        rel_dT_solid=0.02,
+        with_solution=False,
+    )
+    delattr(solver, '_solution')
+
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.interior_energetics.timestep'):
+        tau_presolve = _estimate_tau_drain(cfg, {'F_atm': 500.0, 'T_surf': 1500.0}, io)
+        assert [r.getMessage() for r in caplog.records if 'tau_drain' in r.getMessage()] == []
+
+    area_s = 4.0 * np.pi * float(solver._r_basic_flat[-1]) ** 2
+    dr_eff = float(solver._volume_flat[-1]) / area_s
+    expected_tau = (4000.0 * 1100.0 * dr_eff * (0.02 * 1500.0)) / (500.0 * secs_per_year)
+    assert tau_presolve == pytest.approx(expected_tau, rel=1e-12)
+
+    solver._core_bc = 'gradient'
+    solver._S0 = np.array([-1.0e-4, -1.0e-4, -1.0e-4, 1000.0], dtype=float)
+    seen_s: list[float] = []
+    orig_cp = solver.entropy_eos.heat_capacity
+
+    def _rec_cp(p_arr, s_arr):
+        seen_s.append(float(np.asarray(s_arr, dtype=float).ravel()[0]))
+        return orig_cp(p_arr, s_arr)
+
+    solver.entropy_eos.heat_capacity = _rec_cp
+    tau_grad = _estimate_tau_drain(cfg, {'F_atm': 500.0, 'T_surf': 1500.0}, io)
+    assert seen_s == [pytest.approx(1000.0, rel=1e-12), pytest.approx(1000.0, rel=1e-12)]
+    assert tau_grad == pytest.approx(expected_tau, rel=1e-12)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'bad_case',
+    ['s_min_none', 't_surf_none', 'f_atm_none', 'p_top_nonpositive'],
+)
+def test_estimate_tau_drain_none_or_nonpositive_pressure_warns_and_returns_inf(
+    caplog, bad_case
+):
+    """None values in S_min/hf_row or non-positive P_top return inf and log one warning."""
+    import logging
+
+    from proteus.interior_energetics.timestep import _estimate_tau_drain
+
+    cfg, io, solver = _make_tau_drain_fixture()
+    row = {'F_atm': 500.0, 'T_surf': 1500.0}
+    if bad_case == 's_min_none':
+        solver.entropy_eos.S_min = None
+    elif bad_case == 't_surf_none':
+        row['T_surf'] = None
+    elif bad_case == 'f_atm_none':
+        row['F_atm'] = None
+    elif bad_case == 'p_top_nonpositive':
+        solver._P_stag_flat = np.array([1.0e10, 0.0], dtype=float)
+
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.interior_energetics.timestep'):
+        res = _estimate_tau_drain(cfg, row, io)
+
+    assert res == float('inf')
+    warns = [r.getMessage() for r in caplog.records if 'tau_drain' in r.getMessage()]
+    assert len(warns) == 1
 
 
 @pytest.mark.unit
@@ -1985,7 +2073,7 @@ def test_next_step_top_cell_dt_limit_off_never_calls_estimate_tau_drain():
 @pytest.mark.physics_invariant
 def test_next_step_top_cell_dt_limit_on_caps_dtswitch_below_dtminimum():
     """With top_cell_dt_limit = True, tau_drain caps dtswitch below dt.minimum down to esc_floor."""
-    from proteus.interior_energetics.timestep import next_step
+    from proteus.interior_energetics.timestep import _estimate_tau_drain, next_step
 
     cfg, io, _ = _make_tau_drain_fixture(
         phi_top=0.05,
@@ -2006,14 +2094,21 @@ def test_next_step_top_cell_dt_limit_on_caps_dtswitch_below_dtminimum():
         'T_surf': 1400.0,
     }
 
+    expected_tau = _estimate_tau_drain(cfg, hf_row, io)
     dt_on = next_step(cfg, {}, hf_row, hf_all, 1.0, interior_o=io)
     cfg.interior_energetics.aragog.top_cell_dt_limit = False
     dt_off = next_step(cfg, {}, hf_row, hf_all, 1.0, interior_o=io)
 
     esc_floor = cfg.params.dt.minimum * cfg.escape.step_dt_floor_frac
-    assert esc_floor <= dt_on < cfg.params.dt.minimum
+    assert dt_on == pytest.approx(expected_tau, rel=1e-12)
+    assert esc_floor < dt_on < cfg.params.dt.minimum
     assert dt_off >= cfg.params.dt.minimum
     assert dt_on < 0.2 * dt_off
+
+    cfg.interior_energetics.aragog.top_cell_dt_limit = True
+    hf_row_huge_flux = dict(hf_row, F_atm=1.0e8)
+    dt_floored = next_step(cfg, {}, hf_row_huge_flux, hf_all, 1.0, interior_o=io)
+    assert dt_floored == pytest.approx(esc_floor, rel=1e-12)
 
 
 @pytest.mark.unit
