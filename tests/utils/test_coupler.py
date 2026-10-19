@@ -5948,18 +5948,43 @@ def test_fwl_io_problem_names_the_upgrade_below_the_floor(installed):
     assert seen == [('fwl-io', f'fwl-io>={FWL_IO_FLOOR}')]
 
 
-def test_fwl_io_problem_falls_back_to_pip_when_the_doctor_fails():
-    """If the doctor cannot build its fix, the message names the pip upgrade."""
+def test_fwl_io_problem_falls_back_to_pip_when_the_doctor_fails(caplog):
+    """If the doctor cannot build its fix, the message names the pip upgrade and a warning
+    names the doctor's error."""
     from proteus.data import FWL_IO_FLOOR
     from proteus.utils.coupler import fwl_io_problem
 
     def doctor(name, spec):
         raise RuntimeError('no metadata')
 
-    with _fwl_io_installed('26.10.7.1'), patch('proteus.doctor.check_python_package', doctor):
+    with (
+        caplog.at_level(logging.DEBUG, logger='fwl'),
+        _fwl_io_installed('26.10.7.1'),
+        patch('proteus.doctor.check_python_package', doctor),
+    ):
         problem = fwl_io_problem()
     assert problem.endswith(f'Fix: pip install -U "fwl-io>={FWL_IO_FLOOR}"')
     assert '26.10.7.1' in problem
+    levels = [r.levelno for r in caplog.records if 'no metadata' in r.getMessage()]
+    assert levels == [logging.WARNING]
+
+
+def test_fwl_io_problem_names_pip_when_the_doctor_gives_no_fix():
+    """A doctor result without a fix command leaves the pip upgrade, never 'Fix: None'."""
+    from proteus.data import FWL_IO_FLOOR
+    from proteus.doctor import PASS, CheckResult
+    from proteus.utils.coupler import fwl_io_problem
+
+    result = CheckResult(
+        name='fwl-io', category='versions', status=PASS, message='', fix_cmd=None
+    )
+    with (
+        _fwl_io_installed('26.10.7.1'),
+        patch('proteus.doctor.check_python_package', return_value=result),
+    ):
+        problem = fwl_io_problem()
+    assert problem.endswith(f'Fix: pip install -U "fwl-io>={FWL_IO_FLOOR}"')
+    assert 'None' not in problem
 
 
 @pytest.mark.parametrize('installed', _versions(_AT_OR_ABOVE))
@@ -5990,28 +6015,31 @@ def test_fwl_io_problem_reports_a_missing_package():
     ids=['word', 'empty', 'spelled', 'none', 'no-field'],
 )
 def test_fwl_io_problem_warns_on_an_unparsable_version(installed, caplog):
-    """A version that does not parse, or a dist-info without one, only warns."""
+    """A version that does not parse, or a dist-info without one, only warns, and the
+    warning names the version found and the floor."""
+    from proteus.data import FWL_IO_FLOOR
     from proteus.utils.coupler import fwl_io_problem
 
     with caplog.at_level(logging.WARNING, logger='fwl'), _fwl_io_installed(installed):
         problem = fwl_io_problem()
     assert problem is None
-    levels = [
-        r.levelno for r in caplog.records if 'cannot parse the installed' in r.getMessage()
-    ]
-    assert levels == [logging.WARNING]
+    found = [r for r in caplog.records if 'cannot parse the installed' in r.getMessage()]
+    assert [r.levelno for r in found] == [logging.WARNING]
+    shown = None if isinstance(installed, Exception) else installed
+    assert f'version {shown!r};' in found[0].getMessage()
+    assert f'fwl-io>={FWL_IO_FLOOR}' in found[0].getMessage()
 
 
 @pytest.mark.parametrize(
-    'installed, line',
+    'installed, line, fix',
     [
-        ('26.10.7.1', 'is below the version PROTEUS needs'),
-        (_MISSING, 'fwl-io is not installed'),
+        ('26.10.7.1', 'is below the version PROTEUS needs', 'Fix: FIX'),
+        (_MISSING, 'fwl-io is not installed', 'Fix: pip install "fwl-io>='),
     ],
     ids=['old', 'missing'],
 )
 def test_validate_module_versions_stops_on_an_old_or_missing_fwl_io(
-    tmp_path, caplog, installed, line
+    tmp_path, caplog, installed, line, fix
 ):
     """At start an old or missing fwl-io stops with status 20 and one ERROR line with the fix."""
     from proteus.doctor import FAIL, CheckResult
@@ -6019,12 +6047,12 @@ def test_validate_module_versions_stops_on_an_old_or_missing_fwl_io(
 
     config = _all_dummy_modules_config()
     config.interior_energetics.module = 'dummy'
-    fix = CheckResult(
+    doctor = CheckResult(
         name='fwl-io', category='versions', status=FAIL, message='', fix_cmd='FIX'
     )
     with (
         _fwl_io_installed(installed),
-        patch('proteus.doctor.check_python_package', return_value=fix),
+        patch('proteus.doctor.check_python_package', return_value=doctor),
         patch('proteus.utils.coupler.UpdateStatusfile') as mock_update,
         caplog.at_level(logging.WARNING, logger='fwl'),
     ):
@@ -6032,7 +6060,7 @@ def test_validate_module_versions_stops_on_an_old_or_missing_fwl_io(
             validate_module_versions({'rad': str(tmp_path)}, config)
     mock_update.assert_called_once_with({'rad': str(tmp_path)}, 20)
     errors = [r.getMessage() for r in caplog.records if r.levelno == logging.ERROR]
-    assert len(errors) == 1 and line in errors[0] and 'Fix: ' in errors[0]
+    assert len(errors) == 1 and line in errors[0] and fix in errors[0]
 
 
 def test_validate_module_versions_goes_on_with_an_unparsable_fwl_io(tmp_path, caplog):
