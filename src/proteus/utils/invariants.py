@@ -729,14 +729,16 @@ def check_volatile_invariants(
 
     Enforces non-negative reservoir bounds (``{e}_kg_{r}_bounds``) and finite reservoir/total
     masses across all elements in ``element_list``. Element reservoir closure skips oxygen
-    under ``planet.fO2_source = 'user_constant'`` and, when ``outgas.vapourise`` is enabled,
-    skips ``vap_element_list`` (``Si, Mg, Fe, Na, Al, Ti, Ca, K, V``, whose totals stay zero
-    while rock vapour enters the atmosphere) and ``LAVATMOS_OVERWRITTEN_ELEMENTS``
-    (``input_eles`` in ``lavatmos.py``, namely ``H, C, N, S, O`` and ``noble_gases``:
-    ``lavatmos`` keeps ``O_kg_atm`` from the volatile outgassing step while storing
-    post-vapourisation O in ``Omass_after_vapourise``, and overwrites the atmospheric masses
-    of ``H, C, N, S`` and ``noble_gases`` from gas-phase equilibrium without updating their
-    element totals).
+    under ``planet.fO2_source = 'user_constant'``, skips ``noble_gases`` (``He, Ne, Ar, Kr, Xe``)
+    when ``outgas.module = 'dummy'`` (because the dummy outgassing module only partitions
+    ``H, C, N, S``), and, when ``outgas.vapourise`` is enabled, skips ``vap_element_list``
+    (``Si, Mg, Fe, Na, Al, Ti, Ca, K, V``, whose totals stay zero while rock vapour enters
+    the atmosphere) and ``LAVATMOS_OVERWRITTEN_ELEMENTS`` (``input_eles`` in ``lavatmos.py``,
+    namely ``H, C, N, S, O`` and ``noble_gases``: ``lavatmos`` keeps ``O_kg_atm`` from the
+    volatile outgassing step while storing post-vapourisation O in ``Omass_after_vapourise``,
+    and overwrites the atmospheric masses of ``H, C, N, S`` and ``noble_gases`` from gas-phase
+    equilibrium without updating their element totals).
+
 
     Parameters
     ----------
@@ -936,6 +938,8 @@ def check_volatile_invariants(
         float(outgas_cfg.mass_thresh) if (is_calliope or is_atmodeller) else 0.0
     )
     derived = set(derived_total_elements(config))
+    if outgas_module == 'dummy':
+        derived.update(noble_gases)
     if vapourise:
         derived.update(vap_element_list)
         derived.update(LAVATMOS_OVERWRITTEN_ELEMENTS)

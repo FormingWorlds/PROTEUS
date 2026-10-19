@@ -107,7 +107,9 @@ class Invariants:
         ``outgas.mass_thresh + element_closure_rtol * max(total, 0)`` (only as tight as
         ``outgas.mass_thresh``; a zero-budget leak is seen above ``mass_thresh``, whereas
         noble gases under ``atmodeller`` stay strict at
-        ``max(element_closure_atol_kg, element_closure_rtol * max(total, 0))``).
+        ``max(element_closure_atol_kg, element_closure_rtol * max(total, 0))``). Under
+        ``outgas.module = 'dummy'``, noble gases (``He, Ne, Ar, Kr, Xe``) skip reservoir
+        closure because the dummy outgassing module only partitions ``H, C, N, S``.
     element_closure_atol_kg: float
         Absolute floor on per-element reservoir closure when the ``outgas.mass_thresh``
         relaxation does not apply [kg], and lower-bound floor ``-element_closure_atol_kg`` on
