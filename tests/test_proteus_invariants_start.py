@@ -60,9 +60,9 @@ def test_proteus_start_status_family_31_mass_invariant(tmp_path, monkeypatch):
         v = InvariantViolation(
             name='M_planet_bounds',
             status_code=31,
-            value=6.5e24,
-            tolerance=5.97e24,
-            message='Planet mass exceeds upper bound',
+            value=0.0,
+            tolerance=0.0,
+            message='Time=1.000000e+00 yr: M_planet=0.000000e+00 kg violates M_planet > 0.0 kg',
             report_only=False,
         )
         handle_violations(
@@ -107,7 +107,7 @@ def test_proteus_start_status_family_32_state_bounds_invariant(tmp_path, monkeyp
             status_code=32,
             value=-15.0,
             tolerance=0.0,
-            message='Surface temperature below absolute zero',
+            message='Time=1.000000e+00 yr: T_surf=-1.500000e+01 K violates T_surf > 0.0 K',
             report_only=False,
         )
         handle_violations(
@@ -188,9 +188,9 @@ def test_proteus_start_resume_reads_helpfile_written_by_prior_stop(tmp_path, mon
             v = InvariantViolation(
                 name='M_planet_bounds',
                 status_code=31,
-                value=7.0e24,
-                tolerance=5.97e24,
-                message='Stopping violation on loop 5',
+                value=-1.0e24,
+                tolerance=0.0,
+                message='Time=1.000000e+02 yr: M_planet=-1.000000e+24 kg violates M_planet > 0.0 kg',
                 report_only=False,
             )
             handle_violations(
@@ -246,9 +246,9 @@ def test_proteus_start_row_failing_two_families_primary_status(tmp_path, monkeyp
     v_mass = InvariantViolation(
         name='M_planet_bounds',
         status_code=31,
-        value=6.5e24,
-        tolerance=5.97e24,
-        message='Mass invariant failure',
+        value=0.0,
+        tolerance=0.0,
+        message='Time=1.000000e+00 yr: M_planet=0.000000e+00 kg violates M_planet > 0.0 kg',
         report_only=False,
     )
     v_bounds = InvariantViolation(
@@ -256,7 +256,7 @@ def test_proteus_start_row_failing_two_families_primary_status(tmp_path, monkeyp
         status_code=32,
         value=-10.0,
         tolerance=0.0,
-        message='State bounds invariant failure',
+        message='Time=1.000000e+00 yr: T_surf=-1.000000e+01 K violates T_surf > 0.0 K',
         report_only=False,
     )
 
@@ -307,3 +307,54 @@ def test_proteus_start_row_failing_two_families_primary_status(tmp_path, monkeyp
     status_lines_canary = status_file.read_text(encoding='utf-8').splitlines()
     assert status_lines_canary[0].strip() == '32'
     assert 'State bounds invariant' in status_lines_canary[1]
+
+
+def test_proteus_start_passes_init_stage_and_interior_o_to_check_row_invariants(
+    tmp_path, monkeypatch
+):
+    """Proteus.start passes init_stage (True on init rows, False after) and runner.interior_o to check_row_invariants."""
+    monkeypatch.setattr(Interior_t, '_load_ps_table', lambda self, *a, **kw: None)
+    runner, _, out_dir = _build_dummy_runner(tmp_path, 'run_init_stage_spy', max_iters=5)
+    runner.config.invariants.mode = 'report'
+
+    real_check_row = proteus_mod.check_row_invariants
+    recorded_calls: list[tuple[int, bool | None, object]] = []
+
+    def spy_check_row(hf_row, config, **kwargs):
+        recorded_calls.append(
+            (runner.loops['total'], kwargs.get('init_stage'), kwargs.get('interior_o'))
+        )
+        return real_check_row(hf_row, config, **kwargs)
+
+    monkeypatch.setattr(proteus_mod, 'check_row_invariants', spy_check_row)
+    runner.start(resume=False, offline=True)
+
+    init_loops = runner.loops['init_loops']
+    assert len(recorded_calls) >= init_loops + 2
+    for loop_idx, is_init, int_o in recorded_calls:
+        assert int_o is runner.interior_o
+        if loop_idx <= init_loops:
+            assert is_init is True
+        else:
+            assert is_init is False
+
+
+def test_proteus_start_assert_mass_conservation_writes_status_31(tmp_path, monkeypatch):
+    """Proteus.start writes status 31 in its except RuntimeError block when assert_mass_conservation fails."""
+    import proteus.outgas.wrapper as outgas_wrapper
+
+    monkeypatch.setattr(Interior_t, '_load_ps_table', lambda self, *a, **kw: None)
+    runner, _, out_dir = _build_dummy_runner(tmp_path, 'run_coupler_status_31', max_iters=2)
+    real_outgas = outgas_wrapper.run_outgassing
+
+    def corrupt_outgas(dirs, config, hf_row, *args, **kwargs):
+        real_outgas(dirs, config, hf_row, *args, **kwargs)
+        hf_row['M_atm'] = 1.0e26
+
+    monkeypatch.setattr(outgas_wrapper, 'run_outgassing', corrupt_outgas)
+    with pytest.raises(RuntimeError, match='exceeds M_planet'):
+        runner.start(resume=False, offline=True)
+
+    status_lines = (out_dir / 'status').read_text(encoding='utf-8').splitlines()
+    assert status_lines[0].strip() == '31'
+    assert 'Mass conservation invariant' in status_lines[1]

@@ -5470,6 +5470,53 @@ def test_assert_mass_conservation_still_passes_a_finite_row():
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize(
+    ('row_overrides', 'with_config', 'expected_match'),
+    [
+        ({'M_planet': float('nan')}, False, 'M_planet is not finite'),
+        ({'H2O_kg_atm': float('nan')}, False, 'H2O_kg_atm is not finite'),
+        ({'CO2_kg_atm': float('inf')}, False, 'CO2_kg_atm is not finite'),
+        ({'M_atm': 9.0e24}, False, 'exceeds M_planet'),
+        ({'M_vol_atm': 1.0e21, 'H2O_kg_atm': 5.0e20}, False, 'sum_s'),
+        (
+            {
+                'H_kg_solid': 1.0e19,
+                'H_kg_atm': 5.0e19,
+                'H_kg_liquid': 5.0e19,
+                'H_kg_total': 1.0e20,
+            },
+            True,
+            'Per-element reservoir closure failed',
+        ),
+    ],
+)
+def test_assert_mass_conservation_all_raise_branches_and_no_directories_param(
+    row_overrides, with_config, expected_match
+):
+    """Every failure branch of assert_mass_conservation raises RuntimeError and directories is not a parameter."""
+    import inspect
+
+    from proteus.utils.coupler import assert_mass_conservation
+
+    base = {
+        'M_atm': 1.0e20,
+        'M_planet': 5.97e24,
+        'M_vol_atm': 1.0e20,
+        'M_vaps': 0.0,
+        'H2O_kg_atm': 1.0e20,
+    }
+    base.update(row_overrides)
+    with pytest.raises(RuntimeError, match=expected_match):
+        assert_mass_conservation(
+            base,
+            check_element_closure=with_config,
+            closure_rtol=1.0e-4 if with_config else None,
+        )
+    assert 'directories' not in inspect.signature(assert_mass_conservation).parameters
+
+
+@pytest.mark.unit
 def test_select_resumable_snapshot_rejects_a_mismatched_spider_json(tmp_path):
     """A SPIDER row whose JSON records another step's time is not resumed from.
 

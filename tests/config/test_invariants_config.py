@@ -303,3 +303,24 @@ def test_hypothesis_step_energy_rtol_ordering_and_non_kink_dispatch(
     assert [
         v.name for v in check_energy_invariants(hf_row_kink, cfg, hf_all, directories=None)
     ] == ['step_dE_inc_frac']
+
+
+def test_invariants_docstrings_have_no_file_line_refs_and_document_gates():
+    """Verify docstrings carry no file:line references and state the atmodeller and Zalmoxis gates."""
+    from pathlib import Path
+
+    from proteus.utils import invariants as inv_mod
+
+    invariants_cfg_src = (
+        Path(inv_mod.__file__).resolve().parents[1] / 'config' / '_invariants.py'
+    ).read_text(encoding='utf-8')
+    invariants_util_src = Path(inv_mod.__file__).read_text(encoding='utf-8')
+
+    assert 'aragog.py:' not in invariants_cfg_src
+    assert 'aragog.py:' not in invariants_util_src
+    assert 'mesh_surface_pressure_state' in invariants_cfg_src
+    assert 'solver.parameters.mesh.surface_pressure' in invariants_cfg_src
+    assert 'total <= outgas.mass_thresh' in invariants_cfg_src
+    assert '_ZALMOXIS_MAX_CONSECUTIVE_FAILS' in (
+        inv_mod.check_structure_invariants.__doc__ or ''
+    )

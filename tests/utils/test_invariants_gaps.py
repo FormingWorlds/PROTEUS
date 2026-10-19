@@ -634,7 +634,13 @@ def test_config_fields_ten_x_flips_outcome():
 
 def test_config_equal_default_swaps_detected():
     """Verify distinct tolerance fields are wired independently."""
-    cfg_phi_asym = _make_mock_config(phi_global_atol=1.0e-3, element_closure_atol_kg=10.0)
+    cfg_def = _make_mock_config(outgas_module='atmodeller', mass_thresh=0.0)
+    cfg_phi_asym = _make_mock_config(
+        phi_global_atol=1.0e-3,
+        element_closure_atol_kg=10.0,
+        outgas_module='atmodeller',
+        mass_thresh=0.0,
+    )
     row_phi = {
         'Time': 10.0,
         'T_surf': 1000.0,
@@ -642,8 +648,29 @@ def test_config_equal_default_swaps_detected():
         'P_surf': 10.0,
         'Phi_global': 1.0 + 1.0e-5,
     }
-    viols_phi = check_state_bounds_invariants(row_phi, cfg_phi_asym)
-    assert not any(v.name == 'Phi_global_bounds' for v in viols_phi)
+    assert any(
+        v.name == 'Phi_global_bounds' for v in check_state_bounds_invariants(row_phi, cfg_def)
+    )
+    assert not any(
+        v.name == 'Phi_global_bounds'
+        for v in check_state_bounds_invariants(row_phi, cfg_phi_asym)
+    )
+    row_atol = {
+        'Time': 10.0,
+        'M_planet': 6.0e24,
+        'M_atm': 1.0e20,
+        'M_vol_atm': 1.0e20,
+        'M_vaps': 0.0,
+        'H_kg_total': 100.0,
+        'H_kg_atm': 105.0,
+    }
+    assert any(
+        v.name == 'H_reservoir_closure' for v in check_volatile_invariants(row_atol, cfg_def)
+    )
+    assert not any(
+        v.name == 'H_reservoir_closure'
+        for v in check_volatile_invariants(row_atol, cfg_phi_asym)
+    )
 
 
 @pytest.mark.parametrize('bad_mode', ['warn', 'Stop', 'STOP', ''])
@@ -1072,6 +1099,11 @@ def test_volatile_invariants_defaults_and_scaling():
     assert not any(
         v.name == 'escape_cumulative_bound'
         for v in check_volatile_invariants(row_lost, cfg_no_fo2)
+    )
+    cfg_from_o = _make_mock_config(fO2_source='from_O_budget')
+    assert any(
+        v.name == 'escape_cumulative_bound'
+        for v in check_volatile_invariants(row_lost, cfg_from_o)
     )
 
 

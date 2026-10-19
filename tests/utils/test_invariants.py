@@ -740,16 +740,20 @@ def test_check_volatile_invariants_calliope_mass_thresh_vs_atmodeller_floor():
     assert v_wider[0].tolerance == pytest.approx(2.1e16 / 4.0e18)
     assert 'exceeds tol=5.250000e-03' in v_wider[0].message
 
-    # Under atmodeller, CHONS (like N) also use outgas.mass_thresh, whereas noble gases (like He)
-    # stay strict with the 1.0 kg floor:
+    # Under atmodeller, CHONS (like N) use outgas.mass_thresh only when total <= mass_thresh;
+    # at N_kg_total = 4.0e18 kg > mass_thresh, atmodeller enforces the strict rtol check:
     cfg_atm = _make_mock_config(
         outgas_module='atmodeller',
         mass_thresh=1.0e16,
         fO2_source='user_constant',
         vapourise=False,
     )
-    assert check_volatile_invariants(row_just_below, cfg_atm) == []
+    v_atm_above_thresh = check_volatile_invariants(row_just_below, cfg_atm)
+    assert [v.name for v in v_atm_above_thresh] == ['N_reservoir_closure']
+    assert v_atm_above_thresh[0].tolerance == pytest.approx(2.5e-4)
     assert len(check_volatile_invariants(row_just_above, cfg_atm)) == 1
+    row_atm_subthresh = dict(base_n_row, N_kg_total=5.0e15, N_kg_atm=0.0)
+    assert check_volatile_invariants(row_atm_subthresh, cfg_atm) == []
 
     row_he_below = dict(
         base_n_row,
@@ -1950,10 +1954,18 @@ def test_init_stage_structure_desync_reports_without_stopping_in_stop_mode(
     row3 = dict(row0, Time=1.0)
     try:
         v3 = check_row_invariants(row3, cfg, tracker=tracker, init_stage=True)
+        v3_none = check_row_invariants(row3, cfg, tracker=tracker, init_stage=None)
     except InvariantViolationError as exc:
         pytest.fail(f'init-stage row 3 raised InvariantViolationError: {exc}')
     assert len(v3) == 1
     assert v3[0].report_only is True
+    assert len(v3_none) == 1
+    assert v3_none[0].report_only is True
+
+    # Just above Time=1.0 yr with init_stage=None defaults to post-baseline and stops:
+    with pytest.raises(InvariantViolationError) as exc_after_1yr:
+        check_row_invariants(dict(row0, Time=1.0 + 1.0e-9), cfg, init_stage=None)
+    assert exc_after_1yr.value.invariant_name == 'struct_mass_desync_frac'
 
     # Post-baseline row 4 at Time=2.0 yr with resolved baseline structure passes cleanly
     row4 = dict(
@@ -1990,7 +2002,7 @@ def test_init_stage_structure_desync_reports_without_stopping_in_stop_mode(
 
 
 def test_atmodeller_mass_thresh_for_chons_and_strict_noble_gases():
-    """Under atmodeller, CHONS use mass_thresh + rtol * total while noble gases stay strict."""
+    """Under atmodeller, CHONS use mass_thresh + rtol * total only when total <= mass_thresh while solved budgets and noble gases stay strict."""
     from proteus.utils.constants import noble_gases, vol_element_list
     from proteus.utils.invariants import check_volatile_invariants
 
@@ -2003,7 +2015,6 @@ def test_atmodeller_mass_thresh_for_chons_and_strict_noble_gases():
         vapourise=False,
     )
     rtol = float(cfg.invariants.element_closure_rtol)
-    total_crit = mass_thresh / (1.0 - rtol)
 
     base_row = {
         'Time': 100.0,
@@ -2015,13 +2026,32 @@ def test_atmodeller_mass_thresh_for_chons_and_strict_noble_gases():
     }
 
     for elem in vol_element_list:
-        row_below = dict(base_row, **{f'{elem}_kg_total': total_crit * (1.0 - 1.0e-6)})
-        assert check_volatile_invariants(row_below, cfg) == []
+        # Sub-threshold (total <= mass_thresh): atmodeller skips partitioning, so 100% unpartitioned passes
+        row_sub = dict(base_row, **{f'{elem}_kg_total': mass_thresh})
+        assert check_volatile_invariants(row_sub, cfg) == []
 
-        row_above = dict(base_row, **{f'{elem}_kg_total': total_crit * (1.0 + 1.0e-6)})
-        v_above = check_volatile_invariants(row_above, cfg)
-        assert [v.name for v in v_above] == [f'{elem}_reservoir_closure']
-        assert v_above[0].report_only is False
+        # Just above mass_thresh (1.00025e16 kg): a 100% leak must stop
+        row_just_above = dict(base_row, **{f'{elem}_kg_total': 1.00025e16})
+        v_just_above = check_volatile_invariants(row_just_above, cfg)
+        assert [v.name for v in v_just_above] == [f'{elem}_reservoir_closure']
+        assert v_just_above[0].value == pytest.approx(1.0)
+        assert v_just_above[0].tolerance == pytest.approx(rtol)
+        assert v_just_above[0].report_only is False
+
+        # Solved budget at 10 x mass_thresh with a 5% leak stops
+        total_10x = 10.0 * mass_thresh
+        row_10x_leak = dict(
+            base_row,
+            **{
+                f'{elem}_kg_total': total_10x,
+                f'{elem}_kg_atm': 0.95 * total_10x,
+            },
+        )
+        v_10x = check_volatile_invariants(row_10x_leak, cfg)
+        assert [v.name for v in v_10x] == [f'{elem}_reservoir_closure']
+        assert v_10x[0].value == pytest.approx(0.05)
+        assert v_10x[0].tolerance == pytest.approx(rtol)
+        assert v_10x[0].report_only is False
 
     for gas in noble_gases:
         # Noble gases remain strict even when 0 < total <= mass_thresh
@@ -2093,7 +2123,7 @@ def test_dummy_outgas_skips_noble_gas_reservoir_closure():
 def test_smin_clip_temp_k_one_row_and_two_column_tables_warn_once_without_raising(
     tmp_path, caplog: pytest.LogCaptureFixture
 ):
-    """A 1-row or 2-column P-S table gives no clip and one warning per path in report mode."""
+    """A 1-row, 2-column, or n_P=0 P-S table gives no clip and one warning per path in report mode."""
     import pandas as pd
 
     from proteus.utils.invariants import _smin_clip_temp_k, check_row_invariants
@@ -2116,6 +2146,13 @@ def test_smin_clip_temp_k_one_row_and_two_column_tables_warn_once_without_raisin
     dir_2col.mkdir()
     (dir_2col / 'temperature_solid.dat').write_text(
         hdr_lines + '1.0e-04 2.199633e-05\n2.595514e-01 2.199633e-05\n',
+        encoding='utf-8',
+    )
+
+    dir_np0 = tmp_path / 'eos_np0'
+    dir_np0.mkdir()
+    (dir_np0 / 'temperature_solid.dat').write_text(
+        hdr_lines.replace('# 5 2 1\n', '# 5 0 1\n', 1) + '1.0e-04 2.199633e-05 3.023417e-01\n',
         encoding='utf-8',
     )
 
@@ -2157,7 +2194,11 @@ def test_smin_clip_temp_k_one_row_and_two_column_tables_warn_once_without_raisin
         'core_C_eff': 0.0,
     }
 
-    for label, eos_dir in (('1row', dir_1row), ('2col', dir_2col)):
+    for label, eos_dir, expected_phrase in (
+        ('1row', dir_1row, 'Expected 2D P-S table'),
+        ('2col', dir_2col, 'Expected 2D P-S table'),
+        ('np0', dir_np0, 'Invalid n_P=0'),
+    ):
         caplog.clear()
         dirs = {'spider_eos_dir': str(eos_dir)}
         with caplog.at_level(logging.WARNING, logger='fwl.proteus.utils.invariants'):
@@ -2175,41 +2216,166 @@ def test_smin_clip_temp_k_one_row_and_two_column_tables_warn_once_without_raisin
             r.message for r in caplog.records if 'Failed to load P-S EOS table' in r.message
         ]
         assert len(warn_msgs) == 1
+        assert expected_phrase in warn_msgs[0]
 
 
-def test_interior_mass_target_rtol_unguarded_zalmoxis_paths():
-    """Verify interior_mass_target_rtol documents and guards Zalmoxis solve paths where _ZALMOXIS_MASS_ANCHOR_TOL does not run."""
-    from proteus.config._invariants import Invariants
-    from proteus.utils.invariants import check_structure_invariants
+def test_structure_rollback_makes_target_errors_report_only_while_normal_rows_stop(
+    tmp_path, monkeypatch
+):
+    """A rejected up-step or convergence rollback in update_structure_from_interior marks M_int_target_rel_err and M_core_target_rel_err report_only=True while normal rows stop."""
+    import numpy as np
 
-    doc = Invariants.__doc__ or ''
-    assert 'determine_interior_radius_with_zalmoxis' in doc
-    assert 'equilibrate_initial_state' in doc
-    assert 'update_structure_from_interior' in doc
-    assert '_ZALMOXIS_MASS_ANCHOR_TOL' in doc
+    import proteus.interior_energetics.wrapper as int_wrap
+    import proteus.interior_struct.zalmoxis as zalmoxis_mod
+    from proteus.config import Config
+    from proteus.interior_energetics.common import Interior_t
+    from proteus.utils.invariants import (
+        InvariantViolationError,
+        check_row_invariants,
+        check_structure_invariants,
+    )
 
-    cfg = _make_mock_config()
-    # On init-stage row 0 (determine_interior_radius_with_zalmoxis / equilibrate_initial_state),
-    # _ZALMOXIS_MASS_ANCHOR_TOL does not run; check_structure_invariants reports > 3.0e-3:
-    row_init = {
-        'Time': 0.0,
-        'M_int': 5.970e24 * 1.005,
+    monkeypatch.setattr(Interior_t, '_load_ps_table', lambda self, *a, **kw: None)
+    cfg = Config()
+    cfg.invariants.mode = 'stop'
+    cfg.interior_struct.module = 'zalmoxis'
+    cfg.interior_energetics.module = 'aragog'
+    cfg.interior_energetics.aragog.initial_condition = 1
+    cfg.interior_struct.zalmoxis.mantle_eos = 'PALEOS-2phase:MgSiO3'
+    cfg.interior_struct.zalmoxis.dry_mantle = True
+
+    data_dir = tmp_path / 'data'
+    data_dir.mkdir(parents=True)
+    (data_dir / 'zalmoxis_output.dat').write_text('0.0 0.0\n', encoding='utf-8')
+    dirs = {'output': str(tmp_path), 'output/data': str(data_dir)}
+
+    interior_o = Interior_t(10)
+    interior_o.ic = 2
+    interior_o.radius = np.linspace(3.48e6, 6.37e6, 11)
+    interior_o.temp = np.linspace(4000.0, 2500.0, 10)
+
+    base_row = {
+        'Time': 200.0,
+        'T_surf': 2000.0,
+        'T_magma': 2500.0,
+        'T_cmb': 4000.0,
+        'P_surf': 100.0,
+        'Phi_global': 0.8,
+        'M_planet': 5.972e24,
+        'M_atm': 1.0e20,
+        'M_vol_atm': 1.0e20,
+        'M_vaps': 0.0,
+        'H2O_kg_atm': 1.0e20,
+        'R_int': 6.370e6,
+        'R_core': 3.480e6,
+        'M_int': 5.970e24,
         'M_int_target': 5.970e24,
         'M_core': 1.940e24,
         'M_core_target': 1.940e24,
+        'M_mantle': 4.030e24,
+        'P_center': 3.6e11,
+        'P_cmb': 1.35e11,
+        'gravity': 9.81,
+        'rho_avg': 5515.0,
+        'struct_mass_desync_frac': 1.0e-3,
     }
-    v_init = check_structure_invariants(row_init, cfg, init_stage=True)
-    assert len(v_init) == 1
-    assert v_init[0].name == 'M_int_target_rel_err'
-    assert v_init[0].report_only is True
 
-    # On a post-init update_structure_from_interior rollback (where _saved_structure restores
-    # M_int while leaving the new M_int_target in hf_row), check_structure_invariants stops:
-    row_post = dict(row_init, Time=100.0)
-    v_post = check_structure_invariants(row_post, cfg, init_stage=False)
-    assert len(v_post) == 1
-    assert v_post[0].name == 'M_int_target_rel_err'
-    assert v_post[0].report_only is False
+    # 1. Monotonic-radius up-step reject: zalmoxis_solver writes a new M_int_target (+0.6%)
+    # and M_core_target (+4.0%) with a slightly larger R_int while cooling; the wrapper
+    # restores _saved_structure (M_int=5.970e24, M_core=1.940e24) and leaves the new targets.
+    def fake_upstep_solver(config, outdir, hf_row, **kwargs):
+        hf_row['R_int'] = 6.370e6 * 1.005
+        hf_row['M_int_target'] = 5.970e24 * 1.006
+        hf_row['M_int'] = 5.970e24 * 1.006
+        hf_row['M_core_target'] = 1.940e24 * 1.04
+        hf_row['M_core'] = 1.940e24 * 1.04
+        return 3.480e6, None
+
+    monkeypatch.setattr(zalmoxis_mod, 'zalmoxis_solver', fake_upstep_solver)
+    row_upstep = dict(base_row)
+    int_wrap.update_structure_from_interior(
+        dirs,
+        cfg,
+        row_upstep,
+        interior_o,
+        last_struct_time=0.0,
+        last_Tmagma=2600.0,
+        last_Phi=0.85,
+        force=True,
+    )
+    assert row_upstep['M_int'] == pytest.approx(5.970e24)
+    assert row_upstep['M_int_target'] == pytest.approx(5.970e24 * 1.006)
+    assert row_upstep.get('_structure_rollback') is True
+    assert interior_o.structure_rollback_active is True
+
+    # In stop mode, the row following the rejected up-step continues like off mode (report_only=True):
+    v_upstep = check_row_invariants(row_upstep, cfg, init_stage=False, interior_o=interior_o)
+    assert [v.name for v in v_upstep] == ['M_int_target_rel_err', 'M_core_target_rel_err']
+    assert all(v.report_only for v in v_upstep)
+
+    # 2. Convergence / mass-anchor RuntimeError rollback also marks target checks report_only=True:
+    def fake_failing_solver(config, outdir, hf_row, **kwargs):
+        hf_row['M_int_target'] = 5.970e24 * 1.008
+        hf_row['M_int'] = 5.970e24 * 1.020
+        hf_row['M_core_target'] = 1.940e24 * 1.05
+        hf_row['M_core'] = 1.940e24 * 1.05
+        return 3.480e6, None
+
+    monkeypatch.setattr(zalmoxis_mod, 'zalmoxis_solver', fake_failing_solver)
+    row_fail = dict(base_row)
+    interior_o_fail = Interior_t(10)
+    interior_o_fail.ic = 2
+    interior_o_fail.radius = interior_o.radius
+    interior_o_fail.temp = interior_o.temp
+    int_wrap.update_structure_from_interior(
+        dirs,
+        cfg,
+        row_fail,
+        interior_o_fail,
+        last_struct_time=0.0,
+        last_Tmagma=2600.0,
+        last_Phi=0.85,
+        force=True,
+    )
+    assert row_fail.get('_structure_rollback') is True
+    assert interior_o_fail.structure_rollback_active is True
+    v_fail = check_row_invariants(row_fail, cfg, init_stage=False, interior_o=interior_o_fail)
+    assert [v.name for v in v_fail] == ['M_int_target_rel_err', 'M_core_target_rel_err']
+    assert all(v.report_only for v in v_fail)
+
+    # 3. Subsequent accepted down-step clears the rollback marker, and a target error on a normal row stops:
+    def fake_accepted_solver(config, outdir, hf_row, **kwargs):
+        hf_row['R_int'] = 6.350e6
+        hf_row['M_int_target'] = 5.970e24
+        hf_row['M_int'] = 5.970e24
+        hf_row['M_core_target'] = 1.940e24
+        hf_row['M_core'] = 1.940e24
+        return 3.480e6, None
+
+    monkeypatch.setattr(zalmoxis_mod, 'zalmoxis_solver', fake_accepted_solver)
+    int_wrap.update_structure_from_interior(
+        dirs,
+        cfg,
+        row_upstep,
+        interior_o,
+        last_struct_time=0.0,
+        last_Tmagma=2600.0,
+        last_Phi=0.85,
+        force=True,
+    )
+    assert row_upstep.get('_structure_rollback') is False
+    assert interior_o.structure_rollback_active is False
+    assert check_row_invariants(row_upstep, cfg, init_stage=False, interior_o=interior_o) == []
+
+    row_normal_err = dict(row_upstep, M_int=5.970e24 * 1.005)
+    v_normal = check_structure_invariants(
+        row_normal_err, cfg, init_stage=False, interior_o=interior_o
+    )
+    assert [v.name for v in v_normal] == ['M_int_target_rel_err']
+    assert v_normal[0].report_only is False
+    with pytest.raises(InvariantViolationError) as exc_normal:
+        check_row_invariants(row_normal_err, cfg, init_stage=False, interior_o=interior_o)
+    assert exc_normal.value.invariant_name == 'M_int_target_rel_err'
 
 
 def test_negative_element_total_checked_before_derived_skip():
@@ -2411,9 +2577,15 @@ def test_smin_table_cache_key_includes_size_mtime_and_head_bytes(tmp_path):
 def test_resolve_ps_table_path_uses_zalmoxis_ps_cache_pointer_name(tmp_path):
     """Verify _resolve_ps_table_path reads the pointer file written by zalmoxis._write_ps_cache_pointer."""
     from proteus.interior_struct.zalmoxis import PS_CACHE_POINTER_NAME, _write_ps_cache_pointer
+    from proteus.utils import constants as const_mod
     from proteus.utils import invariants as inv_mod
 
-    assert inv_mod.PS_CACHE_POINTER_NAME == PS_CACHE_POINTER_NAME == 'spider_eos_cache.txt'
+    assert (
+        const_mod.PS_CACHE_POINTER_NAME
+        == inv_mod.PS_CACHE_POINTER_NAME
+        == PS_CACHE_POINTER_NAME
+        == 'spider_eos_cache.txt'
+    )
 
     out_dir = tmp_path / 'run_out'
     cache_dir = tmp_path / 'shared_ps_cache'
@@ -2424,3 +2596,113 @@ def test_resolve_ps_table_path_uses_zalmoxis_ps_cache_pointer_name(tmp_path):
     _write_ps_cache_pointer(str(out_dir), str(cache_dir))
     resolved = inv_mod._resolve_ps_table_path({'output': str(out_dir)})
     assert resolved == table_path.resolve()
+
+
+def test_import_proteus_does_not_eagerly_load_aragog_zalmoxis_or_netcdf4():
+    """Importing proteus.proteus and proteus.utils.invariants does not load aragog, zalmoxis, or netCDF4."""
+    import json
+    import subprocess
+    import sys
+
+    code = (
+        'import json, sys, proteus.proteus, proteus.utils.invariants; '
+        'mods = ["proteus.interior_energetics.aragog", "proteus.interior_struct.zalmoxis", "netCDF4"]; '
+        'print(json.dumps({m: (m in sys.modules) for m in mods}))'
+    )
+    proc = subprocess.run(
+        [sys.executable, '-c', code],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    loaded = json.loads(proc.stdout.strip())
+    assert loaded == {
+        'proteus.interior_energetics.aragog': False,
+        'proteus.interior_struct.zalmoxis': False,
+        'netCDF4': False,
+    }
+    assert not any(loaded.values())
+
+
+def test_proteus_row_init_stage_helper_all_cases(tmp_path, monkeypatch):
+    """Verify Proteus._row_init_stage across init iteration, Zalmoxis pre/post baseline, stale fallback, and non-Zalmoxis."""
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    from proteus import Proteus
+    from proteus.interior_energetics.common import Interior_t
+
+    monkeypatch.setattr(Interior_t, '_load_ps_table', lambda self, *a, **kw: None)
+    dummy_toml = Path(__file__).resolve().parents[2] / 'input' / 'dummy.toml'
+    cfg_path = tmp_path / 'row_init_stage.toml'
+    cfg_path.write_text(
+        dummy_toml.read_text(encoding='utf-8').replace(
+            'path = "auto"', f'path = "{tmp_path / "out"}"', 1
+        ),
+        encoding='utf-8',
+    )
+    runner = Proteus(config_path=cfg_path)
+    runner.interior_o = SimpleNamespace(structure_stale=False)
+
+    # 1. Init iteration is True regardless of structure module
+    runner.config.interior_struct.module = 'dummy'
+    runner._post_init_baseline_struct_done = True
+    assert runner._row_init_stage(True) is True
+
+    # 2. Zalmoxis before post-init baseline solve is True
+    runner.config.interior_struct.module = 'zalmoxis'
+    runner._post_init_baseline_struct_done = False
+    runner.interior_o.structure_stale = False
+    assert runner._row_init_stage(False) is True
+
+    # 3. Zalmoxis after successful post-init baseline solve is False
+    runner._post_init_baseline_struct_done = True
+    runner.interior_o.structure_stale = False
+    assert runner._row_init_stage(False) is False
+
+    # 4. Zalmoxis when baseline solve failed and fell back (structure_stale=True) stays True
+    runner._post_init_baseline_struct_done = True
+    runner.interior_o.structure_stale = True
+    assert runner._row_init_stage(False) is True
+
+    # 5. Non-Zalmoxis run after init iterations is False even with _post_init_baseline_struct_done=False
+    runner.config.interior_struct.module = 'dummy'
+    runner._post_init_baseline_struct_done = False
+    runner.interior_o.structure_stale = False
+    assert runner._row_init_stage(False) is False
+
+
+def test_nan_species_and_nan_mplanet_stop_in_check_volatile_invariants():
+    """NaN species mass emits {s}_kg_atm_bounds and NaN M_planet emits M_planet_bounds as stopping violations."""
+    from proteus.utils.invariants import (
+        InvariantViolationError,
+        check_row_invariants,
+        check_volatile_invariants,
+    )
+
+    cfg = _make_mock_config(mode='stop', fO2_source='user_constant', vapourise=False)
+    base_row = {
+        'Time': 100.0,
+        'T_surf': 1500.0,
+        'T_magma': 2000.0,
+        'P_surf': 100.0,
+        'Phi_global': 0.5,
+        'M_planet': 6.0e24,
+        'M_atm': 1.0e21,
+        'M_vol_atm': 1.0e21,
+        'M_vaps': 0.0,
+        'H2O_kg_atm': 1.0e21,
+    }
+    v_sp = check_volatile_invariants(dict(base_row, H2O_kg_atm=float('nan')), cfg)
+    assert [v.name for v in v_sp] == ['H2O_kg_atm_bounds']
+    assert v_sp[0].report_only is False
+    with pytest.raises(InvariantViolationError) as exc_sp:
+        check_row_invariants(dict(base_row, H2O_kg_atm=float('nan')), cfg)
+    assert exc_sp.value.invariant_name == 'H2O_kg_atm_bounds'
+
+    v_mp = check_volatile_invariants(dict(base_row, M_planet=float('nan')), cfg)
+    assert [v.name for v in v_mp] == ['M_planet_bounds']
+    assert v_mp[0].report_only is False
+    with pytest.raises(InvariantViolationError) as exc_mp:
+        check_row_invariants(dict(base_row, M_planet=float('nan')), cfg)
+    assert exc_mp.value.invariant_name == 'M_planet_bounds'
