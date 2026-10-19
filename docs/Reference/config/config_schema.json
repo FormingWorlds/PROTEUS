@@ -6056,6 +6056,68 @@
       "group_qualifier": null
     },
     {
+      "path": "interior_energetics.aragog.top_cell_dt_limit",
+      "toml_section": "interior_energetics.aragog",
+      "class": "Aragog",
+      "type": "bool",
+      "accepts_none": false,
+      "default": "false",
+      "choices": null,
+      "bounds": null,
+      "description": "Limit the coupling time step by the top-cell radiative drain time tau_drain and keep hf_row['T_magma'] and hf_row['Phi_global'] on the Aragog solver state.",
+      "doc_source": "field_docstring",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.top_cell_dt_rel_dT",
+      "toml_section": "interior_energetics.aragog",
+      "class": "Aragog",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.08",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0.0
+        },
+        {
+          "op": "<=",
+          "value": 0.5
+        }
+      ],
+      "description": "Relative surface-temperature change allowance eta_T in the mushy regime (phi_s[-1] >= 0.40) for the top-cell drain-time step limit; must lie in (0, 0.5].",
+      "doc_source": "field_docstring",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.top_cell_dt_rel_dT_solid",
+      "toml_section": "interior_energetics.aragog",
+      "class": "Aragog",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.02",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0.0
+        }
+      ],
+      "description": "Relative surface-temperature change allowance eta_T_solid at a fully solid top cell (phi_s[-1] = 0), ramped linearly to top_cell_dt_rel_dT at phi_s[-1] = 0.40; must lie in (0, top_cell_dt_rel_dT].",
+      "doc_source": "field_docstring",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
       "path": "interior_energetics.dummy.mantle_tliq",
       "toml_section": "interior_energetics.dummy",
       "class": "InteriorDummy",
@@ -12565,6 +12627,17 @@
         "zephyrus.efficiency"
       ],
       "doc": "Validate ZEPHYRUS settings: Pxuv within (0, 10] bar and efficiency within [0, 1]."
+    },
+    {
+      "validator": "_valid_top_cell_dt_rel_dT_solid",
+      "module": "_interior.py",
+      "attached_to": [
+        "interior_energetics.aragog.top_cell_dt_rel_dT_solid"
+      ],
+      "touches": [
+        "top_cell_dt_rel_dT"
+      ],
+      "doc": "Require 0 < top_cell_dt_rel_dT_solid <= top_cell_dt_rel_dT."
     },
     {
       "validator": "valid_aragog",

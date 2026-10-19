@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pandas as pd
 
+from proteus.utils.constants import secs_per_year
 from proteus.utils.helper import SUBYEAR_TIME_RESOLUTION, UpdateStatusfile
 
 if TYPE_CHECKING:
@@ -17,6 +18,119 @@ log = logging.getLogger('fwl.' + __name__)
 
 # Constants
 SMALL = 1e-8  # Small number
+_TAU_DRAIN_F_MIN = 1.0  # Minimum surface flux [W m^-2] for top-cell drain timescale
+_TAU_DRAIN_PHI_GATE = 0.60  # Melt-fraction gate below which solid heat capacity caps cp_eff
+_TAU_DRAIN_PHI_RAMP = 0.40  # Melt-fraction upper endpoint of the optional solid rel_dT ramp
+_TAU_DRAIN_SOLID_S_OFFSET = 300.0  # Entropy offset [J kg^-1 K^-1] above table minimum S_min
+_TAU_DRAIN_SOLID_S_CAP = 1800.0  # Upper entropy cap [J kg^-1 K^-1] for solid-branch cp lookup
+
+
+def _estimate_tau_drain(config: Config, hf_row: dict, interior_o) -> float:
+    """Estimate the top-cell sensible-heat drain timescale for Aragog.
+
+    Parameters
+    ----------
+    config : Config
+        PROTEUS configuration object.
+    hf_row : dict
+        Current helpfile dictionary with ``F_atm`` [W m^-2] and ``T_surf`` [K].
+    interior_o : Interior_t or None
+        Interior state carrier holding ``aragog_solver``.
+
+    Returns
+    -------
+    float
+        Estimated top-cell drain timescale in years, or ``np.inf`` when
+        no populated Aragog solver state is available.
+    """
+    solver = getattr(interior_o, 'aragog_solver', None) if interior_o is not None else None
+    if solver is None:
+        return np.inf
+
+    eos = getattr(solver, 'entropy_eos', None)
+    sol = getattr(solver, '_solution', None)
+    if sol is not None and getattr(sol, 'y', None) is not None and np.size(sol.y) > 0:
+        s_block = np.asarray(solver.entropy_staggered, dtype=float)
+        s_vec = s_block[:, -1] if s_block.ndim > 1 else s_block
+        s_top = float(s_vec.ravel()[-1])
+    else:
+        n_stag = int(getattr(solver, '_n_stag', 0))
+        s0 = np.asarray(solver._S0, dtype=float).ravel()
+        s_top = float(s0[n_stag - 1] if 0 < n_stag <= s0.size else s0[-1])
+
+    r_outer = float(np.asarray(solver._r_basic_flat, dtype=float).ravel()[-1])
+    vol_top = float(np.asarray(solver._volume_flat, dtype=float).ravel()[-1])
+    p_top = float(np.asarray(solver._P_stag_flat, dtype=float).ravel()[-1])
+    area_s = 4.0 * math.pi * r_outer * r_outer
+    dr_eff = vol_top / area_s if area_s > 0.0 else float('nan')
+
+    rho_top = float(
+        np.asarray(eos.density(np.array([p_top]), np.array([s_top])), dtype=float).ravel()[0]
+    )
+    cp_top = float(
+        np.asarray(
+            eos.heat_capacity(np.array([p_top]), np.array([s_top])), dtype=float
+        ).ravel()[0]
+    )
+    phi_raw = float(
+        np.asarray(
+            eos.melt_fraction(np.array([p_top]), np.array([s_top])), dtype=float
+        ).ravel()[0]
+    )
+    s_min = float(eos.S_min)
+    s_solid_probe = max(s_min + _TAU_DRAIN_SOLID_S_OFFSET, min(s_top, _TAU_DRAIN_SOLID_S_CAP))
+    cp_solid = float(
+        np.asarray(
+            eos.heat_capacity(np.array([p_top]), np.array([s_solid_probe])), dtype=float
+        ).ravel()[0]
+    )
+    t_surf = float(hf_row.get('T_surf', hf_row.get('T_magma', float('nan'))))
+    f_raw = float(hf_row.get('F_atm', float('nan')))
+
+    if (
+        not (
+            math.isfinite(s_top)
+            and math.isfinite(p_top)
+            and math.isfinite(dr_eff)
+            and math.isfinite(rho_top)
+            and math.isfinite(cp_top)
+            and math.isfinite(cp_solid)
+            and math.isfinite(phi_raw)
+            and math.isfinite(t_surf)
+            and math.isfinite(f_raw)
+        )
+        or dr_eff <= 0.0
+        or rho_top <= 0.0
+        or cp_top <= 0.0
+        or cp_solid <= 0.0
+        or t_surf <= 0.0
+    ):
+        if not getattr(interior_o, '_tau_drain_invalid_warned', False):
+            log.warning(
+                'Non-finite or non-positive top-cell state in tau_drain '
+                '(S=%.3g, T_surf=%.3g, phi=%.3g, rho=%.3g, cp=%.3g, dr=%.3g); skipping cap.',
+                s_top,
+                t_surf,
+                phi_raw,
+                rho_top,
+                cp_top,
+                dr_eff,
+            )
+            interior_o._tau_drain_invalid_warned = True
+        return np.inf
+
+    phi_top = min(1.0, max(0.0, phi_raw))
+    cp_eff = min(cp_top, cp_solid) if phi_top <= _TAU_DRAIN_PHI_GATE else cp_top
+
+    aragog_cfg = config.interior_energetics.aragog
+    eta_melt = float(aragog_cfg.top_cell_dt_rel_dT)
+    eta_solid = float(aragog_cfg.top_cell_dt_rel_dT_solid)
+    eta_eff = eta_solid + (eta_melt - eta_solid) * min(phi_top / _TAU_DRAIN_PHI_RAMP, 1.0)
+
+    dt_allow_k = eta_eff * t_surf
+    f_abs = max(abs(f_raw), _TAU_DRAIN_F_MIN)
+    tau_yr = (rho_top * cp_eff * dr_eff * dt_allow_k) / (f_abs * secs_per_year)
+    return float(tau_yr)
 
 
 def _hf_from_iters(hf_all: pd.DataFrame, i1: int, i2: int):
@@ -448,6 +562,26 @@ def next_step(
             dtswitch,
         )
         dtswitch = evection_cap
+
+    # Top-cell sensible-heat drain cap for Aragog, floored at the escape step floor.
+    ie_cfg = getattr(config, 'interior_energetics', None)
+    if (
+        getattr(ie_cfg, 'module', None) == 'aragog'
+        and getattr(getattr(ie_cfg, 'aragog', None), 'top_cell_dt_limit', False) is True
+    ):
+        tau_drain = _estimate_tau_drain(config, hf_row, interior_o)
+        if np.isfinite(tau_drain) and tau_drain > 0.0:
+            esc_floor = config.params.dt.minimum * config.escape.step_dt_floor_frac
+            dt_drain = max(esc_floor, tau_drain)
+            if dtswitch > dt_drain:
+                log.info(
+                    'Time-stepping: top-cell drain cap active, capping dt at %.2e yr '
+                    '(tau_drain=%.2e yr, was %.2e yr)',
+                    dt_drain,
+                    tau_drain,
+                    dtswitch,
+                )
+                dtswitch = dt_drain
 
     # On retries (step_sf < 1) in the static/initial branches we
     # deliberately allow dt to fall below dt.minimum; the whole point of

@@ -61,6 +61,21 @@ def _step_cap_valid(instance, attribute, value):
         )
 
 
+def _valid_bool(instance, attribute, value):
+    """Require a boolean value."""
+    if not isinstance(value, bool):
+        raise TypeError(f'`{attribute.name}` must be a bool, got {value!r}')
+
+
+def _valid_top_cell_dt_rel_dT_solid(instance, attribute, value):
+    """Require 0 < top_cell_dt_rel_dT_solid <= top_cell_dt_rel_dT."""
+    if value > instance.top_cell_dt_rel_dT:
+        raise ValueError(
+            f'`{attribute.name}` ({value}) must be <= top_cell_dt_rel_dT '
+            f'({instance.top_cell_dt_rel_dT})'
+        )
+
+
 def valid_spider(instance, attribute, value):
     """SPIDER requires at least one energy transport term to be enabled."""
     if instance.module != 'spider':
@@ -447,6 +462,25 @@ class Aragog:
     determine_interior_radius. Default 100 kg; pairs with Spider's
     matching field so both backends drive the same outer-loop convergence
     criterion."""
+
+    top_cell_dt_limit: bool = field(default=False, validator=_valid_bool)
+    """Limit the coupling time step by the top-cell radiative drain time tau_drain
+    and keep hf_row['T_magma'] and hf_row['Phi_global'] on the Aragog solver state."""
+
+    top_cell_dt_rel_dT: float = field(
+        default=0.08, converter=float, validator=(gt(0.0), le(0.5))
+    )
+    """Relative surface-temperature change allowance eta_T in the mushy regime
+    (phi_s[-1] >= 0.40) for the top-cell drain-time step limit; must lie in (0, 0.5]."""
+
+    top_cell_dt_rel_dT_solid: float = field(
+        default=0.02,
+        converter=float,
+        validator=(gt(0.0), _valid_top_cell_dt_rel_dT_solid),
+    )
+    """Relative surface-temperature change allowance eta_T_solid at a fully solid
+    top cell (phi_s[-1] = 0), ramped linearly to top_cell_dt_rel_dT at
+    phi_s[-1] = 0.40; must lie in (0, top_cell_dt_rel_dT]."""
 
 
 def valid_interiordummy(instance, attribute, value):

@@ -524,6 +524,11 @@ config_version = "3.0"
         # it (1 yr steps with "fixed", which can stall a run; 1 to 100 yr segments with "rate").
         phase_boundary_entropy_margin = 200.0    # phase-boundary max_step band [J/kg/K]
         phase_boundary_cap            = "rate"     # phase-boundary max_step policy: "rate" (default) | "fixed"
+        top_cell_dt_limit             = false    # bound the coupling step by the top-cell sensible-heat drain timescale under F_atm
+        top_cell_dt_rel_dT            = 0.08     # relative surface-temperature change allowance in the mushy regime (phi_s[-1] >= 0.40)
+        top_cell_dt_rel_dT_solid      = 0.02     # relative surface-temperature change allowance at a fully solid top cell (phi_s[-1] = 0)
+
+
 
         # Core evolution, read when core_bc = "core_module": the CMB radius and pressure come
         # from the mesh and the central density and length scale from fits to the interior

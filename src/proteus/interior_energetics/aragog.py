@@ -565,10 +565,27 @@ class AragogRunner:
         AragogRunner.setup_logger(config, dirs)
         # Store P-S EOS directory path for entropy solver initialization
         interior_o._spider_eos_dir = dirs.get('spider_eos_dir', '')
+        solver_was_none = getattr(interior_o, 'aragog_solver', None) is None
         dt = AragogRunner.compute_time_step(config, dirs, hf_row, hf_all, interior_o)
         self.setup_or_update_solver(config, hf_row, interior_o, dt, dirs, hf_all=hf_all)
-        self.aragog_solver = interior_o.aragog_solver
+        # On resume (solver_was_none and ic != 1), recompute dt once aragog_solver exists.
+        if (
+            solver_was_none
+            and getattr(interior_o, 'ic', 1) != 1
+            and getattr(
+                getattr(getattr(config, 'interior_energetics', None), 'aragog', None),
+                'top_cell_dt_limit',
+                False,
+            )
+            is True
+            and getattr(interior_o, 'aragog_solver', None) is not None
+        ):
+            dt = AragogRunner.compute_time_step(config, dirs, hf_row, hf_all, interior_o)
+            interior_o.aragog_solver.parameters.solver.end_time = hf_row['Time'] + dt
+        self.aragog_solver = getattr(interior_o, 'aragog_solver', None)
+
         self._config = config
+
         # Diffrax direct-JAX integration is research-only (autodiff
         # development). It is NOT exposed in the user-facing schema; flip
         # the constant below to enable for development. The CHILI
