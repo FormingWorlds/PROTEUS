@@ -4507,7 +4507,15 @@ def _zalmoxis_ps_tables(
 
 
 def _lowt_stubbed_run(
-    tmp_path, monkeypatch, *, lowt, write_ext=True, tables=None, twophase=True, registry=True
+    tmp_path,
+    monkeypatch,
+    *,
+    lowt,
+    write_ext=True,
+    tables=None,
+    twophase=True,
+    registry=True,
+    inputs=None,
 ):
     """generate_spider_tables on a unified PALEOS entry with stubbed generators."""
     from unittest.mock import create_autospec
@@ -4549,6 +4557,8 @@ def _lowt_stubbed_run(
             (Path(kw['output_dir']) / name).write_text('NEW')
 
     tables = create_autospec(_zalmoxis_ps_tables) if tables is None else tables
+    if inputs is not None:
+        monkeypatch.setattr(zmod, '_ps_table_inputs', inputs)
     monkeypatch.setattr(zalmoxis.eos_export, 'generate_spider_phase_boundaries', _bounds)
     monkeypatch.setattr(zalmoxis.eos_export, 'generate_spider_eos_tables', tables)
     config = MagicMock()
@@ -4644,12 +4654,27 @@ def test_lowt_extension_with_a_zalmoxis_without_the_argument_is_an_error(tmp_pat
     assert tables.call_count == 1
 
 
-def test_lowt_extension_for_a_mantle_without_paleos_tables_warns(tmp_path, monkeypatch, caplog):
-    """The switch on with a mantle EOS that has no PALEOS P-S tables is reported, not dropped."""
-    with caplog.at_level(logging.WARNING, logger='fwl.proteus.interior_struct.zalmoxis'):
-        out, tables, _ = _lowt_stubbed_run(tmp_path, monkeypatch, lowt=True, registry=False)
-    assert out is None and tables.call_count == 0
-    assert any('lowt_extension' in r.getMessage() for r in caplog.records)
+@pytest.mark.parametrize('path', ['registry', 'inputs'])
+def test_lowt_extension_that_cannot_act_warns(tmp_path, monkeypatch, caplog, path):
+    """The switch on with a mantle EOS that has no PALEOS P-S tables is reported on both early
+    returns (no registry entry; _ps_table_inputs refuses); with the switch off nothing is."""
+    from proteus.interior_struct import zalmoxis as zmod
+
+    def refuse(*a):
+        raise zmod._NoPSTables('neither unified nor 2phase')
+
+    kw = {'registry': False} if path == 'registry' else {'inputs': refuse}
+    for lowt in (True, False):
+        caplog.clear()
+        root = tmp_path / str(lowt)
+        root.mkdir()
+        with caplog.at_level(logging.WARNING, logger='fwl.proteus.interior_struct.zalmoxis'):
+            out, tables, _ = _lowt_stubbed_run(root, monkeypatch, lowt=lowt, **kw)
+        assert out is None and tables.call_count == 0
+        warned = any(
+            'lowt_extension = true has no effect' in r.getMessage() for r in caplog.records
+        )
+        assert warned is lowt
 
 
 def test_missing_extension_file_stops_before_the_cache_key(tmp_path, monkeypatch):
