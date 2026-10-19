@@ -82,11 +82,14 @@ class Invariants:
         post-init rows have non-zero gross throughput (report-only) and sized above floating-point
         round-off on the single-ODE core integration.
     struct_mass_desync_warn_rtol: float
-        Warning threshold on ``struct_mass_desync_frac`` [-], sized above the ``4.71e-3`` maximum
-        observed in post-closure runs.
+        Warning threshold on ``struct_mass_desync_frac`` [-], sized above the ``4.71e-3``
+        post-baseline maximum (``3.33e-3`` maximum after the post-init baseline structure solve
+        when non-default structure configurations are included; init-stage rows before the
+        baseline solve reach ``1.123e-2`` and are report-only).
     struct_mass_desync_rtol: float
-        Stop threshold on ``struct_mass_desync_frac`` [-], sized at twice the ``5.0e-3`` warning
-        threshold.
+        Stop threshold on post-init ``struct_mass_desync_frac`` [-], sized at twice the
+        ``5.0e-3`` warning threshold (init-stage rows before the post-init baseline structure
+        solve are report-only).
     interior_mass_target_rtol: float
         Relative tolerance on ``M_int`` versus ``M_int_target`` at a structure update row [-],
         sized above the ``2.05e-3`` maximum observed on Zalmoxis structure update rows.

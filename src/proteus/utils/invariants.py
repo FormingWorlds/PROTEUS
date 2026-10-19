@@ -601,13 +601,18 @@ def check_energy_invariants(
 def check_structure_invariants(
     hf_row: dict,
     config: Config,
+    *,
+    init_stage: bool | None = None,
 ) -> list[InvariantViolation]:
     """Evaluate structure mass self-consistency and target invariants on ``hf_row`` (status 31).
 
     Checks ``struct_mass_desync_frac`` against the warning threshold (default ``5.0e-3``,
     ``report_only=True``) and stop threshold (default ``1.0e-2``, ``report_only=False``),
     interior mass ``M_int`` against ``M_int_target`` (when ``M_int_target > 0``), and
-    core mass ``M_core`` against ``M_core_target`` (when ``M_core_target > 0``).
+    core mass ``M_core`` against ``M_core_target`` (when ``M_core_target > 0``). On
+    init-stage rows before the post-init baseline structure solve (``init_stage=True``,
+    or ``Time <= 1.0`` yr when ``init_stage`` is omitted), finite structure mismatches
+    are reported with ``report_only=True`` and do not stop the run.
 
     Parameters
     ----------
@@ -615,6 +620,9 @@ def check_structure_invariants(
         Current helpfile row dictionary.
     config : Config
         PROTEUS configuration object.
+    init_stage : bool or None, optional
+        Whether the row belongs to the init stage prior to the post-init baseline
+        structure solve. When ``None``, inferred from ``Time <= 1.0`` yr.
 
     Returns
     -------
@@ -623,6 +631,11 @@ def check_structure_invariants(
     """
     inv_cfg = config.invariants
     time_yr = float(hf_row.get('Time', 0.0))
+    is_init = (
+        bool(np.isfinite(time_yr) and time_yr <= 1.0)
+        if init_stage is None
+        else bool(init_stage)
+    )
     m_int = float(hf_row.get('M_int', 0.0))
     m_core = float(hf_row.get('M_core', 0.0))
     r_int = float(hf_row.get('R_int', 0.0))
@@ -644,7 +657,7 @@ def check_structure_invariants(
                     f'exceeds stop tol={stop_tol:.6e} '
                     f'(M_int={m_int:.6e} kg, R_int={r_int:.6e} m, R_core={r_core:.6e} m)'
                 ),
-                report_only=False,
+                report_only=bool(is_init and np.isfinite(desync)),
             )
         )
     elif desync > warn_tol:
@@ -679,7 +692,7 @@ def check_structure_invariants(
                         f'exceeds tol={int_tol:.6e} '
                         f'(M_int={m_int:.6e} kg, M_int_target={m_int_target:.6e} kg)'
                     ),
-                    report_only=False,
+                    report_only=bool(is_init and np.isfinite(int_rel_err)),
                 )
             )
 
@@ -701,7 +714,7 @@ def check_structure_invariants(
                         f'exceeds tol={core_tol:.6e} '
                         f'(M_core={m_core:.6e} kg, M_core_target={m_core_target:.6e} kg)'
                     ),
-                    report_only=False,
+                    report_only=bool(is_init and np.isfinite(core_rel_err)),
                 )
             )
 
@@ -1167,6 +1180,8 @@ def check_row_invariants(
     hf_all: pd.DataFrame | None = None,
     directories: dict | None = None,
     tracker: InvariantTracker | None = None,
+    *,
+    init_stage: bool | None = None,
 ) -> list[InvariantViolation]:
     """Evaluate all run-row invariants on ``hf_row`` and dispatch according to ``config.invariants.mode``.
 
@@ -1182,6 +1197,9 @@ def check_row_invariants(
         PROTEUS run directories dictionary for status-file updates under ``mode == 'stop'``.
     tracker : InvariantTracker or None, optional
         Cross-row state tracker for rising-edge report logging and total-row counting.
+    init_stage : bool or None, optional
+        Whether the row belongs to the init stage prior to the post-init baseline
+        structure solve. When ``None``, inferred from ``Time <= 1.0`` yr.
 
     Returns
     -------
@@ -1195,7 +1213,7 @@ def check_row_invariants(
 
     violations: list[InvariantViolation] = []
     violations.extend(check_energy_invariants(hf_row, config, hf_all, directories=directories))
-    violations.extend(check_structure_invariants(hf_row, config))
+    violations.extend(check_structure_invariants(hf_row, config, init_stage=init_stage))
     violations.extend(check_volatile_invariants(hf_row, config))
     violations.extend(check_state_bounds_invariants(hf_row, config))
     return handle_violations(violations, mode=mode, directories=directories, tracker=tracker)

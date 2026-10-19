@@ -1575,6 +1575,13 @@ class Proteus:
                         hf_all=prev_hf,
                         directories=self.directories,
                         tracker=self._invariant_tracker,
+                        init_stage=bool(
+                            _iter_init_stage
+                            or (
+                                self.config.interior_struct.module == 'zalmoxis'
+                                and not self._baseline_structure_done
+                            )
+                        ),
                     )
                 except InvariantViolationError as exc:
                     log.error(
