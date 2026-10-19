@@ -567,7 +567,7 @@ def CommentFromStatus(status: int):
         case 29:
             desc = 'Completed (planet evaporated)'
         case 30:
-            desc = 'Error (Energy conservation invariant)'
+            desc = 'Error (Energy conservation invariant, reserved)'
         case 31:
             desc = 'Error (Mass conservation invariant)'
         case 32:

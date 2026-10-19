@@ -12043,7 +12043,7 @@
         "stop"
       ],
       "bounds": null,
-      "description": "Enforcement mode for run-row invariants: ``'off'``, ``'report'``, or ``'stop'``.",
+      "description": "Enforcement mode for run-row invariants: ``'off'``, ``'report'``, or ``'stop'``. Energy checks are report-only in every active mode (status code 30 is reserved).",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -12064,7 +12064,7 @@
           "value": 0.0
         }
       ],
-      "description": "Relative tolerance on cumulative coupled energy residual against gross throughput [-]. Sized above the ``2.51e-4`` maximum gross-normalized residual across the 53 post-closure baseline corpus runs (coarser-step configs ``input/minimal.toml`` and ``minimal_quick`` reach ``2.37e-3`` and ``4.69e-4``).",
+      "description": "Relative tolerance on cumulative coupled energy residual against gross throughput [-], evaluated once prior post-init rows have non-zero gross throughput (report-only). Sized above the ``2.51e-4`` maximum gross-normalized residual across the 53 post-closure baseline corpus runs (coarser-step configs ``input/minimal.toml`` and ``minimal_quick`` reach ``2.37e-3`` and ``4.69e-4``).",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -12085,7 +12085,7 @@
           "value": 0.0
         }
       ],
-      "description": "Relative tolerance on per-step energy residual increment normalized by per-step gross flux outside the ``301 K`` temperature clip [-]. In post-closure default runs outside the clip, the per-step increment has 99th percentile ``5.4e-4``, 99.9th percentile ``2.7e-2``, and maximum ``0.117``.",
+      "description": "Relative tolerance on per-step energy residual increment normalized by per-step gross flux when ``T_magma > 301 K`` [-] (report-only). In post-closure default runs outside the ``301 K`` clip, the per-step increment has 99th percentile ``5.4e-4``, 99.9th percentile ``2.7e-2``, and maximum ``0.117``.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -12106,7 +12106,7 @@
           "value": 0.0
         }
       ],
-      "description": "Relative tolerance on per-step energy residual increment normalized by per-step gross flux when ``T_surf <= 301 K`` or ``T_magma <= 301 K`` [-]. Sized above the ``4.39%`` maximum observed on the ``301 K`` temperature clip in post-closure runs.",
+      "description": "Relative tolerance on per-step energy residual increment normalized by per-step gross flux when ``T_magma <= 301 K`` (0.5 K above the ``300.488 K`` surface-pressure temperature at the ``S_min`` floor of the Wolf & Bower 2018 1 TPa MgSiO3 P-S table) [-] (report-only). Sized above the ``4.39%`` maximum observed on the ``301 K`` temperature clip in post-closure runs.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -12127,7 +12127,7 @@
           "value": 0.0
         }
       ],
-      "description": "Relative tolerance on the Aragog ODE solver internal energy residual [-], sized above the ``2.46e-14`` maximum observed in converged post-closure runs.",
+      "description": "Relative tolerance on the Aragog ODE solver internal energy residual normalized by gross throughput [-], evaluated once prior post-init rows have non-zero gross throughput (report-only) and sized above the ``2.46e-14`` maximum observed in converged post-closure runs.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -12148,7 +12148,7 @@
           "value": 0.0
         }
       ],
-      "description": "Relative tolerance on the CMB core cooling ledger residual [-], sized above floating-point round-off on the single-ODE core integration.",
+      "description": "Relative tolerance on the CMB core cooling ledger residual [-], evaluated once prior post-init rows have non-zero gross throughput (report-only) and sized above floating-point round-off on the single-ODE core integration.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -12224,7 +12224,7 @@
       "class": "Invariants",
       "type": "float",
       "accepts_none": false,
-      "default": "0.02",
+      "default": "0.025",
       "choices": null,
       "bounds": [
         {
@@ -12232,7 +12232,7 @@
           "value": 0.0
         }
       ],
-      "description": "Relative tolerance on ``M_core`` versus ``M_core_target`` at a structure update row [-], sized above the ``1.23e-2`` maximum radial-trapezoidal core mass difference on Zalmoxis meshes.",
+      "description": "Relative tolerance on ``M_core`` versus ``M_core_target`` at a structure update row [-], sized at ``1.6`` times the ``1.565e-2`` maximum radial-trapezoidal core mass difference on ``a627_default`` (99th percentile ``1.518e-2``; ``1.004e-2`` maximum and ``9.79e-3`` 99th percentile across 68 finished post-closure default runs).",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -12253,7 +12253,7 @@
           "value": 0.0
         }
       ],
-      "description": "Relative tolerance on per-element reservoir closure ``atm + magma + solid = total`` [-], sized at ``2.5`` times the default ``outgas.solver_rtol = 1.0e-4``. For ``outgas.module = 'calliope'``, the tolerance is ``outgas.mass_thresh + element_closure_rtol * total`` (only as tight as ``outgas.mass_thresh``, which is larger than typical noble-gas inventories).",
+      "description": "Relative tolerance on per-element reservoir closure ``atm + magma + solid = total`` [-], sized at ``2.5`` times the default ``outgas.solver_rtol = 1.0e-4``. For ``outgas.module = 'calliope'``, the tolerance is ``outgas.mass_thresh + element_closure_rtol * max(total, 0)`` (only as tight as ``outgas.mass_thresh``, which is larger than typical noble-gas inventories; a zero-budget leak is seen above ``mass_thresh``).",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -12274,7 +12274,7 @@
           "value": 0.0
         }
       ],
-      "description": "Absolute floor on per-element reservoir closure for ``atmodeller`` and solid-trapping bookkeeping [kg], and lower-bound floor ``-element_closure_atol_kg`` on volatile and reservoir masses. For ``outgas.module = 'calliope'``, the closure check uses ``outgas.mass_thresh + element_closure_rtol * total`` and is only as tight as ``outgas.mass_thresh``.",
+      "description": "Absolute floor on per-element reservoir closure when ``outgas.module != 'calliope'`` [kg], and lower-bound floor ``-element_closure_atol_kg`` on volatile and reservoir masses. For ``outgas.module = 'calliope'``, the closure check uses ``outgas.mass_thresh + element_closure_rtol * max(total, 0)`` and is only as tight as ``outgas.mass_thresh`` (a zero-budget leak is seen above ``mass_thresh``).",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -12337,7 +12337,7 @@
           "value": 1.0
         }
       ],
-      "description": "Multiplicative bound on element loss relative to ``esc_kg_cumulative`` [-] when ``planet.fO2_source = 'from_O_budget'``.",
+      "description": "Multiplicative bound on element loss relative to ``esc_kg_cumulative`` [-] when ``planet.fO2_source = 'from_O_budget'`` (report-only because sub-threshold element flooring in ``calc_new_elements`` is not credited to ``esc_kg_cumulative`` or ``M_desiccated``).",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -12358,7 +12358,7 @@
           "value": 0.0
         }
       ],
-      "description": "Absolute tolerance on element loss relative to ``esc_kg_cumulative`` [kg] when ``planet.fO2_source = 'from_O_budget'``.",
+      "description": "Absolute tolerance on element loss relative to ``esc_kg_cumulative`` [kg] when ``planet.fO2_source = 'from_O_budget'`` (report-only).",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,

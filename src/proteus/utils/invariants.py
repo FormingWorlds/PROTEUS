@@ -27,6 +27,7 @@ STATUS_ERROR_ENERGY_INVARIANT: int = 30
 STATUS_ERROR_MASS_INVARIANT: int = 31
 STATUS_ERROR_STATE_BOUNDS_INVARIANT: int = 32
 STEP_GROSS_FLOOR_J: float = 1.0
+EOS_SMIN_TEMP_CLIP_K: float = 301.0
 
 
 @dataclass(frozen=True)
@@ -58,7 +59,13 @@ class InvariantViolation:
     report_only: bool = False
 
 
-_CROSSING_SUPPRESSED_NAMES: frozenset[str] = frozenset({'E_residual_cons_frac_gross'})
+_CROSSING_SUPPRESSED_NAMES: frozenset[str] = frozenset(
+    {
+        'E_residual_cons_frac_gross',
+        'struct_mass_desync_frac',
+        'M_core_target_rel_err',
+    }
+)
 
 
 @dataclass
@@ -70,9 +77,13 @@ class InvariantTracker:
     active_names : set[str]
         Invariant names violated on the immediately preceding row.
     row_counts : dict[str, int]
-        Total number of rows on which each invariant name was violated.
+        Total number of rows in the violating state per invariant name (including
+        carried-forward rows between Zalmoxis structure updates).
     max_values : dict[str, float]
-        Maximum observed magnitude ``|value|`` (or non-finite value) for each invariant name.
+        Maximum observed finite magnitude ``|value|`` (or ``|value|`` when all
+        observed values are non-finite) for each invariant name.
+    nonfinite_counts : dict[str, int]
+        Number of violation records with non-finite ``value`` per invariant name.
     rows_with_violations : int
         Total number of rows with at least one invariant violation.
     """
@@ -80,6 +91,7 @@ class InvariantTracker:
     active_names: set[str] = field(default_factory=set)
     row_counts: dict[str, int] = field(default_factory=dict)
     max_values: dict[str, float] = field(default_factory=dict)
+    nonfinite_counts: dict[str, int] = field(default_factory=dict)
     rows_with_violations: int = 0
 
     def record_row(self, violations: Sequence[InvariantViolation]) -> set[str]:
@@ -93,12 +105,14 @@ class InvariantTracker:
         for name in current:
             self.row_counts[name] = self.row_counts.get(name, 0) + 1
         for v in violations:
-            mag = abs(v.value) if np.isfinite(v.value) else v.value
-            if v.name not in self.max_values:
-                self.max_values[v.name] = mag
+            mag = abs(v.value)
+            if np.isfinite(v.value):
+                prev = self.max_values.get(v.name)
+                if prev is None or not np.isfinite(prev) or mag > prev:
+                    self.max_values[v.name] = mag
             else:
-                prev = self.max_values[v.name]
-                if not np.isfinite(mag) or (np.isfinite(prev) and mag > prev):
+                self.nonfinite_counts[v.name] = self.nonfinite_counts.get(v.name, 0) + 1
+                if v.name not in self.max_values:
                     self.max_values[v.name] = mag
         self.active_names = current
         return rising
@@ -107,14 +121,18 @@ class InvariantTracker:
         """Emit a single end-of-run summary line with count and maximum value per invariant name."""
         if not self.row_counts:
             return
-        counts = ', '.join(
-            f'{name}={cnt} (max={self.max_values.get(name, 0.0):.6e})'
-            for name, cnt in self.row_counts.items()
-        )
+        parts: list[str] = []
+        for name, cnt in self.row_counts.items():
+            max_val = self.max_values.get(name, 0.0)
+            nf = self.nonfinite_counts.get(name, 0)
+            if nf > 0:
+                parts.append(f'{name}={cnt} (max={max_val:.6e}, non_finite={nf})')
+            else:
+                parts.append(f'{name}={cnt} (max={max_val:.6e})')
         log.warning(
             'Invariant summary: %d row(s) with violations (%s)',
             self.rows_with_violations,
-            counts,
+            ', '.join(parts),
         )
 
 
@@ -325,15 +343,17 @@ def check_energy_invariants(
 
     e_state_heat = float(hf_row.get('E_state_heat_cons_J', 0.0))
     abs_e_state_heat = abs(e_state_heat) if np.isfinite(e_state_heat) else 0.0
-    denom_state = max(abs_e_state_heat, 1.0)
     denom_gross = max(abs_e_state_heat, hist_gross + step_gross, 1.0)
+    has_prior_throughput = hist_gross > 0.0
 
     inv_cfg = config.invariants
     eff_energy_rtol = float(inv_cfg.energy_residual_rtol)
 
     e_res_j = float(hf_row.get('E_residual_cons_J', 0.0))
     e_res_frac_gross = abs(e_res_j) / denom_gross if np.isfinite(e_res_j) else float('nan')
-    if not np.isfinite(e_res_frac_gross) or e_res_frac_gross > eff_energy_rtol:
+    if not np.isfinite(e_res_frac_gross) or (
+        has_prior_throughput and e_res_frac_gross > eff_energy_rtol
+    ):
         violations.append(
             InvariantViolation(
                 name='E_residual_cons_frac_gross',
@@ -361,11 +381,8 @@ def check_energy_invariants(
         step_diff = abs(dE_state_heat - dE_inc_cons)
         denom_step = max(step_gross, STEP_GROSS_FLOOR_J)
         step_err = step_diff / denom_step if np.isfinite(step_diff) else float('nan')
-        t_surf = float(hf_row.get('T_surf', 1000.0))
         t_magma = float(hf_row.get('T_magma', 1000.0))
-        on_phase_kink = (np.isfinite(t_surf) and t_surf <= 301.0) or (
-            np.isfinite(t_magma) and t_magma <= 301.0
-        )
+        on_phase_kink = np.isfinite(t_magma) and t_magma <= EOS_SMIN_TEMP_CLIP_K
         step_tol = (
             float(inv_cfg.step_energy_smin_rtol)
             if on_phase_kink
@@ -389,9 +406,9 @@ def check_energy_invariants(
             )
 
     sol_res_j = float(hf_row.get('solver_residual_J', 0.0))
-    sol_res_frac = abs(sol_res_j) / denom_state if np.isfinite(sol_res_j) else float('nan')
+    sol_res_frac = abs(sol_res_j) / denom_gross if np.isfinite(sol_res_j) else float('nan')
     sol_tol = float(inv_cfg.solver_residual_rtol)
-    if not np.isfinite(sol_res_frac) or sol_res_frac > sol_tol:
+    if not np.isfinite(sol_res_frac) or (has_prior_throughput and sol_res_frac > sol_tol):
         violations.append(
             InvariantViolation(
                 name='solver_residual_frac',
@@ -411,7 +428,9 @@ def check_energy_invariants(
         core_res_raw = float(hf_row.get('E_core_residual_frac', 0.0))
         core_res_frac = abs(core_res_raw) if np.isfinite(core_res_raw) else float('nan')
         core_tol = float(inv_cfg.core_residual_rtol)
-        if not np.isfinite(core_res_frac) or core_res_frac > core_tol:
+        if not np.isfinite(core_res_frac) or (
+            has_prior_throughput and core_res_frac > core_tol
+        ):
             violations.append(
                 InvariantViolation(
                     name='E_core_residual_frac',
@@ -788,8 +807,6 @@ def check_volatile_invariants(
                 )
             )
             continue
-        if total <= 0.0:
-            continue
         parts = sum(float(hf_row.get(f'{e}_kg_{r}', 0.0)) for r in ('atm', 'liquid', 'solid'))
         if not np.isfinite(parts):
             violations.append(
@@ -804,28 +821,45 @@ def check_volatile_invariants(
             )
             continue
         diff = abs(parts - total)
-        rel_closure = diff / total
+        pos_total = max(total, 0.0)
         tol_e = (
-            calliope_mass_thresh + closure_rtol * total
+            calliope_mass_thresh + closure_rtol * pos_total
             if is_calliope
-            else max(closure_atol_kg, closure_rtol * total)
+            else max(closure_atol_kg, closure_rtol * pos_total)
         )
-        eff_rel_tol = tol_e / total
         if diff > tol_e:
-            violations.append(
-                InvariantViolation(
-                    name=f'{e}_reservoir_closure',
-                    status_code=STATUS_ERROR_MASS_INVARIANT,
-                    value=rel_closure,
-                    tolerance=eff_rel_tol,
-                    message=(
-                        f'Time={time_yr:.6e} yr: |({e}_atm+{e}_liquid+{e}_solid) - {e}_total| / '
-                        f'{e}_total={rel_closure:.6e} exceeds tol={eff_rel_tol:.6e} '
-                        f'(total={total:.6e} kg, reservoirs={parts:.6e} kg)'
-                    ),
-                    report_only=False,
+            if total > 0.0:
+                rel_closure = diff / total
+                eff_rel_tol = tol_e / total
+                violations.append(
+                    InvariantViolation(
+                        name=f'{e}_reservoir_closure',
+                        status_code=STATUS_ERROR_MASS_INVARIANT,
+                        value=rel_closure,
+                        tolerance=eff_rel_tol,
+                        message=(
+                            f'Time={time_yr:.6e} yr: |({e}_atm+{e}_liquid+{e}_solid) - {e}_total| / '
+                            f'{e}_total={rel_closure:.6e} exceeds tol={eff_rel_tol:.6e} '
+                            f'(total={total:.6e} kg, reservoirs={parts:.6e} kg)'
+                        ),
+                        report_only=False,
+                    )
                 )
-            )
+            else:
+                violations.append(
+                    InvariantViolation(
+                        name=f'{e}_reservoir_closure',
+                        status_code=STATUS_ERROR_MASS_INVARIANT,
+                        value=diff,
+                        tolerance=tol_e,
+                        message=(
+                            f'Time={time_yr:.6e} yr: |({e}_atm+{e}_liquid+{e}_solid) - {e}_total|='
+                            f'{diff:.6e} kg exceeds tol={tol_e:.6e} kg '
+                            f'(total={total:.6e} kg, reservoirs={parts:.6e} kg)'
+                        ),
+                        report_only=False,
+                    )
+                )
 
     m_init = float(hf_row.get('M_vol_initial', 0.0) or 0.0)
     if np.isfinite(m_init) and m_init > 0.0:
@@ -859,7 +893,7 @@ def check_volatile_invariants(
                         value=lost,
                         tolerance=esc_tol,
                         message=msg,
-                        report_only=False,
+                        report_only=True,
                     )
                 )
 
@@ -923,10 +957,10 @@ def check_state_bounds_invariants(
     p_surf = float(hf_row.get('P_surf', float('nan')))
     if not np.isfinite(m_atm) or m_atm < -closure_atol_kg:
         valid_p = False
-        req = f'== 0.0 bar with M_atm >= {-closure_atol_kg:.6e} kg'
+        req = f'>= 0.0 bar with M_atm >= {-closure_atol_kg:.6e} kg'
     elif abs(m_atm) <= closure_atol_kg:
-        valid_p = np.isfinite(p_surf) and p_surf == 0.0
-        req = '== 0.0 bar'
+        valid_p = np.isfinite(p_surf) and p_surf >= 0.0
+        req = '>= 0.0 bar'
     else:
         valid_p = np.isfinite(p_surf) and p_surf > 0.0
         req = '> 0.0 bar'

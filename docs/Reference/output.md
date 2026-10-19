@@ -60,6 +60,10 @@ description. The codes are:
 | 26 | Error: tidal module |
 | 27 | Error: outgassing module |
 | 28 | Error: escape module |
+| 29 | Completed: planet evaporated |
+| 30 | Error: energy conservation invariant (reserved) |
+| 31 | Error: mass conservation invariant |
+| 32 | Error: state bounds invariant |
 
 ## Helpfile columns
 

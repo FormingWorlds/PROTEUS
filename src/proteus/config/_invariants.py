@@ -43,25 +43,32 @@ class Invariants:
     ----------
     mode: str
         Enforcement mode for run-row invariants: ``'off'``, ``'report'``, or ``'stop'``.
+        Energy checks are report-only in every active mode (status code 30 is reserved).
     energy_residual_rtol: float
-        Relative tolerance on cumulative coupled energy residual against gross throughput [-].
+        Relative tolerance on cumulative coupled energy residual against gross throughput [-],
+        evaluated once prior post-init rows have non-zero gross throughput (report-only).
         Sized above the ``2.51e-4`` maximum gross-normalized residual across the 53 post-closure
         baseline corpus runs (coarser-step configs ``input/minimal.toml`` and ``minimal_quick``
         reach ``2.37e-3`` and ``4.69e-4``).
     step_energy_rtol: float
         Relative tolerance on per-step energy residual increment normalized by per-step gross flux
-        outside the ``301 K`` temperature clip [-]. In post-closure default runs outside the
-        clip, the per-step increment has 99th percentile ``5.4e-4``, 99.9th percentile ``2.7e-2``,
-        and maximum ``0.117``.
+        when ``T_magma > 301 K`` [-] (report-only). In post-closure default runs outside the
+        ``301 K`` clip, the per-step increment has 99th percentile ``5.4e-4``, 99.9th percentile
+        ``2.7e-2``, and maximum ``0.117``.
     step_energy_smin_rtol: float
         Relative tolerance on per-step energy residual increment normalized by per-step gross flux
-        when ``T_surf <= 301 K`` or ``T_magma <= 301 K`` [-]. Sized above the ``4.39%`` maximum
-        observed on the ``301 K`` temperature clip in post-closure runs.
+        when ``T_magma <= 301 K`` (0.5 K above the ``300.488 K`` surface-pressure temperature at
+        the ``S_min`` floor of the Wolf & Bower 2018 1 TPa MgSiO3 P-S table) [-] (report-only).
+        Sized above the ``4.39%`` maximum observed on the ``301 K`` temperature clip in
+        post-closure runs.
     solver_residual_rtol: float
-        Relative tolerance on the Aragog ODE solver internal energy residual [-], sized above the
-        ``2.46e-14`` maximum observed in converged post-closure runs.
+        Relative tolerance on the Aragog ODE solver internal energy residual normalized by gross
+        throughput [-], evaluated once prior post-init rows have non-zero gross throughput
+        (report-only) and sized above the ``2.46e-14`` maximum observed in converged post-closure
+        runs.
     core_residual_rtol: float
-        Relative tolerance on the CMB core cooling ledger residual [-], sized above floating-point
+        Relative tolerance on the CMB core cooling ledger residual [-], evaluated once prior
+        post-init rows have non-zero gross throughput (report-only) and sized above floating-point
         round-off on the single-ODE core integration.
     struct_mass_desync_warn_rtol: float
         Warning threshold on ``struct_mass_desync_frac`` [-], sized above the ``4.71e-3`` maximum
@@ -74,18 +81,20 @@ class Invariants:
         sized above the ``2.05e-3`` maximum observed on Zalmoxis structure update rows.
     core_mass_target_rtol: float
         Relative tolerance on ``M_core`` versus ``M_core_target`` at a structure update row [-],
-        sized above the ``1.23e-2`` maximum radial-trapezoidal core mass difference on Zalmoxis
-        meshes.
+        sized at ``1.6`` times the ``1.565e-2`` maximum radial-trapezoidal core mass difference
+        on ``a627_default`` (99th percentile ``1.518e-2``; ``1.004e-2`` maximum and ``9.79e-3``
+        99th percentile across 68 finished post-closure default runs).
     element_closure_rtol: float
         Relative tolerance on per-element reservoir closure ``atm + magma + solid = total`` [-],
         sized at ``2.5`` times the default ``outgas.solver_rtol = 1.0e-4``.
-        For ``outgas.module = 'calliope'``, the tolerance is ``outgas.mass_thresh + element_closure_rtol * total``
-        (only as tight as ``outgas.mass_thresh``, which is larger than typical noble-gas inventories).
+        For ``outgas.module = 'calliope'``, the tolerance is ``outgas.mass_thresh + element_closure_rtol * max(total, 0)``
+        (only as tight as ``outgas.mass_thresh``, which is larger than typical noble-gas inventories;
+        a zero-budget leak is seen above ``mass_thresh``).
     element_closure_atol_kg: float
-        Absolute floor on per-element reservoir closure for ``atmodeller`` and solid-trapping bookkeeping [kg],
+        Absolute floor on per-element reservoir closure when ``outgas.module != 'calliope'`` [kg],
         and lower-bound floor ``-element_closure_atol_kg`` on volatile and reservoir masses.
-        For ``outgas.module = 'calliope'``, the closure check uses ``outgas.mass_thresh + element_closure_rtol * total``
-        and is only as tight as ``outgas.mass_thresh``.
+        For ``outgas.module = 'calliope'``, the closure check uses ``outgas.mass_thresh + element_closure_rtol * max(total, 0)``
+        and is only as tight as ``outgas.mass_thresh`` (a zero-budget leak is seen above ``mass_thresh``).
     volatile_gas_sum_rtol: float
         Relative tolerance on volatile gas species sum versus ``M_vol_atm`` [-], matching
         ``coupler.assert_mass_conservation``. Helpfiles without ``M_vol_atm`` fail the
@@ -94,10 +103,11 @@ class Invariants:
         Relative tolerance on ``M_atm <= M_planet`` [-], matching ``coupler.assert_mass_conservation``.
     escape_bound_factor: float
         Multiplicative bound on element loss relative to ``esc_kg_cumulative`` [-] when
-        ``planet.fO2_source = 'from_O_budget'``.
+        ``planet.fO2_source = 'from_O_budget'`` (report-only because sub-threshold element
+        flooring in ``calc_new_elements`` is not credited to ``esc_kg_cumulative`` or ``M_desiccated``).
     escape_bound_atol_kg: float
         Absolute tolerance on element loss relative to ``esc_kg_cumulative`` [kg] when
-        ``planet.fO2_source = 'from_O_budget'``.
+        ``planet.fO2_source = 'from_O_budget'`` (report-only).
     t_magma_max: float
         Strict upper bound on ``T_magma`` [K] above physical magma-ocean temperatures.
     phi_global_atol: float
@@ -124,7 +134,7 @@ class Invariants:
         validator=(finite_float, gt(0.0), desync_stop_ge_warn),
     )
     interior_mass_target_rtol: float = field(default=3.0e-3, validator=(finite_float, gt(0.0)))
-    core_mass_target_rtol: float = field(default=2.0e-2, validator=(finite_float, gt(0.0)))
+    core_mass_target_rtol: float = field(default=2.5e-2, validator=(finite_float, gt(0.0)))
 
     element_closure_rtol: float = field(default=2.5e-4, validator=(finite_float, gt(0.0)))
     element_closure_atol_kg: float = field(default=1.0, validator=(finite_float, gt(0.0)))

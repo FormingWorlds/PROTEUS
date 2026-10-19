@@ -659,8 +659,6 @@ class Proteus:
             UpdatePlots,
             WriteHelpfileToCSV,
             ZeroHelpfileRow,
-            _populate_core_residual,
-            _populate_energy_residual,
             assert_mass_conservation,
             assert_surface_pressure_consistency,
             print_citation,
@@ -1562,10 +1560,6 @@ class Proteus:
                     self.interior_o.ic = 2
 
                 has_hf_history = self.loops['total'] > 1 and hasattr(self.hf_all, 'columns')
-                if has_hf_history:
-                    _populate_energy_residual(self.hf_all, self.hf_row)
-                    _populate_core_residual(self.hf_all, self.hf_row)
-
                 prev_hf = self.hf_all if has_hf_history else None
                 if self.loops['total'] > 1:
                     self.hf_all = ExtendHelpfile(self.hf_all, self.hf_row)
