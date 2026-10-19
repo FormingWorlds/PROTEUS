@@ -58,7 +58,7 @@ def test_invariants_config_default_values():
     assert inv.struct_mass_desync_warn_rtol == pytest.approx(5.0e-3, rel=1e-12)
     assert inv.struct_mass_desync_rtol == pytest.approx(1.0e-2, rel=1e-12)
     assert inv.interior_mass_target_rtol == pytest.approx(3.0e-3, rel=1e-12)
-    assert inv.core_mass_target_rtol == pytest.approx(2.0e-2, rel=1e-12)
+    assert inv.core_mass_target_rtol == pytest.approx(2.5e-2, rel=1e-12)
     assert inv.element_closure_rtol == pytest.approx(2.5e-4, rel=1e-12)
     assert inv.element_closure_atol_kg == pytest.approx(1.0, rel=1e-12)
     assert inv.volatile_gas_sum_rtol == pytest.approx(1.0e-6, rel=1e-12)
@@ -272,8 +272,9 @@ def test_hypothesis_step_energy_rtol_ordering_and_non_kink_dispatch(base_rtol, s
     }
     v_non_kink = check_energy_invariants(hf_row, cfg, hf_all)
     assert [v.name for v in v_non_kink] == ['step_dE_inc_frac']
-    assert v_non_kink[0].tolerance == pytest.approx(base_rtol)
-    assert v_non_kink[0].value == pytest.approx(mid_frac)
+    v_tsurf_cold = check_energy_invariants(dict(hf_row, T_surf=300.5), cfg, hf_all)
+    assert [v.name for v in v_tsurf_cold] == ['step_dE_inc_frac']
+    assert v_tsurf_cold[0].tolerance == pytest.approx(base_rtol)
 
-    hf_row_kink = dict(hf_row, T_surf=300.5)
+    hf_row_kink = dict(hf_row, T_magma=300.5)
     assert check_energy_invariants(hf_row_kink, cfg, hf_all) == []

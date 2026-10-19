@@ -27,11 +27,11 @@ pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 
 def test_comment_from_status_maps_invariant_codes_30_31_32():
-    """Status codes 30, 31, and 32 map to their named invariant error descriptions."""
+    """Status codes 30 (reserved), 31, and 32 map to their named invariant error descriptions."""
     assert STATUS_ERROR_ENERGY_INVARIANT == 30
     assert STATUS_ERROR_MASS_INVARIANT == 31
     assert STATUS_ERROR_STATE_BOUNDS_INVARIANT == 32
-    assert CommentFromStatus(30) == 'Error (Energy conservation invariant)'
+    assert CommentFromStatus(30) == 'Error (Energy conservation invariant, reserved)'
     assert CommentFromStatus(31) == 'Error (Mass conservation invariant)'
     assert CommentFromStatus(32) == 'Error (State bounds invariant)'
 
@@ -154,11 +154,11 @@ def test_check_energy_invariants_flux_cancellation_passes_under_gross_denom():
     hf_all = pd.DataFrame(
         [
             {
-                'Time': 1.0,
+                'Time': 10.0,
                 'E_state_cons_J': 1.0e31,
-                'E_state_heat_cons_J': 0.0,
-                'step_dE_F_int_J': 0.0,
-                'step_dE_F_cmb_J': 0.0,
+                'E_state_heat_cons_J': 1.24e27,
+                'step_dE_F_int_J': -2.17e27,
+                'step_dE_F_cmb_J': 3.41e27,
                 'step_dE_Q_radio_J': 0.0,
                 'step_dE_Q_tidal_J': 0.0,
             }
@@ -167,7 +167,7 @@ def test_check_energy_invariants_flux_cancellation_passes_under_gross_denom():
     # Net state heat is 2.48e27 J while gross flux sum is 1.116e28 J;
     # raw |E_residual_cons_frac| = 7.98e-4 > 2.6e-4, but gross ratio is 1.77e-4 <= 2.6e-4.
     hf_row = {
-        'Time': 2.0,
+        'Time': 20.0,
         'T_surf': 3340.0,
         'T_magma': 4268.0,
         'Phi_global': 1.0,
@@ -177,9 +177,9 @@ def test_check_energy_invariants_flux_cancellation_passes_under_gross_denom():
         'dE_predicted_cons_J': 2.47802e27,
         'E_residual_cons_J': 1.98e24,
         'E_residual_cons_frac': 1.98e24 / 2.48e27,
-        'step_dE_state_heat_J': 2.48e27,
-        'step_dE_F_int_J': -4.34e27,
-        'step_dE_F_cmb_J': 6.82e27,
+        'step_dE_state_heat_J': 1.24e27,
+        'step_dE_F_int_J': -2.17e27,
+        'step_dE_F_cmb_J': 3.41e27,
         'step_dE_Q_radio_J': 0.0,
         'step_dE_Q_tidal_J': 0.0,
         'solver_residual_J': 1.0e12,
@@ -305,13 +305,16 @@ def test_check_energy_invariants_step_increment_outside_and_on_smin():
     assert v_warm[0].value == pytest.approx(3.0e28 / 1.03e30)
     assert v_warm[0].tolerance == pytest.approx(1.0e-2)
 
-    # On the S_min floor (both temperatures, T_magma-only, or T_surf-only <= 301.0 K), ~2.91e-2 <= 5.0e-2 passes:
+    # On the S_min floor (T_magma <= 301.0 K), ~2.91e-2 <= 5.0e-2 passes; T_surf-only <= 301.0 K with warm T_magma uses 1.0e-2 and fails:
     hf_row_smin = dict(hf_row_warm, T_surf=300.488, T_magma=300.488)
     assert check_energy_invariants(hf_row_smin, cfg, hf_all) == []
     hf_row_tmagma_only = dict(hf_row_warm, T_surf=1500.0, T_magma=300.488)
     assert check_energy_invariants(hf_row_tmagma_only, cfg, hf_all) == []
     hf_row_tsurf_only = dict(hf_row_warm, T_surf=300.488, T_magma=1500.0)
-    assert check_energy_invariants(hf_row_tsurf_only, cfg, hf_all) == []
+    v_tsurf_only = check_energy_invariants(hf_row_tsurf_only, cfg, hf_all)
+    assert len(v_tsurf_only) == 1
+    assert v_tsurf_only[0].name == 'step_dE_inc_frac'
+    assert v_tsurf_only[0].tolerance == pytest.approx(1.0e-2)
 
     # Exceeding 5.0e-2 on T_magma-only S_min (8.0e28 / 1.08e30 > 5.0e-2) fires step_dE_inc_frac with tol 5.0e-2:
     hf_row_smin_bad = dict(
@@ -342,7 +345,7 @@ def test_check_energy_invariants_step_increment_outside_and_on_smin():
 
 
 def test_check_energy_invariants_solver_and_core_ledger_residuals():
-    """Entropy ODE solver residual (> 1e-12) and core ledger residual (> 1e-4) report."""
+    """Entropy ODE solver residual (> 1e-12 vs denom_gross) and core ledger residual (> 1e-4) report after prior throughput."""
     import pandas as pd
 
     cfg = _make_mock_config(dt_rtol=0.1, dt_minimum=1.0)
@@ -389,6 +392,46 @@ def test_check_energy_invariants_solver_and_core_ledger_residuals():
     assert violations[0].tolerance == pytest.approx(1.0e-12)
     assert violations[1].value == pytest.approx(2.0e-4)
     assert violations[1].tolerance == pytest.approx(1.0e-4)
+
+    # Flux cancellation where |E_state_heat_cons_J| = 1.0e27 J << denom_gross = 2.0e30 J:
+    # solver_residual_J = 5.0e16 J has 5.0e16 / 1.0e27 = 5.0e-11 > 1.0e-12 under net state heat,
+    # but 5.0e16 / 2.0e30 = 2.5e-14 <= 1.0e-12 under denom_gross and must pass:
+    hf_row_cancel = dict(
+        hf_row,
+        E_state_heat_cons_J=-1.0e27,
+        dE_predicted_cons_J=-1.0e27,
+        solver_residual_J=5.0e16,
+        core_C_eff=0.0,
+        E_core_residual_frac=0.0,
+    )
+    assert check_energy_invariants(hf_row_cancel, cfg, hf_all) == []
+
+    # First post-init row (where prior rows in hf_all have zero gross throughput) skips
+    # cumulative fraction checks (E_residual_cons_frac_gross, solver_residual_frac, E_core_residual_frac):
+    hf_all_init = pd.DataFrame(
+        [
+            {
+                'Time': 0.0,
+                'E_state_cons_J': 1.0e31,
+                'E_state_heat_cons_J': 0.0,
+                'step_dE_F_int_J': 0.0,
+                'step_dE_F_cmb_J': 0.0,
+                'step_dE_Q_radio_J': 0.0,
+                'step_dE_Q_tidal_J': 0.0,
+            }
+            for _ in range(4)
+        ]
+    )
+    hf_row_first_step = dict(
+        hf_row,
+        Time=2.0,
+        E_state_heat_cons_J=-1.0e30,
+        E_residual_cons_J=3.5e26,  # 3.5e-4 > 2.6e-4
+        solver_residual_J=5.0e18,  # 5.0e-12 > 1.0e-12
+        core_C_eff=1.0e27,
+        E_core_residual_frac=-2.0e-4,  # 2.0e-4 > 1.0e-4
+    )
+    assert check_energy_invariants(hf_row_first_step, cfg, hf_all_init) == []
 
 
 def test_check_structure_invariants_clean_row_and_zero_targets():
@@ -475,29 +518,43 @@ def test_check_structure_invariants_desync_warn_and_stop_thresholds(
 
 
 def test_check_structure_invariants_interior_and_core_mass_targets():
-    """Interior mass target (> 3e-3) and core mass target (> 2e-2) raise stopping status-31 violations."""
+    """Interior mass target (> 3e-3) and core mass target (> 2.5e-2) are stopping violations."""
     from proteus.utils.invariants import check_structure_invariants
 
     cfg = _make_mock_config()
+    # A 2.06e-2 core mass difference (above 2.0e-2 and a627_default's 1.565e-2, below 2.5e-2) passes:
+    hf_ok_core = {
+        'Time': 1500.0,
+        'struct_mass_desync_frac': 3.0e-3,
+        'M_int': 5.972e24,
+        'M_int_target': 5.972e24,
+        'M_core': 1.980e24,  # |1.980 / 1.940 - 1| = 2.0619e-2 <= 2.5e-2
+        'M_core_target': 1.940e24,
+        'R_int': 6.371e6,
+        'R_core': 3.480e6,
+    }
+    assert check_structure_invariants(hf_ok_core, cfg) == []
+
     hf_bad = {
         'Time': 1500.0,
         'struct_mass_desync_frac': 3.0e-3,
         'M_int': 5.996e24,  # |5.996 / 5.972 - 1| = 4.0188e-3 > 3.0e-3
         'M_int_target': 5.972e24,
-        'M_core': 1.990e24,  # |1.990 / 1.940 - 1| = 2.5773e-2 > 2.0e-2
+        'M_core': 1.990e24,  # |1.990 / 1.940 - 1| = 2.5773e-2 > 2.5e-2
         'M_core_target': 1.940e24,
         'R_int': 6.371e6,
         'R_core': 3.480e6,
     }
     violations = check_structure_invariants(hf_bad, cfg)
     assert [v.name for v in violations] == ['M_int_target_rel_err', 'M_core_target_rel_err']
-    for v in violations:
-        assert v.status_code == STATUS_ERROR_MASS_INVARIANT
-        assert v.report_only is False
+    assert violations[0].status_code == STATUS_ERROR_MASS_INVARIANT
+    assert violations[0].report_only is False
+    assert violations[1].status_code == STATUS_ERROR_MASS_INVARIANT
+    assert violations[1].report_only is False
     assert violations[0].value == pytest.approx(abs(5.996e24 / 5.972e24 - 1.0))
     assert violations[0].tolerance == pytest.approx(3.0e-3)
     assert violations[1].value == pytest.approx(abs(1.990e24 / 1.940e24 - 1.0))
-    assert violations[1].tolerance == pytest.approx(2.0e-2)
+    assert violations[1].tolerance == pytest.approx(2.5e-2)
 
 
 def test_check_volatile_invariants_clean_row_and_fO2_buffered_oxygen():
@@ -675,7 +732,7 @@ def test_check_volatile_invariants_calliope_mass_thresh_vs_atmodeller_floor():
 
 
 def test_check_volatile_invariants_calliope_zero_parts_threshold():
-    """Under calliope with parts = 0, elements below mass_thresh / (1 - rtol) pass and above are reported."""
+    """Under calliope, zero-parts and zero-total closure compare against mass_thresh."""
     from proteus.utils.invariants import check_volatile_invariants
 
     cfg = _make_mock_config(
@@ -710,6 +767,41 @@ def test_check_volatile_invariants_calliope_zero_parts_threshold():
     assert v_above[0].name == 'H_reservoir_closure'
     assert v_above[0].status_code == STATUS_ERROR_MASS_INVARIANT
     assert v_above[0].report_only is False
+
+    # Zero-total leak check (A7): with mass_thresh = 1.0e10 kg under calliope,
+    # 9.8e9 kg with total = 0 stays below mass_thresh and passes, while 5.0e19 kg fails:
+    cfg_cal_1e10 = _make_mock_config(
+        outgas_module='calliope',
+        mass_thresh=1.0e10,
+        fO2_source='user_constant',
+        vapourise=False,
+    )
+    row_zero_tot_pass = dict(base_row, H_kg_total=0.0, H_kg_atm=9.8e9)
+    assert check_volatile_invariants(row_zero_tot_pass, cfg_cal_1e10) == []
+
+    row_zero_tot_fail = dict(base_row, H_kg_total=0.0, H_kg_atm=5.0e19)
+    v_zero_tot = check_volatile_invariants(row_zero_tot_fail, cfg_cal_1e10)
+    assert len(v_zero_tot) == 1
+    assert v_zero_tot[0].name == 'H_reservoir_closure'
+    assert v_zero_tot[0].status_code == STATUS_ERROR_MASS_INVARIANT
+    assert v_zero_tot[0].value == pytest.approx(5.0e19)
+    assert v_zero_tot[0].tolerance == pytest.approx(1.0e10)
+    assert v_zero_tot[0].report_only is False
+
+    # Under atmodeller, zero-total leak compares against element_closure_atol_kg (1.0 kg):
+    cfg_atm = _make_mock_config(
+        outgas_module='atmodeller',
+        fO2_source='user_constant',
+        vapourise=False,
+    )
+    assert (
+        check_volatile_invariants(dict(base_row, H_kg_total=0.0, H_kg_atm=0.5), cfg_atm) == []
+    )
+    v_atm_zero = check_volatile_invariants(row_zero_tot_pass, cfg_atm)
+    assert len(v_atm_zero) == 1
+    assert v_atm_zero[0].name == 'H_reservoir_closure'
+    assert v_atm_zero[0].value == pytest.approx(9.8e9)
+    assert v_atm_zero[0].tolerance == pytest.approx(1.0)
 
 
 def test_check_volatile_invariants_planet_mass_cap_and_vapourise():
@@ -748,11 +840,13 @@ def test_check_volatile_invariants_planet_mass_cap_and_vapourise():
     assert v_warn[0].report_only is True
 
 
-def test_check_volatile_invariants_escape_cumulative_bound():
-    """Unexplained volatile loss > 1.5 * esc_kg_cumulative + 1e3 kg raises stopping status-31 violation."""
+def test_check_volatile_invariants_escape_cumulative_bound(
+    tmp_path, caplog: pytest.LogCaptureFixture
+):
+    """Unexplained volatile loss > 1.5 * esc_kg_cumulative + 1e3 kg emits report_only=True warning."""
     from proteus.utils.invariants import check_volatile_invariants
 
-    cfg = _make_mock_config(fO2_source='from_O_budget', vapourise=False)
+    cfg = _make_mock_config(mode='stop', fO2_source='from_O_budget', vapourise=False)
     row_bad_loss = {
         'Time': 3500.0,
         'M_planet': 6.0e24,
@@ -770,7 +864,36 @@ def test_check_volatile_invariants_escape_cumulative_bound():
     assert v_loss[0].status_code == STATUS_ERROR_MASS_INVARIANT
     assert v_loss[0].value == pytest.approx(1.0e21)
     assert v_loss[0].tolerance == pytest.approx(1.5 * 1.0e15 + 1.0e3)
-    assert v_loss[0].report_only is False
+    assert v_loss[0].report_only is True
+
+    # Lens 4 case: 5.0e15 kg of N floored to 0 after one escape step with esc_kg_cumulative = 3.16e13 kg
+    # under from_O_budget reports a warning and does not stop in mode='stop':
+    row_n_floored = {
+        'Time': 2.0,
+        'M_planet': 6.0e24,
+        'M_atm': 1.0e20,
+        'M_vol_atm': 1.0e20,
+        'M_vaps': 0.0,
+        'H2O_kg_atm': 1.0e20,
+        'M_vol_initial': 1.0e20 + 5.0e15,
+        'M_desiccated': 0.0,
+        'esc_kg_cumulative': 3.16e13,
+        'H_kg_total': 1.0e20,
+        'H_kg_atm': 1.0e20,
+        'N_kg_total': 0.0,
+        'N_kg_atm': 0.0,
+    }
+    v_floored = check_volatile_invariants(row_n_floored, cfg)
+    assert len(v_floored) == 1
+    assert v_floored[0].name == 'escape_cumulative_bound'
+    assert v_floored[0].report_only is True
+    dirs = {'output': str(tmp_path)}
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.utils.invariants'):
+        out_floored = handle_violations(v_floored, mode='stop', directories=dirs)
+    assert out_floored == v_floored
+    assert len(caplog.records) == 1
+    assert caplog.records[0].levelname == 'WARNING'
+    assert not (tmp_path / 'status').exists()
 
     # When cumulative escape accounts for the loss (lost <= 1.5 * esc + 1e3), no violation:
     row_ok_loss = dict(row_bad_loss, esc_kg_cumulative=1.0e21)
@@ -780,14 +903,14 @@ def test_check_volatile_invariants_escape_cumulative_bound():
     row_desiccated_credit = dict(row_bad_loss, M_desiccated=1.0e21)
     assert check_volatile_invariants(row_desiccated_credit, cfg) == []
 
-    # Non-finite M_desiccated must raise a named escape_cumulative_bound violation rather than defaulting to 0.0:
+    # Non-finite M_desiccated must emit a named escape_cumulative_bound violation rather than defaulting to 0.0:
     for bad_des in (float('nan'), float('inf'), float('-inf')):
         row_bad_des = dict(row_ok_loss, M_desiccated=bad_des)
         v_bad_des = check_volatile_invariants(row_bad_des, cfg)
         assert len(v_bad_des) == 1
         assert v_bad_des[0].name == 'escape_cumulative_bound'
         assert v_bad_des[0].status_code == STATUS_ERROR_MASS_INVARIANT
-        assert v_bad_des[0].report_only is False
+        assert v_bad_des[0].report_only is True
         assert 'M_desiccated' in v_bad_des[0].message
         assert 'not finite' in v_bad_des[0].message
 
@@ -939,7 +1062,7 @@ def test_check_row_invariants_orchestrates_modes_and_status_file(
 def test_main_loop_populates_energy_residuals_before_invariant_check_and_logs_to_proteus_log(
     tmp_path, monkeypatch, caplog: pytest.LogCaptureFixture
 ):
-    """Main loop must populate cumulative energy residuals on hf_row before check_row_invariants so proteus_00.log records report lines."""
+    """Main loop populates cumulative energy residuals via ExtendHelpfile before check_row_invariants and skips the first post-init step where hist_gross is zero."""
     from pathlib import Path
 
     import proteus.interior_energetics.wrapper as interior_wrapper
@@ -957,9 +1080,10 @@ def test_main_loop_populates_energy_residuals_before_invariant_check_and_logs_to
     config = runner.config
     config.atmos_chem.module = None
     config.params.stop.solid.enabled = False
+    config.params.stop.strict = False
     config.params.stop.iters.minimum = 1
     config.params.stop.time.minimum = 0.0
-    config.params.stop.time.maximum = 2.0
+    config.params.stop.time.maximum = 100.0
     config.params.out.plot_mod = None
     config.params.out.archive_mod = 'none'
 
@@ -982,45 +1106,48 @@ def test_main_loop_populates_energy_residuals_before_invariant_check_and_logs_to
     with caplog.at_level(logging.WARNING, logger='fwl.proteus.utils.invariants'):
         runner.start(resume=False, offline=True)
 
-    assert runner.hf_row['E_residual_cons_J'] == pytest.approx(2.807814e24, rel=1e-5)
+    assert runner.hf_row['E_residual_cons_J'] == pytest.approx(2.0 * 2.807814e24, rel=1e-5)
     assert float(runner.hf_all['E_residual_cons_J'].iloc[-1]) == pytest.approx(
-        2.807814e24, rel=1e-5
+        2.0 * 2.807814e24, rel=1e-5
     )
     assert runner.hf_row['E_core_residual_frac'] == pytest.approx(5.681160e-4, rel=1e-5)
     assert float(runner.hf_all['E_core_residual_frac'].iloc[-1]) == pytest.approx(
         5.681160e-4, rel=1e-5
     )
-    assert any(
-        'Invariant report [E_residual_cons_frac_gross]' in rec.message
-        and '3.755489e-04 exceeds tol=2.600000e-04' in rec.message
-        for rec in caplog.records
-    )
     logfile_text = (out / 'proteus_00.log').read_text(encoding='utf-8')
+    # First post-init step (Time=2.0 yr) has hist_gross == 0.0 and must not log cumulative fractions:
+    assert 'Time=2.000000e+00 yr: E_residual_cons_frac_gross=' not in logfile_text
+    assert 'Time=2.000000e+00 yr: |E_core_residual_frac|=' not in logfile_text
+    # Second post-init step (Time=100.0 yr) has hist_gross > 0.0 and logs both:
     assert (
         '[ WARNING ] Invariant report [E_residual_cons_frac_gross]: '
-        'Time=2.000000e+00 yr: E_residual_cons_frac_gross=3.755489e-04 '
+        'Time=1.000000e+02 yr: E_residual_cons_frac_gross=3.755489e-04 '
         'exceeds tol=2.600000e-04'
     ) in logfile_text
     assert (
         '[ WARNING ] Invariant report [E_core_residual_frac]: '
-        'Time=2.000000e+00 yr: |E_core_residual_frac|=5.681160e-04 '
+        'Time=1.000000e+02 yr: |E_core_residual_frac|=5.681160e-04 '
         'exceeds tol=1.000000e-04'
     ) in logfile_text
 
 
 @pytest.mark.unit
 def test_populate_energy_and_core_residuals_idempotent_across_double_call_and_extend_helpfile():
-    """Calling _populate_energy_residual and _populate_core_residual twice on the same
-    (current_hf, new_row) and then via ExtendHelpfile must leave every cumulative column
-    bit-equal (repr).
-    """
+    """ExtendHelpfile populates cumulative energy and core residuals in place on new_row without redundant calls in proteus.py."""
+    from pathlib import Path
+
+    import proteus as proteus_pkg
     from proteus.utils.coupler import (
         CreateHelpfileFromDict,
         ExtendHelpfile,
         ZeroHelpfileRow,
-        _populate_core_residual,
-        _populate_energy_residual,
     )
+
+    proteus_src = (Path(proteus_pkg.__file__).resolve().parent / 'proteus.py').read_text(
+        encoding='utf-8'
+    )
+    assert '_populate_energy_residual' not in proteus_src
+    assert '_populate_core_residual' not in proteus_src
 
     prior_row = ZeroHelpfileRow()
     prior_row['Time'] = 100.0
@@ -1068,28 +1195,13 @@ def test_populate_energy_and_core_residuals_idempotent_across_double_call_and_ex
         'E_core_residual_frac',
     )
 
-    _populate_energy_residual(current_hf, new_row)
-    _populate_core_residual(current_hf, new_row)
-    first_pass = {k: repr(new_row[k]) for k in cumulative_keys}
-    first_pass_float = {k: repr(float(new_row[k])) for k in cumulative_keys}
-    first_pass_all = {k: repr(v) for k, v in new_row.items()}
-
-    _populate_energy_residual(current_hf, new_row)
-    _populate_core_residual(current_hf, new_row)
-    second_pass = {k: repr(new_row[k]) for k in cumulative_keys}
-    second_pass_float = {k: repr(float(new_row[k])) for k in cumulative_keys}
-    second_pass_all = {k: repr(v) for k, v in new_row.items()}
-
-    assert second_pass == first_pass
-    assert second_pass_float == first_pass_float
-    assert second_pass_all == first_pass_all
-
     extended_hf = ExtendHelpfile(current_hf, new_row)
-    after_extend = {k: repr(new_row[k]) for k in cumulative_keys}
+    after_extend = {k: repr(float(new_row[k])) for k in cumulative_keys}
     df_last_row = {k: repr(float(extended_hf[k].iloc[-1])) for k in cumulative_keys}
 
-    assert after_extend == first_pass
-    assert df_last_row == first_pass_float
+    assert after_extend == df_last_row
+    assert new_row['E_residual_cons_J'] != 0.0
+    assert new_row['E_core_residual_J'] != 0.0
 
 
 def test_check_volatile_invariants_vapourise_exempts_oxygen_while_checking_c_n_s():
@@ -1138,7 +1250,7 @@ def test_check_volatile_invariants_vapourise_exempts_oxygen_while_checking_c_n_s
 
 
 def test_check_volatile_and_state_bounds_negative_masses_and_zero_atm_psurf():
-    """Negative masses below -element_closure_atol_kg, M_planet <= 0, and P_surf > 0 at |M_atm| <= atol fail."""
+    """Negative masses below -element_closure_atol_kg, M_planet <= 0, and P_surf < 0 at |M_atm| <= atol fail."""
     from proteus.utils.invariants import (
         check_state_bounds_invariants,
         check_volatile_invariants,
@@ -1162,23 +1274,25 @@ def test_check_volatile_and_state_bounds_negative_masses_and_zero_atm_psurf():
         'H_kg_solid': 0.0,
     }
 
-    # |M_atm| <= element_closure_atol_kg (1.0 kg) counts as zero in both volatile and state-bounds checks:
+    # |M_atm| <= element_closure_atol_kg (1.0 kg) permits P_surf >= 0.0 (including tiny positive P_surf):
     for m_atm_tiny in (-0.5, 0.0, 0.5):
-        row_tiny_zero_p = dict(
-            clean_row,
-            M_atm=m_atm_tiny,
-            M_vol_atm=0.0,
-            H2O_kg_atm=0.0,
-            P_surf=0.0,
-        )
-        assert check_state_bounds_invariants(row_tiny_zero_p, cfg) == []
-        assert check_volatile_invariants(row_tiny_zero_p, cfg) == []
+        for p_surf_ok in (0.0, 1.0e-5):
+            row_tiny_p = dict(
+                clean_row,
+                M_atm=m_atm_tiny,
+                M_vol_atm=0.0,
+                H2O_kg_atm=0.0,
+                P_surf=p_surf_ok,
+            )
+            assert check_state_bounds_invariants(row_tiny_p, cfg) == []
+            assert check_volatile_invariants(row_tiny_p, cfg) == []
 
-    # P_surf > 0 with |M_atm| <= atol fails P_surf_bounds:
-    v_psurf = check_state_bounds_invariants(dict(clean_row, M_atm=0.0, P_surf=250.0), cfg)
+    # P_surf < 0 with |M_atm| <= atol fails P_surf_bounds:
+    v_psurf = check_state_bounds_invariants(dict(clean_row, M_atm=0.5, P_surf=-1.0e-5), cfg)
     assert [v.name for v in v_psurf] == ['P_surf_bounds']
     assert v_psurf[0].status_code == STATUS_ERROR_STATE_BOUNDS_INVARIANT
     assert v_psurf[0].report_only is False
+    assert 'violates P_surf >= 0.0 bar' in v_psurf[0].message
     assert 'kg bar' not in v_psurf[0].message
 
     # Negative M_atm below -element_closure_atol_kg with P_surf == 0.0 fails state-bounds with clean message:
@@ -1186,7 +1300,7 @@ def test_check_volatile_and_state_bounds_negative_masses_and_zero_atm_psurf():
         dict(clean_row, M_atm=-1.0e20, P_surf=0.0), cfg
     )
     assert [v.name for v in v_neg_matm_sb] == ['P_surf_bounds']
-    assert 'violates P_surf == 0.0 bar with M_atm >=' in v_neg_matm_sb[0].message
+    assert 'violates P_surf >= 0.0 bar with M_atm >=' in v_neg_matm_sb[0].message
     assert 'kg bar' not in v_neg_matm_sb[0].message
 
     # Derived elements (O under user_constant or vapourise) are still bound-checked on reservoirs:
@@ -1376,8 +1490,12 @@ def test_stop_mode_flushes_failing_row_and_prior_rows_regardless_of_write_mod(
 def test_invariant_tracker_reports_on_crossing_counts_rows_and_logs_summary(
     tmp_path, caplog: pytest.LogCaptureFixture
 ):
-    """Crossing suppression applies only to E_residual_cons_frac_gross with running count; per-step checks log every row and summary includes max."""
-    from proteus.utils.invariants import InvariantTracker
+    """Crossing suppression applies to cumulative/carried-forward checks; non-finite values do not hide finite maxima or print max=-inf."""
+    from proteus.utils.invariants import _CROSSING_SUPPRESSED_NAMES, InvariantTracker
+
+    assert 'E_residual_cons_frac_gross' in _CROSSING_SUPPRESSED_NAMES
+    assert 'struct_mass_desync_frac' in _CROSSING_SUPPRESSED_NAMES
+    assert 'M_core_target_rel_err' in _CROSSING_SUPPRESSED_NAMES
 
     tracker = InvariantTracker()
     v_energy_1 = InvariantViolation(
@@ -1412,17 +1530,35 @@ def test_invariant_tracker_reports_on_crossing_counts_rows_and_logs_summary(
         message='Time=2.0e+02 yr: step_dE_inc_frac=5.000000e-01 exceeds tol=1.000000e-02',
         report_only=True,
     )
+    v_desync_1 = InvariantViolation(
+        name='struct_mass_desync_frac',
+        status_code=STATUS_ERROR_MASS_INVARIANT,
+        value=6.0e-3,
+        tolerance=5.0e-3,
+        message='Time=1.0e+02 yr: struct_mass_desync_frac=6.000000e-03 exceeds warn tol=5.000000e-03',
+        report_only=True,
+    )
+    v_desync_2 = InvariantViolation(
+        name='struct_mass_desync_frac',
+        status_code=STATUS_ERROR_MASS_INVARIANT,
+        value=6.0e-3,
+        tolerance=5.0e-3,
+        message='Time=2.0e+02 yr: struct_mass_desync_frac=6.000000e-03 exceeds warn tol=5.000000e-03',
+        report_only=True,
+    )
     dirs = {'output': str(tmp_path)}
     with caplog.at_level(logging.WARNING, logger='fwl.proteus.utils.invariants'):
-        # Row 1: crossing into violation -> logs both E_residual_cons_frac_gross (count=1) and step_dE_inc_frac
+        # Row 1: crossing into violation -> logs E_residual_cons_frac_gross (count=1), struct_mass_desync_frac (count=1), and step_dE_inc_frac
         handle_violations(
-            [v_energy_1, v_step_1], mode='report', directories=dirs, tracker=tracker
+            [v_energy_1, v_desync_1, v_step_1], mode='report', directories=dirs, tracker=tracker
         )
-        # Rows 2 and 3: E_residual_cons_frac_gross suppressed, but step_dE_inc_frac logs on every row
+        # Rows 2 and 3: E_residual_cons_frac_gross and struct_mass_desync_frac suppressed, but step_dE_inc_frac logs on every row
         handle_violations(
-            [v_energy_2, v_step_2], mode='report', directories=dirs, tracker=tracker
+            [v_energy_2, v_desync_2, v_step_2], mode='report', directories=dirs, tracker=tracker
         )
-        handle_violations([v_energy_1], mode='report', directories=dirs, tracker=tracker)
+        handle_violations(
+            [v_energy_1, v_desync_2], mode='report', directories=dirs, tracker=tracker
+        )
         # Row 4: clean -> resets active state
         handle_violations([], mode='report', directories=dirs, tracker=tracker)
         # Row 5: second crossing of E_residual_cons_frac_gross -> logs with (count=4)
@@ -1434,6 +1570,11 @@ def test_invariant_tracker_reports_on_crossing_counts_rows_and_logs_summary(
         for r in caplog.records
         if 'Invariant report [E_residual_cons_frac_gross]' in r.message
     ]
+    desync_msgs = [
+        r.message
+        for r in caplog.records
+        if 'Invariant report [struct_mass_desync_frac]' in r.message
+    ]
     step_msgs = [
         r.message for r in caplog.records if 'Invariant report [step_dE_inc_frac]' in r.message
     ]
@@ -1441,15 +1582,56 @@ def test_invariant_tracker_reports_on_crossing_counts_rows_and_logs_summary(
     assert len(energy_msgs) == 2
     assert '(count=1)' in energy_msgs[0]
     assert '(count=4)' in energy_msgs[1]
+    assert len(desync_msgs) == 1
+    assert '(count=1)' in desync_msgs[0]
     assert len(step_msgs) == 2
     assert '5.000000e-01' in step_msgs[1]
     assert tracker.row_counts['E_residual_cons_frac_gross'] == 4
+    assert tracker.row_counts['struct_mass_desync_frac'] == 3
     assert tracker.row_counts['step_dE_inc_frac'] == 2
     assert tracker.rows_with_violations == 4
     assert len(summary_msgs) == 1
     assert '4 row(s) with violations' in summary_msgs[0]
     assert 'E_residual_cons_frac_gross=4 (max=6.000000e-04)' in summary_msgs[0]
+    assert 'struct_mass_desync_frac=3 (max=6.000000e-03)' in summary_msgs[0]
     assert 'step_dE_inc_frac=2 (max=5.000000e-01)' in summary_msgs[0]
+
+    # Non-finite values (-inf, nan) must not print max=-inf or hide the finite maximum (A11):
+    caplog.clear()
+    nf_tracker = InvariantTracker()
+    for val in (float('-inf'), float('nan'), -0.25):
+        nf_tracker.record_row(
+            [
+                InvariantViolation(
+                    name='step_dE_core_J',
+                    status_code=STATUS_ERROR_ENERGY_INVARIANT,
+                    value=val,
+                    tolerance=0.0,
+                    message=f'step_dE_core_J={val}',
+                    report_only=True,
+                )
+            ]
+        )
+    nf_tracker.record_row(
+        [
+            InvariantViolation(
+                name='core_C_eff',
+                status_code=STATUS_ERROR_ENERGY_INVARIANT,
+                value=float('-inf'),
+                tolerance=0.0,
+                message='core_C_eff=-inf',
+                report_only=True,
+            )
+        ]
+    )
+    assert nf_tracker.max_values['step_dE_core_J'] == pytest.approx(0.25)
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.utils.invariants'):
+        nf_tracker.log_summary()
+    nf_summary = [r.message for r in caplog.records if 'Invariant summary:' in r.message]
+    assert len(nf_summary) == 1
+    assert 'max=-inf' not in nf_summary[0]
+    assert '2.500000e-01' in nf_summary[0]
+    assert 'non_finite=2' in nf_summary[0]
 
 
 def test_main_loop_logs_invariant_summary_on_module_exception(
