@@ -615,11 +615,14 @@ def check_structure_invariants(
 
     Checks ``struct_mass_desync_frac`` against the warning threshold (default ``5.0e-3``,
     ``report_only=True``) and stop threshold (default ``1.0e-2``, ``report_only=False``),
-    interior mass ``M_int`` against ``M_int_target`` (when ``M_int_target > 0``), and
-    core mass ``M_core`` against ``M_core_target`` (when ``M_core_target > 0``). On
-    init-stage rows before the post-init baseline structure solve (``init_stage=True``,
-    or ``Time <= 1.0`` yr when ``init_stage`` is omitted), finite structure mismatches
-    are reported with ``report_only=True`` and do not stop the run.
+    interior mass ``M_int`` against ``M_int_target`` (when ``M_int_target > 0``, backing up
+    ``_ZALMOXIS_MASS_ANCHOR_TOL`` on ``determine_interior_radius_with_zalmoxis``,
+    ``equilibrate_initial_state``, and ``update_structure_from_interior`` rollbacks restoring
+    ``_saved_structure``, or when ``interior_mass_target_rtol < 3.0e-3``), and core mass
+    ``M_core`` against ``M_core_target`` (when ``M_core_target > 0``). On init-stage rows
+    before the post-init baseline structure solve (``init_stage=True``, or ``Time <= 1.0`` yr
+    when ``init_stage`` is omitted), finite structure mismatches are reported with
+    ``report_only=True`` and do not stop the run.
 
     Parameters
     ----------

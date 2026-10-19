@@ -91,8 +91,13 @@ class Invariants:
         ``5.0e-3`` warning threshold (init-stage rows before the post-init baseline structure
         solve are report-only).
     interior_mass_target_rtol: float
-        Relative tolerance on ``M_int`` versus ``M_int_target`` at a structure update row [-],
-        sized above the ``2.05e-3`` maximum observed on Zalmoxis structure update rows.
+        Relative tolerance on ``M_int`` versus ``M_int_target`` at a Zalmoxis structure row [-],
+        matching ``_ZALMOXIS_MASS_ANCHOR_TOL = 3.0e-3`` in ``interior_energetics/wrapper.py`` and
+        acting as a backstop on solve paths where ``_ZALMOXIS_MASS_ANCHOR_TOL`` does not guard
+        ``hf_row`` (the linear-guess initial solve in ``determine_interior_radius_with_zalmoxis``
+        and ``equilibrate_initial_state``, and ``update_structure_from_interior`` rollbacks where
+        ``_saved_structure`` restores ``M_int`` without clearing ``M_int_target``) or when
+        configured tighter than ``3.0e-3``.
     core_mass_target_rtol: float
         Relative tolerance on ``M_core`` versus ``M_core_target`` at a structure update row [-],
         sized at about ``1.6`` times the radial-trapezoidal core mass difference on

@@ -2159,7 +2159,7 @@ def test_interior_mass_target_rtol_unguarded_zalmoxis_paths():
     assert 'update_structure_from_interior' in doc
     assert '_ZALMOXIS_MASS_ANCHOR_TOL' in doc
 
-    cfg = _make_mock_config(interior_mass_target_rtol=3.0e-3)
+    cfg = _make_mock_config()
     # On init-stage row 0 (determine_interior_radius_with_zalmoxis / equilibrate_initial_state),
     # _ZALMOXIS_MASS_ANCHOR_TOL does not run; check_structure_invariants reports > 3.0e-3:
     row_init = {
