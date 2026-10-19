@@ -587,3 +587,70 @@ def test_the_minimal_examples_set_the_keys_their_runs_need():
     quick = cfgs['minimal_quick.toml'].atmos_clim
     assert (quick.module, quick.rayleigh) == ('dummy', False)
     assert quick.dummy.gamma == pytest.approx(0.8)
+
+
+@pytest.mark.unit
+def test_aragog_top_cell_dt_limit_defaults_and_validators():
+    """Aragog top_cell_dt_limit defaults to False, rel_dT to 0.08, and rel_dT_solid to 0.02.
+
+    Validators reject non-boolean top_cell_dt_limit, values outside (0, 0.5] for
+    top_cell_dt_rel_dT, and values outside (0, top_cell_dt_rel_dT] for top_cell_dt_rel_dT_solid.
+    """
+    from proteus.config._interior import Aragog
+
+    cfg = Aragog()
+    assert cfg.top_cell_dt_limit is False
+    assert cfg.top_cell_dt_rel_dT == pytest.approx(0.08)
+    assert cfg.top_cell_dt_rel_dT_solid == pytest.approx(0.02)
+
+    cfg_on = Aragog(
+        top_cell_dt_limit=True,
+        top_cell_dt_rel_dT=0.10,
+        top_cell_dt_rel_dT_solid=0.03,
+    )
+    assert cfg_on.top_cell_dt_limit is True
+    assert cfg_on.top_cell_dt_rel_dT == pytest.approx(0.10)
+    assert cfg_on.top_cell_dt_rel_dT_solid == pytest.approx(0.03)
+
+    edge = Aragog(top_cell_dt_rel_dT=0.5, top_cell_dt_rel_dT_solid=0.5)
+    assert edge.top_cell_dt_rel_dT == pytest.approx(0.5)
+    assert edge.top_cell_dt_rel_dT_solid == pytest.approx(0.5)
+
+    with pytest.raises(TypeError):
+        Aragog(top_cell_dt_limit='yes')  # type: ignore[arg-type]
+
+    for bad in (0.0, -0.01, 0.51):
+        with pytest.raises(ValueError):
+            Aragog(top_cell_dt_rel_dT=bad)
+
+    for bad_solid in (0.0, -0.01, 0.09):
+        with pytest.raises(ValueError):
+            Aragog(top_cell_dt_rel_dT=0.08, top_cell_dt_rel_dT_solid=bad_solid)
+
+
+@pytest.mark.unit
+def test_aragog_top_cell_dt_rel_property():
+    """Property check over valid (0, 0.5] and cross-field solid allowance bounds."""
+    from hypothesis import given
+    from hypothesis import strategies as st
+
+    from proteus.config._interior import Aragog
+
+    seen: list[tuple[float, float]] = []
+
+    @given(
+        rel_dt=st.floats(min_value=1e-4, max_value=0.5, allow_nan=False, allow_infinity=False),
+        solid_frac=st.floats(
+            min_value=1e-3, max_value=1.0, allow_nan=False, allow_infinity=False
+        ),
+    )
+    def _check_valid(rel_dt, solid_frac):
+        rel_dt_solid = max(1e-7, rel_dt * solid_frac)
+        inst = Aragog(top_cell_dt_rel_dT=rel_dt, top_cell_dt_rel_dT_solid=rel_dt_solid)
+        assert 0.0 < inst.top_cell_dt_rel_dT <= 0.5
+        assert 0.0 < inst.top_cell_dt_rel_dT_solid <= inst.top_cell_dt_rel_dT
+        seen.append((inst.top_cell_dt_rel_dT, inst.top_cell_dt_rel_dT_solid))
+
+    _check_valid()
+    assert len(seen) >= 10
+    assert all(0.0 < solid_val <= dt_val <= 0.5 for dt_val, solid_val in seen)
