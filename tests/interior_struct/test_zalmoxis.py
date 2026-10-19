@@ -4491,8 +4491,27 @@ def test_ps_cache_key_follows_lowt_extension_path_and_content(tmp_path):
     assert _ps_cache_key(**_PS_COMMON, generator='g', lowt_file=str(a)) != key_a
 
 
-def _lowt_stubbed_run(tmp_path, monkeypatch, *, lowt, write_ext=True):
-    """generate_spider_tables on a two-phase entry with stubbed generators."""
+def _zalmoxis_ps_tables(
+    eos_file,
+    solidus_func,
+    liquidus_func,
+    P_range=(1e5, 200e9),
+    n_P=150,
+    n_S=150,
+    output_dir=None,
+    solid_eos_file=None,
+    liquid_eos_file=None,
+    solid_lowt_file=None,
+):
+    """Signature of zalmoxis.eos_export.generate_spider_eos_tables with the extension."""
+
+
+def _lowt_stubbed_run(
+    tmp_path, monkeypatch, *, lowt, write_ext=True, tables=None, twophase=True, registry=True
+):
+    """generate_spider_tables on a unified PALEOS entry with stubbed generators."""
+    from unittest.mock import create_autospec
+
     import zalmoxis.eos_export
     import zalmoxis.melting_curves
 
@@ -4509,11 +4528,12 @@ def _lowt_stubbed_run(tmp_path, monkeypatch, *, lowt, write_ext=True):
         'eos_file': str(solid),
     }
     monkeypatch.setattr(
-        zmod, 'load_zalmoxis_material_dictionaries', lambda: {'PALEOS:MgSiO3': entry}
+        zmod,
+        'load_zalmoxis_material_dictionaries',
+        lambda: {'PALEOS:MgSiO3': entry} if registry else {},
     )
-    monkeypatch.setattr(
-        zmod, 'resolve_2phase_mgsio3_paths', lambda *a: (str(solid), str(liquid))
-    )
+    pair = (str(solid), str(liquid)) if twophase else (None, None)
+    monkeypatch.setattr(zmod, 'resolve_2phase_mgsio3_paths', lambda *a: pair)
     monkeypatch.setattr(
         zalmoxis.melting_curves,
         'get_solidus_liquidus_functions',
@@ -4528,7 +4548,7 @@ def _lowt_stubbed_run(tmp_path, monkeypatch, *, lowt, write_ext=True):
         for name in ('solidus_P-S.dat', 'liquidus_P-S.dat'):
             (Path(kw['output_dir']) / name).write_text('NEW')
 
-    tables = MagicMock()
+    tables = create_autospec(_zalmoxis_ps_tables) if tables is None else tables
     monkeypatch.setattr(zalmoxis.eos_export, 'generate_spider_phase_boundaries', _bounds)
     monkeypatch.setattr(zalmoxis.eos_export, 'generate_spider_eos_tables', tables)
     config = MagicMock()
@@ -4565,3 +4585,68 @@ def test_lowt_extension_without_its_file_is_an_error(tmp_path, monkeypatch):
     with pytest.raises(ZalmoxisMissingEOSFilesError, match='low-temperature'):
         _lowt_stubbed_run(tmp_path, monkeypatch, lowt=True, write_ext=False)
     assert not (tmp_path / 'run' / 'data' / 'spider_eos' / 'temperature_solid.dat').exists()
+
+
+def test_ps_cache_key_ignores_the_header_of_the_extension(tmp_path):
+    """A new header line (a generation time) on the same data keeps the key; new data changes it."""
+    from proteus.interior_struct.zalmoxis import _ps_cache_key
+
+    a = tmp_path / 'a.dat'
+    a.write_text('# Generated: 1\n1 2 3\n')
+    key = _ps_cache_key(**_PS_COMMON, generator='g', lowt_file=str(a))
+    a.write_text('# Generated: 2\n1 2 3\n')
+    assert _ps_cache_key(**_PS_COMMON, generator='g', lowt_file=str(a)) == key
+    a.write_text('# Generated: 2\n1 2 4\n')
+    assert _ps_cache_key(**_PS_COMMON, generator='g', lowt_file=str(a)) != key
+
+
+def test_cache_marker_of_the_run_follows_the_switch(tmp_path, monkeypatch):
+    """The key written next to the generated tables differs with the extension on and off."""
+    keys = []
+    for lowt in (False, True):
+        root = tmp_path / str(lowt)
+        root.mkdir()
+        _lowt_stubbed_run(root, monkeypatch, lowt=lowt)
+        keys.append((root / 'run' / 'data' / 'spider_eos' / '.cache_info.txt').read_text())
+    assert keys[0] != keys[1]
+    assert keys[0].split('_eos=')[0] == keys[1].split('_eos=')[0]
+
+
+def test_lowt_extension_without_the_two_phase_tables_is_an_error(tmp_path, monkeypatch):
+    """The extension needs the PALEOS solid and liquid tables next to it."""
+    from proteus.interior_struct.zalmoxis import ZalmoxisMissingEOSFilesError
+
+    with pytest.raises(ZalmoxisMissingEOSFilesError, match='low-temperature'):
+        _lowt_stubbed_run(tmp_path, monkeypatch, lowt=True, twophase=False)
+    out, tables, _ = _lowt_stubbed_run(tmp_path, monkeypatch, lowt=False, twophase=False)
+    assert tables.call_count == 1 and out is not None
+
+
+def test_lowt_extension_with_a_zalmoxis_without_the_argument_is_an_error(tmp_path, monkeypatch):
+    """A Zalmoxis whose table generator has no solid_lowt_file stops the build with its name."""
+
+    def old_api(
+        eos_file,
+        solidus_func,
+        liquidus_func,
+        P_range=None,
+        n_P=150,
+        n_S=150,
+        output_dir=None,
+        solid_eos_file=None,
+        liquid_eos_file=None,
+    ):
+        raise AssertionError('must not be called')
+
+    with pytest.raises(RuntimeError, match='solid_lowt_file'):
+        _lowt_stubbed_run(tmp_path, monkeypatch, lowt=True, tables=old_api)
+    out, tables, _ = _lowt_stubbed_run(tmp_path, monkeypatch, lowt=False)
+    assert tables.call_count == 1
+
+
+def test_lowt_extension_for_a_mantle_without_paleos_tables_warns(tmp_path, monkeypatch, caplog):
+    """The switch on with a mantle EOS that has no PALEOS P-S tables is reported, not dropped."""
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.interior_struct.zalmoxis'):
+        out, tables, _ = _lowt_stubbed_run(tmp_path, monkeypatch, lowt=True, registry=False)
+    assert out is None and tables.call_count == 0
+    assert any('lowt_extension' in r.getMessage() for r in caplog.records)
