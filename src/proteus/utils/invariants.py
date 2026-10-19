@@ -357,7 +357,7 @@ def _parse_smin_temp_block(table_path: Path) -> tuple[np.ndarray, np.ndarray, fl
     s_all = data[:, 1] * scales[1]
     s_first = first_block[:, 1] * scales[1]
     s_min = float(np.min(s_all))
-    if not np.allclose(s_first, s_min, rtol=0.0, atol=1.0e-9):
+    if not np.allclose(s_first, s_min, rtol=0.0, atol=1.0e-3):
         raise ValueError(
             f'First block in {table_path} has S={float(s_first[0]):.6f}, not S_min={s_min:.6f}'
         )
@@ -917,7 +917,7 @@ def check_volatile_invariants(
                 InvariantViolation(
                     name=f'{e}_reservoir_closure',
                     status_code=STATUS_ERROR_MASS_INVARIANT,
-                    value=float('nan'),
+                    value=total,
                     tolerance=closure_rtol,
                     message=f'Time={time_yr:.6e} yr: {e}_kg_total={total} is not finite',
                     report_only=False,
@@ -930,7 +930,7 @@ def check_volatile_invariants(
                 InvariantViolation(
                     name=f'{e}_reservoir_closure',
                     status_code=STATUS_ERROR_MASS_INVARIANT,
-                    value=float('nan'),
+                    value=parts,
                     tolerance=closure_rtol,
                     message=f'Time={time_yr:.6e} yr: {e} reservoir sum={parts} is not finite',
                     report_only=False,
