@@ -1986,3 +1986,54 @@ def test_atmodeller_mass_thresh_for_chons_and_strict_noble_gases():
             **{f'{gas}_kg_total': 1.0e14, f'{gas}_kg_atm': 1.0e14 * (1.0 - 0.5 * rtol)},
         )
         assert check_volatile_invariants(row_noble_ok, cfg) == []
+
+
+def test_dummy_outgas_skips_noble_gas_reservoir_closure():
+    """Under outgas.module = 'dummy', noble gases skip reservoir closure while CHONS and bounds remain active."""
+    from proteus.utils.constants import noble_gases
+    from proteus.utils.invariants import (
+        InvariantViolationError,
+        check_row_invariants,
+        check_volatile_invariants,
+    )
+
+    cfg_dummy = _make_mock_config(
+        mode='stop',
+        outgas_module='dummy',
+        fO2_source='user_constant',
+        vapourise=False,
+    )
+    base_row = {
+        'Time': 100.0,
+        'T_surf': 2500.0,
+        'T_magma': 2500.0,
+        'P_surf': 100.0,
+        'Phi_global': 0.5,
+        'M_planet': 6.0e24,
+        'M_atm': 1.0e21,
+        'M_vol_atm': 1.0e21,
+        'M_vaps': 0.0,
+        'H2O_kg_atm': 1.0e21,
+    }
+
+    for gas in noble_gases:
+        row_noble = dict(base_row, **{f'{gas}_kg_total': 1.0e14})
+        assert check_volatile_invariants(row_noble, cfg_dummy) == []
+        try:
+            assert check_row_invariants(row_noble, cfg_dummy) == []
+        except InvariantViolationError as exc:
+            pytest.fail(
+                f'dummy outgassing raised InvariantViolationError on {gas}_kg_total: {exc}'
+            )
+
+    # Partitioned volatile elements (H, C, N, S) still enforce reservoir closure under dummy
+    for elem in ('H', 'C', 'N', 'S'):
+        row_vol = dict(base_row, **{f'{elem}_kg_total': 1.0e14})
+        v_vol = check_volatile_invariants(row_vol, cfg_dummy)
+        assert [v.name for v in v_vol] == [f'{elem}_reservoir_closure']
+        assert v_vol[0].report_only is False
+
+    # Noble-gas reservoir lower bounds remain enforced under dummy
+    row_neg_noble = dict(base_row, Ar_kg_total=1.0e14, Ar_kg_liquid=-5.0)
+    v_neg = check_volatile_invariants(row_neg_noble, cfg_dummy)
+    assert [v.name for v in v_neg] == ['Ar_kg_liquid_bounds']
