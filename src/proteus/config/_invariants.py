@@ -60,19 +60,18 @@ class Invariants:
         Relative tolerance on per-step energy residual increment normalized by per-step gross flux
         when ``T_magma <= T(p, S_min) + 0.5 K`` [-] (report-only). Here ``T(p, S_min)``
         is interpolated linearly in pressure at the fixed Aragog mesh surface pressure
-        ``solver.parameters.mesh.surface_pressure`` (set at solver setup in ``aragog.py:958`` and
-        read via ``mesh_surface_pressure_state`` in ``aragog.py:3121-3142``, falling back to each
-        row's ``P_surf`` when no solver state exists) on the ``S_min`` block of the run's cached
-        P-S EOS table ``temperature_solid.dat`` (e.g. ``302.342 K`` in
-        ``run_20261018_131253_ea68`` and ``323.208 K`` in ``tutorial_earth`` at ``1 bar`` for
-        ``S_min = 106.116 J kg^-1 K^-1`` in the dynamic PALEOS-2phase ``MgSiO3`` tables, and
-        ``260.0 K`` at ``P = 0`` for ``S_min = -84.786 J kg^-1 K^-1`` in the Wolf & Bower 2018
-        1 TPa ``MgSiO3`` solid table; the raw P-T source ``paleos_mgsio3_tables_pt_proteus_solid.dat``
-        has ``300.488 K`` at ``P = 2.660 GPa`` rather than surface pressure). The ``0.5 K`` margin
-        bounds the smooth low-pressure P-S linear interpolation error (``<= 9.49e-3 K``),
-        remaining well below the first unclipped entropy-grid step (``+22.74 K`` to ``+30.00 K``).
-        Sized above the ``4.39%`` maximum observed on the ``S_min`` temperature clip in
-        post-closure runs.
+        ``solver.parameters.mesh.surface_pressure`` (set at solver setup and read via
+        ``mesh_surface_pressure_state``, falling back to each row's ``P_surf`` when no solver
+        state exists) on the ``S_min`` block of the run's cached P-S EOS table
+        ``temperature_solid.dat`` (e.g. ``302.342 K`` in ``run_20261018_131253_ea68`` and
+        ``323.208 K`` in ``tutorial_earth`` at ``1 bar`` for ``S_min = 106.116 J kg^-1 K^-1`` in
+        the dynamic PALEOS-2phase ``MgSiO3`` tables, and ``260.0 K`` at ``P = 0`` for
+        ``S_min = -84.786 J kg^-1 K^-1`` in the Wolf & Bower 2018 1 TPa ``MgSiO3`` solid table;
+        the raw P-T source ``paleos_mgsio3_tables_pt_proteus_solid.dat`` has ``300.488 K`` at
+        ``P = 2.660 GPa`` rather than surface pressure). The ``0.5 K`` margin bounds the smooth
+        low-pressure P-S linear interpolation error (``<= 9.49e-3 K``), remaining well below the
+        first unclipped entropy-grid step (``+22.74 K`` to ``+30.00 K``). Sized above the
+        ``4.39%`` maximum observed on the ``S_min`` temperature clip in post-closure runs.
     solver_residual_rtol: float
         Relative tolerance on the Aragog ODE solver internal energy residual normalized by gross
         throughput [-], evaluated once prior post-init rows have non-zero gross throughput
@@ -84,43 +83,52 @@ class Invariants:
         round-off on the single-ODE core integration.
     struct_mass_desync_warn_rtol: float
         Warning threshold on ``struct_mass_desync_frac`` [-], sized above the ``4.71e-3``
-        post-baseline maximum (``3.33e-3`` maximum after the post-init baseline structure solve
-        when non-default structure configurations are included; init-stage rows before the
-        baseline solve reach ``1.123e-2`` and are report-only).
+        post-baseline maximum across the extended post-closure corpus on rows after the post-init
+        baseline structure solve (``row >= 4``, including non-default structure and coarse-step
+        configurations; ``3.33e-3`` maximum on ``row >= 4`` across the 68 finished post-closure
+        default runs, while init-stage rows ``0`` to ``3`` before the baseline solve reach
+        ``1.123e-2`` and are report-only).
     struct_mass_desync_rtol: float
         Stop threshold on post-init ``struct_mass_desync_frac`` [-], sized at twice the
         ``5.0e-3`` warning threshold (init-stage rows before the post-init baseline structure
-        solve are report-only).
+        solve are report-only; a failed baseline solve keeps ``init_stage=True`` until a solve
+        succeeds, for at most ``_ZALMOXIS_MAX_CONSECUTIVE_FAILS`` rows).
     interior_mass_target_rtol: float
         Relative tolerance on ``M_int`` versus ``M_int_target`` at a Zalmoxis structure row [-],
         matching ``_ZALMOXIS_MASS_ANCHOR_TOL = 3.0e-3`` in ``interior_energetics/wrapper.py`` and
         acting as a backstop on solve paths where ``_ZALMOXIS_MASS_ANCHOR_TOL`` does not guard
         ``hf_row`` (the linear-guess initial solve in ``determine_interior_radius_with_zalmoxis``
         and ``equilibrate_initial_state``, and ``update_structure_from_interior`` rollbacks where
-        ``_saved_structure`` restores ``M_int`` without clearing ``M_int_target``) or when
-        configured tighter than ``3.0e-3``.
+        ``_saved_structure`` restores ``M_int`` without clearing ``M_int_target``, which are
+        emitted with ``report_only=True``) or when configured tighter than ``3.0e-3``.
     core_mass_target_rtol: float
         Relative tolerance on ``M_core`` versus ``M_core_target`` at a structure update row [-],
         sized at about ``1.6`` times the radial-trapezoidal core mass difference on
         ``a627_default`` (not one of the 68 runs): maximum ``1.565e-2``, 99th percentile
         ``1.518e-2`` (``1.004e-2`` maximum and ``9.79e-3`` 99th percentile across the 68
-        finished post-closure default runs).
+        finished post-closure default runs; ``report_only=True`` on init-stage rows and rows
+        following a Zalmoxis structure rollback).
     element_closure_rtol: float
         Relative tolerance on per-element reservoir closure ``atm + magma + solid = total`` [-],
         sized at ``2.5`` times the default ``outgas.solver_rtol = 1.0e-4``.
         For ``outgas.module = 'calliope'``, and for ``H, C, N, S, O`` under
-        ``outgas.module = 'atmodeller'``, the tolerance is
+        ``outgas.module = 'atmodeller'`` when ``total <= outgas.mass_thresh``, the tolerance is
         ``outgas.mass_thresh + element_closure_rtol * max(total, 0)`` (only as tight as
         ``outgas.mass_thresh``; a zero-budget leak is seen above ``mass_thresh``, whereas
-        noble gases under ``atmodeller`` stay strict at
+        ``atmodeller`` elements with ``total > outgas.mass_thresh`` and noble gases under
+        ``atmodeller`` stay strict at
         ``max(element_closure_atol_kg, element_closure_rtol * max(total, 0))``). Under
         ``outgas.module = 'dummy'``, noble gases (``He, Ne, Ar, Kr, Xe``) skip reservoir
-        closure because the dummy outgassing module only partitions ``H, C, N, S``.
+        closure because the dummy outgassing module only partitions ``H, C, N, S``. Under
+        ``outgas.vapourise = true``, rock-vapour and ``lavatmos``-overwritten elements skip
+        reservoir closure and an atmosphere excess above ``M_vaps`` in
+        ``coupler.assert_mass_conservation`` only logs a warning.
     element_closure_atol_kg: float
         Absolute floor on per-element reservoir closure when the ``outgas.mass_thresh``
         relaxation does not apply [kg], and lower-bound floor ``-element_closure_atol_kg`` on
         volatile and reservoir masses. For ``outgas.module = 'calliope'``, and for
-        ``H, C, N, S, O`` under ``outgas.module = 'atmodeller'``, the closure check uses
+        ``H, C, N, S, O`` under ``outgas.module = 'atmodeller'`` when
+        ``total <= outgas.mass_thresh``, the closure check uses
         ``outgas.mass_thresh + element_closure_rtol * max(total, 0)`` (a zero-budget leak is
         seen above ``mass_thresh``).
     escape_bound_factor: float

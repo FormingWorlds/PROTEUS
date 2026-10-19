@@ -38,6 +38,8 @@ PALEOS_REGISTRY_KEYS = frozenset(
         'PALEOS-API-2phase:MgSiO3',
     }
 )
+# Pointer file in output/<run>/data recording a shared PROTEUS_PS_CACHE_DIR path.
+PS_CACHE_POINTER_NAME = 'spider_eos_cache.txt'
 
 mol = 6.02214076e23  # mol definition
 

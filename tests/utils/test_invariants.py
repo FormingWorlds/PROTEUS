@@ -894,7 +894,7 @@ def test_check_volatile_invariants_calliope_zero_parts_threshold():
 def test_assert_mass_conservation_writes_status_31_and_no_duplicate_cap_or_species_sum(
     tmp_path, monkeypatch
 ):
-    """assert_mass_conservation writes status 31 before raising through Proteus.start, and check_volatile_invariants does not duplicate M_atm_planet_cap or M_vol_atm_species_sum."""
+    """Proteus.start writes status 31 when assert_mass_conservation raises, and check_volatile_invariants does not duplicate M_atm_planet_cap or M_vol_atm_species_sum."""
     from pathlib import Path
 
     from proteus import Proteus
@@ -913,15 +913,12 @@ def test_assert_mass_conservation_writes_status_31_and_no_duplicate_cap_or_speci
     }
     assert check_volatile_invariants(row_cap, cfg_no_vap) == []
 
-    dirs_direct = {'output': str(tmp_path)}
     with pytest.raises(RuntimeError, match='Mass conservation violation'):
-        assert_mass_conservation(row_cap, directories=dirs_direct)
-    status_direct = (tmp_path / 'status').read_text(encoding='utf-8').splitlines()
-    assert status_direct[0].strip() == '31'
-    assert status_direct[1].strip() == 'Error (Mass conservation invariant)'
+        assert_mass_conservation(row_cap)
+    assert not (tmp_path / 'status').exists()
 
-    # Verify through Proteus.start that when M_atm exceeds M_planet, assert_mass_conservation
-    # writes status 31 before raising RuntimeError:
+    # Verify through Proteus.start that catching RuntimeError from assert_mass_conservation
+    # writes status 31 before re-raising:
     monkeypatch.setattr(Interior_t, '_load_ps_table', lambda self, *a, **kw: None)
     out_dir = tmp_path / 'run_mass_cap_31'
     dummy_toml = Path(__file__).resolve().parents[2] / 'input' / 'dummy.toml'
@@ -2240,7 +2237,7 @@ def test_structure_rollback_makes_target_errors_report_only_while_normal_rows_st
     cfg.invariants.mode = 'stop'
     cfg.interior_struct.module = 'zalmoxis'
     cfg.interior_energetics.module = 'aragog'
-    cfg.interior_energetics.aragog.initial_condition = 1
+    cfg.planet.temperature_mode = 'liquidus_super'
     cfg.interior_struct.zalmoxis.mantle_eos = 'PALEOS-2phase:MgSiO3'
     cfg.interior_struct.zalmoxis.dry_mantle = True
 
@@ -2308,10 +2305,20 @@ def test_structure_rollback_makes_target_errors_report_only_while_normal_rows_st
     assert row_upstep.get('_structure_rollback') is True
     assert interior_o.structure_rollback_active is True
 
-    # In stop mode, the row following the rejected up-step continues like off mode (report_only=True):
+    # In stop mode, the row following the rejected up-step continues like off mode (report_only=True),
+    # whether read from hf_row['_structure_rollback'] alone or interior_o.structure_rollback_active alone:
     v_upstep = check_row_invariants(row_upstep, cfg, init_stage=False, interior_o=interior_o)
     assert [v.name for v in v_upstep] == ['M_int_target_rel_err', 'M_core_target_rel_err']
     assert all(v.report_only for v in v_upstep)
+    v_hf_only = check_row_invariants(row_upstep, cfg, init_stage=False, interior_o=None)
+    assert [v.name for v in v_hf_only] == ['M_int_target_rel_err', 'M_core_target_rel_err']
+    assert all(v.report_only for v in v_hf_only)
+    row_no_hf_flag = {k: v for k, v in row_upstep.items() if k != '_structure_rollback'}
+    v_obj_only = check_row_invariants(
+        row_no_hf_flag, cfg, init_stage=False, interior_o=interior_o
+    )
+    assert [v.name for v in v_obj_only] == ['M_int_target_rel_err', 'M_core_target_rel_err']
+    assert all(v.report_only for v in v_obj_only)
 
     # 2. Convergence / mass-anchor RuntimeError rollback also marks target checks report_only=True:
     def fake_failing_solver(config, outdir, hf_row, **kwargs):
@@ -2646,28 +2653,44 @@ def test_proteus_row_init_stage_helper_all_cases(tmp_path, monkeypatch):
 
     # 1. Init iteration is True regardless of structure module
     runner.config.interior_struct.module = 'dummy'
-    runner._post_init_baseline_struct_done = True
+    runner._baseline_structure_done = True
     assert runner._row_init_stage(True) is True
 
     # 2. Zalmoxis before post-init baseline solve is True
     runner.config.interior_struct.module = 'zalmoxis'
-    runner._post_init_baseline_struct_done = False
+    runner._baseline_structure_done = False
     runner.interior_o.structure_stale = False
     assert runner._row_init_stage(False) is True
 
     # 3. Zalmoxis after successful post-init baseline solve is False
-    runner._post_init_baseline_struct_done = True
+    runner._baseline_structure_done = True
     runner.interior_o.structure_stale = False
     assert runner._row_init_stage(False) is False
 
     # 4. Zalmoxis when baseline solve failed and fell back (structure_stale=True) stays True
-    runner._post_init_baseline_struct_done = True
+    runner.init_stage = False
+    runner._baseline_structure_done = False
     runner.interior_o.structure_stale = True
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper._use_superliquidus_adiabat_ic',
+        lambda cfg: False,
+    )
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper.update_structure_from_interior',
+        lambda *a, **kw: (1.0, 2000.0, 0.5),
+    )
+    runner._solve_structure_baseline_if_needed()
+    assert runner._baseline_structure_done is False
     assert runner._row_init_stage(False) is True
 
-    # 5. Non-Zalmoxis run after init iterations is False even with _post_init_baseline_struct_done=False
+    # 5. Zalmoxis after baseline solve succeeded stays False even if a later solve sets structure_stale=True
+    runner._baseline_structure_done = True
+    runner.interior_o.structure_stale = True
+    assert runner._row_init_stage(False) is False
+
+    # 6. Non-Zalmoxis run after init iterations is False even with _baseline_structure_done=False
     runner.config.interior_struct.module = 'dummy'
-    runner._post_init_baseline_struct_done = False
+    runner._baseline_structure_done = False
     runner.interior_o.structure_stale = False
     assert runner._row_init_stage(False) is False
 

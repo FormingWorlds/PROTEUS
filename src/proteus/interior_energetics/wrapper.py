@@ -1515,6 +1515,7 @@ def _solve_structure_with_adiabat_or_rollback(
         # zalmoxis_output.dat, so the next run_interior reads a mesh that is
         # consistent with the restored hf_row state.
         hf_row.update(saved)
+        hf_row['_structure_rollback'] = True
         try:
             _output_prev = _output_zalmoxis_path + '.prev'
             if os.path.isfile(_output_prev):
@@ -1537,6 +1538,7 @@ def _solve_structure_with_adiabat_or_rollback(
         )
         return None, False
 
+    hf_row['_structure_rollback'] = False
     log.info(
         'liquidus_super IC adiabat re-solve: R_int %.1f km -> %.1f km '
         '(adiabat IC is isentropic and hydrostatically consistent).',
@@ -1677,20 +1679,16 @@ def determine_interior_radius_with_zalmoxis(
         num_spider_nodes=num_spider_nodes,
         temperature_mode_override=_temp_mode_override,
     )
+    hf_row['_structure_rollback'] = False
+    int_o.structure_rollback_active = False
 
-    # liquidus_super: the first solve above integrated the mantle density against
-    # Zalmoxis' internal linear-in-r temperature guess, which is colder and
-    # denser in the deep mantle and not isentropic, so it solves the planet to a
-    # radius too small for its own mass. Re-solve the IC structure against the
-    # true super-liquidus adiabat T(P) so the initial condition is isentropic and
-    # hydrostatically consistent (maximal radius at t=0). The first solve
-    # populates hf_row['P_cmb'], so the adiabat grid is built to span the
-    # converged pressure range with a small margin. SPIDER provides its own T(r)
-    # through entropy evolution and is intentionally excluded.
+    # Re-solve liquidus_super IC structure against the true super-liquidus adiabat T(P)
+    # over the converged P_cmb range; SPIDER manages its own T(r) and is excluded.
     if _use_superliquidus_adiabat_ic(config):
         spider_mesh_file = _resolve_adiabatic_ic_structure(
             config, outdir, hf_row, num_spider_nodes, spider_mesh_file
         )
+        int_o.structure_rollback_active = bool(hf_row.get('_structure_rollback', False))
 
     # Store mesh file path for subsequent SPIDER calls
     if spider_mesh_file:
@@ -1704,15 +1702,8 @@ def determine_interior_radius_with_zalmoxis(
     dirs['mesh_shift_active'] = False
     dirs['mesh_convergence_steps'] = 0
 
-    # Generate P-S EOS tables from PALEOS if applicable.
-    # Zalmoxis converts its PALEOS P-T EOS data into the P-S format that
-    # both SPIDER and Aragog (entropy IC verify) need. Both PALEOS unified
-    # and PALEOS-2phase layouts are supported. For non-PALEOS mantle EOS
-    # (WolfBower2018, RTPress100TPa) Zalmoxis returns None and we fall
-    # back to the static FWL_DATA Zenodo P-S tables. Aragog's entropy IC
-    # verify just needs *some* P-S surface to map S_init -> T; the time
-    # evolution uses the PALEOS-2phase P-T tables generated in
-    # aragog.py:setup_solver.
+    # Generate P-S EOS tables from PALEOS if applicable, falling back to static
+    # FWL_DATA Zenodo P-S tables for non-PALEOS mantle EOS.
     if config.interior_energetics.module in ('spider', 'aragog'):
         from proteus.interior_struct.zalmoxis import generate_spider_tables
 
@@ -1724,10 +1715,7 @@ def determine_interior_radius_with_zalmoxis(
         else:
             _provide_spider_eos_tables(config, outdir, dirs)
 
-    # NOTE: run_interior runs with the *original* temperature_mode (restored
-    # by the finally block above), not the overridden 'adiabatic'.  This is
-    # correct: the Zalmoxis solver already used the adiabatic mode to compute
-    # the structure, and run_interior (SPIDER/ARAGOG) manages its own T(r).
+    # run_interior uses the original temperature_mode and manages its own T(r).
     if thermal_solve:
         run_interior(dirs, config, hf_all, hf_row, int_o)
     else:
@@ -1775,16 +1763,8 @@ def equilibrate_initial_state(dirs: dict, config: Config, hf_row: dict, outdir: 
     delta_R = 1.0
     delta_P = 1.0
 
-    # liquidus_super: re-solve the structure against the true super-liquidus
-    # adiabat T(P), the same hand-off determine_interior_radius_with_zalmoxis
-    # uses, so equilibration does not overwrite the isentropic, hydrostatically
-    # consistent IC with the colder linear-in-r guess. The molten adiabat is set
-    # by the surface superheat, not by the volatile composition this loop
-    # iterates, so it is built once from the structure's current P_cmb. None =>
-    # the linear guess (unchanged behaviour for SPIDER and non-liquidus_super
-    # runs). P_cmb_grid records the upper pressure the grid was sized for so a
-    # later iteration whose converged P_cmb exceeds it triggers a rebuild rather
-    # than clipping the deep mantle to a flat T_cmb.
+    # For liquidus_super, re-solve structure against the super-liquidus adiabat T(P)
+    # tabulated over the current P_cmb ceiling; None uses the linear guess.
     adiabat_tfunc = None
     P_cmb_grid = 0.0
     use_adiabat = _use_superliquidus_adiabat_ic(config)
@@ -1805,13 +1785,8 @@ def equilibrate_initial_state(dirs: dict, config: Config, hf_row: dict, outdir: 
         calc_target_elemental_inventories(dirs, config, hf_row)
         run_outgassing(dirs, config, hf_row, initial=True)
 
-        # 2. Re-compute structure with updated composition (volatile_profile is
-        #    built inside zalmoxis_solver from hf_row). When the super-liquidus
-        #    adiabat is available, the structure is solved against it with a
-        #    mass-anchor guard and rollback; on failure the iteration degrades
-        #    to the linear-guess solve so init never aborts where the linear
-        #    path would have converged. SPIDER and non-liquidus_super runs take
-        #    the linear-guess solve unchanged.
+        # 2. Re-compute structure with updated composition, falling back to the
+        #    linear-guess solve if the super-liquidus adiabat re-solve rolls back.
         if adiabat_tfunc is not None:
             spider_mesh_file, ok = _solve_structure_with_adiabat_or_rollback(
                 config,
@@ -1834,6 +1809,7 @@ def equilibrate_initial_state(dirs: dict, config: Config, hf_row: dict, outdir: 
                     num_spider_nodes=num_spider_nodes,
                     temperature_function=None,
                 )
+                hf_row['_structure_rollback'] = False
         else:
             _cmb_radius, spider_mesh_file = zalmoxis_solver(
                 config,
@@ -1842,6 +1818,7 @@ def equilibrate_initial_state(dirs: dict, config: Config, hf_row: dict, outdir: 
                 num_spider_nodes=num_spider_nodes,
                 temperature_function=None,
             )
+            hf_row['_structure_rollback'] = False
 
         # Update M_mantle from Zalmoxis results (M_int and M_core are set
         # by zalmoxis_solver, but M_mantle is not). run_outgassing needs
@@ -3271,16 +3248,11 @@ def update_structure_from_interior(
                     'clean no-op, not a solver failure.',
                     _R_int_new,
                 )
-            # Restore hf_row structure keys exactly like the mass-anchor
-            # rollback, but leave interior_o.structure_stale untouched and do not
-            # increment zalmoxis_fail_count. A rejected up-step is not a convergence
-            # failure, so it must not raise the stale flag; and it commits no new
-            # structure, so it must not clear the flag either. The reject restores
-            # the very structure the flag described on entry, so leaving the flag
-            # paired with it stays consistent: a fresh entry structure stays
-            # not-stale, and a stale fall-back structure that was never re-solved
-            # stays stale.
+            # Restore hf_row structure keys while leaving interior_o.structure_stale
+            # and zalmoxis_fail_count unchanged for this non-failure up-step reject.
             hf_row.update(_saved_structure)
+            hf_row['_structure_rollback'] = True
+            interior_o.structure_rollback_active = True
             # Restore zalmoxis_output.dat from its pre-call .prev snapshot so the
             # next solver reads the retained previous geometry, not the rejected
             # up-step geometry the solver just wrote.
@@ -3316,32 +3288,17 @@ def update_structure_from_interior(
             dirs['mesh_convergence_steps'] = 0
             del r_stag, _r_unsorted, _T_unsorted
             gc.collect()
-            # Advance the trigger clock and the stale-aware anchor so a
-            # persistent cross-table artifact does not re-fire an expensive
-            # re-solve every timestep: the retained previous structure is the
-            # current best structure, so this state is "checked at current_time".
-            # The sentinels advance like the success path (current Phi/T_magma),
-            # but the structure itself is unchanged.
+            # Advance the trigger clock and stale-aware anchor so a persistent
+            # cross-table artifact does not re-fire a re-solve every timestep.
             try:
                 interior_o.last_successful_struct_time = float(current_time)
             except AttributeError:
                 pass
-            # The previous structure was retained, so the accepted radius did
-            # not change: record zero so the resume-settling guard treats this
-            # as converged and suppresses further spurious dT/T re-solves (a
-            # rejected cross-table up-step recurs every step otherwise).
+            # Record zero radius change so the resume-settling guard treats this
+            # retained structure as converged and suppresses spurious dT/T re-solves.
             dirs['_last_resolve_dR_rel'] = 0.0
-            # Advance the dissolved-volatile composition sentinels exactly as the
-            # success path does. This reject path returns before the success-path
-            # refresh, so without it the baseline _last_w_{species}_liquid stays
-            # frozen at the pre-reject fractions while outgassing keeps moving the
-            # live fractions; the growing delta re-fires the composition trigger
-            # every step, each firing an inert molten up-step re-solve that is
-            # rejected again, and the coupled clock never commits. Refreshing the
-            # baseline here de-duplicates the rejected no-op so Time advances
-            # through the molten phase; once crystallization begins the radius
-            # contracts, the down-step re-solve is accepted, and EOS regeneration
-            # resumes on the success path.
+            # Advance the dissolved-volatile composition sentinels so the rejected
+            # no-op does not re-fire the composition trigger every step.
             _refresh_composition_sentinels(dirs, hf_row)
             return (
                 current_time,
@@ -3361,18 +3318,14 @@ def update_structure_from_interior(
                 reason,
             )
         interior_o.zalmoxis_fail_count = 0  # Reset on success
-        # Clear the stale-structure flag so downstream consumers
-        # (Aragog setup_or_update_solver) can rely on it. The flag is
-        # set to True on fall-back and cleared here on success, so
-        # Aragog can tell whether it is running on a fresh or stale mesh.
-        # It lives on interior_o (not hf_row) to stay out of the floats-only
-        # helpfile schema, and is persisted so a resume recovers it.
+        # Clear the stale-structure and rollback flags on an accepted re-solve
+        # and persist structure_stale for resume.
         interior_o.structure_stale = False
+        interior_o.structure_rollback_active = False
+        hf_row['_structure_rollback'] = False
         interior_o.write_structure_stale(dirs['output'])
-        # Record the relative radius change this accepted re-solve produced.
-        # The resume-settling guard reads it next loop: a value below the
-        # tolerance means the structure has converged and a further
-        # dT/T-triggered re-solve would recompute the same radius.
+        # Record the relative radius change this accepted re-solve produced
+        # for the next loop's resume-settling guard.
         _R_int_post = float(hf_row.get('R_int', 0.0) or 0.0)
         if R_int_prev > 0.0:
             dirs['_last_resolve_dR_rel'] = abs(_R_int_post - R_int_prev) / R_int_prev
@@ -3408,6 +3361,8 @@ def update_structure_from_interior(
             raise
         # Restore previous structure values
         hf_row.update(_saved_structure)
+        hf_row['_structure_rollback'] = True
+        interior_o.structure_rollback_active = True
         interior_o.structure_stale = True
         interior_o.write_structure_stale(dirs['output'])
         # Prefer the .prev snapshot written before the failed Zalmoxis

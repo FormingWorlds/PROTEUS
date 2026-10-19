@@ -35,6 +35,7 @@ from proteus.utils.constants import (
     FEI2021_LIQUIDUS_P_CALIB_PA,
     PALEOS_EOS_PREFIXES,
     PALEOS_REGISTRY_KEYS,
+    PS_CACHE_POINTER_NAME,
     TDEP_EOS_PREFIXES,
     VOLATILE_EOS_MAP,
     M_earth,
@@ -2418,14 +2419,6 @@ def write_spider_mesh_file(
     )
 
     return mesh_path
-
-
-# Name of the pointer file that records a shared PROTEUS_PS_CACHE_DIR table
-# location inside a run's output/<run>/data directory. A resumed run rebuilds
-# dirs['spider_eos_dir'] from the per-run output/<run>/data/spider_eos path,
-# which a shared-cache run never populates; the pointer lets resume follow the
-# tables to the shared cache without re-deriving the cache key.
-PS_CACHE_POINTER_NAME = 'spider_eos_cache.txt'
 
 
 def _write_ps_cache_pointer(outdir: str, cache_dir: str) -> None:

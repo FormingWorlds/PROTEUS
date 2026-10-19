@@ -10,10 +10,9 @@ from typing import TYPE_CHECKING, Any, Sequence
 import numpy as np
 
 from proteus.escape.wrapper import readable_total
-from proteus.interior_energetics.aragog import mesh_surface_pressure_state
-from proteus.interior_struct.zalmoxis import PS_CACHE_POINTER_NAME
 from proteus.outgas.trapping import derived_total_elements
 from proteus.utils.constants import (
+    PS_CACHE_POINTER_NAME,
     element_list,
     noble_gases,
     vap_element_list,
@@ -408,10 +407,8 @@ def _smin_clip_temp_k(
     """Evaluate ``T(p, S_min) + EOS_SMIN_CLIP_MARGIN_K`` at the fixed Aragog mesh surface pressure.
 
     Reads the top-node mesh surface pressure ``solver.parameters.mesh.surface_pressure``
-    set at solver setup (``src/proteus/interior_energetics/aragog.py:958``) via
-    :func:`~proteus.interior_energetics.aragog.mesh_surface_pressure_state`
-    (``src/proteus/interior_energetics/aragog.py:3121-3142``), falling back to
-    ``hf_row['P_surf']`` in bar only when no solver state is available.
+    set at solver setup via :func:`~proteus.interior_energetics.aragog.mesh_surface_pressure_state`,
+    falling back to ``hf_row['P_surf']`` in bar only when no solver state is available.
     """
     table_path = _resolve_ps_table_path(directories)
     if table_path is None:
@@ -425,14 +422,19 @@ def _smin_clip_temp_k(
         if cached is None:
             cached = _parse_smin_temp_block(table_path)
             _SMIN_TABLE_CACHE[cache_key] = cached
-    except (OSError, ValueError, IndexError) as exc:
+    except (OSError, ValueError) as exc:
         if path_key not in _SMIN_TABLE_WARNED_PATHS:
             _SMIN_TABLE_WARNED_PATHS.add(path_key)
             log.warning('Failed to load P-S EOS table %s for S_min clip: %s', table_path, exc)
         return None
     p_pa, t_k, _ = cached
     solver = getattr(interior_o, 'aragog_solver', None)
-    mesh_p_pa = mesh_surface_pressure_state(solver)
+    if solver is not None:
+        from proteus.interior_energetics.aragog import mesh_surface_pressure_state
+
+        mesh_p_pa = mesh_surface_pressure_state(solver)
+    else:
+        mesh_p_pa = None
     if mesh_p_pa is not None and np.isfinite(mesh_p_pa) and mesh_p_pa >= 0.0:
         p_eval_pa = float(mesh_p_pa)
     else:
@@ -641,6 +643,7 @@ def check_structure_invariants(
     config: Config,
     *,
     init_stage: bool | None = None,
+    interior_o: Any = None,
 ) -> list[InvariantViolation]:
     """Evaluate structure mass self-consistency and target invariants on ``hf_row`` (status 31).
 
@@ -652,8 +655,13 @@ def check_structure_invariants(
     ``_saved_structure``, or when ``interior_mass_target_rtol < 3.0e-3``), and core mass
     ``M_core`` against ``M_core_target`` (when ``M_core_target > 0``). On init-stage rows
     before the post-init baseline structure solve (``init_stage=True``, or ``Time <= 1.0`` yr
-    when ``init_stage`` is omitted), finite structure mismatches are reported with
-    ``report_only=True`` and do not stop the run.
+    when ``init_stage`` is omitted; a failed baseline solve leaves ``_baseline_structure_done``
+    ``False`` and ``structure_stale`` ``True``, keeping ``init_stage=True`` until a solve
+    succeeds, at most ``_ZALMOXIS_MAX_CONSECUTIVE_FAILS`` rows), finite structure mismatches
+    are reported with ``report_only=True`` and do not stop the run. On a row that follows a
+    Zalmoxis structure rollback (``hf_row['_structure_rollback']`` or
+    ``interior_o.structure_rollback_active``), finite ``M_int_target_rel_err`` and
+    ``M_core_target_rel_err`` violations are also emitted with ``report_only=True``.
 
     Parameters
     ----------
@@ -664,6 +672,8 @@ def check_structure_invariants(
     init_stage : bool or None, optional
         Whether the row belongs to the init stage prior to the post-init baseline
         structure solve. When ``None``, inferred from ``Time <= 1.0`` yr.
+    interior_o : Interior_t or None, optional
+        PROTEUS interior state wrapper carrying ``structure_rollback_active``.
 
     Returns
     -------
@@ -677,6 +687,11 @@ def check_structure_invariants(
         if init_stage is None
         else bool(init_stage)
     )
+    rollback_active = bool(
+        hf_row.get('_structure_rollback', False)
+        or getattr(interior_o, 'structure_rollback_active', False)
+    )
+    target_report_only = is_init or rollback_active
     m_int = float(hf_row.get('M_int', 0.0))
     m_core = float(hf_row.get('M_core', 0.0))
     r_int = float(hf_row.get('R_int', 0.0))
@@ -733,7 +748,7 @@ def check_structure_invariants(
                         f'exceeds tol={int_tol:.6e} '
                         f'(M_int={m_int:.6e} kg, M_int_target={m_int_target:.6e} kg)'
                     ),
-                    report_only=bool(is_init and np.isfinite(int_rel_err)),
+                    report_only=bool(target_report_only and np.isfinite(int_rel_err)),
                 )
             )
 
@@ -755,7 +770,7 @@ def check_structure_invariants(
                         f'exceeds tol={core_tol:.6e} '
                         f'(M_core={m_core:.6e} kg, M_core_target={m_core_target:.6e} kg)'
                     ),
-                    report_only=bool(is_init and np.isfinite(core_rel_err)),
+                    report_only=bool(target_report_only and np.isfinite(core_rel_err)),
                 )
             )
 
@@ -772,16 +787,18 @@ def check_volatile_invariants(
     masses across all elements in ``element_list``. Whole-planet atmosphere cap
     (``M_atm <= M_planet``) and volatile species-sum consistency (``M_vol_atm == sum(s_kg_atm)``)
     are enforced earlier in every iteration by ``coupler.assert_mass_conservation``, which
-    writes status 31 before raising ``RuntimeError``. Element reservoir closure skips oxygen
-    under ``planet.fO2_source = 'user_constant'``, skips ``noble_gases`` (``He, Ne, Ar, Kr, Xe``)
-    when ``outgas.module = 'dummy'`` (because the dummy outgassing module only partitions
-    ``H, C, N, S``), and, when ``outgas.vapourise`` is enabled, skips ``vap_element_list``
-    (``Si, Mg, Fe, Na, Al, Ti, Ca, K, V``, whose totals stay zero while rock vapour enters
-    the atmosphere) and ``LAVATMOS_OVERWRITTEN_ELEMENTS`` (``input_eles`` in ``lavatmos.py``,
-    namely ``H, C, N, S, O`` and ``noble_gases``: ``lavatmos`` keeps ``O_kg_atm`` from the
-    volatile outgassing step while storing post-vapourisation O in ``Omass_after_vapourise``,
-    and overwrites the atmospheric masses of ``H, C, N, S`` and ``noble_gases`` from gas-phase
-    equilibrium without updating their element totals).
+    raises ``RuntimeError`` caught in ``Proteus.start`` to write status 31; under
+    ``outgas.vapourise = true`` an atmosphere excess above ``M_vaps`` only logs a warning.
+    Element reservoir closure skips oxygen under ``planet.fO2_source = 'user_constant'``,
+    skips ``noble_gases`` (``He, Ne, Ar, Kr, Xe``) when ``outgas.module = 'dummy'`` (because
+    the dummy outgassing module only partitions ``H, C, N, S``), and, when ``outgas.vapourise``
+    is enabled, skips ``vap_element_list`` (``Si, Mg, Fe, Na, Al, Ti, Ca, K, V``, whose totals
+    stay zero while rock vapour enters the atmosphere) and ``LAVATMOS_OVERWRITTEN_ELEMENTS``
+    (``input_eles`` in ``lavatmos.py``, namely ``H, C, N, S, O`` and ``noble_gases``:
+    ``lavatmos`` keeps ``O_kg_atm`` from the volatile outgassing step while storing
+    post-vapourisation O in ``Omass_after_vapourise``, and overwrites the atmospheric masses
+    of ``H, C, N, S`` and ``noble_gases`` from gas-phase equilibrium without updating their
+    element totals).
 
     Parameters
     ----------
@@ -941,7 +958,9 @@ def check_volatile_invariants(
             continue
         diff = abs(parts - total)
         pos_total = max(total, 0.0)
-        use_mass_thresh = is_calliope or (is_atmodeller and e in vol_element_list)
+        use_mass_thresh = is_calliope or (
+            is_atmodeller and e in vol_element_list and total <= outgas_mass_thresh
+        )
         tol_e = (
             outgas_mass_thresh + closure_rtol * pos_total
             if use_mass_thresh
@@ -1148,7 +1167,7 @@ def check_row_invariants(
         structure solve. When ``None``, inferred from ``Time <= 1.0`` yr.
     interior_o : Interior_t or None, optional
         PROTEUS interior state wrapper used to read the fixed Aragog mesh surface
-        pressure when evaluating ``T(p, S_min)``.
+        pressure when evaluating ``T(p, S_min)`` and ``structure_rollback_active``.
 
     Returns
     -------
@@ -1166,7 +1185,9 @@ def check_row_invariants(
             hf_row, config, hf_all, directories=directories, interior_o=interior_o
         )
     )
-    violations.extend(check_structure_invariants(hf_row, config, init_stage=init_stage))
+    violations.extend(
+        check_structure_invariants(hf_row, config, init_stage=init_stage, interior_o=interior_o)
+    )
     violations.extend(check_volatile_invariants(hf_row, config))
     violations.extend(check_state_bounds_invariants(hf_row, config))
     return handle_violations(violations, mode=mode, directories=directories, tracker=tracker)

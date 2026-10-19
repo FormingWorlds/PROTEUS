@@ -5474,9 +5474,10 @@ def test_assert_mass_conservation_still_passes_a_finite_row():
 @pytest.mark.parametrize(
     ('row_overrides', 'with_config', 'expected_match'),
     [
-        ({'M_planet': float('nan')}, False, 'M_planet is not finite'),
-        ({'H2O_kg_atm': float('nan')}, False, 'H2O_kg_atm is not finite'),
-        ({'CO2_kg_atm': float('inf')}, False, 'CO2_kg_atm is not finite'),
+        ({'M_planet': float('nan')}, False, 'M_planet=nan is not finite'),
+        ({'M_vaps': float('nan')}, False, 'M_vaps=nan is not finite'),
+        ({'H2O_kg_atm': float('nan')}, False, 'H2O_kg_atm=nan is not finite'),
+        ({'CO2_kg_atm': float('inf')}, False, 'CO2_kg_atm=inf is not finite'),
         ({'M_atm': 9.0e24}, False, 'exceeds M_planet'),
         ({'M_vol_atm': 1.0e21, 'H2O_kg_atm': 5.0e20}, False, 'sum_s'),
         (

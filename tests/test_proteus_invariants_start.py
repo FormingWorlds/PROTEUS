@@ -179,6 +179,7 @@ def test_proteus_start_resume_reads_helpfile_written_by_prior_stop(tmp_path, mon
     runner, cfg_path, out_dir = _build_dummy_runner(tmp_path, 'run_resume_stop', max_iters=6)
     runner.config.invariants.mode = 'stop'
 
+    real_check_row = proteus_mod.check_row_invariants
     loop_count = 0
 
     def intermittent_check_row(hf_row, config, **kwargs):
@@ -214,8 +215,7 @@ def test_proteus_start_resume_reads_helpfile_written_by_prior_stop(tmp_path, mon
     assert initial_rows == 5
 
     # Resume the stopped run with invariants mode relaxed to 'off'
-    monkeypatch.undo()
-    monkeypatch.setattr(Interior_t, '_load_ps_table', lambda self, *a, **kw: None)
+    monkeypatch.setattr(proteus_mod, 'check_row_invariants', real_check_row)
 
     resume_runner = Proteus(config_path=cfg_path)
     resume_runner.config.invariants.mode = 'off'
@@ -330,10 +330,10 @@ def test_proteus_start_passes_init_stage_and_interior_o_to_check_row_invariants(
     runner.start(resume=False, offline=True)
 
     init_loops = runner.loops['init_loops']
-    assert len(recorded_calls) >= init_loops + 2
+    assert len(recorded_calls) >= init_loops + 3
     for loop_idx, is_init, int_o in recorded_calls:
         assert int_o is runner.interior_o
-        if loop_idx <= init_loops:
+        if loop_idx <= init_loops + 1:
             assert is_init is True
         else:
             assert is_init is False

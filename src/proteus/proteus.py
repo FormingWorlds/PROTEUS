@@ -350,6 +350,22 @@ class Proteus:
             set_core_target_at_init_end(self.config, self.hf_row)
             self.init_stage = False
 
+    def _row_init_stage(self, iter_init_stage: bool) -> bool:
+        """Return whether the row precedes the post-init baseline structure solve.
+
+        When the post-init forced Zalmoxis baseline solve fails and falls back
+        (``interior_o.structure_stale`` is ``True``), ``_baseline_structure_done``
+        remains ``False`` so ``init_stage`` stays ``True`` until a structure solve
+        succeeds (at most ``_ZALMOXIS_MAX_CONSECUTIVE_FAILS`` rows).
+        """
+        return bool(
+            iter_init_stage
+            or (
+                self.config.interior_struct.module == 'zalmoxis'
+                and not self._baseline_structure_done
+            )
+        )
+
     def _solve_structure_baseline_if_needed(self):
         """Solve the one-time callable-representation structure baseline.
 
@@ -850,6 +866,9 @@ class Proteus:
                 self.hf_all,
                 self.hf_row,
                 self.directories['output'],
+            )
+            self.interior_o.structure_rollback_active = bool(
+                self.hf_row.get('_structure_rollback', False)
             )
             _t_init['structure'] = time.perf_counter() - _t0
 
@@ -1457,7 +1476,6 @@ class Proteus:
                         check_element_closure=trapping_active(self.config),
                         derived_elements=derived_total_elements(self.config),
                         closure_rtol=self.config.outgas.solver_rtol,
-                        directories=self.directories,
                     )
                 except RuntimeError:
                     UpdateStatusfile(self.directories, 31)
@@ -1580,13 +1598,7 @@ class Proteus:
                         hf_all=prev_hf,
                         directories=self.directories,
                         tracker=self._invariant_tracker,
-                        init_stage=bool(
-                            _iter_init_stage
-                            or (
-                                self.config.interior_struct.module == 'zalmoxis'
-                                and not self._baseline_structure_done
-                            )
-                        ),
+                        init_stage=self._row_init_stage(_iter_init_stage),
                         interior_o=self.interior_o,
                     )
                 except InvariantViolationError as exc:

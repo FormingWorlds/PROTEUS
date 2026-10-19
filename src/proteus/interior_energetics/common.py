@@ -1179,6 +1179,8 @@ class Interior_t:
         # and restored on resume (resume_structure_stale) so a crash right after
         # a fall-back does not resume believing the on-disk mesh is fresh.
         self.structure_stale = False
+        # True when the latest structure re-solve rolled back to _saved_structure.
+        self.structure_rollback_active = False
 
         # Cumulative SPIDER time [yr]. Used by the CVode failure
         # fallback path (wrapper.py) to keep bookkeeping consistent
@@ -1409,13 +1411,12 @@ class Interior_t:
             log.warning('Could not persist stale-structure flag file: %s', exc)
 
     def resume_structure_stale(self, outdir: str):
-        # Restore the stale-structure flag from disk on resume. A missing file
-        # means no fall-back was recorded, so the mesh
-        # is fresh and the flag stays False. A malformed file is treated the
-        # same way rather than aborting the resume over a visibility bit.
+        # Restore the stale-structure flag from disk on resume; a missing or
+        # malformed file means no fall-back was recorded, so the mesh stays fresh.
         path = get_file_structure_stale(outdir)
         if not os.path.exists(path):
             self.structure_stale = False
+            self.structure_rollback_active = False
             return
         try:
             with open(path) as hdl:
@@ -1423,6 +1424,7 @@ class Interior_t:
         except (ValueError, OSError):
             log.warning('Could not parse stale-structure flag file; assuming fresh')
             self.structure_stale = False
+        self.structure_rollback_active = self.structure_stale
 
     def update_rheology(self, visc: bool = False):
         # Update shear and bulk moduli arrays based on the melt fraction at each layer.

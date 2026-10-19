@@ -638,7 +638,6 @@ def assert_mass_conservation(
     derived_elements: tuple[str, ...] = (),
     closure_rtol: float | None = None,
     closure_atol_kg: float = 1.0,
-    directories: dict | None = None,
 ) -> None:
     """Runtime invariant: the per-species kg_atm sum matches M_vol_atm, and
     M_atm <= M_planet unless the caller disables that half.
@@ -692,22 +691,21 @@ def assert_mass_conservation(
         total. It admits the trace melt mass the chemistry can leave of an
         element the run does not carry, a few hundredths of a kilogram, and
         nothing a bookkeeping error produces.
-    directories : Mapping[str, str] or None
-        Optional simulation directories dictionary; when provided with an
-        ``'output'`` key, writes status code ``31`` before raising ``RuntimeError``.
 
     Raises
     ------
     RuntimeError
-        If the per-species kg_atm sum over vol_gas_list disagrees with
-        M_vol_atm by more than ``atol_frac``. When ``require_atm_le_planet``,
-        raises if M_atm relatively exceeds M_planet. When
-        ``check_element_closure``, raises if an element's reservoirs do not sum
-        to its total.
+        If ``M_atm``, ``M_planet``, ``M_vol_atm``, or any ``{s}_kg_atm`` in
+        ``vol_gas_list`` is non-finite, or if the per-species ``kg_atm`` sum
+        over ``vol_gas_list`` disagrees with ``M_vol_atm`` by more than
+        ``atol_frac``. When ``require_atm_le_planet``, raises if ``M_atm``
+        relatively exceeds ``M_planet``. When ``check_element_closure``, raises
+        if an element's reservoirs do not sum to its total.
     """
     M_atm = float(hf_row.get('M_atm', 0.0))
     M_planet = float(hf_row.get('M_planet', 0.0))
     M_vol_atm = float(hf_row.get('M_vol_atm', 0.0))
+    M_vaps = float(hf_row.get('M_vaps', 0.0))
 
     # Refuse non-finite masses before any comparison, since nan <= 0.0 and
     # nan > nan are both False.
@@ -715,10 +713,10 @@ def assert_mass_conservation(
         ('M_atm', M_atm),
         ('M_planet', M_planet),
         ('M_vol_atm', M_vol_atm),
+        ('M_vaps', M_vaps),
+        *((f'{s}_kg_atm', float(hf_row.get(f'{s}_kg_atm', 0.0))) for s in vol_gas_list),
     ):
         if not np.isfinite(value):
-            if directories is not None and 'output' in directories:
-                UpdateStatusfile(directories, 31)
             raise RuntimeError(
                 f'Mass conservation cannot be checked: {name}={value} is not '
                 f'finite. An upstream step wrote a non-finite mass, so the '
@@ -729,14 +727,11 @@ def assert_mass_conservation(
     if M_planet <= 0.0:
         return
 
-    M_vaps = float(hf_row.get('M_vaps', 0.0))
     breached = M_atm > M_planet * (1.0 + atol_frac)
 
     # Invariant 1: atmosphere mass <= total planet mass.
     if require_atm_le_planet or M_vaps <= 0.0:
         if breached:
-            if directories is not None and 'output' in directories:
-                UpdateStatusfile(directories, 31)
             raise RuntimeError(
                 f'Mass conservation violation (issue #677 regression?): '
                 f'M_atm={M_atm:.3e} kg exceeds M_planet={M_planet:.3e} kg '
@@ -763,8 +758,6 @@ def assert_mass_conservation(
     if scale > 0.0:
         rel = abs(summed - M_vol_atm) / scale
         if rel > atol_frac:
-            if directories is not None and 'output' in directories:
-                UpdateStatusfile(directories, 31)
             raise RuntimeError(
                 f'M_vol_atm bookkeeping inconsistency: M_vol_atm='
                 f'{M_vol_atm:.3e} kg but sum_s(s_kg_atm)={summed:.3e} kg '
@@ -790,8 +783,6 @@ def assert_mass_conservation(
             continue
         rel = abs(parts - total) / total
         if abs(parts - total) > max(closure_atol_kg, closure_tol * total):
-            if directories is not None and 'output' in directories:
-                UpdateStatusfile(directories, 31)
             raise RuntimeError(
                 f'Per-element reservoir closure failed for {e}: '
                 f'{e}_kg_total={total:.6e} kg but atm+liquid+solid='
