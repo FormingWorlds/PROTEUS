@@ -1668,15 +1668,37 @@ def test_invariant_tracker_reports_on_crossing_counts_rows_and_logs_summary(
         message='Time=2.0e+02 yr: struct_mass_desync_frac=6.000000e-03 exceeds warn tol=5.000000e-03',
         report_only=True,
     )
+    v_bounds_1 = InvariantViolation(
+        name='T_surf_bounds',
+        status_code=STATUS_ERROR_STATE_BOUNDS_INVARIANT,
+        value=0.0,
+        tolerance=0.0,
+        message='Time=1.0e+02 yr: T_surf=0.000000e+00 K violates T_surf > 0.0 K',
+        report_only=False,
+    )
+    v_bounds_2 = InvariantViolation(
+        name='T_surf_bounds',
+        status_code=STATUS_ERROR_STATE_BOUNDS_INVARIANT,
+        value=-5.0,
+        tolerance=0.0,
+        message='Time=2.0e+02 yr: T_surf=-5.000000e+00 K violates T_surf > 0.0 K',
+        report_only=False,
+    )
     dirs = {'output': str(tmp_path)}
     with caplog.at_level(logging.WARNING, logger='fwl.proteus.utils.invariants'):
-        # Row 1: crossing into violation -> logs E_residual_cons_frac_gross (count=1), struct_mass_desync_frac (count=1), and step_dE_inc_frac
+        # Row 1: crossing into violation -> logs E_residual_cons_frac_gross (count=1), struct_mass_desync_frac (count=1), step_dE_inc_frac (count=1), and T_surf_bounds
         handle_violations(
-            [v_energy_1, v_desync_1, v_step_1], mode='report', directories=dirs, tracker=tracker
+            [v_energy_1, v_desync_1, v_step_1, v_bounds_1],
+            mode='report',
+            directories=dirs,
+            tracker=tracker,
         )
-        # Rows 2 and 3: E_residual_cons_frac_gross and struct_mass_desync_frac suppressed, but step_dE_inc_frac logs on every row
+        # Rows 2 and 3: E_residual_cons_frac_gross, struct_mass_desync_frac, and step_dE_inc_frac suppressed, while T_surf_bounds logs on every row
         handle_violations(
-            [v_energy_2, v_desync_2, v_step_2], mode='report', directories=dirs, tracker=tracker
+            [v_energy_2, v_desync_2, v_step_2, v_bounds_2],
+            mode='report',
+            directories=dirs,
+            tracker=tracker,
         )
         handle_violations(
             [v_energy_1, v_desync_2], mode='report', directories=dirs, tracker=tracker
@@ -1700,23 +1722,30 @@ def test_invariant_tracker_reports_on_crossing_counts_rows_and_logs_summary(
     step_msgs = [
         r.message for r in caplog.records if 'Invariant report [step_dE_inc_frac]' in r.message
     ]
+    bounds_msgs = [
+        r.message for r in caplog.records if 'Invariant report [T_surf_bounds]' in r.message
+    ]
     summary_msgs = [r.message for r in caplog.records if 'Invariant summary:' in r.message]
     assert len(energy_msgs) == 2
     assert '(count=1)' in energy_msgs[0]
     assert '(count=4)' in energy_msgs[1]
     assert len(desync_msgs) == 1
     assert '(count=1)' in desync_msgs[0]
-    assert len(step_msgs) == 2
-    assert '5.000000e-01' in step_msgs[1]
+    assert len(step_msgs) == 1
+    assert '(count=1)' in step_msgs[0]
+    assert len(bounds_msgs) == 2
+    assert '-5.000000e+00' in bounds_msgs[1]
     assert tracker.row_counts['E_residual_cons_frac_gross'] == 4
     assert tracker.row_counts['struct_mass_desync_frac'] == 3
     assert tracker.row_counts['step_dE_inc_frac'] == 2
+    assert tracker.row_counts['T_surf_bounds'] == 2
     assert tracker.rows_with_violations == 4
     assert len(summary_msgs) == 1
     assert '4 row(s) with violations' in summary_msgs[0]
     assert 'E_residual_cons_frac_gross=4 (max=6.000000e-04)' in summary_msgs[0]
     assert 'struct_mass_desync_frac=3 (max=6.000000e-03)' in summary_msgs[0]
     assert 'step_dE_inc_frac=2 (max=5.000000e-01)' in summary_msgs[0]
+    assert 'T_surf_bounds=2 (max=5.000000e+00)' in summary_msgs[0]
 
     # Structure-solve value changes re-log: desync 6e-3, 6e-3, 5e-2 logs the 6e-3 warning once and logs the 5e-2 escalation row:
     caplog.clear()
@@ -2207,3 +2236,49 @@ def test_negative_element_total_checked_before_derived_skip():
     v_dummy = check_volatile_invariants(row_dummy, cfg_dummy)
     assert [v.name for v in v_dummy] == ['He_reservoir_closure']
     assert v_dummy[0].value == pytest.approx(-10.0)
+
+
+def test_crossing_suppressed_names_log_once_across_n_identical_rows(
+    tmp_path, caplog: pytest.LogCaptureFixture
+):
+    """Feed N identical violating rows for every suppressed cumulative, step, and closure name and assert 1 log line per name."""
+    from proteus.utils.constants import element_list
+    from proteus.utils.invariants import _CROSSING_SUPPRESSED_NAMES, InvariantTracker
+
+    expected_names = {
+        'E_residual_cons_frac_gross',
+        'solver_residual_frac',
+        'E_core_residual_frac',
+        'step_dE_inc_frac',
+        'escape_cumulative_bound',
+        'struct_mass_desync_frac',
+        'M_core_target_rel_err',
+        'M_int_target_rel_err',
+        *(f'{e}_reservoir_closure' for e in element_list),
+    }
+    assert expected_names <= _CROSSING_SUPPRESSED_NAMES
+
+    n_rows = 10
+    dirs = {'output': str(tmp_path)}
+    for name in sorted(expected_names):
+        caplog.clear()
+        tracker = InvariantTracker()
+        v = InvariantViolation(
+            name=name,
+            status_code=STATUS_ERROR_ENERGY_INVARIANT
+            if 'E_' in name or 'solver' in name
+            else STATUS_ERROR_MASS_INVARIANT,
+            value=0.05,
+            tolerance=0.01,
+            message=f'Time=100.0 yr: {name}=5.000000e-02 exceeds tol=1.000000e-02',
+            report_only=True,
+        )
+        with caplog.at_level(logging.WARNING, logger='fwl.proteus.utils.invariants'):
+            for _ in range(n_rows):
+                handle_violations([v], mode='report', directories=dirs, tracker=tracker)
+        msgs = [r.message for r in caplog.records if f'Invariant report [{name}]' in r.message]
+        assert len(msgs) == 1, (
+            f'Expected 1 log line for {name} across {n_rows} rows, got {len(msgs)}'
+        )
+        assert '(count=1)' in msgs[0]
+        assert tracker.row_counts[name] == n_rows
