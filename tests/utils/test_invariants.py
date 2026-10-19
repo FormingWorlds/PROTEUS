@@ -308,6 +308,13 @@ def test_check_energy_invariants_step_increment_outside_and_on_smin():
     # On the S_min floor (T_magma <= 301.0 K), ~2.91e-2 <= 5.0e-2 passes; T_surf-only <= 301.0 K with warm T_magma uses 1.0e-2 and fails:
     hf_row_smin = dict(hf_row_warm, T_surf=300.488, T_magma=300.488)
     assert check_energy_invariants(hf_row_smin, cfg, hf_all) == []
+    assert check_energy_invariants(dict(hf_row_warm, T_magma=260.0), cfg, hf_all) == []
+    assert check_energy_invariants(dict(hf_row_warm, T_magma=301.0), cfg, hf_all) == []
+    v_above_clip = check_energy_invariants(
+        dict(hf_row_warm, T_magma=301.0 + 1.0e-6), cfg, hf_all
+    )
+    assert len(v_above_clip) == 1
+    assert v_above_clip[0].tolerance == pytest.approx(1.0e-2)
     hf_row_tmagma_only = dict(hf_row_warm, T_surf=1500.0, T_magma=300.488)
     assert check_energy_invariants(hf_row_tmagma_only, cfg, hf_all) == []
     hf_row_tsurf_only = dict(hf_row_warm, T_surf=300.488, T_magma=1500.0)
@@ -768,7 +775,7 @@ def test_check_volatile_invariants_calliope_zero_parts_threshold():
     assert v_above[0].status_code == STATUS_ERROR_MASS_INVARIANT
     assert v_above[0].report_only is False
 
-    # Zero-total leak check (A7): with mass_thresh = 1.0e10 kg under calliope,
+    # Zero-total leak check: with mass_thresh = 1.0e10 kg under calliope,
     # 9.8e9 kg with total = 0 stays below mass_thresh and passes, while 5.0e19 kg fails:
     cfg_cal_1e10 = _make_mock_config(
         outgas_module='calliope',
@@ -787,6 +794,35 @@ def test_check_volatile_invariants_calliope_zero_parts_threshold():
     assert v_zero_tot[0].value == pytest.approx(5.0e19)
     assert v_zero_tot[0].tolerance == pytest.approx(1.0e10)
     assert v_zero_tot[0].report_only is False
+
+    # Under vapourise=True, rock-vapour elements have total=0 by design and do not fail closure,
+    # while a volatile element (H) with total=0 and 5.0e19 kg in reservoirs still stops:
+    cfg_vap_stop = _make_mock_config(
+        mode='stop',
+        outgas_module='calliope',
+        mass_thresh=1.0e10,
+        fO2_source='user_constant',
+        vapourise=True,
+    )
+    row_vap_si = dict(
+        base_row,
+        M_atm=1.03e21,
+        M_vaps=3.0e19,
+        Si_kg_total=0.0,
+        Si_kg_atm=3.0e19,
+    )
+    assert check_volatile_invariants(row_vap_si, cfg_vap_stop) == []
+    assert (
+        handle_violations(check_volatile_invariants(row_vap_si, cfg_vap_stop), mode='stop')
+        == []
+    )
+
+    row_vap_h_leak = dict(row_vap_si, H_kg_total=0.0, H_kg_atm=5.0e19)
+    v_vap_h = check_volatile_invariants(row_vap_h_leak, cfg_vap_stop)
+    assert [v.name for v in v_vap_h] == ['H_reservoir_closure']
+    with pytest.raises(InvariantViolationError) as exc_info:
+        handle_violations(v_vap_h, mode='stop')
+    assert exc_info.value.invariant_name == 'H_reservoir_closure'
 
     # Under atmodeller, zero-total leak compares against element_closure_atol_kg (1.0 kg):
     cfg_atm = _make_mock_config(
@@ -866,7 +902,7 @@ def test_check_volatile_invariants_escape_cumulative_bound(
     assert v_loss[0].tolerance == pytest.approx(1.5 * 1.0e15 + 1.0e3)
     assert v_loss[0].report_only is True
 
-    # Lens 4 case: 5.0e15 kg of N floored to 0 after one escape step with esc_kg_cumulative = 3.16e13 kg
+    # Sub-threshold N (5.0e15 kg) floored to 0 after one escape step with esc_kg_cumulative = 3.16e13 kg
     # under from_O_budget reports a warning and does not stop in mode='stop':
     row_n_floored = {
         'Time': 2.0,
@@ -1596,7 +1632,75 @@ def test_invariant_tracker_reports_on_crossing_counts_rows_and_logs_summary(
     assert 'struct_mass_desync_frac=3 (max=6.000000e-03)' in summary_msgs[0]
     assert 'step_dE_inc_frac=2 (max=5.000000e-01)' in summary_msgs[0]
 
-    # Non-finite values (-inf, nan) must not print max=-inf or hide the finite maximum (A11):
+    # Suppression is keyed on (name, report_only) and structure-solve value changes re-log:
+    # desync 6e-3, 6e-3, 5e-2 logs the 6e-3 warning once and logs the 5e-2 escalation row (and stops in stop mode):
+    caplog.clear()
+    esc_tracker = InvariantTracker()
+    v_desync_stop = InvariantViolation(
+        name='struct_mass_desync_frac',
+        status_code=STATUS_ERROR_MASS_INVARIANT,
+        value=5.0e-2,
+        tolerance=1.0e-2,
+        message='Time=3.0e2 yr: struct_mass_desync_frac=5.000000e-02 exceeds stop tol=1.000000e-02',
+        report_only=False,
+    )
+    v_core_1 = InvariantViolation(
+        name='M_core_target_rel_err',
+        status_code=STATUS_ERROR_MASS_INVARIANT,
+        value=3.0e-2,
+        tolerance=2.5e-2,
+        message='Time=1.0e2 yr: |M_core / M_core_target - 1|=3.000000e-02 exceeds tol=2.500000e-02',
+        report_only=False,
+    )
+    v_core_2 = InvariantViolation(
+        name='M_core_target_rel_err',
+        status_code=STATUS_ERROR_MASS_INVARIANT,
+        value=3.5e-2,
+        tolerance=2.5e-2,
+        message='Time=3.0e2 yr: |M_core / M_core_target - 1|=3.500000e-02 exceeds tol=2.500000e-02',
+        report_only=False,
+    )
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.utils.invariants'):
+        handle_violations(
+            [v_desync_1, v_core_1], mode='report', directories=dirs, tracker=esc_tracker
+        )
+        handle_violations(
+            [v_desync_2, v_core_1], mode='report', directories=dirs, tracker=esc_tracker
+        )
+        handle_violations(
+            [v_desync_stop, v_core_2], mode='report', directories=dirs, tracker=esc_tracker
+        )
+
+    esc_desync_msgs = [
+        r.message
+        for r in caplog.records
+        if 'Invariant report [struct_mass_desync_frac]' in r.message
+    ]
+    esc_core_msgs = [
+        r.message
+        for r in caplog.records
+        if 'Invariant report [M_core_target_rel_err]' in r.message
+    ]
+    assert len(esc_desync_msgs) == 2
+    assert '6.000000e-03' in esc_desync_msgs[0]
+    assert '(count=1)' in esc_desync_msgs[0]
+    assert '5.000000e-02' in esc_desync_msgs[1]
+    assert '(count=3)' in esc_desync_msgs[1]
+    assert len(esc_core_msgs) == 2
+    assert '3.000000e-02' in esc_core_msgs[0]
+    assert '(count=1)' in esc_core_msgs[0]
+    assert '3.500000e-02' in esc_core_msgs[1]
+    assert '(count=3)' in esc_core_msgs[1]
+
+    stop_tracker = InvariantTracker()
+    handle_violations([v_desync_1], mode='stop', directories=dirs, tracker=stop_tracker)
+    handle_violations([v_desync_2], mode='stop', directories=dirs, tracker=stop_tracker)
+    with pytest.raises(InvariantViolationError) as stop_exc:
+        handle_violations([v_desync_stop], mode='stop', directories=dirs, tracker=stop_tracker)
+    assert stop_exc.value.invariant_name == 'struct_mass_desync_frac'
+    assert stop_exc.value.value == pytest.approx(5.0e-2)
+
+    # Non-finite values (-inf, nan) must not print max=-inf or hide the finite maximum:
     caplog.clear()
     nf_tracker = InvariantTracker()
     for val in (float('-inf'), float('nan'), -0.25):
