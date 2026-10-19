@@ -2705,9 +2705,9 @@ def _ps_cache_key(
         :func:`_ps_generator_identity`, so tables built by a different
         Zalmoxis release or source land on a distinct key.
     lowt_file : str or None
-        Low-temperature solid extension; its path and a digest of its data lines
-        (header lines left out) enter the key. None leaves the key as it is
-        without an extension.
+        Low-temperature solid extension; its path, a digest of its data lines
+        and a digest of the data lines of ``solid_eos`` (header lines left out)
+        enter the key. None leaves the key as it is without an extension.
 
     Returns
     -------
@@ -2716,11 +2716,8 @@ def _ps_cache_key(
     """
     eos_identity = '|'.join(str(p) for p in (mantle_eos, eos_file, solid_eos, liquid_eos))
     if lowt_file is not None:
-        data = (
-            ln for ln in Path(lowt_file).read_bytes().splitlines() if not ln.startswith(b'#')
-        )
-        content = hashlib.sha1(b'\n'.join(data)).hexdigest()
-        eos_identity += f'|lowt={lowt_file}:{content}'
+        eos_identity += f'|lowt={lowt_file}:{_data_digest(lowt_file)}'
+        eos_identity += f'|solid={_data_digest(solid_eos)}'
     eos_digest = hashlib.sha1(eos_identity.encode()).hexdigest()[:12]
     eos_name = re.sub(r'[^A-Za-z0-9]+', '-', str(mantle_eos)).strip('-')
     if generator is None:
@@ -2730,6 +2727,12 @@ def _ps_cache_key(
         f'P_max={P_max:.6e}_nP={nP}_nS={nS}_mzf={mzf}'
         f'_layout={layout}_eos={eos_name}-{eos_digest}_gen={gen_name}'
     )
+
+
+def _data_digest(path: str) -> str:
+    """SHA-1 of the data lines of a table file; lines that start with '#' are left out."""
+    data = (ln for ln in Path(path).read_bytes().splitlines() if not ln.startswith(b'#'))
+    return hashlib.sha1(b'\n'.join(data)).hexdigest()
 
 
 @functools.lru_cache(maxsize=1)
