@@ -130,7 +130,7 @@ Uncaught exception
 OSError: Out-of-date modules detected. Refer to the Troubleshooting guide on the wiki
 ```
 
-This means one of the required PROTEUS modules is outdated on your machine. You need to update the named module before running PROTEUS again. For fwl-io, which downloads the reference data, the error line reads `fwl-io <installed> is below the version PROTEUS needs (<required>). Fix: <command>`, where the command is the one `proteus doctor` gives for your installation (a pip upgrade, or for an editable checkout the update of that checkout), or `fwl-io is not installed. Fix: pip install "fwl-io>=<required>"`. A version that cannot be read only gives a warning, and the run goes on.
+This means one of the required PROTEUS modules is outdated on your machine. You need to update the named module before running PROTEUS again. For fwl-io, which downloads the reference data, the error line reads `fwl-io <installed> is below the version PROTEUS needs (<required>). Fix: <command>`, where the command is the one `proteus doctor` gives for your installation (a pip upgrade, or for an editable checkout the update of that checkout), or `fwl-io is not installed. Fix: pip install "fwl-io>=<required>"`. A version that cannot be read only gives a warning, and the run goes on; `proteus doctor` lists such a package as a warning with the upgrade command.
 
 You can check which modules are out of date by running:
 

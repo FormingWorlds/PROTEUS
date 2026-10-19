@@ -275,7 +275,7 @@ def fwl_io_problem() -> str | None:
             or fix
         )
     except Exception as exc:
-        log.debug(f'the doctor could not build the fwl-io fix: {exc}')
+        log.warning(f'the doctor could not build the fwl-io fix: {exc}')
     return f'fwl-io {installed} is below the version PROTEUS needs ({FWL_IO_FLOOR}). Fix: {fix}'
 
 
