@@ -1572,6 +1572,55 @@ def test_lowt_extension_requires_the_aragog_interior():
 
 
 @pytest.mark.unit
+def test_lowt_extension_requires_a_structure_that_builds_the_ps_tables():
+    """The switch acts where PROTEUS builds the P-S tables, which the SPIDER structure skips; with
+    interior_struct.module = 'spider' the switch is refused, with zalmoxis or dummy it is kept."""
+    from proteus.config._config import lowt_extension_requires_ps_tables
+
+    def make(struct, lowt):
+        cfg = _make_config_instance(**{'interior_energetics.module': 'aragog'})
+        cfg.interior_struct = SimpleNamespace(
+            module=struct, zalmoxis=SimpleNamespace(lowt_extension=lowt)
+        )
+        return cfg
+
+    with pytest.raises(ValueError, match='requires interior_struct.module') as excinfo:
+        lowt_extension_requires_ps_tables(make('spider', True), None, None)
+    assert '"spider"' in str(excinfo.value)
+    for struct in ('zalmoxis', 'dummy'):
+        assert lowt_extension_requires_ps_tables(make(struct, True), None, None) is None
+    for struct in ('zalmoxis', 'dummy', 'spider'):
+        assert lowt_extension_requires_ps_tables(make(struct, False), None, None) is None
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('lowt', [True, False])
+def test_lowt_extension_structure_check_runs_when_a_config_file_is_read(tmp_path, lowt):
+    """Reading input/planets/toi561b.toml (SPIDER structure) with the Aragog interior refuses the
+    switch on by name; the same file with the switch off loads."""
+    from pathlib import Path
+
+    lines = (Path(__file__).parents[2] / 'input' / 'planets' / 'toi561b.toml').read_text()
+    lines = lines.split('\n')
+    start = lines.index('[interior_energetics]')
+    k = next(n for n in range(start + 1, len(lines)) if lines[n].startswith('module'))
+    assert lines[k] == 'module = "spider"'
+    lines[k] = 'module = "aragog"'
+    flag = 'true' if lowt else 'false'
+    path = tmp_path / 'cfg.toml'
+    path.write_text(
+        '\n'.join(lines) + f'\n[interior_struct.zalmoxis]\nlowt_extension = {flag}\n'
+    )
+    if lowt:
+        with pytest.raises(ValueError, match='requires interior_struct.module'):
+            read_config_object(path)
+    else:
+        cfg = read_config_object(path)
+        assert cfg.interior_struct.module == 'spider'
+        assert cfg.interior_energetics.module == 'aragog'
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize(
     ('module', 'ok'), [('aragog', True), ('spider', False), ('dummy', False)]
 )
