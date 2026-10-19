@@ -9,8 +9,8 @@ swaps, zero-M_vaps vapourise stops, and exact inequality boundaries.
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from types import SimpleNamespace
-from typing import TYPE_CHECKING
 
 import pandas as pd
 import pytest
@@ -21,6 +21,7 @@ from proteus.utils.invariants import (
     STATUS_ERROR_MASS_INVARIANT,
     STATUS_ERROR_STATE_BOUNDS_INVARIANT,
     InvariantTracker,
+    InvariantViolation,
     InvariantViolationError,
     check_energy_invariants,
     check_row_invariants,
@@ -29,9 +30,6 @@ from proteus.utils.invariants import (
     check_volatile_invariants,
     handle_violations,
 )
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -836,3 +834,580 @@ def test_psurf_bounds_when_matm_le_closure_atol():
     }
     viols_neg = check_state_bounds_invariants(row_neg, cfg)
     assert any(v.name == 'P_surf_bounds' for v in viols_neg)
+
+
+def test_stop_mode_emits_error_log_line(caplog):
+    """Verify that stopping violations emit an error log line (kills T05)."""
+    v_stop = InvariantViolation(
+        name='test_stop_err',
+        status_code=31,
+        value=1.0,
+        tolerance=0.1,
+        message='test error log message',
+        report_only=False,
+    )
+    with caplog.at_level(logging.ERROR, logger='fwl.proteus.utils.invariants'):
+        try:
+            handle_violations([v_stop], mode='stop')
+        except InvariantViolationError:
+            pass
+    assert any(
+        r.levelno == logging.ERROR and 'Invariant violation [test_stop_err]' in r.getMessage()
+        for r in caplog.records
+    )
+
+
+def test_orchestrator_default_mode_is_report_when_unspecified():
+    """Verify that when config mode is unspecified, default is report (kills O07)."""
+    inv = Invariants()
+    d = {a.name: getattr(inv, a.name) for a in inv.__attrs_attrs__ if a.name != 'mode'}
+    cfg_no_mode = SimpleNamespace(
+        invariants=SimpleNamespace(**d),
+        planet=SimpleNamespace(fO2_source='user_constant'),
+        outgas=SimpleNamespace(
+            module='atmodeller', vapourise=False, solver_rtol=1e-4, mass_thresh=1e10
+        ),
+    )
+    row_viol = {
+        'Time': 10.0,
+        'T_surf': -100.0,
+        'T_magma': 1500.0,
+        'Phi_global': 0.5,
+        'M_atm': 1.0,
+        'P_surf': 1.0,
+    }
+    # Under report mode, check_row_invariants returns violations without raising.
+    violations = check_row_invariants(row_viol, cfg_no_mode)
+    assert any(v.name == 'T_surf_bounds' for v in violations)
+
+
+def test_energy_invariants_empty_hf_all_and_zero_state_guards():
+    """Verify guards on empty hf_all and zero E_state_cons_J (kills E01, E02)."""
+    cfg = _make_mock_config()
+    row = {'Time': 10.0, 'E_state_cons_J': 1.0e31}
+    # Test empty dataframe with columns to detect unindexed iloc calls.
+    assert (
+        check_energy_invariants(row, cfg, pd.DataFrame(columns=['Time', 'E_state_heat_cons_J']))
+        == []
+    )
+
+    hf_all = pd.DataFrame([{'Time': 10.0, 'E_state_cons_J': 1.0e31, 'step_dE_F_int_J': 1.0e25}])
+    row_zero = {
+        'Time': 20.0,
+        'E_state_cons_J': 0.0,
+        'E_residual_cons_J': 1.0e25,
+        'step_dE_F_int_J': 1.0e20,
+    }
+    assert check_energy_invariants(row_zero, cfg, hf_all) == []
+
+
+def test_energy_invariants_step_gross_includes_qtidal_and_qradio():
+    """Verify Q_tidal and Q_radio contribute to gross throughput (kills E03, E04)."""
+    cfg = _make_mock_config()
+    hf_all = pd.DataFrame(
+        [
+            {
+                'Time': 10.0,
+                'E_state_cons_J': 1.0e31,
+                'E_state_heat_cons_J': 0.0,
+                'step_dE_F_int_J': 1.0e20,
+            }
+        ]
+    )
+    row_tid = {
+        'Time': 20.0,
+        'T_surf': 2000.0,
+        'T_magma': 2000.0,
+        'Phi_global': 0.5,
+        'E_state_cons_J': 1.0e31,
+        'E_state_heat_cons_J': 0.0,
+        'step_dE_state_heat_J': 0.0,
+        'step_dE_F_int_J': 0.0,
+        'step_dE_F_cmb_J': 0.0,
+        'step_dE_Q_radio_J': 0.0,
+        'step_dE_Q_tidal_J': 1.0e26,
+        'E_residual_cons_J': 2.0e22,
+        'solver_residual_J': 0.0,
+        'core_C_eff': 0.0,
+    }
+    # Gross throughput is 1e26 from q_tid; rel error 2e22 / 1e26 = 2.0e-4 <= 2.6e-4.
+    assert not any(
+        v.name == 'E_residual_cons_frac_gross'
+        for v in check_energy_invariants(row_tid, cfg, hf_all)
+    )
+
+    row_rad = dict(row_tid, step_dE_Q_tidal_J=0.0, step_dE_Q_radio_J=1.0e26)
+    assert not any(
+        v.name == 'E_residual_cons_frac_gross'
+        for v in check_energy_invariants(row_rad, cfg, hf_all)
+    )
+
+
+def test_energy_invariants_prev_heat_zero_and_core_ceff_zero_gates():
+    """Verify gates when prev heat is zero or core C_eff is zero (kills E12, E24)."""
+    cfg = _make_mock_config()
+    hf_zero_heat = pd.DataFrame(
+        [
+            {
+                'Time': 10.0,
+                'E_state_cons_J': 1.0e31,
+                'E_state_heat_cons_J': 0.0,
+                'step_dE_F_int_J': 1.0e25,
+            }
+        ]
+    )
+    row_heat = {
+        'Time': 20.0,
+        'T_surf': 2000.0,
+        'T_magma': 2000.0,
+        'Phi_global': 0.5,
+        'E_state_cons_J': 1.0e31,
+        'E_state_heat_cons_J': 1.0e20,
+        'step_dE_state_heat_J': 1.0e25,
+        'step_dE_F_int_J': 1.0e20,
+        'step_dE_F_cmb_J': 0.0,
+        'step_dE_Q_radio_J': 0.0,
+        'step_dE_Q_tidal_J': 0.0,
+        'E_residual_cons_J': 0.0,
+        'solver_residual_J': 0.0,
+        'core_C_eff': 0.0,
+    }
+    assert not any(
+        v.name == 'step_dE_inc_frac'
+        for v in check_energy_invariants(row_heat, cfg, hf_zero_heat)
+    )
+
+    row_no_core = dict(
+        row_heat,
+        core_C_eff=0.0,
+        E_core_residual_frac=1.0,
+    )
+    assert not any(
+        v.name == 'E_core_residual_frac'
+        for v in check_energy_invariants(row_no_core, cfg, hf_zero_heat)
+    )
+
+
+def test_exact_threshold_boundary_step_and_cap_and_escape():
+    """Verify strict inequality boundaries at exact equality (kills E19, V04, V16)."""
+    cfg = _make_mock_config()
+    hf_all = pd.DataFrame(
+        [
+            {
+                'Time': 10.0,
+                'E_state_cons_J': 1.0e31,
+                'E_state_heat_cons_J': 1.0e26,
+            }
+        ]
+    )
+    # E19: step_err == step_tol (1.0e-2)
+    step_tol = cfg.invariants.step_energy_rtol
+    dE_heat = 1.0e20 * (1.0 + step_tol)
+    row_step = {
+        'Time': 20.0,
+        'T_surf': 2000.0,
+        'T_magma': 2000.0,
+        'Phi_global': 0.5,
+        'E_state_cons_J': 1.0e31,
+        'E_state_heat_cons_J': 1.0e26,
+        'step_dE_state_heat_J': dE_heat,
+        'step_dE_F_int_J': 1.0e20,
+        'step_dE_F_cmb_J': 0.0,
+        'step_dE_Q_radio_J': 0.0,
+        'step_dE_Q_tidal_J': 0.0,
+        'E_residual_cons_J': 0.0,
+        'solver_residual_J': 0.0,
+        'core_C_eff': 0.0,
+    }
+    assert not any(
+        v.name == 'step_dE_inc_frac' for v in check_energy_invariants(row_step, cfg, hf_all)
+    )
+
+    # V04: rel_excess == cap_tol (0.5)
+    cfg_cap = _make_mock_config(planet_mass_cap_rtol=0.5)
+    row_v04 = {
+        'Time': 10.0,
+        'M_planet': 1.0e24,
+        'M_atm': 1.5e24,
+        'M_vaps': 0.0,
+        'M_vol_atm': 1.0e20,
+    }
+    assert not any(
+        v.name == 'M_atm_planet_cap' for v in check_volatile_invariants(row_v04, cfg_cap)
+    )
+
+    # V16: lost == esc_tol
+    cfg_esc = _make_mock_config(
+        fO2_source='from_O_budget',
+        escape_bound_factor=1.5,
+        escape_bound_atol_kg=1.0e3,
+    )
+    esc_cum = 1.0e15
+    esc_tol = 1.5 * esc_cum + 1.0e3
+    m_init = 2.0e15
+    row_v16 = {
+        'Time': 10.0,
+        'M_planet': 6.0e24,
+        'M_atm': 1.0e20,
+        'M_vol_atm': 1.0e20,
+        'M_vol_initial': m_init,
+        'H_kg_total': m_init - esc_tol,
+        'esc_kg_cumulative': esc_cum,
+    }
+    assert not any(
+        v.name == 'escape_cumulative_bound' for v in check_volatile_invariants(row_v16, cfg_esc)
+    )
+
+
+def test_structure_invariants_one_sided_errors_and_inf_target():
+    """Verify structure relative errors for both signs and inf target (kills S04, S05, S08)."""
+    cfg = _make_mock_config()
+    # S04: m_int < m_int_target
+    row_s04 = {
+        'Time': 10.0,
+        'M_int': 0.5e24,
+        'M_int_target': 1.0e24,
+        'M_core': 2.0e24,
+        'M_core_target': 2.0e24,
+    }
+    assert any(
+        v.name == 'M_int_target_rel_err' for v in check_structure_invariants(row_s04, cfg)
+    )
+
+    # S05: m_core < m_core_target
+    row_s05 = {
+        'Time': 10.0,
+        'M_int': 1.0e24,
+        'M_int_target': 1.0e24,
+        'M_core': 0.5e24,
+        'M_core_target': 1.0e24,
+    }
+    assert any(
+        v.name == 'M_core_target_rel_err' for v in check_structure_invariants(row_s05, cfg)
+    )
+
+    # S08: m_int_target = inf
+    row_s08 = {'Time': 10.0, 'M_int': 1.0e24, 'M_int_target': float('inf')}
+    assert not any(
+        v.name == 'M_int_target_rel_err' for v in check_structure_invariants(row_s08, cfg)
+    )
+
+
+def test_volatile_invariants_defaults_and_scaling():
+    """Verify volatile defaults, species-sum scaling, and effective mass (kills V06, V19-V22)."""
+    cfg = _make_mock_config()
+    # V06: scale = max(m_vol_atm, summed)
+    row_v06 = {
+        'Time': 10.0,
+        'M_planet': 6.0e24,
+        'M_atm': 1.0e20,
+        'M_vol_atm': 1.0e18,
+        'H2O_kg_atm': 2.0e18,
+        'M_vaps': 0.0,
+    }
+    v_v06 = [
+        v for v in check_volatile_invariants(row_v06, cfg) if v.name == 'M_vol_atm_species_sum'
+    ][0]
+    assert abs(v_v06.value - 0.5) < 1.0e-12
+
+    # V19: missing fO2_source defaults to user_constant
+    cfg_no_fo2 = SimpleNamespace(
+        invariants=Invariants(),
+        planet=SimpleNamespace(),
+        outgas=SimpleNamespace(
+            module='atmodeller', vapourise=False, solver_rtol=1e-4, mass_thresh=1e10
+        ),
+    )
+    row_lost = {
+        'Time': 10.0,
+        'M_planet': 6.0e24,
+        'M_atm': 1.0e20,
+        'M_vol_atm': 1.0e20,
+        'M_vol_initial': 1.0e20,
+        'H_kg_total': 0.0,
+        'esc_kg_cumulative': 1.0e10,
+    }
+    assert not any(
+        v.name == 'escape_cumulative_bound'
+        for v in check_volatile_invariants(row_lost, cfg_no_fo2)
+    )
+
+    # V20: missing vapourise defaults to False
+    cfg_no_vap = SimpleNamespace(
+        invariants=Invariants(),
+        planet=SimpleNamespace(fO2_source='user_constant'),
+        outgas=SimpleNamespace(module='atmodeller', solver_rtol=1e-4, mass_thresh=1e10),
+    )
+    row_excess = {
+        'Time': 10.0,
+        'M_planet': 1.0e24,
+        'M_atm': 1.2e24,
+        'M_vaps': 0.5e24,
+        'M_vol_atm': 1.0e20,
+    }
+    assert any(
+        v.name == 'M_atm_planet_cap' for v in check_volatile_invariants(row_excess, cfg_no_vap)
+    )
+
+    # V21: missing M_vol_atm defaults to 0.0
+    row_no_mvol = {
+        'Time': 10.0,
+        'M_planet': 6.0e24,
+        'M_atm': 1.0e20,
+        'H2O_kg_atm': 1.0e20,
+        'M_vaps': 0.0,
+    }
+    v_no_mvol = [
+        v
+        for v in check_volatile_invariants(row_no_mvol, cfg)
+        if v.name == 'M_vol_atm_species_sum'
+    ][0]
+    assert abs(v_no_mvol.value - 1.0) < 1.0e-12
+
+    # V22: m_atm_eff when abs(m_atm) <= closure_atol_kg
+    row_small = {
+        'Time': 10.0,
+        'M_planet': 0.1,
+        'M_atm': 0.5,
+        'M_vaps': 0.0,
+        'M_vol_atm': 0.0,
+    }
+    assert not any(
+        v.name == 'M_atm_planet_cap' for v in check_volatile_invariants(row_small, cfg)
+    )
+
+
+def test_state_bounds_exact_closure_atol_and_missing_key_defaults():
+    """Verify state bounds at exact closure atol and missing defaults (kills B03, B05-B08)."""
+    cfg = _make_mock_config()
+    # B03: exact equality abs(m_atm) == closure_atol_kg (1.0 kg) with P_surf = 0.0
+    row_b03 = {
+        'Time': 10.0,
+        'T_surf': 1000.0,
+        'T_magma': 1500.0,
+        'M_atm': 1.0,
+        'P_surf': 0.0,
+        'Phi_global': 0.5,
+    }
+    assert not any(
+        v.name == 'P_surf_bounds' for v in check_state_bounds_invariants(row_b03, cfg)
+    )
+
+    # B05: missing P_surf defaults to nan (triggers violation)
+    row_no_p = {
+        'Time': 10.0,
+        'T_surf': 1000.0,
+        'T_magma': 1500.0,
+        'M_atm': 10.0,
+        'Phi_global': 0.5,
+    }
+    assert any(v.name == 'P_surf_bounds' for v in check_state_bounds_invariants(row_no_p, cfg))
+
+    # B06: missing T_surf defaults to nan (triggers violation)
+    row_no_t = {
+        'Time': 10.0,
+        'T_magma': 1500.0,
+        'M_atm': 10.0,
+        'P_surf': 10.0,
+        'Phi_global': 0.5,
+    }
+    assert any(v.name == 'T_surf_bounds' for v in check_state_bounds_invariants(row_no_t, cfg))
+
+    # B07: missing Phi_global defaults to nan (triggers violation)
+    row_no_phi = {
+        'Time': 10.0,
+        'T_surf': 1000.0,
+        'T_magma': 1500.0,
+        'M_atm': 10.0,
+        'P_surf': 10.0,
+    }
+    assert any(
+        v.name == 'Phi_global_bounds' for v in check_state_bounds_invariants(row_no_phi, cfg)
+    )
+
+    # B08: missing T_magma defaults to nan (triggers violation)
+    row_no_tmag = {
+        'Time': 10.0,
+        'T_surf': 1000.0,
+        'M_atm': 10.0,
+        'P_surf': 10.0,
+        'Phi_global': 0.5,
+    }
+    assert any(
+        v.name == 'T_magma_bounds' for v in check_state_bounds_invariants(row_no_tmag, cfg)
+    )
+
+
+def test_config_threshold_custom_values_override_defaults():
+    """Verify that configured threshold overrides prevent false stops (kills W_hardcode_*)."""
+    hf_all = pd.DataFrame(
+        [
+            {
+                'Time': 10.0,
+                'E_state_cons_J': 1.0e31,
+                'E_state_heat_cons_J': 1.0e26,
+                'step_dE_F_int_J': 1.0e26,
+            }
+        ]
+    )
+    # Energy residual rtol override
+    cfg_e = _make_mock_config(energy_residual_rtol=0.1)
+    row_e = {
+        'Time': 20.0,
+        'T_surf': 2000.0,
+        'T_magma': 2000.0,
+        'Phi_global': 0.5,
+        'E_state_cons_J': 1.0e31,
+        'E_state_heat_cons_J': 1.0e26,
+        'step_dE_state_heat_J': 1.0e26,
+        'step_dE_F_int_J': 1.0e26,
+        'step_dE_F_cmb_J': 0.0,
+        'step_dE_Q_radio_J': 0.0,
+        'step_dE_Q_tidal_J': 0.0,
+        'E_residual_cons_J': 1.0e25,
+        'solver_residual_J': 0.0,
+        'core_C_eff': 0.0,
+    }
+    assert not any(
+        v.name == 'E_residual_cons_frac_gross'
+        for v in check_energy_invariants(row_e, cfg_e, hf_all)
+    )
+
+    # Step energy rtol override
+    cfg_step = _make_mock_config(step_energy_rtol=0.1, step_energy_smin_rtol=0.1)
+    row_step = dict(row_e, step_dE_state_heat_J=1.03e26, E_residual_cons_J=0.0)
+    assert not any(
+        v.name == 'step_dE_inc_frac'
+        for v in check_energy_invariants(row_step, cfg_step, hf_all)
+    )
+
+    # Step energy smin rtol override
+    cfg_smin = _make_mock_config(step_energy_smin_rtol=0.2)
+    row_smin = dict(row_e, T_magma=300.0, step_dE_state_heat_J=1.08e26, E_residual_cons_J=0.0)
+    assert not any(
+        v.name == 'step_dE_inc_frac'
+        for v in check_energy_invariants(row_smin, cfg_smin, hf_all)
+    )
+
+    # Solver residual rtol override
+    cfg_sol = _make_mock_config(solver_residual_rtol=1.0e-6)
+    row_sol = dict(row_e, solver_residual_J=1.0e20, E_residual_cons_J=0.0)
+    assert not any(
+        v.name == 'solver_residual_frac'
+        for v in check_energy_invariants(row_sol, cfg_sol, hf_all)
+    )
+
+    # Core residual rtol override
+    cfg_core = _make_mock_config(core_residual_rtol=1.0e-2)
+    row_core = dict(row_e, core_C_eff=1.0e20, E_core_residual_frac=0.005, E_residual_cons_J=0.0)
+    assert not any(
+        v.name == 'E_core_residual_frac'
+        for v in check_energy_invariants(row_core, cfg_core, hf_all)
+    )
+
+    # Element closure rtol override
+    cfg_clos = _make_mock_config(element_closure_rtol=0.01, outgas_module='atmodeller')
+    row_clos = {
+        'Time': 10.0,
+        'M_planet': 6.0e24,
+        'M_atm': 1.0e20,
+        'M_vol_atm': 1.0e20,
+        'H_kg_total': 1.0e20,
+        'H_kg_atm': 1.001e20,
+        'H_kg_liquid': 0.0,
+        'H_kg_solid': 0.0,
+        'M_vaps': 0.0,
+    }
+    assert not any(
+        v.name == 'H_reservoir_closure' for v in check_volatile_invariants(row_clos, cfg_clos)
+    )
+
+    # Element closure atol override
+    cfg_atol = _make_mock_config(element_closure_atol_kg=1.0e6, outgas_module='atmodeller')
+    row_atol = {
+        'Time': 10.0,
+        'M_planet': 6.0e24,
+        'M_atm': 1.0e20,
+        'M_vol_atm': 1.0e20,
+        'H_kg_total': 0.0,
+        'H_kg_atm': 1.0e4,
+        'H_kg_liquid': 0.0,
+        'H_kg_solid': 0.0,
+        'M_vaps': 0.0,
+    }
+    assert not any(
+        v.name == 'H_reservoir_closure' for v in check_volatile_invariants(row_atol, cfg_atol)
+    )
+
+    # Escape bound factor override
+    cfg_efac = _make_mock_config(fO2_source='from_O_budget', escape_bound_factor=5.0)
+    row_efac = {
+        'Time': 10.0,
+        'M_planet': 6.0e24,
+        'M_atm': 1.0e20,
+        'M_vol_atm': 1.0e20,
+        'M_vol_initial': 1.0e20,
+        'H_kg_total': 1.0e20 - 3.0e15,
+        'esc_kg_cumulative': 1.0e15,
+    }
+    assert not any(
+        v.name == 'escape_cumulative_bound'
+        for v in check_volatile_invariants(row_efac, cfg_efac)
+    )
+
+    # Escape bound atol override
+    cfg_eatol = _make_mock_config(
+        fO2_source='from_O_budget',
+        escape_bound_atol_kg=1.0e6,
+    )
+    row_eatol = {
+        'Time': 10.0,
+        'M_planet': 6.0e24,
+        'M_atm': 1.0e20,
+        'M_vol_atm': 1.0e20,
+        'M_vol_initial': 1.0e20,
+        'H_kg_total': 1.0e20 - 5.0e5,
+        'esc_kg_cumulative': 0.0,
+    }
+    assert not any(
+        v.name == 'escape_cumulative_bound'
+        for v in check_volatile_invariants(row_eatol, cfg_eatol)
+    )
+
+
+def test_proteus_main_loop_provides_hf_history_on_second_loop(tmp_path, monkeypatch):
+    """Verify that proteus.start() provides hf_all history on loop 2 (kills P12)."""
+    import proteus.proteus as proteus_mod
+    from proteus import Proteus
+    from proteus.interior_energetics.common import Interior_t
+
+    monkeypatch.setattr(Interior_t, '_load_ps_table', lambda self, *a, **kw: None)
+    out = tmp_path / 'run_p12_spy'
+    dummy_toml = Path(__file__).resolve().parents[2] / 'input' / 'dummy.toml'
+    text = dummy_toml.read_text(encoding='utf-8')
+    cfg_path = tmp_path / 'p12_spy.toml'
+    cfg_path.write_text(text.replace('path = "auto"', f'path = "{out}"', 1), encoding='utf-8')
+
+    runner = Proteus(config_path=cfg_path)
+    config = runner.config
+    config.params.stop.solid.enabled = False
+    config.params.stop.iters.minimum = 1
+    config.params.stop.iters.maximum = 2
+    config.params.stop.time.minimum = 0.0
+    config.params.stop.time.maximum = 500.0
+    config.params.out.plot_mod = None
+    config.params.out.archive_mod = 'none'
+
+    history_by_loop = {}
+    real_check = proteus_mod.check_row_invariants
+
+    def spy_check(hf_row, cfg, hf_all=None, **kwargs):
+        loop = runner.loops['total']
+        history_by_loop[loop] = hf_all is not None and len(hf_all) >= 1
+        return real_check(hf_row, cfg, hf_all=hf_all, **kwargs)
+
+    monkeypatch.setattr(proteus_mod, 'check_row_invariants', spy_check)
+    runner.start(resume=False, offline=True)
+
+    assert history_by_loop.get(1) is False
+    assert history_by_loop.get(2) is True
