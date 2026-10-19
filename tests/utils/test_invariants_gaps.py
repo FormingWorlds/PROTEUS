@@ -1277,7 +1277,7 @@ def test_state_bounds_exact_closure_atol_and_missing_key_defaults():
     )
 
 
-def test_config_threshold_custom_values_override_defaults():
+def test_config_threshold_custom_values_override_defaults(tmp_path):
     """Verify that configured threshold overrides prevent false stops (kills W_hardcode_*)."""
     hf_all = pd.DataFrame(
         [
@@ -1293,6 +1293,7 @@ def test_config_threshold_custom_values_override_defaults():
     cfg_e = _make_mock_config(energy_residual_rtol=0.1)
     row_e = {
         'Time': 20.0,
+        'P_surf': 1.0,
         'T_surf': 2000.0,
         'T_magma': 2000.0,
         'Phi_global': 0.5,
@@ -1321,11 +1322,18 @@ def test_config_threshold_custom_values_override_defaults():
     )
 
     # Step energy smin rtol override
+    eos_dir = tmp_path / 'eos_smin_override'
+    eos_dir.mkdir()
+    (eos_dir / 'temperature_solid.dat').write_text(
+        FIXTURE_PS_RUN_20261018_131253_EA68, encoding='utf-8'
+    )
     cfg_smin = _make_mock_config(step_energy_smin_rtol=0.2)
     row_smin = dict(row_e, T_magma=300.0, step_dE_state_heat_J=1.08e26, E_residual_cons_J=0.0)
     assert not any(
         v.name == 'step_dE_inc_frac'
-        for v in check_energy_invariants(row_smin, cfg_smin, hf_all)
+        for v in check_energy_invariants(
+            row_smin, cfg_smin, hf_all, directories={'spider_eos_dir': str(eos_dir)}
+        )
     )
 
     # Solver residual rtol override

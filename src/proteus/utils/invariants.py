@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING, Sequence
 
 import numpy as np
@@ -12,7 +13,9 @@ from proteus.escape.wrapper import readable_total
 from proteus.outgas.trapping import derived_total_elements
 from proteus.utils.constants import (
     element_list,
+    noble_gases,
     vap_element_list,
+    vol_element_list,
     vol_gas_list,
 )
 from proteus.utils.helper import UpdateStatusfile
@@ -28,8 +31,11 @@ STATUS_ERROR_ENERGY_INVARIANT: int = 30
 STATUS_ERROR_MASS_INVARIANT: int = 31
 STATUS_ERROR_STATE_BOUNDS_INVARIANT: int = 32
 STEP_GROSS_FLOOR_J: float = 1.0
-# 0.5 K above the 300.488 K surface temperature at S_min = 106.116 J/(kg K) in PALEOS-2phase MgSiO3
-EOS_SMIN_TEMP_CLIP_K: float = 301.0
+# 0.5 K margin above T(P_surf, S_min) bounds low-pressure P-S linear interpolation error (<= 9.5e-3 K)
+# and static-mesh vs row P_surf drift (<= 0.071 K on S_min-clipped corpus rows; < 0.5 K to 1,748 bar).
+EOS_SMIN_CLIP_MARGIN_K: float = 0.5
+LAVATMOS_OVERWRITTEN_ELEMENTS: tuple[str, ...] = (*vol_element_list, *noble_gases)
+_SMIN_TABLE_CACHE: dict[tuple[str, int], tuple[np.ndarray, np.ndarray, float]] = {}
 
 
 @dataclass(frozen=True)
@@ -120,12 +126,12 @@ class InvariantTracker:
             next_state[key] = v.value
             if key not in self.active_state:
                 rising.add(v.name)
-            elif v.name in _VALUE_CHANGE_RELOG_NAMES:
+            else:
                 prev_val = self.active_state[key]
-                same_val = (
-                    not np.isfinite(v.value) and not np.isfinite(prev_val)
-                ) or v.value == prev_val
-                if not same_val:
+                same_val = bool(np.isnan(v.value) and np.isnan(prev_val)) or v.value == prev_val
+                if not same_val and (
+                    v.name in _VALUE_CHANGE_RELOG_NAMES or not np.isfinite(v.value)
+                ):
                     rising.add(v.name)
         for name in current:
             self.row_counts[name] = self.row_counts.get(name, 0) + 1
@@ -294,10 +300,97 @@ _ENERGY_FINITE_INPUT_KEYS: tuple[str, ...] = (
 )
 
 
+def _resolve_ps_table_path(directories: dict | None) -> Path | None:
+    """Resolve the active run's ``temperature_solid.dat`` path from ``directories``."""
+    if not directories:
+        return None
+    eos_dir = directories.get('spider_eos_dir')
+    if eos_dir:
+        cand = Path(eos_dir) / 'temperature_solid.dat'
+        if cand.is_file():
+            return cand.resolve()
+    data_dir = directories.get('output/data')
+    if not data_dir and directories.get('output'):
+        data_dir = str(Path(directories['output']) / 'data')
+    if data_dir:
+        cand = Path(data_dir) / 'spider_eos' / 'temperature_solid.dat'
+        if cand.is_file():
+            return cand.resolve()
+        ptr = Path(data_dir) / 'spider_eos_cache.txt'
+        if ptr.is_file():
+            target_dir = ptr.read_text(encoding='utf-8').strip()
+            if target_dir:
+                cand_ptr = Path(target_dir) / 'temperature_solid.dat'
+                if cand_ptr.is_file():
+                    return cand_ptr.resolve()
+    return None
+
+
+def _parse_smin_temp_block(table_path: Path) -> tuple[np.ndarray, np.ndarray, float]:
+    """Parse ``temperature_solid.dat`` once and return ``(P_pa, T_k, S_min)`` for the ``S_min`` block.
+
+    Parameters
+    ----------
+    table_path : Path
+        Path to ``temperature_solid.dat``.
+
+    Returns
+    -------
+    tuple[np.ndarray, np.ndarray, float]
+        1D arrays of pressure in Pa and temperature in K on the ``S_min`` block,
+        plus ``S_min`` in J/(kg K).
+
+    Raises
+    ------
+    ValueError
+        If the first ``n_P`` block does not hold the minimum entropy ``S_min`` of the table.
+    """
+    with open(table_path, encoding='utf-8') as f:
+        hdr = f.readline().strip().lstrip('#').split()
+        n_hdr, n_p = int(hdr[0]), int(hdr[1])
+        scale_line = ''
+        for _ in range(n_hdr - 1):
+            scale_line = f.readline()
+        scales = [float(x) for x in scale_line.strip().lstrip('#').split()]
+    data = np.loadtxt(table_path, skiprows=n_hdr)
+    first_block = data[:n_p]
+    s_all = data[:, 1] * scales[1]
+    s_first = first_block[:, 1] * scales[1]
+    s_min = float(np.min(s_all))
+    if not np.allclose(s_first, s_min, rtol=0.0, atol=1.0e-9):
+        raise ValueError(
+            f'First block in {table_path} has S={float(s_first[0]):.6f}, not S_min={s_min:.6f}'
+        )
+    p_pa = np.asarray(first_block[:, 0], dtype=float) * scales[0]
+    t_k = np.asarray(first_block[:, 2], dtype=float) * scales[2]
+    return p_pa, t_k, s_min
+
+
+def _smin_clip_temp_k(hf_row: dict, directories: dict | None) -> float | None:
+    """Evaluate ``T(P_surf, S_min) + EOS_SMIN_CLIP_MARGIN_K`` at the row's ``P_surf``."""
+    table_path = _resolve_ps_table_path(directories)
+    if table_path is None:
+        return None
+    stat = table_path.stat()
+    cache_key = (str(table_path), stat.st_mtime_ns)
+    cached = _SMIN_TABLE_CACHE.get(cache_key)
+    if cached is None:
+        cached = _parse_smin_temp_block(table_path)
+        _SMIN_TABLE_CACHE[cache_key] = cached
+    p_pa, t_k, _ = cached
+    p_surf_bar = float(hf_row.get('P_surf', 1.0))
+    if not np.isfinite(p_surf_bar):
+        return None
+    p_surf_pa = float(np.clip(p_surf_bar * 1.0e5, p_pa[0], p_pa[-1]))
+    t_smin_k = float(np.interp(p_surf_pa, p_pa, t_k))
+    return t_smin_k + EOS_SMIN_CLIP_MARGIN_K
+
+
 def check_energy_invariants(
     hf_row: dict,
     config: Config,
     hf_all: pd.DataFrame | None = None,
+    directories: dict | None = None,
 ) -> list[InvariantViolation]:
     """Evaluate coupled energy conservation invariants on ``hf_row`` (status 30).
 
@@ -313,6 +406,9 @@ def check_energy_invariants(
         PROTEUS configuration object.
     hf_all : pd.DataFrame or None, optional
         Accumulated helpfile table prior to appending ``hf_row``.
+    directories : dict or None, optional
+        PROTEUS run directories dictionary used to locate and cache the run's P-S
+        EOS table ``temperature_solid.dat`` for the ``S_min`` clip threshold.
 
     Returns
     -------
@@ -408,7 +504,10 @@ def check_energy_invariants(
         denom_step = max(step_gross, STEP_GROSS_FLOOR_J)
         step_err = step_diff / denom_step if np.isfinite(step_diff) else float('nan')
         t_magma = float(hf_row.get('T_magma', 1000.0))
-        on_phase_kink = np.isfinite(t_magma) and t_magma <= EOS_SMIN_TEMP_CLIP_K
+        smin_clip_k = _smin_clip_temp_k(hf_row, directories)
+        on_phase_kink = (
+            smin_clip_k is not None and np.isfinite(t_magma) and t_magma <= smin_clip_k
+        )
         step_tol = (
             float(inv_cfg.step_energy_smin_rtol)
             if on_phase_kink
@@ -589,6 +688,14 @@ def check_volatile_invariants(
     config: Config,
 ) -> list[InvariantViolation]:
     """Evaluate volatile inventory, gas-species sum, planet mass cap, and escape bounds (status 31).
+
+    Enforces non-negative reservoir bounds (``{e}_kg_{r}_bounds``) and finite reservoir/total
+    masses across all elements in ``element_list``. Element reservoir closure skips oxygen
+    under ``planet.fO2_source = 'user_constant'`` and, when ``outgas.vapourise`` is enabled,
+    skips ``vap_element_list`` (``Si, Mg, Fe, Na, Al, Ti, Ca, K, V``, whose totals stay zero
+    while rock vapour enters the atmosphere) and ``LAVATMOS_OVERWRITTEN_ELEMENTS``
+    (``H, C, N, S, O`` and ``noble_gases``, whose atmospheric element masses ``lavatmos``
+    overwrites from gas-phase equilibrium without updating the element totals).
 
     Parameters
     ----------
@@ -783,9 +890,10 @@ def check_volatile_invariants(
     outgas_cfg = getattr(config, 'outgas', None)
     is_calliope = getattr(outgas_cfg, 'module', None) == 'calliope'
     calliope_mass_thresh = float(outgas_cfg.mass_thresh) if is_calliope else 0.0
-    derived = set(derived_total_elements(config)) | set(vap_element_list)
+    derived = set(derived_total_elements(config))
     if vapourise:
-        derived.add('O')
+        derived.update(vap_element_list)
+        derived.update(LAVATMOS_OVERWRITTEN_ELEMENTS)
     for e in element_list:
         for r in ('atm', 'liquid', 'solid'):
             r_mass = float(hf_row.get(f'{e}_kg_{r}', 0.0))
@@ -803,8 +911,6 @@ def check_volatile_invariants(
                         report_only=False,
                     )
                 )
-        if e in derived:
-            continue
         total = float(hf_row.get(f'{e}_kg_total', 0.0))
         if not np.isfinite(total):
             violations.append(
@@ -818,6 +924,21 @@ def check_volatile_invariants(
                 )
             )
             continue
+        parts = sum(float(hf_row.get(f'{e}_kg_{r}', 0.0)) for r in ('atm', 'liquid', 'solid'))
+        if not np.isfinite(parts):
+            violations.append(
+                InvariantViolation(
+                    name=f'{e}_reservoir_closure',
+                    status_code=STATUS_ERROR_MASS_INVARIANT,
+                    value=float('nan'),
+                    tolerance=closure_rtol,
+                    message=f'Time={time_yr:.6e} yr: {e} reservoir sum={parts} is not finite',
+                    report_only=False,
+                )
+            )
+            continue
+        if e in derived:
+            continue
         if total < -closure_atol_kg:
             violations.append(
                 InvariantViolation(
@@ -829,19 +950,6 @@ def check_volatile_invariants(
                         f'Time={time_yr:.6e} yr: {e}_kg_total={total:.6e} kg < '
                         f'-element_closure_atol_kg ({-closure_atol_kg:.6e} kg)'
                     ),
-                    report_only=False,
-                )
-            )
-            continue
-        parts = sum(float(hf_row.get(f'{e}_kg_{r}', 0.0)) for r in ('atm', 'liquid', 'solid'))
-        if not np.isfinite(parts):
-            violations.append(
-                InvariantViolation(
-                    name=f'{e}_reservoir_closure',
-                    status_code=STATUS_ERROR_MASS_INVARIANT,
-                    value=float('nan'),
-                    tolerance=closure_rtol,
-                    message=f'Time={time_yr:.6e} yr: {e} reservoir sum={parts} is not finite',
                     report_only=False,
                 )
             )
@@ -1058,7 +1166,7 @@ def check_row_invariants(
         return []
 
     violations: list[InvariantViolation] = []
-    violations.extend(check_energy_invariants(hf_row, config, hf_all))
+    violations.extend(check_energy_invariants(hf_row, config, hf_all, directories=directories))
     violations.extend(check_structure_invariants(hf_row, config))
     violations.extend(check_volatile_invariants(hf_row, config))
     violations.extend(check_state_bounds_invariants(hf_row, config))

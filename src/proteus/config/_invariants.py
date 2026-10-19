@@ -52,16 +52,25 @@ class Invariants:
         reach ``2.37e-3`` and ``4.69e-4``).
     step_energy_rtol: float
         Relative tolerance on per-step energy residual increment normalized by per-step gross flux
-        when ``T_magma > 301 K`` [-] (report-only). In post-closure default runs outside the
-        ``301 K`` clip, the per-step increment has 99th percentile ``5.4e-4``, 99.9th percentile
-        ``2.7e-2``, and maximum ``0.117``.
+        when ``T_magma > T(P_surf, S_min) + 0.5 K`` (or for all rows when no P-S EOS table is
+        present) [-] (report-only). In post-closure default runs outside the ``S_min`` temperature
+        clip, the per-step increment has 99th percentile ``5.4e-4``, 99.9th percentile ``2.7e-2``,
+        and maximum ``0.117``.
     step_energy_smin_rtol: float
         Relative tolerance on per-step energy residual increment normalized by per-step gross flux
-        when ``T_magma <= 301 K`` (0.5 K above the ``300.488 K`` surface-pressure temperature at
-        the ``S_min = 106.116 J kg^-1 K^-1`` floor of the PALEOS-2phase ``MgSiO3`` solid EOS table
-        ``zalmoxis_eos/EOS_PALEOS_MgSiO3/paleos_mgsio3_tables_pt_proteus_solid.dat``, and above the
-        ``260.0 K`` ``S_min`` floor of the Wolf & Bower 2018 1 TPa ``MgSiO3`` solid table) [-] (report-only).
-        Sized above the ``4.39%`` maximum observed on the ``301 K`` temperature clip in
+        when ``T_magma <= T(P_surf, S_min) + 0.5 K`` [-] (report-only). Here ``T(P_surf, S_min)``
+        is interpolated linearly in pressure at each row's ``P_surf`` on the ``S_min`` block of the
+        run's cached P-S EOS table ``temperature_solid.dat`` (e.g. ``302.342 K`` in
+        ``run_20261018_131253_ea68`` and ``323.208 K`` in ``tutorial_earth`` at ``1 bar`` for
+        ``S_min = 106.116 J kg^-1 K^-1`` in the dynamic PALEOS-2phase ``MgSiO3`` tables, and
+        ``260.0 K`` at ``P = 0`` for ``S_min = -84.786 J kg^-1 K^-1`` in the Wolf & Bower 2018
+        1 TPa ``MgSiO3`` solid table; the raw P-T source ``paleos_mgsio3_tables_pt_proteus_solid.dat``
+        has ``300.488 K`` at ``P = 2.660 GPa`` rather than surface pressure). The ``0.5 K`` margin
+        bounds the smooth low-pressure P-S linear interpolation error (``<= 9.49e-3 K``) and
+        static-mesh versus row ``P_surf`` drift (``-0.0042 K`` to ``+0.071 K`` across
+        ``S_min``-clipped corpus rows; ``< 0.5 K`` for ``|P_mesh - P_surf| <= 1,748 bar``),
+        remaining well below the first unclipped entropy-grid step (``+22.74 K`` to ``+30.00 K``).
+        Sized above the ``4.39%`` maximum observed on the ``S_min`` temperature clip in
         post-closure runs.
     solver_residual_rtol: float
         Relative tolerance on the Aragog ODE solver internal energy residual normalized by gross
@@ -84,9 +93,9 @@ class Invariants:
     core_mass_target_rtol: float
         Relative tolerance on ``M_core`` versus ``M_core_target`` at a structure update row [-],
         sized at about ``1.6`` times the ``1.565e-2`` maximum radial-trapezoidal core mass
-        difference on a default 1 M_Earth Zalmoxis structure run (99th percentile ``1.518e-2``;
-        ``1.004e-2`` maximum and ``9.79e-3`` 99th percentile across 68 finished post-closure
-        default runs).
+        difference on the default 1 M_Earth Zalmoxis structure run ``a627_default`` (99th
+        percentile ``1.518e-2``, which lies outside the 68 finished post-closure default runs;
+        ``1.004e-2`` maximum and ``9.79e-3`` 99th percentile across those 68 runs).
     element_closure_rtol: float
         Relative tolerance on per-element reservoir closure ``atm + magma + solid = total`` [-],
         sized at ``2.5`` times the default ``outgas.solver_rtol = 1.0e-4``.
