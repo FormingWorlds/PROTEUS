@@ -2146,3 +2146,38 @@ def test_smin_clip_temp_k_one_row_and_two_column_tables_warn_once_without_raisin
             r.message for r in caplog.records if 'Failed to load P-S EOS table' in r.message
         ]
         assert len(warn_msgs) == 1
+
+
+def test_interior_mass_target_rtol_unguarded_zalmoxis_paths():
+    """Verify interior_mass_target_rtol documents and guards Zalmoxis solve paths where _ZALMOXIS_MASS_ANCHOR_TOL does not run."""
+    from proteus.config._invariants import Invariants
+    from proteus.utils.invariants import check_structure_invariants
+
+    doc = Invariants.__doc__ or ''
+    assert 'determine_interior_radius_with_zalmoxis' in doc
+    assert 'equilibrate_initial_state' in doc
+    assert 'update_structure_from_interior' in doc
+    assert '_ZALMOXIS_MASS_ANCHOR_TOL' in doc
+
+    cfg = _make_mock_config(interior_mass_target_rtol=3.0e-3)
+    # On init-stage row 0 (determine_interior_radius_with_zalmoxis / equilibrate_initial_state),
+    # _ZALMOXIS_MASS_ANCHOR_TOL does not run; check_structure_invariants reports > 3.0e-3:
+    row_init = {
+        'Time': 0.0,
+        'M_int': 5.970e24 * 1.005,
+        'M_int_target': 5.970e24,
+        'M_core': 1.940e24,
+        'M_core_target': 1.940e24,
+    }
+    v_init = check_structure_invariants(row_init, cfg, init_stage=True)
+    assert len(v_init) == 1
+    assert v_init[0].name == 'M_int_target_rel_err'
+    assert v_init[0].report_only is True
+
+    # On a post-init update_structure_from_interior rollback (where _saved_structure restores
+    # M_int while leaving the new M_int_target in hf_row), check_structure_invariants stops:
+    row_post = dict(row_init, Time=100.0)
+    v_post = check_structure_invariants(row_post, cfg, init_stage=False)
+    assert len(v_post) == 1
+    assert v_post[0].name == 'M_int_target_rel_err'
+    assert v_post[0].report_only is False
