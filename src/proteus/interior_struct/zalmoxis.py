@@ -3186,7 +3186,10 @@ def _stop_on_invariant_error(solver):
             return solver(config, outdir, *args, **kwargs)
         except StructureInvariantError as exc:
             log.error('Zalmoxis structure breaks an invariant; the run stops: %s', exc)
-            UpdateStatusfile({'output': outdir}, 33)
+            try:
+                UpdateStatusfile({'output': outdir}, 33)
+            except OSError as err:
+                log.error('Status 33 could not be written to %s: %s', outdir, err)
             raise
 
     return run
