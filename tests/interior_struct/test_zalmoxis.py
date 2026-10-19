@@ -4648,8 +4648,10 @@ def test_lowt_extension_with_a_zalmoxis_without_the_argument_is_an_error(tmp_pat
     ):
         raise AssertionError('must not be called')
 
-    with pytest.raises(RuntimeError, match='solid_lowt_file'):
+    with pytest.raises(Exception) as exc:
         _lowt_stubbed_run(tmp_path, monkeypatch, lowt=True, tables=old_api)
+    assert exc.type is RuntimeError, f'{exc.type.__name__}: {exc.value}'
+    assert 'whose generate_spider_eos_tables takes solid_lowt_file' in str(exc.value)
     out, tables, _ = _lowt_stubbed_run(tmp_path, monkeypatch, lowt=False)
     assert tables.call_count == 1
 
