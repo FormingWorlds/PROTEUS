@@ -783,6 +783,9 @@ def test_exact_threshold_boundary_rows_and_strict_inequalities(tmp_path):
         'T_surf': 2500.0,
         'T_magma': exact_clip,
         'Phi_global': 0.5,
+        'M_planet': 6.0e24,
+        'M_atm': 0.0,
+        'M_vol_atm': 0.0,
         'E_state_cons_J': 1.0e31,
         'E_state_heat_cons_J': 1.0e26,
         'step_dE_state_heat_J': 1.03e24,
@@ -2331,9 +2334,11 @@ def test_lavatmos_overwritten_elements_match_source_and_skip_under_vapourise():
         )
 
     # Reservoir bounds checks ({e}_kg_{r}_bounds) remain active for overwritten elements:
-    with pytest.raises(InvariantViolationError) as exc_info:
+    try:
         check_row_invariants(dict(row_vap, H_kg_atm=-5.0), cfg_vap_stop)
-    assert any(v.name == 'H_kg_atm_bounds' for v in exc_info.value.violations)
+        assert False, 'expected InvariantViolationError on negative reservoir mass'
+    except InvariantViolationError as exc_info:
+        assert any(v.name == 'H_kg_atm_bounds' for v in exc_info.violations)
 
 
 @pytest.mark.parametrize('vapourise', [False, True])
