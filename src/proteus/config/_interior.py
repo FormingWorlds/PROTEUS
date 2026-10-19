@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 import warnings
 
-from attrs import define, field
+from attrs import define, field, setters
 from attrs.validators import ge, gt, in_, le, lt
 
 _TOL_UNSET = -1.0
@@ -276,6 +276,7 @@ def _top_node_core(inst, attr, value) -> None:
     core_bc = value if attr.name == 'core_bc' else inst.core_bc
     if top_node == 'limited' and core_bc == 'gradient':
         raise ValueError("top_node = 'limited' is not available on core_bc = 'gradient'")
+    return value
 
 
 @define
@@ -338,10 +339,10 @@ class Aragog:
     equilibration."""
     core_bc: str = field(
         default='energy_balance',
-        validator=[
-            in_(('quasi_steady', 'energy_balance', 'gradient', 'bower2018', 'core_module')),
-            _top_node_core,
-        ],
+        validator=in_(
+            ('quasi_steady', 'energy_balance', 'gradient', 'bower2018', 'core_module')
+        ),
+        on_setattr=setters.pipe(setters.validate, _top_node_core),
     )
     top_node: str = field(
         default='linear',
