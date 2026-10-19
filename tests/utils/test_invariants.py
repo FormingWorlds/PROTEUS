@@ -2181,3 +2181,29 @@ def test_interior_mass_target_rtol_unguarded_zalmoxis_paths():
     assert len(v_post) == 1
     assert v_post[0].name == 'M_int_target_rel_err'
     assert v_post[0].report_only is False
+
+
+def test_negative_element_total_checked_before_derived_skip():
+    """Verify negative element total triggers reservoir closure even when element is in derived skip set."""
+    from proteus.utils.invariants import check_volatile_invariants
+
+    # 1. Negative O_kg_total under fO2_source = 'user_constant' (O in derived)
+    cfg_o = _make_mock_config(fO2_source='user_constant')
+    row_o = {'Time': 100.0, 'M_planet': 6.0e24, 'O_kg_total': -10.0}
+    v_o = check_volatile_invariants(row_o, cfg_o)
+    assert [v.name for v in v_o] == ['O_reservoir_closure']
+    assert v_o[0].value == pytest.approx(-10.0)
+
+    # 2. Negative rock-vapour total under vapourise = True (Si in derived)
+    cfg_vap = _make_mock_config(vapourise=True)
+    row_vap = {'Time': 100.0, 'M_planet': 6.0e24, 'Si_kg_total': -10.0}
+    v_vap = check_volatile_invariants(row_vap, cfg_vap)
+    assert [v.name for v in v_vap] == ['Si_reservoir_closure']
+    assert v_vap[0].value == pytest.approx(-10.0)
+
+    # 3. Negative noble-gas total under outgas.module = 'dummy' (He in derived)
+    cfg_dummy = _make_mock_config(outgas_module='dummy')
+    row_dummy = {'Time': 100.0, 'M_planet': 6.0e24, 'He_kg_total': -10.0}
+    v_dummy = check_volatile_invariants(row_dummy, cfg_dummy)
+    assert [v.name for v in v_dummy] == ['He_reservoir_closure']
+    assert v_dummy[0].value == pytest.approx(-10.0)
