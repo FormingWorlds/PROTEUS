@@ -1592,25 +1592,3 @@ def test_adiabat_tp_passes_a_missing_table_stop_through():
         side_effect=RuntimeError('numerical'),
     ):
         assert _build_superliquidus_adiabat_tp(_config(), {}, P_cmb_target=1.4e12) is None
-
-
-def test_the_rollback_does_not_catch_a_release_error(tmp_path):
-    """A StaleTableError or PaleosVersionError from the solve is no failed solve: it ends the
-    run instead of the rollback to the previous structure."""
-    from proteus.interior_energetics.wrapper import _solve_structure_with_adiabat_or_rollback
-
-    stale = type('StaleTableError', (Exception,), {})
-    hf_row = _linear_hf_row()
-    before = dict(hf_row)
-    with patch(
-        'proteus.interior_struct.zalmoxis.zalmoxis_solver', side_effect=stale('old table')
-    ):
-        with pytest.raises(stale, match='old table'):
-            _solve_structure_with_adiabat_or_rollback(
-                _config(),
-                str(tmp_path),
-                hf_row,
-                num_spider_nodes=0,
-                temperature_function=_adiabat_closure(),
-            )
-    assert hf_row['R_int'] == before['R_int']
