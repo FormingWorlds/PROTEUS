@@ -371,7 +371,14 @@ def _parse_smin_temp_block(table_path: Path) -> tuple[np.ndarray, np.ndarray, fl
             scale_line = f.readline()
         s0, s1, s2, *_ = (*scale_line.strip().lstrip('#').split(), '', '', '')
         scales = (float(s0), float(s1), float(s2))
+    if n_p < 1:
+        raise ValueError(f'Invalid n_P={n_p} in {table_path}')
     data = np.loadtxt(table_path, skiprows=n_hdr)
+    if data.ndim != 2 or data.shape[0] < n_p or data.shape[1] < 3:
+        raise ValueError(
+            f'Expected 2D P-S table with at least {n_p} rows and 3 columns in {table_path}, '
+            f'got shape {data.shape}'
+        )
     first_block = data[:n_p]
     s_all = data[:, 1] * scales[1]
     s_first = first_block[:, 1] * scales[1]
@@ -398,7 +405,7 @@ def _smin_clip_temp_k(hf_row: dict, directories: dict | None) -> float | None:
         if cached is None:
             cached = _parse_smin_temp_block(table_path)
             _SMIN_TABLE_CACHE[cache_key] = cached
-    except (OSError, ValueError) as exc:
+    except (OSError, ValueError, IndexError) as exc:
         if path_key not in _SMIN_TABLE_WARNED_PATHS:
             _SMIN_TABLE_WARNED_PATHS.add(path_key)
             log.warning('Failed to load P-S EOS table %s for S_min clip: %s', table_path, exc)
