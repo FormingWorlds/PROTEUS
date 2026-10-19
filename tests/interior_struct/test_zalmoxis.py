@@ -4487,7 +4487,7 @@ def test_ps_cache_key_follows_lowt_extension_path_and_content(tmp_path):
     assert key_a != base
     assert key_a == _ps_cache_key(**_PS_COMMON, generator='g', lowt_file=str(a))
     assert _ps_cache_key(**_PS_COMMON, generator='g', lowt_file=str(b)) != key_a
-    a.write_text('# ext 2\n1 2 3\n')
+    a.write_text('# ext 1\n1 2 4\n')
     assert _ps_cache_key(**_PS_COMMON, generator='g', lowt_file=str(a)) != key_a
 
 

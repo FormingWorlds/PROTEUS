@@ -5,6 +5,7 @@ import copy
 import functools
 import hashlib
 import importlib.util
+import inspect
 import logging
 import os
 import re
@@ -2704,8 +2705,9 @@ def _ps_cache_key(
         :func:`_ps_generator_identity`, so tables built by a different
         Zalmoxis release or source land on a distinct key.
     lowt_file : str or None
-        Low-temperature solid extension; its path and a digest of its content
-        enter the key. None leaves the key as it is without an extension.
+        Low-temperature solid extension; its path and a digest of its data lines
+        (header lines left out) enter the key. None leaves the key as it is
+        without an extension.
 
     Returns
     -------
@@ -2714,7 +2716,10 @@ def _ps_cache_key(
     """
     eos_identity = '|'.join(str(p) for p in (mantle_eos, eos_file, solid_eos, liquid_eos))
     if lowt_file is not None:
-        content = hashlib.sha1(Path(lowt_file).read_bytes()).hexdigest()
+        data = (
+            ln for ln in Path(lowt_file).read_bytes().splitlines() if not ln.startswith(b'#')
+        )
+        content = hashlib.sha1(b'\n'.join(data)).hexdigest()
         eos_identity += f'|lowt={lowt_file}:{content}'
     eos_digest = hashlib.sha1(eos_identity.encode()).hexdigest()[:12]
     eos_name = re.sub(r'[^A-Za-z0-9]+', '-', str(mantle_eos)).strip('-')
@@ -2977,11 +2982,15 @@ def generate_spider_tables(config: Config, outdir: str):
         if resumed is not None:
             return resumed
 
+    lowt_on = config.interior_struct.zalmoxis.lowt_extension is True
+    lowt_msg = 'lowt_extension = true has no effect: mantle EOS %s has no PALEOS P-S tables'
     if not eos_entry or key not in PALEOS_REGISTRY_KEYS:
         log.info(
             'Mantle EOS %s has no PALEOS table set; using pre-existing SPIDER tables.',
             mantle_eos,
         )
+        if lowt_on:
+            log.warning(lowt_msg, mantle_eos)
         return None
     if paleos_companion_keys(mantle_eos):
         check_zalmoxis_eos_files({'mantle': mantle_eos}, mat_dicts, paleos_companions=True)
@@ -2989,8 +2998,17 @@ def generate_spider_tables(config: Config, outdir: str):
         inputs = _ps_table_inputs(config, key, eos_entry, mat_dicts)
     except _NoPSTables as exc:
         log.log(exc.level, 'No PALEOS P-S tables: %s; using pre-existing SPIDER tables.', exc)
+        if lowt_on:
+            log.warning(lowt_msg, mantle_eos)
         return None
     eos_file, solid_eos, liquid_eos, is_twophase, P_max, lowt_file, cache_key = inputs
+    if (
+        lowt_file
+        and 'solid_lowt_file' not in inspect.signature(generate_spider_eos_tables).parameters
+    ):
+        raise RuntimeError(
+            'lowt_extension needs a Zalmoxis whose generate_spider_eos_tables takes solid_lowt_file'
+        )
     if solid_eos and liquid_eos:
         log.info('Using PALEOS-2phase tables for entropy-IC table generation')
     nP = config.interior_struct.zalmoxis.lookup_nP
