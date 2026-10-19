@@ -757,7 +757,11 @@ def test_check_volatile_invariants_calliope_mass_thresh_vs_atmodeller_floor():
     assert len(check_volatile_invariants(row_just_above, cfg_atm)) == 1
 
     row_he_below = dict(
-        base_n_row, N_kg_total=0.0, N_kg_atm=0.0, He_kg_total=4.0e18, He_kg_atm=4.0e18 + 1.09e16
+        base_n_row,
+        N_kg_total=0.0,
+        N_kg_atm=0.0,
+        He_kg_total=4.0e18,
+        He_kg_liquid=4.0e18 + 1.09e16,
     )
     v_atm_he = check_volatile_invariants(row_he_below, cfg_atm)
     assert len(v_atm_he) == 1
@@ -765,11 +769,11 @@ def test_check_volatile_invariants_calliope_mass_thresh_vs_atmodeller_floor():
     assert v_atm_he[0].tolerance == pytest.approx(2.5e-4)
 
     row_atm_floor_ok = dict(
-        base_n_row, N_kg_total=0.0, N_kg_atm=0.0, He_kg_total=100.0, He_kg_atm=100.9
+        base_n_row, N_kg_total=0.0, N_kg_atm=0.0, He_kg_total=100.0, He_kg_liquid=100.9
     )
     assert check_volatile_invariants(row_atm_floor_ok, cfg_atm) == []
     row_atm_floor_bad = dict(
-        base_n_row, N_kg_total=0.0, N_kg_atm=0.0, He_kg_total=100.0, He_kg_atm=101.1
+        base_n_row, N_kg_total=0.0, N_kg_atm=0.0, He_kg_total=100.0, He_kg_liquid=101.1
     )
     v_atm_floor = check_volatile_invariants(row_atm_floor_bad, cfg_atm)
     assert len(v_atm_floor) == 1
