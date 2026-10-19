@@ -157,7 +157,10 @@ class Zalmoxis:
         ``paleos_mgsio3_tables_pt_proteus_solid_lowT.dat`` next to the solid
         table). PALEOS values are used wherever the solid table has them.
         Applies to the P-S tables of the PALEOS MgSiO3 mantle; a missing
-        extension file stops the table build.
+        extension file stops the table build. For 1 Earth mass and the default
+        1350 x 280 nodes the coldest tabulated cell is near 67 K, and between
+        the two lowest entropy nodes the table temperature deviates from a
+        direct inversion by at most 2.6 % up to 0.1 GPa.
     mantle_mass_fraction: float
         Fraction of the planet's interior mass corresponding to the mantle.
         Required for 3-layer models (with ice layer) and for T-dependent
