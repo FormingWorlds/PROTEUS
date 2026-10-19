@@ -4650,3 +4650,17 @@ def test_lowt_extension_for_a_mantle_without_paleos_tables_warns(tmp_path, monke
         out, tables, _ = _lowt_stubbed_run(tmp_path, monkeypatch, lowt=True, registry=False)
     assert out is None and tables.call_count == 0
     assert any('lowt_extension' in r.getMessage() for r in caplog.records)
+
+
+def test_missing_extension_file_stops_before_the_cache_key(tmp_path, monkeypatch):
+    """The file check comes before the cache key, which would read the missing file."""
+    from proteus.interior_struct import zalmoxis as zmod
+    from proteus.interior_struct.zalmoxis import ZalmoxisMissingEOSFilesError
+
+    def key_built(**kw):
+        raise ZalmoxisMissingEOSFilesError('key built')
+
+    monkeypatch.setattr(zmod, '_ps_cache_key', key_built)
+    with pytest.raises(ZalmoxisMissingEOSFilesError, match='low-temperature'):
+        _lowt_stubbed_run(tmp_path, monkeypatch, lowt=True, write_ext=False)
+    assert not (tmp_path / zmod.LOWT_EXTENSION_FILE).exists()

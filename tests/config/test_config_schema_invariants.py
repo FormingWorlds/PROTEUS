@@ -1548,3 +1548,24 @@ def test_parameterized_high_ecc_direction_is_enforced_on_config_load(tmp_path):
     assert cfg.orbit.star_planet_model == 'parameterized'
     assert cfg.orbit.parameterized.sma_final == pytest.approx(0.5, rel=1e-12)
     assert cfg.orbit.parameterized.sma_final < cfg.orbit.semimajoraxis
+
+
+# lowt_extension_requires_aragog: positive + negative
+@pytest.mark.unit
+def test_lowt_extension_requires_the_aragog_interior():
+    """The low-temperature solid extension adds entropy nodes to the solid P-S table only, so the
+    solid and melt tables differ in size; only the Aragog interior is run with such tables, and the
+    switch with another interior is refused when the config loads."""
+    from proteus.config._config import lowt_extension_requires_aragog
+
+    def make(module, lowt):
+        cfg = _make_config_instance(**{'interior_energetics.module': module})
+        cfg.interior_struct.zalmoxis = SimpleNamespace(lowt_extension=lowt)
+        return cfg
+
+    with pytest.raises(ValueError, match=r'interior_energetics.module = "aragog"') as excinfo:
+        lowt_extension_requires_aragog(make('spider', True), None, None)
+    assert '"spider"' in str(excinfo.value)
+    assert lowt_extension_requires_aragog(make('aragog', True), None, None) is None
+    for module in ('spider', 'dummy', 'aragog'):
+        assert lowt_extension_requires_aragog(make(module, False), None, None) is None
