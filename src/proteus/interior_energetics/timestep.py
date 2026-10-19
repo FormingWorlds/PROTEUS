@@ -112,72 +112,100 @@ def _estimate_tau_drain(config: Config, hf_row: dict, interior_o) -> float:
 
     eos = getattr(solver, 'entropy_eos', None)
     if (
-        any(not hasattr(solver, attr) for attr in _ARAGOG_SOLVER_ATTRS)
+        any(not hasattr(solver, attr) for attr in _ARAGOG_SOLVER_ATTRS[2:])
+        or (not hasattr(solver, '_solution') and not hasattr(solver, '_S0'))
         or eos is None
         or any(not hasattr(eos, attr) for attr in _ARAGOG_EOS_ATTRS)
     ):
         return _warn_invalid_tau_drain(interior_o)
 
-    sol = getattr(solver, '_solution', None)
-    if sol is not None and getattr(sol, 'y', None) is not None and np.size(sol.y) > 0:
-        if not hasattr(solver, 'entropy_staggered'):
-            return _warn_invalid_tau_drain(interior_o)
-        s_block = np.asarray(getattr(solver, 'entropy_staggered'), dtype=float)
-        if s_block.size == 0:
-            return _warn_invalid_tau_drain(interior_o)
-        s_vec = s_block[:, -1] if s_block.ndim > 1 else s_block
-        s_top = float(s_vec.ravel()[-1])
-    else:
-        n_stag_raw = getattr(solver, '_n_stag', None)
-        s0_raw = getattr(solver, '_S0', None)
-        if n_stag_raw is None or s0_raw is None:
-            return _warn_invalid_tau_drain(interior_o)
-        n_stag = int(n_stag_raw)
-        s0 = np.asarray(s0_raw, dtype=float).ravel()
-        if s0.size == 0 or n_stag <= 0:
-            return _warn_invalid_tau_drain(interior_o)
-        s_top = float(s0[n_stag - 1] if n_stag <= s0.size else s0[-1])
+    try:
+        sol = getattr(solver, '_solution', None)
+        if sol is not None and getattr(sol, 'y', None) is not None and np.size(sol.y) > 0:
+            if not hasattr(solver, 'entropy_staggered'):
+                return _warn_invalid_tau_drain(interior_o)
+            s_block = np.asarray(getattr(solver, 'entropy_staggered'), dtype=float)
+            if s_block.size == 0:
+                return _warn_invalid_tau_drain(interior_o)
+            s_vec = s_block[:, -1] if s_block.ndim > 1 else s_block
+            s_top = float(s_vec.ravel()[-1])
+        else:
+            n_stag_raw = getattr(solver, '_n_stag', None)
+            s0_raw = getattr(solver, '_S0', None)
+            if n_stag_raw is None or s0_raw is None:
+                return _warn_invalid_tau_drain(interior_o)
+            n_stag = int(n_stag_raw)
+            s0 = np.asarray(s0_raw, dtype=float).ravel()
+            if s0.size == 0 or n_stag <= 0:
+                return _warn_invalid_tau_drain(interior_o)
+            if getattr(solver, '_core_bc', None) == 'gradient':
+                s_top = float(s0[-1])
+            else:
+                s_top = float(s0[n_stag - 1] if n_stag <= s0.size else s0[-1])
 
-    r_basic_raw = getattr(solver, '_r_basic_flat', None)
-    vol_raw = getattr(solver, '_volume_flat', None)
-    p_stag_raw = getattr(solver, '_P_stag_flat', None)
-    if r_basic_raw is None or vol_raw is None or p_stag_raw is None:
-        return _warn_invalid_tau_drain(interior_o, s_top=s_top)
+        r_basic_raw = getattr(solver, '_r_basic_flat', None)
+        vol_raw = getattr(solver, '_volume_flat', None)
+        p_stag_raw = getattr(solver, '_P_stag_flat', None)
+        if r_basic_raw is None or vol_raw is None or p_stag_raw is None:
+            return _warn_invalid_tau_drain(interior_o, s_top=s_top)
 
-    r_basic = np.asarray(r_basic_raw, dtype=float).ravel()
-    vol_arr = np.asarray(vol_raw, dtype=float).ravel()
-    p_stag = np.asarray(p_stag_raw, dtype=float).ravel()
-    if r_basic.size == 0 or vol_arr.size == 0 or p_stag.size == 0:
-        return _warn_invalid_tau_drain(interior_o, s_top=s_top)
+        r_basic = np.asarray(r_basic_raw, dtype=float).ravel()
+        vol_arr = np.asarray(vol_raw, dtype=float).ravel()
+        p_stag = np.asarray(p_stag_raw, dtype=float).ravel()
+        if r_basic.size == 0 or vol_arr.size == 0 or p_stag.size == 0:
+            return _warn_invalid_tau_drain(interior_o, s_top=s_top)
 
-    r_outer = float(r_basic[-1])
-    vol_top = float(vol_arr[-1])
-    p_top = float(p_stag[-1])
-    area_s = 4.0 * math.pi * r_outer * r_outer
-    dr_eff = vol_top / area_s if area_s > 0.0 else float('nan')
+        r_outer = float(r_basic[-1])
+        vol_top = float(vol_arr[-1])
+        p_top = float(p_stag[-1])
+        area_s = 4.0 * math.pi * r_outer * r_outer
+        dr_eff = vol_top / area_s if area_s > 0.0 else float('nan')
+        t_surf = float(hf_row.get('T_surf', hf_row.get('T_magma', float('nan'))))
+        f_raw = float(hf_row.get('F_atm', float('nan')))
+        s_min = float(getattr(eos, 'S_min', float('nan')))
 
-    rho_top = float(
-        np.asarray(eos.density(np.array([p_top]), np.array([s_top])), dtype=float).ravel()[0]
-    )
-    cp_top = float(
-        np.asarray(
-            eos.heat_capacity(np.array([p_top]), np.array([s_top])), dtype=float
-        ).ravel()[0]
-    )
-    phi_raw = float(
-        np.asarray(
-            eos.melt_fraction(np.array([p_top]), np.array([s_top])), dtype=float
-        ).ravel()[0]
-    )
-    s_min = float(getattr(eos, 'S_min', float('nan')))
-    s_solid_probe = max(s_min + _TAU_DRAIN_SOLID_S_OFFSET, min(s_top, _TAU_DRAIN_SOLID_S_CAP))
-    cp_solid = float(
-        np.asarray(
-            eos.heat_capacity(np.array([p_top]), np.array([s_solid_probe])), dtype=float
-        ).ravel()[0]
-    )
-    t_surf = float(hf_row.get('T_surf', hf_row.get('T_magma', float('nan'))))
-    f_raw = float(hf_row.get('F_atm', float('nan')))
+        if (
+            not (
+                math.isfinite(s_top)
+                and math.isfinite(p_top)
+                and math.isfinite(dr_eff)
+                and math.isfinite(t_surf)
+                and math.isfinite(f_raw)
+                and math.isfinite(s_min)
+            )
+            or p_top <= 0.0
+            or dr_eff <= 0.0
+            or t_surf <= 0.0
+        ):
+            return _warn_invalid_tau_drain(
+                interior_o, s_top=s_top, t_surf=t_surf, dr_eff=dr_eff
+            )
+
+        rho_top = float(
+            np.asarray(eos.density(np.array([p_top]), np.array([s_top])), dtype=float).ravel()[
+                0
+            ]
+        )
+        cp_top = float(
+            np.asarray(
+                eos.heat_capacity(np.array([p_top]), np.array([s_top])), dtype=float
+            ).ravel()[0]
+        )
+        phi_raw = float(
+            np.asarray(
+                eos.melt_fraction(np.array([p_top]), np.array([s_top])), dtype=float
+            ).ravel()[0]
+        )
+        s_solid_probe = max(
+            s_min + _TAU_DRAIN_SOLID_S_OFFSET, min(s_top, _TAU_DRAIN_SOLID_S_CAP)
+        )
+        cp_solid = float(
+            np.asarray(
+                eos.heat_capacity(np.array([p_top]), np.array([s_solid_probe])), dtype=float
+            ).ravel()[0]
+        )
+    except (AttributeError, TypeError, ValueError, IndexError):
+        return _warn_invalid_tau_drain(interior_o)
 
     if (
         not (

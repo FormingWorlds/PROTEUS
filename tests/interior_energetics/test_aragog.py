@@ -5396,8 +5396,7 @@ def test_the_runner_hands_the_helpfile_table_to_the_solver_setup():
 @pytest.mark.unit
 def test_aragog_runner_resume_top_cell_dt_limit_on_caps_first_step():
     """On resume with top_cell_dt_limit = True, AragogRunner recomputes dt after
-    setup_or_update_solver populates aragog_solver and updates end_time without
-    double-decrementing dt_hysteresis_remaining."""
+    setup_or_update_solver populates aragog_solver and updates end_time."""
     from proteus.config._interior import Aragog
     from proteus.interior_energetics.aragog import AragogRunner
 
@@ -5409,7 +5408,7 @@ def test_aragog_runner_resume_top_cell_dt_limit_on_caps_first_step():
     )
     hf_row = {'Time': 3102.5}
     hf_all = MagicMock()
-    interior_o = SimpleNamespace(aragog_solver=None, ic=2, dt_hysteresis_remaining=2)
+    interior_o = SimpleNamespace(aragog_solver=None, ic=2)
     populated_solver = SimpleNamespace(
         parameters=SimpleNamespace(solver=SimpleNamespace(end_time=0.0))
     )
@@ -5417,8 +5416,6 @@ def test_aragog_runner_resume_top_cell_dt_limit_on_caps_first_step():
 
     def _fake_compute(cfg, dirs, row, table, io):
         seen_solvers.append(io.aragog_solver)
-        if getattr(io, 'dt_hysteresis_remaining', 0) > 0:
-            io.dt_hysteresis_remaining -= 1
         return 100.0 if io.aragog_solver is None else 2.75
 
     def _fake_setup(cfg, row, io, dt, dirs, hf_all=None):
@@ -5435,7 +5432,6 @@ def test_aragog_runner_resume_top_cell_dt_limit_on_caps_first_step():
     assert mock_dt.call_count == 2
     assert seen_solvers == [None, populated_solver]
     assert populated_solver.parameters.solver.end_time == pytest.approx(3105.25, rel=1e-12)
-    assert interior_o.dt_hysteresis_remaining == 1
 
 
 @pytest.mark.unit
