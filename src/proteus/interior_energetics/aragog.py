@@ -661,6 +661,8 @@ class AragogRunner:
                 AragogRunner.update_solver(dt, hf_row, interior_o, output_dir=dirs['output'])
             _t_init = time.perf_counter()
             interior_o.aragog_solver.initialize()
+            if not hasattr(interior_o.aragog_solver, '_solution'):
+                interior_o.aragog_solver._solution = None
             if config.interior_energetics.aragog.core_bc == 'core_module':
                 aragog_core.freeze_core_profile(interior_o)
             _t_after_init = time.perf_counter()

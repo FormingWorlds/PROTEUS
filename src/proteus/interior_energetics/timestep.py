@@ -21,12 +21,75 @@ SMALL = 1e-8  # Small number
 _TAU_DRAIN_F_MIN = 1.0  # Minimum surface flux [W m^-2] for top-cell drain timescale
 _TAU_DRAIN_PHI_GATE = 0.60  # Melt-fraction gate below which solid heat capacity caps cp_eff
 _TAU_DRAIN_PHI_RAMP = 0.40  # Melt-fraction upper endpoint of the optional solid rel_dT ramp
-_TAU_DRAIN_SOLID_S_OFFSET = 300.0  # Entropy offset [J kg^-1 K^-1] above table minimum S_min
-_TAU_DRAIN_SOLID_S_CAP = 1800.0  # Upper entropy cap [J kg^-1 K^-1] for solid-branch cp lookup
+# Solid-probe floor S_min + 300 J/(kg K): at P_top = 0.4461 GPa, T = 303.5 K (phi = 0) on the
+# shipped PALEOS table (S_min = 106.12) and T = 183.2 K (phi = 0) on the extended table (S_min = 25.99).
+_TAU_DRAIN_SOLID_S_OFFSET = 300.0
+# Solid-probe cap 1800 J/(kg K): at P_top = 0.4461 GPa, T = 876.5 K and phi = 0 on both PALEOS
+# tables, 703.9 J/(kg K) below the solidus onset (S_sol = 2503.9 J/(kg K), T_sol = 1429.8 K).
+_TAU_DRAIN_SOLID_S_CAP = 1800.0
+_ARAGOG_SOLVER_ATTRS: tuple[str, ...] = (
+    '_solution',
+    '_S0',
+    '_n_stag',
+    '_r_basic_flat',
+    '_volume_flat',
+    '_P_stag_flat',
+)
+_ARAGOG_EOS_ATTRS: tuple[str, ...] = (
+    'S_min',
+    'density',
+    'heat_capacity',
+    'melt_fraction',
+)
+
+
+def _warn_invalid_tau_drain(
+    interior_o,
+    s_top: float = float('nan'),
+    t_surf: float = float('nan'),
+    phi_raw: float = float('nan'),
+    rho_top: float = float('nan'),
+    cp_top: float = float('nan'),
+    dr_eff: float = float('nan'),
+) -> float:
+    """Log one warning per run for an incomplete or invalid tau_drain state and return inf."""
+    if interior_o is not None and not getattr(interior_o, '_tau_drain_invalid_warned', False):
+        log.warning(
+            'Non-finite or non-positive top-cell state in tau_drain '
+            '(S=%.3g, T_surf=%.3g, phi=%.3g, rho=%.3g, cp=%.3g, dr=%.3g); skipping cap.',
+            s_top,
+            t_surf,
+            phi_raw,
+            rho_top,
+            cp_top,
+            dr_eff,
+        )
+        interior_o._tau_drain_invalid_warned = True
+    return np.inf
 
 
 def _estimate_tau_drain(config: Config, hf_row: dict, interior_o) -> float:
     """Estimate the top-cell sensible-heat drain timescale for Aragog.
+
+    When ``interior_o`` or ``interior_o.aragog_solver`` is ``None``, this is the
+    normal start-of-run case before the first Aragog step initializes the solver,
+    so ``np.inf`` is returned without logging a warning. Once ``aragog_solver`` is
+    present, missing any attribute in ``_ARAGOG_SOLVER_ATTRS`` or ``_ARAGOG_EOS_ATTRS``
+    or encountering a non-finite or non-positive state logs one warning per run
+    and returns ``np.inf``.
+
+    At the top staggered cell ($P_{\\text{top}} \\approx 0.4461\\text{ GPa}$), the solid
+    heat-capacity probe evaluates $S_{\\text{probe}} = \\max(S_{\\min} + 300,\\,
+    \\min(S_{\\text{top}},\\, 1800))\\text{ J kg}^{-1}\\text{ K}^{-1}$. On both the shipped
+    PALEOS table ($S_{\\min} = 106.12\\text{ J kg}^{-1}\\text{ K}^{-1}$) and the extended
+    low-temperature PALEOS table ($S_{\\min} = 25.99\\text{ J kg}^{-1}\\text{ K}^{-1}$),
+    $S = 1800\\text{ J kg}^{-1}\\text{ K}^{-1}$ sits in the pure solid phase ($T = 876.50\\text{ K}$,
+    $\\phi = 0$, $c_p = 1232.05\\text{ J kg}^{-1}\\text{ K}^{-1}$) well below the solidus
+    onset ($S_{\\text{sol}} = 2503.9\\text{ J kg}^{-1}\\text{ K}^{-1}$, $T_{\\text{sol}} = 1429.79\\text{ K}$),
+    while $S_{\\min} + 300$ sits at $406.12\\text{ J kg}^{-1}\\text{ K}^{-1}$ ($T = 303.53\\text{ K}$,
+    $\\phi = 0$, $c_p = 823.73\\text{ J kg}^{-1}\\text{ K}^{-1}$) on the shipped table and at
+    $325.99\\text{ J kg}^{-1}\\text{ K}^{-1}$ ($T = 183.20\\text{ K}$, $\\phi = 0$,
+    $c_p = 528.90\\text{ J kg}^{-1}\\text{ K}^{-1}$) on the extended table, above the table floor.
 
     Parameters
     ----------
@@ -41,26 +104,55 @@ def _estimate_tau_drain(config: Config, hf_row: dict, interior_o) -> float:
     -------
     float
         Estimated top-cell drain timescale in years, or ``np.inf`` when
-        no populated Aragog solver state is available.
+        no valid Aragog solver state is available.
     """
     solver = getattr(interior_o, 'aragog_solver', None) if interior_o is not None else None
     if solver is None:
         return np.inf
 
     eos = getattr(solver, 'entropy_eos', None)
+    if (
+        any(not hasattr(solver, attr) for attr in _ARAGOG_SOLVER_ATTRS)
+        or eos is None
+        or any(not hasattr(eos, attr) for attr in _ARAGOG_EOS_ATTRS)
+    ):
+        return _warn_invalid_tau_drain(interior_o)
+
     sol = getattr(solver, '_solution', None)
     if sol is not None and getattr(sol, 'y', None) is not None and np.size(sol.y) > 0:
-        s_block = np.asarray(solver.entropy_staggered, dtype=float)
+        if not hasattr(solver, 'entropy_staggered'):
+            return _warn_invalid_tau_drain(interior_o)
+        s_block = np.asarray(getattr(solver, 'entropy_staggered'), dtype=float)
+        if s_block.size == 0:
+            return _warn_invalid_tau_drain(interior_o)
         s_vec = s_block[:, -1] if s_block.ndim > 1 else s_block
         s_top = float(s_vec.ravel()[-1])
     else:
-        n_stag = int(getattr(solver, '_n_stag', 0))
-        s0 = np.asarray(solver._S0, dtype=float).ravel()
-        s_top = float(s0[n_stag - 1] if 0 < n_stag <= s0.size else s0[-1])
+        n_stag_raw = getattr(solver, '_n_stag', None)
+        s0_raw = getattr(solver, '_S0', None)
+        if n_stag_raw is None or s0_raw is None:
+            return _warn_invalid_tau_drain(interior_o)
+        n_stag = int(n_stag_raw)
+        s0 = np.asarray(s0_raw, dtype=float).ravel()
+        if s0.size == 0 or n_stag <= 0:
+            return _warn_invalid_tau_drain(interior_o)
+        s_top = float(s0[n_stag - 1] if n_stag <= s0.size else s0[-1])
 
-    r_outer = float(np.asarray(solver._r_basic_flat, dtype=float).ravel()[-1])
-    vol_top = float(np.asarray(solver._volume_flat, dtype=float).ravel()[-1])
-    p_top = float(np.asarray(solver._P_stag_flat, dtype=float).ravel()[-1])
+    r_basic_raw = getattr(solver, '_r_basic_flat', None)
+    vol_raw = getattr(solver, '_volume_flat', None)
+    p_stag_raw = getattr(solver, '_P_stag_flat', None)
+    if r_basic_raw is None or vol_raw is None or p_stag_raw is None:
+        return _warn_invalid_tau_drain(interior_o, s_top=s_top)
+
+    r_basic = np.asarray(r_basic_raw, dtype=float).ravel()
+    vol_arr = np.asarray(vol_raw, dtype=float).ravel()
+    p_stag = np.asarray(p_stag_raw, dtype=float).ravel()
+    if r_basic.size == 0 or vol_arr.size == 0 or p_stag.size == 0:
+        return _warn_invalid_tau_drain(interior_o, s_top=s_top)
+
+    r_outer = float(r_basic[-1])
+    vol_top = float(vol_arr[-1])
+    p_top = float(p_stag[-1])
     area_s = 4.0 * math.pi * r_outer * r_outer
     dr_eff = vol_top / area_s if area_s > 0.0 else float('nan')
 
@@ -77,7 +169,7 @@ def _estimate_tau_drain(config: Config, hf_row: dict, interior_o) -> float:
             eos.melt_fraction(np.array([p_top]), np.array([s_top])), dtype=float
         ).ravel()[0]
     )
-    s_min = float(eos.S_min)
+    s_min = float(getattr(eos, 'S_min', float('nan')))
     s_solid_probe = max(s_min + _TAU_DRAIN_SOLID_S_OFFSET, min(s_top, _TAU_DRAIN_SOLID_S_CAP))
     cp_solid = float(
         np.asarray(
@@ -105,19 +197,15 @@ def _estimate_tau_drain(config: Config, hf_row: dict, interior_o) -> float:
         or cp_solid <= 0.0
         or t_surf <= 0.0
     ):
-        if not getattr(interior_o, '_tau_drain_invalid_warned', False):
-            log.warning(
-                'Non-finite or non-positive top-cell state in tau_drain '
-                '(S=%.3g, T_surf=%.3g, phi=%.3g, rho=%.3g, cp=%.3g, dr=%.3g); skipping cap.',
-                s_top,
-                t_surf,
-                phi_raw,
-                rho_top,
-                cp_top,
-                dr_eff,
-            )
-            interior_o._tau_drain_invalid_warned = True
-        return np.inf
+        return _warn_invalid_tau_drain(
+            interior_o,
+            s_top=s_top,
+            t_surf=t_surf,
+            phi_raw=phi_raw,
+            rho_top=rho_top,
+            cp_top=cp_top,
+            dr_eff=dr_eff,
+        )
 
     phi_top = min(1.0, max(0.0, phi_raw))
     cp_eff = min(cp_top, cp_solid) if phi_top <= _TAU_DRAIN_PHI_GATE else cp_top
