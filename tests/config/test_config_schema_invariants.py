@@ -1569,3 +1569,34 @@ def test_lowt_extension_requires_the_aragog_interior():
     assert lowt_extension_requires_aragog(make('aragog', True), None, None) is None
     for module in ('spider', 'dummy', 'aragog'):
         assert lowt_extension_requires_aragog(make(module, False), None, None) is None
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('module', 'ok'), [('aragog', True), ('spider', False), ('dummy', False)]
+)
+def test_lowt_extension_check_runs_when_a_config_file_is_read(tmp_path, module, ok):
+    """The Aragog-only check of lowt_extension is registered on the config: reading a TOML file
+    with the switch on refuses every interior except Aragog."""
+    from pathlib import Path
+
+    base = (Path(__file__).parents[2] / 'input' / 'all_options.toml').read_text()
+    for line in (
+        '        lowt_extension        = false',
+        '    module                    = "aragog"     # aragog | spider | dummy',
+    ):
+        assert base.count(line) == 1
+    text = base.replace(
+        '        lowt_extension        = false', '        lowt_extension        = true'
+    )
+    text = text.replace(
+        '    module                    = "aragog"     # aragog | spider | dummy',
+        f'    module                    = "{module}"',
+    )
+    path = tmp_path / 'cfg.toml'
+    path.write_text(text)
+    if ok:
+        assert read_config_object(path).interior_struct.zalmoxis.lowt_extension is True
+    else:
+        with pytest.raises(ValueError, match='lowt_extension = true requires'):
+            read_config_object(path)

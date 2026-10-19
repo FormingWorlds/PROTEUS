@@ -4689,3 +4689,23 @@ def test_missing_extension_file_stops_before_the_cache_key(tmp_path, monkeypatch
     with pytest.raises(ZalmoxisMissingEOSFilesError, match='low-temperature'):
         _lowt_stubbed_run(tmp_path, monkeypatch, lowt=True, write_ext=False)
     assert not (tmp_path / zmod.LOWT_EXTENSION_FILE).exists()
+
+
+def test_default_pressure_columns_skip_the_clinoenstatite_band():
+    """For 1 Earth mass and the default table size, no P-S column lies between 6.746 and 7.0 GPa.
+
+    The documented interpolation bound of the low-temperature extension (2.65 % between the two
+    lowest entropy nodes) holds on these columns only: inside that band the extension row at
+    6.918 GPa crosses the clinoenstatite boundary and the error reaches 19 %. A change of the
+    default P_max or lookup_nP that moves a column into the band fails here.
+    """
+    from types import SimpleNamespace
+
+    from proteus.config._struct import Zalmoxis
+    from proteus.interior_struct.zalmoxis import _ps_p_max
+
+    p_max = _ps_p_max(SimpleNamespace(planet=SimpleNamespace(mass_tot=1.0)))
+    cols = np.linspace(1e5, p_max, Zalmoxis().lookup_nP)
+    assert p_max == pytest.approx(3.5e11)
+    assert not np.any((cols > 6.746e9) & (cols < 7.0e9))
+    assert np.any(np.isclose(cols, 6.7458e9, rtol=1e-4))
