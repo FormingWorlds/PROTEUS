@@ -85,11 +85,15 @@ def test_orchestrator_check_row_invariants_stop_mode_per_family(tmp_path: Path):
         'M_vaps': 0.0,
         'Phi_global': 0.5,
     }
-    with pytest.raises(InvariantViolationError) as exc_info:
+    try:
         check_row_invariants(row_struct, cfg_stop, directories=dirs)
-    assert exc_info.value.status_code == STATUS_ERROR_MASS_INVARIANT
-    assert exc_info.value.invariant_name == 'struct_mass_desync_frac'
-    status_lines = (tmp_path / 'status').read_text(encoding='utf-8').splitlines()
+        assert False, 'expected InvariantViolationError for structure family'
+    except InvariantViolationError as exc_info:
+        assert exc_info.status_code == STATUS_ERROR_MASS_INVARIANT
+        assert exc_info.invariant_name == 'struct_mass_desync_frac'
+    status_file = tmp_path / 'status'
+    assert status_file.exists(), 'status file was not written'
+    status_lines = status_file.read_text(encoding='utf-8').splitlines()
     assert status_lines[0].strip() == '31'
     assert status_lines[1].strip() == 'Error (Mass conservation invariant)'
 
@@ -105,11 +109,14 @@ def test_orchestrator_check_row_invariants_stop_mode_per_family(tmp_path: Path):
         'P_surf': 10.0,
         'Phi_global': 0.5,
     }
-    with pytest.raises(InvariantViolationError) as exc_info:
+    try:
         check_row_invariants(row_vol, cfg_stop, directories=dirs)
-    assert exc_info.value.status_code == STATUS_ERROR_MASS_INVARIANT
-    assert exc_info.value.invariant_name == 'M_atm_planet_cap'
-    status_lines = (tmp_path / 'status').read_text(encoding='utf-8').splitlines()
+        assert False, 'expected InvariantViolationError for volatile family'
+    except InvariantViolationError as exc_info:
+        assert exc_info.status_code == STATUS_ERROR_MASS_INVARIANT
+        assert exc_info.invariant_name == 'M_atm_planet_cap'
+    assert status_file.exists(), 'status file was not written'
+    status_lines = status_file.read_text(encoding='utf-8').splitlines()
     assert status_lines[0].strip() == '31'
 
     # 3. State bounds family stop (status 32)
@@ -125,11 +132,14 @@ def test_orchestrator_check_row_invariants_stop_mode_per_family(tmp_path: Path):
         'M_vaps': 0.0,
         'Phi_global': 0.5,
     }
-    with pytest.raises(InvariantViolationError) as exc_info:
+    try:
         check_row_invariants(row_state, cfg_stop, directories=dirs)
-    assert exc_info.value.status_code == STATUS_ERROR_STATE_BOUNDS_INVARIANT
-    assert exc_info.value.invariant_name == 'T_surf_bounds'
-    status_lines = (tmp_path / 'status').read_text(encoding='utf-8').splitlines()
+        assert False, 'expected InvariantViolationError for state bounds family'
+    except InvariantViolationError as exc_info:
+        assert exc_info.status_code == STATUS_ERROR_STATE_BOUNDS_INVARIANT
+        assert exc_info.invariant_name == 'T_surf_bounds'
+    assert status_file.exists(), 'status file was not written'
+    status_lines = status_file.read_text(encoding='utf-8').splitlines()
     assert status_lines[0].strip() == '32'
     assert status_lines[1].strip() == 'Error (State bounds invariant)'
 
@@ -183,10 +193,11 @@ def test_stop_mode_main_loop_reads_status_and_spies_zalmoxis_flush(
     monkeypatch.setattr(proteus.atmos_clim, 'run_atmosphere', atmos)
     monkeypatch.setattr(atmos_wrapper, 'run_atmosphere', atmos)
 
-    with pytest.raises(InvariantViolationError) as exc_info:
+    try:
         runner.start(resume=False, offline=True)
-
-    assert exc_info.value.status_code == STATUS_ERROR_STATE_BOUNDS_INVARIANT
+        assert False, 'expected InvariantViolationError was not raised'
+    except InvariantViolationError as exc_info:
+        assert exc_info.status_code == STATUS_ERROR_STATE_BOUNDS_INVARIANT
     assert len(zalmoxis_flushed) >= 2
     status_file = out / 'status'
     assert status_file.exists()
@@ -362,10 +373,18 @@ def test_energy_invariants_all_zero_energy_row_and_empty_hf_all():
         'solver_residual_J': 0.0,
         'core_C_eff': 0.0,
     }
-    assert check_energy_invariants(hf_row_zeros, cfg, hf_all) == []
+    try:
+        viols = check_energy_invariants(hf_row_zeros, cfg, hf_all)
+    except ZeroDivisionError as exc:
+        assert False, f'denom_gross zero division when all heat zero: {exc}'
+    assert viols == []
 
     # Empty hf_all guard
-    assert check_energy_invariants(hf_row_zeros, cfg, pd.DataFrame()) == []
+    try:
+        viols_empty = check_energy_invariants(hf_row_zeros, cfg, pd.DataFrame())
+    except ZeroDivisionError as exc:
+        assert False, f'denom_gross zero division on empty hf_all: {exc}'
+    assert viols_empty == []
 
     # Non-empty row with E_state_cons_J == 0.0 returns []
     hf_row_no_e_state = dict(hf_row_zeros, E_state_cons_J=0.0, solver_residual_J=1.0e20)
@@ -675,17 +694,23 @@ def test_config_equal_default_swaps_detected():
 @pytest.mark.parametrize('bad_mode', ['warn', 'Stop', 'STOP', ''])
 def test_config_mode_near_misses_rejected(bad_mode):
     """Verify near-miss mode strings are rejected by Invariants validator."""
-    with pytest.raises((ValueError, TypeError)):
+    try:
         Invariants(mode=bad_mode)
+        assert False, f'expected ValueError/TypeError for mode {bad_mode}'
+    except (ValueError, TypeError):
+        pass
 
 
 def test_config_non_negative_fields_accept_zero():
     """Verify non-negative tolerances accept 0.0."""
-    inv = Invariants(
-        planet_mass_cap_rtol=0.0,
-        escape_bound_atol_kg=0.0,
-        phi_global_atol=0.0,
-    )
+    try:
+        inv = Invariants(
+            planet_mass_cap_rtol=0.0,
+            escape_bound_atol_kg=0.0,
+            phi_global_atol=0.0,
+        )
+    except ValueError as exc:
+        assert False, f'non-negative tolerance rejected 0.0: {exc}'
     assert inv.planet_mass_cap_rtol == 0.0
     assert inv.escape_bound_atol_kg == 0.0
     assert inv.phi_global_atol == 0.0
@@ -877,7 +902,10 @@ def test_orchestrator_default_mode_is_report_when_unspecified():
         'P_surf': 1.0,
     }
     # Under report mode, check_row_invariants returns violations without raising.
-    violations = check_row_invariants(row_viol, cfg_no_mode)
+    try:
+        violations = check_row_invariants(row_viol, cfg_no_mode)
+    except InvariantViolationError as exc:
+        assert False, f'unspecified mode raised InvariantViolationError: {exc}'
     assert any(v.name == 'T_surf_bounds' for v in violations)
 
 
@@ -886,10 +914,13 @@ def test_energy_invariants_empty_hf_all_and_zero_state_guards():
     cfg = _make_mock_config()
     row = {'Time': 10.0, 'E_state_cons_J': 1.0e31}
     # Test empty dataframe with columns to detect unindexed iloc calls.
-    assert (
-        check_energy_invariants(row, cfg, pd.DataFrame(columns=['Time', 'E_state_heat_cons_J']))
-        == []
-    )
+    try:
+        viols = check_energy_invariants(
+            row, cfg, pd.DataFrame(columns=['Time', 'E_state_heat_cons_J'])
+        )
+    except IndexError as exc:
+        assert False, f'empty hf_all raised IndexError: {exc}'
+    assert viols == []
 
     hf_all = pd.DataFrame([{'Time': 10.0, 'E_state_cons_J': 1.0e31, 'step_dE_F_int_J': 1.0e25}])
     row_zero = {
@@ -1411,3 +1442,335 @@ def test_proteus_main_loop_provides_hf_history_on_second_loop(tmp_path, monkeypa
 
     assert history_by_loop.get(1) is False
     assert history_by_loop.get(2) is True
+
+
+def test_energy_invariants_denom_gross_has_floor_one_when_all_heat_zero():
+    """Verify denom_gross has 1.0 floor when all state and flux heat are zero (kills E10)."""
+    cfg = _make_mock_config()
+    hf_row = {
+        'Time': 10.0,
+        'T_surf': 2500.0,
+        'T_magma': 3000.0,
+        'Phi_global': 1.0,
+        'E_state_cons_J': 0.0,
+        'E_state_heat_cons_J': 0.0,
+        'step_dE_state_heat_J': 0.0,
+        'step_dE_F_int_J': 0.0,
+        'step_dE_F_cmb_J': 0.0,
+        'step_dE_Q_radio_J': 0.0,
+        'step_dE_Q_tidal_J': 0.0,
+        'step_dE_core_J': 0.0,
+        'core_C_eff': 0.0,
+        'E_residual_cons_J': 1.0,
+        'solver_residual_J': 0.0,
+    }
+    hf_all = pd.DataFrame([hf_row])
+    try:
+        viols = check_energy_invariants(hf_row, cfg, hf_all)
+    except ZeroDivisionError as exc:
+        assert False, f'denom_gross zero division when all heat zero: {exc}'
+    assert len(viols) == 0
+
+
+def test_energy_invariants_e_res_frac_gross_exact_boundary():
+    """Verify e_res_frac_gross exact equality at eff_energy_rtol does not violate (kills E20)."""
+    cfg = _make_mock_config(energy_residual_rtol=2.6e-4)
+    hf_all = pd.DataFrame(
+        [
+            {
+                'Time': 10.0,
+                'E_state_cons_J': 1.0e31,
+                'E_state_heat_cons_J': 1.0e26,
+                'step_dE_F_int_J': 1.0e26,
+                'step_dE_F_cmb_J': 0.0,
+                'step_dE_Q_radio_J': 0.0,
+                'step_dE_Q_tidal_J': 0.0,
+            }
+        ]
+    )
+    denom = 1.0e26
+    tol = 2.6e-4
+    hf_row = {
+        'Time': 20.0,
+        'T_surf': 2500.0,
+        'T_magma': 3000.0,
+        'Phi_global': 1.0,
+        'E_state_cons_J': 1.0e31,
+        'E_state_heat_cons_J': 0.0,
+        'step_dE_state_heat_J': 0.0,
+        'step_dE_F_int_J': 0.0,
+        'step_dE_F_cmb_J': 0.0,
+        'step_dE_Q_radio_J': 0.0,
+        'step_dE_Q_tidal_J': 0.0,
+        'step_dE_core_J': 0.0,
+        'core_C_eff': 0.0,
+        'E_residual_cons_J': tol * denom,
+        'solver_residual_J': 0.0,
+    }
+    viols = check_energy_invariants(hf_row, cfg, hf_all)
+    assert not any(v.name == 'E_residual_cons_frac_gross' for v in viols)
+
+
+def test_volatile_invariants_total_at_negative_closure_atol_boundary():
+    """Verify total equal to -closure_atol_kg does not trigger negative total violation (kills V11)."""
+    cfg = _make_mock_config(element_closure_atol_kg=1.0e10, element_closure_rtol=1.0e-4)
+    row = {
+        'Time': 10.0,
+        'M_planet': 6.0e24,
+        'M_atm': 0.0,
+        'M_vol_atm': 0.0,
+        'M_vol_initial': 1.0e20,
+        'H_kg_total': -1.0e10,
+        'H_kg_atm': -1.0e10,
+        'H_kg_liquid': 0.0,
+        'H_kg_solid': 0.0,
+        'esc_kg_cumulative': 0.0,
+    }
+    viols = check_volatile_invariants(row, cfg)
+    assert not any(v.name == 'H_reservoir_closure' for v in viols)
+
+
+def test_handle_violations_stop_mode_does_not_raise_on_report_only():
+    """Verify report_only violations in stop mode do not raise (kills T08)."""
+    v = InvariantViolation(
+        name='E_residual_cons_frac_gross',
+        status_code=30,
+        value=1.0e-3,
+        tolerance=2.6e-4,
+        message='test report only',
+        report_only=True,
+    )
+    try:
+        res = handle_violations([v], mode='stop')
+    except InvariantViolationError as exc:
+        assert False, f'stop mode raised on report_only violation: {exc}'
+    assert len(res) == 1
+
+
+def test_handle_violations_report_mode_does_not_raise():
+    """Verify report mode never raises InvariantViolationError (kills T09)."""
+    v = InvariantViolation(
+        name='struct_mass_desync_frac',
+        status_code=31,
+        value=1.0e-1,
+        tolerance=1.0e-2,
+        message='test stopping violation',
+        report_only=False,
+    )
+    try:
+        res = handle_violations([v], mode='report')
+    except InvariantViolationError as exc:
+        assert False, f'report mode raised InvariantViolationError: {exc}'
+    assert len(res) == 1
+
+
+def test_orchestrator_check_row_invariants_structure_family_stop():
+    """Verify structure family violation stops in stop mode (kills O01)."""
+    cfg_stop = _make_mock_config(mode='stop')
+    row_bad_struct = {
+        'Time': 100.0,
+        'M_planet': 6.0e24,
+        'M_atm': 1.0e20,
+        'M_vol_atm': 1.0e20,
+        'struct_mass_desync_frac': 0.05,
+        'M_vaps': 0.0,
+        'T_surf': 1000.0,
+        'T_magma': 1500.0,
+        'P_surf': 10.0,
+        'Phi_global': 0.5,
+    }
+    try:
+        check_row_invariants(row_bad_struct, cfg_stop)
+        assert False, 'expected InvariantViolationError for structure family'
+    except InvariantViolationError as exc:
+        assert exc.status_code == 31
+
+
+def test_orchestrator_check_row_invariants_volatile_family_stop():
+    """Verify volatile family violation stops in stop mode (kills O02)."""
+    cfg_stop = _make_mock_config(mode='stop')
+    row_bad_vol = {
+        'Time': 100.0,
+        'M_planet': 1.0e24,
+        'M_atm': 2.0e24,
+        'M_vol_atm': 1.0e20,
+        'M_vaps': 0.0,
+        'T_surf': 1000.0,
+        'T_magma': 1500.0,
+        'P_surf': 10.0,
+        'Phi_global': 0.5,
+    }
+    try:
+        check_row_invariants(row_bad_vol, cfg_stop)
+        assert False, 'expected InvariantViolationError for volatile family'
+    except InvariantViolationError as exc:
+        assert exc.status_code == 31
+
+
+def test_orchestrator_check_row_invariants_passes_directories_to_status(tmp_path):
+    """Verify directories parameter is passed and status written (kills O06)."""
+    cfg_stop = _make_mock_config(mode='stop')
+    dirs = {'output': str(tmp_path)}
+    row_bad_state = {
+        'Time': 100.0,
+        'T_surf': -10.0,
+        'T_magma': 1500.0,
+        'P_surf': 0.0,
+        'M_planet': 6.0e24,
+        'M_atm': 0.0,
+        'M_vol_atm': 0.0,
+        'Phi_global': 0.5,
+    }
+    try:
+        check_row_invariants(row_bad_state, cfg_stop, directories=dirs)
+    except InvariantViolationError:
+        pass
+    status_file = tmp_path / 'status'
+    assert status_file.exists(), 'status file was not written (directories not passed)'
+    assert status_file.read_text(encoding='utf-8').splitlines()[0] == '32'
+
+
+def test_orchestrator_default_mode_does_not_stop():
+    """Verify unspecified mode defaults to report and does not raise (kills O07)."""
+    cfg = _make_mock_config()
+    cfg.invariants = SimpleNamespace(
+        **{k: getattr(Invariants(), k) for k in Invariants.__annotations__ if k != 'mode'}
+    )
+    row_bad = {
+        'Time': 10.0,
+        'T_surf': -100.0,
+        'T_magma': 1500.0,
+        'P_surf': 0.0,
+        'M_planet': 6.0e24,
+        'M_atm': 0.0,
+        'M_vol_atm': 0.0,
+        'Phi_global': 0.5,
+    }
+    try:
+        viols = check_row_invariants(row_bad, cfg)
+    except InvariantViolationError as exc:
+        assert False, f'unspecified mode raised InvariantViolationError: {exc}'
+    assert len(viols) >= 1
+
+
+def test_energy_invariants_empty_hf_all_guard_does_not_raise_index_error():
+    """Verify empty hf_all does not raise IndexError (kills E01)."""
+    cfg = _make_mock_config()
+    hf_row = {
+        'Time': 10.0,
+        'T_surf': 2500.0,
+        'T_magma': 3000.0,
+        'Phi_global': 1.0,
+        'E_state_cons_J': 1.0e31,
+        'E_state_heat_cons_J': 1.0e26,
+        'step_dE_state_heat_J': 0.0,
+        'step_dE_F_int_J': 0.0,
+        'step_dE_F_cmb_J': 0.0,
+        'step_dE_Q_radio_J': 0.0,
+        'step_dE_Q_tidal_J': 0.0,
+        'step_dE_core_J': 0.0,
+        'core_C_eff': 0.0,
+        'E_residual_cons_J': 0.0,
+        'solver_residual_J': 0.0,
+    }
+    empty_df = pd.DataFrame(columns=['E_state_heat_cons_J', 'step_dE_F_int_J'])
+    try:
+        viols = check_energy_invariants(hf_row, cfg, empty_df)
+    except IndexError as exc:
+        assert False, f'empty hf_all raised IndexError: {exc}'
+    assert viols == []
+
+
+def test_proteus_start_reraises_invariant_violation_error(tmp_path, monkeypatch):
+    """Verify Proteus.start() re-raises InvariantViolationError on stop (kills P07)."""
+    import proteus.proteus as proteus_mod
+    from proteus import Proteus
+    from proteus.interior_energetics.common import Interior_t
+
+    monkeypatch.setattr(Interior_t, '_load_ps_table', lambda self, *a, **kw: None)
+    out = tmp_path / 'run_p07_spy'
+    dummy_toml = Path(__file__).resolve().parents[2] / 'input' / 'dummy.toml'
+    text = dummy_toml.read_text(encoding='utf-8')
+    cfg_path = tmp_path / 'p07_spy.toml'
+    cfg_path.write_text(text.replace('path = "auto"', f'path = "{out}"', 1), encoding='utf-8')
+
+    runner = Proteus(config_path=cfg_path)
+    config = runner.config
+    config.invariants.mode = 'stop'
+    config.params.stop.solid.enabled = False
+    config.params.stop.iters.minimum = 1
+    config.params.stop.iters.maximum = 2
+    config.params.stop.time.minimum = 0.0
+    config.params.stop.time.maximum = 500.0
+    config.params.out.plot_mod = None
+    config.params.out.archive_mod = 'none'
+
+    def failing_check(hf_row, cfg, **kwargs):
+        raise InvariantViolationError(
+            InvariantViolation(
+                name='M_planet_bounds',
+                status_code=31,
+                value=0.0,
+                tolerance=0.0,
+                message='synthetic stop',
+                report_only=False,
+            )
+        )
+
+    monkeypatch.setattr(proteus_mod, 'check_row_invariants', failing_check)
+    try:
+        runner.start(resume=False, offline=True)
+        assert False, 'expected InvariantViolationError to be raised'
+    except InvariantViolationError:
+        pass
+    except Exception as exc:
+        assert False, f'expected InvariantViolationError but got {type(exc).__name__}: {exc}'
+
+
+def test_config_validators_assertion_kills():
+    """Verify Invariants validators fail with AssertionError when removed (kills C01-C06)."""
+    from proteus.config._invariants import Invariants
+
+    # C01: step_energy_smin_rtol >= step_energy_rtol
+    try:
+        Invariants(step_energy_rtol=0.05, step_energy_smin_rtol=0.01)
+        assert False, 'expected ValueError: step_energy_smin_rtol must be >= step_energy_rtol'
+    except ValueError:
+        pass
+
+    # C02: struct_mass_desync_rtol >= struct_mass_desync_warn_rtol
+    try:
+        Invariants(struct_mass_desync_warn_rtol=0.05, struct_mass_desync_rtol=0.01)
+        assert False, (
+            'expected ValueError: struct_mass_desync_rtol must be >= struct_mass_desync_warn_rtol'
+        )
+    except ValueError:
+        pass
+
+    # C03: mode must be in ('off', 'report', 'stop')
+    try:
+        Invariants(mode='warn')
+        assert False, "expected ValueError: mode 'warn' must be rejected"
+    except ValueError:
+        pass
+
+    # C04: numeric fields reject boolean True/False
+    try:
+        Invariants(energy_residual_rtol=True)
+        assert False, 'expected TypeError/ValueError: boolean True rejected'
+    except (TypeError, ValueError):
+        pass
+
+    # C05: escape_bound_factor >= 1.0
+    try:
+        Invariants(escape_bound_factor=0.5)
+        assert False, 'expected ValueError: escape_bound_factor < 1.0 rejected'
+    except ValueError:
+        pass
+
+    # C06: planet_mass_cap_rtol accepts 0.0
+    try:
+        cfg = Invariants(planet_mass_cap_rtol=0.0)
+    except ValueError as exc:
+        assert False, f'planet_mass_cap_rtol=0.0 was rejected: {exc}'
+    assert cfg.planet_mass_cap_rtol == 0.0
