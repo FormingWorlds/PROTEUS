@@ -121,15 +121,17 @@ def test_a_status_file_that_cannot_be_written_does_not_hide_the_invariant_error(
     tmp_path, monkeypatch, caplog
 ):
     """A failed status write is logged; the invariant error still reaches the caller."""
-    error = _invariant_error()
+    error, seen = _invariant_error(), None
     with (
         patch(
             'proteus.interior_struct.zalmoxis.UpdateStatusfile',
             side_effect=OSError('read-only output'),
         ),
         caplog.at_level(logging.ERROR),
-        pytest.raises(StructureInvariantError) as raised,
     ):
-        _run_gate_solver(tmp_path, monkeypatch, 'Seager2007:silicate', None, None, [error])
-    assert raised.value is error
+        try:
+            _run_gate_solver(tmp_path, monkeypatch, 'Seager2007:silicate', None, None, [error])
+        except Exception as exc:  # noqa: BLE001 -- which error escapes is the assertion
+            seen = exc
+    assert seen is error, repr(seen)
     assert 'read-only output' in caplog.text
