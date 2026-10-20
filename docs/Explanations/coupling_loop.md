@@ -182,16 +182,17 @@ The PALEOS solid table at $P_\mathrm{top} = 0.446\,\mathrm{GPa}$ holds
 $T = T_\mathrm{sol} = 1429.77\,\mathrm{K}$ on every node from
 $S = 2429.71\,\mathrm{J\,kg^{-1}\,K^{-1}}$, the last node below
 $S_\mathrm{sol} = 2503.84\,\mathrm{J\,kg^{-1}\,K^{-1}}$, to the end of the
-table. A lookahead trial that lands on this flat part, or in the low-entropy
-clamp of the table at $P_\mathrm{top}$, measures a temperature drop that is
-too small for its entropy interval, so the chord $c_p$ exceeds the heat taken
-per kelvin of cooling and the step can exceed $\Delta T_\mathrm{allow}$.
-This is shown on constructed slice states and has not occurred in the coupled
-runs: from $S_\mathrm{top} = 3106.1\,\mathrm{J\,kg^{-1}\,K^{-1}}$
-($\phi_\mathrm{top} = 0.605$) the trial lands on the flat part and the
-linearized ratio is $1.005$ at $\eta = 0.08$ with
-$T_\mathrm{surf}/T_\mathrm{top} = 1.05$ and $1.077$ at $\eta = 0.15$ with
-$T_\mathrm{surf}/T_\mathrm{top} = 0.60$.
+table. A lookahead trial that reaches or spans this flat part measures a
+temperature drop that is too small for its entropy interval, so the chord $c_p$
+exceeds the heat taken per kelvin of cooling and the step can exceed
+$\Delta T_\mathrm{allow}$. On constructed slice states this gives a linearized
+ratio of $1.005$ at $\eta = 0.08$ ($S_\mathrm{top} =
+3106.1\,\mathrm{J\,kg^{-1}\,K^{-1}}$, $\phi_\mathrm{top} = 0.605$,
+$T_\mathrm{surf}/T_\mathrm{top} = 1.05$) and up to $1.077$ at $\eta = 0.15$
+(same $S_\mathrm{top}$, $T_\mathrm{surf}/T_\mathrm{top} = 0.60$). Trials in the
+low-entropy clamp of the table stay below $1$ up to $\eta = 0.15$. In the
+coupled runs below, trials reach the flat part only near the solidus, where the
+chord does not fire, and no step exceeds $\Delta T_\mathrm{allow}$.
 
 Across 3 coupled runs over 2 dummy-atmosphere configurations of a $1\,M_\oplus$
 planet with the PALEOS $\mathrm{MgSiO}_3$ EOS and dummy star to
@@ -199,28 +200,31 @@ $25\,\mathrm{kyr}$ at `top_cell_dt_rel_dT = top_cell_dt_rel_dT_solid = 0.08`
 ($0.5\,\mathrm{au}$ with `surf_greyalbedo = 0.2` on both Aragog versions, and
 $0.7\,\mathrm{au}$ with `surf_greyalbedo = 0.0` on the development version),
 the maximum per-step $|\Delta T_\mathrm{surf}| / (\eta_\mathrm{eff}
-T_\mathrm{surf})$, with $T_\mathrm{surf}$ at step start, is $0.690$, $0.658$,
-and $0.659$, with $0$ steps above $1$ and $0$ late drops (steps where
+T_\mathrm{surf})$, with $T_\mathrm{surf}$ at step start, is $0.690$ (`main`)
+and $0.658$ (development) at $0.5\,\mathrm{au}$ and $0.659$ at
+$0.7\,\mathrm{au}$, with $0$ steps above $1$ and $0$ late drops (steps where
 $T_\mathrm{magma}$ falls to the table floor near $302\,\mathrm{K}$).
 These runs take $1850$ to $1852$ rows; the 2 runs on the Aragog development
-version take $9$ rows more than the $0.08$ runs at an earlier commit without
-the lookahead, with other source changes between them. With the option off,
+version continue from the state at about $2\,\mathrm{yr}$ of an earlier run
+(the $0.7\,\mathrm{au}$ one from a run on the Aragog `main` version). With the
+option off,
 the same configurations take $218$ and $243$ rows on the Aragog development
 version and $50$ rows on the Aragog `main` version.
 With `atmos_clim.module = 'agni'` in place of the dummy atmosphere and every
 other setting of the $0.5\,\mathrm{au}$ configuration unchanged (Aragog `main`
 version), the $0.08$ run reaches $25\,\mathrm{kyr}$ in $1360$ rows with a
-maximum per-step ratio of $0.470$, about $40\,\mathrm{yr}$ after the top cell crosses
-the liquidus near $1200\,\mathrm{yr}$, $0$ steps above $1$, and $0$ late drops.
-With the option off, this configuration takes $250$ rows and has $31$ steps
+maximum per-step ratio of $0.470$, about $40\,\mathrm{yr}$ after the top cell
+crosses the liquidus near $1200\,\mathrm{yr}$, $0$ steps above $1$, and $0$
+late drops. With the option off, this configuration takes $250$ rows and has $31$ steps
 above $1$; the largest is $6.27$, where $T_\mathrm{surf}$ falls from
 $1853\,\mathrm{K}$ to $924\,\mathrm{K}$ in one $100\,\mathrm{yr}$ step.
 In an AGNI configuration with `surf_state = 'skin'` (and different albedos,
-Rayleigh scattering, and solver settings), $T_\mathrm{surf}$ is a skin
-temperature at $0.53$ to $0.94$ of $T_\mathrm{magma}$ in the $0.08$ run, which
-reaches $25\,\mathrm{kyr}$ in $1137$ rows with
-$|\Delta T_\mathrm{magma}| / (0.08\,T_\mathrm{magma})$ at most $0.61$, while its
-option-off twin drops to the table floor in one step.
+Rayleigh scattering, observation pressure, and solver settings),
+$T_\mathrm{surf}$ is a skin temperature at $0.53$ to $0.94$ of
+$T_\mathrm{magma}$ in the $0.08$ run, which reaches $25\,\mathrm{kyr}$ in
+$1137$ rows; its largest per-step drop of $T_\mathrm{magma}$ is $0.73$ of the
+allowance $0.08\,T_\mathrm{surf}$, while its option-off twin drops to the table
+floor in one step.
 
 In a computed unresupplied top-cell estimate that maps the step energy
 $q = c_{p,\mathrm{chord}}\,\Delta T_\mathrm{allow}$ back to entropy at a liquid
