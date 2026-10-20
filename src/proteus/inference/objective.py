@@ -653,9 +653,10 @@ def J(
         # Parameters the simulator cannot integrate are expected in a wide box.
         return _handle_unscored(failure, output)
 
-    # A clean exit on an error status (e.g. 25, stopped via the keepalive file),
-    # one that never reached the main loop (0, 1), or with no readable status.
-    failed = (20 <= sim_status <= 28) or (sim_status in (0, 1, STATUS_MISSING))
+    # A clean exit on an error status (e.g. 25, stopped via the keepalive file, or 33, an
+    # interior structure invariant), one that never reached the main loop (0, 1), or with no
+    # readable status.
+    failed = (20 <= sim_status <= 28) or (sim_status in (0, 1, 33, STATUS_MISSING))
 
     # Runs that completed normally on an outcome this study does not fit
     # against, in `failure_codes` or in ALWAYS_EXCLUDED_STATUSES.
