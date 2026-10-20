@@ -80,48 +80,31 @@ def _estimate_tau_drain(config: Config, hf_row: dict, interior_o) -> float:
     ``_ARAGOG_SOLVER_ATTRS`` or ``_ARAGOG_EOS_ATTRS`` or encountering a non-finite
     or non-positive state logs one warning per run and returns ``np.inf``.
 
-    At the top staggered cell ($P_{\\text{top}} \\approx 0.4461\\text{ GPa}$ on the
-    $1\\,M_{\\oplus}$ reference mesh), the solid heat-capacity probe evaluates
-    $S_{\\text{probe}} = \\max(S_{\\min} + 300,\\, \\min(S_{\\text{top}},\\, 1800))\\text{ J kg}^{-1}\\text{ K}^{-1}$.
-    On both the shipped PALEOS table ($S_{\\min} = 106.12\\text{ J kg}^{-1}\\text{ K}^{-1}$) and the extended
-    low-temperature PALEOS table ($S_{\\min} = 25.99\\text{ J kg}^{-1}\\text{ K}^{-1}$),
-    $S = 1800\\text{ J kg}^{-1}\\text{ K}^{-1}$ sits in the pure solid phase ($T = 876.50\\text{ K}$,
-    $\\phi = 0$, $c_p = 1232.05\\text{ J kg}^{-1}\\text{ K}^{-1}$) well below the solidus
-    onset ($S_{\\text{sol}} = 2503.9\\text{ J kg}^{-1}\\text{ K}^{-1}$, $T_{\\text{sol}} = 1429.79\\text{ K}$),
-    while $S_{\\min} + 300$ sits at $406.12\\text{ J kg}^{-1}\\text{ K}^{-1}$ ($T = 303.53\\text{ K}$,
-    $\\phi = 0$, $c_p = 823.73\\text{ J kg}^{-1}\\text{ K}^{-1}$) on the shipped table and at
-    $325.99\\text{ J kg}^{-1}\\text{ K}^{-1}$ ($T = 183.20\\text{ K}$, $\\phi = 0$,
-    $c_p = 528.90\\text{ J kg}^{-1}\\text{ K}^{-1}$) on the extended table, above the table floor.
+    At the top staggered cell, when $\\phi_{\\text{top}} \\le 0.60$, the step-start
+    heat capacity uses $c_{p,\\text{eff}} = \\min(c_{p,\\text{top}},\\, c_{p,\\text{solid}})$
+    where the solid heat-capacity probe evaluates
+    $S_{\\text{probe}} = \\max(S_{\\min} + 300,\\, \\min(S_{\\text{top}},\\, 1800))\\text{ J kg}^{-1}\\text{ K}^{-1}$
+    in the pure solid phase above the table floor.
 
     A 1-point EOS temperature lookahead probes
     $S_{\\text{trial}} = \\max(S_{\\text{top}} - c_{p,\\text{eff}}\\,\\Delta T_{\\text{allow}} / T_{\\text{top}},\\, S_{\\min} + 300)$
-    and replaces $c_{p,\\text{eff}}$ with
-    $c_{p,\\text{chord}} = \\min(c_{p,\\text{eff}},\\, T_{\\text{top}}\\,\\Delta S_{\\text{trial}} / \\Delta T_{\\text{trial}})$
+    and replaces $c_{p,\\text{eff}}$ with the chord heat capacity in the $T_{\\text{top}}$ form,
+    $c_{p,\\text{chord}} = \\min(c_{p,\\text{eff}},\\, T_{\\text{top}}\\,\\Delta S_{\\text{trial}} / \\Delta T_{\\text{trial}})$,
     whenever $T(P_{\\text{top}}, S_{\\text{trial}})$ falls more than $\\Delta T_{\\text{allow}}$
     below $T_{\\text{top}}$ ($\\Delta T_{\\text{trial}} = T_{\\text{top}} - T(P_{\\text{top}}, S_{\\text{trial}}) > \\Delta T_{\\text{allow}}$
-    and $S_{\\text{top}} > S_{\\text{trial}}$); this trigger fires across a liquidus crossing
-    and on every step with a mushy top cell at $\\phi_{\\text{top}} > 0.6$,
+    and $S_{\\text{top}} > S_{\\text{trial}}$). Under the step's linearization
+    $\\Delta S = q / T_{\\text{top}}$ with $q = c_{p,\\text{chord}}\\,\\Delta T_{\\text{allow}}$,
+    this bounds the linearized unresupplied top-cell temperature drop
+    $T_{\\text{top}} - T(P_{\\text{top}}, S_{\\text{top}} - q / T_{\\text{top}})$ by
+    $\\Delta T_{\\text{allow}}$ across a liquidus crossing and in the mushy regime
     where the tabulated mush ``heat_capacity`` (a lever-rule blend of the end-member heat
-    capacities) is about $2$ to $2.6$ times $T\\,\\mathrm{d}S/\\mathrm{d}T$ along the EOS. The gate
-    $\\Delta T_{\\text{trial}} > \\Delta T_{\\text{allow}}$ already forces the chord value below
-    $c_{p,\\text{eff}}$, and $\\min()$ guards floating-point round-off. Using
+    capacities) exceeds $T\\,\\mathrm{d}S/\\mathrm{d}T$ along the EOS. The gate
+    $\\Delta T_{\\text{trial}} > \\Delta T_{\\text{allow}}$ forces the chord value below
+    $c_{p,\\text{eff}}$, and $\\min()$ guards floating-point round-off; using
     $T_{\\text{mean}} = 0.5\\,(T_{\\text{top}} + T_{\\text{trial}})$ in the chord numerator
     would give a chord $c_p$ smaller by the fraction
-    $(T_{\\text{top}} - T_{\\text{trial}}) / (2\\,T_{\\text{top}})$, about $9\\%$ at the
-    $531.5\\text{ yr}$ state; the $T_{\\text{top}}$ form is the tested form (measured across
-    3 runs over 2 configurations of a $1\\,M_{\\oplus}$ planet at $0.5$ and $0.7\\text{ au}$
-    with the PALEOS $\\text{MgSiO}_3$ EOS, dummy star and dummy atmosphere to $25\\text{ kyr}$ at
-    $\\eta_T = \\eta_{T,\\text{solid}} = 0.08$: maximum per-step
-    $|\\Delta T_{\\text{surf}}| / (\\eta_{\\text{eff}}\\,T_{\\text{surf}}) = 0.69$ using
-    $T_{\\text{surf}}$ at step start, $0$ steps above $1$, $+9$ rows on each of the $2$ runs on
-    Aragog development commit ``372c2e2`` that have a $0.08$ run without lookahead, $1850$ to
-    $1852$ rows versus $218$ and $243$ rows in the same configurations with the option off on
-    Aragog development commit ``372c2e2``, or $50$ rows on Aragog ``main`` commit
-    ``075fcb05``; and on the $0.5\\text{ au}$ configuration on Aragog ``main`` commit
-    ``075fcb05`` with ``atmos_clim.module = 'agni'`` and dummy star to $25\\text{ kyr}$ at
-    $0.08$: maximum per-step $|\\Delta T_{\\text{surf}}| / (\\eta_{\\text{eff}}\\,T_{\\text{surf}}) = 0.47$
-    ($0.4733$), $0$ steps above $1$, $0$ late drops, and $1137$ rows versus $51$ rows and
-    maximum ratio $10.0$ ($10.04$) with the option off).
+    $(T_{\\text{top}} - T_{\\text{trial}}) / (2\\,T_{\\text{top}})$.
+    See ``docs/Explanations/coupling_loop.md`` for the measured run results and EOS evaluations.
 
     Parameters
     ----------

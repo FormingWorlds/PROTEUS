@@ -681,20 +681,30 @@ def test_aragog_top_cell_dt_limit_defaults_and_validators():
         Path(__file__).resolve().parents[2] / 'docs' / 'Reference' / 'config' / 'interior.md'
     ).read_text(encoding='utf-8')
     assert 'and the step does not exceed tau_drain' in interior_md
-    assert 'dummy star and dummy atmosphere' in interior_md
-    assert 'AGNI atmosphere' not in interior_md
-    assert '+9 rows on each of the 2 runs on Aragog development commit 372c2e2' in interior_md
-    assert '2 to 2.6 times' in interior_md
-    assert '0.8156' in interior_md
-    assert '0.7275' in interior_md
-    assert '1.0120' in interior_md
-    assert '1.106' in interior_md
-    assert '1.204' in interior_md
-    assert '1.370' in interior_md
     assert (
-        'T_mean would give a chord cp smaller by the fraction '
-        '(T_top - T_trial)/(2 T_top), about 9 % at the 531.5 yr state'
-    ) in interior_md
+        'cp_chord = min(cp_eff, T_top * (S_top - S_trial) / (T_top - T_trial)) in the T_top form'
+        in interior_md
+    )
+    assert (
+        "bounding the linearized unresupplied top-cell drop under the step's linearization "
+        'dS = q / T_top with q = cp_chord * dT_allow' in interior_md
+    )
+    assert (
+        'using T_mean = 0.5 * (T_top + T_trial) in the chord numerator would reduce cp_chord '
+        'by the fraction (T_top - T_trial) / (2 * T_top)' in interior_md
+    )
+    assert (
+        'bounding the linearized unresupplied top-cell temperature drop '
+        'T_top - T(P_top, S_top - q / T_top) <= dT_allow' in interior_md
+    )
+    assert 'must lie in (0, 0.15\\]' in interior_md
+    assert 'must lie in (0, top_cell_dt_rel_dT\\] (up to 0.15)' in interior_md
+    assert (
+        'See docs/Explanations/coupling_loop.md for the measured run results and EOS evaluations.'
+        in interior_md
+    )
+    for forbidden in ('075fcb05', '372c2e2', 'late drops', 'phi_top about 0.79', '2 to 2.6'):
+        assert forbidden not in interior_md
     all_opts_txt = (
         Path(__file__).resolve().parents[2] / 'input' / 'all_options.toml'
     ).read_text(encoding='utf-8')
