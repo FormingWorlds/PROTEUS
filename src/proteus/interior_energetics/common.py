@@ -1286,6 +1286,7 @@ class Interior_t:
         self.shear = np.zeros(self.nlev_s)  # Shear modulus [Pa]
         self.bulk = np.zeros(self.nlev_s)  # Bulk modulus [Pa]
         self.bulkd = None  # Drained bulk modulus [Pa]; None: tidal module's own law
+        self.perm = np.zeros(self.nlev_s)  # Permeability input of the tidal module [m2]
         self.pres = np.zeros(self.nlev_s)  # Pressure [Pa]
         self.temp = np.zeros(self.nlev_s)  # Temperature [K]
 
@@ -1442,8 +1443,17 @@ class Interior_t:
         The laws follow :func:`rheology_model`: the mush construction sets the shear,
         grain bulk and drained bulk moduli (``bulkd``) and leaves the viscosity to the
         interior module; the Kervazo fits set shear and bulk from the melt fraction,
-        the viscosity too when ``visc`` is set, and leave ``bulkd`` as None.
+        the viscosity too when ``visc`` is set, and leave ``bulkd`` as None. With a config,
+        ``perm`` is set for either law from the melt fraction and ``grain_size`` with Aragog's
+        three-regime mobility function, the profile Obliqua takes as its permeability.
         """
+        if config is not None:
+            from aragog.eos import mobility_function
+
+            # the quantity Obliqua's get_permeability returns: k / phi of Bower et al. (2018)
+            self.perm = mobility_function(
+                np.asarray(self.phi, float), float(config.interior_energetics.grain_size)
+            )
         if rheology_model(config) == 'mush':
             from proteus.interior_energetics.rheology_mush import update_mush_rheology
 

@@ -197,8 +197,10 @@ def run_obliqua(
             f'got {config.orbit.perturber!r}'
         )
 
-    # Copy arrays
-    arr_keys = ('density', 'visc', 'shear', 'bulk', 'phi', 'mass', 'radius')
+    # Copy arrays; the drained bulk modulus comes from the interior when its rheology sets it
+    arr_keys = ('density', 'visc', 'shear', 'bulk', 'phi', 'perm', 'mass', 'radius')
+    if getattr(interior_o, 'bulkd', None) is not None:
+        arr_keys += ('bulkd',)
     lov = {k: np.array(getattr(interior_o, k), copy=True, dtype=float) for k in arr_keys}
 
     # Reverse arrays if using SPIDER
@@ -275,10 +277,12 @@ def run_obliqua(
         bulk = lov['bulk']
         phi = lov['phi']
 
-        # Add permeability and drained bulk modulus and limit porosity
-        perm = jl.Obliqua.interior.get_permeability(phi, cfg)
-        perm, phi = jl.Obliqua.interior.limit_porosity(perm, phi, cfg)
-        bulkd = jl.Obliqua.interior.get_drained_bulk(bulk, phi, cfg)
+        # Permeability from the interior; apply Obliqua's porosity limit, add drained bulk modulus
+        perm, phi = jl.Obliqua.interior.limit_porosity(lov['perm'], phi, cfg)
+        if 'bulkd' in lov:
+            bulkd = lov['bulkd']
+        else:
+            bulkd = jl.Obliqua.interior.get_drained_bulk(bulk, phi, cfg)
 
         # Run Obliqua to get tidal heating profile and love number
         power_prf, power_blk, nmk, sigma, LNk = jl.Obliqua.run_tides(
