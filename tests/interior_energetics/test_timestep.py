@@ -2303,6 +2303,17 @@ def test_next_step_top_cell_dt_limit_on_caps_dtswitch_below_dtminimum():
     assert dt_invalid >= cfg.params.dt.minimum
     assert getattr(io, '_tau_drain_cap_valid', None) is False
 
+    from proteus.utils.helper import SUBYEAR_TIME_RESOLUTION
+
+    io_snap = _make_interior_o(
+        t_next_impact=float(hf_row['Time']) + expected_tau + 0.5 * SUBYEAR_TIME_RESOLUTION
+    )
+    io_snap.aragog_solver = io.aragog_solver
+    dt_snapped = next_step(cfg, {}, hf_row, hf_all, 1.0, interior_o=io_snap)
+    assert dt_snapped == pytest.approx(expected_tau + 0.5 * SUBYEAR_TIME_RESOLUTION, rel=1e-12)
+    assert dt_snapped > expected_tau
+    assert getattr(io_snap, '_tau_drain_cap_valid', None) is False
+
 
 def _load_paleos_ptop_531p546_slice_fixture() -> dict:
     """Load the committed 1D PALEOS EOS slice fixture at P_top = 4.455575e8 Pa."""
@@ -2402,6 +2413,8 @@ def test_estimate_tau_drain_paleos_slice_531p546_chord_lookahead_and_window():
 
     data = _load_paleos_ptop_531p546_slice_fixture()
     assert len(data['source_files_md5']) >= 10
+    assert isinstance(data.get('aragog_commit'), str) and len(data['aragog_commit']) == 40
+    assert 0.0 <= float(data['max_2d_vs_slice_rel_diff']) < 1.0e-14
     rows = {int(r['row']): r for r in data['snap531_rows_380_to_392']}
     r386 = rows[386]
 
@@ -2523,6 +2536,62 @@ def test_estimate_tau_drain_lookahead_floor_clip_and_edge_guards(caplog):
     assert tau_clipped == pytest.approx(tau_expected, rel=1e-12)
     assert tau_clipped != pytest.approx(tau_short_wrong, rel=1e-2)
     assert 0.0 < tau_clipped < tau_start
+
+    # Clipped trial with 0 < T_top - T_trial <= dT_allow keeps cp_eff (kills dt_trial > 0.0 mutant)
+    t_floor_within_allow = 500.0
+    solver.entropy_eos.temperature = lambda p_arr, s_arr: np.array(
+        [
+            t_top
+            if abs(float(np.asarray(s_arr).ravel()[0]) - s_top) < 1e-9
+            else t_floor_within_allow
+        ],
+        dtype=float,
+    )
+    tau_clipped_within_allow = _estimate_tau_drain(cfg, row, io)
+    cp_dt_gt_zero_wrong = min(
+        cp_val, t_top * (s_top - s_floor) / (t_top - t_floor_within_allow)
+    )
+    tau_dt_gt_zero_wrong = (4000.0 * cp_dt_gt_zero_wrong * dr_eff * dt_allow) / (
+        500.0 * secs_per_year
+    )
+    assert tau_clipped_within_allow == pytest.approx(tau_start, rel=1e-12)
+    assert tau_clipped_within_allow != pytest.approx(tau_dt_gt_zero_wrong, rel=1e-2)
+
+    # phi_top <= 0.60 with cp_top > cp_solid uses cp_eff (not cp_top) to set S_trial (kills M5)
+    cfg_m5, io_m5, solver_m5 = _make_tau_drain_fixture(
+        s_top=2400.0,
+        phi_top=0.30,
+        s_min=s_min,
+        cp_live=3000.0,
+        cp_solid_at_1800=1200.0,
+        rel_dT=0.08,
+        rel_dT_solid=0.08,
+    )
+    queried_m5_s: list[float] = []
+
+    def _temp_m5(p_arr, s_arr):
+        s_q = float(np.asarray(s_arr, dtype=float).ravel()[0])
+        queried_m5_s.append(s_q)
+        if abs(s_q - 2400.0) < 1e-9:
+            return np.array([1500.0], dtype=float)
+        if s_q >= 2250.0:
+            return np.array([1300.0], dtype=float)
+        return np.array([900.0], dtype=float)
+
+    solver_m5.entropy_eos.temperature = _temp_m5
+    tau_m5 = _estimate_tau_drain(cfg_m5, row, io_m5)
+    cp_chord_m5 = 1500.0 * (2400.0 - 2304.0) / (1500.0 - 1300.0)
+    expected_m5_tau = (4000.0 * cp_chord_m5 * dr_eff * dt_allow) / (500.0 * secs_per_year)
+    cp_chord_m5_wrong = 1500.0 * (2400.0 - 2160.0) / (1500.0 - 900.0)
+    wrong_cp_top_m5_tau = (4000.0 * cp_chord_m5_wrong * dr_eff * dt_allow) / (
+        500.0 * secs_per_year
+    )
+    assert queried_m5_s == [
+        pytest.approx(2400.0, rel=1e-12),
+        pytest.approx(2304.0, rel=1e-12),
+    ]
+    assert tau_m5 == pytest.approx(expected_m5_tau, rel=1e-12)
+    assert tau_m5 != pytest.approx(wrong_cp_top_m5_tau, rel=1e-2)
 
     # When S_top < S_min + 300.0, S_trial clips at S_min + 300.0 > S_top and never loosens
     solver.entropy_staggered = np.array([[2800.0], [200.0]], dtype=float)
@@ -2647,6 +2716,58 @@ def test_estimate_tau_drain_chord_lookahead_never_loosens_property():
     _check()
     assert len(checked) >= 50
     assert any(lk < st_val * 0.99 for st_val, lk in checked)
+
+    data = _load_paleos_ptop_531p546_slice_fixture()
+    s_min_slice = float(data['S_min'])
+    s_max_slice = float(data['S_max'])
+    p_top_slice = float(data['P_top_Pa'])
+    r_outer_slice = float(data['r_outer_m'])
+    vol_top_slice = float(data['vol_top_m3'])
+    slice_checked: list[tuple[float, float]] = []
+
+    @settings(derandomize=True, max_examples=50)
+    @given(
+        s_top=st.floats(
+            min_value=s_min_slice,
+            max_value=s_max_slice,
+            allow_nan=False,
+            allow_infinity=False,
+        ),
+        t_surf=st.floats(
+            min_value=300.0, max_value=3800.0, allow_nan=False, allow_infinity=False
+        ),
+        f_atm=st.floats(min_value=10.0, max_value=1.0e6, allow_nan=False, allow_infinity=False),
+    )
+    def _check_paleos_slice(s_top, t_surf, f_atm):
+        cfg, io, solver = _make_tau_drain_fixture(
+            s_top=s_top,
+            P_top=p_top_slice,
+            r_outer=r_outer_slice,
+            rel_dT=0.08,
+            rel_dT_solid=0.08,
+        )
+        solver._volume_flat = np.array([5.0e18, vol_top_slice], dtype=float)
+        eos_slice = _PaleosSliceEOS(data)
+        t_top_val = float(
+            np.asarray(
+                eos_slice.temperature(np.array([p_top_slice]), np.array([s_top])),
+                dtype=float,
+            ).ravel()[0]
+        )
+        solver.entropy_eos = eos_slice
+        row = {'Time': 25.0, 'F_atm': f_atm, 'T_surf': t_surf}
+        tau_lk = _estimate_tau_drain(cfg, row, io)
+
+        eos_no_lk = _PaleosSliceEOS(data)
+        eos_no_lk.temperature = lambda p_arr, s_arr, _t0=t_top_val: np.array([_t0], dtype=float)
+        solver.entropy_eos = eos_no_lk
+        tau_start = _estimate_tau_drain(cfg, row, io)
+        assert 0.0 < tau_lk <= tau_start * (1.0 + 1e-12)
+        slice_checked.append((tau_start, tau_lk))
+
+    _check_paleos_slice()
+    assert len(slice_checked) >= 50
+    assert any(lk < st_val * 0.99 for st_val, lk in slice_checked)
 
 
 @pytest.mark.unit

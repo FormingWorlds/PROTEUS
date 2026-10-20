@@ -671,6 +671,15 @@ def test_aragog_top_cell_dt_limit_defaults_and_validators():
         ie_grey_off.aragog = Aragog(top_cell_dt_limit=True)
     assert 'grey_body' in str(exc_ara.value)
 
+    from pathlib import Path
+
+    assert 'and the step does not exceed tau_drain' in (Interior.__doc__ or '')
+    interior_md = (
+        Path(__file__).resolve().parents[2] / 'docs' / 'Reference' / 'config' / 'interior.md'
+    ).read_text(encoding='utf-8')
+    assert 'and the step does not exceed tau_drain' in interior_md
+    assert '1.218' in interior_md
+
 
 @pytest.mark.unit
 def test_aragog_top_cell_dt_rel_property():
