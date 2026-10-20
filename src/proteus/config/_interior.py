@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 import warnings
 
-from attrs import define, field
+from attrs import define, field, setters
 from attrs.validators import ge, gt, in_, le, lt
 
 _TOL_UNSET = -1.0
@@ -203,6 +203,12 @@ def valid_aragog(instance, attribute, value):
 def _valid_surface_bc_mode(instance, attribute, value):
     """Validate surface_bc_mode compatibility with Aragog top_cell_dt_limit."""
     _check_aragog_top_cell_dt_limit_surface_bc(instance, attribute, value)
+
+
+def _check_module_on_setattr(instance, attribute, value):
+    """Check a module assigned after construction against Aragog top_cell_dt_limit."""
+    _check_aragog_top_cell_dt_limit_surface_bc(instance, attribute, value)
+    return value
 
 
 @define
@@ -767,7 +773,8 @@ class Interior:
 
     module: str = field(
         default='aragog',
-        validator=(in_(('spider', 'aragog', 'dummy', 'boundary')), _valid_surface_bc_mode),
+        validator=in_(('spider', 'aragog', 'dummy', 'boundary')),
+        on_setattr=setters.pipe(setters.convert, setters.validate, _check_module_on_setattr),
     )
     num_levels: int = field(default=80, validator=ge(40))
 
