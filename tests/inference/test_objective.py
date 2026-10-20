@@ -1155,7 +1155,7 @@ def test_J_treats_invariant_status_codes_30_to_34_as_failures(monkeypatch, tmp_p
         status,
         objective_mod.CATEGORY_FAILURE,
     )
-    assert not recorded[0]['status_description'].startswith('UNHANDLED STATUS')
+    assert not recorded[0]['status_desc'].startswith('UNHANDLED STATUS')
 
 
 def test_J_separates_an_excluded_outcome_from_a_failed_run(monkeypatch, tmp_path, caplog):

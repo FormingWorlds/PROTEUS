@@ -30,7 +30,7 @@ from proteus.utils.coupler import (
     read_helpfile_table,
     variable_is_logarithmic,
 )
-from proteus.utils.helper import ReadStatus
+from proteus.utils.helper import INVARIANT_STATUS_CODES, ReadStatus
 
 dtype = torch.double
 EPS_CLIP = 1e-10
@@ -653,9 +653,13 @@ def J(
         # Parameters the simulator cannot integrate are expected in a wide box.
         return _handle_unscored(failure, output)
 
-    # A clean exit on an error status (e.g. 25, stopped via the keepalive file),
-    # one that never reached the main loop (0, 1), or with no readable status.
-    failed = (20 <= sim_status <= 28) or (sim_status in (0, 1, STATUS_MISSING))
+    # A clean exit on an error or invariant status (20-28, 30-34), one that
+    # never reached the main loop (0, 1), or with no readable status.
+    failed = (
+        (20 <= sim_status <= 28)
+        or (sim_status in INVARIANT_STATUS_CODES)
+        or (sim_status in (0, 1, STATUS_MISSING))
+    )
 
     # Runs that completed normally on an outcome this study does not fit
     # against, in `failure_codes` or in ALWAYS_EXCLUDED_STATUSES.

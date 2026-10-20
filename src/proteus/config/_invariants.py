@@ -43,7 +43,10 @@ class Invariants:
     ----------
     mode: str
         Enforcement mode for run-row invariants: ``'off'``, ``'report'``, or ``'stop'``.
-        Energy checks are report-only in every active mode (status code 30 is reserved).
+        Energy checks are report-only in every active mode (status code 30 is reserved;
+        status codes 31 and 32 mark mass-conservation and state-bounds invariant stops,
+        and status codes 33 and 34 are reserved for the Zalmoxis structure invariant
+        and the Aragog accepted-state invariant).
     energy_residual_rtol: float
         Relative tolerance on cumulative coupled energy residual against gross throughput [-],
         evaluated once prior post-init rows have non-zero gross throughput (report-only).

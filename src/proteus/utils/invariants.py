@@ -19,7 +19,21 @@ from proteus.utils.constants import (
     vol_element_list,
     vol_gas_list,
 )
-from proteus.utils.helper import UpdateStatusfile
+from proteus.utils.helper import (
+    INVARIANT_STATUS_CODES as INVARIANT_STATUS_CODES,
+)
+from proteus.utils.helper import (
+    STATUS_ERROR_ARAGOG_ACCEPTED_STATE_INVARIANT as STATUS_ERROR_ARAGOG_ACCEPTED_STATE_INVARIANT,
+)
+from proteus.utils.helper import (
+    STATUS_ERROR_ENERGY_INVARIANT,
+    STATUS_ERROR_MASS_INVARIANT,
+    STATUS_ERROR_STATE_BOUNDS_INVARIANT,
+    UpdateStatusfile,
+)
+from proteus.utils.helper import (
+    STATUS_ERROR_ZALMOXIS_STRUCTURE_INVARIANT as STATUS_ERROR_ZALMOXIS_STRUCTURE_INVARIANT,
+)
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -28,9 +42,6 @@ if TYPE_CHECKING:
 
 log = logging.getLogger('fwl.' + __name__)
 
-STATUS_ERROR_ENERGY_INVARIANT: int = 30
-STATUS_ERROR_MASS_INVARIANT: int = 31
-STATUS_ERROR_STATE_BOUNDS_INVARIANT: int = 32
 STEP_GROSS_FLOOR_J: float = 1.0
 # 0.5 K margin above T(p, S_min) evaluated at the fixed Aragog mesh surface pressure
 # (or P_surf fallback) bounds low-pressure P-S linear interpolation error (<= 9.5e-3 K).

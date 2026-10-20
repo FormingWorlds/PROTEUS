@@ -12043,7 +12043,7 @@
         "stop"
       ],
       "bounds": null,
-      "description": "Enforcement mode for run-row invariants: ``'off'``, ``'report'``, or ``'stop'``. Energy checks are report-only in every active mode (status code 30 is reserved).",
+      "description": "Enforcement mode for run-row invariants: ``'off'``, ``'report'``, or ``'stop'``. Energy checks are report-only in every active mode (status code 30 is reserved; status codes 31 and 32 mark mass-conservation and state-bounds invariant stops, and status codes 33 and 34 are reserved for the Zalmoxis structure invariant and the Aragog accepted-state invariant).",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,

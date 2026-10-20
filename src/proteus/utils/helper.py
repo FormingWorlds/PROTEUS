@@ -515,6 +515,20 @@ def safe_rm(fpath: str):
             log.warning("Cannot remove unhandled path '%s'" % fpath)
 
 
+STATUS_ERROR_ENERGY_INVARIANT: int = 30
+STATUS_ERROR_MASS_INVARIANT: int = 31
+STATUS_ERROR_STATE_BOUNDS_INVARIANT: int = 32
+STATUS_ERROR_ZALMOXIS_STRUCTURE_INVARIANT: int = 33
+STATUS_ERROR_ARAGOG_ACCEPTED_STATE_INVARIANT: int = 34
+INVARIANT_STATUS_CODES: tuple[int, ...] = (
+    STATUS_ERROR_ENERGY_INVARIANT,
+    STATUS_ERROR_MASS_INVARIANT,
+    STATUS_ERROR_STATE_BOUNDS_INVARIANT,
+    STATUS_ERROR_ZALMOXIS_STRUCTURE_INVARIANT,
+    STATUS_ERROR_ARAGOG_ACCEPTED_STATE_INVARIANT,
+)
+
+
 def CommentFromStatus(status: int):
     """
     Convert status number into comment string
@@ -572,6 +586,10 @@ def CommentFromStatus(status: int):
             desc = 'Error (Mass conservation invariant)'
         case 32:
             desc = 'Error (State bounds invariant)'
+        case 33:
+            desc = 'Error (Zalmoxis structure invariant, reserved)'
+        case 34:
+            desc = 'Error (Aragog accepted-state invariant, reserved)'
         # Default case
         case _:
             desc = 'UNHANDLED STATUS (%d)' % status

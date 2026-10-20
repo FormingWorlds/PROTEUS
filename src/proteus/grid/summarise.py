@@ -7,7 +7,7 @@ import os
 
 import numpy as np
 
-from proteus.utils.helper import CommentFromStatus
+from proteus.utils.helper import INVARIANT_STATUS_CODES, CommentFromStatus
 
 log = logging.getLogger('fwl.' + __name__)
 
@@ -75,7 +75,7 @@ def summarise(pgrid_dir: str, tgt_status: str = None):
         # Broad categories
         'Running': list(range(0, 10, 1)),
         'Completed': list(range(10, 20, 1)) + [29],
-        'Error': list(range(20, 29, 1)) + list(range(30, 35, 1)),
+        'Error': list(range(20, 29, 1)) + list(INVARIANT_STATUS_CODES),
         'All': list(range(0, 100, 1)),
         # Narrower categories
         'Solidified': [10],
