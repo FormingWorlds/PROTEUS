@@ -122,11 +122,11 @@ class Invariants:
         with ``report_only=True`` while a structure rollback remains active until the next
         accepted re-solve; a resume after dropped snapshots on an unindexed directory, after a
         flag event newer than the resume row such as a stop after any structure event on a
-        non-snapshot row when ``write_mod > 1`` or ``dt_write_rel > 0``, or with a pending forced re-solve flag on disk when the initial
-        baseline was already committed marks the structure rollback active and forces 1 re-solve
-        at the resume, clearing the rollback on an accepted solve or up-step reject and keeping
-        rollback active on a solver failure, whereas an uncommitted initial baseline keeps the
-        initial-baseline retry rule except for the super-liquidus adiabat initial condition with
+        non-snapshot row when ``write_mod > 1`` or ``dt_write_rel > 0``, or with a pending
+        forced re-solve flag on disk when the initial baseline was already committed marks the
+        structure rollback active and forces 1 re-solve at the resume, clearing the rollback on
+        an accepted solve or up-step reject and keeping rollback active on a solver failure,
+        whereas an uncommitted initial baseline keeps the initial-baseline retry rule except for the super-liquidus adiabat initial condition with
         rollback active at the resume, which makes 1 forced attempt, any structure event on a
         dropped row that is not the first dropped row, such as an impact or a dynamic re-solve,
         or an unindexed directory with dropped snapshots adds a forced structure solve at the
