@@ -1576,6 +1576,39 @@ def test_lowt_extension_requires_the_aragog_interior():
 
 
 @pytest.mark.unit
+def test_lowt_extension_requires_aragog_property_over_modules_and_values():
+    """Over every energetics module and any switch value, the check refuses exactly the switch
+    set to True with a module other than aragog, and gives the reason of that module."""
+    hypothesis = pytest.importorskip('hypothesis')
+    st = pytest.importorskip('hypothesis.strategies')
+
+    from proteus.config._config import lowt_extension_requires_aragog
+
+    values = st.one_of(
+        st.booleans(), st.integers(), st.floats(), st.none(), st.text(max_size=5)
+    )
+
+    @hypothesis.settings(max_examples=200, deadline=None)
+    @hypothesis.given(st.sampled_from(['spider', 'aragog', 'dummy', 'boundary']), values)
+    @hypothesis.example('dummy', True)
+    @hypothesis.example('spider', 1)
+    def check(module, lowt):
+        cfg = _make_config_instance(**{'interior_energetics.module': module})
+        cfg.interior_struct.zalmoxis = SimpleNamespace(lowt_extension=lowt)
+        refused = lowt is True and module != 'aragog'
+        try:
+            lowt_extension_requires_aragog(cfg, None, None)
+        except ValueError as exc:
+            assert refused, f'refused {module!r} with {lowt!r}'
+            reason = 'more entropy nodes' if module == 'spider' else 'reads no P-S tables'
+            assert reason in str(exc) and f'"{module}"' in str(exc)
+        else:
+            assert not refused, f'accepted {module!r} with {lowt!r}'
+
+    check()
+
+
+@pytest.mark.unit
 def test_lowt_extension_requires_a_structure_that_builds_the_ps_tables():
     """The switch acts where PROTEUS builds the P-S tables, which the SPIDER structure skips; with
     interior_struct.module = 'spider' the switch is refused, with zalmoxis or dummy it is kept."""
