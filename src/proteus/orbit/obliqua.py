@@ -198,7 +198,17 @@ def run_obliqua(
         )
 
     # Copy arrays; the drained bulk modulus comes from the interior when its rheology sets it
-    arr_keys = ('density', 'visc', 'shear', 'bulk', 'phi', 'perm', 'mass', 'radius')
+    arr_keys = (
+        'density',
+        'visc',
+        'bulk_visc',
+        'shear',
+        'bulk',
+        'phi',
+        'perm',
+        'mass',
+        'radius',
+    )
     if getattr(interior_o, 'bulkd', None) is not None:
         arr_keys += ('bulkd',)
     lov = {k: np.array(getattr(interior_o, k), copy=True, dtype=float) for k in arr_keys}
@@ -273,6 +283,7 @@ def run_obliqua(
         rho = lov['density']
         radius = lov['radius']
         visc = lov['visc']
+        bulk_visc = lov['bulk_visc']
         shear = lov['shear']
         bulk = lov['bulk']
         phi = lov['phi']
@@ -294,6 +305,7 @@ def run_obliqua(
             rho,
             radius,
             visc,
+            bulk_visc,
             shear,
             bulk,
             bulkd,
@@ -376,7 +388,13 @@ def lookup_from_interior(dirs: dict, config: Config):
         rho = _jlarr(density_full[1:])
 
         radius = _jlarr(np.array(d['radius'], copy=True, dtype=float))
-        visc = _jlarr(np.array(d['visc'], copy=True, dtype=float))
+        visc_np = np.array(d['visc'], copy=True, dtype=float)
+        visc = _jlarr(visc_np)
+        # bulk viscosity from the file, else Obliqua's former law eta / phi
+        if 'bulk_visc' in d:
+            bulk_visc = _jlarr(np.array(d['bulk_visc'], copy=True, dtype=float))
+        else:
+            bulk_visc = _jlarr(visc_np / (np.array(d['phi'], dtype=float) + 1e-15))
         shear = _jlarr(np.array(d['shear'], copy=True, dtype=float))
         bulk = _jlarr(np.array(d['bulk'], copy=True, dtype=float))
         phi = _jlarr(np.array(d['phi'], copy=True, dtype=float))
@@ -441,6 +459,7 @@ def lookup_from_interior(dirs: dict, config: Config):
             rho,
             radius,
             visc,
+            bulk_visc,
             shear,
             bulk,
             bulkd,

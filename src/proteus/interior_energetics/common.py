@@ -1287,6 +1287,7 @@ class Interior_t:
         self.bulk = np.zeros(self.nlev_s)  # Bulk modulus [Pa]
         self.bulkd = None  # Drained bulk modulus [Pa]; None: tidal module's own law
         self.perm = np.zeros(self.nlev_s)  # Permeability input of the tidal module [m2]
+        self.bulk_visc = np.zeros(self.nlev_s)  # Bulk (compaction) viscosity [Pa s]
         self.pres = np.zeros(self.nlev_s)  # Pressure [Pa]
         self.temp = np.zeros(self.nlev_s)  # Temperature [K]
 
@@ -1443,7 +1444,8 @@ class Interior_t:
         The laws follow :func:`rheology_model`: the mush construction sets the shear,
         grain bulk and drained bulk moduli (``bulkd``) and leaves the viscosity to the
         interior module; the Kervazo fits set shear and bulk from the melt fraction,
-        the viscosity too when ``visc`` is set, and leave ``bulkd`` as None. With a config,
+        the viscosity too when ``visc`` is set, and leave ``bulkd`` as None. The bulk
+        viscosity ``bulk_visc`` follows each law from the current ``visc``. With a config,
         ``perm`` is set for either law from the melt fraction and ``grain_size`` with Aragog's
         three-regime mobility function, the profile Obliqua takes as its permeability.
         """
@@ -1465,6 +1467,8 @@ class Interior_t:
             self.bulk[i] = eval_rheoparam(p, 'bulk')
             if visc:
                 self.visc[i] = eval_rheoparam(p, 'visc')
+        # the bulk viscosity Obliqua builds internally, eta / phi
+        self.bulk_visc = np.asarray(self.visc, float) / (np.asarray(self.phi, float) + 1e-15)
 
 
 def get_C_planet(hf_row: dict, config: Config, interior_o: Interior_t):

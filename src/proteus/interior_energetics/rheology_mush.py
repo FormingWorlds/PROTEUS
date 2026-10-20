@@ -15,7 +15,8 @@ fraction ``phi``, pressure and temperature:
   shear modulus with its collapse moved to ``v_crit`` (no tail), normalised by ``mu_sol``;
 - drained bulk modulus: the same stretched drained SCS, at most the HS upper bound for
   empty pores, and 0 above ``v_crit``;
-- grain bulk modulus (Obliqua ``bulk``): ``kappa_sol``.
+- grain bulk modulus (Obliqua ``bulk``): ``kappa_sol``;
+- bulk viscosity ``zeta = (4/3) eta (1 - v) / v`` (:func:`bulk_viscosity`).
 
 The viscosity is left to the interior module.
 """
@@ -67,6 +68,23 @@ def hs_void_upper(v, kappa_sol, mu_sol):
     zeta = mu_sol / 6.0 * (9.0 * kappa_sol + 8.0 * mu_sol) / (kappa_sol + 2.0 * mu_sol)
     kappa = 4.0 * kappa_sol * mu_sol * (1.0 - v) / (4.0 * mu_sol + 3.0 * v * kappa_sol)
     return kappa, mu_sol * (1.0 - v) * zeta / (zeta + v * mu_sol)
+
+
+V_FLOOR = 1e-15  # melt volume fraction floor of the bulk viscosity (finite at phi = 0)
+
+
+def bulk_viscosity(eta, v):
+    """Bulk (compaction) viscosity [Pa s], ``zeta = (4/3) eta (1 - v) / v``.
+
+    Prud'homme and Bird (1978, J. Non-Newtonian Fluid Mech. 3, 261), as given by Simpson,
+    Spiegelman and Weinstein (2010, eq. 11b): a spherical shell of incompressible viscous
+    matrix around a spherical cavity, with ``eta`` the matrix shear viscosity and ``v`` the
+    cavity (melt) volume fraction. It equals the Hashin-Shtrikman upper bound for empty
+    pores in an incompressible matrix through the elastic-viscous correspondence. The melt
+    fraction is floored at ``V_FLOOR`` so the value stays finite in solid layers.
+    """
+    v = np.maximum(np.asarray(v, float), V_FLOOR)
+    return 4.0 / 3.0 * np.asarray(eta, float) * (1.0 - v) / v
 
 
 def critical_volume_fraction(config: Config) -> float:
@@ -136,7 +154,10 @@ def mush_moduli(phi, em: dict, v_crit: float, g_inf: float, tables: rt.ScsTables
 
 
 def update_mush_rheology(interior_o: Interior_t, config: Config) -> None:
-    """Set ``interior_o.shear``, ``bulk`` (grain modulus) and ``bulkd`` from the mush laws."""
+    """Set ``interior_o.shear``, ``bulk`` (grain modulus), ``bulkd`` and ``bulk_visc``.
+
+    The bulk viscosity uses the interior module's shear viscosity ``interior_o.visc``.
+    """
     endmembers = rem.load_endmembers(rem.paleos_mgsio3_path())
     em = layer_endmembers(endmembers, interior_o.pres, interior_o.temp)
     out = mush_moduli(
@@ -149,3 +170,5 @@ def update_mush_rheology(interior_o: Interior_t, config: Config) -> None:
     interior_o.shear = out['shear']
     interior_o.bulk = out['bulk']
     interior_o.bulkd = out['bulkd']
+    v = volume_fraction(interior_o.phi, em['rho_sol'], em['rho_liq'])
+    interior_o.bulk_visc = bulk_viscosity(interior_o.visc, v)
