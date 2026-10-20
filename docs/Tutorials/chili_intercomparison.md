@@ -1,7 +1,7 @@
 # Solar System CHILI intercomparison
 
 !!! info "PROTEUS version"
-    The figures and numbers on this page were generated with PROTEUS version 26.7.14.post1.dev148+gd0c7f0806 (commit `d0c7f080`). This analysis is regenerated from time to time rather than with every PROTEUS update, because the simulations require days of compute.
+    The figures and numbers on this page were generated with PROTEUS at commit d0c7f080 (version 26.7.14.post1.dev148, a development state included in release 26.10.16). This analysis is regenerated from time to time, not with every PROTEUS update, because the simulations take days of compute.
 
 The CHILI (Coupled atmospHere Interior modeL Intercomparison) project is a
 community benchmark that fixes shared initial and boundary conditions for
