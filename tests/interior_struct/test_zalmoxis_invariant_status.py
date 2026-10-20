@@ -15,6 +15,7 @@ from proteus.interior_energetics.wrapper import (
     _solve_structure_with_adiabat_or_rollback,
     update_structure_from_interior,
 )
+from proteus.interior_struct.zalmoxis import StructureInvariantError
 from tests.interior_energetics.test_wrapper_adiabat_ic import (
     _monotonic_config,
     _monotonic_dirs,
@@ -22,8 +23,6 @@ from tests.interior_energetics.test_wrapper_adiabat_ic import (
     _monotonic_interior_o,
 )
 from tests.interior_struct.test_zalmoxis import _run_gate_solver
-
-StructureInvariantError = pytest.importorskip('zalmoxis.invariants').StructureInvariantError
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -67,12 +66,14 @@ def _resolve(config, outdir, hf_row):
         pytest.param(FloatingPointError('overflow'), id='floating_point_error_rolls_back'),
     ],
 )
-def test_the_adiabat_resolve_rolls_back_a_solver_failure(tmp_path, monkeypatch, error):
-    """The rollback this harness reaches returns (None, False) and writes no status."""
-    result = _run_gate_solver(
-        tmp_path, monkeypatch, 'Seager2007:silicate', None, None, [error], solve=_resolve
-    )
+def test_the_adiabat_resolve_rolls_back_a_solver_failure(tmp_path, monkeypatch, caplog, error):
+    """The rollback returns (None, False), logs the injected error and writes no status."""
+    with caplog.at_level(logging.WARNING):
+        result = _run_gate_solver(
+            tmp_path, monkeypatch, 'Seager2007:silicate', None, None, [error], solve=_resolve
+        )
     assert result == (None, False)
+    assert f're-solve failed ({error})' in caplog.text
     assert not (tmp_path / 'status').exists()
 
 
@@ -104,10 +105,18 @@ def test_the_evolution_resolve_lets_only_an_invariant_error_through(tmp_path, er
     dirs, _ = _monotonic_dirs(tmp_path, 'PREV GEOMETRY\n')
     hf_row = _monotonic_hf_row(1.2007e7, M_target=5.972e24)
     before = dict(hf_row)
-    with patch('proteus.interior_struct.zalmoxis.zalmoxis_solver', side_effect=error):
+
+    def solver(cfg, outdir, row, **kwargs):
+        row.update(R_int=9.0e6, P_cmb=1.0e11, gravity=1.0)  # a partial write, then the error
+        raise error
+
+    with patch('proteus.interior_struct.zalmoxis.zalmoxis_solver', side_effect=solver):
         if fails:
             update_structure_from_interior(dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8)
-            assert hf_row['R_int'] == before['R_int']
+            assert {k: hf_row[k] for k in ('R_int', 'P_cmb', 'gravity')} == {
+                k: before[k] for k in ('R_int', 'P_cmb', 'gravity')
+            }
+            assert interior_o.structure_stale is True
         else:
             with pytest.raises(StructureInvariantError) as raised:
                 update_structure_from_interior(
@@ -126,7 +135,7 @@ def test_a_status_file_that_cannot_be_written_does_not_hide_the_invariant_error(
         patch(
             'proteus.interior_struct.zalmoxis.UpdateStatusfile',
             side_effect=OSError('read-only output'),
-        ),
+        ) as status,
         caplog.at_level(logging.ERROR),
     ):
         try:
@@ -134,4 +143,5 @@ def test_a_status_file_that_cannot_be_written_does_not_hide_the_invariant_error(
         except Exception as exc:  # noqa: BLE001 -- which error escapes is the assertion
             seen = exc
     assert seen is error, repr(seen)
+    status.assert_called_once_with({'output': str(tmp_path)}, 33)
     assert 'read-only output' in caplog.text
