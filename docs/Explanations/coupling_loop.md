@@ -176,39 +176,79 @@ $(T_\mathrm{top} - T_\mathrm{trial}) / (2\,T_\mathrm{top})$, about $9\%$ at the
 $531.5\,\mathrm{yr}$ state), which fires across a
 liquidus crossing and on every step with a mushy top cell at
 $\phi_\mathrm{top} > 0.6$, where the tabulated mush `heat_capacity` (a
-lever-rule blend) is about $2$ to $2.6$ times $T\,\mathrm{d}S/\mathrm{d}T$
-along the EOS (measured across 3 runs over 2 configurations of a $1\,M_\oplus$
-planet at $0.5$ and $0.7\,\mathrm{au}$ with the PALEOS $\mathrm{MgSiO}_3$ EOS,
-dummy star and dummy atmosphere to $25\,\mathrm{kyr}$ at
-`top_cell_dt_rel_dT = top_cell_dt_rel_dT_solid = 0.08`: maximum per-step
-$|\Delta T_\mathrm{surf}| / (\eta_\mathrm{eff} T_\mathrm{surf}) = 0.69$ using
-$T_\mathrm{surf}$ at step start, $0$ steps above $1$, $+9$ rows on each of the
-$2$ runs on Aragog development commit `372c2e2` that have a $0.08$ run without
-lookahead, $1850$ to $1852$ rows vs $218$ and $243$ rows in the same
-configurations with the option off on Aragog development commit `372c2e2`, or
-$50$ rows on Aragog `main` commit `075fcb05`; and on the $0.5\,\mathrm{au}$
-configuration on Aragog `main` commit `075fcb05` with
-`atmos_clim.module = 'agni'` and dummy star to $25\,\mathrm{kyr}$ at $0.08$:
-maximum per-step
-$|\Delta T_\mathrm{surf}| / (\eta_\mathrm{eff} T_\mathrm{surf}) = 0.47$
-($0.4733$), $0$ steps above $1$, $0$ late drops, and $1137$ rows vs $51$ rows
-and maximum ratio $10.0$ ($10.04$) with the option off). In a computed
-unresupplied
-top-cell estimate mapping the step energy $q = c_{p,\mathrm{chord}}\,\Delta
-T_\mathrm{allow}$ back to entropy at a liquid state just above the liquidus ($t
-= 531.5\,\mathrm{yr}$) and at the worst mushy step of each $25\,\mathrm{kyr}$
-dummy-atmosphere run, the linearized drop-to-allowance ratio using $\Delta S =
-q / T_\mathrm{top}$ is $0.7863$ to $1.0000$ at $0.08$ and $0.6866$ to $0.7851$
-at the validator maximum $0.15$ ($0.8428$ to $0.8903$ at $0.30$; $1.1300$ to
-$1.1735$ at $0.50$), while under exact constant-pressure enthalpy $\mathrm{d}h
-= T\,\mathrm{d}S$ ($\int_{S_\mathrm{end}}^{S_\mathrm{top}} T(P_\mathrm{top},
-S)\,\mathrm{d}S = q$) the $531.5\,\mathrm{yr}$ state gives $0.8156$ at $0.08$,
-$0.7275$ at $0.15$, and $1.0120$ at $0.30$, with scan maxima over $S_\mathrm{top}$
-and $T_\mathrm{surf}/T_\mathrm{top}$ of $1.106$ at $0.08$, $1.204$ at $0.15$,
-and $1.370$ at $0.30$ before conductive and convective heat resupply from
-below, which keeps the measured per-step surface ratio at or below $0.69$ in
-the $25\,\mathrm{kyr}$ dummy-atmosphere runs and $0.47$ in the
-$25\,\mathrm{kyr}$ `atmos_clim.module = 'agni'` run at $0.08$.
+lever-rule blend) is about $2$ to $2.7$ times $T\,\mathrm{d}S/\mathrm{d}T$
+along the EOS ($1.95$ at $\phi_\mathrm{top} = 0.60$ to $2.72$ at the liquidus,
+and $2.64$ to $2.66$ at the worst mushy run steps). On the PALEOS solid table
+at $P_\mathrm{top} = 0.446\,\mathrm{GPa}$, temperature is flat at
+$T = T_\mathrm{sol} = 1429.77\,\mathrm{K}$ from the last solid grid node
+$S = 2429.71\,\mathrm{J\,kg^{-1}\,K^{-1}}$ up to
+$S_\mathrm{sol} = 2503.84\,\mathrm{J\,kg^{-1}\,K^{-1}}$, so when a lookahead
+trial $S_\mathrm{trial}$ lands on that plateau the chord $c_p$ is larger than
+the true temperature-change slope across the solidus.
+
+Across 3 coupled runs over 2 dummy-atmosphere configurations of a $1\,M_\oplus$
+planet with the PALEOS $\mathrm{MgSiO}_3$ EOS and dummy star to
+$25\,\mathrm{kyr}$ at `top_cell_dt_rel_dT = top_cell_dt_rel_dT_solid = 0.08`
+($0.5\,\mathrm{au}$ with `surf_greyalbedo = 0.2` on both Aragog versions, and
+$0.7\,\mathrm{au}$ with `surf_greyalbedo = 0.0` on the development version),
+the maximum per-step $|\Delta T_\mathrm{surf}| / (\eta_\mathrm{eff}
+T_\mathrm{surf})$ is $0.69$ ($0.6900$, $0.6577$, and $0.6586$) using
+$T_\mathrm{surf}$ at step start, with $0$ steps above $1$, $0$ late drops
+(steps where $T_\mathrm{magma}$ falls to the table floor near $302\,\mathrm{K}$),
+and $1850$ to $1852$ rows ($+9$ rows over the $0.08$ runs at an earlier commit
+without the lookahead, with other source changes between them), versus $218$
+and $243$ rows with the option off on the Aragog development version or $50$
+rows on the Aragog `main` version. In a separate $0.5\,\mathrm{au}$
+`atmos_clim.module = 'agni'` configuration with dummy star to $25\,\mathrm{kyr}$
+on the Aragog `main` version (which differs from the $0.5\,\mathrm{au}$
+dummy-atmosphere configuration in `surf_state = 'skin'` instead of `'fixed'`,
+`albedo_pl = 0.0` vs `0.1`, `surf_greyalbedo = 0.1` vs `0.2`,
+`rayleigh = true` vs `false`, `p_obs = 'none'` vs `0.02`,
+`agni.dx_max = 200.0` vs `35.0`, and `agni.hydrograv_steps = 4096` vs `2048`,
+so conductive skin coupling places $T_\mathrm{surf}/T_\mathrm{magma}$ in
+$0.528$ to $0.944$), the $0.08$ run completes in $1137$ rows with $0$ steps
+above $1$, $0$ late drops, maximum per-step skin-temperature ratio
+$|\Delta T_\mathrm{surf}| / (0.08\,T_\mathrm{surf}) = 0.47$ ($0.4733$), and
+interior-surface magma-temperature ratios
+$|\Delta T_\mathrm{magma}| / (0.08\,T_\mathrm{magma}) = 0.61$ ($0.6097$) and
+$|\Delta T_\mathrm{magma}| / (0.08\,T_\mathrm{surf}) = 0.73$ ($0.7294$), versus
+$51$ rows, $1$ late drop, and maximum
+$|\Delta T_\mathrm{surf}| / (0.08\,T_\mathrm{surf}) = 10.0$ ($10.04$) with the
+option off.
+
+In a computed unresupplied top-cell estimate mapping the step energy
+$q = c_{p,\mathrm{chord}}\,\Delta T_\mathrm{allow}$ back to entropy at a liquid
+state just above the liquidus ($t = 531.5\,\mathrm{yr}$) and at the worst mushy
+step of each $25\,\mathrm{kyr}$ dummy-atmosphere run ($\phi_\mathrm{top}$ about
+$0.96$, $0.958$ to $0.967$, with $\Phi_\mathrm{global} = 0.787$), the
+linearized drop-to-allowance ratio using $\Delta S = q / T_\mathrm{top}$ is
+$0.7863$ ($531.5\,\mathrm{yr}$ state) and $1.0000$ (all 3 mushy run states) at
+$0.08$, $0.6866$ and $0.7844$ to $0.7851$ at the validator maximum $0.15$,
+$0.8428$ and $0.8819$ to $0.8903$ at $0.30$, and $1.1300$ and $1.1725$ to
+$1.1735$ at $0.50$. Under exact constant-pressure enthalpy
+$\mathrm{d}h = T\,\mathrm{d}S$ ($\int_{S_\mathrm{end}}^{S_\mathrm{top}}
+T(P_\mathrm{top}, S)\,\mathrm{d}S = q$), the unresupplied ratio at the
+$531.5\,\mathrm{yr}$ liquid state and at the 3 mushy run states is $0.8156$ and
+$1.0427$ ($1.043$) at $0.08$, $0.7275$ and $0.8359$ to $0.8366$ (about $0.84$)
+at $0.15$, and $1.0120$ and $1.2489$ to $1.2567$ (about $1.25$) at $0.30$.
+Across a grid scan over $S_\mathrm{top} \in [S_{\min} + 300,
+6000]\,\mathrm{J\,kg^{-1}\,K^{-1}}$ in steps of
+$5\,\mathrm{J\,kg^{-1}\,K^{-1}}$ and $T_\mathrm{surf}/T_\mathrm{top} \in
+\{0.90, 0.95, 0.99, 1.00, 1.02\}$, the linearized maxima are $1.0000$ at
+$0.08$, $0.9996$ at $0.15$, and $0.9931$ at $0.30$ ($1.2181$ at $0.50$), and
+the exact-enthalpy maxima are $1.106$ ($1.1064$) at $0.08$, $1.204$ ($1.2040$)
+at $0.15$, and $1.370$ ($1.3702$) at $0.30$. Extending the scan to
+$T_\mathrm{surf}/T_\mathrm{top} \in [0.50, 1.05]$ (step $0.05$, covering the
+conductive-skin regime $0.50$ to $0.70$) gives exact-enthalpy maxima at $0.08$
+of $1.021$ to $1.030$ inside the mush ($1.025$ at
+$T_\mathrm{surf}/T_\mathrm{top} = 0.60$) and $1.052$ to $1.068$ across all
+$S_\mathrm{top}$ ($1.057$ at $0.60$, $1.110$ at $1.05$), while at $0.15$ and
+$T_\mathrm{surf}/T_\mathrm{top} = 0.60$ a trial from
+$S_\mathrm{top} = 3106.1\,\mathrm{J\,kg^{-1}\,K^{-1}}$
+($\phi_\mathrm{top} = 0.605$) lands on the solid-table plateau at
+$S_\mathrm{trial} = 2457.7\,\mathrm{J\,kg^{-1}\,K^{-1}}$, raising the
+unresupplied linearized ratio to $1.077$ ($1.0766$) and the exact-enthalpy
+ratio to $1.135$ ($1.1345$; $1.211$ at $1.05$).
 
 ## Convergence and termination
 
