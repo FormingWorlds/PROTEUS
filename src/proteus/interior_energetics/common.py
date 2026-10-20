@@ -1288,6 +1288,7 @@ class Interior_t:
         self.bulkd = None  # Drained bulk modulus [Pa]; None: tidal module's own law
         self.perm = np.zeros(self.nlev_s)  # Permeability input of the tidal module [m2]
         self.bulk_visc = np.zeros(self.nlev_s)  # Bulk (compaction) viscosity [Pa s]
+        self.bulk_liq = None  # Melt bulk modulus [Pa] per layer; None: not resolved
         self.pres = np.zeros(self.nlev_s)  # Pressure [Pa]
         self.temp = np.zeros(self.nlev_s)  # Temperature [K]
 
@@ -1462,6 +1463,7 @@ class Interior_t:
             update_mush_rheology(self, config)
             return
         self.bulkd = None
+        self.bulk_liq = None
         for i, p in enumerate(self.phi):
             self.shear[i] = eval_rheoparam(p, 'shear')
             self.bulk[i] = eval_rheoparam(p, 'bulk')

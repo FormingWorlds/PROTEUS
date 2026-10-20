@@ -127,6 +127,32 @@ def _obliqua_module_cfg(config: Config) -> dict:
     return obliqua_cfg
 
 
+def _liquid_bulk_modulus(interior_o) -> float:
+    """Melt bulk modulus for Obliqua's ``bulk_l`` [Pa] from the interior's profile.
+
+    The per-layer melt-side adiabatic bulk modulus (``interior_o.bulk_liq``) is averaged
+    with the melt mass of each layer as weight, or with the layer mass when no layer
+    holds melt. Obliqua takes a single value.
+
+    Raises
+    ------
+    ValueError
+        If the interior has no melt bulk modulus profile.
+    """
+    k_l = getattr(interior_o, 'bulk_liq', None)
+    if k_l is None:
+        raise ValueError(
+            "orbit.obliqua.solid.bulk_l = 'none' needs the melt bulk modulus of the mush "
+            "rheology (interior_energetics.module = 'aragog'); set a value in Pa instead"
+        )
+    k_l = np.asarray(k_l, dtype=float)
+    mass = np.asarray(interior_o.mass, dtype=float)
+    weight = np.clip(np.asarray(interior_o.phi, dtype=float), 0.0, 1.0) * mass
+    if not np.sum(weight) > 0:
+        weight = mass
+    return float(np.sum(weight * k_l) / np.sum(weight))
+
+
 def run_obliqua(
     hf_row: dict, dirs: dict, interior_o: Interior_t, tides_o: Tides_t, config: Config
 ) -> float:
@@ -211,6 +237,8 @@ def run_obliqua(
     )
     if getattr(interior_o, 'bulkd', None) is not None:
         arr_keys += ('bulkd',)
+    if getattr(interior_o, 'bulk_liq', None) is not None:
+        arr_keys += ('bulk_liq',)
     lov = {k: np.array(getattr(interior_o, k), copy=True, dtype=float) for k in arr_keys}
 
     # Reverse arrays if using SPIDER
@@ -249,6 +277,14 @@ def run_obliqua(
     spectrum = 'legacy' if config.orbit.star_planet_model == 'sp0d' else 'adaptive'
 
     # Create configuration dictionary for Obliqua
+    obliqua_cfg = _obliqua_module_cfg(config)
+    if obliqua_cfg['solid']['bulk_l'] is None:
+        obliqua_cfg['solid']['bulk_l'] = _liquid_bulk_modulus(interior_o)
+        log.debug(
+            '    Obliqua melt bulk modulus from PALEOS: %.3e Pa'
+            % obliqua_cfg['solid']['bulk_l']
+        )
+
     cfg = {
         'title': 'PROTEUS_run_' + str(round(hf_row['Time'])),
         'params': {
@@ -259,7 +295,7 @@ def run_obliqua(
         },
         'orbit': {
             'obliqua': {
-                **_obliqua_module_cfg(config),
+                **obliqua_cfg,
                 'spectrum': spectrum,
                 's_min': s_min_eff,
                 's_max': s_max_eff,
@@ -294,6 +330,11 @@ def run_obliqua(
             bulkd = lov['bulkd']
         else:
             bulkd = jl.Obliqua.interior.get_drained_bulk(bulk, phi, cfg)
+        # melt bulk modulus per layer: the interior's profile, else the constant bulk_l
+        if 'bulk_liq' in lov:
+            bulk_liq = lov['bulk_liq']
+        else:
+            bulk_liq = _jlarr(np.full(len(lov['phi']), float(obliqua_cfg['solid']['bulk_l'])))
 
         # Run Obliqua to get tidal heating profile and love number
         power_prf, power_blk, nmk, sigma, LNk = jl.Obliqua.run_tides(
@@ -309,6 +350,7 @@ def run_obliqua(
             shear,
             bulk,
             bulkd,
+            bulk_liq,
             phi,
             perm,
             cfg,
@@ -399,6 +441,22 @@ def lookup_from_interior(dirs: dict, config: Config):
         bulk = _jlarr(np.array(d['bulk'], copy=True, dtype=float))
         phi = _jlarr(np.array(d['phi'], copy=True, dtype=float))
 
+    obliqua_cfg = _obliqua_module_cfg(config)
+    if obliqua_cfg['solid']['bulk_l'] is None:
+        if 'bulk_liq' in d:
+            obliqua_cfg['solid']['bulk_l'] = float(np.mean(d['bulk_liq']))
+        elif 'bulk_l' in d:
+            obliqua_cfg['solid']['bulk_l'] = float(d['bulk_l'])
+        else:
+            raise ValueError(
+                f"orbit.obliqua.solid.bulk_l = 'none' needs 'bulk_liq' or 'bulk_l' [Pa] in {file_path}"
+            )
+    if 'bulk_liq' in d:
+        bulk_liq = _jlarr(np.array(d['bulk_liq'], copy=True, dtype=float))
+    else:
+        n_phi = len(np.atleast_1d(d['phi']))
+        bulk_liq = _jlarr(np.full(n_phi, float(obliqua_cfg['solid']['bulk_l'])))
+
     # Create configuration dictionary for Obliqua
     cfg = {
         'title': 'Lookup_table',
@@ -410,7 +468,7 @@ def lookup_from_interior(dirs: dict, config: Config):
         },
         'orbit': {
             'obliqua': {
-                **_obliqua_module_cfg(config),
+                **obliqua_cfg,
                 'store_3D': False,
                 'enforce_ec': False,
                 'optimize_scales': False,
@@ -463,6 +521,7 @@ def lookup_from_interior(dirs: dict, config: Config):
             shear,
             bulk,
             bulkd,
+            bulk_liq,
             phi,
             perm,
             cfg,

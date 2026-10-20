@@ -154,7 +154,7 @@ def mush_moduli(phi, em: dict, v_crit: float, g_inf: float, tables: rt.ScsTables
 
 
 def update_mush_rheology(interior_o: Interior_t, config: Config) -> None:
-    """Set ``interior_o.shear``, ``bulk`` (grain modulus), ``bulkd`` and ``bulk_visc``.
+    """Set ``interior_o.shear``, ``bulk`` (grain modulus), ``bulkd``, ``bulk_visc`` and ``bulk_liq``.
 
     The bulk viscosity uses the interior module's shear viscosity ``interior_o.visc``.
     """
@@ -170,5 +170,6 @@ def update_mush_rheology(interior_o: Interior_t, config: Config) -> None:
     interior_o.shear = out['shear']
     interior_o.bulk = out['bulk']
     interior_o.bulkd = out['bulkd']
+    interior_o.bulk_liq = np.asarray(em['kappa_liq'], float)
     v = volume_fraction(interior_o.phi, em['rho_sol'], em['rho_liq'])
     interior_o.bulk_visc = bulk_viscosity(interior_o.visc, v)
