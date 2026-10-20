@@ -3178,8 +3178,25 @@ def compute_structure_mass_desync(radii, density, mass_enclosed) -> float:
 
 def _stop_on_invariant_error(solver):
     """Write status 33 when Zalmoxis returns a structure that breaks an invariant, and raise
-    again: the run stops, and no caller keeps its previous structure. A status write that
-    fails is logged and leaves no status file (the writer removes the old one first)."""
+    again: the run stops, and no caller keeps its previous structure.
+
+    Parameters
+    ----------
+    solver : callable
+        ``solver(config, outdir, *args, **kwargs)``, the structure solve to wrap.
+
+    Returns
+    -------
+    callable
+        The wrapped solver.
+
+    Raises
+    ------
+    StructureInvariantError
+        Raised again after the status write. A status write that fails with OSError is
+        logged: the status file then holds the previous status (a read-only folder), a
+        partial one, or none, so it can be stale.
+    """
 
     @functools.wraps(solver)
     def run(config, outdir, *args, **kwargs):
@@ -3190,7 +3207,11 @@ def _stop_on_invariant_error(solver):
             try:
                 UpdateStatusfile({'output': outdir}, 33)
             except OSError as err:
-                log.error('Status 33 could not be written to %s: %s', outdir, err)
+                log.error(
+                    'Status 33 could not be written to %s (%s); the status file can be stale',
+                    outdir,
+                    err,
+                )
             raise
 
     return run
