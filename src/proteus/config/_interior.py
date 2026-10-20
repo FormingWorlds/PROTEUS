@@ -574,6 +574,46 @@ class InteriorDummy:
     heat_internal: float = field(default=0.0, validator=ge(0))
 
 
+def _spherical_only(instance, attribute, value):
+    """The SCS tables use spherical grains and inclusions, i.e. a crystal aspect ratio of 1."""
+    if value != 1.0:
+        raise ValueError(
+            f'{attribute.name} = {value}: the elastic moduli use the self-consistent scheme '
+            'for spherical grains, so only an aspect ratio of 1 is supported'
+        )
+
+
+@define
+class Rheology:
+    """Crystal-melt mush rheology of the mantle.
+
+    Attributes
+    ----------
+    aspect_ratio: float
+        Crystal aspect ratio r_p [-] (only 1 (equant crystals) is supported for now).
+    framework_fraction: float
+        Crystal fraction at which the crystal framework becomes connected [-].
+    gompertz_width: float
+        Width w of the Gompertz shear-viscosity transition, in melt volume fraction [-].
+    melt_shear_modulus: float
+        Unrelaxed shear modulus of the melt, G_inf [Pa].
+    melt_weakening: float
+        Exponent alpha of the melt-weakened creep eta_sol exp(-alpha v) [-].
+    packing_fraction: float
+        Maximum packing fraction of equant crystals, phi_m1 [-].
+    packing_width: float
+        Width b of the aspect-ratio dependence of the maximum packing fraction [-].
+    """
+
+    aspect_ratio: float = field(default=1.0, validator=_spherical_only)
+    framework_fraction: float = field(default=0.8, validator=(gt(0), le(1)))
+    gompertz_width: float = field(default=0.076, validator=(gt(0), lt(1)))
+    melt_shear_modulus: float = field(default=1.0e10, validator=gt(0))
+    melt_weakening: float = field(default=26.0, validator=ge(0))
+    packing_fraction: float = field(default=0.55, validator=(gt(0), lt(1)))
+    packing_width: float = field(default=1.0, validator=gt(0))
+
+
 @define
 class Interior:
     """Magma ocean model selection and parameters.
@@ -661,6 +701,8 @@ class Interior:
         Parameters for running the aragog module.
     dummy: Dummy
         Parameters for running the dummy module.
+    rheology: Rheology
+        Crystal-melt mush rheology for the tidal interior profiles.
 
     Notes
     -----
@@ -711,6 +753,7 @@ class Interior:
     boundary: InteriorBoundary = field(
         factory=InteriorBoundary, validator=valid_interiorboundary
     )
+    rheology: Rheology = field(factory=Rheology)
 
     mixing_length: str = field(default='nearest', validator=in_(('nearest', 'constant')))
     grain_size: float = field(default=1e-3, validator=gt(0))
