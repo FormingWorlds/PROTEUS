@@ -17,6 +17,7 @@ Functions tested:
 
 from __future__ import annotations
 
+import inspect
 import logging
 from unittest.mock import MagicMock, patch
 
@@ -4684,14 +4685,15 @@ def test_ps_cache_key_ignores_the_header_of_the_extension(tmp_path):
 
 
 def test_cache_marker_of_the_run_follows_the_switch(tmp_path, monkeypatch):
-    """The key written next to the generated tables differs with the extension on and off."""
-    keys = []
-    for lowt in (False, True):
-        root = tmp_path / str(lowt)
-        root.mkdir()
-        _lowt_stubbed_run(root, monkeypatch, lowt=lowt)
-        keys.append((root / 'run' / 'data' / 'spider_eos' / '.cache_info.txt').read_text())
-    assert keys[0] != keys[1]
+    """In one run folder the switch sequence off, on, on, off builds, rebuilds, reuses and
+    rebuilds the tables, and the off key returns to its first value."""
+    calls, keys = [], []
+    for lowt in (False, True, True, False):
+        _, tables, _ = _lowt_stubbed_run(tmp_path, monkeypatch, lowt=lowt)
+        calls.append(tables.call_count)
+        keys.append((tmp_path / 'run' / 'data' / 'spider_eos' / '.cache_info.txt').read_text())
+    assert calls == [1, 1, 0, 1]
+    assert keys[0] != keys[1] == keys[2] and keys[3] == keys[0]
     assert keys[0].split('_eos=')[0] == keys[1].split('_eos=')[0]
 
 
@@ -4784,3 +4786,93 @@ def test_default_pressure_columns_skip_the_clinoenstatite_band():
     assert p_max == pytest.approx(3.5e11)
     assert not np.any((cols > 6.746e9) & (cols < 7.0e9))
     assert np.any(np.isclose(cols, 6.7458e9, rtol=1e-4))
+
+
+def test_the_installed_zalmoxis_takes_every_keyword_proteus_passes(tmp_path, monkeypatch):
+    """Contract with the installed zalmoxis.eos_export.generate_spider_eos_tables: when it has
+    solid_lowt_file, every keyword PROTEUS passes with the switch on is one of its parameters;
+    when it lacks it, PROTEUS stops the build with the RuntimeError that names solid_lowt_file."""
+    real = pytest.importorskip('zalmoxis.eos_export').generate_spider_eos_tables
+    params = inspect.signature(real).parameters
+    if 'solid_lowt_file' in params:
+        _, tables, _ = _lowt_stubbed_run(tmp_path, monkeypatch, lowt=True)
+        passed = set(tables.call_args.kwargs)
+        assert 'solid_lowt_file' in passed
+        assert passed <= set(params), passed - set(params)
+        assert len(tables.call_args.args) <= len(params)
+    else:
+        with pytest.raises(Exception) as exc:
+            _lowt_stubbed_run(tmp_path, monkeypatch, lowt=True, tables=real)
+        assert exc.type is RuntimeError, repr(exc.value)
+        assert 'whose generate_spider_eos_tables takes solid_lowt_file' in str(exc.value)
+
+
+def test_ps_cache_key_golden_digest_without_extension():
+    """Without the extension the key is the golden string, and another EOS path changes only
+    its digest."""
+    from proteus.interior_struct.zalmoxis import _ps_cache_key
+
+    common = dict(
+        P_max=3.5e11,
+        nP=8,
+        nS=8,
+        mzf=0.8,
+        layout='unified',
+        mantle_eos='PALEOS:MgSiO3',
+        eos_file='/d/u.dat',
+        solid_eos='/d/s.dat',
+        liquid_eos='/d/l.dat',
+    )
+    expected_key = 'P_max=3.500000e+11_nP=8_nS=8_mzf=0.8_layout=unified_eos=PALEOS-MgSiO3-077d71466450_gen=g'
+    computed_key = _ps_cache_key(**common, generator='g', lowt_file=None)
+    assert computed_key == expected_key
+    other = _ps_cache_key(**{**common, 'eos_file': '/d/v.dat'}, generator='g')
+    prefix = expected_key.split('077d71466450')[0]
+    assert other != expected_key and other.startswith(prefix) and other.endswith('_gen=g')
+
+
+def test_resumed_run_with_switch_changed_keeps_old_tables_and_resume_key_has_extension(
+    tmp_path, monkeypatch, caplog
+):
+    """A resumed run with lowt_extension toggled keeps existing tables while resume key tracks extension."""
+    from proteus.interior_struct.zalmoxis import _ps_resume_key, generate_spider_tables
+
+    # First, run with switch off to generate tables and cache marker.
+    out, tables, zmod = _lowt_stubbed_run(
+        tmp_path,
+        monkeypatch,
+        lowt=False,
+    )
+    assert out is not None
+    run_dir = tmp_path / 'run'
+    eos_dir = run_dir / 'data' / 'spider_eos'
+    assert (eos_dir / 'solidus_P-S.dat').exists()
+    old_marker = (eos_dir / '.cache_info.txt').read_text().strip()
+
+    # Now configure a resumed run with the switch turned on.
+    config = MagicMock()
+    config.interior_struct.zalmoxis.mantle_eos = 'PALEOS:MgSiO3'
+    config.interior_struct.zalmoxis.mushy_zone_factor = 0.8
+    config.interior_struct.zalmoxis.lookup_nP = 8
+    config.interior_struct.zalmoxis.lookup_nS = 8
+    config.interior_struct.zalmoxis.lowt_extension = True
+    config.planet.mass_tot = 1.0
+    config.params.resume = True
+
+    # A resumed run keeps the existing tables, does not call the generator, and warns.
+    tables.reset_mock()
+    with caplog.at_level(logging.WARNING):
+        resumed_out = generate_spider_tables(config, str(run_dir))
+    assert any('ignores the changed settings' in r.getMessage() for r in caplog.records)
+    assert resumed_out is not None
+    assert resumed_out['eos_dir'] == str(eos_dir)
+    assert tables.call_count == 0
+
+    # The resume key includes the extension and differs from the old marker.
+    entry = {'format': 'paleos_unified', 'eos_file': str(tmp_path / 'solid.dat')}
+    mat_dicts = {'PALEOS:MgSiO3': entry}
+    resume_k = _ps_resume_key(config, 'PALEOS:MgSiO3', entry, mat_dicts)
+    assert resume_k != old_marker
+    assert resume_k.startswith('P_max=3.500000e+11_nP=8_nS=8_mzf=0.8_layout=unified_eos=')
+    # Because lowt_extension=True, the cache key digest reflects the extension file.
+    assert old_marker.split('_eos=')[1] != resume_k.split('_eos=')[1]

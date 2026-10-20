@@ -1623,8 +1623,9 @@ def test_lowt_extension_ps_tables_property_refuses_exactly_the_unsupported_cases
     set to True with a structure other than zalmoxis or dummy or with a mantle whose energetics key
     is PALEOS-API or -highres, and a missing Zalmoxis section passes; every mantle of both lists
     runs with zalmoxis and dummy and the switch on."""
-    from hypothesis import example, given, settings
-    from hypothesis import strategies as st
+    hypothesis = pytest.importorskip('hypothesis')
+    example, given, settings = hypothesis.example, hypothesis.given, hypothesis.settings
+    st = pytest.importorskip('hypothesis.strategies')
 
     from proteus.config._config import lowt_extension_requires_ps_tables
 
@@ -1709,21 +1710,20 @@ def test_lowt_extension_refuses_a_paleos_api_or_highres_mantle_when_a_config_fil
 @pytest.mark.unit
 @pytest.mark.parametrize('lowt', [True, False])
 def test_lowt_extension_structure_check_runs_when_a_config_file_is_read(tmp_path, lowt):
-    """Reading input/planets/toi561b.toml (SPIDER structure) with the Aragog interior refuses the
-    switch on by name; the same file with the switch off loads."""
+    """Reading input/tutorials/tutorial_earth_moon.toml (SPIDER structure, no chemistry module)
+    with the Aragog interior refuses the switch on by name; with the switch off it loads."""
+    import tomllib
     from pathlib import Path
 
-    lines = (Path(__file__).parents[2] / 'input' / 'planets' / 'toi561b.toml').read_text()
-    lines = lines.split('\n')
-    start = lines.index('[interior_energetics]')
-    k = next(n for n in range(start + 1, len(lines)) if lines[n].startswith('module'))
-    assert lines[k] == 'module = "spider"'
-    lines[k] = 'module = "aragog"'
-    flag = 'true' if lowt else 'false'
+    import tomlkit
+
+    src = Path(__file__).parents[2] / 'input' / 'tutorials' / 'tutorial_earth_moon.toml'
+    raw = tomllib.loads(src.read_text())
+    assert raw['interior_struct']['module'] == 'spider' and 'atmos_chem' not in raw
+    raw['interior_energetics']['module'] = 'aragog'
+    raw['interior_struct'].setdefault('zalmoxis', {})['lowt_extension'] = lowt
     path = tmp_path / 'cfg.toml'
-    path.write_text(
-        '\n'.join(lines) + f'\n[interior_struct.zalmoxis]\nlowt_extension = {flag}\n'
-    )
+    path.write_text(tomlkit.dumps(raw))
     if lowt:
         with pytest.raises(ValueError, match='requires interior_struct.module'):
             read_config_object(path)
@@ -1731,6 +1731,7 @@ def test_lowt_extension_structure_check_runs_when_a_config_file_is_read(tmp_path
         cfg = read_config_object(path)
         assert cfg.interior_struct.module == 'spider'
         assert cfg.interior_energetics.module == 'aragog'
+        assert cfg.interior_struct.zalmoxis.lowt_extension is False
 
 
 @pytest.mark.unit

@@ -391,8 +391,9 @@ def test_lowt_extension_refuses_a_value_that_is_not_a_bool(value):
 
 def test_lowt_extension_property_only_bools_pass():
     """Every value of the common TOML types except a bool is refused."""
-    from hypothesis import given, settings
-    from hypothesis import strategies as st
+    hypothesis = pytest.importorskip('hypothesis')
+    given, settings = hypothesis.given, hypothesis.settings
+    st = pytest.importorskip('hypothesis.strategies')
 
     @settings(max_examples=200, deadline=None)
     @given(
