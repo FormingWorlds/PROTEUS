@@ -92,6 +92,16 @@ def _estimate_tau_drain(config: Config, hf_row: dict, interior_o) -> float:
     $325.99\\text{ J kg}^{-1}\\text{ K}^{-1}$ ($T = 183.20\\text{ K}$, $\\phi = 0$,
     $c_p = 528.90\\text{ J kg}^{-1}\\text{ K}^{-1}$) on the extended table, above the table floor.
 
+    The drain timescale is a start-of-step linear estimate on the top-cell mean
+    that holds where $c_p$ is smooth over the step. When the top cell crosses
+    the liquidus during a step ($\\phi_{\\text{top}} > 0.60$ at step start), the
+    realized chord $c_p$ drops below the step-start value and the surface basic
+    node is extrapolated from the two outermost staggered cells with weights
+    $[-0.5\\,r,\\, 1 + 0.5\\,r]$ ($r = \\Delta_{\\text{basic,outer}} / \\Delta_{\\text{stag,outer}}$),
+    so the single-step $|\\Delta T_{\\text{surf}}|$ can exceed $\\eta_{\\text{eff}}\\,T_{\\text{surf}}$
+    (measured at $1.82$ to $1.85\\times$ on 1 step per run in 4 25-kyr coupled
+    runs at $t \\approx 531\\text{ yr}$).
+
     Parameters
     ----------
     config : Config

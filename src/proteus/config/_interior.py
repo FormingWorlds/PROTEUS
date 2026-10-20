@@ -498,7 +498,12 @@ class Aragog:
     and keep hf_row['T_magma'], hf_row['T_surf'], and hf_row['Phi_global'] on the Aragog
     solver state by skipping the tmagma_atol/tmagma_rtol post-step clip on steps where
     tau_drain is finite; atmos_clim.prevent_warming still clamps T_magma, T_surf,
-    Phi_global, and F_int when active."""
+    Phi_global, and F_int when active. The bound is a start-of-step linear estimate on
+    the top-cell mean that holds where cp is smooth over the step; at a liquidus crossing
+    during a step it can be exceeded because the chord cp drops below the step-start value
+    and the surface basic node is extrapolated from the top two staggered cells with
+    weights [-0.5 * r, 1 + 0.5 * r] (measured at 1.82 to 1.85x the allowance on 1 step
+    per run in 4 25-kyr coupled runs at t ~ 531 yr)."""
 
     top_cell_dt_rel_dT: float = field(
         default=0.08, converter=float, validator=(gt(0.0), le(0.5))

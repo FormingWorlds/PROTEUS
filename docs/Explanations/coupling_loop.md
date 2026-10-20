@@ -153,7 +153,13 @@ further capped at the top-cell sensible-heat drain timescale $\tau_\mathrm{drain
 below `params.dt.minimum`), and the post-step `tmagma_atol`/`tmagma_rtol` clip
 on `T_magma`, `T_surf`, and `Phi_global` is skipped on steps where
 $\tau_\mathrm{drain}$ is finite (while `atmos_clim.prevent_warming` continues to
-clamp `T_magma`, `T_surf`, `Phi_global`, and `F_int` when active).
+clamp `T_magma`, `T_surf`, `Phi_global`, and `F_int` when active). This bound is
+a start-of-step linear estimate on the top-cell mean that holds where $c_p$ is
+smooth over the step; at a liquidus crossing during a step it can be exceeded
+because the realized chord $c_p$ drops below the step-start value and the
+surface basic node is extrapolated from the top two staggered cells with weights
+$[-0.5\,r,\, 1 + 0.5\,r]$ (measured at $1.82$ to $1.85\times$ the allowance on 1
+step per run in 4 25-kyr coupled runs at $t \approx 531\,\mathrm{yr}$).
 
 ## Convergence and termination
 
