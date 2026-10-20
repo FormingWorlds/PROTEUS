@@ -2252,7 +2252,8 @@ def test_estimate_tau_drain_eos_depends_on_p_and_s_at_top_staggered_cell_and_mul
 @pytest.mark.unit
 @pytest.mark.physics_invariant
 def test_next_step_top_cell_dt_limit_on_caps_dtswitch_below_dtminimum():
-    """With top_cell_dt_limit = True, tau_drain caps dtswitch below dt.minimum down to esc_floor."""
+    """With top_cell_dt_limit = True, tau_drain caps dtswitch below dt.minimum down to esc_floor,
+    and _tau_drain_cap_valid resets to False when floored or lengthened by an impact snap-forward."""
     from proteus.interior_energetics.timestep import _estimate_tau_drain, next_step
 
     cfg, io, _ = _make_tau_drain_fixture(
@@ -2413,7 +2414,12 @@ def test_estimate_tau_drain_paleos_slice_531p546_chord_lookahead_and_window():
 
     data = _load_paleos_ptop_531p546_slice_fixture()
     assert len(data['source_files_md5']) >= 10
-    assert isinstance(data.get('aragog_commit'), str) and len(data['aragog_commit']) == 40
+    assert isinstance(data.get('source_table'), str)
+    assert data['source_table'] != 'none'
+    assert data['source_table'].startswith('PALEOS')
+    assert 'none EOS slice' not in data['description']
+    assert isinstance(data.get('aragog_commit'), str) and len(data['aragog_commit']) >= 40
+    assert 'dirty' not in data['aragog_commit']
     assert 0.0 <= float(data['max_2d_vs_slice_rel_diff']) < 1.0e-14
     rows = {int(r['row']): r for r in data['snap531_rows_380_to_392']}
     r386 = rows[386]
@@ -2428,6 +2434,20 @@ def test_estimate_tau_drain_paleos_slice_531p546_chord_lookahead_and_window():
     )
     solver._volume_flat = np.array([5.0e18, float(data['vol_top_m3'])], dtype=float)
     eos_slice = _PaleosSliceEOS(data)
+    ref_pts = data['reference_2d_points']
+    s_ref = np.asarray(ref_pts['S_J_kg_K'], dtype=float)
+    p_ref = np.full_like(s_ref, float(data['P_top_Pa']), dtype=float)
+    assert len(s_ref) >= 20
+    for key, slice_fn in (
+        ('temperature_K', eos_slice.temperature),
+        ('heat_capacity_J_kg_K', eos_slice.heat_capacity),
+        ('density_kg_m3', eos_slice.density),
+        ('melt_fraction', eos_slice.melt_fraction),
+    ):
+        ref_arr = np.asarray(ref_pts[key], dtype=float)
+        got_arr = np.asarray(slice_fn(p_ref, s_ref), dtype=float).ravel()
+        denom = np.maximum(np.abs(ref_arr), 1.0e-30)
+        assert float(np.max(np.abs(got_arr - ref_arr) / denom)) < 1.0e-14
     solver.entropy_eos = eos_slice
 
     hf_386 = {
@@ -2537,7 +2557,7 @@ def test_estimate_tau_drain_lookahead_floor_clip_and_edge_guards(caplog):
     assert tau_clipped != pytest.approx(tau_short_wrong, rel=1e-2)
     assert 0.0 < tau_clipped < tau_start
 
-    # Clipped trial with 0 < T_top - T_trial <= dT_allow keeps cp_eff (kills dt_trial > 0.0 mutant)
+    # A clipped trial within dT_allow (0 < T_top - T_trial <= dT_allow) keeps cp_eff
     t_floor_within_allow = 500.0
     solver.entropy_eos.temperature = lambda p_arr, s_arr: np.array(
         [
@@ -2557,8 +2577,8 @@ def test_estimate_tau_drain_lookahead_floor_clip_and_edge_guards(caplog):
     assert tau_clipped_within_allow == pytest.approx(tau_start, rel=1e-12)
     assert tau_clipped_within_allow != pytest.approx(tau_dt_gt_zero_wrong, rel=1e-2)
 
-    # phi_top <= 0.60 with cp_top > cp_solid uses cp_eff (not cp_top) to set S_trial (kills M5)
-    cfg_m5, io_m5, solver_m5 = _make_tau_drain_fixture(
+    # At phi_top <= 0.60 with cp_top > cp_solid, cp_eff (not cp_top) sets S_trial
+    cfg_low_phi, io_low_phi, solver_low_phi = _make_tau_drain_fixture(
         s_top=2400.0,
         phi_top=0.30,
         s_min=s_min,
@@ -2567,31 +2587,33 @@ def test_estimate_tau_drain_lookahead_floor_clip_and_edge_guards(caplog):
         rel_dT=0.08,
         rel_dT_solid=0.08,
     )
-    queried_m5_s: list[float] = []
+    queried_low_phi_s: list[float] = []
 
-    def _temp_m5(p_arr, s_arr):
+    def _temp_low_phi(p_arr, s_arr):
         s_q = float(np.asarray(s_arr, dtype=float).ravel()[0])
-        queried_m5_s.append(s_q)
+        queried_low_phi_s.append(s_q)
         if abs(s_q - 2400.0) < 1e-9:
             return np.array([1500.0], dtype=float)
         if s_q >= 2250.0:
             return np.array([1300.0], dtype=float)
         return np.array([900.0], dtype=float)
 
-    solver_m5.entropy_eos.temperature = _temp_m5
-    tau_m5 = _estimate_tau_drain(cfg_m5, row, io_m5)
-    cp_chord_m5 = 1500.0 * (2400.0 - 2304.0) / (1500.0 - 1300.0)
-    expected_m5_tau = (4000.0 * cp_chord_m5 * dr_eff * dt_allow) / (500.0 * secs_per_year)
-    cp_chord_m5_wrong = 1500.0 * (2400.0 - 2160.0) / (1500.0 - 900.0)
-    wrong_cp_top_m5_tau = (4000.0 * cp_chord_m5_wrong * dr_eff * dt_allow) / (
+    solver_low_phi.entropy_eos.temperature = _temp_low_phi
+    tau_low_phi = _estimate_tau_drain(cfg_low_phi, row, io_low_phi)
+    cp_chord_low_phi = 1500.0 * (2400.0 - 2304.0) / (1500.0 - 1300.0)
+    expected_low_phi_tau = (4000.0 * cp_chord_low_phi * dr_eff * dt_allow) / (
         500.0 * secs_per_year
     )
-    assert queried_m5_s == [
+    cp_chord_cp_top_wrong = 1500.0 * (2400.0 - 2160.0) / (1500.0 - 900.0)
+    wrong_cp_top_tau = (4000.0 * cp_chord_cp_top_wrong * dr_eff * dt_allow) / (
+        500.0 * secs_per_year
+    )
+    assert queried_low_phi_s == [
         pytest.approx(2400.0, rel=1e-12),
         pytest.approx(2304.0, rel=1e-12),
     ]
-    assert tau_m5 == pytest.approx(expected_m5_tau, rel=1e-12)
-    assert tau_m5 != pytest.approx(wrong_cp_top_m5_tau, rel=1e-2)
+    assert tau_low_phi == pytest.approx(expected_low_phi_tau, rel=1e-12)
+    assert tau_low_phi != pytest.approx(wrong_cp_top_tau, rel=1e-2)
 
     # When S_top < S_min + 300.0, S_trial clips at S_min + 300.0 > S_top and never loosens
     solver.entropy_staggered = np.array([[2800.0], [200.0]], dtype=float)
