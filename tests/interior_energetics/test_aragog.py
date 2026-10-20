@@ -21,6 +21,7 @@ Functions tested:
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 import sys
 import types
@@ -4220,7 +4221,7 @@ def test_setup_solver_passes_no_core_module_params_on_default_config(tmp_path):
 @pytest.mark.parametrize(
     'top_node, message, renamed',
     [
-        ('limited', "__init__() got an unexpected keyword argument 'top_node'", True),
+        ('limited', None, True),
         ('limited', 'unsupported operand in the top_node check', False),
         ('linear', "__init__() got an unexpected keyword argument 'top_node'", False),
     ],
@@ -4233,6 +4234,9 @@ def test_setup_solver_names_the_aragog_needed_for_the_limited_node(
     from proteus.interior_energetics.aragog import AragogRunner
 
     def old_boundary_conditions(**kwargs):
+        if message is None:  # a real dataclass without the field writes the refusal itself
+            fields = [k for k in kwargs if k != 'top_node']
+            return dataclasses.make_dataclass('_BoundaryConditionsParameters', fields)(**kwargs)
         raise TypeError(message)
 
     config = _make_aragog_config(struct_module='zalmoxis')
