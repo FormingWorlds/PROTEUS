@@ -3662,24 +3662,6 @@ def test_validate_module_versions_checks_vulcan_floor(tmp_path, caplog, installe
     assert fix is None or fix in logged[0]
 
 
-@pytest.mark.parametrize(('module', 'mode'), [(None, 'offline'), ('vulcan', None)])
-def test_validate_module_versions_skips_vulcan_without_chemistry(tmp_path, module, mode):
-    """A config whose run never calls VULCAN (no module, or mode 'none') never checks it."""
-    from proteus.utils.coupler import validate_module_versions
-
-    config = _all_dummy_modules_config()
-    config.interior_energetics.module = 'dummy'
-    config.atmos_chem.module = module
-    config.atmos_chem.mode = mode
-    with (
-        patch('proteus.doctor.check_python_package') as mock_check,
-        patch('proteus.utils.coupler.UpdateStatusfile') as mock_update,
-    ):
-        validate_module_versions({'rad': str(tmp_path)}, config)
-    assert mock_check.call_count == 0
-    assert mock_update.call_count == 0
-
-
 def test_validate_module_versions_skips_check_when_no_pinned_minimum(tmp_path):
     """When the resolver finds no pinned minimum (the dep string does
     not name the module), the inner _valid_ver helper short-circuits
@@ -4152,7 +4134,7 @@ def test_validate_module_versions_spider_stack_passes_with_unpinned_dep(monkeypa
         escape=types.SimpleNamespace(module='zephyrus'),
         star=types.SimpleNamespace(module='mors'),
         orbit=types.SimpleNamespace(module='dummy'),
-        atmos_chem=types.SimpleNamespace(module=None),
+        atmos_chem=types.SimpleNamespace(module=None, mode=None),
     )
     requires = [
         'numpy',
@@ -4199,7 +4181,7 @@ def test_validate_module_versions_raises_for_old_janus_in_spider_stack(monkeypat
         escape=types.SimpleNamespace(module='dummy'),
         star=types.SimpleNamespace(module='dummy'),
         orbit=types.SimpleNamespace(module='dummy'),
-        atmos_chem=types.SimpleNamespace(module=None),
+        atmos_chem=types.SimpleNamespace(module=None, mode=None),
     )
     monkeypatch.setitem(sys.modules, 'janus', types.SimpleNamespace(__version__='0.1.0'))
 
@@ -4229,7 +4211,7 @@ def test_validate_module_versions_raises_for_old_obliqua(tmp_path):
         escape=types.SimpleNamespace(module='dummy'),
         star=types.SimpleNamespace(module='dummy'),
         orbit=types.SimpleNamespace(module='obliqua'),
-        atmos_chem=types.SimpleNamespace(module=None),
+        atmos_chem=types.SimpleNamespace(module=None, mode=None),
     )
     obliqua_dir = tmp_path / 'Obliqua'
     obliqua_dir.mkdir()
@@ -4263,7 +4245,7 @@ def test_validate_module_versions_accepts_current_obliqua(tmp_path):
         escape=types.SimpleNamespace(module='dummy'),
         star=types.SimpleNamespace(module='dummy'),
         orbit=types.SimpleNamespace(module='obliqua'),
-        atmos_chem=types.SimpleNamespace(module=None),
+        atmos_chem=types.SimpleNamespace(module=None, mode=None),
     )
     obliqua_dir = tmp_path / 'Obliqua'
     obliqua_dir.mkdir()

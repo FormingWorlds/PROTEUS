@@ -368,12 +368,7 @@ def validate_module_versions(dirs: dict, config: Config):
 
     # Atmospheric chemistry module, when mode runs it: its floor sits in an extra, which
     # _get_expver misreads
-    chem = config.atmos_chem
-    if (
-        chem.module == 'vulcan'
-        and chem.mode == 'offline'
-        and (problem := vulcan_problem(config))
-    ):
+    if config.atmos_chem.mode == 'offline' and (problem := vulcan_problem(config)):
         log.error(problem)
         valid = False
 
