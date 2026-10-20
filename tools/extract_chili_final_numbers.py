@@ -171,7 +171,9 @@ def extract_run_data(run_dir: Path, display_name: str) -> dict:
 
     o2_bar = res['o2_bar']
     res['delta_iw'] = (
-        math.log10(o2_bar) - _iw_oneill02(t_magma) if o2_bar and o2_bar > 0 else None
+        math.log10(o2_bar) - _iw_oneill02(t_magma)
+        if o2_bar and o2_bar > 0 and t_magma > 0
+        else None
     )
 
     res['mush_node_range_pct'] = None
