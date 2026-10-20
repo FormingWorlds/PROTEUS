@@ -582,17 +582,16 @@ def test_proteus_start_zalmoxis_failed_baseline_keeps_row_4_init_stage_true_and_
     assert resume_baseline_structure_done(str(out_dir)) is True
     assert (
         Path(get_file_baseline_structure_done(str(out_dir))).read_text(encoding='utf-8').strip()
-        == '1 8'
+        == '1 9'
     )
     assert (
         Path(get_file_structure_rollback(str(out_dir))).read_text(encoding='utf-8').strip()
-        == '0 8'
+        == '0 9'
     )
 
-    # Case 3a: Dropping row 8 so the resume lands on row 7 makes the row-8 flag event
-    # newer than the resume row (8 > 7). On resume, Proteus sets rollback=True and
-    # baseline-done=False on disk, then runs a forced baseline re-solve. When that
-    # forced re-solve fails on the first resumed step, rollback stays True on disk ('1 8'):
+    # Case 3a: Dropping row 9 makes the row-9 flag event newer than row 8, so
+    # Proteus sets rollback=True and baseline-done=False on disk and forces a
+    # baseline re-solve; if it fails, rollback stays True on disk ('1 9'):
     import proteus.utils.coupler as coupler_mod
 
     real_select = coupler_mod.select_resumable_snapshot
@@ -603,7 +602,19 @@ def test_proteus_start_zalmoxis_failed_baseline_keeps_row_4_init_stage_true_and_
 
     monkeypatch.setattr(coupler_mod, 'select_resumable_snapshot', fake_select_drops_snapshot)
 
+    resume_entry_files: list[tuple[str, str]] = []
+
     def fake_dropped_update_fails(dirs, config, hf_row, interior_o, lt, lT, lP, force=False):
+        resume_entry_files.append(
+            (
+                Path(get_file_structure_rollback(dirs['output']))
+                .read_text(encoding='utf-8')
+                .strip(),
+                Path(get_file_baseline_structure_done(dirs['output']))
+                .read_text(encoding='utf-8')
+                .strip(),
+            )
+        )
         interior_o.structure_stale = True
         interior_o.structure_rollback_active = True
         hf_row['_structure_rollback'] = True
@@ -640,19 +651,20 @@ def test_proteus_start_zalmoxis_failed_baseline_keeps_row_4_init_stage_true_and_
 
     monkeypatch.setattr(proteus_mod, 'check_row_invariants', spy_dropped_check_row)
     dropped_resume.start(resume=True, offline=True)
+    assert resume_entry_files == [('1 8', '0 8')]
     assert dropped_flags[0] == (True, True)
     assert dropped_resume.interior_o.structure_rollback_active is True
     assert (
         Path(get_file_structure_rollback(str(out_dir))).read_text(encoding='utf-8').strip()
-        == '1 8'
+        == '1 9'
     )
     assert (
         Path(get_file_baseline_structure_done(str(out_dir))).read_text(encoding='utf-8').strip()
-        == '0 8'
+        == '0 9'
     )
 
     # Case 3b: A resume with update_interval=0.0 whose forced baseline re-solve succeeds
-    # clears structure_rollback_active to False (and writes '0 9' and '1 9' to disk),
+    # clears structure_rollback_active to False (and writes '0 10' and '1 10' to disk),
     # so M_int_target_rel_err is NOT stuck report-only and stops in stop mode:
     monkeypatch.setattr(coupler_mod, 'select_resumable_snapshot', real_select)
 
@@ -691,11 +703,11 @@ def test_proteus_start_zalmoxis_failed_baseline_keeps_row_4_init_stage_true_and_
     assert second_resume._baseline_structure_done is True
     assert (
         Path(get_file_structure_rollback(str(out_dir))).read_text(encoding='utf-8').strip()
-        == '0 9'
+        == '0 10'
     )
     assert (
         Path(get_file_baseline_structure_done(str(out_dir))).read_text(encoding='utf-8').strip()
-        == '1 9'
+        == '1 10'
     )
 
     # Case 3c: When a resume drops a snapshot (row 8 -> resume_row 7) and the flag files on disk
@@ -735,11 +747,11 @@ def test_proteus_start_zalmoxis_failed_baseline_keeps_row_4_init_stage_true_and_
     assert no_newer_calls == []
 
     # Case 3d: A kill between the flag write and the helpfile write (dropped_snapshots == [],
-    # but structure_stale.dat / structure_rollback.dat hold row 9 > resume_row 8) is detected
+    # but structure_stale.dat / structure_rollback.dat hold row 11 > resume_row 10) is detected
     # as a newer-than-row event, re-solving the baseline at resume and clearing rollback on success:
     monkeypatch.setattr(coupler_mod, 'select_resumable_snapshot', real_select)
-    Path(get_file_structure_stale(str(out_dir))).write_text('0 9\n', encoding='utf-8')
-    Path(get_file_structure_rollback(str(out_dir))).write_text('0 9\n', encoding='utf-8')
+    Path(get_file_structure_stale(str(out_dir))).write_text('0 11\n', encoding='utf-8')
+    Path(get_file_structure_rollback(str(out_dir))).write_text('0 11\n', encoding='utf-8')
     Path(get_file_baseline_structure_done(str(out_dir))).write_text('1 5\n', encoding='utf-8')
 
     ahead_forced_calls: list[tuple[bool, bool]] = []
@@ -761,7 +773,7 @@ def test_proteus_start_zalmoxis_failed_baseline_keeps_row_4_init_stage_true_and_
     ahead_resume.config.planet.temperature_mode = 'isothermal'
     ahead_resume.config.params.stop.solid.enabled = False
     ahead_resume.config.params.stop.iters.minimum = 1
-    ahead_resume.config.params.stop.iters.maximum = 10
+    ahead_resume.config.params.stop.iters.maximum = 11
     ahead_resume.config.params.stop.time.minimum = 0.0
     ahead_resume.config.params.stop.time.maximum = 5000.0
     ahead_resume.config.params.out.plot_mod = None
@@ -773,7 +785,7 @@ def test_proteus_start_zalmoxis_failed_baseline_keeps_row_4_init_stage_true_and_
     assert ahead_resume._baseline_structure_done is True
     assert (
         Path(get_file_structure_rollback(str(out_dir))).read_text(encoding='utf-8').strip()
-        == '0 9'
+        == '0 11'
     )
 
 

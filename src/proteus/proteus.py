@@ -350,6 +350,10 @@ class Proteus:
             set_core_target_at_init_end(self.config, self.hf_row)
             self.init_stage = False
 
+    def _current_row_index(self) -> int:
+        """Return the zero-based helpfile row index of the active iteration."""
+        return 0 if self.hf_all is None else len(self.hf_all)
+
     def _row_init_stage(self, iter_init_stage: bool) -> bool:
         """Return whether the row precedes the post-init baseline structure solve.
 
@@ -403,10 +407,20 @@ class Proteus:
             update_structure_from_interior,
         )
 
-        if _use_superliquidus_adiabat_ic(self.config):
+        row_idx = self._current_row_index()
+        if hasattr(self.interior_o, '_structure_row_index'):
+            self.interior_o._structure_row_index = row_idx
+
+        if _use_superliquidus_adiabat_ic(self.config) and not (
+            getattr(self.config.params, 'resume', False) is True
+            and getattr(self.interior_o, 'structure_rollback_active', False) is True
+        ):
             self._baseline_structure_done = True
-            write_baseline_structure_done(self.directories['output'], True)
+            write_baseline_structure_done(self.directories['output'], True, row_index=row_idx)
             return
+
+        if isinstance(self.hf_row, dict):
+            self.hf_row.pop('_structure_rollback', None)
 
         new_time, new_Tmagma, new_Phi = update_structure_from_interior(
             self.directories,
@@ -422,14 +436,22 @@ class Proteus:
         # Commit the baseline only when the solve converged. On a fall-back the
         # structure is the stale initial-condition one; retry on the next step.
         if self.interior_o.structure_stale:
-            write_baseline_structure_done(self.directories['output'], False)
+            write_baseline_structure_done(self.directories['output'], False, row_index=row_idx)
             return
 
+        rb_flag = (
+            bool(self.hf_row.get('_structure_rollback', False))
+            if isinstance(self.hf_row, dict)
+            else False
+        )
+        self.interior_o.structure_rollback_active = rb_flag
+        if hasattr(self.interior_o, 'write_structure_stale'):
+            self.interior_o.write_structure_stale(self.directories['output'])
         self.last_struct_time = new_time
         self.last_struct_Tmagma = new_Tmagma
         self.last_struct_Phi = new_Phi
         self._baseline_structure_done = True
-        write_baseline_structure_done(self.directories['output'], True)
+        write_baseline_structure_done(self.directories['output'], True, row_index=row_idx)
 
     def _match_ps_tables_to_mass(self):
         """Point a resumed run at the P-S tables of its restored planet mass.
@@ -865,6 +887,7 @@ class Proteus:
 
             # Solve interior structure
             _t0 = time.perf_counter()
+            self.interior_o._structure_row_index = 0
             solve_structure(
                 self.directories,
                 self.config,
@@ -876,11 +899,11 @@ class Proteus:
                 self.hf_row.get('_structure_rollback', False)
             )
             if hasattr(self.interior_o, 'write_structure_stale'):
-                self.interior_o.write_structure_stale(self.directories['output'])
+                self.interior_o.write_structure_stale(self.directories['output'], row_index=0)
             if self.config.interior_struct.module == 'zalmoxis':
                 from proteus.interior_energetics.common import write_baseline_structure_done
 
-                write_baseline_structure_done(self.directories['output'], False)
+                write_baseline_structure_done(self.directories['output'], False, row_index=0)
             _t_init['structure'] = time.perf_counter() - _t0
 
             # Initialize structure-update sentinels so the first dynamic
@@ -952,7 +975,9 @@ class Proteus:
                     self.hf_row.get('_structure_rollback', False)
                 )
                 if hasattr(self.interior_o, 'write_structure_stale'):
-                    self.interior_o.write_structure_stale(self.directories['output'])
+                    self.interior_o.write_structure_stale(
+                        self.directories['output'], row_index=0
+                    )
                 _t_init['equilibrate'] = time.perf_counter() - _t0
                 # Update sentinels with post-equilibration state
                 self.last_struct_Tmagma = self.hf_row.get('T_magma', np.inf)
@@ -1074,23 +1099,42 @@ class Proteus:
                 self.interior_o.resume_tides(self.directories['output'])
 
             # Restore the stale-structure and rollback flags from disk on resume.
-            self.interior_o.resume_structure_stale(self.directories['output'])
-            if dropped_snapshots:
-                self.interior_o.structure_rollback_active = True
-                self.interior_o.write_structure_stale(self.directories['output'])
+            from proteus.interior_energetics.common import (
+                has_newer_structure_flag_event,
+                resume_baseline_structure_done,
+                write_baseline_structure_done,
+            )
+
+            resume_row = len(self.hf_all) - 1
+            self.interior_o._structure_row_index = resume_row
+            newer_flag_event = has_newer_structure_flag_event(
+                self.directories['output'], resume_row
+            )
+            self.interior_o.resume_structure_stale(
+                self.directories['output'], resume_row=resume_row
+            )
 
             # Set loop counters
             self.loops['total'] = len(self.hf_all)
             self.init_stage = False
             # Restore baseline-structure completion so an uncommitted baseline retries.
             if self.config.interior_struct.module == 'zalmoxis':
-                from proteus.interior_energetics.common import resume_baseline_structure_done
-
                 self._baseline_structure_done = resume_baseline_structure_done(
-                    self.directories['output']
+                    self.directories['output'], resume_row=resume_row
                 )
+                if newer_flag_event:
+                    self._baseline_structure_done = False
+                    write_baseline_structure_done(
+                        self.directories['output'], False, row_index=resume_row
+                    )
             else:
                 self._baseline_structure_done = True
+
+            if newer_flag_event:
+                self.interior_o.structure_rollback_active = True
+                self.interior_o.write_structure_stale(
+                    self.directories['output'], row_index=resume_row
+                )
 
             # Restore Zalmoxis mesh path for resumed SPIDER runs
             if (
@@ -1226,6 +1270,7 @@ class Proteus:
             log.info('[INIT_TIMING] %s', _initstr)
         try:
             while not self.finished_both:
+                self.interior_o._structure_row_index = self._current_row_index()
                 # Snapshot when the iteration count matches write_mod or the
                 # time since the last write exceeds dt_write_rel * Time.
                 is_snapshot = is_write_snapshot(

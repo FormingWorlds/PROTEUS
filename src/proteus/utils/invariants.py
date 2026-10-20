@@ -663,7 +663,10 @@ def check_structure_invariants(
     with ``report_only=True`` and do not stop the run. While a Zalmoxis structure rollback
     remains active until the next accepted re-solve (``hf_row['_structure_rollback']`` or
     ``interior_o.structure_rollback_active``), finite ``M_int_target_rel_err`` and
-    ``M_core_target_rel_err`` violations are also emitted with ``report_only=True``.
+    ``M_core_target_rel_err`` violations are also emitted with ``report_only=True``; a resume
+    after dropped snapshots, or after a flag event newer than the resume row, marks the
+    structure rollback active and re-solves the structure once at the resume, clearing the
+    rollback when the re-solve succeeds.
 
     Parameters
     ----------

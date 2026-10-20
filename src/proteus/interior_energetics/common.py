@@ -1188,8 +1188,8 @@ def get_file_baseline_structure_done(outdir: str) -> str:
     return os.path.join(outdir, 'data', 'baseline_structure_done.dat')
 
 
-def _write_flag_file_atomic(path: str, flag: bool) -> None:
-    """Write ``0`` or ``1`` to ``path`` via a sibling temporary file and ``os.replace``.
+def _write_flag_file_atomic(path: str, flag: bool, row_index: int | None = None) -> None:
+    """Write ``0`` or ``1`` (and optional helpfile row index) to ``path`` atomically.
 
     Parameters
     ----------
@@ -1197,11 +1197,18 @@ def _write_flag_file_atomic(path: str, flag: bool) -> None:
         Destination flag file path.
     flag : bool
         Boolean state to persist as ``1`` or ``0``.
+    row_index : int or None, optional
+        Zero-based helpfile row index of the event that wrote the flag.
     """
     tmp_path = f'{path}.tmp.{os.getpid()}'
+    line = (
+        '%d\n' % (1 if flag else 0)
+        if row_index is None
+        else '%d %d\n' % (1 if flag else 0, int(row_index))
+    )
     try:
         with open(tmp_path, 'w') as hdl:
-            hdl.write('%d\n' % (1 if flag else 0))
+            hdl.write(line)
         os.replace(tmp_path, path)
     except OSError:
         try:
@@ -1212,7 +1219,39 @@ def _write_flag_file_atomic(path: str, flag: bool) -> None:
         raise
 
 
-def write_baseline_structure_done(outdir: str, done: bool) -> None:
+def _read_flag_file_with_row(path: str) -> tuple[bool, int | None]:
+    """Read ``(flag, row_index)`` from ``path``; ``row_index`` is ``None`` when omitted."""
+    with open(path) as hdl:
+        parts = hdl.read().strip().split()
+    if not parts or len(parts) > 2:
+        raise ValueError(f'Invalid flag file format in {path!r}')
+    flag = bool(int(parts[0]))
+    row_index = int(parts[1]) if len(parts) == 2 else None
+    return flag, row_index
+
+
+def has_newer_structure_flag_event(outdir: str, resume_row: int) -> bool:
+    """Return whether any persisted structure flag file records a row index above ``resume_row``."""
+    for getter in (
+        get_file_structure_stale,
+        get_file_structure_rollback,
+        get_file_baseline_structure_done,
+    ):
+        path = getter(outdir)
+        if not os.path.exists(path):
+            continue
+        try:
+            _, event_row = _read_flag_file_with_row(path)
+        except (ValueError, OSError):
+            continue
+        if event_row is not None and event_row > int(resume_row):
+            return True
+    return False
+
+
+def write_baseline_structure_done(
+    outdir: str, done: bool, *, row_index: int | None = None
+) -> None:
     """Persist ``_baseline_structure_done`` under ``<outdir>/data/``.
 
     Parameters
@@ -1221,14 +1260,20 @@ def write_baseline_structure_done(outdir: str, done: bool) -> None:
         Run output directory.
     done : bool
         Whether the post-init Zalmoxis baseline structure solve has succeeded.
+    row_index : int or None, optional
+        Zero-based helpfile row index of the baseline structure event.
     """
     try:
-        _write_flag_file_atomic(get_file_baseline_structure_done(outdir), done)
+        _write_flag_file_atomic(
+            get_file_baseline_structure_done(outdir), done, row_index=row_index
+        )
     except OSError as exc:
         log.warning('Could not persist baseline-structure flag file: %s', exc)
 
 
-def resume_baseline_structure_done(outdir: str, *, default: bool = True) -> bool:
+def resume_baseline_structure_done(
+    outdir: str, *, default: bool = True, resume_row: int | None = None
+) -> bool:
     """Restore ``_baseline_structure_done`` from ``<outdir>/data/`` on resume.
 
     Parameters
@@ -1237,18 +1282,22 @@ def resume_baseline_structure_done(outdir: str, *, default: bool = True) -> bool
         Run output directory.
     default : bool, optional
         Fallback value when the flag file is absent.
+    resume_row : int or None, optional
+        Zero-based helpfile row index of the row from which the run resumes.
 
     Returns
     -------
     bool
         Restored baseline-structure completion flag.
     """
+    if resume_row is not None and has_newer_structure_flag_event(outdir, resume_row):
+        return False
     path = get_file_baseline_structure_done(outdir)
     if not os.path.exists(path):
         return bool(default)
     try:
-        with open(path) as hdl:
-            return bool(int(hdl.read().strip()))
+        done, _ = _read_flag_file_with_row(path)
+        return bool(done)
     except (ValueError, OSError):
         log.warning('Could not parse baseline-structure flag file; retrying baseline')
         return False
@@ -1277,6 +1326,8 @@ class Interior_t:
         self.structure_stale = False
         # True while a Zalmoxis structure rollback or monotonic-radius reject remains active.
         self.structure_rollback_active = False
+        # Zero-based helpfile row index of the active iteration for flag persistence.
+        self._structure_row_index: int | None = None
 
         # Cumulative SPIDER time [yr]. Used by the CVode failure
         # fallback path (wrapper.py) to keep bookkeeping consistent
@@ -1492,49 +1543,61 @@ class Interior_t:
             for i in range(self.nlev_s):
                 hdl.write('%.7e %.7e \n' % (self.phi[i], self.tides[i]))
 
-    def write_structure_stale(self, outdir: str):
+    def write_structure_stale(self, outdir: str, *, row_index: int | None = None):
         """Persist ``structure_stale`` and ``structure_rollback_active`` to disk.
 
         Parameters
         ----------
         outdir : str
             Run output directory.
+        row_index : int or None, optional
+            0-based helpfile row index at which the flag change occurred.
         """
+        eff_row = (
+            getattr(self, '_structure_row_index', None) if row_index is None else row_index
+        )
         rollback = bool(getattr(self, 'structure_rollback_active', False))
         try:
             _write_flag_file_atomic(
-                get_file_structure_stale(outdir), bool(self.structure_stale)
+                get_file_structure_stale(outdir),
+                bool(self.structure_stale),
+                row_index=eff_row,
             )
-            _write_flag_file_atomic(get_file_structure_rollback(outdir), rollback)
+            _write_flag_file_atomic(
+                get_file_structure_rollback(outdir), rollback, row_index=eff_row
+            )
         except OSError as exc:
             log.warning('Could not persist stale-structure flag file: %s', exc)
 
-    def resume_structure_stale(self, outdir: str):
+    def resume_structure_stale(self, outdir: str, *, resume_row: int | None = None):
         """Restore ``structure_stale`` and ``structure_rollback_active`` on resume.
 
         Parameters
         ----------
         outdir : str
             Run output directory.
+        resume_row : int or None, optional
+            0-based helpfile row index of the snapshot being resumed.
         """
+        newer = resume_row is not None and has_newer_structure_flag_event(outdir, resume_row)
         path = get_file_structure_stale(outdir)
         if not os.path.exists(path):
             self.structure_stale = False
         else:
             try:
-                with open(path) as hdl:
-                    self.structure_stale = bool(int(hdl.read().strip()))
+                stale_val, _ = _read_flag_file_with_row(path)
+                self.structure_stale = stale_val
             except (ValueError, OSError):
                 log.warning('Could not parse stale-structure flag file; assuming fresh')
                 self.structure_stale = False
 
         rb_path = get_file_structure_rollback(outdir)
         if not os.path.exists(rb_path):
-            self.structure_rollback_active = self.structure_stale
+            self.structure_rollback_active = True if newer else self.structure_stale
             return
         try:
-            with open(rb_path) as hdl:
-                self.structure_rollback_active = bool(int(hdl.read().strip()))
+            rb_val, _ = _read_flag_file_with_row(rb_path)
+            self.structure_rollback_active = True if newer else rb_val
         except (ValueError, OSError):
             log.warning(
                 'Could not parse structure-rollback flag file; assuming rollback active'
