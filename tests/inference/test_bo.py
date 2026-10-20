@@ -899,3 +899,147 @@ def test_optimize_acqf_logged_passes_other_warnings_through_and_logs_nothing(
         bo_mod.optimize_acqf_logged(acq_function=None, d=2, who='worker 0')
 
     assert caplog.records == []
+
+
+def test_scored_evaluations_drops_only_failed_runs():
+    """Failed and excluded runs, scored BAD_OBJ_VALUE, leave the GP training set;
+    every scored run stays, including one just above the failure score.
+    """
+    bad = bo_mod.BAD_OBJ_VALUE
+    X = torch.tensor([[0.1], [0.3], [0.5], [0.7]], dtype=torch.double)
+    # -19.5 is far below any real score but still a fit quality, so it is kept
+    Y = torch.tensor([[-1.2], [bad], [bad + 0.5], [0.8]], dtype=torch.double)
+
+    X_fit, Y_fit = bo_mod.scored_evaluations(X, Y)
+
+    assert X_fit.flatten().tolist() == pytest.approx([0.1, 0.5, 0.7])
+    assert Y_fit.flatten().tolist() == pytest.approx([-1.2, bad + 0.5, 0.8])
+    # Rows stay paired: the input of each kept score is its own
+    assert torch.equal(torch.cat([X_fit, Y_fit], dim=1), torch.cat([X, Y], dim=1)[[0, 2, 3]])
+
+
+def test_scored_evaluations_raises_when_every_run_failed():
+    """With no scored evaluation the GP has nothing to fit, which is an error,
+    not an empty training set.
+    """
+    X = torch.tensor([[0.2], [0.6]], dtype=torch.double)
+    Y = torch.full((2, 1), bo_mod.BAD_OBJ_VALUE, dtype=torch.double)
+
+    with pytest.raises(ValueError, match='None of the 2 evaluations is scored'):
+        bo_mod.scored_evaluations(X, Y)
+    # An empty history is the same case
+    with pytest.raises(ValueError, match='None of the 0'):
+        bo_mod.scored_evaluations(X[:0], Y[:0])
+
+
+def _spy_gp_and_acquisition(monkeypatch, candidate):
+    """Record the GP training data, the incumbent and the `avoid` set of the acquisition."""
+    seen = {}
+
+    def _gp(**kwargs):
+        seen['train_X'], seen['train_Y'] = kwargs['train_X'], kwargs['train_Y']
+        return _DummyGP()
+
+    def _acqf(_name, _gp, best, X_pending=None):
+        seen['best'] = best
+        return object()
+
+    def _optimize(_acqf, d, who, fixed=None, avoid=None):
+        seen['avoid'] = avoid
+        return torch.tensor([[candidate]], dtype=torch.double)
+
+    monkeypatch.setattr(bo_mod, 'SingleTaskGP', _gp)
+    monkeypatch.setattr(bo_mod, 'get_kernel', lambda *args, **kwargs: object())
+    monkeypatch.setattr(bo_mod, 'ExactMarginalLogLikelihood', lambda _lik, _gp: object())
+    monkeypatch.setattr(bo_mod, 'fit_gpytorch_mll', lambda *args, **kwargs: None)
+    monkeypatch.setattr(bo_mod, 'get_acqf', _acqf)
+    monkeypatch.setattr(bo_mod, 'optimize_acqf_logged', _optimize)
+    monkeypatch.setattr(bo_mod, 'plot_iter', lambda **kwargs: None)
+    return seen
+
+
+def _history_with_failures():
+    """Five evaluations, two of them failed, one failure next to the best point."""
+    bad = bo_mod.BAD_OBJ_VALUE
+    X = torch.tensor([[0.1], [0.35], [0.4], [0.6], [0.9]], dtype=torch.double)
+    Y = torch.tensor([[-2.0], [bad], [1.1], [bad], [-0.5]], dtype=torch.double)
+    return {'X': X, 'Y': Y}
+
+
+@pytest.mark.physics_invariant
+def test_bo_step_fits_gp_without_failed_runs_but_still_avoids_them(monkeypatch):
+    """The GP of a BO step sees only scored runs, so no failure enters the standardised
+    targets, while the failed inputs stay in the acquisition's `avoid` set, so the
+    optimiser does not propose a failed point again.
+    """
+    seen = _spy_gp_and_acquisition(monkeypatch, candidate=0.75)
+    D = _history_with_failures()
+
+    x, y, *_ = bo_mod.BO_step(
+        D=D,
+        B={},
+        f=lambda _x: torch.tensor([[0.3]], dtype=torch.double),
+        k=object(),
+        acqf='LogEI',
+        lock=_DummyLock(),
+        worker_id=0,
+    )
+
+    assert seen['train_X'].flatten().tolist() == pytest.approx([0.1, 0.4, 0.9])
+    assert seen['train_Y'].flatten().tolist() == pytest.approx([-2.0, 1.1, -0.5])
+    # Bound: every training target is a real fit quality
+    assert seen['train_Y'].min().item() > bo_mod.BAD_OBJ_VALUE
+    assert seen['best'] == pytest.approx(1.1)
+    # Both failed inputs, 0.35 and 0.6, are still avoided
+    assert seen['avoid'].flatten().tolist() == pytest.approx([0.1, 0.35, 0.4, 0.6, 0.9])
+    assert x[0, 0].item() == pytest.approx(0.75)
+    assert y[0, 0].item() == pytest.approx(0.3)
+
+
+@pytest.mark.physics_invariant
+def test_init_locs_fits_gp_without_failed_runs_but_still_avoids_them(monkeypatch):
+    """The initial proposals come from a GP of the scored runs only, and every
+    evaluated input, failed or not, stays in the `avoid` set of each proposal.
+    """
+    seen = _spy_gp_and_acquisition(monkeypatch, candidate=0.75)
+    D = _history_with_failures()
+
+    out = bo_mod.init_locs(1, D)
+
+    assert seen['train_Y'].flatten().tolist() == pytest.approx([-2.0, 1.1, -0.5])
+    assert seen['train_X'].flatten().tolist() == pytest.approx([0.1, 0.4, 0.9])
+    assert seen['train_Y'].min().item() > bo_mod.BAD_OBJ_VALUE
+    assert seen['avoid'].flatten().tolist() == pytest.approx([0.1, 0.35, 0.4, 0.6, 0.9])
+    assert out.flatten().tolist() == pytest.approx([0.75])
+
+
+@pytest.mark.physics_invariant
+def test_failed_run_no_longer_pulls_gp_mean_down_near_best_point():
+    """A failure next to the best point drags the GP mean of a fit that includes it
+    far below every scored value; without it, the mean between the neighbours stays
+    within the range of the scored data.
+    """
+    from botorch.models import SingleTaskGP
+    from botorch.models.transforms import Normalize, Standardize
+
+    D = _history_with_failures()
+
+    def _mean_at(X, Y, x):
+        gp = SingleTaskGP(
+            X,
+            Y,
+            train_Yvar=torch.full_like(Y, 1e-4),
+            input_transform=Normalize(d=1),
+            outcome_transform=Standardize(m=1),
+        )
+        gp.covar_module.lengthscale = 0.2  # fixed, so the comparison needs no fit
+        with torch.no_grad():
+            return gp.eval().posterior(torch.tensor([[x]], dtype=torch.double)).mean.item()
+
+    # 0.37 sits between the failure at 0.35 and the best point at 0.4
+    clean = _mean_at(*bo_mod.scored_evaluations(D['X'], D['Y']), 0.37)
+    raw = _mean_at(D['X'], D['Y'], 0.37)
+
+    assert -2.0 <= clean <= 1.5  # within the scored range, with room for overshoot
+    # Discrimination: the fit with the failure sits many units below that range
+    assert raw < -5.0

@@ -239,6 +239,8 @@ The system prints the final results including:
 
 During the inference run, some PROTEUS simulations might crash or fail, or stop on a status that is excluded in the inference configuration (e.g. maximum runtime reached). Status 29 (planet evaporated) is always excluded. The run carries on when there are failures unless `abort_on_failure` is set to `true` in the inference config. The study then starts no new simulations, but those already running finish first. Each failure is added to `failures.csv` in the output folder as it happens, and all failures are summarised at the end of the study. A study stopped by `abort_on_failure` keeps its `failures.csv` but prints no summary.
 
+A failed or excluded simulation is recorded in `data.csv` with the objective value -20, but the Gaussian process is fitted to the scored simulations only, so that value does not distort the surrogate. The parameters of a failed simulation still count as evaluated, so the optimiser does not propose the same point again.
+
 ## Customization
 
 ### Adding New Parameters

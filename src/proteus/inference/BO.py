@@ -20,6 +20,7 @@ from botorch.optim import optimize_acqf
 from botorch.optim.fit import fit_gpytorch_mll_torch
 from gpytorch.mlls import ExactMarginalLogLikelihood
 
+from proteus.inference.objective import BAD_OBJ_VALUE
 from proteus.inference.utils import get_acqf, get_kernel
 
 # Set tensor dtype for consistent precision
@@ -36,6 +37,31 @@ IRRELEVANT_LENGTHSCALE = 1.5
 
 # A proposal closer than this (unit cube) to an evaluated or pending point adds almost nothing
 MIN_SEPARATION = 0.005
+
+
+def scored_evaluations(X: torch.Tensor, Y: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    """The evaluations the GP is fitted to: failed and excluded runs, scored BAD_OBJ_VALUE, are dropped.
+
+    BAD_OBJ_VALUE sits far below every scored value, so one such run inflates the
+    standardised spread of Y and forces the GP through a deep spike. The dropped points
+    stay in the acquisition's `avoid` set, so the same point is not proposed again.
+
+    Parameters
+    ----------
+    - X (torch.Tensor): Evaluated inputs, shape (n, d).
+    - Y (torch.Tensor): Objective values, shape (n, 1).
+
+    Returns
+    ----------
+    - tuple: (X, Y) of the scored evaluations.
+
+    Raises:
+        ValueError: No evaluation is scored.
+    """
+    scored = Y[:, 0] > BAD_OBJ_VALUE
+    if not scored.any():
+        raise ValueError(f'None of the {len(Y)} evaluations is scored; the GP has no data')
+    return X[scored], Y[scored]
 
 
 def unit_bounds(d):
@@ -152,7 +178,7 @@ def _failed_starts(text: str) -> str:
 def BO_step(D, B, f, k, acqf, lock, worker_id, x_in=None):
     """Perform a single Bayesian optimization step.
 
-    Fits a GP to current data, optimizes an acquisition function,
+    Fits a GP to the scored evaluations, optimizes an acquisition function,
     updates busy points, evaluates the objective, and logs timing.
 
     Parameters
@@ -187,15 +213,16 @@ def BO_step(D, B, f, k, acqf, lock, worker_id, x_in=None):
         t_1_lock = time.perf_counter()
 
         d = X.shape[-1]
+        X_fit, Y_fit = scored_evaluations(X, Y)
 
-        best = Y.max().item()
+        best = Y_fit.max().item()
 
         t_0_fit = time.perf_counter()
         gp = SingleTaskGP(
-            train_X=X,
-            train_Y=Y,
+            train_X=X_fit,
+            train_Y=Y_fit,
             covar_module=k,
-            train_Yvar=torch.full_like(Y, noise),
+            train_Yvar=torch.full_like(Y_fit, noise),
             input_transform=Normalize(d=d),
             outcome_transform=Standardize(m=1),
         )
@@ -231,8 +258,8 @@ def BO_step(D, B, f, k, acqf, lock, worker_id, x_in=None):
             plot_iter(
                 gp=gp,
                 acqf=acqf,
-                X=X,
-                Y=Y,
+                X=X_fit,
+                Y=Y_fit,
                 next_x=x,
                 busys=b,
                 dir='plots/iters/',
@@ -294,21 +321,22 @@ def init_locs(
     - torch.Tensor: Tensor of shape (n_workers, d) in [0, 1]^d.
     """
 
-    X, Y = D['X'], D['Y']
+    X = D['X']
 
     d = X.shape[-1]
+    X_fit, Y_fit = scored_evaluations(X, D['Y'])
 
-    best = Y.max().item()
+    best = Y_fit.max().item()
 
     noise = 1e-4
     kernel = get_kernel(kernel, d)
     gp = SingleTaskGP(
-        train_X=X,
-        train_Y=Y,
+        train_X=X_fit,
+        train_Y=Y_fit,
         covar_module=kernel,
         input_transform=Normalize(d=d),
         outcome_transform=Standardize(m=1),
-        train_Yvar=torch.full_like(Y, noise),
+        train_Yvar=torch.full_like(Y_fit, noise),
     )
 
     lik = gp.likelihood
