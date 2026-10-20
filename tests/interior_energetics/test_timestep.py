@@ -2130,14 +2130,31 @@ def test_estimate_tau_drain_ic_one_and_pre_atmosphere_return_inf_without_warning
         assert getattr(io, '_tau_drain_cap_valid', None) is True
 
         res_bad_1 = _estimate_tau_drain(cfg, {'Time': 10.0, 'F_atm': 500.0, 'T_surf': 0.0}, io)
-        res_bad_2 = _estimate_tau_drain(cfg, {'Time': 20.0, 'F_atm': 500.0, 'T_surf': -5.0}, io)
+        assert res_bad_1 == float('inf')
+        assert getattr(io, '_tau_drain_cap_valid', None) is False
+        assert getattr(io, '_tau_drain_invalid_warned', False) is True
+        warns_1 = [r.getMessage() for r in caplog.records if 'tau_drain' in r.getMessage()]
+        assert len(warns_1) == 1
 
-    assert res_bad_1 == float('inf')
-    assert res_bad_2 == float('inf')
-    assert getattr(io, '_tau_drain_cap_valid', None) is False
-    assert getattr(io, '_tau_drain_invalid_warned', False) is True
-    warns = [r.getMessage() for r in caplog.records if 'tau_drain' in r.getMessage()]
-    assert len(warns) == 1
+        res_bad_2 = _estimate_tau_drain(cfg, {'Time': 20.0, 'F_atm': 500.0, 'T_surf': -5.0}, io)
+        assert res_bad_2 == float('inf')
+        assert getattr(io, '_tau_drain_cap_valid', None) is False
+        assert getattr(io, '_tau_drain_invalid_warned', False) is True
+        warns_2 = [r.getMessage() for r in caplog.records if 'tau_drain' in r.getMessage()]
+        assert len(warns_2) == 1
+
+    cfg_neg, io_neg, _ = _make_tau_drain_fixture()
+    io_neg.ic = 2
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.interior_energetics.timestep'):
+        caplog.clear()
+        res_t0_neg = _estimate_tau_drain(
+            cfg_neg, {'Time': 0.0, 'F_atm': 500.0, 'T_surf': -1.0}, io_neg
+        )
+        assert res_t0_neg == float('inf')
+        assert getattr(io_neg, '_tau_drain_cap_valid', None) is False
+        assert getattr(io_neg, '_tau_drain_invalid_warned', False) is True
+        warns_neg = [r.getMessage() for r in caplog.records if 'tau_drain' in r.getMessage()]
+        assert len(warns_neg) == 1
 
 
 @pytest.mark.unit
