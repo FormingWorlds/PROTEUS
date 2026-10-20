@@ -505,10 +505,12 @@ class Aragog:
     cp_chord = min(cp_eff, T_top * (S_top - S_trial) / (T_top - T_trial)) in the T_top form
     whenever T(P_top, S_trial) falls more than dT_allow below T_top (T_top - T_trial > dT_allow
     and S_top > S_trial), bounding the linearized unresupplied top-cell drop under the step's
-    linearization dS = q / T_top with q = cp_chord * dT_allow (using
-    T_mean = 0.5 * (T_top + T_trial) in the chord numerator would reduce cp_chord by the
-    fraction (T_top - T_trial) / (2 * T_top)). See docs/Explanations/coupling_loop.md for the
-    measured run results and EOS evaluations."""
+    linearization dS = q / T_top with q = cp_chord * dT_allow except when a lookahead trial on
+    the flat part of the PALEOS solid table (T held at T_sol from the last node below S_sol) or
+    in the low-entropy clamp at P_top can exceed dT_allow (mechanism shown on a constructed
+    slice state, not seen in a run so far). Using T_mean = 0.5 * (T_top + T_trial) in the chord
+    numerator would reduce cp_chord by the fraction (T_top - T_trial) / (2 * T_top). See
+    docs/Explanations/coupling_loop.md for the measured run results and EOS evaluations."""
 
     top_cell_dt_rel_dT: float = field(
         default=0.08, converter=float, validator=(gt(0.0), le(0.15))
@@ -518,7 +520,10 @@ class Aragog:
     Sets the allowed temperature scale dT_allow = eta_eff * T_surf for the step energy
     q = cp_chord * dT_allow, bounding the linearized unresupplied top-cell temperature drop
     T_top - T(P_top, S_top - q / T_top) <= dT_allow under the step's linearization
-    dS = q / T_top with the chord heat capacity cp_chord in the T_top form. See
+    dS = q / T_top with the chord heat capacity cp_chord in the T_top form except when a
+    lookahead trial on the flat part of the PALEOS solid table (T held at T_sol from the last
+    node below S_sol) or in the low-entropy clamp at P_top can exceed dT_allow (mechanism shown
+    on a constructed slice state, not seen in a run so far). See
     docs/Explanations/coupling_loop.md for the measured run results and EOS evaluations."""
 
     top_cell_dt_rel_dT_solid: float = field(

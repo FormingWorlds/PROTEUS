@@ -21,12 +21,9 @@ SMALL = 1e-8  # Small number
 _TAU_DRAIN_F_MIN = 1.0  # Minimum surface flux [W m^-2] for top-cell drain timescale
 _TAU_DRAIN_PHI_GATE = 0.60  # Melt-fraction gate below which solid heat capacity caps cp_eff
 _TAU_DRAIN_PHI_RAMP = 0.40  # Melt-fraction upper endpoint of the optional solid rel_dT ramp
-# Solid-probe floor S_min + 300 J/(kg K): at P_top = 0.4461 GPa (1 M_earth reference mesh),
-# T = 303.5 K (phi = 0) on the shipped PALEOS table (S_min = 106.12) and T = 183.2 K (phi = 0)
-# on the extended table (S_min = 25.99).
+# Entropy offset [J/(kg K)] above S_min for the solid heat-capacity probe and lookahead floor
 _TAU_DRAIN_SOLID_S_OFFSET = 300.0
-# Solid-probe cap 1800 J/(kg K): at P_top = 0.4461 GPa (1 M_earth reference mesh), T = 876.5 K
-# and phi = 0 on both PALEOS tables, 703.9 J/(kg K) below S_sol = 2503.9 J/(kg K) (T_sol = 1429.8 K).
+# Upper entropy cap [J/(kg K)] for the solid heat-capacity probe in the pure solid phase
 _TAU_DRAIN_SOLID_S_CAP = 1800.0
 _ARAGOG_SOLVER_ATTRS: tuple[str, ...] = (
     '_solution',
@@ -84,7 +81,8 @@ def _estimate_tau_drain(config: Config, hf_row: dict, interior_o) -> float:
     heat capacity uses $c_{p,\\text{eff}} = \\min(c_{p,\\text{top}},\\, c_{p,\\text{solid}})$
     where the solid heat-capacity probe evaluates
     $S_{\\text{probe}} = \\max(S_{\\min} + 300,\\, \\min(S_{\\text{top}},\\, 1800))\\text{ J kg}^{-1}\\text{ K}^{-1}$
-    in the pure solid phase above the table floor.
+    in the solid phase (at $P_{\\text{top}}$ on the PALEOS table, the $S_{\\min} + 300$
+    floor lies inside the low-entropy table clamp).
 
     A 1-point EOS temperature lookahead probes
     $S_{\\text{trial}} = \\max(S_{\\text{top}} - c_{p,\\text{eff}}\\,\\Delta T_{\\text{allow}} / T_{\\text{top}},\\, S_{\\min} + 300)$
@@ -98,7 +96,11 @@ def _estimate_tau_drain(config: Config, hf_row: dict, interior_o) -> float:
     $T_{\\text{top}} - T(P_{\\text{top}}, S_{\\text{top}} - q / T_{\\text{top}})$ by
     $\\Delta T_{\\text{allow}}$ across a liquidus crossing and in the mushy regime
     where the tabulated mush ``heat_capacity`` (a lever-rule blend of the end-member heat
-    capacities) exceeds $T\\,\\mathrm{d}S/\\mathrm{d}T$ along the EOS. The gate
+    capacities) exceeds $T\\,\\mathrm{d}S/\\mathrm{d}T$ along the EOS, except when a
+    lookahead trial on the flat part of the PALEOS solid table (where $T$ is held at
+    $T_{\\text{sol}}$ from the last node below $S_{\\text{sol}}$) or in the low-entropy
+    clamp at $P_{\\text{top}}$ can exceed $\\Delta T_{\\text{allow}}$ (mechanism shown on a
+    constructed slice state, not seen in a run so far). The gate
     $\\Delta T_{\\text{trial}} > \\Delta T_{\\text{allow}}$ forces the chord value below
     $c_{p,\\text{eff}}$, and $\\min()$ guards floating-point round-off; using
     $T_{\\text{mean}} = 0.5\\,(T_{\\text{top}} + T_{\\text{trial}})$ in the chord numerator
@@ -227,7 +229,7 @@ def _estimate_tau_drain(config: Config, hf_row: dict, interior_o) -> float:
                 eos.temperature(np.array([p_top]), np.array([s_top])), dtype=float
             ).ravel()[0]
         )
-        # Same S_min + 300 J/(kg K) solid-probe floor (T = 303.5 K on shipped, 183.2 K on extended).
+        # Apply the same S_min + offset floor used by the lookahead trial.
         s_floor = s_min + _TAU_DRAIN_SOLID_S_OFFSET
         s_solid_probe = max(s_floor, min(s_top, _TAU_DRAIN_SOLID_S_CAP))
         cp_solid = float(

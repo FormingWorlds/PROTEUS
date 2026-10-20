@@ -687,15 +687,23 @@ def test_aragog_top_cell_dt_limit_defaults_and_validators():
     )
     assert (
         "bounding the linearized unresupplied top-cell drop under the step's linearization "
-        'dS = q / T_top with q = cp_chord * dT_allow' in interior_md
+        'dS = q / T_top with q = cp_chord * dT_allow except when a lookahead trial on the '
+        'flat part of the PALEOS solid table (T held at T_sol from the last node below S_sol) '
+        'or in the low-entropy clamp at P_top can exceed dT_allow' in interior_md
     )
     assert (
-        'using T_mean = 0.5 * (T_top + T_trial) in the chord numerator would reduce cp_chord '
+        'Using T_mean = 0.5 * (T_top + T_trial) in the chord numerator would reduce cp_chord '
         'by the fraction (T_top - T_trial) / (2 * T_top)' in interior_md
     )
     assert (
         'bounding the linearized unresupplied top-cell temperature drop '
         'T_top - T(P_top, S_top - q / T_top) <= dT_allow' in interior_md
+    )
+    assert (
+        'except when a lookahead trial on the flat part of the PALEOS solid table '
+        '(T held at T_sol from the last node below S_sol) or in the low-entropy clamp at '
+        'P_top can exceed dT_allow (mechanism shown on a constructed slice state, not seen '
+        'in a run so far).' in interior_md
     )
     assert 'must lie in (0, 0.15\\]' in interior_md
     assert 'must lie in (0, top_cell_dt_rel_dT\\] (up to 0.15)' in interior_md
