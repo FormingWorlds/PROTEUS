@@ -5,7 +5,9 @@ Reads the output directories of the CHILI benchmark runs (chili_venus,
 chili_grid_earth_Hhigh_Chigh, chili_grid_earth_Hhigh_Cmid,
 chili_grid_earth_Hhigh_Clow, and chili_tr1b) and prints the status, model time,
 global melt fraction, temperatures, pressures, atmospheric fluxes (F_atm),
-wall times, and for Nominal Venus volatile retention and Delta IW.
+wall times, and for every case the H and C retention, Delta IW and the melt
+fraction range of the last interior snapshot. A quantity whose input is missing
+is printed as not available; a snapshot that needs netCDF4 to be read raises.
 """
 
 from __future__ import annotations
@@ -35,9 +37,16 @@ def _iw_oneill02(t_k: float) -> float:
     )
 
 
-def extract_wall_time(run_dir: Path) -> float:
-    """Extract total runtime in hours summed across all log parts."""
+def _snapshot_time(path: Path) -> float:
+    """Model time [yr] in a snapshot name such as '86793456p548_int.nc'."""
+    return float(path.name.split('_')[0].replace('p', '.'))
+
+
+def extract_wall_time(run_dir: Path) -> float | None:
+    """Total runtime in hours summed over all log parts, or None when a part has none."""
     logs = sorted(run_dir.glob('proteus_*.log'))
+    if not logs:
+        return None
     total_hours = 0.0
     for log in logs:
         text = log.read_text(encoding='utf-8', errors='replace')
@@ -50,8 +59,9 @@ def extract_wall_time(run_dir: Path) -> float:
                 m_t = re.search(r'(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})', line)
                 if m_t:
                     ts.append(datetime.strptime(m_t.group(1), '%Y-%m-%d %H:%M:%S'))
-            if len(ts) >= 2:
-                total_hours += (ts[-1] - ts[0]).total_seconds() / 3600.0
+            if len(ts) < 2:
+                return None
+            total_hours += (ts[-1] - ts[0]).total_seconds() / 3600.0
     return total_hours
 
 
@@ -146,49 +156,45 @@ def extract_run_data(run_dir: Path, display_name: str) -> dict:
         'f_atm_w_m2': f_atm,
         'f_net_w_m2': f_net,
         'wall_time_hours': wall_time_h,
-        'wall_time_days': wall_time_h / 24.0,
+        'wall_time_days': None if wall_time_h is None else wall_time_h / 24.0,
     }
 
     for col in ('H2O_bar', 'CO2_bar', 'CO_bar', 'H2_bar', 'CH4_bar', 'O2_bar'):
-        if col in row_dict:
-            res[col.lower()] = float(row_dict[col])
+        res[col.lower()] = float(row_dict[col]) if col in row_dict else None
 
-    if 'H_kg_total' in row_dict and 'H_kg_total' in r0_dict:
-        h0 = float(r0_dict['H_kg_total'])
-        h_last = float(row_dict['H_kg_total'])
-        if h0 > 0:
-            res['h_retention_pct'] = h_last / h0 * 100.0
+    for el in ('H', 'C'):
+        key = f'{el}_kg_total'
+        first = float(r0_dict[key]) if key in r0_dict else 0.0
+        res[f'{el.lower()}_retention_pct'] = (
+            float(row_dict[key]) / first * 100.0 if first > 0 else None
+        )
 
-    if 'C_kg_total' in row_dict and 'C_kg_total' in r0_dict:
-        c0 = float(r0_dict['C_kg_total'])
-        c_last = float(row_dict['C_kg_total'])
-        if c0 > 0:
-            res['c_retention_pct'] = c_last / c0 * 100.0
+    o2_bar = res['o2_bar']
+    res['delta_iw'] = (
+        math.log10(o2_bar) - _iw_oneill02(t_magma) if o2_bar and o2_bar > 0 else None
+    )
 
-    if 'O2_bar' in row_dict and t_magma > 0:
-        o2_bar = float(row_dict['O2_bar'])
-        if o2_bar > 0:
-            res['delta_iw'] = math.log10(o2_bar) - _iw_oneill02(t_magma)
-
-    # Check for interior netCDF file to read mantle node range
-    data_dir = run_dir / 'data'
-    if data_dir.is_dir():
-        nc_files = sorted(data_dir.glob('*_int.nc'))
-        if nc_files:
-            try:
-                import netCDF4
-
-                nc = netCDF4.Dataset(nc_files[-1])
-                if 'phi_s' in nc.variables:
-                    phi_s = nc.variables['phi_s'][:]
-                    res['mush_node_range_pct'] = (
-                        float(phi_s.min()) * 100.0,
-                        float(phi_s.max()) * 100.0,
-                    )
-            except Exception:
-                pass
+    res['mush_node_range_pct'] = None
+    nc_files = sorted((run_dir / 'data').glob('*_int.nc'), key=_snapshot_time)
+    if nc_files:
+        try:
+            import netCDF4
+        except ImportError as exc:
+            raise ImportError(f'netCDF4 is needed to read {nc_files[-1]}') from exc
+        nc = netCDF4.Dataset(nc_files[-1])
+        if 'phi_s' in nc.variables:
+            phi_s = nc.variables['phi_s'][:]
+            res['mush_node_range_pct'] = (
+                float(phi_s.min()) * 100.0,
+                float(phi_s.max()) * 100.0,
+            )
 
     return res
+
+
+def _fmt(value: float | None, spec: str, unit: str = '', missing: str = 'n/a') -> str:
+    """Format ``value`` with ``spec`` and ``unit``, or return ``missing`` for None."""
+    return missing if value is None else f'{value:{spec}}{unit}'
 
 
 def build_markdown_summary(results: list[dict]) -> str:
@@ -211,31 +217,29 @@ def build_markdown_summary(results: list[dict]) -> str:
         '|---|---|---|---|---|---|---|---|---|---|---|---|',
     ]
     for r in results:
-        phi_vol_str = (
-            f'{r["phi_global_vol"] * 100:.1f}%' if r['phi_global_vol'] is not None else 'N/A'
-        )
-        f_atm_str = f'{r["f_atm_w_m2"]:.2f}' if r.get('f_atm_w_m2') is not None else 'N/A'
-        wall_str = f'{r["wall_time_hours"]:.1f} h ({r["wall_time_days"]:.2f} d)'
+        phi_vol = r['phi_global_vol']
+        wall_str = 'n/a'
+        if r['wall_time_hours'] is not None:
+            wall_str = f'{r["wall_time_hours"]:.1f} h ({r["wall_time_days"]:.2f} d)'
         lines.append(
             f'| {r["display_name"]} | {r["status_code"]} ({r["status_text"]}) | '
             f'{r["rows"]} | {r["end_time_myr"]:.4f} | {r["phi_global_pct_str"]} | '
-            f'{phi_vol_str} | {f_atm_str} | {wall_str} | {r["t_surf_k"]:.1f} | '
-            f'{r["p_surf_bar"]:.1f} | {r.get("h2o_bar", 0.0):.1f} | {r.get("co2_bar", 0.0):.1f} |'
+            f'{_fmt(None if phi_vol is None else phi_vol * 100, ".1f", "%")} '
+            f'| {_fmt(r["f_atm_w_m2"], ".2f")} | '
+            f'{wall_str} | {r["t_surf_k"]:.1f} | {r["p_surf_bar"]:.1f} | '
+            f'{_fmt(r["h2o_bar"], ".1f")} | {_fmt(r["co2_bar"], ".1f")} |'
         )
 
+    na = 'not available'
     for r in results:
-        extras = []
-        if 'h_retention_pct' in r:
-            extras.append(f'H retention: {r["h_retention_pct"]:.1f}%')
-        if 'c_retention_pct' in r:
-            extras.append(f'C retention: {r["c_retention_pct"]:.1f}%')
-        if 'delta_iw' in r:
-            extras.append(f'Delta IW: {r["delta_iw"]:.1f}')
-        if 'mush_node_range_pct' in r:
-            low, hi = r['mush_node_range_pct']
-            extras.append(f'mush range: {low:.1f}% to {hi:.1f}%')
-        if extras:
-            lines.append(f'\n**{r["display_name"]} notes**: ' + ', '.join(extras))
+        mush = r['mush_node_range_pct']
+        extras = [
+            f'H retention: {_fmt(r["h_retention_pct"], ".1f", "%", na)}',
+            f'C retention: {_fmt(r["c_retention_pct"], ".1f", "%", na)}',
+            f'Delta IW: {_fmt(r["delta_iw"], ".1f", "", na)}',
+            'mush range: ' + (na if mush is None else f'{mush[0]:.1f}% to {mush[1]:.1f}%'),
+        ]
+        lines.append(f'\n**{r["display_name"]} notes**: ' + ', '.join(extras))
 
     return '\n'.join(lines) + '\n'
 
