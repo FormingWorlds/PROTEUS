@@ -2277,13 +2277,14 @@ def test_next_step_top_cell_dt_limit_on_caps_dtswitch_below_dtminimum():
 @pytest.mark.physics_invariant
 def test_estimate_tau_drain_positivity_and_monotonic_flux_property():
     """Property check: tau_drain is positive, finite, and decreases monotonically in F_atm."""
-    from hypothesis import given
+    from hypothesis import given, settings
     from hypothesis import strategies as st
 
     from proteus.interior_energetics.timestep import _estimate_tau_drain
 
     checked: list[tuple[float, float]] = []
 
+    @settings(derandomize=True)
     @given(
         t_surf=st.floats(
             min_value=300.0, max_value=4000.0, allow_nan=False, allow_infinity=False

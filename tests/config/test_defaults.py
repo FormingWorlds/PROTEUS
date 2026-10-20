@@ -675,7 +675,7 @@ def test_aragog_top_cell_dt_limit_defaults_and_validators():
 @pytest.mark.unit
 def test_aragog_top_cell_dt_rel_property():
     """Property check over valid (0, 0.5] and invalid cross-field solid allowance bounds."""
-    from hypothesis import given
+    from hypothesis import given, settings
     from hypothesis import strategies as st
 
     from proteus.config._interior import Aragog
@@ -683,6 +683,7 @@ def test_aragog_top_cell_dt_rel_property():
     seen: list[tuple[float, float]] = []
     rejected: list[tuple[float, float]] = []
 
+    @settings(derandomize=True)
     @given(
         rel_dt=st.floats(min_value=1e-4, max_value=0.5, allow_nan=False, allow_infinity=False),
         solid_frac=st.floats(
@@ -696,6 +697,7 @@ def test_aragog_top_cell_dt_rel_property():
         assert 0.0 < inst.top_cell_dt_rel_dT_solid <= inst.top_cell_dt_rel_dT
         seen.append((inst.top_cell_dt_rel_dT, inst.top_cell_dt_rel_dT_solid))
 
+    @settings(derandomize=True)
     @given(
         rel_dt=st.floats(min_value=1e-4, max_value=0.49, allow_nan=False, allow_infinity=False),
         excess=st.floats(min_value=1e-4, max_value=0.5, allow_nan=False, allow_infinity=False),

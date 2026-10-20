@@ -5449,13 +5449,14 @@ def test_aragog_runner_resume_top_cell_dt_limit_on_caps_first_step():
 
     with (
         patch.object(AragogRunner, 'setup_logger'),
-        patch.object(AragogRunner, 'compute_time_step', return_value=0.0) as mock_dt_ic1,
+        patch.object(AragogRunner, 'compute_time_step', return_value=50.0) as mock_dt_ic1,
         patch.object(AragogRunner, 'setup_or_update_solver', side_effect=_fake_setup_ic1),
     ):
         AragogRunner(config, {'output': 'run'}, {'Time': 0.0}, hf_all, interior_ic1)
 
     assert mock_dt_ic1.call_count == 1
-    assert ic1_dts == [0.0]
+    assert ic1_dts == [50.0]
+    assert ic1_solver.parameters.solver.end_time == pytest.approx(50.0, rel=1e-12)
 
 
 @pytest.mark.unit
