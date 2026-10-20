@@ -1749,6 +1749,7 @@ def test_structure_forced_pending_flag_file_roundtrip_and_corrupt_fallback(
 
     import proteus.interior_energetics.common as common_mod
     from proteus.interior_energetics.common import (
+        get_file_baseline_structure_done,
         has_newer_structure_flag_event,
         has_unindexed_structure_flag_file,
         write_baseline_structure_done,
@@ -1772,6 +1773,13 @@ def test_structure_forced_pending_flag_file_roundtrip_and_corrupt_fallback(
     row_writer.structure_rollback_active = False
     row_writer.write_structure_stale(str(tmp_path), row_index=5)
     write_baseline_structure_done(str(tmp_path), True, row_index=5)
+    write_baseline_structure_done(str(tmp_path), True, row_index=7)
+    assert (
+        Path(get_file_baseline_structure_done(str(tmp_path)))
+        .read_text(encoding='utf-8')
+        .strip()
+        == '1 5'
+    )
     assert has_unindexed_structure_flag_file(str(tmp_path)) is False
 
     # Write True with row index 6 -> reads True and triggers has_newer_structure_flag_event at resume_row=5:
