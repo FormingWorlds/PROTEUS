@@ -1093,6 +1093,8 @@ def test_J_treats_the_documented_error_codes_as_failures(monkeypatch, tmp_path):
 
     # Highest defined error code, and the escape-model error below it.
     assert _score(28) == pytest.approx(objective_mod.BAD_OBJ_VALUE)
+    # A run stopped by an interior structure invariant.
+    assert _score(33, worker=3) == pytest.approx(objective_mod.BAD_OBJ_VALUE)
     assert _score(21) == pytest.approx(objective_mod.BAD_OBJ_VALUE)
     # An evaporated planet is kept out of the fit with no `failure_codes` entry.
     assert _score(29, worker=1) == pytest.approx(objective_mod.BAD_OBJ_VALUE)
@@ -1102,6 +1104,7 @@ def test_J_treats_the_documented_error_codes_as_failures(monkeypatch, tmp_path):
         objective_mod.CATEGORY_EXCLUDED,
     )
     assert recorded[0]['category'] == objective_mod.CATEGORY_FAILURE
+    assert recorded[3]['category'] == objective_mod.CATEGORY_FAILURE
     # Discrimination: other completion codes are still scored on their
     # observables, -log10(0 + 1e-10) = 10 for an exact match, so status 29 is
     # not excluded by a range that also catches 13.

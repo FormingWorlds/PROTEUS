@@ -244,3 +244,14 @@ def test_summarise_raises_on_empty_status_file(tmp_path):
     with pytest.raises(ValueError, match='Status file is empty') as exc:
         summarise_mod.summarise(str(grid))
     assert 'case_000000' in str(exc.value)
+
+
+def test_summarise_lists_an_invariant_stop_as_an_error(tmp_path, caplog):
+    """Status 33 (interior structure invariant) is an error: the Error list names its case."""
+    grid = _make_grid(tmp_path, statuses=[10, 33])
+    with caplog.at_level(logging.INFO, logger='fwl'):
+        summarise_mod.summarise(str(grid), tgt_status='Error')
+
+    errors = caplog.text.split('Error cases:')[1]
+    assert 'Case 1     : Code 33' in errors
+    assert 'Case 0 ' not in errors
