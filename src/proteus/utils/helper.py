@@ -117,8 +117,9 @@ def energetics_eos_key(mantle_eos: str) -> str | None:
 def lowt_extension_unsupported(key: str | None) -> bool:
     """Whether the low-temperature solid extension cannot continue the solid table of ``key``.
 
-    The extension continues the 150 points per decade grid of the standard PALEOS solid table;
-    a PALEOS-API key tabulates its own tables and a ``-highres`` key has 600 points per decade.
+    The extension file next to the solid tables continues the 150 points per decade grid of the
+    standard PALEOS solid table; the ``-highres`` table in the same folder has 600 points per
+    decade, and a PALEOS-API key tabulates its own tables on demand.
 
     Parameters
     ----------

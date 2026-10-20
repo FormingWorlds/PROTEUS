@@ -158,9 +158,11 @@ class Zalmoxis:
         table). PALEOS values are used wherever the solid table has them.
         Applies to the P-S tables of the PALEOS MgSiO3 mantle and needs
         interior_energetics.module = 'aragog' and interior_struct.module
-        'zalmoxis' or 'dummy'; a PALEOS-API or -highres mantle is refused when
-        the config loads. A resumed run keeps the tables it started with, so the
-        switch acts on a fresh table build. The standard
+        'zalmoxis' or 'dummy'; a mantle whose MgSiO3 (energetics) EOS is
+        PALEOS-API or -highres is refused when the config loads, and a mantle
+        without PALEOS tables ignores the switch with a warning. A resumed run
+        keeps the tables it started with, so the switch acts on a fresh table
+        build. The standard
         data set does not hold the extension file: write it with Zalmoxis's
         tools/converters/paleos_lowt_extension.py (--paleos-src, --table, and
         --out with the file name above in the folder of the solid table; see

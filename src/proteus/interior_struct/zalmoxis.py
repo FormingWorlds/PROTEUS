@@ -2963,8 +2963,8 @@ def generate_spider_tables(config: Config, outdir: str):
         When a table of a PALEOS mantle or its MgSiO3 2-phase pair is missing, or when
         ``lowt_extension`` is on and its extension file is missing.
     ValueError
-        When ``lowt_extension`` is on and the mantle EOS is PALEOS-API or ``-highres``
-        (raised before any table is resolved or built).
+        When ``lowt_extension`` is on and the energetics key of the mantle EOS is
+        PALEOS-API or ``-highres`` (raised before any table is resolved or built).
     RuntimeError
         When ``lowt_extension`` is on and the installed Zalmoxis has no ``solid_lowt_file``.
     """
