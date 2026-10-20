@@ -2669,7 +2669,7 @@ def test_proteus_start_forced_accept_kill_between_flag_writes_resumes_cleanly(
     )
 
 
-def test_proteus_start_continuous_run_failing_baseline_with_dynamic_interval_matches_pre_r90_sequence(
+def test_proteus_start_continuous_run_failing_baseline_with_dynamic_interval_runs_both_calls(
     tmp_path, monkeypatch
 ):
     """On a continuous run with update_interval > 0 and a failing initial baseline, _solve_structure_baseline_if_needed returns False so both the baseline retry and the dynamic call run on each iteration and abort at row 7 after 8 consecutive failures."""
