@@ -3017,6 +3017,48 @@ def test_ic_adiabat_rollback_resets_and_resume_rollback_persistence(
         assert Path(fpath).read_text(encoding='utf-8').strip() == '1'
     assert [p.name for p in data_dir.iterdir() if '.tmp' in p.name] == []
 
+    # 8. Row-index flag persistence and newer-than-resume-row detection vs legacy single-token files:
+    row_writer = Interior_t(5)
+    row_writer.structure_stale = False
+    row_writer.structure_rollback_active = False
+    row_writer.write_structure_stale(str(tmp_path), row_index=5)
+    write_baseline_structure_done(str(tmp_path), True, row_index=5)
+    assert (
+        Path(get_file_structure_stale(str(tmp_path))).read_text(encoding='utf-8').strip()
+        == '0 5'
+    )
+    assert (
+        Path(get_file_structure_rollback(str(tmp_path))).read_text(encoding='utf-8').strip()
+        == '0 5'
+    )
+    assert (
+        Path(get_file_baseline_structure_done(str(tmp_path)))
+        .read_text(encoding='utf-8')
+        .strip()
+        == '1 5'
+    )
+
+    normal_resume_reader = Interior_t(5)
+    normal_resume_reader.resume_structure_stale(str(tmp_path), resume_row=5)
+    assert normal_resume_reader.structure_stale is False
+    assert normal_resume_reader.structure_rollback_active is False
+    assert resume_baseline_structure_done(str(tmp_path), resume_row=5) is True
+
+    newer_event_reader = Interior_t(5)
+    newer_event_reader.resume_structure_stale(str(tmp_path), resume_row=4)
+    assert newer_event_reader.structure_rollback_active is True
+    assert resume_baseline_structure_done(str(tmp_path), resume_row=4) is False
+
+    # Legacy single-token flag files without a row index keep their recorded values when resume_row is given:
+    Path(get_file_structure_stale(str(tmp_path))).write_text('0\n', encoding='utf-8')
+    Path(get_file_structure_rollback(str(tmp_path))).write_text('0\n', encoding='utf-8')
+    Path(get_file_baseline_structure_done(str(tmp_path))).write_text('1\n', encoding='utf-8')
+    legacy_reader = Interior_t(5)
+    legacy_reader.resume_structure_stale(str(tmp_path), resume_row=4)
+    assert legacy_reader.structure_stale is False
+    assert legacy_reader.structure_rollback_active is False
+    assert resume_baseline_structure_done(str(tmp_path), resume_row=4) is True
+
     # Up-step reject through update_structure_from_interior persists structure_rollback_active=True while structure_stale=False:
     def fake_upstep(config, outdir, hf_row, **kwargs):
         hf_row['R_int'] = 6.37e6 * 1.005

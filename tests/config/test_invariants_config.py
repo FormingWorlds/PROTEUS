@@ -343,6 +343,8 @@ def test_invariants_docstrings_have_no_file_line_refs_and_document_gates():
     assert 'restarts on a resume' in invariants_util_src
     assert 'restarts on a resume' in params_md
     assert 'while `structure_stale` is `True`' not in params_md
+    assert 'newer than the resume row' in invariants_cfg_src
+    assert 'newer than the resume row' in params_md
     assert 'mesh_surface_pressure_state' in invariants_cfg_src
     assert 'solver.parameters.mesh.surface_pressure' in invariants_cfg_src
     assert 'total <= outgas.mass_thresh' in invariants_cfg_src
