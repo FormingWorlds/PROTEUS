@@ -170,7 +170,10 @@ $c_{p,\mathrm{eff}}$ with the chord heat capacity
 $T_\mathrm{top}\,(S_\mathrm{top} - S_\mathrm{trial}) / (T_\mathrm{top} -
 T_\mathrm{trial})$ whenever $T(P_\mathrm{top}, S_\mathrm{trial})$ falls more
 than $\Delta T_\mathrm{allow}$ below $T_\mathrm{top}$ ($T_\mathrm{top} -
-T_\mathrm{trial} > \Delta T_\mathrm{allow}$), which fires both across a
+T_\mathrm{trial} > \Delta T_\mathrm{allow}$; using $T_\mathrm{mean}$ in the
+chord numerator would give a chord $c_p$ smaller by the fraction
+$(T_\mathrm{top} - T_\mathrm{trial}) / (2\,T_\mathrm{top})$, about $9\%$ at the
+$531.5\,\mathrm{yr}$ state), which fires both across a
 liquidus or solidus crossing and on every step with a mushy top cell at
 $\phi_\mathrm{top} > 0.6$, where the tabulated mush `heat_capacity` (a
 lever-rule blend) is about twice $T\,\mathrm{d}S/\mathrm{d}T$ along the EOS
@@ -182,7 +185,12 @@ $|\Delta T_\mathrm{surf}| / (\eta_\mathrm{eff} T_\mathrm{surf}) = 0.69$ using
 $T_\mathrm{surf}$ at step start, $0$ steps above $1$, $+9$ rows over the
 $0.08$ runs without lookahead, $1850$ to $1852$ rows vs $218$ and $243$ rows
 in the same configurations with the option off on Aragog development commit
-`372c2e2`, or $50$ rows on Aragog `main` commit `075fcb05`).
+`372c2e2`, or $50$ rows on Aragog `main` commit `075fcb05`; in a computed
+top-cell estimate on the $531.546\,\mathrm{yr}$ fixture slice and the worst
+mushy step of each of the 3 live runs, the top-cell drop-to-allowance ratio is
+$0.7863$ to $1.0000$ at $0.08$, $0.6866$ to $0.7851$ at $0.15$, and $0.8428$
+to $0.8903$ at the validator maximum $0.30$, while $0.50$ exceeds $1$ at
+$1.1300$ to $1.1735$).
 
 ## Convergence and termination
 

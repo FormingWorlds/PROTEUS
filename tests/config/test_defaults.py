@@ -593,7 +593,7 @@ def test_the_minimal_examples_set_the_keys_their_runs_need():
 def test_aragog_top_cell_dt_limit_defaults_and_validators():
     """Aragog top_cell_dt_limit defaults to False, rel_dT to 0.08, and rel_dT_solid to 0.08.
 
-    Validators reject non-boolean top_cell_dt_limit, values outside (0, 0.5] for
+    Validators reject non-boolean top_cell_dt_limit, values outside (0, 0.3] for
     top_cell_dt_rel_dT, and values outside (0, top_cell_dt_rel_dT] for top_cell_dt_rel_dT_solid.
     """
     from proteus.config._interior import Aragog
@@ -612,20 +612,23 @@ def test_aragog_top_cell_dt_limit_defaults_and_validators():
     assert cfg_on.top_cell_dt_rel_dT == pytest.approx(0.10)
     assert cfg_on.top_cell_dt_rel_dT_solid == pytest.approx(0.03)
 
-    edge = Aragog(top_cell_dt_rel_dT=0.5, top_cell_dt_rel_dT_solid=0.5)
-    assert edge.top_cell_dt_rel_dT == pytest.approx(0.5)
-    assert edge.top_cell_dt_rel_dT_solid == pytest.approx(0.5)
+    edge = Aragog(top_cell_dt_rel_dT=0.3, top_cell_dt_rel_dT_solid=0.3)
+    assert edge.top_cell_dt_rel_dT == pytest.approx(0.3)
+    assert edge.top_cell_dt_rel_dT_solid == pytest.approx(0.3)
 
     with pytest.raises(TypeError):
         Aragog(top_cell_dt_limit='yes')  # type: ignore[arg-type]
 
-    for bad in (0.0, -0.01, 0.51):
+    for bad in (0.0, -0.01, 0.31, 0.5):
         with pytest.raises(ValueError):
             Aragog(top_cell_dt_rel_dT=bad)
 
-    for bad_solid in (0.0, -0.01, 0.09):
+    for bad_solid in (0.0, -0.01, 0.09, 0.31):
         with pytest.raises(ValueError):
             Aragog(top_cell_dt_rel_dT=0.08, top_cell_dt_rel_dT_solid=bad_solid)
+
+    with pytest.raises(ValueError):
+        Aragog(top_cell_dt_rel_dT=0.30, top_cell_dt_rel_dT_solid=0.31)
 
     from proteus.config._interior import Interior
 
@@ -678,12 +681,19 @@ def test_aragog_top_cell_dt_limit_defaults_and_validators():
         Path(__file__).resolve().parents[2] / 'docs' / 'Reference' / 'config' / 'interior.md'
     ).read_text(encoding='utf-8')
     assert 'and the step does not exceed tau_drain' in interior_md
-    assert '1.218' in interior_md
+    assert '0.8903' in interior_md
+    assert '1.1735' in interior_md
+    assert '1.2181' in interior_md
+    assert '0.9987' not in interior_md
+    assert (
+        'T_mean would give a chord cp smaller by the fraction '
+        '(T_top - T_trial)/(2 T_top), about 9 % at the 531.5 yr state'
+    ) in interior_md
 
 
 @pytest.mark.unit
 def test_aragog_top_cell_dt_rel_property():
-    """Property check over valid (0, 0.5] and invalid cross-field solid allowance bounds."""
+    """Property check over valid (0, 0.3] and invalid cross-field solid allowance bounds."""
     from hypothesis import given, settings
     from hypothesis import strategies as st
 
@@ -694,7 +704,7 @@ def test_aragog_top_cell_dt_rel_property():
 
     @settings(derandomize=True)
     @given(
-        rel_dt=st.floats(min_value=1e-4, max_value=0.5, allow_nan=False, allow_infinity=False),
+        rel_dt=st.floats(min_value=1e-4, max_value=0.3, allow_nan=False, allow_infinity=False),
         solid_frac=st.floats(
             min_value=1e-3, max_value=1.0, allow_nan=False, allow_infinity=False
         ),
@@ -702,14 +712,14 @@ def test_aragog_top_cell_dt_rel_property():
     def _check_valid(rel_dt, solid_frac):
         rel_dt_solid = max(1e-7, rel_dt * solid_frac)
         inst = Aragog(top_cell_dt_rel_dT=rel_dt, top_cell_dt_rel_dT_solid=rel_dt_solid)
-        assert 0.0 < inst.top_cell_dt_rel_dT <= 0.5
+        assert 0.0 < inst.top_cell_dt_rel_dT <= 0.3
         assert 0.0 < inst.top_cell_dt_rel_dT_solid <= inst.top_cell_dt_rel_dT
         seen.append((inst.top_cell_dt_rel_dT, inst.top_cell_dt_rel_dT_solid))
 
     @settings(derandomize=True)
     @given(
-        rel_dt=st.floats(min_value=1e-4, max_value=0.49, allow_nan=False, allow_infinity=False),
-        excess=st.floats(min_value=1e-4, max_value=0.5, allow_nan=False, allow_infinity=False),
+        rel_dt=st.floats(min_value=1e-4, max_value=0.29, allow_nan=False, allow_infinity=False),
+        excess=st.floats(min_value=1e-4, max_value=0.3, allow_nan=False, allow_infinity=False),
     )
     def _check_invalid(rel_dt, excess):
         bad_solid = rel_dt + excess
@@ -717,9 +727,20 @@ def test_aragog_top_cell_dt_rel_property():
             Aragog(top_cell_dt_rel_dT=rel_dt, top_cell_dt_rel_dT_solid=bad_solid)
         rejected.append((rel_dt, bad_solid))
 
+    @settings(derandomize=True)
+    @given(
+        bad_rel_dt=st.floats(
+            min_value=0.3001, max_value=1.0, allow_nan=False, allow_infinity=False
+        ),
+    )
+    def _check_above_max(bad_rel_dt):
+        with pytest.raises(ValueError, match='top_cell_dt_rel_dT'):
+            Aragog(top_cell_dt_rel_dT=bad_rel_dt, top_cell_dt_rel_dT_solid=0.08)
+
     _check_valid()
     _check_invalid()
+    _check_above_max()
     assert len(seen) >= 10
     assert len(rejected) >= 10
-    assert all(0.0 < solid_val <= dt_val <= 0.5 for dt_val, solid_val in seen)
+    assert all(0.0 < solid_val <= dt_val <= 0.3 for dt_val, solid_val in seen)
     assert all(solid_val > dt_val for dt_val, solid_val in rejected)

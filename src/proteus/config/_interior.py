@@ -502,24 +502,31 @@ class Aragog:
     Incompatible with interior_energetics.surface_bc_mode = 'grey_body'. A 1-point EOS
     temperature lookahead replaces the step-start heat capacity with the chord heat capacity
     T_top * (S_top - S_trial) / (T_top - T_trial) whenever T(P_top, S_trial) falls more than
-    dT_allow below T_top (which fires both across a liquidus or solidus crossing and on every
-    step with a mushy top cell at phi_top > 0.6, where the tabulated mush heat_capacity, a
-    lever-rule blend, is about twice T dS/dT along the EOS; measured across 3 runs over 2
-    configurations of a 1 M_earth planet at 0.5 and 0.7 au with the PALEOS MgSiO3 EOS and
-    AGNI atmosphere to 25 kyr at top_cell_dt_rel_dT = top_cell_dt_rel_dT_solid = 0.08: max
-    |dT_surf| / (eta_eff * T_surf) = 0.69 using T_surf at step start, 0 steps above 1, +9
-    rows over the 0.08 runs without lookahead, 1850 to 1852 rows vs 218 and 243 rows in the
-    same configurations with the option off on Aragog development commit 372c2e2, or 50 rows
-    on Aragog main commit 075fcb05)."""
+    dT_allow below T_top (T_mean would give a chord cp smaller by the fraction
+    (T_top - T_trial)/(2 T_top), about 9 % at the 531.5 yr state; the trigger fires both
+    across a liquidus or solidus crossing and on every step with a mushy top cell at
+    phi_top > 0.6, where the tabulated mush heat_capacity, a lever-rule blend, is about
+    twice T dS/dT along the EOS; measured across 3 runs over 2 configurations of a 1 M_earth
+    planet at 0.5 and 0.7 au with the PALEOS MgSiO3 EOS and AGNI atmosphere to 25 kyr at
+    top_cell_dt_rel_dT = top_cell_dt_rel_dT_solid = 0.08: max |dT_surf| / (eta_eff * T_surf) = 0.69
+    using T_surf at step start, 0 steps above 1, +9 rows over the 0.08 runs without lookahead,
+    1850 to 1852 rows vs 218 and 243 rows in the same configurations with the option off on
+    Aragog development commit 372c2e2, or 50 rows on Aragog main commit 075fcb05)."""
 
     top_cell_dt_rel_dT: float = field(
-        default=0.08, converter=float, validator=(gt(0.0), le(0.5))
+        default=0.08, converter=float, validator=(gt(0.0), le(0.3))
     )
     """Relative surface-temperature change allowance eta_T in the mushy regime
-    (phi_s[-1] >= 0.40) for the top-cell drain-time step limit; must lie in (0, 0.5]
-    (the 1-point lookahead bound is measured at 0.08, holds up to about 0.30 with max
-    top-cell drop ratio 0.9987, and fails near 0.5 where the trial clips at S_min + 300
-    and the top-cell drop reaches 1.218 times the allowance at S_top = 3105 J/kg/K)."""
+    (phi_s[-1] >= 0.40) for the top-cell drain-time step limit; must lie in (0, 0.3].
+    In a computed top-cell estimate (not a coupled run) mapping the step energy
+    cp_chord * dT_allow back to entropy via dS = cp_chord * dT_allow / T_top on the
+    531.546 yr fixture slice and the worst mushy step of each of the 3 live 25 kyr runs
+    at top_cell_dt_rel_dT = top_cell_dt_rel_dT_solid = eta, the top-cell drop-to-allowance
+    ratio (T_top - T(P_top, S_end)) / dT_allow is 0.7863 (fixture) and 1.0000 (all 3 run
+    states) at eta = 0.08, 0.6866 to 0.7851 at eta = 0.15, and 0.8428 to 0.8903 at
+    eta = 0.30, whereas eta = 0.50 exceeds 1 on all 4 states (1.1300 on the fixture and
+    1.1725 to 1.1735 on the run states, reaching 1.2181 at S_top = 3105 J/kg/K where the
+    trial clips at S_min + 300)."""
 
     top_cell_dt_rel_dT_solid: float = field(
         default=0.08,
@@ -528,7 +535,7 @@ class Aragog:
     )
     """Relative surface-temperature change allowance eta_T_solid at a fully solid
     top cell (phi_s[-1] = 0), ramped linearly to top_cell_dt_rel_dT at
-    phi_s[-1] = 0.40; must lie in (0, top_cell_dt_rel_dT]."""
+    phi_s[-1] = 0.40; must lie in (0, top_cell_dt_rel_dT] (up to 0.30)."""
 
 
 def valid_interiordummy(instance, attribute, value):
