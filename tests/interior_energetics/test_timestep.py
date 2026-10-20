@@ -2431,10 +2431,16 @@ def test_estimate_tau_drain_paleos_slice_531p546_chord_lookahead_and_window():
     solver.entropy_eos = eos_no_collapse
     tau_start_386 = _estimate_tau_drain(cfg, hf_386, io)
 
+    assert 0.0 < tau_chord_386 < tau_start_386 < 100.0
     assert tau_start_386 == pytest.approx(11.241963252904497, rel=1e-6)
     assert tau_chord_386 == pytest.approx(4.878514423642098, rel=1e-6)
     assert (tau_chord_386 / tau_start_386) == pytest.approx(0.43395573638580115, rel=1e-5)
+    t_top_386 = 1918.1830315644013
+    t_trial_386 = 1567.854994037665
+    tau_tmean_wrong = tau_chord_386 * (0.5 * (t_top_386 + t_trial_386) / t_top_386)
+    assert tau_chord_386 != pytest.approx(tau_tmean_wrong, rel=5e-2)
 
+    ratios_by_row: dict[int, float] = {}
     for row_idx in range(380, 393):
         rec = rows[row_idx]
         s_val = float(rec['S_top_J_kg_K'])
@@ -2450,10 +2456,13 @@ def test_estimate_tau_drain_paleos_slice_531p546_chord_lookahead_and_window():
         solver.entropy_eos = eos_no_collapse
         tau_0 = _estimate_tau_drain(cfg, hf_r, io)
         ratio = tau_c / tau_0
+        ratios_by_row[row_idx] = ratio
         if row_idx in range(380, 384):
             assert ratio == pytest.approx(1.0, rel=1e-12)
         else:
             assert 0.433 < ratio < 0.851
+    assert min(ratios_by_row, key=ratios_by_row.get) == 386
+    assert ratios_by_row[384] > ratios_by_row[385] > ratios_by_row[386] < ratios_by_row[387]
 
 
 @pytest.mark.unit
@@ -2564,6 +2573,29 @@ def test_estimate_tau_drain_lookahead_floor_clip_and_edge_guards(caplog):
         warns_b = [r.getMessage() for r in caplog.records if 'tau_drain' in r.getMessage()]
         assert len(warns_b) == 1
 
+    # Exception raised on the second (s_trial) temperature lookup warns once and returns inf
+    for exc_cls in (ValueError, IndexError):
+        cfg_e, io_e, solver_e = _make_tau_drain_fixture(
+            s_top=2400.0, phi_top=0.80, rel_dT=0.08, rel_dT_solid=0.08
+        )
+
+        def _raise_on_trial(p_arr, s_arr, _exc=exc_cls):
+            if abs(float(np.asarray(s_arr).ravel()[0]) - 2400.0) < 1e-9:
+                return np.array([1500.0], dtype=float)
+            raise _exc('trial temperature lookup failure')
+
+        solver_e.entropy_eos.temperature = _raise_on_trial
+        caplog.clear()
+        with caplog.at_level(
+            logging.WARNING, logger='fwl.proteus.interior_energetics.timestep'
+        ):
+            res_e = _estimate_tau_drain(cfg_e, row, io_e)
+        assert res_e == float('inf')
+        assert getattr(io_e, '_tau_drain_invalid_warned', False) is True
+        assert (
+            len([r.getMessage() for r in caplog.records if 'tau_drain' in r.getMessage()]) == 1
+        )
+
 
 @pytest.mark.unit
 @pytest.mark.physics_invariant
@@ -2590,7 +2622,7 @@ def test_estimate_tau_drain_chord_lookahead_never_loosens_property():
             min_value=400.0, max_value=3500.0, allow_nan=False, allow_infinity=False
         ),
         trial_frac=st.floats(
-            min_value=0.1, max_value=0.95, allow_nan=False, allow_infinity=False
+            min_value=0.1, max_value=1.2, allow_nan=False, allow_infinity=False
         ),
     )
     def _check(s_top, phi_top, t_surf, f_atm, t_top, trial_frac):
@@ -2613,7 +2645,7 @@ def test_estimate_tau_drain_chord_lookahead_never_loosens_property():
         checked.append((tau_start, tau_lk))
 
     _check()
-    assert len(checked) == 50
+    assert len(checked) >= 50
     assert any(lk < st_val * 0.99 for st_val, lk in checked)
 
 
