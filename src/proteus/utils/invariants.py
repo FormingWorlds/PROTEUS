@@ -675,9 +675,15 @@ def check_structure_invariants(
     remains active until the next accepted re-solve (``hf_row['_structure_rollback']`` or
     ``interior_o.structure_rollback_active``), finite ``M_int_target_rel_err`` and
     ``M_core_target_rel_err`` violations are also emitted with ``report_only=True``; a resume
-    after dropped snapshots, or after a flag event newer than the resume row, marks the
-    structure rollback active and re-solves the structure once at the resume, clearing the
-    rollback when the re-solve succeeds.
+    after dropped snapshots on an unindexed directory, after a flag event newer than the resume
+    row (such as a stop after a structure event on a row later than the last complete snapshot
+    when ``write_mod > 1`` or ``dt_write_rel > 0``), or with a pending forced re-solve flag on
+    disk when the initial baseline was already committed marks the structure rollback active and
+    forces 1 re-solve at the resume (clearing the rollback on an accepted solve or up-step
+    reject and keeping rollback active with 1 warning on a solver failure), whereas an
+    uncommitted initial baseline keeps the initial-baseline retry rule. An impact on a dropped
+    row that is not the first dropped row adds a forced structure solve at the resume that the
+    continuous run did not perform, so the resumed trajectory can differ from the continuous one.
 
     Parameters
     ----------

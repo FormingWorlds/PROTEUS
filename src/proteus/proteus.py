@@ -371,7 +371,7 @@ class Proteus:
             )
         )
 
-    def _solve_structure_baseline_if_needed(self):
+    def _solve_structure_baseline_if_needed(self) -> bool:
         """Solve the one-time callable-representation structure baseline or forced resume re-solve.
 
         At the first evolution step both dynamic and static Zalmoxis runs solve
@@ -380,29 +380,39 @@ class Proteus:
         structure-solver's own initial-condition adiabat. The baseline is solved
         once per run; already-baselined runs are a no-op, and a resumed run
         retries an uncommitted initial baseline or runs 1 forced re-solve when a
-        structure flag event on disk is newer than the resumed snapshot row.
+        structure flag event on disk is newer than the resumed snapshot row, an
+        unindexed flag file accompanies dropped snapshots, or a pending forced
+        re-solve flag is present on disk after the baseline was committed.
 
-        For the initial row-4 baseline solve, a solver failure restores the
-        initial-condition structure, flags it stale, and leaves the baseline
-        unmarked so the next evolution step retries until Zalmoxis converges or
-        exhausts its consecutive-failure budget.
+        For the initial baseline solve on the first post-init row, a solver
+        failure restores the initial-condition structure, flags it stale, and
+        leaves the baseline unmarked so the next evolution step retries until
+        Zalmoxis converges or exhausts its consecutive-failure budget.
 
         For the super-liquidus adiabat initial condition the structure solve
         already integrates against the true adiabat at the initial condition, so
         the baseline re-solve is skipped unless the run resumed with rollback or
-        a newer flag event active, in which case 1 forced re-solve is attempted:
+        a forced re-solve active, in which case 1 forced re-solve is attempted:
         an accepted solve or a monotonic-radius up-step reject marks the baseline
         done with rollback cleared, whereas a solver failure logs 1 warning and
         marks the baseline done with rollback active.
+
+        Returns
+        -------
+        bool
+            True when ``update_structure_from_interior`` was invoked, False otherwise.
         """
         if (
             self.init_stage
             or self._baseline_structure_done
             or self.config.interior_struct.module != 'zalmoxis'
         ):
-            return
+            return False
 
-        from proteus.interior_energetics.common import write_baseline_structure_done
+        from proteus.interior_energetics.common import (
+            write_baseline_structure_done,
+            write_structure_forced_pending,
+        )
         from proteus.interior_energetics.wrapper import (
             _use_superliquidus_adiabat_ic,
             update_structure_from_interior,
@@ -416,10 +426,10 @@ class Proteus:
         # When an impact due on the first resumed step already ran solve_structure
         # and cleared structure_rollback_active, the forced re-solve is satisfied.
         if resume_newer and not getattr(self.interior_o, 'structure_rollback_active', False):
-            self._resume_newer_event = False
             self._baseline_structure_done = True
             write_baseline_structure_done(self.directories['output'], True, row_index=row_idx)
-            return
+            write_structure_forced_pending(self.directories['output'], False, row_index=row_idx)
+            return False
 
         is_resume_forced = bool(
             resume_newer
@@ -433,10 +443,19 @@ class Proteus:
         if _use_superliquidus_adiabat_ic(self.config) and not is_resume_forced:
             self._baseline_structure_done = True
             write_baseline_structure_done(self.directories['output'], True, row_index=row_idx)
-            return
+            return False
 
         if is_resume_forced:
             self.interior_o.structure_stale = False
+
+        _saved_targets = (
+            {
+                k: (k in self.hf_row, self.hf_row.get(k))
+                for k in ('M_int_target', 'M_core_target')
+            }
+            if isinstance(self.hf_row, dict)
+            else {}
+        )
 
         new_time, new_Tmagma, new_Phi = update_structure_from_interior(
             self.directories,
@@ -451,7 +470,6 @@ class Proteus:
 
         if self.interior_o.structure_stale:
             if is_resume_forced:
-                self._resume_newer_event = False
                 self.interior_o.structure_rollback_active = True
                 if hasattr(self.interior_o, 'write_structure_stale'):
                     self.interior_o.write_structure_stale(self.directories['output'])
@@ -459,18 +477,27 @@ class Proteus:
                 write_baseline_structure_done(
                     self.directories['output'], True, row_index=row_idx
                 )
+                write_structure_forced_pending(
+                    self.directories['output'], False, row_index=row_idx
+                )
                 logging.getLogger('fwl.' + __name__).warning(
                     'Resume forced structure re-solve failed at row %d; keeping the resumed structure with rollback active.',
                     row_idx,
                 )
-                return
+                return True
             write_baseline_structure_done(self.directories['output'], False, row_index=row_idx)
-            return
+            return True
 
         if is_resume_forced:
-            self._resume_newer_event = False
             if isinstance(self.hf_row, dict):
+                if self.hf_row.get('_structure_rollback', False):
+                    for _k, (_existed, _val) in _saved_targets.items():
+                        if _existed:
+                            self.hf_row[_k] = _val
+                        else:
+                            self.hf_row.pop(_k, None)
                 self.hf_row['_structure_rollback'] = False
+            write_structure_forced_pending(self.directories['output'], False, row_index=row_idx)
 
         rb_flag = (
             bool(self.hf_row.get('_structure_rollback', False))
@@ -485,6 +512,7 @@ class Proteus:
         self.last_struct_Phi = new_Phi
         self._baseline_structure_done = True
         write_baseline_structure_done(self.directories['output'], True, row_index=row_idx)
+        return True
 
     def _match_ps_tables_to_mass(self):
         """Point a resumed run at the P-S tables of its restored planet mass.
@@ -935,9 +963,13 @@ class Proteus:
             if hasattr(self.interior_o, 'write_structure_stale'):
                 self.interior_o.write_structure_stale(self.directories['output'], row_index=0)
             if self.config.interior_struct.module == 'zalmoxis':
-                from proteus.interior_energetics.common import write_baseline_structure_done
+                from proteus.interior_energetics.common import (
+                    write_baseline_structure_done,
+                    write_structure_forced_pending,
+                )
 
                 write_baseline_structure_done(self.directories['output'], False, row_index=0)
+                write_structure_forced_pending(self.directories['output'], False, row_index=0)
             _t_init['structure'] = time.perf_counter() - _t0
 
             # Initialize structure-update sentinels so the first dynamic
@@ -1137,7 +1169,9 @@ class Proteus:
                 has_newer_structure_flag_event,
                 has_unindexed_structure_flag_file,
                 resume_baseline_structure_done,
+                resume_structure_forced_pending,
                 write_baseline_structure_done,
+                write_structure_forced_pending,
             )
 
             resume_row = len(self.hf_all) - 1
@@ -1148,7 +1182,16 @@ class Proteus:
                 dropped_snapshots
                 and has_unindexed_structure_flag_file(self.directories['output'])
             )
-            self._resume_newer_event = bool(newer_flag_event)
+            baseline_committed_on_disk = resume_baseline_structure_done(
+                self.directories['output'], resume_row=None
+            )
+            pending_on_disk = resume_structure_forced_pending(self.directories['output'])
+            committed_before_resume = bool(baseline_committed_on_disk or pending_on_disk)
+            needs_forced_resolve = bool(
+                committed_before_resume
+                and (newer_flag_event or unindexed_dropped or pending_on_disk)
+            )
+            self._resume_newer_event = needs_forced_resolve
             self.interior_o.resume_structure_stale(
                 self.directories['output'], resume_row=resume_row
             )
@@ -1158,18 +1201,24 @@ class Proteus:
             self.init_stage = False
             # Restore baseline-structure completion so an uncommitted baseline retries.
             if self.config.interior_struct.module == 'zalmoxis':
-                self._baseline_structure_done = resume_baseline_structure_done(
-                    self.directories['output'], resume_row=resume_row
-                )
-                if newer_flag_event:
+                if needs_forced_resolve:
                     self._baseline_structure_done = False
+                    write_structure_forced_pending(
+                        self.directories['output'], True, row_index=resume_row
+                    )
                     write_baseline_structure_done(
                         self.directories['output'], False, row_index=resume_row
                     )
+                else:
+                    self._baseline_structure_done = bool(baseline_committed_on_disk)
+                    if newer_flag_event:
+                        write_baseline_structure_done(
+                            self.directories['output'], False, row_index=resume_row
+                        )
             else:
                 self._baseline_structure_done = True
 
-            if newer_flag_event or unindexed_dropped:
+            if newer_flag_event or unindexed_dropped or pending_on_disk:
                 self.interior_o.structure_rollback_active = True
                 self.interior_o.write_structure_stale(
                     self.directories['output'], row_index=resume_row
@@ -1385,7 +1434,7 @@ class Proteus:
 
                 # Solve the one-time callable-representation structure baseline
                 # so dynamic and static runs share an identical starting radius.
-                self._solve_structure_baseline_if_needed()
+                ran_baseline_solve = self._solve_structure_baseline_if_needed()
 
                 # Re-compute structure if Zalmoxis feedback is active
                 if (
@@ -1393,26 +1442,27 @@ class Proteus:
                     and self.config.interior_struct.module == 'zalmoxis'
                     and self.config.interior_struct.zalmoxis.update_interval > 0
                 ):
-                    from proteus.interior_energetics.wrapper import (
-                        update_structure_from_interior,
-                    )
+                    if not ran_baseline_solve:
+                        from proteus.interior_energetics.wrapper import (
+                            update_structure_from_interior,
+                        )
 
-                    _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
-                    (
-                        self.last_struct_time,
-                        self.last_struct_Tmagma,
-                        self.last_struct_Phi,
-                    ) = update_structure_from_interior(
-                        self.directories,
-                        self.config,
-                        self.hf_row,
-                        self.interior_o,
-                        self.last_struct_time,
-                        self.last_struct_Tmagma,
-                        self.last_struct_Phi,
-                    )
-                    if _IT_TIMING_ENABLED:
-                        _t_mod['structure'] = time.perf_counter() - _t0
+                        _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
+                        (
+                            self.last_struct_time,
+                            self.last_struct_Tmagma,
+                            self.last_struct_Phi,
+                        ) = update_structure_from_interior(
+                            self.directories,
+                            self.config,
+                            self.hf_row,
+                            self.interior_o,
+                            self.last_struct_time,
+                            self.last_struct_Tmagma,
+                            self.last_struct_Phi,
+                        )
+                        if _IT_TIMING_ENABLED:
+                            _t_mod['structure'] = time.perf_counter() - _t0
                     # gc.collect() already called inside update_structure_from_interior()
 
                     # Decrement the resume-settling structure-re-solve window once

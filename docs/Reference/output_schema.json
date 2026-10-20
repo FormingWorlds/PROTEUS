@@ -1856,6 +1856,7 @@
         "accretion",
         "interior_energetics",
         "interior_struct",
+        "main loop",
         "utils"
       ],
       "consumers_possible": []
@@ -26289,6 +26290,12 @@
       "kind": "read",
       "reason": "dynamic key ecc_col",
       "function": "_plot_orbit_snapshot"
+    },
+    {
+      "file": "src/proteus/proteus.py",
+      "kind": "write",
+      "reason": "dynamic key _k",
+      "function": "_solve_structure_baseline_if_needed"
     },
     {
       "file": "src/proteus/utils/coupler.py",

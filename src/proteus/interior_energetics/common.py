@@ -1188,6 +1188,22 @@ def get_file_baseline_structure_done(outdir: str) -> str:
     return os.path.join(outdir, 'data', 'baseline_structure_done.dat')
 
 
+def get_file_structure_forced_pending(outdir: str) -> str:
+    """Return path to the persisted structure-forced-pending flag file.
+
+    Parameters
+    ----------
+    outdir : str
+        Run output directory.
+
+    Returns
+    -------
+    str
+        Path to ``data/structure_forced_pending.dat``.
+    """
+    return os.path.join(outdir, 'data', 'structure_forced_pending.dat')
+
+
 def _write_flag_file_atomic(path: str, flag: bool, row_index: int | None = None) -> None:
     """Write ``0`` or ``1`` (and optional helpfile row index) to ``path`` atomically.
 
@@ -1212,6 +1228,11 @@ def _write_flag_file_atomic(path: str, flag: bool, row_index: int | None = None)
             hdl.flush()
             os.fsync(hdl.fileno())
         os.replace(tmp_path, path)
+        dir_fd = os.open(os.path.dirname(path) or '.', os.O_RDONLY)
+        try:
+            os.fsync(dir_fd)
+        finally:
+            os.close(dir_fd)
     except OSError:
         try:
             if os.path.exists(tmp_path):
@@ -1240,6 +1261,7 @@ def has_newer_structure_flag_event(outdir: str, resume_row: int) -> bool:
         get_file_structure_stale,
         get_file_structure_rollback,
         get_file_baseline_structure_done,
+        get_file_structure_forced_pending,
     ):
         path = getter(outdir)
         if not os.path.exists(path):
@@ -1260,6 +1282,7 @@ def has_unindexed_structure_flag_file(outdir: str) -> bool:
         get_file_structure_stale,
         get_file_structure_rollback,
         get_file_baseline_structure_done,
+        get_file_structure_forced_pending,
     ):
         path = getter(outdir)
         if not os.path.exists(path):
@@ -1272,6 +1295,54 @@ def has_unindexed_structure_flag_file(outdir: str) -> bool:
         if event_row is None:
             return True
     return not saw_existing
+
+
+def write_structure_forced_pending(
+    outdir: str, pending: bool, *, row_index: int | None = None
+) -> None:
+    """Persist ``structure_forced_pending`` under ``<outdir>/data/``.
+
+    Parameters
+    ----------
+    outdir : str
+        Run output directory.
+    pending : bool
+        Whether a forced Zalmoxis structure re-solve is pending on resume.
+    row_index : int or None, optional
+        Zero-based helpfile row index of the event that wrote the flag.
+    """
+    try:
+        _write_flag_file_atomic(
+            get_file_structure_forced_pending(outdir), pending, row_index=row_index
+        )
+    except OSError as exc:
+        log.warning('Could not persist structure-forced-pending flag file: %s', exc)
+
+
+def resume_structure_forced_pending(outdir: str) -> bool:
+    """Restore ``structure_forced_pending`` from ``<outdir>/data/`` on resume.
+
+    Parameters
+    ----------
+    outdir : str
+        Run output directory.
+
+    Returns
+    -------
+    bool
+        True when a forced structure re-solve is pending on disk or the file is corrupt.
+    """
+    path = get_file_structure_forced_pending(outdir)
+    if not os.path.exists(path):
+        return False
+    try:
+        pending, _ = _read_flag_file_with_row(path)
+        return bool(pending)
+    except (ValueError, OSError):
+        log.warning(
+            'Could not parse structure-forced-pending flag file; assuming forced re-solve pending'
+        )
+        return True
 
 
 def write_baseline_structure_done(
