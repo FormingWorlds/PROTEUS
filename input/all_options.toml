@@ -44,7 +44,7 @@ config_version = "3.0"
         remove_sf             = false        # remove spectral file when done
 
     [params.dt]
-        minimum               = 1e2          # minimum time step [yr]
+        minimum               = 1e2          # minimum time step [yr]; escape and top_cell_dt_limit can reduce dt down to minimum * escape.step_dt_floor_frac
         minimum_rel           = 1e-5         # minimum relative time step
         maximum               = 1e7          # maximum time step [yr]
         initial               = 3e1          # initial step size [yr]
@@ -472,7 +472,7 @@ config_version = "3.0"
     mixing_length             = "nearest"    # MLT length scale: nearest (boundary) | constant (D/4)
     kappah_floor              = 10.0         # eddy diffusivity floor [m2/s]; prevents MLT freeze
 
-    # Coupling limits (max T_magma change per PROTEUS step)
+    # Coupling limits (max T_magma and T_surf change per PROTEUS step; disabled on Aragog steps with finite tau_drain when top_cell_dt_limit = true)
     tmagma_atol               = 20.0         # absolute limit [K]
     tmagma_rtol               = 0.02         # relative limit
     tmagma_tides_step         = 10.0         # Maximum change in T_magma allowed when tides are active [K].
@@ -524,11 +524,9 @@ config_version = "3.0"
         # it (1 yr steps with "fixed", which can stall a run; 1 to 100 yr segments with "rate").
         phase_boundary_entropy_margin = 200.0    # phase-boundary max_step band [J/kg/K]
         phase_boundary_cap            = "rate"     # phase-boundary max_step policy: "rate" (default) | "fixed"
-        top_cell_dt_limit             = false    # bound the coupling step by the top-cell sensible-heat drain timescale under F_atm
+        top_cell_dt_limit             = false    # bound dt by tau_drain (down to dt.minimum * escape.step_dt_floor_frac) and keep T_magma, T_surf, and Phi_global unclipped by tmagma_atol/tmagma_rtol when tau_drain is finite
         top_cell_dt_rel_dT            = 0.08     # relative surface-temperature change allowance in the mushy regime (phi_s[-1] >= 0.40)
         top_cell_dt_rel_dT_solid      = 0.02     # relative surface-temperature change allowance at a fully solid top cell (phi_s[-1] = 0)
-
-
 
         # Core evolution, read when core_bc = "core_module": the CMB radius and pressure come
         # from the mesh and the central density and length scale from fits to the interior

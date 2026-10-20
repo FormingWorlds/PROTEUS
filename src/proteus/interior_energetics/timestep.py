@@ -21,11 +21,12 @@ SMALL = 1e-8  # Small number
 _TAU_DRAIN_F_MIN = 1.0  # Minimum surface flux [W m^-2] for top-cell drain timescale
 _TAU_DRAIN_PHI_GATE = 0.60  # Melt-fraction gate below which solid heat capacity caps cp_eff
 _TAU_DRAIN_PHI_RAMP = 0.40  # Melt-fraction upper endpoint of the optional solid rel_dT ramp
-# Solid-probe floor S_min + 300 J/(kg K): at P_top = 0.4461 GPa, T = 303.5 K (phi = 0) on the
-# shipped PALEOS table (S_min = 106.12) and T = 183.2 K (phi = 0) on the extended table (S_min = 25.99).
+# Solid-probe floor S_min + 300 J/(kg K): at P_top = 0.4461 GPa (1 M_earth reference mesh),
+# T = 303.5 K (phi = 0) on the shipped PALEOS table (S_min = 106.12) and T = 183.2 K (phi = 0)
+# on the extended table (S_min = 25.99).
 _TAU_DRAIN_SOLID_S_OFFSET = 300.0
-# Solid-probe cap 1800 J/(kg K): at P_top = 0.4461 GPa, T = 876.5 K and phi = 0 on both PALEOS
-# tables, 703.9 J/(kg K) below the solidus onset (S_sol = 2503.9 J/(kg K), T_sol = 1429.8 K).
+# Solid-probe cap 1800 J/(kg K): at P_top = 0.4461 GPa (1 M_earth reference mesh), T = 876.5 K
+# and phi = 0 on both PALEOS tables, 703.9 J/(kg K) below S_sol = 2503.9 J/(kg K) (T_sol = 1429.8 K).
 _TAU_DRAIN_SOLID_S_CAP = 1800.0
 _ARAGOG_SOLVER_ATTRS: tuple[str, ...] = (
     '_solution',
@@ -71,17 +72,17 @@ def _warn_invalid_tau_drain(
 def _estimate_tau_drain(config: Config, hf_row: dict, interior_o) -> float:
     """Estimate the top-cell sensible-heat drain timescale for Aragog.
 
-    When ``interior_o`` or ``interior_o.aragog_solver`` is ``None``, this is the
-    normal start-of-run case before the first Aragog step initializes the solver,
-    so ``np.inf`` is returned without logging a warning. Once ``aragog_solver`` is
-    present, missing any attribute in ``_ARAGOG_SOLVER_ATTRS`` or ``_ARAGOG_EOS_ATTRS``
-    or encountering a non-finite or non-positive state logs one warning per run
-    and returns ``np.inf``.
+    When ``interior_o`` or ``interior_o.aragog_solver`` is ``None``, when
+    ``interior_o.ic == 1``, or before the first atmosphere call at ``Time <= 0``
+    when ``T_surf == 0``, ``np.inf`` is returned without logging a warning. Once
+    ``aragog_solver`` is active in the main loop, missing any attribute in
+    ``_ARAGOG_SOLVER_ATTRS`` or ``_ARAGOG_EOS_ATTRS`` or encountering a non-finite
+    or non-positive state logs one warning per run and returns ``np.inf``.
 
-    At the top staggered cell ($P_{\\text{top}} \\approx 0.4461\\text{ GPa}$), the solid
-    heat-capacity probe evaluates $S_{\\text{probe}} = \\max(S_{\\min} + 300,\\,
-    \\min(S_{\\text{top}},\\, 1800))\\text{ J kg}^{-1}\\text{ K}^{-1}$. On both the shipped
-    PALEOS table ($S_{\\min} = 106.12\\text{ J kg}^{-1}\\text{ K}^{-1}$) and the extended
+    At the top staggered cell ($P_{\\text{top}} \\approx 0.4461\\text{ GPa}$ on the
+    $1\\,M_{\\oplus}$ reference mesh), the solid heat-capacity probe evaluates
+    $S_{\\text{probe}} = \\max(S_{\\min} + 300,\\, \\min(S_{\\text{top}},\\, 1800))\\text{ J kg}^{-1}\\text{ K}^{-1}$.
+    On both the shipped PALEOS table ($S_{\\min} = 106.12\\text{ J kg}^{-1}\\text{ K}^{-1}$) and the extended
     low-temperature PALEOS table ($S_{\\min} = 25.99\\text{ J kg}^{-1}\\text{ K}^{-1}$),
     $S = 1800\\text{ J kg}^{-1}\\text{ K}^{-1}$ sits in the pure solid phase ($T = 876.50\\text{ K}$,
     $\\phi = 0$, $c_p = 1232.05\\text{ J kg}^{-1}\\text{ K}^{-1}$) well below the solidus
@@ -106,8 +107,20 @@ def _estimate_tau_drain(config: Config, hf_row: dict, interior_o) -> float:
         Estimated top-cell drain timescale in years, or ``np.inf`` when
         no valid Aragog solver state is available.
     """
+    if interior_o is not None:
+        interior_o._tau_drain_cap_valid = False
     solver = getattr(interior_o, 'aragog_solver', None) if interior_o is not None else None
-    if solver is None:
+    if solver is None or getattr(interior_o, 'ic', 2) == 1:
+        return np.inf
+    raw_t_surf = hf_row.get('T_surf')
+    raw_time = hf_row.get('Time', 0.0)
+    if (
+        isinstance(raw_t_surf, (int, float, np.number))
+        and not isinstance(raw_t_surf, bool)
+        and isinstance(raw_time, (int, float, np.number))
+        and float(raw_t_surf) == 0.0
+        and float(raw_time) <= 0.0
+    ):
         return np.inf
 
     eos = getattr(solver, 'entropy_eos', None)
@@ -235,7 +248,7 @@ def _estimate_tau_drain(config: Config, hf_row: dict, interior_o) -> float:
             dr_eff=dr_eff,
         )
 
-    phi_top = min(1.0, max(0.0, phi_raw))
+    phi_top = max(0.0, phi_raw)
     cp_eff = min(cp_top, cp_solid) if phi_top <= _TAU_DRAIN_PHI_GATE else cp_top
 
     aragog_cfg = config.interior_energetics.aragog
@@ -245,8 +258,10 @@ def _estimate_tau_drain(config: Config, hf_row: dict, interior_o) -> float:
 
     dt_allow_k = eta_eff * t_surf
     f_abs = max(abs(f_raw), _TAU_DRAIN_F_MIN)
-    tau_yr = (rho_top * cp_eff * dr_eff * dt_allow_k) / (f_abs * secs_per_year)
-    return float(tau_yr)
+    tau_yr = float((rho_top * cp_eff * dr_eff * dt_allow_k) / (f_abs * secs_per_year))
+    if interior_o is not None and math.isfinite(tau_yr) and tau_yr > 0.0:
+        interior_o._tau_drain_cap_valid = True
+    return tau_yr
 
 
 def _hf_from_iters(hf_all: pd.DataFrame, i1: int, i2: int):
@@ -680,6 +695,8 @@ def next_step(
         dtswitch = evection_cap
 
     # Top-cell sensible-heat drain cap for Aragog, floored at the escape step floor.
+    if interior_o is not None:
+        interior_o._tau_drain_cap_valid = False
     ie_cfg = getattr(config, 'interior_energetics', None)
     if (
         getattr(ie_cfg, 'module', None) == 'aragog'
@@ -687,6 +704,8 @@ def next_step(
     ):
         tau_drain = _estimate_tau_drain(config, hf_row, interior_o)
         if np.isfinite(tau_drain) and tau_drain > 0.0:
+            if interior_o is not None:
+                interior_o._tau_drain_cap_valid = True
             esc_floor = config.params.dt.minimum * config.escape.step_dt_floor_frac
             dt_drain = max(esc_floor, tau_drain)
             if dtswitch > dt_drain:

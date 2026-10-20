@@ -8050,6 +8050,7 @@ def test_run_interior_top_cell_dt_limit_on_applies_tmagma_clip_when_tau_drain_in
     config_spider = _make_run_interior_config(prevent_warming=False, module='spider')
     config_spider.interior_energetics.aragog = Aragog(top_cell_dt_limit=True)
     hf_all_sp, hf_row_sp = _make_run_interior_state(prev_f_int=0.2)
+    hf_row_sp['R_int'] = 6.371e6
     interior_sp = MagicMock(spec=Interior_t)
     interior_sp.ic = 2
     interior_sp.dt = 10.0
@@ -8057,9 +8058,9 @@ def test_run_interior_top_cell_dt_limit_on_applies_tmagma_clip_when_tau_drain_in
     interior_sp._tau_drain_cap_valid = True
 
     with (
-        patch('proteus.interior_energetics.wrapper.RunSPIDER'),
+        patch('proteus.interior_energetics.spider.RunSPIDER'),
         patch(
-            'proteus.interior_energetics.wrapper.ReadSPIDER',
+            'proteus.interior_energetics.spider.ReadSPIDER',
             return_value=(110.0, dict(out)),
         ),
         patch('proteus.interior_energetics.wrapper.update_planet_mass'),

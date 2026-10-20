@@ -352,7 +352,7 @@
           "value": 0
         }
       ],
-      "description": "Minimum absolute time-step size [yr].",
+      "description": "Minimum absolute time-step size [yr]; atmospheric escape and ``interior_energetics.aragog.top_cell_dt_limit`` can reduce ``dt`` below this value down to ``minimum * escape.step_dt_floor_frac``.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -6064,7 +6064,7 @@
       "default": "false",
       "choices": null,
       "bounds": null,
-      "description": "Limit the coupling time step by the top-cell radiative drain time tau_drain and keep hf_row['T_magma'] and hf_row['Phi_global'] on the Aragog solver state.",
+      "description": "Limit the coupling time step by the top-cell radiative drain time tau_drain (down to params.dt.minimum * escape.step_dt_floor_frac, below params.dt.minimum) and keep hf_row['T_magma'], hf_row['T_surf'], and hf_row['Phi_global'] on the Aragog solver state by skipping the tmagma_atol/tmagma_rtol post-step clip on steps where tau_drain is finite; atmos_clim.prevent_warming still clamps T_magma, T_surf, Phi_global, and F_int when active.",
       "doc_source": "field_docstring",
       "group_order": 0,
       "group_position": 0,
@@ -6722,7 +6722,7 @@
           "value": 0
         }
       ],
-      "description": "Maximum absolute change in T_magma per PROTEUS step [K].",
+      "description": "Maximum absolute change in T_magma and T_surf per PROTEUS step [K]; disabled on Aragog steps where interior_energetics.aragog.top_cell_dt_limit is true and tau_drain is finite.",
       "doc_source": "attributes",
       "group_order": 4,
       "group_position": 0,
@@ -6743,7 +6743,7 @@
           "value": 0
         }
       ],
-      "description": "Maximum relative change in T_magma per PROTEUS step.",
+      "description": "Maximum relative change in T_magma and T_surf per PROTEUS step; disabled on Aragog steps where interior_energetics.aragog.top_cell_dt_limit is true and tau_drain is finite.",
       "doc_source": "attributes",
       "group_order": 4,
       "group_position": 1,

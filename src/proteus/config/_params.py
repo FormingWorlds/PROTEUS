@@ -80,7 +80,9 @@ class TimeStepParams:
     Attributes
     ----------
     minimum: float
-        Minimum absolute time-step size [yr].
+        Minimum absolute time-step size [yr]; atmospheric escape and
+        ``interior_energetics.aragog.top_cell_dt_limit`` can reduce ``dt`` below
+        this value down to ``minimum * escape.step_dt_floor_frac``.
     minimum_rel: float
         Minimum relative time-step size [dimensionless].
     maximum: float

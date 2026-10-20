@@ -2596,7 +2596,7 @@ def run_interior(
             hf_row['F_int'] = max(1.0e-8, hf_row['F_int'])
 
         # Limit large increases to T_magma and T_surf. Skipped on impact steps and
-        # when Aragog's pre-step top_cell_dt_limit is active.
+        # when Aragog's pre-step top_cell_dt_limit produced a finite tau_drain.
         aragog_top_dt_limit = (
             config.interior_energetics.module == 'aragog'
             and getattr(
@@ -2605,6 +2605,7 @@ def run_interior(
                 False,
             )
             is True
+            and getattr(interior_o, '_tau_drain_cap_valid', False) is True
         )
         if not aragog_top_dt_limit:
             dT_delta_magma = config.interior_energetics.tmagma_atol

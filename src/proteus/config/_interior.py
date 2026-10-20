@@ -162,12 +162,34 @@ class Spider:
     log_output: bool = field(default=True)
 
 
+def _check_aragog_top_cell_dt_limit_surface_bc(instance, attribute=None, value=None) -> None:
+    """Reject Aragog top_cell_dt_limit with grey_body surface boundary conditions."""
+    attr_name = getattr(attribute, 'name', None)
+    module = value if attr_name == 'module' else getattr(instance, 'module', None)
+    aragog = value if attr_name == 'aragog' else getattr(instance, 'aragog', None)
+    surface_bc_mode = (
+        value
+        if attr_name == 'surface_bc_mode'
+        else getattr(instance, 'surface_bc_mode', 'flux')
+    )
+    if (
+        module == 'aragog'
+        and getattr(aragog, 'top_cell_dt_limit', False) is True
+        and surface_bc_mode == 'grey_body'
+    ):
+        raise ValueError(
+            'interior_energetics.aragog.top_cell_dt_limit = true cannot be used with '
+            "interior_energetics.surface_bc_mode = 'grey_body'"
+        )
+
+
 def valid_aragog(instance, attribute, value):
     """Aragog requires at least one energy transport term to be enabled."""
-    if instance.module != 'aragog':
+    module = value if getattr(attribute, 'name', None) == 'module' else instance.module
+    if module != 'aragog':
         return
 
-    # at least one energy term enabled (uses top-level interior fields)
+    # At least one energy term enabled (uses top-level interior fields).
     if not (
         instance.trans_conduction
         or instance.trans_convection
@@ -175,6 +197,13 @@ def valid_aragog(instance, attribute, value):
         or instance.trans_grav_sep
     ):
         raise ValueError('Must enable at least one energy transport term in Aragog')
+
+    _check_aragog_top_cell_dt_limit_surface_bc(instance, attribute, value)
+
+
+def _valid_surface_bc_mode(instance, attribute, value):
+    """Validate surface_bc_mode compatibility with Aragog top_cell_dt_limit."""
+    _check_aragog_top_cell_dt_limit_surface_bc(instance, attribute, value)
 
 
 @define
@@ -465,7 +494,11 @@ class Aragog:
 
     top_cell_dt_limit: bool = field(default=False, validator=_valid_bool)
     """Limit the coupling time step by the top-cell radiative drain time tau_drain
-    and keep hf_row['T_magma'] and hf_row['Phi_global'] on the Aragog solver state."""
+    (down to params.dt.minimum * escape.step_dt_floor_frac, below params.dt.minimum)
+    and keep hf_row['T_magma'], hf_row['T_surf'], and hf_row['Phi_global'] on the Aragog
+    solver state by skipping the tmagma_atol/tmagma_rtol post-step clip on steps where
+    tau_drain is finite; atmos_clim.prevent_warming still clamps T_magma, T_surf,
+    Phi_global, and F_int when active."""
 
     top_cell_dt_rel_dT: float = field(
         default=0.08, converter=float, validator=(gt(0.0), le(0.5))
@@ -669,9 +702,13 @@ class Interior:
         Eddy diffusivity floor [m2 s-1]; prevents mixing-length transport
         from freezing out.
     tmagma_atol: float
-        Maximum absolute change in T_magma per PROTEUS step [K].
+        Maximum absolute change in T_magma and T_surf per PROTEUS step [K]; disabled on
+        Aragog steps where interior_energetics.aragog.top_cell_dt_limit is true and
+        tau_drain is finite.
     tmagma_rtol: float
-        Maximum relative change in T_magma per PROTEUS step.
+        Maximum relative change in T_magma and T_surf per PROTEUS step; disabled on
+        Aragog steps where interior_energetics.aragog.top_cell_dt_limit is true and
+        tau_drain is finite.
     tmagma_tides_step: float
         Maximum change in T_magma allowed when tides are active [K].
     param_utbl: bool
@@ -776,27 +813,11 @@ class Interior:
     param_utbl: bool = field(default=False)
     param_utbl_const: float = field(default=1e-7, validator=gt(0))
 
-    # Surface boundary condition mode for SPIDER/Aragog.
-    #
-    # - 'flux' (default): prescribed heat flux from hf_row['F_atm']. SPIDER
-    #   uses -SURFACE_BC 4, Aragog uses outer_boundary_condition=4. The Python
-    #   atmosphere module (dummy, AGNI, JANUS) is responsible for computing
-    #   F_atm, which the interior consumes unchanged for the full duration of
-    #   the coupling step.
-    #
-    # - 'grey_body': native grey-body BC computed inside the interior solver
-    #   per CVode substep from the current top-cell T. SPIDER uses -SURFACE_BC 1
-    #   -emissivity0 1.0, Aragog uses outer_boundary_condition=1 with
-    #   emissivity=1. Both compute F = sigma * (T_surf^4 - T_eqm^4) using the
-    #   T_eqm value in hf_row['T_eqm']. This is the formulation used by
-    #   SPIDER-Aragog parity tests: both solvers follow the identical physical
-    #   law so their cooling trajectories can be compared directly. The
-    #   Python-side atmosphere module still runs to populate diagnostic
-    #   helpfile fields (F_olr, F_sct, R_obs, ...), but its F_atm output is
-    #   not used by the interior.
+    # Surface BC mode: 'flux' consumes hf_row['F_atm']; 'grey_body' evaluates
+    # sigma * (T_surf^4 - T_eqm^4) inside the interior solver per substep.
     surface_bc_mode: str = field(
         default='flux',
-        validator=in_(('flux', 'grey_body')),
+        validator=(in_(('flux', 'grey_body')), _valid_surface_bc_mode),
     )
 
     # -----------------------------------------------------------------

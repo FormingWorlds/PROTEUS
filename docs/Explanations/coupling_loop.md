@@ -146,7 +146,14 @@ PROTEUS uses an adaptive time-stepping scheme controlled by `params.dt.method`:
 All methods enforce `params.dt.minimum` and `params.dt.maximum` bounds. During
 the mushy zone (melt fraction between `phi_crit` and `mushy_upper`), the
 timestep is additionally capped at `params.dt.mushy_maximum` to resolve the
-rapid solidification transition.
+rapid solidification transition. When `interior_energetics.module = 'aragog'`
+and `interior_energetics.aragog.top_cell_dt_limit = true`, the timestep is
+further capped at the top-cell sensible-heat drain timescale $\tau_\mathrm{drain}$
+(floored at `params.dt.minimum * escape.step_dt_floor_frac`, which can sit
+below `params.dt.minimum`), and the post-step `tmagma_atol`/`tmagma_rtol` clip
+on `T_magma`, `T_surf`, and `Phi_global` is skipped on steps where
+$\tau_\mathrm{drain}$ is finite (while `atmos_clim.prevent_warming` continues to
+clamp `T_magma`, `T_surf`, `Phi_global`, and `F_int` when active).
 
 ## Convergence and termination
 
