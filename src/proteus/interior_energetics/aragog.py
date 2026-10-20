@@ -337,7 +337,7 @@ def _boundary_conditions(**kwargs) -> _BoundaryConditionsParameters:
     try:
         return _BoundaryConditionsParameters(**kwargs)
     except TypeError as exc:
-        if 'top_node' not in kwargs or 'top_node' not in str(exc):
+        if 'top_node' not in kwargs or "unexpected keyword argument 'top_node'" not in str(exc):
             raise
         import aragog
 
