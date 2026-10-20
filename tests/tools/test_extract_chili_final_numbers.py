@@ -9,6 +9,7 @@ missing input is reported as not available or raises, never printed as zero.
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 import types
 from pathlib import Path
@@ -63,9 +64,11 @@ def _load_tool():
     return module
 
 
-def _make_run(tmp_path, drop=(), logs=('Total runtime: 2.5 hours\n',), snapshots=()):
+def _make_run(
+    tmp_path, drop=(), logs=('Total runtime: 2.5 hours\n',), snapshots=(), name='chili_venus'
+):
     """Write a run folder with a two-row helpfile, a status file, logs and snapshot names."""
-    run = tmp_path / 'chili_venus'
+    run = tmp_path / name
     (run / 'data').mkdir(parents=True)
     keep = [i for i, c in enumerate(_COLUMNS) if c not in drop]
     rows = [[_COLUMNS[i] for i in keep]] + [[str(r[i]) for i in keep] for r in (_FIRST, _LAST)]
@@ -147,3 +150,66 @@ def test_snapshot_without_netcdf4_raises_and_without_phi_s_is_not_available(
     _fake_netcdf4(monkeypatch, {})
     notes = tool.build_markdown_summary([tool.extract_run_data(run, 'Nominal Venus')])
     assert 'mush range: not available' in notes
+
+
+def test_retention_and_delta_iw_follow_the_first_and_last_rows(tmp_path):
+    """H and C retention are last over first row totals; Delta IW is log10(pO2) minus the
+    O'Neill and Eggins (2002) IW buffer at T_magma, in log10 units, not natural log."""
+    tool = _load_tool()
+    res = tool.extract_run_data(_make_run(tmp_path), 'Nominal Venus')
+    t = 1776.0
+    iw = 2.0 * (-244118.0 + 115.559 * t - 8.474 * t * np.log(t)) / (np.log(10) * 8.31441 * t)
+
+    assert res['h_retention_pct'] == pytest.approx(75.0, rel=1e-12)
+    assert res['c_retention_pct'] == pytest.approx(90.0, rel=1e-12)
+    assert res['delta_iw'] == pytest.approx(-8.0 - iw, rel=1e-12)
+    assert abs(res['delta_iw'] - (np.log(1.0e-8) - iw)) > 5.0  # natural log is far off
+    assert res['reached_5pct_melt'] is True
+
+
+def test_wall_time_from_log_timestamps_and_its_limits(tmp_path):
+    """A log without a runtime line counts from its first to its last timestamp; a log
+    with a single timestamp makes the total not available instead of an undercount."""
+    tool = _load_tool()
+    stamps = '2026-10-14 10:00:00 start\n2026-10-14 16:00:00 end\n'
+    run = _make_run(tmp_path, logs=('Total runtime: 2.5 hours\n', stamps))
+
+    assert tool.extract_wall_time(run) == pytest.approx(8.5, rel=1e-12)
+
+    (run / 'proteus_02.log').write_text('2026-10-15 10:00:00 only line\n', encoding='utf-8')
+    assert tool.extract_wall_time(run) is None
+
+
+def test_short_last_helpfile_row_raises(tmp_path):
+    """A last row with fewer fields than the header is a partial write and raises,
+    naming the file and both counts."""
+    tool = _load_tool()
+    run = _make_run(tmp_path)
+    with (run / 'runtime_helpfile.csv').open('a', encoding='utf-8') as f:
+        f.write('9.0e7\t0.04\n')
+
+    with pytest.raises(ValueError, match='expected 13 columns, got 2') as excinfo:
+        tool.extract_run_data(run, 'Nominal Venus')
+    assert 'runtime_helpfile.csv' in str(excinfo.value)
+
+
+def test_main_prints_every_case_and_refuses_a_missing_folder(tmp_path, monkeypatch, capsys):
+    """main reads the five case folders, prints one table row per case and writes the
+    JSON; a missing case folder raises FileNotFoundError."""
+    tool = _load_tool()
+    for name, _ in tool.CASES:
+        _make_run(tmp_path, name=name)
+    out_json = tmp_path / 'numbers.json'
+    monkeypatch.setattr(
+        sys, 'argv', ['extract', '--runs', str(tmp_path), '--json-out', str(out_json)]
+    )
+
+    tool.main()
+
+    printed = capsys.readouterr().out
+    assert all(f'| {disp} |' in printed for _, disp in tool.CASES)
+    assert len(json.loads(out_json.read_text(encoding='utf-8'))) == len(tool.CASES)
+
+    monkeypatch.setattr(sys, 'argv', ['extract', '--runs', str(tmp_path / 'absent')])
+    with pytest.raises(FileNotFoundError, match='Run folder not found'):
+        tool.main()
