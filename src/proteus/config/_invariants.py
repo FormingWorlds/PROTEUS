@@ -108,21 +108,21 @@ class Invariants:
         as an impact or a dynamic re-solve, or an unindexed directory with dropped snapshots
         adds a forced structure solve at the resume that the continuous run did not perform at
         that row, so the resumed trajectory can differ from the continuous one, and Zalmoxis
-        aborts after 8 consecutive failed solves, a per-process count that restarts on a
-        resume).
+        aborts after 8 consecutive failed solves, a per-process count that
+        restarts on a resume).
     interior_mass_target_rtol: float
         Relative tolerance on ``M_int`` versus ``M_int_target`` at a Zalmoxis structure row [-],
-        matching the ``3.0e-3`` Zalmoxis mass-anchor tolerance in ``interior_energetics/wrapper.py``
-        and acting as a backstop on solve paths that do not run a post-solve mass-anchor check
-        (the linear-guess initial solve in ``determine_interior_radius_with_zalmoxis`` and
-        ``equilibrate_initial_state``, the post-init giant-impact structure re-solve in
-        ``apply_impact`` calling ``solve_structure(thermal_solve=False)``, and
-        ``update_structure_from_interior`` rollbacks that restore ``M_int`` without clearing
-        ``M_int_target``, which are emitted with ``report_only=True`` while a structure rollback
-        remains active until the next accepted re-solve; a resume after dropped snapshots on an
-        unindexed directory, after a flag event newer than the resume row such as a stop after
-        any structure event on a non-snapshot row when ``write_mod > 1`` or
-        ``dt_write_rel > 0``, or with a pending forced re-solve flag on disk when the initial
+        matching the ``3.0e-3`` Zalmoxis mass-anchor tolerance in
+        ``interior_energetics/wrapper.py`` and acting as a backstop on solve paths that do not
+        run a post-solve mass-anchor check (the linear-guess initial solve in
+        ``determine_interior_radius_with_zalmoxis`` and ``equilibrate_initial_state``, the
+        post-init giant-impact structure re-solve in ``apply_impact`` calling
+        ``solve_structure(thermal_solve=False)``, and ``update_structure_from_interior``
+        rollbacks that restore ``M_int`` without clearing ``M_int_target``, which are emitted
+        with ``report_only=True`` while a structure rollback remains active until the next
+        accepted re-solve; a resume after dropped snapshots on an unindexed directory, after a
+        flag event newer than the resume row such as a stop after any structure event on a
+        non-snapshot row when ``write_mod > 1`` or ``dt_write_rel > 0``, or with a pending forced re-solve flag on disk when the initial
         baseline was already committed marks the structure rollback active and forces 1 re-solve
         at the resume, clearing the rollback on an accepted solve or up-step reject and keeping
         rollback active on a solver failure, whereas an uncommitted initial baseline keeps the
