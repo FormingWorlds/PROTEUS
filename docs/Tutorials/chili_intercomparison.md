@@ -39,18 +39,20 @@ The CHILI intercomparison defines three solar system test cases:
 All cases start fully molten at 50 Myr stellar age (TRAPPIST-1 &alpha;
 at 1 Gyr) with BSE composition, fO$_2$ = IW+4, and Bond albedo = 0.1. The
 protocol asks for a run until solidification, or for at most 1 Gyr, for
-the Earth and Venus cases [^cite-lichtenberg2026]. The repository configs
-for Nominal Earth, TRAPPIST-1 e and the low-H and mid-H Earth grid scenarios
-stop when the melt fraction falls to 5% by mass (`params.stop.solid.phi_crit = 0.05`),
-with energy-balance, escape and wall-clock stops enabled and a time limit of 5 Gyr
-(7.55 Gyr for TRAPPIST-1 e, 9000 iterations limit). The Nominal Venus run, the three
-high-H Earth grid runs, and the TRAPPIST-1 &alpha; and b runs were configured with the
-energy-balance, escape and wall-clock stops off (`params.stop.radeqm.enabled`,
-`params.stop.escape.enabled` and `params.stop.clock.enabled` set to `false`), a 1 Gyr model
-time limit (`params.stop.time.maximum = 1e9`), and a limit of 1,000,000 iterations
-(`params.stop.iters.maximum`). Two limits stay on in all cases: the stall stop ends a run as an error
-after 150 consecutive iterations without a converged atmosphere solve
-(`params.stop.stall.maximum`), and the iteration limit. The runs submitted to
+the Earth and Venus cases [^cite-lichtenberg2026]. Every run on this page stops
+when the melt fraction falls to 5% by mass (`params.stop.solid.phi_crit = 0.05`);
+the other stop settings below are the ones each run used, from the `init_coupler.toml`
+in its output folder. The Nominal Earth, TRAPPIST-1 e and low-H and mid-H Earth grid
+runs had the energy-balance, escape and wall-clock stops on, a time limit of 5 Gyr
+(7.55 Gyr for TRAPPIST-1 e) and a limit of 9000 iterations. The Nominal Venus run, the three
+high-H Earth grid runs, and the TRAPPIST-1 &alpha; and b runs had these stops off
+(`params.stop.radeqm.enabled`, `params.stop.escape.enabled` and `params.stop.clock.enabled`
+set to `false`), a 1 Gyr model time limit (`params.stop.time.maximum = 1e9`), and a limit
+of 1,000,000 iterations (`params.stop.iters.maximum`). The repository configs in
+`input/chili/intercomp/` carry this second set of settings for every case. In all runs the
+iteration limit and the stall stop stay on; the stall stop ends a run as an error after
+150 consecutive iterations without a converged atmosphere solve
+(`params.stop.stall.maximum`). The runs submitted to
 the intercomparison stop at 5% melt as well, with the energy-balance and
 escape stops off. Melt fractions of the
 current PROTEUS runs are by mass on this page unless stated otherwise,
@@ -90,8 +92,9 @@ volume.
   (`proteus get interiordata --config-path input/chili/intercomp/earth.toml`)
 - `git` (to clone the CHILI comparison data)
 - The runs on this page that reached 5% melt took about 2.7 hours to about 5.5 days of wall
-  time (Nominal Venus); the four runs stopped before reaching 5% melt used about 7 days.
-  The logged runtimes include time the runs were paused by the load guard.
+  time (Nominal Venus). Of the five runs stopped before reaching 5% melt, the three high-H
+  Earth grid runs and the TRAPPIST-1 b run used 6.95 to 7.21 days, and the TRAPPIST-1
+  &alpha; run 0.91 days.
   A run that stays partly molten takes steps of at most 4000 yr (`params.dt.mushy_maximum`),
   so at least 250,000 steps to reach 1 Gyr
 
@@ -359,11 +362,11 @@ composition, oxygen fugacity at IW+4, a Bond albedo of 0.1, and a 50 Myr
 stellar age [^cite-lichtenberg2026]. The two differ in the interior
 modules and in the limits of the stop rule: the submitted configs stop
 after 4.517 Gyr (6.6 and 7.55 Gyr for the TRAPPIST-1 cases) or 9000 iterations.
-For the current runs shown here, Nominal Earth, TRAPPIST-1 e and the low-H and mid-H
-grid cases stop after 5 Gyr (7.55 Gyr for TRAPPIST-1 e) or 9000 iterations with
-energy-balance stops active, while Nominal Venus, the high-H grid, and the TRAPPIST-1
-cases ran with energy-balance, escape and wall-clock stops off, a 1 Gyr limit, and
-1,000,000 iterations.
+All current runs shown here stop at 5% melt. Besides that, the Nominal Earth,
+TRAPPIST-1 e and low-H and mid-H grid runs stop after 5 Gyr (7.55 Gyr for TRAPPIST-1 e)
+or 9000 iterations with the energy-balance, escape and wall-clock stops on, while the
+Nominal Venus, high-H grid and TRAPPIST-1 &alpha; and b runs ran with these stops off,
+a 1 Gyr limit and 1,000,000 iterations, the settings the repository configs carry.
 
 The PROTEUS results submitted to the intercomparison were computed with an
 earlier version of PROTEUS, not the configuration documented here. The
