@@ -2143,6 +2143,12 @@ def require_paleos_tables(config: Config, outdir: str) -> None:
         mat_dicts,
         paleos_companions=not kept or config.interior_energetics.module == 'aragog',
     )
+    if (
+        zc.lowt_extension is True
+        and not kept
+        and generates_paleos_tables(config.interior_struct)
+    ):
+        _require_lowt_extension(zc.mantle_eos, mat_dicts)
     components = eos_components(zc.mantle_eos)
     mixture = len(set(components)) > 1
     if all(is_mgsio3(c) for c in components):
@@ -2169,6 +2175,34 @@ def require_paleos_tables(config: Config, outdir: str) -> None:
             else 'the structure uses its density, while '
         )
         log.warning('mantle_eos=%s: %s%s', zc.mantle_eos, head, '; '.join(uses))
+
+
+def _require_lowt_extension(mantle_eos: str, mat_dicts: dict) -> None:
+    """Stop the run before any solve when the low-temperature extension cannot be built.
+
+    Raises
+    ------
+    RuntimeError
+        If the installed Zalmoxis table generator has no ``solid_lowt_file``.
+    ZalmoxisMissingEOSFilesError
+        If the extension file next to the PALEOS solid table is missing.
+    """
+    import zalmoxis
+    from zalmoxis.eos_export import generate_spider_eos_tables
+
+    if 'solid_lowt_file' not in inspect.signature(generate_spider_eos_tables).parameters:
+        raise RuntimeError(
+            'lowt_extension needs a Zalmoxis whose generate_spider_eos_tables takes '
+            f'solid_lowt_file; the installed Zalmoxis {getattr(zalmoxis, "__version__", "?")} '
+            f'({os.path.dirname(zalmoxis.__file__)}) has none'
+        )
+    solid, _ = resolve_2phase_mgsio3_paths(mantle_eos, mat_dicts)
+    lowt = os.path.join(os.path.dirname(solid or ''), LOWT_EXTENSION_FILE)
+    if not (solid and os.path.isfile(lowt)):
+        raise ZalmoxisMissingEOSFilesError(
+            f'lowt_extension is on but the low-temperature solid extension {lowt} is missing; '
+            'write it with tools/converters/paleos_lowt_extension.py of Zalmoxis'
+        )
 
 
 def resolve_2phase_mgsio3_paths(mantle_eos: str, mat_dicts: dict, required: bool = False):
@@ -2731,7 +2765,17 @@ def _ps_cache_key(
 
 
 def _data_digest(path: str) -> str:
-    """SHA-1 of the data lines of a table file; lines that start with '#' are left out."""
+    """SHA-1 of the data lines of a table file; lines that start with '#' are left out.
+
+    The digest is kept per (path, modification time, size), so an unchanged file is read once.
+    """
+    st = os.stat(path)
+    return _data_digest_of(str(Path(path).resolve()), st.st_mtime_ns, st.st_size)
+
+
+@functools.lru_cache(maxsize=16)
+def _data_digest_of(path: str, mtime_ns: int, size: int) -> str:
+    """SHA-1 of the data lines of ``path`` as it is at ``mtime_ns`` and ``size``."""
     data = (ln for ln in Path(path).read_bytes().splitlines() if not ln.startswith(b'#'))
     return hashlib.sha1(b'\n'.join(data)).hexdigest()
 

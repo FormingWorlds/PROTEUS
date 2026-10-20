@@ -418,10 +418,14 @@ def lowt_extension_requires_aragog(instance, attribute, value):
     zalmoxis = getattr(instance.interior_struct, 'zalmoxis', None)
     interior = instance.interior_energetics.module
     if getattr(zalmoxis, 'lowt_extension', False) is True and interior != 'aragog':
+        why = (
+            'the extension gives the solid P-S table more entropy nodes than the melt table'
+            if interior == 'spider'
+            else f'the "{interior}" interior reads no P-S tables, so the extension has no effect'
+        )
         raise ValueError(
             'interior_struct.zalmoxis.lowt_extension = true requires '
-            f'interior_energetics.module = "aragog", not "{interior}": the extension gives the '
-            'solid P-S table more entropy nodes than the melt table.'
+            f'interior_energetics.module = "aragog", not "{interior}": {why}.'
         )
 
 
