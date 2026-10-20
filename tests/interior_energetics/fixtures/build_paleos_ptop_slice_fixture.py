@@ -13,8 +13,11 @@ import argparse
 import hashlib
 import json
 import math
+import subprocess
+import tomllib
 from pathlib import Path
 
+import aragog
 import netCDF4 as nc
 import numpy as np
 import pandas as pd
@@ -26,6 +29,48 @@ OUT_PATH = Path(__file__).resolve().parent / 'paleos_ptop_531p546_slice.json'
 def _md5(path: Path) -> str:
     """Return hex MD5 digest of path."""
     return hashlib.md5(path.read_bytes()).hexdigest()
+
+
+def _eval_1d_slice(
+    phase_slices: dict[str, dict[str, list[float]]],
+    s_sol: float,
+    s_liq: float,
+    s_query: np.ndarray,
+) -> dict[str, np.ndarray]:
+    """Evaluate 1D slice properties at fixed P_top matching _PaleosSliceEOS."""
+    s = np.asarray(s_query, dtype=float)
+    phi = np.clip((s - s_sol) / (s_liq - s_sol), 0.0, 1.0)
+    mushy = (phi > 0.0) & (phi < 1.0)
+    solid_s = np.asarray(phase_slices['solid']['S'], dtype=float)
+    melt_s = np.asarray(phase_slices['melt']['S'], dtype=float)
+    s_sol_q = np.where(mushy, s_sol, s)
+    s_liq_q = np.where(mushy, s_liq, s)
+
+    out: dict[str, np.ndarray] = {'melt_fraction': phi}
+    for prop in ('temperature', 'heat_capacity'):
+        v_sol = np.interp(
+            np.clip(s_sol_q, solid_s[0], solid_s[-1]),
+            solid_s,
+            np.asarray(phase_slices['solid'][prop], dtype=float),
+        )
+        v_melt = np.interp(
+            np.clip(s_liq_q, melt_s[0], melt_s[-1]),
+            melt_s,
+            np.asarray(phase_slices['melt'][prop], dtype=float),
+        )
+        out[prop] = np.where(phi > 0.0, phi * v_melt, 0.0) + np.where(
+            phi < 1.0, (1.0 - phi) * v_sol, 0.0
+        )
+
+    rho_sol_arr = np.asarray(phase_slices['solid']['density'], dtype=float)
+    rho_melt_arr = np.asarray(phase_slices['melt']['density'], dtype=float)
+    rho_sol_b = np.interp(np.clip(s_sol, solid_s[0], solid_s[-1]), solid_s, rho_sol_arr)
+    rho_liq_b = np.interp(np.clip(s_liq, melt_s[0], melt_s[-1]), melt_s, rho_melt_arr)
+    rho_mushy = 1.0 / (phi / rho_liq_b + (1.0 - phi) / rho_sol_b)
+    v_sol_rho = np.interp(np.clip(s, solid_s[0], solid_s[-1]), solid_s, rho_sol_arr)
+    v_melt_rho = np.interp(np.clip(s, melt_s[0], melt_s[-1]), melt_s, rho_melt_arr)
+    out['density'] = np.where(mushy, rho_mushy, np.where(phi >= 0.5, v_melt_rho, v_sol_rho))
+    return out
 
 
 def main() -> None:
@@ -43,6 +88,21 @@ def main() -> None:
     eos_dir = (run_dir / 'data' / 'spider_eos').resolve()
     nc_531_path = run_dir / 'data' / '531p546_int.nc'
     hf_path = run_dir / 'runtime_helpfile.csv'
+    cfg_path = run_dir / 'init_coupler.toml'
+
+    with cfg_path.open('rb') as f_cfg:
+        run_cfg = tomllib.load(f_cfg)
+    mass_earth = float(run_cfg['planet']['mass_tot'])
+    semimajor_au = float(run_cfg['orbit']['semimajoraxis'])
+    source_table = str(run_cfg['interior_struct']['eos_dir'])
+    interior_mod = str(run_cfg['interior_energetics']['module'])
+    atmos_mod = str(run_cfg['atmos_clim']['module'])
+
+    aragog_repo = Path(aragog.__file__).resolve().parent
+    aragog_commit = subprocess.check_output(
+        ['git', '-C', str(aragog_repo), 'rev-parse', 'HEAD'], text=True
+    ).strip()
+    assert len(aragog_commit) == 40
 
     eos = EntropyEOS(eos_dir)
     hf_df = pd.read_csv(hf_path, sep=r'\s+')
@@ -74,6 +134,24 @@ def main() -> None:
                 float(x) for x in eos._tables[f'heat_capacity_{phase}']['interp'](pts).ravel()
             ],
         }
+
+    # Verify that the 1D slice reproduces Aragog's 2D EntropyEOS across [S_min, S_max]
+    s_check = np.linspace(float(eos.S_min), float(eos.S_max), 4000)
+    p_check = np.full_like(s_check, p_top_pa, dtype=float)
+    slice_eval = _eval_1d_slice(phase_slices, s_sol, s_liq, s_check)
+    max_rel_diff = 0.0
+    for prop, eos_fn in (
+        ('temperature', eos.temperature),
+        ('heat_capacity', eos.heat_capacity),
+        ('density', eos.density),
+        ('melt_fraction', eos.melt_fraction),
+    ):
+        ref_2d = np.asarray(eos_fn(p_check, s_check), dtype=float).ravel()
+        val_1d = np.asarray(slice_eval[prop], dtype=float).ravel()
+        denom = np.maximum(np.abs(ref_2d), 1.0e-30)
+        rel_diff = float(np.max(np.abs(val_1d - ref_2d) / denom))
+        max_rel_diff = max(max_rel_diff, rel_diff)
+    assert max_rel_diff < 1.0e-14, f'1D slice diverged from 2D EntropyEOS: {max_rel_diff}'
 
     snap_files = sorted((run_dir / 'data').glob('*_int.nc'))
 
@@ -114,14 +192,24 @@ def main() -> None:
     source_files_md5 = {p.name: _md5(p) for p in sorted(eos_dir.glob('*.dat'))}
     source_files_md5['531p546_int.nc'] = _md5(nc_531_path)
     source_files_md5['runtime_helpfile.csv'] = _md5(hf_path)
+    source_files_md5['init_coupler.toml'] = _md5(cfg_path)
+
+    r_start = rows_window[0]['row']
+    r_end = rows_window[-1]['row']
+    t_start = rows_window[0]['Time_yr']
+    t_end = rows_window[-1]['Time_yr']
+    description = (
+        f'1D {source_table} EOS slice at P_top = {p_top_pa:.15e} Pa '
+        f'and top-cell states for rows {r_start}..{r_end} '
+        f'(t = {t_start:.3f}..{t_end:.3f} yr) of the {mass_earth:g} M_earth '
+        f'{semimajor_au:g} au coupled {interior_mod}-{atmos_mod} reference run.'
+    )
 
     payload = {
-        'description': (
-            '1D PALEOS-2phase-1TPa-dK09-elec-free EOS slice at P_top = 4.455575309179133e8 Pa '
-            'and top-cell states for rows 380..392 (t = 480.655..600.000 yr) of the 1 M_earth '
-            '0.5 au coupled Aragog-AGNI reference run.'
-        ),
-        'source_table': 'PALEOS-2phase-1TPa-dK09-elec-free',
+        'description': description,
+        'source_table': source_table,
+        'aragog_commit': aragog_commit,
+        'max_2d_vs_slice_rel_diff': max_rel_diff,
         'source_files_md5': source_files_md5,
         'P_top_Pa': p_top_pa,
         'S_min': float(eos.S_min),

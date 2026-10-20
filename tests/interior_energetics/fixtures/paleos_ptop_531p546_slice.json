@@ -1,6 +1,8 @@
 {
-  "description": "1D PALEOS-2phase-1TPa-dK09-elec-free EOS slice at P_top = 4.455575309179133e8 Pa and top-cell states for rows 380..392 (t = 480.655..600.000 yr) of the 1 M_earth 0.5 au coupled Aragog-AGNI reference run.",
-  "source_table": "PALEOS-2phase-1TPa-dK09-elec-free",
+  "description": "1D none EOS slice at P_top = 4.455575309179133e+08 Pa and top-cell states for rows 380..392 (t = 480.655..600.000 yr) of the 1 M_earth 0.5 au coupled aragog-dummy reference run.",
+  "source_table": "none",
+  "aragog_commit": "075fcb05ce035183100c9bec47b7dcc7d769c2d6",
+  "max_2d_vs_slice_rel_diff": 4.1393381951182413e-16,
   "source_files_md5": {
     "adiabat_temp_grad_melt.dat": "5db8d576a7d753a045daef6e07982974",
     "adiabat_temp_grad_solid.dat": "9d322c837f6275f873caed8bf13d0d85",
@@ -17,7 +19,8 @@
     "valid_mask_melt.dat": "42b0ce9f45a61b02cc3fb0082cbec88b",
     "valid_mask_solid.dat": "0c44885d311d5b3158cbcae894bfe76c",
     "531p546_int.nc": "5a3eb131269c6e11258c2a7af05c06da",
-    "runtime_helpfile.csv": "a3be72c637e96345956a2453c80b9c32"
+    "runtime_helpfile.csv": "a3be72c637e96345956a2453c80b9c32",
+    "init_coupler.toml": "8a1a5410ebd98edd0f80ad04d0da0418"
   },
   "P_top_Pa": 445557530.91791326,
   "S_min": 106.11618925017348,

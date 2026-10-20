@@ -497,22 +497,29 @@ class Aragog:
     and keep hf_row['T_magma'], hf_row['T_surf'], and hf_row['Phi_global'] on the Aragog
     solver state by skipping the tmagma_atol/tmagma_rtol post-step clip on steps where
     tau_drain is finite and the step does not exceed tau_drain (staying active when the
-    escape step floor overrides tau_drain); planet.prevent_warming still clamps T_magma,
-    T_surf, Phi_global, and F_int when active. Incompatible with
-    interior_energetics.surface_bc_mode = 'grey_body'. A 1-point EOS temperature
-    lookahead replaces the step-start heat capacity with the chord heat capacity
-    T_top * (S_top - S_trial) / (T_top - T_trial) whenever the predicted entropy drop
-    crosses into a lower-heat-capacity regime during the step (measured across 3 runs over
-    2 configurations to 25 kyr at top_cell_dt_rel_dT = top_cell_dt_rel_dT_solid = 0.08:
-    max |dT_surf| / (eta_eff * T_surf) = 0.69, 0 steps above 1, +9 rows over the 0.08
-    runs without lookahead, 1850 to 1852 rows vs 218 and 243 rows in the un-capped twins
-    with the Aragog entropy-floor guard)."""
+    escape step floor or an impact-landing snap-forward places the step above tau_drain);
+    planet.prevent_warming still clamps T_magma, T_surf, Phi_global, and F_int when active.
+    Incompatible with interior_energetics.surface_bc_mode = 'grey_body'. A 1-point EOS
+    temperature lookahead replaces the step-start heat capacity with the chord heat capacity
+    T_top * (S_top - S_trial) / (T_top - T_trial) whenever T(P_top, S_trial) falls more than
+    dT_allow below T_top (which fires both across a liquidus or solidus crossing and on every
+    step with a mushy top cell at phi_top > 0.6, where the tabulated mush heat_capacity, a
+    lever-rule blend, is about twice T dS/dT along the EOS; measured across 3 runs over 2
+    configurations of a 1 M_earth planet at 0.5 and 0.7 au with the PALEOS MgSiO3 EOS and
+    AGNI atmosphere to 25 kyr at top_cell_dt_rel_dT = top_cell_dt_rel_dT_solid = 0.08: max
+    |dT_surf| / (eta_eff * T_surf) = 0.69 using T_surf at step start, 0 steps above 1, +9
+    rows over the 0.08 runs without lookahead, 1850 to 1852 rows vs 218 and 243 rows in the
+    same configurations with the option off on Aragog development commit 372c2e2, or 50 rows
+    on Aragog main commit 075fcb05)."""
 
     top_cell_dt_rel_dT: float = field(
         default=0.08, converter=float, validator=(gt(0.0), le(0.5))
     )
     """Relative surface-temperature change allowance eta_T in the mushy regime
-    (phi_s[-1] >= 0.40) for the top-cell drain-time step limit; must lie in (0, 0.5]."""
+    (phi_s[-1] >= 0.40) for the top-cell drain-time step limit; must lie in (0, 0.5]
+    (the 1-point lookahead bound is measured at 0.08, holds up to about 0.30 with max
+    top-cell drop ratio 0.9987, and fails near 0.5 where the trial clips at S_min + 300
+    and the top-cell drop reaches 1.218 times the allowance at S_top = 3105 J/kg/K)."""
 
     top_cell_dt_rel_dT_solid: float = field(
         default=0.08,
@@ -712,13 +719,13 @@ class Interior:
     tmagma_atol: float
         Maximum increase in T_magma and T_surf per PROTEUS step (maximum
         increase atol + rtol * T_magma_prev) [K]; disabled on Aragog steps
-        where interior_energetics.aragog.top_cell_dt_limit is true and
-        tau_drain is finite.
+        where interior_energetics.aragog.top_cell_dt_limit is true,
+        tau_drain is finite, and the step does not exceed tau_drain.
     tmagma_rtol: float
         Maximum relative increase in T_magma and T_surf per PROTEUS step
         (maximum increase atol + rtol * T_magma_prev); disabled on Aragog
-        steps where interior_energetics.aragog.top_cell_dt_limit is true and
-        tau_drain is finite.
+        steps where interior_energetics.aragog.top_cell_dt_limit is true,
+        tau_drain is finite, and the step does not exceed tau_drain.
     tmagma_tides_step: float
         Maximum change in T_magma allowed when tides are active [K].
     param_utbl: bool

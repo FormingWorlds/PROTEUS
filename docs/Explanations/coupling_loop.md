@@ -144,8 +144,9 @@ PROTEUS uses an adaptive time-stepping scheme controlled by `params.dt.method`:
   steady-state runs.
 
 All methods enforce `params.dt.minimum` (which holds except where atmospheric
-escape, the top-cell drain cap, solver retries, mushy-zone limiting, and impact
-landing steps shorten the step; escape and the drain cap stop at
+escape, the top-cell drain cap, solver retries, mushy-zone limiting, impact
+landing steps, and other caps, among them growth, evection, bolometric clamp,
+and the final-time cap, shorten the step; escape and the drain cap stop at
 `minimum * step_dt_floor_frac`, while other caps can go lower) and
 `params.dt.maximum` bounds. During the mushy zone (melt fraction between
 `phi_crit` and `mushy_upper`), the timestep is additionally capped at
@@ -159,22 +160,29 @@ below `params.dt.minimum`), and the post-step `tmagma_atol`/`tmagma_rtol` clip
 (maximum increase $\mathrm{atol} + \mathrm{rtol} \times T_\mathrm{magma,prev}$)
 on `T_magma`, `T_surf`, and `Phi_global` is skipped on steps where
 $\tau_\mathrm{drain}$ is finite and the step does not exceed
-$\tau_\mathrm{drain}$ (staying active when the escape step floor overrides
-$\tau_\mathrm{drain}$, while `planet.prevent_warming` continues to clamp
-`T_magma`, `T_surf`, `Phi_global`, and `F_int` when active). A 1-point EOS
-temperature lookahead probes $S_\mathrm{trial} = \max(S_\mathrm{top} -
-c_{p,\mathrm{eff}}\,\Delta T_\mathrm{allow} / T_\mathrm{top},\, S_{\min} + 300)$
-and replaces $c_{p,\mathrm{eff}}$ with the chord heat capacity
+$\tau_\mathrm{drain}$ (staying active when the escape step floor or an
+impact-landing snap-forward places the step above $\tau_\mathrm{drain}$, while
+`planet.prevent_warming` continues to clamp `T_magma`, `T_surf`, `Phi_global`,
+and `F_int` when active). A 1-point EOS temperature lookahead probes
+$S_\mathrm{trial} = \max(S_\mathrm{top} - c_{p,\mathrm{eff}}\,\Delta
+T_\mathrm{allow} / T_\mathrm{top},\, S_{\min} + 300)$ and replaces
+$c_{p,\mathrm{eff}}$ with the chord heat capacity
 $T_\mathrm{top}\,(S_\mathrm{top} - S_\mathrm{trial}) / (T_\mathrm{top} -
-T_\mathrm{trial})$ whenever $T_\mathrm{top} - T_\mathrm{trial} > \Delta
-T_\mathrm{allow}$, so steps that cross the liquidus or solidus into a
-lower-heat-capacity regime use the chord heat capacity over the predicted drop
-(measured across 3 runs over 2 configurations to $25\,\mathrm{kyr}$ at
+T_\mathrm{trial})$ whenever $T(P_\mathrm{top}, S_\mathrm{trial})$ falls more
+than $\Delta T_\mathrm{allow}$ below $T_\mathrm{top}$ ($T_\mathrm{top} -
+T_\mathrm{trial} > \Delta T_\mathrm{allow}$), which fires both across a
+liquidus or solidus crossing and on every step with a mushy top cell at
+$\phi_\mathrm{top} > 0.6$, where the tabulated mush `heat_capacity` (a
+lever-rule blend) is about twice $T\,\mathrm{d}S/\mathrm{d}T$ along the EOS
+(measured across 3 runs over 2 configurations of a $1\,M_\oplus$ planet at
+$0.5$ and $0.7\,\mathrm{au}$ with the PALEOS $\mathrm{MgSiO}_3$ EOS and AGNI
+atmosphere to $25\,\mathrm{kyr}$ at
 `top_cell_dt_rel_dT = top_cell_dt_rel_dT_solid = 0.08`: maximum per-step
-$|\Delta T_\mathrm{surf}| / (\eta_\mathrm{eff} T_\mathrm{surf}) = 0.69$, $0$
-steps above $1$, $+9$ rows over the $0.08$ runs without lookahead, $1850$ to
-$1852$ rows vs $218$ and $243$ rows in the un-capped twins with the Aragog
-entropy-floor guard).
+$|\Delta T_\mathrm{surf}| / (\eta_\mathrm{eff} T_\mathrm{surf}) = 0.69$ using
+$T_\mathrm{surf}$ at step start, $0$ steps above $1$, $+9$ rows over the
+$0.08$ runs without lookahead, $1850$ to $1852$ rows vs $218$ and $243$ rows
+in the same configurations with the option off on Aragog development commit
+`372c2e2`, or $50$ rows on Aragog `main` commit `075fcb05`).
 
 ## Convergence and termination
 

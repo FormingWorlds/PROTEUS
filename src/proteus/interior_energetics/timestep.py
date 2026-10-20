@@ -93,22 +93,30 @@ def _estimate_tau_drain(config: Config, hf_row: dict, interior_o) -> float:
     $325.99\\text{ J kg}^{-1}\\text{ K}^{-1}$ ($T = 183.20\\text{ K}$, $\\phi = 0$,
     $c_p = 528.90\\text{ J kg}^{-1}\\text{ K}^{-1}$) on the extended table, above the table floor.
 
-    To account for drops in $c_p(P_{\\text{top}}, S)$ across a liquidus or solidus
-    crossing during the step, a 1-point EOS temperature lookahead probes
+    A 1-point EOS temperature lookahead probes
     $S_{\\text{trial}} = \\max(S_{\\text{top}} - c_{p,\\text{eff}}\\,\\Delta T_{\\text{allow}} / T_{\\text{top}},\\, S_{\\min} + 300)$
     and replaces $c_{p,\\text{eff}}$ with
     $c_{p,\\text{chord}} = \\min(c_{p,\\text{eff}},\\, T_{\\text{top}}\\,\\Delta S_{\\text{trial}} / \\Delta T_{\\text{trial}})$
-    whenever $\\Delta T_{\\text{trial}} = T_{\\text{top}} - T(P_{\\text{top}}, S_{\\text{trial}}) > \\Delta T_{\\text{allow}}$
-    and $S_{\\text{top}} > S_{\\text{trial}}$. Using $T_{\\text{mean}} = 0.5\\,(T_{\\text{top}} + T_{\\text{trial}})$
-    in the chord numerator would give a $c_{p,\\text{chord}}$ smaller by
-    $(T_{\\text{top}} - T_{\\text{trial}}) / (2\\,T_{\\text{mean}})$ (about $8$ to $9\\%$ at the
-    $t \\approx 531\\text{ yr}$ liquidus crossing); the $T_{\\text{top}}$ form is the tested form
-    (measured across 3 runs over 2 configurations to $25\\text{ kyr}$ at
+    whenever $T(P_{\\text{top}}, S_{\\text{trial}})$ falls more than $\\Delta T_{\\text{allow}}$
+    below $T_{\\text{top}}$ ($\\Delta T_{\\text{trial}} = T_{\\text{top}} - T(P_{\\text{top}}, S_{\\text{trial}}) > \\Delta T_{\\text{allow}}$
+    and $S_{\\text{top}} > S_{\\text{trial}}$); this trigger fires both across a liquidus or
+    solidus crossing and on every step with a mushy top cell at $\\phi_{\\text{top}} > 0.6$,
+    where the tabulated mush ``heat_capacity`` (a lever-rule blend of the end-member heat
+    capacities) is about twice $T\\,\\mathrm{d}S/\\mathrm{d}T$ along the EOS. The gate
+    $\\Delta T_{\\text{trial}} > \\Delta T_{\\text{allow}}$ already forces the chord value below
+    $c_{p,\\text{eff}}$, and $\\min()$ guards floating-point round-off. Using
+    $T_{\\text{mean}} = 0.5\\,(T_{\\text{top}} + T_{\\text{trial}})$ in the chord numerator
+    would give a chord $c_p$ smaller by the fraction
+    $(T_{\\text{top}} - T_{\\text{trial}}) / (2\\,T_{\\text{top}})$, about $9\\%$ at the
+    $531.5\\text{ yr}$ state; the $T_{\\text{top}}$ form is the tested form (measured across
+    3 runs over 2 configurations of a $1\\,M_{\\oplus}$ planet at $0.5$ and $0.7\\text{ au}$
+    with the PALEOS $\\text{MgSiO}_3$ EOS and AGNI atmosphere to $25\\text{ kyr}$ at
     $\\eta_T = \\eta_{T,\\text{solid}} = 0.08$: maximum per-step
-    $|\\Delta T_{\\text{surf}}| / (\\eta_{\\text{eff}}\\,T_{\\text{surf}}) = 0.69$, $0$ steps
-    above $1$, $+9$ rows over the $0.08$ runs without lookahead, $1850$ to $1852$ rows
-    versus $218$ and $243$ rows in the un-capped twins with the Aragog entropy-floor
-    guard, or $50$ rows without the floor guard).
+    $|\\Delta T_{\\text{surf}}| / (\\eta_{\\text{eff}}\\,T_{\\text{surf}}) = 0.69$ using
+    $T_{\\text{surf}}$ at step start, $0$ steps above $1$, $+9$ rows over the $0.08$ runs
+    without lookahead, $1850$ to $1852$ rows versus $218$ and $243$ rows in the same
+    configurations with the option off on Aragog development commit ``372c2e2``, or $50$
+    rows on Aragog ``main`` commit ``075fcb05``).
 
     Parameters
     ----------
@@ -751,10 +759,12 @@ def next_step(
 
     # Top-cell sensible-heat drain cap for Aragog, floored at the escape step floor.
     ie_cfg = getattr(config, 'interior_energetics', None)
-    if (
+    aragog_drain_limit_active = (
         getattr(ie_cfg, 'module', None) == 'aragog'
         and getattr(getattr(ie_cfg, 'aragog', None), 'top_cell_dt_limit', False) is True
-    ):
+    )
+    tau_drain = float('inf')
+    if aragog_drain_limit_active:
         if interior_o is not None:
             interior_o._tau_drain_cap_valid = False
         tau_drain = _estimate_tau_drain(config, hf_row, interior_o)
@@ -770,8 +780,6 @@ def next_step(
                     dtswitch,
                 )
                 dtswitch = dt_drain
-            if interior_o is not None and dtswitch <= tau_drain:
-                interior_o._tau_drain_cap_valid = True
 
     # On retries (step_sf < 1) in the static/initial branches we
     # deliberately allow dt to fall below dt.minimum; the whole point of
@@ -833,6 +841,14 @@ def next_step(
                 dtswitch,
             )
             dtswitch = dt_to_impact
+
+    if (
+        aragog_drain_limit_active
+        and interior_o is not None
+        and np.isfinite(tau_drain)
+        and tau_drain > 0.0
+    ):
+        interior_o._tau_drain_cap_valid = bool(dtswitch <= tau_drain)
 
     log.info('New time-step target is %.2e years' % dtswitch)
     return dtswitch
