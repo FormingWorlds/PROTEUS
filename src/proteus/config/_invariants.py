@@ -127,7 +127,6 @@ class Invariants:
         ``outgas.vapourise = true``, rock-vapour and ``lavatmos``-overwritten elements skip
         reservoir closure and, when ``M_vaps > 0``, an atmosphere excess above ``M_vaps`` in
         ``coupler.assert_mass_conservation`` only logs a warning.
-
     element_closure_atol_kg: float
         Absolute floor on per-element reservoir closure when the ``outgas.mass_thresh``
         relaxation does not apply [kg], and lower-bound floor ``-element_closure_atol_kg`` on

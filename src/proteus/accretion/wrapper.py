@@ -614,6 +614,7 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
     handler.interior_o.structure_rollback_active = rb_flag
     if not rb_flag:
         handler.interior_o.structure_stale = False
+        handler.interior_o.zalmoxis_fail_count = 0
     if hasattr(handler.interior_o, 'write_structure_stale'):
         handler.interior_o.write_structure_stale(handler.directories['output'])
 

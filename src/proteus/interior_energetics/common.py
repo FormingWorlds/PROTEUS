@@ -1188,6 +1188,30 @@ def get_file_baseline_structure_done(outdir: str) -> str:
     return os.path.join(outdir, 'data', 'baseline_structure_done.dat')
 
 
+def _write_flag_file_atomic(path: str, flag: bool) -> None:
+    """Write ``0`` or ``1`` to ``path`` via a sibling temporary file and ``os.replace``.
+
+    Parameters
+    ----------
+    path : str
+        Destination flag file path.
+    flag : bool
+        Boolean state to persist as ``1`` or ``0``.
+    """
+    tmp_path = f'{path}.tmp.{os.getpid()}'
+    try:
+        with open(tmp_path, 'w') as hdl:
+            hdl.write('%d\n' % (1 if flag else 0))
+        os.replace(tmp_path, path)
+    except OSError:
+        try:
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
+
+
 def write_baseline_structure_done(outdir: str, done: bool) -> None:
     """Persist ``_baseline_structure_done`` under ``<outdir>/data/``.
 
@@ -1199,8 +1223,7 @@ def write_baseline_structure_done(outdir: str, done: bool) -> None:
         Whether the post-init Zalmoxis baseline structure solve has succeeded.
     """
     try:
-        with open(get_file_baseline_structure_done(outdir), 'w') as hdl:
-            hdl.write('%d\n' % (1 if done else 0))
+        _write_flag_file_atomic(get_file_baseline_structure_done(outdir), done)
     except OSError as exc:
         log.warning('Could not persist baseline-structure flag file: %s', exc)
 
@@ -1213,7 +1236,7 @@ def resume_baseline_structure_done(outdir: str, *, default: bool = True) -> bool
     outdir : str
         Run output directory.
     default : bool, optional
-        Fallback value when the flag file is absent or unreadable.
+        Fallback value when the flag file is absent.
 
     Returns
     -------
@@ -1227,8 +1250,8 @@ def resume_baseline_structure_done(outdir: str, *, default: bool = True) -> bool
         with open(path) as hdl:
             return bool(int(hdl.read().strip()))
     except (ValueError, OSError):
-        log.warning('Could not parse baseline-structure flag file; using default')
-        return bool(default)
+        log.warning('Could not parse baseline-structure flag file; retrying baseline')
+        return False
 
 
 # Structure for holding interior variables at the current time-step
@@ -1479,10 +1502,10 @@ class Interior_t:
         """
         rollback = bool(getattr(self, 'structure_rollback_active', False))
         try:
-            with open(get_file_structure_stale(outdir), 'w') as hdl:
-                hdl.write('%d\n' % (1 if self.structure_stale else 0))
-            with open(get_file_structure_rollback(outdir), 'w') as hdl:
-                hdl.write('%d\n' % (1 if rollback else 0))
+            _write_flag_file_atomic(
+                get_file_structure_stale(outdir), bool(self.structure_stale)
+            )
+            _write_flag_file_atomic(get_file_structure_rollback(outdir), rollback)
         except OSError as exc:
             log.warning('Could not persist stale-structure flag file: %s', exc)
 
@@ -1513,8 +1536,10 @@ class Interior_t:
             with open(rb_path) as hdl:
                 self.structure_rollback_active = bool(int(hdl.read().strip()))
         except (ValueError, OSError):
-            log.warning('Could not parse structure-rollback flag file; using stale flag')
-            self.structure_rollback_active = self.structure_stale
+            log.warning(
+                'Could not parse structure-rollback flag file; assuming rollback active'
+            )
+            self.structure_rollback_active = True
 
     def update_rheology(self, visc: bool = False):
         # Update shear and bulk moduli arrays based on the melt fraction at each layer.

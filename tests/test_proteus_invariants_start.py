@@ -632,6 +632,7 @@ def test_proteus_start_zalmoxis_failed_baseline_keeps_row_4_init_stage_true_and_
 
     def interior_with_target_mismatch(dirs, cfg_, hf_all, hf_row, interior_o, *args, **kwargs):
         real_interior(dirs, cfg_, hf_all, hf_row, interior_o, *args, **kwargs)
+        hf_row['struct_mass_desync_frac'] = 1.0e-3
         hf_row['M_int'] = 5.97e24
         hf_row['M_int_target'] = 5.97e24 * 1.02
 

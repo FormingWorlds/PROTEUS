@@ -1854,6 +1854,7 @@
       ],
       "consumers": [
         "accretion",
+        "interior_energetics",
         "interior_struct",
         "utils"
       ],

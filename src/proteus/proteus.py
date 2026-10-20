@@ -353,11 +353,10 @@ class Proteus:
     def _row_init_stage(self, iter_init_stage: bool) -> bool:
         """Return whether the row precedes the post-init baseline structure solve.
 
-        When the post-init forced Zalmoxis baseline solve fails and falls back
-        (``interior_o.structure_stale`` is ``True``), ``_baseline_structure_done``
-        remains ``False`` so ``init_stage`` stays ``True`` until the baseline solve
-        succeeds (Zalmoxis aborts after 8 consecutive failed solves, a per-process
-        count that restarts on a resume).
+        When the post-init forced Zalmoxis baseline solve fails and falls back,
+        ``_baseline_structure_done`` remains ``False`` so ``init_stage`` stays
+        ``True`` until the baseline solve succeeds (Zalmoxis aborts after 8
+        consecutive failed solves, a per-process count that restarts on a resume).
         """
         return bool(
             iter_init_stage
@@ -376,7 +375,6 @@ class Proteus:
         structure-solver's own initial-condition adiabat. The baseline is solved
         once per run; already-baselined runs are a no-op, and a resumed run
         retries only a baseline recorded as not done.
-
 
         A failed forced solve restores the initial-condition structure and flags
         it stale; in that case the baseline is left unmarked so the next
@@ -1079,6 +1077,7 @@ class Proteus:
             self.interior_o.resume_structure_stale(self.directories['output'])
             if dropped_snapshots:
                 self.interior_o.structure_rollback_active = True
+                self.interior_o.write_structure_stale(self.directories['output'])
 
             # Set loop counters
             self.loops['total'] = len(self.hf_all)
