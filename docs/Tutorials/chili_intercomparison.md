@@ -1,5 +1,8 @@
 # Solar System CHILI intercomparison
 
+!!! info "PROTEUS version"
+    The figures and numbers on this page were generated with PROTEUS version 26.7.14.post1.dev148+gd0c7f0806 (commit `d0c7f080`). This analysis is regenerated from time to time rather than with every PROTEUS update, because the simulations require days of compute.
+
 The CHILI (Coupled atmospHere Interior modeL Intercomparison) project is a
 community benchmark that fixes shared initial and boundary conditions for
 magma ocean evolution codes [^cite-lichtenberg2026]. Its first
@@ -36,17 +39,18 @@ The CHILI intercomparison defines three solar system test cases:
 All cases start fully molten at 50 Myr stellar age (TRAPPIST-1 &alpha;
 at 1 Gyr) with BSE composition, fO$_2$ = IW+4, and Bond albedo = 0.1. The
 protocol asks for a run until solidification, or for at most 1 Gyr, for
-the Earth and Venus cases [^cite-lichtenberg2026]. The configs in
-`input/chili/intercomp/` and `input/tutorials/chili_grid/` stop a run
-when its melt fraction falls to 5% by mass
-(`params.stop.solid.phi_crit = 0.05`) or after 1 Gyr of model time
-(`params.stop.time.maximum = 1e9`), with the energy-balance, escape and
-wall-clock stops off (`params.stop.radeqm.enabled`,
-`params.stop.escape.enabled` and `params.stop.clock.enabled` are
-`false`). Two limits stay on: the stall stop ends a run as an error
+the Earth and Venus cases [^cite-lichtenberg2026]. The repository configs
+for Nominal Earth, TRAPPIST-1 e and the low-H and mid-H Earth grid scenarios
+stop when the melt fraction falls to 5% by mass (`params.stop.solid.phi_crit = 0.05`),
+with energy-balance, escape and wall-clock stops enabled and a time limit of 5 Gyr
+(7.55 Gyr for TRAPPIST-1 e, 9000 iterations limit). The Nominal Venus run, the three
+high-H Earth grid runs, and the TRAPPIST-1 &alpha; and b runs were configured with the
+energy-balance, escape and wall-clock stops off (`params.stop.radeqm.enabled`,
+`params.stop.escape.enabled` and `params.stop.clock.enabled` set to `false`), a 1 Gyr model
+time limit (`params.stop.time.maximum = 1e9`), and a limit of 1,000,000 iterations
+(`params.stop.iters.maximum`). Two limits stay on in all cases: the stall stop ends a run as an error
 after 150 consecutive iterations without a converged atmosphere solve
-(`params.stop.stall.maximum`), and the iteration limit ends it after
-1,000,000 iterations (`params.stop.iters.maximum`). The runs submitted to
+(`params.stop.stall.maximum`), and the iteration limit. The runs submitted to
 the intercomparison stop at 5% melt as well, with the energy-balance and
 escape stops off. Melt fractions of the
 current PROTEUS runs are by mass on this page unless stated otherwise,
@@ -56,20 +60,20 @@ volume.
 !!! note "How far the runs on this page go"
     The Nominal Earth run, the Nominal Venus run, the six low-H and mid-H
     runs of the Earth grid and the TRAPPIST-1 e run reached the 5% melt threshold.
-    The Nominal Venus run reached 5% melt at 86.8 Myr with a net atmospheric
-    flux of 1.3 W m$^{-2}$. The other cases that reached 5% melt ran with the
+    The Nominal Venus run reached 5% melt at 86.8 Myr with an atmospheric
+    flux $F_\mathrm{atm}$ of 1.3 W m$^{-2}$. The other cases that reached 5% melt ran with the
     energy-balance, escape and wall-clock stops on and a time limit of 5 Gyr
     (7.55 Gyr for TRAPPIST-1 e), and the 5% melt stop ended each of them. They
     still cool at that point: their net atmospheric flux is 27 to 692 W m$^{-2}$,
     against about 0.2 W m$^{-2}$ of radiogenic heating. The three high-H runs of
-    the Earth grid and the TRAPPIST-1 b run were stopped before reaching the 5%
+    the Earth grid and the TRAPPIST-1 b run were stopped on request before reaching the 5%
     melt threshold and are shown to their last row: the high-H grid runs at 60.9
     to 78.2 Myr with 5.7% to 6.6% melt (C$_\mathrm{high}$ at 78.2 Myr with 5.7%,
     C$_\mathrm{mid}$ at 68.7 Myr with 6.0%, and C$_\mathrm{low}$ at 60.9 Myr with
     6.6%), and TRAPPIST-1 b at 67.4 Myr with 10.4% melt. The TRAPPIST-1 &alpha; run
     was stopped by hand at 12.1 Myr, before it reached 5% melt or 1 Gyr, with 55.7%
     of melt: over its last 5 Myr its melt fraction decreased by about 0.002
-    percentage points per Myr, and its net atmospheric flux was 0.24 W m$^{-2}$.
+    percentage points per Myr, and its atmospheric flux $F_\mathrm{atm}$ was 0.24 W m$^{-2}$.
     The runs do not follow the long-term solid-state evolution of the mantle or
     the loss of the atmosphere after their end. The PROTEUS results in the CHILI
     paper and the results shown here come from different versions of the code and
@@ -85,8 +89,9 @@ volume.
 - Interior data downloaded, including the PALEOS EOS tables
   (`proteus get interiordata --config-path input/chili/intercomp/earth.toml`)
 - `git` (to clone the CHILI comparison data)
-- The runs on this page that reached 5% melt took about 3 hours to about 2.5 days of wall
-  time; the runs stopped before reaching 5% melt used about 1.5 days.
+- The runs on this page that reached 5% melt took about 2.7 hours to about 5.5 days of wall
+  time (Nominal Venus); the four runs stopped before reaching 5% melt used about 7 days.
+  The logged runtimes include time the runs were paused by the load guard.
   A run that stays partly molten takes steps of at most 4000 yr (`params.dt.mushy_maximum`),
   so at least 250,000 steps to reach 1 Gyr
 
@@ -335,8 +340,9 @@ more carbon slows the cooling (0.81 to 0.92 Myr): at a melt fraction of
 30% the OLR falls from 5525 to 4235 W m$^{-2}$ from low to high C. At
 mid H the order reverses (5.55 to 4.89 Myr): at a melt fraction of 30%
 the OLR rises from 1115 to 1323 W m$^{-2}$ from low to high C. The
-high-H runs follow the order of the mid-H runs: at their last row the melt
-fraction is lower for a higher carbon inventory.
+high-H runs follow the order of the mid-H runs: at the common time of 60.9 Myr
+the melt fraction is 5.9%, 6.2% and 6.6% for C$_\mathrm{high}$, C$_\mathrm{mid}$ and
+C$_\mathrm{low}$, with higher carbon corresponding to lower melt fraction.
 
 <figure markdown="span">
   ![CHILI grid solidification](../assets/tutorials/chili/grid_solidification.avif#only-light){ width="80%" }
@@ -352,8 +358,12 @@ protocol fixes the inputs that both share: a bulk-silicate-Earth
 composition, oxygen fugacity at IW+4, a Bond albedo of 0.1, and a 50 Myr
 stellar age [^cite-lichtenberg2026]. The two differ in the interior
 modules and in the limits of the stop rule: the submitted configs stop
-after 4.517 Gyr (6.6 and 7.55 Gyr for the TRAPPIST-1 cases) or 9000
-iterations, the configs here after 1 Gyr or 1,000,000 iterations.
+after 4.517 Gyr (6.6 and 7.55 Gyr for the TRAPPIST-1 cases) or 9000 iterations.
+For the current runs shown here, Nominal Earth, TRAPPIST-1 e and the low-H and mid-H
+grid cases stop after 5 Gyr (7.55 Gyr for TRAPPIST-1 e) or 9000 iterations with
+energy-balance stops active, while Nominal Venus, the high-H grid, and the TRAPPIST-1
+cases ran with energy-balance, escape and wall-clock stops off, a 1 Gyr limit, and
+1,000,000 iterations.
 
 The PROTEUS results submitted to the intercomparison were computed with an
 earlier version of PROTEUS, not the configuration documented here. The
