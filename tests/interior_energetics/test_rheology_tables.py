@@ -128,7 +128,7 @@ def test_tables_reproduce_solver_at_nodes_and_bracket_between(tmp_path):
     """Interpolated moduli equal the solver at grid nodes and lie between neighbours off them."""
     tab = rt.load_tables(SMALL, tmp_path)
     ax = SMALL.axes()
-    nu, kl, gl = ax['nu'][1], ax['kliq'][1], 10 ** ax['log_gliq'][1]
+    nu, kl, gl = ax['nu'][1], 10 ** ax['log_kliq'][1], 10 ** ax['log_gliq'][1]
     k_ref, mu_ref = rt.solve_scs(ax['v'], float(rt.mu_over_kappa(nu)), kl, gl)
     np.testing.assert_allclose(tab.unrelaxed_mu(ax['v'], nu, kl, gl), mu_ref[0], rtol=1e-12)
     v_mid = 0.5 * (ax['v'][10] + ax['v'][11])

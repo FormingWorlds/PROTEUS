@@ -690,6 +690,45 @@ def test_update_rheology_with_visc_true_fills_all_three_channels():
     assert interior.visc[0] / interior.visc[-1] > 1e3
 
 
+@pytest.mark.parametrize(
+    'module, expected',
+    [('aragog', 'mush'), ('spider', 'kervazo'), ('dummy', 'kervazo'), ('boundary', 'kervazo')],
+    ids=['aragog_mush', 'spider_kervazo', 'dummy_kervazo', 'boundary_kervazo'],
+)
+def test_rheology_model_follows_interior_module(module, expected):
+    """Only Aragog, which resolves per-layer P and T, selects the mush construction."""
+    from types import SimpleNamespace
+
+    from proteus.interior_energetics.common import rheology_model
+
+    cfg = SimpleNamespace(interior_energetics=SimpleNamespace(module=module))
+    assert rheology_model(cfg) == expected
+    assert rheology_model(None) == 'kervazo'  # no config: the historical behaviour
+
+
+def test_update_rheology_dispatches_on_interior_module(monkeypatch):
+    """Aragog hands the arrays to the mush laws; other modules keep Kervazo and no bulkd."""
+    from types import SimpleNamespace
+
+    from proteus.interior_energetics import rheology_mush
+
+    calls = []
+    monkeypatch.setattr(
+        rheology_mush, 'update_mush_rheology', lambda io, cfg: calls.append(cfg)
+    )
+    interior = Interior_t(4)
+    interior.phi = np.array([0.05, 0.5, 0.95])
+    aragog = SimpleNamespace(interior_energetics=SimpleNamespace(module='aragog'))
+    interior.update_rheology(config=aragog)
+    assert calls == [aragog]
+    np.testing.assert_allclose(interior.shear, 0.0)  # the Kervazo loop did not run
+    dummy = SimpleNamespace(interior_energetics=SimpleNamespace(module='dummy'))
+    interior.bulkd = np.ones(3)
+    interior.update_rheology(visc=True, config=dummy)
+    assert len(calls) == 1 and interior.bulkd is None
+    assert np.all(interior.shear > 0.0) and np.all(interior.visc > 0.0)
+
+
 # ============================================================================
 # compute_initial_entropy: isentropic mode + Zalmoxis-unavailable fallback
 # ============================================================================
