@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
+from packaging.version import Version
 
 from proteus.config._interior import Aragog
 
@@ -85,6 +86,21 @@ def test_the_config_reader_takes_the_limited_top_node(tmp_path, core_bc):
         assert read_config_object(path).interior_energetics.aragog.top_node == 'limited'
 
 
+def _pinned_aragog():
+    """Lowest fwl-aragog version that pyproject.toml allows."""
+    import re
+    import tomllib
+    from pathlib import Path
+
+    deps = tomllib.loads((Path(__file__).parents[2] / 'pyproject.toml').read_text())
+    pin = next(d for d in deps['project']['dependencies'] if d.startswith('fwl-aragog'))
+    return Version(re.search(r'>=\s*([\w.]+)', pin).group(1))
+
+
+def test_the_pin_reader_finds_the_aragog_minimum():
+    assert _pinned_aragog() >= Version('26.10.10')
+
+
 @pytest.mark.parametrize('top_node', ['linear', 'limited', 'minmod'])
 @pytest.mark.parametrize(
     'core_bc', ['quasi_steady', 'energy_balance', 'gradient', 'bower2018', 'core_module']
@@ -93,7 +109,9 @@ def test_the_config_and_aragog_refuse_the_same_pairs(top_node, core_bc):
     """The PROTEUS rule and the aragog rule accept and refuse the same (top_node, core_bc) pairs."""
     boundary = pytest.importorskip('aragog.config.boundary')
     if not hasattr(boundary, 'check_top_node'):
-        pytest.skip('the installed aragog has no top_node option')
+        if _pinned_aragog() > Version('26.10.10'):  # the releases up to 26.10.10 lack it
+            pytest.fail('the pinned aragog must have check_top_node')
+        pytest.skip('the pinned aragog release has no top_node option')
     try:
         boundary.check_top_node(top_node, core_bc)
         aragog_ok = True
