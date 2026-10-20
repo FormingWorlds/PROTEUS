@@ -1171,6 +1171,61 @@ def test_require_paleos_tables_checks_the_lowt_extension_at_start_up(
     assert want in str(err.value) and 'solid' in str(err.value)
 
 
+def _lowt_on(tmp_path, monkeypatch, registry, mantle, resume=False):
+    """Config with the switch on and a table generator that must not be called."""
+    import zalmoxis.eos_export
+
+    from proteus.interior_struct import zalmoxis as zmod
+
+    def new_api(eos_file, n_P=150, solid_lowt_file=None):
+        raise AssertionError('must not be called')
+
+    monkeypatch.setattr(zalmoxis.eos_export, 'generate_spider_eos_tables', new_api)
+    monkeypatch.setattr(zmod, 'load_zalmoxis_material_dictionaries', lambda: registry)
+    config = _require_config(mantle, resume=resume)
+    config.interior_struct.zalmoxis.lowt_extension = True
+    return zmod, config
+
+
+def _passes_start_up(zmod, config, outdir):
+    try:
+        result = zmod.require_paleos_tables(config, str(outdir))
+    except Exception as err:  # the check must pass, not stop the run
+        pytest.fail(f'the start-up check stopped the run: {err!r}')
+    assert result is None
+
+
+def test_require_paleos_tables_lets_a_resume_with_kept_tables_skip_the_extension(
+    tmp_path, monkeypatch
+):
+    """A resumed run that keeps its P-S tables needs no extension file; without kept tables
+    the same resume stops on the missing file."""
+    monkeypatch.delenv('PROTEUS_PS_CACHE_DIR', raising=False)
+    zmod, config = _lowt_on(
+        tmp_path, monkeypatch, _paleos_registry(tmp_path), 'PALEOS:MgSiO3', resume=True
+    )
+    kept = tmp_path / 'kept'
+    _seed_tables(kept / 'data' / 'spider_eos', 'P_max=3.500000e+11_nP=8')
+    assert not (tmp_path / zmod.LOWT_EXTENSION_FILE).exists()
+    _passes_start_up(zmod, config, kept)
+    with pytest.raises(zmod.ZalmoxisMissingEOSFilesError, match=zmod.LOWT_EXTENSION_FILE):
+        zmod.require_paleos_tables(config, str(tmp_path / 'bare'))
+
+
+def test_require_paleos_tables_ignores_the_switch_for_a_mantle_without_paleos_tables(
+    tmp_path, monkeypatch
+):
+    """A Wolf and Bower 2018 mantle builds no PALEOS tables, so the switch asks for no
+    extension file at start-up; a PALEOS mantle with the same registry stops."""
+    registry = _paleos_registry(tmp_path)
+    registry['WolfBower2018:MgSiO3'] = {'eos_file': str(tmp_path / 'mgsio3.dat')}
+    zmod, config = _lowt_on(tmp_path, monkeypatch, registry, 'WolfBower2018:MgSiO3')
+    _passes_start_up(zmod, config, tmp_path)
+    config.interior_struct.zalmoxis.mantle_eos = 'PALEOS:MgSiO3'
+    with pytest.raises(zmod.ZalmoxisMissingEOSFilesError, match=zmod.LOWT_EXTENSION_FILE):
+        zmod.require_paleos_tables(config, str(tmp_path))
+
+
 @pytest.mark.parametrize('missing', ['iron', 'solid', 'h2o'])
 def test_require_paleos_tables_stops_an_offline_run(tmp_path, monkeypatch, missing):
     """An offline fresh run stops before any solve on an absent core, ice-layer or pair
@@ -4934,3 +4989,23 @@ def test_data_digest_reads_a_table_once_until_it_changes(tmp_path, monkeypatch):
     f.write_text('# header\n1 2 4\n')
     os.utime(f, ns=(mtime + 10**9, mtime + 10**9))
     assert zmod._data_digest(str(f)) != first and len(reads) == 2
+
+
+@pytest.mark.parametrize('swap', ['replace', 'rewrite'])
+def test_data_digest_follows_new_content_with_the_old_size_and_mtime(tmp_path, swap):
+    """A table replaced with os.replace, or rewritten in place, by content of the same size
+    with the old modification time gives the new digest."""
+    import os
+
+    from proteus.interior_struct import zalmoxis as zmod
+
+    f = tmp_path / 't.dat'
+    f.write_text('# header\n1 2 3\n')
+    first, st = zmod._data_digest(str(f)), f.stat()
+    new = tmp_path / 'new.dat' if swap == 'replace' else f
+    new.write_text('# header\n1 2 4\n')
+    os.utime(new, ns=(st.st_atime_ns, st.st_mtime_ns))
+    if swap == 'replace':
+        os.replace(new, f)
+    assert (f.stat().st_size, f.stat().st_mtime_ns) == (st.st_size, st.st_mtime_ns)
+    assert zmod._data_digest(str(f)) != first
