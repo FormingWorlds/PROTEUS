@@ -2987,3 +2987,13 @@ def test_ic_adiabat_rollback_resets_and_resume_rollback_persistence(tmp_path, mo
     )
     assert [v.name for v in v_resumed] == ['M_int_target_rel_err', 'M_core_target_rel_err']
     assert all(v.report_only for v in v_resumed)
+
+    params_md = (
+        Path(__file__).resolve().parents[2] / 'docs' / 'Reference' / 'config' / 'params.md'
+    ).read_text(encoding='utf-8')
+    assert (
+        'in both continuous and resumed runs ``M_int_target_rel_err`` is checked only on the row '
+        'of a Zalmoxis solve that sets the target'
+    ) in params_md
+    assert 'while the continuous run does' not in params_md
+    assert 'until the next forced solve' not in params_md
