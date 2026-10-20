@@ -270,7 +270,7 @@ class AragogCoreModule:
             )
 
 
-def _top_node_core(inst, attr, value) -> None:
+def _top_node_core(inst, attr, value) -> str:
     """Refuse the limited top node on the gradient core, as aragog does, whichever is set last."""
     top_node = value if attr.name == 'top_node' else inst.top_node
     core_bc = value if attr.name == 'core_bc' else inst.core_bc
