@@ -591,7 +591,7 @@ def test_the_minimal_examples_set_the_keys_their_runs_need():
 
 @pytest.mark.unit
 def test_aragog_top_cell_dt_limit_defaults_and_validators():
-    """Aragog top_cell_dt_limit defaults to False, rel_dT to 0.08, and rel_dT_solid to 0.02.
+    """Aragog top_cell_dt_limit defaults to False, rel_dT to 0.08, and rel_dT_solid to 0.08.
 
     Validators reject non-boolean top_cell_dt_limit, values outside (0, 0.5] for
     top_cell_dt_rel_dT, and values outside (0, top_cell_dt_rel_dT] for top_cell_dt_rel_dT_solid.

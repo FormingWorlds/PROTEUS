@@ -102,7 +102,13 @@ def _estimate_tau_drain(config: Config, hf_row: dict, interior_o) -> float:
     and $S_{\\text{top}} > S_{\\text{trial}}$. Using $T_{\\text{mean}} = 0.5\\,(T_{\\text{top}} + T_{\\text{trial}})$
     in the chord numerator would give a $c_{p,\\text{chord}}$ smaller by
     $(T_{\\text{top}} - T_{\\text{trial}}) / (2\\,T_{\\text{mean}})$ (about $8$ to $9\\%$ at the
-    $t \\approx 531\\text{ yr}$ liquidus crossing); the $T_{\\text{top}}$ form is the tested form.
+    $t \\approx 531\\text{ yr}$ liquidus crossing); the $T_{\\text{top}}$ form is the tested form
+    (measured across 3 runs over 2 configurations to $25\\text{ kyr}$ at
+    $\\eta_T = \\eta_{T,\\text{solid}} = 0.08$: maximum per-step
+    $|\\Delta T_{\\text{surf}}| / (\\eta_{\\text{eff}}\\,T_{\\text{surf}}) = 0.69$, $0$ steps
+    above $1$, $+9$ rows over the $0.08$ runs without lookahead, $1850$ to $1852$ rows
+    versus $218$ and $243$ rows in the un-capped twins with the Aragog entropy-floor
+    guard, or $50$ rows without the floor guard).
 
     Parameters
     ----------

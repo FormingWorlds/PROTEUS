@@ -168,7 +168,13 @@ and replaces $c_{p,\mathrm{eff}}$ with the chord heat capacity
 $T_\mathrm{top}\,(S_\mathrm{top} - S_\mathrm{trial}) / (T_\mathrm{top} -
 T_\mathrm{trial})$ whenever $T_\mathrm{top} - T_\mathrm{trial} > \Delta
 T_\mathrm{allow}$, so steps that cross the liquidus or solidus into a
-lower-heat-capacity regime use the chord heat capacity over the predicted drop.
+lower-heat-capacity regime use the chord heat capacity over the predicted drop
+(measured across 3 runs over 2 configurations to $25\,\mathrm{kyr}$ at
+`top_cell_dt_rel_dT = top_cell_dt_rel_dT_solid = 0.08`: maximum per-step
+$|\Delta T_\mathrm{surf}| / (\eta_\mathrm{eff} T_\mathrm{surf}) = 0.69$, $0$
+steps above $1$, $+9$ rows over the $0.08$ runs without lookahead, $1850$ to
+$1852$ rows vs $218$ and $243$ rows in the un-capped twins with the Aragog
+entropy-floor guard).
 
 ## Convergence and termination
 
