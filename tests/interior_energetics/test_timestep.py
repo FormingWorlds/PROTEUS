@@ -2863,6 +2863,24 @@ def test_paleos_slice_fixture_builder_helpers(tmp_path, monkeypatch):
     )
     assert builder._resolve_source_table(cfg_dummy_struct) == 'PALEOS-2phase:MgSiO3'
 
+    # A PALEOS H2O mantle uses the MgSiO3 2-phase tables, as energetics_eos_key maps it.
+    cfg_h2o = tmp_path / 'h2o_mantle.toml'
+    cfg_h2o.write_text(
+        '[interior_struct]\nmodule = "zalmoxis"\n'
+        '[interior_struct.zalmoxis]\nmantle_eos = "PALEOS:H2O"\n',
+        encoding='utf-8',
+    )
+    assert builder._resolve_source_table(cfg_h2o) == 'PALEOS-2phase:MgSiO3'
+
+    cfg_spider = tmp_path / 'spider_struct.toml'
+    cfg_spider.write_text(
+        '[interior_struct]\nmodule = "spider"\n'
+        '[interior_struct.zalmoxis]\nmantle_eos = "PALEOS:MgSiO3"\n',
+        encoding='utf-8',
+    )
+    with pytest.raises(RuntimeError, match='takes its P-S tables from FWL_DATA'):
+        builder._resolve_source_table(cfg_spider)
+
     for bad_eos in ('WolfBower2018:MgSiO3', 'none', ''):
         cfg_bad = tmp_path / f'bad_{bad_eos or "empty"}.toml'
         cfg_bad.write_text(
@@ -2898,7 +2916,7 @@ def test_paleos_slice_fixture_builder_helpers(tmp_path, monkeypatch):
     repo_dir = str(fake_aragog_file.resolve().parent)
     assert calls[0] == ['git', '-C', repo_dir, 'rev-parse', '--show-toplevel']
     assert calls[1][:4] == ['git', '-C', repo_dir, 'describe']
-    for flag in ('--long', '--dirty', '--abbrev=40'):
+    for flag in ('--long', '--always', '--dirty', '--abbrev=40'):
         assert flag in calls[1]
 
     # Default lookup: the checkout of the imported aragog.eos.entropy module.

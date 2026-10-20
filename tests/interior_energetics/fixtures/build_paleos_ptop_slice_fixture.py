@@ -41,19 +41,30 @@ def _md5(path: Path) -> str:
 
 
 def _resolve_source_table(cfg_path: Path) -> str:
-    """Return the mantle EOS that PROTEUS builds the Aragog P-S tables from.
+    """Return the PALEOS registry key that PROTEUS builds the Aragog P-S tables from.
 
-    ``generate_spider_tables`` uses ``interior_struct.zalmoxis.mantle_eos`` whenever it is a
-    PALEOS table, whatever ``interior_struct.module`` is; ``eos_dir`` is used only otherwise.
+    The dummy and zalmoxis structure paths build them from
+    ``energetics_eos_key(interior_struct.zalmoxis.mantle_eos)`` when that key is a PALEOS
+    table; the spider structure path takes them from FWL_DATA instead.
     """
+    from proteus.utils.constants import PALEOS_REGISTRY_KEYS
+    from proteus.utils.helper import energetics_eos_key
+
     with cfg_path.open('rb') as f_cfg:
         run_cfg = tomllib.load(f_cfg)
-    zalmoxis_cfg = run_cfg.get('interior_struct', {}).get('zalmoxis', {})
-    source_table = str(zalmoxis_cfg.get('mantle_eos', ''))
-    if not source_table.startswith('PALEOS'):
+    struct_cfg = run_cfg.get('interior_struct', {})
+    struct_mod = str(struct_cfg.get('module', 'none'))
+    if struct_mod == 'spider':
         raise RuntimeError(
-            f'Invalid EOS source_table={source_table!r} resolved from {cfg_path}: '
-            'the P_top slice needs a PALEOS interior_struct.zalmoxis.mantle_eos'
+            f'interior_struct.module={struct_mod!r} takes its P-S tables from FWL_DATA, '
+            f'not from a PALEOS mantle_eos, in {cfg_path}'
+        )
+    mantle_eos = str(struct_cfg.get('zalmoxis', {}).get('mantle_eos', ''))
+    source_table = energetics_eos_key(mantle_eos) if mantle_eos else None
+    if source_table not in PALEOS_REGISTRY_KEYS:
+        raise RuntimeError(
+            f'Invalid EOS source_table={source_table!r} from mantle_eos={mantle_eos!r} '
+            f'in {cfg_path}: the P_top slice needs a PALEOS table'
         )
     return source_table
 
