@@ -1945,53 +1945,22 @@ def test_proteus_start_kill_after_first_resume_preserves_pending_forced_resolve_
     assert pending_file.read_text(encoding='utf-8').strip() == '0 6'
 
 
-_KILL_TEST_CONT_SEQ_CACHE: list[list[tuple[int, bool, list[bool]]]] = []
-
-
-@pytest.mark.parametrize(
-    ('outcome', 'kill_target'),
-    [
-        *(
-            (outcome, target)
-            for outcome in ('accept', 'upstep_reject', 'failure', 'impact_shortcut')
-            for target in (
-                'write_structure_stale',
-                'write_baseline_structure_done',
-                'write_structure_forced_pending',
-                'after_pending_clear',
-            )
-        ),
-        ('accept', 'setup_write_pending'),
-        ('accept', 'setup_write_stale'),
-    ],
-)
-def test_proteus_start_forced_accept_kill_between_flag_writes_resumes_cleanly(
-    tmp_path, monkeypatch, outcome, kill_target
-):
-    """When a process is killed at any resume-setup flag write, forced-branch flag write, or after clearing pending before the next snapshot, a subsequent resume preserves the earliest baseline commit row, makes 1 forced attempt, and matches the continuous run."""
-    from types import SimpleNamespace
-
-    import proteus.accretion.wrapper as acc_wrap
-    import proteus.interior_energetics.common as common_mod
+@pytest.fixture(scope='module')
+def _kill_test_reference_fixture(tmp_path_factory):
+    """Build and pin the continuous reference sequence and 6-row seed directory once per module."""
     import proteus.interior_energetics.wrapper as int_wrap
-    from proteus.interior_energetics.common import (
-        get_file_baseline_structure_done,
-        get_file_structure_forced_pending,
-        get_file_structure_rollback,
-        get_file_structure_stale,
-    )
 
-    monkeypatch.setattr(int_wrap, '_use_superliquidus_adiabat_ic', lambda cfg: False)
+    base_tmp = tmp_path_factory.mktemp('kill_flag_ref')
     real_interior = int_wrap.run_interior
     real_check_row = proteus_mod.check_row_invariants
 
-    # 1. Continuous reference run (rows 0..14, update_interval=0.0, mode='stop'):
-    # Row 4 baseline succeeds; row 6 triggers a failing structure solve (setting rollback=True), and rows 6..14 have a +2% M_int_target mismatch:
-    if not _KILL_TEST_CONT_SEQ_CACHE:
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(int_wrap, '_use_superliquidus_adiabat_ic', lambda cfg: False)
+
         cont_runner, _, _ = _setup_zalmoxis_baseline_runner(
-            tmp_path,
-            monkeypatch,
-            f'run_kill_flag_{outcome}_{kill_target}_cont',
+            base_tmp,
+            mp,
+            'run_kill_flag_module_cont',
             max_iters=14,
             temperature_mode='isothermal',
             update_interval=0.0,
@@ -2033,60 +2002,184 @@ def test_proteus_start_forced_accept_kill_between_flag_writes_resumes_cleanly(
                 )
             return vs
 
-        monkeypatch.setattr(int_wrap, 'update_structure_from_interior', cont_structure_update)
-        monkeypatch.setattr(int_wrap, 'run_interior', cont_interior)
-        monkeypatch.setattr(proteus_mod, 'check_row_invariants', spy_cont_check)
+        mp.setattr(int_wrap, 'update_structure_from_interior', cont_structure_update)
+        mp.setattr(int_wrap, 'run_interior', cont_interior)
+        mp.setattr(proteus_mod, 'check_row_invariants', spy_cont_check)
         cont_runner.start(resume=False, offline=True)
-        _KILL_TEST_CONT_SEQ_CACHE.append(built_cont_seq)
 
-    cont_seq = list(_KILL_TEST_CONT_SEQ_CACHE[0])
+        expected_cont_seq = [
+            (4, False, []),
+            (5, False, []),
+            *((r, False, [True]) for r in range(6, 15)),
+        ]
+        assert built_cont_seq == expected_cont_seq
 
-    # 2. Seed run (rows 0..5, baseline committed '1 4' at row 4):
-    def seed_interior(dirs, cfg_, hf_all, hf_row, interior_o, *args, **kwargs):
-        real_interior(dirs, cfg_, hf_all, hf_row, interior_o, *args, **kwargs)
-        hf_row['M_core'] = float(hf_row.get('M_core_target') or hf_row.get('M_core', 0.0))
-        hf_row['M_int'] = 5.97e24
-        hf_row['M_int_target'] = 5.97e24
+        def seed_interior(dirs, cfg_, hf_all, hf_row, interior_o, *args, **kwargs):
+            real_interior(dirs, cfg_, hf_all, hf_row, interior_o, *args, **kwargs)
+            hf_row['M_core'] = float(hf_row.get('M_core_target') or hf_row.get('M_core', 0.0))
+            hf_row['M_int'] = 5.97e24
+            hf_row['M_int_target'] = 5.97e24
 
-    def seed_structure_update(dirs, config, hf_row, interior_o, lt, lT, lP, force=False):
-        hf_row['M_core'] = float(hf_row.get('M_core_target') or hf_row.get('M_core', 0.0))
-        interior_o.structure_stale = False
-        interior_o.structure_rollback_active = False
-        hf_row['_structure_rollback'] = False
-        interior_o.write_structure_stale(dirs['output'])
-        return float(hf_row.get('Time', 0.0)), float(hf_row.get('T_magma', 2000.0)), 0.5
+        def seed_structure_update(dirs, config, hf_row, interior_o, lt, lT, lP, force=False):
+            hf_row['M_core'] = float(hf_row.get('M_core_target') or hf_row.get('M_core', 0.0))
+            interior_o.structure_stale = False
+            interior_o.structure_rollback_active = False
+            hf_row['_structure_rollback'] = False
+            interior_o.write_structure_stale(dirs['output'])
+            return float(hf_row.get('Time', 0.0)), float(hf_row.get('T_magma', 2000.0)), 0.5
 
-    seed_runner, cfg_path, out_dir = _setup_zalmoxis_baseline_runner(
+        seed_runner, _, seed_out_dir = _setup_zalmoxis_baseline_runner(
+            base_tmp,
+            mp,
+            'run_kill_flag_module_seed',
+            max_iters=5,
+            temperature_mode='isothermal',
+            update_interval=0.0,
+            mode='stop',
+        )
+        seed_runner.config.params.stop.time.maximum = 1.0e9
+        seed_seq: list[tuple[int, bool, list[bool]]] = []
+
+        def spy_seed_check(hf_row, config, **kwargs):
+            row_i = len(seed_runner.hf_all) - 1
+            vs = real_check_row(hf_row, config, **kwargs)
+            if row_i in (4, 5):
+                seed_seq.append(
+                    (row_i, bool(kwargs.get('init_stage')), [v.report_only for v in vs])
+                )
+            return vs
+
+        mp.setattr(int_wrap, 'update_structure_from_interior', seed_structure_update)
+        mp.setattr(int_wrap, 'run_interior', seed_interior)
+        mp.setattr(proteus_mod, 'check_row_invariants', spy_seed_check)
+        seed_runner.start(resume=False, offline=True)
+        assert seed_seq == [(4, False, []), (5, False, [])]
+
+    return built_cont_seq, seed_seq, seed_out_dir
+
+
+@pytest.mark.parametrize(
+    ('outcome', 'kill_target', 'baseline_layout'),
+    [
+        *(
+            (outcome, target, 'indexed')
+            for outcome in ('accept', 'upstep_reject', 'failure', 'impact_shortcut')
+            for target in (
+                'write_structure_stale',
+                'write_baseline_structure_done',
+                'write_structure_forced_pending',
+                'after_pending_clear',
+            )
+            if not (outcome == 'impact_shortcut' and target == 'write_structure_stale')
+        ),
+        ('accept', 'setup_write_pending', 'indexed'),
+        ('accept', 'setup_write_stale', 'indexed'),
+        *(
+            (outcome, 'after_pending_clear', layout)
+            for outcome in ('accept', 'upstep_reject', 'failure')
+            for layout in (
+                'no_baseline_file',
+                'single_token_1',
+                'unindexed_stale_only',
+                'pending_only',
+            )
+        ),
+    ],
+)
+def test_proteus_start_forced_accept_kill_between_flag_writes_resumes_cleanly(
+    tmp_path,
+    monkeypatch,
+    _kill_test_reference_fixture,
+    outcome,
+    kill_target,
+    baseline_layout,
+):
+    """When a process is killed at any resume-setup flag write, forced-branch flag write, or after clearing pending before the next snapshot, a subsequent resume preserves the earliest baseline commit row (or '1 <resume_row>' when unindexed on disk), makes 1 forced attempt, and matches the continuous run."""
+    import shutil
+    from types import SimpleNamespace
+
+    import proteus.accretion.wrapper as acc_wrap
+    import proteus.interior_energetics.common as common_mod
+    import proteus.interior_energetics.wrapper as int_wrap
+    import proteus.utils.coupler as coupler_mod
+    from proteus.interior_energetics.common import (
+        get_file_baseline_structure_done,
+        get_file_structure_forced_pending,
+        get_file_structure_rollback,
+        get_file_structure_stale,
+    )
+
+    monkeypatch.setattr(int_wrap, '_use_superliquidus_adiabat_ic', lambda cfg: False)
+    real_interior = int_wrap.run_interior
+    real_check_row = proteus_mod.check_row_invariants
+
+    cont_seq, seed_seq, ref_seed_out_dir = _kill_test_reference_fixture
+    expected_cont_seq = [
+        (4, False, []),
+        (5, False, []),
+        *((r, False, [True]) for r in range(6, 15)),
+    ]
+    assert cont_seq == expected_cont_seq
+    assert seed_seq == [(4, False, []), (5, False, [])]
+
+    run_label = f'run_kill_flag_{outcome}_{kill_target}_{baseline_layout}_resumed'
+    first_resume, cfg_path, out_dir = _setup_zalmoxis_baseline_runner(
         tmp_path,
         monkeypatch,
-        f'run_kill_flag_{outcome}_{kill_target}_resumed',
-        max_iters=5,
+        run_label,
+        max_iters=14,
         temperature_mode='isothermal',
         update_interval=0.0,
         mode='stop',
     )
-    seed_runner.config.params.stop.time.maximum = 1.0e9
-    seed_seq: list[tuple[int, bool, list[bool]]] = []
+    first_resume.config.params.stop.time.maximum = 1.0e9
+    out_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(ref_seed_out_dir / 'runtime_helpfile.csv', out_dir / 'runtime_helpfile.csv')
+    shutil.copytree(ref_seed_out_dir / 'data', out_dir / 'data', dirs_exist_ok=True)
 
-    def spy_seed_check(hf_row, config, **kwargs):
-        row_i = len(seed_runner.hf_all) - 1
-        vs = real_check_row(hf_row, config, **kwargs)
-        if row_i in (4, 5):
-            seed_seq.append(
-                (row_i, bool(kwargs.get('init_stage')), [v.report_only for v in vs])
+    if baseline_layout == 'indexed':
+        Path(get_file_structure_stale(str(out_dir))).write_text('1 6\n', encoding='utf-8')
+        Path(get_file_structure_rollback(str(out_dir))).write_text('1 6\n', encoding='utf-8')
+        Path(get_file_baseline_structure_done(str(out_dir))).write_text(
+            '1 4\n', encoding='utf-8'
+        )
+        Path(get_file_structure_forced_pending(str(out_dir))).unlink(missing_ok=True)
+        expected_saved_baseline = '1 4'
+    elif baseline_layout == 'no_baseline_file':
+        Path(get_file_structure_stale(str(out_dir))).write_text('1 6\n', encoding='utf-8')
+        Path(get_file_structure_rollback(str(out_dir))).write_text('1 6\n', encoding='utf-8')
+        Path(get_file_baseline_structure_done(str(out_dir))).unlink(missing_ok=True)
+        Path(get_file_structure_forced_pending(str(out_dir))).unlink(missing_ok=True)
+        expected_saved_baseline = '1 5'
+    elif baseline_layout in ('single_token_1', 'unindexed_stale_only'):
+        Path(get_file_structure_stale(str(out_dir))).write_text('0\n', encoding='utf-8')
+        Path(get_file_structure_rollback(str(out_dir))).unlink(missing_ok=True)
+        if baseline_layout == 'single_token_1':
+            Path(get_file_baseline_structure_done(str(out_dir))).write_text(
+                '1\n', encoding='utf-8'
             )
-        return vs
+        else:
+            Path(get_file_baseline_structure_done(str(out_dir))).unlink(missing_ok=True)
+        Path(get_file_structure_forced_pending(str(out_dir))).unlink(missing_ok=True)
+        real_select = coupler_mod.select_resumable_snapshot
 
-    monkeypatch.setattr(int_wrap, 'update_structure_from_interior', seed_structure_update)
-    monkeypatch.setattr(int_wrap, 'run_interior', seed_interior)
-    monkeypatch.setattr(proteus_mod, 'check_row_invariants', spy_seed_check)
-    seed_runner.start(resume=False, offline=True)
-    assert seed_seq == [(4, False, []), (5, False, [])]
+        def fake_select_with_dropped(outdir, hf_all, **kwargs):
+            trimmed, _ = real_select(outdir, hf_all, **kwargs)
+            return trimmed, [999.0]
 
-    Path(get_file_structure_stale(str(out_dir))).write_text('1 6\n', encoding='utf-8')
-    Path(get_file_structure_rollback(str(out_dir))).write_text('1 6\n', encoding='utf-8')
-    Path(get_file_baseline_structure_done(str(out_dir))).write_text('1 4\n', encoding='utf-8')
-    Path(get_file_structure_forced_pending(str(out_dir))).unlink(missing_ok=True)
+        monkeypatch.setattr(coupler_mod, 'select_resumable_snapshot', fake_select_with_dropped)
+        expected_saved_baseline = '1 5'
+    else:
+        assert baseline_layout == 'pending_only'
+        Path(get_file_structure_stale(str(out_dir))).write_text('0 5\n', encoding='utf-8')
+        Path(get_file_structure_rollback(str(out_dir))).write_text('0 5\n', encoding='utf-8')
+        Path(get_file_baseline_structure_done(str(out_dir))).write_text(
+            '0 5\n', encoding='utf-8'
+        )
+        Path(get_file_structure_forced_pending(str(out_dir))).write_text(
+            '1 5\n', encoding='utf-8'
+        )
+        expected_saved_baseline = '1 5'
 
     # 3. First resume: kill at the target setup write, forced-branch flag write, or right after pending clear:
     class _SimulatedFlagWriteKill(BaseException):
@@ -2135,7 +2228,9 @@ def test_proteus_start_forced_accept_kill_between_flag_writes_resumes_cleanly(
                     else 'missing',
                     Path(get_file_baseline_structure_done(outdir))
                     .read_text(encoding='utf-8')
-                    .strip(),
+                    .strip()
+                    if Path(get_file_baseline_structure_done(outdir)).is_file()
+                    else 'missing',
                 )
             )
             if kill_target == 'setup_write_stale':
@@ -2162,7 +2257,9 @@ def test_proteus_start_forced_accept_kill_between_flag_writes_resumes_cleanly(
                     Path(get_file_structure_stale(outdir)).read_text(encoding='utf-8').strip(),
                     Path(get_file_baseline_structure_done(outdir))
                     .read_text(encoding='utf-8')
-                    .strip(),
+                    .strip()
+                    if Path(get_file_baseline_structure_done(outdir)).is_file()
+                    else 'missing',
                 )
             )
             if kill_target == 'setup_write_pending':
@@ -2175,7 +2272,9 @@ def test_proteus_start_forced_accept_kill_between_flag_writes_resumes_cleanly(
                     .strip(),
                     Path(get_file_baseline_structure_done(outdir))
                     .read_text(encoding='utf-8')
-                    .strip(),
+                    .strip()
+                    if Path(get_file_baseline_structure_done(outdir)).is_file()
+                    else 'missing',
                 )
             )
             if kill_target == 'write_structure_forced_pending':
@@ -2195,17 +2294,6 @@ def test_proteus_start_forced_accept_kill_between_flag_writes_resumes_cleanly(
         monkeypatch.setattr(acc_wrap, 'restore_accretion_state', lambda h: None)
         monkeypatch.setattr(acc_wrap, 'apply_due_impacts', fake_apply_due_impacts)
 
-    first_resume, _, _ = _setup_zalmoxis_baseline_runner(
-        tmp_path,
-        monkeypatch,
-        f'run_kill_flag_{outcome}_{kill_target}_resumed',
-        max_iters=14,
-        temperature_mode='isothermal',
-        update_interval=0.0,
-        mode='stop',
-    )
-    first_resume.config_path = cfg_path
-    first_resume.config.params.stop.time.maximum = 1.0e9
     with pytest.raises(_SimulatedFlagWriteKill):
         first_resume.start(resume=True, offline=True)
 
@@ -2238,7 +2326,7 @@ def test_proteus_start_forced_accept_kill_between_flag_writes_resumes_cleanly(
     second_resume, _, _ = _setup_zalmoxis_baseline_runner(
         tmp_path,
         monkeypatch,
-        f'run_kill_flag_{outcome}_{kill_target}_resumed',
+        run_label,
         max_iters=14,
         temperature_mode='isothermal',
         update_interval=0.0,
@@ -2264,9 +2352,14 @@ def test_proteus_start_forced_accept_kill_between_flag_writes_resumes_cleanly(
     except RuntimeError as exc:
         second_runtime_err = exc
 
-    assert setup_at_pending_write == [('1 6', '1 4')]
+    expected_stale_at_setup = (
+        '1 6'
+        if baseline_layout in ('indexed', 'no_baseline_file')
+        else ('0' if baseline_layout in ('single_token_1', 'unindexed_stale_only') else '0 5')
+    )
+    assert setup_at_pending_write == [(expected_stale_at_setup, expected_saved_baseline)]
     if kill_target != 'setup_write_pending':
-        assert setup_at_stale_write == [('1 5', '1 4')]
+        assert setup_at_stale_write == [('1 5', expected_saved_baseline)]
     if kill_target in (
         'write_baseline_structure_done',
         'write_structure_forced_pending',
@@ -2275,14 +2368,14 @@ def test_proteus_start_forced_accept_kill_between_flag_writes_resumes_cleanly(
         assert pending_at_baseline_write == ['1 5']
     expected_rb = '1 6' if outcome == 'failure' else '0 6'
     if kill_target in ('write_structure_forced_pending', 'after_pending_clear'):
-        assert pending_clear_snapshot == [(expected_rb, '1 4')]
+        assert pending_clear_snapshot == [(expected_rb, expected_saved_baseline)]
     assert second_forced_calls == [True]
     assert second_runtime_err is None
     assert len(second_resume.hf_all) - 6 >= 9
     assert resumed_seq == cont_seq
     assert (
         Path(get_file_baseline_structure_done(str(out_dir))).read_text(encoding='utf-8').strip()
-        == '1 4'
+        == expected_saved_baseline
     )
     assert (
         Path(get_file_structure_forced_pending(str(out_dir)))
@@ -2575,6 +2668,64 @@ def test_proteus_start_baseline_committed_on_dropped_row_keeps_retry_rule_and_co
     second_corrupt_resumed.start(resume=True, offline=True)
     assert second_corrupt_resumed._resume_newer_event is False
     assert second_corrupt_calls == []
+
+    # 4. On liquidus_super, a corrupt pending file with uncommitted baseline '0 5' and clean stale/rollback '0 5' does not set rollback active or force a solve:
+    monkeypatch.setattr(
+        int_wrap,
+        '_use_superliquidus_adiabat_ic',
+        lambda cfg: cfg.planet.temperature_mode == 'liquidus_super',
+    )
+    Path(get_file_structure_stale(str(out_dir))).write_text('0 5\n', encoding='utf-8')
+    Path(get_file_structure_rollback(str(out_dir))).write_text('0 5\n', encoding='utf-8')
+    Path(get_file_baseline_structure_done(str(out_dir))).write_text('0 5\n', encoding='utf-8')
+    Path(get_file_structure_forced_pending(str(out_dir))).write_text(
+        'corrupt\n', encoding='utf-8'
+    )
+    hf_csv.write_text('\n'.join(lines[:7]) + '\n', encoding='utf-8')
+
+    super_corrupt_calls: list[bool] = []
+
+    def super_corrupt_update(dirs, config, hf_row, interior_o, lt, lT, lP, force=False):
+        super_corrupt_calls.append(bool(force))
+        return lt, lT, lP
+
+    super_corrupt_resumed, _, _ = _setup_zalmoxis_baseline_runner(
+        tmp_path,
+        monkeypatch,
+        'run_baseline_committed_dropped_resumed',
+        max_iters=7,
+        temperature_mode='liquidus_super',
+        update_interval=0.0,
+        mode='report',
+    )
+    super_corrupt_resumed.config_path = cfg_path
+    super_corrupt_resumed.config.planet.temperature_mode = 'liquidus_super'
+    super_corrupt_resumed.config.params.stop.time.maximum = 1.0e9
+    monkeypatch.setattr(int_wrap, 'update_structure_from_interior', super_corrupt_update)
+    super_corrupt_resumed.start(resume=True, offline=True)
+    assert super_corrupt_resumed._resume_newer_event is False
+    assert super_corrupt_resumed.interior_o.structure_rollback_active is False
+    assert super_corrupt_calls == []
+    assert (
+        Path(get_file_structure_forced_pending(str(out_dir)))
+        .read_text(encoding='utf-8')
+        .strip()
+        == '0 5'
+    )
+    assert (
+        Path(get_file_structure_rollback(str(out_dir))).read_text(encoding='utf-8').strip()
+        == '0 5'
+    )
+
+    params_md = (
+        Path(__file__).resolve().parents[1] / 'docs' / 'Reference' / 'config' / 'params.md'
+    ).read_text(encoding='utf-8')
+    assert (
+        'in both continuous and resumed runs M_int_target_rel_err is checked only on the row '
+        'of a Zalmoxis solve that sets the target'
+    ) in params_md
+    assert 'while the continuous run does' not in params_md
+    assert 'until the next forced solve' not in params_md
 
 
 def test_proteus_start_forced_solver_failure_restores_m_int_and_m_core_targets(
