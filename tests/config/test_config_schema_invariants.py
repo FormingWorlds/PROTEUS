@@ -1565,7 +1565,11 @@ def test_lowt_extension_requires_the_aragog_interior():
 
     with pytest.raises(ValueError, match=r'interior_energetics.module = "aragog"') as excinfo:
         lowt_extension_requires_aragog(make('spider', True), None, None)
-    assert '"spider"' in str(excinfo.value)
+    assert '"spider"' in str(excinfo.value) and 'more entropy nodes' in str(excinfo.value)
+    for module in ('dummy', 'boundary'):
+        with pytest.raises(ValueError, match='reads no P-S tables') as excinfo:
+            lowt_extension_requires_aragog(make(module, True), None, None)
+        assert f'"{module}"' in str(excinfo.value) and 'entropy nodes' not in str(excinfo.value)
     assert lowt_extension_requires_aragog(make('aragog', True), None, None) is None
     for module in ('spider', 'dummy', 'aragog'):
         assert lowt_extension_requires_aragog(make(module, False), None, None) is None

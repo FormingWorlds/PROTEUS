@@ -1133,6 +1133,39 @@ def test_a_removed_paleos_api_table_is_built_again(tmp_path, monkeypatch):
     assert 'proteus get' not in str(excinfo.value)
 
 
+@pytest.mark.parametrize('case', ['missing_file', 'old_zalmoxis', 'ready'])
+def test_require_paleos_tables_checks_the_lowt_extension_at_start_up(
+    tmp_path, monkeypatch, case
+):
+    """With the switch on, a missing extension file or an installed Zalmoxis whose table
+    generator has no solid_lowt_file stops the run before any solve, naming the file or the
+    Zalmoxis; with both present the check passes."""
+    import zalmoxis.eos_export
+
+    from proteus.interior_struct import zalmoxis as zmod
+
+    monkeypatch.setattr(
+        zmod, 'load_zalmoxis_material_dictionaries', lambda: _paleos_registry(tmp_path)
+    )
+    config = _require_config('PALEOS:MgSiO3')
+    config.interior_struct.zalmoxis.lowt_extension = True
+    if case != 'missing_file':
+        (tmp_path / zmod.LOWT_EXTENSION_FILE).write_text('extension')
+    if case == 'old_zalmoxis':
+        monkeypatch.setattr(
+            zalmoxis.eos_export, 'generate_spider_eos_tables', lambda eos_file, n_P=150: None
+        )
+    if case == 'ready':
+        assert zmod.require_paleos_tables(config, str(tmp_path)) is None
+        assert (tmp_path / zmod.LOWT_EXTENSION_FILE).is_file()
+        return
+    exc = zmod.ZalmoxisMissingEOSFilesError if case == 'missing_file' else RuntimeError
+    with pytest.raises(exc) as err:
+        zmod.require_paleos_tables(config, str(tmp_path))
+    want = zmod.LOWT_EXTENSION_FILE if case == 'missing_file' else 'installed Zalmoxis'
+    assert want in str(err.value) and 'solid' in str(err.value)
+
+
 @pytest.mark.parametrize('missing', ['iron', 'solid', 'h2o'])
 def test_require_paleos_tables_stops_an_offline_run(tmp_path, monkeypatch, missing):
     """An offline fresh run stops before any solve on an absent core, ice-layer or pair
@@ -4876,3 +4909,23 @@ def test_resumed_run_with_switch_changed_keeps_old_tables_and_resume_key_has_ext
     assert resume_k.startswith('P_max=3.500000e+11_nP=8_nS=8_mzf=0.8_layout=unified_eos=')
     # Because lowt_extension=True, the cache key digest reflects the extension file.
     assert old_marker.split('_eos=')[1] != resume_k.split('_eos=')[1]
+
+
+def test_data_digest_reads_a_table_once_until_it_changes(tmp_path, monkeypatch):
+    """The digest of an unchanged table file is read once; new content, also at the same size,
+    gives the new digest."""
+    import os
+    from pathlib import Path
+
+    from proteus.interior_struct import zalmoxis as zmod
+
+    f = tmp_path / 't.dat'
+    f.write_text('# header\n1 2 3\n')
+    reads, read_bytes = [], Path.read_bytes
+    monkeypatch.setattr(Path, 'read_bytes', lambda self: reads.append(1) or read_bytes(self))
+    first = zmod._data_digest(str(f))
+    assert zmod._data_digest(str(f)) == first and len(reads) == 1
+    mtime = f.stat().st_mtime_ns
+    f.write_text('# header\n1 2 4\n')
+    os.utime(f, ns=(mtime + 10**9, mtime + 10**9))
+    assert zmod._data_digest(str(f)) != first and len(reads) == 2
