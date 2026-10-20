@@ -601,7 +601,7 @@ def test_aragog_top_cell_dt_limit_defaults_and_validators():
     cfg = Aragog()
     assert cfg.top_cell_dt_limit is False
     assert cfg.top_cell_dt_rel_dT == pytest.approx(0.08)
-    assert cfg.top_cell_dt_rel_dT_solid == pytest.approx(0.02)
+    assert cfg.top_cell_dt_rel_dT_solid == pytest.approx(0.08)
 
     cfg_on = Aragog(
         top_cell_dt_limit=True,
