@@ -6064,7 +6064,7 @@
       "default": "false",
       "choices": null,
       "bounds": null,
-      "description": "Limit the coupling time step by the top-cell radiative drain time tau_drain (down to params.dt.minimum * escape.step_dt_floor_frac, below params.dt.minimum) and keep hf_row['T_magma'], hf_row['T_surf'], and hf_row['Phi_global'] on the Aragog solver state by skipping the tmagma_atol/tmagma_rtol post-step clip on steps where tau_drain is finite; planet.prevent_warming still clamps T_magma, T_surf, Phi_global, and F_int when active. Incompatible with interior_energetics.surface_bc_mode = 'grey_body'. The bound is a start-of-step linear estimate on the top-cell mean that holds where cp is smooth over the step; at a liquidus crossing during a step (phi_top = 1 at step start and < 1 at step end) it can be exceeded because the chord cp drops below the step-start value and the surface basic node is extrapolated from the top two staggered cells with weights about -0.5 and 1.5 (Aragog's outer extrapolation) (measured at 1.82 to 1.85x the allowance eta_eff * T_surf on 1 step per run in 2 configurations (3 distinct runs) at t ~ 531 yr).",
+      "description": "Limit the coupling time step by the top-cell radiative drain time tau_drain (down to params.dt.minimum * escape.step_dt_floor_frac, below params.dt.minimum) and keep hf_row['T_magma'], hf_row['T_surf'], and hf_row['Phi_global'] on the Aragog solver state by skipping the tmagma_atol/tmagma_rtol post-step clip on steps where tau_drain is finite and the step does not exceed tau_drain (staying active when the escape step floor overrides tau_drain); planet.prevent_warming still clamps T_magma, T_surf, Phi_global, and F_int when active. Incompatible with interior_energetics.surface_bc_mode = 'grey_body'. A 1-point EOS temperature lookahead replaces the step-start heat capacity with the chord heat capacity T_top * (S_top - S_trial) / (T_top - T_trial) whenever the predicted entropy drop crosses into a lower-heat-capacity regime during the step.",
       "doc_source": "field_docstring",
       "group_order": 0,
       "group_position": 0,
@@ -6102,7 +6102,7 @@
       "class": "Aragog",
       "type": "float",
       "accepts_none": false,
-      "default": "0.02",
+      "default": "0.08",
       "choices": null,
       "bounds": [
         {

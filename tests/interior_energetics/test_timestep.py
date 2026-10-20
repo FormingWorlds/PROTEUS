@@ -2450,10 +2450,10 @@ def test_estimate_tau_drain_paleos_slice_531p546_chord_lookahead_and_window():
         solver.entropy_eos = eos_no_collapse
         tau_0 = _estimate_tau_drain(cfg, hf_r, io)
         ratio = tau_c / tau_0
-        if row_idx in range(384, 392):
-            assert 0.429 < ratio < 0.813
-        else:
+        if row_idx in range(380, 384):
             assert ratio == pytest.approx(1.0, rel=1e-12)
+        else:
+            assert 0.433 < ratio < 0.851
 
 
 @pytest.mark.unit

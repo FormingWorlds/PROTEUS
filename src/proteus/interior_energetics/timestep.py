@@ -41,6 +41,7 @@ _ARAGOG_EOS_ATTRS: tuple[str, ...] = (
     'density',
     'heat_capacity',
     'melt_fraction',
+    'temperature',
 )
 
 
@@ -74,7 +75,7 @@ def _estimate_tau_drain(config: Config, hf_row: dict, interior_o) -> float:
 
     When ``interior_o`` or ``interior_o.aragog_solver`` is ``None``, when
     ``interior_o.ic == 1``, or before the first atmosphere call at ``Time <= 0``
-    when ``T_surf == 0``, ``np.inf`` is returned without logging a warning. Once
+    when ``T_surf <= 0``, ``np.inf`` is returned without logging a warning. Once
     ``aragog_solver`` is active in the main loop, missing any attribute in
     ``_ARAGOG_SOLVER_ATTRS`` or ``_ARAGOG_EOS_ATTRS`` or encountering a non-finite
     or non-positive state logs one warning per run and returns ``np.inf``.
@@ -92,15 +93,16 @@ def _estimate_tau_drain(config: Config, hf_row: dict, interior_o) -> float:
     $325.99\\text{ J kg}^{-1}\\text{ K}^{-1}$ ($T = 183.20\\text{ K}$, $\\phi = 0$,
     $c_p = 528.90\\text{ J kg}^{-1}\\text{ K}^{-1}$) on the extended table, above the table floor.
 
-    The drain timescale is a start-of-step linear estimate on the top-cell mean
-    that holds where $c_p$ is smooth over the step. When the top cell crosses
-    the liquidus during a step ($\\phi_{\\text{top}} > 0.60$ at step start), the
-    realized chord $c_p$ drops below the step-start value and the surface basic
-    node is extrapolated from the two outermost staggered cells with weights
-    $[-0.5\\,r,\\, 1 + 0.5\\,r]$ ($r = \\Delta_{\\text{basic,outer}} / \\Delta_{\\text{stag,outer}}$),
-    so the single-step $|\\Delta T_{\\text{surf}}|$ can exceed $\\eta_{\\text{eff}}\\,T_{\\text{surf}}$
-    (measured at $1.82$ to $1.85\\times$ on 1 step per run in 4 25-kyr coupled
-    runs at $t \\approx 531\\text{ yr}$).
+    To account for drops in $c_p(P_{\\text{top}}, S)$ across a liquidus or solidus
+    crossing during the step, a 1-point EOS temperature lookahead probes
+    $S_{\\text{trial}} = \\max(S_{\\text{top}} - c_{p,\\text{eff}}\\,\\Delta T_{\\text{allow}} / T_{\\text{top}},\\, S_{\\min} + 300)$
+    and replaces $c_{p,\\text{eff}}$ with
+    $c_{p,\\text{chord}} = \\min(c_{p,\\text{eff}},\\, T_{\\text{top}}\\,\\Delta S_{\\text{trial}} / \\Delta T_{\\text{trial}})$
+    whenever $\\Delta T_{\\text{trial}} = T_{\\text{top}} - T(P_{\\text{top}}, S_{\\text{trial}}) > \\Delta T_{\\text{allow}}$
+    and $S_{\\text{top}} > S_{\\text{trial}}$. Using $T_{\\text{mean}} = 0.5\\,(T_{\\text{top}} + T_{\\text{trial}})$
+    in the chord numerator would give a $c_{p,\\text{chord}}$ smaller by
+    $(T_{\\text{top}} - T_{\\text{trial}}) / (2\\,T_{\\text{mean}})$ (about $8$ to $9\\%$ at the
+    $t \\approx 531\\text{ yr}$ liquidus crossing); the $T_{\\text{top}}$ form is the tested form.
 
     Parameters
     ----------
@@ -117,8 +119,6 @@ def _estimate_tau_drain(config: Config, hf_row: dict, interior_o) -> float:
         Estimated top-cell drain timescale in years, or ``np.inf`` when
         no valid Aragog solver state is available.
     """
-    if interior_o is not None:
-        interior_o._tau_drain_cap_valid = False
     solver = getattr(interior_o, 'aragog_solver', None) if interior_o is not None else None
     if solver is None or getattr(interior_o, 'ic', 2) == 1:
         return np.inf
@@ -129,7 +129,7 @@ def _estimate_tau_drain(config: Config, hf_row: dict, interior_o) -> float:
         and not isinstance(raw_t_surf, bool)
         and isinstance(raw_time, (int, float, np.number))
         and not isinstance(raw_time, bool)
-        and float(raw_t_surf) == 0.0
+        and float(raw_t_surf) <= 0.0
         and float(raw_time) <= 0.0
     ):
         return np.inf
@@ -220,9 +220,14 @@ def _estimate_tau_drain(config: Config, hf_row: dict, interior_o) -> float:
                 eos.melt_fraction(np.array([p_top]), np.array([s_top])), dtype=float
             ).ravel()[0]
         )
-        s_solid_probe = max(
-            s_min + _TAU_DRAIN_SOLID_S_OFFSET, min(s_top, _TAU_DRAIN_SOLID_S_CAP)
+        t_top = float(
+            np.asarray(
+                eos.temperature(np.array([p_top]), np.array([s_top])), dtype=float
+            ).ravel()[0]
         )
+        # Same S_min + 300 J/(kg K) solid-probe floor (T = 303.5 K on shipped, 183.2 K on extended).
+        s_floor = s_min + _TAU_DRAIN_SOLID_S_OFFSET
+        s_solid_probe = max(s_floor, min(s_top, _TAU_DRAIN_SOLID_S_CAP))
         cp_solid = float(
             np.asarray(
                 eos.heat_capacity(np.array([p_top]), np.array([s_solid_probe])), dtype=float
@@ -240,6 +245,7 @@ def _estimate_tau_drain(config: Config, hf_row: dict, interior_o) -> float:
             and math.isfinite(cp_top)
             and math.isfinite(cp_solid)
             and math.isfinite(phi_raw)
+            and math.isfinite(t_top)
             and math.isfinite(t_surf)
             and math.isfinite(f_raw)
         )
@@ -247,6 +253,7 @@ def _estimate_tau_drain(config: Config, hf_row: dict, interior_o) -> float:
         or rho_top <= 0.0
         or cp_top <= 0.0
         or cp_solid <= 0.0
+        or t_top <= 0.0
         or t_surf <= 0.0
     ):
         return _warn_invalid_tau_drain(
@@ -268,11 +275,42 @@ def _estimate_tau_drain(config: Config, hf_row: dict, interior_o) -> float:
     eta_eff = eta_solid + (eta_melt - eta_solid) * min(phi_top / _TAU_DRAIN_PHI_RAMP, 1.0)
 
     dt_allow_k = eta_eff * t_surf
+    s_trial = max(s_top - (cp_eff * dt_allow_k) / t_top, s_floor)
+    try:
+        t_trial = float(
+            np.asarray(
+                eos.temperature(np.array([p_top]), np.array([s_trial])), dtype=float
+            ).ravel()[0]
+        )
+    except (AttributeError, TypeError, ValueError, IndexError):
+        return _warn_invalid_tau_drain(
+            interior_o,
+            s_top=s_top,
+            t_surf=t_surf,
+            phi_raw=phi_raw,
+            rho_top=rho_top,
+            cp_top=cp_top,
+            dr_eff=dr_eff,
+        )
+    if not math.isfinite(t_trial) or t_trial <= 0.0:
+        return _warn_invalid_tau_drain(
+            interior_o,
+            s_top=s_top,
+            t_surf=t_surf,
+            phi_raw=phi_raw,
+            rho_top=rho_top,
+            cp_top=cp_top,
+            dr_eff=dr_eff,
+        )
+
+    dt_trial = t_top - t_trial
+    cp_chord = (
+        min(cp_eff, t_top * (s_top - s_trial) / dt_trial)
+        if (dt_trial > dt_allow_k and s_top > s_trial)
+        else cp_eff
+    )
     f_abs = max(abs(f_raw), _TAU_DRAIN_F_MIN)
-    tau_yr = float((rho_top * cp_eff * dr_eff * dt_allow_k) / (f_abs * secs_per_year))
-    if interior_o is not None and math.isfinite(tau_yr) and tau_yr > 0.0:
-        interior_o._tau_drain_cap_valid = True
-    return tau_yr
+    return float((rho_top * cp_chord * dr_eff * dt_allow_k) / (f_abs * secs_per_year))
 
 
 def _hf_from_iters(hf_all: pd.DataFrame, i1: int, i2: int):
@@ -706,17 +744,15 @@ def next_step(
         dtswitch = evection_cap
 
     # Top-cell sensible-heat drain cap for Aragog, floored at the escape step floor.
-    if interior_o is not None:
-        interior_o._tau_drain_cap_valid = False
     ie_cfg = getattr(config, 'interior_energetics', None)
     if (
         getattr(ie_cfg, 'module', None) == 'aragog'
         and getattr(getattr(ie_cfg, 'aragog', None), 'top_cell_dt_limit', False) is True
     ):
+        if interior_o is not None:
+            interior_o._tau_drain_cap_valid = False
         tau_drain = _estimate_tau_drain(config, hf_row, interior_o)
         if np.isfinite(tau_drain) and tau_drain > 0.0:
-            if interior_o is not None:
-                interior_o._tau_drain_cap_valid = True
             esc_floor = config.params.dt.minimum * config.escape.step_dt_floor_frac
             dt_drain = max(esc_floor, tau_drain)
             if dtswitch > dt_drain:
@@ -728,6 +764,8 @@ def next_step(
                     dtswitch,
                 )
                 dtswitch = dt_drain
+            if interior_o is not None and dtswitch <= tau_drain:
+                interior_o._tau_drain_cap_valid = True
 
     # On retries (step_sf < 1) in the static/initial branches we
     # deliberately allow dt to fall below dt.minimum; the whole point of

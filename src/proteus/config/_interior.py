@@ -185,8 +185,7 @@ def _check_aragog_top_cell_dt_limit_surface_bc(instance, attribute=None, value=N
 
 def valid_aragog(instance, attribute, value):
     """Aragog requires at least one energy transport term to be enabled."""
-    module = value if getattr(attribute, 'name', None) == 'module' else instance.module
-    if module != 'aragog':
+    if instance.module != 'aragog':
         return
 
     # At least one energy term enabled (uses top-level interior fields).
@@ -497,16 +496,13 @@ class Aragog:
     (down to params.dt.minimum * escape.step_dt_floor_frac, below params.dt.minimum)
     and keep hf_row['T_magma'], hf_row['T_surf'], and hf_row['Phi_global'] on the Aragog
     solver state by skipping the tmagma_atol/tmagma_rtol post-step clip on steps where
-    tau_drain is finite; planet.prevent_warming still clamps T_magma, T_surf,
-    Phi_global, and F_int when active. Incompatible with
-    interior_energetics.surface_bc_mode = 'grey_body'. The bound is a start-of-step
-    linear estimate on the top-cell mean that holds where cp is smooth over the step;
-    at a liquidus crossing during a step (phi_top = 1 at step start and < 1 at step end)
-    it can be exceeded because the chord cp drops below the step-start value and the
-    surface basic node is extrapolated from the top two staggered cells with weights
-    about -0.5 and 1.5 (Aragog's outer extrapolation) (measured at 1.82 to 1.85x the
-    allowance eta_eff * T_surf on 1 step per run in 2 configurations (3 distinct runs)
-    at t ~ 531 yr)."""
+    tau_drain is finite and the step does not exceed tau_drain (staying active when the
+    escape step floor overrides tau_drain); planet.prevent_warming still clamps T_magma,
+    T_surf, Phi_global, and F_int when active. Incompatible with
+    interior_energetics.surface_bc_mode = 'grey_body'. A 1-point EOS temperature
+    lookahead replaces the step-start heat capacity with the chord heat capacity
+    T_top * (S_top - S_trial) / (T_top - T_trial) whenever the predicted entropy drop
+    crosses into a lower-heat-capacity regime during the step."""
 
     top_cell_dt_rel_dT: float = field(
         default=0.08, converter=float, validator=(gt(0.0), le(0.5))
@@ -515,7 +511,7 @@ class Aragog:
     (phi_s[-1] >= 0.40) for the top-cell drain-time step limit; must lie in (0, 0.5]."""
 
     top_cell_dt_rel_dT_solid: float = field(
-        default=0.02,
+        default=0.08,
         converter=float,
         validator=(gt(0.0), _valid_top_cell_dt_rel_dT_solid),
     )

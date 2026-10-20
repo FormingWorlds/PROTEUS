@@ -158,16 +158,17 @@ capped at the top-cell sensible-heat drain timescale $\tau_\mathrm{drain}$
 below `params.dt.minimum`), and the post-step `tmagma_atol`/`tmagma_rtol` clip
 (maximum increase $\mathrm{atol} + \mathrm{rtol} \times T_\mathrm{magma,prev}$)
 on `T_magma`, `T_surf`, and `Phi_global` is skipped on steps where
-$\tau_\mathrm{drain}$ is finite (while `planet.prevent_warming` continues to
-clamp `T_magma`, `T_surf`, `Phi_global`, and `F_int` when active). This bound is
-a start-of-step linear estimate on the top-cell mean that holds where $c_p$ is
-smooth over the step; at a liquidus crossing during a step ($\phi_\mathrm{top} = 1$
-at step start and $< 1$ at step end) it can be exceeded because the realized
-chord $c_p$ drops below the step-start value and the surface basic node is
-extrapolated from the top two staggered cells with weights about $-0.5$ and $1.5$
-(Aragog's outer extrapolation) (measured at $1.82$ to $1.85\times$ the allowance
-$\eta_\mathrm{eff} T_\mathrm{surf}$ on 1 step per run in 2 configurations
-(3 distinct runs) at $t \approx 531\,\mathrm{yr}$).
+$\tau_\mathrm{drain}$ is finite and the step does not exceed
+$\tau_\mathrm{drain}$ (staying active when the escape step floor overrides
+$\tau_\mathrm{drain}$, while `planet.prevent_warming` continues to clamp
+`T_magma`, `T_surf`, `Phi_global`, and `F_int` when active). A 1-point EOS
+temperature lookahead probes $S_\mathrm{trial} = \max(S_\mathrm{top} -
+c_{p,\mathrm{eff}}\,\Delta T_\mathrm{allow} / T_\mathrm{top},\, S_{\min} + 300)$
+and replaces $c_{p,\mathrm{eff}}$ with the chord heat capacity
+$T_\mathrm{top}\,(S_\mathrm{top} - S_\mathrm{trial}) / (T_\mathrm{top} -
+T_\mathrm{trial})$ whenever $T_\mathrm{top} - T_\mathrm{trial} > \Delta
+T_\mathrm{allow}$, so steps that cross the liquidus or solidus into a
+lower-heat-capacity regime use the chord heat capacity over the predicted drop.
 
 ## Convergence and termination
 
