@@ -375,7 +375,9 @@ def test_readme_and_page_name_the_stall_and_iteration_limits_of_the_configs():
         flat = ' '.join(text.split())
         assert 'as an error after 150 consecutive iterations' in flat, name
     assert 'iteration limit of 1000000' in ' '.join(readme.split())
-    assert 'after 1,000,000 iterations (`params.stop.iters.maximum`)' in ' '.join(page.split())
+    assert 'a limit of 1,000,000 iterations (`params.stop.iters.maximum`)' in ' '.join(
+        page.split()
+    )
     paths = sorted((REPO / 'input' / 'chili' / 'intercomp').glob('*.toml'))
     paths += sorted((REPO / 'input' / 'tutorials' / 'chili_grid').glob('*.toml'))
     cfgs = [_read_config(str(f)) for f in paths if not f.name.endswith('.grid.toml')]
