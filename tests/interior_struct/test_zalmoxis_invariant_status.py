@@ -7,15 +7,17 @@ file), not a physical bound, so they carry no physics_invariant marker.
 from __future__ import annotations
 
 import logging
+import os
 from unittest.mock import patch
 
 import pytest
 
 from proteus.interior_energetics.wrapper import (
+    _ADIABAT_IC_RESTORE_KEYS,
     _solve_structure_with_adiabat_or_rollback,
     update_structure_from_interior,
 )
-from proteus.interior_struct.zalmoxis import StructureInvariantError
+from proteus.interior_struct.zalmoxis import StructureInvariantError, _stop_on_invariant_error
 from tests.interior_energetics.test_wrapper_adiabat_ic import (
     _monotonic_config,
     _monotonic_dirs,
@@ -25,6 +27,21 @@ from tests.interior_energetics.test_wrapper_adiabat_ic import (
 from tests.interior_struct.test_zalmoxis import _run_gate_solver
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
+
+# the structure keys update_structure_from_interior saves before a re-solve
+_SAVED = (
+    'R_int',
+    'M_int',
+    'M_core',
+    'M_mantle',
+    'P_surf',
+    'R_core',
+    'P_center',
+    'P_cmb',
+    'gravity',
+    'rho_avg',
+)
 
 
 def _invariant_error():
@@ -102,20 +119,20 @@ def test_the_evolution_resolve_lets_only_an_invariant_error_through(tmp_path, er
     invariant error reaches the caller and does not count as a convergence failure."""
     config = _monotonic_config(module='aragog', temperature_mode='liquidus_super')
     interior_o = _monotonic_interior_o()
-    dirs, _ = _monotonic_dirs(tmp_path, 'PREV GEOMETRY\n')
+    dirs, out_path = _monotonic_dirs(tmp_path, 'PREV GEOMETRY\n')
     hf_row = _monotonic_hf_row(1.2007e7, M_target=5.972e24)
     before = dict(hf_row)
 
     def solver(cfg, outdir, row, **kwargs):
-        row.update(R_int=9.0e6, P_cmb=1.0e11, gravity=1.0)  # a partial write, then the error
+        row.update({k: 2.0 * row[k] + 1.0 for k in _SAVED})  # a partial write, then the error
+        out_path.write_text('NEW GEOMETRY\n')
         raise error
 
     with patch('proteus.interior_struct.zalmoxis.zalmoxis_solver', side_effect=solver):
         if fails:
             update_structure_from_interior(dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8)
-            assert {k: hf_row[k] for k in ('R_int', 'P_cmb', 'gravity')} == {
-                k: before[k] for k in ('R_int', 'P_cmb', 'gravity')
-            }
+            assert {k: hf_row[k] for k in _SAVED} == {k: before[k] for k in _SAVED}
+            assert out_path.read_text() == 'PREV GEOMETRY\n'
             assert interior_o.structure_stale is True
         else:
             with pytest.raises(StructureInvariantError) as raised:
@@ -145,3 +162,60 @@ def test_a_status_file_that_cannot_be_written_does_not_hide_the_invariant_error(
     assert seen is error, repr(seen)
     status.assert_called_once_with({'output': str(tmp_path)}, 33)
     assert 'read-only output' in caplog.text
+
+
+@pytest.mark.parametrize(
+    'error',
+    [
+        pytest.param(RuntimeError('not converged'), id='runtime_error_restores'),
+        pytest.param(ValueError('bad table'), id='value_error_restores'),
+        pytest.param(FloatingPointError('overflow'), id='floating_point_error_restores'),
+    ],
+)
+def test_the_adiabat_rollback_restores_every_saved_key_and_the_output_file(tmp_path, error):
+    """A solver that writes part of a structure and then fails leaves the saved hf_row keys and
+    data/zalmoxis_output.dat as they were before the call."""
+    out = tmp_path / 'data' / 'zalmoxis_output.dat'
+    out.parent.mkdir()
+    out.write_text('PREV GEOMETRY\n')
+    hf_row = {k: float(i + 1) for i, k in enumerate(_ADIABAT_IC_RESTORE_KEYS)}
+    before = dict(hf_row)
+
+    def solver(config, outdir, row, **kwargs):
+        row.update({k: -1.0 for k in _ADIABAT_IC_RESTORE_KEYS})
+        out.write_text('NEW GEOMETRY\n')
+        raise error
+
+    with patch('proteus.interior_struct.zalmoxis.zalmoxis_solver', side_effect=solver):
+        result = _solve_structure_with_adiabat_or_rollback(
+            None, str(tmp_path), hf_row, 0, lambda r, P: 3000.0
+        )
+    assert result == (None, False)
+    assert hf_row == before
+    assert out.read_text() == 'PREV GEOMETRY\n'
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason='root writes into a read-only folder')
+def test_a_read_only_output_folder_keeps_the_old_status_and_logs_it_as_stale(tmp_path, caplog):
+    """The real status writer cannot remove the old status in a read-only folder: the
+    invariant error still escapes, the old status stays and the log says it can be stale."""
+    (tmp_path / 'status').write_text('1\nRunning\n')
+    error = _invariant_error()
+
+    @_stop_on_invariant_error
+    def solver(config, outdir):
+        raise error
+
+    tmp_path.chmod(0o555)
+    seen = None
+    try:
+        with caplog.at_level(logging.ERROR):
+            try:
+                solver(None, str(tmp_path))
+            except Exception as exc:  # noqa: BLE001 -- which error escapes is the assertion
+                seen = exc
+    finally:
+        tmp_path.chmod(0o755)
+    assert seen is error, repr(seen)
+    assert (tmp_path / 'status').read_text() == '1\nRunning\n'
+    assert 'status file can be stale' in caplog.text
