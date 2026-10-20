@@ -916,6 +916,9 @@ def test_hirschmann_iw_buffer_is_continuous_at_the_iron_phase_switch_and_broadca
 
 
 def test_fo2_profile_is_not_written_to_a_missing_or_mismatched_snapshot(tmp_path):
+    """No fO2 profile is written to a missing file, without a tracker state,
+    or to a snapshot whose staggered grid has a different length, which is
+    left without log10_fO2_s."""
     import netCDF4 as nc
 
     from proteus.interior_chem.redox import write_fO2_profile_ncdf
@@ -1107,6 +1110,8 @@ def test_ratios_are_left_unchanged_when_the_melt_holds_no_iron():
 
 
 def test_metal_step_does_nothing_without_melt():
+    """With no melt in any cell the metal step forms no metal (xi = 0) and
+    records no binding cell (a_fe_max_cell = -1)."""
     state = _init_state(_PHI, _MASS, _PRES, 0.01)
     xi = _metal_saturation_step(state, _TEMP, _PRES, np.zeros(3), _MASS)
     assert xi == 0.0 and state.a_fe_max_cell == -1
@@ -1176,6 +1181,8 @@ def _snapshot_config(module, source='from_mantle_redox'):
 
 
 def test_snapshot_appends_to_the_aragog_int_file(tmp_path):
+    """With Aragog the fO2 profile goes into the existing _int.nc of the
+    step, and no standalone _redox.nc is written."""
     import netCDF4 as nc
 
     from proteus.interior_chem.redox import store_profile_snapshot
@@ -1197,6 +1204,8 @@ def test_snapshot_appends_to_the_aragog_int_file(tmp_path):
 
 
 def test_snapshot_writes_a_standalone_file_for_spider(tmp_path):
+    """With SPIDER, which writes no _int.nc, the profile goes into a
+    standalone _redox.nc named by the step time, which it also stores."""
     import netCDF4 as nc
 
     from proteus.interior_chem.redox import store_profile_snapshot
@@ -1215,6 +1224,8 @@ def test_snapshot_writes_a_standalone_file_for_spider(tmp_path):
 
 
 def test_snapshot_writes_nothing_for_other_sources_modules_or_missing_files(tmp_path):
+    """Nothing is stored under another fO2 source, for an interior module
+    without radial output, or for an Aragog step that wrote no snapshot."""
     from proteus.interior_chem.redox import store_profile_snapshot
 
     (tmp_path / 'data').mkdir()

@@ -1673,7 +1673,10 @@ class TestMetalActivityCap:
 
     @pytest.mark.physics_invariant
     def test_zero_disables_the_cap(self):
+        """A cap of 0 leaves the controller step even for a 10% change of a_Fe."""
         assert _next_step_afe(0.0, 0.50, 0.55) == pytest.approx(8.0e3, rel=1e-12)
+        # Guard: the same change with the default cap is limited well below it.
+        assert _next_step_afe(0.03, 0.50, 0.55) < 0.5 * 8.0e3
 
     @pytest.mark.physics_invariant
     def test_a_decrease_is_capped_like_an_increase(self):
