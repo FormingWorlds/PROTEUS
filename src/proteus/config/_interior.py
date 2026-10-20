@@ -497,13 +497,16 @@ class Aragog:
     (down to params.dt.minimum * escape.step_dt_floor_frac, below params.dt.minimum)
     and keep hf_row['T_magma'], hf_row['T_surf'], and hf_row['Phi_global'] on the Aragog
     solver state by skipping the tmagma_atol/tmagma_rtol post-step clip on steps where
-    tau_drain is finite; atmos_clim.prevent_warming still clamps T_magma, T_surf,
-    Phi_global, and F_int when active. The bound is a start-of-step linear estimate on
-    the top-cell mean that holds where cp is smooth over the step; at a liquidus crossing
-    during a step it can be exceeded because the chord cp drops below the step-start value
-    and the surface basic node is extrapolated from the top two staggered cells with
-    weights [-0.5 * r, 1 + 0.5 * r] (measured at 1.82 to 1.85x the allowance on 1 step
-    per run in 4 25-kyr coupled runs at t ~ 531 yr)."""
+    tau_drain is finite; planet.prevent_warming still clamps T_magma, T_surf,
+    Phi_global, and F_int when active. Incompatible with
+    interior_energetics.surface_bc_mode = 'grey_body'. The bound is a start-of-step
+    linear estimate on the top-cell mean that holds where cp is smooth over the step;
+    at a liquidus crossing during a step (phi_top = 1 at step start and < 1 at step end)
+    it can be exceeded because the chord cp drops below the step-start value and the
+    surface basic node is extrapolated from the top two staggered cells with weights
+    about -0.5 and 1.5 (Aragog's outer extrapolation) (measured at 1.82 to 1.85x the
+    allowance eta_eff * T_surf on 1 step per run in 2 configurations (3 distinct runs)
+    at t ~ 531 yr)."""
 
     top_cell_dt_rel_dT: float = field(
         default=0.08, converter=float, validator=(gt(0.0), le(0.5))
@@ -707,12 +710,14 @@ class Interior:
         Eddy diffusivity floor [m2 s-1]; prevents mixing-length transport
         from freezing out.
     tmagma_atol: float
-        Maximum absolute change in T_magma and T_surf per PROTEUS step [K]; disabled on
-        Aragog steps where interior_energetics.aragog.top_cell_dt_limit is true and
+        Maximum increase in T_magma and T_surf per PROTEUS step (maximum
+        increase atol + rtol * T_magma_prev) [K]; disabled on Aragog steps
+        where interior_energetics.aragog.top_cell_dt_limit is true and
         tau_drain is finite.
     tmagma_rtol: float
-        Maximum relative change in T_magma and T_surf per PROTEUS step; disabled on
-        Aragog steps where interior_energetics.aragog.top_cell_dt_limit is true and
+        Maximum relative increase in T_magma and T_surf per PROTEUS step
+        (maximum increase atol + rtol * T_magma_prev); disabled on Aragog
+        steps where interior_energetics.aragog.top_cell_dt_limit is true and
         tau_drain is finite.
     tmagma_tides_step: float
         Maximum change in T_magma allowed when tides are active [K].
@@ -724,6 +729,7 @@ class Interior:
         Surface boundary condition for SPIDER/Aragog: 'flux' (prescribed
         F_atm from the atmosphere module) or 'grey_body' (native grey-body
         boundary condition computed inside the interior solver).
+        Incompatible with interior_energetics.aragog.top_cell_dt_limit = true.
     const_properties: bool
         Enable constant-properties mode: bypass the EOS tables and use the
         analytical T(S) = T_ref * exp((S - S_ref) / Cp) relationship, for
@@ -819,12 +825,18 @@ class Interior:
     param_utbl: bool = field(default=False)
     param_utbl_const: float = field(default=1e-7, validator=gt(0))
 
-    # Surface BC mode: 'flux' consumes hf_row['F_atm']; 'grey_body' evaluates
-    # sigma * (T_surf^4 - T_eqm^4) inside the interior solver per substep.
     surface_bc_mode: str = field(
         default='flux',
         validator=(in_(('flux', 'grey_body')), _valid_surface_bc_mode),
     )
+    """Surface boundary condition mode for SPIDER and Aragog: 'flux' or 'grey_body'.
+    'flux' consumes prescribed F_atm from the atmosphere module as the upper boundary flux.
+    'grey_body' evaluates radiative surface cooling sigma * (T_surf^4 - T_eqm^4) inside the
+    interior solver per substep from current top-cell T (SPIDER uses -SURFACE_BC 1
+    -emissivity0 1.0; Aragog uses outer_boundary_condition=1 with emissivity=1). The
+    atmosphere module still runs to populate diagnostic helpfile fields (F_olr, F_sct,
+    R_obs), but its F_atm output is not used by the interior. Incompatible with
+    interior_energetics.aragog.top_cell_dt_limit = true."""
 
     # -----------------------------------------------------------------
     # EOS and rheology parameters exposed to config. Defaults match

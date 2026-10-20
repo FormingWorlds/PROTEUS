@@ -143,23 +143,31 @@ PROTEUS uses an adaptive time-stepping scheme controlled by `params.dt.method`:
 - **`maximum`**: The timestep is always `params.dt.maximum`. Useful for
   steady-state runs.
 
-All methods enforce `params.dt.minimum` and `params.dt.maximum` bounds. During
-the mushy zone (melt fraction between `phi_crit` and `mushy_upper`), the
-timestep is additionally capped at `params.dt.mushy_maximum` to resolve the
-rapid solidification transition. When `interior_energetics.module = 'aragog'`
-and `interior_energetics.aragog.top_cell_dt_limit = true`, the timestep is
-further capped at the top-cell sensible-heat drain timescale $\tau_\mathrm{drain}$
+All methods enforce `params.dt.minimum` (which holds except where atmospheric
+escape, the top-cell drain cap, solver retries, mushy-zone limiting, and impact
+landing steps shorten the step; escape and the drain cap stop at
+`minimum * step_dt_floor_frac`, while other caps can go lower) and
+`params.dt.maximum` bounds. During the mushy zone (melt fraction between
+`phi_crit` and `mushy_upper`), the timestep is additionally capped at
+`params.dt.mushy_maximum` to resolve the rapid solidification transition.
+When `interior_energetics.module = 'aragog'` and
+`interior_energetics.aragog.top_cell_dt_limit = true` (incompatible with
+`interior_energetics.surface_bc_mode = 'grey_body'`), the timestep is further
+capped at the top-cell sensible-heat drain timescale $\tau_\mathrm{drain}$
 (floored at `params.dt.minimum * escape.step_dt_floor_frac`, which can sit
 below `params.dt.minimum`), and the post-step `tmagma_atol`/`tmagma_rtol` clip
+(maximum increase $\mathrm{atol} + \mathrm{rtol} \times T_\mathrm{magma,prev}$)
 on `T_magma`, `T_surf`, and `Phi_global` is skipped on steps where
-$\tau_\mathrm{drain}$ is finite (while `atmos_clim.prevent_warming` continues to
+$\tau_\mathrm{drain}$ is finite (while `planet.prevent_warming` continues to
 clamp `T_magma`, `T_surf`, `Phi_global`, and `F_int` when active). This bound is
 a start-of-step linear estimate on the top-cell mean that holds where $c_p$ is
-smooth over the step; at a liquidus crossing during a step it can be exceeded
-because the realized chord $c_p$ drops below the step-start value and the
-surface basic node is extrapolated from the top two staggered cells with weights
-$[-0.5\,r,\, 1 + 0.5\,r]$ (measured at $1.82$ to $1.85\times$ the allowance on 1
-step per run in 4 25-kyr coupled runs at $t \approx 531\,\mathrm{yr}$).
+smooth over the step; at a liquidus crossing during a step ($\phi_\mathrm{top} = 1$
+at step start and $< 1$ at step end) it can be exceeded because the realized
+chord $c_p$ drops below the step-start value and the surface basic node is
+extrapolated from the top two staggered cells with weights about $-0.5$ and $1.5$
+(Aragog's outer extrapolation) (measured at $1.82$ to $1.85\times$ the allowance
+$\eta_\mathrm{eff} T_\mathrm{surf}$ on 1 step per run in 2 configurations
+(3 distinct runs) at $t \approx 531\,\mathrm{yr}$).
 
 ## Convergence and termination
 
