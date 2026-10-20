@@ -2410,6 +2410,8 @@ def test_estimate_tau_drain_paleos_slice_531p546_chord_lookahead_and_window():
     """On the committed 1D PALEOS slice at P_top = 4.455575e8 Pa (t = 531.546 yr, row 386),
     _estimate_tau_drain returns 11.241963 yr without chord collapse and 4.878514 yr
     (chord ratio 0.433956) with the 1-evaluation chord-cp lookahead."""
+    import re
+
     from proteus.interior_energetics.timestep import _estimate_tau_drain
 
     data = _load_paleos_ptop_531p546_slice_fixture()
@@ -2418,8 +2420,14 @@ def test_estimate_tau_drain_paleos_slice_531p546_chord_lookahead_and_window():
     assert data['source_table'] != 'none'
     assert data['source_table'].startswith('PALEOS')
     assert 'none EOS slice' not in data['description']
-    assert isinstance(data.get('aragog_commit'), str) and len(data['aragog_commit']) >= 40
-    assert 'dirty' not in data['aragog_commit']
+    assert 'aragog_commit' not in data
+    assert (
+        re.fullmatch(
+            r'[A-Za-z0-9._-]+-[0-9]+-g[0-9a-f]{40}',
+            str(data.get('aragog_commit_eos_eval', '')),
+        )
+        is not None
+    )
     assert 0.0 <= float(data['max_2d_vs_slice_rel_diff']) < 1.0e-14
     rows = {int(r['row']): r for r in data['snap531_rows_380_to_392']}
     r386 = rows[386]
@@ -2437,7 +2445,14 @@ def test_estimate_tau_drain_paleos_slice_531p546_chord_lookahead_and_window():
     ref_pts = data['reference_2d_points']
     s_ref = np.asarray(ref_pts['S_J_kg_K'], dtype=float)
     p_ref = np.full_like(s_ref, float(data['P_top_Pa']), dtype=float)
-    assert len(s_ref) >= 20
+    s_sol_ref = float(data['S_sol_at_P_top'])
+    s_liq_ref = float(data['S_liq_at_P_top'])
+    assert len(s_ref) >= 25
+    assert int(np.sum(np.abs(s_ref - s_sol_ref) <= 5.0)) >= 3
+    assert int(np.sum(np.abs(s_ref - s_liq_ref) <= 5.0)) >= 3
+    assert int(np.sum((s_ref >= 2429.71) & (s_ref < s_sol_ref))) >= 2
+    assert int(np.sum((s_ref > s_sol_ref) & (s_ref < s_liq_ref))) >= 6
+    assert 1 <= int(np.sum(s_ref >= 11283.0)) <= 3
     for key, slice_fn in (
         ('temperature_K', eos_slice.temperature),
         ('heat_capacity_J_kg_K', eos_slice.heat_capacity),
@@ -2821,3 +2836,116 @@ def test_estimate_tau_drain_positivity_and_monotonic_flux_property():
     _check()
     assert len(checked) >= 10
     assert all(lo > hi > 0.0 for lo, hi in checked)
+
+
+@pytest.mark.unit
+def test_paleos_slice_fixture_builder_helpers(tmp_path, monkeypatch):
+    """Unit test _resolve_source_table and _resolve_aragog_commit in build_paleos_ptop_slice_fixture."""
+    import subprocess
+    from types import SimpleNamespace
+
+    from tests.interior_energetics.fixtures import build_paleos_ptop_slice_fixture as builder
+
+    cfg_valid = tmp_path / 'valid_zalmoxis.toml'
+    cfg_valid.write_text(
+        '[interior_struct]\nmodule = "zalmoxis"\neos_dir = "none"\n'
+        '[interior_struct.zalmoxis]\nmantle_eos = "PALEOS:MgSiO3"\n',
+        encoding='utf-8',
+    )
+    assert builder._resolve_source_table(cfg_valid) == 'PALEOS:MgSiO3'
+
+    cfg_eos_dir = tmp_path / 'valid_eos_dir.toml'
+    cfg_eos_dir.write_text(
+        '[interior_struct]\nmodule = "dummy"\neos_dir = "PALEOS-2phase:MgSiO3"\n',
+        encoding='utf-8',
+    )
+    assert builder._resolve_source_table(cfg_eos_dir) == 'PALEOS-2phase:MgSiO3'
+
+    cfg_not_zalmoxis = tmp_path / 'not_zalmoxis.toml'
+    cfg_not_zalmoxis.write_text(
+        '[interior_struct]\nmodule = "spider"\neos_dir = "none"\n'
+        '[interior_struct.zalmoxis]\nmantle_eos = "PALEOS:MgSiO3"\n',
+        encoding='utf-8',
+    )
+    with pytest.raises(RuntimeError, match='interior_struct.module'):
+        builder._resolve_source_table(cfg_not_zalmoxis)
+
+    for bad_eos in ('WolfBower2018:MgSiO3', 'none', ''):
+        cfg_bad = tmp_path / f'bad_{bad_eos or "empty"}.toml'
+        cfg_bad.write_text(
+            f'[interior_struct]\nmodule = "zalmoxis"\neos_dir = "none"\n'
+            f'[interior_struct.zalmoxis]\nmantle_eos = "{bad_eos}"\n',
+            encoding='utf-8',
+        )
+        with pytest.raises(RuntimeError, match='Invalid EOS source_table'):
+            builder._resolve_source_table(cfg_bad)
+
+    cfg_bad_dir = tmp_path / 'bad_dir.toml'
+    cfg_bad_dir.write_text(
+        '[interior_struct]\nmodule = "zalmoxis"\neos_dir = "WolfBower2018"\n',
+        encoding='utf-8',
+    )
+    with pytest.raises(RuntimeError, match='Invalid EOS source_table'):
+        builder._resolve_source_table(cfg_bad_dir)
+
+    fake_aragog_file = tmp_path / 'aragog' / 'eos' / 'entropy.py'
+    fake_aragog_file.parent.mkdir(parents=True, exist_ok=True)
+    fake_aragog_file.write_text('# stub\n', encoding='utf-8')
+    valid_desc = '26.05.10-47-g075fcb05ce035183100c9bec47b7dcc7d769c2d6'
+
+    def _mock_run_ok(cmd, **_kwargs):
+        if 'rev-parse' in cmd:
+            return SimpleNamespace(stdout=f'{tmp_path / "aragog"}\n')
+        return SimpleNamespace(stdout=f'{valid_desc}\n')
+
+    assert (
+        builder._resolve_aragog_commit(aragog_file=fake_aragog_file, run_cmd=_mock_run_ok)
+        == valid_desc
+    )
+
+    for bad_desc in (
+        f'{valid_desc}-dirty',
+        '26.05.10-47-g075fcb05',
+        '075fcb05ce035183100c9bec47b7dcc7d769c2d6',
+        'x' * 56,
+    ):
+
+        def _mock_run_bad_desc(cmd, _d=bad_desc, **_kwargs):
+            if 'rev-parse' in cmd:
+                return SimpleNamespace(stdout=f'{tmp_path / "aragog"}\n')
+            return SimpleNamespace(stdout=f'{_d}\n')
+
+        with pytest.raises(RuntimeError, match='Expected clean aragog git describe'):
+            builder._resolve_aragog_commit(
+                aragog_file=fake_aragog_file, run_cmd=_mock_run_bad_desc
+            )
+
+    def _mock_run_wrong_top(cmd, **_kwargs):
+        if 'rev-parse' in cmd:
+            return SimpleNamespace(stdout=f'{tmp_path / "proteus"}\n')
+        return SimpleNamespace(stdout=f'{valid_desc}\n')
+
+    with pytest.raises(RuntimeError, match='Expected git toplevel for aragog'):
+        builder._resolve_aragog_commit(
+            aragog_file=fake_aragog_file, run_cmd=_mock_run_wrong_top
+        )
+
+    def _mock_run_missing_git(_cmd, **_kwargs):
+        raise FileNotFoundError('git not found')
+
+    with pytest.raises(RuntimeError, match='Failed to resolve aragog git commit'):
+        builder._resolve_aragog_commit(
+            aragog_file=fake_aragog_file, run_cmd=_mock_run_missing_git
+        )
+
+    def _mock_run_called_error(cmd, **_kwargs):
+        raise subprocess.CalledProcessError(128, cmd)
+
+    with pytest.raises(RuntimeError, match='Failed to resolve aragog git commit'):
+        builder._resolve_aragog_commit(
+            aragog_file=fake_aragog_file, run_cmd=_mock_run_called_error
+        )
+
+    monkeypatch.setattr(builder.aragog.eos.entropy, '__file__', None)
+    with pytest.raises(RuntimeError, match='Cannot locate aragog'):
+        builder._resolve_aragog_commit(aragog_file=None, run_cmd=_mock_run_ok)

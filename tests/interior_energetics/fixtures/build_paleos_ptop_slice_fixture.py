@@ -13,6 +13,7 @@ import argparse
 import hashlib
 import json
 import math
+import re
 import subprocess
 import sys
 import tomllib
@@ -31,6 +32,7 @@ if str(REPO_ROOT) not in sys.path:
 from tests.interior_energetics.test_timestep import _PaleosSliceEOS  # noqa: E402
 
 OUT_PATH = Path(__file__).resolve().parent / 'paleos_ptop_531p546_slice.json'
+_GIT_DESCRIBE_RE = re.compile(r'[A-Za-z0-9._-]+-[0-9]+-g[0-9a-f]{40}')
 
 
 def _md5(path: Path) -> str:
@@ -38,14 +40,45 @@ def _md5(path: Path) -> str:
     return hashlib.md5(path.read_bytes()).hexdigest()
 
 
-def _resolve_aragog_commit() -> str:
-    """Return git describe string with 40-char commit hash for the aragog checkout."""
-    aragog_file = getattr(aragog.eos.entropy, '__file__', None)
+def _resolve_source_table(cfg_path: Path) -> str:
+    """Resolve and validate the PALEOS EOS source table name from init_coupler.toml."""
+    with cfg_path.open('rb') as f_cfg:
+        run_cfg = tomllib.load(f_cfg)
+    struct_cfg = run_cfg.get('interior_struct', {})
+    raw_eos_dir = str(struct_cfg.get('eos_dir', 'none'))
+    if raw_eos_dir.lower() != 'none':
+        source_table = raw_eos_dir
+    else:
+        struct_mod = str(struct_cfg.get('module', 'none'))
+        if struct_mod != 'zalmoxis':
+            raise RuntimeError(
+                f'Cannot resolve zalmoxis.mantle_eos when interior_struct.module={struct_mod!r} '
+                f'(expected "zalmoxis") in {cfg_path}'
+            )
+        source_table = str(struct_cfg.get('zalmoxis', {}).get('mantle_eos', 'none'))
+    if (
+        not source_table
+        or source_table.lower() == 'none'
+        or not source_table.startswith('PALEOS')
+    ):
+        raise RuntimeError(
+            f'Invalid EOS source_table={source_table!r} resolved from {cfg_path}'
+        )
+    return source_table
+
+
+def _resolve_aragog_commit(
+    aragog_file: str | Path | None = None,
+    run_cmd=subprocess.run,
+) -> str:
+    """Return git describe string for the aragog checkout used for the 2D EOS evaluation check."""
+    if aragog_file is None:
+        aragog_file = getattr(aragog.eos.entropy, '__file__', None)
     if not aragog_file:
         raise RuntimeError('Cannot locate aragog.eos.entropy.__file__ to resolve git commit.')
     aragog_repo = Path(aragog_file).resolve().parent
     try:
-        top_proc = subprocess.run(
+        top_proc = run_cmd(
             ['git', '-C', str(aragog_repo), 'rev-parse', '--show-toplevel'],
             check=True,
             capture_output=True,
@@ -56,7 +89,7 @@ def _resolve_aragog_commit() -> str:
             raise RuntimeError(
                 f'Expected git toplevel for aragog checkout, got {top_dir} from {aragog_repo}'
             )
-        proc = subprocess.run(
+        proc = run_cmd(
             [
                 'git',
                 '-C',
@@ -77,9 +110,9 @@ def _resolve_aragog_commit() -> str:
             f'run from a git checkout of aragog: {exc}'
         ) from exc
     commit_desc = proc.stdout.strip()
-    if len(commit_desc) < 40 or 'dirty' in commit_desc:
+    if _GIT_DESCRIBE_RE.fullmatch(commit_desc) is None:
         raise RuntimeError(
-            f'Expected clean aragog git commit description (>=40 chars), got {commit_desc!r}'
+            f'Expected clean aragog git describe string matching <tag>-<N>-g<40hex>, got {commit_desc!r}'
         )
     return commit_desc
 
@@ -105,24 +138,11 @@ def main() -> None:
         run_cfg = tomllib.load(f_cfg)
     mass_earth = float(run_cfg['planet']['mass_tot'])
     semimajor_au = float(run_cfg['orbit']['semimajoraxis'])
-    raw_eos_dir = str(run_cfg['interior_struct'].get('eos_dir', 'none'))
-    if raw_eos_dir.lower() != 'none':
-        source_table = raw_eos_dir
-    else:
-        source_table = str(
-            run_cfg['interior_struct'].get('zalmoxis', {}).get('mantle_eos', 'none')
-        )
-    if (
-        not source_table
-        or source_table.lower() == 'none'
-        or not source_table.startswith('PALEOS')
-    ):
-        raise RuntimeError(
-            f'Invalid EOS source_table={source_table!r} resolved from {cfg_path}'
-        )
+    source_table = _resolve_source_table(cfg_path)
     interior_mod = str(run_cfg['interior_energetics']['module'])
     atmos_mod = str(run_cfg['atmos_clim']['module'])
-    aragog_commit = _resolve_aragog_commit()
+    # Aragog checkout used for the 2D EntropyEOS evaluation check, not of the run.
+    aragog_commit_eos_eval = _resolve_aragog_commit()
 
     eos = EntropyEOS(eos_dir)
     hf_df = pd.read_csv(hf_path, sep=r'\s+')
@@ -185,13 +205,41 @@ def main() -> None:
             f'_PaleosSliceEOS diverged from 2D EntropyEOS: max_rel_diff={max_rel_diff}'
         )
 
-    # Record 25 reference points from the 2D EntropyEOS across solid, mushy, and liquid phases
+    # Record 29 reference points across solid, solid plateau, solidus, mush, liquidus, and liquid
     s_ref_pts = np.unique(
-        np.concatenate(
+        np.array(
             [
-                np.linspace(float(eos.S_min), float(eos.S_max), 21),
-                np.array([s_sol, 0.5 * (s_sol + s_liq), s_liq, 3105.0], dtype=float),
-            ]
+                float(eos.S_min),
+                406.12,
+                900.0,
+                1400.0,
+                1800.0,
+                2200.0,
+                2400.0,
+                2445.0,
+                2475.0,
+                s_sol - 5.0,
+                s_sol,
+                s_sol + 5.0,
+                s_sol + 0.15 * (s_liq - s_sol),
+                s_sol + 0.35 * (s_liq - s_sol),
+                0.5 * (s_sol + s_liq),
+                3105.0,
+                s_sol + 0.75 * (s_liq - s_sol),
+                s_sol + 0.90 * (s_liq - s_sol),
+                s_liq - 5.0,
+                s_liq,
+                s_liq + 5.0,
+                3717.0,
+                4500.0,
+                6000.0,
+                8000.0,
+                10000.0,
+                11283.4,
+                16000.0,
+                float(eos.S_max),
+            ],
+            dtype=float,
         )
     )
     p_ref_pts = np.full_like(s_ref_pts, p_top_pa, dtype=float)
@@ -267,7 +315,7 @@ def main() -> None:
     payload = {
         'description': description,
         'source_table': source_table,
-        'aragog_commit': aragog_commit,
+        'aragog_commit_eos_eval': aragog_commit_eos_eval,
         'max_2d_vs_slice_rel_diff': max_rel_diff,
         'reference_2d_points': reference_2d_points,
         'source_files_md5': source_files_md5,
