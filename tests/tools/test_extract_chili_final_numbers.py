@@ -213,3 +213,20 @@ def test_main_prints_every_case_and_refuses_a_missing_folder(tmp_path, monkeypat
     monkeypatch.setattr(sys, 'argv', ['extract', '--runs', str(tmp_path / 'absent')])
     with pytest.raises(FileNotFoundError, match='Run folder not found'):
         tool.main()
+
+
+def test_delta_iw_is_not_available_for_a_non_positive_magma_temperature(tmp_path):
+    """The IW buffer needs log(T_magma); a last row with T_magma = 0 gives 'Delta IW: not
+    available' instead of a math domain error."""
+    tool = _load_tool()
+    run = _make_run(tmp_path)
+    hf = run / 'runtime_helpfile.csv'
+    lines = hf.read_text(encoding='utf-8').splitlines()
+    last = lines[-1].split('\t')
+    last[_COLUMNS.index('T_magma')] = '0.0'
+    hf.write_text('\n'.join([*lines[:-1], '\t'.join(last)]) + '\n', encoding='utf-8')
+
+    res = tool.extract_run_data(run, 'Nominal Venus')
+
+    assert res['delta_iw'] is None
+    assert 'Delta IW: not available' in tool.build_markdown_summary([res])
