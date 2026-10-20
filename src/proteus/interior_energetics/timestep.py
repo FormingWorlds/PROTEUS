@@ -96,11 +96,11 @@ def _estimate_tau_drain(config: Config, hf_row: dict, interior_o) -> float:
     $T_{\\text{top}} - T(P_{\\text{top}}, S_{\\text{top}} - q / T_{\\text{top}})$ by
     $\\Delta T_{\\text{allow}}$ across a liquidus crossing and in the mushy regime
     where the tabulated mush ``heat_capacity`` (a lever-rule blend of the end-member heat
-    capacities) exceeds $T\\,\\mathrm{d}S/\\mathrm{d}T$ along the EOS. A lookahead trial on
-    the flat part of the PALEOS solid table (where $T$ is held at $T_{\\text{sol}}$ from the
-    last node below $S_{\\text{sol}}$) or in the low-entropy clamp at $P_{\\text{top}}$ can
-    give a step that exceeds $\\Delta T_{\\text{allow}}$; this is shown on a constructed
-    slice state and has not occurred in the coupled runs. The condition
+    capacities) exceeds $T\\,\\mathrm{d}S/\\mathrm{d}T$ along the EOS. A lookahead trial that
+    reaches or spans the flat part of the PALEOS solid table (where $T$ is held at
+    $T_{\\text{sol}}$ from the last node below $S_{\\text{sol}}$) can give a step that exceeds
+    $\\Delta T_{\\text{allow}}$; this is shown on constructed slice states, and no step of the
+    coupled runs exceeded $\\Delta T_{\\text{allow}}$. The condition
     $\\Delta T_{\\text{trial}} > \\Delta T_{\\text{allow}}$ forces the chord value below
     $c_{p,\\text{eff}}$, and $\\min()$ guards floating-point round-off; using
     $T_{\\text{mean}} = 0.5\\,(T_{\\text{top}} + T_{\\text{trial}})$ in the chord numerator

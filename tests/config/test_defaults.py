@@ -687,10 +687,10 @@ def test_aragog_top_cell_dt_limit_defaults_and_validators():
     )
     assert (
         "bounding the linearized unresupplied top-cell drop under the step's linearization "
-        'dS = q / T_top with q = cp_chord * dT_allow. A lookahead trial on the flat part '
-        'of the PALEOS solid table (T held at T_sol from the last node below S_sol) or in the '
-        'low-entropy clamp at P_top can give a step that exceeds dT_allow; this is shown on a '
-        'constructed slice state and has not occurred in the coupled runs.' in interior_md
+        'dS = q / T_top with q = cp_chord * dT_allow. A lookahead trial that reaches or spans '
+        'the flat part of the PALEOS solid table (T held at T_sol from the last node below '
+        'S_sol) can give a step that exceeds dT_allow; this is shown on constructed slice '
+        'states, and no step of the coupled runs exceeded dT_allow.' in interior_md
     )
     assert (
         'Using T_mean = 0.5 * (T_top + T_trial) in the chord numerator would reduce cp_chord '
@@ -701,11 +701,12 @@ def test_aragog_top_cell_dt_limit_defaults_and_validators():
         'T_top - T(P_top, S_top - q / T_top) <= dT_allow' in interior_md
     )
     assert (
-        'in the T_top form. A lookahead trial on the flat part of the PALEOS solid table '
-        '(T held at T_sol from the last node below S_sol) or in the low-entropy clamp at '
-        'P_top can give a step that exceeds dT_allow; this is shown on a constructed slice '
-        'state and has not occurred in the coupled runs.' in interior_md
+        'in the T_top form. A lookahead trial that reaches or spans the flat part of the '
+        'PALEOS solid table (T held at T_sol from the last node below S_sol) can give a step '
+        'that exceeds dT_allow; this is shown on constructed slice states, and no step of the '
+        'coupled runs exceeded dT_allow.' in interior_md
     )
+    assert 'low-entropy clamp at P_top can give' not in interior_md
     assert 'except when' not in interior_md
     assert 'must lie in (0, 0.15\\]' in interior_md
     assert 'must lie in (0, top_cell_dt_rel_dT\\] (up to 0.15)' in interior_md
