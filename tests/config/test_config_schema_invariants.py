@@ -1601,13 +1601,16 @@ LOWT_REFUSED_MANTLES = [
     'PALEOS-API-2phase:MgSiO3',
     'PALEOS-API:H2O',
     'PALEOS-API:MgSiO3:0.7+PALEOS:H2O:0.3',
+    'PALEOS:H2O:0.7+PALEOS-API:MgSiO3:0.3',
     'PALEOS-2phase:MgSiO3-highres',
+    'PALEOS:H2O:0.7+PALEOS-2phase:MgSiO3-highres:0.3',
 ]
 LOWT_ACCEPTED_MANTLES = [
     'PALEOS:MgSiO3',
     'PALEOS-2phase:MgSiO3',
     'PALEOS:H2O',
     'PALEOS:MgSiO3:0.7+PALEOS:H2O:0.3',
+    'PALEOS:MgSiO3:0.7+PALEOS-API:H2O:0.3',
     'WolfBower2018:MgSiO3',
     'RTPress100TPa:MgSiO3',
     'Seager2007:MgSiO3',
@@ -1617,8 +1620,9 @@ LOWT_ACCEPTED_MANTLES = [
 @pytest.mark.unit
 def test_lowt_extension_ps_tables_property_refuses_exactly_the_unsupported_cases():
     """Over any structure module, mantle EOS and switch value, the check refuses exactly the switch
-    set to True with a structure other than zalmoxis or dummy or with a PALEOS-API or -highres
-    mantle, and a missing Zalmoxis section passes."""
+    set to True with a structure other than zalmoxis or dummy or with a mantle whose energetics key
+    is PALEOS-API or -highres, and a missing Zalmoxis section passes; every mantle of both lists
+    runs with zalmoxis and dummy and the switch on."""
     from hypothesis import example, given, settings
     from hypothesis import strategies as st
 
@@ -1639,6 +1643,9 @@ def test_lowt_extension_ps_tables_property_refuses_exactly_the_unsupported_cases
     @example('dummy', 'PALEOS:MgSiO3', True, True)
     @example('zalmoxis', 'PALEOS-API:MgSiO3', 1, True)
     def _check(module, mantle, lowt, has_section):
+        _decide(module, mantle, lowt, has_section)
+
+    def _decide(module, mantle, lowt, has_section):
         zalmoxis = SimpleNamespace(lowt_extension=lowt, mantle_eos=mantle)
         cfg = SimpleNamespace(
             interior_struct=SimpleNamespace(
@@ -1661,6 +1668,9 @@ def test_lowt_extension_ps_tables_property_refuses_exactly_the_unsupported_cases
             assert result is None
 
     _check()
+    for module in ('zalmoxis', 'dummy'):
+        for mantle in LOWT_REFUSED_MANTLES + LOWT_ACCEPTED_MANTLES:
+            _decide(module, mantle, True, True)
 
 
 @pytest.mark.unit

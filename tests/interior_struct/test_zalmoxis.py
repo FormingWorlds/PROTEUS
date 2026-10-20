@@ -1086,10 +1086,11 @@ def test_lowt_extension_refuses_an_unsupported_mantle_before_building_its_tables
     assert isinstance(excinfo.value, ValueError), repr(excinfo.value)
     assert f'does not support the mantle EOS {mantle}' in str(excinfo.value)
     built.assert_not_called()
-    if mantle.startswith('PALEOS-API'):
-        with pytest.raises(Exception, match='resolver called'):
-            zmod.generate_spider_tables(config(False), str(tmp_path))
-        assert built.call_count >= 1
+    off = 'resolver called' if mantle.startswith('PALEOS-API') else 'not found'
+    with pytest.raises(Exception, match=off) as excinfo:
+        zmod.generate_spider_tables(config(False), str(tmp_path))
+    assert 'does not support' not in str(excinfo.value)
+    assert built.call_count >= 1 if mantle.startswith('PALEOS-API') else built.call_count == 0
 
 
 def test_a_removed_paleos_api_table_is_built_again(tmp_path, monkeypatch):
