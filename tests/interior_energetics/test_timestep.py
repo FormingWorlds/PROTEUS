@@ -1695,7 +1695,7 @@ def test_estimate_tau_drain_f_atm_near_zero_uses_f_min():
 @pytest.mark.unit
 @pytest.mark.physics_invariant
 def test_estimate_tau_drain_phi_outside_unit_interval_clamped():
-    """Melt fraction outside [0, 1] is clamped to [0, 1] before ramp and cp gating."""
+    """Negative melt fraction is clamped at 0.0 and melt fraction above 1.0 saturates the ramp at 1.0."""
     from proteus.interior_energetics.timestep import _estimate_tau_drain
 
     cfg_neg, io_neg, _ = _make_tau_drain_fixture(phi_top=-0.15, rel_dT=0.08, rel_dT_solid=0.02)
@@ -2103,7 +2103,7 @@ def test_estimate_tau_drain_ic_one_and_pre_atmosphere_return_inf_without_warning
     io._tau_drain_cap_valid = True
 
     with caplog.at_level(logging.WARNING, logger='fwl.proteus.interior_energetics.timestep'):
-        res_ic1 = _estimate_tau_drain(cfg, {'Time': 0.0, 'F_atm': 500.0, 'T_surf': 0.0}, io)
+        res_ic1 = _estimate_tau_drain(cfg, {'Time': 10.0, 'F_atm': 500.0, 'T_surf': 1500.0}, io)
         assert res_ic1 == float('inf')
         assert getattr(io, '_tau_drain_cap_valid', None) is False
         assert getattr(io, '_tau_drain_invalid_warned', False) is False
@@ -2116,6 +2116,12 @@ def test_estimate_tau_drain_ic_one_and_pre_atmosphere_return_inf_without_warning
         assert getattr(io, '_tau_drain_cap_valid', None) is False
         assert getattr(io, '_tau_drain_invalid_warned', False) is False
         assert [r.getMessage() for r in caplog.records if 'tau_drain' in r.getMessage()] == []
+
+        res_t0_valid = _estimate_tau_drain(
+            cfg, {'Time': 0.0, 'F_atm': 500.0, 'T_surf': 1500.0}, io
+        )
+        assert 0.0 < res_t0_valid < float('inf')
+        assert getattr(io, '_tau_drain_cap_valid', None) is True
 
         res_valid = _estimate_tau_drain(
             cfg, {'Time': 10.0, 'F_atm': 500.0, 'T_surf': 1500.0}, io
@@ -2231,9 +2237,12 @@ def test_next_step_top_cell_dt_limit_on_caps_dtswitch_below_dtminimum():
     }
 
     expected_tau = _estimate_tau_drain(cfg, hf_row, io)
+    io._tau_drain_cap_valid = False
     dt_on = next_step(cfg, {}, hf_row, hf_all, 1.0, interior_o=io)
+    assert getattr(io, '_tau_drain_cap_valid', None) is True
     cfg.interior_energetics.aragog.top_cell_dt_limit = False
     dt_off = next_step(cfg, {}, hf_row, hf_all, 1.0, interior_o=io)
+    assert getattr(io, '_tau_drain_cap_valid', None) is False
 
     esc_floor = cfg.params.dt.minimum * cfg.escape.step_dt_floor_frac
     assert dt_on == pytest.approx(expected_tau, rel=1e-12)

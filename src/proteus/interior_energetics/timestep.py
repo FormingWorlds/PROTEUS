@@ -118,6 +118,7 @@ def _estimate_tau_drain(config: Config, hf_row: dict, interior_o) -> float:
         isinstance(raw_t_surf, (int, float, np.number))
         and not isinstance(raw_t_surf, bool)
         and isinstance(raw_time, (int, float, np.number))
+        and not isinstance(raw_time, bool)
         and float(raw_t_surf) == 0.0
         and float(raw_time) <= 0.0
     ):

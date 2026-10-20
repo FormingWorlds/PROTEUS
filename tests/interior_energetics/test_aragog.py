@@ -5413,12 +5413,14 @@ def test_aragog_runner_resume_top_cell_dt_limit_on_caps_first_step():
         parameters=SimpleNamespace(solver=SimpleNamespace(end_time=0.0))
     )
     seen_solvers: list[object] = []
+    setup_dts: list[float] = []
 
     def _fake_compute(cfg, dirs, row, table, io):
         seen_solvers.append(io.aragog_solver)
         return 100.0 if io.aragog_solver is None else 2.75
 
     def _fake_setup(cfg, row, io, dt, dirs, hf_all=None):
+        setup_dts.append(float(dt))
         io.aragog_solver = populated_solver
         populated_solver.parameters.solver.end_time = row['Time'] + dt
 
@@ -5430,8 +5432,30 @@ def test_aragog_runner_resume_top_cell_dt_limit_on_caps_first_step():
         AragogRunner(config, {'output': 'run'}, hf_row, hf_all, interior_o)
 
     assert mock_dt.call_count == 1
+    assert setup_dts == [0.0]
     assert seen_solvers == [populated_solver]
     assert populated_solver.parameters.solver.end_time == pytest.approx(3105.25, rel=1e-12)
+
+    ic1_solver = SimpleNamespace(
+        parameters=SimpleNamespace(solver=SimpleNamespace(end_time=0.0))
+    )
+    interior_ic1 = SimpleNamespace(aragog_solver=None, ic=1)
+    ic1_dts: list[float] = []
+
+    def _fake_setup_ic1(cfg, row, io, dt, dirs, hf_all=None):
+        ic1_dts.append(float(dt))
+        io.aragog_solver = ic1_solver
+        ic1_solver.parameters.solver.end_time = row['Time'] + dt
+
+    with (
+        patch.object(AragogRunner, 'setup_logger'),
+        patch.object(AragogRunner, 'compute_time_step', return_value=0.0) as mock_dt_ic1,
+        patch.object(AragogRunner, 'setup_or_update_solver', side_effect=_fake_setup_ic1),
+    ):
+        AragogRunner(config, {'output': 'run'}, {'Time': 0.0}, hf_all, interior_ic1)
+
+    assert mock_dt_ic1.call_count == 1
+    assert ic1_dts == [0.0]
 
 
 @pytest.mark.unit

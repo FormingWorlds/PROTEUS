@@ -663,6 +663,14 @@ def test_aragog_top_cell_dt_limit_defaults_and_validators():
         ie_flux.surface_bc_mode = 'grey_body'
     assert 'grey_body' in str(exc_set.value)
 
+    with pytest.raises(ValueError, match='top_cell_dt_limit') as exc_mod:
+        ie_spider_grey.module = 'aragog'
+    assert 'grey_body' in str(exc_mod.value)
+
+    with pytest.raises(ValueError, match='top_cell_dt_limit') as exc_ara:
+        ie_grey_off.aragog = Aragog(top_cell_dt_limit=True)
+    assert 'grey_body' in str(exc_ara.value)
+
 
 @pytest.mark.unit
 def test_aragog_top_cell_dt_rel_property():

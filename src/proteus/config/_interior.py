@@ -742,7 +742,8 @@ class Interior:
     """
 
     module: str = field(
-        default='aragog', validator=in_(('spider', 'aragog', 'dummy', 'boundary'))
+        default='aragog',
+        validator=(in_(('spider', 'aragog', 'dummy', 'boundary')), _valid_surface_bc_mode),
     )
     num_levels: int = field(default=80, validator=ge(40))
 
