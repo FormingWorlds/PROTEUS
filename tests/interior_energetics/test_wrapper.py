@@ -7931,6 +7931,8 @@ def test_run_interior_top_cell_dt_limit_off_applies_tmagma_clamp():
     interior_o.ic = 2
     interior_o.dt = 10.0
     interior_o.aragog_fail_count = 0
+    # A valid drain-cap flag must not skip the clip while the option is off.
+    interior_o._tau_drain_cap_valid = True
     runner = MagicMock()
     runner.run_solver.return_value = (110.0, out)
 

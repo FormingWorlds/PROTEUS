@@ -1442,3 +1442,12 @@ def test_get_c_planet_falls_back_to_config_core_density_when_hf_row_lacks_it(cap
     # of using the config fallback moves C_int well outside tolerance.
     massless_core = (8.0 * np.pi / 15.0) * (0.0 + rho_mantle * (R**5 - R_core**5))
     assert abs(hf_row['C_int'] - massless_core) > 1e-6 * expected
+
+
+def test_interior_t_starts_with_tau_drain_cap_invalid():
+    """A new Interior_t has no valid Aragog top-cell drain cap, so run_interior keeps the
+    tmagma post-step clip until next_step sets the flag."""
+    first = Interior_t(50)
+    assert first._tau_drain_cap_valid is False
+    first._tau_drain_cap_valid = True
+    assert Interior_t(50)._tau_drain_cap_valid is False
