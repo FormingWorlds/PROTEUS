@@ -1479,7 +1479,7 @@ def test_postprocessing_refuses_a_helpfile_that_predates_schema_columns(tmp_path
 
     p = _make_proteus_instance(tmp_path)
     p.config.atmos_chem.module = 'vulcan'
-    p.config.atmos_chem.when = 'manually'
+    p.config.atmos_chem.mode = None
     drift = HelpfileSchemaDriftError('predates 1 column(s): R_xuv')
 
     for method, wrapper in (
@@ -2110,13 +2110,16 @@ def test_offline_chemistry_skips_plot_when_chemistry_returns_none(tmp_path):
     mock_plot.assert_not_called()
 
 
-def test_offline_chemistry_stops_on_vulcan_below_floor(tmp_path):
-    """proteus offchem with a VULCAN below its pyproject floor stops before any file is read."""
+@pytest.mark.parametrize('mode', [None, 'offline'])
+def test_offline_chemistry_stops_on_vulcan_below_floor(tmp_path, mode):
+    """proteus offchem with a VULCAN below its pyproject floor stops before any file is read,
+    in every mode, since offchem runs VULCAN whatever the mode is."""
     from packaging.requirements import Requirement
 
+    from tests.utils.test_coupler import _real_atmos_chem
+
     p = _make_proteus_instance(tmp_path)
-    p.config.atmos_chem.module = 'vulcan'
-    p.config.atmos_chem.when = 'offline'
+    p.config.atmos_chem = _real_atmos_chem('vulcan', mode)
     with (
         patch(
             'proteus.doctor._dependency_specs',
