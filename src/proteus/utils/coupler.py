@@ -371,7 +371,7 @@ def validate_module_versions(dirs: dict, config: Config):
     chem = config.atmos_chem
     if (
         chem.module == 'vulcan'
-        and chem.mode is not None
+        and chem.mode == 'offline'
         and (problem := vulcan_problem(config))
     ):
         log.error(problem)

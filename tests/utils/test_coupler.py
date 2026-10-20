@@ -3814,8 +3814,8 @@ def test_print_module_configuration_logs_versions_for_aragog_janus_zephyrus(monk
 
 
 @pytest.mark.unit
-def test_print_citation_covers_module_specific_citations_with_mode_set(monkeypatch):
-    """Cover print_citation branches for module-specific citations and chemistry gate."""
+def test_print_citation_covers_module_specific_citations(monkeypatch):
+    """Cover print_citation branches for module-specific citations."""
     config = types.SimpleNamespace(
         atmos_clim=types.SimpleNamespace(module='janus'),
         interior_energetics=types.SimpleNamespace(module='spider'),
@@ -3825,7 +3825,7 @@ def test_print_citation_covers_module_specific_citations_with_mode_set(monkeypat
         orbit=types.SimpleNamespace(module='lovepy'),
         accretion=types.SimpleNamespace(module='dummy'),
         observe=types.SimpleNamespace(module='petitRADTRANS'),
-        atmos_chem=types.SimpleNamespace(module='vulcan', mode='offline'),
+        atmos_chem=types.SimpleNamespace(module='vulcan'),
     )
 
     with patch('proteus.utils.coupler.log') as mock_log:
@@ -4319,8 +4319,8 @@ def test_print_module_configuration_logs_obliqua_version_and_julia(monkeypatch):
 
 
 @pytest.mark.unit
-def test_print_citation_agni_and_manual_mode_cover_noop_cases():
-    """Cover print_citation match-case no-op arms; VULCAN is cited in manual mode,
+def test_print_citation_agni_and_mode_none_cover_noop_cases():
+    """Cover print_citation match-case no-op arms; VULCAN is cited with mode none,
     because the user runs the selected chemistry module on the output afterwards."""
     config = types.SimpleNamespace(
         atmos_clim=types.SimpleNamespace(module='agni'),
@@ -4331,7 +4331,7 @@ def test_print_citation_agni_and_manual_mode_cover_noop_cases():
         orbit=types.SimpleNamespace(module='dummy'),
         accretion=types.SimpleNamespace(module='dummy'),
         observe=types.SimpleNamespace(module='dummy'),
-        atmos_chem=types.SimpleNamespace(module='vulcan', when='manually'),
+        atmos_chem=types.SimpleNamespace(module='vulcan', mode=None),
     )
 
     with patch('proteus.utils.coupler.log') as mock_log:
@@ -5900,10 +5900,7 @@ def test_vulcan_problem_reads_a_real_config_in_every_mode(mode):
         patch('proteus.doctor.importlib.metadata.version', return_value='26.4.22'),
         patch('proteus.doctor._editable_checkout_path', return_value=None),
     ):
-        try:
-            problem = vulcan_problem(config)
-        except AttributeError as exc:
-            pytest.fail(f'vulcan_problem cannot read a real config: {exc}')
+        problem = vulcan_problem(config)
     assert problem is not None and 'fwl-vulcan>=26.10.14' in problem
 
 
@@ -5924,8 +5921,5 @@ def test_the_start_checks_vulcan_only_when_the_run_calls_it(tmp_path, module, mo
         patch('proteus.utils.coupler.UpdateStatusfile'),
     ):
         mock_check.return_value.status = 'pass'
-        try:
-            validate_module_versions({'rad': str(tmp_path)}, config)
-        except AttributeError as exc:
-            pytest.fail(f'the start check cannot read a real config: {exc}')
+        validate_module_versions({'rad': str(tmp_path)}, config)
     assert mock_check.call_count == checked
