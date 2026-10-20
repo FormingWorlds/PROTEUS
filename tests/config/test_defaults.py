@@ -623,6 +623,12 @@ def test_aragog_top_cell_dt_limit_defaults_and_validators():
         with pytest.raises(ValueError):
             Aragog(top_cell_dt_rel_dT=bad)
 
+    # The field's own validator refuses a non-positive value set after construction.
+    cfg_set = Aragog()
+    for bad in (0.0, -0.01):
+        with pytest.raises(ValueError):
+            cfg_set.top_cell_dt_rel_dT = bad
+
     for bad_solid in (0.0, -0.01, 0.09, 0.16):
         with pytest.raises(ValueError):
             Aragog(top_cell_dt_rel_dT=0.08, top_cell_dt_rel_dT_solid=bad_solid)
