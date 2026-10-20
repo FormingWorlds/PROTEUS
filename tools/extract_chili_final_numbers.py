@@ -164,7 +164,7 @@ def extract_run_data(run_dir: Path, display_name: str) -> dict:
 
     for el in ('H', 'C'):
         key = f'{el}_kg_total'
-        first = float(r0_dict[key]) if key in r0_dict else 0.0
+        first = float(r0_dict.get(key, 0.0))
         res[f'{el.lower()}_retention_pct'] = (
             float(row_dict[key]) / first * 100.0 if first > 0 else None
         )
@@ -177,13 +177,13 @@ def extract_run_data(run_dir: Path, display_name: str) -> dict:
     )
 
     res['mush_node_range_pct'] = None
-    nc_files = sorted((run_dir / 'data').glob('*_int.nc'), key=_snapshot_time)
-    if nc_files:
+    last_nc = max((run_dir / 'data').glob('*_int.nc'), key=_snapshot_time, default=None)
+    if last_nc:
         try:
             import netCDF4
         except ImportError as exc:
-            raise ImportError(f'netCDF4 is needed to read {nc_files[-1]}') from exc
-        nc = netCDF4.Dataset(nc_files[-1])
+            raise ImportError(f'netCDF4 is needed to read {last_nc}') from exc
+        nc = netCDF4.Dataset(last_nc)
         if 'phi_s' in nc.variables:
             phi_s = nc.variables['phi_s'][:]
             res['mush_node_range_pct'] = (
@@ -219,15 +219,12 @@ def build_markdown_summary(results: list[dict]) -> str:
         '|---|---|---|---|---|---|---|---|---|---|---|---|',
     ]
     for r in results:
-        phi_vol = r['phi_global_vol']
-        wall_str = 'n/a'
-        if r['wall_time_hours'] is not None:
-            wall_str = f'{r["wall_time_hours"]:.1f} h ({r["wall_time_days"]:.2f} d)'
+        wall = r['wall_time_hours']
+        wall_str = 'n/a' if wall is None else f'{wall:.1f} h ({r["wall_time_days"]:.2f} d)'
         lines.append(
             f'| {r["display_name"]} | {r["status_code"]} ({r["status_text"]}) | '
             f'{r["rows"]} | {r["end_time_myr"]:.4f} | {r["phi_global_pct_str"]} | '
-            f'{_fmt(None if phi_vol is None else phi_vol * 100, ".1f", "%")} '
-            f'| {_fmt(r["f_atm_w_m2"], ".2f")} | '
+            f'{_fmt(r["phi_global_vol"], ".1%")} | {_fmt(r["f_atm_w_m2"], ".2f")} | '
             f'{wall_str} | {r["t_surf_k"]:.1f} | {r["p_surf_bar"]:.1f} | '
             f'{_fmt(r["h2o_bar"], ".1f")} | {_fmt(r["co2_bar"], ".1f")} |'
         )
