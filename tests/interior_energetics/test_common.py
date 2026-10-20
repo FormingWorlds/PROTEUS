@@ -1793,3 +1793,111 @@ def test_structure_forced_pending_flag_file_roundtrip_and_corrupt_fallback(
         assert resume_pending(str(tmp_path)) is True
     assert 'Could not parse structure-forced-pending flag file' in caplog.text
     assert has_unindexed_structure_flag_file(str(tmp_path)) is True
+
+
+def test_write_flag_file_atomic_directory_fsync_einval_completes_both_files_without_warning(
+    tmp_path, monkeypatch, caplog
+):
+    """When os.fsync or os.open on the parent directory raises OSError(EINVAL) after os.replace, both structure_stale.dat and structure_rollback.dat are written and no warning is logged."""
+    import errno
+    from pathlib import Path
+
+    from proteus.interior_energetics.common import (
+        get_file_baseline_structure_done,
+        get_file_structure_forced_pending,
+        get_file_structure_rollback,
+        get_file_structure_stale,
+        write_baseline_structure_done,
+        write_structure_forced_pending,
+    )
+
+    monkeypatch.setattr(Interior_t, '_load_ps_table', lambda self, *a, **kw: None)
+    data_dir = tmp_path / 'data'
+    data_dir.mkdir(parents=True)
+
+    real_os_open = os.open
+    real_os_close = os.close
+    real_os_fsync = os.fsync
+    dir_fds_opened: list[int] = []
+    dir_fds_closed: list[int] = []
+    active_dir_fds: set[int] = set()
+
+    def tracking_os_open(path, flags, *args, **kwargs):
+        fd = real_os_open(path, flags, *args, **kwargs)
+        if Path(path).resolve() == data_dir.resolve():
+            dir_fds_opened.append(fd)
+            active_dir_fds.add(fd)
+        return fd
+
+    def tracking_os_close(fd):
+        if fd in active_dir_fds:
+            active_dir_fds.discard(fd)
+            dir_fds_closed.append(fd)
+        return real_os_close(fd)
+
+    def fsync_einval_on_dir(fd):
+        if fd in active_dir_fds:
+            raise OSError(errno.EINVAL, 'Invalid argument on directory fsync')
+        return real_os_fsync(fd)
+
+    monkeypatch.setattr(os, 'open', tracking_os_open)
+    monkeypatch.setattr(os, 'close', tracking_os_close)
+    monkeypatch.setattr(os, 'fsync', fsync_einval_on_dir)
+
+    writer = Interior_t(5)
+    writer.structure_stale = True
+    writer.structure_rollback_active = True
+
+    caplog.clear()
+    with caplog.at_level('WARNING', logger='fwl.proteus'):
+        writer.write_structure_stale(str(tmp_path), row_index=5)
+        write_baseline_structure_done(str(tmp_path), True, row_index=5)
+        write_structure_forced_pending(str(tmp_path), True, row_index=5)
+
+    assert [r.message for r in caplog.records if r.levelname == 'WARNING'] == []
+    assert (
+        Path(get_file_structure_stale(str(tmp_path))).read_text(encoding='utf-8').strip()
+        == '1 5'
+    )
+    assert Path(get_file_structure_rollback(str(tmp_path))).is_file()
+    assert (
+        Path(get_file_structure_rollback(str(tmp_path))).read_text(encoding='utf-8').strip()
+        == '1 5'
+    )
+    assert (
+        Path(get_file_baseline_structure_done(str(tmp_path)))
+        .read_text(encoding='utf-8')
+        .strip()
+        == '1 5'
+    )
+    assert (
+        Path(get_file_structure_forced_pending(str(tmp_path)))
+        .read_text(encoding='utf-8')
+        .strip()
+        == '1 5'
+    )
+    assert len(dir_fds_opened) == 4
+    assert dir_fds_closed == dir_fds_opened
+    assert active_dir_fds == set()
+
+    # Also verify best-effort handling when os.open on the parent directory raises OSError(EINVAL):
+    def open_einval_on_dir(path, flags, *args, **kwargs):
+        if Path(path).resolve() == data_dir.resolve():
+            raise OSError(errno.EINVAL, 'Invalid argument opening directory fd')
+        return real_os_open(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(os, 'open', open_einval_on_dir)
+    writer.structure_stale = False
+    writer.structure_rollback_active = False
+    caplog.clear()
+    with caplog.at_level('WARNING', logger='fwl.proteus'):
+        writer.write_structure_stale(str(tmp_path), row_index=6)
+    assert [r.message for r in caplog.records if r.levelname == 'WARNING'] == []
+    assert (
+        Path(get_file_structure_stale(str(tmp_path))).read_text(encoding='utf-8').strip()
+        == '0 6'
+    )
+    assert (
+        Path(get_file_structure_rollback(str(tmp_path))).read_text(encoding='utf-8').strip()
+        == '0 6'
+    )
