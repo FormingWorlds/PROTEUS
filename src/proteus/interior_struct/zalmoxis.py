@@ -3178,7 +3178,8 @@ def compute_structure_mass_desync(radii, density, mass_enclosed) -> float:
 
 def _stop_on_invariant_error(solver):
     """Write status 33 when Zalmoxis returns a structure that breaks an invariant, and raise
-    again: the run stops, and no caller keeps its previous structure."""
+    again: the run stops, and no caller keeps its previous structure. A status write that
+    fails is logged and leaves no status file (the writer removes the old one first)."""
 
     @functools.wraps(solver)
     def run(config, outdir, *args, **kwargs):
