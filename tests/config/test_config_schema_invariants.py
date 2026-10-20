@@ -1580,23 +1580,45 @@ def test_lowt_extension_requires_a_structure_that_builds_the_ps_tables():
     def make(struct, lowt):
         cfg = _make_config_instance(**{'interior_energetics.module': 'aragog'})
         cfg.interior_struct = SimpleNamespace(
-            module=struct, zalmoxis=SimpleNamespace(lowt_extension=lowt)
+            module=struct,
+            zalmoxis=SimpleNamespace(lowt_extension=lowt, mantle_eos='PALEOS:MgSiO3'),
         )
         return cfg
 
-    with pytest.raises(ValueError, match='requires interior_struct.module') as excinfo:
-        lowt_extension_requires_ps_tables(make('spider', True), None, None)
-    assert '"spider"' in str(excinfo.value)
+    for struct in ('spider', None):
+        with pytest.raises(ValueError, match='requires interior_struct.module') as excinfo:
+            lowt_extension_requires_ps_tables(make(struct, True), None, None)
+        assert f'"{struct}"' in str(excinfo.value)
     for struct in ('zalmoxis', 'dummy'):
         assert lowt_extension_requires_ps_tables(make(struct, True), None, None) is None
     for struct in ('zalmoxis', 'dummy', 'spider'):
         assert lowt_extension_requires_ps_tables(make(struct, False), None, None) is None
 
 
+# Mantle EOS strings whose energetics key the extension does not continue, and ones it accepts
+LOWT_REFUSED_MANTLES = [
+    'PALEOS-API:MgSiO3',
+    'PALEOS-API-2phase:MgSiO3',
+    'PALEOS-API:H2O',
+    'PALEOS-API:MgSiO3:0.7+PALEOS:H2O:0.3',
+    'PALEOS-2phase:MgSiO3-highres',
+]
+LOWT_ACCEPTED_MANTLES = [
+    'PALEOS:MgSiO3',
+    'PALEOS-2phase:MgSiO3',
+    'PALEOS:H2O',
+    'PALEOS:MgSiO3:0.7+PALEOS:H2O:0.3',
+    'WolfBower2018:MgSiO3',
+    'RTPress100TPa:MgSiO3',
+    'Seager2007:MgSiO3',
+]
+
+
 @pytest.mark.unit
-def test_lowt_extension_ps_tables_property_refuses_only_spider_with_the_switch_on():
-    """Over any structure module name and any switch value, the check refuses exactly the switch
-    set to True with interior_struct.module = 'spider', and a missing Zalmoxis section passes."""
+def test_lowt_extension_ps_tables_property_refuses_exactly_the_unsupported_cases():
+    """Over any structure module, mantle EOS and switch value, the check refuses exactly the switch
+    set to True with a structure other than zalmoxis or dummy or with a PALEOS-API or -highres
+    mantle, and a missing Zalmoxis section passes."""
     from hypothesis import example, given, settings
     from hypothesis import strategies as st
 
@@ -1605,33 +1627,73 @@ def test_lowt_extension_ps_tables_property_refuses_only_spider_with_the_switch_o
     lowt_values = st.one_of(
         st.booleans(), st.integers(), st.floats(allow_nan=True), st.text(), st.none()
     )
-    modules = st.one_of(st.sampled_from(['spider', 'zalmoxis', 'dummy']), st.text())
+    modules = st.one_of(st.sampled_from(['spider', 'zalmoxis', 'dummy', None]), st.text())
+    mantles = st.sampled_from(LOWT_REFUSED_MANTLES + LOWT_ACCEPTED_MANTLES)
 
-    @settings(max_examples=300, deadline=None)
-    @given(modules, lowt_values, st.booleans())
-    @example('spider', 1, True)
-    @example('spider', 1.0, True)
-    @example('spider', 'true', True)
-    @example('spider', True, False)
-    @example('dummy', True, True)
-    def _check(module, lowt, has_section):
+    @settings(max_examples=400, deadline=None)
+    @given(modules, mantles, lowt_values, st.booleans())
+    @example('spider', 'PALEOS:MgSiO3', 1, True)
+    @example('spider', 'PALEOS:MgSiO3', 1.0, True)
+    @example('spider', 'PALEOS:MgSiO3', 'true', True)
+    @example('spider', 'PALEOS:MgSiO3', True, False)
+    @example('dummy', 'PALEOS:MgSiO3', True, True)
+    @example('zalmoxis', 'PALEOS-API:MgSiO3', 1, True)
+    def _check(module, mantle, lowt, has_section):
+        zalmoxis = SimpleNamespace(lowt_extension=lowt, mantle_eos=mantle)
         cfg = SimpleNamespace(
             interior_struct=SimpleNamespace(
-                module=module,
-                zalmoxis=SimpleNamespace(lowt_extension=lowt) if has_section else None,
+                module=module, zalmoxis=zalmoxis if has_section else None
             )
         )
-        if has_section and lowt is True and module == 'spider':
-            with pytest.raises(ValueError, match='requires interior_struct.module'):
+        refused = (
+            has_section
+            and lowt is True
+            and (module not in ('zalmoxis', 'dummy') or mantle in LOWT_REFUSED_MANTLES)
+        )
+        if refused:
+            with pytest.raises(ValueError, match='lowt_extension = true'):
                 lowt_extension_requires_ps_tables(cfg, None, None)
         else:
             try:
                 result = lowt_extension_requires_ps_tables(cfg, None, None)
             except ValueError as exc:
-                pytest.fail(f'refused {module!r} with {lowt!r}: {exc}')
+                pytest.fail(f'refused {module!r} {mantle!r} with {lowt!r}: {exc}')
             assert result is None
 
     _check()
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('mantle', LOWT_REFUSED_MANTLES)
+def test_lowt_extension_refuses_a_paleos_api_or_highres_mantle_when_a_config_file_is_read(
+    tmp_path, mantle
+):
+    """The extension continues the grid of the standard PALEOS solid table: reading a TOML file
+    with the switch on and a PALEOS-API or -highres mantle refuses it by name before any table
+    is built; the same file with the standard mantle loads."""
+    from pathlib import Path
+
+    base = (Path(__file__).parents[2] / 'input' / 'all_options.toml').read_text()
+    for line in (
+        '        lowt_extension        = false',
+        '        mantle_eos            = "PALEOS:MgSiO3"',
+    ):
+        assert base.count(line) == 1
+    text = base.replace(
+        '        lowt_extension        = false', '        lowt_extension        = true'
+    )
+    path = tmp_path / 'cfg.toml'
+    path.write_text(text)
+    assert read_config_object(path).interior_struct.zalmoxis.lowt_extension is True
+    path.write_text(
+        text.replace(
+            '        mantle_eos            = "PALEOS:MgSiO3"',
+            f'        mantle_eos            = "{mantle}"',
+        )
+    )
+    with pytest.raises(ValueError, match='does not support the mantle EOS') as excinfo:
+        read_config_object(path)
+    assert mantle.split(':')[0] in str(excinfo.value)
 
 
 @pytest.mark.unit

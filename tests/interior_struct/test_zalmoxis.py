@@ -1047,32 +1047,49 @@ def test_ps_table_inputs_needs_paleos_for_a_paleos_api_mantle(monkeypatch):
     hang.resolve_registry_entry.assert_not_called()
 
 
-@pytest.mark.parametrize('fmt', ['paleos_api', 'paleos_api_2phase'])
-def test_lowt_extension_refuses_a_paleos_api_mantle_before_building_it(monkeypatch, fmt):
-    """The extension is made for the shipped PALEOS solid table: a PALEOS-API mantle with the
-    switch on is refused by name before its tables are built; with the switch off it is built."""
+@pytest.mark.parametrize(
+    'mantle', ['PALEOS-API:MgSiO3', 'PALEOS-API-2phase:MgSiO3', 'PALEOS-2phase:MgSiO3-highres']
+)
+def test_lowt_extension_refuses_an_unsupported_mantle_before_building_its_tables(
+    tmp_path, monkeypatch, mantle
+):
+    """generate_spider_tables with the switch on refuses a PALEOS-API or -highres mantle by name
+    before any PALEOS-API table is resolved or built; with the switch off the API tables are
+    resolved."""
     from types import SimpleNamespace
 
     from proteus.interior_struct import zalmoxis as zmod
 
+    monkeypatch.delenv('PROTEUS_PS_CACHE_DIR', raising=False)
     built = MagicMock(side_effect=AssertionError('resolver called'))
     monkeypatch.setattr(zmod, 'resolve_paleos_api', built)
-    if fmt == 'paleos_api':
-        entry = {'format': fmt, 'material': 'mgsio3'}
-    else:
-        entry = {r: {'format': fmt} for r in ('solid_mantle', 'melted_mantle')}
+    api = {'format': 'paleos_api', 'material': 'mgsio3'}
+    pair = {r: {'format': 'paleos_api_2phase'} for r in ('solid_mantle', 'melted_mantle')}
+    missing = {
+        r: {'eos_file': str(tmp_path / f'{r}.dat')} for r in ('solid_mantle', 'melted_mantle')
+    }
+    registry = {
+        'PALEOS-API:MgSiO3': api,
+        'PALEOS-API-2phase:MgSiO3': pair,
+        'PALEOS-2phase:MgSiO3-highres': missing,
+    }
+    monkeypatch.setattr(zmod, 'load_zalmoxis_material_dictionaries', lambda: registry)
 
     def config(lowt):
+        zal = SimpleNamespace(mantle_eos=mantle, lowt_extension=lowt)
         return SimpleNamespace(
-            interior_struct=SimpleNamespace(zalmoxis=SimpleNamespace(lowt_extension=lowt))
+            params=SimpleNamespace(resume=False), interior_struct=SimpleNamespace(zalmoxis=zal)
         )
 
-    with pytest.raises(ValueError, match='does not support a PALEOS-API mantle'):
-        zmod._ps_table_inputs(config(True), 'PALEOS-API:MgSiO3', entry, {})
+    with pytest.raises(Exception) as excinfo:
+        zmod.generate_spider_tables(config(True), str(tmp_path))
+    assert isinstance(excinfo.value, ValueError), repr(excinfo.value)
+    assert f'does not support the mantle EOS {mantle}' in str(excinfo.value)
     built.assert_not_called()
-    with pytest.raises(AssertionError, match='resolver called'):
-        zmod._ps_table_inputs(config(False), 'PALEOS-API:MgSiO3', entry, {})
-    assert built.call_count == 1
+    if mantle.startswith('PALEOS-API'):
+        with pytest.raises(Exception, match='resolver called'):
+            zmod.generate_spider_tables(config(False), str(tmp_path))
+        assert built.call_count >= 1
 
 
 def test_a_removed_paleos_api_table_is_built_again(tmp_path, monkeypatch):
