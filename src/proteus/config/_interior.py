@@ -325,9 +325,9 @@ class Aragog:
                            CMB flux in the core-mantle temperature contrast.
     top_node: str
         Entropy of the top basic node, which sets T_magma. 'linear' (default)
-        extrapolates the top two cells; 'limited' takes the smaller of the top
-        cell step and the next one (minmod) and blends into the top cell near
-        a table edge, so the node stays in the table (not on core_bc 'gradient').
+        extrapolates the top two cells; 'limited' reduces that half step smoothly
+        near a table edge, so the node rises with the top cell and stays in the
+        table (not on core_bc 'gradient').
     """
 
     mass_coordinates: bool = field(default=True)

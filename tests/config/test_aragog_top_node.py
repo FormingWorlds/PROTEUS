@@ -43,3 +43,43 @@ def test_a_later_gradient_core_refuses_the_limited_top_node():
     a = Aragog(top_node='limited')
     with pytest.raises(ValueError, match='top_node'):
         a.core_bc = 'gradient'
+
+
+@given(value=st.sampled_from([True, 1, 1.0, None, 'Limited', 'minmod', float('nan')]))
+def test_a_refused_value_names_the_field_and_the_choices(value):
+    with pytest.raises(ValueError, match="'top_node' must be in"):
+        Aragog(top_node=value)
+
+
+@pytest.mark.parametrize('first', ['top_node', 'core_bc'])
+def test_a_refused_assignment_leaves_the_config(first):
+    """Either field set last refuses the pair and keeps the value it found."""
+    a = Aragog(**{first: 'limited' if first == 'top_node' else 'gradient'})
+    second, value = ('core_bc', 'gradient') if first == 'top_node' else ('top_node', 'limited')
+    kept = getattr(a, second)
+    with pytest.raises(ValueError, match='not available on core_bc'):
+        setattr(a, second, value)
+    assert getattr(a, second) == kept and getattr(a, first) != kept
+
+
+@pytest.mark.parametrize('core_bc', ['energy_balance', 'gradient'])
+def test_the_config_reader_takes_the_limited_top_node(tmp_path, core_bc):
+    import tomllib
+
+    import tomlkit
+    from helpers import PROTEUS_ROOT
+
+    from proteus.config import read_config_object
+
+    with open(PROTEUS_ROOT / 'input' / 'dummy.toml', 'rb') as f:
+        raw = tomllib.load(f)
+    aragog = raw.setdefault('interior_energetics', {}).setdefault('aragog', {})
+    aragog |= {'top_node': 'limited', 'core_bc': core_bc}
+    path = tmp_path / 'limited.toml'
+    with open(path, 'w') as f:
+        tomlkit.dump(raw, f)
+    if core_bc == 'gradient':
+        with pytest.raises(ValueError, match='While structuring Aragog'):
+            read_config_object(path)  # the energy_balance file differs only in core_bc
+    else:
+        assert read_config_object(path).interior_energetics.aragog.top_node == 'limited'

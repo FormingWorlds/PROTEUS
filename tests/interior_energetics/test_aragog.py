@@ -4240,7 +4240,17 @@ def test_setup_solver_passes_the_limited_top_node_only(tmp_path, top_node):
         AragogRunner.setup_solver(config, hf_row, interior_o, str(tmp_path))
 
     kwargs = mock_bc_cls.call_args.kwargs
-    assert kwargs.get('top_node') == (None if top_node == 'linear' else 'limited')
+    assert ('top_node' in kwargs) is (top_node == 'limited')
+    from aragog.parser import _BoundaryConditionsParameters
+
+    if (
+        top_node == 'limited'
+        and 'top_node' not in _BoundaryConditionsParameters.__annotations__
+    ):
+        pytest.skip('the installed aragog has no top_node option')
+    bc = _BoundaryConditionsParameters(**kwargs)
+    bc.normalize()
+    assert getattr(bc, 'top_node', 'linear') == top_node
 
 
 @pytest.mark.unit
