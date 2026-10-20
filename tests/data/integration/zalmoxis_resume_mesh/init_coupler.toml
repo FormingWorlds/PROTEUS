@@ -448,7 +448,8 @@ fixed_flux = -1.0
 
 [atmos_chem]
 module = "none"
-when = "manually"
+mode = "none"
+times = "end"
 photo_on = true
 Kzz_on = true
 Kzz_const = "none"

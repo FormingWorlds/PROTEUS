@@ -10,7 +10,8 @@ module = "vulcan"
 moldiff_on = true
 photo_on = true
 updraft_const = 0.0
-when = "offline"
+mode = "offline"
+times = "end"
 
 [atmos_chem.vulcan]
 clip_fl = 1e-20

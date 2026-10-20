@@ -1451,9 +1451,11 @@ def test_postprocessing_set_does_not_lose_a_key():
     }
     assert named <= required, 'dropped from the requirement: %s' % sorted(named - required)
 
-    # The two computed reads expand over fixed lists, so every member counts.
-    assert {e + '_kg_atm' for e in element_list} <= required
+    # The computed read expands over a fixed list, so every member counts.
     assert {g + '_vmr' for g in vol_list} <= required
+    # The per-element atmospheric masses are read by no postprocessing code,
+    # so an archived run without them is not refused.
+    assert not ({e + '_kg_atm' for e in element_list} & required)
 
     # Discrimination: the requirement is not simply the whole schema, so the
     # assertions above are not satisfied by a set that covers everything.
@@ -1467,8 +1469,8 @@ def test_postprocessing_still_refuses_a_column_it_does_read():
     The narrower requirement is not a way of proceeding regardless: a key
     the synthesis code reads without a fallback still has to be there.
     """
-    probes = list(_POSTPROCESSING_FIXED_KEYS) + ['H2O_vmr', 'O_kg_atm']
-    assert len(probes) == 12, 'expected every fixed key plus one of each expansion'
+    probes = list(_POSTPROCESSING_FIXED_KEYS) + ['H2O_vmr']
+    assert len(probes) == 11, 'expected every fixed key plus one of the expansion'
     for needed in probes:
         assert needed in GetPostprocessingKeys()
         with tempfile.TemporaryDirectory() as tmpdir:

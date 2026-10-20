@@ -483,7 +483,8 @@ config_version = "3.0"
     # Default off: VULCAN (GPL-3.0) is set up by `bash install.sh`,
     # or alone with `bash tools/get_vulcan.sh`.
     module                    = "none"       # none | vulcan | dummy
-    when                      = "manually"   # manually | offline | online
+    mode                      = "none"       # none | offline (online is not yet implemented)
+    times                     = "end"        # end | all | list of times [yr]
 
     # Transport processes
     photo_on                  = true         # photochemistry
