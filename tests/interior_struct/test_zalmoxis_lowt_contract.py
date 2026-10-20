@@ -55,7 +55,6 @@ def test_ps_cache_key_golden_digest_without_extension():
     computed_key = _ps_cache_key(**common, generator='g', lowt_file=None)
 
     assert computed_key == expected_key
-    assert '077d71466450' in computed_key
 
 
 def test_resumed_run_with_switch_changed_keeps_old_tables_and_resume_key_has_extension(
@@ -84,7 +83,7 @@ def test_resumed_run_with_switch_changed_keeps_old_tables_and_resume_key_has_ext
     config.planet.mass_tot = 1.0
     config.params.resume = True
 
-    # Current behaviour 1: resumed run keeps existing tables, does not call the generator, warns.
+    # A resumed run keeps the existing tables, does not call the generator, and warns.
     tables.reset_mock()
     with caplog.at_level(logging.WARNING):
         resumed_out = generate_spider_tables(config, str(run_dir))
@@ -93,7 +92,7 @@ def test_resumed_run_with_switch_changed_keeps_old_tables_and_resume_key_has_ext
     assert resumed_out['eos_dir'] == str(eos_dir)
     assert tables.call_count == 0
 
-    # Current behaviour 2: resume key calculation includes the extension and differs from old marker.
+    # The resume key includes the extension and differs from the old marker.
     entry = {'format': 'paleos_unified', 'eos_file': str(tmp_path / 'solid.dat')}
     mat_dicts = {'PALEOS:MgSiO3': entry}
     resume_k = _ps_resume_key(config, 'PALEOS:MgSiO3', entry, mat_dicts)

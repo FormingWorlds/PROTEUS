@@ -426,14 +426,26 @@ def lowt_extension_requires_aragog(instance, attribute, value):
 
 
 def lowt_extension_requires_ps_tables(instance, attribute, value):
-    """The low-temperature solid extension acts on the P-S tables that the SPIDER structure skips."""
+    """The low-temperature solid extension acts on the P-S tables that the zalmoxis and dummy
+    structures build from the standard PALEOS solid table."""
+    from proteus.utils.helper import energetics_eos_key, lowt_extension_unsupported
+
     struct = instance.interior_struct
     zalmoxis = getattr(struct, 'zalmoxis', None)
-    if getattr(zalmoxis, 'lowt_extension', False) is True and struct.module == 'spider':
+    if getattr(zalmoxis, 'lowt_extension', False) is not True:
+        return
+    if struct.module not in ('zalmoxis', 'dummy'):
         raise ValueError(
             'interior_struct.zalmoxis.lowt_extension = true requires interior_struct.module = '
-            '"zalmoxis" or "dummy", not "spider": the SPIDER structure keeps its static tables and '
-            'never builds the P-S tables the extension acts on.'
+            f'"zalmoxis" or "dummy", not "{struct.module}": only these structures build the P-S '
+            'tables the extension acts on.'
+        )
+    key = energetics_eos_key(zalmoxis.mantle_eos)
+    if lowt_extension_unsupported(key):
+        raise ValueError(
+            'interior_struct.zalmoxis.lowt_extension = true does not support the mantle EOS '
+            f'{key} (mantle_eos = "{zalmoxis.mantle_eos}"): the extension continues the grid of '
+            'the standard PALEOS solid table.'
         )
 
 

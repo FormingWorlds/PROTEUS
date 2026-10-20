@@ -114,6 +114,25 @@ def energetics_eos_key(mantle_eos: str) -> str | None:
     return components[0] if len(components) == 1 else None
 
 
+def lowt_extension_unsupported(key: str | None) -> bool:
+    """Whether the low-temperature solid extension cannot continue the solid table of ``key``.
+
+    The extension continues the 150 points per decade grid of the standard PALEOS solid table;
+    a PALEOS-API key tabulates its own tables and a ``-highres`` key has 600 points per decade.
+
+    Parameters
+    ----------
+    key : str or None
+        Energetics key of the mantle EOS (:func:`energetics_eos_key`).
+
+    Returns
+    -------
+    bool
+        True for a PALEOS-API or ``-highres`` key.
+    """
+    return bool(key) and (key.startswith('PALEOS-API') or key.endswith('-highres'))
+
+
 def generates_paleos_tables(interior_struct) -> bool:
     """Return whether Zalmoxis generates a PALEOS table set for this structure.
 

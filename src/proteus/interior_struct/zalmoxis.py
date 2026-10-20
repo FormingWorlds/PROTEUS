@@ -53,6 +53,7 @@ from proteus.utils.helper import (
     format_subyear_time,
     generates_paleos_tables,
     is_mgsio3,
+    lowt_extension_unsupported,
     paleos_companion_keys,
     snapshot_path_for_time,
     twophase_registry_key,
@@ -2797,8 +2798,6 @@ def _ps_table_inputs(config: Config, mantle_eos: str, eos_entry: dict, mat_dicts
 
     Raises
     ------
-    ValueError
-        When ``lowt_extension`` is on and the mantle EOS is PALEOS-API.
     _NoPSTables
         When the mantle EOS is not PALEOS or its files are missing.
     ZalmoxisMissingEOSFilesError
@@ -2811,11 +2810,6 @@ def _ps_table_inputs(config: Config, mantle_eos: str, eos_entry: dict, mat_dicts
     from zalmoxis.eos.dispatch import _is_paleos_api
 
     if _is_paleos_api(eos_entry):
-        if config.interior_struct.zalmoxis.lowt_extension is True:
-            raise ValueError(
-                f'lowt_extension does not support a PALEOS-API mantle EOS ({mantle_eos}): the '
-                'extension is made for the shipped PALEOS solid table'
-            )
         log.info(
             'PALEOS-API live tabulation: resolving cached tables for %s '
             '(cold-cache build may take up to ~1 h at 600 pts/decade)',
@@ -2966,7 +2960,13 @@ def generate_spider_tables(config: Config, outdir: str):
     Raises
     ------
     ZalmoxisMissingEOSFilesError
-        When a table of a PALEOS mantle or its MgSiO3 2-phase pair is missing.
+        When a table of a PALEOS mantle or its MgSiO3 2-phase pair is missing, or when
+        ``lowt_extension`` is on and its extension file is missing.
+    ValueError
+        When ``lowt_extension`` is on and the mantle EOS is PALEOS-API or ``-highres``
+        (raised before any table is resolved or built).
+    RuntimeError
+        When ``lowt_extension`` is on and the installed Zalmoxis has no ``solid_lowt_file``.
     """
     from zalmoxis.eos_export import generate_spider_eos_tables, generate_spider_phase_boundaries
     from zalmoxis.melting_curves import (
@@ -2993,6 +2993,11 @@ def generate_spider_tables(config: Config, outdir: str):
             return resumed
 
     lowt_on = config.interior_struct.zalmoxis.lowt_extension is True
+    if lowt_on and lowt_extension_unsupported(key):
+        raise ValueError(
+            f'lowt_extension does not support the mantle EOS {key}: the extension continues the '
+            'grid of the standard PALEOS solid table'
+        )
     lowt_msg = 'lowt_extension = true has no effect: mantle EOS %s has no PALEOS P-S tables'
     if not eos_entry or key not in PALEOS_REGISTRY_KEYS:
         log.info(
