@@ -4217,37 +4217,51 @@ def test_setup_solver_passes_no_core_module_params_on_default_config(tmp_path):
 
 
 @pytest.mark.unit
-def test_setup_solver_names_the_aragog_needed_for_the_limited_node(tmp_path):
-    """An installed aragog without the top_node option stops a limited run at the solver setup
-    with a message that names the installed aragog, not with a TypeError."""
+@pytest.mark.parametrize(
+    'top_node, message, renamed',
+    [
+        ('limited', "__init__() got an unexpected keyword argument 'top_node'", True),
+        ('limited', 'unsupported operand in the top_node check', False),
+        ('linear', "__init__() got an unexpected keyword argument 'top_node'", False),
+    ],
+)
+def test_setup_solver_names_the_aragog_needed_for_the_limited_node(
+    tmp_path, top_node, message, renamed
+):
+    """An aragog whose boundary conditions refuse the top_node keyword stops a limited run at the
+    solver setup with a message that names the installed aragog; any other TypeError passes."""
     from proteus.interior_energetics.aragog import AragogRunner
 
-    class OldBoundaryConditions:
-        __annotations__ = {'outer_boundary_condition': int}
-
-        def __init__(self, **kwargs):
-            if 'top_node' in kwargs:
-                raise TypeError("unexpected keyword argument 'top_node'")
+    def old_boundary_conditions(**kwargs):
+        raise TypeError(message)
 
     config = _make_aragog_config(struct_module='zalmoxis')
-    config.interior_energetics.aragog.top_node = 'limited'
+    config.interior_energetics.aragog.top_node = top_node
     hf_row, interior_o = _spider_fallback_scaffold(tmp_path)
     hf_row.update(R_core=3.48e6)
     with (
         patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path),
         patch(
             'proteus.interior_energetics.aragog._BoundaryConditionsParameters',
-            OldBoundaryConditions,
+            old_boundary_conditions,
         ),
         patch('proteus.interior_energetics.aragog.Parameters'),
         patch('proteus.interior_energetics.aragog.EntropySolver'),
         patch('proteus.interior_energetics.aragog._cached_entropy_eos'),
-        pytest.raises(RuntimeError, match='needs an aragog with the top_node option') as err,
+        pytest.raises((RuntimeError, TypeError)) as err,
     ):
         AragogRunner.setup_solver(config, hf_row, interior_o, str(tmp_path))
-    assert 'release after 26.10.10' in str(err.value) and 'installed aragog' in str(err.value)
+    assert err.type is (RuntimeError if renamed else TypeError)
+    if renamed:
+        assert 'needs an aragog with the top_node option' in str(err.value)
+        assert 'release after 26.10.10' in str(err.value) and 'installed aragog' in str(
+            err.value
+        )
+    else:
+        assert str(err.value) == message
 
 
+@pytest.mark.unit
 @pytest.mark.parametrize('top_node', ['linear', 'limited'])
 def test_setup_solver_passes_the_limited_top_node_only(tmp_path, top_node):
     """The limited top node reaches the aragog boundary conditions; the default linear node is
