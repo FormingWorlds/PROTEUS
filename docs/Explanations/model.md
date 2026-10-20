@@ -89,7 +89,7 @@ Config section: `[atmos_clim]`. Reference: [Atmosphere configuration](../Referen
 
 ## Atmospheric chemistry: VULCAN
 
-**[VULCAN](https://github.com/FormingWorlds/VULCAN)** (Python) is a photochemical kinetics code that computes steady-state atmospheric mixing ratios given a temperature-pressure profile, eddy diffusion profile, and UV stellar spectrum. In PROTEUS, VULCAN can run in two modes: *online* (at each snapshot during the simulation) or *offline* (once after the simulation completes). Most configurations use the offline mode because the chemistry calculation is computationally expensive relative to the coupling timestep.
+**[VULCAN](https://github.com/FormingWorlds/VULCAN)** (Python) is a photochemical kinetics code that computes steady-state atmospheric mixing ratios given a temperature-pressure profile, eddy diffusion profile, and UV stellar spectrum. In PROTEUS, VULCAN post-processes atmosphere snapshots after the simulation: automatically at its end with `atmos_chem.mode = "offline"`, or later with `proteus offchem`. `atmos_chem.times` selects the snapshots (the final state, all of them, or a list of times). The chemistry does not feed back on the evolution; coupled (online) chemistry is not yet implemented. See [Postprocessing and chemistry](../How-to/usage_postprocessing.md#atmospheric-chemistry-with-vulcan).
 
 Config section: `[atmos_chem]`. Reference: [Atmosphere configuration](../Reference/config/atmosphere.md).
 

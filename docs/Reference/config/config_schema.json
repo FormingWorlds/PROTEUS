@@ -10070,10 +10070,11 @@
       "default": "\"profile\"",
       "choices": [
         "profile",
-        "outgas"
+        "outgas",
+        "previous"
       ],
       "bounds": null,
-      "description": "Initial mixing ratios. Options: profile, outgas.",
+      "description": "Initial mixing ratios. Options: profile (the climate profile), outgas (the surface mixing ratios at every level), previous (the result of the latest earlier chemistry snapshot, interpolated in log pressure; needs fix_surf = true; falls back to profile when there is none).",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -10086,7 +10087,7 @@
       "class": "Vulcan",
       "type": "bool",
       "accepts_none": false,
-      "default": "true",
+      "default": "false",
       "choices": null,
       "bounds": null,
       "description": "Fix the surface mixing ratios based on outgassed composition.",
@@ -10253,7 +10254,7 @@
       "class": "Vulcan",
       "type": "bool",
       "accepts_none": false,
-      "default": "true",
+      "default": "false",
       "choices": null,
       "bounds": null,
       "description": "Include vertical advection at the constant updraft velocity `atmos_chem.updraft_const`.",
@@ -10506,19 +10507,35 @@
       "group_qualifier": null
     },
     {
-      "path": "atmos_chem.when",
+      "path": "atmos_chem.mode",
       "toml_section": "atmos_chem",
       "class": "AtmosChem",
-      "type": "str",
-      "accepts_none": false,
-      "default": "\"manually\"",
+      "type": "str or none",
+      "accepts_none": true,
+      "default": "none",
       "choices": [
-        "manually",
+        null,
         "offline",
         "online"
       ],
       "bounds": null,
-      "description": "When to run the chemistry module. Options: manually, offline, online.",
+      "description": "When to run the chemistry module automatically. Options: none (only with `proteus offchem`), offline (after the simulation ends), online (not yet implemented).",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "atmos_chem.times",
+      "toml_section": "atmos_chem",
+      "class": "AtmosChem",
+      "type": "str or list",
+      "accepts_none": false,
+      "default": "\"end\"",
+      "choices": null,
+      "bounds": null,
+      "description": "Snapshots to run the chemistry on, with `mode = 'offline'` or `proteus offchem`. Options: end (the final state), all (every atmosphere snapshot), or a list of times [yr], each mapped to the nearest atmosphere snapshot.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -12122,6 +12139,28 @@
         "module"
       ],
       "doc": "The Morrigan module requires as many embryo masses as planets, all positive, and a valid selector value when the selector is a semi-major axis or planet id."
+    },
+    {
+      "validator": "valid_ini_mix",
+      "module": "_atmos_chem.py",
+      "attached_to": [
+        "atmos_chem.vulcan.ini_mix"
+      ],
+      "touches": [
+        "fix_surf"
+      ],
+      "doc": "Refuse `ini_mix = 'previous'` unless the surface mixing ratios are fixed."
+    },
+    {
+      "validator": "valid_mode",
+      "module": "_atmos_chem.py",
+      "attached_to": [
+        "atmos_chem.mode"
+      ],
+      "touches": [
+        "module"
+      ],
+      "doc": "Refuse coupled chemistry, and automatic chemistry without a module."
     },
     {
       "validator": "valid_aerosols_enabled",

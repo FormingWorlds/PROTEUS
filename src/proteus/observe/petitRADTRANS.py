@@ -278,16 +278,25 @@ def _get_reference_prt_values(atm: dict, config: Config) -> tuple[float, float, 
 def _get_atm_offchem(outdir: str, hf_row: dict, chem_module: str) -> dict:
     """
     Reads the atmosphere data from the csv file produced by the 'atmos_chem' module.
+
+    The file is the chemistry result at hf_row['Time'] [yr], so that the
+    composition and the planet come from the same time.
     """
 
     # Read file
-    from proteus.atmos_chem.common import read_result
+    from proteus.atmos_chem.common import chem_csv_name, read_result
 
-    df = read_result(outdir, chem_module)
+    df = None
+    if chem_module is not None:
+        fname = chem_csv_name(chem_module, float(hf_row['Time']))
+        df = read_result(outdir, chem_module, filename=fname)
 
     # Check file exists
     if df is None:
-        log.warning(f"Could not read offchem file from '{outdir}'")
+        log.warning(
+            'No chemistry result at t=%.3e yr in %s; it needs atmos_chem.times '
+            'to include this time' % (float(hf_row['Time']), outdir)
+        )
         return None
 
     df.rename(columns={'tmp': 'tmpl', 'p': 'pl', 'z': 'rl'}, inplace=True)
