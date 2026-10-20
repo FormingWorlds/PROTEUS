@@ -326,6 +326,28 @@ def _unsupported_energy_fields() -> set[str]:
     return set(_OPTIONAL_ENERGY_FIELDS) - accepted
 
 
+def _boundary_conditions(**kwargs) -> _BoundaryConditionsParameters:
+    """Build the aragog boundary conditions.
+
+    Raises
+    ------
+    RuntimeError
+        If the limited top node is asked for and the installed aragog has no top_node option.
+    """
+    try:
+        return _BoundaryConditionsParameters(**kwargs)
+    except TypeError as exc:
+        if 'top_node' not in kwargs or 'top_node' not in str(exc):
+            raise
+        import aragog
+
+        raise RuntimeError(
+            "top_node = 'limited' needs an aragog with the top_node option (a release after "
+            f'26.10.10); the installed aragog is {aragog.__version__} at '
+            f'{Path(aragog.__file__).parent}'
+        ) from exc
+
+
 def _is_plausible_core_density(rho_core: float) -> bool:
     """Return True iff ``rho_core`` falls inside the physical-bounds bracket."""
     return _RHO_CORE_MIN <= float(rho_core) <= _RHO_CORE_MAX
@@ -884,7 +906,7 @@ class AragogRunner:
             )
 
         limited_top = config.interior_energetics.aragog.top_node == 'limited'
-        boundary_conditions = _BoundaryConditionsParameters(
+        boundary_conditions = _boundary_conditions(
             # 4 = prescribed heat flux (PROTEUS coupling mode, from hf_row['F_atm'])
             # 1 = native grey-body (emissivity * sigma * (T^4 - T_eqm^4))
             outer_boundary_condition=_aragog_outer_bc,
@@ -910,7 +932,7 @@ class AragogRunner:
             # core BC mode (the 'energy_balance' option is available)
             core_bc=core_bc_str,
             core_module_params=core_module_params,
-            # an aragog without the option builds the default linear top node
+            # linear passes nothing, so any aragog builds it; limited needs the option
             **({'top_node': 'limited'} if limited_top else {}),
         )
 

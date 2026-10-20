@@ -327,7 +327,7 @@ class Aragog:
         Entropy of the top basic node, which sets T_magma. 'linear' (default)
         extrapolates the top two cells; 'limited' reduces that half step smoothly
         near a table edge, so the node rises with the top cell and stays in the
-        table (not on core_bc 'gradient').
+        table while the top cell is in it (not on core_bc 'gradient').
     """
 
     mass_coordinates: bool = field(default=True)
