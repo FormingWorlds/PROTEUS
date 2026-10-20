@@ -2854,46 +2854,39 @@ def test_paleos_slice_fixture_builder_helpers(tmp_path, monkeypatch):
     )
     assert builder._resolve_source_table(cfg_valid) == 'PALEOS:MgSiO3'
 
-    cfg_eos_dir = tmp_path / 'valid_eos_dir.toml'
-    cfg_eos_dir.write_text(
-        '[interior_struct]\nmodule = "dummy"\neos_dir = "PALEOS-2phase:MgSiO3"\n',
+    # mantle_eos wins over eos_dir and over the structure module, as in generate_spider_tables.
+    cfg_dummy_struct = tmp_path / 'dummy_struct.toml'
+    cfg_dummy_struct.write_text(
+        '[interior_struct]\nmodule = "dummy"\neos_dir = "PALEOS:MgSiO3"\n'
+        '[interior_struct.zalmoxis]\nmantle_eos = "PALEOS-2phase:MgSiO3"\n',
         encoding='utf-8',
     )
-    assert builder._resolve_source_table(cfg_eos_dir) == 'PALEOS-2phase:MgSiO3'
-
-    cfg_not_zalmoxis = tmp_path / 'not_zalmoxis.toml'
-    cfg_not_zalmoxis.write_text(
-        '[interior_struct]\nmodule = "spider"\neos_dir = "none"\n'
-        '[interior_struct.zalmoxis]\nmantle_eos = "PALEOS:MgSiO3"\n',
-        encoding='utf-8',
-    )
-    with pytest.raises(RuntimeError, match='interior_struct.module'):
-        builder._resolve_source_table(cfg_not_zalmoxis)
+    assert builder._resolve_source_table(cfg_dummy_struct) == 'PALEOS-2phase:MgSiO3'
 
     for bad_eos in ('WolfBower2018:MgSiO3', 'none', ''):
         cfg_bad = tmp_path / f'bad_{bad_eos or "empty"}.toml'
         cfg_bad.write_text(
-            f'[interior_struct]\nmodule = "zalmoxis"\neos_dir = "none"\n'
+            f'[interior_struct]\nmodule = "zalmoxis"\neos_dir = "PALEOS:MgSiO3"\n'
             f'[interior_struct.zalmoxis]\nmantle_eos = "{bad_eos}"\n',
             encoding='utf-8',
         )
         with pytest.raises(RuntimeError, match='Invalid EOS source_table'):
             builder._resolve_source_table(cfg_bad)
 
-    cfg_bad_dir = tmp_path / 'bad_dir.toml'
-    cfg_bad_dir.write_text(
-        '[interior_struct]\nmodule = "zalmoxis"\neos_dir = "WolfBower2018"\n',
-        encoding='utf-8',
-    )
+    cfg_no_mantle = tmp_path / 'no_mantle_eos.toml'
+    cfg_no_mantle.write_text('[interior_struct]\nmodule = "zalmoxis"\n', encoding='utf-8')
     with pytest.raises(RuntimeError, match='Invalid EOS source_table'):
-        builder._resolve_source_table(cfg_bad_dir)
+        builder._resolve_source_table(cfg_no_mantle)
 
     fake_aragog_file = tmp_path / 'aragog' / 'eos' / 'entropy.py'
     fake_aragog_file.parent.mkdir(parents=True, exist_ok=True)
     fake_aragog_file.write_text('# stub\n', encoding='utf-8')
     valid_desc = '26.05.10-47-g075fcb05ce035183100c9bec47b7dcc7d769c2d6'
 
+    calls = []
+
     def _mock_run_ok(cmd, **_kwargs):
+        calls.append(list(cmd))
         if 'rev-parse' in cmd:
             return SimpleNamespace(stdout=f'{tmp_path / "aragog"}\n')
         return SimpleNamespace(stdout=f'{valid_desc}\n')
@@ -2902,6 +2895,17 @@ def test_paleos_slice_fixture_builder_helpers(tmp_path, monkeypatch):
         builder._resolve_aragog_commit(aragog_file=fake_aragog_file, run_cmd=_mock_run_ok)
         == valid_desc
     )
+    repo_dir = str(fake_aragog_file.resolve().parent)
+    assert calls[0] == ['git', '-C', repo_dir, 'rev-parse', '--show-toplevel']
+    assert calls[1][:4] == ['git', '-C', repo_dir, 'describe']
+    for flag in ('--long', '--dirty', '--abbrev=40'):
+        assert flag in calls[1]
+
+    # Default lookup: the checkout of the imported aragog.eos.entropy module.
+    calls.clear()
+    monkeypatch.setattr(builder.aragog.eos.entropy, '__file__', str(fake_aragog_file))
+    assert builder._resolve_aragog_commit(run_cmd=_mock_run_ok) == valid_desc
+    assert calls[1][:3] == ['git', '-C', repo_dir]
 
     for bad_desc in (
         f'{valid_desc}-dirty',

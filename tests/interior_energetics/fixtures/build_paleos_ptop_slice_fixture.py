@@ -41,28 +41,19 @@ def _md5(path: Path) -> str:
 
 
 def _resolve_source_table(cfg_path: Path) -> str:
-    """Resolve and validate the PALEOS EOS source table name from init_coupler.toml."""
+    """Return the mantle EOS that PROTEUS builds the Aragog P-S tables from.
+
+    ``generate_spider_tables`` uses ``interior_struct.zalmoxis.mantle_eos`` whenever it is a
+    PALEOS table, whatever ``interior_struct.module`` is; ``eos_dir`` is used only otherwise.
+    """
     with cfg_path.open('rb') as f_cfg:
         run_cfg = tomllib.load(f_cfg)
-    struct_cfg = run_cfg.get('interior_struct', {})
-    raw_eos_dir = str(struct_cfg.get('eos_dir', 'none'))
-    if raw_eos_dir.lower() != 'none':
-        source_table = raw_eos_dir
-    else:
-        struct_mod = str(struct_cfg.get('module', 'none'))
-        if struct_mod != 'zalmoxis':
-            raise RuntimeError(
-                f'Cannot resolve zalmoxis.mantle_eos when interior_struct.module={struct_mod!r} '
-                f'(expected "zalmoxis") in {cfg_path}'
-            )
-        source_table = str(struct_cfg.get('zalmoxis', {}).get('mantle_eos', 'none'))
-    if (
-        not source_table
-        or source_table.lower() == 'none'
-        or not source_table.startswith('PALEOS')
-    ):
+    zalmoxis_cfg = run_cfg.get('interior_struct', {}).get('zalmoxis', {})
+    source_table = str(zalmoxis_cfg.get('mantle_eos', ''))
+    if not source_table.startswith('PALEOS'):
         raise RuntimeError(
-            f'Invalid EOS source_table={source_table!r} resolved from {cfg_path}'
+            f'Invalid EOS source_table={source_table!r} resolved from {cfg_path}: '
+            'the P_top slice needs a PALEOS interior_struct.zalmoxis.mantle_eos'
         )
     return source_table
 
