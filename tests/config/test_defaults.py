@@ -627,16 +627,53 @@ def test_aragog_top_cell_dt_limit_defaults_and_validators():
         with pytest.raises(ValueError):
             Aragog(top_cell_dt_rel_dT=0.08, top_cell_dt_rel_dT_solid=bad_solid)
 
+    from proteus.config._interior import Interior
+
+    ie_flux = Interior(
+        module='aragog',
+        surface_bc_mode='flux',
+        aragog=Aragog(top_cell_dt_limit=True),
+    )
+    assert ie_flux.aragog.top_cell_dt_limit is True
+    assert ie_flux.surface_bc_mode == 'flux'
+
+    ie_grey_off = Interior(
+        module='aragog',
+        surface_bc_mode='grey_body',
+        aragog=Aragog(top_cell_dt_limit=False),
+    )
+    assert ie_grey_off.surface_bc_mode == 'grey_body'
+
+    ie_spider_grey = Interior(
+        module='spider',
+        surface_bc_mode='grey_body',
+        aragog=Aragog(top_cell_dt_limit=True),
+    )
+    assert ie_spider_grey.module == 'spider'
+
+    with pytest.raises(ValueError, match='top_cell_dt_limit') as exc_init:
+        Interior(
+            module='aragog',
+            surface_bc_mode='grey_body',
+            aragog=Aragog(top_cell_dt_limit=True),
+        )
+    assert 'grey_body' in str(exc_init.value)
+
+    with pytest.raises(ValueError, match='top_cell_dt_limit') as exc_set:
+        ie_flux.surface_bc_mode = 'grey_body'
+    assert 'grey_body' in str(exc_set.value)
+
 
 @pytest.mark.unit
 def test_aragog_top_cell_dt_rel_property():
-    """Property check over valid (0, 0.5] and cross-field solid allowance bounds."""
+    """Property check over valid (0, 0.5] and invalid cross-field solid allowance bounds."""
     from hypothesis import given
     from hypothesis import strategies as st
 
     from proteus.config._interior import Aragog
 
     seen: list[tuple[float, float]] = []
+    rejected: list[tuple[float, float]] = []
 
     @given(
         rel_dt=st.floats(min_value=1e-4, max_value=0.5, allow_nan=False, allow_infinity=False),
@@ -651,6 +688,19 @@ def test_aragog_top_cell_dt_rel_property():
         assert 0.0 < inst.top_cell_dt_rel_dT_solid <= inst.top_cell_dt_rel_dT
         seen.append((inst.top_cell_dt_rel_dT, inst.top_cell_dt_rel_dT_solid))
 
+    @given(
+        rel_dt=st.floats(min_value=1e-4, max_value=0.49, allow_nan=False, allow_infinity=False),
+        excess=st.floats(min_value=1e-4, max_value=0.5, allow_nan=False, allow_infinity=False),
+    )
+    def _check_invalid(rel_dt, excess):
+        bad_solid = rel_dt + excess
+        with pytest.raises(ValueError, match='top_cell_dt_rel_dT_solid'):
+            Aragog(top_cell_dt_rel_dT=rel_dt, top_cell_dt_rel_dT_solid=bad_solid)
+        rejected.append((rel_dt, bad_solid))
+
     _check_valid()
+    _check_invalid()
     assert len(seen) >= 10
+    assert len(rejected) >= 10
     assert all(0.0 < solid_val <= dt_val <= 0.5 for dt_val, solid_val in seen)
+    assert all(solid_val > dt_val for dt_val, solid_val in rejected)
