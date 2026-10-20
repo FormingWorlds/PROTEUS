@@ -94,11 +94,11 @@ volume.
 - The runs on this page that reached 5% melt took about 2.7 hours to about 5.5 days of wall
   time (Nominal Venus). Of the five runs stopped before reaching 5% melt, the three high-H
   Earth grid runs and the TRAPPIST-1 b run used 6.95 to 7.21 days, and the TRAPPIST-1
-  &alpha; run 0.91 days. These wall times are upper bounds on the compute time: the logs of
-  nine of the runs contain an interval of 3 to 12 hours without output, seven of them starting
-  on 12 October between 09:29 and 10:42.
+  &alpha; run 0.91 days. These are elapsed wall-clock times. In the logs of nine of the
+  runs, two consecutive timestamps lie 3 to 12 hours apart (seven of these intervals start on
+  12 October between 09:29 and 10:41), and the elapsed times include these intervals.
   A run that stays partly molten takes steps of at most 4000 yr (`params.dt.mushy_maximum`),
-  so at least 250,000 steps to reach 1 Gyr
+  so at least 250,000 steps to reach 1 Gyr.
 
 The commands below run with `--offline`, which skips the automatic
 reference-data check, so all data must be on disk beforehand. Drop the
