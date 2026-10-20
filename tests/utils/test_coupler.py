@@ -3663,6 +3663,38 @@ def test_validate_module_versions_checks_vulcan_floor(tmp_path, caplog, installe
     assert fix is None or fix in logged[0]
 
 
+@pytest.mark.parametrize('installed', ['unknown', None], ids=['word', 'no-field'])
+@pytest.mark.usefixtures('fwl_io_current')
+def test_an_unreadable_vulcan_version_stops_the_start(tmp_path, caplog, installed):
+    """An installed VULCAN whose version does not parse stops the start with the doctor's text;
+    only fwl-io goes on with a warning (docs/How-to/troubleshooting.md)."""
+    from packaging.requirements import Requirement
+
+    from proteus.utils.coupler import validate_module_versions
+
+    config = _all_dummy_modules_config()
+    config.interior_energetics.module = 'dummy'
+    config.atmos_chem.module = 'vulcan'
+    config.atmos_chem.when = 'offline'
+    with (
+        patch(
+            'proteus.doctor._dependency_specs',
+            return_value={'fwl-vulcan': Requirement('fwl-vulcan>=26.10.14')},
+        ),
+        patch('proteus.doctor.importlib.metadata.version', return_value=installed),
+        patch('proteus.utils.coupler.UpdateStatusfile') as mock_update,
+        caplog.at_level('ERROR', logger='fwl.proteus.utils.coupler'),
+        pytest.raises(EnvironmentError, match='Out-of-date modules'),
+    ):
+        validate_module_versions({'rad': str(tmp_path)}, config)
+    assert mock_update.call_count == 1
+    logged = [r.getMessage() for r in caplog.records if 'VULCAN' in r.getMessage()]
+    assert logged == [
+        f'VULCAN module is missing or out of date: installed version {installed!r} does not parse. '
+        'Fix: pip install -U "fwl-vulcan>=26.10.14"'
+    ]
+
+
 @pytest.mark.parametrize(('module', 'when'), [(None, 'offline'), ('vulcan', 'manually')])
 @pytest.mark.usefixtures('fwl_io_current')
 def test_validate_module_versions_skips_vulcan_without_chemistry(tmp_path, module, when):
