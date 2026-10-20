@@ -167,9 +167,10 @@ class Zalmoxis:
         tools/converters/paleos_lowt_extension.py (--paleos-src, --table, and
         --out with the file name above in the folder of the solid table; see
         the Zalmoxis coupling page). A missing extension file, or a Zalmoxis
-        whose table generator has no solid_lowt_file, stops the run at start-up.
-        The Zalmoxis coupling page gives the range of the extended tables, the
-        accuracy of their lowest entropy interval and the entropy zero of each
+        whose table generator has no solid_lowt_file, stops the run at start-up
+        (with the dummy structure, at the first table build). The Zalmoxis
+        coupling page gives the range of the extended tables, the accuracy of
+        their lowest entropy interval per planet mass and the entropy zero of each
         PALEOS phase. Aragog's entropy solver reads its thermodynamic properties
         from the P-S tables only; the phase P-T tables written for it are not
         read, so they need no extension. With the switch on, Aragog logs its

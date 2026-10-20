@@ -2767,15 +2767,17 @@ def _ps_cache_key(
 def _data_digest(path: str) -> str:
     """SHA-1 of the data lines of a table file; lines that start with '#' are left out.
 
-    The digest is kept per (path, modification time, size), so an unchanged file is read once.
+    The digest is kept per (path, device, inode, modification and status change times, size),
+    so an unchanged file is read once and a replaced or rewritten one is read again.
     """
     st = os.stat(path)
-    return _data_digest_of(str(Path(path).resolve()), st.st_mtime_ns, st.st_size)
+    stamp = (st.st_dev, st.st_ino, st.st_mtime_ns, st.st_ctime_ns, st.st_size)
+    return _data_digest_of(str(Path(path).resolve()), stamp)
 
 
 @functools.lru_cache(maxsize=16)
-def _data_digest_of(path: str, mtime_ns: int, size: int) -> str:
-    """SHA-1 of the data lines of ``path`` as it is at ``mtime_ns`` and ``size``."""
+def _data_digest_of(path: str, stamp: tuple) -> str:
+    """SHA-1 of the data lines of ``path`` as it is at the file status ``stamp``."""
     data = (ln for ln in Path(path).read_bytes().splitlines() if not ln.startswith(b'#'))
     return hashlib.sha1(b'\n'.join(data)).hexdigest()
 
