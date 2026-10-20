@@ -1353,6 +1353,10 @@ def write_baseline_structure_done(
 ) -> None:
     """Persist ``_baseline_structure_done`` under ``<outdir>/data/``.
 
+    When ``done`` is ``True`` and an indexed baseline commit ``1 c`` with
+    ``c <= row_index`` is already recorded on disk, the existing file is kept
+    so a forced resume re-solve preserves the earliest baseline commit row.
+
     Parameters
     ----------
     outdir : str
@@ -1362,10 +1366,16 @@ def write_baseline_structure_done(
     row_index : int or None, optional
         Zero-based helpfile row index of the baseline structure event.
     """
+    path = get_file_baseline_structure_done(outdir)
+    if done and row_index is not None and os.path.exists(path):
+        try:
+            prev_done, prev_row = _read_flag_file_with_row(path)
+            if prev_done and prev_row is not None and prev_row <= int(row_index):
+                return
+        except (ValueError, OSError):
+            pass
     try:
-        _write_flag_file_atomic(
-            get_file_baseline_structure_done(outdir), done, row_index=row_index
-        )
+        _write_flag_file_atomic(path, done, row_index=row_index)
     except OSError as exc:
         log.warning('Could not persist baseline-structure flag file: %s', exc)
 

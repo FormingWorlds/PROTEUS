@@ -380,11 +380,12 @@ class Proteus:
         structure-solver's own initial-condition adiabat. The baseline is solved
         once per run; already-baselined runs are a no-op, and a resumed run
         retries an uncommitted initial baseline (except for the super-liquidus
-        adiabat initial condition with rollback active on disk, which makes 1
+        adiabat initial condition with rollback active at the resume, which makes 1
         forced attempt) or runs 1 forced re-solve when a structure flag event on
         disk is newer than the resumed snapshot row, an unindexed flag file
         accompanies dropped snapshots, or a pending forced re-solve flag is
-        present on disk after the baseline was committed. Because a structure
+        present on disk after the baseline was committed (preserving the earliest
+        committed baseline row ``1 c`` on disk across the forced attempt). Because a structure
         event on a dropped row that is not the first dropped row (an impact or a
         dynamic re-solve) or an unindexed directory with dropped snapshots adds a
         forced solve at the resume that the continuous run did not perform at
@@ -1241,13 +1242,14 @@ class Proteus:
                     write_structure_forced_pending(
                         self.directories['output'], True, row_index=resume_row
                     )
-                    write_baseline_structure_done(
-                        self.directories['output'], False, row_index=resume_row
-                    )
                 else:
                     self._baseline_structure_done = committed_before_resume
                     if newer_flag_event:
                         write_baseline_structure_done(
+                            self.directories['output'], False, row_index=resume_row
+                        )
+                    if not committed_before_resume and pending_on_disk:
+                        write_structure_forced_pending(
                             self.directories['output'], False, row_index=resume_row
                         )
             else:

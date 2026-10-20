@@ -2273,7 +2273,7 @@ def test_proteus_start_forced_accept_kill_between_flag_writes_resumes_cleanly(
         'after_pending_clear',
     ):
         assert pending_at_baseline_write == ['1 5']
-    expected_rb = '0 6' if outcome in ('accept', 'impact_shortcut') else '1 6'
+    expected_rb = '1 6' if outcome == 'failure' else '0 6'
     if kill_target in ('write_structure_forced_pending', 'after_pending_clear'):
         assert pending_clear_snapshot == [(expected_rb, '1 4')]
     assert second_forced_calls == [True]
