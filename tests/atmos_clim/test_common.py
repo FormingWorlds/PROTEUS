@@ -27,6 +27,7 @@ from proteus.atmos_clim.common import (
     get_radius_from_pressure,
     get_spfile_name_and_bands,
     get_spfile_path,
+    list_atmosphere_times,
     ncdf_flag_to_bool,
     read_atmosphere_data,
     read_ncdf_profile,
@@ -774,6 +775,28 @@ def test_find_latest_atmosphere_time_empty_returns_none(tmp_path):
     assert find_latest_atmosphere_time(str(tmp_path)) is None
     # Also handles a missing data directory without raising.
     assert find_latest_atmosphere_time(str(tmp_path / 'nonexistent')) is None
+
+
+def test_list_atmosphere_times_ignores_other_and_quarantined_files(tmp_path):
+    """Only data/*_atm.nc files count: interior and chemistry snapshots, stellar
+    spectra and quarantined '.incomplete' files are left out, and the times
+    come back ascending."""
+    data = tmp_path / 'data'
+    data.mkdir()
+    for name in (
+        '30p500_atm.nc',
+        '0p250_atm.nc',
+        '40p000_atm.nc.incomplete',
+        '20p000_int.nc',
+        '20p000_chem.nc',
+        '20.sflux',
+    ):
+        (data / name).write_text('')
+
+    times = list_atmosphere_times(str(tmp_path))
+
+    assert times == pytest.approx([0.25, 30.5])
+    assert find_latest_atmosphere_time(str(tmp_path)) == pytest.approx(times[-1])
 
 
 # ---------------------------------------------------------------------------
