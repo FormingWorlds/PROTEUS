@@ -680,6 +680,12 @@ def test_aragog_top_cell_dt_limit_defaults_and_validators():
         ie_grey_off.aragog = Aragog(top_cell_dt_limit=True)
     assert 'grey_body' in str(exc_ara.value)
 
+    # The module field keeps its own validator when assigned after construction.
+    ie_flux.module = 'spider'
+    assert ie_flux.module == 'spider'
+    with pytest.raises(ValueError, match="got 'mystery'"):
+        ie_flux.module = 'mystery'
+
     from pathlib import Path
 
     assert 'and the step does not exceed tau_drain' in (Interior.__doc__ or '')
