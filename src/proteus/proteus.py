@@ -379,10 +379,16 @@ class Proteus:
         share an identical, self-consistent starting radius rather than the
         structure-solver's own initial-condition adiabat. The baseline is solved
         once per run; already-baselined runs are a no-op, and a resumed run
-        retries an uncommitted initial baseline or runs 1 forced re-solve when a
-        structure flag event on disk is newer than the resumed snapshot row, an
-        unindexed flag file accompanies dropped snapshots, or a pending forced
-        re-solve flag is present on disk after the baseline was committed.
+        retries an uncommitted initial baseline (except for the super-liquidus
+        adiabat initial condition with rollback active on disk, which makes 1
+        forced attempt) or runs 1 forced re-solve when a structure flag event on
+        disk is newer than the resumed snapshot row, an unindexed flag file
+        accompanies dropped snapshots, or a pending forced re-solve flag is
+        present on disk after the baseline was committed. Because a structure
+        event on a dropped row that is not the first dropped row (an impact or a
+        dynamic re-solve) or an unindexed directory with dropped snapshots adds a
+        forced solve at the resume that the continuous run did not perform at
+        that row, the resumed trajectory can differ from the continuous one.
 
         For the initial baseline solve on the first post-init row, a solver
         failure restores the initial-condition structure, flags it stale, and
@@ -400,7 +406,7 @@ class Proteus:
         Returns
         -------
         bool
-            True when ``update_structure_from_interior`` was invoked, False otherwise.
+            True when a forced resume structure re-solve was invoked, False otherwise.
         """
         if (
             self.init_stage
@@ -448,14 +454,10 @@ class Proteus:
         if is_resume_forced:
             self.interior_o.structure_stale = False
 
-        _saved_targets = (
-            {
-                k: (k in self.hf_row, self.hf_row.get(k))
-                for k in ('M_int_target', 'M_core_target')
-            }
-            if isinstance(self.hf_row, dict)
-            else {}
-        )
+        _had_m_int_target = isinstance(self.hf_row, dict) and 'M_int_target' in self.hf_row
+        _saved_m_int_target = self.hf_row.get('M_int_target') if _had_m_int_target else None
+        _had_m_core_target = isinstance(self.hf_row, dict) and 'M_core_target' in self.hf_row
+        _saved_m_core_target = self.hf_row.get('M_core_target') if _had_m_core_target else None
 
         new_time, new_Tmagma, new_Phi = update_structure_from_interior(
             self.directories,
@@ -470,6 +472,15 @@ class Proteus:
 
         if self.interior_o.structure_stale:
             if is_resume_forced:
+                if isinstance(self.hf_row, dict):
+                    if _had_m_int_target:
+                        self.hf_row['M_int_target'] = _saved_m_int_target
+                    else:
+                        self.hf_row.pop('M_int_target', None)
+                    if _had_m_core_target:
+                        self.hf_row['M_core_target'] = _saved_m_core_target
+                    else:
+                        self.hf_row.pop('M_core_target', None)
                 self.interior_o.structure_rollback_active = True
                 if hasattr(self.interior_o, 'write_structure_stale'):
                     self.interior_o.write_structure_stale(self.directories['output'])
@@ -486,18 +497,19 @@ class Proteus:
                 )
                 return True
             write_baseline_structure_done(self.directories['output'], False, row_index=row_idx)
-            return True
+            return False
 
-        if is_resume_forced:
-            if isinstance(self.hf_row, dict):
-                if self.hf_row.get('_structure_rollback', False):
-                    for _k, (_existed, _val) in _saved_targets.items():
-                        if _existed:
-                            self.hf_row[_k] = _val
-                        else:
-                            self.hf_row.pop(_k, None)
-                self.hf_row['_structure_rollback'] = False
-            write_structure_forced_pending(self.directories['output'], False, row_index=row_idx)
+        if is_resume_forced and isinstance(self.hf_row, dict):
+            if self.hf_row.get('_structure_rollback', False):
+                if _had_m_int_target:
+                    self.hf_row['M_int_target'] = _saved_m_int_target
+                else:
+                    self.hf_row.pop('M_int_target', None)
+                if _had_m_core_target:
+                    self.hf_row['M_core_target'] = _saved_m_core_target
+                else:
+                    self.hf_row.pop('M_core_target', None)
+            self.hf_row['_structure_rollback'] = False
 
         rb_flag = (
             bool(self.hf_row.get('_structure_rollback', False))
@@ -512,7 +524,9 @@ class Proteus:
         self.last_struct_Phi = new_Phi
         self._baseline_structure_done = True
         write_baseline_structure_done(self.directories['output'], True, row_index=row_idx)
-        return True
+        if is_resume_forced:
+            write_structure_forced_pending(self.directories['output'], False, row_index=row_idx)
+        return is_resume_forced
 
     def _match_ps_tables_to_mass(self):
         """Point a resumed run at the P-S tables of its restored planet mass.
@@ -1166,6 +1180,9 @@ class Proteus:
 
             # Restore the stale-structure and rollback flags from disk on resume.
             from proteus.interior_energetics.common import (
+                _read_flag_file_with_row,
+                get_file_baseline_structure_done,
+                get_file_structure_forced_pending,
                 has_newer_structure_flag_event,
                 has_unindexed_structure_flag_file,
                 resume_baseline_structure_done,
@@ -1185,8 +1202,26 @@ class Proteus:
             baseline_committed_on_disk = resume_baseline_structure_done(
                 self.directories['output'], resume_row=None
             )
+            if baseline_committed_on_disk:
+                baseline_path = get_file_baseline_structure_done(self.directories['output'])
+                if os.path.exists(baseline_path):
+                    try:
+                        _, baseline_row = _read_flag_file_with_row(baseline_path)
+                    except (ValueError, OSError):
+                        baseline_row = None
+                    if baseline_row is not None and baseline_row > resume_row:
+                        baseline_committed_on_disk = False
             pending_on_disk = resume_structure_forced_pending(self.directories['output'])
-            committed_before_resume = bool(baseline_committed_on_disk or pending_on_disk)
+            pending_clean_true = False
+            if pending_on_disk:
+                pending_path = get_file_structure_forced_pending(self.directories['output'])
+                if os.path.exists(pending_path):
+                    try:
+                        pending_flag, _ = _read_flag_file_with_row(pending_path)
+                        pending_clean_true = bool(pending_flag)
+                    except (ValueError, OSError):
+                        pending_clean_true = False
+            committed_before_resume = bool(baseline_committed_on_disk or pending_clean_true)
             needs_forced_resolve = bool(
                 committed_before_resume
                 and (newer_flag_event or unindexed_dropped or pending_on_disk)
@@ -1210,7 +1245,7 @@ class Proteus:
                         self.directories['output'], False, row_index=resume_row
                     )
                 else:
-                    self._baseline_structure_done = bool(baseline_committed_on_disk)
+                    self._baseline_structure_done = committed_before_resume
                     if newer_flag_event:
                         write_baseline_structure_done(
                             self.directories['output'], False, row_index=resume_row

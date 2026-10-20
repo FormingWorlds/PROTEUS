@@ -1228,11 +1228,6 @@ def _write_flag_file_atomic(path: str, flag: bool, row_index: int | None = None)
             hdl.flush()
             os.fsync(hdl.fileno())
         os.replace(tmp_path, path)
-        dir_fd = os.open(os.path.dirname(path) or '.', os.O_RDONLY)
-        try:
-            os.fsync(dir_fd)
-        finally:
-            os.close(dir_fd)
     except OSError:
         try:
             if os.path.exists(tmp_path):
@@ -1240,6 +1235,14 @@ def _write_flag_file_atomic(path: str, flag: bool, row_index: int | None = None)
         except OSError:
             pass
         raise
+    try:
+        dir_fd = os.open(os.path.dirname(path) or '.', os.O_RDONLY)
+        try:
+            os.fsync(dir_fd)
+        finally:
+            os.close(dir_fd)
+    except OSError as exc:
+        log.debug('Directory fsync skipped for %s: %s', path, exc)
 
 
 def _read_flag_file_with_row(path: str) -> tuple[bool, int | None]:

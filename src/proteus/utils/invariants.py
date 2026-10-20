@@ -681,9 +681,12 @@ def check_structure_invariants(
     disk when the initial baseline was already committed marks the structure rollback active and
     forces 1 re-solve at the resume (clearing the rollback on an accepted solve or up-step
     reject and keeping rollback active with 1 warning on a solver failure), whereas an
-    uncommitted initial baseline keeps the initial-baseline retry rule. An impact on a dropped
-    row that is not the first dropped row adds a forced structure solve at the resume that the
-    continuous run did not perform, so the resumed trajectory can differ from the continuous one.
+    uncommitted initial baseline keeps the initial-baseline retry rule except for the
+    super-liquidus adiabat initial condition with rollback active on disk, which makes 1 forced
+    attempt. Any structure event on a dropped row that is not the first dropped row (an impact
+    or a dynamic re-solve) or an unindexed directory with dropped snapshots adds a forced
+    structure solve at the resume that the continuous run did not perform at that row, so the
+    resumed trajectory can differ from the continuous one.
 
     Parameters
     ----------
