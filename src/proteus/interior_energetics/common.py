@@ -69,6 +69,17 @@ def eval_rheoparam(phi: float, which: str):
     return par.dotl * numer / denom
 
 
+def rheology_model(config: Config | None) -> str:
+    """Rheology laws for the tidal profile: ``'mush'`` for Aragog, else ``'kervazo'``.
+
+    The mush construction needs the per-layer pressure and temperature that only the
+    Aragog interior resolves; the other interiors keep the Kervazo et al. (2021) fits.
+    """
+    if config is not None and config.interior_energetics.module == 'aragog':
+        return 'mush'
+    return 'kervazo'
+
+
 def _verify_initial_entropy(
     eos: EntropyEOS,
     P: float,
@@ -1274,6 +1285,7 @@ class Interior_t:
         self.mass = np.zeros(self.nlev_s)  # Mass of shell [kg]
         self.shear = np.zeros(self.nlev_s)  # Shear modulus [Pa]
         self.bulk = np.zeros(self.nlev_s)  # Bulk modulus [Pa]
+        self.bulkd = None  # Drained bulk modulus [Pa]; None: tidal module's own law
         self.pres = np.zeros(self.nlev_s)  # Pressure [Pa]
         self.temp = np.zeros(self.nlev_s)  # Temperature [K]
 
@@ -1424,8 +1436,20 @@ class Interior_t:
             log.warning('Could not parse stale-structure flag file; assuming fresh')
             self.structure_stale = False
 
-    def update_rheology(self, visc: bool = False):
-        # Update shear and bulk moduli arrays based on the melt fraction at each layer.
+    def update_rheology(self, visc: bool = False, config: Config | None = None):
+        """Update the shear, bulk and drained bulk moduli from the layer state.
+
+        The laws follow :func:`rheology_model`: the mush construction sets the shear,
+        grain bulk and drained bulk moduli (``bulkd``) and leaves the viscosity to the
+        interior module; the Kervazo fits set shear and bulk from the melt fraction,
+        the viscosity too when ``visc`` is set, and leave ``bulkd`` as None.
+        """
+        if rheology_model(config) == 'mush':
+            from proteus.interior_energetics.rheology_mush import update_mush_rheology
+
+            update_mush_rheology(self, config)
+            return
+        self.bulkd = None
         for i, p in enumerate(self.phi):
             self.shear[i] = eval_rheoparam(p, 'shear')
             self.bulk[i] = eval_rheoparam(p, 'bulk')

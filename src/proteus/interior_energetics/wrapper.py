@@ -2557,7 +2557,7 @@ def run_interior(
     # Update rheological parameters
     #    Only calculate viscosity here if using dummy module
     calc_visc = bool(config.interior_energetics.module == 'dummy')
-    interior_o.update_rheology(visc=calc_visc)
+    interior_o.update_rheology(visc=calc_visc, config=config)
 
     # Ensure values are >= 0
     for k in ('M_mantle', 'M_mantle_liquid', 'M_mantle_solid', 'M_core', 'Phi_global'):

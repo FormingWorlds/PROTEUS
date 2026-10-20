@@ -37,7 +37,7 @@ log = logging.getLogger('fwl.' + __name__)
 
 CACHE_ENV = 'PROTEUS_RHEOLOGY_CACHE_DIR'
 CACHE_SUBDIR = Path('interior_lookup_tables') / 'rheology_scs'
-TABLE_FORMAT = 1  # bump when the stored arrays change meaning
+TABLE_FORMAT = 2  # bump when the stored arrays change meaning
 COLLAPSE_FRAC = 1e-9  # shear modulus below this fraction of mu_sol counts as collapsed
 TOL = 1e-12  # absolute fixed-point residual, in units of kappa_sol and mu_sol
 ITMAX = 500  # Newton iterations per volume fraction
@@ -52,19 +52,19 @@ class ScsTableGrid:
     nu_min, nu_max, n_nu : float, float, int
         Range and number of nodes of the solid Poisson ratio.
     kliq_min, kliq_max, n_kliq : float, float, int
-        Range and number of nodes of ``kappa_liq / kappa_sol``.
+        Range and number of log-spaced nodes of ``kappa_liq / kappa_sol``.
     gliq_min, gliq_max, n_gliq : float, float, int
         Range and number of log-spaced nodes of ``G_inf / kappa_sol``.
     n_v : int
         Number of nodes of the inclusion volume fraction on [0, 1].
     """
 
-    nu_min: float = 0.15
-    nu_max: float = 0.45
-    n_nu: int = 31
+    nu_min: float = 0.05
+    nu_max: float = 0.48
+    n_nu: int = 44
     kliq_min: float = 0.05
-    kliq_max: float = 1.5
-    n_kliq: int = 30
+    kliq_max: float = 3.0
+    n_kliq: int = 36
     gliq_min: float = 1e-3
     gliq_max: float = 1.0
     n_gliq: int = 13
@@ -81,10 +81,12 @@ class ScsTableGrid:
             raise ValueError('ScsTableGrid needs at least 2 nodes per axis and 3 in v')
 
     def axes(self) -> dict[str, np.ndarray]:
-        """Node arrays: ``nu``, ``kliq``, ``log_gliq`` (log10) and ``v``."""
+        """Node arrays: ``nu``, ``log_kliq``, ``log_gliq`` (log10) and ``v``."""
         return {
             'nu': np.linspace(self.nu_min, self.nu_max, self.n_nu),
-            'kliq': np.linspace(self.kliq_min, self.kliq_max, self.n_kliq),
+            'log_kliq': np.linspace(
+                np.log10(self.kliq_min), np.log10(self.kliq_max), self.n_kliq
+            ),
             'log_gliq': np.linspace(
                 np.log10(self.gliq_min), np.log10(self.gliq_max), self.n_gliq
             ),
@@ -210,7 +212,7 @@ def build_tables(grid: ScsTableGrid) -> dict[str, np.ndarray]:
     ax = grid.axes()
     mu_s = mu_over_kappa(ax['nu'])
     kd, mud = solve_scs(ax['v'], mu_s, 0.0, 0.0)
-    ns, nk, ng = mu_s[:, None], ax['kliq'][None, :], 10.0 ** ax['log_gliq']
+    ns, nk, ng = mu_s[:, None], 10.0 ** ax['log_kliq'][None, :], 10.0 ** ax['log_gliq']
     ksat, _ = solve_scs(ax['v'], ns, nk, 0.0)
     _, muu = solve_scs(ax['v'], ns[..., None], nk[..., None], ng[None, None, :])
     return {
@@ -243,7 +245,7 @@ def table_path(grid: ScsTableGrid, directory: Path | None = None) -> Path:
     return directory / f'scs_{grid.hash_short()}_{solver_identity()}.npz'
 
 
-def _write_atomic(path: Path, arrays: dict) -> None:
+def write_npz_atomic(path: Path, arrays: dict) -> None:
     """Write ``arrays`` to ``path`` through a temporary file, so readers never see a partial file."""
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(f'.{path.name}.{os.getpid()}.tmp')
@@ -293,7 +295,7 @@ def load_tables(grid: ScsTableGrid | None = None, directory=None, force=False) -
 def _generate(path: Path, grid: ScsTableGrid) -> dict:
     log.info('Generating rheology SCS tables %s', path)
     arrays = build_tables(grid) | {'grid_hash': grid.hash_short(), 'solver': solver_identity()}
-    _write_atomic(path, arrays)
+    write_npz_atomic(path, arrays)
     return arrays
 
 
@@ -331,7 +333,7 @@ class ScsTables:
         self.grid = grid
         ax = grid.axes()
         self._axes = ax
-        nv, kl, lg, v = ax['nu'], ax['kliq'], ax['log_gliq'], ax['v']
+        nv, kl, lg, v = ax['nu'], ax['log_kliq'], ax['log_gliq'], ax['v']
         opt = {'method': 'linear', 'bounds_error': True}
         self._kd = RegularGridInterpolator((nv, v), arrays['drained_kappa'], **opt)
         self._mud = RegularGridInterpolator((nv, v), arrays['drained_mu'], **opt)
@@ -357,7 +359,9 @@ class ScsTables:
         g = self.grid
         cols = [self._check('nu', nu, g.nu_min, g.nu_max)]
         if kliq is not None:
-            cols.append(self._check('kappa_liq/kappa_sol', kliq, g.kliq_min, g.kliq_max))
+            cols.append(
+                np.log10(self._check('kappa_liq/kappa_sol', kliq, g.kliq_min, g.kliq_max))
+            )
         if gliq is not None:
             cols.append(np.log10(self._check('G_inf/kappa_sol', gliq, g.gliq_min, g.gliq_max)))
         cols.append(self._check('v', v, 0.0, 1.0))
