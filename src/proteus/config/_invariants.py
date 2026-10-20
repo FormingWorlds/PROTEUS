@@ -103,12 +103,13 @@ class Invariants:
         when the re-solve is accepted or rejected by the monotonic-radius up-step guard and
         keeping rollback active with 1 warning on a solver failure, whereas an uncommitted
         initial baseline keeps the initial-baseline retry rule except for the super-liquidus
-        adiabat initial condition with rollback active at the resume, which makes 1 forced attempt;
-        any structure event on a dropped row that is not the first dropped row, such as an
-        impact or a dynamic re-solve, or an unindexed directory with dropped snapshots adds a
-        forced structure solve at the resume that the continuous run did not perform at that
-        row, so the resumed trajectory can differ from the continuous one, and Zalmoxis aborts
-        after 8 consecutive failed solves, a per-process count that restarts on a resume).
+        adiabat initial condition with rollback active at the resume, which makes 1 forced
+        attempt; any structure event on a dropped row that is not the first dropped row, such
+        as an impact or a dynamic re-solve, or an unindexed directory with dropped snapshots
+        adds a forced structure solve at the resume that the continuous run did not perform at
+        that row, so the resumed trajectory can differ from the continuous one, and Zalmoxis
+        aborts after 8 consecutive failed solves, a per-process count that restarts on a
+        resume).
     interior_mass_target_rtol: float
         Relative tolerance on ``M_int`` versus ``M_int_target`` at a Zalmoxis structure row [-],
         matching the ``3.0e-3`` Zalmoxis mass-anchor tolerance in ``interior_energetics/wrapper.py``
@@ -130,10 +131,10 @@ class Invariants:
         dropped row that is not the first dropped row, such as an impact or a dynamic re-solve,
         or an unindexed directory with dropped snapshots adds a forced structure solve at the
         resume that the continuous run did not perform at that row, so the resumed trajectory
-        can differ from the continuous one, and because ``M_int_target`` is not a persisted
-        helpfile column, a non-forced resume of a static-structure run does not check
-        ``M_int_target_rel_err`` again until the next forced solve, while the continuous run
-        does) or when
+        can differ from the continuous one, and because ``M_int_target`` is not a helpfile
+        column and ``hf_row`` is rebuilt from ``hf_all`` each iteration, in both continuous and
+        resumed runs ``M_int_target_rel_err`` is checked only on the row of a Zalmoxis solve
+        that sets the target: initial, baseline, forced, impact, or dynamic re-solve) or when
         configured tighter than ``3.0e-3``.
     core_mass_target_rtol: float
         Relative tolerance on ``M_core`` versus ``M_core_target`` at a structure update row [-],
@@ -149,11 +150,12 @@ class Invariants:
         rollback active and forces 1 re-solve at the resume, clearing the rollback on an
         accepted solve or up-step reject and keeping rollback active on a solver failure,
         whereas an uncommitted initial baseline keeps the initial-baseline retry rule except for
-        the super-liquidus adiabat initial condition with rollback active at the resume, which makes 1
-        forced attempt, and any structure event on a dropped row that is not the first dropped
-        row, such as an impact or a dynamic re-solve, or an unindexed directory with dropped
-        snapshots adds a forced structure solve at the resume that the continuous run did not
-        perform at that row, so the resumed trajectory can differ from the continuous one).
+        the super-liquidus adiabat initial condition with rollback active at the resume, which
+        makes 1 forced attempt, and any structure event on a dropped row that is not the first
+        dropped row, such as an impact or a dynamic re-solve, or an unindexed directory with
+        dropped snapshots adds a forced structure solve at the resume that the continuous run
+        did not perform at that row, so the resumed trajectory can differ from the continuous
+        one).
     element_closure_rtol: float
         Relative tolerance on per-element reservoir closure ``atm + magma + solid = total`` [-],
         sized at ``2.5`` times the default ``outgas.solver_rtol = 1.0e-4``.

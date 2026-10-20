@@ -682,13 +682,14 @@ def check_structure_invariants(
     forces 1 re-solve at the resume (clearing the rollback on an accepted solve or up-step
     reject and keeping rollback active with 1 warning on a solver failure), whereas an
     uncommitted initial baseline keeps the initial-baseline retry rule except for the
-    super-liquidus adiabat initial condition with rollback active at the resume, which makes 1 forced
-    attempt. Any structure event on a dropped row that is not the first dropped row (an impact
-    or a dynamic re-solve) or an unindexed directory with dropped snapshots adds a forced
+    super-liquidus adiabat initial condition with rollback active at the resume, which makes 1
+    forced attempt. Any structure event on a dropped row that is not the first dropped row (an
+    impact or a dynamic re-solve) or an unindexed directory with dropped snapshots adds a forced
     structure solve at the resume that the continuous run did not perform at that row, so the
     resumed trajectory can differ from the continuous one. Because ``M_int_target`` is not a
-    persisted helpfile column, a non-forced resume of a static-structure run does not check
-    ``M_int_target_rel_err`` again until the next forced solve, while the continuous run does.
+    helpfile column and ``hf_row`` is rebuilt from ``hf_all`` each iteration, in both continuous
+    and resumed runs ``M_int_target_rel_err`` is checked only on the row of a Zalmoxis solve
+    that sets the target (initial, baseline, forced, impact, or dynamic re-solve).
 
     Parameters
     ----------

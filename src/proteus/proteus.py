@@ -384,8 +384,10 @@ class Proteus:
         forced attempt) or runs 1 forced re-solve when a structure flag event on
         disk is newer than the resumed snapshot row, an unindexed flag file
         accompanies dropped snapshots, or a pending forced re-solve flag is
-        present on disk after the baseline was committed (preserving the earliest
-        committed baseline row ``1 c`` on disk across the forced attempt). Because a structure
+        present on disk after the baseline was committed (preserving an existing
+        indexed baseline commit row ``1 c`` with ``c <= resume_row``, or recording
+        ``1 <resume_row>`` at the resume setup when the commit has no row index on
+        disk, across the forced attempt). Because a structure
         event on a dropped row that is not the first dropped row (an impact or a
         dynamic re-solve) or an unindexed directory with dropped snapshots adds a
         forced solve at the resume that the continuous run did not perform at
@@ -1203,6 +1205,7 @@ class Proteus:
             baseline_committed_on_disk = resume_baseline_structure_done(
                 self.directories['output'], resume_row=None
             )
+            has_indexed_baseline_commit = False
             if baseline_committed_on_disk:
                 baseline_path = get_file_baseline_structure_done(self.directories['output'])
                 if os.path.exists(baseline_path):
@@ -1210,8 +1213,11 @@ class Proteus:
                         _, baseline_row = _read_flag_file_with_row(baseline_path)
                     except (ValueError, OSError):
                         baseline_row = None
-                    if baseline_row is not None and baseline_row > resume_row:
-                        baseline_committed_on_disk = False
+                    if baseline_row is not None:
+                        if baseline_row > resume_row:
+                            baseline_committed_on_disk = False
+                        else:
+                            has_indexed_baseline_commit = True
             pending_on_disk = resume_structure_forced_pending(self.directories['output'])
             pending_clean_true = False
             if pending_on_disk:
@@ -1239,6 +1245,10 @@ class Proteus:
             if self.config.interior_struct.module == 'zalmoxis':
                 if needs_forced_resolve:
                     self._baseline_structure_done = False
+                    if not has_indexed_baseline_commit:
+                        write_baseline_structure_done(
+                            self.directories['output'], True, row_index=resume_row
+                        )
                     write_structure_forced_pending(
                         self.directories['output'], True, row_index=resume_row
                     )
@@ -1255,7 +1265,11 @@ class Proteus:
             else:
                 self._baseline_structure_done = True
 
-            if newer_flag_event or unindexed_dropped or pending_on_disk:
+            if (
+                newer_flag_event
+                or unindexed_dropped
+                or (pending_on_disk and committed_before_resume)
+            ):
                 self.interior_o.structure_rollback_active = True
                 self.interior_o.write_structure_stale(
                     self.directories['output'], row_index=resume_row

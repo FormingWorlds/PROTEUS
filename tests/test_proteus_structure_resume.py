@@ -2721,7 +2721,7 @@ def test_proteus_start_baseline_committed_on_dropped_row_keeps_retry_rule_and_co
         Path(__file__).resolve().parents[1] / 'docs' / 'Reference' / 'config' / 'params.md'
     ).read_text(encoding='utf-8')
     assert (
-        'in both continuous and resumed runs M_int_target_rel_err is checked only on the row '
+        'in both continuous and resumed runs ``M_int_target_rel_err`` is checked only on the row '
         'of a Zalmoxis solve that sets the target'
     ) in params_md
     assert 'while the continuous run does' not in params_md
