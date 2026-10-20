@@ -99,10 +99,10 @@ def _estimate_tau_drain(config: Config, hf_row: dict, interior_o) -> float:
     $c_{p,\\text{chord}} = \\min(c_{p,\\text{eff}},\\, T_{\\text{top}}\\,\\Delta S_{\\text{trial}} / \\Delta T_{\\text{trial}})$
     whenever $T(P_{\\text{top}}, S_{\\text{trial}})$ falls more than $\\Delta T_{\\text{allow}}$
     below $T_{\\text{top}}$ ($\\Delta T_{\\text{trial}} = T_{\\text{top}} - T(P_{\\text{top}}, S_{\\text{trial}}) > \\Delta T_{\\text{allow}}$
-    and $S_{\\text{top}} > S_{\\text{trial}}$); this trigger fires both across a liquidus or
-    solidus crossing and on every step with a mushy top cell at $\\phi_{\\text{top}} > 0.6$,
+    and $S_{\\text{top}} > S_{\\text{trial}}$); this trigger fires across a liquidus crossing
+    and on every step with a mushy top cell at $\\phi_{\\text{top}} > 0.6$,
     where the tabulated mush ``heat_capacity`` (a lever-rule blend of the end-member heat
-    capacities) is about twice $T\\,\\mathrm{d}S/\\mathrm{d}T$ along the EOS. The gate
+    capacities) is about $2$ to $2.6$ times $T\\,\\mathrm{d}S/\\mathrm{d}T$ along the EOS. The gate
     $\\Delta T_{\\text{trial}} > \\Delta T_{\\text{allow}}$ already forces the chord value below
     $c_{p,\\text{eff}}$, and $\\min()$ guards floating-point round-off. Using
     $T_{\\text{mean}} = 0.5\\,(T_{\\text{top}} + T_{\\text{trial}})$ in the chord numerator
@@ -110,13 +110,14 @@ def _estimate_tau_drain(config: Config, hf_row: dict, interior_o) -> float:
     $(T_{\\text{top}} - T_{\\text{trial}}) / (2\\,T_{\\text{top}})$, about $9\\%$ at the
     $531.5\\text{ yr}$ state; the $T_{\\text{top}}$ form is the tested form (measured across
     3 runs over 2 configurations of a $1\\,M_{\\oplus}$ planet at $0.5$ and $0.7\\text{ au}$
-    with the PALEOS $\\text{MgSiO}_3$ EOS and AGNI atmosphere to $25\\text{ kyr}$ at
+    with the PALEOS $\\text{MgSiO}_3$ EOS, dummy star and dummy atmosphere to $25\\text{ kyr}$ at
     $\\eta_T = \\eta_{T,\\text{solid}} = 0.08$: maximum per-step
     $|\\Delta T_{\\text{surf}}| / (\\eta_{\\text{eff}}\\,T_{\\text{surf}}) = 0.69$ using
-    $T_{\\text{surf}}$ at step start, $0$ steps above $1$, $+9$ rows over the $0.08$ runs
-    without lookahead, $1850$ to $1852$ rows versus $218$ and $243$ rows in the same
-    configurations with the option off on Aragog development commit ``372c2e2``, or $50$
-    rows on Aragog ``main`` commit ``075fcb05``).
+    $T_{\\text{surf}}$ at step start, $0$ steps above $1$, $+9$ rows on each of the $2$ runs on
+    Aragog development commit ``372c2e2`` that have a $0.08$ run without lookahead, $1850$ to
+    $1852$ rows versus $218$ and $243$ rows in the same configurations with the option off on
+    Aragog development commit ``372c2e2``, or $50$ rows on Aragog ``main`` commit
+    ``075fcb05``).
 
     Parameters
     ----------

@@ -173,24 +173,34 @@ than $\Delta T_\mathrm{allow}$ below $T_\mathrm{top}$ ($T_\mathrm{top} -
 T_\mathrm{trial} > \Delta T_\mathrm{allow}$; using $T_\mathrm{mean}$ in the
 chord numerator would give a chord $c_p$ smaller by the fraction
 $(T_\mathrm{top} - T_\mathrm{trial}) / (2\,T_\mathrm{top})$, about $9\%$ at the
-$531.5\,\mathrm{yr}$ state), which fires both across a
-liquidus or solidus crossing and on every step with a mushy top cell at
+$531.5\,\mathrm{yr}$ state), which fires across a
+liquidus crossing and on every step with a mushy top cell at
 $\phi_\mathrm{top} > 0.6$, where the tabulated mush `heat_capacity` (a
-lever-rule blend) is about twice $T\,\mathrm{d}S/\mathrm{d}T$ along the EOS
-(measured across 3 runs over 2 configurations of a $1\,M_\oplus$ planet at
-$0.5$ and $0.7\,\mathrm{au}$ with the PALEOS $\mathrm{MgSiO}_3$ EOS and AGNI
-atmosphere to $25\,\mathrm{kyr}$ at
+lever-rule blend) is about $2$ to $2.6$ times $T\,\mathrm{d}S/\mathrm{d}T$
+along the EOS (measured across 3 runs over 2 configurations of a $1\,M_\oplus$
+planet at $0.5$ and $0.7\,\mathrm{au}$ with the PALEOS $\mathrm{MgSiO}_3$ EOS,
+dummy star and dummy atmosphere to $25\,\mathrm{kyr}$ at
 `top_cell_dt_rel_dT = top_cell_dt_rel_dT_solid = 0.08`: maximum per-step
 $|\Delta T_\mathrm{surf}| / (\eta_\mathrm{eff} T_\mathrm{surf}) = 0.69$ using
-$T_\mathrm{surf}$ at step start, $0$ steps above $1$, $+9$ rows over the
-$0.08$ runs without lookahead, $1850$ to $1852$ rows vs $218$ and $243$ rows
-in the same configurations with the option off on Aragog development commit
-`372c2e2`, or $50$ rows on Aragog `main` commit `075fcb05`; in a computed
-top-cell estimate on the $531.546\,\mathrm{yr}$ fixture slice and the worst
-mushy step of each of the 3 live runs, the top-cell drop-to-allowance ratio is
-$0.7863$ to $1.0000$ at $0.08$, $0.6866$ to $0.7851$ at $0.15$, and $0.8428$
-to $0.8903$ at the validator maximum $0.30$, while $0.50$ exceeds $1$ at
-$1.1300$ to $1.1735$).
+$T_\mathrm{surf}$ at step start, $0$ steps above $1$, $+9$ rows on each of the
+$2$ runs on Aragog development commit `372c2e2` that have a $0.08$ run without
+lookahead, $1850$ to $1852$ rows vs $218$ and $243$ rows in the same
+configurations with the option off on Aragog development commit `372c2e2`, or
+$50$ rows on Aragog `main` commit `075fcb05`). In a computed unresupplied
+top-cell estimate mapping the step energy $q = c_{p,\mathrm{chord}}\,\Delta
+T_\mathrm{allow}$ back to entropy at a liquid state just above the liquidus ($t
+= 531.5\,\mathrm{yr}$) and at the worst mushy step of each $25\,\mathrm{kyr}$
+dummy-atmosphere run, the linearized drop-to-allowance ratio using $\Delta S =
+q / T_\mathrm{top}$ is $0.7863$ to $1.0000$ at $0.08$ and $0.6866$ to $0.7851$
+at the validator maximum $0.15$ ($0.8428$ to $0.8903$ at $0.30$; $1.1300$ to
+$1.1735$ at $0.50$), while under exact constant-pressure enthalpy $\mathrm{d}h
+= T\,\mathrm{d}S$ ($\int_{S_\mathrm{end}}^{S_\mathrm{top}} T(P_\mathrm{top},
+S)\,\mathrm{d}S = q$) the $531.5\,\mathrm{yr}$ state gives $0.8156$ at $0.08$,
+$0.7275$ at $0.15$, and $1.0120$ at $0.30$, with scan maxima over $S_\mathrm{top}$
+and $T_\mathrm{surf}/T_\mathrm{top}$ of $1.106$ at $0.08$, $1.204$ at $0.15$,
+and $1.370$ at $0.30$ before conductive and convective heat resupply from
+below, which keeps the measured per-step surface ratio at or below $0.69$ in
+the $25\,\mathrm{kyr}$ dummy-atmosphere runs at $0.08$.
 
 ## Convergence and termination
 
