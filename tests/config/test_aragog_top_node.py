@@ -83,3 +83,25 @@ def test_the_config_reader_takes_the_limited_top_node(tmp_path, core_bc):
             read_config_object(path)  # the energy_balance file differs only in core_bc
     else:
         assert read_config_object(path).interior_energetics.aragog.top_node == 'limited'
+
+
+@pytest.mark.parametrize('top_node', ['linear', 'limited', 'minmod'])
+@pytest.mark.parametrize(
+    'core_bc', ['quasi_steady', 'energy_balance', 'gradient', 'bower2018', 'core_module']
+)
+def test_the_config_and_aragog_refuse_the_same_pairs(top_node, core_bc):
+    """The PROTEUS rule and the aragog rule accept and refuse the same (top_node, core_bc) pairs."""
+    boundary = pytest.importorskip('aragog.config.boundary')
+    if not hasattr(boundary, 'check_top_node'):
+        pytest.skip('the installed aragog has no top_node option')
+    try:
+        boundary.check_top_node(top_node, core_bc)
+        aragog_ok = True
+    except ValueError:
+        aragog_ok = False
+    try:
+        Aragog(top_node=top_node, core_bc=core_bc)
+        proteus_ok = True
+    except ValueError:
+        proteus_ok = False
+    assert proteus_ok is aragog_ok
