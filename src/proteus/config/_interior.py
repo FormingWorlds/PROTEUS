@@ -513,7 +513,10 @@ class Aragog:
     +9 rows on each of the 2 runs on Aragog development commit 372c2e2 that have a 0.08 run
     without lookahead, 1850 to 1852 rows vs 218 and 243 rows in the same configurations with
     the option off on Aragog development commit 372c2e2, or 50 rows on Aragog main commit
-    075fcb05)."""
+    075fcb05; and on the 0.5 au configuration on Aragog main commit 075fcb05 with
+    atmos_clim.module = 'agni' and dummy star to 25 kyr at 0.08:
+    max |dT_surf| / (eta_eff * T_surf) = 0.47 (0.4733), 0 steps above 1, 0 late drops, and
+    1137 rows vs 51 rows and max ratio 10.0 (10.04) with the option off)."""
 
     top_cell_dt_rel_dT: float = field(
         default=0.08, converter=float, validator=(gt(0.0), le(0.15))
@@ -538,7 +541,8 @@ class Aragog:
     scan maximum over S_top and T_surf / T_top reaches 1.106 at eta = 0.08, 1.204 at
     eta = 0.15, and 1.370 at eta = 0.30 (before conductive and convective heat resupply from
     below, which keeps the measured per-step surface ratio at or below 0.69 in the 25 kyr
-    dummy-atmosphere runs at eta = 0.08)."""
+    dummy-atmosphere runs and 0.47 in the 25 kyr atmos_clim.module = 'agni' run at
+    eta = 0.08)."""
 
     top_cell_dt_rel_dT_solid: float = field(
         default=0.08,

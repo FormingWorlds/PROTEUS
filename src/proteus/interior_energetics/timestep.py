@@ -117,7 +117,11 @@ def _estimate_tau_drain(config: Config, hf_row: dict, interior_o) -> float:
     Aragog development commit ``372c2e2`` that have a $0.08$ run without lookahead, $1850$ to
     $1852$ rows versus $218$ and $243$ rows in the same configurations with the option off on
     Aragog development commit ``372c2e2``, or $50$ rows on Aragog ``main`` commit
-    ``075fcb05``).
+    ``075fcb05``; and on the $0.5\\text{ au}$ configuration on Aragog ``main`` commit
+    ``075fcb05`` with ``atmos_clim.module = 'agni'`` and dummy star to $25\\text{ kyr}$ at
+    $0.08$: maximum per-step $|\\Delta T_{\\text{surf}}| / (\\eta_{\\text{eff}}\\,T_{\\text{surf}}) = 0.47$
+    ($0.4733$), $0$ steps above $1$, $0$ late drops, and $1137$ rows versus $51$ rows and
+    maximum ratio $10.0$ ($10.04$) with the option off).
 
     Parameters
     ----------

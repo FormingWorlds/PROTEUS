@@ -186,7 +186,14 @@ $T_\mathrm{surf}$ at step start, $0$ steps above $1$, $+9$ rows on each of the
 $2$ runs on Aragog development commit `372c2e2` that have a $0.08$ run without
 lookahead, $1850$ to $1852$ rows vs $218$ and $243$ rows in the same
 configurations with the option off on Aragog development commit `372c2e2`, or
-$50$ rows on Aragog `main` commit `075fcb05`). In a computed unresupplied
+$50$ rows on Aragog `main` commit `075fcb05`; and on the $0.5\,\mathrm{au}$
+configuration on Aragog `main` commit `075fcb05` with
+`atmos_clim.module = 'agni'` and dummy star to $25\,\mathrm{kyr}$ at $0.08$:
+maximum per-step
+$|\Delta T_\mathrm{surf}| / (\eta_\mathrm{eff} T_\mathrm{surf}) = 0.47$
+($0.4733$), $0$ steps above $1$, $0$ late drops, and $1137$ rows vs $51$ rows
+and maximum ratio $10.0$ ($10.04$) with the option off). In a computed
+unresupplied
 top-cell estimate mapping the step energy $q = c_{p,\mathrm{chord}}\,\Delta
 T_\mathrm{allow}$ back to entropy at a liquid state just above the liquidus ($t
 = 531.5\,\mathrm{yr}$) and at the worst mushy step of each $25\,\mathrm{kyr}$
@@ -200,7 +207,8 @@ $0.7275$ at $0.15$, and $1.0120$ at $0.30$, with scan maxima over $S_\mathrm{top
 and $T_\mathrm{surf}/T_\mathrm{top}$ of $1.106$ at $0.08$, $1.204$ at $0.15$,
 and $1.370$ at $0.30$ before conductive and convective heat resupply from
 below, which keeps the measured per-step surface ratio at or below $0.69$ in
-the $25\,\mathrm{kyr}$ dummy-atmosphere runs at $0.08$.
+the $25\,\mathrm{kyr}$ dummy-atmosphere runs and $0.47$ in the
+$25\,\mathrm{kyr}$ `atmos_clim.module = 'agni'` run at $0.08$.
 
 ## Convergence and termination
 
