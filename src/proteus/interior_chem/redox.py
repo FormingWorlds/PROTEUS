@@ -16,7 +16,13 @@ Physics summary (docs/Explanations/redox.md gives the full derivation):
             to 0 on entry), so its last trace of melt crystallises when it
             crosses the threshold. With config.planet.metal_saturation False
             there is no threshold: the solver's phi is used as is
-  Step 4    redistribute the *previous* step's global Fe3+/Fe2+ reservoirs
+  Step 3b   a cell whose phi rises remelts first the solid the tracker
+            formed in it, the most recent, taken as homogeneous, and returns
+            the remelted share of that solid's Fe2+ and Fe3+ to the melt.
+            Solid present at the first call holds no tracked iron, and metal
+            is not redissolved. A remelt after the mantle has fully
+            solidified restarts the tracker with the returned iron
+  Step 4   redistribute the *previous* step's global Fe3+/Fe2+ reservoirs
             across cells in proportion to local melt mass -- this is what
             makes the Fe3+/Fe2+ ratio spatially uniform: only the absolute
             per-cell amounts vary, not the ratio itself
@@ -370,16 +376,16 @@ def _partition_coefficients(
     )
 
 
-def _fe_into_new_solid(
+def _fe_into_new_solid_cells(
     n_fe2: float,
     n_fe3: float,
     M_melt_cell: np.ndarray,
     new_solid_mass: np.ndarray,
     D_fe2_cell: np.ndarray,
     D_fe3_cell: np.ndarray,
-) -> tuple[float, float]:
+) -> tuple[np.ndarray, np.ndarray]:
     """Step 4-6 (Eq 9-17): moles of Fe2+ and Fe3+ [mol] that enter the solid
-    formed this step, summed over cells.
+    formed this step, per cell.
 
     The melt reservoirs ``n_fe2``, ``n_fe3`` [mol] are spread over the cells
     in proportion to the melt mass ``M_melt_cell`` [kg] at the start of the
@@ -393,10 +399,41 @@ def _fe_into_new_solid(
     share = np.where(M_melt_cell > 0, M_melt_cell / M_melt_all, 0.0)
     C_fe2 = share * n_fe2 / safe_M
     C_fe3 = share * n_fe3 / safe_M
-    return (
-        float(np.sum(D_fe2_cell * C_fe2 * new_solid_mass)),
-        float(np.sum(D_fe3_cell * C_fe3 * new_solid_mass)),
+    return D_fe2_cell * C_fe2 * new_solid_mass, D_fe3_cell * C_fe3 * new_solid_mass
+
+
+def _fe_into_new_solid(
+    n_fe2: float,
+    n_fe3: float,
+    M_melt_cell: np.ndarray,
+    new_solid_mass: np.ndarray,
+    D_fe2_cell: np.ndarray,
+    D_fe3_cell: np.ndarray,
+) -> tuple[float, float]:
+    """``_fe_into_new_solid_cells`` summed over cells [mol]."""
+    dn2, dn3 = _fe_into_new_solid_cells(
+        n_fe2, n_fe3, M_melt_cell, new_solid_mass, D_fe2_cell, D_fe3_cell
     )
+    return float(np.sum(dn2)), float(np.sum(dn3))
+
+
+def _fe_from_remelted_solid(
+    state: MeltRedoxState, phi: np.ndarray, mass: np.ndarray
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Step 3b: moles of Fe2+ and Fe3+ [mol] per cell that return to the melt
+    because the cell's melt fraction rose from ``state.phi_prev`` to ``phi``,
+    and the tracked solid mass [kg] that remelted with them.
+
+    The remelted mass (phi - phi_prev) * mass [kg] comes first out of the
+    solid the tracker formed in the cell (``state.m_solid_cell``), the most
+    recent solid, which is taken as homogeneous: the cell returns the
+    remelted share of the iron it holds. Remelt beyond that mass is solid
+    present at the first call, which holds no tracked iron."""
+    remelt = np.clip(phi - state.phi_prev, 0.0, None) * mass
+    m_back = np.minimum(remelt, state.m_solid_cell)
+    safe = np.where(state.m_solid_cell > 0, state.m_solid_cell, 1.0)
+    frac = np.where(state.m_solid_cell > 0, m_back / safe, 0.0)
+    return frac * state.n_fe2_solid_cell, frac * state.n_fe3_solid_cell, m_back
 
 
 def _update_ratios(state: MeltRedoxState) -> None:
@@ -422,6 +459,11 @@ class MeltRedoxState:
     # Fe metal per cell [mol]; it stays where it formed while Step 4
     # homogenises the melt.
     n_fe_metal_cell: np.ndarray
+    # Solid formed by the tracker in each cell [kg] and the Fe2+ and Fe3+ it
+    # holds [mol], returned to the melt on remelting.
+    m_solid_cell: np.ndarray
+    n_fe2_solid_cell: np.ndarray
+    n_fe3_solid_cell: np.ndarray
     # Per-cell metal activity, overwritten each step. Diagnostic only, but
     # logged even when below 1 so the distance from the buffer is visible.
     a_fe_cell: np.ndarray
@@ -488,6 +530,9 @@ def _init_state(
         D_fe3_cell=D_fe3_cell,
         D_fe2_cell=D_fe2_cell,
         n_fe_metal_cell=np.zeros_like(phi),
+        m_solid_cell=np.zeros_like(phi),
+        n_fe2_solid_cell=np.zeros_like(phi),
+        n_fe3_solid_cell=np.zeros_like(phi),
         a_fe_cell=np.zeros_like(phi),
         ferric_frac=f_0,
         redox_ratio=f_0 / (1.0 - f_0),
@@ -764,8 +809,14 @@ _STATE_CELL = {
     'D_fe3_cell': '',
     'D_fe2_cell': '',
     'n_fe_metal_cell': 'mol',
+    'm_solid_cell': 'kg',
+    'n_fe2_solid_cell': 'mol',
+    'n_fe3_solid_cell': 'mol',
     'a_fe_cell': '',
 }
+# Cell fields a snapshot written before they existed may lack (read_tracker_state).
+_STATE_CELL_OPTIONAL = ('D_fe2_cell', 'm_solid_cell', 'n_fe2_solid_cell', 'n_fe3_solid_cell')
+_STATE_SOLID = ('m_solid_cell', 'n_fe2_solid_cell', 'n_fe3_solid_cell')
 _STATE_FLOAT = {
     'n_fe3_melt': 'mol',
     'n_fe2_melt': 'mol',
@@ -813,7 +864,11 @@ def read_tracker_state(fpath: str) -> MeltRedoxState | None:
         ds.set_auto_mask(False)
         if 'redox_n_fe2_melt' not in ds.variables:
             return None
-        cell = [n for n in _STATE_CELL if n != 'D_fe2_cell' or 'redox_' + n in ds.variables]
+        cell = [
+            n
+            for n in _STATE_CELL
+            if n not in _STATE_CELL_OPTIONAL or 'redox_' + n in ds.variables
+        ]
         kw = {n: np.array(ds['redox_' + n][:], dtype=float) for n in cell}
         kw.update({n: float(ds['redox_' + n][...]) for n in _STATE_FLOAT})
         kw.update({n: int(ds['redox_' + n][...]) for n in _STATE_INT})
@@ -825,6 +880,13 @@ def read_tracker_state(fpath: str) -> MeltRedoxState | None:
         log.warning(
             'Melt-redox state in %s has no per-cell D(Fe2+); using the current '
             'bridgmanite and Cpx/Opx values from here on',
+            fpath,
+        )
+    if not all(n in kw for n in _STATE_SOLID):
+        kw.update({n: np.zeros_like(kw['phi_prev']) for n in _STATE_SOLID})
+        log.warning(
+            'Melt-redox state in %s has no solid iron per cell; solid formed '
+            'before this step returns no iron to the melt if it remelts',
             fpath,
         )
     return MeltRedoxState(**kw)
@@ -926,6 +988,13 @@ def update_melt_redox(interior_o: Interior_t, hf_row: dict, config: Config) -> N
                 f'grid has {phi.size}; a resumed state must match the run grid'
             )
 
+        # Step 3b: iron of the solid that remelted since the previous call
+        back_fe2, back_fe3, m_back = _fe_from_remelted_solid(state, phi, mass)
+        remelted = bool(np.any(back_fe2 + back_fe3 > 0))
+        if state.melt_exhausted and remelted:
+            state.melt_exhausted = False
+            log.info('Melt redox tracking: the solidified mantle remelts, tracking resumes')
+
         if not state.melt_exhausted:
             # Step 3 (Eq 4-6): new solid mass from the decrease in melt
             # fraction since the previous call (mass is time-invariant per
@@ -941,7 +1010,7 @@ def update_melt_redox(interior_o: Interior_t, hf_row: dict, config: Config) -> N
 
             if M_melt_all > 0:
                 # Step 5-6 (Eq 12-17): Fe2+/Fe3+ moles entering the new solid
-                delta_n_fe2, delta_n_fe3 = _fe_into_new_solid(
+                delta_n_fe2, delta_n_fe3 = _fe_into_new_solid_cells(
                     state.n_fe2_melt,
                     state.n_fe3_melt,
                     M_melt_cell,
@@ -951,18 +1020,29 @@ def update_melt_redox(interior_o: Interior_t, hf_row: dict, config: Config) -> N
                 )
 
                 # Step 7 (Eq 18-19): update the global reservoirs
-                state.n_fe3_melt -= delta_n_fe3
-                state.n_fe2_melt -= delta_n_fe2
-
-                # Step 8-9 (Eq 20-24): ferric fraction and redox ratio
-                _update_ratios(state)
-            else:
+                state.n_fe3_melt -= float(np.sum(delta_n_fe3))
+                state.n_fe2_melt -= float(np.sum(delta_n_fe2))
+                state.m_solid_cell = state.m_solid_cell + new_solid_mass
+                state.n_fe2_solid_cell = state.n_fe2_solid_cell + delta_n_fe2
+                state.n_fe3_solid_cell = state.n_fe3_solid_cell + delta_n_fe3
+            elif not remelted:
                 state.melt_exhausted = True
                 log.info(
                     'Melt redox tracking: mantle fully solidified, '
                     'freezing ferric_frac=%.6f for remaining steps',
                     state.ferric_frac,
                 )
+
+            if remelted:
+                state.n_fe2_melt += float(np.sum(back_fe2))
+                state.n_fe3_melt += float(np.sum(back_fe3))
+                state.m_solid_cell = state.m_solid_cell - m_back
+                state.n_fe2_solid_cell = state.n_fe2_solid_cell - back_fe2
+                state.n_fe3_solid_cell = state.n_fe3_solid_cell - back_fe3
+
+            if M_melt_all > 0 or remelted:
+                # Step 8-9 (Eq 20-24): ferric fraction and redox ratio
+                _update_ratios(state)
 
         state.phi_prev = phi.copy()
 

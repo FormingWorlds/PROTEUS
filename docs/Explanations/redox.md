@@ -141,7 +141,15 @@ $$
 
 The tracker uses the melt fraction returned by the interior module directly. A cell is fully solid only when $\phi_i=0$.
 
-If a cell remelts, its increasing melt fraction does not create new solid.
+If a cell remelts, its increasing melt fraction does not create new solid. Instead it returns iron to the melt: the tracker keeps, per cell, the solid mass it has formed, $M_{s,i}$, and the Fe$^{2+}$ and Fe$^{3+}$ that solid holds, $n_{s,i}^{2+}$ and $n_{s,i}^{3+}$. A rise in melt fraction remelts the mass $m_i(\phi_i-\phi_i^{\rm prev})$, taken first from $M_{s,i}$, the most recently formed solid of the cell. Treating that solid as homogeneous, the cell returns
+
+$$
+\Delta n_i^{2+,3+}
+=
+\frac{\min\left[m_i(\phi_i-\phi_i^{\rm prev}),\,M_{s,i}\right]}{M_{s,i}}\,n_{s,i}^{2+,3+}
+$$
+
+to the melt reservoirs. Solid that was present at the first step holds no tracked iron, so remelting it adds melt mass but no iron. Fe metal is not redissolved.
 
 ### 3. Assume a homogeneous melt
 
@@ -258,9 +266,9 @@ $$
 
 `f` is written to the helpfile as `ferric_frac_mantle`.
 
-Iron that has entered the solid is never returned to the melt. If a cell remelts, the added melt mass dilutes the existing iron but does not change $R$.
+Iron that entered the solid returns to the melt when its cell remelts (Section 2), which changes $R$ towards the ratio of the remelted solid.
 
-When no melt remains ($M_{\rm melt}^{\rm prev}=0$), the tracker records that the mantle has solidified and keeps the final $f$ for the rest of the run.
+When no melt remains ($M_{\rm melt}^{\rm prev}=0$), the tracker records that the mantle has solidified and keeps the final $f$ until a cell remelts, for example after a giant impact. The remelted solid then returns its iron and the tracker continues.
 
 ## From melt redox to surface $f_{\rm O_2}$
 
@@ -414,8 +422,8 @@ Snapshots created before redox state storage was implemented cannot restore the 
 - **No atmospheric back-reaction.**  
   Oxygen exchanged with the atmosphere does not modify the melt reservoirs. The coupling is one-way: melt redox $\rightarrow$ outgassing.
 
-- **No remelting of iron.**  
-  Iron that entered the solid does not return to the melt if the cell later remelts, for example after a giant impact. In one coupled run with remelting, Fe$^{3+}$/Fe$_{\rm T}$ ended at 0.219, against 0.192 when the iron of the remelted solid was returned to the melt.
+- **Remelted solid is homogeneous.**  
+  A remelting cell returns the average Fe$^{3+}$/Fe$^{2+}$ of the solid the tracker formed in it, not that of the last layer to crystallize. Solid present at the first step holds no tracked iron.
 
 - **Finite time-step effects.**  
   The reservoir update is explicit and first-order in the change in melt fraction. Coarse steps late in solidification can therefore make the melt slightly too oxidized. For a single shallow-regime cell frozen to 2% melt in 10 equal steps, $f$ is 0.419 instead of the converged 0.409.
@@ -431,6 +439,7 @@ The unit tests in `tests/interior_chem/test_redox.py` check that:
 - surface $\Delta$IW uses the Hirschmann (2022) relation at 1 bar and $T_{\rm out}$ minus the Hirschmann (2021) IW buffer;
 - the real melt-fraction change determines how much iron crystallizes;
 - the Hirschmann (2021) buffer agrees with an independent 1-bar IW calibration near 1500 K and has the expected pressure dependence;
+- a remelting cell returns the remelted share of its solid's iron, total iron is conserved between melt and solid, and remelting back to the initial melt fraction restores $f_0$;
 - a run resumed from a snapshot reaches the same final reservoirs as an uninterrupted run.
 
 ### Comparison with Schaefer et al. (2024)

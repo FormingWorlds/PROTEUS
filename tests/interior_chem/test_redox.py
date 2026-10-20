@@ -1335,7 +1335,17 @@ def test_restored_state_matches_every_stored_field(tmp_path):
     assert write_fO2_profile_ncdf(fpath, st)
 
     got = read_tracker_state(fpath)
-    for name in ('phi_prev', 'D_fe3_cell', 'D_fe2_cell', 'n_fe_metal_cell', 'a_fe_cell'):
+    assert np.sum(st.n_fe2_solid_cell) > 0.0  # the solid iron being stored is not trivial
+    for name in (
+        'phi_prev',
+        'D_fe3_cell',
+        'D_fe2_cell',
+        'n_fe_metal_cell',
+        'm_solid_cell',
+        'n_fe2_solid_cell',
+        'n_fe3_solid_cell',
+        'a_fe_cell',
+    ):
         np.testing.assert_array_equal(getattr(got, name), getattr(st, name))
     for name in ('n_fe3_melt', 'n_fe2_melt', 'ferric_frac', 'redox_ratio', 'w_feo15'):
         assert getattr(got, name) == getattr(st, name), name
@@ -1406,6 +1416,156 @@ def test_a_restored_state_on_a_different_grid_is_refused():
     with pytest.raises(ValueError, match='3 cells but the interior grid has 4'):
         update_melt_redox(interior, {'T_magma': 2200.0}, config)
     assert interior.redox_state.n_fe2_melt == n2
+
+
+def test_a_state_stored_without_solid_iron_resumes_with_none_and_warns(
+    tmp_path, monkeypatch, caplog
+):
+    """A snapshot written before the solid iron was stored still resumes: the
+    solid of every cell starts with no tracked iron, and this is logged."""
+    from proteus.interior_chem import redox
+
+    interior = _make_interior()
+    _run_steps(interior, _resume_config(), range(2))
+    st = interior.redox_state
+    fpath = str(tmp_path / '1_int.nc')
+    _make_int_snapshot(fpath, _PHI.size)
+    with monkeypatch.context() as m:
+        for name in ('m_solid_cell', 'n_fe2_solid_cell', 'n_fe3_solid_cell'):
+            m.delitem(redox._STATE_CELL, name)
+        assert redox.write_fO2_profile_ncdf(fpath, st)
+
+    with caplog.at_level('WARNING'):
+        got = redox.read_tracker_state(fpath)
+    for name in ('m_solid_cell', 'n_fe2_solid_cell', 'n_fe3_solid_cell'):
+        assert np.all(getattr(got, name) == 0.0), name
+    assert got.n_fe2_solid_cell.shape == st.phi_prev.shape
+    assert got.n_fe2_melt == st.n_fe2_melt
+    assert sum('no solid iron per cell' in r.message for r in caplog.records) == 1
+
+
+# ── Remelting returns the iron of the remelted solid (Step 3b) ─────────────
+
+
+def _remelt_run(phis, f_0=0.1):
+    """Tracker without metal saturation through the melt-fraction profiles
+    ``phis``; returns the interior after the last one."""
+    config = _make_config(f_0, metal_saturation=False)
+    interior = _make_interior()
+    for phi in phis:
+        interior.phi = np.asarray(phi, dtype=float)
+        update_melt_redox(interior, {'T_magma': 2200.0}, config)
+    return interior
+
+
+def _fe_total(st):
+    return st.n_fe2_melt + st.n_fe3_melt + np.sum(st.n_fe2_solid_cell + st.n_fe3_solid_cell)
+
+
+@pytest.mark.physics_invariant
+def test_iron_is_conserved_between_melt_and_solid_through_freezing_and_remelting():
+    """Without metal, melt plus solid Fe2+ and Fe3+ stay at the initial melt
+    inventory on every step of a freeze then remelt, and each species is
+    conserved on its own."""
+    phis = [_PHI, [0.7, 0.3, 0.0], [0.4, 0.1, 0.0], [0.6, 0.35, 0.0], [0.9, 0.5, 0.0]]
+    n2_0 = W_FET * _M_MELT / MU_FEO
+    n3_0 = n2_0 * 0.1 / 0.9
+    for k in range(1, len(phis) + 1):
+        st = _remelt_run(phis[:k]).redox_state
+        assert _fe_total(st) == pytest.approx(n2_0 + n3_0, rel=1e-12)
+        assert st.n_fe2_melt + np.sum(st.n_fe2_solid_cell) == pytest.approx(n2_0, rel=1e-12)
+        assert np.all(st.n_fe2_solid_cell >= 0.0) and np.all(st.n_fe3_solid_cell >= 0.0)
+    # Guard: the remelt steps put iron back; dropping it leaves the melt short.
+    frozen = _remelt_run(phis[:3]).redox_state
+    assert st.n_fe2_melt > frozen.n_fe2_melt * 1.2
+
+
+@pytest.mark.physics_invariant
+def test_remelting_back_to_the_initial_melt_fraction_restores_the_initial_ferric_fraction():
+    """Solid that formed from the melt and remelts completely returns all its
+    iron, so the reservoirs and Fe3+/FeT go back to their initial values
+    whatever D the solid took up."""
+    st = _remelt_run([_PHI, [0.6, 0.2, 0.0], [0.3, 0.05, 0.0], _PHI]).redox_state
+    n2_0 = W_FET * _M_MELT / MU_FEO
+    assert st.n_fe2_melt == pytest.approx(n2_0, rel=1e-12)
+    assert st.n_fe3_melt == pytest.approx(n2_0 * 0.1 / 0.9, rel=1e-12)
+    assert st.ferric_frac == pytest.approx(0.1, rel=1e-12)
+    np.testing.assert_allclose(st.n_fe2_solid_cell, 0.0, atol=1e-12 * n2_0)
+    # Guard: before the remelt the ratio had moved well away from f_0.
+    frozen = _remelt_run([_PHI, [0.6, 0.2, 0.0], [0.3, 0.05, 0.0]]).redox_state
+    assert abs(frozen.ferric_frac - 0.1) > 0.002
+    # Guard: spreading the iron of cell 1 over its initial solid as well
+    # returns only 0.45 / 0.95 of it, 5 % of n2_0 short.
+    diluted = (
+        frozen.n_fe2_melt
+        + frozen.n_fe2_solid_cell[0]
+        + 0.45 / 0.95 * frozen.n_fe2_solid_cell[1]
+    )
+    assert n2_0 - diluted > 0.01 * n2_0
+
+
+@pytest.mark.physics_invariant
+def test_a_partial_remelt_returns_the_remelted_fraction_of_the_cell_solid():
+    """A cell at phi = 0.2 that rises to 0.6 has remelted half of its solid,
+    (0.6 - 0.2) / (1 - 0.2), and returns half of the iron that solid holds;
+    the other cells are untouched."""
+    before = _remelt_run([_PHI, [0.2, 0.5, 0.0]]).redox_state
+    s2, s3 = before.n_fe2_solid_cell.copy(), before.n_fe3_solid_cell.copy()
+    st = _remelt_run([_PHI, [0.2, 0.5, 0.0], [0.6, 0.5, 0.0]]).redox_state
+
+    assert st.n_fe2_melt == pytest.approx(before.n_fe2_melt + 0.5 * s2[0], rel=1e-12)
+    assert st.n_fe3_melt == pytest.approx(before.n_fe3_melt + 0.5 * s3[0], rel=1e-12)
+    assert st.n_fe2_solid_cell[0] == pytest.approx(0.5 * s2[0], rel=1e-12)
+    np.testing.assert_array_equal(st.n_fe2_solid_cell[1:], s2[1:])
+    # Guard: returning (phi - phi_prev) = 0.4 of the solid iron instead is 20 % short.
+    assert abs(st.n_fe2_melt - (before.n_fe2_melt + 0.4 * s2[0])) > 0.05 * s2[0]
+
+
+@pytest.mark.physics_invariant
+def test_solid_present_at_the_first_step_returns_no_iron_on_remelting():
+    """The deep cell starts solid with no tracked iron: remelting it adds melt
+    mass but no iron, so the reservoirs and Fe3+/FeT stay as they were. A
+    cell remelting past the solid the tracker formed returns that iron once."""
+    before = _remelt_run([_PHI]).redox_state
+    st = _remelt_run([_PHI, [1.0, 0.5, 0.5]]).redox_state
+    assert (st.n_fe2_melt, st.n_fe3_melt) == (before.n_fe2_melt, before.n_fe3_melt)
+    assert st.ferric_frac == before.ferric_frac
+    assert np.all(st.m_solid_cell == 0.0)
+
+    # Edge: remelting past the tracked solid of a cell returns all of its iron
+    # once, and the initial solid underneath adds none.
+    frozen = _remelt_run([_PHI, [1.0, 0.2, 0.0]]).redox_state
+    over = _remelt_run([_PHI, [1.0, 0.2, 0.0], [1.0, 0.9, 0.0]]).redox_state
+    assert over.n_fe2_melt == pytest.approx(
+        frozen.n_fe2_melt + frozen.n_fe2_solid_cell[1], rel=1e-12
+    )
+    assert over.m_solid_cell[1] == 0.0 and over.n_fe2_solid_cell[1] == 0.0
+    assert frozen.m_solid_cell[1] == pytest.approx(0.3 * _MASS[1], rel=1e-12)
+
+
+@pytest.mark.physics_invariant
+def test_a_remelt_after_full_solidification_restarts_the_tracker(caplog):
+    """A fully solidified mantle that remelts, for example after a giant
+    impact, gets its melt reservoirs back from the remelted solid and the
+    tracker runs again instead of staying frozen."""
+    config = _make_config(0.1, metal_saturation=False)
+    interior = _make_interior()
+    for phi in (_PHI, [0.5, 0.2, 0.0], np.zeros(3), np.zeros(3)):
+        interior.phi = np.asarray(phi)
+        update_melt_redox(interior, {'T_magma': 2200.0}, config)
+    st = interior.redox_state
+    assert st.melt_exhausted
+    total = _fe_total(st)
+    frozen_f = st.ferric_frac
+
+    with caplog.at_level('INFO', logger='fwl.proteus.interior_chem.redox'):
+        interior.phi = np.array([1.0, 0.5, 0.0])
+        update_melt_redox(interior, {'T_magma': 2200.0}, config)
+    assert not st.melt_exhausted
+    assert _fe_total(st) == pytest.approx(total, rel=1e-12)
+    assert np.sum(st.n_fe2_solid_cell[0]) == pytest.approx(0.0, abs=1e-12 * total)
+    assert abs(st.ferric_frac - frozen_f) > 1e-4  # the returned solid has its own ratio
+    assert any('remelts, tracking resumes' in r.message for r in caplog.records)
 
 
 # ---------------------------------------------------------------------------
