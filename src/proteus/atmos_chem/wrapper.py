@@ -2,11 +2,18 @@
 from __future__ import annotations
 
 import logging
+import os
+import shutil
 from typing import TYPE_CHECKING
 
 import pandas as pd
 
-from proteus.atmos_chem.common import read_result
+from proteus.atmos_chem.common import (
+    chem_csv_name,
+    helpfile_row_at,
+    read_result,
+    resolve_chemistry_times,
+)
 from proteus.utils.helper import UpdateStatusfile
 
 log = logging.getLogger('fwl.' + __name__)
@@ -15,11 +22,16 @@ if TYPE_CHECKING:
     from proteus.config import Config
 
 
-def run_chemistry(dirs: dict, config: Config, hf_row: dict) -> pd.DataFrame:
+def run_chemistry(dirs: dict, config: Config, hf_all: pd.DataFrame) -> pd.DataFrame | None:
     """
-    Run atmospheric chemistry model (offline post-processing or online per-snapshot).
+    Post-process atmosphere snapshots with the atmospheric chemistry model.
 
-    Results are saved to CSV files on disk and returned as a DataFrame.
+    Runs at the snapshot times set by `atmos_chem.times`, in ascending order,
+    after the simulation. A snapshot without an atmosphere (surface pressure
+    zero, as after desiccation) is left out. Each run writes
+    ``offchem/<module>_<time>.csv``, and the latest is also copied to
+    ``offchem/<module>.csv``. The ``offchem`` folder is cleared once at the
+    start. A failed run stops the sequence; the results before it are kept.
 
     Parameters
     ----------
@@ -27,29 +39,26 @@ def run_chemistry(dirs: dict, config: Config, hf_row: dict) -> pd.DataFrame:
         Dictionary of directories.
     config : Config
         Configuration object.
-    hf_row : dict
-        Dictionary of current helpfile row.
+    hf_all : pd.DataFrame
+        Helpfile of the run. Each run uses the row nearest its snapshot time.
 
     Returns
     ----------
-        result : pd.DataFrame
-            DataFrame containing the results of the offline chemistry model.
+        result : pd.DataFrame | None
+            Result of the latest run, or None if there was nothing to run.
+
+    Raises
+    ----------
+        RuntimeError
+            If the chemistry model fails at a snapshot.
     """
 
     log.info('Running atmospheric chemistry...')
 
+    # The config converter maps the TOML string 'none' to None
     module = config.atmos_chem.module
-    when = config.atmos_chem.when
-
-    # Guard: no module configured. The config converter maps the TOML string
-    # 'none' to Python None before this point.
     if not module:
         log.warning('Cannot run atmospheric chemistry, no module specified')
-        return None
-
-    # Guard: scheduling
-    if when == 'manually':
-        log.debug("Atmospheric chemistry set to 'manually'; skipping")
         return None
 
     # Resolve the runner function (lazy imports keep heavy backends optional)
@@ -62,30 +71,40 @@ def run_chemistry(dirs: dict, config: Config, hf_row: dict) -> pd.DataFrame:
             UpdateStatusfile(dirs, 20)
         raise ValueError(f"Invalid atmos_chem module: '{module}'")
 
-    log.info(f'    Using {module} module, {when}')
-
-    # Dispatch based on scheduling mode:
-    #   'offline': run once after the simulation step, on the final state
-    #   'online':  run at every snapshot during the main simulation loop
-    filename = None
-    if when == 'offline':
-        log.debug('Running atmospheric chemistry in OFFLINE mode')
-        success = _run(dirs, config, hf_row)
-    elif when == 'online':
-        log.debug('Running atmospheric chemistry in ONLINE mode')
-        success = _run(dirs, config, hf_row, online=True)
-        filename = f'{module}_{int(hf_row["Time"])}.csv'
-    else:
-        if dirs.get('output'):
-            UpdateStatusfile(dirs, 20)
-        raise ValueError(f"Invalid atmos_chem.when value: '{when}'")
-
-    # Surface solver failure to the caller (e.g. wrong atmos module,
-    # missing output pickle, unrecognised network) so it isn't silently
-    # masked by a None DataFrame downstream.
-    if not success:
-        log.warning(f'{module} chemistry run did not produce output; skipping read')
+    times = resolve_chemistry_times(dirs['output'], hf_all, config.atmos_chem.times)
+    no_atm = [t for t in times if not float(helpfile_row_at(hf_all, t)['P_surf']) > 0.0]
+    if no_atm:
+        log.warning(
+            'Skipping %d snapshot(s) without an atmosphere (desiccated), from t=%.3e yr'
+            % (len(no_atm), no_atm[0])
+        )
+        times = [t for t in times if t not in no_atm]
+    if not times:
+        log.warning('No snapshots to run atmospheric chemistry on')
         return None
+    log.info(f'    Using {module} module at {len(times)} snapshot(s)')
 
-    # Read the CSV output and return as DataFrame
-    return read_result(dirs['output'], module, filename=filename)
+    shutil.rmtree(dirs['output/offchem'], ignore_errors=True)
+    os.makedirs(dirs['output/offchem'])
+
+    # Rows report a column absent from an old helpfile, rather than a KeyError
+    from proteus.utils.coupler import HelpfileRow, helpfile_path
+
+    for i, time in enumerate(times):
+        log.info('    Chemistry snapshot %d of %d, t=%.3e yr' % (i + 1, len(times), time))
+        # Snapshot file names hold the time to 1e-3 yr, so the row takes that time
+        snapshot = helpfile_row_at(hf_all, time)
+        snapshot['Time'] = time
+        hf_row = HelpfileRow(snapshot, helpfile_path(dirs['output']))
+        # A failed run stops the sequence, so a later run follows a success
+        extra = {'network_compiled': i > 0} if module == 'vulcan' else {}
+        if not _run(dirs, config, hf_row, **extra):
+            raise RuntimeError('%s chemistry failed at t=%.3e yr' % (module, time))
+
+    # The fixed name holds the latest result
+    offchem = dirs['output/offchem']
+    shutil.copyfile(
+        os.path.join(offchem, chem_csv_name(module, times[-1])),
+        os.path.join(offchem, f'{module}.csv'),
+    )
+    return read_result(dirs['output'], module)
