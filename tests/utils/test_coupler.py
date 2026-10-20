@@ -5887,6 +5887,15 @@ def test_vulcan_problem_reads_a_real_config_in_every_mode(mode):
 
 
 @pytest.mark.unit
+def test_online_chemistry_is_still_refused():
+    """The start check covers only mode 'offline'; once 'online' is valid it must check that too."""
+    import attrs
+
+    with pytest.raises(ValueError, match='not yet implemented'):
+        attrs.evolve(_real_atmos_chem('vulcan', 'offline'), mode='online')
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize(
     ('module', 'mode', 'checked'),
     [('vulcan', None, 0), ('vulcan', 'offline', 1), (None, None, 0)],
