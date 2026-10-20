@@ -1451,9 +1451,11 @@ def test_postprocessing_set_does_not_lose_a_key():
     }
     assert named <= required, 'dropped from the requirement: %s' % sorted(named - required)
 
-    # The two computed reads expand over fixed lists, so every member counts.
-    assert {e + '_kg_atm' for e in element_list} <= required
+    # The computed read expands over a fixed list, so every member counts.
     assert {g + '_vmr' for g in vol_list} <= required
+    # The per-element atmospheric masses are read by no postprocessing code,
+    # so an archived run without them is not refused.
+    assert not ({e + '_kg_atm' for e in element_list} & required)
 
     # Discrimination: the requirement is not simply the whole schema, so the
     # assertions above are not satisfied by a set that covers everything.
@@ -1467,8 +1469,8 @@ def test_postprocessing_still_refuses_a_column_it_does_read():
     The narrower requirement is not a way of proceeding regardless: a key
     the synthesis code reads without a fallback still has to be there.
     """
-    probes = list(_POSTPROCESSING_FIXED_KEYS) + ['H2O_vmr', 'O_kg_atm']
-    assert len(probes) == 12, 'expected every fixed key plus one of each expansion'
+    probes = list(_POSTPROCESSING_FIXED_KEYS) + ['H2O_vmr']
+    assert len(probes) == 11, 'expected every fixed key plus one of the expansion'
     for needed in probes:
         assert needed in GetPostprocessingKeys()
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -3638,7 +3640,7 @@ def test_validate_module_versions_checks_vulcan_floor(tmp_path, caplog, installe
     config = _all_dummy_modules_config()
     config.interior_energetics.module = 'dummy'
     config.atmos_chem.module = 'vulcan'
-    config.atmos_chem.when = 'offline'
+    config.atmos_chem.mode = 'offline'
     spec = {'fwl-vulcan': Requirement('fwl-vulcan>=26.10.14')}
     version = PackageNotFoundError('fwl-vulcan') if installed is None else None
     with (
@@ -3674,8 +3676,7 @@ def test_an_unreadable_vulcan_version_stops_the_start(tmp_path, caplog, installe
 
     config = _all_dummy_modules_config()
     config.interior_energetics.module = 'dummy'
-    config.atmos_chem.module = 'vulcan'
-    config.atmos_chem.when = 'offline'
+    config.atmos_chem = _real_atmos_chem('vulcan', 'offline')
     with (
         patch(
             'proteus.doctor._dependency_specs',
@@ -3693,25 +3694,6 @@ def test_an_unreadable_vulcan_version_stops_the_start(tmp_path, caplog, installe
         f'VULCAN module is missing or out of date: installed version {installed!r} does not parse. '
         'Fix: pip install -U "fwl-vulcan>=26.10.14"'
     ]
-
-
-@pytest.mark.parametrize(('module', 'when'), [(None, 'offline'), ('vulcan', 'manually')])
-@pytest.mark.usefixtures('fwl_io_current')
-def test_validate_module_versions_skips_vulcan_without_chemistry(tmp_path, module, when):
-    """A config that never runs VULCAN (no module, or when = 'manually') never checks it."""
-    from proteus.utils.coupler import validate_module_versions
-
-    config = _all_dummy_modules_config()
-    config.interior_energetics.module = 'dummy'
-    config.atmos_chem.module = module
-    config.atmos_chem.when = when
-    with (
-        patch('proteus.doctor.check_python_package') as mock_check,
-        patch('proteus.utils.coupler.UpdateStatusfile') as mock_update,
-    ):
-        validate_module_versions({'rad': str(tmp_path)}, config)
-    assert mock_check.call_count == 0
-    assert mock_update.call_count == 0
 
 
 @pytest.mark.usefixtures('fwl_io_current')
@@ -3849,8 +3831,8 @@ def test_print_module_configuration_logs_versions_for_aragog_janus_zephyrus(monk
 
 
 @pytest.mark.unit
-def test_print_citation_covers_module_specific_citations_with_when_set(monkeypatch):
-    """Cover print_citation branches for module-specific citations and chemistry gate."""
+def test_print_citation_covers_module_specific_citations(monkeypatch):
+    """Cover print_citation branches for module-specific citations."""
     config = types.SimpleNamespace(
         atmos_clim=types.SimpleNamespace(module='janus'),
         interior_energetics=types.SimpleNamespace(module='spider'),
@@ -3860,7 +3842,7 @@ def test_print_citation_covers_module_specific_citations_with_when_set(monkeypat
         orbit=types.SimpleNamespace(module='lovepy'),
         accretion=types.SimpleNamespace(module='dummy'),
         observe=types.SimpleNamespace(module='petitRADTRANS'),
-        atmos_chem=types.SimpleNamespace(module='vulcan', when='runtime'),
+        atmos_chem=types.SimpleNamespace(module='vulcan'),
     )
 
     with patch('proteus.utils.coupler.log') as mock_log:
@@ -4188,7 +4170,7 @@ def test_validate_module_versions_spider_stack_passes_with_unpinned_dep(monkeypa
         escape=types.SimpleNamespace(module='zephyrus'),
         star=types.SimpleNamespace(module='mors'),
         orbit=types.SimpleNamespace(module='dummy'),
-        atmos_chem=types.SimpleNamespace(module=None),
+        atmos_chem=types.SimpleNamespace(module=None, mode=None),
     )
     requires = [
         'numpy',
@@ -4236,7 +4218,7 @@ def test_validate_module_versions_raises_for_old_janus_in_spider_stack(monkeypat
         escape=types.SimpleNamespace(module='dummy'),
         star=types.SimpleNamespace(module='dummy'),
         orbit=types.SimpleNamespace(module='dummy'),
-        atmos_chem=types.SimpleNamespace(module=None),
+        atmos_chem=types.SimpleNamespace(module=None, mode=None),
     )
     monkeypatch.setitem(sys.modules, 'janus', types.SimpleNamespace(__version__='0.1.0'))
 
@@ -4267,7 +4249,7 @@ def test_validate_module_versions_raises_for_old_obliqua(tmp_path):
         escape=types.SimpleNamespace(module='dummy'),
         star=types.SimpleNamespace(module='dummy'),
         orbit=types.SimpleNamespace(module='obliqua'),
-        atmos_chem=types.SimpleNamespace(module=None),
+        atmos_chem=types.SimpleNamespace(module=None, mode=None),
     )
     obliqua_dir = tmp_path / 'Obliqua'
     obliqua_dir.mkdir()
@@ -4302,7 +4284,7 @@ def test_validate_module_versions_accepts_current_obliqua(tmp_path):
         escape=types.SimpleNamespace(module='dummy'),
         star=types.SimpleNamespace(module='dummy'),
         orbit=types.SimpleNamespace(module='obliqua'),
-        atmos_chem=types.SimpleNamespace(module=None),
+        atmos_chem=types.SimpleNamespace(module=None, mode=None),
     )
     obliqua_dir = tmp_path / 'Obliqua'
     obliqua_dir.mkdir()
@@ -4358,8 +4340,8 @@ def test_print_module_configuration_logs_obliqua_version_and_julia(monkeypatch):
 
 
 @pytest.mark.unit
-def test_print_citation_agni_and_manual_mode_cover_noop_cases():
-    """Cover print_citation match-case no-op arms; VULCAN is cited in manual mode,
+def test_print_citation_agni_and_mode_none_cover_noop_cases():
+    """Cover print_citation match-case no-op arms; VULCAN is cited with mode none,
     because the user runs the selected chemistry module on the output afterwards."""
     config = types.SimpleNamespace(
         atmos_clim=types.SimpleNamespace(module='agni'),
@@ -4370,7 +4352,7 @@ def test_print_citation_agni_and_manual_mode_cover_noop_cases():
         orbit=types.SimpleNamespace(module='dummy'),
         accretion=types.SimpleNamespace(module='dummy'),
         observe=types.SimpleNamespace(module='dummy'),
-        atmos_chem=types.SimpleNamespace(module='vulcan', when='manually'),
+        atmos_chem=types.SimpleNamespace(module='vulcan', mode=None),
     )
 
     with patch('proteus.utils.coupler.log') as mock_log:
@@ -6112,3 +6094,69 @@ def test_validate_module_versions_goes_on_with_an_unparsable_fwl_io(tmp_path, ca
         r.levelno for r in caplog.records if 'cannot parse the installed' in r.getMessage()
     ]
     assert levels == [logging.WARNING]
+
+
+def _real_atmos_chem(module, mode):
+    """The atmos_chem section of input/all_options.toml, read by the checked reader."""
+    from pathlib import Path
+
+    from proteus.config import read_config_object
+
+    config = read_config_object(Path(__file__).parents[2] / 'input' / 'all_options.toml')
+    config.atmos_chem.module = module
+    config.atmos_chem.mode = mode
+    return config.atmos_chem
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('mode', [None, 'offline'])
+def test_vulcan_problem_reads_a_real_config_in_every_mode(mode):
+    """vulcan_problem reads a real AtmosChem and names the fix of a VULCAN below its floor in
+    every mode, because proteus offchem runs VULCAN whatever the mode is."""
+    from packaging.requirements import Requirement
+
+    from proteus.utils.coupler import vulcan_problem
+
+    config = MagicMock()
+    config.atmos_chem = _real_atmos_chem('vulcan', mode)
+    with (
+        patch(
+            'proteus.doctor._dependency_specs',
+            return_value={'fwl-vulcan': Requirement('fwl-vulcan>=26.10.14')},
+        ),
+        patch('proteus.doctor.importlib.metadata.version', return_value='26.4.22'),
+        patch('proteus.doctor._editable_checkout_path', return_value=None),
+    ):
+        problem = vulcan_problem(config)
+    assert problem is not None and 'fwl-vulcan>=26.10.14' in problem
+
+
+@pytest.mark.unit
+def test_online_chemistry_is_still_refused():
+    """The start check covers only mode 'offline'; once 'online' is valid it must check that too."""
+    import attrs
+
+    with pytest.raises(ValueError, match='not yet implemented'):
+        attrs.evolve(_real_atmos_chem('vulcan', 'offline'), mode='online')
+
+
+@pytest.mark.unit
+@pytest.mark.usefixtures('fwl_io_current')
+@pytest.mark.parametrize(
+    ('module', 'mode', 'checked'),
+    [('vulcan', None, 0), ('vulcan', 'offline', 1), (None, None, 0)],
+)
+def test_the_start_checks_vulcan_only_when_the_run_calls_it(tmp_path, module, mode, checked):
+    """With a real AtmosChem, proteus start checks VULCAN only when mode = 'offline' runs it."""
+    from proteus.utils.coupler import validate_module_versions
+
+    config = _all_dummy_modules_config()
+    config.interior_energetics.module = 'dummy'
+    config.atmos_chem = _real_atmos_chem(module, mode)
+    with (
+        patch('proteus.doctor.check_python_package') as mock_check,
+        patch('proteus.utils.coupler.UpdateStatusfile'),
+    ):
+        mock_check.return_value.status = 'pass'
+        validate_module_versions({'rad': str(tmp_path)}, config)
+    assert mock_check.call_count == checked

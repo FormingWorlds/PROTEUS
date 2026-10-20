@@ -265,6 +265,9 @@ OVERRIDES = {
     # (not configurable); the 3.0 default of 10.0 K would relax that cap for
     # migrated tidal-heating runs. Pin 4.0 to reproduce 2.0 behaviour.
     'interior_energetics.tmagma_tides_step': 4.0,
+    # 2.0 always ran VULCAN with vertical advection at updraft_const; the 3.0
+    # default turns it off, which would drop a nonzero 2.0 updraft.
+    'atmos_chem.vulcan.use_vz': True,
 }
 
 # Element-budget fields consumed by the element handler (not mapped directly).
@@ -290,6 +293,10 @@ _IC_FIELDS = {
     'interior.aragog.ini_tmagma',
     'interior.dummy.ini_tmagma',
 }
+
+# Chemistry scheduling field consumed by the chemistry-schedule handler. The
+# current schema replaced `when` with `mode` (whether) and `times` (which snapshots).
+_CHEM_WHEN = 'atmos_chem.when'
 
 # Orbit-evolution fields consumed by the orbit-dispatch handler: 2.0's bool
 # flags do not reduce to a single rename, since 3.0 replaced each with a
@@ -649,6 +656,34 @@ def _handle_temperature_mode(eff_v2, explicit, v3, active, report):
             )
 
 
+def _handle_chem_schedule(eff_v2, v3, report):
+    """Map 2.0 atmos_chem.when onto 3.0 atmos_chem.mode and atmos_chem.times.
+
+    'manually' ran nothing and 'offline' ran once on the final state.
+    'online' ran on each snapshot from inside the main loop while the planet
+    was not desiccated. mode 'offline' with times 'all' runs on the same
+    snapshots after the simulation, and on the final state too. The results
+    can differ: the climate-profile initial composition was read upside down
+    before, and is now read the right way up.
+    """
+    when = eff_v2.get(_CHEM_WHEN, 'manually')
+    module = eff_v2.get('atmos_chem.module')
+    if (when == 'manually') or (module in (None, 'none')):
+        v3['atmos_chem.mode'] = 'none'
+        v3['atmos_chem.times'] = 'end'
+    elif when == 'offline':
+        v3['atmos_chem.mode'] = 'offline'
+        v3['atmos_chem.times'] = 'end'
+    else:
+        v3['atmos_chem.mode'] = 'offline'
+        v3['atmos_chem.times'] = 'all'
+        report.warnings.append(
+            "atmos_chem.when = 'online' became mode = 'offline' with times = 'all': "
+            'every snapshot with an atmosphere is post-processed after the '
+            'simulation, not during it, and the results can differ from the old ones.'
+        )
+
+
 def _handle_orbit_dispatch(eff_v2, explicit, v3, report):
     """Map 2.0's boolean orbit.evolve/orbit.satellite flags to 3.0's
     string-valued star_planet_model/planet_satellite_model dispatch.
@@ -748,6 +783,7 @@ def translate(v2_toml: dict):
             or v2_path in _IC_FIELDS
             or v2_path in atmos_hoist_src
             or v2_path in _ORBIT_FIELDS
+            or v2_path == _CHEM_WHEN
         ):
             continue
         if v2_path.startswith('delivery.volatiles.'):
@@ -806,6 +842,7 @@ def translate(v2_toml: dict):
     _handle_atmos_hoist(eff_v2, explicit, v3, active, report)
     _handle_temperature_mode(eff_v2, explicit, v3, active, report)
     _handle_orbit_dispatch(eff_v2, explicit, v3, report)
+    _handle_chem_schedule(eff_v2, v3, report)
 
     # derived fields with no 2.0 source
     if v3.get('interior_struct.module') == 'spider':
