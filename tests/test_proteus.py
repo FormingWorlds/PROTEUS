@@ -1478,8 +1478,7 @@ def test_postprocessing_refuses_a_helpfile_that_predates_schema_columns(tmp_path
     from proteus.utils.coupler import HelpfileSchemaDriftError
 
     p = _make_proteus_instance(tmp_path)
-    p.config.atmos_chem.module = 'vulcan'
-    p.config.atmos_chem.mode = None
+    p.config.atmos_chem.module = 'dummy'
     drift = HelpfileSchemaDriftError('predates 1 column(s): R_xuv')
 
     for method, wrapper in (

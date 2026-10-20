@@ -224,12 +224,13 @@ def _get_petitradtrans_version() -> str:
 
 
 def vulcan_problem(config: Config) -> str | None:
-    """Return what is wrong with VULCAN and its fix, when the config runs VULCAN.
+    """Return what is wrong with VULCAN and its fix, when the config uses VULCAN.
 
     The check is the doctor's: VULCAN missing, or below the ``fwl-vulcan`` floor in
-    ``pyproject.toml``. With ``when = 'manually'`` VULCAN never runs, so nothing is checked.
+    ``pyproject.toml``. It holds in every ``atmos_chem.mode``, since ``proteus offchem`` runs
+    VULCAN whatever the mode is; ``validate_module_versions`` calls it only when the run does.
     """
-    if config.atmos_chem.module != 'vulcan' or config.atmos_chem.when == 'manually':
+    if config.atmos_chem.module != 'vulcan':
         return None
     from proteus.doctor import PASS, _dependency_specs, check_python_package
 
@@ -365,8 +366,14 @@ def validate_module_versions(dirs: dict, config: Config):
     if config.orbit.module == 'obliqua':
         valid &= _valid_ver(_get_obliqua_version(dirs), OBLIQUA_MIN_VERSION, 'Obliqua')
 
-    # Atmospheric chemistry module: its floor sits in an extra, which _get_expver misreads
-    if problem := vulcan_problem(config):
+    # Atmospheric chemistry module, when mode runs it: its floor sits in an extra, which
+    # _get_expver misreads
+    chem = config.atmos_chem
+    if (
+        chem.module == 'vulcan'
+        and chem.mode is not None
+        and (problem := vulcan_problem(config))
+    ):
         log.error(problem)
         valid = False
 

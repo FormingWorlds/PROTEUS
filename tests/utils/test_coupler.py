@@ -3814,7 +3814,7 @@ def test_print_module_configuration_logs_versions_for_aragog_janus_zephyrus(monk
 
 
 @pytest.mark.unit
-def test_print_citation_covers_module_specific_citations_with_when_set(monkeypatch):
+def test_print_citation_covers_module_specific_citations_with_mode_set(monkeypatch):
     """Cover print_citation branches for module-specific citations and chemistry gate."""
     config = types.SimpleNamespace(
         atmos_clim=types.SimpleNamespace(module='janus'),
@@ -3825,7 +3825,7 @@ def test_print_citation_covers_module_specific_citations_with_when_set(monkeypat
         orbit=types.SimpleNamespace(module='lovepy'),
         accretion=types.SimpleNamespace(module='dummy'),
         observe=types.SimpleNamespace(module='petitRADTRANS'),
-        atmos_chem=types.SimpleNamespace(module='vulcan', when='runtime'),
+        atmos_chem=types.SimpleNamespace(module='vulcan', mode='offline'),
     )
 
     with patch('proteus.utils.coupler.log') as mock_log:
