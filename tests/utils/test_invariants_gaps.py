@@ -1,4 +1,4 @@
-"""Unit tests addressing invariant assertion gaps and mutant survival edge cases.
+"""Unit tests for run-row invariant orchestrator paths, flux terms, and boundary conditions.
 
 Covers multi-family stop-mode orchestration, status file generation and Zalmoxis
 flushing, non-zero Q_radio and Q_tidal energy flux terms, multi-row history gross

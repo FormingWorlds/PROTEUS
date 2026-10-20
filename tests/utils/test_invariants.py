@@ -2747,8 +2747,13 @@ def test_nan_species_and_nan_mplanet_stop_in_check_volatile_invariants():
     assert exc_mp.value.invariant_name == 'M_planet_bounds'
 
 
-def test_ic_adiabat_rollback_resets_and_resume_rollback_persistence(tmp_path, monkeypatch):
+def test_ic_adiabat_rollback_resets_and_resume_rollback_persistence(
+    tmp_path, monkeypatch, caplog
+):
     """IC adiabat rollback restores M_int_target and M_core_target without setting _structure_rollback, wrapper resets clear it, and resume_structure_stale restores both stale and up-step rollback flags."""
+    import builtins
+    import logging
+    import os
     from pathlib import Path
 
     import numpy as np
@@ -2760,8 +2765,11 @@ def test_ic_adiabat_rollback_resets_and_resume_rollback_persistence(tmp_path, mo
     from proteus.config import Config
     from proteus.interior_energetics.common import (
         Interior_t,
+        get_file_baseline_structure_done,
         get_file_structure_rollback,
         get_file_structure_stale,
+        resume_baseline_structure_done,
+        write_baseline_structure_done,
     )
     from proteus.utils.invariants import check_row_invariants
 
@@ -2892,22 +2900,22 @@ def test_ic_adiabat_rollback_resets_and_resume_rollback_persistence(tmp_path, mo
     assert eq_row_linear['_structure_rollback'] is False
     monkeypatch.undo()
 
-    # 5. resume_structure_stale restores missing-rollback-file fallback from structure_stale.dat (older-tip run),
+    # 5. resume_structure_stale restores missing-rollback-file fallback from structure_stale.dat,
     # and write_structure_stale writes structure_rollback.dat purely from structure_rollback_active:
     monkeypatch.setattr(Interior_t, '_load_ps_table', lambda self, *a, **kw: None)
     Path(get_file_structure_rollback(str(tmp_path))).unlink(missing_ok=True)
     Path(get_file_structure_stale(str(tmp_path))).write_text('1\n', encoding='utf-8')
-    older_stale_reader = Interior_t(5)
-    older_stale_reader.resume_structure_stale(str(tmp_path))
-    assert older_stale_reader.structure_stale is True
-    assert older_stale_reader.structure_rollback_active is True
+    missing_rb_stale_reader = Interior_t(5)
+    missing_rb_stale_reader.resume_structure_stale(str(tmp_path))
+    assert missing_rb_stale_reader.structure_stale is True
+    assert missing_rb_stale_reader.structure_rollback_active is True
 
     Path(get_file_structure_stale(str(tmp_path))).write_text('0\n', encoding='utf-8')
-    older_fresh_reader = Interior_t(5)
-    older_fresh_reader.structure_rollback_active = True
-    older_fresh_reader.resume_structure_stale(str(tmp_path))
-    assert older_fresh_reader.structure_stale is False
-    assert older_fresh_reader.structure_rollback_active is False
+    missing_rb_fresh_reader = Interior_t(5)
+    missing_rb_fresh_reader.structure_rollback_active = True
+    missing_rb_fresh_reader.resume_structure_stale(str(tmp_path))
+    assert missing_rb_fresh_reader.structure_stale is False
+    assert missing_rb_fresh_reader.structure_rollback_active is False
 
     stale_writer = Interior_t(5)
     stale_writer.structure_stale = True
@@ -2921,6 +2929,93 @@ def test_ic_adiabat_rollback_resets_and_resume_rollback_persistence(tmp_path, mo
     stale_reader.resume_structure_stale(str(tmp_path))
     assert stale_reader.structure_stale is True
     assert stale_reader.structure_rollback_active is False
+
+    # 6. An existing but unparseable rollback file sets structure_rollback_active=True (report-only safe side)
+    # even when structure_stale.dat holds 0, and an existing but unparseable baseline-done file returns False:
+    Path(get_file_structure_stale(str(tmp_path))).write_text('0\n', encoding='utf-8')
+    Path(get_file_structure_rollback(str(tmp_path))).write_text('corrupt\n', encoding='utf-8')
+    corrupt_rb_reader = Interior_t(5)
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus'):
+        corrupt_rb_reader.resume_structure_stale(str(tmp_path))
+    assert corrupt_rb_reader.structure_stale is False
+    assert corrupt_rb_reader.structure_rollback_active is True
+    assert 'Could not parse structure-rollback flag file' in caplog.text
+
+    caplog.clear()
+    Path(get_file_baseline_structure_done(str(tmp_path))).write_text(
+        'corrupt\n', encoding='utf-8'
+    )
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus'):
+        assert resume_baseline_structure_done(str(tmp_path)) is False
+    assert 'Could not parse baseline-structure flag file' in caplog.text
+
+    # 7. Flag files are written atomically via a same-directory temp file and os.replace,
+    # so a write or replace error leaves the existing files intact and removes any temp file:
+    atomic_writer = Interior_t(5)
+    atomic_writer.structure_stale = True
+    atomic_writer.structure_rollback_active = True
+    atomic_writer.write_structure_stale(str(tmp_path))
+    write_baseline_structure_done(str(tmp_path), True)
+    for fpath in (
+        get_file_structure_stale(str(tmp_path)),
+        get_file_structure_rollback(str(tmp_path)),
+        get_file_baseline_structure_done(str(tmp_path)),
+    ):
+        assert Path(fpath).read_text(encoding='utf-8').strip() == '1'
+
+    real_open = builtins.open
+
+    class _FailingWriteHandle:
+        def __init__(self, raw_hdl):
+            self._raw = raw_hdl
+
+        def __enter__(self):
+            self._raw.__enter__()
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return self._raw.__exit__(exc_type, exc, tb)
+
+        def write(self, _data):
+            raise OSError('simulated mid-write failure')
+
+    def open_fails_on_write(file, mode='r', *args, **kwargs):
+        hdl = real_open(file, mode, *args, **kwargs)
+        if 'w' in mode:
+            return _FailingWriteHandle(hdl)
+        return hdl
+
+    monkeypatch.setattr(builtins, 'open', open_fails_on_write)
+    atomic_writer.structure_stale = False
+    atomic_writer.structure_rollback_active = False
+    atomic_writer.write_structure_stale(str(tmp_path))
+    write_baseline_structure_done(str(tmp_path), False)
+    monkeypatch.setattr(builtins, 'open', real_open)
+
+    for fpath in (
+        get_file_structure_stale(str(tmp_path)),
+        get_file_structure_rollback(str(tmp_path)),
+        get_file_baseline_structure_done(str(tmp_path)),
+    ):
+        assert Path(fpath).read_text(encoding='utf-8').strip() == '1'
+    assert [p.name for p in data_dir.iterdir() if '.tmp' in p.name] == []
+
+    def failing_replace(_src, _dst):
+        raise OSError('simulated os.replace failure')
+
+    monkeypatch.setattr(os, 'replace', failing_replace)
+    atomic_writer.write_structure_stale(str(tmp_path))
+    write_baseline_structure_done(str(tmp_path), False)
+    monkeypatch.undo()
+    monkeypatch.setattr(Interior_t, '_load_ps_table', lambda self, *a, **kw: None)
+
+    for fpath in (
+        get_file_structure_stale(str(tmp_path)),
+        get_file_structure_rollback(str(tmp_path)),
+        get_file_baseline_structure_done(str(tmp_path)),
+    ):
+        assert Path(fpath).read_text(encoding='utf-8').strip() == '1'
+    assert [p.name for p in data_dir.iterdir() if '.tmp' in p.name] == []
 
     # Up-step reject through update_structure_from_interior persists structure_rollback_active=True while structure_stale=False:
     def fake_upstep(config, outdir, hf_row, **kwargs):
