@@ -1151,10 +1151,15 @@ def test_require_paleos_tables_checks_the_lowt_extension_at_start_up(
     config.interior_struct.zalmoxis.lowt_extension = True
     if case != 'missing_file':
         (tmp_path / zmod.LOWT_EXTENSION_FILE).write_text('extension')
-    if case == 'old_zalmoxis':
-        monkeypatch.setattr(
-            zalmoxis.eos_export, 'generate_spider_eos_tables', lambda eos_file, n_P=150: None
-        )
+
+    def new_api(eos_file, n_P=150, solid_lowt_file=None):
+        raise AssertionError('must not be called')
+
+    def old_api(eos_file, n_P=150):
+        raise AssertionError('must not be called')
+
+    api = old_api if case == 'old_zalmoxis' else new_api
+    monkeypatch.setattr(zalmoxis.eos_export, 'generate_spider_eos_tables', api)
     if case == 'ready':
         assert zmod.require_paleos_tables(config, str(tmp_path)) is None
         assert (tmp_path / zmod.LOWT_EXTENSION_FILE).is_file()
