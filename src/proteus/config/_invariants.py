@@ -126,16 +126,17 @@ class Invariants:
         forced re-solve flag on disk when the initial baseline was already committed marks the
         structure rollback active and forces 1 re-solve at the resume, clearing the rollback on
         an accepted solve or up-step reject and keeping rollback active on a solver failure,
-        whereas an uncommitted initial baseline keeps the initial-baseline retry rule except for the super-liquidus adiabat initial condition with
-        rollback active at the resume, which makes 1 forced attempt, any structure event on a
-        dropped row that is not the first dropped row, such as an impact or a dynamic re-solve,
-        or an unindexed directory with dropped snapshots adds a forced structure solve at the
-        resume that the continuous run did not perform at that row, so the resumed trajectory
-        can differ from the continuous one, and because ``M_int_target`` is not a helpfile
-        column and ``hf_row`` is rebuilt from ``hf_all`` each iteration, in both continuous and
-        resumed runs ``M_int_target_rel_err`` is checked only on the row of a Zalmoxis solve
-        that sets the target: initial, baseline, forced, impact, or dynamic re-solve) or when
-        configured tighter than ``3.0e-3``.
+        whereas an uncommitted initial baseline keeps the initial-baseline retry rule except for
+        the super-liquidus adiabat initial condition with rollback active at the resume, which
+        makes 1 forced attempt, any structure event on a dropped row that is not the first
+        dropped row, such as an impact or a dynamic re-solve, or an unindexed directory with
+        dropped snapshots adds a forced structure solve at the resume that the continuous run
+        did not perform at that row, so the resumed trajectory can differ from the continuous
+        one, and because ``M_int_target`` is not a helpfile column and ``hf_row`` is rebuilt
+        from ``hf_all`` each iteration, in both continuous and resumed runs
+        ``M_int_target_rel_err`` is checked only on the row of a Zalmoxis solve that sets the
+        target: initial, baseline, forced, impact, or dynamic re-solve) or when configured
+        tighter than ``3.0e-3``.
     core_mass_target_rtol: float
         Relative tolerance on ``M_core`` versus ``M_core_target`` at a structure update row [-],
         sized at about ``1.6`` times the radial-trapezoidal core mass difference on
