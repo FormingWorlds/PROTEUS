@@ -1728,10 +1728,11 @@ def test_J_and_run_proteus_follow_monkeypatched_invariant_codes_and_nonzero_exit
     )
     assert val_30.item() > objective_mod.BAD_OBJ_VALUE
 
-    # 2. Real invariant stop path: proteus start writes status 31 to disk and exits with returncode 1.
-    # run_proteus raises ProteusRunFailure carrying exit_code=1, status=31, and status_desc='Error (Mass conservation invariant)',
-    # and J records that failure and returns BAD_OBJ_VALUE.
-    (study / 'status').write_text('31\nError (Mass conservation invariant)\n', encoding='utf-8')
+    # 2. Real invariant stop path: UpdateStatusfile writes status 31 to disk and proteus exits 1.
+    from proteus.utils.helper import CommentFromStatus, UpdateStatusfile
+
+    UpdateStatusfile({'output': str(study)}, 31)
+    expected_desc = CommentFromStatus(31)
 
     def _raise_called_process_error(cmd, **kwargs):
         raise subprocess.CalledProcessError(returncode=1, cmd=cmd)
@@ -1749,7 +1750,7 @@ def test_J_and_run_proteus_follow_monkeypatched_invariant_codes_and_nonzero_exit
     failure = exc_info.value
     assert failure.exit_code == 1
     assert failure.status == 31
-    assert failure.status_desc == 'Error (Mass conservation invariant)'
+    assert failure.status_desc == expected_desc == 'Error (Mass conservation invariant)'
     assert failure.reason == 'the simulator exited with an error'
     assert failure.category == failures_mod.CATEGORY_FAILURE
 
@@ -1765,11 +1766,11 @@ def test_J_and_run_proteus_follow_monkeypatched_invariant_codes_and_nonzero_exit
             ref_config='reference.toml',
         )
     assert val_31.item() == pytest.approx(objective_mod.BAD_OBJ_VALUE)
-    assert 'status 31 (Error (Mass conservation invariant))' in caplog.text
+    assert f'status 31 ({expected_desc})' in caplog.text
     assert 'exit code 1' in caplog.text
     recorded = failures_mod.read_failure_records(study)
     last_rec = recorded[-1]
     assert last_rec['status'] == 31
-    assert last_rec['status_desc'] == 'Error (Mass conservation invariant)'
+    assert last_rec['status_desc'] == expected_desc
     assert last_rec['exit_code'] == 1
     assert last_rec['reason'] == 'the simulator exited with an error'

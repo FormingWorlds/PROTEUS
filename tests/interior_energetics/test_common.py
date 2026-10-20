@@ -1505,7 +1505,7 @@ def test_structure_flag_files_reject_corrupt_empty_negative_row_and_extra_tokens
 def test_write_flag_file_atomic_calls_flush_and_fsync_before_replace_and_preserves_existing(
     tmp_path, monkeypatch
 ):
-    """_write_flag_file_atomic calls flush() and os.fsync() before os.replace() and leaves prior files intact on failure."""
+    """_write_flag_file_atomic calls flush(), os.fsync(), os.replace(), and parent directory os.fsync(), and leaves prior files intact on failure."""
     import builtins
     from pathlib import Path
 
@@ -1522,8 +1522,11 @@ def test_write_flag_file_atomic_calls_flush_and_fsync_before_replace_and_preserv
 
     call_order: list[str] = []
     real_open = builtins.open
+    real_os_open = os.open
+    real_os_close = os.close
     real_fsync = os.fsync
     real_replace = os.replace
+    tracked_dir_fds: set[int] = set()
 
     class _OrderSpyHandle:
         def __init__(self, raw_hdl):
@@ -1553,8 +1556,21 @@ def test_write_flag_file_atomic_calls_flush_and_fsync_before_replace_and_preserv
             return _OrderSpyHandle(hdl)
         return hdl
 
+    def spy_os_open(path, flags, *args, **kwargs):
+        fd = real_os_open(path, flags, *args, **kwargs)
+        if flags == os.O_RDONLY and Path(path) == data_dir:
+            tracked_dir_fds.add(fd)
+            call_order.append('dir_open')
+        return fd
+
+    def spy_os_close(fd):
+        if fd in tracked_dir_fds:
+            tracked_dir_fds.discard(fd)
+            call_order.append('dir_close')
+        return real_os_close(fd)
+
     def spy_fsync(fd):
-        call_order.append('fsync')
+        call_order.append('dir_fsync' if fd in tracked_dir_fds else 'fsync')
         return real_fsync(fd)
 
     def spy_replace(src, dst):
@@ -1562,12 +1578,25 @@ def test_write_flag_file_atomic_calls_flush_and_fsync_before_replace_and_preserv
         return real_replace(src, dst)
 
     monkeypatch.setattr(builtins, 'open', spy_open)
+    monkeypatch.setattr(os, 'open', spy_os_open)
+    monkeypatch.setattr(os, 'close', spy_os_close)
     monkeypatch.setattr(os, 'fsync', spy_fsync)
     monkeypatch.setattr(os, 'replace', spy_replace)
 
     write_baseline_structure_done(str(tmp_path), True, row_index=4)
-    assert call_order == ['write', 'flush', 'fsync', 'replace']
+    assert call_order == [
+        'write',
+        'flush',
+        'fsync',
+        'replace',
+        'dir_open',
+        'dir_fsync',
+        'dir_close',
+    ]
+    assert tracked_dir_fds == set()
     monkeypatch.setattr(builtins, 'open', real_open)
+    monkeypatch.setattr(os, 'open', real_os_open)
+    monkeypatch.setattr(os, 'close', real_os_close)
     monkeypatch.setattr(os, 'fsync', real_fsync)
     monkeypatch.setattr(os, 'replace', real_replace)
 
@@ -1710,3 +1739,57 @@ def test_row_indexed_flag_files_newer_event_split_write_and_missing_rollback(
     assert resume_baseline_structure_done(str(tmp_path), resume_row=4) is True
     assert has_newer_structure_flag_event(str(tmp_path), resume_row=4) is False
     assert has_unindexed(str(tmp_path)) is True
+
+
+def test_structure_forced_pending_flag_file_roundtrip_and_corrupt_fallback(
+    tmp_path, monkeypatch, caplog
+):
+    """structure_forced_pending.dat defaults to False when absent, round-trips True/False with row index, and falls back to True with a warning when corrupt."""
+    from pathlib import Path
+
+    import proteus.interior_energetics.common as common_mod
+    from proteus.interior_energetics.common import (
+        has_newer_structure_flag_event,
+        has_unindexed_structure_flag_file,
+        write_baseline_structure_done,
+    )
+
+    monkeypatch.setattr(Interior_t, '_load_ps_table', lambda self, *a, **kw: None)
+    data_dir = tmp_path / 'data'
+    data_dir.mkdir(parents=True)
+
+    get_pending = getattr(common_mod, 'get_file_structure_forced_pending', None)
+    write_pending = getattr(common_mod, 'write_structure_forced_pending', None)
+    resume_pending = getattr(common_mod, 'resume_structure_forced_pending', None)
+    assert callable(get_pending)
+    assert callable(write_pending)
+    assert callable(resume_pending)
+
+    # Absent file -> False, and a 3-file indexed directory stays indexed (has_unindexed is False):
+    assert resume_pending(str(tmp_path)) is False
+    row_writer = Interior_t(5)
+    row_writer.structure_stale = False
+    row_writer.structure_rollback_active = False
+    row_writer.write_structure_stale(str(tmp_path), row_index=5)
+    write_baseline_structure_done(str(tmp_path), True, row_index=5)
+    assert has_unindexed_structure_flag_file(str(tmp_path)) is False
+
+    # Write True with row index 6 -> reads True and triggers has_newer_structure_flag_event at resume_row=5:
+    write_pending(str(tmp_path), True, row_index=6)
+    assert Path(get_pending(str(tmp_path))).read_text(encoding='utf-8').strip() == '1 6'
+    assert resume_pending(str(tmp_path)) is True
+    assert has_newer_structure_flag_event(str(tmp_path), resume_row=5) is True
+    assert has_unindexed_structure_flag_file(str(tmp_path)) is False
+
+    # Write False with row index 6 -> reads False:
+    write_pending(str(tmp_path), False, row_index=6)
+    assert Path(get_pending(str(tmp_path))).read_text(encoding='utf-8').strip() == '0 6'
+    assert resume_pending(str(tmp_path)) is False
+
+    # Corrupt file -> logs a warning and returns True (safe side: keeps pending forced re-solve active):
+    Path(get_pending(str(tmp_path))).write_text('corrupt\n', encoding='utf-8')
+    caplog.clear()
+    with caplog.at_level('WARNING', logger='fwl.proteus'):
+        assert resume_pending(str(tmp_path)) is True
+    assert 'Could not parse structure-forced-pending flag file' in caplog.text
+    assert has_unindexed_structure_flag_file(str(tmp_path)) is True
