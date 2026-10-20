@@ -5009,3 +5009,43 @@ def test_data_digest_follows_new_content_with_the_old_size_and_mtime(tmp_path, s
         os.replace(new, f)
     assert (f.stat().st_size, f.stat().st_mtime_ns) == (st.st_size, st.st_mtime_ns)
     assert zmod._data_digest(str(f)) != first
+
+
+def test_data_digest_property_gives_the_digest_of_the_current_data_lines():
+    """Over any two data contents of one size, the second written in place or with os.replace
+    under the old modification time, the memo gives the SHA-1 of the current data lines."""
+    hypothesis = pytest.importorskip('hypothesis')
+    given, settings = hypothesis.given, hypothesis.settings
+    st = pytest.importorskip('hypothesis.strategies')
+    import hashlib
+    import os
+    import tempfile
+    from pathlib import Path
+
+    from proteus.interior_struct import zalmoxis as zmod
+
+    chars = '0123456789 .e+-'
+    lines = st.lists(st.text(alphabet=chars, min_size=1, max_size=12), min_size=1, max_size=6)
+
+    def want(rows):
+        return hashlib.sha1('\n'.join(rows).encode()).hexdigest()
+
+    @settings(max_examples=200, deadline=None)
+    @given(lines, st.data(), st.booleans())
+    def _check(first, data, replace):
+        same = [st.text(alphabet=chars, min_size=len(x), max_size=len(x)) for x in first]
+        second = data.draw(st.tuples(*same).map(list))
+        with tempfile.TemporaryDirectory() as d:
+            f = Path(d) / 't.dat'
+            f.write_text('# header\n' + '\n'.join(first) + '\n')
+            assert zmod._data_digest(str(f)) == want(first)
+            old = f.stat()
+            new = Path(d) / 'new.dat' if replace else f
+            new.write_text('# header\n' + '\n'.join(second) + '\n')
+            os.utime(new, ns=(old.st_atime_ns, old.st_mtime_ns))
+            if replace:
+                os.replace(new, f)
+            assert (f.stat().st_size, f.stat().st_mtime_ns) == (old.st_size, old.st_mtime_ns)
+            assert zmod._data_digest(str(f)) == want(second)
+
+    _check()
