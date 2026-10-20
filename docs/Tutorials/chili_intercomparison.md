@@ -64,7 +64,7 @@ volume.
     flux $F_\mathrm{atm}$ of 1.3 W m$^{-2}$. The other cases that reached 5% melt ran with the
     energy-balance, escape and wall-clock stops on and a time limit of 5 Gyr
     (7.55 Gyr for TRAPPIST-1 e), and the 5% melt stop ended each of them. They
-    still cool at that point: their net atmospheric flux is 27 to 692 W m$^{-2}$,
+    still cool at that point: their atmospheric flux $F_\mathrm{atm}$ is 27 to 692 W m$^{-2}$,
     against about 0.2 W m$^{-2}$ of radiogenic heating. The three high-H runs of
     the Earth grid and the TRAPPIST-1 b run were stopped on request before reaching the 5%
     melt threshold and are shown to their last row: the high-H grid runs at 60.9
