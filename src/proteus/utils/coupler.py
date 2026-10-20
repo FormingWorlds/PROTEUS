@@ -223,6 +223,22 @@ def _get_petitradtrans_version() -> str:
         return 'unknown (petitRADTRANS not installed)'
 
 
+def vulcan_problem(config: Config) -> str | None:
+    """Return what is wrong with VULCAN and its fix, when the config runs VULCAN.
+
+    The check is the doctor's: VULCAN missing, or below the ``fwl-vulcan`` floor in
+    ``pyproject.toml``. With ``when = 'manually'`` VULCAN never runs, so nothing is checked.
+    """
+    if config.atmos_chem.module != 'vulcan' or config.atmos_chem.when == 'manually':
+        return None
+    from proteus.doctor import PASS, _dependency_specs, check_python_package
+
+    vulcan = check_python_package('fwl-vulcan', _dependency_specs().get('fwl-vulcan'))
+    if vulcan.status == PASS:
+        return None
+    return f'VULCAN module is missing or out of date: {vulcan.message}. Fix: {vulcan.fix_cmd}'
+
+
 def validate_module_versions(dirs: dict, config: Config):
     """Raise if module versions are incompatible."""
 
@@ -349,6 +365,11 @@ def validate_module_versions(dirs: dict, config: Config):
     if config.orbit.module == 'obliqua':
         valid &= _valid_ver(_get_obliqua_version(dirs), OBLIQUA_MIN_VERSION, 'Obliqua')
 
+    # Atmospheric chemistry module: its floor sits in an extra, which _get_expver misreads
+    if problem := vulcan_problem(config):
+        log.error(problem)
+        valid = False
+
     # Exit
     if not valid:
         UpdateStatusfile(dirs, 20)
@@ -394,8 +415,11 @@ def print_module_configuration(dirs: dict, config: Config, config_path: str):
     log.info('PROTEUS version   ' + proteus_version)
     log.info('PROTEUS location  ' + dirs['proteus'])
     log.info('PROTEUS git hash  ' + _get_git_revision(dirs['proteus']))
+    log.info(' ')
+
     log.info('Config file       ' + str(config_path))
     log.info('Output path       ' + dirs['output'])
+    log.info('Temporary path    ' + dirs['temp'])
     log.info(' ')
 
     # Interior module
@@ -574,12 +598,11 @@ def print_citation(config: Config):
             pass
 
     # Atmospheric chemistry module
-    if config.atmos_chem.when != 'manually':
-        match config.atmos_chem.module:
-            case 'vulcan':
-                _cite('Tsai et al. (2021)', 'https://doi.org/10.3847/1538-4357/ac29bc')
-            case _:
-                pass
+    match config.atmos_chem.module:
+        case 'vulcan':
+            _cite('Tsai et al. (2021)', 'https://doi.org/10.3847/1538-4357/ac29bc')
+        case _:
+            pass
 
 
 def print_header():
@@ -1784,10 +1807,9 @@ def GetPostprocessingKeys():
     are held to this set rather than to the whole of `GetHelpfileKeys()`.
     An archived run stays readable after a schema addition it never used.
 
-    VULCAN indexes a per-element atmospheric mass and a per-gas volume
-    mixing ratio directly, so those expand from the element and volatile
-    lists. Both are fixed module constants, which keeps this set the same
-    for every run, as the full schema is.
+    VULCAN indexes a per-gas volume mixing ratio directly, so those expand
+    from the volatile list. It is a fixed module constant, which keeps this
+    set the same for every run, as the full schema is.
 
     Returns
     -------
@@ -1795,7 +1817,6 @@ def GetPostprocessingKeys():
         Column names, all of which are also in `GetHelpfileKeys()`.
     """
     keys = list(_POSTPROCESSING_FIXED_KEYS)
-    keys += [e + '_kg_atm' for e in element_list]
     keys += [g + '_vmr' for g in vol_list]
     return keys
 
@@ -2645,7 +2666,7 @@ def set_directories(config: Config) -> dict[str, str]:
         suffix = secrets.token_hex(2)  # 4 hex chars
         outdir = f'run_{stamp}_{suffix}'
         config.params.out.path = outdir
-        log.info('Auto output path: %s', outdir)
+        log.debug('Auto output path: %s', outdir)
 
     dirs = get_proteus_directories(outdir=outdir)
 
@@ -2677,7 +2698,7 @@ def set_directories(config: Config) -> dict[str, str]:
         dirs['temp'] = dirs['output']
     else:
         dirs['temp'] = create_tmp_folder()
-    log.info(f'Temporary-file working dir: {dirs["temp"]}')
+    log.debug(f'Temporary-file working dir: {dirs["temp"]}')
 
     # Get abspaths
     for key in dirs.keys():

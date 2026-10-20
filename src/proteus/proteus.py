@@ -5,6 +5,7 @@ import logging
 import os
 import sys
 import time
+from collections.abc import Mapping
 from datetime import datetime
 from pathlib import Path
 
@@ -42,12 +43,25 @@ from proteus.utils.logs import (
     setup_logger,
 )
 
-# Opt-in per-iter module wall-time breakdown. Emits one `[IT_TIMING]` log
-# line per main-loop iter with wall-time shares per module. Enable by
-# exporting `PROTEUS_TIMING=1` before launching `proteus start`.
-# Overhead when disabled: one os.environ lookup at import time, nothing
-# in the loop body.
-_IT_TIMING_ENABLED = os.environ.get('PROTEUS_TIMING', '').lower() in ('1', 'true', 'yes', 'on')
+
+def _timing_enabled(environ: Mapping[str, str]) -> bool:
+    """Whether an environment asks for the [INIT_TIMING] and [IT_TIMING] log lines.
+
+    Parameters
+    ----------
+    environ : Mapping[str, str]
+        Environment variables, such as ``os.environ``.
+
+    Returns
+    -------
+    bool
+        True when ``PROTEUS_TIMING`` is 1, true, yes or on, in any case.
+    """
+    return environ.get('PROTEUS_TIMING', '').lower() in ('1', 'true', 'yes', 'on')
+
+
+# Read once, when this module is imported; a test re-executes this file to check it
+_IT_TIMING_ENABLED = _timing_enabled(os.environ)
 
 # Consecutive iterations without a converged atmosphere after which a run ends,
 # whatever the interior is doing, and always above the streak the atmosphere
@@ -566,6 +580,9 @@ class Proteus:
         offline : bool
             Run in offline mode; do not try to connect to the internet.
         """
+        # Init wall time per step, logged as one [INIT_TIMING] line under PROTEUS_TIMING
+        _t_start = time.perf_counter()
+        _t_init = {}
 
         # Anchor solves memoised by an earlier run in this process do not carry over.
         zalmoxis_module = sys.modules.get('proteus.interior_struct.zalmoxis')
@@ -573,11 +590,9 @@ class Proteus:
             zalmoxis_module._clear_superliquidus_cache()
 
         # Import things needed to run PROTEUS
-        #    atmospheric chemistry
         #    giant-impact accretion
         from proteus.accretion.common import landing_time
         from proteus.accretion.wrapper import init_accretion, restore_accretion_state
-        from proteus.atmos_chem.wrapper import run_chemistry
 
         #    atmosphere solver
         from proteus.atmos_clim import run_atmosphere
@@ -749,7 +764,9 @@ class Proteus:
         self.lockfile = CreateLockFile(self.directories['output'])
 
         # Download basic data
+        _t0 = time.perf_counter()
         download_sufficient_data(self.config)
+        _t_init['data'] = time.perf_counter() - _t0
 
         # Initialise interior object
         if self.config.interior_energetics.module == 'spider':
@@ -818,6 +835,7 @@ class Proteus:
                 )
 
             # Solve interior structure
+            _t0 = time.perf_counter()
             solve_structure(
                 self.directories,
                 self.config,
@@ -825,6 +843,7 @@ class Proteus:
                 self.hf_row,
                 self.directories['output'],
             )
+            _t_init['structure'] = time.perf_counter() - _t0
 
             # Initialize structure-update sentinels so the first dynamic
             # update uses the post-init state as its baseline
@@ -884,12 +903,14 @@ class Proteus:
             ):
                 from proteus.interior_energetics.wrapper import equilibrate_initial_state
 
+                _t0 = time.perf_counter()
                 equilibrate_initial_state(
                     self.directories,
                     self.config,
                     self.hf_row,
                     self.directories['output'],
                 )
+                _t_init['equilibrate'] = time.perf_counter() - _t0
                 # Update sentinels with post-equilibration state
                 self.last_struct_Tmagma = self.hf_row.get('T_magma', np.inf)
                 self.last_struct_Phi = self.hf_row.get('Phi_global', np.inf)
@@ -1106,10 +1127,14 @@ class Proteus:
         log.info(' ')
 
         # Prepare star stuff
+        _t0 = time.perf_counter()
         init_star(self)
+        _t_init['stellar'] = time.perf_counter() - _t0
 
         # Prepare orbit stuff
+        _t0 = time.perf_counter()
         init_orbit(self)
+        _t_init['orbit'] = time.perf_counter() - _t0
 
         # Prepare the giant-impact timeline. Fixed at initialisation and
         # consulted on every step, like the stellar evolution track.
@@ -1150,9 +1175,13 @@ class Proteus:
         self.agni_deadlock_count = 0
 
         # Main loop
-        # Collects the index of the snapshots that already underwent a VULCAN calculation to avoid repeating:
-        vulcan_completed_loops = set()
         UpdateStatusfile(self.directories, 1)
+        if _IT_TIMING_ENABLED:
+            _init_wall = time.perf_counter() - _t_start
+            _t_init['other'] = max(0.0, _init_wall - sum(_t_init.values()))
+            _t_init['total'] = _init_wall
+            _initstr = ' '.join(f'{k}={v:.3f}' for k, v in _t_init.items())
+            log.info('[INIT_TIMING] %s', _initstr)
         while not self.finished_both:
             # Determine whether this iteration is a data-write snapshot.
             # Conditions that are individually sufficient:
@@ -1193,6 +1222,8 @@ class Proteus:
             # at module top). Populated as modules run; emitted as one
             # `[IT_TIMING]` log line at the end of the iter.
             _t_iter_start = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
+            # PROTEUS clears init_stage at the end of the last init iteration, before logging
+            _iter_init_stage = self.init_stage
             _t_mod: dict[str, float] = {}
 
             ############### INTERIOR
@@ -1518,23 +1549,6 @@ class Proteus:
 
             ############### / ATMOSPHERE CLIMATE
 
-            ############### ONLINE ATMOSPHERIC CHEMISTRY
-            if (
-                self.config.atmos_chem.when == 'online'
-            ):  # checking if the toml file says online at atmos_chem and then when
-                if (
-                    is_snapshot and not self.desiccated
-                ):  # checking if the loop is a snapshot and runs VULCAN
-                    if self.loops['total'] not in vulcan_completed_loops:
-                        _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
-                        run_chemistry(self.directories, self.config, self.hf_row)
-                        if _IT_TIMING_ENABLED:
-                            _t_mod['chem'] = time.perf_counter() - _t0
-                        vulcan_completed_loops.add(
-                            self.loops['total']
-                        )  # adds it to the completed loops/snapshots
-            ############### / ONLINE ATMOSPHERIC CHEMISTRY
-
             ############### HOUSEKEEPING AND CONVERGENCE CHECK
 
             PrintHalfSeparator()
@@ -1622,7 +1636,12 @@ class Proteus:
                 _t_mod['other'] = max(0.0, _iter_wall - _accounted)
                 _t_mod['total'] = _iter_wall
                 _modstr = ' '.join(f'{k}={v:.3f}' for k, v in _t_mod.items())
-                log.info('[IT_TIMING] iter=%d %s', self.loops['total'], _modstr)
+                log.info(
+                    '[IT_TIMING] iter=%d init_stage=%d %s',
+                    self.loops['total'],
+                    _iter_init_stage,
+                    _modstr,
+                )
 
             ############### / HOUSEKEEPING AND CONVERGENCE CHECK
 
@@ -1648,13 +1667,11 @@ class Proteus:
         write_atmosphere_snapshot(self.atmos_o, self.config, self.directories, self.hf_row)
 
         # Run offline chemistry
-        if self.config.atmos_chem.when == 'offline':
+        # at the snapshots set by atmos_chem.times
+        if self.config.atmos_chem.mode == 'offline':
             log.info(' ')
             PrintSeparator()
-            if self.desiccated:
-                log.warning('Cannot calculate atmospheric chemistry after desiccation')
-            else:
-                run_chemistry(self.directories, self.config, self.hf_row)
+            self._postprocess_chemistry(self.hf_all)
 
         # Synthetic observations
         if self.config.observe.module is not None:
@@ -1744,15 +1761,30 @@ class Proteus:
 
         run_observe(hf_row, self.config, self.directories)
 
+    def _postprocess_chemistry(self, hf_all):
+        """Run atmospheric chemistry at the snapshots set by `atmos_chem.times`.
+
+        The one chemistry stage for the end of a run and for `proteus offchem`.
+        Snapshots in the data archive are unpacked first, and snapshots without
+        an atmosphere (after desiccation) are left out by `run_chemistry`.
+        """
+        from proteus.atmos_chem.wrapper import run_chemistry
+
+        if archive.archive_exists(self.directories['output/data'], ignore_warnings=True):
+            self.extract_archives()
+        return run_chemistry(self.directories, self.config, hf_all)
+
     def offline_chemistry(self):
         # Load data from helpfile. Read it before unpacking the archive, so a
         # run this cannot postprocess is left archived as it was found.
         from proteus.utils.coupler import (
             GetPostprocessingKeys,
-            HelpfileRow,
             ReadHelpfileFromCSV,
-            helpfile_path,
+            vulcan_problem,
         )
+
+        if problem := vulcan_problem(self.config):
+            raise EnvironmentError(problem)
 
         hf_all = ReadHelpfileFromCSV(
             self.directories['output'], required_columns=GetPostprocessingKeys()
@@ -1762,19 +1794,8 @@ class Proteus:
         if len(hf_all) < 1:
             raise Exception('Simulation is too short to be postprocessed')
 
-        # Extract archived data
-        self.extract_archives()
-
-        # Get last row. Wrapped so a column outside the postprocessing set,
-        # which the check above does not cover, still reports itself.
-        hf_row = HelpfileRow(
-            hf_all.iloc[-1].to_dict(), helpfile_path(self.directories['output'])
-        )
-
-        # Run offline chemistry, typically invoked via CLI
-        from proteus.atmos_chem.wrapper import run_chemistry
-
-        result = run_chemistry(self.directories, self.config, hf_row)
+        # Run offline chemistry at atmos_chem.times, whatever atmos_chem.mode is
+        result = self._postprocess_chemistry(hf_all)
 
         # Refresh the chemistry plot
         if result is not None:

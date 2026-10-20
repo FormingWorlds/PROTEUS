@@ -882,7 +882,8 @@ config_version = "3.0"
     # Default off: VULCAN (GPL-3.0) is set up by `bash install.sh`,
     # or alone with `bash tools/get_vulcan.sh`.
     module                    = "none"       # none | vulcan | dummy
-    when                      = "manually"   # manually | offline | online
+    mode                      = "none"       # none | offline (online is not yet implemented)
+    times                     = "end"        # end | all | list of times [yr]
 
     # Transport processes
     photo_on                  = true         # photochemistry
@@ -894,17 +895,38 @@ config_version = "3.0"
     [atmos_chem.vulcan]
         # Setup
         network               = "SNCHO"      # chemical network: CHO | NCHO | SNCHO
-        ini_mix               = "profile"    # initial mixing ratios: profile | outgas
+        ini_mix               = "profile"    # initial mixing ratios: profile | outgas | previous
         fix_surf              = false        # hold surface mixing ratios fixed
         make_funs             = true         # generate reaction network functions
+
+        # Processes
+        use_vz                = false        # vertical advection at updraft_const
+        use_vm_mol            = false        # upwind molecular diffusion; must be false
+        use_condense          = false        # condense every gas the network can
+        use_settling          = false        # gravitational settling of condensates
+        r_p                   = 5e-3         # condensate particle radius [cm]
 
         # Convergence
         yconv_cri             = 0.05         # convergence criterion (mixing ratios)
         slope_cri             = 0.0001       # convergence criterion (rate of change)
+        yconv_min             = 0.5          # alternative mixing-ratio criterion at slow change
+        st_factor             = 0.5          # test period starts at this fraction of model time
+        conv_step             = 100          # test period reaches back at most this many steps
 
         # Numerical
+        runtime               = 1e22         # maximum model time [s]
+        dttry                 = 1e-8         # initial timestep [s]
+        dt_min                = 1e-10        # minimum timestep [s]
+        atol                  = 0.1          # absolute tolerance on number density [cm-3]
+        mtol                  = 1e-22        # ignore species below this VMR in the step error
+        mtol_conv             = 1e-20        # ignore species below this VMR in the convergence test
+        flux_atol             = 1.0          # actinic flux tolerance [photons/s/cm2/nm]
+        rtol                  = 0.9          # relative tolerance for the step size
+        post_conden_rtol      = 0.1          # relative tolerance once condensation stops
         clip_fl               = 1e-20        # stellar flux floor [erg/s/cm2/nm]
         clip_vmr              = 1e-10        # neglect species below this VMR
+
+        # Output
         save_frames           = false        # save plot frames during iterations
 
 # Synthetic observations

@@ -132,7 +132,7 @@ config_version = "3.0"
 
 [atmos_chem]
     module = "vulcan"
-    when = "manually"
+    mode = "none"
 
     [atmos_chem.vulcan]
         save_frames = false

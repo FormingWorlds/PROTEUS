@@ -705,7 +705,7 @@ def needs_spider_ps_tables(config) -> bool:
     return not generates_paleos_tables(struct)
 
 
-def _get_sufficient(config: Config, clean: bool = False):
+def _get_sufficient(config: Config):
     # Star stuff
     if config.star.module == 'mors':
         # Download only the spectra collections that this config may require.
@@ -760,8 +760,8 @@ def _get_sufficient(config: Config, clean: bool = False):
     # Interior lookup tables (melting curves)
     if config.interior_energetics.module in ('aragog', 'spider'):
         # A configured curve that is still missing stops the run where it is read.
-        _attempt('Wolf and Bower melting curves', download_interior_lookuptables, clean=clean)
-        _attempt('melting curves', download_melting_curves, config, clean=clean)
+        _attempt('Wolf and Bower melting curves', download_interior_lookuptables)
+        _attempt('melting curves', download_melting_curves, config)
 
     # P-S lookup set for SPIDER and Aragog, unless Zalmoxis generates PALEOS tables
     if needs_spider_ps_tables(config):
@@ -812,7 +812,7 @@ def download_zalmoxis_eos_for_config(config) -> None:
     )
 
 
-def download_sufficient_data(config: Config, clean: bool = False):
+def download_sufficient_data(config: Config):
     """
     Download the required data based on the current options
     """
@@ -826,7 +826,7 @@ def download_sufficient_data(config: Config, clean: bool = False):
     else:
         # Try to get data
         try:
-            _get_sufficient(config, clean=clean)
+            _get_sufficient(config)
 
         # Some issue. Usually due to lack of internet connection, but print the error
         #     anyway so that the user knows what happened.

@@ -463,7 +463,7 @@ def plot_fig1(intercomp, pe, pv, NS):
     ax.set_xlabel('Time (Myr)')
     ax.set_ylabel('Melt fraction\n(by volume; current runs by mass)')
     ax.set_xscale('log')
-    ax.set_xlim(1e-3, 2e1)
+    ax.set_xlim(1e-3, 1e2)
     ax.set_ylim(0, 1.05)
     _legend_below(fig, ax)
     return fig
@@ -684,8 +684,8 @@ def _collect_atm_panel(intercomp, proteus_df, planet, phi_tgt, NS):
             subset = df[idx]
             row = subset.loc[(phi[subset.index] - phi_tgt).abs().idxmin()]
         else:
-            # Run never reaches the target melt fraction; use its closest
-            # approach (final snapshot) so the model still appears.
+            # Run never reaches the window; use its row of lowest melt
+            # fraction so the model still appears.
             row = df.loc[phi.idxmin()]
         entry = {
             'name': st['label'],

@@ -2,9 +2,11 @@
 
 A link names its target instead of a line, as
 ``https://github.com/FormingWorlds/PROTEUS/blob/main/<path>#<target>``, where
-``<target>`` is a function, class or method (``Proteus.start``) or the slug of
-a comment (``interior`` for ``############### INTERIOR``). It must match
-exactly once; a section banner wins over other comments.
+``<target>`` is a function, class or method (``Proteus.start``), the slug of a
+section banner (``interior`` for ``############### INTERIOR``) or, with the
+prefix ``comment:``, the slug of another comment. It must match exactly once.
+Links to a file under ``blob/main`` must name an existing file; ``tree/`` links
+pass through unchecked.
 
 Usage:
     python3 tools/figures/code_links.py --check    # every target resolves (PR CI)
@@ -47,20 +49,45 @@ def slug(text: str) -> str:
     return re.sub(r'[^a-z0-9]+', '-', text.lower()).strip('-')
 
 
+def ref_problem(ref: str) -> str | None:
+    """Why git does not know ``ref`` as a commit, None when it does."""
+    res = subprocess.run(
+        ['git', '-C', str(ROOT), 'rev-parse', '--verify', '--quiet', f'{ref}^{{commit}}'],
+        capture_output=True,
+        text=True,
+    )
+    if res.returncode == 0:
+        return None
+    if res.returncode == 1:
+        hint = '; run git fetch origin main' if ref.startswith('origin/') else ''
+        return f'{ref} is not a commit of this repository{hint}'
+    return f'git rev-parse failed for {ref}: {res.stderr.strip()}'
+
+
+def require_file(path: str, ref: str | None) -> None:
+    """Raise LinkError unless ``path`` is a plain path to a file in the work tree
+    (``ref`` None) or at ``ref``."""
+    if {'', '.', '..'} & set(path.split('/')):
+        raise LinkError(f'{path}: not a plain path inside the repository')
+    if ref is None:
+        found = (ROOT / path).is_file()
+    else:
+        git = ['git', '-C', str(ROOT), 'cat-file', '-t', f'{ref}:{path}']
+        found = subprocess.run(git, capture_output=True, text=True).stdout.strip() == 'blob'
+    if not found:
+        raise LinkError(f'{path}: file does not exist' + (f' at {ref}' if ref else ''))
+
+
 @lru_cache(maxsize=None)
 def source(path: str, ref: str | None) -> str:
-    if ref is None:
-        file = ROOT / path
-        if not file.is_file():
-            raise LinkError(f'{path}: file does not exist')
-        return file.read_text()
-    res = subprocess.run(
-        ['git', '-C', str(ROOT), 'show', f'{ref}:{path}'], capture_output=True, text=True
-    )
-    if res.returncode:
-        hint = '; run git fetch origin main' if ref.startswith('origin/') else ''
-        raise LinkError(f'{path} not found at {ref}{hint}: {res.stderr.strip()}')
-    return res.stdout
+    require_file(path, ref)
+    try:
+        if ref is None:
+            return (ROOT / path).read_text()
+        git = ['git', '-C', str(ROOT), 'show', f'{ref}:{path}']
+        return subprocess.run(git, capture_output=True, text=True).stdout
+    except UnicodeDecodeError:
+        raise LinkError(f'{path}: not a text file') from None
 
 
 def definitions(tree: ast.AST):
@@ -85,31 +112,48 @@ def comments(text: str):
 
 
 def resolve_target(path: str, target: str, ref: str | None = None) -> int:
-    """Line of the definition or comment that ``target`` names."""
+    """Line of the definition, banner or (with ``comment:``) comment that ``target`` names."""
     text = source(path, ref)
-    tree = ast.parse(text)
+    if not path.endswith('.py'):
+        raise LinkError(f'{path}: not Python source')
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        raise LinkError(f'{path}: not Python source') from None
     defs = [a for name, a, _ in definitions(tree) if name == target]
     if len(defs) == 1:
         return defs[0]
     if len(defs) > 1:
         raise LinkError(f'{path}#{target}: {len(defs)} definitions share this name')
 
+    is_comment = target.startswith('comment:')
+    name = target.removeprefix('comment:')
+    if not name:
+        raise LinkError(f'{path}#{target}: empty target')
     banners, others = [], []
     for i, tok in comments(text):
         m = BANNER.match(tok)
         if m:
-            if not m.group(1).startswith('/') and slug(m.group(1)) == target:
+            if not m.group(1).startswith('/') and slug(m.group(1)) == name:
                 banners.append(i)
             continue
         body = tok.lstrip('#').strip()
         first_sentence = re.split(r'(?<=\.)\s', body)[0]
-        if target in (slug(body), slug(first_sentence)):
+        if name in (slug(body), slug(first_sentence)):
             others.append(i)
-    hits = banners or others
-    if len(hits) != 1:
-        what = 'no function or comment matches' if not hits else f'{len(hits)} comments match'
-        raise LinkError(f'{path}#{target}: {what} this target')
-    return hits[0]
+    hits = others if is_comment else banners
+    if len(hits) == 1:
+        return hits[0]
+    if hits:
+        kind = 'comments' if is_comment else 'banners'
+        raise LinkError(f'{path}#{target}: {len(hits)} {kind} match this target')
+    hint = ''
+    if not is_comment and others:
+        hint = f'; line {others[0]} is a comment, not a banner: link it as #comment:{name}'
+    elif is_comment and banners:
+        hint = f'; line {banners[0]} is a banner: link it as #{name}'
+    what = 'comment' if is_comment else 'function or banner'
+    raise LinkError(f'{path}#{target}: no {what} matches this target{hint}')
 
 
 def split(href: str) -> tuple[str, str] | None:
@@ -117,14 +161,16 @@ def split(href: str) -> tuple[str, str] | None:
     if not href.startswith(REPO_URL) or '#' not in href:
         return None
     path, target = href[len(REPO_URL) :].split('#', 1)
-    return None if LINE_ANCHOR.match(target) else (path, target)
+    return None if LINE_ANCHOR.match(target) else (path.partition('?')[0], target)
 
 
 def resolve(href: str, ref: str | None = None) -> str:
     """Line link for a name-based link, read from ``ref`` (None: the work tree);
-    other links pass through."""
+    other links pass through, a ``blob/main`` link only when its file exists."""
     parts = split(href)
     if parts is None:
+        if href.startswith(REPO_URL):
+            require_file(href[len(REPO_URL) :].partition('#')[0].partition('?')[0], ref)
         return href
     path, target = parts
     return f'{REPO_URL}{path}#L{resolve_target(path, target, ref)}'
@@ -136,24 +182,33 @@ def model_links() -> list[str]:
 
 
 def validate(ref: str | None) -> list[str]:
-    errors = []
-    for href in model_links():
+    """Errors of the model and SVG links; ``ref`` (None: the work tree) is already checked."""
+    errors, model = [], set(model_links())
+    for href in sorted(model):
         if href.startswith(REPO) and LINE_ANCHOR.match(href.partition('#')[2]):
             errors.append(f'hard-coded line anchor in arch_final.json: {href}')
             continue
         try:
             resolve(href, ref)
-        except (LinkError, SyntaxError) as e:
-            errors.append(str(e))
+        except LinkError as e:
+            errors.append(f'{e} [{href}]')
     for svg in SVGS:
-        if not SVG_LINK.search(svg.read_text()):
+        targets = {unescape(m.group(2)) for m in SVG_LINK.finditer(svg.read_text())}
+        if not targets:
             errors.append(f'{svg.name}: no name-based links; rebuild the figure')
+            continue
+        for what, links in (
+            ('missing', model - targets),
+            ('not in arch_final.json', targets - model),
+        ):
+            if links:
+                errors.append(f'{svg.name}: links {what}: {", ".join(sorted(links))}')
     return errors
 
 
 def rewrite(ref: str | None, lenient: bool) -> list[str]:
     """Re-resolve the links in the SVGs. A broken target loses its link when
-    ``lenient`` and is left as it was otherwise."""
+    ``lenient`` and is left as it was otherwise; ``ref`` is already checked."""
     problems = []
     for svg in SVGS:
         text = svg.read_text()
@@ -162,8 +217,8 @@ def rewrite(ref: str | None, lenient: bool) -> list[str]:
             target = unescape(m.group(2))
             try:
                 new = resolve(target, ref)
-            except (LinkError, SyntaxError) as e:
-                problems.append(str(e))
+            except LinkError as e:
+                problems.append(f'{e} [{target}]')
                 if not lenient:
                     return m.group(0)
                 return f'<a data-target="{m.group(2)}"'  # no href: not clickable
@@ -176,7 +231,7 @@ def rewrite(ref: str | None, lenient: bool) -> list[str]:
     return sorted(set(problems))
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     mode = ap.add_mutually_exclusive_group()
     mode.add_argument('--check', action='store_true', help='fail if a target does not resolve')
@@ -186,7 +241,17 @@ def main() -> int:
         help='resolve against the work tree (a main checkout); a missing target loses its link',
     )
     ap.add_argument('--ref', help='git ref to read the code from (default origin/main)')
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
+    if args.ref == '':
+        ap.error('--ref must name a commit')
+    lenient = args.deploy
+    ref = args.ref if args.check or lenient else (args.ref or 'origin/main')
+    if ref is not None and (problem := ref_problem(ref)):
+        if lenient:
+            print(f'::warning::{problem}; the SVG links are left as they are')
+            return 0
+        print(f'error: {problem}', file=sys.stderr)
+        return 1
 
     if args.check:
         errors = validate(args.ref)
@@ -199,8 +264,6 @@ def main() -> int:
             )
         return 1 if errors else 0
 
-    lenient = args.deploy
-    ref = args.ref if lenient else (args.ref or 'origin/main')
     problems = rewrite(ref, lenient)
     for p in problems:
         if lenient:

@@ -269,16 +269,21 @@ class Planet:
             which the interior solver also uses for its melt fraction, for
             every structure module.
     tsurf_init: float
-        Initial magma surface temperature [K] (isothermal, linear, adiabatic).
-        Ignored when temperature_mode = 'isentropic', 'adiabatic_from_cmb',
-        or 'liquidus_super'.
+        Initial surface temperature [K]. In every mode it is the initial magma
+        temperature of the dummy and boundary energetics, the floor of their
+        re-melt after a giant impact, and the temperature of the initial flux
+        guess when interior_energetics.flux_guess < 0. Its other uses depend on
+        temperature_mode; the How-to page on initial thermal conditions lists
+        them per mode.
     tcmb_init: float
         Initial core-mantle boundary temperature [K] (adiabatic_from_cmb).
         The mantle adiabat is anchored at this temperature at P = P_cmb
-        and integrated outward to the surface. With liquidus_super, the
-        Zalmoxis structure, a PALEOS mantle and spider or aragog energetics
-        it is also the core-mantle boundary temperature of a structure solve
-        whose P-T anchor fails before any anchor is solved.
+        and integrated outward to the surface. With liquidus_super the
+        Zalmoxis structure takes it, together with tsurf_init, when no
+        super-liquidus pair was solved for the same delta_T_super and mantle
+        EOS: on a call driven by an external temperature source (in a resumed
+        run until the next anchor solve), and on a P-T anchor failure that a
+        later step re-solves (a PALEOS mantle with spider or aragog energetics).
     tcenter_init: float
         Center temperature [K] (linear only).
     f_accretion: float
@@ -415,7 +420,7 @@ class Planet:
 
     # Isentropic IC: set the initial specific entropy directly. Used when
     # temperature_mode = 'isentropic' (CHILI protocol). The interior solver
-    # maps S -> T(P) via its own EOS table; tsurf_init is ignored.
+    # maps S -> T(P) via its own EOS table.
     ini_entropy: float = field(default=3900.0, validator=gt(0))
     ini_dsdr: float = field(default=-4.698e-6, validator=_validate_ini_dsdr)
 

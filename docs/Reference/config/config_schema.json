@@ -3384,7 +3384,7 @@
           "value": 0
         }
       ],
-      "description": "Initial magma surface temperature [K] (isothermal, linear, adiabatic). Ignored when temperature_mode = 'isentropic', 'adiabatic_from_cmb', or 'liquidus_super'.",
+      "description": "Initial surface temperature [K]. In every mode it is the initial magma temperature of the dummy and boundary energetics, the floor of their re-melt after a giant impact, and the temperature of the initial flux guess when interior_energetics.flux_guess < 0. Its other uses depend on temperature_mode; the How-to page on initial thermal conditions lists them per mode.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -3405,7 +3405,7 @@
           "value": 0
         }
       ],
-      "description": "Initial core-mantle boundary temperature [K] (adiabatic_from_cmb). The mantle adiabat is anchored at this temperature at P = P_cmb and integrated outward to the surface. With liquidus_super, the Zalmoxis structure, a PALEOS mantle and spider or aragog energetics it is also the core-mantle boundary temperature of a structure solve whose P-T anchor fails before any anchor is solved.",
+      "description": "Initial core-mantle boundary temperature [K] (adiabatic_from_cmb). The mantle adiabat is anchored at this temperature at P = P_cmb and integrated outward to the surface. With liquidus_super the Zalmoxis structure takes it, together with tsurf_init, when no super-liquidus pair was solved for the same delta_T_super and mantle EOS: on a call driven by an external temperature source (in a resumed run until the next anchor solve), and on a P-T anchor failure that a later step re-solves (a PALEOS mantle with spider or aragog energetics).",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -10132,10 +10132,11 @@
       "default": "\"profile\"",
       "choices": [
         "profile",
-        "outgas"
+        "outgas",
+        "previous"
       ],
       "bounds": null,
-      "description": "Initial mixing ratios. Options: profile, outgas.",
+      "description": "Initial mixing ratios. Options: profile (the climate profile), outgas (the surface mixing ratios at every level), previous (the result of the latest earlier chemistry snapshot, interpolated in log pressure; needs fix_surf = true; falls back to profile when there is none).",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -10227,19 +10228,376 @@
       "group_qualifier": null
     },
     {
-      "path": "atmos_chem.when",
+      "path": "atmos_chem.vulcan.yconv_min",
+      "toml_section": "atmos_chem.vulcan",
+      "class": "Vulcan",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.5",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Steady state - alternative max change in mixing ratio, accepted when the rate of change is also below VULCAN's diffusion-limited slope.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "atmos_chem.vulcan.st_factor",
+      "toml_section": "atmos_chem.vulcan",
+      "class": "Vulcan",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.5",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        },
+        {
+          "op": "<",
+          "value": 1
+        }
+      ],
+      "description": "Steady state - the test period starts at this fraction of the elapsed model time, in (0, 1).",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "atmos_chem.vulcan.conv_step",
+      "toml_section": "atmos_chem.vulcan",
+      "class": "Vulcan",
+      "type": "int",
+      "accepts_none": false,
+      "default": "100",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Steady state - maximum number of solver steps the test period reaches back.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "atmos_chem.vulcan.use_vm_mol",
+      "toml_section": "atmos_chem.vulcan",
+      "class": "Vulcan",
+      "type": "bool",
+      "accepts_none": false,
+      "default": "false",
+      "choices": null,
+      "bounds": null,
+      "description": "Use the upwind scheme for molecular diffusion. Must be false, because VULCAN does not support it yet.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "atmos_chem.vulcan.use_vz",
+      "toml_section": "atmos_chem.vulcan",
+      "class": "Vulcan",
+      "type": "bool",
+      "accepts_none": false,
+      "default": "false",
+      "choices": null,
+      "bounds": null,
+      "description": "Include vertical advection at the constant updraft velocity `atmos_chem.updraft_const`.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "atmos_chem.vulcan.use_condense",
+      "toml_section": "atmos_chem.vulcan",
+      "class": "Vulcan",
+      "type": "bool",
+      "accepts_none": false,
+      "default": "false",
+      "choices": null,
+      "bounds": null,
+      "description": "Include condensation of every gas that the selected network can condense.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "atmos_chem.vulcan.use_settling",
+      "toml_section": "atmos_chem.vulcan",
+      "class": "Vulcan",
+      "type": "bool",
+      "accepts_none": false,
+      "default": "false",
+      "choices": null,
+      "bounds": null,
+      "description": "Include gravitational settling of the condensate particles. Has an effect only with `use_condense`.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "atmos_chem.vulcan.r_p",
+      "toml_section": "atmos_chem.vulcan",
+      "class": "Vulcan",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.005",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Default radius of every condensate particle [cm].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "atmos_chem.vulcan.runtime",
+      "toml_section": "atmos_chem.vulcan",
+      "class": "Vulcan",
+      "type": "float",
+      "accepts_none": false,
+      "default": "1e+22",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Maximum integrated model time [s].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "atmos_chem.vulcan.dttry",
+      "toml_section": "atmos_chem.vulcan",
+      "class": "Vulcan",
+      "type": "float",
+      "accepts_none": false,
+      "default": "1e-08",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Initial solver timestep [s].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "atmos_chem.vulcan.dt_min",
+      "toml_section": "atmos_chem.vulcan",
+      "class": "Vulcan",
+      "type": "float",
+      "accepts_none": false,
+      "default": "1e-10",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Minimum solver timestep [s].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "atmos_chem.vulcan.atol",
+      "toml_section": "atmos_chem.vulcan",
+      "class": "Vulcan",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.1",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Absolute tolerance on number density [cm-3].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "atmos_chem.vulcan.mtol",
+      "toml_section": "atmos_chem.vulcan",
+      "class": "Vulcan",
+      "type": "float",
+      "accepts_none": false,
+      "default": "1e-22",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Mixing ratio below which a species is ignored in the truncation error.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "atmos_chem.vulcan.mtol_conv",
+      "toml_section": "atmos_chem.vulcan",
+      "class": "Vulcan",
+      "type": "float",
+      "accepts_none": false,
+      "default": "1e-20",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Mixing ratio below which a species is ignored in the steady-state test.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "atmos_chem.vulcan.flux_atol",
+      "toml_section": "atmos_chem.vulcan",
+      "class": "Vulcan",
+      "type": "float",
+      "accepts_none": false,
+      "default": "1.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Absolute tolerance on the actinic flux [photons cm-2 s-1 nm-1].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "atmos_chem.vulcan.rtol",
+      "toml_section": "atmos_chem.vulcan",
+      "class": "Vulcan",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.9",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Relative tolerance for adjusting the solver step size.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "atmos_chem.vulcan.post_conden_rtol",
+      "toml_section": "atmos_chem.vulcan",
+      "class": "Vulcan",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.1",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Relative tolerance used once condensation stops.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "atmos_chem.mode",
       "toml_section": "atmos_chem",
       "class": "AtmosChem",
-      "type": "str",
-      "accepts_none": false,
-      "default": "\"manually\"",
+      "type": "str or none",
+      "accepts_none": true,
+      "default": "none",
       "choices": [
-        "manually",
+        null,
         "offline",
         "online"
       ],
       "bounds": null,
-      "description": "When to run the chemistry module. Options: manually, offline, online.",
+      "description": "When to run the chemistry module automatically. Options: none (only with `proteus offchem`), offline (after the simulation ends), online (not yet implemented).",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "atmos_chem.times",
+      "toml_section": "atmos_chem",
+      "class": "AtmosChem",
+      "type": "str or list",
+      "accepts_none": false,
+      "default": "\"end\"",
+      "choices": null,
+      "bounds": null,
+      "description": "Snapshots to run the chemistry on, with `mode = 'offline'` or `proteus offchem`. Options: end (the final state), all (every atmosphere snapshot), or a list of times [yr], each mapped to the nearest atmosphere snapshot.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -11843,6 +12201,28 @@
         "module"
       ],
       "doc": "The Morrigan module requires as many embryo masses as planets, all positive, and a valid selector value when the selector is a semi-major axis or planet id."
+    },
+    {
+      "validator": "valid_ini_mix",
+      "module": "_atmos_chem.py",
+      "attached_to": [
+        "atmos_chem.vulcan.ini_mix"
+      ],
+      "touches": [
+        "fix_surf"
+      ],
+      "doc": "Refuse `ini_mix = 'previous'` unless the surface mixing ratios are fixed."
+    },
+    {
+      "validator": "valid_mode",
+      "module": "_atmos_chem.py",
+      "attached_to": [
+        "atmos_chem.mode"
+      ],
+      "touches": [
+        "module"
+      ],
+      "doc": "Refuse coupled chemistry, and automatic chemistry without a module."
     },
     {
       "validator": "valid_aerosols_enabled",
