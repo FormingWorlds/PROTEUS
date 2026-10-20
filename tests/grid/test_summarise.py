@@ -316,3 +316,16 @@ def test_summarise_raises_on_empty_status_file(tmp_path):
     with pytest.raises(ValueError, match='Status file is empty') as exc:
         summarise_mod.summarise(str(grid))
     assert 'case_000000' in str(exc.value)
+
+
+def test_summarise_follows_monkeypatched_invariant_status_codes(tmp_path, monkeypatch, caplog):
+    """summarise reads INVARIANT_STATUS_CODES dynamically rather than hardcoding 30..34."""
+    monkeypatch.setattr(summarise_mod, 'INVARIANT_STATUS_CODES', (31, 99))
+    grid = _make_grid(tmp_path, statuses=[10, 30, 31, 99])
+    with caplog.at_level(logging.INFO, logger='fwl'):
+        assert summarise_mod.summarise(str(grid), tgt_status='error') is True
+    err_section = caplog.text.split('Error cases:')[1]
+    assert 'Case 2    ' in err_section
+    assert 'Case 3    ' in err_section
+    assert 'Case 0    ' not in err_section
+    assert 'Case 1    ' not in err_section

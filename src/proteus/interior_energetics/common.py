@@ -1209,6 +1209,8 @@ def _write_flag_file_atomic(path: str, flag: bool, row_index: int | None = None)
     try:
         with open(tmp_path, 'w') as hdl:
             hdl.write(line)
+            hdl.flush()
+            os.fsync(hdl.fileno())
         os.replace(tmp_path, path)
     except OSError:
         try:
@@ -1223,10 +1225,12 @@ def _read_flag_file_with_row(path: str) -> tuple[bool, int | None]:
     """Read ``(flag, row_index)`` from ``path``; ``row_index`` is ``None`` when omitted."""
     with open(path) as hdl:
         parts = hdl.read().strip().split()
-    if not parts or len(parts) > 2:
+    if not parts or len(parts) > 2 or parts[0] not in ('0', '1'):
         raise ValueError(f'Invalid flag file format in {path!r}')
-    flag = bool(int(parts[0]))
+    flag = parts[0] == '1'
     row_index = int(parts[1]) if len(parts) == 2 else None
+    if row_index is not None and row_index < 0:
+        raise ValueError(f'Negative row_index in {path!r}')
     return flag, row_index
 
 
@@ -1247,6 +1251,27 @@ def has_newer_structure_flag_event(outdir: str, resume_row: int) -> bool:
         if event_row is not None and event_row > int(resume_row):
             return True
     return False
+
+
+def has_unindexed_structure_flag_file(outdir: str) -> bool:
+    """Return whether no flag file exists or any existing flag file lacks a valid row index."""
+    saw_existing = False
+    for getter in (
+        get_file_structure_stale,
+        get_file_structure_rollback,
+        get_file_baseline_structure_done,
+    ):
+        path = getter(outdir)
+        if not os.path.exists(path):
+            continue
+        saw_existing = True
+        try:
+            _, event_row = _read_flag_file_with_row(path)
+        except (ValueError, OSError):
+            return True
+        if event_row is None:
+            return True
+    return not saw_existing
 
 
 def write_baseline_structure_done(

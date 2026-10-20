@@ -64,6 +64,8 @@ description. The codes are:
 | 30 | Error: energy conservation invariant (reserved) |
 | 31 | Error: mass conservation invariant |
 | 32 | Error: state bounds invariant |
+| 33 | Error: Zalmoxis structure invariant (reserved) |
+| 34 | Error: Aragog accepted-state invariant (reserved) |
 
 ## Helpfile columns
 

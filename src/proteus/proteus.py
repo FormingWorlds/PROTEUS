@@ -230,6 +230,7 @@ class Proteus:
         self.last_struct_time = -np.inf
         self.last_struct_Tmagma = np.inf
         self.last_struct_Phi = np.inf
+        self._resume_newer_event = False
 
     def _get_initial_tmagma(self) -> float:
         """Get the initial surface temperature from the solver config.
@@ -371,28 +372,28 @@ class Proteus:
         )
 
     def _solve_structure_baseline_if_needed(self):
-        """Solve the one-time callable-representation structure baseline.
+        """Solve the one-time callable-representation structure baseline or forced resume re-solve.
 
         At the first evolution step both dynamic and static Zalmoxis runs solve
         the structure once from the converged initial interior profile, so they
         share an identical, self-consistent starting radius rather than the
         structure-solver's own initial-condition adiabat. The baseline is solved
         once per run; already-baselined runs are a no-op, and a resumed run
-        retries only a baseline recorded as not done.
+        retries an uncommitted initial baseline or runs 1 forced re-solve when a
+        structure flag event on disk is newer than the resumed snapshot row.
 
-        A failed forced solve restores the initial-condition structure and flags
-        it stale; in that case the baseline is left unmarked so the next
-        evolution step retries. The solver's own consecutive-failure budget
-        aborts the run if the baseline cannot be established, so a static run is
-        never silently frozen on the unconverged initial-condition structure.
+        For the initial row-4 baseline solve, a solver failure restores the
+        initial-condition structure, flags it stale, and leaves the baseline
+        unmarked so the next evolution step retries until Zalmoxis converges or
+        exhausts its consecutive-failure budget.
 
         For the super-liquidus adiabat initial condition the structure solve
-        already integrates against the true adiabat for both dynamic and static
-        runs, so the shared starting radius is established at the initial
-        condition itself. Re-solving here against the energetics module's
-        temperature profile would overwrite that maximal-radius initial
-        condition with a different (cross-table) representation and could nudge
-        R_int upward, so the baseline re-solve is skipped in that case.
+        already integrates against the true adiabat at the initial condition, so
+        the baseline re-solve is skipped unless the run resumed with rollback or
+        a newer flag event active, in which case 1 forced re-solve is attempted:
+        an accepted solve or a monotonic-radius up-step reject marks the baseline
+        done with rollback cleared, whereas a solver failure logs 1 warning and
+        marks the baseline done with rollback active.
         """
         if (
             self.init_stage
@@ -411,16 +412,31 @@ class Proteus:
         if hasattr(self.interior_o, '_structure_row_index'):
             self.interior_o._structure_row_index = row_idx
 
-        if _use_superliquidus_adiabat_ic(self.config) and not (
-            getattr(self.config.params, 'resume', False) is True
-            and getattr(self.interior_o, 'structure_rollback_active', False) is True
-        ):
+        resume_newer = bool(getattr(self, '_resume_newer_event', False))
+        # When an impact due on the first resumed step already ran solve_structure
+        # and cleared structure_rollback_active, the forced re-solve is satisfied.
+        if resume_newer and not getattr(self.interior_o, 'structure_rollback_active', False):
+            self._resume_newer_event = False
             self._baseline_structure_done = True
             write_baseline_structure_done(self.directories['output'], True, row_index=row_idx)
             return
 
-        if isinstance(self.hf_row, dict):
-            self.hf_row.pop('_structure_rollback', None)
+        is_resume_forced = bool(
+            resume_newer
+            or (
+                getattr(self.config.params, 'resume', False) is True
+                and _use_superliquidus_adiabat_ic(self.config)
+                and getattr(self.interior_o, 'structure_rollback_active', False) is True
+            )
+        )
+
+        if _use_superliquidus_adiabat_ic(self.config) and not is_resume_forced:
+            self._baseline_structure_done = True
+            write_baseline_structure_done(self.directories['output'], True, row_index=row_idx)
+            return
+
+        if is_resume_forced:
+            self.interior_o.structure_stale = False
 
         new_time, new_Tmagma, new_Phi = update_structure_from_interior(
             self.directories,
@@ -433,11 +449,28 @@ class Proteus:
             force=True,
         )
 
-        # Commit the baseline only when the solve converged. On a fall-back the
-        # structure is the stale initial-condition one; retry on the next step.
         if self.interior_o.structure_stale:
+            if is_resume_forced:
+                self._resume_newer_event = False
+                self.interior_o.structure_rollback_active = True
+                if hasattr(self.interior_o, 'write_structure_stale'):
+                    self.interior_o.write_structure_stale(self.directories['output'])
+                self._baseline_structure_done = True
+                write_baseline_structure_done(
+                    self.directories['output'], True, row_index=row_idx
+                )
+                logging.getLogger('fwl.' + __name__).warning(
+                    'Resume forced structure re-solve failed at row %d; keeping the resumed structure with rollback active.',
+                    row_idx,
+                )
+                return
             write_baseline_structure_done(self.directories['output'], False, row_index=row_idx)
             return
+
+        if is_resume_forced:
+            self._resume_newer_event = False
+            if isinstance(self.hf_row, dict):
+                self.hf_row['_structure_rollback'] = False
 
         rb_flag = (
             bool(self.hf_row.get('_structure_rollback', False))
@@ -773,6 +806,7 @@ class Proteus:
         }
         self.init_stage = True
         self._baseline_structure_done = False
+        self._resume_newer_event = False
 
         # Write config to output directory, for future reference. Record the
         # resolved (not raw) step caps. A resolved 0.0 means the cap is off,
@@ -1101,15 +1135,20 @@ class Proteus:
             # Restore the stale-structure and rollback flags from disk on resume.
             from proteus.interior_energetics.common import (
                 has_newer_structure_flag_event,
+                has_unindexed_structure_flag_file,
                 resume_baseline_structure_done,
                 write_baseline_structure_done,
             )
 
             resume_row = len(self.hf_all) - 1
-            self.interior_o._structure_row_index = resume_row
             newer_flag_event = has_newer_structure_flag_event(
                 self.directories['output'], resume_row
             )
+            unindexed_dropped = bool(
+                dropped_snapshots
+                and has_unindexed_structure_flag_file(self.directories['output'])
+            )
+            self._resume_newer_event = bool(newer_flag_event)
             self.interior_o.resume_structure_stale(
                 self.directories['output'], resume_row=resume_row
             )
@@ -1130,7 +1169,7 @@ class Proteus:
             else:
                 self._baseline_structure_done = True
 
-            if newer_flag_event:
+            if newer_flag_event or unindexed_dropped:
                 self.interior_o.structure_rollback_active = True
                 self.interior_o.write_structure_stale(
                     self.directories['output'], row_index=resume_row

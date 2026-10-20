@@ -1679,3 +1679,97 @@ def test_J_reports_a_clean_exit_failure_with_only_the_swept_values(
     assert [r['status'] for r in recorded] == [25]
     assert recorded[0]['planet.mass_tot'] == pytest.approx(3.25)
     assert 'params.out.path' not in recorded[0]
+
+
+@pytest.mark.physics_invariant
+def test_J_and_run_proteus_follow_monkeypatched_invariant_codes_and_nonzero_exit_status_31(
+    monkeypatch, tmp_path, caplog
+):
+    """J follows monkeypatched INVARIANT_STATUS_CODES, and a non-zero exit with status 31 on disk preserves status=31 and status_desc."""
+    import subprocess
+
+    study = tmp_path / 'study_inv'
+    study.mkdir(parents=True)
+    pd.DataFrame([{'P_surf': 1.0e5, 'R_obs': 9.25e6}]).to_csv(
+        study / 'runtime_helpfile.csv', sep=' ', index=False
+    )
+
+    monkeypatch.setattr(
+        objective_mod, 'get_proteus_directories', lambda _path: {'output': str(study)}
+    )
+    monkeypatch.setattr(objective_mod, 'update_toml', lambda *_args, **_kwargs: None)
+    monkeypatch.setenv(failures_mod.ABORT_ON_FAILURE_ENV, '0')
+    monkeypatch.setattr(objective_mod, 'INVARIANT_STATUS_CODES', (31, 99))
+
+    # 1. With INVARIANT_STATUS_CODES = (31, 99), code 99 is classified as a failure on a clean exit
+    # while code 30 (removed from the monkeypatched tuple) is not treated as an invariant failure:
+    (study / 'status').write_text('99\nCustom invariant\n', encoding='utf-8')
+    monkeypatch.setattr(objective_mod.subprocess, 'run', lambda *args, **kwargs: None)
+    val_99 = objective_mod.J(
+        x=torch.tensor([[1.0]], dtype=torch.double),
+        parameters=['planet.mass_tot'],
+        true_observables={'R_obs': 9.25e6},
+        worker=0,
+        iter=0,
+        output='dummy_output',
+        ref_config='reference.toml',
+    )
+    assert val_99.item() == pytest.approx(objective_mod.BAD_OBJ_VALUE)
+
+    (study / 'status').write_text('30\nEnergy invariant\n', encoding='utf-8')
+    val_30 = objective_mod.J(
+        x=torch.tensor([[1.0]], dtype=torch.double),
+        parameters=['planet.mass_tot'],
+        true_observables={'R_obs': 9.25e6},
+        worker=0,
+        iter=1,
+        output='dummy_output',
+        ref_config='reference.toml',
+    )
+    assert val_30.item() > objective_mod.BAD_OBJ_VALUE
+
+    # 2. Real invariant stop path: proteus start writes status 31 to disk and exits with returncode 1.
+    # run_proteus raises ProteusRunFailure carrying exit_code=1, status=31, and status_desc='Error (Mass conservation invariant)',
+    # and J records that failure and returns BAD_OBJ_VALUE.
+    (study / 'status').write_text('31\nError (Mass conservation invariant)\n', encoding='utf-8')
+
+    def _raise_called_process_error(cmd, **kwargs):
+        raise subprocess.CalledProcessError(returncode=1, cmd=cmd)
+
+    monkeypatch.setattr(objective_mod.subprocess, 'run', _raise_called_process_error)
+    with pytest.raises(failures_mod.ProteusRunFailure) as exc_info:
+        objective_mod.run_proteus(
+            parameters={'planet.mass_tot': 1.25},
+            worker=2,
+            iter=3,
+            observables=['R_obs'],
+            ref_config='reference.toml',
+            output='dummy_output',
+        )
+    failure = exc_info.value
+    assert failure.exit_code == 1
+    assert failure.status == 31
+    assert failure.status_desc == 'Error (Mass conservation invariant)'
+    assert failure.reason == 'the simulator exited with an error'
+    assert failure.category == failures_mod.CATEGORY_FAILURE
+
+    caplog.clear()
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.inference.objective'):
+        val_31 = objective_mod.J(
+            x=torch.tensor([[1.25]], dtype=torch.double),
+            parameters=['planet.mass_tot'],
+            true_observables={'R_obs': 9.25e6},
+            worker=2,
+            iter=4,
+            output='dummy_output',
+            ref_config='reference.toml',
+        )
+    assert val_31.item() == pytest.approx(objective_mod.BAD_OBJ_VALUE)
+    assert 'status 31 (Error (Mass conservation invariant))' in caplog.text
+    assert 'exit code 1' in caplog.text
+    recorded = failures_mod.read_failure_records(study)
+    last_rec = recorded[-1]
+    assert last_rec['status'] == 31
+    assert last_rec['status_desc'] == 'Error (Mass conservation invariant)'
+    assert last_rec['exit_code'] == 1
+    assert last_rec['reason'] == 'the simulator exited with an error'

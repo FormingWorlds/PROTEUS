@@ -1442,3 +1442,271 @@ def test_get_c_planet_falls_back_to_config_core_density_when_hf_row_lacks_it(cap
     # of using the config fallback moves C_int well outside tolerance.
     massless_core = (8.0 * np.pi / 15.0) * (0.0 + rho_mantle * (R**5 - R_core**5))
     assert abs(hf_row['C_int'] - massless_core) > 1e-6 * expected
+
+
+@pytest.mark.parametrize(
+    'bad_content',
+    ['corrupt\n', '', '0 -1\n', '0 5 extra\n', '2 5\n', '-1 5\n'],
+)
+def test_structure_flag_files_reject_corrupt_empty_negative_row_and_extra_tokens(
+    tmp_path, monkeypatch, caplog, bad_content
+):
+    """Unparseable, empty, negative-row, 3-token, or non-binary flag files fall back to the safe side."""
+    from pathlib import Path
+
+    import proteus.interior_energetics.common as common_mod
+    from proteus.interior_energetics.common import (
+        _read_flag_file_with_row,
+        get_file_baseline_structure_done,
+        get_file_structure_rollback,
+        get_file_structure_stale,
+        has_newer_structure_flag_event,
+        resume_baseline_structure_done,
+    )
+
+    monkeypatch.setattr(Interior_t, '_load_ps_table', lambda self, *a, **kw: None)
+    data_dir = tmp_path / 'data'
+    data_dir.mkdir(parents=True)
+
+    probe_file = data_dir / 'probe.dat'
+    probe_file.write_text(bad_content, encoding='utf-8')
+    with pytest.raises(ValueError):
+        _read_flag_file_with_row(str(probe_file))
+
+    # Corrupt/invalid rollback file with clean stale=0 still activates rollback (safe report-only side)
+    Path(get_file_structure_stale(str(tmp_path))).write_text('0 5\n', encoding='utf-8')
+    Path(get_file_structure_rollback(str(tmp_path))).write_text(bad_content, encoding='utf-8')
+    caplog.clear()
+    rb_reader = Interior_t(5)
+    with caplog.at_level('WARNING', logger='fwl.proteus'):
+        rb_reader.resume_structure_stale(str(tmp_path), resume_row=5)
+    assert rb_reader.structure_stale is False
+    assert rb_reader.structure_rollback_active is True
+    assert 'Could not parse structure-rollback flag file' in caplog.text
+
+    # Corrupt/invalid baseline-done file returns False (retries baseline)
+    Path(get_file_baseline_structure_done(str(tmp_path))).write_text(
+        bad_content, encoding='utf-8'
+    )
+    caplog.clear()
+    with caplog.at_level('WARNING', logger='fwl.proteus'):
+        assert resume_baseline_structure_done(str(tmp_path), resume_row=5) is False
+    assert 'Could not parse baseline-structure flag file' in caplog.text
+
+    # Corrupt/invalid flag files do not pretend to hold a valid > resume_row event,
+    # and has_unindexed_structure_flag_file reports True when a flag file cannot be parsed with a row index
+    Path(get_file_structure_stale(str(tmp_path))).write_text(bad_content, encoding='utf-8')
+    assert has_newer_structure_flag_event(str(tmp_path), resume_row=5) is False
+    has_unindexed = getattr(common_mod, 'has_unindexed_structure_flag_file', None)
+    assert callable(has_unindexed)
+    assert has_unindexed(str(tmp_path)) is True
+
+
+def test_write_flag_file_atomic_calls_flush_and_fsync_before_replace_and_preserves_existing(
+    tmp_path, monkeypatch
+):
+    """_write_flag_file_atomic calls flush() and os.fsync() before os.replace() and leaves prior files intact on failure."""
+    import builtins
+    from pathlib import Path
+
+    from proteus.interior_energetics.common import (
+        get_file_baseline_structure_done,
+        get_file_structure_rollback,
+        get_file_structure_stale,
+        write_baseline_structure_done,
+    )
+
+    monkeypatch.setattr(Interior_t, '_load_ps_table', lambda self, *a, **kw: None)
+    data_dir = tmp_path / 'data'
+    data_dir.mkdir(parents=True)
+
+    call_order: list[str] = []
+    real_open = builtins.open
+    real_fsync = os.fsync
+    real_replace = os.replace
+
+    class _OrderSpyHandle:
+        def __init__(self, raw_hdl):
+            self._raw = raw_hdl
+
+        def __enter__(self):
+            self._raw.__enter__()
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return self._raw.__exit__(exc_type, exc, tb)
+
+        def write(self, data):
+            call_order.append('write')
+            return self._raw.write(data)
+
+        def flush(self):
+            call_order.append('flush')
+            return self._raw.flush()
+
+        def fileno(self):
+            return self._raw.fileno()
+
+    def spy_open(file, mode='r', *args, **kwargs):
+        hdl = real_open(file, mode, *args, **kwargs)
+        if 'w' in mode:
+            return _OrderSpyHandle(hdl)
+        return hdl
+
+    def spy_fsync(fd):
+        call_order.append('fsync')
+        return real_fsync(fd)
+
+    def spy_replace(src, dst):
+        call_order.append('replace')
+        return real_replace(src, dst)
+
+    monkeypatch.setattr(builtins, 'open', spy_open)
+    monkeypatch.setattr(os, 'fsync', spy_fsync)
+    monkeypatch.setattr(os, 'replace', spy_replace)
+
+    write_baseline_structure_done(str(tmp_path), True, row_index=4)
+    assert call_order == ['write', 'flush', 'fsync', 'replace']
+    monkeypatch.setattr(builtins, 'open', real_open)
+    monkeypatch.setattr(os, 'fsync', real_fsync)
+    monkeypatch.setattr(os, 'replace', real_replace)
+
+    atomic_writer = Interior_t(5)
+    atomic_writer.structure_stale = True
+    atomic_writer.structure_rollback_active = True
+    atomic_writer.write_structure_stale(str(tmp_path))
+    write_baseline_structure_done(str(tmp_path), True)
+    for fpath in (
+        get_file_structure_stale(str(tmp_path)),
+        get_file_structure_rollback(str(tmp_path)),
+        get_file_baseline_structure_done(str(tmp_path)),
+    ):
+        assert Path(fpath).read_text(encoding='utf-8').strip() == '1'
+
+    class _FailingWriteHandle:
+        def __init__(self, raw_hdl):
+            self._raw = raw_hdl
+
+        def __enter__(self):
+            self._raw.__enter__()
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return self._raw.__exit__(exc_type, exc, tb)
+
+        def write(self, _data):
+            raise OSError('simulated mid-write failure')
+
+    def open_fails_on_write(file, mode='r', *args, **kwargs):
+        hdl = real_open(file, mode, *args, **kwargs)
+        if 'w' in mode:
+            return _FailingWriteHandle(hdl)
+        return hdl
+
+    monkeypatch.setattr(builtins, 'open', open_fails_on_write)
+    atomic_writer.structure_stale = False
+    atomic_writer.structure_rollback_active = False
+    atomic_writer.write_structure_stale(str(tmp_path))
+    write_baseline_structure_done(str(tmp_path), False)
+    monkeypatch.setattr(builtins, 'open', real_open)
+
+    for fpath in (
+        get_file_structure_stale(str(tmp_path)),
+        get_file_structure_rollback(str(tmp_path)),
+        get_file_baseline_structure_done(str(tmp_path)),
+    ):
+        assert Path(fpath).read_text(encoding='utf-8').strip() == '1'
+    assert [p.name for p in data_dir.iterdir() if '.tmp' in p.name] == []
+
+    def failing_replace(_src, _dst):
+        raise OSError('simulated os.replace failure')
+
+    monkeypatch.setattr(os, 'replace', failing_replace)
+    atomic_writer.write_structure_stale(str(tmp_path))
+    write_baseline_structure_done(str(tmp_path), False)
+    monkeypatch.setattr(os, 'replace', real_replace)
+
+    for fpath in (
+        get_file_structure_stale(str(tmp_path)),
+        get_file_structure_rollback(str(tmp_path)),
+        get_file_baseline_structure_done(str(tmp_path)),
+    ):
+        assert Path(fpath).read_text(encoding='utf-8').strip() == '1'
+    assert [p.name for p in data_dir.iterdir() if '.tmp' in p.name] == []
+
+
+def test_row_indexed_flag_files_newer_event_split_write_and_missing_rollback(
+    tmp_path, monkeypatch
+):
+    """Row-indexed flag files detect events newer than resume_row including split stale/rollback writes and missing rollback file."""
+    from pathlib import Path
+
+    import proteus.interior_energetics.common as common_mod
+    from proteus.interior_energetics.common import (
+        get_file_baseline_structure_done,
+        get_file_structure_rollback,
+        get_file_structure_stale,
+        has_newer_structure_flag_event,
+        resume_baseline_structure_done,
+        write_baseline_structure_done,
+    )
+
+    monkeypatch.setattr(Interior_t, '_load_ps_table', lambda self, *a, **kw: None)
+    data_dir = tmp_path / 'data'
+    data_dir.mkdir(parents=True)
+
+    has_unindexed = getattr(common_mod, 'has_unindexed_structure_flag_file', None)
+    assert callable(has_unindexed)
+    # No flag files exist yet -> unindexed is True
+    assert has_unindexed(str(tmp_path)) is True
+
+    row_writer = Interior_t(5)
+    row_writer.structure_stale = False
+    row_writer.structure_rollback_active = False
+    row_writer.write_structure_stale(str(tmp_path), row_index=5)
+    write_baseline_structure_done(str(tmp_path), True, row_index=5)
+    assert has_unindexed(str(tmp_path)) is False
+
+    normal_resume_reader = Interior_t(5)
+    normal_resume_reader.resume_structure_stale(str(tmp_path), resume_row=5)
+    assert normal_resume_reader.structure_stale is False
+    assert normal_resume_reader.structure_rollback_active is False
+    assert resume_baseline_structure_done(str(tmp_path), resume_row=5) is True
+    assert has_newer_structure_flag_event(str(tmp_path), resume_row=5) is False
+
+    newer_event_reader = Interior_t(5)
+    newer_event_reader.resume_structure_stale(str(tmp_path), resume_row=4)
+    assert newer_event_reader.structure_rollback_active is True
+    assert resume_baseline_structure_done(str(tmp_path), resume_row=4) is False
+    assert has_newer_structure_flag_event(str(tmp_path), resume_row=4) is True
+
+    # Kill between stale write ('1 N') and rollback write ('0 M') with M <= resume_row < N:
+    Path(get_file_structure_stale(str(tmp_path))).write_text('1 7\n', encoding='utf-8')
+    Path(get_file_structure_rollback(str(tmp_path))).write_text('0 4\n', encoding='utf-8')
+    Path(get_file_baseline_structure_done(str(tmp_path))).write_text('1 4\n', encoding='utf-8')
+    split_kill_reader = Interior_t(5)
+    split_kill_reader.resume_structure_stale(str(tmp_path), resume_row=5)
+    assert split_kill_reader.structure_stale is True
+    assert split_kill_reader.structure_rollback_active is True
+    assert has_newer_structure_flag_event(str(tmp_path), resume_row=5) is True
+
+    # Rollback file missing while stale file holds a newer event ('0 N', N > resume_row):
+    Path(get_file_structure_rollback(str(tmp_path))).unlink(missing_ok=True)
+    Path(get_file_structure_stale(str(tmp_path))).write_text('0 7\n', encoding='utf-8')
+    missing_rb_newer_reader = Interior_t(5)
+    missing_rb_newer_reader.resume_structure_stale(str(tmp_path), resume_row=5)
+    assert missing_rb_newer_reader.structure_stale is False
+    assert missing_rb_newer_reader.structure_rollback_active is True
+    assert has_newer_structure_flag_event(str(tmp_path), resume_row=5) is True
+
+    # Legacy single-token flag files without a row index keep their recorded values and report unindexed=True:
+    Path(get_file_structure_stale(str(tmp_path))).write_text('0\n', encoding='utf-8')
+    Path(get_file_structure_rollback(str(tmp_path))).write_text('0\n', encoding='utf-8')
+    Path(get_file_baseline_structure_done(str(tmp_path))).write_text('1\n', encoding='utf-8')
+    legacy_reader = Interior_t(5)
+    legacy_reader.resume_structure_stale(str(tmp_path), resume_row=4)
+    assert legacy_reader.structure_stale is False
+    assert legacy_reader.structure_rollback_active is False
+    assert resume_baseline_structure_done(str(tmp_path), resume_row=4) is True
+    assert has_newer_structure_flag_event(str(tmp_path), resume_row=4) is False
+    assert has_unindexed(str(tmp_path)) is True

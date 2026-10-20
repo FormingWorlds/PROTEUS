@@ -360,29 +360,27 @@ def test_proteus_start_assert_mass_conservation_writes_status_31(tmp_path, monke
     assert 'Mass conservation invariant' in status_lines[1]
 
 
-def test_proteus_start_zalmoxis_failed_baseline_keeps_row_4_init_stage_true_and_persists_on_resume(
-    tmp_path, monkeypatch
-):
-    """Proteus.start with zalmoxis keeps init_stage=True on row 4 when the forced baseline fails, restores _baseline_structure_done=False only when baseline_structure_done.dat is 0, and treats absent file as done."""
+def _setup_zalmoxis_baseline_runner(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    run_name: str,
+    *,
+    max_iters: int = 6,
+    temperature_mode: str = 'isothermal',
+    update_interval: float = 0.0,
+    mode: str = 'stop',
+) -> tuple[Proteus, Path, Path]:
+    """Build a Zalmoxis dummy-interior runner isolated in its own directory."""
     import proteus.interior_energetics.wrapper as int_wrap
-    from proteus.interior_energetics.common import (
-        get_file_baseline_structure_done,
-        get_file_structure_rollback,
-        get_file_structure_stale,
-        resume_baseline_structure_done,
-        write_baseline_structure_done,
-    )
 
     monkeypatch.setattr(Interior_t, '_load_ps_table', lambda self, *a, **kw: None)
-    runner, cfg_path, out_dir = _build_dummy_runner(
-        tmp_path, 'run_zalmoxis_failed_baseline', max_iters=6
-    )
-    runner.config.invariants.mode = 'stop'
+    monkeypatch.setattr(Proteus, '_require_paleos_tables', lambda self: None)
+    runner, cfg_path, out_dir = _build_dummy_runner(tmp_path, run_name, max_iters=max_iters)
+    runner.config.invariants.mode = mode
     runner.config.interior_struct.module = 'zalmoxis'
     runner.config.interior_struct.zalmoxis.equilibrate_init = False
-    runner.config.interior_struct.zalmoxis.update_interval = 0.0
-    runner.config.planet.temperature_mode = 'isothermal'
-    monkeypatch.setattr(Proteus, '_require_paleos_tables', lambda self: None)
+    runner.config.interior_struct.zalmoxis.update_interval = update_interval
+    runner.config.planet.temperature_mode = temperature_mode
 
     def fake_solve_structure(dirs, config, hf_all, hf_row, outdir, thermal_solve=True):
         int_wrap.determine_interior_radius_with_dummy(
@@ -391,7 +389,33 @@ def test_proteus_start_zalmoxis_failed_baseline_keeps_row_4_init_stage_true_and_
         hf_row['M_int_target'] = hf_row['M_int']
         hf_row['M_core_target'] = hf_row['M_core']
         hf_row['_structure_rollback'] = False
-        # Pre-seed 1 so the test verifies that start() overwrites both flag files with 0:
+
+    monkeypatch.setattr(int_wrap, 'solve_structure', fake_solve_structure)
+    return runner, cfg_path, out_dir
+
+
+def test_proteus_start_zalmoxis_failed_baseline_keeps_row_4_init_stage_true(
+    tmp_path, monkeypatch
+):
+    """Proteus.start with zalmoxis keeps init_stage=True on row 4 when the forced baseline fails, then clears it on row 5 when the retry succeeds."""
+    import proteus.interior_energetics.wrapper as int_wrap
+    from proteus.interior_energetics.common import (
+        get_file_baseline_structure_done,
+        get_file_structure_rollback,
+        resume_baseline_structure_done,
+    )
+
+    runner, _, out_dir = _setup_zalmoxis_baseline_runner(
+        tmp_path, monkeypatch, 'run_failed_baseline_row4', max_iters=6
+    )
+
+    def fake_solve_structure(dirs, config, hf_all, hf_row, outdir, thermal_solve=True):
+        int_wrap.determine_interior_radius_with_dummy(
+            dirs, config, hf_all, hf_row, outdir, thermal_solve=thermal_solve
+        )
+        hf_row['M_int_target'] = hf_row['M_int']
+        hf_row['M_core_target'] = hf_row['M_core']
+        hf_row['_structure_rollback'] = False
         Path(get_file_structure_rollback(outdir)).write_text('1\n', encoding='utf-8')
         Path(get_file_baseline_structure_done(outdir)).write_text('1\n', encoding='utf-8')
 
@@ -404,15 +428,12 @@ def test_proteus_start_zalmoxis_failed_baseline_keeps_row_4_init_stage_true_and_
         nonlocal baseline_attempts
         baseline_attempts += 1
         if baseline_attempts == 1:
-            # Remove baseline_structure_done.dat before returning so the test checks
-            # that _solve_structure_baseline_if_needed writes 0 on a failed baseline:
             Path(get_file_baseline_structure_done(dirs['output'])).unlink(missing_ok=True)
             interior_o.structure_stale = True
             interior_o.structure_rollback_active = True
             hf_row['_structure_rollback'] = True
             interior_o.write_structure_stale(dirs['output'])
             return lt, lT, lP
-        # Second attempt (row 5, loop 6) succeeds
         interior_o.structure_stale = False
         interior_o.structure_rollback_active = False
         hf_row['_structure_rollback'] = False
@@ -428,7 +449,6 @@ def test_proteus_start_zalmoxis_failed_baseline_keeps_row_4_init_stage_true_and_
     def interior_with_init_desync(dirs, cfg_, hf_all, hf_row, interior_o, *args, **kwargs):
         real_interior(dirs, cfg_, hf_all, hf_row, interior_o, *args, **kwargs)
         if runner.loops['total'] <= 4:
-            # Init rows 0-3 and failed-baseline row 4 carry pre-baseline desync > 1e-2 stop tol
             hf_row['struct_mass_desync_frac'] = 1.123e-2
         else:
             hf_row['struct_mass_desync_frac'] = 1.0e-3
@@ -460,7 +480,6 @@ def test_proteus_start_zalmoxis_failed_baseline_keeps_row_4_init_stage_true_and_
                 == '0 0'
             )
         if runner.loops['total'] == 5:
-            # Right after the failed baseline on row 4, the persisted baseline-done file must exist with '0 4':
             baseline_file = Path(get_file_baseline_structure_done(str(out_dir)))
             assert baseline_file.is_file()
             assert baseline_file.read_text(encoding='utf-8').strip() == '0 4'
@@ -470,8 +489,6 @@ def test_proteus_start_zalmoxis_failed_baseline_keeps_row_4_init_stage_true_and_
     monkeypatch.setattr(proteus_mod, 'check_row_invariants', spy_check_row)
     runner.start(resume=False, offline=True)
 
-    # Loop 5 (row 4, post-init iteration where baseline failed) had init_stage=True;
-    # loop 6 (row 5, after baseline succeeded) had init_stage=False:
     stage_by_loop = {
         loop_idx: (is_init, done) for loop_idx, is_init, done in recorded_init_stages
     }
@@ -484,28 +501,42 @@ def test_proteus_start_zalmoxis_failed_baseline_keeps_row_4_init_stage_true_and_
     )
     assert resume_baseline_structure_done(str(out_dir)) is True
 
-    # Case 1: An older run directory whose flag file holds no row index ('1\n') and has no
-    # baseline_structure_done.dat keeps today's behaviour on resume:
+
+def test_proteus_start_zalmoxis_resume_without_baseline_file_treats_baseline_as_done(
+    tmp_path, monkeypatch
+):
+    """An older run directory with single-token flag files and no baseline_structure_done.dat treats the baseline as done on a normal resume."""
+    import proteus.interior_energetics.wrapper as int_wrap
+    from proteus.interior_energetics.common import (
+        get_file_baseline_structure_done,
+        get_file_structure_rollback,
+        get_file_structure_stale,
+    )
+
+    runner, cfg_path, out_dir = _setup_zalmoxis_baseline_runner(
+        tmp_path, monkeypatch, 'run_missing_baseline_file', max_iters=5
+    )
+    monkeypatch.setattr(int_wrap, '_use_superliquidus_adiabat_ic', lambda cfg: False)
+
+    def init_update(dirs, config, hf_row, interior_o, lt, lT, lP, force=False):
+        hf_row['M_core'] = float(hf_row.get('M_core_target') or hf_row.get('M_core', 0.0))
+        return lt, lT, lP
+
+    monkeypatch.setattr(int_wrap, 'update_structure_from_interior', init_update)
+    runner.start(resume=False, offline=True)
+
     Path(get_file_baseline_structure_done(str(out_dir))).unlink(missing_ok=True)
     Path(get_file_structure_stale(str(out_dir))).write_text('1\n', encoding='utf-8')
     Path(get_file_structure_rollback(str(out_dir))).write_text('0\n', encoding='utf-8')
 
-    missing_file_resume = Proteus(config_path=cfg_path)
-    missing_file_resume.config.invariants.mode = 'stop'
-    missing_file_resume.config.interior_struct.module = 'zalmoxis'
-    missing_file_resume.config.interior_struct.zalmoxis.equilibrate_init = False
-    missing_file_resume.config.interior_struct.zalmoxis.update_interval = 0.0
-    missing_file_resume.config.planet.temperature_mode = 'isothermal'
-    missing_file_resume.config.params.stop.solid.enabled = False
-    missing_file_resume.config.params.stop.iters.minimum = 1
-    missing_file_resume.config.params.stop.iters.maximum = 7
-    missing_file_resume.config.params.stop.time.minimum = 0.0
-    missing_file_resume.config.params.stop.time.maximum = 5000.0
-    missing_file_resume.config.params.out.plot_mod = None
-    missing_file_resume.config.params.out.archive_mod = 'none'
+    missing_file_resume, _, _ = _setup_zalmoxis_baseline_runner(
+        tmp_path, monkeypatch, 'run_missing_baseline_file', max_iters=6
+    )
+    missing_file_resume.config_path = cfg_path
 
     missing_file_forced_calls: list[bool] = []
     missing_file_stages: list[tuple[bool | None, bool]] = []
+    real_check_row = proteus_mod.check_row_invariants
 
     def spy_missing_file_update(dirs, config, hf_row, interior_o, lt, lT, lP, force=False):
         missing_file_forced_calls.append(bool(force))
@@ -518,7 +549,6 @@ def test_proteus_start_zalmoxis_failed_baseline_keeps_row_4_init_stage_true_and_
         return real_check_row(hf_row, config, **kwargs)
 
     monkeypatch.setattr(int_wrap, 'update_structure_from_interior', spy_missing_file_update)
-    monkeypatch.setattr(int_wrap, 'run_interior', real_interior)
     monkeypatch.setattr(proteus_mod, 'check_row_invariants', spy_missing_file_check_row)
 
     missing_file_resume.start(resume=True, offline=True)
@@ -526,27 +556,43 @@ def test_proteus_start_zalmoxis_failed_baseline_keeps_row_4_init_stage_true_and_
     assert missing_file_forced_calls == []
     assert missing_file_stages[0] == (False, True)
 
-    # Case 2: A run directory where baseline_structure_done.dat holds 0 retries the baseline on resume:
-    write_baseline_structure_done(str(out_dir), False)
+
+def test_proteus_start_zalmoxis_resume_retries_uncommitted_baseline_when_file_holds_zero(
+    tmp_path, monkeypatch
+):
+    """A run directory where baseline_structure_done.dat holds 0 at the resume row retries the baseline until it succeeds."""
+    import proteus.interior_energetics.wrapper as int_wrap
+    from proteus.interior_energetics.common import (
+        get_file_baseline_structure_done,
+        get_file_structure_rollback,
+        resume_baseline_structure_done,
+        write_baseline_structure_done,
+    )
+
+    runner, cfg_path, out_dir = _setup_zalmoxis_baseline_runner(
+        tmp_path, monkeypatch, 'run_uncommitted_baseline_resume', max_iters=5
+    )
+    monkeypatch.setattr(int_wrap, '_use_superliquidus_adiabat_ic', lambda cfg: False)
+
+    def init_update(dirs, config, hf_row, interior_o, lt, lT, lP, force=False):
+        hf_row['M_core'] = float(hf_row.get('M_core_target') or hf_row.get('M_core', 0.0))
+        return lt, lT, lP
+
+    monkeypatch.setattr(int_wrap, 'update_structure_from_interior', init_update)
+    runner.start(resume=False, offline=True)
+
+    write_baseline_structure_done(str(out_dir), False, row_index=5)
     runner.interior_o.structure_stale = True
     runner.interior_o.structure_rollback_active = True
-    runner.interior_o.write_structure_stale(str(out_dir))
+    runner.interior_o.write_structure_stale(str(out_dir), row_index=5)
 
-    resume_runner = Proteus(config_path=cfg_path)
-    resume_runner.config.invariants.mode = 'stop'
-    resume_runner.config.interior_struct.module = 'zalmoxis'
-    resume_runner.config.interior_struct.zalmoxis.equilibrate_init = False
-    resume_runner.config.interior_struct.zalmoxis.update_interval = 0.0
-    resume_runner.config.planet.temperature_mode = 'isothermal'
-    resume_runner.config.params.stop.solid.enabled = False
-    resume_runner.config.params.stop.iters.minimum = 1
-    resume_runner.config.params.stop.iters.maximum = 9
-    resume_runner.config.params.stop.time.minimum = 0.0
-    resume_runner.config.params.stop.time.maximum = 5000.0
-    resume_runner.config.params.out.plot_mod = None
-    resume_runner.config.params.out.archive_mod = 'none'
+    resume_runner, _, _ = _setup_zalmoxis_baseline_runner(
+        tmp_path, monkeypatch, 'run_uncommitted_baseline_resume', max_iters=7
+    )
+    resume_runner.config_path = cfg_path
 
     resumed_stages: list[tuple[bool | None, bool]] = []
+    real_check_row = proteus_mod.check_row_invariants
 
     def spy_resumed_check_row(hf_row, config, **kwargs):
         resumed_stages.append(
@@ -554,7 +600,6 @@ def test_proteus_start_zalmoxis_failed_baseline_keeps_row_4_init_stage_true_and_
         )
         return real_check_row(hf_row, config, **kwargs)
 
-    # First resumed step fails baseline again (stays init_stage=True), next succeeds:
     resumed_baseline_calls = 0
 
     def fake_resumed_update(dirs, config, hf_row, interior_o, lt, lT, lP, force=False):
@@ -573,7 +618,6 @@ def test_proteus_start_zalmoxis_failed_baseline_keeps_row_4_init_stage_true_and_
         return float(hf_row.get('Time', 0.0)), float(hf_row.get('T_magma', 2000.0)), 0.5
 
     monkeypatch.setattr(int_wrap, 'update_structure_from_interior', fake_resumed_update)
-    monkeypatch.setattr(int_wrap, 'run_interior', real_interior)
     monkeypatch.setattr(proteus_mod, 'check_row_invariants', spy_resumed_check_row)
 
     resume_runner.start(resume=True, offline=True)
@@ -582,17 +626,46 @@ def test_proteus_start_zalmoxis_failed_baseline_keeps_row_4_init_stage_true_and_
     assert resume_baseline_structure_done(str(out_dir)) is True
     assert (
         Path(get_file_baseline_structure_done(str(out_dir))).read_text(encoding='utf-8').strip()
-        == '1 9'
+        == '1 7'
     )
     assert (
         Path(get_file_structure_rollback(str(out_dir))).read_text(encoding='utf-8').strip()
-        == '0 9'
+        == '0 7'
     )
 
-    # Case 3a: Dropping row 9 makes the row-9 flag event newer than row 8, so
-    # Proteus sets rollback=True and baseline-done=False on disk and forces a
-    # baseline re-solve; if it fails, rollback stays True on disk ('1 9'):
+
+def test_proteus_start_zalmoxis_dropped_snapshot_newer_event_forces_resolve_and_clears_on_success(
+    tmp_path, monkeypatch
+):
+    """When a dropped snapshot leaves a newer flag event on disk, Proteus sets rollback=True and baseline-done=False on entry and clears rollback when the forced re-solve succeeds."""
+    import proteus.interior_energetics.wrapper as int_wrap
     import proteus.utils.coupler as coupler_mod
+    from proteus.interior_energetics.common import (
+        get_file_baseline_structure_done,
+        get_file_structure_rollback,
+        get_file_structure_stale,
+    )
+
+    runner, cfg_path, out_dir = _setup_zalmoxis_baseline_runner(
+        tmp_path, monkeypatch, 'run_dropped_newer_success', max_iters=6
+    )
+    monkeypatch.setattr(int_wrap, '_use_superliquidus_adiabat_ic', lambda cfg: False)
+
+    def write_flags_on_update(dirs, config, hf_row, interior_o, lt, lT, lP, force=False):
+        hf_row['M_core'] = float(hf_row.get('M_core_target') or hf_row.get('M_core', 0.0))
+        interior_o.structure_stale = False
+        interior_o.structure_rollback_active = False
+        hf_row['_structure_rollback'] = False
+        interior_o.write_structure_stale(dirs['output'])
+        return lt, lT, lP
+
+    monkeypatch.setattr(int_wrap, 'update_structure_from_interior', write_flags_on_update)
+    runner.start(resume=False, offline=True)
+
+    # Simulate a structure event written on row 6 (the last row), which select_resumable_snapshot drops:
+    Path(get_file_structure_stale(str(out_dir))).write_text('0 6\n', encoding='utf-8')
+    Path(get_file_structure_rollback(str(out_dir))).write_text('0 6\n', encoding='utf-8')
+    Path(get_file_baseline_structure_done(str(out_dir))).write_text('1 6\n', encoding='utf-8')
 
     real_select = coupler_mod.select_resumable_snapshot
 
@@ -604,7 +677,7 @@ def test_proteus_start_zalmoxis_failed_baseline_keeps_row_4_init_stage_true_and_
 
     resume_entry_files: list[tuple[str, str]] = []
 
-    def fake_dropped_update_fails(dirs, config, hf_row, interior_o, lt, lT, lP, force=False):
+    def fake_succeeding_baseline(dirs, config, hf_row, interior_o, lt, lT, lP, force=False):
         resume_entry_files.append(
             (
                 Path(get_file_structure_rollback(dirs['output']))
@@ -615,63 +688,11 @@ def test_proteus_start_zalmoxis_failed_baseline_keeps_row_4_init_stage_true_and_
                 .strip(),
             )
         )
-        interior_o.structure_stale = True
-        interior_o.structure_rollback_active = True
-        hf_row['_structure_rollback'] = True
-        hf_row['struct_mass_desync_frac'] = 1.0e-3
-        interior_o.write_structure_stale(dirs['output'])
-        return lt, lT, lP
-
-    monkeypatch.setattr(int_wrap, 'update_structure_from_interior', fake_dropped_update_fails)
-
-    dropped_resume = Proteus(config_path=cfg_path)
-    dropped_resume.config.invariants.mode = 'report'
-    dropped_resume.config.interior_struct.module = 'zalmoxis'
-    dropped_resume.config.interior_struct.zalmoxis.equilibrate_init = False
-    dropped_resume.config.interior_struct.zalmoxis.update_interval = 0.0
-    dropped_resume.config.planet.temperature_mode = 'isothermal'
-    dropped_resume.config.params.stop.solid.enabled = False
-    dropped_resume.config.params.stop.iters.minimum = 1
-    dropped_resume.config.params.stop.iters.maximum = 9
-    dropped_resume.config.params.stop.time.minimum = 0.0
-    dropped_resume.config.params.stop.time.maximum = 5000.0
-    dropped_resume.config.params.out.plot_mod = None
-    dropped_resume.config.params.out.archive_mod = 'none'
-
-    dropped_flags: list[tuple[bool, bool | None]] = []
-
-    def spy_dropped_check_row(hf_row, config, **kwargs):
-        dropped_flags.append(
-            (
-                bool(dropped_resume.interior_o.structure_rollback_active),
-                kwargs.get('init_stage'),
-            )
-        )
-        return real_check_row(hf_row, config, **kwargs)
-
-    monkeypatch.setattr(proteus_mod, 'check_row_invariants', spy_dropped_check_row)
-    dropped_resume.start(resume=True, offline=True)
-    assert resume_entry_files == [('1 8', '0 8')]
-    assert dropped_flags[0] == (True, True)
-    assert dropped_resume.interior_o.structure_rollback_active is True
-    assert (
-        Path(get_file_structure_rollback(str(out_dir))).read_text(encoding='utf-8').strip()
-        == '1 9'
-    )
-    assert (
-        Path(get_file_baseline_structure_done(str(out_dir))).read_text(encoding='utf-8').strip()
-        == '0 9'
-    )
-
-    # Case 3b: A resume with update_interval=0.0 whose forced baseline re-solve succeeds
-    # clears structure_rollback_active to False (and writes '0 10' and '1 10' to disk),
-    # so M_int_target_rel_err is NOT stuck report-only and stops in stop mode:
-    monkeypatch.setattr(coupler_mod, 'select_resumable_snapshot', real_select)
-
-    def fake_succeeding_baseline(dirs, config, hf_row, interior_o, lt, lT, lP, force=False):
         interior_o.structure_stale = False
         hf_row['struct_mass_desync_frac'] = 1.0e-3
         return float(hf_row.get('Time', 0.0)), float(hf_row.get('T_magma', 2000.0)), 0.5
+
+    real_interior = int_wrap.run_interior
 
     def interior_with_target_mismatch(dirs, cfg_, hf_all, hf_row, interior_o, *args, **kwargs):
         real_interior(dirs, cfg_, hf_all, hf_row, interior_o, *args, **kwargs)
@@ -682,40 +703,62 @@ def test_proteus_start_zalmoxis_failed_baseline_keeps_row_4_init_stage_true_and_
     monkeypatch.setattr(int_wrap, 'update_structure_from_interior', fake_succeeding_baseline)
     monkeypatch.setattr(int_wrap, 'run_interior', interior_with_target_mismatch)
 
-    second_resume = Proteus(config_path=cfg_path)
-    second_resume.config.invariants.mode = 'stop'
-    second_resume.config.interior_struct.module = 'zalmoxis'
-    second_resume.config.interior_struct.zalmoxis.equilibrate_init = False
-    second_resume.config.interior_struct.zalmoxis.update_interval = 0.0
-    second_resume.config.planet.temperature_mode = 'isothermal'
-    second_resume.config.params.stop.solid.enabled = False
-    second_resume.config.params.stop.iters.minimum = 1
-    second_resume.config.params.stop.iters.maximum = 10
-    second_resume.config.params.stop.time.minimum = 0.0
-    second_resume.config.params.stop.time.maximum = 5000.0
-    second_resume.config.params.out.plot_mod = None
-    second_resume.config.params.out.archive_mod = 'none'
+    resumed, _, _ = _setup_zalmoxis_baseline_runner(
+        tmp_path, monkeypatch, 'run_dropped_newer_success', max_iters=7
+    )
+    resumed.config_path = cfg_path
 
     with pytest.raises(InvariantViolationError) as exc_after_baseline_clear:
-        second_resume.start(resume=True, offline=True)
+        resumed.start(resume=True, offline=True)
+    assert resume_entry_files == [('1 5', '0 5')]
     assert exc_after_baseline_clear.value.invariant_name == 'M_int_target_rel_err'
-    assert second_resume.interior_o.structure_rollback_active is False
-    assert second_resume._baseline_structure_done is True
+    assert resumed.interior_o.structure_rollback_active is False
+    assert resumed._baseline_structure_done is True
     assert (
         Path(get_file_structure_rollback(str(out_dir))).read_text(encoding='utf-8').strip()
-        == '0 10'
+        == '0 6'
     )
     assert (
         Path(get_file_baseline_structure_done(str(out_dir))).read_text(encoding='utf-8').strip()
-        == '1 10'
+        == '1 6'
     )
 
-    # Case 3c: When a resume drops a snapshot (row 8 -> resume_row 7) and the flag files on disk
-    # come from an earlier row (row 5 <= 7), no flag event is newer than the resume row:
-    # rollback stays False and baseline-done stays True without a forced re-solve:
-    Path(get_file_structure_stale(str(out_dir))).write_text('0 5\n', encoding='utf-8')
-    Path(get_file_structure_rollback(str(out_dir))).write_text('0 5\n', encoding='utf-8')
-    Path(get_file_baseline_structure_done(str(out_dir))).write_text('1 5\n', encoding='utf-8')
+
+def test_proteus_start_zalmoxis_dropped_snapshot_with_older_indexed_flags_skips_forced_resolve(
+    tmp_path, monkeypatch
+):
+    """When a resume drops a snapshot and all flag files carry row indices at or before the resume row, rollback stays False and no forced re-solve runs."""
+    import proteus.interior_energetics.wrapper as int_wrap
+    import proteus.utils.coupler as coupler_mod
+    from proteus.interior_energetics.common import (
+        get_file_baseline_structure_done,
+        get_file_structure_rollback,
+        get_file_structure_stale,
+    )
+
+    runner, cfg_path, out_dir = _setup_zalmoxis_baseline_runner(
+        tmp_path, monkeypatch, 'run_dropped_older_indexed', max_iters=6, mode='report'
+    )
+    monkeypatch.setattr(int_wrap, '_use_superliquidus_adiabat_ic', lambda cfg: False)
+
+    def init_update(dirs, config, hf_row, interior_o, lt, lT, lP, force=False):
+        hf_row['M_core'] = float(hf_row.get('M_core_target') or hf_row.get('M_core', 0.0))
+        return lt, lT, lP
+
+    monkeypatch.setattr(int_wrap, 'update_structure_from_interior', init_update)
+    runner.start(resume=False, offline=True)
+
+    # All 3 flag files hold row 4 <= resume_row 5 (after dropping row 6):
+    Path(get_file_structure_stale(str(out_dir))).write_text('0 4\n', encoding='utf-8')
+    Path(get_file_structure_rollback(str(out_dir))).write_text('0 4\n', encoding='utf-8')
+    Path(get_file_baseline_structure_done(str(out_dir))).write_text('1 4\n', encoding='utf-8')
+
+    real_select = coupler_mod.select_resumable_snapshot
+
+    def fake_select_drops_snapshot(outdir, hf_all, **kwargs):
+        trimmed, _ = real_select(outdir, hf_all, **kwargs)
+        return trimmed.iloc[:-1].copy(), [float(trimmed.iloc[-1]['Time'])]
+
     monkeypatch.setattr(coupler_mod, 'select_resumable_snapshot', fake_select_drops_snapshot)
 
     no_newer_calls: list[bool] = []
@@ -725,39 +768,48 @@ def test_proteus_start_zalmoxis_failed_baseline_keeps_row_4_init_stage_true_and_
         return lt, lT, lP
 
     monkeypatch.setattr(int_wrap, 'update_structure_from_interior', spy_no_newer_update)
-    monkeypatch.setattr(int_wrap, 'run_interior', real_interior)
 
-    no_newer_resume = Proteus(config_path=cfg_path)
-    no_newer_resume.config.invariants.mode = 'report'
-    no_newer_resume.config.interior_struct.module = 'zalmoxis'
-    no_newer_resume.config.interior_struct.zalmoxis.equilibrate_init = False
-    no_newer_resume.config.interior_struct.zalmoxis.update_interval = 0.0
-    no_newer_resume.config.planet.temperature_mode = 'isothermal'
-    no_newer_resume.config.params.stop.solid.enabled = False
-    no_newer_resume.config.params.stop.iters.minimum = 1
-    no_newer_resume.config.params.stop.iters.maximum = 9
-    no_newer_resume.config.params.stop.time.minimum = 0.0
-    no_newer_resume.config.params.stop.time.maximum = 5000.0
-    no_newer_resume.config.params.out.plot_mod = None
-    no_newer_resume.config.params.out.archive_mod = 'none'
-
+    no_newer_resume, _, _ = _setup_zalmoxis_baseline_runner(
+        tmp_path, monkeypatch, 'run_dropped_older_indexed', max_iters=7, mode='report'
+    )
+    no_newer_resume.config_path = cfg_path
     no_newer_resume.start(resume=True, offline=True)
     assert no_newer_resume.interior_o.structure_rollback_active is False
     assert no_newer_resume._baseline_structure_done is True
     assert no_newer_calls == []
 
-    # Case 3d: A kill between the flag write and the helpfile write (dropped_snapshots == [],
-    # but structure_stale.dat / structure_rollback.dat hold row 11 > resume_row 10) is detected
-    # as a newer-than-row event, re-solving the baseline at resume and clearing rollback on success:
-    monkeypatch.setattr(coupler_mod, 'select_resumable_snapshot', real_select)
-    Path(get_file_structure_stale(str(out_dir))).write_text('0 11\n', encoding='utf-8')
-    Path(get_file_structure_rollback(str(out_dir))).write_text('0 11\n', encoding='utf-8')
-    Path(get_file_baseline_structure_done(str(out_dir))).write_text('1 5\n', encoding='utf-8')
+
+def test_proteus_start_zalmoxis_ahead_of_helpfile_flag_event_forces_resolve_on_resume(
+    tmp_path, monkeypatch
+):
+    """A kill between the flag write and the helpfile write (dropped_snapshots == [], flag row > resume_row) forces 1 re-solve at resume and clears rollback on success."""
+    import proteus.interior_energetics.wrapper as int_wrap
+    from proteus.interior_energetics.common import (
+        get_file_baseline_structure_done,
+        get_file_structure_rollback,
+        get_file_structure_stale,
+    )
+
+    runner, cfg_path, out_dir = _setup_zalmoxis_baseline_runner(
+        tmp_path, monkeypatch, 'run_ahead_flag_event', max_iters=5, mode='report'
+    )
+    monkeypatch.setattr(int_wrap, '_use_superliquidus_adiabat_ic', lambda cfg: False)
+
+    def init_update(dirs, config, hf_row, interior_o, lt, lT, lP, force=False):
+        hf_row['M_core'] = float(hf_row.get('M_core_target') or hf_row.get('M_core', 0.0))
+        return lt, lT, lP
+
+    monkeypatch.setattr(int_wrap, 'update_structure_from_interior', init_update)
+    runner.start(resume=False, offline=True)
+
+    # Helpfile has 6 rows (0..5, resume_row=5); flags record row 6 > 5:
+    Path(get_file_structure_stale(str(out_dir))).write_text('0 6\n', encoding='utf-8')
+    Path(get_file_structure_rollback(str(out_dir))).write_text('0 6\n', encoding='utf-8')
+    Path(get_file_baseline_structure_done(str(out_dir))).write_text('1 4\n', encoding='utf-8')
 
     ahead_forced_calls: list[tuple[bool, bool]] = []
 
     def spy_ahead_update(dirs, config, hf_row, interior_o, lt, lT, lP, force=False):
-        # At the start of the forced re-solve, rollback was set True by the newer-than-row check:
         ahead_forced_calls.append((bool(force), bool(interior_o.structure_rollback_active)))
         interior_o.structure_stale = False
         hf_row['struct_mass_desync_frac'] = 1.0e-3
@@ -765,27 +817,394 @@ def test_proteus_start_zalmoxis_failed_baseline_keeps_row_4_init_stage_true_and_
 
     monkeypatch.setattr(int_wrap, 'update_structure_from_interior', spy_ahead_update)
 
-    ahead_resume = Proteus(config_path=cfg_path)
-    ahead_resume.config.invariants.mode = 'report'
-    ahead_resume.config.interior_struct.module = 'zalmoxis'
-    ahead_resume.config.interior_struct.zalmoxis.equilibrate_init = False
-    ahead_resume.config.interior_struct.zalmoxis.update_interval = 0.0
-    ahead_resume.config.planet.temperature_mode = 'isothermal'
-    ahead_resume.config.params.stop.solid.enabled = False
-    ahead_resume.config.params.stop.iters.minimum = 1
-    ahead_resume.config.params.stop.iters.maximum = 11
-    ahead_resume.config.params.stop.time.minimum = 0.0
-    ahead_resume.config.params.stop.time.maximum = 5000.0
-    ahead_resume.config.params.out.plot_mod = None
-    ahead_resume.config.params.out.archive_mod = 'none'
-
+    ahead_resume, _, _ = _setup_zalmoxis_baseline_runner(
+        tmp_path, monkeypatch, 'run_ahead_flag_event', max_iters=6, mode='report'
+    )
+    ahead_resume.config_path = cfg_path
     ahead_resume.start(resume=True, offline=True)
     assert ahead_forced_calls == [(True, True)]
     assert ahead_resume.interior_o.structure_rollback_active is False
     assert ahead_resume._baseline_structure_done is True
     assert (
         Path(get_file_structure_rollback(str(out_dir))).read_text(encoding='utf-8').strip()
-        == '0 11'
+        == '0 6'
+    )
+
+
+def test_proteus_start_resume_dropped_snapshots_with_unindexed_flag_file_sets_rollback(
+    tmp_path, monkeypatch
+):
+    """An older run directory with single-token flag files (such as only structure_stale.dat '0') that resumes with dropped_snapshots sets structure_rollback_active=True and writes it."""
+    import proteus.interior_energetics.wrapper as int_wrap
+    import proteus.utils.coupler as coupler_mod
+    from proteus.interior_energetics.common import (
+        get_file_baseline_structure_done,
+        get_file_structure_rollback,
+        get_file_structure_stale,
+    )
+
+    runner, cfg_path, out_dir = _setup_zalmoxis_baseline_runner(
+        tmp_path,
+        monkeypatch,
+        'run_arch_r3_front_like',
+        max_iters=6,
+        temperature_mode='liquidus_super',
+        update_interval=0.0,
+        mode='report',
+    )
+    runner.start(resume=False, offline=True)
+
+    # Match arch_r3_front layout: only structure_stale.dat '0\n' on disk, no row index, no other flag files:
+    Path(get_file_structure_stale(str(out_dir))).write_text('0\n', encoding='utf-8')
+    Path(get_file_structure_rollback(str(out_dir))).unlink(missing_ok=True)
+    Path(get_file_baseline_structure_done(str(out_dir))).unlink(missing_ok=True)
+
+    real_select = coupler_mod.select_resumable_snapshot
+
+    def fake_select_drops_snapshot(outdir, hf_all, **kwargs):
+        trimmed, _ = real_select(outdir, hf_all, **kwargs)
+        return trimmed.iloc[:-1].copy(), [float(trimmed.iloc[-1]['Time'])]
+
+    monkeypatch.setattr(coupler_mod, 'select_resumable_snapshot', fake_select_drops_snapshot)
+
+    real_interior = int_wrap.run_interior
+
+    def interior_with_target_mismatch(dirs, cfg_, hf_all, hf_row, interior_o, *args, **kwargs):
+        real_interior(dirs, cfg_, hf_all, hf_row, interior_o, *args, **kwargs)
+        hf_row['M_int'] = 5.97e24
+        hf_row['M_int_target'] = 5.97e24 * 1.02
+
+    monkeypatch.setattr(int_wrap, 'run_interior', interior_with_target_mismatch)
+
+    observed_rollbacks: list[bool] = []
+    real_check_row = proteus_mod.check_row_invariants
+
+    resumed, _, _ = _setup_zalmoxis_baseline_runner(
+        tmp_path,
+        monkeypatch,
+        'run_arch_r3_front_like',
+        max_iters=7,
+        temperature_mode='liquidus_super',
+        update_interval=0.0,
+        mode='stop',
+    )
+    resumed.config_path = cfg_path
+
+    def spy_check_row(hf_row, config, **kwargs):
+        observed_rollbacks.append(bool(resumed.interior_o.structure_rollback_active))
+        return real_check_row(hf_row, config, **kwargs)
+
+    monkeypatch.setattr(proteus_mod, 'check_row_invariants', spy_check_row)
+
+    # Because dropped_snapshots is non-empty and structure_stale.dat has no row index,
+    # rollback is set True and written, so M_int_target_rel_err stays report-only in stop mode:
+    resumed.start(resume=True, offline=True)
+    assert observed_rollbacks == [True, True]
+    assert resumed.interior_o.structure_rollback_active is True
+    assert (
+        Path(get_file_structure_rollback(str(out_dir))).read_text(encoding='utf-8').strip()
+        == '1 5'
+    )
+
+
+def test_proteus_start_loop_top_sets_structure_row_index_for_dynamic_resolves_and_resume(
+    tmp_path, monkeypatch
+):
+    """The main-loop top sets interior_o._structure_row_index = len(hf_all) on every iteration so dynamic re-solves write '<flag> <len(hf_all)>' and a dropped last row forces 1 re-solve on resume."""
+    import proteus.interior_energetics.wrapper as int_wrap
+    import proteus.utils.coupler as coupler_mod
+    from proteus.interior_energetics.common import (
+        get_file_structure_rollback,
+        get_file_structure_stale,
+    )
+
+    runner, cfg_path, out_dir = _setup_zalmoxis_baseline_runner(
+        tmp_path,
+        monkeypatch,
+        'run_loop_top_row_idx',
+        max_iters=6,
+        temperature_mode='liquidus_super',
+        update_interval=1.0,
+        mode='report',
+    )
+
+    written_records: list[tuple[int, str, str]] = []
+
+    def fake_dynamic_update(dirs, config, hf_row, interior_o, lt, lT, lP, force=False):
+        interior_o.structure_stale = False
+        interior_o.structure_rollback_active = False
+        hf_row['_structure_rollback'] = False
+        interior_o.write_structure_stale(dirs['output'])
+        written_records.append(
+            (
+                len(runner.hf_all),
+                Path(get_file_structure_stale(dirs['output']))
+                .read_text(encoding='utf-8')
+                .strip(),
+                Path(get_file_structure_rollback(dirs['output']))
+                .read_text(encoding='utf-8')
+                .strip(),
+            )
+        )
+        return float(hf_row.get('Time', 0.0)), float(hf_row.get('T_magma', 2000.0)), 0.5
+
+    monkeypatch.setattr(int_wrap, 'update_structure_from_interior', fake_dynamic_update)
+    runner.start(resume=False, offline=True)
+
+    # Post-init iterations run at len(hf_all) == 4, 5, 6 and each writes '<flag> <len(hf_all)>':
+    assert written_records == [
+        (4, '0 4', '0 4'),
+        (5, '0 5', '0 5'),
+        (6, '0 6', '0 6'),
+    ]
+
+    # Drop the last row (row 6 -> resume_row 5) and resume:
+    real_select = coupler_mod.select_resumable_snapshot
+
+    def fake_select_drops_last(outdir, hf_all, **kwargs):
+        trimmed, _ = real_select(outdir, hf_all, **kwargs)
+        return trimmed.iloc[:-1].copy(), [float(trimmed.iloc[-1]['Time'])]
+
+    monkeypatch.setattr(coupler_mod, 'select_resumable_snapshot', fake_select_drops_last)
+
+    resumed_calls: list[tuple[bool, int | None]] = []
+    resumed, _, _ = _setup_zalmoxis_baseline_runner(
+        tmp_path,
+        monkeypatch,
+        'run_loop_top_row_idx',
+        max_iters=6,
+        temperature_mode='liquidus_super',
+        update_interval=1.0,
+        mode='report',
+    )
+    resumed.config_path = cfg_path
+
+    def spy_resumed_update(dirs, config, hf_row, interior_o, lt, lT, lP, force=False):
+        resumed_calls.append((bool(force), interior_o._structure_row_index))
+        interior_o.structure_stale = False
+        interior_o.structure_rollback_active = False
+        hf_row['_structure_rollback'] = False
+        interior_o.write_structure_stale(dirs['output'])
+        return float(hf_row.get('Time', 0.0)), float(hf_row.get('T_magma', 2000.0)), 0.5
+
+    monkeypatch.setattr(int_wrap, 'update_structure_from_interior', spy_resumed_update)
+    resumed.start(resume=True, offline=True)
+
+    # Exactly 1 forced re-solve at the resume (plus the 1 regular dynamic call on that step),
+    # and the loop top set _structure_row_index to 6 (len(hf_all)):
+    assert [force for force, _ in resumed_calls if force] == [True]
+    assert all(row_idx == 6 for _, row_idx in resumed_calls)
+
+
+@pytest.mark.parametrize('outcome', ['accept', 'upstep_reject', 'solver_failure'])
+def test_proteus_start_newer_event_resume_forced_resolve_three_outcomes_with_static_structure(
+    tmp_path, monkeypatch, caplog, outcome
+):
+    """On a newer-event resume with update_interval=0, Proteus makes exactly 1 forced attempt and marks the baseline done for all 3 outcomes: accept -> rollback False; up-step reject -> rollback False; solver failure -> rollback True with 1 warning naming the resume."""
+    import logging
+
+    import proteus.interior_energetics.wrapper as int_wrap
+    from proteus.interior_energetics.common import (
+        get_file_baseline_structure_done,
+        get_file_structure_rollback,
+        get_file_structure_stale,
+    )
+
+    runner, cfg_path, out_dir = _setup_zalmoxis_baseline_runner(
+        tmp_path,
+        monkeypatch,
+        f'run_newer_resume_{outcome}',
+        max_iters=5,
+        temperature_mode='liquidus_super',
+        update_interval=0.0,
+        mode='report',
+    )
+    runner.start(resume=False, offline=True)
+
+    # Seed a newer flag event at row 6 > resume_row 5 with structure_stale=1 on disk:
+    Path(get_file_structure_stale(str(out_dir))).write_text('1 6\n', encoding='utf-8')
+    Path(get_file_structure_rollback(str(out_dir))).write_text('1 6\n', encoding='utf-8')
+    Path(get_file_baseline_structure_done(str(out_dir))).write_text('1 4\n', encoding='utf-8')
+
+    forced_calls: list[bool] = []
+
+    def fake_forced_update(dirs, config, hf_row, interior_o, lt, lT, lP, force=False):
+        forced_calls.append(bool(force))
+        if outcome == 'accept':
+            interior_o.structure_stale = False
+            interior_o.structure_rollback_active = False
+            hf_row['_structure_rollback'] = False
+            interior_o.write_structure_stale(dirs['output'])
+        elif outcome == 'upstep_reject':
+            # Mirror update_structure_from_interior up-step reject: leaves structure_stale
+            # unchanged and sets _structure_rollback=True and structure_rollback_active=True:
+            hf_row['_structure_rollback'] = True
+            interior_o.structure_rollback_active = True
+            interior_o.write_structure_stale(dirs['output'])
+        else:
+            interior_o.zalmoxis_fail_count += 1
+            interior_o.structure_stale = True
+            interior_o.structure_rollback_active = True
+            hf_row['_structure_rollback'] = True
+            interior_o.write_structure_stale(dirs['output'])
+        return float(hf_row.get('Time', 0.0)), float(hf_row.get('T_magma', 2000.0)), 0.5
+
+    monkeypatch.setattr(int_wrap, 'update_structure_from_interior', fake_forced_update)
+
+    # Run 9 resumed steps (> 8 consecutive Zalmoxis failure budget) to prove the forced
+    # attempt runs once and never repeats or aborts on subsequent static steps:
+    resumed, _, _ = _setup_zalmoxis_baseline_runner(
+        tmp_path,
+        monkeypatch,
+        f'run_newer_resume_{outcome}',
+        max_iters=14,
+        temperature_mode='liquidus_super',
+        update_interval=0.0,
+        mode='report',
+    )
+    resumed.config_path = cfg_path
+
+    caplog.clear()
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus'):
+        resumed.start(resume=True, offline=True)
+
+    assert forced_calls == [True]
+    assert resumed._baseline_structure_done is True
+    assert (
+        Path(get_file_baseline_structure_done(str(out_dir))).read_text(encoding='utf-8').strip()
+        == '1 6'
+    )
+    resume_warns = [
+        r.message
+        for r in caplog.records
+        if r.levelname == 'WARNING'
+        and 'resume' in r.message.lower()
+        and 'structure' in r.message.lower()
+    ]
+    if outcome in ('accept', 'upstep_reject'):
+        assert resumed.interior_o.structure_rollback_active is False
+        assert resumed.interior_o.structure_stale is False
+        assert (
+            Path(get_file_structure_rollback(str(out_dir))).read_text(encoding='utf-8').strip()
+            == '0 6'
+        )
+        assert resume_warns == []
+    else:
+        assert resumed.interior_o.structure_rollback_active is True
+        assert resumed.interior_o.structure_stale is True
+        assert (
+            Path(get_file_structure_rollback(str(out_dir))).read_text(encoding='utf-8').strip()
+            == '1 6'
+        )
+        assert len(resume_warns) == 1
+
+
+def test_proteus_start_resume_after_dropped_impact_row_runs_only_impact_structure_solve(
+    tmp_path, monkeypatch
+):
+    """When a resume drops a snapshot row on which an impact occurred, the accepted impact solve on the first resumed iteration satisfies the forced re-solve so update_structure_from_interior is not also called."""
+    from types import SimpleNamespace
+
+    import proteus.accretion.wrapper as acc_wrap
+    import proteus.interior_energetics.wrapper as int_wrap
+    import proteus.utils.coupler as coupler_mod
+    from proteus.interior_energetics.common import (
+        get_file_baseline_structure_done,
+        get_file_structure_rollback,
+    )
+
+    runner, cfg_path, out_dir = _setup_zalmoxis_baseline_runner(
+        tmp_path,
+        monkeypatch,
+        'run_dropped_impact_row',
+        max_iters=5,
+        temperature_mode='isothermal',
+        update_interval=0.0,
+        mode='report',
+    )
+    monkeypatch.setattr(int_wrap, '_use_superliquidus_adiabat_ic', lambda cfg: False)
+
+    impact_event = SimpleNamespace(
+        time=50.0,
+        id_target=1,
+        id_impactor=2,
+        M_target_before=5.97e24,
+        M_impactor=1.0e22,
+        mass_delta=1.0e22,
+        v_impact=1.2e4,
+        b_impact=0.3,
+        semimajoraxis_ratio=1.0,
+        semimajoraxis_after=1.0,
+        eccentricity_change=0.0,
+        eccentricity_after=0.01,
+        dE_total=1.0e29,
+        dE_core=0.0,
+        f_atm_loss=None,
+    )
+    monkeypatch.setattr(int_wrap, 'remelt_mantle', lambda *a, **kw: None)
+
+    solve_calls: list[str] = []
+    real_dummy_solve = int_wrap.determine_interior_radius_with_dummy
+
+    def spy_solve_structure(dirs, config, hf_all, hf_row, outdir, thermal_solve=True):
+        solve_calls.append('impact' if not thermal_solve else 'init')
+        real_dummy_solve(dirs, config, hf_all, hf_row, outdir, thermal_solve=thermal_solve)
+        hf_row['M_int_target'] = hf_row['M_int']
+        hf_row['M_core_target'] = hf_row['M_core']
+        hf_row['_structure_rollback'] = False
+
+    def spy_update_structure(dirs, config, hf_row, interior_o, lt, lT, lP, force=False):
+        solve_calls.append('forced_baseline' if force else 'dynamic')
+        interior_o.structure_stale = False
+        interior_o.structure_rollback_active = False
+        hf_row['_structure_rollback'] = False
+        interior_o.write_structure_stale(dirs['output'])
+        return float(hf_row.get('Time', 0.0)), float(hf_row.get('T_magma', 2000.0)), 0.5
+
+    monkeypatch.setattr(int_wrap, 'solve_structure', spy_solve_structure)
+    monkeypatch.setattr(int_wrap, 'update_structure_from_interior', spy_update_structure)
+    monkeypatch.setattr(acc_wrap, 'init_accretion', lambda h: [impact_event])
+    monkeypatch.setattr(acc_wrap, 'restore_accretion_state', lambda h: None)
+
+    runner.start(resume=False, offline=True)
+    # Continuous run did 'init' (row 0), 'forced_baseline' (row 4), and 'impact' (row 5):
+    assert solve_calls == ['init', 'forced_baseline', 'impact']
+
+    # Now drop row 5 (the impact row) on resume and re-run step 5:
+    real_select = coupler_mod.select_resumable_snapshot
+
+    def fake_select_drops_impact_row(outdir, hf_all, **kwargs):
+        trimmed, _ = real_select(outdir, hf_all, **kwargs)
+        return trimmed.iloc[:-1].copy(), [float(trimmed.iloc[-1]['Time'])]
+
+    monkeypatch.setattr(coupler_mod, 'select_resumable_snapshot', fake_select_drops_impact_row)
+
+    solve_calls.clear()
+    resumed, _, _ = _setup_zalmoxis_baseline_runner(
+        tmp_path,
+        monkeypatch,
+        'run_dropped_impact_row',
+        max_iters=5,
+        temperature_mode='isothermal',
+        update_interval=0.0,
+        mode='report',
+    )
+    resumed.config_path = cfg_path
+    monkeypatch.setattr(int_wrap, 'solve_structure', spy_solve_structure)
+    monkeypatch.setattr(int_wrap, 'update_structure_from_interior', spy_update_structure)
+
+    resumed.start(resume=True, offline=True)
+    # First resumed iteration (row 5) must run ONLY the impact solve, not also forced_baseline:
+    assert solve_calls == ['impact']
+    assert resumed._baseline_structure_done is True
+    assert resumed.interior_o.structure_rollback_active is False
+    assert (
+        Path(get_file_structure_rollback(str(out_dir))).read_text(encoding='utf-8').strip()
+        == '0 5'
+    )
+    assert (
+        Path(get_file_baseline_structure_done(str(out_dir))).read_text(encoding='utf-8').strip()
+        == '1 5'
     )
 
 
@@ -1031,25 +1450,3 @@ def test_proteus_start_syncs_rollback_flag_across_init_equilibrate_and_impact(
         force=True,
     )
     assert handler.interior_o.zalmoxis_fail_count == 1
-
-    # When solve_structure sets _structure_rollback=True during apply_impact,
-    # structure_stale and zalmoxis_fail_count are preserved and rollback is persisted as '1 1':
-    def fake_solve_keeps_rollback(dirs, config, hf_all, hf_row, outdir, thermal_solve=True):
-        hf_row['_structure_rollback'] = True
-
-    monkeypatch.setattr(int_wrap, 'solve_structure', fake_solve_keeps_rollback)
-    handler.interior_o.structure_stale = True
-    handler.interior_o.structure_rollback_active = False
-    handler.interior_o.zalmoxis_fail_count = 7
-    acc_wrap.apply_impact(handler, event)
-    assert handler.interior_o.structure_stale is True
-    assert handler.interior_o.structure_rollback_active is True
-    assert handler.interior_o.zalmoxis_fail_count == 7
-    assert (
-        Path(get_file_structure_stale(str(impact_out))).read_text(encoding='utf-8').strip()
-        == '1 1'
-    )
-    assert (
-        Path(get_file_structure_rollback(str(impact_out))).read_text(encoding='utf-8').strip()
-        == '1 1'
-    )
