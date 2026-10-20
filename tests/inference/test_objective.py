@@ -1114,6 +1114,50 @@ def test_J_treats_the_documented_error_codes_as_failures(monkeypatch, tmp_path):
     assert _score(objective_mod.STATUS_MISSING) == pytest.approx(objective_mod.BAD_OBJ_VALUE)
 
 
+@pytest.mark.parametrize('status', [30, 31, 32, 33, 34])
+def test_J_treats_invariant_status_codes_30_to_34_as_failures(monkeypatch, tmp_path, status):
+    """Invariant status codes 30 through 34 (30 energy reserved, 31 mass,
+    32 state bounds, 33 Zalmoxis structure reserved, 34 Aragog accepted-state
+    reserved) must count as failed runs (BAD_OBJ_VALUE, CATEGORY_FAILURE)
+    from the single INVARIANT_STATUS_CODES source.
+    """
+    import proteus.utils.helper as helper_mod
+
+    monkeypatch.setenv(failures_mod.ABORT_ON_FAILURE_ENV, '0')
+    monkeypatch.setattr(
+        objective_mod, 'get_proteus_directories', lambda _path: {'output': str(tmp_path)}
+    )
+    monkeypatch.setattr(
+        objective_mod,
+        'run_proteus',
+        lambda **_kwargs: ({'R_obs': 9.25e6}, status),
+    )
+
+    score = objective_mod.J(
+        x=torch.tensor([[0.5]], dtype=torch.double),
+        parameters=['planet.mass_tot'],
+        true_observables={'R_obs': 9.25e6},
+        worker=0,
+        iter=0,
+        output='dummy_output',
+        ref_config='reference.toml',
+        failure_codes=[],
+    ).item()
+
+    assert score == pytest.approx(objective_mod.BAD_OBJ_VALUE)
+    assert getattr(helper_mod, 'INVARIANT_STATUS_CODES', None) == (30, 31, 32, 33, 34)
+    assert getattr(objective_mod, 'INVARIANT_STATUS_CODES', None) is (
+        helper_mod.INVARIANT_STATUS_CODES
+    )
+    recorded = failures_mod.read_failure_records(tmp_path)
+    assert len(recorded) == 1
+    assert (recorded[0]['status'], recorded[0]['category']) == (
+        status,
+        objective_mod.CATEGORY_FAILURE,
+    )
+    assert not recorded[0]['status_description'].startswith('UNHANDLED STATUS')
+
+
 def test_J_separates_an_excluded_outcome_from_a_failed_run(monkeypatch, tmp_path, caplog):
     """A status named in `failure_codes` marks an outcome the study does not fit
     against, not a fault. A run stopped by its clock limit (status 11) completed

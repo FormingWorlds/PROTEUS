@@ -145,16 +145,24 @@ def test_summarise_prints_none_for_empty_general_category(tmp_path, caplog):
 @pytest.mark.parametrize('code', [30, 31, 32, 33, 34])
 def test_summarise_groups_invariant_codes_30_to_34_under_error(tmp_path, caplog, code):
     """Invariant violation status codes 30 through 34 belong to the Error
-    category and must not appear under Completed or Running.
+    category from the shared INVARIANT_STATUS_CODES source and must not
+    appear under Completed or Running.
 
     Discrimination: an upper bound of 30 on the Error range drops codes
     30..34 from Error summaries and prints '(None)' instead of Case 0.
     """
+    import proteus.utils.helper as helper_mod
+
+    assert getattr(helper_mod, 'INVARIANT_STATUS_CODES', None) == (30, 31, 32, 33, 34)
+    assert getattr(summarise_mod, 'INVARIANT_STATUS_CODES', None) is (
+        helper_mod.INVARIANT_STATUS_CODES
+    )
     grid = _make_grid(tmp_path, statuses=[code])
 
     caplog.clear()
     with caplog.at_level(logging.INFO, logger='fwl'):
         assert summarise_mod.summarise(str(grid), tgt_status='Error') is True
+    assert 'Unhandled model status' not in caplog.text
     error_section = caplog.text.split('Error cases:')[1]
     assert f'Case 0     : Code {code}' in error_section
     assert '(None)' not in error_section

@@ -27,13 +27,24 @@ pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 
 def test_comment_from_status_maps_invariant_codes_30_31_32():
-    """Status codes 30 (reserved), 31, and 32 map to their named invariant error descriptions."""
+    """Status codes 30..34 map to their named invariant error descriptions from one source."""
+    import proteus.utils.helper as helper_mod
+    import proteus.utils.invariants as invariants_mod
+
     assert STATUS_ERROR_ENERGY_INVARIANT == 30
     assert STATUS_ERROR_MASS_INVARIANT == 31
     assert STATUS_ERROR_STATE_BOUNDS_INVARIANT == 32
+    assert getattr(helper_mod, 'STATUS_ERROR_ZALMOXIS_STRUCTURE_INVARIANT', None) == 33
+    assert getattr(helper_mod, 'STATUS_ERROR_ARAGOG_ACCEPTED_STATE_INVARIANT', None) == 34
+    assert getattr(helper_mod, 'INVARIANT_STATUS_CODES', None) == (30, 31, 32, 33, 34)
+    assert getattr(invariants_mod, 'INVARIANT_STATUS_CODES', None) is (
+        helper_mod.INVARIANT_STATUS_CODES
+    )
     assert CommentFromStatus(30) == 'Error (Energy conservation invariant, reserved)'
     assert CommentFromStatus(31) == 'Error (Mass conservation invariant)'
     assert CommentFromStatus(32) == 'Error (State bounds invariant)'
+    assert CommentFromStatus(33) == 'Error (Zalmoxis structure invariant, reserved)'
+    assert CommentFromStatus(34) == 'Error (Aragog accepted-state invariant, reserved)'
 
 
 def test_handle_violations_off_mode_suppresses_logs_and_errors(tmp_path, caplog):
