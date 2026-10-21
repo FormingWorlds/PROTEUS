@@ -1286,6 +1286,58 @@ def test_write_config_files_gives_each_module_its_default_rtol(
     assert loaded == pytest.approx(expected, rel=1e-12)
 
 
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('base', 'dims', 'error'),
+    [
+        ('', {'top_cell_dt_rel_dT': 0.05, 'top_cell_dt_rel_dT_solid': 0.05}, None),
+        ('', {'top_cell_dt_rel_dT_solid': 0.05, 'top_cell_dt_rel_dT': 0.05}, None),
+        ('', {'top_cell_dt_rel_dT': 0.12, 'top_cell_dt_rel_dT_solid': 0.12}, None),
+        ('', {'top_cell_dt_rel_dT_solid': 0.12, 'top_cell_dt_rel_dT': 0.12}, None),
+        ('', {'top_cell_dt_rel_dT': 0.05}, 'must be <= top_cell_dt_rel_dT'),
+        ('limit', {'surface_bc_mode': 'grey_body', 'top_cell_dt_limit': False}, None),
+        ('limit', {'top_cell_dt_limit': False, 'surface_bc_mode': 'grey_body'}, None),
+        ('limit', {'surface_bc_mode': 'grey_body'}, 'top_cell_dt_limit = true cannot be used'),
+    ],
+)
+def test_write_config_files_cross_field_rules_checked_when_a_case_is_read(
+    fake_proteus_dir, tmp_path, monkeypatch, base, dims, error
+):
+    """A grid sets the fields of each case one at a time; the Aragog cross-field rules do not
+    depend on that order and refuse an invalid final case when its TOML is read."""
+    cfg = tmp_path / 'base_ie.toml'
+    limit = '[interior_energetics.aragog]\ntop_cell_dt_limit = true\n' if base else ''
+    cfg.write_text(f'[interior_energetics]\nmodule = "aragog"\n{limit}')
+    g = Grid(name='pair_grid', base_config_path=str(cfg))
+    for i, (key, value) in enumerate(dims.items()):
+        section = (
+            'interior_energetics' if key == 'surface_bc_mode' else 'interior_energetics.aragog'
+        )
+        g.add_dimension(f'd{i}', f'{section}.{key}')
+        g.set_dimension_direct(f'd{i}', [value])
+    g.generate()
+    monkeypatch.setattr(gm.os, 'sync', lambda: None)
+    g.write_config_files()
+    case = g._get_tmpcfg(0)
+    if error:
+        with pytest.raises(ValueError, match='Invalid configuration'):
+            read_config_object(case)
+        # The load error names only the class; the case's own table gives the cause.
+        from proteus.config._interior import Aragog, Interior
+
+        table = toml.load(case)['interior_energetics']
+        with pytest.raises(ValueError, match=error):
+            Interior(
+                **{k: v for k, v in table.items() if k != 'aragog'},
+                aragog=Aragog(**table['aragog']),
+            )
+        return
+    ie = read_config_object(case).interior_energetics
+    for key, value in dims.items():
+        got = getattr(ie if key == 'surface_bc_mode' else ie.aragog, key)
+        assert got == (pytest.approx(value, rel=1e-12) if isinstance(value, float) else value)
+
+
 def test_all_options_grid_over_the_module_gives_each_its_default_rtol(
     fake_proteus_dir, monkeypatch
 ):

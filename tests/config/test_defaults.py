@@ -668,17 +668,16 @@ def test_aragog_top_cell_dt_limit_defaults_and_validators():
         )
     assert 'grey_body' in str(exc_init.value)
 
-    with pytest.raises(ValueError, match='top_cell_dt_limit') as exc_set:
-        ie_flux.surface_bc_mode = 'grey_body'
-    assert 'grey_body' in str(exc_set.value)
+    # An assignment is not checked against the rule; building the object again is.
+    import attrs
 
-    with pytest.raises(ValueError, match='top_cell_dt_limit') as exc_mod:
-        ie_spider_grey.module = 'aragog'
-    assert 'grey_body' in str(exc_mod.value)
-
-    with pytest.raises(ValueError, match='top_cell_dt_limit') as exc_ara:
-        ie_grey_off.aragog = Aragog(top_cell_dt_limit=True)
-    assert 'grey_body' in str(exc_ara.value)
+    ie_flux.surface_bc_mode = 'grey_body'
+    ie_spider_grey.module = 'aragog'
+    ie_grey_off.aragog = Aragog(top_cell_dt_limit=True)
+    for ie in (ie_flux, ie_spider_grey, ie_grey_off):
+        with pytest.raises(ValueError, match='top_cell_dt_limit = true cannot be used'):
+            attrs.evolve(ie)
+    ie_flux.surface_bc_mode = 'flux'
 
     # The module field keeps its own validator when assigned after construction.
     ie_flux.module = 'spider'
@@ -736,46 +735,86 @@ def test_aragog_top_cell_dt_limit_defaults_and_validators():
 
 
 @pytest.mark.unit
-def test_aragog_top_cell_dt_rel_dT_pair_checked_on_assignment():
-    """Assigning either allowance after construction keeps rel_dT_solid <= rel_dT."""
+def test_aragog_top_cell_dt_rel_dT_pair_checked_at_load_in_any_order():
+    """rel_dT_solid <= rel_dT is checked when the config is built, so the order of the two
+    assignments does not matter; each allowance keeps its own range on assignment."""
+    import attrs
     from hypothesis import given, settings
     from hypothesis import strategies as st
 
-    cfg = Aragog(top_cell_dt_rel_dT=0.08, top_cell_dt_rel_dT_solid=0.05)
-    with pytest.raises(ValueError, match='must be <= top_cell_dt_rel_dT'):
-        cfg.top_cell_dt_rel_dT = 0.01
-    assert cfg.top_cell_dt_rel_dT == pytest.approx(0.08)
-    with pytest.raises(ValueError, match='must be <= top_cell_dt_rel_dT'):
-        cfg.top_cell_dt_rel_dT_solid = 0.12
-    assert cfg.top_cell_dt_rel_dT_solid == pytest.approx(0.05)
+    pair = ('top_cell_dt_rel_dT', 'top_cell_dt_rel_dT_solid')
+    for value in (0.05, 0.12):
+        for order in (pair, pair[::-1]):
+            cfg = Aragog()
+            for name in order:
+                setattr(cfg, name, value)
+            rebuilt = attrs.evolve(cfg)
+            assert rebuilt.top_cell_dt_rel_dT == pytest.approx(value, rel=1e-12)
+            assert rebuilt.top_cell_dt_rel_dT_solid == pytest.approx(value, rel=1e-12)
 
-    cfg.top_cell_dt_rel_dT = 0.05  # equal to the solid value is allowed
-    assert cfg.top_cell_dt_rel_dT == pytest.approx(0.05)
-    cfg.top_cell_dt_rel_dT = '0.06'  # converted before the check
-    assert cfg.top_cell_dt_rel_dT == pytest.approx(0.06)
+    lowered = Aragog()
+    lowered.top_cell_dt_rel_dT = 0.05  # rel_dT_solid keeps its default 0.08
+    with pytest.raises(ValueError, match='must be <= top_cell_dt_rel_dT'):
+        attrs.evolve(lowered)
+    with pytest.raises(ValueError, match='must be <= top_cell_dt_rel_dT'):
+        Aragog(top_cell_dt_rel_dT=0.05)
+
+    for name in pair:
+        with pytest.raises(ValueError, match=f"'{name}' must be <= 0.15"):
+            setattr(Aragog(), name, 0.5)
+    lowered.top_cell_dt_rel_dT = '0.06'  # converted on assignment
+    assert lowered.top_cell_dt_rel_dT == pytest.approx(0.06, rel=1e-12)
 
     @settings(derandomize=True, max_examples=60)
     @given(
+        rel=st.floats(min_value=1e-3, max_value=0.15, allow_nan=False),
         solid=st.floats(min_value=1e-3, max_value=0.15, allow_nan=False),
-        frac=st.floats(min_value=1e-3, max_value=0.999, allow_nan=False),
+        solid_first=st.booleans(),
     )
-    def _lowered(solid, frac):
-        inst = Aragog(top_cell_dt_rel_dT=0.15, top_cell_dt_rel_dT_solid=solid)
-        with pytest.raises(ValueError, match='top_cell_dt_rel_dT_solid'):
-            inst.top_cell_dt_rel_dT = solid * frac
-        assert inst.top_cell_dt_rel_dT == pytest.approx(0.15, rel=1e-12)
-        inst.top_cell_dt_rel_dT = solid
-        assert inst.top_cell_dt_rel_dT_solid <= inst.top_cell_dt_rel_dT
+    def _any_order(rel, solid, solid_first):
+        cfg = Aragog()
+        steps = [('top_cell_dt_rel_dT', rel), ('top_cell_dt_rel_dT_solid', solid)]
+        for name, value in steps[::-1] if solid_first else steps:
+            setattr(cfg, name, value)
+        if solid <= rel:
+            assert attrs.evolve(cfg).top_cell_dt_rel_dT_solid == solid
+        else:
+            with pytest.raises(ValueError, match='top_cell_dt_rel_dT_solid'):
+                attrs.evolve(cfg)
 
-    _lowered()
+    _any_order()
 
-    # A nested assignment is not checked against surface_bc_mode; reloading the config is.
+
+@pytest.mark.unit
+def test_aragog_top_cell_dt_limit_grey_body_checked_at_load_in_any_order(tmp_path):
+    """Switching a limit-on Aragog config to grey_body and the limit off is accepted in both
+    orders; grey_body with the limit on is refused when the TOML is read."""
     import attrs
 
-    ie = Interior(module='aragog', surface_bc_mode='grey_body')
-    ie.aragog.top_cell_dt_limit = True
+    from proteus.config import read_config_object
+
+    for grey_first in (True, False):
+        ie = Interior(
+            module='aragog', surface_bc_mode='flux', aragog=Aragog(top_cell_dt_limit=True)
+        )
+        if grey_first:
+            ie.surface_bc_mode = 'grey_body'
+        ie.aragog.top_cell_dt_limit = False
+        if not grey_first:
+            ie.surface_bc_mode = 'grey_body'
+        rebuilt = attrs.evolve(ie)
+        assert (rebuilt.surface_bc_mode, rebuilt.aragog.top_cell_dt_limit) == (
+            'grey_body',
+            False,
+        )
+
+    cfg = tmp_path / 'grey_limit.toml'
+    cfg.write_text(
+        '[interior_energetics]\nmodule = "aragog"\nsurface_bc_mode = "grey_body"\n'
+        '[interior_energetics.aragog]\ntop_cell_dt_limit = true\n'
+    )
     with pytest.raises(ValueError, match='top_cell_dt_limit = true cannot be used'):
-        Interior(**attrs.asdict(ie, recurse=False))
+        read_config_object(cfg)
 
 
 @pytest.mark.unit

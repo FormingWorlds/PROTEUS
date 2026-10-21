@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 import warnings
 
-from attrs import define, field, setters
+from attrs import define, field
 from attrs.validators import ge, gt, in_, le, lt
 
 _TOL_UNSET = -1.0
@@ -67,23 +67,13 @@ def _valid_bool(instance, attribute, value):
         raise TypeError(f'`{attribute.name}` must be a bool, got {value!r}')
 
 
-def _valid_top_cell_dt_rel_dT_solid(instance, attribute, value):
-    """Require 0 < top_cell_dt_rel_dT_solid <= top_cell_dt_rel_dT."""
-    if value > instance.top_cell_dt_rel_dT:
+def _check_top_cell_dt_rel_dT_pair(aragog) -> None:
+    """Require top_cell_dt_rel_dT_solid <= top_cell_dt_rel_dT on a constructed Aragog config."""
+    if aragog.top_cell_dt_rel_dT_solid > aragog.top_cell_dt_rel_dT:
         raise ValueError(
-            f'`{attribute.name}` ({value}) must be <= top_cell_dt_rel_dT '
-            f'({instance.top_cell_dt_rel_dT})'
+            f'`top_cell_dt_rel_dT_solid` ({aragog.top_cell_dt_rel_dT_solid}) must be <= '
+            f'top_cell_dt_rel_dT ({aragog.top_cell_dt_rel_dT})'
         )
-
-
-def _check_top_cell_dt_rel_dT_on_setattr(instance, attribute, value):
-    """Check a top_cell_dt_rel_dT assigned after construction against the solid value."""
-    if value < instance.top_cell_dt_rel_dT_solid:
-        raise ValueError(
-            f'`top_cell_dt_rel_dT_solid` ({instance.top_cell_dt_rel_dT_solid}) must be <= '
-            f'{attribute.name} ({value})'
-        )
-    return value
 
 
 def valid_spider(instance, attribute, value):
@@ -172,20 +162,12 @@ class Spider:
     log_output: bool = field(default=True)
 
 
-def _check_aragog_top_cell_dt_limit_surface_bc(instance, attribute=None, value=None) -> None:
+def _check_aragog_top_cell_dt_limit_surface_bc(interior) -> None:
     """Reject Aragog top_cell_dt_limit with grey_body surface boundary conditions."""
-    attr_name = getattr(attribute, 'name', None)
-    module = value if attr_name == 'module' else getattr(instance, 'module', None)
-    aragog = value if attr_name == 'aragog' else getattr(instance, 'aragog', None)
-    surface_bc_mode = (
-        value
-        if attr_name == 'surface_bc_mode'
-        else getattr(instance, 'surface_bc_mode', 'flux')
-    )
     if (
-        module == 'aragog'
-        and getattr(aragog, 'top_cell_dt_limit', False) is True
-        and surface_bc_mode == 'grey_body'
+        interior.module == 'aragog'
+        and interior.aragog.top_cell_dt_limit
+        and interior.surface_bc_mode == 'grey_body'
     ):
         raise ValueError(
             'interior_energetics.aragog.top_cell_dt_limit = true cannot be used with '
@@ -198,7 +180,7 @@ def valid_aragog(instance, attribute, value):
     if instance.module != 'aragog':
         return
 
-    # At least one energy term enabled (uses top-level interior fields).
+    # at least one energy term enabled (uses top-level interior fields)
     if not (
         instance.trans_conduction
         or instance.trans_convection
@@ -206,19 +188,6 @@ def valid_aragog(instance, attribute, value):
         or instance.trans_grav_sep
     ):
         raise ValueError('Must enable at least one energy transport term in Aragog')
-
-    _check_aragog_top_cell_dt_limit_surface_bc(instance, attribute, value)
-
-
-def _valid_surface_bc_mode(instance, attribute, value):
-    """Validate surface_bc_mode compatibility with Aragog top_cell_dt_limit."""
-    _check_aragog_top_cell_dt_limit_surface_bc(instance, attribute, value)
-
-
-def _check_module_on_setattr(instance, attribute, value):
-    """Check a module assigned after construction against Aragog top_cell_dt_limit."""
-    _check_aragog_top_cell_dt_limit_surface_bc(instance, attribute, value)
-    return value
 
 
 @define
@@ -515,9 +484,8 @@ class Aragog:
     tau_drain is finite and the step does not exceed tau_drain (staying active when the
     escape step floor or an impact-landing snap-forward places the step above tau_drain);
     planet.prevent_warming still clamps T_magma, T_surf, Phi_global, and F_int when active.
-    Incompatible with interior_energetics.surface_bc_mode = 'grey_body'; this rule is checked
-    at construction and when a config is loaded (a grid case fails when its written TOML is
-    read back), not when top_cell_dt_limit is assigned on an existing Interior. A 1-point EOS
+    Incompatible with interior_energetics.surface_bc_mode = 'grey_body'; the rule is checked
+    when the config is loaded (a grid case fails when its written TOML is read back). A 1-point EOS
     temperature lookahead probes S_trial = max(S_top - cp_eff * dT_allow / T_top, S_min + 300)
     and replaces the step-start heat capacity cp_eff with the chord heat capacity
     cp_chord = min(cp_eff, T_top * (S_top - S_trial) / (T_top - T_trial)) in the T_top form
@@ -538,13 +506,11 @@ class Aragog:
         default=0.08,
         converter=float,
         validator=(gt(0.0), le(0.15)),
-        on_setattr=setters.pipe(
-            setters.convert, setters.validate, _check_top_cell_dt_rel_dT_on_setattr
-        ),
     )
     """Relative surface-temperature change allowance eta_T at a top-cell melt fraction
     >= 0.40 (mush and liquid) for the top-cell drain-time step limit; must lie in (0, 0.15].
-    A value below 0.08 also needs top_cell_dt_rel_dT_solid set at or below it.
+    A value below 0.08 also needs top_cell_dt_rel_dT_solid set at or below it; the pair is
+    checked when the config is loaded.
     Sets the allowed temperature scale dT_allow = eta_eff * T_surf for the step energy
     q = cp_chord * dT_allow, bounding the linearized unresupplied top-cell temperature drop
     T_top - T(P_top, S_top - q / T_top) <= dT_allow under the step's linearization
@@ -559,12 +525,17 @@ class Aragog:
     top_cell_dt_rel_dT_solid: float = field(
         default=0.08,
         converter=float,
-        validator=(gt(0.0), _valid_top_cell_dt_rel_dT_solid),
+        validator=(gt(0.0), le(0.15)),
     )
     """Relative surface-temperature change allowance eta_T_solid at a fully solid
     top cell (top-cell melt fraction 0), ramped linearly to top_cell_dt_rel_dT at
-    a top-cell melt fraction of 0.40; must lie in (0, top_cell_dt_rel_dT] (up to 0.15). See
+    a top-cell melt fraction of 0.40; must lie in (0, top_cell_dt_rel_dT] (up to 0.15), with
+    the pair checked when the config is loaded. See
     docs/Explanations/coupling_loop.md for the measured run results and EOS evaluations."""
+
+    def __attrs_post_init__(self):
+        """Check top_cell_dt_rel_dT_solid against top_cell_dt_rel_dT once both are set."""
+        _check_top_cell_dt_rel_dT_pair(self)
 
 
 def valid_interiordummy(instance, attribute, value):
@@ -796,9 +767,7 @@ class Interior:
     """
 
     module: str = field(
-        default='aragog',
-        validator=in_(('spider', 'aragog', 'dummy', 'boundary')),
-        on_setattr=setters.pipe(setters.convert, setters.validate, _check_module_on_setattr),
+        default='aragog', validator=in_(('spider', 'aragog', 'dummy', 'boundary'))
     )
     num_levels: int = field(default=80, validator=ge(40))
 
@@ -871,7 +840,7 @@ class Interior:
 
     surface_bc_mode: str = field(
         default='flux',
-        validator=(in_(('flux', 'grey_body')), _valid_surface_bc_mode),
+        validator=in_(('flux', 'grey_body')),
     )
     """Surface boundary condition mode for SPIDER and Aragog: 'flux' or 'grey_body'.
     'flux' consumes prescribed F_atm from the atmosphere module as the upper boundary flux.
@@ -1016,7 +985,8 @@ class Interior:
         equal to the resolved default still counts as set and is not
         overridden by an alias.
 
-        All aliases will be removed in a future release.
+        All aliases will be removed in a future release. The check of Aragog
+        top_cell_dt_limit against surface_bc_mode = 'grey_body' runs last.
         """
         # Whether each field was supplied is tracked via the sentinel
         # default, not by value-comparison against the resolved default.
@@ -1070,6 +1040,8 @@ class Interior:
         # Resolve the sentinel to the real default if nothing set rtol.
         if not rtol_set:
             object.__setattr__(self, 'rtol', default_rtol(self.module))
+
+        _check_aragog_top_cell_dt_limit_surface_bc(self)
 
 
 # Thematic grouping for the generated configuration reference. Each entry is
