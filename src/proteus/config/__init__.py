@@ -5,7 +5,9 @@ import tomllib
 from pathlib import Path
 from typing import Literal, Union
 
+import attrs
 import cattrs
+from cattrs.errors import AttributeValidationNote, IterableValidationNote
 
 from ._config import Config
 from ._interior import _STEP_CAP_FIELDS
@@ -78,6 +80,60 @@ def _check_step_cap_zeros(raw: dict, path: Path | str) -> None:
         )
 
 
+def _validated_field(exc: BaseException) -> str:
+    """Name of the attrs field whose validator raised *exc*, or '' if none did.
+
+    attrs calls each validator as ``validator(instance, attribute, value)`` from
+    its generated ``__init__``, so the frame after that one holds the field.
+    """
+    tb = exc.__traceback__
+    while tb is not None and tb.tb_next is not None:
+        if tb.tb_frame.f_code.co_filename.startswith('<attrs generated'):
+            frame = tb.tb_next.tb_frame
+            code = frame.f_code
+            for arg in code.co_varnames[: code.co_argcount]:
+                if isinstance(frame.f_locals.get(arg), attrs.Attribute):
+                    return frame.f_locals[arg].name
+        tb = tb.tb_next
+    return ''
+
+
+def _error_lines(exc: BaseException, path: str = '') -> list[str]:
+    """One ``key.path: reason`` line per leaf of a cattrs structuring error.
+
+    Parameters
+    ----------
+    exc:
+        The error cattrs raised, usually a nested exception group.
+    path:
+        Dotted key path of *exc* in the config.
+
+    Returns
+    -------
+    list[str]
+        The leaf errors in the order cattrs raised them.
+    """
+    if not isinstance(exc, cattrs.errors.BaseValidationError):
+        reason = exc.args[0] if exc.args and isinstance(exc.args[0], str) else str(exc)
+        return [f'{path}: {reason}' if path else reason]
+    lines = []
+    for sub in exc.exceptions:
+        notes = getattr(sub, '__notes__', ())
+        step = next((n.name for n in notes if isinstance(n, AttributeValidationNote)), '')
+        index = next((n.index for n in notes if isinstance(n, IterableValidationNote)), None)
+        if (
+            not step
+            and index is None
+            and not isinstance(sub, cattrs.errors.BaseValidationError)
+        ):
+            step = _validated_field(sub)
+        sub_path = '.'.join(p for p in (path, step) if p)
+        if index is not None:
+            sub_path += f'[{index}]'
+        lines += _error_lines(sub, sub_path)
+    return lines
+
+
 def read_config(path: Path | str) -> dict:
     """Read config file from path"""
     log.debug('Reading config from %s', path)
@@ -132,15 +188,7 @@ def structure_config(raw: dict, path: Path | str) -> Config:
 
     # Catch validation exceptions
     except cattrs.errors.ClassValidationError as e:
-        # Extract actionable error messages from the nested exception group
-        messages = []
-        for exc in e.exceptions:
-            if hasattr(exc, 'exceptions'):
-                for sub in exc.exceptions:
-                    messages.append(str(sub))
-            else:
-                messages.append(str(exc))
-        detail = '\n  '.join(messages)
+        detail = '\n  '.join(_error_lines(e))
         raise ValueError(
             f'Invalid configuration in {path}:\n  {detail}\n'
             f'See input/all_options.toml for the full parameter reference.'
