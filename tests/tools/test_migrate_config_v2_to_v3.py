@@ -265,6 +265,7 @@ _REVIEWED_NEUTRAL = frozenset(
         'interior_struct.zalmoxis.global_miscibility',
         'interior_struct.zalmoxis.lookup_nP',
         'interior_struct.zalmoxis.lookup_nS',
+        'interior_struct.zalmoxis.lowt_extension',
         'interior_struct.zalmoxis.miscibility_max_iter',
         'interior_struct.zalmoxis.miscibility_tol',
         'interior_struct.zalmoxis.mushy_zone_factor',

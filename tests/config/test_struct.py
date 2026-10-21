@@ -370,3 +370,44 @@ def test_a_core_or_ice_component_is_checked_like_a_mantle_component(layer):
 def test_zalmoxis_structure_without_its_section_loads():
     """The MgSiO3-source check needs the Zalmoxis section and skips when it is absent."""
     assert Struct(module='zalmoxis', zalmoxis=None).zalmoxis is None
+
+
+def test_lowt_extension_is_off_by_default_and_takes_a_bool():
+    """``lowt_extension`` defaults to False and stores True as given."""
+    assert Zalmoxis().lowt_extension is False
+    assert Zalmoxis(lowt_extension=True).lowt_extension is True
+    assert Zalmoxis(lowt_extension=False).lowt_extension is False
+
+
+@pytest.mark.parametrize(
+    'value', [1, 0, 1.0, float('nan'), float('inf'), 'true', 'false', None]
+)
+def test_lowt_extension_refuses_a_value_that_is_not_a_bool(value):
+    """A TOML number, string or missing value for the switch is refused, not cast."""
+    with pytest.raises(TypeError, match='lowt_extension'):
+        Zalmoxis(lowt_extension=value)
+    assert Zalmoxis(lowt_extension=True).lowt_extension is True
+
+
+def test_lowt_extension_property_only_bools_pass():
+    """Every value of the common TOML types except a bool is refused."""
+    hypothesis = pytest.importorskip('hypothesis')
+    given, settings = hypothesis.given, hypothesis.settings
+    st = pytest.importorskip('hypothesis.strategies')
+
+    @settings(max_examples=200, deadline=None)
+    @given(
+        st.one_of(
+            st.integers(),
+            st.floats(allow_nan=True, allow_infinity=True),
+            st.text(),
+            st.none(),
+            st.lists(st.booleans()),
+        )
+    )
+    def _check(value):
+        with pytest.raises(TypeError, match='lowt_extension'):
+            Zalmoxis(lowt_extension=value)
+
+    _check()
+    assert Zalmoxis(lowt_extension=False).lowt_extension is False
