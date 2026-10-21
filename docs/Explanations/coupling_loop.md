@@ -243,8 +243,8 @@ $\mathrm{d}h = T\,\mathrm{d}S$ ($\int_{S_\mathrm{end}}^{S_\mathrm{top}}
 T(P_\mathrm{top}, S)\,\mathrm{d}S = q$), the ratio at the same states is
 $0.816$ and $1.043$ at $0.08$, $0.728$ and $0.836$ at $0.15$, and
 $1.012$ and $1.257$ at $0.30$.
-A grid scan over $S_\mathrm{top} \in [S_{\min} + 300,
-6000]\,\mathrm{J\,kg^{-1}\,K^{-1}}$ in steps of
+A grid scan over
+$S_\mathrm{top} \in [S_{\min} + 300, 6000]\,\mathrm{J\,kg^{-1}\,K^{-1}}$ in steps of
 $5\,\mathrm{J\,kg^{-1}\,K^{-1}}$ and $T_\mathrm{surf}/T_\mathrm{top} \in
 \{0.90, 0.95, 0.99, 1.00, 1.02\}$ gives linearized maxima of $1.000$ at
 $0.08$, $0.9996$ at $0.15$, $0.993$ at $0.30$, and $1.221$ at $0.50$, and
