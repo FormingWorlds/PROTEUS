@@ -68,7 +68,7 @@ def _valid_bool(instance, attribute, value):
 
 
 def _check_top_cell_dt_rel_dT_pair(aragog) -> None:
-    """Require top_cell_dt_rel_dT_solid <= top_cell_dt_rel_dT on a constructed Aragog config."""
+    """Require top_cell_dt_rel_dT_solid <= top_cell_dt_rel_dT."""
     if aragog.top_cell_dt_rel_dT_solid > aragog.top_cell_dt_rel_dT:
         raise ValueError(
             f'`top_cell_dt_rel_dT_solid` ({aragog.top_cell_dt_rel_dT_solid}) must be <= '
@@ -986,8 +986,9 @@ class Interior:
         equal to the resolved default still counts as set and is not
         overridden by an alias.
 
-        All aliases will be removed in a future release. The check of Aragog
-        top_cell_dt_limit against surface_bc_mode = 'grey_body' runs last.
+        All aliases will be removed in a future release. The Aragog cross-field
+        checks (the top_cell_dt_rel_dT pair, and top_cell_dt_limit against
+        surface_bc_mode = 'grey_body') run last.
         """
         # Whether each field was supplied is tracked via the sentinel
         # default, not by value-comparison against the resolved default.
@@ -1042,6 +1043,7 @@ class Interior:
         if not rtol_set:
             object.__setattr__(self, 'rtol', default_rtol(self.module))
 
+        _check_top_cell_dt_rel_dT_pair(self.aragog)
         _check_aragog_top_cell_dt_limit_surface_bc(self)
 
 

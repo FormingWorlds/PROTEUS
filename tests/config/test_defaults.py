@@ -738,8 +738,10 @@ def test_aragog_top_cell_dt_limit_defaults_and_validators():
 def test_aragog_top_cell_dt_rel_dT_pair_checked_at_load_in_any_order():
     """rel_dT_solid <= rel_dT is checked when the config is built, so the order of the two
     assignments does not matter; each allowance keeps its own range on assignment."""
+    import math
+
     import attrs
-    from hypothesis import given, settings
+    from hypothesis import example, given, settings
     from hypothesis import strategies as st
 
     pair = ('top_cell_dt_rel_dT', 'top_cell_dt_rel_dT_solid')
@@ -761,6 +763,8 @@ def test_aragog_top_cell_dt_rel_dT_pair_checked_at_load_in_any_order():
         attrs.evolve(lowered)
     with pytest.raises(ValueError, match='must be <= top_cell_dt_rel_dT'):
         Aragog(top_cell_dt_rel_dT=0.05)
+    with pytest.raises(ValueError, match='must be <= top_cell_dt_rel_dT'):
+        Interior(aragog=lowered)  # building the parent checks the pair as well
 
     for name in pair:
         with pytest.raises(ValueError, match=f"'{name}' must be <= 0.15"):
@@ -774,6 +778,8 @@ def test_aragog_top_cell_dt_rel_dT_pair_checked_at_load_in_any_order():
         solid=st.floats(min_value=1e-3, max_value=0.15, allow_nan=False),
         solid_first=st.booleans(),
     )
+    @example(rel=0.15, solid=0.15, solid_first=True)
+    @example(rel=0.1, solid=math.nextafter(0.1, 1.0), solid_first=False)
     def _any_order(rel, solid, solid_first):
         cfg = Aragog()
         steps = [('top_cell_dt_rel_dT', rel), ('top_cell_dt_rel_dT_solid', solid)]
