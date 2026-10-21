@@ -1704,15 +1704,9 @@ def determine_interior_radius_with_zalmoxis(
     dirs['mesh_shift_active'] = False
     dirs['mesh_convergence_steps'] = 0
 
-    # Generate P-S EOS tables from PALEOS if applicable.
-    # Zalmoxis converts its PALEOS P-T EOS data into the P-S format that
-    # both SPIDER and Aragog (entropy IC verify) need. Both PALEOS unified
-    # and PALEOS-2phase layouts are supported. For non-PALEOS mantle EOS
-    # (WolfBower2018, RTPress100TPa) Zalmoxis returns None and we fall
-    # back to the static FWL_DATA Zenodo P-S tables. Aragog's entropy IC
-    # verify just needs *some* P-S surface to map S_init -> T; the time
-    # evolution uses the PALEOS-2phase P-T tables generated in
-    # aragog.py:setup_solver.
+    # Zalmoxis writes the P-S tables that SPIDER and Aragog's entropy solver read, from a
+    # unified or two-phase PALEOS mantle; for any other mantle EOS (WolfBower2018,
+    # RTPress100TPa) it returns None and the static FWL_DATA P-S tables are used.
     if config.interior_energetics.module in ('spider', 'aragog'):
         from proteus.interior_struct.zalmoxis import generate_spider_tables
 
