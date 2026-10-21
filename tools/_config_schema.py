@@ -97,6 +97,18 @@ def _assigned_name(stmt: ast.stmt) -> str | None:
     return None
 
 
+def _post_init_calls() -> set[tuple[str, str]]:
+    """Return ``(module_stem, function_name)`` of every plain call inside a config ``__attrs_post_init__``."""
+    calls: set[tuple[str, str]] = set()
+    for path in sorted(CONFIG_DIR.glob('*.py')):
+        for node in ast.walk(ast.parse(path.read_text())):
+            if isinstance(node, ast.FunctionDef) and node.name == '__attrs_post_init__':
+                for sub in ast.walk(node):
+                    if isinstance(sub, ast.Call) and isinstance(sub.func, ast.Name):
+                        calls.add((path.stem, sub.func.id))
+    return calls
+
+
 def parse_source_docs() -> tuple[dict, dict]:
     """Parse the config source files once for docstrings the runtime hides.
 
@@ -407,7 +419,7 @@ def build_schema() -> dict:
     cfg = _docgen.import_proteus_config()
     pep224, validator_src = parse_source_docs()
     fields: list[dict] = []
-    attached: dict[str, list[str]] = {}
+    attached = {name: list(paths) for (_stem, name), paths in POST_INIT_CHECKS.items()}
 
     def visit(cls, prefix: str, seen: frozenset) -> None:
         # Best-effort: resolving string annotations needs every name in the
@@ -463,17 +475,20 @@ def build_schema() -> dict:
             )
 
     visit(cfg.Config, '', frozenset({cfg.Config}))
-    missing = sorted(
-        f'{stem}.py:{name}'
-        for stem, name in POST_INIT_CHECKS
-        if (stem, name) not in validator_src
-    )
-    if missing:
-        raise SchemaError(
-            'POST_INIT_CHECKS names functions not in the config source: ' + ', '.join(missing)
-        )
-    for (_stem, name), paths in POST_INIT_CHECKS.items():
-        attached.setdefault(name, []).extend(paths)
+    missing = POST_INIT_CHECKS.keys() - validator_src.keys()
+    uncalled = POST_INIT_CHECKS.keys() - missing - _post_init_calls()
+    known = {f['path'] for f in fields}
+    unknown = sorted({p for paths in POST_INIT_CHECKS.values() for p in paths} - known)
+    for what, bad in (
+        ('functions not in the config source', [f'{s}.py:{n}' for s, n in sorted(missing)]),
+        (
+            'functions no __attrs_post_init__ calls',
+            [f'{s}.py:{n}' for s, n in sorted(uncalled)],
+        ),
+        ('paths that are not config fields', unknown),
+    ):
+        if bad:
+            raise SchemaError(f'POST_INIT_CHECKS names {what}: ' + ', '.join(bad))
     constraints = _build_constraints(validator_src, attached)
     return {'fields': fields, 'constraints': constraints}
 

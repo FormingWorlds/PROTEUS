@@ -120,20 +120,38 @@ def test_post_init_cross_field_checks_are_listed(schema, monkeypatch):
     """The checks that run in __attrs_post_init__ are listed with the paths they read and
     reach the interior page; a listed function missing from the source is a SchemaError."""
     by_name = {c['validator']: c for c in schema['constraints']}
+    fields = {f['path'] for f in schema['fields']}
     for (_stem, name), paths in _cs.POST_INIT_CHECKS.items():
         assert by_name[name]['attached_to'] == sorted(paths)
-        assert by_name[name]['doc'].strip()
+        assert set(paths) <= fields
+        assert ('_interior', name) in _cs._post_init_calls()
     pair = by_name['_check_top_cell_dt_rel_dT_pair']['doc']
     assert 'top_cell_dt_rel_dT_solid <= top_cell_dt_rel_dT' in pair
     assert 'grey_body' in by_name['_check_aragog_top_cell_dt_limit_surface_bc']['doc']
-    page = _gcr._constraints_block(
-        [c for c in schema['constraints'] if c['validator'] in by_name]
-    )
-    assert pair.rstrip('.') in page
+    assert pair.rstrip('.') in _gcr._constraints_block(schema['constraints'])
 
-    monkeypatch.setitem(_cs.POST_INIT_CHECKS, ('_interior', '_no_such_check'), ('a.b',))
-    with pytest.raises(_cs.SchemaError, match='_no_such_check'):
-        _cs.build_schema()
+    key = ('_interior', '_check_top_cell_dt_rel_dT_pair')
+    for entry, value, error in (
+        (
+            ('_interior', '_no_such_check'),
+            ('a.b',),
+            'not in the config source: _interior.py:_no_such',
+        ),
+        (
+            ('_interior', 'valid_aragog'),
+            ('interior_energetics.module',),
+            'no __attrs_post_init__ calls',
+        ),
+        (
+            key,
+            ('interior_energetics.aragog.no_such_field',),
+            'not config fields: interior_energetics',
+        ),
+    ):
+        with monkeypatch.context() as m:
+            m.setitem(_cs.POST_INIT_CHECKS, entry, value)
+            with pytest.raises(_cs.SchemaError, match=error):
+                _cs.build_schema()
 
 
 def test_missing_validator_docstring_is_schema_error():
