@@ -198,22 +198,22 @@ chord does not fire, and no step exceeds $\Delta T_\mathrm{allow}$.
 Across 3 coupled runs over 2 dummy-atmosphere configurations of a $1\,M_\oplus$
 planet with the PALEOS $\mathrm{MgSiO}_3$ EOS and dummy star to
 $25\,\mathrm{kyr}$ at `top_cell_dt_rel_dT = top_cell_dt_rel_dT_solid = 0.08`
-($0.5\,\mathrm{au}$ with `surf_greyalbedo = 0.2` on both Aragog versions, and
-$0.7\,\mathrm{au}$ with `surf_greyalbedo = 0.0` on the development version),
+($0.5\,\mathrm{au}$ with `surf_greyalbedo = 0.2` on Aragog 075fcb05 and 372c2e21, and
+$0.7\,\mathrm{au}$ with `surf_greyalbedo = 0.0` on Aragog 372c2e21),
 the maximum per-step $|\Delta T_\mathrm{surf}| / (\eta_\mathrm{eff}
-T_\mathrm{surf})$, with $T_\mathrm{surf}$ at step start, is $0.690$ (`main`)
-and $0.658$ (development) at $0.5\,\mathrm{au}$ and $0.659$ at
+T_\mathrm{surf})$, with $T_\mathrm{surf}$ at step start, is $0.690$ (075fcb05)
+and $0.658$ (372c2e21) at $0.5\,\mathrm{au}$ and $0.659$ at
 $0.7\,\mathrm{au}$, with $0$ steps above $1$ and $0$ late drops (steps where
 $T_\mathrm{magma}$ falls to the table floor near $302\,\mathrm{K}$).
-These runs take $1850$ to $1852$ rows; the 2 runs on the Aragog development
-version continue from the state at about $2\,\mathrm{yr}$ of an earlier run
-(the $0.7\,\mathrm{au}$ one from a run on the Aragog `main` version). With the
-option off,
-the same configurations take $218$ and $243$ rows on the Aragog development
-version and $50$ rows on the Aragog `main` version.
+These runs take $1850$ to $1852$ rows. The 2 runs on Aragog 372c2e21 start at
+$t = 2\,\mathrm{yr}$ from rows 0 to 4 of a run with the option off: at
+$0.7\,\mathrm{au}$ the same configuration on Aragog 075fcb05, and at
+$0.5\,\mathrm{au}$ a run with `surf_greyalbedo = 0.1`. With the option off,
+the same configurations take $218$ and $243$ rows on Aragog 372c2e21 and $50$
+rows on Aragog 075fcb05.
 With `atmos_clim.module = 'agni'` in place of the dummy atmosphere and every
-other setting of the $0.5\,\mathrm{au}$ configuration unchanged (Aragog `main`
-version), the $0.08$ run reaches $25\,\mathrm{kyr}$ in $1360$ rows with a
+other setting of the $0.5\,\mathrm{au}$ configuration unchanged (Aragog
+075fcb05), the $0.08$ run reaches $25\,\mathrm{kyr}$ in $1360$ rows with a
 maximum per-step ratio of $0.470$, about $40\,\mathrm{yr}$ after the top cell
 crosses the liquidus near $1200\,\mathrm{yr}$, $0$ steps above $1$, and $0$
 late drops. With the option off, this configuration takes $250$ rows and has $31$ steps

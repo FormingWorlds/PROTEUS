@@ -526,7 +526,11 @@ class Aragog:
     linearization dS = q / T_top with q = cp_chord * dT_allow. A lookahead trial that reaches
     or spans the flat part of the PALEOS solid table (T held at T_sol from the last node below
     S_sol) can give a step that exceeds dT_allow; this is shown on constructed slice states, and
-    no step of the coupled runs exceeded dT_allow. Using T_mean = 0.5 * (T_top + T_trial) in
+    no step of the coupled runs exceeded dT_allow. On an energy basis (integral of T dS = q at
+    constant P_top) the drop also exceeds dT_allow in the liquid, because the exact entropy step
+    is larger than q / T_top: the PALEOS slice scans give at most 1.106 dT_allow at
+    top_cell_dt_rel_dT = 0.08 and 1.204 dT_allow at 0.15, and 1.110 and 1.211 at
+    T_surf / T_top = 1.05. Using T_mean = 0.5 * (T_top + T_trial) in
     the chord numerator would reduce cp_chord by the fraction (T_top - T_trial) / (2 * T_top).
     See docs/Explanations/coupling_loop.md for the measured run results and EOS evaluations."""
 
@@ -538,15 +542,18 @@ class Aragog:
             setters.convert, setters.validate, _check_top_cell_dt_rel_dT_on_setattr
         ),
     )
-    """Relative surface-temperature change allowance eta_T in the mushy regime
-    (phi_s[-1] >= 0.40) for the top-cell drain-time step limit; must lie in (0, 0.15].
+    """Relative surface-temperature change allowance eta_T at a top-cell melt fraction
+    >= 0.40 (mush and liquid) for the top-cell drain-time step limit; must lie in (0, 0.15].
+    A value below 0.08 also needs top_cell_dt_rel_dT_solid set at or below it.
     Sets the allowed temperature scale dT_allow = eta_eff * T_surf for the step energy
     q = cp_chord * dT_allow, bounding the linearized unresupplied top-cell temperature drop
     T_top - T(P_top, S_top - q / T_top) <= dT_allow under the step's linearization
     dS = q / T_top with the chord heat capacity cp_chord in the T_top form. A lookahead trial
     that reaches or spans the flat part of the PALEOS solid table (T held at T_sol from the last
     node below S_sol) can give a step that exceeds dT_allow; this is shown on constructed slice
-    states, and no step of the coupled runs exceeded dT_allow. See
+    states, and no step of the coupled runs exceeded dT_allow. On an energy basis (integral of
+    T dS = q at constant P_top) the drop also exceeds dT_allow in the liquid: at most 1.106
+    dT_allow at 0.08 and 1.204 dT_allow at 0.15 (1.110 and 1.211 at T_surf / T_top = 1.05). See
     docs/Explanations/coupling_loop.md for the measured run results and EOS evaluations."""
 
     top_cell_dt_rel_dT_solid: float = field(
@@ -555,8 +562,8 @@ class Aragog:
         validator=(gt(0.0), _valid_top_cell_dt_rel_dT_solid),
     )
     """Relative surface-temperature change allowance eta_T_solid at a fully solid
-    top cell (phi_s[-1] = 0), ramped linearly to top_cell_dt_rel_dT at
-    phi_s[-1] = 0.40; must lie in (0, top_cell_dt_rel_dT] (up to 0.15). See
+    top cell (top-cell melt fraction 0), ramped linearly to top_cell_dt_rel_dT at
+    a top-cell melt fraction of 0.40; must lie in (0, top_cell_dt_rel_dT] (up to 0.15). See
     docs/Explanations/coupling_loop.md for the measured run results and EOS evaluations."""
 
 
