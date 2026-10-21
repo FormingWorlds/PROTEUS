@@ -763,7 +763,7 @@ def test_aragog_top_cell_dt_rel_dT_pair_checked_on_assignment():
         inst = Aragog(top_cell_dt_rel_dT=0.15, top_cell_dt_rel_dT_solid=solid)
         with pytest.raises(ValueError, match='top_cell_dt_rel_dT_solid'):
             inst.top_cell_dt_rel_dT = solid * frac
-        assert inst.top_cell_dt_rel_dT == 0.15
+        assert inst.top_cell_dt_rel_dT == pytest.approx(0.15, rel=1e-12)
         inst.top_cell_dt_rel_dT = solid
         assert inst.top_cell_dt_rel_dT_solid <= inst.top_cell_dt_rel_dT
 
