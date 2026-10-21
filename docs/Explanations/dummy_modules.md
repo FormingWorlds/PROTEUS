@@ -86,8 +86,9 @@ flux at the surface is
 
 $$F_\mathrm{atm} = F_\mathrm{OLR} - (1 - \alpha_s)\, F_\downarrow,$$
 
-with the surface emitting as a black body. With `planet.prevent_warming` the
-net flux is held at $10^{-8}\,\mathrm{W\,m^{-2}}$ or above. The reported albedo
+with emissivity 1: the surface albedo does not reduce $F_\mathrm{OLR}$.
+With `planet.prevent_warming` the net flux is held at
+$10^{-8}\,\mathrm{W\,m^{-2}}$ or above. The reported albedo
 is the surface albedo $\alpha_s$, without $\alpha_\mathrm{pl}$, and 0 when no
 shortwave reaches the surface. The transit radius
 is estimated from a single scale height above the surface.
