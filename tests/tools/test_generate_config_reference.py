@@ -176,6 +176,12 @@ def test_post_init_calls_count_only_statement_level_calls_per_class(tmp_path, mo
         '        x = _assigned(self)\n'
         '        _other_class(self)\n'
     )
+    real = _cs._post_init_calls()
+    assert {
+        ('_interior', 'Aragog', '_check_top_cell_dt_rel_dT_pair'),
+        ('_interior', 'Interior', '_check_top_cell_dt_rel_dT_pair'),
+        ('_interior', 'Interior', '_check_aragog_top_cell_dt_limit_surface_bc'),
+    } <= real
     monkeypatch.setattr(_cs, 'CONFIG_DIR', tmp_path)
     assert _cs._post_init_calls() == {('_fake', 'A', '_ok'), ('_fake', 'B', '_other_class')}
 
