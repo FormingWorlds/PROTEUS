@@ -608,7 +608,6 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
             hf_row[f'{s}_vmr'] = 0.0
 
     # Dissolved masses from atmodeller output (thermodynamically consistent).
-    # A species without a mass output is gas-only (kg_total = kg_atm, 0 outside the solve).
     def _as_mass(value):
         """Squeeze an atmodeller mass or mole-count output to a float, or None on failure."""
         if value is None:
@@ -731,8 +730,8 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
                 hf_row.get(f'{proteus_name}_kg_total', 0.0)
             ) / eval_gas_mmw(proteus_name)
         else:
-            # Reactive species without a mass output: the atmospheric mass of the
-            # first loop (0 outside the solve) is gas-only.
+            # Reactive species without total_mass: kg_total = kg_atm + kg_liquid, with
+            # kg_liquid 0 without dissolved_mass (both 0 outside the solve).
             hf_row[f'{proteus_name}_kg_liquid'] = (
                 max(0.0, dissolved_kg) if dissolved_kg is not None else 0.0
             )
