@@ -4404,6 +4404,22 @@
       "group_qualifier": null
     },
     {
+      "path": "interior_struct.zalmoxis.lowt_extension",
+      "toml_section": "interior_struct.zalmoxis",
+      "class": "Zalmoxis",
+      "type": "bool",
+      "accepts_none": false,
+      "default": "false",
+      "choices": null,
+      "bounds": null,
+      "description": "Extend the solid P-S entropy tables below the 300 K edge of the PALEOS solid table, with the PALEOS phase potentials evaluated down to about 50 K on the rows below 12 GPa (file ``paleos_mgsio3_tables_pt_proteus_solid_lowT.dat`` next to the solid table). PALEOS values are used wherever the solid table has them. Applies to the P-S tables of the PALEOS MgSiO3 mantle and needs interior_energetics.module = 'aragog' and interior_struct.module 'zalmoxis' or 'dummy'; a mantle whose MgSiO3 (energetics) EOS is PALEOS-API or -highres is refused when the config loads, and a mantle without PALEOS tables ignores the switch with a warning. A resumed run keeps the tables it started with, so the switch acts on a fresh table build. The standard data set does not hold the extension file: write it with Zalmoxis's tools/converters/paleos_lowt_extension.py (--paleos-src, --table, and --out with the file name above in the folder of the solid table; see the Zalmoxis coupling page). A missing extension file, or a Zalmoxis whose table generator has no solid_lowt_file, stops the run at start-up (with the dummy structure, at the first table build). The Zalmoxis coupling page gives the range of the extended tables, the accuracy of their lowest entropy interval per planet mass and the entropy zero of each PALEOS phase. Aragog's entropy solver reads its thermodynamic properties from the P-S tables only; the phase P-T tables written for it are not read, so they need no extension. With the switch on, Aragog logs its minimum heat capacity warning at each coupling iteration.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 4,
+      "group": "Equation of state",
+      "group_qualifier": null
+    },
+    {
       "path": "interior_struct.zalmoxis.mantle_mass_fraction",
       "toml_section": "interior_struct.zalmoxis",
       "class": "Zalmoxis",
@@ -4424,7 +4440,7 @@
       "description": "Fraction of the planet's interior mass corresponding to the mantle. Required for 3-layer models (with ice layer) and for T-dependent 2-layer models (WolfBower2018, RTPress100TPa) where it partitions mass between core and mantle layers.",
       "doc_source": "attributes",
       "group_order": 0,
-      "group_position": 4,
+      "group_position": 5,
       "group": "Equation of state",
       "group_qualifier": null
     },
@@ -4782,7 +4798,7 @@
       "description": "Structure EOS assumes a dry mantle. Set False for melt-fraction-aware dissolved-volatile mixing in the mantle density (per-shell volatile profile); the dissolved mass then stays inside the interior mass target and inside the mass that core_frac refers to.",
       "doc_source": "attributes",
       "group_order": 0,
-      "group_position": 5,
+      "group_position": 6,
       "group": "Equation of state",
       "group_qualifier": null
     },
@@ -7482,7 +7498,7 @@
           "value": 0.0
         }
       ],
-      "description": "Temperature floor [K]. The outgassing temperature is clamped to this value from below before the chemistry solve.",
+      "description": "Temperature floor [K]. The outgassing temperature is clamped to this value from below for the chemistry solve and the target masses.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -12414,6 +12430,29 @@
         "params.stop.escape.enabled"
       ],
       "doc": "ZEPHYRUS escape with JANUS requires the escape stop criterion to be enabled."
+    },
+    {
+      "validator": "lowt_extension_requires_aragog",
+      "module": "_config.py",
+      "attached_to": [
+        "interior_energetics"
+      ],
+      "touches": [
+        "interior_energetics.module",
+        "interior_struct"
+      ],
+      "doc": "The low-temperature solid extension is run only with the Aragog interior."
+    },
+    {
+      "validator": "lowt_extension_requires_ps_tables",
+      "module": "_config.py",
+      "attached_to": [
+        "interior_energetics"
+      ],
+      "touches": [
+        "interior_struct"
+      ],
+      "doc": "The low-temperature solid extension acts on the P-S tables that the zalmoxis and dummy structures build from the standard PALEOS solid table."
     },
     {
       "validator": "obliqua_requires_perturber",

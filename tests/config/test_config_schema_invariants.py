@@ -1548,3 +1548,255 @@ def test_parameterized_high_ecc_direction_is_enforced_on_config_load(tmp_path):
     assert cfg.orbit.star_planet_model == 'parameterized'
     assert cfg.orbit.parameterized.sma_final == pytest.approx(0.5, rel=1e-12)
     assert cfg.orbit.parameterized.sma_final < cfg.orbit.semimajoraxis
+
+
+# lowt_extension_requires_aragog: positive + negative
+@pytest.mark.unit
+def test_lowt_extension_requires_the_aragog_interior():
+    """The low-temperature solid extension adds entropy nodes to the solid P-S table only, so the
+    solid and melt tables differ in size; only the Aragog interior is run with such tables, and the
+    switch with another interior is refused when the config loads."""
+    from proteus.config._config import lowt_extension_requires_aragog
+
+    def make(module, lowt):
+        cfg = _make_config_instance(**{'interior_energetics.module': module})
+        cfg.interior_struct.zalmoxis = SimpleNamespace(lowt_extension=lowt)
+        return cfg
+
+    with pytest.raises(ValueError, match=r'interior_energetics.module = "aragog"') as excinfo:
+        lowt_extension_requires_aragog(make('spider', True), None, None)
+    assert '"spider"' in str(excinfo.value) and 'more entropy nodes' in str(excinfo.value)
+    for module in ('dummy', 'boundary'):
+        with pytest.raises(ValueError, match='reads no P-S tables') as excinfo:
+            lowt_extension_requires_aragog(make(module, True), None, None)
+        assert f'"{module}"' in str(excinfo.value) and 'entropy nodes' not in str(excinfo.value)
+    assert lowt_extension_requires_aragog(make('aragog', True), None, None) is None
+    for module in ('spider', 'dummy', 'aragog'):
+        assert lowt_extension_requires_aragog(make(module, False), None, None) is None
+
+
+@pytest.mark.unit
+def test_lowt_extension_requires_aragog_property_over_modules_and_values():
+    """Over every energetics module and any switch value, the check refuses exactly the switch
+    set to True with a module other than aragog, and gives the reason of that module."""
+    hypothesis = pytest.importorskip('hypothesis')
+    st = pytest.importorskip('hypothesis.strategies')
+
+    from proteus.config._config import lowt_extension_requires_aragog
+
+    values = st.one_of(
+        st.booleans(), st.integers(), st.floats(), st.none(), st.text(max_size=5)
+    )
+
+    @hypothesis.settings(max_examples=200, deadline=None)
+    @hypothesis.given(st.sampled_from(['spider', 'aragog', 'dummy', 'boundary']), values)
+    @hypothesis.example('dummy', True)
+    @hypothesis.example('spider', 1)
+    def check(module, lowt):
+        cfg = _make_config_instance(**{'interior_energetics.module': module})
+        cfg.interior_struct.zalmoxis = SimpleNamespace(lowt_extension=lowt)
+        refused = lowt is True and module != 'aragog'
+        try:
+            lowt_extension_requires_aragog(cfg, None, None)
+        except ValueError as exc:
+            assert refused, f'refused {module!r} with {lowt!r}'
+            reason = 'more entropy nodes' if module == 'spider' else 'reads no P-S tables'
+            assert reason in str(exc) and f'"{module}"' in str(exc)
+        else:
+            assert not refused, f'accepted {module!r} with {lowt!r}'
+
+    check()
+
+
+@pytest.mark.unit
+def test_lowt_extension_requires_a_structure_that_builds_the_ps_tables():
+    """The switch acts where PROTEUS builds the P-S tables, which the SPIDER structure skips; with
+    interior_struct.module = 'spider' the switch is refused, with zalmoxis or dummy it is kept."""
+    from proteus.config._config import lowt_extension_requires_ps_tables
+
+    def make(struct, lowt):
+        cfg = _make_config_instance(**{'interior_energetics.module': 'aragog'})
+        cfg.interior_struct = SimpleNamespace(
+            module=struct,
+            zalmoxis=SimpleNamespace(lowt_extension=lowt, mantle_eos='PALEOS:MgSiO3'),
+        )
+        return cfg
+
+    for struct in ('spider', None):
+        with pytest.raises(ValueError, match='requires interior_struct.module') as excinfo:
+            lowt_extension_requires_ps_tables(make(struct, True), None, None)
+        assert f'"{struct}"' in str(excinfo.value)
+    for struct in ('zalmoxis', 'dummy'):
+        assert lowt_extension_requires_ps_tables(make(struct, True), None, None) is None
+    for struct in ('zalmoxis', 'dummy', 'spider'):
+        assert lowt_extension_requires_ps_tables(make(struct, False), None, None) is None
+
+
+# Mantle EOS strings whose energetics key the extension does not continue, and ones it accepts
+LOWT_REFUSED_MANTLES = [
+    'PALEOS-API:MgSiO3',
+    'PALEOS-API-2phase:MgSiO3',
+    'PALEOS-API:H2O',
+    'PALEOS-API:MgSiO3:0.7+PALEOS:H2O:0.3',
+    'PALEOS:H2O:0.7+PALEOS-API:MgSiO3:0.3',
+    'PALEOS-2phase:MgSiO3-highres',
+    'PALEOS:H2O:0.7+PALEOS-2phase:MgSiO3-highres:0.3',
+]
+LOWT_ACCEPTED_MANTLES = [
+    'PALEOS:MgSiO3',
+    'PALEOS-2phase:MgSiO3',
+    'PALEOS:H2O',
+    'PALEOS:MgSiO3:0.7+PALEOS:H2O:0.3',
+    'PALEOS:MgSiO3:0.7+PALEOS-API:H2O:0.3',
+    'WolfBower2018:MgSiO3',
+    'RTPress100TPa:MgSiO3',
+    'Seager2007:MgSiO3',
+]
+
+
+@pytest.mark.unit
+def test_lowt_extension_ps_tables_property_refuses_exactly_the_unsupported_cases():
+    """Over any structure module, mantle EOS and switch value, the check refuses exactly the switch
+    set to True with a structure other than zalmoxis or dummy or with a mantle whose energetics key
+    is PALEOS-API or -highres, and a missing Zalmoxis section passes; every mantle of both lists
+    runs with zalmoxis and dummy and the switch on."""
+    hypothesis = pytest.importorskip('hypothesis')
+    example, given, settings = hypothesis.example, hypothesis.given, hypothesis.settings
+    st = pytest.importorskip('hypothesis.strategies')
+
+    from proteus.config._config import lowt_extension_requires_ps_tables
+
+    lowt_values = st.one_of(
+        st.booleans(), st.integers(), st.floats(allow_nan=True), st.text(), st.none()
+    )
+    modules = st.one_of(st.sampled_from(['spider', 'zalmoxis', 'dummy', None]), st.text())
+    mantles = st.sampled_from(LOWT_REFUSED_MANTLES + LOWT_ACCEPTED_MANTLES)
+
+    @settings(max_examples=400, deadline=None)
+    @given(modules, mantles, lowt_values, st.booleans())
+    @example('spider', 'PALEOS:MgSiO3', 1, True)
+    @example('spider', 'PALEOS:MgSiO3', 1.0, True)
+    @example('spider', 'PALEOS:MgSiO3', 'true', True)
+    @example('spider', 'PALEOS:MgSiO3', True, False)
+    @example('dummy', 'PALEOS:MgSiO3', True, True)
+    @example('zalmoxis', 'PALEOS-API:MgSiO3', 1, True)
+    def _check(module, mantle, lowt, has_section):
+        _decide(module, mantle, lowt, has_section)
+
+    def _decide(module, mantle, lowt, has_section):
+        zalmoxis = SimpleNamespace(lowt_extension=lowt, mantle_eos=mantle)
+        cfg = SimpleNamespace(
+            interior_struct=SimpleNamespace(
+                module=module, zalmoxis=zalmoxis if has_section else None
+            )
+        )
+        refused = (
+            has_section
+            and lowt is True
+            and (module not in ('zalmoxis', 'dummy') or mantle in LOWT_REFUSED_MANTLES)
+        )
+        if refused:
+            with pytest.raises(ValueError, match='lowt_extension = true'):
+                lowt_extension_requires_ps_tables(cfg, None, None)
+        else:
+            try:
+                result = lowt_extension_requires_ps_tables(cfg, None, None)
+            except ValueError as exc:
+                pytest.fail(f'refused {module!r} {mantle!r} with {lowt!r}: {exc}')
+            assert result is None
+
+    _check()
+    for module in ('zalmoxis', 'dummy'):
+        for mantle in LOWT_REFUSED_MANTLES + LOWT_ACCEPTED_MANTLES:
+            _decide(module, mantle, True, True)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('mantle', LOWT_REFUSED_MANTLES)
+def test_lowt_extension_refuses_a_paleos_api_or_highres_mantle_when_a_config_file_is_read(
+    tmp_path, mantle
+):
+    """The extension continues the grid of the standard PALEOS solid table: reading a TOML file
+    with the switch on and a PALEOS-API or -highres mantle refuses it by name before any table
+    is built; the same file with the standard mantle loads."""
+    from pathlib import Path
+
+    base = (Path(__file__).parents[2] / 'input' / 'all_options.toml').read_text()
+    for line in (
+        '        lowt_extension        = false',
+        '        mantle_eos            = "PALEOS:MgSiO3"',
+    ):
+        assert base.count(line) == 1
+    text = base.replace(
+        '        lowt_extension        = false', '        lowt_extension        = true'
+    )
+    path = tmp_path / 'cfg.toml'
+    path.write_text(text)
+    assert read_config_object(path).interior_struct.zalmoxis.lowt_extension is True
+    path.write_text(
+        text.replace(
+            '        mantle_eos            = "PALEOS:MgSiO3"',
+            f'        mantle_eos            = "{mantle}"',
+        )
+    )
+    with pytest.raises(ValueError, match='does not support the mantle EOS') as excinfo:
+        read_config_object(path)
+    assert mantle.split(':')[0] in str(excinfo.value)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('lowt', [True, False])
+def test_lowt_extension_structure_check_runs_when_a_config_file_is_read(tmp_path, lowt):
+    """Reading input/tutorials/tutorial_earth_moon.toml (SPIDER structure, no chemistry module)
+    with the Aragog interior refuses the switch on by name; with the switch off it loads."""
+    import tomllib
+    from pathlib import Path
+
+    import tomlkit
+
+    src = Path(__file__).parents[2] / 'input' / 'tutorials' / 'tutorial_earth_moon.toml'
+    raw = tomllib.loads(src.read_text())
+    assert raw['interior_struct']['module'] == 'spider' and 'atmos_chem' not in raw
+    raw['interior_energetics']['module'] = 'aragog'
+    raw['interior_struct'].setdefault('zalmoxis', {})['lowt_extension'] = lowt
+    path = tmp_path / 'cfg.toml'
+    path.write_text(tomlkit.dumps(raw))
+    if lowt:
+        with pytest.raises(ValueError, match='requires interior_struct.module'):
+            read_config_object(path)
+    else:
+        cfg = read_config_object(path)
+        assert cfg.interior_struct.module == 'spider'
+        assert cfg.interior_energetics.module == 'aragog'
+        assert cfg.interior_struct.zalmoxis.lowt_extension is False
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('module', 'ok'), [('aragog', True), ('spider', False), ('dummy', False)]
+)
+def test_lowt_extension_check_runs_when_a_config_file_is_read(tmp_path, module, ok):
+    """The Aragog-only check of lowt_extension is registered on the config: reading a TOML file
+    with the switch on refuses every interior except Aragog."""
+    from pathlib import Path
+
+    base = (Path(__file__).parents[2] / 'input' / 'all_options.toml').read_text()
+    for line in (
+        '        lowt_extension        = false',
+        '    module                    = "aragog"     # aragog | spider | dummy',
+    ):
+        assert base.count(line) == 1
+    text = base.replace(
+        '        lowt_extension        = false', '        lowt_extension        = true'
+    )
+    text = text.replace(
+        '    module                    = "aragog"     # aragog | spider | dummy',
+        f'    module                    = "{module}"',
+    )
+    path = tmp_path / 'cfg.toml'
+    path.write_text(text)
+    if ok:
+        assert read_config_object(path).interior_struct.zalmoxis.lowt_extension is True
+    else:
+        with pytest.raises(ValueError, match='lowt_extension = true requires'):
+            read_config_object(path)
