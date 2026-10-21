@@ -41,11 +41,23 @@ RANDOM_SEED = 42
 
 
 def construct_options(dirs: dict, config: Config, hf_row: dict, warn: bool = True):
-    """
-    Construct CALLIOPE options dictionary, with T_magma clipped to outgas.T_floor.
+    """Construct the CALLIOPE options dictionary, with T_magma clipped to outgas.T_floor.
 
-    ``warn`` logs the clip; the target path passes it only where the clip changes the
-    targets (volatile_mode = 'gas_prs').
+    Parameters
+    ----------
+    dirs : dict
+        Run directories.
+    config : Config
+        PROTEUS configuration.
+    hf_row : dict
+        Current helpfile row; read only.
+    warn : bool, default True
+        Log a warning when T_magma lies below outgas.T_floor.
+
+    Returns
+    -------
+    dict
+        CALLIOPE options.
     """
 
     solvevol_inp = {}
@@ -220,8 +232,9 @@ def _resolve_element(
 
 def calc_target_masses(dirs: dict, config: Config, hf_row: dict):
     # make solvevol options
+    # Only the pressure path reads T_magma, so only it warns about the clip.
     solvevol_inp = construct_options(
-        dirs, config, hf_row, warn=config.planet.volatile_mode == 'gas_prs'
+        dirs, config, hf_row, warn=config.planet.volatile_mode != 'elements'
     )
 
     # calculate target mass of atoms (except O, which is derived from fO2)
