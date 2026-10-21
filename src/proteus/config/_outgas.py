@@ -230,7 +230,7 @@ class Outgas:
         magma ocean using the Rogers+2025 H2-MgSiO3 miscibility model.
     T_floor: float
         Temperature floor [K]. The outgassing temperature is clamped to
-        this value from below before the chemistry solve.
+        this value from below for the chemistry solve and the target masses.
     solver_rtol: float
         Relative tolerance for the volatile equilibrium solver.
     solver_atol: float

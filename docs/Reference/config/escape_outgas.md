@@ -96,7 +96,7 @@ planetary surface conditions.
 | `fO2_shift_IW` | float | `2.0` | Oxygen fugacity relative to Iron-Wustite \[log10 units\]. Must be >= -12.0 and <= 12.0. |
 | `mass_thresh` | float | `1e+16` | Minimum threshold for element mass \[kg\]. Outgassing treats H, C, N or S below it as absent; escape empties a non-noble element whose reachable mass (its total less the mass trapped in the solid) is below it, down to the trapped mass, except on a mantle frozen with params.stop.solid.freeze_volatiles. Noble gases are exempt. Must be > 0.0. |
 | `h2_binodal` | bool | `false` | Enable binodal-controlled H2 partitioning between atmosphere and magma ocean using the Rogers+2025 H2-MgSiO3 miscibility model. |
-| `T_floor` | float | `700.0` | Temperature floor \[K\]. The outgassing temperature is clamped to this value from below before the chemistry solve. Must be > 0.0. |
+| `T_floor` | float | `700.0` | Temperature floor \[K\]. The outgassing temperature is clamped to this value from below for the chemistry solve and the target masses. Must be > 0.0. |
 | `solver_rtol` | float | `0.0001` | Relative tolerance for the volatile equilibrium solver. Must be > 0.0. |
 | `solver_atol` | float | `1e-06` | Absolute tolerance for the volatile equilibrium solver. Must be > 0.0. |
 | `trap_mode` | str | `"none"` | Solid-phase volatile trapping during mantle crystallisation. Choices: 'none' (off) and 'front' (F_tl from the drainage of melt across the freezing front the interior solver resolves; needs `interior_energetics.module = 'aragog'`). The disaggregation melt fraction that tops the front is `interior_energetics.rfront_loc`, the melt fraction of the solver's own rheological transition, not a separate field. Choices: `"none"`, `"front"`. |
