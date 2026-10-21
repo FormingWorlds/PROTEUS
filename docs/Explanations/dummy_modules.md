@@ -76,7 +76,17 @@ longwave flux is:
 $$F_\mathrm{OLR} = \sigma \bigl\lbrack T_\mathrm{surf} (1 - \gamma)\bigr\rbrack^4$$
 
 where $\gamma$ reduces the effective radiating temperature
-(0 = transparent atmosphere, 1 = perfectly opaque). The transit radius
+(0 = transparent atmosphere, 1 = perfectly opaque). The shortwave
+reaching the surface is
+$F_\downarrow = F_\mathrm{ins} (1 - \alpha_\mathrm{pl})\, s_0 \cos\theta$,
+with the planetary albedo `atmos_clim.albedo_pl`, `orbit.s0_factor` and the
+zenith angle `orbit.zenith_angle`. The surface reflects
+$\alpha_s F_\downarrow$ (`atmos_clim.surf_greyalbedo`), so the net upward
+flux at the surface is
+
+$$F_\mathrm{atm} = F_\mathrm{OLR} - (1 - \alpha_s)\, F_\downarrow$$
+
+and the reported albedo is $\alpha_s$. The transit radius
 is estimated from a single scale height above the surface.
 
 An alternative **fixed-flux mode** (`dummy.fixed_flux > 0`) bypasses

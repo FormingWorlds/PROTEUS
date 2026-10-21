@@ -131,7 +131,7 @@ config_version = "3.0"
     module = "dummy"    # Which escape module to use
 
     [escape.dummy]
-        rate        = 2.0e4         # Bulk unfractionated escape rate [kg s-1]
+        rate        = 1.0e5         # Bulk unfractionated escape rate [kg s-1]
 
 # Interior - physics table
 [interior_energetics]
