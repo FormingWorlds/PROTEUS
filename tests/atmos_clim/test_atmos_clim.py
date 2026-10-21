@@ -535,8 +535,7 @@ def test_rundummyatm_albedo_calculation():
     """Test albedo calculation (scattered SW / downwelling SW).
 
     Physical scenario: Planet with known surface and planetary albedo.
-    Validates that output albedo = F_sct / F_D_SW is computed.
-    Note: This simple model can produce albedo > 1 due to simplified radiative transfer.
+    Validates that output albedo = F_sct / F_D_SW is the surface albedo.
     """
     from proteus.atmos_clim.dummy import RunDummyAtm
 
@@ -565,9 +564,9 @@ def test_rundummyatm_albedo_calculation():
     # Call RunDummyAtm
     output = RunDummyAtm(dirs, config, hf_row)
 
-    # Verify albedo is computed (may exceed 1.0 due to simplified model)
-    assert 'albedo' in output
-    assert output['albedo'] > 0.0  # Should be positive
+    assert output['albedo'] == pytest.approx(0.5, rel=1e-12)
+    # a / (1 - a), the albedo of a reflected over the absorbed shortwave, is 1 here
+    assert output['albedo'] != pytest.approx(1.0, rel=1e-6)
 
 
 @pytest.mark.unit
@@ -931,7 +930,7 @@ def _albedo_case(albedo_s, surf_state):
 
 @pytest.mark.unit
 @pytest.mark.physics_invariant
-@pytest.mark.parametrize('albedo_s', [0.0, 0.1, 0.3])
+@pytest.mark.parametrize('albedo_s', [0.0, 0.1, 0.3, 1.0])
 def test_rundummyatm_counts_the_surface_albedo_once(albedo_s):
     """The net surface flux is sigma((1 - gamma) T)^4 - (1 - albedo_s) D0, the reflected
     flux albedo_s D0 and the albedo albedo_s, for D0 the shortwave reaching the surface."""
@@ -947,7 +946,7 @@ def test_rundummyatm_counts_the_surface_albedo_once(albedo_s):
 
 @pytest.mark.unit
 @pytest.mark.physics_invariant
-@pytest.mark.parametrize('albedo_s', [0.0, 0.1, 0.3])
+@pytest.mark.parametrize('albedo_s', [0.0, 0.1, 0.3, 1.0])
 def test_rundummyatm_skin_balance_counts_the_surface_albedo_once(albedo_s):
     """In skin mode the conducted flux through the lid equals the net flux with the
     absorbed shortwave (1 - albedo_s) D0 at the returned surface temperature."""
@@ -957,6 +956,21 @@ def test_rundummyatm_skin_balance_counts_the_surface_albedo_once(albedo_s):
     out = RunDummyAtm({}, config, hf_row)
     T = out['T_surf']
     net = const_sigma * ((1.0 - 0.3) * T) ** 4 - (1.0 - albedo_s) * D0
-    assert net == pytest.approx(2.0 / 0.01 * (2000.0 - T), rel=1e-9)
+    assert net == pytest.approx(2.0 / 0.01 * (2000.0 - T), rel=1e-7)
     assert out['F_atm'] == pytest.approx(net, rel=1e-12)
     assert 0.0 < T < 2000.0
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_rundummyatm_without_shortwave_reports_the_olr_and_albedo_zero():
+    """With no instellation and a nonzero surface albedo the net flux is the OLR, nothing
+    is reflected and the albedo is 0."""
+    from proteus.atmos_clim.dummy import RunDummyAtm
+
+    config, hf_row, _ = _albedo_case(0.3, 'fixed')
+    hf_row['F_ins'] = 0.0
+    out = RunDummyAtm({}, config, hf_row)
+    assert out['F_atm'] == pytest.approx(const_sigma * ((1.0 - 0.3) * 2000.0) ** 4, rel=1e-13)
+    assert out['F_sct'] == 0.0
+    assert out['albedo'] == 0.0

@@ -64,7 +64,7 @@ def test_dummy_run(dummy_run):
 @pytest.mark.physics_invariant
 def test_dummy_helpfile_schema(dummy_run):
     """The all-dummy run writes a helpfile with the expected schema
-    and at least 50 rows (the dummy run is configured to take 300-500
+    and at least 50 rows (the dummy run takes several hundred
     timesteps; 50 is a generous lower bound). Every standard physical
     column is present, finite, and within its physical range at every
     row.
