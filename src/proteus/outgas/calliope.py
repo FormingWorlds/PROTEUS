@@ -40,9 +40,12 @@ mass_ocean = ocean_moles * molar_mass['H2']
 RANDOM_SEED = 42
 
 
-def construct_options(dirs: dict, config: Config, hf_row: dict):
+def construct_options(dirs: dict, config: Config, hf_row: dict, warn: bool = True):
     """
-    Construct CALLIOPE options dictionary
+    Construct CALLIOPE options dictionary, with T_magma clipped to outgas.T_floor.
+
+    ``warn`` logs the clip; the target path passes it only where the clip changes the
+    targets (volatile_mode = 'gas_prs').
     """
 
     solvevol_inp = {}
@@ -60,7 +63,7 @@ def construct_options(dirs: dict, config: Config, hf_row: dict):
 
     # Surface properties; the target masses and the solve both use the floored temperature
     solvevol_inp['T_magma'] = max(hf_row['T_magma'], config.outgas.T_floor)
-    if hf_row['T_magma'] < config.outgas.T_floor:
+    if warn and hf_row['T_magma'] < config.outgas.T_floor:
         log.warning('Outgassing temperature clipped to %.1f K' % solvevol_inp['T_magma'])
 
     solvevol_inp['fO2_shift_IW'] = config.outgas.fO2_shift_IW
@@ -217,7 +220,9 @@ def _resolve_element(
 
 def calc_target_masses(dirs: dict, config: Config, hf_row: dict):
     # make solvevol options
-    solvevol_inp = construct_options(dirs, config, hf_row)
+    solvevol_inp = construct_options(
+        dirs, config, hf_row, warn=config.planet.volatile_mode == 'gas_prs'
+    )
 
     # calculate target mass of atoms (except O, which is derived from fO2)
     if config.planet.volatile_mode == 'elements':
