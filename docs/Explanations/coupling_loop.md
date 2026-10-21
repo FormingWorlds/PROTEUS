@@ -206,7 +206,8 @@ $T_\mathrm{magma}$ falls to the table floor near $302\,\mathrm{K}$).
 These runs take $1851$ and $1853$ rows; with the option off, the same
 configurations take $50$ rows.
 With `atmos_clim.module = 'agni'` in place of the dummy atmosphere and every
-other setting of the $0.5\,\mathrm{au}$ configuration unchanged, the $0.08$ run reaches $25\,\mathrm{kyr}$ in $1360$ rows with a
+other setting of the $0.5\,\mathrm{au}$ configuration unchanged, the $0.08$ run
+reaches $25\,\mathrm{kyr}$ in $1360$ rows with a
 maximum per-step ratio of $0.470$, about $40\,\mathrm{yr}$ after the top cell
 crosses the liquidus near $1200\,\mathrm{yr}$, $0$ steps above $1$, and $0$
 late drops. With the option off, this configuration takes $250$ rows and has $31$ steps

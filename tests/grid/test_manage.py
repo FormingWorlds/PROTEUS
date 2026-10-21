@@ -1322,7 +1322,8 @@ def test_write_config_files_cross_field_rules_checked_when_a_case_is_read(
     if error:
         with pytest.raises(
             ValueError,
-            match=r'Grid case 0 with \{.*\} is not a valid config: Invalid configuration in .*case_000000\.toml',
+            match=re.escape(f'Grid case 0 with {g.flat[0]} is not a valid config: Invalid')
+            + r' configuration in .*case_000000\.toml',
         ):
             g.write_config_files()
         # The load error names only the class; the case's own table gives the cause.
@@ -1369,7 +1370,8 @@ def test_write_config_files_stops_at_the_first_invalid_case(
     monkeypatch.setattr(gm, 'read_config_object', lambda p: read_back.append(str(p)) or real(p))
     with pytest.raises(
         ValueError,
-        match=rf'Grid case {k} with \{{.*\}} is not a valid config: Invalid configuration in .*case_{k:06d}\.toml',
+        match=re.escape(f'Grid case {k} with {g.flat[k]} is not a valid config: Invalid')
+        + rf' configuration in .*case_{k:06d}\.toml',
     ):
         g.write_config_files()
     assert read_back[1:] == [g._get_tmpcfg(i) for i in range(k + 1)]
