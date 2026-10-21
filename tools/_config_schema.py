@@ -49,6 +49,20 @@ ANNOTATION_OVERRIDES = {
 # the generated constraints so inert code is not advertised as a rule.
 SKIP_VALIDATORS = {'planet_oxygen_mode_explicit', 'valid_escapeboreas'}
 
+# Cross-field checks that run in ``__attrs_post_init__`` instead of a field validator,
+# with the config paths each one reads; rendered into the constraint list like a validator.
+POST_INIT_CHECKS = {
+    ('_interior', '_check_top_cell_dt_rel_dT_pair'): (
+        'interior_energetics.aragog.top_cell_dt_rel_dT',
+        'interior_energetics.aragog.top_cell_dt_rel_dT_solid',
+    ),
+    ('_interior', '_check_aragog_top_cell_dt_limit_surface_bc'): (
+        'interior_energetics.module',
+        'interior_energetics.surface_bc_mode',
+        'interior_energetics.aragog.top_cell_dt_limit',
+    ),
+}
+
 
 class SchemaError(Exception):
     """Semantic schema problem the source must fix (exit code 1)."""
@@ -107,6 +121,14 @@ def parse_source_docs() -> tuple[dict, dict]:
                     ):
                         pep224[(node.name, name)] = inspect.cleandoc(nxt.value.value)
             elif isinstance(node, ast.FunctionDef):
+                paths = POST_INIT_CHECKS.get((path.stem, node.name))
+                if paths:
+                    validators[(path.stem, node.name)] = {
+                        'doc': ast.get_docstring(node),
+                        'cross': True,
+                        'touches': sorted(paths),
+                    }
+                    continue
                 if [a.arg for a in node.args.args] != ['instance', 'attribute', 'value']:
                     continue
                 chains = set()
@@ -441,6 +463,17 @@ def build_schema() -> dict:
             )
 
     visit(cfg.Config, '', frozenset({cfg.Config}))
+    missing = sorted(
+        f'{stem}.py:{name}'
+        for stem, name in POST_INIT_CHECKS
+        if (stem, name) not in validator_src
+    )
+    if missing:
+        raise SchemaError(
+            'POST_INIT_CHECKS names functions not in the config source: ' + ', '.join(missing)
+        )
+    for (_stem, name), paths in POST_INIT_CHECKS.items():
+        attached.setdefault(name, []).extend(paths)
     constraints = _build_constraints(validator_src, attached)
     return {'fields': fields, 'constraints': constraints}
 

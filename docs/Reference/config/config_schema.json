@@ -12672,6 +12672,34 @@
       "doc": "Validate ZEPHYRUS settings: Pxuv within (0, 10] bar and efficiency within [0, 1]."
     },
     {
+      "validator": "_check_aragog_top_cell_dt_limit_surface_bc",
+      "module": "_interior.py",
+      "attached_to": [
+        "interior_energetics.aragog.top_cell_dt_limit",
+        "interior_energetics.module",
+        "interior_energetics.surface_bc_mode"
+      ],
+      "touches": [
+        "interior_energetics.aragog.top_cell_dt_limit",
+        "interior_energetics.module",
+        "interior_energetics.surface_bc_mode"
+      ],
+      "doc": "Reject Aragog top_cell_dt_limit with grey_body surface boundary conditions."
+    },
+    {
+      "validator": "_check_top_cell_dt_rel_dT_pair",
+      "module": "_interior.py",
+      "attached_to": [
+        "interior_energetics.aragog.top_cell_dt_rel_dT",
+        "interior_energetics.aragog.top_cell_dt_rel_dT_solid"
+      ],
+      "touches": [
+        "interior_energetics.aragog.top_cell_dt_rel_dT",
+        "interior_energetics.aragog.top_cell_dt_rel_dT_solid"
+      ],
+      "doc": "Require top_cell_dt_rel_dT_solid <= top_cell_dt_rel_dT."
+    },
+    {
       "validator": "valid_aragog",
       "module": "_interior.py",
       "attached_to": [
