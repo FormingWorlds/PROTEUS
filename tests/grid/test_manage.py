@@ -1311,12 +1311,9 @@ def test_write_config_files_cross_field_rules_checked_when_a_case_is_read(
     limit = '[interior_energetics.aragog]\ntop_cell_dt_limit = true\n' if base else ''
     cfg.write_text(f'[interior_energetics]\nmodule = "aragog"\n{limit}')
     g = Grid(name='pair_grid', base_config_path=str(cfg))
+    ie_keys = ('surface_bc_mode', 'module')
     for i, (key, value) in enumerate(dims.items()):
-        section = (
-            'interior_energetics'
-            if key in ('surface_bc_mode', 'module')
-            else 'interior_energetics.aragog'
-        )
+        section = 'interior_energetics' if key in ie_keys else 'interior_energetics.aragog'
         g.add_dimension(f'd{i}', f'{section}.{key}')
         g.set_dimension_direct(f'd{i}', [value])
     g.generate()
@@ -1324,7 +1321,8 @@ def test_write_config_files_cross_field_rules_checked_when_a_case_is_read(
     case = g._get_tmpcfg(0)
     if error:
         with pytest.raises(
-            ValueError, match=r'Grid case 0 \(.*case_000000\.toml\) is not a valid'
+            ValueError,
+            match=r'Grid case 0 with \{.*\} is not a valid config: Invalid configuration in .*case_000000\.toml',
         ):
             g.write_config_files()
         # The load error names only the class; the case's own table gives the cause.
@@ -1343,7 +1341,7 @@ def test_write_config_files_cross_field_rules_checked_when_a_case_is_read(
     except ValueError as exc:
         pytest.fail(f'valid grid case {dims} was refused: {exc}')
     for key, value in dims.items():
-        got = getattr(ie if key in ('surface_bc_mode', 'module') else ie.aragog, key)
+        got = getattr(ie if key in ie_keys else ie.aragog, key)
         assert got == (pytest.approx(value, rel=1e-12) if isinstance(value, float) else value)
 
 
@@ -1370,7 +1368,8 @@ def test_write_config_files_stops_at_the_first_invalid_case(
     real = gm.read_config_object
     monkeypatch.setattr(gm, 'read_config_object', lambda p: read_back.append(str(p)) or real(p))
     with pytest.raises(
-        ValueError, match=rf'Grid case {k} \(.*case_{k:06d}\.toml\) is not a valid'
+        ValueError,
+        match=rf'Grid case {k} with \{{.*\}} is not a valid config: Invalid configuration in .*case_{k:06d}\.toml',
     ):
         g.write_config_files()
     assert read_back[1:] == [g._get_tmpcfg(i) for i in range(k + 1)]

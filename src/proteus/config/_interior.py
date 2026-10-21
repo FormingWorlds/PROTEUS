@@ -987,8 +987,9 @@ class Interior:
         overridden by an alias.
 
         All aliases will be removed in a future release. The Aragog cross-field
-        checks (the top_cell_dt_rel_dT pair, and top_cell_dt_limit against
-        surface_bc_mode = 'grey_body') run last.
+        checks run last: the top_cell_dt_rel_dT pair (again, for an aragog section
+        changed after its own construction) and top_cell_dt_limit against
+        surface_bc_mode = 'grey_body'.
         """
         # Whether each field was supplied is tracked via the sentinel
         # default, not by value-comparison against the resolved default.

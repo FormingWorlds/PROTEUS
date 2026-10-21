@@ -289,7 +289,8 @@ class Grid:
         Raises
         ------
         ValueError
-            If a written case does not load; the message names the case index and file.
+            If a written case does not load; the message names the case index, its grid
+            values and, through the loader's message, its file.
         """
         # Read base config file
         base_config = read_config_object(self.conf)
@@ -323,7 +324,7 @@ class Grid:
                 read_config_object(case_path)
             except ValueError as exc:
                 raise ValueError(
-                    f'Grid case {i} ({case_path}) is not a valid config: {exc}'
+                    f'Grid case {i} with {gp} is not a valid config: {exc}'
                 ) from exc
 
     def run(
