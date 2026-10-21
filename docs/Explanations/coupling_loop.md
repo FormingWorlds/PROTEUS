@@ -201,29 +201,34 @@ $25\,\mathrm{kyr}$ at `top_cell_dt_rel_dT = top_cell_dt_rel_dT_solid = 0.08`
 ($0.5\,\mathrm{au}$ with `surf_greyalbedo = 0.2`, and $0.7\,\mathrm{au}$ with
 `surf_greyalbedo = 0.0`), the maximum per-step $|\Delta T_\mathrm{surf}| /
 (\eta_\mathrm{eff} T_\mathrm{surf})$, with $T_\mathrm{surf}$ at step start, is
-$0.692$ in both, with $0$ steps above $1$ and $0$ late drops (steps where
-$T_\mathrm{magma}$ falls to the table floor near $302\,\mathrm{K}$).
-These runs take $1851$ and $1853$ rows; with the option off, the same
-configurations take $50$ rows.
+between $0.68$ and $0.71$ at $0.5\,\mathrm{au}$ (over 5 round-off perturbed
+starts and 3 sets of module and data versions) and $0.69$ at $0.7\,\mathrm{au}$,
+with $0$ steps above $1$ and $0$ late drops (steps where $T_\mathrm{magma}$
+falls to the table floor near $302\,\mathrm{K}$). These runs take about
+$1850$ rows; with the option off, the same configurations take $50$ rows.
 With `atmos_clim.module = 'agni'` in place of the dummy atmosphere and every
 other setting of the $0.5\,\mathrm{au}$ configuration unchanged, the $0.08$ run
-reaches $25\,\mathrm{kyr}$ in $1360$ rows with a
-maximum per-step ratio of $0.470$, about $40\,\mathrm{yr}$ after the top cell
+reaches $25\,\mathrm{kyr}$ in $1357$ rows with a
+maximum per-step ratio of $0.47$, about $40\,\mathrm{yr}$ after the top cell
 crosses the liquidus near $1200\,\mathrm{yr}$, $0$ steps above $1$, and $0$
-late drops. With the option off, this configuration takes $250$ rows and has $31$ steps
-above $1$; the largest is $6.27$, where $T_\mathrm{surf}$ falls from
-$1853\,\mathrm{K}$ to $924\,\mathrm{K}$ in one $100\,\mathrm{yr}$ step.
+late drops. With the option off, this configuration takes about $250$ rows and
+has $25$ to $31$ steps above $1$, the largest between $6$ and $10$; these counts
+change between module and data versions, and in one run $T_\mathrm{surf}$ falls
+from $1373\,\mathrm{K}$ to the $302\,\mathrm{K}$ table floor in one
+$160\,\mathrm{yr}$ step.
 In an AGNI configuration with `surf_state = 'skin'` (and different albedos,
 Rayleigh scattering, observation pressure, and solver settings),
 $T_\mathrm{surf}$ is a skin temperature at $0.53$ to $0.94$ of
 $T_\mathrm{magma}$ in the $0.08$ run, which reaches $25\,\mathrm{kyr}$ in
-$1137$ rows; its largest per-step drop of $T_\mathrm{magma}$ is $0.73$ of the
+$1138$ rows; its largest per-step drop of $T_\mathrm{magma}$ is $0.73$ of the
 allowance $0.08\,T_\mathrm{surf}$, while its option-off twin drops to the table
 floor in one step.
 
 In a computed unresupplied top-cell estimate that maps the step energy
 $q = c_{p,\mathrm{chord}}\,\Delta T_\mathrm{allow}$ back to entropy at a liquid
-state just above the liquidus ($t = 531.5\,\mathrm{yr}$) and at the worst mushy
+state just above the liquidus ($t = 531.5\,\mathrm{yr}$, from a separate run of the
+$0.5\,\mathrm{au}$ configuration from $t = 0$ with `top_cell_dt_rel_dT_solid = 0.02`,
+stopped at $600\,\mathrm{yr}$) and at the worst mushy
 step of each $25\,\mathrm{kyr}$ dummy-atmosphere run ($\phi_\mathrm{top} =
 0.957$, $\Phi_\mathrm{global} = 0.787$ in both; evaluated on the slice at
 the $531.5\,\mathrm{yr}$ top pressure), the linearized drop-to-allowance ratio
