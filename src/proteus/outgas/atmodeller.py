@@ -608,8 +608,7 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
             hf_row[f'{s}_vmr'] = 0.0
 
     # Dissolved masses from atmodeller output (thermodynamically consistent).
-    # Falls back to kg_total - kg_atm for species not in the solve or without
-    # a dissolved_mass output (e.g., gas-only species like H2S, NH3).
+    # A species without a mass output is gas-only (kg_total = kg_atm, 0 outside the solve).
     def _as_mass(value):
         """Squeeze an atmodeller mass or mole-count output to a float, or None on failure."""
         if value is None:
@@ -720,13 +719,8 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
                     hf_row[f'{proteus_name}_kg_total'] / species_mmw
                 )
         elif is_noble:
-            # An inactive noble gas is not in the solve; clear its stale
-            # atmospheric reservoir so it does not leak into P_surf, the mean
-            # molar mass, or a later resurrection of its total, and leave its
-            # escape-owned element total untouched. The mixing ratio is cleared
-            # too: it was already recomputed from the stale partial pressure
-            # above, so it must be reset or it would still feed the mean molar
-            # mass sum.
+            # An inactive noble gas is not in the solve: its atmosphere and melt
+            # columns are 0, and its escape-owned element total stays untouched.
             hf_row[f'{proteus_name}_kg_liquid'] = 0.0
             hf_row[f'{proteus_name}_kg_atm'] = 0.0
             hf_row[f'{proteus_name}_bar'] = 0.0
