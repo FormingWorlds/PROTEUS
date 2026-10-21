@@ -195,25 +195,18 @@ low-entropy clamp of the table stay below $1$ up to $\eta = 0.15$. In the
 coupled runs below, trials reach the flat part only near the solidus, where the
 chord does not fire, and no step exceeds $\Delta T_\mathrm{allow}$.
 
-Across 3 coupled runs over 2 dummy-atmosphere configurations of a $1\,M_\oplus$
-planet with the PALEOS $\mathrm{MgSiO}_3$ EOS and dummy star to
+Across 2 coupled runs from $t = 0$ over 2 dummy-atmosphere configurations of a
+$1\,M_\oplus$ planet with the PALEOS $\mathrm{MgSiO}_3$ EOS and dummy star to
 $25\,\mathrm{kyr}$ at `top_cell_dt_rel_dT = top_cell_dt_rel_dT_solid = 0.08`
-($0.5\,\mathrm{au}$ with `surf_greyalbedo = 0.2` on Aragog 075fcb05 and 372c2e21, and
-$0.7\,\mathrm{au}$ with `surf_greyalbedo = 0.0` on Aragog 372c2e21),
-the maximum per-step $|\Delta T_\mathrm{surf}| / (\eta_\mathrm{eff}
-T_\mathrm{surf})$, with $T_\mathrm{surf}$ at step start, is $0.690$ (075fcb05)
-and $0.658$ (372c2e21) at $0.5\,\mathrm{au}$ and $0.659$ at
-$0.7\,\mathrm{au}$, with $0$ steps above $1$ and $0$ late drops (steps where
+($0.5\,\mathrm{au}$ with `surf_greyalbedo = 0.2`, and $0.7\,\mathrm{au}$ with
+`surf_greyalbedo = 0.0`), the maximum per-step $|\Delta T_\mathrm{surf}| /
+(\eta_\mathrm{eff} T_\mathrm{surf})$, with $T_\mathrm{surf}$ at step start, is
+$0.692$ in both, with $0$ steps above $1$ and $0$ late drops (steps where
 $T_\mathrm{magma}$ falls to the table floor near $302\,\mathrm{K}$).
-These runs take $1850$ to $1852$ rows. The 2 runs on Aragog 372c2e21 start at
-$t = 2\,\mathrm{yr}$ from rows 0 to 4 of a run with the option off: at
-$0.7\,\mathrm{au}$ the same configuration on Aragog 075fcb05, and at
-$0.5\,\mathrm{au}$ a run with `surf_greyalbedo = 0.1`. With the option off,
-the same configurations take $218$ and $243$ rows on Aragog 372c2e21 and $50$
-rows on Aragog 075fcb05.
+These runs take $1851$ and $1853$ rows; with the option off, the same
+configurations take $50$ rows.
 With `atmos_clim.module = 'agni'` in place of the dummy atmosphere and every
-other setting of the $0.5\,\mathrm{au}$ configuration unchanged (Aragog
-075fcb05), the $0.08$ run reaches $25\,\mathrm{kyr}$ in $1360$ rows with a
+other setting of the $0.5\,\mathrm{au}$ configuration unchanged, the $0.08$ run reaches $25\,\mathrm{kyr}$ in $1360$ rows with a
 maximum per-step ratio of $0.470$, about $40\,\mathrm{yr}$ after the top cell
 crosses the liquidus near $1200\,\mathrm{yr}$, $0$ steps above $1$, and $0$
 late drops. With the option off, this configuration takes $250$ rows and has $31$ steps
@@ -230,17 +223,17 @@ floor in one step.
 In a computed unresupplied top-cell estimate that maps the step energy
 $q = c_{p,\mathrm{chord}}\,\Delta T_\mathrm{allow}$ back to entropy at a liquid
 state just above the liquidus ($t = 531.5\,\mathrm{yr}$) and at the worst mushy
-step of each $25\,\mathrm{kyr}$ dummy-atmosphere run ($\phi_\mathrm{top}$ from
-$0.958$ to $0.967$, $\Phi_\mathrm{global} = 0.787$; evaluated on the slice at
+step of each $25\,\mathrm{kyr}$ dummy-atmosphere run ($\phi_\mathrm{top} =
+0.957$, $\Phi_\mathrm{global} = 0.787$ in both; evaluated on the slice at
 the $531.5\,\mathrm{yr}$ top pressure), the linearized drop-to-allowance ratio
-with $\Delta S = q / T_\mathrm{top}$ is $0.786$ and $1.000$ (all 3 run states)
-at $0.08$, $0.687$ and $0.784$ to $0.785$ at the validator maximum $0.15$,
-$0.843$ and $0.882$ to $0.890$ at $0.30$, and $1.130$ and $1.173$ to $1.174$
-at $0.50$. Under exact constant-pressure enthalpy
+with $\Delta S = q / T_\mathrm{top}$ is $0.786$ and $1.000$ (both run states)
+at $0.08$, $0.687$ and $0.784$ at the validator maximum $0.15$,
+$0.843$ and $0.891$ at $0.30$, and $1.130$ and $1.174$ at $0.50$. Under exact
+constant-pressure enthalpy
 $\mathrm{d}h = T\,\mathrm{d}S$ ($\int_{S_\mathrm{end}}^{S_\mathrm{top}}
 T(P_\mathrm{top}, S)\,\mathrm{d}S = q$), the ratio at the same states is
-$0.816$ and $1.043$ at $0.08$, $0.728$ and $0.836$ to $0.837$ at $0.15$, and
-$1.012$ and $1.249$ to $1.257$ at $0.30$.
+$0.816$ and $1.043$ at $0.08$, $0.728$ and $0.836$ at $0.15$, and
+$1.012$ and $1.257$ at $0.30$.
 A grid scan over $S_\mathrm{top} \in [S_{\min} + 300,
 6000]\,\mathrm{J\,kg^{-1}\,K^{-1}}$ in steps of
 $5\,\mathrm{J\,kg^{-1}\,K^{-1}}$ and $T_\mathrm{surf}/T_\mathrm{top} \in
