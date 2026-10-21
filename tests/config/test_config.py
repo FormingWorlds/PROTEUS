@@ -348,6 +348,21 @@ def test_structure_config_names_the_field_without_cached_generated_source():
 
 
 @pytest.mark.unit
+def test_reads_instance_sees_a_read_inside_a_generator_expression():
+    """A validator that reads the instance only in a generator expression reads it."""
+    from proteus.config import _reads_instance
+
+    def _in_genexp(instance, attribute, value):
+        return any(instance.x > v for v in value)
+
+    def _value_only(instance, attribute, value):
+        return any(v > 0 for v in value)
+
+    assert _reads_instance(_in_genexp.__code__) is True
+    assert _reads_instance(_value_only.__code__) is False
+
+
+@pytest.mark.unit
 def test_error_lines_keeps_the_path_of_a_reason_that_only_shares_its_prefix():
     """A reason whose first word merely starts with the section name still gets the path."""
     import cattrs
