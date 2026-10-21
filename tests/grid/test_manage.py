@@ -1332,7 +1332,10 @@ def test_write_config_files_cross_field_rules_checked_when_a_case_is_read(
                 aragog=Aragog(**table['aragog']),
             )
         return
-    ie = read_config_object(case).interior_energetics
+    try:
+        ie = read_config_object(case).interior_energetics
+    except ValueError as exc:
+        pytest.fail(f'valid grid case {dims} was refused: {exc}')
     for key, value in dims.items():
         got = getattr(ie if key == 'surface_bc_mode' else ie.aragog, key)
         assert got == (pytest.approx(value, rel=1e-12) if isinstance(value, float) else value)

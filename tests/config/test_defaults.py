@@ -746,9 +746,12 @@ def test_aragog_top_cell_dt_rel_dT_pair_checked_at_load_in_any_order():
     for value in (0.05, 0.12):
         for order in (pair, pair[::-1]):
             cfg = Aragog()
-            for name in order:
-                setattr(cfg, name, value)
-            rebuilt = attrs.evolve(cfg)
+            try:
+                for name in order:
+                    setattr(cfg, name, value)
+                rebuilt = attrs.evolve(cfg)
+            except ValueError as exc:
+                pytest.fail(f'{order} set to {value} was refused: {exc}')
             assert rebuilt.top_cell_dt_rel_dT == pytest.approx(value, rel=1e-12)
             assert rebuilt.top_cell_dt_rel_dT_solid == pytest.approx(value, rel=1e-12)
 
@@ -774,13 +777,17 @@ def test_aragog_top_cell_dt_rel_dT_pair_checked_at_load_in_any_order():
     def _any_order(rel, solid, solid_first):
         cfg = Aragog()
         steps = [('top_cell_dt_rel_dT', rel), ('top_cell_dt_rel_dT_solid', solid)]
-        for name, value in steps[::-1] if solid_first else steps:
-            setattr(cfg, name, value)
-        if solid <= rel:
-            assert attrs.evolve(cfg).top_cell_dt_rel_dT_solid == solid
-        else:
+        try:
+            for name, value in steps[::-1] if solid_first else steps:
+                setattr(cfg, name, value)
+            built = attrs.evolve(cfg) if solid <= rel else None
+        except ValueError as exc:
+            pytest.fail(f'rel {rel}, solid {solid}, solid first {solid_first}: {exc}')
+        if built is None:
             with pytest.raises(ValueError, match='top_cell_dt_rel_dT_solid'):
                 attrs.evolve(cfg)
+        else:
+            assert built.top_cell_dt_rel_dT_solid == solid
 
     _any_order()
 
@@ -797,12 +804,15 @@ def test_aragog_top_cell_dt_limit_grey_body_checked_at_load_in_any_order(tmp_pat
         ie = Interior(
             module='aragog', surface_bc_mode='flux', aragog=Aragog(top_cell_dt_limit=True)
         )
-        if grey_first:
-            ie.surface_bc_mode = 'grey_body'
-        ie.aragog.top_cell_dt_limit = False
-        if not grey_first:
-            ie.surface_bc_mode = 'grey_body'
-        rebuilt = attrs.evolve(ie)
+        try:
+            if grey_first:
+                ie.surface_bc_mode = 'grey_body'
+            ie.aragog.top_cell_dt_limit = False
+            if not grey_first:
+                ie.surface_bc_mode = 'grey_body'
+            rebuilt = attrs.evolve(ie)
+        except ValueError as exc:
+            pytest.fail(f'grey_body first {grey_first} was refused: {exc}')
         assert (rebuilt.surface_bc_mode, rebuilt.aragog.top_cell_dt_limit) == (
             'grey_body',
             False,
