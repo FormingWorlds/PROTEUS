@@ -1,165 +1,117 @@
 """Tests for proteus.utils.plot_offchem readers.
 
-These regressions cover the flat ``offchem/vulcan*.pkl`` layout that
-replaced the historic ``offchem/<year>/output.vul`` tree. Both online
-(``vulcan_<year>.pkl`` per snapshot) and offline (single
-``vulcan.pkl``) modes must be supported, and the read-time
-``read_const`` path must fail loudly because the per-year
-``vulcan_cfg.py`` dump is no longer produced.
+The VULCAN result of each chemistry snapshot is the NetCDF file
+``data/<time>_chem.nc``, with the time in the sub-year form of
+`format_subyear_time` (``12p320`` at 12.32 yr). The readers take mixing
+ratios, layer pressures and temperatures from it, convert pressure from
+dyn cm-2 to bar, clip the mixing ratios, and refuse the retired
+``read_const`` path. Checked: unit conversion (against a wrong divisor),
+species-column order, clipping bounds, and sorted float years per grid case.
 """
 
 from __future__ import annotations
 
 import os
-import pickle
 
 import numpy as np
 import pytest
 
 from proteus.utils.plot_offchem import offchem_read_year
+from tests.helpers._vulcan_netcdf import vulcan_layers, write_vulcan_netcdf
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
-
-def _make_fake_vul_payload():
-    """Return a minimal pickle-ready VULCAN snapshot.
-
-    Two species at three layers; pressures and temperatures
-    distinguishable from any default values so a wrong-array bug would
-    show up immediately.
-    """
-    return {
-        'variable': {
-            'species': ['H2O', 'CO2'],
-            'ymix': np.array(
-                [
-                    [0.40, 0.10],
-                    [0.30, 0.20],
-                    [0.20, 0.30],
-                ]
-            ),
-        },
-        'atm': {
-            # pco is in barye (CGS) per VULCAN convention; reader divides
-            # by 1e6 to convert to bar.
-            'pco': np.array([1.0e8, 1.0e6, 1.0e4]),
-            'Tco': np.array([1850.0, 950.0, 300.0]),
-        },
-    }
+# Three layers from 1e8 to 1e4 dyn cm-2 (100 bar to 0.01 bar), so a /1e5 or
+# /1e7 divisor lands a factor 10 away from the expected bar values.
+_LAYERS = {
+    'p': np.array([1.0e8, 1.0e6, 1.0e4]),
+    'pl': np.array([3.0e8, 1.0e7, 1.0e5, 3.0e3]),
+    'tmp': np.array([1850.0, 950.0, 300.0]),
+    'zl': np.array([0.0, 1.0e7, 2.0e7, 3.0e7]),
+    'Kzz': np.array([1.0e6, 1.0e7]),
+}
+# Asymmetric columns, so a swapped species axis is visible
+_X_GAS = np.array([[0.40, 0.10], [0.30, 0.20], [0.20, 0.30]])
 
 
-def _write_pickle(path, payload):
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, 'wb') as f:
-        pickle.dump(payload, f)
+def _write_chem(out_dir, token, x_gas=_X_GAS, layers=_LAYERS):
+    """Write a two-species VULCAN NetCDF as ``<out_dir>/data/<token>_chem.nc``."""
+    data_dir = os.path.join(out_dir, 'data')
+    os.makedirs(data_dir, exist_ok=True)
+    write_vulcan_netcdf(
+        os.path.join(data_dir, f'{token}_chem.nc'), layers, ['H2O', 'CO2'], x_gas
+    )
 
 
-def test_offchem_read_year_online_per_snapshot_file(tmp_path):
-    """Online layout: ``offchem/vulcan_<year>.pkl`` resolved by year."""
-    payload = _make_fake_vul_payload()
-    _write_pickle(str(tmp_path / 'offchem' / 'vulcan_1000.pkl'), payload)
+def test_offchem_read_year_reads_subyear_netcdf(tmp_path):
+    """A snapshot at 12.32 yr is read from data/12p320_chem.nc, with each
+    species column, pressure in bar and temperature in K."""
+    _write_chem(str(tmp_path), '12p320')
 
-    out = offchem_read_year(str(tmp_path) + '/', 1000)
+    out = offchem_read_year(str(tmp_path), 12.32)
 
-    assert out['year'] == 1000
-    # Species columns: pull col index 0 (H2O) and col index 1 (CO2).
-    # If the reader swapped axes, mx_H2O would be 0.10 not 0.40 at layer 0.
+    assert out['year'] == pytest.approx(12.32)
+    # Column 0 is H2O; a swapped axis would give 0.10 at the bottom layer
     np.testing.assert_allclose(out['mx_H2O'], [0.40, 0.30, 0.20])
     np.testing.assert_allclose(out['mx_CO2'], [0.10, 0.20, 0.30])
-    # 1e8 barye = 1e2 bar. Catches a wrong /1e5 or /1e7 divisor.
-    np.testing.assert_allclose(out['pressure'], [100.0, 1.0, 0.01])
-    # Distinct values at all layers so an off-by-one indexing bug would
-    # be visible.
     np.testing.assert_allclose(out['temperature'], [1850.0, 950.0, 300.0])
 
 
-def test_offchem_read_year_offline_falls_back_to_fixed_name(tmp_path):
-    """Offline layout: single ``offchem/vulcan.pkl`` shared across years."""
-    payload = _make_fake_vul_payload()
-    _write_pickle(str(tmp_path / 'offchem' / 'vulcan.pkl'), payload)
+def test_offchem_read_year_converts_pressure_to_bar(tmp_path):
+    """Pressure is divided by 1e6 (dyn cm-2 to bar), not by 1e5 (Pa to bar)."""
+    _write_chem(str(tmp_path), '1000p000')
 
-    # Year arg is irrelevant for the offline payload, but the function
-    # still tags the snapshot with whatever year the caller asked for.
-    out = offchem_read_year(str(tmp_path) + '/', 42)
+    out = offchem_read_year(str(tmp_path), 1000.0)
 
-    assert out['year'] == 42
-    # No vulcan_42.pkl exists, so the reader must hit the fallback.
-    np.testing.assert_allclose(out['pressure'], [100.0, 1.0, 0.01])
+    np.testing.assert_allclose(out['pressure'], [100.0, 1.0, 0.01], rtol=1e-12)
+    # Discrimination: the Pa-to-bar divisor would give 1000 bar at the bottom
+    assert abs(out['pressure'][0] - 1.0e8 / 1.0e5) > 100.0
+    # Bottom-up order is kept: pressure falls with index
+    assert np.all(np.diff(out['pressure']) < 0)
 
 
-def test_offchem_read_year_prefers_per_snapshot_over_offline(tmp_path):
-    """When both files exist, the per-year file wins."""
-    payload_online = _make_fake_vul_payload()
-    payload_offline = _make_fake_vul_payload()
-    # Distinguish offline payload by a wildly different temperature so
-    # the assertion is unambiguous about which file was read.
-    payload_offline['atm']['Tco'] = np.array([99.0, 99.0, 99.0])
-    _write_pickle(str(tmp_path / 'offchem' / 'vulcan_2000.pkl'), payload_online)
-    _write_pickle(str(tmp_path / 'offchem' / 'vulcan.pkl'), payload_offline)
+def test_offchem_read_year_reads_whole_year_name(tmp_path):
+    """A result named in the whole-year form (500_chem.nc) is still found."""
+    _write_chem(str(tmp_path), '500')
 
-    out = offchem_read_year(str(tmp_path) + '/', 2000)
-    # Must be the online payload's temperatures, not the offline 99 K.
-    np.testing.assert_allclose(out['temperature'], [1850.0, 950.0, 300.0])
-    # Discrimination: pin that the offline payload was NOT silently mixed
-    # in. The offline file's distinctive 99 K marker must not appear in
-    # the returned snapshot.
-    assert 99.0 not in out['temperature']
+    out = offchem_read_year(str(tmp_path), 500.0)
+
+    assert out['year'] == pytest.approx(500.0)
+    np.testing.assert_allclose(out['mx_CO2'], [0.10, 0.20, 0.30])
 
 
 def test_offchem_read_year_raises_when_no_file(tmp_path):
-    """Missing snapshot raises FileNotFoundError, not a vague pickle error."""
-    # No file at all: empty offchem dir.
-    os.makedirs(str(tmp_path / 'offchem'))
-    with pytest.raises(FileNotFoundError, match='No VULCAN snapshot found'):
-        offchem_read_year(str(tmp_path) + '/', 100)
-    # Discrimination: confirm the offchem directory genuinely is empty, so
-    # the FileNotFoundError above can only have come from the missing-
-    # snapshot guard, not from a different I/O on another path.
-    assert not list((tmp_path / 'offchem').iterdir())
+    """A missing snapshot raises FileNotFoundError naming the expected path."""
+    _write_chem(str(tmp_path), '100p000')
+
+    with pytest.raises(FileNotFoundError, match='200p000_chem.nc'):
+        offchem_read_year(str(tmp_path), 200.0)
+    # The file at another time is not taken as a substitute
+    assert sorted(os.listdir(tmp_path / 'data')) == ['100p000_chem.nc']
 
 
 def test_offchem_read_year_read_const_unsupported(tmp_path):
-    """``read_const=True`` is the deprecated vulcan_cfg.py path."""
-    # Provide a valid payload so the only thing that can fail is the
-    # read_const guard itself.
-    payload = _make_fake_vul_payload()
-    _write_pickle(str(tmp_path / 'offchem' / 'vulcan_500.pkl'), payload)
+    """read_const=True is the retired vulcan_cfg.py path and raises, while the
+    same call without it succeeds on the same file."""
+    _write_chem(str(tmp_path), '500p000')
+
     with pytest.raises(NotImplementedError, match='read_const'):
-        offchem_read_year(str(tmp_path) + '/', 500, read_const=True)
-    # Discrimination: the same call with read_const=False on the same
-    # payload must succeed. Without this counter-case, a regression that
-    # raised NotImplementedError unconditionally would still pass the
-    # check above.
-    out = offchem_read_year(str(tmp_path) + '/', 500, read_const=False)
-    assert out['year'] == 500
+        offchem_read_year(str(tmp_path), 500.0, read_const=True)
+    out = offchem_read_year(str(tmp_path), 500.0, read_const=False)
+    assert out['year'] == pytest.approx(500.0)
+    assert set(out) >= {'mx_H2O', 'mx_CO2', 'pressure', 'temperature'}
 
 
 def test_offchem_read_year_clip_applied_to_extremes(tmp_path):
-    """Mixing-ratio clip must squash values outside the requested band."""
-    payload = _make_fake_vul_payload()
-    # Inject a 0.0 value (below default 1e-30 floor) and a 1.5 value
-    # (above default 1.0 ceiling). These are physically impossible
-    # mixing ratios; the clip must catch both.
-    payload['variable']['ymix'] = np.array(
-        [
-            [0.0, 1.5],
-            [1.0e-40, 2.0],
-            [0.5, 0.5],
-        ]
-    )
-    _write_pickle(str(tmp_path / 'offchem' / 'vulcan_300.pkl'), payload)
+    """Mixing ratios outside [mx_clip_min, mx_clip_max] are clipped to the bounds."""
+    # 0 and 1e-40 lie below the 1e-30 floor; 1.5 and 2.0 above the ceiling of 1
+    x_gas = np.array([[0.0, 1.5], [1.0e-40, 2.0], [0.5, 0.5]])
+    _write_chem(str(tmp_path), '300p000', x_gas=x_gas)
 
-    out = offchem_read_year(
-        str(tmp_path) + '/',
-        300,
-        mx_clip_min=1.0e-30,
-        mx_clip_max=1.0,
-    )
-    # Floor: 0.0 and 1e-40 both clipped up to 1e-30.
+    out = offchem_read_year(str(tmp_path), 300.0, mx_clip_min=1.0e-30, mx_clip_max=1.0)
+
     np.testing.assert_allclose(out['mx_H2O'][:2], [1.0e-30, 1.0e-30])
-    # Ceiling: 1.5 and 2.0 clipped down to 1.0.
     np.testing.assert_allclose(out['mx_CO2'][:2], [1.0, 1.0])
-    # In-band value preserved.
     assert out['mx_H2O'][2] == pytest.approx(0.5)
     assert out['mx_CO2'][2] == pytest.approx(0.5)
 
@@ -169,19 +121,12 @@ def test_offchem_read_year_clip_applied_to_extremes(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def _build_grid_case(case_dir, case_options, snapshot_years):
-    """Lay down a single case_NN folder with a TOML config and one
-    vulcan_<year>.pkl per snapshot year. The pickles use the minimal
-    payload from _make_fake_vul_payload so the reader produces a
-    consistent dict shape per year.
-    """
+def _build_grid_case(case_dir, case_options, snapshot_tokens):
+    """Lay down a case folder with a TOML config and one data/<token>_chem.nc
+    per snapshot."""
     os.makedirs(case_dir, exist_ok=True)
-    offchem_dir = os.path.join(case_dir, 'offchem')
-    os.makedirs(offchem_dir, exist_ok=True)
-    for y in snapshot_years:
-        _write_pickle(os.path.join(offchem_dir, f'vulcan_{y}.pkl'), _make_fake_vul_payload())
-    # Minimal init_coupler.toml that read_config can parse and whose
-    # keys offchem_slice_grid will be able to filter on.
+    for token in snapshot_tokens:
+        _write_chem(case_dir, token)
     toml_text = (
         '\n'.join(['[params.case]'] + [f'{k} = {v!r}' for k, v in case_options.items()]) + '\n'
     )
@@ -190,14 +135,8 @@ def _build_grid_case(case_dir, case_options, snapshot_years):
 
 
 def test_offchem_read_grid_raises_when_folder_is_empty(tmp_path):
-    """offchem_read_grid raises an Exception when no case_* subfolders
-    are present in the target directory.
-
-    Edge: limit-input case for a freshly-scaffolded grid that has not
-    yet produced any case output. Discriminating: pin the exception
-    AND the exception message so a regression that returned empty
-    arrays silently would fail the pytest.raises block.
-    """
+    """offchem_read_grid raises when no case_* subfolders are present, rather
+    than returning empty arrays."""
     from proteus.utils.plot_offchem import offchem_read_grid
 
     with pytest.raises(Exception, match='no grid points were found'):
@@ -206,35 +145,15 @@ def test_offchem_read_grid_raises_when_folder_is_empty(tmp_path):
 
 
 def test_offchem_read_grid_aggregates_year_data_across_cases(tmp_path, monkeypatch):
-    """A grid with two case folders, each carrying two snapshot years,
-    must produce 2x2 years/data arrays and a length-2 opts array.
-
-    Discriminating: pin the shape AND the per-year content. A
-    regression that mis-ordered the years (sorted vs unsorted) or
-    that mixed cases would fail the per-case year list comparison.
-    """
-    import numpy as np
-
+    """Two cases with two snapshots each give 2x2 float years, sorted per case,
+    including a sub-year time, paired with the right case options."""
     from proteus.utils.plot_offchem import offchem_read_grid
 
-    # Two cases with the same two snapshot years.
-    _build_grid_case(
-        str(tmp_path / 'case_00'),
-        case_options={'name': 'alpha'},
-        snapshot_years=[100, 50],  # intentionally unsorted on disk
-    )
-    _build_grid_case(
-        str(tmp_path / 'case_01'),
-        case_options={'name': 'beta'},
-        snapshot_years=[200, 25],
-    )
-    # offchem_read_grid calls read_config which expects the full
-    # PROTEUS config structure. Stub it to return our minimal dict
-    # tree so the test does not depend on a full Config schema.
+    # Unsorted on disk; 0p500 is a sub-year time that an int parse would lose
+    _build_grid_case(str(tmp_path / 'case_00'), {'name': 'alpha'}, ['100p000', '0p500'])
+    _build_grid_case(str(tmp_path / 'case_01'), {'name': 'beta'}, ['200p250', '25p000'])
 
     def _fake_read_config(path):
-        # Return a (config, _) tuple where the first element is a
-        # plain dict (so dict(options[0]) works in the source).
         if 'case_00' in path:
             return ({'name': 'alpha'}, None)
         return ({'name': 'beta'}, None)
@@ -243,24 +162,20 @@ def test_offchem_read_grid_aggregates_year_data_across_cases(tmp_path, monkeypat
 
     years, opts, data = offchem_read_grid(str(tmp_path))
     assert years.shape == (2, 2)
-    assert opts.shape == (2,)
     assert data.shape == (2, 2)
-    # Years must be sorted per case despite the unsorted on-disk order.
+    assert years.dtype == np.float64
     np.testing.assert_array_equal(np.sort(years, axis=1), years)
-    # Discrimination: both case names must be present in opts (the
-    # glob ordering is not guaranteed, so we do not pin per-index).
-    # A regression that read the same case twice, or that dropped a
-    # case silently, would fail the set equality below.
-    names = {row['name'] for row in opts}
-    assert names == {'alpha', 'beta'}
-    # Per-case year sum: the case named 'alpha' has years [50, 100]
-    # (sum 150) and 'beta' has [25, 200] (sum 225). Pair each opts
-    # row with its years row and verify the per-case totals match.
-    # This catches a regression that joined the wrong case folder to
-    # the wrong opts dict.
-    expected_per_case = {'alpha': 50 + 100, 'beta': 25 + 200}
+    expected = {'alpha': [0.5, 100.0], 'beta': [25.0, 200.25]}
     for i, row in enumerate(opts):
-        assert int(years[i].sum()) == expected_per_case[row['name']]
+        np.testing.assert_allclose(years[i], expected[row['name']])
+        assert data[i][0]['year'] == pytest.approx(expected[row['name']][0])
+
+
+def test_vulcan_layers_helper_is_bottom_up():
+    """The shared NetCDF fixture builds a column with pressure falling upward."""
+    layers = vulcan_layers(P_b=1.0e8, P_t=1.0e2, nz=5)
+    assert np.all(np.diff(layers['p']) < 0)
+    assert layers['pl'][0] > layers['p'][0] > layers['pl'][1]
 
 
 def test_offchem_slice_grid_keeps_only_matching_grid_points():
