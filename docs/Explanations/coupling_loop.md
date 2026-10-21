@@ -195,32 +195,35 @@ low-entropy clamp of the table stay below $1$ up to $\eta = 0.15$. In the
 coupled runs below, trials reach the flat part only near the solidus, where the
 chord does not fire, and no step exceeds $\Delta T_\mathrm{allow}$.
 
-Across 2 coupled runs from $t = 0$ over 2 dummy-atmosphere configurations of a
-$1\,M_\oplus$ planet with the PALEOS $\mathrm{MgSiO}_3$ EOS and dummy star to
-$25\,\mathrm{kyr}$ at `top_cell_dt_rel_dT = top_cell_dt_rel_dT_solid = 0.08`
+Across coupled runs of 2 dummy-atmosphere configurations of a $1\,M_\oplus$
+planet with the PALEOS $\mathrm{MgSiO}_3$ EOS and dummy star to $25\,\mathrm{kyr}$
+at `top_cell_dt_rel_dT = top_cell_dt_rel_dT_solid = 0.08` and the Aragog defaults
 ($0.5\,\mathrm{au}$ with `surf_greyalbedo = 0.2`, and $0.7\,\mathrm{au}$ with
 `surf_greyalbedo = 0.0`), the maximum per-step $|\Delta T_\mathrm{surf}| /
 (\eta_\mathrm{eff} T_\mathrm{surf})$, with $T_\mathrm{surf}$ at step start, is
-between $0.68$ and $0.71$ at $0.5\,\mathrm{au}$ (over 5 round-off perturbed
-starts and 3 sets of module and data versions) and $0.69$ at $0.7\,\mathrm{au}$,
+between $0.68$ and $0.71$ at $0.5\,\mathrm{au}$ (8 runs: 5 starts perturbed at
+round-off level and resumed at $1.4\,\mathrm{yr}$, and 3 runs from $t = 0$ with
+other PROTEUS and module versions) and $0.69$ at $0.7\,\mathrm{au}$ (1 run from
+$t = 0$),
 with $0$ steps above $1$ and $0$ late drops (steps where $T_\mathrm{magma}$
 falls to the table floor near $302\,\mathrm{K}$). These runs take about
 $1850$ rows; with the option off, the same configurations take $50$ rows.
 With `atmos_clim.module = 'agni'` in place of the dummy atmosphere and every
 other setting of the $0.5\,\mathrm{au}$ configuration unchanged, the $0.08$ run
-reaches $25\,\mathrm{kyr}$ in $1357$ rows with a
-maximum per-step ratio of $0.47$, about $40\,\mathrm{yr}$ after the top cell
-crosses the liquidus near $1200\,\mathrm{yr}$, $0$ steps above $1$, and $0$
-late drops. With the option off, this configuration takes about $250$ rows and
-has $25$ to $31$ steps above $1$, the largest between $6$ and $10$; these counts
-change between module and data versions, and in one run $T_\mathrm{surf}$ falls
+reaches $25\,\mathrm{kyr}$ in $1357$ to $1360$ rows with a
+maximum per-step ratio of $0.47$ in the step that starts at $1241\,\mathrm{yr}$,
+$41$ to $62\,\mathrm{yr}$ after the top cell crosses the liquidus (between
+$1179$ and $1200\,\mathrm{yr}$), with $0$ steps above $1$ and $0$ late drops
+(2 runs of different code versions). With the option off, this configuration
+takes about $250$ rows and has $25$ to $31$ steps above $1$, the largest between
+$6$ and $10$; these counts differ between the 2 runs, and in one $T_\mathrm{surf}$ falls
 from $1373\,\mathrm{K}$ to the $302\,\mathrm{K}$ table floor in one
 $160\,\mathrm{yr}$ step.
 In an AGNI configuration with `surf_state = 'skin'` (and different albedos,
 Rayleigh scattering, observation pressure, and solver settings),
 $T_\mathrm{surf}$ is a skin temperature at $0.53$ to $0.94$ of
 $T_\mathrm{magma}$ in the $0.08$ run, which reaches $25\,\mathrm{kyr}$ in
-$1138$ rows; its largest per-step drop of $T_\mathrm{magma}$ is $0.73$ of the
+$1137$ to $1138$ rows; its largest per-step drop of $T_\mathrm{magma}$ is $0.73$ of the
 allowance $0.08\,T_\mathrm{surf}$, while its option-off twin drops to the table
 floor in one step.
 
@@ -229,7 +232,7 @@ $q = c_{p,\mathrm{chord}}\,\Delta T_\mathrm{allow}$ back to entropy at a liquid
 state just above the liquidus ($t = 531.5\,\mathrm{yr}$, from a separate run of the
 $0.5\,\mathrm{au}$ configuration from $t = 0$ with `top_cell_dt_rel_dT_solid = 0.02`,
 stopped at $600\,\mathrm{yr}$) and at the worst mushy
-step of each $25\,\mathrm{kyr}$ dummy-atmosphere run ($\phi_\mathrm{top} =
+step of 2 of these runs, 1 per configuration ($\phi_\mathrm{top} =
 0.957$, $\Phi_\mathrm{global} = 0.787$ in both; evaluated on the slice at
 the $531.5\,\mathrm{yr}$ top pressure), the linearized drop-to-allowance ratio
 with $\Delta S = q / T_\mathrm{top}$ is $0.786$ and $1.000$ (both run states)
