@@ -485,7 +485,6 @@ def test_cvode_factory_gives_the_jax_top_node_the_live_eos_bounds(tmp_path):
     """Each factory call builds the JAX mesh from the live numpy mesh, so a limited top node
     takes a new EOS entropy range in JAX as in numpy."""
     import aragog.mesh
-    from aragog.jax.phase import entropy_at_basic_nodes
     from aragog.parser import Parameters
 
     params = Parameters.from_file(
@@ -493,6 +492,8 @@ def test_cvode_factory_gives_the_jax_top_node_the_live_eos_bounds(tmp_path):
     )
     if not hasattr(params.boundary_conditions, 'top_node'):
         pytest.skip('the installed aragog has no top_node option')
+    from aragog.jax.phase import entropy_at_basic_nodes
+
     params.boundary_conditions.top_node = 'limited'
     params.mesh.number_of_nodes = 10
     mesh = aragog.mesh.Mesh(params)
