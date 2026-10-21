@@ -16,6 +16,7 @@ Invariants tested:
   - calc_surface_pressures: the result does not depend on the caller's RNG state
   - calc_surface_pressures: the caller's RNG stream is restored, also when CALLIOPE raises
   - calc_surface_pressures: the from_O_budget path gets the seed and leaves the global RNG alone
+  - calc_target_masses: gas_prs targets below outgas.T_floor equal those at T_floor
 
 Testing standards:
   - docs/How-to/testing.md
@@ -25,10 +26,14 @@ Testing standards:
 from __future__ import annotations
 
 from contextlib import nullcontext
+from functools import lru_cache
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 # calliope is an optional dependency; skip if not installed
 pytest.importorskip('calliope')
@@ -37,6 +42,7 @@ from proteus.outgas.calliope import (
     RANDOM_SEED,
     _resolve_element,
     calc_surface_pressures,
+    calc_target_masses,
     construct_guess,
     construct_options,
     flag_included_volatiles,
@@ -625,3 +631,59 @@ def test_calliope_cold_start_guess_draws_from_the_global_rng():
     assert first == again
     assert first != other
     assert all(p > 0.0 for p in first)
+
+
+@lru_cache(maxsize=1)
+def _gas_prs_config():
+    """input/dummy.toml with CALLIOPE outgassing from initial partial pressures."""
+    from proteus.config import read_config_object
+
+    config = read_config_object(str(Path(__file__).parents[2] / 'input' / 'dummy.toml'))
+    config.outgas.module = 'calliope'
+    config.planet.volatile_mode = 'gas_prs'
+    for gas, bar in (('H2O', 20.0), ('CO2', 30.0), ('N2', 1.0), ('S2', 1.0)):
+        setattr(config.planet.gas_prs, gas, bar)
+    return config
+
+
+def _targets(config, T_magma):
+    """H, C, N, S target masses [kg] from calc_target_masses at ``T_magma``."""
+    hf_row = dict(_HF_ROW, T_magma=T_magma)
+    calc_target_masses({}, config, hf_row)
+    return [hf_row[f'{e}_kg_total'] for e in ('H', 'C', 'N', 'S')]
+
+
+@pytest.mark.physics_invariant
+def test_gas_prs_targets_below_the_floor_are_the_targets_at_the_floor():
+    """The target masses take the outgassing temperature floor that the solve takes:
+    at 600 K, below the 700 K default, they equal the targets at 700 K."""
+    config = _gas_prs_config()
+    assert config.outgas.T_floor == 700.0
+    floor = _targets(config, 700.0)
+    hf_row = dict(_HF_ROW, T_magma=600.0)
+    calc_target_masses({}, config, hf_row)
+    assert [hf_row[f'{e}_kg_total'] for e in ('H', 'C', 'N', 'S')] == floor
+    # The clip applies to the CALLIOPE input only; the planet keeps its temperature.
+    assert hf_row['T_magma'] == 600.0
+    # Scale guard: the hydrogen target of 20 bar of H2O is far below the mantle mass.
+    assert 0.0 < floor[0] < 1e-3 * _HF_ROW['M_mantle']
+
+
+@pytest.mark.physics_invariant
+@settings(max_examples=40, deadline=None)
+@given(
+    frac=st.floats(min_value=1e-6, max_value=1.0, exclude_max=True),
+    above=st.floats(0.0, 4300.0),
+)
+def test_gas_prs_targets_follow_the_floor_over_the_temperature_domain(frac, above):
+    """Below T_floor every temperature gives the targets at T_floor; at and above it
+    the targets are those of CALLIOPE at that temperature, unclipped."""
+    from calliope.solve import get_target_from_pressures
+
+    config = _gas_prs_config()
+    T_floor = config.outgas.T_floor
+    floor = _targets(config, T_floor)
+    assert _targets(config, frac * T_floor) == floor
+    T = T_floor + above
+    direct = get_target_from_pressures(construct_options({}, config, dict(_HF_ROW, T_magma=T)))
+    assert _targets(config, T) == [direct[e] for e in ('H', 'C', 'N', 'S')]
