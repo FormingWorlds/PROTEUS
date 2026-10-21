@@ -552,6 +552,12 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
     gravity = float(hf_row.get('gravity', 9.81))
     area = 4.0 * np.pi * R_int**2
 
+    # A species outside the solve reports 0, as in CALLIOPE; the loops below fill the others
+    for proteus_name in _atm_gas_species:
+        if proteus_name in gas_list:
+            hf_row[f'{proteus_name}_bar'] = 0.0
+            hf_row[f'{proteus_name}_kg_atm'] = 0.0
+
     P_total = 0.0
     for atm_name, p_bar in quick_look.items():
         proteus_name = _reverse_map.get(atm_name.replace('_g', ''))
@@ -731,9 +737,8 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
                 hf_row.get(f'{proteus_name}_kg_total', 0.0)
             ) / eval_gas_mmw(proteus_name)
         else:
-            # Reactive species not present in the atmodeller output (e.g.
-            # excluded from the solve): keep the pressure-derived atmospheric
-            # mass from the first loop and treat it as gas-only.
+            # Reactive species without a mass output: the atmospheric mass of the
+            # first loop (0 outside the solve) is gas-only.
             hf_row[f'{proteus_name}_kg_liquid'] = (
                 max(0.0, dissolved_kg) if dissolved_kg is not None else 0.0
             )
