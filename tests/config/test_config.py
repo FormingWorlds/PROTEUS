@@ -8,6 +8,7 @@ structure, speed, and physics validity.
 
 from __future__ import annotations
 
+import copy
 import os
 from contextlib import ExitStack
 from itertools import chain
@@ -294,6 +295,46 @@ def test_read_config_object_names_the_list_index_of_a_bad_element(tmp_path):
         row.startswith('accretion.morrigan.masses[1]: could not convert string')
         for row in lines
     ), lines
+
+
+@pytest.mark.unit
+def test_structure_config_names_the_path_of_any_bad_value():
+    """Any bad value of a nested choice or a positive float gives a line with its key path."""
+    hypothesis = pytest.importorskip('hypothesis')
+    st = pytest.importorskip('hypothesis.strategies')
+    raw = read_config(PROTEUS_ROOT / 'input' / 'dummy.toml')
+    scalars = st.one_of(
+        st.text().filter(lambda v: v not in ('cvode', 'radau', 'bdf')),
+        st.integers(),
+        st.floats(allow_nan=True, allow_infinity=True),
+        st.booleans(),
+        st.lists(st.integers(), max_size=2),
+    )
+    bad_mass = st.one_of(st.floats(max_value=0.0), st.just(float('nan')))
+
+    def _lines(section, key, value):
+        cfg = copy.deepcopy(raw)
+        node = cfg
+        for part in section:
+            node = node.setdefault(part, {})
+        node[key] = value
+        with pytest.raises(ValueError) as excinfo:
+            structure_config(cfg, 'bad.toml')
+        return [row.strip() for row in str(excinfo.value).splitlines()]
+
+    @hypothesis.settings(max_examples=150, deadline=None)
+    @hypothesis.given(scalars, bad_mass)
+    def _check(method, mass):
+        lines = _lines(['interior_energetics', 'aragog'], 'solver_method', method)
+        assert any(
+            row.startswith('interior_energetics.aragog.solver_method: ') for row in lines
+        )
+        assert any(
+            row.startswith('planet.mass_tot: ') for row in _lines(['planet'], 'mass_tot', mass)
+        )
+
+    _check()
+    assert structure_config(copy.deepcopy(raw), 'dummy.toml').planet.mass_tot > 0
 
 
 @pytest.mark.unit
