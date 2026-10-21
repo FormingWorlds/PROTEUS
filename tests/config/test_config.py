@@ -222,6 +222,13 @@ def test_read_config_object_names_the_unknown_key_before_a_bad_value(tmp_path):
         read_config_object(_write_variant(tmp_path, 'value_only.toml', _value_only))
 
 
+def _set_path(node, keys, value):
+    """Set *value* at the nested *keys* of the raw config dict *node*."""
+    for key in keys[:-1]:
+        node = node.setdefault(key, {})
+    node[keys[-1]] = value
+
+
 @pytest.mark.unit
 @pytest.mark.parametrize(
     ('keys', 'value', 'line'),
@@ -245,15 +252,10 @@ def test_read_config_object_names_the_unknown_key_before_a_bad_value(tmp_path):
 )
 def test_read_config_object_names_the_key_path_and_reason(tmp_path, keys, value, line):
     """A bad value at any depth is reported with its full key path and the reason."""
-
-    def _bad(raw):
-        node = raw
-        for key in keys[:-1]:
-            node = node.setdefault(key, {})
-        node[keys[-1]] = value
-
     with pytest.raises(ValueError) as excinfo:
-        read_config_object(_write_variant(tmp_path, 'bad.toml', _bad))
+        read_config_object(
+            _write_variant(tmp_path, 'bad.toml', lambda raw: _set_path(raw, keys, value))
+        )
     lines = str(excinfo.value).splitlines()
     assert any(row.strip().startswith(line) for row in lines), lines
     assert 'sub-exception' not in str(excinfo.value)
@@ -262,55 +264,96 @@ def test_read_config_object_names_the_key_path_and_reason(tmp_path, keys, value,
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
-    ('change', 'line', 'not_line'),
+    ('changes', 'line', 'not_line'),
     [
         (
-            {'accretion': {'module': 'morrigan'}, 'outgas': {'vapourise': True}},
+            [(['accretion', 'module'], 'morrigan'), (['outgas', 'vapourise'], True)],
             "accretion.module = 'morrigan' cannot run with outgas.vapourise = true",
             'config_version:',
         ),
         (
-            {'atmos_chem': {'times': [1.0, 'a']}},
+            [(['atmos_clim', 'p_obs'], -1.0)],
+            'atmos_clim: `p_obs` must be > 0',
+            'atmos_clim.p_obs:',
+        ),
+        (
+            [(['atmos_chem', 'times'], [1.0, 'a'])],
             'atmos_chem.times: could not convert string to float',
             'atmos_chem: ',
         ),
         (
-            {'atmos_chem': {'times': 'foo'}},
+            [(['atmos_chem', 'times'], 'foo')],
             "atmos_chem.times must be 'end', 'all' or a list of times",
             'atmos_chem.times: atmos_chem.times',
         ),
         (
-            {'params': {'out': {'plot_mod': -1}}},
-            "params.out: Parameter 'plot_mod' must be None or greater than 0.",
-            'params.out.plot_mod: ',
+            [(['params', 'out', 'plot_mod'], -1)],
+            "params.out.plot_mod: Parameter 'plot_mod' must be None or greater than 0.",
+            'params.out: ',
+        ),
+        (
+            [(['atmos_clim', 'overlap_method'], 'zz')],
+            'atmos_clim.overlap_method: Overlap type must be one of',
+            'atmos_clim: ',
         ),
     ],
-    ids=['cross_field', 'converter', 'path_in_reason', 'own_validator'],
+    ids=[
+        'cross_field',
+        'reads_instance',
+        'converter',
+        'path_in_reason',
+        'own_validator',
+        'own_validator_no_name',
+    ],
 )
 def test_read_config_object_names_no_field_a_validator_does_not_check_alone(
-    tmp_path, change, line, not_line
+    tmp_path, changes, line, not_line
 ):
-    """A field name appears only for a converter or an attrs built-in validator of that field.
+    """A field name appears only when the converter or validator that raised saw that field alone.
 
-    A PROTEUS validator can compare several fields, so its line names the section, and a
-    reason that already starts with the key path gets no second copy of it.
+    A validator that reads the instance can compare several fields, so its line names the
+    section, and a reason that already starts with the key path gets no second copy of it.
     """
 
-    def _merge(node, update):
-        for key, value in update.items():
-            if isinstance(value, dict):
-                _merge(node.setdefault(key, {}), value)
-            else:
-                node[key] = value
+    def _apply(raw):
+        for keys, value in changes:
+            _set_path(raw, keys, value)
 
     with pytest.raises(ValueError) as excinfo:
-        read_config_object(
-            _write_variant(tmp_path, 'bad.toml', lambda raw: _merge(raw, change))
-        )
+        read_config_object(_write_variant(tmp_path, 'bad.toml', _apply))
     lines = [row.strip() for row in str(excinfo.value).splitlines()]
     assert any(row.startswith(line) for row in lines), lines
     assert not any(row.startswith(not_line) for row in lines), lines
     assert 'Attribute(' not in str(excinfo.value)
+
+
+@pytest.mark.unit
+def test_structure_config_names_the_field_without_cached_generated_source():
+    """The field name does not depend on the attrs-generated source in linecache."""
+    import linecache
+
+    raw = read_config(PROTEUS_ROOT / 'input' / 'dummy.toml')
+    _set_path(raw, ['interior_energetics', 'aragog', 'solver_method'], 'rk4')
+    _set_path(raw, ['atmos_chem', 'times'], [1.0, 'a'])
+    linecache.clearcache()
+    with pytest.raises(ValueError) as excinfo:
+        structure_config(raw, 'bad.toml')
+    lines = [row.strip() for row in str(excinfo.value).splitlines()]
+    assert any(row.startswith('interior_energetics.aragog.solver_method: ') for row in lines)
+    assert any(row.startswith('atmos_chem.times: ') for row in lines), lines
+
+
+@pytest.mark.unit
+def test_error_lines_keeps_the_path_of_a_reason_that_only_shares_its_prefix():
+    """A reason whose first word merely starts with the section name still gets the path."""
+    import cattrs
+
+    from proteus.config import _error_lines
+
+    group = cattrs.errors.ClassValidationError('x', [ValueError('stardust is bad')], object)
+    assert _error_lines(group, 'star') == ['star: stardust is bad']
+    nested = cattrs.errors.ClassValidationError('x', [ValueError('star.mors is bad')], object)
+    assert _error_lines(nested, 'star') == ['star.mors is bad']
 
 
 @pytest.mark.unit
@@ -348,7 +391,7 @@ def test_read_config_object_names_the_list_index_of_a_bad_element(tmp_path):
 
 @pytest.mark.unit
 def test_structure_config_names_the_path_of_any_bad_value():
-    """Any bad value of a nested choice or a positive float gives a line with its key path."""
+    """Any bad value of a nested choice, a positive float or an own-validator field gives one line with its key path."""
     hypothesis = pytest.importorskip('hypothesis')
     st = pytest.importorskip('hypothesis.strategies')
     raw = read_config(PROTEUS_ROOT / 'input' / 'dummy.toml')
@@ -360,27 +403,22 @@ def test_structure_config_names_the_path_of_any_bad_value():
         st.lists(st.integers(), max_size=2),
     )
     bad_mass = st.one_of(st.floats(max_value=0.0), st.just(float('nan')))
+    bad_period = st.floats(max_value=0.0, allow_nan=False)
 
-    def _lines(section, key, value):
+    def _count(keys, value):
         cfg = copy.deepcopy(raw)
-        node = cfg
-        for part in section:
-            node = node.setdefault(part, {})
-        node[key] = value
+        _set_path(cfg, keys, value)
         with pytest.raises(ValueError) as excinfo:
             structure_config(cfg, 'bad.toml')
-        return [row.strip() for row in str(excinfo.value).splitlines()]
+        rows = [row.strip() for row in str(excinfo.value).splitlines()]
+        return sum(row.startswith('.'.join(keys) + ': ') for row in rows)
 
-    @hypothesis.settings(max_examples=150, deadline=None)
-    @hypothesis.given(scalars, bad_mass)
-    def _check(method, mass):
-        lines = _lines(['interior_energetics', 'aragog'], 'solver_method', method)
-        assert any(
-            row.startswith('interior_energetics.aragog.solver_method: ') for row in lines
-        )
-        assert any(
-            row.startswith('planet.mass_tot: ') for row in _lines(['planet'], 'mass_tot', mass)
-        )
+    @hypothesis.settings(max_examples=150, deadline=None, derandomize=True)
+    @hypothesis.given(scalars, bad_mass, bad_period)
+    def _check(method, mass, period):
+        assert _count(['interior_energetics', 'aragog', 'solver_method'], method) == 1
+        assert _count(['planet', 'mass_tot'], mass) == 1
+        assert _count(['orbit', 'axial_period'], period) == 1
 
     _check()
     assert structure_config(copy.deepcopy(raw), 'dummy.toml').planet.mass_tot > 0
