@@ -25,15 +25,15 @@ import pytest
 pytest.importorskip('calliope')
 pytest.importorskip('hypothesis')
 
-from hypothesis import given, settings  # noqa: E402
-from hypothesis import strategies as st  # noqa: E402
+from hypothesis import example, given, settings
+from hypothesis import strategies as st
 
-from proteus.outgas.calliope import (  # noqa: E402
+from proteus.outgas.calliope import (
     calc_surface_pressures,
     calc_target_masses,
     construct_options,
 )
-from tests.outgas._calliope_helpers import (  # noqa: E402
+from tests.outgas._calliope_helpers import (
     _HF_ROW,
     _element_mode_config,
     _surface_pressure_hf_row,
@@ -80,6 +80,7 @@ def test_gas_prs_targets_below_the_floor_are_the_targets_at_the_floor():
 
 @pytest.mark.physics_invariant
 @settings(max_examples=40, deadline=None)
+@example(frac=0.5, above=4300.0)
 @given(
     frac=st.floats(min_value=1e-6, max_value=1.0, exclude_max=True),
     above=st.floats(0.0, 4300.0),
@@ -112,7 +113,6 @@ def test_both_solves_take_the_floored_temperature(caplog, source, solver):
     """Both CALLIOPE entry points get T_floor for a T_magma below it, with one clip warning."""
     config = _element_mode_config({})
     config.planet.fO2_source = source
-    config.outgas.mass_thresh = 1.0e16
     T_floor = config.outgas.T_floor
     hf_row = dict(_surface_pressure_hf_row(), T_magma=T_floor - 100)
     result = {'fO2_shift_derived': 0.0, 'O_res': 0.0}
@@ -137,5 +137,7 @@ def test_a_target_call_warns_only_where_the_floor_changes_the_targets(caplog, mo
         with caplog.at_level('WARNING', logger='fwl.proteus.outgas.calliope'):
             _targets(config, T)
         assert caplog.text.count(CLIP) == n
-    # The floor sets the targets in both modes; only gas_prs targets would change without it.
-    assert _targets(config, T_floor - 100) == _targets(config, T_floor)
+    if mode == 'gas_prs':
+        assert _targets(config, T_floor - 100) == _targets(config, T_floor)
+    else:  # the premise of no warning: elements targets do not depend on T_magma
+        assert _targets(config, 2 * T_floor) == _targets(config, T_floor)
