@@ -1746,11 +1746,11 @@ def test_estimate_tau_drain_nan_or_invalid_state_logs_once_per_run_and_returns_i
 @pytest.mark.unit
 @pytest.mark.physics_invariant
 def test_estimate_tau_drain_cp_eff_choice_at_phi_0p60_boundary():
-    """Above _TAU_DRAIN_PHI_GATE = 0.60, cp_eff uses the live cp_top; at or below 0.60,
+    """Above _TAU_DRAIN_PHI_SOLID_CP = 0.60, cp_eff uses the live cp_top; at or below 0.60,
     it uses min(cp_top, cp_solid) to cap the linear solid-liquid heat-capacity blend at
     the solid-phase value across the lower mushy zone."""
     from proteus.interior_energetics.timestep import (
-        _TAU_DRAIN_PHI_GATE,
+        _TAU_DRAIN_PHI_SOLID_CP,
         _estimate_tau_drain,
     )
 
@@ -1773,7 +1773,7 @@ def test_estimate_tau_drain_cp_eff_choice_at_phi_0p60_boundary():
     tau_high = _estimate_tau_drain(cfg_high, row, io_high)
     tau_cp_lt_solid = _estimate_tau_drain(cfg_cp_lt_solid, row, io_cp_lt_solid)
 
-    assert _TAU_DRAIN_PHI_GATE == pytest.approx(0.60, rel=1e-12)
+    assert _TAU_DRAIN_PHI_SOLID_CP == pytest.approx(0.60, rel=1e-12)
     assert tau_low == pytest.approx(tau_edge, rel=1e-12)
     assert tau_high == pytest.approx(2.0 * tau_low, rel=1e-12)
     assert tau_cp_lt_solid == pytest.approx(0.75 * tau_low, rel=1e-12)

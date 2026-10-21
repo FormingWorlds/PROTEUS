@@ -19,7 +19,7 @@ log = logging.getLogger('fwl.' + __name__)
 # Constants
 SMALL = 1e-8  # Small number
 _TAU_DRAIN_F_MIN = 1.0  # Minimum surface flux [W m^-2] for top-cell drain timescale
-_TAU_DRAIN_PHI_GATE = 0.60  # Melt-fraction gate below which solid heat capacity caps cp_eff
+_TAU_DRAIN_PHI_SOLID_CP = 0.60  # Melt fraction at or below which cp_eff = min(cp_top, cp_solid)
 _TAU_DRAIN_PHI_RAMP = 0.40  # Melt-fraction upper endpoint of the optional solid rel_dT ramp
 # Entropy offset [J/(kg K)] above S_min for the solid heat-capacity probe and lookahead floor
 _TAU_DRAIN_SOLID_S_OFFSET = 300.0
@@ -271,7 +271,7 @@ def _estimate_tau_drain(config: Config, hf_row: dict, interior_o) -> float:
         )
 
     phi_top = max(0.0, phi_raw)
-    cp_eff = min(cp_top, cp_solid) if phi_top <= _TAU_DRAIN_PHI_GATE else cp_top
+    cp_eff = min(cp_top, cp_solid) if phi_top <= _TAU_DRAIN_PHI_SOLID_CP else cp_top
 
     aragog_cfg = config.interior_energetics.aragog
     eta_melt = float(aragog_cfg.top_cell_dt_rel_dT)
