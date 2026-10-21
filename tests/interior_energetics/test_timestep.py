@@ -2316,6 +2316,38 @@ def test_next_step_top_cell_dt_limit_on_caps_dtswitch_below_dtminimum():
     assert getattr(io_snap, '_tau_drain_cap_valid', None) is False
 
 
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_next_step_escape_floor_above_tau_drain_clears_cap_flag():
+    """An escape step floor raised above tau_drain sets dt to the floor and the flag to False."""
+    from proteus.interior_energetics.timestep import _estimate_tau_drain, next_step
+
+    cfg, io, _ = _make_tau_drain_fixture(
+        phi_top=0.30,
+        dm_top=2.0e21,
+        cp_live=1500.0,
+        cp_solid_at_1800=1200.0,
+        top_cell_dt_limit=True,
+    )
+    cfg.params.dt.minimum = 100.0
+    hf_all = _make_hf_all(n_rows=10, dt_prev=100.0)
+    hf_row = {
+        'Time': float(hf_all['Time'].iloc[-1]),
+        'Phi_global': 0.30,
+        'F_atm': 800.0,
+        'T_surf': 1400.0,
+    }
+    tau = _estimate_tau_drain(cfg, hf_row, io)
+    assert 0.0 < tau < 0.25 * cfg.params.dt.minimum
+
+    cfg.escape.step_dt_floor_frac = 3.0 * tau / cfg.params.dt.minimum
+    io._tau_drain_cap_valid = True
+    dt = next_step(cfg, {}, hf_row, hf_all, 1.0, interior_o=io)
+
+    assert dt == pytest.approx(3.0 * tau, rel=1e-12)
+    assert io._tau_drain_cap_valid is False
+
+
 def _load_paleos_ptop_531p546_slice_fixture() -> dict:
     """Load the committed 1D PALEOS EOS slice fixture at P_top = 4.455575e8 Pa."""
     import json
