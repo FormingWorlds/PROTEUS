@@ -292,7 +292,7 @@ def test_read_config_object_names_the_key_path_and_reason(tmp_path, keys, value,
         ),
         (
             [(['params', 'out', 'plot_mod'], -1)],
-            "params.out.plot_mod: Parameter 'plot_mod' must be None or greater than 0.",
+            "params.out.plot_mod: Parameter 'plot_mod' must be None or at least 0.",
             'params.out: ',
         ),
         (
@@ -380,6 +380,88 @@ def test_error_lines_names_no_field_for_a_post_init_error_without_validators():
     with pytest.raises(cattrs.errors.ClassValidationError) as excinfo:
         cattrs.structure({'sec': {'x': 2}}, _Root)
     assert _error_lines(excinfo.value) == ['sec: x and y disagree']
+
+
+def _section_classes():
+    """Sections whose __attrs_post_init__ raises after validators or converters ran."""
+
+    @attrs.define
+    class _Validated:
+        x = attrs.field(default=1, validator=attrs.validators.instance_of(int))
+        y = attrs.field(default=2, validator=attrs.validators.instance_of(int))
+
+        def __attrs_post_init__(self):
+            raise ValueError('bad combination')
+
+    @attrs.define
+    class _Converted:
+        a = attrs.field(default=1, converter=int)
+        b = attrs.field(default=2, converter=int)
+
+        def __attrs_post_init__(self):
+            raise ValueError('a and b clash')
+
+    @attrs.define
+    class _Reading:
+        x = attrs.field(default=1, validator=attrs.validators.instance_of(int))
+        y = attrs.field(default=2, validator=attrs.validators.instance_of(int))
+
+        def __attrs_post_init__(self):
+            if self.x < self.y:
+                raise ValueError('x below y')
+
+    return {'validated': _Validated, 'converted': _Converted, 'reading': _Reading}
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('shape', 'reason'),
+    [
+        ('validated', 'bad combination'),
+        ('converted', 'a and b clash'),
+        ('reading', 'x below y'),
+    ],
+)
+def test_error_lines_names_no_field_for_a_post_init_error(shape, reason):
+    """An error from __attrs_post_init__ concerns the section, not the field checked last,
+    whether the post-init reads self or not and whether the fields have validators or
+    converters."""
+    import cattrs
+
+    from proteus.config import _error_lines
+
+    section = _section_classes()[shape]
+    root = attrs.make_class('_Root', {'sec': attrs.field(type=section)})
+    with pytest.raises(cattrs.errors.ClassValidationError) as excinfo:
+        cattrs.structure({'sec': {}}, root)
+    assert _error_lines(excinfo.value) == [f'sec: {reason}']
+
+
+@pytest.mark.unit
+def test_error_lines_treats_a_validator_beside_the_attr_package_as_a_proteus_one():
+    """A validator from a folder whose name only starts with the attr package folder, such as
+    attrs/, is not an attrs built-in: it reads the instance, so the line names the section."""
+    import os
+
+    import attr
+    import cattrs
+
+    from proteus.config import _error_lines
+
+    src = 'def cross(instance, attribute, value):\n    if value > instance.limit:\n        raise ValueError("value above limit")\n'
+    ns = {}
+    exec(compile(src, os.path.dirname(attr.__file__) + 's/cross.py', 'exec'), ns)  # noqa: S102
+
+    @attrs.define
+    class _Section:
+        limit = attrs.field(default=1)
+        value = attrs.field(default=0, validator=ns['cross'])
+
+    root = attrs.make_class('_Root', {'sec': attrs.field(type=_Section)})
+    with pytest.raises(cattrs.errors.ClassValidationError) as excinfo:
+        cattrs.structure({'sec': {'value': 5}}, root)
+    assert _error_lines(excinfo.value) == ['sec: value above limit']
+    assert os.path.isdir(os.path.dirname(attr.__file__) + 's')
 
 
 @pytest.mark.unit
@@ -2314,7 +2396,7 @@ def test_params_valid_mod_negative():
     from proteus.config._params import valid_mod
 
     instance = SimpleNamespace()
-    with pytest.raises(ValueError, match="'plot_mod' must be None or greater than 0"):
+    with pytest.raises(ValueError, match="'plot_mod' must be None or at least 0"):
         valid_mod(instance, SimpleNamespace(name='plot_mod'), -1)
 
     # Discrimination: a regression that mishandled the boundary (rejecting 0
