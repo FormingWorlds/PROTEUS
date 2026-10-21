@@ -687,3 +687,17 @@ def test_gas_prs_targets_follow_the_floor_over_the_temperature_domain(frac, abov
     T = T_floor + above
     direct = get_target_from_pressures(construct_options({}, config, dict(_HF_ROW, T_magma=T)))
     assert _targets(config, T) == [direct[e] for e in ('H', 'C', 'N', 'S')]
+
+
+def test_construct_options_warns_once_per_call_below_the_floor(caplog):
+    """One clip warning per call below T_floor, none at it."""
+    config = _gas_prs_config()
+    for T, n in ((600.0, 1), (700.0, 0)):
+        caplog.clear()
+        with caplog.at_level('WARNING', logger='fwl.proteus.outgas.calliope'):
+            opts = construct_options({}, config, dict(_HF_ROW, T_magma=T))
+        clips = [
+            r for r in caplog.records if 'temperature clipped to 700.0 K' in r.getMessage()
+        ]
+        assert len(clips) == n
+        assert opts['T_magma'] == 700.0
