@@ -78,7 +78,7 @@ def RunDummyAtm(dirs: dict, config: Config, hf_row: dict):
             hf_row['F_ins'] * (1.0 - albedo_pl) * inst_sf * np.cos(zenith_angle * np.pi / 180.0)
         )
 
-        # surface reflection; the net flux then absorbs (1 - albedo_s) fl_D_SW
+        # surface reflection; the surface absorbs (1 - albedo_s) fl_D_SW
         fl_U_SW = fl_D_SW * albedo_s
 
         # net flux at surface

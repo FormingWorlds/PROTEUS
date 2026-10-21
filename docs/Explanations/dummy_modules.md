@@ -84,9 +84,12 @@ zenith angle `orbit.zenith_angle`. The surface reflects
 $\alpha_s F_\downarrow$ (`atmos_clim.surf_greyalbedo`), so the net upward
 flux at the surface is
 
-$$F_\mathrm{atm} = F_\mathrm{OLR} - (1 - \alpha_s)\, F_\downarrow$$
+$$F_\mathrm{atm} = F_\mathrm{OLR} - (1 - \alpha_s)\, F_\downarrow,$$
 
-and the reported albedo is $\alpha_s$. The transit radius
+with the surface emitting as a black body. With `planet.prevent_warming` the
+net flux is held at $10^{-8}\,\mathrm{W\,m^{-2}}$ or above. The reported albedo
+is the surface albedo $\alpha_s$, without $\alpha_\mathrm{pl}$, and 0 when no
+shortwave reaches the surface. The transit radius
 is estimated from a single scale height above the surface.
 
 An alternative **fixed-flux mode** (`dummy.fixed_flux > 0`) bypasses
