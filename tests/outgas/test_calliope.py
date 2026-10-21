@@ -665,8 +665,8 @@ def test_gas_prs_targets_below_the_floor_are_the_targets_at_the_floor():
     assert [hf_row[f'{e}_kg_total'] for e in ('H', 'C', 'N', 'S')] == floor
     # The clip applies to the CALLIOPE input only; the planet keeps its temperature.
     assert hf_row['T_magma'] == 600.0
-    # Scale guard: the hydrogen target of 20 bar of H2O is far below the mantle mass.
-    assert 0.0 < floor[0] < 1e-3 * _HF_ROW['M_mantle']
+    # The targets depend on T_magma above the floor, so the comparison can fail.
+    assert _targets(config, 1500.0) != floor
 
 
 @pytest.mark.physics_invariant

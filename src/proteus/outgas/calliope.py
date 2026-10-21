@@ -58,8 +58,10 @@ def construct_options(dirs: dict, config: Config, hf_row: dict):
     else:
         solvevol_inp['Phi_global'] = 0.0
 
-    # Surface properties
-    solvevol_inp['T_magma'] = hf_row['T_magma']
+    # Surface properties; the target masses and the solve both use the floored temperature
+    solvevol_inp['T_magma'] = max(hf_row['T_magma'], config.outgas.T_floor)
+    if hf_row['T_magma'] < config.outgas.T_floor:
+        log.warning('Outgassing temperature clipped to %.1f K' % solvevol_inp['T_magma'])
 
     solvevol_inp['fO2_shift_IW'] = config.outgas.fO2_shift_IW
 
@@ -376,11 +378,6 @@ def calc_surface_pressures(dirs: dict, config: Config, hf_row: dict):
     # Set included
     for s in vol_list:
         opts[f'{s}_included'] = int(p_incl[s])
-
-    # Do not allow low temperatures
-    if opts['T_magma'] < config.outgas.T_floor:
-        opts['T_magma'] = config.outgas.T_floor
-        log.warning('Outgassing temperature clipped to %.1f K' % opts['T_magma'])
 
     # The caller's global RNG state is handed back after the call (not thread-safe).
     state = np.random.get_state()
