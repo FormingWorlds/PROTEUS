@@ -687,9 +687,8 @@ def test_mol_columns_written_across_solve_noble_and_excluded_species():
       atmospheric and dissolved moles are zero, and its total moles are
       recovered from the escape-owned ``He_kg_total`` budget via the element
       molar mass (the species and the element are the same monatomic entity).
-    * NH3 is a reactive species excluded from the solve entirely: its moles
-      are derived from its kg values via its own molar mass, matching the
-      convention used when no native mole count is available.
+    * NH3 is a reactive species outside the solve: its mass from an earlier call
+      is cleared, so all its mole columns are zero.
     """
     pytest.importorskip('atmodeller')
     config = _make_user_constant_config(0.0)
@@ -745,14 +744,11 @@ def test_mol_columns_written_across_solve_noble_and_excluded_species():
     assert hf_row['He_mol_total'] == pytest.approx(he_kg_total / eval_gas_mmw('He'), rel=1e-9)
     assert hf_row['He_mol_solid'] == 0.0
 
-    # NH3: reactive species excluded from the solve. Moles are derived from
-    # its kg values via its own molar mass; it has no dissolved kg here, so
-    # only the atmospheric and total moles are non-zero.
-    nh3_mmw = eval_gas_mmw('NH3')
-    assert hf_row['NH3_mol_liquid'] == 0.0
-    assert hf_row['NH3_mol_atm'] == pytest.approx(nh3_kg_atm / nh3_mmw, rel=1e-9)
-    assert hf_row['NH3_mol_total'] == pytest.approx(nh3_kg_atm / nh3_mmw, rel=1e-9)
-    assert hf_row['NH3_mol_solid'] == 0.0
+    # NH3: reactive species outside the solve. Its mass carried from an earlier
+    # call is cleared, so every mole column is zero, as CALLIOPE reports it.
+    assert hf_row['NH3_kg_atm'] == 0.0
+    for col in ('liquid', 'atm', 'total', 'solid'):
+        assert hf_row[f'NH3_mol_{col}'] == 0.0
 
 
 @pytest.mark.physics_invariant
@@ -805,3 +801,46 @@ def test_mol_columns_derived_from_kg_when_solve_omits_mole_count():
     assert hf_row['CO2_mol_atm'] == pytest.approx(co2_gas_mass / co2_mmw, rel=1e-9)
     assert hf_row['CO2_mol_total'] == pytest.approx(co2_total_mass / co2_mmw, rel=1e-9)
     assert hf_row['CO2_mol_solid'] == 0.0
+
+
+_CALLIOPE_SPECIES_FIELDS = ('bar', 'vmr', 'kg_atm', 'kg_liquid', 'kg_solid', 'kg_total',
+                            'mol_atm', 'mol_liquid', 'mol_solid', 'mol_total')  # fmt: skip
+
+
+@pytest.mark.physics_invariant
+def test_a_species_that_leaves_the_solve_reports_zero_in_every_field():
+    """N2 and NH3 carried from an earlier call with N now below mass_thresh leave the
+    solve: every species field CALLIOPE zero-initialises is 0, the N atmosphere mass is
+    0, the mixing ratios sum to 1 and the partial pressures to P_surf."""
+    pytest.importorskip('atmodeller')
+    config = _make_user_constant_config(0.0)
+    hf_row = _hf_row_with_HS_budget()
+    for sp, bar, kg in (('N2', 2.0e-8, 1.6e11), ('NH3', 2.3e-3, 1.1e16)):
+        hf_row.update({f'{sp}_bar': bar, f'{sp}_vmr': bar / 40.0, f'{sp}_kg_atm': kg,
+                       f'{sp}_kg_total': kg, f'{sp}_mol_atm': kg / 0.017,
+                       f'{sp}_mol_total': kg / 0.017})  # fmt: skip
+    hf_row['N_kg_atm'] = 8.8e15
+    out, _ = _build_conserving_output(
+        {'H2O': ('H', _H_BUDGET, 0.5), 'S2': ('S', _S_BUDGET, 0.5)}
+    )
+    fake_model = MagicMock()
+    fake_model.output = out
+
+    from proteus.outgas.atmodeller import _MODEL_CACHE
+
+    _MODEL_CACHE.clear()
+    with patch('atmodeller.EquilibriumModel', return_value=fake_model):
+        calc_surface_pressures_atmodeller({'output': '/tmp/test'}, config, hf_row)
+    _MODEL_CACHE.clear()
+
+    stale = {
+        f'{sp}_{f}': hf_row[f'{sp}_{f}']
+        for sp in ('N2', 'NH3')
+        for f in _CALLIOPE_SPECIES_FIELDS
+    }
+    assert stale == dict.fromkeys(stale, 0.0)
+    assert hf_row['N_kg_atm'] == 0.0
+    assert sum(hf_row[f'{s}_vmr'] for s in gas_list) == pytest.approx(1.0, rel=1e-12)
+    assert sum(hf_row[f'{s}_bar'] for s in gas_list) == pytest.approx(
+        hf_row['P_surf'], rel=1e-12
+    )
