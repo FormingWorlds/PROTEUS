@@ -363,6 +363,26 @@ def test_reads_instance_sees_a_read_inside_a_generator_expression():
 
 
 @pytest.mark.unit
+def test_error_lines_names_no_field_for_a_post_init_error_without_validators():
+    """An error from __attrs_post_init__ of a class with no validator gives the section path."""
+    import cattrs
+
+    from proteus.config import _error_lines
+
+    @attrs.define
+    class _Section:
+        x: int = 1
+
+        def __attrs_post_init__(self):
+            raise ValueError('x and y disagree')
+
+    _Root = attrs.make_class('_Root', {'sec': attrs.field(type=_Section)})
+    with pytest.raises(cattrs.errors.ClassValidationError) as excinfo:
+        cattrs.structure({'sec': {'x': 2}}, _Root)
+    assert _error_lines(excinfo.value) == ['sec: x and y disagree']
+
+
+@pytest.mark.unit
 def test_error_lines_keeps_the_path_of_a_reason_that_only_shares_its_prefix():
     """A reason whose first word merely starts with the section name still gets the path."""
     import cattrs
@@ -373,6 +393,8 @@ def test_error_lines_keeps_the_path_of_a_reason_that_only_shares_its_prefix():
     assert _error_lines(group, 'star') == ['star: stardust is bad']
     nested = cattrs.errors.ClassValidationError('x', [ValueError('star.mors is bad')], object)
     assert _error_lines(nested, 'star') == ['star.mors is bad']
+    colon = cattrs.errors.ClassValidationError('x', [ValueError('star: bad')], object)
+    assert _error_lines(colon, 'star') == ['star: bad']
 
 
 @pytest.mark.unit
