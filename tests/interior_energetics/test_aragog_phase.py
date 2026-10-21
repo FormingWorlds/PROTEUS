@@ -27,6 +27,7 @@ from __future__ import annotations
 import ast
 import inspect
 import textwrap
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -478,6 +479,47 @@ def test_cvode_factory_reads_live_spider_eos_dir_on_each_call(tmp_path):
     assert mock_eos.call_count == 2
     assert mock_eos.call_args_list[0].args[0] == str(dir1)
     assert mock_eos.call_args_list[1].args[0] == str(dir2)
+
+
+def test_cvode_factory_gives_the_jax_top_node_the_live_eos_bounds(tmp_path):
+    """Each factory call builds the JAX mesh from the live numpy mesh, so a limited top node
+    takes a new EOS entropy range in JAX as in numpy."""
+    import aragog.mesh
+    from aragog.jax.phase import entropy_at_basic_nodes
+    from aragog.parser import Parameters
+
+    params = Parameters.from_file(
+        Path(aragog.mesh.__file__).parents[1] / 'cfg' / 'abe_solid.toml'
+    )
+    if not hasattr(params.boundary_conditions, 'top_node'):
+        pytest.skip('the installed aragog has no top_node option')
+    params.boundary_conditions.top_node = 'limited'
+    params.mesh.number_of_nodes = 10
+    mesh = aragog.mesh.Mesh(params)
+    S = np.linspace(2500.0, 2990.0, 9)
+    config = _make_full_config()
+    config.interior_energetics.aragog.backend = 'jax'
+    interior_o = _make_runner_interior_o(spider_eos_dir=str(tmp_path))
+    interior_o.aragog_solver.evaluator.mesh = mesh
+    with (
+        patch('proteus.interior_energetics.aragog._cached_entropy_eos_jax'),
+        patch('proteus.interior_energetics.aragog.build_jax_phase_params'),
+        patch(
+            'aragog.solver.cvode_jax.build_jax_rhs_and_jacobian',
+            return_value=(MagicMock(), MagicMock(), MagicMock()),
+        ) as build,
+    ):
+        AragogRunner._maybe_install_jax_cvode_factory(config, interior_o, str(tmp_path))
+        factory = interior_o.aragog_solver.set_jax_cvode_factory.call_args[0][0]
+        nodes = []
+        for bounds in ((100.0, 3000.0), (100.0, 3200.0)):
+            mesh.top_bounds = bounds
+            factory(MagicMock(), 'energy_balance')
+            jax_node = float(entropy_at_basic_nodes(build.call_args.args[2], S)[-1])
+            nodes.append((jax_node, mesh.entropy_at_basic_nodes(S)[-1]))
+    assert nodes[1][1] - nodes[0][1] > 10.0
+    for jax_node, numpy_node in nodes:
+        assert jax_node == pytest.approx(numpy_node, rel=1e-12)
 
 
 def test_numpy_setup_solver_site_delegates_to_the_shared_builder():
