@@ -7479,7 +7479,7 @@
           "value": 0.0
         }
       ],
-      "description": "Temperature floor [K]. The outgassing temperature is clamped to this value from below before the chemistry solve.",
+      "description": "Temperature floor [K]. The outgassing temperature is clamped to this value from below for the chemistry solve and the target masses.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
