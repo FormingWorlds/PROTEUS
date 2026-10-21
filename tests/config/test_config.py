@@ -222,6 +222,81 @@ def test_read_config_object_names_the_unknown_key_before_a_bad_value(tmp_path):
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize(
+    ('keys', 'value', 'line'),
+    [
+        (
+            ['config_version'],
+            'x.y',
+            'config_version: Config file version "x.y" is not compatible',
+        ),
+        (
+            ['interior_energetics', 'module'],
+            'nope',
+            "interior_energetics.module: 'module' must be in",
+        ),
+        (
+            ['interior_energetics', 'aragog', 'solver_method'],
+            'rk4',
+            "interior_energetics.aragog.solver_method: 'solver_method' must be in "
+            "('cvode', 'radau', 'bdf') (got 'rk4')",
+        ),
+        (['planet', 'mass_tot'], 'heavy', 'planet.mass_tot: could not convert string'),
+        (['outgas', 'fO2_shift_IW'], [1], 'outgas.fO2_shift_IW: float() argument'),
+    ],
+    ids=['depth1', 'depth2', 'depth3', 'depth2_type', 'depth2_list'],
+)
+def test_read_config_object_names_the_key_path_and_reason(tmp_path, keys, value, line):
+    """A bad value at any depth is reported with its full key path and the reason."""
+
+    def _bad(raw):
+        node = raw
+        for key in keys[:-1]:
+            node = node.setdefault(key, {})
+        node[keys[-1]] = value
+
+    with pytest.raises(ValueError) as excinfo:
+        read_config_object(_write_variant(tmp_path, 'bad.toml', _bad))
+    lines = str(excinfo.value).splitlines()
+    assert any(row.strip().startswith(line) for row in lines), lines
+    assert 'sub-exception' not in str(excinfo.value)
+    assert 'Attribute(' not in str(excinfo.value)
+
+
+@pytest.mark.unit
+def test_read_config_object_reports_each_bad_value_on_its_own_line(tmp_path):
+    """Two bad values in different sections give one line each, both with paths."""
+
+    def _two(raw):
+        raw['planet']['mass_tot'] = -5.0
+        raw['interior_energetics'].setdefault('aragog', {})['solver_method'] = 'rk4'
+
+    with pytest.raises(ValueError) as excinfo:
+        read_config_object(_write_variant(tmp_path, 'two.toml', _two))
+    lines = [row.strip() for row in str(excinfo.value).splitlines()]
+    assert sum(row.startswith('planet.mass_tot: ') for row in lines) == 1
+    assert (
+        sum(row.startswith('interior_energetics.aragog.solver_method: ') for row in lines) == 1
+    )
+
+
+@pytest.mark.unit
+def test_read_config_object_names_the_list_index_of_a_bad_element(tmp_path):
+    """A bad element of a list value is named by its index in the key path."""
+
+    def _bad(raw):
+        raw.setdefault('accretion', {}).setdefault('morrigan', {})['masses'] = [1.0, 'x']
+
+    with pytest.raises(ValueError) as excinfo:
+        read_config_object(_write_variant(tmp_path, 'bad.toml', _bad))
+    lines = [row.strip() for row in str(excinfo.value).splitlines()]
+    assert any(
+        row.startswith('accretion.morrigan.masses[1]: could not convert string')
+        for row in lines
+    ), lines
+
+
+@pytest.mark.unit
 def test_valid_config_version_rejects_old():
     """config_version validator rejects old versions with a clear upgrade message."""
     from proteus.config._config import valid_config_version
