@@ -233,7 +233,11 @@ def _set_path(node, keys, value):
 @pytest.mark.parametrize(
     ('keys', 'value', 'line'),
     [
-        (['config_version'], 'x.y', 'Config file version "x.y" is not compatible'),
+        (
+            ['config_version'],
+            'x.y',
+            'config_version: Config file version "x.y" is not compatible',
+        ),
         (
             ['interior_energetics', 'module'],
             'nope',

@@ -1,15 +1,16 @@
 from __future__ import annotations
 
-import linecache
+import dis
 import logging
-import re
+import os
 import tomllib
 import traceback
 from pathlib import Path
+from types import CodeType
 from typing import Literal, Union
 
+import attr
 import cattrs
-from attr import validators
 from cattrs.errors import AttributeValidationNote, IterableValidationNote
 
 from ._config import Config
@@ -22,6 +23,7 @@ from .orphans import (
 )
 
 log = logging.getLogger('fwl.' + __name__)
+_ATTR_DIR = os.path.dirname(attr.__file__)
 
 
 def structure_k_val(val, _cls):
@@ -83,22 +85,57 @@ def _check_step_cap_zeros(raw: dict, path: Path | str) -> None:
         )
 
 
+def _reads_instance(code: CodeType) -> bool:
+    """Whether the validator with this code reads its first argument, the instance."""
+    name = code.co_varnames[0]
+    return name in code.co_cellvars or any(
+        i.opname.startswith('LOAD_FAST')
+        and name in (i.argval if isinstance(i.argval, tuple) else (i.argval,))
+        for i in dis.get_instructions(code)
+    )
+
+
 def _checked_field(exc: BaseException) -> str:
     """Name of the one field *exc* is about, or '' when it can concern several.
 
-    The attrs-generated ``__init__`` line that raised calls a converter, which sees only
-    its own value, or a validator, which checks only its own field when it is an attrs
-    built-in; a PROTEUS validator can compare several fields.
+    Parameters
+    ----------
+    exc:
+        A leaf error that cattrs collected while it built an attrs class.
+
+    Returns
+    -------
+    str
+        The field whose converter raised, or whose validator raised without reading the
+        instance (an attrs built-in, or a PROTEUS validator that checks only its value);
+        '' for a validator that reads the instance and can so compare several fields.
+
+    Notes
+    -----
+    The callee comes from the bytecode of the attrs-generated ``__init__`` at the call
+    that raised, so it does not depend on the generated source being in linecache.
     """
-    frames = list(traceback.walk_tb(exc.__traceback__))
-    init = [(f, n) for f, n in frames if f.f_code.co_filename.startswith('<attrs generated')]
-    if not init:
+    tb = exc.__traceback__
+    while tb is not None and not tb.tb_frame.f_code.co_filename.startswith('<attrs generated'):
+        tb = tb.tb_next
+    if tb is None:
         return ''
-    line = linecache.getline(init[-1][0].f_code.co_filename, init[-1][1])
-    if match := re.search(r'__attr_converter_(\w+)\(', line):
-        return match[1]
-    match = re.search(r'__attr_validator_(\w+)\(', line)
-    return match[1] if match and frames[-1][0].f_code.co_filename == validators.__file__ else ''
+    called = [
+        i.argval
+        for i in dis.get_instructions(tb.tb_frame.f_code)
+        if i.offset <= tb.tb_lasti
+        and str(i.argval).startswith(('__attr_converter_', '__attr_validator_'))
+    ]
+    if not called:
+        return ''
+    kind, _, name = called[-1].removeprefix('__attr_').partition('_')
+    own = (f.f_code for f, _ in traceback.walk_tb(tb.tb_next))
+    validator = next((c for c in own if not c.co_filename.startswith(_ATTR_DIR)), None)
+    return (
+        name
+        if kind == 'converter' or validator is None or not _reads_instance(validator)
+        else ''
+    )
 
 
 def _error_lines(exc: BaseException, path: str = '') -> list[str]:
@@ -118,7 +155,9 @@ def _error_lines(exc: BaseException, path: str = '') -> list[str]:
     """
     if not isinstance(exc, cattrs.errors.BaseValidationError):
         reason = exc.args[0] if exc.args and isinstance(exc.args[0], str) else str(exc)
-        return [f'{path}: {reason}' if path and not reason.startswith(path) else reason]
+        head = (reason.split() or [''])[0].rstrip(':')
+        has_path = head == path or head.startswith(f'{path}.')
+        return [f'{path}: {reason}' if path and not has_path else reason]
     lines = []
     for sub in exc.exceptions:
         notes = getattr(sub, '__notes__', ())
@@ -167,7 +206,9 @@ def structure_config(raw: dict, path: Path | str) -> Config:
     Raises
     ------
     ValueError
-        If a value fails validation.
+        If a value fails validation, with one ``key.path: reason`` line per error. attrs
+        stops at the first validator that fails in a section, so a section reports one
+        validator error at a time.
     """
 
     _check_step_cap_zeros(raw, path)
