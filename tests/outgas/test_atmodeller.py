@@ -815,10 +815,9 @@ def test_a_species_that_leaves_the_solve_reports_zero_in_every_field():
     pytest.importorskip('atmodeller')
     config = _make_user_constant_config(0.0)
     hf_row = _hf_row_with_HS_budget()
-    for sp, bar, kg in (('N2', 2.0e-8, 1.6e11), ('NH3', 2.3e-3, 1.1e16)):
-        hf_row.update({f'{sp}_bar': bar, f'{sp}_vmr': bar / 40.0, f'{sp}_kg_atm': kg,
-                       f'{sp}_kg_total': kg, f'{sp}_mol_atm': kg / 0.017,
-                       f'{sp}_mol_total': kg / 0.017})  # fmt: skip
+    for k, sp in enumerate(('N2', 'NH3')):
+        hf_row.update({f'{sp}_{f}': 1.0e10 * (10 * k + i + 1)
+                       for i, f in enumerate(_CALLIOPE_SPECIES_FIELDS)})  # fmt: skip
     hf_row['N_kg_atm'] = 8.8e15
     out, _ = _build_conserving_output(
         {'H2O': ('H', _H_BUDGET, 0.5), 'S2': ('S', _S_BUDGET, 0.5)}
@@ -831,8 +830,10 @@ def test_a_species_that_leaves_the_solve_reports_zero_in_every_field():
     _MODEL_CACHE.clear()
     with patch('atmodeller.EquilibriumModel', return_value=fake_model):
         calc_surface_pressures_atmodeller({'output': '/tmp/test'}, config, hf_row)
+    [(solved, *_)] = _MODEL_CACHE
     _MODEL_CACHE.clear()
 
+    assert 'H2O_g' in solved and not [n for n in solved if n.startswith('N')]
     stale = {
         f'{sp}_{f}': hf_row[f'{sp}_{f}']
         for sp in ('N2', 'NH3')
