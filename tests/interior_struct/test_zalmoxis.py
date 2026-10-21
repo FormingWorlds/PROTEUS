@@ -1222,8 +1222,11 @@ def test_require_paleos_tables_ignores_the_switch_for_a_mantle_without_paleos_ta
     zmod, config = _lowt_on(tmp_path, monkeypatch, registry, 'WolfBower2018:MgSiO3')
     _passes_start_up(zmod, config, tmp_path)
     config.interior_struct.zalmoxis.mantle_eos = 'PALEOS:MgSiO3'
-    with pytest.raises(zmod.ZalmoxisMissingEOSFilesError, match=zmod.LOWT_EXTENSION_FILE):
+    with pytest.raises(
+        zmod.ZalmoxisMissingEOSFilesError, match=zmod.LOWT_EXTENSION_FILE
+    ) as err:
         zmod.require_paleos_tables(config, str(tmp_path))
+    assert 'lowt_extension is on' in str(err.value)
 
 
 @pytest.mark.parametrize('missing', ['iron', 'solid', 'h2o'])
