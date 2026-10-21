@@ -271,8 +271,8 @@ def test_read_config_object_names_the_key_path_and_reason(tmp_path, keys, value,
     ('changes', 'line', 'not_line'),
     [
         (
-            [(['accretion', 'module'], 'morrigan'), (['outgas', 'vapourise'], True)],
-            "accretion.module = 'morrigan' cannot run with outgas.vapourise = true",
+            [(['accretion', 'module'], 'dummy'), (['outgas', 'vapourise'], True)],
+            "accretion.module = 'dummy' cannot run with outgas.vapourise = true",
             'config_version:',
         ),
         (
