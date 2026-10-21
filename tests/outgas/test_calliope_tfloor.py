@@ -140,4 +140,9 @@ def test_a_target_call_warns_only_where_the_floor_changes_the_targets(caplog, mo
     if mode == 'gas_prs':
         assert _targets(config, T_floor - 100) == _targets(config, T_floor)
     else:  # the premise of no warning: elements targets do not depend on T_magma
+        from calliope.solve import get_target_from_params
+
+        opts = construct_options({}, config, dict(_HF_ROW, T_magma=T_floor))
+        below = get_target_from_params(dict(opts, T_magma=T_floor - 100))
+        assert below == get_target_from_params(opts)
         assert _targets(config, 2 * T_floor) == _targets(config, T_floor)
