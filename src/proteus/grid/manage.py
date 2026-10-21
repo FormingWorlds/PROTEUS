@@ -284,7 +284,13 @@ class Grid:
         log.info(' ')
 
     def write_config_files(self):
-        """Write config files."""
+        """Write the config file of each case and read it back with the config loader.
+
+        Raises
+        ------
+        ValueError
+            If a written case does not load; the message names the case index and file.
+        """
         # Read base config file
         base_config = read_config_object(self.conf)
         # A module set per case takes that module's default rtol when nothing sets one.
@@ -309,9 +315,16 @@ class Grid:
                 ie = thisconf.interior_energetics
                 ie.rtol = default_rtol(ie.module)
 
-            # Write this configuration file
-            thisconf.write(self._get_tmpcfg(i))
+            # Write this configuration file and read it back, so an invalid case stops here
+            case_path = self._get_tmpcfg(i)
+            thisconf.write(case_path)
             os.sync()
+            try:
+                read_config_object(case_path)
+            except ValueError as exc:
+                raise ValueError(
+                    f'Grid case {i} ({case_path}) is not a valid config: {exc}'
+                ) from exc
 
     def run(
         self,
