@@ -24,7 +24,7 @@ def valid_mod(instance, attribute, value):
     if value is None:
         return
     if value < 0:
-        raise ValueError(f"Parameter '{attribute}' must be None or greater than 0.")
+        raise ValueError(f"Parameter '{attribute.name}' must be None or greater than 0.")
 
 
 @define

@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import linecache
 import logging
+import re
 import tomllib
+import traceback
 from pathlib import Path
 from typing import Literal, Union
 
-import attrs
 import cattrs
+from attr import validators
 from cattrs.errors import AttributeValidationNote, IterableValidationNote
 
 from ._config import Config
@@ -80,22 +83,22 @@ def _check_step_cap_zeros(raw: dict, path: Path | str) -> None:
         )
 
 
-def _validated_field(exc: BaseException) -> str:
-    """Name of the attrs field whose validator raised *exc*, or '' if none did.
+def _checked_field(exc: BaseException) -> str:
+    """Name of the one field *exc* is about, or '' when it can concern several.
 
-    attrs calls each validator as ``validator(instance, attribute, value)`` from
-    its generated ``__init__``, so the frame after that one holds the field.
+    The attrs-generated ``__init__`` line that raised calls a converter, which sees only
+    its own value, or a validator, which checks only its own field when it is an attrs
+    built-in; a PROTEUS validator can compare several fields.
     """
-    tb = exc.__traceback__
-    while tb is not None and tb.tb_next is not None:
-        if tb.tb_frame.f_code.co_filename.startswith('<attrs generated'):
-            frame = tb.tb_next.tb_frame
-            code = frame.f_code
-            for arg in code.co_varnames[: code.co_argcount]:
-                if isinstance(frame.f_locals.get(arg), attrs.Attribute):
-                    return frame.f_locals[arg].name
-        tb = tb.tb_next
-    return ''
+    frames = list(traceback.walk_tb(exc.__traceback__))
+    init = [(f, n) for f, n in frames if f.f_code.co_filename.startswith('<attrs generated')]
+    if not init:
+        return ''
+    line = linecache.getline(init[-1][0].f_code.co_filename, init[-1][1])
+    if match := re.search(r'__attr_converter_(\w+)\(', line):
+        return match[1]
+    match = re.search(r'__attr_validator_(\w+)\(', line)
+    return match[1] if match and frames[-1][0].f_code.co_filename == validators.__file__ else ''
 
 
 def _error_lines(exc: BaseException, path: str = '') -> list[str]:
@@ -115,13 +118,13 @@ def _error_lines(exc: BaseException, path: str = '') -> list[str]:
     """
     if not isinstance(exc, cattrs.errors.BaseValidationError):
         reason = exc.args[0] if exc.args and isinstance(exc.args[0], str) else str(exc)
-        return [f'{path}: {reason}' if path else reason]
+        return [f'{path}: {reason}' if path and not reason.startswith(path) else reason]
     lines = []
     for sub in exc.exceptions:
         notes = getattr(sub, '__notes__', ())
         step = next(
             (n.name for n in notes if isinstance(n, AttributeValidationNote)), ''
-        ) or _validated_field(sub)
+        ) or _checked_field(sub)
         index = next((n.index for n in notes if isinstance(n, IterableValidationNote)), None)
         sub_path = '.'.join(p for p in (path, step) if p)
         if index is not None:

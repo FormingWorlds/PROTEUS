@@ -2235,8 +2235,8 @@ def test_params_valid_mod_negative():
     from proteus.config._params import valid_mod
 
     instance = SimpleNamespace()
-    with pytest.raises(ValueError, match='must be None or greater than 0'):
-        valid_mod(instance, SimpleNamespace(), -1)
+    with pytest.raises(ValueError, match="'plot_mod' must be None or greater than 0"):
+        valid_mod(instance, SimpleNamespace(name='plot_mod'), -1)
 
     # Discrimination: a regression that mishandled the boundary (rejecting 0
     # as negative) would fail here. The source allows value == 0 silently
