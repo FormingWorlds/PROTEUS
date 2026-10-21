@@ -76,6 +76,16 @@ def _valid_top_cell_dt_rel_dT_solid(instance, attribute, value):
         )
 
 
+def _check_top_cell_dt_rel_dT_on_setattr(instance, attribute, value):
+    """Check a top_cell_dt_rel_dT assigned after construction against the solid value."""
+    if value < instance.top_cell_dt_rel_dT_solid:
+        raise ValueError(
+            f'`top_cell_dt_rel_dT_solid` ({instance.top_cell_dt_rel_dT_solid}) must be <= '
+            f'{attribute.name} ({value})'
+        )
+    return value
+
+
 def valid_spider(instance, attribute, value):
     """SPIDER requires at least one energy transport term to be enabled."""
     if instance.module != 'spider':
@@ -505,7 +515,9 @@ class Aragog:
     tau_drain is finite and the step does not exceed tau_drain (staying active when the
     escape step floor or an impact-landing snap-forward places the step above tau_drain);
     planet.prevent_warming still clamps T_magma, T_surf, Phi_global, and F_int when active.
-    Incompatible with interior_energetics.surface_bc_mode = 'grey_body'. A 1-point EOS
+    Incompatible with interior_energetics.surface_bc_mode = 'grey_body'; this rule is checked
+    at construction and when a config is loaded (a grid case fails when its written TOML is
+    read back), not when top_cell_dt_limit is assigned on an existing Interior. A 1-point EOS
     temperature lookahead probes S_trial = max(S_top - cp_eff * dT_allow / T_top, S_min + 300)
     and replaces the step-start heat capacity cp_eff with the chord heat capacity
     cp_chord = min(cp_eff, T_top * (S_top - S_trial) / (T_top - T_trial)) in the T_top form
@@ -519,7 +531,12 @@ class Aragog:
     See docs/Explanations/coupling_loop.md for the measured run results and EOS evaluations."""
 
     top_cell_dt_rel_dT: float = field(
-        default=0.08, converter=float, validator=(gt(0.0), le(0.15))
+        default=0.08,
+        converter=float,
+        validator=(gt(0.0), le(0.15)),
+        on_setattr=setters.pipe(
+            setters.convert, setters.validate, _check_top_cell_dt_rel_dT_on_setattr
+        ),
     )
     """Relative surface-temperature change allowance eta_T in the mushy regime
     (phi_s[-1] >= 0.40) for the top-cell drain-time step limit; must lie in (0, 0.15].

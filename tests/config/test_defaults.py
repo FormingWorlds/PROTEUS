@@ -736,6 +736,49 @@ def test_aragog_top_cell_dt_limit_defaults_and_validators():
 
 
 @pytest.mark.unit
+def test_aragog_top_cell_dt_rel_dT_pair_checked_on_assignment():
+    """Assigning either allowance after construction keeps rel_dT_solid <= rel_dT."""
+    from hypothesis import given, settings
+    from hypothesis import strategies as st
+
+    cfg = Aragog(top_cell_dt_rel_dT=0.08, top_cell_dt_rel_dT_solid=0.05)
+    with pytest.raises(ValueError, match='must be <= top_cell_dt_rel_dT'):
+        cfg.top_cell_dt_rel_dT = 0.01
+    assert cfg.top_cell_dt_rel_dT == pytest.approx(0.08)
+    with pytest.raises(ValueError, match='must be <= top_cell_dt_rel_dT'):
+        cfg.top_cell_dt_rel_dT_solid = 0.12
+    assert cfg.top_cell_dt_rel_dT_solid == pytest.approx(0.05)
+
+    cfg.top_cell_dt_rel_dT = 0.05  # equal to the solid value is allowed
+    assert cfg.top_cell_dt_rel_dT == pytest.approx(0.05)
+    cfg.top_cell_dt_rel_dT = '0.06'  # converted before the check
+    assert cfg.top_cell_dt_rel_dT == pytest.approx(0.06)
+
+    @settings(derandomize=True, max_examples=60)
+    @given(
+        solid=st.floats(min_value=1e-3, max_value=0.15, allow_nan=False),
+        frac=st.floats(min_value=1e-3, max_value=0.999, allow_nan=False),
+    )
+    def _lowered(solid, frac):
+        inst = Aragog(top_cell_dt_rel_dT=0.15, top_cell_dt_rel_dT_solid=solid)
+        with pytest.raises(ValueError, match='top_cell_dt_rel_dT_solid'):
+            inst.top_cell_dt_rel_dT = solid * frac
+        assert inst.top_cell_dt_rel_dT == 0.15
+        inst.top_cell_dt_rel_dT = solid
+        assert inst.top_cell_dt_rel_dT_solid <= inst.top_cell_dt_rel_dT
+
+    _lowered()
+
+    # A nested assignment is not checked against surface_bc_mode; reloading the config is.
+    import attrs
+
+    ie = Interior(module='aragog', surface_bc_mode='grey_body')
+    ie.aragog.top_cell_dt_limit = True
+    with pytest.raises(ValueError, match='top_cell_dt_limit = true cannot be used'):
+        Interior(**attrs.asdict(ie, recurse=False))
+
+
+@pytest.mark.unit
 def test_aragog_top_cell_dt_rel_property():
     """Property check over valid (0, 0.15] and invalid cross-field solid allowance bounds."""
     from hypothesis import given, settings
