@@ -5,6 +5,7 @@ import copy
 import functools
 import hashlib
 import importlib.util
+import inspect
 import logging
 import os
 import re
@@ -53,6 +54,7 @@ from proteus.utils.helper import (
     format_subyear_time,
     generates_paleos_tables,
     is_mgsio3,
+    lowt_extension_unsupported,
     paleos_companion_keys,
     snapshot_path_for_time,
     twophase_registry_key,
@@ -78,6 +80,9 @@ _SUPERLIQ_DEFAULT_MUSHY = 0.8  # fallback solidus = factor * liquidus
 
 # Entries kept in each super-liquidus memo before the least recently used goes.
 _SUPERLIQ_CACHE_MAXSIZE = 64
+
+#: Low-temperature extension of the PALEOS MgSiO3 solid table, kept next to that table.
+LOWT_EXTENSION_FILE = 'paleos_mgsio3_tables_pt_proteus_solid_lowT.dat'
 
 
 class _LRUDict(OrderedDict):
@@ -2139,6 +2144,12 @@ def require_paleos_tables(config: Config, outdir: str) -> None:
         mat_dicts,
         paleos_companions=not kept or config.interior_energetics.module == 'aragog',
     )
+    if (
+        zc.lowt_extension is True
+        and not kept
+        and generates_paleos_tables(config.interior_struct)
+    ):
+        _require_lowt_extension(zc.mantle_eos, mat_dicts)
     components = eos_components(zc.mantle_eos)
     mixture = len(set(components)) > 1
     if all(is_mgsio3(c) for c in components):
@@ -2165,6 +2176,34 @@ def require_paleos_tables(config: Config, outdir: str) -> None:
             else 'the structure uses its density, while '
         )
         log.warning('mantle_eos=%s: %s%s', zc.mantle_eos, head, '; '.join(uses))
+
+
+def _require_lowt_extension(mantle_eos: str, mat_dicts: dict) -> None:
+    """Stop the run before any solve when the low-temperature extension cannot be built.
+
+    Raises
+    ------
+    RuntimeError
+        If the installed Zalmoxis table generator has no ``solid_lowt_file``.
+    ZalmoxisMissingEOSFilesError
+        If the extension file next to the PALEOS solid table is missing.
+    """
+    import zalmoxis
+    from zalmoxis.eos_export import generate_spider_eos_tables
+
+    if 'solid_lowt_file' not in inspect.signature(generate_spider_eos_tables).parameters:
+        raise RuntimeError(
+            'lowt_extension needs a Zalmoxis whose generate_spider_eos_tables takes '
+            f'solid_lowt_file; the installed Zalmoxis {getattr(zalmoxis, "__version__", "?")} '
+            f'({os.path.dirname(zalmoxis.__file__)}) has none'
+        )
+    solid, _ = resolve_2phase_mgsio3_paths(mantle_eos, mat_dicts)
+    lowt = os.path.join(os.path.dirname(solid or ''), LOWT_EXTENSION_FILE)
+    if not (solid and os.path.isfile(lowt)):
+        raise ZalmoxisMissingEOSFilesError(
+            f'lowt_extension is on but the low-temperature solid extension {lowt} is missing; '
+            'write it with tools/converters/paleos_lowt_extension.py of Zalmoxis'
+        )
 
 
 def resolve_2phase_mgsio3_paths(mantle_eos: str, mat_dicts: dict, required: bool = False):
@@ -2661,6 +2700,7 @@ def _ps_cache_key(
     solid_eos: str | None,
     liquid_eos: str | None,
     generator: str | None = None,
+    lowt_file: str | None = None,
 ) -> str:
     """Build the identity string for a generated P-S EOS table set.
 
@@ -2692,6 +2732,10 @@ def _ps_cache_key(
         Identity of the Zalmoxis table generator; defaults to
         :func:`_ps_generator_identity`, so tables built by a different
         Zalmoxis release or source land on a distinct key.
+    lowt_file : str or None
+        Low-temperature solid extension; its path, a digest of its data lines
+        and a digest of the data lines of ``solid_eos`` (header lines left out)
+        enter the key. None leaves the key as it is without an extension.
 
     Returns
     -------
@@ -2699,6 +2743,9 @@ def _ps_cache_key(
         Deterministic cache-identity string.
     """
     eos_identity = '|'.join(str(p) for p in (mantle_eos, eos_file, solid_eos, liquid_eos))
+    if lowt_file is not None:
+        eos_identity += f'|lowt={lowt_file}:{_data_digest(lowt_file)}'
+        eos_identity += f'|solid={_data_digest(solid_eos)}'
     eos_digest = hashlib.sha1(eos_identity.encode()).hexdigest()[:12]
     eos_name = re.sub(r'[^A-Za-z0-9]+', '-', str(mantle_eos)).strip('-')
     if generator is None:
@@ -2708,6 +2755,24 @@ def _ps_cache_key(
         f'P_max={P_max:.6e}_nP={nP}_nS={nS}_mzf={mzf}'
         f'_layout={layout}_eos={eos_name}-{eos_digest}_gen={gen_name}'
     )
+
+
+def _data_digest(path: str) -> str:
+    """SHA-1 of the data lines of a table file; lines that start with '#' are left out.
+
+    The digest is kept per (path, device, inode, modification and status change times, size),
+    so an unchanged file is read once and a replaced or rewritten one is read again.
+    """
+    st = os.stat(path)
+    stamp = (st.st_dev, st.st_ino, st.st_mtime_ns, st.st_ctime_ns, st.st_size)
+    return _data_digest_of(str(Path(path).resolve()), stamp)
+
+
+@functools.lru_cache(maxsize=16)
+def _data_digest_of(path: str, stamp: tuple) -> str:
+    """SHA-1 of the data lines of ``path`` as it is at the file status ``stamp``."""
+    data = (ln for ln in Path(path).read_bytes().splitlines() if not ln.startswith(b'#'))
+    return hashlib.sha1(b'\n'.join(data)).hexdigest()
 
 
 @functools.lru_cache(maxsize=1)
@@ -2767,12 +2832,16 @@ def _ps_table_inputs(config: Config, mantle_eos: str, eos_entry: dict, mat_dicts
     Returns
     -------
     tuple
-        ``(eos_file, solid_eos, liquid_eos, is_twophase, P_max, cache_key)``.
+        ``(eos_file, solid_eos, liquid_eos, is_twophase, P_max, lowt_file,
+        cache_key)``; ``lowt_file`` is None unless ``lowt_extension`` is on.
 
     Raises
     ------
     _NoPSTables
         When the mantle EOS is not PALEOS or its files are missing.
+    ZalmoxisMissingEOSFilesError
+        When ``lowt_extension`` is on and the extension file is not next to the
+        solid table.
     """
     # PALEOS-API live tabulation: materialise cached .dat paths in place so the
     # downstream format / eos_file lookups see concrete paths. No-op for
@@ -2835,6 +2904,15 @@ def _ps_table_inputs(config: Config, mantle_eos: str, eos_entry: dict, mat_dicts
             f'PALEOS-2phase entry {mantle_eos} is missing its solid or liquid file'
         )
 
+    lowt_file = None
+    if config.interior_struct.zalmoxis.lowt_extension is True:
+        lowt_file = os.path.join(os.path.dirname(solid_eos or ''), LOWT_EXTENSION_FILE)
+        if not (solid_eos and liquid_eos and os.path.isfile(lowt_file)):
+            raise ZalmoxisMissingEOSFilesError(
+                f'lowt_extension is on but the low-temperature solid extension {lowt_file} '
+                f'or the two-phase tables of {mantle_eos} are missing'
+            )
+
     P_max = _ps_p_max(config)
 
     # Table resolution from config
@@ -2853,9 +2931,10 @@ def _ps_table_inputs(config: Config, mantle_eos: str, eos_entry: dict, mat_dicts
         eos_file=eos_file,
         solid_eos=solid_eos,
         liquid_eos=liquid_eos,
+        lowt_file=lowt_file,
     )
 
-    return eos_file, solid_eos, liquid_eos, is_twophase, P_max, cache_key
+    return eos_file, solid_eos, liquid_eos, is_twophase, P_max, lowt_file, cache_key
 
 
 def _ps_resume_key(
@@ -2920,7 +2999,13 @@ def generate_spider_tables(config: Config, outdir: str):
     Raises
     ------
     ZalmoxisMissingEOSFilesError
-        When a table of a PALEOS mantle or its MgSiO3 2-phase pair is missing.
+        When a table of a PALEOS mantle or its MgSiO3 2-phase pair is missing, or when
+        ``lowt_extension`` is on and its extension file is missing.
+    ValueError
+        When ``lowt_extension`` is on and the energetics key of the mantle EOS is
+        PALEOS-API or ``-highres`` (raised before any table is resolved or built).
+    RuntimeError
+        When ``lowt_extension`` is on and the installed Zalmoxis has no ``solid_lowt_file``.
     """
     from zalmoxis.eos_export import generate_spider_eos_tables, generate_spider_phase_boundaries
     from zalmoxis.melting_curves import (
@@ -2946,11 +3031,20 @@ def generate_spider_tables(config: Config, outdir: str):
         if resumed is not None:
             return resumed
 
+    lowt_on = config.interior_struct.zalmoxis.lowt_extension is True
+    if lowt_on and lowt_extension_unsupported(key):
+        raise ValueError(
+            f'lowt_extension does not support the mantle EOS {key}: the extension continues the '
+            'grid of the standard PALEOS solid table'
+        )
+    lowt_msg = 'lowt_extension = true has no effect: mantle EOS %s has no PALEOS P-S tables'
     if not eos_entry or key not in PALEOS_REGISTRY_KEYS:
         log.info(
             'Mantle EOS %s has no PALEOS table set; using pre-existing SPIDER tables.',
             mantle_eos,
         )
+        if lowt_on:
+            log.warning(lowt_msg, mantle_eos)
         return None
     if paleos_companion_keys(mantle_eos):
         check_zalmoxis_eos_files({'mantle': mantle_eos}, mat_dicts, paleos_companions=True)
@@ -2958,8 +3052,17 @@ def generate_spider_tables(config: Config, outdir: str):
         inputs = _ps_table_inputs(config, key, eos_entry, mat_dicts)
     except _NoPSTables as exc:
         log.log(exc.level, 'No PALEOS P-S tables: %s; using pre-existing SPIDER tables.', exc)
+        if lowt_on:
+            log.warning(lowt_msg, mantle_eos)
         return None
-    eos_file, solid_eos, liquid_eos, is_twophase, P_max, cache_key = inputs
+    eos_file, solid_eos, liquid_eos, is_twophase, P_max, lowt_file, cache_key = inputs
+    if (
+        lowt_file
+        and 'solid_lowt_file' not in inspect.signature(generate_spider_eos_tables).parameters
+    ):
+        raise RuntimeError(
+            'lowt_extension needs a Zalmoxis whose generate_spider_eos_tables takes solid_lowt_file'
+        )
     if solid_eos and liquid_eos:
         log.info('Using PALEOS-2phase tables for entropy-IC table generation')
     nP = config.interior_struct.zalmoxis.lookup_nP
@@ -3080,6 +3183,7 @@ def generate_spider_tables(config: Config, outdir: str):
             nP,
             nS,
         )
+        lowt_kw = {} if lowt_file is None else {'solid_lowt_file': lowt_file}
         generate_spider_eos_tables(
             eos_file=eos_file,
             solidus_func=solidus_func,
@@ -3090,6 +3194,7 @@ def generate_spider_tables(config: Config, outdir: str):
             output_dir=gen_dir,
             solid_eos_file=solid_eos,
             liquid_eos_file=liquid_eos,
+            **lowt_kw,
         )
 
         # Publish staged tables into the shared cache with atomic renames.

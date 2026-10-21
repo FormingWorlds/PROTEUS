@@ -26,6 +26,9 @@ ships; data only PROTEUS reads is declared in `src/proteus/data/proteus_manifest
 A data folder in the older layout is brought into this one as described in
 [Upgrading an older data folder](#upgrading-an-older-data-folder).
 
+`proteus start` stops when fwl-io is missing or below the version PROTEUS requires, and
+names the command that installs or updates it.
+
 | Dataset | Provisioned by | Downloaded by |
 |---|---|---|
 | Stellar spectra (solar, named stars, MUSCLES) | fwl-io | `proteus get solar`, `proteus get muscles` |

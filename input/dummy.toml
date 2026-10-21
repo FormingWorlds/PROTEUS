@@ -93,4 +93,5 @@ config_version = "3.0"
 
 [atmos_chem]
     module = "dummy"
-    when   = "offline"
+    mode   = "offline"
+    times  = "end"

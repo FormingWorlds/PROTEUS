@@ -96,13 +96,14 @@ upstream modules.
    returns the surface temperature, outgoing longwave radiation, and Bond
    albedo.
 
-9. **Atmospheric chemistry** (`run_chemistry`): If configured for online mode,
-   runs photochemical kinetics (VULCAN) to compute steady-state mixing ratios.
-   Most configurations skip this step or run it offline after the simulation.
+9. **Housekeeping**: Updates iteration counters, checks convergence criteria,
+   writes the helpfile row to `hf_all`, generates plots and archives if
+   scheduled.
 
-10. **Housekeeping**: Updates iteration counters, checks convergence criteria,
-    writes the helpfile row to `hf_all`, generates plots and archives if
-    scheduled.
+Atmospheric chemistry (`run_chemistry`, VULCAN) is not a step of this loop. It
+post-processes atmosphere snapshots after the simulation ends, with
+`atmos_chem.mode = "offline"` or with `proteus offchem`; see
+[Postprocessing and chemistry](../How-to/usage_postprocessing.md#atmospheric-chemistry-with-vulcan).
 
 ## Initialisation stage
 

@@ -28,6 +28,7 @@ def _element_mode_config(noble_included, He_mode='kg', He_budget=0.0, reservoir=
     """
     config = MagicMock()
     config.outgas.fO2_shift_IW = 4.0
+    config.outgas.T_floor = 700.0
     config.outgas.calliope.solubility = True
     config.planet.volatile_mode = 'elements'
     config.planet.volatile_reservoir = reservoir

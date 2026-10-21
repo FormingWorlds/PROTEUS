@@ -114,6 +114,26 @@ def energetics_eos_key(mantle_eos: str) -> str | None:
     return components[0] if len(components) == 1 else None
 
 
+def lowt_extension_unsupported(key: str | None) -> bool:
+    """Whether the low-temperature solid extension cannot continue the solid table of ``key``.
+
+    The extension file next to the solid tables continues the 150 points per decade grid of the
+    standard PALEOS solid table; the ``-highres`` table in the same folder has 600 points per
+    decade, and a PALEOS-API key tabulates its own tables on demand.
+
+    Parameters
+    ----------
+    key : str or None
+        Energetics key of the mantle EOS (:func:`energetics_eos_key`).
+
+    Returns
+    -------
+    bool
+        True for a PALEOS-API or ``-highres`` key.
+    """
+    return bool(key) and (key.startswith('PALEOS-API') or key.endswith('-highres'))
+
+
 def generates_paleos_tables(interior_struct) -> bool:
     """Return whether Zalmoxis generates a PALEOS table set for this structure.
 
@@ -330,6 +350,37 @@ def snapshot_path_for_time(data_dir: str, time: float, suffix: str) -> str:
     if os.path.exists(wholeyear):
         return wholeyear
     return subyear
+
+
+def list_snapshot_times(directory: str, suffix: str, prefix: str = '') -> list[float]:
+    """Return the sorted times of the snapshot files in a directory.
+
+    A snapshot file is named ``prefix + token + suffix``, where the token is
+    any form that `parse_subyear_time` reads (``'884p700'``, ``'884.700'``
+    or ``'884'``). Files whose token does not parse are logged and skipped.
+
+    Parameters
+    ----------
+    directory : str
+        Directory holding the snapshot files.
+    suffix : str
+        Filename suffix after the time token, e.g. ``'_atm.nc'``.
+    prefix : str
+        Filename prefix before the time token, e.g. ``'vulcan_'``.
+
+    Returns
+    -------
+    list of float
+        Snapshot times [yr] in ascending order, without duplicates.
+    """
+    times = set()
+    for fpath in glob.glob(os.path.join(directory, glob.escape(prefix) + '*' + suffix)):
+        token = os.path.basename(fpath)[len(prefix) : -len(suffix)]
+        try:
+            times.add(parse_subyear_time(token))
+        except ValueError:
+            log.warning(f"Could not parse time from snapshot file '{fpath}'")
+    return sorted(times)
 
 
 # Smallest time difference [yr] that format_subyear_time resolves.

@@ -1241,7 +1241,7 @@ def test_optional_backends_vulcan_atmodeller_are_extras_not_mandatory():
     assert any(r.startswith('atmodeller>=1.0.2') for r in extras.get('atmodeller', [])), (
         f'atmodeller extra must keep its pin, got {extras.get("atmodeller")!r}'
     )
-    assert any(r.startswith('fwl-vulcan>=26.10.14') for r in extras.get('vulcan', [])), (
+    assert any(r.startswith('fwl-vulcan>=26.10.16') for r in extras.get('vulcan', [])), (
         f'vulcan extra must keep its pin, got {extras.get("vulcan")!r}'
     )
     # The default Aragog interior solver runs on JAX and its modules are

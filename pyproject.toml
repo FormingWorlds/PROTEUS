@@ -54,7 +54,7 @@ dependencies = [
     # lookups, which the super-liquidus interior initial condition
     # requires (Zalmoxis #79), on top of the JAX structure path for
     # unified PALEOS and wet mantles (Zalmoxis #78).
-    "fwl-zalmoxis>=26.09.21",
+    "fwl-zalmoxis>=26.10.21",
     # Aragog (the default interior solver) and atmodeller run on JAX and equinox. The three are
     # held to the combination the Aragog numerics are validated against (equinox 0.13.8 on jax
     # and jaxlib below 0.10); lift a bound only after the Aragog entropy solve is validated again.
@@ -103,7 +103,7 @@ atmodeller = ["atmodeller>=1.0.2"]
 # vulcan: atmospheric photochemistry module, selected via
 # atmos_chem.module = "vulcan". Also installable editable via
 # tools/get_vulcan.sh.
-vulcan = ["fwl-vulcan>=26.10.14"]
+vulcan = ["fwl-vulcan>=26.10.16"]
 # morrigan: protoplanet accretion module for giant-impact timelines,
 # selected via accretion.module = "morrigan". Also installable editable
 # via tools/get_morrigan.sh.

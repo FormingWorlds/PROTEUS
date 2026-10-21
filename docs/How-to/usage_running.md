@@ -72,13 +72,14 @@ run_<timestamp>_xxxx/
  ├─status                       <---- status of the simulation
  ├─data/
  │ ├─files ending in _atm.nc    <---- atmosphere data
+ │ ├─files ending in _chem.nc   <---- atmospheric chemistry results (VULCAN)
  │ ├─files ending in .json      <---- interior data
  │ └─data.tar                   <---- atmosphere & interior data archive
  ├─observe/
  │ └─files ending in .csv       <---- synthetic/simulated observations of the planet
  ├─offchem/
- │ ├─vulcan.csv                 <---- atmospheric mixing ratios (offline mode)
- │ └─vulcan_{year}.csv          <---- per-snapshot mixing ratios (online mode)
+ │ ├─vulcan_{time}.csv          <---- mixing ratios at one snapshot (e.g. vulcan_12p320.csv)
+ │ └─vulcan.csv                 <---- copy of the latest snapshot processed
  ├─plots/
  │ ├─plot_chem_atmosphere.png   <---- plot of atmospheric mixing ratios
  │ ├─plot_escape.png            <---- plot of volatile inventories over time

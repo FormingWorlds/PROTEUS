@@ -1696,8 +1696,9 @@ def determine_interior_radius_with_zalmoxis(
     dirs['mesh_shift_active'] = False
     dirs['mesh_convergence_steps'] = 0
 
-    # Generate P-S EOS tables from PALEOS if applicable, falling back to static
-    # FWL_DATA Zenodo P-S tables for non-PALEOS mantle EOS.
+    # Zalmoxis writes the P-S tables that SPIDER and Aragog's entropy solver read, from a
+    # unified or two-phase PALEOS mantle; for any other mantle EOS (WolfBower2018,
+    # RTPress100TPa) it returns None and the static FWL_DATA P-S tables are used.
     if config.interior_energetics.module in ('spider', 'aragog'):
         from proteus.interior_struct.zalmoxis import generate_spider_tables
 

@@ -3152,9 +3152,11 @@ def test_toi561b_config_structures_without_the_vulcan_backend(tmp_path):
     assert marker, 'the shipped config no longer has an [atmos_chem] section'
     section, nxt, tail = rest.partition('\n[')
     assert 'module = "vulcan"' in section
-    patched = (
-        head + marker + section.replace('module = "vulcan"', 'module = "none"') + nxt + tail
-    )
+    assert 'mode = "offline"' in section
+    # Automatic chemistry needs a module, so it is switched off with it
+    section = section.replace('module = "vulcan"', 'module = "none"')
+    section = section.replace('mode = "offline"', 'mode = "none"')
+    patched = head + marker + section + nxt + tail
 
     path = tmp_path / 'toi561b_no_vulcan.toml'
     path.write_text(patched)
@@ -3162,6 +3164,7 @@ def test_toi561b_config_structures_without_the_vulcan_backend(tmp_path):
     obj = read_config_object(path)
 
     assert obj.atmos_chem.module is None
+    assert obj.atmos_chem.mode is None
     assert obj.orbit.star_planet_model == 'parameterized'
     assert obj.orbit.parameterized.migration == 'high_ecc'
     assert obj.atmos_clim.module == 'agni'

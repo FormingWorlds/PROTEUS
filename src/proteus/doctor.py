@@ -30,7 +30,7 @@ from urllib.parse import unquote, urlparse
 
 import click
 from packaging.requirements import Requirement
-from packaging.version import Version
+from packaging.version import InvalidVersion, Version
 
 from proteus.utils.coupler import (
     _get_agni_version,
@@ -927,16 +927,41 @@ def check_cvode() -> CheckResult:
 
 
 def _installed_version(name: str) -> Version | None:
-    """Return the installed version of a distribution, or None when it is not installed."""
+    """Return the installed version of a distribution, or None when it is not installed.
+
+    Raises
+    ------
+    InvalidVersion, TypeError
+        If the installed version does not parse or is missing from the metadata.
+    """
     try:
         return Version(importlib.metadata.version(name))
     except PackageNotFoundError:
         return None
 
 
+def _is_installed(name: str) -> bool:
+    """Return whether a distribution is installed, whatever its version string."""
+    try:
+        importlib.metadata.version(name)
+    except PackageNotFoundError:
+        return False
+    return True
+
+
 def check_python_package(name: str, spec: Requirement | None) -> CheckResult:
     """Check a Python package against the pyproject.toml version spec."""
-    installed = _installed_version(name)
+    try:
+        installed = _installed_version(name)
+    except (InvalidVersion, TypeError):
+        found = importlib.metadata.version(name)
+        return CheckResult(
+            name=name,
+            category='versions',
+            status=WARN,
+            message=f'installed version {found!r} does not parse',
+            fix_cmd=f'pip install -U "{spec or name}"',
+        )
     if installed is None:
         status, fix = FAIL, f'pip install {name}'
         if name in STANDARD_MODULE_PACKAGES:
@@ -1224,7 +1249,7 @@ def is_standard_module_installed(name: str, root: Path | str) -> bool:
     """
     key = name.lower()
     if key in _STANDARD_DISTRIBUTIONS:
-        return _installed_version(_STANDARD_DISTRIBUTIONS[key]) is not None
+        return _is_installed(_STANDARD_DISTRIBUTIONS[key])
     if key == 'obliqua':
         path = str(Path(root) / 'Obliqua')
         return _is_git_module_present(path)
@@ -1277,7 +1302,7 @@ def below_floor_fixes() -> list[str]:
     """
     specs = _dependency_specs()
     pkgs = (*PYTHON_PACKAGES, *STANDARD_MODULE_PACKAGES)
-    results = {p: check_python_package(p, specs.get(p)) for p in pkgs if _installed_version(p)}
+    results = {p: check_python_package(p, specs.get(p)) for p in pkgs if _is_installed(p)}
     return [f'{p}: {r.fix_cmd}' for p, r in results.items() if r.status == FAIL]
 
 

@@ -8342,7 +8342,6 @@
       ],
       "consumers": [
         "accretion",
-        "atmos_chem",
         "interior_struct",
         "outgas",
         "plot",
@@ -8739,7 +8738,6 @@
       ],
       "consumers": [
         "accretion",
-        "atmos_chem",
         "interior_struct",
         "outgas",
         "plot",
@@ -9136,7 +9134,6 @@
       ],
       "consumers": [
         "accretion",
-        "atmos_chem",
         "interior_struct",
         "outgas",
         "plot",
@@ -9533,7 +9530,6 @@
       ],
       "consumers": [
         "accretion",
-        "atmos_chem",
         "interior_struct",
         "outgas",
         "plot",
@@ -9930,7 +9926,6 @@
       ],
       "consumers": [
         "accretion",
-        "atmos_chem",
         "interior_struct",
         "outgas",
         "plot",
@@ -11019,7 +11014,6 @@
       ],
       "consumers": [
         "accretion",
-        "atmos_chem",
         "interior_struct",
         "outgas",
         "plot",
@@ -11395,7 +11389,6 @@
       ],
       "consumers": [
         "accretion",
-        "atmos_chem",
         "interior_struct",
         "outgas",
         "plot",
@@ -11771,7 +11764,6 @@
       ],
       "consumers": [
         "accretion",
-        "atmos_chem",
         "interior_struct",
         "outgas",
         "plot",
@@ -12147,7 +12139,6 @@
       ],
       "consumers": [
         "accretion",
-        "atmos_chem",
         "interior_struct",
         "outgas",
         "plot",
@@ -13227,7 +13218,6 @@
       ],
       "consumers": [
         "accretion",
-        "atmos_chem",
         "interior_struct",
         "outgas",
         "plot",
@@ -13955,7 +13945,6 @@
       ],
       "consumers": [
         "accretion",
-        "atmos_chem",
         "interior_struct",
         "outgas",
         "plot",
@@ -15387,7 +15376,6 @@
       ],
       "consumers": [
         "accretion",
-        "atmos_chem",
         "interior_struct",
         "outgas",
         "plot",
@@ -17171,7 +17159,6 @@
       ],
       "consumers": [
         "accretion",
-        "atmos_chem",
         "interior_struct",
         "outgas",
         "plot",
@@ -17899,7 +17886,6 @@
       ],
       "consumers": [
         "accretion",
-        "atmos_chem",
         "interior_struct",
         "outgas",
         "plot",
@@ -19914,7 +19900,6 @@
       ],
       "consumers": [
         "accretion",
-        "atmos_chem",
         "interior_struct",
         "outgas",
         "plot",
@@ -20067,7 +20052,6 @@
       ],
       "consumers": [
         "accretion",
-        "atmos_chem",
         "interior_struct",
         "outgas",
         "plot",
@@ -20220,7 +20204,6 @@
       ],
       "consumers": [
         "accretion",
-        "atmos_chem",
         "interior_struct",
         "outgas",
         "plot",
@@ -20369,7 +20352,6 @@
       ],
       "consumers": [
         "accretion",
-        "atmos_chem",
         "interior_struct",
         "outgas",
         "plot",
@@ -20518,7 +20500,6 @@
       ],
       "consumers": [
         "accretion",
-        "atmos_chem",
         "interior_struct",
         "outgas",
         "plot",
