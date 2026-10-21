@@ -103,8 +103,9 @@ def _estimate_tau_drain(config: Config, hf_row: dict, interior_o) -> float:
     coupled runs exceeded $\\Delta T_{\\text{allow}}$. On an energy basis
     ($\\int T\\,\\mathrm{d}S = q$ at constant $P_{\\text{top}}$) the drop also exceeds
     $\\Delta T_{\\text{allow}}$ in the liquid, by at most a factor $1.106$ at
-    top_cell_dt_rel_dT = 0.08 and $1.204$ at $0.15$ ($1.110$ and $1.211$ at
-    $T_{\\text{surf}} / T_{\\text{top}} = 1.05$). The condition
+    top_cell_dt_rel_dT = 0.08 and $1.204$ at $0.15$ for
+    $T_{\\text{surf}} / T_{\\text{top}} \\le 1.02$, and up to $1.110$ and $1.211$ at $1.05$.
+    The condition
     $\\Delta T_{\\text{trial}} > \\Delta T_{\\text{allow}}$ forces the chord value below
     $c_{p,\\text{eff}}$, and $\\min()$ guards floating-point round-off; using
     $T_{\\text{mean}} = 0.5\\,(T_{\\text{top}} + T_{\\text{trial}})$ in the chord numerator

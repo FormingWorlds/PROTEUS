@@ -497,8 +497,8 @@ class Aragog:
     no step of the coupled runs exceeded dT_allow. On an energy basis (integral of T dS = q at
     constant P_top) the drop also exceeds dT_allow in the liquid, because the exact entropy step
     is larger than q / T_top: the PALEOS slice scans give at most 1.106 dT_allow at
-    top_cell_dt_rel_dT = 0.08 and 1.204 dT_allow at 0.15, and 1.110 and 1.211 at
-    T_surf / T_top = 1.05. Using T_mean = 0.5 * (T_top + T_trial) in
+    top_cell_dt_rel_dT = 0.08 and 1.204 at 0.15 for T_surf / T_top <= 1.02, and up to 1.110
+    and 1.211 at 1.05. Using T_mean = 0.5 * (T_top + T_trial) in
     the chord numerator would reduce cp_chord by the fraction (T_top - T_trial) / (2 * T_top).
     See docs/Explanations/coupling_loop.md for the measured run results and EOS evaluations."""
 
@@ -519,7 +519,8 @@ class Aragog:
     node below S_sol) can give a step that exceeds dT_allow; this is shown on constructed slice
     states, and no step of the coupled runs exceeded dT_allow. On an energy basis (integral of
     T dS = q at constant P_top) the drop also exceeds dT_allow in the liquid: at most 1.106
-    dT_allow at 0.08 and 1.204 dT_allow at 0.15 (1.110 and 1.211 at T_surf / T_top = 1.05). See
+    dT_allow at 0.08 and 1.204 at 0.15 for T_surf / T_top <= 1.02, and up to 1.110 and 1.211
+    at 1.05. See
     docs/Explanations/coupling_loop.md for the measured run results and EOS evaluations."""
 
     top_cell_dt_rel_dT_solid: float = field(
