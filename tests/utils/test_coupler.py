@@ -3551,6 +3551,7 @@ def _all_dummy_modules_config():
     return config
 
 
+@pytest.mark.usefixtures('fwl_io_current')
 def test_validate_module_versions_raises_when_module_out_of_date(tmp_path):
     """A required module at a version older than the pinned minimum
     triggers an EnvironmentError pointing at the troubleshooting URL.
@@ -3587,6 +3588,7 @@ def test_validate_module_versions_raises_when_module_out_of_date(tmp_path):
     assert args[1] == 20
 
 
+@pytest.mark.usefixtures('fwl_io_current')
 def test_validate_module_versions_accepts_compatible_versions(tmp_path):
     """Installed version above the expected minimum: no raise, no
     status-file write.
@@ -3622,6 +3624,7 @@ def test_validate_module_versions_accepts_compatible_versions(tmp_path):
         ('26.10.15', None),
     ],
 )
+@pytest.mark.usefixtures('fwl_io_current')
 def test_validate_module_versions_checks_vulcan_floor(tmp_path, caplog, installed, fix):
     """With atmos_chem.module = 'vulcan', a VULCAN missing or below the floor stops the start.
 
@@ -3637,7 +3640,7 @@ def test_validate_module_versions_checks_vulcan_floor(tmp_path, caplog, installe
     config = _all_dummy_modules_config()
     config.interior_energetics.module = 'dummy'
     config.atmos_chem.module = 'vulcan'
-    config.atmos_chem.when = 'offline'
+    config.atmos_chem.mode = 'offline'
     spec = {'fwl-vulcan': Requirement('fwl-vulcan>=26.10.14')}
     version = PackageNotFoundError('fwl-vulcan') if installed is None else None
     with (
@@ -3662,24 +3665,38 @@ def test_validate_module_versions_checks_vulcan_floor(tmp_path, caplog, installe
     assert fix is None or fix in logged[0]
 
 
-@pytest.mark.parametrize(('module', 'when'), [(None, 'offline'), ('vulcan', 'manually')])
-def test_validate_module_versions_skips_vulcan_without_chemistry(tmp_path, module, when):
-    """A config that never runs VULCAN (no module, or when = 'manually') never checks it."""
+@pytest.mark.parametrize('installed', ['unknown', None], ids=['word', 'no-field'])
+@pytest.mark.usefixtures('fwl_io_current')
+def test_an_unreadable_vulcan_version_stops_the_start(tmp_path, caplog, installed):
+    """An installed VULCAN whose version does not parse stops the start with the doctor's text;
+    only fwl-io goes on with a warning (docs/How-to/troubleshooting.md)."""
+    from packaging.requirements import Requirement
+
     from proteus.utils.coupler import validate_module_versions
 
     config = _all_dummy_modules_config()
     config.interior_energetics.module = 'dummy'
-    config.atmos_chem.module = module
-    config.atmos_chem.when = when
+    config.atmos_chem = _real_atmos_chem('vulcan', 'offline')
     with (
-        patch('proteus.doctor.check_python_package') as mock_check,
+        patch(
+            'proteus.doctor._dependency_specs',
+            return_value={'fwl-vulcan': Requirement('fwl-vulcan>=26.10.14')},
+        ),
+        patch('proteus.doctor.importlib.metadata.version', return_value=installed),
         patch('proteus.utils.coupler.UpdateStatusfile') as mock_update,
+        caplog.at_level('ERROR', logger='fwl.proteus.utils.coupler'),
+        pytest.raises(EnvironmentError, match='Out-of-date modules'),
     ):
         validate_module_versions({'rad': str(tmp_path)}, config)
-    assert mock_check.call_count == 0
-    assert mock_update.call_count == 0
+    assert mock_update.call_count == 1
+    logged = [r.getMessage() for r in caplog.records if 'VULCAN' in r.getMessage()]
+    assert logged == [
+        f'VULCAN module is missing or out of date: installed version {installed!r} does not parse. '
+        'Fix: pip install -U "fwl-vulcan>=26.10.14"'
+    ]
 
 
+@pytest.mark.usefixtures('fwl_io_current')
 def test_validate_module_versions_skips_check_when_no_pinned_minimum(tmp_path):
     """When the resolver finds no pinned minimum (the dep string does
     not name the module), the inner _valid_ver helper short-circuits
@@ -3814,8 +3831,8 @@ def test_print_module_configuration_logs_versions_for_aragog_janus_zephyrus(monk
 
 
 @pytest.mark.unit
-def test_print_citation_covers_module_specific_citations_with_when_set(monkeypatch):
-    """Cover print_citation branches for module-specific citations and chemistry gate."""
+def test_print_citation_covers_module_specific_citations(monkeypatch):
+    """Cover print_citation branches for module-specific citations."""
     config = types.SimpleNamespace(
         atmos_clim=types.SimpleNamespace(module='janus'),
         interior_energetics=types.SimpleNamespace(module='spider'),
@@ -3825,7 +3842,7 @@ def test_print_citation_covers_module_specific_citations_with_when_set(monkeypat
         orbit=types.SimpleNamespace(module='lovepy'),
         accretion=types.SimpleNamespace(module='dummy'),
         observe=types.SimpleNamespace(module='petitRADTRANS'),
-        atmos_chem=types.SimpleNamespace(module='vulcan', when='runtime'),
+        atmos_chem=types.SimpleNamespace(module='vulcan'),
     )
 
     with patch('proteus.utils.coupler.log') as mock_log:
@@ -4134,6 +4151,7 @@ def test_set_directories_sets_rad_and_temp_for_non_debug(monkeypatch):
 
 
 @pytest.mark.unit
+@pytest.mark.usefixtures('fwl_io_current')
 def test_validate_module_versions_spider_stack_passes_with_unpinned_dep(monkeypatch, tmp_path):
     """A spider stack above its pins passes, and the pin itself is inclusive.
 
@@ -4152,7 +4170,7 @@ def test_validate_module_versions_spider_stack_passes_with_unpinned_dep(monkeypa
         escape=types.SimpleNamespace(module='zephyrus'),
         star=types.SimpleNamespace(module='mors'),
         orbit=types.SimpleNamespace(module='dummy'),
-        atmos_chem=types.SimpleNamespace(module=None),
+        atmos_chem=types.SimpleNamespace(module=None, mode=None),
     )
     requires = [
         'numpy',
@@ -4187,6 +4205,7 @@ def test_validate_module_versions_spider_stack_passes_with_unpinned_dep(monkeypa
 
 
 @pytest.mark.unit
+@pytest.mark.usefixtures('fwl_io_current')
 def test_validate_module_versions_raises_for_old_janus_in_spider_stack(monkeypatch, tmp_path):
     """Cover out-of-date log/raise path with spider interior and old janus."""
     from proteus.utils.coupler import validate_module_versions
@@ -4199,7 +4218,7 @@ def test_validate_module_versions_raises_for_old_janus_in_spider_stack(monkeypat
         escape=types.SimpleNamespace(module='dummy'),
         star=types.SimpleNamespace(module='dummy'),
         orbit=types.SimpleNamespace(module='dummy'),
-        atmos_chem=types.SimpleNamespace(module=None),
+        atmos_chem=types.SimpleNamespace(module=None, mode=None),
     )
     monkeypatch.setitem(sys.modules, 'janus', types.SimpleNamespace(__version__='0.1.0'))
 
@@ -4213,6 +4232,7 @@ def test_validate_module_versions_raises_for_old_janus_in_spider_stack(monkeypat
 
 
 @pytest.mark.unit
+@pytest.mark.usefixtures('fwl_io_current')
 def test_validate_module_versions_raises_for_old_obliqua(tmp_path):
     """Obliqua is Julia-backed (no pip package metadata), so its check
     mirrors AGNI's: version read from the checkout's own Project.toml via
@@ -4229,7 +4249,7 @@ def test_validate_module_versions_raises_for_old_obliqua(tmp_path):
         escape=types.SimpleNamespace(module='dummy'),
         star=types.SimpleNamespace(module='dummy'),
         orbit=types.SimpleNamespace(module='obliqua'),
-        atmos_chem=types.SimpleNamespace(module=None),
+        atmos_chem=types.SimpleNamespace(module=None, mode=None),
     )
     obliqua_dir = tmp_path / 'Obliqua'
     obliqua_dir.mkdir()
@@ -4247,6 +4267,7 @@ def test_validate_module_versions_raises_for_old_obliqua(tmp_path):
 
 
 @pytest.mark.unit
+@pytest.mark.usefixtures('fwl_io_current')
 def test_validate_module_versions_accepts_current_obliqua(tmp_path):
     """The boundary case: an installed Obliqua exactly at
     ``OBLIQUA_MIN_VERSION`` passes (the comparison is inclusive), and no
@@ -4263,7 +4284,7 @@ def test_validate_module_versions_accepts_current_obliqua(tmp_path):
         escape=types.SimpleNamespace(module='dummy'),
         star=types.SimpleNamespace(module='dummy'),
         orbit=types.SimpleNamespace(module='obliqua'),
-        atmos_chem=types.SimpleNamespace(module=None),
+        atmos_chem=types.SimpleNamespace(module=None, mode=None),
     )
     obliqua_dir = tmp_path / 'Obliqua'
     obliqua_dir.mkdir()
@@ -4319,8 +4340,8 @@ def test_print_module_configuration_logs_obliqua_version_and_julia(monkeypatch):
 
 
 @pytest.mark.unit
-def test_print_citation_agni_and_manual_mode_cover_noop_cases():
-    """Cover print_citation match-case no-op arms; VULCAN is cited in manual mode,
+def test_print_citation_agni_and_mode_none_cover_noop_cases():
+    """Cover print_citation match-case no-op arms; VULCAN is cited with mode none,
     because the user runs the selected chemistry module on the output afterwards."""
     config = types.SimpleNamespace(
         atmos_clim=types.SimpleNamespace(module='agni'),
@@ -4331,7 +4352,7 @@ def test_print_citation_agni_and_manual_mode_cover_noop_cases():
         orbit=types.SimpleNamespace(module='dummy'),
         accretion=types.SimpleNamespace(module='dummy'),
         observe=types.SimpleNamespace(module='dummy'),
-        atmos_chem=types.SimpleNamespace(module='vulcan', when='manually'),
+        atmos_chem=types.SimpleNamespace(module='vulcan', mode=None),
     )
 
     with patch('proteus.utils.coupler.log') as mock_log:
@@ -5867,3 +5888,275 @@ def test_core_ledger_is_zero_without_the_core_module():
     _populate_core_residual(hf, row)
     assert row['E_core_residual_J'] == 0.0
     assert row['E_core_residual_frac'] == 0.0
+
+
+@pytest.fixture
+def fwl_io_current(monkeypatch):
+    """Keep the fwl-io floor check out of a module-version test that is not about it."""
+    monkeypatch.setattr('proteus.utils.coupler.fwl_io_problem', lambda: None)
+
+
+_MISSING = object()
+
+
+def _fwl_io_installed(installed):
+    """Patch the installed fwl-io version; ``_MISSING`` means the package is absent."""
+    from importlib.metadata import PackageNotFoundError
+
+    def fake(name):
+        if name != 'fwl-io':
+            raise AssertionError(f'unexpected package {name}')
+        if installed is _MISSING:
+            raise PackageNotFoundError(name)
+        if isinstance(installed, Exception):
+            raise installed
+        return installed
+
+    return patch('importlib.metadata.version', side_effect=fake)
+
+
+_BELOW = {
+    'older-release': '26.10.7.1',
+    'floor-rc': '{floor}rc1',
+    'floor-dev': '{floor}.dev3',
+    'dev-build': '0.0.0.dev0',
+}
+_AT_OR_ABOVE = {
+    'floor': '{floor}',
+    'floor-patch': '{floor}.1',
+    'floor-post': '{floor}.post1',
+    'floor-post-dev': '{floor}.post1.dev8',
+    'floor-local': '{floor}+local',
+    'later': '99.1.1',
+}
+
+
+def _versions(table):
+    """The versions of ``table`` with FWL_IO_FLOOR filled in, as pytest params with ids."""
+    from proteus.data import FWL_IO_FLOOR
+
+    return [pytest.param(v.format(floor=FWL_IO_FLOOR), id=k) for k, v in table.items()]
+
+
+@pytest.mark.parametrize('installed', _versions(_BELOW))
+def test_fwl_io_problem_names_the_upgrade_below_the_floor(installed):
+    """An fwl-io below FWL_IO_FLOOR gives a problem that names both versions and the upgrade command."""
+    from proteus.data import FWL_IO_FLOOR
+    from proteus.doctor import FAIL, CheckResult
+    from proteus.utils.coupler import fwl_io_problem
+
+    seen = []
+
+    def doctor(name, spec):
+        seen.append((name, str(spec)))
+        return CheckResult(
+            name=name, category='versions', status=FAIL, message='', fix_cmd='FIX'
+        )
+
+    with _fwl_io_installed(installed), patch('proteus.doctor.check_python_package', doctor):
+        problem = fwl_io_problem()
+    assert (
+        problem
+        == f'fwl-io {installed} is below the version PROTEUS needs ({FWL_IO_FLOOR}). Fix: FIX'
+    )
+    assert seen == [('fwl-io', f'fwl-io>={FWL_IO_FLOOR}')]
+
+
+def test_fwl_io_problem_falls_back_to_pip_when_the_doctor_fails(caplog):
+    """If the doctor cannot build its fix, the message names the pip upgrade and a warning
+    names the doctor's error."""
+    from proteus.data import FWL_IO_FLOOR
+    from proteus.utils.coupler import fwl_io_problem
+
+    def doctor(name, spec):
+        raise RuntimeError('no metadata')
+
+    with (
+        caplog.at_level(logging.DEBUG, logger='fwl'),
+        _fwl_io_installed('26.10.7.1'),
+        patch('proteus.doctor.check_python_package', doctor),
+    ):
+        problem = fwl_io_problem()
+    assert problem.endswith(f'Fix: pip install -U "fwl-io>={FWL_IO_FLOOR}"')
+    assert '26.10.7.1' in problem
+    levels = [r.levelno for r in caplog.records if 'no metadata' in r.getMessage()]
+    assert levels == [logging.WARNING]
+
+
+def test_fwl_io_problem_names_pip_when_the_doctor_gives_no_fix():
+    """A doctor result without a fix command leaves the pip upgrade, never 'Fix: None'."""
+    from proteus.data import FWL_IO_FLOOR
+    from proteus.doctor import PASS, CheckResult
+    from proteus.utils.coupler import fwl_io_problem
+
+    result = CheckResult(
+        name='fwl-io', category='versions', status=PASS, message='', fix_cmd=None
+    )
+    with (
+        _fwl_io_installed('26.10.7.1'),
+        patch('proteus.doctor.check_python_package', return_value=result),
+    ):
+        problem = fwl_io_problem()
+    assert problem.endswith(f'Fix: pip install -U "fwl-io>={FWL_IO_FLOOR}"')
+    assert 'None' not in problem
+
+
+@pytest.mark.parametrize('installed', _versions(_AT_OR_ABOVE))
+def test_fwl_io_problem_is_none_at_or_above_the_floor(installed):
+    """An fwl-io at or above FWL_IO_FLOOR passes; the floor itself is the limit input."""
+    from proteus.utils.coupler import fwl_io_problem
+
+    with _fwl_io_installed(installed) as fake:
+        problem = fwl_io_problem()
+    assert problem is None
+    assert fake.call_count == 1
+
+
+def test_fwl_io_problem_reports_a_missing_package():
+    """Without fwl-io installed, the problem says so and names the install command."""
+    from proteus.data import FWL_IO_FLOOR
+    from proteus.utils.coupler import fwl_io_problem
+
+    with _fwl_io_installed(_MISSING):
+        problem = fwl_io_problem()
+    assert problem == f'fwl-io is not installed. Fix: pip install "fwl-io>={FWL_IO_FLOOR}"'
+    assert 'git pull' not in problem
+
+
+@pytest.mark.parametrize(
+    'installed',
+    ['unknown', '', 'twenty-six', None, KeyError('Version')],
+    ids=['word', 'empty', 'spelled', 'none', 'no-field'],
+)
+def test_fwl_io_problem_warns_on_an_unparsable_version(installed, caplog):
+    """A version that does not parse, or a dist-info without one, only warns, and the
+    warning names the version found and the floor."""
+    from proteus.data import FWL_IO_FLOOR
+    from proteus.utils.coupler import fwl_io_problem
+
+    with caplog.at_level(logging.WARNING, logger='fwl'), _fwl_io_installed(installed):
+        problem = fwl_io_problem()
+    assert problem is None
+    found = [r for r in caplog.records if 'cannot parse the installed' in r.getMessage()]
+    assert [r.levelno for r in found] == [logging.WARNING]
+    shown = None if isinstance(installed, Exception) else installed
+    assert f'version {shown!r};' in found[0].getMessage()
+    assert f'fwl-io>={FWL_IO_FLOOR}' in found[0].getMessage()
+
+
+@pytest.mark.parametrize(
+    'installed, line, fix',
+    [
+        ('26.10.7.1', 'is below the version PROTEUS needs', 'Fix: FIX'),
+        (_MISSING, 'fwl-io is not installed', 'Fix: pip install "fwl-io>='),
+    ],
+    ids=['old', 'missing'],
+)
+def test_validate_module_versions_stops_on_an_old_or_missing_fwl_io(
+    tmp_path, caplog, installed, line, fix
+):
+    """At start an old or missing fwl-io stops with status 20 and one ERROR line with the fix."""
+    from proteus.doctor import FAIL, CheckResult
+    from proteus.utils.coupler import validate_module_versions
+
+    config = _all_dummy_modules_config()
+    config.interior_energetics.module = 'dummy'
+    doctor = CheckResult(
+        name='fwl-io', category='versions', status=FAIL, message='', fix_cmd='FIX'
+    )
+    with (
+        _fwl_io_installed(installed),
+        patch('proteus.doctor.check_python_package', return_value=doctor),
+        patch('proteus.utils.coupler.UpdateStatusfile') as mock_update,
+        caplog.at_level(logging.WARNING, logger='fwl'),
+    ):
+        with pytest.raises(EnvironmentError, match='Out-of-date modules'):
+            validate_module_versions({'rad': str(tmp_path)}, config)
+    mock_update.assert_called_once_with({'rad': str(tmp_path)}, 20)
+    errors = [r.getMessage() for r in caplog.records if r.levelno == logging.ERROR]
+    assert len(errors) == 1 and line in errors[0] and fix in errors[0]
+
+
+def test_validate_module_versions_goes_on_with_an_unparsable_fwl_io(tmp_path, caplog):
+    """An fwl-io version that does not parse warns once and the start goes on."""
+    from proteus.utils.coupler import validate_module_versions
+
+    config = _all_dummy_modules_config()
+    config.interior_energetics.module = 'dummy'
+    with (
+        _fwl_io_installed('unknown'),
+        patch('proteus.utils.coupler.UpdateStatusfile') as mock_update,
+        caplog.at_level(logging.WARNING, logger='fwl'),
+    ):
+        assert validate_module_versions({'rad': str(tmp_path)}, config) is None
+    assert mock_update.call_count == 0
+    levels = [
+        r.levelno for r in caplog.records if 'cannot parse the installed' in r.getMessage()
+    ]
+    assert levels == [logging.WARNING]
+
+
+def _real_atmos_chem(module, mode):
+    """The atmos_chem section of input/all_options.toml, read by the checked reader."""
+    from pathlib import Path
+
+    from proteus.config import read_config_object
+
+    config = read_config_object(Path(__file__).parents[2] / 'input' / 'all_options.toml')
+    config.atmos_chem.module = module
+    config.atmos_chem.mode = mode
+    return config.atmos_chem
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('mode', [None, 'offline'])
+def test_vulcan_problem_reads_a_real_config_in_every_mode(mode):
+    """vulcan_problem reads a real AtmosChem and names the fix of a VULCAN below its floor in
+    every mode, because proteus offchem runs VULCAN whatever the mode is."""
+    from packaging.requirements import Requirement
+
+    from proteus.utils.coupler import vulcan_problem
+
+    config = MagicMock()
+    config.atmos_chem = _real_atmos_chem('vulcan', mode)
+    with (
+        patch(
+            'proteus.doctor._dependency_specs',
+            return_value={'fwl-vulcan': Requirement('fwl-vulcan>=26.10.14')},
+        ),
+        patch('proteus.doctor.importlib.metadata.version', return_value='26.4.22'),
+        patch('proteus.doctor._editable_checkout_path', return_value=None),
+    ):
+        problem = vulcan_problem(config)
+    assert problem is not None and 'fwl-vulcan>=26.10.14' in problem
+
+
+@pytest.mark.unit
+def test_online_chemistry_is_still_refused():
+    """The start check covers only mode 'offline'; once 'online' is valid it must check that too."""
+    import attrs
+
+    with pytest.raises(ValueError, match='not yet implemented'):
+        attrs.evolve(_real_atmos_chem('vulcan', 'offline'), mode='online')
+
+
+@pytest.mark.unit
+@pytest.mark.usefixtures('fwl_io_current')
+@pytest.mark.parametrize(
+    ('module', 'mode', 'checked'),
+    [('vulcan', None, 0), ('vulcan', 'offline', 1), (None, None, 0)],
+)
+def test_the_start_checks_vulcan_only_when_the_run_calls_it(tmp_path, module, mode, checked):
+    """With a real AtmosChem, proteus start checks VULCAN only when mode = 'offline' runs it."""
+    from proteus.utils.coupler import validate_module_versions
+
+    config = _all_dummy_modules_config()
+    config.interior_energetics.module = 'dummy'
+    config.atmos_chem = _real_atmos_chem(module, mode)
+    with (
+        patch('proteus.doctor.check_python_package') as mock_check,
+        patch('proteus.utils.coupler.UpdateStatusfile'),
+    ):
+        mock_check.return_value.status = 'pass'
+        validate_module_versions({'rad': str(tmp_path)}, config)
+    assert mock_check.call_count == checked

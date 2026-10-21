@@ -986,6 +986,27 @@ def _check_editable_mors(checkout) -> CheckResult:
         return check_python_package('fwl-mors', Requirement('fwl-mors>=26.10.6'))
 
 
+@pytest.mark.parametrize('found', ['unknown', None], ids=['word', 'no-field'])
+def test_an_unparsable_version_warns_in_every_doctor_path(found):
+    """A package whose version does not parse is a WARN that names it and the upgrade; the
+    floor list and the installed check go on, as proteus start only warns."""
+    from packaging.requirements import Requirement
+
+    spec = Requirement('fwl-vulcan>=26.10.14')
+    with (
+        patch('proteus.doctor.importlib.metadata.version', return_value=found),
+        patch('proteus.doctor._dependency_specs', return_value={'fwl-vulcan': spec}),
+        patch('proteus.doctor._editable_checkout_path', return_value=None),
+    ):
+        r = check_python_package('fwl-vulcan', spec)
+        lines = below_floor_fixes()
+        installed = is_standard_module_installed('VULCAN', '.')
+    assert (r.status, r.fix_cmd) == (WARN, 'pip install -U "fwl-vulcan>=26.10.14"')
+    assert repr(found) in r.message
+    assert lines == []
+    assert installed is True
+
+
 class TestBelowFloorFixes:
     """The installer's list of installed packages below their version floor."""
 
