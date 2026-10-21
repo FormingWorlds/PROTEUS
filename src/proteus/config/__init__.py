@@ -119,14 +119,10 @@ def _error_lines(exc: BaseException, path: str = '') -> list[str]:
     lines = []
     for sub in exc.exceptions:
         notes = getattr(sub, '__notes__', ())
-        step = next((n.name for n in notes if isinstance(n, AttributeValidationNote)), '')
+        step = next(
+            (n.name for n in notes if isinstance(n, AttributeValidationNote)), ''
+        ) or _validated_field(sub)
         index = next((n.index for n in notes if isinstance(n, IterableValidationNote)), None)
-        if (
-            not step
-            and index is None
-            and not isinstance(sub, cattrs.errors.BaseValidationError)
-        ):
-            step = _validated_field(sub)
         sub_path = '.'.join(p for p in (path, step) if p)
         if index is not None:
             sub_path += f'[{index}]'
