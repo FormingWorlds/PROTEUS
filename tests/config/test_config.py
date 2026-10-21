@@ -226,11 +226,7 @@ def test_read_config_object_names_the_unknown_key_before_a_bad_value(tmp_path):
 @pytest.mark.parametrize(
     ('keys', 'value', 'line'),
     [
-        (
-            ['config_version'],
-            'x.y',
-            'config_version: Config file version "x.y" is not compatible',
-        ),
+        (['config_version'], 'x.y', 'Config file version "x.y" is not compatible'),
         (
             ['interior_energetics', 'module'],
             'nope',
@@ -261,6 +257,59 @@ def test_read_config_object_names_the_key_path_and_reason(tmp_path, keys, value,
     lines = str(excinfo.value).splitlines()
     assert any(row.strip().startswith(line) for row in lines), lines
     assert 'sub-exception' not in str(excinfo.value)
+    assert 'Attribute(' not in str(excinfo.value)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('change', 'line', 'not_line'),
+    [
+        (
+            {'accretion': {'module': 'morrigan'}, 'outgas': {'vapourise': True}},
+            "accretion.module = 'morrigan' cannot run with outgas.vapourise = true",
+            'config_version:',
+        ),
+        (
+            {'atmos_chem': {'times': [1.0, 'a']}},
+            'atmos_chem.times: could not convert string to float',
+            'atmos_chem: ',
+        ),
+        (
+            {'atmos_chem': {'times': 'foo'}},
+            "atmos_chem.times must be 'end', 'all' or a list of times",
+            'atmos_chem.times: atmos_chem.times',
+        ),
+        (
+            {'params': {'out': {'plot_mod': -1}}},
+            "params.out: Parameter 'plot_mod' must be None or greater than 0.",
+            'params.out.plot_mod: ',
+        ),
+    ],
+    ids=['cross_field', 'converter', 'path_in_reason', 'own_validator'],
+)
+def test_read_config_object_names_no_field_a_validator_does_not_check_alone(
+    tmp_path, change, line, not_line
+):
+    """A field name appears only for a converter or an attrs built-in validator of that field.
+
+    A PROTEUS validator can compare several fields, so its line names the section, and a
+    reason that already starts with the key path gets no second copy of it.
+    """
+
+    def _merge(node, update):
+        for key, value in update.items():
+            if isinstance(value, dict):
+                _merge(node.setdefault(key, {}), value)
+            else:
+                node[key] = value
+
+    with pytest.raises(ValueError) as excinfo:
+        read_config_object(
+            _write_variant(tmp_path, 'bad.toml', lambda raw: _merge(raw, change))
+        )
+    lines = [row.strip() for row in str(excinfo.value).splitlines()]
+    assert any(row.startswith(line) for row in lines), lines
+    assert not any(row.startswith(not_line) for row in lines), lines
     assert 'Attribute(' not in str(excinfo.value)
 
 
