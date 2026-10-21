@@ -564,9 +564,11 @@ def test_rundummyatm_albedo_calculation():
     # Call RunDummyAtm
     output = RunDummyAtm(dirs, config, hf_row)
 
+    D0 = 1361.0 * (1.0 - 0.2) * 1.0 * 1.0
+    olr = const_sigma * ((1.0 - 0.3) * 1400.0) ** 4
     assert output['albedo'] == pytest.approx(0.5, rel=1e-12)
-    # a / (1 - a), the albedo of a reflected over the absorbed shortwave, is 1 here
-    assert output['albedo'] != pytest.approx(1.0, rel=1e-6)
+    assert output['F_sct'] == pytest.approx(0.5 * D0, rel=1e-12)
+    assert output['F_atm'] == pytest.approx(olr - 0.5 * D0, rel=1e-12)
 
 
 @pytest.mark.unit
@@ -974,3 +976,22 @@ def test_rundummyatm_without_shortwave_reports_the_olr_and_albedo_zero():
     assert out['F_atm'] == pytest.approx(const_sigma * ((1.0 - 0.3) * 2000.0) ** 4, rel=1e-13)
     assert out['F_sct'] == 0.0
     assert out['albedo'] == 0.0
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize('prevent_warming', [True, False])
+def test_rundummyatm_prevent_warming_floors_a_warming_net_flux(prevent_warming):
+    """When the absorbed shortwave exceeds the OLR the net flux is negative; prevent_warming
+    holds it at 1e-8 W/m2, and without it the net flux keeps its value."""
+    from proteus.atmos_clim.dummy import RunDummyAtm
+
+    config, hf_row, _ = _albedo_case(0.9, 'fixed')
+    config.atmos_clim.dummy.gamma = 0.999
+    config.orbit.zenith_angle = 0.0
+    config.planet.prevent_warming = prevent_warming
+    hf_row.update(T_magma=100.0, albedo_pl=0.0)
+    out = RunDummyAtm({}, config, hf_row)
+    net = const_sigma * ((1.0 - 0.999) * 100.0) ** 4 - (1.0 - 0.9) * 1361.0 * 0.375
+    assert net < 0.0
+    assert out['F_atm'] == pytest.approx(1.0e-8 if prevent_warming else net, rel=1e-12)
