@@ -27,6 +27,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pytest
 
 from proteus.utils.constants import const_R, const_sigma
@@ -609,11 +610,9 @@ def test_rundummyatm_albedo_zero_when_no_downwelling_flux():
 @pytest.mark.physics_invariant
 def test_rundummyatm_albedo_formula_flux_positive():
     """The zero-flux guard must only fire on the degenerate F_ins=0 case;
-    with positive instellation, albedo is still the closed-form
-    ``surf_greyalbedo / (1 - surf_greyalbedo)`` (the F_ins-dependent
+    with positive instellation, the albedo is the reflected over the incident
+    shortwave at the surface, ``surf_greyalbedo`` (the F_ins-dependent
     prefactor cancels between numerator and denominator).
-
-    surf_greyalbedo=0.25 -> expected = 0.25 / 0.75 = 1/3.
     """
     from proteus.atmos_clim.dummy import RunDummyAtm
 
@@ -638,7 +637,7 @@ def test_rundummyatm_albedo_formula_flux_positive():
 
     # albedo derived correctly from F_ins and surf_greyalbedo
     output = RunDummyAtm({}, config, hf_row)
-    assert output['albedo'] == pytest.approx(1.0 / 3.0, rel=1e-12)
+    assert output['albedo'] == pytest.approx(config.atmos_clim.surf_greyalbedo, rel=1e-12)
 
     # Discrimination: the zero-flux guard's hardcoded 0.0 must NOT have
     # leaked into this positive-flux case
@@ -908,3 +907,56 @@ def test_rundummyatm_boundary_module_keeps_existing_t_surf():
     # Discrimination guard: a regression that always reads T_magma
     # would land at 2000 K, 550 K above the boundary-advanced value.
     assert output['T_surf'] < 1800.0
+
+
+def _albedo_case(albedo_s, surf_state):
+    """Dummy-atmosphere config and helpfile row with a known incident shortwave D0."""
+    config = MagicMock()
+    config.atmos_clim.dummy.gamma = 0.3
+    config.atmos_clim.dummy.height_factor = 1.0
+    config.atmos_clim.dummy.fixed_flux = -1.0
+    config.orbit.zenith_angle = 48.19
+    config.orbit.s0_factor = 0.375
+    config.atmos_clim.surf_greyalbedo = albedo_s
+    config.atmos_clim.surf_state = surf_state
+    config.atmos_clim.surface_d = 0.01
+    config.atmos_clim.surface_k = 2.0
+    config.planet.prevent_warming = False
+    config.interior_energetics.module = 'dummy'
+    hf_row = {'T_magma': 2000.0, 'albedo_pl': 0.1, 'F_ins': 1361.0, 'atm_kg_per_mol': 0.029,
+              'gravity': 9.8, 'R_int': 6.371e6, 'P_surf': 1e5}  # fmt: skip
+    D0 = 1361.0 * (1.0 - 0.1) * 0.375 * np.cos(48.19 * np.pi / 180.0)
+    return config, hf_row, D0
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize('albedo_s', [0.0, 0.1, 0.3])
+def test_rundummyatm_counts_the_surface_albedo_once(albedo_s):
+    """The net surface flux is sigma((1 - gamma) T)^4 - (1 - albedo_s) D0, the reflected
+    flux albedo_s D0 and the albedo albedo_s, for D0 the shortwave reaching the surface."""
+    from proteus.atmos_clim.dummy import RunDummyAtm
+
+    config, hf_row, D0 = _albedo_case(albedo_s, 'fixed')
+    out = RunDummyAtm({}, config, hf_row)
+    olr = const_sigma * ((1.0 - 0.3) * 2000.0) ** 4
+    assert out['F_atm'] == pytest.approx(olr - (1.0 - albedo_s) * D0, rel=1e-13, abs=1e-9)
+    assert out['F_sct'] == pytest.approx(albedo_s * D0, rel=1e-13, abs=1e-12)
+    assert out['albedo'] == pytest.approx(albedo_s, rel=1e-13, abs=1e-15)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize('albedo_s', [0.0, 0.1, 0.3])
+def test_rundummyatm_skin_balance_counts_the_surface_albedo_once(albedo_s):
+    """In skin mode the conducted flux through the lid equals the net flux with the
+    absorbed shortwave (1 - albedo_s) D0 at the returned surface temperature."""
+    from proteus.atmos_clim.dummy import RunDummyAtm
+
+    config, hf_row, D0 = _albedo_case(albedo_s, 'skin')
+    out = RunDummyAtm({}, config, hf_row)
+    T = out['T_surf']
+    net = const_sigma * ((1.0 - 0.3) * T) ** 4 - (1.0 - albedo_s) * D0
+    assert net == pytest.approx(2.0 / 0.01 * (2000.0 - T), rel=1e-9)
+    assert out['F_atm'] == pytest.approx(net, rel=1e-12)
+    assert 0.0 < T < 2000.0
