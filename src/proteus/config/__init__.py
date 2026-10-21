@@ -23,7 +23,7 @@ from .orphans import (
 )
 
 log = logging.getLogger('fwl.' + __name__)
-_ATTR_DIR = os.path.dirname(attr.__file__)
+_ATTR_DIR = os.path.join(os.path.dirname(attr.__file__), '')
 
 
 def structure_k_val(val, _cls):
@@ -108,7 +108,8 @@ def _checked_field(exc: BaseException) -> str:
     str
         The field whose converter raised, or whose validator raised without reading the
         instance (an attrs built-in, or a PROTEUS validator that checks only its value);
-        '' for a validator that reads the instance and can so compare several fields.
+        '' for a validator that reads the instance and can so compare several fields, and for
+        an error from __attrs_post_init__, which concerns the section.
 
     Notes
     -----
@@ -118,7 +119,9 @@ def _checked_field(exc: BaseException) -> str:
     tb = exc.__traceback__
     while tb is not None and not tb.tb_frame.f_code.co_filename.startswith('<attrs generated'):
         tb = tb.tb_next
-    if tb is None:
+    if tb is None or (
+        tb.tb_next is not None and tb.tb_next.tb_frame.f_code.co_name == '__attrs_post_init__'
+    ):
         return ''
     called = [
         i.argval
