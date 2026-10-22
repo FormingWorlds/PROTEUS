@@ -117,11 +117,6 @@ def _cached_model(signature: tuple, build):
     return model
 
 
-# The per-species helpfile columns CALLIOPE zero-initialises for every volatile species.
-_SPECIES_COLUMNS = ('bar', 'vmr', 'kg_atm', 'kg_liquid', 'kg_solid', 'kg_total',
-                    'mol_atm', 'mol_liquid', 'mol_solid', 'mol_total')  # fmt: skip
-
-
 def _populate_volatile_element_reservoirs(hf_row: dict, element_mmw: dict) -> None:
     """Derive per-element reservoir masses from the per-species inventory.
 
@@ -500,12 +495,14 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
         # No solve ran: the atmosphere is empty, and the derived buffer offset and the
         # O residual are undefined (the user pre-seed would misrecord a skipped solve).
         for s in _atm_gas_species:
-            if s in gas_list:
-                kg_total = float(hf_row.get(f'{s}_kg_total', 0.0))
-                hf_row.update({f'{s}_{f}': 0.0 for f in _SPECIES_COLUMNS})
-                if s in noble_gases:  # its kg_total is the escape-owned element total
-                    hf_row[f'{s}_kg_total'] = kg_total
-                    hf_row[f'{s}_mol_total'] = kg_total / eval_gas_mmw(s)
+            kg_total = float(hf_row.get(f'{s}_kg_total', 0.0))
+            hf_row[f'{s}_bar'] = hf_row[f'{s}_vmr'] = 0.0
+            hf_row[f'{s}_kg_atm'] = hf_row[f'{s}_kg_liquid'] = hf_row[f'{s}_kg_solid'] = 0.0
+            hf_row[f'{s}_mol_atm'] = hf_row[f'{s}_mol_liquid'] = hf_row[f'{s}_mol_solid'] = 0.0
+            hf_row[f'{s}_kg_total'] = hf_row[f'{s}_mol_total'] = 0.0
+            if s in noble_gases:  # its kg_total is the escape-owned element total
+                hf_row[f'{s}_kg_total'] = kg_total
+                hf_row[f'{s}_mol_total'] = kg_total / eval_gas_mmw(s)
         hf_row['P_surf'] = 0.0
         _populate_volatile_element_reservoirs(hf_row, element_mmw)
         hf_row['fO2_shift_IW_derived'] = float('nan')
