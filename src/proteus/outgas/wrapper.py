@@ -476,8 +476,9 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict, *, initial: bool):
     hf_row['O_res'] = 0.0
 
     # The chemistry partitions a whole-planet inventory and rewrites every
-    # `_kg_solid` column (0.0 in CALLIOPE, graphite in atmodeller), so the trapped
-    # mass is hidden for the solve and put back after it.
+    # `_kg_solid` column (0.0 in CALLIOPE and atmodeller; atmodeller writes its
+    # condensates to `_kg_condensed`), so the trapped mass is hidden for the solve
+    # and put back after it.
     with trapped_mass_withheld(hf_row):
         _solve_chemistry(dirs, config, hf_row, initial=initial)
 
@@ -729,13 +730,22 @@ def run_desiccated(dirs: dict, config: Config, hf_row: dict, first_iter: bool):
         liquid = 0.0
         if keep_melt:
             liquid = _kept_column(float(hf_row.get(f'{n}_kg_liquid', 0.0)), n, 'melt')
+        # Condensates (e.g. graphite) stay on the surface when the atmosphere goes.
+        condensed = 0.0
+        if n in vol_element_list:
+            condensed = _kept_column(
+                float(hf_row.get(f'{n}_kg_condensed', 0.0)), n, 'condensed'
+            )
         mantle = solid + liquid
-        kept = min(mantle, total)
-        share = kept / mantle if mantle > 0.0 else 0.0
+        held_mass = mantle + condensed
+        kept = min(held_mass, total)
+        share = kept / held_mass if held_mass > 0.0 else 0.0
         # A negative total keeps its value, in the solid column.
-        hf_row[f'{n}_kg_solid'] = solid * share if mantle > 0.0 else kept
+        hf_row[f'{n}_kg_solid'] = solid * share if held_mass > 0.0 else kept
         if keep_melt:
             hf_row[f'{n}_kg_liquid'] = liquid * share
+        if n in vol_element_list:
+            hf_row[f'{n}_kg_condensed'] = condensed * share
         hf_row[f'{n}_kg_total'] = kept
         if n in gas_list:
             mol = _kept_column(float(hf_row.get(f'{n}_mol_solid', 0.0)) * share, n, 'solid')

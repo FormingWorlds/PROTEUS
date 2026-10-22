@@ -793,18 +793,22 @@ def assert_mass_conservation(
         total = float(hf_row.get(f'{e}_kg_total', 0.0))
         if not np.isfinite(total) or total <= 0.0:
             continue
-        parts = sum(float(hf_row.get(f'{e}_kg_{r}', 0.0)) for r in ('atm', 'liquid', 'solid'))
+        parts = sum(
+            float(hf_row.get(f'{e}_kg_{r}', 0.0))
+            for r in ('atm', 'liquid', 'solid', 'condensed')
+        )
         if not np.isfinite(parts):
             continue
         rel = abs(parts - total) / total
         if abs(parts - total) > max(closure_atol_kg, closure_tol * total):
             raise RuntimeError(
                 f'Per-element reservoir closure failed for {e}: '
-                f'{e}_kg_total={total:.6e} kg but atm+liquid+solid='
+                f'{e}_kg_total={total:.6e} kg but atm+liquid+solid+condensed='
                 f'{parts:.6e} kg (relative difference {rel * 100:.4f}%). '
                 f'atm={float(hf_row.get(f"{e}_kg_atm", 0.0)):.3e}, '
                 f'liquid={float(hf_row.get(f"{e}_kg_liquid", 0.0)):.3e}, '
-                f'solid={float(hf_row.get(f"{e}_kg_solid", 0.0)):.3e} kg. '
+                f'solid={float(hf_row.get(f"{e}_kg_solid", 0.0)):.3e}, '
+                f'condensed={float(hf_row.get(f"{e}_kg_condensed", 0.0)):.3e} kg. '
                 f'A reservoir was debited without the matching credit.'
             )
 
@@ -1171,7 +1175,7 @@ def GetHelpfileKeys():
         keys.append(c + '_cd_kg')        # condensed mass [kg]
 
     # Share of the solid-mantle reservoir that trapping owns. The chemistry
-    # writes the rest of `_kg_solid`, its own condensate, on every solve.
+    # writes the rest of `_kg_solid` on every solve.
     for s in vol_list:
         keys.append(s + '_kg_trapped')  # mass trapped in the solid mantle [kg]
     for e in vol_element_list:
@@ -1202,6 +1206,10 @@ def GetHelpfileKeys():
         keys.append(e + '_kg_solid')    # mass in solid mantle [kg]
         keys.append(e + '_kg_liquid')   # mass in liquid mantle [kg]
         keys.append(e + '_kg_total')    # mass in whole planet [kg]
+
+    # Element mass held in outgassing condensates (e.g. graphite), apart from the mantle
+    for e in vol_element_list:
+        keys.append(e + '_kg_condensed')  # mass in condensed phases at the surface [kg]
 
     # element mass ratios in atmosphere
     for e1 in element_list:
@@ -1886,7 +1894,10 @@ def ReadHelpfileFromCSV(output_dir: str, *, required_columns: list[str] | None =
     hf_all = read_helpfile_table(fpath)
 
     missing = sorted(set(required_columns) - set(hf_all.columns))
-    zero_fill = RESUMABLE_ZERO_FILL_KEYS | set(GetHelpfileTrappingKeys())
+    # A run that predates the condensed reservoir held its condensate in
+    # `_kg_solid`, so reading the new column as zero keeps its totals.
+    condensed_keys = {e + '_kg_condensed' for e in vol_element_list}
+    zero_fill = RESUMABLE_ZERO_FILL_KEYS | set(GetHelpfileTrappingKeys()) | condensed_keys
     fillable = [key for key in missing if key in zero_fill]
     unfillable = sorted(set(missing) - set(fillable))
 

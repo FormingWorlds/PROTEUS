@@ -496,6 +496,8 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
         for formula in condensate_list:
             hf_row[f'{formula}_cd_activity'] = 0.0
             hf_row[f'{formula}_cd_kg'] = 0.0
+        for el in {e for comp in _VOLATILE_ELEMENT_STOICH.values() for e in comp}:
+            hf_row[f'{el}_kg_condensed'] = 0.0
         if fO2_source == 'from_O_budget':
             # No solve ran, so the derived buffer offset is undefined.
             # Leaving the user pre-seed in place would misrecord a skipped
@@ -838,19 +840,15 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
     # below for oxygen), so escape's debited total is never overwritten here.
     _populate_volatile_element_reservoirs(hf_row, element_mmw)
 
-    # Add condensed-phase mass (graphite, sulfur, ... when include_condensates is on) to
-    # the per-element solid reservoir. The gas-species inventory above does not
-    # carry condensates, so the per-element atm+liquid+solid split must pick the
-    # condensed mass up here to close against the element budget for any element
-    # that condenses. atmodeller reports the condensed mass per element; it is
-    # zero for the elements (and conditions) that do not condense, so this is a
-    # no-op except when a condensate forms.
+    # Condensed-phase mass (graphite, sulfur, ... when include_condensates is on)
+    # goes to its own per-element reservoir, kept apart from the solid mantle. The
+    # gas-species inventory above does not carry condensates, so the split
+    # atm + liquid + solid + condensed closes against the element budget only with
+    # this term. atmodeller reports the condensed mass per element; it is zero for
+    # the elements (and conditions) that do not condense.
     for el in {e for comp in _VOLATILE_ELEMENT_STOICH.values() for e in comp}:
         condensed = _species_output_scalar(output_dict, f'element_{el}', 'condensed_mass')
-        if condensed:
-            hf_row[f'{el}_kg_solid'] = float(hf_row.get(f'{el}_kg_solid', 0.0)) + max(
-                0.0, condensed
-            )
+        hf_row[f'{el}_kg_condensed'] = max(0.0, condensed) if condensed else 0.0
 
     # Total volatile oxygen (atmospheric + melt-dissolved), summed over the
     # O-bearing volatile species. Computed for every fO2 source so the

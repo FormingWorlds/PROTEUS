@@ -609,12 +609,12 @@ def test_atm_mass_falls_back_to_thin_atm_recon_when_gas_mass_absent(caplog):
 
 
 @pytest.mark.physics_invariant
-def test_condensed_mass_enters_solid_reservoir_and_closes_carbon():
-    """Condensed (graphite) carbon is routed to C_kg_solid so C still closes.
+def test_condensed_mass_enters_condensed_reservoir_and_closes_carbon():
+    """Condensed (graphite) carbon is routed to C_kg_condensed so C still closes.
 
     atmodeller reports condensed-phase mass separately (``element_C.
     condensed_mass``); the gas-species inventory does not carry it. Without
-    folding it into the solid reservoir, ``C_kg_atm + C_kg_liquid + C_kg_solid``
+    its own ``C_kg_condensed`` reservoir, ``C_kg_atm + C_kg_liquid + C_kg_solid``
     would under-count the carbon budget exactly like the SO2 atmospheric drop.
     Here graphite holds part of the carbon budget; the split must still close.
     """
@@ -653,10 +653,11 @@ def test_condensed_mass_enters_solid_reservoir_and_closes_carbon():
         calc_surface_pressures_atmodeller({'output': '/tmp/test'}, config, hf_row)
     _MODEL_CACHE.clear()
 
-    # The condensed carbon lands in the solid reservoir.
-    assert hf_row['C_kg_solid'] == pytest.approx(condensed_C, rel=1e-9)
-    # Full closure: atmosphere + melt + solid == the carbon budget.
-    c_split = sum(float(hf_row[f'C_kg_{r}']) for r in ('atm', 'liquid', 'solid'))
+    # The condensed carbon lands in its own reservoir, not the solid mantle.
+    assert hf_row['C_kg_condensed'] == pytest.approx(condensed_C, rel=1e-9)
+    assert hf_row['C_kg_solid'] == 0.0
+    # Full closure: atmosphere + melt + solid + condensed == the carbon budget.
+    c_split = sum(float(hf_row[f'C_kg_{r}']) for r in ('atm', 'liquid', 'solid', 'condensed'))
     assert c_split == pytest.approx(C_BUDGET, rel=1e-9), (
         f'C split {c_split:.6e} != budget {C_BUDGET:.6e}'
     )
