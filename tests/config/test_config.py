@@ -8,6 +8,7 @@ structure, speed, and physics validity.
 
 from __future__ import annotations
 
+import copy
 import os
 from contextlib import ExitStack
 from itertools import chain
@@ -219,6 +220,361 @@ def test_read_config_object_names_the_unknown_key_before_a_bad_value(tmp_path):
     # so the ordering above suppresses the message rather than the check.
     with pytest.raises(ValueError, match='must be > 0'):
         read_config_object(_write_variant(tmp_path, 'value_only.toml', _value_only))
+
+
+def _set_path(node, keys, value):
+    """Set *value* at the nested *keys* of the raw config dict *node*."""
+    for key in keys[:-1]:
+        node = node.setdefault(key, {})
+    node[keys[-1]] = value
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('keys', 'value', 'line'),
+    [
+        (
+            ['config_version'],
+            'x.y',
+            'config_version: Config file version "x.y" is not compatible',
+        ),
+        (
+            ['interior_energetics', 'module'],
+            'nope',
+            "interior_energetics.module: 'module' must be in",
+        ),
+        (
+            ['interior_energetics', 'aragog', 'solver_method'],
+            'rk4',
+            "interior_energetics.aragog.solver_method: 'solver_method' must be in "
+            "('cvode', 'radau', 'bdf') (got 'rk4')",
+        ),
+        (['planet', 'mass_tot'], 'heavy', 'planet.mass_tot: could not convert string'),
+        (['outgas', 'fO2_shift_IW'], [1], 'outgas.fO2_shift_IW: float() argument'),
+    ],
+    ids=['depth1', 'depth2', 'depth3', 'depth2_type', 'depth2_list'],
+)
+def test_read_config_object_names_the_key_path_and_reason(tmp_path, keys, value, line):
+    """A bad value at any depth is reported with its full key path and the reason."""
+    with pytest.raises(ValueError) as excinfo:
+        read_config_object(
+            _write_variant(tmp_path, 'bad.toml', lambda raw: _set_path(raw, keys, value))
+        )
+    lines = str(excinfo.value).splitlines()
+    assert any(row.strip().startswith(line) for row in lines), lines
+    assert 'sub-exception' not in str(excinfo.value)
+    assert 'Attribute(' not in str(excinfo.value)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('changes', 'line', 'not_line'),
+    [
+        (
+            [(['accretion', 'module'], 'dummy'), (['outgas', 'vapourise'], True)],
+            "accretion.module = 'dummy' cannot run with outgas.vapourise = true",
+            'config_version:',
+        ),
+        (
+            [(['atmos_clim', 'p_obs'], -1.0)],
+            'atmos_clim: `p_obs` must be > 0',
+            'atmos_clim.p_obs:',
+        ),
+        (
+            [(['atmos_chem', 'times'], [1.0, 'a'])],
+            'atmos_chem.times: could not convert string to float',
+            'atmos_chem: ',
+        ),
+        (
+            [(['atmos_chem', 'times'], 'foo')],
+            "atmos_chem.times must be 'end', 'all' or a list of times",
+            'atmos_chem.times: atmos_chem.times',
+        ),
+        (
+            [(['params', 'out', 'plot_mod'], -1)],
+            "params.out.plot_mod: Parameter 'plot_mod' must be None or at least 0.",
+            'params.out: ',
+        ),
+        (
+            [(['atmos_clim', 'overlap_method'], 'zz')],
+            'atmos_clim.overlap_method: Overlap type must be one of',
+            'atmos_clim: ',
+        ),
+    ],
+    ids=[
+        'cross_field',
+        'reads_instance',
+        'converter',
+        'path_in_reason',
+        'own_validator',
+        'own_validator_no_name',
+    ],
+)
+def test_read_config_object_names_no_field_a_validator_does_not_check_alone(
+    tmp_path, changes, line, not_line
+):
+    """A field name appears only when the converter or validator that raised saw that field alone.
+
+    A validator that reads the instance can compare several fields, so its line names the
+    section, and a reason that already starts with the key path gets no second copy of it.
+    """
+
+    def _apply(raw):
+        for keys, value in changes:
+            _set_path(raw, keys, value)
+
+    with pytest.raises(ValueError) as excinfo:
+        read_config_object(_write_variant(tmp_path, 'bad.toml', _apply))
+    lines = [row.strip() for row in str(excinfo.value).splitlines()]
+    assert any(row.startswith(line) for row in lines), lines
+    assert not any(row.startswith(not_line) for row in lines), lines
+    assert 'Attribute(' not in str(excinfo.value)
+
+
+@pytest.mark.unit
+def test_structure_config_names_the_field_without_cached_generated_source():
+    """The field name does not depend on the attrs-generated source in linecache."""
+    import linecache
+
+    raw = read_config(PROTEUS_ROOT / 'input' / 'dummy.toml')
+    _set_path(raw, ['interior_energetics', 'aragog', 'solver_method'], 'rk4')
+    _set_path(raw, ['atmos_chem', 'times'], [1.0, 'a'])
+    linecache.clearcache()
+    with pytest.raises(ValueError) as excinfo:
+        structure_config(raw, 'bad.toml')
+    lines = [row.strip() for row in str(excinfo.value).splitlines()]
+    assert any(row.startswith('interior_energetics.aragog.solver_method: ') for row in lines)
+    assert any(row.startswith('atmos_chem.times: ') for row in lines), lines
+
+
+@pytest.mark.unit
+def test_reads_instance_sees_a_read_inside_a_generator_expression():
+    """A validator that reads the instance only in a generator expression reads it."""
+    from proteus.config import _reads_instance
+
+    def _in_genexp(instance, attribute, value):
+        return any(instance.x > v for v in value)
+
+    def _value_only(instance, attribute, value):
+        return any(v > 0 for v in value)
+
+    assert _reads_instance(_in_genexp.__code__) is True
+    assert _reads_instance(_value_only.__code__) is False
+
+
+@pytest.mark.unit
+def test_error_lines_names_no_field_for_a_post_init_error_without_validators():
+    """An error from __attrs_post_init__ of a class with no validator gives the section path."""
+    import cattrs
+
+    from proteus.config import _error_lines
+
+    @attrs.define
+    class _Section:
+        x: int = 1
+
+        def __attrs_post_init__(self):
+            raise ValueError('x and y disagree')
+
+    _Root = attrs.make_class('_Root', {'sec': attrs.field(type=_Section)})
+    with pytest.raises(cattrs.errors.ClassValidationError) as excinfo:
+        cattrs.structure({'sec': {'x': 2}}, _Root)
+    assert _error_lines(excinfo.value) == ['sec: x and y disagree']
+
+
+def _section_classes():
+    """Sections whose __attrs_post_init__ raises after validators or converters ran."""
+
+    @attrs.define
+    class _Validated:
+        x = attrs.field(default=1, validator=attrs.validators.instance_of(int))
+        y = attrs.field(default=2, validator=attrs.validators.instance_of(int))
+
+        def __attrs_post_init__(self):
+            raise ValueError('bad combination')
+
+    @attrs.define
+    class _Converted:
+        a = attrs.field(default=1, converter=int)
+        b = attrs.field(default=2, converter=int)
+
+        def __attrs_post_init__(self):
+            raise ValueError('a and b clash')
+
+    @attrs.define
+    class _Reading:
+        x = attrs.field(default=1, validator=attrs.validators.instance_of(int))
+        y = attrs.field(default=2, validator=attrs.validators.instance_of(int))
+
+        def __attrs_post_init__(self):
+            if self.x < self.y:
+                raise ValueError('x below y')
+
+    def _shared_check(self):
+        raise ValueError('shared check failed')
+
+    @attrs.define
+    class _Aliased:
+        x = attrs.field(default=1, validator=attrs.validators.instance_of(int))
+        __attrs_post_init__ = _shared_check
+
+    @attrs.define
+    class _PreInit:
+        a = attrs.field(default=1, converter=int)
+
+        def __attrs_pre_init__(self):
+            raise ValueError('pre-init failed')
+
+    @attrs.define
+    class _Inherited(_Converted):
+        c = attrs.field(default=3, converter=int)
+
+    return {
+        'validated': _Validated,
+        'converted': _Converted,
+        'reading': _Reading,
+        'aliased': _Aliased,
+        'pre_init': _PreInit,
+        'inherited': _Inherited,
+    }
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('shape', 'reason'),
+    [
+        ('validated', 'bad combination'),
+        ('converted', 'a and b clash'),
+        ('reading', 'x below y'),
+        ('aliased', 'shared check failed'),
+        ('pre_init', 'pre-init failed'),
+        ('inherited', 'a and b clash'),
+    ],
+)
+def test_error_lines_names_no_field_for_a_post_init_error(shape, reason):
+    """An error from __attrs_post_init__ concerns the section, not the field checked last,
+    whether the post-init reads self or not, whether the fields have validators or
+    converters, whatever name the post-init function has, and also for a pre-init and a
+    post-init inherited from a base class."""
+    import cattrs
+
+    from proteus.config import _error_lines
+
+    section = _section_classes()[shape]
+    root = attrs.make_class('_Root', {'sec': attrs.field(type=section)})
+    with pytest.raises(cattrs.errors.ClassValidationError) as excinfo:
+        cattrs.structure({'sec': {}}, root)
+    assert _error_lines(excinfo.value) == [f'sec: {reason}']
+
+
+@pytest.mark.unit
+def test_error_lines_treats_a_validator_beside_the_attr_package_as_a_proteus_one():
+    """A validator from a folder whose name only starts with the attr package folder, such as
+    attrs/, is not an attrs built-in: it reads the instance, so the line names the section."""
+    import os
+
+    import attr
+    import cattrs
+
+    from proteus.config import _error_lines
+
+    src = 'def cross(instance, attribute, value):\n    if value > instance.limit:\n        raise ValueError("value above limit")\n'
+    ns = {}
+    exec(compile(src, os.path.dirname(attr.__file__) + 's/cross.py', 'exec'), ns)  # noqa: S102
+
+    @attrs.define
+    class _Section:
+        limit = attrs.field(default=1)
+        value = attrs.field(default=0, validator=ns['cross'])
+
+    root = attrs.make_class('_Root', {'sec': attrs.field(type=_Section)})
+    with pytest.raises(cattrs.errors.ClassValidationError) as excinfo:
+        cattrs.structure({'sec': {'value': 5}}, root)
+    assert _error_lines(excinfo.value) == ['sec: value above limit']
+    assert os.path.isdir(os.path.dirname(attr.__file__) + 's')
+
+
+@pytest.mark.unit
+def test_error_lines_keeps_the_path_of_a_reason_that_only_shares_its_prefix():
+    """A reason whose first word merely starts with the section name still gets the path."""
+    import cattrs
+
+    from proteus.config import _error_lines
+
+    group = cattrs.errors.ClassValidationError('x', [ValueError('stardust is bad')], object)
+    assert _error_lines(group, 'star') == ['star: stardust is bad']
+    nested = cattrs.errors.ClassValidationError('x', [ValueError('star.mors is bad')], object)
+    assert _error_lines(nested, 'star') == ['star.mors is bad']
+    colon = cattrs.errors.ClassValidationError('x', [ValueError('star: bad')], object)
+    assert _error_lines(colon, 'star') == ['star: bad']
+
+
+@pytest.mark.unit
+def test_read_config_object_reports_each_bad_value_on_its_own_line(tmp_path):
+    """Two bad values in different sections give one line each, both with paths."""
+
+    def _two(raw):
+        raw['planet']['mass_tot'] = -5.0
+        raw['interior_energetics'].setdefault('aragog', {})['solver_method'] = 'rk4'
+
+    with pytest.raises(ValueError) as excinfo:
+        read_config_object(_write_variant(tmp_path, 'two.toml', _two))
+    lines = [row.strip() for row in str(excinfo.value).splitlines()]
+    assert sum(row.startswith('planet.mass_tot: ') for row in lines) == 1
+    assert (
+        sum(row.startswith('interior_energetics.aragog.solver_method: ') for row in lines) == 1
+    )
+
+
+@pytest.mark.unit
+def test_read_config_object_names_the_list_index_of_a_bad_element(tmp_path):
+    """A bad element of a list value is named by its index in the key path."""
+
+    def _bad(raw):
+        raw.setdefault('accretion', {}).setdefault('morrigan', {})['masses'] = [1.0, 'x']
+
+    with pytest.raises(ValueError) as excinfo:
+        read_config_object(_write_variant(tmp_path, 'bad.toml', _bad))
+    lines = [row.strip() for row in str(excinfo.value).splitlines()]
+    assert any(
+        row.startswith('accretion.morrigan.masses[1]: could not convert string')
+        for row in lines
+    ), lines
+
+
+@pytest.mark.unit
+def test_structure_config_names_the_path_of_any_bad_value():
+    """Any bad value of a nested choice, a positive float or an own-validator field gives one line with its key path."""
+    hypothesis = pytest.importorskip('hypothesis')
+    st = pytest.importorskip('hypothesis.strategies')
+    raw = read_config(PROTEUS_ROOT / 'input' / 'dummy.toml')
+    scalars = st.one_of(
+        st.text().filter(lambda v: v not in ('cvode', 'radau', 'bdf')),
+        st.integers(),
+        st.floats(allow_nan=True, allow_infinity=True),
+        st.booleans(),
+        st.lists(st.integers(), max_size=2),
+    )
+    bad_mass = st.one_of(st.floats(max_value=0.0), st.just(float('nan')))
+    bad_period = st.floats(max_value=0.0, allow_nan=False)
+
+    def _count(keys, value):
+        cfg = copy.deepcopy(raw)
+        _set_path(cfg, keys, value)
+        with pytest.raises(ValueError) as excinfo:
+            structure_config(cfg, 'bad.toml')
+        rows = [row.strip() for row in str(excinfo.value).splitlines()]
+        return sum(row.startswith('.'.join(keys) + ': ') for row in rows)
+
+    @hypothesis.settings(max_examples=150, deadline=None, derandomize=True)
+    @hypothesis.given(scalars, bad_mass, bad_period)
+    def _check(method, mass, period):
+        assert _count(['interior_energetics', 'aragog', 'solver_method'], method) == 1
+        assert _count(['planet', 'mass_tot'], mass) == 1
+        assert _count(['orbit', 'axial_period'], period) == 1
+
+    _check()
+    assert structure_config(copy.deepcopy(raw), 'dummy.toml').planet.mass_tot > 0
 
 
 @pytest.mark.unit
@@ -2070,8 +2426,8 @@ def test_params_valid_mod_negative():
     from proteus.config._params import valid_mod
 
     instance = SimpleNamespace()
-    with pytest.raises(ValueError, match='must be None or greater than 0'):
-        valid_mod(instance, SimpleNamespace(), -1)
+    with pytest.raises(ValueError, match="'plot_mod' must be None or at least 0"):
+        valid_mod(instance, SimpleNamespace(name='plot_mod'), -1)
 
     # Discrimination: a regression that mishandled the boundary (rejecting 0
     # as negative) would fail here. The source allows value == 0 silently
