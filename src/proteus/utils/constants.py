@@ -179,6 +179,12 @@ element_list = list(dict.fromkeys(vol_element_list + vap_element_list + noble_ga
 condensate_list = ['C', 'S', 'H2O', 'H2O4S']
 condensate_names = {'C': 'Graphite', 'S': 'Sulfur', 'H2O': 'Water', 'H2O4S': 'Sulfuric acid'}
 
+# Approximate condensate densities [kg m-3] near ambient conditions, used only
+# to estimate the thickness of a condensed layer; no T or P dependence and no
+# porosity. Graphite ~2260, crystalline sulfur ~2070, liquid water ~1000,
+# liquid sulfuric acid ~1830.
+condensate_density = {'C': 2260.0, 'S': 2070.0, 'H2O': 1000.0, 'H2O4S': 1830.0}
+
 # Molar masses of elements [kg mol-1], from https://iupac.qmul.ac.uk/AtWt/
 element_mmw = {
     'H': 1.008000000e-03,

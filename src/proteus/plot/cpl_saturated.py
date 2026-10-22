@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from proteus.utils.constants import condensate_list, condensate_names
+from proteus.utils.constants import condensate_density, condensate_list, condensate_names
 from proteus.utils.plot import get_colour
 
 if TYPE_CHECKING:
@@ -21,12 +21,14 @@ SATURATED = 0.999
 
 
 def plot_saturated(hf_all: pd.DataFrame, output_dir: str, plot_format='pdf'):
-    """Plot condensate saturation, condensed mass, and the magma state over time.
+    """Plot condensate saturation, condensed column, layer thickness, and magma state.
 
     Reads the ``{X}_cd_activity`` and ``{X}_cd_kg`` columns that the
-    atmodeller outgassing module writes for each supported condensate. A
-    condensate that was never part of the equilibrium is left out, and the
-    plot is skipped when none was.
+    atmodeller outgassing module writes for each supported condensate. The
+    condensed mass is shown per unit surface area, and as the thickness of a
+    uniform layer of the condensate at its ``condensate_density``, which is an
+    estimate only. A condensate that was never part of the equilibrium is left
+    out, and the plot is skipped when none was.
     """
     hf_crop = hf_all.iloc[2:]
     hf_crop = hf_crop[hf_crop['Time'] > 0]
@@ -48,18 +50,22 @@ def plot_saturated(hf_all: pd.DataFrame, output_dir: str, plot_format='pdf'):
 
     log.info('Plot saturated')
 
-    # mass unit
-    M_uval = 1e18  # kg
-    M_ulbl = r'$10^{18}$kg'
+    # column density unit
+    C_uval = 1e6  # kg m-2
+    C_ulbl = r'$10^{6}$ kg m$^{-2}$'
+
+    # Surface area over which the condensate is spread [m2]
+    area = 4.0 * np.pi * np.array(hf_crop['R_int'], dtype=float) ** 2
 
     # create plot
     lw = 1.2
     scale = 1.2
-    fig, axs = plt.subplots(3, 1, figsize=(5 * scale, 6 * scale), sharex=True)
+    fig, axs = plt.subplots(4, 1, figsize=(5 * scale, 7.5 * scale), sharex=True)
     ax0 = axs[0]  # activity
-    ax1 = axs[1]  # condensed mass
-    ax2 = axs[2]  # magma temperature and melt fraction
-    ax2r = ax2.twinx()
+    ax1 = axs[1]  # condensed column density
+    ax2 = axs[2]  # condensed layer thickness
+    ax3 = axs[3]  # magma temperature and melt fraction
+    ax3r = ax3.twinx()
 
     for c, (activity, valid) in solved.items():
         col = get_colour(c)
@@ -71,7 +77,9 @@ def plot_saturated(hf_all: pd.DataFrame, output_dir: str, plot_format='pdf'):
         # only saturated points carry a mass
         mass = np.array(hf_crop.get(f'{c}_cd_kg', np.nan), dtype=float)
         mass = np.where(valid & (activity >= SATURATED), mass, 0.0)
-        ax1.plot(time, mass / M_uval, lw=lw, color=col)
+        column = mass / area
+        ax1.plot(time, column / C_uval, lw=lw, color=col)
+        ax2.plot(time, column / condensate_density[c], lw=lw, color=col)
 
     # Decorate top plot; the reference sits under a saturated condensate's line
     ax0.axhline(1.0, color='grey', ls='dashed', lw=lw * 0.8, label='Saturated', zorder=1)
@@ -87,22 +95,24 @@ def plot_saturated(hf_all: pd.DataFrame, output_dir: str, plot_format='pdf'):
         handletextpad=0.4,
     )
 
-    # Decorate middle plot
-    ax1.set_ylabel(rf'Condensed [{M_ulbl}]')
+    # Decorate column density and layer thickness plots
+    ax1.set_ylabel(rf'Condensed [{C_ulbl}]')
     ax1.set_ylim(bottom=0)
+    ax2.set_ylabel('Layer thickness [m]\n(estimate)')
+    ax2.set_ylim(bottom=0)
 
     # Magma temperature and melt fraction
-    ax2.plot(time, hf_crop['T_magma'], lw=lw, color='k')
-    ax2.set_ylabel(r'T$_\text{magma}$ [K]')
+    ax3.plot(time, hf_crop['T_magma'], lw=lw, color='k')
+    ax3.set_ylabel(r'T$_\text{magma}$ [K]')
     color = 'tab:red'
-    ax2r.plot(time, hf_crop['Phi_global'], lw=lw, color=color, alpha=0.8)
-    ax2r.set_ylim(0, 1.05)
-    ax2r.tick_params(axis='y', color=color, labelcolor=color)
-    ax2r.set_ylabel('Melt fraction', color=color)
+    ax3r.plot(time, hf_crop['Phi_global'], lw=lw, color=color, alpha=0.8)
+    ax3r.set_ylim(0, 1.05)
+    ax3r.tick_params(axis='y', color=color, labelcolor=color)
+    ax3r.set_ylabel('Melt fraction', color=color)
 
-    ax2.set_xscale('log')
-    ax2.set_xlim(left=np.amin(time), right=np.amax(time))
-    ax2.set_xlabel('Time [yr]')
+    ax3.set_xscale('log')
+    ax3.set_xlim(left=np.amin(time), right=np.amax(time))
+    ax3.set_xlabel('Time [yr]')
 
     # Adjust
     fig.subplots_adjust(hspace=0.04)
