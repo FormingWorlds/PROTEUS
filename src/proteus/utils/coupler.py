@@ -225,12 +225,13 @@ def _get_petitradtrans_version() -> str:
 
 
 def vulcan_problem(config: Config) -> str | None:
-    """Return what is wrong with VULCAN and its fix, when the config runs VULCAN.
+    """Return what is wrong with VULCAN and its fix, when the config uses VULCAN.
 
     The check is the doctor's: VULCAN missing, or below the ``fwl-vulcan`` floor in
-    ``pyproject.toml``. With ``when = 'manually'`` VULCAN never runs, so nothing is checked.
+    ``pyproject.toml``. It holds in every ``atmos_chem.mode``, since ``proteus offchem`` runs
+    VULCAN whatever the mode is; ``validate_module_versions`` calls it only when the run does.
     """
-    if config.atmos_chem.module != 'vulcan' or config.atmos_chem.when == 'manually':
+    if config.atmos_chem.module != 'vulcan':
         return None
     from proteus.doctor import PASS, _dependency_specs, check_python_package
 
@@ -238,6 +239,46 @@ def vulcan_problem(config: Config) -> str | None:
     if vulcan.status == PASS:
         return None
     return f'VULCAN module is missing or out of date: {vulcan.message}. Fix: {vulcan.fix_cmd}'
+
+
+def fwl_io_problem() -> str | None:
+    """Return why the installed fwl-io is below ``FWL_IO_FLOOR``, with the fix, or None.
+
+    Every run reads its datasets through fwl-io, so the check holds for every config.
+    A version string that does not parse is no evidence of an old fwl-io: it only warns.
+    """
+    from importlib.metadata import PackageNotFoundError, version
+
+    from packaging.version import InvalidVersion, Version
+
+    from proteus.data import FWL_IO_FLOOR
+
+    installed = None
+    try:
+        installed = version('fwl-io')
+        if Version(installed) >= Version(FWL_IO_FLOOR):
+            return None
+    except PackageNotFoundError:
+        return f'fwl-io is not installed. Fix: pip install "fwl-io>={FWL_IO_FLOOR}"'
+    except (InvalidVersion, TypeError, KeyError):  # TypeError, KeyError: no version field
+        log.warning(
+            f'cannot parse the installed fwl-io version {installed!r}; '
+            f'PROTEUS needs fwl-io>={FWL_IO_FLOOR}'
+        )
+        return None
+    fix = f'pip install -U "fwl-io>={FWL_IO_FLOOR}"'
+    try:  # the doctor's fix knows an editable checkout; it is advice, so a failure keeps pip
+        from packaging.requirements import Requirement
+
+        from proteus.doctor import check_python_package
+
+        fix = (
+            check_python_package('fwl-io', Requirement(f'fwl-io>={FWL_IO_FLOOR}')).fix_cmd
+            or fix
+        )
+    except Exception as exc:
+        log.warning(f'the doctor could not build the fwl-io fix: {exc}')
+    return f'fwl-io {installed} is below the version PROTEUS needs ({FWL_IO_FLOOR}). Fix: {fix}'
 
 
 def validate_module_versions(dirs: dict, config: Config):
@@ -366,8 +407,14 @@ def validate_module_versions(dirs: dict, config: Config):
     if config.orbit.module == 'obliqua':
         valid &= _valid_ver(_get_obliqua_version(dirs), OBLIQUA_MIN_VERSION, 'Obliqua')
 
-    # Atmospheric chemistry module: its floor sits in an extra, which _get_expver misreads
-    if problem := vulcan_problem(config):
+    # Data layer: every dataset is read through fwl-io
+    if problem := fwl_io_problem():
+        log.error(problem)
+        valid = False
+
+    # Atmospheric chemistry module, when mode runs it: its floor sits in an extra, which
+    # _get_expver misreads
+    if config.atmos_chem.mode == 'offline' and (problem := vulcan_problem(config)):
         log.error(problem)
         valid = False
 
@@ -1820,10 +1867,9 @@ def GetPostprocessingKeys():
     are held to this set rather than to the whole of `GetHelpfileKeys()`.
     An archived run stays readable after a schema addition it never used.
 
-    VULCAN indexes a per-element atmospheric mass and a per-gas volume
-    mixing ratio directly, so those expand from the element and volatile
-    lists. Both are fixed module constants, which keeps this set the same
-    for every run, as the full schema is.
+    VULCAN indexes a per-gas volume mixing ratio directly, so those expand
+    from the volatile list. It is a fixed module constant, which keeps this
+    set the same for every run, as the full schema is.
 
     Returns
     -------
@@ -1831,7 +1877,6 @@ def GetPostprocessingKeys():
         Column names, all of which are also in `GetHelpfileKeys()`.
     """
     keys = list(_POSTPROCESSING_FIXED_KEYS)
-    keys += [e + '_kg_atm' for e in element_list]
     keys += [g + '_vmr' for g in vol_list]
     return keys
 

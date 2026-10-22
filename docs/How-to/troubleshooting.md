@@ -130,7 +130,7 @@ Uncaught exception
 OSError: Out-of-date modules detected. Refer to the Troubleshooting guide on the wiki
 ```
 
-This means one of the required PROTEUS modules is outdated on your machine. You need to update the named module before running PROTEUS again.
+This means one of the required PROTEUS modules is outdated on your machine. You need to update the named module before running PROTEUS again. For fwl-io, which downloads the reference data, the error line reads `fwl-io <installed> is below the version PROTEUS needs (<required>). Fix: <command>`, where the command is the one `proteus doctor` gives for your installation (a pip upgrade, or for an editable checkout the update of that checkout), or `fwl-io is not installed. Fix: pip install "fwl-io>=<required>"`. An fwl-io version that cannot be read only gives a warning, and the run goes on. For VULCAN, a version that cannot be read stops the run with the same error and the upgrade command. `proteus doctor` lists a package whose version cannot be read as a warning with the upgrade command.
 
 You can check which modules are out of date by running:
 
@@ -210,7 +210,7 @@ folder or its `make` fails.
 
 ### Data download errors or slow Zenodo downloads {#data-download-errors-or-slow-zenodo-downloads}
 
-PROTEUS downloads input data through fwl-io from Zenodo, without an API token. A file that Zenodo does not serve is fetched from its DataverseNL mirror (every dataset except the PHOENIX spectra has one), and every file is checked against the committed registry. When neither source serves a file, the error lists the failure from each source: a timeout, a connection error or an HTTP 429 or 5xx clears if you retry later; a 404 or a checksum mismatch from both sources does not, so report it as an issue. `fwl-io check proteus` lists what is missing or corrupt among the datasets PROTEUS declares in its own manifest.
+PROTEUS downloads input data through fwl-io from Zenodo, without an API token. A file that Zenodo does not serve is fetched from its DataverseNL mirror, and every file is checked against the committed registry. When neither source serves a file, the error lists the failure from each source: a timeout, a connection error or an HTTP 429 or 5xx clears if you retry later; a 404 or a checksum mismatch from both sources does not, so report it as an issue. `fwl-io check proteus` lists what is missing or corrupt among the datasets PROTEUS declares in its own manifest.
 
 ### PETSc complains about being in the wrong directory
 

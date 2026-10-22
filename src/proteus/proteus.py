@@ -5,6 +5,7 @@ import logging
 import os
 import sys
 import time
+from collections.abc import Mapping
 from datetime import datetime
 from pathlib import Path
 
@@ -42,7 +43,25 @@ from proteus.utils.logs import (
     setup_logger,
 )
 
-_IT_TIMING_ENABLED = os.environ.get('PROTEUS_TIMING', '').lower() in ('1', 'true', 'yes', 'on')
+
+def _timing_enabled(environ: Mapping[str, str]) -> bool:
+    """Whether an environment asks for the [INIT_TIMING] and [IT_TIMING] log lines.
+
+    Parameters
+    ----------
+    environ : Mapping[str, str]
+        Environment variables, such as ``os.environ``.
+
+    Returns
+    -------
+    bool
+        True when ``PROTEUS_TIMING`` is 1, true, yes or on, in any case.
+    """
+    return environ.get('PROTEUS_TIMING', '').lower() in ('1', 'true', 'yes', 'on')
+
+
+# Read once, when this module is imported; a test re-executes this file to check it
+_IT_TIMING_ENABLED = _timing_enabled(os.environ)
 
 # Consecutive iterations without a converged atmosphere after which a run ends,
 # whatever the interior is doing, and always above the streak the atmosphere
@@ -571,11 +590,9 @@ class Proteus:
             zalmoxis_module._clear_superliquidus_cache()
 
         # Import things needed to run PROTEUS
-        #    atmospheric chemistry
         #    giant-impact accretion
         from proteus.accretion.common import landing_time
         from proteus.accretion.wrapper import init_accretion, restore_accretion_state
-        from proteus.atmos_chem.wrapper import run_chemistry
 
         #    atmosphere solver
         from proteus.atmos_clim import run_atmosphere
@@ -1151,8 +1168,6 @@ class Proteus:
         self.agni_deadlock_count = 0
 
         # Main loop
-        # Collects the index of the snapshots that already underwent a VULCAN calculation to avoid repeating:
-        vulcan_completed_loops = set()
         UpdateStatusfile(self.directories, 1)
         if _IT_TIMING_ENABLED:
             _init_wall = time.perf_counter() - _t_start
@@ -1527,23 +1542,6 @@ class Proteus:
 
             ############### / ATMOSPHERE CLIMATE
 
-            ############### ONLINE ATMOSPHERIC CHEMISTRY
-            if (
-                self.config.atmos_chem.when == 'online'
-            ):  # checking if the toml file says online at atmos_chem and then when
-                if (
-                    is_snapshot and not self.desiccated
-                ):  # checking if the loop is a snapshot and runs VULCAN
-                    if self.loops['total'] not in vulcan_completed_loops:
-                        _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
-                        run_chemistry(self.directories, self.config, self.hf_row)
-                        if _IT_TIMING_ENABLED:
-                            _t_mod['chem'] = time.perf_counter() - _t0
-                        vulcan_completed_loops.add(
-                            self.loops['total']
-                        )  # adds it to the completed loops/snapshots
-            ############### / ONLINE ATMOSPHERIC CHEMISTRY
-
             ############### HOUSEKEEPING AND CONVERGENCE CHECK
 
             PrintHalfSeparator()
@@ -1662,13 +1660,11 @@ class Proteus:
         write_atmosphere_snapshot(self.atmos_o, self.config, self.directories, self.hf_row)
 
         # Run offline chemistry
-        if self.config.atmos_chem.when == 'offline':
+        # at the snapshots set by atmos_chem.times
+        if self.config.atmos_chem.mode == 'offline':
             log.info(' ')
             PrintSeparator()
-            if self.desiccated:
-                log.warning('Cannot calculate atmospheric chemistry after desiccation')
-            else:
-                run_chemistry(self.directories, self.config, self.hf_row)
+            self._postprocess_chemistry(self.hf_all)
 
         # Synthetic observations
         if self.config.observe.module is not None:
@@ -1758,14 +1754,25 @@ class Proteus:
 
         run_observe(hf_row, self.config, self.directories)
 
+    def _postprocess_chemistry(self, hf_all):
+        """Run atmospheric chemistry at the snapshots set by `atmos_chem.times`.
+
+        The one chemistry stage for the end of a run and for `proteus offchem`.
+        Snapshots in the data archive are unpacked first, and snapshots without
+        an atmosphere (after desiccation) are left out by `run_chemistry`.
+        """
+        from proteus.atmos_chem.wrapper import run_chemistry
+
+        if archive.archive_exists(self.directories['output/data'], ignore_warnings=True):
+            self.extract_archives()
+        return run_chemistry(self.directories, self.config, hf_all)
+
     def offline_chemistry(self):
         # Load data from helpfile. Read it before unpacking the archive, so a
         # run this cannot postprocess is left archived as it was found.
         from proteus.utils.coupler import (
             GetPostprocessingKeys,
-            HelpfileRow,
             ReadHelpfileFromCSV,
-            helpfile_path,
             vulcan_problem,
         )
 
@@ -1780,19 +1787,8 @@ class Proteus:
         if len(hf_all) < 1:
             raise Exception('Simulation is too short to be postprocessed')
 
-        # Extract archived data
-        self.extract_archives()
-
-        # Get last row. Wrapped so a column outside the postprocessing set,
-        # which the check above does not cover, still reports itself.
-        hf_row = HelpfileRow(
-            hf_all.iloc[-1].to_dict(), helpfile_path(self.directories['output'])
-        )
-
-        # Run offline chemistry, typically invoked via CLI
-        from proteus.atmos_chem.wrapper import run_chemistry
-
-        result = run_chemistry(self.directories, self.config, hf_row)
+        # Run offline chemistry at atmos_chem.times, whatever atmos_chem.mode is
+        result = self._postprocess_chemistry(hf_all)
 
         # Refresh the chemistry plot
         if result is not None:

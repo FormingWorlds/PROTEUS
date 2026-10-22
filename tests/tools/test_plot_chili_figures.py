@@ -41,17 +41,19 @@ pytestmark = [
 
 
 def test_figure_1_spans_100_myr_and_names_the_run_commit(chili_tool, tmp_path):
-    """Figure 1 reaches 100 Myr, so a run that ends at 11.3 Myr is drawn in full;
+    """Figure 1 reaches 100 Myr, so a Venus run that ends at 48 Myr is drawn in full;
     its legend names the commit of the run and its y label names both bases."""
     style = chili_tool._new_style('d0c7f080')
+    venus = _run_table()
+    venus.loc[2, 'Time'] = 4.8e7
 
-    fig = chili_tool.plot_fig1(
-        _comparison_data(tmp_path / 'data'), _run_table(), _run_table(), style
-    )
+    fig = chili_tool.plot_fig1(_comparison_data(tmp_path / 'data'), _run_table(), venus, style)
 
     ax = fig.axes[0]
     assert ax.get_xlim() == pytest.approx((1e-3, 1e2))
-    assert ax.get_xlim()[1] > _run_table()['Time'].iloc[-1] / 1e6
+    (curve,) = [ln for ln in ax.lines if ln.get_label() == 'PROTEUS (d0c7f080) Venus']
+    assert max(curve.get_xdata()) == pytest.approx(48.0)
+    assert max(curve.get_xdata()) < ax.get_xlim()[1]
     labels = [text.get_text() for text in fig.legends[0].get_texts()]
     assert labels == ['MOAI', 'PROTEUS (d0c7f080) Earth', 'PROTEUS (d0c7f080) Venus']
     assert ax.get_ylabel() == 'Melt fraction\n(by volume; current runs by mass)'
@@ -232,6 +234,78 @@ def test_composition_bars_stack_from_zero_and_each_star_sits_on_its_bar(chili_to
     stars = [(ln.get_xdata()[0], ln.get_ydata()[0], ln.get_markersize()) for ln in twin.lines]
     assert stars == [(0, 1700.0, 12), (1, 1800.0, 16)]
     assert twin.get_ylim() == (1500, 4000)
+
+
+@pytest.mark.parametrize(
+    ('phis', 'outline'),
+    [
+        ((0.058, 0.052), [224.50002]),
+        ((0.049, 0.03), [224.50002]),
+        ((0.058, 0.049), [113.50002]),
+        ((0.055, 0.05), [113.50002]),
+        ((0.05 + 0.01, 0.0603), [224.50002]),  # exactly 0.05 + PHI_RELAX
+        ((0.0603, 0.0603), []),
+    ],
+    ids=[
+        'first_row_in_6pc_window',
+        'first_row_at_5pc',
+        'row_at_5pc_wins',
+        'row_at_exactly_5pc',
+        'row_at_exactly_6pc',
+        'ends_at_6.03pc',
+    ],
+)
+def test_figure_5_bar_of_a_current_run_between_5_and_6_percent(
+    chili_tool, tmp_path, phis, outline
+):
+    """A current run's outlined bar sits at its first row at or below 5% melt by mass, or
+    else at its first row at or below 6% (not the one closest to 5%); at 6.03% it has none."""
+    run = _run_table()
+    run = pd.concat([run, run.iloc[[2]]], ignore_index=True)
+    run.loc[2:3, 'Time'] = [1.0e7, 2.0e7]
+    run.loc[2:3, 'Phi_global'] = phis
+    run.loc[2:3, 'H2O_bar'] = [222.0, 111.0]
+
+    fig = chili_tool.plot_fig5(
+        _comparison_data(tmp_path / 'data'), run, chili_tool._new_style('x')
+    )
+
+    bars, twin = fig.axes
+    heights = [p.get_height() for p in bars.patches if p.get_facecolor()[3] == 0]
+    assert heights == pytest.approx(outline)
+    assert [ln.get_markersize() for ln in twin.lines] == [12] + [16] * len(outline)
+
+
+def test_figure_5_bar_of_a_model_is_its_row_closest_to_5_percent_below_7(chili_tool, tmp_path):
+    """A model bar takes the row closest to 5% among rows at or below 7%: 6.5% beats 2%,
+    exactly 7% is inside, 7.5% is outside, 5.2% beats 6.8% and 1%. A model with no such row, as PlanAtMO, takes
+    its row of lowest melt fraction, neither its first nor its last (the t = 0 row is dropped)."""
+    for name, phi in (
+        ('gooey', [0.5, 0.065, 0.02, 0.3]),
+        ('pacman', [0.5, 0.075, 0.02, 0.3]),
+        ('neongooey', [0.5, 0.05 + 2 * 0.01, 0.02, 0.3]),  # exactly the 7% window edge
+        ('moai', [0.5, 0.068, 0.052, 0.01]),
+        ('planatmo', [0.5, 0.3, 0.164, 0.2]),
+    ):
+        table = pd.DataFrame(
+            {
+                't(yr)': [0.0, 1e3, 1e4, 1e5],
+                'T_surf(K)': [3000.0, 2600.0, 2200.0, 1800.0],
+                'phi(vol_frac)': phi,
+                'p_H2O(bar)': [10.0, 20.0, 30.0, 40.0],
+            }
+        )
+        (tmp_path / name).mkdir()
+        table.to_csv(tmp_path / name / f'evolution-{name}-venus-data.csv')
+
+    names, gas, t_surf, is_proteus = chili_tool._collect_atm_panel(
+        tmp_path, None, 'venus', 0.05, {}
+    )
+
+    assert names == ['GOOEY', 'NEONGOOEY', 'PACMAN', 'MOAI', 'PlanAtMO']
+    assert gas['H2O'] == pytest.approx([20.0, 20.0, 30.0, 30.0, 30.0])
+    assert t_surf == pytest.approx([2600.0, 2600.0, 2200.0, 2200.0, 2200.0])
+    assert is_proteus == [False] * 5
 
 
 def test_every_figure_takes_its_neutral_colours_from_the_active_style(

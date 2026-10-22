@@ -23,7 +23,7 @@ in `[project] dependencies`. Click a badge to view the pinned release.
 | fwl-calliope | Volatile outgassing | [![fwl-calliope](https://img.shields.io/badge/fwl--calliope-%3E%3D26.10.05-blue)](https://pypi.org/project/fwl-calliope/26.10.05/){target="_blank" rel="noopener"} | [Docs](https://proteus-framework.org/CALLIOPE/) |
 | fwl-zephyrus | Atmospheric escape | [![fwl-zephyrus](https://img.shields.io/badge/fwl--zephyrus-%3E%3D26.10.10-blue)](https://pypi.org/project/fwl-zephyrus/26.10.10/){target="_blank" rel="noopener"} | [GitHub](https://github.com/FormingWorlds/ZEPHYRUS) |
 | fwl-aragog | Interior thermal evolution | [![fwl-aragog](https://img.shields.io/badge/fwl--aragog-%3E%3D26.10.10-blue)](https://pypi.org/project/fwl-aragog/26.10.10/){target="_blank" rel="noopener"} | [Docs](https://proteus-framework.org/aragog/) |
-| fwl-zalmoxis | Interior structure | [![fwl-zalmoxis](https://img.shields.io/badge/fwl--zalmoxis-%3E%3D26.09.21-blue)](https://pypi.org/project/fwl-zalmoxis/26.09.21/){target="_blank" rel="noopener"} | [Docs](https://proteus-framework.org/Zalmoxis/) |
+| fwl-zalmoxis | Interior structure | [![fwl-zalmoxis](https://img.shields.io/badge/fwl--zalmoxis-%3E%3D26.10.21-blue)](https://pypi.org/project/fwl-zalmoxis/26.10.21/){target="_blank" rel="noopener"} | [Docs](https://proteus-framework.org/Zalmoxis/) |
 <!-- END PYPI_TABLE -->
 
 ### Git-pinned modules (non-PyPI)
@@ -35,7 +35,7 @@ pinned commit.
 <!-- BEGIN GIT_TABLE -->
 | Module | Role | Pin | Docs |
 |--------|------|-----|------|
-| AGNI | Radiative-convective atmosphere (Julia) | [![AGNI](https://img.shields.io/badge/AGNI-21691545-green)](https://github.com/nichollsh/AGNI/commit/21691545b23d777e9d25a727c2bb93c21351898a){target="_blank" rel="noopener"} | [Docs](https://www.h-nicholls.space/AGNI/) |
+| AGNI | Radiative-convective atmosphere (Julia) | [![AGNI](https://img.shields.io/badge/AGNI-62396508-green)](https://github.com/nichollsh/AGNI/commit/623965082ccebfb824076ebae4536d6172c88b1c){target="_blank" rel="noopener"} | [Docs](https://www.h-nicholls.space/AGNI/) |
 | SOCRATES | Spectral radiative transfer (Fortran) | [![SOCRATES](https://img.shields.io/badge/SOCRATES-c3296586-green)](https://github.com/FormingWorlds/SOCRATES/commit/c32965865c2c6bb1ba27b94e958a36982d74b0bf){target="_blank" rel="noopener"} | [Docs](https://proteus-framework.org/SOCRATES/) |
 | SPIDER | Interior evolution (C, requires PETSc) | [![SPIDER](https://img.shields.io/badge/SPIDER-c9a3fd43-green)](https://github.com/FormingWorlds/SPIDER/commit/c9a3fd4301c7008291d4f4921506d36b6288f8ca){target="_blank" rel="noopener"} | [Docs](https://proteus-framework.org/SPIDER/) |
 | Obliqua | Multi-phase tidal response (Julia) | [![Obliqua](https://img.shields.io/badge/Obliqua-ee1ef40d-green)](https://github.com/FormingWorlds/Obliqua/commit/ee1ef40deaac47e1ba9e6d344a8541f500bb9e94){target="_blank" rel="noopener"} | [Docs](https://proteus-framework.org/Obliqua/) |
@@ -50,7 +50,7 @@ pinned commit.
 |--------|------|-----|------|
 | LovePy | Solid-phase tidal heating (Julia) | [![LovePy](https://img.shields.io/badge/LovePy-main-lightgrey)](https://github.com/nichollsh/LovePy){target="_blank" rel="noopener"} | [GitHub](https://github.com/nichollsh/LovePy) |
 | atmodeller | Alternative outgassing module (GPL-3.0) | [![atmodeller](https://img.shields.io/badge/atmodeller-%3E%3D1.0.2-blue)](https://pypi.org/project/atmodeller/1.0.2/){target="_blank" rel="noopener"} [![atmodeller](https://img.shields.io/badge/atmodeller-77e81aac-green)](https://github.com/FormingWorlds/atmodeller/commit/77e81aac5147bad7eec727fba5b299e055db2d4d){target="_blank" rel="noopener"} | [GitHub](https://github.com/FormingWorlds/atmodeller) |
-| VULCAN | Atmospheric chemistry (GPL-3.0) | [![VULCAN](https://img.shields.io/badge/VULCAN-%3E%3D26.10.14-blue)](https://pypi.org/project/fwl-vulcan/26.10.14/){target="_blank" rel="noopener"} | [GitHub](https://github.com/FormingWorlds/VULCAN) |
+| VULCAN | Atmospheric chemistry (GPL-3.0) | [![VULCAN](https://img.shields.io/badge/VULCAN-%3E%3D26.10.16-blue)](https://pypi.org/project/fwl-vulcan/26.10.16/){target="_blank" rel="noopener"} | [GitHub](https://github.com/FormingWorlds/VULCAN) |
 | Morrigan | Protoplanet accretion via giant impacts | [![Morrigan](https://img.shields.io/badge/Morrigan-%3E%3D26.07.27-blue)](https://pypi.org/project/fwl-morrigan/26.07.27/){target="_blank" rel="noopener"} | [GitHub](https://github.com/FormingWorlds/Morrigan) |
 <!-- END OPTIONAL_TABLE -->
 

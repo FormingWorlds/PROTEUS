@@ -565,10 +565,31 @@ class AragogRunner:
         AragogRunner.setup_logger(config, dirs)
         # Store P-S EOS directory path for entropy solver initialization
         interior_o._spider_eos_dir = dirs.get('spider_eos_dir', '')
-        dt = AragogRunner.compute_time_step(config, dirs, hf_row, hf_all, interior_o)
+        solver_was_none = getattr(interior_o, 'aragog_solver', None) is None
+        defer_dt = (
+            solver_was_none
+            and getattr(interior_o, 'ic', 1) != 1
+            and getattr(
+                getattr(getattr(config, 'interior_energetics', None), 'aragog', None),
+                'top_cell_dt_limit',
+                False,
+            )
+            is True
+        )
+        # On resume with top_cell_dt_limit, compute dt once after setup populates aragog_solver.
+        dt = (
+            0.0
+            if defer_dt
+            else AragogRunner.compute_time_step(config, dirs, hf_row, hf_all, interior_o)
+        )
         self.setup_or_update_solver(config, hf_row, interior_o, dt, dirs, hf_all=hf_all)
-        self.aragog_solver = interior_o.aragog_solver
+        if defer_dt and getattr(interior_o, 'aragog_solver', None) is not None:
+            dt = AragogRunner.compute_time_step(config, dirs, hf_row, hf_all, interior_o)
+            interior_o.aragog_solver.parameters.solver.end_time = hf_row['Time'] + dt
+        self.aragog_solver = getattr(interior_o, 'aragog_solver', None)
+
         self._config = config
+
         # Diffrax direct-JAX integration is research-only (autodiff
         # development). It is NOT exposed in the user-facing schema; flip
         # the constant below to enable for development. The CHILI
@@ -1054,7 +1075,7 @@ class AragogRunner:
                 )
             elif _key.startswith('PALEOS:'):
                 # IC=3 on the entropy tables; _verify_entropy_ic then compares it with an
-                # independent PALEOS inversion and corrects a difference above 1%.
+                # independent PALEOS adiabat and logs a difference above 1%.
                 initial_condition_temperature_profile = 3
                 init_file_temperature_profile = ''
             else:

@@ -43,7 +43,7 @@ classifiers = [
 ]
 dependencies = [
     "attrs",
-    "cattrs",
+    "cattrs>=23.1.2",
     "fwl-janus>=26.10.15",
     "fwl-mors>=26.10.6",
     "fwl-calliope>=26.10.05",
@@ -54,7 +54,7 @@ dependencies = [
     # lookups, which the super-liquidus interior initial condition
     # requires (Zalmoxis #79), on top of the JAX structure path for
     # unified PALEOS and wet mantles (Zalmoxis #78).
-    "fwl-zalmoxis>=26.09.21",
+    "fwl-zalmoxis>=26.10.21",
     # Aragog (the default interior solver) and atmodeller run on JAX and equinox. The three are
     # held to the combination the Aragog numerics are validated against (equinox 0.13.8 on jax
     # and jaxlib below 0.10); lift a bound only after the Aragog entropy solve is validated again.
@@ -79,9 +79,8 @@ dependencies = [
     "sympy",
     "astropy",
     "toml",
-    # 26.10.7.1 declares the Seager 2007 EOS and Zeng 2019 mass-radius data and pins
-    # the Named stellar spectra v2 in its shared manifest, which PROTEUS reads.
-    "fwl-io>=26.10.7.1",
+    # 26.10.16 pins the RTPress melt tables at Zenodo 18822022 (DataverseNL QLCEBW).
+    "fwl-io>=26.10.16",
     "packaging",
 ]
 
@@ -104,7 +103,7 @@ atmodeller = ["atmodeller>=1.0.2"]
 # vulcan: atmospheric photochemistry module, selected via
 # atmos_chem.module = "vulcan". Also installable editable via
 # tools/get_vulcan.sh.
-vulcan = ["fwl-vulcan>=26.10.14"]
+vulcan = ["fwl-vulcan>=26.10.16"]
 # morrigan: protoplanet accretion module for giant-impact timelines,
 # selected via accretion.module = "morrigan". Also installable editable
 # via tools/get_morrigan.sh.
@@ -265,7 +264,7 @@ directory = "htmlcov"
 # Tracks nichollsh/AGNI main. Bump after every AGNI release that
 # PROTEUS depends on.
 url = "https://github.com/nichollsh/AGNI.git"
-ref = "21691545b23d777e9d25a727c2bb93c21351898a"
+ref = "623965082ccebfb824076ebae4536d6172c88b1c"
 
 [tool.proteus.modules.socrates]
 # Spectral radiative transfer library (Fortran). Compiled in-place

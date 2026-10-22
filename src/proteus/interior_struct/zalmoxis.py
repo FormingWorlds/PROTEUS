@@ -5,6 +5,7 @@ import copy
 import functools
 import hashlib
 import importlib.util
+import inspect
 import logging
 import os
 import re
@@ -52,6 +53,7 @@ from proteus.utils.helper import (
     format_subyear_time,
     generates_paleos_tables,
     is_mgsio3,
+    lowt_extension_unsupported,
     paleos_companion_keys,
     snapshot_path_for_time,
     twophase_registry_key,
@@ -77,6 +79,9 @@ _SUPERLIQ_DEFAULT_MUSHY = 0.8  # fallback solidus = factor * liquidus
 
 # Entries kept in each super-liquidus memo before the least recently used goes.
 _SUPERLIQ_CACHE_MAXSIZE = 64
+
+#: Low-temperature extension of the PALEOS MgSiO3 solid table, kept next to that table.
+LOWT_EXTENSION_FILE = 'paleos_mgsio3_tables_pt_proteus_solid_lowT.dat'
 
 
 class _LRUDict(OrderedDict):
@@ -129,13 +134,11 @@ _SUPERLIQ_FAILED: _LRUDict = _LRUDict()
 # EOS check runs before every structure solve on a fresh registry.
 _PALEOS_API_RESOLVED: dict[str, dict] = {}
 
-# CMB temperature [K] of the most recently solved super-liquidus adiabat. A
-# structure solve driven by an external temperature source discards this anchor
-# (the external T(r) is the temperature source), so those calls reuse the value
-# the internal-dispatch initial-condition solve already produced instead of
-# repeating the scan-and-bisection at a drifted P_cmb. None until the first
-# solve completes.
+# CMB and surface temperatures [K] of the latest super-liquidus solve. External-source
+# structure solves and deferred anchor failures reuse this pair for the same
+# (delta_T_super, mantle_eos) instead of solving again. None before the first solve.
 _SUPERLIQ_LAST_ANCHOR: float | None = None
+_SUPERLIQ_LAST_SURFACE: float | None = None
 # (delta_T_super, mantle_eos) of the solve that set _SUPERLIQ_LAST_ANCHOR.
 _SUPERLIQ_LAST_ANCHOR_FOR: tuple | None = None
 
@@ -151,7 +154,8 @@ def _clear_superliquidus_cache() -> None:
     Also clears ``common._ANCHOR_CAP_WARNED``, the anchor-cap warnings that
     share the lifetime of these solves.
     """
-    global _SUPERLIQ_LAST_ANCHOR, _SUPERLIQ_LAST_ANCHOR_FOR, _JAX_NONVIABLE_LOGGED
+    global _SUPERLIQ_LAST_ANCHOR, _SUPERLIQ_LAST_ANCHOR_FOR, _SUPERLIQ_LAST_SURFACE
+    global _JAX_NONVIABLE_LOGGED
     from proteus.interior_energetics.common import _ANCHOR_CAP_WARNED
 
     _SUPERLIQ_CACHE.clear()
@@ -159,6 +163,7 @@ def _clear_superliquidus_cache() -> None:
     _ANCHOR_CAP_WARNED.clear()
     _SUPERLIQ_LAST_ANCHOR = None
     _SUPERLIQ_LAST_ANCHOR_FOR = None
+    _SUPERLIQ_LAST_SURFACE = None
     _JAX_NONVIABLE_LOGGED = False
 
 
@@ -664,9 +669,8 @@ def _resolve_zalmoxis_temperature_mode(mode: str) -> str:
     - all other modes pass through unchanged.
 
     The 'liquidus_super' mapping pairs with
-    :func:`_resolve_zalmoxis_cmb_temperature`, which supplies the CMB
-    temperature of the solved super-liquidus adiabat as the anchor for
-    Zalmoxis's upward integration.
+    :func:`_resolve_zalmoxis_anchor_temperatures`, which supplies the CMB and
+    surface temperatures of the solved super-liquidus adiabat.
     """
     if mode in ('accretion', 'isentropic'):
         return 'adiabatic'
@@ -675,68 +679,75 @@ def _resolve_zalmoxis_temperature_mode(mode: str) -> str:
     return mode
 
 
-def _resolve_zalmoxis_cmb_temperature(
+def _resolve_zalmoxis_anchor_temperatures(
     config: Config,
     hf_row: dict,
     mode: str,
     external_temperature_source: bool = False,
-) -> float:
-    """Resolve cmb_temperature for the Zalmoxis structure call.
+) -> tuple[float, float]:
+    """Resolve cmb_temperature and surface_temperature for the Zalmoxis structure call.
 
-    For 'liquidus_super', returns the CMB temperature of the solved
+    For 'liquidus_super', returns the CMB and surface temperatures of one solved
     super-liquidus adiabat (see :func:`solve_superliquidus_adiabat`), using
     hf_row['P_cmb'] when populated or a Noack & Lasbleis (2020) mass-aware
     P_cmb estimate on the very first call; the next structure iteration
-    recomputes it against the converged Zalmoxis P_cmb. The energetics IC is
-    solved separately on the P-S tables (compute_initial_entropy).
+    recomputes it against the converged Zalmoxis P_cmb. Zalmoxis anchors its
+    upward integration at the CMB value and takes the surface value for its
+    first-guess profile, its zero-pressure nodes and its nodes below the CMB.
+    The energetics IC is solved separately on the P-S tables
+    (compute_initial_entropy).
 
     When ``external_temperature_source`` is set the structure solve is driven
     by an evolved T(r) profile (or the super-liquidus adiabat callable during
-    the IC re-solve) rather than the internal temperature-mode dispatch, so the
-    super-liquidus CMB anchor is not the temperature source for this call and
-    the solved value is discarded. Those calls reuse the anchor the
-    internal-dispatch IC solve already produced and skip the scan-and-bisection;
-    when no anchor was solved for the same ``delta_T_super`` and mantle EOS they
-    fall back to ``config.planet.tcmb_init``. This
-    avoids re-solving (and possibly raising the unreachable-superheat error) on
-    every evolution re-solve over a value nothing consumes.
+    the IC re-solve) rather than the internal temperature-mode dispatch. Those
+    calls reuse the pair the internal-dispatch IC solve already produced and
+    skip the scan-and-bisection; when no anchor was solved for the same
+    ``delta_T_super`` and mantle EOS they fall back to ``config.planet.tcmb_init``
+    and ``config.planet.tsurf_init``. This avoids re-solving (and possibly
+    raising the unreachable-superheat error) on every evolution re-solve. A
+    resumed run starts with no stored pair, so these calls pass ``tcmb_init``
+    and ``tsurf_init`` until the next anchor solve.
 
     With a PALEOS mantle and spider or aragog energetics, if the anchor
     fails at this P_cmb (``InitialConditionError``, which includes numerical
-    integration failures), the last solved anchor for the same
-    ``delta_T_super`` and mantle EOS, or else ``config.planet.tcmb_init``,
-    is used with a warning. The initial entropy then re-solves the anchor at
-    the P_cmb of the structure it gets, which after this fallback is the
-    fallback structure, and decides whether a molten state exists; it is
-    solved before the equilibration loop and again after it. Otherwise the
-    error propagates, since no later step re-solves the anchor. A resumed
-    run that restores the entropy snapshot re-solves neither the structure
-    anchor nor the initial entropy; an Aragog resume that falls back to a
-    fresh initial entropy solves it again at the current P_cmb.
+    integration failures), the last solved pair for the same ``delta_T_super``
+    and mantle EOS, or else ``tcmb_init`` and ``tsurf_init``, is used with a
+    warning. The initial entropy then re-solves the anchor at the P_cmb of the
+    structure it gets, which after this fallback is the fallback structure, and
+    decides whether a molten state exists; it is solved before the
+    equilibration loop and again after it. Otherwise the error propagates,
+    since no later step re-solves the anchor. A resumed run that restores the
+    entropy snapshot re-solves neither the structure anchor nor the initial
+    entropy; an Aragog resume that falls back to a fresh initial entropy
+    solves it again at the current P_cmb.
 
-    For all other modes, returns config.planet.tcmb_init verbatim.
+    For all other modes, returns ``config.planet.tcmb_init`` and
+    ``config.planet.tsurf_init`` verbatim.
     """
     if mode != 'liquidus_super':
-        return config.planet.tcmb_init
+        return config.planet.tcmb_init, float(config.planet.tsurf_init)
+
+    def last_pair() -> tuple[float, float, str]:
+        # The last pair stands in only for the same superheat and mantle EOS.
+        if None not in (
+            _SUPERLIQ_LAST_ANCHOR,
+            _SUPERLIQ_LAST_SURFACE,
+        ) and _SUPERLIQ_LAST_ANCHOR_FOR == _superliq_anchor_for(config):
+            return _SUPERLIQ_LAST_ANCHOR, _SUPERLIQ_LAST_SURFACE, 'the last solved anchor'
+        tcmb, tsurf = float(config.planet.tcmb_init), float(config.planet.tsurf_init)
+        return tcmb, tsurf, 'tcmb_init and tsurf_init'
 
     if external_temperature_source:
-        anchor = _SUPERLIQ_LAST_ANCHOR
-        # Reuse the anchor only for the superheat and mantle EOS it was solved for.
-        if anchor is not None and _SUPERLIQ_LAST_ANCHOR_FOR == _superliq_anchor_for(config):
-            log.debug(
-                'liquidus_super: structure solve uses an external temperature '
-                'source; reusing the last solved CMB anchor T_cmb=%.0f K and '
-                'skipping the super-liquidus re-solve.',
-                anchor,
-            )
-            return float(anchor)
+        cmb_T, surface_T, source = last_pair()
         log.debug(
-            'liquidus_super: structure solve uses an external temperature '
-            'source with no super-liquidus solve for this superheat and mantle '
-            'EOS; using tcmb_init=%.0f K as the unconsumed CMB anchor.',
-            float(config.planet.tcmb_init),
+            'liquidus_super: structure solve uses an external temperature source; '
+            'passing %s (T_cmb=%.0f K, T_surf=%.0f K) to the solve and '
+            'skipping the super-liquidus re-solve.',
+            source,
+            cmb_T,
+            surface_T,
         )
-        return float(config.planet.tcmb_init)
+        return cmb_T, surface_T
 
     # Anchor the Zalmoxis structure-solve adiabat at the CMB temperature of the
     # P-T super-liquidus adiabat. The energetics IC is solved on the P-S
@@ -752,30 +763,27 @@ def _resolve_zalmoxis_cmb_temperature(
         from proteus.utils.structure_estimate import resolve_P_cmb
 
         P_cmb, estimated = resolve_P_cmb(hf_row, config)
-        # The last anchor stands in only for the same superheat and mantle EOS.
-        fallback = _SUPERLIQ_LAST_ANCHOR
-        source = 'the last solved anchor'
-        if fallback is None or _SUPERLIQ_LAST_ANCHOR_FOR != _superliq_anchor_for(config):
-            fallback, source = float(config.planet.tcmb_init), 'tcmb_init'
+        cmb_T, surface_T, source = last_pair()
         log.warning(
-            'liquidus_super CMB anchor for Zalmoxis: no P-T anchor at %sP_cmb=%.0f GPa '
-            '(%s); using %s, T_cmb=%.0f K, for this structure solve.',
+            'liquidus_super anchor for Zalmoxis: no P-T anchor at %sP_cmb=%.0f GPa '
+            '(%s); using %s, T_cmb=%.0f K and T_surf=%.0f K, for this structure solve.',
             'the estimated ' if estimated else '',
             P_cmb / 1e9,
             exc,
             source,
-            float(fallback),
+            cmb_T,
+            surface_T,
         )
-        return float(fallback)
+        return cmb_T, surface_T
     log.info(
-        'liquidus_super CMB anchor for Zalmoxis: T_cmb=%.0f K (fully molten, '
+        'liquidus_super anchor for Zalmoxis: T_cmb=%.0f K (fully molten, '
         '%.0f K above the liquidus; surface T=%.0f K, P_cmb=%.0f GPa).',
         res['cmb_T'],
         res['achieved_superheat'],
         res['surface_T'],
         res['P_cmb'] / 1e9,
     )
-    return float(res['cmb_T'])
+    return float(res['cmb_T']), float(res['surface_T'])
 
 
 def _anchor_failure_deferred(config: Config) -> bool:
@@ -966,11 +974,12 @@ def _solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
 
     mantle_eos = config.interior_struct.zalmoxis.mantle_eos
     P_surface = 1e5  # 1 bar surface anchor for the adiabat
-    global _SUPERLIQ_LAST_ANCHOR, _SUPERLIQ_LAST_ANCHOR_FOR
+    global _SUPERLIQ_LAST_ANCHOR, _SUPERLIQ_LAST_ANCHOR_FOR, _SUPERLIQ_LAST_SURFACE
     _cache_key = _superliq_cache_key(config, P_cmb)
     if _cache_key in _SUPERLIQ_CACHE:
         cached = dict(_SUPERLIQ_CACHE[_cache_key])
         _SUPERLIQ_LAST_ANCHOR = float(cached['cmb_T'])
+        _SUPERLIQ_LAST_SURFACE = float(cached['surface_T'])
         _SUPERLIQ_LAST_ANCHOR_FOR = _superliq_anchor_for(config)
         return cached
 
@@ -1311,6 +1320,7 @@ def _solve_superliquidus_adiabat(config: Config, hf_row: dict | None) -> dict:
     }
     _SUPERLIQ_CACHE[_cache_key] = dict(out)
     _SUPERLIQ_LAST_ANCHOR = float(out['cmb_T'])
+    _SUPERLIQ_LAST_SURFACE = float(out['surface_T'])
     _SUPERLIQ_LAST_ANCHOR_FOR = _superliq_anchor_for(config)
     return out
 
@@ -1376,9 +1386,10 @@ def load_zalmoxis_configuration(
         external_temperature_source: True when the caller passes an external
             temperature function or array so the structure solve follows an
             evolved T(r) instead of the internal temperature-mode dispatch. In
-            'liquidus_super' mode this lets ``cmb_temperature`` reuse the last
-            solved super-liquidus anchor rather than re-solving it, since the
-            anchor is not consumed when an external source drives the solve.
+            'liquidus_super' mode this lets ``cmb_temperature`` and
+            ``surface_temperature`` reuse the last solved super-liquidus pair
+            rather than re-solving it, since the anchor is not consumed when an
+            external source drives the solve.
     Returns:
         dict: A dictionary containing the Zalmoxis configuration parameters.
     """
@@ -1492,12 +1503,10 @@ def load_zalmoxis_configuration(
     # FileNotFoundError. That check never inspects the melting-curve
     # directory a WolfBower2018/RTPress100TPa mantle also needs, so a
     # missing one re-raises unconverted here and in zalmoxis_solver itself.
+    mode = temperature_mode_override or config.planet.temperature_mode
     try:
-        cmb_temperature = _resolve_zalmoxis_cmb_temperature(
-            config,
-            hf_row,
-            temperature_mode_override or config.planet.temperature_mode,
-            external_temperature_source=external_temperature_source,
+        cmb_temperature, surface_temperature = _resolve_zalmoxis_anchor_temperatures(
+            config, hf_row, mode, external_temperature_source=external_temperature_source
         )
     except FileNotFoundError:
         check_zalmoxis_eos_files(layer_eos_config, load_zalmoxis_material_dictionaries())
@@ -1516,30 +1525,10 @@ def load_zalmoxis_configuration(
         'core_mass_target': core_mass,
         'core_frac_mode': config.interior_struct.core_frac_mode,
         'mantle_mass_fraction': config.interior_struct.zalmoxis.mantle_mass_fraction,
-        # For the structure solve, 'accretion' and 'isentropic' both reduce
-        # to 'adiabatic' inside Zalmoxis. Zalmoxis only solves the structure
-        # (M-R via hydrostatic + EOS); the entropy IC for Aragog/SPIDER is
-        # set independently from config.planet.ini_entropy. 'accretion'
-        # delays White+Li T-profile until after structure converges;
-        # 'isentropic' (CHILI protocol) means the energetics solver
-        # consumes ini_entropy, not the Zalmoxis T-profile, so the choice
-        # of structure-solve T is decoupled from the IC. 'adiabatic_from_cmb'
-        # is passed through to Zalmoxis with the CMB-anchor temperature so
-        # the structure-side T(r) integrates upward from T_cmb at R_cmb,
-        # matching the entropy that the energetics solver receives via
-        # compute_initial_entropy. 'liquidus_super' maps to
-        # 'adiabatic_from_cmb' here, with cmb_temperature derived from the
-        # Fei+2021 liquidus at the converged P_cmb (or a Noack & Lasbleis
-        # (2020) mass-aware P_cmb estimate on the very first call before
-        # Zalmoxis has populated P_cmb) plus delta_T_super. The anchor is
-        # recomputed against the converged P_cmb on the next structure
-        # iteration. temperature_mode_override lets SPIDER coupling force
-        # adiabatic without mutating the shared Config object (see proteus
-        # rules §"Config mutability").
-        'temperature_mode': _resolve_zalmoxis_temperature_mode(
-            temperature_mode_override or config.planet.temperature_mode
-        ),
-        'surface_temperature': config.planet.tsurf_init,
+        # Mode mapping in _resolve_zalmoxis_temperature_mode; the anchor pair (CMB, surface)
+        # in _resolve_zalmoxis_anchor_temperatures. The energetics IC is solved separately.
+        'temperature_mode': _resolve_zalmoxis_temperature_mode(mode),
+        'surface_temperature': surface_temperature,
         'cmb_temperature': cmb_temperature,
         'center_temperature': config.planet.tcenter_init,
         'temp_profile_file': None,
@@ -2154,6 +2143,12 @@ def require_paleos_tables(config: Config, outdir: str) -> None:
         mat_dicts,
         paleos_companions=not kept or config.interior_energetics.module == 'aragog',
     )
+    if (
+        zc.lowt_extension is True
+        and not kept
+        and generates_paleos_tables(config.interior_struct)
+    ):
+        _require_lowt_extension(zc.mantle_eos, mat_dicts)
     components = eos_components(zc.mantle_eos)
     mixture = len(set(components)) > 1
     if all(is_mgsio3(c) for c in components):
@@ -2180,6 +2175,34 @@ def require_paleos_tables(config: Config, outdir: str) -> None:
             else 'the structure uses its density, while '
         )
         log.warning('mantle_eos=%s: %s%s', zc.mantle_eos, head, '; '.join(uses))
+
+
+def _require_lowt_extension(mantle_eos: str, mat_dicts: dict) -> None:
+    """Stop the run before any solve when the low-temperature extension cannot be built.
+
+    Raises
+    ------
+    RuntimeError
+        If the installed Zalmoxis table generator has no ``solid_lowt_file``.
+    ZalmoxisMissingEOSFilesError
+        If the extension file next to the PALEOS solid table is missing.
+    """
+    import zalmoxis
+    from zalmoxis.eos_export import generate_spider_eos_tables
+
+    if 'solid_lowt_file' not in inspect.signature(generate_spider_eos_tables).parameters:
+        raise RuntimeError(
+            'lowt_extension needs a Zalmoxis whose generate_spider_eos_tables takes '
+            f'solid_lowt_file; the installed Zalmoxis {getattr(zalmoxis, "__version__", "?")} '
+            f'({os.path.dirname(zalmoxis.__file__)}) has none'
+        )
+    solid, _ = resolve_2phase_mgsio3_paths(mantle_eos, mat_dicts)
+    lowt = os.path.join(os.path.dirname(solid or ''), LOWT_EXTENSION_FILE)
+    if not (solid and os.path.isfile(lowt)):
+        raise ZalmoxisMissingEOSFilesError(
+            f'lowt_extension is on but the low-temperature solid extension {lowt} is missing; '
+            'write it with tools/converters/paleos_lowt_extension.py of Zalmoxis'
+        )
 
 
 def resolve_2phase_mgsio3_paths(mantle_eos: str, mat_dicts: dict, required: bool = False):
@@ -2684,6 +2707,7 @@ def _ps_cache_key(
     solid_eos: str | None,
     liquid_eos: str | None,
     generator: str | None = None,
+    lowt_file: str | None = None,
 ) -> str:
     """Build the identity string for a generated P-S EOS table set.
 
@@ -2715,6 +2739,10 @@ def _ps_cache_key(
         Identity of the Zalmoxis table generator; defaults to
         :func:`_ps_generator_identity`, so tables built by a different
         Zalmoxis release or source land on a distinct key.
+    lowt_file : str or None
+        Low-temperature solid extension; its path, a digest of its data lines
+        and a digest of the data lines of ``solid_eos`` (header lines left out)
+        enter the key. None leaves the key as it is without an extension.
 
     Returns
     -------
@@ -2722,6 +2750,9 @@ def _ps_cache_key(
         Deterministic cache-identity string.
     """
     eos_identity = '|'.join(str(p) for p in (mantle_eos, eos_file, solid_eos, liquid_eos))
+    if lowt_file is not None:
+        eos_identity += f'|lowt={lowt_file}:{_data_digest(lowt_file)}'
+        eos_identity += f'|solid={_data_digest(solid_eos)}'
     eos_digest = hashlib.sha1(eos_identity.encode()).hexdigest()[:12]
     eos_name = re.sub(r'[^A-Za-z0-9]+', '-', str(mantle_eos)).strip('-')
     if generator is None:
@@ -2731,6 +2762,24 @@ def _ps_cache_key(
         f'P_max={P_max:.6e}_nP={nP}_nS={nS}_mzf={mzf}'
         f'_layout={layout}_eos={eos_name}-{eos_digest}_gen={gen_name}'
     )
+
+
+def _data_digest(path: str) -> str:
+    """SHA-1 of the data lines of a table file; lines that start with '#' are left out.
+
+    The digest is kept per (path, device, inode, modification and status change times, size),
+    so an unchanged file is read once and a replaced or rewritten one is read again.
+    """
+    st = os.stat(path)
+    stamp = (st.st_dev, st.st_ino, st.st_mtime_ns, st.st_ctime_ns, st.st_size)
+    return _data_digest_of(str(Path(path).resolve()), stamp)
+
+
+@functools.lru_cache(maxsize=16)
+def _data_digest_of(path: str, stamp: tuple) -> str:
+    """SHA-1 of the data lines of ``path`` as it is at the file status ``stamp``."""
+    data = (ln for ln in Path(path).read_bytes().splitlines() if not ln.startswith(b'#'))
+    return hashlib.sha1(b'\n'.join(data)).hexdigest()
 
 
 @functools.lru_cache(maxsize=1)
@@ -2790,12 +2839,16 @@ def _ps_table_inputs(config: Config, mantle_eos: str, eos_entry: dict, mat_dicts
     Returns
     -------
     tuple
-        ``(eos_file, solid_eos, liquid_eos, is_twophase, P_max, cache_key)``.
+        ``(eos_file, solid_eos, liquid_eos, is_twophase, P_max, lowt_file,
+        cache_key)``; ``lowt_file`` is None unless ``lowt_extension`` is on.
 
     Raises
     ------
     _NoPSTables
         When the mantle EOS is not PALEOS or its files are missing.
+    ZalmoxisMissingEOSFilesError
+        When ``lowt_extension`` is on and the extension file is not next to the
+        solid table.
     """
     # PALEOS-API live tabulation: materialise cached .dat paths in place so the
     # downstream format / eos_file lookups see concrete paths. No-op for
@@ -2858,6 +2911,15 @@ def _ps_table_inputs(config: Config, mantle_eos: str, eos_entry: dict, mat_dicts
             f'PALEOS-2phase entry {mantle_eos} is missing its solid or liquid file'
         )
 
+    lowt_file = None
+    if config.interior_struct.zalmoxis.lowt_extension is True:
+        lowt_file = os.path.join(os.path.dirname(solid_eos or ''), LOWT_EXTENSION_FILE)
+        if not (solid_eos and liquid_eos and os.path.isfile(lowt_file)):
+            raise ZalmoxisMissingEOSFilesError(
+                f'lowt_extension is on but the low-temperature solid extension {lowt_file} '
+                f'or the two-phase tables of {mantle_eos} are missing'
+            )
+
     P_max = _ps_p_max(config)
 
     # Table resolution from config
@@ -2876,9 +2938,10 @@ def _ps_table_inputs(config: Config, mantle_eos: str, eos_entry: dict, mat_dicts
         eos_file=eos_file,
         solid_eos=solid_eos,
         liquid_eos=liquid_eos,
+        lowt_file=lowt_file,
     )
 
-    return eos_file, solid_eos, liquid_eos, is_twophase, P_max, cache_key
+    return eos_file, solid_eos, liquid_eos, is_twophase, P_max, lowt_file, cache_key
 
 
 def _ps_resume_key(
@@ -2943,7 +3006,13 @@ def generate_spider_tables(config: Config, outdir: str):
     Raises
     ------
     ZalmoxisMissingEOSFilesError
-        When a table of a PALEOS mantle or its MgSiO3 2-phase pair is missing.
+        When a table of a PALEOS mantle or its MgSiO3 2-phase pair is missing, or when
+        ``lowt_extension`` is on and its extension file is missing.
+    ValueError
+        When ``lowt_extension`` is on and the energetics key of the mantle EOS is
+        PALEOS-API or ``-highres`` (raised before any table is resolved or built).
+    RuntimeError
+        When ``lowt_extension`` is on and the installed Zalmoxis has no ``solid_lowt_file``.
     """
     from zalmoxis.eos_export import generate_spider_eos_tables, generate_spider_phase_boundaries
     from zalmoxis.melting_curves import (
@@ -2969,11 +3038,20 @@ def generate_spider_tables(config: Config, outdir: str):
         if resumed is not None:
             return resumed
 
+    lowt_on = config.interior_struct.zalmoxis.lowt_extension is True
+    if lowt_on and lowt_extension_unsupported(key):
+        raise ValueError(
+            f'lowt_extension does not support the mantle EOS {key}: the extension continues the '
+            'grid of the standard PALEOS solid table'
+        )
+    lowt_msg = 'lowt_extension = true has no effect: mantle EOS %s has no PALEOS P-S tables'
     if not eos_entry or key not in PALEOS_REGISTRY_KEYS:
         log.info(
             'Mantle EOS %s has no PALEOS table set; using pre-existing SPIDER tables.',
             mantle_eos,
         )
+        if lowt_on:
+            log.warning(lowt_msg, mantle_eos)
         return None
     if paleos_companion_keys(mantle_eos):
         check_zalmoxis_eos_files({'mantle': mantle_eos}, mat_dicts, paleos_companions=True)
@@ -2981,8 +3059,17 @@ def generate_spider_tables(config: Config, outdir: str):
         inputs = _ps_table_inputs(config, key, eos_entry, mat_dicts)
     except _NoPSTables as exc:
         log.log(exc.level, 'No PALEOS P-S tables: %s; using pre-existing SPIDER tables.', exc)
+        if lowt_on:
+            log.warning(lowt_msg, mantle_eos)
         return None
-    eos_file, solid_eos, liquid_eos, is_twophase, P_max, cache_key = inputs
+    eos_file, solid_eos, liquid_eos, is_twophase, P_max, lowt_file, cache_key = inputs
+    if (
+        lowt_file
+        and 'solid_lowt_file' not in inspect.signature(generate_spider_eos_tables).parameters
+    ):
+        raise RuntimeError(
+            'lowt_extension needs a Zalmoxis whose generate_spider_eos_tables takes solid_lowt_file'
+        )
     if solid_eos and liquid_eos:
         log.info('Using PALEOS-2phase tables for entropy-IC table generation')
     nP = config.interior_struct.zalmoxis.lookup_nP
@@ -3103,6 +3190,7 @@ def generate_spider_tables(config: Config, outdir: str):
             nP,
             nS,
         )
+        lowt_kw = {} if lowt_file is None else {'solid_lowt_file': lowt_file}
         generate_spider_eos_tables(
             eos_file=eos_file,
             solidus_func=solidus_func,
@@ -3113,6 +3201,7 @@ def generate_spider_tables(config: Config, outdir: str):
             output_dir=gen_dir,
             solid_eos_file=solid_eos,
             liquid_eos_file=liquid_eos,
+            **lowt_kw,
         )
 
         # Publish staged tables into the shared cache with atomic renames.
@@ -3248,11 +3337,8 @@ def zalmoxis_solver(
         Path to the SPIDER mesh file, or None if ``num_spider_nodes == 0``.
     """
 
-    # Load the Zalmoxis configuration parameters. Flag an external temperature
-    # source so 'liquidus_super' skips re-solving the super-liquidus CMB anchor
-    # on this call: an evolved T(r) (or the IC adiabat callable) drives the
-    # structure here, so the anchor is discarded and reusing the last solved
-    # value avoids the scan-and-bisection on every re-solve.
+    # An external temperature source drives this structure solve, so 'liquidus_super'
+    # reuses the last solved CMB and surface pair instead of solving the anchor again.
     external_temperature_source = (
         temperature_function is not None or temperature_arrays is not None
     )

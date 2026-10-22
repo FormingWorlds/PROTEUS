@@ -17,8 +17,7 @@ checksum registry committed beside that manifest,
 and places the files in a version directory named for the record, so a re-pinned
 deposit lands beside its predecessor rather than overwriting it. Every request
 carries a connect and read timeout, and a transient failure is retried with
-backoff. For every dataset except the PHOENIX spectra, which have no mirror yet, a
-file that Zenodo does not serve is fetched from the
+backoff. A file that Zenodo does not serve is fetched from the
 [DataverseNL](https://dataverse.nl/dataverse/Proteus_Fr) mirror the manifest pins
 beside the record, and checked against the same registry.
 Data several models read (spectral files, stellar spectra, equations of state,
@@ -26,6 +25,9 @@ melting curves, lookup tables, mass-radius curves) is declared in the shared man
 ships; data only PROTEUS reads is declared in `src/proteus/data/proteus_manifest.toml`.
 A data folder in the older layout is brought into this one as described in
 [Upgrading an older data folder](#upgrading-an-older-data-folder).
+
+`proteus start` stops when fwl-io is missing or below the version PROTEUS requires, and
+names the command that installs or updates it.
 
 | Dataset | Provisioned by | Downloaded by |
 |---|---|---|

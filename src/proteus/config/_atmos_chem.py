@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+
 from attrs import define, field
 from attrs.validators import gt, in_, lt
 
@@ -15,6 +17,48 @@ def valid_use_vm_mol(instance, attribute, value):
         )
 
 
+def valid_ini_mix(instance, attribute, value):
+    """Refuse `ini_mix = 'previous'` unless the surface mixing ratios are fixed."""
+    if (value == 'previous') and not instance.fix_surf:
+        raise ValueError(f"{attribute.name} = 'previous' requires fix_surf = true")
+
+
+def valid_mode(instance, attribute, value):
+    """Refuse coupled chemistry, and automatic chemistry without a module."""
+    if value == 'online':
+        raise ValueError(
+            "atmos_chem.mode = 'online' is not yet implemented; use 'offline' or 'none'"
+        )
+    if (value == 'offline') and (instance.module is None):
+        raise ValueError("atmos_chem.mode = 'offline' requires atmos_chem.module != 'none'")
+
+
+def times_to_floats(value):
+    """Convert a list of chemistry times to floats [yr]; leave strings as they are."""
+    if isinstance(value, (list, tuple)):
+        return [float(t) for t in value]
+    return value
+
+
+def valid_times(instance, attribute, value):
+    """Accept 'end', 'all', or a non-empty list of finite times >= 0 [yr]."""
+    if isinstance(value, str):
+        if value not in ('end', 'all'):
+            raise ValueError(
+                f"atmos_chem.times must be 'end', 'all' or a list of times, got '{value}'"
+            )
+        return
+    if not isinstance(value, list):
+        raise ValueError(
+            f"atmos_chem.times must be 'end', 'all' or a list of times, got {value}"
+        )
+    if len(value) == 0:
+        raise ValueError('atmos_chem.times must not be an empty list')
+    for t in value:
+        if not (math.isfinite(t) and (t >= 0)):
+            raise ValueError(f'atmos_chem.times must be finite and >= 0 yr, got {t}')
+
+
 @define
 class Vulcan:
     """VULCAN chemistry module.
@@ -28,7 +72,7 @@ class Vulcan:
     make_funs : bool
         Make functions from chemical network.
     ini_mix : str
-        Initial mixing ratios. Options: profile, outgas.
+        Initial mixing ratios. Options: profile (the climate profile), outgas (the surface mixing ratios at every level), previous (the result of the latest earlier chemistry snapshot, interpolated in log pressure; needs fix_surf = true; falls back to profile when there is none).
     fix_surf : bool
         Fix the surface mixing ratios based on outgassed composition.
     network : str
@@ -78,8 +122,11 @@ class Vulcan:
     clip_fl: float = field(default=1e-20)
     clip_vmr: float = field(default=1e-10)
     make_funs: bool = field(default=True)
-    ini_mix: str = field(default='profile', validator=in_(('profile', 'outgas')))
-    fix_surf: bool = field(default=True)
+    ini_mix: str = field(
+        default='profile',
+        validator=(in_(('profile', 'outgas', 'previous')), valid_ini_mix),
+    )
+    fix_surf: bool = field(default=False)
     network: str = field(default='SNCHO', validator=in_(('CHO', 'NCHO', 'SNCHO')))
     save_frames: bool = field(default=False)
     yconv_cri: float = field(default=0.05)
@@ -88,7 +135,7 @@ class Vulcan:
     st_factor: float = field(default=0.5, validator=(gt(0), lt(1)))
     conv_step: int = field(default=100, validator=gt(0))
     use_vm_mol: bool = field(default=False, validator=valid_use_vm_mol)
-    use_vz: bool = field(default=True)
+    use_vz: bool = field(default=False)
     use_condense: bool = field(default=False)
     use_settling: bool = field(default=False)
     r_p: float = field(default=5e-3, validator=gt(0))
@@ -113,8 +160,10 @@ class AtmosChem:
         Chemistry module
     vulcan : Vulcan
         VULCAN  module options
-    when : str
-        When to run the chemistry module. Options: manually, offline, online.
+    mode : str
+        When to run the chemistry module automatically. Options: none (only with `proteus offchem`), offline (after the simulation ends), online (not yet implemented).
+    times : str | list[float]
+        Snapshots to run the chemistry on, with `mode = 'offline'` or `proteus offchem`. Options: end (the final state), all (every atmosphere snapshot), or a list of times [yr], each mapped to the nearest atmosphere snapshot.
     photo_on : bool
         Use photochemistry.
     Kzz_on : bool
@@ -134,7 +183,14 @@ class AtmosChem:
 
     vulcan: Vulcan = field(factory=Vulcan)
 
-    when: str = field(default='manually', validator=in_(('manually', 'offline', 'online')))
+    mode: str | None = field(
+        default='none',
+        validator=(in_((None, 'offline', 'online')), valid_mode),
+        converter=none_if_none,
+    )
+    times: str | list[float] = field(
+        default='end', validator=valid_times, converter=times_to_floats
+    )
     photo_on: bool = field(default=True)
     Kzz_on: bool = field(default=True)
     Kzz_const: float | str | None = field(default=None, converter=none_if_none)

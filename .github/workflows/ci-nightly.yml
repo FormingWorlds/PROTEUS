@@ -53,8 +53,15 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
+        include:
+          # macOS runs the unit tier on 2 workers; Linux keeps 1 process as the test-order check.
+          - os: macos-latest
+            unit_minutes: 45
+            unit_xdist: -n 2 --dist worksteal
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    # A cold SOCRATES and Julia cache adds about 8 min to the macOS setup, which
+    # with a 17-20 min unit tier passes 30 min; Linux finishes in 13-21 min.
+    timeout-minutes: ${{ matrix.unit_minutes || 30 }}
     env:
       COVERAGE_FILE: .coverage.unit.${{ matrix.os }}
     steps:
@@ -75,6 +82,7 @@ jobs:
           # the same file so the unit tier artifact carries both.
           pytest -m "unit and not skip and not slow and not integration" \
             --ignore=tests/examples \
+            ${{ matrix.unit_xdist }} \
             -p no:faulthandler \
             --junitxml=junit-unit-${{ matrix.os }}.xml \
             --cov=proteus \

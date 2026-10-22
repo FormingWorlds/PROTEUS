@@ -25,6 +25,7 @@ from proteus.utils.helper import (
     create_tmp_folder,
     find_nearest,
     is_write_snapshot,
+    list_snapshot_times,
     mol_to_ele,
     multiple,
     natural_sort,
@@ -1030,3 +1031,56 @@ def test_link_proteus_julia_links_one_julia_and_moves_it_on_a_second_call(
     assert link_proteus_julia(tmp_path) == folder
     assert os.readlink(folder / 'julia') == str(second)
     assert shutil.which('julia', path=str(folder)) == str(folder / 'julia')
+
+
+def test_list_snapshot_times_sorts_and_merges_name_forms(tmp_path):
+    """Times come back ascending, and one time written in the 'p' and the dot
+    sub-year forms counts once; the whole-year form parses to the same value."""
+    for name in ('884p700_atm.nc', '884.700_atm.nc', '12p320_atm.nc', '1000_atm.nc'):
+        (tmp_path / name).write_text('')
+
+    times = list_snapshot_times(str(tmp_path), '_atm.nc')
+
+    assert times == pytest.approx([12.32, 884.7, 1000.0])
+    assert len(times) == 3  # the two forms of 884.7 merge
+
+
+def test_list_snapshot_times_filters_on_prefix_and_suffix(tmp_path):
+    """Only files with the given prefix and suffix count: the fixed name
+    vulcan.csv, other modules and other suffixes are left out."""
+    for name in (
+        'vulcan_10p000.csv',
+        'vulcan_2p500.csv',
+        'vulcan.csv',
+        'dummy_7p000.csv',
+        'vulcan_3p000.nc',
+    ):
+        (tmp_path / name).write_text('')
+
+    assert list_snapshot_times(str(tmp_path), '.csv', prefix='vulcan_') == pytest.approx(
+        [2.5, 10.0]
+    )
+    assert list_snapshot_times(str(tmp_path), '.csv', prefix='dummy_') == pytest.approx([7.0])
+
+
+def test_list_snapshot_times_skips_unparsable_tokens_with_a_warning(tmp_path, caplog):
+    """A file whose time token does not parse is logged and skipped, while the
+    other snapshots are still returned."""
+    import logging
+
+    (tmp_path / '5p000_atm.nc').write_text('')
+    (tmp_path / 'final_atm.nc').write_text('')
+    (tmp_path / '1p2p3_atm.nc').write_text('')  # two 'p' separators
+
+    with caplog.at_level(logging.WARNING, logger='fwl'):
+        times = list_snapshot_times(str(tmp_path), '_atm.nc')
+
+    assert times == pytest.approx([5.0])
+    assert 'final_atm.nc' in caplog.text
+    assert '1p2p3_atm.nc' in caplog.text
+
+
+def test_list_snapshot_times_empty_or_missing_directory(tmp_path):
+    """An empty directory and a missing one both give an empty list, not an error."""
+    assert list_snapshot_times(str(tmp_path), '_atm.nc') == []
+    assert list_snapshot_times(str(tmp_path / 'absent'), '_atm.nc') == []

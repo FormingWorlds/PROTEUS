@@ -36,7 +36,7 @@ listed below its table.
 | `"vulcan"` | `atmos_chem/vulcan.py:run_vulcan` | Kinetics network (VULCAN) |
 | `none` | not applicable | Chemistry disabled |
 
-- `atmos_chem.when`: runs the network 'online' during the loop, 'offline' afterwards, or 'manually' (`atmos_chem/wrapper.py:run_chemistry`).
+- `atmos_chem.mode`: runs the network after the simulation ('offline') at the snapshots set by `atmos_chem.times` (`atmos_chem/wrapper.py:run_chemistry`).
 
 ## Atmospheric escape (`escape.module`)
 

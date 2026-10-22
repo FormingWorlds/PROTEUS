@@ -298,17 +298,18 @@ def _smooth(y, window=9, log=False):
     return out
 
 
-def _find_row_at_phi(df, phi_target, phi_col='Phi_global', relax=PHI_RELAX):
+def _find_row_at_phi(df, phi_target, phi_col='Phi_global', relax=0.0):
     """Find the first row where phi <= target, with optional relaxation."""
     if phi_col not in df.columns:
         return None
     idx = df[phi_col] <= phi_target
     if idx.any():
         return df[idx].iloc[0]
-    idx = df[phi_col] <= phi_target + relax
-    if idx.any():
-        print(f'  Warning: relaxed Phi threshold from {phi_target} to {phi_target + relax}')
-        return df[idx].iloc[0]
+    if relax > 0.0:
+        idx = df[phi_col] <= phi_target + relax
+        if idx.any():
+            print(f'  Warning: relaxed Phi threshold from {phi_target} to {phi_target + relax}')
+            return df[idx].iloc[0]
     return None
 
 
@@ -684,8 +685,8 @@ def _collect_atm_panel(intercomp, proteus_df, planet, phi_tgt, NS):
             subset = df[idx]
             row = subset.loc[(phi[subset.index] - phi_tgt).abs().idxmin()]
         else:
-            # Run never reaches the target melt fraction; use its closest
-            # approach (final snapshot) so the model still appears.
+            # Run never reaches the window; use its row of lowest melt
+            # fraction so the model still appears.
             row = df.loc[phi.idxmin()]
         entry = {
             'name': st['label'],
@@ -710,7 +711,7 @@ def _collect_atm_panel(intercomp, proteus_df, planet, phi_tgt, NS):
             pre_proteus.append(entry)
 
     if proteus_df is not None:
-        row = _find_row_at_phi(proteus_df, phi_tgt)
+        row = _find_row_at_phi(proteus_df, phi_tgt, relax=PHI_RELAX)
         if row is not None:
             entry = {
                 'name': NS['label'],
