@@ -482,11 +482,11 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
         # O residual are undefined (the user pre-seed would misrecord a skipped solve).
         for s in _atm_gas_species:
             if s in gas_list:
-                # A noble gas kg_total is its escape-owned element total.
-                fields = [
-                    f for f in _SPECIES_COLUMNS if not (s in noble_gases and f == 'kg_total')
-                ]
-                hf_row.update({f'{s}_{f}': 0.0 for f in fields})
+                kg_total = float(hf_row.get(f'{s}_kg_total', 0.0))
+                hf_row.update({f'{s}_{f}': 0.0 for f in _SPECIES_COLUMNS})
+                if s in noble_gases:  # its kg_total is the escape-owned element total
+                    hf_row[f'{s}_kg_total'] = kg_total
+                    hf_row[f'{s}_mol_total'] = kg_total / eval_gas_mmw(s)
         hf_row['P_surf'] = 0.0
         _populate_volatile_element_reservoirs(hf_row, element_mmw)
         hf_row['fO2_shift_IW_derived'] = float('nan')
