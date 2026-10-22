@@ -468,8 +468,8 @@ def test_helpfile_round_trip_is_exact(tmp_path):
 
     A resume rebuilds the solver mesh and boundary values from the last row, so
     a value rounded on its way through the file moves a resumed run off the run
-    it continues. The values span 60 decades and need all 17 significant digits,
-    which a format one digit shorter does not reproduce.
+    it continues. The values span 60 decades, and a quarter of them need all 17
+    significant digits, which a format one digit shorter does not reproduce.
     """
     rng = np.random.default_rng(3)
     row = ZeroHelpfileRow()
@@ -478,13 +478,13 @@ def test_helpfile_round_trip_is_exact(tmp_path):
     row['E_state_heat_cons_J'] = -4.524433010726972e30
     # Discrimination: these values do not survive the 11-digit format.
     assert sum(float('%.10e' % v) != v for v in row.values()) > 0.9 * len(row)
+    # Discrimination: over a fifth of them do not survive 16 significant digits.
+    assert sum(float('%.16g' % v) != v for v in row.values()) > 0.2 * len(row)
     WriteHelpfileToCSV(str(tmp_path), CreateHelpfileFromDict(row))
 
     back = ReadHelpfileFromCSV(str(tmp_path)).iloc[0]
 
     assert [key for key in row if back[key] != row[key]] == []
-    # Discrimination: some of these values do not survive 16 significant digits.
-    assert any(float('%.16g' % v) != v for v in row.values())
 
 
 @pytest.mark.unit
