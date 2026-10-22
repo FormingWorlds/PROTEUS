@@ -687,8 +687,8 @@ def test_mol_columns_written_across_solve_noble_and_excluded_species():
       atmospheric and dissolved moles are zero, and its total moles are
       recovered from the escape-owned ``He_kg_total`` budget via the element
       molar mass (the species and the element are the same monatomic entity).
-    * NH3 is a reactive species outside the solve: it reports 0 in every mass and
-      mole column, as CALLIOPE does.
+    * NH3 is a reactive species outside the solve: its atmosphere mass and every
+      mole column are 0, as CALLIOPE reports them.
     """
     pytest.importorskip('atmodeller')
     config = _make_user_constant_config(0.0)
@@ -744,8 +744,8 @@ def test_mol_columns_written_across_solve_noble_and_excluded_species():
     assert hf_row['He_mol_total'] == pytest.approx(he_kg_total / eval_gas_mmw('He'), rel=1e-9)
     assert hf_row['He_mol_solid'] == 0.0
 
-    # NH3: a reactive species outside the solve reports 0 in every mole column,
-    # as CALLIOPE does.
+    # NH3: a reactive species outside the solve reports 0 atmosphere mass and 0 in
+    # every mole column, as CALLIOPE does.
     assert hf_row['NH3_kg_atm'] == 0.0
     for col in ('liquid', 'atm', 'total', 'solid'):
         assert hf_row[f'NH3_mol_{col}'] == 0.0
@@ -849,13 +849,15 @@ def test_a_species_that_leaves_the_solve_reports_zero_in_every_field():
 
 @pytest.mark.physics_invariant
 def test_noble_gas_without_total_mass_reports_zero_atmosphere():
-    """A noble gas in quick_look with no output entry ends with kg_atm 0, not the
-    p*A/g column of the quick_look loop, and keeps its escape-owned kg_total."""
+    """A noble gas in quick_look with no output entry ends with 0 in its pressure,
+    mixing ratio, atmosphere and melt columns, not the quick_look values, and keeps
+    its escape-owned kg_total."""
     pytest.importorskip('atmodeller')
     config = _make_user_constant_config(0.0)
     hf_row = _hf_row_with_HS_budget()
     he_kg_total = 1.0e19
     hf_row['He_kg_total'] = he_kg_total
+    hf_row.update({f'He_{f}': 1.0e10 for f in ('kg_liquid', 'mol_atm', 'mol_liquid')})
 
     out = MagicMock()
     out.quick_look.return_value = {
@@ -882,6 +884,7 @@ def test_noble_gas_without_total_mass_reports_zero_atmosphere():
         calc_surface_pressures_atmodeller({'output': '/tmp/test'}, config, hf_row)
     _MODEL_CACHE.clear()
 
-    assert hf_row['He_kg_atm'] == 0.0
-    assert hf_row['He_kg_liquid'] == 0.0
+    zeroed = ('bar', 'vmr', 'kg_atm', 'kg_liquid', 'mol_atm', 'mol_liquid')
+    assert {f: hf_row[f'He_{f}'] for f in zeroed} == dict.fromkeys(zeroed, 0.0)
     assert hf_row['He_kg_total'] == he_kg_total
+    assert hf_row['He_mol_total'] == pytest.approx(he_kg_total / eval_gas_mmw('He'), rel=1e-12)
