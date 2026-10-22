@@ -97,7 +97,7 @@ def plot_saturated(hf_all: pd.DataFrame, output_dir: str, plot_format='pdf'):
     # Decorate column density and layer thickness plots
     ax1.set_ylabel(rf'Condensed [{C_ulbl}]')
     ax1.set_ylim(bottom=0)
-    ax2.set_ylabel('Layer thickness [m]\n(estimate)')
+    ax2.set_ylabel('Layer thickness [m]')
     ax2.set_ylim(bottom=0)
 
     # Magma temperature and melt fraction
