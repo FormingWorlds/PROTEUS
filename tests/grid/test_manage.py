@@ -461,8 +461,12 @@ class TestSetDimension:
             (['aragog', 1.0], 'mixes strings with other values'),
             ('aragog', 'is not a list'),
             (5, 'is not a list'),
-            ([[1], [2]], 'not a number, boolean or string'),
-            ([{'x': 1}], 'not a number, boolean or string'),
+            ([[1], [2]], 'not a real number, boolean or string'),
+            ([{'x': 1}], 'not a real number, boolean or string'),
+            ([complex(1, 1)], 'not a real number, boolean or string'),
+            ((v for v in [2.0, 1.0]), 'is not a list'),
+            ({'spider', 'aragog'}, 'is not a list'),
+            (np.array(5.0), 'is not a list'),
         ],
         ids=[
             'empty',
@@ -473,6 +477,10 @@ class TestSetDimension:
             'scalar',
             'nested',
             'table',
+            'complex',
+            'generator',
+            'set',
+            '0-d-array',
         ],
     )
     def test_direct_refuses_an_axis_it_cannot_order(self, grid_with_mocks, values, cause):
@@ -512,13 +520,31 @@ class TestSetDimension:
 
         check()
 
-    @pytest.mark.parametrize('values', [[''], [0.0], [False], [0, -0.0]])
-    def test_direct_keeps_an_axis_of_falsy_values(self, grid_with_mocks, values):
-        """An empty string, zero and false are values like any other."""
+    @pytest.mark.parametrize(
+        ('values', 'expected'),
+        [
+            ([''], ['']),
+            ([0.0], [0.0]),
+            ([False], [False]),
+            ((2.0, 1.0), [1.0, 2.0]),
+            (np.array([3.0, 1.0, 3.0]), [1.0, 3.0]),
+            ([np.int64(2), np.int64(1)], [1, 2]),
+            ([np.True_, np.False_], [False, True]),
+            ([float('inf'), 1.0], [1.0, float('inf')]),
+        ],
+        ids=['empty-string', 'zero', 'false', 'tuple', 'array', 'np-int', 'np-bool', 'inf'],
+    )
+    def test_direct_keeps_every_valid_axis(self, grid_with_mocks, values, expected):
+        """Empty strings, zero, false, tuples, 1-D arrays, NumPy numbers and booleans and
+        inf are values like any other; a boolean stays a boolean."""
         g = grid_with_mocks
         g.add_dimension('d', 'planet.mass_tot')
         g.set_dimension_direct('d', values)
-        assert g.dim_avars['d'] == list(dict.fromkeys(values))
+        out = g.dim_avars['d']
+        assert out == expected
+        assert [isinstance(v, (bool, np.bool_)) for v in out] == [
+            isinstance(v, bool) for v in expected
+        ]
 
 
 # ---------------------------------------------------------------------------
@@ -1139,9 +1165,10 @@ class TestGridFromConfig:
             ([1.0, float('nan')], 'holds NaN'),
             ('aragog', 'is not a list'),
             (5, 'is not a list'),
-            ([[1], [2]], 'not a number, boolean or string'),
+            ([[1], [2]], 'not a real number, boolean or string'),
+            ({'x': 1.0}, 'is not a list'),
         ],
-        ids=['empty', 'nan', 'string', 'scalar', 'nested'],
+        ids=['empty', 'nan', 'string', 'scalar', 'nested', 'inline-table'],
     )
     def test_bad_direct_values_keep_the_old_output(self, fake_proteus_dir, values, reason):
         """A direct axis the grid cannot build stops the grid at load, named by its key and
