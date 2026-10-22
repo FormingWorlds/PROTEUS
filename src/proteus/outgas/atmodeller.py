@@ -237,8 +237,9 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
     -----
     Under ``user_constant`` with no budget above the threshold, the O2-only network
     is solved against the buffer. Under ``from_O_budget`` with no budget above the
-    threshold, no solve runs: every species column is 0, ``P_surf`` is 0, each noble
-    gas keeps its kg total with the matching mole total, and
+    threshold, no solve runs: every species column but the vmr is 0, ``P_surf`` is 0,
+    each noble gas keeps its kg total with the matching mole total, the vmrs and
+    ``atm_kg_per_mol`` keep their values as in ``run_desiccated``, and
     ``fO2_shift_IW_derived`` and ``O_res`` are NaN.
     """
     from atmodeller import (
@@ -496,7 +497,7 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
         # O residual are undefined (the user pre-seed would misrecord a skipped solve).
         for s in _atm_gas_species:
             kg_total = float(hf_row.get(f'{s}_kg_total', 0.0))
-            hf_row[f'{s}_bar'] = hf_row[f'{s}_vmr'] = 0.0
+            hf_row[f'{s}_bar'] = 0.0
             hf_row[f'{s}_kg_atm'] = hf_row[f'{s}_kg_liquid'] = hf_row[f'{s}_kg_solid'] = 0.0
             hf_row[f'{s}_mol_atm'] = hf_row[f'{s}_mol_liquid'] = hf_row[f'{s}_mol_solid'] = 0.0
             hf_row[f'{s}_kg_total'] = hf_row[f'{s}_mol_total'] = 0.0

@@ -109,8 +109,8 @@ def test_empty_constraints_user_constant_solves_o2_only():
 
 def test_empty_constraints_from_o_budget_returns_an_empty_atmosphere():
     """Under from_O_budget with O also at or below the threshold no model is built, the
-    atmosphere left from an earlier call is replaced by an empty one, and the derived IW
-    offset and the O residual are undefined."""
+    atmosphere left from an earlier call is replaced by an empty one with its vmrs kept,
+    and the derived IW offset and the O residual are undefined."""
     config = _make_user_constant_config(2.0)
     config.planet.fO2_source = 'from_O_budget'
     hf_row = _empty_row()
@@ -134,9 +134,11 @@ def test_empty_constraints_from_o_budget_returns_an_empty_atmosphere():
     assert np.isnan(hf_row['fO2_shift_IW_derived'])
     assert np.isnan(hf_row['O_res'])
     columns = {f'{s}_{f}': hf_row[f'{s}_{f}'] for s in vol_list + noble_gases
-               for f in _CALLIOPE_SPECIES_FIELDS
+               for f in _CALLIOPE_SPECIES_FIELDS if f != 'vmr'
                if not (s in noble_gases and f in ('kg_total', 'mol_total'))}  # fmt: skip
     assert columns == dict.fromkeys(columns, 0.0)
+    vmrs = {s: hf_row[f'{s}_vmr'] for s in vol_list + noble_gases}
+    assert vmrs == dict.fromkeys(vmrs, 1.0)
     assert {e: hf_row[f'{e}_kg_total'] for e in totals} == totals
     mol = {g: hf_row[f'{g}_mol_total'] for g in noble_gases}
     assert mol == pytest.approx(
@@ -150,10 +152,11 @@ def test_empty_constraints_from_o_budget_returns_an_empty_atmosphere():
 
 
 def test_empty_from_o_budget_row_keeps_a_composition_agni_accepts(monkeypatch):
-    """The empty from_O_budget return keeps every vmr and atm_kg_per_mol, as
-    run_desiccated does, so the next AGNI call builds its composition without the
+    """The empty from_O_budget return keeps the columns run_desiccated keeps (every vmr
+    and atm_kg_per_mol), so the next AGNI call builds its composition without the
     zero-vmr raise (status 20) and goes to transparent mode on P_surf 0."""
     agni = pytest.importorskip('proteus.atmos_clim.agni')
+    from proteus.outgas.common import EMPTY_ATMOSPHERE_KEPT_KEYS
     from proteus.utils.constants import gas_list
 
     config = _make_user_constant_config(2.0)
@@ -161,6 +164,7 @@ def test_empty_from_o_budget_row_keeps_a_composition_agni_accepts(monkeypatch):
     hf_row = _empty_row()
     vmr = {g: 0.0 for g in gas_list} | {'H2O': 0.6, 'CO2': 0.3, 'N2': 0.1}
     hf_row.update({f'{g}_vmr': v for g, v in vmr.items()}, atm_kg_per_mol=0.0251, P_surf=2.2)
+    kept = {k: hf_row[k] for k in EMPTY_ATMOSPHERE_KEPT_KEYS}
     status = []
     monkeypatch.setattr(agni, 'UpdateStatusfile', lambda dirs, code: status.append(code))
     with patch('atmodeller.EquilibriumModel') as em:
@@ -168,11 +172,13 @@ def test_empty_from_o_budget_row_keeps_a_composition_agni_accepts(monkeypatch):
     em.assert_not_called()
     cfg = MagicMock()
     cfg.atmos_clim.agni.chemistry = 'none'
-    composition = agni._construct_voldict(cfg, hf_row, {'output': '/tmp/test'})
+    try:
+        composition = agni._construct_voldict(cfg, hf_row, {'output': '/tmp/test'})
+    except ValueError as e:
+        pytest.fail(f'AGNI refuses the empty from_O_budget row: {e}')
     assert sum(composition.values()) == pytest.approx(1.0, rel=1e-12)
     assert status == []
-    assert {g: hf_row[f'{g}_vmr'] for g in gas_list} == vmr
-    assert hf_row['atm_kg_per_mol'] == 0.0251
+    assert {k: hf_row[k] for k in EMPTY_ATMOSPHERE_KEPT_KEYS} == kept
     assert hf_row['P_surf'] == pytest.approx(0.0, abs=0.0)
 
 
