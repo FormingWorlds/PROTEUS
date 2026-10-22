@@ -353,8 +353,8 @@ def test_sample_from_bounds_rejects_invalid_worker_count():
 def test_sample_from_bounds_caps_workers_and_saves(monkeypatch, tmp_path):
     """``sample_from_bounds`` caps the worker pool at ``cpu_count - 1``
     (3 in this test, with cpu_count=4 mocked) regardless of the user's
-    request, uses Halton sequences for the initial design, and saves
-    the resulting (X, Y) dataset to ``init.csv``.
+    request, uses Halton sequences for the initial design, hands the pool one
+    sample per task, and saves the resulting (X, Y) dataset to ``init.csv``.
     """
     captured = {}
 
@@ -377,8 +377,9 @@ def test_sample_from_bounds_caps_workers_and_saves(monkeypatch, tmp_path):
         def __exit__(self, exc_type, exc, tb):
             return False
 
-        def starmap_async(self, func, args):
+        def starmap_async(self, func, args, chunksize=None):
             captured['task_count'] = len(args)
+            captured['chunksize'] = chunksize
             results = [torch.tensor([[0.2]], dtype=torch.double) for _ in args]
 
             class _AsyncResult:
@@ -415,6 +416,8 @@ def test_sample_from_bounds_caps_workers_and_saves(monkeypatch, tmp_path):
     assert n == 2
     assert captured['processes'] == 3
     assert captured['task_count'] == 2
+    # One sample per task; Python's default would hand 50 samples to 10 workers in pairs
+    assert captured['chunksize'] == 1
     # Each pool worker is handed the batch's stop signal.
     assert captured['initializer'] is init_mod._init_pool_worker
     assert captured['saved_shape'] == ((2, 1), (2, 1))

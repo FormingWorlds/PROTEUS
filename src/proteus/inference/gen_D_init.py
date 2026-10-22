@@ -331,7 +331,8 @@ def sample_from_bounds(
     # what `get` raises, so no None reaches the dataset.
     stop = Event()
     with Pool(processes=n_workers, initializer=_init_pool_worker, initargs=(stop,)) as pool:
-        async_result = pool.starmap_async(f_aug, aug_args)
+        # One sample per task, so a slow run never holds a queued sample behind it
+        async_result = pool.starmap_async(f_aug, aug_args, chunksize=1)
         # Bound the whole batch so a worker that wedges outside the per-child
         # subprocess timeout cannot hang the run indefinitely. Leaving the Pool
         # context terminates any still-running workers if this raises.
