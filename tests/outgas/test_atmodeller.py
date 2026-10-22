@@ -757,6 +757,55 @@ def test_graphite_activity_logged_each_solve(caplog):
 
 
 @pytest.mark.physics_invariant
+def test_condensed_columns_present_and_zero_when_condensates_disabled():
+    """Every volatile element has a condensed column, held at 0 without condensates.
+
+    The helpfile always carries ``{e}_kg_condensed``. With
+    ``include_condensates`` off, the wrapper writes 0 to each of them even if
+    the solver output reports a condensed mass, so a stale or spurious value
+    cannot enter the element closure; the carbon split then closes on
+    atmosphere and melt alone.
+    """
+    pytest.importorskip('atmodeller')
+    from proteus.utils.constants import vol_element_list
+    from proteus.utils.coupler import GetHelpfileKeys
+
+    keys = set(GetHelpfileKeys())
+    assert {f'{e}_kg_condensed' for e in vol_element_list} <= keys
+
+    config, hf_row = _carbon_only_condensate_case()
+    config.outgas.atmodeller.include_condensates = False
+    for e in vol_element_list:
+        hf_row[f'{e}_kg_condensed'] = 1.0e20  # stale value from an earlier step
+
+    c_frac_co2 = element_mmw['C'] / (element_mmw['C'] + 2 * element_mmw['O'])
+    co2_total = hf_row['C_kg_total'] / c_frac_co2
+    out = MagicMock()
+    out.quick_look.return_value = {'CO2_g': np.array(20.0), 'O2_g': np.array(1.0e-6)}
+    out.total_pressure.return_value = np.array(20.0)
+    out.asdict.return_value = {
+        'CO2_g': {'gas_mass': np.array(co2_total), 'dissolved_mass': np.array(0.0)},
+        'O2_g': {'log10dIW_1_bar': np.array(-0.1), 'gas_mass': np.array(1.0e10)},
+        'element_C': {'condensed_mass': np.array(4.0e21)},  # ignored without condensates
+    }
+    fake_model = MagicMock()
+    fake_model.output = out
+
+    from proteus.outgas.atmodeller import _MODEL_CACHE
+
+    _MODEL_CACHE.clear()
+    with patch('atmodeller.EquilibriumModel', return_value=fake_model):
+        calc_surface_pressures_atmodeller({'output': '/tmp/test'}, config, hf_row)
+    _MODEL_CACHE.clear()
+
+    assert [hf_row[f'{e}_kg_condensed'] for e in vol_element_list] == [0.0] * len(
+        vol_element_list
+    )
+    c_split = sum(float(hf_row[f'C_kg_{r}']) for r in ('atm', 'liquid', 'solid', 'condensed'))
+    assert c_split == pytest.approx(hf_row['C_kg_total'], rel=1e-9)
+
+
+@pytest.mark.physics_invariant
 def test_mol_columns_written_across_solve_noble_and_excluded_species():
     """The ``{sp}_mol_*`` columns are populated in each of the three species branches.
 

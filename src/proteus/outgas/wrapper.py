@@ -475,6 +475,11 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict, *, initial: bool):
     hf_row['fO2_shift_IW_derived'] = float(config.outgas.fO2_shift_IW)
     hf_row['O_res'] = 0.0
 
+    # Every backend starts from no condensed mass; only atmodeller with
+    # condensates enabled fills these columns, so they stay 0 otherwise.
+    for e in vol_element_list:
+        hf_row[f'{e}_kg_condensed'] = 0.0
+
     # The chemistry partitions a whole-planet inventory and rewrites every
     # `_kg_solid` column (0.0 in CALLIOPE and atmodeller; atmodeller writes its
     # condensates to `_kg_condensed`), so the trapped mass is hidden for the solve

@@ -839,9 +839,12 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
     # gas-species inventory above does not carry condensates, so the split
     # atm + liquid + solid + condensed closes against the element budget only with
     # this term. atmodeller reports the condensed mass per element; it is zero for
-    # the elements (and conditions) that do not condense.
+    # the elements (and conditions) that do not condense, and the columns stay 0
+    # when condensates are disabled.
     for el in vol_element_list:
-        condensed = _species_output_scalar(output_dict, f'element_{el}', 'condensed_mass')
+        condensed = None
+        if atm_config.include_condensates:
+            condensed = _species_output_scalar(output_dict, f'element_{el}', 'condensed_mass')
         hf_row[f'{el}_kg_condensed'] = max(0.0, condensed) if condensed else 0.0
 
     # Total volatile oxygen (atmospheric + melt-dissolved), summed over the
