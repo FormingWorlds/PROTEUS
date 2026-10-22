@@ -34,7 +34,7 @@ Each axis declares a `method` that controls how its values are generated:
 
 | `method` | Required keys | Values produced |
 |---|---|---|
-| `direct` | `values = [...]` | Exactly the listed values. Numeric lists are sorted and de-duplicated; string lists are kept as written. |
+| `direct` | `values = [...]` | Exactly the listed values. Duplicates are removed at their first occurrence. Numeric lists are then sorted; string lists keep their written order. |
 | `arange` | `start`, `stop`, `step` | Evenly stepped values from `start` to `stop`, **including** the `stop` endpoint. |
 | `linspace` | `start`, `stop`, `count` | `count` values evenly spaced between `start` and `stop` (both endpoints included). |
 | `logspace` | `start`, `stop`, `count` | `count` values logarithmically spaced between `start` and `stop`. Here `start` and `stop` are the actual endpoint values, not their base-10 exponents. |
