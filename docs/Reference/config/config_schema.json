@@ -352,7 +352,7 @@
           "value": 0
         }
       ],
-      "description": "Minimum absolute time-step size [yr].",
+      "description": "Minimum absolute time-step size [yr]; escape and the drain cap stop at ``minimum * escape.step_dt_floor_frac``, and other caps, among them growth, evection, bolometric clamp, the final-time cap, solver retries, mushy-zone limiting, and impact landing steps, can go lower.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -6072,6 +6072,72 @@
       "group_qualifier": null
     },
     {
+      "path": "interior_energetics.aragog.top_cell_dt_limit",
+      "toml_section": "interior_energetics.aragog",
+      "class": "Aragog",
+      "type": "bool",
+      "accepts_none": false,
+      "default": "false",
+      "choices": null,
+      "bounds": null,
+      "description": "Limit the coupling time step by the top-cell radiative drain time tau_drain (down to params.dt.minimum * escape.step_dt_floor_frac, below params.dt.minimum) and keep hf_row['T_magma'], hf_row['T_surf'], and hf_row['Phi_global'] on the Aragog solver state by skipping the tmagma_atol/tmagma_rtol post-step clip on steps where tau_drain is finite and the step does not exceed tau_drain (staying active when the escape step floor or an impact-landing snap-forward places the step above tau_drain); planet.prevent_warming still clamps T_magma, T_surf, Phi_global, and F_int when active. Incompatible with interior_energetics.surface_bc_mode = 'grey_body'; the rule is checked when the config is loaded (a grid case fails when its written TOML is read back). A 1-point EOS temperature lookahead probes S_trial = max(S_top - cp_eff * dT_allow / T_top, S_min + 300) and replaces the step-start heat capacity cp_eff with the chord heat capacity cp_chord = min(cp_eff, T_top * (S_top - S_trial) / (T_top - T_trial)) in the T_top form whenever T(P_top, S_trial) falls more than dT_allow below T_top (T_top - T_trial > dT_allow and S_top > S_trial), bounding the linearized unresupplied top-cell drop under the step's linearization dS = q / T_top with q = cp_chord * dT_allow. A lookahead trial that reaches or spans the flat part of the PALEOS solid table (T held at T_sol from the last node below S_sol) can give a step that exceeds dT_allow; this is shown on constructed slice states, and no step of the coupled runs exceeded dT_allow. On an energy basis (integral of T dS = q at constant P_top) the drop also exceeds dT_allow in the liquid, because the exact entropy step is larger than q / T_top: the PALEOS slice scans give at most 1.106 dT_allow at top_cell_dt_rel_dT = 0.08 and 1.204 at 0.15 for T_surf / T_top <= 1.02, and up to 1.110 and 1.211 at 1.05. Using T_mean = 0.5 * (T_top + T_trial) in the chord numerator would reduce cp_chord by the fraction (T_top - T_trial) / (2 * T_top). See docs/Explanations/coupling_loop.md for the measured run results and EOS evaluations.",
+      "doc_source": "field_docstring",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.top_cell_dt_rel_dT",
+      "toml_section": "interior_energetics.aragog",
+      "class": "Aragog",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.08",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0.0
+        },
+        {
+          "op": "<=",
+          "value": 0.15
+        }
+      ],
+      "description": "Relative surface-temperature change allowance eta_T at a top-cell melt fraction >= 0.40 (mush and liquid) for the top-cell drain-time step limit; must lie in (0, 0.15]. A value below 0.08 also needs top_cell_dt_rel_dT_solid set at or below it; the pair is checked when the config is loaded. Sets the allowed temperature scale dT_allow = eta_eff * T_surf for the step energy q = cp_chord * dT_allow, bounding the linearized unresupplied top-cell temperature drop T_top - T(P_top, S_top - q / T_top) <= dT_allow under the step's linearization dS = q / T_top with the chord heat capacity cp_chord in the T_top form. A lookahead trial that reaches or spans the flat part of the PALEOS solid table (T held at T_sol from the last node below S_sol) can give a step that exceeds dT_allow; this is shown on constructed slice states, and no step of the coupled runs exceeded dT_allow. On an energy basis (integral of T dS = q at constant P_top) the drop also exceeds dT_allow in the liquid: at most 1.106 dT_allow at 0.08 and 1.204 at 0.15 for T_surf / T_top <= 1.02, and up to 1.110 and 1.211 at 1.05. See docs/Explanations/coupling_loop.md for the measured run results and EOS evaluations.",
+      "doc_source": "field_docstring",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.aragog.top_cell_dt_rel_dT_solid",
+      "toml_section": "interior_energetics.aragog",
+      "class": "Aragog",
+      "type": "float",
+      "accepts_none": false,
+      "default": "0.08",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0.0
+        },
+        {
+          "op": "<=",
+          "value": 0.15
+        }
+      ],
+      "description": "Relative surface-temperature change allowance eta_T_solid at a fully solid top cell (top-cell melt fraction 0), ramped linearly to top_cell_dt_rel_dT at a top-cell melt fraction of 0.40; must lie in (0, top_cell_dt_rel_dT] (up to 0.15), with the pair checked when the config is loaded. See docs/Explanations/coupling_loop.md for the measured run results and EOS evaluations.",
+      "doc_source": "field_docstring",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
       "path": "interior_energetics.dummy.mantle_tliq",
       "toml_section": "interior_energetics.dummy",
       "class": "InteriorDummy",
@@ -6676,7 +6742,7 @@
           "value": 0
         }
       ],
-      "description": "Maximum absolute change in T_magma per PROTEUS step [K].",
+      "description": "Maximum increase in T_magma and T_surf per PROTEUS step (maximum increase atol + rtol * T_magma_prev) [K]; disabled on Aragog steps where interior_energetics.aragog.top_cell_dt_limit is true, tau_drain is finite, and the step does not exceed tau_drain.",
       "doc_source": "attributes",
       "group_order": 4,
       "group_position": 0,
@@ -6697,7 +6763,7 @@
           "value": 0
         }
       ],
-      "description": "Maximum relative change in T_magma per PROTEUS step.",
+      "description": "Maximum relative increase in T_magma and T_surf per PROTEUS step (maximum increase atol + rtol * T_magma_prev); disabled on Aragog steps where interior_energetics.aragog.top_cell_dt_limit is true, tau_drain is finite, and the step does not exceed tau_drain.",
       "doc_source": "attributes",
       "group_order": 4,
       "group_position": 1,
@@ -6971,8 +7037,8 @@
         "grey_body"
       ],
       "bounds": null,
-      "description": "Surface boundary condition for SPIDER/Aragog: 'flux' (prescribed F_atm from the atmosphere module) or 'grey_body' (native grey-body boundary condition computed inside the interior solver).",
-      "doc_source": "attributes",
+      "description": "Surface boundary condition mode for SPIDER and Aragog: 'flux' or 'grey_body'. 'flux' consumes prescribed F_atm from the atmosphere module as the upper boundary flux. 'grey_body' evaluates radiative surface cooling sigma * (T_surf^4 - T_eqm^4) inside the interior solver per substep from current top-cell T (SPIDER uses -SURFACE_BC 1 -emissivity0 1.0; Aragog uses outer_boundary_condition=1 with emissivity=1). The atmosphere module still runs to populate diagnostic helpfile fields (F_olr, F_sct, R_obs), but its F_atm output is not used by the interior. Incompatible with interior_energetics.aragog.top_cell_dt_limit = true.",
+      "doc_source": "field_docstring",
       "group_order": 0,
       "group_position": 6,
       "group": null,
@@ -12643,6 +12709,34 @@
         "zephyrus.efficiency"
       ],
       "doc": "Validate ZEPHYRUS settings: Pxuv within (0, 10] bar and efficiency within [0, 1]."
+    },
+    {
+      "validator": "_check_aragog_top_cell_dt_limit_surface_bc",
+      "module": "_interior.py",
+      "attached_to": [
+        "interior_energetics.aragog.top_cell_dt_limit",
+        "interior_energetics.module",
+        "interior_energetics.surface_bc_mode"
+      ],
+      "touches": [
+        "interior_energetics.aragog.top_cell_dt_limit",
+        "interior_energetics.module",
+        "interior_energetics.surface_bc_mode"
+      ],
+      "doc": "Reject Aragog top_cell_dt_limit with grey_body surface boundary conditions."
+    },
+    {
+      "validator": "_check_top_cell_dt_rel_dT_pair",
+      "module": "_interior.py",
+      "attached_to": [
+        "interior_energetics.aragog.top_cell_dt_rel_dT",
+        "interior_energetics.aragog.top_cell_dt_rel_dT_solid"
+      ],
+      "touches": [
+        "interior_energetics.aragog.top_cell_dt_rel_dT",
+        "interior_energetics.aragog.top_cell_dt_rel_dT_solid"
+      ],
+      "doc": "Require top_cell_dt_rel_dT_solid <= top_cell_dt_rel_dT."
     },
     {
       "validator": "valid_aragog",

@@ -67,7 +67,7 @@ solidification transition (melt fraction between `phi_crit` and
 | `scale_incr` | float | `1.6` | Scale factor to grow time-step on a successful adaptive step \[dimensionless, must be >1\]. Must be > 1. |
 | `scale_decr` | float | `0.8` | Scale factor to shrink time-step on a rejected adaptive step \[dimensionless, in (0, 1)\]. Must be > 0 and < 1. |
 | `window` | int | `3` | Number of previous steps to consider for adaptive-method comparison \[dimensionless\]. Must be >= 1. |
-| `minimum` | float | `100.0` | Minimum absolute time-step size \[yr\]. Must be > 0. |
+| `minimum` | float | `100.0` | Minimum absolute time-step size \[yr\]; escape and the drain cap stop at ``minimum * escape.step_dt_floor_frac``, and other caps, among them growth, evection, bolometric clamp, the final-time cap, solver retries, mushy-zone limiting, and impact landing steps, can go lower. Must be > 0. |
 | `minimum_rel` | float | `1e-05` | Minimum relative time-step size \[dimensionless\]. Must be > 0. |
 | `maximum` | float | `10000000.0` | Maximum time-step size \[yr\]. Must be > 0. |
 | `maximum_rel` | float | `1.0` | Time-fraction allowance added to ``dt.maximum`` on every step \[dimensionless\]. The effective per-step cap is the sum ``dt.maximum + maximum_rel * Time``, so at the default 1.0 the allowance grows linearly with simulation Time, and the absolute ``dt.maximum`` acts as the early-time floor (cap doubles at ``Time = dt.maximum``). Set ``maximum_rel = 0.0`` to disable the time-proportional allowance and recover the strict ``dt = min(dt.maximum, ...)`` cap. Must be >= 0. |
