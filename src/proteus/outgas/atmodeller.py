@@ -552,6 +552,11 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
     gravity = float(hf_row.get('gravity', 9.81))
     area = 4.0 * np.pi * R_int**2
 
+    # A species outside the solve reports 0, as in CALLIOPE; the loops below fill the others
+    for proteus_name in _atm_gas_species:
+        hf_row[f'{proteus_name}_bar'] = 0.0
+        hf_row[f'{proteus_name}_kg_atm'] = 0.0
+
     P_total = 0.0
     for atm_name, p_bar in quick_look.items():
         proteus_name = _reverse_map.get(atm_name.replace('_g', ''))
@@ -602,8 +607,6 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
             hf_row[f'{s}_vmr'] = 0.0
 
     # Dissolved masses from atmodeller output (thermodynamically consistent).
-    # Falls back to kg_total - kg_atm for species not in the solve or without
-    # a dissolved_mass output (e.g., gas-only species like H2S, NH3).
     def _as_mass(value):
         """Squeeze an atmodeller mass or mole-count output to a float, or None on failure."""
         if value is None:
@@ -714,13 +717,8 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
                     hf_row[f'{proteus_name}_kg_total'] / species_mmw
                 )
         elif is_noble:
-            # An inactive noble gas is not in the solve; clear its stale
-            # atmospheric reservoir so it does not leak into P_surf, the mean
-            # molar mass, or a later resurrection of its total, and leave its
-            # escape-owned element total untouched. The mixing ratio is cleared
-            # too: it was already recomputed from the stale partial pressure
-            # above, so it must be reset or it would still feed the mean molar
-            # mass sum.
+            # An inactive noble gas is not in the solve: its atmosphere and melt
+            # columns are 0, and its escape-owned element total stays untouched.
             hf_row[f'{proteus_name}_kg_liquid'] = 0.0
             hf_row[f'{proteus_name}_kg_atm'] = 0.0
             hf_row[f'{proteus_name}_bar'] = 0.0
@@ -731,9 +729,8 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
                 hf_row.get(f'{proteus_name}_kg_total', 0.0)
             ) / eval_gas_mmw(proteus_name)
         else:
-            # Reactive species not present in the atmodeller output (e.g.
-            # excluded from the solve): keep the pressure-derived atmospheric
-            # mass from the first loop and treat it as gas-only.
+            # Reactive species without total_mass: kg_total = kg_atm + kg_liquid, with
+            # kg_liquid 0 without dissolved_mass (both 0 outside the solve).
             hf_row[f'{proteus_name}_kg_liquid'] = (
                 max(0.0, dissolved_kg) if dissolved_kg is not None else 0.0
             )
@@ -741,10 +738,7 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
                 hf_row.get(f'{proteus_name}_kg_atm', 0.0)
             ) + float(hf_row[f'{proteus_name}_kg_liquid'])
 
-            # No native mole count is available for a species outside the
-            # solve; derive moles from the kg values above using the
-            # species' own molar mass, matching dummy.py's convention for
-            # the same columns.
+            # Moles from the kg values above with the species' own molar mass, as dummy.py does.
             species_mmw = eval_gas_mmw(proteus_name)
             hf_row[f'{proteus_name}_mol_liquid'] = (
                 hf_row[f'{proteus_name}_kg_liquid'] / species_mmw
