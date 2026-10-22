@@ -208,7 +208,7 @@ class Grid:
 
     # Set a dimension directly
     def set_dimension_direct(self, name: str, values: list, sort: bool = True):
-        the_list = list(set(values))  # remove duplicates
+        the_list = list(dict.fromkeys(values))  # written order, duplicates removed
         if (not isinstance(values[0], str)) and sort:  # sort if numeric
             the_list = sorted(the_list)
         self.dim_avars[name] = the_list
