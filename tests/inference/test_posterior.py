@@ -33,6 +33,13 @@ def no_hyperfit(monkeypatch):
     return calls
 
 
+@pytest.fixture
+def small_rounds(monkeypatch):
+    """Refined rounds of 50 000 draws on 100 centres, an eighth of the cost of the default."""
+    monkeypatch.setattr(post, 'ADAPT_PROPOSAL', 50_000)
+    monkeypatch.setattr(post, 'ADAPT_CENTRES', 100)
+
+
 def _gaussian_objective(mu, sd):
     """Objective Y = log_warp(S) of an axis-aligned Gaussian chi-squared in the unit cube."""
     mu_t = torch.tensor(mu, dtype=torch.double)
@@ -63,6 +70,41 @@ def test_importance_resample_recovers_a_gaussian_posterior():
     np.testing.assert_allclose(s, sd, rtol=0.06)
     assert np.all(np.abs(s - np.array(sd) / math.sqrt(2.0)) > 0.15 * np.array(sd))
     assert torch.all((U >= 0.0) & (U <= 1.0))
+
+
+def test_importance_resample_refines_the_proposal_for_a_narrow_posterior(small_rounds):
+    """A Gaussian with sd 0.004 fills about 1e-4 of the square, so 50 000 uniform draws
+    give an effective sample size near 10; the refined rounds bring it above the 2000
+    samples and recover the mean and sd, which 10 effective draws cannot.
+    """
+    mu, sd = [0.4, 0.7], [0.004, 0.004]
+    U, ess = post.importance_resample(_gaussian_objective(mu, sd), 2, 2000, 50_000, seed=5)
+    assert 50_000 * 4 * math.pi * 0.004**2 < 20  # what the uniform draws alone would give
+    assert ess > 2000
+    assert len(torch.unique(U, dim=0)) > 1000  # distinct samples, not one point repeated
+    np.testing.assert_allclose(U.mean(dim=0).numpy(), mu, atol=0.0005)
+    np.testing.assert_allclose(U.std(dim=0).numpy(), sd, rtol=0.1)
+
+
+def test_importance_resample_keeps_both_of_two_narrow_modes(small_rounds):
+    """Two equal narrow peaks at (0.2, 0.2) and (0.8, 0.8): each keeps about half the
+    samples. A single refined Gaussian on the weighted mean would sit between them.
+    """
+    a = _gaussian_objective([0.2, 0.2], [0.005, 0.005])
+    b = _gaussian_objective([0.8, 0.8], [0.005, 0.005])
+
+    def two_peaks(U):
+        # Y of the summed likelihoods: S = -2 ln(exp(-Sa/2) + exp(-Sb/2))
+        sa, sb = 10.0 ** (-a(U)), 10.0 ** (-b(U))
+        s = -2 * torch.logaddexp(-sa / 2, -sb / 2) + 2 * math.log(2.0)
+        return log_warp(s.clamp(min=0).reshape(-1, 1)).reshape(-1)
+
+    U, ess = post.importance_resample(two_peaks, 2, 500, 50_000, seed=8)
+    near_a = (U - 0.2).norm(dim=1) < 0.05
+    near_b = (U - 0.8).norm(dim=1) < 0.05
+    assert ess > 500
+    assert (near_a | near_b).all()  # nothing between the peaks
+    assert near_a.float().mean().item() == pytest.approx(0.5, abs=0.1)
 
 
 def test_importance_resample_is_reproducible_for_a_seed():
