@@ -27,6 +27,11 @@ assert set(VOLATILE_ELEMENT_STOICH) == set(vol_list), (
 )
 
 
+# Columns an emptied atmosphere keeps, so AGNI still reads a composition and no
+# mean molar mass is zero.
+EMPTY_ATMOSPHERE_KEPT_KEYS = ('atm_kg_per_mol', *(f'{g}_vmr' for g in gas_list))
+
+
 def element_masses_from_species(species_kg: dict[str, float]) -> dict[str, float]:
     """Split per-species masses [kg] into per-element masses [kg].
 
