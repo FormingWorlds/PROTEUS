@@ -84,7 +84,8 @@ def _solver_velocity(porosity, grain_size, rho_s=4000.0, rho_l=3600.0, gravity=9
     carries the attributes it reads: a mush at the given porosity, fixed
     phase-boundary densities, gravity, grain size and the melt viscosity as
     drag. Nothing of the solver's law is transcribed here.
-    The stand-in uses the solid buoyancy, the law the mobility is compared with.
+    The stand-in selects separation_buoyancy 'solid', not the solver default 'mixture':
+    the law of mobility_function without a buoyancy argument, as the drainage code calls it.
     """
     from aragog.eos.entropy_phase import EntropyPhaseEvaluator
 
