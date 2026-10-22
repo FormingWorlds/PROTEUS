@@ -124,6 +124,7 @@ def test_empty_constraints_from_o_budget_returns_an_empty_atmosphere():
         O2_bar=2.227, O2_kg_atm=1.1e19, P_surf=2.232, C_kg_atm=8.76e15, O_kg_atm=1.1e19
     )
     hf_row.update(fO2_shift_IW_derived=2.0, O_res=0.0)
+    hf_row.update({f'{e}_kg_{r}': 7.0e18 for e in 'HCNOS' for r in ('atm', 'liquid')})
     with patch('atmodeller.EquilibriumModel') as em:
         try:
             calc_surface_pressures_atmodeller({'output': '/tmp/test'}, config, hf_row)
