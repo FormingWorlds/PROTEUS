@@ -4,8 +4,9 @@ Module under test: ``proteus.outgas.atmodeller``.
 
 Under ``user_constant`` the wrapper solves the O2-only network against the IW
 buffer, as CALLIOPE does, so an atmosphere left from an earlier call is replaced
-by the buffered O2 column. Under ``from_O_budget`` it returns without a solve.
-A non-finite H, C, N or S total raises with the element named.
+by the buffered O2 column. Under ``from_O_budget`` with the O budget also at or
+below the threshold it returns without a solve and writes an empty atmosphere.
+A non-finite total of a constrained element or a noble gas raises with it named.
 
 See ``docs/How-to/testing.md``.
 """
@@ -88,24 +89,33 @@ def test_empty_constraints_user_constant_solves_o2_only():
     solved = _solve(config, hf_row)
 
     p_o2 = 10.0 ** (float(np.squeeze(IronWustiteBuffer(0.0).log10_fugacity(2200.0, 1.0))) + 2.0)
+    column = p_o2 * 1e5 * 4.0 * np.pi * hf_row['R_int'] ** 2 / hf_row['gravity']
     assert solved == ('O2_g',)
     assert hf_row['O2_bar'] == pytest.approx(p_o2, rel=1e-6)
     assert hf_row['P_surf'] == hf_row['O2_bar']
-    assert hf_row['O2_vmr'] == 1.0
+    assert hf_row['O2_vmr'] == pytest.approx(1.0, rel=1e-15)
+    assert hf_row['O_kg_atm'] == pytest.approx(column, rel=2e-3)
     others = {f'{s}_{f}': hf_row[f'{s}_{f}'] for s in vol_list + noble_gases if s != 'O2'
               for f in _CALLIOPE_SPECIES_FIELDS}  # fmt: skip
     assert others == dict.fromkeys(others, 0.0)
-    assert hf_row['C_kg_atm'] == 0.0
+    assert hf_row['C_kg_atm'] == pytest.approx(0.0, abs=0.0)
     assert hf_row['O_kg_total'] == pytest.approx(hf_row['O_kg_atm'], rel=1e-12)
-    assert hf_row['O_kg_atm'] > 0.0
 
 
-def test_empty_constraints_from_o_budget_returns_without_a_solve():
-    """Under from_O_budget an empty constraint set builds no model and marks the derived
-    IW offset and the O residual as undefined."""
+def test_empty_constraints_from_o_budget_returns_an_empty_atmosphere():
+    """Under from_O_budget with O also at or below the threshold no model is built, the
+    atmosphere left from an earlier call is replaced by an empty one, and the derived IW
+    offset and the O residual are undefined."""
     config = _make_user_constant_config(2.0)
     config.planet.fO2_source = 'from_O_budget'
     hf_row = _empty_row()
+    hf_row.update(
+        {f'{s}_{f}': 1.0 for s in vol_list + noble_gases for f in _CALLIOPE_SPECIES_FIELDS}
+    )
+    hf_row.update({f'{g}_kg_total': 0.0 for g in noble_gases})
+    hf_row.update(
+        O2_bar=2.227, O2_kg_atm=1.1e19, P_surf=2.232, C_kg_atm=8.76e15, O_kg_atm=1.1e19
+    )
     hf_row.update(fO2_shift_IW_derived=2.0, O_res=0.0)
     with patch('atmodeller.EquilibriumModel') as em:
         try:
@@ -115,14 +125,28 @@ def test_empty_constraints_from_o_budget_returns_without_a_solve():
     em.assert_not_called()
     assert np.isnan(hf_row['fO2_shift_IW_derived'])
     assert np.isnan(hf_row['O_res'])
+    columns = {f'{s}_{f}': hf_row[f'{s}_{f}'] for s in vol_list + noble_gases
+               for f in _CALLIOPE_SPECIES_FIELDS}  # fmt: skip
+    assert columns == dict.fromkeys(columns, 0.0)
+    reservoirs = {
+        f'{e}_kg_{r}': hf_row[f'{e}_kg_{r}'] for e in 'HCNOS' for r in ('atm', 'liquid')
+    }
+    assert reservoirs == dict.fromkeys(reservoirs, 0.0)
+    assert hf_row['P_surf'] == pytest.approx(0.0, abs=0.0)
 
 
-@pytest.mark.parametrize('element', ['H', 'C', 'N', 'S'])
+@pytest.mark.parametrize(
+    'element,source',
+    [(e, 'user_constant') for e in ('H', 'C', 'N', 'S', 'He', 'Xe')] + [('O', 'from_O_budget')],
+)
 @pytest.mark.parametrize('value', [float('nan'), float('inf'), float('-inf')])
-def test_non_finite_element_total_raises_with_the_element_named(element, value):
-    """A NaN or infinite H, C, N or S total raises before any model is built."""
+def test_non_finite_element_total_raises_with_the_element_named(element, source, value):
+    """A NaN or infinite total of a constrained element or a noble gas raises before any
+    model is built: H, C, N, S, every noble gas, and O when it is a constraint."""
     config = _make_user_constant_config(2.0)
+    config.planet.fO2_source = source
     hf_row = _hf_row_with_HS_budget()
+    hf_row['O_kg_total'] = 1.0e20
     hf_row[f'{element}_kg_total'] = value
     with patch('atmodeller.EquilibriumModel') as em:
         with pytest.raises(ValueError, match=f'{element}_kg_total is not finite'):
@@ -138,8 +162,21 @@ def test_atmosphere_mass_of_an_element_outside_the_solve_raises():
     model = _o2_output()
     model.output.quick_look.return_value = {'O2_g': np.array(1.0e-6), 'CO2_g': np.array(1.0)}
     model.output.asdict.return_value['CO2_g'] = {'gas_mass': np.array(1.0e15)}
-    with pytest.raises(RuntimeError, match='C_kg_atm'):
+    with pytest.raises(RuntimeError, match='C_kg_atm') as err:
         _solve(config, _empty_row(), model)
+    assert f'{1.0e15 * 12.011 / 44.009:.3e}'[:4] in str(err.value)
+
+
+@pytest.mark.physics_invariant
+def test_melt_mass_of_an_element_outside_the_solve_raises():
+    """A solver output that dissolves CO2 while C is outside the solve would give
+    C_kg_liquid > 0; the wrapper raises with both C reservoirs in the message."""
+    config = _make_user_constant_config(2.0)
+    model = _o2_output()
+    model.output.asdict.return_value['CO2_g'] = {'dissolved_mass': np.array(1.0e15)}
+    with pytest.raises(RuntimeError, match='C is outside the atmodeller solve') as err:
+        _solve(config, _empty_row(), model)
+    assert 'C_kg_atm, C_kg_liquid = 0.000000e+00, 2.7' in str(err.value)
 
 
 _TOTALS = st.sampled_from(
@@ -150,27 +187,35 @@ _TOTALS = st.sampled_from(
 @settings(max_examples=60, deadline=None)
 @given(
     totals=st.fixed_dictionaries({e: _TOTALS for e in 'HCNS'}),
-    he=st.sampled_from([0.0, 1.0]),
+    noble=st.sampled_from(noble_gases),
+    noble_total=st.sampled_from([0.0, 1.0]),
     t_magma=st.sampled_from([500.0, 1200.0, 5000.0]),
     shift=st.floats(-10.0, 10.0),
 )
 def test_o2_only_network_exactly_when_no_budget_is_above_the_threshold(
-    totals, he, t_magma, shift
+    totals, noble, noble_total, t_magma, shift
 ):
-    """The solved network is O2 alone exactly when no H, C, N or S total exceeds
-    mass_thresh and no noble gas total is positive; the IW constraint is always set."""
+    """The solved network is O2 alone, with no mass constraint, exactly when no H, C, N
+    or S total exceeds mass_thresh and no noble gas total is positive; the IW constraint
+    carries the configured shift and the temperature is clamped at T_floor."""
     config = _make_user_constant_config(shift)
     hf_row = _empty_row()
     hf_row.update({f'{e}_kg_total': v for e, v in totals.items()})
-    hf_row.update(He_kg_total=he, T_magma=t_magma)
+    hf_row.update({f'{noble}_kg_total': noble_total, 'T_magma': t_magma})
     model = _o2_output()
 
     solved = _solve(config, hf_row, model)
 
-    empty = max(totals.values()) <= _THRESH and he == 0.0
+    empty = max(totals.values()) <= _THRESH and noble_total == 0.0
+    kw = model.solve.call_args.kwargs
     assert (solved == ('O2_g',)) == empty
-    assert 'O2_g' in model.solve.call_args.kwargs['fugacity_constraints']
-    assert float(np.squeeze(model.solve.call_args.kwargs['state'].temperature)) >= 1200.0
+    assert (kw['mass_constraints'] == {}) == empty
+    assert float(kw['fugacity_constraints']['O2_g'].log10_shift) == pytest.approx(
+        shift, abs=0.0
+    )
+    assert float(np.squeeze(kw['state'].temperature)) == pytest.approx(
+        max(t_magma, 1200.0), abs=0.0
+    )
 
 
 @pytest.mark.physics_invariant
@@ -180,5 +225,6 @@ def test_o2_only_solve_with_a_second_pressure_raises():
     config = _make_user_constant_config(2.0)
     model = _o2_output()
     model.output.quick_look.return_value['He_g'] = np.array(1.0)
-    with pytest.raises(RuntimeError, match='O2-only solve: P_surf'):
+    with pytest.raises(RuntimeError, match='O2-only solve: P_surf') as err:
         _solve(config, _empty_row(), model)
+    assert 'P_surf 1.000001 != O2_bar 1e-06' in str(err.value)
