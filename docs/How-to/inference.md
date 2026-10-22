@@ -161,7 +161,7 @@ The posterior ignores the GP's own uncertainty, so it is only as good as the GP 
 - Uses Gaussian Process (GP) models to predict objective values
 - Acquisition function guides exploration-exploitation trade-off on search space
 - Automatic hyperparameter tuning via marginal likelihood optimization
-- A parameter whose fitted lengthscale exceeds 1.0 (in the unit cube) barely changes the GP, which then puts every proposal on one of its bounds; such a parameter is drawn at random instead (logged at debug level)
+- A parameter whose fitted lengthscale exceeds 1.5 (in the unit cube) barely changes the GP, which then puts every proposal on one of its bounds; such a parameter is drawn at random instead (logged at debug level)
 - A proposal within 0.005 (in the unit cube) of an evaluated or pending point is replaced by the best acquisition restart further away, or by a random point when there is none
 
 The optimization will run until `n_steps` evaluations are completed or manually stopped. Results are continuously saved and can be resumed if needed.
