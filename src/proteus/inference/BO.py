@@ -33,7 +33,7 @@ _PASSED_ON: set[tuple] = set()
 
 # Above this fitted lengthscale (inputs scaled to [0, 1]) the GP is near linear in a
 # parameter, so the acquisition peaks on one of its bounds; that parameter is drawn instead.
-IRRELEVANT_LENGTHSCALE = 1.5
+IRRELEVANT_LENGTHSCALE = 1.0
 
 # A proposal closer than this (unit cube) to an evaluated or pending point adds almost nothing
 MIN_SEPARATION = 0.005

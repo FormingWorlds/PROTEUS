@@ -194,14 +194,14 @@ def test_random_irrelevant_draws_only_parameters_above_the_threshold():
     """
     gp = type('G', (), {})()
     gp.covar_module = type('K', (), {})()
-    gp.covar_module.lengthscale = torch.tensor([[0.2, 2.0, 1.5, 3.0]], dtype=torch.double)
+    gp.covar_module.lengthscale = torch.tensor([[0.2, 1.2, 1.0, 3.0]], dtype=torch.double)
     torch.manual_seed(3)
     fixed = bo_mod.random_irrelevant(gp, 4, 'test')
     torch.manual_seed(3)
     again = bo_mod.random_irrelevant(gp, 4, 'test')
 
-    assert bo_mod.IRRELEVANT_LENGTHSCALE == pytest.approx(1.5, rel=1e-12)
-    assert sorted(fixed) == [1, 3]
+    assert bo_mod.IRRELEVANT_LENGTHSCALE == pytest.approx(1.0, rel=1e-12)
+    assert sorted(fixed) == [1, 3]  # 1.2 is drawn, which a threshold of 1.5 would leave
     assert all(0.0 <= v <= 1.0 for v in fixed.values())
     assert fixed == again  # drawn from the torch generator, so a seed repeats it
     gp.covar_module.lengthscale = torch.full((1, 4), 0.3, dtype=torch.double)
