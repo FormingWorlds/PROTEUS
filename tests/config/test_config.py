@@ -410,7 +410,20 @@ def _section_classes():
             if self.x < self.y:
                 raise ValueError('x below y')
 
-    return {'validated': _Validated, 'converted': _Converted, 'reading': _Reading}
+    def _shared_check(self):
+        raise ValueError('shared check failed')
+
+    @attrs.define
+    class _Aliased:
+        x = attrs.field(default=1, validator=attrs.validators.instance_of(int))
+        __attrs_post_init__ = _shared_check
+
+    return {
+        'validated': _Validated,
+        'converted': _Converted,
+        'reading': _Reading,
+        'aliased': _Aliased,
+    }
 
 
 @pytest.mark.unit
@@ -420,12 +433,13 @@ def _section_classes():
         ('validated', 'bad combination'),
         ('converted', 'a and b clash'),
         ('reading', 'x below y'),
+        ('aliased', 'shared check failed'),
     ],
 )
 def test_error_lines_names_no_field_for_a_post_init_error(shape, reason):
     """An error from __attrs_post_init__ concerns the section, not the field checked last,
-    whether the post-init reads self or not and whether the fields have validators or
-    converters."""
+    whether the post-init reads self or not, whether the fields have validators or
+    converters, and whatever name the post-init function has."""
     import cattrs
 
     from proteus.config import _error_lines
