@@ -28,7 +28,8 @@ from proteus.outgas.atmodeller import (  # noqa: E402
     _MODEL_CACHE,
     calc_surface_pressures_atmodeller,
 )
-from proteus.utils.constants import noble_gases, vol_list  # noqa: E402
+from proteus.utils.constants import element_mmw, noble_gases, vol_list  # noqa: E402
+from proteus.utils.helper import eval_gas_mmw  # noqa: E402
 from tests.outgas.test_atmodeller import (  # noqa: E402
     _CALLIOPE_SPECIES_FIELDS,
     _hf_row_with_HS_budget,
@@ -89,12 +90,13 @@ def test_empty_constraints_user_constant_solves_o2_only():
     solved = _solve(config, hf_row)
 
     p_o2 = 10.0 ** (float(np.squeeze(IronWustiteBuffer(0.0).log10_fugacity(2200.0, 1.0))) + 2.0)
-    column = p_o2 * 1e5 * 4.0 * np.pi * hf_row['R_int'] ** 2 / hf_row['gravity']
+    g_planet = 6.6743e-11 * hf_row['M_planet'] / hf_row['R_int'] ** 2
+    column = p_o2 * 1e5 * 4.0 * np.pi * hf_row['R_int'] ** 2 / g_planet
     assert solved == ('O2_g',)
     assert hf_row['O2_bar'] == pytest.approx(p_o2, rel=1e-6)
     assert hf_row['P_surf'] == hf_row['O2_bar']
     assert hf_row['O2_vmr'] == pytest.approx(1.0, rel=1e-15)
-    assert hf_row['O_kg_atm'] == pytest.approx(column, rel=2e-3)
+    assert hf_row['O_kg_atm'] == pytest.approx(column, rel=1e-4)
     others = {f'{s}_{f}': hf_row[f'{s}_{f}'] for s in vol_list + noble_gases if s != 'O2'
               for f in _CALLIOPE_SPECIES_FIELDS}  # fmt: skip
     assert others == dict.fromkeys(others, 0.0)
@@ -112,7 +114,9 @@ def test_empty_constraints_from_o_budget_returns_an_empty_atmosphere():
     hf_row.update(
         {f'{s}_{f}': 1.0 for s in vol_list + noble_gases for f in _CALLIOPE_SPECIES_FIELDS}
     )
+    totals = {'H': 1e7, 'C': 2e7, 'N': 3e7, 'S': 4e7, 'O': 5e7, 'He': -5.0}
     hf_row.update({f'{g}_kg_total': 0.0 for g in noble_gases})
+    hf_row.update({f'{e}_kg_total': v for e, v in totals.items()})
     hf_row.update(
         O2_bar=2.227, O2_kg_atm=1.1e19, P_surf=2.232, C_kg_atm=8.76e15, O_kg_atm=1.1e19
     )
@@ -126,8 +130,11 @@ def test_empty_constraints_from_o_budget_returns_an_empty_atmosphere():
     assert np.isnan(hf_row['fO2_shift_IW_derived'])
     assert np.isnan(hf_row['O_res'])
     columns = {f'{s}_{f}': hf_row[f'{s}_{f}'] for s in vol_list + noble_gases
-               for f in _CALLIOPE_SPECIES_FIELDS}  # fmt: skip
+               for f in _CALLIOPE_SPECIES_FIELDS
+               if not (s in noble_gases and f in ('kg_total', 'mol_total'))}  # fmt: skip
     assert columns == dict.fromkeys(columns, 0.0)
+    assert {e: hf_row[f'{e}_kg_total'] for e in totals} == totals
+    assert hf_row['He_mol_total'] == pytest.approx(-5.0 / eval_gas_mmw('He'), rel=1e-12)
     reservoirs = {
         f'{e}_kg_{r}': hf_row[f'{e}_kg_{r}'] for e in 'HCNOS' for r in ('atm', 'liquid')
     }
@@ -164,7 +171,8 @@ def test_atmosphere_mass_of_an_element_outside_the_solve_raises():
     model.output.asdict.return_value['CO2_g'] = {'gas_mass': np.array(1.0e15)}
     with pytest.raises(RuntimeError, match='C_kg_atm') as err:
         _solve(config, _empty_row(), model)
-    assert f'{1.0e15 * 12.011 / 44.009:.3e}'[:4] in str(err.value)
+    c_atm = 1.0e15 * element_mmw['C'] / eval_gas_mmw('CO2')
+    assert f'C_kg_atm, C_kg_liquid = {c_atm:.6e}, 0.000000e+00 kg' in str(err.value)
 
 
 @pytest.mark.physics_invariant
