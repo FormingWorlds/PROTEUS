@@ -467,6 +467,13 @@ class TestSetDimension:
             ((v for v in [2.0, 1.0]), 'is not a list'),
             ({'spider', 'aragog'}, 'is not a list'),
             (np.array(5.0), 'is not a list'),
+            (np.array([[1.0], [2.0]]), 'is not a list'),
+            (np.array([]), 'has no values'),
+            ([np.float32('nan'), 1.0], 'holds NaN'),
+            (np.array([1.0, np.nan]), 'holds NaN'),
+            (['aragog', True], 'mixes strings with other values'),
+            ([True, 'aragog'], 'mixes strings with other values'),
+            (['aragog', np.True_], 'mixes strings with other values'),
         ],
         ids=[
             'empty',
@@ -481,6 +488,13 @@ class TestSetDimension:
             'generator',
             'set',
             '0-d-array',
+            '2-d-array',
+            'empty-array',
+            'float32-nan',
+            'array-nan',
+            'string-then-bool',
+            'bool-then-string',
+            'string-then-np-bool',
         ],
     )
     def test_direct_refuses_an_axis_it_cannot_order(self, grid_with_mocks, values, cause):
@@ -1185,6 +1199,31 @@ class TestGridFromConfig:
             grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
         assert '"planet.mass_tot"' in str(exc.value) and str(grid_path) in str(exc.value)
         assert old.read_text() == 'kept\n'
+
+    def test_bad_second_direct_axis_keeps_the_old_output(self, fake_proteus_dir, tmp_path):
+        """A bad direct axis after a valid one stops the grid at load, named by its own key,
+        before the old output directory and the symlink target are removed."""
+        (fake_proteus_dir / 'base.toml').write_text('# base\n')
+        old = fake_proteus_dir / 'output' / 'unit_grid' / 'case_000000' / 'runtime_helpfile.csv'
+        old.parent.mkdir(parents=True)
+        old.write_text('kept\n')
+        target = tmp_path / 'scratch' / 'unit_grid'
+        target.mkdir(parents=True)
+        (target / 'marker').write_text('kept\n')
+        grid_path = _write_grid_toml(
+            fake_proteus_dir / 'g.toml',
+            symlink=str(target),
+            dimensions={
+                'planet.mass_tot': {'method': 'direct', 'values': [1.0, 2.0]},
+                'orbit.semimajoraxis': {'method': 'direct', 'values': [0.1, float('nan')]},
+            },
+        )
+        with pytest.raises(ValueError, match='holds NaN, which') as exc:
+            grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
+        assert '"orbit.semimajoraxis"' in str(exc.value) and str(grid_path) in str(exc.value)
+        assert '"planet.mass_tot"' not in str(exc.value)
+        assert old.read_text() == 'kept\n'
+        assert (target / 'marker').read_text() == 'kept\n'
 
     def test_relative_symlink_rejected(self, fake_proteus_dir):
         """Non-absolute ``symlink`` path is refused with RuntimeError.
