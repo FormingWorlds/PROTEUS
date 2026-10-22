@@ -144,10 +144,116 @@ PROTEUS uses an adaptive time-stepping scheme controlled by `params.dt.method`:
 - **`maximum`**: The timestep is always `params.dt.maximum`. Useful for
   steady-state runs.
 
-All methods enforce `params.dt.minimum` and `params.dt.maximum` bounds. During
-the mushy zone (melt fraction between `phi_crit` and `mushy_upper`), the
-timestep is additionally capped at `params.dt.mushy_maximum` to resolve the
-rapid solidification transition.
+All methods enforce `params.dt.minimum` (which holds except where atmospheric
+escape, the top-cell drain cap, solver retries, mushy-zone limiting, impact
+landing steps, and other caps, among them growth, evection, bolometric clamp,
+and the final-time cap, shorten the step; escape and the drain cap stop at
+`minimum * step_dt_floor_frac`, while other caps can go lower) and
+`params.dt.maximum` bounds. During the mushy zone (melt fraction between
+`phi_crit` and `mushy_upper`), the timestep is additionally capped at
+`params.dt.mushy_maximum` to resolve the rapid solidification transition.
+When `interior_energetics.module = 'aragog'` and
+`interior_energetics.aragog.top_cell_dt_limit = true` (incompatible with
+`interior_energetics.surface_bc_mode = 'grey_body'`), the timestep is further
+capped at the top-cell sensible-heat drain timescale $\tau_\mathrm{drain}$
+(floored at `params.dt.minimum * escape.step_dt_floor_frac`, which can sit
+below `params.dt.minimum`), and the post-step `tmagma_atol`/`tmagma_rtol` clip
+(maximum increase $\mathrm{atol} + \mathrm{rtol} \times T_\mathrm{magma,prev}$)
+on `T_magma`, `T_surf`, and `Phi_global` is skipped on steps where
+$\tau_\mathrm{drain}$ is finite and the step does not exceed
+$\tau_\mathrm{drain}$ (staying active when the escape step floor or an
+impact-landing snap-forward places the step above $\tau_\mathrm{drain}$, while
+`planet.prevent_warming` continues to clamp `T_magma`, `T_surf`, `Phi_global`,
+and `F_int` when active). A 1-point EOS temperature lookahead probes
+$S_\mathrm{trial} = \max(S_\mathrm{top} - c_{p,\mathrm{eff}}\,\Delta
+T_\mathrm{allow} / T_\mathrm{top},\, S_{\min} + 300)$ and replaces
+$c_{p,\mathrm{eff}}$ with the chord heat capacity
+$T_\mathrm{top}\,(S_\mathrm{top} - S_\mathrm{trial}) / (T_\mathrm{top} -
+T_\mathrm{trial})$ whenever $T(P_\mathrm{top}, S_\mathrm{trial})$ falls more
+than $\Delta T_\mathrm{allow}$ below $T_\mathrm{top}$ ($T_\mathrm{top} -
+T_\mathrm{trial} > \Delta T_\mathrm{allow}$; using $T_\mathrm{mean}$ in the
+chord numerator would give a chord $c_p$ smaller by the fraction
+$(T_\mathrm{top} - T_\mathrm{trial}) / (2\,T_\mathrm{top})$, about $9\%$ at the
+$531.5\,\mathrm{yr}$ state), which fires across a
+liquidus crossing and on every step with a mushy top cell at
+$\phi_\mathrm{top} > 0.6$, where the tabulated mush `heat_capacity` (a
+lever-rule blend) is about $2$ to $2.7$ times $T\,\mathrm{d}S/\mathrm{d}T$
+along the EOS ($1.95$ at $\phi_\mathrm{top} = 0.60$ to $2.71$ at the liquidus).
+The PALEOS solid table at $P_\mathrm{top} = 0.446\,\mathrm{GPa}$ holds
+$T = T_\mathrm{sol} = 1429.77\,\mathrm{K}$ on every node from
+$S = 2429.71\,\mathrm{J\,kg^{-1}\,K^{-1}}$, the last node below
+$S_\mathrm{sol} = 2503.84\,\mathrm{J\,kg^{-1}\,K^{-1}}$, to the end of the
+table. A lookahead trial that reaches or spans this flat part measures a
+temperature drop that is too small for its entropy interval, so the chord $c_p$
+exceeds the heat taken per kelvin of cooling and the step can exceed
+$\Delta T_\mathrm{allow}$. On constructed slice states this gives a linearized
+ratio of $1.005$ at $\eta = 0.08$ ($S_\mathrm{top} =
+3106.1\,\mathrm{J\,kg^{-1}\,K^{-1}}$, $\phi_\mathrm{top} = 0.605$,
+$T_\mathrm{surf}/T_\mathrm{top} = 1.05$) and up to $1.077$ at $\eta = 0.15$
+(same $S_\mathrm{top}$, $T_\mathrm{surf}/T_\mathrm{top} = 0.60$). Trials in the
+low-entropy clamp of the table stay below $1$ up to $\eta = 0.15$. In the
+coupled runs below, trials reach the flat part only near the solidus, where the
+chord does not fire, and no step exceeds $\Delta T_\mathrm{allow}$.
+
+Across coupled runs of 2 dummy-atmosphere configurations of a $1\,M_\oplus$
+planet with the PALEOS $\mathrm{MgSiO}_3$ EOS and dummy star to $25\,\mathrm{kyr}$
+at `top_cell_dt_rel_dT = top_cell_dt_rel_dT_solid = 0.08` and the Aragog defaults
+($0.5\,\mathrm{au}$ with `surf_greyalbedo = 0.2`, and $0.7\,\mathrm{au}$ with
+`surf_greyalbedo = 0.0`), the maximum per-step $|\Delta T_\mathrm{surf}| /
+(\eta_\mathrm{eff} T_\mathrm{surf})$, with $T_\mathrm{surf}$ at step start, is
+between $0.68$ and $0.71$ at $0.5\,\mathrm{au}$ (8 runs: 5 starts perturbed at
+round-off level and resumed at $1.4\,\mathrm{yr}$, and 3 runs from $t = 0$ with
+other PROTEUS and module versions) and $0.69$ at $0.7\,\mathrm{au}$ (1 run from
+$t = 0$),
+with $0$ steps above $1$ and $0$ late drops (steps where $T_\mathrm{magma}$
+falls to the table floor near $302\,\mathrm{K}$). These runs take about
+$1850$ rows; with the option off, the same configurations take $50$ rows.
+With `atmos_clim.module = 'agni'` in place of the dummy atmosphere and every
+other setting of the $0.5\,\mathrm{au}$ configuration unchanged, the $0.08$ run
+reaches $25\,\mathrm{kyr}$ in $1357$ to $1360$ rows with a
+maximum per-step ratio of $0.47$ in the step that starts at $1241\,\mathrm{yr}$,
+$41$ to $62\,\mathrm{yr}$ after the top cell crosses the liquidus (between
+$1179$ and $1200\,\mathrm{yr}$), with $0$ steps above $1$ and $0$ late drops
+(2 runs of different code versions). With the option off, this configuration
+takes about $250$ rows and has $25$ to $31$ steps above $1$, the largest between
+$6$ and $10$; these counts differ between the 2 runs, and in one $T_\mathrm{surf}$ falls
+from $1373\,\mathrm{K}$ to the $302\,\mathrm{K}$ table floor in one
+$160\,\mathrm{yr}$ step.
+In an AGNI configuration with `surf_state = 'skin'` (and different albedos,
+Rayleigh scattering, observation pressure, and solver settings),
+$T_\mathrm{surf}$ is a skin temperature at $0.53$ to $0.94$ of
+$T_\mathrm{magma}$ in the $0.08$ run, which reaches $25\,\mathrm{kyr}$ in
+$1137$ to $1138$ rows; its largest per-step drop of $T_\mathrm{magma}$ is $0.73$ of the
+allowance $0.08\,T_\mathrm{surf}$, while its option-off twin drops to the table
+floor in one step.
+
+In a computed unresupplied top-cell estimate that maps the step energy
+$q = c_{p,\mathrm{chord}}\,\Delta T_\mathrm{allow}$ back to entropy at a liquid
+state just above the liquidus ($t = 531.5\,\mathrm{yr}$, from a separate run of the
+$0.5\,\mathrm{au}$ configuration from $t = 0$ with `top_cell_dt_rel_dT_solid = 0.02`,
+stopped at $600\,\mathrm{yr}$) and at the worst mushy
+step of 2 of these runs, 1 per configuration ($\phi_\mathrm{top} =
+0.957$, $\Phi_\mathrm{global} = 0.787$ in both; evaluated on the slice at
+the $531.5\,\mathrm{yr}$ top pressure), the linearized drop-to-allowance ratio
+with $\Delta S = q / T_\mathrm{top}$ is $0.786$ and $1.000$ (both run states)
+at $0.08$, $0.687$ and $0.784$ at the validator maximum $0.15$,
+$0.843$ and $0.891$ at $0.30$, and $1.130$ and $1.174$ at $0.50$. Under exact
+constant-pressure enthalpy
+$\mathrm{d}h = T\,\mathrm{d}S$ ($\int_{S_\mathrm{end}}^{S_\mathrm{top}}
+T(P_\mathrm{top}, S)\,\mathrm{d}S = q$), the ratio at the same states is
+$0.816$ and $1.043$ at $0.08$, $0.728$ and $0.836$ at $0.15$, and
+$1.012$ and $1.257$ at $0.30$.
+A grid scan over
+$S_\mathrm{top} \in [S_{\min} + 300, 6000]\,\mathrm{J\,kg^{-1}\,K^{-1}}$ in steps of
+$5\,\mathrm{J\,kg^{-1}\,K^{-1}}$ and $T_\mathrm{surf}/T_\mathrm{top} \in
+\{0.90, 0.95, 0.99, 1.00, 1.02\}$ gives linearized maxima of $1.000$ at
+$0.08$, $0.9996$ at $0.15$, $0.993$ at $0.30$, and $1.221$ at $0.50$, and
+exact-enthalpy maxima of $1.106$, $1.204$, and $1.370$ at $0.08$, $0.15$, and
+$0.30$. Extending the scan to $T_\mathrm{surf}/T_\mathrm{top}$ from $0.50$ to
+$1.05$ in steps of $0.05$ raises the linearized maximum to $1.005$ at $0.08$
+and $1.077$ at $0.15$ (the 2 plateau states above) and the exact-enthalpy
+maximum to $1.110$ at $0.08$ and $1.211$ at $0.15$, both at
+$T_\mathrm{surf}/T_\mathrm{top} = 1.05$ in the liquid.
 
 ## Convergence and termination
 

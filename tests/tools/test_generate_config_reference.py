@@ -116,6 +116,76 @@ def test_cross_field_validators_all_documented(schema):
         assert c['attached_to'], f'{c["validator"]} is attached nowhere'
 
 
+def test_post_init_cross_field_checks_are_listed(schema, monkeypatch):
+    """The checks that run in __attrs_post_init__ are listed with the paths they read and
+    reach the interior page; a table entry the source does not back is a SchemaError."""
+    by_name = {c['validator']: c for c in schema['constraints']}
+    fields = {f['path'] for f in schema['fields']}
+    calls = _cs._post_init_calls()
+    for (stem, name), entry in _cs.POST_INIT_CHECKS.items():
+        assert by_name[name]['attached_to'] == sorted(entry['paths'])
+        assert set(entry['paths']) <= fields
+        assert {(stem, c, name) for c in entry['classes']} <= calls
+    pair = by_name['_check_top_cell_dt_rel_dT_pair']['doc']
+    assert 'top_cell_dt_rel_dT_solid <= top_cell_dt_rel_dT' in pair
+    assert 'grey_body' in by_name['_check_aragog_top_cell_dt_limit_surface_bc']['doc']
+    assert pair.rstrip('.') in _gcr._constraints_block(schema['constraints'])
+
+    pair_paths = _cs.POST_INIT_CHECKS[('_interior', '_check_top_cell_dt_rel_dT_pair')]['paths']
+    for entry, value, error in (
+        (
+            ('_interior', '_no_such_check'),
+            {'classes': ('Interior',), 'paths': ('a.b',)},
+            r'not in the config source: _interior\.py:_no_such_check$',
+        ),
+        (
+            ('_interior', '_check_top_cell_dt_rel_dT_pair'),
+            {'classes': ('Aragog', 'Interior', 'Spider'), 'paths': pair_paths},
+            r'no __attrs_post_init__ makes: _interior\.py:Spider\._check_top_cell_dt_rel_dT_pair$',
+        ),
+        (
+            ('_interior', '_check_top_cell_dt_rel_dT_pair'),
+            {'classes': ('Aragog',), 'paths': ('interior_energetics.aragog.no_such_field',)},
+            r'not config fields: interior_energetics\.aragog\.no_such_field$',
+        ),
+    ):
+        with monkeypatch.context() as m:
+            m.setitem(_cs.POST_INIT_CHECKS, entry, value)
+            with pytest.raises(_cs.SchemaError, match=error):
+                _cs.build_schema()
+
+
+def test_post_init_calls_count_only_statement_level_calls_per_class(tmp_path, monkeypatch):
+    """A call under a branch, in a nested function or in a method other than
+    __attrs_post_init__ does not count; each call is keyed by the class that makes it."""
+    (tmp_path / '_fake.py').write_text(
+        'class A:\n'
+        '    def __attrs_post_init__(self):\n'
+        '        _ok(self)\n'
+        '        if False:\n'
+        '            _dead(self)\n'
+        '        def inner():\n'
+        '            _nested(self)\n'
+        '\n'
+        '    def other(self):\n'
+        '        _elsewhere(self)\n'
+        '\n'
+        '\n'
+        'class B:\n'
+        '    def __attrs_post_init__(self):\n'
+        '        x = _assigned(self)\n'
+        '        _other_class(self)\n'
+    )
+    real = _cs._post_init_calls()
+    assert {
+        ('_interior', 'Aragog', '_check_top_cell_dt_rel_dT_pair'),
+        ('_interior', 'Interior', '_check_top_cell_dt_rel_dT_pair'),
+        ('_interior', 'Interior', '_check_aragog_top_cell_dt_limit_surface_bc'),
+    } <= real
+    monkeypatch.setattr(_cs, 'CONFIG_DIR', tmp_path)
+    assert _cs._post_init_calls() == {('_fake', 'A', '_ok'), ('_fake', 'B', '_other_class')}
+
+
 def test_missing_validator_docstring_is_schema_error():
     """Error contract: a cross-field validator without a docstring raises
     SchemaError naming the offender, so an undocumented rule cannot silently
