@@ -468,8 +468,8 @@ def test_helpfile_round_trip_is_exact(tmp_path):
 
     A resume rebuilds the solver mesh and boundary values from the last row, so
     a value rounded on its way through the file moves a resumed run off the run
-    it continues. The values span 60 decades and have all 17 significant digits,
-    which a shorter format or the default pandas parser does not reproduce.
+    it continues. The values span 60 decades and need all 17 significant digits,
+    which a format one digit shorter does not reproduce.
     """
     rng = np.random.default_rng(3)
     row = ZeroHelpfileRow()
@@ -481,11 +481,10 @@ def test_helpfile_round_trip_is_exact(tmp_path):
     WriteHelpfileToCSV(str(tmp_path), CreateHelpfileFromDict(row))
 
     back = ReadHelpfileFromCSV(str(tmp_path)).iloc[0]
-    plain = pd.read_csv(tmp_path / 'runtime_helpfile.csv', sep=r'\s+').iloc[0]
 
     assert [key for key in row if back[key] != row[key]] == []
-    # Discrimination: the default parser misses the last bit of some of these values.
-    assert any(plain[key] != row[key] for key in row)
+    # Discrimination: some of these values do not survive 16 significant digits.
+    assert any(float('%.16g' % v) != v for v in row.values())
 
 
 @pytest.mark.unit
