@@ -35,6 +35,15 @@ from proteus.grid.manage import (
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
+WRITTEN = ['aragog', 'spider', 'dummy']  # neither ascending nor descending
+
+
+class Hashed(str):
+    """A str whose hashes put a set of the WRITTEN values in another order."""
+
+    def __hash__(self):
+        return {'aragog': 3, 'spider': 2, 'dummy': 1}[str(self)]
+
 
 # ---------------------------------------------------------------------------
 # Shared fixtures
@@ -392,30 +401,16 @@ class TestSetDimension:
         # Length reflects the deduplication
         assert len(g.dim_avars['d']) == 3
 
-    def test_direct_does_not_sort_strings(self, grid_with_mocks):
-        """A string dimension keeps its written order, duplicates removed at their first
-        occurrence."""
-        g = grid_with_mocks
-        g.add_dimension('d', 'atmos_clim.module')
-        g.set_dimension_direct('d', ['janus', 'agni', 'janus'])
-        assert g.dim_avars['d'] == ['janus', 'agni']
-        assert g.dim_avars['d'] != sorted(g.dim_avars['d'])
-
     def test_direct_keeps_the_written_order_whatever_the_string_hashes(self, grid_with_mocks):
         """The order of a string dimension numbers the cases, so it must not follow the string
-        hashes, which change with the hash seed of the process. Hashes 3, 2, 1 order a set of
-        the values against the written order."""
-
-        class Hashed(str):
-            def __hash__(self):
-                return {'spider': 3, 'aragog': 2, 'dummy': 1}[str(self)]
-
-        values = [Hashed(v) for v in ('spider', 'aragog', 'spider', 'dummy')]
-        assert list(set(values)) == ['dummy', 'aragog', 'spider']
+        hashes, which change with the hash seed of the process; duplicates are removed at
+        their first occurrence."""
+        values = [Hashed(v) for v in ('aragog', 'spider', 'aragog', 'dummy')]
+        assert list(set(values)) == ['dummy', 'spider', 'aragog']
         g = grid_with_mocks
         g.add_dimension('d', 'atmos_clim.module')
         g.set_dimension_direct('d', values)
-        assert g.dim_avars['d'] == ['spider', 'aragog', 'dummy']
+        assert g.dim_avars['d'] == WRITTEN
 
     def test_direct_without_sort_keeps_the_written_numeric_order(self, grid_with_mocks):
         """With sort=False a numeric dimension keeps its written order, duplicates removed
@@ -428,7 +423,7 @@ class TestSetDimension:
         assert g.dim_avars['d'] == [1.0, 2.0, 3.0]
 
     def test_direct_values_property(self):
-        """Over strings, floats with +-inf and bools: the result holds each distinct value once;
+        """Over strings, integers, floats with +-inf and bools: the result holds each distinct value once;
         it is sorted when the first value is not a string and sort is True, else each value
         sits in the order of its first occurrence."""
         from hypothesis import given, settings
@@ -436,6 +431,7 @@ class TestSetDimension:
 
         values = st.one_of(
             st.lists(st.text(), min_size=1),
+            st.lists(st.integers(), min_size=1),
             st.lists(st.floats(allow_nan=False), min_size=1),
             st.lists(st.booleans(), min_size=1),
         )
@@ -502,12 +498,13 @@ class TestGridGenerate:
         g = grid_with_mocks
         g.add_dimension('a', 'atmos_clim.module')
         g.add_dimension('b', 'planet.mass_tot')
-        g.set_dimension_direct('a', ['janus', 'agni', 'dummy'])
+        values = [Hashed(v) for v in WRITTEN]
+        assert list(set(values)) != WRITTEN
+        g.set_dimension_direct('a', values)
         g.set_dimension_direct('b', [2.0, 1.0])
         g.generate()
         cases = [(gp['atmos_clim.module'], gp['planet.mass_tot']) for gp in g.flat]
-        assert cases[:3] == [('janus', 1.0), ('janus', 2.0), ('agni', 1.0)]
-        assert [c[0] for c in cases] == ['janus'] * 2 + ['agni'] * 2 + ['dummy'] * 2
+        assert cases == [(a, b) for a in WRITTEN for b in (1.0, 2.0)]
 
     def test_generate_keys_map_correctly(self, grid_with_mocks):
         """The flattened grid contains every (a, b) combination exactly
