@@ -49,6 +49,26 @@ ANNOTATION_OVERRIDES = {
 # the generated constraints so inert code is not advertised as a rule.
 SKIP_VALIDATORS = {'planet_oxygen_mode_explicit', 'valid_escapeboreas'}
 
+# Cross-field checks that run in ``__attrs_post_init__`` instead of a field validator: the
+# classes whose post-init calls each one, and the config paths it reads.
+POST_INIT_CHECKS = {
+    ('_interior', '_check_top_cell_dt_rel_dT_pair'): {
+        'classes': ('Aragog', 'Interior'),
+        'paths': (
+            'interior_energetics.aragog.top_cell_dt_rel_dT',
+            'interior_energetics.aragog.top_cell_dt_rel_dT_solid',
+        ),
+    },
+    ('_interior', '_check_aragog_top_cell_dt_limit_surface_bc'): {
+        'classes': ('Interior',),
+        'paths': (
+            'interior_energetics.module',
+            'interior_energetics.surface_bc_mode',
+            'interior_energetics.aragog.top_cell_dt_limit',
+        ),
+    },
+}
+
 
 class SchemaError(Exception):
     """Semantic schema problem the source must fix (exit code 1)."""
@@ -83,6 +103,23 @@ def _assigned_name(stmt: ast.stmt) -> str | None:
     return None
 
 
+def _post_init_calls() -> set[tuple[str, str, str]]:
+    """Return ``(module_stem, class_name, function_name)`` for each call that is a statement
+    of its own in the body of a config class's ``__attrs_post_init__``."""
+    calls: set[tuple[str, str, str]] = set()
+    for path in CONFIG_DIR.glob('*.py'):
+        for cls in ast.parse(path.read_text()).body:
+            if not isinstance(cls, ast.ClassDef):
+                continue
+            for fn in cls.body:
+                if isinstance(fn, ast.FunctionDef) and fn.name == '__attrs_post_init__':
+                    for stmt in fn.body:
+                        call = stmt.value if isinstance(stmt, ast.Expr) else None
+                        if isinstance(call, ast.Call) and isinstance(call.func, ast.Name):
+                            calls.add((path.stem, cls.name, call.func.id))
+    return calls
+
+
 def parse_source_docs() -> tuple[dict, dict]:
     """Parse the config source files once for docstrings the runtime hides.
 
@@ -107,6 +144,14 @@ def parse_source_docs() -> tuple[dict, dict]:
                     ):
                         pep224[(node.name, name)] = inspect.cleandoc(nxt.value.value)
             elif isinstance(node, ast.FunctionDef):
+                paths = POST_INIT_CHECKS.get((path.stem, node.name), {}).get('paths')
+                if paths:
+                    validators[(path.stem, node.name)] = {
+                        'doc': ast.get_docstring(node),
+                        'cross': True,
+                        'touches': sorted(paths),
+                    }
+                    continue
                 if [a.arg for a in node.args.args] != ['instance', 'attribute', 'value']:
                     continue
                 chains = set()
@@ -385,7 +430,7 @@ def build_schema() -> dict:
     cfg = _docgen.import_proteus_config()
     pep224, validator_src = parse_source_docs()
     fields: list[dict] = []
-    attached: dict[str, list[str]] = {}
+    attached = {name: list(e['paths']) for (_stem, name), e in POST_INIT_CHECKS.items()}
 
     def visit(cls, prefix: str, seen: frozenset) -> None:
         # Best-effort: resolving string annotations needs every name in the
@@ -441,6 +486,24 @@ def build_schema() -> dict:
             )
 
     visit(cfg.Config, '', frozenset({cfg.Config}))
+    missing = POST_INIT_CHECKS.keys() - validator_src.keys()
+    calls = _post_init_calls()
+    unused = sorted(
+        f'{s}.py:{c}.{n}'
+        for (s, n), e in POST_INIT_CHECKS.items()
+        if (s, n) not in missing
+        for c in e['classes']
+        if (s, c, n) not in calls
+    )
+    known = {f['path'] for f in fields}
+    unknown = sorted({p for e in POST_INIT_CHECKS.values() for p in e['paths']} - known)
+    for what, bad in (
+        ('functions not in the config source', [f'{s}.py:{n}' for s, n in sorted(missing)]),
+        ('calls that no __attrs_post_init__ makes', unused),
+        ('paths that are not config fields', unknown),
+    ):
+        if bad:
+            raise SchemaError(f'POST_INIT_CHECKS names {what}: ' + ', '.join(bad))
     constraints = _build_constraints(validator_src, attached)
     return {'fields': fields, 'constraints': constraints}
 
