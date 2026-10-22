@@ -49,6 +49,7 @@ from proteus.inference.objective import (
     validate_sigma,
     worker_spectral_cache,
 )
+from proteus.inference.polish import polish, validate_polish_runs
 from proteus.inference.posterior import validate_posterior_samples, write_posterior
 from proteus.inference.utils import print_results, str_time
 from proteus.utils.coupler import get_proteus_directories, variable_is_logarithmic
@@ -405,6 +406,9 @@ def run_inference(config):
         config.get('posterior_samples'), config['sigma']
     )
 
+    # Local search of the best-fitting islands after BO; 0 is off
+    config['polish_runs'] = validate_polish_runs(config.get('polish_runs'), config['sigma'])
+
     # How each worker runs its evaluations, validated before the output folder is emptied.
     set_dispatch(config.get('dispatch'), config.get('runner_max_jobs'))
 
@@ -492,6 +496,7 @@ def run_inference(config):
         objective = f'Student-t (dof = {config["student_t_dof"]:g})'
     log.info(f'    objective     = {objective}')
     log.info(f'    posterior     = {config["posterior_samples"] or "off"} samples')
+    log.info(f'    polish        = {config["polish_runs"] or "off"} runs per island')
     log.info(' ')
     t_0 = time.perf_counter()
 
@@ -551,11 +556,16 @@ def run_inference(config):
     # Make PROTEUS plots for best fitting case
     plotBO.plot_proteus(best_config)
 
-    # Last, so that a failed GP fit here cannot cost the outputs above
+    # Last, so that a failed polish or GP fit here cannot cost the outputs above
+    D_post = D_final
+    if config['polish_runs']:
+        keys = 'parameters observables ref_config output failure_codes sigma correlation student_t_dof'
+        builder_args = {k: config[k] for k in keys.split()}
+        D_post = polish(D_final, config['polish_runs'], builder_args, dirs['output'])
     if config['posterior_samples']:
-        samples = write_posterior(config, D_final, dirs['output'])
+        samples = write_posterior(config, D_post, dirs['output'])
         plot_fit.plot_result_posterior(
-            samples, D_final, n_init, config['parameters'], config['truth'], dirs['output']
+            samples, D_post, n_init, config['parameters'], config['truth'], dirs['output']
         )
 
     # Done

@@ -149,6 +149,10 @@ With `[sigma]`, every objective form (chi-squared, correlated chi-squared, Stude
 
 The posterior ignores the GP's own uncertainty, so it is only as good as the GP near the best fit: check that the study converged (`perf_bestval.png`) before using it.
 
+### Island polish
+
+The surrogate can find a well-fitting region (an island) without reaching its minimum, and two islands are then compared at different depths. With `polish_runs = n` (default `0`, off; needs `[sigma]`), the study ends with a local search of up to three islands: the scored evaluations within a chi-squared of 10 of the best and below 15, at least 0.15 apart in the unit cube, best first. Each gets a bounded Nelder-Mead search from that evaluation with at most `n` PROTEUS runs, in `workers/w_-2`, `w_-3` and `w_-4`, all islands in parallel. The log gives each island's chi-squared before and after, the runs go to `polish.csv` (normalised parameters `x_*` and objective `y`) and the posterior uses them as well; `data.csv` and the BO plots hold the BO evaluations only.
+
 ### Parallel Processing
 
 - Multiple workers run simultaneously, each performing BO steps
