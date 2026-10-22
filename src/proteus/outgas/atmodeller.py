@@ -117,6 +117,11 @@ def _cached_model(signature: tuple, build):
     return model
 
 
+# The per-species helpfile columns CALLIOPE zero-initialises for every volatile species.
+_SPECIES_COLUMNS = ('bar', 'vmr', 'kg_atm', 'kg_liquid', 'kg_solid', 'kg_total',
+                    'mol_atm', 'mol_liquid', 'mol_solid', 'mol_total')  # fmt: skip
+
+
 def _populate_volatile_element_reservoirs(hf_row: dict, element_mmw: dict) -> None:
     """Derive per-element reservoir masses from the per-species inventory.
 
@@ -126,8 +131,7 @@ def _populate_volatile_element_reservoirs(hf_row: dict, element_mmw: dict) -> No
     ``reservoir = "outgas"`` to size the per-element fractionation; with that
     field absent (zero) it sees an empty reservoir, ``calc_new_elements``
     returns a zeroed inventory, the per-element ``{e}_kg_total`` budget
-    collapses, and atmodeller is then skipped for want of a mass constraint so
-    the atmosphere freezes.
+    collapses, and the next solve sees no mass constraint for that element.
 
     This writes only ``{e}_kg_atm`` / ``_kg_liquid`` / ``_kg_solid`` (the
     reservoir split), matching CALLIOPE and ``outgas.common.expected_keys``,
@@ -300,19 +304,18 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
     # the IW buffer constrains O and we exclude it from the mass
     # constraint here.
     fO2_source = config.planet.fO2_source
-    for element in ('H', 'C', 'N', 'S'):
+    constrained_elements = (
+        ('H', 'C', 'N', 'S', 'O') if fO2_source == 'from_O_budget' else ('H', 'C', 'N', 'S')
+    )
+    for element in constrained_elements + tuple(noble_gases):
         total = float(hf_row.get(f'{element}_kg_total', 0.0))
         if not np.isfinite(total):
             raise ValueError(
                 f'{element}_kg_total is not finite ({total}) at the atmodeller call'
             )
-    constrained_elements = (
-        ('H', 'C', 'N', 'S', 'O') if fO2_source == 'from_O_budget' else ('H', 'C', 'N', 'S')
-    )
     active_elements = set()
     for element in constrained_elements:
-        key = f'{element}_kg_total'
-        if float(hf_row.get(key, 0.0)) > config.outgas.mass_thresh:
+        if float(hf_row.get(f'{element}_kg_total', 0.0)) > config.outgas.mass_thresh:
             active_elements.add(element)
 
     # Noble gases join the active set on any positive inventory. Their budgets
@@ -473,12 +476,19 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
     # pipeline reads this column to compute each iteration's debit).
     target_O_kg = mass_constraints.get('O') if fO2_source == 'from_O_budget' else None
 
-    if not mass_constraints and fO2_source == 'user_constant':
-        log.info('No volatile element budgets above threshold; solving the O2 buffer alone')
-    elif not mass_constraints:
+    if not mass_constraints and fO2_source == 'from_O_budget':
         log.warning('No volatile element budgets above threshold; skipping atmodeller')
-        # No solve ran, so the derived buffer offset is undefined; the user
-        # pre-seed would misrecord a skipped solve as equilibrated at that offset.
+        # No solve ran: the atmosphere is empty, and the derived buffer offset and the
+        # O residual are undefined (the user pre-seed would misrecord a skipped solve).
+        for s in _atm_gas_species:
+            if s in gas_list:
+                # A noble gas kg_total is its escape-owned element total.
+                fields = [
+                    f for f in _SPECIES_COLUMNS if not (s in noble_gases and f == 'kg_total')
+                ]
+                hf_row.update({f'{s}_{f}': 0.0 for f in fields})
+        hf_row['P_surf'] = 0.0
+        _populate_volatile_element_reservoirs(hf_row, element_mmw)
         hf_row['fO2_shift_IW_derived'] = float('nan')
         hf_row['O_res'] = float('nan')
         return
