@@ -52,16 +52,20 @@ def _check_values(table: dict) -> None:
     name = table.get('colormap', table.get('colourmap'))
     if name is not None and not colourmap_exists(name):
         raise ValueError(
-            f"Unknown [post_processing] colour map '{name}': not a matplotlib or "
-            "cmcrameri colour map (for example 'batlowK_r' or 'viridis')"
+            f"Unknown [post_processing] colour map '{name}': not a matplotlib, "
+            "cmcrameri or proteus-mpl colour map (for example 'batlowK_r', 'viridis' "
+            "or 'proteus')"
         )
 
 
 def colourmap_exists(name: str) -> bool:
-    """Return whether ``name`` is a matplotlib or cmcrameri colour map name."""
+    """Return whether ``name`` is a matplotlib, cmcrameri or proteus-mpl colour map name."""
     import cmcrameri.cm  # noqa: F401  (registers the 'cmc.<name>' colour maps)
     import matplotlib as mpl
 
+    from proteus.utils.plot import register_proteus_mpl_colourmaps
+
+    register_proteus_mpl_colourmaps()
     return name in mpl.colormaps or f'cmc.{name}' in mpl.colormaps
 
 

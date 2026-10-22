@@ -171,7 +171,7 @@ The `[post_processing]` table accepts:
 | `update_csv` | Rebuild the summary CSVs from the case folders before plotting (default `true`). Set `false` to plot from existing CSVs. |
 | `plot_status` | Make the status-summary bar plot (default `true`). |
 | `plot_ecdf` | Make the ECDF grid plot (default `true`). |
-| `colormap` | Colour map for a parameter with more values than the colour cycle of the plot style: a Crameri scientific colour map from `cmcrameri` (for example `"batlowK_r"`, `"batlow"`, `"vik"`) or any matplotlib colour map (`colourmap` is also accepted). Defaults to `batlowK_r`. |
+| `colormap` | Colour map for a parameter with more values than the colour cycle of the plot style: a Crameri scientific colour map from `cmcrameri` (for example `"batlowK_r"`, `"batlow"`, `"vik"`), a `proteus-mpl` colour map (`"proteus"`, `"proteus_div"`, `"proteus_phase"` and their `_r` forms, whatever the `style`) when `proteus-mpl` is installed, or any matplotlib colour map (`colourmap` is also accepted). Defaults to `batlowK_r`. |
 | `output_variables` | List of `runtime_helpfile.csv` columns to plot, plus the derived `solidification_time`. Defaults to `solidification_time`, `Phi_global`, `T_surf`, `P_surf` and `atm_kg_per_mol`. |
 | `plot_format` | Image format (`"png"` or `"pdf"`); defaults to the base config's `params.out.plot_fmt`, then `"png"`. |
 | `style` | `"light"` or `"dark"` draws the plots in that variant of the [`proteus-mpl`](https://pypi.org/project/proteus-mpl/) style of the documentation figures (needs `pip install proteus-mpl`, included in the `develop` and `docs` extras); `"matplotlib"` keeps the active matplotlib style. Unset, the plots use `"light"` when `proteus-mpl` is installed and the matplotlib style otherwise. |

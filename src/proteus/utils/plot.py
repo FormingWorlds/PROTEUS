@@ -151,11 +151,33 @@ def get_log_scale(quant: str) -> bool:
 DEFAULT_COLOURMAP = 'batlowK_r'
 
 
+def register_proteus_mpl_colourmaps() -> None:
+    """Register the proteus-mpl colour maps with matplotlib, when it is installed.
+
+    proteus-mpl registers 'proteus', 'proteus_div', 'proteus_phase' and their '_r'
+    forms only inside ``proteus_mpl.use()``. Calling it inside ``rc_context`` makes
+    the maps available whatever the plot style: the colour map registry outlives
+    the context, while the style settings are restored on exit.
+    """
+    import matplotlib as mpl
+    import matplotlib.pyplot as plt
+
+    if 'proteus' in mpl.colormaps:
+        return
+    try:
+        import proteus_mpl
+    except ImportError:
+        return
+    with plt.rc_context():
+        proteus_mpl.use()
+
+
 def get_colourmap(name: str | None = None):
     """Return a matplotlib Colormap for colouring grid parameter values.
 
     ``name`` may be a Crameri scientific colour map from cmcrameri (for example
-    'batlowK_r', 'batlow', 'vik'; the 'cmc.' prefix is optional) or any colour
+    'batlowK_r', 'batlow', 'vik'; the 'cmc.' prefix is optional), a proteus-mpl
+    colour map (for example 'proteus') when proteus-mpl is installed, or any colour
     map registered with matplotlib (for example 'viridis'). Falls back to
     ``DEFAULT_COLOURMAP`` when ``name`` is empty or not recognised.
 
@@ -171,6 +193,8 @@ def get_colourmap(name: str | None = None):
     """
     import cmcrameri.cm  # noqa: F401  (registers the 'cmc.<name>' colour maps)
     import matplotlib as mpl
+
+    register_proteus_mpl_colourmaps()
 
     def _lookup(key):
         for candidate in (key, f'cmc.{key}'):

@@ -495,11 +495,20 @@ def label_colourbar(cbar, values) -> None:
     """Put the colourbar ticks at the swept ``values``, labelled, with no minor ticks.
 
     With more than MAX_COLOURBAR_LABELS values every k-th tick is labelled, so the
-    labels never collide; every tick still marks a swept value.
+    labels never collide; every tick still marks a swept value. Both ends of the
+    swept range are labelled: when the last tick is not a k-th one, it takes the
+    label of the k-th tick below it, so labels stay at least k ticks apart.
     """
     ticks = sorted({float(v) for v in values})
     step = max(1, math.ceil(len(ticks) / MAX_COLOURBAR_LABELS))
-    labels = [value_label(t) if k % step == 0 else '' for k, t in enumerate(ticks)]
+    labelled = set(range(0, len(ticks), step))
+    last = len(ticks) - 1
+    if last not in labelled:
+        below = last - last % step
+        if below > 0:  # the first tick keeps its label
+            labelled.discard(below)
+        labelled.add(last)
+    labels = [value_label(t) if k in labelled else '' for k, t in enumerate(ticks)]
     cbar.set_ticks(ticks, labels=labels)
     cbar.minorticks_off()
 

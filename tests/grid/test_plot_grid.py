@@ -23,6 +23,8 @@ Testing standards:
 
 from __future__ import annotations
 
+import math
+
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
@@ -33,6 +35,7 @@ matplotlib.use('Agg')  # headless backend for file-only tests
 
 from proteus.grid.plot_grid import (  # noqa: E402
     ECDF_LINEWIDTH,
+    MAX_COLOURBAR_LABELS,
     MIN_CURVE_CONTRAST,
     _contrast,
     _hue_distance,
@@ -273,7 +276,8 @@ def test_colourbar_labels_every_swept_value_on_a_log_norm(values, labels):
 
 def test_colourbar_with_many_values_labels_a_subset_of_them():
     """Twenty swept values keep a tick each, but only every 3rd is labelled (at most
-    8 labels), and each label is one of the swept values.
+    8 labels), each label is one of the swept values, and the top value 20 takes the
+    label of 19 so both ends of the range are labelled.
     """
     values = list(np.linspace(1.0, 20.0, 20))
     fig, cbar = _colourbar(values, matplotlib.colors.Normalize(1.0, 20.0))
@@ -281,9 +285,52 @@ def test_colourbar_with_many_values_labels_a_subset_of_them():
         texts = [t.get_text() for t in cbar.ax.get_yticklabels()]
         assert len(texts) == 20
         shown = [t for t in texts if t]
-        assert shown == ['1', '4', '7', '10', '13', '16', '19']
+        assert shown == ['1', '4', '7', '10', '13', '16', '20']
     finally:
         plt.close(fig)
+
+
+def test_colourbar_labels_the_top_of_a_twelve_value_log_axis():
+    """On 12 log-spaced semi-major axes from 0.03 to 0.5 every 2nd tick is labelled
+    from the bottom, which used to leave the 0.5 end bare (last label 0.3872); the
+    top tick is now labelled and the one just below it is not.
+    """
+    values = list(np.geomspace(0.03, 0.5, 12))
+    norm = matplotlib.colors.LogNorm(vmin=0.03, vmax=0.5)
+    fig, cbar = _colourbar(values, norm)
+    try:
+        texts = [t.get_text() for t in cbar.ax.get_yticklabels()]
+        assert [k for k, t in enumerate(texts) if t] == [0, 2, 4, 6, 8, 11]
+        assert texts[0] == '0.03'
+        assert texts[-1] == '0.5'
+    finally:
+        plt.close(fig)
+
+
+class _TickRecorder:
+    """Stand-in colourbar that records the ticks and labels label_colourbar sets."""
+
+    def set_ticks(self, ticks, labels):
+        self.ticks, self.labels = list(ticks), list(labels)
+
+    def minorticks_off(self):
+        pass
+
+
+@pytest.mark.parametrize('n_values', range(1, 61))
+def test_colourbar_labels_both_ends_and_stay_spaced(n_values):
+    """For 1 to 60 swept values: every value is a tick, both ends are labelled, at
+    most MAX_COLOURBAR_LABELS are labelled, and labels are at least
+    ceil(n / MAX_COLOURBAR_LABELS) ticks apart.
+    """
+    cbar = _TickRecorder()
+    label_colourbar(cbar, list(range(n_values)))
+    shown = [k for k, label in enumerate(cbar.labels) if label]
+    step = math.ceil(n_values / MAX_COLOURBAR_LABELS)
+    assert cbar.ticks == [float(v) for v in range(n_values)]
+    assert shown[0] == 0 and shown[-1] == n_values - 1
+    assert len(shown) <= MAX_COLOURBAR_LABELS
+    assert all(b - a >= step for a, b in zip(shown, shown[1:]))
 
 
 # ---------------------------------------------------------------------------

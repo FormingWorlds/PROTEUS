@@ -249,3 +249,58 @@ def test_get_colourmap_resolves_crameri_and_matplotlib_names(caplog):
         fallback = get_colourmap('definitely_not_a_colourmap')
     assert 'batlowK_r' in fallback.name
     assert any('colourmap' in rec.message.lower() for rec in caplog.records)
+
+
+PROTEUS_MPL_COLOURMAPS = [
+    f'{name}{suffix}'
+    for name in ('proteus', 'proteus_div', 'proteus_phase')
+    for suffix in ('', '_r')
+]
+
+
+@pytest.fixture
+def unregistered_proteus_colourmaps():
+    """Remove the proteus-mpl colour maps, as in a process that never called use()."""
+    import matplotlib as mpl
+
+    from proteus.utils.plot import register_proteus_mpl_colourmaps
+
+    def unregister():
+        for name in PROTEUS_MPL_COLOURMAPS:
+            if name in mpl.colormaps:
+                mpl.colormaps.unregister(name)
+
+    unregister()
+    yield
+    unregister()
+    register_proteus_mpl_colourmaps()
+
+
+@pytest.mark.usefixtures('unregistered_proteus_colourmaps')
+def test_get_colourmap_finds_proteus_mpl_maps_without_their_style():
+    """With proteus-mpl installed but its style never applied (style = "matplotlib"),
+    'proteus' resolves to the proteus-mpl map instead of falling back to batlowK_r,
+    and the lookup leaves the matplotlib style settings unchanged.
+    """
+    pytest.importorskip('proteus_mpl')
+    import matplotlib as mpl
+
+    from proteus.utils.plot import get_colourmap
+
+    before = mpl.rcParams.copy()
+    assert get_colourmap('proteus').name == 'proteus'
+    assert get_colourmap('proteus_div_r').name == 'proteus_div_r'
+    assert set(PROTEUS_MPL_COLOURMAPS) <= set(mpl.colormaps)
+    assert mpl.rcParams == before
+
+
+@pytest.mark.usefixtures('unregistered_proteus_colourmaps')
+def test_get_colourmap_falls_back_from_proteus_without_proteus_mpl(caplog):
+    """Without proteus-mpl, 'proteus' is unknown: get_colourmap warns and falls back."""
+    from proteus.utils.plot import DEFAULT_COLOURMAP, get_colourmap
+
+    with patch.dict('sys.modules', {'proteus_mpl': None}):
+        with caplog.at_level('WARNING'):
+            cmap = get_colourmap('proteus')
+    assert DEFAULT_COLOURMAP in cmap.name
+    assert any("'proteus'" in rec.message for rec in caplog.records)

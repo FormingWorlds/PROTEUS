@@ -386,6 +386,21 @@ def test_post_processing_rejects_invalid_tables(table, match):
     assert _read_post_processing_options({'post_processing': valid})['style'] == 'dark'
 
 
+@pytest.mark.parametrize('name', ['proteus', 'proteus_div_r', 'proteus_phase'])
+def test_post_processing_accepts_proteus_mpl_colour_maps_with_any_style(name):
+    """With proteus-mpl installed, its colour maps pass the launch check even under
+    style = "matplotlib", where proteus_mpl.use() is never called.
+    """
+    pytest.importorskip('proteus_mpl')
+    import matplotlib as mpl
+
+    for registered in [m for m in mpl.colormaps if m.startswith('proteus')]:
+        mpl.colormaps.unregister(registered)
+    table = {'style': 'matplotlib', 'colormap': name}
+    assert _read_post_processing_options({'post_processing': table})['colormap'] == name
+    assert name in mpl.colormaps
+
+
 def test_get_tested_parameters_reads_axes_but_not_post_processing():
     """Axis values are the swept values (pinned here), and the [post_processing]
     table is a grid setting, never an axis.

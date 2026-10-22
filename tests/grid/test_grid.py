@@ -140,8 +140,9 @@ def test_grid_post_process(grid_run):
 
         with open(case_dir / 'init_coupler.toml', 'rb') as f:
             solid = tomllib.load(f)['params']['stop']['solid']
+        # The first crossing counts whether or not the solid stop is enabled.
         crossed = helpfile['Phi_global'] <= solid['phi_crit']
-        if solid['enabled'] and crossed.any():
+        if crossed.any():
             assert row['solidification_time'] == pytest.approx(
                 helpfile.loc[crossed.idxmax(), 'Time'], rel=1e-12
             )
