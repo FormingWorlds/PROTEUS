@@ -208,6 +208,16 @@ class Grid:
 
     # Set a dimension directly
     def set_dimension_direct(self, name: str, values: list, sort: bool = True):
+        if not values:
+            raise ValueError(f"direct dimension '{name}' has no values")
+        if any(v != v for v in values):  # NaN is the one value unequal to itself
+            raise ValueError(
+                f"direct dimension '{name}' holds NaN, which cannot be deduplicated or ordered"
+            )
+        if len({isinstance(v, str) for v in values}) > 1:
+            raise ValueError(
+                f"direct dimension '{name}' mixes strings with other values: {values}"
+            )
         the_list = list(dict.fromkeys(values))  # written order, duplicates removed
         if (not isinstance(values[0], str)) and sort:  # sort if numeric
             the_list = sorted(the_list)

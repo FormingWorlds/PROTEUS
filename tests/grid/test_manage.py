@@ -470,7 +470,7 @@ class TestSetDimension:
         g.add_dimension('d', 'planet.mass_tot')
         with pytest.raises(ValueError, match=f"direct dimension 'd'.*{cause}"):
             g.set_dimension_direct('d', values)
-        assert 'd' not in g.dim_avars
+        assert g.dim_avars['d'] is None  # the axis keeps no values
 
     def test_direct_refuses_any_nan_or_mixed_axis_property(self):
         """Over number and string lists with a NaN or a string put in at any place: the axis
