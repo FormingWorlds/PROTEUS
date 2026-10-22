@@ -226,6 +226,25 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
         PROTEUS configuration object.
     hf_row : dict
         Current helpfile row (modified in place).
+
+    Raises
+    ------
+    ValueError
+        If the kg total of a constrained element or a noble gas is not finite, or
+        if ``planet.fO2_source = "from_O_budget"``, the O budget is at or below
+        ``outgas.mass_thresh``, and another element has a mass constraint (H, C,
+        N or S above the threshold, or a noble gas total above 0).
+    RuntimeError
+        If an element outside the solve has atmosphere or melt mass, or if an
+        O2-only solve gives ``P_surf`` other than ``O2_bar``.
+
+    Notes
+    -----
+    Under ``user_constant`` with no budget above the threshold, the O2-only network
+    is solved against the buffer. Under ``from_O_budget`` with no budget above the
+    threshold, no solve runs: every species column is 0, ``P_surf`` is 0, each noble
+    gas keeps its kg total with the matching mole total, and
+    ``fO2_shift_IW_derived`` and ``O_res`` are NaN.
     """
     from atmodeller import (
         ChemicalSpecies,
