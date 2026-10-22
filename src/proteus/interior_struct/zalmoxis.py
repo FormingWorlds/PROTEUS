@@ -3768,11 +3768,13 @@ def zalmoxis_solver(
             else (None, None)
         )
         _interp_cache: dict = {}
+        _p_surface = float(config_params['target_surface_pressure'])
         _rho_fixed = np.zeros(len(radii))
         _T_fixed = np.zeros(len(radii))
         for _i in range(len(radii)):
             _r = float(radii[_i])
-            _P = float(pressure[_i])
+            # a padded node (P = 0 past a surface stop) is the surface, at the target pressure
+            _P = float(pressure[_i]) if pressure[_i] != 0.0 else _p_surface
             # r-indexed T: below r_ref[0] (= first Aragog staggered node
             # near CMB), clamp to T_cmb; else interp along the Aragog grid.
             if _r <= float(_r_ref[0]):
