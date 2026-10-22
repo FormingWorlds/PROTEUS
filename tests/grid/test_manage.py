@@ -398,10 +398,72 @@ class TestSetDimension:
         """
         g = grid_with_mocks
         g.add_dimension('d', 'atmos_clim.module')
-        g.set_dimension_direct('d', ['agni', 'janus', 'agni'])
-        # Discriminating: deduplicated regardless
-        assert set(g.dim_avars['d']) == {'agni', 'janus'}
-        assert len(g.dim_avars['d']) == 2
+        g.set_dimension_direct('d', ['janus', 'agni', 'janus'])
+        assert g.dim_avars['d'] == ['janus', 'agni']
+
+    @pytest.mark.timeout(120)
+    def test_direct_keeps_the_written_order_of_strings_in_every_process(self, tmp_path):
+        """A string dimension keeps its written order, duplicates removed at their first
+        occurrence, whatever the hash seed of the process: the order numbers the cases."""
+        import subprocess
+        import sys
+
+        import proteus
+
+        script = tmp_path / 'order.py'
+        script.write_text(
+            'import proteus.grid.manage as m\n'
+            'g = m.Grid.__new__(m.Grid)\n'
+            'g.dim_avars = {}\n'
+            "g.set_dimension_direct('d', ['spider', 'aragog', 'spider', 'dummy'])\n"
+            "print(g.dim_avars['d'])\n"
+        )
+        env = {**os.environ, 'PYTHONPATH': str(Path(proteus.__file__).parents[1])}
+        orders = {
+            seed: subprocess.run(
+                [sys.executable, str(script)],
+                env={**env, 'PYTHONHASHSEED': str(seed)},
+                capture_output=True,
+                text=True,
+                check=True,
+            ).stdout.strip()
+            for seed in range(4)
+        }
+        assert set(orders.values()) == {"['spider', 'aragog', 'dummy']"}, orders
+
+    def test_direct_without_sort_keeps_the_written_numeric_order(self, grid_with_mocks):
+        """With sort=False a numeric dimension keeps its written order, duplicates removed
+        at their first occurrence; the default still sorts."""
+        g = grid_with_mocks
+        g.add_dimension('d', 'planet.mass_tot')
+        g.set_dimension_direct('d', [3.0, 1.0, 2.0, 1.0], sort=False)
+        assert g.dim_avars['d'] == [3.0, 1.0, 2.0]
+        g.set_dimension_direct('d', [3.0, 1.0, 2.0, 1.0])
+        assert g.dim_avars['d'] == [1.0, 2.0, 3.0]
+
+    def test_direct_values_property(self):
+        """Over strings, floats with +-inf and bools: the result is the distinct values in
+        written order, sorted when the first value is not a string and sort is True."""
+        from hypothesis import given, settings
+        from hypothesis import strategies as st
+
+        values = st.one_of(
+            st.lists(st.text(), min_size=1),
+            st.lists(st.floats(allow_nan=False), min_size=1),
+            st.lists(st.booleans(), min_size=1),
+        )
+
+        @settings(derandomize=True, max_examples=200)
+        @given(values, st.booleans())
+        def check(vals, sort):
+            g = Grid.__new__(Grid)
+            g.dim_avars = {}
+            g.set_dimension_direct('d', vals, sort=sort)
+            distinct = list(dict.fromkeys(vals))
+            numeric = not isinstance(vals[0], str)
+            assert g.dim_avars['d'] == (sorted(distinct) if numeric and sort else distinct)
+
+        check()
 
 
 # ---------------------------------------------------------------------------
