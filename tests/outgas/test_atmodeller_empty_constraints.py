@@ -108,7 +108,10 @@ def test_empty_constraints_from_o_budget_returns_without_a_solve():
     hf_row = _empty_row()
     hf_row.update(fO2_shift_IW_derived=2.0, O_res=0.0)
     with patch('atmodeller.EquilibriumModel') as em:
-        calc_surface_pressures_atmodeller({'output': '/tmp/test'}, config, hf_row)
+        try:
+            calc_surface_pressures_atmodeller({'output': '/tmp/test'}, config, hf_row)
+        except ValueError as e:
+            pytest.fail(f'from_O_budget with no budget above the threshold must return: {e}')
     em.assert_not_called()
     assert np.isnan(hf_row['fO2_shift_IW_derived'])
     assert np.isnan(hf_row['O_res'])
