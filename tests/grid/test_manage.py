@@ -459,13 +459,26 @@ class TestSetDimension:
             ([1.0, float('nan'), 2.0], 'NaN'),
             ([1.0, 'aragog'], 'mixes strings with other values'),
             (['aragog', 1.0], 'mixes strings with other values'),
+            ('aragog', 'is not a list'),
+            (5, 'is not a list'),
+            ([[1], [2]], 'not a number, boolean or string'),
+            ([{'x': 1}], 'not a number, boolean or string'),
         ],
-        ids=['empty', 'nan', 'number-first', 'string-first'],
+        ids=[
+            'empty',
+            'nan',
+            'number-first',
+            'string-first',
+            'string',
+            'scalar',
+            'nested',
+            'table',
+        ],
     )
     def test_direct_refuses_an_axis_it_cannot_order(self, grid_with_mocks, values, cause):
-        """An empty axis, a NaN (never equal to itself, so never deduplicated or ordered)
-        and a mix of strings with other values are refused with the axis name, whatever
-        the order of the values."""
+        """An empty axis, a NaN (never equal to itself, so never deduplicated or ordered), a
+        mix of strings with other values, a value that is no list and an element that is no
+        number, boolean or string are refused with the axis name."""
         g = grid_with_mocks
         g.add_dimension('d', 'planet.mass_tot')
         with pytest.raises(ValueError, match=f"direct dimension 'd'.*{cause}"):
@@ -473,25 +486,39 @@ class TestSetDimension:
         assert g.dim_avars['d'] is None  # the axis keeps no values
 
     def test_direct_refuses_any_nan_or_mixed_axis_property(self):
-        """Over number and string lists with a NaN or a string put in at any place: the axis
-        is refused, whether sort is on or off."""
+        """Over number lists with a NaN or a string, and string lists with a NaN or a number,
+        put in at any place: the axis is refused and nothing is stored, sort on or off."""
         from hypothesis import given, settings
         from hypothesis import strategies as st
 
-        bad = st.one_of(st.just(float('nan')), st.text())
-        lists = st.lists(st.one_of(st.integers(), st.floats(allow_nan=False)), min_size=1)
+        numbers = st.lists(st.one_of(st.integers(), st.floats(allow_nan=False)), min_size=1)
+        cases = st.one_of(
+            st.tuples(numbers, st.one_of(st.just(float('nan')), st.text())),
+            st.tuples(
+                st.lists(st.text(), min_size=1), st.one_of(st.just(float('nan')), st.integers())
+            ),
+        )
 
         @settings(derandomize=True, max_examples=200)
-        @given(lists, bad, st.integers(min_value=0), st.booleans())
-        def check(vals, extra, where, sort):
-            vals = list(vals)
+        @given(cases, st.integers(min_value=0), st.booleans())
+        def check(case, where, sort):
+            vals, extra = list(case[0]), case[1]
             vals.insert(where % (len(vals) + 1), extra)
             g = Grid.__new__(Grid)
             g.dim_avars = {}
             with pytest.raises(ValueError, match="direct dimension 'd'"):
                 g.set_dimension_direct('d', vals, sort=sort)
+            assert g.dim_avars == {}
 
         check()
+
+    @pytest.mark.parametrize('values', [[''], [0.0], [False], [0, -0.0]])
+    def test_direct_keeps_an_axis_of_falsy_values(self, grid_with_mocks, values):
+        """An empty string, zero and false are values like any other."""
+        g = grid_with_mocks
+        g.add_dimension('d', 'planet.mass_tot')
+        g.set_dimension_direct('d', values)
+        assert g.dim_avars['d'] == list(dict.fromkeys(values))
 
 
 # ---------------------------------------------------------------------------
@@ -1103,6 +1130,33 @@ class TestGridFromConfig:
         with pytest.raises(UnknownConfigKeyError, match=reason) as exc:
             grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
         assert '"planet.mass_tot"' in str(exc.value)
+        assert old.read_text() == 'kept\n'
+
+    @pytest.mark.parametrize(
+        ('values', 'reason'),
+        [
+            ([], 'has no values'),
+            ([1.0, float('nan')], 'holds NaN'),
+            ('aragog', 'is not a list'),
+            (5, 'is not a list'),
+            ([[1], [2]], 'not a number, boolean or string'),
+        ],
+        ids=['empty', 'nan', 'string', 'scalar', 'nested'],
+    )
+    def test_bad_direct_values_keep_the_old_output(self, fake_proteus_dir, values, reason):
+        """A direct axis the grid cannot build stops the grid at load, named by its key and
+        the grid file, before the old output directory is removed."""
+        (fake_proteus_dir / 'base.toml').write_text('# base\n')
+        old = fake_proteus_dir / 'output' / 'unit_grid' / 'case_000000' / 'runtime_helpfile.csv'
+        old.parent.mkdir(parents=True)
+        old.write_text('kept\n')
+        grid_path = _write_grid_toml(
+            fake_proteus_dir / 'g.toml',
+            dimensions={'planet.mass_tot': {'method': 'direct', 'values': values}},
+        )
+        with pytest.raises(ValueError, match=reason) as exc:
+            grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
+        assert '"planet.mass_tot"' in str(exc.value) and str(grid_path) in str(exc.value)
         assert old.read_text() == 'kept\n'
 
     def test_relative_symlink_rejected(self, fake_proteus_dir):
