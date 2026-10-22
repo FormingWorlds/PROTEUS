@@ -35,6 +35,15 @@ from proteus.grid.manage import (
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
+WRITTEN = ['aragog', 'spider', 'dummy']  # neither ascending nor descending
+
+
+class Hashed(str):
+    """A str whose hashes put a set of the WRITTEN values in another order."""
+
+    def __hash__(self):
+        return {'aragog': 3, 'spider': 2, 'dummy': 1}[str(self)]
+
 
 # ---------------------------------------------------------------------------
 # Shared fixtures
@@ -392,16 +401,56 @@ class TestSetDimension:
         # Length reflects the deduplication
         assert len(g.dim_avars['d']) == 3
 
-    def test_direct_does_not_sort_strings(self, grid_with_mocks):
-        """String values are kept as a set-derived list (no sort branch
-        taken because elements are not numeric).
-        """
+    def test_direct_keeps_the_written_order_whatever_the_string_hashes(self, grid_with_mocks):
+        """The order of a string dimension numbers the cases, so it must not follow the string
+        hashes, which change with the hash seed of the process; duplicates are removed at
+        their first occurrence."""
+        values = [Hashed(v) for v in ('aragog', 'spider', 'aragog', 'dummy')]
+        assert list(set(values)) == ['dummy', 'spider', 'aragog']
         g = grid_with_mocks
         g.add_dimension('d', 'atmos_clim.module')
-        g.set_dimension_direct('d', ['agni', 'janus', 'agni'])
-        # Discriminating: deduplicated regardless
-        assert set(g.dim_avars['d']) == {'agni', 'janus'}
-        assert len(g.dim_avars['d']) == 2
+        g.set_dimension_direct('d', values)
+        assert g.dim_avars['d'] == WRITTEN
+
+    def test_direct_without_sort_keeps_the_written_numeric_order(self, grid_with_mocks):
+        """With sort=False a numeric dimension keeps its written order, duplicates removed
+        at their first occurrence; the default still sorts."""
+        g = grid_with_mocks
+        g.add_dimension('d', 'planet.mass_tot')
+        g.set_dimension_direct('d', [3.0, 1.0, 2.0, 1.0], sort=False)
+        assert g.dim_avars['d'] == [3.0, 1.0, 2.0]
+        g.set_dimension_direct('d', [3.0, 1.0, 2.0, 1.0])
+        assert g.dim_avars['d'] == [1.0, 2.0, 3.0]
+
+    def test_direct_values_property(self):
+        """Over strings, integers, floats with +-inf and bools: the result holds each distinct value once;
+        it is sorted when the first value is not a string and sort is True, else each value
+        sits in the order of its first occurrence."""
+        from hypothesis import given, settings
+        from hypothesis import strategies as st
+
+        values = st.one_of(
+            st.lists(st.text(), min_size=1),
+            st.lists(st.integers(), min_size=1),
+            st.lists(st.floats(allow_nan=False), min_size=1),
+            st.lists(st.booleans(), min_size=1),
+        )
+
+        @settings(derandomize=True, max_examples=200)
+        @given(values, st.booleans())
+        def check(vals, sort):
+            g = Grid.__new__(Grid)
+            g.dim_avars = {}
+            g.set_dimension_direct('d', vals, sort=sort)
+            out = g.dim_avars['d']
+            assert len(out) == len(set(vals)) and set(out) == set(vals)
+            if sort and not isinstance(vals[0], str):
+                assert out == sorted(out)
+            else:
+                first = [vals.index(v) for v in out]
+                assert first == sorted(first)
+
+        check()
 
 
 # ---------------------------------------------------------------------------
@@ -440,6 +489,22 @@ class TestGridGenerate:
         # Each grid point is a dict mapping the variable names:
         for gp in g.flat:
             assert set(gp.keys()) == {'planet.mass_tot', 'planet.elements.H_budget'}
+
+    def test_generate_numbers_cases_in_the_written_order_of_a_string_dimension(
+        self, grid_with_mocks
+    ):
+        """The case index of a grid point follows the written order of a string dimension,
+        with the next dimension varying fastest."""
+        g = grid_with_mocks
+        g.add_dimension('a', 'atmos_clim.module')
+        g.add_dimension('b', 'planet.mass_tot')
+        values = [Hashed(v) for v in WRITTEN]
+        assert list(set(values)) != WRITTEN
+        g.set_dimension_direct('a', values)
+        g.set_dimension_direct('b', [2.0, 1.0])
+        g.generate()
+        cases = [(gp['atmos_clim.module'], gp['planet.mass_tot']) for gp in g.flat]
+        assert cases == [(a, b) for a in WRITTEN for b in (1.0, 2.0)]
 
     def test_generate_keys_map_correctly(self, grid_with_mocks):
         """The flattened grid contains every (a, b) combination exactly
