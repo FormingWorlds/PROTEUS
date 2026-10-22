@@ -80,7 +80,10 @@ class TimeStepParams:
     Attributes
     ----------
     minimum: float
-        Minimum absolute time-step size [yr].
+        Minimum absolute time-step size [yr]; escape and the drain cap stop at
+        ``minimum * escape.step_dt_floor_frac``, and other caps, among them
+        growth, evection, bolometric clamp, the final-time cap, solver retries,
+        mushy-zone limiting, and impact landing steps, can go lower.
     minimum_rel: float
         Minimum relative time-step size [dimensionless].
     maximum: float
