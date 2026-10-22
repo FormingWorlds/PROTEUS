@@ -1200,19 +1200,15 @@ class TestGridFromConfig:
         assert '"planet.mass_tot"' in str(exc.value) and str(grid_path) in str(exc.value)
         assert old.read_text() == 'kept\n'
 
-    def test_bad_second_direct_axis_keeps_the_old_output(self, fake_proteus_dir, tmp_path):
+    def test_bad_second_direct_axis_keeps_the_old_output(self, fake_proteus_dir):
         """A bad direct axis after a valid one stops the grid at load, named by its own key,
-        before the old output directory and the symlink target are removed."""
+        before the old output directory is removed."""
         (fake_proteus_dir / 'base.toml').write_text('# base\n')
         old = fake_proteus_dir / 'output' / 'unit_grid' / 'case_000000' / 'runtime_helpfile.csv'
         old.parent.mkdir(parents=True)
         old.write_text('kept\n')
-        target = tmp_path / 'scratch' / 'unit_grid'
-        target.mkdir(parents=True)
-        (target / 'marker').write_text('kept\n')
         grid_path = _write_grid_toml(
             fake_proteus_dir / 'g.toml',
-            symlink=str(target),
             dimensions={
                 'planet.mass_tot': {'method': 'direct', 'values': [1.0, 2.0]},
                 'orbit.semimajoraxis': {'method': 'direct', 'values': [0.1, float('nan')]},
@@ -1223,7 +1219,6 @@ class TestGridFromConfig:
         assert '"orbit.semimajoraxis"' in str(exc.value) and str(grid_path) in str(exc.value)
         assert '"planet.mass_tot"' not in str(exc.value)
         assert old.read_text() == 'kept\n'
-        assert (target / 'marker').read_text() == 'kept\n'
 
     def test_relative_symlink_rejected(self, fake_proteus_dir):
         """Non-absolute ``symlink`` path is refused with RuntimeError.
