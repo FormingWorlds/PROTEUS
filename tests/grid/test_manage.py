@@ -393,43 +393,29 @@ class TestSetDimension:
         assert len(g.dim_avars['d']) == 3
 
     def test_direct_does_not_sort_strings(self, grid_with_mocks):
-        """String values are kept as a set-derived list (no sort branch
-        taken because elements are not numeric).
-        """
+        """A string dimension keeps its written order, duplicates removed at their first
+        occurrence."""
         g = grid_with_mocks
         g.add_dimension('d', 'atmos_clim.module')
         g.set_dimension_direct('d', ['janus', 'agni', 'janus'])
         assert g.dim_avars['d'] == ['janus', 'agni']
+        assert g.dim_avars['d'] != sorted(g.dim_avars['d'])
 
-    @pytest.mark.timeout(120)
-    def test_direct_keeps_the_written_order_of_strings_in_every_process(self, tmp_path):
-        """A string dimension keeps its written order, duplicates removed at their first
-        occurrence, whatever the hash seed of the process: the order numbers the cases."""
-        import subprocess
-        import sys
+    def test_direct_keeps_the_written_order_whatever_the_string_hashes(self, grid_with_mocks):
+        """The order of a string dimension numbers the cases, so it must not follow the string
+        hashes, which change with the hash seed of the process. Hashes 3, 2, 1 order a set of
+        the values against the written order."""
 
-        import proteus
+        class Hashed(str):
+            def __hash__(self):
+                return {'spider': 3, 'aragog': 2, 'dummy': 1}[str(self)]
 
-        script = tmp_path / 'order.py'
-        script.write_text(
-            'import proteus.grid.manage as m\n'
-            'g = m.Grid.__new__(m.Grid)\n'
-            'g.dim_avars = {}\n'
-            "g.set_dimension_direct('d', ['spider', 'aragog', 'spider', 'dummy'])\n"
-            "print(g.dim_avars['d'])\n"
-        )
-        env = {**os.environ, 'PYTHONPATH': str(Path(proteus.__file__).parents[1])}
-        orders = {
-            seed: subprocess.run(
-                [sys.executable, str(script)],
-                env={**env, 'PYTHONHASHSEED': str(seed)},
-                capture_output=True,
-                text=True,
-                check=True,
-            ).stdout.strip()
-            for seed in range(4)
-        }
-        assert set(orders.values()) == {"['spider', 'aragog', 'dummy']"}, orders
+        values = [Hashed(v) for v in ('spider', 'aragog', 'spider', 'dummy')]
+        assert list(set(values)) == ['dummy', 'aragog', 'spider']
+        g = grid_with_mocks
+        g.add_dimension('d', 'atmos_clim.module')
+        g.set_dimension_direct('d', values)
+        assert g.dim_avars['d'] == ['spider', 'aragog', 'dummy']
 
     def test_direct_without_sort_keeps_the_written_numeric_order(self, grid_with_mocks):
         """With sort=False a numeric dimension keeps its written order, duplicates removed
@@ -442,8 +428,9 @@ class TestSetDimension:
         assert g.dim_avars['d'] == [1.0, 2.0, 3.0]
 
     def test_direct_values_property(self):
-        """Over strings, floats with +-inf and bools: the result is the distinct values in
-        written order, sorted when the first value is not a string and sort is True."""
+        """Over strings, floats with +-inf and bools: the result holds each distinct value once;
+        it is sorted when the first value is not a string and sort is True, else each value
+        sits in the order of its first occurrence."""
         from hypothesis import given, settings
         from hypothesis import strategies as st
 
@@ -459,9 +446,13 @@ class TestSetDimension:
             g = Grid.__new__(Grid)
             g.dim_avars = {}
             g.set_dimension_direct('d', vals, sort=sort)
-            distinct = list(dict.fromkeys(vals))
-            numeric = not isinstance(vals[0], str)
-            assert g.dim_avars['d'] == (sorted(distinct) if numeric and sort else distinct)
+            out = g.dim_avars['d']
+            assert len(out) == len(set(vals)) and set(out) == set(vals)
+            if sort and not isinstance(vals[0], str):
+                assert out == sorted(out)
+            else:
+                first = [vals.index(v) for v in out]
+                assert first == sorted(first)
 
         check()
 
@@ -502,6 +493,21 @@ class TestGridGenerate:
         # Each grid point is a dict mapping the variable names:
         for gp in g.flat:
             assert set(gp.keys()) == {'planet.mass_tot', 'planet.elements.H_budget'}
+
+    def test_generate_numbers_cases_in_the_written_order_of_a_string_dimension(
+        self, grid_with_mocks
+    ):
+        """The case index of a grid point follows the written order of a string dimension,
+        with the next dimension varying fastest."""
+        g = grid_with_mocks
+        g.add_dimension('a', 'atmos_clim.module')
+        g.add_dimension('b', 'planet.mass_tot')
+        g.set_dimension_direct('a', ['janus', 'agni', 'dummy'])
+        g.set_dimension_direct('b', [2.0, 1.0])
+        g.generate()
+        cases = [(gp['atmos_clim.module'], gp['planet.mass_tot']) for gp in g.flat]
+        assert cases[:3] == [('janus', 1.0), ('janus', 2.0), ('agni', 1.0)]
+        assert [c[0] for c in cases] == ['janus'] * 2 + ['agni'] * 2 + ['dummy'] * 2
 
     def test_generate_keys_map_correctly(self, grid_with_mocks):
         """The flattened grid contains every (a, b) combination exactly
