@@ -739,10 +739,7 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
                 hf_row.get(f'{proteus_name}_kg_atm', 0.0)
             ) + float(hf_row[f'{proteus_name}_kg_liquid'])
 
-            # No native mole count is available for a species outside the
-            # solve; derive moles from the kg values above using the
-            # species' own molar mass, matching dummy.py's convention for
-            # the same columns.
+            # Moles from the kg values above with the species' own molar mass, as dummy.py does.
             species_mmw = eval_gas_mmw(proteus_name)
             hf_row[f'{proteus_name}_mol_liquid'] = (
                 hf_row[f'{proteus_name}_kg_liquid'] / species_mmw

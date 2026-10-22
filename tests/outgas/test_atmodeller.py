@@ -687,8 +687,8 @@ def test_mol_columns_written_across_solve_noble_and_excluded_species():
       atmospheric and dissolved moles are zero, and its total moles are
       recovered from the escape-owned ``He_kg_total`` budget via the element
       molar mass (the species and the element are the same monatomic entity).
-    * NH3 is a reactive species outside the solve: its mass from an earlier call
-      is cleared, so all its mole columns are zero.
+    * NH3 is a reactive species outside the solve: it reports 0 in every mass and
+      mole column, as CALLIOPE does.
     """
     pytest.importorskip('atmodeller')
     config = _make_user_constant_config(0.0)
@@ -744,8 +744,8 @@ def test_mol_columns_written_across_solve_noble_and_excluded_species():
     assert hf_row['He_mol_total'] == pytest.approx(he_kg_total / eval_gas_mmw('He'), rel=1e-9)
     assert hf_row['He_mol_solid'] == 0.0
 
-    # NH3: reactive species outside the solve. Its mass carried from an earlier
-    # call is cleared, so every mole column is zero, as CALLIOPE reports it.
+    # NH3: a reactive species outside the solve reports 0 in every mole column,
+    # as CALLIOPE does.
     assert hf_row['NH3_kg_atm'] == 0.0
     for col in ('liquid', 'atm', 'total', 'solid'):
         assert hf_row[f'NH3_mol_{col}'] == 0.0
@@ -845,3 +845,43 @@ def test_a_species_that_leaves_the_solve_reports_zero_in_every_field():
     assert sum(hf_row[f'{s}_bar'] for s in gas_list) == pytest.approx(
         hf_row['P_surf'], rel=1e-12
     )
+
+
+@pytest.mark.physics_invariant
+def test_noble_gas_without_total_mass_reports_zero_atmosphere():
+    """A noble gas in quick_look with no output entry ends with kg_atm 0, not the
+    p*A/g column of the quick_look loop, and keeps its escape-owned kg_total."""
+    pytest.importorskip('atmodeller')
+    config = _make_user_constant_config(0.0)
+    hf_row = _hf_row_with_HS_budget()
+    he_kg_total = 1.0e19
+    hf_row['He_kg_total'] = he_kg_total
+
+    out = MagicMock()
+    out.quick_look.return_value = {
+        'H2O_g': np.array(40.0),
+        'He_g': np.array(10.0),
+        'O2_g': np.array(1.0e-6),
+    }
+    out.total_pressure.return_value = np.array(50.0)
+    out.asdict.return_value = {
+        'H2O_g': {
+            'gas_mass': np.array(4.0e20),
+            'dissolved_mass': np.array(1.0e20),
+            'total_mass': np.array(5.0e20),
+        },
+        'O2_g': {'log10dIW_1_bar': np.array(-0.1), 'gas_mass': np.array(1.0e10)},
+    }
+    fake_model = MagicMock()
+    fake_model.output = out
+
+    from proteus.outgas.atmodeller import _MODEL_CACHE
+
+    _MODEL_CACHE.clear()
+    with patch('atmodeller.EquilibriumModel', return_value=fake_model):
+        calc_surface_pressures_atmodeller({'output': '/tmp/test'}, config, hf_row)
+    _MODEL_CACHE.clear()
+
+    assert hf_row['He_kg_atm'] == 0.0
+    assert hf_row['He_kg_liquid'] == 0.0
+    assert hf_row['He_kg_total'] == he_kg_total
