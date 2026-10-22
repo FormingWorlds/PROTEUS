@@ -23,6 +23,7 @@ import numpy as np
 import pandas as pd
 
 from proteus.utils.constants import (
+    condensate_list,
     element_list,
     gas_list,
     noble_gases,
@@ -1164,6 +1165,11 @@ def GetHelpfileKeys():
         'M_volatile_change',  # cumulative element mass added to the Zalmoxis target [kg]: delivered (rock O and init-stage impacts excluded) minus stripped minus escaped (rock vapour and sub-threshold zeroing included) minus removed at desiccation
     ]
 
+    # Condensates from atmodeller; zero when a condensate was not solved for
+    for c in condensate_list:
+        keys.append(c + '_cd_activity')  # activity; 1 = saturated [1]
+        keys.append(c + '_cd_kg')        # condensed mass [kg]
+
     # Share of the solid-mantle reservoir that trapping owns. The chemistry
     # writes the rest of `_kg_solid`, its own condensate, on every solve.
     for s in vol_list:
@@ -1729,6 +1735,8 @@ _DIAGNOSTIC_KEYS = (
     'step_dE_core_J',
     'E_core_residual_J',
     'E_core_residual_frac',
+    # Condensate activity and mass from atmodeller, written each solve and never read back
+    *(f'{c}_cd_{q}' for c in condensate_list for q in ('activity', 'kg')),
 )
 
 
@@ -2352,6 +2360,7 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
         plot_population_mass_radius,
         plot_population_time_density,
     )
+    from proteus.plot.cpl_saturated import plot_saturated
     from proteus.plot.cpl_sflux import plot_sflux
     from proteus.plot.cpl_sflux_cross import plot_sflux_cross
     from proteus.plot.cpl_spectra import plot_spectra
@@ -2390,6 +2399,9 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
 
     # Elemental mass inventory
     plot_escape(hf_all, output_dir, plot_format=config.params.out.plot_fmt)
+
+    # Condensate saturation; skipped unless atmodeller solved for a condensate
+    plot_saturated(hf_all, output_dir, plot_format=config.params.out.plot_fmt)
 
     # Planet and satellite orbit parameters
     if (

@@ -3937,6 +3937,7 @@ def _install_updateplots_fakes(monkeypatch, calls):
         'proteus.plot.cpl_interior': 'plot_interior',
         'proteus.plot.cpl_interior_cmesh': 'plot_interior_cmesh',
         'proteus.plot.cpl_orbit': ('plot_orbit', 'plot_orbit_system', 'plot_lovenumber'),
+        'proteus.plot.cpl_saturated': 'plot_saturated',
         'proteus.plot.cpl_sflux': 'plot_sflux',
         'proteus.plot.cpl_sflux_cross': 'plot_sflux_cross',
         'proteus.plot.cpl_spectra': 'plot_spectra',

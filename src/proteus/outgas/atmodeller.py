@@ -232,7 +232,13 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
     from atmodeller.solubility import get_solubility_models
     from atmodeller.thermodata import IronWustiteBuffer
 
-    from proteus.utils.constants import M_earth, element_mmw, gas_list, noble_gases
+    from proteus.utils.constants import (
+        M_earth,
+        condensate_list,
+        element_mmw,
+        gas_list,
+        noble_gases,
+    )
 
     atm_config = config.outgas.atmodeller
     solubility_models = get_solubility_models()
@@ -401,13 +407,6 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
         active_elements,
     )
 
-    # Add condensates only if their elements have budgets
-    if atm_config.include_condensates and 'C' in active_elements:
-        try:
-            species_list.append(ChemicalSpecies.create_condensed('C'))
-        except Exception:
-            pass  # Graphite not available in all versions
-
     # Build planet state
     M_planet = float(hf_row.get('M_planet', 1.0 * M_earth))
     R_int = float(hf_row.get('R_int', 6.371e6))
@@ -419,6 +418,31 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
     if T_magma < config.outgas.T_floor:
         T_magma = float(config.outgas.T_floor)
         log.warning('Outgassing temperature clipped to %.1f K' % T_magma)
+
+    # Add each supported condensate whose elements have budgets (O is buffered or
+    # constrained, like O2) and whose thermodynamic data cover T_magma, so the
+    # solver never extrapolates a condensed phase outside its fitted range.
+    if atm_config.include_condensates:
+        for formula in condensate_list:
+            try:
+                condensate = ChemicalSpecies.create_condensed(formula)
+            except Exception as e:
+                # Not every condensate is available in all atmodeller versions. Say
+                # so, since the run otherwise proceeds without it.
+                log.warning(
+                    'Could not add condensate %s_cd to the atmodeller network; '
+                    'continuing without it: %s',
+                    formula,
+                    e,
+                )
+                continue
+            required_elements = set(condensate.data.elements) - {'O'}
+            if not required_elements.issubset(active_elements):
+                continue
+            thermo = condensate.data.thermo
+            if not min(thermo.T_min) <= T_magma <= max(thermo.T_max):
+                continue
+            species_list.append(condensate)
 
     # Core mass fraction from config
     cmf = config.interior_struct.core_frac
@@ -469,6 +493,9 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
 
     if not mass_constraints:
         log.warning('No volatile element budgets above threshold; skipping atmodeller')
+        for formula in condensate_list:
+            hf_row[f'{formula}_cd_activity'] = 0.0
+            hf_row[f'{formula}_cd_kg'] = 0.0
         if fO2_source == 'from_O_budget':
             # No solve ran, so the derived buffer offset is undefined.
             # Leaving the user pre-seed in place would misrecord a skipped
@@ -545,6 +572,25 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
         output_dict = output.asdict()
     except Exception:
         output_dict = {}
+
+    # Record condensate saturation on every solve so the helpfile and the log
+    # show when each one forms. An activity of 1 means the condensate is stable;
+    # below 1 it is undersaturated and its condensed mass is only the solver's
+    # floor. Zero marks a solve without that condensate in the network.
+    for formula in condensate_list:
+        key = f'{formula}_cd'
+        activity = mass = None
+        if key in output_dict:
+            activity = _species_output_scalar(output_dict, key, 'activity')
+            mass = _species_output_scalar(output_dict, key, 'total_mass')
+            log.info(
+                'Atmodeller condensate %s: activity=%s, condensed mass=%s kg',
+                key,
+                activity,
+                mass,
+            )
+        hf_row[f'{key}_activity'] = float(activity) if activity is not None else 0.0
+        hf_row[f'{key}_kg'] = float(mass) if mass is not None else 0.0
 
     # Map atmodeller output back to hf_row
     _reverse_map = {v: k for k, v in _atm_gas_species.items()}
@@ -645,8 +691,8 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
             # is the conserved constraint and dissolved_mass the melt share.
             # Deriving the atmospheric mass as total minus dissolved equals
             # gas_mass only while no species holds a solid-phase reservoir
-            # (true today: graphite is a separate condensed species and never
-            # enters a gas species' total_mass), so that difference serves as
+            # (true today: condensates are separate condensed species and never
+            # enter a gas species' total_mass), so that difference serves as
             # a closure check and as the fallback when the output omits
             # gas_mass. Either write replaces the pressure-derived mass from
             # the first loop, which distributes the column by mole fraction
@@ -792,7 +838,7 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
     # below for oxygen), so escape's debited total is never overwritten here.
     _populate_volatile_element_reservoirs(hf_row, element_mmw)
 
-    # Add condensed-phase mass (e.g. graphite when include_condensates is on) to
+    # Add condensed-phase mass (graphite, sulfur, ... when include_condensates is on) to
     # the per-element solid reservoir. The gas-species inventory above does not
     # carry condensates, so the per-element atm+liquid+solid split must pick the
     # condensed mass up here to close against the element budget for any element

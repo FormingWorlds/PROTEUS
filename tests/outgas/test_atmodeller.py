@@ -667,6 +667,94 @@ def test_condensed_mass_enters_solid_reservoir_and_closes_carbon():
     assert abs(c_gas_liquid - C_BUDGET) > 0.5 * C_BUDGET
 
 
+def _carbon_only_condensate_case():
+    """Config and helpfile row for a carbon-only solve with condensates enabled."""
+    config = _make_user_constant_config(0.0)
+    config.outgas.atmodeller.include_condensates = True
+    hf_row = _hf_row_with_HS_budget()
+    hf_row['H_kg_total'] = 0.0
+    hf_row['S_kg_total'] = 0.0
+    hf_row['C_kg_total'] = 5.0e21
+    return config, hf_row
+
+
+def test_graphite_creation_failure_warns_and_drops_condensate(caplog):
+    """A failure to build graphite is logged, and the solve runs without it.
+
+    With ``include_condensates`` on, the run must not quietly lose graphite: the
+    warning names the condensate and carries the underlying error, and the
+    species network handed to atmodeller holds no condensed species.
+    """
+    import logging
+
+    atmodeller = pytest.importorskip('atmodeller')
+    config, hf_row = _carbon_only_condensate_case()
+
+    out = MagicMock()
+    out.quick_look.return_value = {'CO2_g': np.array(20.0), 'O2_g': np.array(1.0e-6)}
+    out.total_pressure.return_value = np.array(20.0)
+    out.asdict.return_value = {}
+    fake_model = MagicMock()
+    fake_model.output = out
+
+    from proteus.outgas.atmodeller import _MODEL_CACHE
+
+    _MODEL_CACHE.clear()
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.outgas.atmodeller'):
+        with (
+            patch.object(
+                atmodeller.ChemicalSpecies,
+                'create_condensed',
+                side_effect=RuntimeError('no C_cd data'),
+            ),
+            patch('atmodeller.EquilibriumModel', return_value=fake_model) as model_cls,
+        ):
+            calc_surface_pressures_atmodeller({'output': '/tmp/test'}, config, hf_row)
+    _MODEL_CACHE.clear()
+
+    assert any(
+        'Could not add condensate C_cd' in r.getMessage() and 'no C_cd data' in r.getMessage()
+        for r in caplog.records
+    ), 'graphite creation failure was not logged'
+    network = model_cls.call_args.args[0]
+    assert network.condensed_species_names == ()
+
+
+def test_graphite_activity_logged_each_solve(caplog):
+    """The graphite activity and condensed mass are logged when C_cd is solved for."""
+    import logging
+
+    pytest.importorskip('atmodeller')
+    config, hf_row = _carbon_only_condensate_case()
+
+    out = MagicMock()
+    out.quick_look.return_value = {'CO2_g': np.array(20.0), 'O2_g': np.array(1.0e-6)}
+    out.total_pressure.return_value = np.array(20.0)
+    out.asdict.return_value = {
+        'C_cd': {'activity': np.array(0.25), 'total_mass': np.array(3.0e-6)},
+        'O2_g': {'log10dIW_1_bar': np.array(-0.1), 'gas_mass': np.array(1.0e10)},
+    }
+    fake_model = MagicMock()
+    fake_model.output = out
+
+    from proteus.outgas.atmodeller import _MODEL_CACHE
+
+    _MODEL_CACHE.clear()
+    with caplog.at_level(logging.INFO, logger='fwl.proteus.outgas.atmodeller'):
+        with patch('atmodeller.EquilibriumModel', return_value=fake_model):
+            calc_surface_pressures_atmodeller({'output': '/tmp/test'}, config, hf_row)
+    _MODEL_CACHE.clear()
+
+    graphite_lines = [
+        r.getMessage() for r in caplog.records if 'condensate C_cd:' in r.getMessage()
+    ]
+    assert graphite_lines == [
+        'Atmodeller condensate C_cd: activity=0.25, condensed mass=3e-06 kg'
+    ]
+    assert hf_row['C_cd_activity'] == 0.25
+    assert hf_row['C_cd_kg'] == 3.0e-6
+
+
 @pytest.mark.physics_invariant
 def test_mol_columns_written_across_solve_noble_and_excluded_species():
     """The ``{sp}_mol_*`` columns are populated in each of the three species branches.
