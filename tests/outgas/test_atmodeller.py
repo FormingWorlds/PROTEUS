@@ -808,24 +808,24 @@ _CALLIOPE_SPECIES_FIELDS = ('bar', 'vmr', 'kg_atm', 'kg_liquid', 'kg_solid', 'kg
 
 
 @pytest.mark.physics_invariant
-def test_a_species_that_leaves_the_solve_reports_zero_in_every_field():
+@pytest.mark.parametrize('with_output', [('H2O', 'S2'), ('S2',), ('H2O',)])
+def test_a_species_that_leaves_the_solve_reports_zero_in_every_field(with_output):
     """Every species carried from an earlier call without output from this solve (N2 and
-    NH3 with N now below mass_thresh, and each species with no output entry) reports 0 in
-    every field CALLIOPE zero-initialises, except that a noble gas keeps its kg_total with
-    the matching mol_total; the N atmosphere mass is 0, the mixing ratios sum to 1 and the
-    partial pressures to P_surf."""
+    NH3 with N now below mass_thresh, and each species with no output entry, H2O and S2
+    included in turn) reports 0 in every field CALLIOPE zero-initialises, except that a
+    noble gas keeps its kg_total with the matching mol_total; the N atmosphere mass is 0,
+    the mixing ratios sum to 1 and the partial pressures to P_surf."""
     pytest.importorskip('atmodeller')
     config = _make_user_constant_config(0.0)
     hf_row = _hf_row_with_HS_budget()
-    carried = [s for s in vol_list + noble_gases if s not in ('H2O', 'S2', 'O2')]
+    carried = [s for s in vol_list + noble_gases if s not in with_output + ('O2',)]
     for k, sp in enumerate(carried):
         hf_row.update({f'{sp}_{f}': 1.0e10 * (10 * k + i + 1)
                        for i, f in enumerate(_CALLIOPE_SPECIES_FIELDS)})  # fmt: skip
     hf_row['N_kg_atm'] = 8.8e15
     noble_kg = {g: hf_row[f'{g}_kg_total'] for g in noble_gases}
-    out, _ = _build_conserving_output(
-        {'H2O': ('H', _H_BUDGET, 0.5), 'S2': ('S', _S_BUDGET, 0.5)}
-    )
+    assign = {'H2O': ('H', _H_BUDGET, 0.5), 'S2': ('S', _S_BUDGET, 0.5)}
+    out, _ = _build_conserving_output({sp: assign[sp] for sp in with_output})
     fake_model = MagicMock()
     fake_model.output = out
 
