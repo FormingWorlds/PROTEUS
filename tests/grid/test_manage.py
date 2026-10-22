@@ -452,6 +452,47 @@ class TestSetDimension:
 
         check()
 
+    @pytest.mark.parametrize(
+        ('values', 'cause'),
+        [
+            ([], 'no values'),
+            ([1.0, float('nan'), 2.0], 'NaN'),
+            ([1.0, 'aragog'], 'mixes strings with other values'),
+            (['aragog', 1.0], 'mixes strings with other values'),
+        ],
+        ids=['empty', 'nan', 'number-first', 'string-first'],
+    )
+    def test_direct_refuses_an_axis_it_cannot_order(self, grid_with_mocks, values, cause):
+        """An empty axis, a NaN (never equal to itself, so never deduplicated or ordered)
+        and a mix of strings with other values are refused with the axis name, whatever
+        the order of the values."""
+        g = grid_with_mocks
+        g.add_dimension('d', 'planet.mass_tot')
+        with pytest.raises(ValueError, match=f"direct dimension 'd'.*{cause}"):
+            g.set_dimension_direct('d', values)
+        assert 'd' not in g.dim_avars
+
+    def test_direct_refuses_any_nan_or_mixed_axis_property(self):
+        """Over number and string lists with a NaN or a string put in at any place: the axis
+        is refused, whether sort is on or off."""
+        from hypothesis import given, settings
+        from hypothesis import strategies as st
+
+        bad = st.one_of(st.just(float('nan')), st.text())
+        lists = st.lists(st.one_of(st.integers(), st.floats(allow_nan=False)), min_size=1)
+
+        @settings(derandomize=True, max_examples=200)
+        @given(lists, bad, st.integers(min_value=0), st.booleans())
+        def check(vals, extra, where, sort):
+            vals = list(vals)
+            vals.insert(where % (len(vals) + 1), extra)
+            g = Grid.__new__(Grid)
+            g.dim_avars = {}
+            with pytest.raises(ValueError, match="direct dimension 'd'"):
+                g.set_dimension_direct('d', vals, sort=sort)
+
+        check()
+
 
 # ---------------------------------------------------------------------------
 # generate, print, _get_tmpcfg
