@@ -661,6 +661,42 @@ def test_run_desiccated_keeps_the_solid_share_and_books_the_rest():
 
 
 @pytest.mark.physics_invariant
+@pytest.mark.parametrize(
+    ('total', 'kept'),
+    [
+        pytest.param(5.0e15, 4.0e15, id='total-holds-solid-and-graphite'),
+        pytest.param(2.0e15, 2.0e15, id='escape-took-part-of-the-held-mass'),
+    ],
+)
+def test_desiccation_keeps_condensed_graphite_with_the_solid_mantle(total, kept):
+    """Graphite in C_kg_condensed stays when the atmosphere goes, alongside the solid.
+
+    Physical scenario: a desiccating Mercury-like planet with a graphite crust and
+    a little carbon in the frozen mantle. Edge case: an escape-debited total below
+    the held mass, which scales solid and condensed by the same share.
+    """
+    config = MagicMock()
+    config.outgas.vapourise = False
+    config.interior_struct.module = 'dummy'
+    solid, condensed = 1.0e15, 3.0e15
+    hf_row = {
+        f'{e}_kg_{r}': 0.0 for e in element_list for r in ('atm', 'liquid', 'solid', 'total')
+    }
+    hf_row.update(C_kg_atm=1.0e15, C_kg_solid=solid, C_kg_condensed=condensed, C_kg_total=total)
+    hf_row.update(M_desiccated=0.0, atm_kg_per_mol=0.01, Phi_global=0.2)
+
+    run_desiccated({}, config, hf_row, False)
+
+    share = kept / (solid + condensed)
+    assert hf_row['C_kg_atm'] == 0.0
+    assert hf_row['C_kg_total'] == pytest.approx(kept, rel=1e-12)
+    assert hf_row['C_kg_condensed'] == pytest.approx(condensed * share, rel=1e-12)
+    assert hf_row['C_kg_solid'] == pytest.approx(solid * share, rel=1e-12)
+    # Closure: what is kept is exactly the solid plus the condensed reservoir.
+    assert hf_row['C_kg_solid'] + hf_row['C_kg_condensed'] == pytest.approx(kept, rel=1e-12)
+
+
+@pytest.mark.physics_invariant
 def test_a_desiccated_row_with_a_solid_share_stays_desiccated():
     """Totals that keep their solid share are below the threshold as before, and the
     gate balance subtracts only what was removed, so the row passes the check again,

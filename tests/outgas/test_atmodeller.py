@@ -756,6 +756,64 @@ def test_graphite_activity_logged_each_solve(caplog):
     assert hf_row['C_cd_kg'] == pytest.approx(3.0e-6, rel=1e-12)
 
 
+def test_condensates_need_their_elements_and_their_data_range():
+    """Only condensates whose elements have budgets and whose data cover T_magma join.
+
+    With H and C budgets at 2200 K: graphite (data to 6000 K) joins; water is built
+    from H, which has a budget, but its data stop at 600 K, so it is left out
+    rather than extrapolated; sulfur and sulfuric acid need S, which has none.
+    """
+    pytest.importorskip('atmodeller')
+    config, hf_row = _carbon_only_condensate_case()
+    hf_row['H_kg_total'] = _H_BUDGET
+    assert hf_row['T_magma'] == pytest.approx(2200.0, rel=1e-12)
+
+    out = MagicMock()
+    out.quick_look.return_value = {'CO2_g': np.array(20.0), 'O2_g': np.array(1.0e-6)}
+    out.total_pressure.return_value = np.array(20.0)
+    out.asdict.return_value = {}
+    fake_model = MagicMock()
+    fake_model.output = out
+
+    from proteus.outgas.atmodeller import _MODEL_CACHE
+
+    _MODEL_CACHE.clear()
+    with patch('atmodeller.EquilibriumModel', return_value=fake_model) as model_cls:
+        calc_surface_pressures_atmodeller({'output': '/tmp/test'}, config, hf_row)
+    _MODEL_CACHE.clear()
+
+    network = model_cls.call_args.args[0]
+    assert network.condensed_species_names == ('C_cd',)
+    # Discrimination: the gas network does carry H, so water was refused on its range.
+    assert 'H2O_g' in [s.name for s in network.data]
+
+
+def test_skipped_solve_resets_every_condensate_column_to_zero():
+    """With no budget above threshold, no model is built and every condensate column is 0.
+
+    Edge case: stale values from an earlier solve, which must not survive a skipped
+    step and leak into the element closure.
+    """
+    pytest.importorskip('atmodeller')
+    from proteus.utils.constants import condensate_list, vol_element_list
+
+    config, hf_row = _carbon_only_condensate_case()
+    hf_row['C_kg_total'] = 0.0  # every element now below threshold
+    stale = [f'{c}_cd_{q}' for c in condensate_list for q in ('activity', 'kg')]
+    stale += [f'{e}_kg_condensed' for e in vol_element_list]
+    hf_row.update(dict.fromkeys(stale, 1.0e20))
+
+    from proteus.outgas.atmodeller import _MODEL_CACHE
+
+    _MODEL_CACHE.clear()
+    with patch('atmodeller.EquilibriumModel') as model_cls:
+        calc_surface_pressures_atmodeller({'output': '/tmp/test'}, config, hf_row)
+    _MODEL_CACHE.clear()
+
+    assert not model_cls.called
+    assert [hf_row[k] for k in stale] == [0.0] * len(stale)
+
+
 @pytest.mark.physics_invariant
 def test_condensed_columns_present_and_zero_when_condensates_disabled():
     """Every volatile element has a condensed column, held at 0 without condensates.
