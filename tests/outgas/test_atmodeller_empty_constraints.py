@@ -149,6 +149,33 @@ def test_empty_constraints_from_o_budget_returns_an_empty_atmosphere():
     assert hf_row['P_surf'] == pytest.approx(0.0, abs=0.0)
 
 
+def test_empty_from_o_budget_row_keeps_a_composition_agni_accepts(monkeypatch):
+    """The empty from_O_budget return keeps every vmr and atm_kg_per_mol, as
+    run_desiccated does, so the next AGNI call builds its composition without the
+    zero-vmr raise (status 20) and goes to transparent mode on P_surf 0."""
+    agni = pytest.importorskip('proteus.atmos_clim.agni')
+    from proteus.utils.constants import gas_list
+
+    config = _make_user_constant_config(2.0)
+    config.planet.fO2_source = 'from_O_budget'
+    hf_row = _empty_row()
+    vmr = {g: 0.0 for g in gas_list} | {'H2O': 0.6, 'CO2': 0.3, 'N2': 0.1}
+    hf_row.update({f'{g}_vmr': v for g, v in vmr.items()}, atm_kg_per_mol=0.0251, P_surf=2.2)
+    status = []
+    monkeypatch.setattr(agni, 'UpdateStatusfile', lambda dirs, code: status.append(code))
+    with patch('atmodeller.EquilibriumModel') as em:
+        calc_surface_pressures_atmodeller({'output': '/tmp/test'}, config, hf_row)
+    em.assert_not_called()
+    cfg = MagicMock()
+    cfg.atmos_clim.agni.chemistry = 'none'
+    composition = agni._construct_voldict(cfg, hf_row, {'output': '/tmp/test'})
+    assert sum(composition.values()) == pytest.approx(1.0, rel=1e-12)
+    assert status == []
+    assert {g: hf_row[f'{g}_vmr'] for g in gas_list} == vmr
+    assert hf_row['atm_kg_per_mol'] == 0.0251
+    assert hf_row['P_surf'] == pytest.approx(0.0, abs=0.0)
+
+
 @pytest.mark.parametrize(
     'element,source',
     [(e, 'user_constant') for e in ('H', 'C', 'N', 'S', 'He', 'Xe')] + [('O', 'from_O_budget')],
