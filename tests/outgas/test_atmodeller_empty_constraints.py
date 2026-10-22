@@ -27,7 +27,7 @@ from proteus.outgas.atmodeller import (  # noqa: E402
     _MODEL_CACHE,
     calc_surface_pressures_atmodeller,
 )
-from proteus.utils.constants import gas_list  # noqa: E402
+from proteus.utils.constants import noble_gases, vol_list  # noqa: E402
 from tests.outgas.test_atmodeller import (  # noqa: E402
     _CALLIOPE_SPECIES_FIELDS,
     _hf_row_with_HS_budget,
@@ -92,7 +92,7 @@ def test_empty_constraints_user_constant_solves_o2_only():
     assert hf_row['O2_bar'] == pytest.approx(p_o2, rel=1e-6)
     assert hf_row['P_surf'] == hf_row['O2_bar']
     assert hf_row['O2_vmr'] == 1.0
-    others = {f'{s}_{f}': hf_row[f'{s}_{f}'] for s in gas_list if s != 'O2'
+    others = {f'{s}_{f}': hf_row[f'{s}_{f}'] for s in vol_list + noble_gases if s != 'O2'
               for f in _CALLIOPE_SPECIES_FIELDS}  # fmt: skip
     assert others == dict.fromkeys(others, 0.0)
     assert hf_row['C_kg_atm'] == 0.0

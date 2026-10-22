@@ -300,6 +300,12 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
     # the IW buffer constrains O and we exclude it from the mass
     # constraint here.
     fO2_source = config.planet.fO2_source
+    for element in ('H', 'C', 'N', 'S'):
+        total = float(hf_row.get(f'{element}_kg_total', 0.0))
+        if not np.isfinite(total):
+            raise ValueError(
+                f'{element}_kg_total is not finite ({total}) at the atmodeller call'
+            )
     constrained_elements = (
         ('H', 'C', 'N', 'S', 'O') if fO2_source == 'from_O_budget' else ('H', 'C', 'N', 'S')
     )
@@ -467,14 +473,14 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
     # pipeline reads this column to compute each iteration's debit).
     target_O_kg = mass_constraints.get('O') if fO2_source == 'from_O_budget' else None
 
-    if not mass_constraints:
+    if not mass_constraints and fO2_source == 'user_constant':
+        log.info('No volatile element budgets above threshold; solving the O2 buffer alone')
+    elif not mass_constraints:
         log.warning('No volatile element budgets above threshold; skipping atmodeller')
-        if fO2_source == 'from_O_budget':
-            # No solve ran, so the derived buffer offset is undefined.
-            # Leaving the user pre-seed in place would misrecord a skipped
-            # solve as "equilibrated at the user offset".
-            hf_row['fO2_shift_IW_derived'] = float('nan')
-            hf_row['O_res'] = float('nan')
+        # No solve ran, so the derived buffer offset is undefined; the user
+        # pre-seed would misrecord a skipped solve as equilibrated at that offset.
+        hf_row['fO2_shift_IW_derived'] = float('nan')
+        hf_row['O_res'] = float('nan')
         return
 
     if fO2_source == 'from_O_budget' and 'O' not in mass_constraints:
@@ -800,6 +806,18 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
             hf_row[f'{el}_kg_solid'] = float(hf_row.get(f'{el}_kg_solid', 0.0)) + max(
                 0.0, condensed
             )
+
+    for el in ('H', 'C', 'N', 'S'):
+        kg = (hf_row.get(f'{el}_kg_atm', 0.0), hf_row.get(f'{el}_kg_liquid', 0.0))
+        if el not in active_elements and any(kg):
+            raise RuntimeError(
+                f'{el} is outside the atmodeller solve but {el}_kg_atm, {el}_kg_liquid = '
+                f'{kg[0]:.6e}, {kg[1]:.6e} kg'
+            )
+    if not mass_constraints and hf_row['P_surf'] != hf_row['O2_bar']:
+        raise RuntimeError(
+            f'O2-only solve: P_surf {hf_row["P_surf"]} != O2_bar {hf_row["O2_bar"]}'
+        )
 
     # Total volatile oxygen (atmospheric + melt-dissolved), summed over the
     # O-bearing volatile species. Computed for every fO2 source so the
