@@ -168,3 +168,14 @@ def test_o2_only_network_exactly_when_no_budget_is_above_the_threshold(
     assert (solved == ('O2_g',)) == empty
     assert 'O2_g' in model.solve.call_args.kwargs['fugacity_constraints']
     assert float(np.squeeze(model.solve.call_args.kwargs['state'].temperature)) >= 1200.0
+
+
+@pytest.mark.physics_invariant
+def test_o2_only_solve_with_a_second_pressure_raises():
+    """On the O2-only path P_surf must equal O2_bar; an output that also gives He a
+    partial pressure while He has no budget raises."""
+    config = _make_user_constant_config(2.0)
+    model = _o2_output()
+    model.output.quick_look.return_value['He_g'] = np.array(1.0)
+    with pytest.raises(RuntimeError, match='O2-only solve: P_surf'):
+        _solve(config, _empty_row(), model)
