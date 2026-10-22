@@ -17,6 +17,7 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
+from scipy.constants import G
 
 pytest.importorskip('atmodeller')
 pytest.importorskip('hypothesis')
@@ -77,7 +78,9 @@ def _solve(config, hf_row, model=None):
 @pytest.mark.physics_invariant
 def test_empty_constraints_user_constant_solves_o2_only():
     """A real O2-only solve replaces a stale atmosphere: O2 at the IW+2 buffer, every
-    other species 0 in all 10 fields, C_kg_atm 0, and O_kg_total = O_kg_atm."""
+    other species 0 in all 10 fields, C_kg_atm 0, and O_kg_total = O_kg_atm. The O2
+    column uses atmodeller's surface gravity G M / R^2, which differs from the row's
+    gravity (9.81) by 7e-4, so rel 1e-4 tells the two apart."""
     from atmodeller.thermodata import IronWustiteBuffer
 
     config = _make_user_constant_config(2.0)
@@ -90,7 +93,7 @@ def test_empty_constraints_user_constant_solves_o2_only():
     solved = _solve(config, hf_row)
 
     p_o2 = 10.0 ** (float(np.squeeze(IronWustiteBuffer(0.0).log10_fugacity(2200.0, 1.0))) + 2.0)
-    g_planet = 6.6743e-11 * hf_row['M_planet'] / hf_row['R_int'] ** 2
+    g_planet = G * hf_row['M_planet'] / hf_row['R_int'] ** 2
     column = p_o2 * 1e5 * 4.0 * np.pi * hf_row['R_int'] ** 2 / g_planet
     assert solved == ('O2_g',)
     assert hf_row['O2_bar'] == pytest.approx(p_o2, rel=1e-6)
@@ -114,8 +117,8 @@ def test_empty_constraints_from_o_budget_returns_an_empty_atmosphere():
     hf_row.update(
         {f'{s}_{f}': 1.0 for s in vol_list + noble_gases for f in _CALLIOPE_SPECIES_FIELDS}
     )
-    totals = {'H': 1e7, 'C': 2e7, 'N': 3e7, 'S': 4e7, 'O': 5e7, 'He': -5.0}
-    hf_row.update({f'{g}_kg_total': 0.0 for g in noble_gases})
+    totals = {'H': 1e7, 'C': 2e7, 'N': 3e7, 'S': 4e7, 'O': 5e7,
+              'He': -5.0, 'Ne': -3.0, 'Ar': -2.0, 'Kr': -1.0, 'Xe': -0.5}  # fmt: skip
     hf_row.update({f'{e}_kg_total': v for e, v in totals.items()})
     hf_row.update(
         O2_bar=2.227, O2_kg_atm=1.1e19, P_surf=2.232, C_kg_atm=8.76e15, O_kg_atm=1.1e19
@@ -134,7 +137,10 @@ def test_empty_constraints_from_o_budget_returns_an_empty_atmosphere():
                if not (s in noble_gases and f in ('kg_total', 'mol_total'))}  # fmt: skip
     assert columns == dict.fromkeys(columns, 0.0)
     assert {e: hf_row[f'{e}_kg_total'] for e in totals} == totals
-    assert hf_row['He_mol_total'] == pytest.approx(-5.0 / eval_gas_mmw('He'), rel=1e-12)
+    mol = {g: hf_row[f'{g}_mol_total'] for g in noble_gases}
+    assert mol == pytest.approx(
+        {g: totals[g] / eval_gas_mmw(g) for g in noble_gases}, rel=1e-12
+    )
     reservoirs = {
         f'{e}_kg_{r}': hf_row[f'{e}_kg_{r}'] for e in 'HCNOS' for r in ('atm', 'liquid')
     }
