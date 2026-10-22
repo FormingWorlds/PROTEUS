@@ -61,6 +61,21 @@ def _step_cap_valid(instance, attribute, value):
         )
 
 
+def _valid_bool(instance, attribute, value):
+    """Require a boolean value."""
+    if not isinstance(value, bool):
+        raise TypeError(f'`{attribute.name}` must be a bool, got {value!r}')
+
+
+def _check_top_cell_dt_rel_dT_pair(aragog) -> None:
+    """Require top_cell_dt_rel_dT_solid <= top_cell_dt_rel_dT."""
+    if aragog.top_cell_dt_rel_dT_solid > aragog.top_cell_dt_rel_dT:
+        raise ValueError(
+            f'`top_cell_dt_rel_dT_solid` ({aragog.top_cell_dt_rel_dT_solid}) must be <= '
+            f'top_cell_dt_rel_dT ({aragog.top_cell_dt_rel_dT})'
+        )
+
+
 def valid_spider(instance, attribute, value):
     """SPIDER requires at least one energy transport term to be enabled."""
     if instance.module != 'spider':
@@ -145,6 +160,19 @@ class Spider:
     # subprocess output entirely (sp.DEVNULL); useful for batch runs
     # where the log files accumulate disk pressure.
     log_output: bool = field(default=True)
+
+
+def _check_aragog_top_cell_dt_limit_surface_bc(interior) -> None:
+    """Reject Aragog top_cell_dt_limit with grey_body surface boundary conditions."""
+    if (
+        interior.module == 'aragog'
+        and interior.aragog.top_cell_dt_limit
+        and interior.surface_bc_mode == 'grey_body'
+    ):
+        raise ValueError(
+            'interior_energetics.aragog.top_cell_dt_limit = true cannot be used with '
+            "interior_energetics.surface_bc_mode = 'grey_body'"
+        )
 
 
 def valid_aragog(instance, attribute, value):
@@ -448,6 +476,68 @@ class Aragog:
     matching field so both backends drive the same outer-loop convergence
     criterion."""
 
+    top_cell_dt_limit: bool = field(default=False, validator=_valid_bool)
+    """Limit the coupling time step by the top-cell radiative drain time tau_drain
+    (down to params.dt.minimum * escape.step_dt_floor_frac, below params.dt.minimum)
+    and keep hf_row['T_magma'], hf_row['T_surf'], and hf_row['Phi_global'] on the Aragog
+    solver state by skipping the tmagma_atol/tmagma_rtol post-step clip on steps where
+    tau_drain is finite and the step does not exceed tau_drain (staying active when the
+    escape step floor or an impact-landing snap-forward places the step above tau_drain);
+    planet.prevent_warming still clamps T_magma, T_surf, Phi_global, and F_int when active.
+    Incompatible with interior_energetics.surface_bc_mode = 'grey_body'; the rule is checked
+    when the config is loaded (a grid case fails when its written TOML is read back). A 1-point EOS
+    temperature lookahead probes S_trial = max(S_top - cp_eff * dT_allow / T_top, S_min + 300)
+    and replaces the step-start heat capacity cp_eff with the chord heat capacity
+    cp_chord = min(cp_eff, T_top * (S_top - S_trial) / (T_top - T_trial)) in the T_top form
+    whenever T(P_top, S_trial) falls more than dT_allow below T_top (T_top - T_trial > dT_allow
+    and S_top > S_trial), bounding the linearized unresupplied top-cell drop under the step's
+    linearization dS = q / T_top with q = cp_chord * dT_allow. A lookahead trial that reaches
+    or spans the flat part of the PALEOS solid table (T held at T_sol from the last node below
+    S_sol) can give a step that exceeds dT_allow; this is shown on constructed slice states, and
+    no step of the coupled runs exceeded dT_allow. On an energy basis (integral of T dS = q at
+    constant P_top) the drop also exceeds dT_allow in the liquid, because the exact entropy step
+    is larger than q / T_top: the PALEOS slice scans give at most 1.106 dT_allow at
+    top_cell_dt_rel_dT = 0.08 and 1.204 at 0.15 for T_surf / T_top <= 1.02, and up to 1.110
+    and 1.211 at 1.05. Using T_mean = 0.5 * (T_top + T_trial) in
+    the chord numerator would reduce cp_chord by the fraction (T_top - T_trial) / (2 * T_top).
+    See docs/Explanations/coupling_loop.md for the measured run results and EOS evaluations."""
+
+    top_cell_dt_rel_dT: float = field(
+        default=0.08,
+        converter=float,
+        validator=(gt(0.0), le(0.15)),
+    )
+    """Relative surface-temperature change allowance eta_T at a top-cell melt fraction
+    >= 0.40 (mush and liquid) for the top-cell drain-time step limit; must lie in (0, 0.15].
+    A value below 0.08 also needs top_cell_dt_rel_dT_solid set at or below it; the pair is
+    checked when the config is loaded.
+    Sets the allowed temperature scale dT_allow = eta_eff * T_surf for the step energy
+    q = cp_chord * dT_allow, bounding the linearized unresupplied top-cell temperature drop
+    T_top - T(P_top, S_top - q / T_top) <= dT_allow under the step's linearization
+    dS = q / T_top with the chord heat capacity cp_chord in the T_top form. A lookahead trial
+    that reaches or spans the flat part of the PALEOS solid table (T held at T_sol from the last
+    node below S_sol) can give a step that exceeds dT_allow; this is shown on constructed slice
+    states, and no step of the coupled runs exceeded dT_allow. On an energy basis (integral of
+    T dS = q at constant P_top) the drop also exceeds dT_allow in the liquid: at most 1.106
+    dT_allow at 0.08 and 1.204 at 0.15 for T_surf / T_top <= 1.02, and up to 1.110 and 1.211
+    at 1.05. See
+    docs/Explanations/coupling_loop.md for the measured run results and EOS evaluations."""
+
+    top_cell_dt_rel_dT_solid: float = field(
+        default=0.08,
+        converter=float,
+        validator=(gt(0.0), le(0.15)),
+    )
+    """Relative surface-temperature change allowance eta_T_solid at a fully solid
+    top cell (top-cell melt fraction 0), ramped linearly to top_cell_dt_rel_dT at
+    a top-cell melt fraction of 0.40; must lie in (0, top_cell_dt_rel_dT] (up to 0.15), with
+    the pair checked when the config is loaded. See
+    docs/Explanations/coupling_loop.md for the measured run results and EOS evaluations."""
+
+    def __attrs_post_init__(self):
+        """Check top_cell_dt_rel_dT_solid against top_cell_dt_rel_dT once both are set."""
+        _check_top_cell_dt_rel_dT_pair(self)
+
 
 def valid_interiordummy(instance, attribute, value):
     """Dummy interior requires the liquidus to sit above the solidus."""
@@ -635,9 +725,15 @@ class Interior:
         Eddy diffusivity floor [m2 s-1]; prevents mixing-length transport
         from freezing out.
     tmagma_atol: float
-        Maximum absolute change in T_magma per PROTEUS step [K].
+        Maximum increase in T_magma and T_surf per PROTEUS step (maximum
+        increase atol + rtol * T_magma_prev) [K]; disabled on Aragog steps
+        where interior_energetics.aragog.top_cell_dt_limit is true,
+        tau_drain is finite, and the step does not exceed tau_drain.
     tmagma_rtol: float
-        Maximum relative change in T_magma per PROTEUS step.
+        Maximum relative increase in T_magma and T_surf per PROTEUS step
+        (maximum increase atol + rtol * T_magma_prev); disabled on Aragog
+        steps where interior_energetics.aragog.top_cell_dt_limit is true,
+        tau_drain is finite, and the step does not exceed tau_drain.
     tmagma_tides_step: float
         Maximum change in T_magma allowed when tides are active [K].
     param_utbl: bool
@@ -648,6 +744,7 @@ class Interior:
         Surface boundary condition for SPIDER/Aragog: 'flux' (prescribed
         F_atm from the atmosphere module) or 'grey_body' (native grey-body
         boundary condition computed inside the interior solver).
+        Incompatible with interior_energetics.aragog.top_cell_dt_limit = true.
     const_properties: bool
         Enable constant-properties mode: bypass the EOS tables and use the
         analytical T(S) = T_ref * exp((S - S_ref) / Cp) relationship, for
@@ -742,28 +839,18 @@ class Interior:
     param_utbl: bool = field(default=False)
     param_utbl_const: float = field(default=1e-7, validator=gt(0))
 
-    # Surface boundary condition mode for SPIDER/Aragog.
-    #
-    # - 'flux' (default): prescribed heat flux from hf_row['F_atm']. SPIDER
-    #   uses -SURFACE_BC 4, Aragog uses outer_boundary_condition=4. The Python
-    #   atmosphere module (dummy, AGNI, JANUS) is responsible for computing
-    #   F_atm, which the interior consumes unchanged for the full duration of
-    #   the coupling step.
-    #
-    # - 'grey_body': native grey-body BC computed inside the interior solver
-    #   per CVode substep from the current top-cell T. SPIDER uses -SURFACE_BC 1
-    #   -emissivity0 1.0, Aragog uses outer_boundary_condition=1 with
-    #   emissivity=1. Both compute F = sigma * (T_surf^4 - T_eqm^4) using the
-    #   T_eqm value in hf_row['T_eqm']. This is the formulation used by
-    #   SPIDER-Aragog parity tests: both solvers follow the identical physical
-    #   law so their cooling trajectories can be compared directly. The
-    #   Python-side atmosphere module still runs to populate diagnostic
-    #   helpfile fields (F_olr, F_sct, R_obs, ...), but its F_atm output is
-    #   not used by the interior.
     surface_bc_mode: str = field(
         default='flux',
         validator=in_(('flux', 'grey_body')),
     )
+    """Surface boundary condition mode for SPIDER and Aragog: 'flux' or 'grey_body'.
+    'flux' consumes prescribed F_atm from the atmosphere module as the upper boundary flux.
+    'grey_body' evaluates radiative surface cooling sigma * (T_surf^4 - T_eqm^4) inside the
+    interior solver per substep from current top-cell T (SPIDER uses -SURFACE_BC 1
+    -emissivity0 1.0; Aragog uses outer_boundary_condition=1 with emissivity=1). The
+    atmosphere module still runs to populate diagnostic helpfile fields (F_olr, F_sct,
+    R_obs), but its F_atm output is not used by the interior. Incompatible with
+    interior_energetics.aragog.top_cell_dt_limit = true."""
 
     # -----------------------------------------------------------------
     # EOS and rheology parameters exposed to config. Defaults match
@@ -899,7 +986,10 @@ class Interior:
         equal to the resolved default still counts as set and is not
         overridden by an alias.
 
-        All aliases will be removed in a future release.
+        All aliases will be removed in a future release. The Aragog cross-field
+        checks run last: the top_cell_dt_rel_dT pair (again, for an aragog section
+        changed after its own construction) and top_cell_dt_limit against
+        surface_bc_mode = 'grey_body'.
         """
         # Whether each field was supplied is tracked via the sentinel
         # default, not by value-comparison against the resolved default.
@@ -953,6 +1043,9 @@ class Interior:
         # Resolve the sentinel to the real default if nothing set rtol.
         if not rtol_set:
             object.__setattr__(self, 'rtol', default_rtol(self.module))
+
+        _check_top_cell_dt_rel_dT_pair(self.aragog)
+        _check_aragog_top_cell_dt_limit_surface_bc(self)
 
 
 # Thematic grouping for the generated configuration reference. Each entry is

@@ -2130,6 +2130,7 @@ def _make_run_interior_config(*, prevent_warming: bool, module: str = 'dummy'):
     config.interior_energetics.heat_radiogenic = False
     config.interior_energetics.tmagma_atol = 20.0
     config.interior_energetics.tmagma_rtol = 0.0
+    config.interior_energetics.aragog.top_cell_dt_limit = False
     config.interior_energetics.boundary.Tsurf_event_change = 25.0
     config.planet.prevent_warming = prevent_warming
     config.params.stop.time.maximum = 1e9
@@ -7900,3 +7901,176 @@ def test_remelt_aragog_leaves_the_core_temperature_alone_without_the_core_module
 
     assert solver.set_calls == []
     assert solver._T_core_init is None
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_run_interior_top_cell_dt_limit_off_applies_tmagma_clamp():
+    """With top_cell_dt_limit = False on Aragog, run_interior still applies the
+    tmagma_atol/rtol post-step clip to T_magma, Phi_global, and T_surf."""
+    from proteus.config._interior import Aragog
+    from proteus.interior_energetics.wrapper import run_interior
+
+    aragog_cfg = Aragog(top_cell_dt_limit=False)
+    assert aragog_cfg.top_cell_dt_limit is False
+
+    config = _make_run_interior_config(prevent_warming=False, module='aragog')
+    config.interior_energetics.aragog = aragog_cfg
+    hf_all, hf_row = _make_run_interior_state(prev_f_int=0.2)
+    out = {
+        'T_magma': 3050.0,
+        'T_surf': 2850.0,
+        'Phi_global': 0.7,
+        'F_int': 0.15,
+        'M_mantle': 4.0e24,
+        'M_mantle_liquid': 1.0e24,
+        'M_mantle_solid': 3.0e24,
+        'M_core': 2.0e24,
+    }
+    interior_o = MagicMock(spec=Interior_t)
+    interior_o.ic = 2
+    interior_o.dt = 10.0
+    interior_o.aragog_fail_count = 0
+    # A valid drain-cap flag must not skip the clip while the option is off.
+    interior_o._tau_drain_cap_valid = True
+    runner = MagicMock()
+    runner.run_solver.return_value = (110.0, out)
+
+    with (
+        patch('proteus.interior_energetics.aragog.AragogRunner', return_value=runner),
+        patch('proteus.interior_energetics.wrapper.update_planet_mass'),
+    ):
+        run_interior({}, config, hf_all, hf_row, interior_o, MagicMock(), verbose=False)
+
+    assert hf_row['T_magma'] == pytest.approx(3020.0, rel=1e-12)
+    assert hf_row['T_surf'] == pytest.approx(2820.0, rel=1e-12)
+    assert hf_row['Phi_global'] == pytest.approx(0.4, rel=1e-12)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_run_interior_top_cell_dt_limit_on_skips_tmagma_clip_but_keeps_prevent_warming():
+    """With top_cell_dt_limit = True on Aragog, run_interior skips the tmagma_atol/rtol
+    post-step clip while leaving prevent_warming and the F_int floor active."""
+    from proteus.config._interior import Aragog
+    from proteus.interior_energetics.wrapper import run_interior
+
+    config = _make_run_interior_config(prevent_warming=False, module='aragog')
+    config.interior_energetics.aragog = Aragog(top_cell_dt_limit=True)
+    hf_all, hf_row = _make_run_interior_state(prev_f_int=0.2)
+    out = {
+        'T_magma': 3050.0,
+        'T_surf': 2850.0,
+        'Phi_global': 0.7,
+        'F_int': 0.15,
+        'M_mantle': 4.0e24,
+        'M_mantle_liquid': 1.0e24,
+        'M_mantle_solid': 3.0e24,
+        'M_core': 2.0e24,
+    }
+    interior_o = MagicMock(spec=Interior_t)
+    interior_o.ic = 2
+    interior_o.dt = 10.0
+    interior_o.aragog_fail_count = 0
+    interior_o._tau_drain_cap_valid = True
+    runner = MagicMock()
+    runner.run_solver.return_value = (110.0, out)
+
+    with (
+        patch('proteus.interior_energetics.aragog.AragogRunner', return_value=runner),
+        patch('proteus.interior_energetics.wrapper.update_planet_mass'),
+    ):
+        run_interior({}, config, hf_all, hf_row, interior_o, MagicMock(), verbose=False)
+
+    # With prevent_warming=False and top_cell_dt_limit=True, the +50 K step is unclipped.
+    assert hf_row['T_magma'] == pytest.approx(3050.0, rel=1e-12)
+    assert hf_row['T_surf'] == pytest.approx(2850.0, rel=1e-12)
+    assert hf_row['Phi_global'] == pytest.approx(0.7, rel=1e-12)
+
+    # With prevent_warming=True and top_cell_dt_limit=True, prevent_warming still clamps
+    # to the previous row and floors F_int at 1e-8.
+    config_pw = _make_run_interior_config(prevent_warming=True, module='aragog')
+    config_pw.interior_energetics.aragog = Aragog(top_cell_dt_limit=True)
+    hf_all_pw, hf_row_pw = _make_run_interior_state(prev_f_int=-3.0)
+    out_pw = dict(out, F_int=-1.0)
+    runner_pw = MagicMock()
+    runner_pw.run_solver.return_value = (110.0, out_pw)
+
+    with (
+        patch('proteus.interior_energetics.aragog.AragogRunner', return_value=runner_pw),
+        patch('proteus.interior_energetics.wrapper.update_planet_mass'),
+    ):
+        run_interior(
+            {}, config_pw, hf_all_pw, hf_row_pw, interior_o, MagicMock(), verbose=False
+        )
+
+    assert hf_row_pw['T_magma'] == pytest.approx(3000.0, rel=1e-12)
+    assert hf_row_pw['T_surf'] == pytest.approx(2800.0, rel=1e-12)
+    assert hf_row_pw['Phi_global'] == pytest.approx(0.4, rel=1e-12)
+    assert hf_row_pw['F_int'] == pytest.approx(1.0e-8, rel=1e-12)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_run_interior_top_cell_dt_limit_on_applies_tmagma_clip_when_tau_drain_invalid_or_spider():
+    """When top_cell_dt_limit = True but _tau_drain_cap_valid is False (invalid tau_drain)
+    or module != 'aragog', run_interior still applies the tmagma_atol/rtol post-step clip."""
+    from proteus.config._interior import Aragog
+    from proteus.interior_energetics.wrapper import run_interior
+
+    config = _make_run_interior_config(prevent_warming=False, module='aragog')
+    config.interior_energetics.aragog = Aragog(top_cell_dt_limit=True)
+    hf_all, hf_row = _make_run_interior_state(prev_f_int=0.2)
+    out = {
+        'T_magma': 3050.0,
+        'T_surf': 2850.0,
+        'Phi_global': 0.7,
+        'F_int': 0.15,
+        'M_mantle': 4.0e24,
+        'M_mantle_liquid': 1.0e24,
+        'M_mantle_solid': 3.0e24,
+        'M_core': 2.0e24,
+    }
+    interior_o = MagicMock(spec=Interior_t)
+    interior_o.ic = 2
+    interior_o.dt = 10.0
+    interior_o.aragog_fail_count = 0
+    interior_o._tau_drain_cap_valid = False
+    runner = MagicMock()
+    runner.run_solver.return_value = (110.0, out)
+
+    with (
+        patch('proteus.interior_energetics.aragog.AragogRunner', return_value=runner),
+        patch('proteus.interior_energetics.wrapper.update_planet_mass'),
+    ):
+        run_interior({}, config, hf_all, hf_row, interior_o, MagicMock(), verbose=False)
+
+    assert hf_row['T_magma'] == pytest.approx(3020.0, rel=1e-12)
+    assert hf_row['T_surf'] == pytest.approx(2820.0, rel=1e-12)
+    assert hf_row['Phi_global'] == pytest.approx(0.4, rel=1e-12)
+
+    config_spider = _make_run_interior_config(prevent_warming=False, module='spider')
+    config_spider.interior_energetics.aragog = Aragog(top_cell_dt_limit=True)
+    hf_all_sp, hf_row_sp = _make_run_interior_state(prev_f_int=0.2)
+    hf_row_sp['R_int'] = 6.371e6
+    interior_sp = MagicMock(spec=Interior_t)
+    interior_sp.ic = 2
+    interior_sp.dt = 10.0
+    interior_sp.spider_fail_count = 0
+    interior_sp._tau_drain_cap_valid = True
+
+    with (
+        patch('proteus.interior_energetics.spider.RunSPIDER'),
+        patch(
+            'proteus.interior_energetics.spider.ReadSPIDER',
+            return_value=(110.0, dict(out)),
+        ),
+        patch('proteus.interior_energetics.wrapper.update_planet_mass'),
+    ):
+        run_interior(
+            {}, config_spider, hf_all_sp, hf_row_sp, interior_sp, MagicMock(), verbose=False
+        )
+
+    assert hf_row_sp['T_magma'] == pytest.approx(3020.0, rel=1e-12)
+    assert hf_row_sp['T_surf'] == pytest.approx(2820.0, rel=1e-12)
+    assert hf_row_sp['Phi_global'] == pytest.approx(0.4, rel=1e-12)

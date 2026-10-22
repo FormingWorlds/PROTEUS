@@ -240,6 +240,46 @@ def vulcan_problem(config: Config) -> str | None:
     return f'VULCAN module is missing or out of date: {vulcan.message}. Fix: {vulcan.fix_cmd}'
 
 
+def fwl_io_problem() -> str | None:
+    """Return why the installed fwl-io is below ``FWL_IO_FLOOR``, with the fix, or None.
+
+    Every run reads its datasets through fwl-io, so the check holds for every config.
+    A version string that does not parse is no evidence of an old fwl-io: it only warns.
+    """
+    from importlib.metadata import PackageNotFoundError, version
+
+    from packaging.version import InvalidVersion, Version
+
+    from proteus.data import FWL_IO_FLOOR
+
+    installed = None
+    try:
+        installed = version('fwl-io')
+        if Version(installed) >= Version(FWL_IO_FLOOR):
+            return None
+    except PackageNotFoundError:
+        return f'fwl-io is not installed. Fix: pip install "fwl-io>={FWL_IO_FLOOR}"'
+    except (InvalidVersion, TypeError, KeyError):  # TypeError, KeyError: no version field
+        log.warning(
+            f'cannot parse the installed fwl-io version {installed!r}; '
+            f'PROTEUS needs fwl-io>={FWL_IO_FLOOR}'
+        )
+        return None
+    fix = f'pip install -U "fwl-io>={FWL_IO_FLOOR}"'
+    try:  # the doctor's fix knows an editable checkout; it is advice, so a failure keeps pip
+        from packaging.requirements import Requirement
+
+        from proteus.doctor import check_python_package
+
+        fix = (
+            check_python_package('fwl-io', Requirement(f'fwl-io>={FWL_IO_FLOOR}')).fix_cmd
+            or fix
+        )
+    except Exception as exc:
+        log.warning(f'the doctor could not build the fwl-io fix: {exc}')
+    return f'fwl-io {installed} is below the version PROTEUS needs ({FWL_IO_FLOOR}). Fix: {fix}'
+
+
 def validate_module_versions(dirs: dict, config: Config):
     """Raise if module versions are incompatible."""
 
@@ -365,6 +405,11 @@ def validate_module_versions(dirs: dict, config: Config):
     # Orbit module
     if config.orbit.module == 'obliqua':
         valid &= _valid_ver(_get_obliqua_version(dirs), OBLIQUA_MIN_VERSION, 'Obliqua')
+
+    # Data layer: every dataset is read through fwl-io
+    if problem := fwl_io_problem():
+        log.error(problem)
+        valid = False
 
     # Atmospheric chemistry module, when mode runs it: its floor sits in an extra, which
     # _get_expver misreads

@@ -5391,3 +5391,140 @@ def test_the_runner_hands_the_helpfile_table_to_the_solver_setup():
 
     assert setup.call_args.kwargs == {'hf_all': hf_all}
     assert setup.call_args.args[3] == pytest.approx(100.0)
+
+
+@pytest.mark.unit
+def test_aragog_runner_resume_top_cell_dt_limit_on_caps_first_step():
+    """On resume with top_cell_dt_limit = True, AragogRunner computes dt once after
+    setup_or_update_solver populates aragog_solver and updates end_time."""
+    from proteus.config._interior import Aragog
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    config = SimpleNamespace(
+        interior_energetics=SimpleNamespace(
+            module='aragog',
+            aragog=Aragog(top_cell_dt_limit=True),
+        )
+    )
+    hf_row = {'Time': 3102.5}
+    hf_all = MagicMock()
+    interior_o = SimpleNamespace(aragog_solver=None, ic=2)
+    populated_solver = SimpleNamespace(
+        parameters=SimpleNamespace(solver=SimpleNamespace(end_time=0.0))
+    )
+    seen_solvers: list[object] = []
+    setup_dts: list[float] = []
+
+    def _fake_compute(cfg, dirs, row, table, io):
+        seen_solvers.append(io.aragog_solver)
+        return 100.0 if io.aragog_solver is None else 2.75
+
+    def _fake_setup(cfg, row, io, dt, dirs, hf_all=None):
+        setup_dts.append(float(dt))
+        io.aragog_solver = populated_solver
+        populated_solver.parameters.solver.end_time = row['Time'] + dt
+
+    with (
+        patch.object(AragogRunner, 'setup_logger'),
+        patch.object(AragogRunner, 'compute_time_step', side_effect=_fake_compute) as mock_dt,
+        patch.object(AragogRunner, 'setup_or_update_solver', side_effect=_fake_setup),
+    ):
+        AragogRunner(config, {'output': 'run'}, hf_row, hf_all, interior_o)
+
+    assert mock_dt.call_count == 1
+    assert setup_dts == [0.0]
+    assert seen_solvers == [populated_solver]
+    assert populated_solver.parameters.solver.end_time == pytest.approx(3105.25, rel=1e-12)
+
+    ic1_solver = SimpleNamespace(
+        parameters=SimpleNamespace(solver=SimpleNamespace(end_time=0.0))
+    )
+    interior_ic1 = SimpleNamespace(aragog_solver=None, ic=1)
+    ic1_dts: list[float] = []
+
+    def _fake_setup_ic1(cfg, row, io, dt, dirs, hf_all=None):
+        ic1_dts.append(float(dt))
+        io.aragog_solver = ic1_solver
+        ic1_solver.parameters.solver.end_time = row['Time'] + dt
+
+    with (
+        patch.object(AragogRunner, 'setup_logger'),
+        patch.object(AragogRunner, 'compute_time_step', return_value=50.0) as mock_dt_ic1,
+        patch.object(AragogRunner, 'setup_or_update_solver', side_effect=_fake_setup_ic1),
+    ):
+        AragogRunner(config, {'output': 'run'}, {'Time': 0.0}, hf_all, interior_ic1)
+
+    assert mock_dt_ic1.call_count == 1
+    assert ic1_dts == [50.0]
+    assert ic1_solver.parameters.solver.end_time == pytest.approx(50.0, rel=1e-12)
+
+
+@pytest.mark.unit
+def test_aragog_runner_existing_solver_top_cell_dt_limit_on_computes_dt_once_before_setup():
+    """With an existing aragog_solver and top_cell_dt_limit = True, AragogRunner computes dt
+    once before setup_or_update_solver and passes that dt to setup_or_update_solver."""
+    from proteus.config._interior import Aragog
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    config = SimpleNamespace(
+        interior_energetics=SimpleNamespace(
+            module='aragog',
+            aragog=Aragog(top_cell_dt_limit=True),
+        )
+    )
+    hf_row = {'Time': 3102.5}
+    hf_all = MagicMock()
+    existing_solver = SimpleNamespace(
+        parameters=SimpleNamespace(solver=SimpleNamespace(end_time=0.0))
+    )
+    interior_o = SimpleNamespace(aragog_solver=existing_solver, ic=2)
+    setup_dts: list[float] = []
+
+    def _fake_setup(cfg, row, io, dt, dirs, hf_all=None):
+        setup_dts.append(float(dt))
+        existing_solver.parameters.solver.end_time = row['Time'] + dt
+
+    with (
+        patch.object(AragogRunner, 'setup_logger'),
+        patch.object(AragogRunner, 'compute_time_step', return_value=42.5) as mock_dt,
+        patch.object(AragogRunner, 'setup_or_update_solver', side_effect=_fake_setup),
+    ):
+        AragogRunner(config, {'output': 'run'}, hf_row, hf_all, interior_o)
+
+    assert mock_dt.call_count == 1
+    assert setup_dts == [pytest.approx(42.5, rel=1e-12)]
+    assert existing_solver.parameters.solver.end_time == pytest.approx(3145.0, rel=1e-12)
+
+
+@pytest.mark.unit
+def test_aragog_runner_resume_top_cell_dt_limit_off_no_recompute():
+    """With top_cell_dt_limit = False, AragogRunner computes the time step once on resume."""
+    from proteus.config._interior import Aragog
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    config = SimpleNamespace(
+        interior_energetics=SimpleNamespace(
+            module='aragog',
+            aragog=Aragog(top_cell_dt_limit=False),
+        )
+    )
+    hf_row = {'Time': 3102.5}
+    hf_all = MagicMock()
+    interior_o = SimpleNamespace(aragog_solver=None, ic=2)
+    populated_solver = SimpleNamespace(
+        parameters=SimpleNamespace(solver=SimpleNamespace(end_time=0.0))
+    )
+
+    def _fake_setup(cfg, row, io, dt, dirs, hf_all=None):
+        io.aragog_solver = populated_solver
+        populated_solver.parameters.solver.end_time = row['Time'] + dt
+
+    with (
+        patch.object(AragogRunner, 'setup_logger'),
+        patch.object(AragogRunner, 'compute_time_step', return_value=100.0) as mock_dt,
+        patch.object(AragogRunner, 'setup_or_update_solver', side_effect=_fake_setup),
+    ):
+        AragogRunner(config, {'output': 'run'}, hf_row, hf_all, interior_o)
+
+    assert mock_dt.call_count == 1
+    assert populated_solver.parameters.solver.end_time == pytest.approx(3202.5, rel=1e-12)
