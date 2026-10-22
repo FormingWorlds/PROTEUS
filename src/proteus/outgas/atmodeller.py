@@ -554,9 +554,8 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
 
     # A species outside the solve reports 0, as in CALLIOPE; the loops below fill the others
     for proteus_name in _atm_gas_species:
-        if proteus_name in gas_list:
-            hf_row[f'{proteus_name}_bar'] = 0.0
-            hf_row[f'{proteus_name}_kg_atm'] = 0.0
+        hf_row[f'{proteus_name}_bar'] = 0.0
+        hf_row[f'{proteus_name}_kg_atm'] = 0.0
 
     P_total = 0.0
     for atm_name, p_bar in quick_look.items():
