@@ -418,11 +418,24 @@ def _section_classes():
         x = attrs.field(default=1, validator=attrs.validators.instance_of(int))
         __attrs_post_init__ = _shared_check
 
+    @attrs.define
+    class _PreInit:
+        a = attrs.field(default=1, converter=int)
+
+        def __attrs_pre_init__(self):
+            raise ValueError('pre-init failed')
+
+    @attrs.define
+    class _Inherited(_Converted):
+        c = attrs.field(default=3, converter=int)
+
     return {
         'validated': _Validated,
         'converted': _Converted,
         'reading': _Reading,
         'aliased': _Aliased,
+        'pre_init': _PreInit,
+        'inherited': _Inherited,
     }
 
 
@@ -434,12 +447,15 @@ def _section_classes():
         ('converted', 'a and b clash'),
         ('reading', 'x below y'),
         ('aliased', 'shared check failed'),
+        ('pre_init', 'pre-init failed'),
+        ('inherited', 'a and b clash'),
     ],
 )
 def test_error_lines_names_no_field_for_a_post_init_error(shape, reason):
     """An error from __attrs_post_init__ concerns the section, not the field checked last,
     whether the post-init reads self or not, whether the fields have validators or
-    converters, and whatever name the post-init function has."""
+    converters, whatever name the post-init function has, and also for a pre-init and a
+    post-init inherited from a base class."""
     import cattrs
 
     from proteus.config import _error_lines
