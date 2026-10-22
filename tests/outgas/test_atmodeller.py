@@ -850,14 +850,15 @@ def test_a_species_that_leaves_the_solve_reports_zero_in_every_field():
 @pytest.mark.physics_invariant
 def test_noble_gas_without_total_mass_reports_zero_atmosphere():
     """A noble gas in quick_look with no output entry ends with 0 in its pressure,
-    mixing ratio, atmosphere and melt columns, not the quick_look values, and keeps
-    its escape-owned kg_total."""
+    mixing ratio, atmosphere, melt and solid columns, not the quick_look values, keeps
+    its escape-owned kg_total and derives mol_total from it."""
     pytest.importorskip('atmodeller')
     config = _make_user_constant_config(0.0)
     hf_row = _hf_row_with_HS_budget()
     he_kg_total = 1.0e19
     hf_row['He_kg_total'] = he_kg_total
-    hf_row.update({f'He_{f}': 1.0e10 for f in ('kg_liquid', 'mol_atm', 'mol_liquid')})
+    seeded = ('kg_liquid', 'kg_solid', 'mol_atm', 'mol_liquid', 'mol_solid')
+    hf_row.update({f'He_{f}': 1.0e10 for f in seeded})
 
     out = MagicMock()
     out.quick_look.return_value = {
@@ -884,7 +885,7 @@ def test_noble_gas_without_total_mass_reports_zero_atmosphere():
         calc_surface_pressures_atmodeller({'output': '/tmp/test'}, config, hf_row)
     _MODEL_CACHE.clear()
 
-    zeroed = ('bar', 'vmr', 'kg_atm', 'kg_liquid', 'mol_atm', 'mol_liquid')
+    zeroed = ('bar', 'vmr', 'kg_atm', *seeded)
     assert {f: hf_row[f'He_{f}'] for f in zeroed} == dict.fromkeys(zeroed, 0.0)
     assert hf_row['He_kg_total'] == he_kg_total
     assert hf_row['He_mol_total'] == pytest.approx(he_kg_total / eval_gas_mmw('He'), rel=1e-12)
