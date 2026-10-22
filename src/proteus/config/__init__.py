@@ -119,17 +119,17 @@ def _checked_field(exc: BaseException) -> str:
     tb = exc.__traceback__
     while tb is not None and not tb.tb_frame.f_code.co_filename.startswith('<attrs generated'):
         tb = tb.tb_next
-    if tb is None or (
-        tb.tb_next is not None and tb.tb_next.tb_frame.f_code.co_name == '__attrs_post_init__'
-    ):
+    if tb is None:
         return ''
     called = [
         i.argval
         for i in dis.get_instructions(tb.tb_frame.f_code)
         if i.offset <= tb.tb_lasti
-        and str(i.argval).startswith(('__attr_converter_', '__attr_validator_'))
+        and str(i.argval).startswith(
+            ('__attr_converter_', '__attr_validator_', '__attrs_post_init__')
+        )
     ]
-    if not called:
+    if not called or called[-1] == '__attrs_post_init__':
         return ''
     kind, _, name = called[-1].removeprefix('__attr_').partition('_')
     own = (f.f_code for f, _ in traceback.walk_tb(tb.tb_next))
