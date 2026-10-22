@@ -12,7 +12,6 @@ import os
 import shutil
 import subprocess
 import time
-from collections.abc import Iterable, Mapping
 from copy import deepcopy
 from datetime import datetime
 from getpass import getuser
@@ -213,7 +212,7 @@ class Grid:
         why = direct_values_error(values)
         if why:
             raise ValueError(f"direct dimension '{name}' {why}")
-        values = list(values)
+        values = list(values)  # a tuple or a 1-D array
         the_list = list(dict.fromkeys(values))  # written order, duplicates removed
         if (not isinstance(values[0], str)) and sort:  # sort if numeric
             the_list = sorted(the_list)
@@ -648,22 +647,24 @@ GRID_SETTINGS = frozenset(
 )
 
 
-# Keys each dimension method reads from its table, in the order of its Grid setter.
 def direct_values_error(values) -> str | None:
     """Return why a direct grid axis cannot be built from ``values``, or None if it can.
 
-    The axis needs a non-empty list of numbers and booleans, or of strings: duplicates are
-    removed and numbers sorted, which has no defined result for a NaN (it equals nothing,
-    itself included) or for strings beside other values.
+    The axis needs a non-empty list, tuple or 1-D array of numbers and booleans, or of
+    strings: duplicates are removed and numbers sorted, which has no defined result for a
+    NaN (it equals nothing, itself included) or for strings beside other values.
     """
-    if isinstance(values, (str, bytes, Mapping)) or not isinstance(values, Iterable):
+    if not (
+        isinstance(values, (list, tuple))
+        or (isinstance(values, np.ndarray) and values.ndim == 1)
+    ):
         return f'is not a list of values: {values!r}'
     values = list(values)
     if not values:
         return 'has no values'
     for v in values:
-        if not isinstance(v, (Real, str)):
-            return f'holds {v!r}, which is not a number, boolean or string'
+        if not isinstance(v, (Real, np.bool_, str)):
+            return f'holds {v!r}, which is not a real number, boolean or string'
     if any(v != v for v in values):
         return 'holds NaN, which cannot be deduplicated or ordered'
     first = isinstance(values[0], str)
@@ -673,6 +674,7 @@ def direct_values_error(values) -> str | None:
     return None
 
 
+# Keys each dimension method reads from its table, in the order of its Grid setter.
 DIMENSION_METHODS = {
     'direct': ('values',),
     'linspace': ('start', 'stop', 'count'),
