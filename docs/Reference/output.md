@@ -310,6 +310,14 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | `M_accreted_rock` | `kg` | cumulative rock mass added by giant impacts | `accretion/wrapper.py` | always | accretion, main loop |
 | `n_impacts_applied` | `1` | count of giant impacts applied | `accretion/wrapper.py` | always | accretion, interior_energetics |
 | `M_volatile_change` | `kg` | cumulative element mass added to the Zalmoxis target : delivered (rock O and init-stage impacts excluded) minus stripped minus escaped (rock vapour and sub-threshold zeroing included) minus removed at desiccation | `interior_struct/common.py` | interior_struct.module = "zalmoxis" | interior_struct |
+| `C_cd_activity` | `1` | activity; 1 = saturated | `outgas/atmodeller.py` | outgas.module = "atmodeller" | plot |
+| `C_cd_kg` | `kg` | condensed mass | `outgas/atmodeller.py` | outgas.module = "atmodeller" | plot |
+| `S_cd_activity` | `1` | activity; 1 = saturated | `outgas/atmodeller.py` | outgas.module = "atmodeller" | plot |
+| `S_cd_kg` | `kg` | condensed mass | `outgas/atmodeller.py` | outgas.module = "atmodeller" | plot |
+| `H2O_cd_activity` | `1` | activity; 1 = saturated | `outgas/atmodeller.py` | outgas.module = "atmodeller" | plot |
+| `H2O_cd_kg` | `kg` | condensed mass | `outgas/atmodeller.py` | outgas.module = "atmodeller" | plot |
+| `H2O4S_cd_activity` | `1` | activity; 1 = saturated | `outgas/atmodeller.py` | outgas.module = "atmodeller" | plot |
+| `H2O4S_cd_kg` | `kg` | condensed mass | `outgas/atmodeller.py` | outgas.module = "atmodeller" | plot |
 | `H2O_kg_trapped` | `kg` | mass trapped in the solid mantle | `outgas/trapping.py` | always | outgas |
 | `CO2_kg_trapped` | `kg` | mass trapped in the solid mantle | `outgas/trapping.py` | always | outgas |
 | `O2_kg_trapped` | `kg` | mass trapped in the solid mantle | `outgas/trapping.py` | always | outgas |
@@ -834,6 +842,11 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | `S_kg_solid` | `kg` | mass in solid mantle | `outgas/atmodeller.py`<br>`outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/trapping.py`<br>`outgas/wrapper.py` | always; outgas.module = "atmodeller"; outgas.module = "calliope"; outgas.module = "dummy" | outgas, utils |
 | `S_kg_liquid` | `kg` | mass in liquid mantle | `outgas/atmodeller.py`<br>`outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/trapping.py`<br>`outgas/wrapper.py` | always; outgas.module = "atmodeller"; outgas.module = "calliope"; outgas.module = "dummy" | outgas, utils |
 | `S_kg_total` | `kg` | mass in whole planet | `accretion/wrapper.py`<br>`escape/wrapper.py`<br>`outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "calliope"; outgas.module = "dummy" | accretion, escape, interior_energetics, interior_struct, outgas, plot, utils |
+| `H_kg_condensed` | `kg` | mass in condensed phases at the surface | `outgas/atmodeller.py`<br>`outgas/wrapper.py` | always; outgas.module = "atmodeller" | outgas, utils |
+| `O_kg_condensed` | `kg` | mass in condensed phases at the surface | `outgas/atmodeller.py`<br>`outgas/wrapper.py` | always; outgas.module = "atmodeller" | outgas, utils |
+| `C_kg_condensed` | `kg` | mass in condensed phases at the surface | `outgas/atmodeller.py`<br>`outgas/wrapper.py` | always; outgas.module = "atmodeller" | outgas, utils |
+| `N_kg_condensed` | `kg` | mass in condensed phases at the surface | `outgas/atmodeller.py`<br>`outgas/wrapper.py` | always; outgas.module = "atmodeller" | outgas, utils |
+| `S_kg_condensed` | `kg` | mass in condensed phases at the surface | `outgas/atmodeller.py`<br>`outgas/wrapper.py` | always; outgas.module = "atmodeller" | outgas, utils |
 
 ### Element mass ratios in atmosphere
 

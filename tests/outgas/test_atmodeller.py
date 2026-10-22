@@ -752,8 +752,8 @@ def test_graphite_activity_logged_each_solve(caplog):
     assert graphite_lines == [
         'Atmodeller condensate C_cd: activity=0.25, condensed mass=3e-06 kg'
     ]
-    assert hf_row['C_cd_activity'] == 0.25
-    assert hf_row['C_cd_kg'] == 3.0e-6
+    assert hf_row['C_cd_activity'] == pytest.approx(0.25, rel=1e-12)
+    assert hf_row['C_cd_kg'] == pytest.approx(3.0e-6, rel=1e-12)
 
 
 @pytest.mark.physics_invariant

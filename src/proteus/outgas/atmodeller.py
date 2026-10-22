@@ -238,6 +238,7 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
         element_mmw,
         gas_list,
         noble_gases,
+        vol_element_list,
     )
 
     atm_config = config.outgas.atmodeller
@@ -496,7 +497,7 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
         for formula in condensate_list:
             hf_row[f'{formula}_cd_activity'] = 0.0
             hf_row[f'{formula}_cd_kg'] = 0.0
-        for el in {e for comp in _VOLATILE_ELEMENT_STOICH.values() for e in comp}:
+        for el in vol_element_list:
             hf_row[f'{el}_kg_condensed'] = 0.0
         if fO2_source == 'from_O_budget':
             # No solve ran, so the derived buffer offset is undefined.
@@ -580,19 +581,18 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
     # below 1 it is undersaturated and its condensed mass is only the solver's
     # floor. Zero marks a solve without that condensate in the network.
     for formula in condensate_list:
-        key = f'{formula}_cd'
         activity = mass = None
-        if key in output_dict:
-            activity = _species_output_scalar(output_dict, key, 'activity')
-            mass = _species_output_scalar(output_dict, key, 'total_mass')
+        if f'{formula}_cd' in output_dict:
+            activity = _species_output_scalar(output_dict, f'{formula}_cd', 'activity')
+            mass = _species_output_scalar(output_dict, f'{formula}_cd', 'total_mass')
             log.info(
-                'Atmodeller condensate %s: activity=%s, condensed mass=%s kg',
-                key,
+                'Atmodeller condensate %s_cd: activity=%s, condensed mass=%s kg',
+                formula,
                 activity,
                 mass,
             )
-        hf_row[f'{key}_activity'] = float(activity) if activity is not None else 0.0
-        hf_row[f'{key}_kg'] = float(mass) if mass is not None else 0.0
+        hf_row[f'{formula}_cd_activity'] = float(activity) if activity is not None else 0.0
+        hf_row[f'{formula}_cd_kg'] = float(mass) if mass is not None else 0.0
 
     # Map atmodeller output back to hf_row
     _reverse_map = {v: k for k, v in _atm_gas_species.items()}
@@ -846,7 +846,7 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
     # atm + liquid + solid + condensed closes against the element budget only with
     # this term. atmodeller reports the condensed mass per element; it is zero for
     # the elements (and conditions) that do not condense.
-    for el in {e for comp in _VOLATILE_ELEMENT_STOICH.values() for e in comp}:
+    for el in vol_element_list:
         condensed = _species_output_scalar(output_dict, f'element_{el}', 'condensed_mass')
         hf_row[f'{el}_kg_condensed'] = max(0.0, condensed) if condensed else 0.0
 

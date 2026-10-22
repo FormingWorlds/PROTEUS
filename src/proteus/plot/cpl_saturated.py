@@ -37,13 +37,13 @@ def plot_saturated(hf_all: pd.DataFrame, output_dir: str, plot_format='pdf'):
     # Condensates with at least two solved points
     solved = {}
     for c in condensate_list:
-        key = f'{c}_cd_activity'
-        if key not in hf_crop.columns:
+        if f'{c}_cd_activity' not in hf_crop.columns or f'{c}_cd_kg' not in hf_crop.columns:
             continue
-        activity = np.array(hf_crop[key], dtype=float)
+        activity = np.array(hf_crop[f'{c}_cd_activity'], dtype=float)
+        mass = np.array(hf_crop[f'{c}_cd_kg'], dtype=float)
         valid = np.isfinite(activity) & (activity > 0)
         if np.count_nonzero(valid) >= 2:
-            solved[c] = (activity, valid)
+            solved[c] = (activity, valid, mass)
     if not solved:
         log.debug('No condensate activities to plot; skipping plot_saturated')
         return
@@ -67,7 +67,7 @@ def plot_saturated(hf_all: pd.DataFrame, output_dir: str, plot_format='pdf'):
     ax3 = axs[3]  # magma temperature and melt fraction
     ax3r = ax3.twinx()
 
-    for c, (activity, valid) in solved.items():
+    for c, (activity, valid, mass) in solved.items():
         col = get_colour(c)
         lbl = condensate_names.get(c, c)
 
@@ -75,7 +75,6 @@ def plot_saturated(hf_all: pd.DataFrame, output_dir: str, plot_format='pdf'):
 
         # Below saturation the condensed mass is only the solver's floor, so
         # only saturated points carry a mass
-        mass = np.array(hf_crop.get(f'{c}_cd_kg', np.nan), dtype=float)
         mass = np.where(valid & (activity >= SATURATED), mass, 0.0)
         column = mass / area
         ax1.plot(time, column / C_uval, lw=lw, color=col)
