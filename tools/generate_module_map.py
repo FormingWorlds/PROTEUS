@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import functools
 import sys
 from pathlib import Path
 
@@ -283,6 +284,13 @@ def _chain_of(node) -> list[str]:
     return list(reversed(parts))
 
 
+@functools.cache
+def _scan_nodes(text: str) -> tuple[ast.AST, ...]:
+    """The nodes of ``text`` that :func:`scan_compared_options` reads, parsed once."""
+    kinds = (ast.Assign, ast.Compare, ast.UnaryOp, ast.Match)
+    return tuple(node for node in ast.walk(ast.parse(text)) if isinstance(node, kinds))
+
+
 def scan_compared_options(path: Path, dotted: tuple[str, str]) -> set:
     """Constants the file compares against ``config.<area>.module``.
 
@@ -290,7 +298,7 @@ def scan_compared_options(path: Path, dotted: tuple[str, str]) -> set:
     tests, match statements, and comparisons through a simple local alias
     (``module = config.<area>.module``).
     """
-    tree = ast.parse(path.read_text())
+    nodes = _scan_nodes(path.read_text())
     aliases: set[str] = set()
 
     def is_target(node) -> bool:
@@ -303,13 +311,13 @@ def scan_compared_options(path: Path, dotted: tuple[str, str]) -> set:
         chain = _chain_of(node)
         return tuple(chain[-2:]) == dotted and 'config' in ''.join(chain[:-2])
 
-    for node in ast.walk(tree):
+    for node in nodes:
         if isinstance(node, ast.Assign) and len(node.targets) == 1:
             if isinstance(node.targets[0], ast.Name) and is_target(node.value):
                 aliases.add(node.targets[0].id)
 
     found: set = set()
-    for node in ast.walk(tree):
+    for node in nodes:
         if isinstance(node, ast.Compare) and is_target(node.left):
             for op, comp in zip(node.ops, node.comparators):
                 if isinstance(op, (ast.Eq, ast.NotEq)) and isinstance(comp, ast.Constant):

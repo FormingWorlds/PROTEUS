@@ -92,7 +92,7 @@ The main directories and files are used as follows:
 - `paper/`: contains material related to the PROTEUS JOSS paper.
 - `Validation/`: per-source-file scientific validation pages, recording the
   published benchmarks, analytical limits, and cross-implementation checks
-  that pin each physics module's behavior.
+  that pin each physics module's behavior. They form the top-level `Validation` tab, after Explanations and before Reference; the plots of their cases are in `assets/validation/` (see [Scientific validation](../Validation/index.md)).
 - `index.md`: the **landing page** of the documentation (Home).
 - `getting_started.md`: a page to get the user started, just below Home.
 - `funding.md`: contains our sponsors.
