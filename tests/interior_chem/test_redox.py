@@ -72,6 +72,12 @@ _N_SIL_TEST = _N_FET_TEST + 1.85945
 _M_MELT = 4.0e21
 
 
+def _batch(s, D):
+    """Share of a cell's iron that a new solid, a fraction s of the cell's
+    melt, takes up in equilibrium with the residual melt at ratio D."""
+    return s * D / (1.0 - s + s * D)
+
+
 def _iw_oneill_eggins_2002(T):
     """log10 fO2 of IW, O'Neill & Eggins (2002) Eq 11 [T in K]: an independent
     1 bar calibration, and the buffer the surface Delta-IW used before H21."""
@@ -343,10 +349,31 @@ def test_disabled_metal_saturation_skips_the_metal_check(monkeypatch):
     on, rows_on = _crystallise(f_0)
 
     def _not_called(*args, **kwargs):
-        raise AssertionError('activity_Fe_metal called with metal_saturation off')
+        raise AssertionError('metal or EOS code called with metal_saturation off')
 
-    monkeypatch.setattr(redox.dispro, 'activity_Fe_metal', _not_called)
+    # No metal step, no disproportionation constant, no Deng EOS pressure term.
+    monkeypatch.setattr(redox, '_metal_saturation_step', _not_called)
+    for name in ('activity_Fe_metal', 'K_eq', 'solve_extent'):
+        monkeypatch.setattr(redox.dispro, name, _not_called)
+    monkeypatch.setattr(redox.eos_deng, 'int_dV_dP_oxidation', _not_called)
     off, rows = _crystallise(f_0, metal_saturation=False)
+
+    # Only crystallisation acts: replay the batch partitioning by hand.
+    D2, D3 = np.array([D_FE2_SHALLOW, D_FE2_BRG]), np.array([D_FE3_SHALLOW, D_FE3_BRG])
+    n2 = W_FET * _M_MELT / MU_FEO
+    n3 = n2 * f_0 / (1.0 - f_0)
+    phi_prev = _PHI[:2]
+    for step in range(1, 6):
+        phi = np.clip(_PHI[:2] - np.array([0.12, 0.07]) * step, 0.0, None)
+        m_prev = phi_prev * _MASS[:2]
+        share, s = m_prev / m_prev.sum(), (phi_prev - phi) / phi_prev
+        n2 -= n2 * np.sum(share * _batch(s, D2))
+        n3 -= n3 * np.sum(share * _batch(s, D3))
+        phi_prev = phi
+    assert off.n_fe2_melt == pytest.approx(n2, rel=1e-12)
+    assert off.n_fe3_melt == pytest.approx(n3, rel=1e-12)
+    assert off.ferric_frac == pytest.approx(n3 / (n2 + n3), rel=1e-12)
+    assert rows[-1]['ferric_frac_mantle'] == off.ferric_frac
 
     for row in rows:
         assert row['n_fe_metal_step_mantle'] == 0.0
@@ -1084,14 +1111,14 @@ def test_without_metal_saturation_crystallisation_follows_the_real_melt_fraction
 
     n2_0 = W_FET * _M_MELT / MU_FEO
     n3_0 = n2_0 * f_0 / (1.0 - f_0)
-    dM = (0.5 - phi_last) * _MASS[1]  # cell 1 sits at 30 GPa: bridgmanite D
-    assert st.n_fe2_melt == pytest.approx(n2_0 - D_FE2_BRG * n2_0 / _M_MELT * dM, rel=1e-12)
-    assert st.n_fe3_melt == pytest.approx(n3_0 - D_FE3_BRG * n3_0 / _M_MELT * dM, rel=1e-12)
+    # Cell 1 (30 GPa, bridgmanite D) holds half the melt and freezes s of it.
+    s = (0.5 - phi_last) / 0.5
+    assert st.n_fe2_melt == pytest.approx(n2_0 - 0.5 * n2_0 * _batch(s, D_FE2_BRG), rel=1e-12)
+    assert st.n_fe3_melt == pytest.approx(n3_0 - 0.5 * n3_0 * _batch(s, D_FE3_BRG), rel=1e-12)
     assert st.phi_prev[1] == phi_last
     assert np.all(st.n_fe_metal_cell == 0.0)
-    # Discrimination guard: the thresholded drop to 0 removes more Fe2+.
-    dM_thr = 0.5 * _MASS[1]
-    assert st.n_fe2_melt > n2_0 - D_FE2_BRG * n2_0 / _M_MELT * dM_thr * (1.0 - 1e-9)
+    # Discrimination guard: the thresholded drop to 0 empties the cell's half.
+    assert st.n_fe2_melt > 0.5 * n2_0 * (1.0 + 1e-3)
 
 
 # ---------------------------------------------------------------------------
@@ -1134,39 +1161,6 @@ def test_melt_hotter_than_the_eos_ceiling_is_not_tested_and_warned_once(caplog):
     assert np.all(state.a_fe_cell == 0.0) and state.a_fe_max_cell == -1
     warned = [r for r in caplog.records if 'envelope' in r.message]
     assert len(warned) == 1
-
-
-@pytest.mark.physics_invariant
-def test_a_solidified_mantle_freezes_the_reservoirs(caplog):
-    """Once no cell holds melt the tracker stops: the reservoirs and the
-    ferric fraction are frozen, the metal check is reported as skipped,
-    and the surface offset is still evaluated from the frozen ratio."""
-    import logging
-
-    config = _make_config(0.1)
-    interior = _make_interior()
-    update_melt_redox(interior, {'T_magma': 2200.0}, config)
-    interior.phi = np.array([0.8, 0.3, 0.0])
-    update_melt_redox(interior, {'T_magma': 2200.0}, config)
-    st = interior.redox_state
-    # The step on which the last melt disappears still crystallises it.
-    interior.phi = np.zeros(3)
-    update_melt_redox(interior, {'T_magma': 2200.0}, config)
-    assert not st.melt_exhausted
-    frozen = (st.n_fe2_melt, st.n_fe3_melt, st.ferric_frac)
-
-    with caplog.at_level(logging.INFO, logger='fwl.proteus.interior_chem.redox'):
-        update_melt_redox(interior, {'T_magma': 2200.0}, config)  # flags it
-        hf_row = {'T_magma': 2200.0}
-        update_melt_redox(interior, hf_row, config)  # frozen step
-    assert st.melt_exhausted
-    assert (st.n_fe2_melt, st.n_fe3_melt, st.ferric_frac) == frozen
-    assert hf_row['ferric_frac_mantle'] == frozen[2]
-    assert hf_row['a_fe_max_cell_mantle'] == -1.0
-    assert np.isfinite(hf_row['fO2_shift_IW_mantle'])
-    msgs = ' '.join(r.message for r in caplog.records)
-    assert 'mantle fully solidified' in msgs
-    assert 'not checked (mantle solidified)' in msgs
 
 
 # ---------------------------------------------------------------------------
@@ -1325,10 +1319,11 @@ def test_a_resume_continues_the_tracker_exactly_as_an_unbroken_run(tmp_path, mod
     np.testing.assert_allclose(b.n_fe_metal_cell, a.n_fe_metal_cell, rtol=1e-12, atol=0)
     assert np.sum(a.n_fe_metal_cell) > 0.0  # the history being carried includes metal
 
-    # Discrimination guard: a reseeded tracker ends far from the unbroken run.
+    # Discrimination guard: a reseeded tracker ends 10 % from the unbroken run,
+    # far outside the 1e-12 above.
     reseeded = _make_interior()
     _run_steps(reseeded, config, range(3, 6))
-    assert abs(reseeded.redox_state.ferric_frac - a.ferric_frac) > 0.1 * a.ferric_frac
+    assert abs(reseeded.redox_state.ferric_frac - a.ferric_frac) > 0.05 * a.ferric_frac
 
 
 def test_restored_state_matches_every_stored_field(tmp_path):
@@ -1554,31 +1549,6 @@ def test_solid_present_at_the_first_step_returns_no_iron_on_remelting():
     assert frozen.m_solid_cell[1] == pytest.approx(0.3 * _MASS[1], rel=1e-12)
 
 
-@pytest.mark.physics_invariant
-def test_a_remelt_after_full_solidification_restarts_the_tracker(caplog):
-    """A fully solidified mantle that remelts, for example after a giant
-    impact, gets its melt reservoirs back from the remelted solid and the
-    tracker runs again instead of staying frozen."""
-    config = _make_config(0.1, metal_saturation=False)
-    interior = _make_interior()
-    for phi in (_PHI, [0.5, 0.2, 0.0], np.zeros(3), np.zeros(3)):
-        interior.phi = np.asarray(phi)
-        update_melt_redox(interior, {'T_magma': 2200.0}, config)
-    st = interior.redox_state
-    assert st.melt_exhausted
-    total = _fe_total(st)
-    frozen_f = st.ferric_frac
-
-    with caplog.at_level('INFO', logger='fwl.proteus.interior_chem.redox'):
-        interior.phi = np.array([1.0, 0.5, 0.0])
-        update_melt_redox(interior, {'T_magma': 2200.0}, config)
-    assert not st.melt_exhausted
-    assert _fe_total(st) == pytest.approx(total, rel=1e-12)
-    assert np.sum(st.n_fe2_solid_cell[0]) == pytest.approx(0.0, abs=1e-12 * total)
-    assert abs(st.ferric_frac - frozen_f) > 1e-4  # the returned solid has its own ratio
-    assert any('remelts, tracking resumes' in r.message for r in caplog.records)
-
-
 # ---------------------------------------------------------------------------
 # Crystallisation step against Schaefer et al. (2024)
 # ---------------------------------------------------------------------------
@@ -1594,7 +1564,7 @@ _SCH_P, _SCH_S, _SCH_D2, _SCH_D3, _SCH_F = _SCHAEFER[:, 1:].T
 def _replay(D_fe2, D_fe3, f_0=0.1):
     """Molar Fe3+/FeT of one well-mixed melt after each step of the Schaefer
     sequence, crystallised with _fe_into_new_solid; the magma ocean mass
-    shrinks by the solid fraction s of each step."""
+    shrinks by the solid fraction s of each step, which is s of one cell."""
     n2, n3, M, out = 1.0 - f_0, f_0, 1.0, []
     for s, d2, d3 in zip(_SCH_S, D_fe2, D_fe3):
         dn2, dn3 = _fe_into_new_solid(
@@ -1606,24 +1576,138 @@ def _replay(D_fe2, D_fe3, f_0=0.1):
 
 
 @pytest.mark.physics_invariant
-def test_new_solid_takes_up_d_times_the_pre_step_melt_concentration():
-    """Step 4-6: with two melt cells of unequal mass and D, the solid takes
-    n * sum_c(D_c * m_c) / M_melt, a cell without melt contributes nothing,
-    and no new solid moves no iron."""
+def test_new_solid_equilibrates_with_the_residual_melt_of_its_cell():
+    """Step 4-6: with two melt cells of unequal mass and D, each cell's share
+    of the iron splits between its new solid and its residual melt at ratio
+    D (s D / (1 - s + s D) to the solid), a cell without melt contributes
+    nothing, and no new solid moves no iron."""
     M = np.array([3.0e21, 1.0e21, 0.0])  # kg of melt per cell
     m_new = np.array([0.6e21, 0.5e21, 2.0e21])  # kg of new solid per cell
     D2, D3 = np.array([0.3, 0.9, 5.0]), np.array([0.7, 0.2, 5.0])
     dn2, dn3 = _fe_into_new_solid(100.0, 10.0, M, m_new, D2, D3)
 
-    # 100 mol * (0.3 * 0.6 + 0.9 * 0.5) / 4 = 15.75 mol; the empty cell is ignored.
-    assert dn2 == pytest.approx(15.75, rel=1e-12)
-    assert dn3 == pytest.approx(10.0 * (0.7 * 0.6 + 0.2 * 0.5) / 4.0, rel=1e-12)
-    # Guard: weighting by the cell's own melt mass alone (no 1/M_melt) is off by 4.
-    assert abs(dn2 - 4.0 * 15.75) > 10.0
+    # Shares 3/4 and 1/4, s = 0.2 and 0.5: 75 x 0.06 / 0.86 + 25 x 0.45 / 0.95 = 17.07 mol.
+    assert dn2 == pytest.approx(75.0 * 0.06 / 0.86 + 25.0 * 0.45 / 0.95, rel=1e-12)
+    assert dn3 == pytest.approx(7.5 * _batch(0.2, 0.7) + 2.5 * _batch(0.5, 0.2), rel=1e-12)
+    # Guard: the first-order form, D times the pre-step concentration, gives 15.75.
+    assert abs(dn2 - 100.0 * (0.3 * 0.6 + 0.9 * 0.5) / 4.0) > 1.0
+    # Guard: equilibrium against the melt before the step, s D / (1 + s D), gives 14.3.
+    assert abs(dn2 - (75.0 * 0.06 / 1.06 + 25.0 * 0.45 / 1.45)) > 2.0
     assert _fe_into_new_solid(100.0, 10.0, M, np.zeros(3), D2, D3) == (0.0, 0.0)
-    # Limit: D = 1 and every kg of melt crystallising removes all the iron.
-    full = _fe_into_new_solid(100.0, 10.0, M[:2], M[:2], np.ones(2), np.ones(2))
-    assert full == pytest.approx((100.0, 10.0), rel=1e-12)
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize(
+    'D', [0.0, 0.44, 1.0, 1.60], ids=['no_uptake', 'brg', 'unit', 'bulk_tz']
+)
+def test_freezing_a_whole_layer_moves_all_of_its_iron_into_the_solid(D):
+    """A step that freezes all the melt of a cell (s = 1) moves that cell's
+    whole share of the iron into its solid for any D, including D = 0 and
+    the bulk_BSE transition-zone D(Fe3+) = 1.60, and leaves the other
+    cell's share in the melt: the reservoirs stay in [0, n]."""
+    M = np.array([3.0e21, 1.0e21])
+    n2, n3 = 100.0, 10.0
+    dn2, dn3 = _fe_into_new_solid(
+        n2, n3, M, np.array([0.0, 1.0e21]), np.full(2, D), np.full(2, D)
+    )
+
+    assert dn2 == pytest.approx(25.0, rel=1e-12)
+    assert dn3 == pytest.approx(2.5, rel=1e-12)
+    # A cell frozen in full leaves no iron in a melt of zero mass.
+    whole = _fe_into_new_solid(n2, n3, M, M, np.full(2, D), np.full(2, D))
+    assert whole == pytest.approx((n2, n3), rel=1e-12)
+    # Guard: the first-order form, D C dM, removes D times the cell share,
+    # so with D = 1.60 a whole frozen melt takes 160 of the 100 mol.
+    if D != 1.0:
+        assert abs(D * 25.0 - dn2) > 5.0
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize('coefficients', ['mgsio3', 'bulk_BSE'])
+def test_melt_iron_oxide_stays_below_the_melt_mass_as_the_mantle_freezes(
+    coefficients, monkeypatch
+):
+    """Freezing the mantle to zero melt in coarse steps, the FeO + FeO1.5
+    the tracker holds stays below its melt mass at every step, and the
+    tracker holds its state from the step the global melt fraction drops
+    below MELT_FRACTION_MIN. Fractional crystallisation with constant
+    D < 1 enriches the melt as F**(D - 1), so without the cutoff the melt
+    iron oxide exceeds the melt mass before the melt is gone."""
+    import proteus.interior_chem.redox as redox
+
+    def freeze(steps):
+        config = _make_config(0.1, metal_saturation=False)
+        config.planet.partition_coefficients = coefficients
+        interior = _make_interior()
+        ratios = []
+        for F in steps:
+            interior.phi = np.full(3, F)
+            update_melt_redox(interior, {'T_magma': 2200.0}, config)
+            st = interior.redox_state
+            m_melt = float(np.sum(st.phi_prev * _MASS))
+            oxide = st.n_fe2_melt * MU_FEO + st.n_fe3_melt * MU_FEO15
+            ratios.append(oxide / m_melt if m_melt > 0 else np.inf)
+            assert st.n_fe2_melt >= 0.0 and st.n_fe3_melt >= 0.0
+        return interior.redox_state, np.array(ratios)
+
+    # Coarse late steps: 0.3 -> 0.1 -> 0.06 -> 0.02 -> 0.
+    steps = [1.0, 0.6, 0.3, 0.1, 0.06, 0.02, 0.0]
+    st, ratios = freeze(steps)
+    assert np.all(ratios < 1.0)
+    assert st.melt_exhausted
+    np.testing.assert_array_equal(st.phi_prev, np.full(3, 0.06))
+    # Guard: tracking on to 0.003 without the cutoff, in steps fine enough to
+    # approach the fractional limit, passes the melt mass.
+    monkeypatch.setattr(redox, 'MELT_FRACTION_MIN', 0.0)
+    _, uncut = freeze(np.geomspace(1.0, 0.003, 40))
+    assert uncut[-1] > 1.0
+
+
+@pytest.mark.physics_invariant
+def test_melt_fraction_cutoff_holds_the_state_and_resumes_from_it(caplog):
+    """Below MELT_FRACTION_MIN the reservoirs, the ratio and phi_prev are
+    held, the metal check is skipped and the surface offset is evaluated
+    from the held ratio. Back above it, the first call applies the whole
+    change since the last tracked profile, conserving iron."""
+    import logging
+
+    from proteus.interior_chem.redox import MELT_FRACTION_MIN, global_melt_fraction
+
+    config = _make_config(0.1, metal_saturation=False)
+    interior = _make_interior()
+    update_melt_redox(interior, {'T_magma': 2200.0}, config)
+    interior.phi = np.array([0.4, 0.1, 0.0])  # 0.10 of the mantle mass
+    update_melt_redox(interior, {'T_magma': 2200.0}, config)
+    st = interior.redox_state
+    held = (st.n_fe2_melt, st.n_fe3_melt, st.ferric_frac)
+    total = _fe_total(st)
+    assert not st.melt_exhausted
+
+    low = np.array([0.15, 0.05, 0.0])  # 0.042 of the mantle mass
+    assert global_melt_fraction(low, _MASS) == pytest.approx(0.5 / 12.0, rel=1e-12)
+    assert global_melt_fraction(low, _MASS) < MELT_FRACTION_MIN
+    hf_row = {'T_magma': 2200.0}
+    with caplog.at_level(logging.INFO, logger='fwl.proteus.interior_chem.redox'):
+        for phi in (low, np.zeros(3)):
+            interior.phi = phi
+            update_melt_redox(interior, hf_row, config)
+    assert st.melt_exhausted
+    assert (st.n_fe2_melt, st.n_fe3_melt, st.ferric_frac) == held
+    np.testing.assert_array_equal(st.phi_prev, [0.4, 0.1, 0.0])
+    assert hf_row['ferric_frac_mantle'] == held[2]
+    assert hf_row['a_fe_max_cell_mantle'] == -1.0
+    assert np.isfinite(hf_row['fO2_shift_IW_mantle'])
+    assert 'not checked (melt fraction below' in ' '.join(r.message for r in caplog.records)
+
+    # Back above the cutoff: cell 0 froze further, cell 1 remelted past its start.
+    interior.phi = np.array([0.3, 0.6, 0.0])
+    with caplog.at_level(logging.INFO, logger='fwl.proteus.interior_chem.redox'):
+        update_melt_redox(interior, {'T_magma': 2200.0}, config)
+    assert not st.melt_exhausted
+    assert _fe_total(st) == pytest.approx(total, rel=1e-12)
+    assert st.m_solid_cell[0] == pytest.approx(0.7 * _MASS[0], rel=1e-12)
+    assert st.m_solid_cell[1] == 0.0
+    assert any('tracking resumes' in r.message for r in caplog.records)
 
 
 @pytest.mark.physics_invariant
@@ -1633,30 +1717,24 @@ def test_crystallisation_step_replays_the_schaefer_2024_run():
     and solid fractions of a run of Schaefer et al. (2024, archived Earth
     code, 1000 km, Fe3+/FeT = 0.1), reproduces its liquid Fe3+/FeT.
 
-    Schaefer equilibrates the solid with the residual liquid; the tracker
-    uses the melt before the step. Per step the moles left differ by a
-    relative s**2 * |D (1 - D)| / ((1 - s + s D)(1 - s D)), so f differs by
-    at most f (1 - f) times the running sum of that over both species.
+    Both equilibrate the solid of a step with the residual liquid, so they
+    agree to round-off over the 96 steps (the fixture holds 1e-10).
     """
     f = _replay(_SCH_D2, _SCH_D3)
 
     # The fixture is Schaefer's equilibrium mass balance step by step.
     n2, n3 = np.cumprod((1 - _SCH_S) / (1 - _SCH_S + _SCH_S * np.stack([_SCH_D2, _SCH_D3])), 1)
     np.testing.assert_allclose(0.1 * n3 / (0.9 * n2 + 0.1 * n3), _SCH_F, rtol=1e-10)
-
-    def rel(D):
-        s = _SCH_S
-        return s**2 * np.abs(D * (1 - D)) / ((1 - s + s * D) * (1 - s * D))
-
-    bound = _SCH_F * (1 - _SCH_F) * np.cumsum(rel(_SCH_D2) + rel(_SCH_D3))
-    assert np.all(np.abs(f - _SCH_F) <= bound)
-    # Below 22 GPa the steps are small and the two agree to 1e-4.
-    assert np.max(np.abs(f - _SCH_F)[_SCH_P >= P_CUTOFF_GPA]) < 1e-4
-    # Guards: the bulk peridotite D(FeO) = 0.85, or the two D swapped, miss
-    # by more than ten times the largest bound.
+    np.testing.assert_allclose(f, _SCH_F, rtol=1e-10)
+    # Guards: D times the melt before the step (first order in s) or
+    # Rayleigh within each step miss by 1.7e-3 and 8e-4; the bulk peridotite
+    # D(FeO) = 0.85, or the two D swapped, by more than 0.05.
+    s, D2, D3 = _SCH_S, _SCH_D2, _SCH_D3
+    for left2, left3 in ((1 - s * D2, 1 - s * D3), ((1 - s) ** D2, (1 - s) ** D3)):
+        n2, n3 = 0.9 * np.cumprod(left2), 0.1 * np.cumprod(left3)
+        assert np.max(np.abs(n3 / (n2 + n3) - _SCH_F)) > 5e-4
     assert np.max(np.abs(_replay(np.full_like(_SCH_D2, 0.85), _SCH_D3) - _SCH_F)) > 0.05
     assert np.max(np.abs(_replay(_SCH_D3, _SCH_D2) - _SCH_F)) > 0.05
-    assert bound.max() < 0.007
 
 
 @pytest.mark.physics_invariant
@@ -1757,9 +1835,13 @@ def test_configured_prescription_sets_the_coefficients_of_the_run():
     n2_0, n3_0 = st.n_fe2_melt, st.n_fe3_melt
     interior.phi = np.array([0.8, 0.5, 0.0])  # 0.2 x 2e21 kg crystallises at 10 GPa
     update_melt_redox(interior, {'T_magma': 2200.0}, config)
-    dM = 0.2 * _MASS[0]
-    assert st.n_fe2_melt == pytest.approx(n2_0 * (1 - BULK_D_FE2[2] * dM / _M_MELT), rel=1e-12)
-    assert st.n_fe3_melt == pytest.approx(n3_0 * (1 - BULK_D_FE3[2] * dM / _M_MELT), rel=1e-12)
+    # The 10 GPa cell holds half the melt and freezes s = 0.2 of it.
+    assert st.n_fe2_melt == pytest.approx(
+        n2_0 * (1 - 0.5 * _batch(0.2, BULK_D_FE2[2])), rel=1e-12
+    )
+    assert st.n_fe3_melt == pytest.approx(
+        n3_0 * (1 - 0.5 * _batch(0.2, BULK_D_FE3[2])), rel=1e-12
+    )
     # Guard: with the mgsio3 pyroxene D(Fe3+) the Fe3+ loss differs by 22 %.
     assert abs(BULK_D_FE3[2] - D_FE3_SHALLOW) / D_FE3_SHALLOW > 0.2
 

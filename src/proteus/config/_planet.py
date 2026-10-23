@@ -181,27 +181,6 @@ class GasPrs:
         return getattr(self, s)
 
 
-def _reject_reserved_fO2_source(instance, attribute, value):
-    """Reject the reserved ``from_mantle_redox`` source at construction
-    and on assignment.
-
-    ``from_mantle_redox`` is a recognised enum member reserved for the
-    radial Fe3+/Fe2+ framework (issue #653); it has no runtime path yet.
-    The field-level validator runs on a bare ``Planet(...)`` and on
-    post-construction assignment, where the Config-level cross-field
-    check does not, so this keeps the reserved value from reaching the
-    outgas dispatch with a less informative error.
-    """
-    if value == 'from_mantle_redox':
-        raise ValueError(
-            'planet.fO2_source = "from_mantle_redox" is reserved for the '
-            'radial Fe3+/Fe2+ tracking framework (issue #653) and is not '
-            'yet wired into the runtime. Use "user_constant" (fO2 buffered '
-            'by outgas.fO2_shift_IW) or "from_O_budget" (authoritative O '
-            'budget, fO2 derived) instead.'
-        )
-
-
 def _validate_ini_dsdr(instance, attribute, value):
     """Reject a non-finite ``ini_dsdr``, and a positive one with liquidus_super.
 

@@ -70,7 +70,16 @@ def test_partition_coefficient_prescriptions_are_accepted(choice):
 def test_unknown_partition_coefficient_prescription_is_rejected(bad):
     """A misspelt prescription fails at config load rather than at the first
     tracker call, deep into a run."""
+    from proteus.interior_chem.redox import PARTITION_PRESCRIPTIONS
+
     with pytest.raises(ValueError) as exc:
         Planet(partition_coefficients=bad)
     assert 'partition_coefficients' in str(exc.value)
-    assert bad not in ('mgsio3', 'bulk_BSE')
+    assert f"(got '{bad}')" in str(exc.value)
+    # The config accepts exactly the sets the tracker implements.
+    assert tuple(exc.value.args[2]) == PARTITION_PRESCRIPTIONS
+    # Assignment after construction is validated too.
+    planet = Planet()
+    with pytest.raises(ValueError):
+        planet.partition_coefficients = bad
+    assert planet.partition_coefficients == 'mgsio3'

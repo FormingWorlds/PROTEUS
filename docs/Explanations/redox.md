@@ -46,7 +46,7 @@ Setting `planet.fO2_source = "from_mantle_redox"` enables this calculation. PROT
 |---|---|---|
 | `planet.fO2_source` | Set to `"from_mantle_redox"` to enable the tracker. Other values disable it. | `"user_constant"` |
 | `planet.ferric_fraction_initial` | Initial melt Fe$^{3+}$/Fe$_{\rm T}$, $f_0$, in the interval $(0,1)$. | `0.1` |
-| `planet.metal_saturation` | Must be `false` for this model. | `false` |
+| `planet.metal_saturation` | Off by default. `true` adds a check for Fe-metal saturation (3FeO = 2FeO$_{1.5}$ + Fe) between crystallization steps, following Schaefer et al. (2024, Section 2.7), and counts cells below $\phi=0.15$ as solid. This page describes the model with `false`; the module docstring of `interior_chem/redox.py` describes the metal step. | `false` |
 | `planet.partition_coefficients` | Fe$^{2+}$ and Fe$^{3+}$ partition coefficients: `"mgsio3"` (bridgmanite and pyroxenes) or `"bulk_BSE"` (bulk values of the Schaefer et al. layers); see [step 4](#4-partition-iron-into-the-new-solid). | `"mgsio3"` |
 
 The tracker needs a melt fraction for every radial cell, so `interior_energetics.module` must be `spider` or `aragog`.
@@ -127,7 +127,7 @@ The per-cell partition coefficients $D_i^{2+}$ and $D_i^{3+}$ (step 4) are also 
 
 ### 2. Determine newly formed solid
 
-Steps 2 to 5 run on every later call until the mantle has fully solidified. They are an explicit, step-by-step form of fractional crystallization: crystals that form are removed from contact with the melt and never re-equilibrate with it.
+Steps 2 to 5 run on every later call while the global melt fraction is at least 0.05 (see [step 5](#5-update-the-reservoirs-and-redox-ratio)). They are a step-by-step form of fractional crystallization: the solid formed in one step equilibrates with the residual melt of that step, as in Schaefer et al. (2024), and is then removed from contact with the melt and never re-equilibrates with it.
 
 The interior grid keeps each cell's mass $m_i$ fixed in time. The melt mass in a cell was therefore $\phi_i^{\rm prev}m_i$ at the previous call and is $\phi_i m_i$ now. Any decrease is solid formed during this step.
 
@@ -177,21 +177,23 @@ The previous step's melt is used because the new solid crystallized from that me
 
 ### 4. Partition iron into the new solid
 
-A partition coefficient is the ratio of a species' concentration in the crystallizing solid to its concentration in the melt, $D=C_{\rm solid}/C_{\rm melt}$. The moles of iron entering the new solid of cell $i$ are therefore $D\,C\,\Delta M_{s,i}$. Following Schaefer et al. (2024), mass and mole ratios are treated as proportional.
+A partition coefficient is the ratio of a species' concentration in the crystallizing solid to its concentration in the melt, $D=C_{\rm solid}/C_{\rm melt}$. Following Schaefer et al. (2024), mass and mole ratios are treated as proportional.
 
-Newly formed solid takes up iron according to a solid/melt partition coefficient $D$:
+Cell $i$ holds the share $n_i=n\,\phi_i^{\rm prev}m_i/M_{\rm melt}^{\rm prev}$ of each reservoir, and its new solid is the fraction $s_i=\Delta M_{s,i}/(\phi_i^{\rm prev}m_i)$ of its melt. The new solid equilibrates with the residual melt of the cell at concentration ratio $D$, so the mass balance $n_i = D\,C_{\rm res}\Delta M_{s,i} + C_{\rm res}(1-s_i)\phi_i^{\rm prev}m_i$ gives the moles entering the solid:
 
 $$
 \Delta n^{3+}
 =
-\sum_i D_i^{3+}C^{3+}\Delta M_{s,i},
+\sum_i n_i^{3+}\,\frac{s_i D_i^{3+}}{1-s_i+s_i D_i^{3+}},
 $$
 
 $$
 \Delta n^{2+}
 =
-\sum_i D_i^{2+}C^{2+}\Delta M_{s,i}.
+\sum_i n_i^{2+}\,\frac{s_i D_i^{2+}}{1-s_i+s_i D_i^{2+}}.
 $$
+
+Each term lies between 0 and $n_i$ for any $s_i$ and $D_i\geq0$, and a cell whose melt freezes completely ($s_i=1$) moves all of its share into the solid. The same step is Schaefer et al.'s mass balance, so fed their coefficients and solid fractions the tracker reproduces their run to round-off.
 
 Both coefficients depend on the mineral assemblage, selected from the cell pressure at the first step. `planet.partition_coefficients` chooses between two prescriptions.
 
@@ -220,7 +222,7 @@ from Schaefer et al. (2024, Eq. 6).
 
 PROTEUS does not use modal proportions of the two pyroxenes.
 
-For Fe$^{2+}$, $D^{2+}$ is the experimental mineral/melt FeO partition coefficient compiled in Schaefer et al. (2024) Table S1: bridgmanite $0.44\pm0.19$, Cpx $0.38\pm0.23$, Opx $0.69\pm0.46$; the shallow value is $(0.38+0.69)/2=0.535$. Schaefer et al. use these values to derive Fe/Mg exchange coefficients; their model applies those exchange coefficients, and the $D^{2+}$ it produces against a magma-ocean liquid is lower (bridgmanite 0.385, Cpx 0.33, Opx 0.36 in their archived 1000 km run). With Table S1, $D^{3+}>D^{2+}$ for bridgmanite, so Fe$^{3+}$/Fe$_{\rm T}$ falls while the lower mantle crystallizes, and $D^{3+}<D^{2+}$ for the pyroxenes, so it rises at pressures below 22 GPa, as in Schaefer et al. In their models the shallow rise comes mainly from olivine, which takes up no Fe$^{3+}$. Before 2026-10-12 PROTEUS used $D^{2+}=0.85$ at all depths, the bulk value Schaefer et al. quote for fertile upper-mantle peridotite.
+For Fe$^{2+}$, $D^{2+}$ is the experimental mineral/melt FeO partition coefficient compiled in Schaefer et al. (2024) Table S1: bridgmanite $0.44\pm0.19$, Cpx $0.38\pm0.23$, Opx $0.69\pm0.46$; the shallow value is $(0.38+0.69)/2=0.535$. Schaefer et al. use these values to derive Fe/Mg exchange coefficients; their model applies those exchange coefficients, and the $D^{2+}$ it produces against a magma-ocean liquid is lower (bridgmanite 0.385, Cpx 0.33, Opx 0.36 in their archived 1000 km run). With Table S1, $D^{3+}>D^{2+}$ for bridgmanite, so Fe$^{3+}$/Fe$_{\rm T}$ falls while the lower mantle crystallizes, and $D^{3+}<D^{2+}$ for the pyroxenes, so it rises at pressures below 22 GPa, as in Schaefer et al. In their models the shallow rise comes mainly from olivine, which takes up no Fe$^{3+}$.
 
 #### `"bulk_BSE"`: bulk coefficients of the Schaefer et al. layers
 
@@ -268,7 +270,7 @@ $$
 
 Iron that entered the solid returns to the melt when its cell remelts (Section 2), which changes $R$ towards the ratio of the remelted solid.
 
-When no melt remains ($M_{\rm melt}^{\rm prev}=0$), the tracker records that the mantle has solidified and keeps the final $f$ until a cell remelts, for example after a giant impact. The remelted solid then returns its iron and the tracker continues.
+When the global melt fraction $\sum_i\phi_i m_i/\sum_i m_i$ falls below 0.05 (`MELT_FRACTION_MIN`), the tracker holds its state: the reservoirs, $f$ and the last tracked melt fractions $\phi_i^{\rm prev}$. With constant $D<1$, fractional crystallization enriches the melt in iron as $C\propto F^{D-1}$, which has no bound as the melt fraction $F$ goes to zero; with the `"mgsio3"` $D^{2+}$ of 0.44-0.535, the melt FeO + FeO$_{1.5}$, 0.09 of the melt mass at the start, reaches 0.36-0.48 of it at $F=0.05$ and would exceed the melt mass below $F=0.006$-0.014. Surface $\Delta$IW is still evaluated on every step from the held $f$. If the melt fraction rises above 0.05 again, for example after a giant impact, the next call applies the whole change since the last tracked profile: cells that froze further crystallize and cells that remelted return their iron.
 
 ## From melt redox to surface $f_{\rm O_2}$
 
@@ -426,7 +428,10 @@ Snapshots created before redox state storage was implemented cannot restore the 
   A remelting cell returns the average Fe$^{3+}$/Fe$^{2+}$ of the solid the tracker formed in it, not that of the last layer to crystallize. Solid present at the first step holds no tracked iron.
 
 - **Finite time-step effects.**  
-  The reservoir update is explicit and first-order in the change in melt fraction. Coarse steps late in solidification can therefore make the melt slightly too oxidized. For a single shallow-regime cell frozen to 2% melt in 10 equal steps, $f$ is 0.419 instead of the converged 0.409.
+  Each step equilibrates its solid with the residual melt, so a coarse step is closer to batch than to fractional crystallization. The melt iron inventory depends on the step size, but $f$ hardly does: for a single shallow-regime cell frozen to 1% melt, $f$ differs by less than $10^{-3}$ between 10 and 2000 steps.
+
+- **Last 5% of the melt.**  
+  The tracker holds its state below a global melt fraction of 0.05, so the redox evolution of the last melt is not followed, and the surface $\Delta$IW late in a run comes from the held $f$ at the current temperature.
 
 ## Validation
 
@@ -438,6 +443,7 @@ The unit tests in `tests/interior_chem/test_redox.py` check that:
 - increasing $f_0$ increases surface $\Delta$IW at fixed temperature;
 - surface $\Delta$IW uses the Hirschmann (2022) relation at 1 bar and $T_{\rm out}$ minus the Hirschmann (2021) IW buffer;
 - the real melt-fraction change determines how much iron crystallizes;
+- a step that freezes the whole melt of a cell moves all of that cell's iron into the solid for any $D$, the reservoirs stay non-negative, and the melt FeO + FeO$_{1.5}$ stays below the melt mass down to the 0.05 cutoff, below which the state is held;
 - the Hirschmann (2021) buffer agrees with an independent 1-bar IW calibration near 1500 K and has the expected pressure dependence;
 - a remelting cell returns the remelted share of its solid's iron, total iron is conserved between melt and solid, and remelting back to the initial melt fraction restores $f_0$;
 - a run resumed from a snapshot reaches the same final reservoirs as an uninterrupted run.
@@ -451,7 +457,7 @@ The figure compares a coupled Earth run (Aragog, `ferric_fraction_initial = 0.1`
   <figcaption>Whole-mantle fractional crystallization without metal saturation, f₀ = 0.1. (a) Melt ferric fraction and (b) surface ΔIW at 1 bar against the pressure at the base of the magma ocean. Blue: Schaefer et al. (2024), mean of 1000 Monte Carlo runs (their Fig. 3) and range of all runs (their Fig. 2) their mass ratio FeO₁.₅/(FeO₁.₅+FeO) is converted to the molar ferric fraction. Vermillion: PROTEUS, the interior snapshots placed at equal remaining melt mass. The PROTEUS ΔIW is taken at the uppermost melt cell and its temperature; Schaefer et al. evaluate it on an adiabat anchored at the solidus of the base.</figcaption>
 </figure>
 
-This figure was made before 2026-10-12, with $D^{2+}=0.85$ at all depths, and has not been regenerated with either current prescription. Both models start from the same state. The PROTEUS ferric fraction stays within the range of the Schaefer et al. runs down to a base pressure of about 15 GPa, near the upper edge of that range, and lies slightly above it at shallower bases. With $D^{2+}=0.85$ above $D^{3+}=0.75$ in the bridgmanite regime, Fe$^{3+}$ stays in the melt as the lower mantle crystallizes, whereas the mean Schaefer et al. run removes it there. The surface $\Delta$IW lies above all of their runs by 0.3 to 1.2 log units. It adds to the ferric-fraction difference the different temperature convention and the fixed bulk-silicate-Earth composition used in the activity terms of the Hirschmann (2022) relation; Schaefer et al. evolve the melt composition during crystallization.
+This figure uses $D^{2+}=0.85$ at all depths and the earlier first-order crystallization step, not either current prescription. Both models start from the same state. The PROTEUS ferric fraction stays within the range of the Schaefer et al. runs down to a base pressure of about 15 GPa, near the upper edge of that range, and lies slightly above it at shallower bases. With $D^{2+}=0.85$ above $D^{3+}=0.75$ in the bridgmanite regime, Fe$^{3+}$ stays in the melt as the lower mantle crystallizes, whereas the mean Schaefer et al. run removes it there. The surface $\Delta$IW lies above all of their runs by 0.3 to 1.2 log units. It adds to the ferric-fraction difference the different temperature convention and the fixed bulk-silicate-Earth composition used in the activity terms of the Hirschmann (2022) relation; Schaefer et al. evolve the melt composition during crystallization.
 
 ---
 

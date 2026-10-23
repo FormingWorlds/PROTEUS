@@ -116,7 +116,7 @@ def test_standard_state_gibbs_reproduces_the_iron_wustite_buffer(T_kelvin, toler
 
 
 @pytest.mark.physics_invariant
-def test_reaction_gibbs_is_insensitive_to_the_reference_state_choice():
+def test_reaction_gibbs_is_insensitive_to_the_reference_state_choice(monkeypatch):
     """Building the reaction energy from formation energies or from absolute
     Gibbs energies gives the same answer, because the reaction balances iron
     and oxygen internally.
@@ -125,16 +125,35 @@ def test_reaction_gibbs_is_insensitive_to_the_reference_state_choice():
     every species must cancel. This is what lets the module carry three
     polynomials instead of five.
     """
-    T = 2500.0
-    # An arbitrary, deliberately large shift standing in for a reference-state
-    # choice: added to FeO once, FeO1.5 once, Fe once, weighted by stoichiometry.
-    shift = 1.234e5
-    direct = float(dG0(T))
-    shifted = float(2 * (0.5 * shift) + 1 * (0.0 * shift) - 3 * (0.0 * shift) + direct) - 2 * (
-        0.5 * shift
-    )
+    import proteus.interior_chem.disproportionation as dispro
 
-    assert shifted == pytest.approx(direct, rel=1e-12)
+    T = 2500.0
+    direct = float(dG0(T))
+    # Another reference state adds a per Fe and b per O to every species;
+    # unequal, large values so neither can cancel by accident [J/mol].
+    a, b = 1.234e5, -4.56e4
+
+    def species():
+        return [
+            float(g(T))
+            for g in (dispro._g_fe_liquid, dispro._g_feo_liquid, dispro._g_feo15_liquid)
+        ]
+
+    def shifted(fn, n_fe, n_o):
+        return lambda T: fn(T) + n_fe * a + n_o * b
+
+    def wrong(g_fe, g_feo, g_feo15):
+        return 2 * g_feo15 + g_fe - 2 * g_feo  # 2 FeO in place of 3: unbalanced
+
+    before = species()
+    monkeypatch.setattr(dispro, '_g_fe_liquid', shifted(dispro._g_fe_liquid, 1, 0.0))
+    monkeypatch.setattr(dispro, '_g_feo_liquid', shifted(dispro._g_feo_liquid, 1, 1.0))
+    monkeypatch.setattr(dispro, '_g_feo15_liquid', shifted(dispro._g_feo15_liquid, 1, 1.5))
+    after = species()
+
+    assert float(dispro.dG0(T)) == pytest.approx(direct, rel=1e-12)
+    # Guard: the unbalanced reaction picks up a + b = 7.8e4 J/mol from the shift.
+    assert wrong(*after) - wrong(*before) == pytest.approx(a + b, rel=1e-9)
     # The reaction energy is strongly positive at 1 bar: disproportionation is
     # unfavourable without the pressure term. Sign guard.
     assert direct > 0.0

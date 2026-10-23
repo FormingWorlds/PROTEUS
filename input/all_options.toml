@@ -147,7 +147,7 @@ config_version = "3.0"
     # Redox and oxygen budget
     fO2_source                = "user_constant"  # user_constant | from_O_budget (authoritative O accounting) | from_mantle_redox (tracked Fe3+/Fe2+, requires interior_energetics.module = spider | aragog)
     ferric_fraction_initial   = 0.1          # initial melt Fe3+/FeT seeding the redox tracker, in (0,1); only read when fO2_source = "from_mantle_redox"
-    metal_saturation          = false        # react a supersaturated melt to Fe-metal equilibrium (redox Step 9); false: a_Fe diagnostic only, no metal. Only read when fO2_source = "from_mantle_redox"
+    metal_saturation          = false        # react a supersaturated melt to Fe-metal equilibrium (redox Step 9); false (default): crystallisation partitioning only, a_Fe not evaluated, no metal. Only read when fO2_source = "from_mantle_redox"
     partition_coefficients    = "mgsio3"     # redox-tracker Fe2+/Fe3+ solid/melt D: mgsio3 (bridgmanite, Cpx/Opx; Schaefer+2024 Tables S1, 3) | bulk_BSE (bulk D of the Schaefer+2024 layers). Only read when fO2_source = "from_mantle_redox"
 
     # Initial volatile inventory
