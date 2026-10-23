@@ -311,13 +311,13 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | `n_impacts_applied` | `1` | count of giant impacts applied | `accretion/wrapper.py` | always | accretion, interior_energetics |
 | `M_volatile_change` | `kg` | cumulative element mass added to the Zalmoxis target : delivered (rock O and init-stage impacts excluded) minus stripped minus escaped (rock vapour and sub-threshold zeroing included) minus removed at desiccation | `interior_struct/common.py` | interior_struct.module = "zalmoxis" | interior_struct |
 | `C_cd_activity` | `1` | activity; 1 = saturated | `outgas/atmodeller.py` | outgas.module = "atmodeller" | plot |
-| `C_cd_kg` | `kg` | condensed mass | `outgas/atmodeller.py` | outgas.module = "atmodeller" | plot |
+| `C_cd_kg` | `kg` | condensed mass | `outgas/atmodeller.py`<br>`outgas/wrapper.py` | always; outgas.module = "atmodeller" | outgas, plot |
 | `S_cd_activity` | `1` | activity; 1 = saturated | `outgas/atmodeller.py` | outgas.module = "atmodeller" | plot |
-| `S_cd_kg` | `kg` | condensed mass | `outgas/atmodeller.py` | outgas.module = "atmodeller" | plot |
+| `S_cd_kg` | `kg` | condensed mass | `outgas/atmodeller.py`<br>`outgas/wrapper.py` | always; outgas.module = "atmodeller" | outgas, plot |
 | `H2O_cd_activity` | `1` | activity; 1 = saturated | `outgas/atmodeller.py` | outgas.module = "atmodeller" | plot |
-| `H2O_cd_kg` | `kg` | condensed mass | `outgas/atmodeller.py` | outgas.module = "atmodeller" | plot |
+| `H2O_cd_kg` | `kg` | condensed mass | `outgas/atmodeller.py`<br>`outgas/wrapper.py` | always; outgas.module = "atmodeller" | outgas, plot |
 | `H2O4S_cd_activity` | `1` | activity; 1 = saturated | `outgas/atmodeller.py` | outgas.module = "atmodeller" | plot |
-| `H2O4S_cd_kg` | `kg` | condensed mass | `outgas/atmodeller.py` | outgas.module = "atmodeller" | plot |
+| `H2O4S_cd_kg` | `kg` | condensed mass | `outgas/atmodeller.py`<br>`outgas/wrapper.py` | always; outgas.module = "atmodeller" | outgas, plot |
 | `H2O_kg_trapped` | `kg` | mass trapped in the solid mantle | `outgas/trapping.py` | always | outgas |
 | `CO2_kg_trapped` | `kg` | mass trapped in the solid mantle | `outgas/trapping.py` | always | outgas |
 | `O2_kg_trapped` | `kg` | mass trapped in the solid mantle | `outgas/trapping.py` | always | outgas |

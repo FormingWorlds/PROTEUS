@@ -97,6 +97,9 @@ _REVIEWED_NEUTRAL = frozenset(
         'outgas.D_const_O2',
         'outgas.D_const_S2',
         'outgas.D_const_SO2',
+        # prevent_desaturation defaults to false: condensates re-equilibrate each
+        # solve, as before the flag existed, so behaviour is unchanged.
+        'outgas.prevent_desaturation',
         # Accretion defaults to inactive with zero impactor budgets, zero
         # loss fractions, and unread dummy/morrigan sub-blocks.
         'accretion.atmloss_frac',

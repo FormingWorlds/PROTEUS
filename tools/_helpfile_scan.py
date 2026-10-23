@@ -78,6 +78,7 @@ _GASES_VOL = TemplateOverride(('gas_list', 'vol_element_list'))
 _TRAPPED = TemplateOverride(('vol_list', 'vol_element_list', 'noble_gases'))
 _TRAPPED_ELEMENTS = TemplateOverride(('vol_element_list', 'noble_gases'))
 _VOL_ELEMENTS = TemplateOverride(('vol_element_list',))
+_CONDENSATES = TemplateOverride(('condensate_list',))
 _TRAPPED_SPECIES = TemplateOverride(('vol_list', 'noble_gases'))
 _NOBLE = TemplateOverride(('noble_gases',))
 
@@ -139,6 +140,8 @@ TEMPLATE_OVERRIDES: dict[tuple[str, str, str], TemplateOverride] = {
     ('outgas/trapping.py', '_carried', '<?>_kg_total'): _TRAPPED_ELEMENTS,
     ('outgas/trapping.py', 'released_mass', '<?>_kg_trapped'): _TRAPPED,
     ('outgas/trapping.py', 'escapable_inventory', '<?>_kg_total'): _ELEMENTS,
+    ('outgas/trapping.py', 'locked_condensed_mass', '<?>_kg_condensed'): _VOL_ELEMENTS,
+    ('outgas/wrapper.py', 'condensed_mass_withheld', '<?>_cd_kg'): _CONDENSATES,
     ('outgas/trapping.py', 'restore_trapped_mass', '<?>_kg_solid'): _NOBLE,
     ('outgas/trapping.py', 'restore_trapped_mass', '<?>_kg_total'): _NOBLE,
     ('outgas/trapping.py', 'restore_trapped_mass', '<?>_mol_solid'): _NOBLE,

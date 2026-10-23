@@ -3620,9 +3620,14 @@
         {
           "file": "src/proteus/outgas/atmodeller.py",
           "condition": "outgas.module = \"atmodeller\""
+        },
+        {
+          "file": "src/proteus/outgas/wrapper.py",
+          "condition": "always"
         }
       ],
       "consumers": [
+        "outgas",
         "plot"
       ],
       "consumers_possible": []
@@ -3654,9 +3659,14 @@
         {
           "file": "src/proteus/outgas/atmodeller.py",
           "condition": "outgas.module = \"atmodeller\""
+        },
+        {
+          "file": "src/proteus/outgas/wrapper.py",
+          "condition": "always"
         }
       ],
       "consumers": [
+        "outgas",
         "plot"
       ],
       "consumers_possible": []
@@ -3688,9 +3698,14 @@
         {
           "file": "src/proteus/outgas/atmodeller.py",
           "condition": "outgas.module = \"atmodeller\""
+        },
+        {
+          "file": "src/proteus/outgas/wrapper.py",
+          "condition": "always"
         }
       ],
       "consumers": [
+        "outgas",
         "plot"
       ],
       "consumers_possible": []
@@ -3722,9 +3737,14 @@
         {
           "file": "src/proteus/outgas/atmodeller.py",
           "condition": "outgas.module = \"atmodeller\""
+        },
+        {
+          "file": "src/proteus/outgas/wrapper.py",
+          "condition": "always"
         }
       ],
       "consumers": [
+        "outgas",
         "plot"
       ],
       "consumers_possible": []

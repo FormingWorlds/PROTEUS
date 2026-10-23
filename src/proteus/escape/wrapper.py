@@ -52,25 +52,26 @@ def reservoir_key(reservoir: str) -> str:
             raise ValueError(f"Invalid escape reservoir '{reservoir}'")
 
 
-def reservoir_mass(hf_row: dict, element: str, key: str) -> float:
+def reservoir_mass(hf_row: dict, element: str, key: str, config: Config | None = None) -> float:
     """Mass of one element escape can draw on from the named reservoir [kg].
 
-    Mass trapped in the solid mantle is locked there: it is neither in the
+    Mass trapped in the solid mantle is locked there, and so is condensed mass kept
+    from re-vapourising (``outgas.prevent_desaturation``): it is neither in the
     atmosphere nor available to be stripped from it. The `_kg_atm` reservoir
     never holds it, so only the whole-planet `_kg_total` reservoir needs the
     subtraction, and sizing a loss from a reservoir that included it would ask
     escape to remove mass it cannot reach.
     """
     # Imported here: proteus.outgas imports this module at load.
-    from proteus.outgas.trapping import locked_solid_mass
+    from proteus.outgas.trapping import unreachable_mass
 
     mass = float(hf_row.get(f'{element}{key}', 0.0))
     if key != '_kg_total' or not np.isfinite(mass):
         return mass
-    return max(0.0, mass - locked_solid_mass(hf_row, element))
+    return max(0.0, mass - unreachable_mass(hf_row, element, config))
 
 
-def escapable_mass(hf_row: dict, reservoir: str) -> float:
+def escapable_mass(hf_row: dict, reservoir: str, config: Config | None = None) -> float:
     """Return the mass escape can draw on this step [kg].
 
     Parameters
@@ -79,6 +80,10 @@ def escapable_mass(hf_row: dict, reservoir: str) -> float:
             Dictionary of helpfile variables, at this iteration only
         reservoir : str
             Reservoir name from ``config.escape.reservoir``.
+        config : Config or None
+            Run configuration; with ``outgas.prevent_desaturation`` on, condensed
+            mass is excluded from what escape can reach. None excludes only
+            trapped mass.
 
     Returns
     -------
@@ -86,7 +91,7 @@ def escapable_mass(hf_row: dict, reservoir: str) -> float:
             Summed elemental mass held in that reservoir [kg].
     """
     key = reservoir_key(reservoir)
-    return float(sum(reservoir_mass(hf_row, e, key) for e in element_list))
+    return float(sum(reservoir_mass(hf_row, e, key, config) for e in element_list))
 
 
 def readable_total(hf_row: dict) -> float:
@@ -120,6 +125,7 @@ def limit_escape_step(
     reservoir: str,
     max_frac: float = ESCAPE_STEP_MAX_FRAC,
     min_thresh: float = 0.0,
+    config: Config | None = None,
 ) -> float:
     """Cap the mass a single escape step may remove, and record what it asked for.
 
@@ -142,6 +148,10 @@ def limit_escape_step(
             Reservoir the per-element loss is drawn from.
         max_frac : float
             Largest share of the reservoir one step may remove.
+        config : Config or None
+            Run configuration; with ``outgas.prevent_desaturation`` on, condensed
+            mass is excluded from what escape can reach. None excludes only
+            trapped mass.
 
     Returns
     -------
@@ -154,7 +164,7 @@ def limit_escape_step(
         hf_row['esc_clamp_frac'] = 0.0
         return 0.0
 
-    escapable = escapable_mass(hf_row, reservoir)
+    escapable = escapable_mass(hf_row, reservoir, config)
     if not np.isfinite(escapable):
         # An upstream failure has left the reservoir unreadable. Sizing a loss
         # against it would spread the non-finite value through every inventory.
@@ -352,7 +362,12 @@ def run_escape(
 
     # Cap what one step may remove before anything acts on it.
     esc_step_kg = limit_escape_step(
-        hf_row, dt, reservoir, max_frac=max_frac, min_thresh=config.outgas.mass_thresh
+        hf_row,
+        dt,
+        reservoir,
+        max_frac=max_frac,
+        min_thresh=config.outgas.mass_thresh,
+        config=config,
     )
 
     # Ask the interior for a shorter next step when the cap bound this one, so
@@ -373,6 +388,7 @@ def run_escape(
         min_thresh=config.outgas.mass_thresh,
         esc_mass=esc_step_kg,
         floor=not (atmosphere_only or remelt_returned_mass(hf_row)),
+        config=config,
     )
 
     # store new elemental inventories
@@ -532,6 +548,7 @@ def calc_new_elements(
     min_thresh: float = 1e10,
     esc_mass: float | None = None,
     floor: bool = True,
+    config: Config | None = None,
 ):
     """Calculate new elemental inventory based on escape rate.
 
@@ -560,6 +577,10 @@ def calc_new_elements(
             resupplied rather than depleted: flooring it then would delete the
             release whenever it is small, so the result would depend on how many
             steps the remelt takes, and the caller turns the floor off.
+        config : Config or None
+            Run configuration; with ``outgas.prevent_desaturation`` on, condensed
+            mass is excluded from what escape can reach. None excludes only
+            trapped mass.
 
     Returns
     -------
@@ -567,7 +588,7 @@ def calc_new_elements(
             Volatile element whole-planet inventories [kg]
     """
     # Imported here: proteus.outgas imports this module at load.
-    from proteus.outgas.trapping import locked_solid_mass
+    from proteus.outgas.trapping import unreachable_mass
 
     # which reservoir?
 
@@ -582,7 +603,7 @@ def calc_new_elements(
     # all elements proportionally rather than concentrated on H+C+N+S).
     res: dict[str, float] = {}
     for e in element_list:
-        res[e] = reservoir_mass(hf_row, e, key)
+        res[e] = reservoir_mass(hf_row, e, key, config)
 
     M_vols = float(sum(res.values()))
 
@@ -631,7 +652,7 @@ def calc_new_elements(
         new_total = old_total - lost
         # A major volatile whose reachable mass, the total less what is locked in the
         # solid, falls below min_thresh is depleted, as check_desiccation reads it.
-        locked = locked_solid_mass(hf_row, e)
+        locked = unreachable_mass(hf_row, e, config)
         if floor and e not in noble_gases and new_total - locked < min_thresh:
             new_total = locked
         tgt[e] = max(locked, new_total)

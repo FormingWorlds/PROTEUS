@@ -84,6 +84,28 @@ def test_column_and_thickness_follow_mass_area_and_density(draw_real, tmp_path):
     assert (tmp_path / 'plots' / 'plot_saturated.png').stat().st_size > 0
 
 
+@pytest.mark.physics_invariant
+def test_a_held_layer_is_drawn_below_saturation(draw_real, tmp_path):
+    """A layer kept by prevent_desaturation stays on the plot once activity drops.
+
+    The inventory left in the solve can fall below saturation while the held layer
+    persists, so a mass well above the solver floor is drawn at any activity, and
+    the floor itself is still drawn as zero.
+    """
+    (tmp_path / 'plots').mkdir()
+    hf = _make_hf_all()
+    n = len(hf)
+    late = np.arange(n) >= n - 2  # the last two rows: layer held, activity has dropped
+    hf['C_cd_activity'] = np.where(late, 0.3, hf['C_cd_activity'])
+    hf['C_cd_kg'] = np.where(late, 4.0e20, hf['C_cd_kg'])
+    fig = draw_real(sat_mod.plot_saturated, hf, str(tmp_path), plot_format='png')[0]
+
+    column = fig.axes[1].lines[0].get_ydata()
+    area = 4.0 * np.pi * R_INT**2
+    assert column[-2:] == pytest.approx(4.0e20 / area / 1e6, rel=1e-12)
+    assert column[0] == 0.0  # the floor at the first, undersaturated row
+
+
 def test_skipped_without_any_solved_condensate(tmp_path, monkeypatch):
     """No figure is made when no condensate column holds two solved points.
 

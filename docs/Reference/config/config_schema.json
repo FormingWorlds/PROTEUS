@@ -7595,6 +7595,22 @@
       "group_qualifier": null
     },
     {
+      "path": "outgas.prevent_desaturation",
+      "toml_section": "outgas",
+      "class": "Outgas",
+      "type": "bool",
+      "accepts_none": false,
+      "default": "false",
+      "choices": null,
+      "bounds": null,
+      "description": "Whether condensed mass leaves the outgassing system for good. With `false`, each solve re-equilibrates the whole inventory, so a condensate can re-vapourise as conditions change. With `true`, the mass held in each `{e}_kg_condensed` reservoir is withheld from the chemistry, from escape and from the desiccation gate, and the reservoir can only grow: a condensed layer can only get thicker. Applies to the condensates atmodeller solves for (`outgas.atmodeller.include_condensates`).",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
       "path": "outgas.trap_mode",
       "toml_section": "outgas",
       "class": "Outgas",

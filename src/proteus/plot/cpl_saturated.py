@@ -19,6 +19,11 @@ log = logging.getLogger('fwl.' + __name__)
 # Activity at and above which a condensate counts as saturated (stable)
 SATURATED = 0.999
 
+# Condensed mass above which a point carries a real layer [kg]. Below saturation the
+# solver reports only a floor of order 1e-6 kg; a larger mass at lower activity is a
+# layer held by outgas.prevent_desaturation.
+HELD_MASS_KG = 1.0
+
 
 def plot_saturated(hf_all: pd.DataFrame, output_dir: str, plot_format='pdf'):
     """Plot condensate saturation, condensed column, layer thickness, and magma state.
@@ -73,9 +78,10 @@ def plot_saturated(hf_all: pd.DataFrame, output_dir: str, plot_format='pdf'):
 
         ax0.plot(time[valid], activity[valid], lw=lw, color=col, label=lbl)
 
-        # Below saturation the condensed mass is only the solver's floor, so
-        # only saturated points carry a mass
-        mass = np.where(valid & (activity >= SATURATED), mass, 0.0)
+        # Below saturation the condensed mass is only the solver's floor, so only
+        # saturated points, or a layer held from re-vapourising, carry a mass
+        keep = valid & ((activity >= SATURATED) | (mass > HELD_MASS_KG))
+        mass = np.where(keep, mass, 0.0)
         column = mass / area
         ax1.plot(time, column / C_uval, lw=lw, color=col)
         ax2.plot(time, column / condensate_density[c], lw=lw, color=col)

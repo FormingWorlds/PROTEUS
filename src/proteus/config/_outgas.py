@@ -231,6 +231,14 @@ class Outgas:
     T_floor: float
         Temperature floor [K]. The outgassing temperature is clamped to
         this value from below for the chemistry solve and the target masses.
+    prevent_desaturation: bool
+        Whether condensed mass leaves the outgassing system for good. With
+        `false`, each solve re-equilibrates the whole inventory, so a condensate can
+        re-vapourise as conditions change. With `true`, the mass held in each
+        `{e}_kg_condensed` reservoir is withheld from the chemistry, from escape and
+        from the desiccation gate, and the reservoir can only grow: a condensed
+        layer can only get thicker. Applies to the condensates atmodeller solves
+        for (`outgas.atmodeller.include_condensates`).
     solver_rtol: float
         Relative tolerance for the volatile equilibrium solver.
     solver_atol: float
@@ -315,6 +323,9 @@ class Outgas:
     T_floor: float = field(default=700.0, validator=validators.gt(0.0))
     solver_rtol: float = field(default=1e-4, validator=validators.gt(0.0))
     solver_atol: float = field(default=1e-6, validator=validators.gt(0.0))
+
+    # Condensed mass removed from the chemistry once formed, so it cannot re-vapourise
+    prevent_desaturation: bool = field(default=False)
 
     # Solid-phase volatile trapping, run before and apart from the chemistry solve,
     # so it sits beside T_floor rather than under [outgas.calliope]. The default

@@ -608,6 +608,7 @@ config_version = "3.0"
     T_floor                   = 700.0        # outgassing temperature floor [K]; clamped from below
     solver_rtol               = 1e-4         # relative mass/equilibrium tolerance
     solver_atol               = 1e-6         # absolute mass/equilibrium tolerance
+    prevent_desaturation      = false        # true: condensates never re-vapourise, so a condensed layer only grows
 
     # Solid-phase volatile trapping during mantle crystallisation
     trap_mode                 = "none"       # none | front (needs interior_energetics.module = "aragog")
