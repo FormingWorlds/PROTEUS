@@ -8,8 +8,9 @@ would switch the melt drainage law at the resume row; the resume stops unless
 ``interior_energetics.aragog.allow_resume_law_change`` is set.
 
 A record that names the Aragog module and lacks ``separation_viscosity`` counts as
-aragog's ``'melt'``. Any other law the record does not hold must be set in the config
-file of the resume; the allow switch does not stand in for a missing record.
+aragog's ``'melt'``. A record of another interior module holds no Aragog law. Any law
+the record does not hold must be set in the config file of the resume; the allow switch
+does not stand in for a missing record.
 """
 
 from __future__ import annotations
@@ -48,6 +49,9 @@ def _unrecorded(key: str, stored_path: str, module, config_path) -> str:
     """Refusal text for a law the run did not record."""
     if module is None:
         where = f'{stored_path}, which is missing, unreadable or names no interior module'
+        hint = 'the law of the run is unknown'
+    elif module != 'aragog':
+        where = f'{stored_path}, which names interior module {module!r}'
         hint = 'the law of the run is unknown'
     else:
         where = stored_path
@@ -90,8 +94,10 @@ def check_resume_separation_laws(
     """
     stored_path = os.path.join(output_dir, 'init_coupler.toml')
     module, stored = _aragog_table(stored_path)
-    if config.interior_energetics.module != 'aragog' or module not in (None, 'aragog'):
+    if config.interior_energetics.module != 'aragog':
         return []
+    if module not in (None, 'aragog'):  # a record of another module holds no Aragog law
+        stored = {}
     aragog = config.interior_energetics.aragog
     in_file = _aragog_table(config_path)[1]
     switches, refusals, notes = [], [], []
