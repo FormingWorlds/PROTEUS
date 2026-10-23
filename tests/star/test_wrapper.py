@@ -259,7 +259,7 @@ def test_update_instellation_dummy_eccentric_orbit_uses_flux_distance_and_window
         'semimajorax': a,
         'eccentricity': e,
         'separation': a * (1.0 + e**2 / 2.0),
-        'age_star': 2.0e9,
+        'age_star': 1.5e9,
     }
 
     with patch('proteus.star.dummy.calc_instellation', return_value=1361.0) as mock_inst:

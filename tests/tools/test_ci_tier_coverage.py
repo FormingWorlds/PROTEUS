@@ -407,25 +407,30 @@ def _pytest_command(text: str, marker: str) -> str:
     raise AssertionError(f'no pytest invocation names {marker}')
 
 
-def test_linux_pr_unit_step_runs_two_workers_and_the_nightly_keeps_one_process():
+def test_linux_pr_unit_step_runs_two_workers_and_the_linux_nightly_keeps_one_process():
     """The Linux PR unit step runs 2 workers to stay inside its time limit; the Linux
     nightly unit tier keeps 1 process, so it still finds faults that depend on test order."""
+    workers = ('-n', '--numprocesses')
     pr = _pytest_command(PR_CHECKS.read_text(), 'junit-unit-linux.xml').split()
-    assert pr.count('-n') == 1 and pr[pr.index('-n') + 1] == '2', pr
-    assert pr[pr.index('--dist') + 1] == 'worksteal', pr
+    assert [t for t in pr if t.startswith(workers)] == ['-n'], pr
+    assert pr[pr.index('-n') + 1] == '2' and pr[pr.index('--dist') + 1] == 'worksteal', pr
     nightly = _nightly_text()
     unit = _pytest_command(nightly, 'junit-unit-').split()
-    assert not [t for t in unit if t.startswith(('-n', '--numprocesses'))], unit
+    assert not [t for t in unit if t.startswith(workers)], unit
     assert '${{ matrix.unit_xdist }}' in ' '.join(unit), unit
     block = re.sub(
         r'#[^\n]*', '', re.search(r'\n  unit-tier:\n(.*?)\n    runs-on:', nightly, re.S)[1]
     )
-    head, include = block.split('include:', 1)
-    items = [dict(re.findall(r'(\w+): ([^\n]+)', item)) for item in include.split('- ')[1:]]
-    xdist_os = [item.get('os') for item in items if 'unit_xdist' in item]
-    assert 'unit_xdist' not in head and block.count('unit_xdist') == 1, block
-    assert xdist_os == ['macos-latest'], xdist_os
-    assert [i['unit_xdist'] for i in items if 'unit_xdist' in i] == ['-n 2 --dist worksteal']
+    items = []
+    for line in block.split('include:', 1)[1].splitlines():
+        key = re.match(r'\s*(- )?(\w+): (.+)', line)
+        if key and key[1]:
+            items.append({})
+        if key and items:
+            items[-1][key[2]] = key[3].strip()
+    xdist = [(item.get('os'), item['unit_xdist']) for item in items if 'unit_xdist' in item]
+    assert block.count('unit_xdist') == 1, block
+    assert xdist == [('macos-latest', '-n 2 --dist worksteal')], xdist
 
 
 def test_every_tiered_file_is_reachable_by_its_ci_job():
