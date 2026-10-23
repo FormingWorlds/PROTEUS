@@ -191,6 +191,58 @@ def test_load_ps_table_scaling(tmp_path):
     np.testing.assert_allclose(table[1, 1, 2], 0.9 * val_scale, rtol=1e-10)
 
 
+def _load_local_table(tmp_path, filename='density_melt.dat'):
+    """Load ``filename`` from a tmp SPIDER lookup_data dir with no FWL_DATA fallback."""
+    interior_o = Interior_t(50)
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setenv('FWL_DATA', str(tmp_path / 'nonexistent'))
+        mp.setattr('proteus.utils.data.FWL_DATA_DIR', tmp_path / 'nonexistent', raising=False)
+        mp.setattr('proteus.interior_energetics.common.find_lookup_table_dir', lambda: None)
+        return interior_o._load_ps_table(
+            str(tmp_path / 'spider'), 'WolfBower2018_MgSiO3', filename
+        )
+
+
+@pytest.mark.physics_invariant
+def test_load_ps_table_non_square_grid_matches_every_scaled_node(tmp_path):
+    """A 4 S x 3 P table loads as (nS, nP, 3) with every node scaled by its header factor.
+
+    The grid is not square, so a reshape to (nP, nS) or a transposed read puts the
+    wrong P and S at the off-diagonal nodes, and a swapped scale factor moves every
+    node by the P/S scale ratio (1e9 / 2600). P rises along axis 1 and is constant
+    along axis 0; S rises along axis 0.
+    """
+    eos_subdir = tmp_path / 'spider' / 'lookup_data' / '1TPa-dK09-elec-free'
+    eos_subdir.mkdir(parents=True)
+    nP, nS, P_scale, S_scale, val_scale = 3, 4, 1e9, 2600.0, 3000.0
+    _make_ps_table_file(eos_subdir / 'density_melt.dat', nP=nP, nS=nS, val_scale=val_scale)
+
+    table = _load_local_table(tmp_path)
+
+    P_nd = np.linspace(0.0, 1.0, nP)[np.newaxis, :] * np.ones((nS, 1))
+    S_nd = np.linspace(0.0, 1.0, nS)[:, np.newaxis] * np.ones((1, nP))
+    val_nd = 1.0 + 0.1 * P_nd + 0.05 * S_nd + 0.013 * P_nd * S_nd
+    expected = np.stack([P_nd * P_scale, S_nd * S_scale, val_nd * val_scale], axis=-1)
+    assert table.shape == (nS, nP, 3)
+    np.testing.assert_allclose(table, expected, rtol=1e-12, atol=0.0)
+    assert np.all(np.diff(table[:, :, 0], axis=1) > 0.0)
+    np.testing.assert_array_equal(table[:, :, 0], np.broadcast_to(table[0, :, 0], (nS, nP)))
+    assert np.all(np.diff(table[:, :, 1], axis=0) > 0.0)
+
+
+def test_load_ps_table_short_row_raises(tmp_path):
+    """A data row with a missing column raises ValueError instead of loading a partial table."""
+    eos_subdir = tmp_path / 'spider' / 'lookup_data' / '1TPa-dK09-elec-free'
+    eos_subdir.mkdir(parents=True)
+    (eos_subdir / 'density_melt.dat').write_text(
+        '# 5 2 1\n# units\n# info\n# info\n# 1e9 2600.0 3000.0\n0.0 0.0 1.0\n1.0 0.0\n'
+    )
+
+    with pytest.raises(ValueError):
+        _load_local_table(tmp_path)
+    assert (eos_subdir / 'density_melt.dat').stat().st_size > 0
+
+
 def test_interior_t_init_loads_all_three_tables(tmp_path):
     """Interior_t.__init__ wires rho_melt + cp_solid + cp_melt loaders.
 
