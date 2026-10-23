@@ -1342,6 +1342,46 @@ class TestGridFromConfig:
         assert call_record['slurm'] == 1
         assert call_record['run'] == 0
 
+    @pytest.mark.parametrize('key', ['use_slurm', 'jax_cache'])
+    @pytest.mark.parametrize('value', ['false', 1, 0.0], ids=['string', 'int', 'float'])
+    def test_a_grid_setting_that_is_not_a_bool_is_refused(
+        self, fake_proteus_dir, monkeypatch, key, value
+    ):
+        """A quoted ``"false"``, a ``1`` or a ``0.0`` for use_slurm or jax_cache stops the
+        grid with the key named, instead of reading ``"false"`` as true."""
+        (fake_proteus_dir / 'base.toml').write_text('# base\n')
+        grid_path = _write_grid_toml(
+            fake_proteus_dir / 'g.toml',
+            dimensions={key: value, 'planet.mass_tot': {'method': 'direct', 'values': [0.5]}},
+        )
+        monkeypatch.setattr(Grid, 'run', lambda self, *a, **k: None)
+        monkeypatch.setattr(Grid, 'slurm_config', lambda self, *a, **k: None)
+        with pytest.raises(ValueError, match=f'{key} must be true or false, got {value!r}'):
+            grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
+
+    @pytest.mark.parametrize(
+        ('extra', 'expected'),
+        [({}, False), ({'jax_cache': True}, True), ({'jax_cache': False}, False)],
+        ids=['absent', 'true', 'false'],
+    )
+    def test_jax_cache_reaches_the_slurm_script_as_written(
+        self, fake_proteus_dir, monkeypatch, extra, expected
+    ):
+        """jax_cache = true or false reaches slurm_config as written; an absent key is false."""
+        (fake_proteus_dir / 'base.toml').write_text('# base\n')
+        grid_path = _write_grid_toml(
+            fake_proteus_dir / 'g.toml',
+            use_slurm=True,
+            dimensions={**extra, 'planet.mass_tot': {'method': 'direct', 'values': [0.5]}},
+        )
+        seen = {}
+        monkeypatch.setattr(Grid, 'slurm_config', lambda self, *a, **k: seen.update(k))
+        monkeypatch.setattr(gm, 'read_config_object', lambda p: mock.MagicMock())
+        monkeypatch.setattr(gm, 'recursive_setattr', lambda *a, **k: None)
+        monkeypatch.setattr(gm.os, 'sync', lambda: None)
+        grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
+        assert seen['jax_cache'] is expected
+
     def test_run_branch_calls_run(self, fake_proteus_dir, monkeypatch):
         """``use_slurm = false`` dispatches to ``Grid.run`` instead of
         ``Grid.slurm_config``.
