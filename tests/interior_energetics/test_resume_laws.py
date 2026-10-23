@@ -18,11 +18,13 @@ from pathlib import Path
 
 import pytest
 import tomlkit
-from hypothesis import HealthCheck, given, settings
-from hypothesis import strategies as st
 
-from proteus.config import read_config_object
-from proteus.interior_energetics.resume_laws import (
+pytest.importorskip('hypothesis')
+from hypothesis import HealthCheck, given, settings  # noqa: E402
+from hypothesis import strategies as st  # noqa: E402
+
+from proteus.config import read_config_object  # noqa: E402
+from proteus.interior_energetics.resume_laws import (  # noqa: E402
     ResumeSeparationLawError,
     check_resume_separation_laws,
 )
@@ -183,6 +185,9 @@ def test_the_check_applies_only_to_an_aragog_run_resumed_under_aragog(
     (out / 'init_coupler.toml').write_text(tomlkit.dumps(doc))
     config, path = _user_config(tmp_path)
     config.interior_energetics.module = new_module
+    assert (
+        config.interior_energetics.aragog.separation_buoyancy == 'mixture'
+    )  # differs from the record
     assert check_resume_separation_laws(config, path, out) == []
 
 
