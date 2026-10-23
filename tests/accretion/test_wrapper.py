@@ -5686,3 +5686,42 @@ def test_dropped_init_impacts_are_logged_and_an_oversized_counter_names_the_time
     big_dir.mkdir()
     oversized, _ = _counter_case(big_dir, [5.0, 8.0], 100.0, 50)
     _assert_refused_without_side_effects(oversized, 'holds only 2 impact')
+
+
+def test_the_resume_restore_changes_only_the_impact_config_fields():
+    """restore_accretion_state changes exactly IMPACT_CONFIG_FIELDS of a real config, the
+    fields start() records with their loaded values."""
+    from attrs import asdict
+    from helpers import PROTEUS_ROOT
+
+    from proteus.accretion.wrapper import IMPACT_CONFIG_FIELDS, restore_accretion_state
+    from proteus.config import read_config_object
+    from proteus.utils.constants import AU, M_earth
+
+    def flat(tree, prefix=''):
+        out = {}
+        for key, value in tree.items():
+            out.update(
+                flat(value, f'{prefix}{key}.')
+                if isinstance(value, dict)
+                else {prefix + key: value}
+            )
+        return out
+
+    config = read_config_object(PROTEUS_ROOT / 'input' / 'minimal.toml')
+    config.accretion.module = 'morrigan'
+    config.params.resume = True
+    before = flat(asdict(config))
+    handler = SimpleNamespace(
+        config=config,
+        hf_row={
+            'M_accreted_rock': 0.5 * M_earth,
+            'semimajorax': 1.25 * AU,
+            'eccentricity': 0.04,
+            'n_impacts_applied': 1,
+        },
+    )
+    restore_accretion_state(handler)
+    after = flat(asdict(config))
+    assert {k for k in before if before[k] != after[k]} == set(IMPACT_CONFIG_FIELDS)
+    assert config.planet.mass_tot == pytest.approx(1.5, rel=1e-12)

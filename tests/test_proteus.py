@@ -438,7 +438,7 @@ def test_a_resume_records_the_config_as_loaded_not_as_the_accretion_restore_left
     p, _ = _resumable_run_with_buoyancy(tmp_path, 'mixture')
     p.config.planet.mass_tot = 1.0
     p.config.write.side_effect = lambda path, overrides=None: Path(path).write_text(
-        f'mass_tot = {p.config.planet.mass_tot}'
+        f'mass_tot = {(overrides or {}).get("planet.mass_tot", p.config.planet.mass_tot)}'
     )
 
     def grow(proteus):
