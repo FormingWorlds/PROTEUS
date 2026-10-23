@@ -43,6 +43,8 @@ import pytest
 from scipy.optimize import brentq
 
 from proteus.outgas.compaction import (
+    _ATOL,
+    _RTOL,
     BRANCH_DARCY,
     BRANCH_GUARD,
     BRANCH_MATRIX,
@@ -557,24 +559,26 @@ def test_drainage_is_bounded_and_decays_with_residence():
 @pytest.mark.physics_invariant
 def test_a_retained_porosity_outside_the_entry_range_stops_the_step(monkeypatch):
     """Invariant on every accepted drainage result: the retained porosity lies in
-    [0, phi_top]. The ODE solver may end past either end within its own error scale,
-    atol + rtol phi_top = 3e-9 here, which is clipped; a larger excursion is a fault."""
+    [0, phi_top]. LSODA ends past either end within its error scale, atol near zero and
+    atol + rtol phi_top near the entry, which is clipped; a larger excursion is a fault."""
     import scipy.integrate
 
-    def solver_ending_at(value):
+    def solver_ending_at(value, phi_top):
         def fake(*_args, **_kwargs):
-            return SimpleNamespace(success=True, message='', y=np.array([[_PHI_C, value]]))
+            return SimpleNamespace(success=True, message='', y=np.array([[phi_top, value]]))
 
         return fake
 
-    args = (_PHI_C, _T_RES_FAST, _L, 1.0e-3, _DRHO, _G, 100.0, 1.0e18)
-    for value, expected in ((_PHI_C + 2.0e-9, _PHI_C), (-2.0e-12, 0.0), (-2.0e-9, 0.0)):
-        monkeypatch.setattr(scipy.integrate, 'solve_ivp', solver_ending_at(value))
-        assert _drain(*args)[0] == expected
-    for value in (_PHI_C + 1.0e-7, -1.0e-7, float('nan')):
-        monkeypatch.setattr(scipy.integrate, 'solve_ivp', solver_ending_at(value))
-        with pytest.raises(RuntimeError, match='retained porosity'):
-            _drain(*args)
+    for phi_top in (_PHI_C, 0.01):
+        args = (phi_top, _T_RES_FAST, _L, 1.0e-3, _DRHO, _G, 100.0, 1.0e18)
+        low, high = 10.0 * _ATOL, 10.0 * _ATOL + _RTOL * phi_top
+        for value, expected in ((phi_top + 0.9 * high, phi_top), (-0.9 * low, 0.0)):
+            monkeypatch.setattr(scipy.integrate, 'solve_ivp', solver_ending_at(value, phi_top))
+            assert _drain(*args)[0] == expected
+        for value in (phi_top + 1.1 * high, -1.1 * low, float('nan')):
+            monkeypatch.setattr(scipy.integrate, 'solve_ivp', solver_ending_at(value, phi_top))
+            with pytest.raises(RuntimeError, match='retained porosity'):
+                _drain(*args)
     # A front of no thickness has no positive percolation time.
     with pytest.raises(RuntimeError, match='percolation time'):
         _drain(_PHI_C, _T_RES_FAST, 0.0, 1.0e-3, _DRHO, _G, 100.0, 1.0e18)
@@ -583,19 +587,18 @@ def test_a_retained_porosity_outside_the_entry_range_stops_the_step(monkeypatch)
 @pytest.mark.physics_invariant
 def test_a_parcel_drained_to_the_stokes_residue_retains_nothing():
     """Below a porosity of about 3e-6 the mobility tends to the Stokes residue of the tanh
-    blend, so the decay turns exponential and a long residence drains the parcel to zero;
-    the integrator ends a little below zero there, which the step clips to 0."""
+    blend, a numerical floor, so the decay turns exponential: a residence far beyond any
+    front's ends within the integrator's tolerance of zero, where a phi^2 decay keeps 2e-8."""
     for t_res in (1.0e26, 1.0e44):
-        retained, tau_d, _ = drainage_integral(
+        retained = drainage_integral(
             _PHI_C, t_res, 1.0e5, 1.0e-3, _DRHO, _G, 1.0, 1.0e14, buoyancy='solid'
-        )
-        assert retained == 0.0
-        assert 0.0 < tau_d < t_res
-    # A residence well inside the phi^2 branch keeps a positive porosity.
+        )[0]
+        assert 0.0 <= retained < 1.0e-12
+    # Inside the phi^2 branch the porosity stays: 2.01e-5 after 1e20 s.
     kept = drainage_integral(
         _PHI_C, 1.0e20, 1.0e5, 1.0e-3, _DRHO, _G, 1.0, 1.0e14, buoyancy='solid'
     )[0]
-    assert 1.0e-5 < kept < 1.0e-4
+    assert kept == pytest.approx(2.01e-5, rel=1e-2)
 
 
 @pytest.mark.physics_invariant
