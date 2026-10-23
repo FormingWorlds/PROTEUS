@@ -23,6 +23,7 @@ Functions tested:
 from __future__ import annotations
 
 import json
+import logging
 import os
 import shutil
 import tempfile
@@ -1090,6 +1091,58 @@ def test_try_spider_init_with_mesh(tmp_path):
     idx = call_args.index('-rho_core')
     rho_val = float(call_args[idx + 1])
     assert rho_val == pytest.approx(config.interior_struct.core_density, rel=1e-3)
+
+
+@pytest.mark.unit
+def test_try_spider_uses_provisioned_phase_boundaries(tmp_path, caplog):
+    """P-S curves derived for the run replace the melting_dir files, logged at DEBUG.
+
+    The run's derived solidus and liquidus in dirs are passed to SPIDER rather
+    than the Melting_curves/<melting_dir> pair, and the choice is a debug line
+    only, so it adds nothing to an INFO log on each step.
+    """
+    from proteus.interior_energetics.spider import _try_spider
+
+    dirs, config, hf_row, eos_base, mc_base, mesh_path = _setup_spider_env(
+        tmp_path, with_mesh=True
+    )
+    derived = tmp_path / 'output' / 'data' / 'spider_eos'
+    derived.mkdir(parents=True)
+    for name in ('liquidus_P-S.dat', 'solidus_P-S.dat'):
+        (derived / name).write_text('dummy')
+    dirs['spider_liquidus_ps'] = str(derived / 'liquidus_P-S.dat')
+    dirs['spider_solidus_ps'] = str(derived / 'solidus_P-S.dat')
+
+    with (
+        patch('proteus.interior_energetics.spider.EOS_DYNAMIC_DIR', eos_base),
+        patch('proteus.interior_energetics.spider.MELTING_CURVES_DIR', mc_base),
+        patch('proteus.interior_energetics.spider.sp.run') as mock_run,
+        patch(
+            'proteus.interior_energetics.common.compute_initial_entropy',
+            return_value=3000.0,
+        ),
+        caplog.at_level(logging.DEBUG, logger='fwl.proteus.interior_energetics.spider'),
+    ):
+        mock_run.return_value = MagicMock(returncode=0)
+        _try_spider(
+            dirs,
+            config,
+            IC_INTERIOR=1,
+            hf_all=None,
+            hf_row=hf_row,
+            step_sf=1.0,
+            atol_sf=1.0,
+            mesh_file=mesh_path,
+        )
+
+    call_args = mock_run.call_args[0][0]
+    liquidus = call_args[call_args.index('-melt_phase_boundary_filename') + 1]
+    solidus = call_args[call_args.index('-solid_phase_boundary_filename') + 1]
+    # Discrimination: the melting_dir pair also exists, so a fall-through would pass it.
+    assert (liquidus, solidus) == (dirs['spider_liquidus_ps'], dirs['spider_solidus_ps'])
+    assert os.path.isfile(os.path.join(mc_base, 'Wolf_Bower+2018', 'liquidus_P-S.dat'))
+    levels = [r.levelno for r in caplog.records if r.getMessage().startswith('Using P-S phase')]
+    assert levels == [logging.DEBUG]
 
 
 @pytest.mark.unit

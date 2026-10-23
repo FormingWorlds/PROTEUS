@@ -426,7 +426,7 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
             )
         species_list.append(created)
 
-    log.info(
+    log.debug(
         'Atmodeller species: %s (active elements: %s)',
         [s.name for s in species_list],
         active_elements,
@@ -549,7 +549,7 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
             'or switch to fO2_source = "user_constant".'
         )
 
-    log.info(
+    log.debug(
         'Atmodeller solve: T=%.0f K, Phi=%.2f, elements=%s',
         T_magma,
         Phi_global,
@@ -600,7 +600,7 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
     quick_look = output.quick_look()
     total_P = float(np.squeeze(output.total_pressure()))
 
-    log.info('Atmodeller result: P_total=%.2f bar', total_P)
+    log.debug('Atmodeller result: P_total=%.2f bar', total_P)
 
     # atmodeller's per-species output dict carries the thermodynamically
     # consistent atmospheric (``gas_mass``) and dissolved (``dissolved_mass``)
@@ -619,11 +619,12 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
         if f'{formula}_cd' in output_dict:
             activity = _species_output_scalar(output_dict, f'{formula}_cd', 'activity')
             mass = _species_output_scalar(output_dict, f'{formula}_cd', 'total_mass')
+            # A missing or non-finite value is None, which the float formats reject.
             log.info(
-                'Atmodeller condensate %s_cd: activity=%s, condensed mass=%s kg',
+                'Condensate %s: activity=%s, condensed mass=%s kg',
                 formula,
-                activity,
-                mass,
+                'n/a' if activity is None else f'{activity:.3f}',
+                'n/a' if mass is None else f'{mass:.2e}',
             )
         hf_row[f'{formula}_cd_activity'] = float(activity) if activity is not None else 0.0
         hf_row[f'{formula}_cd_kg'] = float(mass) if mass is not None else 0.0
@@ -854,7 +855,7 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
     if mmw > 0:
         hf_row['atm_kg_per_mol'] = mmw
 
-    log.info(
+    log.debug(
         'Atmodeller: P_surf=%.2f bar, MMW=%.3f g/mol',
         P_total,
         mmw * 1e3,

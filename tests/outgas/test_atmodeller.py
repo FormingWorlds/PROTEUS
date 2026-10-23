@@ -722,7 +722,11 @@ def test_graphite_creation_failure_warns_and_drops_condensate(caplog):
 
 
 def test_graphite_activity_logged_each_solve(caplog):
-    """The graphite activity and condensed mass are logged when C_cd is solved for."""
+    """The graphite activity and condensed mass are logged at INFO when C_cd is solved for.
+
+    The species, solve-input, result and surface-pressure summaries of the same
+    solve are logged at DEBUG only.
+    """
     import logging
 
     pytest.importorskip('atmodeller')
@@ -741,19 +745,71 @@ def test_graphite_activity_logged_each_solve(caplog):
     from proteus.outgas.atmodeller import _MODEL_CACHE
 
     _MODEL_CACHE.clear()
+    with caplog.at_level(logging.DEBUG, logger='fwl.proteus.outgas.atmodeller'):
+        with patch('atmodeller.EquilibriumModel', return_value=fake_model):
+            calc_surface_pressures_atmodeller({'output': '/tmp/test'}, config, hf_row)
+    _MODEL_CACHE.clear()
+
+    graphite_lines = [
+        (r.levelno, r.getMessage())
+        for r in caplog.records
+        if r.getMessage().startswith('Condensate C:')
+    ]
+    assert graphite_lines == [
+        (logging.INFO, 'Condensate C: activity=0.250, condensed mass=3.00e-06 kg')
+    ]
+    # The per-solve species, inputs, result and surface summaries are debug-only, so
+    # the condensate line is the one atmodeller record an INFO log shows each solve.
+    summaries = (
+        'Atmodeller species:',
+        'Atmodeller solve:',
+        'Atmodeller result:',
+        'Atmodeller: P_surf=',
+    )
+    summary_levels = {
+        prefix: [r.levelno for r in caplog.records if r.getMessage().startswith(prefix)]
+        for prefix in summaries
+    }
+    assert summary_levels == {prefix: [logging.DEBUG] for prefix in summaries}
+    assert hf_row['C_cd_activity'] == pytest.approx(0.25, rel=1e-12)
+    assert hf_row['C_cd_kg'] == pytest.approx(3.0e-6, rel=1e-12)
+
+
+def test_unavailable_condensate_values_log_as_na(caplog):
+    """A non-finite activity and a missing mass log as n/a and record zero.
+
+    Edge case: the float formats of the condensate line reject None, so without
+    the guard the record cannot be formatted and logging prints a traceback.
+    """
+    import logging
+
+    pytest.importorskip('atmodeller')
+    config, hf_row = _carbon_only_condensate_case()
+
+    out = MagicMock()
+    out.quick_look.return_value = {'CO2_g': np.array(20.0), 'O2_g': np.array(1.0e-6)}
+    out.total_pressure.return_value = np.array(20.0)
+    out.asdict.return_value = {
+        'C_cd': {'activity': np.array(np.nan)},
+        'O2_g': {'log10dIW_1_bar': np.array(-0.1), 'gas_mass': np.array(1.0e10)},
+    }
+    fake_model = MagicMock()
+    fake_model.output = out
+
+    from proteus.outgas.atmodeller import _MODEL_CACHE
+
+    _MODEL_CACHE.clear()
     with caplog.at_level(logging.INFO, logger='fwl.proteus.outgas.atmodeller'):
         with patch('atmodeller.EquilibriumModel', return_value=fake_model):
             calc_surface_pressures_atmodeller({'output': '/tmp/test'}, config, hf_row)
     _MODEL_CACHE.clear()
 
     graphite_lines = [
-        r.getMessage() for r in caplog.records if 'condensate C_cd:' in r.getMessage()
+        r.getMessage() for r in caplog.records if r.getMessage().startswith('Condensate C:')
     ]
-    assert graphite_lines == [
-        'Atmodeller condensate C_cd: activity=0.25, condensed mass=3e-06 kg'
-    ]
-    assert hf_row['C_cd_activity'] == pytest.approx(0.25, rel=1e-12)
-    assert hf_row['C_cd_kg'] == pytest.approx(3.0e-6, rel=1e-12)
+    assert graphite_lines == ['Condensate C: activity=n/a, condensed mass=n/a kg']
+    assert hf_row['C_cd_activity'] == 0.0
+    assert hf_row['C_cd_kg'] == 0.0
 
 
 def test_condensates_need_their_elements_and_their_data_range():
