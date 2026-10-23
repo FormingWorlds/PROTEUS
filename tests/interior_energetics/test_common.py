@@ -27,19 +27,8 @@ import pytest
 
 from proteus.interior_energetics.common import Interior_t
 
-# Tests run in the fast PR check. Each test patches BOTH the
-# ``FWL_DATA`` environment variable AND the module-level
-# ``proteus.utils.data.FWL_DATA_DIR`` constant so neither the
-# inline ``os.environ.get('FWL_DATA', '')`` read in
-# ``Interior_t._load_ps_table`` nor any downstream consumer of the
-# import-time-frozen ``FWL_DATA_DIR`` constant can fall through to
-# real on-disk lookup tables. The earlier hang on hosted CI runners
-# was the classic module-level-constant trap: ``monkeypatch.setenv``
-# alone does NOT reach a constant initialised at import time, and
-# on a hosted image with a real ``FWL_DATA`` tree the frozen
-# constant pointed at multi-gigabyte EOS data that genfromtxt would
-# walk past the per-test 30 s ceiling. The 30 s timeout is a
-# defensive ceiling against any future regression of the same shape.
+# Each test patches FWL_DATA and the import-time constant proteus.utils.data.FWL_DATA_DIR,
+# so no table read falls through to the real multi-gigabyte EOS data.
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 
