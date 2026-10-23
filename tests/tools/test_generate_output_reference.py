@@ -122,7 +122,6 @@ def test_every_column_attributed_or_listed_unresolved(matrix):
         'src/proteus/observe/petitRADTRANS.py::_get_mix:dynamic key key',
         "src/proteus/outgas/atmodeller.py::_populate_volatile_element_reservoirs:dynamic key f'{sp}_kg_{r}'",
         'src/proteus/outgas/atmodeller.py::calc_surface_pressures_atmodeller:dynamic key key',
-        'src/proteus/outgas/atmodeller.py::calc_surface_pressures_atmodeller:dynamic key key',
         'src/proteus/plot/cpl_global.py::plot_global:dynamic key k',
         'src/proteus/plot/cpl_orbit.py::_plot_orbit_snapshot:dynamic key ecc_col',
         'src/proteus/plot/cpl_orbit.py::_plot_orbit_snapshot:dynamic key sma_col',

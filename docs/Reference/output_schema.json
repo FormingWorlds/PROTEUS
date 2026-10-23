@@ -26230,12 +26230,6 @@
       "function": "calc_surface_pressures_atmodeller"
     },
     {
-      "file": "src/proteus/outgas/atmodeller.py",
-      "kind": "read",
-      "reason": "dynamic key key",
-      "function": "calc_surface_pressures_atmodeller"
-    },
-    {
       "file": "src/proteus/plot/cpl_global.py",
       "kind": "read",
       "reason": "dynamic key k",

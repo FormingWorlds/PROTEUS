@@ -768,6 +768,7 @@ def test_mol_columns_derived_from_kg_when_solve_omits_mole_count():
     hf_row = _hf_row_with_HS_budget()
 
     co2_total_mass, co2_dissolved_mass, co2_gas_mass = 6.0e20, 2.0e20, 4.0e20
+    hf_row['C_kg_total'] = co2_total_mass * element_mmw['C'] / eval_gas_mmw('CO2')
 
     out = MagicMock()
     out.quick_look.return_value = {

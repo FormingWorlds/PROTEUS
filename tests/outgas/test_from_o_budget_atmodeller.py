@@ -254,9 +254,12 @@ def test_wrapper_reuses_model_until_species_network_changes():
 
     builds = []
 
-    def _make_model(*args, **kwargs):
+    def _make_model(network, *args, **kwargs):
         m = MagicMock()
         m.output = _fake_atmodeller_output()
+        if 'S2_g' not in network.species_names:
+            m.output.quick_look.return_value.pop('S2_g')
+            m.output.asdict.return_value.pop('S2_g')
         builds.append(m)
         return m
 
