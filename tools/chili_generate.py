@@ -30,10 +30,10 @@ Cases
 - ``tr1b.toml`` / ``tr1e.toml`` / ``tr1a.toml``: TRAPPIST-1 b, e, and
   alpha (protocol Table 4), derived from the Earth base with the
   TRAPPIST star and orbit deltas, the protocol's redox state and stop
-  rule, and ``RUN_SETTINGS``. Escape is disabled in these cases: ZEPHYRUS pairs only
-  with the Spada evolution tracks, and a 0.09 M_sun star needs the
-  Baraffe tracks, so the escape treatment for the TRAPPIST cases awaits
-  a protocol decision. The configs are generated for completeness;
+  rule, and ``RUN_SETTINGS``. Escape is disabled in these cases:
+  ZEPHYRUS pairs only with the Spada evolution tracks, and a 0.09 M_sun
+  star needs the Baraffe tracks, so the escape treatment for the
+  TRAPPIST cases awaits a protocol decision. The configs are generated for completeness;
   their runs are validated separately.
 
 Usage
@@ -141,8 +141,8 @@ PROTOCOL_STOP = {
     'params.stop.clock.enabled': False,
 }
 
-# Settings of the runs behind the intercomparison numbers that differ from the PROTEUS
-# defaults: the separation buoyancy against the solid.
+# Settings of the submitted runs that neither the tutorial configs nor the PROTEUS defaults
+# hold: the separation buoyancy against the solid.
 RUN_SETTINGS = {'interior_energetics.aragog.separation_buoyancy': 'solid'}
 
 # Protocol H and C inventory axes [kg] for the grid sweeps. The
@@ -173,12 +173,15 @@ def _set_dotted(doc, dotted: str, value) -> None:
     # A fresh item per document: tomlkit moves a replaced line's comment onto the item.
     new = keys[-1] not in node
     node[keys[-1]] = copy.deepcopy(value)
-    keys_before = [v for k, v in node.value.body if k is not None and k.key != keys[-1]]
-    plain = [
-        v for v in keys_before if not isinstance(v, (tomlkit.items.Table, tomlkit.items.AoT))
-    ]
-    if new and plain:  # a new key takes the indent of the keys of its table
-        node.item(keys[-1]).trivia.indent = plain[-1].trivia.indent
+    # A new key in a table takes the indent of its keys; the root and a split table have no body.
+    body = getattr(getattr(node, 'value', None), 'body', None)
+    if new and body:
+        items = [v for k, v in body if k is not None and k.key != keys[-1]]
+        plain = [
+            v for v in items if not isinstance(v, (tomlkit.items.Table, tomlkit.items.AoT))
+        ]
+        if plain:
+            node.item(keys[-1]).trivia.indent = plain[-1].trivia.indent
 
 
 def _format_stop_block(text: str, name: str) -> str:
@@ -232,7 +235,8 @@ def _format_stop_block(text: str, name: str) -> str:
 
 
 def case_deltas(name: str) -> dict:
-    """Deltas of case ``name``: its ``CASE_DELTAS`` entries and the protocol's redox state, stop rule and buoyancy.
+    """Deltas of case ``name``: its ``CASE_DELTAS`` entries, the protocol's redox state and stop rule,
+    and ``RUN_SETTINGS``.
 
     Raises
     ------

@@ -83,11 +83,11 @@ class AragogJAXRunner:
             raise FileNotFoundError(
                 f'PALEOS P-S tables not found for JAX solver: {spider_eos_dir}'
             )
+        # Phase parameters from config, checked before any JAX state is kept.
+        params = build_jax_phase_params(config)
+        check_solver_buoyancy(config, jax_params=params)
         interior_o._jax_eos = eos_jax
-
-        # Phase parameters from config.
-        interior_o._jax_params = build_jax_phase_params(config)
-        check_solver_buoyancy(config, jax_params=interior_o._jax_params)
+        interior_o._jax_params = params
 
         # Boundary conditions
         bc_cfg = self.aragog_solver.parameters.boundary_conditions

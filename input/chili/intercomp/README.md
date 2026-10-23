@@ -15,7 +15,7 @@ consecutive iterations without a converged atmosphere solve
 separation against the solid
 (`interior_energetics.aragog.separation_buoyancy = "solid"`), the form of
 the submitted runs, where the PROTEUS default takes it against the
-mixture. The TRAPPIST-1 cases (`tr1b`, `tr1e`,
+mixture on the Blake-Kozeny-Carman and Rumpf-Gupte regimes. The TRAPPIST-1 cases (`tr1b`, `tr1e`,
 `tr1a`) derive from the Earth base with the protocol's star and orbit
 settings; the escape module is off there (`escape.module = "none"`)
 because ZEPHYRUS pairs only with the Spada evolution tracks while a
@@ -29,12 +29,13 @@ rescaling the bolometric flux to match a different track family at the
 starting age.
 
 Do not edit these files by hand. Change the tutorial configs, the
-delta tables, `PROTOCOL_FO2_SHIFT_IW`, `PROTOCOL_STOP` or `RUN_SETTINGS` in
-`tools/chili_generate.py`, rerun the generator, and commit the result.
-The standalone grid configs under `input/tutorials/chili_grid/` are not
-generated: they hold the protocol's oxygen fugacity, inventories and
-stop rule and the separation buoyancy by hand, and the grid specs here take the stop rule from
-`earth.toml` and `venus.toml`.
+delta tables, `PROTOCOL_FO2_SHIFT_IW`, `PROTOCOL_STOP` or
+`RUN_SETTINGS` in `tools/chili_generate.py`, rerun the generator, and
+commit the result. The standalone grid configs under
+`input/tutorials/chili_grid/` are not generated: they hold the
+protocol's oxygen fugacity, inventories and stop rule and the
+separation buoyancy by hand, and the grid specs here take the stop rule
+from `earth.toml` and `venus.toml`.
 `tests/tools/test_chili_generate.py` fails CI on any drift between the
 tutorials, these files, and the standalone grid configs.
 

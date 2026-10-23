@@ -420,7 +420,8 @@ the viscosity of the melt-solid mixture
 (`interior_energetics.aragog.separation_viscosity = "mixture"`), with the
 buoyancy taken against the solid
 (`interior_energetics.aragog.separation_buoyancy = "solid"`), the form of
-the submitted runs; the PROTEUS default takes it against the mixture. In this
+the submitted runs; the PROTEUS default takes it against the mixture on
+the Blake-Kozeny-Carman and Rumpf-Gupte regimes. In this
 run the mantle crystallises as a mush with melt at all depths: at its last
 row every node of the mantle still holds melt, between 1% and 31%.
 

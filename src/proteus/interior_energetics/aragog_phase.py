@@ -305,7 +305,7 @@ def check_solver_buoyancy(
     solver : EntropySolver or None
         The numpy entropy solver after ``initialize()``, which builds its phase evaluators.
     jax_params : PhaseParams or None
-        Phase parameters of the JAX CVODE factory.
+        JAX phase parameters (CVODE factory or diffrax research runner).
 
     Raises
     ------
