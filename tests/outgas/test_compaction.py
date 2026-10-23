@@ -596,8 +596,8 @@ def test_drainage_is_bounded_without_a_clamp_and_decays_with_residence():
 @pytest.mark.physics_invariant
 def test_a_retained_porosity_outside_the_entry_range_stops_the_step(monkeypatch):
     """Invariant on every accepted drainage result: the retained porosity lies in
-    [0, phi_top]. The ODE solver may step past either end by its round-off, which
-    is clipped; a larger excursion is a fault, not a value to clip in silence."""
+    [0, phi_top]. The ODE solver may end past either end within its own error scale,
+    atol + rtol phi_top = 3e-9 here, which is clipped; a larger excursion is a fault."""
     import scipy.integrate
 
     def solver_ending_at(value):
@@ -607,10 +607,10 @@ def test_a_retained_porosity_outside_the_entry_range_stops_the_step(monkeypatch)
         return fake
 
     args = (_PHI_C, _T_RES_FAST, _L, 1.0e-3, _DRHO, _G, 100.0, 1.0e18)
-    for value, expected in ((_PHI_C + 5.0e-13, _PHI_C), (-5.0e-13, 0.0)):
+    for value, expected in ((_PHI_C + 2.0e-9, _PHI_C), (-2.0e-12, 0.0), (-2.0e-9, 0.0)):
         monkeypatch.setattr(scipy.integrate, 'solve_ivp', solver_ending_at(value))
         assert drainage_integral(*args, buoyancy='mixture')[0] == expected
-    for value in (_PHI_C + 1.0e-9, -1.0e-9, float('nan')):
+    for value in (_PHI_C + 1.0e-7, -1.0e-7, float('nan')):
         monkeypatch.setattr(scipy.integrate, 'solve_ivp', solver_ending_at(value))
         with pytest.raises(RuntimeError, match='retained porosity'):
             drainage_integral(*args, buoyancy='mixture')
@@ -619,6 +619,24 @@ def test_a_retained_porosity_outside_the_entry_range_stops_the_step(monkeypatch)
         drainage_integral(
             _PHI_C, _T_RES_FAST, 0.0, 1.0e-3, _DRHO, _G, 100.0, 1.0e18, buoyancy='mixture'
         )
+
+
+@pytest.mark.physics_invariant
+def test_a_parcel_drained_to_the_stokes_residue_retains_nothing():
+    """Below a porosity of about 3e-6 the mobility tends to the Stokes residue of the tanh
+    blend, so the decay turns exponential and a long residence drains the parcel to zero;
+    the integrator ends a little below zero there, which the step clips to 0."""
+    for t_res in (1.0e26, 1.0e44):
+        retained, tau_d, _ = drainage_integral(
+            _PHI_C, t_res, 1.0e5, 1.0e-3, _DRHO, _G, 1.0, 1.0e14, buoyancy='solid'
+        )
+        assert retained == 0.0
+        assert 0.0 < tau_d < t_res
+    # A residence well inside the phi^2 branch keeps a positive porosity.
+    kept = drainage_integral(
+        _PHI_C, 1.0e20, 1.0e5, 1.0e-3, _DRHO, _G, 1.0, 1.0e14, buoyancy='solid'
+    )[0]
+    assert 1.0e-5 < kept < 1.0e-4
 
 
 @pytest.mark.physics_invariant
