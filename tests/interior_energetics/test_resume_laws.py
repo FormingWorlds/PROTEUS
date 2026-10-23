@@ -142,7 +142,7 @@ def test_a_run_without_a_stored_buoyancy_needs_the_field_in_the_config_file(
 @pytest.mark.parametrize(
     'content',
     [None, b'\x00 not toml [', b"[interior]\nmodule = 'aragog'\n"],
-    ids=['no file', 'unreadable file', 'record without the interior_energetics module'],
+    ids=['no file', 'unreadable file', 'record in the [interior] layout'],
 )
 def test_a_run_without_a_usable_record_needs_both_laws_in_the_config_file(tmp_path, content):
     """With no record that names the interior module, neither law is guessed: the resume stops
@@ -161,6 +161,48 @@ def test_a_run_without_a_usable_record_needs_both_laws_in_the_config_file(tmp_pa
         tmp_path, separation_buoyancy='mixture', separation_viscosity='mixture'
     )
     assert check_resume_separation_laws(config, path, out) == []
+
+
+@pytest.mark.parametrize('new, refused', [('solid', False), ('mixture', True)])
+def test_laws_in_a_record_that_names_no_module_are_compared(tmp_path, new, refused):
+    """A record with separation laws but no interior_energetics.module is compared like any
+    record; only the 'melt' inference needs a record that names Aragog."""
+    out = tmp_path / 'run'
+    out.mkdir()
+    (out / 'init_coupler.toml').write_text(
+        "[interior_energetics.aragog]\nseparation_viscosity = 'mixture'\n"
+        "separation_buoyancy = 'solid'\n"
+    )
+    config, path = _user_config(
+        tmp_path, separation_buoyancy=new, separation_viscosity='mixture'
+    )
+    if refused:
+        with pytest.raises(ResumeSeparationLawError, match="written with 'solid'"):
+            check_resume_separation_laws(config, path, out)
+    else:
+        assert check_resume_separation_laws(config, path, out) == []
+
+
+def test_a_refused_resume_logs_no_note_for_a_law_the_config_file_sets(tmp_path, caplog):
+    """A law the config file sets for an unrecorded field is noted only when the resume goes on."""
+    out = _stored_run(tmp_path, drop=('separation_buoyancy',), separation_viscosity='melt')
+    config, path = _user_config(tmp_path, separation_buoyancy='solid')
+    with caplog.at_level(logging.DEBUG, logger=LOGGER):
+        with pytest.raises(ResumeSeparationLawError, match="separation_viscosity is 'mixture'"):
+            check_resume_separation_laws(config, path, out)
+    assert [r for r in caplog.records if r.name == LOGGER] == []
+
+
+def test_the_record_overrides_fit_the_config_schema(tmp_path):
+    """start() writes init_coupler.toml with RECORD_OVERRIDES; a real config takes them and
+    reads the allow switch back as false."""
+    from proteus.interior_energetics.resume_laws import RECORD_OVERRIDES
+
+    config, _ = _user_config(tmp_path, allow_resume_law_change=True)
+    assert RECORD_OVERRIDES == {'interior_energetics.aragog.allow_resume_law_change': False}
+    config.write(tmp_path / 'record.toml', overrides=RECORD_OVERRIDES)
+    reread = read_config_object(tmp_path / 'record.toml').interior_energetics.aragog
+    assert reread.allow_resume_law_change is False
 
 
 def test_the_allow_switch_does_not_cover_an_unrecorded_buoyancy(tmp_path, caplog):

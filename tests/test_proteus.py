@@ -42,16 +42,18 @@ pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 STALL_MAX_CONFIGURED = 41
 
 
-def _record_matching_separation_laws(config, output):
-    """Give a mock config real separation laws and its run directory an init_coupler.toml
-    that records the same laws, so a resume passes the separation-law check."""
+def _record_matching_separation_laws(config, output, buoyancy='mixture'):
+    """Give a mock config the 'mixture' separation laws and its run directory an
+    init_coupler.toml that records ``buoyancy``; return the text of that record."""
     aragog = config.interior_energetics.aragog
     aragog.separation_viscosity = aragog.separation_buoyancy = 'mixture'
     aragog.allow_resume_law_change = False
-    (Path(output) / 'init_coupler.toml').write_text(
+    text = (
         "[interior_energetics]\nmodule = 'aragog'\n\n[interior_energetics.aragog]\n"
-        "separation_viscosity = 'mixture'\nseparation_buoyancy = 'mixture'\n"
+        f"separation_viscosity = 'mixture'\nseparation_buoyancy = '{buoyancy}'\n"
     )
+    (Path(output) / 'init_coupler.toml').write_text(text)
+    return text
 
 
 def _make_proteus_instance(
@@ -339,24 +341,41 @@ def _resumable_run_with_buoyancy(tmp_path, stored):
     config.write writes the file it is given, as the real one does."""
     p = _make_proteus_instance(tmp_path, struct_module='dummy', interior_module='aragog')
     (tmp_path / 'data').mkdir(exist_ok=True)
-    stored_text = (
-        "[interior_energetics]\nmodule = 'aragog'\n\n[interior_energetics.aragog]\n"
-        f"separation_buoyancy = '{stored}'\nseparation_viscosity = 'mixture'\n"
-    )
-    (tmp_path / 'init_coupler.toml').write_text(stored_text)
+    stored_text = _record_matching_separation_laws(p.config, tmp_path, stored)
     p.config.write.side_effect = lambda path, overrides=None: Path(path).write_text(
         repr(overrides)
     )
     return p, stored_text
 
 
-def _resume_to_init_star(p):
-    """Resume ``p`` until start() reaches init_star; return what start() raised, or None."""
+def _resume_to_init_star(p, *extra):
+    """Resume ``p`` until start() reaches init_star, or until an ``extra`` patch stops it;
+    return what start() raised, or None."""
     try:
-        _resume_with_patches(p, _make_hf_df(), patch('proteus.proteus.setup_logger'))
+        _resume_with_patches(p, _make_hf_df(), patch('proteus.proteus.setup_logger'), *extra)
     except Exception as exc:
         return exc
     return None
+
+
+def _resume_to_main_loop(p):
+    """Resume ``p`` past every resume check, until start() sets the running status 1."""
+    from proteus.utils.coupler import UpdateStatusfile
+
+    def status(dirs, code):
+        UpdateStatusfile(dirs, code)
+        if code == 1:
+            raise _StopAfterMeshRestore
+
+    return _resume_to_init_star(
+        p,
+        patch('proteus.star.wrapper.init_star'),
+        patch('proteus.orbit.wrapper.init_orbit'),
+        patch('proteus.accretion.wrapper.init_accretion', return_value=[]),
+        patch('proteus.accretion.wrapper.restore_accretion_state'),
+        patch('proteus.interior_struct.common.volatile_mass_change', return_value=0.0),
+        patch('proteus.proteus.UpdateStatusfile', side_effect=status),
+    )
 
 
 @pytest.mark.unit
@@ -376,15 +395,21 @@ def test_a_resume_that_changes_the_separation_law_stops_before_init_coupler_is_w
 
 
 @pytest.mark.unit
-def test_a_resume_under_the_recorded_laws_records_no_permission(tmp_path):
-    """The recorded laws resume and start() writes init_coupler.toml with the allow switch
-    off, so a later resume from that file does not inherit the permission."""
-    p, stored_text = _resumable_run_with_buoyancy(tmp_path, 'mixture')
+def test_an_allowed_switch_is_recorded_only_once_the_resume_reaches_the_main_loop(tmp_path):
+    """Under the allow switch, a resume that stops before the main loop leaves the record of
+    the old law, so the next attempt meets the check again; one that reaches the main loop
+    records the new law with the switch off."""
+    p, stored_text = _resumable_run_with_buoyancy(tmp_path, 'solid')
     p.config.interior_energetics.aragog.allow_resume_law_change = True
-    assert _resume_to_init_star(p) is None
+    assert _resume_to_init_star(p) is None  # stopped at init_star, after the law check
+    p.config.write.assert_not_called()
+    assert (tmp_path / 'init_coupler.toml').read_text() == stored_text
+    assert _resume_to_main_loop(p) is None
     p.config.write.assert_called_once()
-    overrides = p.config.write.call_args.kwargs.get('overrides') or {}
-    assert overrides.get('interior_energetics.aragog.allow_resume_law_change') is False
+    from proteus.interior_energetics.resume_laws import RECORD_OVERRIDES
+
+    overrides = p.config.write.call_args.kwargs['overrides']
+    assert RECORD_OVERRIDES.items() <= overrides.items()
     assert (tmp_path / 'init_coupler.toml').read_text() != stored_text
 
 
