@@ -12,6 +12,8 @@ Invariants asserted:
 - jgrav_b('solid') / jgrav_b('mixture') equals aragog's mobility ratio
   F_solid / F_mixture at every node with a flux: 1 / (1 - phi) on the matrix regimes
   (McKenzie 1984, Eq. 3.7, against Abe 1995, Eq. 40), towards 1 on the Stokes regime.
+- Without aragog's ratio: 1 / (1 - phi) on the Blake-Kozeny-Carman nodes and on the
+  Rumpf-Gupte nodes with 0.3 < phi < 0.5, and 1 within 1e-2 on the Stokes nodes above 0.91.
 - The JAX separation velocity from the parameters PROTEUS builds for the factory gives
   the same ratio.
 """
@@ -105,6 +107,13 @@ def test_the_configured_buoyancy_reaches_the_built_solver(tmp_path):
     np.testing.assert_allclose(
         sol.jgrav_b[rg] / mix.jgrav_b[rg], 1.0 / (1.0 - por[rg]), rtol=1e-3
     )
+    bkc = flux & (por > 0.0) & (por < _ZETA_1)  # aragog's law gives 1 / (1 - phi) to 1e-7
+    np.testing.assert_allclose(
+        sol.jgrav_b[bkc] / mix.jgrav_b[bkc], 1.0 / (1.0 - por[bkc]), rtol=1e-6
+    )
+    stokes = flux & (por > 0.91)  # aragog's law gives 1 to 1e-2 above phi 0.9015
+    assert np.count_nonzero(stokes) >= 2, 'no Stokes node above phi 0.91'
+    np.testing.assert_allclose(sol.jgrav_b[stokes] / mix.jgrav_b[stokes], 1.0, rtol=1e-2)
     assert ratio.max() > 1.5  # an ignored field gives 1 on every node
 
     # The JAX path: the separation velocity from the factory parameters PROTEUS builds.

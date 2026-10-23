@@ -311,9 +311,15 @@ def test_a_solver_in_the_config_mode_passes_the_check(mode):
     [
         (_solver('mixture'), None, 'numpy', "'mixture'"),
         (_solver('solid', basic='mixture'), None, 'numpy', "'mixture'"),
+        (_solver('mixture', basic='solid'), None, 'numpy', "'mixture'"),
         (None, 1.0, 'jax', "'mixture'"),
     ],
-    ids=['numpy_swapped', 'numpy_basic_nodes_swapped', 'jax_swapped'],
+    ids=[
+        'numpy_swapped',
+        'numpy_basic_nodes_swapped',
+        'numpy_staggered_nodes_swapped',
+        'jax_swapped',
+    ],
 )
 def test_a_solver_in_another_mode_stops_the_run(solver, jax_flag, site, got):
     """A built solver whose buoyancy differs from the config raises, naming the field, the site and
