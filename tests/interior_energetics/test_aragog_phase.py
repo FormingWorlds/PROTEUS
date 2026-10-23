@@ -50,6 +50,9 @@ from proteus.interior_energetics.aragog_phase import (  # noqa: E402
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
+# The JAX flag of each buoyancy mode, as aragog's PhaseParams sets it.
+_FLAG = {'mixture': 1.0, 'solid': 0.0}
+
 # Runtime solidus / liquidus paths the numpy builder stores verbatim.
 _SOLIDUS = '/data/lookup/solidus.dat'
 _LIQUIDUS = '/data/lookup/liquidus.dat'
@@ -309,20 +312,22 @@ def test_a_solver_in_the_config_mode_passes_the_check(mode):
         (_solver('mixture'), None, 'numpy', "'mixture'"),
         (_solver('solid', basic='mixture'), None, 'numpy', "'mixture'"),
         (None, 1.0, 'jax', "'mixture'"),
-        (None, 0.5, 'jax', 'None'),
     ],
-    ids=['numpy_swapped', 'numpy_basic_nodes_swapped', 'jax_swapped', 'jax_flag_neither'],
+    ids=['numpy_swapped', 'numpy_basic_nodes_swapped', 'jax_swapped'],
 )
 def test_a_solver_in_another_mode_stops_the_run(solver, jax_flag, site, got):
     """A built solver whose buoyancy differs from the config raises, naming the field, the site and
     both values, so an ignored or swapped field cannot run on silently."""
-    from proteus.interior_energetics.aragog_phase import check_solver_buoyancy
+    from proteus.interior_energetics.aragog_phase import (
+        BuoyancyMismatchError,
+        check_solver_buoyancy,
+    )
 
     config = _make_full_config(separation_buoyancy='solid')
     jax_params = (
         None if jax_flag is None else SimpleNamespace(separation_buoyancy_mixture=jax_flag)
     )
-    with pytest.raises(RuntimeError) as err:
+    with pytest.raises(BuoyancyMismatchError) as err:
         check_solver_buoyancy(config, solver=solver, jax_params=jax_params)
     msg = str(err.value)
     assert 'interior_energetics.aragog.separation_buoyancy' in msg
@@ -583,7 +588,11 @@ def test_cvode_factory_site_delegates_to_the_shared_jax_builder(tmp_path):
         patch('aragog.jax.phase.MeshArrays.from_numpy_mesh', return_value=MagicMock()),
         patch(
             'proteus.interior_energetics.aragog.build_jax_phase_params',
-            return_value=MagicMock(separation_buoyancy_mixture=0.0),
+            return_value=MagicMock(
+                separation_buoyancy_mixture=_FLAG[
+                    config.interior_energetics.aragog.separation_buoyancy
+                ]
+            ),
         ) as mock_builder,
     ):
         AragogRunner._maybe_install_jax_cvode_factory(config, interior_o)
@@ -595,6 +604,8 @@ def test_cvode_factory_stops_on_jax_params_in_another_buoyancy(tmp_path, monkeyp
     """JAX parameters in another buoyancy mode than the config raise from the installer outside
     the nightly too, instead of the warning and the finite-difference fallback that other install
     failures take; no factory is installed or cleared."""
+    from proteus.interior_energetics.aragog_phase import BuoyancyMismatchError
+
     monkeypatch.delenv('PROTEUS_CI_NIGHTLY', raising=False)
     config = _make_full_config(separation_buoyancy='solid')
     config.interior_energetics.aragog.backend = 'jax'
@@ -609,7 +620,7 @@ def test_cvode_factory_stops_on_jax_params_in_another_buoyancy(tmp_path, monkeyp
             return_value=SimpleNamespace(separation_buoyancy_mixture=1.0),
         ),
         pytest.raises(
-            RuntimeError, match="is 'solid', but the jax aragog solver uses 'mixture'"
+            BuoyancyMismatchError, match="is 'solid', but the jax aragog solver uses 'mixture'"
         ),
     ):
         AragogRunner._maybe_install_jax_cvode_factory(config, interior_o)
@@ -634,7 +645,11 @@ def test_cvode_factory_reads_the_setup_solver_fallback_tables(tmp_path, spider_e
         patch('aragog.jax.phase.MeshArrays.from_numpy_mesh', return_value=MagicMock()),
         patch(
             'proteus.interior_energetics.aragog.build_jax_phase_params',
-            return_value=MagicMock(separation_buoyancy_mixture=0.0),
+            return_value=MagicMock(
+                separation_buoyancy_mixture=_FLAG[
+                    config.interior_energetics.aragog.separation_buoyancy
+                ]
+            ),
         ),
         patch(
             'aragog.solver.cvode_jax.build_jax_rhs_and_jacobian',
@@ -672,7 +687,11 @@ def test_cvode_factory_reads_live_spider_eos_dir_on_each_call(tmp_path):
         patch('aragog.jax.phase.MeshArrays.from_numpy_mesh', return_value=MagicMock()),
         patch(
             'proteus.interior_energetics.aragog.build_jax_phase_params',
-            return_value=MagicMock(separation_buoyancy_mixture=0.0),
+            return_value=MagicMock(
+                separation_buoyancy_mixture=_FLAG[
+                    config.interior_energetics.aragog.separation_buoyancy
+                ]
+            ),
         ),
         patch(
             'aragog.solver.cvode_jax.build_jax_rhs_and_jacobian',

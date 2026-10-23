@@ -2512,7 +2512,10 @@ def test_the_built_solver_is_checked_for_the_config_buoyancy(built, monkeypatch)
             factory.assert_called_once()
             entropy_ic.assert_called_once()
         else:
-            with pytest.raises(RuntimeError, match="separation_buoyancy is 'mixture'.*'solid'"):
+            with pytest.raises(
+                aragog_phase.BuoyancyMismatchError,
+                match="separation_buoyancy is 'mixture'.*'solid'",
+            ):
                 AragogRunner.setup_or_update_solver(
                     config, {'Time': 0.0}, interior_o, 1.0, {'output': 'o'}
                 )

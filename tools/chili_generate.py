@@ -4,30 +4,33 @@
 The tutorial configs are the base of the CHILI cases:
 ``input/tutorials/tutorial_earth.toml`` and
 ``input/tutorials/tutorial_venus.toml`` hold the Earth and Venus setups
-of the protocol, except the redox state, which they set to IW+2, the
-stop rule and the separation buoyancy. This script derives every case
-config from them by applying only the deltas listed in ``CASE_DELTAS``
-below and the protocol's redox state, stop rule and buoyancy, so the generated cases and the tutorials cannot
-drift apart in any other field; the grid specs sweep the ``GRID_AXES``.
-The standalone grid configs under ``input/tutorials/chili_grid/`` are not
-generated and hold the protocol values by hand. The unit tests in
+of the protocol, except the redox state, which they set to IW+2, and the
+stop rule. This script derives every case config from them by applying
+only the deltas listed in ``CASE_DELTAS`` below, the protocol's redox
+state and stop rule, and ``RUN_SETTINGS``, the settings of the submitted
+runs that differ from the PROTEUS defaults, so the generated cases and
+the tutorials cannot drift apart in any other field; the grid specs
+sweep the ``GRID_AXES``. The standalone grid configs under
+``input/tutorials/chili_grid/`` are not generated and hold the protocol
+values and ``RUN_SETTINGS`` by hand. The unit tests in
 ``tests/tools/test_chili_generate.py`` enforce that contract: each
 generated config must equal its tutorial base on every field outside its
 delta list, the grid axes must match the standalone grid configs, every
 CHILI config must carry the default stop block plus ``PROTOCOL_STOP``
-and the ``PROTOCOL_PHYSICS`` buoyancy, and the committed files under ``input/chili/intercomp/`` must equal a
-fresh regeneration.
+and ``RUN_SETTINGS``, and the committed files under
+``input/chili/intercomp/`` must equal a fresh regeneration.
 
 Cases
 -----
 - ``earth.toml`` / ``venus.toml``: tutorial configs with the output
-  path, the protocol's redox state and the protocol's stop rule set.
+  path, the protocol's redox state, its stop rule and ``RUN_SETTINGS``
+  set.
 - ``earth.grid.toml`` / ``venus.grid.toml``: ``proteus grid`` specs
   sweeping the protocol H and C inventories around the nominal cases.
 - ``tr1b.toml`` / ``tr1e.toml`` / ``tr1a.toml``: TRAPPIST-1 b, e, and
   alpha (protocol Table 4), derived from the Earth base with the
-  TRAPPIST star and orbit deltas and the protocol's redox state and
-  stop rule. Escape is disabled in these cases: ZEPHYRUS pairs only
+  TRAPPIST star and orbit deltas, the protocol's redox state and stop
+  rule, and ``RUN_SETTINGS``. Escape is disabled in these cases: ZEPHYRUS pairs only
   with the Spada evolution tracks, and a 0.09 M_sun star needs the
   Baraffe tracks, so the escape treatment for the TRAPPIST cases awaits
   a protocol decision. The configs are generated for completeness;
@@ -138,9 +141,9 @@ PROTOCOL_STOP = {
     'params.stop.clock.enabled': False,
 }
 
-# Every case takes the separation buoyancy against the solid, that of the runs the
-# intercomparison numbers come from.
-PROTOCOL_PHYSICS = {'interior_energetics.aragog.separation_buoyancy': 'solid'}
+# Settings of the runs behind the intercomparison numbers that differ from the PROTEUS
+# defaults: the separation buoyancy against the solid.
+RUN_SETTINGS = {'interior_energetics.aragog.separation_buoyancy': 'solid'}
 
 # Protocol H and C inventory axes [kg] for the grid sweeps. The
 # standalone per-case grid configs under input/tutorials/chili_grid/
@@ -168,7 +171,14 @@ def _set_dotted(doc, dotted: str, value) -> None:
     for k in keys[:-1]:
         node = node.setdefault(k, tomlkit.table())
     # A fresh item per document: tomlkit moves a replaced line's comment onto the item.
+    new = keys[-1] not in node
     node[keys[-1]] = copy.deepcopy(value)
+    keys_before = [v for k, v in node.value.body if k is not None and k.key != keys[-1]]
+    plain = [
+        v for v in keys_before if not isinstance(v, (tomlkit.items.Table, tomlkit.items.AoT))
+    ]
+    if new and plain:  # a new key takes the indent of the keys of its table
+        node.item(keys[-1]).trivia.indent = plain[-1].trivia.indent
 
 
 def _format_stop_block(text: str, name: str) -> str:
@@ -233,11 +243,11 @@ def case_deltas(name: str) -> dict:
     protocol = {
         'outgas.fO2_shift_IW': PROTOCOL_FO2_SHIFT_IW,
         **PROTOCOL_STOP,
-        **PROTOCOL_PHYSICS,
+        **RUN_SETTINGS,
     }
     if clash := sorted(set(deltas) & set(protocol)):
         raise ValueError(
-            f'{name}: PROTOCOL_FO2_SHIFT_IW, PROTOCOL_STOP and PROTOCOL_PHYSICS set {clash} '
+            f'{name}: PROTOCOL_FO2_SHIFT_IW, PROTOCOL_STOP and RUN_SETTINGS set {clash} '
             'for all cases'
         )
     return {**deltas, **protocol}

@@ -103,7 +103,7 @@ def test_generated_cases_match_tutorials_outside_their_deltas():
         'params.out.path',
         'outgas.fO2_shift_IW',
         *gen.PROTOCOL_STOP,
-        *gen.PROTOCOL_PHYSICS,
+        *gen.RUN_SETTINGS,
     }
     assert set(gen.case_deltas('earth')) == nominal
     assert set(gen.case_deltas('venus')) == nominal
@@ -164,17 +164,11 @@ def test_every_chili_config_stops_only_by_the_protocol_rule():
 
 
 def test_every_chili_config_takes_the_buoyancy_against_the_solid():
-    """The 5 cases and the 9 grid configs set separation_buoyancy 'solid', the buoyancy of the runs they produced.
-
-    Those runs predate the separation_buoyancy option, when aragog took the buoyancy against the
-    solid on every regime; the PROTEUS default 'mixture' would change their numbers.
-    """
+    """The 5 cases and the 9 grid configs set separation_buoyancy 'solid', the buoyancy form of the
+    submitted runs; the PROTEUS default 'mixture' changes their mush numbers. A case cannot set its
+    own value, and the generated key sits at the indent of its table."""
     gen = _load_generator()
-    assert gen.PROTOCOL_PHYSICS == {'interior_energetics.aragog.separation_buoyancy': 'solid'}
-    assert all(
-        gen.case_deltas(n)['interior_energetics.aragog.separation_buoyancy'] == 'solid'
-        for n in gen.CASE_DELTAS
-    )
+    assert gen.RUN_SETTINGS == {'interior_energetics.aragog.separation_buoyancy': 'solid'}
     files = [REPO / 'input' / 'chili' / 'intercomp' / f'{n}.toml' for n in gen.CASE_DELTAS]
     files += sorted((REPO / 'input' / 'tutorials' / 'chili_grid').glob('earth_H*_C*.toml'))
     assert len(files) == 14
@@ -184,9 +178,7 @@ def test_every_chili_config_takes_the_buoyancy_against_the_solid():
         ), path.name
     for name in gen.CASE_DELTAS:
         text = (REPO / 'input' / 'chili' / 'intercomp' / f'{name}.toml').read_text()
-        assert '\n        separation_buoyancy = "solid"\n' in text, (
-            name
-        )  # at the indent of its table
+        assert '\n        separation_buoyancy = "solid"\n' in text, name
     gen.CASE_DELTAS['tr1e']['set']['interior_energetics.aragog.separation_buoyancy'] = 'mixture'
     with pytest.raises(ValueError, match=r'tr1e: .*separation_buoyancy'):
         gen.generate_case('tr1e')

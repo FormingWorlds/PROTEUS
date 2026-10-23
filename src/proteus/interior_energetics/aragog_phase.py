@@ -311,13 +311,19 @@ def check_solver_buoyancy(
     ------
     BuoyancyMismatchError
         If any site carries another mode, naming the field, the site and both values.
+    ValueError
+        If neither ``solver`` nor ``jax_params`` is given.
     """
+    if solver is None and jax_params is None:
+        raise ValueError('check_solver_buoyancy needs a solver or jax_params to check')
     want = config.interior_energetics.aragog.separation_buoyancy
     phases = () if solver is None else (solver.state.phase_staggered, solver.state.phase_basic)
     found = [('numpy', p._separation_buoyancy) for p in phases]
     if jax_params is not None:
-        flag = float(jax_params.separation_buoyancy_mixture)
-        found.append(('jax', {1.0: 'mixture', 0.0: 'solid'}.get(flag)))
+        # aragog takes a flag above 0.5 as 'mixture'.
+        found.append(
+            ('jax', 'mixture' if jax_params.separation_buoyancy_mixture > 0.5 else 'solid')
+        )
     for site, mode in found:
         if mode != want:
             raise BuoyancyMismatchError(

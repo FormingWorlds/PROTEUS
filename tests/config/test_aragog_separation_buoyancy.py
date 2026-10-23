@@ -23,9 +23,8 @@ pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 _MODES = ('mixture', 'solid')
 
 
-def test_the_buoyancy_defaults_to_mixture_and_takes_solid():
-    """'mixture' is the default; 'solid' is accepted at construction and by assignment."""
-    assert Aragog().separation_buoyancy == 'mixture'
+def test_solid_is_taken_at_construction_and_by_assignment():
+    """'solid' is accepted at construction and by assignment (the default has its own test)."""
     assert Aragog(separation_buoyancy='solid').separation_buoyancy == 'solid'
     a = Aragog()
     a.separation_buoyancy = 'solid'
@@ -37,6 +36,7 @@ def test_another_buoyancy_value_is_refused():
     hypothesis = pytest.importorskip('hypothesis')
     st = hypothesis.strategies
 
+    @hypothesis.settings(derandomize=True, deadline=None)
     @hypothesis.given(
         value=st.one_of(
             st.text().filter(lambda v: v not in _MODES),
@@ -101,8 +101,8 @@ def test_the_choices_and_default_equal_those_of_aragog():
 
 
 def test_the_pin_is_an_aragog_with_the_buoyancy_option():
-    """aragog 26.10.22 is the first release that takes separation_buoyancy, and the installed
-    aragog meets the floor."""
+    """The aragog floor takes separation_buoyancy (26.10.22 or later), and the installed aragog
+    meets the floor."""
     from importlib.metadata import version
 
     deps = tomllib.loads((Path(__file__).parents[2] / 'pyproject.toml').read_text())

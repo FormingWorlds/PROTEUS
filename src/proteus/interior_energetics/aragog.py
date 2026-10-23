@@ -1432,7 +1432,9 @@ class AragogRunner:
         No-op (silent) for backend='numpy'. When backend='jax' but
         JAX import or pytree construction fails, logs a warning and
         leaves the factory unset so the solver falls back to the
-        default finite-difference Jacobian path. When
+        default finite-difference Jacobian path, except for JAX phase parameters
+        in another separation buoyancy than the config, which raise
+        ``BuoyancyMismatchError``. When
         ``interior_o._spider_eos_dir`` is empty or missing, the EOS is read
         from ``outdir/data/spider_eos``, the directory ``setup_solver`` uses.
         """

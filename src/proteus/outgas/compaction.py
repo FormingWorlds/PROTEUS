@@ -42,16 +42,18 @@ deliberate differences.
   construction. Trapping is a sub-grid process the solver does not resolve, so
   it uses the melt viscosity regardless of the solver's choice, and the
   inconsistency is deliberate rather than overlooked.
-* The buoyancy carries a factor ``(1 - phi)`` that the solver's
-  ``relative_velocity`` omits. Both forms give the melt velocity relative to
-  the matrix: McKenzie (1984, Eq. 3.7) takes the buoyancy against the mixture,
+* The buoyancy carries a factor ``(1 - phi)`` on all three regimes, with the
+  solver's mobility under ``separation_buoyancy = 'solid'``; the solver's
+  ``relative_velocity`` takes it on the Blake-Kozeny-Carman and Rumpf-Gupte
+  regimes only under its ``'mixture'`` setting, and not at all under
+  ``'solid'``. Both forms give the melt velocity relative to the matrix:
+  McKenzie (1984, Eq. 3.7) takes the buoyancy against the mixture,
   ``(1 - phi) (rho_s - rho_f) g``, and Abe (1995, Eq. 40) against the solid,
   ``(rho_s - rho_f) g``. The factor slows percolation by 30 percent at
   ``phi = 0.3``. McKenzie's solution assumes touching grains, so it holds for
   melt fractions below about 0.2, while the front is entered at the
   rheological transition, ``rfront_loc = 0.4`` by default; above about 0.2 the
-  factor is an extrapolation of that solution. FormingWorlds/aragog#67 tracks
-  the same factor for the solver.
+  factor is an extrapolation of that solution.
 
 ``test_compaction.py`` checks the mobility against the solver's own
 ``relative_velocity``, so the two cannot drift apart.
@@ -147,8 +149,8 @@ def darcy_velocity(
     """Melt percolation speed relative to the matrix [m s-1].
 
     ``w_D = (1 - phi) |delta_rho| g F(phi) / eta_melt``, with the buoyancy taken
-    against the mixture (McKenzie 1984, Eq. 3.7); the solver's
-    ``relative_velocity`` takes it against the solid. See the module docstring.
+    against the mixture (McKenzie 1984, Eq. 3.7) and ``F`` the solver's mobility
+    under ``separation_buoyancy = 'solid'``. See the module docstring.
     """
     if melt_visc <= 0.0:
         raise ValueError(f'melt viscosity must be positive, got {melt_visc!r}')
