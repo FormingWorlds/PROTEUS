@@ -415,7 +415,8 @@ def test_linux_pr_unit_step_runs_two_workers_and_the_nightly_keeps_one_process()
     assert pr[pr.index('--dist') + 1] == 'worksteal', pr
     nightly = _nightly_text()
     unit = _pytest_command(nightly, 'junit-unit-').split()
-    assert '-n' not in unit and '${{ matrix.unit_xdist }}' in ' '.join(unit), unit
+    assert not [t for t in unit if t.startswith(('-n', '--numprocesses'))], unit
+    assert '${{ matrix.unit_xdist }}' in ' '.join(unit), unit
     block = re.sub(
         r'#[^\n]*', '', re.search(r'\n  unit-tier:\n(.*?)\n    runs-on:', nightly, re.S)[1]
     )
@@ -424,6 +425,7 @@ def test_linux_pr_unit_step_runs_two_workers_and_the_nightly_keeps_one_process()
     xdist_os = [item.get('os') for item in items if 'unit_xdist' in item]
     assert 'unit_xdist' not in head and block.count('unit_xdist') == 1, block
     assert xdist_os == ['macos-latest'], xdist_os
+    assert [i['unit_xdist'] for i in items if 'unit_xdist' in i] == ['-n 2 --dist worksteal']
 
 
 def test_every_tiered_file_is_reachable_by_its_ci_job():

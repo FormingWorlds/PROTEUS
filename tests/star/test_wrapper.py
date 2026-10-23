@@ -246,17 +246,14 @@ def test_update_instellation_dummy_eccentric_orbit_uses_flux_distance_and_window
     Discrimination: at e = 0.8 the two distances differ by a factor 1.70, so a
     call with the separation fails the distance check.
     """
-    from unittest.mock import MagicMock, patch
+    from unittest.mock import patch
 
     from proteus.star.wrapper import update_instellation
 
     a, e = 1.496e11, 0.8
-    config = MagicMock()
-    config.star.module = 'dummy'
-    config.star.dummy.Teff = 5778.0
-    config.star.bol_scale = 2.0
-    config.star.bol_scale_start = 1.0
-    config.star.bol_scale_duration = 2.0
+    config = _dummy_config_for_bolscale(
+        bol_scale=2.0, bol_scale_start=1.0, bol_scale_duration=2.0
+    )
     hf_row = {
         'R_star': 6.957e8,
         'semimajorax': a,
