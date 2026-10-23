@@ -6,23 +6,23 @@ PROTEUS couples interior, atmosphere, star, orbit, escape and giant-impact accre
 - Whole-planet element mass is conserved with oxygen included: after the outgassing step of every iteration, `assert_mass_conservation` checks `M_atm <= M_planet` and that `M_vol_atm` equals the summed mass of the volatile and noble-gas species (rock vapour excluded). The only relaxation is `outgas.vapourise = true` (see Oxygen and mass accounting). A giant impact changes the planet on purpose: it adds the impactor rock (`M_accreted_rock`) and the delivered volatiles to the element totals, and books the stripped atmosphere in `esc_kg_cumulative` (`src/proteus/accretion/wrapper.py`).
 - Every site that sums element masses includes oxygen; a new `if e == 'O': continue` in one of them breaks the mass budget. The sites differ on purpose in the rock-vapour elements (see `.github/agent-rules/code-review.md`).
 - Energy fluxes at the interior-atmosphere boundary agree between the two modules that compute them.
-- These commands decide whether a change is ready (CI runs the same; its test-quality step reports without blocking, and a change must add no finding over `origin/main`):
+- These commands decide whether a change is ready (CI runs the same; its test-quality step only reports, and a change must add no finding over `origin/main`):
 
 ```bash
 pytest -m "unit and not skip and not slow and not integration" --ignore=tests/examples
 ruff check src/ tests/ tools/ && ruff format --check src/ tests/ tools/
 bash tools/validate_test_structure.sh
-python tools/check_test_quality.py --check  # exits 1 on origin/main too; see below
+python tools/check_test_quality.py --check  # see below
 python tools/agents/check_agents_md.py && python tools/agents/sync_core.py --check .
 ```
 
-The committed `tools/test_quality_baseline.json` lags the tree, so `python tools/check_test_quality.py --check` exits 1 on `origin/main` as well: run it on `origin/main` and on the branch and compare the per-rule Current counts; no count may rise.
+The committed baseline `tools/test_quality_baseline.json` lags, so `check_test_quality.py --check` exits 1 on `origin/main` too: compare its per-rule Current counts on `origin/main` and on the branch; no count may rise.
 
-The shared blocks (`<!-- fwl-<name>:begin ... -->`) come from `tools/agents/`. To change one, edit it there, run `python tools/agents/sync_core.py <repo>` on PROTEUS and on every module repository that carries the block, and land them in the same window: the daily AGENTS.md sync workflow (`.github/workflows/agents-md-sync.yml`) checks the modules it lists and stays red until each of them is synced.
+The shared blocks (`<!-- fwl-<name>:begin ... -->`) come from `tools/agents/`. To change one, edit it there, run `python tools/agents/sync_core.py <repo>` on PROTEUS and every module repository with the block, and land them together: the daily `agents-md-sync.yml` workflow stays red until each module it lists is synced.
 
-PR CI also runs `generate_config_reference.py`, `generate_module_map.py`, `generate_output_reference.py` and `generate_version_badges.py` in `tools/` with `--check`: a new config field, module or helpfile column fails CI until you rerun the generator without `--check` and commit its output.
+PR CI also runs `tools/generate_{config_reference,module_map,output_reference,version_badges}.py --check`: a new config field, module or helpfile column fails it until you rerun that script without `--check` and commit the output.
 
-<!-- fwl-core:begin sha256=3633992f48ce112c -->
+<!-- fwl-core:begin sha256=837539bbfc4c7815 -->
 ## PROTEUS ecosystem rules
 
 PROTEUS couples separate module repositories into one model of the evolution of rocky planets and their atmospheres. Its config selects one module per process; the config values are the lowercase names:
@@ -41,6 +41,10 @@ A module change to anything PROTEUS calls or reads (a function signature, a conf
 - A physics test must fail for the most plausible wrong formula: check a conservation law, a bound, a monotonicity, or a published or analytical value, and assert that the wrong result falls outside the tolerance.
 - Take each physical constant from one source per repository (in Python `scipy.constants` or the module's constants file). Two retyped values of one constant differ at round-off and hide real differences between code paths.
 - Do not loosen a solver tolerance, a conservation check or a clamp to make a run or a test pass. Find the cause; a loosened check also hides the next defect.
+
+### Validation
+
+A new or changed physics routine gets the validation cases named in its confirmed plan: an analytical law, a published figure or table, or a cross-code check. Each case is a `reference_pinned` test that runs the real code on real data, with no mocks, asserts the tolerance, and writes its light and dark plot through the `validation_plot` fixture of proteus-mpl. `pytest -m reference_pinned --validation-plots` makes all plots again. Line plots are SVG, maps are AVIF; each file is at most 60 kB, under `docs/assets/validation/`. Each case has a subsection on the page of its physical process in the Validation tab, with the reference, the tolerance, the test id and the command. Data read from a published figure comes from 2 independent figlab reads that agree within the stated error, as a CSV with its provenance under `tests/validation/data/`.
 
 ### Code
 
@@ -110,4 +114,4 @@ Many people edit PROTEUS in parallel, so keep changes local (full conventions: `
 
 ## Plots and output
 
-Verify new behaviour with plots. Write plots, data (`.txt`, `.csv`, `.npz`) and plotting scripts to `output_files/` (ignored by git) unless asked to commit a script; a committed script goes under `tests/`. Diagnostic plots use the Wong colour-blind palette, a sans-serif font, inward ticks on all sides, dpi >= 150 and axis labels with units. Images committed to `docs/assets/` are AVIF (`magick in.png -quality 60 out.avif`). The figures of the pages under `docs/Tutorials` are the exception: `tools/make_docs_figures.py` draws each figure of its manifest `tools/docs_figures.toml` as a light and dark pair in the PROTEUS visual language (the `proteus-mpl` style) and writes the AVIF files itself; a page under `exempt_pages` of the manifest is not drawn by the tool, and that list is empty (`docs/How-to/documentation.md`). At the end of a plotting task, give the output folder, what each plot shows and anything unexpected.
+Verify new behaviour with plots. Write plots, data and plotting scripts to `output_files/`; a committed script goes under `tests/`. Diagnostic plots use the Wong palette, a sans-serif font, inward ticks on all sides, dpi >= 150 and axis labels with units. Images committed to `docs/assets/` are AVIF (`magick in.png -quality 60 out.avif`); validation line plots are SVG. `tools/make_docs_figures.py` draws the figures of the `docs/Tutorials` pages (`docs/How-to/documentation.md`). At the end of a plotting task, give the output folder, what each plot shows and anything unexpected.
