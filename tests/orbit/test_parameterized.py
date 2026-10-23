@@ -429,13 +429,9 @@ def test_high_ecc_circularises_as_a_pure_exponential_in_eccentricity(validation_
         x = (t_early - T_MIG) / TAU
         fig, ax = plt.subplots(figsize=(6, 4))
         ax.plot(x, e_expected, label=r'Closed form $e_\mathrm{mig}\,e^{-x}$')
-        ax.plot(
-            x,
-            np.sqrt(0.6) * np.exp(-x / 2),
-            ls='--',
-            label=r'Half rate $e_\mathrm{mig}\,e^{-x/2}$',
-        )
-        ax.plot(x[::25], e_early[::25], 'o', ls='none', label='high_eccentricity_migration')
+        half_rate = np.sqrt(0.6) * np.exp(-x / 2)
+        ax.plot(x, half_rate, '--', label=r'Half rate $e_\mathrm{mig}\,e^{-x/2}$')
+        ax.plot(x[::25], e_early[::25], 'o', label='high_eccentricity_migration')
         ax.set_xlabel(r'$x = (t - t_\mathrm{mig})/\tau$')
         ax.set_ylabel('Eccentricity $e$')
         ax.legend()
