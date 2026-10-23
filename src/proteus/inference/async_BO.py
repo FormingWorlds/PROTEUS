@@ -358,6 +358,7 @@ def parallel_process(
     correlation: dict | None = None,
     patience: int = 0,
     student_t_dof: float | None = None,
+    acq_margin: float = 0.0,
 ) -> tuple[dict, list, list]:
     """Orchestrate parallel asynchronous Bayesian optimization.
 
@@ -385,6 +386,7 @@ def parallel_process(
       stops; 0 runs the full budget.
     - student_t_dof (float | None): Student-t degrees of freedom, or None for
       Gaussian errors.
+    - acq_margin (float): Distance from each face of the unit cube kept by the acquisition.
 
     Returns
     ----------
@@ -415,6 +417,7 @@ def parallel_process(
         BO_step,
         k=kernel,
         acqf=acqf,
+        margin=acq_margin,
     )
 
     # Absolute path to shared output dir
@@ -443,7 +446,9 @@ def parallel_process(
 
     # Generate initial candidate locations and busy-map
     torch.manual_seed(seed)
-    X_init = init_locs(n_workers, D_shared, acqf=acqf, kernel=kernel_name)  # (n_workers, d)
+    X_init = init_locs(
+        n_workers, D_shared, acqf=acqf, kernel=kernel_name, margin=acq_margin
+    )  # (n_workers, d)
     B = mgr.dict()
 
     # Shared list for end times

@@ -147,6 +147,21 @@ def validate_patience(patience) -> int:
     return patience
 
 
+def validate_acq_margin(margin) -> float:
+    """Check `acq_margin`, the distance from each face of the unit cube kept by the acquisition.
+
+    Raises:
+        ValueError: If it is not a number in [0, 0.5) (0 turns it off).
+    """
+    if (
+        isinstance(margin, bool)
+        or not isinstance(margin, (int, float))
+        or not 0 <= margin < 0.5
+    ):
+        raise ValueError(f'acq_margin must be a number in [0, 0.5) (0 is off), got {margin!r}')
+    return float(margin)
+
+
 OBJECTIVES = ('chi-2', 'student-t')
 DEFAULT_STUDENT_T_DOF = 4.0
 
@@ -401,6 +416,9 @@ def run_inference(config):
     # Optional early stop once the best objective stops improving
     config['patience'] = validate_patience(config.get('patience', 0))
 
+    # Keep the acquisition this far (unit cube) from the parameter bounds; 0 is off
+    config['acq_margin'] = validate_acq_margin(config.get('acq_margin', 0.0))
+
     # Posterior samples from the GP surrogate; on by default with [sigma]
     config['posterior_samples'] = validate_posterior_samples(
         config.get('posterior_samples'), config['sigma']
@@ -497,6 +515,7 @@ def run_inference(config):
     log.info(f'    objective     = {objective}')
     log.info(f'    posterior     = {config["posterior_samples"] or "off"} samples')
     log.info(f'    polish        = {config["polish_runs"] or "off"} runs per island')
+    log.info(f'    acq_margin    = {config["acq_margin"] or "off"}')
     log.info(' ')
     t_0 = time.perf_counter()
 
@@ -517,6 +536,7 @@ def run_inference(config):
         config['correlation'],
         config['patience'],
         config['student_t_dof'],
+        config['acq_margin'],
     )
 
     t_1 = time.perf_counter()

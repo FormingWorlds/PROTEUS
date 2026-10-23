@@ -237,6 +237,54 @@ def test_irrelevant_parameter_is_drawn_instead_of_pinned_to_a_bound():
     assert drawn[0].item() == pytest.approx(0.3, abs=0.1)
 
 
+@pytest.mark.physics_invariant
+def test_acq_margin_keeps_a_bound_pinned_proposal_off_the_bound():
+    """The LogEI maximum that sits on the x_1 = 1 bound (lengthscale 5) moves to the edge
+    of the margin, and the irrelevant-parameter draw and random fallback stay inside it.
+    """
+    from botorch.models import SingleTaskGP
+
+    g = torch.Generator().manual_seed(0)
+    X = torch.rand(20, 2, generator=g, dtype=torch.double)
+    Y = (-10 * (X[:, :1] - 0.3) ** 2 + 0.05 * X[:, 1:]).double()
+    gp = SingleTaskGP(X, Y, train_Yvar=torch.full_like(Y, 1e-4))
+    gp.covar_module.lengthscale = torch.tensor([[0.2, 5.0]], dtype=torch.double)
+    gp.eval()
+    acq = bo_mod.get_acqf('LogEI', gp, best=Y.max().item())
+
+    torch.manual_seed(1)
+    x = bo_mod.optimize_acqf_logged(acq, 2, 'test', margin=0.02)[0]
+    assert x[1].item() == pytest.approx(0.98, abs=1e-9)  # on the margin, not on the bound
+    assert x[0].item() == pytest.approx(0.3, abs=0.1)
+
+    torch.manual_seed(0)
+    draws = [bo_mod.random_irrelevant(gp, 2, 'test', margin=0.4)[1] for _ in range(50)]
+    assert all(0.4 <= v <= 0.6 for v in draws)
+    assert max(draws) - min(draws) > 0.1  # still random within [0.4, 0.6]
+
+
+def test_acq_margin_bounds_and_random_fallback(monkeypatch):
+    """unit_bounds shrinks by the margin on both sides, and the random proposal made when
+    every restart repeats a point stays within [margin, 1 - margin]."""
+    assert bo_mod.unit_bounds(2, 0.1).tolist() == [[0.1, 0.1], [0.9, 0.9]]
+    _restarts(monkeypatch, [[0.5, 0.5]], [1.0])
+    torch.manual_seed(0)
+    xs = torch.cat(
+        [
+            bo_mod.optimize_acqf_logged(
+                None,
+                2,
+                'test',
+                avoid=torch.tensor([[0.5, 0.5]], dtype=torch.double),
+                margin=0.3,
+            )
+            for _ in range(20)
+        ]
+    )
+    assert torch.all((xs >= 0.3) & (xs <= 0.7))
+    assert (xs.max() - xs.min()).item() > 0.1
+
+
 def _restarts(monkeypatch, points, values):
     """Make optimize_acqf return the given restart candidates (n, d) with their values."""
     X = torch.tensor(points, dtype=torch.double)[:, None, :]
@@ -944,7 +992,7 @@ def _spy_gp_and_acquisition(monkeypatch, candidate):
         seen['best'] = best
         return object()
 
-    def _optimize(_acqf, d, who, fixed=None, avoid=None):
+    def _optimize(_acqf, d, who, fixed=None, avoid=None, margin=0.0):
         seen['avoid'] = avoid
         return torch.tensor([[candidate]], dtype=torch.double)
 
