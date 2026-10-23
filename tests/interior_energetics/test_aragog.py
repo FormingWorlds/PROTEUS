@@ -39,6 +39,14 @@ pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 _CORE = 'proteus.interior_energetics.aragog_core'
 
 
+@pytest.fixture(autouse=True)
+def _stand_in_solvers_skip_the_buoyancy_check(monkeypatch):
+    """The stand-in solvers here build no phase evaluators; the check has its own tests."""
+    monkeypatch.setattr(
+        'proteus.interior_energetics.aragog.check_solver_buoyancy', lambda *a, **k: None
+    )
+
+
 def _make_aragog_config(*, struct_module='spider', mantle_eos='Seager2007:silicate'):
     """Create a mock config for AragogRunner.setup_solver tests."""
     config = MagicMock()
@@ -65,6 +73,7 @@ def _make_aragog_config(*, struct_module='spider', mantle_eos='Seager2007:silica
     config.interior_energetics.aragog.phase_boundary_entropy_margin = 200.0
     config.interior_energetics.aragog.phase_boundary_cap = 'fixed'
     config.interior_energetics.aragog.separation_viscosity = 'mixture'
+    config.interior_energetics.aragog.separation_buoyancy = 'mixture'
     config.interior_energetics.spider.matprop_smooth_width = 0.0
     config.interior_energetics.const_properties = False
     config.interior_energetics.heat_radiogenic = False
@@ -2460,11 +2469,17 @@ def test_a_failed_core_refit_at_the_reset_raises_before_the_entropy_is_set(pendi
 
 @pytest.mark.unit
 @pytest.mark.parametrize('built', ['mixture', 'solid'])
-def test_the_built_solver_is_checked_for_the_config_buoyancy(built):
+def test_the_built_solver_is_checked_for_the_config_buoyancy(built, monkeypatch):
     """After initialize() builds the phase evaluators, the build branch reads their buoyancy mode:
     a solver in another mode than interior_energetics.aragog.separation_buoyancy stops the setup
     before the JAX factory is installed and before the entropy is set."""
+    from proteus.interior_energetics import aragog_phase
     from proteus.interior_energetics.aragog import AragogRunner
+
+    monkeypatch.setattr(
+        'proteus.interior_energetics.aragog.check_solver_buoyancy',
+        aragog_phase.check_solver_buoyancy,
+    )
 
     solver = MagicMock()
     solver.state.phase_staggered._separation_buoyancy = built

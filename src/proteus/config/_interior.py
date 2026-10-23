@@ -377,6 +377,16 @@ class Aragog:
     while Aragog's own default stays 'melt' for SPIDER parity. The
     regime boundaries are the porosities where adjacent permeability
     laws cross (Bower et al. 2018, section 2.1, Eqs. 13a to 13c)."""
+    separation_buoyancy: str = field(
+        default='mixture',
+        validator=in_(('mixture', 'solid')),
+    )
+    """Buoyancy of the gravitational-separation velocity. 'mixture' takes it
+    against the mixture, (1 - phi) (rho_s - rho_l) g (McKenzie 1984, Eq. 3.7),
+    on the Blake-Kozeny-Carman and Rumpf-Gupte regimes, while the Stokes
+    regime of a grain settling alone keeps (rho_s - rho_l) g; 'solid' takes
+    (rho_s - rho_l) g on every regime (Abe 1995, Eq. 40), as SPIDER does, so
+    'solid' with separation_viscosity 'melt' is the SPIDER setting."""
     solver_method: str = field(
         default='cvode',
         validator=in_(('cvode', 'radau', 'bdf')),

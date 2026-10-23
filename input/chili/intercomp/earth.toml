@@ -105,6 +105,7 @@ config_version = "3.0"
         phase_smoothing  = "tanh"
         solver_method    = "cvode"
         backend          = "jax"
+    separation_buoyancy = "solid"
 
 [outgas]
     module       = "calliope"

@@ -5506,6 +5506,25 @@
       "group_qualifier": null
     },
     {
+      "path": "interior_energetics.aragog.separation_buoyancy",
+      "toml_section": "interior_energetics.aragog",
+      "class": "Aragog",
+      "type": "str",
+      "accepts_none": false,
+      "default": "\"mixture\"",
+      "choices": [
+        "mixture",
+        "solid"
+      ],
+      "bounds": null,
+      "description": "Buoyancy of the gravitational-separation velocity. 'mixture' takes it against the mixture, (1 - phi) (rho_s - rho_l) g (McKenzie 1984, Eq. 3.7), on the Blake-Kozeny-Carman and Rumpf-Gupte regimes, while the Stokes regime of a grain settling alone keeps (rho_s - rho_l) g; 'solid' takes (rho_s - rho_l) g on every regime (Abe 1995, Eq. 40), as SPIDER does, so 'solid' with separation_viscosity 'melt' is the SPIDER setting.",
+      "doc_source": "field_docstring",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
       "path": "interior_energetics.aragog.solver_method",
       "toml_section": "interior_energetics.aragog",
       "class": "Aragog",

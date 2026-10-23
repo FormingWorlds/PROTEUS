@@ -4,18 +4,18 @@
 The tutorial configs are the base of the CHILI cases:
 ``input/tutorials/tutorial_earth.toml`` and
 ``input/tutorials/tutorial_venus.toml`` hold the Earth and Venus setups
-of the protocol, except the redox state, which they set to IW+2, and the
-stop rule. This script derives every case config from them by applying
-only the deltas listed in ``CASE_DELTAS`` below and the protocol's redox
-state and stop rule, so the generated cases and the tutorials cannot
+of the protocol, except the redox state, which they set to IW+2, the
+stop rule and the separation buoyancy. This script derives every case
+config from them by applying only the deltas listed in ``CASE_DELTAS``
+below and the protocol's redox state, stop rule and buoyancy, so the generated cases and the tutorials cannot
 drift apart in any other field; the grid specs sweep the ``GRID_AXES``.
 The standalone grid configs under ``input/tutorials/chili_grid/`` are not
 generated and hold the protocol values by hand. The unit tests in
 ``tests/tools/test_chili_generate.py`` enforce that contract: each
 generated config must equal its tutorial base on every field outside its
 delta list, the grid axes must match the standalone grid configs, every
-CHILI config must carry the default stop block plus ``PROTOCOL_STOP``,
-and the committed files under ``input/chili/intercomp/`` must equal a
+CHILI config must carry the default stop block plus ``PROTOCOL_STOP``
+and the ``PROTOCOL_PHYSICS`` buoyancy, and the committed files under ``input/chili/intercomp/`` must equal a
 fresh regeneration.
 
 Cases
@@ -138,6 +138,10 @@ PROTOCOL_STOP = {
     'params.stop.clock.enabled': False,
 }
 
+# Every case takes the separation buoyancy against the solid, that of the runs the
+# intercomparison numbers come from.
+PROTOCOL_PHYSICS = {'interior_energetics.aragog.separation_buoyancy': 'solid'}
+
 # Protocol H and C inventory axes [kg] for the grid sweeps. The
 # standalone per-case grid configs under input/tutorials/chili_grid/
 # carry exactly these values; the lockstep test compares the two.
@@ -218,18 +222,23 @@ def _format_stop_block(text: str, name: str) -> str:
 
 
 def case_deltas(name: str) -> dict:
-    """Deltas of case ``name``: its ``CASE_DELTAS`` entries and the protocol's redox state and stop rule.
+    """Deltas of case ``name``: its ``CASE_DELTAS`` entries and the protocol's redox state, stop rule and buoyancy.
 
     Raises
     ------
     ValueError
-        If the case lists a redox state or a stop key of its own.
+        If the case lists a redox state, a stop key or a buoyancy of its own.
     """
     deltas = CASE_DELTAS[name]['set']
-    protocol = {'outgas.fO2_shift_IW': PROTOCOL_FO2_SHIFT_IW, **PROTOCOL_STOP}
+    protocol = {
+        'outgas.fO2_shift_IW': PROTOCOL_FO2_SHIFT_IW,
+        **PROTOCOL_STOP,
+        **PROTOCOL_PHYSICS,
+    }
     if clash := sorted(set(deltas) & set(protocol)):
         raise ValueError(
-            f'{name}: PROTOCOL_FO2_SHIFT_IW and PROTOCOL_STOP set {clash} for all cases'
+            f'{name}: PROTOCOL_FO2_SHIFT_IW, PROTOCOL_STOP and PROTOCOL_PHYSICS set {clash} '
+            'for all cases'
         )
     return {**deltas, **protocol}
 

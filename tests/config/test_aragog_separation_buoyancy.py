@@ -45,8 +45,10 @@ def test_the_buoyancy_defaults_to_mixture_and_takes_solid():
 )
 def test_another_buoyancy_value_is_refused(value):
     """Another word or spelling, a TOML true, a number, NaN, infinity or nothing is refused."""
-    with pytest.raises(ValueError, match="'separation_buoyancy' must be in"):
+    with pytest.raises(ValueError) as err:
         Aragog(separation_buoyancy=value)
+    # attrs puts its message first in args; str() of the error quotes it once more.
+    assert err.value.args[0].startswith("'separation_buoyancy' must be in ('mixture', 'solid')")
 
 
 @pytest.mark.parametrize(

@@ -281,11 +281,13 @@ def test_the_built_jax_buoyancy_puts_one_minus_porosity_on_the_matrix_regimes(po
     assert solid / mixture == pytest.approx(1.0 / (1.0 - porosity), rel=1e-4)
 
 
-def _phases(mode):
-    """Numpy phase evaluators of a built solver as aragog keeps them, in one buoyancy mode."""
-    return (
-        SimpleNamespace(_separation_buoyancy=mode),
-        SimpleNamespace(_separation_buoyancy=mode),
+def _solver(staggered, basic=None):
+    """A numpy solver after initialize(), its phase evaluators in the given buoyancy modes."""
+    return SimpleNamespace(
+        state=SimpleNamespace(
+            phase_staggered=SimpleNamespace(_separation_buoyancy=staggered),
+            phase_basic=SimpleNamespace(_separation_buoyancy=basic or staggered),
+        )
     )
 
 
@@ -296,34 +298,22 @@ def test_a_solver_in_the_config_mode_passes_the_check(mode):
 
     config = _make_full_config(separation_buoyancy=mode)
     flag = {'mixture': 1.0, 'solid': 0.0}[mode]
-    assert check_solver_buoyancy(config, numpy_phases=_phases(mode)) is None
-    assert (
-        check_solver_buoyancy(
-            config, jax_params=SimpleNamespace(separation_buoyancy_mixture=flag)
-        )
-        is None
-    )
+    assert check_solver_buoyancy(config, solver=_solver(mode)) is None
+    jax_params = SimpleNamespace(separation_buoyancy_mixture=flag)
+    assert check_solver_buoyancy(config, jax_params=jax_params) is None
 
 
 @pytest.mark.parametrize(
-    ('numpy_phases', 'jax_flag', 'site', 'got'),
+    ('solver', 'jax_flag', 'site', 'got'),
     [
-        (_phases('mixture'), None, 'numpy', "'mixture'"),
-        (
-            (
-                SimpleNamespace(_separation_buoyancy='solid'),
-                SimpleNamespace(_separation_buoyancy='mixture'),
-            ),
-            None,
-            'numpy',
-            "'mixture'",
-        ),
-        ((), 1.0, 'jax', "'mixture'"),
-        ((), 0.5, 'jax', 'None'),
+        (_solver('mixture'), None, 'numpy', "'mixture'"),
+        (_solver('solid', basic='mixture'), None, 'numpy', "'mixture'"),
+        (None, 1.0, 'jax', "'mixture'"),
+        (None, 0.5, 'jax', 'None'),
     ],
     ids=['numpy_swapped', 'numpy_basic_nodes_swapped', 'jax_swapped', 'jax_flag_neither'],
 )
-def test_a_solver_in_another_mode_stops_the_run(numpy_phases, jax_flag, site, got):
+def test_a_solver_in_another_mode_stops_the_run(solver, jax_flag, site, got):
     """A built solver whose buoyancy differs from the config raises, naming the field, the site and
     both values, so an ignored or swapped field cannot run on silently."""
     from proteus.interior_energetics.aragog_phase import check_solver_buoyancy
@@ -333,7 +323,7 @@ def test_a_solver_in_another_mode_stops_the_run(numpy_phases, jax_flag, site, go
         None if jax_flag is None else SimpleNamespace(separation_buoyancy_mixture=jax_flag)
     )
     with pytest.raises(RuntimeError) as err:
-        check_solver_buoyancy(config, numpy_phases=numpy_phases, jax_params=jax_params)
+        check_solver_buoyancy(config, solver=solver, jax_params=jax_params)
     msg = str(err.value)
     assert 'interior_energetics.aragog.separation_buoyancy' in msg
     assert "is 'solid'" in msg and f'{site} aragog solver' in msg and got in msg
@@ -575,7 +565,7 @@ def test_cvode_factory_reads_the_setup_solver_fallback_tables(tmp_path, spider_e
         patch('aragog.jax.phase.MeshArrays.from_numpy_mesh', return_value=MagicMock()),
         patch(
             'proteus.interior_energetics.aragog.build_jax_phase_params',
-            return_value=MagicMock(),
+            return_value=MagicMock(separation_buoyancy_mixture=0.0),
         ),
         patch(
             'aragog.solver.cvode_jax.build_jax_rhs_and_jacobian',
@@ -613,7 +603,7 @@ def test_cvode_factory_reads_live_spider_eos_dir_on_each_call(tmp_path):
         patch('aragog.jax.phase.MeshArrays.from_numpy_mesh', return_value=MagicMock()),
         patch(
             'proteus.interior_energetics.aragog.build_jax_phase_params',
-            return_value=MagicMock(),
+            return_value=MagicMock(separation_buoyancy_mixture=0.0),
         ),
         patch(
             'aragog.solver.cvode_jax.build_jax_rhs_and_jacobian',
