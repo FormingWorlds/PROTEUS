@@ -1653,6 +1653,91 @@ class TestGridFromConfig:
         assert os.listdir(fake_proteus_dir / 'output') == ['unit_grid']
         assert _log_state() == before
 
+    def test_a_case_refused_at_read_back_names_the_case_not_a_missing_file(
+        self, fake_proteus_dir, monkeypatch
+    ):
+        """A case that is refused only when it is read back names its index, its values
+        and the loader's reason, and points at no cfgs/ or check-folder path, since the
+        refused grid keeps the old output."""
+        (fake_proteus_dir / 'base.toml').write_text(
+            '[interior_energetics]\nmodule = "aragog"\n'
+        )
+        old = fake_proteus_dir / 'output' / 'unit_grid' / 'cfgs' / 'kept'
+        old.parent.mkdir(parents=True)
+        old.write_text('kept\n')
+        key = 'interior_energetics.aragog.top_cell_dt_rel_dT_solid'
+        grid_path = _write_grid_toml(
+            fake_proteus_dir / 'g.toml', dimensions={key: {'method': 'direct', 'values': [0.1]}}
+        )
+        monkeypatch.setattr(gm.os, 'sync', lambda: None)
+        with pytest.raises(ValueError) as exc:
+            grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
+        message = str(exc.value)
+        assert f'Grid case 0 ({key} = 0.1): ' in message
+        assert 'must be <= top_cell_dt_rel_dT' in message and 'case_000000.toml' in message
+        assert '.grid-check-' not in message and str(old.parent) not in message
+        assert old.read_text() == 'kept\n'
+
+    @pytest.mark.parametrize(
+        ('fwl_level', 'handler_level'),
+        [(logging.WARNING, logging.NOTSET), (logging.INFO, logging.WARNING)],
+        ids=['logger-at-warning', 'handler-at-warning'],
+    )
+    def test_a_refused_grid_passes_on_only_the_lines_the_old_log_would_take(
+        self, fake_proteus_dir, monkeypatch, fwl_level, handler_level
+    ):
+        """After a refusal the held lines go to the restored handlers only where the
+        restored logger level and the handler level let them through, as they would have
+        without the hold: the INFO setup lines stay out, a loader WARNING gets in."""
+        grid_path = _valid_grid(
+            fake_proteus_dir,
+            monkeypatch,
+            **{'planet.mass_tot': {'method': 'direct', 'values': [0.5, -1.0]}},
+        )
+        real = gm.read_config_object
+        loader_log = logging.getLogger('fwl.proteus.config._config')
+        monkeypatch.setattr(
+            gm, 'read_config_object', lambda p: loader_log.warning('LOADERNOTE') or real(p)
+        )
+
+        class Catch(logging.Handler):
+            def emit(self, record):
+                caught.append(record)
+
+        caught, fwl = [], logging.getLogger('fwl')
+        saved = (fwl.handlers[:], fwl.level)
+        fwl.handlers, handler = [], Catch(level=handler_level)
+        fwl.addHandler(handler)
+        fwl.setLevel(fwl_level)
+        try:
+            with pytest.raises(ValueError, match='Grid case 0'):
+                grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
+        finally:
+            fwl.handlers = saved[0]
+            fwl.setLevel(saved[1])
+        assert [r.levelno for r in caught if r.levelno < logging.WARNING] == []
+        assert 'LOADERNOTE' in [r.getMessage() for r in caught]
+
+    @pytest.mark.parametrize('name', ['', '.', '..', '../elsewhere'])
+    def test_a_grid_name_outside_the_output_folder_is_refused_before_removal(
+        self, fake_proteus_dir, monkeypatch, name
+    ):
+        """A grid name that is output/ itself or reaches above it is refused before anything
+        is removed, so other grids' output stays."""
+        body = toml.load(_valid_grid(fake_proteus_dir, monkeypatch))
+        body['output'] = name
+        grid_path = fake_proteus_dir / 'g.toml'
+        grid_path.write_text(toml.dumps(body))
+        keep = fake_proteus_dir / 'output' / 'other_grid' / 'keep'
+        keep.parent.mkdir(parents=True)
+        keep.write_text('kept\n')
+        before = _log_state()
+        with pytest.raises(Exception) as exc:  # another type fails the assert below
+            grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
+        assert exc.type is ValueError and 'must name a folder inside' in str(exc.value), exc
+        assert keep.read_text() == 'kept\n'
+        assert _log_state() == before
+
     def test_a_missing_use_slurm_names_the_key_and_the_grid_file(self, fake_proteus_dir):
         """A grid file without use_slurm stops with a KeyError that names the key and
         the file."""
