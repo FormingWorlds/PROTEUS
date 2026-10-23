@@ -56,7 +56,9 @@ deliberate differences.
   factor is an extrapolation of that solution.
 
 ``test_compaction.py`` checks the mobility against the solver's own
-``relative_velocity``, so the two cannot drift apart.
+``relative_velocity`` under ``separation_buoyancy = 'solid'``, the law the
+drainage passes to ``mobility_function``; the solver default ``'mixture'`` is
+not part of that check.
 
 A caution on calibration
 ------------------------
