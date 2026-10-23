@@ -416,9 +416,13 @@ def test_linux_pr_unit_step_runs_two_workers_and_the_nightly_keeps_one_process()
     nightly = _nightly_text()
     unit = _pytest_command(nightly, 'junit-unit-').split()
     assert '-n' not in unit and '${{ matrix.unit_xdist }}' in ' '.join(unit), unit
-    xdist_os = re.findall(
-        r'- os: (\S+)\n(?:[ \t]+[a-z_]+: [^\n]*\n)*?[ \t]+unit_xdist: ', nightly
+    block = re.sub(
+        r'#[^\n]*', '', re.search(r'\n  unit-tier:\n(.*?)\n    runs-on:', nightly, re.S)[1]
     )
+    head, include = block.split('include:', 1)
+    items = [dict(re.findall(r'(\w+): ([^\n]+)', item)) for item in include.split('- ')[1:]]
+    xdist_os = [item.get('os') for item in items if 'unit_xdist' in item]
+    assert 'unit_xdist' not in head and block.count('unit_xdist') == 1, block
     assert xdist_os == ['macos-latest'], xdist_os
 
 
