@@ -481,12 +481,9 @@ def _unhandled_v2_fields(paths):
 def test_the_migrated_config_check_refuses_a_string_for_a_bool_field():
     """The schema check of a migrated config refuses ``"false"`` for a bool field,
     naming it, instead of reading it as true; minimal.toml as written passes."""
-    import tomllib
+    from proteus.config import _error_lines, read_config
 
-    from proteus.config import _error_lines
-
-    with open(Path(__file__).resolve().parents[2] / 'input' / 'minimal.toml', 'rb') as f:
-        nested = tomllib.load(f)
+    nested = read_config(Path(__file__).resolve().parents[2] / 'input' / 'minimal.toml')
     mig._validate(nested)
     nested.setdefault('params', {}).setdefault('out', {})['remove_sf'] = 'false'
     with pytest.raises(Exception) as err:
