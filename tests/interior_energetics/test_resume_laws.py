@@ -6,14 +6,13 @@ Invariant: a resumed run continues under one separation law. The stored laws are
 ``interior_energetics.aragog`` fields of the run's ``init_coupler.toml``; a stored value
 that differs from the new config refuses the resume, unless
 ``allow_resume_law_change`` is set. An aragog record without ``separation_viscosity``
-counts as ``'melt'``; a law the run did not record, or a run without a record that names
-the interior module, resumes only when the new config file sets the field.
+counts as ``'melt'``; any other law the run did not record, and both laws of a record of
+another interior module, resume only when the new config file sets the field.
 """
 
 from __future__ import annotations
 
 import logging
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -245,31 +244,76 @@ def test_the_allow_switch_lets_a_changed_law_resume_and_reports_it(tmp_path, cap
     assert len(warned) == 1 and "'solid'" in warned[0] and "'mixture'" in warned[0]
 
 
-@pytest.mark.parametrize(
-    'stored_module, new_module', [('spider', 'aragog'), ('aragog', 'spider')]
-)
-def test_the_check_applies_only_to_an_aragog_run_resumed_under_aragog(
-    tmp_path, stored_module, new_module
-):
-    """A resume that does not run aragog on both sides is not checked for the aragog laws."""
+def test_a_resume_that_does_not_use_aragog_is_not_checked(tmp_path):
+    """A resume under another interior module leaves the aragog laws unchecked."""
+    out = _stored_run(tmp_path, separation_buoyancy='solid')
+    config, path = _user_config(tmp_path)
+    config.interior_energetics.module = 'spider'
+    assert config.interior_energetics.aragog.separation_buoyancy == 'mixture'  # differs
+    assert check_resume_separation_laws(config, path, out) == []
+
+
+@pytest.mark.parametrize('stored_module', ['dummy', 'spider'])
+def test_a_record_of_another_interior_module_holds_no_aragog_law(tmp_path, stored_module):
+    """An Aragog resume of a record written under another interior module, such as a dummy
+    resume between two Aragog segments, takes both laws as unrecorded: the config file
+    must set them, and the aragog values in that record are not compared."""
     out = _stored_run(tmp_path, separation_buoyancy='solid')
     doc = tomlkit.parse((out / 'init_coupler.toml').read_text())
     doc['interior_energetics']['module'] = stored_module
     (out / 'init_coupler.toml').write_text(tomlkit.dumps(doc))
     config, path = _user_config(tmp_path)
-    config.interior_energetics.module = new_module
-    assert (
-        config.interior_energetics.aragog.separation_buoyancy == 'mixture'
-    )  # differs from the record
+    with pytest.raises(ResumeSeparationLawError) as err:
+        check_resume_separation_laws(config, path, out)
+    message = str(err.value)
+    assert 'separation_viscosity is not recorded' in message
+    assert 'separation_buoyancy is not recorded' in message
+    assert f"names interior module '{stored_module}'" in message
+    config, path = _user_config(
+        tmp_path, separation_viscosity='mixture', separation_buoyancy='mixture'
+    )
+    assert check_resume_separation_laws(config, path, out) == []
+
+
+def test_an_allowed_switch_recorded_by_a_real_write_resumes_under_the_new_law(tmp_path):
+    """An allowed switch, recorded by the real Config.write with RECORD_OVERRIDES as start()
+    does, lets the next resume run under the new law without the switch and refuses the old
+    law again."""
+    out = _stored_run(tmp_path)
+    config, path = _user_config(
+        tmp_path, separation_buoyancy='solid', allow_resume_law_change=True
+    )
+    assert check_resume_separation_laws(config, path, out) == [
+        ('separation_buoyancy', 'mixture', 'solid')
+    ]
+    config.write(out / 'init_coupler.toml', overrides=RECORD_OVERRIDES)
+    config, path = _user_config(tmp_path, separation_buoyancy='solid')
+    assert check_resume_separation_laws(config, path, out) == []
+    config, path = _user_config(tmp_path)
+    with pytest.raises(ResumeSeparationLawError, match="written with 'solid'"):
+        check_resume_separation_laws(config, path, out)
+
+
+def test_a_record_that_names_no_module_but_holds_the_laws_needs_no_law_in_the_file(tmp_path):
+    """A record without interior_energetics.module that holds both laws is compared like any
+    record, so a config file that sets neither law resumes when its defaults match."""
+    out = tmp_path / 'run'
+    out.mkdir()
+    (out / 'init_coupler.toml').write_text(
+        "[interior_energetics.aragog]\nseparation_viscosity = 'mixture'\n"
+        "separation_buoyancy = 'mixture'\n"
+    )
+    config, path = _user_config(tmp_path)
+    assert 'separation_' not in path.read_text()  # the file sets neither law
     assert check_resume_separation_laws(config, path, out) == []
 
 
 @pytest.fixture(scope='module')
-def stored_template():
+def stored_template(tmp_path_factory):
     """The init_coupler.toml text of a default run, edited per example below."""
-    with tempfile.TemporaryDirectory() as folder:
-        out = _stored_run(folder)
-        return (out / 'init_coupler.toml').read_text(), _user_config(folder)[0]
+    folder = tmp_path_factory.mktemp('template')
+    out = _stored_run(folder)
+    return (out / 'init_coupler.toml').read_text(), _user_config(folder)[0]
 
 
 @settings(
@@ -284,15 +328,16 @@ def stored_template():
         st.floats(allow_nan=False),
     )
 )
-def test_any_stored_buoyancy_other_than_the_new_string_refuses(stored_template, stored):
+def test_any_stored_buoyancy_other_than_the_new_string_refuses(
+    stored_template, tmp_path, stored
+):
     """A stored buoyancy resumes only when it equals the new value as a string; TOML true, 0 and 'Mixture' do not."""
     text, config = stored_template
     doc = tomlkit.parse(text)
     doc['interior_energetics']['aragog']['separation_buoyancy'] = stored
-    with tempfile.TemporaryDirectory() as folder:
-        (Path(folder) / 'init_coupler.toml').write_text(tomlkit.dumps(doc))
-        if stored == 'mixture' and isinstance(stored, str):
-            assert check_resume_separation_laws(config, MINIMAL, folder) == []
-        else:
-            with pytest.raises(ResumeSeparationLawError, match='separation_buoyancy is '):
-                check_resume_separation_laws(config, MINIMAL, folder)
+    (tmp_path / 'init_coupler.toml').write_text(tomlkit.dumps(doc))  # rewritten per example
+    if stored == 'mixture' and isinstance(stored, str):
+        assert check_resume_separation_laws(config, MINIMAL, tmp_path) == []
+    else:
+        with pytest.raises(ResumeSeparationLawError, match='separation_buoyancy is '):
+            check_resume_separation_laws(config, MINIMAL, tmp_path)

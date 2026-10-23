@@ -3648,3 +3648,26 @@ def test_aragog_under_the_dummy_structure_needs_melting_dir(mantle):
     instance = SimpleNamespace(interior_struct=struct, interior_energetics=value)
     with pytest.raises(ValueError, match='The dummy structure requires it with any mantle EOS'):
         aragog_needs_melting_curves(instance, None, value)
+
+
+def test_an_interrupted_write_leaves_the_previous_file_whole(tmp_path):
+    """A write that stops part-way, as on a full disk, leaves the file it would replace
+    whole and leaves no temporary file next to it."""
+    import tomlkit
+
+    cfg = read_config_object(PROTEUS_ROOT / 'input' / 'minimal.toml')
+    out = tmp_path / 'init_coupler.toml'
+    cfg.write(str(out))
+    before = out.read_bytes()
+
+    def cut(doc, hdl):
+        hdl.write(tomlkit.dumps(doc)[:200])
+        raise OSError(28, 'No space left on device')
+
+    with (
+        patch('proteus.config._config.tomlkit.dump', side_effect=cut),
+        pytest.raises(OSError, match='No space left'),
+    ):
+        cfg.write(str(out))
+    assert out.read_bytes() == before
+    assert [f.name for f in tmp_path.iterdir()] == ['init_coupler.toml']

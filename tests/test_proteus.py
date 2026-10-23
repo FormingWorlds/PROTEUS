@@ -436,17 +436,25 @@ def test_a_resume_records_the_config_as_loaded_not_as_the_accretion_restore_left
     """restore_accretion_state grows mass_tot on a resume; the record keeps the loaded value,
     so a resume from that record does not add the accreted rock a second time."""
     p, _ = _resumable_run_with_buoyancy(tmp_path, 'mixture')
-    p.config.planet.mass_tot = 1.0
+    fields = ('planet.mass_tot', 'orbit.semimajoraxis', 'orbit.eccentricity')
+    p.config.planet.mass_tot, p.config.orbit.semimajoraxis, p.config.orbit.eccentricity = (
+        1.0,
+        1.0,
+        0.0,
+    )
     p.config.write.side_effect = lambda path, overrides=None: Path(path).write_text(
-        f'mass_tot = {(overrides or {}).get("planet.mass_tot", p.config.planet.mass_tot)}'
+        ' '.join(f'{k} = {(overrides or {}).get(k)}' for k in fields)
     )
 
     def grow(proteus):
         proteus.config.planet.mass_tot = 1.25
+        proteus.config.orbit.semimajoraxis, proteus.config.orbit.eccentricity = 2.0, 0.1
 
     assert _resume_to_main_loop(p, restore=grow) is None
     assert p.config.planet.mass_tot == pytest.approx(1.25, rel=1e-15)  # the restore ran
-    assert (tmp_path / 'init_coupler.toml').read_text() == 'mass_tot = 1.0'
+    assert (tmp_path / 'init_coupler.toml').read_text() == (
+        'planet.mass_tot = 1.0 orbit.semimajoraxis = 1.0 orbit.eccentricity = 0.0'
+    )
 
 
 @pytest.mark.unit
