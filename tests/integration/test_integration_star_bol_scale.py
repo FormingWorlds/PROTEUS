@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import tempfile
-import uuid
 from pathlib import Path
 
 import numpy as np
@@ -22,12 +21,11 @@ def test_bol_scale_window_applies_across_dummy_run():
     every post-init row, and the scaled F_ins must match an independently
     recomputed unscaled instellation times the configured factor.
     """
-    unique_id = str(uuid.uuid4())[:8]
     with tempfile.TemporaryDirectory() as tmpdir:
         config_path = PROTEUS_ROOT / 'input' / 'dummy.toml'
         runner = Proteus(config_path=config_path)
 
-        runner.config.params.out.path = str(Path(tmpdir) / f'bolscale_{unique_id}')
+        runner.config.params.out.path = str(Path(tmpdir) / 'bolscale')
         runner.init_directories()
 
         runner.config.planet.tsurf_init = 2000.0

@@ -186,8 +186,8 @@ jobs:
           else
             COV_ARGS=""
           fi
-          # 2 workers keep the step well inside its limit; the Linux nightly unit tier
-          # runs 1 process as the test-order check.
+          # 1 process with coverage reached the 10-minute limit; the Linux nightly unit
+          # tier runs 1 process as the test-order check.
           pytest -m "unit and not skip and not slow and not integration" \
             --ignore=tests/examples \
             --junit-xml=junit-unit-linux.xml \
