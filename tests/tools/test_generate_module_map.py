@@ -94,6 +94,17 @@ def test_verify_passes_on_committed_tree(schema):
     assert len({site['config_path'] for site in _gmm.DISPATCH_SITES}) == 10
 
 
+def test_verify_parses_each_source_file_at_most_twice(schema, monkeypatch):
+    """The tree-wide scan reads every source file for each of the ten dispatch sites;
+    parsing once per file, plus the symbol lookups, keeps verify fast under coverage."""
+    calls = []
+    parse = _gmm.ast.parse
+    monkeypatch.setattr(_gmm.ast, 'parse', lambda src, *a, **k: calls.append(1) or parse(src))
+    assert _gmm.verify(schema) == []
+    n_files = len(list(_gmm.SRC.rglob('*.py')))
+    assert 0 < len(calls) <= 2 * n_files, (len(calls), n_files)
+
+
 def test_verify_flags_broken_entry_and_option_drift(schema, monkeypatch):
     """Error contract: a declared symbol that does not exist and a declared
     option set that disagrees with the validator are each reported with the
