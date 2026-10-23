@@ -83,7 +83,7 @@ nav:
           - Burial ledger for remelting (burial_ledger.py): Validation/outgas/burial_ledger.md
           - Solid-phase volatile trapping (trapping.py): Validation/outgas/trapping.md
       - Star:
-          - Stellar luminosity and instellation (star.py): Validation/star/star.md
+          - Stellar luminosity and instellation (dummy.py): Validation/star/dummy.md
           - Stellar wrapper dispatch (wrapper.py): Validation/star/wrapper.md
 
   - Reference:

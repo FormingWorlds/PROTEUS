@@ -35,7 +35,7 @@ Without `--validation-plots` the tests assert and write nothing. The physics ins
 | Outgassing | `outgas/compaction.py` | [Melt drainage across the freezing front](outgas/compaction.md) | none yet |
 | Outgassing | `outgas/lavatmos.py` | [Rock-vapour molar masses](outgas/lavatmos.md) | none yet |
 | Outgassing | `outgas/trapping.py` | [Solid-phase volatile trapping](outgas/trapping.md) | none yet |
-| Star | `star/star.py` | [Stellar luminosity and instellation](star/star.md) | none yet |
+| Star | `star/dummy.py` | [Stellar luminosity and instellation](star/dummy.md) | none yet |
 | Star | `star/wrapper.py` | [Stellar wrapper dispatch](star/wrapper.md) | none yet |
 
 ## Adding a page
