@@ -167,7 +167,6 @@ The surrogate can find a well-fitting region (an island) without reaching its mi
 - Automatic hyperparameter tuning via marginal likelihood optimization
 - A parameter whose fitted lengthscale exceeds 1.5 (in the unit cube) barely changes the GP, which then puts every proposal on one of its bounds; such a parameter is drawn at random instead (logged at debug level)
 - A proposal within 0.005 (in the unit cube) of an evaluated or pending point is replaced by the best acquisition restart further away, or by a random point when there is none
-- With `acq_margin = m` (default 0, off), proposals stay within [m, 1 - m] of the unit cube. In the TR test studies about half of the proposals sat on a parameter bound and none of them fitted well; the margin keeps the budget for the interior, and a truth within `m` of a bound can then only be approached to that distance
 
 The optimization will run until `n_steps` evaluations are completed or manually stopped. Results are continuously saved and can be resumed if needed.
 

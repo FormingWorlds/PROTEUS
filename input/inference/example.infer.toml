@@ -38,7 +38,6 @@ kernel     = "MAT1/2"                             # Kernel type for GP, "RBF" | 
 acqf       = "LogEI"                              # Acquisition function, "UCB" | "LogEI" | "LogPI" | "TS"
 n_steps    = 100                                  # Total number of evaluations (i.e. BO steps)
 patience   = 0                                    # Stop after this many evaluations without improvement; 0 is off
-# acq_margin = 0.02                              # Keep proposals this far (unit cube) from the parameter bounds; default 0 (off)
 # objective     = "student-t"                     # "chi-2" (default) | "student-t": independent heavy-tailed errors; needs [sigma], no correlation
 # student_t_dof = 4                               # Degrees of freedom of "student-t", default 4
 # posterior_samples = 2000                        # Posterior samples from the GP at the end; needs [sigma], default 2000 with it, 0 is off

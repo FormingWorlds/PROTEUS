@@ -316,7 +316,7 @@ def test_parallel_process_happy_path_with_mocked_manager(monkeypatch, tmp_path):
     assert logs == [None]
     assert elapsed == []
     # The initial proposals use the configured kernel, not the init_locs default
-    assert init_kwargs == {'acqf': 'LogEI', 'kernel': 'MAT3/2', 'margin': 0.0}
+    assert init_kwargs == {'acqf': 'LogEI', 'kernel': 'MAT3/2'}
     # Each worker gets its own torch seed, seed + 1 + worker id
     assert [p.args[-1] for p in created_processes] == [2, 3]
 

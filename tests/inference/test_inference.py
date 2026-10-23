@@ -954,16 +954,6 @@ def test_validate_patience_accepts_whole_numbers_and_rejects_others():
             inference_mod.validate_patience(bad)
 
 
-def test_validate_acq_margin_accepts_fractions_below_half_and_rejects_others():
-    """0 (off) and margins in [0, 0.5) pass as floats; a margin of 0.5 or more leaves no
-    room to search, and a negative, boolean or string margin is refused."""
-    assert inference_mod.validate_acq_margin(0) == 0.0
-    assert inference_mod.validate_acq_margin(0.02) == pytest.approx(0.02, rel=1e-12)
-    for bad in (-0.01, 0.5, True, '0.02'):
-        with pytest.raises(ValueError, match='acq_margin must be a number'):
-            inference_mod.validate_acq_margin(bad)
-
-
 def test_run_inference_sets_posterior_samples_before_emptying_output(monkeypatch, tmp_path):
     """posterior_samples without [sigma] is refused before the output is emptied;
     with [sigma] it defaults on.

@@ -64,30 +64,25 @@ def scored_evaluations(X: torch.Tensor, Y: torch.Tensor) -> tuple[torch.Tensor, 
     return X[scored], Y[scored]
 
 
-def unit_bounds(d, margin: float = 0.0):
+def unit_bounds(d):
     """Generate unit hypercube bounds for d-dimensional input.
 
     Parameters
     ----------
     - d (int): Dimensionality of the input space.
-    - margin (float): Distance kept from each face of the unit cube.
 
     Returns
     ----------
-    - torch.Tensor: Tensor of shape (2, d), rows `margin` and `1 - margin`.
+    - torch.Tensor: Tensor of shape (2, d) where row 0 is zeros and row 1 is ones.
     """
-    return torch.tensor([[margin] * d, [1 - margin] * d], dtype=dtype)
+    return torch.tensor([[0] * d, [1] * d], dtype=dtype)
 
 
-def random_irrelevant(gp, d: int, who: str, margin: float = 0.0) -> dict[int, float] | None:
-    """Random values in [margin, 1 - margin], as `fixed_features`, for the parameters whose
-    fitted lengthscale exceeds IRRELEVANT_LENGTHSCALE; None when there are none."""
+def random_irrelevant(gp, d: int, who: str) -> dict[int, float] | None:
+    """Random values, as `fixed_features`, for the parameters whose fitted lengthscale
+    exceeds IRRELEVANT_LENGTHSCALE; None when there are none."""
     ls = gp.covar_module.lengthscale.detach().reshape(-1)
-    fixed = {
-        i: margin + (1 - 2 * margin) * torch.rand(1).item()
-        for i in range(d)
-        if ls[i] > IRRELEVANT_LENGTHSCALE
-    }
+    fixed = {i: torch.rand(1).item() for i in range(d) if ls[i] > IRRELEVANT_LENGTHSCALE}
     if fixed:
         log.debug(
             f'{who}: GP lengthscale above {IRRELEVANT_LENGTHSCALE} for x_{list(fixed)}; '
@@ -102,7 +97,6 @@ def optimize_acqf_logged(
     who: str,
     fixed_features: dict[int, float] | None = None,
     avoid: torch.Tensor | None = None,
-    margin: float = 0.0,
 ) -> torch.Tensor:
     """Maximise the acquisition, logging botorch's L-BFGS-B retry warnings as one line.
 
@@ -117,17 +111,16 @@ def optimize_acqf_logged(
     - who (str): Caller named in the log line, e.g. 'worker 3'.
     - fixed_features (dict | None): Parameters held at the given values, by index.
     - avoid (torch.Tensor | None): Evaluated and pending points, shape (n, d).
-    - margin (float): Distance from each face of the unit cube kept by the search.
 
     Returns
     ----------
-    - torch.Tensor: The candidate, shape (1, d), in [margin, 1 - margin]^d.
+    - torch.Tensor: The candidate, shape (1, d), in [0, 1]^d.
     """
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter('always')
         starts, values = optimize_acqf(
             acq_function=acq_function,
-            bounds=unit_bounds(d, margin),
+            bounds=unit_bounds(d),
             q=1,
             num_restarts=10,
             raw_samples=1000 * d,
@@ -141,7 +134,7 @@ def optimize_acqf_logged(
     if len(starts):
         x = starts[:1]
     else:
-        x = margin + (1 - 2 * margin) * torch.rand(1, d, dtype=dtype)
+        x = torch.rand(1, d, dtype=dtype)
         log.debug(
             f'{who}: every restart within {MIN_SEPARATION} of a point; proposing at random'
         )
@@ -182,7 +175,7 @@ def _failed_starts(text: str) -> str:
     return f' in {starts} start(s) [{", ".join(sorted(reasons))}]'
 
 
-def BO_step(D, B, f, k, acqf, lock, worker_id, x_in=None, margin=0.0):
+def BO_step(D, B, f, k, acqf, lock, worker_id, x_in=None):
     """Perform a single Bayesian optimization step.
 
     Fits a GP to the scored evaluations, optimizes an acquisition function,
@@ -198,7 +191,6 @@ def BO_step(D, B, f, k, acqf, lock, worker_id, x_in=None, margin=0.0):
     - lock (multiprocessing.Lock): Lock for synchronizing shared state.
     - worker_id (int): ID of the calling worker.
     - x_in (torch.Tensor, optional): Initial input for the first iteration.
-    - margin (float): Distance from each face of the unit cube kept by the acquisition.
 
     Returns
     ----------
@@ -253,12 +245,7 @@ def BO_step(D, B, f, k, acqf, lock, worker_id, x_in=None, margin=0.0):
 
         who = f'worker {worker_id}'
         x = optimize_acqf_logged(
-            acqf_f,
-            d,
-            who,
-            random_irrelevant(gp, d, who, margin),
-            avoid=torch.cat([X, b]),
-            margin=margin,
+            acqf_f, d, who, random_irrelevant(gp, d, who), avoid=torch.cat([X, b])
         )
 
         t_1_ac = time.perf_counter()
@@ -315,7 +302,7 @@ def BO_step(D, B, f, k, acqf, lock, worker_id, x_in=None, margin=0.0):
 
 
 def init_locs(
-    n_workers: int, D: dict, acqf: str = 'LogEI', kernel: str = 'RBF', margin: float = 0.0
+    n_workers: int, D: dict, acqf: str = 'LogEI', kernel: str = 'RBF'
 ) -> torch.Tensor:
     """Generate initial sample locations for each worker using the configured acqf.
 
@@ -328,11 +315,10 @@ def init_locs(
     - D (dict): Shared dict with keys 'X' and 'Y' containing observed data.
     - acqf (str): Name of the acquisition function to use.
     - kernel (str): Kernel type ('RBF', 'MAT1/2', 'MAT3/2', 'MAT5/2').
-    - margin (float): Distance from each face of the unit cube kept by the acquisition.
 
     Returns
     ----------
-    - torch.Tensor: Tensor of shape (n_workers, d) in [margin, 1 - margin]^d.
+    - torch.Tensor: Tensor of shape (n_workers, d) in [0, 1]^d.
     """
 
     X = D['X']
@@ -368,14 +354,7 @@ def init_locs(
         who = f'initial point {len(candidates)}'
         avoid = torch.cat([X, *candidates])
         candidates.append(
-            optimize_acqf_logged(
-                acqf_f,
-                d,
-                who,
-                random_irrelevant(gp, d, who, margin),
-                avoid=avoid,
-                margin=margin,
-            )
+            optimize_acqf_logged(acqf_f, d, who, random_irrelevant(gp, d, who), avoid=avoid)
         )
 
     return torch.cat(candidates, dim=0)  # (n_workers, d)
