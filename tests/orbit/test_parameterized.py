@@ -338,7 +338,7 @@ def test_high_ecc_half_decay_point_pins_the_factor_of_two():
 
 @pytest.mark.reference_pinned
 @pytest.mark.physics_invariant
-def test_high_ecc_circularises_as_a_pure_exponential_in_eccentricity():
+def test_high_ecc_circularises_as_a_pure_exponential_in_eccentricity(validation_plot):
     """Analytical limit: the specific orbital angular momentum of a
     two-body orbit is ``h = sqrt(G M a (1 - e^2))``, so a law that
     conserves h holds the semi-latus rectum ``a (1 - e^2)`` at sma_final,
@@ -422,6 +422,27 @@ def test_high_ecc_circularises_as_a_pure_exponential_in_eccentricity():
     derived_spread = SMA_F - SMA_F / (1.0 + np.sqrt(0.6))
     assert pericentre.max() - pericentre.min() > 0.5 * derived_spread
     assert np.all(semi_latus > 0.0)
+
+    def figure():
+        import matplotlib.pyplot as plt
+
+        x = (t_early - T_MIG) / TAU
+        fig, ax = plt.subplots(figsize=(6, 4))
+        ax.plot(x, e_expected, label=r'Closed form $e_\mathrm{mig}\,e^{-x}$')
+        ax.plot(
+            x,
+            np.sqrt(0.6) * np.exp(-x / 2),
+            ls='--',
+            label=r'Half rate $e_\mathrm{mig}\,e^{-x/2}$',
+        )
+        ax.plot(x[::25], e_early[::25], 'o', ls='none', label='high_eccentricity_migration')
+        ax.set_xlabel(r'$x = (t - t_\mathrm{mig})/\tau$')
+        ax.set_ylabel('Eccentricity $e$')
+        ax.legend()
+        fig.tight_layout()
+        return fig
+
+    validation_plot(figure, 'orbit_high_ecc_eccentricity')
 
 
 @pytest.mark.physics_invariant
