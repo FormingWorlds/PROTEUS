@@ -20,7 +20,7 @@ The committed baseline `tools/test_quality_baseline.json` lags, so `check_test_q
 
 The shared blocks (`<!-- fwl-<name>:begin ... -->`) come from `tools/agents/`. To change one, edit it there, run `python tools/agents/sync_core.py <repo>` on PROTEUS and every module repository with the block, and land them together: the daily `agents-md-sync.yml` workflow stays red until each module it lists is synced.
 
-PR CI also runs `tools/generate_{config_reference,module_map,output_reference,version_badges}.py --check`: a new config field, module or helpfile column fails it until you rerun that script without `--check` and commit the output.
+PR CI also runs `for g in config_reference module_map output_reference version_badges; do python tools/generate_$g.py --check; done`: a new config field, module or helpfile column fails it until you rerun that script without `--check` and commit the output.
 
 <!-- fwl-core:begin sha256=1adfa510a4f117ec -->
 ## PROTEUS ecosystem rules
