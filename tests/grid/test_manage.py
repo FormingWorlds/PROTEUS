@@ -1354,10 +1354,12 @@ class TestGridFromConfig:
             fake_proteus_dir / 'g.toml',
             dimensions={key: value, 'planet.mass_tot': {'method': 'direct', 'values': [0.5]}},
         )
-        monkeypatch.setattr(Grid, 'run', lambda self, *a, **k: None)
-        monkeypatch.setattr(Grid, 'slurm_config', lambda self, *a, **k: None)
+        calls = []
+        monkeypatch.setattr(Grid, 'run', lambda self, *a, **k: calls.append('run'))
+        monkeypatch.setattr(Grid, 'slurm_config', lambda self, *a, **k: calls.append('slurm'))
         with pytest.raises(ValueError, match=f'{key} must be true or false, got {value!r}'):
             grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
+        assert calls == []
 
     @pytest.mark.parametrize(
         ('extra', 'expected'),
@@ -1374,13 +1376,14 @@ class TestGridFromConfig:
             use_slurm=True,
             dimensions={**extra, 'planet.mass_tot': {'method': 'direct', 'values': [0.5]}},
         )
-        seen = {}
-        monkeypatch.setattr(Grid, 'slurm_config', lambda self, *a, **k: seen.update(k))
+        calls = []
+        monkeypatch.setattr(Grid, 'slurm_config', lambda self, *a, **k: calls.append(k))
         monkeypatch.setattr(gm, 'read_config_object', lambda p: mock.MagicMock())
         monkeypatch.setattr(gm, 'recursive_setattr', lambda *a, **k: None)
         monkeypatch.setattr(gm.os, 'sync', lambda: None)
         grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
-        assert seen['jax_cache'] is expected
+        assert len(calls) == 1
+        assert calls[0]['jax_cache'] is expected
 
     def test_run_branch_calls_run(self, fake_proteus_dir, monkeypatch):
         """``use_slurm = false`` dispatches to ``Grid.run`` instead of
