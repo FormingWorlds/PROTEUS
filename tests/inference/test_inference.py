@@ -371,6 +371,12 @@ def test_validate_reference_config_rejects_a_faulty_reference_file(tmp_path):
             ValueError,
             'abort_on_failure must be true or false, got 1',
         ),
+        (
+            {'planet.mass_tot': [0.7, 3.0]},
+            {'correlate_ratios': 'false'},
+            ValueError,
+            "correlate_ratios must be true or false, got 'false'",
+        ),
     ],
     ids=[
         'misspelt_parameter',
@@ -378,6 +384,7 @@ def test_validate_reference_config_rejects_a_faulty_reference_file(tmp_path):
         'spectral_cache_not_bool',
         'abort_on_failure_string',
         'abort_on_failure_int',
+        'correlate_ratios_string',
     ],
 )
 def test_run_inference_validates_reference_config_before_emptying_output(
