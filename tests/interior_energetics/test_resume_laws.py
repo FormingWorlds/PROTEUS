@@ -214,6 +214,7 @@ def test_the_record_overrides_fit_the_config_schema(tmp_path):
     config.write(tmp_path / 'record.toml', overrides=RECORD_OVERRIDES)
     reread = read_config_object(tmp_path / 'record.toml').interior_energetics.aragog
     assert reread.allow_resume_law_change is False
+    assert config.interior_energetics.aragog.allow_resume_law_change is True  # config unchanged
 
 
 def test_the_allow_switch_does_not_cover_an_unrecorded_buoyancy(tmp_path, caplog):
