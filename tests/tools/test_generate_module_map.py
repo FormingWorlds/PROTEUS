@@ -19,6 +19,7 @@ for the test framework.
 
 from __future__ import annotations
 
+import functools
 import importlib.util
 import sys
 from pathlib import Path
@@ -103,6 +104,21 @@ def test_verify_parses_each_source_file_at_most_twice(schema, monkeypatch):
     assert _gmm.verify(schema) == []
     n_files = len(list(_gmm.SRC.rglob('*.py')))
     assert 0 < len(calls) <= 2 * n_files, (len(calls), n_files)
+
+
+def test_the_filtered_scan_equals_a_full_walk_on_the_committed_tree(monkeypatch):
+    """The scan reads only the node kinds it keeps, so on every source file and for
+    every dispatch site it finds what a walk over all nodes finds."""
+    pairs = [
+        (py, tuple(site['config_path'].split('.')))
+        for py in sorted(_gmm.SRC.rglob('*.py'))
+        for site in _gmm.DISPATCH_SITES
+    ]
+    kept = [_gmm.scan_compared_options(py, dotted) for py, dotted in pairs]
+    full = functools.cache(lambda text: tuple(_gmm.ast.walk(_gmm.ast.parse(text))))
+    monkeypatch.setattr(_gmm, '_scan_nodes', full)
+    assert kept == [_gmm.scan_compared_options(py, dotted) for py, dotted in pairs]
+    assert sum(bool(found) for found in kept) >= len(_gmm.DISPATCH_SITES)
 
 
 def test_verify_flags_broken_entry_and_option_drift(schema, monkeypatch):
