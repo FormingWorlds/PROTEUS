@@ -2459,6 +2459,54 @@ def test_a_failed_core_refit_at_the_reset_raises_before_the_entropy_is_set(pendi
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize('built', ['mixture', 'solid'])
+def test_the_built_solver_is_checked_for_the_config_buoyancy(built):
+    """After initialize() builds the phase evaluators, the build branch reads their buoyancy mode:
+    a solver in another mode than interior_energetics.aragog.separation_buoyancy stops the setup
+    before the JAX factory is installed and before the entropy is set."""
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    solver = MagicMock()
+    solver.state.phase_staggered._separation_buoyancy = built
+    solver.state.phase_basic._separation_buoyancy = built
+    interior_o = MagicMock()
+    interior_o.aragog_solver = None
+    config = MagicMock()
+    config.interior_energetics.aragog.separation_buoyancy = 'mixture'
+    config.interior_energetics.aragog.core_bc = 'energy_balance'
+    config.params.resume = False
+
+    def setup(cfg, row, io, out, **kwargs):
+        io.aragog_solver = solver
+
+    mod = 'proteus.interior_energetics.aragog'
+    with (
+        patch(f'{mod}.require_cvode'),
+        patch(f'{mod}.ode_solver_name', return_value='cvode'),
+        patch(f'{mod}._maybe_log_solver_environment'),
+        patch.object(AragogRunner, '_pending_structure_update', return_value=None),
+        patch.object(AragogRunner, 'setup_solver', side_effect=setup),
+        patch.object(AragogRunner, '_maybe_install_jax_cvode_factory') as factory,
+        patch.object(AragogRunner, '_set_entropy_ic') as entropy_ic,
+        patch.object(AragogRunner, '_verify_entropy_ic'),
+    ):
+        if built == 'mixture':
+            AragogRunner.setup_or_update_solver(
+                config, {'Time': 0.0}, interior_o, 1.0, {'output': 'o'}
+            )
+            factory.assert_called_once()
+            entropy_ic.assert_called_once()
+        else:
+            with pytest.raises(RuntimeError, match="separation_buoyancy is 'mixture'.*'solid'"):
+                AragogRunner.setup_or_update_solver(
+                    config, {'Time': 0.0}, interior_o, 1.0, {'output': 'o'}
+                )
+            factory.assert_not_called()
+            entropy_ic.assert_not_called()
+    solver.initialize.assert_called_once()
+
+
+@pytest.mark.unit
 def test_setup_or_update_solver_refuses_to_build_without_cvode(cvode_missing):
     """The first-build branch stops before any solver or parameter object exists.
 

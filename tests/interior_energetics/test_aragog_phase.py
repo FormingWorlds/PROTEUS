@@ -55,7 +55,9 @@ _SOLIDUS = '/data/lookup/solidus.dat'
 _LIQUIDUS = '/data/lookup/liquidus.dat'
 
 
-def _make_full_config(*, separation_viscosity: str = 'mixture'):
+def _make_full_config(
+    *, separation_viscosity: str = 'mixture', separation_buoyancy: str = 'solid'
+):
     """Build a mock PROTEUS Config with every field the builder reads.
 
     The values are discriminating and differ from the aragog library
@@ -70,6 +72,10 @@ def _make_full_config(*, separation_viscosity: str = 'mixture'):
         The gravitational-separation drag viscosity source ('mixture' or
         'melt'), shared by the numpy and JAX types under different
         representations.
+    separation_buoyancy : str
+        The buoyancy of the separation velocity ('mixture' or 'solid'). The
+        default 'solid' differs from the aragog default, so a dropped kwarg
+        mismatches.
     """
     config = MagicMock()
     ie = config.interior_energetics
@@ -79,6 +85,7 @@ def _make_full_config(*, separation_viscosity: str = 'mixture'):
     ie.grain_size = 0.023
     ie.spider.matprop_smooth_width = 0.017
     ie.aragog.separation_viscosity = separation_viscosity
+    ie.aragog.separation_buoyancy = separation_buoyancy
     # Numpy mixed-phase parameters only.
     ie.latent_heat_of_fusion = 4.1e5
     ie.phase_transition_width = 0.019
@@ -210,6 +217,126 @@ def test_separation_viscosity_shared_across_sites(separation_viscosity, expected
 
     assert numpy_params.separation_viscosity == separation_viscosity
     assert jax_params.separation_viscosity_mixture == pytest.approx(expected_mixture_flag)
+
+
+@pytest.mark.parametrize(
+    ('separation_buoyancy', 'expected_mixture_flag'),
+    [('mixture', 1.0), ('solid', 0.0)],
+)
+def test_separation_buoyancy_shared_across_sites(separation_buoyancy, expected_mixture_flag):
+    """One config value sets the numpy string field and the JAX flag of the separation buoyancy.
+
+    Both values run, so a kwarg dropped at either site fails whichever the aragog default is.
+    """
+    config = _make_full_config(separation_buoyancy=separation_buoyancy)
+    assert _phase_params_from_config(config).separation_buoyancy == separation_buoyancy
+    assert build_mixed_phase_params(config, _SOLIDUS, _LIQUIDUS).separation_buoyancy == (
+        separation_buoyancy
+    )
+    assert build_jax_phase_params(config).separation_buoyancy_mixture == pytest.approx(
+        expected_mixture_flag, abs=0.0
+    )
+
+
+class _EndMemberEOS:
+    """Fixed phase-boundary densities [kg m-3] for the JAX separation velocity."""
+
+    def _lookup_at_phase_boundary(self, prop, pressure, phase):
+        import jax.numpy as jnp
+
+        return jnp.full(jnp.shape(pressure), {'solid': 4000.0, 'melt': 3600.0}[phase])
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize('porosity', [0.02, 0.3, 0.4])
+def test_the_built_jax_buoyancy_puts_one_minus_porosity_on_the_matrix_regimes(porosity):
+    """With the JAX parameters built from a config, the separation velocity under 'solid' over
+    'mixture' is 1 / (1 - phi) in the Blake-Kozeny-Carman and Rumpf-Gupte regimes (McKenzie 1984,
+    Eq. 3.7, against Abe 1995, Eq. 40).
+
+    The Stokes term, which keeps no factor, moves the ratio by under 1e-5 up to phi = 0.4, so the
+    ratio is the factor alone; a dropped field gives 1, which fails by phi.
+    """
+    import jax.numpy as jnp
+    from aragog.jax.phase import relative_velocity
+
+    def velocity(mode):
+        params = build_jax_phase_params(_make_full_config(separation_buoyancy=mode))
+        n = jnp.ones(1)
+        return float(
+            relative_velocity(
+                _EndMemberEOS(),
+                params,
+                1.0e10 * n,
+                (4000.0 - porosity * 400.0) * n,
+                0.5 * n,
+                9.8 * n,
+                1.0e3 * n,
+            )[0]
+        )
+
+    solid, mixture = velocity('solid'), velocity('mixture')
+    assert mixture > 0.0 and solid > mixture
+    # The soft clip of the JAX porosity (width 1e-3) moves phi by under 1e-5 here.
+    assert solid / mixture == pytest.approx(1.0 / (1.0 - porosity), rel=1e-4)
+
+
+def _phases(mode):
+    """Numpy phase evaluators of a built solver as aragog keeps them, in one buoyancy mode."""
+    return (
+        SimpleNamespace(_separation_buoyancy=mode),
+        SimpleNamespace(_separation_buoyancy=mode),
+    )
+
+
+@pytest.mark.parametrize('mode', ['mixture', 'solid'])
+def test_a_solver_in_the_config_mode_passes_the_check(mode):
+    """The check returns quietly when every site carries the configured mode."""
+    from proteus.interior_energetics.aragog_phase import check_solver_buoyancy
+
+    config = _make_full_config(separation_buoyancy=mode)
+    flag = {'mixture': 1.0, 'solid': 0.0}[mode]
+    assert check_solver_buoyancy(config, numpy_phases=_phases(mode)) is None
+    assert (
+        check_solver_buoyancy(
+            config, jax_params=SimpleNamespace(separation_buoyancy_mixture=flag)
+        )
+        is None
+    )
+
+
+@pytest.mark.parametrize(
+    ('numpy_phases', 'jax_flag', 'site', 'got'),
+    [
+        (_phases('mixture'), None, 'numpy', "'mixture'"),
+        (
+            (
+                SimpleNamespace(_separation_buoyancy='solid'),
+                SimpleNamespace(_separation_buoyancy='mixture'),
+            ),
+            None,
+            'numpy',
+            "'mixture'",
+        ),
+        ((), 1.0, 'jax', "'mixture'"),
+        ((), 0.5, 'jax', 'None'),
+    ],
+    ids=['numpy_swapped', 'numpy_basic_nodes_swapped', 'jax_swapped', 'jax_flag_neither'],
+)
+def test_a_solver_in_another_mode_stops_the_run(numpy_phases, jax_flag, site, got):
+    """A built solver whose buoyancy differs from the config raises, naming the field, the site and
+    both values, so an ignored or swapped field cannot run on silently."""
+    from proteus.interior_energetics.aragog_phase import check_solver_buoyancy
+
+    config = _make_full_config(separation_buoyancy='solid')
+    jax_params = (
+        None if jax_flag is None else SimpleNamespace(separation_buoyancy_mixture=jax_flag)
+    )
+    with pytest.raises(RuntimeError) as err:
+        check_solver_buoyancy(config, numpy_phases=numpy_phases, jax_params=jax_params)
+    msg = str(err.value)
+    assert 'interior_energetics.aragog.separation_buoyancy' in msg
+    assert "is 'solid'" in msg and f'{site} aragog solver' in msg and got in msg
 
 
 def test_jax_only_fields_carry_configured_values():
@@ -397,12 +524,37 @@ def test_cvode_factory_site_delegates_to_the_shared_jax_builder(tmp_path):
         patch('aragog.jax.phase.MeshArrays.from_numpy_mesh', return_value=MagicMock()),
         patch(
             'proteus.interior_energetics.aragog.build_jax_phase_params',
-            return_value=MagicMock(),
+            return_value=MagicMock(separation_buoyancy_mixture=0.0),
         ) as mock_builder,
     ):
         AragogRunner._maybe_install_jax_cvode_factory(config, interior_o)
 
     mock_builder.assert_called_once_with(config)
+
+
+def test_cvode_factory_stops_on_jax_params_in_another_buoyancy(tmp_path, monkeypatch):
+    """JAX parameters in another buoyancy mode than the config raise from the installer outside
+    the nightly too, instead of the warning and the finite-difference fallback that other install
+    failures take; no factory is installed or cleared."""
+    monkeypatch.delenv('PROTEUS_CI_NIGHTLY', raising=False)
+    config = _make_full_config(separation_buoyancy='solid')
+    config.interior_energetics.aragog.backend = 'jax'
+    interior_o = _make_runner_interior_o(spider_eos_dir=str(tmp_path))
+    with (
+        patch(
+            'proteus.interior_energetics.aragog._cached_entropy_eos_jax',
+            return_value=MagicMock(),
+        ),
+        patch(
+            'proteus.interior_energetics.aragog.build_jax_phase_params',
+            return_value=SimpleNamespace(separation_buoyancy_mixture=1.0),
+        ),
+        pytest.raises(
+            RuntimeError, match="is 'solid', but the jax aragog solver uses 'mixture'"
+        ),
+    ):
+        AragogRunner._maybe_install_jax_cvode_factory(config, interior_o)
+    interior_o.aragog_solver.set_jax_cvode_factory.assert_not_called()
 
 
 @pytest.mark.parametrize('spider_eos_dir', ['', 'missing'])

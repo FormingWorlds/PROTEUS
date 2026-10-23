@@ -99,7 +99,12 @@ def test_generated_cases_match_tutorials_outside_their_deltas():
             else:
                 assert got == want, f'{name}: {dotted}={got!r}, want {want!r}'
     # Discrimination: the nominal cases carry these deltas and no other.
-    nominal = {'params.out.path', 'outgas.fO2_shift_IW', *gen.PROTOCOL_STOP}
+    nominal = {
+        'params.out.path',
+        'outgas.fO2_shift_IW',
+        *gen.PROTOCOL_STOP,
+        *gen.PROTOCOL_PHYSICS,
+    }
     assert set(gen.case_deltas('earth')) == nominal
     assert set(gen.case_deltas('venus')) == nominal
     assert set(gen.CASE_DELTAS) == {'earth', 'venus', 'tr1b', 'tr1e', 'tr1a'}
@@ -156,6 +161,30 @@ def test_every_chili_config_stops_only_by_the_protocol_rule():
     assert len(files) == 14
     for path in files:
         assert attrs.asdict(_read_config(str(path)).params.stop) == want, path.name
+
+
+def test_every_chili_config_takes_the_buoyancy_against_the_solid():
+    """The 5 cases and the 9 grid configs set separation_buoyancy 'solid', the buoyancy of the runs they produced.
+
+    Those runs predate the separation_buoyancy option, when aragog took the buoyancy against the
+    solid on every regime; the PROTEUS default 'mixture' would change their numbers.
+    """
+    gen = _load_generator()
+    assert gen.PROTOCOL_PHYSICS == {'interior_energetics.aragog.separation_buoyancy': 'solid'}
+    assert all(
+        gen.case_deltas(n)['interior_energetics.aragog.separation_buoyancy'] == 'solid'
+        for n in gen.CASE_DELTAS
+    )
+    files = [REPO / 'input' / 'chili' / 'intercomp' / f'{n}.toml' for n in gen.CASE_DELTAS]
+    files += sorted((REPO / 'input' / 'tutorials' / 'chili_grid').glob('earth_H*_C*.toml'))
+    assert len(files) == 14
+    for path in files:
+        assert (
+            _read_config(str(path)).interior_energetics.aragog.separation_buoyancy == 'solid'
+        ), path.name
+    gen.CASE_DELTAS['tr1e']['set']['interior_energetics.aragog.separation_buoyancy'] = 'mixture'
+    with pytest.raises(ValueError, match=r'tr1e: .*separation_buoyancy'):
+        gen.generate_case('tr1e')
 
 
 def test_protocol_values_are_fresh_items_in_each_case(tmp_path, monkeypatch):
