@@ -60,6 +60,32 @@ nav:
           - Dummy modules: Explanations/dummy_modules.md
           - Test framework: Explanations/test_framework.md
 
+  - Validation:
+      - Overview: Validation/index.md
+      - Accretion:
+          - Analytical accretion (dummy.py): Validation/accretion/dummy.md
+          - Impact atmosphere-loss dispatch (wrapper.py): Validation/accretion/wrapper.md
+      - Atmosphere climate:
+          - Transparent black-body limit (agni.py): Validation/atmos_clim/agni.md
+      - Interior structure:
+          - Liquidus-super IC anchor (zalmoxis.py): Validation/interior_struct/zalmoxis.md
+      - Orbit:
+          - Orbital evolution (orbit.py): Validation/orbit/orbit.md
+          - Satellite angular momentum (satellite.py): Validation/orbit/satellite.md
+          - Orbit module wrapper (wrapper.py): Validation/orbit/wrapper.md
+          - Tidal Love-number lookup (obliqua.py): Validation/orbit/obliqua.md
+          - Prescribed migration laws (parameterized.py): Validation/orbit/parameterized.md
+      - Outgas:
+          - Species-to-element mass split (atmodeller.py): Validation/outgas/atmodeller.md
+          - H2-MgSiO3 binodal (binodal.py): Validation/outgas/binodal.md
+          - Rock-vapour molar masses (lavatmos.py): Validation/outgas/lavatmos.md
+          - Melt drainage across the freezing front (compaction.py): Validation/outgas/compaction.md
+          - Burial ledger for remelting (burial_ledger.py): Validation/outgas/burial_ledger.md
+          - Solid-phase volatile trapping (trapping.py): Validation/outgas/trapping.md
+      - Star:
+          - Stellar luminosity and instellation (star.py): Validation/star/star.md
+          - Stellar wrapper dispatch (wrapper.py): Validation/star/wrapper.md
+
   - Reference:
       - Configuration:
           - Execution and output: Reference/config/params.md
@@ -80,30 +106,6 @@ nav:
           - Interior structure (Zalmoxis wrapper): Reference/api/interior_struct_zalmoxis.md
           - Interior structure config: Reference/api/config_struct.md
           - Interior energetics wrapper: Reference/api/interior_energetics_wrapper.md
-      - Validation:
-          - Overview: Validation/index.md
-          - Accretion:
-              - Analytical accretion (dummy.py): Validation/accretion/dummy.md
-              - Impact atmosphere-loss dispatch (wrapper.py): Validation/accretion/wrapper.md
-          - Atmosphere climate:
-              - Transparent black-body limit (agni.py): Validation/atmos_clim/agni.md
-          - Interior structure:
-              - Liquidus-super IC anchor (zalmoxis.py): Validation/interior_struct/zalmoxis.md
-          - Orbit:
-              - Orbital evolution (orbit.py): Validation/orbit/orbit.md
-              - Satellite angular momentum (satellite.py): Validation/orbit/satellite.md
-              - Orbit module wrapper (wrapper.py): Validation/orbit/wrapper.md
-              - Tidal Love-number lookup (obliqua.py): Validation/orbit/obliqua.md
-              - Prescribed migration laws (parameterized.py): Validation/orbit/parameterized.md
-          - Outgas:
-              - H2-MgSiO3 binodal (binodal.py): Validation/outgas/binodal.md
-              - Rock-vapour molar masses (lavatmos.py): Validation/outgas/lavatmos.md
-              - Melt drainage across the freezing front (compaction.py): Validation/outgas/compaction.md
-              - Burial ledger for remelting (burial_ledger.py): Validation/outgas/burial_ledger.md
-              - Solid-phase volatile trapping (trapping.py): Validation/outgas/trapping.md
-          - Star:
-              - Stellar luminosity and instellation (star.py): Validation/star/star.md
-              - Stellar wrapper dispatch (wrapper.py): Validation/star/wrapper.md
 
   - Community:
       - Contact: Community/contact.md
