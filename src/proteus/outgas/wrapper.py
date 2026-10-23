@@ -8,7 +8,7 @@ import numpy as np
 
 from proteus.escape.wrapper import readable_total
 from proteus.interior_struct.common import record_volatile_change
-from proteus.outgas.common import expected_keys
+from proteus.outgas.common import EMPTY_ATMOSPHERE_KEPT_KEYS, expected_keys
 from proteus.outgas.lavatmos import run_vapourisation
 from proteus.outgas.trapping import escapable_inventory, trapped_mass_withheld, trapping_active
 from proteus.utils.constants import (
@@ -690,11 +690,6 @@ def run_desiccated(dirs: dict, config: Config, hf_row: dict, first_iter: bool):
     # if desiccated, set all gas masses to zero
     log.info('Desiccation has occurred - no volatiles remaining')
 
-    # Do not set these to zero - avoid divide by zero elsewhere in the code
-    excepted_keys = ['atm_kg_per_mol']
-    for g in gas_list:
-        excepted_keys.append(f'{g}_vmr')
-
     # With trapping on the melt is kept as well, so mass a remelt returns stays in it.
     keep_melt = trapping_active(config)
     held = ('_solid', '_liquid') if keep_melt else ('_solid',)
@@ -704,7 +699,7 @@ def run_desiccated(dirs: dict, config: Config, hf_row: dict, first_iter: bool):
     }
     removed = readable_total(hf_row)
     for k in expected_keys():
-        if k not in excepted_keys and not k.endswith(held):
+        if k not in EMPTY_ATMOSPHERE_KEPT_KEYS and not k.endswith(held):
             hf_row[k] = 0.0
     for n, total in totals.items():
         if not np.isfinite(total):

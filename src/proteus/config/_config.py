@@ -413,6 +413,46 @@ def front_trapping_requires_aragog(instance, attribute, value):
         )
 
 
+def lowt_extension_requires_aragog(instance, attribute, value):
+    """The low-temperature solid extension is run only with the Aragog interior."""
+    zalmoxis = getattr(instance.interior_struct, 'zalmoxis', None)
+    interior = instance.interior_energetics.module
+    if getattr(zalmoxis, 'lowt_extension', False) is True and interior != 'aragog':
+        why = (
+            'the extension gives the solid P-S table more entropy nodes than the melt table'
+            if interior == 'spider'
+            else f'the "{interior}" interior reads no P-S tables, so the extension has no effect'
+        )
+        raise ValueError(
+            'interior_struct.zalmoxis.lowt_extension = true requires '
+            f'interior_energetics.module = "aragog", not "{interior}": {why}.'
+        )
+
+
+def lowt_extension_requires_ps_tables(instance, attribute, value):
+    """The low-temperature solid extension acts on the P-S tables that the zalmoxis and dummy
+    structures build from the standard PALEOS solid table."""
+    from proteus.utils.helper import energetics_eos_key, lowt_extension_unsupported
+
+    struct = instance.interior_struct
+    zalmoxis = getattr(struct, 'zalmoxis', None)
+    if getattr(zalmoxis, 'lowt_extension', False) is not True:
+        return
+    if struct.module not in ('zalmoxis', 'dummy'):
+        raise ValueError(
+            'interior_struct.zalmoxis.lowt_extension = true requires interior_struct.module = '
+            f'"zalmoxis" or "dummy", not "{struct.module}": only these structures build the P-S '
+            'tables the extension acts on.'
+        )
+    key = energetics_eos_key(zalmoxis.mantle_eos)
+    if lowt_extension_unsupported(key):
+        raise ValueError(
+            'interior_struct.zalmoxis.lowt_extension = true does not support the mantle EOS '
+            f'{key} (mantle_eos = "{zalmoxis.mantle_eos}"): the extension continues the grid of '
+            'the standard PALEOS solid table.'
+        )
+
+
 def observe_resolved_atmosphere(instance, attribute, value):
     """Synthetic observations require a spatially resolved atmosphere (not dummy)."""
     if (instance.observe.module is not None) and (instance.atmos_clim.module == 'dummy'):
@@ -744,6 +784,8 @@ class Config:
             energetics_needs_a_thermal_mantle_eos,
             aragog_needs_melting_curves,
             dummy_struct_mantle_eos,
+            lowt_extension_requires_aragog,
+            lowt_extension_requires_ps_tables,
         ),
     )
     outgas: Outgas = field(factory=Outgas, validator=(front_trapping_requires_aragog,))

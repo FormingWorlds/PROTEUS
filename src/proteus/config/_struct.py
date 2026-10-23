@@ -10,6 +10,12 @@ from proteus.utils.constants import PALEOS_EOS_PREFIXES, TDEP_EOS_PREFIXES
 from ._converters import none_if_none
 
 
+def is_bool(instance, attribute, value):
+    """Refuse a value that is not a bool; a TOML 1 or "true" is not cast."""
+    if not isinstance(value, bool):
+        raise TypeError(f'{attribute.name} must be true or false, got {value!r}')
+
+
 def valid_zalmoxis(instance, attribute, value):
     """Validate Zalmoxis EOS format strings and reject unsupported miscibility options."""
     # `global_miscibility` needs the H2-silicate binodal handoff (Zalmoxis tracker #64),
@@ -144,6 +150,31 @@ class Zalmoxis:
         PALEOS-2phase, PALEOS-API, PALEOS-API-2phase); ignored for
         WolfBower2018 and RTPress100TPa (which use explicit melting curve
         files) and for Seager2007/Analytic (no derived solidus).
+    lowt_extension: bool
+        Extend the solid P-S entropy tables below the 300 K edge of the PALEOS
+        solid table, with the PALEOS phase potentials evaluated down to about
+        50 K on the rows below 12 GPa (file
+        ``paleos_mgsio3_tables_pt_proteus_solid_lowT.dat`` next to the solid
+        table). PALEOS values are used wherever the solid table has them.
+        Applies to the P-S tables of the PALEOS MgSiO3 mantle and needs
+        interior_energetics.module = 'aragog' and interior_struct.module
+        'zalmoxis' or 'dummy'; a mantle whose MgSiO3 (energetics) EOS is
+        PALEOS-API or -highres is refused when the config loads, and a mantle
+        without PALEOS tables ignores the switch with a warning. A resumed run
+        keeps the tables it started with, so the switch acts on a fresh table
+        build. The standard
+        data set does not hold the extension file: write it with Zalmoxis's
+        tools/converters/paleos_lowt_extension.py (--paleos-src, --table, and
+        --out with the file name above in the folder of the solid table; see
+        the Zalmoxis coupling page). A missing extension file, or a Zalmoxis
+        whose table generator has no solid_lowt_file, stops the run at start-up
+        (with the dummy structure, at the first table build). The Zalmoxis
+        coupling page gives the range of the extended tables, the accuracy of
+        their lowest entropy interval per planet mass and the entropy zero of each
+        PALEOS phase. Aragog's entropy solver reads its thermodynamic properties
+        from the P-S tables only; the phase P-T tables written for it are not
+        read, so they need no extension. With the switch on, Aragog logs its
+        minimum heat capacity warning at each coupling iteration.
     mantle_mass_fraction: float
         Fraction of the planet's interior mass corresponding to the mantle.
         Required for 3-layer models (with ice layer) and for T-dependent
@@ -224,6 +255,7 @@ class Zalmoxis:
     ice_layer_eos = field(default=None, converter=none_if_none)
 
     mushy_zone_factor: float = field(default=0.8, validator=(ge(0.7), le(1.0)))
+    lowt_extension: bool = field(default=False, validator=is_bool)
 
     mantle_mass_fraction: float = field(default=0, validator=(ge(0), lt(1)))
 
@@ -450,6 +482,7 @@ DOC_GROUPS = {
                 'mantle_eos',
                 'ice_layer_eos',
                 'mushy_zone_factor',
+                'lowt_extension',
                 'mantle_mass_fraction',
                 'dry_mantle',
             ),

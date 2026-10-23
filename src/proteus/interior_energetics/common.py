@@ -1235,6 +1235,9 @@ class Interior_t:
                 spider_dir, resolved_eos, 'heat_capacity_melt.dat'
             )
 
+        # Per-step flag set by next_step when the Aragog top-cell drain cap is finite.
+        self._tau_drain_cap_valid = False
+
         self.aragog_solver = None
 
         # Melt-redox tracker state (interior_chem/redox.py), created on the first

@@ -1600,6 +1600,1416 @@ def test_init_stage_step_never_exceeds_the_accretion_resume_horizon():
     assert retried == pytest.approx(0.5 * _INIT_STAGE_HORIZON_YR, rel=1e-12)
 
 
+def _make_tau_drain_fixture(
+    *,
+    s_top: float = 2400.0,
+    phi_top: float = 0.20,
+    P_top: float = 4.46095e8,
+    rho_top: float = 4000.0,
+    dm_top: float = 1.0e22,
+    r_outer: float = 6.371e6,
+    cp_live: float = 1800.0,
+    cp_solid_at_1800: float = 1232.0,
+    cp_at_smin_plus_300: float = 528.9,
+    s_min: float = 25.99,
+    rel_dT: float = 0.08,
+    rel_dT_solid: float = 0.02,
+    top_cell_dt_limit: bool = True,
+    with_solution: bool = True,
+):
+    """Build a synthetic Aragog EntropySolver and config for top-cell drain timescale tests."""
+    vol_top = dm_top / rho_top if rho_top > 0.0 else 2.5e18
+
+    def _cp_fn(p_arr, s_arr):
+        s_val = float(np.asarray(s_arr, dtype=float).ravel()[0])
+        if abs(s_val - 1800.0) < 1e-6:
+            return np.array([cp_solid_at_1800], dtype=float)
+        if abs(s_val - (s_min + 300.0)) < 1e-6:
+            return np.array([cp_at_smin_plus_300], dtype=float)
+        return np.array([cp_live], dtype=float)
+
+    eos = SimpleNamespace(
+        S_min=s_min,
+        density=lambda p_arr, s_arr: np.array([rho_top], dtype=float),
+        heat_capacity=_cp_fn,
+        melt_fraction=lambda p_arr, s_arr: np.array([phi_top], dtype=float),
+        temperature=lambda p_arr, s_arr: np.array([1500.0], dtype=float),
+    )
+    sol = (
+        SimpleNamespace(y=np.array([[2800.0], [s_top]], dtype=float)) if with_solution else None
+    )
+    solver = SimpleNamespace(
+        _r_basic_flat=np.array([5.5e6, 6.0e6, r_outer], dtype=float),
+        _volume_flat=np.array([5.0e18, vol_top], dtype=float),
+        _P_stag_flat=np.array([1.0e10, P_top], dtype=float),
+        _n_stag=2,
+        _S0=np.array([2800.0, s_top, 0.0], dtype=float),
+        _solution=sol,
+        entropy_staggered=np.array([[2800.0], [s_top]], dtype=float),
+        entropy_eos=eos,
+    )
+    config = _make_config()
+    config.interior_energetics = SimpleNamespace(
+        module='aragog',
+        aragog=SimpleNamespace(
+            top_cell_dt_limit=top_cell_dt_limit,
+            top_cell_dt_rel_dT=rel_dT,
+            top_cell_dt_rel_dT_solid=rel_dT_solid,
+        ),
+    )
+    interior_o = _make_interior_o()
+    interior_o.aragog_solver = solver
+    return config, interior_o, solver
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_estimate_tau_drain_f_atm_near_zero_uses_f_min():
+    """Near-zero, zero, or negative F_atm uses max(abs(F_atm), _TAU_DRAIN_F_MIN = 1.0)."""
+    from proteus.interior_energetics.timestep import (
+        _TAU_DRAIN_F_MIN,
+        _estimate_tau_drain,
+    )
+    from proteus.utils.constants import secs_per_year
+
+    config, interior_o, solver = _make_tau_drain_fixture(
+        phi_top=0.0,
+        cp_solid_at_1800=1200.0,
+        rel_dT=0.08,
+        rel_dT_solid=0.02,
+    )
+    area_s = 4.0 * np.pi * float(solver._r_basic_flat[-1]) ** 2
+    dr_eff = float(solver._volume_flat[-1]) / area_s
+    expected_yr = (4000.0 * 1200.0 * dr_eff * (0.02 * 1500.0)) / (1.0 * secs_per_year)
+
+    tau_zero = _estimate_tau_drain(config, {'F_atm': 0.0, 'T_surf': 1500.0}, interior_o)
+    tau_half = _estimate_tau_drain(config, {'F_atm': 0.5, 'T_surf': 1500.0}, interior_o)
+    tau_neg_half = _estimate_tau_drain(config, {'F_atm': -0.5, 'T_surf': 1500.0}, interior_o)
+    tau_two = _estimate_tau_drain(config, {'F_atm': 2.0, 'T_surf': 1500.0}, interior_o)
+    tau_pos_500 = _estimate_tau_drain(config, {'F_atm': 500.0, 'T_surf': 1500.0}, interior_o)
+    tau_neg_500 = _estimate_tau_drain(config, {'F_atm': -500.0, 'T_surf': 1500.0}, interior_o)
+
+    assert _TAU_DRAIN_F_MIN == pytest.approx(1.0, rel=1e-12)
+    assert tau_zero == pytest.approx(expected_yr, rel=1e-12)
+    assert tau_half == pytest.approx(expected_yr, rel=1e-12)
+    assert tau_neg_half == pytest.approx(expected_yr, rel=1e-12)
+    assert tau_two == pytest.approx(0.5 * expected_yr, rel=1e-12)
+    assert tau_pos_500 == pytest.approx(expected_yr / 500.0, rel=1e-12)
+    assert tau_neg_500 == pytest.approx(tau_pos_500, rel=1e-12)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_estimate_tau_drain_phi_outside_unit_interval_clamped():
+    """Negative melt fraction is clamped at 0.0 and melt fraction above 1.0 saturates the ramp at 1.0."""
+    from proteus.interior_energetics.timestep import _estimate_tau_drain
+
+    cfg_neg, io_neg, _ = _make_tau_drain_fixture(phi_top=-0.15, rel_dT=0.08, rel_dT_solid=0.02)
+    cfg_zero, io_zero, _ = _make_tau_drain_fixture(phi_top=0.0, rel_dT=0.08, rel_dT_solid=0.02)
+    cfg_hi, io_hi, _ = _make_tau_drain_fixture(phi_top=1.25, rel_dT=0.08, rel_dT_solid=0.02)
+    cfg_one, io_one, _ = _make_tau_drain_fixture(
+        phi_top=1.0, rel_dT=0.08, rel_dT_solid=0.02, with_solution=False
+    )
+
+    row = {'F_atm': 500.0, 'T_surf': 1500.0}
+    tau_neg = _estimate_tau_drain(cfg_neg, row, io_neg)
+    tau_zero = _estimate_tau_drain(cfg_zero, row, io_zero)
+    tau_hi = _estimate_tau_drain(cfg_hi, row, io_hi)
+    tau_one = _estimate_tau_drain(cfg_one, row, io_one)
+
+    assert tau_neg == pytest.approx(tau_zero, rel=1e-12)
+    assert tau_hi == pytest.approx(tau_one, rel=1e-12)
+    assert tau_one > tau_zero > 0.0
+
+
+@pytest.mark.unit
+def test_estimate_tau_drain_nan_or_invalid_state_logs_once_per_run_and_returns_inf(caplog):
+    """Non-finite or non-positive solver state returns inf and logs a warning once per run."""
+    import logging
+
+    from proteus.interior_energetics.timestep import _estimate_tau_drain
+
+    config, interior_o, _ = _make_tau_drain_fixture(s_top=float('nan'))
+    io_none = _make_interior_o()
+    io_none.aragog_solver = None
+
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.interior_energetics.timestep'):
+        assert _estimate_tau_drain(
+            config, {'F_atm': 500.0, 'T_surf': 1500.0}, io_none
+        ) == float('inf')
+        assert [r.getMessage() for r in caplog.records if 'tau_drain' in r.getMessage()] == []
+        first = _estimate_tau_drain(config, {'F_atm': 500.0, 'T_surf': 1500.0}, interior_o)
+        second = _estimate_tau_drain(config, {'F_atm': 500.0, 'T_surf': 1500.0}, interior_o)
+
+    assert first == float('inf')
+    assert second == float('inf')
+    warns = [r.getMessage() for r in caplog.records if 'tau_drain' in r.getMessage()]
+    assert len(warns) == 1
+    assert getattr(interior_o, '_tau_drain_invalid_warned', False) is True
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_estimate_tau_drain_cp_eff_choice_at_phi_0p60_boundary():
+    """Above _TAU_DRAIN_PHI_SOLID_CP = 0.60, cp_eff uses the live cp_top; at or below 0.60,
+    it uses min(cp_top, cp_solid) to cap the linear solid-liquid heat-capacity blend at
+    the solid-phase value across the lower mushy zone."""
+    from proteus.interior_energetics.timestep import (
+        _TAU_DRAIN_PHI_SOLID_CP,
+        _estimate_tau_drain,
+    )
+
+    cfg_low, io_low, _ = _make_tau_drain_fixture(
+        phi_top=0.59, cp_live=2400.0, cp_solid_at_1800=1200.0
+    )
+    cfg_edge, io_edge, _ = _make_tau_drain_fixture(
+        phi_top=0.60, cp_live=2400.0, cp_solid_at_1800=1200.0
+    )
+    cfg_high, io_high, _ = _make_tau_drain_fixture(
+        phi_top=0.61, cp_live=2400.0, cp_solid_at_1800=1200.0
+    )
+    cfg_cp_lt_solid, io_cp_lt_solid, _ = _make_tau_drain_fixture(
+        phi_top=0.59, cp_live=900.0, cp_solid_at_1800=1200.0
+    )
+
+    row = {'F_atm': 500.0, 'T_surf': 1500.0}
+    tau_low = _estimate_tau_drain(cfg_low, row, io_low)
+    tau_edge = _estimate_tau_drain(cfg_edge, row, io_edge)
+    tau_high = _estimate_tau_drain(cfg_high, row, io_high)
+    tau_cp_lt_solid = _estimate_tau_drain(cfg_cp_lt_solid, row, io_cp_lt_solid)
+
+    assert _TAU_DRAIN_PHI_SOLID_CP == pytest.approx(0.60, rel=1e-12)
+    assert tau_low == pytest.approx(tau_edge, rel=1e-12)
+    assert tau_high == pytest.approx(2.0 * tau_low, rel=1e-12)
+    assert tau_cp_lt_solid == pytest.approx(0.75 * tau_low, rel=1e-12)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_estimate_tau_drain_eta_t_linear_ramp_and_0p40_endpoint():
+    """Linear ramp between rel_dT_solid at phi=0 and rel_dT at _TAU_DRAIN_PHI_RAMP = 0.40."""
+    from proteus.interior_energetics.timestep import (
+        _TAU_DRAIN_PHI_RAMP,
+        _estimate_tau_drain,
+    )
+
+    cfg_0, io_0, _ = _make_tau_drain_fixture(
+        phi_top=0.0, cp_live=1200.0, cp_solid_at_1800=1200.0, rel_dT=0.08, rel_dT_solid=0.02
+    )
+    cfg_mid, io_mid, _ = _make_tau_drain_fixture(
+        phi_top=0.20, cp_live=1200.0, cp_solid_at_1800=1200.0, rel_dT=0.08, rel_dT_solid=0.02
+    )
+    cfg_end, io_end, _ = _make_tau_drain_fixture(
+        phi_top=0.40, cp_live=1200.0, cp_solid_at_1800=1200.0, rel_dT=0.08, rel_dT_solid=0.02
+    )
+    cfg_above, io_above, _ = _make_tau_drain_fixture(
+        phi_top=0.55, cp_live=1200.0, cp_solid_at_1800=1200.0, rel_dT=0.08, rel_dT_solid=0.02
+    )
+
+    row = {'F_atm': 500.0, 'T_surf': 1500.0}
+    tau_0 = _estimate_tau_drain(cfg_0, row, io_0)
+    tau_mid = _estimate_tau_drain(cfg_mid, row, io_mid)
+    tau_end = _estimate_tau_drain(cfg_end, row, io_end)
+    tau_above = _estimate_tau_drain(cfg_above, row, io_above)
+
+    assert _TAU_DRAIN_PHI_RAMP == pytest.approx(0.40, rel=1e-12)
+    assert tau_mid == pytest.approx(2.5 * tau_0, rel=1e-12)
+    assert tau_end == pytest.approx(4.0 * tau_0, rel=1e-12)
+    assert tau_above == pytest.approx(tau_end, rel=1e-12)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_estimate_tau_drain_solid_s_cap_1800_choice():
+    """With S_top = 2400.0 > 1800.0, the solid probe caps at _TAU_DRAIN_SOLID_S_CAP = 1800.0."""
+    from proteus.interior_energetics.timestep import (
+        _TAU_DRAIN_SOLID_S_CAP,
+        _estimate_tau_drain,
+    )
+    from proteus.utils.constants import secs_per_year
+
+    seen_s: list[float] = []
+    cfg, io, solver = _make_tau_drain_fixture(
+        s_top=2400.0,
+        phi_top=0.20,
+        s_min=106.11618925017348,
+        rel_dT=0.08,
+        rel_dT_solid=0.02,
+    )
+
+    def _sloped_cp(p_arr, s_arr):
+        s_val = float(np.asarray(s_arr, dtype=float).ravel()[0])
+        seen_s.append(s_val)
+        if s_val > 2200.0:
+            return np.array([2600.0], dtype=float)
+        return np.array([512.0546103723684 + 0.4 * s_val], dtype=float)
+
+    io.aragog_solver.entropy_eos.heat_capacity = _sloped_cp
+    tau = _estimate_tau_drain(cfg, {'F_atm': 500.0, 'T_surf': 1500.0}, io)
+
+    area_s = 4.0 * np.pi * float(solver._r_basic_flat[-1]) ** 2
+    dr_eff = float(solver._volume_flat[-1]) / area_s
+    cp_expected_at_1800 = 512.0546103723684 + 0.4 * 1800.0
+    eta_eff = 0.02 + (0.08 - 0.02) * (0.20 / 0.40)
+    expected_tau = (4000.0 * cp_expected_at_1800 * dr_eff * (eta_eff * 1500.0)) / (
+        500.0 * secs_per_year
+    )
+
+    assert _TAU_DRAIN_SOLID_S_CAP == pytest.approx(1800.0, rel=1e-12)
+    assert seen_s == [pytest.approx(2400.0, rel=1e-12), pytest.approx(1800.0, rel=1e-12)]
+    assert tau == pytest.approx(expected_tau, rel=1e-12)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_estimate_tau_drain_solid_s_offset_300_choice():
+    """With S_top < S_min + 300.0, the solid probe floors at S_min + 300.0 on both PALEOS tables."""
+    from proteus.interior_energetics.timestep import (
+        _TAU_DRAIN_SOLID_S_OFFSET,
+        _estimate_tau_drain,
+    )
+    from proteus.utils.constants import secs_per_year
+
+    for s_min_table, cp_base in (
+        (106.11618925017348, 823.7276607666909),
+        (25.992306518523165, 528.8995498470755),
+    ):
+        seen_s: list[float] = []
+        cfg, io, solver = _make_tau_drain_fixture(
+            s_top=150.0,
+            phi_top=0.0,
+            s_min=s_min_table,
+            rel_dT=0.08,
+            rel_dT_solid=0.02,
+        )
+        s_probe_expected = s_min_table + 300.0
+
+        def _sloped_cp(
+            p_arr,
+            s_arr,
+            _s_ref=s_probe_expected,
+            _cp_ref=cp_base,
+            _seen=seen_s,
+        ):
+            s_val = float(np.asarray(s_arr, dtype=float).ravel()[0])
+            _seen.append(s_val)
+            if abs(s_val - 150.0) < 1e-9:
+                return np.array([1500.0], dtype=float)
+            return np.array([_cp_ref + 1.25 * (s_val - _s_ref)], dtype=float)
+
+        io.aragog_solver.entropy_eos.heat_capacity = _sloped_cp
+        tau = _estimate_tau_drain(cfg, {'F_atm': 500.0, 'T_surf': 1500.0}, io)
+
+        area_s = 4.0 * np.pi * float(solver._r_basic_flat[-1]) ** 2
+        dr_eff = float(solver._volume_flat[-1]) / area_s
+        expected_tau = (4000.0 * cp_base * dr_eff * (0.02 * 1500.0)) / (500.0 * secs_per_year)
+
+        assert _TAU_DRAIN_SOLID_S_OFFSET == pytest.approx(300.0, rel=1e-12)
+        assert seen_s == [
+            pytest.approx(150.0, rel=1e-12),
+            pytest.approx(s_probe_expected, rel=1e-12),
+        ]
+        assert tau == pytest.approx(expected_tau, rel=1e-12)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'target,attr_name,with_solution',
+    [
+        ('solver', '_solution', True),
+        ('solver', '_S0', False),
+        ('solver', '_n_stag', False),
+        ('solver', '_r_basic_flat', True),
+        ('solver', '_volume_flat', True),
+        ('solver', '_P_stag_flat', True),
+        ('solver', 'entropy_staggered', True),
+        ('solver', 'entropy_eos', True),
+        ('eos', 'S_min', True),
+        ('eos', 'density', True),
+        ('eos', 'heat_capacity', True),
+        ('eos', 'melt_fraction', True),
+        ('eos', 'temperature', True),
+    ],
+)
+def test_estimate_tau_drain_missing_aragog_attr_warns_once_and_returns_inf(
+    caplog, target, attr_name, with_solution
+):
+    """Missing any required Aragog solver or EOS attribute returns inf and logs one warning."""
+    import logging
+
+    from proteus.interior_energetics.timestep import (
+        _ARAGOG_EOS_ATTRS,
+        _ARAGOG_SOLVER_ATTRS,
+        _estimate_tau_drain,
+    )
+
+    assert set(_ARAGOG_SOLVER_ATTRS) == {
+        '_solution',
+        '_S0',
+        '_n_stag',
+        '_r_basic_flat',
+        '_volume_flat',
+        '_P_stag_flat',
+    }
+    assert set(_ARAGOG_EOS_ATTRS) == {
+        'S_min',
+        'density',
+        'heat_capacity',
+        'melt_fraction',
+        'temperature',
+    }
+
+    cfg, io, solver = _make_tau_drain_fixture(with_solution=with_solution)
+    if attr_name == '_solution':
+        solver._S0 = None
+    elif attr_name == '_S0':
+        delattr(solver, '_solution')
+    obj = solver if target == 'solver' else solver.entropy_eos
+    delattr(obj, attr_name)
+
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.interior_energetics.timestep'):
+        first = _estimate_tau_drain(cfg, {'F_atm': 500.0, 'T_surf': 1500.0}, io)
+        second = _estimate_tau_drain(
+            config=cfg, hf_row={'F_atm': 500.0, 'T_surf': 1500.0}, interior_o=io
+        )
+
+    assert first == float('inf')
+    assert second == float('inf')
+    warns = [r.getMessage() for r in caplog.records if 'tau_drain' in r.getMessage()]
+    assert len(warns) == 1
+    assert getattr(io, '_tau_drain_invalid_warned', False) is True
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_estimate_tau_drain_presolve_without_solution_attr_and_gradient_core_bc(caplog):
+    """Before first solve (_solution attribute absent), _S0 is used cleanly including gradient core_bc."""
+    import logging
+
+    from proteus.interior_energetics.timestep import _estimate_tau_drain
+    from proteus.utils.constants import secs_per_year
+
+    cfg, io, solver = _make_tau_drain_fixture(
+        s_top=1000.0,
+        phi_top=0.0,
+        s_min=106.116,
+        cp_live=1100.0,
+        rel_dT=0.08,
+        rel_dT_solid=0.02,
+        with_solution=False,
+    )
+    delattr(solver, '_solution')
+
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.interior_energetics.timestep'):
+        tau_presolve = _estimate_tau_drain(cfg, {'F_atm': 500.0, 'T_surf': 1500.0}, io)
+        assert [r.getMessage() for r in caplog.records if 'tau_drain' in r.getMessage()] == []
+
+    area_s = 4.0 * np.pi * float(solver._r_basic_flat[-1]) ** 2
+    dr_eff = float(solver._volume_flat[-1]) / area_s
+    expected_tau = (4000.0 * 1100.0 * dr_eff * (0.02 * 1500.0)) / (500.0 * secs_per_year)
+    assert tau_presolve == pytest.approx(expected_tau, rel=1e-12)
+
+    solver._core_bc = 'gradient'
+    solver._S0 = np.array([-1.0e-4, -1.0e-4, -1.0e-4, 1000.0], dtype=float)
+    seen_s: list[float] = []
+    orig_cp = solver.entropy_eos.heat_capacity
+
+    def _rec_cp(p_arr, s_arr):
+        seen_s.append(float(np.asarray(s_arr, dtype=float).ravel()[0]))
+        return orig_cp(p_arr, s_arr)
+
+    solver.entropy_eos.heat_capacity = _rec_cp
+    tau_grad = _estimate_tau_drain(cfg, {'F_atm': 500.0, 'T_surf': 1500.0}, io)
+    assert seen_s == [pytest.approx(1000.0, rel=1e-12), pytest.approx(1000.0, rel=1e-12)]
+    assert tau_grad == pytest.approx(expected_tau, rel=1e-12)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'bad_case',
+    ['s_min_none', 't_surf_none', 'f_atm_none', 'p_top_nonpositive'],
+)
+def test_estimate_tau_drain_none_or_nonpositive_pressure_warns_and_returns_inf(
+    caplog, bad_case
+):
+    """None values in S_min/hf_row or non-positive P_top return inf and log one warning."""
+    import logging
+
+    from proteus.interior_energetics.timestep import _estimate_tau_drain
+
+    cfg, io, solver = _make_tau_drain_fixture()
+    row = {'F_atm': 500.0, 'T_surf': 1500.0}
+    if bad_case == 's_min_none':
+        solver.entropy_eos.S_min = None
+    elif bad_case == 't_surf_none':
+        row['T_surf'] = None
+    elif bad_case == 'f_atm_none':
+        row['F_atm'] = None
+    elif bad_case == 'p_top_nonpositive':
+        solver._P_stag_flat = np.array([1.0e10, 0.0], dtype=float)
+
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.interior_energetics.timestep'):
+        res = _estimate_tau_drain(cfg, row, io)
+
+    assert res == float('inf')
+    warns = [r.getMessage() for r in caplog.records if 'tau_drain' in r.getMessage()]
+    assert len(warns) == 1
+
+
+@pytest.mark.unit
+def test_next_step_top_cell_dt_limit_off_never_calls_estimate_tau_drain():
+    """With top_cell_dt_limit = False or module != 'aragog', next_step never calls
+    _estimate_tau_drain and writes no _tau_drain_cap_valid state on interior_o."""
+    from unittest.mock import patch
+
+    from proteus.interior_energetics.timestep import next_step
+
+    cfg, io, _ = _make_tau_drain_fixture(top_cell_dt_limit=False)
+    io.__dict__.pop('_tau_drain_cap_valid', None)
+    hf_all = _make_hf_all(n_rows=10, dt_prev=100.0)
+    hf_row = {
+        'Time': float(hf_all['Time'].iloc[-1]),
+        'Phi_global': 0.2,
+        'F_atm': 800.0,
+        'T_surf': 1500.0,
+    }
+
+    with patch(
+        'proteus.interior_energetics.timestep._estimate_tau_drain',
+        side_effect=AssertionError('must not be called when top_cell_dt_limit is False'),
+    ) as mock_est:
+        dt = next_step(cfg, {}, hf_row, hf_all, 1.0, interior_o=io)
+
+    mock_est.assert_not_called()
+    assert dt >= cfg.params.dt.minimum
+    assert '_tau_drain_cap_valid' not in io.__dict__
+
+    cfg_spider, io_spider, _ = _make_tau_drain_fixture(top_cell_dt_limit=True)
+    cfg_spider.interior_energetics.module = 'spider'
+    io_spider.__dict__.pop('_tau_drain_cap_valid', None)
+    with patch(
+        'proteus.interior_energetics.timestep._estimate_tau_drain',
+        side_effect=AssertionError('must not be called when module is spider'),
+    ) as mock_spider_est:
+        dt_spider = next_step(cfg_spider, {}, hf_row, hf_all, 1.0, interior_o=io_spider)
+
+    mock_spider_est.assert_not_called()
+    assert dt_spider >= cfg_spider.params.dt.minimum
+    assert '_tau_drain_cap_valid' not in io_spider.__dict__
+
+
+@pytest.mark.unit
+def test_estimate_tau_drain_ic_one_and_pre_atmosphere_return_inf_without_warning_and_preserve_warn_once(
+    caplog,
+):
+    """ic == 1 and pre-atmosphere T_surf <= 0 at Time <= 0 return inf with no warning,
+    _estimate_tau_drain is pure with respect to _tau_drain_cap_valid, and one-warning-per-run holds."""
+    import logging
+
+    from proteus.interior_energetics.timestep import _estimate_tau_drain
+
+    cfg, io, _ = _make_tau_drain_fixture()
+    io.ic = 1
+    io.__dict__.pop('_tau_drain_cap_valid', None)
+
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.interior_energetics.timestep'):
+        io.ic = 2
+        res_pre_atm_neg = _estimate_tau_drain(
+            cfg, {'Time': 0.0, 'F_atm': 500.0, 'T_surf': -1.0}, io
+        )
+        assert res_pre_atm_neg == float('inf')
+        assert getattr(io, '_tau_drain_invalid_warned', False) is False
+        assert [r.getMessage() for r in caplog.records if 'tau_drain' in r.getMessage()] == []
+        assert '_tau_drain_cap_valid' not in io.__dict__
+
+        io.ic = 1
+        res_ic1 = _estimate_tau_drain(cfg, {'Time': 10.0, 'F_atm': 500.0, 'T_surf': 1500.0}, io)
+        assert res_ic1 == float('inf')
+        assert '_tau_drain_cap_valid' not in io.__dict__
+        assert getattr(io, '_tau_drain_invalid_warned', False) is False
+        assert [r.getMessage() for r in caplog.records if 'tau_drain' in r.getMessage()] == []
+
+        io.ic = 2
+        res_pre_atm = _estimate_tau_drain(cfg, {'Time': 0.0, 'F_atm': 500.0, 'T_surf': 0.0}, io)
+        assert res_pre_atm == float('inf')
+        assert '_tau_drain_cap_valid' not in io.__dict__
+        assert getattr(io, '_tau_drain_invalid_warned', False) is False
+        assert [r.getMessage() for r in caplog.records if 'tau_drain' in r.getMessage()] == []
+
+        res_t0_valid = _estimate_tau_drain(
+            cfg, {'Time': 0.0, 'F_atm': 500.0, 'T_surf': 1500.0}, io
+        )
+        assert 0.0 < res_t0_valid < float('inf')
+        assert '_tau_drain_cap_valid' not in io.__dict__
+
+        res_valid = _estimate_tau_drain(
+            cfg, {'Time': 10.0, 'F_atm': 500.0, 'T_surf': 1500.0}, io
+        )
+        assert 0.0 < res_valid < float('inf')
+        assert '_tau_drain_cap_valid' not in io.__dict__
+
+        res_bad_1 = _estimate_tau_drain(cfg, {'Time': 10.0, 'F_atm': 500.0, 'T_surf': 0.0}, io)
+        assert res_bad_1 == float('inf')
+        assert '_tau_drain_cap_valid' not in io.__dict__
+        assert getattr(io, '_tau_drain_invalid_warned', False) is True
+        warns_1 = [r.getMessage() for r in caplog.records if 'tau_drain' in r.getMessage()]
+        assert len(warns_1) == 1
+
+        res_bad_2 = _estimate_tau_drain(cfg, {'Time': 20.0, 'F_atm': 500.0, 'T_surf': -5.0}, io)
+        assert res_bad_2 == float('inf')
+        assert '_tau_drain_cap_valid' not in io.__dict__
+        assert getattr(io, '_tau_drain_invalid_warned', False) is True
+        warns_2 = [r.getMessage() for r in caplog.records if 'tau_drain' in r.getMessage()]
+        assert len(warns_2) == 1
+
+    cfg_neg, io_neg, _ = _make_tau_drain_fixture()
+    io_neg.ic = 2
+    io_neg.__dict__.pop('_tau_drain_cap_valid', None)
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.interior_energetics.timestep'):
+        caplog.clear()
+        res_t0_neg = _estimate_tau_drain(
+            cfg_neg, {'Time': 0.0, 'F_atm': 500.0, 'T_surf': -1.0}, io_neg
+        )
+        assert res_t0_neg == float('inf')
+        assert '_tau_drain_cap_valid' not in io_neg.__dict__
+        assert getattr(io_neg, '_tau_drain_invalid_warned', False) is False
+        assert [r.getMessage() for r in caplog.records if 'tau_drain' in r.getMessage()] == []
+        res_t10_neg = _estimate_tau_drain(
+            cfg_neg, {'Time': 10.0, 'F_atm': 500.0, 'T_surf': -1.0}, io_neg
+        )
+        assert res_t10_neg == float('inf')
+        assert getattr(io_neg, '_tau_drain_invalid_warned', False) is True
+        warns_neg = [r.getMessage() for r in caplog.records if 'tau_drain' in r.getMessage()]
+        assert len(warns_neg) == 1
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_estimate_tau_drain_eos_depends_on_p_and_s_at_top_staggered_cell_and_multi_column_entropy():
+    """EOS lookups evaluate at P_stag[-1] and the last column of entropy_staggered[-1, -1]."""
+    from proteus.interior_energetics.timestep import _estimate_tau_drain
+    from proteus.utils.constants import secs_per_year
+
+    cfg, io, solver = _make_tau_drain_fixture(rel_dT=0.08, rel_dT_solid=0.02)
+    p0 = 1.0e10
+    p_top = 4.46095e8
+    s_col0_top = 3100.0
+    s_top = 2400.0
+    solver._P_stag_flat = np.array([p0, p_top], dtype=float)
+    solver.entropy_staggered = np.array([[2900.0, 2800.0], [s_col0_top, s_top]], dtype=float)
+    solver._solution = SimpleNamespace(y=solver.entropy_staggered.copy())
+
+    def _rho_fn(p_arr, s_arr):
+        p_val = float(np.asarray(p_arr, dtype=float).ravel()[0])
+        s_val = float(np.asarray(s_arr, dtype=float).ravel()[0])
+        return np.array([3500.0 + 1.0e-6 * p_val + 0.2 * s_val], dtype=float)
+
+    def _cp_fn(p_arr, s_arr):
+        p_val = float(np.asarray(p_arr, dtype=float).ravel()[0])
+        s_val = float(np.asarray(s_arr, dtype=float).ravel()[0])
+        return np.array([900.0 + 2.0e-7 * p_val + 0.35 * s_val], dtype=float)
+
+    def _phi_fn(p_arr, s_arr):
+        p_val = float(np.asarray(p_arr, dtype=float).ravel()[0])
+        s_val = float(np.asarray(s_arr, dtype=float).ravel()[0])
+        return np.array(
+            [np.clip((s_val - 1800.0) / (3000.0 + 1.0e-7 * p_val - 1800.0), 0.0, 1.0)],
+            dtype=float,
+        )
+
+    solver.entropy_eos.density = _rho_fn
+    solver.entropy_eos.heat_capacity = _cp_fn
+    solver.entropy_eos.melt_fraction = _phi_fn
+
+    row = {'Time': 50.0, 'F_atm': 500.0, 'T_surf': 1500.0}
+    tau = _estimate_tau_drain(cfg, row, io)
+
+    area_s = 4.0 * np.pi * float(solver._r_basic_flat[-1]) ** 2
+    dr_eff = float(solver._volume_flat[-1]) / area_s
+
+    def _analytic_tau(p_eval: float, s_eval: float, swap_args: bool = False) -> float:
+        if swap_args:
+            rho = float(_rho_fn([s_eval], [p_eval])[0])
+            cp_live = float(_cp_fn([s_eval], [p_eval])[0])
+            cp_sol = float(_cp_fn([1800.0], [p_eval])[0])
+            phi = float(_phi_fn([s_eval], [p_eval])[0])
+        else:
+            rho = float(_rho_fn([p_eval], [s_eval])[0])
+            cp_live = float(_cp_fn([p_eval], [s_eval])[0])
+            cp_sol = float(_cp_fn([p_eval], [1800.0])[0])
+            phi = float(_phi_fn([p_eval], [s_eval])[0])
+        phi_c = max(0.0, phi)
+        cp_eff = min(cp_live, cp_sol) if phi_c <= 0.60 else cp_live
+        eta_eff = 0.02 + (0.08 - 0.02) * min(phi_c / 0.40, 1.0)
+        return (rho * cp_eff * dr_eff * (eta_eff * 1500.0)) / (500.0 * secs_per_year)
+
+    expected = _analytic_tau(p_top, s_top)
+    wrong_p0 = _analytic_tau(p0, s_top)
+    wrong_col0 = _analytic_tau(p_top, s_col0_top)
+    wrong_swapped = _analytic_tau(p_top, s_top, swap_args=True)
+
+    assert tau == pytest.approx(expected, rel=1e-12)
+    assert tau != pytest.approx(wrong_p0, rel=1e-2)
+    assert tau != pytest.approx(wrong_col0, rel=1e-2)
+    assert tau != pytest.approx(wrong_swapped, rel=1e-2)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_next_step_top_cell_dt_limit_on_caps_dtswitch_below_dtminimum():
+    """With top_cell_dt_limit = True, tau_drain caps dtswitch below dt.minimum down to esc_floor,
+    and _tau_drain_cap_valid resets to False when floored or lengthened by an impact snap-forward."""
+    from proteus.interior_energetics.timestep import _estimate_tau_drain, next_step
+
+    cfg, io, _ = _make_tau_drain_fixture(
+        phi_top=0.05,
+        dm_top=2.0e21,
+        cp_live=1200.0,
+        cp_solid_at_1800=1200.0,
+        rel_dT=0.08,
+        rel_dT_solid=0.02,
+        top_cell_dt_limit=True,
+    )
+    cfg.params.dt.minimum = 100.0
+    cfg.escape.step_dt_floor_frac = 1.0e-3
+    hf_all = _make_hf_all(n_rows=10, dt_prev=100.0)
+    hf_row = {
+        'Time': float(hf_all['Time'].iloc[-1]),
+        'Phi_global': 0.05,
+        'F_atm': 800.0,
+        'T_surf': 1400.0,
+    }
+
+    expected_tau = _estimate_tau_drain(cfg, hf_row, io)
+    io._tau_drain_cap_valid = False
+    dt_on = next_step(cfg, {}, hf_row, hf_all, 1.0, interior_o=io)
+    assert getattr(io, '_tau_drain_cap_valid', None) is True
+
+    esc_floor = cfg.params.dt.minimum * cfg.escape.step_dt_floor_frac
+    assert dt_on == pytest.approx(expected_tau, rel=1e-12)
+    assert esc_floor < dt_on < cfg.params.dt.minimum
+
+    io._tau_drain_cap_valid = True
+    hf_row_huge_flux = dict(hf_row, F_atm=1.0e8)
+    dt_floored = next_step(cfg, {}, hf_row_huge_flux, hf_all, 1.0, interior_o=io)
+    assert dt_floored == pytest.approx(esc_floor, rel=1e-12)
+    assert getattr(io, '_tau_drain_cap_valid', None) is False
+
+    cfg.interior_energetics.aragog.top_cell_dt_limit = False
+    io.__dict__.pop('_tau_drain_cap_valid', None)
+    dt_off = next_step(cfg, {}, hf_row, hf_all, 1.0, interior_o=io)
+    assert '_tau_drain_cap_valid' not in io.__dict__
+    assert dt_off >= cfg.params.dt.minimum
+    assert dt_on < 0.2 * dt_off
+
+    cfg.interior_energetics.aragog.top_cell_dt_limit = True
+    io._tau_drain_cap_valid = True
+    hf_row_invalid = dict(hf_row, T_surf=0.0)
+    dt_invalid = next_step(cfg, {}, hf_row_invalid, hf_all, 1.0, interior_o=io)
+    assert dt_invalid >= cfg.params.dt.minimum
+    assert getattr(io, '_tau_drain_cap_valid', None) is False
+
+    from proteus.utils.helper import SUBYEAR_TIME_RESOLUTION
+
+    io_snap = _make_interior_o(
+        t_next_impact=float(hf_row['Time']) + expected_tau + 0.5 * SUBYEAR_TIME_RESOLUTION
+    )
+    io_snap.aragog_solver = io.aragog_solver
+    dt_snapped = next_step(cfg, {}, hf_row, hf_all, 1.0, interior_o=io_snap)
+    assert dt_snapped == pytest.approx(expected_tau + 0.5 * SUBYEAR_TIME_RESOLUTION, rel=1e-12)
+    assert dt_snapped > expected_tau
+    assert getattr(io_snap, '_tau_drain_cap_valid', None) is False
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_next_step_escape_floor_above_tau_drain_clears_cap_flag():
+    """An escape step floor raised above tau_drain sets dt to the floor and the flag to False."""
+    from proteus.interior_energetics.timestep import _estimate_tau_drain, next_step
+
+    cfg, io, _ = _make_tau_drain_fixture(
+        phi_top=0.30,
+        dm_top=2.0e21,
+        cp_live=1500.0,
+        cp_solid_at_1800=1200.0,
+        top_cell_dt_limit=True,
+    )
+    cfg.params.dt.minimum = 100.0
+    hf_all = _make_hf_all(n_rows=10, dt_prev=100.0)
+    hf_row = {
+        'Time': float(hf_all['Time'].iloc[-1]),
+        'Phi_global': 0.30,
+        'F_atm': 800.0,
+        'T_surf': 1400.0,
+    }
+    tau = _estimate_tau_drain(cfg, hf_row, io)
+    assert 0.0 < tau < 0.25 * cfg.params.dt.minimum
+
+    cfg.escape.step_dt_floor_frac = 3.0 * tau / cfg.params.dt.minimum
+    io._tau_drain_cap_valid = True
+    dt = next_step(cfg, {}, hf_row, hf_all, 1.0, interior_o=io)
+
+    assert dt == pytest.approx(3.0 * tau, rel=1e-12)
+    assert io._tau_drain_cap_valid is False
+
+
+def _load_paleos_ptop_531p546_slice_fixture() -> dict:
+    """Load the committed 1D PALEOS EOS slice fixture at P_top = 4.455575e8 Pa."""
+    import json
+    from pathlib import Path
+
+    fixture_path = (
+        Path(__file__).resolve().parent / 'fixtures' / 'paleos_ptop_531p546_slice.json'
+    )
+    return json.loads(fixture_path.read_text(encoding='utf-8'))
+
+
+class _PaleosSliceEOS:
+    """1D PALEOS EOS slice evaluator at fixed P_top reproducing Aragog's EntropyEOS."""
+
+    def __init__(self, data: dict):
+        self.S_min = float(data['S_min'])
+        self.S_max = float(data['S_max'])
+        self._p_ref = float(data['P_top_Pa'])
+        self._s_sol = float(data['S_sol_at_P_top'])
+        self._s_liq = float(data['S_liq_at_P_top'])
+        self._solid = {
+            k: np.asarray(v, dtype=float) for k, v in data['phase_slices']['solid'].items()
+        }
+        self._melt = {
+            k: np.asarray(v, dtype=float) for k, v in data['phase_slices']['melt'].items()
+        }
+
+    def melt_fraction(self, p_arr, s_arr):
+        s = np.asarray(s_arr, dtype=float)
+        return np.clip((s - self._s_sol) / (self._s_liq - self._s_sol), 0.0, 1.0)
+
+    def _blend_linear(self, prop: str, s_arr):
+        s = np.asarray(s_arr, dtype=float)
+        phi = self.melt_fraction(self._p_ref, s)
+        mushy = (phi > 0.0) & (phi < 1.0)
+        s_sol_q = np.where(mushy, self._s_sol, s)
+        s_liq_q = np.where(mushy, self._s_liq, s)
+        v_sol = np.interp(
+            np.clip(s_sol_q, self._solid['S'][0], self._solid['S'][-1]),
+            self._solid['S'],
+            self._solid[prop],
+        )
+        v_melt = np.interp(
+            np.clip(s_liq_q, self._melt['S'][0], self._melt['S'][-1]),
+            self._melt['S'],
+            self._melt[prop],
+        )
+        res = np.where(phi > 0.0, phi * v_melt, 0.0) + np.where(
+            phi < 1.0, (1.0 - phi) * v_sol, 0.0
+        )
+        return np.where(np.isnan(phi), np.nan, res)
+
+    def temperature(self, p_arr, s_arr):
+        p = np.asarray(p_arr, dtype=float)
+        return self._blend_linear('temperature', s_arr) + 1.0e-7 * (p - self._p_ref)
+
+    def heat_capacity(self, p_arr, s_arr):
+        return self._blend_linear('heat_capacity', s_arr)
+
+    def density(self, p_arr, s_arr):
+        s = np.asarray(s_arr, dtype=float)
+        phi = self.melt_fraction(self._p_ref, s)
+        mushy = (phi > 0.0) & (phi < 1.0)
+        rho_sol_b = np.interp(
+            np.clip(self._s_sol, self._solid['S'][0], self._solid['S'][-1]),
+            self._solid['S'],
+            self._solid['density'],
+        )
+        rho_liq_b = np.interp(
+            np.clip(self._s_liq, self._melt['S'][0], self._melt['S'][-1]),
+            self._melt['S'],
+            self._melt['density'],
+        )
+        rho_mushy = 1.0 / (phi / rho_liq_b + (1.0 - phi) / rho_sol_b)
+        v_sol = np.interp(
+            np.clip(s, self._solid['S'][0], self._solid['S'][-1]),
+            self._solid['S'],
+            self._solid['density'],
+        )
+        v_melt = np.interp(
+            np.clip(s, self._melt['S'][0], self._melt['S'][-1]),
+            self._melt['S'],
+            self._melt['density'],
+        )
+        rho_single = np.where(phi >= 0.5, v_melt, v_sol)
+        return np.where(mushy, rho_mushy, rho_single)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_estimate_tau_drain_paleos_slice_531p546_chord_lookahead_and_window():
+    """On the committed 1D PALEOS slice at P_top = 4.455575e8 Pa (t = 531.546 yr, row 386),
+    _estimate_tau_drain returns 11.241963 yr without chord collapse and 4.878514 yr
+    (chord ratio 0.433956) with the 1-evaluation chord-cp lookahead."""
+    import re
+
+    from proteus.interior_energetics.timestep import _estimate_tau_drain
+
+    data = _load_paleos_ptop_531p546_slice_fixture()
+    assert len(data['source_files_md5']) >= 10
+    assert isinstance(data.get('source_table'), str)
+    assert data['source_table'] != 'none'
+    assert data['source_table'].startswith('PALEOS')
+    assert 'none EOS slice' not in data['description']
+    assert 'aragog_commit' not in data
+    assert (
+        re.fullmatch(
+            r'[A-Za-z0-9._-]+-[0-9]+-g[0-9a-f]{40}',
+            str(data.get('aragog_commit_eos_eval', '')),
+        )
+        is not None
+    )
+    assert 0.0 <= float(data['max_2d_vs_slice_rel_diff']) < 1.0e-14
+    rows = {int(r['row']): r for r in data['snap531_rows_380_to_392']}
+    r386 = rows[386]
+
+    cfg, io, solver = _make_tau_drain_fixture(
+        s_top=float(r386['S_top_J_kg_K']),
+        P_top=float(data['P_top_Pa']),
+        r_outer=float(data['r_outer_m']),
+        rel_dT=0.08,
+        rel_dT_solid=0.08,
+        top_cell_dt_limit=True,
+    )
+    solver._volume_flat = np.array([5.0e18, float(data['vol_top_m3'])], dtype=float)
+    eos_slice = _PaleosSliceEOS(data)
+    ref_pts = data['reference_2d_points']
+    s_ref = np.asarray(ref_pts['S_J_kg_K'], dtype=float)
+    p_ref = np.full_like(s_ref, float(data['P_top_Pa']), dtype=float)
+    s_sol_ref = float(data['S_sol_at_P_top'])
+    s_liq_ref = float(data['S_liq_at_P_top'])
+    assert len(s_ref) >= 25
+    assert int(np.sum(np.abs(s_ref - s_sol_ref) <= 5.0)) >= 3
+    assert int(np.sum(np.abs(s_ref - s_liq_ref) <= 5.0)) >= 3
+    assert int(np.sum((s_ref >= 2429.71) & (s_ref < s_sol_ref))) >= 2
+    assert int(np.sum((s_ref > s_sol_ref) & (s_ref < s_liq_ref))) >= 6
+    assert 1 <= int(np.sum(s_ref >= 11283.0)) <= 3
+    for key, slice_fn in (
+        ('temperature_K', eos_slice.temperature),
+        ('heat_capacity_J_kg_K', eos_slice.heat_capacity),
+        ('density_kg_m3', eos_slice.density),
+        ('melt_fraction', eos_slice.melt_fraction),
+    ):
+        ref_arr = np.asarray(ref_pts[key], dtype=float)
+        got_arr = np.asarray(slice_fn(p_ref, s_ref), dtype=float).ravel()
+        denom = np.maximum(np.abs(ref_arr), 1.0e-30)
+        assert float(np.max(np.abs(got_arr - ref_arr) / denom)) < 1.0e-14
+    solver.entropy_eos = eos_slice
+
+    hf_386 = {
+        'Time': float(r386['Time_yr']),
+        'T_surf': float(r386['T_surf_K']),
+        'F_atm': float(r386['F_atm_W_m2']),
+    }
+    tau_chord_386 = _estimate_tau_drain(cfg, hf_386, io)
+
+    eos_no_collapse = _PaleosSliceEOS(data)
+    eos_no_collapse.temperature = lambda p_arr, s_arr: np.array(
+        [1918.1830315644013], dtype=float
+    )
+    solver.entropy_eos = eos_no_collapse
+    tau_start_386 = _estimate_tau_drain(cfg, hf_386, io)
+
+    assert 0.0 < tau_chord_386 < tau_start_386 < 100.0
+    assert tau_start_386 == pytest.approx(11.241963252904497, rel=1e-6)
+    assert tau_chord_386 == pytest.approx(4.878514423642098, rel=1e-6)
+    assert (tau_chord_386 / tau_start_386) == pytest.approx(0.43395573638580115, rel=1e-5)
+    t_top_386 = 1918.1830315644013
+    t_trial_386 = 1567.854994037665
+    tau_tmean_wrong = tau_chord_386 * (0.5 * (t_top_386 + t_trial_386) / t_top_386)
+    assert tau_chord_386 != pytest.approx(tau_tmean_wrong, rel=5e-2)
+
+    ratios_by_row: dict[int, float] = {}
+    for row_idx in range(380, 393):
+        rec = rows[row_idx]
+        s_val = float(rec['S_top_J_kg_K'])
+        solver.entropy_staggered = np.array([[2800.0], [s_val]], dtype=float)
+        solver._solution = SimpleNamespace(y=solver.entropy_staggered.copy())
+        hf_r = {
+            'Time': float(rec['Time_yr']),
+            'T_surf': float(rec['T_surf_K']),
+            'F_atm': float(rec['F_atm_W_m2']),
+        }
+        solver.entropy_eos = eos_slice
+        tau_c = _estimate_tau_drain(cfg, hf_r, io)
+        solver.entropy_eos = eos_no_collapse
+        tau_0 = _estimate_tau_drain(cfg, hf_r, io)
+        ratio = tau_c / tau_0
+        ratios_by_row[row_idx] = ratio
+        if row_idx in range(380, 384):
+            assert ratio == pytest.approx(1.0, rel=1e-12)
+        else:
+            assert 0.433 < ratio < 0.851
+    assert min(ratios_by_row, key=ratios_by_row.get) == 386
+    assert ratios_by_row[384] > ratios_by_row[385] > ratios_by_row[386] < ratios_by_row[387]
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_estimate_tau_drain_lookahead_floor_clip_and_edge_guards(caplog):
+    """Verify S_trial floor clipping at S_min + 300.0 uses T_top*(S_top - S_trial)/dT_trial
+    without loosening, handles T_trial >= T_top without dividing by zero, and warns once on
+    non-finite or non-positive EOS temperatures."""
+    import logging
+
+    from proteus.interior_energetics.timestep import (
+        _TAU_DRAIN_SOLID_S_OFFSET,
+        _estimate_tau_drain,
+    )
+    from proteus.utils.constants import secs_per_year
+
+    s_min = 106.11618925017348
+    s_floor = s_min + _TAU_DRAIN_SOLID_S_OFFSET
+    s_top = 600.0
+    cp_val = 1200.0
+    t_surf = 1500.0
+    t_top = 600.0
+    t_floor = 300.0
+    queried_s: list[float] = []
+
+    cfg, io, solver = _make_tau_drain_fixture(
+        s_top=s_top,
+        phi_top=0.0,
+        s_min=s_min,
+        cp_live=cp_val,
+        cp_solid_at_1800=cp_val,
+        cp_at_smin_plus_300=cp_val,
+        rel_dT=0.08,
+        rel_dT_solid=0.08,
+    )
+
+    def _temp_clipped(p_arr, s_arr):
+        s_q = float(np.asarray(s_arr, dtype=float).ravel()[0])
+        queried_s.append(s_q)
+        if abs(s_q - s_top) < 1e-9:
+            return np.array([t_top], dtype=float)
+        return np.array([t_floor], dtype=float)
+
+    solver.entropy_eos.temperature = _temp_clipped
+    row = {'Time': 20.0, 'F_atm': 500.0, 'T_surf': t_surf}
+    tau_clipped = _estimate_tau_drain(cfg, row, io)
+
+    area_s = 4.0 * np.pi * float(solver._r_basic_flat[-1]) ** 2
+    dr_eff = float(solver._volume_flat[-1]) / area_s
+    dt_allow = 0.08 * t_surf
+    tau_start = (4000.0 * cp_val * dr_eff * dt_allow) / (500.0 * secs_per_year)
+    cp_chord_expected = min(cp_val, t_top * (s_top - s_floor) / (t_top - t_floor))
+    cp_short_wrong = cp_val * dt_allow / (t_top - t_floor)
+    tau_expected = (4000.0 * cp_chord_expected * dr_eff * dt_allow) / (500.0 * secs_per_year)
+    tau_short_wrong = (4000.0 * cp_short_wrong * dr_eff * dt_allow) / (500.0 * secs_per_year)
+
+    assert queried_s == [pytest.approx(s_top, rel=1e-12), pytest.approx(s_floor, rel=1e-12)]
+    assert tau_clipped == pytest.approx(tau_expected, rel=1e-12)
+    assert tau_clipped != pytest.approx(tau_short_wrong, rel=1e-2)
+    assert 0.0 < tau_clipped < tau_start
+
+    # A clipped trial within dT_allow (0 < T_top - T_trial <= dT_allow) keeps cp_eff
+    t_floor_within_allow = 500.0
+    solver.entropy_eos.temperature = lambda p_arr, s_arr: np.array(
+        [
+            t_top
+            if abs(float(np.asarray(s_arr).ravel()[0]) - s_top) < 1e-9
+            else t_floor_within_allow
+        ],
+        dtype=float,
+    )
+    tau_clipped_within_allow = _estimate_tau_drain(cfg, row, io)
+    cp_dt_gt_zero_wrong = min(
+        cp_val, t_top * (s_top - s_floor) / (t_top - t_floor_within_allow)
+    )
+    tau_dt_gt_zero_wrong = (4000.0 * cp_dt_gt_zero_wrong * dr_eff * dt_allow) / (
+        500.0 * secs_per_year
+    )
+    assert tau_clipped_within_allow == pytest.approx(tau_start, rel=1e-12)
+    assert tau_clipped_within_allow != pytest.approx(tau_dt_gt_zero_wrong, rel=1e-2)
+
+    # At phi_top <= 0.60 with cp_top > cp_solid, cp_eff (not cp_top) sets S_trial
+    cfg_low_phi, io_low_phi, solver_low_phi = _make_tau_drain_fixture(
+        s_top=2400.0,
+        phi_top=0.30,
+        s_min=s_min,
+        cp_live=3000.0,
+        cp_solid_at_1800=1200.0,
+        rel_dT=0.08,
+        rel_dT_solid=0.08,
+    )
+    queried_low_phi_s: list[float] = []
+
+    def _temp_low_phi(p_arr, s_arr):
+        s_q = float(np.asarray(s_arr, dtype=float).ravel()[0])
+        queried_low_phi_s.append(s_q)
+        if abs(s_q - 2400.0) < 1e-9:
+            return np.array([1500.0], dtype=float)
+        if s_q >= 2250.0:
+            return np.array([1300.0], dtype=float)
+        return np.array([900.0], dtype=float)
+
+    solver_low_phi.entropy_eos.temperature = _temp_low_phi
+    tau_low_phi = _estimate_tau_drain(cfg_low_phi, row, io_low_phi)
+    cp_chord_low_phi = 1500.0 * (2400.0 - 2304.0) / (1500.0 - 1300.0)
+    expected_low_phi_tau = (4000.0 * cp_chord_low_phi * dr_eff * dt_allow) / (
+        500.0 * secs_per_year
+    )
+    cp_chord_cp_top_wrong = 1500.0 * (2400.0 - 2160.0) / (1500.0 - 900.0)
+    wrong_cp_top_tau = (4000.0 * cp_chord_cp_top_wrong * dr_eff * dt_allow) / (
+        500.0 * secs_per_year
+    )
+    assert queried_low_phi_s == [
+        pytest.approx(2400.0, rel=1e-12),
+        pytest.approx(2304.0, rel=1e-12),
+    ]
+    assert tau_low_phi == pytest.approx(expected_low_phi_tau, rel=1e-12)
+    assert tau_low_phi != pytest.approx(wrong_cp_top_tau, rel=1e-2)
+
+    # When S_top < S_min + 300.0, S_trial clips at S_min + 300.0 > S_top and never loosens
+    solver.entropy_staggered = np.array([[2800.0], [200.0]], dtype=float)
+    solver._solution = SimpleNamespace(y=solver.entropy_staggered.copy())
+    solver.entropy_eos.temperature = lambda p_arr, s_arr: np.array(
+        [250.0 if float(np.asarray(s_arr).ravel()[0]) < 300.0 else 100.0], dtype=float
+    )
+    tau_below_floor = _estimate_tau_drain(cfg, row, io)
+    assert tau_below_floor == pytest.approx(tau_start, rel=1e-12)
+
+    # T_trial == T_top (dt_trial == 0) and T_trial > T_top (dt_trial < 0): no zero-division
+    solver.entropy_staggered = np.array([[2800.0], [s_top]], dtype=float)
+    solver._solution = SimpleNamespace(y=solver.entropy_staggered.copy())
+    solver.entropy_eos.temperature = lambda p_arr, s_arr: np.array([1500.0], dtype=float)
+    assert _estimate_tau_drain(cfg, row, io) == pytest.approx(tau_start, rel=1e-12)
+    solver.entropy_eos.temperature = lambda p_arr, s_arr: np.array(
+        [1500.0 if abs(float(np.asarray(s_arr).ravel()[0]) - s_top) < 1e-9 else 1650.0],
+        dtype=float,
+    )
+    assert _estimate_tau_drain(cfg, row, io) == pytest.approx(tau_start, rel=1e-12)
+
+    # Non-finite or non-positive T_top or T_trial returns inf and warns once per interior_o
+    for bad_t_top, bad_t_trial in (
+        (float('nan'), 1400.0),
+        (0.0, 1400.0),
+        (-50.0, 1400.0),
+        (1500.0, float('nan')),
+        (1500.0, float('inf')),
+        (1500.0, 0.0),
+        (1500.0, -10.0),
+    ):
+        cfg_b, io_b, solver_b = _make_tau_drain_fixture(
+            s_top=2400.0, phi_top=0.80, rel_dT=0.08, rel_dT_solid=0.08
+        )
+        solver_b.entropy_eos.temperature = lambda p_arr, s_arr, _tt=bad_t_top, _tr=bad_t_trial: (
+            np.array(
+                [_tt if abs(float(np.asarray(s_arr).ravel()[0]) - 2400.0) < 1e-9 else _tr],
+                dtype=float,
+            )
+        )
+        caplog.clear()
+        with caplog.at_level(
+            logging.WARNING, logger='fwl.proteus.interior_energetics.timestep'
+        ):
+            res_b = _estimate_tau_drain(cfg_b, row, io_b)
+        assert res_b == float('inf')
+        assert getattr(io_b, '_tau_drain_invalid_warned', False) is True
+        warns_b = [r.getMessage() for r in caplog.records if 'tau_drain' in r.getMessage()]
+        assert len(warns_b) == 1
+
+    # Exception raised on the second (s_trial) temperature lookup warns once and returns inf
+    for exc_cls in (ValueError, IndexError):
+        cfg_e, io_e, solver_e = _make_tau_drain_fixture(
+            s_top=2400.0, phi_top=0.80, rel_dT=0.08, rel_dT_solid=0.08
+        )
+
+        def _raise_on_trial(p_arr, s_arr, _exc=exc_cls):
+            if abs(float(np.asarray(s_arr).ravel()[0]) - 2400.0) < 1e-9:
+                return np.array([1500.0], dtype=float)
+            raise _exc('trial temperature lookup failure')
+
+        solver_e.entropy_eos.temperature = _raise_on_trial
+        caplog.clear()
+        with caplog.at_level(
+            logging.WARNING, logger='fwl.proteus.interior_energetics.timestep'
+        ):
+            res_e = _estimate_tau_drain(cfg_e, row, io_e)
+        assert res_e == float('inf')
+        assert getattr(io_e, '_tau_drain_invalid_warned', False) is True
+        assert (
+            len([r.getMessage() for r in caplog.records if 'tau_drain' in r.getMessage()]) == 1
+        )
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_estimate_tau_drain_chord_lookahead_never_loosens_property():
+    """Property check: chord-cp lookahead step is never longer than the start-of-step estimate."""
+    from hypothesis import given, settings
+    from hypothesis import strategies as st
+
+    from proteus.interior_energetics.timestep import _estimate_tau_drain
+
+    checked: list[tuple[float, float]] = []
+
+    @settings(derandomize=True, max_examples=50)
+    @given(
+        s_top=st.floats(
+            min_value=150.0, max_value=5000.0, allow_nan=False, allow_infinity=False
+        ),
+        phi_top=st.floats(min_value=0.0, max_value=1.0, allow_nan=False, allow_infinity=False),
+        t_surf=st.floats(
+            min_value=400.0, max_value=3500.0, allow_nan=False, allow_infinity=False
+        ),
+        f_atm=st.floats(min_value=10.0, max_value=1.0e6, allow_nan=False, allow_infinity=False),
+        t_top=st.floats(
+            min_value=400.0, max_value=3500.0, allow_nan=False, allow_infinity=False
+        ),
+        trial_frac=st.floats(
+            min_value=0.1, max_value=1.2, allow_nan=False, allow_infinity=False
+        ),
+    )
+    def _check(s_top, phi_top, t_surf, f_atm, t_top, trial_frac):
+        cfg, io, solver = _make_tau_drain_fixture(
+            s_top=s_top, phi_top=phi_top, rel_dT=0.08, rel_dT_solid=0.08
+        )
+        row = {'Time': 25.0, 'F_atm': f_atm, 'T_surf': t_surf}
+        solver.entropy_eos.temperature = lambda p_arr, s_arr: np.array([t_top], dtype=float)
+        tau_start = _estimate_tau_drain(cfg, row, io)
+
+        def _t_drop(p_arr, s_arr, _s0=s_top, _t0=t_top, _tf=trial_frac):
+            s_q = float(np.asarray(s_arr, dtype=float).ravel()[0])
+            if abs(s_q - _s0) < 1e-9:
+                return np.array([_t0], dtype=float)
+            return np.array([_t0 * _tf], dtype=float)
+
+        solver.entropy_eos.temperature = _t_drop
+        tau_lk = _estimate_tau_drain(cfg, row, io)
+        assert 0.0 < tau_lk <= tau_start * (1.0 + 1e-12)
+        checked.append((tau_start, tau_lk))
+
+    _check()
+    assert len(checked) >= 50
+    assert any(lk < st_val * 0.99 for st_val, lk in checked)
+
+    data = _load_paleos_ptop_531p546_slice_fixture()
+    s_min_slice = float(data['S_min'])
+    s_max_slice = float(data['S_max'])
+    p_top_slice = float(data['P_top_Pa'])
+    r_outer_slice = float(data['r_outer_m'])
+    vol_top_slice = float(data['vol_top_m3'])
+    slice_checked: list[tuple[float, float]] = []
+
+    @settings(derandomize=True, max_examples=50)
+    @given(
+        s_top=st.floats(
+            min_value=s_min_slice,
+            max_value=s_max_slice,
+            allow_nan=False,
+            allow_infinity=False,
+        ),
+        t_surf=st.floats(
+            min_value=300.0, max_value=3800.0, allow_nan=False, allow_infinity=False
+        ),
+        f_atm=st.floats(min_value=10.0, max_value=1.0e6, allow_nan=False, allow_infinity=False),
+    )
+    def _check_paleos_slice(s_top, t_surf, f_atm):
+        cfg, io, solver = _make_tau_drain_fixture(
+            s_top=s_top,
+            P_top=p_top_slice,
+            r_outer=r_outer_slice,
+            rel_dT=0.08,
+            rel_dT_solid=0.08,
+        )
+        solver._volume_flat = np.array([5.0e18, vol_top_slice], dtype=float)
+        eos_slice = _PaleosSliceEOS(data)
+        t_top_val = float(
+            np.asarray(
+                eos_slice.temperature(np.array([p_top_slice]), np.array([s_top])),
+                dtype=float,
+            ).ravel()[0]
+        )
+        solver.entropy_eos = eos_slice
+        row = {'Time': 25.0, 'F_atm': f_atm, 'T_surf': t_surf}
+        tau_lk = _estimate_tau_drain(cfg, row, io)
+
+        eos_no_lk = _PaleosSliceEOS(data)
+        eos_no_lk.temperature = lambda p_arr, s_arr, _t0=t_top_val: np.array([_t0], dtype=float)
+        solver.entropy_eos = eos_no_lk
+        tau_start = _estimate_tau_drain(cfg, row, io)
+        assert 0.0 < tau_lk <= tau_start * (1.0 + 1e-12)
+        slice_checked.append((tau_start, tau_lk))
+
+    _check_paleos_slice()
+    assert len(slice_checked) >= 50
+    assert any(lk < st_val * 0.99 for st_val, lk in slice_checked)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_estimate_tau_drain_positivity_and_monotonic_flux_property():
+    """Property check: tau_drain is positive, finite, and decreases monotonically in F_atm."""
+    from hypothesis import given, settings
+    from hypothesis import strategies as st
+
+    from proteus.interior_energetics.timestep import _estimate_tau_drain
+
+    checked: list[tuple[float, float]] = []
+
+    @settings(derandomize=True)
+    @given(
+        t_surf=st.floats(
+            min_value=300.0, max_value=4000.0, allow_nan=False, allow_infinity=False
+        ),
+        phi_top=st.floats(min_value=0.0, max_value=1.0, allow_nan=False, allow_infinity=False),
+        f_low=st.floats(min_value=1.0, max_value=500.0, allow_nan=False, allow_infinity=False),
+    )
+    def _check(t_surf, phi_top, f_low):
+        cfg, io, _ = _make_tau_drain_fixture(phi_top=phi_top)
+        tau_lo = _estimate_tau_drain(cfg, {'F_atm': f_low, 'T_surf': t_surf}, io)
+        tau_hi = _estimate_tau_drain(cfg, {'F_atm': 2.0 * f_low, 'T_surf': t_surf}, io)
+        assert 0.0 < tau_hi < tau_lo < float('inf')
+        checked.append((tau_lo, tau_hi))
+
+    _check()
+    assert len(checked) >= 10
+    assert all(lo > hi > 0.0 for lo, hi in checked)
+
+
+@pytest.mark.unit
+def test_paleos_slice_fixture_builder_helpers(tmp_path, monkeypatch):
+    """Unit test _resolve_source_table and _resolve_aragog_commit in build_paleos_ptop_slice_fixture."""
+    import subprocess
+    from types import SimpleNamespace
+
+    from tests.interior_energetics.fixtures import build_paleos_ptop_slice_fixture as builder
+
+    cfg_valid = tmp_path / 'valid_zalmoxis.toml'
+    cfg_valid.write_text(
+        '[interior_struct]\nmodule = "zalmoxis"\neos_dir = "none"\n'
+        '[interior_struct.zalmoxis]\nmantle_eos = "PALEOS:MgSiO3"\n',
+        encoding='utf-8',
+    )
+    assert builder._resolve_source_table(cfg_valid) == 'PALEOS:MgSiO3'
+
+    # mantle_eos wins over eos_dir and over the structure module, as in generate_spider_tables.
+    cfg_dummy_struct = tmp_path / 'dummy_struct.toml'
+    cfg_dummy_struct.write_text(
+        '[interior_struct]\nmodule = "dummy"\neos_dir = "PALEOS:MgSiO3"\n'
+        '[interior_struct.zalmoxis]\nmantle_eos = "PALEOS-2phase:MgSiO3"\n',
+        encoding='utf-8',
+    )
+    assert builder._resolve_source_table(cfg_dummy_struct) == 'PALEOS-2phase:MgSiO3'
+
+    # A PALEOS H2O mantle uses the MgSiO3 2-phase tables, as energetics_eos_key maps it.
+    cfg_h2o = tmp_path / 'h2o_mantle.toml'
+    cfg_h2o.write_text(
+        '[interior_struct]\nmodule = "zalmoxis"\n'
+        '[interior_struct.zalmoxis]\nmantle_eos = "PALEOS:H2O"\n',
+        encoding='utf-8',
+    )
+    assert builder._resolve_source_table(cfg_h2o) == 'PALEOS-2phase:MgSiO3'
+
+    cfg_spider = tmp_path / 'spider_struct.toml'
+    cfg_spider.write_text(
+        '[interior_struct]\nmodule = "spider"\n'
+        '[interior_struct.zalmoxis]\nmantle_eos = "PALEOS:MgSiO3"\n',
+        encoding='utf-8',
+    )
+    with pytest.raises(RuntimeError, match='takes its P-S tables from FWL_DATA'):
+        builder._resolve_source_table(cfg_spider)
+
+    for bad_eos in ('WolfBower2018:MgSiO3', 'none', ''):
+        cfg_bad = tmp_path / f'bad_{bad_eos or "empty"}.toml'
+        cfg_bad.write_text(
+            f'[interior_struct]\nmodule = "zalmoxis"\neos_dir = "PALEOS:MgSiO3"\n'
+            f'[interior_struct.zalmoxis]\nmantle_eos = "{bad_eos}"\n',
+            encoding='utf-8',
+        )
+        with pytest.raises(RuntimeError, match='Invalid EOS source_table'):
+            builder._resolve_source_table(cfg_bad)
+
+    cfg_no_mantle = tmp_path / 'no_mantle_eos.toml'
+    cfg_no_mantle.write_text('[interior_struct]\nmodule = "zalmoxis"\n', encoding='utf-8')
+    with pytest.raises(RuntimeError, match='Invalid EOS source_table'):
+        builder._resolve_source_table(cfg_no_mantle)
+
+    fake_aragog_file = tmp_path / 'aragog' / 'eos' / 'entropy.py'
+    fake_aragog_file.parent.mkdir(parents=True, exist_ok=True)
+    fake_aragog_file.write_text('# stub\n', encoding='utf-8')
+    valid_desc = '26.05.10-47-g075fcb05ce035183100c9bec47b7dcc7d769c2d6'
+
+    calls = []
+
+    def _mock_run_ok(cmd, **_kwargs):
+        calls.append(list(cmd))
+        if 'rev-parse' in cmd:
+            return SimpleNamespace(stdout=f'{tmp_path / "aragog"}\n')
+        return SimpleNamespace(stdout=f'{valid_desc}\n')
+
+    assert (
+        builder._resolve_aragog_commit(aragog_file=fake_aragog_file, run_cmd=_mock_run_ok)
+        == valid_desc
+    )
+    repo_dir = str(fake_aragog_file.resolve().parent)
+    assert calls[0] == ['git', '-C', repo_dir, 'rev-parse', '--show-toplevel']
+    assert calls[1][:4] == ['git', '-C', repo_dir, 'describe']
+    for flag in ('--long', '--always', '--dirty', '--abbrev=40'):
+        assert flag in calls[1]
+
+    # Default lookup: the checkout of the imported aragog.eos.entropy module.
+    calls.clear()
+    monkeypatch.setattr(builder.aragog.eos.entropy, '__file__', str(fake_aragog_file))
+    assert builder._resolve_aragog_commit(run_cmd=_mock_run_ok) == valid_desc
+    assert calls[1][:3] == ['git', '-C', repo_dir]
+
+    for bad_desc in (
+        f'{valid_desc}-dirty',
+        '26.05.10-47-g075fcb05',
+        '075fcb05ce035183100c9bec47b7dcc7d769c2d6',
+        'x' * 56,
+    ):
+
+        def _mock_run_bad_desc(cmd, _d=bad_desc, **_kwargs):
+            if 'rev-parse' in cmd:
+                return SimpleNamespace(stdout=f'{tmp_path / "aragog"}\n')
+            return SimpleNamespace(stdout=f'{_d}\n')
+
+        with pytest.raises(RuntimeError, match='Expected clean aragog git describe'):
+            builder._resolve_aragog_commit(
+                aragog_file=fake_aragog_file, run_cmd=_mock_run_bad_desc
+            )
+
+    def _mock_run_wrong_top(cmd, **_kwargs):
+        if 'rev-parse' in cmd:
+            return SimpleNamespace(stdout=f'{tmp_path / "proteus"}\n')
+        return SimpleNamespace(stdout=f'{valid_desc}\n')
+
+    with pytest.raises(RuntimeError, match='Expected git toplevel for aragog'):
+        builder._resolve_aragog_commit(
+            aragog_file=fake_aragog_file, run_cmd=_mock_run_wrong_top
+        )
+
+    def _mock_run_missing_git(_cmd, **_kwargs):
+        raise FileNotFoundError('git not found')
+
+    with pytest.raises(RuntimeError, match='Failed to resolve aragog git commit'):
+        builder._resolve_aragog_commit(
+            aragog_file=fake_aragog_file, run_cmd=_mock_run_missing_git
+        )
+
+    def _mock_run_called_error(cmd, **_kwargs):
+        raise subprocess.CalledProcessError(128, cmd)
+
+    with pytest.raises(RuntimeError, match='Failed to resolve aragog git commit'):
+        builder._resolve_aragog_commit(
+            aragog_file=fake_aragog_file, run_cmd=_mock_run_called_error
+        )
+
+    monkeypatch.setattr(builder.aragog.eos.entropy, '__file__', None)
+    with pytest.raises(RuntimeError, match='Cannot locate aragog'):
+        builder._resolve_aragog_commit(aragog_file=None, run_cmd=_mock_run_ok)
+
+
 # ---------------------------------------------------------------------------
 # Fe-metal activity cap (melt-redox tracker)
 # ---------------------------------------------------------------------------

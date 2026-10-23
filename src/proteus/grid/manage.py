@@ -208,7 +208,7 @@ class Grid:
 
     # Set a dimension directly
     def set_dimension_direct(self, name: str, values: list, sort: bool = True):
-        the_list = list(set(values))  # remove duplicates
+        the_list = list(dict.fromkeys(values))  # written order, duplicates removed
         if (not isinstance(values[0], str)) and sort:  # sort if numeric
             the_list = sorted(the_list)
         self.dim_avars[name] = the_list
@@ -284,7 +284,14 @@ class Grid:
         log.info(' ')
 
     def write_config_files(self):
-        """Write config files."""
+        """Write the config file of each case and read it back with the config loader.
+
+        Raises
+        ------
+        ValueError
+            If a written case does not load; the message names the case index, its grid
+            values and, through the loader's message, its file.
+        """
         # Read base config file
         base_config = read_config_object(self.conf)
         # A module set per case takes that module's default rtol when nothing sets one.
@@ -309,9 +316,16 @@ class Grid:
                 ie = thisconf.interior_energetics
                 ie.rtol = default_rtol(ie.module)
 
-            # Write this configuration file
-            thisconf.write(self._get_tmpcfg(i))
+            # Write this configuration file and read it back, so an invalid case stops here
+            case_path = self._get_tmpcfg(i)
+            thisconf.write(case_path)
             os.sync()
+            try:
+                read_config_object(case_path)
+            except ValueError as exc:
+                raise ValueError(
+                    f'Grid case {i} with {gp} is not a valid config: {exc}'
+                ) from exc
 
     def run(
         self,

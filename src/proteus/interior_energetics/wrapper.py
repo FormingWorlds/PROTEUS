@@ -1704,15 +1704,9 @@ def determine_interior_radius_with_zalmoxis(
     dirs['mesh_shift_active'] = False
     dirs['mesh_convergence_steps'] = 0
 
-    # Generate P-S EOS tables from PALEOS if applicable.
-    # Zalmoxis converts its PALEOS P-T EOS data into the P-S format that
-    # both SPIDER and Aragog (entropy IC verify) need. Both PALEOS unified
-    # and PALEOS-2phase layouts are supported. For non-PALEOS mantle EOS
-    # (WolfBower2018, RTPress100TPa) Zalmoxis returns None and we fall
-    # back to the static FWL_DATA Zenodo P-S tables. Aragog's entropy IC
-    # verify just needs *some* P-S surface to map S_init -> T; the time
-    # evolution uses the PALEOS-2phase P-T tables generated in
-    # aragog.py:setup_solver.
+    # Zalmoxis writes the P-S tables that SPIDER and Aragog's entropy solver read, from a
+    # unified or two-phase PALEOS mantle; for any other mantle EOS (WolfBower2018,
+    # RTPress100TPa) it returns None and the static FWL_DATA P-S tables are used.
     if config.interior_energetics.module in ('spider', 'aragog'):
         from proteus.interior_struct.zalmoxis import generate_spider_tables
 
@@ -2595,23 +2589,34 @@ def run_interior(
         if _prevent_warming_clamp_active(config):
             hf_row['F_int'] = max(1.0e-8, hf_row['F_int'])
 
-        # Limit large increases to T_magma and T_surf. Skipped on impact steps.
-        # T_surf shares the T_magma tolerance budget across all backends.
-        dT_delta_magma = config.interior_energetics.tmagma_atol
-        dT_delta_magma += config.interior_energetics.tmagma_rtol * T_magma_prev
+        # Limit large increases to T_magma and T_surf. Skipped on impact steps and
+        # when Aragog's pre-step top_cell_dt_limit produced a finite tau_drain.
+        aragog_top_dt_limit = (
+            config.interior_energetics.module == 'aragog'
+            and getattr(
+                getattr(config.interior_energetics, 'aragog', None),
+                'top_cell_dt_limit',
+                False,
+            )
+            is True
+            and getattr(interior_o, '_tau_drain_cap_valid', False) is True
+        )
+        if not aragog_top_dt_limit:
+            dT_delta_magma = config.interior_energetics.tmagma_atol
+            dT_delta_magma += config.interior_energetics.tmagma_rtol * T_magma_prev
 
-        dT_delta_surf = dT_delta_magma
+            dT_delta_surf = dT_delta_magma
 
-        if (not impact_reset) and hf_row['T_magma'] > T_magma_prev + dT_delta_magma:
-            log.warning('Prevented large increase to T_magma!')
-            log.warning('   Clipped from %.2f K' % hf_row['T_magma'])
-            hf_row['T_magma'] = T_magma_prev + dT_delta_magma
-            hf_row['Phi_global'] = Phi_global_prev
+            if (not impact_reset) and hf_row['T_magma'] > T_magma_prev + dT_delta_magma:
+                log.warning('Prevented large increase to T_magma!')
+                log.warning('   Clipped from %.2f K' % hf_row['T_magma'])
+                hf_row['T_magma'] = T_magma_prev + dT_delta_magma
+                hf_row['Phi_global'] = Phi_global_prev
 
-        if (not impact_reset) and hf_row['T_surf'] > T_surf_prev + dT_delta_surf:
-            log.warning('Prevented large increase to T_surf!')
-            log.warning('   Clipped from %.2f K' % hf_row['T_surf'])
-            hf_row['T_surf'] = T_surf_prev + dT_delta_surf
+            if (not impact_reset) and hf_row['T_surf'] > T_surf_prev + dT_delta_surf:
+                log.warning('Prevented large increase to T_surf!')
+                log.warning('   Clipped from %.2f K' % hf_row['T_surf'])
+                hf_row['T_surf'] = T_surf_prev + dT_delta_surf
 
     # Print result of interior module
     if verbose:

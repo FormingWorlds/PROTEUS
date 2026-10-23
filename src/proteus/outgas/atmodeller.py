@@ -126,8 +126,7 @@ def _populate_volatile_element_reservoirs(hf_row: dict, element_mmw: dict) -> No
     ``reservoir = "outgas"`` to size the per-element fractionation; with that
     field absent (zero) it sees an empty reservoir, ``calc_new_elements``
     returns a zeroed inventory, the per-element ``{e}_kg_total`` budget
-    collapses, and atmodeller is then skipped for want of a mass constraint so
-    the atmosphere freezes.
+    collapses, and the next solve sees no mass constraint for that element.
 
     This writes only ``{e}_kg_atm`` / ``_kg_liquid`` / ``_kg_solid`` (the
     reservoir split), matching CALLIOPE and ``outgas.common.expected_keys``,
@@ -222,6 +221,26 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
         PROTEUS configuration object.
     hf_row : dict
         Current helpfile row (modified in place).
+
+    Raises
+    ------
+    ValueError
+        If the kg total of a constrained element or a noble gas is not finite, or
+        if ``planet.fO2_source = "from_O_budget"``, the O budget is at or below
+        ``outgas.mass_thresh``, and another element has a mass constraint (H, C,
+        N or S above the threshold, or a noble gas total above 0).
+    RuntimeError
+        If an element outside the solve has atmosphere or melt mass, or if an
+        O2-only solve gives ``P_surf`` other than ``O2_bar``.
+
+    Notes
+    -----
+    Under ``user_constant`` with no budget above the threshold, the O2-only network
+    is solved against the buffer. Under ``from_O_budget`` with no budget above the
+    threshold, no solve runs: every species column but the vmr is 0, ``P_surf`` is 0,
+    each noble gas keeps its kg total with the matching mole total, the vmrs and
+    ``atm_kg_per_mol`` keep their values as in ``run_desiccated``, and
+    ``fO2_shift_IW_derived`` and ``O_res`` are NaN.
     """
     from atmodeller import (
         ChemicalSpecies,
@@ -303,10 +322,15 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
     constrained_elements = (
         ('H', 'C', 'N', 'S', 'O') if fO2_source == 'from_O_budget' else ('H', 'C', 'N', 'S')
     )
+    for element in constrained_elements + tuple(noble_gases):
+        total = float(hf_row.get(f'{element}_kg_total', 0.0))
+        if not np.isfinite(total):
+            raise ValueError(
+                f'{element}_kg_total is not finite ({total}) at the atmodeller call'
+            )
     active_elements = set()
     for element in constrained_elements:
-        key = f'{element}_kg_total'
-        if float(hf_row.get(key, 0.0)) > config.outgas.mass_thresh:
+        if float(hf_row.get(f'{element}_kg_total', 0.0)) > config.outgas.mass_thresh:
             active_elements.add(element)
 
     # Noble gases join the active set on any positive inventory. Their budgets
@@ -472,14 +496,23 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
     # pipeline reads this column to compute each iteration's debit).
     target_O_kg = mass_constraints.get('O') if fO2_source == 'from_O_budget' else None
 
-    if not mass_constraints:
+    if not mass_constraints and fO2_source == 'from_O_budget':
         log.warning('No volatile element budgets above threshold; skipping atmodeller')
-        if fO2_source == 'from_O_budget':
-            # No solve ran, so the derived buffer offset is undefined.
-            # Leaving the user pre-seed in place would misrecord a skipped
-            # solve as "equilibrated at the user offset".
-            hf_row['fO2_shift_IW_derived'] = float('nan')
-            hf_row['O_res'] = float('nan')
+        # No solve ran: the atmosphere is empty, and the derived buffer offset and the
+        # O residual are undefined (the user pre-seed would misrecord a skipped solve).
+        for s in _atm_gas_species:
+            kg_total = float(hf_row.get(f'{s}_kg_total', 0.0))
+            hf_row[f'{s}_bar'] = 0.0
+            hf_row[f'{s}_kg_atm'] = hf_row[f'{s}_kg_liquid'] = hf_row[f'{s}_kg_solid'] = 0.0
+            hf_row[f'{s}_mol_atm'] = hf_row[f'{s}_mol_liquid'] = hf_row[f'{s}_mol_solid'] = 0.0
+            hf_row[f'{s}_kg_total'] = hf_row[f'{s}_mol_total'] = 0.0
+            if s in noble_gases:  # its kg_total is the escape-owned element total
+                hf_row[f'{s}_kg_total'] = kg_total
+                hf_row[f'{s}_mol_total'] = kg_total / eval_gas_mmw(s)
+        hf_row['P_surf'] = 0.0
+        _populate_volatile_element_reservoirs(hf_row, element_mmw)
+        hf_row['fO2_shift_IW_derived'] = float('nan')
+        hf_row['O_res'] = float('nan')
         return
 
     if fO2_source == 'from_O_budget' and 'O' not in mass_constraints:
@@ -557,6 +590,11 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
     gravity = float(hf_row.get('gravity', 9.81))
     area = 4.0 * np.pi * R_int**2
 
+    # A species outside the solve reports 0, as in CALLIOPE; the loops below fill the others
+    for proteus_name in _atm_gas_species:
+        hf_row[f'{proteus_name}_bar'] = 0.0
+        hf_row[f'{proteus_name}_kg_atm'] = 0.0
+
     P_total = 0.0
     for atm_name, p_bar in quick_look.items():
         proteus_name = _reverse_map.get(atm_name.replace('_g', ''))
@@ -607,8 +645,6 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
             hf_row[f'{s}_vmr'] = 0.0
 
     # Dissolved masses from atmodeller output (thermodynamically consistent).
-    # Falls back to kg_total - kg_atm for species not in the solve or without
-    # a dissolved_mass output (e.g., gas-only species like H2S, NH3).
     def _as_mass(value):
         """Squeeze an atmodeller mass or mole-count output to a float, or None on failure."""
         if value is None:
@@ -719,13 +755,8 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
                     hf_row[f'{proteus_name}_kg_total'] / species_mmw
                 )
         elif is_noble:
-            # An inactive noble gas is not in the solve; clear its stale
-            # atmospheric reservoir so it does not leak into P_surf, the mean
-            # molar mass, or a later resurrection of its total, and leave its
-            # escape-owned element total untouched. The mixing ratio is cleared
-            # too: it was already recomputed from the stale partial pressure
-            # above, so it must be reset or it would still feed the mean molar
-            # mass sum.
+            # An inactive noble gas is not in the solve: its atmosphere and melt
+            # columns are 0, and its escape-owned element total stays untouched.
             hf_row[f'{proteus_name}_kg_liquid'] = 0.0
             hf_row[f'{proteus_name}_kg_atm'] = 0.0
             hf_row[f'{proteus_name}_bar'] = 0.0
@@ -736,9 +767,8 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
                 hf_row.get(f'{proteus_name}_kg_total', 0.0)
             ) / eval_gas_mmw(proteus_name)
         else:
-            # Reactive species not present in the atmodeller output (e.g.
-            # excluded from the solve): keep the pressure-derived atmospheric
-            # mass from the first loop and treat it as gas-only.
+            # Reactive species without total_mass: kg_total = kg_atm + kg_liquid, with
+            # kg_liquid 0 without dissolved_mass (both 0 outside the solve).
             hf_row[f'{proteus_name}_kg_liquid'] = (
                 max(0.0, dissolved_kg) if dissolved_kg is not None else 0.0
             )
@@ -746,10 +776,7 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
                 hf_row.get(f'{proteus_name}_kg_atm', 0.0)
             ) + float(hf_row[f'{proteus_name}_kg_liquid'])
 
-            # No native mole count is available for a species outside the
-            # solve; derive moles from the kg values above using the
-            # species' own molar mass, matching dummy.py's convention for
-            # the same columns.
+            # Moles from the kg values above with the species' own molar mass, as dummy.py does.
             species_mmw = eval_gas_mmw(proteus_name)
             hf_row[f'{proteus_name}_mol_liquid'] = (
                 hf_row[f'{proteus_name}_kg_liquid'] / species_mmw
@@ -810,6 +837,18 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
             hf_row[f'{el}_kg_solid'] = float(hf_row.get(f'{el}_kg_solid', 0.0)) + max(
                 0.0, condensed
             )
+
+    for el in ('H', 'C', 'N', 'S'):
+        kg = (hf_row.get(f'{el}_kg_atm', 0.0), hf_row.get(f'{el}_kg_liquid', 0.0))
+        if el not in active_elements and any(kg):
+            raise RuntimeError(
+                f'{el} is outside the atmodeller solve but {el}_kg_atm, {el}_kg_liquid = '
+                f'{kg[0]:.6e}, {kg[1]:.6e} kg'
+            )
+    if not mass_constraints and hf_row['P_surf'] != hf_row['O2_bar']:
+        raise RuntimeError(
+            f'O2-only solve: P_surf {hf_row["P_surf"]} != O2_bar {hf_row["O2_bar"]}'
+        )
 
     # Total volatile oxygen (atmospheric + melt-dissolved), summed over the
     # O-bearing volatile species. Computed for every fO2 source so the

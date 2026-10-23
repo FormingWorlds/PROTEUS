@@ -35,6 +35,15 @@ from proteus.grid.manage import (
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
+WRITTEN = ['aragog', 'spider', 'dummy']  # neither ascending nor descending
+
+
+class Hashed(str):
+    """A str whose hashes put a set of the WRITTEN values in another order."""
+
+    def __hash__(self):
+        return {'aragog': 3, 'spider': 2, 'dummy': 1}[str(self)]
+
 
 # ---------------------------------------------------------------------------
 # Shared fixtures
@@ -392,16 +401,56 @@ class TestSetDimension:
         # Length reflects the deduplication
         assert len(g.dim_avars['d']) == 3
 
-    def test_direct_does_not_sort_strings(self, grid_with_mocks):
-        """String values are kept as a set-derived list (no sort branch
-        taken because elements are not numeric).
-        """
+    def test_direct_keeps_the_written_order_whatever_the_string_hashes(self, grid_with_mocks):
+        """The order of a string dimension numbers the cases, so it must not follow the string
+        hashes, which change with the hash seed of the process; duplicates are removed at
+        their first occurrence."""
+        values = [Hashed(v) for v in ('aragog', 'spider', 'aragog', 'dummy')]
+        assert list(set(values)) == ['dummy', 'spider', 'aragog']
         g = grid_with_mocks
         g.add_dimension('d', 'atmos_clim.module')
-        g.set_dimension_direct('d', ['agni', 'janus', 'agni'])
-        # Discriminating: deduplicated regardless
-        assert set(g.dim_avars['d']) == {'agni', 'janus'}
-        assert len(g.dim_avars['d']) == 2
+        g.set_dimension_direct('d', values)
+        assert g.dim_avars['d'] == WRITTEN
+
+    def test_direct_without_sort_keeps_the_written_numeric_order(self, grid_with_mocks):
+        """With sort=False a numeric dimension keeps its written order, duplicates removed
+        at their first occurrence; the default still sorts."""
+        g = grid_with_mocks
+        g.add_dimension('d', 'planet.mass_tot')
+        g.set_dimension_direct('d', [3.0, 1.0, 2.0, 1.0], sort=False)
+        assert g.dim_avars['d'] == [3.0, 1.0, 2.0]
+        g.set_dimension_direct('d', [3.0, 1.0, 2.0, 1.0])
+        assert g.dim_avars['d'] == [1.0, 2.0, 3.0]
+
+    def test_direct_values_property(self):
+        """Over strings, integers, floats with +-inf and bools: the result holds each distinct value once;
+        it is sorted when the first value is not a string and sort is True, else each value
+        sits in the order of its first occurrence."""
+        from hypothesis import given, settings
+        from hypothesis import strategies as st
+
+        values = st.one_of(
+            st.lists(st.text(), min_size=1),
+            st.lists(st.integers(), min_size=1),
+            st.lists(st.floats(allow_nan=False), min_size=1),
+            st.lists(st.booleans(), min_size=1),
+        )
+
+        @settings(derandomize=True, max_examples=200)
+        @given(values, st.booleans())
+        def check(vals, sort):
+            g = Grid.__new__(Grid)
+            g.dim_avars = {}
+            g.set_dimension_direct('d', vals, sort=sort)
+            out = g.dim_avars['d']
+            assert len(out) == len(set(vals)) and set(out) == set(vals)
+            if sort and not isinstance(vals[0], str):
+                assert out == sorted(out)
+            else:
+                first = [vals.index(v) for v in out]
+                assert first == sorted(first)
+
+        check()
 
 
 # ---------------------------------------------------------------------------
@@ -440,6 +489,22 @@ class TestGridGenerate:
         # Each grid point is a dict mapping the variable names:
         for gp in g.flat:
             assert set(gp.keys()) == {'planet.mass_tot', 'planet.elements.H_budget'}
+
+    def test_generate_numbers_cases_in_the_written_order_of_a_string_dimension(
+        self, grid_with_mocks
+    ):
+        """The case index of a grid point follows the written order of a string dimension,
+        with the next dimension varying fastest."""
+        g = grid_with_mocks
+        g.add_dimension('a', 'atmos_clim.module')
+        g.add_dimension('b', 'planet.mass_tot')
+        values = [Hashed(v) for v in WRITTEN]
+        assert list(set(values)) != WRITTEN
+        g.set_dimension_direct('a', values)
+        g.set_dimension_direct('b', [2.0, 1.0])
+        g.generate()
+        cases = [(gp['atmos_clim.module'], gp['planet.mass_tot']) for gp in g.flat]
+        assert cases == [(a, b) for a in WRITTEN for b in (1.0, 2.0)]
 
     def test_generate_keys_map_correctly(self, grid_with_mocks):
         """The flattened grid contains every (a, b) combination exactly
@@ -1284,6 +1349,102 @@ def test_write_config_files_gives_each_module_its_default_rtol(
     ]
     assert got == pytest.approx(expected, rel=1e-12)
     assert loaded == pytest.approx(expected, rel=1e-12)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('base', 'dims', 'error'),
+    [
+        ('', {'top_cell_dt_rel_dT': 0.05, 'top_cell_dt_rel_dT_solid': 0.05}, None),
+        ('', {'top_cell_dt_rel_dT_solid': 0.05, 'top_cell_dt_rel_dT': 0.05}, None),
+        ('', {'top_cell_dt_rel_dT': 0.12, 'top_cell_dt_rel_dT_solid': 0.12}, None),
+        ('', {'top_cell_dt_rel_dT_solid': 0.12, 'top_cell_dt_rel_dT': 0.12}, None),
+        ('', {'top_cell_dt_rel_dT': 0.05}, 'must be <= top_cell_dt_rel_dT'),
+        ('limit', {'surface_bc_mode': 'grey_body', 'top_cell_dt_limit': False}, None),
+        ('limit', {'top_cell_dt_limit': False, 'surface_bc_mode': 'grey_body'}, None),
+        ('limit', {'surface_bc_mode': 'grey_body'}, 'top_cell_dt_limit = true cannot be used'),
+        ('limit', {'module': 'spider', 'surface_bc_mode': 'grey_body'}, None),
+        ('limit', {'surface_bc_mode': 'grey_body', 'module': 'spider'}, None),
+    ],
+)
+def test_write_config_files_cross_field_rules_checked_when_a_case_is_read(
+    fake_proteus_dir, tmp_path, monkeypatch, base, dims, error
+):
+    """A grid sets the fields of each case one at a time; the Aragog cross-field rules do not
+    depend on that order, and the grid reads each case back so an invalid one stops it."""
+    cfg = tmp_path / 'base_ie.toml'
+    limit = '[interior_energetics.aragog]\ntop_cell_dt_limit = true\n' if base else ''
+    cfg.write_text(f'[interior_energetics]\nmodule = "aragog"\n{limit}')
+    g = Grid(name='pair_grid', base_config_path=str(cfg))
+    ie_keys = ('surface_bc_mode', 'module')
+    for i, (key, value) in enumerate(dims.items()):
+        section = 'interior_energetics' if key in ie_keys else 'interior_energetics.aragog'
+        g.add_dimension(f'd{i}', f'{section}.{key}')
+        g.set_dimension_direct(f'd{i}', [value])
+    g.generate()
+    monkeypatch.setattr(gm.os, 'sync', lambda: None)
+    case = g._get_tmpcfg(0)
+    if error:
+        with pytest.raises(
+            ValueError,
+            match=re.escape(f'Grid case 0 with {g.flat[0]} is not a valid config: Invalid')
+            + r' configuration in .*case_000000\.toml',
+        ):
+            g.write_config_files()
+        # The load error names only the class; the case's own table gives the cause.
+        from proteus.config._interior import Aragog, Interior
+
+        table = toml.load(case)['interior_energetics']
+        with pytest.raises(ValueError, match=error):
+            Interior(
+                **{k: v for k, v in table.items() if k != 'aragog'},
+                aragog=Aragog(**table['aragog']),
+            )
+        return
+    try:
+        g.write_config_files()
+        ie = read_config_object(case).interior_energetics
+    except ValueError as exc:
+        pytest.fail(f'valid grid case {dims} was refused: {exc}')
+    for key, value in dims.items():
+        got = getattr(ie if key in ie_keys else ie.aragog, key)
+        assert got == (pytest.approx(value, rel=1e-12) if isinstance(value, float) else value)
+
+
+@pytest.mark.unit
+def test_write_config_files_stops_at_the_first_invalid_case(
+    fake_proteus_dir, tmp_path, monkeypatch
+):
+    """A grid with one invalid case among valid ones raises at generation and names that case;
+    every written case is read back once with the config loader."""
+    cfg = tmp_path / 'base_ie.toml'
+    cfg.write_text('[interior_energetics]\nmodule = "aragog"\n')
+    g = Grid(name='mixed_grid', base_config_path=str(cfg))
+    key = 'interior_energetics.aragog.top_cell_dt_rel_dT_solid'
+    g.add_dimension('d0', key)
+    g.set_dimension_direct('d0', [0.05, 0.10])  # rel_dT keeps its default 0.08
+    g.add_dimension('d1', 'interior_energetics.aragog.top_cell_dt_limit')
+    g.set_dimension_direct('d1', [False, True])
+    g.generate()
+    bad = [i for i, gp in enumerate(g.flat) if gp[key] > 0.08]
+    assert len(bad) == 2 and 0 < bad[0] < g.size - 1, (g.flat, bad)
+    k = bad[0]
+    monkeypatch.setattr(gm.os, 'sync', lambda: None)
+    read_back = []
+    real = gm.read_config_object
+    monkeypatch.setattr(gm, 'read_config_object', lambda p: read_back.append(str(p)) or real(p))
+    with pytest.raises(
+        ValueError,
+        match=re.escape(f'Grid case {k} with {g.flat[k]} is not a valid config: Invalid')
+        + rf' configuration in .*case_{k:06d}\.toml',
+    ):
+        g.write_config_files()
+    assert read_back[1:] == [g._get_tmpcfg(i) for i in range(k + 1)]
+    for i in range(k):
+        solid = read_config_object(g._get_tmpcfg(i)).interior_energetics.aragog
+        assert solid.top_cell_dt_rel_dT_solid == pytest.approx(g.flat[i][key], rel=1e-12)
+    for i in range(k + 1, g.size):
+        assert not os.path.exists(g._get_tmpcfg(i))
 
 
 def test_all_options_grid_over_the_module_gives_each_its_default_rtol(

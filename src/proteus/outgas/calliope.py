@@ -40,9 +40,24 @@ mass_ocean = ocean_moles * molar_mass['H2']
 RANDOM_SEED = 42
 
 
-def construct_options(dirs: dict, config: Config, hf_row: dict):
-    """
-    Construct CALLIOPE options dictionary
+def construct_options(dirs: dict, config: Config, hf_row: dict, warn: bool = True):
+    """Construct the CALLIOPE options dictionary, with T_magma clipped to outgas.T_floor.
+
+    Parameters
+    ----------
+    dirs : dict
+        Run directories.
+    config : Config
+        PROTEUS configuration.
+    hf_row : dict
+        Current helpfile row; read only.
+    warn : bool, default True
+        Log a warning when T_magma lies below outgas.T_floor.
+
+    Returns
+    -------
+    dict
+        CALLIOPE options.
     """
 
     solvevol_inp = {}
@@ -58,8 +73,10 @@ def construct_options(dirs: dict, config: Config, hf_row: dict):
     else:
         solvevol_inp['Phi_global'] = 0.0
 
-    # Surface properties
-    solvevol_inp['T_magma'] = hf_row['T_magma']
+    # Surface properties; the target masses and the solve both use the floored temperature
+    solvevol_inp['T_magma'] = max(hf_row['T_magma'], config.outgas.T_floor)
+    if warn and hf_row['T_magma'] < config.outgas.T_floor:
+        log.warning('Outgassing temperature clipped to %.1f K' % solvevol_inp['T_magma'])
 
     if config.planet.fO2_source == 'from_mantle_redox':
         solvevol_inp['fO2_shift_IW'] = float(hf_row['fO2_shift_IW_mantle'])
@@ -218,7 +235,10 @@ def _resolve_element(
 
 def calc_target_masses(dirs: dict, config: Config, hf_row: dict):
     # make solvevol options
-    solvevol_inp = construct_options(dirs, config, hf_row)
+    # Only the pressure path reads T_magma, so only it warns about the clip.
+    solvevol_inp = construct_options(
+        dirs, config, hf_row, warn=config.planet.volatile_mode != 'elements'
+    )
 
     # calculate target mass of atoms (except O, which is derived from fO2)
     if config.planet.volatile_mode == 'elements':
@@ -379,11 +399,6 @@ def calc_surface_pressures(dirs: dict, config: Config, hf_row: dict):
     # Set included
     for s in vol_list:
         opts[f'{s}_included'] = int(p_incl[s])
-
-    # Do not allow low temperatures
-    if opts['T_magma'] < config.outgas.T_floor:
-        opts['T_magma'] = config.outgas.T_floor
-        log.warning('Outgassing temperature clipped to %.1f K' % opts['T_magma'])
 
     # The caller's global RNG state is handed back after the call (not thread-safe).
     state = np.random.get_state()
