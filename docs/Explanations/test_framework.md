@@ -120,7 +120,7 @@ they verify not just that the code conserves the right quantities, but
 that it produces the right numbers for a specific physical scenario.
 
 Each physics module directory should contain at least one reference-pinned
-test. The module-level inventory is tracked in `docs/Validation/<module>.md`.
+test. The inventory is tracked per source file in `docs/Validation/<module>/<file>.md`.
 
 ## Anti-happy-path rules
 
