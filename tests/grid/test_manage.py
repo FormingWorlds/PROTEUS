@@ -1500,15 +1500,16 @@ class TestGridFromConfig:
         assert [c.planet.mass_tot for c in masses] == [0.5, 1.0]
         assert os.listdir(fake_proteus_dir / 'output') == ['unit_grid']
         logged = (outdir / 'manager.log').read_text()
-        for line in (
+        lines = (
             "Grid 'unit_grid' initialised empty",
             "Added new dimension 'param_000'",
             'Grid configuration',
             'Generating parameter grid',
             'Flattened grid points',
             'Writing config files',
-        ):
-            assert line in logged, line
+        )
+        assert all(line in logged for line in lines), logged
+        assert [logged.index(line) for line in lines] == sorted(logged.index(x) for x in lines)
 
     def test_a_missing_use_slurm_names_the_key_and_the_grid_file(self, fake_proteus_dir):
         """A grid file without use_slurm stops with a KeyError that names the key and
@@ -1746,11 +1747,8 @@ def test_write_config_files_cross_field_rules_checked_when_a_case_is_read(
     monkeypatch.setattr(gm.os, 'sync', lambda: None)
     case = g._get_tmpcfg(0)
     if error:
-        with pytest.raises(
-            ValueError,
-            match=re.escape(f'Grid case 0 with {g.flat[0]} is not a valid config: Invalid')
-            + r' configuration in .*case_000000\.toml',
-        ):
+        where = ', '.join(f'{k} = {v!r}' for k, v in g.flat[0].items())
+        with pytest.raises(ValueError, match=re.escape(f'Grid case 0 ({where}): ')):
             g.write_config_files()
         # The load error names only the class; the case's own table gives the cause.
         from proteus.config._interior import Aragog, Interior
@@ -1794,11 +1792,8 @@ def test_write_config_files_stops_at_the_first_invalid_case(
     read_back = []
     real = gm.read_config_object
     monkeypatch.setattr(gm, 'read_config_object', lambda p: read_back.append(str(p)) or real(p))
-    with pytest.raises(
-        ValueError,
-        match=re.escape(f'Grid case {k} with {g.flat[k]} is not a valid config: Invalid')
-        + rf' configuration in .*case_{k:06d}\.toml',
-    ):
+    where = ', '.join(f'{name} = {v!r}' for name, v in g.flat[k].items())
+    with pytest.raises(ValueError, match=re.escape(f'Grid case {k} ({where}): ')):
         g.write_config_files()
     assert read_back[1:] == [g._get_tmpcfg(i) for i in range(k + 1)]
     for i in range(k):

@@ -11,6 +11,7 @@ import multiprocessing
 import os
 import shutil
 import subprocess
+import tempfile
 import time
 from copy import deepcopy
 from datetime import datetime
@@ -32,6 +33,18 @@ from proteus.utils.helper import get_proteus_dir, recursive_setattr
 from proteus.utils.logs import setup_logger
 
 PROTEUS_DIR = get_proteus_dir()
+
+
+class _HeldRecords(logging.Handler):
+    """Keep log records until the grid's manager.log exists."""
+
+    def __init__(self, saved: tuple):
+        super().__init__()
+        self.records, self.saved = [], saved  # saved: the logger's propagate and level
+
+    def emit(self, record):
+        self.records.append(record)
+
 
 log = logging.getLogger('fwl.' + __name__)
 
@@ -58,7 +71,10 @@ class Grid:
         base_config_path: str,
         symlink_dir: str = '_UNSET',
         grid_config: str = '',
+        prepare_output: bool = True,
     ):
+        """Set up the grid; with ``prepare_output=False`` the old output stays until
+        `prepare_output` runs, and the log lines are held until then."""
         # Grid's own name (for versioning, etc.)
         self.name = str(name).strip()
         self.outdir = PROTEUS_DIR + '/output/' + self.name + '/'
@@ -75,6 +91,31 @@ class Grid:
         self.cfgdir = os.path.join(self.outdir, 'cfgs') + '/'
         self.logdir = os.path.join(self.outdir, 'logs') + '/'
 
+        self.grid_config = grid_config
+        self._held = None  # log records held until the output exists
+        self._checked = False  # case configs already written by check_cases
+
+        # List of dimension names and parameter names
+        self.dim_names = []  # String
+        self.dim_param = []  # Dimension parameter of interest
+
+        # Dimension variables (incl hypervariables)
+        self.dim_avars = {}
+
+        # Flattened Grid
+        self.flat = []  # List of grid points, each is a dictionary
+        self.size = 0  # Total size of grid
+
+        if prepare_output:
+            self.prepare_output()
+        else:
+            self._held = _HeldRecords((log.propagate, log.level))
+            log.addHandler(self._held)
+            log.propagate, log.level = False, logging.INFO
+
+    def prepare_output(self):
+        """Remove the old output, create the output folders, copy the configs and start
+        manager.log, then log there the lines held since the grid was set up."""
         # Remove old output location
         if os.path.exists(self.outdir):
             if os.path.islink(self.outdir):
@@ -119,8 +160,8 @@ class Grid:
             os.makedirs(dir)
 
         # Make copy of GRID config file, if there is one
-        if grid_config:
-            shutil.copyfile(grid_config, os.path.join(self.outdir, 'copy.grid.toml'))
+        if self.grid_config:
+            shutil.copyfile(self.grid_config, os.path.join(self.outdir, 'copy.grid.toml'))
 
         # Make copy of REFERENCE config file
         shutil.copyfile(self.conf, os.path.join(self.outdir, 'ref_config.toml'))
@@ -135,18 +176,24 @@ class Grid:
             datefmt='%Y-%m-%d %H:%M:%S',
         )
 
+        held = self._unhold_log()
         log.info("Grid '%s' initialised empty" % self.name)
+        for record in held:
+            log.handle(record)
 
-        # List of dimension names and parameter names
-        self.dim_names = []  # String
-        self.dim_param = []  # Dimension parameter of interest
+    def release_log(self):
+        """Stop holding log lines and pass the held ones on, once."""
+        for record in self._unhold_log():
+            log.handle(record)
 
-        # Dimension variables (incl hypervariables)
-        self.dim_avars = {}
-
-        # Flattened Grid
-        self.flat = []  # List of grid points, each is a dictionary
-        self.size = 0  # Total size of grid
+    def _unhold_log(self) -> list:
+        """Stop holding log lines; return the held records (none once released)."""
+        held, self._held = self._held, None
+        if held is None:
+            return []
+        log.removeHandler(held)
+        log.propagate, log.level = held.saved
+        return held.records
 
     # Add a new empty dimension to the Grid
     def add_dimension(self, name: str, var: str):
@@ -212,7 +259,7 @@ class Grid:
         why = direct_values_error(values)
         if why:
             raise ValueError(f"direct dimension '{name}' {why}")
-        values = list(values)  # a tuple or a 1-D array
+        values = [bool(v) if isinstance(v, np.bool_) else v for v in values]  # 1-D array, tuple
         the_list = list(dict.fromkeys(values))  # written order, duplicates removed
         if (not isinstance(values[0], str)) and sort:  # sort if numeric
             the_list = sorted(the_list)
@@ -297,23 +344,41 @@ class Grid:
             If a written case does not load; the message names the case index, its grid
             values and, through the loader's message, its file.
         """
-        # Read base config file
+        log.info('Writing config files')
+        if self._checked:  # check_cases wrote and read back every case already
+            return
+        self._write_cases(self.cfgdir)
+
+    def check_cases(self, tmpdir: str):
+        """Write every case config into ``tmpdir`` and read it back, before the old
+        output is touched; `adopt_cases` then moves them into the output.
+
+        Raises
+        ------
+        ValueError
+            As `write_config_files`.
+        """
+        self._write_cases(tmpdir)
+
+    def adopt_cases(self, tmpdir: str):
+        """Move the case configs checked in ``tmpdir`` into the output's cfgs folder."""
+        for name in os.listdir(tmpdir):
+            shutil.move(os.path.join(tmpdir, name), os.path.join(self.cfgdir, name))
+        self._checked = True
+
+    def _write_cases(self, folder: str):
+        """Write each case config into ``folder`` and read it back with the loader."""
         base_config = read_config_object(self.conf)
         # A module set per case takes that module's default rtol when nothing sets one.
         rtol_unset = not rtol_is_set(read_config(self.conf).get('interior_energetics', {}))
-
-        # Loop over grid points to write config files
-        log.info('Writing config files')
         for i, gp in enumerate(self.flat):
-            # Create new config
             thisconf: Config = deepcopy(base_config)
-
-            # Set case dir relative to PROTEUS/output/
             thisconf.params.out.path = self.name + '/' + str(self.CONFIG_BASENAME % i) + '/'
-
-            # Set other parameters in Config object
             for key in gp.keys():
-                recursive_setattr(thisconf, key, gp[key])
+                try:
+                    recursive_setattr(thisconf, key, gp[key])
+                except (TypeError, ValueError) as exc:
+                    raise ValueError(f'Grid case {i} ({key} = {gp[key]!r}): {exc}') from exc
             if 'interior_energetics.rtol' in gp:  # a base alias would conflict on reload
                 ie = thisconf.interior_energetics
                 ie.num_tolerance = ie.spider.tolerance_rel = _TOL_UNSET
@@ -322,15 +387,15 @@ class Grid:
                 ie.rtol = default_rtol(ie.module)
 
             # Write this configuration file and read it back, so an invalid case stops here
-            case_path = self._get_tmpcfg(i)
+            case_path = os.path.join(folder, os.path.basename(self._get_tmpcfg(i)))
             thisconf.write(case_path)
             os.sync()
             try:
                 read_config_object(case_path)
             except ValueError as exc:
-                raise ValueError(
-                    f'Grid case {i} with {gp} is not a valid config: {exc}'
-                ) from exc
+                lines = [ln.strip() for ln in str(exc).splitlines() if ln.startswith('  ')]
+                where = ', '.join(f'{k} = {v!r}' for k, v in gp.items())
+                raise ValueError(f'Grid case {i} ({where}): {"; ".join(lines) or exc}') from exc
 
     def run(
         self,
@@ -793,6 +858,8 @@ def grid_from_config(config_fpath: str, test_run: bool = False, check_interval: 
             raise RuntimeError('Path for symbolic link must be absolute.\n\tGot: ' + symlink)
 
     # Use SLURM?
+    if 'use_slurm' not in config:
+        raise KeyError(f'grid file {config_fpath}: the grid setting use_slurm is missing')
     use_slurm = _grid_bool(config['use_slurm'], 'use_slurm', config_fpath)
 
     # Execution limits
@@ -807,31 +874,42 @@ def grid_from_config(config_fpath: str, test_run: bool = False, check_interval: 
     # Base config file
     cfg_base = os.path.join(PROTEUS_DIR, str(config['ref_config']))
 
-    # Initialise grid object
-    pg = Grid(folder, cfg_base, symlink_dir=symlink, grid_config=config_fpath)
+    # Set up the grid, and check every case config before the old output is removed
+    pg = Grid(
+        folder, cfg_base, symlink_dir=symlink, grid_config=config_fpath, prepare_output=False
+    )
+    try:
+        # Add dimensions to grid by looping over keys
+        for dim, key in enumerate(dimension_keys):
+            name = 'param_%03d' % dim
+            pg.add_dimension(name, key)
 
-    # Add dimensions to grid by looping over keys
-    for dim, key in enumerate(dimension_keys):
-        name = 'param_%03d' % dim
-        pg.add_dimension(name, key)
+            table = config[key]
+            setter = getattr(pg, f'set_dimension_{table["method"]}')
+            setter(name, *(table[arg] for arg in DIMENSION_METHODS[table['method']]))
 
-        table = config[key]
-        setter = getattr(pg, f'set_dimension_{table["method"]}')
-        setter(name, *(table[arg] for arg in DIMENSION_METHODS[table['method']]))
+        # Print information
+        pg.print_setup()
+        pg.generate()
 
-    # Print information
-    pg.print_setup()
-    pg.generate()
+        # Sanity check grid size (cannot allow larger values due to format of file paths)
+        if pg.size > 999999:
+            raise ValueError('Number of grid points is too large')
 
-    # Sanity check grid size (cannot allow larger values due to format of file paths)
-    if pg.size > 999999:
-        raise ValueError('Number of grid points is too large')
+        # Print each grid point if the number of points isn't too large
+        if pg.size < 1e4:
+            pg.print_grid()
+        else:
+            log.warning('Number of grid points exceeds 10000. Will not print them here.')
 
-    # Print each grid point if the number of points isn't too large
-    if pg.size < 1e4:
-        pg.print_grid()
-    else:
-        log.warning('Number of grid points exceeds 10000. Will not print them here.')
+        parent = os.path.dirname(pg.outdir.rstrip('/'))
+        os.makedirs(parent, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=parent, prefix=f'.{pg.name}-check-') as tmpdir:
+            pg.check_cases(tmpdir)
+            pg.prepare_output()
+            pg.adopt_cases(tmpdir)
+    finally:
+        pg.release_log()
 
     # Run the grid
     if use_slurm:
