@@ -364,7 +364,7 @@ def test_a_check_with_nothing_to_check_is_refused():
 
 
 @pytest.mark.parametrize(
-    ('flag', 'mode'), [(0.9, 'mixture'), (0.51, 'mixture'), (0.4, 'solid')]
+    ('flag', 'mode'), [(0.9, 'mixture'), (0.51, 'mixture'), (0.5, 'solid'), (0.4, 'solid')]
 )
 def test_the_jax_flag_is_read_as_aragog_reads_it(flag, mode):
     """aragog takes the JAX flag above 0.5 as 'mixture'; the check decodes it the same way."""
@@ -400,7 +400,7 @@ def test_the_research_runner_stops_on_jax_params_in_another_buoyancy(tmp_path):
         pytest.raises(BuoyancyMismatchError, match="is 'solid'"),
     ):
         runner._build_jax_components(config, interior_o)
-    assert not hasattr(interior_o, '_jax_bc')
+    assert not any(hasattr(interior_o, k) for k in ('_jax_eos', '_jax_params', '_jax_bc'))
 
 
 def test_jax_only_fields_carry_configured_values():
