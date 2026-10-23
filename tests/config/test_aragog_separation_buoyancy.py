@@ -14,8 +14,6 @@ from pathlib import Path
 
 import attrs
 import pytest
-from hypothesis import given
-from hypothesis import strategies as st
 from packaging.version import Version
 
 from proteus.config._interior import Aragog
@@ -34,21 +32,29 @@ def test_the_buoyancy_defaults_to_mixture_and_takes_solid():
     assert a.separation_buoyancy == 'solid'
 
 
-@given(
-    value=st.one_of(
-        st.text().filter(lambda v: v not in _MODES),
-        st.booleans(),
-        st.integers(),
-        st.floats(allow_nan=True, allow_infinity=True),
-        st.none(),
-    )
-)
-def test_another_buoyancy_value_is_refused(value):
+def test_another_buoyancy_value_is_refused():
     """Another word or spelling, a TOML true, a number, NaN, infinity or nothing is refused."""
-    with pytest.raises(ValueError) as err:
-        Aragog(separation_buoyancy=value)
-    # attrs puts its message first in args; str() of the error quotes it once more.
-    assert err.value.args[0].startswith("'separation_buoyancy' must be in ('mixture', 'solid')")
+    hypothesis = pytest.importorskip('hypothesis')
+    st = hypothesis.strategies
+
+    @hypothesis.given(
+        value=st.one_of(
+            st.text().filter(lambda v: v not in _MODES),
+            st.booleans(),
+            st.integers(),
+            st.floats(allow_nan=True, allow_infinity=True),
+            st.none(),
+        )
+    )
+    def refused(value):
+        with pytest.raises(ValueError) as err:
+            Aragog(separation_buoyancy=value)
+        # attrs puts its message first in args; str() of the error quotes it once more.
+        assert err.value.args[0].startswith(
+            "'separation_buoyancy' must be in ('mixture', 'solid')"
+        )
+
+    refused()
 
 
 @pytest.mark.parametrize(
@@ -95,7 +101,12 @@ def test_the_choices_and_default_equal_those_of_aragog():
 
 
 def test_the_pin_is_an_aragog_with_the_buoyancy_option():
-    """aragog 26.10.22 is the first release that takes separation_buoyancy."""
+    """aragog 26.10.22 is the first release that takes separation_buoyancy, and the installed
+    aragog meets the floor."""
+    from importlib.metadata import version
+
     deps = tomllib.loads((Path(__file__).parents[2] / 'pyproject.toml').read_text())
     pin = next(d for d in deps['project']['dependencies'] if d.startswith('fwl-aragog'))
-    assert Version(re.search(r'>=\s*([\w.]+)', pin).group(1)) >= Version('26.10.22')
+    floor = Version(re.search(r'>=\s*([\w.]+)', pin).group(1))
+    assert floor >= Version('26.10.22')
+    assert Version(version('fwl-aragog')) >= floor
