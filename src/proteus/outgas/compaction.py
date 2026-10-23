@@ -42,8 +42,11 @@ grains, so it holds for melt fractions below about 0.2, while the front is
 entered at the rheological transition, ``rfront_loc = 0.4`` by default; above
 about 0.2 the factor is an extrapolation of that solution.
 
-The drag viscosity is the one difference by design: it is always the melt
-viscosity. The solver's ``separation_viscosity`` defaults to ``'mixture'``, the
+The drainage evaluates that law once per front, with the front-mean density
+contrast and gravity and the lever-rule porosity of the front top, and keeps
+the full contrast in the matrix time, ``tau_s = mu_s / (|drho| g L)``, under
+either buoyancy. The drag viscosity is always the melt viscosity. The solver's
+``separation_viscosity`` defaults to ``'mixture'``, the
 rheological-transition-blended value, which exceeds the melt viscosity by ten
 orders of magnitude at the top of the front and by eighteen to twenty in its
 lower half. A drainage estimate built on that traps everything by
@@ -79,8 +82,8 @@ log = logging.getLogger('fwl.' + __name__)
 # mush near the solidus; this is the middle of that range.
 DEFAULT_MUSH_LOG10VISC = 20.0
 
-# Round-off of the drainage integral on the retained porosity [1], its atol.
-_RETAINED_ATOL = 1.0e-12
+# Tolerances of the drainage integral; atol + rtol phi_top bounds its excursion past [0, phi_top].
+_RTOL, _ATOL = 1.0e-8, 1.0e-12
 
 # Branch codes reported on every step, so a trajectory shows which regime it
 # was in and how often the guards fired.
@@ -169,8 +172,9 @@ def darcy_velocity(
     w = abs(delta_rho) * gravity * f / melt_visc
     if not np.all(np.isfinite(w) & (w >= 0.0)):
         raise RuntimeError(
-            f'percolation speed is negative or not finite at gravity {gravity!r} m/s2, '
-            f'density contrast {delta_rho!r} kg/m3 and melt viscosity {melt_visc!r} Pa s'
+            f'percolation speed is negative or not finite at porosity {porosity!r}, gravity '
+            f'{gravity!r} m/s2, density contrast {delta_rho!r} kg/m3 and melt viscosity '
+            f'{melt_visc!r} Pa s'
         )
     return float(w) if np.ndim(porosity) == 0 else w
 
@@ -204,10 +208,12 @@ def drainage_integral(
     """Porosity a parcel retains after crossing the front [1].
 
     Integrates ``dphi/dt = -phi / max(L/w_D(phi), tau_s)`` from ``porosity_top``
-    over the residence time, with ``w_D`` under ``buoyancy``. The porosity decays
-    but never reaches zero, because ``w_D`` falls as ``phi^2`` or steeper at low
-    porosity, so the result lies in ``[0, porosity_top]``; an excursion beyond
-    the solver's round-off raises ``RuntimeError``, as does a non-positive
+    over the residence time, with ``w_D`` under ``buoyancy``. ``w_D`` falls as
+    ``phi^2`` or steeper down to a porosity of about 3e-6, below which the mobility
+    tends to the Stokes residue of the tanh blend and the decay turns exponential,
+    so a long residence drains the parcel to zero. The result is clipped to
+    ``[0, porosity_top]``; an excursion beyond the integrator's error scale,
+    ``atol + rtol porosity_top``, raises ``RuntimeError``, as does a non-positive
     percolation time.
 
     Returns
@@ -248,8 +254,8 @@ def drainage_integral(
         (0.0, float(t_res)),
         [float(porosity_top)],
         method='LSODA',
-        rtol=1.0e-8,
-        atol=1.0e-12,
+        rtol=_RTOL,
+        atol=_ATOL,
     )
     if not sol.success:
         log.warning(
@@ -259,7 +265,8 @@ def drainage_integral(
         )
         return float(porosity_top), tau_d_top, tau_s
     retained = float(sol.y[0, -1])
-    if not -_RETAINED_ATOL <= retained <= porosity_top + _RETAINED_ATOL:
+    tol = _ATOL + _RTOL * porosity_top
+    if not -tol <= retained <= porosity_top + tol:
         raise RuntimeError(
             f'retained porosity {retained!r} lies outside [0, {porosity_top!r}] beyond the '
             'round-off of the drainage integral'

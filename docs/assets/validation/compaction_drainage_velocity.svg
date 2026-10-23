@@ -6,7 +6,7 @@
   <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
    <cc:Work>
     <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
-    <dc:description>test: tests/outgas/test_compaction.py::test_mobility_reproduces_the_interior_solver_in_every_regime; command: pytest tests/outgas/test_compaction.py::test_mobility_reproduces_the_interior_solver_in_every_regime --validation-plots=/Users/timlichtenberg/work/b1/planb/sepB/vplots</dc:description>
+    <dc:description>test: tests/outgas/test_compaction.py::test_mobility_reproduces_the_interior_solver_in_every_regime; command: pytest tests/outgas/test_compaction.py::test_mobility_reproduces_the_interior_solver_in_every_regime --validation-plots</dc:description>
     <dc:format>image/svg+xml</dc:format>
     <dc:creator>
      <cc:Agent>

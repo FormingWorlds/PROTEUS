@@ -35,6 +35,7 @@ for the test framework.
 
 from __future__ import annotations
 
+import functools
 from types import SimpleNamespace
 
 import numpy as np
@@ -67,6 +68,7 @@ _G = 3.711
 _PHI_C = 0.3
 _T_RES_FAST = _L / (0.70 / _SECS_PER_YEAR)
 _T_RES_SLOW = _L / (0.05 / _SECS_PER_YEAR)
+_drain = functools.partial(drainage_integral, buoyancy='mixture')
 
 
 class _EndMemberEOS:
@@ -118,17 +120,16 @@ def test_mobility_reproduces_the_interior_solver_in_every_regime(validation_plot
     calling the solver's own ``relative_velocity`` and backing the mobility out
     of it, under each ``separation_buoyancy``. The drainage velocity is the
     solver's velocity under the same buoyancy, so the drainage and the solver
-    share one law; the melt drag viscosity stays the one deliberate difference."""
+    share one law; the drag viscosity is the melt viscosity in both here."""
     pytest.importorskip('aragog')
     rho_s, rho_l, gravity, eta = 4000.0, 3600.0, 9.8, 100.0
     # Both blends and all three regimes, from the porosity floor to Stokes.
-    phi = np.unique(
-        np.concatenate([np.linspace(0.02, 0.99, 40), [0.05, 0.0769452, 0.1, 0.3, 0.5, 0.7]])
-    )
-    phi = np.unique(np.concatenate([phi, [0.771462, 0.9, 0.99]]))
+    extra = [0.05, 0.0769452, 0.1, 0.3, 0.5, 0.7, 0.771462, 0.9, 0.99]
+    phi = np.unique(np.concatenate([np.linspace(0.02, 0.99, 40), extra]))
+    at = {p: int(np.flatnonzero(np.isclose(phi, p))[0]) for p in (0.3, 0.7, 0.9, 0.99)}
     plotted = {}
     for buoyancy in ('mixture', 'solid'):
-        for grain in (1.0e-4, 1.0e-3, 1.0e-2):
+        for k, grain in enumerate((1.0e-4, 1.0e-3, 1.0e-2)):
             v = _solver_velocity(phi, grain, rho_s, rho_l, gravity, eta, buoyancy)
             theirs = v * eta / ((rho_s - rho_l) * gravity)
             mine = mobility_function(phi, grain, buoyancy=buoyancy)
@@ -139,19 +140,22 @@ def test_mobility_reproduces_the_interior_solver_in_every_regime(validation_plot
             np.testing.assert_allclose(mine[phi < 0.05], theirs[phi < 0.05], rtol=1.5e-3)
             w = darcy_velocity(phi, grain, rho_s - rho_l, gravity, eta, buoyancy=buoyancy)
             np.testing.assert_allclose(w[phi >= 0.05], v[phi >= 0.05], rtol=2.0e-4)
-            if grain == 1.0e-3:
+            np.testing.assert_allclose(w[phi < 0.05], v[phi < 0.05], rtol=1.5e-3)
+            if k == 1:
                 plotted[buoyancy] = (v, w)
     # Discrimination: the modes differ by 1 - phi on the Rumpf-Gupte regime and
     # agree in the Stokes regime, where a grain settles alone in the melt.
     ratio = mobility_function(phi, 1.0e-3, buoyancy='mixture') / mobility_function(
         phi, 1.0e-3, buoyancy='solid'
     )
-    assert ratio[phi == 0.3][0] == pytest.approx(0.7, rel=1e-6)
-    assert ratio[phi == 0.99][0] == pytest.approx(1.0, abs=1e-3)
-    # A (1 - phi) on every regime, the law before the drainage followed the
-    # solver, is off by 0.16 at phi = 0.7 under 'mixture', far outside the tolerance.
-    old = (1.0 - 0.7) * _solver_velocity(np.array([0.7]), 1.0e-3, buoyancy='solid')[0]
-    assert abs(old / _solver_velocity(np.array([0.7]), 1.0e-3)[0] - 1.0) > 0.1
+    assert ratio[at[0.3]] == pytest.approx(0.7, rel=1e-6)
+    assert ratio[at[0.99]] == pytest.approx(1.0, abs=1e-3)
+    # A factor 1 - phi on every regime is 16 percent below the 'mixture' solver at
+    # phi = 0.7 and 90 percent below at 0.9, far outside the tolerance.
+    vm, vs = plotted['mixture'][0], plotted['solid'][0]
+    uniform_factor = (1.0 - phi) * vs / vm - 1.0
+    assert uniform_factor[at[0.7]] == pytest.approx(-0.160, abs=1e-3)
+    assert uniform_factor[at[0.9]] == pytest.approx(-0.899, abs=1e-3)
     # A Rumpf-Gupte exponent of 4 instead of 4.5 would be off by 0.3**-0.5 = 1.8
     # at phi = 0.3.
     v_rg = _solver_velocity(np.array([0.3]), 1.0e-3, buoyancy='solid')[0]
@@ -379,17 +383,7 @@ def test_drainage_is_limited_by_the_slower_of_the_two_processes():
     grain, eta_m = 1.0e-3, 100.0
     # A stiff matrix with a fast percolation branch: tau_s dominates, so the
     # parcel retains nearly all its melt despite the pores being permeable.
-    stiff, tau_d, tau_s = drainage_integral(
-        _PHI_C,
-        _T_RES_FAST,
-        _L,
-        grain,
-        _DRHO,
-        _G,
-        eta_m,
-        1.0e22,
-        buoyancy='mixture',
-    )
+    stiff, tau_d, tau_s = _drain(_PHI_C, _T_RES_FAST, _L, grain, _DRHO, _G, eta_m, 1.0e22)
     assert tau_s > tau_d
     # Matrix-limited throughout, the integral has the closed form
     # phi_c exp(-t_res / tau_s), which the stiff solver reproduces to 1e-6.
@@ -401,17 +395,7 @@ def test_drainage_is_limited_by_the_slower_of_the_two_processes():
 
     # A soft matrix at the same permeability drains further, because now the
     # percolation branch is the slow one and it is slower than tau_s was small.
-    soft, _, tau_s_soft = drainage_integral(
-        _PHI_C,
-        _T_RES_FAST,
-        _L,
-        grain,
-        _DRHO,
-        _G,
-        eta_m,
-        1.0e18,
-        buoyancy='mixture',
-    )
+    soft, _, tau_s_soft = _drain(_PHI_C, _T_RES_FAST, _L, grain, _DRHO, _G, eta_m, 1.0e18)
     assert tau_s_soft < tau_s
     assert soft < stiff
     assert soft == pytest.approx(0.194, rel=0.02)
@@ -419,9 +403,7 @@ def test_drainage_is_limited_by_the_slower_of_the_two_processes():
     # Monotonicity: a softer matrix can never trap more than a stiffer one at
     # the same permeability, which holds across the whole viscosity range.
     retained = [
-        drainage_integral(
-            _PHI_C, _T_RES_FAST, _L, grain, _DRHO, _G, eta_m, mu, buoyancy='mixture'
-        )[0]
+        _drain(_PHI_C, _T_RES_FAST, _L, grain, _DRHO, _G, eta_m, mu)[0]
         for mu in (1.0e17, 1.0e18, 1.0e20, 1.0e22)
     ]
     assert np.all(np.diff(retained) >= -1e-12)
@@ -486,20 +468,8 @@ def test_drainage_matches_an_independent_quadrature_over_five_martian_fronts():
     )
     retained = {}
     for a, eta_m, eta_s, tau_d_pin, tau_s_pin, fast_pin, slow_pin in cases:
-        fast, tau_d, tau_s = drainage_integral(
-            _PHI_C,
-            _T_RES_FAST,
-            _L,
-            a,
-            _DRHO,
-            _G,
-            eta_m,
-            eta_s,
-            buoyancy='mixture',
-        )
-        slow, _, _ = drainage_integral(
-            _PHI_C, _T_RES_SLOW, _L, a, _DRHO, _G, eta_m, eta_s, buoyancy='mixture'
-        )
+        fast, tau_d, tau_s = _drain(_PHI_C, _T_RES_FAST, _L, a, _DRHO, _G, eta_m, eta_s)
+        slow, _, _ = _drain(_PHI_C, _T_RES_SLOW, _L, a, _DRHO, _G, eta_m, eta_s)
         retained[a, eta_m, eta_s] = (fast, slow)
 
         # Timescales in closed form. At phi = 0.3 the Stokes tanh weight adds
@@ -557,17 +527,14 @@ def test_drainage_matches_an_independent_quadrature_over_five_martian_fronts():
 
 
 @pytest.mark.physics_invariant
-def test_drainage_is_bounded_without_a_clamp_and_decays_with_residence():
-    """The integral is bounded in [0, phi_top] by construction, because the
-    porosity decays but never reaches zero: the percolation speed falls as
-    phi^2 or steeper, so the last melt leaves ever more slowly. That is what
-    lets the front scheme run without the clamp the linear law needs."""
+def test_drainage_is_bounded_and_decays_with_residence():
+    """The retained porosity lies in [0, phi_top] and falls with the residence time:
+    the percolation speed falls as phi^2 or steeper, so the last melt leaves ever
+    more slowly, and the front scheme needs no clamp of the linear law's kind."""
     grain, eta_m, eta_s = 1.0e-3, 1.0, 1.0e18
     previous = _PHI_C
     for t_res in (0.0, 1.0e10, 1.0e12, 1.0e14, 1.0e16):
-        retained, _, _ = drainage_integral(
-            _PHI_C, t_res, _L, grain, _DRHO, _G, eta_m, eta_s, buoyancy='mixture'
-        )
+        retained, _, _ = _drain(_PHI_C, t_res, _L, grain, _DRHO, _G, eta_m, eta_s)
         assert 0.0 <= retained <= _PHI_C
         assert retained <= previous + 1e-12
         previous = retained
@@ -575,21 +542,15 @@ def test_drainage_is_bounded_without_a_clamp_and_decays_with_residence():
     assert previous > 0.0
 
     # A zero-length residence retains exactly what entered, with no drainage.
-    unchanged, _, _ = drainage_integral(
-        _PHI_C, 0.0, _L, grain, _DRHO, _G, eta_m, eta_s, buoyancy='mixture'
-    )
+    unchanged, _, _ = _drain(_PHI_C, 0.0, _L, grain, _DRHO, _G, eta_m, eta_s)
     assert unchanged == pytest.approx(_PHI_C, rel=1e-12)
 
     # Edge case: an empty pore space stays empty rather than going negative.
-    empty, _, _ = drainage_integral(
-        0.0, _T_RES_FAST, _L, grain, _DRHO, _G, eta_m, eta_s, buoyancy='mixture'
-    )
+    empty, _, _ = _drain(0.0, _T_RES_FAST, _L, grain, _DRHO, _G, eta_m, eta_s)
     assert empty == pytest.approx(0.0, abs=1e-30)
     # Error contract: a non-finite residence returns the entry porosity as an
     # upper bound rather than integrating to a NaN.
-    bad, _, _ = drainage_integral(
-        _PHI_C, float('nan'), _L, grain, _DRHO, _G, eta_m, eta_s, buoyancy='mixture'
-    )
+    bad, _, _ = _drain(_PHI_C, float('nan'), _L, grain, _DRHO, _G, eta_m, eta_s)
     assert bad == pytest.approx(_PHI_C, rel=1e-12)
 
 
@@ -609,16 +570,14 @@ def test_a_retained_porosity_outside_the_entry_range_stops_the_step(monkeypatch)
     args = (_PHI_C, _T_RES_FAST, _L, 1.0e-3, _DRHO, _G, 100.0, 1.0e18)
     for value, expected in ((_PHI_C + 2.0e-9, _PHI_C), (-2.0e-12, 0.0), (-2.0e-9, 0.0)):
         monkeypatch.setattr(scipy.integrate, 'solve_ivp', solver_ending_at(value))
-        assert drainage_integral(*args, buoyancy='mixture')[0] == expected
+        assert _drain(*args)[0] == expected
     for value in (_PHI_C + 1.0e-7, -1.0e-7, float('nan')):
         monkeypatch.setattr(scipy.integrate, 'solve_ivp', solver_ending_at(value))
         with pytest.raises(RuntimeError, match='retained porosity'):
-            drainage_integral(*args, buoyancy='mixture')
+            _drain(*args)
     # A front of no thickness has no positive percolation time.
     with pytest.raises(RuntimeError, match='percolation time'):
-        drainage_integral(
-            _PHI_C, _T_RES_FAST, 0.0, 1.0e-3, _DRHO, _G, 100.0, 1.0e18, buoyancy='mixture'
-        )
+        _drain(_PHI_C, _T_RES_FAST, 0.0, 1.0e-3, _DRHO, _G, 100.0, 1.0e18)
 
 
 @pytest.mark.physics_invariant
