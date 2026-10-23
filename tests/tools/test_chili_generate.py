@@ -99,7 +99,12 @@ def test_generated_cases_match_tutorials_outside_their_deltas():
             else:
                 assert got == want, f'{name}: {dotted}={got!r}, want {want!r}'
     # Discrimination: the nominal cases carry these deltas and no other.
-    nominal = {'params.out.path', 'outgas.fO2_shift_IW', *gen.PROTOCOL_STOP}
+    nominal = {
+        'params.out.path',
+        'outgas.fO2_shift_IW',
+        *gen.PROTOCOL_STOP,
+        *gen.RUN_SETTINGS,
+    }
     assert set(gen.case_deltas('earth')) == nominal
     assert set(gen.case_deltas('venus')) == nominal
     assert set(gen.CASE_DELTAS) == {'earth', 'venus', 'tr1b', 'tr1e', 'tr1a'}
@@ -156,6 +161,77 @@ def test_every_chili_config_stops_only_by_the_protocol_rule():
     assert len(files) == 14
     for path in files:
         assert attrs.asdict(_read_config(str(path)).params.stop) == want, path.name
+
+
+def test_every_chili_config_takes_the_buoyancy_against_the_solid():
+    """The 5 cases and the 9 grid configs set separation_buoyancy 'solid', the buoyancy form of the
+    submitted runs; the PROTEUS default 'mixture' changes their mush numbers. A case cannot set its
+    own value, and the generated key sits at the indent of its table."""
+    gen = _load_generator()
+    assert gen.RUN_SETTINGS == {'interior_energetics.aragog.separation_buoyancy': 'solid'}
+    files = [REPO / 'input' / 'chili' / 'intercomp' / f'{n}.toml' for n in gen.CASE_DELTAS]
+    files += sorted((REPO / 'input' / 'tutorials' / 'chili_grid').glob('earth_H*_C*.toml'))
+    assert len(files) == 14
+    for path in files:
+        assert (
+            _read_config(str(path)).interior_energetics.aragog.separation_buoyancy == 'solid'
+        ), path.name
+    for name in gen.CASE_DELTAS:
+        text = (REPO / 'input' / 'chili' / 'intercomp' / f'{name}.toml').read_text()
+        assert '\n        separation_buoyancy = "solid"\n' in text, name
+    gen.CASE_DELTAS['tr1e']['set']['interior_energetics.aragog.separation_buoyancy'] = 'mixture'
+    with pytest.raises(ValueError, match=r'tr1e: .*separation_buoyancy'):
+        gen.generate_case('tr1e')
+
+
+@pytest.mark.parametrize(
+    ('text', 'dotted', 'want'),
+    [
+        ('a = 1\n', 'b', 'a = 1\nb = 4\n'),
+        (
+            '[x]\n    k = 1\n[y]\n    j = 2\n[x.z]\n    m = 3\n',
+            'x.s',
+            '[x]\n    k = 1\ns = 4\n[y]\n    j = 2\n[x.z]\n    m = 3\n',
+        ),
+        (
+            '[x]\n    k = 1\n    [x.t]\n        u = 1\n',
+            'x.t.v',
+            '[x]\n    k = 1\n    [x.t]\n        u = 1\n        v = 4\n',
+        ),
+        ('[x]\n  k = 1\n      l = 2\n', 'x.v', '[x]\n  k = 1\n      l = 2\n      v = 4\n'),
+        (
+            '[x]\n   k = 1\n    [x.t]\n        u = 1\n',
+            'x.v',
+            '[x]\n   k = 1\n   v = 4\n\n    [x.t]\n        u = 1\n',
+        ),
+        ('[x]\n    k = 1\n', 'x.k', '[x]\n    k = 4\n'),
+    ],
+    ids=[
+        'top_level_key',
+        'split_table_takes_no_indent',
+        'new_key_at_table_indent',
+        'indent_of_the_last_key',
+        'plain_key_before_a_subtable',
+        'existing_key_keeps_indent',
+    ],
+)
+def test_set_dotted_writes_a_key_at_any_depth(text, dotted, want):
+    """A top-level key, a key in a table that another table splits (no indent: the split table
+    has no body), a new key at the indent of the last plain key of its table, and a replaced key
+    at its own indent are all written as the expected text."""
+    import tomllib
+
+    import tomlkit
+
+    gen = _load_generator()
+    doc = tomlkit.parse(text)
+    gen._set_dotted(doc, dotted, 4)
+    out = tomlkit.dumps(doc)
+    assert out == want
+    node = tomllib.loads(out)
+    for part in dotted.split('.'):
+        node = node[part]
+    assert node == 4
 
 
 def test_protocol_values_are_fresh_items_in_each_case(tmp_path, monkeypatch):

@@ -34,8 +34,10 @@ from proteus.accretion.common import snap_to_impact
 from proteus.interior_energetics import aragog_core, aragog_resume
 from proteus.interior_energetics.aragog_core_impact import refit_core_at_reset
 from proteus.interior_energetics.aragog_phase import (
+    BuoyancyMismatchError,
     build_jax_phase_params,
     build_mixed_phase_params,
+    check_solver_buoyancy,
 )
 from proteus.interior_energetics.common import Interior_t
 from proteus.utils.constants import FEI2021_LIQUIDUS_P_CALIB_PA, TDEP_EOS_PREFIXES
@@ -665,6 +667,7 @@ class AragogRunner:
                 AragogRunner.update_solver(dt, hf_row, interior_o, output_dir=dirs['output'])
             _t_init = time.perf_counter()
             interior_o.aragog_solver.initialize()
+            check_solver_buoyancy(config, solver=interior_o.aragog_solver)
             if config.interior_energetics.aragog.core_bc == 'core_module':
                 aragog_core.freeze_core_profile(interior_o)
             _t_after_init = time.perf_counter()
@@ -1429,7 +1432,9 @@ class AragogRunner:
         No-op (silent) for backend='numpy'. When backend='jax' but
         JAX import or pytree construction fails, logs a warning and
         leaves the factory unset so the solver falls back to the
-        default finite-difference Jacobian path. When
+        default finite-difference Jacobian path, except for JAX phase parameters
+        in another separation buoyancy than the config, which raise
+        ``BuoyancyMismatchError``. When
         ``interior_o._spider_eos_dir`` is empty or missing, the EOS is read
         from ``outdir/data/spider_eos``, the directory ``setup_solver`` uses.
         """
@@ -1488,6 +1493,7 @@ class AragogRunner:
                 )
 
             params_jax = build_jax_phase_params(config)
+            check_solver_buoyancy(config, jax_params=params_jax)
 
             if nightly_strict:
                 log.info(
@@ -1606,6 +1612,8 @@ class AragogRunner:
             )
             solver.set_jax_cvode_factory(factory)
             log.info(installed)
+        except BuoyancyMismatchError:
+            raise
         except Exception as exc:
             msg = f'Option Z factory install failed ({exc}); falling back to FD Jacobian.'
             if nightly_strict:

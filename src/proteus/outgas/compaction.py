@@ -42,19 +42,23 @@ deliberate differences.
   construction. Trapping is a sub-grid process the solver does not resolve, so
   it uses the melt viscosity regardless of the solver's choice, and the
   inconsistency is deliberate rather than overlooked.
-* The buoyancy carries a factor ``(1 - phi)`` that the solver's
-  ``relative_velocity`` omits. Both forms give the melt velocity relative to
-  the matrix: McKenzie (1984, Eq. 3.7) takes the buoyancy against the mixture,
+* The buoyancy carries a factor ``(1 - phi)`` on all three regimes, with the
+  solver's mobility under ``separation_buoyancy = 'solid'``; the solver's
+  ``relative_velocity`` takes it on the Blake-Kozeny-Carman and Rumpf-Gupte
+  regimes only under its ``'mixture'`` setting, and not at all under
+  ``'solid'``. Both forms give the melt velocity relative to the matrix:
+  McKenzie (1984, Eq. 3.7) takes the buoyancy against the mixture,
   ``(1 - phi) (rho_s - rho_f) g``, and Abe (1995, Eq. 40) against the solid,
   ``(rho_s - rho_f) g``. The factor slows percolation by 30 percent at
   ``phi = 0.3``. McKenzie's solution assumes touching grains, so it holds for
   melt fractions below about 0.2, while the front is entered at the
   rheological transition, ``rfront_loc = 0.4`` by default; above about 0.2 the
-  factor is an extrapolation of that solution. FormingWorlds/aragog#67 tracks
-  the same factor for the solver.
+  factor is an extrapolation of that solution.
 
 ``test_compaction.py`` checks the mobility against the solver's own
-``relative_velocity``, so the two cannot drift apart.
+``relative_velocity`` under ``separation_buoyancy = 'solid'``, the law the
+drainage passes to ``mobility_function``; the solver default ``'mixture'`` is
+not part of that check.
 
 A caution on calibration
 ------------------------
@@ -109,12 +113,12 @@ class FrontGeometry:
 
 
 def mobility_function(porosity: float | np.ndarray, grain_size: float) -> float | np.ndarray:
-    """Permeability over porosity, ``F = K / phi`` [m2], as the interior solver has it.
+    """Permeability over porosity, ``F = K / phi`` [m2], of the solver's 'solid' buoyancy.
 
-    ``aragog.eos.mobility_function``: the three regimes of Bower et al. (2018)
-    section 2.1, Blake-Kozeny-Carman ``a^2 phi^2 / ((1-phi)^2 * 1000)``,
-    Rumpf-Gupte ``a^2 phi^4.5 * 5/7`` and Stokes ``a^2 * 2/9``, blended with
-    tanh weights.
+    ``aragog.eos.mobility_function`` with ``buoyancy = 'solid'``: the three
+    regimes of Bower et al. (2018) section 2.1, Blake-Kozeny-Carman
+    ``a^2 phi^2 / ((1-phi)^2 * 1000)``, Rumpf-Gupte ``a^2 phi^4.5 * 5/7`` and
+    Stokes ``a^2 * 2/9``, blended with tanh weights.
 
     Parameters
     ----------
@@ -133,7 +137,7 @@ def mobility_function(porosity: float | np.ndarray, grain_size: float) -> float 
 
     if grain_size <= 0.0:
         raise ValueError(f'grain_size must be positive, got {grain_size!r}')
-    f = solver_mobility(np.asarray(porosity, dtype=float), float(grain_size))
+    f = solver_mobility(np.asarray(porosity, dtype=float), float(grain_size), 'solid')
     return float(f) if np.ndim(porosity) == 0 else np.asarray(f, dtype=float)
 
 
@@ -147,8 +151,8 @@ def darcy_velocity(
     """Melt percolation speed relative to the matrix [m s-1].
 
     ``w_D = (1 - phi) |delta_rho| g F(phi) / eta_melt``, with the buoyancy taken
-    against the mixture (McKenzie 1984, Eq. 3.7); the solver's
-    ``relative_velocity`` takes it against the solid. See the module docstring.
+    against the mixture (McKenzie 1984, Eq. 3.7) and ``F`` the solver's mobility
+    under ``separation_buoyancy = 'solid'``. See the module docstring.
     """
     if melt_visc <= 0.0:
         raise ValueError(f'melt viscosity must be positive, got {melt_visc!r}')

@@ -85,7 +85,7 @@ def _solver_velocity(porosity, grain_size, rho_s=4000.0, rho_l=3600.0, gravity=9
     phase-boundary densities, gravity, grain size and the melt viscosity as
     drag. Nothing of the solver's law is transcribed here.
     The stand-in selects separation_buoyancy 'solid', not the solver default 'mixture':
-    the law of mobility_function without a buoyancy argument, as the drainage code calls it.
+    the law the drainage code passes to mobility_function.
     """
     from aragog.eos.entropy_phase import EntropyPhaseEvaluator
 
@@ -162,6 +162,24 @@ def test_mobility_reproduces_the_interior_solver_in_every_regime():
     # silently producing a zero permeability.
     with pytest.raises(ValueError, match='grain_size'):
         mobility_function(0.3, 0.0)
+
+
+@pytest.mark.physics_invariant
+def test_the_drainage_names_the_solid_mobility(monkeypatch):
+    """The drainage passes buoyancy 'solid' to the solver's mobility rather than leaning on the
+    default of aragog.eos.mobility_function, which differs from the solver's own default."""
+    import aragog.eos
+
+    seen, real = [], aragog.eos.mobility_function
+
+    def spy(porosity, grain_size, buoyancy='not given'):
+        seen.append(buoyancy)
+        return real(porosity, grain_size, 'solid')
+
+    monkeypatch.setattr(aragog.eos, 'mobility_function', spy)
+    w = darcy_velocity(0.3, 1.0e-3, 400.0, 9.8, 100.0)
+    assert w == pytest.approx(0.7 * 400.0 * 9.8 * real(0.3, 1.0e-3, 'solid') / 100.0, rel=1e-12)
+    assert seen == ['solid']
 
 
 @pytest.mark.reference_pinned
