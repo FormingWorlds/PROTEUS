@@ -809,27 +809,56 @@ class TestWriteConfigFiles:
             'case_000001.toml',
         ]
 
-    def test_a_numpy_bool_axis_is_written_as_a_toml_boolean(
-        self, fake_proteus_dir, monkeypatch
+    def test_a_second_held_grid_is_refused_while_one_holds_the_log(self, fake_proteus_dir):
+        """Only one grid may hold the log lines at a time; after its release the loggers
+        are as before and another grid may hold them."""
+        from helpers import PROTEUS_ROOT
+
+        base = str(PROTEUS_ROOT / 'tests/grid/base.toml')
+        before = _log_state()
+        first = Grid(name='held_a', base_config_path=base, prepare_output=False)
+        try:
+            with pytest.raises(RuntimeError, match='holds the log'):
+                Grid(name='held_b', base_config_path=base, prepare_output=False)
+        finally:
+            first.release_log()
+        assert _log_state() == before
+        Grid(name='held_c', base_config_path=base, prepare_output=False).release_log()
+        assert _log_state() == before
+
+    @pytest.mark.parametrize(
+        ('key', 'values', 'expected', 'line'),
+        [
+            (
+                'params.out.remove_sf',
+                np.array([True, False]),
+                [False, True],
+                'remove_sf = false',
+            ),
+            ('params.out.write_mod', np.array([3, 5]), [3, 5], 'write_mod = 3'),
+        ],
+        ids=['bool', 'int'],
+    )
+    def test_a_numpy_axis_is_written_as_toml_values(
+        self, fake_proteus_dir, monkeypatch, key, values, expected, line
     ):
-        """Axis values given as numpy booleans reach each case config as a TOML true or
-        false; tomlkit cannot write numpy.bool_ itself."""
+        """Axis values given as numpy scalars reach each case config as plain TOML values;
+        tomlkit cannot write numpy.bool_ or numpy.int64 itself."""
         from helpers import PROTEUS_ROOT
 
         monkeypatch.setattr(gm.os, 'sync', lambda: None)
-        g = Grid(
-            name='np_bool_grid', base_config_path=str(PROTEUS_ROOT / 'tests/grid/base.toml')
-        )
-        g.add_dimension('r', 'params.out.remove_sf')
-        g.set_dimension_direct('r', np.array([True, False]))
+        g = Grid(name='np_grid', base_config_path=str(PROTEUS_ROOT / 'tests/grid/base.toml'))
+        g.add_dimension('r', key)
+        g.set_dimension_direct('r', values)
         g.generate()
         try:
             g.write_config_files()
         except Exception as exc:  # noqa: BLE001 -- the failure under test, made an assertion
-            raise AssertionError(f'numpy bool axis not written: {exc!r}') from exc
-        cases = [read_config_object(g._get_tmpcfg(i)).params.out.remove_sf for i in (0, 1)]
-        assert cases == [False, True]
-        assert 'remove_sf = false' in open(g._get_tmpcfg(0)).read()
+            raise AssertionError(f'numpy axis not written: {exc!r}') from exc
+        name = key.rsplit('.', 1)[1]
+        cases = [getattr(read_config_object(g._get_tmpcfg(i)).params.out, name) for i in (0, 1)]
+        assert cases == expected
+        assert line in open(g._get_tmpcfg(0)).read()
 
     def test_a_value_refused_at_assignment_names_the_case_and_the_key(
         self, fake_proteus_dir, monkeypatch
@@ -1196,6 +1225,26 @@ class TestGridRun:
 # ---------------------------------------------------------------------------
 
 
+def _log_state():
+    """Handlers, level and propagation of the fwl logger and the grid manager's logger."""
+    return [
+        (lg.handlers[:], lg.level, lg.propagate) for lg in (logging.getLogger('fwl'), gm.log)
+    ]
+
+
+def _valid_grid(proteus_dir, monkeypatch, **dimensions):
+    """A grid file over tests/grid/base.toml whose run only writes the case configs."""
+    from helpers import PROTEUS_ROOT
+
+    (proteus_dir / 'base.toml').write_text(
+        (PROTEUS_ROOT / 'tests' / 'grid' / 'base.toml').read_text()
+    )
+    monkeypatch.setattr(Grid, 'run', lambda self, *a, **k: self.write_config_files())
+    monkeypatch.setattr(gm.os, 'sync', lambda: None)
+    dims = dimensions or {'planet.mass_tot': {'method': 'direct', 'values': [1.0, 0.5]}}
+    return _write_grid_toml(proteus_dir / 'g.toml', dimensions=dims)
+
+
 def _write_grid_toml(path, **overrides):
     """Helper: write a minimal valid .grid.toml at ``path``."""
     body = {
@@ -1434,16 +1483,16 @@ class TestGridFromConfig:
         assert calls[0]['jax_cache'] is expected
 
     @pytest.mark.parametrize(
-        ('key', 'value'),
+        ('key', 'value', 'reason'),
         [
-            ('params.out.remove_sf', 'false'),
-            ('interior_energetics.module', 'aragogg'),
-            ('planet.mass_tot', -1.0),
+            ('params.out.remove_sf', 'false', "must be true or false, got 'false'"),
+            ('interior_energetics.module', 'aragogg', "'module' must be in ("),
+            ('planet.mass_tot', -1.0, "'mass_tot' must be > 0: -1.0"),
         ],
         ids=['quoted-bool', 'enum', 'out-of-range'],
     )
     def test_a_refused_axis_value_keeps_the_old_output(
-        self, fake_proteus_dir, monkeypatch, key, value
+        self, fake_proteus_dir, monkeypatch, key, value, reason
     ):
         """A grid axis value the config refuses stops the grid before the old output is
         removed, names the case and the key, and leaves no cfgs/, logs/ or check folder."""
@@ -1463,9 +1512,12 @@ class TestGridFromConfig:
         monkeypatch.setattr(Grid, 'run', lambda self, *a, **k: calls.append('run'))
         monkeypatch.setattr(Grid, 'slurm_config', lambda self, *a, **k: calls.append('slurm'))
         monkeypatch.setattr(gm.os, 'sync', lambda: None)
+        before = _log_state()
         with pytest.raises(ValueError, match='Grid case 0') as exc:
             grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
         assert f'Grid case 0 ({key} = {value!r}): ' in str(exc.value)
+        assert reason in str(exc.value) and 'Attribute(' not in str(exc.value)
+        assert _log_state() == before
         assert old.is_file() and old.read_text() == 'kept\n'
         assert sorted(os.listdir(old.parents[1])) == ['case_000000']
         assert os.listdir(fake_proteus_dir / 'output') == ['unit_grid']
@@ -1510,6 +1562,96 @@ class TestGridFromConfig:
         )
         assert all(line in logged for line in lines), logged
         assert [logged.index(line) for line in lines] == sorted(logged.index(x) for x in lines)
+
+    @pytest.mark.parametrize('name', ['sub/grid', 'grid/'])
+    def test_a_grid_name_with_a_slash_runs_and_leaves_no_check_folder(
+        self, fake_proteus_dir, monkeypatch, name
+    ):
+        """An output name with a slash builds its cases as it did before the check, and no
+        check folder stays behind anywhere under output/."""
+        body = toml.load(_valid_grid(fake_proteus_dir, monkeypatch))
+        body['output'] = name
+        grid_path = fake_proteus_dir / 'g.toml'
+        grid_path.write_text(toml.dumps(body))
+        try:
+            grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
+        except OSError as exc:  # the failure under test, made an assertion
+            raise AssertionError(f'grid {name!r} did not run: {exc!r}') from exc
+        cfgs = fake_proteus_dir / 'output' / name.rstrip('/') / 'cfgs'
+        assert sorted(os.listdir(cfgs)) == ['case_000000.toml', 'case_000001.toml']
+        left = [d for d, _, _ in os.walk(fake_proteus_dir / 'output') if '-check-' in d]
+        assert left == []
+
+    def test_config_loader_lines_reach_manager_log_in_order(
+        self, fake_proteus_dir, monkeypatch
+    ):
+        """A line the config loader logs while a case is read back reaches manager.log after
+        'Writing config files', as it did when the cases were written after the log existed."""
+        grid_path = _valid_grid(fake_proteus_dir, monkeypatch)
+        real = gm.read_config_object
+        loader_log = logging.getLogger('fwl.proteus.config._config')
+
+        def read(path):
+            loader_log.warning('LOADERNOTE %s', os.path.basename(str(path)))
+            return real(path)
+
+        monkeypatch.setattr(gm, 'read_config_object', read)
+        grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
+        logged = (fake_proteus_dir / 'output' / 'unit_grid' / 'manager.log').read_text()
+        assert 'LOADERNOTE case_000001.toml' in logged
+        assert logged.index('Writing config files') < logged.index('LOADERNOTE case_000000')
+
+    def test_the_setup_lines_reach_manager_log_after_an_earlier_quiet_logger(
+        self, fake_proteus_dir, monkeypatch
+    ):
+        """The held setup lines reach manager.log even when the grid logger answered INFO as
+        disabled earlier in the process (the logging module caches that answer)."""
+        grid_path = _valid_grid(fake_proteus_dir, monkeypatch)
+        fwl = logging.getLogger('fwl')
+        level = fwl.level
+        fwl.setLevel(logging.WARNING)
+        try:
+            gm.log.info('dropped while fwl is at WARNING')
+            grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
+        finally:
+            fwl.setLevel(level)
+        logged = (fake_proteus_dir / 'output' / 'unit_grid' / 'manager.log').read_text()
+        assert "Added new dimension 'param_000'" in logged
+        assert 'Flattened grid points' in logged
+
+    def test_a_refused_case_after_valid_ones_is_named_by_its_index(
+        self, fake_proteus_dir, monkeypatch
+    ):
+        """A refused value on the third case is reported as case 2 with its key and value."""
+        grid_path = _valid_grid(
+            fake_proteus_dir,
+            monkeypatch,
+            **{
+                'interior_energetics.module': {
+                    'method': 'direct',
+                    'values': ['aragog', 'spider', 'aragogg'],
+                }
+            },
+        )
+        with pytest.raises(ValueError) as exc:
+            grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
+        assert "Grid case 2 (interior_energetics.module = 'aragogg'): " in str(exc.value)
+        assert not (fake_proteus_dir / 'output' / 'unit_grid').exists()
+
+    def test_a_git_folder_in_the_old_output_stops_after_the_check_and_cleans_up(
+        self, fake_proteus_dir, monkeypatch
+    ):
+        """An old output holding a Git repository is refused after the check; the check
+        folder is removed, the old output stays and the loggers are as before."""
+        grid_path = _valid_grid(fake_proteus_dir, monkeypatch)
+        git = fake_proteus_dir / 'output' / 'unit_grid' / '.git'
+        git.mkdir(parents=True)
+        before = _log_state()
+        with pytest.raises(Exception, match='contains a Git repository'):
+            grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
+        assert git.is_dir()
+        assert os.listdir(fake_proteus_dir / 'output') == ['unit_grid']
+        assert _log_state() == before
 
     def test_a_missing_use_slurm_names_the_key_and_the_grid_file(self, fake_proteus_dir):
         """A grid file without use_slurm stops with a KeyError that names the key and
