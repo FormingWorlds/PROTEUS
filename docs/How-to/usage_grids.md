@@ -150,6 +150,55 @@ Use the CLI to package the results of a grid into a zip file; for example to sha
 proteus grid-pack -o output/grid_demo/
 ```
 
+## Post-processing a grid
+
+Once a grid has run, `proteus grid-analyse` extracts each case's final-row results into summary CSV files and makes overview plots. It is configured by an optional `[post_processing]` table in the same `.grid.toml` used to run the grid (so a grid needs only one config file). Point it at the grid's output folder:
+
+```console
+proteus grid-analyse -o output/<grid folder>
+```
+
+With `-o` alone, the options come from `copy.grid.toml` in that folder (the copy of the grid file saved when the grid was launched). Add `-c <grid file>` to analyse the folder with the `[post_processing]` options of that file instead, for example after changing the plotted outputs. `-c` alone also works when the grid file's `output` names a fixed folder; with `output = "auto"` the folder name is generated at launch, so pass it with `-o`.
+
+The swept axes are always read from `copy.grid.toml` when the folder has one, so editing the grid file afterwards does not change them. If that copy no longer passes the current grid-file checks (for example a grid launched with an older PROTEUS), the analysis stops with an error naming the rejected keys; update them in the copy, or remove it to use the axes of the file passed with `-c`.
+
+The `[post_processing]` table is checked when the grid is launched with `proteus grid` and again by `proteus grid-analyse`: an unknown key, a value of the wrong type, an unknown colour map, style or plot format stops the command with an error before any case runs.
+
+The `[post_processing]` table accepts:
+
+| Key | Meaning |
+|---|---|
+| `update_csv` | Rebuild the summary CSVs from the case folders before plotting (default `true`). Set `false` to plot from existing CSVs. |
+| `plot_status` | Make the status-summary bar plot (default `true`). |
+| `plot_ecdf` | Make the ECDF grid plot (default `true`). |
+| `colormap` | Colour map for a parameter with more values than the colour cycle of the plot style: a Crameri scientific colour map from `cmcrameri` (for example `"batlowK_r"`, `"batlow"`, `"vik"`), a `proteus-mpl` colour map (`"proteus"`, `"proteus_div"`, `"proteus_phase"` and their `_r` forms, whatever the `style`) when `proteus-mpl` is installed, or any matplotlib colour map (`colourmap` is also accepted). Defaults to `batlowK_r`. |
+| `output_variables` | List of `runtime_helpfile.csv` columns to plot, plus the derived `solidification_time`. Defaults to `solidification_time`, `Phi_global`, `T_surf`, `P_surf` and `atm_kg_per_mol`. |
+| `plot_format` | Image format (`"png"` or `"pdf"`); defaults to the base config's `params.out.plot_fmt`, then `"png"`. |
+| `style` | `"light"` or `"dark"` draws the plots in that variant of the [`proteus-mpl`](https://pypi.org/project/proteus-mpl/) style of the documentation figures (needs `pip install proteus-mpl`, included in the `develop` and `docs` extras); `"matplotlib"` keeps the active matplotlib style. Unset, the plots use `"light"` when `proteus-mpl` is installed and the matplotlib style otherwise. |
+
+`solidification_time` is computed by the analysis as the first time a case's `Phi_global` is at or below its `params.stop.solid.phi_crit` (the solidification stop criterion). It is computed the same way when that stop criterion (`params.stop.solid.enabled`) is disabled, for example in a grid that runs every case to a fixed end time, and is empty (NaN) only for a case that never reached `phi_crit`.
+
+The outputs are written under the grid's output folder:
+
+```text
+output/<grid name>/post_processing/
+├── extracted_data/
+│   ├── final_extracted_data_all.csv            # every case
+│   ├── final_extracted_data_completed.csv      # completed cases
+│   └── final_extracted_data_running_error.csv  # running, errored or unknown-status cases
+└── grid_plots/
+    ├── summary_grid_statuses.<fmt>             # case count per final status
+    └── ecdf_grid_plot.<fmt>                    # ECDF per (parameter, output) panel
+```
+
+The CSVs are tab-separated (like other PROTEUS output), one row per started case, holding the case number, status, status category (`Completed`, `Running`, `Error`, or `Unknown` when the status file is missing, unreadable or holds an unrecognised code), `config_source`, the swept parameter values, every helpfile column at the final row, and `solidification_time`. The swept values come from the case's `init_coupler.toml`; a case that stopped before writing it (for example on a configuration error) takes them from `cfgs/case_<N>.toml`, the config the grid wrote for it, and `config_source` names the file used.
+
+The plots take their colours from the plot style: the series colours from its colour cycle, the greys from its text and face colours, and the ticks, spines and grid from the style itself.
+
+The status-summary plot has one horizontal bar per final status, plus a `Not started` bar for grid cases that have no case folder yet (for example still queued on SLURM). Completed, running and errored statuses take the colour of the style's cycle nearest to green, blue and red; unknown and not-started cases are grey.
+
+The ECDF grid plot uses the completed cases. It has one row per swept parameter and one column per requested output; curves are coloured by the parameter value. A parameter with no more values than the colour cycle of the style takes the cycle colours and a legend; one with more takes the colour map, trimmed at each end until its colours stand out against the face colour of the style, and a colourbar with a tick at each swept value (string values get a legend). A numeric parameter is coloured on a log scale when its default plot setting is logarithmic and its values span at least a factor of 10. The layout follows Figure 5 of [Nicholls et al. (2024)](https://arxiv.org/abs/2411.19137). Each curve is a percentage of all completed cases with that parameter value, so it levels off below 100 % when some cases have no value for the output (for example cases that never solidified). Outputs whose default plot setting is logarithmic (for example `P_surf`) are drawn on a log axis when their values are all positive and span at least a factor of 10. When some cases have a zero value (for example a surface pressure of 0 bar after the atmosphere escaped), the axis is a 0 + log axis: a short linear segment from 0 to the decade below the smallest positive value, then logarithmic, so those cases appear at 0. Over a narrower range the axis is linear.
+
 ---
 
 **See also:** [Running and output](usage_running.md) | [Configuration file](config.md) | [Execution and output reference](../Reference/config/params.md) | [Parameter grid tutorial](../Tutorials/parameter_grid.md) | [Bayesian inference](inference.md)
