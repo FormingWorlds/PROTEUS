@@ -251,6 +251,7 @@ def test_aragog_defaults():
     assert a.backend == 'jax'
     assert a.separation_viscosity == 'mixture'
     assert a.separation_buoyancy == 'mixture'
+    assert a.allow_resume_law_change is False
     assert not hasattr(a, 'jax')
     assert not hasattr(a, 'use_jax_jacobian')
     assert not hasattr(a, 'dilatation'), (

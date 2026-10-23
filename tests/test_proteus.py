@@ -322,6 +322,56 @@ def test_a_refused_resume_records_status_20(tmp_path, side_effect, match):
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize(
+    'stored, refused', [('solid', True), ('mixture', False)], ids=['changed', 'unchanged']
+)
+def test_a_resume_that_changes_the_separation_law_stops_before_init_coupler_is_written(
+    tmp_path, stored, refused
+):
+    """An aragog resume under another separation_buoyancy than the run stored stops with
+    status 20 before start() writes init_coupler.toml, so a second attempt is refused as
+    well; the same law writes the file and resumes."""
+    p = _make_proteus_instance(tmp_path, struct_module='dummy', interior_module='aragog')
+    (tmp_path / 'data').mkdir(exist_ok=True)
+    aragog = p.config.interior_energetics.aragog
+    aragog.separation_buoyancy = aragog.separation_viscosity = 'mixture'
+    aragog.allow_resume_law_change = False
+    stored_text = (
+        "[interior_energetics]\nmodule = 'aragog'\n\n[interior_energetics.aragog]\n"
+        f"separation_buoyancy = '{stored}'\nseparation_viscosity = 'mixture'\n"
+    )
+    (tmp_path / 'init_coupler.toml').write_text(stored_text)
+    from proteus.utils.coupler import UpdateStatusfile
+
+    codes = []
+
+    def record(d, c):
+        codes.append(c)
+        UpdateStatusfile(d, c)
+
+    err = None
+    try:  # the helper returns once start() reaches init_star
+        _resume_with_patches(
+            p,
+            _make_hf_df(),
+            patch('proteus.proteus.setup_logger'),
+            patch('proteus.proteus.UpdateStatusfile', side_effect=record),
+        )
+    except Exception as exc:
+        err = exc
+    if refused:
+        assert isinstance(err, RuntimeError), repr(err)
+        assert "separation_buoyancy is 'mixture'" in str(err)
+        assert codes[-1] == 20
+        p.config.write.assert_not_called()
+        assert (tmp_path / 'init_coupler.toml').read_text() == stored_text
+    else:
+        assert err is None, repr(err)
+        assert 20 not in codes
+        p.config.write.assert_called_once()
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize('struct, expected', [('zalmoxis', -3.0e21), ('dummy', 0.0)])
 @pytest.mark.parametrize(
     'crystallized, freeze, phi, frozen',
