@@ -386,7 +386,8 @@ class Aragog:
     on the Blake-Kozeny-Carman and Rumpf-Gupte regimes, while the Stokes
     regime of a grain settling alone keeps (rho_s - rho_l) g; 'solid' takes
     (rho_s - rho_l) g on every regime (Abe 1995, Eq. 40), as SPIDER does, so
-    'solid' with separation_viscosity 'melt' is the SPIDER setting."""
+    'solid' with separation_viscosity 'melt' is the SPIDER setting. The melt
+    drainage of front trapping (outgas.trap_mode 'front') takes the same buoyancy."""
     solver_method: str = field(
         default='cvode',
         validator=in_(('cvode', 'radau', 'bdf')),

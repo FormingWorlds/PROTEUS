@@ -1149,7 +1149,8 @@ def test_the_front_drains_under_the_solvers_separation_buoyancy():
         phi_top, 1.0e-3, 'mixture'
     )
     assert mixture.tau_d / solid.tau_d == pytest.approx(ratio, rel=1e-9)
-    assert ratio == pytest.approx(1.0 / (1.0 - phi_top), rel=1e-4)
+    # The Stokes tanh weight at the front top adds 1.07e-4 to the Rumpf-Gupte mobility.
+    assert ratio == pytest.approx(1.0 / (1.0 - phi_top), rel=2e-4)
     assert solid.f_tl < mixture.f_tl
     # The matrix time and the front geometry do not depend on the buoyancy.
     assert mixture.tau_s == solid.tau_s

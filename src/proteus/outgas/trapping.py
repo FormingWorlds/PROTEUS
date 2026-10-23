@@ -609,6 +609,7 @@ def _drainage_fraction(
         gravity,
         melt_visc,
         mush_visc,
+        buoyancy=config.interior_energetics.aragog.separation_buoyancy,
     )
     step.f_tl = volume_to_mass_fraction(f_vol, geom.rho_melt, geom.rho_solid_base)
     step.tau_d = tau_d / secs_per_year
