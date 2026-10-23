@@ -42,6 +42,18 @@ pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 STALL_MAX_CONFIGURED = 41
 
 
+def _record_matching_separation_laws(config, output):
+    """Give a mock config real separation laws and its run directory an init_coupler.toml
+    that records the same laws, so a resume passes the separation-law check."""
+    aragog = config.interior_energetics.aragog
+    aragog.separation_viscosity = aragog.separation_buoyancy = 'mixture'
+    aragog.allow_resume_law_change = False
+    (Path(output) / 'init_coupler.toml').write_text(
+        "[interior_energetics]\nmodule = 'aragog'\n\n[interior_energetics.aragog]\n"
+        "separation_viscosity = 'mixture'\nseparation_buoyancy = 'mixture'\n"
+    )
+
+
 def _make_proteus_instance(
     tmp_path,
     *,
@@ -58,6 +70,7 @@ def _make_proteus_instance(
     config.interior_struct.module = struct_module
     config.interior_struct.zalmoxis.update_interval = 0
     config.interior_energetics.module = interior_module
+    _record_matching_separation_laws(config, tmp_path)
     config.interior_struct.eos_dir = 'WolfBower2018_MgSiO3'
     config.orbit.module = None
     config.accretion.module = None
@@ -3919,6 +3932,7 @@ def _make_resume_main_loop_proteus(tmp_path, interior_module='spider', miscibili
     config.interior_struct.zalmoxis.global_miscibility = miscibility
     config.interior_struct.eos_dir = None
     config.interior_energetics.module = interior_module
+    _record_matching_separation_laws(config, tmp_path)
     config.interior_energetics.flux_guess = 100.0
     config.orbit.module = None
     config.observe.module = None
