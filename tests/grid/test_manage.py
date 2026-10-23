@@ -1366,7 +1366,8 @@ class TestGridFromConfig:
         ) as exc:
             grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
         assert str(grid_path) in str(exc.value)
-        assert calls == [] and old.read_text() == 'kept\n'
+        assert calls == []
+        assert old.is_file() and old.read_text() == 'kept\n'
 
     @pytest.mark.parametrize(
         ('extra', 'expected'),

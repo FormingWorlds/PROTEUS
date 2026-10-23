@@ -494,6 +494,49 @@ def test_run_inference_reports_the_spectral_cache_the_study_uses(
         assert os.environ[SPECTRAL_CACHE_ENV] == '1'
 
 
+@pytest.mark.parametrize(
+    ('switch', 'env'), [(None, '0'), (True, '1'), (False, '0')], ids=['default', 'on', 'off']
+)
+def test_run_inference_passes_abort_on_failure_to_the_workers(
+    monkeypatch, tmp_path, switch, env
+):
+    """abort_on_failure reaches the workers through the environment as written: '1' for
+    true, '0' for false or an absent key; the spectral cache setting stays on."""
+    config = {
+        'output': 'unit_inference',
+        'logging': 'INFO',
+        'n_workers': 1,
+        'ref_config': BASE_CONFIG,
+        'n_steps': 1,
+        'kernel': 'MAT3/2',
+        'acqf': 'LogEI',
+        'seed': 1,
+        'observables': {'P_surf': 1.0},
+        'parameters': {'planet.mass_tot': [0.7, 3.0]},
+    }
+    if switch is not None:
+        config['abort_on_failure'] = switch
+    monkeypatch.setattr(
+        inference_mod,
+        'get_proteus_directories',
+        lambda _output: {'output': str(tmp_path / 'output'), 'proteus': ''},
+    )
+    monkeypatch.setattr(inference_mod, 'setup_logger', lambda **_kwargs: None)
+    monkeypatch.setattr(inference_mod.os, 'cpu_count', lambda: 8)
+    monkeypatch.setattr(inference_mod, 'create_init', lambda *a, **kw: _raise(_StopAfterSetup))
+    for name in (SPECTRAL_CACHE_ENV, ABORT_ON_FAILURE_ENV, CHILD_TIMEOUT_ENV):
+        monkeypatch.setenv(name, 'unset')
+
+    with pytest.raises(_StopAfterSetup):
+        inference_mod.run_inference(config)
+    assert os.environ[ABORT_ON_FAILURE_ENV] == env
+    assert os.environ[SPECTRAL_CACHE_ENV] == '1'
+
+
+def _raise(exc):
+    raise exc
+
+
 def _validation_study(monkeypatch, tmp_path, **config):
     """A study config over a finished earlier study, stopped once validated.
 
