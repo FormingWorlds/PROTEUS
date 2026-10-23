@@ -14,7 +14,7 @@ step-by-step guide or the advice below,
 | `Aragog retry ladder exhausted` / T_core jumps >1500 K on coupled runs | [Numerically fragile coupled runs](#numerically-fragile-coupled-runs) |
 | `was written before N column(s) of the current output schema existed` | [Resuming an older run](#resuming-a-run-written-by-an-older-proteus) |
 | `Resume: no Zalmoxis structure file matches the helpfile row` | [Resume stops on the Zalmoxis structure](#resume-stops-no-zalmoxis-structure-file-matches-the-row) |
-| `Resume refused: interior_energetics.aragog.separation_...` | [Resume stops on a separation law](#resume-stops-on-a-separation-law) |
+| `interior_energetics.aragog.separation_... but the run was written with` or `... is not recorded in`, after `Resume refused:` | [Resume stops on a separation law](#resume-stops-on-a-separation-law) |
 | `Resume: the interior snapshot at t = ... is on an earlier structure` | [A resumed run and the uninterrupted run](#a-resumed-run-and-the-uninterrupted-run) |
 | `Resume: a structure update was pending at the stop` | [A resumed run and the uninterrupted run](#a-resumed-run-and-the-uninterrupted-run) |
 | Simulation fails to converge (general) | [Stabilise a simulation](stabilise_run.md) |
@@ -106,9 +106,9 @@ Resume refused:
   interior_energetics.aragog.separation_buoyancy is 'mixture' in run.toml, but the run was written with 'solid' (output/run/init_coupler.toml); set it to 'solid' to keep the law, or set interior_energetics.aragog.allow_resume_law_change = true to switch it at the resume
 ```
 
-The run's `init_coupler.toml` records the config of its last start. A resume under another `separation_viscosity` or `separation_buoyancy` would change the drainage of melt from the resume row on, so the resume stops before it writes that file again; the refused attempt writes only its own `proteus_NN.log` and status 20. Set the field to the recorded value to continue under the same law, or set `interior_energetics.aragog.allow_resume_law_change = true` to switch the law at the resume: the log records the switch, and `init_coupler.toml` then records the new law with the switch off.
+The run's `init_coupler.toml` records the config of its last start; a resume writes it again only once every resume check has passed, just before the main loop. A resume under another `separation_viscosity` or `separation_buoyancy` would change the drainage of melt from the resume row on, so the resume stops; the refused attempt writes only its own `proteus_NN.log` and status 20. Set the field to the recorded value to continue under the same law, or set `interior_energetics.aragog.allow_resume_law_change = true` to switch the law at the resume: the log records the switch, and `init_coupler.toml` then records the new law with the switch off. A resume with `-c` pointing at the run's own `init_coupler.toml` compares that file with itself, so an edit of a law in that file is not detected.
 
-A record without `separation_viscosity` counts as `'melt'`. A law the record does not hold otherwise, and both laws when `init_coupler.toml` is missing, unreadable or names no interior module, must be set in the config file; the allow switch does not cover them. A run without a recorded `separation_buoyancy` ran under `'solid'` with an aragog below 26.10.22 and under `'mixture'` from 26.10.22; each start writes the aragog version to its `proteus_NN.log`.
+A record that names the Aragog module and lacks `separation_viscosity` counts as `'melt'`. Any other law the record does not hold, and both laws when `init_coupler.toml` is missing or unreadable, must be set in the config file; the allow switch does not cover them. A run without a recorded `separation_buoyancy` ran under `'solid'` with an aragog below 26.10.22 and under `'mixture'` from 26.10.22; each start writes the aragog version to its `proteus_NN.log`.
 
 ### A resumed run and the uninterrupted run {#a-resumed-run-and-the-uninterrupted-run}
 

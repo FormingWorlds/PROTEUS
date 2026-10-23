@@ -724,7 +724,7 @@ class Proteus:
         self._baseline_structure_done = False
 
         # A resume keeps the separation laws the run was written with; the check reads
-        # the old init_coupler.toml, so it runs before the write below replaces it.
+        # the old init_coupler.toml, so it runs before any write replaces it.
         if self.config.params.resume:
             from proteus.interior_energetics.resume_laws import (
                 ResumeSeparationLawError,
@@ -771,13 +771,17 @@ class Proteus:
             if 'phase_boundary_cap' in unsupported:
                 # The dropped cap falls back to Aragog's fixed 1 yr policy.
                 step_cap_overrides['interior_energetics.aragog.phase_boundary_cap'] = 'fixed'
-        self.config.write(
+        from proteus.interior_energetics.resume_laws import RECORD_OVERRIDES
+
+        record = functools.partial(
+            self.config.write,
             os.path.join(self.directories['output'], 'init_coupler.toml'),
-            overrides={  # the permission to switch a separation law holds for one resume
-                **step_cap_overrides,
-                'interior_energetics.aragog.allow_resume_law_change': False,
-            },
+            overrides={**step_cap_overrides, **RECORD_OVERRIDES},
         )
+        # A resume writes its record once every resume check has passed (before the main
+        # loop), so an attempt that stops earlier leaves the record of the laws the run used.
+        if not self.config.params.resume:
+            record()
 
         # Create lockfile for keeping simulation running
         self.lockfile = CreateLockFile(self.directories['output'])
@@ -1185,6 +1189,9 @@ class Proteus:
         # and PROTEUS would otherwise silently accept a frozen state and
         # advance Time indefinitely.
         self.agni_deadlock_count = 0
+
+        if self.config.params.resume:
+            record()
 
         # Main loop
         UpdateStatusfile(self.directories, 1)

@@ -1,15 +1,15 @@
 """Keep the separation laws of a resumed Aragog run.
 
 ``init_coupler.toml`` in the run directory records the config the run last started
-with. ``Proteus.start()`` writes it again on every start, so a resume compares the
-new config with it before that write. A changed ``separation_viscosity`` or
-``separation_buoyancy`` would switch the melt drainage law at the resume row; the
-resume stops unless ``interior_energetics.aragog.allow_resume_law_change`` is set.
+with, with ``RECORD_OVERRIDES`` applied. ``Proteus.start()`` writes it again on every
+start (a resume once every resume check has passed), so a resume compares the new
+config with it first. A changed ``separation_viscosity`` or ``separation_buoyancy``
+would switch the melt drainage law at the resume row; the resume stops unless
+``interior_energetics.aragog.allow_resume_law_change`` is set.
 
-An Aragog record without ``separation_viscosity`` counts as aragog's ``'melt'``. A law
-the record does not hold otherwise, and both laws when no readable record names the
-interior module, must be set in the config file of the resume; the allow switch does
-not stand in for a missing record.
+A record that names the Aragog module and lacks ``separation_viscosity`` counts as
+aragog's ``'melt'``. Any other law the record does not hold must be set in the config
+file of the resume; the allow switch does not stand in for a missing record.
 """
 
 from __future__ import annotations
@@ -22,6 +22,8 @@ log = logging.getLogger('fwl.' + __name__)
 
 LAW_FIELDS = ('separation_viscosity', 'separation_buoyancy')
 UNRECORDED_VISCOSITY = 'melt'  # aragog's default, which a record without the field ran under
+# The permission to switch a separation law holds for one resume, so the record keeps it off.
+RECORD_OVERRIDES = {'interior_energetics.aragog.allow_resume_law_change': False}
 
 
 class ResumeSeparationLawError(RuntimeError):
@@ -90,8 +92,6 @@ def check_resume_separation_laws(
     module, stored = _aragog_table(stored_path)
     if config.interior_energetics.module != 'aragog' or module not in (None, 'aragog'):
         return []
-    if module is None:  # no record that names the interior module: no law is known
-        stored = {}
     aragog = config.interior_energetics.aragog
     in_file = _aragog_table(config_path)[1]
     switches, refusals, notes = [], [], []
