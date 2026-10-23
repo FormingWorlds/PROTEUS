@@ -809,6 +809,32 @@ class TestWriteConfigFiles:
             'case_000001.toml',
         ]
 
+    def test_a_quoted_false_for_a_bool_field_stops_the_grid(
+        self, fake_proteus_dir, monkeypatch
+    ):
+        """A grid axis that sets a bool field to the string ``"false"`` stops at the
+        read-back of the case config, naming the field, instead of running as true; the
+        same axis with ``false`` writes the case."""
+        from helpers import PROTEUS_ROOT
+
+        monkeypatch.setattr(gm.os, 'sync', lambda: None)
+        base = str(PROTEUS_ROOT / 'tests' / 'grid' / 'base.toml')
+        g = Grid(name='quoted_bool_grid', base_config_path=base)
+        g.add_dimension('r', 'params.out.remove_sf')
+        g.set_dimension_direct('r', ['false'])
+        g.generate()
+        with pytest.raises(ValueError, match='Grid case 0') as err:
+            g.write_config_files()
+        assert "params.out.remove_sf: must be true or false, got 'false'" in str(err.value)
+
+        g2 = Grid(name='bool_grid', base_config_path=base)
+        g2.add_dimension('r', 'params.out.remove_sf')
+        g2.set_dimension_direct('r', [False])
+        g2.generate()
+        g2.write_config_files()
+        case = read_config_object(os.path.join(g2.cfgdir, 'case_000000.toml'))
+        assert case.params.out.remove_sf is False
+
 
 # ---------------------------------------------------------------------------
 # Grid.slurm_config

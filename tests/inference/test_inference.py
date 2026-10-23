@@ -222,6 +222,17 @@ def test_parameter_bounds_rejects_a_log_scaled_range_that_reaches_zero():
     assert inference_mod.variable_is_logarithmic('planet.elements.H_budget') is True
 
 
+def test_the_config_check_refuses_a_number_for_a_bool_field():
+    """The inference check of a raw config refuses ``1`` for a bool field, naming it,
+    instead of reading it as true; ``true`` passes."""
+    raw = toml.load(BASE_CONFIG)
+    raw.setdefault('outgas', {}).setdefault('calliope', {})['include_H2O'] = 1
+    with pytest.raises(ValueError, match='outgas.calliope.include_H2O: must be true or false'):
+        inference_mod._reject_bad_config(raw, 'ref.toml')
+    raw['outgas']['calliope']['include_H2O'] = True
+    assert inference_mod._reject_bad_config(raw, 'ref.toml') is None
+
+
 @pytest.mark.parametrize('enabled', [True, False], ids=['cache-on', 'cache-off'])
 def test_validate_reference_config_checks_the_spectral_cache_the_workers_use(
     monkeypatch, tmp_path, enabled
