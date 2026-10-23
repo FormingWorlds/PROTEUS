@@ -22,7 +22,7 @@ The shared blocks (`<!-- fwl-<name>:begin ... -->`) come from `tools/agents/`. T
 
 PR CI also runs `tools/generate_{config_reference,module_map,output_reference,version_badges}.py --check`: a new config field, module or helpfile column fails it until you rerun that script without `--check` and commit the output.
 
-<!-- fwl-core:begin sha256=837539bbfc4c7815 -->
+<!-- fwl-core:begin sha256=1adfa510a4f117ec -->
 ## PROTEUS ecosystem rules
 
 PROTEUS couples separate module repositories into one model of the evolution of rocky planets and their atmospheres. Its config selects one module per process; the config values are the lowercase names:
@@ -44,7 +44,7 @@ A module change to anything PROTEUS calls or reads (a function signature, a conf
 
 ### Validation
 
-A new or changed physics routine gets the validation cases named in its confirmed plan: an analytical law, a published figure or table, or a cross-code check. Each case is a `reference_pinned` test that runs the real code on real data, with no mocks, asserts the tolerance, and writes its light and dark plot through the `validation_plot` fixture of proteus-mpl. `pytest -m reference_pinned --validation-plots` makes all plots again. Line plots are SVG, maps are AVIF; each file is at most 60 kB, under `docs/assets/validation/`. Each case has a subsection on the page of its physical process in the Validation tab, with the reference, the tolerance, the test id and the command. Data read from a published figure comes from 2 independent figlab reads that agree within the stated error, as a CSV with its provenance under `tests/validation/data/`.
+A new or changed physics routine gets the validation cases named in its confirmed plan: an analytical law, a published figure or table, or a cross-code check. Each case is a `reference_pinned` test that runs the real code on real data, with no mocks, asserts the tolerance, and writes its light and dark plot through the `validation_plot` fixture of proteus-mpl. `pytest -m reference_pinned --validation-plots` makes all plots again. Line plots are SVG, maps are AVIF; each file is at most 60 kB, under `docs/assets/validation/`. Each case has a subsection on its page in the Validation tab, with the reference, the tolerance, the test id and the command. Data read from a published figure comes from 2 independent figlab reads that agree within the stated error, as a CSV with its provenance under `tests/validation/data/`.
 
 ### Code
 
