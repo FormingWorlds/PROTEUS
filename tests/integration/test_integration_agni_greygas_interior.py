@@ -53,11 +53,10 @@ def test_agni_greygas_dummy_interior_coupling():
       silently running the dummy module instead of AGNI
     - Conservation invariants across the coupled step
 
-    Integration tier: the first AGNI solve dominates the wall time. It
-    starts from the analytic T(p) guess with a 200 K first-loop step cap,
-    which reaches the same converged state in 13 Newton steps where the
-    default isothermal start with a 50 K cap needs 30. The default start
-    is exercised on Linux by test_slow_agni_aragog.py.
+    Integration tier: the first AGNI solve dominates the wall time, so it
+    starts from the analytic T(p) guess with a 200 K step cap for the first
+    3 loops. The default isothermal start runs on Linux in
+    test_slow_agni_aragog.py.
     """
     with tempfile.TemporaryDirectory() as tmpdir:
         config_path = PROTEUS_ROOT / 'input' / 'dummy.toml'
@@ -143,3 +142,6 @@ def test_agni_greygas_dummy_interior_coupling():
 
         # Conservation invariants across the coupled step
         assert_smoke_conservation_invariants(runner.hf_all)
+
+        # Every AGNI solve converged (+1), not rejected (-1) or skipped (0)
+        assert runner.hf_all['atm_converged'].gt(0.0).all()

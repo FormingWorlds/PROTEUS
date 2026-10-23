@@ -197,8 +197,7 @@ def test_load_ps_table_non_square_grid_matches_every_scaled_node(tmp_path):
     """A 4 S x 3 P table loads as (nS, nP, 3) with every node scaled by its header factor.
 
     The grid is not square, so a reshape to (nP, nS) or a transposed read puts the
-    wrong P and S at the off-diagonal nodes, and a swapped scale factor moves every
-    node by the P/S scale ratio (1e9 / 2600). P rises along axis 1 and is constant
+    wrong P and S at the off-diagonal nodes. P rises along axis 1 and is constant
     along axis 0; S rises along axis 0.
     """
     eos_subdir = tmp_path / 'spider' / 'lookup_data' / '1TPa-dK09-elec-free'
