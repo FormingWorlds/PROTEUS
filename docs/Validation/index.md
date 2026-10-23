@@ -14,7 +14,7 @@ A case with a plot shows the tested values against their reference in a light an
 pytest -m reference_pinned tests --validation-plots
 ```
 
-Without `--validation-plots` the tests assert and write nothing. The physics of a single module is validated in that module's own documentation.
+Without `--validation-plots` the tests assert and write nothing. The physics inside a coupled module, such as Zalmoxis, is validated in the documentation of that module.
 
 ## Pages by process
 
@@ -28,10 +28,12 @@ Without `--validation-plots` the tests assert and write nothing. The physics of 
 | Orbit | `orbit/parameterized.py` | [Prescribed migration laws](orbit/parameterized.md) | [eccentricity decay](orbit/parameterized.md#plot-eccentricity-decay) |
 | Orbit | `orbit/satellite.py` | [Satellite angular momentum](orbit/satellite.md) | none yet |
 | Orbit | `orbit/wrapper.py` | [Orbit module wrapper](orbit/wrapper.md) | none yet |
+| Orbit | `orbit/obliqua.py` | [Tidal Love-number lookup](orbit/obliqua.md) | none yet |
 | Outgassing | `outgas/atmodeller.py` | [Species-to-element mass split](outgas/atmodeller.md) | none yet |
 | Outgassing | `outgas/binodal.py` | [H2-MgSiO3 binodal](outgas/binodal.md) | none yet |
 | Outgassing | `outgas/burial_ledger.py` | [Burial ledger for remelting](outgas/burial_ledger.md) | none yet |
 | Outgassing | `outgas/compaction.py` | [Melt drainage across the freezing front](outgas/compaction.md) | none yet |
+| Outgassing | `outgas/lavatmos.py` | [Rock-vapour molar masses](outgas/lavatmos.md) | none yet |
 | Outgassing | `outgas/trapping.py` | [Solid-phase volatile trapping](outgas/trapping.md) | none yet |
 | Star | `star/star.py` | [Stellar luminosity and instellation](star/star.md) | none yet |
 | Star | `star/wrapper.py` | [Stellar wrapper dispatch](star/wrapper.md) | none yet |
