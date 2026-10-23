@@ -37,6 +37,7 @@ TIERS = frozenset({'unit', 'smoke', 'integration', 'slow'})
 REPO_ROOT = Path(__file__).resolve().parents[2]
 TESTS_ROOT = REPO_ROOT / 'tests'
 NIGHTLY = REPO_ROOT / '.github/workflows/ci-nightly.yml'
+PR_CHECKS = REPO_ROOT / '.github/workflows/ci-pr-checks.yml'
 
 # A heavy shard's job cap must clear the selected test's own pytest-timeout by
 # at least this margin, because a slow checkout plus a SOCRATES cache-miss
@@ -396,6 +397,29 @@ def test_integration_tier_runs_two_xdist_workers():
     assert tokens.count('-n') == 1, cmd
     assert tokens[tokens.index('-n') + 1] == '2', cmd
     assert '--dist worksteal' in cmd, cmd
+
+
+def _pytest_command(text: str, marker: str) -> str:
+    """The pytest command that names ``marker``, continuation lines joined into one."""
+    for m in re.finditer(r'pytest (?:[^\n]*\\\n)*[^\n]*', text):
+        if marker in m.group(0):
+            return ' '.join(m.group(0).replace('\\\n', ' ').split())
+    raise AssertionError(f'no pytest invocation names {marker}')
+
+
+def test_linux_pr_unit_step_runs_two_workers_and_the_nightly_keeps_one_process():
+    """The Linux PR unit step runs 2 workers to stay inside its time limit; the Linux
+    nightly unit tier keeps 1 process, so it still finds faults that depend on test order."""
+    pr = _pytest_command(PR_CHECKS.read_text(), 'junit-unit-linux.xml').split()
+    assert pr.count('-n') == 1 and pr[pr.index('-n') + 1] == '2', pr
+    assert pr[pr.index('--dist') + 1] == 'worksteal', pr
+    nightly = _nightly_text()
+    unit = _pytest_command(nightly, 'junit-unit-').split()
+    assert '-n' not in unit and '${{ matrix.unit_xdist }}' in ' '.join(unit), unit
+    xdist_os = re.findall(
+        r'- os: (\S+)\n(?:[ \t]+[a-z_]+: [^\n]*\n)*?[ \t]+unit_xdist: ', nightly
+    )
+    assert xdist_os == ['macos-latest'], xdist_os
 
 
 def test_every_tiered_file_is_reachable_by_its_ci_job():
