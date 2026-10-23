@@ -693,7 +693,9 @@ def _resolve_zalmoxis_anchor_temperatures(
     P_cmb estimate on the very first call; the next structure iteration
     recomputes it against the converged Zalmoxis P_cmb. Zalmoxis anchors its
     upward integration at the CMB value and takes the surface value for its
-    first-guess profile, its zero-pressure nodes and its nodes below the CMB.
+    first-guess profile and its nodes below the CMB. Its zero-pressure nodes
+    take the adiabat continued to the target surface pressure once the adiabat
+    blend reaches 1, and the linear profile at the outer radius before that.
     The energetics IC is solved separately on the P-S tables
     (compute_initial_entropy).
 
