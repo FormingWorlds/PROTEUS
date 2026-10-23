@@ -219,17 +219,20 @@ def test_load_ps_table_non_square_grid_matches_every_scaled_node(tmp_path):
 
 
 def test_load_ps_table_unparsable_token_raises(tmp_path):
-    """A value that is not a number (Fortran ``1.0D0``) raises ValueError naming the token,
-    instead of entering the table as NaN."""
+    """A token that does not parse as a number (Fortran ``1.0D0``) raises ValueError."""
     eos_subdir = tmp_path / 'spider' / 'lookup_data' / '1TPa-dK09-elec-free'
     eos_subdir.mkdir(parents=True)
-    (eos_subdir / 'density_melt.dat').write_text(
-        '# 5 2 1\n# units\n# info\n# info\n# 1e9 2600.0 3000.0\n0.0 0.0 1.0\n1.0 0.0 1.0D0\n'
+    table_text = (
+        '# 5 2 1\n# units\n# info\n# info\n# 1e9 2600.0 3000.0\n0.0 0.0 1.0\n1.0 0.0 {}\n'
     )
+    (eos_subdir / 'density_melt.dat').write_text(table_text.format('1.0D0'))
 
-    with pytest.raises(ValueError, match='could not convert') as excinfo:
+    with pytest.raises(ValueError, match=r"'1\.0D0'"):
         _load_local_table(tmp_path)
-    assert "'1.0D0'" in str(excinfo.value)
+
+    # Control: the same table with an E exponent loads, so the token alone raised
+    (eos_subdir / 'density_melt.dat').write_text(table_text.format('1.0E0'))
+    assert _load_local_table(tmp_path)[0, 1, 2] == pytest.approx(3000.0, rel=1e-12)
 
 
 def test_interior_t_init_loads_all_three_tables(tmp_path):

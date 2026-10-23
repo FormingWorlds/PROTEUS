@@ -143,5 +143,6 @@ def test_agni_greygas_dummy_interior_coupling():
         # Conservation invariants across the coupled step
         assert_smoke_conservation_invariants(runner.hf_all)
 
-        # Every AGNI solve converged (+1), not rejected (-1) or skipped (0)
-        assert runner.hf_all['atm_converged'].gt(0.0).all()
+        # No AGNI solve was rejected (-1) or skipped (0)
+        converged = runner.hf_all['atm_converged']
+        assert converged.gt(0.0).all(), f'atm_converged per row: {converged.tolist()}'
