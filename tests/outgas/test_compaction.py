@@ -112,7 +112,7 @@ def _solver_velocity(
 
 @pytest.mark.reference_pinned
 @pytest.mark.physics_invariant
-def test_mobility_reproduces_the_interior_solver_in_every_regime():
+def test_mobility_reproduces_the_interior_solver_in_every_regime(validation_plot):
     """Cross-implementation check against the permeability the interior solver
     uses for gravitational separation (Bower et al. 2018 section 2.1), by
     calling the solver's own ``relative_velocity`` and backing the mobility out
@@ -122,7 +122,11 @@ def test_mobility_reproduces_the_interior_solver_in_every_regime():
     pytest.importorskip('aragog')
     rho_s, rho_l, gravity, eta = 4000.0, 3600.0, 9.8, 100.0
     # Both blends and all three regimes, from the porosity floor to Stokes.
-    phi = np.array([0.02, 0.05, 0.0769452, 0.1, 0.3, 0.5, 0.7, 0.771462, 0.9, 0.99])
+    phi = np.unique(
+        np.concatenate([np.linspace(0.02, 0.99, 40), [0.05, 0.0769452, 0.1, 0.3, 0.5, 0.7]])
+    )
+    phi = np.unique(np.concatenate([phi, [0.771462, 0.9, 0.99]]))
+    plotted = {}
     for buoyancy in ('mixture', 'solid'):
         for grain in (1.0e-4, 1.0e-3, 1.0e-2):
             v = _solver_velocity(phi, grain, rho_s, rho_l, gravity, eta, buoyancy)
@@ -135,6 +139,8 @@ def test_mobility_reproduces_the_interior_solver_in_every_regime():
             np.testing.assert_allclose(mine[phi < 0.05], theirs[phi < 0.05], rtol=1.5e-3)
             w = darcy_velocity(phi, grain, rho_s - rho_l, gravity, eta, buoyancy=buoyancy)
             np.testing.assert_allclose(w[phi >= 0.05], v[phi >= 0.05], rtol=2.0e-4)
+            if grain == 1.0e-3:
+                plotted[buoyancy] = (v, w)
     # Discrimination: the modes differ by 1 - phi on the Rumpf-Gupte regime and
     # agree in the Stokes regime, where a grain settles alone in the melt.
     ratio = mobility_function(phi, 1.0e-3, buoyancy='mixture') / mobility_function(
@@ -166,6 +172,34 @@ def test_mobility_reproduces_the_interior_solver_in_every_regime():
         1.0e-6 * 2.0 / 9.0, rel=2e-3
     )
     assert f_bkc < 1.0e-4 * f_stokes
+
+    def figure():
+        import matplotlib.pyplot as plt
+
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(9, 3.6))
+        tol = np.where(phi < 0.05, 1.5e-3, 2.0e-4)
+        for buoyancy, mark in (('mixture', 'o'), ('solid', 's')):
+            v, w = plotted[buoyancy]
+            ax1.plot(phi, (w / v - 1.0) / tol, mark, mfc='none', label=buoyancy)
+        ax1.axhspan(-1.0, 1.0, color='C2', alpha=0.25, zorder=0, label='tolerance')
+        ax1.set_xlabel('Porosity')
+        ax1.set_ylabel('deviation / tolerance')
+        ax1.legend(fontsize=8)
+        (vm, wm), (vs, ws) = plotted['mixture'], plotted['solid']
+        ax2.plot(phi, wm / ws, label='drainage')
+        ax2.plot(phi[::4], vm[::4] / vs[::4], 'o', mfc='none', label='solver')
+        ax2.plot(phi, 1.0 - phi, '--', label='1 - porosity')
+        ax2.set_xlabel('Porosity')
+        ax2.set_ylabel('mixture / solid')
+        ax2.legend(fontsize=8)
+        ax1.set_yticks([-1.0, 0.0, 1.0])
+        for ax, tag in ((ax1, '(a)'), (ax2, '(b)')):
+            ax.set_xticks([0.0, 0.5, 1.0])
+            ax.set_title(tag, loc='left')
+        fig.tight_layout()
+        return fig
+
+    validation_plot(figure, 'compaction_drainage_velocity')
 
     # Edge case: at zero porosity the blend leaves a Stokes residue of order 1e-20
     # m2, as the interior solver does, twelve orders below the value at phi = 0.3,

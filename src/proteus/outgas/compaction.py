@@ -42,7 +42,7 @@ grains, so it holds for melt fractions below about 0.2, while the front is
 entered at the rheological transition, ``rfront_loc = 0.4`` by default; above
 about 0.2 the factor is an extrapolation of that solution.
 
-The drag viscosity is the one deliberate difference: it is always the melt
+The drag viscosity is the one difference by design: it is always the melt
 viscosity. The solver's ``separation_viscosity`` defaults to ``'mixture'``, the
 rheological-transition-blended value, which exceeds the melt viscosity by ten
 orders of magnitude at the top of the front and by eighteen to twenty in its
