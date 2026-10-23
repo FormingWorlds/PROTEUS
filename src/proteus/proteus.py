@@ -723,6 +723,22 @@ class Proteus:
         self.init_stage = True
         self._baseline_structure_done = False
 
+        # A resume keeps the separation laws the run was written with; the check reads
+        # the old init_coupler.toml, so it runs before the write below replaces it.
+        if self.config.params.resume:
+            from proteus.interior_energetics.resume_laws import (
+                ResumeSeparationLawError,
+                check_resume_separation_laws,
+            )
+
+            try:
+                check_resume_separation_laws(
+                    self.config, self.config_path, self.directories['output']
+                )
+            except ResumeSeparationLawError:
+                UpdateStatusfile(self.directories, 20)
+                raise
+
         # Write config to output directory, for future reference. Record the
         # resolved (not raw) step caps. A resolved 0.0 means the cap is off,
         # but a literal 0.0 in a config is rejected at load, so an off cap is

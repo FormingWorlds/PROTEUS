@@ -175,6 +175,36 @@ def _error_lines(exc: BaseException, path: str = '') -> list[str]:
     return lines
 
 
+def _check_resume_switch_bool(raw: dict, path: Path | str) -> None:
+    """Require a TOML boolean for ``interior_energetics.aragog.allow_resume_law_change``.
+
+    cattrs turns any value into a bool with ``bool()``, so a string ``"false"`` would read
+    as true before the attrs validator sees it.
+
+    Parameters
+    ----------
+    raw:
+        Raw TOML dict as returned by `read_config`.
+    path:
+        Config file the dict came from, quoted back in any error.
+
+    Raises
+    ------
+    ValueError
+        If the file sets the field to anything but true or false.
+    """
+    interior = raw.get('interior_energetics')
+    aragog = interior.get('aragog') if isinstance(interior, dict) else None
+    if not isinstance(aragog, dict) or 'allow_resume_law_change' not in aragog:
+        return
+    value = aragog['allow_resume_law_change']
+    if not isinstance(value, bool):
+        raise ValueError(
+            f'Invalid configuration in {path}:\n  interior_energetics.aragog.'
+            f'allow_resume_law_change must be a TOML true or false, got {value!r}'
+        )
+
+
 def read_config(path: Path | str) -> dict:
     """Read config file from path"""
     log.debug('Reading config from %s', path)
@@ -215,6 +245,7 @@ def structure_config(raw: dict, path: Path | str) -> Config:
     """
 
     _check_step_cap_zeros(raw, path)
+    _check_resume_switch_bool(raw, path)
 
     try:
         obj = cattrs.structure(raw, Config)
