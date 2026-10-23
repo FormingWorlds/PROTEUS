@@ -367,3 +367,30 @@ def test_legacy_path_lets_solver_set_O_kg_total():
     # regression that preserved the user input (correct under from_O_budget but
     # wrong under legacy) would leave hf_row['O_kg_total'] at 0.0.
     assert hf_row['O_kg_total'] > 0.0
+
+
+@pytest.mark.unit
+def test_mantle_redox_path_buffers_calliope_to_the_tracked_offset():
+    """Under from_mantle_redox CALLIOPE is buffered to the melt-redox offset
+    (hf_row['fO2_shift_IW_mantle'], written by interior_chem/redox.py this
+    iteration), not to the configured outgas.fO2_shift_IW, and that offset
+    is echoed as the derived column with no O residual.
+
+    Discriminating: the configured offset (-2.5) differs from the tracked
+    one (+1.7), so reading the wrong source fails both checks.
+    """
+    dirs = {'output': '/tmp/test'}
+    config = _make_from_o_budget_config(fO2_shift_IW=-2.5)
+    config.planet.fO2_source = 'from_mantle_redox'
+    hf_row = _earth_hf_row()
+    hf_row['fO2_shift_IW_mantle'] = 1.7
+
+    with patch(
+        'proteus.outgas.calliope.equilibrium_atmosphere', return_value=_make_solvevol_result()
+    ) as solve:
+        calc_surface_pressures(dirs, config, hf_row)
+
+    opts = solve.call_args.args[1]
+    assert opts['fO2_shift_IW'] == pytest.approx(1.7)
+    assert hf_row['fO2_shift_IW_derived'] == pytest.approx(1.7)
+    assert hf_row['O_res'] == pytest.approx(0.0)

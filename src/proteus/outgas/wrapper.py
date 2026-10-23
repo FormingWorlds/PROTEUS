@@ -159,12 +159,14 @@ def check_ic_oxygen_budget(
     corrupting the trajectory.
 
     Skipped when:
-      - ``planet.fO2_source != "user_constant"``. When
-        fO2_source = 'from_O_budget' the user O budget is the
-        *authoritative* input that drives the chemistry,
+      - ``planet.fO2_source == "from_O_budget"``. There the user O
+        budget is the *authoritative* input that drives the chemistry,
         so any "divergence" between it and the derived O inventory is
-        zero by construction. The check is meaningful only when fO2 is
-        the input and O is the output.
+        zero by construction. The check is meaningful whenever fO2 is
+        the input and O is the derived output, which holds for both
+        "user_constant" (static offset) and "from_mantle_redox" (tracked
+        melt-redox offset) -- in both, O_kg_total is a chemistry output,
+        not a user-supplied target.
       - ``O_kg_user_ic`` is the sentinel (-1.0), which marks
         ``O_mode == 'ic_chemistry'`` (the user opted into chemistry-
         derived O so any discrepancy is, by definition, accepted).
@@ -187,7 +189,7 @@ def check_ic_oxygen_budget(
     """
     # Gate on fO2_source. The 'from_O_budget' source makes user O
     # authoritative so there is no divergence to flag.
-    if config.planet.fO2_source != 'user_constant':
+    if config.planet.fO2_source == 'from_O_budget':
         return
 
     user_O = float(hf_row.get('O_kg_user_ic', -1.0))
@@ -436,18 +438,10 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict, *, initial: bool):
 
     log.info('Calculating volatile outgassing at surface')
 
-    # planet.fO2_source dispatch. Two runtime paths are wired today:
-    # 'user_constant' (fO2 buffered to the configured IW offset) for
-    # every backend, and 'from_O_budget' (authoritative-O chemistry)
-    # for the CALLIOPE
-    # and atmodeller backends. The Config-level validator
-    # (planet_fO2_source_compat) rejects 'from_mantle_redox' and the
-    # from_O_budget + dummy combo at config-load, so this guard is
-    # unreachable under a normally-loaded Config. It remains as defence
-    # in depth for programmatic Config construction (tests, scripted
-    # runs) that bypasses the validators.
+    # planet_fO2_source_compat rejects other values at config load; this guard
+    # covers Config objects built without the validators (tests, scripts).
     fO2_source = config.planet.fO2_source
-    if fO2_source not in ('user_constant', 'from_O_budget'):
+    if fO2_source not in ('user_constant', 'from_O_budget', 'from_mantle_redox'):
         raise NotImplementedError(
             f'planet.fO2_source = "{fO2_source}" is recognised by the '
             'config schema but its runtime path is not yet wired into '
@@ -460,19 +454,12 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict, *, initial: bool):
             'invert against; outgas.module = "dummy" has none.'
         )
 
-    # Default the derived-fO2 helpfile columns to the user-configured
-    # buffer offset before the backend dispatch. Each backend overrides
-    # the default as appropriate for its chemistry. Under fO2_source =
-    # "user_constant" the pre-seeded value is the offset the chemistry
-    # equilibrated to (because the fugacity constraint set it); leaving
-    # it untouched is the right behaviour. Under fO2_source =
-    # "from_O_budget" CALLIOPE and atmodeller overwrite the pre-seed
-    # with their solver-derived value. The pre-seed exists primarily so
-    # the dummy backend and any solve-skipped path land at the
-    # physically meaningful configured value rather than the
-    # ZeroHelpfileRow default 0.0, which downstream consumers would
-    # otherwise mis-interpret as "the chemistry ran at exactly IW".
-    hf_row['fO2_shift_IW_derived'] = float(config.outgas.fO2_shift_IW)
+    # Pre-seed the derived offset with the constraint (from_O_budget backends replace
+    # it), so the dummy backend and skipped solves do not report 0, i.e. exactly IW.
+    if fO2_source == 'from_mantle_redox':
+        hf_row['fO2_shift_IW_derived'] = float(hf_row['fO2_shift_IW_mantle'])
+    else:
+        hf_row['fO2_shift_IW_derived'] = float(config.outgas.fO2_shift_IW)
     hf_row['O_res'] = 0.0
 
     # The chemistry partitions a whole-planet inventory and rewrites every

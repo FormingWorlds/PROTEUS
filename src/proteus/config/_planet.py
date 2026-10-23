@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 
-from attr.validators import ge, gt, in_, optional
+from attr.validators import ge, gt, in_, lt, optional
 from attrs import define, field
 
 from ._converters import none_if_none
@@ -181,27 +181,6 @@ class GasPrs:
         return getattr(self, s)
 
 
-def _reject_reserved_fO2_source(instance, attribute, value):
-    """Reject the reserved ``from_mantle_redox`` source at construction
-    and on assignment.
-
-    ``from_mantle_redox`` is a recognised enum member reserved for the
-    radial Fe3+/Fe2+ framework (issue #653); it has no runtime path yet.
-    The field-level validator runs on a bare ``Planet(...)`` and on
-    post-construction assignment, where the Config-level cross-field
-    check does not, so this keeps the reserved value from reaching the
-    outgas dispatch with a less informative error.
-    """
-    if value == 'from_mantle_redox':
-        raise ValueError(
-            'planet.fO2_source = "from_mantle_redox" is reserved for the '
-            'radial Fe3+/Fe2+ tracking framework (issue #653) and is not '
-            'yet wired into the runtime. Use "user_constant" (fO2 buffered '
-            'by outgas.fO2_shift_IW) or "from_O_budget" (authoritative O '
-            'budget, fO2 derived) instead.'
-        )
-
-
 def _validate_ini_dsdr(instance, attribute, value):
     """Reject a non-finite ``ini_dsdr``, and a positive one with liquidus_super.
 
@@ -337,11 +316,50 @@ class Planet:
             instead of buffering to a fixed dIW. Requires
             ``O_mode != 'ic_chemistry'`` (the chemistry needs an O
             target to invert against).
-        'from_mantle_redox' (reserved): fO2 is derived from a tracked
-            Fe3+/Fe2+ ratio in the silicate melt (Schaefer et al. 2024
-            / issue #653). NOT YET IMPLEMENTED; the config-level
-            validator rejects this value until the radial fO2
-            framework lands.
+        'from_mantle_redox': fO2 is derived from a Fe3+/Fe2+ ratio tracked
+            through fractional crystallization of the melt (Schaefer
+            et al. 2024 / issue #653; see
+            ``interior_chem/redox.py``), using prescribed
+            melt/solid partition coefficients rather than an equilibrium
+            constant. The tracker needs a per-cell radial melt-fraction
+            profile, so requires ``interior_energetics.module`` to be
+            'spider' or 'aragog' (checked by the config-level
+            validator).
+    ferric_fraction_initial: float
+        Initial ferric fraction Fe3+/FeT of the melt at the first
+        tracker call, in (0, 1). Seeds the global Fe3+/Fe2+ reservoirs
+        (``interior_chem/redox.py``, Step 1-2 / Eq 1-3). Default 0.1,
+        the BSE-like value used by Schaefer et al. (2024). Read only
+        when ``fO2_source = 'from_mantle_redox'``; ignored otherwise.
+        The endpoints are excluded because the tracker forms the redox
+        ratio f/(1-f), which is undefined at 1 and gives log10(0) at 0.
+    metal_saturation: bool
+        Whether the melt-redox tracker reacts a supersaturated melt to
+        Fe-metal equilibrium (3FeO = 2FeO1.5 + Fe; ``interior_chem/redox.py``,
+        Step 9, Schaefer et al. 2024 Section 2.7). Default False. When False
+        no metal forms and Fe3+/FeT follows crystallization alone, so the
+        melt can be left supersaturated in metal without this being
+        detected; a_Fe is not evaluated (``a_fe_max_mantle`` = 0,
+        ``a_fe_max_cell_mantle`` = -1), the
+        ``params.dt.afe_max_rel_change`` time-step cap
+        is inactive, crystallization uses the solver melt fraction
+        as is, without the PHI_SOLID = 0.15 solid threshold, and the
+        radial fO2 profiles are pressure-free (Eq 13 without int(dV dP),
+        Delta-IW against Hirschmann 2021 at 1 bar). Read only when
+        ``fO2_source = 'from_mantle_redox'``.
+    partition_coefficients: str
+        Solid/melt partition coefficients of Fe2+ and Fe3+ in the
+        melt-redox tracker (``interior_chem/redox.py``, Step 5-6), chosen
+        per cell from its pressure at the first tracker call.
+        'mgsio3' (default): the MgSiO3 phases only, bridgmanite at
+        P >= 22 GPa and a 1:1 Cpx/Opx mix below, with the mineral values of
+        Schaefer et al. (2024) Table S1 (Fe2+) and Table 3 (Fe3+).
+        'bulk_BSE': the bulk coefficients of the full mineral assemblage of
+        each Schaefer et al. (2024) layer (boundaries 1, 2.5, 15, 18,
+        22 GPa) for their bulk-silicate-Earth magma ocean, the medians over
+        all draws of their archived 1000 km run; this follows their mean
+        Fe3+/FeT. Read only when ``fO2_source = 'from_mantle_redox'``; a
+        resumed run keeps the coefficients it started with.
     prevent_warming: bool
         When True, require the planet to monotonically cool over time.
         Enforced in all atmosphere modules and termination checks.
@@ -398,18 +416,27 @@ class Planet:
     elements: Elements = field(factory=Elements)
     gas_prs: GasPrs = field(factory=GasPrs)
 
-    # fO2 source. Default 'user_constant': outgas.fO2_shift_IW buffers
-    # atmospheric fO2 and the chemistry solver returns the implied O
-    # inventory. 'from_O_budget' inverts the roles (O budget drives fO2);
-    # 'from_mantle_redox' is reserved for issue #653 and rejected by the
-    # config-level validator below until that work lands.
+    # fO2 source (class docstring); compatibility with
+    # interior_energetics.module is checked at the Config level, below.
     fO2_source: str = field(
         default='user_constant',
-        validator=[
-            in_(('user_constant', 'from_O_budget', 'from_mantle_redox')),
-            _reject_reserved_fO2_source,
-        ],
+        # A one-element list on purpose: test_generate_config_reference.py
+        # pins the schema generator's validator extraction on this field.
+        validator=[in_(('user_constant', 'from_O_budget', 'from_mantle_redox'))],
     )
+
+    # Initial melt Fe3+/FeT of the redox tracker; open interval because the
+    # tracker forms f/(1-f) and log10 of it.
+    ferric_fraction_initial: float = field(default=0.1, validator=(gt(0), lt(1)))
+
+    # Fe-metal saturation step of the redox tracker (redox.py Step 9). False
+    # keeps the a_Fe diagnostic but forms no metal. Only read under
+    # fO2_source = 'from_mantle_redox'.
+    metal_saturation: bool = field(default=False)
+
+    # Partition-coefficient prescription of the redox tracker
+    # (redox.py Step 5-6). Only read under fO2_source = 'from_mantle_redox'.
+    partition_coefficients: str = field(default='mgsio3', validator=in_(('mgsio3', 'bulk_BSE')))
 
     # Structure override: bypass the root finder and use a fixed R_int.
     # Needed for SPIDER/Aragog parity runs where the two energetics

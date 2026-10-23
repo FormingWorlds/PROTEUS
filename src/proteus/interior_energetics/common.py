@@ -1240,6 +1240,10 @@ class Interior_t:
 
         self.aragog_solver = None
 
+        # Melt-redox tracker state (interior_chem/redox.py), created on the first
+        # update_melt_redox call under planet.fO2_source = 'from_mantle_redox'.
+        self.redox_state = None
+
         # Counter for consecutive Aragog steps integrated on a stale
         # Zalmoxis structure (i.e. with self.structure_stale=True
         # set by a Zalmoxis fall-back). Resets to 0 on every successful

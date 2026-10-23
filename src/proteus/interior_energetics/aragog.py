@@ -3200,6 +3200,11 @@ def write_final_snapshot(config: Config, interior_o: Interior_t, dirs: dict, hf_
         mesh_surface_pressure=mesh_surface_pressure_state(solver),
         core_profile=aragog_core.frozen_profile(interior_o),
     )
+    # The rewrite above replaces the file, so restore the fO2 profile that
+    # the in-loop step appended to it.
+    from proteus.interior_chem.redox import store_profile_snapshot
+
+    store_profile_snapshot(config, dirs, hf_row['Time'], interior_o, hf_row)
 
 
 def infer_mesh_surface_pressure(output_dir: str, time: float, mesh) -> float | None:
