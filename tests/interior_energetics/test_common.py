@@ -219,17 +219,18 @@ def test_load_ps_table_non_square_grid_matches_every_scaled_node(tmp_path):
     assert np.all(np.diff(table[:, :, 1], axis=0) > 0.0)
 
 
-def test_load_ps_table_short_row_raises(tmp_path):
-    """A data row with a missing column raises ValueError instead of loading a partial table."""
+def test_load_ps_table_unparsable_token_raises(tmp_path):
+    """A value that is not a number (Fortran ``1.0D0``) raises ValueError naming the token,
+    instead of entering the table as NaN."""
     eos_subdir = tmp_path / 'spider' / 'lookup_data' / '1TPa-dK09-elec-free'
     eos_subdir.mkdir(parents=True)
     (eos_subdir / 'density_melt.dat').write_text(
-        '# 5 2 1\n# units\n# info\n# info\n# 1e9 2600.0 3000.0\n0.0 0.0 1.0\n1.0 0.0\n'
+        '# 5 2 1\n# units\n# info\n# info\n# 1e9 2600.0 3000.0\n0.0 0.0 1.0\n1.0 0.0 1.0D0\n'
     )
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match='could not convert') as excinfo:
         _load_local_table(tmp_path)
-    assert (eos_subdir / 'density_melt.dat').stat().st_size > 0
+    assert "'1.0D0'" in str(excinfo.value)
 
 
 def test_interior_t_init_loads_all_three_tables(tmp_path):
