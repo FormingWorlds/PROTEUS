@@ -95,15 +95,17 @@ def test_verify_passes_on_committed_tree(schema):
     assert len({site['config_path'] for site in _gmm.DISPATCH_SITES}) == 10
 
 
-def test_verify_parses_each_source_file_at_most_twice(schema, monkeypatch):
+def test_verify_parses_each_source_text_once(schema, monkeypatch):
     """The tree-wide scan reads every source file for each of the ten dispatch sites;
-    parsing once per file, plus the symbol lookups, keeps verify fast under coverage."""
-    calls = []
-    parse = _gmm.ast.parse
-    monkeypatch.setattr(_gmm.ast, 'parse', lambda src, *a, **k: calls.append(1) or parse(src))
+    it parses each distinct source text once, and each symbol lookup parses its file."""
+    getattr(_gmm._scan_nodes, 'cache_clear', lambda: None)()
+    calls, lookups = [], []
+    parse, symbol = _gmm.ast.parse, _gmm._symbol_defined
+    monkeypatch.setattr(_gmm.ast, 'parse', lambda *a, **k: calls.append(1) or parse(*a, **k))
+    monkeypatch.setattr(_gmm, '_symbol_defined', lambda *a: lookups.append(1) or symbol(*a))
     assert _gmm.verify(schema) == []
-    n_files = len(list(_gmm.SRC.rglob('*.py')))
-    assert 0 < len(calls) <= 2 * n_files, (len(calls), n_files)
+    texts = {py.read_text() for py in _gmm.SRC.rglob('*.py')}
+    assert lookups and len(calls) == len(texts) + len(lookups), (len(calls), len(texts))
 
 
 def test_the_filtered_scan_equals_a_full_walk_on_the_committed_tree(monkeypatch):
