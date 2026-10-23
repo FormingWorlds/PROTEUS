@@ -1,7 +1,7 @@
 """Keep the separation laws of a resumed Aragog run.
 
 ``init_coupler.toml`` in the run directory records the config the run last started
-with, with ``RECORD_OVERRIDES`` applied. ``Proteus.start()`` writes it again on every
+with as loaded, with ``RECORD_OVERRIDES`` applied. ``Proteus.start()`` writes it again on every
 start (a resume once every resume check has passed), so a resume compares the new
 config with it first. A changed ``separation_viscosity`` or ``separation_buoyancy``
 would switch the melt drainage law at the resume row; the resume stops unless

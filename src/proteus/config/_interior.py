@@ -392,7 +392,7 @@ class Aragog:
     in the run's init_coupler.toml, with a warning in the log. False stops such a resume,
     because the changed law would act from the resume row on. A separation_buoyancy the
     record does not hold must be set in the config file either way, as must a
-    separation_viscosity when the record does not name the Aragog module.
+    separation_viscosity when the record names no interior module or is missing.
     init_coupler.toml records false."""
     solver_method: str = field(
         default='cvode',

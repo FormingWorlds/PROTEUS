@@ -7,6 +7,7 @@ import sys
 import time
 from collections.abc import Mapping
 from datetime import datetime
+from operator import attrgetter
 from pathlib import Path
 
 import numpy as np
@@ -725,17 +726,14 @@ class Proteus:
 
         # A resume keeps the separation laws the run was written with; the check reads
         # the old init_coupler.toml, so it runs before any write replaces it.
-        if self.config.params.resume:
-            from proteus.interior_energetics.resume_laws import (
-                ResumeSeparationLawError,
-                check_resume_separation_laws,
-            )
+        from proteus.interior_energetics import resume_laws
 
+        if self.config.params.resume:
             try:
-                check_resume_separation_laws(
+                resume_laws.check_resume_separation_laws(
                     self.config, self.config_path, self.directories['output']
                 )
-            except ResumeSeparationLawError:
+            except resume_laws.ResumeSeparationLawError:
                 UpdateStatusfile(self.directories, 20)
                 raise
 
@@ -771,15 +769,17 @@ class Proteus:
             if 'phase_boundary_cap' in unsupported:
                 # The dropped cap falls back to Aragog's fixed 1 yr policy.
                 step_cap_overrides['interior_energetics.aragog.phase_boundary_cap'] = 'fixed'
-        from proteus.interior_energetics.resume_laws import RECORD_OVERRIDES
+        from proteus.accretion.wrapper import IMPACT_CONFIG_FIELDS
 
+        # The record keeps the loaded values of the fields a giant impact changes; a resume
+        # writes it once every resume check has passed (before the main loop), so an attempt
+        # that stops earlier keeps the record of the laws the run used.
+        loaded = {key: attrgetter(key)(self.config) for key in IMPACT_CONFIG_FIELDS}
         record = functools.partial(
             self.config.write,
             os.path.join(self.directories['output'], 'init_coupler.toml'),
-            overrides={**step_cap_overrides, **RECORD_OVERRIDES},
+            overrides={**step_cap_overrides, **resume_laws.RECORD_OVERRIDES, **loaded},
         )
-        # A resume writes its record once every resume check has passed (before the main
-        # loop), so an attempt that stops earlier leaves the record of the laws the run used.
         if not self.config.params.resume:
             record()
 
