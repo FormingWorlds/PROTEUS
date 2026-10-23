@@ -41,7 +41,6 @@ patience   = 0                                    # Stop after this many evaluat
 # objective     = "student-t"                     # "chi-2" (default) | "student-t": independent heavy-tailed errors; needs [sigma], no correlation
 # student_t_dof = 4                               # Degrees of freedom of "student-t", default 4
 # posterior_samples = 2000                        # Posterior samples from the GP at the end; needs [sigma], default 2000 with it, 0 is off
-# polish_runs   = 25                            # PROTEUS runs per island in a local search after BO; needs [sigma], default 0 (off)
 
 # Parameters to optimize (with bounds)
 [parameters]
