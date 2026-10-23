@@ -788,30 +788,45 @@ def test_condensates_need_their_elements_and_their_data_range():
     assert 'H2O_g' in [s.name for s in network.data]
 
 
-def test_skipped_solve_resets_every_condensate_column_to_zero():
-    """With no budget above threshold, no model is built and every condensate column is 0.
+@pytest.mark.parametrize('source', ['from_O_budget', 'user_constant'])
+def test_no_budget_left_resets_every_condensate_column_to_zero(source):
+    """With no budget above threshold every condensate column reads 0.
 
-    Edge case: stale values from an earlier solve, which must not survive a skipped
-    step and leak into the element closure.
+    Under ``from_O_budget`` no solve runs; under ``user_constant`` the O2-only
+    network is solved against the buffer and carries no condensate. Edge case: stale
+    values from an earlier solve, which must not survive the step and leak into the
+    element closure.
     """
     pytest.importorskip('atmodeller')
     from proteus.utils.constants import condensate_list, vol_element_list
 
     config, hf_row = _carbon_only_condensate_case()
-    hf_row['C_kg_total'] = 0.0  # every element now below threshold
+    config.planet.fO2_source = source
+    hf_row['C_kg_total'] = 0.0  # every element, O included, now below threshold
+    hf_row['O_kg_total'] = 0.0
     stale = [f'{c}_cd_{q}' for c in condensate_list for q in ('activity', 'kg')]
     stale += [f'{e}_kg_condensed' for e in vol_element_list]
     hf_row.update(dict.fromkeys(stale, 1.0e20))
 
+    out = MagicMock()
+    out.quick_look.return_value = {'O2_g': np.array(1.0e-6)}
+    out.total_pressure.return_value = np.array(1.0e-6)
+    out.asdict.return_value = {'O2_g': {'gas_mass': np.array(1.0e10)}}
+    fake_model = MagicMock()
+    fake_model.output = out
+
     from proteus.outgas.atmodeller import _MODEL_CACHE
 
     _MODEL_CACHE.clear()
-    with patch('atmodeller.EquilibriumModel') as model_cls:
+    with patch('atmodeller.EquilibriumModel', return_value=fake_model) as model_cls:
         calc_surface_pressures_atmodeller({'output': '/tmp/test'}, config, hf_row)
     _MODEL_CACHE.clear()
 
-    assert not model_cls.called
     assert [hf_row[k] for k in stale] == [0.0] * len(stale)
+    if source == 'from_O_budget':
+        assert not model_cls.called
+    else:
+        assert model_cls.call_args.args[0].condensed_species_names == ()
 
 
 @pytest.mark.physics_invariant
@@ -964,6 +979,7 @@ def test_mol_columns_derived_from_kg_when_solve_omits_mole_count():
     hf_row = _hf_row_with_HS_budget()
 
     co2_total_mass, co2_dissolved_mass, co2_gas_mass = 6.0e20, 2.0e20, 4.0e20
+    hf_row['C_kg_total'] = co2_total_mass * element_mmw['C'] / eval_gas_mmw('CO2')
 
     out = MagicMock()
     out.quick_look.return_value = {
