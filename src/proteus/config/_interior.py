@@ -390,7 +390,8 @@ class Aragog:
     allow_resume_law_change: bool = field(default=False, validator=_valid_bool)
     """Let a resume change separation_viscosity or separation_buoyancy from the values
     in the run's init_coupler.toml, with a warning in the log. False stops such a resume,
-    because the changed law would act from the resume row on."""
+    because the changed law would act from the resume row on. A law the record does not
+    hold must be set in the config file either way. init_coupler.toml records false."""
     solver_method: str = field(
         default='cvode',
         validator=in_(('cvode', 'radau', 'bdf')),

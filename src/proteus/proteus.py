@@ -773,7 +773,10 @@ class Proteus:
                 step_cap_overrides['interior_energetics.aragog.phase_boundary_cap'] = 'fixed'
         self.config.write(
             os.path.join(self.directories['output'], 'init_coupler.toml'),
-            overrides=step_cap_overrides,
+            overrides={  # the permission to switch a separation law holds for one resume
+                **step_cap_overrides,
+                'interior_energetics.aragog.allow_resume_law_change': False,
+            },
         )
 
         # Create lockfile for keeping simulation running
