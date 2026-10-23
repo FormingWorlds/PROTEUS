@@ -25,6 +25,7 @@ from hypothesis import strategies as st  # noqa: E402
 
 from proteus.config import read_config_object  # noqa: E402
 from proteus.interior_energetics.resume_laws import (  # noqa: E402
+    RECORD_OVERRIDES,
     ResumeSeparationLawError,
     check_resume_separation_laws,
 )
@@ -163,24 +164,37 @@ def test_a_run_without_a_usable_record_needs_both_laws_in_the_config_file(tmp_pa
     assert check_resume_separation_laws(config, path, out) == []
 
 
-@pytest.mark.parametrize('new, refused', [('solid', False), ('mixture', True)])
-def test_laws_in_a_record_that_names_no_module_are_compared(tmp_path, new, refused):
-    """A record with separation laws but no interior_energetics.module is compared like any
-    record; only the 'melt' inference needs a record that names Aragog."""
+def _record_without_module(tmp_path):
+    """A run directory whose init_coupler.toml holds both laws but no interior module."""
     out = tmp_path / 'run'
     out.mkdir()
     (out / 'init_coupler.toml').write_text(
         "[interior_energetics.aragog]\nseparation_viscosity = 'mixture'\n"
         "separation_buoyancy = 'solid'\n"
     )
+    return out
+
+
+def test_a_change_from_a_record_that_names_no_module_is_refused(tmp_path):
+    """A record with separation laws but no interior_energetics.module is compared like any
+    record; only the 'melt' inference needs a record that names Aragog."""
+    out = _record_without_module(tmp_path)
+    config, path = _user_config(tmp_path, separation_viscosity='mixture')
+    with pytest.raises(ResumeSeparationLawError) as err:
+        check_resume_separation_laws(config, path, out)
+    assert "separation_buoyancy is 'mixture'" in str(err.value)
+    assert "written with 'solid'" in str(err.value)
+
+
+def test_the_recorded_laws_of_a_record_that_names_no_module_resume_quietly(tmp_path, caplog):
+    """The same record and the laws it holds resume with no switch and no note."""
+    out = _record_without_module(tmp_path)
     config, path = _user_config(
-        tmp_path, separation_buoyancy=new, separation_viscosity='mixture'
+        tmp_path, separation_buoyancy='solid', separation_viscosity='mixture'
     )
-    if refused:
-        with pytest.raises(ResumeSeparationLawError, match="written with 'solid'"):
-            check_resume_separation_laws(config, path, out)
-    else:
+    with caplog.at_level(logging.DEBUG, logger=LOGGER):
         assert check_resume_separation_laws(config, path, out) == []
+    assert [r for r in caplog.records if r.name == LOGGER] == []
 
 
 def test_a_refused_resume_logs_no_note_for_a_law_the_config_file_sets(tmp_path, caplog):
@@ -196,10 +210,7 @@ def test_a_refused_resume_logs_no_note_for_a_law_the_config_file_sets(tmp_path, 
 def test_the_record_overrides_fit_the_config_schema(tmp_path):
     """start() writes init_coupler.toml with RECORD_OVERRIDES; a real config takes them and
     reads the allow switch back as false."""
-    from proteus.interior_energetics.resume_laws import RECORD_OVERRIDES
-
     config, _ = _user_config(tmp_path, allow_resume_law_change=True)
-    assert RECORD_OVERRIDES == {'interior_energetics.aragog.allow_resume_law_change': False}
     config.write(tmp_path / 'record.toml', overrides=RECORD_OVERRIDES)
     reread = read_config_object(tmp_path / 'record.toml').interior_energetics.aragog
     assert reread.allow_resume_law_change is False

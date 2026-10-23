@@ -358,8 +358,9 @@ def _resume_to_init_star(p, *extra):
     return None
 
 
-def _resume_to_main_loop(p):
-    """Resume ``p`` past every resume check, until start() sets the running status 1."""
+def _resume_to_main_loop(p, *extra, restore=None):
+    """Resume ``p`` past every resume check, until start() sets the running status 1;
+    ``restore`` stands in for restore_accretion_state, ``extra`` patches come last."""
     from proteus.utils.coupler import UpdateStatusfile
 
     def status(dirs, code):
@@ -372,9 +373,10 @@ def _resume_to_main_loop(p):
         patch('proteus.star.wrapper.init_star'),
         patch('proteus.orbit.wrapper.init_orbit'),
         patch('proteus.accretion.wrapper.init_accretion', return_value=[]),
-        patch('proteus.accretion.wrapper.restore_accretion_state'),
+        patch('proteus.accretion.wrapper.restore_accretion_state', side_effect=restore),
         patch('proteus.interior_struct.common.volatile_mass_change', return_value=0.0),
         patch('proteus.proteus.UpdateStatusfile', side_effect=status),
+        *extra,
     )
 
 
@@ -402,15 +404,79 @@ def test_an_allowed_switch_is_recorded_only_once_the_resume_reaches_the_main_loo
     p, stored_text = _resumable_run_with_buoyancy(tmp_path, 'solid')
     p.config.interior_energetics.aragog.allow_resume_law_change = True
     assert _resume_to_init_star(p) is None  # stopped at init_star, after the law check
-    p.config.write.assert_not_called()
     assert (tmp_path / 'init_coupler.toml').read_text() == stored_text
     assert _resume_to_main_loop(p) is None
-    p.config.write.assert_called_once()
-    from proteus.interior_energetics.resume_laws import RECORD_OVERRIDES
-
     overrides = p.config.write.call_args.kwargs['overrides']
-    assert RECORD_OVERRIDES.items() <= overrides.items()
-    assert (tmp_path / 'init_coupler.toml').read_text() != stored_text
+    assert overrides['interior_energetics.aragog.allow_resume_law_change'] is False
+    assert (tmp_path / 'init_coupler.toml').read_text() == repr(overrides)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'target',
+    [
+        'proteus.accretion.wrapper.restore_accretion_state',
+        'proteus.interior_struct.common.volatile_mass_change',
+    ],
+    ids=['accretion restore refuses', 'volatile change refuses'],
+)
+def test_an_allowed_switch_stays_unrecorded_when_a_later_resume_check_stops(tmp_path, target):
+    """Under the allow switch, a resume stopped by a check after init_star records status 20
+    and leaves the record of the old law."""
+    p, stored_text = _resumable_run_with_buoyancy(tmp_path, 'solid')
+    p.config.interior_energetics.aragog.allow_resume_law_change = True
+    err = _resume_to_main_loop(p, patch(target, side_effect=RuntimeError('refused here')))
+    assert isinstance(err, RuntimeError) and 'refused here' in str(err), repr(err)
+    assert (tmp_path / 'status').read_text().split()[0] == '20'
+    assert (tmp_path / 'init_coupler.toml').read_text() == stored_text
+
+
+@pytest.mark.unit
+def test_a_resume_records_the_config_as_loaded_not_as_the_accretion_restore_left_it(tmp_path):
+    """restore_accretion_state grows mass_tot on a resume; the record keeps the loaded value,
+    so a resume from that record does not add the accreted rock a second time."""
+    p, _ = _resumable_run_with_buoyancy(tmp_path, 'mixture')
+    p.config.planet.mass_tot = 1.0
+    p.config.write.side_effect = lambda path, overrides=None: Path(path).write_text(
+        f'mass_tot = {p.config.planet.mass_tot}'
+    )
+
+    def grow(proteus):
+        proteus.config.planet.mass_tot = 1.25
+
+    assert _resume_to_main_loop(p, restore=grow) is None
+    assert p.config.planet.mass_tot == pytest.approx(1.25, rel=1e-15)  # the restore ran
+    assert (tmp_path / 'init_coupler.toml').read_text() == 'mass_tot = 1.0'
+
+
+@pytest.mark.unit
+def test_a_fresh_run_records_its_config_with_the_allow_switch_off(tmp_path):
+    """A fresh run writes init_coupler.toml before its first structure solve, with the
+    allow switch off."""
+    p = _make_proteus_instance(tmp_path)
+    p.directories.update(
+        {k: str(tmp_path / k) for k in ('output/observe', 'output/offchem', 'output/plots')}
+    )
+    p.config.interior_energetics.flux_guess = 100.0
+    p.config.star.age_ini = 0.1
+    p.config.write.side_effect = lambda path, overrides=None: Path(path).write_text(
+        repr(overrides)
+    )
+    with ExitStack() as stack:
+        for target in _START_PATCHES:
+            stack.enter_context(patch(target))
+        stack.enter_context(patch('proteus.proteus.CleanDir'))
+        stack.enter_context(
+            patch(
+                'proteus.interior_energetics.wrapper.solve_structure',
+                side_effect=_StopAfterMeshRestore,
+            )
+        )
+        with pytest.raises(_StopAfterMeshRestore):
+            p.start(resume=False, offline=True)
+    record = (tmp_path / 'init_coupler.toml').read_text()
+    assert "'interior_energetics.aragog.allow_resume_law_change': False" in record
+    p.config.write.assert_called_once()
 
 
 @pytest.mark.unit
