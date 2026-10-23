@@ -42,10 +42,10 @@ grains, so it holds for melt fractions below about 0.2, while the front is
 entered at the rheological transition, ``rfront_loc = 0.4`` by default; above
 about 0.2 the factor is an extrapolation of that solution.
 
-The drainage evaluates that law once per front, with the front-mean density
-contrast and gravity and the lever-rule porosity of the front top, and keeps
-the full contrast in the matrix time, ``tau_s = mu_s / (|drho| g L)``, under
-either buoyancy. The drag viscosity is always the melt viscosity. The solver's
+The drainage takes its inputs once per front: the front-mean density
+contrast and gravity and the lever-rule porosity of the front top. The matrix
+time keeps the full contrast, ``tau_s = mu_s / (|drho| g L)``, under either
+buoyancy. The drag viscosity is always the melt viscosity. The solver's
 ``separation_viscosity`` defaults to ``'mixture'``, the
 rheological-transition-blended value, which exceeds the melt viscosity by ten
 orders of magnitude at the top of the front and by eighteen to twenty in its
@@ -82,7 +82,8 @@ log = logging.getLogger('fwl.' + __name__)
 # mush near the solidus; this is the middle of that range.
 DEFAULT_MUSH_LOG10VISC = 20.0
 
-# Tolerances of the drainage integral; atol + rtol phi_top bounds its excursion past [0, phi_top].
+# Tolerances of the drainage integral. Its end may pass 0 by 10 atol and phi_top by
+# 10 atol + rtol phi_top, an allowance on the integrator's error scale.
 _RTOL, _ATOL = 1.0e-8, 1.0e-12
 
 # Branch codes reported on every step, so a trajectory shows which regime it
@@ -209,12 +210,12 @@ def drainage_integral(
 
     Integrates ``dphi/dt = -phi / max(L/w_D(phi), tau_s)`` from ``porosity_top``
     over the residence time, with ``w_D`` under ``buoyancy``. ``w_D`` falls as
-    ``phi^2`` or steeper down to a porosity of about 3e-6, below which the mobility
-    tends to the Stokes residue of the tanh blend and the decay turns exponential,
-    so a long residence drains the parcel to zero. The result is clipped to
-    ``[0, porosity_top]``; an excursion beyond the integrator's error scale,
-    ``atol + rtol porosity_top``, raises ``RuntimeError``, as does a non-positive
-    percolation time.
+    ``phi^2`` down to a porosity of about 3e-5; below about 3e-6 the mobility tends to
+    the Stokes residue of the tanh blend, a numerical floor, and a residence far beyond
+    any front's ends within the integrator's tolerance of zero. The result is clipped to
+    ``[0, porosity_top]``; an end below 0 by more than 10 atol, or above
+    ``porosity_top`` by more than 10 atol + rtol ``porosity_top``, raises
+    ``RuntimeError``, as does a non-positive percolation time.
 
     Returns
     -------
@@ -231,7 +232,8 @@ def drainage_integral(
     tau_d_top = thickness / w_top if w_top > 0.0 else float('inf')
     if not tau_d_top > 0.0:
         raise RuntimeError(
-            f'percolation time {tau_d_top!r} s is not positive for a front {thickness!r} m thick'
+            f'percolation time {tau_d_top!r} s is not positive for a front '
+            f'{thickness!r} m thick'
         )
 
     if not np.isfinite(t_res) or t_res <= 0.0 or porosity_top <= 0.0:
@@ -265,11 +267,11 @@ def drainage_integral(
         )
         return float(porosity_top), tau_d_top, tau_s
     retained = float(sol.y[0, -1])
-    tol = _ATOL + _RTOL * porosity_top
-    if not -tol <= retained <= porosity_top + tol:
+    low, high = 10.0 * _ATOL, 10.0 * _ATOL + _RTOL * porosity_top
+    if not -low <= retained <= porosity_top + high:
         raise RuntimeError(
-            f'retained porosity {retained!r} lies outside [0, {porosity_top!r}] beyond the '
-            'round-off of the drainage integral'
+            f'retained porosity {retained!r} lies outside [0, {porosity_top!r}] by more than '
+            f'the integrator error scale ({low!r} below, {high!r} above)'
         )
     return float(min(max(retained, 0.0), porosity_top)), tau_d_top, tau_s
 
