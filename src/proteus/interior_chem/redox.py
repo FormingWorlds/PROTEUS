@@ -309,12 +309,14 @@ def _log10_fO2_profile(
     P_gpa: np.ndarray,
     X: dict,
     pressure_term: bool = True,
+    eos_model: str = 'deng2020',
 ) -> tuple[np.ndarray, np.ndarray]:
     """Per-cell log10(fO2) from Eq 13 at each cell's (T, P).
 
-    Returns (log10_fO2, valid). Cells outside the Deng EOS envelope
-    (T > T_CEILING or P > P_EXERCISED) have no pressure term and are NaN,
-    flagged False in ``valid``. ``pressure_term=False`` drops int(dV dP),
+    Returns (log10_fO2, valid). Cells outside the envelope of the melt EOS
+    ``eos_model`` (eos_deng.ENVELOPE; 'deng2020': T > T_CEILING or
+    P > P_EXERCISED) have no pressure term and are NaN, flagged False in
+    ``valid``. ``pressure_term=False`` drops int(dV dP),
     i.e. Eq 13 at 1 bar and each cell's T, so no EOS envelope applies and
     every finite-T cell is valid."""
     if not pressure_term:
@@ -322,7 +324,7 @@ def _log10_fO2_profile(
         valid = np.isfinite(temp)
         prof = np.where(valid, _log10_fO2(redox_ratio, temp, X, 0.0), np.nan)
         return prof, valid
-    I_ox, valid = eos_deng.int_dV_dP_oxidation(temp, P_gpa)
+    I_ox, valid = eos_deng.int_dV_dP_oxidation(temp, P_gpa, model=eos_model)
     prof = np.where(valid, _log10_fO2(redox_ratio, temp, X, I_ox), np.nan)
     return prof, valid
 
@@ -570,6 +572,7 @@ def _metal_saturation_step(
     pres: np.ndarray,
     phi: np.ndarray,
     mass: np.ndarray,
+    eos_model: str = 'deng2020',
 ) -> float:
     """Step 9a-9h: check the melt for Fe-metal saturation and, if it is
     supersaturated, react it to equilibrium. Returns the reaction extent xi
@@ -609,7 +612,7 @@ def _metal_saturation_step(
     # Always with the pressure term, which makes disproportionation favourable at
     # depth; without it the shallow cool melt would saturate first.
     a_fe, eos_valid = dispro.activity_Fe_metal(
-        temp, n2, n3, n_sil, P_gpa=P_gpa, use_P_term=True
+        temp, n2, n3, n_sil, P_gpa=P_gpa, use_P_term=True, eos_model=eos_model
     )
     a_fe = np.where(melt & eos_valid, a_fe, 0.0)
     state.a_fe_cell = a_fe
@@ -618,16 +621,16 @@ def _metal_saturation_step(
     # equilibrium (Schaefer evaluate at the magma-ocean base).
     usable = melt & eos_valid
     if not np.any(usable):
-        # All melt outside the Deng EOS envelope, common early when metal is most
+        # All melt outside the EOS envelope, common early when metal is most
         # likely: warn once rather than pass silently.
         if not state.eos_coverage_logged:
             state.eos_coverage_logged = True
             log.warning(
                 'No melt cell lies inside the Fe-disproportionation EOS '
-                'envelope (T <= %.0f K, P <= %.0f GPa); metal saturation '
+                'envelope (%s melt EOS: %s); metal saturation '
                 'cannot be evaluated while that holds.',
-                eos_deng.T_CEILING,
-                eos_deng.P_EXERCISED,
+                eos_model,
+                eos_deng.ENVELOPE[eos_model],
             )
         return 0.0
     cstar = int(np.argmax(np.where(usable, a_fe, -np.inf)))
@@ -641,7 +644,7 @@ def _metal_saturation_step(
     # Step 9f: the only equation solved. One scalar unknown, monotonic in xi,
     # bracketed automatically because F(0) = RHS(0)*(a_Fe - 1).
     # n_metal_avail = 0 disables the back-reaction branch, so xi >= 0.
-    K, _ = dispro.K_eq(temp[cstar], P_gpa[cstar], use_P_term=True)
+    K, _ = dispro.K_eq(temp[cstar], P_gpa[cstar], use_P_term=True, eos_model=eos_model)
     xi = dispro.solve_extent(float(K), n2, n3, n_sil, n_metal_avail=0.0)
     if xi <= 0.0:
         return 0.0
@@ -1057,6 +1060,7 @@ def update_melt_redox(interior_o: Interior_t, hf_row: dict, config: Config) -> N
     # Effective melt fraction for every step below: phi < PHI_SOLID is solid,
     # unless metal saturation is off, where the solver's phi is used as is.
     react = bool(config.planet.metal_saturation)
+    eos_model = str(config.planet.redox_dV_eos)
     phi = effective_melt_fraction(interior_o.phi, PHI_SOLID if react else 0.0)
     mass = np.asarray(interior_o.mass, dtype=float)
     pres = np.asarray(interior_o.pres, dtype=float)
@@ -1094,7 +1098,7 @@ def update_melt_redox(interior_o: Interior_t, hf_row: dict, config: Config) -> N
     checked = react and not first_call and not state.melt_exhausted
     if checked:
         temp = np.asarray(interior_o.temp, dtype=float)
-        xi = _metal_saturation_step(state, temp, pres, phi, mass)
+        xi = _metal_saturation_step(state, temp, pres, phi, mass, eos_model)
         if xi != 0.0:
             _update_ratios(state)
 
@@ -1103,7 +1107,9 @@ def update_melt_redox(interior_o: Interior_t, hf_row: dict, config: Config) -> N
     temp = np.asarray(interior_o.temp, dtype=float)
     P_gpa = pres / 1e9
     melt = phi > 0.0
-    prof, _ = _log10_fO2_profile(state.redox_ratio, temp, P_gpa, state.X, pressure_term=react)
+    prof, _ = _log10_fO2_profile(
+        state.redox_ratio, temp, P_gpa, state.X, pressure_term=react, eos_model=eos_model
+    )
     P_buffer = P_gpa if react else np.full_like(P_gpa, P_1BAR_GPA)
     state.profile_pressure_term = react
     state.log10_fO2_cell = np.where(melt, prof, np.nan)

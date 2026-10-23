@@ -50,6 +50,7 @@ from proteus.interior_chem.redox import (
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
+
 # Asymmetric mesh: one fully molten cell, one half molten, one solid, with
 # unequal cell masses. Symmetric or all-equal input would let a bug that
 # drops the phi weighting still reproduce the right melt mass.
@@ -85,7 +86,10 @@ def _iw_oneill_eggins_2002(T):
 
 
 def _make_config(
-    f_0: float, source: str = 'from_mantle_redox', metal_saturation: bool = True
+    f_0: float,
+    source: str = 'from_mantle_redox',
+    metal_saturation: bool = True,
+    redox_dV_eos: str = 'deng2020',
 ) -> MagicMock:
     """Minimal config exposing only the fields the tracker reads."""
     config = MagicMock()
@@ -93,6 +97,7 @@ def _make_config(
     config.planet.ferric_fraction_initial = f_0
     config.planet.metal_saturation = metal_saturation
     config.planet.partition_coefficients = 'mgsio3'
+    config.planet.redox_dV_eos = redox_dV_eos
     config.outgas.T_floor = 700.0  # the outgassing temperature floor default
     return config
 
@@ -1026,7 +1031,9 @@ def test_a_trace_melt_cell_is_not_tested_for_metal_and_has_no_fo2():
     from proteus.interior_chem.redox import PHI_SOLID
 
     pres = np.array([10.0e9, 30.0e9, 60.0e9])
-    temp = np.array([2200.0, 3000.0, 3800.0])
+    # A gentle T rise with depth keeps the deepest cell the most saturated
+    # (log10 K = -2.48, -1.83, -1.73 with the Komabayashi FeO and Fe volumes).
+    temp = np.array([2200.0, 2500.0, 2800.0])
     mass = np.array([2.0e21, 4.0e21, 6.0e21])
     config = _make_config(0.01)
 
@@ -1866,3 +1873,38 @@ def test_bulk_prescription_follows_the_schaefer_2024_run():
     f_mg = _replay(*_partition_coefficients(P, 'mgsio3'))
     assert np.max(np.abs(f_mg - _SCH_F)) > 0.02
     assert _SCH_P[np.argmin(f_mg)] > 21.0
+
+
+@pytest.mark.usefixtures('keane_table')
+@pytest.mark.physics_invariant
+def test_fo2_profile_uses_the_configured_melt_eos():
+    """planet.redox_dV_eos reaches the Step 10 profile: with 'keane_table' the
+    stored profile is the one computed with that model, and it differs from
+    the deng2020 profile by the difference of the two pressure terms. A
+    super-Earth cell (10000 K, 1 TPa) outside the deng2020 envelope is NaN
+    with deng2020 and finite with the table."""
+    import math
+
+    from proteus.interior_chem import eos_deng
+    from proteus.interior_chem.redox import _A, _R, _log10_fO2_profile
+
+    interior_d, interior_k = _make_interior(), _make_interior()
+    update_melt_redox(interior_d, {'T_magma': 2200.0}, _make_config(0.1))
+    update_melt_redox(
+        interior_k, {'T_magma': 2200.0}, _make_config(0.1, redox_dV_eos='keane_table')
+    )
+    melt = _PHI > 0
+    prof_d = interior_d.redox_state.log10_fO2_cell[melt]
+    prof_k = interior_k.redox_state.log10_fO2_cell[melt]
+    I_d, _ = eos_deng.int_dV_dP_oxidation(_TEMP[melt], _PRES[melt] / 1e9)
+    I_k, _ = eos_deng.int_dV_dP_oxidation(_TEMP[melt], _PRES[melt] / 1e9, model='keane_table')
+    expected = (I_k - I_d) / (_A * _R * _TEMP[melt] * math.log(10))
+    np.testing.assert_allclose(prof_k - prof_d, expected, rtol=1e-9, atol=1e-12)
+
+    X = interior_k.redox_state.X
+    hot_d, ok_d = _log10_fO2_profile(0.1 / 0.9, np.array([10000.0]), np.array([1000.0]), X)
+    hot_k, ok_k = _log10_fO2_profile(
+        0.1 / 0.9, np.array([10000.0]), np.array([1000.0]), X, eos_model='keane_table'
+    )
+    assert not ok_d[0] and np.isnan(hot_d[0])
+    assert ok_k[0] and np.isfinite(hot_k[0])

@@ -44,6 +44,7 @@ from proteus.interior_chem.eos_deng import (
     int_dV_dP,
     int_dV_dP_oxidation,
     p_at_V0,
+    table_path,
 )
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
@@ -175,21 +176,21 @@ def test_no_root_case_returns_the_residual_minimum_and_warns_once(monkeypatch, c
 
 
 @pytest.mark.physics_invariant
-def test_integral_at_one_bar_is_the_feo_term_from_zero_as_in_schaefer():
-    """Schaefer's Murnaghan FeO integral runs from P = 0 while the Deng and Fe
-    integrals start at 1 bar, so at P = 1 bar the total is -V_FeO(T) x 1 bar
-    rather than zero, and the oxidation integral alone vanishes.
+def test_integral_vanishes_at_one_bar_for_every_term():
+    """All three terms (melt, liquid FeO, liquid Fe) integrate from 1 bar, as
+    in Komabayashi (2014) Eq 1, so at P = 1 bar the total and the oxidation
+    integral are zero. Guard: Schaefer's archived FeO integral, which starts
+    at P = 0, would leave -V_FeO x 1 bar (about -1.5 J/mol) here.
     """
     T = 3000.0
     total, valid = int_dV_dP(T, _P0)
     ox, _ = int_dV_dP_oxidation(T, _P0)
-    V_feo_cm3 = (13650.0 + 2.92 * (T - 1673.0)) * 1e-3
+    from_zero = -(13650.0 + 2.92 * (T - 1673.0)) * 1e-3 * _P0 * 1e3
 
     assert bool(valid)
-    assert float(total) == pytest.approx(-V_feo_cm3 * _P0 * 1e3, rel=1e-3)
-    assert abs(float(ox)) < 1e-3
-    # Guard: a version that subtracts the 1-bar FeO value returns ~0 here.
-    assert float(total) < -1.0
+    assert float(total) == pytest.approx(0.0, abs=1e-9)
+    assert float(ox) == pytest.approx(0.0, abs=1e-9)
+    assert abs(from_zero) > 1.0
 
 
 @pytest.mark.physics_invariant
@@ -315,21 +316,68 @@ def test_conditions_inside_the_domain_are_reported_valid():
 
 @pytest.mark.physics_invariant
 def test_liquid_iron_oxide_volume_integral_is_linear_at_low_pressure():
-    """The Murnaghan integral of the FeO liquid reduces to volume times
-    pressure when compression is negligible.
+    """At P much smaller than K0 = 128 GPa the liquid FeO volume is its 1-bar
+    value V0 exp(alpha0 (T - 298)) (Komabayashi 2014 Table 2), so the integral
+    from 1 bar is that volume times (P - 1 bar).
 
-    Analytic limit: for P much smaller than the bulk modulus the integrand is
-    effectively constant, so doubling the pressure doubles the integral.
+    Guard: the Lange & Carmichael (1987) 1-bar volume of Schaefer's archived
+    code is 10 % larger at 2500 K, far outside the tolerance.
     """
     T = 2500.0
-    V_cm3 = 13650.0 + 2.92 * (T - 1673.0)  # cm3/mol times 1e3
-    small, smaller = _int_V_FeO(T, 0.02), _int_V_FeO(T, 0.01)
+    V_cm3 = 13.16 * np.exp(4.7e-5 * (T - 298.0))
+    small, smaller = float(_int_V_FeO(T, 0.02)), float(_int_V_FeO(T, 0.01))
 
-    assert small == pytest.approx(2.0 * smaller, rel=1e-3)
-    # Pin the absolute scale against the uncompressed volume: 1 cm3/mol GPa
-    # is 1e3 J/mol, so V(T) times 0.01 GPa lands near V_cm3 * 1e-2 J/mol.
-    assert smaller == pytest.approx(V_cm3 * 1e-2, rel=1e-2)
-    assert smaller > 0.0
+    # 1 cm3/mol x 1 GPa = 1e3 J/mol; compression over 0.02 GPa is 2e-4.
+    assert small == pytest.approx(V_cm3 * (0.02 - _P0) * 1e3, rel=1e-3)
+    assert smaller == pytest.approx(V_cm3 * (0.01 - _P0) * 1e3, rel=1e-3)
+    V_lc = (13650.0 + 2.92 * (T - 1673.0)) * 1e-3
+    assert abs(smaller / (V_lc * (0.01 - _P0) * 1e3) - 1.0) > 0.05
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.reference_pinned
+@pytest.mark.parametrize(
+    'phase, P, T, V_table3',
+    [
+        ('Fe', 136.0, 4000.0, 5.18),
+        ('FeO', 136.0, 4000.0, 8.63),
+        ('Fe', 330.0, 5000.0, 4.21),
+        ('FeO', 330.0, 5000.0, 6.59),
+    ],
+    ids=['Fe 136 GPa', 'FeO 136 GPa', 'Fe 330 GPa', 'FeO 330 GPa'],
+)
+def test_liquid_volumes_reproduce_komabayashi_2014_table3(phase, P, T, V_table3):
+    """The liquid Fe and FeO volumes match Komabayashi (2014) JGR Solid Earth
+    119, 4164, Table 3 (end-member columns, X_Fe = 1 and 0) to 0.2 %, the
+    rounding of the tabulated two decimals. Guards: the Lange & Carmichael
+    FeO volume of Schaefer's archived code is 14 % and 37 % too large at these
+    points, and the Fe value without thermal expansion 2-6 % too small."""
+    V = float(eos_deng._VT(P, T, phase))
+    V_cold = float(eos_deng._V298(P, phase))
+
+    assert V == pytest.approx(V_table3, rel=2e-3)
+    assert abs(V_cold / V_table3 - 1.0) > 0.01
+    if phase == 'FeO':
+        V_lc = (13650.0 + 2.92 * (T - 1673.0)) * 1e-3 * (1.0 + 4.0 * P / 30.33) ** -0.25
+        assert V_lc / V_table3 > 1.1
+
+
+def test_extrapolation_beyond_the_komabayashi_range_is_logged_once(monkeypatch, caplog):
+    """Above 350 GPa or 7000 K the FeO and Fe terms are computed (finite, the
+    integral keeps its sign and size) and the extrapolation is logged once."""
+    import logging
+
+    monkeypatch.setattr(eos_deng, '_KOMA_EXTRAPOLATION_WARNED', False)
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.interior_chem.eos_deng'):
+        inside = eos_deng._fe_feo_terms(np.array([4000.0]), np.array([100.0]))
+        beyond = eos_deng._fe_feo_terms(np.array([10000.0]), np.array([1000.0]))
+        eos_deng._fe_feo_terms(np.array([12000.0]), np.array([2000.0]))
+
+    assert all(np.isfinite(v[0]) for v in inside + beyond)
+    # int V_FeO dP: about 1.1 MJ/mol at 100 GPa and 6.7 MJ/mol at 1 TPa.
+    assert 5.0e5 < float(inside[0][0]) < 2.0e6
+    assert 4.0e6 < float(beyond[0][0]) < 1.0e7
+    assert sum('database range' in r.message for r in caplog.records) == 1
 
 
 @pytest.mark.physics_invariant
@@ -342,3 +390,142 @@ def test_liquid_iron_volume_is_the_reference_volume_at_zero_pressure():
     V = eos_deng._V_Fe(10.0)
     assert V < eos_deng._V298_FE
     assert eos_deng._vinet_resid(V, 10.0) == pytest.approx(0.0, abs=1e-9)
+
+
+# ── model = 'keane_table' (Keane + Deng-thermal lookup table) ─────────────────
+
+
+def _pressure_term(I, T):
+    """int dV dP / (R T ln10), the log10 units of the fO2 pressure term."""
+    from scipy.constants import R
+
+    return np.asarray(I) / (R * np.asarray(T) * np.log(10.0))
+
+
+@pytest.mark.usefixtures('keane_table')
+@pytest.mark.physics_invariant
+@pytest.mark.reference_pinned
+@pytest.mark.parametrize(
+    'T, P', [(3000.0, 50.0), (3000.0, 70.0), (4000.0, 80.0), (4000.0, 5.0)]
+)
+def test_keane_table_matches_deng_inside_the_fpmd_coverage(T, P):
+    """Inside the Deng et al. (2020) FPMD coverage (Fig. 1: 3000 K to 74 GPa,
+    4000 K to 94 GPa for the 12.5 mol% Fe3+ melt) both models fit the same
+    points, so their oxidation integrals agree to within 0.15 in log10 units
+    (cross-implementation check; the table fit residual is 0.08-0.09 GPa).
+    Guard: doubling the table value, the volume change per formula unit of
+    Fe2O3 instead of per Fe, misses by more than 1.
+    """
+    deng, ok_d = int_dV_dP_oxidation(T, P)
+    keane, ok_k = int_dV_dP_oxidation(T, P, model='keane_table')
+
+    assert bool(ok_d) and bool(ok_k)
+    assert abs(float(_pressure_term(keane - deng, T))) < 0.15
+    if P >= 50.0:
+        assert abs(float(_pressure_term(2.0 * keane - deng, T))) > 1.0
+
+
+@pytest.mark.usefixtures('keane_table')
+@pytest.mark.physics_invariant
+def test_keane_table_oxidation_integral_vanishes_at_one_bar_and_rises_with_pressure():
+    """The oxidation integral starts from 1 bar, so it is zero there (and at
+    lower pressure, where the 1-bar value is used); with dV > 0 near the
+    surface it rises monotonically over the first 50 GPa at 3000 K."""
+    at_1bar, ok = int_dV_dP_oxidation(3000.0, 1.0e-4, model='keane_table')
+    below, ok_below = int_dV_dP_oxidation(3000.0, 1.0e-6, model='keane_table')
+    P = np.linspace(0.1, 50.0, 50)
+    I, ok_all = int_dV_dP_oxidation(3000.0, P, model='keane_table')
+
+    assert bool(ok) and bool(ok_below) and np.all(ok_all)
+    assert float(at_1bar) == pytest.approx(0.0, abs=1e-6)
+    assert float(below) == pytest.approx(0.0, abs=1e-6)
+    assert np.all(np.diff(I) > 0.0)
+
+
+@pytest.mark.usefixtures('keane_table')
+@pytest.mark.physics_invariant
+def test_keane_table_disproportionation_term_differs_from_deng_only_through_the_melt_volumes():
+    """int_dV_dP = 2 int dV_melt dP - int V_FeO dP + int V_Fe dP, with the FeO
+    and Fe terms shared by both models, so the difference between the models
+    is exactly twice the difference of their oxidation integrals."""
+    T, P = 3000.0, 50.0
+    full_d, _ = int_dV_dP(T, P)
+    full_k, ok = int_dV_dP(T, P, model='keane_table')
+    ox_d, _ = int_dV_dP_oxidation(T, P)
+    ox_k, _ = int_dV_dP_oxidation(T, P, model='keane_table')
+
+    assert bool(ok)
+    assert float(full_k - full_d) == pytest.approx(2.0 * float(ox_k - ox_d), rel=1e-9, abs=1e-6)
+    # Guard: a single (not doubled) melt term would leave half the difference.
+    assert abs(float(full_k - full_d) - float(ox_k - ox_d)) > 1.0e3
+
+
+@pytest.mark.usefixtures('keane_table')
+def test_keane_table_covers_super_earth_conditions_outside_the_deng_envelope(
+    monkeypatch, caplog
+):
+    """At 10000 K and 1 TPa the deng2020 model is outside its envelope, while
+    the table returns a valid value of the expected size (hundreds of kJ/mol)
+    and logs the extrapolation beyond the FPMD coverage once."""
+    import logging
+
+    monkeypatch.setattr(eos_deng, '_TABLE_EXTRAPOLATION_WARNED', False)
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.interior_chem.eos_deng'):
+        deng, ok_d = int_dV_dP_oxidation(10000.0, 1000.0)
+        keane, ok_k = int_dV_dP_oxidation(10000.0, 1000.0, model='keane_table')
+        int_dV_dP_oxidation(12000.0, 2000.0, model='keane_table')
+
+    assert not bool(ok_d) and float(deng) == 0.0
+    assert bool(ok_k)
+    assert 1.0e5 < float(keane) < 1.0e6
+    assert sum('FPMD coverage' in r.message for r in caplog.records) == 1
+
+
+@pytest.mark.usefixtures('keane_table')
+@pytest.mark.parametrize(
+    'T_kelvin, P_gpa, reason',
+    [
+        (500.0, 10.0, 'below the table temperature range'),
+        (25000.0, 10.0, 'above the table temperature range'),
+        (3000.0, 5000.0, 'beyond the table pressure range'),
+        (np.nan, 10.0, 'undefined temperature'),
+    ],
+)
+def test_keane_table_points_outside_the_table_are_reported_invalid(T_kelvin, P_gpa, reason):
+    """Outside the tabulated range both integrals return zero flagged invalid,
+    and the stated envelope matches the table range."""
+    ox, ok_ox = int_dV_dP_oxidation(T_kelvin, P_gpa, model='keane_table')
+    full, ok_full = int_dV_dP(T_kelvin, P_gpa, model='keane_table')
+
+    assert not bool(ok_ox) and not bool(ok_full), reason
+    assert float(ox) == 0.0 and float(full) == 0.0
+    (t_lo, t_hi), (_, p_hi) = (
+        eos_deng._keane_table()['T_range'],
+        eos_deng._keane_table()['P_range'],
+    )
+    assert (round(t_lo), round(t_hi), round(p_hi)) == (1000, 20000, 4000)
+    assert eos_deng.ENVELOPE['keane_table'] == '1000 K <= T <= 20000 K, P <= 4000 GPa'
+
+
+@pytest.mark.parametrize('bad', ['Deng2020', 'keane', ''])
+def test_unknown_melt_eos_model_is_rejected(bad):
+    """A misspelt model raises before any evaluation, for both integrals."""
+    with pytest.raises(ValueError, match='Unknown melt EOS model'):
+        int_dV_dP(3000.0, 50.0, model=bad)
+    with pytest.raises(ValueError, match='Unknown melt EOS model'):
+        int_dV_dP_oxidation(3000.0, 50.0, model=bad)
+    assert eos_deng.MODELS == ('deng2020', 'keane_table')
+
+
+def test_missing_keane_table_raises_with_the_expected_location(monkeypatch, tmp_path):
+    """The table is not part of the repository: without it in FWL_DATA, the
+    keane_table model raises FileNotFoundError naming FWL_DATA/interior_chem,
+    and the deng2020 model is unaffected."""
+    monkeypatch.setenv('FWL_DATA', str(tmp_path))
+    monkeypatch.setattr(eos_deng, '_TABLE', None)
+
+    assert table_path() == tmp_path / 'interior_chem' / 'keane_deng_table.npz'
+    with pytest.raises(FileNotFoundError, match='interior_chem'):
+        int_dV_dP_oxidation(3000.0, 50.0, model='keane_table')
+    value, valid = int_dV_dP_oxidation(3000.0, 50.0)
+    assert bool(valid) and 1.0e4 < float(value) < 1.0e6

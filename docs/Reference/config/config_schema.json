@@ -4310,6 +4310,25 @@
       "group_qualifier": null
     },
     {
+      "path": "planet.redox_dV_eos",
+      "toml_section": "planet",
+      "class": "Planet",
+      "type": "str",
+      "accepts_none": false,
+      "default": "\"deng2020\"",
+      "choices": [
+        "deng2020",
+        "keane_table"
+      ],
+      "bounds": null,
+      "description": "Melt equation of state for the volume change of FeO -> FeO1.5 in the pressure term int(dV dP) of the melt-redox tracker (``interior_chem/eos_deng.py``): the radial fO2 profile and the Fe-disproportionation equilibrium. Both carry the pressure term only with ``metal_saturation`` True, so the choice has no effect otherwise. 'deng2020' (default): the Deng et al. (2020) fourth-order Birch-Murnaghan fit as constructed by Schaefer et al. (2024), valid to 6500 K and 136 GPa. 'keane_table': a Keane cold curve with the Deng et al. (2020) thermal term, fitted to the Deng FPMD points of the 12.5 mol% Fe melts and tabulated over 1 bar - 4 TPa and 1000 - 20000 K for super-Earth mantles. It agrees with 'deng2020' inside the FPMD coverage (2000-4000 K, up to about 74-94 GPa) and is an extrapolation beyond. Read only when ``fO2_source = 'from_mantle_redox'`` and ``metal_saturation`` is True.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
       "path": "planet.R_int_override",
       "toml_section": "planet",
       "class": "Planet",

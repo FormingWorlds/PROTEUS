@@ -11,10 +11,12 @@ et al. (2024) always include in their disproportionation calculation
 ``fO2lowP_H22.m``, which correctly sets it to zero because that is evaluated
 at 1 bar.
 
-The integral is evaluated exactly as ``deltaGFeOFeO15_Deng.m`` and
-``BM4VolumeFunc.m`` (Schaefer et al. 2024 archived code) construct it:
+The integral follows Schaefer et al. (2024) Eqs 11-12,
 
     int dV dP = 2*int(dV_Deng) dP  -  int(V_FeO) dP  +  int(V_Fe) dP
+
+with the melt term built as ``deltaGFeOFeO15_Deng.m`` and ``BM4VolumeFunc.m``
+(Schaefer et al. 2024 archived code) construct it:
 
 * dV_Deng = V(FeO1.5) - V(FeO) = 0.5*(V_ox - V_red), from the two Deng et al.
   (2020) 12.5 mol% FeO* melt endmembers (Mg14Fe2Si16O48 and Mg14Fe2Si16O49,
@@ -22,12 +24,17 @@ The integral is evaluated exactly as ``deltaGFeOFeO15_Deng.m`` and
   EOS plus the thermal pressure BH(V/V0)*(T - T0), T0 = 3000 K. Integrated
   with the trapezoid rule on Schaefer's 100-node grid: P0 = 1e-4 GPa, then
   P*k/99 for k = 1..99.
-* V_FeO is the Lange & Carmichael (1987) liquid volume at T with a
-  Murnaghan compression (K0 = 30.33 GPa, K' = 4), integrated analytically
-  from P = 0 to P, as in Schaefer's code.
-* V_Fe is liquid iron on the Komabayashi (2014) Vinet EOS with
-  Anderson-Gruneisen thermal expansion, integrated with the trapezoid rule
-  on 100 equally spaced nodes from P0 to P.
+* V_FeO and V_Fe are the liquid FeO and liquid Fe of Komabayashi (2014): a
+  Vinet EOS at 298 K (Eq 3) expanded with the Anderson-Gruneisen thermal
+  expansivity (Eq 5), Table 2 parameters, integrated with the trapezoid rule
+  on 400 equally spaced nodes from P0 to P. This reproduces his Table 3
+  end-member volumes to 0.1 %. Liquid FeO follows Schaefer et al. (2024)
+  Eq 11; their archived code (``VdPFeO_LC``) instead uses the Lange &
+  Carmichael (1987) 1-bar FeO volume with a temperature-independent
+  Murnaghan compression, which overestimates V_FeO by 14 % at 136 GPa and
+  4000 K and grows without bound with T. Komabayashi built his database to
+  350 GPa and 7000 K; beyond that both terms are extrapolated and this is
+  logged once per process.
 
 ``int_dV_dP_oxidation(T, P)`` returns the first term on its own,
 int(dV_Deng) dP, the volume integral of the oxidation reaction
@@ -70,15 +77,41 @@ the whole homogeneous melt is tested for metal saturation from the first
 check and the reaction extent is not set by a subset of it. Values above
 ``T_DENG_MAX`` are extrapolations of every term (Deng volumes, the FeO and Fe
 volumes, the Gibbs energies) and are logged once per process.
+
+KEANE TABLE (model = 'keane_table')
+-----------------------------------
+An alternative to the Deng BM4 for the FeO -> FeO1.5 volume change, for
+super-Earth conditions: P(V, T) = P_Keane(V) + (a - b x + c x^2)/1000 (T - 3000 K),
+x = V/V0, with a Keane cold curve (3000 K isotherm; Attia et al. 2026 Eq 12) and
+the Deng et al. (2020) thermal term, fitted to the Deng FPMD points of the two
+12.5 mol% Fe melts (2000, 3000, 4000 K). int dV_Deng dP is read from the table
+``FWL_DATA/interior_chem/keane_deng_table.npz`` (bilinear in log10 P, log10 T; 1 bar - 4 TPa,
+1000 - 20000 K); the FeO and Fe terms of ``int_dV_dP`` are those of the
+deng2020 model. Above 4206 K the fit has no liquid at 1 bar, so the table
+integral evaluates dV at the hottest temperature with a liquid volume along the
+low-pressure part of the path. Inside the Deng FPMD coverage its oxidation
+integral differs from the deng2020 one by at most 0.25 in
+int dV dP / (R T ln10) (melt volumes within 0.3%). Beyond about 74-94 GPa it is
+an extrapolation whose value depends on the cold-curve form (factor of about 5
+in dV at 4 TPa between plausible fits); this is logged once per process.
 """
 
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 import numpy as np
+from scipy.interpolate import RegularGridInterpolator
 
 log = logging.getLogger('fwl.' + __name__)
+
+MODELS = ('deng2020', 'keane_table')  # melt EOS of the FeO -> FeO1.5 volume change
+TABLE_RELPATH = (
+    Path('interior_chem') / 'keane_deng_table.npz'
+)  # below FWL_DATA, not in the repository
+_TABLE = None
+_TABLE_EXTRAPOLATION_WARNED = False
 
 # Deng et al. (2020) BM4 + thermal pressure; rows: reduced Mg14Fe2Si16O48,
 # oxidised Mg14Fe2Si16O49. V0 in J/GPa/mol (1 A^3/mol = 602.21 J/GPa).
@@ -99,15 +132,26 @@ T_DENG_MAX = 5000.0  # K,   upper limit of Deng et al. (2020) modelling
 T_CEILING = 6500.0  # K,   validity envelope, extrapolated beyond T_DENG_MAX
 P_EXERCISED = 136.0  # GPa, deepest pressure Schaefer et al. (2024) ran
 
-# ── Lange & Carmichael (1987) FeO liquid + Kress & Carmichael K ─────────────
-_K0_FEO, _KP_FEO = 30.33, 4.0
+# Validity envelope of each model, for log messages (keane_table: the table range).
+ENVELOPE = {
+    'deng2020': f'T <= {T_CEILING:.0f} K, P <= {P_EXERCISED:.0f} GPa',
+    'keane_table': '1000 K <= T <= 20000 K, P <= 4000 GPa',
+}
 
-# ── Komabayashi (2014) liquid Fe, Vinet ─────────────────────────────────────
-_V298_FE, _ALPHA0_FE = 6.88, 9.0e-5
-_K0_FE, _KP_FE, _DELTA0_FE, _KAPPA_FE = 148.0, 5.8, 5.1, 0.56
+# ── Komabayashi (2014) liquids: Vinet at 298 K + Anderson-Gruneisen expansion ──
+# Table 2: V0 [cm3/mol], K0 [GPa], K', alpha0 [1/K], delta0, kappa (0.56 for
+# liquid Fe, 1.4 for the other phases, Section 2).
+_KOMA = {
+    'Fe': (6.88, 148.0, 5.8, 9.0e-5, 5.1, 0.56),
+    'FeO': (13.16, 128.0, 3.85, 4.7e-5, 4.5, 1.4),
+}
+_V298_FE = _KOMA['Fe'][0]
+P_KOMA_MAX, T_KOMA_MAX = 350.0, 7000.0  # GPa, K: range of the Komabayashi (2014) database
+_N_GRID_KOMA = 400  # trapezoid nodes: 0.2 % at 4 TPa and 20000 K (100 nodes: 2 %)
 
 _NO_ROOT_WARNED = False
 _EXTRAPOLATION_WARNED = False
+_KOMA_EXTRAPOLATION_WARNED = False
 
 
 def _bh(x, i: int):
@@ -212,42 +256,80 @@ def _solve_V(P: float, T: float, i: int) -> float:
     return float(V[0, 0])
 
 
-def _int_V_FeO(T, P):
-    """Murnaghan integral of the Lange & Carmichael (1987) FeO liquid from
-    P = 0 to P, J/mol (Schaefer's ``VdPFeO_LC``). T in K, P in GPa."""
-    V = (13650.0 + 2.92 * (np.asarray(T, dtype=float) - 1673.0)) * 1e-3  # cm3/mol
-    return (
-        V
-        * _K0_FEO
-        / (_KP_FEO - 1.0)
-        * (
-            (1.0 + _KP_FEO * np.asarray(P, dtype=float) / _K0_FEO) ** (1.0 - 1.0 / _KP_FEO)
-            - 1.0
-        )
-    ) * 1e3
+def _vinet_resid(V, P, phase='Fe'):
+    """P minus the Komabayashi (2014) Eq 3 Vinet pressure at 298 K, GPa."""
+    V0, K0, Kp = _KOMA[phase][:3]
+    x = (V / V0) ** (1.0 / 3.0)
+    return P - 3 * K0 * (1 - x) / x**2 * np.exp(1.5 * (Kp - 1) * (1 - x))
 
 
-def _vinet_resid(V, P):
-    x = (V / _V298_FE) ** (1.0 / 3.0)
-    return P - 3 * _K0_FE * (1 - x) / x**2 * np.exp(1.5 * (_KP_FE - 1) * (1 - x))
-
-
-def _V_Fe(P):
-    """Vinet inversion for liquid Fe at the 298 K reference, cm3/mol. P in GPa."""
+def _V298(P, phase):
+    """Vinet inversion at the 298 K reference, cm3/mol. P in GPa. The bracket
+    reaches 0.05 V0 (above 2e4 GPa for both liquids)."""
+    V0 = _KOMA[phase][0]
     P = np.asarray(P, dtype=float)
-    lo = np.full(P.shape, 0.2 * _V298_FE)
-    hi = np.full(P.shape, _V298_FE)
+    lo = np.full(P.shape, 0.05 * V0)
+    hi = np.full(P.shape, V0)
     # The residual rises with V, so bisect its negative.
-    V = _bisect_decreasing(lambda v: -_vinet_resid(v, P), lo, hi)
-    V = np.where(P <= 1e-6, _V298_FE, V)
+    V = _bisect_decreasing(lambda v: -_vinet_resid(v, P, phase), lo, hi)
+    V = np.where(P <= 1e-6, V0, V)
     return float(V) if V.ndim == 0 else V
 
 
-def _VT_Fe(P, T):
-    """Liquid Fe volume at (P, T), cm3/mol, with Anderson-Gruneisen expansion."""
-    Vp = _V_Fe(P)
-    alpha = _ALPHA0_FE * np.exp(-_DELTA0_FE / _KAPPA_FE * (1.0 - (Vp / _V298_FE) ** _KAPPA_FE))
+def _VT(P, T, phase):
+    """Komabayashi (2014) liquid volume at (P, T), cm3/mol: the 298 K volume
+    expanded with alpha from Eq 5 at that volume. Reproduces his Table 3
+    end-member volumes (136 GPa, 4000 K and 330 GPa, 5000 K) to 0.1 %."""
+    V0, _, _, alpha0, delta0, kappa = _KOMA[phase]
+    Vp = _V298(P, phase)
+    alpha = alpha0 * np.exp(-delta0 / kappa * (1.0 - (Vp / V0) ** kappa))
     return Vp * np.exp(alpha * (T - 298.0))
+
+
+def _V_Fe(P):
+    """Liquid Fe volume at the 298 K reference, cm3/mol. P in GPa."""
+    return _V298(P, 'Fe')
+
+
+def _VT_Fe(P, T):
+    """Liquid Fe volume at (P, T), cm3/mol."""
+    return _VT(P, T, 'Fe')
+
+
+def _int_V(T, P, phase):
+    """int V dP of a Komabayashi (2014) liquid from P0 (1 bar) to P along the
+    isotherm, J/mol; trapezoid on _N_GRID_KOMA nodes. T [K], P [GPa], broadcast."""
+    T, P = np.broadcast_arrays(np.asarray(T, dtype=float), np.asarray(P, dtype=float))
+    grid = _P0 + (P[..., None] - _P0) * np.linspace(0.0, 1.0, _N_GRID_KOMA)
+    return _trapz(_VT(grid, T[..., None], phase), grid) * 1e3
+
+
+def _int_V_FeO(T, P):
+    """Liquid FeO volume integral (Komabayashi 2014, as Schaefer et al. 2024
+    Eq 11 states) from 1 bar to P, J/mol. T in K, P in GPa."""
+    return _int_V(T, P, 'FeO')
+
+
+def _int_V_Fe(T, P):
+    """Liquid Fe volume integral (Komabayashi 2014) from 1 bar to P, J/mol."""
+    return _int_V(T, P, 'Fe')
+
+
+def _fe_feo_terms(T, P):
+    """(int V_FeO dP, int V_Fe dP) for flat arrays, logging once when a point
+    lies beyond the Komabayashi (2014) database range (350 GPa, 7000 K)."""
+    global _KOMA_EXTRAPOLATION_WARNED
+    if not _KOMA_EXTRAPOLATION_WARNED and np.any((P > P_KOMA_MAX) | (T > T_KOMA_MAX)):
+        _KOMA_EXTRAPOLATION_WARNED = True
+        log.warning(
+            'Liquid FeO and Fe volumes (Komabayashi 2014) evaluated beyond their %.0f GPa, '
+            '%.0f K database range (up to %.0f GPa, %.0f K); values there are extrapolated',
+            P_KOMA_MAX,
+            T_KOMA_MAX,
+            float(np.max(P)),
+            float(np.max(T)),
+        )
+    return _int_V_FeO(T, P), _int_V_Fe(T, P)
 
 
 def _trapz(y, x):
@@ -277,10 +359,72 @@ def _integrals(T, P, deng_only=False):
     I_deng = _trapz(0.5 * (V_ox - V_red), grid_d)
     if deng_only:
         return I_deng, None, None
+    return (I_deng, *_fe_feo_terms(T, P))
 
-    grid_fe = _P0 + (P[:, None] - _P0) * np.linspace(0.0, 1.0, _N_GRID)
-    I_fe = _trapz(_VT_Fe(grid_fe, T[:, None]), grid_fe) * 1e3
-    return I_deng, _int_V_FeO(T, P), I_fe
+
+def table_path() -> Path:
+    """Location of the Keane + Deng-thermal table: FWL_DATA/interior_chem/."""
+    from proteus.utils.helper import resolve_fwl_data_dir
+
+    return resolve_fwl_data_dir() / TABLE_RELPATH
+
+
+def _keane_table():
+    """Load the Keane + Deng-thermal lookup table once per process."""
+    global _TABLE
+    if _TABLE is None:
+        path = table_path()
+        if not path.is_file():
+            raise FileNotFoundError(
+                f'Keane + Deng-thermal table not found at {path}. Copy keane_deng_table.npz '
+                '(written by make_keane_deng_table.py) there, or set FWL_DATA.'
+            )
+        t = np.load(path)
+        lt, lp = t['log10_T_K'], t['log10_P_Pa']
+        _TABLE = {
+            'interp': RegularGridInterpolator((lt, lp), t['int_dV_dP_ox']),
+            'in_fpmd': RegularGridInterpolator(
+                (lt, lp), t['in_fpmd'].astype(float), method='nearest'
+            ),
+            'T_range': (10 ** lt[0], 10 ** lt[-1]),
+            'P_range': (10 ** lp[0] / 1e9, 10 ** lp[-1] / 1e9),
+        }
+    return _TABLE
+
+
+def _evaluate_table(T, P, oxidation_only):
+    """Keane + Deng-thermal model: the table for the oxidation integral, the
+    FeO and Fe terms as in the deng2020 model. Valid inside the table range;
+    points below 1 bar take the 1-bar value (0 for the oxidation integral)."""
+    global _TABLE_EXTRAPOLATION_WARNED
+    tab = _keane_table()
+    T, P = np.broadcast_arrays(np.asarray(T, dtype=float), np.asarray(P, dtype=float))
+    shape = T.shape
+    T, P = T.ravel(), P.ravel()
+    (t_lo, t_hi), (p_lo, p_hi) = tab['T_range'], tab['P_range']
+    valid = np.isfinite(T) & np.isfinite(P) & (T >= t_lo) & (T <= t_hi) & (P <= p_hi)
+    out = np.zeros(T.shape)
+    if np.any(valid):
+        Tv, Pv = T[valid], np.maximum(P[valid], p_lo)
+        q = np.column_stack([np.log10(Tv), np.log10(Pv * 1e9)])
+        I_ox = tab['interp'](q)
+        if not _TABLE_EXTRAPOLATION_WARNED and np.any(tab['in_fpmd'](q) < 0.5):
+            _TABLE_EXTRAPOLATION_WARNED = True
+            log.warning(
+                'Keane + Deng-thermal EOS evaluated outside the Deng et al. (2020) FPMD '
+                'coverage (2000-4000 K, up to about 74-94 GPa); values there are extrapolated'
+            )
+        if oxidation_only:
+            out[valid] = I_ox
+        else:
+            I_feo, I_fe = _fe_feo_terms(Tv, Pv)
+            out[valid] = 2.0 * I_ox - I_feo + I_fe
+    return out.reshape(shape), valid.reshape(shape)
+
+
+def _check_model(model):
+    if model not in MODELS:
+        raise ValueError(f'Unknown melt EOS model {model!r}; expected one of {MODELS}')
 
 
 def _evaluate(T, P, combine, deng_only=False):
@@ -308,24 +452,33 @@ def _evaluate(T, P, combine, deng_only=False):
     return out.reshape(shape), valid.reshape(shape)
 
 
-def int_dV_dP(T, P):
+def int_dV_dP(T, P, model='deng2020'):
     """int dV dP for 3FeO = 2FeO1.5 + Fe, from 1 bar to P at T. J/mol.
 
     Parameters
     ----------
     T : array_like, K
     P : array_like, GPa
+    model : str
+        Melt EOS of the FeO -> FeO1.5 volume change (``MODELS``): 'deng2020'
+        (Deng BM4, Schaefer's construction) or 'keane_table' (Keane +
+        Deng-thermal lookup table). The FeO and Fe terms are the same in both.
 
     Returns
     -------
     (I, valid) : I is J/mol (0.0 where invalid, never silently so -- check
         ``valid``), valid is a boolean array marking points inside the
-        temperature ceiling and the pressure range Schaefer et al. exercised.
+        validity envelope of the model: for 'deng2020' the temperature
+        ceiling and the pressure range Schaefer et al. exercised, for
+        'keane_table' the table range.
     """
+    _check_model(model)
+    if model == 'keane_table':
+        return _evaluate_table(T, P, oxidation_only=False)
     return _evaluate(T, P, lambda deng, feo, fe: 2.0 * deng - feo + fe)
 
 
-def int_dV_dP_oxidation(T, P):
+def int_dV_dP_oxidation(T, P, model='deng2020'):
     """int dV dP for FeO + 1/4 O2 = FeO1.5, from 1 bar to P at T. J/mol.
 
     dV = V(FeO1.5) - V(FeO) per Fe, from the two Deng et al. (2020) melt
@@ -338,9 +491,14 @@ def int_dV_dP_oxidation(T, P):
     ----------
     T : array_like, K
     P : array_like, GPa
+    model : str
+        As for ``int_dV_dP``.
 
     Returns
     -------
     (I, valid) : as for ``int_dV_dP``.
     """
+    _check_model(model)
+    if model == 'keane_table':
+        return _evaluate_table(T, P, oxidation_only=True)
     return _evaluate(T, P, lambda deng, feo, fe: deng, deng_only=True)

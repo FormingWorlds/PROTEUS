@@ -360,6 +360,22 @@ class Planet:
         all draws of their archived 1000 km run; this follows their mean
         Fe3+/FeT. Read only when ``fO2_source = 'from_mantle_redox'``; a
         resumed run keeps the coefficients it started with.
+    redox_dV_eos: str
+        Melt equation of state for the volume change of FeO -> FeO1.5 in the
+        pressure term int(dV dP) of the melt-redox tracker
+        (``interior_chem/eos_deng.py``): the radial fO2 profile and the
+        Fe-disproportionation equilibrium. Both carry the pressure term only
+        with ``metal_saturation`` True, so the choice has no effect otherwise.
+        'deng2020' (default): the Deng et al. (2020) fourth-order
+        Birch-Murnaghan fit as constructed by Schaefer et al. (2024), valid to
+        6500 K and 136 GPa.
+        'keane_table': a Keane cold curve with the Deng et al. (2020) thermal
+        term, fitted to the Deng FPMD points of the 12.5 mol% Fe melts and
+        tabulated over 1 bar - 4 TPa and 1000 - 20000 K for super-Earth
+        mantles. It agrees with 'deng2020' inside the FPMD coverage
+        (2000-4000 K, up to about 74-94 GPa) and is an extrapolation beyond.
+        Read only when ``fO2_source = 'from_mantle_redox'`` and
+        ``metal_saturation`` is True.
     prevent_warming: bool
         When True, require the planet to monotonically cool over time.
         Enforced in all atmosphere modules and termination checks.
@@ -437,6 +453,10 @@ class Planet:
     # Partition-coefficient prescription of the redox tracker
     # (redox.py Step 5-6). Only read under fO2_source = 'from_mantle_redox'.
     partition_coefficients: str = field(default='mgsio3', validator=in_(('mgsio3', 'bulk_BSE')))
+
+    # Melt EOS of the redox pressure term (eos_deng.MODELS). Only read under
+    # fO2_source = 'from_mantle_redox' with metal_saturation True.
+    redox_dV_eos: str = field(default='deng2020', validator=in_(('deng2020', 'keane_table')))
 
     # Structure override: bypass the root finder and use a fixed R_int.
     # Needed for SPIDER/Aragog parity runs where the two energetics

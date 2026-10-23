@@ -117,43 +117,48 @@ def dG0(T):
     return 2 * _g_feo15_liquid(T) + _g_fe_liquid(T) - 3 * _g_feo_liquid(T)
 
 
-def K_eq(T, P_gpa=None, use_P_term: bool = False):
+def K_eq(T, P_gpa=None, use_P_term: bool = False, eos_model: str = 'deng2020'):
     """Equilibrium constant. Returns (K, valid).
 
     ``valid`` is all-True when the pressure term is off; with it on, it marks
-    points inside the Deng EOS validity envelope (see eos_deng).
+    points inside the validity envelope of the melt EOS ``eos_model``
+    ('deng2020' or 'keane_table', see eos_deng).
     """
     T = np.asarray(T, dtype=float)
     dG = dG0(T)
     if use_P_term:
         if P_gpa is None:
             raise ValueError('use_P_term=True requires P_gpa')
-        I, valid = eos_deng.int_dV_dP(T, P_gpa)
+        I, valid = eos_deng.int_dV_dP(T, P_gpa, model=eos_model)
         dG = dG + I
     else:
         valid = np.ones_like(T, dtype=bool)
     return np.exp(-dG / (R * T)), valid
 
 
-def activity_Fe_metal(T, n2, n3, n_sil, P_gpa=None, use_P_term: bool = False):
+def activity_Fe_metal(
+    T, n2, n3, n_sil, P_gpa=None, use_P_term: bool = False, eos_model: str = 'deng2020'
+):
     """a_Fe = K * GAMMA * n2^3 / (n3^2 * n_sil). Returns (a_Fe, valid).
 
     n2, n3, n_sil are melt-wide totals (the melt is assumed homogeneous, as
     in redox.py Step 4). Only K varies from cell to cell, through T and P.
     """
-    K, valid = K_eq(T, P_gpa, use_P_term)
+    K, valid = K_eq(T, P_gpa, use_P_term, eos_model)
     if n3 <= 0.0 or n2 <= 0.0 or n_sil <= 0.0:
         return np.full(np.shape(K), np.inf if n3 <= 0.0 < n2 else 0.0), valid
     return K * GAMMA * n2**3 / (n3**2 * n_sil), valid
 
 
-def critical_ferric_fraction(T, n_FeT, n_sil, P_gpa=None, use_P_term: bool = False) -> float:
+def critical_ferric_fraction(
+    T, n_FeT, n_sil, P_gpa=None, use_P_term: bool = False, eos_model: str = 'deng2020'
+) -> float:
     """Fe3+/FeT at which a_Fe = 1. Metal saturates BELOW this value.
 
     Diagnostic only -- the model never needs it, but it is the quantity an
     f_0 sensitivity scan is really measuring.
     """
-    K, _ = K_eq(T, P_gpa, use_P_term)
+    K, _ = K_eq(T, P_gpa, use_P_term, eos_model)
     K = float(K)
 
     def g(f):

@@ -46,6 +46,7 @@ from proteus.interior_chem.disproportionation import (
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
+
 # BSE melt (Schaefer et al. 2024 Table 1), single-cation moles per 100 g;
 # asymmetric, so swapped Fe2+ and Fe3+ slots cannot pass by symmetry.
 _N_FET = 7.82 / 71.844
@@ -461,3 +462,29 @@ def test_an_infinite_equilibrium_constant_consumes_all_the_ferrous_iron():
     xi = solve_extent(np.inf, n2, 0.1237, 19.369)
     assert xi == pytest.approx(n2 / 3.0, rel=1e-10)
     assert xi < n2 / 3.0
+
+
+@pytest.mark.usefixtures('keane_table')
+@pytest.mark.physics_invariant
+def test_equilibrium_constant_follows_the_configured_melt_eos():
+    """K = exp(-(dG0 + int dV dP)/RT), so switching the melt EOS changes K by
+    exp(-(I_keane - I_deng)/RT), the two pressure terms differing only through
+    the melt volumes. At 10000 K and 1 TPa only the table is valid."""
+    from proteus.interior_chem import eos_deng
+
+    T, P = 3000.0, 50.0
+    K_d, ok_d = K_eq(T, P, use_P_term=True)
+    K_k, ok_k = K_eq(T, P, use_P_term=True, eos_model='keane_table')
+    I_d, _ = eos_deng.int_dV_dP(T, P)
+    I_k, _ = eos_deng.int_dV_dP(T, P, model='keane_table')
+
+    assert bool(ok_d) and bool(ok_k)
+    assert float(K_k / K_d) == pytest.approx(
+        np.exp(-(float(I_k) - float(I_d)) / (R * T)), rel=1e-9
+    )
+    # The two models differ by a few kJ/mol here, so K moves by a few tens of percent, not orders.
+    assert 0.3 < float(K_k / K_d) < 3.0 and abs(float(K_k / K_d) - 1.0) > 1e-3
+
+    _, ok_hot_d = K_eq(10000.0, 1000.0, use_P_term=True)
+    K_hot_k, ok_hot_k = K_eq(10000.0, 1000.0, use_P_term=True, eos_model='keane_table')
+    assert not bool(ok_hot_d) and bool(ok_hot_k) and np.isfinite(float(K_hot_k))

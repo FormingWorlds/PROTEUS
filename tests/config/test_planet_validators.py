@@ -83,3 +83,27 @@ def test_unknown_partition_coefficient_prescription_is_rejected(bad):
     with pytest.raises(ValueError):
         planet.partition_coefficients = bad
     assert planet.partition_coefficients == 'mgsio3'
+
+
+@pytest.mark.parametrize('choice', ['deng2020', 'keane_table'])
+def test_redox_melt_eos_choices_are_accepted(choice):
+    """Both melt EOS of the redox pressure term are valid, and deng2020 is the
+    default, so existing configurations keep their results."""
+    assert Planet(redox_dV_eos=choice).redox_dV_eos == choice
+    assert Planet().redox_dV_eos == 'deng2020'
+
+
+@pytest.mark.parametrize('bad', ['Deng2020', 'keane', 'keane_deng', ''])
+def test_unknown_redox_melt_eos_is_rejected(bad):
+    """A misspelt melt EOS fails at config load, and the config accepts exactly
+    the models eos_deng implements."""
+    from proteus.interior_chem.eos_deng import MODELS
+
+    with pytest.raises(ValueError) as exc:
+        Planet(redox_dV_eos=bad)
+    assert 'redox_dV_eos' in str(exc.value)
+    assert tuple(exc.value.args[2]) == MODELS
+    planet = Planet()
+    with pytest.raises(ValueError):
+        planet.redox_dV_eos = bad
+    assert planet.redox_dV_eos == 'deng2020'
