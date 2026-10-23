@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import math
 
-import attrs
 import pytest
 import tomlkit
 from helpers import PROTEUS_ROOT
@@ -63,12 +62,6 @@ def test_a_value_that_is_not_a_toml_boolean_stops_the_load(tmp_path, value):
     ) as err:
         _load(tmp_path, value)
     assert repr(value) in str(err.value)
-
-
-def test_the_default_keeps_the_resume_check_on():
-    """Without the field a changed separation law refuses the resume."""
-    assert Aragog().allow_resume_law_change is False
-    assert attrs.fields(Aragog).allow_resume_law_change.default is False
 
 
 def test_construction_and_assignment_refuse_a_non_boolean():

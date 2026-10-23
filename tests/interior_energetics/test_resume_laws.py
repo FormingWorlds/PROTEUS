@@ -5,9 +5,9 @@ aragog run keeps the separation laws it was written with.
 Invariant: a resumed run continues under one separation law. The stored laws are the
 ``interior_energetics.aragog`` fields of the run's ``init_coupler.toml``; a stored value
 that differs from the new config refuses the resume, unless
-``allow_resume_law_change`` is set. A run that stored no ``separation_viscosity`` ran
-under aragog's ``'melt'``; a run that stored no ``separation_buoyancy`` resumes only
-when the new config file sets the field.
+``allow_resume_law_change`` is set. An aragog record without ``separation_viscosity``
+counts as ``'melt'``; a law the run did not record, or a run without a record that names
+the interior module, resumes only when the new config file sets the field.
 """
 
 from __future__ import annotations
@@ -130,8 +130,9 @@ def test_a_run_without_a_stored_buoyancy_needs_the_field_in_the_config_file(
     config, path = _user_config(tmp_path)
     with pytest.raises(ResumeSeparationLawError) as err:
         check_resume_separation_laws(config, path, out)
-    assert 'separation_buoyancy' in str(err.value)
+    assert 'separation_buoyancy is not recorded' in str(err.value)
     assert '26.10.22' in str(err.value) and 'aragog version' in str(err.value)
+    assert 'before this attempt' in str(err.value)  # the refused attempt writes a log too
     config, path = _user_config(tmp_path, separation_buoyancy=law)
     with caplog.at_level(logging.INFO, logger=LOGGER):
         assert check_resume_separation_laws(config, path, out) == []
@@ -139,22 +140,40 @@ def test_a_run_without_a_stored_buoyancy_needs_the_field_in_the_config_file(
 
 
 @pytest.mark.parametrize(
-    'content', [None, b'\x00 not toml ['], ids=['no file', 'unreadable file']
+    'content',
+    [None, b'\x00 not toml [', b"[interior]\nmodule = 'aragog'\n"],
+    ids=['no file', 'unreadable file', 'record without the interior_energetics module'],
 )
-def test_a_run_without_a_readable_init_coupler_has_no_stored_laws(tmp_path, content):
-    """A missing or unreadable init_coupler.toml counts as no stored value for both fields."""
+def test_a_run_without_a_usable_record_needs_both_laws_in_the_config_file(tmp_path, content):
+    """With no record that names the interior module, neither law is guessed: the resume stops
+    until the config file sets both, and then takes them as set, 'mixture' viscosity included."""
     out = tmp_path / 'run'
     out.mkdir()
     if content is not None:
         (out / 'init_coupler.toml').write_bytes(content)
-    config, path = _user_config(tmp_path)
+    config, path = _user_config(tmp_path, separation_buoyancy='mixture')
     with pytest.raises(ResumeSeparationLawError) as err:
         check_resume_separation_laws(config, path, out)
-    assert 'separation_buoyancy' in str(err.value) and 'separation_viscosity' in str(err.value)
+    message = str(err.value)
+    assert 'separation_viscosity is not recorded' in message
+    assert "'melt'" not in message and 'separation_buoyancy' not in message
     config, path = _user_config(
-        tmp_path, separation_buoyancy='mixture', separation_viscosity='melt'
+        tmp_path, separation_buoyancy='mixture', separation_viscosity='mixture'
     )
     assert check_resume_separation_laws(config, path, out) == []
+
+
+def test_the_allow_switch_does_not_cover_an_unrecorded_buoyancy(tmp_path, caplog):
+    """The allow switch lets a recorded law change but does not stand in for a missing record,
+    and a refused resume logs no switch."""
+    out = _stored_run(tmp_path, drop=('separation_buoyancy',), separation_viscosity='melt')
+    config, path = _user_config(tmp_path, allow_resume_law_change=True)
+    with caplog.at_level(logging.INFO, logger=LOGGER):
+        with pytest.raises(ResumeSeparationLawError) as err:
+            check_resume_separation_laws(config, path, out)
+    assert 'separation_buoyancy is not recorded' in str(err.value)
+    assert 'allow_resume_law_change does not cover' in str(err.value)
+    assert [r for r in caplog.records if r.name == LOGGER] == []
 
 
 def test_the_allow_switch_lets_a_changed_law_resume_and_reports_it(tmp_path, caplog):
