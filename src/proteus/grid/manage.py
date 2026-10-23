@@ -51,10 +51,12 @@ _FWL = logging.getLogger('fwl')
 
 
 def _replay(records: list):
-    """Pass held records to the handlers the fwl logger has now, as it would have then."""
+    """Pass held records to the handlers the fwl logger has now, through the logger and
+    handler levels as a live record would pass; not to root, which saw them live."""
+    level = _FWL.getEffectiveLevel()
     for record in records:
         for handler in _FWL.handlers:
-            if record.levelno >= handler.level:
+            if record.levelno >= max(level, handler.level):
                 handler.handle(record)
 
 
@@ -83,7 +85,14 @@ class Grid:
         prepare_output: bool = True,
     ):
         """Set up the grid; with ``prepare_output=False`` the old output stays until
-        `prepare_output` runs, and the log lines are held until then."""
+        `prepare_output` runs, and the fwl log lines are held until then: the caller must
+        call `prepare_output` or `release_log`, or the fwl logger stays held.
+
+        Raises
+        ------
+        ValueError
+            If ``name`` is not a folder inside PROTEUS/output (empty, '.', or above it).
+        """
         # Grid's own name (for versioning, etc.)
         self.name = str(name).strip()
         self.outdir = PROTEUS_DIR + '/output/' + self.name + '/'
@@ -97,12 +106,15 @@ class Grid:
 
         # Paths
         self.outdir = os.path.abspath(self.outdir) + '/'
+        root = os.path.abspath(os.path.join(PROTEUS_DIR, 'output'))
+        if os.path.commonpath([root, self.outdir]) != root or self.outdir == root + '/':
+            raise ValueError(f"grid output '{self.name}' must name a folder inside {root}")
         self.cfgdir = os.path.join(self.outdir, 'cfgs') + '/'
         self.logdir = os.path.join(self.outdir, 'logs') + '/'
 
         self.grid_config = grid_config
         self._held = None  # log records held until the output exists
-        self._checked = False  # cfgs/ already holds the cases from adopt_cases
+        self._cfgs_adopted = False  # cfgs/ already holds the cases from adopt_cases
 
         # List of dimension names and parameter names
         self.dim_names = []  # String
@@ -354,14 +366,14 @@ class Grid:
         ValueError
             As `write_cases`.
         """
-        if not self._checked:
+        if not self._cfgs_adopted:
             self.write_cases(self.cfgdir)
 
     def adopt_cases(self, tmpdir: str):
         """Move the case configs checked in ``tmpdir`` into the output's cfgs folder."""
         for name in os.listdir(tmpdir):
             shutil.move(os.path.join(tmpdir, name), os.path.join(self.cfgdir, name))
-        self._checked = True
+        self._cfgs_adopted = True
 
     def write_cases(self, folder: str):
         """Write each case config into ``folder`` and read it back with the config loader.
@@ -371,7 +383,7 @@ class Grid:
         ValueError
             If a value is refused when it is set, as 'Grid case i (key = value): reason',
             or if a written case does not load, as 'Grid case i (key = value, ...): ' and
-            the loader's message, which names the case file in cfgs/.
+            the loader's message, which names the case file without its folder.
         """
         log.info('Writing config files')
         base_config = read_config_object(self.conf)
@@ -401,7 +413,7 @@ class Grid:
                 read_config_object(case_path)
             except ValueError as exc:
                 where = ', '.join(f'{k} = {v!r}' for k, v in gp.items())
-                reason = str(exc).replace(case_path, self._get_tmpcfg(i))
+                reason = str(exc).replace(case_path, os.path.basename(case_path))
                 raise ValueError(f'Grid case {i} ({where}): {reason}') from exc
 
     def run(
