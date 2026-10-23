@@ -195,6 +195,39 @@ def test_parallel_process_raises_when_init_dataset_missing(monkeypatch, tmp_path
     assert not (tmp_path / 'init.csv').exists()
 
 
+def test_worker_seeds_its_torch_generator(monkeypatch, tmp_path):
+    """A worker seeds torch before its loop: the same seed gives the same draws, another
+    seed different ones, and no seed leaves the inherited generator untouched.
+    """
+    draws = []
+    monkeypatch.setattr(async_mod, '_worker_loop', lambda *a: draws.append(torch.rand(4)))
+    args = dict(
+        process_fun=None,
+        build_obj=None,
+        D_shared={},
+        B={},
+        T=[],
+        T0=0.0,
+        x_init=None,
+        n_init=1,
+        lock=_DummyLock(),
+        max_len=2,
+        worker_id=0,
+        log_list=[],
+        output_dir=str(tmp_path),
+    )
+    for seed in (7, 7, 8):
+        async_mod.worker(**args, seed=seed)
+    torch.manual_seed(7)
+    torch.rand(4)
+    async_mod.worker(**args)
+
+    assert torch.equal(draws[0], draws[1])
+    assert not torch.equal(draws[0], draws[2])
+    # Unseeded, the worker continues the inherited stream rather than restarting it
+    assert not torch.equal(draws[3], draws[0])
+
+
 def test_parallel_process_happy_path_with_mocked_manager(monkeypatch, tmp_path):
     """With a mocked multiprocessing Manager and Process, ``parallel_process``
     spawns one Process per worker, returns the final dataset, the per-worker
@@ -284,6 +317,8 @@ def test_parallel_process_happy_path_with_mocked_manager(monkeypatch, tmp_path):
     assert elapsed == []
     # The initial proposals use the configured kernel, not the init_locs default
     assert init_kwargs == {'acqf': 'LogEI', 'kernel': 'MAT3/2'}
+    # Each worker gets its own torch seed, seed + 1 + worker id
+    assert [p.args[-1] for p in created_processes] == [2, 3]
 
 
 # ============================================================================
@@ -1092,6 +1127,6 @@ def test_parallel_process_passes_patience_to_every_worker(monkeypatch, tmp_path)
         patience=7,
     )
 
-    assert [args[-2] for args in seen] == [7, 7]
-    assert seen[0][-1] is seen[1][-1]
-    assert isinstance(seen[0][-1], threading.Event)
+    assert [args[-3] for args in seen] == [7, 7]
+    assert seen[0][-2] is seen[1][-2]
+    assert isinstance(seen[0][-2], threading.Event)

@@ -121,6 +121,7 @@ def worker(
     aborts=None,
     patience: int = 0,
     converged=None,
+    seed: int | None = None,
 ) -> None:
     """Worker subprocess that performs asynchronous BO steps.
 
@@ -159,6 +160,7 @@ def worker(
       best objective rising by more than PATIENCE_MIN_GAIN; 0 never stops.
     - converged (Manager.Event | None): Set by the worker that finds the
       `patience` limit reached, and checked like `stop`.
+    - seed (int | None): Seed of this worker's torch generator; None leaves it as inherited.
 
     Returns
     ----------
@@ -169,6 +171,8 @@ def worker(
     # the very first iteration is still recorded in the logfile.
     if logpath:
         attach_worker_logfile(logpath, log_level)
+    if seed is not None:
+        torch.manual_seed(seed)
 
     try:
         _worker_loop(
@@ -368,7 +372,7 @@ def parallel_process(
     - n_workers (int): Number of parallel worker processes.
     - max_len (int): Target total number of evaluations, including initial data.
     - output (str): Output directory for checkpoints and plots.
-    - seed (int): Random seed for some degree of reproducibility
+    - seed (int): Seeds torch for the initial proposals, and seed + 1 + worker id each worker.
     - ref_config (str): Path to reference config to pass to objective_builder.
     - observables (dict): Target observables (keys) and values.
     - parameters (dict):  Parameters (keys) with bounds (values) for inference.
@@ -438,6 +442,7 @@ def parallel_process(
     log_list = mgr.list([None] * n_init)  # no logs from init data
 
     # Generate initial candidate locations and busy-map
+    torch.manual_seed(seed)
     X_init = init_locs(n_workers, D_shared, acqf=acqf, kernel=kernel_name)  # (n_workers, d)
     B = mgr.dict()
 
@@ -480,6 +485,7 @@ def parallel_process(
                 aborts,
                 patience,
                 converged,
+                seed + 1 + wid,
             ),
         )
         p.start()
