@@ -14,7 +14,7 @@ A case with a plot shows the tested values against their reference in a light an
 pytest -m reference_pinned tests --validation-plots
 ```
 
-Without `--validation-plots` the tests assert and write nothing. The physics inside a coupled module, such as Zalmoxis, is validated in the documentation of that module.
+Without `--validation-plots` the tests assert and write nothing. The command makes every plot again; commit only the pair of the case you changed, because the bytes match only for the same matplotlib and Pillow versions. The physics inside a coupled module, such as Zalmoxis, is validated in the documentation of that module.
 
 ## Pages by process
 
