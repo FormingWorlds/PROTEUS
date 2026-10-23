@@ -13,10 +13,12 @@ import os
 import numpy as np
 import pandas as pd
 import torch
+from botorch.acquisition.analytic import AnalyticAcquisitionFunction
 from botorch.fit import fit_gpytorch_mll
 from botorch.models import SingleTaskGP
 from botorch.models.transforms import Normalize, Standardize
 from botorch.optim.fit import fit_gpytorch_mll_torch
+from botorch.utils.transforms import t_batch_mode_transform
 from gpytorch.mlls import ExactMarginalLogLikelihood
 
 from proteus.inference.objective import BAD_OBJ_VALUE
@@ -40,6 +42,10 @@ ADAPT_CENTRES = 200  # Gaussian components, centred on draws picked by weight
 DEFENSIVE = 0.1  # uniform share of a refined proposal, so that no weight can blow up
 SD_FLOOR = 0.01  # its square is added to the proposal variance, in the unit cube
 
+# Posterior steps target the likelihood the GP cannot rule out: that of the GP mean plus
+# OPTIMISM standard deviations, minus that of the mean
+OPTIMISM = 2.0
+
 
 def validate_posterior_samples(n, sigma: dict | None) -> int:
     """Number of posterior samples; None gives 2000 with [sigma] and 0 (off) without."""
@@ -49,6 +55,17 @@ def validate_posterior_samples(n, sigma: dict | None) -> int:
         raise ValueError(f'posterior_samples must be a non-negative integer, got {n!r}')
     if n > 0 and sigma is None:
         raise ValueError('posterior_samples needs [sigma] to make the objective a likelihood')
+    return n
+
+
+def validate_posterior_steps(n, n_steps: int, sigma: dict | None) -> int:
+    """Number of BO steps, the last of n_steps, that use `posterior_acqf`; None or 0 is off."""
+    if n is None:
+        return 0
+    if isinstance(n, bool) or not isinstance(n, int) or not 0 <= n <= n_steps:
+        raise ValueError(f'posterior_steps must be a whole number in [0, n_steps], got {n!r}')
+    if n > 0 and sigma is None:
+        raise ValueError('posterior_steps needs [sigma] to make the objective a likelihood')
     return n
 
 
@@ -86,6 +103,27 @@ def gp_mean(gp: SingleTaskGP, U: torch.Tensor) -> torch.Tensor:
                 for i in range(0, len(U), BATCH)
             ]
         )
+
+
+class LikelihoodGap(AnalyticAcquisitionFunction):
+    """exp(-10**-(mu + OPTIMISM sd) / 2) - exp(-10**-mu / 2): near zero where the GP is sure
+    of the fit, good or bad, and large where a good fit is possible but not yet sampled."""
+
+    @t_batch_mode_transform(expected_q=1)
+    def forward(self, X: torch.Tensor) -> torch.Tensor:
+        p = self.model.posterior(X)
+        mu, sd = p.mean.view(X.shape[:-2]), p.variance.clamp_min(0).sqrt().view(X.shape[:-2])
+        return torch.exp(-0.5 * 10 ** -(mu + OPTIMISM * sd)) - torch.exp(-0.5 * 10**-mu)
+
+
+def posterior_acqf(gp: SingleTaskGP, X_pending: torch.Tensor | None) -> LikelihoodGap:
+    """LikelihoodGap, with the GP conditioned on the pending points at its mean so that
+    workers in progress lower the uncertainty around them."""
+    if X_pending is not None and len(X_pending):
+        with torch.no_grad():
+            y = gp.posterior(X_pending).mean
+        gp = gp.condition_on_observations(X_pending, y, noise=torch.full_like(y, GP_NOISE))
+    return LikelihoodGap(gp)
 
 
 def _weights(lnw: torch.Tensor) -> tuple[torch.Tensor, float]:

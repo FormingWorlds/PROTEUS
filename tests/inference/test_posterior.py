@@ -25,6 +25,82 @@ from proteus.inference.objective import BAD_OBJ_VALUE, log_warp  # noqa: E402
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 
+def _two_minima_gp():
+    """1D GP of chi2 = 200 min((x - 0.2)^2, (x - 0.75)^2): the minimum at 0.2 is sampled, the
+    one at 0.75 lies in the unsampled gap (0.62, 0.88)."""
+    from botorch.models import SingleTaskGP
+
+    X = torch.cat([torch.linspace(0, 0.62, 20), torch.linspace(0.88, 1, 5)]).double()[:, None]
+    Y = -torch.log10(200 * torch.minimum((X - 0.2) ** 2, (X - 0.75) ** 2) + 1e-10)
+    gp = SingleTaskGP(X, Y, train_Yvar=torch.full_like(Y, 1e-4))
+    gp.covar_module.lengthscale = 0.08
+    return gp.eval()
+
+
+def test_likelihood_gap_targets_the_unsampled_good_fit():
+    """The acquisition peaks at the unsampled minimum and is near zero at the sampled one and
+    at a sampled bad fit. The plain optimistic likelihood, the wrong target, peaks at the
+    sampled minimum instead, where nothing is left to learn."""
+    from proteus.inference.BO import optimize_acqf_logged
+
+    gp = _two_minima_gp()
+    acq = post.posterior_acqf(gp, None)
+    x = torch.tensor([[[0.75]], [[0.2]], [[0.45]]], dtype=torch.double)
+    unsampled, sampled, bad = acq(x).tolist()
+    with torch.no_grad():
+        p = gp.posterior(x)
+        optimistic = torch.exp(-0.5 * 10 ** -(p.mean + post.OPTIMISM * p.variance.sqrt()))
+    torch.manual_seed(0)
+    proposal = optimize_acqf_logged(acq, 1, 'test').item()
+
+    assert proposal == pytest.approx(0.75, abs=0.03)
+    assert unsampled > 0.3
+    assert abs(sampled) < 0.01 and abs(bad) < 0.01
+    assert optimistic[1].item() > optimistic[0].item()  # the wrong target prefers 0.2
+
+
+def test_likelihood_gap_spreads_away_from_pending_points():
+    """A pending point at the unsampled minimum lowers the acquisition there, so the next
+    proposal goes elsewhere in the same gap rather than back to the sampled minimum."""
+    from proteus.inference.BO import optimize_acqf_logged
+
+    gp = _two_minima_gp()
+    pending = torch.tensor([[0.75]], dtype=torch.double)
+    acq = post.posterior_acqf(gp, pending)
+    torch.manual_seed(0)
+    spread = optimize_acqf_logged(acq, 1, 'test').item()
+
+    assert 0.62 < spread < 0.88 and abs(spread - 0.75) > 0.03
+    assert (
+        acq(pending[:, None]).item()
+        < 0.5 * post.posterior_acqf(gp, None)(pending[:, None]).item()
+    )
+
+
+@pytest.mark.parametrize('n', [None, 0, 100, 400])
+def test_validate_posterior_steps_accepts(n):
+    """None and 0 turn posterior steps off; up to n_steps passes unchanged."""
+    out = post.validate_posterior_steps(n, 400, {'R_obs': 0.1})
+    assert out == (n or 0)
+    assert type(out) is int
+
+
+@pytest.mark.parametrize('n', [-1, 401, 2.5, True, '100'])
+def test_validate_posterior_steps_rejects(n):
+    """Negative, more than n_steps, fractional, boolean and string counts are refused."""
+    with pytest.raises(ValueError, match='posterior_steps must be'):
+        post.validate_posterior_steps(n, 400, {'R_obs': 0.1})
+    with pytest.raises(ValueError, match='posterior_steps must be'):
+        post.validate_posterior_steps(n, 400, None)
+
+
+def test_validate_posterior_steps_needs_sigma():
+    """Without [sigma] the objective is no likelihood, so posterior steps are refused."""
+    assert post.validate_posterior_steps(0, 400, None) == 0
+    with pytest.raises(ValueError, match='sigma'):
+        post.validate_posterior_steps(100, 400, None)
+
+
 @pytest.fixture
 def no_hyperfit(monkeypatch):
     """Skip the slow GP hyperparameter fit; returns the kwargs of each skipped call."""

@@ -996,6 +996,38 @@ def test_bo_step_fits_gp_without_failed_runs_but_still_avoids_them(monkeypatch):
     assert y[0, 0].item() == pytest.approx(0.3)
 
 
+@pytest.mark.parametrize(
+    'posterior_from, pending, expected',
+    [(None, 0, 'bo'), (6, 0, 'bo'), (6, 1, 'posterior'), (5, 0, 'posterior')],
+    ids=['off', 'before-switch', 'pending-reaches-switch', 'evaluated-reach-switch'],
+)
+def test_bo_step_switches_to_the_posterior_acquisition(
+    monkeypatch, posterior_from, pending, expected
+):
+    """The step uses posterior_acqf once evaluated plus pending points reach posterior_from,
+    passing the other workers' pending points, and the configured acquisition before that."""
+    seen = _spy_gp_and_acquisition(monkeypatch, candidate=0.75)
+    monkeypatch.setattr(
+        bo_mod, 'posterior_acqf', lambda gp, X_pending: seen.update(post=X_pending) or object()
+    )
+    B = {1: torch.tensor([[0.2]], dtype=torch.double)} if pending else {}
+    bo_mod.BO_step(
+        D=_history_with_failures(),  # 5 evaluations
+        B=B,
+        f=lambda _x: torch.tensor([[0.3]], dtype=torch.double),
+        k=object(),
+        acqf='LogEI',
+        lock=_DummyLock(),
+        worker_id=0,
+        posterior_from=posterior_from,
+    )
+
+    assert ('post' in seen) == (expected == 'posterior')
+    assert ('best' in seen) == (expected == 'bo')
+    if expected == 'posterior':
+        assert seen['post'] is None if not pending else seen['post'].tolist() == [[0.2]]
+
+
 @pytest.mark.physics_invariant
 def test_init_locs_fits_gp_without_failed_runs_but_still_avoids_them(monkeypatch):
     """The initial proposals come from a GP of the scored runs only, and every

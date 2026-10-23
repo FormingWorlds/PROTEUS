@@ -21,6 +21,7 @@ from botorch.optim.fit import fit_gpytorch_mll_torch
 from gpytorch.mlls import ExactMarginalLogLikelihood
 
 from proteus.inference.objective import BAD_OBJ_VALUE
+from proteus.inference.posterior import posterior_acqf
 from proteus.inference.utils import get_acqf, get_kernel
 
 # Set tensor dtype for consistent precision
@@ -175,7 +176,7 @@ def _failed_starts(text: str) -> str:
     return f' in {starts} start(s) [{", ".join(sorted(reasons))}]'
 
 
-def BO_step(D, B, f, k, acqf, lock, worker_id, x_in=None):
+def BO_step(D, B, f, k, acqf, lock, worker_id, x_in=None, posterior_from=None):
     """Perform a single Bayesian optimization step.
 
     Fits a GP to the scored evaluations, optimizes an acquisition function,
@@ -191,6 +192,8 @@ def BO_step(D, B, f, k, acqf, lock, worker_id, x_in=None):
     - lock (multiprocessing.Lock): Lock for synchronizing shared state.
     - worker_id (int): ID of the calling worker.
     - x_in (torch.Tensor, optional): Initial input for the first iteration.
+    - posterior_from (int, optional): Number of evaluated and pending points from which the
+      step uses `posterior_acqf` instead of `acqf`.
 
     Returns
     ----------
@@ -241,7 +244,10 @@ def BO_step(D, B, f, k, acqf, lock, worker_id, x_in=None):
 
         # Other workers' points, so this one is proposed away from them
         b = torch.cat(busys, dim=0) if busys else torch.zeros((0, d), dtype=dtype)
-        acqf_f = get_acqf(acqf, gp, best, X_pending=b if busys else None)
+        if posterior_from is not None and len(X) + len(busys) >= posterior_from:
+            acqf_f = posterior_acqf(gp, b if busys else None)
+        else:
+            acqf_f = get_acqf(acqf, gp, best, X_pending=b if busys else None)
 
         who = f'worker {worker_id}'
         x = optimize_acqf_logged(

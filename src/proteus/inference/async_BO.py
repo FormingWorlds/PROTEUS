@@ -358,6 +358,7 @@ def parallel_process(
     correlation: dict | None = None,
     patience: int = 0,
     student_t_dof: float | None = None,
+    posterior_steps: int = 0,
 ) -> tuple[dict, list, list]:
     """Orchestrate parallel asynchronous Bayesian optimization.
 
@@ -385,6 +386,7 @@ def parallel_process(
       stops; 0 runs the full budget.
     - student_t_dof (float | None): Student-t degrees of freedom, or None for
       Gaussian errors.
+    - posterior_steps (int): The last this many evaluations use the posterior acquisition.
 
     Returns
     ----------
@@ -415,6 +417,7 @@ def parallel_process(
         BO_step,
         k=kernel,
         acqf=acqf,
+        posterior_from=max_len - posterior_steps if posterior_steps else None,
     )
 
     # Absolute path to shared output dir

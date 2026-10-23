@@ -49,7 +49,11 @@ from proteus.inference.objective import (
     validate_sigma,
     worker_spectral_cache,
 )
-from proteus.inference.posterior import validate_posterior_samples, write_posterior
+from proteus.inference.posterior import (
+    validate_posterior_samples,
+    validate_posterior_steps,
+    write_posterior,
+)
 from proteus.inference.utils import print_results, str_time
 from proteus.utils.coupler import get_proteus_directories, variable_is_logarithmic
 from proteus.utils.helper import safe_rm
@@ -405,6 +409,11 @@ def run_inference(config):
         config.get('posterior_samples'), config['sigma']
     )
 
+    # The last posterior_steps of n_steps sample where a good fit is still uncertain; 0 is off
+    config['posterior_steps'] = validate_posterior_steps(
+        config.get('posterior_steps'), config['n_steps'], config['sigma']
+    )
+
     # How each worker runs its evaluations, validated before the output folder is emptied.
     set_dispatch(config.get('dispatch'), config.get('runner_max_jobs'))
 
@@ -492,6 +501,7 @@ def run_inference(config):
         objective = f'Student-t (dof = {config["student_t_dof"]:g})'
     log.info(f'    objective     = {objective}')
     log.info(f'    posterior     = {config["posterior_samples"] or "off"} samples')
+    log.info(f'    posterior steps = {config["posterior_steps"] or "off"} of the optim steps')
     log.info(' ')
     t_0 = time.perf_counter()
 
@@ -512,6 +522,7 @@ def run_inference(config):
         config['correlation'],
         config['patience'],
         config['student_t_dof'],
+        config['posterior_steps'],
     )
 
     t_1 = time.perf_counter()

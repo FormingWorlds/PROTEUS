@@ -149,6 +149,8 @@ With `[sigma]`, every objective form (chi-squared, correlated chi-squared, Stude
 
 The posterior ignores the GP's own uncertainty, so it is only as good as the GP near the best fit: check that the study converged (`perf_bestval.png`) before using it.
 
+With `posterior_steps = N` (default `0`, off; needs `[sigma]`), the last `N` of the `n_steps` evaluations aim at the posterior instead of the best fit. Each proposes where the likelihood with the GP mean raised by two GP standard deviations most exceeds the likelihood with the mean: near zero where the GP is sure of the fit, good or bad, and large where a good fit is possible but not yet sampled. Points other workers are evaluating count at their GP mean, so the workers spread out. In TR test studies, good fits formed a long, narrow valley, and the runs had sampled only part of it; the GP then ruled out the unsampled part, which held the truth, and so did the posterior.
+
 ### Parallel Processing
 
 - Multiple workers run simultaneously, each performing BO steps
