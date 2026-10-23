@@ -36,17 +36,26 @@ PROTEUS_DIR = get_proteus_dir()
 
 
 class _HeldRecords(logging.Handler):
-    """Keep log records until the grid's manager.log exists."""
+    """Take the place of the fwl handlers and keep the records until manager.log exists."""
 
-    def __init__(self, saved: tuple):
+    def __init__(self, fwl: logging.Logger):
         super().__init__()
-        self.records, self.saved = [], saved  # saved: the logger's propagate and level
+        self.records, self.saved = [], (fwl.handlers[:], fwl.level)
 
     def emit(self, record):
         self.records.append(record)
 
 
 log = logging.getLogger('fwl.' + __name__)
+_FWL = logging.getLogger('fwl')
+
+
+def _replay(records: list):
+    """Pass held records to the handlers the fwl logger has now, as it would have then."""
+    for record in records:
+        for handler in _FWL.handlers:
+            if record.levelno >= handler.level:
+                handler.handle(record)
 
 
 # Thread target
@@ -93,7 +102,7 @@ class Grid:
 
         self.grid_config = grid_config
         self._held = None  # log records held until the output exists
-        self._checked = False  # case configs already written by check_cases
+        self._checked = False  # cfgs/ already holds the cases from adopt_cases
 
         # List of dimension names and parameter names
         self.dim_names = []  # String
@@ -109,9 +118,11 @@ class Grid:
         if prepare_output:
             self.prepare_output()
         else:
-            self._held = _HeldRecords((log.propagate, log.level))
-            log.addHandler(self._held)
-            log.propagate, log.level = False, logging.INFO
+            if any(isinstance(h, _HeldRecords) for h in _FWL.handlers):
+                raise RuntimeError('another grid holds the log until its output exists')
+            self._held = _HeldRecords(_FWL)
+            _FWL.handlers = [self._held]
+            _FWL.setLevel(logging.INFO)  # the level setup_logger sets; clears the level cache
 
     def prepare_output(self):
         """Remove the old output, create the output folders, copy the configs and start
@@ -178,21 +189,20 @@ class Grid:
 
         held = self._unhold_log()
         log.info("Grid '%s' initialised empty" % self.name)
-        for record in held:
-            log.handle(record)
+        _replay(held)
 
     def release_log(self):
         """Stop holding log lines and pass the held ones on, once."""
-        for record in self._unhold_log():
-            log.handle(record)
+        _replay(self._unhold_log())
 
     def _unhold_log(self) -> list:
         """Stop holding log lines; return the held records (none once released)."""
         held, self._held = self._held, None
         if held is None:
             return []
-        log.removeHandler(held)
-        log.propagate, log.level = held.saved
+        if held in _FWL.handlers:  # setup_logger has not replaced them
+            _FWL.handlers = held.saved[0]
+            _FWL.setLevel(held.saved[1])
         return held.records
 
     # Add a new empty dimension to the Grid
@@ -259,7 +269,7 @@ class Grid:
         why = direct_values_error(values)
         if why:
             raise ValueError(f"direct dimension '{name}' {why}")
-        values = [bool(v) if isinstance(v, np.bool_) else v for v in values]  # 1-D array, tuple
+        values = [v.item() if isinstance(v, np.generic) else v for v in values]  # array, tuple
         the_list = list(dict.fromkeys(values))  # written order, duplicates removed
         if (not isinstance(values[0], str)) and sort:  # sort if numeric
             the_list = sorted(the_list)
@@ -336,29 +346,16 @@ class Grid:
         log.info(' ')
 
     def write_config_files(self):
-        """Write the config file of each case and read it back with the config loader.
+        """Write the config file of each case into cfgs/ and read it back with the config
+        loader, unless `adopt_cases` has already placed the checked ones there.
 
         Raises
         ------
         ValueError
-            If a written case does not load; the message names the case index, its grid
-            values and, through the loader's message, its file.
+            As `write_cases`.
         """
-        log.info('Writing config files')
-        if self._checked:  # check_cases wrote and read back every case already
-            return
-        self._write_cases(self.cfgdir)
-
-    def check_cases(self, tmpdir: str):
-        """Write every case config into ``tmpdir`` and read it back, before the old
-        output is touched; `adopt_cases` then moves them into the output.
-
-        Raises
-        ------
-        ValueError
-            As `write_config_files`.
-        """
-        self._write_cases(tmpdir)
+        if not self._checked:
+            self.write_cases(self.cfgdir)
 
     def adopt_cases(self, tmpdir: str):
         """Move the case configs checked in ``tmpdir`` into the output's cfgs folder."""
@@ -366,8 +363,17 @@ class Grid:
             shutil.move(os.path.join(tmpdir, name), os.path.join(self.cfgdir, name))
         self._checked = True
 
-    def _write_cases(self, folder: str):
-        """Write each case config into ``folder`` and read it back with the loader."""
+    def write_cases(self, folder: str):
+        """Write each case config into ``folder`` and read it back with the config loader.
+
+        Raises
+        ------
+        ValueError
+            If a value is refused when it is set, as 'Grid case i (key = value): reason',
+            or if a written case does not load, as 'Grid case i (key = value, ...): ' and
+            the loader's message, which names the case file in cfgs/.
+        """
+        log.info('Writing config files')
         base_config = read_config_object(self.conf)
         # A module set per case takes that module's default rtol when nothing sets one.
         rtol_unset = not rtol_is_set(read_config(self.conf).get('interior_energetics', {}))
@@ -378,7 +384,8 @@ class Grid:
                 try:
                     recursive_setattr(thisconf, key, gp[key])
                 except (TypeError, ValueError) as exc:
-                    raise ValueError(f'Grid case {i} ({key} = {gp[key]!r}): {exc}') from exc
+                    reason = exc.args[0] if exc.args and isinstance(exc.args[0], str) else exc
+                    raise ValueError(f'Grid case {i} ({key} = {gp[key]!r}): {reason}') from exc
             if 'interior_energetics.rtol' in gp:  # a base alias would conflict on reload
                 ie = thisconf.interior_energetics
                 ie.num_tolerance = ie.spider.tolerance_rel = _TOL_UNSET
@@ -393,9 +400,9 @@ class Grid:
             try:
                 read_config_object(case_path)
             except ValueError as exc:
-                lines = [ln.strip() for ln in str(exc).splitlines() if ln.startswith('  ')]
                 where = ', '.join(f'{k} = {v!r}' for k, v in gp.items())
-                raise ValueError(f'Grid case {i} ({where}): {"; ".join(lines) or exc}') from exc
+                reason = str(exc).replace(case_path, self._get_tmpcfg(i))
+                raise ValueError(f'Grid case {i} ({where}): {reason}') from exc
 
     def run(
         self,
@@ -902,10 +909,10 @@ def grid_from_config(config_fpath: str, test_run: bool = False, check_interval: 
         else:
             log.warning('Number of grid points exceeds 10000. Will not print them here.')
 
-        parent = os.path.dirname(pg.outdir.rstrip('/'))
-        os.makedirs(parent, exist_ok=True)
-        with tempfile.TemporaryDirectory(dir=parent, prefix=f'.{pg.name}-check-') as tmpdir:
-            pg.check_cases(tmpdir)
+        outroot = os.path.join(PROTEUS_DIR, 'output')
+        os.makedirs(outroot, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=outroot, prefix='.grid-check-') as tmpdir:
+            pg.write_cases(tmpdir)
             pg.prepare_output()
             pg.adopt_cases(tmpdir)
     finally:
