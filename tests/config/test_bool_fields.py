@@ -152,4 +152,12 @@ def test_importing_the_config_leaves_the_global_cattrs_converter_alone():
     cattrs' global converter in the same process keeps the bool rules of a fresh one."""
     assert proteus.config.converter is not cattrs.global_converter
     for value in ('false', 0, 1.5):
-        assert cattrs.structure(value, bool) is cattrs.Converter().structure(value, bool)
+        assert _outcome(cattrs.global_converter, value) == _outcome(cattrs.Converter(), value)
+
+
+def _outcome(converter, value):
+    """What ``converter`` makes of ``value`` as a bool: the result or the exception type."""
+    try:
+        return converter.structure(value, bool)
+    except Exception as exc:  # noqa: BLE001 -- a raise is an outcome to compare
+        return type(exc)

@@ -13,6 +13,7 @@ import inspect
 import math
 import multiprocessing as mp
 import os
+import re
 from pathlib import Path
 
 import pytest
@@ -357,8 +358,27 @@ def test_validate_reference_config_rejects_a_faulty_reference_file(tmp_path):
         ({'planet.elements.H_budget': [0.0, 2e4]}, {}, ValueError, 'log scale'),
         # A quoted "false" is truthy, so it would silently leave the cache on.
         ({'planet.mass_tot': [0.7, 3.0]}, {'spectral_cache': 'false'}, ValueError, 'true or'),
+        # The same for abort_on_failure, where "false" would stop the study on a failed run.
+        (
+            {'planet.mass_tot': [0.7, 3.0]},
+            {'abort_on_failure': 'false'},
+            ValueError,
+            "abort_on_failure must be true or false, got 'false'",
+        ),
+        (
+            {'planet.mass_tot': [0.7, 3.0]},
+            {'abort_on_failure': 1},
+            ValueError,
+            'abort_on_failure must be true or false, got 1',
+        ),
     ],
-    ids=['misspelt_parameter', 'log_scaled_range_reaching_zero', 'spectral_cache_not_bool'],
+    ids=[
+        'misspelt_parameter',
+        'log_scaled_range_reaching_zero',
+        'spectral_cache_not_bool',
+        'abort_on_failure_string',
+        'abort_on_failure_int',
+    ],
 )
 def test_run_inference_validates_reference_config_before_emptying_output(
     monkeypatch, tmp_path, parameters, extra, error, match
@@ -404,8 +424,9 @@ def test_run_inference_validates_reference_config_before_emptying_output(
         inference_mod, 'create_init', lambda *a, **kw: create_init_calls.append((a, kw))
     )
 
-    with pytest.raises(error, match=match):
+    with pytest.raises(Exception) as exc:  # an escape of any other type fails the assert
         inference_mod.run_inference(config)
+    assert exc.type is error and re.search(match, str(exc.value)), repr(exc.value)
     # Ordering: the guard must fire before the initial design is generated.
     assert create_init_calls == []
     # ...and before the output folder is emptied. A guard placed after the

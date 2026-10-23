@@ -1348,8 +1348,12 @@ class TestGridFromConfig:
         self, fake_proteus_dir, monkeypatch, key, value
     ):
         """A quoted ``"false"``, a ``1`` or a ``0.0`` for use_slurm or jax_cache stops the
-        grid with the key named, instead of reading ``"false"`` as true."""
+        grid with the key and the grid file named, before the old output directory is
+        removed, instead of reading ``"false"`` as true."""
         (fake_proteus_dir / 'base.toml').write_text('# base\n')
+        old = fake_proteus_dir / 'output' / 'unit_grid' / 'case_000000' / 'runtime_helpfile.csv'
+        old.parent.mkdir(parents=True)
+        old.write_text('kept\n')
         grid_path = _write_grid_toml(
             fake_proteus_dir / 'g.toml',
             dimensions={key: value, 'planet.mass_tot': {'method': 'direct', 'values': [0.5]}},
@@ -1357,9 +1361,12 @@ class TestGridFromConfig:
         calls = []
         monkeypatch.setattr(Grid, 'run', lambda self, *a, **k: calls.append('run'))
         monkeypatch.setattr(Grid, 'slurm_config', lambda self, *a, **k: calls.append('slurm'))
-        with pytest.raises(ValueError, match=f'{key} must be true or false, got {value!r}'):
+        with pytest.raises(
+            ValueError, match=f'{key} must be true or false, got {value!r}'
+        ) as exc:
             grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
-        assert calls == []
+        assert str(grid_path) in str(exc.value)
+        assert calls == [] and old.read_text() == 'kept\n'
 
     @pytest.mark.parametrize(
         ('extra', 'expected'),
