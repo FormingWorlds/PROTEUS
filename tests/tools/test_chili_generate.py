@@ -182,6 +182,11 @@ def test_every_chili_config_takes_the_buoyancy_against_the_solid():
         assert (
             _read_config(str(path)).interior_energetics.aragog.separation_buoyancy == 'solid'
         ), path.name
+    for name in gen.CASE_DELTAS:
+        text = (REPO / 'input' / 'chili' / 'intercomp' / f'{name}.toml').read_text()
+        assert '\n        separation_buoyancy = "solid"\n' in text, (
+            name
+        )  # at the indent of its table
     gen.CASE_DELTAS['tr1e']['set']['interior_energetics.aragog.separation_buoyancy'] = 'mixture'
     with pytest.raises(ValueError, match=r'tr1e: .*separation_buoyancy'):
         gen.generate_case('tr1e')

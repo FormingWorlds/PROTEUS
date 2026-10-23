@@ -329,6 +329,75 @@ def test_a_solver_in_another_mode_stops_the_run(solver, jax_flag, site, got):
     assert "is 'solid'" in msg and f'{site} aragog solver' in msg and got in msg
 
 
+def test_the_check_reads_the_evaluators_aragog_builds():
+    """The check reads the buoyancy of real aragog phase evaluators, not stand-ins with its own
+    attribute names, so a rename in aragog fails here and not first in a run."""
+    from aragog.eos.entropy_phase import EntropyPhaseEvaluator
+
+    from proteus.interior_energetics.aragog_phase import (
+        BuoyancyMismatchError,
+        check_solver_buoyancy,
+    )
+
+    def solver(mode):
+        ph = EntropyPhaseEvaluator(None, 9.8, separation_buoyancy=mode)
+        return SimpleNamespace(state=SimpleNamespace(phase_staggered=ph, phase_basic=ph))
+
+    config = _make_full_config(separation_buoyancy='solid')
+    assert check_solver_buoyancy(config, solver=solver('solid')) is None
+    with pytest.raises(BuoyancyMismatchError, match="uses 'mixture'"):
+        check_solver_buoyancy(config, solver=solver('mixture'))
+
+
+def test_a_check_with_nothing_to_check_is_refused():
+    """A call that passes neither a solver nor JAX parameters would check nothing; it raises."""
+    from proteus.interior_energetics.aragog_phase import check_solver_buoyancy
+
+    with pytest.raises(ValueError, match='solver or jax_params'):
+        check_solver_buoyancy(_make_full_config())
+    assert check_solver_buoyancy(_make_full_config(), solver=_solver('solid')) is None
+
+
+@pytest.mark.parametrize(
+    ('flag', 'mode'), [(0.9, 'mixture'), (0.51, 'mixture'), (0.4, 'solid')]
+)
+def test_the_jax_flag_is_read_as_aragog_reads_it(flag, mode):
+    """aragog takes the JAX flag above 0.5 as 'mixture'; the check decodes it the same way."""
+    from proteus.interior_energetics.aragog_phase import (
+        BuoyancyMismatchError,
+        check_solver_buoyancy,
+    )
+
+    params = SimpleNamespace(separation_buoyancy_mixture=flag)
+    other = 'solid' if mode == 'mixture' else 'mixture'
+    assert (
+        check_solver_buoyancy(_make_full_config(separation_buoyancy=mode), jax_params=params)
+        is None
+    )
+    with pytest.raises(BuoyancyMismatchError):
+        check_solver_buoyancy(_make_full_config(separation_buoyancy=other), jax_params=params)
+
+
+def test_the_research_runner_stops_on_jax_params_in_another_buoyancy(tmp_path):
+    """The diffrax research runner checks the JAX parameters it builds, as the CVODE factory does."""
+    from proteus.interior_energetics.aragog_phase import BuoyancyMismatchError
+
+    config = _make_full_config(separation_buoyancy='solid')
+    interior_o = _make_runner_interior_o(spider_eos_dir=str(tmp_path))
+    runner = object.__new__(AragogJAXRunner)
+    runner.aragog_solver = interior_o.aragog_solver
+    with (
+        patch('aragog.jax.eos.EntropyEOS_JAX', return_value=MagicMock()),
+        patch(
+            'proteus.interior_energetics.aragog_jax.build_jax_phase_params',
+            return_value=SimpleNamespace(separation_buoyancy_mixture=1.0),
+        ),
+        pytest.raises(BuoyancyMismatchError, match="is 'solid'"),
+    ):
+        runner._build_jax_components(config, interior_o)
+    assert not hasattr(interior_o, '_jax_bc')
+
+
 def test_jax_only_fields_carry_configured_values():
     """Every JAX-only configured field reaches the JAX ``PhaseParams``
     stored attribute rather than the aragog library default.
