@@ -164,26 +164,26 @@ def test_mobility_reproduces_the_interior_solver_in_every_regime():
         mobility_function(0.3, 0.0)
 
 
-@pytest.mark.reference_pinned
 @pytest.mark.physics_invariant
 def test_the_drainage_names_the_solid_mobility(monkeypatch):
     """The drainage passes buoyancy 'solid' to the solver's mobility rather than leaning on the
     default of aragog.eos.mobility_function, which differs from the solver's own default."""
     import aragog.eos
 
-    seen = []
-    real = aragog.eos.mobility_function
+    seen, real = [], aragog.eos.mobility_function
 
-    def spy(*args, **kwargs):
-        seen.append((args[2:], kwargs))
-        return real(*args, **kwargs)
+    def spy(porosity, grain_size, buoyancy='not given'):
+        seen.append(buoyancy)
+        return real(porosity, grain_size, 'solid')
 
     monkeypatch.setattr(aragog.eos, 'mobility_function', spy)
     w = darcy_velocity(0.3, 1.0e-3, 400.0, 9.8, 100.0)
     assert w == pytest.approx(0.7 * 400.0 * 9.8 * real(0.3, 1.0e-3, 'solid') / 100.0, rel=1e-12)
-    assert seen == [(('solid',), {})] or seen == [((), {'buoyancy': 'solid'})]
+    assert seen == ['solid']
 
 
+@pytest.mark.reference_pinned
+@pytest.mark.physics_invariant
 def test_the_lever_rule_porosity_is_the_solvers_where_the_melt_is_lighter():
     """Cross-implementation check against the interior solver's own porosity,
     ``EntropyPhaseEvaluator._porosity_from``, from which it writes ``porosity_b``.

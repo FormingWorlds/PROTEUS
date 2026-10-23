@@ -188,24 +188,37 @@ def test_every_chili_config_takes_the_buoyancy_against_the_solid():
     ('text', 'dotted', 'want'),
     [
         ('a = 1\n', 'b', 'a = 1\nb = 4\n'),
-        ('[x]\n    k = 1\n[y]\n    j = 2\n[x.z]\n    m = 3\n', 'x.s', None),
+        (
+            '[x]\n    k = 1\n[y]\n    j = 2\n[x.z]\n    m = 3\n',
+            'x.s',
+            '[x]\n    k = 1\ns = 4\n[y]\n    j = 2\n[x.z]\n    m = 3\n',
+        ),
         (
             '[x]\n    k = 1\n    [x.t]\n        u = 1\n',
             'x.t.v',
-            '    [x.t]\n        u = 1\n        v = 4\n',
+            '[x]\n    k = 1\n    [x.t]\n        u = 1\n        v = 4\n',
+        ),
+        ('[x]\n  k = 1\n      l = 2\n', 'x.v', '[x]\n  k = 1\n      l = 2\n      v = 4\n'),
+        (
+            '[x]\n   k = 1\n    [x.t]\n        u = 1\n',
+            'x.v',
+            '[x]\n   k = 1\n   v = 4\n\n    [x.t]\n        u = 1\n',
         ),
         ('[x]\n    k = 1\n', 'x.k', '[x]\n    k = 4\n'),
     ],
     ids=[
         'top_level_key',
-        'split_table',
+        'split_table_takes_no_indent',
         'new_key_at_table_indent',
+        'indent_of_the_last_key',
+        'plain_key_before_a_subtable',
         'existing_key_keeps_indent',
     ],
 )
 def test_set_dotted_writes_a_key_at_any_depth(text, dotted, want):
-    """A top-level key, a key in a table that another table splits, a new key in a subtable (at
-    the indent of its keys) and a replaced key are all written, and the value reads back."""
+    """A top-level key, a key in a table that another table splits (no indent: the split table
+    has no body), a new key at the indent of the last plain key of its table, and a replaced key
+    at its own indent are all written as the expected text."""
     import tomllib
 
     import tomlkit
@@ -214,12 +227,11 @@ def test_set_dotted_writes_a_key_at_any_depth(text, dotted, want):
     doc = tomlkit.parse(text)
     gen._set_dotted(doc, dotted, 4)
     out = tomlkit.dumps(doc)
+    assert out == want
     node = tomllib.loads(out)
     for part in dotted.split('.'):
         node = node[part]
     assert node == 4
-    if want is not None:
-        assert want in out
 
 
 def test_protocol_values_are_fresh_items_in_each_case(tmp_path, monkeypatch):

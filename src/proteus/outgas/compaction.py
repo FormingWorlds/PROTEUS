@@ -111,12 +111,12 @@ class FrontGeometry:
 
 
 def mobility_function(porosity: float | np.ndarray, grain_size: float) -> float | np.ndarray:
-    """Permeability over porosity, ``F = K / phi`` [m2], of the interior solver's buoyancy 'solid'.
+    """Permeability over porosity, ``F = K / phi`` [m2], of the solver's 'solid' buoyancy.
 
-    ``aragog.eos.mobility_function`` under ``separation_buoyancy = 'solid'``: the three regimes of Bower et al. (2018)
-    section 2.1, Blake-Kozeny-Carman ``a^2 phi^2 / ((1-phi)^2 * 1000)``,
-    Rumpf-Gupte ``a^2 phi^4.5 * 5/7`` and Stokes ``a^2 * 2/9``, blended with
-    tanh weights.
+    ``aragog.eos.mobility_function`` with ``buoyancy = 'solid'``: the three
+    regimes of Bower et al. (2018) section 2.1, Blake-Kozeny-Carman
+    ``a^2 phi^2 / ((1-phi)^2 * 1000)``, Rumpf-Gupte ``a^2 phi^4.5 * 5/7`` and
+    Stokes ``a^2 * 2/9``, blended with tanh weights.
 
     Parameters
     ----------

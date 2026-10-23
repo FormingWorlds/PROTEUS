@@ -33,8 +33,8 @@ Cases
   rule, and ``RUN_SETTINGS``. Escape is disabled in these cases:
   ZEPHYRUS pairs only with the Spada evolution tracks, and a 0.09 M_sun
   star needs the Baraffe tracks, so the escape treatment for the
-  TRAPPIST cases awaits a protocol decision. The configs are generated for completeness;
-  their runs are validated separately.
+  TRAPPIST cases awaits a protocol decision. The configs are generated
+  for completeness; their runs are validated separately.
 
 Usage
 -----
@@ -173,8 +173,9 @@ def _set_dotted(doc, dotted: str, value) -> None:
     # A fresh item per document: tomlkit moves a replaced line's comment onto the item.
     new = keys[-1] not in node
     node[keys[-1]] = copy.deepcopy(value)
-    # A new key in a table takes the indent of its keys; the root and a split table have no body.
-    body = getattr(getattr(node, 'value', None), 'body', None)
+    # A new key takes the indent of the keys of its table; the root and a split table
+    # have no body.
+    body = getattr(node.value, 'body', None)
     if new and body:
         items = [v for k, v in body if k is not None and k.key != keys[-1]]
         plain = [
@@ -235,8 +236,8 @@ def _format_stop_block(text: str, name: str) -> str:
 
 
 def case_deltas(name: str) -> dict:
-    """Deltas of case ``name``: its ``CASE_DELTAS`` entries, the protocol's redox state and stop rule,
-    and ``RUN_SETTINGS``.
+    """Deltas of case ``name``: ``CASE_DELTAS``, the protocol's redox state and stop rule, and
+    ``RUN_SETTINGS``.
 
     Raises
     ------

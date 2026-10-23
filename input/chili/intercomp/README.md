@@ -11,17 +11,18 @@ time: the energy-balance, escape and wall-clock stops are off. Two limits
 stay on: the stall stop, which ends a run as an error after 150
 consecutive iterations without a converged atmosphere solve
 (`params.stop.stall.maximum`), and the iteration limit of 1000000
-(`params.stop.iters.maximum`). Every case takes the buoyancy of melt-solid
-separation against the solid
-(`interior_energetics.aragog.separation_buoyancy = "solid"`), the form of
-the submitted runs, where the PROTEUS default takes it against the
-mixture on the Blake-Kozeny-Carman and Rumpf-Gupte regimes. The TRAPPIST-1 cases (`tr1b`, `tr1e`,
-`tr1a`) derive from the Earth base with the protocol's star and orbit
-settings; the escape module is off there (`escape.module = "none"`)
-because ZEPHYRUS pairs only with the Spada evolution tracks while a
-0.09 M_sun star needs Baraffe, and the escape treatment for those cases
-awaits a protocol decision. The `*.grid.toml` files are `proteus grid`
-specs sweeping the protocol H and C inventories.
+(`params.stop.iters.maximum`). Every case takes the buoyancy of
+melt-solid separation against the solid
+(`interior_energetics.aragog.separation_buoyancy = "solid"`), the form
+of the submitted runs, where the PROTEUS default takes it against the
+mixture on the Blake-Kozeny-Carman and Rumpf-Gupte regimes. The
+TRAPPIST-1 cases (`tr1b`, `tr1e`, `tr1a`) derive from the Earth base
+with the protocol's star and orbit settings; the escape module is off
+there (`escape.module = "none"`) because ZEPHYRUS pairs only with the
+Spada evolution tracks while a 0.09 M_sun star needs Baraffe, and the
+escape treatment for those cases awaits a protocol decision. The
+`*.grid.toml` files are `proteus grid` specs sweeping the protocol H and
+C inventories.
 
 In every case `star.bol_scale` keeps its default of 1: the MORS track
 luminosity is used directly, as in the tutorial configs, rather than
