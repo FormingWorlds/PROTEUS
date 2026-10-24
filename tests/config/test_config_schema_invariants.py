@@ -1443,8 +1443,11 @@ def test_prevent_desaturation_refused_where_no_condensate_forms(
     refused anywhere else when the config loads, naming the setting to change,
     instead of running with a flag that does nothing."""
     instance = _desaturation_config(module, include_condensates, prevent=True)
-    with pytest.raises(ValueError, match=match):
+    with pytest.raises(ValueError, match=match) as excinfo:
         prevent_desaturation_requires_atmodeller_condensates(instance, None, None)
+    # Discrimination: the message names the flag, so a refusal from another
+    # validator could not pass for this one.
+    assert 'outgas.prevent_desaturation = true' in str(excinfo.value)
 
 
 @pytest.mark.unit
