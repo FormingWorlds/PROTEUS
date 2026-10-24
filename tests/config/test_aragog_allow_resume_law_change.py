@@ -1,7 +1,7 @@
 """The aragog allow_resume_law_change option over its input domain.
 
-Source: ``proteus.config._interior.Aragog.allow_resume_law_change`` and the raw check in
-``proteus.config.structure_config``. Contract: the default is false, a TOML true or false
+Source: ``proteus.config._interior.Aragog.allow_resume_law_change`` and the bool structure
+hook of ``proteus.config``. Contract: the default is false, a TOML true or false
 passes the reader, and any other TOML value stops the load with the field named, so a
 string "false" or a 1 cannot turn the switch on.
 """
@@ -56,9 +56,11 @@ def test_the_reader_takes_a_toml_boolean(tmp_path, value):
     ],
 )
 def test_a_value_that_is_not_a_toml_boolean_stops_the_load(tmp_path, value):
-    """A number or a string stops the load and names the field; the string 'false' does not read as true."""
+    """A number or a string stops the load with the bool-field message and the dotted path;
+    the string 'false' does not read as true."""
     with pytest.raises(
-        ValueError, match='allow_resume_law_change must be a TOML true or false'
+        ValueError,
+        match=r'interior_energetics\.aragog\.allow_resume_law_change: must be true or false, got ',
     ) as err:
         _load(tmp_path, value)
     assert repr(value) in str(err.value)
