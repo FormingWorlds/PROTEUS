@@ -50,18 +50,49 @@ log = logging.getLogger('fwl.' + __name__)
 _FWL = logging.getLogger('fwl')
 
 
-def _check_symlink_dir(folder: str):
-    """Refuse a symlink folder inside the PROTEUS folder (output/ included), or that is
-    HOME or above HOME or PROTEUS_DIR; links and relative paths are resolved first."""
-    real = os.path.realpath(folder)
-    proteus, home = os.path.realpath(PROTEUS_DIR), os.path.realpath(os.path.expanduser('~'))
-    if os.path.commonpath([real, proteus]) == proteus or any(
-        os.path.commonpath([real, g]) == real for g in (proteus, home)
+def _output_root() -> str:
+    """Return PROTEUS/output, the folder that holds the output of every grid."""
+    return os.path.join(PROTEUS_DIR, 'output')
+
+
+def _within(path: str, folder: str) -> bool:
+    """Whether ``path`` is ``folder`` or lies below it, links resolved; folders are
+    compared by identity, so a case variant on a case-insensitive file system matches."""
+    try:
+        target = os.stat(folder)
+    except OSError:
+        return False
+    p = os.path.realpath(path)
+    while True:
+        try:
+            if os.path.samestat(os.stat(p), target):
+                return True
+        except OSError:
+            pass
+        if os.path.dirname(p) == p:
+            return False
+        p = os.path.dirname(p)
+
+
+def _check_symlink_dir(folder: str, inputs: tuple = ()):
+    """Refuse a symlink folder that is or lies in PROTEUS_DIR or the output folder (where
+    output/ links to included), or that is or holds HOME, PROTEUS_DIR, the output folder
+    or one of ``inputs`` (the grid file and base config)."""
+    protected = (PROTEUS_DIR, _output_root())
+    if any(_within(folder, p) for p in protected) or any(
+        _within(p, folder) for p in (*protected, os.path.expanduser('~'), *inputs)
     ):
         raise ValueError(
-            f'symlink folder {folder} (resolved {real}) lies in {proteus}, or is HOME or '
-            'above it: choose a folder outside them'
+            f'symlink folder {folder} (resolved {os.path.realpath(folder)}) lies in the '
+            'PROTEUS or output folder, or holds HOME, one of them or a grid input: '
+            'choose another folder'
         )
+
+
+def _refuse_git(folder: str):
+    """Refuse to empty a folder that holds a Git repository."""
+    if any(f.is_dir() and f.name.lower() == '.git' for f in os.scandir(folder)):
+        raise Exception('Not emptying directory - it contains a Git repository!')
 
 
 def _replay(records: list):
@@ -105,7 +136,8 @@ class Grid:
         Raises
         ------
         ValueError
-            If ``name`` resolves to PROTEUS/output itself or outside it, or if
+            If ``name`` resolves to PROTEUS/output itself or outside it (also through a
+            link in output/), or if
             ``symlink_dir`` would remove other data (see `_check_symlink_dir`).
         RuntimeError
             If another grid holds the log.
@@ -122,13 +154,19 @@ class Grid:
         self.symlink_dir = symlink_dir
         if self.symlink_dir in ['', '.']:
             raise Exception('Symlinked directory is set to a blank path')
+        self._inputs = tuple(p for p in (self.conf, grid_config) if p)
         if self.symlink_dir not in ('_UNSET', None):
-            _check_symlink_dir(self.symlink_dir)
+            _check_symlink_dir(self.symlink_dir, self._inputs)
 
         # Paths
         self.outdir = os.path.abspath(self.outdir) + '/'
-        root = os.path.abspath(os.path.join(PROTEUS_DIR, 'output'))
-        if os.path.commonpath([root, self.outdir]) != root or self.outdir == root + '/':
+        root = os.path.abspath(_output_root())
+        parent = os.path.dirname(self.outdir.rstrip('/'))
+        if (
+            os.path.commonpath([root, self.outdir]) != root
+            or self.outdir == root + '/'
+            or (os.path.exists(root) and not _within(parent, root))  # a link in the name
+        ):
             raise ValueError(f"grid output '{self.name}' must name a folder inside {root}")
         self.cfgdir = os.path.join(self.outdir, 'cfgs') + '/'
         self.logdir = os.path.join(self.outdir, 'logs') + '/'
@@ -160,19 +198,18 @@ class Grid:
     def prepare_output(self):
         """Remove the old output, create the output folders, copy the configs and start
         manager.log, then log there the lines held since the grid was set up."""
-        # Remove old output location
-        if os.path.exists(self.outdir):
-            if os.path.islink(self.outdir):
-                os.unlink(self.outdir)
-            if os.path.isdir(self.outdir):
-                print("Removing old files at '%s'" % self.outdir)
-                subfolders = [
-                    f.path.split('/')[-1].lower() for f in os.scandir(self.outdir) if f.is_dir()
-                ]
-                if '.git' in subfolders:
-                    raise Exception('Not emptying directory - it contains a Git repository!')
-                time.sleep(4.0)
-                shutil.rmtree(self.outdir)
+        if self.symlink_dir not in ('_UNSET', None):
+            _check_symlink_dir(self.symlink_dir, self._inputs)
+
+        # Remove old output location; a trailing slash would follow an old output link
+        out = self.outdir.rstrip('/')
+        if os.path.islink(out):
+            os.unlink(out)
+        if os.path.isdir(out):
+            print("Removing old files at '%s'" % self.outdir)
+            _refuse_git(out)
+            time.sleep(4.0)
+            shutil.rmtree(out)
 
         # Create new output location
         if self.symlink_dir in ['_UNSET', None]:
@@ -185,13 +222,7 @@ class Grid:
             self.symlink_dir = os.path.abspath(self.symlink_dir)
             if os.path.exists(self.symlink_dir):
                 print("Removing old files at '%s'" % self.symlink_dir)
-                subfolders = [
-                    f.path.split('/')[-1].lower()
-                    for f in os.scandir(self.symlink_dir)
-                    if f.is_dir()
-                ]
-                if '.git' in subfolders:
-                    raise Exception('Not emptying directory - it contains a Git repository!')
+                _refuse_git(self.symlink_dir)
                 time.sleep(4.0)
                 shutil.rmtree(self.symlink_dir)
             os.makedirs(self.symlink_dir)
@@ -418,7 +449,7 @@ class Grid:
                     recursive_setattr(thisconf, key, gp[key])
                 except (TypeError, ValueError) as exc:
                     reason = exc.args[0] if exc.args and isinstance(exc.args[0], str) else exc
-                    raise ValueError(f'Grid case {i} ({key} = {gp[key]!r}): {reason}') from exc
+                    raise ValueError(f'Grid case {i} ({key} = {gp[key]!r}): {reason}') from None
             if 'interior_energetics.rtol' in gp:  # a base alias would conflict on reload
                 ie = thisconf.interior_energetics
                 ie.num_tolerance = ie.spider.tolerance_rel = _TOL_UNSET
@@ -926,7 +957,10 @@ def grid_from_config(config_fpath: str, test_run: bool = False, check_interval: 
 
             table = config[key]
             setter = getattr(pg, f'set_dimension_{table["method"]}')
-            setter(name, *(table[arg] for arg in DIMENSION_METHODS[table['method']]))
+            try:
+                setter(name, *(table[arg] for arg in DIMENSION_METHODS[table['method']]))
+            except (ValueError, ZeroDivisionError) as exc:
+                raise ValueError(f'grid dimension {key} ({table["method"]}): {exc}') from None
 
         # Print information
         pg.print_setup()
@@ -942,9 +976,8 @@ def grid_from_config(config_fpath: str, test_run: bool = False, check_interval: 
         else:
             log.warning('Number of grid points exceeds 10000. Will not print them here.')
 
-        outroot = os.path.join(PROTEUS_DIR, 'output')
-        os.makedirs(outroot, exist_ok=True)
-        with tempfile.TemporaryDirectory(dir=outroot, prefix='.grid-check-') as tmpdir:
+        os.makedirs(_output_root(), exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=_output_root(), prefix='.grid-check-') as tmpdir:
             pg.write_cases(tmpdir)
             pg.prepare_output()
             pg.adopt_cases(tmpdir)
