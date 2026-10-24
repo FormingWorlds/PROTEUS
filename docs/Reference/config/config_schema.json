@@ -7630,6 +7630,22 @@
       "group_qualifier": null
     },
     {
+      "path": "outgas.prevent_desaturation",
+      "toml_section": "outgas",
+      "class": "Outgas",
+      "type": "bool",
+      "accepts_none": false,
+      "default": "false",
+      "choices": null,
+      "bounds": null,
+      "description": "Whether condensed mass leaves the outgassing system for good. With `false`, each solve re-equilibrates the whole inventory, so a condensate can re-vapourise as conditions change. With `true`, the mass held in each `{e}_kg_condensed` reservoir is withheld from the chemistry, from escape and from the desiccation gate, and the reservoir can only grow: a condensed layer can only get thicker. Each condensate's `{X}_cd_activity` is then the saturation of the inventory left in the solve, so it can fall below 1 while its layer is held. Requires `outgas.module = 'atmodeller'`, the only backend that forms condensates; with `outgas.atmodeller.include_condensates = false` it holds nothing, and a warning says so.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
       "path": "outgas.trap_mode",
       "toml_section": "outgas",
       "class": "Outgas",
@@ -8359,7 +8375,7 @@
       "default": "true",
       "choices": null,
       "bounds": null,
-      "description": "Enable condensate phases (graphite, etc.) in the equilibrium.",
+      "description": "Enable condensed phases in the equilibrium: every condensate atmodeller provides for the outgassing elements, which are graphite (C), sulfur (S), water (H2O) and sulfuric acid (H2O4S). Each joins a solve when its elements have budgets and T_magma lies inside its thermodynamic data range.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 3,
@@ -8708,7 +8724,7 @@
       "description": "Logging and output verbosity for agni (0:none, 1:info, 2:debug).",
       "doc_source": "attributes",
       "group_order": 3,
-      "group_position": 10,
+      "group_position": 11,
       "group": "Solver tuning",
       "group_qualifier": null
     },
@@ -9114,7 +9130,7 @@
       "default": "false",
       "choices": null,
       "bounds": null,
-      "description": "Recalculate entire jacobian matrix at every iteration?",
+      "description": "Recalculate entire jacobian matrix at every iteration? Has no effect when `broyden` is enabled.",
       "doc_source": "attributes",
       "group_order": 3,
       "group_position": 6,
@@ -9272,17 +9288,34 @@
       "class": "Agni",
       "type": "int",
       "accepts_none": false,
-      "default": "2",
+      "default": "3",
       "choices": [
         0,
         1,
-        2
+        2,
+        3
       ],
       "bounds": null,
-      "description": "Default linesearch method. 0: disabled, 1: goldensection, 2: backtracking.",
+      "description": "Default linesearch method. 0: disabled, 1: goldensection, 2: backtracking, 3: non-monotone Armijo.",
       "doc_source": "attributes",
       "group_order": 3,
       "group_position": 8,
+      "group": "Solver tuning",
+      "group_qualifier": null
+    },
+    {
+      "path": "atmos_clim.agni.broyden",
+      "toml_section": "atmos_clim.agni",
+      "class": "Agni",
+      "type": "bool",
+      "accepts_none": false,
+      "default": "true",
+      "choices": null,
+      "bounds": null,
+      "description": "Update the jacobian with Broyden's method between finite-difference evaluations, to reduce the number of radiative transfer calculations. Intended for use with `ls_default = 3`. Disabled when PROTEUS retries a failed solve.",
+      "doc_source": "attributes",
+      "group_order": 3,
+      "group_position": 9,
       "group": "Solver tuning",
       "group_qualifier": null
     },
@@ -9301,7 +9334,7 @@
       "description": "Numerical order of finite-difference for jacobian. 2 or 4.",
       "doc_source": "attributes",
       "group_order": 3,
-      "group_position": 9,
+      "group_position": 10,
       "group": "Solver tuning",
       "group_qualifier": null
     },
@@ -12646,6 +12679,17 @@
         "planet.mass_tot"
       ],
       "doc": "Validate that mass_tot is within range."
+    },
+    {
+      "validator": "prevent_desaturation_requires_atmodeller",
+      "module": "_config.py",
+      "attached_to": [
+        "outgas"
+      ],
+      "touches": [
+        "outgas"
+      ],
+      "doc": "prevent_desaturation needs atmodeller, the only backend that forms condensates."
     },
     {
       "validator": "satellite_evolve",

@@ -944,7 +944,7 @@ def _try_spider(
         if dirs.get('spider_liquidus_ps') and os.path.isfile(dirs['spider_liquidus_ps']):
             liquidus_ps = dirs['spider_liquidus_ps']
             solidus_ps = dirs['spider_solidus_ps']
-            log.info(
+            log.debug(
                 'Using P-S phase boundaries from %s (interior_struct.module=%s, melting_dir=%s)',
                 os.path.dirname(liquidus_ps),
                 config.interior_struct.module,

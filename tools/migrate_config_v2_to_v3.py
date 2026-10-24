@@ -268,6 +268,9 @@ OVERRIDES = {
     # 2.0 always ran VULCAN with vertical advection at updraft_const; the 3.0
     # default turns it off, which would drop a nonzero 2.0 updraft.
     'atmos_chem.vulcan.use_vz': True,
+    # 2.0 finite-differenced the AGNI jacobian at every step; the 3.0 default
+    # updates it with Broyden's method in between.
+    'atmos_clim.agni.broyden': False,
 }
 
 # Element-budget fields consumed by the element handler (not mapped directly).

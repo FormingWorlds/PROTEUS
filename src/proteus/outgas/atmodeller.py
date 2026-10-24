@@ -251,7 +251,14 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
     from atmodeller.solubility import get_solubility_models
     from atmodeller.thermodata import IronWustiteBuffer
 
-    from proteus.utils.constants import M_earth, element_mmw, gas_list, noble_gases
+    from proteus.utils.constants import (
+        M_earth,
+        condensate_list,
+        element_mmw,
+        gas_list,
+        noble_gases,
+        vol_element_list,
+    )
 
     atm_config = config.outgas.atmodeller
     solubility_models = get_solubility_models()
@@ -419,18 +426,11 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
             )
         species_list.append(created)
 
-    log.info(
+    log.debug(
         'Atmodeller species: %s (active elements: %s)',
         [s.name for s in species_list],
         active_elements,
     )
-
-    # Add condensates only if their elements have budgets
-    if atm_config.include_condensates and 'C' in active_elements:
-        try:
-            species_list.append(ChemicalSpecies.create_condensed('C'))
-        except Exception:
-            pass  # Graphite not available in all versions
 
     # Build planet state
     M_planet = float(hf_row.get('M_planet', 1.0 * M_earth))
@@ -443,6 +443,31 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
     if T_magma < config.outgas.T_floor:
         T_magma = float(config.outgas.T_floor)
         log.warning('Outgassing temperature clipped to %.1f K' % T_magma)
+
+    # Add each supported condensate whose elements have budgets (O is buffered or
+    # constrained, like O2) and whose thermodynamic data cover T_magma, so the
+    # solver never extrapolates a condensed phase outside its fitted range.
+    if atm_config.include_condensates:
+        for formula in condensate_list:
+            try:
+                condensate = ChemicalSpecies.create_condensed(formula)
+            except Exception as e:
+                # Not every condensate is available in all atmodeller versions. Say
+                # so, since the run otherwise proceeds without it.
+                log.warning(
+                    'Could not add condensate %s_cd to the atmodeller network; '
+                    'continuing without it: %s',
+                    formula,
+                    e,
+                )
+                continue
+            required_elements = set(condensate.data.elements) - {'O'}
+            if not required_elements.issubset(active_elements):
+                continue
+            thermo = condensate.data.thermo
+            if not min(thermo.T_min) <= T_magma <= max(thermo.T_max):
+                continue
+            species_list.append(condensate)
 
     # Core mass fraction from config
     cmf = config.interior_struct.core_frac
@@ -506,6 +531,12 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
                 hf_row[f'{s}_mol_total'] = kg_total / eval_gas_mmw(s)
         hf_row['P_surf'] = 0.0
         _populate_volatile_element_reservoirs(hf_row, element_mmw)
+        # No condensate either
+        for formula in condensate_list:
+            hf_row[f'{formula}_cd_activity'] = 0.0
+            hf_row[f'{formula}_cd_kg'] = 0.0
+        for el in vol_element_list:
+            hf_row[f'{el}_kg_condensed'] = 0.0
         hf_row['fO2_shift_IW_derived'] = float('nan')
         hf_row['O_res'] = float('nan')
         return
@@ -518,7 +549,7 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
             'or switch to fO2_source = "user_constant".'
         )
 
-    log.info(
+    log.debug(
         'Atmodeller solve: T=%.0f K, Phi=%.2f, elements=%s',
         T_magma,
         Phi_global,
@@ -569,7 +600,7 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
     quick_look = output.quick_look()
     total_P = float(np.squeeze(output.total_pressure()))
 
-    log.info('Atmodeller result: P_total=%.2f bar', total_P)
+    log.debug('Atmodeller result: P_total=%.2f bar', total_P)
 
     # atmodeller's per-species output dict carries the thermodynamically
     # consistent atmospheric (``gas_mass``) and dissolved (``dissolved_mass``)
@@ -578,6 +609,25 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
         output_dict = output.asdict()
     except Exception:
         output_dict = {}
+
+    # Record condensate saturation on every solve so the helpfile and the log
+    # show when each one forms. An activity of 1 means the condensate is stable;
+    # below 1 it is undersaturated and its condensed mass is only the solver's
+    # floor. Zero marks a solve without that condensate in the network.
+    for formula in condensate_list:
+        activity = mass = None
+        if f'{formula}_cd' in output_dict:
+            activity = _species_output_scalar(output_dict, f'{formula}_cd', 'activity')
+            mass = _species_output_scalar(output_dict, f'{formula}_cd', 'total_mass')
+            # A missing or non-finite value is None, which the float formats reject.
+            log.info(
+                'Condensate %s: activity=%s, condensed mass=%s kg',
+                formula,
+                'n/a' if activity is None else f'{activity:.3f}',
+                'n/a' if mass is None else f'{mass:.2e}',
+            )
+        hf_row[f'{formula}_cd_activity'] = float(activity) if activity is not None else 0.0
+        hf_row[f'{formula}_cd_kg'] = float(mass) if mass is not None else 0.0
 
     # Map atmodeller output back to hf_row
     _reverse_map = {v: k for k, v in _atm_gas_species.items()}
@@ -681,8 +731,8 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
             # is the conserved constraint and dissolved_mass the melt share.
             # Deriving the atmospheric mass as total minus dissolved equals
             # gas_mass only while no species holds a solid-phase reservoir
-            # (true today: graphite is a separate condensed species and never
-            # enters a gas species' total_mass), so that difference serves as
+            # (true today: condensates are separate condensed species and never
+            # enter a gas species' total_mass), so that difference serves as
             # a closure check and as the fallback when the output omits
             # gas_mass. Either write replaces the pressure-derived mass from
             # the first loop, which distributes the column by mole fraction
@@ -805,7 +855,7 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
     if mmw > 0:
         hf_row['atm_kg_per_mol'] = mmw
 
-    log.info(
+    log.debug(
         'Atmodeller: P_surf=%.2f bar, MMW=%.3f g/mol',
         P_total,
         mmw * 1e3,
@@ -819,19 +869,18 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
     # below for oxygen), so escape's debited total is never overwritten here.
     _populate_volatile_element_reservoirs(hf_row, element_mmw)
 
-    # Add condensed-phase mass (e.g. graphite when include_condensates is on) to
-    # the per-element solid reservoir. The gas-species inventory above does not
-    # carry condensates, so the per-element atm+liquid+solid split must pick the
-    # condensed mass up here to close against the element budget for any element
-    # that condenses. atmodeller reports the condensed mass per element; it is
-    # zero for the elements (and conditions) that do not condense, so this is a
-    # no-op except when a condensate forms.
-    for el in {e for comp in _VOLATILE_ELEMENT_STOICH.values() for e in comp}:
-        condensed = _species_output_scalar(output_dict, f'element_{el}', 'condensed_mass')
-        if condensed:
-            hf_row[f'{el}_kg_solid'] = float(hf_row.get(f'{el}_kg_solid', 0.0)) + max(
-                0.0, condensed
-            )
+    # Condensed-phase mass (graphite, sulfur, ... when include_condensates is on)
+    # goes to its own per-element reservoir, kept apart from the solid mantle. The
+    # gas-species inventory above does not carry condensates, so the split
+    # atm + liquid + solid + condensed closes against the element budget only with
+    # this term. atmodeller reports the condensed mass per element; it is zero for
+    # the elements (and conditions) that do not condense, and the columns stay 0
+    # when condensates are disabled.
+    for el in vol_element_list:
+        condensed = None
+        if atm_config.include_condensates:
+            condensed = _species_output_scalar(output_dict, f'element_{el}', 'condensed_mass')
+        hf_row[f'{el}_kg_condensed'] = max(0.0, condensed) if condensed else 0.0
 
     for el in ('H', 'C', 'N', 'S'):
         kg = (hf_row.get(f'{el}_kg_atm', 0.0), hf_row.get(f'{el}_kg_liquid', 0.0))
@@ -850,6 +899,9 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
     # whole-planet O accounting (M_ele) includes atmospheric O whether or not
     # O was a mass constraint; mirrors CALLIOPE, which always writes O_kg_total.
     volatile_O_kg = _total_volatile_oxygen_kg(hf_row, element_mmw)
+    # Oxygen held in the O-bearing condensates (water, sulfuric acid) this solve
+    # formed, written to O_kg_condensed above; zero without them.
+    condensed_O_kg = float(hf_row.get('O_kg_condensed', 0.0))
 
     # Plumb the derived IW-buffer offset only for the 'from_O_budget'
     # source. Under
@@ -885,10 +937,11 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
                     e,
                     hf_row.get('fO2_shift_IW_derived', float('nan')),
                 )
-        # O mass-balance residual: total volatile O (atmospheric + dissolved,
-        # computed above) minus the authoritative user target. Reported in kg
-        # to match CALLIOPE's H/C/N/S/O_res convention.
-        hf_row['O_res'] = volatile_O_kg - float(target_O_kg)
+        # O mass-balance residual: the solved O (atmospheric + dissolved +
+        # condensed, computed above) minus the authoritative user target, which
+        # constrains all three. Reported in kg to match CALLIOPE's
+        # H/C/N/S/O_res convention.
+        hf_row['O_res'] = volatile_O_kg + condensed_O_kg - float(target_O_kg)
 
         # Restore the authoritative user O budget. atmodeller's solver may
         # have converged to atm_O+liq_O slightly off from target_O_kg (within
@@ -906,7 +959,9 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
         # here each call, exactly as in CALLIOPE under user_constant: the
         # buffered equilibrium re-derives O from the current H/C/S
         # inventory, which itself falls as escape depletes those budgets.
-        hf_row['O_kg_total'] = volatile_O_kg
+        # The O in condensates belongs to the budget as well, so the total
+        # closes against atm + liquid + solid + condensed.
+        hf_row['O_kg_total'] = volatile_O_kg + condensed_O_kg
         # No authoritative O target under a buffered fO2 source, so the O
         # mass-balance residual is zero by construction. Written explicitly
         # to match CALLIOPE rather than relying on the pre-dispatch seed.

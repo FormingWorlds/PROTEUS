@@ -23,6 +23,7 @@ import numpy as np
 import pandas as pd
 
 from proteus.utils.constants import (
+    condensate_list,
     element_list,
     gas_list,
     noble_gases,
@@ -48,7 +49,7 @@ if TYPE_CHECKING:
 log = logging.getLogger('fwl.' + __name__)
 
 LOCKFILE_NAME = 'keepalive'
-AGNI_MIN_VERSION = '1.8.0'
+AGNI_MIN_VERSION = '1.14.0'
 OBLIQUA_MIN_VERSION = '0.1.0'
 
 
@@ -839,18 +840,22 @@ def assert_mass_conservation(
         total = float(hf_row.get(f'{e}_kg_total', 0.0))
         if not np.isfinite(total) or total <= 0.0:
             continue
-        parts = sum(float(hf_row.get(f'{e}_kg_{r}', 0.0)) for r in ('atm', 'liquid', 'solid'))
+        parts = sum(
+            float(hf_row.get(f'{e}_kg_{r}', 0.0))
+            for r in ('atm', 'liquid', 'solid', 'condensed')
+        )
         if not np.isfinite(parts):
             continue
         rel = abs(parts - total) / total
         if abs(parts - total) > max(closure_atol_kg, closure_tol * total):
             raise RuntimeError(
                 f'Per-element reservoir closure failed for {e}: '
-                f'{e}_kg_total={total:.6e} kg but atm+liquid+solid='
+                f'{e}_kg_total={total:.6e} kg but atm+liquid+solid+condensed='
                 f'{parts:.6e} kg (relative difference {rel * 100:.4f}%). '
                 f'atm={float(hf_row.get(f"{e}_kg_atm", 0.0)):.3e}, '
                 f'liquid={float(hf_row.get(f"{e}_kg_liquid", 0.0)):.3e}, '
-                f'solid={float(hf_row.get(f"{e}_kg_solid", 0.0)):.3e} kg. '
+                f'solid={float(hf_row.get(f"{e}_kg_solid", 0.0)):.3e}, '
+                f'condensed={float(hf_row.get(f"{e}_kg_condensed", 0.0)):.3e} kg. '
                 f'A reservoir was debited without the matching credit.'
             )
 
@@ -1211,8 +1216,14 @@ def GetHelpfileKeys():
         'M_volatile_change',  # cumulative element mass added to the Zalmoxis target [kg]: delivered (rock O and init-stage impacts excluded) minus stripped minus escaped (rock vapour and sub-threshold zeroing included) minus removed at desiccation
     ]
 
-    # Share of the solid-mantle reservoir that trapping owns. The chemistry
-    # writes the rest of `_kg_solid`, its own condensate, on every solve.
+    # Condensates from atmodeller; zero when a condensate was not solved for
+    for c in condensate_list:
+        keys.append(c + '_cd_activity')  # activity of the condensate in the solved inventory; 1 = saturated, and below 1 beside a layer held by prevent_desaturation [1]
+        keys.append(c + '_cd_kg')        # condensed mass [kg]
+
+    # Share of the solid-mantle reservoir that trapping owns. CALLIOPE and
+    # atmodeller write no solid mass of their own; atmodeller's condensates go to
+    # `_kg_condensed`.
     for s in vol_list:
         keys.append(s + '_kg_trapped')  # mass trapped in the solid mantle [kg]
     for e in vol_element_list:
@@ -1243,6 +1254,10 @@ def GetHelpfileKeys():
         keys.append(e + '_kg_solid')    # mass in solid mantle [kg]
         keys.append(e + '_kg_liquid')   # mass in liquid mantle [kg]
         keys.append(e + '_kg_total')    # mass in whole planet [kg]
+
+    # Element mass held in outgassing condensates (e.g. graphite), apart from the mantle
+    for e in vol_element_list:
+        keys.append(e + '_kg_condensed')  # mass in condensed phases at the surface [kg]
 
     # element mass ratios in atmosphere
     for e1 in element_list:
@@ -1776,6 +1791,9 @@ _DIAGNOSTIC_KEYS = (
     'step_dE_core_J',
     'E_core_residual_J',
     'E_core_residual_frac',
+    # Condensate activity from atmodeller, written each solve and never read back. The
+    # condensed mass is not here: prevent_desaturation reads it back to hold the layer.
+    *(f'{c}_cd_activity' for c in condensate_list),
 )
 
 
@@ -1923,7 +1941,12 @@ def ReadHelpfileFromCSV(output_dir: str, *, required_columns: list[str] | None =
     hf_all = read_helpfile_table(fpath)
 
     missing = sorted(set(required_columns) - set(hf_all.columns))
-    zero_fill = RESUMABLE_ZERO_FILL_KEYS | set(GetHelpfileTrappingKeys())
+    # A run that predates the condensed reservoir held its condensate in
+    # `_kg_solid`, so reading the new columns as zero keeps its totals; the
+    # per-condensate mass is zero with them, so no layer is held on resume.
+    condensed_keys = {e + '_kg_condensed' for e in vol_element_list}
+    condensed_keys |= {c + '_cd_kg' for c in condensate_list}
+    zero_fill = RESUMABLE_ZERO_FILL_KEYS | set(GetHelpfileTrappingKeys()) | condensed_keys
     fillable = [key for key in missing if key in zero_fill]
     unfillable = sorted(set(missing) - set(fillable))
 
@@ -2397,6 +2420,7 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
         plot_population_mass_radius,
         plot_population_time_density,
     )
+    from proteus.plot.cpl_saturated import plot_saturated
     from proteus.plot.cpl_sflux import plot_sflux
     from proteus.plot.cpl_sflux_cross import plot_sflux_cross
     from proteus.plot.cpl_spectra import plot_spectra
@@ -2435,6 +2459,9 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
 
     # Elemental mass inventory
     plot_escape(hf_all, output_dir, plot_format=config.params.out.plot_fmt)
+
+    # Condensate saturation; skipped unless atmodeller solved for a condensate
+    plot_saturated(hf_all, output_dir, plot_format=config.params.out.plot_fmt)
 
     # Planet and satellite orbit parameters
     if (

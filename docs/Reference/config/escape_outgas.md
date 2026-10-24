@@ -99,6 +99,7 @@ planetary surface conditions.
 | `T_floor` | float | `700.0` | Temperature floor \[K\]. The outgassing temperature is clamped to this value from below for the chemistry solve and the target masses. Must be > 0.0. |
 | `solver_rtol` | float | `0.0001` | Relative tolerance for the volatile equilibrium solver. Must be > 0.0. |
 | `solver_atol` | float | `1e-06` | Absolute tolerance for the volatile equilibrium solver. Must be > 0.0. |
+| `prevent_desaturation` | bool | `false` | Whether condensed mass leaves the outgassing system for good. With `false`, each solve re-equilibrates the whole inventory, so a condensate can re-vapourise as conditions change. With `true`, the mass held in each `{e}_kg_condensed` reservoir is withheld from the chemistry, from escape and from the desiccation gate, and the reservoir can only grow: a condensed layer can only get thicker. Each condensate's `{X}_cd_activity` is then the saturation of the inventory left in the solve, so it can fall below 1 while its layer is held. Requires `outgas.module = 'atmodeller'`, the only backend that forms condensates; with `outgas.atmodeller.include_condensates = false` it holds nothing, and a warning says so. |
 | `trap_mode` | str | `"none"` | Solid-phase volatile trapping during mantle crystallisation. Choices: 'none' (off) and 'front' (F_tl from the drainage of melt across the freezing front the interior solver resolves; needs `interior_energetics.module = 'aragog'`). The disaggregation melt fraction that tops the front is `interior_energetics.rfront_loc`, the melt fraction of the solver's own rheological transition, not a separate field. Choices: `"none"`, `"front"`. |
 | `trap_phi_min` | float | `0.01` | Porosity below which a node counts as solid \[1\]. Needed because the density-derived porosity never reaches exactly zero. Must be > 0.0 and < 1.0. |
 | `trap_mush_log10visc` | float | `-1.0` | Log10 viscosity of the mush near the solidus \[log10(Pa s)\], entering the matrix deformation time. Negative selects the default of 20, mid-range of the 18 to 22 the literature allows. |
@@ -180,7 +181,7 @@ behaviour.
 | `solver_mode` | str | `"robust"` | Root-finding mode: 'robust' (slower compile, better convergence) or 'basic' (faster compile, less robust). Choices: `"robust"`, `"basic"`. |
 | `solver_max_steps` | int | `1024` | Maximum iterations for the root-finder. Must be > 0. |
 | `solver_multistart` | int | `10` | Number of random restarts for the root-finder. Must be > 0. |
-| `include_condensates` | bool | `true` | Enable condensate phases (graphite, etc.) in the equilibrium. |
+| `include_condensates` | bool | `true` | Enable condensed phases in the equilibrium: every condensate atmodeller provides for the outgassing elements, which are graphite (C), sulfur (S), water (H2O) and sulfuric acid (H2O4S). Each joins a solve when its elements have budgets and T_magma lies inside its thermodynamic data range. |
 
 **Solubility laws** (set to `"none"` to disable dissolution for a species)
 
@@ -234,6 +235,7 @@ Cross-field constraints enforced when the config file loads:
 - BOREAS escape requires a radiative atmosphere (not dummy).
 - Front trapping reads the freezing front the Aragog interior resolves.
 - ZEPHYRUS escape with JANUS requires the escape stop criterion to be enabled.
+- prevent_desaturation needs atmodeller, the only backend that forms condensates.
 - ZEPHYRUS escape requires the MORS star module with the Spada evolution tracks.
 - Dummy escape requires a non-negative escape rate.
 - Escape reservoir must be one of 'bulk', 'outgas', or 'pxuv'.

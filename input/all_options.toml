@@ -610,6 +610,7 @@ config_version = "3.0"
     T_floor                   = 700.0        # outgassing temperature floor [K]; clamped from below
     solver_rtol               = 1e-4         # relative mass/equilibrium tolerance
     solver_atol               = 1e-6         # absolute mass/equilibrium tolerance
+    prevent_desaturation      = false        # true: condensates never re-vapourise, so a condensed layer only grows (its activity can still fall below 1); needs atmodeller, and holds nothing without include_condensates
 
     # Solid-phase volatile trapping during mantle crystallisation
     trap_mode                 = "none"       # none | front (needs interior_energetics.module = "aragog")
@@ -662,7 +663,7 @@ config_version = "3.0"
         solver_mode           = "robust"     # robust (better convergence) | basic (faster)
         solver_max_steps      = 1024         # root-finder max iterations
         solver_multistart     = 10           # number of random restarts
-        include_condensates   = true         # graphite condensation
+        include_condensates   = true         # condensed phases: graphite, sulfur, water, sulfuric acid
         # Solubility law per species ("none" = no dissolution, gas stays in atmosphere)
         solubility_H2O        = "H2O_peridotite_sossi23"     # none | H2O_peridotite_sossi23 | H2O_basalt_dixon95
         solubility_CO2        = "CO2_basalt_dixon95"         # none | CO2_basalt_dixon95
@@ -750,7 +751,8 @@ config_version = "3.0"
         max_steps             = 200          # max Newton iterations per call
         perturb_all           = false        # recompute full Jacobian each iteration
         ini_profile           = "isothermal" # initial T(p) guess: isothermal | loglinear | dry_adiabat | analytic
-        ls_default            = 2            # linesearch method: 0 (none) | 1 (golden section) | 2 (backtracking)
+        ls_default            = 3            # linesearch method: 0 (none) | 1 (golden section) | 2 (backtracking) | 3 (non-monotone Armijo)
+        broyden               = true         # Broyden jacobian updates between finite-difference evaluations; intended for ls_default = 3
         fdo                   = 2            # finite-difference order for Jacobian: 2 | 4
         check_safe_gas        = true         # require at least one gas with opacity+thermo data
         verbosity             = 1            # AGNI log level: 0 (silent) | 1 (info) | 2 (debug)
