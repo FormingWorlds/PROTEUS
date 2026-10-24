@@ -17,6 +17,9 @@ if TYPE_CHECKING:
 
 log = logging.getLogger('fwl.' + __name__)
 
+# Config fields that apply_impact and restore_accretion_state change during a run.
+IMPACT_CONFIG_FIELDS = ('planet.mass_tot', 'orbit.semimajoraxis', 'orbit.eccentricity')
+
 # Volatile elements whose whole-planet budgets are conserved across impact mass
 # growth. This set matches what update_planet_mass sums into M_ele.
 _VOLATILE_ELEMENTS = tuple(e for e in element_list if e in vol_element_list or e in noble_gases)
