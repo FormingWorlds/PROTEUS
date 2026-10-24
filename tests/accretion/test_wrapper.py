@@ -5772,7 +5772,7 @@ def test_computed_remelt_refuses_a_morrigan_without_melt_fractions(tmp_path, mon
 
 @pytest.mark.unit
 def test_full_remelt_ignores_a_missing_melt_fraction(tmp_path):
-    """'full' needs no f: a timeline without the column loads as before."""
+    """'full' needs no f: a timeline without the column loads, each event without f."""
     handler = _handler(
         module='timeline', timeline_path=_timeline_file(tmp_path / 't.csv'), output_dir=tmp_path
     )

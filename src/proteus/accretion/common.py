@@ -228,9 +228,7 @@ def _check_event_physics(event: ImpactEvent, index: int) -> None:
         if not 0.0 <= value < 1.0:
             raise ValueError(f'{where}: eccentricity {name} must be in [0, 1), got {value!r}')
 
-    if event.f_melt is not None and not (
-        np.isfinite(event.f_melt) and 0.0 <= event.f_melt <= 1.0
-    ):
+    if event.f_melt is not None and not 0.0 <= event.f_melt <= 1.0:
         raise ValueError(f'{where}: f_melt must be finite and in [0, 1], got {event.f_melt!r}')
 
 

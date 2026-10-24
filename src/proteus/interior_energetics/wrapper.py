@@ -1925,7 +1925,8 @@ def _remelt_scalar_backend(config: Config, hf_row: dict, interior_o, f: float = 
     from proteus.interior_energetics.dummy import melt_state_from_temperature
     from proteus.interior_energetics.remelt import remelt_temperature
 
-    t_reset = remelt_temperature(float(hf_row.get('T_magma', 0.0)), config.planet.tsurf_init, f)
+    t_end = float(hf_row.get('T_magma', 0.0))
+    t_reset = remelt_temperature(t_end, config.planet.tsurf_init, f)
     state = melt_state_from_temperature(config, hf_row, t_reset)
     hf_row.update(state)
     # The boundary backend starts with the surface at the magma temperature.
@@ -1946,7 +1947,7 @@ def _remelt_scalar_backend(config: Config, hf_row: dict, interior_o, f: float = 
             config.planet.tsurf_init,
         )
     if f < 1.0:
-        verb = 'raised to'
+        verb = 'raised to' if t_reset > t_end else 'kept at'
     else:
         verb = 'reset to' if t_reset == config.planet.tsurf_init else 'kept at'
     log.info(
@@ -1997,11 +1998,6 @@ def _partial_remelt_profile(solver, S_end: np.ndarray, S_molten: np.ndarray, f: 
     P = np.asarray(solver._P_stag_flat, dtype=float).ravel()
     vol = np.asarray(solver._volume_flat, dtype=float).ravel()
     radii = np.asarray(solver._r_stag_flat, dtype=float).ravel()
-    if not P.size == vol.size == radii.size == S_end.size:
-        raise RuntimeError(
-            f'partial re-melt: mesh sizes P {P.size}, volume {vol.size}, radii {radii.size} '
-            f'do not match the {S_end.size} entropy cells'
-        )
     mass = np.asarray(solver.entropy_eos.density(P, S_end), dtype=float).ravel() * vol
     w = remelt_weights(f, mass, radii)
     log.info(
@@ -2117,6 +2113,7 @@ def _remelt_aragog(
     else:
         unbooked = None
     if unbooked is not None and f < 1.0:
+        UpdateStatusfile(dirs, 21)
         raise RuntimeError(
             f'Cannot apply a partial re-melt with f = {f:g}: {unbooked}. A full re-melt '
             "in its place would apply f = 1; set accretion.remelt = 'full' to accept that."
@@ -2220,8 +2217,9 @@ def remelt_mantle(
     which is raised to the initial condition recomputed for the current, grown
     planet; parts that are already hotter keep their state, and at f < 1 the
     deeper mantle keeps its end-of-step state (``interior_energetics.remelt``).
-    The largest f of the row goes to ``hf_row['f_remelt']``. The reset is applied to the running interior state,
-    and an ``impact_reset`` flag is raised on ``interior_o`` so the next
+    The largest f of the row goes to ``hf_row['f_remelt']``. The reset is applied
+    to the running interior state, and an ``impact_reset`` flag is raised on
+    ``interior_o`` so the next
     interior solve does not clip the resulting temperature jump as if it were
     a solver glitch.
 
@@ -2257,8 +2255,9 @@ def remelt_mantle(
     NotImplementedError
         If the interior module has no supported re-melt path (SPIDER).
     ValueError
-        If f is not a finite number in [0, 1], the interior module is unrecognised, or a core_module solver holds no core
-        temperature, or its core or basal temperature is not finite
+        If f is not a finite number in [0, 1], the interior module is unrecognised,
+        or a core_module solver holds no core temperature, or its core or basal
+        temperature is not finite
         (``aragog_core_impact.remelt_core_module``).
     RuntimeError
         If the Aragog solver has not been initialised, or a partial re-melt has no
@@ -2314,7 +2313,8 @@ def remelt_mantle(
             if not _REMELT_RETAINED_BAND[0] <= retained <= _REMELT_RETAINED_BAND[1]:
                 log.warning(
                     '    re-melt injection is %.3g of the impact kinetic energy, outside '
-                    'the physically expected band [%.2g, %.2g]. The re-melt raises %s '
+                    'the physically expected band [%.2g, %.2g]. The re-melt raises the '
+                    'melted share of the mantle '
                     'to the temperature-mode initial condition (hotter parts keep their '
                     'state), so its cost is set by the mantle rather than by this collision: a cool mantle '
                     'struck by a small impactor absorbs far more than the impact carried, '
@@ -2324,9 +2324,6 @@ def remelt_mantle(
                     retained,
                     _REMELT_RETAINED_BAND[0],
                     _REMELT_RETAINED_BAND[1],
-                    'the mantle'
-                    if f == 1.0
-                    else f'the outer shells holding f = {f:.3g} of the mantle mass',
                 )
 
 

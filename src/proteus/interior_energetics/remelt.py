@@ -25,12 +25,9 @@ REMELT_CLOSURE_RTOL = 1e-10
 
 def check_melt_fraction(f) -> float:
     """Return f as a float, or raise if it is not a finite real number in [0, 1]."""
-    if isinstance(f, bool) or not isinstance(f, numbers.Real):
-        raise ValueError(f'melt fraction must be a real number in [0, 1], got {f!r}')
-    f = float(f)
-    if not (math.isfinite(f) and 0.0 <= f <= 1.0):
-        raise ValueError(f'melt fraction must be finite and in [0, 1], got {f!r}')
-    return f
+    if isinstance(f, bool) or not isinstance(f, numbers.Real) or not 0.0 <= f <= 1.0:
+        raise ValueError(f'melt fraction must be a finite real number in [0, 1], got {f!r}')
+    return float(f)
 
 
 def remelt_weights(f: float, cell_mass: np.ndarray, radii: np.ndarray) -> np.ndarray:
@@ -90,7 +87,9 @@ def remelt_entropy(S_end: np.ndarray, S_ic: np.ndarray, w: np.ndarray) -> np.nda
 
     A fully melted cell takes ``max(S_end, S_ic)``, the full re-melt; a cell
     melted by w < 1 moves the share w of the way up to the initial condition,
-    the mass-weighted mean specific entropy of its melted and unmelted parts.
+    the mass-weighted mean specific entropy of its melted and unmelted parts. The
+    heat of that mixed cell differs from the sum of its parts by the curvature of
+    T(S) over the cell, a second-order term on one cell.
 
     Parameters
     ----------
@@ -109,11 +108,13 @@ def remelt_entropy(S_end: np.ndarray, S_ic: np.ndarray, w: np.ndarray) -> np.nda
     Raises
     ------
     ValueError
-        If a weight is not finite or lies outside [0, 1].
+        If an entropy is non-finite, or a weight is not finite or lies outside [0, 1].
     """
     S_end = np.asarray(S_end, dtype=float)
     S_ic = np.asarray(S_ic, dtype=float)
     w = np.asarray(w, dtype=float)
+    if not (np.all(np.isfinite(S_end)) and np.all(np.isfinite(S_ic))):
+        raise ValueError('a re-melt entropy is non-finite')
     if not np.all(np.isfinite(w) & (w >= 0.0) & (w <= 1.0)):
         raise ValueError('every re-melt weight must be finite and in [0, 1]')
     S_new = np.where(
@@ -145,8 +146,15 @@ def remelt_temperature(T_end: float, T_init: float, f: float) -> float:
     -------
     float
         Re-melted mantle temperature [K].
+
+    Raises
+    ------
+    ValueError
+        If f is not a finite number in [0, 1], or a temperature is non-finite.
     """
     f = check_melt_fraction(f)
+    if not (math.isfinite(T_end) and math.isfinite(T_init)):
+        raise ValueError(f'a re-melt temperature is non-finite: {T_end!r}, {T_init!r}')
     if f == 1.0:
         return max(T_init, T_end)
     return T_end + f * max(T_init - T_end, 0.0)

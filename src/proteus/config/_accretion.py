@@ -345,8 +345,9 @@ class Accretion:
     impactors carry the per-element budgets configured below.
 
     The mantle re-melt is a thermodynamic reset, not an energy deposition.
-    It raises the mantle to the run's ``planet.temperature_mode`` initial
-    condition, and hotter parts keep their state, so the heat it injects is set by the mantle's own state
+    It raises the melted share of the mantle (all of it under ``remelt = 'full'``)
+    to the run's ``planet.temperature_mode`` initial condition, and hotter parts
+    keep their state, so the heat it injects is set by the mantle's own state
     and mass rather than by the energy the collision carried. The two agree in
     order of magnitude for a large impact onto a mantle that has cooled
     appreciably, which is the regime this coupling targets, and diverge outside

@@ -122,7 +122,7 @@ def test_weights_refuse_invalid_cells(masses, radii):
 
 
 @pytest.mark.physics_invariant
-def test_full_weight_is_todays_maximum_bit_for_bit():
+def test_full_weight_is_the_maximum_bit_for_bit():
     """w = 1 takes np.maximum(S_end, S_ic), not the blend, which can differ by 1 ulp."""
     # The last pair: S_end + 1.0 * (S_ic - S_end) lands 1 ulp above S_ic.
     S_end = np.array([2400.1, 3950.0, 2999.9, 968.4110283258282])
@@ -175,7 +175,7 @@ def test_partial_entropy_refuses_weights_outside_the_unit_interval(bad):
 
 @pytest.mark.physics_invariant
 def test_scalar_mantle_moves_by_the_melted_share():
-    """The 0D projection: T_new = T_end + f (T_init - T_end), today's max at f = 1."""
+    """The 0D projection: T_new = T_end + f (T_init - T_end), max(T_init, T_end) at f = 1."""
     assert remelt_temperature(2000.0, 4000.0, 0.3) == pytest.approx(2600.0, rel=1e-15)
     np.testing.assert_equal(remelt_temperature(2000.0, 4000.0, 1.0), 4000.0)
     np.testing.assert_equal(remelt_temperature(2000.0, 4000.0, 0.0), 2000.0)

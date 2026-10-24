@@ -189,8 +189,14 @@ def build_parameters(config: Config) -> dict:
 
 
 def _log_melt(index: int, time: float, record: dict) -> None:
-    """Log the melt fraction of one merger with the fit diagnostics the event does not keep."""
-    log.info(
+    """Log the melt fraction of one merger with the fit diagnostics the event does not keep.
+
+    A merger outside the fit range or above the critical speed has an extrapolated f_melt,
+    which is a warning.
+    """
+    extrapolated = record.get('melt_in_range') is False or bool(record.get('above_v_cr'))
+    log.log(
+        logging.WARNING if extrapolated else logging.INFO,
         '    impact %d at t = %.4e yr: f_melt %g, raw %.3g, sigma %.3g, dIE %.3g J, '
         'in_range %s, above_v_cr %s',
         index,

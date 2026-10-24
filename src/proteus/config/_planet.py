@@ -270,8 +270,9 @@ class Planet:
             every structure module.
     tsurf_init: float
         Initial surface temperature [K]. In every mode it is the initial magma
-        temperature of the dummy and boundary energetics, the floor of their
-        re-melt after a giant impact, and the temperature of the initial flux
+        temperature of the dummy and boundary energetics, the floor of their full
+        re-melt after a giant impact (a partial one moves the share f of the way to
+        it), and the temperature of the initial flux
         guess when interior_energetics.flux_guess < 0. Its other uses depend on
         temperature_mode; the How-to page on initial thermal conditions lists
         them per mode.

@@ -8154,7 +8154,7 @@ def test_the_booked_remelt_heat_rises_with_the_melt_fraction():
 
 @pytest.mark.unit
 def test_the_solver_restarts_from_the_partial_profile_and_keeps_the_full_call_pattern():
-    """At f = 1 with every cell below the molten profile no extra restart is set (as on main);
+    """At f = 1 with every cell below the molten profile no extra restart is set;
     at f < 1 the solver gets the partial profile once, since _set_entropy_ic left S_molten in it."""
     solver_full, _, _ = _partial_aragog_remelt(1.0)
     solver_part, interior_o, _ = _partial_aragog_remelt(0.5)
@@ -8167,7 +8167,7 @@ def test_the_solver_restarts_from_the_partial_profile_and_keeps_the_full_call_pa
 @pytest.mark.unit
 def test_a_partial_remelt_without_an_end_state_is_refused():
     """With no end-of-step profile, f < 1 has nothing to keep: it raises, naming f and the reason.
-    At f = 1 the run keeps the full re-melt with a warning, as on main."""
+    At f = 1 the run keeps the full re-melt with a warning."""
     with pytest.raises(
         RuntimeError, match=r'partial re-melt .*f = 0\.3.*no pre-impact entropy'
     ):

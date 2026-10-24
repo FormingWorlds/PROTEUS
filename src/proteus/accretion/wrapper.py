@@ -83,8 +83,8 @@ def init_accretion(handler: Proteus) -> list[ImpactEvent]:
         and config.planet.temperature_mode not in _GUARANTEED_MOLTEN_MODES
     ):
         log.warning(
-            "Accretion on Aragog with temperature_mode='%s': each impact re-melts "
-            'the mantle by raising it to this initial condition, which is not guaranteed '
+            "Accretion on Aragog with temperature_mode='%s': an impact raises the melted "
+            'share of the mantle to this initial condition, which is not guaranteed '
             "fully molten. Use temperature_mode='liquidus_super' for a molten re-melt, "
             'or confirm the initial melt fraction is what you intend.',
             config.planet.temperature_mode,
@@ -101,7 +101,7 @@ def init_accretion(handler: Proteus) -> list[ImpactEvent]:
         # Written on the PROTEUS axis with the offset already applied, so it
         # must not be offset a second time.
         events = read_timeline(resolved_path, time_offset=0.0)
-        _require_melt_fractions(config, events)
+        _require_melt_fractions(config, events, resolved=resolved_path)
         log.info('Replaying the impact timeline resolved at the start of this run')
     else:
         match module:
@@ -136,8 +136,12 @@ def init_accretion(handler: Proteus) -> list[ImpactEvent]:
     return kept
 
 
-def _require_melt_fractions(config: Config, events: list[ImpactEvent]) -> None:
+def _require_melt_fractions(
+    config: Config, events: list[ImpactEvent], resolved: str | None = None
+) -> None:
     """Refuse a 'computed' re-melt when an impact carries no melt fraction.
+
+    ``resolved`` is the resolved timeline a resume reads, which names the source of f.
 
     Raises
     ------
@@ -150,7 +154,12 @@ def _require_melt_fractions(config: Config, events: list[ImpactEvent]) -> None:
     if not missing:
         return
     named = ', '.join(str(i) for i in missing[:10]) + (', ...' if len(missing) > 10 else '')
-    if config.accretion.module == 'morrigan':
+    if resolved is not None:
+        source = (
+            f'the resolved timeline {resolved} has no f_melt; resume with '
+            "accretion.remelt = 'full' to keep the re-melt of the run's start"
+        )
+    elif config.accretion.module == 'morrigan':
         source = (
             'fwl-morrigan >= 26.10.23 reports the f_melt of each merger; the installed '
             'version does not'
@@ -681,12 +690,15 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
     if f_remelt < 1.0:
         _warn_solid_after_partial_remelt(config, hf_row)
 
-    # A mantle that had crystallised is now a magma ocean again, so lift the
-    # one-way solidification latch; otherwise outgassing would stay frozen and
-    # the volatiles would be treated as locked in a solid mantle for good.
+    # A full re-melt, or a partial one that leaves melt above stop.solid.phi_crit,
+    # lifts the one-way solidification latch, so outgassing resumes.
     if getattr(handler, 'crystallized', False):
-        handler.crystallized = False
-        log.info('    solidification latch cleared: the mantle is molten again')
+        phi = float(hf_row.get('Phi_global', 1.0))
+        if f_remelt == 1.0 or phi > config.params.stop.solid.phi_crit:
+            handler.crystallized = False
+            log.info('    solidification latch cleared: the mantle is molten again')
+        else:
+            log.info('    solidification latch kept: Phi_global = %.3g after the re-melt', phi)
 
     # Clear the desiccation latch if volatiles were delivered to allow
     # outgassing to resume. The latch will re-evaluate on the next step.
@@ -742,7 +754,7 @@ def _warn_solid_after_partial_remelt(config: Config, hf_row: dict) -> None:
     if solid.enabled and phi <= solid.phi_crit:
         log.warning(
             '    the partial re-melt leaves Phi_global = %.3g <= stop.solid.phi_crit = %.3g: '
-            'stop.solid ends the run on the next step, with any later impacts not applied',
+            'stop.solid can end the run at the end of this step, with later impacts not applied',
             phi,
             solid.phi_crit,
         )
