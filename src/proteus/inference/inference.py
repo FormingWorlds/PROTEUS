@@ -150,33 +150,44 @@ def validate_patience(patience) -> int:
     return patience
 
 
-OBJECTIVES = ('chi-2', 'student-t')
-DEFAULT_STUDENT_T_DOF = 4.0
+OBJECTIVES = ('chi-2', 'student-t', 'huber')
+# Config key and default of the parameter of each objective other than chi-2;
+# k = 1.345 keeps 95% of the least-squares efficiency for Gaussian errors
+LOSS_PARAMS = {
+    'huber': ('huber_k', 1.345),
+    'student-t': ('student_t_dof', 4.0),
+}
 
 
 def validate_objective(
-    objective, dof, sigma: dict | None, correlation: dict | None
-) -> float | None:
-    """Check `objective` and `student_t_dof`; returns the Student-t dof, or None for chi-2."""
+    objective, params: dict, sigma: dict | None, correlation: dict | None
+) -> tuple[str, float] | None:
+    """Check `objective` and its parameter in `params`; returns (name, parameter), or None for chi-2."""
     objective = 'chi-2' if objective is None else objective
     if objective not in OBJECTIVES:
         raise ValueError(f'objective must be one of {OBJECTIVES}, got {objective!r}')
+    for name, (key, _) in LOSS_PARAMS.items():
+        if name != objective and params.get(key) is not None:
+            raise ValueError(f'{key} needs objective = "{name}"')
     if objective == 'chi-2':
-        if dof is not None:
-            raise ValueError('student_t_dof needs objective = "student-t"')
         return None
-    dof = DEFAULT_STUDENT_T_DOF if dof is None else dof
-    if isinstance(dof, bool) or not isinstance(dof, (int, float)) or not 0 < dof < math.inf:
-        raise ValueError(f'student_t_dof must be a positive finite number, got {dof!r}')
+    key, default = LOSS_PARAMS[objective]
+    value = default if params.get(key) is None else params[key]
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not 0 < value < math.inf
+    ):
+        raise ValueError(f'{key} must be a positive finite number, got {value!r}')
     if sigma is None:
         raise ValueError(
-            'objective "student-t" needs [sigma]: sigma is the scale of each error'
+            f'objective "{objective}" needs [sigma]: sigma is the scale of each error'
         )
     if correlation is not None:
         raise ValueError(
-            'objective "student-t" cannot be combined with [correlation] or correlate_ratios'
+            f'objective "{objective}" cannot be combined with [correlation] or correlate_ratios'
         )
-    return float(dof)
+    return objective, float(value)
 
 
 def validate_truth(parameters: dict, truth: dict | None) -> dict | None:
@@ -390,12 +401,9 @@ def run_inference(config):
         config['observables'], config['sigma'], observable_correlation(config)
     )
 
-    # Chi-squared or, with objective = "student-t", Student-t errors
-    config['student_t_dof'] = validate_objective(
-        config.get('objective'),
-        config.get('student_t_dof'),
-        config['sigma'],
-        config['correlation'],
+    # Chi-squared or, with `objective`, Student-t or Huber errors
+    config['loss'] = validate_objective(
+        config.get('objective'), config, config['sigma'], config['correlation']
     )
 
     # Optional true value of each parameter, for studies of a known simulation
@@ -497,8 +505,12 @@ def run_inference(config):
             if config.get('correlate_ratios')
             else ', correlated'
         )
-    if config['student_t_dof'] is not None:
-        objective = f'Student-t (dof = {config["student_t_dof"]:g})'
+    if config['loss'] is not None:
+        name, param = config['loss']
+        objective = {
+            'huber': f'Huber (k = {param:g})',
+            'student-t': f'Student-t (dof = {param:g})',
+        }[name]
     log.info(f'    objective     = {objective}')
     log.info(f'    posterior     = {config["posterior_samples"] or "off"} samples')
     log.info(f'    posterior steps = {config["posterior_steps"] or "off"} of the optim steps')
@@ -521,7 +533,7 @@ def run_inference(config):
         config['sigma'],
         config['correlation'],
         config['patience'],
-        config['student_t_dof'],
+        config['loss'],
         config['posterior_steps'],
     )
 
@@ -551,7 +563,7 @@ def run_inference(config):
         config['observables'],
         config['sigma'],
         config['correlation'],
-        config['student_t_dof'],
+        config['loss'],
     )
     plot_fit.plot_result_observables(cases, config['observables'], dirs['output'], best_config)
     if config['truth'] is not None:
@@ -566,7 +578,13 @@ def run_inference(config):
     if config['posterior_samples']:
         samples = write_posterior(config, D_final, dirs['output'])
         plot_fit.plot_result_posterior(
-            samples, D_final, n_init, config['parameters'], config['truth'], dirs['output']
+            samples,
+            D_final,
+            n_init,
+            config['parameters'],
+            config['truth'],
+            dirs['output'],
+            config['loss'],
         )
 
     # Done

@@ -120,15 +120,24 @@ For element-ratio observables (such as `C/O_atm` and `O/H_atm`), `correlate_rati
 
 When posterior samples, e.g. from a retrieval, exist, their correlation matrix in `[correlation]` is the best input; `correlate_ratios` can be set when nothing better is known.
 
-### Student-t errors
+### Student-t and Huber errors
 
-`objective` selects the error model: `"chi-2"` (the default, Gaussian errors) or `"student-t"`. With `objective = "student-t"`, each observable's error follows a Student-t distribution with `student_t_dof = nu` degrees of freedom (default 4). It needs `[sigma]` and cannot be combined with `[correlation]` or `correlate_ratios`, because the errors are taken as independent. Each squared residual `u^2` is replaced by
+`objective` selects the error model: `"chi-2"` (the default, Gaussian errors), `"student-t"` or `"huber"`. With `objective = "student-t"`, each observable's error follows a Student-t distribution with `student_t_dof = nu` degrees of freedom (default 4). It needs `[sigma]` and cannot be combined with `[correlation]` or `correlate_ratios`, because the errors are taken as independent. Each squared residual `u^2` is replaced by
 
 ```
 (nu + 1) * ln(1 + u^2 / nu),    u = (sim - true) / sigma
 ```
 
 which is `-2 ln` of the Student-t density up to a constant, and tends to `u^2` as `nu` grows. A residual of many sigma then grows only logarithmically, so one observable the model cannot match does not dominate the fit. Small `nu` (3 to 5) gives heavy tails; `nu = 1` is the Cauchy distribution. Under a Student-t, `sigma` is the scale of the error, not its standard deviation, which is `sigma * sqrt(nu / (nu - 2))` for `nu > 2`.
+
+With `objective = "huber"`, each squared residual becomes
+
+```
+u^2                   for |u| <= k
+2 k |u| - k^2         for |u| >  k,     u = (sim - true) / sigma
+```
+
+with `huber_k = k` (default 1.345, which keeps 95% of the least-squares efficiency when the errors are Gaussian). It is `-2 ln` of Huber's density, Gaussian in the core and Laplace in the tails, up to a constant; the two branches meet with equal value and slope at `|u| = k`. Within `k` sigma it is the chi-squared; beyond, a residual grows linearly rather than quadratically. That bounds the pull of one outlier less strongly than a Student-t, whose growth is logarithmic. Like the Student-t, it needs `[sigma]` and cannot be combined with `[correlation]` or `correlate_ratios`.
 
 ### Known true parameters
 

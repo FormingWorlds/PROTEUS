@@ -68,7 +68,7 @@ def collect_case_observables(
     obs: dict,
     sigma: dict | None = None,
     correlation: dict | None = None,
-    student_t_dof: float | None = None,
+    loss: tuple[str, float] | None = None,
 ) -> pd.DataFrame:
     """Read the final observables and fit quality of every case on disk.
 
@@ -104,7 +104,7 @@ def collect_case_observables(
                 'case': f'w{w}_i{i}',
                 'excluded': (w, i) in excluded,
                 **sim,
-                'J': float(eval_obj(sim, obs, sigma, whitener, student_t_dof)),
+                'J': float(eval_obj(sim, obs, sigma, whitener, loss)),
             }
         )
 
@@ -447,8 +447,11 @@ def _posterior_axes(ax, i: int, j: int, keys: list, pars: dict):
         ax.tick_params(labelleft=False)
 
 
-def _posterior_legend(fig, n_init: int, n_bo: int, chi2_best: float, truth: bool):
-    """Legend of the posterior corner plot."""
+def _posterior_legend(
+    fig, n_init: int, n_bo: int, S_best: float, truth: bool, loss: tuple | None = None
+):
+    """Legend of the posterior corner plot; S_best is labelled chi-squared, or -2 ln L for `loss`."""
+    S_label = 'χ²' if loss is None else '−2 ln L'
     blue = WONG['blue']
     handles = [
         plt.Rectangle((0, 0), 1, 1, fc=POST_FILLS[1], ec=blue, label='posterior, 68% region'),
@@ -475,7 +478,7 @@ def _posterior_legend(fig, n_init: int, n_bo: int, chi2_best: float, truth: bool
             ms=6,
             mfc='white',
             mec='k',
-            label=f'best fit (χ² = {chi2_best:.3g}), dotted on diagonal',
+            label=f'best fit ({S_label} = {S_best:.3g}), dotted on diagonal',
         ),
     ]
     if truth:
@@ -501,7 +504,13 @@ def _posterior_legend(fig, n_init: int, n_bo: int, chi2_best: float, truth: bool
 
 
 def plot_result_posterior(
-    samples: pd.DataFrame, D: dict, n_init: int, pars: dict, truth: dict | None, directory
+    samples: pd.DataFrame,
+    D: dict,
+    n_init: int,
+    pars: dict,
+    truth: dict | None,
+    directory,
+    loss: tuple[str, float] | None = None,
 ):
     """Corner plot of the posterior as 68 and 95% credible regions, with every scored
     evaluation, the best fit and, if known, the truth drawn on top.
@@ -514,6 +523,7 @@ def plot_result_posterior(
     - pars (dict): Parameter names and bounds.
     - truth (dict | None): True value of each parameter.
     - directory (str): Base dir where the inference was performed.
+    - loss (tuple[str, float] | None): Objective name and parameter; None for chi-squared.
     """
     keys = list(pars)
     n = len(keys)
@@ -582,7 +592,7 @@ def plot_result_posterior(
                 )
             _posterior_axes(ax, i, j, keys, pars)
 
-        _posterior_legend(fig, n_init, len(y) - n_init, 10 ** -y.max(), tv is not None)
+        _posterior_legend(fig, n_init, len(y) - n_init, 10 ** -y.max(), tv is not None, loss)
         fig.subplots_adjust(
             left=0.08, right=0.97, bottom=0.07, top=0.97, wspace=0.07, hspace=0.07
         )

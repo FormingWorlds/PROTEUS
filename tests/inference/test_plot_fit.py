@@ -115,7 +115,7 @@ def test_collect_case_observables_scores_with_student_t(tmp_path):
     sigma = {'R_obs': 5.0e5, 'T_obs': 25.0}
     _write_case(tmp_path, 0, 0, {'R_obs': 7.0e6, 'T_obs': 450.0})
 
-    df = plot_fit_mod.collect_case_observables(tmp_path, obs, sigma, None, 3.0)
+    df = plot_fit_mod.collect_case_observables(tmp_path, obs, sigma, None, ('student-t', 3.0))
 
     assert df.loc[0, 'J'] == pytest.approx(-np.log10(8.0 * np.log(7.0 / 3.0) + 1e-10), rel=1e-9)
     assert abs(df.loc[0, 'J'] + np.log10(8.0)) > 0.05
@@ -466,3 +466,27 @@ def test_plot_result_posterior_writes_the_corner_plot(tmp_path, monkeypatch, tru
 
     out = tmp_path / 'plots' / f'result_posterior.{plot_fit_mod.fmt}'
     assert out.stat().st_size > 10_000
+
+
+@pytest.mark.parametrize(
+    'loss, label',
+    [
+        (None, 'χ² = 4.2'),
+        (('huber', 1.345), '−2 ln L = 4.2'),
+        (('student-t', 4.0), '−2 ln L = 4.2'),
+    ],
+    ids=['chi-squared', 'huber', 'student-t'],
+)
+def test_posterior_legend_names_the_best_fit_sum_by_objective(loss, label):
+    """The best-fit entry calls the sum chi-squared only for the chi-2 objective; under
+    Huber or Student-t it is -2 ln L, which a chi-squared label would misreport.
+    """
+    from matplotlib.figure import Figure
+
+    fig = Figure()
+    plot_fit_mod._posterior_legend(fig, 10, 5, 4.2, False, loss)
+    texts = [t.get_text() for t in fig.legends[0].get_texts()]
+
+    best = [t for t in texts if t.startswith('best fit')]
+    assert best == [f'best fit ({label}), dotted on diagonal']
+    assert ('χ²' in best[0]) == (loss is None)

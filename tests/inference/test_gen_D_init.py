@@ -46,7 +46,7 @@ def test_create_init_falls_back_to_n_workers_when_init_samps_less_than_one(monke
         failure_codes,
         sigma=None,
         correlation=None,
-        student_t_dof=None,
+        loss=None,
     ):
         received.append(n)
         return n
@@ -120,10 +120,10 @@ def test_create_init_routes_to_sample_from_grid(monkeypatch, tmp_path):
         grid_dir,
         sigma=None,
         correlation=None,
-        student_t_dof=None,
+        loss=None,
     ):
         observed['grid_dir'] = grid_dir
-        observed['student_t_dof'] = student_t_dof
+        observed['loss'] = loss
         return 6
 
     monkeypatch.setattr(init_mod, 'sample_from_grid', fake_sample_from_grid)
@@ -134,11 +134,11 @@ def test_create_init_routes_to_sample_from_grid(monkeypatch, tmp_path):
         'parameters': {'planet.mass_tot': [0.7, 3.0]},
         'observables': {'R_obs': 1.0},
         'failure_codes': [],
-        'student_t_dof': 4.0,
+        'loss': ('student-t', 4.0),
     }
 
     assert init_mod.create_init(config) == 6
-    assert observed['student_t_dof'] == pytest.approx(4.0, rel=1e-12)
+    assert observed['loss'] == ('student-t', 4.0)
     # The grid dir is the (possibly relocated) output root joined with the grid
     # name. The full path rules out ignoring the grid name or a hard-coded
     # <proteus>/output root.

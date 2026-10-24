@@ -787,45 +787,62 @@ def test_run_inference_passes_the_validated_tables_to_the_workers(monkeypatch, t
     assert received['max_len'] == 5
 
 
-def test_run_inference_passes_student_t_dof_to_the_workers(monkeypatch, tmp_path):
-    """objective = "student-t" reaches the workers as its dof, 4.0 by default."""
+@pytest.mark.parametrize(
+    'objective, key, expected',
+    [('student-t', 'student_t_dof', 4.0), ('huber', 'huber_k', 1.345)],
+)
+def test_run_inference_passes_the_loss_to_the_workers(
+    monkeypatch, tmp_path, objective, key, expected
+):
+    """objective = "student-t" or "huber" reaches the workers as (name, parameter),
+    with the parameter's default when the config leaves it out.
+    """
     config, _ = _validation_study(
         monkeypatch,
         tmp_path,
         observables=_THREE_OBS,
         sigma=_THREE_SIGMA,
-        objective='student-t',
+        objective=objective,
     )
+    assert key not in config
     received = _worker_arguments(monkeypatch, config)
 
-    assert received['student_t_dof'] == pytest.approx(4.0, rel=1e-12)
-    assert type(received['student_t_dof']) is float
+    name, param = received['loss']
+    assert name == objective
+    assert param == pytest.approx(expected, rel=1e-12)
+    assert type(param) is float
 
 
-def test_validate_objective_accepts_chi2_and_student_t_and_rejects_others():
-    """chi-2 (the default) gives None; student-t gives its dof as a float. An unknown
-    objective, a dof with chi-2, a bad dof, a missing sigma and any correlation table
-    (even the empty one correlate_ratios can derive) are refused.
+def test_validate_objective_accepts_each_objective_and_rejects_misuse():
+    """chi-2 (the default) gives None; student-t and huber give (name, float parameter)
+    with their defaults. An unknown objective, a parameter of another objective, a
+    bad parameter, a missing sigma and any correlation table (even the empty one
+    correlate_ratios can derive) are refused.
     """
     sigma = {'R_obs': 1.0e5}
     validate = inference_mod.validate_objective
-    assert validate(None, None, None, None) is None
-    assert validate('chi-2', None, sigma, {'R_obs': {'T_obs': 0.5}}) is None
-    assert validate('student-t', None, sigma, None) == pytest.approx(4.0, rel=1e-12)
-    assert validate('student-t', 0.5, sigma, None) == pytest.approx(0.5, rel=1e-12)
-    for bad in ('gaussian', 'Student-t', 'chi2'):
+    assert validate(None, {}, None, None) is None
+    assert validate('chi-2', {}, sigma, {'R_obs': {'T_obs': 0.5}}) is None
+    assert validate('student-t', {}, sigma, None) == ('student-t', 4.0)
+    assert validate('student-t', {'student_t_dof': 0.5}, sigma, None) == ('student-t', 0.5)
+    assert validate('huber', {}, sigma, None) == ('huber', 1.345)
+    assert validate('huber', {'huber_k': 2}, sigma, None) == ('huber', 2.0)
+    for bad in ('gaussian', 'Student-t', 'chi2', 'Huber'):
         with pytest.raises(ValueError, match='objective must be one of'):
-            validate(bad, None, sigma, None)
+            validate(bad, {}, sigma, None)
     with pytest.raises(ValueError, match='student_t_dof needs objective'):
-        validate('chi-2', 4, sigma, None)
-    for bad in (True, '4', 0, -1.0, math.inf, math.nan):
-        with pytest.raises(ValueError, match='student_t_dof must be a positive'):
-            validate('student-t', bad, sigma, None)
-    with pytest.raises(ValueError, match='needs \\[sigma\\]'):
-        validate('student-t', None, None, None)
-    for corr in ({'R_obs': {'T_obs': 0.5}}, {}):
-        with pytest.raises(ValueError, match='cannot be combined'):
-            validate('student-t', 4, sigma, corr)
+        validate('chi-2', {'student_t_dof': 4}, sigma, None)
+    with pytest.raises(ValueError, match='huber_k needs objective'):
+        validate('student-t', {'huber_k': 1.0}, sigma, None)
+    for name, key in (('student-t', 'student_t_dof'), ('huber', 'huber_k')):
+        for bad in (True, '4', 0, -1.0, math.inf, math.nan):
+            with pytest.raises(ValueError, match=f'{key} must be a positive'):
+                validate(name, {key: bad}, sigma, None)
+        with pytest.raises(ValueError, match='needs \\[sigma\\]'):
+            validate(name, {}, None, None)
+        for corr in ({'R_obs': {'T_obs': 0.5}}, {}):
+            with pytest.raises(ValueError, match='cannot be combined'):
+                validate(name, {}, sigma, corr)
 
 
 def test_validate_truth_returns_ordered_floats_and_rejects_bad_tables():

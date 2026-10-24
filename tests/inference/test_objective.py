@@ -552,9 +552,9 @@ def test_eval_obj_correlation_kept_for_log_observables():
     assert abs(chi2 - 2.0) > 0.5  # rho ignored
 
 
-def _deviance(sim, tru, sigma, dof):
-    """Invert `log_warp` to recover the Student-t sum that `eval_obj` minimises."""
-    return 10 ** (-objective_mod.eval_obj(sim, tru, sigma, None, dof).item())
+def _deviance(sim, tru, sigma, loss):
+    """Invert `log_warp` to recover the `loss` sum that `eval_obj` minimises."""
+    return 10 ** (-objective_mod.eval_obj(sim, tru, sigma, None, loss).item())
 
 
 @pytest.mark.physics_invariant
@@ -567,11 +567,11 @@ def test_eval_obj_student_t_matches_closed_form_and_tends_to_chi_squared(monkeyp
 
     # 4 ln(7/3) = 3.389; the Gaussian chi-squared is 4.
     expected = 4.0 * math.log(7.0 / 3.0)
-    assert _deviance(sim, tru, sigma, 3.0) == pytest.approx(expected, rel=1e-9)
+    assert _deviance(sim, tru, sigma, ('student-t', 3.0)) == pytest.approx(expected, rel=1e-9)
     assert abs(expected - 4.0) > 0.5
     # Without the (nu + 1) factor the sum would be ln(7/3) = 0.85.
     assert abs(expected - math.log(7.0 / 3.0)) > 2.0
-    assert _deviance(sim, tru, sigma, 1.0e8) == pytest.approx(4.0, rel=1e-6)
+    assert _deviance(sim, tru, sigma, ('student-t', 1.0e8)) == pytest.approx(4.0, rel=1e-6)
 
 
 @pytest.mark.physics_invariant
@@ -585,27 +585,66 @@ def test_eval_obj_student_t_prefers_one_outlier_over_a_spread_misfit(monkeypatch
     outlier = {'R_obs': 10.0, 'T_obs': 0.0, 'g_obs': 0.0}
     spread = {'R_obs': 3.0, 'T_obs': 3.0, 'g_obs': 3.0}
 
-    def J(sim, dof):
-        return objective_mod.eval_obj(sim, tru, sigma, None, dof).item()
+    def J(sim, loss):
+        return objective_mod.eval_obj(sim, tru, sigma, None, loss).item()
 
     assert J(spread, None) > J(outlier, None)
-    assert J(outlier, 3.0) > J(spread, 3.0)
-    assert _deviance(outlier, tru, sigma, 3.0) == pytest.approx(
+    assert J(outlier, ('student-t', 3.0)) > J(spread, ('student-t', 3.0))
+    assert _deviance(outlier, tru, sigma, ('student-t', 3.0)) == pytest.approx(
         4.0 * math.log(103.0 / 3.0), rel=1e-9
     )
-    assert _deviance(spread, tru, sigma, 3.0) == pytest.approx(12.0 * math.log(4.0), rel=1e-9)
+    assert _deviance(spread, tru, sigma, ('student-t', 3.0)) == pytest.approx(
+        12.0 * math.log(4.0), rel=1e-9
+    )
 
 
-def test_eval_obj_student_t_needs_sigma_and_no_correlation():
-    """Student-t errors are scaled by sigma and independent, so both misuses raise."""
+@pytest.mark.parametrize('loss', [('student-t', 4.0), ('huber', 1.345)])
+def test_eval_obj_robust_loss_needs_sigma_and_no_correlation(loss):
+    """Student-t and Huber errors are scaled by sigma and independent, so both misuses raise."""
     tru, sim = {'R_obs': 6.0e6, 'T_obs': 400.0}, {'R_obs': 7.0e6, 'T_obs': 450.0}
     sigma = {'R_obs': 5.0e5, 'T_obs': 25.0}
     whitener = CorrelationWhitener(list(tru), {'R_obs': {'T_obs': 0.6}})
 
-    with pytest.raises(ValueError, match='student_t_dof needs sigma'):
-        objective_mod.eval_obj(sim, tru, None, None, 4.0)
+    with pytest.raises(ValueError, match=f'objective {loss[0]!r} needs sigma'):
+        objective_mod.eval_obj(sim, tru, None, None, loss)
     with pytest.raises(ValueError, match='no correlation'):
-        objective_mod.eval_obj(sim, tru, sigma, whitener, 4.0)
+        objective_mod.eval_obj(sim, tru, sigma, whitener, loss)
+
+
+@pytest.mark.physics_invariant
+def test_eval_obj_huber_is_chi_squared_inside_k_and_linear_beyond(monkeypatch):
+    """|u| <= k adds u^2; |u| > k adds 2 k |u| - k^2, so u = 2, k = 1 adds 3, not 4
+    (chi-squared) nor 1.5 (Huber's rho without the factor 2 that matches chi-squared).
+    """
+    monkeypatch.setattr(objective_mod, 'variable_is_logarithmic', lambda key: False)
+    tru = {'R_obs': 0.0, 'T_obs': 0.0}
+    sigma = {'R_obs': 1.0, 'T_obs': 1.0}
+
+    core = _deviance({'R_obs': 0.5, 'T_obs': 0.0}, tru, sigma, ('huber', 1.0))
+    assert core == pytest.approx(0.25, rel=1e-9)
+    tail = _deviance({'R_obs': 2.0, 'T_obs': 0.0}, tru, sigma, ('huber', 1.0))
+    assert tail == pytest.approx(3.0, rel=1e-9)
+    assert abs(tail - 4.0) > 0.5
+    assert abs(tail - 1.5) > 0.5
+
+
+@pytest.mark.physics_invariant
+def test_eval_obj_huber_prefers_one_outlier_over_a_spread_misfit(monkeypatch):
+    """u = (5, 0, 0) loses to u = (2.2, 2.2, 2.2) under chi-squared (25 vs 14.5) and
+    wins under Huber with k = 1 (9 vs 10.2).
+    """
+    monkeypatch.setattr(objective_mod, 'variable_is_logarithmic', lambda key: False)
+    tru = {'R_obs': 0.0, 'T_obs': 0.0, 'g_obs': 0.0}
+    sigma = {'R_obs': 1.0, 'T_obs': 1.0, 'g_obs': 1.0}
+    outlier = {'R_obs': 5.0, 'T_obs': 0.0, 'g_obs': 0.0}
+    spread = {'R_obs': 2.2, 'T_obs': 2.2, 'g_obs': 2.2}
+
+    def J(sim, loss):
+        return objective_mod.eval_obj(sim, tru, sigma, None, loss).item()
+
+    assert J(spread, None) > J(outlier, None)
+    assert J(outlier, ('huber', 1.0)) > J(spread, ('huber', 1.0))
+    assert _deviance(spread, tru, sigma, ('huber', 1.0)) == pytest.approx(10.2, rel=1e-9)
 
 
 def test_eval_obj_compares_element_ratios_in_log_only_with_sigma():
