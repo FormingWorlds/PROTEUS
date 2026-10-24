@@ -2898,6 +2898,32 @@ def test_proteus_resume_lifts_the_crystallization_latch_across_an_impact(tmp_pat
     )
 
 
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('f_remelt', 'phi_impact', 'latched'),
+    [(0.05, 0.0, True), (1.0, 0.0, False), (0.3, 0.4, False)],
+    ids=['partial_left_solid', 'full', 'partial_left_melt'],
+)
+def test_resume_keeps_the_latch_after_a_partial_remelt_that_left_the_mantle_solid(
+    tmp_path, f_remelt, phi_impact, latched
+):
+    """The resume rebuilds the latch as the run set it: the mantle crystallized at row 2 and
+    the impact of row 4 re-melted the share f_remelt, leaving phi_impact (the row holds the
+    state after the re-melt). A partial re-melt that leaves Phi_global <= phi_crit keeps the
+    latch; a full one, or one that leaves melt, clears it."""
+    p = _make_proteus_instance(tmp_path)
+    p.config.params.stop.solid.freeze_volatiles = True
+    p.config.params.stop.solid.phi_crit = 0.01
+    (tmp_path / 'data').mkdir(exist_ok=True)
+    df = _make_hf_df_with_impact(
+        [1.0, 0.5, 0.005, 0.004, phi_impact], [0.0, 0.0, 0.0, 0.0, 1.0e21]
+    )
+    df['f_remelt'] = [0.0, 0.0, 0.0, 0.0, f_remelt]
+    _resume_with_patches(p, df)
+    assert p.crystallized is latched
+    assert df['Phi_global'].iloc[2] <= 0.01
+
+
 # ---------------------------------------------------------------------------
 # Proteus.start() main loop: plot-cadence gating (proteus.py ~1200-1207).
 #

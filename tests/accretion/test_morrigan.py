@@ -18,6 +18,7 @@ from __future__ import annotations
 from functools import partial
 from types import SimpleNamespace
 
+import numpy as np
 import pytest
 
 from proteus.accretion import morrigan as backend
@@ -619,3 +620,26 @@ def test_an_extrapolated_melt_fraction_is_a_warning(
     lines = [r for r in caplog.records if 'f_melt 0.4' in r.getMessage()]
     assert [e.f_melt for e in events] == [0.4]
     assert [r.levelname for r in lines] == ['WARNING' if warns else 'INFO']
+
+
+@pytest.mark.unit
+def test_a_numpy_false_range_flag_is_an_extrapolation(monkeypatch, caplog):
+    """A melt_in_range of numpy.False_ (or 0 read back from a table) warns like False."""
+    record = _one_impact_record()
+    record.update(
+        f_melt=0.4,
+        f_melt_raw=0.4,
+        f_melt_sigma=0.05,
+        dIE=1e31,
+        melt_in_range=np.False_,
+        above_v_cr=np.False_,
+    )
+    fake = SimpleNamespace(
+        run_system=lambda **kw: {'survivors': _SURVIVORS, 'impacts': {1: [record], 2: []}}
+    )
+    monkeypatch.setattr(backend, 'morrigan', fake, raising=False)
+    with caplog.at_level('INFO', logger='fwl.proteus.accretion.morrigan'):
+        events = backend.get_timeline(_config(selector='mass'))
+    lines = [r for r in caplog.records if 'f_melt 0.4' in r.getMessage()]
+    assert [e.f_melt for e in events] == [0.4]
+    assert [r.levelname for r in lines] == ['WARNING']

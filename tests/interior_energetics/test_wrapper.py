@@ -8095,7 +8095,7 @@ class _FakeMeshAragogSolver(_FakeAragogSolver):
         super().set_initial_entropy(S)
 
 
-def _partial_aragog_remelt(f, cooled=2400.0, molten=3900.0, solution=True):
+def _partial_aragog_remelt(f, cooled=2400.0, molten=3900.0, solution=True, status=None):
     """Re-melt the 6-cell fake at fraction f; return solver, interior and row."""
     solver = _FakeMeshAragogSolver(cooled_profile=np.full(6, cooled))
     if not solution:
@@ -8113,14 +8113,18 @@ def _partial_aragog_remelt(f, cooled=2400.0, molten=3900.0, solution=True):
         ),
         patch('proteus.interior_energetics.aragog.AragogRunner._refresh_entropy_eos'),
         patch('proteus.interior_energetics.wrapper.evaluate_molten_state', return_value=None),
+        patch(
+            'proteus.interior_energetics.wrapper.UpdateStatusfile', new=status or MagicMock()
+        ),
     ):
-        remelt_mantle(
-            {'output': '/tmp/out'},
-            _remelt_config('aragog'),
-            hf_row=hf_row,
-            interior_o=interior_o,
-            f=f,
-        )
+        for each in np.atleast_1d(f):
+            remelt_mantle(
+                {'output': '/tmp/out'},
+                _remelt_config('aragog'),
+                hf_row=hf_row,
+                interior_o=interior_o,
+                f=float(each),
+            )
     return solver, interior_o, hf_row
 
 
@@ -8275,11 +8279,9 @@ def test_the_partial_remelt_weighs_the_cells_by_structural_mass(monkeypatch):
 @pytest.mark.unit
 def test_a_refused_partial_remelt_writes_the_interior_status():
     """A partial re-melt without an end-of-step profile writes status 21 before it raises."""
-    with (
-        patch('proteus.interior_energetics.wrapper.UpdateStatusfile') as status,
-        pytest.raises(RuntimeError, match='partial re-melt'),
-    ):
-        _partial_aragog_remelt(0.3, solution=False)
+    status = MagicMock()
+    with pytest.raises(RuntimeError, match='partial re-melt'):
+        _partial_aragog_remelt(0.3, solution=False, status=status)
     status.assert_called_once()
     assert status.call_args.args[1] == 21
 
@@ -8293,25 +8295,61 @@ def test_two_partial_remelts_in_one_step_melt_the_outer_shell_of_the_larger(orde
     """Two impacts in one step: the second starts from the first one's profile, so the result
     is the outer shell of the larger f (3 of 6 equal cells) and the booked heat is the sum of
     both jumps, 3 x 1500 J/kg/K at the fake's weight."""
-    solver = _FakeMeshAragogSolver(cooled_profile=np.full(6, 2400.0))
-    interior_o = SimpleNamespace(
-        aragog_solver=solver, _last_entropy=np.full(6, 2400.0), impact_reset=False
-    )
-    hf_row = {}
-    with (
-        patch(
-            'proteus.interior_energetics.aragog.AragogRunner._set_entropy_ic',
-            return_value=np.full(6, 3900.0),
-        ),
-        patch('proteus.interior_energetics.aragog.AragogRunner._refresh_entropy_eos'),
-        patch('proteus.interior_energetics.wrapper.evaluate_molten_state', return_value=None),
-    ):
-        for f in order:
-            remelt_mantle(
-                {'output': '/tmp/out'}, _remelt_config('aragog'), hf_row, interior_o, f=f
-            )
+    _, interior_o, hf_row = _partial_aragog_remelt(order)
     np.testing.assert_array_equal(interior_o._last_entropy, [2400.0] * 3 + [3900.0] * 3)
     assert hf_row['step_dE_impact_J'] == pytest.approx(
         3 * 1500.0 * _FakeAragogSolver._HEAT_PER_ENTROPY, rel=1e-12
     )
     assert hf_row['f_remelt'] == max(order)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_a_second_impact_blends_the_boundary_cell_again():
+    """Two impacts of f = 0.3 on 6 equal cells: the front falls inside cell 4 (w = 0.8), so
+    the second impact blends that cell again, 2400 -> 3600 -> 3840 J/kg/K, and the melted
+    share is 0.3 + w (1 - w) / 6 = 0.3267, not 0.3 (no memory of the first melt)."""
+    _, interior_o, _ = _partial_aragog_remelt((0.3, 0.3))
+    S = interior_o._last_entropy
+    np.testing.assert_allclose(S, [2400.0] * 4 + [3840.0, 3900.0], rtol=1e-14)
+    assert float(np.sum((S - 2400.0) / 1500.0)) / 6.0 == pytest.approx(
+        0.3 + 0.16 / 6.0, rel=1e-12
+    )
+
+
+@pytest.mark.unit
+def test_a_weight_error_in_a_partial_remelt_writes_the_interior_status(monkeypatch):
+    """A non-finite structural density makes remelt_weights refuse the cell masses; the
+    re-melt writes interior status 21 before the error reaches the caller."""
+    real_init = _FakeMeshAragogSolver.__init__
+
+    def init(self, cooled_profile):
+        real_init(self, cooled_profile)
+        rho = np.full(6, 4000.0)
+        rho[2] = np.nan
+        self.evaluator = SimpleNamespace(mesh=SimpleNamespace(staggered_effective_density=rho))
+
+    monkeypatch.setattr(_FakeMeshAragogSolver, '__init__', init)
+    status = MagicMock()
+    with pytest.raises(ValueError, match='cell masses'):
+        _partial_aragog_remelt(0.3, status=status)
+    assert [c.args[1] for c in status.call_args_list] == [21]
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_two_scalar_remelts_compound_the_lift(caplog):
+    """The scalar mantle at 2100 K, T_init 4000 K: two impacts of f = 0.3 move it by
+    1 - 0.7^2 = 0.51 of the lift, to 3069 K; a mantle above T_init is kept, and logged so."""
+    hf_row = _remelt_hf_row()
+    interior_o = SimpleNamespace(impact_reset=False)
+    for _ in range(2):
+        remelt_mantle(
+            {'output': '/tmp/out'}, _remelt_config('dummy'), hf_row, interior_o, f=0.3
+        )
+    assert hf_row['T_magma'] == pytest.approx(2100.0 + 0.51 * 1900.0, rel=1e-12)
+    hot = _remelt_hf_row(T_magma=4500.0)
+    with caplog.at_level(logging.INFO, logger='fwl.proteus.interior_energetics.wrapper'):
+        remelt_mantle({'output': '/tmp/out'}, _remelt_config('dummy'), hot, interior_o, f=0.3)
+    assert hot['T_magma'] == pytest.approx(4500.0, rel=1e-15)
+    assert 'T_magma kept at 4500 K' in caplog.text

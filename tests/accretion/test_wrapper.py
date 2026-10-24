@@ -5919,19 +5919,26 @@ def test_a_resume_without_melt_fractions_names_the_resolved_file(tmp_path):
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize(('f', 'cleared'), [(0.05, False), (1.0, True)])
+@pytest.mark.parametrize(
+    ('f', 'tsurf_init', 'cleared'),
+    [(0.05, 4000.0, False), (0.3, 4000.0, True), (1.0, 4000.0, True), (1.0, 1500.0, True)],
+    ids=['partial_left_solid', 'partial_left_melt', 'full', 'full_left_solid'],
+)
 def test_the_solidification_latch_clears_only_when_the_remelt_leaves_melt(
-    monkeypatch, f, cleared
+    monkeypatch, f, tsurf_init, cleared
 ):
     """A crystallized mantle at 1500 K: f = 0.05 leaves it solid (1625 K, below the 1700 K
-    solidus), so the latch stays; the full re-melt clears it."""
+    solidus), so the latch stays; f = 0.3 leaves melt (2250 K) and clears it; the full
+    re-melt clears it, also when tsurf_init leaves the mantle solid."""
     from proteus.accretion.wrapper import apply_impact
 
     monkeypatch.setattr(
         'proteus.interior_energetics.wrapper.solve_structure', lambda *a, **k: None
     )
     handler = _impact_handler(
-        crystallized=True, accretion=_impact_accretion(remelt_mode='computed')
+        crystallized=True,
+        tsurf_init=tsurf_init,
+        accretion=_impact_accretion(remelt_mode='computed'),
     )
     handler.hf_row['T_magma'] = 1500.0
     handler.config.params.stop = SimpleNamespace(
@@ -5939,4 +5946,29 @@ def test_the_solidification_latch_clears_only_when_the_remelt_leaves_melt(
     )
     apply_impact(handler, _impact_event(f_melt=f))
     assert handler.crystallized is (not cleared)
-    assert (handler.hf_row['Phi_global'] > 0.01) is cleared
+    assert (handler.hf_row['Phi_global'] > 0.01) is (cleared and tsurf_init > 1700.0)
+
+
+@pytest.mark.unit
+def test_the_latch_stays_at_phi_equal_to_phi_crit(monkeypatch):
+    """stop.solid and the latch use Phi_global <= phi_crit: at equality the latch stays."""
+    from proteus.accretion.wrapper import apply_impact
+
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper.solve_structure', lambda *a, **k: None
+    )
+    phis, latched = [], []
+    for crit in (0.5, None):
+        handler = _impact_handler(
+            crystallized=True, accretion=_impact_accretion(remelt_mode='computed')
+        )
+        handler.hf_row['T_magma'] = 1500.0
+        phi_crit = crit if crit is not None else phis[0]
+        handler.config.params.stop = SimpleNamespace(
+            solid=SimpleNamespace(enabled=True, phi_crit=phi_crit)
+        )
+        apply_impact(handler, _impact_event(f_melt=0.1))  # 1750 K
+        phis.append(handler.hf_row['Phi_global'])
+        latched.append(handler.crystallized)
+    assert 0.0 < phis[0] < 0.5 and phis[1] == phis[0]
+    assert latched == [True, True]
