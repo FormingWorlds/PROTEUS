@@ -43,7 +43,8 @@ entered at the rheological transition, ``rfront_loc = 0.4`` by default; above
 about 0.2 the factor is an extrapolation of that solution.
 
 The drainage takes its inputs once per front: the front-mean density
-contrast and gravity and the lever-rule porosity of the front top. The matrix
+contrast, the front-mean gravity where the interior gives it (else the surface
+gravity) and the lever-rule porosity of the front top. The matrix
 time keeps the full contrast, ``tau_s = mu_s / (|drho| g L)``, under either
 buoyancy. The drag viscosity is always the melt viscosity. The solver's
 ``separation_viscosity`` defaults to ``'mixture'``, the
@@ -210,12 +211,13 @@ def drainage_integral(
 
     Integrates ``dphi/dt = -phi / max(L/w_D(phi), tau_s)`` from ``porosity_top``
     over the residence time, with ``w_D`` under ``buoyancy``. ``w_D`` falls as
-    ``phi^2`` down to a porosity of about 3e-5; below about 3e-6 the mobility tends to
-    the Stokes residue of the tanh blend, a numerical floor, and a residence far beyond
-    any front's ends within the integrator's tolerance of zero. The result is clipped to
-    ``[0, porosity_top]``; an end below 0 by more than 10 atol, or above
-    ``porosity_top`` by more than 10 atol + rtol ``porosity_top``, raises
-    ``RuntimeError``, as does a non-positive percolation time.
+    ``phi^2`` down to a porosity of about 3e-5. Below about 3e-6 the mobility tends to
+    the Stokes residue of the tanh blend, a numerical floor, so the decay turns
+    exponential, and after a residence far longer than a front's the porosity ends within
+    the integrator's tolerance of zero. The result is clipped to ``[0, porosity_top]``;
+    an end below 0 by more than the allowance 10 atol, or above ``porosity_top`` by more
+    than 10 atol + rtol ``porosity_top``, raises ``RuntimeError``, as does a non-positive
+    percolation time.
 
     Returns
     -------
@@ -232,8 +234,7 @@ def drainage_integral(
     tau_d_top = thickness / w_top if w_top > 0.0 else float('inf')
     if not tau_d_top > 0.0:
         raise RuntimeError(
-            f'percolation time {tau_d_top!r} s is not positive for a front '
-            f'{thickness!r} m thick'
+            f'percolation time {tau_d_top!r} s is not positive for a front {thickness!r} m thick'
         )
 
     if not np.isfinite(t_res) or t_res <= 0.0 or porosity_top <= 0.0:
@@ -271,7 +272,7 @@ def drainage_integral(
     if not -low <= retained <= porosity_top + high:
         raise RuntimeError(
             f'retained porosity {retained!r} lies outside [0, {porosity_top!r}] by more than '
-            f'the integrator error scale ({low!r} below, {high!r} above)'
+            f'the allowance ({low!r} below, {high!r} above)'
         )
     return float(min(max(retained, 0.0), porosity_top)), tau_d_top, tau_s
 
