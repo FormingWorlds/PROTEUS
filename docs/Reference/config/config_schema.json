@@ -5517,7 +5517,7 @@
         "solid"
       ],
       "bounds": null,
-      "description": "Buoyancy of the gravitational-separation velocity. 'mixture' takes it against the mixture, (1 - phi) (rho_s - rho_l) g (McKenzie 1984, Eq. 3.7), on the Blake-Kozeny-Carman and Rumpf-Gupte regimes, while the Stokes regime of a grain settling alone keeps (rho_s - rho_l) g; 'solid' takes (rho_s - rho_l) g on every regime (Abe 1995, Eq. 40), as SPIDER does, so 'solid' with separation_viscosity 'melt' is the SPIDER setting. The melt drainage of front trapping (outgas.trap_mode 'front') takes the same buoyancy.",
+      "description": "Buoyancy of the gravitational-separation velocity. 'mixture' takes it against the mixture, (1 - phi) (rho_s - rho_l) g (McKenzie 1984, Eq. 3.7), on the Blake-Kozeny-Carman and Rumpf-Gupte regimes, while the Stokes regime of a grain settling alone keeps (rho_s - rho_l) g; 'solid' takes (rho_s - rho_l) g on every regime (Abe 1995, Eq. 40), as SPIDER does, so 'solid' with separation_viscosity 'melt' is the SPIDER setting. The melt drainage of front trapping (outgas.trap_mode 'front') takes the same buoyancy. Up to a porosity of 0.4 'mixture' equals (1 - phi) times 'solid' within 1e-5; from a porosity of 0.91 up both modes take the plain-contrast Stokes rate within 1e-2.",
       "doc_source": "field_docstring",
       "group_order": 0,
       "group_position": 0,

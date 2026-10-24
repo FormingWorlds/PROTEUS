@@ -389,7 +389,9 @@ class Aragog:
     regime of a grain settling alone keeps (rho_s - rho_l) g; 'solid' takes
     (rho_s - rho_l) g on every regime (Abe 1995, Eq. 40), as SPIDER does, so
     'solid' with separation_viscosity 'melt' is the SPIDER setting. The melt
-    drainage of front trapping (outgas.trap_mode 'front') takes the same buoyancy."""
+    drainage of front trapping (outgas.trap_mode 'front') takes the same buoyancy.
+    Up to a porosity of 0.4 'mixture' equals (1 - phi) times 'solid' within 1e-5;
+    from a porosity of 0.91 up both modes take the plain-contrast Stokes rate within 1e-2."""
     solver_method: str = field(
         default='cvode',
         validator=in_(('cvode', 'radau', 'bdf')),
