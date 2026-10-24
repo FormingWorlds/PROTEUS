@@ -13,6 +13,7 @@ import inspect
 import math
 import multiprocessing as mp
 import os
+import re
 from pathlib import Path
 
 import pytest
@@ -222,6 +223,17 @@ def test_parameter_bounds_rejects_a_log_scaled_range_that_reaches_zero():
     assert inference_mod.variable_is_logarithmic('planet.elements.H_budget') is True
 
 
+def test_the_config_check_refuses_a_number_for_a_bool_field():
+    """The inference check of a raw config refuses ``1`` for a bool field, naming it,
+    instead of reading it as true; ``true`` passes."""
+    raw = toml.load(BASE_CONFIG)
+    raw.setdefault('outgas', {}).setdefault('calliope', {})['include_H2O'] = 1
+    with pytest.raises(ValueError, match='outgas.calliope.include_H2O: must be true or false'):
+        inference_mod._reject_bad_config(raw, 'ref.toml')
+    raw['outgas']['calliope']['include_H2O'] = True
+    assert inference_mod._reject_bad_config(raw, 'ref.toml') is None
+
+
 @pytest.mark.parametrize('enabled', [True, False], ids=['cache-on', 'cache-off'])
 def test_validate_reference_config_checks_the_spectral_cache_the_workers_use(
     monkeypatch, tmp_path, enabled
@@ -346,8 +358,27 @@ def test_validate_reference_config_rejects_a_faulty_reference_file(tmp_path):
         ({'planet.elements.H_budget': [0.0, 2e4]}, {}, ValueError, 'log scale'),
         # A quoted "false" is truthy, so it would silently leave the cache on.
         ({'planet.mass_tot': [0.7, 3.0]}, {'spectral_cache': 'false'}, ValueError, 'true or'),
+        # The same for abort_on_failure, where "false" would stop the study on a failed run.
+        (
+            {'planet.mass_tot': [0.7, 3.0]},
+            {'abort_on_failure': 'false'},
+            ValueError,
+            "abort_on_failure must be true or false, got 'false'",
+        ),
+        (
+            {'planet.mass_tot': [0.7, 3.0]},
+            {'abort_on_failure': 1},
+            ValueError,
+            'abort_on_failure must be true or false, got 1',
+        ),
     ],
-    ids=['misspelt_parameter', 'log_scaled_range_reaching_zero', 'spectral_cache_not_bool'],
+    ids=[
+        'misspelt_parameter',
+        'log_scaled_range_reaching_zero',
+        'spectral_cache_not_bool',
+        'abort_on_failure_string',
+        'abort_on_failure_int',
+    ],
 )
 def test_run_inference_validates_reference_config_before_emptying_output(
     monkeypatch, tmp_path, parameters, extra, error, match
@@ -393,8 +424,9 @@ def test_run_inference_validates_reference_config_before_emptying_output(
         inference_mod, 'create_init', lambda *a, **kw: create_init_calls.append((a, kw))
     )
 
-    with pytest.raises(error, match=match):
+    with pytest.raises(Exception) as exc:  # an escape of any other type fails the assert
         inference_mod.run_inference(config)
+    assert exc.type is error and re.search(match, str(exc.value)), repr(exc.value)
     # Ordering: the guard must fire before the initial design is generated.
     assert create_init_calls == []
     # ...and before the output folder is emptied. A guard placed after the
@@ -460,6 +492,49 @@ def test_run_inference_reports_the_spectral_cache_the_study_uses(
     else:
         assert lines[0].endswith(f'unit_inference/{SPECTRAL_CACHE_DIR}')
         assert os.environ[SPECTRAL_CACHE_ENV] == '1'
+
+
+@pytest.mark.parametrize(
+    ('switch', 'env'), [(None, '0'), (True, '1'), (False, '0')], ids=['default', 'on', 'off']
+)
+def test_run_inference_passes_abort_on_failure_to_the_workers(
+    monkeypatch, tmp_path, switch, env
+):
+    """abort_on_failure reaches the workers through the environment as written: '1' for
+    true, '0' for false or an absent key; the spectral cache setting stays on."""
+    config = {
+        'output': 'unit_inference',
+        'logging': 'INFO',
+        'n_workers': 1,
+        'ref_config': BASE_CONFIG,
+        'n_steps': 1,
+        'kernel': 'MAT3/2',
+        'acqf': 'LogEI',
+        'seed': 1,
+        'observables': {'P_surf': 1.0},
+        'parameters': {'planet.mass_tot': [0.7, 3.0]},
+    }
+    if switch is not None:
+        config['abort_on_failure'] = switch
+    monkeypatch.setattr(
+        inference_mod,
+        'get_proteus_directories',
+        lambda _output: {'output': str(tmp_path / 'output'), 'proteus': ''},
+    )
+    monkeypatch.setattr(inference_mod, 'setup_logger', lambda **_kwargs: None)
+    monkeypatch.setattr(inference_mod.os, 'cpu_count', lambda: 8)
+    monkeypatch.setattr(inference_mod, 'create_init', lambda *a, **kw: _raise(_StopAfterSetup))
+    for name in (SPECTRAL_CACHE_ENV, ABORT_ON_FAILURE_ENV, CHILD_TIMEOUT_ENV):
+        monkeypatch.setenv(name, 'unset')
+
+    with pytest.raises(_StopAfterSetup):
+        inference_mod.run_inference(config)
+    assert os.environ[ABORT_ON_FAILURE_ENV] == env
+    assert os.environ[SPECTRAL_CACHE_ENV] == '1'
+
+
+def _raise(exc):
+    raise exc
 
 
 def _validation_study(monkeypatch, tmp_path, **config):

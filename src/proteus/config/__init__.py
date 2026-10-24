@@ -34,8 +34,17 @@ def structure_k_val(val, _cls):
     return int(val)
 
 
-# Register this for the specific Union type
-cattrs.register_structure_hook(Union[int, Literal['none']], structure_k_val)
+def structure_bool(val, _cls):
+    """Return a TOML boolean as it is; refuse any other value instead of casting it."""
+    if not isinstance(val, bool):
+        raise TypeError(f'must be true or false, got {val!r}')
+    return val
+
+
+# PROTEUS's own converter, so importing PROTEUS leaves the global cattrs converter as it is
+converter = cattrs.Converter()
+converter.register_structure_hook(Union[int, Literal['none']], structure_k_val)
+converter.register_structure_hook(bool, structure_bool)
 
 
 def _is_explicit_zero(value: object) -> bool:
@@ -217,7 +226,7 @@ def structure_config(raw: dict, path: Path | str) -> Config:
     _check_step_cap_zeros(raw, path)
 
     try:
-        obj = cattrs.structure(raw, Config)
+        obj = converter.structure(raw, Config)
         log.debug(
             'Config structured: star.module=%s, interior_energetics.module=%s, '
             'outgas.module=%s, atmos_clim.module=%s, escape.module=%s',

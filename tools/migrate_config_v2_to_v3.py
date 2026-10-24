@@ -925,8 +925,7 @@ def _validate(nested_v3):
         ``cattrs`` would otherwise drop it and the field would sit at its default.
     """
     _stub_pipeline()
-    import cattrs
-
+    from proteus.config import converter
     from proteus.config._config import Config
     from proteus.config.orphans import (
         UnknownConfigKeyError,
@@ -939,7 +938,7 @@ def _validate(nested_v3):
         raise UnknownConfigKeyError(
             format_orphan_message(orphans, 'the migrated 3.0 config', mistyped)
         )
-    cattrs.structure(nested_v3, Config)
+    converter.structure(nested_v3, Config)
 
 
 # ----------------------------------------------------------------------------
