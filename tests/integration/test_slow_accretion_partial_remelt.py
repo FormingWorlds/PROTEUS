@@ -13,8 +13,8 @@ Contract clauses checked:
     the base cell the impact did not melt
   - the melt fills from the largest staggered radius down: the outermost cell
     takes the initial condition, the base keeps its end-of-step entropy
-  - the melted mass closes against f times the mass rho(P, S_end) V of the
-    pre-impact mesh, and does not close against the volume
+  - the melted mass closes against f times the structural mass of the pre-impact
+    mesh (M_mantle), and not against the volume or the EOS mass rho(P, S_end) V
   - no cell cools
   - a core_module core keeps its temperature when the base is not re-melted
 """
@@ -135,7 +135,11 @@ def partial_remelt(request, tmp_path_factory):
         'P': P,
         'V': np.asarray(solver._volume_flat, dtype=float).ravel(),
         'r': np.asarray(solver._r_stag_flat, dtype=float).ravel(),
-        'mass': np.asarray(eos.density(P, S_end), dtype=float).ravel()
+        'mass': np.asarray(
+            solver.evaluator.mesh.staggered_effective_density, dtype=float
+        ).ravel()
+        * np.asarray(solver._volume_flat, dtype=float).ravel(),
+        'mass_eos': np.asarray(eos.density(P, S_end), dtype=float).ravel()
         * np.asarray(solver._volume_flat, dtype=float).ravel(),
         'T_of': lambda p, s: float(
             np.asarray(eos.temperature(np.array([p]), np.array([s])))[0]
@@ -185,13 +189,17 @@ def test_the_melt_fills_from_the_largest_radius_down(partial_remelt):
 @pytest.mark.slow
 @pytest.mark.physics_invariant
 def test_the_melted_mass_closes_on_the_pre_impact_cell_masses(partial_remelt):
-    """sum(w rho V) = f sum(rho V) on the pre-impact mesh; the volume alone does not close."""
+    """sum(w m) = f sum(m) for the structural cell mass m of the pre-impact mesh, the mass
+    M_mantle reports; the cell volumes and the EOS masses rho(P, S_end) V do not close."""
     d = partial_remelt
     w = (d['S_new'] - d['S_end']) / (d['S_molten'] - d['S_end'])
     m, V = d['mass'], d['V']
     assert float(np.sum(w * m)) == pytest.approx(F_MELT * float(np.sum(m)), rel=1e-9)
     # A volume basis puts the melt in other cells: the density rises with depth.
     assert abs(float(np.sum(w * V)) / float(np.sum(V)) - F_MELT) > 1e-3
+    m_eos = d['mass_eos']
+    assert abs(float(np.sum(w * m_eos)) / float(np.sum(m_eos)) - F_MELT) > 1e-3
+    assert float(np.sum(m)) == pytest.approx(float(d['hf_row']['M_mantle']), rel=1e-9)
     assert 0.0 < float(d['hf_row']['f_remelt']) == F_MELT
 
 

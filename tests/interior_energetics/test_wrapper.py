@@ -8085,6 +8085,9 @@ class _FakeMeshAragogSolver(_FakeAragogSolver):
         self._volume_flat = np.full(6, 1.0e18)
         self._P_stag_flat = np.linspace(1.3e11, 1.0e5, 6)
         self.entropy_eos = SimpleNamespace(density=lambda P, S: np.full(np.shape(P), 4000.0))
+        self.evaluator = SimpleNamespace(
+            mesh=SimpleNamespace(staggered_effective_density=np.full(6, 4000.0))
+        )
         self.set_calls = []
 
     def set_initial_entropy(self, S):
@@ -8247,22 +8250,24 @@ def test_a_partial_core_module_remelt_hands_the_unchanged_base_to_the_core():
 
 @pytest.mark.unit
 @pytest.mark.physics_invariant
-def test_the_partial_remelt_weighs_the_cells_by_mass_not_volume(monkeypatch):
-    """Density rises with depth (4000 kg/m3 at the surface, 5300 at the base) over equal cell
-    volumes. f = 0.25 melts that share of the mantle mass: the outer cells are lighter, so the
-    melt spans more than the 1.5 cells of a volume split, and the weights close on rho V."""
+def test_the_partial_remelt_weighs_the_cells_by_structural_mass(monkeypatch):
+    """The weights close on the structural mass of the mesh, the mass M_mantle reports:
+    its density rises with depth (4000 kg/m3 at the surface, 5300 at the base) while the EOS
+    density is uniform, so a volume or EOS-mass split melts 1.5 of the 6 equal cells and the
+    structural split melts more of the lighter outer cells."""
     real_init = _FakeMeshAragogSolver.__init__
 
     def init(self, cooled_profile):
         real_init(self, cooled_profile)
-        self.entropy_eos = SimpleNamespace(density=lambda P, S: 4000.0 + 1.0e-8 * np.asarray(P))
+        rho = 4000.0 + 1.0e-8 * self._P_stag_flat
+        self.evaluator = SimpleNamespace(mesh=SimpleNamespace(staggered_effective_density=rho))
 
     monkeypatch.setattr(_FakeMeshAragogSolver, '__init__', init)
     solver, interior_o, _ = _partial_aragog_remelt(0.25)
     m = (4000.0 + 1.0e-8 * solver._P_stag_flat) * solver._volume_flat
     w = (interior_o._last_entropy - 2400.0) / 1500.0
     assert float(np.sum(w * m)) == pytest.approx(0.25 * float(m.sum()), rel=1e-12)
-    # On volumes the same profile would melt 1.5 cells; on masses the top 2 cells are lighter.
+    # A split by volume or by the uniform EOS density would melt exactly 1.5 cells.
     assert abs(float(np.sum(w)) - 1.5) > 0.05
     np.testing.assert_array_equal(w[:3], 0.0)
 
