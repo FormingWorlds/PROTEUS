@@ -528,8 +528,8 @@ config_version = "3.0"
         fastchem_xtol_elem    = 1e-4         # FastChem convergence tolerance (elemental)
 
         # Hydrostatic integration
-        hydrograv_constg      = true         # constant gravity with height
-        hydrograv_selfg       = false        # no atmospheric self-gravity; AGNI rejects it alongside constg
+        hydrograv_constg      = false         # constant gravity with height
+        hydrograv_selfg       = true        # no atmospheric self-gravity; AGNI rejects it alongside constg
 
     [atmos_clim.janus]
         F_atm_bc              = 0            # outgoing flux boundary: 0 (TOA) | 1 (surface)

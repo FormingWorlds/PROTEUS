@@ -373,7 +373,7 @@ def require_cvode(config: Config) -> None:
             'environment), or choose scipy explicitly with '
             '[interior_energetics.aragog] solver_method = "radau" or "bdf".'
         ) from exc
-    log.info('CVODE (scikits_odes_sundials) is available for Aragog')
+    log.debug('CVODE (scikits_odes_sundials) is available for Aragog')
 
 
 def ode_solver_name(config: Config) -> str:
