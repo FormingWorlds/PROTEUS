@@ -2662,6 +2662,7 @@ def _make_solve_energy_config(*, loops_total=5):
                 dx_max=100.0,
                 dx_max_ini=50.0,
                 perturb_all=False,
+                broyden=False,
                 max_steps=300,
                 chemistry='none',
                 conduction=True,
@@ -2754,6 +2755,48 @@ def test_solve_energy_exhausts_attempts_on_repeated_exception(monkeypatch, caplo
     assert success is False
     assert len(attempts) == 3
     assert any('Maximum attempts' in rec.message for rec in caplog.records)
+
+
+@pytest.mark.parametrize('broyden', [True, False])
+def test_solve_energy_passes_broyden_and_drops_it_on_retries(monkeypatch, broyden):
+    """`atmos_clim.agni.broyden` reaches the first `solve_energy_b` call,
+    and the two retries run without it.
+
+    Contract clause: with `broyden=True` AGNI skips its `perturb_all` branch,
+    so the retries, which set `perturb_all=True` for a finite-difference
+    jacobian at every step, must turn Broyden off or that fallback is lost.
+
+    Discrimination: parametrised over both values, so a call that ignored
+    the config fails the True case, and one that kept the config value on
+    the retries fails at attempts 2 and 3.
+    """
+    attempts = []
+
+    def _unconverged_solve_energy_b(_atmos, **kwargs):
+        attempts.append(kwargs)
+        return False
+
+    fake_jl = SimpleNamespace(
+        AGNI=SimpleNamespace(solver=SimpleNamespace(solve_energy_b=_unconverged_solve_energy_b))
+    )
+    monkeypatch.setattr(agni_mod, 'jl', fake_jl)
+    monkeypatch.setattr(agni_mod, 'sync_log_files', lambda *_a, **_k: [])
+
+    config = _make_solve_energy_config()
+    config.atmos_clim.agni.broyden = broyden
+    config.atmos_clim.agni.ls_default = 3
+
+    _, success = agni_mod._solve_energy(_make_run_agni_atmos(), 5, {'output': '/tmp'}, config)
+
+    assert success is False
+    assert len(attempts) == 3
+    assert attempts[0]['broyden'] is broyden
+    assert attempts[0]['ls_method'] == 3
+    assert attempts[0]['perturb_all'] is False
+    for retry in attempts[1:]:
+        assert retry['broyden'] is False
+        assert retry['perturb_all'] is True
+        assert retry['ls_method'] == 1
 
 
 # ---------------------------------------------------------------------------

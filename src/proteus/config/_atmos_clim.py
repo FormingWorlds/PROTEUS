@@ -181,7 +181,7 @@ class Agni:
     max_steps: int
         Maximum number of iterations before giving up.
     perturb_all: bool
-        Recalculate entire jacobian matrix at every iteration?
+        Recalculate entire jacobian matrix at every iteration? Has no effect when `broyden` is enabled.
     mlt_criterion: str
         Convection criterion. Options: (l)edoux, (s)chwarzschild.
     fastchem_floor:float
@@ -197,7 +197,9 @@ class Agni:
     ini_profile: str
         Shape of initial T(p) guess: 'loglinear', 'isothermal', 'dry_adiabat', 'analytic'.
     ls_default: int
-        Default linesearch method. 0: disabled, 1: goldensection, 2: backtracking.
+        Default linesearch method. 0: disabled, 1: goldensection, 2: backtracking, 3: non-monotone Armijo.
+    broyden: bool
+        Update the jacobian with Broyden's method between finite-difference evaluations, to reduce the number of radiative transfer calculations. Intended for use with `ls_default = 3`. Disabled when PROTEUS retries a failed solve.
     fdo: int
         Numerical order of finite-difference for jacobian. 2 or 4.
     spectral_file: str | None
@@ -284,7 +286,8 @@ class Agni:
         converter=lowercase,
         validator=in_(('loglinear', 'isothermal', 'dry_adiabat', 'analytic')),
     )
-    ls_default: int = field(default=2, validator=in_((0, 1, 2)))
+    ls_default: int = field(default=2, validator=in_((0, 1, 2, 3)))
+    broyden: bool = field(default=False)
     fdo: int = field(default=2, validator=in_((2, 4)))
     check_safe_gas: bool = field(
         default=True,
@@ -553,6 +556,7 @@ DOC_GROUPS = {
                 'perturb_all',
                 'ini_profile',
                 'ls_default',
+                'broyden',
                 'fdo',
                 'verbosity',
             ),

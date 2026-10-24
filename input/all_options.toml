@@ -751,7 +751,8 @@ config_version = "3.0"
         max_steps             = 200          # max Newton iterations per call
         perturb_all           = false        # recompute full Jacobian each iteration
         ini_profile           = "isothermal" # initial T(p) guess: isothermal | loglinear | dry_adiabat | analytic
-        ls_default            = 2            # linesearch method: 0 (none) | 1 (golden section) | 2 (backtracking)
+        ls_default            = 2            # linesearch method: 0 (none) | 1 (golden section) | 2 (backtracking) | 3 (non-monotone Armijo)
+        broyden               = false        # Broyden jacobian updates between finite-difference evaluations; intended for ls_default = 3
         fdo                   = 2            # finite-difference order for Jacobian: 2 | 4
         check_safe_gas        = true         # require at least one gas with opacity+thermo data
         verbosity             = 1            # AGNI log level: 0 (silent) | 1 (info) | 2 (debug)

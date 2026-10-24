@@ -49,7 +49,7 @@ if TYPE_CHECKING:
 log = logging.getLogger('fwl.' + __name__)
 
 LOCKFILE_NAME = 'keepalive'
-AGNI_MIN_VERSION = '1.8.0'
+AGNI_MIN_VERSION = '1.14.0'
 OBLIQUA_MIN_VERSION = '0.1.0'
 
 

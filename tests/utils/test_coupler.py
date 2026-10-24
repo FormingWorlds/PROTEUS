@@ -3640,6 +3640,34 @@ def test_validate_module_versions_accepts_compatible_versions(tmp_path):
     assert mock_update.call_count == 0
 
 
+@pytest.mark.usefixtures('fwl_io_current')
+@pytest.mark.parametrize(('agni_version', 'accepted'), [('1.13.2', False), ('1.14.0', True)])
+def test_validate_module_versions_requires_agni_with_broyden(tmp_path, agni_version, accepted):
+    """AGNI older than 1.14.0 is refused before the run starts.
+
+    PROTEUS passes the `broyden` keyword to every `solve_energy_b` call, and
+    an older AGNI raises on that keyword, which `_solve_energy` would report
+    as a failed solve on every attempt. Edge: 1.13.2, the release before, is
+    refused, and 1.14.0 itself is accepted.
+    """
+    from proteus.utils.coupler import validate_module_versions
+
+    config = _all_dummy_modules_config()
+    config.interior_energetics.module = 'spider'
+    config.atmos_clim.module = 'agni'
+    with (
+        patch('proteus.utils.coupler._get_agni_version', return_value=agni_version),
+        patch('importlib.metadata.requires', return_value=[]),
+        patch('proteus.utils.coupler.UpdateStatusfile') as mock_update,
+    ):
+        if accepted:
+            validate_module_versions({'rad': str(tmp_path)}, config)
+        else:
+            with pytest.raises(EnvironmentError, match='Out-of-date modules'):
+                validate_module_versions({'rad': str(tmp_path)}, config)
+    assert mock_update.call_count == (0 if accepted else 1)
+
+
 @pytest.mark.parametrize(
     ('installed', 'fix'),
     [
