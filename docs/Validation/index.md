@@ -32,7 +32,7 @@ Without `--validation-plots` the tests assert and write nothing. The command mak
 | Outgassing | `outgas/atmodeller.py` | [Species-to-element mass split](outgas/atmodeller.md) | none yet |
 | Outgassing | `outgas/binodal.py` | [H2-MgSiO3 binodal](outgas/binodal.md) | none yet |
 | Outgassing | `outgas/burial_ledger.py` | [Burial ledger for remelting](outgas/burial_ledger.md) | none yet |
-| Outgassing | `outgas/compaction.py` | [Melt drainage across the freezing front](outgas/compaction.md) | none yet |
+| Outgassing | `outgas/compaction.py` | [Melt drainage across the freezing front](outgas/compaction.md) | [drainage velocity](outgas/compaction.md#plot-drainage-velocity) |
 | Outgassing | `outgas/lavatmos.py` | [Rock-vapour molar masses](outgas/lavatmos.md) | none yet |
 | Outgassing | `outgas/trapping.py` | [Solid-phase volatile trapping](outgas/trapping.md) | none yet |
 | Star | `star/dummy.py` | [Stellar luminosity and instellation](star/dummy.md) | none yet |
