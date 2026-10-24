@@ -2244,6 +2244,31 @@ class TestGridFromConfig:
         assert (outside / 'file').read_text() == 'kept\n'
         assert (old / 'keep').read_text() == 'kept\n'
 
+    @pytest.mark.parametrize('folder', ['output', 'symlink'])
+    def test_an_input_named_through_an_outside_link_into_the_folder_is_refused(
+        self, fake_proteus_dir, base_config_path, tmp_path_factory, monkeypatch, folder
+    ):
+        """A grid file named through a link outside the folder that leads into it is found
+        by its resolved file, so the folder that holds it is refused and keeps it."""
+        outside = tmp_path_factory.mktemp('outside')
+        (outside / 'home').mkdir()
+        monkeypatch.setenv('HOME', str(outside / 'home'))
+        held = fake_proteus_dir / 'output' / 'g' if folder == 'output' else outside / 'store'
+        held.mkdir(parents=True)
+        (held / 'grid.toml').write_text('# grid\n')
+        (outside / 'lnk').symlink_to(held)
+        kwargs = {'symlink_dir': str(held)} if folder == 'symlink' else {}
+        with pytest.raises(Exception) as exc:  # another type fails the assert below
+            Grid(
+                'g',
+                str(base_config_path),
+                grid_config=str(outside / 'lnk' / 'grid.toml'),
+                **kwargs,
+            )
+        message = 'holds the grid file' if folder == 'output' else 'symlink folder'
+        assert exc.type is ValueError and message in str(exc.value), exc
+        assert (held / 'grid.toml').read_text() == '# grid\n'
+
     @pytest.mark.parametrize('folder', ['./', '..', 'store', './store/..'])
     def test_a_relative_symlink_folder_is_refused(
         self, fake_proteus_dir, base_config_path, tmp_path_factory, monkeypatch, folder
