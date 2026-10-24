@@ -43,6 +43,10 @@ pages listed above give the default value of every parameter in their
 listing further down this page is built from the same schema and shows each
 parameter's source definition, including the coded default value.
 
+**Parameters of type `bool`** take only a TOML `true` or `false`. A quoted
+`"false"`, a `0`, a `1` or any other value is refused when the configuration
+is read, with an error that names the parameter.
+
 **To see exactly which defaults applied to a run**, open the
 `init_coupler.toml` file in that run's output folder. It is a completed copy of
 the configuration with every parameter resolved, including all the defaults

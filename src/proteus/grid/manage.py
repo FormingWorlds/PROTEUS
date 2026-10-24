@@ -750,6 +750,15 @@ def grid_dimension_keys(config: dict, config_fpath: str) -> list[str]:
     return dims
 
 
+def _grid_bool(value, key: str, fpath: str) -> bool:
+    """Return a grid setting that must be a TOML true or false; refuse any other value."""
+    if not isinstance(value, bool):
+        raise ValueError(
+            f'grid file {fpath}: grid setting {key} must be true or false, got {value!r}'
+        )
+    return value
+
+
 def grid_from_config(config_fpath: str, test_run: bool = False, check_interval: float = 15.0):
     """Run GridPROTEUS using the parameters in a config file (xxx.grid.toml)"""
 
@@ -784,7 +793,7 @@ def grid_from_config(config_fpath: str, test_run: bool = False, check_interval: 
             raise RuntimeError('Path for symbolic link must be absolute.\n\tGot: ' + symlink)
 
     # Use SLURM?
-    use_slurm = bool(config['use_slurm'])
+    use_slurm = _grid_bool(config['use_slurm'], 'use_slurm', config_fpath)
 
     # Execution limits
     max_jobs = int(config['max_jobs'])  # maximum number of concurrent tasks (e.g. 300)
@@ -793,7 +802,7 @@ def grid_from_config(config_fpath: str, test_run: bool = False, check_interval: 
 
     # Optional bounded JAX persistent compilation cache (Slurm runs only).
     # Absent or false leaves the generated script cache-free.
-    jax_cache = bool(config.get('jax_cache', False))
+    jax_cache = _grid_bool(config.get('jax_cache', False), 'jax_cache', config_fpath)
 
     # Base config file
     cfg_base = os.path.join(PROTEUS_DIR, str(config['ref_config']))

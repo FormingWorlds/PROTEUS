@@ -809,6 +809,32 @@ class TestWriteConfigFiles:
             'case_000001.toml',
         ]
 
+    def test_a_quoted_false_for_a_bool_field_stops_the_grid(
+        self, fake_proteus_dir, monkeypatch
+    ):
+        """A grid axis that sets a bool field to the string ``"false"`` stops at the
+        read-back of the case config, naming the field, instead of running as true; the
+        same axis with ``false`` writes the case."""
+        from helpers import PROTEUS_ROOT
+
+        monkeypatch.setattr(gm.os, 'sync', lambda: None)
+        base = str(PROTEUS_ROOT / 'tests' / 'grid' / 'base.toml')
+        g = Grid(name='quoted_bool_grid', base_config_path=base)
+        g.add_dimension('r', 'params.out.remove_sf')
+        g.set_dimension_direct('r', ['false'])
+        g.generate()
+        with pytest.raises(ValueError, match='Grid case 0') as err:
+            g.write_config_files()
+        assert "params.out.remove_sf: must be true or false, got 'false'" in str(err.value)
+
+        g2 = Grid(name='bool_grid', base_config_path=base)
+        g2.add_dimension('r', 'params.out.remove_sf')
+        g2.set_dimension_direct('r', [False])
+        g2.generate()
+        g2.write_config_files()
+        case = read_config_object(os.path.join(g2.cfgdir, 'case_000000.toml'))
+        assert case.params.out.remove_sf is False
+
 
 # ---------------------------------------------------------------------------
 # Grid.slurm_config
@@ -1315,6 +1341,57 @@ class TestGridFromConfig:
         # Discriminating: slurm path taken, run path NOT taken.
         assert call_record['slurm'] == 1
         assert call_record['run'] == 0
+
+    @pytest.mark.parametrize('key', ['use_slurm', 'jax_cache'])
+    @pytest.mark.parametrize('value', ['false', 1, 0.0], ids=['string', 'int', 'float'])
+    def test_a_grid_setting_that_is_not_a_bool_is_refused(
+        self, fake_proteus_dir, monkeypatch, key, value
+    ):
+        """A quoted ``"false"``, a ``1`` or a ``0.0`` for use_slurm or jax_cache stops the
+        grid with the key and the grid file named, before the old output directory is
+        removed, instead of reading ``"false"`` as true."""
+        (fake_proteus_dir / 'base.toml').write_text('# base\n')
+        old = fake_proteus_dir / 'output' / 'unit_grid' / 'case_000000' / 'runtime_helpfile.csv'
+        old.parent.mkdir(parents=True)
+        old.write_text('kept\n')
+        grid_path = _write_grid_toml(
+            fake_proteus_dir / 'g.toml',
+            dimensions={key: value, 'planet.mass_tot': {'method': 'direct', 'values': [0.5]}},
+        )
+        calls = []
+        monkeypatch.setattr(Grid, 'run', lambda self, *a, **k: calls.append('run'))
+        monkeypatch.setattr(Grid, 'slurm_config', lambda self, *a, **k: calls.append('slurm'))
+        with pytest.raises(
+            ValueError, match=f'{key} must be true or false, got {value!r}'
+        ) as exc:
+            grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
+        assert str(grid_path) in str(exc.value)
+        assert calls == []
+        assert old.is_file() and old.read_text() == 'kept\n'
+
+    @pytest.mark.parametrize(
+        ('extra', 'expected'),
+        [({}, False), ({'jax_cache': True}, True), ({'jax_cache': False}, False)],
+        ids=['absent', 'true', 'false'],
+    )
+    def test_jax_cache_reaches_the_slurm_script_as_written(
+        self, fake_proteus_dir, monkeypatch, extra, expected
+    ):
+        """jax_cache = true or false reaches slurm_config as written; an absent key is false."""
+        (fake_proteus_dir / 'base.toml').write_text('# base\n')
+        grid_path = _write_grid_toml(
+            fake_proteus_dir / 'g.toml',
+            use_slurm=True,
+            dimensions={**extra, 'planet.mass_tot': {'method': 'direct', 'values': [0.5]}},
+        )
+        calls = []
+        monkeypatch.setattr(Grid, 'slurm_config', lambda self, *a, **k: calls.append(k))
+        monkeypatch.setattr(gm, 'read_config_object', lambda p: mock.MagicMock())
+        monkeypatch.setattr(gm, 'recursive_setattr', lambda *a, **k: None)
+        monkeypatch.setattr(gm.os, 'sync', lambda: None)
+        grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
+        assert len(calls) == 1
+        assert calls[0]['jax_cache'] is expected
 
     def test_run_branch_calls_run(self, fake_proteus_dir, monkeypatch):
         """``use_slurm = false`` dispatches to ``Grid.run`` instead of
