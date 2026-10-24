@@ -107,8 +107,6 @@ def test_every_bool_field_keeps_true_and_false():
         ('interior_energetics.heat_tidal', True),
         ('interior_struct.zalmoxis.global_miscibility', True),
         ('outgas.h2_binodal', True),
-        # Needs atmodeller with condensates; minimal.toml runs calliope.
-        ('outgas.prevent_desaturation', True),
     }
 
 

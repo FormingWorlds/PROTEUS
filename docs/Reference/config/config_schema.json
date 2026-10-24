@@ -7638,7 +7638,7 @@
       "default": "false",
       "choices": null,
       "bounds": null,
-      "description": "Whether condensed mass leaves the outgassing system for good. With `false`, each solve re-equilibrates the whole inventory, so a condensate can re-vapourise as conditions change. With `true`, the mass held in each `{e}_kg_condensed` reservoir is withheld from the chemistry, from escape and from the desiccation gate, and the reservoir can only grow: a condensed layer can only get thicker. Each condensate's `{X}_cd_activity` is then the saturation of the inventory left in the solve, so it can fall below 1 while its layer is held. Requires `outgas.module = 'atmodeller'`, the only backend that forms condensates; with `outgas.atmodeller.include_condensates = false` it holds nothing, and a warning says so.",
+      "description": "Whether condensed mass leaves the outgassing system for good. With `false`, each solve re-equilibrates the whole inventory, so a condensate can re-vapourise as conditions change. With `true`, the mass held in each `{e}_kg_condensed` reservoir is withheld from the chemistry, from escape and from the desiccation gate, and the reservoir can only grow: a condensed layer can only get thicker. Each condensate's `{X}_cd_activity` is then the saturation of the inventory left in the solve, so it can fall below 1 while its layer is held. Only atmodeller with `outgas.atmodeller.include_condensates` forms condensates, so with another backend the flag holds nothing; with atmodeller and its condensates off it holds nothing either, and a warning says so.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -12689,7 +12689,7 @@
       "touches": [
         "outgas"
       ],
-      "doc": "prevent_desaturation needs atmodeller, the only backend that forms condensates."
+      "doc": "With atmodeller and its condensates off, prevent_desaturation does nothing."
     },
     {
       "validator": "satellite_evolve",

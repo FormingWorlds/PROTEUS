@@ -1425,21 +1425,21 @@ def _desaturation_config(module: str, include_condensates: bool, prevent: bool):
     return instance
 
 
-# prevent_desaturation_requires_atmodeller: positive + negative
+# prevent_desaturation_requires_atmodeller: accepted, warned with condensates off
 @pytest.mark.unit
 @pytest.mark.parametrize('module', ['calliope', 'dummy'])
-def test_prevent_desaturation_refused_without_atmodeller(module):
-    """Only atmodeller forms condensed mass, so holding it is refused with any other
-    outgassing backend when the config loads, naming the backend, instead of running
-    with a flag that does nothing."""
+def test_prevent_desaturation_accepted_with_other_outgassing_backends(module, caplog):
+    """The flag is accepted with an outgassing backend other than atmodeller. Such a
+    backend forms no condensed mass, so the flag holds nothing, and with the
+    atmodeller condensates left on (the default) no warning is logged."""
     instance = _desaturation_config(module, True, prevent=True)
-    with pytest.raises(
-        ValueError, match=f'outgas.module = "atmodeller", not "{module}"'
-    ) as err:
-        prevent_desaturation_requires_atmodeller(instance, None, None)
-    # Discrimination: the message names the flag, so a refusal from another
-    # validator could not pass for this one.
-    assert 'outgas.prevent_desaturation = true' in str(err.value)
+    with caplog.at_level('WARNING', logger='fwl.proteus.config._config'):
+        assert prevent_desaturation_requires_atmodeller(instance, None, None) is None
+    assert not any('prevent_desaturation' in r.getMessage() for r in caplog.records)
+    # Discrimination: the stand-in really carries the other backend with the flag on,
+    # so the acceptance is not the early return for a flag that is off.
+    assert instance.outgas.module == module
+    assert instance.outgas.prevent_desaturation is True
 
 
 @pytest.mark.unit
