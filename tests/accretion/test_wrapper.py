@@ -83,12 +83,14 @@ def _handler(
     temperature_mode='liquidus_super',
     output_dir=None,
     resume=False,
+    remelt_mode='full',
 ):
     """Build the minimal Proteus handler shape init_accretion reads."""
     return SimpleNamespace(
         config=SimpleNamespace(
             accretion=SimpleNamespace(
                 module=module,
+                remelt_mode=remelt_mode,
                 time_offset=time_offset,
                 timeline=SimpleNamespace(
                     timeline_path=None if timeline_path is None else str(timeline_path)
@@ -289,6 +291,7 @@ def _impact_accretion(
     atmloss_frac=0.0,
     impactor_volatiles=None,
     atmloss_law=None,
+    remelt_mode='full',
     **ppmw,
 ):
     """Accretion sub-config: impactor volatiles and atmosphere loss (default off).
@@ -313,6 +316,7 @@ def _impact_accretion(
         atmloss_module=atmloss_module,
         atmloss_law=atmloss_law,
         atmloss_frac=atmloss_frac,
+        remelt_mode=remelt_mode,
     )
 
 
@@ -5725,3 +5729,149 @@ def test_the_resume_restore_changes_only_the_impact_config_fields():
     after = flat(asdict(config))
     assert {k for k in before if before[k] != after[k]} == set(IMPACT_CONFIG_FIELDS)
     assert config.planet.mass_tot == pytest.approx(1.5, rel=1e-12)
+
+
+def _timeline_with_melt(path, f_values):
+    """Write the two-impact timeline with an f_melt column."""
+    lines = [','.join(TIMELINE_COLUMNS) + ',f_melt']
+    lines += [','.join(repr(v) for v in row) + f',{f!r}' for row, f in zip(_ROWS, f_values)]
+    path.write_text('\n'.join(lines) + '\n')
+    return path
+
+
+@pytest.mark.unit
+def test_computed_remelt_needs_a_melt_fraction_column_in_the_timeline(tmp_path):
+    """'computed' with a timeline that has no f_melt column is refused at init, by column name."""
+    handler = _handler(
+        module='timeline',
+        timeline_path=_timeline_file(tmp_path / 't.csv'),
+        output_dir=tmp_path,
+        remelt_mode='computed',
+    )
+    with pytest.raises(ValueError, match=r'f_melt.*impacts 0, 1'):
+        init_accretion(handler)
+
+    handler.config.accretion.timeline.timeline_path = str(
+        _timeline_with_melt(tmp_path / 'f.csv', (0.3, 1.0))
+    )
+    events = init_accretion(handler)
+    assert [e.f_melt for e in events] == [0.3, 1.0]
+
+
+@pytest.mark.unit
+def test_computed_remelt_refuses_a_morrigan_without_melt_fractions(tmp_path, monkeypatch):
+    """A Morrigan history without f_melt under 'computed' names the version that reports it."""
+    import proteus.accretion.morrigan as backend
+
+    monkeypatch.setattr(backend, 'get_timeline', lambda config: [_impact_event()])
+    handler = _handler(module='morrigan', output_dir=tmp_path, remelt_mode='computed')
+    with pytest.raises(ValueError, match=r'fwl-morrigan >= 26\.10\.23'):
+        init_accretion(handler)
+    assert not (tmp_path / 'impact_timeline.csv').exists()
+
+
+@pytest.mark.unit
+def test_full_remelt_ignores_a_missing_melt_fraction(tmp_path):
+    """'full' needs no f: a timeline without the column loads as before."""
+    handler = _handler(
+        module='timeline', timeline_path=_timeline_file(tmp_path / 't.csv'), output_dir=tmp_path
+    )
+    events = init_accretion(handler)
+    assert len(events) == 2
+    assert all(e.f_melt is None for e in events)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize(
+    ('mode', 'f_melt', 'f_applied', 't_magma'),
+    [
+        ('full', 0.3, 1.0, 4000.0),
+        ('computed', 0.3, 0.3, 2600.0),
+        ('computed', 1.0, 1.0, 4000.0),
+    ],
+)
+def test_the_impact_applies_the_fraction_of_its_mode(
+    monkeypatch, mode, f_melt, f_applied, t_magma
+):
+    """'full' re-melts in full whatever the event's f; 'computed' applies the event's f.
+
+    The dummy mantle cooled to 2000 K with T_init 4000 K: f = 0.3 gives 2600 K.
+    """
+    from proteus.accretion.wrapper import apply_impact
+
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper.solve_structure', lambda *a, **k: None
+    )
+    handler = _impact_handler(accretion=_impact_accretion(remelt_mode=mode))
+    handler.config.params.stop = SimpleNamespace(
+        solid=SimpleNamespace(enabled=True, phi_crit=0.01)
+    )
+    apply_impact(handler, _impact_event(f_melt=f_melt))
+    assert handler.hf_row['T_magma'] == pytest.approx(t_magma, rel=1e-12)
+    assert handler.hf_row['f_remelt'] == f_applied
+
+
+@pytest.mark.unit
+def test_a_computed_impact_without_a_fraction_stops_with_the_mode_named(monkeypatch):
+    """An event without f under 'computed' cannot reach apply_impact silently; it raises."""
+    from proteus.accretion.wrapper import apply_impact
+
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper.solve_structure', lambda *a, **k: None
+    )
+    handler = _impact_handler(accretion=_impact_accretion(remelt_mode='computed'))
+    t_before = handler.hf_row['T_magma']
+    with pytest.raises(RuntimeError, match="remelt = 'computed'"):
+        apply_impact(handler, _impact_event())
+    assert handler.hf_row['T_magma'] == t_before
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(('enabled', 'warns'), [(True, True), (False, False)])
+def test_a_partial_remelt_that_leaves_the_mantle_solid_warns(
+    monkeypatch, caplog, enabled, warns
+):
+    """With stop.solid on, a partial re-melt that leaves Phi_global <= phi_crit warns at the impact.
+
+    The dummy mantle at 1500 K is below its 1700 K solidus; f = 0.05 of the 2500 K
+    lift gives 1625 K, still solid, so the next step ends the run.
+    """
+    from proteus.accretion.wrapper import apply_impact
+
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper.solve_structure', lambda *a, **k: None
+    )
+    handler = _impact_handler(accretion=_impact_accretion(remelt_mode='computed'))
+    handler.hf_row['T_magma'] = 1500.0
+    handler.config.params.stop = SimpleNamespace(
+        solid=SimpleNamespace(enabled=enabled, phi_crit=0.01)
+    )
+    with caplog.at_level('WARNING'):
+        apply_impact(handler, _impact_event(f_melt=0.05))
+    hits = [r for r in caplog.records if 'stop.solid' in r.getMessage()]
+    assert handler.hf_row['T_magma'] == pytest.approx(1625.0, rel=1e-12)
+    assert handler.hf_row['Phi_global'] <= 0.01
+    assert len(hits) == (1 if warns else 0)
+
+
+@pytest.mark.unit
+def test_a_resume_replays_the_melt_fraction_of_each_impact(tmp_path):
+    """The resolved timeline keeps f_melt, so a resumed run applies the same f to each impact."""
+    source = _timeline_with_melt(tmp_path / 'f.csv', (0.3, 0.75))
+    fresh = _handler(
+        module='timeline', timeline_path=source, output_dir=tmp_path, remelt_mode='computed'
+    )
+    first = init_accretion(fresh)
+    source.unlink()  # a resume must not read the source again
+    resumed = _handler(
+        module='timeline',
+        timeline_path=source,
+        output_dir=tmp_path,
+        remelt_mode='computed',
+        resume=True,
+    )
+    replayed = init_accretion(resumed)
+    assert [e.f_melt for e in first] == [0.3, 0.75]
+    assert [e.f_melt for e in replayed] == [0.3, 0.75]
+    assert 'f_melt' in (tmp_path / 'impact_timeline.csv').read_text().splitlines()[0]

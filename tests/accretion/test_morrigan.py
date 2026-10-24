@@ -534,3 +534,58 @@ def test_morrigan_assignment_after_construction_runs_validation():
     with pytest.raises(ValueError, match='selector_value'):
         cfg.morrigan = Morrigan(selector='id', selector_value=None)
     assert cfg.morrigan.selector == 'mass'
+
+
+@pytest.mark.unit
+def test_the_melt_fraction_of_each_merger_reaches_its_event(monkeypatch, caplog):
+    """f_melt of a record goes to the event; raw, sigma, dIE and the 2 flags go to the log."""
+    record = _one_impact_record()
+    record.update(
+        f_melt=1.0,
+        f_melt_raw=1.73,
+        f_melt_sigma=0.21,
+        dIE=4.2e31,
+        melt_in_range=False,
+        above_v_cr=True,
+    )
+    fake = SimpleNamespace(
+        run_system=lambda **kw: {'survivors': _SURVIVORS, 'impacts': {1: [record], 2: []}}
+    )
+    monkeypatch.setattr(backend, 'morrigan', fake, raising=False)
+
+    with caplog.at_level('INFO', logger='fwl.proteus.accretion.morrigan'):
+        events = backend.get_timeline(_config(selector='mass'))
+
+    assert [e.f_melt for e in events] == [1.0]
+    text = caplog.text
+    assert 'f_melt 1' in text and 'raw 1.73' in text and 'sigma 0.21' in text
+    assert 'dIE 4.2e+31 J' in text and 'in_range False' in text and 'above_v_cr True' in text
+
+
+@pytest.mark.unit
+def test_a_record_without_a_melt_fraction_gives_an_event_without_one(monkeypatch):
+    """An older Morrigan reports no f_melt; the event then carries None, not a default."""
+    fake = SimpleNamespace(
+        run_system=lambda **kw: {
+            'survivors': _SURVIVORS,
+            'impacts': {1: [_one_impact_record()], 2: []},
+        }
+    )
+    monkeypatch.setattr(backend, 'morrigan', fake, raising=False)
+    events = backend.get_timeline(_config(selector='mass'))
+    assert len(events) == 1
+    assert events[0].f_melt is None
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('bad', [float('nan'), 1.5, -0.1], ids=repr)
+def test_a_melt_fraction_outside_its_bounds_from_the_model_is_refused(monkeypatch, bad):
+    """A model record with f_melt outside [0, 1] is refused at timeline validation."""
+    record = _one_impact_record()
+    record['f_melt'] = bad
+    fake = SimpleNamespace(
+        run_system=lambda **kw: {'survivors': _SURVIVORS, 'impacts': {1: [record], 2: []}}
+    )
+    monkeypatch.setattr(backend, 'morrigan', fake, raising=False)
+    with pytest.raises(ValueError, match='f_melt'):
+        backend.get_timeline(_config(selector='mass'))

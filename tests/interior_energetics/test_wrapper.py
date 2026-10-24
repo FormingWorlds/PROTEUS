@@ -8074,3 +8074,172 @@ def test_run_interior_top_cell_dt_limit_on_applies_tmagma_clip_when_tau_drain_in
     assert hf_row_sp['T_magma'] == pytest.approx(3020.0, rel=1e-12)
     assert hf_row_sp['T_surf'] == pytest.approx(2820.0, rel=1e-12)
     assert hf_row_sp['Phi_global'] == pytest.approx(0.4, rel=1e-12)
+
+
+class _FakeMeshAragogSolver(_FakeAragogSolver):
+    """The fake solver with a 6-cell mesh, base first, of equal cell mass."""
+
+    def __init__(self, cooled_profile):
+        super().__init__(cooled_profile)
+        self._r_stag_flat = np.linspace(3.6e6, 6.2e6, 6)
+        self._volume_flat = np.full(6, 1.0e18)
+        self._P_stag_flat = np.linspace(1.3e11, 1.0e5, 6)
+        self.entropy_eos = SimpleNamespace(density=lambda P, S: np.full(np.shape(P), 4000.0))
+        self.set_calls = []
+
+    def set_initial_entropy(self, S):
+        self.set_calls.append(np.asarray(S, dtype=float).copy())
+        super().set_initial_entropy(S)
+
+
+def _partial_aragog_remelt(f, cooled=2400.0, molten=3900.0, solution=True):
+    """Re-melt the 6-cell fake at fraction f; return solver, interior and row."""
+    solver = _FakeMeshAragogSolver(cooled_profile=np.full(6, cooled))
+    if not solution:
+        solver._solution = None
+    interior_o = SimpleNamespace(
+        aragog_solver=solver,
+        _last_entropy=np.full(6, cooled) if solution else None,
+        impact_reset=False,
+    )
+    hf_row = {}
+    with (
+        patch(
+            'proteus.interior_energetics.aragog.AragogRunner._set_entropy_ic',
+            return_value=np.full(6, molten),
+        ),
+        patch('proteus.interior_energetics.aragog.AragogRunner._refresh_entropy_eos'),
+        patch('proteus.interior_energetics.wrapper.evaluate_molten_state', return_value=None),
+    ):
+        remelt_mantle(
+            {'output': '/tmp/out'},
+            _remelt_config('aragog'),
+            hf_row=hf_row,
+            interior_o=interior_o,
+            f=f,
+        )
+    return solver, interior_o, hf_row
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_a_partial_aragog_remelt_raises_the_outer_shells_only():
+    """f = 0.25 of 6 equal cells melts the surface cell and half the next; the base keeps S_end.
+
+    The solver restarts from that profile (not from the molten one _set_entropy_ic
+    left in it), and the booked heat is the jump to it: 1500 + 750 J/kg/K at the fake's weight.
+    """
+    solver, interior_o, hf_row = _partial_aragog_remelt(0.25)
+    expected = np.array([2400.0, 2400.0, 2400.0, 2400.0, 3150.0, 3900.0])
+    np.testing.assert_allclose(interior_o._last_entropy, expected, rtol=1e-15)
+    np.testing.assert_allclose(solver._S0, expected, rtol=1e-15)
+    assert hf_row['step_dE_impact_J'] == pytest.approx(
+        2250.0 * _FakeAragogSolver._HEAT_PER_ENTROPY, rel=1e-12
+    )
+    assert hf_row['f_remelt'] == 0.25
+    assert interior_o.impact_reset is True
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_the_booked_remelt_heat_rises_with_the_melt_fraction():
+    """The booked heat grows with f and is 0 at f = 0, where no cell changes."""
+    booked = [
+        _partial_aragog_remelt(f)[2]['step_dE_impact_J'] for f in (0.0, 0.1, 0.3, 0.6, 1.0)
+    ]
+    assert booked[0] == 0.0
+    assert all(b > a for a, b in zip(booked, booked[1:]))
+    assert booked[-1] == pytest.approx(6 * 1500.0 * _FakeAragogSolver._HEAT_PER_ENTROPY)
+
+
+@pytest.mark.unit
+def test_the_solver_restarts_from_the_partial_profile_and_keeps_the_full_call_pattern():
+    """At f = 1 with every cell below the molten profile no extra restart is set (as on main);
+    at f < 1 the solver gets the partial profile once, since _set_entropy_ic left S_molten in it."""
+    solver_full, _, _ = _partial_aragog_remelt(1.0)
+    solver_part, interior_o, _ = _partial_aragog_remelt(0.5)
+    assert solver_full.set_calls == []
+    assert len(solver_part.set_calls) == 1
+    np.testing.assert_array_equal(solver_part.set_calls[0], interior_o._last_entropy)
+    assert solver_part.set_calls[0][0] == 2400.0 and solver_part.set_calls[0][-1] == 3900.0
+
+
+@pytest.mark.unit
+def test_a_partial_remelt_without_an_end_state_is_refused():
+    """With no end-of-step profile, f < 1 has nothing to keep: it raises, naming f and the reason.
+    At f = 1 the run keeps the full re-melt with a warning, as on main."""
+    with pytest.raises(
+        RuntimeError, match=r'partial re-melt .*f = 0\.3.*no pre-impact entropy'
+    ):
+        _partial_aragog_remelt(0.3, solution=False)
+    _, interior_o, hf_row = _partial_aragog_remelt(1.0, solution=False)
+    np.testing.assert_array_equal(interior_o._last_entropy, np.full(6, 3900.0))
+    assert hf_row['step_dE_impact_J'] == 0.0
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('bad', [np.nan, -0.1, 1.1, np.inf], ids=repr)
+def test_remelt_refuses_a_fraction_outside_the_unit_interval(bad):
+    """remelt_mantle refuses f outside [0, 1] before the interior changes."""
+    hf_row = _remelt_hf_row()
+    interior_o = SimpleNamespace(impact_reset=False)
+    with pytest.raises(ValueError, match='melt fraction'):
+        remelt_mantle(
+            {'output': '/tmp/out'}, _remelt_config('dummy'), hf_row, interior_o, f=bad
+        )
+    assert hf_row['T_magma'] == 2100.0
+    assert interior_o.impact_reset is False
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_a_partial_scalar_remelt_moves_the_mantle_by_its_share():
+    """The dummy mantle at 2100 K with T_init 4000 K goes to 2100 + 0.3 * 1900 = 2670 K."""
+    hf_row = _remelt_hf_row()
+    interior_o = SimpleNamespace(impact_reset=False)
+    remelt_mantle({'output': '/tmp/out'}, _remelt_config('dummy'), hf_row, interior_o, f=0.3)
+    assert hf_row['T_magma'] == pytest.approx(2670.0, rel=1e-14)
+    assert 0.0 < hf_row['Phi_global'] < 1.0  # 2670 K lies between 1700 and 2700 K
+    assert interior_o.temp[0] == pytest.approx(2670.0, rel=1e-14)
+    assert hf_row['f_remelt'] == 0.3
+
+
+@pytest.mark.unit
+def test_the_largest_fraction_of_a_step_is_the_row_value():
+    """Two impacts in one step: f_remelt is the larger f, whatever the order."""
+    hf_row = _remelt_hf_row()
+    interior_o = SimpleNamespace(impact_reset=False)
+    for f in (0.6, 0.2):
+        remelt_mantle({'output': '/tmp/out'}, _remelt_config('dummy'), hf_row, interior_o, f=f)
+    assert hf_row['f_remelt'] == 0.6
+    assert hf_row['T_magma'] > 2100.0
+
+
+@pytest.mark.unit
+def test_a_partial_core_module_remelt_hands_the_unchanged_base_to_the_core():
+    """At f = 0.3 the base cell keeps S_end (2400), so the core helper gets that base entropy,
+    not the molten base (3900) a full re-melt hands it."""
+    molten = np.full(6, 3900.0)
+    solver = _FakeMeshAragogSolver(cooled_profile=np.full(6, 2400.0))
+    solver.get_current_core_temperature = lambda: 3500.0
+    solver.set_initial_core_temperature = lambda val: None
+    interior_o = SimpleNamespace(
+        aragog_solver=solver, _last_entropy=np.full(6, 2400.0), impact_reset=False
+    )
+    config = _remelt_config('aragog')
+    config.interior_energetics.aragog = SimpleNamespace(core_bc='core_module')
+    with (
+        patch(
+            'proteus.interior_energetics.aragog.AragogRunner._set_entropy_ic',
+            return_value=molten,
+        ),
+        patch('proteus.interior_energetics.aragog.AragogRunner._refresh_entropy_eos'),
+        patch('proteus.interior_energetics.wrapper.evaluate_molten_state', return_value=None),
+        patch(
+            'proteus.interior_energetics.aragog_core_impact.remelt_core_module',
+            return_value=3500.0,
+        ) as core_mock,
+    ):
+        remelt_mantle({'output': '/tmp/out'}, config, {}, interior_o, f=0.3)
+    assert core_mock.call_args.args[4] == 2400.0
+    assert core_mock.call_args.args[3] == 3500.0

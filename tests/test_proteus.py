@@ -2663,6 +2663,28 @@ def test_the_per_step_core_impact_heat_starts_every_row_at_zero(tmp_path, module
     assert incoming[1] == [0.0, 0.0]
 
 
+@pytest.mark.unit
+def test_the_remelt_fraction_starts_every_row_at_zero(tmp_path):
+    """f_remelt records the impacts of its own row only: a value set on one row is cleared
+    on the next, so a row without an impact reads 0."""
+    p = _make_main_loop_proteus(
+        tmp_path, plot_mod=1, write_mod=1, dt_write_rel=0.0, vapourise=False
+    )
+    rows, incoming = [], []
+
+    def _writer(hf_row, step):
+        incoming.append(hf_row.get('f_remelt'))
+        _write_post_outgas_row(hf_row, step, vapour=False)
+        if step == 0:
+            hf_row['f_remelt'] = 0.4
+        return hf_row
+
+    _run_main_loop_recording_mass(p, stop_at_loop=2, rows=rows, row_writer=_writer)
+
+    assert rows[0]['f_remelt'] == pytest.approx(0.4)
+    assert incoming[1] == 0.0
+
+
 # ---------------------------------------------------------------------------
 # Resume path: crystallization flag restoration (proteus.py, resume branch)
 # ---------------------------------------------------------------------------

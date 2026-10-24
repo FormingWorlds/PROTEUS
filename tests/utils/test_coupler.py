@@ -5042,6 +5042,24 @@ def test_a_helpfile_without_m_desiccated_resumes_with_nothing_booked(tmp_path):
 
 
 @pytest.mark.unit
+def test_a_helpfile_without_f_remelt_resumes_with_no_remelt_recorded(tmp_path):
+    """f_remelt is in the schema and zero-filled: an older helpfile resumes with 0 on every row."""
+    from proteus.utils.coupler import (
+        RESUMABLE_ZERO_FILL_KEYS,
+        GetHelpfileKeys,
+        ReadHelpfileFromCSV,
+    )
+
+    assert 'f_remelt' in GetHelpfileKeys()
+    assert 'f_remelt' in RESUMABLE_ZERO_FILL_KEYS
+    row = ZeroHelpfileRow()
+    del row['f_remelt']
+    pd.DataFrame([row, row]).to_csv(tmp_path / 'runtime_helpfile.csv', sep='\t', index=False)
+    loaded = ReadHelpfileFromCSV(str(tmp_path))
+    assert loaded['f_remelt'].tolist() == [0.0, 0.0]
+
+
+@pytest.mark.unit
 def test_read_helpfile_from_csv_loads_legacy_helpfile_with_zero_filled_columns(tmp_path):
     """A legacy helpfile without n_impacts_applied loads successfully with zero backfill."""
     import shutil
