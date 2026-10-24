@@ -20,7 +20,7 @@ pytest.importorskip('gpytorch')
 import torch  # noqa: E402
 
 import proteus.inference.posterior as post  # noqa: E402
-from proteus.inference.objective import BAD_OBJ_VALUE, log_warp  # noqa: E402
+from proteus.inference.objective import BAD_OBJ_VALUE, eval_obj, log_warp  # noqa: E402
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -232,16 +232,14 @@ def test_fit_surrogate_refuses_too_few_scored_evaluations(no_hyperfit):
 # ---------------------------------------------------------------------------
 
 
-def test_sample_posterior_returns_config_units_with_log_parameters_log_uniform(no_hyperfit):
+def test_sample_posterior_returns_config_units_with_log_parameters_log_uniform():
     """A flat objective returns the prior: H_budget log-uniform (median sqrt(2e7), not 10500)."""
-    torch.manual_seed(0)
-    X = torch.rand(30, 2, dtype=torch.double)
-    D = {'X': X, 'Y': torch.full((30, 1), 1.0, dtype=torch.double)}
     parameters = {
         'planet.elements.H_budget': [1e3, 2e4],
         'interior_struct.core_frac': [0.3, 0.7],
     }
-    samples, ess = post.sample_posterior(D, parameters, 'RBF', 4000, seed=1, n_proposal=20_000)
+    flat = lambda U: torch.ones(len(U), dtype=torch.double)  # noqa: E731
+    samples, ess = post.sample_posterior(flat, parameters, 4000, seed=1, n_proposal=20_000)
     assert list(samples.columns) == list(parameters)
     assert ess == pytest.approx(20_000, rel=0.01)  # equal weights everywhere
     h = samples['planet.elements.H_budget']
@@ -317,3 +315,109 @@ def test_write_posterior_writes_the_samples(tmp_path, monkeypatch, no_hyperfit):
     # objective centred at unit (0.3, 0.7): core_frac 0.42, fO2 1.6
     assert disk['interior_struct.core_frac'].median() == pytest.approx(0.42, abs=0.03)
     assert disk['outgas.fO2_shift_IW'].median() == pytest.approx(1.6, abs=0.5)
+
+
+# ---------------------------------------------------------------------------
+# per-observable posterior
+# ---------------------------------------------------------------------------
+
+_OBS_PARS = {'interior_struct.core_frac': [0.3, 0.7], 'outgas.fO2_shift_IW': [-4.0, 4.0]}
+
+
+def _observables(u):
+    """Smooth observables of the unit-cube parameters u (n, 2); C/O spans two decades."""
+    return {
+        'R_obs': 1e7 * (1 + 0.5 * u[:, 0]),
+        'T_obs': 300 + 200 * u[:, 1],
+        'C/O_atm': 10 ** (2 * (u[:, 0] - u[:, 1])),
+    }
+
+
+def _observable_config():
+    target = {k: float(v[0]) for k, v in _observables(np.array([[0.3, 0.75]])).items()}
+    return {
+        'observables': target,
+        'sigma': {k: 0.05 * v for k, v in target.items()},
+        'parameters': _OBS_PARS,
+        'kernel': 'MAT3/2',
+        'seed': 0,
+        'correlation': None,
+        'loss': None,
+        'posterior_samples': 300,
+        'posterior_per_observable': True,
+    }
+
+
+def _observable_cases(monkeypatch):
+    """A 7 x 7 grid of cases, none at the target, plus a failed case with garbage values;
+    case_parameters is replaced by the grid in config units."""
+    g = np.linspace(0.02, 0.98, 7)
+    u = np.array([[a, b] for a in g for b in g] + [[0.3, 0.75]])
+    cases = pd.DataFrame(_observables(u))
+    cases.loc[len(u) - 1, ['R_obs', 'T_obs']] = [-1.0, 1e9]
+    cases['excluded'] = False
+    cases.loc[len(u) - 1, 'excluded'] = True
+    cases['J'] = 0.0
+    raw = np.column_stack([0.3 + 0.4 * u[:, 0], -4 + 8 * u[:, 1]])
+    monkeypatch.setattr(post, 'case_parameters', lambda d, c, k: raw[c.index])
+    return cases
+
+
+def test_observables_objective_matches_eval_obj_of_the_observables(monkeypatch, no_hyperfit):
+    """J from one GP per observable equals eval_obj of the true observables between the cases,
+    and the failed case, whose values would wreck the GPs, is left out."""
+    config = _observable_config()
+    objective = post.observables_objective(config, 'unused', _observable_cases(monkeypatch))
+
+    U = torch.tensor([[0.3, 0.75], [0.5, 0.5], [0.65, 0.35], [0.8, 0.6]], dtype=torch.double)
+    true = _observables(U.numpy())
+    ref = [
+        float(
+            eval_obj({k: v[i] for k, v in true.items()}, config['observables'], config['sigma'])
+        )
+        for i in range(len(U))
+    ]
+    Y = objective(U)
+    assert Y.shape == (4,)
+    # chi2 = 10**-Y within 3 % where the fit is poor, and below 2 at the target
+    chi2, chi2_ref = 10 ** -Y.numpy(), 10 ** -np.array(ref)
+    assert chi2[1:] == pytest.approx(chi2_ref[1:], rel=0.03)
+    assert chi2[0] < 2
+    assert chi2_ref[1:].min() > 50  # the other points are poor fits
+    # one GP per observable, each with one hyperparameter attempt
+    assert [c['kwargs']['max_attempts'] for c in no_hyperfit] == [1, 1, 1]
+
+
+def test_write_posterior_per_observable_peaks_at_the_target(tmp_path, monkeypatch, no_hyperfit):
+    """With posterior_per_observable, posterior.csv centres on the target, which no case hit."""
+    # One round of 30 000 draws gives an ESS of about 300, plenty for the medians
+    monkeypatch.setattr(post, 'N_PROPOSAL', 30_000)
+    monkeypatch.setattr(post, 'ADAPT_ROUNDS', 0)
+    config = _observable_config()
+    cases = _observable_cases(monkeypatch)
+    out = post.write_posterior(config, {}, str(tmp_path), cases)
+
+    assert out.shape == (300, 2)
+    assert (tmp_path / 'posterior.csv').is_file()
+    assert out['interior_struct.core_frac'].median() == pytest.approx(0.3 + 0.4 * 0.3, abs=0.02)
+    assert out['outgas.fO2_shift_IW'].median() == pytest.approx(-4 + 8 * 0.75, abs=0.4)
+
+
+@pytest.mark.parametrize(
+    'flag, n, expected', [(None, 2000, False), (True, 2000, True), (False, 0, False)]
+)
+def test_validate_posterior_per_observable_accepts(flag, n, expected):
+    """None is off; true needs posterior samples."""
+    assert post.validate_posterior_per_observable(flag, n) is expected
+    assert isinstance(post.validate_posterior_per_observable(flag, n), bool)
+
+
+@pytest.mark.parametrize(
+    'flag, n, match',
+    [(1, 2000, 'true or false'), ('yes', 2000, 'true or false'), (True, 0, 'off')],
+)
+def test_validate_posterior_per_observable_rejects(flag, n, match):
+    """A non-boolean value, or true with the posterior off, is an error naming the key."""
+    with pytest.raises(ValueError, match=match) as err:
+        post.validate_posterior_per_observable(flag, n)
+    assert str(err.value).startswith('posterior_per_observable ')

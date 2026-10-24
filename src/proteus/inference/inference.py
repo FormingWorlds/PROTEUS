@@ -50,6 +50,7 @@ from proteus.inference.objective import (
     worker_spectral_cache,
 )
 from proteus.inference.posterior import (
+    validate_posterior_per_observable,
     validate_posterior_samples,
     validate_posterior_steps,
     write_posterior,
@@ -417,6 +418,10 @@ def run_inference(config):
         config.get('posterior_samples'), config['sigma']
     )
 
+    config['posterior_per_observable'] = validate_posterior_per_observable(
+        config.get('posterior_per_observable'), config['posterior_samples']
+    )
+
     # The last posterior_steps of n_steps sample where a good fit is still uncertain; 0 is off
     config['posterior_steps'] = validate_posterior_steps(
         config.get('posterior_steps'), config['n_steps'], config['sigma']
@@ -513,6 +518,7 @@ def run_inference(config):
         }[name]
     log.info(f'    objective     = {objective}')
     log.info(f'    posterior     = {config["posterior_samples"] or "off"} samples')
+    log.info(f'    per-observable posterior = {config["posterior_per_observable"]}')
     log.info(f'    posterior steps = {config["posterior_steps"] or "off"} of the optim steps')
     log.info(' ')
     t_0 = time.perf_counter()
@@ -576,7 +582,7 @@ def run_inference(config):
 
     # Last, so that a failed GP fit here cannot cost the outputs above
     if config['posterior_samples']:
-        samples = write_posterior(config, D_final, dirs['output'])
+        samples = write_posterior(config, D_final, dirs['output'], cases)
         plot_fit.plot_result_posterior(
             samples,
             D_final,

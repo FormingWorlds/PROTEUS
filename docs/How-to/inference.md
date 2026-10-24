@@ -158,6 +158,8 @@ With `[sigma]`, every objective form (chi-squared, correlated chi-squared, Stude
 
 The posterior ignores the GP's own uncertainty, so it is only as good as the GP near the best fit: check that the study converged (`perf_bestval.png`) before using it.
 
+With `posterior_per_observable = true` (default `false`), the posterior uses one GP per observable instead, each fitted to that observable of the scored runs in the space the objective compares it in (log10 or linear), and `J` follows from the predicted observables as for a run. In TR test studies, these GPs predicted `J` 5 to 10 times more accurately in cross-validation than the single GP, which near the best fit has to follow `J` down steep, narrow valleys. The 90 % intervals then held the true parameters in 74 of 75 cases, against 53 with the single GP, and were wider. Fitting the GPs adds minutes to tens of minutes at the end of the study.
+
 With `posterior_steps = N` (default `0`, off; needs `[sigma]`), the last `N` of the `n_steps` evaluations aim at the posterior instead of the best fit. Each proposes where the likelihood with the GP mean raised by two GP standard deviations most exceeds the likelihood with the mean: near zero where the GP is sure of the fit, good or bad, and large where a good fit is possible but not yet sampled. Points other workers are evaluating count at their GP mean, so the workers spread out. In TR test studies, good fits formed a long, narrow valley, and the runs had sampled only part of it; the GP then ruled out the unsampled part, which held the truth, and so did the posterior.
 
 ### Parallel Processing

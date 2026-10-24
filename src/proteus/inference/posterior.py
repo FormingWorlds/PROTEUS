@@ -21,8 +21,16 @@ from botorch.optim.fit import fit_gpytorch_mll_torch
 from botorch.utils.transforms import t_batch_mode_transform
 from gpytorch.mlls import ExactMarginalLogLikelihood
 
-from proteus.inference.objective import BAD_OBJ_VALUE
-from proteus.inference.transforms import unnormalize_parameters
+from proteus.inference.correlation import CorrelationWhitener
+from proteus.inference.objective import (
+    BAD_OBJ_VALUE,
+    compared_in_log,
+    log_warp,
+    observable_space,
+    squared_distance,
+)
+from proteus.inference.plot_fit import case_parameters
+from proteus.inference.transforms import normalize_parameters, unnormalize_parameters
 from proteus.inference.utils import get_kernel
 
 log = logging.getLogger('fwl.' + __name__)
@@ -58,6 +66,17 @@ def validate_posterior_samples(n, sigma: dict | None) -> int:
     return n
 
 
+def validate_posterior_per_observable(flag, n_samples: int) -> bool:
+    """Whether the posterior uses one GP per observable; None is False."""
+    if flag is None:
+        return False
+    if not isinstance(flag, bool):
+        raise ValueError(f'posterior_per_observable must be true or false, got {flag!r}')
+    if flag and not n_samples:
+        raise ValueError('posterior_per_observable needs posterior samples, which are off')
+    return flag
+
+
 def validate_posterior_steps(n, n_steps: int, sigma: dict | None) -> int:
     """Number of BO steps, the last of n_steps, that use `posterior_acqf`; None or 0 is off."""
     if n is None:
@@ -73,25 +92,64 @@ def fit_surrogate(X: torch.Tensor, Y: torch.Tensor, kernel: str, seed: int) -> S
     """Fit a GP to the scored evaluations, as BO_step does."""
     scored = Y[:, 0] > BAD_OBJ_VALUE
     X, Y = X[scored], Y[scored]
+    return _fit_gp(X, Y, kernel, seed, torch.full_like(Y, GP_NOISE), 10)
+
+
+def _fit_gp(X, Y, kernel: str, seed: int, Yvar, attempts: int) -> SingleTaskGP:
+    """GP on X in the unit cube; Yvar None learns the noise."""
     d = X.shape[-1]
     if len(X) < d + 1:
         raise ValueError(f'{len(X)} scored evaluations cannot constrain a GP in {d} parameters')
-
     torch.manual_seed(seed)
     gp = SingleTaskGP(
         train_X=X,
         train_Y=Y,
         covar_module=get_kernel(kernel, d),
-        train_Yvar=torch.full_like(Y, GP_NOISE),
+        train_Yvar=Yvar,
         input_transform=Normalize(d=d),
         outcome_transform=Standardize(m=1),
     )
     fit_gpytorch_mll(
         ExactMarginalLogLikelihood(gp.likelihood, gp),
         optimizer=fit_gpytorch_mll_torch,
-        kwargs={'pick_best_of_all_attempts': True, 'max_attempts': 10},
+        kwargs={'pick_best_of_all_attempts': True, 'max_attempts': attempts},
     )
     return gp.eval()
+
+
+def observables_objective(config: dict, directory, cases: pd.DataFrame):
+    """Objective Y at points in the unit cube from one GP per observable, each fitted to the
+    observable as eval_obj compares it (log10 or linear), combined into Y as eval_obj does."""
+    obs, sigma, keys = config['observables'], config['sigma'], list(config['observables'])
+    ok = cases[~cases['excluded'] & (cases['J'] > BAD_OBJ_VALUE)]
+    ok = ok[np.isfinite(ok[keys]).all(axis=1)]
+    ok = ok[(ok[[k for k in keys if compared_in_log(k, sigma)]] > 0).all(axis=1)]
+    pars = list(config['parameters'])
+    bounds = torch.tensor([config['parameters'][k] for k in pars], dtype=dtype).T
+    X = normalize_parameters(
+        torch.tensor(case_parameters(directory, ok, pars), dtype=dtype), bounds, pars
+    )
+    S = torch.tensor(
+        [observable_space(dict(zip(keys, r)), obs, sigma)[0] for r in ok[keys].to_numpy()],
+        dtype=dtype,
+    )
+    log.info(f'    fitting one GP per observable to {len(X)} scored cases')
+    # One hyperparameter attempt each: these fits dominate the cost of the posterior
+    gps = [
+        _fit_gp(X, S[:, [j]], config['kernel'], config['seed'], None, 1)
+        for j in range(len(keys))
+    ]
+    _, tru, sig = observable_space(obs, obs, sigma)
+    tru, sig = torch.tensor(tru, dtype=dtype), torch.tensor(sig, dtype=dtype)
+    corr = config.get('correlation')
+    whitener = None if corr is None else CorrelationWhitener(keys, corr)
+
+    def objective(U):
+        P = torch.stack([gp_mean(gp, U) for gp in gps], dim=1)
+        sq = squared_distance((P - tru) / sig, keys, whitener, config.get('loss'))
+        return log_warp(sq).reshape(-1)
+
+    return objective
 
 
 def gp_mean(gp: SingleTaskGP, U: torch.Tensor) -> torch.Tensor:
@@ -191,24 +249,30 @@ def importance_resample(
 
 
 def sample_posterior(
-    D: dict, parameters: dict, kernel: str, n_samples: int, seed: int, n_proposal: int
+    objective, parameters: dict, n_samples: int, seed: int, n_proposal: int
 ) -> tuple[pd.DataFrame, float]:
     """Posterior samples in config units, one column per parameter, and the ESS."""
     keys = list(parameters)
-    gp = fit_surrogate(D['X'], D['Y'], kernel, seed)
-    U, ess = importance_resample(
-        lambda Z: gp_mean(gp, Z), len(keys), n_samples, n_proposal, seed
-    )
+    U, ess = importance_resample(objective, len(keys), n_samples, n_proposal, seed)
     bounds = torch.tensor([parameters[k] for k in keys], dtype=dtype).T
     return pd.DataFrame(unnormalize_parameters(U, bounds, keys).numpy(), columns=keys), ess
 
 
-def write_posterior(config: dict, D: dict, directory: str) -> pd.DataFrame:
-    """Sample the posterior, log its quantiles, and write `posterior.csv`."""
+def write_posterior(
+    config: dict, D: dict, directory: str, cases: pd.DataFrame | None = None
+) -> pd.DataFrame:
+    """Sample the posterior, log its quantiles, and write `posterior.csv`. With
+    `posterior_per_observable`, the surrogate is one GP per observable over `cases`."""
     n = config['posterior_samples']
-    log.info(f'Sampling {n} posterior samples from the GP surrogate')
+    if config.get('posterior_per_observable'):
+        log.info(f'Sampling {n} posterior samples from GP surrogates of the observables')
+        objective = observables_objective(config, directory, cases)
+    else:
+        log.info(f'Sampling {n} posterior samples from the GP surrogate')
+        gp = fit_surrogate(D['X'], D['Y'], config['kernel'], config['seed'])
+        objective = lambda U: gp_mean(gp, U)  # noqa: E731
     samples, ess = sample_posterior(
-        D, config['parameters'], config['kernel'], n, config['seed'], N_PROPOSAL
+        objective, config['parameters'], n, config['seed'], N_PROPOSAL
     )
     log.info(f'    effective sample size: {ess:.0f}')
     if ess < n:
