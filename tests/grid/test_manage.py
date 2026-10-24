@@ -17,6 +17,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+import traceback
 from pathlib import Path
 from unittest import mock
 
@@ -1676,6 +1677,7 @@ class TestGridFromConfig:
         assert f'Grid case 0 ({key} = 0.1): ' in message
         assert 'must be <= top_cell_dt_rel_dT' in message and 'case_000000.toml' in message
         assert '.grid-check-' not in message and str(old.parent) not in message
+        assert '.grid-check-' not in ''.join(traceback.format_exception(exc.value))
         assert old.read_text() == 'kept\n'
 
     @pytest.mark.parametrize(
@@ -1737,6 +1739,63 @@ class TestGridFromConfig:
         assert exc.type is ValueError and 'must name a folder inside' in str(exc.value), exc
         assert keep.read_text() == 'kept\n'
         assert _log_state() == before
+
+    @pytest.mark.parametrize(
+        'target',
+        ['output', 'output/elsewhere', 'proteus', 'home', 'home-parent', 'link-to-output'],
+    )
+    def test_a_symlink_folder_that_would_remove_other_data_is_refused(
+        self, fake_proteus_dir, tmp_path, monkeypatch, target
+    ):
+        """A symlink folder that is PROTEUS/output, lies inside it or contains it, or is
+        PROTEUS_DIR, HOME or above HOME, is refused before anything is removed, also when it
+        is reached through a link; files in output/ and in a sibling grid stay."""
+        home = tmp_path / 'home'
+        home.mkdir()
+        monkeypatch.setenv('HOME', str(home))
+        out = fake_proteus_dir / 'output'
+        (out / 'other_grid').mkdir(parents=True)
+        kept = [out / 'keep', out / 'other_grid' / 'keep']
+        for path in kept:
+            path.write_text('kept\n')
+        link = tmp_path / 'link'
+        link.symlink_to(out)
+        folder = {
+            'output': out,
+            'output/elsewhere': out / 'elsewhere',
+            'proteus': fake_proteus_dir,
+            'home': home,
+            'home-parent': tmp_path,
+            'link-to-output': link,
+        }[target]
+        body = toml.load(_valid_grid(fake_proteus_dir, monkeypatch))
+        body['symlink'] = str(folder)
+        grid_path = fake_proteus_dir / 'g.toml'
+        grid_path.write_text(toml.dumps(body))
+        with pytest.raises(Exception) as exc:  # another type fails the assert below
+            grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
+        assert exc.type is ValueError and 'symlink folder' in str(exc.value), exc
+        assert [path.read_text() for path in kept] == ['kept\n', 'kept\n']
+
+    def test_a_relative_symlink_folder_is_judged_by_where_it_resolves(
+        self, fake_proteus_dir, monkeypatch
+    ):
+        """Grid resolves a relative symlink folder before judging it, so a relative path to
+        PROTEUS/output is refused and a file in output/ stays."""
+        from helpers import PROTEUS_ROOT
+
+        keep = fake_proteus_dir / 'output' / 'keep'
+        keep.parent.mkdir(parents=True)
+        keep.write_text('kept\n')
+        monkeypatch.chdir(fake_proteus_dir)
+        with pytest.raises(Exception) as exc:  # another type fails the assert below
+            Grid(
+                name='rel_grid',
+                base_config_path=str(PROTEUS_ROOT / 'tests/grid/base.toml'),
+                symlink_dir='output',
+            )
+        assert exc.type is ValueError and 'symlink folder' in str(exc.value), exc
+        assert keep.read_text() == 'kept\n'
 
     def test_a_missing_use_slurm_names_the_key_and_the_grid_file(self, fake_proteus_dir):
         """A grid file without use_slurm stops with a KeyError that names the key and
