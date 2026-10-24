@@ -722,11 +722,11 @@ def test_condensates_re_vapourise_by_default():
     layer it reports replaces the earlier one, so a shrinking layer stays shrunk.
     """
     hf_row = _graphite_row()
-    with condensed_mass_withheld(_condensate_config(False), hf_row):
-        seen = (hf_row['C_kg_total'], hf_row['C_kg_condensed'])
+    with condensed_mass_withheld(_condensate_config(False), hf_row, initial=False):
+        seen = (hf_row['C_kg_total'], hf_row['C_kg_condensed'], hf_row['C_cd_kg'])
         hf_row['C_kg_condensed'] = hf_row['C_cd_kg'] = 1.0e19  # the solve re-vapourised most
 
-    assert seen == (1.0e20, 0.0)
+    assert seen == (1.0e20, 0.0, 0.0)
     assert hf_row['C_kg_total'] == pytest.approx(1.0e20, rel=1e-12)
     assert hf_row['C_kg_condensed'] == pytest.approx(1.0e19, rel=1e-12)
     assert hf_row['C_cd_kg'] == pytest.approx(1.0e19, rel=1e-12)
@@ -743,11 +743,11 @@ def test_held_layer_is_hidden_from_the_solve_and_only_grows(new):
     """
     layer = 4.0e19
     hf_row = _graphite_row(layer=layer)
-    with condensed_mass_withheld(_condensate_config(True), hf_row):
-        seen = (hf_row['C_kg_total'], hf_row['C_kg_condensed'])
+    with condensed_mass_withheld(_condensate_config(True), hf_row, initial=False):
+        seen = (hf_row['C_kg_total'], hf_row['C_kg_condensed'], hf_row['C_cd_kg'])
         hf_row['C_kg_condensed'] = hf_row['C_cd_kg'] = new  # what this solve condensed
 
-    assert seen == (pytest.approx(1.0e20 - layer, rel=1e-12), 0.0)
+    assert seen == (pytest.approx(1.0e20 - layer, rel=1e-12), 0.0, 0.0)
     assert hf_row['C_kg_total'] == pytest.approx(1.0e20, rel=1e-12)
     assert hf_row['C_kg_condensed'] == pytest.approx(layer + new, rel=1e-12)
     assert hf_row['C_cd_kg'] == pytest.approx(layer + new, rel=1e-12)
@@ -755,16 +755,41 @@ def test_held_layer_is_hidden_from_the_solve_and_only_grows(new):
 
 
 def test_held_layer_is_restored_when_the_solve_raises():
-    """A failing solve leaves the carbon total and the layer as they were."""
+    """A failing solve leaves the carbon total and the layer as they were.
+
+    Edge case: the solve raises before it writes the condensate columns, so the
+    graphite mass is exactly the held layer, not the layer counted twice.
+    """
     hf_row = _graphite_row()
     with (
         pytest.raises(RuntimeError, match='solve failed'),
-        condensed_mass_withheld(_condensate_config(True), hf_row),
+        condensed_mass_withheld(_condensate_config(True), hf_row, initial=False),
     ):
         raise RuntimeError('solve failed')
 
     assert hf_row['C_kg_total'] == pytest.approx(1.0e20, rel=1e-12)
     assert hf_row['C_kg_condensed'] == pytest.approx(4.0e19, rel=1e-12)
+    assert hf_row['C_cd_kg'] == pytest.approx(4.0e19, rel=1e-12)
+
+
+@pytest.mark.physics_invariant
+def test_init_stage_solves_keep_no_earlier_condensate():
+    """In the init stage the solve sees the whole budget and its layer replaces the old one.
+
+    Each init iteration solves the same starting state again, so condensate left by
+    an earlier trial solve is not withheld or added on top, even with
+    prevent_desaturation on.
+    """
+    hf_row = _graphite_row(layer=4.0e19)
+    with condensed_mass_withheld(_condensate_config(True), hf_row, initial=True):
+        seen = (hf_row['C_kg_total'], hf_row['C_kg_condensed'], hf_row['C_cd_kg'])
+        hf_row['C_kg_condensed'] = hf_row['C_cd_kg'] = 3.0e19  # this trial's equilibrium
+
+    assert seen == (1.0e20, 0.0, 0.0)
+    assert hf_row['C_kg_total'] == pytest.approx(1.0e20, rel=1e-12)
+    # Discrimination: holding the old layer back would give 4e19 + 3e19 here.
+    assert hf_row['C_kg_condensed'] == pytest.approx(3.0e19, rel=1e-12)
+    assert hf_row['C_cd_kg'] == pytest.approx(3.0e19, rel=1e-12)
 
 
 @pytest.mark.physics_invariant

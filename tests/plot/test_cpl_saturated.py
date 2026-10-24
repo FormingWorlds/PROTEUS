@@ -85,18 +85,22 @@ def test_column_and_thickness_follow_mass_area_and_density(draw_real, tmp_path):
 
 
 @pytest.mark.physics_invariant
-def test_a_held_layer_is_drawn_below_saturation(draw_real, tmp_path):
+@pytest.mark.parametrize(
+    'late_activity', [0.3, 0.0], ids=['activity-dropped', 'left-the-network']
+)
+def test_a_held_layer_is_drawn_below_saturation(draw_real, tmp_path, late_activity):
     """A layer kept by prevent_desaturation stays on the plot once activity drops.
 
     The inventory left in the solve can fall below saturation while the held layer
     persists, so a mass well above the solver floor is drawn at any activity, and
-    the floor itself is still drawn as zero.
+    the floor itself is still drawn as zero. Edge case: once the condensate leaves
+    the network its activity is written as 0, and the held layer is still drawn.
     """
     (tmp_path / 'plots').mkdir()
     hf = _make_hf_all()
     n = len(hf)
     late = np.arange(n) >= n - 2  # the last two rows: layer held, activity has dropped
-    hf['C_cd_activity'] = np.where(late, 0.3, hf['C_cd_activity'])
+    hf['C_cd_activity'] = np.where(late, late_activity, hf['C_cd_activity'])
     hf['C_cd_kg'] = np.where(late, 4.0e20, hf['C_cd_kg'])
     fig = draw_real(sat_mod.plot_saturated, hf, str(tmp_path), plot_format='png')[0]
 

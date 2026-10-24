@@ -411,25 +411,35 @@ def _solve_chemistry(dirs: dict, config: Config, hf_row: dict, *, initial: bool)
 
 
 @contextmanager
-def condensed_mass_withheld(config: Config, hf_row: dict):
+def condensed_mass_withheld(config: Config, hf_row: dict, *, initial: bool):
     """Start the chemistry from no condensed mass, keeping held condensates out of it.
 
-    Every backend starts from empty ``{e}_kg_condensed`` columns; only atmodeller
-    with condensates enabled fills them, so they stay 0 otherwise. With
-    ``outgas.prevent_desaturation`` on, the condensed mass so far is also taken out
-    of each element total for the solve, so the chemistry cannot re-vapourise it,
-    and on exit it is added back to the totals, to ``{e}_kg_condensed`` and to each
-    condensate's ``{X}_cd_kg``, on top of what the solve newly condensed. The
-    reservoirs then only grow. The exit runs also when the solve raises, so the row
-    never loses the held mass. ``{X}_cd_activity`` stays the solver's value: it is
-    the saturation of the inventory left in the solve, not of the held layer.
+    Every backend starts from empty ``{e}_kg_condensed`` and ``{X}_cd_kg``
+    columns; only atmodeller with condensates enabled fills them, so they stay 0
+    otherwise. With ``outgas.prevent_desaturation`` on, the condensed mass so far
+    is also taken out of each element total for the solve, so the chemistry cannot
+    re-vapourise it, and on exit it is added back to the totals, to
+    ``{e}_kg_condensed`` and to each condensate's ``{X}_cd_kg``, on top of what the
+    solve newly condensed. The reservoirs then only grow. The exit runs also when
+    the solve raises, so the row then holds the held mass, no more and no less.
+    ``{X}_cd_activity`` stays the solver's value: it is the saturation of the
+    inventory left in the solve, not of the held layer, so it can be below 1 while
+    a layer is held.
+
+    In the init stage (``initial``) nothing is held back: each init iteration
+    resets the element totals to the delivered budget and solves the same starting
+    state again, so condensate from an earlier trial solve is not kept.
     """
-    held = {e: locked_condensed_mass(hf_row, e, config) for e in vol_element_list}
+    held = {e: 0.0 for e in vol_element_list}
+    if not initial:
+        held = {e: locked_condensed_mass(hf_row, e, config) for e in vol_element_list}
     held_cd = {}
     if any(held.values()):
         for c in condensate_list:
             mass = float(hf_row.get(f'{c}_cd_kg', 0.0))
             held_cd[c] = max(0.0, mass) if np.isfinite(mass) else 0.0
+    for c in condensate_list:
+        hf_row[f'{c}_cd_kg'] = 0.0
     for e in vol_element_list:
         hf_row[f'{e}_kg_condensed'] = 0.0
         if held[e] > 0.0:
@@ -525,7 +535,10 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict, *, initial: bool):
     # condensates to `_kg_condensed`), so the trapped mass is hidden for the solve
     # and put back after it. Condensed mass is handled the same way when it is kept
     # from re-vapourising.
-    with condensed_mass_withheld(config, hf_row), trapped_mass_withheld(hf_row):
+    with (
+        condensed_mass_withheld(config, hf_row, initial=initial),
+        trapped_mass_withheld(hf_row),
+    ):
         _solve_chemistry(dirs, config, hf_row, initial=initial)
 
     # P_surf here is the volatile+noble gas total

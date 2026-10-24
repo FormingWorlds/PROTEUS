@@ -34,6 +34,9 @@ def plot_saturated(hf_all: pd.DataFrame, output_dir: str, plot_format='pdf'):
     uniform layer of the condensate at its ``condensate_density``, which is an
     estimate only. A condensate that was never part of the equilibrium is left
     out, and the plot is skipped when none was.
+
+    With ``outgas.prevent_desaturation`` the activity is that of the inventory left
+    in the solve, so it can fall below 1 while a held layer keeps its thickness.
     """
     hf_crop = hf_all.iloc[2:]
     hf_crop = hf_crop[hf_crop['Time'] > 0]
@@ -79,8 +82,9 @@ def plot_saturated(hf_all: pd.DataFrame, output_dir: str, plot_format='pdf'):
         ax0.plot(time[valid], activity[valid], lw=lw, color=col, label=lbl)
 
         # Below saturation the condensed mass is only the solver's floor, so only
-        # saturated points, or a layer held from re-vapourising, carry a mass
-        keep = valid & ((activity >= SATURATED) | (mass > HELD_MASS_KG))
+        # saturated points, or a layer held from re-vapourising, carry a mass. A held
+        # layer is kept also where the condensate left the network (activity 0).
+        keep = (np.isfinite(mass) & (mass > HELD_MASS_KG)) | (valid & (activity >= SATURATED))
         mass = np.where(keep, mass, 0.0)
         column = mass / area
         ax1.plot(time, column / C_uval, lw=lw, color=col)

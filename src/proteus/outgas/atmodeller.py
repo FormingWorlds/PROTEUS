@@ -899,6 +899,9 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
     # whole-planet O accounting (M_ele) includes atmospheric O whether or not
     # O was a mass constraint; mirrors CALLIOPE, which always writes O_kg_total.
     volatile_O_kg = _total_volatile_oxygen_kg(hf_row, element_mmw)
+    # Oxygen held in the O-bearing condensates (water, sulfuric acid) this solve
+    # formed, written to O_kg_condensed above; zero without them.
+    condensed_O_kg = float(hf_row.get('O_kg_condensed', 0.0))
 
     # Plumb the derived IW-buffer offset only for the 'from_O_budget'
     # source. Under
@@ -934,10 +937,11 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
                     e,
                     hf_row.get('fO2_shift_IW_derived', float('nan')),
                 )
-        # O mass-balance residual: total volatile O (atmospheric + dissolved,
-        # computed above) minus the authoritative user target. Reported in kg
-        # to match CALLIOPE's H/C/N/S/O_res convention.
-        hf_row['O_res'] = volatile_O_kg - float(target_O_kg)
+        # O mass-balance residual: the solved O (atmospheric + dissolved +
+        # condensed, computed above) minus the authoritative user target, which
+        # constrains all three. Reported in kg to match CALLIOPE's
+        # H/C/N/S/O_res convention.
+        hf_row['O_res'] = volatile_O_kg + condensed_O_kg - float(target_O_kg)
 
         # Restore the authoritative user O budget. atmodeller's solver may
         # have converged to atm_O+liq_O slightly off from target_O_kg (within
@@ -955,7 +959,9 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
         # here each call, exactly as in CALLIOPE under user_constant: the
         # buffered equilibrium re-derives O from the current H/C/S
         # inventory, which itself falls as escape depletes those budgets.
-        hf_row['O_kg_total'] = volatile_O_kg
+        # The O in condensates belongs to the budget as well, so the total
+        # closes against atm + liquid + solid + condensed.
+        hf_row['O_kg_total'] = volatile_O_kg + condensed_O_kg
         # No authoritative O target under a buffered fO2 source, so the O
         # mass-balance residual is zero by construction. Written explicitly
         # to match CALLIOPE rather than relying on the pre-dispatch seed.
