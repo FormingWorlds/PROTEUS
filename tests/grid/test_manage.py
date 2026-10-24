@@ -1742,20 +1742,30 @@ class TestGridFromConfig:
 
     @pytest.mark.parametrize(
         'target',
-        ['output', 'output/elsewhere', 'proteus', 'home', 'home-parent', 'link-to-output'],
+        [
+            'output',
+            'output/elsewhere',
+            'proteus',
+            'proteus-input',
+            'proteus-src',
+            'home',
+            'home-parent',
+            'link-to-output',
+        ],
     )
     def test_a_symlink_folder_that_would_remove_other_data_is_refused(
         self, fake_proteus_dir, tmp_path, monkeypatch, target
     ):
-        """A symlink folder that is PROTEUS/output, lies inside it or contains it, or is
-        PROTEUS_DIR, HOME or above HOME, is refused before anything is removed, also when it
-        is reached through a link; files in output/ and in a sibling grid stay."""
+        """A symlink folder inside the PROTEUS folder (output/, input/, src/), or that is
+        PROTEUS_DIR, HOME or above either, is refused before anything is removed, also when
+        it is reached through a link; files in output/, a sibling grid and input/ stay."""
         home = tmp_path / 'home'
         home.mkdir()
         monkeypatch.setenv('HOME', str(home))
         out = fake_proteus_dir / 'output'
         (out / 'other_grid').mkdir(parents=True)
-        kept = [out / 'keep', out / 'other_grid' / 'keep']
+        (fake_proteus_dir / 'input').mkdir()
+        kept = [out / 'keep', out / 'other_grid' / 'keep', fake_proteus_dir / 'input' / 'keep']
         for path in kept:
             path.write_text('kept\n')
         link = tmp_path / 'link'
@@ -1764,6 +1774,8 @@ class TestGridFromConfig:
             'output': out,
             'output/elsewhere': out / 'elsewhere',
             'proteus': fake_proteus_dir,
+            'proteus-input': fake_proteus_dir / 'input',
+            'proteus-src': fake_proteus_dir / 'src',
             'home': home,
             'home-parent': tmp_path,
             'link-to-output': link,
@@ -1775,7 +1787,7 @@ class TestGridFromConfig:
         with pytest.raises(Exception) as exc:  # another type fails the assert below
             grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
         assert exc.type is ValueError and 'symlink folder' in str(exc.value), exc
-        assert [path.read_text() for path in kept] == ['kept\n', 'kept\n']
+        assert [path.read_text() for path in kept] == ['kept\n'] * 3
 
     def test_a_relative_symlink_folder_is_judged_by_where_it_resolves(
         self, fake_proteus_dir, monkeypatch
