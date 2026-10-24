@@ -875,9 +875,10 @@ class TestWriteConfigFiles:
         g.generate()
         with pytest.raises(
             ValueError, match=re.escape('Grid case 0 (planet.mass_tot = -1.0): ')
-        ):
+        ) as err:
             g.write_config_files()
         assert not os.path.exists(g._get_tmpcfg(0))
+        assert err.value.__cause__ is None and err.value.__suppress_context__
 
     def test_a_quoted_false_for_a_bool_field_stops_the_grid(
         self, fake_proteus_dir, monkeypatch
@@ -1808,6 +1809,182 @@ class TestGridFromConfig:
                 symlink_dir='output',
             )
         assert exc.type is ValueError and 'symlink folder' in str(exc.value), exc
+        assert keep.read_text() == 'kept\n'
+
+    @pytest.mark.parametrize(
+        'target', ['output-target', 'grid-in-target', 'above-target', 'grid-via-output']
+    )
+    def test_a_symlink_folder_in_a_linked_output_folder_is_refused(
+        self, fake_proteus_dir, tmp_path_factory, monkeypatch, target
+    ):
+        """With output/ a link to scratch storage (the cluster setup), a symlink folder that
+        is that storage, a grid in it, a folder above it or a grid reached through output/
+        is refused, so the other grids there stay."""
+        outside = tmp_path_factory.mktemp('outside')
+        (outside / 'home').mkdir()
+        monkeypatch.setenv('HOME', str(outside / 'home'))
+        storage = outside / 'scratch' / 'proteus_output'
+        keep = storage / 'other_grid' / 'keep'
+        keep.parent.mkdir(parents=True)
+        keep.write_text('kept\n')
+        body = toml.load(_valid_grid(fake_proteus_dir, monkeypatch))
+        (fake_proteus_dir / 'output').symlink_to(storage)
+        body['symlink'] = str(
+            {
+                'output-target': storage,
+                'grid-in-target': storage / 'other_grid',
+                'above-target': storage.parent,
+                'grid-via-output': fake_proteus_dir / 'output' / 'other_grid',
+            }[target]
+        )
+        grid_path = fake_proteus_dir / 'g.toml'
+        grid_path.write_text(toml.dumps(body))
+        with pytest.raises(Exception) as exc:  # another type fails the assert below
+            grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
+        assert exc.type is ValueError and 'symlink folder' in str(exc.value), exc
+        assert keep.read_text() == 'kept\n'
+
+    @pytest.mark.parametrize('target', ['home', 'proteus-output'])
+    def test_a_case_variant_of_a_protected_folder_is_refused(
+        self, fake_proteus_dir, base_config_path, tmp_path_factory, monkeypatch, target
+    ):
+        """On a case-insensitive file system (macOS) a folder spelt in another case is the
+        same folder, so HOME or PROTEUS/output in upper case is refused and its files stay."""
+        outside = tmp_path_factory.mktemp('outside')
+        home = outside / 'home'
+        home.mkdir()
+        if not os.path.exists(str(home).upper()):
+            pytest.skip(f'case-sensitive file system: {str(home).upper()} is another folder')
+        monkeypatch.setenv('HOME', str(home))
+        folder = {'home': home, 'proteus-output': fake_proteus_dir / 'output'}[target]
+        folder.mkdir(exist_ok=True)
+        (folder / 'keep').write_text('kept\n')
+        with pytest.raises(Exception) as exc:  # another type fails the assert below
+            Grid('g', str(base_config_path), symlink_dir=str(folder).upper())
+        assert exc.type is ValueError and 'symlink folder' in str(exc.value), exc
+        assert (folder / 'keep').read_text() == 'kept\n'
+
+    @pytest.mark.parametrize('target', ['home-scratch', 'home-scratch-upper', 'output-sibling'])
+    def test_a_symlink_folder_beside_the_protected_ones_is_accepted(
+        self, fake_proteus_dir, base_config_path, tmp_path_factory, monkeypatch, target
+    ):
+        """A scratch folder in HOME, in any case, and a sibling of the storage output/ links
+        to (/scratch/$USER/mygrid beside /scratch/$USER/proteus_output) stay usable."""
+        outside = tmp_path_factory.mktemp('outside')
+        home = outside / 'home'
+        home.mkdir()
+        monkeypatch.setenv('HOME', str(home))
+        storage = outside / 'scratch' / 'proteus_output'
+        storage.mkdir(parents=True)
+        (fake_proteus_dir / 'output').symlink_to(storage)
+        folder = {
+            'home-scratch': str(home / 'scratch_grid'),
+            'home-scratch-upper': str(home / 'SCRATCH_GRID'),
+            'output-sibling': str(storage.parent / 'mygrid'),
+        }[target]
+        g = Grid('g', str(base_config_path), symlink_dir=folder, prepare_output=False)
+        g.release_log()
+        assert g.symlink_dir == folder
+
+    @pytest.mark.parametrize('state', ['live', 'dangling'])
+    def test_an_old_output_link_is_unlinked_and_its_target_kept(
+        self, fake_proteus_dir, base_config_path, tmp_path_factory, monkeypatch, state
+    ):
+        """An old output folder that is a link (left by a grid with a symlink folder) is
+        unlinked, not followed: the folder it points to keeps its files."""
+        monkeypatch.setattr(gm, 'setup_logger', lambda **_k: None)
+        target = tmp_path_factory.mktemp('old_storage')
+        (target / 'keep').write_text('kept\n')
+        (fake_proteus_dir / 'output').mkdir()
+        link = fake_proteus_dir / 'output' / 'g'
+        link.symlink_to(target if state == 'live' else target / 'gone')
+        try:
+            g = Grid('g', str(base_config_path))
+        except Exception as exc:  # noqa: BLE001 -- a raise here is a test failure
+            pytest.fail(f'old output link not replaced: {exc!r}')
+        assert not os.path.islink(g.outdir.rstrip('/')) and os.path.isdir(g.outdir)
+        assert sorted(os.listdir(target)) == ['keep']
+
+    def test_a_grid_name_through_a_link_in_output_is_refused(
+        self, fake_proteus_dir, base_config_path, tmp_path_factory
+    ):
+        """A grid name whose parent is a link out of output/ would remove a folder outside
+        it, so it is refused and that folder keeps its files."""
+        elsewhere = tmp_path_factory.mktemp('elsewhere')
+        keep = elsewhere / 'sub' / 'keep'
+        keep.parent.mkdir()
+        keep.write_text('kept\n')
+        (fake_proteus_dir / 'output').mkdir()
+        (fake_proteus_dir / 'output' / 'lnk').symlink_to(elsewhere)
+        with pytest.raises(Exception) as exc:  # another type fails the assert below
+            Grid('lnk/sub', str(base_config_path))
+        assert exc.type is ValueError and 'must name a folder inside' in str(exc.value), exc
+        assert keep.read_text() == 'kept\n'
+
+    def test_the_symlink_folder_is_checked_again_before_removal(
+        self, fake_proteus_dir, base_config_path, tmp_path_factory, monkeypatch
+    ):
+        """prepare_output checks the symlink folder again, so a folder that became HOME's
+        parent after the grid was set up is refused there and keeps its files."""
+        outside = tmp_path_factory.mktemp('outside')
+        folder = outside / 'store'
+        folder.mkdir()
+        (folder / 'keep').write_text('kept\n')
+        monkeypatch.setenv('HOME', str(outside / 'home'))
+        g = Grid('g', str(base_config_path), symlink_dir=str(folder), prepare_output=False)
+        (folder / 'home').mkdir()
+        monkeypatch.setenv('HOME', str(folder / 'home'))
+        try:
+            with pytest.raises(Exception) as exc:  # another type fails the assert below
+                g.prepare_output()
+        finally:
+            g.release_log()
+        assert exc.type is ValueError and 'symlink folder' in str(exc.value), exc
+        assert (folder / 'keep').read_text() == 'kept\n'
+
+    @pytest.mark.parametrize('held', ['grid-file', 'base-config'])
+    def test_a_symlink_folder_holding_the_grid_inputs_is_refused(
+        self, fake_proteus_dir, tmp_path_factory, monkeypatch, held
+    ):
+        """A symlink folder that holds the grid file or the base config is refused, since
+        emptying it would remove the inputs of the grid itself."""
+        from helpers import PROTEUS_ROOT
+
+        outside = tmp_path_factory.mktemp('outside')
+        monkeypatch.setenv('HOME', str(tmp_path_factory.mktemp('home')))
+        inputs = outside / 'inputs'
+        inputs.mkdir()
+        base = inputs / 'base.toml'
+        base.write_text((PROTEUS_ROOT / 'tests' / 'grid' / 'base.toml').read_text())
+        grid_file = inputs / 'g.toml'
+        grid_file.write_text('')
+        folder = inputs if held == 'grid-file' else outside
+        if held == 'base-config':
+            grid_file = outside.parent / f'{outside.name}-g.toml'
+            grid_file.write_text('')
+        with pytest.raises(Exception) as exc:  # another type fails the assert below
+            Grid('g', str(base), symlink_dir=str(folder), grid_config=str(grid_file))
+        assert exc.type is ValueError and 'symlink folder' in str(exc.value), exc
+        assert base.is_file() and grid_file.is_file()
+
+    @pytest.mark.parametrize(
+        ('start', 'step'), [(float('nan'), 0.1), (0.5, float('nan')), (0.5, 0.0)]
+    )
+    def test_an_arange_axis_without_points_names_the_key(
+        self, fake_proteus_dir, monkeypatch, start, step
+    ):
+        """An arange axis with a NaN or a zero step stops the grid with an error that names
+        the dotted key, before the old output is removed."""
+        dims = {
+            'planet.mass_tot': {'method': 'arange', 'start': start, 'stop': 1.0, 'step': step}
+        }
+        grid_path = _valid_grid(fake_proteus_dir, monkeypatch, **dims)
+        keep = fake_proteus_dir / 'output' / 'unit_grid' / 'keep'
+        keep.parent.mkdir(parents=True)
+        keep.write_text('kept\n')
+        with pytest.raises(Exception) as exc:  # another type fails the assert below
+            grid_from_config(str(grid_path), test_run=True, check_interval=0.0)
+        assert exc.type is ValueError and 'planet.mass_tot (arange)' in str(exc.value), exc
         assert keep.read_text() == 'kept\n'
 
     def test_the_cases_are_checked_in_a_folder_under_output(
