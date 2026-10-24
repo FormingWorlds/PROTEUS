@@ -289,14 +289,16 @@ class TestGridInit:
         assert os.path.isdir(git_dir)
         assert os.path.isfile(sentinel)
 
+    @pytest.mark.parametrize('prepare', [True, False])
     @pytest.mark.parametrize('name', ['', '.', '..', '../elsewhere'])
     def test_a_name_outside_a_missing_output_folder_is_refused(
-        self, fake_proteus_dir, base_config_path, name
+        self, fake_proteus_dir, base_config_path, name, prepare
     ):
-        """With no output/ yet, the name checks refuse alone (the link check needs output/)."""
+        """With no output/ yet, the name checks refuse alone (the link check needs output/),
+        in __init__ also when the output is prepared later."""
         assert not (fake_proteus_dir / 'output').exists()
         with pytest.raises(ValueError, match='must name a folder inside'):
-            Grid(name=name, base_config_path=str(base_config_path))
+            Grid(name=name, base_config_path=str(base_config_path), prepare_output=prepare)
 
 
 # ---------------------------------------------------------------------------
