@@ -48,7 +48,7 @@ dependencies = [
     "fwl-mors>=26.10.6",
     "fwl-calliope>=26.10.05",
     "fwl-zephyrus>=26.10.10",
-    "fwl-aragog>=26.10.10",
+    "fwl-aragog>=26.10.22",
 
     # 26.07.17 reads the liquid EOS table for fully molten entropy
     # lookups, which the super-liquidus interior initial condition
@@ -129,7 +129,7 @@ develop = [
     "tomlkit>=0.11.0",
     "pillow",
     "pip-tools",
-    "proteus-mpl>=1.3.0",  # style of the tutorial figures (tools/make_docs_figures.py)
+    "proteus-mpl>=1.4.0",  # tutorial figure style (tools/make_docs_figures.py) and the validation_plot fixture
     "pytest >= 8.1",
     "pytest-cov",
     "pytest-dependency",
@@ -144,7 +144,7 @@ docs = [
     "markdown-include",
     "mkdocs",
     "mkdocstrings[python]",
-    "proteus-mpl>=1.3.0",  # style of the tutorial figures (tools/make_docs_figures.py)
+    "proteus-mpl>=1.4.0",  # style of the tutorial figures (tools/make_docs_figures.py)
     "pymdown-extensions"
 ]
 

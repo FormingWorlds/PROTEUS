@@ -129,8 +129,9 @@ Monitor progress with `tail -f output/chili_earth/proteus_00.log`
     Earth and Venus, TRAPPIST-1 b/e/&alpha;, and the H/C inventory grid
     specs). A nominal case equals its tutorial config in every field
     except the output path, the redox state, which the generator sets to
-    the protocol value IW+4, and the stop rule above, which the generator
-    sets for every case; unit tests keep the two in lockstep.
+    the protocol value IW+4, the stop rule above, which the generator
+    sets for every case, and the separation buoyancy described below;
+    unit tests keep the two in lockstep.
     TRAPPIST-1 &alpha; is the extreme case of the protocol, a fictitious
     lava world at 6.75 $\times$ 10$^{-4}$ AU, inside the Roche limit of
     the star [^cite-lichtenberg2026]. PROTEUS runs this case and warns
@@ -416,7 +417,11 @@ intercomparison ends at 39 Myr with a melt fraction of 0.062 by volume
 For the melt-solid separation in the interior module, the configuration
 uses a grain size of 1 mm (`interior_energetics.grain_size = 1e-3`) and
 the viscosity of the melt-solid mixture
-(`interior_energetics.aragog.separation_viscosity = "mixture"`). In this
+(`interior_energetics.aragog.separation_viscosity = "mixture"`), with the
+buoyancy taken against the solid
+(`interior_energetics.aragog.separation_buoyancy = "solid"`), the form of
+the submitted runs; the PROTEUS default takes it against the mixture on
+the Blake-Kozeny-Carman and Rumpf-Gupte regimes. In this
 run the mantle crystallises as a mush with melt at all depths: at its last
 row every node of the mantle still holds melt, between 1% and 31%.
 

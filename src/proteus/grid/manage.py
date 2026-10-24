@@ -15,6 +15,7 @@ import time
 from copy import deepcopy
 from datetime import datetime
 from getpass import getuser
+from numbers import Real
 
 import numpy as np
 import toml
@@ -208,6 +209,10 @@ class Grid:
 
     # Set a dimension directly
     def set_dimension_direct(self, name: str, values: list, sort: bool = True):
+        why = direct_values_error(values)
+        if why:
+            raise ValueError(f"direct dimension '{name}' {why}")
+        values = list(values)  # a tuple or a 1-D array
         the_list = list(dict.fromkeys(values))  # written order, duplicates removed
         if (not isinstance(values[0], str)) and sort:  # sort if numeric
             the_list = sorted(the_list)
@@ -641,6 +646,34 @@ GRID_SETTINGS = frozenset(
     }
 )
 
+
+def direct_values_error(values) -> str | None:
+    """Return why a direct grid axis cannot be built from ``values``, or None if it can.
+
+    The axis needs a non-empty list, tuple or 1-D array of numbers and booleans, or of
+    strings: duplicates are removed and numbers sorted, which has no defined result for a
+    NaN (it equals nothing, itself included) or for strings beside other values.
+    """
+    if not (
+        isinstance(values, (list, tuple))
+        or (isinstance(values, np.ndarray) and values.ndim == 1)
+    ):
+        return f'is not a list of values: {values!r}'
+    values = list(values)
+    if not values:
+        return 'has no values'
+    for v in values:
+        if not isinstance(v, (Real, np.bool_, str)):
+            return f'holds {v!r}, which is not a real number, boolean or string'
+    if any(v != v for v in values):
+        return 'holds NaN, which cannot be deduplicated or ordered'
+    first = isinstance(values[0], str)
+    other = next((v for v in values if isinstance(v, str) != first), None)
+    if other is not None:
+        return f'mixes strings with other values ({values[0]!r} and {other!r})'
+    return None
+
+
 # Keys each dimension method reads from its table, in the order of its Grid setter.
 DIMENSION_METHODS = {
     'direct': ('values',),
@@ -717,6 +750,15 @@ def grid_dimension_keys(config: dict, config_fpath: str) -> list[str]:
     return dims
 
 
+def _grid_bool(value, key: str, fpath: str) -> bool:
+    """Return a grid setting that must be a TOML true or false; refuse any other value."""
+    if not isinstance(value, bool):
+        raise ValueError(
+            f'grid file {fpath}: grid setting {key} must be true or false, got {value!r}'
+        )
+    return value
+
+
 def grid_from_config(config_fpath: str, test_run: bool = False, check_interval: float = 15.0):
     """Run GridPROTEUS using the parameters in a config file (xxx.grid.toml)"""
 
@@ -724,6 +766,10 @@ def grid_from_config(config_fpath: str, test_run: bool = False, check_interval: 
     with open(config_fpath, 'r') as file:
         config = toml.load(file)
     dimension_keys = grid_dimension_keys(config, config_fpath)
+    for key in dimension_keys:
+        why = config[key]['method'] == 'direct' and direct_values_error(config[key]['values'])
+        if why:
+            raise ValueError(f'grid file {config_fpath}: the direct axis "{key}" {why}')
 
     # Output folder name, created inside `PROTEUS/output/`
     folder = str(config['output'])
@@ -747,7 +793,7 @@ def grid_from_config(config_fpath: str, test_run: bool = False, check_interval: 
             raise RuntimeError('Path for symbolic link must be absolute.\n\tGot: ' + symlink)
 
     # Use SLURM?
-    use_slurm = bool(config['use_slurm'])
+    use_slurm = _grid_bool(config['use_slurm'], 'use_slurm', config_fpath)
 
     # Execution limits
     max_jobs = int(config['max_jobs'])  # maximum number of concurrent tasks (e.g. 300)
@@ -756,7 +802,7 @@ def grid_from_config(config_fpath: str, test_run: bool = False, check_interval: 
 
     # Optional bounded JAX persistent compilation cache (Slurm runs only).
     # Absent or false leaves the generated script cache-free.
-    jax_cache = bool(config.get('jax_cache', False))
+    jax_cache = _grid_bool(config.get('jax_cache', False), 'jax_cache', config_fpath)
 
     # Base config file
     cfg_base = os.path.join(PROTEUS_DIR, str(config['ref_config']))

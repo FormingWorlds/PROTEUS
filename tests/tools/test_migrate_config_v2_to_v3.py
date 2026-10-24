@@ -177,6 +177,7 @@ _REVIEWED_NEUTRAL = frozenset(
         'interior_energetics.adams_williamson_beta',
         'interior_energetics.adams_williamson_rhos',
         'interior_energetics.adiabatic_bulk_modulus',
+        'interior_energetics.aragog.allow_resume_law_change',
         'interior_energetics.aragog.atol_temperature_equivalent',
         'interior_energetics.aragog.backend',
         'interior_energetics.aragog.core_bc',
@@ -209,6 +210,7 @@ _REVIEWED_NEUTRAL = frozenset(
         'interior_energetics.aragog.phase_smoothing',
         'interior_energetics.aragog.phi_step_cap',
         'interior_energetics.aragog.scalar_gravity_override',
+        'interior_energetics.aragog.separation_buoyancy',
         'interior_energetics.aragog.separation_viscosity',
         'interior_energetics.aragog.solver_method',
         'interior_energetics.aragog.temperature_step_cap',
@@ -478,6 +480,19 @@ def _unhandled_v2_fields(paths):
             continue
         unhandled.append(path)
     return unhandled
+
+
+def test_the_migrated_config_check_refuses_a_string_for_a_bool_field():
+    """The schema check of a migrated config refuses ``"false"`` for a bool field,
+    naming it, instead of reading it as true; minimal.toml as written passes."""
+    from proteus.config import _error_lines, read_config
+
+    nested = read_config(Path(__file__).resolve().parents[2] / 'input' / 'minimal.toml')
+    mig._validate(nested)
+    nested.setdefault('params', {}).setdefault('out', {})['remove_sf'] = 'false'
+    with pytest.raises(Exception) as err:
+        mig._validate(nested)
+    assert "params.out.remove_sf: must be true or false, got 'false'" in _error_lines(err.value)
 
 
 def test_map_completeness():

@@ -342,6 +342,9 @@ def run_inference(config):
     spectral_cache = config.get('spectral_cache', True)
     if not isinstance(spectral_cache, bool):
         raise ValueError(f'spectral_cache must be true or false, got {spectral_cache!r}')
+    abort_on_failure = config.get('abort_on_failure', False)
+    if not isinstance(abort_on_failure, bool):
+        raise ValueError(f'abort_on_failure must be true or false, got {abort_on_failure!r}')
 
     validate_reference_config(config['ref_config'], config['parameters'], spectral_cache)
 
@@ -391,7 +394,7 @@ def run_inference(config):
     # Whether a failed simulation stops the study or is scored as a poor
     # sample. Defaults to scoring, because a sweep over a wide parameter box
     # is expected to reach combinations the simulator cannot integrate.
-    os.environ[ABORT_ON_FAILURE_ENV] = '1' if config.get('abort_on_failure', False) else '0'
+    os.environ[ABORT_ON_FAILURE_ENV] = '1' if abort_on_failure else '0'
 
     os.environ[SPECTRAL_CACHE_ENV] = '1' if spectral_cache else '0'
     if spectral_cache:
