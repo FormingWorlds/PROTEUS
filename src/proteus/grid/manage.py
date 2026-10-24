@@ -51,17 +51,16 @@ _FWL = logging.getLogger('fwl')
 
 
 def _check_symlink_dir(folder: str):
-    """Refuse a symlink folder that is PROTEUS/output, lies inside or above it, or is
-    PROTEUS_DIR, HOME or above either; links and relative paths are resolved first."""
+    """Refuse a symlink folder inside the PROTEUS folder (output/ included), or that is
+    HOME or above HOME or PROTEUS_DIR; links and relative paths are resolved first."""
     real = os.path.realpath(folder)
-    output = os.path.realpath(os.path.join(PROTEUS_DIR, 'output'))
-    guarded = (output, os.path.realpath(PROTEUS_DIR), os.path.realpath(os.path.expanduser('~')))
-    if any(os.path.commonpath([real, g]) == real for g in guarded) or (
-        os.path.commonpath([real, output]) == output
+    proteus, home = os.path.realpath(PROTEUS_DIR), os.path.realpath(os.path.expanduser('~'))
+    if os.path.commonpath([real, proteus]) == proteus or any(
+        os.path.commonpath([real, g]) == real for g in (proteus, home)
     ):
         raise ValueError(
-            f'symlink folder {folder} (resolved {real}) would remove {output}, '
-            'PROTEUS_DIR or HOME data: choose a folder outside them'
+            f'symlink folder {folder} (resolved {real}) lies in {proteus}, or is HOME or '
+            'above it: choose a folder outside them'
         )
 
 
