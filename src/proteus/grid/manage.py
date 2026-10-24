@@ -75,16 +75,30 @@ def _within(path: str, folder: str) -> bool:
         p = os.path.dirname(p)
 
 
+def _holds(folder: str, paths, resolved: bool = True) -> bool:
+    """Whether removing ``folder`` takes one of ``paths``: by name, also through a link
+    inside it, or with ``resolved`` by the file the path resolves to."""
+    f = os.path.abspath(folder)
+    return any(
+        os.path.commonpath([os.path.abspath(p), f]) == f or (resolved and _within(p, folder))
+        for p in paths
+    )
+
+
 def _check_symlink_dir(folder: str, inputs: tuple = ()):
     """Refuse a symlink folder that is a link, that is or lies in PROTEUS_DIR, the output
     folder (where output/ links to included) or the run output root (PROTEUS_OUTPUT_PATH),
     or that is or holds HOME, one of those or one of ``inputs`` (the grid file and base
-    config)."""
+    config, also through a link)."""
     if os.path.islink(folder):
         raise ValueError(f'symlink folder {folder} is a link: name the folder it points to')
+    if os.path.exists(folder) and not os.path.isdir(folder):
+        raise ValueError(f'symlink folder {folder} is not a folder')
     protected = (PROTEUS_DIR, _output_root(), get_output_root(PROTEUS_DIR))
-    if any(_within(folder, p) for p in protected) or any(
-        _within(p, folder) for p in (*protected, os.path.expanduser('~'), *inputs)
+    if (
+        any(_within(folder, p) for p in protected)
+        or any(_within(p, folder) for p in (*protected, os.path.expanduser('~')))
+        or _holds(folder, inputs)
     ):
         raise ValueError(
             f'symlink folder {folder} (resolved {os.path.realpath(folder)}) lies in the '
@@ -141,8 +155,9 @@ class Grid:
         ------
         ValueError
             If ``name`` resolves to PROTEUS/output itself or outside it (also through a
-            link in output/), or if
-            ``symlink_dir`` would remove other data (see `_check_symlink_dir`).
+            link in output/) or names a folder that holds the grid file or the base
+            config, if ``symlink_dir`` is not an absolute path, or if ``symlink_dir``
+            would remove other data (see `_check_symlink_dir`).
         RuntimeError
             If another grid holds the log.
         Exception
@@ -160,6 +175,8 @@ class Grid:
             raise Exception('Symlinked directory is set to a blank path')
         self._inputs = tuple(p for p in (self.conf, grid_config) if p)
         if self.symlink_dir not in ('_UNSET', None):
+            if not os.path.isabs(self.symlink_dir):
+                raise ValueError(f'symlink folder {symlink_dir} must be an absolute path')
             self.symlink_dir = os.path.abspath(self.symlink_dir)  # the folder that is emptied
             _check_symlink_dir(self.symlink_dir, self._inputs)
 
@@ -195,7 +212,8 @@ class Grid:
 
     def _check_outdir(self):
         """Refuse a grid output that is PROTEUS/output itself or lies outside it, also
-        through a link in output/."""
+        through a link in output/, or that holds the grid file or the base config (a
+        linked old output only by name, since it is only unlinked)."""
         root = os.path.abspath(_output_root())
         parent = os.path.dirname(self.outdir.rstrip('/'))
         if (
@@ -204,6 +222,12 @@ class Grid:
             or (os.path.exists(root) and not _within(parent, root))  # a link in the name
         ):
             raise ValueError(f"grid output '{self.name}' must name a folder inside {root}")
+        out = self.outdir.rstrip('/')
+        if _holds(out, self._inputs, resolved=not os.path.islink(out)):
+            raise ValueError(
+                f"grid output '{self.name}' holds the grid file or the base config: "
+                'copy it out of the output folder first'
+            )
 
     def _check_paths(self):
         """Check the grid output and the symlink folder against the folders they may not

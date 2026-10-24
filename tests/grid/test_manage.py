@@ -2188,9 +2188,7 @@ class TestGridFromConfig:
         out = fake_proteus_dir / 'output'
         out.mkdir()
         (out / 'g').symlink_to(target)
-        grid_file = {'through_the_link': out / 'g', 'by_its_target': target}[
-            named
-        ] / 'grid.toml'
+        grid_file = (out / 'g' if named == 'through_the_link' else target) / 'grid.toml'
         if named == 'through_the_link':
             with pytest.raises(Exception) as exc:  # another type fails the assert below
                 Grid('g', str(base_config_path), grid_config=str(grid_file))

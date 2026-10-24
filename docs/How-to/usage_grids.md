@@ -21,7 +21,7 @@ The top-level settings are:
 |---|---|
 | `ref_config` | Base ("reference") config file, relative to the PROTEUS root. Every case starts from this file and overrides only the swept parameters. |
 | `output` | Output folder name created inside `output/`. Use `"auto"` for a timestamped `grid_YYYYMMDD_HHMMSS_xxxx` name, or any fixed string. |
-| `symlink` | Absolute path used to redirect the output to alternative storage (for example a scratch disk); set to `""` to disable. The grid empties this folder, so it may not lie inside the PROTEUS folder or inside `output/`, also where `output/` links to (for example `/scratch/$USER/proteus_output`); it may not lie inside the run output root that `PROTEUS_OUTPUT_PATH` names; it may not be your home folder, the PROTEUS folder, `output/` (or its link target) or the run output root, or a folder above one of them; it may not hold the grid file or the base config, and it may not itself be a link. A sibling such as `/scratch/$USER/mygrid` is fine. On a file system that ignores letter case (macOS), a path in another case is the same folder. |
+| `symlink` | Absolute path used to redirect the output to alternative storage (for example a scratch disk); set to `""` to disable. The grid empties this folder, so it may not lie inside the PROTEUS folder or inside `output/`, also where `output/` links to (for example `/scratch/$USER/proteus_output`); it may not lie inside the run output root that `PROTEUS_OUTPUT_PATH` names; it may not be your home folder, the PROTEUS folder, `output/` (or its link target) or the run output root, or a folder above one of them; it may not hold the grid file or the base config, also through a link inside it, and it may not itself be a link or a file. A sibling such as `/scratch/$USER/mygrid` is fine. On a file system that ignores letter case (macOS), a path in another case is the same folder. |
 | `use_slurm` | Whether to dispatch through Slurm (see below). |
 | `max_jobs` | Maximum number of cases running concurrently. |
 | `max_days`, `max_mem` | Per-job walltime (days) and memory (GB) limits, used when dispatching through Slurm. |
@@ -128,7 +128,7 @@ output/<grid name>/
 └── ...
 ```
 
-Each `case_NNNNNN/` folder is a complete PROTEUS run directory, numbered in the same order as the grid points listed in `manager.log`. Because the reference config and grid definition are copied into the output folder, an ensemble can be regenerated or extended from its output directory alone. The per-case output files are described on the [Running and output](usage_running.md#output-and-results) page.
+Each `case_NNNNNN/` folder is a complete PROTEUS run directory, numbered in the same order as the grid points listed in `manager.log`. Because the reference config and grid definition are copied into the output folder, an ensemble can be regenerated or extended from its output directory alone. To run a grid again from these copies, copy them out of the output folder first: a grid whose output folder or symlink folder holds its grid file or base config, also through a link, stops before anything is removed. The per-case output files are described on the [Running and output](usage_running.md#output-and-results) page.
 
 ## Viewing grid status
 
