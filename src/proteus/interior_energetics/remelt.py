@@ -10,6 +10,10 @@ f = 0 leaves the state unchanged, and no cell cools.
 ``remelt_weights`` holds the geometry. A melt-pool model replaces it with a
 function of the same output contract: a weight in [0, 1] per cell, the
 closure sum(w m) = f M, and w = 1 in every cell at f = 1.
+
+The rule has no memory of earlier melt: each impact fills its budget f M from
+the surface down, also where the shells already hold the initial condition, so
+two impacts of f = 0.3 in one step melt 0.3 of the mantle, not more.
 """
 
 from __future__ import annotations

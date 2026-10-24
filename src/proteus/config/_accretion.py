@@ -471,7 +471,9 @@ class Accretion:
         carries it as an f_melt column). A partial re-melt raises the outermost
         shells that hold f_melt of the mantle mass to the initial condition and
         keeps the deeper mantle at its end-of-step state; f_melt = 1 is the full
-        re-melt. "computed" needs the "morrigan" or "timeline" module.
+        re-melt. Each impact fills its share from the surface down, also where the
+        shells already hold the initial condition. "computed" needs the
+        "morrigan" or "timeline" module.
     """
 
     module: str | None = field(

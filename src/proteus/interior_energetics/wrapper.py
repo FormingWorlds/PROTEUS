@@ -1989,16 +1989,17 @@ def evaluate_molten_state(solver, hf_row: dict):
 def _partial_remelt_profile(solver, S_end: np.ndarray, S_molten: np.ndarray, f: float):
     """Re-melted entropy profile of a partial re-melt on the solver's pre-impact mesh.
 
-    The cell masses are rho(P, S_end) V on the staggered mesh the heat quadrature
-    uses, and the melt fills from the largest staggered radius down
-    (``remelt.remelt_weights``).
+    The cell masses are the structural masses of the mesh, its staggered effective
+    density times the cell volume, which sum to the mantle mass PROTEUS reports
+    (M_mantle) and in which the next solve carries the profile to the grown mesh.
+    The melt fills from the largest staggered radius down (``remelt.remelt_weights``).
     """
     from proteus.interior_energetics.remelt import remelt_entropy, remelt_weights
 
-    P = np.asarray(solver._P_stag_flat, dtype=float).ravel()
     vol = np.asarray(solver._volume_flat, dtype=float).ravel()
     radii = np.asarray(solver._r_stag_flat, dtype=float).ravel()
-    mass = np.asarray(solver.entropy_eos.density(P, S_end), dtype=float).ravel() * vol
+    rho = np.asarray(solver.evaluator.mesh.staggered_effective_density, dtype=float).ravel()
+    mass = rho * vol
     w = remelt_weights(f, mass, radii)
     log.info(
         '    partial re-melt f = %.4g: %.4e of %.4e kg melted, %d cells in full, %d in part',
