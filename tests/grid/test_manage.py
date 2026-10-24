@@ -1979,6 +1979,151 @@ class TestGridFromConfig:
         assert exc.type is ValueError and 'symlink folder' in str(exc.value), exc
         assert base.is_file() and grid_file.is_file()
 
+    @pytest.mark.parametrize('under', ['home', 'proteus'])
+    def test_a_dot_dot_after_a_link_is_judged_as_the_folder_it_removes(
+        self, fake_proteus_dir, base_config_path, tmp_path_factory, monkeypatch, under
+    ):
+        """A symlink folder L/.. with L linking elsewhere names the folder that holds L, the
+        one the grid would empty, so under HOME or PROTEUS_DIR it is refused."""
+        outside = tmp_path_factory.mktemp('outside')
+        home = outside / 'home'
+        home.mkdir()
+        monkeypatch.setenv('HOME', str(home))
+        (outside / 'else' / 'deep').mkdir(parents=True)
+        parent = {'home': home, 'proteus': fake_proteus_dir}[under]
+        (parent / 'keep').write_text('kept\n')
+        (parent / 'L').symlink_to(outside / 'else' / 'deep')
+        with pytest.raises(Exception) as exc:  # another type fails the assert below
+            Grid('g', str(base_config_path), symlink_dir=str(parent / 'L' / '..'))
+        assert exc.type is ValueError and 'symlink folder' in str(exc.value), exc
+        assert (parent / 'keep').read_text() == 'kept\n'
+
+    @pytest.mark.parametrize('state', ['new', 'old'])
+    def test_symlink_mode_links_the_output_to_the_symlink_folder(
+        self, fake_proteus_dir, base_config_path, tmp_path_factory, monkeypatch, state
+    ):
+        """With a symlink folder, new or holding old files, the grid output is a link to it
+        and the grid writes its files there."""
+        outside = tmp_path_factory.mktemp('outside')
+        home = outside / 'home'
+        home.mkdir()
+        monkeypatch.setenv('HOME', str(home))
+        folder = home / 'scratch_grid'
+        if state == 'old':
+            folder.mkdir()
+            (folder / 'old').write_text('old\n')
+        try:
+            Grid('g', str(base_config_path), symlink_dir=str(folder))
+        except Exception as exc:  # noqa: BLE001 -- a raise here is a test failure
+            pytest.fail(f'symlink mode failed: {exc!r}')
+        out = fake_proteus_dir / 'output' / 'g'
+        assert out.is_symlink() and os.path.samefile(out, folder)
+        assert (folder / 'ref_config.toml').is_file() and not (folder / 'old').exists()
+
+    @pytest.mark.parametrize('target', ['root', 'in-root', 'above-root'])
+    def test_the_run_output_root_is_protected(
+        self, fake_proteus_dir, base_config_path, tmp_path_factory, monkeypatch, target
+    ):
+        """With PROTEUS_OUTPUT_PATH set, where every run writes, a symlink folder that is that
+        root, lies in it or holds it is refused and the runs there keep their files."""
+        outside = tmp_path_factory.mktemp('outside')
+        (outside / 'home').mkdir()
+        monkeypatch.setenv('HOME', str(outside / 'home'))
+        root = outside / 'scratch' / 'proteus_output'
+        keep = root / 'run1' / 'keep'
+        keep.parent.mkdir(parents=True)
+        keep.write_text('kept\n')
+        monkeypatch.setenv('PROTEUS_OUTPUT_PATH', str(root))
+        folder = {'root': root, 'in-root': root / 'run1', 'above-root': root.parent}[target]
+        with pytest.raises(Exception) as exc:  # another type fails the assert below
+            Grid('g', str(base_config_path), symlink_dir=str(folder))
+        assert exc.type is ValueError and 'symlink folder' in str(exc.value), exc
+        assert keep.read_text() == 'kept\n'
+
+    def test_a_sibling_of_the_run_output_root_is_accepted(
+        self, fake_proteus_dir, base_config_path, tmp_path_factory, monkeypatch
+    ):
+        """A folder beside the PROTEUS_OUTPUT_PATH root stays usable as a symlink folder."""
+        outside = tmp_path_factory.mktemp('outside')
+        (outside / 'home').mkdir()
+        monkeypatch.setenv('HOME', str(outside / 'home'))
+        root = outside / 'scratch' / 'proteus_output'
+        root.mkdir(parents=True)
+        monkeypatch.setenv('PROTEUS_OUTPUT_PATH', str(root))
+        folder = str(root.parent / 'mygrid')
+        g = Grid('g', str(base_config_path), symlink_dir=folder, prepare_output=False)
+        g.release_log()
+        assert g.symlink_dir == folder
+
+    def test_the_grid_name_is_checked_again_before_removal(
+        self, fake_proteus_dir, base_config_path, tmp_path_factory
+    ):
+        """prepare_output checks the grid name again, so a link made in output/ after the
+        grid was set up does not take the removal out of output/."""
+        victim = tmp_path_factory.mktemp('victim')
+        keep = victim / 'b' / 'keep'
+        keep.parent.mkdir()
+        keep.write_text('kept\n')
+        (fake_proteus_dir / 'output').mkdir()
+        g = Grid('a/b', str(base_config_path), prepare_output=False)
+        (fake_proteus_dir / 'output' / 'a').symlink_to(victim)
+        try:
+            with pytest.raises(Exception) as exc:  # another type fails the assert below
+                g.prepare_output()
+        finally:
+            g.release_log()
+        assert exc.type is ValueError and 'must name a folder inside' in str(exc.value), exc
+        assert keep.read_text() == 'kept\n'
+
+    def test_refuses_to_clean_outdir_holding_a_git_file(
+        self, fake_proteus_dir, base_config_path
+    ):
+        """A .git file (a worktree or a submodule) marks a repository too, so the folder stays."""
+        outdir = fake_proteus_dir / 'output' / 'has_git'
+        outdir.mkdir(parents=True)
+        (outdir / '.git').write_text('gitdir: /elsewhere\n')
+        with pytest.raises(Exception, match='Git repository'):
+            Grid(name='has_git', base_config_path=str(base_config_path))
+        assert (outdir / '.git').is_file()
+
+    def test_the_symlink_folder_is_checked_after_the_wait(
+        self, fake_proteus_dir, base_config_path, tmp_path_factory, monkeypatch
+    ):
+        """The guard runs after the wait before a removal, so a folder that comes to hold
+        HOME during the wait is refused and keeps its files."""
+        outside = tmp_path_factory.mktemp('outside')
+        folder = outside / 'store'
+        folder.mkdir()
+        (folder / 'keep').write_text('kept\n')
+        monkeypatch.setenv('HOME', str(outside / 'home'))
+
+        def _home_moves_in(*_args, **_kwargs):
+            (folder / 'home').mkdir(exist_ok=True)
+            monkeypatch.setenv('HOME', str(folder / 'home'))
+
+        monkeypatch.setattr(gm.time, 'sleep', _home_moves_in)
+        with pytest.raises(Exception) as exc:  # another type fails the assert below
+            Grid('g', str(base_config_path), symlink_dir=str(folder))
+        assert exc.type is ValueError and 'symlink folder' in str(exc.value), exc
+        assert (folder / 'keep').read_text() == 'kept\n'
+
+    def test_a_symlink_folder_that_is_a_link_is_refused(
+        self, fake_proteus_dir, base_config_path, tmp_path_factory, monkeypatch
+    ):
+        """A symlink folder that is itself a link is refused with a clear message, and the
+        folder it points to keeps its files."""
+        outside = tmp_path_factory.mktemp('outside')
+        (outside / 'home').mkdir()
+        monkeypatch.setenv('HOME', str(outside / 'home'))
+        real = outside / 'real'
+        real.mkdir()
+        (real / 'keep').write_text('kept\n')
+        (outside / 'lnk').symlink_to(real)
+        with pytest.raises(Exception) as exc:  # another type fails the assert below
+            Grid('g', str(base_config_path), symlink_dir=str(outside / 'lnk'))
+        assert exc.type is ValueError and 'is a link' in str(exc.value), exc
+        assert (real / 'keep').read_text() == 'kept\n'
+
     @pytest.mark.parametrize(
         ('start', 'step'), [(float('nan'), 0.1), (0.5, float('nan')), (0.5, 0.0)]
     )
