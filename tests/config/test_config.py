@@ -3692,6 +3692,20 @@ def test_a_write_cut_anywhere_leaves_the_previous_file_whole(tmp_path_factory):
     check()
 
 
+def test_a_write_that_cannot_clean_up_raises_its_own_error(tmp_path):
+    """When the temporary file cannot be written or removed, here a directory of that name,
+    the write raises the original error, not the one of the cleanup, and the record stays."""
+    cfg = read_config_object(PROTEUS_ROOT / 'input' / 'minimal.toml')
+    out = tmp_path / 'init_coupler.toml'
+    out.write_bytes(b'previous = 1\n')
+    (tmp_path / 'init_coupler.toml.tmp').mkdir()
+    with pytest.raises(IsADirectoryError) as err:
+        cfg.write(str(out))
+    assert err.value.__context__ is None
+    assert out.read_bytes() == b'previous = 1\n'
+    assert (tmp_path / 'init_coupler.toml.tmp').is_dir()
+
+
 def test_an_interrupted_write_leaves_the_previous_file_whole(tmp_path):
     """A write that stops part-way, as on a full disk, leaves the file it would replace
     whole and leaves no temporary file next to it."""

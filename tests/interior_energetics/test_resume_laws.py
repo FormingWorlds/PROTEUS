@@ -244,6 +244,41 @@ def test_the_allow_switch_lets_a_changed_law_resume_and_reports_it(tmp_path, cap
     assert len(warned) == 1 and "'solid'" in warned[0] and "'mixture'" in warned[0]
 
 
+def test_two_switched_laws_give_one_warning_each(tmp_path, caplog):
+    """With allow_resume_law_change both laws can switch at one resume: both switches come
+    back and each gets its own warning naming its key."""
+    out = _stored_run(tmp_path, separation_viscosity='melt', separation_buoyancy='solid')
+    config, path = _user_config(tmp_path, allow_resume_law_change=True)
+    with caplog.at_level(logging.WARNING, logger=LOGGER):
+        switches = check_resume_separation_laws(config, path, out)
+    assert sorted(switches) == [
+        ('separation_buoyancy', 'solid', 'mixture'),
+        ('separation_viscosity', 'melt', 'mixture'),
+    ]
+    warned = [
+        r.getMessage()
+        for r in caplog.records
+        if r.name == LOGGER and r.levelno == logging.WARNING
+    ]
+    assert len(warned) == 2
+    assert sum('separation_viscosity' in w for w in warned) == 1
+    assert sum('separation_buoyancy' in w for w in warned) == 1
+
+
+def test_a_record_whose_module_is_not_a_name_names_no_module(tmp_path):
+    """A record with a non-string interior module, such as module = 1, is read as naming no
+    interior module."""
+    out = _stored_run(tmp_path, drop=('separation_buoyancy',))
+    doc = tomlkit.parse((out / 'init_coupler.toml').read_text())
+    doc['interior_energetics']['module'] = 1
+    (out / 'init_coupler.toml').write_text(tomlkit.dumps(doc))
+    config, path = _user_config(tmp_path)
+    with pytest.raises(ResumeSeparationLawError) as err:
+        check_resume_separation_laws(config, path, out)
+    assert 'names no interior module' in str(err.value)
+    assert 'interior module 1' not in str(err.value)
+
+
 def test_a_resume_that_does_not_use_aragog_is_not_checked(tmp_path):
     """A resume under another interior module leaves the aragog laws unchecked."""
     out = _stored_run(tmp_path, separation_buoyancy='solid')
