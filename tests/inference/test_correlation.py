@@ -134,6 +134,20 @@ def test_chi_squared_matches_residuals_to_names_in_any_order():
         whitener.chi_squared(['A', 'B', 'D'], u)
 
 
+def test_chi_squared_of_several_rows_matches_each_row_alone():
+    """A batch of residual rows gives one chi2 per row, each as the row alone gives it."""
+    whitener = correlation_mod.CorrelationWhitener(['A', 'B', 'C'], {'A': {'B': 0.5}})
+    u = torch.tensor([[2.0, 3.0, 1.0], [0.0, 1.0, -1.0], [1.0, 1.0, 1.0]], dtype=torch.double)
+
+    chi2 = whitener.chi_squared(['B', 'C', 'A'], u)
+
+    assert chi2.shape == (3, 1)
+    rows = [whitener.chi_squared(['B', 'C', 'A'], r[None]).item() for r in u]
+    assert chi2[:, 0].tolist() == pytest.approx(rows, rel=1e-12)
+    # A sum over all rows, as the single-row form did, would give their total for each
+    assert abs(chi2[0, 0].item() - sum(rows)) > 1.0
+
+
 @pytest.mark.parametrize(
     ('name', 'expected'),
     [

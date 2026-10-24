@@ -111,6 +111,16 @@ def collect_case_observables(
     return pd.DataFrame(rows)
 
 
+def case_parameters(directory, cases: pd.DataFrame, keys: list) -> np.ndarray:
+    """Parameter values, one row per case and one column per key, each case actually ran with."""
+    workers = Path(directory) / 'workers'
+    confs = [
+        toml.load(workers / f'w_{w}' / f'i_{i}' / 'init_coupler.toml')
+        for w, i in zip(cases['worker'], cases['iter'])
+    ]
+    return np.array([[float(recursive_get(c, k.split('.'))) for k in keys] for c in confs])
+
+
 def _best_case(ok: pd.DataFrame, best_config=None) -> pd.Series:
     """Pick the row of the case the results summary reported as the best fit."""
     if best_config is not None:
@@ -360,14 +370,7 @@ def plot_result_parameters(
         log.warning('No scored case to compare with the true parameters; skipping')
         return
 
-    # Parameter values each case actually ran with
-    workers = Path(directory) / 'workers'
-    confs = [
-        toml.load(workers / f'w_{w}' / f'i_{i}' / 'init_coupler.toml')
-        for w, i in zip(ok['worker'], ok['iter'])
-    ]
-    for k in par_keys:
-        ok[k] = [float(recursive_get(c, k.split('.'))) for c in confs]
+    ok[par_keys] = case_parameters(directory, ok, par_keys)
     best = _best_case(ok, best_config)
 
     pos = np.column_stack([_position_in_range(ok[k], k, pars[k]) for k in par_keys])

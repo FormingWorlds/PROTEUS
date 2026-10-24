@@ -457,6 +457,54 @@ def log_warp(sq_dist):
     return warped_dist
 
 
+def compared_in_log(k: str, sigma=None) -> bool:
+    """Whether eval_obj compares observable k in log10."""
+    return variable_is_logarithmic(k) or (sigma is not None and is_element_ratio(k))
+
+
+def observable_space(sim_dict, tru_dict, sigma=None):
+    """Simulated values, targets and sigmas, keyed like sim_dict, in the space eval_obj compares
+    them in: log10 for logarithmic variables and, with sigma, element ratios; linear otherwise."""
+    sim_vals = []
+    tru_vals = []
+    sig_vals = []
+    for k in sim_dict.keys():
+        # some variables scale logarithmically
+        if compared_in_log(k, sigma):
+            tru_k = max(tru_dict[k], LOG_CLIP)
+            sim_vals.append(log10(max(sim_dict[k], LOG_CLIP)))
+            tru_vals.append(log10(tru_k))
+            if sigma is not None:
+                # First-order conversion to dex, sigma / (x ln 10), only accurate while sigma << x.
+                sig_vals.append(sigma[k] / (tru_k * math.log(10.0)))
+        # others are just linear
+        else:
+            sim_vals.append(sim_dict[k])
+            tru_vals.append(tru_dict[k])
+            if sigma is not None:
+                sig_vals.append(sigma[k])
+
+    return sim_vals, tru_vals, sig_vals
+
+
+def squared_distance(diff, names, whitener=None, loss=None):
+    """Sum over observables `names` of the loss of each row of normalised differences diff
+    (m, len(names)), shape (m, 1): squared, correlated through whitener, or robust `loss`."""
+    name, param = loss if loss is not None else (None, None)
+    if name == 'student-t':
+        terms = (param + 1.0) * torch.log1p(diff**2 / param)
+        sq_dist = terms.sum(dim=1, keepdim=True)
+    elif name == 'huber':
+        terms = torch.where(diff.abs() <= param, diff**2, 2.0 * param * diff.abs() - param**2)
+        sq_dist = terms.sum(dim=1, keepdim=True)
+    elif whitener is None:
+        sq_dist = (diff**2).sum(dim=1, keepdim=True)
+    else:
+        sq_dist = whitener.chi_squared(names, diff)
+
+    return sq_dist
+
+
 def eval_obj(sim_dict, tru_dict, sigma=None, whitener=None, loss=None):
     """Evaluate objective value from simulated and target observables.
 
@@ -497,24 +545,7 @@ def eval_obj(sim_dict, tru_dict, sigma=None, whitener=None, loss=None):
     if loss is not None and (sigma is None or whitener is not None):
         raise ValueError(f'objective {loss[0]!r} needs sigma and no correlation')
 
-    sim_vals = []
-    tru_vals = []
-    sig_vals = []
-    for k in sim_dict.keys():
-        # some variables scale logarithmically
-        if variable_is_logarithmic(k) or (sigma is not None and is_element_ratio(k)):
-            tru_k = max(tru_dict[k], LOG_CLIP)
-            sim_vals.append(log10(max(sim_dict[k], LOG_CLIP)))
-            tru_vals.append(log10(tru_k))
-            if sigma is not None:
-                # First-order conversion to dex, sigma / (x ln 10), only accurate while sigma << x.
-                sig_vals.append(sigma[k] / (tru_k * math.log(10.0)))
-        # others are just linear
-        else:
-            sim_vals.append(sim_dict[k])
-            tru_vals.append(tru_dict[k])
-            if sigma is not None:
-                sig_vals.append(sigma[k])
+    sim_vals, tru_vals, sig_vals = observable_space(sim_dict, tru_dict, sigma)
 
     # Convert to tensor and reshape
     sim = torch.tensor(sim_vals, dtype=dtype).reshape(1, -1)
@@ -531,17 +562,7 @@ def eval_obj(sim_dict, tru_dict, sigma=None, whitener=None, loss=None):
         sigma_tensor = torch.tensor(sig_vals, dtype=dtype).reshape(1, -1)
         diff = (sim - true_y) / sigma_tensor
 
-    name, param = loss if loss is not None else (None, None)
-    if name == 'student-t':
-        terms = (param + 1.0) * torch.log1p(diff**2 / param)
-        sq_dist = terms.sum(dim=1, keepdim=True)
-    elif name == 'huber':
-        terms = torch.where(diff.abs() <= param, diff**2, 2.0 * param * diff.abs() - param**2)
-        sq_dist = terms.sum(dim=1, keepdim=True)
-    elif whitener is None:
-        sq_dist = (diff**2).sum(dim=1, keepdim=True)
-    else:
-        sq_dist = whitener.chi_squared(list(sim_dict.keys()), diff)
+    sq_dist = squared_distance(diff, list(sim_dict.keys()), whitener, loss)
 
     obj = log_warp(sq_dist)
 

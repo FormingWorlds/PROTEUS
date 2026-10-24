@@ -59,13 +59,14 @@ class CorrelationWhitener:
             )
 
     def chi_squared(self, names: list[str], u: torch.Tensor) -> torch.Tensor:
-        """Chi-squared, shape (1, 1), of residuals u = (sim - true) / sigma ordered as `names`."""
+        """Chi-squared, shape (m, 1), of each row of residuals u = (sim - true) / sigma, columns
+        ordered as `names`."""
         if sorted(names) != sorted(self.names):
             raise KeyError(f'residuals for {sorted(names)} do not match {sorted(self.names)}')
         pos = {k: i for i, k in enumerate(names)}
-        u = u.reshape(-1)[[pos[k] for k in self.names]].reshape(-1, 1)
-        z = torch.linalg.solve_triangular(self._chol, u, upper=False)
-        return (z**2).sum().reshape(1, 1)
+        u = u.reshape(-1, len(names))[:, [pos[k] for k in self.names]]
+        z = torch.linalg.solve_triangular(self._chol, u.T, upper=False)
+        return (z**2).sum(0).reshape(-1, 1)
 
 
 def validate_correlation(
