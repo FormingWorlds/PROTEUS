@@ -1218,11 +1218,12 @@ def GetHelpfileKeys():
 
     # Condensates from atmodeller; zero when a condensate was not solved for
     for c in condensate_list:
-        keys.append(c + '_cd_activity')  # activity; 1 = saturated [1]
+        keys.append(c + '_cd_activity')  # activity of the condensate in the solved inventory; 1 = saturated, and below 1 beside a layer held by prevent_desaturation [1]
         keys.append(c + '_cd_kg')        # condensed mass [kg]
 
-    # Share of the solid-mantle reservoir that trapping owns. The chemistry
-    # writes the rest of `_kg_solid` on every solve.
+    # Share of the solid-mantle reservoir that trapping owns. CALLIOPE and
+    # atmodeller write no solid mass of their own; atmodeller's condensates go to
+    # `_kg_condensed`.
     for s in vol_list:
         keys.append(s + '_kg_trapped')  # mass trapped in the solid mantle [kg]
     for e in vol_element_list:
@@ -1790,8 +1791,9 @@ _DIAGNOSTIC_KEYS = (
     'step_dE_core_J',
     'E_core_residual_J',
     'E_core_residual_frac',
-    # Condensate activity and mass from atmodeller, written each solve and never read back
-    *(f'{c}_cd_{q}' for c in condensate_list for q in ('activity', 'kg')),
+    # Condensate activity from atmodeller, written each solve and never read back. The
+    # condensed mass is not here: prevent_desaturation reads it back to hold the layer.
+    *(f'{c}_cd_activity' for c in condensate_list),
 )
 
 
@@ -1940,8 +1942,10 @@ def ReadHelpfileFromCSV(output_dir: str, *, required_columns: list[str] | None =
 
     missing = sorted(set(required_columns) - set(hf_all.columns))
     # A run that predates the condensed reservoir held its condensate in
-    # `_kg_solid`, so reading the new column as zero keeps its totals.
+    # `_kg_solid`, so reading the new columns as zero keeps its totals; the
+    # per-condensate mass is zero with them, so no layer is held on resume.
     condensed_keys = {e + '_kg_condensed' for e in vol_element_list}
+    condensed_keys |= {c + '_cd_kg' for c in condensate_list}
     zero_fill = RESUMABLE_ZERO_FILL_KEYS | set(GetHelpfileTrappingKeys()) | condensed_keys
     fillable = [key for key in missing if key in zero_fill]
     unfillable = sorted(set(missing) - set(fillable))

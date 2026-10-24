@@ -561,15 +561,17 @@ def calc_new_elements(
         min_thresh: float
             Minimum threshold for element mass [kg]. A reservoir below it is not
             debited; with ``floor``, an element whose reachable mass is below it
-            is emptied to the mass locked in the solid.
+            is emptied to its unreachable mass (trapped in the solid, plus the
+            condensed mass held by ``outgas.prevent_desaturation``).
         esc_mass : float | None
             Mass to remove over this step [kg]. Defaults to the unrestricted
             ``esc_rate_total * dt``; pass the value from
             :func:`limit_escape_step` to apply the per-step cap.
         floor : bool
             Empty a non-noble element whose reachable mass, its total less the
-            mass trapping locks in the solid, falls below ``min_thresh``, down to
-            that locked mass. The desiccation gate tests the same reachable mass,
+            unreachable mass (trapped in the solid, plus held condensed mass with
+            ``outgas.prevent_desaturation``), falls below ``min_thresh``, down to
+            that unreachable mass. The desiccation gate tests the same reachable mass,
             so the two agree on what depleted means. Only for a step whose
             outgassing solve repartitions the totals afterwards; on a frozen
             mantle no solve follows and the atmosphere keeps the mass. On a step
@@ -650,8 +652,9 @@ def calc_new_elements(
             tgt[e] = old_total
             continue
         new_total = old_total - lost
-        # A major volatile whose reachable mass, the total less what is locked in the
-        # solid, falls below min_thresh is depleted, as check_desiccation reads it.
+        # A major volatile whose reachable mass, the total less what is trapped in the
+        # solid or held condensed, falls below min_thresh is depleted, as
+        # check_desiccation reads it.
         locked = unreachable_mass(hf_row, e, config)
         if floor and e not in noble_gases and new_total - locked < min_thresh:
             new_total = locked

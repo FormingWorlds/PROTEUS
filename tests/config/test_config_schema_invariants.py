@@ -51,6 +51,7 @@ from proteus.config._config import (
     planet_fO2_source_compat,
     planet_mass_valid,
     planet_oxygen_mode_explicit,
+    prevent_desaturation_requires_atmodeller_condensates,
     satellite_evolve,
     sp0d_obliqua_degree_mismatch,
     spinless_orbit_keeps_spin_synchronous,
@@ -1413,6 +1414,51 @@ def test_front_trapping_requires_the_aragog_interior():
     undeclared = _make_config_instance(**{'interior_energetics.module': 'dummy'})
     assert not hasattr(undeclared.outgas, 'trap_mode')
     assert front_trapping_requires_aragog(undeclared, None, None) is None
+
+
+def _desaturation_config(module: str, include_condensates: bool, prevent: bool):
+    """Stand-in config carrying the outgassing settings the condensate rule reads."""
+    instance = _make_config_instance(
+        **{'outgas.module': module, 'outgas.prevent_desaturation': prevent}
+    )
+    instance.outgas.atmodeller = SimpleNamespace(include_condensates=include_condensates)
+    return instance
+
+
+# prevent_desaturation_requires_atmodeller_condensates: positive + negative
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('module', 'include_condensates', 'match'),
+    [
+        ('calliope', True, r'outgas.module = "atmodeller", not "calliope"'),
+        ('dummy', True, r'outgas.module = "atmodeller", not "dummy"'),
+        ('atmodeller', False, r'include_condensates = true'),
+    ],
+    ids=['calliope', 'dummy', 'atmodeller-without-condensates'],
+)
+def test_prevent_desaturation_refused_where_no_condensate_forms(
+    module, include_condensates, match
+):
+    """Only atmodeller with condensates on forms condensed mass, so holding it is
+    refused anywhere else when the config loads, naming the setting to change,
+    instead of running with a flag that does nothing."""
+    instance = _desaturation_config(module, include_condensates, prevent=True)
+    with pytest.raises(ValueError, match=match):
+        prevent_desaturation_requires_atmodeller_condensates(instance, None, None)
+
+
+@pytest.mark.unit
+def test_prevent_desaturation_accepted_with_atmodeller_condensates_or_when_off():
+    """The flag is accepted with atmodeller and condensates on, and any outgassing
+    setup is accepted while the flag is off, including a config that never declared
+    it."""
+    on = _desaturation_config('atmodeller', True, prevent=True)
+    assert prevent_desaturation_requires_atmodeller_condensates(on, None, None) is None
+    off = _desaturation_config('calliope', False, prevent=False)
+    assert prevent_desaturation_requires_atmodeller_condensates(off, None, None) is None
+    undeclared = _make_config_instance(**{'outgas.module': 'calliope'})
+    assert not hasattr(undeclared.outgas, 'prevent_desaturation')
+    assert prevent_desaturation_requires_atmodeller_condensates(undeclared, None, None) is None
 
 
 @pytest.mark.parametrize(

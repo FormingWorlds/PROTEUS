@@ -3596,7 +3596,7 @@
     {
       "name": "C_cd_activity",
       "unit": "1",
-      "description": "activity; 1 = saturated",
+      "description": "activity of the condensate in the solved inventory; 1 = saturated, and below 1 beside a layer held by prevent_desaturation",
       "group": "Giant-impact accretion ledger",
       "origin": "<condensate>_cd_activity",
       "producers": [
@@ -3635,7 +3635,7 @@
     {
       "name": "S_cd_activity",
       "unit": "1",
-      "description": "activity; 1 = saturated",
+      "description": "activity of the condensate in the solved inventory; 1 = saturated, and below 1 beside a layer held by prevent_desaturation",
       "group": "Giant-impact accretion ledger",
       "origin": "<condensate>_cd_activity",
       "producers": [
@@ -3674,7 +3674,7 @@
     {
       "name": "H2O_cd_activity",
       "unit": "1",
-      "description": "activity; 1 = saturated",
+      "description": "activity of the condensate in the solved inventory; 1 = saturated, and below 1 beside a layer held by prevent_desaturation",
       "group": "Giant-impact accretion ledger",
       "origin": "<condensate>_cd_activity",
       "producers": [
@@ -3713,7 +3713,7 @@
     {
       "name": "H2O4S_cd_activity",
       "unit": "1",
-      "description": "activity; 1 = saturated",
+      "description": "activity of the condensate in the solved inventory; 1 = saturated, and below 1 beside a layer held by prevent_desaturation",
       "group": "Giant-impact accretion ledger",
       "origin": "<condensate>_cd_activity",
       "producers": [

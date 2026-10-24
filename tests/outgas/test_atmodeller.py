@@ -812,6 +812,36 @@ def test_unavailable_condensate_values_log_as_na(caplog):
     assert hf_row['C_cd_kg'] == 0.0
 
 
+def test_condensate_list_is_every_atmodeller_condensate_of_the_outgassing_elements():
+    """include_condensates adds all of atmodeller's condensates the chemistry can form.
+
+    A condensate can only join a solve when every element it holds has a budget,
+    so the ones that can are those built from the volatile elements and noble
+    gases. The list PROTEUS writes helpfile columns for must be exactly those: a
+    condensate added to atmodeller's data would otherwise be left out without any
+    notice, and one PROTEUS lists that atmodeller lacks could never join.
+    """
+    pytest.importorskip('atmodeller')
+    from atmodeller import ChemicalSpecies, SpeciesNetwork
+
+    from proteus.utils.constants import condensate_list, vol_element_list
+
+    allowed = set(vol_element_list) | set(noble_gases)
+    available = [
+        s[: -len('_cd')] for s in SpeciesNetwork.available_species() if s.endswith('_cd')
+    ]
+    reachable = {
+        f
+        for f in available
+        if set(ChemicalSpecies.create_condensed(f).data.elements) <= allowed
+    }
+    # Discrimination: atmodeller also has condensates of rock-forming elements
+    # (e.g. FeO, SiO2), which the element filter must leave out.
+    assert len(available) > len(reachable)
+    assert reachable == set(condensate_list)
+    assert len(condensate_list) == len(set(condensate_list))
+
+
 def test_condensates_need_their_elements_and_their_data_range():
     """Only condensates whose elements have budgets and whose data cover T_magma join.
 

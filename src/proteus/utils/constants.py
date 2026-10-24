@@ -173,9 +173,10 @@ vap_element_list = ['Si', 'Mg', 'Fe', 'Na', 'Al', 'Ti', 'Ca', 'K', 'V']
 # Construct element list from all three sources (with duplicates removed)
 element_list = list(dict.fromkeys(vol_element_list + vap_element_list + noble_gases))
 
-# Condensates the atmodeller outgassing module can include, by Hill formula:
-# graphite, sulfur, water, and sulfuric acid. Each is built only from the
-# volatile elements above.
+# Condensates the atmodeller outgassing module includes, by Hill formula:
+# graphite, sulfur, water, and sulfuric acid. These are all the condensates
+# atmodeller provides that are built only from the volatile elements above;
+# tests/outgas/test_atmodeller.py checks the list against atmodeller's data.
 condensate_list = ['C', 'S', 'H2O', 'H2O4S']
 condensate_names = {'C': 'Graphite', 'S': 'Sulfur', 'H2O': 'Water', 'H2O4S': 'Sulfuric acid'}
 

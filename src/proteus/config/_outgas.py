@@ -132,7 +132,10 @@ class Atmodeller:
     solver_multistart : int
         Number of random restarts for the root-finder.
     include_condensates : bool
-        Enable condensate phases (graphite, etc.) in the equilibrium.
+        Enable condensed phases in the equilibrium: every condensate atmodeller
+        provides for the outgassing elements, which are graphite (C), sulfur (S),
+        water (H2O) and sulfuric acid (H2O4S). Each joins a solve when its elements
+        have budgets and T_magma lies inside its thermodynamic data range.
     solubility_H2O : str
         Solubility law for H2O. See atmodeller.solubility.library.
     solubility_CO2 : str
@@ -237,8 +240,11 @@ class Outgas:
         re-vapourise as conditions change. With `true`, the mass held in each
         `{e}_kg_condensed` reservoir is withheld from the chemistry, from escape and
         from the desiccation gate, and the reservoir can only grow: a condensed
-        layer can only get thicker. Applies to the condensates atmodeller solves
-        for (`outgas.atmodeller.include_condensates`).
+        layer can only get thicker. Each condensate's `{X}_cd_activity` is then the
+        saturation of the inventory left in the solve, so it can fall below 1 while
+        its layer is held. Requires `outgas.module = 'atmodeller'` with
+        `outgas.atmodeller.include_condensates = true`, the only combination that
+        forms condensates.
     solver_rtol: float
         Relative tolerance for the volatile equilibrium solver.
     solver_atol: float

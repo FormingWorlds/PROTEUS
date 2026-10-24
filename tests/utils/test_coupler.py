@@ -1045,6 +1045,32 @@ def test_orbital_energy_rate_column_is_a_diagnostic_zero_filled_on_resume():
 
 
 @pytest.mark.unit
+def test_condensate_mass_is_resumable_state_and_its_activity_a_diagnostic():
+    """A helpfile written before the condensate columns resumes with them zeroed.
+
+    ``{X}_cd_kg`` is read back by prevent_desaturation to hold a layer, so it is
+    core state rather than a diagnostic; ``{X}_cd_activity`` is written each solve
+    and never read back. A run from before both existed resumes with the mass
+    zeroed together with ``{e}_kg_condensed``, so no layer is held, and every
+    other column keeps its value.
+    """
+    from proteus.utils.constants import condensate_list, vol_element_list
+
+    assert 'C_cd_activity' in GetHelpfileDiagnosticKeys()
+    assert 'C_cd_kg' not in GetHelpfileDiagnosticKeys()
+    assert 'C_cd_kg' in GetHelpfileCoreKeys()
+    dropped = [f'{c}_cd_{q}' for c in condensate_list for q in ('activity', 'kg')]
+    dropped += [f'{e}_kg_condensed' for e in vol_element_list]
+    with tempfile.TemporaryDirectory() as tmpdir:
+        _write_drifted_helpfile(tmpdir, dropped, n_rows=2)
+        hf = ReadHelpfileFromCSV(tmpdir)
+
+        assert all((hf[k] == 0.0).all() for k in dropped)
+        # Discrimination: the carbon total the condensed columns sat beside keeps its value.
+        assert (hf['C_kg_total'] > 0.0).all()
+
+
+@pytest.mark.unit
 def test_helpfile_without_diagnostic_column_resumes_with_zero_fill(caplog):
     """A helpfile short only of a diagnostic column loads, with that column zeroed.
 
