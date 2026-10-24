@@ -29,6 +29,7 @@ from proteus.config import (
     read_config_object,
 )
 from proteus.config._interior import _TOL_UNSET, default_rtol, rtol_is_set
+from proteus.utils.coupler import get_output_root
 from proteus.utils.helper import get_proteus_dir, recursive_setattr
 from proteus.utils.logs import setup_logger
 
@@ -75,10 +76,13 @@ def _within(path: str, folder: str) -> bool:
 
 
 def _check_symlink_dir(folder: str, inputs: tuple = ()):
-    """Refuse a symlink folder that is or lies in PROTEUS_DIR or the output folder (where
-    output/ links to included), or that is or holds HOME, PROTEUS_DIR, the output folder
-    or one of ``inputs`` (the grid file and base config)."""
-    protected = (PROTEUS_DIR, _output_root())
+    """Refuse a symlink folder that is a link, that is or lies in PROTEUS_DIR, the output
+    folder (where output/ links to included) or the run output root (PROTEUS_OUTPUT_PATH),
+    or that is or holds HOME, one of those or one of ``inputs`` (the grid file and base
+    config)."""
+    if os.path.islink(folder):
+        raise ValueError(f'symlink folder {folder} is a link: name the folder it points to')
+    protected = (PROTEUS_DIR, _output_root(), get_output_root(PROTEUS_DIR))
     if any(_within(folder, p) for p in protected) or any(
         _within(p, folder) for p in (*protected, os.path.expanduser('~'), *inputs)
     ):
@@ -91,7 +95,7 @@ def _check_symlink_dir(folder: str, inputs: tuple = ()):
 
 def _refuse_git(folder: str):
     """Refuse to empty a folder that holds a Git repository."""
-    if any(f.is_dir() and f.name.lower() == '.git' for f in os.scandir(folder)):
+    if any(f.name.lower() == '.git' for f in os.scandir(folder)):
         raise Exception('Not emptying directory - it contains a Git repository!')
 
 
@@ -156,18 +160,12 @@ class Grid:
             raise Exception('Symlinked directory is set to a blank path')
         self._inputs = tuple(p for p in (self.conf, grid_config) if p)
         if self.symlink_dir not in ('_UNSET', None):
+            self.symlink_dir = os.path.abspath(self.symlink_dir)  # the folder that is emptied
             _check_symlink_dir(self.symlink_dir, self._inputs)
 
         # Paths
         self.outdir = os.path.abspath(self.outdir) + '/'
-        root = os.path.abspath(_output_root())
-        parent = os.path.dirname(self.outdir.rstrip('/'))
-        if (
-            os.path.commonpath([root, self.outdir]) != root
-            or self.outdir == root + '/'
-            or (os.path.exists(root) and not _within(parent, root))  # a link in the name
-        ):
-            raise ValueError(f"grid output '{self.name}' must name a folder inside {root}")
+        self._check_outdir()
         self.cfgdir = os.path.join(self.outdir, 'cfgs') + '/'
         self.logdir = os.path.join(self.outdir, 'logs') + '/'
 
@@ -195,21 +193,44 @@ class Grid:
             _FWL.handlers = [self._held]
             _FWL.setLevel(logging.INFO)  # the level setup_logger sets; clears the level cache
 
+    def _check_outdir(self):
+        """Refuse a grid output that is PROTEUS/output itself or lies outside it, also
+        through a link in output/."""
+        root = os.path.abspath(_output_root())
+        parent = os.path.dirname(self.outdir.rstrip('/'))
+        if (
+            os.path.commonpath([root, self.outdir]) != root
+            or self.outdir == root + '/'
+            or (os.path.exists(root) and not _within(parent, root))  # a link in the name
+        ):
+            raise ValueError(f"grid output '{self.name}' must name a folder inside {root}")
+
+    def _check_paths(self):
+        """Check the grid output and the symlink folder against the folders they may not
+        remove."""
+        self._check_outdir()
+        if self.symlink_dir not in ('_UNSET', None):
+            _check_symlink_dir(self.symlink_dir, self._inputs)
+
+    def _empty(self, folder: str):
+        """Remove ``folder`` after a wait, with the path checks run again right before."""
+        print("Removing old files at '%s'" % folder)
+        time.sleep(4.0)
+        self._check_paths()
+        _refuse_git(folder)
+        shutil.rmtree(folder)
+
     def prepare_output(self):
         """Remove the old output, create the output folders, copy the configs and start
         manager.log, then log there the lines held since the grid was set up."""
-        if self.symlink_dir not in ('_UNSET', None):
-            _check_symlink_dir(self.symlink_dir, self._inputs)
+        self._check_paths()
 
         # Remove old output location; a trailing slash would follow an old output link
         out = self.outdir.rstrip('/')
         if os.path.islink(out):
             os.unlink(out)
         if os.path.isdir(out):
-            print("Removing old files at '%s'" % self.outdir)
-            _refuse_git(out)
-            time.sleep(4.0)
-            shutil.rmtree(out)
+            self._empty(out)
 
         # Create new output location
         if self.symlink_dir in ['_UNSET', None]:
@@ -219,14 +240,11 @@ class Grid:
         else:
             # Will be using symlink
             self.using_symlink = True
-            self.symlink_dir = os.path.abspath(self.symlink_dir)
             if os.path.exists(self.symlink_dir):
-                print("Removing old files at '%s'" % self.symlink_dir)
-                _refuse_git(self.symlink_dir)
-                time.sleep(4.0)
-                shutil.rmtree(self.symlink_dir)
+                self._empty(self.symlink_dir)
             os.makedirs(self.symlink_dir)
-            os.symlink(self.symlink_dir, self.outdir)
+            os.makedirs(os.path.dirname(out), exist_ok=True)
+            os.symlink(self.symlink_dir, out)
 
         # Make subdirectories
         for dir in [self.cfgdir, self.logdir]:
