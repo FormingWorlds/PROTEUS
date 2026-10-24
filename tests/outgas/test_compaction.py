@@ -575,7 +575,11 @@ def test_a_retained_porosity_outside_the_entry_range_stops_the_step(monkeypatch)
         low, high = 10.0 * _ATOL, 10.0 * _ATOL + _RTOL * phi_top
         for value, expected in ((phi_top + 0.9 * high, phi_top), (-0.9 * low, 0.0)):
             monkeypatch.setattr(scipy.integrate, 'solve_ivp', solver_ending_at(value, phi_top))
-            assert _drain(*args)[0] == expected
+            try:
+                retained = _drain(*args)[0]
+            except RuntimeError as err:
+                pytest.fail(f'an end within the allowance raised: {err}')
+            assert retained == expected
         for value in (phi_top + 1.1 * high, -1.1 * low, float('nan')):
             monkeypatch.setattr(scipy.integrate, 'solve_ivp', solver_ending_at(value, phi_top))
             with pytest.raises(RuntimeError, match='retained porosity'):
