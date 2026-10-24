@@ -267,14 +267,17 @@ class TestGridInit:
         # New outdir exists and contains ref_config.toml (proof of fresh init):
         assert os.path.isfile(os.path.join(g.outdir, 'ref_config.toml'))
 
-    def test_refuses_to_clean_outdir_containing_git(self, fake_proteus_dir, base_config_path):
-        """Safety net: never wipe a directory containing a git repo.
+    @pytest.mark.parametrize('git_name', ['.git', '.GIT', '.Git'])
+    def test_refuses_to_clean_outdir_containing_git(
+        self, fake_proteus_dir, base_config_path, git_name
+    ):
+        """Safety net: never wipe a directory containing a git repo, in any letter case.
 
         Verifies the error fires AND that the .git directory survives,
         i.e. the safety net actually short-circuits before rmtree runs.
         """
         outdir = os.path.join(str(fake_proteus_dir), 'output', 'has_git')
-        git_dir = os.path.join(outdir, '.git')
+        git_dir = os.path.join(outdir, git_name)
         os.makedirs(git_dir)
         # Sentinel under .git: proves the partial wipe never ran.
         sentinel = os.path.join(git_dir, 'HEAD')
@@ -285,6 +288,15 @@ class TestGridInit:
         # Safety net engaged: the .git tree (and its content) is untouched.
         assert os.path.isdir(git_dir)
         assert os.path.isfile(sentinel)
+
+    @pytest.mark.parametrize('name', ['', '.', '..', '../elsewhere'])
+    def test_a_name_outside_a_missing_output_folder_is_refused(
+        self, fake_proteus_dir, base_config_path, name
+    ):
+        """With no output/ yet, the name checks refuse alone (the link check needs output/)."""
+        assert not (fake_proteus_dir / 'output').exists()
+        with pytest.raises(ValueError, match='must name a folder inside'):
+            Grid(name=name, base_config_path=str(base_config_path))
 
 
 # ---------------------------------------------------------------------------
