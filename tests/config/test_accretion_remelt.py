@@ -74,8 +74,9 @@ def test_another_remelt_value_is_refused():
         )
     )
     def check(value):
-        with pytest.raises(ValueError, match='remelt'):
+        with pytest.raises(ValueError, match='remelt') as exc:
             Accretion(remelt=value)
+        assert 'full' in str(exc.value) and 'computed' in str(exc.value)
 
     check()
 

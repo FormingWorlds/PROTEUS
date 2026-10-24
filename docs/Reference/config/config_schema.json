@@ -11976,6 +11976,26 @@
       "group_qualifier": null
     },
     {
+      "path": "accretion.remelt",
+      "toml_section": "accretion",
+      "class": "Accretion",
+      "type": "str or none",
+      "accepts_none": true,
+      "default": "none",
+      "choices": [
+        null,
+        "full",
+        "computed"
+      ],
+      "bounds": null,
+      "description": "How much of the mantle an impact re-melts. Choices: None (the default: \"computed\" with the \"morrigan\" module, \"full\" otherwise), \"full\" (every impact raises the whole mantle to the initial condition, hotter parts keeping their state), \"computed\" (each impact re-melts its own melt mass fraction f_melt: Morrigan reports it per merger, a \"timeline\" file carries it as an f_melt column). A partial re-melt raises the outermost shells that hold f_melt of the mantle mass to the initial condition and keeps the deeper mantle at its end-of-step state; f_melt = 1 is the full re-melt. \"computed\" needs the \"morrigan\" or \"timeline\" module.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
       "path": "observe.module",
       "toml_section": "observe",
       "class": "Observe",
@@ -12401,6 +12421,17 @@
         "interior_energetics.module"
       ],
       "doc": "Reject accretion runs on an interior that cannot apply an impact."
+    },
+    {
+      "validator": "check_accretion_remelt_source",
+      "module": "_config.py",
+      "attached_to": [
+        "config_version"
+      ],
+      "touches": [
+        "accretion"
+      ],
+      "doc": "Reject accretion.remelt = 'computed' without a module that reports a melt fraction."
     },
     {
       "validator": "check_accretion_vapourise_compatibility",

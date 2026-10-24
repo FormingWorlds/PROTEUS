@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import math
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -187,6 +188,22 @@ def build_parameters(config: Config) -> dict:
     }
 
 
+def _log_melt(index: int, time: float, record: dict) -> None:
+    """Log the melt fraction of one merger with the fit diagnostics the event does not keep."""
+    log.info(
+        '    impact %d at t = %.4e yr: f_melt %g, raw %.3g, sigma %.3g, dIE %.3g J, '
+        'in_range %s, above_v_cr %s',
+        index,
+        time,
+        float(record['f_melt']),
+        float(record.get('f_melt_raw', math.nan)),
+        float(record.get('f_melt_sigma', math.nan)),
+        float(record.get('dIE', math.nan)),
+        record.get('melt_in_range'),
+        record.get('above_v_cr'),
+    )
+
+
 def get_timeline(config: Config) -> list[ImpactEvent]:
     """Run a system and return the selected body's impact history.
 
@@ -253,6 +270,9 @@ def get_timeline(config: Config) -> list[ImpactEvent]:
         fields['time'] += offset
         for column in _ID_COLUMNS:
             fields[column] = int(record[column])
+        if 'f_melt' in record:
+            fields['f_melt'] = float(record['f_melt'])
+            _log_melt(index, fields['time'], record)
         events.append(ImpactEvent(**fields))
     events.sort(key=lambda e: e.time)
 

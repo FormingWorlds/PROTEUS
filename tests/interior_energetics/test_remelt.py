@@ -49,7 +49,7 @@ def test_weights_follow_the_radii_not_the_array_order():
     w = remelt_weights(0.3, MASS_BASE_FIRST, RADII_BASE_FIRST)
     w_rev = remelt_weights(0.3, MASS_BASE_FIRST[::-1], RADII_BASE_FIRST[::-1])
     np.testing.assert_array_equal(w_rev, w[::-1])
-    assert w_rev[0] == 1.0  # the surface cell is now first
+    np.testing.assert_equal(w_rev[0], 1.0)  # the surface cell is now first
 
 
 def test_weights_at_the_ends_are_exact():
@@ -128,7 +128,7 @@ def test_full_weight_is_todays_maximum_bit_for_bit():
     S_ic = np.array([3100.3, 3100.3, 3333.3])
     S_new = remelt_entropy(S_end, S_ic, np.ones(3))
     np.testing.assert_array_equal(S_new, np.maximum(S_end, S_ic))
-    assert S_new[1] == 3950.0  # the hotter cell keeps its entropy
+    np.testing.assert_equal(S_new[1], 3950.0)  # the hotter cell keeps its entropy
 
 
 @pytest.mark.physics_invariant
@@ -175,8 +175,8 @@ def test_partial_entropy_refuses_weights_outside_the_unit_interval(bad):
 def test_scalar_mantle_moves_by_the_melted_share():
     """The 0D projection: T_new = T_end + f (T_init - T_end), today's max at f = 1."""
     assert remelt_temperature(2000.0, 4000.0, 0.3) == pytest.approx(2600.0, rel=1e-15)
-    assert remelt_temperature(2000.0, 4000.0, 1.0) == 4000.0
-    assert remelt_temperature(2000.0, 4000.0, 0.0) == 2000.0
+    np.testing.assert_equal(remelt_temperature(2000.0, 4000.0, 1.0), 4000.0)
+    np.testing.assert_equal(remelt_temperature(2000.0, 4000.0, 0.0), 2000.0)
     # A mantle hotter than the initial condition keeps its temperature at every f.
-    assert remelt_temperature(4500.0, 4000.0, 0.3) == 4500.0
-    assert remelt_temperature(4500.0, 4000.0, 1.0) == 4500.0
+    np.testing.assert_equal(remelt_temperature(4500.0, 4000.0, 0.3), 4500.0)
+    np.testing.assert_equal(remelt_temperature(4500.0, 4000.0, 1.0), 4500.0)

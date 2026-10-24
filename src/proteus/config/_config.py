@@ -300,6 +300,21 @@ def check_accretion_interior_compatibility(instance, attribute, value):
         )
 
 
+def check_accretion_remelt_source(instance, attribute, value):
+    """Reject accretion.remelt = 'computed' without a module that reports a melt fraction.
+
+    Morrigan reports the melt mass fraction of each merger and a timeline file can
+    carry it as a column; the analytical module and no module have none to apply.
+    """
+    acc = instance.accretion
+    if acc.remelt == 'computed' and acc.module not in ('morrigan', 'timeline'):
+        raise ValueError(
+            "accretion.remelt = 'computed' needs an accretion module that reports a melt "
+            "fraction: 'morrigan', or 'timeline' with an f_melt column; got "
+            f'accretion.module = {acc.module!r}'
+        )
+
+
 def check_accretion_vapourise_compatibility(instance, attribute, value):
     """Reject accretion runs that also vapourise rock into the atmosphere.
 
@@ -792,6 +807,7 @@ class Config:
             valid_config_version,
             check_module_dependencies,
             check_accretion_interior_compatibility,
+            check_accretion_remelt_source,
             check_accretion_vapourise_compatibility,
             check_accretion_core_stratification_compatibility,
             check_core_module_requirements,

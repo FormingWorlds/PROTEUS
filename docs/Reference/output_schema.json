@@ -1676,6 +1676,7 @@
         }
       ],
       "consumers": [
+        "accretion",
         "interior_energetics",
         "interior_struct",
         "main loop",
@@ -3572,6 +3573,27 @@
       ],
       "consumers": [
         "accretion",
+        "interior_energetics"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "f_remelt",
+      "unit": "1",
+      "description": "largest melt mass fraction a giant impact re-melted on this row, 0 without one",
+      "group": "Giant-impact accretion ledger",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/interior_energetics/wrapper.py",
+          "condition": "always"
+        },
+        {
+          "file": "src/proteus/proteus.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
         "interior_energetics"
       ],
       "consumers_possible": []

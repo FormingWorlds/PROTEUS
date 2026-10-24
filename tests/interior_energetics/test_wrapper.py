@@ -8136,7 +8136,7 @@ def test_a_partial_aragog_remelt_raises_the_outer_shells_only():
     assert hf_row['step_dE_impact_J'] == pytest.approx(
         2250.0 * _FakeAragogSolver._HEAT_PER_ENTROPY, rel=1e-12
     )
-    assert hf_row['f_remelt'] == 0.25
+    np.testing.assert_equal(hf_row['f_remelt'], 0.25)
     assert interior_o.impact_reset is True
 
 
@@ -8161,7 +8161,7 @@ def test_the_solver_restarts_from_the_partial_profile_and_keeps_the_full_call_pa
     assert solver_full.set_calls == []
     assert len(solver_part.set_calls) == 1
     np.testing.assert_array_equal(solver_part.set_calls[0], interior_o._last_entropy)
-    assert solver_part.set_calls[0][0] == 2400.0 and solver_part.set_calls[0][-1] == 3900.0
+    np.testing.assert_equal(solver_part.set_calls[0][[0, -1]], [2400.0, 3900.0])
 
 
 @pytest.mark.unit
@@ -8187,7 +8187,7 @@ def test_remelt_refuses_a_fraction_outside_the_unit_interval(bad):
         remelt_mantle(
             {'output': '/tmp/out'}, _remelt_config('dummy'), hf_row, interior_o, f=bad
         )
-    assert hf_row['T_magma'] == 2100.0
+    np.testing.assert_equal(hf_row['T_magma'], 2100.0)
     assert interior_o.impact_reset is False
 
 
@@ -8201,7 +8201,7 @@ def test_a_partial_scalar_remelt_moves_the_mantle_by_its_share():
     assert hf_row['T_magma'] == pytest.approx(2670.0, rel=1e-14)
     assert 0.0 < hf_row['Phi_global'] < 1.0  # 2670 K lies between 1700 and 2700 K
     assert interior_o.temp[0] == pytest.approx(2670.0, rel=1e-14)
-    assert hf_row['f_remelt'] == 0.3
+    np.testing.assert_equal(hf_row['f_remelt'], 0.3)
 
 
 @pytest.mark.unit
@@ -8211,7 +8211,7 @@ def test_the_largest_fraction_of_a_step_is_the_row_value():
     interior_o = SimpleNamespace(impact_reset=False)
     for f in (0.6, 0.2):
         remelt_mantle({'output': '/tmp/out'}, _remelt_config('dummy'), hf_row, interior_o, f=f)
-    assert hf_row['f_remelt'] == 0.6
+    np.testing.assert_equal(hf_row['f_remelt'], 0.6)
     assert hf_row['T_magma'] > 2100.0
 
 
@@ -8241,5 +8241,5 @@ def test_a_partial_core_module_remelt_hands_the_unchanged_base_to_the_core():
         ) as core_mock,
     ):
         remelt_mantle({'output': '/tmp/out'}, config, {}, interior_o, f=0.3)
-    assert core_mock.call_args.args[4] == 2400.0
-    assert core_mock.call_args.args[3] == 3500.0
+    np.testing.assert_equal(core_mock.call_args.args[4], 2400.0)
+    np.testing.assert_equal(core_mock.call_args.args[3], 3500.0)

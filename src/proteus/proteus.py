@@ -1219,11 +1219,12 @@ class Proteus:
                 #    overwritten by the routines below.
                 self.hf_row = self.hf_all.iloc[-1].to_dict()
 
-                # Reset per-step impact heat at each row to prevent carrying forward
-                # previous step heat terms across iterations.
+                # Reset the per-step impact heat and re-melt fraction at each row, so a
+                # row does not carry the previous step's impact terms.
                 self.hf_row['step_dE_impact_J'] = 0.0
                 self.hf_row['step_dE_impact_core_J'] = 0.0
                 self.hf_row['step_dE_impact_core_refit_J'] = 0.0
+                self.hf_row['f_remelt'] = 0.0
             log.info(' ')
             PrintSeparator()
             log.info('Loop counters')

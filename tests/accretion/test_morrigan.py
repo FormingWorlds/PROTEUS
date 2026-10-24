@@ -587,5 +587,6 @@ def test_a_melt_fraction_outside_its_bounds_from_the_model_is_refused(monkeypatc
         run_system=lambda **kw: {'survivors': _SURVIVORS, 'impacts': {1: [record], 2: []}}
     )
     monkeypatch.setattr(backend, 'morrigan', fake, raising=False)
-    with pytest.raises(ValueError, match='f_melt'):
+    with pytest.raises(ValueError, match='f_melt') as exc:
         backend.get_timeline(_config(selector='mass'))
+    assert 'impact 0' in str(exc.value)

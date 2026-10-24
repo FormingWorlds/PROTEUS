@@ -670,7 +670,7 @@ def test_validator_accepts_the_analytic_two_body_collision():
 def test_an_event_carries_no_melt_fraction_unless_given_one():
     """f_melt is optional: absent it is None, given it is kept as the event's value."""
     assert _event().f_melt is None
-    assert _event(f_melt=0.3).f_melt == 0.3
+    np.testing.assert_equal(_event(f_melt=0.3).f_melt, 0.3)
     validate_timeline(
         [
             _event(f_melt=0.0),
@@ -684,8 +684,9 @@ def test_an_event_carries_no_melt_fraction_unless_given_one():
 @pytest.mark.parametrize('bad', [np.nan, np.inf, -1e-12, 1.0 + 1e-12, -0.5], ids=repr)
 def test_a_melt_fraction_outside_the_unit_interval_is_refused(bad):
     """A melt mass fraction must be finite and in [0, 1]; the error names the impact and f_melt."""
-    with pytest.raises(ValueError, match=r'impact 0 at t = .*f_melt'):
+    with pytest.raises(ValueError, match=r'impact 0 at t = .*f_melt') as exc:
         validate_timeline([_event(f_melt=bad)])
+    assert repr(bad) in str(exc.value)
 
 
 @pytest.mark.unit
@@ -718,8 +719,9 @@ def test_read_timeline_refuses_a_blank_or_out_of_range_melt_fraction(tmp_path):
     for cell, name in (('', 'blank'), ('1.5', 'above')):
         path = tmp_path / f'{name}.csv'
         path.write_text('\n'.join([plain[0] + ',f_melt', plain[1] + ',' + cell]) + '\n')
-        with pytest.raises(ValueError, match='f_melt'):
+        with pytest.raises(ValueError, match='f_melt') as exc:
             read_timeline(str(path))
+        assert 'impact 0' in str(exc.value)
 
 
 @pytest.mark.unit

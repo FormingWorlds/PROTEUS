@@ -107,7 +107,7 @@ vulcan = ["fwl-vulcan>=26.10.16"]
 # morrigan: protoplanet accretion module for giant-impact timelines,
 # selected via accretion.module = "morrigan". Also installable editable
 # via tools/get_morrigan.sh.
-morrigan = ["fwl-morrigan>=26.07.27"]
+morrigan = ["fwl-morrigan>=26.10.23"]
 
 # inference: the Bayesian-optimisation parameter inference run by
 # `proteus infer`. PyTorch and the two BoTorch/GPyTorch layers on top of

@@ -461,6 +461,16 @@ class Accretion:
         Fraction of the atmosphere removed by each impact when
         ``atmloss_module = "constant"`` [0-1]. Applies to the target's
         atmosphere and to the impactor's atmospheric part alike.
+    remelt: str or None
+        How much of the mantle an impact re-melts. Choices: None (the default:
+        "computed" with the "morrigan" module, "full" otherwise), "full" (every
+        impact raises the whole mantle to the initial condition, hotter parts
+        keeping their state), "computed" (each impact re-melts its own melt mass
+        fraction f_melt: Morrigan reports it per merger, a "timeline" file
+        carries it as an f_melt column). A partial re-melt raises the outermost
+        shells that hold f_melt of the mantle mass to the initial condition and
+        keeps the deeper mantle at its end-of-step state; f_melt = 1 is the full
+        re-melt. "computed" needs the "morrigan" or "timeline" module.
     """
 
     module: str | None = field(
@@ -511,6 +521,19 @@ class Accretion:
         validator=in_(('kegerreis2020', 'roche2026')),
     )
     atmloss_frac: float = field(default=0.0, validator=[ge(0), le(1)])
+
+    remelt: str | None = field(
+        default='none',
+        validator=in_((None, 'full', 'computed')),
+        converter=none_if_none,
+    )
+
+    @property
+    def remelt_mode(self) -> str:
+        """The re-melt mode in force: ``remelt``, or its default for the selected module."""
+        if self.remelt is not None:
+            return self.remelt
+        return 'computed' if self.module == 'morrigan' else 'full'
 
     @property
     def delivers_volatiles(self) -> bool:
