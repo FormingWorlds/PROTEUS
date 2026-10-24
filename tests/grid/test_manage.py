@@ -873,7 +873,9 @@ class TestWriteConfigFiles:
         name = key.rsplit('.', 1)[1]
         cases = [getattr(read_config_object(g._get_tmpcfg(i)).params.out, name) for i in (0, 1)]
         assert cases == expected
-        assert line in open(g._get_tmpcfg(0)).read()
+        with open(g._get_tmpcfg(0)) as f:
+            text = f.read()
+        assert line in text
 
     def test_a_value_refused_at_assignment_names_the_case_and_the_key(
         self, fake_proteus_dir, monkeypatch

@@ -69,7 +69,7 @@ def _within(path: str, folder: str) -> bool:
             if os.path.samestat(os.stat(p), target):
                 return True
         except OSError:
-            pass
+            pass  # a part that cannot be stat'ed (missing or unreadable) is no match; go up
         if os.path.dirname(p) == p:
             return False
         p = os.path.dirname(p)
