@@ -2128,6 +2128,141 @@ class TestGridFromConfig:
         assert exc.type is ValueError and 'is a link' in str(exc.value), exc
         assert (real / 'keep').read_text() == 'kept\n'
 
+    def test_the_grid_name_is_checked_after_the_wait(
+        self, fake_proteus_dir, base_config_path, tmp_path_factory, monkeypatch
+    ):
+        """A link put in output/ during the wait before the old output is removed is refused,
+        so the folder it points to keeps its files."""
+        victim = tmp_path_factory.mktemp('victim')
+        (victim / 'b').mkdir()
+        (victim / 'b' / 'keep').write_text('kept\n')
+        out = fake_proteus_dir / 'output'
+        (out / 'a' / 'b').mkdir(parents=True)
+        g = Grid('a/b', str(base_config_path), prepare_output=False)
+
+        def _link_during_wait(*_args, **_kwargs):
+            (out / 'a').rename(fake_proteus_dir / 'moved_a')
+            (out / 'a').symlink_to(victim)
+
+        monkeypatch.setattr(gm.time, 'sleep', _link_during_wait)
+        try:
+            with pytest.raises(Exception) as exc:  # another type fails the assert below
+                g.prepare_output()
+        finally:
+            g.release_log()
+        assert exc.type is ValueError and 'must name a folder inside' in str(exc.value), exc
+        assert (victim / 'b' / 'keep').read_text() == 'kept\n'
+
+    @pytest.mark.parametrize('which', ['grid_file', 'base_config'])
+    def test_a_grid_output_holding_a_grid_input_is_refused(
+        self, fake_proteus_dir, base_config_path, which
+    ):
+        """A grid run again from the copies in its own output is refused before the old
+        output, with the input in it, is removed."""
+        old = fake_proteus_dir / 'output' / 'g'
+        old.mkdir(parents=True)
+        (old / 'case_000000').mkdir()
+        (old / 'case_000000' / 'keep').write_text('kept\n')
+        grid_file = old / 'copy.grid.toml'
+        ref = old / 'ref_config.toml'
+        grid_file.write_text('# grid\n')
+        ref.write_text('# fake base config\n')
+        conf, grid = {
+            'grid_file': (str(base_config_path), str(grid_file)),
+            'base_config': (str(ref), ''),
+        }[which]
+        with pytest.raises(Exception) as exc:  # another type fails the assert below
+            Grid('g', conf, grid_config=grid)
+        assert exc.type is ValueError and 'holds the grid file' in str(exc.value), exc
+        assert grid_file.is_file() and ref.is_file()
+        assert (old / 'case_000000' / 'keep').read_text() == 'kept\n'
+
+    @pytest.mark.parametrize('named', ['through_the_link', 'by_its_target'])
+    def test_a_linked_old_output_refuses_a_grid_file_named_through_it(
+        self, fake_proteus_dir, base_config_path, tmp_path_factory, named
+    ):
+        """A linked old output is only unlinked, so a grid file in its target named by the
+        target's path is copied, while one named through the link is refused first."""
+        target = tmp_path_factory.mktemp('target')
+        (target / 'grid.toml').write_text('# grid\n')
+        out = fake_proteus_dir / 'output'
+        out.mkdir()
+        (out / 'g').symlink_to(target)
+        grid_file = {'through_the_link': out / 'g', 'by_its_target': target}[
+            named
+        ] / 'grid.toml'
+        if named == 'through_the_link':
+            with pytest.raises(Exception) as exc:  # another type fails the assert below
+                Grid('g', str(base_config_path), grid_config=str(grid_file))
+            assert exc.type is ValueError and 'holds the grid file' in str(exc.value), exc
+            assert (out / 'g').is_symlink()
+        else:
+            try:
+                g = Grid('g', str(base_config_path), grid_config=str(grid_file))
+            except Exception as e:
+                pytest.fail(f'a grid file named by the link target was refused: {e!r}')
+            g.release_log()
+            assert (out / 'g' / 'copy.grid.toml').read_text() == '# grid\n'
+            assert not (out / 'g').is_symlink()
+        assert (target / 'grid.toml').read_text() == '# grid\n'
+
+    def test_a_symlink_folder_holding_a_link_to_the_grid_file_is_refused(
+        self, fake_proteus_dir, base_config_path, tmp_path_factory, monkeypatch
+    ):
+        """A grid file reached through a link in the symlink folder would lose its link
+        before it is copied, so that folder is refused and keeps its files."""
+        outside = tmp_path_factory.mktemp('outside')
+        (outside / 'home').mkdir()
+        monkeypatch.setenv('HOME', str(outside / 'home'))
+        (outside / 'configs').mkdir()
+        (outside / 'configs' / 'real.toml').write_text('# grid\n')
+        folder = outside / 'store'
+        folder.mkdir()
+        (folder / 'grid.toml').symlink_to(outside / 'configs' / 'real.toml')
+        with pytest.raises(Exception) as exc:  # another type fails the assert below
+            Grid(
+                'g',
+                str(base_config_path),
+                symlink_dir=str(folder),
+                grid_config=str(folder / 'grid.toml'),
+            )
+        assert exc.type is ValueError and 'symlink folder' in str(exc.value), exc
+        assert (folder / 'grid.toml').is_symlink()
+
+    def test_a_symlink_folder_that_is_a_file_is_refused(
+        self, fake_proteus_dir, base_config_path, tmp_path_factory, monkeypatch
+    ):
+        """A symlink folder that names a file is refused before anything is removed."""
+        outside = tmp_path_factory.mktemp('outside')
+        (outside / 'home').mkdir()
+        monkeypatch.setenv('HOME', str(outside / 'home'))
+        (outside / 'file').write_text('kept\n')
+        old = fake_proteus_dir / 'output' / 'g'
+        old.mkdir(parents=True)
+        (old / 'keep').write_text('kept\n')
+        with pytest.raises(Exception) as exc:  # another type fails the assert below
+            Grid('g', str(base_config_path), symlink_dir=str(outside / 'file'))
+        assert exc.type is ValueError and 'is not a folder' in str(exc.value), exc
+        assert (outside / 'file').read_text() == 'kept\n'
+        assert (old / 'keep').read_text() == 'kept\n'
+
+    @pytest.mark.parametrize('folder', ['./', '..', 'store', './store/..'])
+    def test_a_relative_symlink_folder_is_refused(
+        self, fake_proteus_dir, base_config_path, tmp_path_factory, monkeypatch, folder
+    ):
+        """Grid takes only an absolute symlink folder, as grid_from_config does, so a
+        relative one never empties the working folder or a folder above it."""
+        work = tmp_path_factory.mktemp('outside') / 'work'
+        (work / 'store').mkdir(parents=True)
+        (work / 'keep').write_text('kept\n')
+        (work / 'store' / 'keep').write_text('kept\n')
+        monkeypatch.chdir(work)
+        with pytest.raises(Exception) as exc:  # another type fails the assert below
+            Grid('g', str(base_config_path), symlink_dir=folder)
+        assert exc.type is ValueError and 'must be an absolute path' in str(exc.value), exc
+        assert (work / 'keep').read_text() == 'kept\n'
+        assert (work / 'store' / 'keep').read_text() == 'kept\n'
+
     @pytest.mark.parametrize(
         ('start', 'step'), [(float('nan'), 0.1), (0.5, float('nan')), (0.5, 0.0)]
     )
