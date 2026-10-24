@@ -1899,6 +1899,10 @@ class TestGridFromConfig:
         g = Grid('g', str(base_config_path), symlink_dir=folder, prepare_output=False)
         g.release_log()
         assert g.symlink_dir == folder
+        guarded = str(storage if target == 'output-sibling' else home)
+        with pytest.raises(Exception) as exc:  # another type fails the assert below
+            Grid('g', str(base_config_path), symlink_dir=guarded, prepare_output=False)
+        assert exc.type is ValueError and 'symlink folder' in str(exc.value), exc
 
     @pytest.mark.parametrize('state', ['live', 'dangling'])
     def test_an_old_output_link_is_unlinked_and_its_target_kept(
@@ -2056,6 +2060,9 @@ class TestGridFromConfig:
         g = Grid('g', str(base_config_path), symlink_dir=folder, prepare_output=False)
         g.release_log()
         assert g.symlink_dir == folder
+        with pytest.raises(Exception) as exc:  # another type fails the assert below
+            Grid('g', str(base_config_path), symlink_dir=str(root), prepare_output=False)
+        assert exc.type is ValueError and 'symlink folder' in str(exc.value), exc
 
     @pytest.mark.parametrize('old', [True, False])
     def test_the_grid_name_is_checked_again_before_removal(
