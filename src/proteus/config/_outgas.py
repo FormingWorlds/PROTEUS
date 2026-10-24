@@ -242,9 +242,9 @@ class Outgas:
         from the desiccation gate, and the reservoir can only grow: a condensed
         layer can only get thicker. Each condensate's `{X}_cd_activity` is then the
         saturation of the inventory left in the solve, so it can fall below 1 while
-        its layer is held. Requires `outgas.module = 'atmodeller'` with
-        `outgas.atmodeller.include_condensates = true`, the only combination that
-        forms condensates.
+        its layer is held. Requires `outgas.module = 'atmodeller'`, the only backend
+        that forms condensates; with `outgas.atmodeller.include_condensates = false`
+        it holds nothing, and a warning says so.
     solver_rtol: float
         Relative tolerance for the volatile equilibrium solver.
     solver_atol: float

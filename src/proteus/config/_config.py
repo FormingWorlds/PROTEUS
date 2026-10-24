@@ -414,8 +414,12 @@ def front_trapping_requires_aragog(instance, attribute, value):
         )
 
 
-def prevent_desaturation_requires_atmodeller_condensates(instance, attribute, value):
-    """prevent_desaturation needs atmodeller with condensates, the only setup forming them."""
+def prevent_desaturation_requires_atmodeller(instance, attribute, value):
+    """prevent_desaturation needs atmodeller, the only backend that forms condensates.
+
+    With atmodeller and its condensates off the flag holds nothing, which a grid
+    switching condensates on and off relies on, so that case only logs a warning.
+    """
     outgas = instance.outgas
     if getattr(outgas, 'prevent_desaturation', False) is not True:
         return
@@ -426,10 +430,10 @@ def prevent_desaturation_requires_atmodeller_condensates(instance, attribute, va
             'would have no effect.'
         )
     if not outgas.atmodeller.include_condensates:
-        raise ValueError(
-            'outgas.prevent_desaturation = true requires '
-            'outgas.atmodeller.include_condensates = true: without condensates there '
-            'is no condensed mass to hold, so the flag would have no effect.'
+        log.warning(
+            'outgas.prevent_desaturation = true has no effect with '
+            'outgas.atmodeller.include_condensates = false: no condensed mass forms '
+            'to hold.'
         )
 
 
@@ -799,7 +803,7 @@ class Config:
         factory=Outgas,
         validator=(
             front_trapping_requires_aragog,
-            prevent_desaturation_requires_atmodeller_condensates,
+            prevent_desaturation_requires_atmodeller,
         ),
     )
     atmos_clim: AtmosClim = field(factory=AtmosClim)
