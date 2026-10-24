@@ -8243,3 +8243,25 @@ def test_a_partial_core_module_remelt_hands_the_unchanged_base_to_the_core():
         remelt_mantle({'output': '/tmp/out'}, config, {}, interior_o, f=0.3)
     np.testing.assert_equal(core_mock.call_args.args[4], 2400.0)
     np.testing.assert_equal(core_mock.call_args.args[3], 3500.0)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_the_partial_remelt_weighs_the_cells_by_mass_not_volume(monkeypatch):
+    """Density rises with depth (4000 kg/m3 at the surface, 5300 at the base) over equal cell
+    volumes. f = 0.25 melts that share of the mantle mass: the outer cells are lighter, so the
+    melt spans more than the 1.5 cells of a volume split, and the weights close on rho V."""
+    real_init = _FakeMeshAragogSolver.__init__
+
+    def init(self, cooled_profile):
+        real_init(self, cooled_profile)
+        self.entropy_eos = SimpleNamespace(density=lambda P, S: 4000.0 + 1.0e-8 * np.asarray(P))
+
+    monkeypatch.setattr(_FakeMeshAragogSolver, '__init__', init)
+    solver, interior_o, _ = _partial_aragog_remelt(0.25)
+    m = (4000.0 + 1.0e-8 * solver._P_stag_flat) * solver._volume_flat
+    w = (interior_o._last_entropy - 2400.0) / 1500.0
+    assert float(np.sum(w * m)) == pytest.approx(0.25 * float(m.sum()), rel=1e-12)
+    # On volumes the same profile would melt 1.5 cells; on masses the top 2 cells are lighter.
+    assert abs(float(np.sum(w)) - 1.5) > 0.05
+    np.testing.assert_array_equal(w[:3], 0.0)

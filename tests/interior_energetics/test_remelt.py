@@ -124,9 +124,11 @@ def test_weights_refuse_invalid_cells(masses, radii):
 @pytest.mark.physics_invariant
 def test_full_weight_is_todays_maximum_bit_for_bit():
     """w = 1 takes np.maximum(S_end, S_ic), not the blend, which can differ by 1 ulp."""
-    S_end = np.array([2400.1, 3950.0, 2999.9])
-    S_ic = np.array([3100.3, 3100.3, 3333.3])
-    S_new = remelt_entropy(S_end, S_ic, np.ones(3))
+    # The last pair: S_end + 1.0 * (S_ic - S_end) lands 1 ulp above S_ic.
+    S_end = np.array([2400.1, 3950.0, 2999.9, 968.4110283258282])
+    S_ic = np.array([3100.3, 3100.3, 3333.3, 2001.5269857441442])
+    assert S_end[3] + 1.0 * (S_ic[3] - S_end[3]) != S_ic[3]
+    S_new = remelt_entropy(S_end, S_ic, np.ones(4))
     np.testing.assert_array_equal(S_new, np.maximum(S_end, S_ic))
     np.testing.assert_equal(S_new[1], 3950.0)  # the hotter cell keeps its entropy
 

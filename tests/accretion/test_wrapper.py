@@ -5875,3 +5875,27 @@ def test_a_resume_replays_the_melt_fraction_of_each_impact(tmp_path):
     assert [e.f_melt for e in first] == [0.3, 0.75]
     assert [e.f_melt for e in replayed] == [0.3, 0.75]
     assert 'f_melt' in (tmp_path / 'impact_timeline.csv').read_text().splitlines()[0]
+
+
+@pytest.mark.unit
+def test_the_solid_warning_includes_phi_equal_to_phi_crit(monkeypatch, caplog):
+    """stop.solid ends a run at Phi_global <= phi_crit, so the warning fires at equality too."""
+    from proteus.accretion.wrapper import apply_impact
+
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper.solve_structure', lambda *a, **k: None
+    )
+    phis = []
+    for crit in (None, 'equal'):
+        handler = _impact_handler(accretion=_impact_accretion(remelt_mode='computed'))
+        handler.hf_row['T_magma'] = 1500.0
+        phi_crit = 0.5 if crit is None else phis[0]
+        handler.config.params.stop = SimpleNamespace(
+            solid=SimpleNamespace(enabled=True, phi_crit=phi_crit)
+        )
+        caplog.clear()
+        with caplog.at_level('WARNING'):
+            apply_impact(handler, _impact_event(f_melt=0.1))  # 1500 + 0.1 * 2500 = 1750 K
+        phis.append(handler.hf_row['Phi_global'])
+    assert 0.0 < phis[0] < 1.0 and phis[1] == phis[0]
+    assert sum('stop.solid' in r.getMessage() for r in caplog.records) == 1
