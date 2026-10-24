@@ -180,3 +180,52 @@ def test_scalar_mantle_moves_by_the_melted_share():
     # A mantle hotter than the initial condition keeps its temperature at every f.
     np.testing.assert_equal(remelt_temperature(4500.0, 4000.0, 0.3), 4500.0)
     np.testing.assert_equal(remelt_temperature(4500.0, 4000.0, 1.0), 4500.0)
+
+
+@pytest.mark.reference_pinned
+@pytest.mark.physics_invariant
+def test_the_melt_front_of_a_uniform_mantle_matches_the_closed_form(validation_plot):
+    """Analytical limit: in a mantle shell of uniform density between r_c and R, melting the
+    outer mass fraction f puts the melt front at r_f = (R^3 - f (R^3 - r_c^3))^(1/3).
+
+    The front of the weights is the radius inside the partly melted cell where the mass
+    above it equals w m. A fill linear in radius, r = R - f (R - r_c), misses by 280 km at
+    f = 0.3, and a fill from the base up puts the front at (r_c^3 + f (R^3 - r_c^3))^(1/3).
+    See ``docs/Validation/interior_energetics/remelt.md``.
+    """
+    r_c, R = 3.5e6, 6.4e6
+    edges = np.linspace(r_c, R, 401)
+    r_in, r_out = edges[:-1], edges[1:]
+    mass = r_out**3 - r_in**3  # uniform density: mass is proportional to the shell volume
+    f_values = np.array([0.05, 0.1, 0.3, 0.5, 0.7, 0.9, 0.99])
+    front = []
+    for f in f_values:
+        w = remelt_weights(f, mass, 0.5 * (r_in + r_out))
+        k = int(np.flatnonzero((w > 0.0) & (w < 1.0))[0])
+        front.append(np.cbrt(r_out[k] ** 3 - w[k] * (r_out[k] ** 3 - r_in[k] ** 3)))
+    front = np.array(front)
+    closed = np.cbrt(R**3 - f_values * (R**3 - r_c**3))
+    np.testing.assert_allclose(front, closed, rtol=1e-12)
+    linear = R - f_values * (R - r_c)
+    from_base = np.cbrt(r_c**3 + f_values * (R**3 - r_c**3))
+    assert abs(front[2] - linear[2]) > 2.0e5
+    # Base-up and top-down fills meet at f = 0.5 only.
+    assert np.all(np.abs(front - from_base)[f_values != 0.5] > 1.0e5)
+
+    def figure():
+        import matplotlib.pyplot as plt
+
+        f_line = np.linspace(0.0, 1.0, 51)
+        fig, ax = plt.subplots(figsize=(6, 4))
+        ax.plot(f_line, np.cbrt(R**3 - f_line * (R**3 - r_c**3)) / 1e3, label='Closed form')
+        ax.plot(f_line, (R - f_line * (R - r_c)) / 1e3, '--', label='Linear in r')
+        ax.plot(f_values, front / 1e3, 'o', label='Weights')
+        ax.set_xticks([0.0, 0.5, 1.0])
+        ax.set_yticks([3500, 5000, 6500])
+        ax.set_xlabel('Melted mass fraction $f$')
+        ax.set_ylabel('Melt front radius [km]')
+        ax.legend()
+        fig.tight_layout()
+        return fig
+
+    validation_plot(figure, 'interior_energetics_remelt_front')

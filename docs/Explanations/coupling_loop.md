@@ -45,11 +45,13 @@ upstream modules.
 2. **Giant impacts** (`apply_impact`): Applies every impact whose time falls
    within the step just taken. The impactor's rock is added to the planet and
    the interior structure is re-solved at the new mass, its volatiles are
-   delivered while part of the target's atmosphere is stripped, the mantle is
-   re-melted by raising it to the run's temperature-mode initial condition
-   (parts that are already hotter keep their state), and
+   delivered while part of the target's atmosphere is stripped, the outermost
+   mantle shells that hold the impact's melt mass fraction (1 with
+   `accretion.remelt = "full"`, the reported `f_melt` with `"computed"`) are
+   raised to the run's temperature-mode initial condition (parts that are
+   already hotter keep their state, the deeper mantle keeps its state), and
    the orbit takes the impact's change in semi-major axis and eccentricity.
-   How molten the re-melt leaves the mantle follows that initial condition:
+   How molten a full re-melt leaves the mantle follows that initial condition:
    only `planet.temperature_mode = "liquidus_super"` is fully molten for any
    planet mass and melting curve. Runs only when an accretion module is
    configured and an impact is due. When `accretion.atmloss_module = "zephyrus"`,
