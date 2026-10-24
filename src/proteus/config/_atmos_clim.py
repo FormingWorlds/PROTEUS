@@ -286,8 +286,8 @@ class Agni:
         converter=lowercase,
         validator=in_(('loglinear', 'isothermal', 'dry_adiabat', 'analytic')),
     )
-    ls_default: int = field(default=2, validator=in_((0, 1, 2, 3)))
-    broyden: bool = field(default=False)
+    ls_default: int = field(default=3, validator=in_((0, 1, 2, 3)))
+    broyden: bool = field(default=True)
     fdo: int = field(default=2, validator=in_((2, 4)))
     check_safe_gas: bool = field(
         default=True,

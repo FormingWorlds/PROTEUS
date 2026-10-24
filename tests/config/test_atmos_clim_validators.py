@@ -365,10 +365,13 @@ def test_agni_ls_default_takes_only_agni_linesearch_methods():
 
 
 @pytest.mark.unit
-def test_agni_broyden_is_off_by_default():
-    """Broyden jacobian updates are opt-in, as in AGNI, so existing configs
-    keep finite-difference jacobians."""
+def test_agni_defaults_to_broyden_with_the_armijo_linesearch():
+    """PROTEUS defaults to Broyden jacobian updates with the non-monotone
+    Armijo linesearch, the pairing AGNI intends Broyden for, although AGNI
+    itself defaults to neither. Each can still be turned back."""
     from proteus.config._atmos_clim import Agni
 
-    assert Agni().broyden is False
-    assert Agni(broyden=True).broyden is True
+    defaults = Agni()
+    assert defaults.broyden is True
+    assert defaults.ls_default == 3
+    assert Agni(broyden=False).broyden is False

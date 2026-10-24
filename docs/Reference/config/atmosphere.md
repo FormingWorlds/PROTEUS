@@ -111,8 +111,8 @@ interior heat flux. The `fastchem_*` parameters apply when
 | `max_steps` | int | `200` | Maximum number of iterations before giving up. Must be > 2. |
 | `perturb_all` | bool | `false` | Recalculate entire jacobian matrix at every iteration? Has no effect when `broyden` is enabled. |
 | `ini_profile` | str | `"isothermal"` | Shape of initial T(p) guess: 'loglinear', 'isothermal', 'dry_adiabat', 'analytic'. Choices: `"loglinear"`, `"isothermal"`, `"dry_adiabat"`, `"analytic"`. |
-| `ls_default` | int | `2` | Default linesearch method. 0: disabled, 1: goldensection, 2: backtracking, 3: non-monotone Armijo. Choices: `0`, `1`, `2`, `3`. |
-| `broyden` | bool | `false` | Update the jacobian with Broyden's method between finite-difference evaluations, to reduce the number of radiative transfer calculations. Intended for use with `ls_default = 3`. Disabled when PROTEUS retries a failed solve. |
+| `ls_default` | int | `3` | Default linesearch method. 0: disabled, 1: goldensection, 2: backtracking, 3: non-monotone Armijo. Choices: `0`, `1`, `2`, `3`. |
+| `broyden` | bool | `true` | Update the jacobian with Broyden's method between finite-difference evaluations, to reduce the number of radiative transfer calculations. Intended for use with `ls_default = 3`. Disabled when PROTEUS retries a failed solve. |
 | `fdo` | int | `2` | Numerical order of finite-difference for jacobian. 2 or 4. Choices: `2`, `4`. |
 | `verbosity` | int | `1` | Logging and output verbosity for agni (0:none, 1:info, 2:debug). Choices: `0`, `1`, `2`. |
 

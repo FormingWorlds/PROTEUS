@@ -9288,7 +9288,7 @@
       "class": "Agni",
       "type": "int",
       "accepts_none": false,
-      "default": "2",
+      "default": "3",
       "choices": [
         0,
         1,
@@ -9309,7 +9309,7 @@
       "class": "Agni",
       "type": "bool",
       "accepts_none": false,
-      "default": "false",
+      "default": "true",
       "choices": null,
       "bounds": null,
       "description": "Update the jacobian with Broyden's method between finite-difference evaluations, to reduce the number of radiative transfer calculations. Intended for use with `ls_default = 3`. Disabled when PROTEUS retries a failed solve.",
