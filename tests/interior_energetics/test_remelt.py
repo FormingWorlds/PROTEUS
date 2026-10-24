@@ -231,3 +231,14 @@ def test_the_melt_front_of_a_uniform_mantle_matches_the_closed_form(validation_p
         return fig
 
     validation_plot(figure, 'interior_energetics_remelt_front')
+
+
+def test_non_finite_entropy_or_temperature_is_refused():
+    """A NaN in S_end, S_ic or T_end is refused as non-finite, not reported as a cooling cell."""
+    w = np.array([0.5, 1.0])
+    with pytest.raises(ValueError, match='non-finite'):
+        remelt_entropy(np.array([1.0, 2.0]), np.array([np.nan, 3.0]), w)
+    with pytest.raises(ValueError, match='non-finite'):
+        remelt_entropy(np.array([np.nan, 2.0]), np.array([3.0, 3.0]), w)
+    with pytest.raises(ValueError, match='non-finite'):
+        remelt_temperature(np.nan, 4000.0, 0.3)

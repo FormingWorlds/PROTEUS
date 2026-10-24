@@ -590,3 +590,32 @@ def test_a_melt_fraction_outside_its_bounds_from_the_model_is_refused(monkeypatc
     with pytest.raises(ValueError, match='f_melt') as exc:
         backend.get_timeline(_config(selector='mass'))
     assert 'impact 0' in str(exc.value)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('in_range', 'above', 'warns'),
+    [(True, False, False), (False, False, True), (True, True, True)],
+)
+def test_an_extrapolated_melt_fraction_is_a_warning(
+    monkeypatch, caplog, in_range, above, warns
+):
+    """f_melt outside the fit range or above the critical speed is extrapolated: a WARNING."""
+    record = _one_impact_record()
+    record.update(
+        f_melt=0.4,
+        f_melt_raw=0.4,
+        f_melt_sigma=0.05,
+        dIE=1e31,
+        melt_in_range=in_range,
+        above_v_cr=above,
+    )
+    fake = SimpleNamespace(
+        run_system=lambda **kw: {'survivors': _SURVIVORS, 'impacts': {1: [record], 2: []}}
+    )
+    monkeypatch.setattr(backend, 'morrigan', fake, raising=False)
+    with caplog.at_level('INFO', logger='fwl.proteus.accretion.morrigan'):
+        events = backend.get_timeline(_config(selector='mass'))
+    lines = [r for r in caplog.records if 'f_melt 0.4' in r.getMessage()]
+    assert [e.f_melt for e in events] == [0.4]
+    assert [r.levelname for r in lines] == ['WARNING' if warns else 'INFO']

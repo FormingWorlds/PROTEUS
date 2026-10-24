@@ -5899,3 +5899,44 @@ def test_the_solid_warning_includes_phi_equal_to_phi_crit(monkeypatch, caplog):
         phis.append(handler.hf_row['Phi_global'])
     assert 0.0 < phis[0] < 1.0 and phis[1] == phis[0]
     assert sum('stop.solid' in r.getMessage() for r in caplog.records) == 1
+
+
+@pytest.mark.unit
+def test_a_resume_without_melt_fractions_names_the_resolved_file(tmp_path):
+    """A run resumed under 'computed' from a resolved timeline written without f_melt is refused
+    at init: the message names impact_timeline.csv and remelt = 'full', not the module version."""
+    fresh = _handler(
+        module='timeline', timeline_path=_timeline_file(tmp_path / 't.csv'), output_dir=tmp_path
+    )
+    init_accretion(fresh)
+    resumed = _handler(
+        module='morrigan', output_dir=tmp_path, remelt_mode='computed', resume=True
+    )
+    with pytest.raises(ValueError, match='impact_timeline.csv') as exc:
+        init_accretion(resumed)
+    assert "accretion.remelt = 'full'" in str(exc.value)
+    assert 'fwl-morrigan' not in str(exc.value)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(('f', 'cleared'), [(0.05, False), (1.0, True)])
+def test_the_solidification_latch_clears_only_when_the_remelt_leaves_melt(
+    monkeypatch, f, cleared
+):
+    """A crystallized mantle at 1500 K: f = 0.05 leaves it solid (1625 K, below the 1700 K
+    solidus), so the latch stays; the full re-melt clears it."""
+    from proteus.accretion.wrapper import apply_impact
+
+    monkeypatch.setattr(
+        'proteus.interior_energetics.wrapper.solve_structure', lambda *a, **k: None
+    )
+    handler = _impact_handler(
+        crystallized=True, accretion=_impact_accretion(remelt_mode='computed')
+    )
+    handler.hf_row['T_magma'] = 1500.0
+    handler.config.params.stop = SimpleNamespace(
+        solid=SimpleNamespace(enabled=True, phi_crit=0.01)
+    )
+    apply_impact(handler, _impact_event(f_melt=f))
+    assert handler.crystallized is (not cleared)
+    assert (handler.hf_row['Phi_global'] > 0.01) is cleared

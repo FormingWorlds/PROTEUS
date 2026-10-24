@@ -8265,3 +8265,48 @@ def test_the_partial_remelt_weighs_the_cells_by_mass_not_volume(monkeypatch):
     # On volumes the same profile would melt 1.5 cells; on masses the top 2 cells are lighter.
     assert abs(float(np.sum(w)) - 1.5) > 0.05
     np.testing.assert_array_equal(w[:3], 0.0)
+
+
+@pytest.mark.unit
+def test_a_refused_partial_remelt_writes_the_interior_status():
+    """A partial re-melt without an end-of-step profile writes status 21 before it raises."""
+    with (
+        patch('proteus.interior_energetics.wrapper.UpdateStatusfile') as status,
+        pytest.raises(RuntimeError, match='partial re-melt'),
+    ):
+        _partial_aragog_remelt(0.3, solution=False)
+    status.assert_called_once()
+    assert status.call_args.args[1] == 21
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize(
+    'order', [(0.5, 0.25), (0.25, 0.5)], ids=['large_first', 'small_first']
+)
+def test_two_partial_remelts_in_one_step_melt_the_outer_shell_of_the_larger(order):
+    """Two impacts in one step: the second starts from the first one's profile, so the result
+    is the outer shell of the larger f (3 of 6 equal cells) and the booked heat is the sum of
+    both jumps, 3 x 1500 J/kg/K at the fake's weight."""
+    solver = _FakeMeshAragogSolver(cooled_profile=np.full(6, 2400.0))
+    interior_o = SimpleNamespace(
+        aragog_solver=solver, _last_entropy=np.full(6, 2400.0), impact_reset=False
+    )
+    hf_row = {}
+    with (
+        patch(
+            'proteus.interior_energetics.aragog.AragogRunner._set_entropy_ic',
+            return_value=np.full(6, 3900.0),
+        ),
+        patch('proteus.interior_energetics.aragog.AragogRunner._refresh_entropy_eos'),
+        patch('proteus.interior_energetics.wrapper.evaluate_molten_state', return_value=None),
+    ):
+        for f in order:
+            remelt_mantle(
+                {'output': '/tmp/out'}, _remelt_config('aragog'), hf_row, interior_o, f=f
+            )
+    np.testing.assert_array_equal(interior_o._last_entropy, [2400.0] * 3 + [3900.0] * 3)
+    assert hf_row['step_dE_impact_J'] == pytest.approx(
+        3 * 1500.0 * _FakeAragogSolver._HEAT_PER_ENTROPY, rel=1e-12
+    )
+    assert hf_row['f_remelt'] == max(order)
