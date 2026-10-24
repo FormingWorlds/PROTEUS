@@ -21,7 +21,7 @@ The top-level settings are:
 |---|---|
 | `ref_config` | Base ("reference") config file, relative to the PROTEUS root. Every case starts from this file and overrides only the swept parameters. |
 | `output` | Output folder name created inside `output/`. Use `"auto"` for a timestamped `grid_YYYYMMDD_HHMMSS_xxxx` name, or any fixed string. |
-| `symlink` | Absolute path used to redirect the output to alternative storage (for example a scratch disk); set to `""` to disable. |
+| `symlink` | Absolute path used to redirect the output to alternative storage (for example a scratch disk); set to `""` to disable. The grid empties this folder, so it may not be `output/`, a folder inside or above it, the PROTEUS folder or your home folder. |
 | `use_slurm` | Whether to dispatch through Slurm (see below). |
 | `max_jobs` | Maximum number of cases running concurrently. |
 | `max_days`, `max_mem` | Per-job walltime (days) and memory (GB) limits, used when dispatching through Slurm. |

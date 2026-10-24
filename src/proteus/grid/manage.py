@@ -50,6 +50,21 @@ log = logging.getLogger('fwl.' + __name__)
 _FWL = logging.getLogger('fwl')
 
 
+def _check_symlink_dir(folder: str):
+    """Refuse a symlink folder that is PROTEUS/output, lies inside or above it, or is
+    PROTEUS_DIR, HOME or above either; links and relative paths are resolved first."""
+    real = os.path.realpath(folder)
+    output = os.path.realpath(os.path.join(PROTEUS_DIR, 'output'))
+    guarded = (output, os.path.realpath(PROTEUS_DIR), os.path.realpath(os.path.expanduser('~')))
+    if any(os.path.commonpath([real, g]) == real for g in guarded) or (
+        os.path.commonpath([real, output]) == output
+    ):
+        raise ValueError(
+            f'symlink folder {folder} (resolved {real}) would remove {output}, '
+            'PROTEUS_DIR or HOME data: choose a folder outside them'
+        )
+
+
 def _replay(records: list):
     """Pass held records to the handlers the fwl logger has now, through the logger and
     handler levels as a live record would pass; not to root, which saw them live."""
@@ -91,7 +106,12 @@ class Grid:
         Raises
         ------
         ValueError
-            If ``name`` is not a folder inside PROTEUS/output (empty, '.', or above it).
+            If ``name`` resolves to PROTEUS/output itself or outside it, or if
+            ``symlink_dir`` would remove other data (see `_check_symlink_dir`).
+        RuntimeError
+            If another grid holds the log.
+        Exception
+            If the base config file does not exist or ``symlink_dir`` is blank.
         """
         # Grid's own name (for versioning, etc.)
         self.name = str(name).strip()
@@ -103,6 +123,8 @@ class Grid:
         self.symlink_dir = symlink_dir
         if self.symlink_dir in ['', '.']:
             raise Exception('Symlinked directory is set to a blank path')
+        if self.symlink_dir not in ('_UNSET', None):
+            _check_symlink_dir(self.symlink_dir)
 
         # Paths
         self.outdir = os.path.abspath(self.outdir) + '/'
@@ -414,7 +436,7 @@ class Grid:
             except ValueError as exc:
                 where = ', '.join(f'{k} = {v!r}' for k, v in gp.items())
                 reason = str(exc).replace(case_path, os.path.basename(case_path))
-                raise ValueError(f'Grid case {i} ({where}): {reason}') from exc
+                raise ValueError(f'Grid case {i} ({where}): {reason}') from None
 
     def run(
         self,
