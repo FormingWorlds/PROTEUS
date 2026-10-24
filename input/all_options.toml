@@ -662,7 +662,7 @@ config_version = "3.0"
     [outgas.atmodeller]
         solver_mode           = "robust"     # robust (better convergence) | basic (faster)
         solver_max_steps      = 1024         # root-finder max iterations
-        solver_multistart     = 10           # number of random restarts
+        solver_multistart     = 50           # maximum attempts per solve; a failed start is perturbed and retried
         include_condensates   = true         # condensed phases: graphite, sulfur, water, sulfuric acid
         # Solubility law per species ("none" = no dissolution, gas stays in atmosphere)
         solubility_H2O        = "H2O_peridotite_sossi23"     # none | H2O_peridotite_sossi23 | H2O_basalt_dixon95

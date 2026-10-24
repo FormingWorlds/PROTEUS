@@ -3228,6 +3228,56 @@ def test_assert_mass_conservation_skips_when_M_planet_zero():
     assert hf_row['M_planet'] == 0.0
 
 
+def _condensed_row(condensed_C: float, total_C: float = 1.6e20) -> dict:
+    """Post-outgas row that passes every other invariant, with carbon holding
+    ``condensed_C`` kg in condensates out of a ``total_C`` kg budget."""
+    return {
+        'M_planet': 3.3e23,
+        'M_atm': 1.0e19,
+        'M_vol_atm': 1.0e19,
+        'CO_kg_atm': 1.0e19,
+        'C_kg_total': total_C,
+        'C_kg_condensed': condensed_C,
+    }
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_condensed_mass_above_the_element_total_is_refused_on_every_row():
+    """A condensate takes its mass from the element budget, so no element can hold
+    more condensed mass than its total. A row breaking that is refused with trapping
+    off as well, the default, since a non-solution written by the chemistry would
+    otherwise be kept by a layer held by prevent_desaturation.
+
+    Edge cases: the whole budget condensed, and an excess within the solver's
+    relative tolerance, are accepted; an excess twice that tolerance is refused.
+    """
+    from proteus.utils.coupler import assert_mass_conservation
+
+    total = 1.6e20
+    assert assert_mass_conservation(_condensed_row(total)) is None
+    within = _condensed_row(total * (1.0 + 0.5e-4))
+    assert assert_mass_conservation(within, closure_rtol=1e-4) is None
+
+    with pytest.raises(RuntimeError, match='Condensed mass of C exceeds its total'):
+        assert_mass_conservation(_condensed_row(2.07 * total))
+    # Discrimination: the bound has a tolerance, but only the solver's.
+    with pytest.raises(RuntimeError, match='Condensed mass of C exceeds its total'):
+        assert_mass_conservation(_condensed_row(total * (1.0 + 2e-4)), closure_rtol=1e-4)
+
+
+@pytest.mark.unit
+def test_condensed_mass_bound_admits_the_solver_floor_and_refuses_a_non_finite_mass():
+    """Edge cases: the solver's floor of order 1e-6 kg condensed, of an element with
+    no budget, sits within the 1 kg absolute tolerance; a non-finite condensed mass
+    cannot be checked and is refused."""
+    from proteus.utils.coupler import assert_mass_conservation
+
+    assert assert_mass_conservation(_condensed_row(1.0e-6, total_C=0.0)) is None
+    with pytest.raises(RuntimeError, match='Condensed mass of C cannot be checked'):
+        assert_mass_conservation(_condensed_row(float('nan')))
+
+
 def _vapourising_row(m_vaps=4.0e20, perturb_species=None):
     """Row from a vapourising outgas step: volatiles plus a rock-vapour column.
 

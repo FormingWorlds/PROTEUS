@@ -32,7 +32,8 @@ def plot_saturated(hf_all: pd.DataFrame, output_dir: str, plot_format='pdf'):
     atmodeller outgassing module writes for each supported condensate. The
     condensed mass is shown per unit surface area, and as the thickness of a
     uniform layer of the condensate at its ``condensate_density``, which is an
-    estimate only. A condensate that was never part of the equilibrium is left
+    estimate only. A condensate is drawn when at least two points were solved for
+    or carry a held layer; one that was never part of the equilibrium is left
     out, and the plot is skipped when none was.
 
     With ``outgas.prevent_desaturation`` the activity is that of the inventory left
@@ -42,7 +43,7 @@ def plot_saturated(hf_all: pd.DataFrame, output_dir: str, plot_format='pdf'):
     hf_crop = hf_crop[hf_crop['Time'] > 0]
     time = np.array(hf_crop['Time'])
 
-    # Condensates with at least two solved points
+    # Condensates with at least two points solved for or holding a layer
     solved = {}
     for c in condensate_list:
         if f'{c}_cd_activity' not in hf_crop.columns or f'{c}_cd_kg' not in hf_crop.columns:
@@ -50,8 +51,12 @@ def plot_saturated(hf_all: pd.DataFrame, output_dir: str, plot_format='pdf'):
         activity = np.array(hf_crop[f'{c}_cd_activity'], dtype=float)
         mass = np.array(hf_crop[f'{c}_cd_kg'], dtype=float)
         valid = np.isfinite(activity) & (activity > 0)
-        if np.count_nonzero(valid) >= 2:
-            solved[c] = (activity, valid, mass)
+        # A layer held by outgas.prevent_desaturation counts at any activity: once it
+        # takes nearly all of its element the condensate leaves the network, and its
+        # activity is written as 0.
+        held = np.isfinite(mass) & (mass > HELD_MASS_KG)
+        if np.count_nonzero(valid | held) >= 2:
+            solved[c] = (activity, valid, mass, held)
     if not solved:
         log.debug('No condensate activities to plot; skipping plot_saturated')
         return
@@ -75,16 +80,15 @@ def plot_saturated(hf_all: pd.DataFrame, output_dir: str, plot_format='pdf'):
     ax3 = axs[3]  # magma temperature and melt fraction
     ax3r = ax3.twinx()
 
-    for c, (activity, valid, mass) in solved.items():
+    for c, (activity, valid, mass, held) in solved.items():
         col = get_colour(c)
         lbl = condensate_names.get(c, c)
 
         ax0.plot(time[valid], activity[valid], lw=lw, color=col, label=lbl)
 
         # Below saturation the condensed mass is only the solver's floor, so only
-        # saturated points, or a layer held from re-vapourising, carry a mass. A held
-        # layer is kept also where the condensate left the network (activity 0).
-        keep = (np.isfinite(mass) & (mass > HELD_MASS_KG)) | (valid & (activity >= SATURATED))
+        # saturated points, or a layer held from re-vapourising, carry a mass.
+        keep = held | (valid & (activity >= SATURATED))
         mass = np.where(keep, mass, 0.0)
         column = mass / area
         ax1.plot(time, column / C_uval, lw=lw, color=col)

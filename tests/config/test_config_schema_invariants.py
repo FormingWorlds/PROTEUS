@@ -51,7 +51,7 @@ from proteus.config._config import (
     planet_fO2_source_compat,
     planet_mass_valid,
     planet_oxygen_mode_explicit,
-    prevent_desaturation_requires_atmodeller,
+    prevent_desaturation_warns_without_condensates,
     satellite_evolve,
     sp0d_obliqua_degree_mismatch,
     spinless_orbit_keeps_spin_synchronous,
@@ -1425,21 +1425,26 @@ def _desaturation_config(module: str, include_condensates: bool, prevent: bool):
     return instance
 
 
-# prevent_desaturation_requires_atmodeller: accepted, warned with condensates off
+# prevent_desaturation_warns_without_condensates: accepted, warned when it holds nothing
 @pytest.mark.unit
+@pytest.mark.parametrize('include_condensates', [True, False], ids=['cd-on', 'cd-off'])
 @pytest.mark.parametrize('module', ['calliope', 'dummy'])
-def test_prevent_desaturation_accepted_with_other_outgassing_backends(module, caplog):
-    """The flag is accepted with an outgassing backend other than atmodeller. Such a
-    backend forms no condensed mass, so the flag holds nothing, and with the
-    atmodeller condensates left on (the default) no warning is logged."""
-    instance = _desaturation_config(module, True, prevent=True)
+def test_prevent_desaturation_warns_with_other_outgassing_backends(
+    module, include_condensates, caplog
+):
+    """The flag is accepted with an outgassing backend other than atmodeller, with one
+    warning that names the backend. Such a backend forms no condensed mass, so the flag
+    holds nothing, whatever the atmodeller condensate setting says."""
+    instance = _desaturation_config(module, include_condensates, prevent=True)
     with caplog.at_level('WARNING', logger='fwl.proteus.config._config'):
-        assert prevent_desaturation_requires_atmodeller(instance, None, None) is None
-    assert not any('prevent_desaturation' in r.getMessage() for r in caplog.records)
-    # Discrimination: the stand-in really carries the other backend with the flag on,
-    # so the acceptance is not the early return for a flag that is off.
-    assert instance.outgas.module == module
-    assert instance.outgas.prevent_desaturation is True
+        assert prevent_desaturation_warns_without_condensates(instance, None, None) is None
+    warnings = [
+        r.getMessage() for r in caplog.records if 'prevent_desaturation' in r.getMessage()
+    ]
+    assert len(warnings) == 1
+    assert f'outgas.module = "{module}"' in warnings[0]
+    # Discrimination: the backend is the reason, not the atmodeller setting it ignores.
+    assert 'include_condensates' not in warnings[0]
 
 
 @pytest.mark.unit
@@ -1449,7 +1454,7 @@ def test_prevent_desaturation_warns_with_atmodeller_condensates_off(caplog):
     against a base config that holds them."""
     instance = _desaturation_config('atmodeller', False, prevent=True)
     with caplog.at_level('WARNING', logger='fwl.proteus.config._config'):
-        assert prevent_desaturation_requires_atmodeller(instance, None, None) is None
+        assert prevent_desaturation_warns_without_condensates(instance, None, None) is None
     warnings = [
         r.getMessage() for r in caplog.records if 'prevent_desaturation' in r.getMessage()
     ]
@@ -1464,13 +1469,13 @@ def test_prevent_desaturation_accepted_with_atmodeller_condensates_or_when_off(c
     declared it."""
     on = _desaturation_config('atmodeller', True, prevent=True)
     with caplog.at_level('WARNING', logger='fwl.proteus.config._config'):
-        assert prevent_desaturation_requires_atmodeller(on, None, None) is None
+        assert prevent_desaturation_warns_without_condensates(on, None, None) is None
     assert not any('prevent_desaturation' in r.getMessage() for r in caplog.records)
     off = _desaturation_config('calliope', False, prevent=False)
-    assert prevent_desaturation_requires_atmodeller(off, None, None) is None
+    assert prevent_desaturation_warns_without_condensates(off, None, None) is None
     undeclared = _make_config_instance(**{'outgas.module': 'calliope'})
     assert not hasattr(undeclared.outgas, 'prevent_desaturation')
-    assert prevent_desaturation_requires_atmodeller(undeclared, None, None) is None
+    assert prevent_desaturation_warns_without_condensates(undeclared, None, None) is None
 
 
 @pytest.mark.parametrize(

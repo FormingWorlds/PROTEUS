@@ -687,8 +687,14 @@ def assert_mass_conservation(
     closure_rtol: float | None = None,
     closure_atol_kg: float = 1.0,
 ) -> None:
-    """Runtime invariant: the per-species kg_atm sum matches M_vol_atm, and
-    M_atm <= M_planet unless the caller disables that half.
+    """Runtime invariant: the per-species kg_atm sum matches M_vol_atm, no element
+    holds more condensed mass than its total, and M_atm <= M_planet unless the
+    caller disables that half.
+
+    A condensate takes its mass from the element budget, so a condensed mass above
+    the total means a solve wrote a non-solution, which a layer held by
+    ``outgas.prevent_desaturation`` would then keep. That bound is checked on every
+    row, with the tolerances of the per-element closure.
 
     Issue #677 invariant. M_atm sums atmospheric oxygen (over gas_list of
     *_kg_atm, including the O atoms in H2O / CO2 / SO2), and M_planet =
@@ -725,7 +731,8 @@ def assert_mass_conservation(
         conserving, so the per-element reservoir closure does not apply to
         them. Supplied by ``outgas.trapping.derived_total_elements``.
     closure_rtol : float or None
-        Relative tolerance for the per-element reservoir closure only. The
+        Relative tolerance for the per-element reservoir closure and the
+        condensed-mass bound only. The
         atmospheric and liquid reservoirs come out of a nonlinear chemistry
         solve that converges to its own relative tolerance, while the total is
         carried forward from the escape chain, so the two can agree no more
@@ -734,7 +741,8 @@ def assert_mass_conservation(
         ``config.outgas.solver_rtol``. ``atol_frac`` itself, and with it the
         atmosphere-mass and species-sum invariants, is unchanged.
     closure_atol_kg : float
-        Absolute tolerance of the per-element closure [kg]: a mismatch is
+        Absolute tolerance of the per-element closure and the condensed-mass bound
+        [kg]: a mismatch is
         refused once it exceeds both this and the relative tolerance times the
         total. It admits the trace melt mass the chemistry can leave of an
         element the run does not carry, a few hundredths of a kilogram, and
@@ -744,7 +752,8 @@ def assert_mass_conservation(
     ------
     RuntimeError
         If the per-species kg_atm sum over vol_gas_list disagrees with
-        M_vol_atm by more than ``atol_frac``. When ``require_atm_le_planet``,
+        M_vol_atm by more than ``atol_frac``, or if an element's condensed mass
+        exceeds its total or is not finite. When ``require_atm_le_planet``,
         raises if M_atm relatively exceeds M_planet. When
         ``check_element_closure``, raises if an element's reservoirs do not sum
         to its total.
@@ -827,12 +836,31 @@ def assert_mass_conservation(
                 f'loop is missing a species.'
             )
 
-    # Invariant 3, with trapping on: each element total equals the sum of its
+    # Invariant 3, on every row: no element holds more condensed mass than its
+    # total. A non-finite condensed mass is refused; a non-finite total is the
+    # closure's to judge.
+    closure_tol = max(atol_frac, float(closure_rtol)) if closure_rtol else atol_frac
+    for e in vol_element_list:
+        condensed = float(hf_row.get(f'{e}_kg_condensed', 0.0))
+        total = float(hf_row.get(f'{e}_kg_total', 0.0))
+        if not np.isfinite(condensed):
+            raise RuntimeError(
+                f'Condensed mass of {e} cannot be checked: {e}_kg_condensed='
+                f'{condensed} is not finite.'
+            )
+        if condensed > total + max(closure_atol_kg, closure_tol * abs(total)):
+            raise RuntimeError(
+                f'Condensed mass of {e} exceeds its total: {e}_kg_condensed='
+                f'{condensed:.6e} kg but {e}_kg_total={total:.6e} kg. A condensate '
+                f'takes its mass from the element budget, so the chemistry wrote a '
+                f'non-solution or a held layer was credited twice.'
+            )
+
+    # Invariant 4, with trapping on: each element total equals the sum of its
     # reservoirs, so a debit without its credit fails here. Elements the run
     # never carried are skipped; the tolerance is set out in the docstring.
     if not check_element_closure:
         return
-    closure_tol = max(atol_frac, float(closure_rtol)) if closure_rtol else atol_frac
     for e in element_list:
         if e in derived_elements:
             # A total the chemistry recomputes is not a conserved budget.

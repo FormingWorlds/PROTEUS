@@ -110,11 +110,37 @@ def test_a_held_layer_is_drawn_below_saturation(draw_real, tmp_path, late_activi
     assert column[0] == 0.0  # the floor at the first, undersaturated row
 
 
+@pytest.mark.physics_invariant
+def test_a_layer_held_after_a_single_saturated_point_is_drawn(draw_real, tmp_path):
+    """A condensate saturated on one solve and held from then on is drawn.
+
+    Edge case: once a held layer takes nearly all of its element, the condensate
+    leaves the network and its activity is written as 0, so the run has only one
+    point with a positive activity. The held points count towards the two points a
+    condensate needs to be drawn, and the column carries the held mass throughout.
+    """
+    (tmp_path / 'plots').mkdir()
+    hf = _make_hf_all()
+    rows = np.arange(len(hf))
+    first = 2  # the first row after the init rows
+    hf['C_cd_activity'] = np.where(rows == first, 1.0, 0.0)
+    hf['C_cd_kg'] = np.where(rows >= first, 4.0e20, 0.0)
+    fig = draw_real(sat_mod.plot_saturated, hf, str(tmp_path), plot_format='png')[0]
+    ax_act, ax_col = fig.axes[:2]
+
+    assert [line.get_label() for line in ax_act.lines[:2]] == ['Graphite', 'Sulfur']
+    area = 4.0 * np.pi * R_INT**2
+    assert ax_col.lines[0].get_ydata() == pytest.approx(
+        np.full(len(hf) - 2, 4.0e20 / area / 1e6), rel=1e-12
+    )
+
+
 def test_skipped_without_any_solved_condensate(tmp_path, monkeypatch):
     """No figure is made when no condensate column holds two solved points.
 
     Edge cases: a helpfile written before the condensate columns existed, and one
-    where every activity is zero (condensates disabled).
+    where every activity and condensed mass is zero, as the wrapper writes them with
+    condensates disabled.
     """
     mock_plt = MagicMock()
     monkeypatch.setattr(sat_mod, 'plt', mock_plt)
@@ -125,6 +151,7 @@ def test_skipped_without_any_solved_condensate(tmp_path, monkeypatch):
     disabled = base.copy()
     for c in condensate_list:
         disabled[f'{c}_cd_activity'] = 0.0
+        disabled[f'{c}_cd_kg'] = 0.0
     sat_mod.plot_saturated(disabled, str(tmp_path))
 
     assert not mock_plt.subplots.called

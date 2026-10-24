@@ -130,7 +130,10 @@ class Atmodeller:
     solver_max_steps : int
         Maximum iterations for the root-finder.
     solver_multistart : int
-        Number of random restarts for the root-finder.
+        Maximum number of attempts per solve. atmodeller perturbs a start that
+        fails and tries again, up to this many times, so a larger value costs time
+        only on a solve that does not converge at once. A solve that still fails
+        raises.
     include_condensates : bool
         Enable condensed phases in the equilibrium: every condensate atmodeller
         provides for the outgassing elements, which are graphite (C), sulfur (S),
@@ -167,7 +170,7 @@ class Atmodeller:
         validator=validators.in_(('robust', 'basic')),
     )
     solver_max_steps: int = field(default=1024, validator=validators.gt(0))
-    solver_multistart: int = field(default=10, validator=validators.gt(0))
+    solver_multistart: int = field(default=50, validator=validators.gt(0))
     include_condensates: bool = field(default=True)
     solubility_H2O: str | None = field(default='H2O_peridotite_sossi23', converter=none_if_none)
     solubility_CO2: str | None = field(default='CO2_basalt_dixon95', converter=none_if_none)
@@ -243,8 +246,8 @@ class Outgas:
         layer can only get thicker. Each condensate's `{X}_cd_activity` is then the
         saturation of the inventory left in the solve, so it can fall below 1 while
         its layer is held. Only atmodeller with `outgas.atmodeller.include_condensates`
-        forms condensates, so with another backend the flag holds nothing; with
-        atmodeller and its condensates off it holds nothing either, and a warning says
+        forms condensates: with another backend, or with atmodeller and its
+        condensates off, the flag holds nothing, and a warning at config load says
         so.
     solver_rtol: float
         Relative tolerance for the volatile equilibrium solver.

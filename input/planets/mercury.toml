@@ -3,22 +3,6 @@
 # Reference config for fO2 x C grids: set outgas.fO2_shift_IW and planet.elements.C_budget per case.
 # ----------------------------------------------------
 
-# Structure of the file and parameter sections:
-#   [params]              code execution, outputs, time-stepping, convergence
-#   [planet]              bulk planet properties: mass, start element abundances
-#   [star]                stellar model & parameters
-#   [orbit]               planetary orbit model & parameters
-#   [interior_struct]     interior structure & chemistry model & parameters
-#   [interior_energetics] interior energy transport model & parameters
-#   [outgas]              outgassing parameters (fO2) and included volatiles
-#   [atmos_clim]          atmosphere structure & energy transport model & params
-#   [atmos_chem]          atmosphere chemistry model & parameters
-#   [escape]              escape parameters, model selection
-#   [accretion]           late accretion model selection
-#   [observe]             synthetic observations
-
-# ----------------------------------------------------
-
 # Config file format version (must match the PROTEUS version you are running)
 config_version = "3.0"
 
@@ -431,7 +415,7 @@ config_version = "3.0"
     [outgas.atmodeller]
         solver_mode           = "robust"     # robust (better convergence) | basic (faster)
         solver_max_steps      = 1024         # root-finder max iterations
-        solver_multistart     = 10           # number of random restarts
+        solver_multistart     = 50           # maximum attempts per solve; a failed start is perturbed and retried
         include_condensates   = true         # condensed phases: graphite, sulfur, water, sulfuric acid
         # Solubility law per species ("none" = no dissolution, gas stays in atmosphere)
         solubility_H2O        = "H2O_peridotite_sossi23"     # none | H2O_peridotite_sossi23 | H2O_basalt_dixon95

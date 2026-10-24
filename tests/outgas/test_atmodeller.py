@@ -1197,3 +1197,51 @@ def test_noble_gas_without_total_mass_reports_zero_atmosphere():
     assert {f: hf_row[f'He_{f}'] for f in zeroed} == dict.fromkeys(zeroed, 0.0)
     assert hf_row['He_kg_total'] == he_kg_total
     assert hf_row['He_mol_total'] == pytest.approx(he_kg_total / eval_gas_mmw('He'), rel=1e-12)
+
+
+def _solve_with_solver_status(status, hf_row: dict) -> None:
+    """Run the wrapper on the reducing scenario, with ``status`` as atmodeller's
+    solver status (``None`` leaves it out of the output)."""
+    pytest.importorskip('atmodeller')  # patches atmodeller.EquilibriumModel below
+    config = _make_user_constant_config(-2.0)
+    fake_out, _ = _build_conserving_output(_REGRESSION_SCENARIOS['reducing_IWm2']['assign'])
+    if status is not None:
+        fake_out.asdict.return_value['solver'] = {'status': np.array(status)}
+    fake_model = MagicMock()
+    fake_model.output = fake_out
+
+    from proteus.outgas.atmodeller import _MODEL_CACHE
+
+    _MODEL_CACHE.clear()
+    try:
+        with patch('atmodeller.EquilibriumModel', return_value=fake_model):
+            calc_surface_pressures_atmodeller({'output': '/tmp/test'}, config, hf_row)
+    finally:
+        _MODEL_CACHE.clear()
+
+
+def test_a_solve_that_did_not_converge_raises_and_writes_nothing():
+    """An atmodeller release that does not raise on its own keeps the start guess as
+    the output when no attempt converges, with solver status False. The wrapper
+    refuses it, naming the attempt budget, before any of it reaches the row."""
+    hf_row = _hf_row_with_HS_budget()
+    before = dict(hf_row)
+    with pytest.raises(RuntimeError, match=r'did not converge.*solver_multistart = 1 '):
+        _solve_with_solver_status([False], hf_row)
+    assert hf_row == before
+
+    # Discrimination: the same output with status True is written to the row.
+    _solve_with_solver_status([True], hf_row)
+    assert hf_row['H2_kg_atm'] > 0.0
+
+
+def test_a_solve_without_a_solver_status_warns_and_is_written(caplog):
+    """Edge case: an output without the solver status cannot be checked. The solve is
+    still written, and a warning says its convergence was not checked."""
+    import logging
+
+    hf_row = _hf_row_with_HS_budget()
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.outgas.atmodeller'):
+        _solve_with_solver_status(None, hf_row)
+    assert any('convergence not checked' in r.getMessage() for r in caplog.records)
+    assert hf_row['H2_kg_atm'] > 0.0

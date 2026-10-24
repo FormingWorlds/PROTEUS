@@ -610,6 +610,23 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
     except Exception:
         output_dict = {}
 
+    # An atmodeller release that does not raise on its own keeps the start guess as
+    # the output when no attempt converges. Refuse it, so a non-solution never
+    # reaches the row, where a held layer would keep its condensate.
+    solver_info = output_dict.get('solver')
+    status = solver_info.get('status') if isinstance(solver_info, dict) else None
+    if status is None:
+        log.warning('atmodeller output has no solver status; convergence not checked')
+    elif not np.all(np.asarray(status, dtype=bool)):
+        masses = ', '.join(f'{el} {kg:.3e}' for el, kg in mass_constraints.items())
+        raise RuntimeError(
+            f'atmodeller did not converge at T_magma = {T_magma:.0f} K, Phi = '
+            f'{Phi_global:.3f} ({masses} kg): no attempt converged within '
+            f'solver_multistart = {atm_config.solver_multistart} attempts of '
+            f'solver_max_steps = {atm_config.solver_max_steps}. Raise '
+            'outgas.atmodeller.solver_multistart or solver_max_steps.'
+        )
+
     # Record condensate saturation on every solve so the helpfile and the log
     # show when each one forms. An activity of 1 means the condensate is stable;
     # below 1 it is undersaturated and its condensed mass is only the solver's
@@ -726,18 +743,9 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
         hf_row[f'{proteus_name}_mol_solid'] = 0.0
 
         if total_kg is not None:
-            # atmodeller's per-species gas_mass is the solver's own gas-phase
-            # reservoir and is the authoritative atmospheric write; total_mass
-            # is the conserved constraint and dissolved_mass the melt share.
-            # Deriving the atmospheric mass as total minus dissolved equals
-            # gas_mass only while no species holds a solid-phase reservoir
-            # (true today: condensates are separate condensed species and never
-            # enter a gas species' total_mass), so that difference serves as
-            # a closure check and as the fallback when the output omits
-            # gas_mass. Either write replaces the pressure-derived mass from
-            # the first loop, which distributes the column by mole fraction
-            # and misweights a species whose molar mass differs from the mean
-            # (badly for a light noble gas).
+            # gas_mass is the atmospheric write, total - dissolved its closure check
+            # and fallback; see the atmospheric mass note in
+            # docs/Validation/outgas/atmodeller.md.
             liquid = min(max(0.0, dissolved_kg if dissolved_kg is not None else 0.0), total_kg)
             hf_row[f'{proteus_name}_kg_liquid'] = liquid
             gas_kg = _as_mass(species_data.get('gas_mass'))

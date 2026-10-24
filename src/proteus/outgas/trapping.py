@@ -68,20 +68,24 @@ Reservoir bookkeeping
 Trapped mass moves from ``{sp}_kg_liquid`` to ``{sp}_kg_solid``, leaving
 ``{sp}_kg_total`` unchanged, and is recorded in ``{sp}_kg_trapped``. The same
 mass is moved between the per-element reservoirs by stoichiometry, so the
-per-element closure ``total == atm + liquid + solid`` holds after the step.
+per-element closure ``total == atm + liquid + solid + condensed`` holds after
+the step. Trapping never touches ``{e}_kg_condensed``, the element mass in
+outgassing condensates such as graphite, which only atmodeller with
+``outgas.atmodeller.include_condensates`` fills; it is zero otherwise.
 
-``_kg_trapped`` is the part of ``_kg_solid`` that trapping owns. The rest of
-``_kg_solid`` belongs to the chemistry backend, which writes it on every solve:
-zero for CALLIOPE and the dummy backend, and the condensed graphite for
-atmodeller. Keeping the two apart lets the chemistry own its share while the
-trapped share stays buried, so condensed carbon is never mistaken for trapped
-melt.
+``_kg_trapped`` is the part of ``_kg_solid`` that trapping owns. The chemistry
+backend writes zero to ``_kg_solid`` on every solve, CALLIOPE, atmodeller and the
+dummy backend alike, and atmodeller writes its condensates to ``_kg_condensed``
+instead. ``_kg_solid`` therefore holds only trapped mass, and condensed carbon is
+never mistaken for trapped melt.
 
 Trapped mass must be excluded anywhere the code assumes the whole-planet
 inventory is reachable. :func:`locked_solid_mass` is the single definition of
-that exclusion, used by the escape step and the desiccation gate.
-:func:`trapped_mass_withheld` hides it from the chemistry for the duration of a
-solve; desiccation keeps it with the rest of the solid mantle.
+that exclusion. :func:`unreachable_mass` adds the condensed mass held by
+``outgas.prevent_desaturation`` (:func:`locked_condensed_mass`), and the escape
+step and the desiccation gate subtract that sum. :func:`trapped_mass_withheld`
+hides the trapped mass from the chemistry for the duration of a solve;
+desiccation keeps it with the rest of the solid mantle.
 """
 
 from __future__ import annotations
