@@ -2055,15 +2055,17 @@ class TestGridFromConfig:
         g.release_log()
         assert g.symlink_dir == folder
 
+    @pytest.mark.parametrize('old', [True, False])
     def test_the_grid_name_is_checked_again_before_removal(
-        self, fake_proteus_dir, base_config_path, tmp_path_factory
+        self, fake_proteus_dir, base_config_path, tmp_path_factory, old
     ):
         """prepare_output checks the grid name again, so a link made in output/ after the
-        grid was set up does not take the removal out of output/."""
+        grid was set up takes neither the removal nor the new output out of output/."""
         victim = tmp_path_factory.mktemp('victim')
-        keep = victim / 'b' / 'keep'
-        keep.parent.mkdir()
-        keep.write_text('kept\n')
+        if old:
+            (victim / 'b').mkdir()
+            (victim / 'b' / 'keep').write_text('kept\n')
+        before = sorted(str(f.relative_to(victim)) for f in victim.rglob('*'))
         (fake_proteus_dir / 'output').mkdir()
         g = Grid('a/b', str(base_config_path), prepare_output=False)
         (fake_proteus_dir / 'output' / 'a').symlink_to(victim)
@@ -2073,7 +2075,7 @@ class TestGridFromConfig:
         finally:
             g.release_log()
         assert exc.type is ValueError and 'must name a folder inside' in str(exc.value), exc
-        assert keep.read_text() == 'kept\n'
+        assert sorted(str(f.relative_to(victim)) for f in victim.rglob('*')) == before
 
     def test_refuses_to_clean_outdir_holding_a_git_file(
         self, fake_proteus_dir, base_config_path
