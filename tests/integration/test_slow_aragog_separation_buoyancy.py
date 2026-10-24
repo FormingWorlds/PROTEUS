@@ -88,7 +88,9 @@ def test_the_configured_buoyancy_reaches_the_built_solver(tmp_path):
     from aragog.eos.entropy_phase import mobility_function
 
     runner = _short_run(tmp_path)
-    (cfg, solver, mix), (_, _, sol) = (_mush_state(runner, m) for m in ('mixture', 'solid'))
+    (cfg, solver, mix), (_, solver_sol, sol) = (
+        _mush_state(runner, m) for m in ('mixture', 'solid')
+    )
     por = mix.porosity_b
     # The solve of no length moves each state by round-off only.
     np.testing.assert_allclose(sol.porosity_b, por, rtol=1e-12, atol=1e-15)
@@ -115,6 +117,25 @@ def test_the_configured_buoyancy_reaches_the_built_solver(tmp_path):
     assert np.count_nonzero(stokes) >= 2, 'no Stokes node above phi 0.91'
     np.testing.assert_allclose(sol.jgrav_b[stokes] / mix.jgrav_b[stokes], 1.0, rtol=1e-2)
     assert ratio.max() > 1.5  # an ignored field gives 1 on every node
+
+    # The front drainage moves melt with the built solver's own mobility law: its real
+    # evaluator on the run's tables, at the evaluator's own porosity, in each mode, compared
+    # at unit drag (the drainage takes the melt viscosity, the solver the configured drag).
+    from proteus.outgas.compaction import darcy_velocity
+
+    drag = cfg.interior_energetics.aragog.separation_viscosity
+    for mode, built in (('mixture', solver), ('solid', solver_sol)):
+        phase = built.state.phase_basic
+        rho_s, rho_l = phase.phase_boundary_densities()
+        p, v = phase.porosity(), phase.relative_velocity()
+        on = (rho_s - rho_l > 1.0) & (p > 1.0e-3) & (p < 0.999)
+        assert np.count_nonzero(on) >= 10, mode
+        eta = (
+            phase._viscosity_val if drag == 'mixture' else np.full(p.shape, phase._visc_liquid)
+        )
+        g = np.broadcast_to(phase._g, p.shape)[on]
+        w = darcy_velocity(p[on], a, (rho_s - rho_l)[on], g, 1.0, buoyancy=mode)
+        np.testing.assert_allclose(w, v[on] * eta[on], rtol=1e-12)
 
     # The JAX path: the separation velocity from the factory parameters PROTEUS builds.
     jnp = pytest.importorskip('jax.numpy')

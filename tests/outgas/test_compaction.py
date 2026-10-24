@@ -13,15 +13,15 @@ compaction time becomes the two timescales above, and the solidus-to-front
 temperature interval disappears because the residence time is geometric rather
 than thermal. These tests exercise:
 
-* the mobility, the solver's ``aragog.eos.mobility_function``, and the Darcy
-  velocity against the separation velocity the solver computes with them,
-  under each ``separation_buoyancy``,
+* the Darcy velocity against the closed-form mobility of each regime under each
+  ``separation_buoyancy``, and the porosities where the two buoyancies part,
 * the matrix deformation time and its independence of porosity,
 * that the slower process controls, which is the sign of the combination and
   the one place an inverted comparison changes every answer,
 * the timescales and trapped fractions of five martian fronts, against
   closed forms and a quadrature independent of the ODE solver,
-* boundedness in ``[0, phi_top]`` without a clamp,
+* boundedness in ``[0, phi_top]``, the end clipped only within the integrator's
+  error allowance,
 * the front-location guards: a doubled front, one too thin to resolve, one
   spanning too much of the mantle, one reaching the surface, and one holding
   melt denser than the solid, each with its cause recorded,
@@ -73,128 +73,108 @@ _T_RES_SLOW = _L / (0.05 / _SECS_PER_YEAR)
 _drain = functools.partial(drainage_integral, buoyancy='mixture')
 
 
-class _EndMemberEOS:
-    """Phase-boundary densities the solver's separation velocity reads."""
-
-    def __init__(self, rho_solid, rho_melt):
-        self.rho = {'solid': rho_solid, 'melt': rho_melt}
-
-    def _lookup_at_phase_boundary(self, prop, pressure, phase):
-        return np.full(np.shape(pressure), self.rho[phase])
+# Blend centres and widths of the solver's mobility, used only to bound the deviation of
+# the blended law from each closed form below.
+_BLENDS = ((0.0769452, 0.02), (0.771462, 0.05))
 
 
-def _solver_velocity(
-    porosity, grain_size, rho_s=4000.0, rho_l=3600.0, gravity=9.8, eta=100.0, buoyancy='mixture'
-):
-    """Separation velocity from the interior solver's own ``relative_velocity``.
+def _closed_forms(phi, grain, buoyancy):
+    """The three mobility branches ``F = k / phi`` [m2] of Bower et al. (2018), per porosity.
 
-    ``EntropyPhaseEvaluator.relative_velocity`` is called on a stand-in that
-    carries the attributes it reads: a mush at the given porosity, fixed
-    phase-boundary densities, gravity, grain size, the separation buoyancy and the
-    melt viscosity as drag. Nothing of the solver's law is transcribed here.
+    Bower, Sanan & Wolf (2018, Eqs. 12 and 13a-c, PDF page 6 of the manuscript) write the
+    separation flux factor ``zeta`` in the melt mass fraction ``phi_m``. With the melt
+    volume fraction ``phi = phi_m rho_sol / (rho_liq + (rho_sol - rho_liq) phi_m)`` each
+    branch is ``zeta = phi_m (1 - phi_m) F(phi) / a^2``, which gives the velocity mobility
+    of a grain of size ``a``: Stokes (13a) ``2 a^2 / 9``, Rumpf-Gupte (13b)
+    ``(5/7) a^2 phi^4.5``, Blake-Kozeny-Carman (13c) ``a^2 phi^2 / (1000 (1 - phi)^2)``,
+    with the 13a and 13c bounds at ``phi = 1 / 1.29624`` and ``1 / 12.993``. This is the
+    buoyancy against the solid. Against the mixture the porous-flow velocity carries
+    ``1 - phi`` (McKenzie 1984, Eq. 3.7, p. 721: ``w0 = (k / mu) ((1 - phi) / phi)
+    (rho_s - rho_f) g``), on the two porous-flow branches; the Stokes branch is a grain
+    settling alone and keeps the plain contrast.
+
+    Returns the branch value at each porosity and the three branches.
     """
-    from aragog.eos.entropy_phase import EntropyPhaseEvaluator
+    a2 = grain**2
+    branches = [a2 * phi**2 / (1000.0 * (1.0 - phi) ** 2), 5.0 / 7.0 * a2 * phi**4.5]
+    if buoyancy == 'mixture':
+        branches = [(1.0 - phi) * b for b in branches]
+    branches.append(np.full_like(phi, 2.0 / 9.0 * a2))
+    k = np.where(phi < 1.0 / 12.993, 0, np.where(phi < 1.0 / 1.29624, 1, 2))
+    return np.choose(k, branches), branches
 
-    phi = np.asarray(porosity, dtype=float)
-    # An uninitialised evaluator, so the solver's own porosity and phase-boundary
-    # lookups run on the attributes set here.
-    stand_in = object.__new__(EntropyPhaseEvaluator)
-    stand_in.__dict__.update(
-        _const_properties=False,
-        _eos=_EndMemberEOS(rho_s, rho_l),
-        pressure=np.full(phi.shape, 1.0e10),
-        _density=rho_s - phi * (rho_s - rho_l),
-        _g=gravity,
-        _grain_size=grain_size,
-        _separation_buoyancy=buoyancy,
-        _separation_viscosity='melt',
-        _visc_liquid=eta,
-        _viscosity_val=np.full(phi.shape, 1.0e12),
+
+def _blend_bound(phi, branches):
+    """Largest relative departure of the blended law from the branch in force: the weight
+    the blends give the other branches, times their mobility, over the branch value."""
+    (c1, w1), (c2, w2) = _BLENDS
+    w_rg = 0.5 * (1.0 + np.tanh((phi - c1) / w1))
+    w_st = 0.5 * (1.0 + np.tanh((phi - c2) / w2))
+    bkc, rg, st = branches
+    other = np.where(
+        phi < 1.0 / 12.993,
+        w_rg * (rg + bkc),
+        np.where(
+            phi < 1.0 / 1.29624,
+            (1.0 - w_rg) * (bkc + rg) + w_st * (st + rg),
+            (1.0 - w_st) * (rg + st),
+        ),
     )
-    return EntropyPhaseEvaluator.relative_velocity(stand_in)
+    return other / np.choose(
+        np.where(phi < 1.0 / 12.993, 0, np.where(phi < 1.0 / 1.29624, 1, 2)), branches
+    )
 
 
 @pytest.mark.reference_pinned
 @pytest.mark.physics_invariant
-def test_mobility_reproduces_the_interior_solver_in_every_regime(validation_plot):
-    """Cross-implementation check against the permeability the interior solver
-    uses for gravitational separation (Bower et al. 2018 section 2.1), by
-    calling the solver's own ``relative_velocity`` and backing the mobility out
-    of it, under each ``separation_buoyancy``. The drainage velocity is the
-    solver's velocity under the same buoyancy, so the drainage and the solver
-    share one law; the drag viscosity is the melt viscosity in both here."""
-    pytest.importorskip('aragog')
-    rho_s, rho_l, gravity, eta = 4000.0, 3600.0, 9.8, 100.0
-    # Both blends and all three regimes, from the porosity floor to Stokes.
-    extra = [0.05, 0.0769452, 0.1, 0.3, 0.5, 0.7, 0.771462, 0.9, 0.99]
-    phi = np.unique(np.concatenate([np.linspace(0.02, 0.99, 40), extra]))
-    at = {p: int(np.flatnonzero(np.isclose(phi, p))[0]) for p in (0.3, 0.7, 0.9, 0.99)}
+def test_darcy_velocity_follows_the_closed_form_mobility_in_every_regime(validation_plot):
+    """The drainage velocity against the closed-form mobility of each regime, written out
+    here from Bower et al. (2018, Eqs. 13a-c) and McKenzie (1984, Eq. 3.7) without the
+    solver's code, under each ``separation_buoyancy`` and three grain sizes, at porosities
+    away from the two blends. The tolerance at each point is twice the weight the blends
+    give the other branches there (from 7.5e-4 at phi 0.005 down to 5e-7 at 0.3). A
+    missing or misplaced ``1 - phi`` changes the value by 0.5 percent at 0.005 and up to
+    95 percent at 0.95."""
+    drho, gravity, eta = 400.0, 9.8, 100.0
+    phi = np.array([0.005, 0.01, 0.02, 0.2, 0.3, 0.4, 0.5, 0.95, 0.99])
     plotted = {}
     for buoyancy in ('mixture', 'solid'):
         for k, grain in enumerate((1.0e-4, 1.0e-3, 1.0e-2)):
-            v = _solver_velocity(phi, grain, rho_s, rho_l, gravity, eta, buoyancy)
-            theirs = v * eta / ((rho_s - rho_l) * gravity)
-            mine = mobility_function(phi, grain, buoyancy=buoyancy)
-            # The solver soft-clips its porosity (width 1e-3), which raises it by
-            # about 1e-6 / (4 phi); on the phi^2 branch that is 1.25e-3 of the
-            # mobility at phi = 0.02 and under 2e-4 from 0.05 up.
-            np.testing.assert_allclose(mine[phi >= 0.05], theirs[phi >= 0.05], rtol=2.0e-4)
-            np.testing.assert_allclose(mine[phi < 0.05], theirs[phi < 0.05], rtol=1.5e-3)
-            w = darcy_velocity(phi, grain, rho_s - rho_l, gravity, eta, buoyancy=buoyancy)
-            np.testing.assert_allclose(w[phi >= 0.05], v[phi >= 0.05], rtol=2.0e-4)
-            np.testing.assert_allclose(w[phi < 0.05], v[phi < 0.05], rtol=1.5e-3)
+            want, branches = _closed_forms(phi, grain, buoyancy)
+            w = darcy_velocity(phi, grain, drho, gravity, eta, buoyancy=buoyancy)
+            dev = w * eta / (drho * gravity) / want - 1.0
+            tol = 2.0 * _blend_bound(phi, branches)
+            assert np.all(np.abs(dev) <= tol), (buoyancy, grain, dev, tol)
             if k == 1:
-                plotted[buoyancy] = (v, w)
-    # Discrimination: the modes differ by 1 - phi on the Rumpf-Gupte regime and
-    # agree in the Stokes regime, where a grain settles alone in the melt.
-    ratio = mobility_function(phi, 1.0e-3, buoyancy='mixture') / mobility_function(
-        phi, 1.0e-3, buoyancy='solid'
+                plotted[buoyancy] = dev / tol
+    # The modes differ by 1 - phi on the porous-flow branches and agree on Stokes.
+    wm, ws = (
+        darcy_velocity(phi, 1.0e-3, drho, gravity, eta, buoyancy=m)
+        for m in ('mixture', 'solid')
     )
-    assert ratio[at[0.3]] == pytest.approx(0.7, rel=1e-6)
-    assert ratio[at[0.99]] == pytest.approx(1.0, abs=1e-3)
-    # A factor 1 - phi on every regime is 16 percent below the 'mixture' solver at
-    # phi = 0.7 and 90 percent below at 0.9, far outside the tolerance.
-    vm, vs = plotted['mixture'][0], plotted['solid'][0]
-    uniform_factor = (1.0 - phi) * vs / vm - 1.0
-    assert uniform_factor[at[0.7]] == pytest.approx(-0.160, abs=1e-3)
-    assert uniform_factor[at[0.9]] == pytest.approx(-0.899, abs=1e-3)
-    # A Rumpf-Gupte exponent of 4 instead of 4.5 would be off by 0.3**-0.5 = 1.8
-    # at phi = 0.3.
-    v_rg = _solver_velocity(np.array([0.3]), 1.0e-3, buoyancy='solid')[0]
-    v_rg *= eta / ((rho_s - rho_l) * gravity)
-    wrong = 1.0e-6 * 0.3**4.0 * (5.0 / 7.0)
-    assert abs(wrong / v_rg - 1.0) > 0.5
-
-    # The three regimes must actually differ, or the comparison above would
-    # pass on a single-branch stub. Probe one porosity well inside each.
-    f_bkc = mobility_function(0.03, 1.0e-3, buoyancy='solid')
-    f_rg = mobility_function(0.30, 1.0e-3, buoyancy='solid')
-    f_stokes = mobility_function(0.85, 1.0e-3, buoyancy='solid')
-    assert f_bkc < f_rg < f_stokes
-    # Scale guard: deep in the Stokes regime the mobility is a^2 * 2/9 = 2.2e-7 m2,
-    # five orders above the low-porosity branch; probed at 0.95 because the tanh
-    # blend is still 2 percent short of the limit at 0.85.
-    assert mobility_function(0.95, 1.0e-3, buoyancy='solid') == pytest.approx(
-        1.0e-6 * 2.0 / 9.0, rel=2e-3
-    )
-    assert f_bkc < 1.0e-4 * f_stokes
+    np.testing.assert_allclose((wm / ws)[3:7], 1.0 - phi[3:7], rtol=1e-3)
+    # The blend leaves 1.9e-3 of the porous-flow branch at phi 0.95.
+    np.testing.assert_allclose((wm / ws)[7:], 1.0, rtol=3e-3)
 
     def figure():
         import matplotlib.pyplot as plt
 
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(9, 3.6))
-        tol = np.where(phi < 0.05, 1.5e-3, 2.0e-4)
         for buoyancy, mark in (('mixture', 'o'), ('solid', 's')):
-            v, w = plotted[buoyancy]
-            ax1.plot(phi, (w / v - 1.0) / tol, mark, mfc='none', label=buoyancy)
+            ax1.plot(phi, plotted[buoyancy], mark, mfc='none', label=buoyancy)
         ax1.axhspan(-1.0, 1.0, color='C2', alpha=0.25, zorder=0, label='tolerance')
         ax1.set_xlabel('Porosity')
         ax1.set_ylabel('deviation / tolerance')
         ax1.legend(fontsize=8)
-        (vm, wm), (vs, ws) = plotted['mixture'], plotted['solid']
-        ax2.plot(phi, wm / ws, label='drainage')
-        ax2.plot(phi[::4], vm[::4] / vs[::4], 'o', mfc='none', label='solver')
-        ax2.plot(phi, 1.0 - phi, '--', label='1 - porosity')
+        grid = np.linspace(0.005, 0.99, 100)
+        wm_g, ws_g = (
+            darcy_velocity(grid, 1.0e-3, drho, gravity, eta, buoyancy=m)
+            for m in ('mixture', 'solid')
+        )
+        cm, cs = (_closed_forms(phi, 1.0e-3, m)[0] for m in ('mixture', 'solid'))
+        ax2.plot(grid, wm_g / ws_g, label='drainage')
+        ax2.plot(phi, cm / cs, 'o', mfc='none', label='closed forms')
+        ax2.plot(grid, 1.0 - grid, '--', label='1 - porosity')
         ax2.set_xlabel('Porosity')
         ax2.set_ylabel('mixture / solid')
         ax2.legend(fontsize=8)
@@ -217,6 +197,26 @@ def test_mobility_reproduces_the_interior_solver_in_every_regime(validation_plot
     # silently producing a zero permeability.
     with pytest.raises(ValueError, match='grain_size'):
         mobility_function(0.3, 0.0, buoyancy='mixture')
+
+
+@pytest.mark.physics_invariant
+def test_mixture_drainage_leaves_the_uniform_factor_only_near_the_stokes_regime():
+    """Under 'mixture' the drainage velocity is the uniform law ``(1 - phi)`` times the
+    'solid' velocity within 1e-5 relative up to porosity 0.4, the front porosity of the
+    default ``rfront_loc``, so the change of law moves the drainage there by 1e-5 at most.
+    Near the Stokes regime the mixture law keeps the plain contrast: at porosity 0.9 it is
+    nearly ten times the uniform law."""
+    phi = np.linspace(0.005, 0.4, 80)
+    wm, ws = (
+        darcy_velocity(phi, 1.0e-3, 400.0, 9.8, 100.0, buoyancy=m) for m in ('mixture', 'solid')
+    )
+    dev = wm / ((1.0 - phi) * ws) - 1.0
+    assert np.max(np.abs(dev)) < 1.0e-5
+    assert np.max(np.abs(dev)) > 1.0e-7  # the Stokes residue of the blend, not round-off
+    wm9, ws9 = (
+        darcy_velocity(0.9, 1.0e-3, 400.0, 9.8, 100.0, buoyancy=m) for m in ('mixture', 'solid')
+    )
+    assert wm9 / (0.1 * ws9) - 1.0 > 0.5
 
 
 @pytest.mark.physics_invariant
@@ -532,7 +532,8 @@ def test_drainage_matches_an_independent_quadrature_over_five_martian_fronts():
 def test_drainage_is_bounded_and_decays_with_residence():
     """The retained porosity lies in [0, phi_top] and falls with the residence time:
     the percolation speed falls as phi^2 or steeper, so the last melt leaves ever
-    more slowly, and the front scheme needs no clamp of the linear law's kind."""
+    more slowly; the end is clipped to [0, phi_top] only within the integrator's error
+    allowance."""
     grain, eta_m, eta_s = 1.0e-3, 1.0, 1.0e18
     previous = _PHI_C
     for t_res in (0.0, 1.0e10, 1.0e12, 1.0e14, 1.0e16):
