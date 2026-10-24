@@ -174,6 +174,7 @@ _REVIEWED_NEUTRAL = frozenset(
         'interior_energetics.adams_williamson_beta',
         'interior_energetics.adams_williamson_rhos',
         'interior_energetics.adiabatic_bulk_modulus',
+        'interior_energetics.aragog.allow_resume_law_change',
         'interior_energetics.aragog.atol_temperature_equivalent',
         'interior_energetics.aragog.backend',
         'interior_energetics.aragog.core_bc',

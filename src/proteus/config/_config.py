@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 
 import tomlkit
 from attrs import asdict, define, field
@@ -866,6 +867,16 @@ class Config:
                     if aragog.get(field_name) == 0.0:
                         del aragog[field_name]
 
-        # Write to TOML file
-        with open(out, 'w') as hdl:
-            tomlkit.dump(cfg, hdl)
+        # Write a temporary file next to out and move it into place, so a write that stops
+        # part-way (a full disk) leaves the previous file whole.
+        tmp = f'{out}.tmp'
+        try:
+            with open(tmp, 'w') as hdl:
+                tomlkit.dump(cfg, hdl)
+            os.replace(tmp, out)
+        except BaseException:
+            try:  # the cleanup must not hide the error of the write
+                os.remove(tmp)
+            except OSError:
+                pass
+            raise
