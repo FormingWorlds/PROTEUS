@@ -1,5 +1,7 @@
-# PROTEUS configuration file for a Mercury-like planet with condensate (graphite) tracking.
-# Reference config for fO2 x C grids: set outgas.fO2_shift_IW and planet.elements.C_budget per case.# ----------------------------------------------------
+# PROTEUS configuration file for a Mercury-like planet with condensate tracking
+# (graphite, sulfur, water, sulfuric acid).
+# Reference config for fO2 x C grids: set outgas.fO2_shift_IW and planet.elements.C_budget per case.
+# ----------------------------------------------------
 
 # Structure of the file and parameter sections:
 #   [params]              code execution, outputs, time-stepping, convergence
@@ -38,7 +40,7 @@ config_version = "3.0"
         remove_sf             = false        # remove spectral file when done
 
     [params.dt]
-        minimum               = 3e4          # minimum time step [yr]
+        minimum               = 1e2          # minimum time step [yr]; small enough for the controller to resolve solidification
         minimum_rel           = 1e-5         # minimum relative time step
         maximum               = 1e7          # maximum time step [yr]
         initial               = 3e1          # initial step size [yr]
@@ -100,7 +102,7 @@ config_version = "3.0"
 
     # Initial temperature profile
     temperature_mode          = "isothermal" # liquidus_super | isothermal | linear | adiabatic | adiabatic_from_cmb | accretion | isentropic
-    tsurf_init                = 3300         # surface temperature [K]; the dummy interior starts here (dummy liquidus 2020 K)
+    tsurf_init                = 3300         # surface temperature [K]; above the Wolf & Bower (2018) liquidus throughout the mantle (~1980-2270 K at 0-5 GPa)
     tcmb_init                 = 6000         # CMB temperature [K] (adiabatic_from_cmb)
     tcenter_init              = 6000         # center temperature [K] (linear only)
     delta_T_super             = 100.0        # min superheat above the liquidus [K] (liquidus_super); small value starts the interior near the liquidus for a stable default run
@@ -198,7 +200,7 @@ config_version = "3.0"
     module                    = "spider"      # zalmoxis | dummy | spider
     core_frac_mode            = "radius"     # radius | mass
     core_frac                 = 0.828        # core radius fraction; Mercury ~2020 km / 2440 km
-    core_density              = 6980         # core density [kg m-3]; Mercury core. The dummy (NL20) structure derives its own (~6920) and only warns
+    core_density              = 6980         # core density [kg m-3]; Mercury core
     core_heatcap              = 800          # core heat capacity [J K-1 kg-1]
     melting_dir               = "Wolf_Bower+2018"  # melting curve folder in FWL_DATA
     eos_dir                   = "1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018_1TPa/"  # EOS folder in FWL_DATA
@@ -271,7 +273,7 @@ config_version = "3.0"
 
     # Grid and solver tolerances (shared by Aragog + SPIDER; ignored for dummy)
     num_levels                = 50           # radial grid levels (energetics domain only); minimum allowed
-    rtol                      = 1.0e-8       # relative ODE solver tolerance; looser than the verified Aragog default (1e-8)
+    rtol                      = 1.0e-8       # relative ODE solver tolerance; 100x looser than the SPIDER default (1e-10)
     atol                      = 1.0e-10      # absolute ODE solver tolerance
     flux_guess                = 1e4           # initial F_atm guess [W/m2]; <0 = sigma*T_magma^4
 
@@ -309,7 +311,7 @@ config_version = "3.0"
     kappah_floor              = 10.0         # eddy diffusivity floor [m2/s]; prevents MLT freeze
 
     # Coupling limits (max T_magma change per PROTEUS step)
-    tmagma_atol               = 50.0         # absolute limit [K]; raised to lengthen dummy-interior steps
+    tmagma_atol               = 50.0         # absolute limit [K]
     tmagma_rtol               = 0.04         # relative limit
 
     # Ultra-thin boundary layer parameterization
@@ -377,7 +379,7 @@ config_version = "3.0"
         silicate_heat_capacity    = 1200.0       # silicate heat capacity [J/kg/K]
         atm_heat_capacity_const   = true         # always use the fallback atmosphere heat capacity
         atm_heat_capacity         = 1.7e4        # fallback atmosphere heat capacity [J/kg/K]
-        silicate_density          = 3200.0       # silicate density [kg/m^3]; Mercury mantle. Not read with the dummy structure: the boundary uses (M_int - M_core)/V_mantle
+        silicate_density          = 3200.0       # silicate density [kg/m^3]; Mercury mantle. Boundary backend only, which takes the mantle density from the structure instead
         core_density              = 6980         # core density [kg/m^3]; Mercury core. Only read with core_frac_mode = "mass" and no structure R_core
         thermal_conductivity      = 4.2          # thermal conductivity [W/m/K]
         thermal_diffusivity       = 1.0e-6       # thermal diffusivity [m^2/s]
@@ -404,7 +406,7 @@ config_version = "3.0"
     T_floor                   = 700.0        # outgassing temperature floor [K]; clamped from below
     solver_rtol               = 1e-4         # relative mass/equilibrium tolerance
     solver_atol               = 1e-6         # absolute mass/equilibrium tolerance
-    prevent_desaturation      = true         # condensates never re-vapourise; the graphite layer only grows
+    prevent_desaturation      = true         # condensates never re-vapourise, so each condensed layer only grows (its activity can fall below 1)
 
     [outgas.calliope]
         # Species switches (false = excluded entirely from equilibrium calculation)
@@ -430,7 +432,7 @@ config_version = "3.0"
         solver_mode           = "robust"     # robust (better convergence) | basic (faster)
         solver_max_steps      = 1024         # root-finder max iterations
         solver_multistart     = 10           # number of random restarts
-        include_condensates   = true         # graphite condensation (required for graphite tracking)
+        include_condensates   = true         # condensed phases: graphite, sulfur, water, sulfuric acid
         # Solubility law per species ("none" = no dissolution, gas stays in atmosphere)
         solubility_H2O        = "H2O_peridotite_sossi23"     # none | H2O_peridotite_sossi23 | H2O_basalt_dixon95
         solubility_CO2        = "CO2_basalt_dixon95"         # none | CO2_basalt_dixon95
@@ -492,7 +494,7 @@ config_version = "3.0"
         oceans                = false         # surface liquid water oceans
         latent_heat           = false        # latent heat from condensation/evaporation
         real_gas              = false        # real-gas EOS where available
-        chemistry             = "none"       # atmospheric chemistry: none | eq (FastChem); off for now
+        chemistry             = "none"       # atmospheric chemistry: none | eq (FastChem)
         mlt_criterion         = "s"          # convection criterion: s (Schwarzschild) | l (Ledoux)
 
         # Surface properties
@@ -561,7 +563,7 @@ config_version = "3.0"
 [atmos_chem]
     # Default off: VULCAN is an optional GPL-3.0 backend, install with
     # `pip install "fwl-proteus[vulcan]"` then set module = "vulcan".
-    module                    = "none"       # none | vulcan | dummy; off: local VULCAN is older than PROTEUS requires
+    module                    = "none"       # none | vulcan | dummy
     mode                      = "none"         # none | offline (VULCAN after the run); module is none
 
     # Transport processes
