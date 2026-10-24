@@ -387,6 +387,13 @@ class Aragog:
     regime of a grain settling alone keeps (rho_s - rho_l) g; 'solid' takes
     (rho_s - rho_l) g on every regime (Abe 1995, Eq. 40), as SPIDER does, so
     'solid' with separation_viscosity 'melt' is the SPIDER setting."""
+    allow_resume_law_change: bool = field(default=False, validator=_valid_bool)
+    """Let a resume change separation_viscosity or separation_buoyancy from the values
+    in the run's init_coupler.toml, with one warning per switched law in the log. False
+    stops such a resume, because the changed law would act from the resume row on. A law
+    the record does not hold must be set in the config file either way; a record that
+    names the Aragog module and lacks separation_viscosity counts as 'melt', and a record
+    of another interior module holds neither law. init_coupler.toml records false."""
     solver_method: str = field(
         default='cvode',
         validator=in_(('cvode', 'radau', 'bdf')),
