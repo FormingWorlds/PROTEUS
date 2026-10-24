@@ -3768,7 +3768,7 @@ def test_the_recorded_timeline_is_not_offset_a_second_time(tmp_path):
 def test_a_temperature_mode_without_a_molten_guarantee_is_flagged(tmp_path, caplog):
     """Only liquidus_super suppresses the re-melt advisory on Aragog.
 
-    Each impact re-melts the mantle by re-applying the run's temperature-mode
+    An impact raises the melted share of the mantle to the run's temperature-mode
     initial condition, and only liquidus_super is molten for any planet mass
     and melting curve. The modes that merely tend to be molten, and are often
     chosen for exactly that reason, must still draw the advisory: treating them

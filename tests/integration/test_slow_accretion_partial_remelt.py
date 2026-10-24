@@ -123,6 +123,7 @@ def partial_remelt(request, tmp_path_factory):
         mp.undo()
 
     P = np.asarray(solver._P_stag_flat, dtype=float).ravel()
+    V = np.asarray(solver._volume_flat, dtype=float).ravel()
     eos = solver.entropy_eos
     return {
         'core_bc': core_bc,
@@ -133,14 +134,10 @@ def partial_remelt(request, tmp_path_factory):
         'S_molten': captured['S_molten'],
         'S_new': np.asarray(runner.interior_o._last_entropy, dtype=float),
         'P': P,
-        'V': np.asarray(solver._volume_flat, dtype=float).ravel(),
+        'V': V,
         'r': np.asarray(solver._r_stag_flat, dtype=float).ravel(),
-        'mass': np.asarray(
-            solver.evaluator.mesh.staggered_effective_density, dtype=float
-        ).ravel()
-        * np.asarray(solver._volume_flat, dtype=float).ravel(),
-        'mass_eos': np.asarray(eos.density(P, S_end), dtype=float).ravel()
-        * np.asarray(solver._volume_flat, dtype=float).ravel(),
+        'mass': np.asarray(solver.evaluator.mesh.staggered_effective_density).ravel() * V,
+        'mass_eos': np.asarray(eos.density(P, S_end), dtype=float).ravel() * V,
         'T_of': lambda p, s: float(
             np.asarray(eos.temperature(np.array([p]), np.array([s])))[0]
         ),

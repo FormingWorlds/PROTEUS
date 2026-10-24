@@ -472,7 +472,8 @@ class Accretion:
         shells that hold f_melt of the mantle mass to the initial condition and
         keeps the deeper mantle at its end-of-step state; f_melt = 1 is the full
         re-melt. Each impact fills its share from the surface down, also where the
-        shells already hold the initial condition. "computed" needs the
+        shells already hold the initial condition (the scalar interiors compound
+        repeated impacts instead). "computed" needs the
         "morrigan" or "timeline" module.
     """
 

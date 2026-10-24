@@ -11988,7 +11988,7 @@
         "computed"
       ],
       "bounds": null,
-      "description": "How much of the mantle an impact re-melts. Choices: None (the default: \"computed\" with the \"morrigan\" module, \"full\" otherwise), \"full\" (every impact raises the whole mantle to the initial condition, hotter parts keeping their state), \"computed\" (each impact re-melts its own melt mass fraction f_melt: Morrigan reports it per merger, a \"timeline\" file carries it as an f_melt column). A partial re-melt raises the outermost shells that hold f_melt of the mantle mass to the initial condition and keeps the deeper mantle at its end-of-step state; f_melt = 1 is the full re-melt. Each impact fills its share from the surface down, also where the shells already hold the initial condition. \"computed\" needs the \"morrigan\" or \"timeline\" module.",
+      "description": "How much of the mantle an impact re-melts. Choices: None (the default: \"computed\" with the \"morrigan\" module, \"full\" otherwise), \"full\" (every impact raises the whole mantle to the initial condition, hotter parts keeping their state), \"computed\" (each impact re-melts its own melt mass fraction f_melt: Morrigan reports it per merger, a \"timeline\" file carries it as an f_melt column). A partial re-melt raises the outermost shells that hold f_melt of the mantle mass to the initial condition and keeps the deeper mantle at its end-of-step state; f_melt = 1 is the full re-melt. Each impact fills its share from the surface down, also where the shells already hold the initial condition (the scalar interiors compound repeated impacts instead). \"computed\" needs the \"morrigan\" or \"timeline\" module.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
