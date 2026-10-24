@@ -32,8 +32,8 @@ class ResumeSeparationLawError(RuntimeError):
 
 
 def _aragog_table(path) -> tuple[str | None, dict]:
-    """Read ``path``; return its ``interior_energetics.module`` (None if absent or
-    unreadable) and its ``interior_energetics.aragog`` table."""
+    """Read ``path``; return its ``interior_energetics.module`` (None if absent, unreadable
+    or not a string) and its ``interior_energetics.aragog`` table."""
     try:
         with open(path, 'rb') as f:
             raw = tomllib.load(f)
@@ -42,7 +42,10 @@ def _aragog_table(path) -> tuple[str | None, dict]:
     interior = raw.get('interior_energetics')
     interior = interior if isinstance(interior, dict) else {}
     aragog = interior.get('aragog')
-    return interior.get('module'), aragog if isinstance(aragog, dict) else {}
+    module = interior.get('module')
+    return module if isinstance(module, str) else None, aragog if isinstance(
+        aragog, dict
+    ) else {}
 
 
 def _unrecorded(key: str, stored_path: str, module, config_path) -> str:

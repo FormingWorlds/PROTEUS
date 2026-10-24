@@ -874,6 +874,9 @@ class Config:
             with open(tmp, 'w') as hdl:
                 tomlkit.dump(cfg, hdl)
             os.replace(tmp, out)
-        finally:
-            if os.path.exists(tmp):
+        except BaseException:
+            try:  # the cleanup must not hide the error of the write
                 os.remove(tmp)
+            except OSError:
+                pass
+            raise
