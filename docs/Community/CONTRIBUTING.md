@@ -226,6 +226,7 @@ Use this order for every case. The bold lead-ins are always the same, so that a 
 - `??? info` makes a collapsed box. It needs `pymdownx.details` in the `markdown_extensions` of `mkdocs.yml`. If a repository does not have it, add the extension directly after `admonition` in the same pull request.
 - A case without a plot leaves out the plot and **How to read the plot.**
 - A case that fails, or that has a known limit, says so in plain words in its own line **Known limit.**, before the box.
+- **Why this check exists.** names only failures that the test can catch. A fault that moves both sides of the comparison, for example a constant that the test takes from the code under test, is not caught; say so in **Known limit.** instead.
 - Where a page has a table of its cases with a `Last compared` date (as in PROTEUS), keep the table and its dates.
 
 ### New Explanation sections
