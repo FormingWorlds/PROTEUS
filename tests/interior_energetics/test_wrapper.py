@@ -8370,3 +8370,52 @@ def test_any_error_of_the_partial_profile_writes_the_interior_status(monkeypatch
     with pytest.raises(AttributeError, match='evaluator'):
         _partial_aragog_remelt(0.3, status=status)
     assert [c.args[1] for c in status.call_args_list] == [21]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('method', ['set_initial_entropy', '_step_heat_content'])
+def test_an_error_after_the_partial_profile_writes_the_interior_status(monkeypatch, method):
+    """Setting the re-melted profile and booking its heat are part of the partial re-melt:
+    an error in either writes interior status 21 before it reaches the caller."""
+
+    def fail(self, *args):
+        raise RuntimeError(f'{method} failed')
+
+    monkeypatch.setattr(_FakeMeshAragogSolver, method, fail)
+    status = MagicMock()
+    with pytest.raises(RuntimeError) as err:
+        _partial_aragog_remelt(0.3, status=status)
+    assert str(err.value) == f'{method} failed'
+    assert [c.args[1] for c in status.call_args_list] == [21]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('f', [0.3, 1.0])
+@pytest.mark.parametrize(
+    'T_magma', [None, float('nan'), float('inf')], ids=['missing', 'nan', 'inf']
+)
+def test_a_scalar_remelt_without_a_finite_magma_temperature_writes_the_interior_status(
+    f, T_magma
+):
+    """A row without T_magma raises KeyError naming it (a default of 0 K would re-melt to
+    f T_init); a non-finite T_magma raises ValueError. Both write interior status 21."""
+    hf_row = _remelt_hf_row()
+    if T_magma is None:
+        del hf_row['T_magma']
+    else:
+        hf_row['T_magma'] = T_magma
+    status = MagicMock()
+    with patch('proteus.interior_energetics.wrapper.UpdateStatusfile', new=status):
+        with pytest.raises((KeyError, ValueError)) as err:
+            remelt_mantle(
+                {'output': '/tmp/out'},
+                _remelt_config('dummy'),
+                hf_row,
+                SimpleNamespace(impact_reset=False),
+                f=f,
+            )
+    if T_magma is None:
+        assert err.type is KeyError and err.value.args == ('T_magma',)
+    else:
+        assert err.type is ValueError and 'non-finite' in str(err.value)
+    assert [c.args[1] for c in status.call_args_list] == [21]

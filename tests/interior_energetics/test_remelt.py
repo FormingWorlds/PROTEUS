@@ -135,13 +135,26 @@ def test_full_weight_is_the_maximum_bit_for_bit():
 
 @pytest.mark.physics_invariant
 def test_partial_weight_blends_by_mass_share_and_never_cools():
-    """A cell melted by a third moves a third of the way to the initial condition; w = 0 keeps S_end."""
-    S_end = np.array([2400.0, 2400.0, 3950.0])
-    S_ic = np.array([3000.0, 3000.0, 3000.0])
-    S_new = remelt_entropy(S_end, S_ic, np.array([0.0, 1.0 / 3.0, 0.5]))
-    np.testing.assert_allclose(S_new, [2400.0, 2600.0, 3950.0], rtol=1e-15)
+    """A cell melted by a third moves a third of the way to the initial condition, one melted
+    by 0.7 moves 0.7 of the way; w = 0 keeps S_end."""
+    S_end = np.array([2400.0, 2400.0, 3950.0, 2400.0])
+    S_ic = np.array([3000.0, 3000.0, 3000.0, 3000.0])
+    S_new = remelt_entropy(S_end, S_ic, np.array([0.0, 1.0 / 3.0, 0.5, 0.7]))
+    np.testing.assert_allclose(S_new, [2400.0, 2600.0, 3950.0, 2820.0], rtol=1e-15)
     assert S_new[0] == S_end[0]
     assert np.all(S_new >= S_end)
+
+
+def test_weights_that_miss_the_melted_mass_are_refused(monkeypatch):
+    """A cumulative mass off by 1 ppm moves the front: the closure check refuses the weights
+    with the size of the miss instead of returning them."""
+    import proteus.interior_energetics.remelt as remelt
+
+    real = np.cumsum
+    monkeypatch.setattr(remelt.np, 'cumsum', lambda a: real(a) * (1.0 + 1e-6))
+    with pytest.raises(RuntimeError) as err:
+        remelt_weights(0.3, np.ones(6), np.arange(6.0))
+    assert str(err.value).startswith('melted mass misses f M by ')
 
 
 @pytest.mark.physics_invariant
@@ -191,7 +204,7 @@ def test_the_melt_front_of_a_uniform_mantle_matches_the_closed_form(validation_p
     outer mass fraction f puts the melt front at r_f = (R^3 - f (R^3 - r_c^3))^(1/3).
 
     The front of the weights is the radius inside the partly melted cell where the mass
-    above it equals w m. A fill linear in radius, r = R - f (R - r_c), misses by 280 km at
+    above it equals w m. A fill linear in radius, r = R - f (R - r_c), misses by 282 km at
     f = 0.3, and a fill from the base up puts the front at (r_c^3 + f (R^3 - r_c^3))^(1/3).
     See ``docs/Validation/interior_energetics/remelt.md``.
     """
@@ -210,9 +223,9 @@ def test_the_melt_front_of_a_uniform_mantle_matches_the_closed_form(validation_p
     np.testing.assert_allclose(front, closed, rtol=1e-12)
     linear = R - f_values * (R - r_c)
     from_base = np.cbrt(r_c**3 + f_values * (R**3 - r_c**3))
-    assert abs(front[2] - linear[2]) > 2.0e5
-    # Base-up and top-down fills meet at f = 0.5 only.
-    assert np.all(np.abs(front - from_base)[f_values != 0.5] > 1.0e5)
+    assert abs(front[2] - linear[2]) > 2.8e5
+    # Base-up and top-down fills meet at f = 0.5 only; the nearest others are 1040.55 km apart.
+    assert np.all(np.abs(front - from_base)[f_values != 0.5] > 1.04e6)
 
     def figure():
         import matplotlib.pyplot as plt
