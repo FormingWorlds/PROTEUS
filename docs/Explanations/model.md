@@ -213,11 +213,42 @@ The accretion module supplies the giant impacts a planet experiences after the d
 
 **[Morrigan](https://proteus-framework.org/Morrigan/)** (Python) follows a system of planetary embryos through the secular eccentricity oscillations, orbit crossings, scatterings, ejections and giant impacts by which they accrete, until the system settles into a Hill-stable configuration. It implements the semi-analytical Monte Carlo model of Kimura et al. (2025) [^cite-kimura2025], which predicts when a system goes unstable and resolves each instability with prescriptions calibrated against N-body simulations, rather than integrating the orbits. That makes one system cheap enough to run inside a coupled framework, at the cost of any single history being a statistical realisation rather than a trajectory: ensemble statistics are the meaningful comparison. PROTEUS follows one survivor of that system, chosen by the configured selector, and takes its impact history.
 
-Each impact is applied at the timestep it falls in. The impactor's rock grows the planet and the interior structure is re-solved at the new mass, so radius, gravity and the core-mantle split follow the growth. The impactor's volatiles are delivered while the same collision fraction strips the target's atmosphere and the impactor's own, so a small impactor striking a heavily-clothed planet can leave it lighter than before. The impact re-melts the melt mass fraction $f$ of the mantle, set by `accretion.remelt`: `full` gives $f = 1$, and `computed`, the default with Morrigan, takes the $f$ that Morrigan reports for each merger (or an `f_melt` column of a timeline file). The outermost mantle shells that hold $f$ of the mantle mass (the structural mass of the mantle before the impact) rise to the run's temperature-mode initial condition, parts that are already hotter keep their state, and the deeper mantle keeps its state before the impact; at $f = 1$ the whole mantle rises. The rule has no memory of earlier melt: each impact fills its share from the surface down, also where the shells are already at the initial condition, so two impacts of $f = 0.3$ in one step melt 0.3 of the mantle plus up to a quarter of the cell at the melt front, which the second impact blends again. The dummy interior, which carries one mantle temperature, moves it the share $f$ of the way to the initial temperature at each impact, so its impacts compound. The orbit takes the collision's change in semi-major axis and eccentricity, clamped to a bound orbit.
+Each impact is applied at the timestep it falls in. The impactor's rock grows the planet and the interior structure is re-solved at the new mass, so radius, gravity and the core-mantle split follow the growth. The impactor's volatiles are delivered while the same collision fraction strips the target's atmosphere and the impactor's own, so a small impactor striking a heavily-clothed planet can leave it lighter than before. The impact also re-melts part of the mantle, set by `accretion.remelt` (see [how much of the mantle an impact melts](#how-much-of-the-mantle-an-impact-melts)). The orbit takes the collision's change in semi-major axis and eccentricity, clamped to a bound orbit.
 
 Two further implementations take an impact history rather than derive one. `timeline` replays a table of impacts from a file, which reproduces a published history or drives PROTEUS from one computed elsewhere. `dummy` builds a history from scaling laws: the planet approaches an asymptotic mass exponentially, impacts are evenly spaced in time, and each delivers the mass the law accretes over its interval, so the increments decay and the largest impact is the first. With no accretion module selected the impact list is empty and the planet's mass is set by its initial condition alone.
 
 Config section: `[accretion]`. Reference: [Accretion configuration](../Reference/config/accretion.md).
+
+### How much of the mantle an impact melts
+
+How much of the mantle does a giant impact melt, and where in the mantle does the melt go?
+
+Each impact melts a fraction $f$ of the mantle mass, the melt mass fraction.
+The melt fills the mantle from the surface down.
+The outermost mantle shells that hold this mass rise to the run's temperature-mode initial condition, and the deeper mantle keeps its state before the impact.
+
+The setting `accretion.remelt` sets $f$:
+
+- `full` gives $f = 1$: the whole mantle rises.
+- `computed`, the default with Morrigan, takes the $f$ that Morrigan reports for each merger, or an `f_melt` column of a timeline file.
+- Without a setting, a run with Morrigan uses `computed` and every other run `full`.
+- An $f$ that is not a finite number from 0 to 1 is an error, also in an `f_melt` column.
+
+The mantle mass here is the structural mass of the mantle before the impact.
+Parts of the mantle that are already hotter than the initial condition keep their state.
+
+For example, take a mantle of uniform density between 3500 and 6400 km and $f = 0.3$.
+The melt front then lies 588 km below the surface.
+A fill linear in radius would put it 870 km deep, 282 km too deep, because the outer shells hold more mass per unit radius.
+
+The rule has no memory of earlier melt.
+Each impact fills its share from the surface down, also where the shells are already at the initial condition.
+So two impacts of $f = 0.3$ in one step melt 0.3 of the mantle plus up to a quarter of the cell at the melt front, which the second impact blends again.
+
+The dummy interior carries one mantle temperature.
+At each impact it moves that temperature the share $f$ of the way to the initial temperature, so its impacts compound.
+
+**Where this is checked.** [Partial giant-impact re-melt](../Validation/interior_energetics/remelt.md) on the Validation tab.
 
 ## Synthetic observations: petitRADTRANS
 
