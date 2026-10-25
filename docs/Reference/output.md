@@ -309,7 +309,7 @@ Each iteration carries the previous row forward and overwrites only the columns 
 |---|---|---|---|---|---|
 | `M_accreted_rock` | `kg` | cumulative rock mass added by giant impacts | `accretion/wrapper.py` | always | accretion, main loop |
 | `n_impacts_applied` | `1` | count of giant impacts applied | `accretion/wrapper.py` | always | accretion, interior_energetics |
-| `f_remelt` | `1` | largest melt mass fraction a giant impact re-melted on this row, 0 without one | `interior_energetics/wrapper.py`<br>`proteus.py` | always | interior_energetics |
+| `f_remelt` | `1` | largest melt mass fraction a giant impact re-melted on this row, 0 without one | `interior_energetics/wrapper.py`<br>`proteus.py` | always | interior_energetics, main loop |
 | `M_volatile_change` | `kg` | cumulative element mass added to the Zalmoxis target : delivered (rock O and init-stage impacts excluded) minus stripped minus escaped (rock vapour and sub-threshold zeroing included) minus removed at desiccation | `interior_struct/common.py` | interior_struct.module = "zalmoxis" | interior_struct |
 | `H2O_kg_trapped` | `kg` | mass trapped in the solid mantle | `outgas/trapping.py` | always | outgas |
 | `CO2_kg_trapped` | `kg` | mass trapped in the solid mantle | `outgas/trapping.py` | always | outgas |
