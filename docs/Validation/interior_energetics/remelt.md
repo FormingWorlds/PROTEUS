@@ -58,7 +58,7 @@ The table lists the `@pytest.mark.reference_pinned` test and the slow-tier test 
 
 ## Limits of the rule and the partly melted cell
 
-**Why this check exists.** At the ends of its range the rule must reduce to simple cases. No cell may cool.
+**Why this check exists.** At $f = 1$ a blend of the weights can differ from the full re-melt by round-off, and a wrong weight can cool a cell. Both change the profile at the ends of the range, where the right answer is known exactly.
 
 **What it tests.** `tests/interior_energetics/test_remelt.py` pins the ends of the rule. Here $S_\mathrm{end}$ is the entropy of a cell before the impact and $S_\mathrm{ic}$ its entropy at the initial condition. $f = 1$ gives `np.maximum(S_end, S_ic)` bit for bit, the full re-melt. $f = 0$ leaves every cell unchanged, and no cell cools. The scalar mantle of the dummy interior moves to $T_\mathrm{end} + f\,(T_\mathrm{init} - T_\mathrm{end})$, the enthalpy mean of a melted and an unmelted part of one heat capacity. Here $T_\mathrm{end}$ is its temperature before the impact and $T_\mathrm{init}$ the initial temperature.
 
