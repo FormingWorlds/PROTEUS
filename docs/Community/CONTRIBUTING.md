@@ -222,6 +222,7 @@ Use this order for every case. The bold lead-ins are always the same, so that a 
 ```
 
 - The box "Test details" holds the Reference, Tolerance, Test id and Command lines.
+- The image path is relative to the page. A page in `docs/Validation/<module>/` uses `../../assets/validation/`.
 - `??? info` makes a collapsed box. It needs `pymdownx.details` in the `markdown_extensions` of `mkdocs.yml`. If a repository does not have it, add the extension directly after `admonition` in the same pull request.
 - A case without a plot leaves out the plot and **How to read the plot.**
 - A case that fails, or that has a known limit, says so in plain words in its own line **Known limit.**, before the box.

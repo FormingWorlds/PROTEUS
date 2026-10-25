@@ -16,7 +16,7 @@ python tools/check_test_quality.py --check  # see below
 python tools/agents/check_agents_md.py && python tools/agents/sync_core.py --check .
 ```
 
-The baseline `tools/test_quality_baseline.json` lags, so `check_test_quality.py --check` exits 1 on `origin/main` too: compare its per-rule Current counts on `origin/main` and the branch; no count may rise.
+The committed baseline `tools/test_quality_baseline.json` lags, so `check_test_quality.py --check` exits 1 on `origin/main` too: compare its per-rule Current counts on `origin/main` and the branch; no count may rise.
 
 The shared blocks (`<!-- fwl-<name>:begin ... -->`) come from `tools/agents/`. To change one, edit it there, run `python tools/agents/sync_core.py <repo>` on PROTEUS and every module repository with the block, and land them together: the daily `agents-md-sync.yml` stays red until each module it lists is synced.
 
@@ -83,7 +83,7 @@ Commit messages, pull-request text, code comments, docstrings, test names, test 
 
 - `proteus start -c <config.toml> --offline`. Detach long runs (`nohup ... &`, output into the run directory); a foreground run dies with the shell.
 - Add `--deterministic` to `proteus start` when a coupled run fails on floating-point noise (for example Aragog T_core jump-guard exhaustion): PROTEUS re-executes itself once with `JAX_ENABLE_X64=1` and `XLA_FLAGS=--xla_cpu_enable_fast_math=false`.
-- Resume a stopped run with `proteus start -r -c <config.toml>`. It needs more than `init_loops + 1` helpfile rows and, under the run's `data/`, an interior snapshot (the dummy and boundary interiors write none) plus the matching atmosphere snapshot unless `atmos_clim.module = 'dummy'`; the files are named by simulation time in a form that depends on the module (`select_resumable_snapshot` in `src/proteus/utils/coupler.py`). Read `.github/agent-rules/resume.md` before you change resume, `restore_accretion_state` or the state files of an accretion module.
+- Resume a stopped run with `proteus start -r -c <config.toml>`. It needs more than `init_loops + 1` helpfile rows and, under the run's `data/`, an interior snapshot (the dummy and boundary interiors write none) plus the matching atmosphere snapshot unless `atmos_clim.module = 'dummy'`; the files are named by simulation time in a form that depends on the module (`select_resumable_snapshot` in `src/proteus/utils/coupler.py`). Shorter runs refuse to resume. Read `.github/agent-rules/resume.md` before you change resume, `restore_accretion_state` or the state files of an accretion module.
 - A new helpfile column goes in `GetHelpfileKeys` with its unit. On resume of an older run, `ReadHelpfileFromCSV` reads a missing column as zero if it is in `_DIAGNOSTIC_KEYS` or `RESUMABLE_ZERO_FILL_KEYS` or is a solid-phase trapping column (`GetHelpfileTrappingKeys`; an accumulating column then loses its earlier history) and raises `HelpfileSchemaDriftError` for any other missing column.
 
 ## Physics and coupling contract
