@@ -68,20 +68,24 @@ Reservoir bookkeeping
 Trapped mass moves from ``{sp}_kg_liquid`` to ``{sp}_kg_solid``, leaving
 ``{sp}_kg_total`` unchanged, and is recorded in ``{sp}_kg_trapped``. The same
 mass is moved between the per-element reservoirs by stoichiometry, so the
-per-element closure ``total == atm + liquid + solid`` holds after the step.
+per-element closure ``total == atm + liquid + solid + condensed`` holds after
+the step. Trapping never touches ``{e}_kg_condensed``, the element mass in
+outgassing condensates such as graphite, which only atmodeller with
+``outgas.atmodeller.include_condensates`` fills; it is zero otherwise.
 
-``_kg_trapped`` is the part of ``_kg_solid`` that trapping owns. The rest of
-``_kg_solid`` belongs to the chemistry backend, which writes it on every solve:
-zero for CALLIOPE and the dummy backend, and the condensed graphite for
-atmodeller. Keeping the two apart lets the chemistry own its share while the
-trapped share stays buried, so condensed carbon is never mistaken for trapped
-melt.
+``_kg_trapped`` is the part of ``_kg_solid`` that trapping owns. The chemistry
+backend writes zero to ``_kg_solid`` on every solve, CALLIOPE, atmodeller and the
+dummy backend alike, and atmodeller writes its condensates to ``_kg_condensed``
+instead. ``_kg_solid`` therefore holds only trapped mass, and condensed carbon is
+never mistaken for trapped melt.
 
 Trapped mass must be excluded anywhere the code assumes the whole-planet
 inventory is reachable. :func:`locked_solid_mass` is the single definition of
-that exclusion, used by the escape step and the desiccation gate.
-:func:`trapped_mass_withheld` hides it from the chemistry for the duration of a
-solve; desiccation keeps it with the rest of the solid mantle.
+that exclusion. :func:`unreachable_mass` adds the condensed mass held by
+``outgas.prevent_desaturation`` (:func:`locked_condensed_mass`), and the escape
+step and the desiccation gate subtract that sum. :func:`trapped_mass_withheld`
+hides the trapped mass from the chemistry for the duration of a solve;
+desiccation keeps it with the rest of the solid mantle.
 """
 
 from __future__ import annotations
@@ -287,21 +291,44 @@ def locked_solid_mass(hf_row: dict, element: str) -> float:
     """Whole-planet mass of one element locked in the solid mantle [kg].
 
     The single definition of what trapping has put beyond reach, read from
-    ``{element}_kg_trapped``. The rest of ``{element}_kg_solid`` is the chemistry
-    backend's own condensate, such as atmodeller's graphite, which is not locked.
-    The escape step subtracts this mass from the mass available to escape, and
-    the desiccation gate subtracts it from the inventory it tests, so a planet
-    whose atmosphere and melt have both emptied still registers as desiccated.
+    ``{element}_kg_trapped``. Outgassing condensates such as atmodeller's graphite
+    are held in ``{element}_kg_condensed``, not in ``_kg_solid``; see
+    :func:`locked_condensed_mass` for when they are locked too.
     """
     return _trapped(hf_row, element)
 
 
-def escapable_inventory(hf_row: dict, element: str) -> float:
+def locked_condensed_mass(hf_row: dict, element: str, config: Config | None = None) -> float:
+    """Mass of one element held in condensates that no longer re-vapourise [kg].
+
+    The ``{element}_kg_condensed`` reservoir with ``outgas.prevent_desaturation``
+    on, and 0 otherwise (also without a config), since then each solve may
+    re-vapourise the condensate.
+    """
+    if config is None or getattr(config.outgas, 'prevent_desaturation', False) is not True:
+        return 0.0
+    mass = float(hf_row.get(f'{element}_kg_condensed', 0.0))
+    return max(0.0, mass) if np.isfinite(mass) else 0.0
+
+
+def unreachable_mass(hf_row: dict, element: str, config: Config | None = None) -> float:
+    """Whole-planet mass of one element beyond the reach of escape and outgassing [kg].
+
+    The mass trapped in the solid mantle, plus the condensed reservoir when
+    condensates are kept from re-vapourising. The escape step subtracts this mass
+    from the mass available to escape, and the desiccation gate subtracts it from
+    the inventory it tests, so a planet whose atmosphere and melt have both emptied
+    still registers as desiccated.
+    """
+    return locked_solid_mass(hf_row, element) + locked_condensed_mass(hf_row, element, config)
+
+
+def escapable_inventory(hf_row: dict, element: str, config: Config | None = None) -> float:
     """Whole-planet inventory of one element that escape can still reach [kg]."""
     total = float(hf_row.get(f'{element}_kg_total', 0.0))
     if not np.isfinite(total):
         return total
-    return max(0.0, total - locked_solid_mass(hf_row, element))
+    return max(0.0, total - unreachable_mass(hf_row, element, config))
 
 
 def remelt_returned_mass(hf_row: dict) -> bool:
@@ -345,11 +372,11 @@ def withhold_trapped_mass(hf_row: dict) -> None:
     """Take the trapped mass out of the reservoirs a chemistry solve owns.
 
     Every outgassing backend partitions a whole-planet inventory between melt and
-    atmosphere, and rewrites the ``_kg_solid`` columns with its own condensate:
-    zero for CALLIOPE and the dummy backend, graphite for atmodeller. Trapped mass
+    atmosphere, and rewrites the ``_kg_solid`` columns, with zero for every backend;
+    atmodeller writes its condensates to ``_kg_condensed`` instead. Trapped mass
     belongs to neither. Left in an element total, it would be re-dissolved by the
-    solve; left in a solid column, it would be added to by a backend that sums its
-    condensate into that column. It is therefore subtracted from each element's
+    solve; left in a solid column, it would be overwritten by the backend. It is
+    therefore subtracted from each element's
     ``_kg_total`` and from each species' and element's ``_kg_solid``, which leaves
     the backend exactly the share it owns.
 

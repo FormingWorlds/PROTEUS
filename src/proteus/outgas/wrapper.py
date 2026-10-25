@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from contextlib import contextmanager
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -10,8 +11,14 @@ from proteus.escape.wrapper import readable_total
 from proteus.interior_struct.common import record_volatile_change
 from proteus.outgas.common import EMPTY_ATMOSPHERE_KEPT_KEYS, expected_keys
 from proteus.outgas.lavatmos import run_vapourisation
-from proteus.outgas.trapping import escapable_inventory, trapped_mass_withheld, trapping_active
+from proteus.outgas.trapping import (
+    escapable_inventory,
+    locked_condensed_mass,
+    trapped_mass_withheld,
+    trapping_active,
+)
 from proteus.utils.constants import (
+    condensate_list,
     element_list,
     element_mmw,
     gas_list,
@@ -290,9 +297,10 @@ def check_desiccation(config: Config, hf_row: dict) -> bool:
         )
         return False
     for e in vol_element_list + noble_gases:
-        # Mass trapped in the solid can neither escape nor outgas, so only the
-        # escapable inventory counts; otherwise it would block desiccation forever.
-        reachable = escapable_inventory(hf_row, e)
+        # Mass trapped in the solid, or held in condensates kept from re-vapourising,
+        # can neither escape nor outgas, so only the escapable inventory counts;
+        # otherwise it would block desiccation forever.
+        reachable = escapable_inventory(hf_row, e, config)
         if reachable > config.outgas.mass_thresh:
             log.info('Not desiccated, %s = %.2e kg reachable' % (e, reachable))
             return False  # return, and allow run_outgassing to proceed
@@ -402,6 +410,53 @@ def _solve_chemistry(dirs: dict, config: Config, hf_row: dict, *, initial: bool)
         apply_binodal_h2(hf_row, config)
 
 
+@contextmanager
+def condensed_mass_withheld(config: Config, hf_row: dict, *, initial: bool):
+    """Start the chemistry from no condensed mass, keeping held condensates out of it.
+
+    Every backend starts from empty ``{e}_kg_condensed`` and ``{X}_cd_kg``
+    columns; only atmodeller with condensates enabled fills them, so they stay 0
+    otherwise. With ``outgas.prevent_desaturation`` on, the condensed mass so far
+    is also taken out of each element total for the solve, so the chemistry cannot
+    re-vapourise it, and on exit it is added back to the totals, to
+    ``{e}_kg_condensed`` and to each condensate's ``{X}_cd_kg``, on top of what the
+    solve newly condensed. The reservoirs then only grow. The exit runs also when
+    the solve raises, so the row then holds the held mass, no more and no less.
+    ``{X}_cd_activity`` stays the solver's value: it is the saturation of the
+    inventory left in the solve, not of the held layer, so it can be below 1 while
+    a layer is held.
+
+    In the init stage (``initial``) nothing is held back: each init iteration
+    resets the element totals to the delivered budget and solves the same starting
+    state again, so condensate from an earlier trial solve is not kept.
+    """
+    held = {e: 0.0 for e in vol_element_list}
+    if not initial:
+        held = {e: locked_condensed_mass(hf_row, e, config) for e in vol_element_list}
+    held_cd = {}
+    if any(held.values()):
+        for c in condensate_list:
+            mass = float(hf_row.get(f'{c}_cd_kg', 0.0))
+            held_cd[c] = max(0.0, mass) if np.isfinite(mass) else 0.0
+    for c in condensate_list:
+        hf_row[f'{c}_cd_kg'] = 0.0
+    for e in vol_element_list:
+        hf_row[f'{e}_kg_condensed'] = 0.0
+        if held[e] > 0.0:
+            hf_row[f'{e}_kg_total'] = float(hf_row.get(f'{e}_kg_total', 0.0)) - held[e]
+    try:
+        yield
+    finally:
+        for e in vol_element_list:
+            if held[e] > 0.0:
+                hf_row[f'{e}_kg_total'] = float(hf_row.get(f'{e}_kg_total', 0.0)) + held[e]
+                hf_row[f'{e}_kg_condensed'] = (
+                    float(hf_row.get(f'{e}_kg_condensed', 0.0)) + held[e]
+                )
+        for c, mass in held_cd.items():
+            hf_row[f'{c}_cd_kg'] = float(hf_row.get(f'{c}_cd_kg', 0.0)) + mass
+
+
 def outgassing_derives_o_kg_total(config: Config) -> bool:
     """Whether each outgassing call derives ``O_kg_total`` from the melt fO2.
 
@@ -476,9 +531,14 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict, *, initial: bool):
     hf_row['O_res'] = 0.0
 
     # The chemistry partitions a whole-planet inventory and rewrites every
-    # `_kg_solid` column (0.0 in CALLIOPE, graphite in atmodeller), so the trapped
-    # mass is hidden for the solve and put back after it.
-    with trapped_mass_withheld(hf_row):
+    # `_kg_solid` column (0.0 in CALLIOPE and atmodeller; atmodeller writes its
+    # condensates to `_kg_condensed`), so the trapped mass is hidden for the solve
+    # and put back after it. Condensed mass is handled the same way when it is kept
+    # from re-vapourising.
+    with (
+        condensed_mass_withheld(config, hf_row, initial=initial),
+        trapped_mass_withheld(hf_row),
+    ):
         _solve_chemistry(dirs, config, hf_row, initial=initial)
 
     # P_surf here is the volatile+noble gas total
@@ -724,13 +784,22 @@ def run_desiccated(dirs: dict, config: Config, hf_row: dict, first_iter: bool):
         liquid = 0.0
         if keep_melt:
             liquid = _kept_column(float(hf_row.get(f'{n}_kg_liquid', 0.0)), n, 'melt')
+        # Condensates (e.g. graphite) stay on the surface when the atmosphere goes.
+        condensed = 0.0
+        if n in vol_element_list:
+            condensed = _kept_column(
+                float(hf_row.get(f'{n}_kg_condensed', 0.0)), n, 'condensed'
+            )
         mantle = solid + liquid
-        kept = min(mantle, total)
-        share = kept / mantle if mantle > 0.0 else 0.0
+        held_mass = mantle + condensed
+        kept = min(held_mass, total)
+        share = kept / held_mass if held_mass > 0.0 else 0.0
         # A negative total keeps its value, in the solid column.
-        hf_row[f'{n}_kg_solid'] = solid * share if mantle > 0.0 else kept
+        hf_row[f'{n}_kg_solid'] = solid * share if held_mass > 0.0 else kept
         if keep_melt:
             hf_row[f'{n}_kg_liquid'] = liquid * share
+        if n in vol_element_list:
+            hf_row[f'{n}_kg_condensed'] = condensed * share
         hf_row[f'{n}_kg_total'] = kept
         if n in gas_list:
             mol = _kept_column(float(hf_row.get(f'{n}_mol_solid', 0.0)) * share, n, 'solid')

@@ -51,6 +51,7 @@ from proteus.config._config import (
     planet_fO2_source_compat,
     planet_mass_valid,
     planet_oxygen_mode_explicit,
+    prevent_desaturation_warns_without_condensates,
     satellite_evolve,
     sp0d_obliqua_degree_mismatch,
     spinless_orbit_keeps_spin_synchronous,
@@ -1413,6 +1414,68 @@ def test_front_trapping_requires_the_aragog_interior():
     undeclared = _make_config_instance(**{'interior_energetics.module': 'dummy'})
     assert not hasattr(undeclared.outgas, 'trap_mode')
     assert front_trapping_requires_aragog(undeclared, None, None) is None
+
+
+def _desaturation_config(module: str, include_condensates: bool, prevent: bool):
+    """Stand-in config carrying the outgassing settings the condensate rule reads."""
+    instance = _make_config_instance(
+        **{'outgas.module': module, 'outgas.prevent_desaturation': prevent}
+    )
+    instance.outgas.atmodeller = SimpleNamespace(include_condensates=include_condensates)
+    return instance
+
+
+# prevent_desaturation_warns_without_condensates: accepted, warned when it holds nothing
+@pytest.mark.unit
+@pytest.mark.parametrize('include_condensates', [True, False], ids=['cd-on', 'cd-off'])
+@pytest.mark.parametrize('module', ['calliope', 'dummy'])
+def test_prevent_desaturation_warns_with_other_outgassing_backends(
+    module, include_condensates, caplog
+):
+    """The flag is accepted with an outgassing backend other than atmodeller, with one
+    warning that names the backend. Such a backend forms no condensed mass, so the flag
+    holds nothing, whatever the atmodeller condensate setting says."""
+    instance = _desaturation_config(module, include_condensates, prevent=True)
+    with caplog.at_level('WARNING', logger='fwl.proteus.config._config'):
+        assert prevent_desaturation_warns_without_condensates(instance, None, None) is None
+    warnings = [
+        r.getMessage() for r in caplog.records if 'prevent_desaturation' in r.getMessage()
+    ]
+    assert len(warnings) == 1
+    assert f'outgas.module = "{module}"' in warnings[0]
+    # Discrimination: the backend is the reason, not the atmodeller setting it ignores.
+    assert 'include_condensates' not in warnings[0]
+
+
+@pytest.mark.unit
+def test_prevent_desaturation_warns_with_atmodeller_condensates_off(caplog):
+    """With atmodeller and its condensates off the flag holds nothing. That is accepted
+    with a warning rather than refused, so one grid can switch condensates on and off
+    against a base config that holds them."""
+    instance = _desaturation_config('atmodeller', False, prevent=True)
+    with caplog.at_level('WARNING', logger='fwl.proteus.config._config'):
+        assert prevent_desaturation_warns_without_condensates(instance, None, None) is None
+    warnings = [
+        r.getMessage() for r in caplog.records if 'prevent_desaturation' in r.getMessage()
+    ]
+    assert len(warnings) == 1
+    assert 'include_condensates = false' in warnings[0]
+
+
+@pytest.mark.unit
+def test_prevent_desaturation_accepted_with_atmodeller_condensates_or_when_off(caplog):
+    """The flag is accepted silently with atmodeller and condensates on, and any
+    outgassing setup is accepted while the flag is off, including a config that never
+    declared it."""
+    on = _desaturation_config('atmodeller', True, prevent=True)
+    with caplog.at_level('WARNING', logger='fwl.proteus.config._config'):
+        assert prevent_desaturation_warns_without_condensates(on, None, None) is None
+    assert not any('prevent_desaturation' in r.getMessage() for r in caplog.records)
+    off = _desaturation_config('calliope', False, prevent=False)
+    assert prevent_desaturation_warns_without_condensates(off, None, None) is None
+    undeclared = _make_config_instance(**{'outgas.module': 'calliope'})
+    assert not hasattr(undeclared.outgas, 'prevent_desaturation')
+    assert prevent_desaturation_warns_without_condensates(undeclared, None, None) is None
 
 
 @pytest.mark.parametrize(

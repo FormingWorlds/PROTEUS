@@ -85,6 +85,16 @@ def test_outgas_custom_solver_params():
 
 
 @pytest.mark.unit
+def test_outgas_prevent_desaturation_defaults_off_and_toggles():
+    """Condensates may re-vapourise by default; the flag turns that off."""
+    from proteus.config._outgas import Outgas
+
+    assert Outgas(module='atmodeller', fO2_shift_IW=-4.0).prevent_desaturation is False
+    on = Outgas(module='atmodeller', fO2_shift_IW=-4.0, prevent_desaturation=True)
+    assert on.prevent_desaturation is True
+
+
+@pytest.mark.unit
 def test_lavatmos_defaults():
     """Lavatmos initializes with the documented rock-vapour defaults."""
     from proteus.config._outgas import Lavatmos

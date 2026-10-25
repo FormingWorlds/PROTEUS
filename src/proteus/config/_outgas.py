@@ -130,9 +130,15 @@ class Atmodeller:
     solver_max_steps : int
         Maximum iterations for the root-finder.
     solver_multistart : int
-        Number of random restarts for the root-finder.
+        Maximum number of attempts per solve. atmodeller perturbs a start that
+        fails and tries again, up to this many times, so a larger value costs time
+        only on a solve that does not converge at once. A solve that still fails
+        raises.
     include_condensates : bool
-        Enable condensate phases (graphite, etc.) in the equilibrium.
+        Enable condensed phases in the equilibrium: every condensate atmodeller
+        provides for the outgassing elements, which are graphite (C), sulfur (S),
+        water (H2O) and sulfuric acid (H2O4S). Each joins a solve when its elements
+        have budgets and T_magma lies inside its thermodynamic data range.
     solubility_H2O : str
         Solubility law for H2O. See atmodeller.solubility.library.
     solubility_CO2 : str
@@ -164,7 +170,7 @@ class Atmodeller:
         validator=validators.in_(('robust', 'basic')),
     )
     solver_max_steps: int = field(default=1024, validator=validators.gt(0))
-    solver_multistart: int = field(default=10, validator=validators.gt(0))
+    solver_multistart: int = field(default=50, validator=validators.gt(0))
     include_condensates: bool = field(default=True)
     solubility_H2O: str | None = field(default='H2O_peridotite_sossi23', converter=none_if_none)
     solubility_CO2: str | None = field(default='CO2_basalt_dixon95', converter=none_if_none)
@@ -231,6 +237,18 @@ class Outgas:
     T_floor: float
         Temperature floor [K]. The outgassing temperature is clamped to
         this value from below for the chemistry solve and the target masses.
+    prevent_desaturation: bool
+        Whether condensed mass leaves the outgassing system for good. With
+        `false`, each solve re-equilibrates the whole inventory, so a condensate can
+        re-vapourise as conditions change. With `true`, the mass held in each
+        `{e}_kg_condensed` reservoir is withheld from the chemistry, from escape and
+        from the desiccation gate, and the reservoir can only grow: a condensed
+        layer can only get thicker. Each condensate's `{X}_cd_activity` is then the
+        saturation of the inventory left in the solve, so it can fall below 1 while
+        its layer is held. Only atmodeller with `outgas.atmodeller.include_condensates`
+        forms condensates: with another backend, or with atmodeller and its
+        condensates off, the flag holds nothing, and a warning at config load says
+        so.
     solver_rtol: float
         Relative tolerance for the volatile equilibrium solver.
     solver_atol: float
@@ -315,6 +333,9 @@ class Outgas:
     T_floor: float = field(default=700.0, validator=validators.gt(0.0))
     solver_rtol: float = field(default=1e-4, validator=validators.gt(0.0))
     solver_atol: float = field(default=1e-6, validator=validators.gt(0.0))
+
+    # Condensed mass removed from the chemistry once formed, so it cannot re-vapourise
+    prevent_desaturation: bool = field(default=False)
 
     # Solid-phase volatile trapping, run before and apart from the chemistry solve,
     # so it sits beside T_floor rather than under [outgas.calliope]. The default
