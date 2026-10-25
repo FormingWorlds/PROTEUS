@@ -540,6 +540,67 @@ def test_user_constant_writes_chemistry_derived_O_kg_total():
     assert 'O' not in mass_kwargs
 
 
+def _solve_with_condensed_oxygen(fO2_source: str, condensed_O: float, O_kg_total: float):
+    """Run the wrapper on the fake output with ``condensed_O`` kg of O in condensates.
+
+    The model cache is cleared first: both calls of a test build the same network,
+    so without it the second would reuse the first call's fake model.
+    """
+    from proteus.outgas.atmodeller import _MODEL_CACHE, calc_surface_pressures_atmodeller
+
+    _MODEL_CACHE.clear()
+    config = _make_from_o_budget_config()
+    config.planet.fO2_source = fO2_source
+    config.outgas.atmodeller.include_condensates = True
+    hf_row = _earth_hf_row(O_kg_total=O_kg_total)
+    out = _fake_atmodeller_output()
+    out.asdict.return_value['element_O'] = {'condensed_mass': np.array(condensed_O)}
+    fake_model = MagicMock()
+    fake_model.output = out
+    with patch('atmodeller.EquilibriumModel', return_value=fake_model):
+        calc_surface_pressures_atmodeller({'output': '/tmp/test'}, config, hf_row)
+    _MODEL_CACHE.clear()
+    return hf_row
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_user_constant_O_total_includes_oxygen_in_condensates():
+    """Under user_constant the O budget counts the O held in water or sulfuric acid.
+
+    The same solve with and without 4e19 kg of condensed O differs in O_kg_total
+    by exactly that mass, and the O reservoirs close against the total.
+    Discriminating: a total of gas and dissolved O only would make the two equal.
+    """
+    condensed_O = 4.0e19
+    bare = _solve_with_condensed_oxygen('user_constant', 0.0, O_kg_total=5.5e21)
+    with_cd = _solve_with_condensed_oxygen('user_constant', condensed_O, O_kg_total=5.5e21)
+
+    assert with_cd['O_kg_condensed'] == pytest.approx(condensed_O, rel=1e-12)
+    assert with_cd['O_kg_total'] - bare['O_kg_total'] == pytest.approx(condensed_O, rel=1e-9)
+    parts = sum(with_cd[f'O_kg_{r}'] for r in ('atm', 'liquid', 'solid', 'condensed'))
+    assert parts == pytest.approx(with_cd['O_kg_total'], rel=1e-12)
+    assert with_cd['O_res'] == 0.0
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_from_o_budget_residual_counts_oxygen_in_condensates():
+    """Under from_O_budget the O target constrains the condensed O too.
+
+    The residual of a solve with 4e19 kg of condensed O is larger by exactly that
+    mass, and the total stays the user target. Discriminating: leaving the
+    condensed O out would report it as a spurious deficit.
+    """
+    condensed_O = 4.0e19
+    target_O = 1.0e22
+    bare = _solve_with_condensed_oxygen('from_O_budget', 0.0, O_kg_total=target_O)
+    with_cd = _solve_with_condensed_oxygen('from_O_budget', condensed_O, O_kg_total=target_O)
+
+    assert with_cd['O_res'] - bare['O_res'] == pytest.approx(condensed_O, rel=1e-9)
+    assert with_cd['O_kg_total'] == pytest.approx(target_O, rel=1e-12)
+
+
 @pytest.mark.unit
 @pytest.mark.physics_invariant
 def test_total_volatile_oxygen_sums_atm_and_dissolved_over_o_bearing_species():

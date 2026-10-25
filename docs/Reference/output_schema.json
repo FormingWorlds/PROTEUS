@@ -3617,6 +3617,162 @@
       "consumers_possible": []
     },
     {
+      "name": "C_cd_activity",
+      "unit": "1",
+      "description": "activity of the condensate in the solved inventory; 1 = saturated, and below 1 beside a layer held by prevent_desaturation",
+      "group": "Giant-impact accretion ledger",
+      "origin": "<condensate>_cd_activity",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        }
+      ],
+      "consumers": [
+        "plot"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "C_cd_kg",
+      "unit": "kg",
+      "description": "condensed mass",
+      "group": "Giant-impact accretion ledger",
+      "origin": "<condensate>_cd_kg",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
+          "file": "src/proteus/outgas/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas",
+        "plot"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "S_cd_activity",
+      "unit": "1",
+      "description": "activity of the condensate in the solved inventory; 1 = saturated, and below 1 beside a layer held by prevent_desaturation",
+      "group": "Giant-impact accretion ledger",
+      "origin": "<condensate>_cd_activity",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        }
+      ],
+      "consumers": [
+        "plot"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "S_cd_kg",
+      "unit": "kg",
+      "description": "condensed mass",
+      "group": "Giant-impact accretion ledger",
+      "origin": "<condensate>_cd_kg",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
+          "file": "src/proteus/outgas/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas",
+        "plot"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "H2O_cd_activity",
+      "unit": "1",
+      "description": "activity of the condensate in the solved inventory; 1 = saturated, and below 1 beside a layer held by prevent_desaturation",
+      "group": "Giant-impact accretion ledger",
+      "origin": "<condensate>_cd_activity",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        }
+      ],
+      "consumers": [
+        "plot"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "H2O_cd_kg",
+      "unit": "kg",
+      "description": "condensed mass",
+      "group": "Giant-impact accretion ledger",
+      "origin": "<condensate>_cd_kg",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
+          "file": "src/proteus/outgas/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas",
+        "plot"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "H2O4S_cd_activity",
+      "unit": "1",
+      "description": "activity of the condensate in the solved inventory; 1 = saturated, and below 1 beside a layer held by prevent_desaturation",
+      "group": "Giant-impact accretion ledger",
+      "origin": "<condensate>_cd_activity",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        }
+      ],
+      "consumers": [
+        "plot"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "H2O4S_cd_kg",
+      "unit": "kg",
+      "description": "condensed mass",
+      "group": "Giant-impact accretion ledger",
+      "origin": "<condensate>_cd_kg",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
+          "file": "src/proteus/outgas/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas",
+        "plot"
+      ],
+      "consumers_possible": []
+    },
+    {
       "name": "H2O_kg_trapped",
       "unit": "kg",
       "description": "mass trapped in the solid mantle",
@@ -20610,6 +20766,116 @@
         "interior_struct",
         "outgas",
         "plot",
+        "utils"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "H_kg_condensed",
+      "unit": "kg",
+      "description": "mass in condensed phases at the surface",
+      "group": "Quantities for each element",
+      "origin": "<element>_kg_condensed",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
+          "file": "src/proteus/outgas/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas",
+        "utils"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "O_kg_condensed",
+      "unit": "kg",
+      "description": "mass in condensed phases at the surface",
+      "group": "Quantities for each element",
+      "origin": "<element>_kg_condensed",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
+          "file": "src/proteus/outgas/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas",
+        "utils"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "C_kg_condensed",
+      "unit": "kg",
+      "description": "mass in condensed phases at the surface",
+      "group": "Quantities for each element",
+      "origin": "<element>_kg_condensed",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
+          "file": "src/proteus/outgas/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas",
+        "utils"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "N_kg_condensed",
+      "unit": "kg",
+      "description": "mass in condensed phases at the surface",
+      "group": "Quantities for each element",
+      "origin": "<element>_kg_condensed",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
+          "file": "src/proteus/outgas/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas",
+        "utils"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "S_kg_condensed",
+      "unit": "kg",
+      "description": "mass in condensed phases at the surface",
+      "group": "Quantities for each element",
+      "origin": "<element>_kg_condensed",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/atmodeller.py",
+          "condition": "outgas.module = \"atmodeller\""
+        },
+        {
+          "file": "src/proteus/outgas/wrapper.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas",
         "utils"
       ],
       "consumers_possible": []

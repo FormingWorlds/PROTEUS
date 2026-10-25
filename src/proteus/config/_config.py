@@ -429,6 +429,24 @@ def front_trapping_requires_aragog(instance, attribute, value):
         )
 
 
+def prevent_desaturation_warns_without_condensates(instance, attribute, value):
+    """prevent_desaturation holds nothing unless atmodeller forms condensates."""
+    outgas = instance.outgas
+    if getattr(outgas, 'prevent_desaturation', False) is not True:
+        return
+    if outgas.module != 'atmodeller':
+        log.warning(
+            'outgas.prevent_desaturation = true has no effect with outgas.module = '
+            '"%s": only atmodeller forms condensates',
+            outgas.module,
+        )
+    elif not outgas.atmodeller.include_condensates:
+        log.warning(
+            'outgas.prevent_desaturation = true has no effect with '
+            'outgas.atmodeller.include_condensates = false'
+        )
+
+
 def lowt_extension_requires_aragog(instance, attribute, value):
     """The low-temperature solid extension is run only with the Aragog interior."""
     zalmoxis = getattr(instance.interior_struct, 'zalmoxis', None)
@@ -791,7 +809,13 @@ class Config:
             lowt_extension_requires_ps_tables,
         ),
     )
-    outgas: Outgas = field(factory=Outgas, validator=(front_trapping_requires_aragog,))
+    outgas: Outgas = field(
+        factory=Outgas,
+        validator=(
+            front_trapping_requires_aragog,
+            prevent_desaturation_warns_without_condensates,
+        ),
+    )
     atmos_clim: AtmosClim = field(factory=AtmosClim)
     atmos_chem: AtmosChem = field(factory=AtmosChem)
     escape: Escape = field(

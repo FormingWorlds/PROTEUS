@@ -23,6 +23,7 @@ import numpy as np
 import pandas as pd
 
 from proteus.utils.constants import (
+    condensate_list,
     element_list,
     gas_list,
     noble_gases,
@@ -48,7 +49,7 @@ if TYPE_CHECKING:
 log = logging.getLogger('fwl.' + __name__)
 
 LOCKFILE_NAME = 'keepalive'
-AGNI_MIN_VERSION = '1.8.0'
+AGNI_MIN_VERSION = '1.14.0'
 OBLIQUA_MIN_VERSION = '0.1.0'
 
 
@@ -686,8 +687,14 @@ def assert_mass_conservation(
     closure_rtol: float | None = None,
     closure_atol_kg: float = 1.0,
 ) -> None:
-    """Runtime invariant: the per-species kg_atm sum matches M_vol_atm, and
-    M_atm <= M_planet unless the caller disables that half.
+    """Runtime invariant: the per-species kg_atm sum matches M_vol_atm, no element
+    holds more condensed mass than its total, and M_atm <= M_planet unless the
+    caller disables that half.
+
+    A condensate takes its mass from the element budget, so a condensed mass above
+    the total means a solve wrote a non-solution, which a layer held by
+    ``outgas.prevent_desaturation`` would then keep. That bound is checked on every
+    row, with the tolerances of the per-element closure.
 
     Issue #677 invariant. M_atm sums atmospheric oxygen (over gas_list of
     *_kg_atm, including the O atoms in H2O / CO2 / SO2), and M_planet =
@@ -724,7 +731,8 @@ def assert_mass_conservation(
         conserving, so the per-element reservoir closure does not apply to
         them. Supplied by ``outgas.trapping.derived_total_elements``.
     closure_rtol : float or None
-        Relative tolerance for the per-element reservoir closure only. The
+        Relative tolerance for the per-element reservoir closure and the
+        condensed-mass bound only. The
         atmospheric and liquid reservoirs come out of a nonlinear chemistry
         solve that converges to its own relative tolerance, while the total is
         carried forward from the escape chain, so the two can agree no more
@@ -733,7 +741,8 @@ def assert_mass_conservation(
         ``config.outgas.solver_rtol``. ``atol_frac`` itself, and with it the
         atmosphere-mass and species-sum invariants, is unchanged.
     closure_atol_kg : float
-        Absolute tolerance of the per-element closure [kg]: a mismatch is
+        Absolute tolerance of the per-element closure and the condensed-mass bound
+        [kg]: a mismatch is
         refused once it exceeds both this and the relative tolerance times the
         total. It admits the trace melt mass the chemistry can leave of an
         element the run does not carry, a few hundredths of a kilogram, and
@@ -743,7 +752,8 @@ def assert_mass_conservation(
     ------
     RuntimeError
         If the per-species kg_atm sum over vol_gas_list disagrees with
-        M_vol_atm by more than ``atol_frac``. When ``require_atm_le_planet``,
+        M_vol_atm by more than ``atol_frac``, or if an element's condensed mass
+        exceeds its total or is not finite. When ``require_atm_le_planet``,
         raises if M_atm relatively exceeds M_planet. When
         ``check_element_closure``, raises if an element's reservoirs do not sum
         to its total.
@@ -826,12 +836,31 @@ def assert_mass_conservation(
                 f'loop is missing a species.'
             )
 
-    # Invariant 3, with trapping on: each element total equals the sum of its
+    # Invariant 3, on every row: no element holds more condensed mass than its
+    # total. A non-finite condensed mass is refused; a non-finite total is the
+    # closure's to judge.
+    closure_tol = max(atol_frac, float(closure_rtol)) if closure_rtol else atol_frac
+    for e in vol_element_list:
+        condensed = float(hf_row.get(f'{e}_kg_condensed', 0.0))
+        total = float(hf_row.get(f'{e}_kg_total', 0.0))
+        if not np.isfinite(condensed):
+            raise RuntimeError(
+                f'Condensed mass of {e} cannot be checked: {e}_kg_condensed='
+                f'{condensed} is not finite.'
+            )
+        if condensed > total + max(closure_atol_kg, closure_tol * abs(total)):
+            raise RuntimeError(
+                f'Condensed mass of {e} exceeds its total: {e}_kg_condensed='
+                f'{condensed:.6e} kg but {e}_kg_total={total:.6e} kg. A condensate '
+                f'takes its mass from the element budget, so the chemistry wrote a '
+                f'non-solution or a held layer was credited twice.'
+            )
+
+    # Invariant 4, with trapping on: each element total equals the sum of its
     # reservoirs, so a debit without its credit fails here. Elements the run
     # never carried are skipped; the tolerance is set out in the docstring.
     if not check_element_closure:
         return
-    closure_tol = max(atol_frac, float(closure_rtol)) if closure_rtol else atol_frac
     for e in element_list:
         if e in derived_elements:
             # A total the chemistry recomputes is not a conserved budget.
@@ -839,18 +868,22 @@ def assert_mass_conservation(
         total = float(hf_row.get(f'{e}_kg_total', 0.0))
         if not np.isfinite(total) or total <= 0.0:
             continue
-        parts = sum(float(hf_row.get(f'{e}_kg_{r}', 0.0)) for r in ('atm', 'liquid', 'solid'))
+        parts = sum(
+            float(hf_row.get(f'{e}_kg_{r}', 0.0))
+            for r in ('atm', 'liquid', 'solid', 'condensed')
+        )
         if not np.isfinite(parts):
             continue
         rel = abs(parts - total) / total
         if abs(parts - total) > max(closure_atol_kg, closure_tol * total):
             raise RuntimeError(
                 f'Per-element reservoir closure failed for {e}: '
-                f'{e}_kg_total={total:.6e} kg but atm+liquid+solid='
+                f'{e}_kg_total={total:.6e} kg but atm+liquid+solid+condensed='
                 f'{parts:.6e} kg (relative difference {rel * 100:.4f}%). '
                 f'atm={float(hf_row.get(f"{e}_kg_atm", 0.0)):.3e}, '
                 f'liquid={float(hf_row.get(f"{e}_kg_liquid", 0.0)):.3e}, '
-                f'solid={float(hf_row.get(f"{e}_kg_solid", 0.0)):.3e} kg. '
+                f'solid={float(hf_row.get(f"{e}_kg_solid", 0.0)):.3e}, '
+                f'condensed={float(hf_row.get(f"{e}_kg_condensed", 0.0)):.3e} kg. '
                 f'A reservoir was debited without the matching credit.'
             )
 
@@ -1213,8 +1246,14 @@ def GetHelpfileKeys():
         'M_volatile_change',  # cumulative element mass added to the Zalmoxis target [kg]: delivered (rock O and init-stage impacts excluded) minus stripped minus escaped (rock vapour and sub-threshold zeroing included) minus removed at desiccation
     ]
 
-    # Share of the solid-mantle reservoir that trapping owns. The chemistry
-    # writes the rest of `_kg_solid`, its own condensate, on every solve.
+    # Condensates from atmodeller; zero when a condensate was not solved for
+    for c in condensate_list:
+        keys.append(c + '_cd_activity')  # activity of the condensate in the solved inventory; 1 = saturated, and below 1 beside a layer held by prevent_desaturation [1]
+        keys.append(c + '_cd_kg')        # condensed mass [kg]
+
+    # Share of the solid-mantle reservoir that trapping owns. CALLIOPE and
+    # atmodeller write no solid mass of their own; atmodeller's condensates go to
+    # `_kg_condensed`.
     for s in vol_list:
         keys.append(s + '_kg_trapped')  # mass trapped in the solid mantle [kg]
     for e in vol_element_list:
@@ -1245,6 +1284,10 @@ def GetHelpfileKeys():
         keys.append(e + '_kg_solid')    # mass in solid mantle [kg]
         keys.append(e + '_kg_liquid')   # mass in liquid mantle [kg]
         keys.append(e + '_kg_total')    # mass in whole planet [kg]
+
+    # Element mass held in outgassing condensates (e.g. graphite), apart from the mantle
+    for e in vol_element_list:
+        keys.append(e + '_kg_condensed')  # mass in condensed phases at the surface [kg]
 
     # element mass ratios in atmosphere
     for e1 in element_list:
@@ -1778,6 +1821,9 @@ _DIAGNOSTIC_KEYS = (
     'step_dE_core_J',
     'E_core_residual_J',
     'E_core_residual_frac',
+    # Condensate activity from atmodeller, written each solve and never read back. The
+    # condensed mass is not here: prevent_desaturation reads it back to hold the layer.
+    *(f'{c}_cd_activity' for c in condensate_list),
 )
 
 
@@ -1925,7 +1971,12 @@ def ReadHelpfileFromCSV(output_dir: str, *, required_columns: list[str] | None =
     hf_all = read_helpfile_table(fpath)
 
     missing = sorted(set(required_columns) - set(hf_all.columns))
-    zero_fill = RESUMABLE_ZERO_FILL_KEYS | set(GetHelpfileTrappingKeys())
+    # A run that predates the condensed reservoir held its condensate in
+    # `_kg_solid`, so reading the new columns as zero keeps its totals; the
+    # per-condensate mass is zero with them, so no layer is held on resume.
+    condensed_keys = {e + '_kg_condensed' for e in vol_element_list}
+    condensed_keys |= {c + '_cd_kg' for c in condensate_list}
+    zero_fill = RESUMABLE_ZERO_FILL_KEYS | set(GetHelpfileTrappingKeys()) | condensed_keys
     fillable = [key for key in missing if key in zero_fill]
     unfillable = sorted(set(missing) - set(fillable))
 
@@ -2399,6 +2450,7 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
         plot_population_mass_radius,
         plot_population_time_density,
     )
+    from proteus.plot.cpl_saturated import plot_saturated
     from proteus.plot.cpl_sflux import plot_sflux
     from proteus.plot.cpl_sflux_cross import plot_sflux_cross
     from proteus.plot.cpl_spectra import plot_spectra
@@ -2437,6 +2489,9 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
 
     # Elemental mass inventory
     plot_escape(hf_all, output_dir, plot_format=config.params.out.plot_fmt)
+
+    # Condensate saturation; skipped unless atmodeller solved for a condensate
+    plot_saturated(hf_all, output_dir, plot_format=config.params.out.plot_fmt)
 
     # Planet and satellite orbit parameters
     if (
