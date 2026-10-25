@@ -8353,3 +8353,20 @@ def test_two_scalar_remelts_compound_the_lift(caplog):
         remelt_mantle({'output': '/tmp/out'}, _remelt_config('dummy'), hot, interior_o, f=0.3)
     assert hot['T_magma'] == pytest.approx(4500.0, rel=1e-15)
     assert 'T_magma kept at 4500 K' in caplog.text
+
+
+@pytest.mark.unit
+def test_any_error_of_the_partial_profile_writes_the_interior_status(monkeypatch):
+    """A solver without the mesh the partial profile reads raises AttributeError; the re-melt
+    still writes interior status 21 before the error reaches the caller."""
+    real_init = _FakeMeshAragogSolver.__init__
+
+    def init(self, cooled_profile):
+        real_init(self, cooled_profile)
+        del self.evaluator
+
+    monkeypatch.setattr(_FakeMeshAragogSolver, '__init__', init)
+    status = MagicMock()
+    with pytest.raises(AttributeError, match='evaluator'):
+        _partial_aragog_remelt(0.3, status=status)
+    assert [c.args[1] for c in status.call_args_list] == [21]
