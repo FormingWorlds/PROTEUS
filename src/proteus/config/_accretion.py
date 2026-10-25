@@ -223,7 +223,10 @@ class AccretionTimeline:
     ----------
     timeline_path: str or None
         Path to the impact timeline file. Environment variables and ``~``
-        are expanded.
+        are expanded. An optional ``f_melt`` column gives the melted mass
+        fraction of the mantle of each impact [1], in [0, 1]; when present, every
+        impact needs a value, and a blank cell is refused under every
+        ``accretion.remelt`` setting, ``'full'`` included.
     """
 
     timeline_path: str | None = field(default=None, converter=none_if_none)

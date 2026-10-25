@@ -11763,7 +11763,7 @@
       "default": "none",
       "choices": null,
       "bounds": null,
-      "description": "Path to the impact timeline file. Environment variables and ``~`` are expanded.",
+      "description": "Path to the impact timeline file. Environment variables and ``~`` are expanded. An optional ``f_melt`` column gives the melted mass fraction of the mantle of each impact [1], in [0, 1]; when present, every impact needs a value, and a blank cell is refused under every ``accretion.remelt`` setting, ``'full'`` included.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,

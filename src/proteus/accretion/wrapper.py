@@ -696,15 +696,16 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
     # Raise the melted share of the mantle to its initial condition; hotter parts keep their state.
     log.info('    re-melt mode %s, melt fraction %.4g', config.accretion.remelt_mode, f_remelt)
     remelt_mantle(handler.directories, config, hf_row, handler.interior_o, event, f=f_remelt)
+    phi = float(hf_row.get('Phi_global', 1.0))
     if f_remelt < 1.0:
-        _warn_solid_after_partial_remelt(config, hf_row)
+        _warn_solid_after_partial_remelt(config, phi)
 
     # A full re-melt, or a partial one that leaves melt above stop.solid.phi_crit,
     # lifts the one-way solidification latch, so outgassing resumes.
     if getattr(handler, 'crystallized', False):
-        phi = float(hf_row.get('Phi_global', 1.0))
-        crit = None if f_remelt >= 1.0 else config.params.stop.solid.phi_crit
-        if crit is None or not remelt_keeps_latch(f_remelt, phi, crit):
+        if f_remelt >= 1.0 or not remelt_keeps_latch(
+            f_remelt, phi, config.params.stop.solid.phi_crit
+        ):
             handler.crystallized = False
             log.info('    solidification latch cleared: the mantle is molten again')
         else:
@@ -757,10 +758,9 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
         )
 
 
-def _warn_solid_after_partial_remelt(config: Config, hf_row: dict) -> None:
-    """Warn when a partial re-melt leaves the mantle solid enough for stop.solid to end the run."""
+def _warn_solid_after_partial_remelt(config: Config, phi: float) -> None:
+    """Warn when a partial re-melt leaves Phi_global = phi low enough for stop.solid to end the run."""
     solid = config.params.stop.solid
-    phi = float(hf_row.get('Phi_global', 1.0))
     if solid.enabled and phi <= solid.phi_crit:
         log.warning(
             '    the partial re-melt leaves Phi_global = %.3g <= stop.solid.phi_crit = %.3g: '

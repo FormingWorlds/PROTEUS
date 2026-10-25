@@ -127,8 +127,6 @@ def remelt_entropy(S_end: np.ndarray, S_ic: np.ndarray, w: np.ndarray) -> np.nda
     S_new = np.where(
         w >= 1.0, np.maximum(S_end, S_ic), S_end + w * np.maximum(S_ic - S_end, 0.0)
     )
-    if not np.all(S_new >= S_end):
-        raise RuntimeError('the re-melt would cool a cell')
     return S_new
 
 
@@ -139,6 +137,9 @@ def remelt_temperature(T_end: float, T_init: float, f: float) -> float:
     capacity without latent heat: the share f is raised to ``T_init`` and
     mixed, so T = T_end + f (T_init - T_end). f = 1 gives ``max(T_init, T_end)``,
     the full re-melt, and a mantle above ``T_init`` keeps its temperature.
+    The dummy interior holds one temperature for mantle and core (its heat
+    capacity includes the core), so f also heats the core; f is not rescaled
+    for it, so f = 1 stays the full re-melt.
 
     Parameters
     ----------

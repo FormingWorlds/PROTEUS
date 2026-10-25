@@ -98,6 +98,8 @@ def _restored_crystallization(hf_all, phi_crit: float, remelt_mode: str) -> bool
     rises) holds the state after the re-melt and never sets it; it keeps a latch set
     before it only as ``accretion.wrapper.remelt_keeps_latch`` decides for its
     f_remelt under ``remelt = 'computed'``. A 'full' run clears it at every impact.
+    A row holds the largest f of its impacts and Phi_global after the last one, so the
+    rebuilt latch agrees with the live run when Phi_global does not drop between them.
     """
     from proteus.accretion.wrapper import remelt_keeps_latch
 
