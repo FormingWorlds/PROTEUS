@@ -178,3 +178,76 @@ gh release create 26.05.14 --generate-notes
 ```
 
 3. The [upload to PyPI](https://pypi.org/project/fwl-proteus) is triggered when the release is published and handled by [this workflow](https://github.com/FormingWorlds/PROTEUS/actions/workflows/publish.yaml).
+
+## Writing Validation and Explanation pages
+
+The Validation pages and the Explanation pages are read by new MSc and PhD students. They know physics and some Python, but they do not know this code, its history or its test framework. Write every Validation page and every new Explanation section for that reader, in simple English. Explain why each validation is there, what it tests and why it is important. Keep every technical item: the reference, the tolerance, the test id, the command and the plot. Add the parts for the reader around them; do not delete content to make a page short.
+
+The page [Validation: metal reservoir](https://proteus-framework.org/CALLIOPE/Validation/metal.html) of CALLIOPE uses this layout and is a good model.
+
+### The top of a Validation page
+
+Start each Validation page with a section `## What this page checks` of 3 to 6 sentences. Say:
+
+- which part of the model the page covers, in plain words (for example "how much of each volatile element goes into the metal core");
+- what validation means here: we run the code on a case where another source gives the right answer, such as an analytical result, a published table or measurement, or a second independent code, and the test checks that the code gives that answer;
+- which output of a PROTEUS run would be wrong if this part of the code were wrong;
+- how each case below is laid out.
+
+### The layout of each validation case
+
+Use this order for every case. The bold lead-ins are always the same, so that a reader can scan the page.
+
+```markdown
+## <Title that says what is checked, in plain words>
+
+**Why this check exists.** 1 to 3 sentences: what could go wrong in the code, and what wrong result a user would then get.
+
+**What it tests.** The setup in plain words first, then the expected result. Define every symbol at first use ("D, the partition coefficient: the ratio of the concentration in the metal to that in the melt").
+
+**How we know the right answer.** The reference in plain words: "this follows from mass balance alone", "Tagawa et al. (2021) measured these 6 values in the laboratory".
+
+**Why it matters.** 1 to 2 sentences: which model result or which other module depends on this.
+
+<plot pair, light and dark>
+
+**How to read the plot.** 1 to 3 sentences: the axes, what the lines or points are, and what a pass looks like ("the points lie on the line").
+
+??? info "Test details"
+    - Reference: ...
+    - Tolerance: ...
+    - Test id: ...
+    - Command: ...
+```
+
+- The box "Test details" holds the Reference, Tolerance, Test id and Command lines.
+- `??? info` makes a collapsed box. It needs `pymdownx.details` in the `markdown_extensions` of `mkdocs.yml`. A repository without it adds the extension directly after `admonition`, in the same pull request.
+- A case without a plot leaves out the plot and **How to read the plot.**
+- A case that fails, or that has a known limit, says so in plain words in its own line **Known limit.**, before the box.
+
+### New Explanation sections
+
+- Start with the question that the section answers, in 1 sentence ("How much hydrogen can a liquid iron core hold, and how does it change the core density?").
+- Then give the short answer in 2 to 3 sentences, before any equation.
+- Define every symbol and every term at first use, with its unit.
+- Write one idea per paragraph. Put an equation after the sentence that says what it means.
+- Give 1 worked example with real numbers where it helps ("for an Earth-mass planet at 4000 K, ...").
+- End with a short line **Where this is checked.** that links to the Validation case.
+- Put bounds and limits in a list. For each one, say what happens when a value is outside it: an error, a warning or a clamp.
+
+### Simple English
+
+- Keep sentences to about 25 words or fewer, with one statement per sentence.
+- Use the active voice where a person or the code acts ("the solver rejects the root").
+- Use one term for one thing, in the same way on every page.
+- Define each abbreviation at first use on each page (IW, EOS, CMB).
+- Give numbers with units. In prose, use a word where it is clearer than an exponent ("100 times").
+- Describe the code as it is now, without internal labels or the history of how the code changed.
+
+### Formatting that guides the reader
+
+- Headings say what is checked or explained, not code names. Put the code name in the text.
+- A change of a heading changes its anchor. Where a link points at a heading (the Validation index table, another page, a pull-request text), keep the heading text, or change every link and search the docs for the old anchor.
+- Text that a test or a tool reads stays intact: number tags such as `<!--k:...-->`, test ids in backticks, and the rows of the table in `docs/Validation/index.md`. Run every docs test of the repository after a change.
+- Use lists for 3 or more parallel items, and tables only when the reader compares values.
+- Give every plot alt text that names what it shows, and a sentence that explains it.
