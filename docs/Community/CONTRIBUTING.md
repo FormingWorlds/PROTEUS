@@ -190,7 +190,7 @@ The page [Validation: metal reservoir](https://proteus-framework.org/CALLIOPE/Va
 Start each Validation page with a section `## What this page checks` of 3 to 6 sentences. Say:
 
 - which part of the model the page covers, in plain words (for example "how much of each volatile element goes into the metal core");
-- what validation means here: we run the code on a case where another source gives the right answer, such as an analytical result, a published table or measurement, or a second independent code, and the test checks that the code gives that answer;
+- what validation means here: we run the code on a case with a known right answer, and the test checks that the code gives it. The answer comes from an analytical result, a published table or measurement, or a second independent code;
 - which output of a PROTEUS run would be wrong if this part of the code were wrong;
 - how each case below is laid out.
 
@@ -209,7 +209,8 @@ Use this order for every case. The bold lead-ins are always the same, so that a 
 
 **Why it matters.** 1 to 2 sentences: which model result or which other module depends on this.
 
-<plot pair, light and dark>
+![What the plot shows](../assets/validation/<name>.svg#only-light){ width="80%" }
+![What the plot shows](../assets/validation/<name>_dark.svg#only-dark){ width="80%" }
 
 **How to read the plot.** 1 to 3 sentences: the axes, what the lines or points are, and what a pass looks like ("the points lie on the line").
 
@@ -221,9 +222,10 @@ Use this order for every case. The bold lead-ins are always the same, so that a 
 ```
 
 - The box "Test details" holds the Reference, Tolerance, Test id and Command lines.
-- `??? info` makes a collapsed box. It needs `pymdownx.details` in the `markdown_extensions` of `mkdocs.yml`. A repository without it adds the extension directly after `admonition`, in the same pull request.
+- `??? info` makes a collapsed box. It needs `pymdownx.details` in the `markdown_extensions` of `mkdocs.yml`. If a repository does not have it, add the extension directly after `admonition` in the same pull request.
 - A case without a plot leaves out the plot and **How to read the plot.**
 - A case that fails, or that has a known limit, says so in plain words in its own line **Known limit.**, before the box.
+- Where a page has a table of its cases with a `Last compared` date (as in PROTEUS), keep the table and its dates.
 
 ### New Explanation sections
 
@@ -247,7 +249,7 @@ Use this order for every case. The bold lead-ins are always the same, so that a 
 ### Formatting that guides the reader
 
 - Headings say what is checked or explained, not code names. Put the code name in the text.
-- A change of a heading changes its anchor. Where a link points at a heading (the Validation index table, another page, a pull-request text), keep the heading text, or change every link and search the docs for the old anchor.
-- Text that a test or a tool reads stays intact: number tags such as `<!--k:...-->`, test ids in backticks, and the rows of the table in `docs/Validation/index.md`. Run every docs test of the repository after a change.
+- A change of a heading changes its anchor. A link can point at a heading from the Validation index table (for example its `#plot-<name>` links), another page or a pull-request text. Keep the heading text, or change every link and search the docs for the old anchor.
+- Keep text that a test or a tool reads, for example the aragog number tags `<!--k:...-->` and the test ids in backticks. Where the repository has tests that read its docs pages, run them after a change.
 - Use lists for 3 or more parallel items, and tables only when the reader compares values.
-- Give every plot alt text that names what it shows, and a sentence that explains it.
+- Give every plot alt text that names what it shows, and explain the plot in **How to read the plot.**
