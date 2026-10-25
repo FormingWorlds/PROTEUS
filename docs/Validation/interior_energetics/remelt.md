@@ -24,3 +24,7 @@ Radius of the melt front against the melted mass fraction $f$ for a mantle of un
 ## Limits checked alongside
 
 `tests/interior_energetics/test_remelt.py` also pins the ends of the rule: $f = 1$ gives `np.maximum(S_end, S_ic)` bit for bit, the full re-melt; $f = 0$ leaves every cell unchanged; no cell cools; and the scalar mantle moves to $T_\mathrm{end} + f\,(T_\mathrm{init} - T_\mathrm{end})$, the enthalpy mean of a melted and an unmelted part of one heat capacity.
+
+The partly melted cell takes the mass-weighted mean entropy of its melted and unmelted parts, which holds less heat than the two parts: the deficit is first order in $dT/dS$, $w(1-w)\,m\,\Delta S\,\Delta T/2$ for a temperature linear in entropy over the cell, with $\Delta S = S_\mathrm{ic} - S_\mathrm{end}$ and $\Delta T$ the temperature rise over $\Delta S$.
+Relative to the injected heat it is largest when all the melt fits in the top cell.
+The booked `step_dE_impact_J` integrates the heat of the actual re-melted profile, so the energy budget closes.

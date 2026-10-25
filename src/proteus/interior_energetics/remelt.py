@@ -94,9 +94,12 @@ def remelt_entropy(S_end: np.ndarray, S_ic: np.ndarray, w: np.ndarray) -> np.nda
 
     A fully melted cell takes ``max(S_end, S_ic)``, the full re-melt; a cell
     melted by w < 1 moves the share w of the way up to the initial condition,
-    the mass-weighted mean specific entropy of its melted and unmelted parts. The
-    heat of that mixed cell differs from the sum of its parts by the curvature of
-    T(S) over the cell, a second-order term on one cell.
+    the mass-weighted mean specific entropy of its melted and unmelted parts. That
+    cell holds less heat than its parts, a deficit first order in dT/dS: for T(S)
+    linear over the cell it is w (1 - w) m dS dT / 2, with dS = S_ic - S_end and dT
+    the temperature rise over dS. Relative to the injected heat it is largest when
+    all the melt fits in the top cell. The booked impact heat integrates the actual
+    profile, so the energy budget closes.
 
     Parameters
     ----------
