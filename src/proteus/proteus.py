@@ -91,25 +91,27 @@ def _status_on_missing_eos(start):
     return wrapper
 
 
-def _restored_crystallization(hf_all, phi_crit: float) -> bool:
+def _restored_crystallization(hf_all, phi_crit: float, remelt_mode: str) -> bool:
     """Crystallization latch of a resumed run, rebuilt from its helpfile rows.
 
     A row with Phi_global <= phi_crit sets the latch. An impact row (accreted rock
-    rises) holds the state after the re-melt: it clears the latch, unless the impact
-    re-melted a share 0 < f_remelt < 1 and left Phi_global <= phi_crit. A helpfile
-    without f_remelt reads 0 there, which counts as a full re-melt.
+    rises) holds the state after the re-melt and never sets it; it keeps a latch set
+    before it only as ``accretion.wrapper.remelt_keeps_latch`` decides for its
+    f_remelt under ``remelt = 'computed'``. A 'full' run clears it at every impact.
     """
+    from proteus.accretion.wrapper import remelt_keeps_latch
+
     phi = hf_all.get('Phi_global')
     if phi is None:
         return False
     accreted = hf_all.get('M_accreted_rock')
     impact = (accreted.diff() > 0.0).to_numpy() if accreted is not None else [False] * len(phi)
-    f_col = hf_all.get('f_remelt')
+    f_col = hf_all.get('f_remelt') if remelt_mode == 'computed' else None
     latched = False
     for i, p in enumerate(phi.to_numpy()):
         if impact[i]:
-            f = float(f_col.iloc[i]) if f_col is not None else 1.0
-            latched = bool(latched and 0.0 < f < 1.0 and p <= phi_crit)
+            f = 1.0 if f_col is None else float(f_col.iloc[i])
+            latched = bool(latched and remelt_keeps_latch(f, p, phi_crit))
         elif p <= phi_crit:
             latched = True
     return latched
@@ -1046,7 +1048,9 @@ class Proteus:
             # phi_crit sets it; an impact row clears it unless a partial re-melt left it solid.
             if self.config.params.stop.solid.freeze_volatiles:
                 self.crystallized = _restored_crystallization(
-                    self.hf_all, self.config.params.stop.solid.phi_crit
+                    self.hf_all,
+                    self.config.params.stop.solid.phi_crit,
+                    self.config.accretion.remelt_mode,
                 )
                 if self.crystallized:
                     log.info(

@@ -1990,9 +1990,9 @@ def _partial_remelt_profile(solver, S_end: np.ndarray, S_molten: np.ndarray, f: 
     """Re-melted entropy profile of a partial re-melt on the solver's pre-impact mesh.
 
     The cell masses are the structural masses of the pre-impact mesh, its staggered
-    effective density times the cell volume, which sum to the M_mantle of the landing
-    step (the impact's structure solve has already grown it in the row), and in which
-    the next solve carries the profile to the grown mesh.
+    effective density times the cell volume: they sum to the mantle mass before the
+    impact (the row's M_mantle has already grown with the impact's structure solve),
+    and the next solve carries the profile to the grown mesh in that frame.
     The melt fills from the largest staggered radius down (``remelt.remelt_weights``).
     """
     from proteus.interior_energetics.remelt import remelt_entropy, remelt_weights
@@ -2127,7 +2127,7 @@ def _remelt_aragog(
         else:
             try:
                 S_new = _partial_remelt_profile(solver, S_end, S_molten, f)
-            except (ValueError, RuntimeError):
+            except Exception:
                 UpdateStatusfile(dirs, 21)
                 raise
         n_hot = np.count_nonzero(S_new > S_molten)

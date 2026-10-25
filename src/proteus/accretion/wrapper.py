@@ -172,6 +172,15 @@ def _require_melt_fractions(
     )
 
 
+def remelt_keeps_latch(f: float, phi: float, phi_crit: float) -> bool:
+    """Does a re-melt of share f that leaves Phi_global = phi keep the solidification latch?
+
+    A partial re-melt (f < 1) that does not leave Phi_global above phi_crit keeps it; a
+    full re-melt, or one that leaves melt, clears it. A NaN phi keeps it.
+    """
+    return f < 1.0 and not phi > phi_crit
+
+
 def remelt_fraction(config: Config, event: ImpactEvent) -> float:
     """Melt mass fraction of the mantle this impact re-melts [1].
 
@@ -694,7 +703,8 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
     # lifts the one-way solidification latch, so outgassing resumes.
     if getattr(handler, 'crystallized', False):
         phi = float(hf_row.get('Phi_global', 1.0))
-        if f_remelt == 1.0 or phi > config.params.stop.solid.phi_crit:
+        crit = None if f_remelt >= 1.0 else config.params.stop.solid.phi_crit
+        if crit is None or not remelt_keeps_latch(f_remelt, phi, crit):
             handler.crystallized = False
             log.info('    solidification latch cleared: the mantle is molten again')
         else:

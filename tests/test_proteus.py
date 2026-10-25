@@ -2908,6 +2908,7 @@ def test_proteus_resume_lifts_the_crystallization_latch_across_an_impact(tmp_pat
         ('computed', 0.3, 0.004, 0.4, False),
         ('computed', 0.05, 0.5, 0.0, False),
         ('full', None, 0.004, 0.0, False),
+        ('full', 0.0, 0.004, 0.0, False),
     ],
     ids=[
         'partial_left_solid',
@@ -2918,6 +2919,7 @@ def test_proteus_resume_lifts_the_crystallization_latch_across_an_impact(tmp_pat
         'partial_left_melt',
         'not_latched_before',
         'full_without_column',
+        'full_zero_filled_column',
     ],
 )
 def test_resume_rebuilds_the_latch_as_the_live_run_sets_it(
