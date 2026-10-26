@@ -462,10 +462,18 @@ def test_plot_result_posterior_writes_the_corner_plot(tmp_path, monkeypatch, tru
     X = torch.tensor(np.vstack([rng.random((20, 2)), [[0.0, 1.0]]]), dtype=torch.double)
     Y = torch.tensor(-rng.random((21, 1)), dtype=torch.double)
 
+    figs = []
+    monkeypatch.setattr(plot_fit_mod.plt, 'close', figs.append)
     plot_fit_mod.plot_result_posterior(samples, {'X': X, 'Y': Y}, 10, pars, truth, tmp_path)
 
     out = tmp_path / 'plots' / f'result_posterior.{plot_fit_mod.fmt}'
     assert out.stat().st_size > 10_000
+    # Lower triangle only, and H (log-scaled) on a log axis in its row and column
+    visible = [ax for ax in figs[0].axes if ax.get_visible()]
+    assert len(visible) == 3
+    assert [ax.get_xscale() for ax in visible] == ['linear', 'linear', 'log']
+    assert visible[1].get_yscale() == 'log'
+    figs[0].clf()
 
 
 @pytest.mark.parametrize(
