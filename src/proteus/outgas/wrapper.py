@@ -242,15 +242,15 @@ def check_desiccation(config: Config, hf_row: dict) -> bool:
 
     Parameters
     ----------
-        config : Config
-            Configuration object
-        hf_row : dict
-            Dictionary of helpfile variables, at this iteration only
+    config : Config
+        Configuration object
+    hf_row : dict
+        Dictionary of helpfile variables, at this iteration only
 
     Returns
     -------
-        bool
-            True if desiccation occurred, False otherwise
+    bool
+        True if desiccation occurred, False otherwise
 
     Notes
     -----
@@ -356,19 +356,19 @@ def desiccated_after_trapping(config: Config, hf_row: dict, desiccated: bool, st
 
     Parameters
     ----------
-        config : Config
-            Configuration object
-        hf_row : dict
-            Dictionary of helpfile variables, at this iteration only
-        desiccated : bool
-            Whether the planet was desiccated before this step
-        step : TrappingStep or None
-            What this step's trapping did, as returned by ``run_trapping``
+    config : Config
+        Configuration object
+    hf_row : dict
+        Dictionary of helpfile variables, at this iteration only
+    desiccated : bool
+        Whether the planet was desiccated before this step
+    step : TrappingStep or None
+        What this step's trapping did, as returned by ``run_trapping``
 
     Returns
     -------
-        bool
-            Whether the planet is desiccated now.
+    bool
+        Whether the planet is desiccated now.
     """
     if not desiccated or step is None or not step.remelted or step.total_trapped >= 0.0:
         return desiccated
@@ -478,15 +478,15 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict, *, initial: bool):
 
     Parameters
     ----------
-        dirs : dict
-            Dictionary of directory paths
-        config : Config
-            Configuration object
-        hf_row : dict
-            Dictionary of helpfile variables, at this iteration only
-        initial : bool
-            Whether this is an init-stage iteration, where the dummy outgassing
-            derives an empty O budget from the outgassed species.
+    dirs : dict
+        Dictionary of directory paths
+    config : Config
+        Configuration object
+    hf_row : dict
+        Dictionary of helpfile variables, at this iteration only
+    initial : bool
+        Whether this is an init-stage iteration, where the dummy outgassing
+        derives an empty O budget from the outgassed species.
     """
 
     log.info('Calculating volatile outgassing at surface')
@@ -750,14 +750,14 @@ def run_desiccated(dirs: dict, config: Config, hf_row: dict, first_iter: bool):
 
     Parameters
     ----------
-        dirs : dict
-            Dictionary of directory paths
-        config : Config
-            Configuration object
-        hf_row : dict
-            Dictionary of helpfile variables, at this iteration only
-        first_iter : bool
-            Whether the run is in its init stage.
+    dirs : dict
+        Dictionary of directory paths
+    config : Config
+        Configuration object
+    hf_row : dict
+        Dictionary of helpfile variables, at this iteration only
+    first_iter : bool
+        Whether the run is in its init stage.
     """
 
     # if desiccated, set all gas masses to zero
@@ -838,15 +838,15 @@ def run_outgassing_and_vapourisation(
 
     Parameters
     ----------
-        dirs : dict
-            Dictionary of directory paths
-        config : Config
-            Configuration object
-        hf_row : dict
-            Dictionary of helpfile variables, at this iteration only
-        first_iter : bool
-            Whether the run is in its init stage; the dummy outgassing derives an
-            empty O budget only then.
+    dirs : dict
+        Dictionary of directory paths
+    config : Config
+        Configuration object
+    hf_row : dict
+        Dictionary of helpfile variables, at this iteration only
+    first_iter : bool
+        Whether the run is in its init stage; the dummy outgassing derives an
+        empty O budget only then.
     """
 
     # reset all rock-vapour masses to zero:

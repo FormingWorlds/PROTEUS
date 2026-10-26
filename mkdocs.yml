@@ -54,6 +54,7 @@ nav:
       - Scientific background:
           - Model description: Explanations/model.md
           - Orbital dynamics and tides: Explanations/orbit.md
+          - Outgassing and volatile trapping: Explanations/outgas.md
       - Software design:
           - Code architecture: Explanations/code_architecture.md
           - Coupling loop: Explanations/coupling_loop.md
@@ -106,6 +107,17 @@ nav:
           - Interior structure (Zalmoxis wrapper): Reference/api/interior_struct_zalmoxis.md
           - Interior structure config: Reference/api/config_struct.md
           - Interior energetics wrapper: Reference/api/interior_energetics_wrapper.md
+          - Outgassing:
+              - Wrapper: Reference/api/outgas_wrapper.md
+              - Shared code: Reference/api/outgas_common.md
+              - CALLIOPE driver: Reference/api/outgas_calliope.md
+              - atmodeller driver: Reference/api/outgas_atmodeller.md
+              - Dummy outgassing: Reference/api/outgas_dummy.md
+              - H2-silicate binodal: Reference/api/outgas_binodal.md
+              - LavAtmos rock vapour: Reference/api/outgas_lavatmos.md
+              - Volatile trapping: Reference/api/outgas_trapping.md
+              - Melt drainage: Reference/api/outgas_compaction.md
+              - Burial ledger: Reference/api/outgas_burial_ledger.md
 
   - Community:
       - Contact: Community/contact.md
