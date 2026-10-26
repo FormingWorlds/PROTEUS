@@ -18,11 +18,16 @@ This page checks the orbital period that the orbit wrapper, `proteus.orbit.wrapp
 
 **Why it matters.** The orbit wrapper calls `update_period` in its orbit step and writes the orbital period to the helpfile.
 
+![Orbital period against semi-major axis for an Earth-mass planet around the Sun](../../assets/validation/orbit_wrapper_period.svg#only-light){ width="80%" }
+![Orbital period against semi-major axis for an Earth-mass planet around the Sun](../../assets/validation/orbit_wrapper_period_dark.svg#only-dark){ width="80%" }
+
+**How to read the plot.** The x-axis is the semi-major axis and the y-axis the orbital period in days, both on log scales, for an Earth-mass planet around the Sun. The line is `update_period` and the squares are Kepler's third law (context). The filled circle is the asserted code value at 1 AU, and the bar is the sidereal year, 365.256 days, with the asserted 0.5 % tolerance. A pass means that the circle sits on the line inside the bar.
+
 ??? info "Test details"
     - Reference: Kepler's third law and the observed sidereal year (365.256 days).
     - Tolerance: relative 5e-3 against the sidereal year; relative 1e-12 against the closed form.
     - Test id: `tests/orbit/test_wrapper.py::test_period_matches_keplers_third_law_for_earth_around_sun`
-    - Command: `pytest tests/orbit/test_wrapper.py::test_period_matches_keplers_third_law_for_earth_around_sun`
+    - Command: `pytest -m reference_pinned tests/orbit/test_wrapper.py --validation-plots`
 
 ## Re-derivation note
 

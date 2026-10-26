@@ -20,11 +20,16 @@ This page checks the molar masses of the species in the LavAtmos rock-vapour cou
 
 **Known limit.** The test sums the same `element_mmw` table that the code uses, and compares the electron with the code's own `electron_molar_mass`. So a wrong table value fails only the 1 to 1000 g/mol window, and a wrong electron mass only the 0 to 1e-3 g/mol window.
 
+![Molar masses in species_lib against sums over the element table](../../assets/validation/outgas_lavatmos_molar_masses.svg#only-light){ width="80%" }
+![Molar masses in species_lib against sums over the element table](../../assets/validation/outgas_lavatmos_molar_masses_dark.svg#only-dark){ width="80%" }
+
+**How to read the plot.** The x-axis is the molar mass summed from the element table and the y-axis the molar mass in `species_lib`, both on log scales. The filled circles are the 4 asserted species (the electron, H$_2$O, Fe and SiO$_2$) and the line is 1:1. The hollow square is SiO$_2$ read as SiO, 44.084 g/mol, which the test requires to be more than 1 g/mol away. A pass means that the 4 circles lie on the line.
+
 ??? info "Test details"
     - Reference: IUPAC atomic weights, as tabulated in `proteus.utils.constants.element_mmw` (source: https://iupac.qmul.ac.uk/AtWt/).
     - Tolerance: relative 1e-12 for the 4 molar masses; SiO misses SiO$_2$ by more than 1 g/mol; windows 1 to 1000 g/mol and 0 to 1e-3 g/mol.
     - Test id: `tests/outgas/test_lavatmos_run_lavatmos.py::test_molecular_weights_match_iupac_atomic_weight_table`
-    - Command: `pytest tests/outgas/test_lavatmos_run_lavatmos.py::test_molecular_weights_match_iupac_atomic_weight_table`
+    - Command: `pytest -m reference_pinned tests/outgas/test_lavatmos_run_lavatmos.py --validation-plots`
 
 ## Re-derivation note
 

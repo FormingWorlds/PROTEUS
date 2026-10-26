@@ -133,7 +133,7 @@ def test_update_separation_sat_perigee_uses_eccentric_periapsis_formula():
 
 @pytest.mark.physics_invariant
 @pytest.mark.reference_pinned
-def test_period_matches_keplers_third_law_for_earth_around_sun():
+def test_period_matches_keplers_third_law_for_earth_around_sun(validation_plot):
     """Kepler's third law (Kepler 1619, Harmonices Mundi Book V):
     ``T = 2 pi sqrt(a**3 / (G (M_star + M_planet)))``. For Earth at
     1 AU around the Sun, the period must come within 0.5% of the
@@ -152,6 +152,40 @@ def test_period_matches_keplers_third_law_for_earth_around_sun():
     # magnitude to catch any AU-vs-m or M_sun-in-kg-vs-g unit slip.
     sidereal_year_s = 365.256 * 86400
     assert hf_row['orbital_period'] == pytest.approx(sidereal_year_s, rel=5e-3)
+
+    def figure():
+        import matplotlib.pyplot as plt
+
+        sma = np.geomspace(0.3, 3.0, 31)
+        code = []
+        for a in sma:
+            row = {'semimajorax': a * AU, 'M_star': M_sun, 'M_planet': M_earth}
+            update_period(row)
+            code.append(row['orbital_period'] / 86400)
+        kepler = (
+            2.0 * np.pi * ((sma[::5] * AU) ** 3 / (const_G * (M_sun + M_earth))) ** 0.5 / 86400
+        )
+        fig, ax = plt.subplots(figsize=(6, 4))
+        ax.plot(sma, code, label='update_period')
+        ax.plot(sma[::5], kepler, 's', mfc='none', ms=9, label="Kepler's third law")
+        ax.errorbar(
+            [1.0],
+            [365.256],
+            yerr=[[1.83], [1.83]],
+            fmt='none',
+            capsize=4,
+            label='Sidereal year, 0.5 %',
+        )
+        ax.plot([1.0], [hf_row['orbital_period'] / 86400], 'o', zorder=3, label='Code at 1 AU')
+        ax.set_xscale('log')
+        ax.set_yscale('log')
+        ax.set_xlabel('Semi-major axis [AU]')
+        ax.set_ylabel('Orbital period [days]')
+        ax.legend()
+        fig.tight_layout()
+        return fig
+
+    validation_plot(figure, 'orbit_wrapper_period')
 
 
 @pytest.mark.physics_invariant

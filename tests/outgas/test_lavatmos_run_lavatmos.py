@@ -112,7 +112,7 @@ def test_fastchem_weight_electron():
 @pytest.mark.unit
 @pytest.mark.reference_pinned
 @pytest.mark.physics_invariant
-def test_molecular_weights_match_iupac_atomic_weight_table():
+def test_molecular_weights_match_iupac_atomic_weight_table(validation_plot):
     """Molar masses reproduce the IUPAC atomic-weight table for a spread of species.
 
     Reference: the IUPAC atomic weights tabulated in
@@ -151,6 +151,29 @@ def test_molecular_weights_match_iupac_atomic_weight_table():
     assert species_lib['e-'].weight < species_lib['H2O'].weight
     assert species_lib['H2O'].weight < species_lib['Fe'].weight
     assert species_lib['Fe'].weight < species_lib['SiO2'].weight
+
+    def figure():
+        import matplotlib.pyplot as plt
+
+        names = ('e-', 'H2O', 'Fe', 'SiO2')
+        ref = [electron_molar_mass, ref_h2o, ref_fe, ref_sio2]
+        fig, ax = plt.subplots(figsize=(6, 4))
+        ax.plot([1e-4, 1e3], [1e-4, 1e3], label='1:1')
+        ax.plot(ref, [species_lib[n].weight for n in names], 'o', label='species_lib')
+        ax.plot([ref_sio2], [wrong_sio], 's', mfc='none', ms=9, label='SiO$_2$ read as SiO')
+        for n, x, dx in zip(names, ref, (8, 8, -30, 8)):
+            ax.annotate(
+                n, (x, x), textcoords='offset points', xytext=(dx, -14 if dx > 0 else 4)
+            )
+        ax.set_xscale('log')
+        ax.set_yscale('log')
+        ax.set_xlabel('Sum over the element table [g/mol]')
+        ax.set_ylabel('species_lib [g/mol]')
+        ax.legend(loc='upper left')
+        fig.tight_layout()
+        return fig
+
+    validation_plot(figure, 'outgas_lavatmos_molar_masses')
 
 
 # ---------------------------------------------------------------------------

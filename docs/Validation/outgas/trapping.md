@@ -24,11 +24,16 @@ This page checks the trapping step, `proteus.outgas.trapping`. As the magma ocea
 
 **Why it matters.** The main loop calls `run_trapping`, which buries each species with this mass balance (`trapped_mass`).
 
+![Buried mass in one step against the trapped melt fraction for CO2 and H2O](../../assets/validation/outgas_trapping_interstitial_melt.svg#only-light){ width="80%" }
+![Buried mass in one step against the trapped melt fraction for CO2 and H2O](../../assets/validation/outgas_trapping_interstitial_melt_dark.svg#only-dark){ width="80%" }
+
+**How to read the plot.** The x-axis is the trapped melt fraction $F_\mathrm{tl}$ and the y-axis the mass buried in the step, for CO$_2$ ($D_Z$ = 0, $C_Z$ = 2e-3) and H$_2$O ($D_Z$ = 0.0017, $C_Z$ = 1e-3) with 2e23 kg of freezing melt. The lines are `trapped_mass` and the squares Eq. 6 (context). The filled circles are the 2 asserted values at $F_\mathrm{tl}$ = 0.02, 8e18 kg and 4.3332e18 kg. A pass means that the circles lie on their lines. The rejected form without the $(1 - F_\mathrm{tl})$ weight differs by about 1e15 kg here, too little to see at this scale; the test checks it.
+
 ??? info "Test details"
     - Reference: Sim, Hirschmann & Hier-Majumder (2024), JGR Planets 129, e2024JE008346, Eq. 6.
     - Tolerance: relative 1e-12 on 8e18 kg and 4.3332e18 kg; more than 1e15 kg from the value without the $(1 - F_\mathrm{tl})$ weight.
     - Test id: `tests/outgas/test_trapping.py::test_incompatible_species_traps_through_the_interstitial_melt_alone`
-    - Command: `pytest tests/outgas/test_trapping.py::test_incompatible_species_traps_through_the_interstitial_melt_alone`
+    - Command: `pytest -m reference_pinned tests/outgas/test_trapping.py --validation-plots`
 
 ## Invariants checked alongside
 

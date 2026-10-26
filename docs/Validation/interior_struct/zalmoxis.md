@@ -27,11 +27,16 @@ This page checks the liquidus that the `liquidus_super` initial condition of the
 
 **Known limit.** The test calls the Zalmoxis function directly; it does not run the `liquidus_super` solve of PROTEUS.
 
+![MgSiO3 liquidus temperature against pressure from 10 to 200 GPa](../../assets/validation/interior_struct_paleos_liquidus.svg#only-light){ width="80%" }
+![MgSiO3 liquidus temperature against pressure from 10 to 200 GPa](../../assets/validation/interior_struct_paleos_liquidus_dark.svg#only-dark){ width="80%" }
+
+**How to read the plot.** The x-axis is the pressure and the y-axis the liquidus temperature. The line is `paleos_liquidus` (context) and the dashed line the same law with an exponent of 0.5, which the test rejects. The filled circle is the asserted code value at 135 GPa, and the hollow square with its bar is 5943.53 K with the 1 K tolerance. A pass means that the circle sits in the square, more than 30 K from the dashed line.
+
 ??? info "Test details"
     - Reference: Fei et al. (2021), Nature Communications, 12, 876 (doi:10.1038/s41467-021-21170-y).
     - Tolerance: absolute 1.0 K on 5943.53 K; more than 30 K from the exponent-0.5 value.
     - Test id: `tests/interior_struct/test_liquidus_super_ic.py::TestPaleosLiquidusSourceOfTruth::test_paleos_liquidus_135gpa`
-    - Command: `pytest tests/interior_struct/test_liquidus_super_ic.py -k test_paleos_liquidus_135gpa`
+    - Command: `pytest -m reference_pinned tests/interior_struct/test_liquidus_super_ic.py --validation-plots`
 
 ## Coverage
 

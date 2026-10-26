@@ -1000,7 +1000,7 @@ class TestPaleosLiquidusSourceOfTruth:
 
     @pytest.mark.physics_invariant
     @pytest.mark.reference_pinned
-    def test_paleos_liquidus_135gpa(self):
+    def test_paleos_liquidus_135gpa(self, validation_plot):
         """Pin the Fei+2021 value at 135 GPa: T_liq ~ 5944 K.
 
         Hand-derivation: 6000 * (135/140)**0.26 = 6000 * 0.99059 ~ 5943.5.
@@ -1021,6 +1021,35 @@ class TestPaleosLiquidusSourceOfTruth:
         # the explicit guard keeps the failure message readable.
         wrong_exp = 6000.0 * (135.0 / 140.0) ** 0.5
         assert abs(T - wrong_exp) > 30.0
+
+        def figure():
+            import matplotlib.pyplot as plt
+            import numpy as np
+
+            p_gpa = np.linspace(10.0, 200.0, 39)
+            fig, ax = plt.subplots(figsize=(6, 4))
+            ax.plot(
+                p_gpa, [float(paleos_liquidus(p * 1e9)) for p in p_gpa], label='paleos_liquidus'
+            )
+            ax.plot(p_gpa, 6000.0 * (p_gpa / 140.0) ** 0.5, '--', label='Exponent 0.5')
+            ax.errorbar(
+                [135.0],
+                [5943.53],
+                yerr=[[1.0], [1.0]],
+                fmt='s',
+                mfc='none',
+                ms=9,
+                capsize=4,
+                label='5943.53 K, 1 K',
+            )
+            ax.plot([135.0], [T], 'o', zorder=3, label='Code at 135 GPa')
+            ax.set_xlabel('Pressure [GPa]')
+            ax.set_ylabel('Liquidus temperature [K]')
+            ax.legend()
+            fig.tight_layout()
+            return fig
+
+        validation_plot(figure, 'interior_struct_paleos_liquidus')
 
     @pytest.mark.physics_invariant
     def test_paleos_liquidus_continuous_at_crossover(self):
