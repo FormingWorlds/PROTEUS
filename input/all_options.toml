@@ -851,6 +851,11 @@ config_version = "3.0"
     atmloss_law               = "roche2026"  # roche2026 | kegerreis2020 (zephyrus module)
     atmloss_frac              = 0.0          # atmosphere fraction removed per impact (constant module) [0-1]
 
+    # Mantle re-melt per impact: full raises the whole mantle to the initial
+    # condition; computed re-melts the outer shells that hold each impact's
+    # f_melt (Morrigan, or an f_melt column of a timeline file).
+    remelt                    = "none"       # none (computed with morrigan, full otherwise) | full | computed
+
     [accretion.morrigan]
         seed                  = 1            # Monte Carlo seed
         num_planets           = 10           # number of embryos at disk dispersal

@@ -49,6 +49,7 @@ nav:
       - Parameter grid sweep: Tutorials/parameter_grid.md
       - Solar System CHILI intercomparison: Tutorials/chili_intercomparison.md
       - Orbit and tidal evolution: Tutorials/orbit_tides.md
+      - Giant impacts with a partial re-melt: Tutorials/giant_impact_remelt.md
 
   - Explanations:
       - Scientific background:
@@ -68,6 +69,8 @@ nav:
           - Impact atmosphere-loss dispatch (wrapper.py): Validation/accretion/wrapper.md
       - Atmosphere climate:
           - Transparent black-body limit (agni.py): Validation/atmos_clim/agni.md
+      - Interior energetics:
+          - Partial giant-impact re-melt (remelt.py): Validation/interior_energetics/remelt.md
       - Interior structure:
           - Liquidus-super IC anchor (zalmoxis.py): Validation/interior_struct/zalmoxis.md
       - Orbit:

@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from proteus.accretion.atmloss import _as_float, _zephyrus_loss_fraction
 from proteus.utils.constants import AU, M_earth, element_list, noble_gases, vol_element_list
 from proteus.utils.coupler import helpfile_path
+from proteus.utils.helper import UpdateStatusfile
 
 if TYPE_CHECKING:
     from proteus.accretion.common import ImpactEvent
@@ -83,8 +84,8 @@ def init_accretion(handler: Proteus) -> list[ImpactEvent]:
         and config.planet.temperature_mode not in _GUARANTEED_MOLTEN_MODES
     ):
         log.warning(
-            "Accretion on Aragog with temperature_mode='%s': each impact re-melts "
-            'the mantle by raising it to this initial condition, which is not guaranteed '
+            "Accretion on Aragog with temperature_mode='%s': an impact raises the melted "
+            'share of the mantle to this initial condition, which is not guaranteed '
             "fully molten. Use temperature_mode='liquidus_super' for a molten re-melt, "
             'or confirm the initial melt fraction is what you intend.',
             config.planet.temperature_mode,
@@ -101,6 +102,7 @@ def init_accretion(handler: Proteus) -> list[ImpactEvent]:
         # Written on the PROTEUS axis with the offset already applied, so it
         # must not be offset a second time.
         events = read_timeline(resolved_path, time_offset=0.0)
+        _require_melt_fractions(config, events, resolved=resolved_path)
         log.info('Replaying the impact timeline resolved at the start of this run')
     else:
         match module:
@@ -114,6 +116,7 @@ def init_accretion(handler: Proteus) -> list[ImpactEvent]:
                 raise ValueError(f"Invalid accretion module: '{module}'")
 
         events = get_timeline(config)
+        _require_melt_fractions(config, events)
         write_timeline(events, resolved_path)
 
     if not events and module in ('timeline', 'morrigan'):
@@ -132,6 +135,69 @@ def init_accretion(handler: Proteus) -> list[ImpactEvent]:
     if kept and not resumed and module in ('timeline', 'morrigan'):
         _warn_target_mass_mismatch(kept[0], config.planet.mass_tot * M_earth, 'configured')
     return kept
+
+
+def _require_melt_fractions(
+    config: Config, events: list[ImpactEvent], resolved: str | None = None
+) -> None:
+    """Refuse a 'computed' re-melt when an impact carries no melt fraction.
+
+    ``resolved`` is the resolved timeline a resume reads, which names the source of f.
+
+    Raises
+    ------
+    ValueError
+        Naming the impacts without f_melt and where the value comes from.
+    """
+    if config.accretion.remelt_mode != 'computed':
+        return
+    missing = [i for i, event in enumerate(events) if event.f_melt is None]
+    if not missing:
+        return
+    named = ', '.join(str(i) for i in missing[:10]) + (', ...' if len(missing) > 10 else '')
+    if resolved is not None:
+        source = (
+            f'the resolved timeline {resolved} has no f_melt; resume with '
+            "accretion.remelt = 'full' to keep the re-melt of the run's start"
+        )
+    elif config.accretion.module == 'morrigan':
+        source = (
+            'fwl-morrigan >= 26.10.23 reports the f_melt of each merger; the installed '
+            'version does not'
+        )
+    else:
+        source = 'the impact timeline file needs an f_melt column with a value for every impact'
+    raise ValueError(
+        f"accretion.remelt = 'computed' needs the melt fraction f_melt of each impact, "
+        f'but impacts {named} have none: {source}'
+    )
+
+
+def remelt_keeps_latch(f: float, phi: float, phi_crit: float) -> bool:
+    """Does a re-melt of share f that leaves Phi_global = phi keep the solidification latch?
+
+    A partial re-melt (f < 1) that does not leave Phi_global above phi_crit keeps it; a
+    full re-melt, or one that leaves melt, clears it. A NaN phi keeps it.
+    """
+    return f < 1.0 and not phi > phi_crit
+
+
+def remelt_fraction(config: Config, event: ImpactEvent) -> float:
+    """Melt mass fraction of the mantle this impact re-melts [1].
+
+    Raises
+    ------
+    RuntimeError
+        If the mode is 'computed' and the event carries no f_melt.
+    """
+    if config.accretion.remelt_mode == 'full':
+        return 1.0
+    if event.f_melt is None:
+        raise RuntimeError(
+            f"accretion.remelt = 'computed' but the impact at t = {event.time:.4e} yr "
+            'carries no f_melt'
+        )
+    return float(event.f_melt)
 
 
 def _warn_target_mass_mismatch(event: ImpactEvent, m_planet: float, which: str) -> None:
@@ -528,6 +594,11 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
             f'Impact event at t = {event.time:.4e} yr has non-positive or non-finite '
             f'semimajoraxis_ratio = {ratio!r}'
         )
+    try:
+        f_remelt = remelt_fraction(config, event)
+    except RuntimeError:
+        UpdateStatusfile(handler.directories, 21)
+        raise
 
     log.info(
         'Giant impact at t = %.4e yr: target %d struck by %d, adding %.4f M_earth',
@@ -627,15 +698,23 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
     if not getattr(handler, 'init_stage', False):
         record_volatile_change(config, hf_row, net_volatiles)
 
-    # Raise the mantle to its initial condition; hotter parts keep their state.
-    remelt_mantle(handler.directories, config, hf_row, handler.interior_o, event)
+    # Raise the melted share of the mantle to its initial condition; hotter parts keep their state.
+    log.info('    re-melt mode %s, melt fraction %.4g', config.accretion.remelt_mode, f_remelt)
+    remelt_mantle(handler.directories, config, hf_row, handler.interior_o, event, f=f_remelt)
+    phi = float(hf_row.get('Phi_global', 1.0))
+    if f_remelt < 1.0:
+        _warn_solid_after_partial_remelt(config, phi)
 
-    # A mantle that had crystallised is now a magma ocean again, so lift the
-    # one-way solidification latch; otherwise outgassing would stay frozen and
-    # the volatiles would be treated as locked in a solid mantle for good.
+    # A full re-melt, or a partial one that leaves melt above stop.solid.phi_crit,
+    # lifts the one-way solidification latch, so outgassing resumes.
     if getattr(handler, 'crystallized', False):
-        handler.crystallized = False
-        log.info('    solidification latch cleared: the mantle is molten again')
+        if f_remelt >= 1.0 or not remelt_keeps_latch(
+            f_remelt, phi, config.params.stop.solid.phi_crit
+        ):
+            handler.crystallized = False
+            log.info('    solidification latch cleared: the mantle is molten again')
+        else:
+            log.info('    solidification latch kept: Phi_global = %.3g after the re-melt', phi)
 
     # Clear the desiccation latch if volatiles were delivered to allow
     # outgassing to resume. The latch will re-evaluate on the next step.
@@ -681,6 +760,18 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
             config.planet.mass_tot,
             config.orbit.semimajoraxis,
             config.orbit.eccentricity,
+        )
+
+
+def _warn_solid_after_partial_remelt(config: Config, phi: float) -> None:
+    """Warn when a partial re-melt leaves Phi_global = phi low enough for stop.solid to end the run."""
+    solid = config.params.stop.solid
+    if solid.enabled and phi <= solid.phi_crit:
+        log.warning(
+            '    the partial re-melt leaves Phi_global = %.3g <= stop.solid.phi_crit = %.3g: '
+            'stop.solid can end the run at the end of this step, with later impacts not applied',
+            phi,
+            solid.phi_crit,
         )
 
 
