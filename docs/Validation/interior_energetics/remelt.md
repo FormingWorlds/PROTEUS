@@ -57,11 +57,18 @@ The table lists the `@pytest.mark.reference_pinned` test and the slow-tier test 
 
 **Why it matters.** This case checks the rule on the solver that a coupled run uses, with its real mesh and density.
 
+![Melted share of the mantle by structural mass, cell volume and EOS mass, energy_balance core](../../assets/validation/interior_energetics_remelt_melted_mass_energy_balance.svg#only-light){ width="80%" }
+![Melted share of the mantle by structural mass, cell volume and EOS mass, energy_balance core](../../assets/validation/interior_energetics_remelt_melted_mass_energy_balance_dark.svg#only-dark){ width="80%" }
+![Melted share of the mantle by structural mass, cell volume and EOS mass, core_module core](../../assets/validation/interior_energetics_remelt_melted_mass_core_module.svg#only-light){ width="80%" }
+![Melted share of the mantle by structural mass, cell volume and EOS mass, core_module core](../../assets/validation/interior_energetics_remelt_melted_mass_core_module_dark.svg#only-dark){ width="80%" }
+
+**How to read the plot.** 1 plot per core boundary, `energy_balance` (first) and `core_module` (second). The bars are the melted share of the mantle that the recovered weights give at $f = 0.3$: by the structural cell mass of the pre-impact mesh (asserted equal to $f$, relative 1e-9), by the cell volume and by the EOS mass $\rho(P, S_\mathrm{end})V$ (both asserted more than 1e-3 away from $f$). The dashed line is $f$ = 0.3. A pass means that the first bar ends on the line and the other 2 do not.
+
 ??? info "Test details"
     - Reference: wiring check against the interior solver: the staggered mesh and its structural density in the Aragog solver PROTEUS builds (fwl-aragog 26.10.22), after a short cooled run.
     - Tolerance: `rel=1e-9` against $f$ times the structural mantle mass of the mesh before the impact.
     - Test id: `tests/integration/test_slow_accretion_partial_remelt.py::test_the_melted_mass_closes_on_the_pre_impact_cell_masses` (slow tier)
-    - Command: `pytest -m slow tests/integration/test_slow_accretion_partial_remelt.py`
+    - Command: `pytest -m reference_pinned tests/integration/test_slow_accretion_partial_remelt.py --validation-plots` (slow tier)
 
 ## Limits of the rule and the partly melted cell
 

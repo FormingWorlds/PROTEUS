@@ -80,7 +80,7 @@ def _mush_state(runner, mode):
 
 @pytest.mark.physics_invariant
 @pytest.mark.reference_pinned
-def test_the_configured_buoyancy_reaches_the_built_solver(tmp_path):
+def test_the_configured_buoyancy_reaches_the_built_solver(tmp_path, validation_plot):
     """The aragog solver built by PROTEUS in 'solid' and in 'mixture' carries a gravitational
     separation flux whose ratio is aragog's mobility ratio at each node (McKenzie 1984, Eq. 3.7;
     Abe 1995, Eq. 40): 1 / (1 - phi) on the matrix regimes. A field the runner drops or swaps
@@ -124,6 +124,7 @@ def test_the_configured_buoyancy_reaches_the_built_solver(tmp_path):
     from proteus.outgas.compaction import darcy_velocity
 
     drag = cfg.interior_energetics.aragog.separation_viscosity
+    drained = {}
     for mode, built in (('mixture', solver), ('solid', solver_sol)):
         phase = built.state.phase_basic
         rho_s, rho_l = phase.phase_boundary_densities()
@@ -136,6 +137,28 @@ def test_the_configured_buoyancy_reaches_the_built_solver(tmp_path):
         g = np.broadcast_to(phase._g, p.shape)[on]
         w = darcy_velocity(p[on], a, (rho_s - rho_l)[on], g, 1.0, buoyancy=mode)
         np.testing.assert_allclose(w, v[on] * eta[on], rtol=1e-12)
+        drained[mode] = (v[on] * eta[on], w)
+
+    def figure():
+        import matplotlib.pyplot as plt
+
+        lo = min(float(np.min(np.abs(x))) for pair in drained.values() for x in pair)
+        hi = max(float(np.max(np.abs(x))) for pair in drained.values() for x in pair)
+        fig, ax = plt.subplots(figsize=(6, 4))
+        ax.plot([0.5 * lo, 2.0 * hi], [0.5 * lo, 2.0 * hi], label='1:1')
+        for (mode, (solver_v, drain_v)), mark in zip(drained.items(), ('o', 's')):
+            ax.plot(
+                np.abs(solver_v), np.abs(drain_v), mark, mfc='none', label=f"'{mode}' buoyancy"
+            )
+        ax.set_xscale('log')
+        ax.set_yscale('log')
+        ax.set_xlabel('Solver velocity times drag [m s$^{-1}$ Pa s]')
+        ax.set_ylabel('darcy_velocity [m s$^{-1}$]')
+        ax.legend(fontsize=8)
+        fig.tight_layout()
+        return fig
+
+    validation_plot(figure, 'compaction_solver_mobility')
 
     # The JAX path: the separation velocity from the factory parameters PROTEUS builds.
     jnp = pytest.importorskip('jax.numpy')

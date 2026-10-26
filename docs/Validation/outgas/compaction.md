@@ -51,11 +51,16 @@ Terms used below:
 
 **Why it matters.** It checks that the configured buoyancy reaches the interior solver.
 
+![darcy_velocity against the separation velocity of the built Aragog solver at the mush nodes](../../assets/validation/compaction_solver_mobility.svg#only-light){ width="80%" }
+![darcy_velocity against the separation velocity of the built Aragog solver at the mush nodes](../../assets/validation/compaction_solver_mobility_dark.svg#only-dark){ width="80%" }
+
+**How to read the plot.** The x-axis is the separation velocity of the Aragog solver that PROTEUS builds, times its drag, and the y-axis `darcy_velocity` at 1 Pa s, both on log scales, at every mush node with a positive density contrast of a short run. Circles are the `'mixture'` buoyancy and squares the `'solid'` buoyancy, the asserted pairs (relative 1e-12); the line is 1:1. A pass means that every point lies on the line.
+
 ??? info "Test details"
     - Reference: `relative_velocity` of the evaluator of the aragog solver PROTEUS builds (fwl-aragog 26.10.22), on the tables of a short run.
     - Tolerance: relative 1e-12 on every mush node with a positive contrast; further ratio checks at 1e-9, 1e-6, 1e-3 and 1e-2.
     - Test id: `tests/integration/test_slow_aragog_separation_buoyancy.py::test_the_configured_buoyancy_reaches_the_built_solver`
-    - Command: `pytest tests/integration/test_slow_aragog_separation_buoyancy.py::test_the_configured_buoyancy_reaches_the_built_solver` (slow tier)
+    - Command: `pytest -m reference_pinned tests/integration/test_slow_aragog_separation_buoyancy.py --validation-plots` (slow tier)
 
 ## Porosity from the lever rule
 

@@ -270,7 +270,9 @@ def test_pre_resonance_eccentricity_stays_flat(_ctl_reference_trajectory):
 
 @pytest.mark.reference_pinned
 @pytest.mark.physics_invariant
-def test_resonance_capture_occurs_within_expected_time_window(_ctl_reference_trajectory):
+def test_resonance_capture_occurs_within_expected_time_window(
+    _ctl_reference_trajectory, validation_plot
+):
     """Pins the resonance-capture timing against Rufu & Canup (2020)
     Figure 3 / the reference notebook's real-Hansen run (capture at
     t~2.4e4 yr): e must cross 0.1 somewhere in [2e4, 4e4] yr, not
@@ -281,10 +283,35 @@ def test_resonance_capture_occurs_within_expected_time_window(_ctl_reference_tra
     assert crossing is not None, 'eccentricity never exceeded 0.1 -- no resonance capture'
     assert 2.0e4 <= crossing['Time'] <= 4.0e4
 
+    def figure():
+        import matplotlib.pyplot as plt
+
+        fig, ax = plt.subplots(figsize=(6, 4))
+        ax.axvspan(2.0e4, 4.0e4, alpha=0.15, label='Asserted window, 2e4 to 4e4 yr')
+        ax.axhline(0.1, ls='--', label='$e$ = 0.1')
+        ax.plot(
+            [crossing['Time']],
+            [crossing['ecc']],
+            'o',
+            zorder=3,
+            label='First step with $e > 0.1$',
+        )
+        ax.set_xlim(0.0, 5.2e4)
+        ax.set_ylim(0.0, 0.3)
+        ax.set_xlabel('Time [yr]')
+        ax.set_ylabel('Eccentricity $e$')
+        ax.legend(fontsize=8)
+        fig.tight_layout()
+        return fig
+
+    validation_plot(figure, 'orbit_evection_capture_time')
+
 
 @pytest.mark.reference_pinned
 @pytest.mark.physics_invariant
-def test_peak_eccentricity_matches_reference_location(_ctl_reference_trajectory):
+def test_peak_eccentricity_matches_reference_location(
+    _ctl_reference_trajectory, validation_plot
+):
     """Pins the peak-eccentricity magnitude and location against the
     reference (e_peak~0.72-0.724 at a'~11.89 R_earth, t~5.2e4 yr).
     Tolerance is loose (e >= 0.6, a' in [10, 13]) relative to the
@@ -299,6 +326,23 @@ def test_peak_eccentricity_matches_reference_location(_ctl_reference_trajectory)
     peak = _ctl_reference_trajectory[i_peak]
     assert peak['ecc'] >= 0.6
     assert 10.0 <= peak['a_prime'] <= 13.0
+
+    def figure():
+        import matplotlib.pyplot as plt
+
+        fig, ax = plt.subplots(figsize=(6, 4))
+        ax.fill_between([10.0, 13.0], 0.6, 1.0, alpha=0.15, label='Asserted region')
+        ax.plot([11.89], [0.72], 's', mfc='none', ms=10, label='Reference peak (notebook run)')
+        ax.plot([peak['a_prime']], [peak['ecc']], 'o', zorder=3, label='Peak of this run')
+        ax.set_xlim(6.0, 16.0)
+        ax.set_ylim(0.0, 1.0)
+        ax.set_xlabel("Satellite distance $a'$ [$R_\\oplus$]")
+        ax.set_ylabel('Eccentricity $e$')
+        ax.legend(fontsize=8)
+        fig.tight_layout()
+        return fig
+
+    validation_plot(figure, 'orbit_evection_peak_eccentricity')
 
 
 @pytest.mark.physics_invariant

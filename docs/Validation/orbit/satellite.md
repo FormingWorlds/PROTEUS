@@ -43,11 +43,16 @@ This page checks the planet-satellite tides of `proteus.orbit.satellite`: the an
 
 **Known limit.** The test checks a time window, not the full eccentricity history.
 
+![First step with eccentricity above 0.1 against the asserted time window](../../assets/validation/orbit_evection_capture_time.svg#only-light){ width="80%" }
+![First step with eccentricity above 0.1 against the asserted time window](../../assets/validation/orbit_evection_capture_time_dark.svg#only-dark){ width="80%" }
+
+**How to read the plot.** The x-axis is the time and the y-axis the eccentricity. The circle is the first step of the run with $e > 0.1$, the asserted capture; the dashed line is $e$ = 0.1 and the grey band the asserted window from 2e4 to 4e4 yr. The plot shows only this asserted step, not the whole trajectory, because the trajectory changes between machines with the Radau solver. A pass means that the circle lies in the band.
+
 ??? info "Test details"
     - Reference: Rufu and Canup (2020), Figure 3 evection-resonance capture case.
     - Tolerance: the crossing of e = 0.1 between 2e4 and 4e4 yr.
     - Test id: `tests/integration/test_slow_orbit_evection_ctl.py::test_resonance_capture_occurs_within_expected_time_window`
-    - Command: `pytest tests/integration/test_slow_orbit_evection_ctl.py::test_resonance_capture_occurs_within_expected_time_window` (slow tier)
+    - Command: `pytest -m reference_pinned tests/integration/test_slow_orbit_evection_ctl.py --validation-plots` (slow tier)
 
 ## Peak eccentricity in the evection resonance
 
@@ -61,11 +66,16 @@ This page checks the planet-satellite tides of `proteus.orbit.satellite`: the an
 
 **Known limit.** The contraction after the peak ($a'$ falling to about 10.2 Earth radii by 1e5 yr in the reference) is not asserted.
 
+![Peak eccentricity and its satellite distance against the asserted region](../../assets/validation/orbit_evection_peak_eccentricity.svg#only-light){ width="80%" }
+![Peak eccentricity and its satellite distance against the asserted region](../../assets/validation/orbit_evection_peak_eccentricity_dark.svg#only-dark){ width="80%" }
+
+**How to read the plot.** The x-axis is the satellite distance $a'$ in Earth radii and the y-axis the eccentricity. The circle is the asserted peak of the run and the grey region the asserted condition, $e \ge 0.6$ at $a'$ between 10 and 13 $R_\oplus$. The hollow square is the peak of the reference notebook run ($e \approx 0.72$ at $a' \approx 11.89\,R_\oplus$, context). As above, only the asserted peak is drawn. A pass means that the circle lies in the grey region.
+
 ??? info "Test details"
     - Reference: Rufu and Canup (2020), Figure 3 (peak e about 0.72 to 0.724 at a' about 11.89 R_earth, t about 5.2e4 yr).
     - Tolerance: peak e of at least 0.6 at a' between 10 and 13 R_earth.
     - Test id: `tests/integration/test_slow_orbit_evection_ctl.py::test_peak_eccentricity_matches_reference_location`
-    - Command: `pytest tests/integration/test_slow_orbit_evection_ctl.py::test_peak_eccentricity_matches_reference_location` (slow tier)
+    - Command: `pytest -m reference_pinned tests/integration/test_slow_orbit_evection_ctl.py --validation-plots` (slow tier)
 
 ## Re-derivation note
 

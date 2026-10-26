@@ -184,8 +184,9 @@ def test_the_melt_fills_from_the_largest_radius_down(partial_remelt):
 
 
 @pytest.mark.slow
+@pytest.mark.reference_pinned
 @pytest.mark.physics_invariant
-def test_the_melted_mass_closes_on_the_pre_impact_cell_masses(partial_remelt):
+def test_the_melted_mass_closes_on_the_pre_impact_cell_masses(partial_remelt, validation_plot):
     """sum(w m) = f sum(m) for the structural cell mass m of the pre-impact mesh, the mass
     M_mantle reports; the cell volumes and the EOS masses rho(P, S_end) V do not close."""
     d = partial_remelt
@@ -198,6 +199,30 @@ def test_the_melted_mass_closes_on_the_pre_impact_cell_masses(partial_remelt):
     assert abs(float(np.sum(w * m_eos)) / float(np.sum(m_eos)) - F_MELT) > 1e-3
     assert float(np.sum(m)) == pytest.approx(float(d['hf_row']['M_mantle']), rel=1e-9)
     assert 0.0 < float(d['hf_row']['f_remelt']) == F_MELT
+
+    def figure():
+        import matplotlib.pyplot as plt
+
+        shares = [
+            float(np.sum(w * m)) / float(np.sum(m)),
+            float(np.sum(w * V)) / float(np.sum(V)),
+            float(np.sum(w * m_eos)) / float(np.sum(m_eos)),
+        ]
+        fig, ax = plt.subplots(figsize=(6, 4))
+        ax.bar(
+            ['Structural mass', 'Cell volume', r'EOS mass $\rho(P, S_\mathrm{end})V$'],
+            shares,
+            width=0.5,
+        )
+        ax.axhline(F_MELT, ls='--', label=f'$f$ = {F_MELT}')
+        ax.set_ylim(0.0, 0.45)
+        ax.set_ylabel('Melted share of the mantle')
+        ax.set_title(f'Core boundary: {d["core_bc"]}', loc='left', fontsize=9)
+        ax.legend()
+        fig.tight_layout()
+        return fig
+
+    validation_plot(figure, f'interior_energetics_remelt_melted_mass_{d["core_bc"]}')
 
 
 @pytest.mark.slow
