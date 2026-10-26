@@ -75,6 +75,11 @@ The table lists the `@pytest.mark.reference_pinned` test and the slow-tier test 
 
 **Known limit.** The partly melted cell takes the mass-weighted mean entropy of its melted and unmelted parts. This mean holds less heat than the two parts. The deficit is first order in $dT/dS$, the rise of temperature with entropy, so it vanishes when the temperature does not change over the jump: $w(1-w)\,m\,\Delta S\,\Delta T/2$ for a temperature linear in entropy over the cell, with $w$ the melted share of the cell, $m$ its mass, $\Delta S = S_\mathrm{ic} - S_\mathrm{end}$ and $\Delta T$ the temperature rise over $\Delta S$. Relative to the injected heat it is largest when all the melt fits in the top cell. The booked `step_dE_impact_J` integrates the heat of the actual re-melted profile, so the energy budget of an Aragog run closes.
 
+![Entropy of a re-melted cell against its melted share](../../assets/validation/interior_energetics_remelt_blend.svg#only-light){ width="80%" }
+![Entropy of a re-melted cell against its melted share](../../assets/validation/interior_energetics_remelt_blend_dark.svg#only-dark){ width="80%" }
+
+**How to read the plot.** The x-axis is the melted share $w$ of a cell and the y-axis its entropy after the re-melt. The solid line is `remelt_entropy` for a cell at $S_\mathrm{end}$ = 2400 moving towards $S_\mathrm{ic}$ = 3000 J kg$^{-1}$ K$^{-1}$ (dashed), and the dotted line the same for a cell at 3950, hotter than the initial condition (context). The hollow squares are the hand-computed values and the filled circles the asserted values of the blend test: 2400 at $w = 0$, 2600 at $w = 1/3$, 2820 at $w = 0.7$, and 3950 for the hotter cell at $w = 0.5$. A pass means that every circle sits in its square: the cold cell moves its share of the way, and the hotter cell does not cool.
+
 ??? info "Test details"
     - Reference: the limits $f = 0$ and $f = 1$ of the rule, and the hand-computed blends above.
     - Tolerance: bit for bit at $f = 0$ and $f = 1$; relative 1e-15 for the blends and the scalar mantle.

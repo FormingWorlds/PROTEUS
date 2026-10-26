@@ -133,8 +133,9 @@ def test_full_weight_is_the_maximum_bit_for_bit():
     np.testing.assert_equal(S_new[1], 3950.0)  # the hotter cell keeps its entropy
 
 
+@pytest.mark.reference_pinned
 @pytest.mark.physics_invariant
-def test_partial_weight_blends_by_mass_share_and_never_cools():
+def test_partial_weight_blends_by_mass_share_and_never_cools(validation_plot):
     """A cell melted by a third moves a third of the way to the initial condition, one melted
     by 0.7 moves 0.7 of the way; w = 0 keeps S_end."""
     S_end = np.array([2400.0, 2400.0, 3950.0, 2400.0])
@@ -143,6 +144,40 @@ def test_partial_weight_blends_by_mass_share_and_never_cools():
     np.testing.assert_allclose(S_new, [2400.0, 2600.0, 3950.0, 2820.0], rtol=1e-15)
     assert S_new[0] == S_end[0]
     assert np.all(S_new >= S_end)
+
+    def figure():
+        import matplotlib.pyplot as plt
+
+        w = np.linspace(0.0, 1.0, 41)
+        fig, ax = plt.subplots(figsize=(8, 4))
+        ax.plot(
+            w,
+            remelt_entropy(np.full(w.size, 2400.0), np.full(w.size, 3000.0), w),
+            label='remelt_entropy, $S_\\mathrm{end}$ = 2400',
+        )
+        ax.axhline(3000.0, ls='--', label='$S_\\mathrm{ic}$ = 3000')
+        ax.plot(
+            w,
+            remelt_entropy(np.full(w.size, 3950.0), np.full(w.size, 3000.0), w),
+            ':',
+            label='remelt_entropy, $S_\\mathrm{end}$ = 3950',
+        )
+        ax.plot(
+            [0.0, 1.0 / 3.0, 0.5, 0.7],
+            [2400.0, 2600.0, 3950.0, 2820.0],
+            's',
+            mfc='none',
+            ms=10,
+            label='Hand-computed',
+        )
+        ax.plot([0.0, 1.0 / 3.0, 0.5, 0.7], S_new, 'o', zorder=3, label='Asserted values')
+        ax.set_xlabel('Melted share of the cell $w$')
+        ax.set_ylabel('Entropy [J kg$^{-1}$ K$^{-1}$]')
+        ax.legend(fontsize=8, loc='center left', bbox_to_anchor=(1.0, 0.5))
+        fig.tight_layout()
+        return fig
+
+    validation_plot(figure, 'interior_energetics_remelt_blend')
 
 
 def test_weights_that_miss_the_melted_mass_are_refused(monkeypatch):
