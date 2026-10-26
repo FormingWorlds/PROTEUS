@@ -374,8 +374,8 @@ def calc_surface_pressures(dirs: dict, config: Config, hf_row: dict):
     ------
     RuntimeError
         If the CALLIOPE solve fails.
-    ValueError
-        If ``from_O_budget`` is set and the row has no ``O_kg_total``.
+    KeyError
+        If the row has no ``{e}_kg_total`` for a volatile element or a noble gas.
     """
     # Inform
     log.debug('Running CALLIOPE...')

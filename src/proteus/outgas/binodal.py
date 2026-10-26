@@ -47,8 +47,9 @@ def apply_binodal_h2(hf_row: dict, config: Config) -> None:
     [m s-2] from the row, and skips the step when ``T_magma``, ``M_mantle``,
     ``R_int`` or ``gravity`` is not positive.
 
-    Does nothing if H2 is not included, has zero total mass, or if
-    the binodal config flag is disabled.
+    Does nothing if H2 is not included or has zero total mass. It does not
+    read ``outgas.h2_binodal``: the outgassing wrapper calls it only when that
+    flag is true.
 
     Parameters
     ----------

@@ -93,8 +93,8 @@ upstream modules.
    mantle temperature, and melt fraction, computes the thermodynamic
    equilibrium partitioning of volatiles between atmosphere, melt, and solid.
    Writes partial pressures, mixing ratios, and atmospheric mass to `hf_row`.
-   Also calls `update_planet_mass` and `assert_mass_conservation` to verify
-   the whole-planet mass budget.
+   After this step, on each of its paths, the loop calls `update_planet_mass`
+   and `assert_mass_conservation` to check the whole-planet mass budget.
    See [Outgassing, rock vapour and volatile trapping](outgas.md).
 
 9. **Atmosphere climate** (`run_atmosphere`): Solves the radiative-convective

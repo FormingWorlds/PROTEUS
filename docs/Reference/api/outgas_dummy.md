@@ -2,7 +2,7 @@
 
 A volatile partition that depends on the melt fraction, with fixed stoichiometry and no equilibrium chemistry.
 
-For how this part works, see [Outgassing, rock vapour and volatile trapping](../../Explanations/outgas.md#where-outgassing-sits-in-each-step).
+For how this part works, see [Outgassing, rock vapour and volatile trapping](../../Explanations/outgas.md#the-order-of-the-volatile-steps).
 
 ::: proteus.outgas.dummy
     options:
