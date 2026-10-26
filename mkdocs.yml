@@ -49,6 +49,7 @@ nav:
       - Parameter grid sweep: Tutorials/parameter_grid.md
       - Solar System CHILI intercomparison: Tutorials/chili_intercomparison.md
       - Orbit and tidal evolution: Tutorials/orbit_tides.md
+      - Giant impacts with a partial re-melt: Tutorials/giant_impact_remelt.md
 
   - Explanations:
       - Scientific background:

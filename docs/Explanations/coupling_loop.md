@@ -51,7 +51,8 @@ upstream modules.
    outermost mantle shells that hold this mass are raised to the run's
    temperature-mode initial condition. Parts that are already hotter keep
    their state, and the deeper mantle keeps its state (see
-   [how much of the mantle an impact melts](model.md#how-much-of-the-mantle-an-impact-melts)).
+   [how much of the mantle an impact melts](model.md#how-much-of-the-mantle-an-impact-melts),
+   and the tutorial [giant impacts with a partial re-melt](../Tutorials/giant_impact_remelt.md)).
    The orbit takes the impact's change in semi-major axis and eccentricity.
    How molten a full re-melt leaves the mantle follows that initial condition:
    only `planet.temperature_mode = "liquidus_super"` is fully molten for any

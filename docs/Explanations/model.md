@@ -258,6 +258,9 @@ The extra share is $w (1 - w)$, at most 1/4 at $w = 0.5$.
 
 The dummy interior carries one mantle temperature.
 At each impact it moves that temperature the share $f$ of the way to the initial temperature, so its impacts compound.
+The boundary interior and SPIDER cannot apply an impact, so an accretion run with either is refused when the configuration is loaded.
+
+The tutorial [Giant impacts with a partial re-melt](../Tutorials/giant_impact_remelt.md) runs a full and a partial re-melt and reads their impact rows.
 
 **Where this is checked.** [Partial giant-impact re-melt](../Validation/interior_energetics/remelt.md) on the Validation tab.
 
