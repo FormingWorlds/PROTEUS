@@ -66,10 +66,10 @@ This page checks the tidal evolution of the orbit in `proteus.orbit.orbit`. Tide
 
 **Why it matters.** It checks the spin equation of `sp1d` on its own.
 
-![Spin angular momentum gained and orbital angular momentum lost in one sp1d step](../../assets/validation/orbit_sp1d_spin_orbit_exchange.svg#only-light){ width="80%" }
-![Spin angular momentum gained and orbital angular momentum lost in one sp1d step](../../assets/validation/orbit_sp1d_spin_orbit_exchange_dark.svg#only-dark){ width="80%" }
+![Spin angular momentum gained in one sp1d step](../../assets/validation/orbit_sp1d_spin_orbit_exchange.svg#only-light){ width="80%" }
+![Spin angular momentum gained in one sp1d step](../../assets/validation/orbit_sp1d_spin_orbit_exchange_dark.svg#only-dark){ width="80%" }
 
-**How to read the plot.** The 2 bars are the asserted spin gain and orbital loss of angular momentum over the same `sp1d` step. The grey band is 5 % on each side of the spin gain, the asserted tolerance. A pass means that both bars end inside the band; both are also above 1e30 in size.
+**How to read the plot.** The bar is the asserted spin gain of angular momentum over the `sp1d` step. The grey band is 5 % on each side of it, the asserted tolerance for the orbital loss. The test also asserts that the orbital loss lies in this band, that both are above 1e30 in size, and that the orbit loses what the spin gains. The plot does not draw the orbital loss: it is a difference of 1.7e-7 of the orbital angular momentum, so the solver tolerance moves it by about 0.4 %. The band is drawn around the bar, so the plot shows the size of the spin gain, about 6.0e32 kg m$^2$/s, and the window that the test requires for the orbital loss. A pass means that the orbital loss lies in this band.
 
 ??? info "Test details"
     - Reference: angular-momentum conservation, applied to the exchange between spin and orbit (analytical limit).
