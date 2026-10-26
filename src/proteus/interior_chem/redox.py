@@ -668,8 +668,9 @@ def write_fO2_profile_ncdf(fpath: str, state: MeltRedoxState | None) -> bool:
     cell's (T, P) as Schaefer et al. (2024) report Delta-IW, and the scalar
     ``fO2_top_index``, the staggered index of the uppermost melt cell
     (diagnostic: ``fO2_shift_IW_mantle`` is evaluated at 1 bar). With
-    ``planet.interior_chem.metal_saturation = false`` both profiles are pressure-free (no
-    int(dV dP), IW_H21 at 1 bar); the ``pressure_term`` attribute (0 or 1)
+    ``planet.interior_chem.metal_saturation`` and ``fO2_pressure_term`` both false
+    the profiles are pressure-free (no int(dV dP), IW_H21 at 1 bar); the
+    ``pressure_term`` attribute (0 or 1)
     of each variable records which. Returns True if written.
 
     The snapshot is written by the interior backend before the redox step
@@ -799,7 +800,7 @@ def _put_fO2_profile(ds, state: MeltRedoxState) -> None:
         'outside the EOS envelope'
         if with_p
         else 'Evaluated at each cell T and 1 bar, without int(dV dP) '
-        '(planet.interior_chem.metal_saturation = false); NaN in solid cells'
+        '(metal_saturation and fO2_pressure_term false); NaN in solid cells'
     )
     if state.dIW_H21_cell is not None:
         if 'dIW_H21_s' in ds.variables:
@@ -1103,15 +1104,16 @@ def update_melt_redox(interior_o: Interior_t, hf_row: dict, config: Config) -> N
             _update_ratios(state)
 
     # Step 10a: diagnostic radial fO2 profile, Eq 13 at each cell's (T, P) with
-    # int(dV dP) and IW_H21(T, P); with metal saturation off both are at 1 bar.
+    # int(dV dP) and IW_H21(T, P); at 1 bar unless metal saturation or fO2_pressure_term.
+    with_p = react or bool(config.planet.interior_chem.fO2_pressure_term)
     temp = np.asarray(interior_o.temp, dtype=float)
     P_gpa = pres / 1e9
     melt = phi > 0.0
     prof, _ = _log10_fO2_profile(
-        state.redox_ratio, temp, P_gpa, state.X, pressure_term=react, eos_model=eos_model
+        state.redox_ratio, temp, P_gpa, state.X, pressure_term=with_p, eos_model=eos_model
     )
-    P_buffer = P_gpa if react else np.full_like(P_gpa, P_1BAR_GPA)
-    state.profile_pressure_term = react
+    P_buffer = P_gpa if with_p else np.full_like(P_gpa, P_1BAR_GPA)
+    state.profile_pressure_term = with_p
     state.log10_fO2_cell = np.where(melt, prof, np.nan)
     state.dIW_H21_cell = state.log10_fO2_cell - _iw_buffer_hirschmann2021(temp, P_buffer)
     candidates = melt if np.any(melt) else np.ones_like(melt, dtype=bool)

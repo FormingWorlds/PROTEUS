@@ -209,7 +209,8 @@ class InteriorChem:
         is inactive, crystallization uses the solver melt fraction
         as is, without the PHI_SOLID = 0.15 solid threshold, and the
         radial fO2 profiles are pressure-free (Eq 13 without int(dV dP),
-        Delta-IW against Hirschmann 2021 at 1 bar). Read only when
+        Delta-IW against Hirschmann 2021 at 1 bar) unless
+        ``fO2_pressure_term`` is True. Read only when
         ``planet.fO2_source = 'from_mantle_redox'``.
     partition_coefficients: str
         Solid/melt partition coefficients of Fe2+ and Fe3+ in the
@@ -228,8 +229,10 @@ class InteriorChem:
         Melt equation of state for the volume change of FeO -> FeO1.5 in the
         pressure term int(dV dP) of the melt-redox tracker
         (``interior_chem/eos_deng.py``): the radial fO2 profile and the
-        Fe-disproportionation equilibrium. Both carry the pressure term only
-        with ``metal_saturation`` True, so the choice has no effect otherwise.
+        Fe-disproportionation equilibrium. The profile carries the pressure
+        term with ``metal_saturation`` or ``fO2_pressure_term`` True, the
+        equilibrium only with ``metal_saturation`` True; otherwise the choice
+        has no effect.
         'deng2020' (default): the Deng et al. (2020) fourth-order
         Birch-Murnaghan fit as constructed by Schaefer et al. (2024), valid to
         6500 K and 136 GPa.
@@ -239,7 +242,16 @@ class InteriorChem:
         mantles. It agrees with 'deng2020' inside the FPMD coverage
         (2000-4000 K, up to about 74-94 GPa) and is an extrapolation beyond.
         Read only when ``planet.fO2_source = 'from_mantle_redox'`` and
-        ``metal_saturation`` is True.
+        ``metal_saturation`` or ``fO2_pressure_term`` is True.
+    fO2_pressure_term: bool
+        Whether the radial fO2 profile (Schaefer et al. 2024 Eq 13 at each melt
+        cell's T and P, ``interior_chem/redox.py`` Step 10a) carries the
+        pressure term int(dV dP) of FeO + 1/4 O2 = FeO1.5 from ``redox_dV_eos``,
+        and its Delta-IW the Hirschmann (2021) IW buffer at the cell pressure.
+        Default False. With ``metal_saturation`` True the term is always
+        included and this option has no effect. The profile is a diagnostic: it
+        changes neither Fe3+/FeT nor the 1 bar surface fO2 passed to the
+        outgassing.
     """
 
     # Initial melt Fe3+/FeT of the redox tracker; open interval because the
@@ -256,8 +268,13 @@ class InteriorChem:
     partition_coefficients: str = field(default='mgsio3', validator=in_(('mgsio3', 'bulk_BSE')))
 
     # Melt EOS of the redox pressure term (eos_deng.MODELS). Only read under
-    # planet.fO2_source = 'from_mantle_redox' with metal_saturation True.
+    # planet.fO2_source = 'from_mantle_redox' with metal_saturation or
+    # fO2_pressure_term True.
     redox_dV_eos: str = field(default='deng2020', validator=in_(('deng2020', 'keane_table')))
+
+    # int(dV dP) in the radial fO2 profile without the metal step (redox.py
+    # Step 10a); always on with metal_saturation True.
+    fO2_pressure_term: bool = field(default=False)
 
 
 def _validate_ini_dsdr(instance, attribute, value):

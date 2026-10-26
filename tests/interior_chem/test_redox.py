@@ -90,6 +90,7 @@ def _make_config(
     source: str = 'from_mantle_redox',
     metal_saturation: bool = True,
     redox_dV_eos: str = 'deng2020',
+    fO2_pressure_term: bool = False,
 ) -> MagicMock:
     """Minimal config exposing only the fields the tracker reads."""
     config = MagicMock()
@@ -98,6 +99,7 @@ def _make_config(
     config.planet.interior_chem.metal_saturation = metal_saturation
     config.planet.interior_chem.partition_coefficients = 'mgsio3'
     config.planet.interior_chem.redox_dV_eos = redox_dV_eos
+    config.planet.interior_chem.fO2_pressure_term = fO2_pressure_term
     config.outgas.T_floor = 700.0  # the outgassing temperature floor default
     return config
 
@@ -891,6 +893,67 @@ def test_without_metal_saturation_the_fo2_profiles_are_pressure_free(tmp_path):
     assert ds_attr(fpath, 'log10_fO2_s', 'pressure_term') == 0
     assert ds_attr(fpath, 'dIW_H21_s', 'pressure_term') == 0
     assert '1 bar' in ds_attr(fpath, 'dIW_H21_s', 'long_name')
+
+
+@pytest.mark.physics_invariant
+def test_fo2_pressure_term_without_metal_saturation_changes_only_the_profile(
+    monkeypatch, tmp_path
+):
+    """metal_saturation = False with fO2_pressure_term = True: the radial profile
+    is Eq 13 at each cell's T and P with the oxidation int(dV dP), and Delta-IW
+    is taken against IW_H21 at the cell pressure, while the metal step stays
+    off and Fe3+/FeT and the 1 bar surface Delta-IW for the outgassing are the
+    same as without the option (the profile is a diagnostic)."""
+    import proteus.interior_chem.redox as redox
+    from proteus.interior_chem import eos_deng
+    from proteus.interior_chem.redox import _iw_buffer_hirschmann2021, write_fO2_profile_ncdf
+
+    def _not_called(*args, **kwargs):
+        raise AssertionError('metal step called with metal_saturation off')
+
+    monkeypatch.setattr(redox, '_metal_saturation_step', _not_called)
+    # 2200 K at 10 GPa, 3500 K at 30 GPa (from _make_interior), inside the Deng
+    # envelope; 7000 K is above it, so the pressure term leaves that cell NaN.
+    temp = np.array([2200.0, 3500.0, 7000.0])
+    runs = {}
+    for with_p in (False, True):
+        interior = _make_interior()
+        interior.phi = np.array([1.0, 0.5, 0.4])
+        interior.temp = temp
+        hf_row = {'T_magma': 2200.0}
+        config = _make_config(0.1, metal_saturation=False, fO2_pressure_term=with_p)
+        update_melt_redox(interior, hf_row, config)
+        runs[with_p] = (interior.redox_state, hf_row)
+    (off, hf_off), (on, hf_on) = runs[False], runs[True]
+
+    P_gpa = np.asarray(_make_interior().pres, dtype=float) / 1e9
+    I_ox, valid = eos_deng.int_dV_dP_oxidation(temp, P_gpa, model='deng2020')
+    assert list(valid) == [True, True, False]
+    # Eq 13: the pressure term enters as int(dV dP) / (a R T ln10) at fixed ratio.
+    shift = I_ox[:2] / (redox._A * redox._R * temp[:2] * np.log(10))
+    np.testing.assert_allclose(
+        on.log10_fO2_cell[:2], off.log10_fO2_cell[:2] + shift, rtol=0, atol=1e-10
+    )
+    np.testing.assert_allclose(
+        on.dIW_H21_cell[:2],
+        on.log10_fO2_cell[:2] - _iw_buffer_hirschmann2021(temp[:2], P_gpa[:2]),
+        rtol=0,
+        atol=1e-12,
+    )
+    assert np.isnan(on.log10_fO2_cell[2]) and np.isfinite(off.log10_fO2_cell[2])
+    # Discrimination guard: dropping the term (or the 1 bar buffer) at 30 GPa
+    # misses by more than a log unit, so the comparison above is not trivial.
+    assert shift[1] > 1.0
+    assert on.profile_pressure_term and not off.profile_pressure_term
+    # The tracker itself is untouched: same ratio, same surface Delta-IW, no metal.
+    assert on.ferric_frac == pytest.approx(off.ferric_frac, rel=0, abs=0)
+    assert hf_on['fO2_shift_IW_mantle'] == pytest.approx(hf_off['fO2_shift_IW_mantle'], abs=0)
+    assert hf_on['a_fe_max_mantle'] == 0.0 and hf_on['n_fe_metal_mantle'] == 0.0
+
+    fpath = str(tmp_path / '1000_int.nc')
+    _make_int_snapshot(fpath, temp.size)
+    assert write_fO2_profile_ncdf(fpath, on)
+    assert ds_attr(fpath, 'dIW_H21_s', 'pressure_term') == 1
 
 
 @pytest.mark.physics_invariant
