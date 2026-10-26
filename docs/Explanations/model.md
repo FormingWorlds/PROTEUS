@@ -225,7 +225,8 @@ How much of the mantle does a giant impact melt, and where in the mantle does th
 
 Each impact melts a fraction $f$ of the mantle mass, the melt mass fraction.
 The melt fills the mantle from the surface down.
-The outermost mantle shells that hold this mass rise to the run's temperature-mode initial condition, and the deeper mantle keeps its state before the impact.
+The interior solver divides the mantle into cells, thin spherical shells.
+The outermost cells that hold this mass rise to the run's temperature-mode initial condition, and the deeper mantle keeps its state before the impact.
 
 The setting `accretion.remelt` sets $f$:
 
@@ -237,13 +238,20 @@ The setting `accretion.remelt` sets $f$:
 The mantle mass here is the structural mass of the mantle before the impact.
 Parts of the mantle that are already hotter than the initial condition keep their state.
 
-For example, take a mantle of uniform density between 3500 and 6400 km and $f = 0.3$.
-The melt front then lies 588 km below the surface.
-A fill linear in radius would put it 870 km deep, 282 km too deep, because the outer shells hold more mass per unit radius.
+For example, take a mantle of uniform density between the core-mantle boundary at $r_c$ = 3500 km and the surface at $R$ = 6400 km, and $f = 0.3$.
+The melt front $r_f$ then follows from the mass of the outer shell, $r_f = (R^3 - f (R^3 - r_c^3))^{1/3}$:
+
+$r_f^3 = 2.62144 \times 10^{11} - 0.3 \times (2.62144 \times 10^{11} - 4.2875 \times 10^{10}) = 1.963633 \times 10^{11}$ km$^3$, so $r_f$ = 5812 km.
+
+The melt front lies 588 km below the surface.
+A fill linear in radius would put it at $R - f (R - r_c)$ = 5530 km, 870 km deep and 282 km too deep, because the outer cells hold more mass per unit radius.
 
 The rule has no memory of earlier melt.
-Each impact fills its share from the surface down, also where the shells are already at the initial condition.
+Each impact fills its share from the surface down, also where the cells are already at the initial condition.
 So two impacts of $f = 0.3$ in one step melt 0.3 of the mantle plus up to a quarter of the cell at the melt front, which the second impact blends again.
+For example, in a mantle of 4 equal cells the first impact melts the top cell in full and the next cell by $w = 0.2$.
+The second impact melts the same share again, so that cell then holds $1 - 0.8^2 = 0.36$ of its jump instead of 0.2.
+The extra share is $w (1 - w)$, at most 1/4 at $w = 0.5$.
 
 The dummy interior carries one mantle temperature.
 At each impact it moves that temperature the share $f$ of the way to the initial temperature, so its impacts compound.
