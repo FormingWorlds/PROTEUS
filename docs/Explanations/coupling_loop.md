@@ -70,7 +70,7 @@ upstream modules.
 4. **Volatile trapping** (`run_trapping`): With `outgas.trap_mode = "front"`,
    buries part of the dissolved volatiles in the mantle that froze over the
    step, or returns buried mass to the melt when the mantle remelts. Runs
-   before escape and outgassing, so both see the new inventories. See
+   before escape and outgassing, so both see the updated inventories. See
    [Volatile trapping](outgas.md#volatile-trapping-in-the-freezing-mantle).
 
 5. **Orbit and tides** (`run_orbit`): Updates orbital elements (semi-major
@@ -89,13 +89,14 @@ upstream modules.
    atmospheric composition. Updates element inventories by debiting the
    escaped mass. Only active after the initialisation stage.
 
-8. **Outgassing** (`run_outgassing_and_vapourisation`): Given the updated element inventories,
-   mantle temperature, and melt fraction, computes the thermodynamic
+8. **Outgassing** (`run_outgassing_and_vapourisation`): Given the updated
+   element inventories, mantle temperature, and melt fraction, computes the thermodynamic
    equilibrium partitioning of volatiles between atmosphere, melt, and solid.
    Writes partial pressures, mixing ratios, and atmospheric mass to `hf_row`.
-   After this step, on each of its paths, the loop calls `update_planet_mass`
-   and `assert_mass_conservation` to check the whole-planet mass budget.
-   See [Outgassing, rock vapour and volatile trapping](outgas.md).
+   After this step, on each of the 3 outgassing paths (see
+   [the order of the volatile steps](outgas.md#the-order-of-the-volatile-steps)),
+   the loop calls `update_planet_mass` and `assert_mass_conservation` to
+   check the whole-planet mass budget.
 
 9. **Atmosphere climate** (`run_atmosphere`): Solves the radiative-convective
    structure of the atmosphere using the chosen backend (AGNI, JANUS, or

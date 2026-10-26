@@ -805,9 +805,11 @@ def run_trapping(
     Called once per iteration, after the interior has advanced and any structure
     re-solve has finished, and before escape and outgassing read the
     inventories. Returns ``None`` when trapping is inactive: during the
-    initialisation stage, whose interior steps do not advance the mantle, on
-    the first step, where there is no previous state to difference, and
-    whenever the mode is ``none``.
+    initialisation stage, whose interior steps do not advance the mantle,
+    when ``hf_all`` holds no earlier row or the time is not above 0, where
+    there is no previous state to difference, and whenever the mode is
+    ``none``. The first step after the initialisation stage differences
+    against the last row of that stage.
 
     Parameters
     ----------

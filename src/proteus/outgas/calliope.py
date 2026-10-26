@@ -374,8 +374,13 @@ def calc_surface_pressures(dirs: dict, config: Config, hf_row: dict):
     ------
     RuntimeError
         If the CALLIOPE solve fails.
+    ValueError
+        If H2O, CO2, N2 or S2 is excluded from the solve, or, with
+        ``planet.volatile_mode = 'elements'``, the hydrogen budget of
+        ``planet.elements`` is below 1 kg.
     KeyError
-        If the row has no ``{e}_kg_total`` for a volatile element or a noble gas.
+        If the row has no ``{e}_kg_total`` for a volatile element or a noble
+        gas, which includes ``O_kg_total`` under ``from_O_budget``.
     """
     # Inform
     log.debug('Running CALLIOPE...')
