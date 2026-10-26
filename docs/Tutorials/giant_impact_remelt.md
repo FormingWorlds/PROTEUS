@@ -184,10 +184,10 @@ The impact row is the row at `Time` = 1000 yr.
 On that row:
 
 - `f_remelt` is the melt fraction that the impact applied, 0 on a row without an impact;
-- `step_dE_impact_J` is the heat that the re-melt added to the mantle [J];
+- `step_dE_impact_J` is the heat that the re-melt added to the mantle \[J\];
 - `Phi_global` is the liquid fraction of the mantle: the mean liquid fraction $\phi$ of the cells, each cell counted by its mass;
 - a cell has $\phi = 0$ when solid and $\phi = 1$ when fully molten;
-- `T_magma` is the temperature at the top of the mantle [K], and `T_cmb` the temperature at the core-mantle boundary [K].
+- `T_magma` is the temperature at the top of the mantle \[K\], and `T_cmb` the temperature at the core-mantle boundary \[K\].
 
 Other pages call `Phi_global` the global melt fraction or the mantle melt mass fraction; neither is the melt fraction $f$ of an impact.
 Each table shows the row before the impact, the impact row, the row after it and the last row.
