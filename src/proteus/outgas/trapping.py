@@ -131,7 +131,43 @@ TRAPPED_COLUMNS = (*TRAPPED_SPECIES, *vol_element_list)
 
 @dataclass
 class TrappingStep:
-    """What one trapping step moved, and the guards it tripped."""
+    """What one trapping step moved, and the guards it tripped.
+
+    Attributes
+    ----------
+    mode : str
+        Value of ``outgas.trap_mode`` for the step.
+    dm_rm : float
+        Mantle mass crystallised over the step [kg]; negative when it remelted.
+    f_tl : float
+        Trapped melt fraction applied, a mass fraction in [0, 1].
+    melt_mass : float
+        Melt mass the dissolved volatiles were last partitioned into [kg].
+    trapped_kg : dict
+        Mass buried per species [kg]; negative on a remelting step.
+    remelted : bool
+        Whether the step released trapped mass to the melt.
+    supply_capped : list
+        Species whose burial was capped at the mass the melt held.
+    branch : int
+        Regime code, one of the ``BRANCH_*`` constants of
+        :mod:`proteus.outgas.compaction`.
+    tau_d, tau_s, t_res : float
+        Percolation time at the top of the front, matrix deformation time and
+        residence time of a parcel in the front [yr]; NaN when not computed.
+    n_front : int
+        Number of nodes the front spans.
+    l_front : float
+        Front thickness [m].
+    v_front : float
+        Front speed [m s-1].
+    front_courant : float
+        Front advance over the step, in front thicknesses [1].
+    w_matrix_over_vf : float
+        Matrix speed at the top of the front over the front speed [1].
+    guard_reason : str
+        Why the front could not be integrated; empty when it could.
+    """
 
     mode: str
     dm_rm: float
@@ -166,6 +202,23 @@ def effective_partition(f_tl: float | np.ndarray, d_z: float) -> float | np.ndar
     Reduces to ``f_tl`` for a perfectly incompatible species (``d_z = 0``) and
     to 1 for a species that does not fractionate (``d_z = 1``). ``f_tl`` may be
     a scalar or a per-step array; the algebra is the same either way.
+
+    Parameters
+    ----------
+    f_tl : float or ndarray
+        Trapped melt fraction, a mass fraction in [0, 1].
+    d_z : float
+        Crystal/melt partition coefficient [1], non-negative.
+
+    Returns
+    -------
+    float or ndarray
+        ``(1 - f_tl) * d_z + f_tl`` [1].
+
+    Raises
+    ------
+    ValueError
+        If ``f_tl`` is not finite or lies outside [0, 1], or ``d_z`` is negative.
     """
     fraction = np.asarray(f_tl, dtype=float)
     if not np.all(np.isfinite(fraction)):
@@ -185,6 +238,13 @@ def melt_concentration(
 
     A fully crystallised mantle carries no melt to draw from, so the quotient is
     replaced by zero instead of dividing by zero.
+
+    Parameters
+    ----------
+    kg_liquid : float or ndarray
+        Mass of the species dissolved in the melt [kg]; negative values count as 0.
+    melt_mass : float or ndarray
+        Mass of the melt [kg].
     """
     kg = np.maximum(np.asarray(kg_liquid, dtype=float), 0.0)
     melt = np.asarray(melt_mass, dtype=float)
@@ -207,6 +267,24 @@ def trapped_mass(
     ``[(1 - F_tl) D_Z + F_tl] C_Z dM_RM``, Sim et al. (2024) Eq. 6, capped at
     ``available_kg``, the mass the melt holds. A non-positive increment buries
     nothing. Returns the mass and whether the cap bound.
+
+    Parameters
+    ----------
+    d_z : float
+        Crystal/melt partition coefficient [1], non-negative.
+    f_tl : float
+        Trapped melt fraction, a mass fraction in [0, 1].
+    c_z : float
+        Mass fraction of the species in the melt [1].
+    dm_rm : float
+        Mantle mass crystallised over the increment [kg].
+    available_kg : float
+        Mass of the species the melt holds [kg].
+
+    Returns
+    -------
+    tuple
+        Buried mass [kg], at least 0, and whether the cap at ``available_kg`` bound.
     """
     raw = float(effective_partition(f_tl, d_z)) * float(c_z) * max(float(dm_rm), 0.0)
     available = max(float(available_kg), 0.0)
@@ -226,6 +304,14 @@ def crystallised_mass_from_phi(m_mantle: float, phi_prev: float, phi_now: float)
 
     A negative increment means the mantle remelted that much mass, which
     releases trapped volatiles back to the melt.
+
+    Parameters
+    ----------
+    m_mantle : float
+        Mantle mass [kg]. A non-positive or non-finite value gives 0.
+    phi_prev, phi_now : float
+        Global melt fraction at the previous and the current step [1]. A
+        non-finite value gives 0.
     """
     if not np.isfinite(m_mantle) or m_mantle <= 0.0:
         return 0.0
@@ -239,6 +325,12 @@ def remelted_fraction(phi_prev: float, phi_now: float) -> float:
 
     ``(Phi(t) - Phi(t-1)) / (1 - Phi(t-1))``, clipped to ``[0, 1]``: 1 when the
     mantle is fully molten again, 0 when it froze further or did not change.
+
+    Parameters
+    ----------
+    phi_prev, phi_now : float
+        Global melt fraction at the previous and the current step [1]. A
+        non-finite value gives 0.
     """
     if not (np.isfinite(phi_prev) and np.isfinite(phi_now)):
         return 0.0
@@ -263,6 +355,12 @@ def partition_coefficients(config: Config) -> dict[str, float]:
 
     Water is the only species with appreciable lattice incorporation; the rest
     default to zero and are buried through the interstitial-melt term alone.
+
+    Returns
+    -------
+    dict
+        ``outgas.D_const_<species>`` [1] per trapped species; 0 for a species,
+        such as a noble gas, that has no such field.
     """
     return {s: float(getattr(config.outgas, f'D_const_{s}', 0.0)) for s in TRAPPED_SPECIES}
 
@@ -707,9 +805,11 @@ def run_trapping(
     Called once per iteration, after the interior has advanced and any structure
     re-solve has finished, and before escape and outgassing read the
     inventories. Returns ``None`` when trapping is inactive: during the
-    initialisation stage, whose interior steps do not advance the mantle, on
-    the first step, where there is no previous state to difference, and
-    whenever the mode is ``none``.
+    initialisation stage, whose interior steps do not advance the mantle,
+    when ``hf_all`` holds no earlier row or the time is not above 0, where
+    there is no previous state to difference, and whenever the mode is
+    ``none``. The first step after the initialisation stage differences
+    against the last row of that stage.
 
     Parameters
     ----------
