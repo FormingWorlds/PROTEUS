@@ -30,8 +30,13 @@ Terms used below:
 
 **Why it matters.** `drainage_integral` uses this velocity to set how much melt drains from the front.
 
+![Drainage velocity against the closed-form mobility](../../assets/validation/compaction_drainage_velocity.svg#only-light){ width="95%" }
+![Drainage velocity against the closed-form mobility](../../assets/validation/compaction_drainage_velocity_dark.svg#only-dark){ width="95%" }
+
+**How to read the plot.** Panel (a): the asserted deviation of `darcy_velocity` from the closed form of its regime, divided by the tolerance at each point, for a grain size of 1 mm under `separation_buoyancy = 'mixture'` (circles) and `'solid'` (squares), at the 9 porosities of the test; the green band is $\pm 1$, the tolerance. Panel (b): the velocity ratio `'mixture'` / `'solid'` of the drainage (line, context) and of the closed forms (circles), against $1 - \phi$ (dashed). The ratio follows $1 - \phi$ on the Blake-Kozeny-Carman and Rumpf-Gupte regimes, falls to 0.35 at a porosity of 0.68, and returns to 1 in the Stokes regime, where a grain settles alone in the melt. A pass means that every point of (a) lies inside the band and the circles of (b) lie on the line.
+
 ??? info "Test details"
-    - Reference: Bower, Sanan & Wolf (2018), Eqs. 12 and 13a-c; McKenzie (1984), Eq. 3.7, p. 721.
+    - Reference: Bower, Sanan & Wolf (2018), Eqs. 12 and 13a-c, with the melt mass fraction converted to the volume fraction, which gives the mobility `F = k / phi` of each regime: `a^2 phi^2 / (1000 (1 - phi)^2)`, `(5/7) a^2 phi^4.5` and `2 a^2 / 9`, with the regime bounds at `phi = 1 / 12.993` and `1 / 1.29624`; against the mixture, McKenzie (1984), Eq. 3.7, p. 721, puts `1 - phi` on the two porous-flow regimes.
     - Tolerance: at each point twice the weight that the blends of the solver law give the other branches, from 7.5e-4 at 0.005 to 5e-7 at 0.3; relative 1e-3 on the factor $1 - \phi$; relative 3e-3 in the Stokes regime.
     - Test id: `tests/outgas/test_compaction.py::test_darcy_velocity_follows_the_closed_form_mobility_in_every_regime`
     - Command: `pytest -m reference_pinned tests/outgas/test_compaction.py --validation-plots`
@@ -62,11 +67,16 @@ Terms used below:
 
 **Why it matters.** The trapping step applies the lever rule to the densities of the interior solver.
 
+![Porosity from the lever rule and from the interior solver against melt fraction](../../assets/validation/compaction_lever_rule_porosity.svg#only-light){ width="80%" }
+![Porosity from the lever rule and from the interior solver against melt fraction](../../assets/validation/compaction_lever_rule_porosity_dark.svg#only-dark){ width="80%" }
+
+**How to read the plot.** The x-axis is the melt fraction and the y-axis the porosity. The line is the melt volume fraction (context). The filled circles are the asserted lever-rule porosities and the hollow squares the asserted solver porosities where the melt is the lighter phase; they must agree to 2e-5. The triangles are the asserted solver porosities where the melt is the denser phase, below 1e-3. At the molten node, the star is the lever rule (1, its melt fraction) and the cross the solver value 0.95. A pass means that circles and squares lie on the line and the triangles at 0.
+
 ??? info "Test details"
     - Reference: `aragog.eos.entropy_phase.EntropyPhaseEvaluator._porosity_from` (fwl-aragog 26.10.03), written as `porosity_b`.
     - Tolerance: absolute 2e-5, the soft clip of `2.5e-7 / phi` at each edge.
     - Test id: `tests/outgas/test_compaction.py::test_the_lever_rule_porosity_is_the_solvers_where_the_melt_is_lighter`
-    - Command: `pytest tests/outgas/test_compaction.py::test_the_lever_rule_porosity_is_the_solvers_where_the_melt_is_lighter`
+    - Command: `pytest -m reference_pinned tests/outgas/test_compaction.py --validation-plots`
 
 ## Drainage over 5 martian fronts
 
@@ -78,25 +88,18 @@ Terms used below:
 
 **Why it matters.** The trapping step takes its trapped melt fraction from this drainage.
 
+![Retained melt fraction of the model against the quadrature and the series solution](../../assets/validation/compaction_martian_fronts.svg#only-light){ width="80%" }
+![Retained melt fraction of the model against the quadrature and the series solution](../../assets/validation/compaction_martian_fronts_dark.svg#only-dark){ width="80%" }
+
+**How to read the plot.** The x-axis is the reference value and the y-axis the retained melt fraction of the model, both on log scales. The filled circles are the asserted 10 pairs of model and quadrature (5 fronts at 70 and at 5 cm/yr, relative 1e-6) and the hollow squares the 3 pairs of model and series solution in the Rumpf-Gupte cases (relative 1e-5). The line is 1:1. A pass means that every point lies on the line.
+
 ??? info "Test details"
     - Reference: closed-form timescales, the quadrature of the drainage equation and its Rumpf-Gupte series solution.
     - Tolerance: relative 1e-6 against the quadrature; relative 1e-5 against the series; relative 1e-4 on the stored fractions and ratios.
     - Test id: `tests/outgas/test_compaction.py::test_drainage_matches_an_independent_quadrature_over_five_martian_fronts`
-    - Command: `pytest tests/outgas/test_compaction.py::test_drainage_matches_an_independent_quadrature_over_five_martian_fronts`
+    - Command: `pytest -m reference_pinned tests/outgas/test_compaction.py --validation-plots`
 
 ## Drainage velocity against the closed forms
-
-### Plot: drainage velocity
-
-![Drainage velocity against the closed-form mobility](../../assets/validation/compaction_drainage_velocity.svg#only-light){ width="95%" }
-![Drainage velocity against the closed-form mobility](../../assets/validation/compaction_drainage_velocity_dark.svg#only-dark){ width="95%" }
-
-(a) Relative deviation of the drainage velocity `darcy_velocity` from the closed form of its regime, divided by the tolerance at each point, for a grain size of 1 mm under `separation_buoyancy = 'mixture'` (circles) and `'solid'` (squares), at the 9 porosities of the test. (b) Velocity ratio `'mixture'` / `'solid'` of the drainage (line) and of the closed forms (circles), against `1 - phi` (dashed). The ratio follows `1 - phi` on the Blake-Kozeny-Carman and Rumpf-Gupte regimes, falls to 0.35 at a porosity of 0.68, and returns to 1 in the Stokes regime, where a grain settles alone in the melt.
-
-- Reference: Bower, Sanan & Wolf (2018), Eqs. 12 and 13a-c, with the melt mass fraction converted to the volume fraction, which gives the mobility `F = k / phi` of each regime: `a^2 phi^2 / (1000 (1 - phi)^2)`, `(5/7) a^2 phi^4.5` and `2 a^2 / 9`, with the regime bounds at `phi = 1 / 12.993` and `1 / 1.29624`; against the mixture, McKenzie (1984), Eq. 3.7, p. 721, puts `1 - phi` on the two porous-flow regimes. The slow-tier test above checks that the interior solver uses the same law.
-- Tolerance: twice the weight of the blends on the other branches at each porosity, under both buoyancies and grain sizes of 0.1, 1 and 10 mm.
-- Test id: `tests/outgas/test_compaction.py::test_darcy_velocity_follows_the_closed_form_mobility_in_every_regime`
-- Command: `pytest -m reference_pinned tests/outgas/test_compaction.py --validation-plots`
 
 ### Scope of the buoyancy law in a run
 
