@@ -1000,15 +1000,15 @@ z
    </g>
    <g id="line2d_31">
     <defs>
-     <path id="mf05f7d1880" d="M -5 5 
-L 5 5 
-L 5 -5 
-L -5 -5 
+     <path id="m0c264fe84a" d="M -0 7.071068 
+L 7.071068 0 
+L 0 -7.071068 
+L -7.071068 -0 
 z
 " style="stroke: #e0a32e; stroke-linejoin: miter"/>
     </defs>
     <g clip-path="url(#pe18784f574)">
-     <use xlink:href="#mf05f7d1880" x="239.674316" y="109.153143" style="fill-opacity: 0; stroke: #e0a32e; stroke-linejoin: miter"/>
+     <use xlink:href="#m0c264fe84a" x="239.674316" y="109.153143" style="fill-opacity: 0; stroke: #e0a32e; stroke-linejoin: miter"/>
     </g>
    </g>
    <g id="patch_3">
@@ -1206,7 +1206,7 @@ z
     </g>
     <g id="line2d_35">
      <g>
-      <use xlink:href="#mf05f7d1880" x="84.69" y="67.533594" style="fill-opacity: 0; stroke: #e0a32e; stroke-linejoin: miter"/>
+      <use xlink:href="#m0c264fe84a" x="84.69" y="67.533594" style="fill-opacity: 0; stroke: #e0a32e; stroke-linejoin: miter"/>
      </g>
     </g>
     <g id="text_8">

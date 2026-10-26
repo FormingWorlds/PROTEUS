@@ -21,7 +21,7 @@ This page checks the orbital period that the orbit wrapper, `proteus.orbit.wrapp
 ![Orbital period against semi-major axis for an Earth-mass planet around the Sun](../../assets/validation/orbit_wrapper_period.svg#only-light){ width="80%" }
 ![Orbital period against semi-major axis for an Earth-mass planet around the Sun](../../assets/validation/orbit_wrapper_period_dark.svg#only-dark){ width="80%" }
 
-**How to read the plot.** The x-axis is the semi-major axis and the y-axis the orbital period in days, both on log scales. The planet has the mass of the Earth and orbits the Sun. The line is `update_period`, and the squares are Kepler's third law (context). The filled circle is the asserted code value at 1 AU, and the hollow square the sidereal year, 365.256 days. The test allows 0.5 %. That is too little to see. A pass means that the circle sits on the line and in the square.
+**How to read the plot.** The x-axis is the semi-major axis and the y-axis the orbital period in days, both on log scales. The planet has the mass of the Earth and orbits the Sun. The line is `update_period`, and the squares are Kepler's third law (context). The filled circle is the asserted code value at 1 AU, and the hollow diamond the sidereal year, 365.256 days. The test allows 0.5 %. That is too little to see. A pass means that the circle sits on the line and in the diamond.
 
 ??? info "Test details"
     - Reference: Kepler's third law and the observed sidereal year (365.256 days).

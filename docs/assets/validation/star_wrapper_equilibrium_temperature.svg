@@ -1311,15 +1311,15 @@ L 385.48796 191.478148
    </g>
    <g id="line2d_45">
     <defs>
-     <path id="m53d78cea30" d="M -5 5 
-L 5 5 
-L 5 -5 
-L -5 -5 
+     <path id="mcaadd71a5d" d="M -0 7.071068 
+L 7.071068 0 
+L 0 -7.071068 
+L -7.071068 -0 
 z
 " style="stroke: #1b6fa8; stroke-linejoin: miter"/>
     </defs>
     <g clip-path="url(#p8e381ad95b)">
-     <use xlink:href="#m53d78cea30" x="181.834898" y="158.616613" style="fill-opacity: 0; stroke: #1b6fa8; stroke-linejoin: miter"/>
+     <use xlink:href="#mcaadd71a5d" x="181.834898" y="158.616613" style="fill-opacity: 0; stroke: #1b6fa8; stroke-linejoin: miter"/>
     </g>
    </g>
    <g id="patch_3">
@@ -1728,7 +1728,7 @@ z
     </g>
     <g id="line2d_51">
      <g>
-      <use xlink:href="#m53d78cea30" x="234.39375" y="28.84" style="fill-opacity: 0; stroke: #1b6fa8; stroke-linejoin: miter"/>
+      <use xlink:href="#mcaadd71a5d" x="234.39375" y="28.84" style="fill-opacity: 0; stroke: #1b6fa8; stroke-linejoin: miter"/>
      </g>
     </g>
     <g id="text_16">

@@ -459,7 +459,7 @@ def test_update_equilibrium_temperature_pins_stefan_boltzmann_closed_form(valida
         )
         ax.plot(flux, closed_form(flux, 1.0 / 3.0), '--', label='Cube root')
         ax.plot(flux, closed_form(flux, 1.0 / 5.0), ':', label='Fifth root')
-        ax.plot([s_case], [pin], 's', mfc='none', ms=10, label='254 K pin')
+        ax.plot([s_case], [pin], 'D', mfc='none', ms=10, label='254 K pin')
         ax.plot([s_case], [hf_row['T_eqm']], 'o', zorder=3, label='Code at 1361 W m$^{-2}$')
         ax.set_yscale('log')
         ax.set_xlabel('Stellar flux at the planet [W m$^{-2}$]')

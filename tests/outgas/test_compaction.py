@@ -325,13 +325,13 @@ def test_the_lever_rule_porosity_is_the_solvers_where_the_melt_is_lighter(valida
             label='Solver, melt lighter',
         )
         ax.plot(phi, solver_dense, '^', label='Solver, melt denser')
-        ax.plot([1.0], [molten[0]], '*', ms=12, label='Lever rule, molten node')
+        ax.plot([1.0], [molten[0]], '*', ms=12, label='porosity_from_densities, molten node')
         ax.plot(
             [1.0],
             [molten_solver],
             'x',
             ms=10,
-            label='Solver, molten node',
+            label='Solver (lever rule on density), molten node',
         )
         ax.set_xlabel('Melt fraction $\\phi$')
         ax.set_ylabel('Porosity')

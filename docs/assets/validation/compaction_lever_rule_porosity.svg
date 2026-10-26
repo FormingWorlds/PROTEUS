@@ -1326,64 +1326,168 @@ z
     </g>
     <g id="line2d_35">
      <g>
-      <use xlink:href="#m508db416b7" x="73.059687" y="63.2075" style="fill: #1b6fa8; stroke: #1b6fa8; stroke-linejoin: bevel"/>
+      <use xlink:href="#m508db416b7" x="73.059687" y="63.2875" style="fill: #1b6fa8; stroke: #1b6fa8; stroke-linejoin: bevel"/>
      </g>
     </g>
     <g id="text_19">
-     <!-- Lever rule, molten node -->
-     <g style="fill: #10151b" transform="translate(87.459688 66.0075) scale(0.08 -0.08)">
-      <use xlink:href="#InstrumentSans-Regular-4c"/>
-      <use xlink:href="#InstrumentSans-Regular-65" transform="translate(58.799988 0)"/>
-      <use xlink:href="#InstrumentSans-Regular-76" transform="translate(115.199982 0)"/>
-      <use xlink:href="#InstrumentSans-Regular-65" transform="translate(167.499969 0)"/>
-      <use xlink:href="#InstrumentSans-Regular-72" transform="translate(223.899963 0)"/>
-      <use xlink:href="#InstrumentSans-Regular-20" transform="translate(261.399948 0)"/>
-      <use xlink:href="#InstrumentSans-Regular-72" transform="translate(281.399933 0)"/>
-      <use xlink:href="#InstrumentSans-Regular-75" transform="translate(318.899918 0)"/>
-      <use xlink:href="#InstrumentSans-Regular-6c" transform="translate(377.799911 0)"/>
-      <use xlink:href="#InstrumentSans-Regular-65" transform="translate(401.799896 0)"/>
-      <use xlink:href="#InstrumentSans-Regular-2c" transform="translate(458.19989 0)"/>
-      <use xlink:href="#InstrumentSans-Regular-20" transform="translate(483.699875 0)"/>
-      <use xlink:href="#InstrumentSans-Regular-6d" transform="translate(503.69986 0)"/>
-      <use xlink:href="#InstrumentSans-Regular-6f" transform="translate(595.899841 0)"/>
-      <use xlink:href="#InstrumentSans-Regular-6c" transform="translate(654.299835 0)"/>
-      <use xlink:href="#InstrumentSans-Regular-74" transform="translate(678.29982 0)"/>
-      <use xlink:href="#InstrumentSans-Regular-65" transform="translate(715.999817 0)"/>
-      <use xlink:href="#InstrumentSans-Regular-6e" transform="translate(772.399811 0)"/>
-      <use xlink:href="#InstrumentSans-Regular-20" transform="translate(832.299805 0)"/>
-      <use xlink:href="#InstrumentSans-Regular-6e" transform="translate(852.299789 0)"/>
-      <use xlink:href="#InstrumentSans-Regular-6f" transform="translate(912.199783 0)"/>
-      <use xlink:href="#InstrumentSans-Regular-64" transform="translate(970.599777 0)"/>
-      <use xlink:href="#InstrumentSans-Regular-65" transform="translate(1031.199768 0)"/>
+     <!-- porosity_from_densities, molten node -->
+     <g style="fill: #10151b" transform="translate(87.459688 66.0875) scale(0.08 -0.08)">
+      <defs>
+       <path id="InstrumentSans-Regular-70" d="M 2125 -58 
+Q 1664 -58 1350 166 
+Q 1037 390 922 800 
+L 1024 813 
+L 1024 -1312 
+L 512 -1312 
+L 512 3264 
+L 992 3264 
+L 992 2502 
+L 922 2522 
+Q 1043 2899 1382 3113 
+Q 1722 3328 2170 3328 
+Q 2605 3328 2928 3117 
+Q 3251 2906 3430 2528 
+Q 3610 2150 3610 1645 
+Q 3610 1133 3424 749 
+Q 3238 365 2905 153 
+Q 2573 -58 2125 -58 
+z
+M 2048 390 
+Q 2534 390 2809 726 
+Q 3085 1062 3085 1645 
+Q 3085 2221 2809 2550 
+Q 2534 2880 2048 2880 
+Q 1562 2880 1280 2544 
+Q 998 2208 998 1626 
+Q 998 1056 1280 723 
+Q 1562 390 2048 390 
+z
+" transform="scale(0.015625)"/>
+       <path id="InstrumentSans-Regular-5f" d="M 0 -781 
+L 0 -346 
+L 2726 -346 
+L 2726 -781 
+L 0 -781 
+z
+" transform="scale(0.015625)"/>
+      </defs>
+      <use xlink:href="#InstrumentSans-Regular-70"/>
+      <use xlink:href="#InstrumentSans-Regular-6f" transform="translate(60.599991 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-72" transform="translate(118.999985 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-6f" transform="translate(156.499969 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-73" transform="translate(214.899963 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-69" transform="translate(262.199951 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-74" transform="translate(286.199936 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-79" transform="translate(323.899933 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-5f" transform="translate(376.199921 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-66" transform="translate(418.799911 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-72" transform="translate(454.199905 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-6f" transform="translate(491.69989 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-6d" transform="translate(550.099884 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-5f" transform="translate(642.299866 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-64" transform="translate(684.899857 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-65" transform="translate(745.499847 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-6e" transform="translate(801.899841 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-73" transform="translate(861.799835 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-69" transform="translate(909.099823 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-74" transform="translate(933.099808 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-69" transform="translate(970.799805 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-65" transform="translate(994.799789 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-73" transform="translate(1051.199783 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-2c" transform="translate(1098.499771 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-20" transform="translate(1123.999756 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-6d" transform="translate(1143.999741 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-6f" transform="translate(1236.199722 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-6c" transform="translate(1294.599716 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-74" transform="translate(1318.599701 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-65" transform="translate(1356.299698 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-6e" transform="translate(1412.699692 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-20" transform="translate(1472.599686 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-6e" transform="translate(1492.59967 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-6f" transform="translate(1552.499664 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-64" transform="translate(1610.899658 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-65" transform="translate(1671.499649 0)"/>
      </g>
     </g>
     <g id="line2d_36">
      <g>
-      <use xlink:href="#m6ed107274a" x="73.059687" y="74.6075" style="fill: #593e74; stroke: #593e74"/>
+      <use xlink:href="#m6ed107274a" x="73.059687" y="74.96" style="fill: #593e74; stroke: #593e74"/>
      </g>
     </g>
     <g id="text_20">
-     <!-- Solver, molten node -->
-     <g style="fill: #10151b" transform="translate(87.459688 77.4075) scale(0.08 -0.08)">
+     <!-- Solver (lever rule on density), molten node -->
+     <g style="fill: #10151b" transform="translate(87.459688 77.76) scale(0.08 -0.08)">
+      <defs>
+       <path id="InstrumentSans-Regular-28" d="M 1786 -704 
+Q 1133 -109 822 601 
+Q 512 1312 512 2048 
+Q 512 2771 825 3484 
+Q 1139 4198 1786 4800 
+L 2278 4800 
+Q 1632 4198 1309 3510 
+Q 986 2822 986 2048 
+Q 986 1267 1318 579 
+Q 1651 -109 2278 -704 
+L 1786 -704 
+z
+" transform="scale(0.015625)"/>
+       <path id="InstrumentSans-Regular-29" d="M 813 4826 
+Q 1466 4230 1776 3520 
+Q 2086 2810 2086 2074 
+Q 2086 1350 1772 636 
+Q 1459 -77 813 -678 
+L 320 -678 
+Q 966 -77 1289 611 
+Q 1613 1299 1613 2074 
+Q 1613 2854 1280 3542 
+Q 947 4230 320 4826 
+L 813 4826 
+z
+" transform="scale(0.015625)"/>
+      </defs>
       <use xlink:href="#InstrumentSans-Regular-53"/>
       <use xlink:href="#InstrumentSans-Regular-6f" transform="translate(60.799988 0)"/>
       <use xlink:href="#InstrumentSans-Regular-6c" transform="translate(119.199982 0)"/>
       <use xlink:href="#InstrumentSans-Regular-76" transform="translate(143.199966 0)"/>
       <use xlink:href="#InstrumentSans-Regular-65" transform="translate(195.499954 0)"/>
       <use xlink:href="#InstrumentSans-Regular-72" transform="translate(251.899948 0)"/>
-      <use xlink:href="#InstrumentSans-Regular-2c" transform="translate(289.399933 0)"/>
-      <use xlink:href="#InstrumentSans-Regular-20" transform="translate(314.899918 0)"/>
-      <use xlink:href="#InstrumentSans-Regular-6d" transform="translate(334.899902 0)"/>
-      <use xlink:href="#InstrumentSans-Regular-6f" transform="translate(427.099884 0)"/>
-      <use xlink:href="#InstrumentSans-Regular-6c" transform="translate(485.499878 0)"/>
-      <use xlink:href="#InstrumentSans-Regular-74" transform="translate(509.499863 0)"/>
-      <use xlink:href="#InstrumentSans-Regular-65" transform="translate(547.19986 0)"/>
-      <use xlink:href="#InstrumentSans-Regular-6e" transform="translate(603.599854 0)"/>
-      <use xlink:href="#InstrumentSans-Regular-20" transform="translate(663.499847 0)"/>
-      <use xlink:href="#InstrumentSans-Regular-6e" transform="translate(683.499832 0)"/>
-      <use xlink:href="#InstrumentSans-Regular-6f" transform="translate(743.399826 0)"/>
-      <use xlink:href="#InstrumentSans-Regular-64" transform="translate(801.79982 0)"/>
-      <use xlink:href="#InstrumentSans-Regular-65" transform="translate(862.399811 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-20" transform="translate(289.399933 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-28" transform="translate(309.399918 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-6c" transform="translate(349.999908 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-65" transform="translate(373.999893 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-76" transform="translate(430.399887 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-65" transform="translate(482.699875 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-72" transform="translate(539.099869 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-20" transform="translate(576.599854 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-72" transform="translate(596.599838 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-75" transform="translate(634.099823 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-6c" transform="translate(692.999817 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-65" transform="translate(716.999802 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-20" transform="translate(773.399796 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-6f" transform="translate(793.39978 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-6e" transform="translate(851.799774 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-20" transform="translate(911.699768 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-64" transform="translate(931.699753 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-65" transform="translate(992.299744 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-6e" transform="translate(1048.699738 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-73" transform="translate(1108.599731 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-69" transform="translate(1155.899719 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-74" transform="translate(1179.899704 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-79" transform="translate(1217.599701 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-29" transform="translate(1269.899689 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-2c" transform="translate(1310.49968 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-20" transform="translate(1335.999664 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-6d" transform="translate(1355.999649 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-6f" transform="translate(1448.199631 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-6c" transform="translate(1506.599625 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-74" transform="translate(1530.599609 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-65" transform="translate(1568.299606 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-6e" transform="translate(1624.6996 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-20" transform="translate(1684.599594 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-6e" transform="translate(1704.599579 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-6f" transform="translate(1764.499573 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-64" transform="translate(1822.899567 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-65" transform="translate(1883.499557 0)"/>
      </g>
     </g>
    </g>
