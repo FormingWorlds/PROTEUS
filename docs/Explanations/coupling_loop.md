@@ -115,11 +115,12 @@ post-processes atmosphere snapshots after the simulation ends, with
 
 ## Initialisation stage
 
-The first three iterations (iterations 0, 1, 2) are the **initialisation
+The first four iterations (iterations 0 to 3) are the **initialisation
 stage**. During this stage:
 
-- **Time is held at zero.** The simulation clock does not advance. This
-  allows modules to exchange boundary conditions and reach a mutually
+- **Time is reset to zero.** The time is set back to zero after iterations
+  0, 1 and 2. Iteration 3 ends the stage and keeps its time. This allows
+  modules to exchange boundary conditions and reach a mutually
   consistent state before dynamic evolution begins.
 
 - **Element inventories are recalculated** each iteration based on the
@@ -132,7 +133,7 @@ stage**. During this stage:
 - **The interior solver runs in IC mode**, setting up the initial entropy
   profile and thermal state rather than time-stepping forward.
 
-After iteration 2, the simulation enters the **science stage**: time advances
+After iteration 3, the simulation enters the **science stage**: time advances
 normally, escape becomes active, and the deadlock detector is armed.
 
 ## Time-stepping

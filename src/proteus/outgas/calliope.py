@@ -380,7 +380,7 @@ def calc_surface_pressures(dirs: dict, config: Config, hf_row: dict):
         ``planet.elements`` is below 1 kg.
     KeyError
         If the row has no ``{e}_kg_total`` for a volatile element or a noble
-        gas, which includes ``O_kg_total`` under ``from_O_budget``.
+        gas. ``O_kg_total`` is needed under every ``planet.fO2_source``.
     """
     # Inform
     log.debug('Running CALLIOPE...')

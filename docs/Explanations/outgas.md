@@ -18,13 +18,14 @@ The first section gives the order of the steps. The later sections explain the s
 - **Interior solver**: the module that evolves the mantle temperature and melt fraction, set by `interior_energetics.module` (for example Aragog or SPIDER).
 - **Melt fraction** $\Phi$: the mass fraction of the whole mantle that is liquid \[1\], `Phi_global` in the output. The interior solver also has a local melt fraction for each point of its radial grid. Do not confuse either with the porosity $\phi$ (lower case) below, which is a volume fraction.
 - **Solid limit**: `params.stop.solid.phi_crit`, the melt fraction at or below which the mantle counts as solid.
-- **Oxygen fugacity** (fO$_2$): a measure of how oxidising the melt is, in the form of an effective O$_2$ pressure. PROTEUS gives it relative to the iron-wustite (IW) buffer, the fO$_2$ at which iron metal and FeO are in equilibrium. `outgas.fO2_shift_IW` is that shift in log10 units, so a value of 2 is 100 times the IW fO$_2$.
-- **Mass threshold**: `outgas.mass_thresh` \[kg\]. The chemistry solve treats H, C, N or S with less mass than this as absent. Escape and the desiccation check also use it (see [the config reference](../Reference/config/escape_outgas.md#outgassing-outgas)).
+- **Oxygen fugacity** (fO$_2$): a measure of how oxidising the melt is, in the form of an effective O$_2$ pressure. PROTEUS gives it relative to the iron-wustite (IW) buffer, the fO$_2$ at which iron metal and FeO are in equilibrium. `outgas.fO2_shift_IW` ([config](../Reference/config/escape_outgas.md#outgassing-outgas)) is that shift in log10 units, so a value of 2 is 100 times the IW fO$_2$.
+- **Mass threshold**: `outgas.mass_thresh` \[kg\]. The chemistry solve treats H, C, N or S with less mass than this as absent. Escape and the desiccation check (see **Desiccated** below) also use it (see [the config reference](../Reference/config/escape_outgas.md#outgassing-outgas)).
+- **Trapping**: the step that moves volatiles from the melt into the mantle that froze in the step, set by `outgas.trap_mode`.
 - **Trapped (buried) mass**: volatile mass that moved from the melt to the solid mantle when the mantle froze, recorded in `_kg_trapped`. This page uses "trapped" and "buried" for it. See [Volatile trapping](#volatile-trapping-in-the-freezing-mantle).
 - **Desiccated**: the state of a planet that has lost its volatiles. For each volatile and noble gas, the mass that can still escape or outgas is below the mass threshold. Trapped mass, and condensed mass kept with `outgas.prevent_desaturation = true`, do not count.
 - **Rock vapour**: gas of rock-forming elements and their compounds, such as SiO, Na, Mg and Fe, above a hot melt surface.
 - **Giant impact**: a collision of the planet with another large body, which adds mass and can melt the mantle again. See [Accretion](model.md#accretion-morrigan).
-- **Initialisation stage**: the first iterations of a run. They set up the starting state. The mantle does not evolve in them, and the time is set back to 0 after each.
+- **Initialisation stage**: the first 4 iterations of a run. They set up the starting state, and the mantle does not evolve in them. The time is set back to 0 after each of them except the last, which ends the stage and keeps its time.
 - **`M_atm`**: the total mass of the atmosphere \[kg\].
 
 ## The order of the volatile steps
@@ -53,7 +54,7 @@ The outgassing step takes the first of these 3 paths that applies:
     - It starts when $\Phi$ falls to the solid limit `params.stop.solid.phi_crit` or below. It stays on after that; only a giant impact turns it off.
     - The melt and the atmosphere exchange no volatiles.
     - Escape still removes gas, so the code scales every atmospheric reservoir down by the same fraction. The composition does not change.
-    - This path accepts only `escape.reservoir = "outgas"` or `"bulk"`; any other value stops the run with an error.
+    - This path accepts only `escape.reservoir` ([config](../Reference/config/escape_outgas.md#atmospheric-escape-escape)) = `"outgas"` or `"bulk"`; any other value stops the run with an error.
 - **Normal** (`run_outgassing`). The chemistry solver runs. This is the usual path while a magma ocean exists.
 
 On the normal path, the step does 3 things:
@@ -64,9 +65,9 @@ On the normal path, the step does 3 things:
 
 **Oxygen.** With CALLIOPE or atmodeller and `planet.fO2_source = "user_constant"`, the solver holds the fO$_2$ at the set value. To do that, it adds or removes oxygen, so `O_kg_total` is a result of each solve and not a fixed budget.
 
-With `"from_O_budget"`, the O budget is the input, and the solver finds the fO$_2$ that matches it. The dummy module keeps the O total as it is. It computes an O total only once: in the initialisation stage, when the O total is still 0.
+With `"from_O_budget"`, the O budget is the input, and the solver finds the fO$_2$ that matches it. The dummy module computes an O total in each call of the initialisation stage while the O total is still 0. In all other calls it keeps the O total as it is.
 
-**Initialisation check.** In the initialisation stage, the code writes the element budgets to `{e}_kg_total`. They come from `planet.elements` with the default `planet.volatile_mode = "elements"`, or from the initial partial pressures with `"gas_prs"`.
+**Initialisation check.** In the initialisation stage, the code writes the element budgets to `{e}_kg_total`. They come from `planet.elements` with the default `planet.volatile_mode = "elements"` ([config](../Reference/config/planet.md#parameters-planet)), or from the initial partial pressures of `planet.gas_prs` with `"gas_prs"` ([config](../Reference/config/planet.md#partial-pressures-planetgas_prs)).
 
 You can also set an O budget, with `planet.elements.O_mode` set to `"kg"`, `"ppmw"` or `"FeO_mantle_wt_pct"`. With such an O budget and `planet.fO2_source = "user_constant"`, the code compares your budget with the oxygen of the first solve. It stops the run if the two differ by more than 50 % of the solve value. The default, `O_mode = "ic_chemistry"`, skips this check.
 
@@ -98,13 +99,13 @@ The atmodeller module writes this split for the atmosphere, melt and solid reser
 
 **Question.** Hot hydrogen and silicate melt can mix completely. Does PROTEUS include that?
 
-**Short answer.** Not in a run. The config loader rejects both switches for it: `outgas.h2_binodal = true` and `interior_struct.zalmoxis.global_miscibility = true`. The rest of this section describes the code that these switches would use.
+**Short answer.** Not in a run. The config loader rejects both switches for it: `outgas.h2_binodal = true` and `interior_struct.zalmoxis.global_miscibility = true` ([config](../Reference/config/interior.md#zalmoxis-interior_structzalmoxis)). The rest of this section describes the code that these switches would use.
 
 H$_2$ and silicate melt are **miscible** when they form 1 phase. Where they separate into a hydrogen-rich gas and a silicate melt, they are immiscible. The line in pressure and temperature where they separate is the **binodal**.
 
 Rogers et al. [^cite-rogers2025] compute the binodal for H$_2$ and MgSiO$_3$, which stands in for the silicate melt. In their sub-Neptune models, the 2 are miscible above about 4000 K. In the code, the binodal temperature depends on the pressure and on the H$_2$ mass fraction.
 
-With `outgas.h2_binodal = true`, `apply_binodal_h2` would replace the H$_2$ split of the chemistry solver. It takes the fraction $\sigma$ of H$_2$ that dissolves in the melt from the binodal model of the Zalmoxis structure code. The inputs are the surface pressure, the magma temperature and the H$_2$ mass fraction. The dissolved mass is $\sigma$ times the total H$_2$ mass, and the rest stays in the atmosphere:
+With `outgas.h2_binodal = true`, `apply_binodal_h2` would replace the H$_2$ split of the chemistry solver. It takes the fraction $\sigma$ of H$_2$ that dissolves in the melt from the binodal model of the Zalmoxis interior-structure module ([Model description](model.md#interior-structure-zalmoxis)). The inputs are the surface pressure, the magma temperature and the H$_2$ mass fraction. The dissolved mass is $\sigma$ times the total H$_2$ mass, and the rest stays in the atmosphere:
 
 $$
 M_\mathrm{H_2,\,melt} = \sigma\, M_\mathrm{H_2,\,total}, \qquad M_\mathrm{H_2,\,atm} = (1-\sigma)\, M_\mathrm{H_2,\,total},
@@ -155,7 +156,7 @@ module = "aragog"
 trap_mode = "front"
 ```
 
-Trapping compares each step with the step before it. So it does nothing in the initialisation stage, when the output has no earlier row, or when the time is 0. The first step after the initialisation stage compares with the last initialisation row, and it traps.
+Trapping compares each step with the step before it. So it does nothing in the initialisation stage, when the output has no earlier row, or when the time is 0. The first step after the initialisation stage compares with the last initialisation row, and it can trap; nothing is buried when no mass froze.
 
 These output columns show what trapping did ([full list](../Reference/output.md#solid-phase-volatile-trapping)):
 
@@ -171,7 +172,7 @@ The other trapping inputs, such as `outgas.D_const_<species>` and `outgas.trap_p
 
 ### The burial rule
 
-In one step, the mantle mass $\Delta M$ \[kg\] freezes. The code gets it from the drop of the melt fraction: $\Delta M = M_\mathrm{mantle}\,(\Phi_{t-1} - \Phi_t)$, where $M_\mathrm{mantle}$ is the mantle mass \[kg\] and the index $t$ counts the steps.
+In one step, the mantle mass $\Delta M$ \[kg\] freezes. The code gets it from the drop of the melt fraction: $\Delta M = M_\mathrm{mantle}\,(\Phi_{n-1} - \Phi_n)$, where $M_\mathrm{mantle}$ is the mantle mass \[kg\] and the index $n$ counts the steps.
 
 Each volatile species $Z$ then buries the mass $\Delta m_Z$ \[kg\] in that frozen mantle [^cite-sim2024]:
 
@@ -248,7 +249,7 @@ $$
 \tau_s = \frac{\mu_s}{|\Delta\rho|\, g\, L},
 $$
 
-where $\mu_s$ is the mush viscosity \[Pa s\], $10^{20}$ Pa s by default.
+where $\mu_s$ is the mush viscosity \[Pa s\], set by `outgas.trap_mush_log10visc` ($10^{20}$ Pa s by default).
 
 ### The drainage equation
 
@@ -320,7 +321,7 @@ When $\Phi$ rises to a higher value, the code returns the mass of each layer who
 
 At each remelt, the code builds the ledger from the output columns `Phi_global` and `{sp}_kg_trapped`, so a resumed run has the same ledger.
 
-If the history does not account for all of the trapped mass, the rest returns in proportion to the share of the solid that remelted. With the step index $t$, that share is $(\Phi_t - \Phi_{t-1})/(1 - \Phi_{t-1})$.
+If the history does not account for all of the trapped mass, the rest returns in proportion to the share of the solid that remelted. With the step index $n$, that share is $(\Phi_n - \Phi_{n-1})/(1 - \Phi_{n-1})$.
 
 **Where this is checked.** [Burial ledger for remelting](../Validation/outgas/burial_ledger.md).
 
