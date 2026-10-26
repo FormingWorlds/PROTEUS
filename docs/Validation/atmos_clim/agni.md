@@ -2,7 +2,7 @@
 
 ## What this page checks
 
-This page checks the transparent limit of the AGNI atmosphere in PROTEUS, the branch of `run_agni` for an atmosphere with no opacity. In that limit the outgoing longwave radiation (OLR) is the thermal emission of the surface alone, which the Stefan-Boltzmann law gives in closed form. Validation means that a test runs the code on a case with a known right answer and checks the result within a stated tolerance. If this part of the code is wrong, the surface boundary condition, the band integration or the mapping of the AGNI fluxes onto the helpfile is wrong. Each case below says why the check exists, what it tests, how we know the right answer and why it matters; a box "Test details" ends each case. These are integration tests that need the Julia AGNI installation.
+This page checks the transparent limit of the AGNI atmosphere in PROTEUS, the branch of `run_agni` for an atmosphere with no opacity. In that limit the outgoing longwave radiation (OLR) is the thermal emission of the surface alone, which the Stefan-Boltzmann law gives in closed form. Validation means that a test runs the code on a case with a known right answer and checks the result within a stated tolerance. If this part of the code is wrong, the surface boundary condition, the band integration or the mapping of the AGNI fluxes onto the helpfile is wrong. Each case below says why the check exists, what it tests, how we know the right answer and why it matters. A box "Test details" ends each case. The grey-gas scheme treats the opacity as one value for all wavelengths; the banded scheme splits the spectrum into bands from a SOCRATES spectral file. The helpfile is the table of output values that PROTEUS writes at each step. These are integration tests that need the Julia AGNI installation; they skip unless `PROTEUS_CI_NIGHTLY=1` is set, as in the nightly workflow.
 
 ## Source under test
 `src/proteus/atmos_clim/agni.py` (transparent-atmosphere branch of `run_agni`)
@@ -19,9 +19,9 @@ This page checks the transparent limit of the AGNI atmosphere in PROTEUS, the br
 
 **Why this check exists.** In the transparent limit the OLR must equal $\sigma T_s^4$, with $T_s$ the surface temperature and $\sigma$ the Stefan-Boltzmann constant. A wrong temperature power, a wrong constant or a wrong mapping of the AGNI flux onto `F_olr` gives a wrong OLR without an error message.
 
-**What it tests.** The test runs the grey-gas scheme in transparent mode at surface temperatures of 1000, 1500, 2000 and 3000 K and compares `F_olr` with $\sigma T_s^4$ at each. The span of a factor of 3 separates the $T^4$ law from a $T^3$ law (flux ratios 81 against 27).
+**What it tests.** The test runs the grey-gas scheme in transparent mode, with a black surface (albedo 0) and no stellar flux, at surface temperatures of 1000, 1500, 2000 and 3000 K and compares `F_olr` with $\sigma T_s^4$ at each. The span of a factor of 3 separates the $T^4$ law from a $T^3$ law (flux ratios 81 against 27).
 
-**How we know the right answer.** With no opacity, the column re-emits what it absorbs, so the OLR is the black-body flux of the surface, with the CODATA 2018 constant 5.670374419e-8 W m$^{-2}$ K$^{-4}$.
+**How we know the right answer.** With no opacity, the surface emission reaches the top unchanged, so the OLR is the black-body flux of the surface, with the CODATA 2018 constant 5.670374419e-8 W m$^{-2}$ K$^{-4}$.
 
 **Why it matters.** PROTEUS uses this branch when the surface pressure is below `agni.psurf_thresh`, and the test drives it as the coupling loop does (`init_agni_atmos`, `update_agni_atmos`, `run_agni`).
 

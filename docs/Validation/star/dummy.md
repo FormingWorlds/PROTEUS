@@ -2,7 +2,7 @@
 
 ## What this page checks
 
-This page checks the luminosity of the star and the stellar flux at the planet in the dummy star module, `src/proteus/star/dummy.py`. The dummy star computes both from the effective temperature and the radius of the star with the Stefan-Boltzmann law. Validation means that a test runs the code on a case with a known right answer and checks the result within a stated tolerance. If this part of the code is wrong, the energy that reaches the planet in a run with the dummy star is wrong. Each case below says why the check exists, what it tests, how we know the right answer and why it matters; a box "Test details" ends each case.
+This page checks the luminosity of the star and the stellar flux at the planet in the dummy star module, `src/proteus/star/dummy.py`. The dummy star computes both from the effective temperature and the radius of the star with the Stefan-Boltzmann law. Validation means that a test runs the code on a case with a known right answer and checks the result within a stated tolerance. If this part of the code is wrong, the energy that reaches the planet in a run with the dummy star is wrong. Each case below says why the check exists, what it tests, how we know the right answer and why it matters. A box "Test details" ends each case.
 
 ## Reference-pinned tests
 
@@ -19,7 +19,7 @@ This page checks the luminosity of the star and the stellar flux at the planet i
 
 **How we know the right answer.** IAU 2015 Resolution B3 defines the nominal solar luminosity as 3.828e26 W.
 
-**Why it matters.** With `star.module = 'dummy'`, `dummy.py` and the orbit wrapper take the stellar luminosity from `calc_star_luminosity`.
+**Why it matters.** With `star.module = 'dummy'`, `dummy.py` takes the stellar luminosity from `calc_star_luminosity`, and so does the orbit wrapper for `orbit.instellation_method = 'inst'`.
 
 ??? info "Test details"
     - Reference: IAU 2015 Resolution B3, nominal solar luminosity L_sun = 3.828e26 W.
@@ -31,7 +31,7 @@ This page checks the luminosity of the star and the stellar flux at the planet i
 
 **Why this check exists.** The flux at the planet is the luminosity spread over a sphere with the radius of the orbit. A distance in km where m belongs, or a radius unit slip, changes the flux by large factors without an error message.
 
-**What it tests.** `calc_instellation` with the solar effective temperature and radius at 1 AU (astronomical unit) must return the nominal total solar irradiance. A range check, 1000 to 2000 W/m$^2$, rejects a radius in km (about 1e-9 W/m$^2$) and an AU in km (about 1000 times the right value).
+**What it tests.** `calc_instellation` with the solar effective temperature and radius at 1 AU (astronomical unit) must return the nominal total solar irradiance. A range check, 1000 to 2000 W/m$^2$, rejects a radius in km (about 1.4e-3 W/m$^2$) and an AU in km (about 1e6 times the right value).
 
 **How we know the right answer.** IAU 2015 Resolution B3 defines the nominal total solar irradiance as 1361 W/m$^2$.
 

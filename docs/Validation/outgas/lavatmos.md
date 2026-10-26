@@ -2,7 +2,7 @@
 
 ## What this page checks
 
-This page checks the molar masses of the species in the LavAtmos rock-vapour coupling, `proteus.outgas.lavatmos`. LavAtmos computes the vapour above a lava surface, and the coupling converts its species between mass and moles. Validation means that a test runs the code on a case with a known right answer and checks the result within a stated tolerance. If a molar mass is wrong, every mass of that species in the vapour is wrong. The case below says why the check exists, what it tests, how we know the right answer and why it matters; a box "Test details" ends the case.
+This page checks the molar masses of the species in the LavAtmos rock-vapour coupling, `proteus.outgas.lavatmos`. LavAtmos computes the vapour above a lava surface, and the coupling converts its species between mass and moles. Validation means that a test runs the code on a case with a known right answer and checks the result within a stated tolerance. If a molar mass is wrong, every mass of that species in the vapour is wrong. The case below says why the check exists, what it tests, how we know the right answer and why it matters. A box "Test details" ends the case.
 
 | Test id | Reference | Scope |
 |---|---|---|
@@ -18,7 +18,7 @@ This page checks the molar masses of the species in the LavAtmos rock-vapour cou
 
 **Why it matters.** `species_lib` sets the molar masses with which the coupling converts every vapour species.
 
-**Known limit.** The test sums the same `element_mmw` table that the code uses, so a wrong value in that table fails only the 1 to 1000 g/mol window, not the exact comparison.
+**Known limit.** The test sums the same `element_mmw` table that the code uses, and compares the electron with the code's own `electron_molar_mass`. So a wrong table value fails only the 1 to 1000 g/mol window, and a wrong electron mass only the 0 to 1e-3 g/mol window.
 
 ??? info "Test details"
     - Reference: IUPAC atomic weights, as tabulated in `proteus.utils.constants.element_mmw` (source: https://iupac.qmul.ac.uk/AtWt/).

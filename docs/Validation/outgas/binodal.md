@@ -2,7 +2,7 @@
 
 ## What this page checks
 
-This page checks how `proteus.outgas.binodal` splits H$_2$ between the atmosphere and the molten mantle with the miscibility model of Rogers, Young and Schlichting (2025). A weight $\sigma$ from that model sets the dissolved fraction: $\sigma$ of the H$_2$ goes into the melt and $1 - \sigma$ into the atmosphere. Validation means that a test runs the code on a case with a known right answer and checks the result within a stated tolerance. If this part of the code is wrong, the number of H$_2$ moles in each reservoir is wrong. The case below says why the check exists, what it tests, how we know the right answer and why it matters; a box "Test details" ends the case.
+This page checks how `proteus.outgas.binodal` splits H$_2$ between the atmosphere and the molten mantle with the miscibility model of Rogers, Young and Schlichting (2025). A weight $\sigma$ from that model sets the dissolved fraction: $\sigma$ of the H$_2$ goes into the melt and $1 - \sigma$ into the atmosphere. Validation means that a test runs the code on a case with a known right answer and checks the result within a stated tolerance. If this part of the code is wrong, the H$_2$ mole values of each reservoir are wrong. The case below says why the check exists, what it tests, how we know the right answer and why it matters. A box "Test details" ends the case.
 
 | Test id | Reference | Scope |
 |---|---|---|
@@ -16,7 +16,9 @@ This page checks how `proteus.outgas.binodal` splits H$_2$ between the atmospher
 
 **How we know the right answer.** The test computes the mole total independently, with `scipy.constants.Avogadro` and $M(\mathrm{H_2})$ = 2.016e-3 kg/mol.
 
-**Why it matters.** With `outgas.h2_binodal = true` and Zalmoxis `global_miscibility` off, the outgassing wrapper applies this partition (`apply_binodal_h2`) in every outgassing step.
+**Why it matters.** The outgassing wrapper applies this partition (`apply_binodal_h2`) when `outgas.h2_binodal = true` and Zalmoxis `global_miscibility` is off.
+
+**Known limit.** The config refuses `outgas.h2_binodal = true` (`_reject_enabled_binodal` in `src/proteus/config/_outgas.py`), so no run reaches this code now. The stored mole values are the mass over $M(\mathrm{H_2})$ and the Avogadro constant, so they are moles divided by 6.022e23.
 
 **Known limit.** The kg closure, atmosphere + liquid + solid = total, holds by construction for any $\sigma$ between 0 and 1, so only the mole conversion tests something. The weight $\sigma$ itself comes from `zalmoxis.binodal` and is replaced by 0.4 here. No test compares this partition with the binodal handling of atmodeller.
 

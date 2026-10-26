@@ -2,7 +2,7 @@
 
 ## What this page checks
 
-This page checks the tidal evolution of the orbit in `proteus.orbit.orbit`. Tides raised on the planet by the star change the eccentricity $e$ of the orbit; the model `sp0d` evolves the orbit alone, and `sp1d` also follows the spin of the planet. Validation means that a test runs the code on a case with a known right answer and checks the result within a stated tolerance. If this part of the code is wrong, the eccentricity and the spin of the planet evolve at the wrong rate. Each case below says why the check exists, what it tests, how we know the right answer and why it matters; a box "Test details" ends each case. The `reference_pinned` marker is registered in `pyproject.toml`.
+This page checks the tidal evolution of the orbit in `proteus.orbit.orbit`. Tides raised on the planet by the star change the eccentricity $e$ of the orbit; the model `sp0d` evolves the orbit alone, and `sp1d` also follows the spin of the planet. Validation means that a test runs the code on a case with a known right answer and checks the result within a stated tolerance. If this part of the code is wrong, the eccentricity and the spin of the planet evolve at the wrong rate. Each case below says why the check exists, what it tests, how we know the right answer and why it matters. A box "Test details" ends each case. The `reference_pinned` marker is registered in `pyproject.toml`.
 
 | Test id | Reference | Source page | Scope |
 |---|---|---|---|
@@ -10,9 +10,9 @@ This page checks the tidal evolution of the orbit in `proteus.orbit.orbit`. Tide
 | `tests/orbit/test_orbit.py::test_sp1d_conserves_total_angular_momentum` | Angular-momentum conservation for an isolated two-body system with only internal tidal torques (analytical limit, not paper-specific) | n/a (closed form) | For `sp1d` (which, unlike `sp0d`, tracks the planet's spin), pins that planet-spin + orbital angular momentum is conserved to `rel=1e-6` across a real, non-trivial step (`e`: 0.3 to below 0.1). |
 | `tests/orbit/test_orbit.py::test_sp1d_spin_am_gain_matches_orbital_am_loss` | Same conservation law as above, more targeted | n/a (closed form) | The planet's spin AM is ~1e-6 of the system total, so the raw-sum check above is nearly blind to a bug confined to `domega_dt`. This test instead pins `Delta(spin AM) == -Delta(orbital AM)` directly, at a tolerance where the two comparable-magnitude quantities discriminate a coefficient bug the raw-sum check misses. |
 
-## Eccentricity damping rate of sp0d
+## Eccentricity rate of sp0d
 
-**Why this check exists.** The damping rate has a steep power of the semi-major axis and of the planet radius. A wrong exponent or prefactor changes the rate by large factors without an error message.
+**Why this check exists.** The eccentricity rate has a steep power of the semi-major axis and of the planet radius. A wrong exponent or prefactor changes the rate by large factors without an error message.
 
 **What it tests.** Driscoll and Barnes (2015), Eq. 16, give $de/dt = (21/2)\, \mathrm{Im}(k_2)\, M_\star^{3/2} G^{1/2} R_p^5 / (M_p\, a^{13/2})\; e$, with $k_2$ the Love number, $M_\star$ and $M_p$ the masses of the star and the planet, $R_p$ the planet radius and $a$ the semi-major axis. The test sets $\mathrm{Im}(k_2) = M_\star = R_p = M_p = 1$, $a = 2$ and $e = 0.5$, with the real gravitational constant $G$, and compares the rate with the closed form. With $a^5$ in place of $a^{6.5}$ the rate would be more than 100 % off, and with $a^7$ more than 10 %; the test checks both, and that the rate is positive.
 
@@ -30,9 +30,9 @@ This page checks the tidal evolution of the orbit in `proteus.orbit.orbit`. Tide
 
 ## Angular momentum of sp1d
 
-**Why this check exists.** Tides move angular momentum between the orbit and the spin of the planet. A wrong coefficient in either equation makes the total change, which no other output shows.
+**Why this check exists.** Tides move angular momentum between the orbit and the spin of the planet. A wrong coefficient in only one of the equations makes the total change, which no other output shows.
 
-**What it tests.** The test takes one step of `sp1d` of 1e5 (in the time unit of the step) in which the eccentricity falls from 0.3 to below 0.2. The sum of the spin angular momentum of the planet and the orbital angular momentum must stay the same.
+**What it tests.** The test takes one `sp1d` step of 1e5 yr in which the eccentricity falls from 0.3 to below 0.2. The sum of the spin angular momentum of the planet and the orbital angular momentum must stay the same.
 
 **How we know the right answer.** For an isolated 2-body system with only internal tidal torques, the total angular momentum is conserved.
 

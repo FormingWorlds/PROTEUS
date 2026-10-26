@@ -2,7 +2,7 @@
 
 ## What this page checks
 
-This page checks the burial ledger, `proteus.outgas.burial_ledger`. When the magma ocean freezes, trapping buries volatiles in the solid; the ledger records at which melt fraction $\Phi$ each amount was buried, so that a remelt returns the most recently buried mass first. Validation means that a test runs the code on a case with a known right answer and checks the result within a stated tolerance. If the ledger is wrong, a remelt returns the wrong amount of each volatile to the melt. The case below says why the check exists, what it tests, how we know the right answer and why it matters; a box "Test details" ends the case.
+This page checks the burial ledger, `proteus.outgas.burial_ledger`. When the magma ocean freezes, trapping buries volatiles in the solid; the ledger records at which melt fraction $\Phi$ each amount was buried, so that a remelt returns the most recently buried mass first. Validation means that a test runs the code on a case with a known right answer and checks the result within a stated tolerance. If the ledger is wrong, a remelt returns the wrong amount of each volatile to the melt. The case below says why the check exists, what it tests, how we know the right answer and why it matters. A box "Test details" ends the case.
 
 | Test id | Reference | Scope | Last compared |
 |---|---|---|---|

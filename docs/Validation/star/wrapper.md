@@ -2,7 +2,7 @@
 
 ## What this page checks
 
-This page checks 2 steps of the star wrapper, `src/proteus/star/wrapper.py`: the equilibrium temperature of the planet and the orbital distance that sets the stellar flux at the planet. Validation means that a test runs the code on a case with a known right answer and checks the result within a stated tolerance. If this part of the code is wrong, every run gets the wrong stellar flux at the planet or the wrong equilibrium temperature. Each case below says why the check exists, what it tests, how we know the right answer and why it matters; a box "Test details" ends each case.
+This page checks 2 steps of the star wrapper, `src/proteus/star/wrapper.py`: the equilibrium temperature of the planet and the orbital distance that sets the stellar flux at the planet. Validation means that a test runs the code on a case with a known right answer and checks the result within a stated tolerance. If this part of the code is wrong, every run gets the wrong stellar flux at the planet or the wrong equilibrium temperature. Each case below says why the check exists, what it tests, how we know the right answer and why it matters. A box "Test details" ends each case.
 
 ## Reference-pinned tests
 
@@ -13,11 +13,11 @@ This page checks 2 steps of the star wrapper, `src/proteus/star/wrapper.py`: the
 
 ## Equilibrium temperature of an Earth-like planet
 
-**Why this check exists.** The equilibrium temperature is the fourth root of an energy balance. A wrong root, for example a cube root or a fifth root, or a wrong constant gives a wrong temperature without an error message.
+**Why this check exists.** The equilibrium temperature is the fourth root of an energy balance. A wrong root, for example a cube root or a fifth root, gives a wrong temperature without an error message.
 
 **What it tests.** `update_equilibrium_temperature` computes $T_\mathrm{eqm} = ((1 - A)\, S\, f / \sigma)^{1/4}$, with $S$ the stellar flux at the planet, $A$ the albedo of the planet, $f$ the absorption factor `s0_factor` and $\sigma$ the Stefan-Boltzmann constant. At $S$ = 1361 W/m$^2$, $A$ = 0.3 and $f$ = 0.25 (the disk-averaged factor), the test expects about 254 K. A cube root would give about 1613 K and a fifth root about 84 K; the test checks that the result is more than 50 K away from both.
 
-**How we know the right answer.** The value follows from the Stefan-Boltzmann law for a planet in radiative balance. The test checks the closed form to relative 1e-12 and, independently of the constants, the value 254 K to within 2 K.
+**How we know the right answer.** The value follows from the Stefan-Boltzmann law for a planet in radiative balance. The test checks the closed form to relative 1e-12, with $\sigma$ from the code, and the value 254 K to within 2 K, which catches a wrong $\sigma$ above about 3 %.
 
 **Why it matters.** `update_stellar_quantities` calls it in the stellar step of the main loop and writes `T_eqm` to the helpfile.
 
@@ -35,7 +35,7 @@ This page checks 2 steps of the star wrapper, `src/proteus/star/wrapper.py`: the
 
 **How we know the right answer.** The orbit average of the inverse-square law is an analytical result. The time-averaged separation $a (1 + e^2 / 2)$, which `hf_row['separation']` holds, gives $1.32\, a$ at $e = 0.8$ instead. The 2 distances give fluxes that differ by a factor of 2.904, which the test checks.
 
-**Why it matters.** `update_instellation` uses this distance for both the bolometric and the XUV flux. The time-averaged separation remains the right quantity for the Roche-limit checks and the orbit plots, so both distances are in use, and the test records which belongs where.
+**Why it matters.** `update_instellation` uses this distance for both the bolometric and the XUV flux. The source docstring notes that the time-averaged separation remains the right quantity for the Roche-limit checks and the orbit plots, so both distances are in use.
 
 ??? info "Test details"
     - Reference: orbital average of the inverse-square law, <1/r^2> = 1 / (a^2 sqrt(1 - e^2)) (analytical limit).

@@ -2,7 +2,7 @@
 
 ## What this page checks
 
-This page checks the analytical accretion module, `src/proteus/accretion/dummy.py`. It builds a history of giant impacts: an exponential growth law sets the impactor masses, a mass-radius scaling sets their radii, and each impact merges 2 bodies. Validation means that a test runs the code on a case with a known right answer and checks the result within a stated tolerance. If this part of the code is wrong, an impact has the wrong speed or leaves the planet on the wrong orbit. Each case below says why the check exists, what it tests, how we know the right answer and why it matters; a box "Test details" ends each case.
+This page checks the analytical accretion module, `src/proteus/accretion/dummy.py`. It builds a history of giant impacts: an exponential growth law sets the impactor masses, a mass-radius scaling sets their radii, and each impact merges 2 bodies. Validation means that a test runs the code on a case with a known right answer and checks the result within a stated tolerance. If this part of the code is wrong, an impact has the wrong speed or leaves the planet on the wrong orbit. Each case below says why the check exists, what it tests, how we know the right answer and why it matters. A box "Test details" ends each case.
 
 ## Source under test
 `src/proteus/accretion/dummy.py` (the analytical accretion module: the
@@ -21,7 +21,9 @@ gravitationally focused collision speed, and the momentum-conserving merger).
 
 **Why this check exists.** Gravitational focusing makes 2 bodies collide at least at their mutual escape speed. A missing factor of 2 under the square root, or a wrong sum of masses or radii, gives a collision speed below that floor without an error message.
 
-**What it tests.** For a circular encounter the approach speed is zero, so the focused collision speed must equal the mutual escape speed $v_\mathrm{esc} = \sqrt{2G(M_1+M_2)/(R_1+R_2)}$, with $M_1, M_2$ the masses and $R_1, R_2$ the radii of the 2 bodies. The test computes $v_\mathrm{esc}$ from the masses and radii that the impact record holds. It also checks that the collision speed is never below the escape speed, and that dropping the factor of 2 would move the result by 29 %.
+**What it tests.** For a circular encounter the approach speed is zero, so the focused collision speed must equal the mutual escape speed $v_\mathrm{esc} = \sqrt{2G(M_1+M_2)/(R_1+R_2)}$, with $M_1, M_2$ the masses and $R_1, R_2$ the radii of the 2 bodies. The test computes $v_\mathrm{esc}$ from the masses and radii that the impact record holds. It also checks that the collision speed is never below the escape speed.
+
+**Known limit.** The code computes the collision speed as `hypot(v_enc, v_esc)`, so it can never fall below the escape speed, and the 29 % guard is arithmetic on the test's own numbers. Only the hand-computed escape speed of the first event tests the formula.
 
 **How we know the right answer.** The two-body escape speed is an analytical limit of the focused collision speed.
 
@@ -35,13 +37,15 @@ gravitationally focused collision speed, and the momentum-conserving merger).
 
 ## A circular merger keeps the orbit
 
-**Why this check exists.** A merger sets the new orbit from the mass-weighted velocity of the 2 bodies. A sign error or an inverted mass weighting gives a wrong orbit without an error message.
+**Why this check exists.** A merger sets the new orbit from the mass-weighted velocity of the 2 bodies. A sign error gives a wrong orbit without an error message.
 
 **What it tests.** When 2 bodies share one circular orbit ($e = 0$) they have the same velocity, so the mass-weighted mean is that velocity. The merged orbit must keep its semi-major axis (ratio 1) and stay circular ($e = 0$).
 
-**How we know the right answer.** A perfect merger of 2 co-orbital bodies on a circular orbit is an analytical limit; a sign error or an inverted mass weighting cannot reproduce it.
+**How we know the right answer.** A perfect merger of 2 co-orbital bodies on a circular orbit is an analytical limit.
 
-**Why it matters.** `accretion/wrapper.py` applies the semi-major-axis ratio and the new eccentricity of each impact to the orbit of the planet.
+**Known limit.** At $e = 0$ both bodies have the same velocity, so an inverted mass weighting gives the same orbit and passes this case; the angular-momentum case below catches it.
+
+**Why it matters.** `accretion/wrapper.py` adds the eccentricity change of each impact to the orbit of the planet, and applies the semi-major-axis ratio unless `orbit.instellation_method = 'inst'`.
 
 ??? info "Test details"
     - Reference: perfect merger of 2 bodies on one circular orbit (analytical limit).
@@ -51,13 +55,13 @@ gravitationally focused collision speed, and the momentum-conserving merger).
 
 ## Angular momentum of the merged orbit
 
-**Why this check exists.** The semi-major axis and the eccentricity are 2 numbers derived from one velocity vector. If one of them is computed wrongly, the orbit does not match the velocity that produced it, and nothing reports it.
+**Why this check exists.** The semi-major axis and the eccentricity are 2 numbers derived from one velocity vector. If one of them is computed wrongly, or the mass weighting is inverted, the orbit does not match the velocity that produced it, and nothing reports it.
 
-**What it tests.** The specific angular momentum of the returned orbit, $h = \sqrt{\mu a (1 - e^2)}$ with $\mu = G M_\star$, must equal the radius times the tangential velocity, $r v_\theta$.
+**What it tests.** For one merger of a 1.0 and a 0.4 Earth-mass body at $e = 0.2$, the specific angular momentum of the returned orbit, $h = \sqrt{\mu a (1 - e^2)}$ with $\mu = G M_\star$, must equal the radius times the tangential velocity, $r v_\theta$.
 
 **How we know the right answer.** For a Keplerian orbit, $h = \sqrt{\mu a (1 - e^2)} = r v_\theta$ is an identity.
 
-**Why it matters.** It checks that the merged orbit of every impact is consistent in itself.
+**Why it matters.** It checks that a merged orbit is consistent with the velocity that produced it.
 
 ??? info "Test details"
     - Reference: Keplerian identity $h = \sqrt{\mu a (1 - e^2)} = r v_\theta$ (analytical identity).

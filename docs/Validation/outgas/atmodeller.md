@@ -2,7 +2,7 @@
 
 ## What this page checks
 
-This page checks how the atmodeller wrapper, `proteus.outgas.atmodeller`, splits the mass of each gas species into the masses of its elements. Validation means that a test runs the code on a case with a known right answer and checks the result within a stated tolerance. If this split is wrong, the element budgets of H, C, N, S and O in each reservoir are wrong. The case below says why the check exists, what it tests, how we know the right answer and why it matters; a box "Test details" ends the case. The `reference_pinned` marker is registered in `pyproject.toml`.
+This page checks how the atmodeller wrapper, `proteus.outgas.atmodeller`, splits the mass of each gas species into the masses of its elements. Validation means that a test runs the code on a case with a known right answer and checks the result within a stated tolerance. If this split is wrong, the element budgets of H, C, N, S and O in each reservoir are wrong. The case below says why the check exists, what it tests, how we know the right answer and why it matters. A box "Test details" ends the case. The `reference_pinned` marker is registered in `pyproject.toml`.
 
 | Test id | Reference | Source page | Scope |
 |---|---|---|---|

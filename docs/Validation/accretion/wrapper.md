@@ -2,7 +2,7 @@
 
 ## What this page checks
 
-This page checks the dispatch of the atmospheric loss of a giant impact in `src/proteus/accretion/wrapper.py`. For each impact, the wrapper passes the collision to a loss law in ZEPHYRUS and gets back the eroded fraction of the atmosphere. Validation means that a test runs the code on a case with a known right answer and checks the result within a stated tolerance. If the dispatch is wrong, an impact strips the wrong fraction of the atmosphere. Each pinned case below says why the check exists, what it tests, how we know the right answer and why it matters; a box "Test details" ends each case. The dispatch contract tests after them check the interface without a published reference.
+This page checks the dispatch of the atmospheric loss of a giant impact in `src/proteus/accretion/wrapper.py`. For each impact, the wrapper passes the collision to a loss law in ZEPHYRUS and gets back the eroded fraction of the atmosphere. Validation means that a test runs the code on a case with a known right answer and checks the result within a stated tolerance. If the dispatch is wrong, an impact strips the wrong fraction of the atmosphere. Each pinned case below says why the check exists, what it tests, how we know the right answer and why it matters. A box "Test details" ends each case. The dispatch contract tests after them check the interface without a published reference.
 
 ## Source under test
 `src/proteus/accretion/wrapper.py` (the impact atmosphere-loss dispatch:
@@ -37,7 +37,7 @@ This page checks the dispatch of the atmospheric loss of a giant impact in `src/
 
 **What it tests.** For the first row of the Set A oracle of the authors ($v_c$ = 19.27 km/s, $b$ = 0.3, target mass 1.007 Earth masses, impactor 0.249 Earth masses, atmospheric fraction 0.01002), `_impact_loss_fraction` must return the authors' value $X$ = 0.562213. The Kegerreis law and a dispatch with the bodies interchanged must both miss it by more than 0.10.
 
-**How we know the right answer.** The authors' scaling-law calculation of that row. It uses the nominal grid values $\gamma$ = 0.2 and $v/v_\mathrm{esc}$ = 2.0, while the dispatch derives them from the masses and the contact speed (2.000434 and 0.200014); this leaves a residual of -1.47e-5, inside the tolerance.
+**How we know the right answer.** The authors' scaling-law calculation of that row. It uses the nominal grid values $\gamma$ = 0.2 and $v/v_\mathrm{esc}$ = 2.0, while the dispatch derives them from the masses and the contact speed ($\gamma$ = 0.200014 and $v/v_\mathrm{esc}$ = 2.000434); this leaves a residual of -1.47e-5, inside the tolerance.
 
 **Why it matters.** It checks the second law the dispatch offers, `atmloss_law = 'roche2026'`.
 

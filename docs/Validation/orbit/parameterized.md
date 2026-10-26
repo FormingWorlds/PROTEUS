@@ -2,7 +2,7 @@
 
 ## What this page checks
 
-This page checks the prescribed migration laws of `proteus.orbit.parameterized`, which move the orbit of the planet along a fixed law in time. The sigmoid law moves the semi-major axis along a smooth S curve; the high-eccentricity law circularises an eccentric orbit. Validation means that a test runs the code on a case with a known right answer and checks the result within a stated tolerance. If this part of the code is wrong, the orbit, and with it the stellar flux at the planet, follows the wrong path. Each case below says why the check exists, what it tests, how we know the right answer and why it matters; a box "Test details" ends each case.
+This page checks the prescribed migration laws of `proteus.orbit.parameterized`, which move the orbit of the planet along a fixed law in time. The sigmoid law moves the semi-major axis along a smooth S curve; the high-eccentricity law circularises an eccentric orbit. Validation means that a test runs the code on a case with a known right answer and checks the result within a stated tolerance. If this part of the code is wrong, the orbit, and with it the stellar flux at the planet, follows the wrong path. Each case below says why the check exists, what it tests, how we know the right answer and why it matters. A box "Test details" ends each case.
 
 The `@pytest.mark.reference_pinned` tests anchor the
 prescribed migration laws in `proteus.orbit.parameterized`. The module is
@@ -61,7 +61,7 @@ mathematics the laws are defined by.
 
 ??? info "Test details"
     - Reference: Postolec et al. (2026), submitted to ApJ, arXiv:2609.03144, Sect. 2.2, Eqs. 1-4.
-    - Tolerance: relative 1e-9 on all 500 points; relative 1e-10 on the one-tau e-folding and on the semi-latus rectum (1e-10).
+    - Tolerance: relative 1e-9 on all 500 points; relative 1e-10 on the one-tau e-folding and on the semi-latus rectum.
     - Test id: `tests/orbit/test_parameterized.py::test_high_ecc_circularises_as_a_pure_exponential_in_eccentricity`
     - Command: `pytest -m reference_pinned tests/orbit/test_parameterized.py --validation-plots`
 

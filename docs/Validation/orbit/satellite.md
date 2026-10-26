@@ -2,17 +2,17 @@
 
 ## What this page checks
 
-This page checks the planet-satellite tides of `proteus.orbit.satellite`: the angular momentum of the planet and its satellite, and the capture of the satellite into the evection resonance. Validation means that a test runs the code on a case with a known right answer and checks the result within a stated tolerance. If this part of the code is wrong, the spin of the planet and the orbit of the satellite evolve wrongly. Each case below says why the check exists, what it tests, how we know the right answer and why it matters; a box "Test details" ends each case.
+This page checks the planet-satellite tides of `proteus.orbit.satellite`: the angular momentum of the planet and its satellite, and the capture of the satellite into the evection resonance. Validation means that a test runs the code on a case with a known right answer and checks the result within a stated tolerance. If this part of the code is wrong, the spin of the planet and the orbit of the satellite evolve wrongly. Each case below says why the check exists, what it tests, how we know the right answer and why it matters. A box "Test details" ends each case.
 
 | Test id | Reference | Source page | Scope |
 |---|---|---|---|
 | `tests/orbit/test_satellite.py::test_ps0d_bootstrap_am_uses_satellite_mass_not_planet_mass` | Korenaga (2023) Icarus 400, 115564, Eq. 60 (orbital component cross-checked against Touma and Wisdom 1994) | n/a | Pins the spin-plus-orbital decomposition on the present-day Earth-Moon configuration. Asserts sign and the 1e34-1e35 kg m^2 / s order of magnitude expected from Korenaga's Eq. 60. |
 | `tests/integration/test_slow_orbit_evection_ctl.py::test_resonance_capture_occurs_within_expected_time_window` | Rufu and Canup (2020) Figure 3 evection-resonance capture case, as reproduced in `src/proteus/orbit/evection_notebook.ipynb` / `plot_evection.png` (capture at t~2.4e4 yr) | n/a | Drives the real `evolve_orbit_satellite(model='ps1d_evec')` under a Mignard constant-time-lag tidal spectrum from the paper's Figure-3-calibrated initial conditions; asserts eccentricity crosses 0.1 within t between `2e4` and `4e4` yr. Compared against a real run reaching t=2.58e4 yr, e=0.111. |
-| `tests/integration/test_slow_orbit_evection_ctl.py::test_peak_eccentricity_matches_reference_location` | Same source as above (peak e~0.72-0.724 at a'~11.89 R_earth, t~5.2e4 yr) | n/a | Same driver; asserts the eccentricity peak reaches >= 0.6 at a' between `10` and `13` R_earth. Compared against a real run's observed peak of e=0.755 at a'=11.88 R_earth, t=5.12e4 yr; the peak a' matches the reference to <0.1%. The post-peak contraction phase (a' declining to ~10.2 R_earth by t=1e5 yr in the reference) was not reached in that run and is not asserted here. |
+| `tests/integration/test_slow_orbit_evection_ctl.py::test_peak_eccentricity_matches_reference_location` | Same source as above (peak e~0.72-0.724 at a'~11.89 R_earth, t~5.2e4 yr) | n/a | Same driver; asserts the eccentricity peak reaches >= 0.6 at a' between `10` and `13` R_earth. Compared against the run recorded in the test file, with its peak at e=0.744, a'=12.33 R_earth, t=5.18e4 yr; the peak a' is about 4% above the reference. The post-peak contraction phase (a' declining to ~10.2 R_earth by t=1e5 yr in the reference) was not reached in that run and is not asserted here. |
 
 ## Angular momentum of the Earth-Moon system
 
-**Why this check exists.** The total angular momentum is the spin of the planet plus the orbit of the satellite, and the orbital term must use the satellite mass. The planet mass in its place makes the total about 81 times too large for the Earth-Moon system, without an error message.
+**Why this check exists.** The total angular momentum is the spin of the planet plus the orbit of the satellite, and the orbital term must use the satellite mass. The planet mass in its place makes the orbital term about 81 times, and the total about 66 times, too large for the Earth-Moon system, without an error message.
 
 **What it tests.** On its first step, `ps0d` computes the total angular momentum `plan_sat_am` with Eq. 60 of Korenaga (2023): $L = I \Omega + M_\mathrm{sat} \sqrt{G (M_p + M_\mathrm{sat})\, a}$, with $I$ the moment of inertia and $\Omega$ the spin rate of the planet, $M_p$ and $M_\mathrm{sat}$ the masses and $a$ the semi-major axis of the satellite. The test uses the present Earth-Moon system and compares the result with Eq. 60 evaluated in the test, without a call into the source. It also checks that the planet-mass version differs by more than 50 times, and that $L$ lies between 1e34 and 1e35 kg m$^2$/s.
 
@@ -50,7 +50,7 @@ This page checks the planet-satellite tides of `proteus.orbit.satellite`: the an
 
 **What it tests.** With the same run as above, the peak eccentricity must reach at least 0.6, at a scaled distance $a'$ between 10 and 13 Earth radii.
 
-**How we know the right answer.** The reference case peaks at e of about 0.72 to 0.724 at $a'$ of about 11.89 Earth radii, at about 5.2e4 yr. A real run peaked at e = 0.755 at $a'$ = 11.88 Earth radii and 5.12e4 yr.
+**How we know the right answer.** The reference case peaks at e of about 0.72 to 0.724 at $a'$ of about 11.89 Earth radii, at about 5.2e4 yr. The run recorded in the test file peaked at e = 0.744 at $a'$ = 12.33 Earth radii and 5.18e4 yr, about 4 % above the reference in $a'$.
 
 **Why it matters.** It checks the strength of the resonance in the model, not only its timing.
 

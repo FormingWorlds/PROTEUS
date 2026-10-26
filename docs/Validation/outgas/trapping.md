@@ -2,7 +2,7 @@
 
 ## What this page checks
 
-This page checks the trapping step, `proteus.outgas.trapping`. As the magma ocean freezes, the growing solid buries volatiles: some enter the crystals, and some stay in the melt that is caught between the crystals. Validation means that a test runs the code on a case with a known right answer and checks the result within a stated tolerance. If this part of the code is wrong, the solid holds the wrong amount of each volatile, and the atmosphere gets the rest. The case below says why the check exists, what it tests, how we know the right answer and why it matters; a box "Test details" ends the case.
+This page checks the trapping step, `proteus.outgas.trapping`. As the magma ocean freezes, the growing solid buries volatiles: some enter the crystals, and some stay in the melt that is caught between the crystals. Validation means that a test runs the code on a case with a known right answer and checks the result within a stated tolerance. If this part of the code is wrong, the solid holds the wrong amount of each volatile, and the atmosphere gets the rest. The case below says why the check exists, what it tests, how we know the right answer and why it matters. A box "Test details" ends the case.
 
 | Test id | Reference | Scope |
 |---|---|---|

@@ -2,7 +2,7 @@
 
 ## What this page checks
 
-This page checks how `proteus.orbit.obliqua` looks up the tidal Love number of a body. The Love number $k(\sigma)$ measures how much a body deforms under a tide of forcing frequency $\sigma$; its imaginary part sets the tidal dissipation. Validation means that a test runs the code on a case with a known right answer and checks the result within a stated tolerance. If this part of the code is wrong, the tidal response at negative forcing frequencies has the wrong sign of dissipation. The case below says why the check exists, what it tests, how we know the right answer and why it matters; a box "Test details" ends the case. The `reference_pinned` marker is registered in `pyproject.toml`.
+This page checks how `proteus.orbit.obliqua` looks up the tidal Love number of a body. The Love number $k(\sigma)$ measures how much a body deforms under a tide of forcing frequency $\sigma$; its imaginary part sets the tidal dissipation. Validation means that a test runs the code on a case with a known right answer and checks the result within a stated tolerance. If this part of the code is wrong, the tidal response at negative forcing frequencies has the wrong sign of dissipation. The case below says why the check exists, what it tests, how we know the right answer and why it matters. A box "Test details" ends the case. The `reference_pinned` marker is registered in `pyproject.toml`.
 
 | Test id | Reference | Source page | Scope |
 |---|---|---|---|

@@ -2,7 +2,9 @@
 
 ## What this page checks
 
-This page checks the melt drainage of the front scheme, `proteus.outgas.compaction`. As the freezing front passes through the mush, melt drains out of it before the solid closes; the melt that stays behind traps volatiles. Validation means that a test runs the code on a case with a known right answer and checks the result within a stated tolerance. If this part of the code is wrong, the trapped melt fraction, and with it the volatiles held in the solid, is wrong. Each case below says why the check exists, what it tests, how we know the right answer and why it matters; a box "Test details" ends each case. The porosity $\phi$ is the melt volume fraction.
+This page checks the melt drainage of the front scheme, `proteus.outgas.compaction`. As the freezing front passes through the mush, melt drains out of it before the solid closes; the melt that stays behind traps volatiles. Validation means that a test runs the code on a case with a known right answer and checks the result within a stated tolerance. If this part of the code is wrong, the trapped melt fraction, and with it the volatiles held in the solid, is wrong. Each case below says why the check exists, what it tests, how we know the right answer and why it matters. A box "Test details" ends each case.
+
+Terms used below: the mush is the partly molten layer behind the front; the porosity $\phi$ is its melt volume fraction; the lever rule gives $\phi$ from the densities of the mixture, the solid and the melt; a quadrature is a numerical integration. Blake-Kozeny-Carman, Rumpf-Gupte and Stokes name the 3 regimes of the drainage law, from low to high porosity. `separation_buoyancy` sets the density contrast of the drainage: `'mixture'` against the mixture, `'solid'` against the solid.
 
 | Test id | Reference | Scope | Last compared |
 |---|---|---|---|
@@ -33,13 +35,13 @@ This page checks the melt drainage of the front scheme, `proteus.outgas.compacti
 
 **What it tests.** In a short run, at unit drag, `darcy_velocity` at the porosity of each mush node with a positive density contrast must equal the separation velocity of the aragog solver that PROTEUS builds, in each buoyancy mode.
 
-**How we know the right answer.** The relative velocity of the evaluator of the aragog solver (fwl-aragog 26.10.22), a second implementation of the same law.
+**How we know the right answer.** `darcy_velocity` takes its mobility from the aragog function `mobility_function`, so this case checks the wiring: that the configured buoyancy reaches the solver PROTEUS builds.
 
 **Why it matters.** It checks that the configured buoyancy reaches the interior solver.
 
 ??? info "Test details"
     - Reference: `relative_velocity` of the evaluator of the aragog solver PROTEUS builds (fwl-aragog 26.10.22), on the tables of a short run.
-    - Tolerance: relative 1e-12 on every mush node with a positive contrast.
+    - Tolerance: relative 1e-12 on every mush node with a positive contrast; further ratio checks at 1e-9, 1e-6, 1e-3 and 1e-2.
     - Test id: `tests/integration/test_slow_aragog_separation_buoyancy.py::test_the_configured_buoyancy_reaches_the_built_solver`
     - Command: `pytest tests/integration/test_slow_aragog_separation_buoyancy.py::test_the_configured_buoyancy_reaches_the_built_solver` (slow tier)
 
