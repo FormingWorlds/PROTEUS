@@ -223,7 +223,10 @@ class AccretionTimeline:
     ----------
     timeline_path: str or None
         Path to the impact timeline file. Environment variables and ``~``
-        are expanded.
+        are expanded. An optional ``f_melt`` column gives the melted mass
+        fraction of the mantle of each impact [1], in [0, 1]; when present, every
+        impact needs a value, and a blank cell is refused under every
+        ``accretion.remelt`` setting, ``'full'`` included.
     """
 
     timeline_path: str | None = field(default=None, converter=none_if_none)
@@ -345,8 +348,9 @@ class Accretion:
     impactors carry the per-element budgets configured below.
 
     The mantle re-melt is a thermodynamic reset, not an energy deposition.
-    It raises the mantle to the run's ``planet.temperature_mode`` initial
-    condition, and hotter parts keep their state, so the heat it injects is set by the mantle's own state
+    It raises the melted share of the mantle (all of it under ``remelt = 'full'``)
+    to the run's ``planet.temperature_mode`` initial condition, and hotter parts
+    keep their state, so the heat it injects is set by the mantle's own state
     and mass rather than by the energy the collision carried. The two agree in
     order of magnitude for a large impact onto a mantle that has cooled
     appreciably, which is the regime this coupling targets, and diverge outside
@@ -461,6 +465,19 @@ class Accretion:
         Fraction of the atmosphere removed by each impact when
         ``atmloss_module = "constant"`` [0-1]. Applies to the target's
         atmosphere and to the impactor's atmospheric part alike.
+    remelt: str or None
+        How much of the mantle an impact re-melts. Choices: None (the default:
+        "computed" with the "morrigan" module, "full" otherwise), "full" (every
+        impact raises the whole mantle to the initial condition, hotter parts
+        keeping their state), "computed" (each impact re-melts its own melt mass
+        fraction f_melt: Morrigan reports it per merger, a "timeline" file
+        carries it as an f_melt column). A partial re-melt raises the outermost
+        shells that hold f_melt of the mantle mass to the initial condition and
+        keeps the deeper mantle at its end-of-step state; f_melt = 1 is the full
+        re-melt. Each impact fills its share from the surface down, also where the
+        shells already hold the initial condition (the scalar interiors compound
+        repeated impacts instead). "computed" needs the
+        "morrigan" or "timeline" module.
     """
 
     module: str | None = field(
@@ -511,6 +528,19 @@ class Accretion:
         validator=in_(('kegerreis2020', 'roche2026')),
     )
     atmloss_frac: float = field(default=0.0, validator=[ge(0), le(1)])
+
+    remelt: str | None = field(
+        default='none',
+        validator=in_((None, 'full', 'computed')),
+        converter=none_if_none,
+    )
+
+    @property
+    def remelt_mode(self) -> str:
+        """The re-melt mode in force: ``remelt``, or its default for the selected module."""
+        if self.remelt is not None:
+            return self.remelt
+        return 'computed' if self.module == 'morrigan' else 'full'
 
     @property
     def delivers_volatiles(self) -> bool:

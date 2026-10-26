@@ -39,6 +39,9 @@ TIMELINE_COLUMNS = (
     'id_impactor',
 )
 
+# Columns a timeline may carry: the melt mass fraction an impact re-melts.
+TIMELINE_OPTIONAL_COLUMNS = ('f_melt',)
+
 # Mass closure of a perfect merger. Tight, because the merged mass is a plain
 # sum in the dynamical model, so anything looser would hide a real error.
 MASS_CLOSURE_RTOL = 1e-6
@@ -98,6 +101,10 @@ class ImpactEvent:
         Identifier of the target body.
     id_impactor: int
         Identifier of the impactor.
+    f_melt: float or None
+        Melt mass fraction of the mantle this impact re-melts [1], in [0, 1],
+        or None when the source reports none. Read with
+        ``accretion.remelt = 'computed'``.
     """
 
     time: float = field()
@@ -117,6 +124,7 @@ class ImpactEvent:
     e_after: float = field()
     id_target: int = field(default=-1)
     id_impactor: int = field(default=-1)
+    f_melt: float | None = field(default=None)
 
     @property
     def mass_delta(self) -> float:
@@ -164,7 +172,7 @@ def _check_event_physics(event: ImpactEvent, index: int) -> None:
         If event time is non-finite, if any mass, radius, density, or velocity
         is non-positive, if the merged mass does not close, if the collision
         velocity is below the mutual escape velocity, or if the impact
-        parameter or eccentricity falls outside its range.
+        parameter, eccentricity or melt fraction falls outside its range.
     """
     if not np.isfinite(event.time):
         raise ValueError(f'impact {index}: time must be finite, got {event.time!r}')
@@ -219,6 +227,9 @@ def _check_event_physics(event: ImpactEvent, index: int) -> None:
         value = getattr(event, name)
         if not 0.0 <= value < 1.0:
             raise ValueError(f'{where}: eccentricity {name} must be in [0, 1), got {value!r}')
+
+    if event.f_melt is not None and not 0.0 <= event.f_melt <= 1.0:
+        raise ValueError(f'{where}: f_melt must be finite and in [0, 1], got {event.f_melt!r}')
 
 
 def validate_timeline(
@@ -335,7 +346,8 @@ def read_timeline(path: str, time_offset: float = 0.0) -> list[ImpactEvent]:
             f'Expected all of: {list(TIMELINE_COLUMNS)}'
         )
     # float() reads each value exactly, where the python engine's parser can be 1 ulp off.
-    for c in TIMELINE_COLUMNS:
+    optional = [c for c in TIMELINE_OPTIONAL_COLUMNS if c in table.columns]
+    for c in (*TIMELINE_COLUMNS, *optional):
         table[c] = table[c].map(float)
 
     if len(table) == 0:
@@ -362,6 +374,7 @@ def read_timeline(path: str, time_offset: float = 0.0) -> list[ImpactEvent]:
             e_after=float(row['e_after']),
             id_target=int(row['id_target']),
             id_impactor=int(row['id_impactor']),
+            f_melt=float(row['f_melt']) if 'f_melt' in optional else None,
         )
         for _, row in table.iterrows()
     ]
@@ -377,7 +390,8 @@ def write_timeline(events: Sequence[ImpactEvent], path: str) -> None:
 
     Times are written on the PROTEUS axis, with any offset between the
     dynamical model's zero point and the run already applied, so the file
-    round-trips through ``read_timeline(path, time_offset=0.0)``.
+    round-trips through ``read_timeline(path, time_offset=0.0)``. The f_melt
+    column is written when every impact carries a melt fraction.
 
     Parameters
     ----------
@@ -386,9 +400,12 @@ def write_timeline(events: Sequence[ImpactEvent], path: str) -> None:
     path : str
         Destination file.
     """
+    columns = list(TIMELINE_COLUMNS)
+    if events and all(event.f_melt is not None for event in events):
+        columns.append('f_melt')
     table = pd.DataFrame(
-        [[getattr(event, column) for column in TIMELINE_COLUMNS] for event in events],
-        columns=list(TIMELINE_COLUMNS),
+        [[getattr(event, column) for column in columns] for event in events],
+        columns=columns,
     )
     table.to_csv(path, index=False)
     log.debug('Wrote %d impacts to %s', len(events), path)
