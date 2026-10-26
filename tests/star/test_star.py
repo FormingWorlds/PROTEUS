@@ -137,7 +137,7 @@ def test_generate_spectrum_increases_with_radius():
 @pytest.mark.unit
 @pytest.mark.reference_pinned
 @pytest.mark.physics_invariant
-def test_calc_star_luminosity_solar():
+def test_calc_star_luminosity_solar(validation_plot):
     """Solar Teff and radius yields ~1 solar luminosity. Pin against
     the IAU 2015 nominal solar luminosity L_sun = 3.828e26 W
     (Resolution B3) via the Stefan-Boltzmann law F = sigma T**4."""
@@ -148,6 +148,38 @@ def test_calc_star_luminosity_solar():
     # A R_sun-in-km vs R_sun-in-m unit slip would give 3.85e20 W; a
     # CGS-vs-SI slip on sigma would land 1e3 above or below.
     assert 1e26 < l < 1e27
+
+    def figure():
+        import matplotlib.pyplot as plt
+
+        teff = np.linspace(5000.0, 6500.0, 61)
+        fig, ax = plt.subplots(figsize=(6, 4))
+        ax.axhspan(1e26, 1e27, alpha=0.15, label='Range check')
+        ax.plot(
+            teff,
+            [star.calc_star_luminosity(t, R_sun) for t in teff],
+            label='calc_star_luminosity',
+        )
+        ax.errorbar(
+            [Teff_sun],
+            [l_sun],
+            yerr=[[0.01 * l_sun], [0.01 * l_sun]],
+            fmt='s',
+            mfc='none',
+            ms=10,
+            capsize=4,
+            label='IAU 2015 $L_\\odot$, 1 %',
+        )
+        ax.plot([Teff_sun], [l], 'o', zorder=3, label='Code at $T_\\odot$, $R_\\odot$')
+        ax.set_yscale('log')
+        ax.set_ylim(3e25, 3e27)
+        ax.set_xlabel('Effective temperature [K]')
+        ax.set_ylabel('Luminosity [W]')
+        ax.legend()
+        fig.tight_layout()
+        return fig
+
+    validation_plot(figure, 'star_dummy_luminosity')
 
 
 @pytest.mark.unit
@@ -212,7 +244,7 @@ def test_calc_instellation_inverse_square_law():
 @pytest.mark.unit
 @pytest.mark.reference_pinned
 @pytest.mark.physics_invariant
-def test_calc_instellation_earth_like():
+def test_calc_instellation_earth_like(validation_plot):
     """Earth-like planet receives ~1361 W/m^2 at 1 AU, the IAU 2015
     nominal total solar irradiance (Resolution B3, S_0 = 1361 W/m^2).
     """
@@ -223,3 +255,36 @@ def test_calc_instellation_earth_like():
     # slip would land at ~1e3x the correct value. The bracket
     # discriminates either slip.
     assert 1e3 < s < 2e3
+
+    def figure():
+        import matplotlib.pyplot as plt
+
+        d_au = np.geomspace(0.5, 2.0, 41)
+        fig, ax = plt.subplots(figsize=(6, 4))
+        ax.axhspan(1e3, 2e3, alpha=0.15, label='Range check')
+        ax.plot(
+            d_au,
+            [star.calc_instellation(Teff_sun, R_sun, d * AU) for d in d_au],
+            label='calc_instellation',
+        )
+        ax.errorbar(
+            [1.0],
+            [1361.0],
+            yerr=[[13.61], [13.61]],
+            fmt='s',
+            mfc='none',
+            ms=10,
+            capsize=4,
+            label='IAU 2015 $S_0$, 1 %',
+        )
+        ax.plot([1.0], [s], 'o', zorder=3, label='Code at 1 AU')
+        ax.set_xscale('log')
+        ax.set_yscale('log')
+        ax.set_ylim(3e2, 6e3)
+        ax.set_xlabel('Distance [AU]')
+        ax.set_ylabel('Stellar flux [W m$^{-2}$]')
+        ax.legend()
+        fig.tight_layout()
+        return fig
+
+    validation_plot(figure, 'star_dummy_instellation')

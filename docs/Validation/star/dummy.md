@@ -21,11 +21,16 @@ This page checks the luminosity of the star and the stellar flux at the planet i
 
 **Why it matters.** With `star.module = 'dummy'`, `dummy.py` takes the stellar luminosity from `calc_star_luminosity`, and so does the orbit wrapper for `orbit.instellation_method = 'inst'`.
 
+![Stellar luminosity against effective temperature at the solar radius](../../assets/validation/star_dummy_luminosity.svg#only-light){ width="80%" }
+![Stellar luminosity against effective temperature at the solar radius](../../assets/validation/star_dummy_luminosity_dark.svg#only-dark){ width="80%" }
+
+**How to read the plot.** The x-axis is the effective temperature and the y-axis the luminosity on a log scale, at the solar radius. The line is `calc_star_luminosity` (context). The filled circle is the asserted code value at the solar temperature and radius, and the hollow square is the IAU 2015 nominal value with its 1 % tolerance as a bar. The grey band is the asserted range check, $10^{26}$ to $10^{27}$ W. A pass means that the circle sits inside the square and the band.
+
 ??? info "Test details"
     - Reference: IAU 2015 Resolution B3, nominal solar luminosity L_sun = 3.828e26 W.
     - Tolerance: relative 0.01; range check 1e26 to 1e27 W.
     - Test id: `tests/star/test_star.py::test_calc_star_luminosity_solar`
-    - Command: `pytest tests/star/test_star.py::test_calc_star_luminosity_solar`
+    - Command: `pytest -m reference_pinned tests/star/test_star.py --validation-plots`
 
 ## Stellar flux at 1 AU
 
@@ -37,11 +42,16 @@ This page checks the luminosity of the star and the stellar flux at the planet i
 
 **Why it matters.** With `star.module = 'dummy'`, `update_instellation` takes the stellar flux at the planet from `calc_instellation`.
 
+![Stellar flux against distance from a Sun-like star](../../assets/validation/star_dummy_instellation.svg#only-light){ width="80%" }
+![Stellar flux against distance from a Sun-like star](../../assets/validation/star_dummy_instellation_dark.svg#only-dark){ width="80%" }
+
+**How to read the plot.** The x-axis is the distance from the star and the y-axis the stellar flux, both on log scales. The line is `calc_instellation` for the solar temperature and radius (context). The filled circle is the asserted code value at 1 AU, and the hollow square is the IAU 2015 nominal total solar irradiance with its 1 % tolerance as a bar. The grey band is the asserted range check, 1000 to 2000 W/m$^2$. A pass means that the circle sits inside the square and the band.
+
 ??? info "Test details"
     - Reference: IAU 2015 Resolution B3, nominal total solar irradiance S_0 = 1361 W/m^2.
     - Tolerance: relative 0.01; range check 1e3 to 2e3 W/m^2.
     - Test id: `tests/star/test_star.py::test_calc_instellation_earth_like`
-    - Command: `pytest tests/star/test_star.py::test_calc_instellation_earth_like`
+    - Command: `pytest -m reference_pinned tests/star/test_star.py --validation-plots`
 
 ## Coverage
 
