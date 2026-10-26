@@ -10,7 +10,7 @@ This page checks the molar masses of the species in the LavAtmos rock-vapour cou
 
 ## Molar masses from FastChem formulas
 
-**Why this check exists.** The coupling builds each molar mass from a FastChem formula string. A misread stoichiometric count, a missing conversion from kg/mol to g/mol, or a wrong electron mass gives wrong species masses without an error message.
+**Why this check exists.** The coupling builds each molar mass from a FastChem formula string. A misread stoichiometric count, a missing conversion from kg/mol to g/mol, or a zeroed electron mass gives wrong species masses without an error message.
 
 **What it tests.** `species_lib` holds a molar mass for each species. The test compares 4 cases with sums over the element table `element_mmw`: H$_2$O (18.015 g/mol), SiO$_2$ (60.083 g/mol), Fe (55.845 g/mol) and the electron (5.4858e-4 g/mol). It also checks that reading SiO$_2$ as SiO (44.084 g/mol) misses by more than 1 g/mol, that H$_2$O, SiO$_2$ and Fe lie between 1 and 1000 g/mol, that the electron lies between 0 and 1e-3 g/mol, and the mass order `e- << H2O < Fe < SiO2`.
 

@@ -6,8 +6,8 @@ This page checks the tidal evolution of the orbit in `proteus.orbit.orbit`. Tide
 
 | Test id | Reference | Source page | Scope |
 |---|---|---|---|
-| `tests/orbit/test_orbit.py::test_sp0d_de_dt_matches_driscoll_barnes_2015_eq16` | Driscoll and Barnes (2015), Astrobiology 15, 739 (DOI 10.1089/ast.2015.1325; arXiv:1509.07452), Eq. 16 | n/a (closed form) | Pins the prefactor `21/2`, the `a^-6.5` exponent, the `R_pl^5` scaling, and the linear-in-`e` dependence of `sp0d`'s tidal eccentricity-damping rate at unit-scale parameters. Also asserts sign and order-of-magnitude, with discrimination guards against `a^5` and `a^7` neighbouring exponents. |
-| `tests/orbit/test_orbit.py::test_sp1d_conserves_total_angular_momentum` | Angular-momentum conservation for an isolated two-body system with only internal tidal torques (analytical limit, not paper-specific) | n/a (closed form) | For `sp1d` (which, unlike `sp0d`, tracks the planet's spin), pins that planet-spin + orbital angular momentum is conserved to `rel=1e-6` across a real, non-trivial step (`e`: 0.3 to below 0.1). |
+| `tests/orbit/test_orbit.py::test_sp0d_de_dt_matches_driscoll_barnes_2015_eq16` | Driscoll and Barnes (2015), Astrobiology 15, 739 (DOI 10.1089/ast.2015.1325; arXiv:1509.07452), Eq. 16 | n/a (closed form) | Pins the prefactor `21/2`, the `a^-6.5` exponent, and the linear-in-`e` dependence of `sp0d`'s tidal eccentricity-damping rate at unit-scale parameters. Also asserts sign and order-of-magnitude, with discrimination guards against `a^5` and `a^7` neighbouring exponents. |
+| `tests/orbit/test_orbit.py::test_sp1d_conserves_total_angular_momentum` | Angular-momentum conservation for an isolated two-body system with only internal tidal torques (analytical limit, not paper-specific) | n/a (closed form) | For `sp1d` (which, unlike `sp0d`, tracks the planet's spin), pins that planet-spin + orbital angular momentum is conserved to `rel=1e-6` across a real, non-trivial step (`e`: 0.3 to below 0.2). |
 | `tests/orbit/test_orbit.py::test_sp1d_spin_am_gain_matches_orbital_am_loss` | Same conservation law as above, more targeted | n/a (closed form) | The planet's spin AM is ~1e-6 of the system total, so the raw-sum check above is nearly blind to a bug confined to `domega_dt`. This test instead pins `Delta(spin AM) == -Delta(orbital AM)` directly, at a tolerance where the two comparable-magnitude quantities discriminate a coefficient bug the raw-sum check misses. |
 
 ## Eccentricity rate of sp0d
@@ -38,7 +38,7 @@ This page checks the tidal evolution of the orbit in `proteus.orbit.orbit`. Tide
 
 **Why it matters.** `sp1d` gives the spin and the orbit of a run with this tidal model.
 
-**Known limit.** The spin angular momentum is about 1e-6 of the total, so this check cannot see an error in the spin equation alone; the next case covers it.
+**Known limit.** A common factor on all 3 rate equations, for example a scaled Love number, keeps the angular momentum conserved and passes both sp1d cases. The spin angular momentum is about 1e-6 of the total, so this check cannot see an error in the spin equation alone; the next case covers it.
 
 ??? info "Test details"
     - Reference: angular-momentum conservation of an isolated 2-body system (analytical limit).

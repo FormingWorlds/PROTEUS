@@ -7,7 +7,7 @@ This page checks the planet-satellite tides of `proteus.orbit.satellite`: the an
 | Test id | Reference | Source page | Scope |
 |---|---|---|---|
 | `tests/orbit/test_satellite.py::test_ps0d_bootstrap_am_uses_satellite_mass_not_planet_mass` | Korenaga (2023) Icarus 400, 115564, Eq. 60 (orbital component cross-checked against Touma and Wisdom 1994) | n/a | Pins the spin-plus-orbital decomposition on the present-day Earth-Moon configuration. Asserts sign and the 1e34-1e35 kg m^2 / s order of magnitude expected from Korenaga's Eq. 60. |
-| `tests/integration/test_slow_orbit_evection_ctl.py::test_resonance_capture_occurs_within_expected_time_window` | Rufu and Canup (2020) Figure 3 evection-resonance capture case, as reproduced in `src/proteus/orbit/evection_notebook.ipynb` / `plot_evection.png` (capture at t~2.4e4 yr) | n/a | Drives the real `evolve_orbit_satellite(model='ps1d_evec')` under a Mignard constant-time-lag tidal spectrum from the paper's Figure-3-calibrated initial conditions; asserts eccentricity crosses 0.1 within t between `2e4` and `4e4` yr. Compared against a real run reaching t=2.58e4 yr, e=0.111. |
+| `tests/integration/test_slow_orbit_evection_ctl.py::test_resonance_capture_occurs_within_expected_time_window` | Rufu and Canup (2020) Figure 3 evection-resonance capture case (capture at t~2.4e4 yr) | n/a | Drives the real `evolve_orbit_satellite(model='ps1d_evec')` under a Mignard constant-time-lag tidal spectrum from the paper's Figure-3-calibrated initial conditions; asserts eccentricity crosses 0.1 within t between `2e4` and `4e4` yr. Compared against a real run reaching t=2.58e4 yr, e=0.111. |
 | `tests/integration/test_slow_orbit_evection_ctl.py::test_peak_eccentricity_matches_reference_location` | Same source as above (peak e~0.72-0.724 at a'~11.89 R_earth, t~5.2e4 yr) | n/a | Same driver; asserts the eccentricity peak reaches >= 0.6 at a' between `10` and `13` R_earth. Compared against the run recorded in the test file, with its peak at e=0.744, a'=12.33 R_earth, t=5.18e4 yr; the peak a' is about 4% above the reference. The post-peak contraction phase (a' declining to ~10.2 R_earth by t=1e5 yr in the reference) was not reached in that run and is not asserted here. |
 
 ## Angular momentum of the Earth-Moon system
@@ -32,7 +32,7 @@ This page checks the planet-satellite tides of `proteus.orbit.satellite`: the an
 
 **What it tests.** The test runs `evolve_orbit_satellite` with `model='ps1d_evec'` and a constant-time-lag tidal response, from the initial conditions of the Figure 3 case of Rufu and Canup (2020). The eccentricity must cross 0.1 between 2e4 and 4e4 yr.
 
-**How we know the right answer.** Rufu and Canup (2020), Figure 3, as reproduced in `src/proteus/orbit/evection_notebook.ipynb`, captures at about 2.4e4 yr. A real run of the model crossed 0.1 at 2.58e4 yr.
+**How we know the right answer.** Rufu and Canup (2020), Figure 3, captures at about 2.4e4 yr. A real run of the model crossed 0.1 at 2.58e4 yr.
 
 **Why it matters.** The orbit wrapper calls `evolve_orbit_satellite` for the satellite models.
 
@@ -87,7 +87,7 @@ For Earth parameters, the two components evaluate to
 The orbital component agrees with Touma and Wisdom (1994), who report the
 present-day Earth-Moon orbital angular momentum as ~2.85e34 kg m^2 / s.
 The total system angular momentum (spin + orbital) is ~3.6e34 kg m^2 / s,
-which is what `plan_sat_am` holds through the simulation. The
+which is what `plan_sat_am` starts from; `ps1d` and `ps1d_evec` update it during the run. The
 reference-pinned test brackets the total in `[1e34, 1e35]` kg m^2 / s; a
 regression that swaps `M_sat` for `M_planet` in the orbital prefactor
 would land at ~2.4e36 kg m^2 / s, well outside the bracket.

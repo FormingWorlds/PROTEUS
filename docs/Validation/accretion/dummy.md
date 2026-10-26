@@ -13,7 +13,7 @@ gravitationally focused collision speed, and the momentum-conserving merger).
 
 | Test ID | Reference | What is pinned |
 |---|---|---|
-| `test_dummy::test_collision_velocity_never_falls_below_the_mutual_escape_velocity` | Analytical limit: the two-body mutual escape speed, $v_\mathrm{esc} = \sqrt{2G(M_1+M_2)/(R_1+R_2)}$ | The collision speed for a circular encounter, where the approach velocity vanishes and the focused speed collapses exactly onto the mutual escape speed. Pinned to `rel=1e-12` against the value computed from the masses and radii the record itself holds, with a discrimination guard showing that dropping the factor of two moves the result by 29%. |
+| `test_dummy::test_collision_velocity_never_falls_below_the_mutual_escape_velocity` | Analytical limit: the two-body mutual escape speed, $v_\mathrm{esc} = \sqrt{2G(M_1+M_2)/(R_1+R_2)}$ | The collision speed for a circular encounter, where the approach velocity vanishes and the focused speed collapses exactly onto the mutual escape speed. Pinned to `rel=1e-12` against the value computed from the masses and radii the record itself holds, with a check that dropping the factor of two moves the result by 29% (arithmetic on the test's own numbers). |
 | `test_dummy::test_a_circular_encounter_leaves_the_orbit_untouched` | Analytical limit: a perfect merger of two bodies sharing one circular orbit | The merged orbit for $e = 0$, where both bodies have identical velocities and the mass-weighted mean is that velocity, so the semi-major-axis ratio is exactly one and the eccentricity exactly zero. This is the limit that a sign error cannot reproduce. |
 | `test_dummy::test_merged_orbit_conserves_angular_momentum_of_the_merged_body` | Analytical identity: $h = \sqrt{\mu a (1 - e^2)} = r v_\theta$ | Internal consistency of the returned orbit. The semi-major axis and eccentricity are two numbers derived from one velocity vector, so they are only consistent if the angular momentum they imply equals the radius times the tangential velocity that produced them, pinned to `rel=1e-9`. |
 
@@ -37,15 +37,15 @@ gravitationally focused collision speed, and the momentum-conserving merger).
 
 ## A circular merger keeps the orbit
 
-**Why this check exists.** A merger sets the new orbit from the mass-weighted velocity of the 2 bodies. A sign error gives a wrong orbit without an error message.
+**Why this check exists.** A merger sets the new orbit from the mass-weighted velocity of the 2 bodies. A sign error in the tangential velocity gives a wrong orbit without an error message.
 
 **What it tests.** When 2 bodies share one circular orbit ($e = 0$) they have the same velocity, so the mass-weighted mean is that velocity. The merged orbit must keep its semi-major axis (ratio 1) and stay circular ($e = 0$).
 
 **How we know the right answer.** A perfect merger of 2 co-orbital bodies on a circular orbit is an analytical limit.
 
-**Why it matters.** `accretion/wrapper.py` adds the eccentricity change of each impact to the orbit of the planet, and applies the semi-major-axis ratio unless `orbit.instellation_method = 'inst'`.
+**Why it matters.** `accretion/wrapper.py` applies the eccentricity change and the semi-major-axis ratio of each impact to the orbit of the planet.
 
-**Known limit.** At $e = 0$ both bodies have the same velocity, so an inverted mass weighting gives the same orbit and passes this case; the angular-momentum case below catches it.
+**Known limit.** At $e = 0$ both bodies have the same velocity, so an inverted mass weighting, or a sign error in the radial velocity of the impactor, gives the same orbit and passes this case; the angular-momentum case below catches it.
 
 ??? info "Test details"
     - Reference: perfect merger of 2 bodies on one circular orbit (analytical limit).
@@ -55,7 +55,7 @@ gravitationally focused collision speed, and the momentum-conserving merger).
 
 ## Angular momentum of the merged orbit
 
-**Why this check exists.** The semi-major axis and the eccentricity are 2 numbers derived from one velocity vector. If one of them is computed wrongly, or the mass weighting is inverted, the orbit does not match the velocity that produced it, and nothing reports it.
+**Why this check exists.** The semi-major axis and the eccentricity are 2 numbers derived from one velocity vector. If the eccentricity is computed wrongly, or the mass weighting is inverted, the orbit does not match the velocity that produced it, and nothing reports it.
 
 **What it tests.** For one merger of a 1.0 and a 0.4 Earth-mass body at $e = 0.2$, the specific angular momentum of the returned orbit, $h = \sqrt{\mu a (1 - e^2)}$ with $\mu = G M_\star$, must equal the radius times the tangential velocity, $r v_\theta$.
 

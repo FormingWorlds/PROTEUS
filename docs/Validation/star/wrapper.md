@@ -35,7 +35,7 @@ This page checks 2 steps of the star wrapper, `src/proteus/star/wrapper.py`: the
 
 **How we know the right answer.** The orbit average of the inverse-square law is an analytical result. The time-averaged separation $a (1 + e^2 / 2)$, which `hf_row['separation']` holds, gives $1.32\, a$ at $e = 0.8$ instead. The 2 distances give fluxes that differ by a factor of 2.904, which the test checks.
 
-**Why it matters.** `update_instellation` uses this distance for both the bolometric and the XUV flux. The source docstring notes that the time-averaged separation remains the right quantity for the Roche-limit checks and the orbit plots, so both distances are in use.
+**Why it matters.** `update_instellation` uses this distance for the bolometric flux, and with the Spada tracks for the XUV flux too. The source docstring notes that the time-averaged separation remains the right quantity for the Roche-limit checks and the orbit plots, so both distances are in use.
 
 ??? info "Test details"
     - Reference: orbital average of the inverse-square law, <1/r^2> = 1 / (a^2 sqrt(1 - e^2)) (analytical limit).
