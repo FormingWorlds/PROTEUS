@@ -16,17 +16,18 @@ The setting `accretion.remelt` chooses $f$:
 ## Prerequisites
 
 - PROTEUS installed with `bash install.sh` (see the [installation guide](../How-to/installation.md)), with the Aragog interior.
-- `FWL_DATA` set. Step 3 runs with `--offline`, so download the interior data first, after Step 2: `proteus get interiordata --config-path output/tutorial_remelt/f03.toml`. Without `--offline`, `proteus start` fetches it.
+- `FWL_DATA` set (Step 3 downloads the interior data).
 - `tomlkit` for Step 2; it comes with `pip install -e ".[develop]"`.
 
-Run the Python blocks from the PROTEUS folder in one Python session, in the order of the steps; Steps 4 to 6 use `out`, `runs` and `tables` from the steps before.
+Run the Python blocks from the PROTEUS folder in one Python session, in the order of the steps.
+Steps 4 to 6 use `out`, `runs`, `tables` and `write_config` from the steps before, so keep the session open during Step 3.
 Run the commands of Step 3 in a shell.
 The 4 runs took about 23 minutes in total on a workstation.
 
 ## Step 1: write an impact timeline with a melt fraction
 
 The `timeline` accretion module reads its impacts from a file with one row per impact.
-The row below is one impact at 1000 yr: an impactor of 0.1 Earth masses hits a planet of 1 Earth mass.
+The row in the code block below is one impact at 1000 yr: an impactor of 0.1 Earth masses hits a planet of 1 Earth mass.
 The columns are, in order:
 
 | Column | Meaning | Unit |
@@ -40,8 +41,9 @@ The columns are, in order:
 | `a_before`, `a_after` | semi-major axis of the target before and of the merged body after | m |
 | `e_before`, `e_after` | eccentricity before and after | 1 |
 | `id_target`, `id_impactor` | body ids | |
-| `f_melt` | melt fraction of the impact, from 0 to 1; optional | 1 |
+| `f_melt` | melt fraction of the impact, from 0 to 1 | 1 |
 
+The `f_melt` column is optional in the file format, but a run with `accretion.remelt = "computed"` needs a value for every impact and stops at the start without it.
 The block writes 3 files: one with $f = 0.3$, one with $f = 0$ (the impact adds mass but re-melts nothing), and one with a blank `f_melt` cell.
 
 ```python
@@ -72,7 +74,7 @@ On our run this printed:
 ['timeline_blank.csv', 'timeline_f00.csv', 'timeline_f03.csv']
 ```
 
-A blank `f_melt` cell is not a valid melt fraction. PROTEUS refuses the file when it reads it, also when `accretion.remelt = "full"` ignores the values:
+A blank `f_melt` cell is not a valid melt fraction. PROTEUS refuses the file when it reads it, also with `accretion.remelt = "full"`, which ignores the values:
 
 ```python
 from proteus.accretion.common import read_timeline
@@ -91,13 +93,17 @@ impact 0 at t = 1.0000e+03 yr: f_melt must be finite and in [0, 1], got nan
 
 ## Step 2: write the configurations
 
-The configurations start from `input/dummy.toml` and change the interior to Aragog, the cell-based interior model ([model description](../Explanations/model.md)).
-`planet.temperature_mode = "isothermal"` with `tsurf_init = 4000` starts Aragog from one uniform entropy whose surface temperature is 4000 K; in our run the core-mantle boundary then started at 6150 K.
+The configurations start from `input/dummy.toml` and change the interior to Aragog ([model description](../Explanations/model.md)).
+Aragog divides the mantle into cells, thin spherical shells, each with its own entropy.
+The `dummy` interior, used in the fourth run, is a fast stand-in with one mantle temperature and no cells.
+On Aragog, `planet.temperature_mode = "isothermal"` with `tsurf_init = 4000` sets one uniform entropy, not one temperature.
+In our run the first helpfile row has 4000 K at the surface and 6197 K at the core-mantle boundary, and the mantle is fully molten.
 The run stops at 1500 yr, 500 yr after the impact.
-The time step lies between 10 and 100 yr, and the stop at solidification is off, so each run ends at 1500 yr.
-`melting_dir` names melting curves that the configuration check asks for with the dummy structure; with the PALEOS tables it does not change the solve, and the run says so in a warning.
-The two `zalmoxis` lookup sizes make the equation-of-state table 150 by 60 points, to keep the runs short.
-The block writes 3 Aragog runs (`full`, `computed` with $f = 0.3$, `computed` with $f = 0$) and 1 run on the dummy interior with $f = 0.3$.
+The stop at solidification is off, so each run ends at 1500 yr; `dt.minimum` and `dt.maximum` set the usual range of the time step.
+Aragog needs `interior_struct.melting_dir` in this setup.
+It does not use these melting curves here, because the run takes them from the PALEOS equation-of-state (EOS) tables, so the run prints a warning that you can ignore.
+`zalmoxis` is the structure module; `lookup_nP` and `lookup_nS` set the pressure and entropy points of its EOS table (150 by 60, to keep the runs short).
+The block writes 4 configuration files: `full`, `f03` (`computed` with $f = 0.3$), `f00` (`computed` with $f = 0$) and `dummy_f03` (the dummy interior with $f = 0.3$).
 The `full` run reads the $f = 0.3$ timeline but ignores its `f_melt` value.
 
 ```python
@@ -145,7 +151,13 @@ print(runs)
 
 ## Step 3: run the planet
 
-The 4 runs take about 23 minutes in total, so you can run them in the background.
+Download the interior data once; the command reads `f03.toml` from Step 2:
+
+```text
+proteus get interiordata --config-path output/tutorial_remelt/f03.toml
+```
+
+Then run the 4 configurations one after the other; together they take about 23 minutes.
 Each run writes one row per time step to `runtime_helpfile.csv` (the helpfile) in its output folder.
 
 ```console
@@ -156,19 +168,20 @@ proteus start --offline -c output/tutorial_remelt/dummy_f03.toml
 ```
 
 On a workstation the full re-melt took about half a minute, the runs with $f = 0.3$ and $f = 0$ about 9 and 14 minutes, and the dummy run a few seconds.
-Each Aragog run warns that an isothermal initial condition is not guaranteed to be fully molten; only `planet.temperature_mode = "liquidus_super"` is fully molten for any mantle.
-This tutorial uses `isothermal` to start from a mantle that is not fully molten.
-The runs with $f = 0.3$ and $f = 0$ also log a few `EntropySolver: integration failed` errors.
+Each Aragog run warns that an isothermal initial condition is not guaranteed to be fully molten.
+Only `planet.temperature_mode = "liquidus_super"` starts above the liquidus, the temperature above which the mantle is fully molten, for any mantle.
+Here the mantle starts fully molten (`Phi_global` 1) and crystallises a little before the impact (0.980 at 925 yr).
+The runs with $f = 0.3$ and $f = 0$ also log a few `EntropySolver: integration failed` errors; Aragog then retries the step with a shorter time step.
 On our run all 4 still ended with the status `Completed (target time)` in the file `status` of the output folder.
 
 ## Step 4: read the impact row
 
-The impact row is the row at 1000 yr.
+The impact row is the row at `Time` = 1000 yr.
 On that row:
 
 - `f_remelt` is the melt fraction that the impact applied, 0 on a row without an impact;
 - `step_dE_impact_J` is the heat that the re-melt added to the mantle [J];
-- `Phi_global` is the mean liquid fraction $\phi$ of the mantle cells, each cell counted by its mass; a cell has $\phi = 0$ when solid and $\phi = 1$ when fully molten;
+- `Phi_global` is the mean liquid fraction $\phi$ of the mantle cells, each cell counted by its mass. A cell has $\phi = 0$ when solid and $\phi = 1$ when fully molten. Other pages call `Phi_global` the global melt fraction; it is not the melt fraction $f$ of an impact;
 - `T_magma` is the temperature at the top of the mantle [K], and `T_cmb` the temperature at the core-mantle boundary [K].
 
 Each table shows the row before the impact, the impact row, the row after it and the last row.
@@ -234,7 +247,7 @@ fig.tight_layout()
 fig.savefig(os.path.join(out, 'remelt_runs.png'))
 ```
 
-Open `output/tutorial_remelt/remelt_runs.png`.
+The block draws the plot into `output/tutorial_remelt/remelt_runs.png`; the page does not show it.
 **How to read the plot.** The left panel shows `T_magma` and the right panel `Phi_global` against time, one line per run, and the dotted line marks the impact.
 The 3 lines agree before the impact.
 At the impact the full and the $f = 0.3$ runs jump to 4000 K, the full run also to `Phi_global` = 1, and the $f = 0$ run does not jump.
@@ -255,22 +268,26 @@ Phi_global at the impact: f = 0.3 0.976851, f = 0 0.977180
 ```
 
 At the impact, the run with $f = 0.3$ has the lower `Phi_global`, by 0.0003.
-The difference is small, but its sign is the opposite of what a hotter mantle suggests: the top is 492 K hotter (`T_magma` 4000 K against 3508 K), and the re-melt added $2.9 \times 10^{30}$ J.
+The difference is small, but its sign is the opposite of what a hotter mantle suggests.
+The top is 492 K hotter (`T_magma` 4000 K against 3508 K), and the re-melt added $2.9 \times 10^{30}$ J.
 The reason is how `Phi_global` counts the cells.
 Aragog takes the mass of each cell from the density at the current entropy, and hotter melt is less dense.
-In this planet the re-melted outer 30 % of the mantle mass is already fully molten before the impact, so the re-melt adds heat there but no melt.
+The re-melt counts the mass of each cell from the structure before the impact; `Phi_global` counts it from the density at the current entropy, which falls when a cell is heated.
+In this planet the re-melted outer 30 % of the mantle is already fully molten before the impact, so the re-melt adds heat there but no melt.
 These hotter molten cells count for less in the average.
 Some deeper cells are not fully molten ($\phi < 1$); they now count for more, and the mean drops.
 No melt is lost: a cell-by-cell check of this case found the re-melted cells fully molten in both runs.
 We expect a rise of `Phi_global` when the outer mantle is partly solid at the impact, because the re-melt then adds melt; this tutorial does not run that case.
-This planet was chosen nearly molten, so the effect of a partial re-melt shows in the heat and in `T_magma`, not in `Phi_global`.
+This mantle is 98 % molten before the impact (`Phi_global` 0.980 at 925 yr), so the effect of a partial re-melt shows in the heat and in `T_magma`, not in `Phi_global`.
 After the impact the re-melted planet stays hotter and more molten: at 1500 yr `Phi_global` is 0.964 against 0.952 (Step 4).
 
 ## Step 6: other interiors
 
 The dummy interior has one mantle temperature and no cells.
 At an impact it moves that temperature the share $f$ of the way from its value just before the impact to the initial temperature, so two impacts compound.
-The row before the impact in the table is at 924.9 yr; the mantle evolves further until the impact at 1000 yr, so the table does not show the value that the rule starts from.
+It never cools the mantle: a mantle hotter than the initial temperature keeps its temperature.
+The row before the impact in the table is at 924.9 yr.
+The mantle evolves further until the impact at 1000 yr, so the table does not show the value that the rule starts from.
 
 ```python
 t = tables['dummy_f03']

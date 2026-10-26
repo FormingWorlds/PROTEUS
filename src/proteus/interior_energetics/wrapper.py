@@ -2228,7 +2228,7 @@ def remelt_mantle(
     raised to the configured initial value (or kept when higher) together with
     every quantity derived from it. An accretion run on the boundary interior is
     refused at configuration load, so its branch serves only direct calls. Aragog
-    raises each cell to its entropy initial condition (or keeps a higher entropy) and
+    raises the melted cells to their entropy initial condition (or keeps a higher entropy) and
     carries that profile through the reset the coupling performs on the next step.
     The re-melt never cools the mantle.
     SPIDER keeps its state in a restart file written by the external binary and
