@@ -1,12 +1,30 @@
 # Validation: `src/proteus/outgas/binodal.py`
 
-This page tracks the `@pytest.mark.reference_pinned` tests that anchor the
-behaviour of `proteus.outgas.binodal` against the Rogers, Young &
-Schlichting (2025) H2-MgSiO3 miscibility model.
+## What this page checks
+
+This page checks how `proteus.outgas.binodal` splits H$_2$ between the atmosphere and the molten mantle with the miscibility model of Rogers, Young and Schlichting (2025). A weight $\sigma$ from that model sets the dissolved fraction: $\sigma$ of the H$_2$ goes into the melt and $1 - \sigma$ into the atmosphere. Validation means that a test runs the code on a case with a known right answer and checks the result within a stated tolerance. If this part of the code is wrong, the number of H$_2$ moles in each reservoir is wrong. The case below says why the check exists, what it tests, how we know the right answer and why it matters; a box "Test details" ends the case.
 
 | Test id | Reference | Scope |
 |---|---|---|
 | `tests/outgas/test_binodal.py::test_h2_mole_total_uses_h2_molecular_mass_per_rogers2025` | Rogers, Young & Schlichting (2025), MNRAS, 544, 3496 (doi:10.1093/mnras/staf1940) | Pins the molar-mass conversion the binodal partition applies to every H2 reservoir against an independent computation using `scipy.constants.Avogadro` and `M(H2) = 2.016e-3` kg/mol. The kg-closure `atm + liquid + solid = total` is structurally trivial for the `sigma * T + (1 - sigma) * T + 0` assignment, so the discriminating assertion is the molar-mass pin (`rel=1e-12`): a regression mistaking `M(H2)` for the atomic mass `M(H) = 1.008e-3` kg/mol would inflate the mole total by a factor of two and be caught. |
+
+## Moles of H2 from the molecular mass
+
+**Why this check exists.** The partition converts the mass of H$_2$ in each reservoir to moles. The atomic mass of H, 1.008e-3 kg/mol, in place of the molecular mass of H$_2$ doubles the mole total without an error message.
+
+**What it tests.** The test sets the miscibility weight to 0.4 and the H$_2$ budget to 5e17 kg. The mole total must equal the mass over $M(\mathrm{H_2})$ = 2.016e-3 kg/mol and the Avogadro constant, and the moles of the 3 reservoirs must sum to it. It also checks that the kg of the 3 reservoirs sum to the budget, that the reservoirs are not negative and that the solid holds no H$_2$.
+
+**How we know the right answer.** The test computes the mole total independently, with `scipy.constants.Avogadro` and $M(\mathrm{H_2})$ = 2.016e-3 kg/mol.
+
+**Why it matters.** With `outgas.h2_binodal = true` and Zalmoxis `global_miscibility` off, the outgassing wrapper applies this partition (`apply_binodal_h2`) in every outgassing step.
+
+**Known limit.** The kg closure, atmosphere + liquid + solid = total, holds by construction for any $\sigma$ in [0, 1], so only the mole conversion tests something. The weight $\sigma$ itself comes from `zalmoxis.binodal` and is replaced by 0.4 here. No test compares this partition with the binodal handling of atmodeller.
+
+??? info "Test details"
+    - Reference: Rogers, Young & Schlichting (2025), MNRAS, 544, 3496 (doi:10.1093/mnras/staf1940); mole conversion with `scipy.constants.Avogadro` and M(H2) = 2.016e-3 kg/mol.
+    - Tolerance: relative 1e-12 on the mole total and on both closures.
+    - Test id: `tests/outgas/test_binodal.py::test_h2_mole_total_uses_h2_molecular_mass_per_rogers2025`
+    - Command: `pytest tests/outgas/test_binodal.py::test_h2_mole_total_uses_h2_molecular_mass_per_rogers2025`
 
 ## Re-derivation note
 
@@ -27,9 +45,3 @@ check is instead the molar-mass conversion: the reference-pinned test patches
 `rogers2025_suppression_weight` to a specific value (0.4), then verifies that
 `H2_mol_total = H2_kg_total / M(H2) / N_av` uses the molecular mass
 `M(H2) = 2.016e-3` kg/mol rather than the atomic mass `M(H)`.
-
-## Pending verification
-
-The cross-implementation comparison against atmodeller's binodal handling
-is a separate work item, tracked under the CALLIOPE-vs-atmodeller science
-verification handover.
