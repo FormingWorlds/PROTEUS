@@ -20,11 +20,16 @@ This page checks the planet-satellite tides of `proteus.orbit.satellite`: the an
 
 **Why it matters.** `plan_sat_am` is the total angular momentum from which the satellite model starts.
 
+![Angular momentum of the Earth-Moon system from the ps0d bootstrap and from Eq. 60](../../assets/validation/orbit_satellite_earth_moon_am.svg#only-light){ width="80%" }
+![Angular momentum of the Earth-Moon system from the ps0d bootstrap and from Eq. 60](../../assets/validation/orbit_satellite_earth_moon_am_dark.svg#only-dark){ width="80%" }
+
+**How to read the plot.** The y-axis is the total angular momentum of the present Earth-Moon system on a log scale. The filled circle is the asserted `ps0d` bootstrap value and the hollow square Eq. 60 of Korenaga (2023) with the satellite mass in the orbital term. The cross is the same sum with the planet mass in the orbital term, which the test rejects, and the dashed line the spin term $I\Omega$ alone (context). The grey band is the asserted range $10^{34}$ to $10^{35}$ kg m$^2$/s. A pass means that the circle sits in the square inside the band, and the cross far above it.
+
 ??? info "Test details"
     - Reference: Korenaga (2023) Icarus 400, 115564, Eq. 60 (orbital component cross-checked against Touma and Wisdom 1994).
     - Tolerance: relative 1e-6 against Eq. 60; more than 50 times from the planet-mass version; range 1e34 to 1e35 kg m^2/s.
     - Test id: `tests/orbit/test_satellite.py::test_ps0d_bootstrap_am_uses_satellite_mass_not_planet_mass`
-    - Command: `pytest tests/orbit/test_satellite.py::test_ps0d_bootstrap_am_uses_satellite_mass_not_planet_mass`
+    - Command: `pytest -m reference_pinned tests/orbit/test_satellite.py --validation-plots`
 
 ## Capture into the evection resonance
 

@@ -103,7 +103,7 @@ def _grid_reference(phi: np.ndarray, buried: np.ndarray, n_bins: int = 200_000):
 
 @pytest.mark.reference_pinned
 @pytest.mark.physics_invariant
-def test_the_ledger_matches_a_fine_grid_over_a_random_history():
+def test_the_ledger_matches_a_fine_grid_over_a_random_history(validation_plot):
     """Cross-implementation check: a seeded history of 400 steps that mostly
     freeze and sometimes remelt, replayed by the layer ledger and by an
     independent fine-grid ledger with 2e5 bins. Both must hold the same mass
@@ -122,12 +122,44 @@ def test_the_ledger_matches_a_fine_grid_over_a_random_history():
     assert np.diff(phi).max() > 0.0  # the history does remelt
 
     # Discretisation error of the grid: at most one bin of the densest layer.
-    for cut in (phi[-1] + 0.01, 0.3, 0.6, 1.0):
+    cuts, ledger_vals = (phi[-1] + 0.01, 0.3, 0.6, 1.0), []
+    for cut in cuts:
         copy = [Layer(layer.lo, layer.hi, layer.mass.copy()) for layer in layers]
         from_ledger = remelt_to(copy, cut)[0] if copy else 0.0
         below = np.clip(np.minimum(edges[1:], cut) - edges[:-1], 0.0, None) / np.diff(edges)
         assert from_ledger == pytest.approx(float(np.sum(held * below)), rel=1e-3)
+        ledger_vals.append(from_ledger)
     assert ledger_total(layers, 1)[0] == pytest.approx(held.sum(), rel=1e-9)
     # Discrimination: the history buried more than the ledger still holds,
     # so the remelts did return mass.
     assert ledger_total(layers, 1)[0] < 0.9 * buried.sum()
+
+    def figure():
+        import matplotlib.pyplot as plt
+
+        x = np.linspace(0.0, 1.0, 101)
+        grid = [
+            np.sum(
+                held
+                * np.clip(np.minimum(edges[1:], c) - edges[:-1], 0.0, None)
+                / np.diff(edges)
+            )
+            for c in x
+        ]
+        fig, ax = plt.subplots(figsize=(6, 4))
+        ax.plot(x, np.array(grid) / 1e18, label='Fine-grid ledger, 2e5 bins')
+        ax.axhline(buried.sum() / 1e18, ls='--', label='Total buried over the history')
+        ax.plot(
+            cuts,
+            np.array(ledger_vals) / 1e18,
+            'o',
+            zorder=3,
+            label='Layer ledger at the 4 cuts',
+        )
+        ax.set_xlabel('Melt fraction of the remelt')
+        ax.set_ylabel('Mass held below it [10$^{18}$ kg]')
+        ax.legend(fontsize=8)
+        fig.tight_layout()
+        return fig
+
+    validation_plot(figure, 'outgas_burial_ledger_fine_grid')

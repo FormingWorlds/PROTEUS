@@ -18,11 +18,16 @@ This page checks how `proteus.orbit.obliqua` looks up the tidal Love number of a
 
 **Why it matters.** With `orbit.planet_satellite_model` set to `ps1d` or `ps1d_evec`, the orbit wrapper calls `LN_from_lookup` to get the Love numbers of the satellite from its lookup table.
 
+![Love number of the table node and of the query at the negative frequency in the complex plane](../../assets/validation/orbit_obliqua_love_number_symmetry.svg#only-light){ width="80%" }
+![Love number of the table node and of the query at the negative frequency in the complex plane](../../assets/validation/orbit_obliqua_love_number_symmetry_dark.svg#only-dark){ width="80%" }
+
+**How to read the plot.** The plot is the complex plane of the Love number $k$. The cross is the table node $0.02 - 0.03i$ at $\sigma = +2\times10^{-6}$ (context) and the hollow square its complex conjugate, the asserted expected value. The filled circle is the asserted code value at $\sigma = -2\times10^{-6}$. The dashed line is the real axis, about which the conjugate mirrors the node. A pass means that the circle sits in the square, above the axis.
+
 ??? info "Test details"
     - Reference: reality condition of a causal linear system, $k(-\sigma) = k^*(\sigma)$ (analytical limit).
     - Tolerance: relative 1e-9 on the complex value; imaginary part above 0.
     - Test id: `tests/orbit/test_obliqua.py::test_ln_from_lookup_enforces_love_number_reality_symmetry`
-    - Command: `pytest tests/orbit/test_obliqua.py::test_ln_from_lookup_enforces_love_number_reality_symmetry`
+    - Command: `pytest -m reference_pinned tests/orbit/test_obliqua.py --validation-plots`
 
 ## Re-derivation note
 
