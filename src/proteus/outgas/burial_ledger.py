@@ -20,7 +20,15 @@ import numpy as np
 
 @dataclass
 class Layer:
-    """Mass buried while the melt fraction fell from ``hi`` to ``lo``."""
+    """Mass buried while the melt fraction fell from ``hi`` to ``lo``.
+
+    Attributes
+    ----------
+    lo, hi : float
+        Global melt fraction at the end and at the start of the burial [1].
+    mass : ndarray
+        Mass buried per trapped column [kg].
+    """
 
     lo: float
     hi: float
@@ -32,6 +40,18 @@ def remelt_to(layers: list[Layer], phi: float) -> np.ndarray:
 
     ``layers`` is ordered as built, the most recent last, which is also the
     lowest in melt fraction. It is changed in place.
+
+    Parameters
+    ----------
+    layers : list of Layer
+        The burial layers, most recent last.
+    phi : float
+        Global melt fraction the mantle remelts to [1].
+
+    Returns
+    -------
+    ndarray
+        Mass released per trapped column [kg].
     """
     released = np.zeros_like(layers[0].mass) if layers else np.zeros(0)
     while layers and layers[-1].lo < phi:

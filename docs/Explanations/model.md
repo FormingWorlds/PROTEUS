@@ -120,6 +120,8 @@ When no H, C, N or S inventory is above `outgas.mass_thresh` and no noble gas re
 
 Config section: `[outgas]`. Reference: [Escape and outgassing configuration](../Reference/config/escape_outgas.md).
 
+For the order of the volatile steps in each iteration, the species-to-element split, the H$_2$ binodal, rock vapour and the trapping of volatiles in the freezing mantle, see [Outgassing, rock vapour and volatile trapping](outgas.md).
+
 ### Volatile outgassing and rock vapourisation are combined
 
 With `outgas.vapourise = true` the following steps run sequentially, at each PROTEUS iteration:
