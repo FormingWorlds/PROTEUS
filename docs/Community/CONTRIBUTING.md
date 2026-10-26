@@ -212,7 +212,7 @@ Use this order for every case. The bold lead-ins are always the same, so that a 
 ![What the plot shows](../assets/validation/<name>.svg#only-light){ width="80%" }
 ![What the plot shows](../assets/validation/<name>_dark.svg#only-dark){ width="80%" }
 
-**How to read the plot.** 1 to 3 sentences: the axes, what the lines or points are, and what a pass looks like ("the points lie on the line").
+**How to read the plot.** A short note, at most about 6 sentences of at most 25 words: the axes with units, what the lines and marks are, which marks the test asserts and which are context, and what a pass looks like ("the points lie on the line"). Define each symbol at first use; name a tolerance that is too small to see instead of drawing it.
 
 ??? info "Test details"
     - Reference: ...
