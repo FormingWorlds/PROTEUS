@@ -2235,8 +2235,9 @@ def remelt_mantle(
     configuration load, and this backstop refuses it at the first impact.
 
     Every error of the backend re-melt, at any f, and an f that is not a valid fraction
-    (for any module) write interior status 21 before the error reaches the caller: no
-    caller of the impact writes a status, and a run that stops without one reads as running.
+    (for any module) write interior status 21 before the error reaches the caller, so a run
+    that stops here does not read as running; SPIDER and an unknown module write status 20.
+    For missing reference data, ``Proteus.start`` writes status 20 over the 21.
 
     Parameters
     ----------

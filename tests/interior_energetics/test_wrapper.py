@@ -6903,13 +6903,17 @@ def test_a_core_module_remelt_without_a_core_temperature_stops_the_run():
 
 
 @pytest.mark.unit
-def test_a_non_finite_core_temperature_at_the_remelt_writes_the_interior_status():
-    """A core or basal temperature that is not finite at the re-melt stops the run with
-    the interior error status 21, and the error reaches the caller."""
+@pytest.mark.parametrize('f', [1.0, 0.3])
+def test_a_non_finite_core_temperature_at_the_remelt_writes_the_interior_status_once(f):
+    """A core or basal temperature that is not finite at the re-melt, full or partial, stops
+    the run with interior status 21 written once, and the error reaches the caller."""
     status_calls = []
     with pytest.raises(ValueError, match='not finite'):
         _remelt_core_module(
-            ValueError('core or basal temperature is not finite: nan, 6089.0'), status_calls
+            ValueError('core or basal temperature is not finite: nan, 6089.0'),
+            status_calls,
+            n=1,
+            f=f,
         )
     assert status_calls == [21]
 
@@ -8198,10 +8202,11 @@ def test_a_partial_remelt_without_an_end_state_is_refused():
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize('module', ['dummy', 'aragog', 'spider'])
 @pytest.mark.parametrize('bad', [np.nan, -0.1, 1.1, np.inf], ids=repr)
-def test_remelt_refuses_a_fraction_outside_the_unit_interval(bad):
+def test_remelt_refuses_a_fraction_outside_the_unit_interval(bad, module):
     """remelt_mantle refuses f outside [0, 1] before the interior changes, and writes
-    interior status 21."""
+    interior status 21 for every module."""
     hf_row = _remelt_hf_row()
     interior_o = SimpleNamespace(impact_reset=False)
     status = MagicMock()
@@ -8209,9 +8214,7 @@ def test_remelt_refuses_a_fraction_outside_the_unit_interval(bad):
         patch('proteus.interior_energetics.wrapper.UpdateStatusfile', new=status),
         pytest.raises(ValueError, match='melt fraction'),
     ):
-        remelt_mantle(
-            {'output': '/tmp/out'}, _remelt_config('dummy'), hf_row, interior_o, f=bad
-        )
+        remelt_mantle({'output': '/tmp/out'}, _remelt_config(module), hf_row, interior_o, f=bad)
     assert [c.args[1] for c in status.call_args_list] == [21]
     np.testing.assert_equal(hf_row['T_magma'], 2100.0)
     assert interior_o.impact_reset is False
@@ -8396,7 +8399,9 @@ def test_any_error_of_the_partial_profile_writes_the_interior_status(monkeypatch
     'method, f',
     [('set_initial_entropy', 0.3), ('_step_heat_content', 0.3), ('_step_heat_content', 1.0)],
 )
-def test_an_error_after_the_partial_profile_writes_the_interior_status(monkeypatch, method, f):
+def test_an_error_setting_or_booking_the_remelted_profile_writes_the_interior_status(
+    monkeypatch, method, f
+):
     """Setting the re-melted profile and booking its heat are part of the re-melt: an error
     in either writes interior status 21 before it reaches the caller, also at f = 1."""
 
@@ -8444,6 +8449,7 @@ def test_a_scalar_remelt_without_a_finite_magma_temperature_writes_the_interior_
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize('f_remelt', [0.3, 1.0])
 @pytest.mark.parametrize(
     'path',
     [
@@ -8455,10 +8461,11 @@ def test_a_scalar_remelt_without_a_finite_magma_temperature_writes_the_interior_
         'nan_f',
     ],
 )
-def test_every_error_of_a_partial_remelt_writes_the_interior_status_once(path):
-    """At f = 0.3 an error on any step of the re-melt writes interior status 21 once and
-    reaches the caller unchanged: the Aragog set-up, table refresh and molten-state
-    evaluation, a missing solver, the scalar melt state and a fraction that is not a number."""
+def test_every_error_of_a_remelt_writes_the_interior_status_once(path, f_remelt):
+    """At f = 0.3 and at f = 1 an error on any step of the re-melt writes interior status
+    21 once and reaches the caller unchanged: the Aragog set-up, table refresh and
+    molten-state evaluation, a missing solver, the scalar melt state and a fraction that is
+    not a number."""
     a, w = (
         'proteus.interior_energetics.aragog.AragogRunner.',
         'proteus.interior_energetics.wrapper.',
@@ -8468,7 +8475,7 @@ def test_every_error_of_a_partial_remelt_writes_the_interior_status_once(path):
         'refresh_entropy_eos': a + '_refresh_entropy_eos',
         'molten_state': w + 'evaluate_molten_state',
     }
-    boom, status, f = RuntimeError('boom'), MagicMock(), 0.3
+    boom, status, f = RuntimeError('boom'), MagicMock(), f_remelt
     config, row, expected = _remelt_config('aragog'), {}, RuntimeError
     interior_o = SimpleNamespace(
         aragog_solver=_FakeMeshAragogSolver(cooled_profile=np.full(6, 2400.0)),
@@ -8494,42 +8501,34 @@ def test_every_error_of_a_partial_remelt_writes_the_interior_status_once(path):
     ):
         remelt_mantle({'output': '/tmp/out'}, config, row, interior_o, f=f)
     assert [c.args[1] for c in status.call_args_list] == [21]
-    detail = {
-        'no_solver': 'not yet initialised',
-        'melt_state': "'M_int'",
-        'nan_f': 'melt fraction',
-    }
-    assert err.value is boom if path in raising else detail[path] in str(err.value)
-
-
-@pytest.mark.unit
-def test_a_partial_core_module_remelt_error_writes_the_interior_status_once():
-    """A core_module ValueError at f = 0.3 writes interior status 21 once, not once for the
-    core and once for the partial re-melt, and reaches the caller."""
-    status_calls = []
-    with pytest.raises(ValueError, match='not finite'):
-        _remelt_core_module(
-            ValueError('core temperature is not finite'), status_calls, n=1, f=0.3
-        )
-    assert status_calls == [21]
+    if path in raising:
+        assert err.value is boom
+    else:
+        detail = {
+            'no_solver': 'not yet initialised',
+            'melt_state': 'M_int',
+            'nan_f': 'fraction',
+        }
+        assert type(err.value) is expected and detail[path] in str(err.value)
 
 
 @pytest.mark.unit
 @pytest.mark.parametrize('module', ['dummy', 'boundary'])
 def test_a_full_scalar_remelt_error_writes_the_interior_status(module):
-    """At f = 1 an error of a scalar backend after its temperature lift (a row without the
-    planet mass) writes interior status 21 and reaches the caller unchanged."""
-    row = _remelt_hf_row()
-    del row['M_int']
-    status = MagicMock()
+    """At f = 1 an error of a scalar backend after its temperature lift writes interior
+    status 21 and reaches the caller unchanged."""
+    boom, status = RuntimeError('melt state failed'), MagicMock()
     with (
+        patch(
+            'proteus.interior_energetics.dummy.melt_state_from_temperature', side_effect=boom
+        ),
         patch('proteus.interior_energetics.wrapper.UpdateStatusfile', new=status),
-        pytest.raises(KeyError) as err,
+        pytest.raises(RuntimeError) as err,
     ):
         remelt_mantle(
-            {'output': '/tmp/out'}, _remelt_config(module), row, SimpleNamespace(), f=1.0
+            {'output': '/tmp/out'}, _remelt_config(module), _remelt_hf_row(), SimpleNamespace()
         )
-    assert err.value.args == ('M_int',)
+    assert err.value is boom
     assert [c.args[1] for c in status.call_args_list] == [21]
 
 
