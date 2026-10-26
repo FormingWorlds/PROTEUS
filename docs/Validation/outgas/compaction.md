@@ -1,7 +1,8 @@
 # Validation: `src/proteus/outgas/compaction.py`
 
-This page tracks the `@pytest.mark.reference_pinned` tests that anchor
-`proteus.outgas.compaction`, the melt drainage of the front scheme.
+## What this page checks
+
+This page checks the melt drainage of the front scheme, `proteus.outgas.compaction`. As the freezing front passes through the mush, melt drains out of it before the solid closes; the melt that stays behind traps volatiles. Validation means that a test runs the code on a case with a known right answer and checks the result within a stated tolerance. If this part of the code is wrong, the trapped melt fraction, and with it the volatiles held in the solid, is wrong. Each case below says why the check exists, what it tests, how we know the right answer and why it matters; a box "Test details" ends each case. The porosity $\phi$ is the melt volume fraction.
 
 | Test id | Reference | Scope | Last compared |
 |---|---|---|---|
@@ -9,6 +10,70 @@ This page tracks the `@pytest.mark.reference_pinned` tests that anchor
 | `tests/integration/test_slow_aragog_separation_buoyancy.py::test_the_configured_buoyancy_reaches_the_built_solver` | Wiring check against the interior solver: `relative_velocity` of the evaluator of the aragog solver PROTEUS builds (fwl-aragog 26.10.22), on the tables of a short run | Slow tier. At unit drag, `darcy_velocity` at the evaluator's own porosity equals the evaluator's separation velocity to `rtol=1e-12` on every mush node with a positive contrast, in each mode, so the drainage and the solver share one mobility law. | 2026-10-24 |
 | `tests/outgas/test_compaction.py::test_the_lever_rule_porosity_is_the_solvers_where_the_melt_is_lighter` | Cross-implementation check against the interior solver's porosity, `aragog.eos.entropy_phase.EntropyPhaseEvaluator._porosity_from` (fwl-aragog 26.10.03), which it writes as `porosity_b` | On a two-phase mush with the melt lighter, the lever rule the trapping step applies to the solver's basic-node densities equals the solver's porosity to `atol=2e-5`, the soft clip of `2.5e-7 / phi` at each edge. Where the melt is the denser phase the solver's porosity reads below 1e-3, as its docstring warns, while the lever rule returns the melt volume, and a fully molten node takes its melt fraction, 1, where the lever rule on its single-phase density gives 0.95. | 2026-10-24 |
 | `tests/outgas/test_compaction.py::test_drainage_matches_an_independent_quadrature_over_five_martian_fronts` | Analytic limits and a reference calculation: the closed-form timescales `tau_D = L eta_m / (drho g F(phi))`, with `F` the solver's mobility under the default `separation_buoyancy = 'mixture'`, `(5/7) (1 - phi) a^2 phi^4.5` in the Rumpf-Gupte regime, and `tau_s = mu_s / (drho g L)`; the separable form of the drainage equation, `t_res = int_F^phi_c max(tau_D, tau_s) dphi / phi`, evaluated by quadrature; and its series solution in the Rumpf-Gupte regime, `H(phi) = sum_k phi^(k - 4.5) / (k - 4.5)` falling by `C t_res / L` | A 60 km martian front entered at `phi_c = 0.3` (`drho = 330` kg/m3, `g = 3.711` m/s2), crossed at 70 and 5 cm/yr, for five sets of grain size, melt viscosity and mush viscosity. The model under the default buoyancy matches the quadrature to `rel=1e-6` in all ten trapped fractions and the series to `1e-5` in the three Rumpf-Gupte cases; the fractions are pinned at `rel=1e-4` (0.27165 and 0.18134 down to 0.0094342 and 0.0025379) and the timescale ratios likewise (`tau_D / t_res` from 8.1653 to 8.1653e-5, `tau_s / t_res` 0.50314, 50.314 and 0.0050314). Under `separation_buoyancy = 'solid'` the percolation-limited fractions drain further, by more than 0.007, and the drainage integral matches the quadrature under that buoyancy too. | 2026-10-24 |
+
+## Drainage velocity in each regime
+
+**Why this check exists.** The drainage velocity follows a different law in each porosity regime, with a factor $1 - \phi$ that depends on the buoyancy setting. A missing or extra $1 - \phi$ on one branch, or a wrong regime law, gives a wrong velocity without an error message.
+
+**What it tests.** `darcy_velocity` at 9 porosities in the Blake-Kozeny-Carman (0.005 to 0.02), Rumpf-Gupte (0.2 to 0.5) and Stokes (0.95, 0.99) regimes, for grain sizes of 0.1, 1 and 10 mm, under each `separation_buoyancy`. Each value must match the closed form of its regime. The 2 buoyancy settings must differ by $1 - \phi$ from 0.2 to 0.5 and agree in the Stokes regime.
+
+**How we know the right answer.** Bower, Sanan and Wolf (2018), Eqs. 12 and 13a-c, give the closed forms; McKenzie (1984), Eq. 3.7, gives the factor $1 - \phi$ against the mixture.
+
+**Why it matters.** `drainage_integral` uses this velocity to set how much melt drains from the front.
+
+??? info "Test details"
+    - Reference: Bower, Sanan & Wolf (2018), Eqs. 12 and 13a-c; McKenzie (1984), Eq. 3.7, p. 721.
+    - Tolerance: at each point twice the weight that the blends of the solver law give the other branches, from 7.5e-4 at 0.005 to 5e-7 at 0.3; relative 1e-3 on the factor $1 - \phi$; relative 3e-3 in the Stokes regime.
+    - Test id: `tests/outgas/test_compaction.py::test_darcy_velocity_follows_the_closed_form_mobility_in_every_regime`
+    - Command: `pytest -m reference_pinned tests/outgas/test_compaction.py --validation-plots`
+
+## The same mobility law in the interior solver
+
+**Why this check exists.** The drainage and the interior solver must use one mobility law. A buoyancy setting that does not reach the solver makes the 2 parts disagree without an error message.
+
+**What it tests.** In a short run, at unit drag, `darcy_velocity` at the porosity of each mush node with a positive density contrast must equal the separation velocity of the aragog solver that PROTEUS builds, in each buoyancy mode.
+
+**How we know the right answer.** The relative velocity of the evaluator of the aragog solver (fwl-aragog 26.10.22), a second implementation of the same law.
+
+**Why it matters.** It checks that the configured buoyancy reaches the interior solver.
+
+??? info "Test details"
+    - Reference: `relative_velocity` of the evaluator of the aragog solver PROTEUS builds (fwl-aragog 26.10.22), on the tables of a short run.
+    - Tolerance: relative 1e-12 on every mush node with a positive contrast.
+    - Test id: `tests/integration/test_slow_aragog_separation_buoyancy.py::test_the_configured_buoyancy_reaches_the_built_solver`
+    - Command: `pytest tests/integration/test_slow_aragog_separation_buoyancy.py::test_the_configured_buoyancy_reaches_the_built_solver` (slow tier)
+
+## Porosity from the lever rule
+
+**Why this check exists.** The trapping step computes the porosity from the densities of the solid, the melt and the mixture with the lever rule. A wrong rule gives a porosity that differs from the one the interior solver uses, without an error message.
+
+**What it tests.** On a 2-phase mush with the melt lighter than the solid, the lever-rule porosity must equal the porosity of the interior solver. Where the melt is the denser phase the solver's porosity reads below 1e-3 while the lever rule returns the melt volume, and a fully molten node takes its melt fraction, 1.
+
+**How we know the right answer.** The porosity of the aragog solver (`EntropyPhaseEvaluator._porosity_from`, fwl-aragog 26.10.03), a second implementation.
+
+**Why it matters.** The trapping step applies the lever rule to the densities of the interior solver.
+
+??? info "Test details"
+    - Reference: `aragog.eos.entropy_phase.EntropyPhaseEvaluator._porosity_from` (fwl-aragog 26.10.03), written as `porosity_b`.
+    - Tolerance: absolute 2e-5, the soft clip of `2.5e-7 / phi` at each edge.
+    - Test id: `tests/outgas/test_compaction.py::test_the_lever_rule_porosity_is_the_solvers_where_the_melt_is_lighter`
+    - Command: `pytest tests/outgas/test_compaction.py::test_the_lever_rule_porosity_is_the_solvers_where_the_melt_is_lighter`
+
+## Drainage over 5 martian fronts
+
+**Why this check exists.** The trapped melt fraction comes from integrating the drainage over the time the front takes to pass. A wrong timescale or a wrong integration gives a wrong trapped fraction without an error message.
+
+**What it tests.** A 60 km martian front entered at a porosity of 0.3, crossed at 70 and 5 cm/yr, for 5 sets of grain size, melt viscosity and mush viscosity. The model must match a quadrature of the drainage equation in all 10 trapped fractions, and its series solution in the 3 Rumpf-Gupte cases. It also checks the closed-form timescales and the stored fractions and timescale ratios.
+
+**How we know the right answer.** The closed-form timescales $\tau_D$ and $\tau_s$, a quadrature of the separable drainage equation and its series solution (see the table above for the formulas).
+
+**Why it matters.** The trapping step takes its trapped melt fraction from this drainage.
+
+??? info "Test details"
+    - Reference: closed-form timescales, the quadrature of the drainage equation and its Rumpf-Gupte series solution.
+    - Tolerance: relative 1e-6 against the quadrature; relative 1e-5 against the series; relative 1e-4 on the stored fractions and ratios.
+    - Test id: `tests/outgas/test_compaction.py::test_drainage_matches_an_independent_quadrature_over_five_martian_fronts`
+    - Command: `pytest tests/outgas/test_compaction.py::test_drainage_matches_an_independent_quadrature_over_five_martian_fronts`
 
 ## Drainage velocity against the closed forms
 

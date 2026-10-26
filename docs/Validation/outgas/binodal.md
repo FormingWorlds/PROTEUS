@@ -18,7 +18,7 @@ This page checks how `proteus.outgas.binodal` splits H$_2$ between the atmospher
 
 **Why it matters.** With `outgas.h2_binodal = true` and Zalmoxis `global_miscibility` off, the outgassing wrapper applies this partition (`apply_binodal_h2`) in every outgassing step.
 
-**Known limit.** The kg closure, atmosphere + liquid + solid = total, holds by construction for any $\sigma$ in [0, 1], so only the mole conversion tests something. The weight $\sigma$ itself comes from `zalmoxis.binodal` and is replaced by 0.4 here. No test compares this partition with the binodal handling of atmodeller.
+**Known limit.** The kg closure, atmosphere + liquid + solid = total, holds by construction for any $\sigma$ between 0 and 1, so only the mole conversion tests something. The weight $\sigma$ itself comes from `zalmoxis.binodal` and is replaced by 0.4 here. No test compares this partition with the binodal handling of atmodeller.
 
 ??? info "Test details"
     - Reference: Rogers, Young & Schlichting (2025), MNRAS, 544, 3496 (doi:10.1093/mnras/staf1940); mole conversion with `scipy.constants.Avogadro` and M(H2) = 2.016e-3 kg/mol.

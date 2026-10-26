@@ -70,7 +70,7 @@ takes positive `Imk2` from callers (`run_dummy_tides`, `run_lovepy`),
 so the formula evaluated with positive `Imk2` returns positive `de/dt`
 and expands the orbit instead of circularizing it. This is documented
 in the source docstring as a known science item; the test pins the
-algebra under the source convention and does NOT certify the convention
+algebra under the source convention and does not show that the convention
 matches the paper. A sign correction must change every `Imk2` producer in the
 ecosystem together.
 

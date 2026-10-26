@@ -1,6 +1,10 @@
 # Validation: `src/proteus/orbit/parameterized.py`
 
-This page tracks the `@pytest.mark.reference_pinned` tests that anchor the
+## What this page checks
+
+This page checks the prescribed migration laws of `proteus.orbit.parameterized`, which move the orbit of the planet along a fixed law in time. The sigmoid law moves the semi-major axis along a smooth S curve; the high-eccentricity law circularises an eccentric orbit. Validation means that a test runs the code on a case with a known right answer and checks the result within a stated tolerance. If this part of the code is wrong, the orbit, and with it the stellar flux at the planet, follows the wrong path. Each case below says why the check exists, what it tests, how we know the right answer and why it matters; a box "Test details" ends each case.
+
+The `@pytest.mark.reference_pinned` tests anchor the
 prescribed migration laws in `proteus.orbit.parameterized`. The module is
 closed-form, so the sigmoid anchor is an analytical limit and the
 high-eccentricity anchor is the published law of Postolec et al. (2026):
@@ -12,6 +16,54 @@ mathematics the laws are defined by.
 | `tests/orbit/test_parameterized.py::test_sigmoid_matches_the_cubic_smoothstep_across_the_window` | Analytical limit: the cubic Hermite interpolant with zero slope at both ends, `S(u) = 3u^2 - 2u^3`, at `u = 1/4`, `1/2` and `3/4` | Standard | Pins `sigmoid_migration` across its migration window. Separates the cubic from a linear ramp and from the quintic smootherstep, and catches a swapped `sma_init`/`sma_final`. |
 | `tests/orbit/test_parameterized.py::test_high_ecc_energy_rate_at_the_epoch_is_twice_the_energy_change_over_tau` | Analytical limit: `dE/dt` of `E = -G M m (1 - e_mig^2 x) / (2 a_f)` at `x = 1` equals `2 dE / tau` | Derived below | Pins `orbital_energy_rate` at the high-eccentricity epoch for the TOI-561 b setup (`dE = -2.86e35 J`, `-1.8e21 W` at `tau = 1e7` yr), with guards on the factor 2, the sign and the unit. Last compared 2026-10-02. |
 | `tests/orbit/test_parameterized.py::test_high_ecc_circularises_as_a_pure_exponential_in_eccentricity` | Postolec et al. (2026), submitted to ApJ, arXiv:2609.03144 (doi:10.48550/arXiv.2609.03144) | Sect. 2.2, Eqs. 1-4 | Pins `e(t) = e_mig exp(-(t - t_mig) / tau)`, a form the source never evaluates, plus the one-tau e-folding. The semi-latus-rectum equality `a (1 - e^2) = a_f` is kept as a sanity check only: it is an identity of the implementation, not an emergent conservation law. Also asserts the pericentre `a (1 - e)` is not conserved. |
+
+## Sigmoid migration
+
+**Why this check exists.** The sigmoid law must follow a cubic S curve with zero slope at both ends of its window. A linear ramp, a different smooth curve, or interchanged start and end distances gives a wrong orbit without an error message.
+
+**What it tests.** `sigmoid_migration` with a start distance of 2.0 AU and an end distance of 0.8 AU must give 1.8125, 1.4 and 0.9875 AU at a quarter, a half and three quarters of the window. The test checks that a linear ramp (1.7 AU at the quarter point) and the quintic smootherstep (1.8757 AU) are clearly away, that the curve is symmetric about the centre of the window, and that the quarter point lies between the 2 distances.
+
+**How we know the right answer.** The cubic $S(u) = 3u^2 - 2u^3$ is the unique cubic with $S(0) = 0$, $S(1) = 1$ and zero slope at both ends (see the derivation below).
+
+**Why it matters.** The sigmoid law gives the orbit of a run that uses it, and so the stellar flux at the planet over time.
+
+??? info "Test details"
+    - Reference: the cubic Hermite interpolant with zero slope at both ends, `S(u) = 3u^2 - 2u^3` (analytical limit).
+    - Tolerance: relative 1e-12 at u = 1/4, 1/2 and 3/4; the linear ramp more than 0.05 AU and the quintic more than 0.02 AU away.
+    - Test id: `tests/orbit/test_parameterized.py::test_sigmoid_matches_the_cubic_smoothstep_across_the_window`
+    - Command: `pytest tests/orbit/test_parameterized.py::test_sigmoid_matches_the_cubic_smoothstep_across_the_window`
+
+## Orbital energy rate at the start of circularisation
+
+**Why this check exists.** The rate of orbital energy change follows from the migration law. A missing factor of 2, a wrong sign or a wrong time unit gives a wrong energy rate without an error message.
+
+**What it tests.** For the TOI-561 b setup, the test checks that `orbital_energy_rate` at the start of the high-eccentricity migration equals $2\, \Delta E / \tau$, with $\Delta E$ the energy change of the whole circularisation (about -2.86e35 J) and $\tau$ = 1e7 yr. It also checks that the rate without the factor 2 is clearly away, that the rate is negative (the orbit loses energy as it shrinks), and that its size lies between 1e21 and 3e21 W.
+
+**How we know the right answer.** The closed form of the energy rate at the epoch (see "Orbital energy rate" below).
+
+**Why it matters.** The energy rate is the power that the orbit loses as it circularises.
+
+??? info "Test details"
+    - Reference: analytical limit, `dE/dt` of `E = -G M m (1 - e_mig^2 x) / (2 a_f)` at `x = 1` equals `2 dE / tau`.
+    - Tolerance: relative 1e-10 against the closed form; relative 0.01 on dE = -2.86e35 J; size 1e21 to 3e21 W.
+    - Test id: `tests/orbit/test_parameterized.py::test_high_ecc_energy_rate_at_the_epoch_is_twice_the_energy_change_over_tau`
+    - Command: `pytest tests/orbit/test_parameterized.py::test_high_ecc_energy_rate_at_the_epoch_is_twice_the_energy_change_over_tau`
+
+## Eccentricity decay of high-eccentricity migration
+
+**Why this check exists.** The eccentricity must decay as a pure exponential with time constant $\tau$. A wrong exponent or a wrong time constant changes the circularisation without an error message.
+
+**What it tests.** The test compares the eccentricity of `high_eccentricity_migration` at 500 times with $e(t) = e_\mathrm{mig} \exp(-(t - t_\mathrm{mig}) / \tau)$, a form the source never evaluates. After one $\tau$ the eccentricity must have fallen by $e^{-1}$, not $e^{-1/2}$. It also checks that the eccentricity stays finite and not negative and ends at exactly zero, that the semi-latus rectum $a (1 - e^2)$ equals the final distance (an identity of the implementation, a sanity check only), and that the pericentre $a (1 - e)$ is not conserved.
+
+**How we know the right answer.** Postolec et al. (2026), Sect. 2.2, Eqs. 1-4 (see the derivation and the plot below).
+
+**Why it matters.** The eccentricity and the semi-major axis of a run with this law come from these equations.
+
+??? info "Test details"
+    - Reference: Postolec et al. (2026), submitted to ApJ, arXiv:2609.03144, Sect. 2.2, Eqs. 1-4.
+    - Tolerance: relative 1e-9 on all 500 points; relative 1e-10 on the one-tau e-folding and on the semi-latus rectum (1e-10).
+    - Test id: `tests/orbit/test_parameterized.py::test_high_ecc_circularises_as_a_pure_exponential_in_eccentricity`
+    - Command: `pytest -m reference_pinned tests/orbit/test_parameterized.py --validation-plots`
 
 ## Re-derivation notes
 
@@ -48,7 +100,7 @@ away: `S(2) = -4` puts the orbit at 6.8 AU and `S(-1) = 5` puts it at
 returns an unphysical orbit.
 
 Here `tau` is the length of the migration window, not an exponential
-decay constant. It carries that second meaning in the high-eccentricity
+decay constant. It has that second meaning in the high-eccentricity
 law below, so the two regimes read the same configuration key
 differently.
 
@@ -154,7 +206,7 @@ closure test integrates the rate with `scipy.integrate.quad` and recovers
 the sigmoid inward and outward, which a missing factor of 1/2 or a rate
 left per year instead of per second would miss by a factor of 2 or 3.2e7.
 
-## End-to-end check against dummy runs
+## Check against complete dummy runs
 
 The pinned tests above exercise the three laws as pure functions. A
 complementary check runs each regime as a dummy PROTEUS simulation and
