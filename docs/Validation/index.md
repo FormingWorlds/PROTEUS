@@ -26,14 +26,14 @@ Without `--validation-plots` the tests assert and write nothing. The command mak
 | Interior energetics | `interior_energetics/remelt.py` | [Partial giant-impact re-melt](interior_energetics/remelt.md) | [melt front](interior_energetics/remelt.md#melt-front-against-the-closed-form) |
 | Interior structure | `interior_struct/zalmoxis.py` | [Liquidus-super IC anchor](interior_struct/zalmoxis.md) | none yet |
 | Orbit | `orbit/orbit.py` | [Orbital evolution](orbit/orbit.md) | none yet |
-| Orbit | `orbit/parameterized.py` | [Prescribed migration laws](orbit/parameterized.md) | [eccentricity decay](orbit/parameterized.md#plot-eccentricity-decay) |
+| Orbit | `orbit/parameterized.py` | [Prescribed migration laws](orbit/parameterized.md) | [eccentricity decay](orbit/parameterized.md#eccentricity-decay-of-high-eccentricity-migration) |
 | Orbit | `orbit/satellite.py` | [Satellite angular momentum](orbit/satellite.md) | none yet |
 | Orbit | `orbit/wrapper.py` | [Orbit module wrapper](orbit/wrapper.md) | none yet |
 | Orbit | `orbit/obliqua.py` | [Tidal Love-number lookup](orbit/obliqua.md) | none yet |
 | Outgassing | `outgas/atmodeller.py` | [Species-to-element mass split](outgas/atmodeller.md) | none yet |
 | Outgassing | `outgas/binodal.py` | [H2-MgSiO3 binodal](outgas/binodal.md) | none yet |
 | Outgassing | `outgas/burial_ledger.py` | [Burial ledger for remelting](outgas/burial_ledger.md) | none yet |
-| Outgassing | `outgas/compaction.py` | [Melt drainage across the freezing front](outgas/compaction.md) | [drainage velocity](outgas/compaction.md#plot-drainage-velocity) |
+| Outgassing | `outgas/compaction.py` | [Melt drainage across the freezing front](outgas/compaction.md) | [drainage velocity](outgas/compaction.md#drainage-velocity-in-each-regime) |
 | Outgassing | `outgas/lavatmos.py` | [Rock-vapour molar masses](outgas/lavatmos.md) | none yet |
 | Outgassing | `outgas/trapping.py` | [Solid-phase volatile trapping](outgas/trapping.md) | none yet |
 | Star | `star/dummy.py` | [Stellar luminosity and instellation](star/dummy.md) | none yet |
