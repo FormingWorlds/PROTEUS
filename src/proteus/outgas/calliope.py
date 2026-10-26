@@ -231,6 +231,12 @@ def _resolve_element(
 
 
 def calc_target_masses(dirs: dict, config: Config, hf_row: dict):
+    """Write the delivered element budgets [kg] to ``{e}_kg_total``.
+
+    The budgets come from ``planet.elements`` when ``planet.volatile_mode`` is
+    ``'elements'``, else from the configured initial partial pressures. Oxygen is
+    not among them: its total follows from the fO2 or from the O budget.
+    """
     # make solvevol options
     # Only the pressure path reads T_magma, so only it warns about the clip.
     solvevol_inp = construct_options(
@@ -356,6 +362,26 @@ def flag_included_volatiles(guess: dict, config: Config) -> dict:
 
 
 def calc_surface_pressures(dirs: dict, config: Config, hf_row: dict):
+    """Partition the volatile and noble-gas inventory with CALLIOPE.
+
+    Solves the gas-melt equilibrium for the element totals [kg] in ``hf_row``
+    and copies the partial pressures [bar], mixing ratios and reservoir masses
+    [kg] of ``expected_keys`` into the row. Under ``planet.fO2_source =
+    'from_O_budget'`` the O budget is a constraint and ``O_kg_total`` keeps its
+    input value; otherwise the fO2 is fixed at ``outgas.fO2_shift_IW``.
+
+    Raises
+    ------
+    RuntimeError
+        If the CALLIOPE solve fails.
+    ValueError
+        If H2O, CO2, N2 or S2 is excluded from the solve, or, with
+        ``planet.volatile_mode = 'elements'``, the hydrogen budget of
+        ``planet.elements`` is below 1 kg.
+    KeyError
+        If the row has no ``{e}_kg_total`` for a volatile element or a noble
+        gas. ``O_kg_total`` is needed under every ``planet.fO2_source``.
+    """
     # Inform
     log.debug('Running CALLIOPE...')
 

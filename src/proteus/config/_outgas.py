@@ -195,13 +195,16 @@ class Lavatmos:
     Attributes
     ----------
     T_min: float
-        Minimum surface temperature [K] used by LavAtmos.
+        Lower bound [K] on the surface temperature that LavAtmos uses: the
+        vapourisation runs at max(T_min, T_magma).
     melt_comp_name: str
-        Name of the melt composition file (without extension).
+        Name of the melt composition file, a CSV file without its extension
+        in the `input/lava_compositions` folder of `LAVA_DIR`.
     P_melt: float
         Pressure used for melt activities [bar].
     xatol: float
-        Absolute tolerance for LavAtmos fO2 solve.
+        Absolute tolerance of the LavAtmos fO2 solve, passed to LavAtmos as
+        its `xatol` argument.
     fO2_buffer_model: str
         IW buffer model used for LavAtmos fO2 solve. One of 'oneill', 'fischer'.
     """
@@ -230,10 +233,12 @@ class Outgas:
         as absent; escape empties a non-noble element whose reachable mass (its total
         less the mass trapped in the solid) is below it, down to the trapped mass,
         except on a mantle frozen with params.stop.solid.freeze_volatiles. Noble gases
-        are exempt.
+        are exempt. CALLIOPE also uses it as the absolute mass tolerance [kg] of its
+        equilibrium solve.
     h2_binodal: bool
         Enable binodal-controlled H2 partitioning between atmosphere and
         magma ocean using the Rogers+2025 H2-MgSiO3 miscibility model.
+        Not available yet: `true` is rejected when the config loads.
     T_floor: float
         Temperature floor [K]. The outgassing temperature is clamped to
         this value from below for the chemistry solve and the target masses.
@@ -250,9 +255,13 @@ class Outgas:
         condensates off, the flag holds nothing, and a warning at config load says
         so.
     solver_rtol: float
-        Relative tolerance for the volatile equilibrium solver.
+        Relative tolerance [1] of the CALLIOPE and atmodeller equilibrium
+        solvers. It is also the relative tolerance of the per-element mass
+        closure check that runs after each outgassing step while trapping is on.
     solver_atol: float
-        Absolute tolerance for the volatile equilibrium solver.
+        Absolute tolerance of the equilibrium solvers: CALLIOPE takes it as
+        `xtol` of its root solve, atmodeller as `atol`. Unused by the dummy
+        module.
     trap_mode: str
         Solid-phase volatile trapping during mantle crystallisation.
         Choices: 'none' (off) and 'front' (F_tl from the drainage of melt
@@ -266,8 +275,9 @@ class Outgas:
         the density-derived porosity never reaches exactly zero.
     trap_mush_log10visc: float
         Log10 viscosity of the mush near the solidus [log10(Pa s)],
-        entering the matrix deformation time. Negative selects the
-        default of 20, mid-range of the 18 to 22 the literature allows.
+        entering the matrix deformation time. A value of zero or below
+        selects the default of 20, mid-range of the 18 to 22 the
+        literature allows.
     trap_n_front_min: int
         Fewest nodes a freezing front must span before its drainage is
         integrated rather than bounded above.
