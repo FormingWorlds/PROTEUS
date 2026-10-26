@@ -4329,6 +4329,44 @@
       "group_qualifier": null
     },
     {
+      "path": "planet.interior_chem.feo_volume",
+      "toml_section": "planet.interior_chem",
+      "class": "InteriorChem",
+      "type": "str",
+      "accepts_none": false,
+      "default": "\"komabayashi2014\"",
+      "choices": [
+        "komabayashi2014",
+        "lange_carmichael"
+      ],
+      "bounds": null,
+      "description": "Liquid FeO volume in the pressure term of the Fe-disproportionation equilibrium (Schaefer et al. 2024 Eqs 11-12, ``interior_chem/eos_deng.py``): 'komabayashi2014' (default), as the paper text states; 'lange_carmichael', the Lange & Carmichael (1987) volume with a Murnaghan compression used in Schaefer et al.'s archived code (``deltaGFeOFeO15_Deng.m``), needed to reproduce their metal results. It gives a larger FeO volume at depth, so metal is more favourable there. Liquid Fe is Komabayashi (2014) in both. The fO2 profile does not use it. Read only with ``metal_saturation`` True.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "planet.interior_chem.metal_saturation_cell",
+      "toml_section": "planet.interior_chem",
+      "class": "InteriorChem",
+      "type": "str",
+      "accepts_none": false,
+      "default": "\"base\"",
+      "choices": [
+        "base",
+        "max_afe"
+      ],
+      "bounds": null,
+      "description": "Melt cell in which the metal-saturation step (``interior_chem/redox.py`` Step 9) evaluates a_Fe and forms metal. 'base' (default): the deepest melt cell, the base of the magma ocean, as Schaefer et al. (2024) Section 2.7 evaluate it; the step is skipped while that cell lies outside the ``redox_dV_eos`` envelope. 'max_afe': the melt cell with the largest a_Fe. Read only with ``metal_saturation`` True.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
       "path": "planet.interior_chem.fO2_pressure_term",
       "toml_section": "planet.interior_chem",
       "class": "InteriorChem",

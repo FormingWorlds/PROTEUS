@@ -243,6 +243,23 @@ class InteriorChem:
         (2000-4000 K, up to about 74-94 GPa) and is an extrapolation beyond.
         Read only when ``planet.fO2_source = 'from_mantle_redox'`` and
         ``metal_saturation`` or ``fO2_pressure_term`` is True.
+    feo_volume: str
+        Liquid FeO volume in the pressure term of the Fe-disproportionation
+        equilibrium (Schaefer et al. 2024 Eqs 11-12, ``interior_chem/eos_deng.py``):
+        'komabayashi2014' (default), as the paper text states;
+        'lange_carmichael', the Lange & Carmichael (1987) volume with a Murnaghan
+        compression used in Schaefer et al.'s archived code
+        (``deltaGFeOFeO15_Deng.m``), needed to reproduce their metal results. It
+        gives a larger FeO volume at depth, so metal is more favourable there.
+        Liquid Fe is Komabayashi (2014) in both. The fO2 profile does not use it.
+        Read only with ``metal_saturation`` True.
+    metal_saturation_cell: str
+        Melt cell in which the metal-saturation step (``interior_chem/redox.py``
+        Step 9) evaluates a_Fe and forms metal. 'base' (default): the deepest
+        melt cell, the base of the magma ocean, as Schaefer et al. (2024)
+        Section 2.7 evaluate it; the step is skipped while that cell lies
+        outside the ``redox_dV_eos`` envelope. 'max_afe': the melt cell with
+        the largest a_Fe. Read only with ``metal_saturation`` True.
     fO2_pressure_term: bool
         Whether the radial fO2 profile (Schaefer et al. 2024 Eq 13 at each melt
         cell's T and P, ``interior_chem/redox.py`` Step 10a) carries the
@@ -271,6 +288,15 @@ class InteriorChem:
     # planet.fO2_source = 'from_mantle_redox' with metal_saturation or
     # fO2_pressure_term True.
     redox_dV_eos: str = field(default='deng2020', validator=in_(('deng2020', 'keane_table')))
+
+    # Liquid FeO volume of the disproportionation pressure term (eos_deng.FEO_VOLUMES).
+    feo_volume: str = field(
+        default='komabayashi2014', validator=in_(('komabayashi2014', 'lange_carmichael'))
+    )
+
+    # Cell of the metal-saturation step (redox.py Step 9e): magma-ocean base
+    # as Schaefer et al. (2024), or the largest a_Fe.
+    metal_saturation_cell: str = field(default='base', validator=in_(('base', 'max_afe')))
 
     # int(dV dP) in the radial fO2 profile without the metal step (redox.py
     # Step 10a); always on with metal_saturation True.

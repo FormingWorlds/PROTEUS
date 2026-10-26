@@ -573,6 +573,8 @@ def _metal_saturation_step(
     phi: np.ndarray,
     mass: np.ndarray,
     eos_model: str = 'deng2020',
+    location: str = 'base',
+    feo_volume: str = 'komabayashi2014',
 ) -> float:
     """Step 9a-9h: check the melt for Fe-metal saturation and, if it is
     supersaturated, react it to equilibrium. Returns the reaction extent xi
@@ -589,6 +591,14 @@ def _metal_saturation_step(
     matching Schaefer et al. (2024) Section 2.7, who "add an additional step
     in between each crystallization step to check for metal saturation".
     Step 10 must see the corrected redox ratio, hence the ordering.
+
+    ``location`` (config.planet.interior_chem.metal_saturation_cell) picks the
+    cell that is tested and reacts: 'base', the deepest melt cell (highest
+    pressure), as Schaefer et al. (2024) evaluate at the base of the magma
+    ocean; 'max_afe', the melt cell with the largest a_Fe. With 'base' the
+    step is skipped when that cell lies outside the EOS envelope.
+    ``feo_volume`` (config.planet.interior_chem.feo_volume) is the liquid FeO
+    volume of the pressure term (eos_deng.FEO_VOLUMES).
 
     Mutates ``state`` in place: n_fe2_melt, n_fe3_melt, n_fe_metal_cell and
     a_fe_cell. Does NOT recompute the derived ratios -- the caller does that
@@ -612,23 +622,40 @@ def _metal_saturation_step(
     # Always with the pressure term, which makes disproportionation favourable at
     # depth; without it the shallow cool melt would saturate first.
     a_fe, eos_valid = dispro.activity_Fe_metal(
-        temp, n2, n3, n_sil, P_gpa=P_gpa, use_P_term=True, eos_model=eos_model
+        temp,
+        n2,
+        n3,
+        n_sil,
+        P_gpa=P_gpa,
+        use_P_term=True,
+        eos_model=eos_model,
+        feo_volume=feo_volume,
     )
     a_fe = np.where(melt & eos_valid, a_fe, 0.0)
     state.a_fe_cell = a_fe
 
-    # Step 9e: with a homogeneous melt only the most supersaturated cell can host
-    # equilibrium (Schaefer evaluate at the magma-ocean base).
-    usable = melt & eos_valid
+    # Step 9e: one cell is tested and reacts, the magma-ocean base (Schaefer) or
+    # the most supersaturated melt cell.
+    if location == 'base' and np.any(melt):
+        base = int(np.argmax(np.where(melt, P_gpa, -np.inf)))
+        usable = np.zeros_like(melt)
+        usable[base] = bool(eos_valid[base])
+    elif location in ('base', 'max_afe'):
+        usable = melt & eos_valid
+    else:
+        raise ValueError(
+            f"unknown metal_saturation_cell {location!r}; expected 'base' or 'max_afe'"
+        )
     if not np.any(usable):
         # All melt outside the EOS envelope, common early when metal is most
         # likely: warn once rather than pass silently.
         if not state.eos_coverage_logged:
             state.eos_coverage_logged = True
             log.warning(
-                'No melt cell lies inside the Fe-disproportionation EOS '
+                'No %s lies inside the Fe-disproportionation EOS '
                 'envelope (%s melt EOS: %s); metal saturation '
                 'cannot be evaluated while that holds.',
+                'magma-ocean base cell' if location == 'base' else 'melt cell',
                 eos_model,
                 eos_deng.ENVELOPE[eos_model],
             )
@@ -644,7 +671,9 @@ def _metal_saturation_step(
     # Step 9f: the only equation solved. One scalar unknown, monotonic in xi,
     # bracketed automatically because F(0) = RHS(0)*(a_Fe - 1).
     # n_metal_avail = 0 disables the back-reaction branch, so xi >= 0.
-    K, _ = dispro.K_eq(temp[cstar], P_gpa[cstar], use_P_term=True, eos_model=eos_model)
+    K, _ = dispro.K_eq(
+        temp[cstar], P_gpa[cstar], use_P_term=True, eos_model=eos_model, feo_volume=feo_volume
+    )
     xi = dispro.solve_extent(float(K), n2, n3, n_sil, n_metal_avail=0.0)
     if xi <= 0.0:
         return 0.0
@@ -1062,6 +1091,8 @@ def update_melt_redox(interior_o: Interior_t, hf_row: dict, config: Config) -> N
     # unless metal saturation is off, where the solver's phi is used as is.
     react = bool(config.planet.interior_chem.metal_saturation)
     eos_model = str(config.planet.interior_chem.redox_dV_eos)
+    location = str(config.planet.interior_chem.metal_saturation_cell)
+    feo_volume = str(config.planet.interior_chem.feo_volume)
     phi = effective_melt_fraction(interior_o.phi, PHI_SOLID if react else 0.0)
     mass = np.asarray(interior_o.mass, dtype=float)
     pres = np.asarray(interior_o.pres, dtype=float)
@@ -1099,7 +1130,9 @@ def update_melt_redox(interior_o: Interior_t, hf_row: dict, config: Config) -> N
     checked = react and not first_call and not state.melt_exhausted
     if checked:
         temp = np.asarray(interior_o.temp, dtype=float)
-        xi = _metal_saturation_step(state, temp, pres, phi, mass, eos_model)
+        xi = _metal_saturation_step(
+            state, temp, pres, phi, mass, eos_model, location, feo_volume
+        )
         if xi != 0.0:
             _update_ratios(state)
 
@@ -1164,9 +1197,10 @@ def update_melt_redox(interior_o: Interior_t, hf_row: dict, config: Config) -> N
 
     # Step 11: metal-saturation diagnostics, written whether or not the check ran.
     # With saturation off a_Fe is never evaluated, so it is reported as 0.
-    hf_row['a_fe_max_mantle'] = float(np.max(state.a_fe_cell)) if react else 0.0
-    # Where that maximum sits: the binding cell, which is also where any
-    # metal formed this step was deposited. -1 on steps with no check.
+    # a_Fe of the tested cell (the maximum with 'max_afe', the base with 'base'),
+    # which is where any metal formed this step was deposited. -1: no cell tested.
+    tested = state.a_fe_max_cell
+    hf_row['a_fe_max_mantle'] = float(state.a_fe_cell[tested]) if react and tested >= 0 else 0.0
     hf_row['a_fe_max_cell_mantle'] = float(state.a_fe_max_cell if checked else -1)
     hf_row['n_fe_metal_mantle'] = float(np.sum(state.n_fe_metal_cell))
     # Same cumulative metal as a mass: moles times the molar mass of Fe.

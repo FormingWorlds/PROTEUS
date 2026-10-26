@@ -447,6 +447,10 @@ _REVIEWED_NEUTRAL = frozenset(
         'planet.interior_chem.redox_dV_eos',
         # Read only under from_mantle_redox, which no 2.0 config can select.
         'planet.interior_chem.fO2_pressure_term',
+        # Read only under from_mantle_redox, which no 2.0 config can select.
+        'planet.interior_chem.metal_saturation_cell',
+        # Read only under from_mantle_redox, which no 2.0 config can select.
+        'planet.interior_chem.feo_volume',
         # Acts only when a_fe_max_mantle > 0, i.e. under from_mantle_redox,
         # which no 2.0 config can select; a migrated config is unaffected.
         'params.dt.afe_max_rel_change',

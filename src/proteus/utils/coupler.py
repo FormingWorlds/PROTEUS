@@ -1161,8 +1161,8 @@ def GetHelpfileKeys():
 
         # Columns of the melt Fe3+/Fe2+ redox tracker, 0 unless fO2_source is
         # from_mantle_redox; a_fe_max_cell_mantle is -1 when no cell was tested.
-        'a_fe_max_mantle',  # largest per-cell Fe-metal activity [1]
-        'a_fe_max_cell_mantle',  # index of that cell (-1: none tested) [1]
+        'a_fe_max_mantle',  # Fe-metal activity of the tested cell (base or largest) [1]
+        'a_fe_max_cell_mantle',  # index of the tested cell (-1: none tested) [1]
         'fO2_shift_IW_mantle',  # tracked-melt-redox surface Delta-IW [log10 bar]
         'fe_metal_kg_mantle',  # cumulative Fe metal formed in the mantle [kg]
         'ferric_frac_mantle',  # global melt Fe3+/FeT from the tracker [1]

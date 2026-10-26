@@ -139,3 +139,46 @@ def test_redox_keys_left_directly_under_planet_are_unknown():
         'planet': {'interior_chem': {'metal_saturation': True, 'redox_dV_eos': 'keane_table'}}
     }
     assert find_key_problems(new) == ([], [])
+
+
+@pytest.mark.parametrize('choice', ['base', 'max_afe'])
+def test_metal_saturation_cell_choices_are_accepted(choice):
+    """Both metal-saturation cells are valid, and the Schaefer et al. (2024)
+    magma-ocean base is the default."""
+    assert InteriorChem(metal_saturation_cell=choice).metal_saturation_cell == choice
+    assert InteriorChem().metal_saturation_cell == 'base'
+
+
+@pytest.mark.parametrize('bad', ['Base', 'max', 'top', ''])
+def test_unknown_metal_saturation_cell_is_rejected(bad):
+    """A misspelt cell choice fails at config load, before the tracker runs."""
+    with pytest.raises(ValueError) as exc:
+        InteriorChem(metal_saturation_cell=bad)
+    assert 'metal_saturation_cell' in str(exc.value)
+    chem = InteriorChem()
+    with pytest.raises(ValueError):
+        chem.metal_saturation_cell = bad
+    assert chem.metal_saturation_cell == 'base'
+
+
+@pytest.mark.parametrize('choice', ['komabayashi2014', 'lange_carmichael'])
+def test_feo_volume_choices_are_accepted(choice):
+    """Both FeO volumes are valid, and the paper's Komabayashi (2014) is the default."""
+    assert InteriorChem(feo_volume=choice).feo_volume == choice
+    assert InteriorChem().feo_volume == 'komabayashi2014'
+
+
+@pytest.mark.parametrize('bad', ['komabayashi', 'LC', ''])
+def test_unknown_feo_volume_is_rejected(bad):
+    """A misspelt FeO volume fails at config load, and the config accepts exactly
+    the volumes eos_deng implements."""
+    from proteus.interior_chem.eos_deng import FEO_VOLUMES
+
+    with pytest.raises(ValueError) as exc:
+        InteriorChem(feo_volume=bad)
+    assert 'feo_volume' in str(exc.value)
+    assert tuple(exc.value.args[2]) == FEO_VOLUMES
+    chem = InteriorChem()
+    with pytest.raises(ValueError):
+        chem.feo_volume = bad
+    assert chem.feo_volume == 'komabayashi2014'

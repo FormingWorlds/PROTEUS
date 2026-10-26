@@ -529,3 +529,59 @@ def test_missing_keane_table_raises_with_the_expected_location(monkeypatch, tmp_
         int_dV_dP_oxidation(3000.0, 50.0, model='keane_table')
     value, valid = int_dV_dP_oxidation(3000.0, 50.0)
     assert bool(valid) and 1.0e4 < float(value) < 1.0e6
+
+
+# ── feo_volume = 'lange_carmichael' (Schaefer et al. 2024 archived code) ──────
+# int dV dP of 3FeO = 2FeO1.5 + Fe [J/mol] from a numpy port of the archived
+# deltaGFeOFeO15_Deng.m (Deng BM4 term, VdPFeO_LC, liquid Fe on 100 nodes).
+_ARCHIVED_I_DISP = [
+    (2000.0, 5.0, 3.601e3),
+    (3000.0, 40.0, -78.040e3),
+    (3500.0, 60.0, -137.410e3),
+    (4000.0, 100.0, -253.525e3),
+    (4500.0, 130.0, -417.973e3),
+]
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.reference_pinned
+@pytest.mark.parametrize(
+    ('T', 'P', 'archived'),
+    _ARCHIVED_I_DISP,
+    ids=['5GPa_2000K', '40GPa_3000K', '60GPa_3500K', '100GPa_4000K', '130GPa_4500K'],
+)
+def test_lange_carmichael_feo_reproduces_the_archived_disproportionation_integral(
+    T, P, archived
+):
+    """With feo_volume = 'lange_carmichael' the disproportionation integral is
+    Schaefer et al. (2024)'s archived deltaGFeOFeO15_Deng.m (2 dV_Deng - V_FeO,LC
+    + V_Fe): within 2e-4 relative, the residual being the liquid-Fe trapezoid
+    (400 nodes here, 100 in the archive). The Komabayashi FeO volume misses
+    by more than 4 kJ/mol at every point beyond 5 GPa."""
+    I_lc, ok = int_dV_dP(T, P, feo_volume='lange_carmichael')
+    I_ko, _ = int_dV_dP(T, P)
+    assert bool(ok)
+    assert float(I_lc) == pytest.approx(archived, rel=2e-4)
+    if P > 5.0:
+        assert abs(float(I_ko) - archived) > 4.0e3
+
+
+def test_lange_carmichael_feo_integral_matches_the_closed_form():
+    """VdPFeO_LC at 4000 K and 100 GPa by hand: V = 13.65 + 2.92e-3 * 2327 =
+    20.445 cm3/mol, and V K0/(K'-1) ((1 + K' P/K0)^(3/4) - 1) * 1e3 = 1.3045e6
+    J/mol; zero at P = 0, and it grows with T through the 1-bar volume only."""
+    value = float(eos_deng._int_V_FeO_LC(4000.0, 100.0))
+    assert value == pytest.approx(1.3045e6, rel=2e-4)
+    assert float(eos_deng._int_V_FeO_LC(4000.0, 0.0)) == 0.0
+    hotter = float(eos_deng._int_V_FeO_LC(5000.0, 100.0))
+    assert hotter / value == pytest.approx((13.65 + 2.92e-3 * 3327) / 20.44484, rel=1e-6)
+
+
+@pytest.mark.parametrize('bad', ['komabayashi', 'LC', ''])
+def test_unknown_feo_volume_is_rejected(bad):
+    """A misspelt FeO volume raises before any evaluation, for both melt EOS."""
+    with pytest.raises(ValueError, match='Unknown FeO volume'):
+        int_dV_dP(3000.0, 50.0, feo_volume=bad)
+    with pytest.raises(ValueError, match='Unknown FeO volume'):
+        int_dV_dP(3000.0, 50.0, model='keane_table', feo_volume=bad)
+    assert eos_deng.FEO_VOLUMES == ('komabayashi2014', 'lange_carmichael')

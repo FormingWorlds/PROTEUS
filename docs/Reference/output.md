@@ -279,8 +279,8 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | `fO2_vapourise_shift_IW_derived` | `log10 bar` | rock-vapour IW offset | `outgas/lavatmos.py` | outgas.vapourise = true | outgas |
 | `O_res` | `kg` | O mass-balance residual | `outgas/atmodeller.py`<br>`outgas/calliope.py`<br>`outgas/dummy.py`<br>`outgas/wrapper.py` | always; outgas.module = "atmodeller"; outgas.module = "calliope"; outgas.module = "dummy" |   |
 | `O_vapourised_kg` | `kg` | oxygen released by rock vapourisation (LavAtmos) | `outgas/lavatmos.py` | outgas.vapourise = true |   |
-| `a_fe_max_mantle` | `1` | largest per-cell Fe-metal activity | `interior_chem/redox.py` | always | interior_energetics |
-| `a_fe_max_cell_mantle` | `1` | index of that cell (-1: none tested) | `interior_chem/redox.py` | always |   |
+| `a_fe_max_mantle` | `1` | Fe-metal activity of the tested cell (base or largest) | `interior_chem/redox.py` | always | interior_energetics |
+| `a_fe_max_cell_mantle` | `1` | index of the tested cell (-1: none tested) | `interior_chem/redox.py` | always |   |
 | `fO2_shift_IW_mantle` | `log10 bar` | tracked-melt-redox surface Delta-IW | `interior_chem/redox.py` | always | interior_chem, outgas |
 | `fe_metal_kg_mantle` | `kg` | cumulative Fe metal formed in the mantle | `interior_chem/redox.py` | always |   |
 | `ferric_frac_mantle` | `1` | global melt Fe3+/FeT from the tracker | `interior_chem/redox.py` | always | interior_chem |

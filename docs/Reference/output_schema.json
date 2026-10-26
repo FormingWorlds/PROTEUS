@@ -3234,7 +3234,7 @@
     {
       "name": "a_fe_max_mantle",
       "unit": "1",
-      "description": "largest per-cell Fe-metal activity",
+      "description": "Fe-metal activity of the tested cell (base or largest)",
       "group": "Atmospheric composition from outgassing",
       "origin": "literal",
       "producers": [
@@ -3251,7 +3251,7 @@
     {
       "name": "a_fe_max_cell_mantle",
       "unit": "1",
-      "description": "index of that cell (-1: none tested)",
+      "description": "index of the tested cell (-1: none tested)",
       "group": "Atmospheric composition from outgassing",
       "origin": "literal",
       "producers": [

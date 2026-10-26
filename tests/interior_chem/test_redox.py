@@ -91,6 +91,8 @@ def _make_config(
     metal_saturation: bool = True,
     redox_dV_eos: str = 'deng2020',
     fO2_pressure_term: bool = False,
+    metal_saturation_cell: str = 'base',
+    feo_volume: str = 'komabayashi2014',
 ) -> MagicMock:
     """Minimal config exposing only the fields the tracker reads."""
     config = MagicMock()
@@ -100,6 +102,8 @@ def _make_config(
     config.planet.interior_chem.partition_coefficients = 'mgsio3'
     config.planet.interior_chem.redox_dV_eos = redox_dV_eos
     config.planet.interior_chem.fO2_pressure_term = fO2_pressure_term
+    config.planet.interior_chem.metal_saturation_cell = metal_saturation_cell
+    config.planet.interior_chem.feo_volume = feo_volume
     config.outgas.T_floor = 700.0  # the outgassing temperature floor default
     return config
 
@@ -664,6 +668,103 @@ def test_oxidised_melt_stays_below_metal_saturation():
     # The diagnostic activity is reported and is well under unity, so the
     # zero comes from an evaluated criterion, not a skipped branch.
     assert 0.0 < rows[-1]['a_fe_max_mantle'] < 1.0
+
+
+# An Aragog adiabat (bottom to top): with the Komabayashi FeO volume log10 K is
+# -2.77 at 100.9 GPa and -2.52 at 28.2 GPa, so the shallower cell has the larger a_Fe.
+_ADIABAT_P = np.array([100.9e9, 28.2e9, 7.1e9])
+_ADIABAT_T = np.array([4651.0, 3321.0, 2421.0])
+_ADIABAT_PHI = np.ones(3)
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize(
+    ('location', 'expected_cell'),
+    [('base', 0), ('max_afe', 1)],
+    ids=['schaefer_magma_ocean_base', 'largest_activity'],
+)
+def test_metal_step_reacts_at_the_configured_cell(location, expected_cell):
+    """A reduced melt saturated in every cell of an adiabat: 'base' tests and
+    deposits metal in the deepest melt cell (Schaefer et al. 2024 evaluate at
+    the magma-ocean base), 'max_afe' in the cell with the largest a_Fe, which
+    on this adiabat is the 28 GPa cell, not the base. Fe and O are conserved."""
+    state = _init_state(_ADIABAT_PHI, _MASS, _ADIABAT_P, 0.005)
+    fe_before = state.n_fe2_melt + state.n_fe3_melt
+    o_before = state.n_fe2_melt + 1.5 * state.n_fe3_melt
+
+    xi = _metal_saturation_step(
+        state, _ADIABAT_T, _ADIABAT_P, _ADIABAT_PHI, _MASS, 'deng2020', location
+    )
+
+    # The two modes differ only if the largest a_Fe is not at the base.
+    assert int(np.argmax(state.a_fe_cell)) == 1
+    assert state.a_fe_max_cell == expected_cell
+    assert xi > 0.0
+    assert state.n_fe_metal_cell[expected_cell] == pytest.approx(xi, rel=1e-12)
+    assert np.count_nonzero(state.n_fe_metal_cell) == 1
+    fe_after = state.n_fe2_melt + state.n_fe3_melt + float(np.sum(state.n_fe_metal_cell))
+    assert fe_after == pytest.approx(fe_before, rel=1e-12)
+    assert state.n_fe2_melt + 1.5 * state.n_fe3_melt == pytest.approx(o_before, rel=1e-12)
+
+
+@pytest.mark.physics_invariant
+def test_lange_carmichael_feo_volume_reaches_the_metal_step():
+    """config feo_volume = 'lange_carmichael' reaches the metal step: on the
+    adiabat at f0 = 0.1, a_Fe at the 100.9 GPa base rises by the archived-code
+    pressure term, log10 K(LC) - log10 K(Komabayashi), and only there, since
+    the composition factor is the same."""
+    from proteus.interior_chem.disproportionation import K_eq
+
+    a_fe = {}
+    for feo in ('komabayashi2014', 'lange_carmichael'):
+        state = _init_state(_ADIABAT_PHI, _MASS, _ADIABAT_P, 0.1)
+        _metal_saturation_step(
+            state, _ADIABAT_T, _ADIABAT_P, _ADIABAT_PHI, _MASS, 'deng2020', 'base', feo
+        )
+        a_fe[feo] = state.a_fe_cell.copy()
+    shift = np.log10(a_fe['lange_carmichael'] / a_fe['komabayashi2014'])
+    P_gpa = _ADIABAT_P / 1e9
+    K_lc, _ = K_eq(_ADIABAT_T, P_gpa, True, 'deng2020', 'lange_carmichael')
+    K_ko, _ = K_eq(_ADIABAT_T, P_gpa, True, 'deng2020')
+    np.testing.assert_allclose(shift, np.log10(K_lc / K_ko), rtol=0, atol=1e-10)
+    # The archived volume favours metal far more at depth than near the surface.
+    assert shift[0] > 2.5 and abs(shift[2]) < 0.2
+
+
+def test_base_outside_the_eos_envelope_skips_the_metal_step(caplog):
+    """'base' with deng2020 and the deepest melt cell above 136 GPa: no cell is
+    tested and no metal forms, even though shallower melt cells inside the
+    envelope are saturated (the step does not move to them)."""
+    pres = np.array([150.0e9, 28.2e9, 7.1e9])
+    state = _init_state(_ADIABAT_PHI, _MASS, pres, 0.005)
+    n2 = state.n_fe2_melt
+    with caplog.at_level('WARNING'):
+        xi = _metal_saturation_step(
+            state, _ADIABAT_T, pres, _ADIABAT_PHI, _MASS, 'deng2020', 'base'
+        )
+    assert xi == 0.0
+    assert state.a_fe_max_cell == -1
+    assert state.n_fe2_melt == n2 and not np.any(state.n_fe_metal_cell)
+    assert 'magma-ocean base cell' in caplog.text
+    # Guard: 'max_afe' does react in the shallower saturated cells.
+    other = _init_state(_ADIABAT_PHI, _MASS, pres, 0.005)
+    assert (
+        _metal_saturation_step(
+            other, _ADIABAT_T, pres, _ADIABAT_PHI, _MASS, 'deng2020', 'max_afe'
+        )
+        > 0.0
+    )
+
+
+def test_unknown_metal_saturation_cell_raises():
+    """A location the step does not implement fails instead of picking a cell."""
+    state = _init_state(_ADIABAT_PHI, _MASS, _ADIABAT_P, 0.005)
+    n2 = state.n_fe2_melt
+    with pytest.raises(ValueError, match="'top'"):
+        _metal_saturation_step(
+            state, _ADIABAT_T, _ADIABAT_P, _ADIABAT_PHI, _MASS, 'deng2020', 'top'
+        )
+    assert state.n_fe2_melt == n2 and not np.any(state.n_fe_metal_cell)
 
 
 @pytest.mark.physics_invariant

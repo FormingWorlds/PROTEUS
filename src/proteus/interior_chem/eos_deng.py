@@ -107,6 +107,9 @@ from scipy.interpolate import RegularGridInterpolator
 log = logging.getLogger('fwl.' + __name__)
 
 MODELS = ('deng2020', 'keane_table')  # melt EOS of the FeO -> FeO1.5 volume change
+# Liquid FeO volume of the disproportionation -V_FeO term (Schaefer et al. 2024 Eq 11-12)
+FEO_VOLUMES = ('komabayashi2014', 'lange_carmichael')
+_K0_FEO_LC, _KP_FEO_LC = 30.33, 4.0  # GPa, -: Murnaghan constants of deltaGFeOFeO15_Deng.m
 TABLE_RELPATH = (
     Path('interior_chem') / 'keane_deng_table.npz'
 )  # below FWL_DATA, not in the repository
@@ -315,21 +318,46 @@ def _int_V_Fe(T, P):
     return _int_V(T, P, 'Fe')
 
 
-def _fe_feo_terms(T, P):
+def _int_V_FeO_LC(T, P):
+    """Liquid FeO volume integral of Schaefer et al.'s archived code
+    (``VdPFeO_LC`` in ``deltaGFeOFeO15_Deng.m``), J/mol: the Lange & Carmichael
+    (1987) volume V = 13.65 + 2.92e-3 (T - 1673) cm3/mol with a Murnaghan
+    compression (K0 = 30.33 GPa, K' = 4) integrated from 0 to P. T in K, P in GPa."""
+    T, P = np.broadcast_arrays(np.asarray(T, dtype=float), np.asarray(P, dtype=float))
+    V = 13.65 + 2.92e-3 * (T - 1673.0)  # cm3/mol; 1 cm3 GPa = 1e3 J
+    return (
+        V
+        * _K0_FEO_LC
+        / (_KP_FEO_LC - 1.0)
+        * ((1.0 + _KP_FEO_LC * P / _K0_FEO_LC) ** (1.0 - 1.0 / _KP_FEO_LC) - 1.0)
+        * 1e3
+    )
+
+
+def _check_feo_volume(feo_volume):
+    if feo_volume not in FEO_VOLUMES:
+        raise ValueError(f'Unknown FeO volume {feo_volume!r}; expected one of {FEO_VOLUMES}')
+
+
+def _fe_feo_terms(T, P, feo_volume='komabayashi2014'):
     """(int V_FeO dP, int V_Fe dP) for flat arrays, logging once when a point
-    lies beyond the Komabayashi (2014) database range (350 GPa, 7000 K)."""
+    lies beyond the Komabayashi (2014) database range (350 GPa, 7000 K). The
+    FeO term is Komabayashi (2014) or, with ``feo_volume = 'lange_carmichael'``,
+    the form of Schaefer et al.'s archived code; the Fe term is always Komabayashi."""
     global _KOMA_EXTRAPOLATION_WARNED
     if not _KOMA_EXTRAPOLATION_WARNED and np.any((P > P_KOMA_MAX) | (T > T_KOMA_MAX)):
         _KOMA_EXTRAPOLATION_WARNED = True
         log.warning(
-            'Liquid FeO and Fe volumes (Komabayashi 2014) evaluated beyond their %.0f GPa, '
+            'Liquid %s volumes (Komabayashi 2014) evaluated beyond their %.0f GPa, '
             '%.0f K database range (up to %.0f GPa, %.0f K); values there are extrapolated',
+            'Fe' if feo_volume == 'lange_carmichael' else 'FeO and Fe',
             P_KOMA_MAX,
             T_KOMA_MAX,
             float(np.max(P)),
             float(np.max(T)),
         )
-    return _int_V_FeO(T, P), _int_V_Fe(T, P)
+    I_feo = _int_V_FeO_LC(T, P) if feo_volume == 'lange_carmichael' else _int_V_FeO(T, P)
+    return I_feo, _int_V_Fe(T, P)
 
 
 def _trapz(y, x):
@@ -337,7 +365,7 @@ def _trapz(y, x):
     return np.sum(0.5 * (y[..., 1:] + y[..., :-1]) * np.diff(x, axis=-1), axis=-1)
 
 
-def _integrals(T, P, deng_only=False):
+def _integrals(T, P, deng_only=False, feo_volume='komabayashi2014'):
     """The three terms for flat arrays T [K], P [GPa], in J/mol:
     (int dV_Deng dP, int V_FeO dP, int V_Fe dP); the last two are None
     when ``deng_only``."""
@@ -359,7 +387,7 @@ def _integrals(T, P, deng_only=False):
     I_deng = _trapz(0.5 * (V_ox - V_red), grid_d)
     if deng_only:
         return I_deng, None, None
-    return (I_deng, *_fe_feo_terms(T, P))
+    return (I_deng, *_fe_feo_terms(T, P, feo_volume))
 
 
 def table_path() -> Path:
@@ -392,7 +420,7 @@ def _keane_table():
     return _TABLE
 
 
-def _evaluate_table(T, P, oxidation_only):
+def _evaluate_table(T, P, oxidation_only, feo_volume='komabayashi2014'):
     """Keane + Deng-thermal model: the table for the oxidation integral, the
     FeO and Fe terms as in the deng2020 model. Valid inside the table range;
     points below 1 bar take the 1-bar value (0 for the oxidation integral)."""
@@ -417,7 +445,7 @@ def _evaluate_table(T, P, oxidation_only):
         if oxidation_only:
             out[valid] = I_ox
         else:
-            I_feo, I_fe = _fe_feo_terms(Tv, Pv)
+            I_feo, I_fe = _fe_feo_terms(Tv, Pv, feo_volume)
             out[valid] = 2.0 * I_ox - I_feo + I_fe
     return out.reshape(shape), valid.reshape(shape)
 
@@ -427,7 +455,7 @@ def _check_model(model):
         raise ValueError(f'Unknown melt EOS model {model!r}; expected one of {MODELS}')
 
 
-def _evaluate(T, P, combine, deng_only=False):
+def _evaluate(T, P, combine, deng_only=False, feo_volume='komabayashi2014'):
     """Shared driver: validity mask, evaluation on valid points, 0 elsewhere."""
     global _EXTRAPOLATION_WARNED
     T, P = np.broadcast_arrays(np.asarray(T, dtype=float), np.asarray(P, dtype=float))
@@ -444,7 +472,7 @@ def _evaluate(T, P, combine, deng_only=False):
         )
     out = np.zeros(T.shape)
     if np.any(valid):
-        vals = combine(*_integrals(T[valid], P[valid], deng_only))
+        vals = combine(*_integrals(T[valid], P[valid], deng_only, feo_volume))
         # A compressed-branch point beyond the bracket is NaN: flag it, never return it.
         ok = np.isfinite(vals)
         out[np.flatnonzero(valid)[ok]] = vals[ok]
@@ -452,7 +480,7 @@ def _evaluate(T, P, combine, deng_only=False):
     return out.reshape(shape), valid.reshape(shape)
 
 
-def int_dV_dP(T, P, model='deng2020'):
+def int_dV_dP(T, P, model='deng2020', feo_volume='komabayashi2014'):
     """int dV dP for 3FeO = 2FeO1.5 + Fe, from 1 bar to P at T. J/mol.
 
     Parameters
@@ -463,6 +491,10 @@ def int_dV_dP(T, P, model='deng2020'):
         Melt EOS of the FeO -> FeO1.5 volume change (``MODELS``): 'deng2020'
         (Deng BM4, Schaefer's construction) or 'keane_table' (Keane +
         Deng-thermal lookup table). The FeO and Fe terms are the same in both.
+    feo_volume : str
+        Liquid FeO volume of the -V_FeO term (``FEO_VOLUMES``): 'komabayashi2014'
+        (Schaefer et al. 2024 Eq 11 text) or 'lange_carmichael' (their archived
+        code, ``VdPFeO_LC``).
 
     Returns
     -------
@@ -473,9 +505,10 @@ def int_dV_dP(T, P, model='deng2020'):
         'keane_table' the table range.
     """
     _check_model(model)
+    _check_feo_volume(feo_volume)
     if model == 'keane_table':
-        return _evaluate_table(T, P, oxidation_only=False)
-    return _evaluate(T, P, lambda deng, feo, fe: 2.0 * deng - feo + fe)
+        return _evaluate_table(T, P, oxidation_only=False, feo_volume=feo_volume)
+    return _evaluate(T, P, lambda deng, feo, fe: 2.0 * deng - feo + fe, feo_volume=feo_volume)
 
 
 def int_dV_dP_oxidation(T, P, model='deng2020'):
