@@ -25,11 +25,16 @@ This page checks the transparent limit of the AGNI atmosphere in PROTEUS, the br
 
 **Why it matters.** PROTEUS uses this branch when the surface pressure is below `agni.psurf_thresh`, and the test drives it as the coupling loop does (`init_agni_atmos`, `update_agni_atmos`, `run_agni`).
 
+![Outgoing longwave flux of the transparent grey-gas column against surface temperature](../../assets/validation/atmos_clim_agni_greygas_blackbody.svg#only-light){ width="80%" }
+![Outgoing longwave flux of the transparent grey-gas column against surface temperature](../../assets/validation/atmos_clim_agni_greygas_blackbody_dark.svg#only-dark){ width="80%" }
+
+**How to read the plot.** The x-axis is the surface temperature and the y-axis the flux, both on log scales. The line is $\sigma T_s^4$ and the dashed line $\sigma T_s^3$, which the test rejects (context). The circles are the asserted $F_\mathrm{olr}$ of the transparent grey-gas solve above a black surface at 1000, 1500, 2000 and 3000 K. A pass means that the circles lie on the line (relative 1e-5).
+
 ??? info "Test details"
     - Reference: Stefan-Boltzmann law, CODATA 2018 constant 5.670374419e-8 W m-2 K-4.
     - Tolerance: relative 1e-5 at each surface temperature.
     - Test id: `tests/integration/test_integration_agni_transparent_limit.py::test_transparent_greygas_olr_equals_blackbody_emission`
-    - Command: `pytest tests/integration/test_integration_agni_transparent_limit.py::test_transparent_greygas_olr_equals_blackbody_emission` (needs AGNI)
+    - Command: `PROTEUS_CI_NIGHTLY=1 pytest -m reference_pinned tests/integration/test_integration_agni_transparent_limit.py --validation-plots`
 
 ## Emission of a grey surface
 
@@ -41,11 +46,16 @@ This page checks the transparent limit of the AGNI atmosphere in PROTEUS, the br
 
 **Why it matters.** It checks the surface boundary condition of AGNI as PROTEUS sets it.
 
+![Outgoing longwave flux and surface upward flux of the transparent column above a grey surface](../../assets/validation/atmos_clim_agni_greygas_grey_surface.svg#only-light){ width="80%" }
+![Outgoing longwave flux and surface upward flux of the transparent column above a grey surface](../../assets/validation/atmos_clim_agni_greygas_grey_surface_dark.svg#only-dark){ width="80%" }
+
+**How to read the plot.** The x-axis is the surface temperature and the y-axis the flux, both on log scales, for a surface albedo of 0.3. The solid line is $0.7\,\sigma T_s^4$. The dashed line is $\sigma T_s^4$ (a dropped emissivity) and the dotted line $0.3\,\sigma T_s^4$ (the albedo used as the emissivity), both rejected by the test. The circles are the asserted $F_\mathrm{olr}$ and the hollow squares the asserted upward longwave flux at the surface, at the 4 temperatures. A pass means that circles and squares lie on the solid line (relative 1e-9).
+
 ??? info "Test details"
     - Reference: Kirchhoff's law, emissivity 1 minus the albedo, with zero optical depth (analytical limit).
     - Tolerance: relative 1e-9 on `F_olr` and on the surface flux; absolute 1e-12 on the optical depth.
     - Test id: `tests/integration/test_integration_agni_transparent_limit.py::test_transparent_greygas_olr_scales_with_surface_emissivity`
-    - Command: `pytest tests/integration/test_integration_agni_transparent_limit.py::test_transparent_greygas_olr_scales_with_surface_emissivity` (needs AGNI)
+    - Command: `PROTEUS_CI_NIGHTLY=1 pytest -m reference_pinned tests/integration/test_integration_agni_transparent_limit.py --validation-plots`
 
 ## Black-body emission through the banded scheme
 
@@ -59,11 +69,16 @@ This page checks the transparent limit of the AGNI atmosphere in PROTEUS, the br
 
 **Known limit.** The test needs the spectral file in `FWL_DATA` and skips without it.
 
+![Outgoing longwave flux of the transparent banded solve against surface temperature](../../assets/validation/atmos_clim_agni_banded_blackbody.svg#only-light){ width="80%" }
+![Outgoing longwave flux of the transparent banded solve against surface temperature](../../assets/validation/atmos_clim_agni_banded_blackbody_dark.svg#only-dark){ width="80%" }
+
+**How to read the plot.** As in the grey-gas case, for the banded solve with the spectral file and the SOCRATES two-stream solver. The line is $\sigma T_s^4$, the dashed line $\sigma T_s^3$ (context), and the circles the asserted $F_\mathrm{olr}$ at the 4 temperatures. The banded flux lies a little below $\sigma T_s^4$, too little to see at this scale. A pass means that the circles lie on the line (relative 5e-4).
+
 ??? info "Test details"
     - Reference: Stefan-Boltzmann law, through the spectral file and the SOCRATES two-stream solver.
     - Tolerance: relative 5e-4 at each surface temperature.
     - Test id: `tests/integration/test_integration_agni_transparent_limit.py::test_transparent_banded_olr_recovers_blackbody_emission`
-    - Command: `pytest tests/integration/test_integration_agni_transparent_limit.py::test_transparent_banded_olr_recovers_blackbody_emission` (needs AGNI and the spectral file)
+    - Command: `PROTEUS_CI_NIGHTLY=1 pytest -m reference_pinned tests/integration/test_integration_agni_transparent_limit.py --validation-plots`
 
 ## Coverage
 

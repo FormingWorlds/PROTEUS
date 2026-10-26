@@ -278,13 +278,54 @@ def _assert_blackbody_limit(results, *, rtol: float):
     assert abs(ratio - t_span**3) > 1.0
 
 
+def _plot_olr(validation_plot, results, name, *, albedo=0.0):
+    """Draw the asserted F_olr of a transparent sweep against the grey-body law."""
+
+    def figure():
+        import matplotlib.pyplot as plt
+
+        t = np.linspace(900.0, 3200.0, 47)
+        t_s = [r[0] for r in results]
+        fig, ax = plt.subplots(figsize=(6, 4))
+        law = f'$(1 - {albedo})\\,\\sigma T_s^4$' if albedo else '$\\sigma T_s^4$'
+        ax.plot(t, (1.0 - albedo) * SIGMA_SB * t**4, label=law)
+        if albedo:
+            ax.plot(t, SIGMA_SB * t**4, '--', label='$\\sigma T_s^4$, emissivity dropped')
+            ax.plot(
+                t,
+                albedo * SIGMA_SB * t**4,
+                ':',
+                label=f'${albedo}\\,\\sigma T_s^4$, albedo as emissivity',
+            )
+            ax.plot(
+                t_s,
+                [r[2]['flux_u_lw'][-1] for r in results],
+                's',
+                mfc='none',
+                ms=10,
+                label='Upward flux at the surface',
+            )
+        else:
+            ax.plot(t, SIGMA_SB * t**3, '--', label='$\\sigma T_s^3$')
+        ax.plot(t_s, [r[1]['F_olr'] for r in results], 'o', zorder=3, label='$F_\\mathrm{olr}$')
+        ax.set_xscale('log')
+        ax.set_yscale('log')
+        ax.set_xlabel('Surface temperature $T_s$ [K]')
+        ax.set_ylabel('Flux [W m$^{-2}$]')
+        ax.legend(fontsize=8)
+        fig.tight_layout()
+        return fig
+
+    validation_plot(figure, name)
+
+
 @pytest.mark.reference_pinned
 @pytest.mark.physics_invariant
 @pytest.mark.skipif(
     not RUN_NIGHTLY_SMOKE,
     reason='AGNI coupling test requires Julia/AGNI binaries (nightly only)',
 )
-def test_transparent_greygas_olr_equals_blackbody_emission():
+def test_transparent_greygas_olr_equals_blackbody_emission(validation_plot):
     """A transparent grey-gas atmosphere emits the black-body surface flux.
 
     Physical scenario: a bare rocky surface with a negligible atmosphere and
@@ -310,6 +351,7 @@ def test_transparent_greygas_olr_equals_blackbody_emission():
         )
 
         _assert_blackbody_limit(results, rtol=RTOL_GREYGAS)
+        _plot_olr(validation_plot, results, 'atmos_clim_agni_greygas_blackbody')
 
 
 @pytest.mark.reference_pinned
@@ -318,7 +360,7 @@ def test_transparent_greygas_olr_equals_blackbody_emission():
     not RUN_NIGHTLY_SMOKE,
     reason='AGNI coupling test requires Julia/AGNI binaries (nightly only)',
 )
-def test_transparent_greygas_olr_scales_with_surface_emissivity():
+def test_transparent_greygas_olr_scales_with_surface_emissivity(validation_plot):
     """A grey surface emits exactly the black-body flux reduced by its emissivity.
 
     Physical scenario: the same bare surface, now with a grey albedo of 0.3.
@@ -379,6 +421,10 @@ def test_transparent_greygas_olr_scales_with_surface_emissivity():
             # the unit-emissivity black-body limit.
             assert 0.0 < output['F_olr'] < blackbody
 
+        _plot_olr(
+            validation_plot, results, 'atmos_clim_agni_greygas_grey_surface', albedo=albedo
+        )
+
 
 @pytest.mark.reference_pinned
 @pytest.mark.physics_invariant
@@ -386,7 +432,7 @@ def test_transparent_greygas_olr_scales_with_surface_emissivity():
     not RUN_NIGHTLY_SMOKE,
     reason='AGNI coupling test requires Julia/AGNI binaries (nightly only)',
 )
-def test_transparent_banded_olr_recovers_blackbody_emission():
+def test_transparent_banded_olr_recovers_blackbody_emission(validation_plot):
     """The banded radiative transfer chain recovers the black-body limit.
 
     Physical scenario: the same transparent surface, solved with the
@@ -426,3 +472,5 @@ def test_transparent_banded_olr_recovers_blackbody_emission():
         # and midpoint evaluation only lose flux against the exact integral.
         for t_surf, output, _ in results:
             assert output['F_olr'] < SIGMA_SB * t_surf**4
+
+        _plot_olr(validation_plot, results, 'atmos_clim_agni_banded_blackbody')
