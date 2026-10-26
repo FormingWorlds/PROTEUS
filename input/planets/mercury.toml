@@ -54,7 +54,7 @@ config_version = "3.0"
 
         [params.stop.time]                   # simulation time limits
             enabled           = true
-            minimum           = 1.0e3        # run at least this long [yr]
+            minimum           = 3.0          # run at least this long [yr]
             maximum           = 4.5e9        # stop after this time [yr]; ~Mercury age
 
         [params.stop.solid]                  # solidification criterion
@@ -387,7 +387,7 @@ config_version = "3.0"
     vapourise                 = false        # include rock vapour species
 
     # Shared solver parameters (calliope + atmodeller)
-    T_floor                   = 700.0        # outgassing temperature floor [K]; clamped from below
+    T_floor                   = 1000.0        # outgassing temperature floor [K]; clamped from below
     solver_rtol               = 1e-4         # relative mass/equilibrium tolerance
     solver_atol               = 1e-6         # absolute mass/equilibrium tolerance
     prevent_desaturation      = true         # condensates never re-vapourise, so each condensed layer only grows (its activity can fall below 1)
@@ -534,7 +534,7 @@ config_version = "3.0"
     [escape.zephyrus]
         Pxuv                  = 5e-5         # XUV opacity pressure level [bar]
         efficiency            = 0.1          # escape efficiency
-        tidal                 = true        # tidal contribution
+        tidal                 = false        # tidal contribution (K_tide); off because R_xuv is clamped to the Hill radius, where K_tide -> 0
 
     [escape.dummy]
         rate                  = 0.0          # bulk escape rate [kg s-1]
