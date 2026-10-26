@@ -4,7 +4,7 @@
 
 This page checks how PROTEUS melts part of the mantle at a giant impact (`src/proteus/interior_energetics/remelt.py`).
 An impact melts the mass fraction $f$ of the mantle.
-The rule raises the outermost mantle shells that hold this mass to the initial condition of the run.
+The rule raises the outermost mantle cells (thin spherical shells) that hold this mass to the initial condition of the run.
 Validation here means that we run the code on a case where another source gives the right answer.
 The test then checks that the code gives that answer within a stated tolerance.
 Here the right answer comes from geometry, since the melt front of a mantle of uniform density has a closed form, and from the masses of the mantle cells before the impact.
@@ -24,7 +24,7 @@ The table lists the `@pytest.mark.reference_pinned` test and the slow-tier test 
 | Test id | Reference | Scope | Last compared |
 |---|---|---|---|
 | `tests/interior_energetics/test_remelt.py::test_the_melt_front_of_a_uniform_mantle_matches_the_closed_form` | Analytical limit: in a shell of uniform density between $r_c$ and $R$, the outer mass fraction $f$ lies above $r_f = (R^3 - f (R^3 - r_c^3))^{1/3}$ | `remelt_weights` on 400 cells uniform in radius between 3500 and 6400 km, at $f$ = 0.05 to 0.99. The front of the partly melted cell matches the closed form to `rtol=1e-12`. A fill linear in radius misses by 282 km at $f = 0.3$, and a fill from the base up misses by at least 1040 km at each tested fraction except $f = 0.5$, where the two fills meet. | 2026-10-24 |
-| `tests/integration/test_slow_accretion_partial_remelt.py::test_the_melted_mass_closes_on_the_pre_impact_cell_masses` | Wiring check against the interior solver: the staggered mesh and its structural density in the Aragog solver PROTEUS builds (fwl-aragog 26.10.22), after a short cooled run | Slow tier. At $f = 0.3$ on a real solver, for the `energy_balance` and the `core_module` core, the weights recovered from the re-melted entropy close against $f$ times the structural mantle mass of the pre-impact mesh to `rel=1e-9`; against the cell volumes and against the EOS masses $\rho(P, S_\mathrm{end}) V$ they miss by more than 1e-3. | 2026-10-25 |
+| `tests/integration/test_slow_accretion_partial_remelt.py::test_the_melted_mass_closes_on_the_pre_impact_cell_masses` | Wiring check against the interior solver: the staggered mesh and its structural density in the Aragog solver PROTEUS builds (fwl-aragog 26.10.22), after a short cooled run | Slow tier. At $f = 0.3$ on a real solver, for the `energy_balance` and the `core_module` core, the weights recovered from the re-melted entropy close against $f$ times the structural mantle mass of the pre-impact mesh to `rel=1e-9`; against the cell volumes and against the equation of state (EOS) masses $\rho(P, S_\mathrm{end}) V$ they miss by more than 1e-3. | 2026-10-25 |
 
 ## Melt front against the closed form
 

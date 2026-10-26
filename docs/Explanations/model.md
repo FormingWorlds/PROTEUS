@@ -225,7 +225,7 @@ How much of the mantle does a giant impact melt, and where in the mantle does th
 
 Each impact melts a fraction $f$ of the mantle mass, the melt mass fraction.
 The melt fills the mantle from the surface down.
-The interior solver divides the mantle into cells, thin spherical shells.
+The Aragog interior solver divides the mantle into cells, thin spherical shells.
 The outermost cells that hold this mass rise to the run's temperature-mode initial condition, and the deeper mantle keeps its state before the impact.
 
 The setting `accretion.remelt` sets $f$:
@@ -246,9 +246,12 @@ $r_f^3 = 2.62144 \times 10^{11} - 0.3 \times (2.62144 \times 10^{11} - 4.2875 \t
 The melt front lies 588 km below the surface.
 A fill linear in radius would put it at $R - f (R - r_c)$ = 5530 km, 870 km deep and 282 km too deep, because the outer cells hold more mass per unit radius.
 
+The cell at the melt front holds only the share $w$ of the melt, its weight, and takes the mass-weighted mean entropy of its melted and unmelted parts.
+Its entropy therefore moves the share $w$ of the way from its entropy before the impact to the entropy of the initial condition; that distance is its jump (see the [terms of the re-melt validation page](../Validation/interior_energetics/remelt.md#what-this-page-checks)).
+
 The rule has no memory of earlier melt.
 Each impact fills its share from the surface down, also where the cells are already at the initial condition.
-So two impacts of $f = 0.3$ in one step melt 0.3 of the mantle plus up to a quarter of the cell at the melt front, which the second impact blends again.
+So two impacts of $f = 0.3$ in one step melt 0.3 of the mantle plus up to a quarter of the cell at the melt front, since the second impact moves that cell the share $w$ again.
 For example, in a mantle of 4 equal cells the first impact melts the top cell in full and the next cell by $w = 0.2$.
 The second impact melts the same share again, so that cell then holds $1 - 0.8^2 = 0.36$ of its jump instead of 0.2.
 The extra share is $w (1 - w)$, at most 1/4 at $w = 0.5$.
