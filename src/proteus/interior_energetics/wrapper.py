@@ -2157,16 +2157,9 @@ def _remelt_aragog(
         from proteus.interior_energetics.aragog_core_impact import remelt_core_module
 
         S_ic = np.asarray(interior_o._last_entropy, dtype=float)
-        try:
-            if T_core_pre is None:
-                raise ValueError('core_module: the solver holds no core temperature to re-melt')
-            T_core_new = remelt_core_module(
-                hf_row, interior_o, solver, T_core_pre, float(S_ic[0])
-            )
-        except ValueError:
-            if f == 1.0:  # remelt_mantle writes the status of a partial re-melt
-                UpdateStatusfile(dirs, 21)
-            raise
+        if T_core_pre is None:
+            raise ValueError('core_module: the solver holds no core temperature to re-melt')
+        T_core_new = remelt_core_module(hf_row, interior_o, solver, T_core_pre, float(S_ic[0]))
         solver.set_initial_core_temperature(T_core_new)
         solver.set_initial_entropy(S_ic)
 
@@ -2241,9 +2234,9 @@ def remelt_mantle(
     has no validated re-melt path; an accretion run on SPIDER is refused at
     configuration load, and this backstop refuses it at the first impact.
 
-    Every error of a partial re-melt (f < 1, or an f that is not a valid fraction) and
-    every error of a scalar backend writes interior status 21 before it reaches the
-    caller; a full Aragog re-melt writes it only for a core_module ValueError.
+    Every error of the backend re-melt, at any f, and an f that is not a valid fraction
+    (for any module) write interior status 21 before the error reaches the caller: no
+    caller of the impact writes a status, and a run that stops without one reads as running.
 
     Parameters
     ----------
@@ -2290,14 +2283,11 @@ def remelt_mantle(
 
     match module:
         case 'dummy' | 'boundary' | 'aragog':
-            scalar = module != 'aragog'
+            backend = _remelt_aragog if module == 'aragog' else _remelt_scalar_backend
             try:
-                (_remelt_scalar_backend if scalar else _remelt_aragog)(
-                    config, dirs, hf_row, interior_o, f
-                )
+                backend(config, dirs, hf_row, interior_o, f)
             except Exception:
-                if scalar or f < 1.0:
-                    UpdateStatusfile(dirs, 21)
+                UpdateStatusfile(dirs, 21)
                 raise
         case 'spider':
             UpdateStatusfile(dirs, 20)
