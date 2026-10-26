@@ -38,6 +38,7 @@ from proteus.inference.correlation import (
 )
 from proteus.inference.failures import ABORT_ON_FAILURE_ENV, summarise_failures
 from proteus.inference.gen_D_init import create_init
+from proteus.inference.noise import apply_noise
 from proteus.inference.objective import (
     SPECTRAL_CACHE_ENV,
     WORKER_CONFIG_OVERRIDES,
@@ -401,6 +402,9 @@ def run_inference(config):
         config['observables'], config['sigma'], observable_correlation(config)
     )
 
+    # Optional Gaussian noise on the observables, as in real data
+    apply_noise(config)
+
     # Chi-squared or, with `objective`, Student-t or Huber errors
     config['loss'] = validate_objective(
         config.get('objective'), config, config['sigma'], config['correlation']
@@ -513,6 +517,10 @@ def run_inference(config):
     log.info(f'    objective     = {objective}')
     log.info(f'    posterior     = {config["posterior_samples"] or "off"} samples')
     log.info(f'    per-observable posterior = {config["posterior_per_observable"]}')
+    if config.get('noise'):
+        log.info(f'    noise         = Gaussian, seed {config["noise_seed"]}')
+        for k, v in config['observables'].items():
+            log.info(f'        {k:16s} {config["observables_true"][k]:.5g} -> {v:.5g}')
     log.info(' ')
     t_0 = time.perf_counter()
 

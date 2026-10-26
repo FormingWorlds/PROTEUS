@@ -152,6 +152,10 @@ synthetic retrieval test), an optional `[truth]` table records those parameters 
 
 The table does not change the optimisation; it adds a True column to the results summary and the `result_parameters.png` plot.
 
+#### Noisy observables
+
+The observables of a simulation carry no noise, so the truth sits at the peak of the likelihood. With `noise = true` (needs `[sigma]`), the study replaces each observable by one Gaussian draw around it, as a real observation would give: linear noise of `sigma` for observables compared linearly, and noise in log10 for those compared in log10 (element ratios and logarithmic variables), correlated as in `[correlation]` or `correlate_ratios`. The sigma of a log10 observable is rescaled with its value, so its error in dex stays the same. `noise_seed` (default `seed`) picks the draw. `copy.infer.toml` keeps the noise-free values as `observables_true`, and the log lists both. Over many draws, the 90 % posterior intervals should hold the truth in about 90 % of cases.
+
 ### Posterior samples
 
 With `[sigma]`, every objective form (chi-squared, correlated chi-squared, Student-t) is `S = -2 ln L` up to a constant, so `ln L = -10^(-J) / 2` up to a constant. At the end of the study one GP per observable is fitted to that observable of the scored runs, in the space the objective compares it in (log10 or linear), and `J` follows from the predicted observables as for a run. `posterior_samples` (default 2000, `0` is off) parameter samples are drawn from `L` at the GP prediction, by importance resampling of 10^6 uniform draws. When the posterior is so narrow that these give fewer effective samples than requested, up to five more rounds draw from a Gaussian mixture centred on the best-weighted draws (with a 10 % uniform share), until they do. The prior is uniform over the sampled ranges, log-uniform for log10-scaled parameters such as `planet.elements.H_budget`. The log reports the effective sample size, with a warning when it stays below the number of samples.

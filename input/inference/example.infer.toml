@@ -42,6 +42,8 @@ patience   = 0                                    # Stop after this many evaluat
 # student_t_dof = 4                               # Degrees of freedom of "student-t", default 4
 # posterior_samples = 2000                        # Posterior samples from the GP at the end; needs [sigma], default 2000 with it, 0 is off
 # posterior_per_observable = true               # Posterior from one GP per observable; false fits one GP to the objective; default true
+# noise = true                                   # Add one Gaussian draw of [sigma] to the observables, for tests on simulated data; default false
+# noise_seed = 42                                # Seed of that draw, default seed
 
 # Parameters to optimize (with bounds)
 [parameters]

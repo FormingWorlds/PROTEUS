@@ -58,6 +58,10 @@ class CorrelationWhitener:
                 f'correlation matrix is not positive definite (eigenvalue {eig_min:.3g})'
             )
 
+    def correlate(self, z):
+        """Independent standard normals z, ordered as `names`, turned into draws with correlation R."""
+        return self._chol.numpy() @ z
+
     def chi_squared(self, names: list[str], u: torch.Tensor) -> torch.Tensor:
         """Chi-squared, shape (m, 1), of each row of residuals u = (sim - true) / sigma, columns
         ordered as `names`."""
