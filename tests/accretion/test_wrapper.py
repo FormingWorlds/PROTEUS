@@ -5814,17 +5814,23 @@ def test_the_impact_applies_the_fraction_of_its_mode(
 
 @pytest.mark.unit
 def test_a_computed_impact_without_a_fraction_stops_with_the_mode_named(monkeypatch):
-    """An event without f under 'computed' cannot reach apply_impact silently; it raises."""
+    """An event without f under 'computed' cannot reach apply_impact silently: it raises and
+    writes interior status 21, so the run does not read as running."""
+    from unittest.mock import MagicMock
+
     from proteus.accretion.wrapper import apply_impact
 
     monkeypatch.setattr(
         'proteus.interior_energetics.wrapper.solve_structure', lambda *a, **k: None
     )
+    status = MagicMock()
+    monkeypatch.setattr('proteus.accretion.wrapper.UpdateStatusfile', status, raising=False)
     handler = _impact_handler(accretion=_impact_accretion(remelt_mode='computed'))
     t_before = handler.hf_row['T_magma']
     with pytest.raises(RuntimeError, match="remelt = 'computed'"):
         apply_impact(handler, _impact_event())
     assert handler.hf_row['T_magma'] == t_before
+    assert [c.args[1] for c in status.call_args_list] == [21]
 
 
 @pytest.mark.unit
