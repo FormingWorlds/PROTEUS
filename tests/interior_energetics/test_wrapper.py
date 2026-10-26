@@ -21,6 +21,7 @@ from __future__ import annotations
 import logging
 import math
 import os
+from contextlib import nullcontext
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -6820,8 +6821,9 @@ class _FakeCoreModuleSolver:
         return 1.0e20
 
 
-def _remelt_core_module(core_side_effect, status_calls, n=2):
-    """Run ``n`` Aragog core_module re-melts in one step with a mocked core helper."""
+def _remelt_core_module(core_side_effect, status_calls, n=2, f=1.0):
+    """Run ``n`` Aragog core_module re-melts of fraction ``f`` in one step with a mocked core
+    helper; a partial re-melt takes the hotter of the 2 profiles in each cell."""
     molten = np.linspace(3900.0, 3500.0, 6)
     solver = _FakeCoreModuleSolver()
     interior_o = SimpleNamespace(
@@ -6850,9 +6852,15 @@ def _remelt_core_module(core_side_effect, status_calls, n=2):
             'proteus.interior_energetics.aragog_core_impact.remelt_core_module',
             side_effect=core_side_effect,
         ) as core_mock,
+        patch(
+            'proteus.interior_energetics.wrapper._partial_remelt_profile',
+            side_effect=lambda solver, S_end, S_molten, f: np.maximum(S_end, S_molten),
+        ),
     ):
         for _ in range(n):
-            remelt_mantle({'output': '/tmp/out'}, config, hf_row=hf_row, interior_o=interior_o)
+            remelt_mantle(
+                {'output': '/tmp/out'}, config, hf_row=hf_row, interior_o=interior_o, f=f
+            )
     return solver, core_mock, status_mock
 
 
@@ -8095,9 +8103,11 @@ class _FakeMeshAragogSolver(_FakeAragogSolver):
         super().set_initial_entropy(S)
 
 
-def _partial_aragog_remelt(f, cooled=2400.0, molten=3900.0, solution=True, status=None):
+def _partial_aragog_remelt(
+    f, cooled=2400.0, molten=3900.0, solution=True, status=None, solver_cls=None
+):
     """Re-melt the 6-cell fake at fraction f; return solver, interior and row."""
-    solver = _FakeMeshAragogSolver(cooled_profile=np.full(6, cooled))
+    solver = (solver_cls or _FakeMeshAragogSolver)(cooled_profile=np.full(6, cooled))
     if not solution:
         solver._solution = None
     interior_o = SimpleNamespace(
@@ -8419,3 +8429,122 @@ def test_a_scalar_remelt_without_a_finite_magma_temperature_writes_the_interior_
     else:
         assert err.type is ValueError and 'non-finite' in str(err.value)
     assert [c.args[1] for c in status.call_args_list] == [21]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'path',
+    [
+        'set_entropy_ic',
+        'refresh_entropy_eos',
+        'molten_state',
+        'no_solver',
+        'melt_state',
+        'nan_f',
+    ],
+)
+def test_every_error_of_a_partial_remelt_writes_the_interior_status_once(path):
+    """At f = 0.3 an error on any step of the re-melt writes interior status 21 once and
+    reaches the caller unchanged: the Aragog set-up, table refresh and molten-state
+    evaluation, a missing solver, the scalar melt state and a fraction that is not a number."""
+    a, w = (
+        'proteus.interior_energetics.aragog.AragogRunner.',
+        'proteus.interior_energetics.wrapper.',
+    )
+    raising = {
+        'set_entropy_ic': a + '_set_entropy_ic',
+        'refresh_entropy_eos': a + '_refresh_entropy_eos',
+        'molten_state': w + 'evaluate_molten_state',
+    }
+    boom, status, f = RuntimeError('boom'), MagicMock(), 0.3
+    config, row, expected = _remelt_config('aragog'), {}, RuntimeError
+    interior_o = SimpleNamespace(
+        aragog_solver=_FakeMeshAragogSolver(cooled_profile=np.full(6, 2400.0)),
+        _last_entropy=np.full(6, 2400.0),
+        impact_reset=False,
+    )
+    if path == 'no_solver':
+        interior_o.aragog_solver = None
+    elif path in ('melt_state', 'nan_f'):
+        config, row = _remelt_config('dummy'), _remelt_hf_row()
+        if path == 'melt_state':
+            expected = KeyError
+            del row['M_int']
+        else:
+            f, expected = float('nan'), ValueError
+    with (
+        patch(a + '_set_entropy_ic', return_value=np.full(6, 3900.0)),
+        patch(a + '_refresh_entropy_eos'),
+        patch(w + 'evaluate_molten_state', return_value=None),
+        patch(w + 'UpdateStatusfile', new=status),
+        patch(raising[path], side_effect=boom) if path in raising else nullcontext(),
+        pytest.raises(expected) as err,
+    ):
+        remelt_mantle({'output': '/tmp/out'}, config, row, interior_o, f=f)
+    assert [c.args[1] for c in status.call_args_list] == [21]
+    assert err.value is boom or path not in raising
+
+
+@pytest.mark.unit
+def test_a_partial_core_module_remelt_error_writes_the_interior_status_once():
+    """A core_module ValueError at f = 0.3 writes interior status 21 once, not once for the
+    core and once for the partial re-melt, and reaches the caller."""
+    status_calls = []
+    with pytest.raises(ValueError, match='not finite'):
+        _remelt_core_module(
+            ValueError('core temperature is not finite'), status_calls, n=1, f=0.3
+        )
+    assert status_calls == [21]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('module, status', [('aragog', []), ('dummy', [21])])
+def test_a_full_remelt_error_writes_the_status_for_a_scalar_backend_alone(module, status):
+    """At f = 1 an error after the set-up leaves the status file to the caller on an
+    energy-balance Aragog run (only a core_module ValueError writes 21 there), while a
+    scalar backend writes 21 on any error; the error reaches the caller in both."""
+    w = 'proteus.interior_energetics.wrapper.'
+    row = _remelt_hf_row()
+    del row['M_int']
+    interior_o = SimpleNamespace(
+        aragog_solver=_FakeMeshAragogSolver(cooled_profile=np.full(6, 2400.0)),
+        _last_entropy=np.full(6, 2400.0),
+        impact_reset=False,
+    )
+    calls = MagicMock()
+    with (
+        patch(
+            'proteus.interior_energetics.aragog.AragogRunner._set_entropy_ic',
+            return_value=np.full(6, 3900.0),
+        ),
+        patch('proteus.interior_energetics.aragog.AragogRunner._refresh_entropy_eos'),
+        patch(w + 'evaluate_molten_state', side_effect=RuntimeError('boom')),
+        patch(w + 'UpdateStatusfile', new=calls),
+        pytest.raises((RuntimeError, KeyError)),
+    ):
+        remelt_mantle({'output': '/tmp/out'}, _remelt_config(module), row, interior_o, f=1.0)
+    assert [c.args[1] for c in calls.call_args_list] == status
+
+
+class _FakeRisingTSolver(_FakeMeshAragogSolver):
+    """The 6-cell fake with T = k S, so a jump from S_0 to S_f holds k (S_f^2 - S_0^2) / 2."""
+
+    _K = 1.0e20
+
+    def _step_heat_content(self, S0_stag, Sf_stag, n_quad: int = 16) -> float:
+        S0, Sf = (np.asarray(s, dtype=float).ravel() for s in (S0_stag, Sf_stag))
+        return float(np.sum(self._K * (Sf**2 - S0**2) / 2.0))
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_a_partial_remelt_books_the_heat_of_the_blended_profile():
+    """With T rising in S the blended front cell holds less heat than its share of the
+    full jump. At f = 0.3 on 6 equal cells the top cell melts in full (2400 to 3900) and
+    the next to w = 0.8 (2400 to 3600), so the booked heat is k (9.45e6 + 7.2e6) / 2,
+    below f times the full re-melt heat, k 0.3 6 9.45e6 / 2."""
+    _, interior_o, hf_row = _partial_aragog_remelt(0.3, solver_cls=_FakeRisingTSolver)
+    k = _FakeRisingTSolver._K
+    np.testing.assert_allclose(interior_o._last_entropy[4:], [3600.0, 3900.0], rtol=1e-12)
+    assert hf_row['step_dE_impact_J'] == pytest.approx(k * (9.45e6 + 7.2e6) / 2, rel=1e-12)
+    assert hf_row['step_dE_impact_J'] < 0.99 * k * 0.3 * 6 * 9.45e6 / 2
