@@ -40,7 +40,7 @@ from proteus.outgas.layer_trapping import (
     layer_profiles,
     persist_layer_state,
 )
-from proteus.outgas.trapping import remelt_returned_mass, run_trapping
+from proteus.outgas.trapping import remelt_returned_mass, run_trapping, trapped_mass
 from proteus.utils.helper import snapshot_path_for_time
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
@@ -358,3 +358,87 @@ def test_persisting_without_a_state_or_a_snapshot_writes_nothing(tmp_path):
     with nc.Dataset(path) as ds:
         assert 'trap_status_s' in ds.variables
         assert int(ds.variables['trap_status_s'][7]) == STATUS_MUSH
+
+
+def _freeze_bottom_up(config, step_yr: float = 1.0e4):
+    """Freeze the mantle one shell per step from the base, at a fixed melt concentration.
+
+    A first step finds the mantle molten. Each step after it the next shell
+    enters the mush at a melt fraction of 0.3 and the one below it freezes, so
+    the mush drains up into the melt. Before each step the melt is reset to hold
+    water at ``_C_H2O`` of the melt it was dissolved into, as a chemistry solve
+    at a fixed concentration would leave it. Returns the crystallised fraction,
+    the cumulative trapped water and the trapped water the front scheme's
+    ``trapped_mass`` gives at the no-drainage bound for the same steps [kg].
+    """
+    interior = _interior(np.ones(_N))
+    hf_row = _hf_row(np.ones(_N), time=0.0, H_kg_total=1e30, O_kg_total=1e30)
+    hf_all = pd.DataFrame([hf_row])
+    crystallised, layers, bound = [], [], []
+    for k in range(-1, _N + 1):
+        x = np.ones(_N)
+        x[: max(k, 0)] = 0.0
+        if 0 <= k < _N:
+            x[k] = 0.3
+        melt = _M_MANTLE * float(hf_all.iloc[-1]['Phi_global'])
+        row = dict(
+            hf_all.iloc[-1].to_dict(), Time=(k + 2) * step_yr, Phi_global=float(np.mean(x))
+        )
+        row['H2O_kg_liquid'] = _C_H2O * melt
+        row['H2O_kg_total'] = row['H2O_kg_liquid'] + row['H2O_kg_solid']
+        interior.phi = x
+        step = run_trapping(config, row, hf_all, interior)
+        mass, capped = trapped_mass(_D_H2O, 0.5, _C_H2O, step.dm_rm, row['H2O_kg_liquid'])
+        assert not capped and not step.supply_capped
+        crystallised.append(1.0 - row['Phi_global'])
+        layers.append(row.get('H2O_kg_trapped', 0.0))
+        bound.append((bound[-1] if bound else 0.0) + mass)
+        hf_all = pd.DataFrame([row])
+    return np.array(crystallised), np.array(layers), np.array(bound)
+
+
+@pytest.mark.reference_pinned
+@pytest.mark.physics_invariant
+def test_undrained_layers_bury_the_front_schemes_no_drainage_bound(validation_plot):
+    """Cross-check against the front scheme: with a melt that cannot drain, a
+    mantle frozen shell by shell at a fixed melt concentration buries what
+    ``trapped_mass`` of the front scheme gives at its no-drainage bound,
+    F_tl = phi_c, Eq. 6 of Sim, Hirschmann and Hier-Majumder (2024), summed
+    over the same steps: (D + phi_c (1 - D)) C M_mantle in all. The layer
+    scheme locks the pore melt as each shell enters and the front scheme as
+    it crystallises, so the two agree once every shell has frozen. With a melt
+    of 100 Pa s the pore melt drains over the 1e4 yr each shell spends in the
+    mush, and less is buried, never below the crystals' share D C M_mantle.
+    """
+    x_stiff, stiff, bound = _freeze_bottom_up(_config(melt_log10visc=30.0))
+    x_drain, drained, _ = _freeze_bottom_up(_config())
+    total = (_D_H2O + 0.5 * (1.0 - _D_H2O)) * _C_H2O * _M_MANTLE
+    assert x_stiff[-1] == pytest.approx(1.0, rel=1e-12)
+    assert stiff[-1] == pytest.approx(bound[-1], rel=1e-10)
+    assert bound[-1] == pytest.approx(total, rel=1e-12)
+    # Discrimination: the shells' own entry melt fraction, 0.3, for phi_c, and
+    # a scheme without the crystals' share.
+    assert abs(stiff[-1] - (_D_H2O + 0.3 * (1.0 - _D_H2O)) * _C_H2O * _M_MANTLE) > 0.3 * total
+    assert abs(stiff[-1] - 0.5 * (1.0 - _D_H2O) * _C_H2O * _M_MANTLE) > 1e-3 * total
+    # Drainage lowers the burial, within the two bounds.
+    assert _D_H2O * _C_H2O * _M_MANTLE < drained[-1] < 0.9 * stiff[-1]
+    # The last shell's pore melt drains out at the surface with nothing entering
+    # the mush after it, so the final step is a net return.
+    assert drained[-1] < drained[-2]
+
+    def figure():
+        import matplotlib.pyplot as plt
+
+        norm = _C_H2O * _M_MANTLE
+        fig, ax = plt.subplots(figsize=(5.2, 3.6))
+        ax.plot(x_stiff, bound / norm, '-', label='front scheme, F_tl = phi_c')
+        ax.plot(x_stiff, stiff / norm, 'o', mfc='none', label='layers, melt 1e30 Pa s')
+        ax.plot(x_drain, drained / norm, 's', mfc='none', label='layers, melt 100 Pa s')
+        ax.plot([0.0, 1.0], [0.0, _D_H2O], ':', color='0.5', label='crystals alone, D')
+        ax.set_xlabel('Crystallised fraction of the mantle')
+        ax.set_ylabel('Trapped H2O / (C M)')
+        ax.legend(fontsize=8)
+        fig.tight_layout()
+        return fig
+
+    validation_plot(figure, 'layer_trapping_no_drainage_bound')

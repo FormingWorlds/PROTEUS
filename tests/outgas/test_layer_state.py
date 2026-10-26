@@ -28,7 +28,7 @@ import numpy as np
 import pytest
 
 from proteus.outgas.common import element_masses_from_species
-from proteus.outgas.compaction import BRANCH_DARCY, BRANCH_GUARD
+from proteus.outgas.compaction import BRANCH_DARCY, BRANCH_GUARD, BRANCH_MATRIX
 from proteus.outgas.layer_drainage import (
     STATUS_LIQUID,
     STATUS_MUSH,
@@ -695,3 +695,87 @@ def test_a_sealed_node_reaching_the_floor_keeps_all_its_melt():
     assert capped.n_substeps == 1
     assert capped.elapsed < full.elapsed
     assert np.sum(capped.psi * volume) > np.sum(full.psi * volume)
+
+
+@pytest.mark.reference_pinned
+@pytest.mark.physics_invariant
+def test_a_matrix_limited_node_traps_the_closed_form_share_of_its_melt(validation_plot):
+    """A node held in the mush, drained only by compaction, keeps psi_entry exp(-t / tau_s).
+
+    The top shell of a 6-shell mantle enters at the transition (F = 0.5) and
+    spends three matrix times ``tau_s = mu_s / (drho g d)`` in the mush, ``d``
+    the depth of its centre below its top, before it freezes. A 1 cm grain and
+    a melt of 0.1 Pa s keep the percolation 7 times faster than the matrix to
+    the end, so it reaches the floor with ``0.5 exp(-3)`` of its mass as melt
+    and buries that share of the water it locked, the closed form of the
+    front scheme's matrix limit. The tolerance of 5e-3 covers the 1.7e-3 the
+    second-order sub-steps of 0.058 ``tau_s`` add over 52 steps.
+    """
+    n, mush_visc, d_h2o = 6, 1.0e22, 0.0017
+    kw = _mesh_kwargs(n, grain_size=1.0e-2, melt_visc=0.1, mush_visc=mush_visc)
+    vol = dict(concentration={'H2O': 1.0e-3}, partition={'H2O': d_h2o}, liquid={'H2O': 1.0e21})
+    r = kw['r_basic']
+    tau = mush_visc / (_DRHO * _G * 0.5 * (r[-1] - r[-2])) / secs_per_year
+    x = np.ones(n)
+    state, _ = advance_layers(None, time_prev=0.0, time_now=0.0, melt_fraction=x, **kw)
+    x[-1] = 0.3
+    state, entry = advance_layers(
+        state, time_prev=0.0, time_now=100.0, melt_fraction=x, **vol, **kw
+    )
+    locked = entry.locked_kg['H2O']
+    assert locked == pytest.approx((1.0 - d_h2o) * 1.0e-3 * 0.5 * 1.0e23, rel=1e-12)
+    times, kept, moved = [0.0], [1.0], locked
+    t_prev, t_end = 100.0, 100.0 + 3.0 * tau
+    while x[-1] > 0.0:
+        t_now = min(t_prev + 2.0e4, t_end)
+        if t_now >= t_end:
+            x[-1] = 0.0
+        state, step = advance_layers(
+            state, time_prev=t_prev, time_now=t_now, melt_fraction=x, **vol, **kw
+        )
+        moved += step.moved_kg['H2O']
+        assert np.all(step.node_branch[step.node_branch > 0] == BRANCH_MATRIX)
+        frac = (
+            step.trapped[0] / 0.5 if step.exited.size else state.psi[-1] / state.psi_entry[-1]
+        )
+        times.append((t_now - 100.0) / tau)
+        kept.append(float(frac))
+        t_prev = t_now
+
+    exact = 0.5 * np.exp(-3.0)
+    assert step.exited.tolist() == [n - 1]
+    assert step.trapped[0] == pytest.approx(exact, rel=5e-3)
+    assert state.buried['H2O'][-1] == pytest.approx(locked * np.exp(-3.0), rel=5e-3)
+    # What the record holds is what the steps moved, to rounding.
+    assert moved == pytest.approx(state.buried['H2O'][-1], rel=1e-10)
+    # Discrimination: the depth of the node's base halves tau, and a forward-Euler
+    # update at the same steps ends 8 percent low.
+    assert abs(0.5 * np.exp(-6.0) - step.trapped[0]) > 0.5 * exact
+    h = 2.0e4 / tau
+    assert abs(0.5 * (1.0 - h) ** (3.0 / h) - step.trapped[0]) > 0.05 * exact
+
+    def figure():
+        import matplotlib.pyplot as plt
+
+        t = np.asarray(times)
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(9, 3.6))
+        grid = np.linspace(0.0, 3.0, 40)
+        every = slice(None, None, 3)
+        ax1.semilogy(grid, np.exp(-grid), '-', label='exp(-t / tau_s)')
+        ax1.semilogy(
+            t[every], np.asarray(kept)[every], 'o', mfc='none', ms=4, label='layer state'
+        )
+        ax1.set_xlabel('Time in the mush / tau_s')
+        ax1.set_ylabel('Retained melt / entry melt')
+        ax1.legend(fontsize=8)
+        dev = np.asarray(kept) * np.exp(t) - 1.0
+        ax2.plot(t[every], dev[every], 'o', mfc='none', ms=4)
+        ax2.plot(grid, grid * 0.058**2 / 6.0, '--', label='RK2 bias n h^3 / 6')
+        ax2.axhline(5e-3, color='C2', lw=1, label='tolerance')
+        ax2.set_xlabel('Time in the mush / tau_s')
+        ax2.set_ylabel('Relative deviation')
+        ax2.legend(fontsize=8)
+        fig.tight_layout()
+        return fig
+
+    validation_plot(figure, 'layer_state_matrix_limited_node')

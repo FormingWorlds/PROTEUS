@@ -92,6 +92,9 @@ nav:
           - Melt drainage across the freezing front (compaction.py): Validation/outgas/compaction.md
           - Burial ledger for remelting (burial_ledger.py): Validation/outgas/burial_ledger.md
           - Solid-phase volatile trapping (trapping.py): Validation/outgas/trapping.md
+          - Pore-melt drainage of the layer scheme (layer_drainage.py): Validation/outgas/layer_drainage.md
+          - Per-node state of the layer scheme (layer_state.py): Validation/outgas/layer_state.md
+          - Layer trapping step (layer_trapping.py): Validation/outgas/layer_trapping.md
           - Volatiles under a closed crust (lid_seal.py): Validation/outgas/lid_seal.md
       - Star:
           - Stellar luminosity and instellation (dummy.py): Validation/star/dummy.md
@@ -128,6 +131,9 @@ nav:
               - Volatile trapping: Reference/api/outgas_trapping.md
               - Melt drainage: Reference/api/outgas_compaction.md
               - Burial ledger: Reference/api/outgas_burial_ledger.md
+              - Layer drainage: Reference/api/outgas_layer_drainage.md
+              - Layer state: Reference/api/outgas_layer_state.md
+              - Layer trapping: Reference/api/outgas_layer_trapping.md
               - Lid seal: Reference/api/outgas_lid_seal.md
 
   - Community:
