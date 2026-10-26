@@ -61,9 +61,10 @@ def validate_posterior_samples(n, sigma: dict | None) -> int:
 
 
 def validate_posterior_per_observable(flag, n_samples: int) -> bool:
-    """Whether the posterior uses one GP per observable; None is False."""
+    """Whether the posterior uses one GP per observable; None is True when posterior samples
+    are on."""
     if flag is None:
-        return False
+        return bool(n_samples)
     if not isinstance(flag, bool):
         raise ValueError(f'posterior_per_observable must be true or false, got {flag!r}')
     if flag and not n_samples:

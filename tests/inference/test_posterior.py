@@ -328,10 +328,11 @@ def test_write_posterior_per_observable_peaks_at_the_target(tmp_path, monkeypatc
 
 
 @pytest.mark.parametrize(
-    'flag, n, expected', [(None, 2000, False), (True, 2000, True), (False, 0, False)]
+    'flag, n, expected',
+    [(None, 2000, True), (None, 0, False), (True, 2000, True), (False, 2000, False)],
 )
 def test_validate_posterior_per_observable_accepts(flag, n, expected):
-    """None is off; true needs posterior samples."""
+    """None is on with posterior samples and off without; true needs posterior samples."""
     assert post.validate_posterior_per_observable(flag, n) is expected
     assert isinstance(post.validate_posterior_per_observable(flag, n), bool)
 
