@@ -173,40 +173,66 @@ def test_face_flux_is_the_lesser_of_capacity_and_supply():
 
 @pytest.mark.reference_pinned
 @pytest.mark.physics_invariant
-@pytest.mark.parametrize('buoyancy', ['mixture', 'solid'])
-def test_single_node_reproduces_the_front_drainage_integral(buoyancy):
+def test_single_node_reproduces_the_front_drainage_integral(validation_plot):
     """One node with L = V/A drains exactly as the front scheme's parcel.
 
-    Cross-check against the front scheme's LSODA integral at rtol 1e-8, over
-    five percolation times of a fluid melt so the drainage is far from both
-    limits, under either separation buoyancy. The second-order sub-stepping at
-    a fortieth of the node timescale stays within 1e-3 of it.
+    Cross-check against the front scheme's LSODA integral at rtol 1e-8, at ten
+    times over five percolation times of a fluid melt so the drainage is far
+    from both limits, under either separation buoyancy. The second-order
+    sub-stepping at a fortieth of the node timescale stays within 1e-3 of it.
     """
     r = np.array([5.0e6, 5.06e6])
     volume, area, _ = shell_geometry(r)
     length = volume[0] / area[0]
     psi0, melt_visc = 0.3, 1.0
-    w0 = darcy_velocity(psi0, _GRAIN, _DRHO, _G, melt_visc, buoyancy=buoyancy)
-    duration = 5.0 * length / w0
-    layer = drain_runs(
-        np.array([psi0]),
-        [np.array([0])],
-        volume,
-        area,
-        _speed(melt_visc, buoyancy),
-        np.array([0.0]),
-        duration,
-        substep_fraction=0.025,
-    )
-    front, _, _ = drainage_integral(
-        psi0, duration, length, _GRAIN, _DRHO, _G, melt_visc, 1e-30, buoyancy=buoyancy
-    )
-    assert layer.psi[0] == pytest.approx(front, rel=1e-3)
-    # Drainage happened, and it is self-limiting: far from both no drainage and
-    # an emptied node.
-    assert 0.3 * psi0 < layer.psi[0] < 0.6 * psi0
-    # Melt that left the node is what the node lost.
-    assert layer.returned == pytest.approx((psi0 - layer.psi[0]) * volume[0], rel=1e-12)
+    history = {}
+    for buoyancy in ('mixture', 'solid'):
+        w0 = darcy_velocity(psi0, _GRAIN, _DRHO, _G, melt_visc, buoyancy=buoyancy)
+        times = np.linspace(0.5, 5.0, 10) * length / w0
+        psi, returned, layer, front = psi0, 0.0, [], []
+        for t_prev, t_now in zip(np.concatenate(([0.0], times[:-1])), times):
+            out = drain_runs(
+                np.array([psi]),
+                [np.array([0])],
+                volume,
+                area,
+                _speed(melt_visc, buoyancy),
+                np.array([0.0]),
+                t_now - t_prev,
+                substep_fraction=0.025,
+            )
+            psi, returned = float(out.psi[0]), returned + out.returned
+            ref, _, _ = drainage_integral(
+                psi0, t_now, length, _GRAIN, _DRHO, _G, melt_visc, 1e-30, buoyancy=buoyancy
+            )
+            layer.append(psi)
+            front.append(ref)
+        np.testing.assert_allclose(layer, front, rtol=1e-3)
+        # Drainage happened, and it is self-limiting: far from both no drainage
+        # and an emptied node.
+        assert 0.3 * psi0 < psi < 0.6 * psi0
+        # Melt that left the node is what the node lost.
+        assert returned == pytest.approx((psi0 - psi) * volume[0], rel=1e-12)
+        history[buoyancy] = (times * w0 / length, np.array(layer), np.array(front))
+
+    def figure():
+        import matplotlib.pyplot as plt
+
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(9, 3.6))
+        for k, (buoyancy, (t, layer, front)) in enumerate(history.items()):
+            ax1.plot(t, front / psi0, '-', color=f'C{k}', label=buoyancy)
+            ax1.plot(t, layer / psi0, 'o', mfc='none', color=f'C{k}')
+            ax2.plot(t, layer / front - 1.0, 'o-', mfc='none', color=f'C{k}')
+        ax1.set_xlabel('t w_D(psi0) / L')
+        ax1.set_ylabel('psi / psi0')
+        ax1.legend(fontsize=8)
+        ax2.axhspan(-1e-3, 1e-3, color='C2', alpha=0.25, zorder=0, label='tolerance')
+        ax2.set_xlabel('t w_D(psi0) / L')
+        ax2.set_ylabel('layer / front - 1')
+        fig.tight_layout()
+        return fig
+
+    validation_plot(figure, 'layer_drainage_single_node')
 
 
 @pytest.mark.physics_invariant
@@ -270,7 +296,7 @@ def test_compaction_limited_node_decays_exponentially():
 
 @pytest.mark.reference_pinned
 @pytest.mark.physics_invariant
-def test_uniform_column_follows_the_kinematic_wave_rarefaction():
+def test_uniform_column_follows_the_kinematic_wave_rarefaction(validation_plot):
     """A uniform column on an impermeable base drains as the analytic rarefaction.
 
     For a flux ``q = K psi^3`` the fan from the base reaches the top at
@@ -283,28 +309,54 @@ def test_uniform_column_follows_the_kinematic_wave_rarefaction():
     """
     height, k, psi0 = 1.0e5, 1.0e-6, 0.3
     t_a = height / (3.0 * k * psi0**2)
+    checkpoints = np.array([0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 4.0])
 
-    def retained(n: int, t: float) -> float:
+    def retained(n: int) -> np.ndarray:
         dz = height / n
-        out = drain_runs(
-            _uniform(n, psi0),
-            [np.arange(n)],
-            _uniform(n, dz),
-            np.ones(n),
-            lambda p, idx: k * p**2,
-            np.zeros(n),
-            t,
-        )
-        return float(np.sum(out.psi) * dz / (psi0 * height))
+        psi, out = _uniform(n, psi0), []
+        for t_prev, t_now in zip(np.concatenate(([0.0], checkpoints[:-1])), checkpoints):
+            psi = drain_runs(
+                psi,
+                [np.arange(n)],
+                _uniform(n, dz),
+                np.ones(n),
+                lambda p, idx: k * p**2,
+                np.zeros(n),
+                (t_now - t_prev) * t_a,
+            ).psi
+            out.append(float(np.sum(psi) * dz / (psi0 * height)))
+        return np.array(out)
 
-    assert retained(100, 0.5 * t_a) == pytest.approx(1.0 - k * psi0**2 * 0.5 * t_a / height)
-    fine, coarse = retained(100, 4.0 * t_a), retained(50, 4.0 * t_a)
-    exact = (2.0 / 3.0) * np.sqrt(0.25)
-    assert fine == pytest.approx(exact, rel=0.03)
+    fine, coarse = retained(100), retained(50)
+    exact = np.where(
+        checkpoints <= 1.0, 1.0 - checkpoints / 3.0, (2.0 / 3.0) * np.sqrt(1.0 / checkpoints)
+    )
+    # Upwind smearing brings the fan to the top early, 1.3e-5 off at 0.75 t_a.
+    early = checkpoints <= 0.5
+    np.testing.assert_allclose(fine[early], exact[early], rtol=1e-6)
+    assert fine[-1] == pytest.approx(exact[-1], rel=0.03)
     # A regression to draining over the whole column thickness per step, the
     # front picture, would leave exp(-4)-like values, far below 1/3.
-    assert fine > 0.3
-    assert exact < fine < coarse
+    assert fine[-1] > 0.3
+    assert exact[-1] < fine[-1] < coarse[-1]
+
+    def figure():
+        import matplotlib.pyplot as plt
+
+        grid = np.linspace(0.05, 4.0, 60)
+        curve = np.where(grid <= 1.0, 1.0 - grid / 3.0, (2.0 / 3.0) * np.sqrt(1.0 / grid))
+        fig, ax = plt.subplots(figsize=(5.2, 3.6))
+        ax.plot(grid, curve, '-', label='kinematic wave, exact')
+        ax.plot(checkpoints, fine, 'o', mfc='none', label='layer drainage, 100 nodes')
+        ax.plot(checkpoints, coarse, 's', mfc='none', label='layer drainage, 50 nodes')
+        ax.axvline(1.0, color='0.5', lw=0.8, ls=':')
+        ax.set_xlabel('t / t_a')
+        ax.set_ylabel('M / M0')
+        ax.legend(fontsize=8)
+        fig.tight_layout()
+        return fig
+
+    validation_plot(figure, 'layer_drainage_kinematic_wave')
 
 
 @pytest.mark.physics_invariant

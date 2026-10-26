@@ -800,10 +800,10 @@ def _record(hf_row: dict, step: TrappingStep) -> None:
             step.f_tl,
             step.dm_rm,
         )
-    if step.branch == BRANCH_GUARD:
+    if step.branch == BRANCH_GUARD and step.mode != 'layers':
         # The guard replaces the drainage integral by its no-drainage limit,
         # which can bury far more than the integral would, so every step that
-        # takes it is reported with its cause rather than only counted.
+        # takes it is reported with its cause; the layer step reports its own.
         log.warning(
             'Trapping: the freezing front could not be integrated (%s). F_tl = %.3f '
             'is the no-drainage upper bound, the entry porosity capped at the '

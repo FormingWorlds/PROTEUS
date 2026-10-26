@@ -34,6 +34,9 @@ Without `--validation-plots` the tests assert and write nothing. The command mak
 | Outgassing | `outgas/burial_ledger.py` | [Burial ledger for remelting](outgas/burial_ledger.md) | none yet |
 | Outgassing | `outgas/compaction.py` | [Melt drainage across the freezing front](outgas/compaction.md) | [drainage velocity](outgas/compaction.md#plot-drainage-velocity) |
 | Outgassing | `outgas/lavatmos.py` | [Rock-vapour molar masses](outgas/lavatmos.md) | none yet |
+| Outgassing | `outgas/layer_drainage.py` | [Pore-melt drainage of the layer scheme](outgas/layer_drainage.md) | [single node](outgas/layer_drainage.md#plot-single-node), [kinematic wave](outgas/layer_drainage.md#plot-kinematic-wave) |
+| Outgassing | `outgas/layer_state.py` | [Per-node state of the layer scheme](outgas/layer_state.md) | [matrix-limited node](outgas/layer_state.md#plot-matrix-limited-node) |
+| Outgassing | `outgas/layer_trapping.py` | [Layer trapping step](outgas/layer_trapping.md) | [no-drainage bound](outgas/layer_trapping.md#plot-no-drainage-bound) |
 | Outgassing | `outgas/trapping.py` | [Solid-phase volatile trapping](outgas/trapping.md) | none yet |
 | Star | `star/dummy.py` | [Stellar luminosity and instellation](star/dummy.md) | none yet |
 | Star | `star/wrapper.py` | [Stellar wrapper dispatch](star/wrapper.md) | none yet |

@@ -26541,12 +26541,6 @@
       "function": "calc_surface_pressures_atmodeller"
     },
     {
-      "file": "src/proteus/outgas/layer_trapping.py",
-      "kind": "read",
-      "reason": "template <sp>_kg_liquid",
-      "function": "run_layer_trapping"
-    },
-    {
       "file": "src/proteus/plot/cpl_global.py",
       "kind": "read",
       "reason": "dynamic key k",

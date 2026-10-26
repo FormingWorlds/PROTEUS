@@ -377,8 +377,8 @@ class Aragog:
     while Aragog's own default stays 'melt' for SPIDER parity. The
     regime boundaries are the porosities where adjacent permeability
     laws cross (Bower et al. 2018, section 2.1, Eqs. 13a to 13c). The melt
-    drainage of front trapping (outgas.trap_mode 'front') takes the melt
-    viscosity whatever this setting."""
+    drainage of front and layer trapping (outgas.trap_mode 'front' or 'layers')
+    takes the melt viscosity whatever this setting."""
     separation_buoyancy: str = field(
         default='mixture',
         validator=in_(('mixture', 'solid')),
@@ -389,7 +389,8 @@ class Aragog:
     regime of a grain settling alone keeps (rho_s - rho_l) g; 'solid' takes
     (rho_s - rho_l) g on every regime (Abe 1995, Eq. 40), as SPIDER does, so
     'solid' with separation_viscosity 'melt' is the SPIDER setting. The melt
-    drainage of front trapping (outgas.trap_mode 'front') takes the same buoyancy.
+    drainage of front and layer trapping (outgas.trap_mode 'front' or 'layers')
+    takes the same buoyancy.
     Up to a porosity of 0.4 'mixture' equals (1 - phi) times 'solid' within 1e-5;
     from a porosity of 0.91 up both modes take the plain-contrast Stokes rate within 1e-2."""
     allow_resume_law_change: bool = field(default=False, validator=_valid_bool)
