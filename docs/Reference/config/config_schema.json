@@ -3363,7 +3363,7 @@
           "value": 0
         }
       ],
-      "description": "Initial surface temperature [K]. In every mode it is the initial magma temperature of the dummy and boundary energetics, the floor of their re-melt after a giant impact, and the temperature of the initial flux guess when interior_energetics.flux_guess < 0. Its other uses depend on temperature_mode; the How-to page on initial thermal conditions lists them per mode.",
+      "description": "Initial surface temperature [K]. In every mode it is the initial magma temperature of the dummy and boundary energetics, the floor of their full re-melt after a giant impact (a partial one moves the share f of the way to it), and the temperature of the initial flux guess when interior_energetics.flux_guess < 0. Its other uses depend on temperature_mode; the How-to page on initial thermal conditions lists them per mode.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -7543,7 +7543,7 @@
           "value": 0.0
         }
       ],
-      "description": "Minimum threshold for element mass [kg]. Outgassing treats H, C, N or S below it as absent; escape empties a non-noble element whose reachable mass (its total less the mass trapped in the solid) is below it, down to the trapped mass, except on a mantle frozen with params.stop.solid.freeze_volatiles. Noble gases are exempt.",
+      "description": "Minimum threshold for element mass [kg]. Outgassing treats H, C, N or S below it as absent; escape empties a non-noble element whose reachable mass (its total less the mass trapped in the solid) is below it, down to the trapped mass, except on a mantle frozen with params.stop.solid.freeze_volatiles. Noble gases are exempt. CALLIOPE also uses it as the absolute mass tolerance [kg] of its equilibrium solve.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -7559,7 +7559,7 @@
       "default": "false",
       "choices": null,
       "bounds": null,
-      "description": "Enable binodal-controlled H2 partitioning between atmosphere and magma ocean using the Rogers+2025 H2-MgSiO3 miscibility model.",
+      "description": "Enable binodal-controlled H2 partitioning between atmosphere and magma ocean using the Rogers+2025 H2-MgSiO3 miscibility model. Not available yet: `true` is rejected when the config loads.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -7601,7 +7601,7 @@
           "value": 0.0
         }
       ],
-      "description": "Relative tolerance for the volatile equilibrium solver.",
+      "description": "Relative tolerance [1] of the CALLIOPE and atmodeller equilibrium solvers. It is also the relative tolerance of the per-element mass closure check that runs after each outgassing step while trapping is on.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -7622,7 +7622,7 @@
           "value": 0.0
         }
       ],
-      "description": "Absolute tolerance for the volatile equilibrium solver.",
+      "description": "Absolute tolerance of the equilibrium solvers: CALLIOPE takes it as `xtol` of its root solve, atmodeller as `atol`. Unused by the dummy module.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -7698,7 +7698,7 @@
       "default": "-1.0",
       "choices": null,
       "bounds": null,
-      "description": "Log10 viscosity of the mush near the solidus [log10(Pa s)], entering the matrix deformation time. Negative selects the default of 20, mid-range of the 18 to 22 the literature allows.",
+      "description": "Log10 viscosity of the mush near the solidus [log10(Pa s)], entering the matrix deformation time. A value of zero or below selects the default of 20, mid-range of the 18 to 22 the literature allows.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -8588,7 +8588,7 @@
           "value": 0.0
         }
       ],
-      "description": "Minimum surface temperature [K] used by LavAtmos.",
+      "description": "Lower bound [K] on the surface temperature that LavAtmos uses: the vapourisation runs at max(T_min, T_magma).",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -8604,7 +8604,7 @@
       "default": "\"BSE_palm\"",
       "choices": null,
       "bounds": null,
-      "description": "Name of the melt composition file (without extension).",
+      "description": "Name of the melt composition file, a CSV file without its extension in the `input/lava_compositions` folder of `LAVA_DIR`.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -8646,7 +8646,7 @@
           "value": 0.0
         }
       ],
-      "description": "Absolute tolerance for LavAtmos fO2 solve.",
+      "description": "Absolute tolerance of the LavAtmos fO2 solve, passed to LavAtmos as its `xatol` argument.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -11796,7 +11796,7 @@
       "default": "none",
       "choices": null,
       "bounds": null,
-      "description": "Path to the impact timeline file. Environment variables and ``~`` are expanded.",
+      "description": "Path to the impact timeline file. Environment variables and ``~`` are expanded. An optional ``f_melt`` column gives the melted mass fraction of the mantle of each impact [1], in [0, 1]; when present, every impact needs a value, and a blank cell is refused under every ``accretion.remelt`` setting, ``'full'`` included.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -12002,6 +12002,26 @@
         }
       ],
       "description": "Fraction of the atmosphere removed by each impact when ``atmloss_module = \"constant\"`` [0-1]. Applies to the target's atmosphere and to the impactor's atmospheric part alike.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "accretion.remelt",
+      "toml_section": "accretion",
+      "class": "Accretion",
+      "type": "str or none",
+      "accepts_none": true,
+      "default": "none",
+      "choices": [
+        null,
+        "full",
+        "computed"
+      ],
+      "bounds": null,
+      "description": "How much of the mantle an impact re-melts. Choices: None (the default: \"computed\" with the \"morrigan\" module, \"full\" otherwise), \"full\" (every impact raises the whole mantle to the initial condition, hotter parts keeping their state), \"computed\" (each impact re-melts its own melt mass fraction f_melt: Morrigan reports it per merger, a \"timeline\" file carries it as an f_melt column). A partial re-melt raises the outermost shells that hold f_melt of the mantle mass to the initial condition and keeps the deeper mantle at its end-of-step state; f_melt = 1 is the full re-melt. Each impact fills its share from the surface down, also where the shells already hold the initial condition (the scalar interiors compound repeated impacts instead). \"computed\" needs the \"morrigan\" or \"timeline\" module.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -12434,6 +12454,17 @@
         "interior_energetics.module"
       ],
       "doc": "Reject accretion runs on an interior that cannot apply an impact."
+    },
+    {
+      "validator": "check_accretion_remelt_source",
+      "module": "_config.py",
+      "attached_to": [
+        "config_version"
+      ],
+      "touches": [
+        "accretion"
+      ],
+      "doc": "Reject accretion.remelt = 'computed' without a module that reports a melt fraction."
     },
     {
       "validator": "check_accretion_vapourise_compatibility",

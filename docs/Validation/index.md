@@ -23,6 +23,7 @@ Without `--validation-plots` the tests assert and write nothing. The command mak
 | Accretion | `accretion/dummy.py` | [Analytical accretion](accretion/dummy.md) | none yet |
 | Accretion | `accretion/wrapper.py` | [Impact atmosphere-loss dispatch](accretion/wrapper.md) | none yet |
 | Atmosphere climate | `atmos_clim/agni.py` | [Transparent black-body limit](atmos_clim/agni.md) | none yet |
+| Interior energetics | `interior_energetics/remelt.py` | [Partial giant-impact re-melt](interior_energetics/remelt.md) | [melt front](interior_energetics/remelt.md#melt-front-against-the-closed-form) |
 | Interior structure | `interior_struct/zalmoxis.py` | [Liquidus-super IC anchor](interior_struct/zalmoxis.md) | none yet |
 | Orbit | `orbit/orbit.py` | [Orbital evolution](orbit/orbit.md) | none yet |
 | Orbit | `orbit/parameterized.py` | [Prescribed migration laws](orbit/parameterized.md) | [eccentricity decay](orbit/parameterized.md#plot-eccentricity-decay) |
