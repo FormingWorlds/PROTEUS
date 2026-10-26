@@ -91,6 +91,34 @@ def _status_on_missing_eos(start):
     return wrapper
 
 
+def _restored_crystallization(hf_all, phi_crit: float, remelt_mode: str) -> bool:
+    """Crystallization latch of a resumed run, rebuilt from its helpfile rows.
+
+    A row with Phi_global <= phi_crit sets the latch. An impact row (accreted rock
+    rises) holds the state after the re-melt and never sets it; it keeps a latch set
+    before it only as ``accretion.wrapper.remelt_keeps_latch`` decides for its
+    f_remelt under ``remelt = 'computed'``. A 'full' run clears it at every impact.
+    A row holds the largest f of its impacts and Phi_global after the last one, so the
+    rebuilt latch agrees with the live run when Phi_global does not drop between them.
+    """
+    from proteus.accretion.wrapper import remelt_keeps_latch
+
+    phi = hf_all.get('Phi_global')
+    if phi is None:
+        return False
+    accreted = hf_all.get('M_accreted_rock')
+    impact = (accreted.diff() > 0.0).to_numpy() if accreted is not None else [False] * len(phi)
+    f_col = hf_all.get('f_remelt') if remelt_mode == 'computed' else None
+    latched = False
+    for i, p in enumerate(phi.to_numpy()):
+        if impact[i]:
+            f = 1.0 if f_col is None else float(f_col.iloc[i])
+            latched = bool(latched and remelt_keeps_latch(f, p, phi_crit))
+        elif p <= phi_crit:
+            latched = True
+    return latched
+
+
 class Proteus:
     def __init__(self, *, config_path: Path | str) -> None:
         # Read and parse configuration file. Keys the schema cannot accept are
@@ -1018,19 +1046,13 @@ class Proteus:
             # Check if the planet is desiccated
             self.desiccated = check_desiccation(self.config, self.hf_row)
 
-            # Restore crystallization flag: mantle freeze latches once reached,
-            # but clears after giant impacts that remelt the mantle.
-            # Evaluated over post-impact history to match continuous run state.
+            # Restore the crystallization latch as the run set it: a row at or below
+            # phi_crit sets it; an impact row clears it unless a partial re-melt left it solid.
             if self.config.params.stop.solid.freeze_volatiles:
-                phi_history = self.hf_all.get('Phi_global')
-                if phi_history is not None:
-                    accreted = self.hf_all.get('M_accreted_rock')
-                    if accreted is not None:
-                        impacted = (accreted.diff() > 0.0).to_numpy().nonzero()[0]
-                        if len(impacted) > 0:
-                            phi_history = phi_history.iloc[impacted[-1] + 1 :]
-                self.crystallized = phi_history is not None and bool(
-                    (phi_history <= self.config.params.stop.solid.phi_crit).any()
+                self.crystallized = _restored_crystallization(
+                    self.hf_all,
+                    self.config.params.stop.solid.phi_crit,
+                    self.config.accretion.remelt_mode,
                 )
                 if self.crystallized:
                     log.info(
@@ -1219,11 +1241,12 @@ class Proteus:
                 #    overwritten by the routines below.
                 self.hf_row = self.hf_all.iloc[-1].to_dict()
 
-                # Reset per-step impact heat at each row to prevent carrying forward
-                # previous step heat terms across iterations.
+                # Reset the per-step impact heat and re-melt fraction at each row, so a
+                # row does not carry the previous step's impact terms.
                 self.hf_row['step_dE_impact_J'] = 0.0
                 self.hf_row['step_dE_impact_core_J'] = 0.0
                 self.hf_row['step_dE_impact_core_refit_J'] = 0.0
+                self.hf_row['f_remelt'] = 0.0
             log.info(' ')
             PrintSeparator()
             log.info('Loop counters')

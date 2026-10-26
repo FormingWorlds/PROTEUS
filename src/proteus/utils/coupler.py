@@ -989,6 +989,7 @@ def CreateLockFile(output_dir: str):
 RESUMABLE_ZERO_FILL_KEYS = frozenset(
     {
         'esc_kg_cumulative',
+        'f_remelt',
         'M_accreted_rock',
         'M_core_target',
         'M_desiccated',
@@ -1239,6 +1240,7 @@ def GetHelpfileKeys():
         # mass anchor to enable reconstruction on resume.
         'M_accreted_rock',  # cumulative rock mass added by giant impacts [kg]
         'n_impacts_applied',  # count of giant impacts applied [1]
+        'f_remelt',  # largest melt mass fraction a giant impact re-melted on this row, 0 without one [1]
 
         # Element mass the Zalmoxis whole-planet target adds to mass_tot (Zalmoxis only).
         'M_volatile_change',  # cumulative element mass added to the Zalmoxis target [kg]: delivered (rock O and init-stage impacts excluded) minus stripped minus escaped (rock vapour and sub-threshold zeroing included) minus removed at desiccation

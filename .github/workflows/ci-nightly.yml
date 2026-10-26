@@ -240,6 +240,7 @@ jobs:
               tests/integration/test_slow_aragog_atmodeller.py
               tests/integration/test_slow_aragog_resume.py
               tests/integration/test_slow_accretion_resume.py
+              tests/integration/test_slow_accretion_partial_remelt.py
               tests/integration/test_slow_aragog_separation_buoyancy.py
           - shard: aragog
             tier: critical
@@ -250,6 +251,7 @@ jobs:
               tests/integration/test_slow_aragog_atmodeller.py
               tests/integration/test_slow_aragog_resume.py
               tests/integration/test_slow_accretion_resume.py
+              tests/integration/test_slow_accretion_partial_remelt.py
               tests/integration/test_slow_aragog_separation_buoyancy.py
 
           # ---- shard: zalmoxis-dummy (real Zalmoxis + dummy

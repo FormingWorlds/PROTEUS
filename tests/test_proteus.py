@@ -2663,6 +2663,28 @@ def test_the_per_step_core_impact_heat_starts_every_row_at_zero(tmp_path, module
     assert incoming[1] == [0.0, 0.0]
 
 
+@pytest.mark.unit
+def test_the_remelt_fraction_starts_every_row_at_zero(tmp_path):
+    """f_remelt records the impacts of its own row only: a value set on one row is cleared
+    on the next, so a row without an impact reads 0."""
+    p = _make_main_loop_proteus(
+        tmp_path, plot_mod=1, write_mod=1, dt_write_rel=0.0, vapourise=False
+    )
+    rows, incoming = [], []
+
+    def _writer(hf_row, step):
+        incoming.append(hf_row.get('f_remelt'))
+        _write_post_outgas_row(hf_row, step, vapour=False)
+        if step == 0:
+            hf_row['f_remelt'] = 0.4
+        return hf_row
+
+    _run_main_loop_recording_mass(p, stop_at_loop=2, rows=rows, row_writer=_writer)
+
+    assert rows[0]['f_remelt'] == pytest.approx(0.4)
+    assert incoming[1] == 0.0
+
+
 # ---------------------------------------------------------------------------
 # Resume path: crystallization flag restoration (proteus.py, resume branch)
 # ---------------------------------------------------------------------------
@@ -2824,8 +2846,8 @@ def test_proteus_resume_lifts_the_crystallization_latch_across_an_impact(tmp_pat
       remelted the mantle.
     - A dip after the impact does resume frozen, so the search is not simply
       always clearing the flag.
-    - The impact's own row is excluded: it records the melt fraction from
-      before the remelt, so a threshold value there must not relatch.
+    - The impact row holds the state after the re-melt; a full re-melt clears
+      the latch there, also when that row is at the threshold.
     - Without accreted rock the whole history is searched, so a run with no
       accretion is unaffected.
     """
@@ -2858,14 +2880,12 @@ def test_proteus_resume_lifts_the_crystallization_latch_across_an_impact(tmp_pat
         'the post-impact history is not being searched at all'
     )
 
-    # Boundary: the impact row carries the melt fraction from before the
-    # remelt, so a threshold value on that row must not restore the latch.
+    # Boundary: a full re-melt clears the latch on its own row, also at the threshold.
     on_impact_row = _resume(
         _make_hf_df_with_impact([1.0, 0.5, 0.900, 0.005, 0.900], impact_on_row_3)
     )
     assert on_impact_row.crystallized is False, (
-        "the impact row's own pre-remelt melt fraction restored the latch; the "
-        'search must start after the impact, not on it'
+        'a full re-melt row at the threshold restored the latch; a full re-melt clears it'
     )
 
     # A run with no accretion searches the whole history, unchanged.
@@ -2874,6 +2894,56 @@ def test_proteus_resume_lifts_the_crystallization_latch_across_an_impact(tmp_pat
         'a run that never had an impact stopped seeing its own crystallization '
         'history; the impact search must not affect non-accretion runs'
     )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('mode', 'f_remelt', 'phi_before', 'phi_impact', 'latched'),
+    [
+        ('computed', 0.05, 0.004, 0.0, True),
+        ('computed', 0.0, 0.004, 0.0, True),
+        ('computed', 0.05, 0.004, 0.01, True),
+        ('computed', 0.05, 0.004, float('nan'), True),
+        ('computed', 1.0, 0.004, 0.0, False),
+        ('computed', 0.3, 0.004, 0.4, False),
+        ('computed', 0.05, 0.5, 0.0, False),
+        ('full', None, 0.004, 0.0, False),
+        ('full', 0.0, 0.004, 0.0, False),
+    ],
+    ids=[
+        'partial_left_solid',
+        'zero_left_solid',
+        'partial_at_phi_crit',
+        'partial_nan_phi',
+        'full',
+        'partial_left_melt',
+        'not_latched_before',
+        'full_without_column',
+        'full_zero_filled_column',
+    ],
+)
+def test_resume_rebuilds_the_latch_as_the_live_run_sets_it(
+    tmp_path, mode, f_remelt, phi_before, phi_impact, latched
+):
+    """The resume rebuilds the latch with the rule of apply_impact: the mantle at row 3 has
+    phi_before, the impact of row 4 re-melted f_remelt and left phi_impact (the row holds the
+    state after the re-melt). Under 'computed' a re-melt with f < 1 that does not leave
+    Phi_global above phi_crit keeps a latch set before it, f = 0 and NaN included; a full
+    re-melt, one that leaves melt, or any impact under 'full' clears it, and an impact row
+    never sets it. A helpfile without f_remelt comes from a 'full' run."""
+    p = _make_proteus_instance(tmp_path)
+    p.config.params.stop.solid.freeze_volatiles = True
+    p.config.params.stop.solid.phi_crit = 0.01
+    p.config.accretion.remelt_mode = mode
+    (tmp_path / 'data').mkdir(exist_ok=True)
+    df = _make_hf_df_with_impact(
+        [1.0, 0.5, 0.6, phi_before, phi_impact], [0.0, 0.0, 0.0, 0.0, 1.0e21]
+    )
+    if f_remelt is not None:
+        df['f_remelt'] = [0.0, 0.0, 0.0, 0.0, f_remelt]
+    _resume_with_patches(p, df)
+    assert p.crystallized is latched
+    assert p.hf_all['Phi_global'].iloc[3] == pytest.approx(phi_before, rel=1e-15)
 
 
 # ---------------------------------------------------------------------------

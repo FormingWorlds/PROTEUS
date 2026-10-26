@@ -70,13 +70,13 @@ defaults to 500 K:
 ### Where `tsurf_init` enters
 
 In every mode, `planet.tsurf_init` is the initial magma temperature of the dummy
-and boundary energetics, the floor of their re-melt after a giant impact, and
+and boundary energetics, the floor of their full re-melt after a giant impact (a partial re-melt with melt fraction $f$ moves the temperature the share $f$ of the way to it), and
 the temperature of the initial flux guess when `interior_energetics.flux_guess`
 is negative. Its other uses depend on the mode:
 
 | Mode | Structure solve | Spider and Aragog energetics |
 |------|-----------------|------------------------------|
-| `isothermal`, `linear`, `adiabatic` | surface temperature of the Zalmoxis solve and of the dummy structure | initial magma surface temperature; the Aragog re-melt after an impact takes it again |
+| `isothermal`, `linear`, `adiabatic` | surface temperature of the Zalmoxis solve and of the dummy structure | initial magma surface temperature; the Aragog re-melt after an impact takes it again in the melted share of the mantle |
 | `isentropic` | surface temperature of the Zalmoxis solve and of the dummy structure | not used (except the Aragog cross-check below); they start from `ini_entropy` |
 | `accretion` | surface temperature of the Zalmoxis solve; not used by the dummy structure | the accretion thermal state that the Zalmoxis solve writes; `tsurf_init` when that state is absent |
 | `adiabatic_from_cmb` | Zalmoxis: surface end of the first-guess profile, temperature of zero-pressure nodes, and temperature of the structure nodes below the CMB; not used by the dummy structure | not used (except the Aragog cross-check below); the entropy comes from `tcmb_init` at the CMB |
