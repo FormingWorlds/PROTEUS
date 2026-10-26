@@ -89,7 +89,7 @@ upstream modules.
    atmospheric composition. Updates element inventories by debiting the
    escaped mass. Only active after the initialisation stage.
 
-8. **Outgassing** (`run_outgassing`): Given the updated element inventories,
+8. **Outgassing** (`run_outgassing_and_vapourisation`): Given the updated element inventories,
    mantle temperature, and melt fraction, computes the thermodynamic
    equilibrium partitioning of volatiles between atmosphere, melt, and solid.
    Writes partial pressures, mixing ratios, and atmospheric mass to `hf_row`.
