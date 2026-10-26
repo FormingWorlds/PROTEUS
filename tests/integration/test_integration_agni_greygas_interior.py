@@ -53,8 +53,10 @@ def test_agni_greygas_dummy_interior_coupling():
       silently running the dummy module instead of AGNI
     - Conservation invariants across the coupled step
 
-    Integration tier: the Julia runtime boot and AGNI package load
-    dominate the wall time; the grey-gas solve itself is seconds.
+    Integration tier: the first AGNI solve dominates the wall time, so it
+    starts from the analytic T(p) guess with a 200 K step cap for the first
+    3 loops. The default isothermal start runs on Linux in
+    test_slow_agni_aragog.py.
     """
     with tempfile.TemporaryDirectory() as tmpdir:
         config_path = PROTEUS_ROOT / 'input' / 'dummy.toml'
@@ -76,6 +78,8 @@ def test_agni_greygas_dummy_interior_coupling():
 
         # Moderate initial temperature to keep AGNI in a convergent regime
         runner.config.planet.tsurf_init = 2000.0
+        runner.config.atmos_clim.agni.ini_profile = 'analytic'
+        runner.config.atmos_clim.agni.dx_max_ini = 200.0
 
         # The dummy interior does not advance model time, so cap the
         # iteration count to bound the number of AGNI solves (init
@@ -138,3 +142,7 @@ def test_agni_greygas_dummy_interior_coupling():
 
         # Conservation invariants across the coupled step
         assert_smoke_conservation_invariants(runner.hf_all)
+
+        # No AGNI solve was rejected (-1) or skipped (0)
+        converged = runner.hf_all['atm_converged']
+        assert converged.gt(0.0).all(), f'atm_converged per row: {converged.tolist()}'

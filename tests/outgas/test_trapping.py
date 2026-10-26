@@ -204,7 +204,10 @@ def _drainage_config():
         trap_max_front_fraction=1.0,
     )
     config.interior_energetics = SimpleNamespace(
-        rfront_loc=0.5, grain_size=1.0e-3, melt_log10visc=2.0
+        rfront_loc=0.5,
+        grain_size=1.0e-3,
+        melt_log10visc=2.0,
+        aragog=SimpleNamespace(separation_buoyancy='mixture'),
     )
     return config
 
@@ -1118,6 +1121,40 @@ def test_the_front_drains_under_the_interior_solvers_per_node_gravity(caplog):
             bare = matrix_time(_aragog_interior(phi_b, gravity=values))
         assert bare.tau_s == pytest.approx(expected_tau_s(8.0), rel=1e-9)
         assert any('no usable basic-node gravity' in r.getMessage() for r in caplog.records)
+
+
+@pytest.mark.physics_invariant
+def test_the_front_drains_under_the_solvers_separation_buoyancy():
+    """The drainage takes interior_energetics.aragog.separation_buoyancy, the law of the
+    solver's own separation velocity. This front tops at a porosity of 0.4925, in the
+    Rumpf-Gupte regime, and is percolation-limited, so its percolation time under
+    'mixture' is longer by the mobility ratio, 1 / (1 - phi) = 1.97, and it holds more melt."""
+    from aragog.eos import mobility_function
+
+    phi_b = np.linspace(0.30, 1.0, _N_BASIC)  # front on nodes 0 to 11
+    steps = {}
+    for buoyancy in ('mixture', 'solid'):
+        config = _drainage_config()
+        config.interior_energetics.aragog.separation_buoyancy = buoyancy
+        steps[buoyancy] = run_trapping(
+            config,
+            _hf_row(M_mantle_solid=2.4e24, gravity=9.8),
+            _hf_all(M_mantle_solid=2.2e24),
+            _aragog_interior(phi_b),
+        )
+    mixture, solid = steps['mixture'], steps['solid']
+    assert mixture.branch == solid.branch == BRANCH_DARCY
+    phi_top = phi_b[11]
+    ratio = mobility_function(phi_top, 1.0e-3, 'solid') / mobility_function(
+        phi_top, 1.0e-3, 'mixture'
+    )
+    assert mixture.tau_d / solid.tau_d == pytest.approx(ratio, rel=1e-9)
+    # The Stokes tanh weight at the front top adds 1.07e-4 to the Rumpf-Gupte mobility.
+    assert ratio == pytest.approx(1.0 / (1.0 - phi_top), rel=2e-4)
+    assert solid.f_tl < mixture.f_tl
+    # The matrix time and the front geometry do not depend on the buoyancy.
+    assert mixture.tau_s == solid.tau_s
+    assert mixture.l_front == solid.l_front
 
 
 def _shallow_dense_melt(pressure: np.ndarray) -> tuple[np.ndarray, np.ndarray]:

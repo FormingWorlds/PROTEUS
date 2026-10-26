@@ -97,6 +97,9 @@ _REVIEWED_NEUTRAL = frozenset(
         'outgas.D_const_O2',
         'outgas.D_const_S2',
         'outgas.D_const_SO2',
+        # prevent_desaturation defaults to false: condensates re-equilibrate each
+        # solve, as before the flag existed, so behaviour is unchanged.
+        'outgas.prevent_desaturation',
         # Accretion defaults to inactive with zero impactor budgets, zero
         # loss fractions, and unread dummy/morrigan sub-blocks.
         'accretion.atmloss_frac',
@@ -174,6 +177,7 @@ _REVIEWED_NEUTRAL = frozenset(
         'interior_energetics.adams_williamson_beta',
         'interior_energetics.adams_williamson_rhos',
         'interior_energetics.adiabatic_bulk_modulus',
+        'interior_energetics.aragog.allow_resume_law_change',
         'interior_energetics.aragog.atol_temperature_equivalent',
         'interior_energetics.aragog.backend',
         'interior_energetics.aragog.core_bc',
@@ -206,6 +210,7 @@ _REVIEWED_NEUTRAL = frozenset(
         'interior_energetics.aragog.phase_smoothing',
         'interior_energetics.aragog.phi_step_cap',
         'interior_energetics.aragog.scalar_gravity_override',
+        'interior_energetics.aragog.separation_buoyancy',
         'interior_energetics.aragog.separation_viscosity',
         'interior_energetics.aragog.solver_method',
         'interior_energetics.aragog.temperature_step_cap',
@@ -475,6 +480,19 @@ def _unhandled_v2_fields(paths):
             continue
         unhandled.append(path)
     return unhandled
+
+
+def test_the_migrated_config_check_refuses_a_string_for_a_bool_field():
+    """The schema check of a migrated config refuses ``"false"`` for a bool field,
+    naming it, instead of reading it as true; minimal.toml as written passes."""
+    from proteus.config import _error_lines, read_config
+
+    nested = read_config(Path(__file__).resolve().parents[2] / 'input' / 'minimal.toml')
+    mig._validate(nested)
+    nested.setdefault('params', {}).setdefault('out', {})['remove_sf'] = 'false'
+    with pytest.raises(Exception) as err:
+        mig._validate(nested)
+    assert "params.out.remove_sf: must be true or false, got 'false'" in _error_lines(err.value)
 
 
 def test_map_completeness():
@@ -1152,6 +1170,28 @@ def test_chem_when_maps_to_mode_and_times(module, when, mode, times):
     assert bool(online_warnings) is (when == 'online' and module != 'none')
     # The warning says the post-processed results need not match the old run
     assert all('can differ' in w for w in online_warnings)
+
+
+def test_agni_solver_keeps_its_2_0_jacobian_and_linesearch_when_migrated():
+    """2.0 finite-differenced the AGNI jacobian at every step with the
+    backtracking linesearch. The 3.0 defaults are Broyden updates with the
+    non-monotone Armijo linesearch, so a migrated config pins broyden off (a
+    new field, through OVERRIDES) and keeps the 2.0 ls_default of 2 (a changed
+    default, which the migration writes out because it differs)."""
+    v3_defaults, _ = _v3()
+    assert v3_defaults['atmos_clim.agni.broyden'] is True
+    assert v3_defaults['atmos_clim.agni.ls_default'] == 3
+    assert mig.OVERRIDES['atmos_clim.agni.broyden'] is False
+
+    v2 = _minimal_spider_v2()
+    flat, _ = _translate(v2)
+    assert flat['atmos_clim.agni.broyden'] is False
+    assert flat['atmos_clim.agni.ls_default'] == 2
+
+    # An explicit 2.0 linesearch still wins over the 2.0 default.
+    v2['atmos_clim']['agni'] = {**v2['atmos_clim'].get('agni', {}), 'ls_default': 1}
+    flat_explicit, _ = _translate(v2)
+    assert flat_explicit['atmos_clim.agni.ls_default'] == 1
 
 
 def test_vulcan_vertical_advection_is_pinned_on_for_migrated_configs():

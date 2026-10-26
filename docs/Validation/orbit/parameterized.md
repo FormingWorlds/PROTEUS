@@ -121,6 +121,18 @@ difference.
 The `rtol=1e-10` tolerance on the invariant absorbs the round-off of the
 `sqrt` round trip through `e` and back.
 
+#### Plot: eccentricity decay
+
+![Eccentricity decay of high-eccentricity migration](../../assets/validation/orbit_high_ecc_eccentricity.svg#only-light){ width="80%" }
+![Eccentricity decay of high-eccentricity migration](../../assets/validation/orbit_high_ecc_eccentricity_dark.svg#only-dark){ width="80%" }
+
+Eccentricity returned by `high_eccentricity_migration` (markers, every 25th of the 500 tested points) against the closed form `e_mig exp(-x)` (solid) for `a_0 = 2.0 AU`, `a_f = 0.8 AU`, `e_mig = sqrt(0.6)`, `t_mig = 1e5 yr` and `tau = 1e4 yr`, over the first five migration widths. The dashed curve is the law with half the decay rate, `e_mig exp(-x/2)`, which the test rejects.
+
+- Reference: analytical limit, the closed form above derived from Postolec et al. (2026), Sect. 2.2, Eqs. 1-4.
+- Tolerance: `rtol=1e-9` on all 500 points.
+- Test id: `tests/orbit/test_parameterized.py::test_high_ecc_circularises_as_a_pure_exponential_in_eccentricity`
+- Command: `pytest -m reference_pinned tests/orbit/test_parameterized.py --validation-plots`
+
 ### Orbital energy rate
 
 The orbital energy is `E = -G M_star M_planet / (2 a)`, so at fixed masses

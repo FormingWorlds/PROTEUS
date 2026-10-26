@@ -240,6 +240,7 @@ jobs:
               tests/integration/test_slow_aragog_atmodeller.py
               tests/integration/test_slow_aragog_resume.py
               tests/integration/test_slow_accretion_resume.py
+              tests/integration/test_slow_aragog_separation_buoyancy.py
           - shard: aragog
             tier: critical
             os: macos-latest
@@ -249,6 +250,7 @@ jobs:
               tests/integration/test_slow_aragog_atmodeller.py
               tests/integration/test_slow_aragog_resume.py
               tests/integration/test_slow_accretion_resume.py
+              tests/integration/test_slow_aragog_separation_buoyancy.py
 
           # ---- shard: zalmoxis-dummy (real Zalmoxis + dummy
           # everything else; Linux-only because the test is

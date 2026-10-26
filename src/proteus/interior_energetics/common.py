@@ -1338,7 +1338,7 @@ class Interior_t:
             log.warning('%s not found for SPIDER P-S lookup', filename)
             return None
 
-        data = np.genfromtxt(filepath)
+        data = np.loadtxt(filepath)
 
         # Read dimensions from header: "# 5 nP nS"
         with open(filepath) as f:

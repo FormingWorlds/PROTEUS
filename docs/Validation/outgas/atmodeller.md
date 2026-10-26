@@ -37,3 +37,22 @@ which is owned by the escape step (the running-budget debit) for H/C/N/S and by
 the authoritative `O_kg_total` write for oxygen, matching CALLIOPE and
 `outgas.common.expected_keys`. This keeps escape's debited total from being
 overwritten by a species reconstruction each iteration.
+
+## Atmospheric mass note
+
+For each gas species, atmodeller's output gives the conserved constraint
+`total_mass`, the melt share `dissolved_mass` and the solver's own gas-phase
+reservoir `gas_mass`. The wrapper writes `gas_mass` to `{sp}_kg_atm`, as the
+authoritative atmospheric mass, and `dissolved_mass`, limited to
+`[0, total_mass]`, to `{sp}_kg_liquid`.
+
+`total_mass - dissolved_mass` equals `gas_mass` only while no gas species holds
+a solid-phase reservoir. That holds today: condensates are separate condensed
+species and never enter a gas species' `total_mass`. The difference therefore
+serves as a closure check, logged as a warning when it differs from `gas_mass`
+by more than 1 kg and a relative 1e-6, and as the atmospheric mass when the
+output omits `gas_mass`.
+
+Either write replaces the mass first derived from the partial pressure, which
+distributes the column by mole fraction and so misweights a species whose molar
+mass differs from the mean, badly for a light noble gas.

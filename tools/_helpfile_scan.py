@@ -41,6 +41,7 @@ DOMAIN_LISTS = {
     'vol_gas_list',
     'vol_element_list',
     'vap_element_list',
+    'condensate_list',
     'VOLATILE_EOS_MAP',
 }
 
@@ -76,6 +77,8 @@ _GASES_POSSIBLE = TemplateOverride(('gas_list',), possible=True)
 _GASES_VOL = TemplateOverride(('gas_list', 'vol_element_list'))
 _TRAPPED = TemplateOverride(('vol_list', 'vol_element_list', 'noble_gases'))
 _TRAPPED_ELEMENTS = TemplateOverride(('vol_element_list', 'noble_gases'))
+_VOL_ELEMENTS = TemplateOverride(('vol_element_list',))
+_CONDENSATES = TemplateOverride(('condensate_list',))
 _TRAPPED_SPECIES = TemplateOverride(('vol_list', 'noble_gases'))
 _NOBLE = TemplateOverride(('noble_gases',))
 
@@ -96,6 +99,7 @@ TEMPLATE_OVERRIDES: dict[tuple[str, str, str], TemplateOverride] = {
     ('outgas/wrapper.py', 'run_desiccated', '<?>_mol_total'): _GASES,
     ('outgas/wrapper.py', 'run_desiccated', '<?>_mol_solid'): _GASES,
     ('outgas/wrapper.py', 'run_desiccated', '<?>_kg_liquid'): _BOTH,
+    ('outgas/wrapper.py', 'run_desiccated', '<?>_kg_condensed'): _VOL_ELEMENTS,
     ('outgas/wrapper.py', 'run_desiccated', '<?>_mol_liquid'): _GASES,
     ('outgas/atmodeller.py', '_populate_volatile_element_reservoirs', '<?>_kg_atm'): _ELEMENTS,
     (
@@ -136,6 +140,8 @@ TEMPLATE_OVERRIDES: dict[tuple[str, str, str], TemplateOverride] = {
     ('outgas/trapping.py', '_carried', '<?>_kg_total'): _TRAPPED_ELEMENTS,
     ('outgas/trapping.py', 'released_mass', '<?>_kg_trapped'): _TRAPPED,
     ('outgas/trapping.py', 'escapable_inventory', '<?>_kg_total'): _ELEMENTS,
+    ('outgas/trapping.py', 'locked_condensed_mass', '<?>_kg_condensed'): _VOL_ELEMENTS,
+    ('outgas/wrapper.py', 'condensed_mass_withheld', '<?>_cd_kg'): _CONDENSATES,
     ('outgas/trapping.py', 'restore_trapped_mass', '<?>_kg_solid'): _NOBLE,
     ('outgas/trapping.py', 'restore_trapped_mass', '<?>_kg_total'): _NOBLE,
     ('outgas/trapping.py', 'restore_trapped_mass', '<?>_mol_solid'): _NOBLE,

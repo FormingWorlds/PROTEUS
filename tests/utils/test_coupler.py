@@ -1045,6 +1045,32 @@ def test_orbital_energy_rate_column_is_a_diagnostic_zero_filled_on_resume():
 
 
 @pytest.mark.unit
+def test_condensate_mass_is_resumable_state_and_its_activity_a_diagnostic():
+    """A helpfile written before the condensate columns resumes with them zeroed.
+
+    ``{X}_cd_kg`` is read back by prevent_desaturation to hold a layer, so it is
+    core state rather than a diagnostic; ``{X}_cd_activity`` is written each solve
+    and never read back. A run from before both existed resumes with the mass
+    zeroed together with ``{e}_kg_condensed``, so no layer is held, and every
+    other column keeps its value.
+    """
+    from proteus.utils.constants import condensate_list, vol_element_list
+
+    assert 'C_cd_activity' in GetHelpfileDiagnosticKeys()
+    assert 'C_cd_kg' not in GetHelpfileDiagnosticKeys()
+    assert 'C_cd_kg' in GetHelpfileCoreKeys()
+    dropped = [f'{c}_cd_{q}' for c in condensate_list for q in ('activity', 'kg')]
+    dropped += [f'{e}_kg_condensed' for e in vol_element_list]
+    with tempfile.TemporaryDirectory() as tmpdir:
+        _write_drifted_helpfile(tmpdir, dropped, n_rows=2)
+        hf = ReadHelpfileFromCSV(tmpdir)
+
+        assert all((hf[k] == 0.0).all() for k in dropped)
+        # Discrimination: the carbon total the condensed columns sat beside keeps its value.
+        assert (hf['C_kg_total'] > 0.0).all()
+
+
+@pytest.mark.unit
 def test_helpfile_without_diagnostic_column_resumes_with_zero_fill(caplog):
     """A helpfile short only of a diagnostic column loads, with that column zeroed.
 
@@ -3202,6 +3228,56 @@ def test_assert_mass_conservation_skips_when_M_planet_zero():
     assert hf_row['M_planet'] == 0.0
 
 
+def _condensed_row(condensed_C: float, total_C: float = 1.6e20) -> dict:
+    """Post-outgas row that passes every other invariant, with carbon holding
+    ``condensed_C`` kg in condensates out of a ``total_C`` kg budget."""
+    return {
+        'M_planet': 3.3e23,
+        'M_atm': 1.0e19,
+        'M_vol_atm': 1.0e19,
+        'CO_kg_atm': 1.0e19,
+        'C_kg_total': total_C,
+        'C_kg_condensed': condensed_C,
+    }
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_condensed_mass_above_the_element_total_is_refused_on_every_row():
+    """A condensate takes its mass from the element budget, so no element can hold
+    more condensed mass than its total. A row breaking that is refused with trapping
+    off as well, the default, since a non-solution written by the chemistry would
+    otherwise be kept by a layer held by prevent_desaturation.
+
+    Edge cases: the whole budget condensed, and an excess within the solver's
+    relative tolerance, are accepted; an excess twice that tolerance is refused.
+    """
+    from proteus.utils.coupler import assert_mass_conservation
+
+    total = 1.6e20
+    assert assert_mass_conservation(_condensed_row(total)) is None
+    within = _condensed_row(total * (1.0 + 0.5e-4))
+    assert assert_mass_conservation(within, closure_rtol=1e-4) is None
+
+    with pytest.raises(RuntimeError, match='Condensed mass of C exceeds its total'):
+        assert_mass_conservation(_condensed_row(2.07 * total))
+    # Discrimination: the bound has a tolerance, but only the solver's.
+    with pytest.raises(RuntimeError, match='Condensed mass of C exceeds its total'):
+        assert_mass_conservation(_condensed_row(total * (1.0 + 2e-4)), closure_rtol=1e-4)
+
+
+@pytest.mark.unit
+def test_condensed_mass_bound_admits_the_solver_floor_and_refuses_a_non_finite_mass():
+    """Edge cases: the solver's floor of order 1e-6 kg condensed, of an element with
+    no budget, sits within the 1 kg absolute tolerance; a non-finite condensed mass
+    cannot be checked and is refused."""
+    from proteus.utils.coupler import assert_mass_conservation
+
+    assert assert_mass_conservation(_condensed_row(1.0e-6, total_C=0.0)) is None
+    with pytest.raises(RuntimeError, match='Condensed mass of C cannot be checked'):
+        assert_mass_conservation(_condensed_row(float('nan')))
+
+
 def _vapourising_row(m_vaps=4.0e20, perturb_species=None):
     """Row from a vapourising outgas step: volatiles plus a rock-vapour column.
 
@@ -3614,6 +3690,34 @@ def test_validate_module_versions_accepts_compatible_versions(tmp_path):
     assert mock_update.call_count == 0
 
 
+@pytest.mark.usefixtures('fwl_io_current')
+@pytest.mark.parametrize(('agni_version', 'accepted'), [('1.13.2', False), ('1.14.0', True)])
+def test_validate_module_versions_requires_agni_with_broyden(tmp_path, agni_version, accepted):
+    """AGNI older than 1.14.0 is refused before the run starts.
+
+    PROTEUS passes the `broyden` keyword to every `solve_energy_b` call, and
+    an older AGNI raises on that keyword, which `_solve_energy` would report
+    as a failed solve on every attempt. Edge: 1.13.2, the release before, is
+    refused, and 1.14.0 itself is accepted.
+    """
+    from proteus.utils.coupler import validate_module_versions
+
+    config = _all_dummy_modules_config()
+    config.interior_energetics.module = 'spider'
+    config.atmos_clim.module = 'agni'
+    with (
+        patch('proteus.utils.coupler._get_agni_version', return_value=agni_version),
+        patch('importlib.metadata.requires', return_value=[]),
+        patch('proteus.utils.coupler.UpdateStatusfile') as mock_update,
+    ):
+        if accepted:
+            validate_module_versions({'rad': str(tmp_path)}, config)
+        else:
+            with pytest.raises(EnvironmentError, match='Out-of-date modules'):
+                validate_module_versions({'rad': str(tmp_path)}, config)
+    assert mock_update.call_count == (0 if accepted else 1)
+
+
 @pytest.mark.parametrize(
     ('installed', 'fix'),
     [
@@ -3955,6 +4059,7 @@ def _install_updateplots_fakes(monkeypatch, calls):
         'proteus.plot.cpl_interior': 'plot_interior',
         'proteus.plot.cpl_interior_cmesh': 'plot_interior_cmesh',
         'proteus.plot.cpl_orbit': ('plot_orbit', 'plot_orbit_system', 'plot_lovenumber'),
+        'proteus.plot.cpl_saturated': 'plot_saturated',
         'proteus.plot.cpl_sflux': 'plot_sflux',
         'proteus.plot.cpl_sflux_cross': 'plot_sflux_cross',
         'proteus.plot.cpl_spectra': 'plot_spectra',

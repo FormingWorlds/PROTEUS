@@ -376,7 +376,29 @@ class Aragog:
     melt fraction instead, which is why the default here is 'mixture'
     while Aragog's own default stays 'melt' for SPIDER parity. The
     regime boundaries are the porosities where adjacent permeability
-    laws cross (Bower et al. 2018, section 2.1, Eqs. 13a to 13c)."""
+    laws cross (Bower et al. 2018, section 2.1, Eqs. 13a to 13c). The melt
+    drainage of front trapping (outgas.trap_mode 'front') takes the melt
+    viscosity whatever this setting."""
+    separation_buoyancy: str = field(
+        default='mixture',
+        validator=in_(('mixture', 'solid')),
+    )
+    """Buoyancy of the gravitational-separation velocity. 'mixture' takes it
+    against the mixture, (1 - phi) (rho_s - rho_l) g (McKenzie 1984, Eq. 3.7),
+    on the Blake-Kozeny-Carman and Rumpf-Gupte regimes, while the Stokes
+    regime of a grain settling alone keeps (rho_s - rho_l) g; 'solid' takes
+    (rho_s - rho_l) g on every regime (Abe 1995, Eq. 40), as SPIDER does, so
+    'solid' with separation_viscosity 'melt' is the SPIDER setting. The melt
+    drainage of front trapping (outgas.trap_mode 'front') takes the same buoyancy.
+    Up to a porosity of 0.4 'mixture' equals (1 - phi) times 'solid' within 1e-5;
+    from a porosity of 0.91 up both modes take the plain-contrast Stokes rate within 1e-2."""
+    allow_resume_law_change: bool = field(default=False, validator=_valid_bool)
+    """Let a resume change separation_viscosity or separation_buoyancy from the values
+    in the run's init_coupler.toml, with one warning per switched law in the log. False
+    stops such a resume, because the changed law would act from the resume row on. A law
+    the record does not hold must be set in the config file either way; a record that
+    names the Aragog module and lacks separation_viscosity counts as 'melt', and a record
+    of another interior module holds neither law. init_coupler.toml records false."""
     solver_method: str = field(
         default='cvode',
         validator=in_(('cvode', 'radau', 'bdf')),

@@ -1,7 +1,7 @@
-# star.py Validation
+# dummy.py Validation
 
 ## Source under test
-`src/proteus/star/star.py` (via `src/proteus/star/dummy.py`)
+`src/proteus/star/dummy.py`
 
 ## Reference-pinned tests
 

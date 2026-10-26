@@ -107,7 +107,7 @@ def test_direct_dedups_sorts_numbers_and_keeps_strings():
     assert dimension_direct(['janus', 'agni', 'janus']) == ['janus', 'agni']
     assert dimension_direct(['c', 'a', 'b', 'a']) == ['c', 'a', 'b']
     assert dimension_direct([3.0, 1.0, 3.0], sort=False) == pytest.approx([3.0, 1.0])
-    with pytest.raises(ValueError, match='at least one value'):
+    with pytest.raises(ValueError, match='has no values'):
         dimension_direct([])
 
 

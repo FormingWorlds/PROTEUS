@@ -21,20 +21,22 @@ The top-level settings are:
 |---|---|
 | `ref_config` | Base ("reference") config file, relative to the PROTEUS root. Every case starts from this file and overrides only the swept parameters. |
 | `output` | Output folder name created inside `output/`. Use `"auto"` for a timestamped `grid_YYYYMMDD_HHMMSS_xxxx` name, or any fixed string. |
-| `symlink` | Absolute path used to redirect the output to alternative storage (for example a scratch disk); set to `""` to disable. |
+| `symlink` | Absolute path used to redirect the output to alternative storage (for example a scratch disk); set to `""` to disable. The grid empties this folder, so it may not lie inside the PROTEUS folder or inside `output/`, also where `output/` links to (for example `/scratch/$USER/proteus_output`); it may not lie inside the run output root that `PROTEUS_OUTPUT_PATH` names; it may not be your home folder, the PROTEUS folder, `output/` (or its link target) or the run output root, or a folder above one of them; it may not hold the grid file or the base config, also through a link inside it, and it may not itself be a link or a file. A sibling such as `/scratch/$USER/mygrid` is fine. On a file system that ignores letter case (macOS), a path in another case is the same folder. |
 | `use_slurm` | Whether to dispatch through Slurm (see below). |
 | `max_jobs` | Maximum number of cases running concurrently. |
 | `max_days`, `max_mem` | Per-job walltime (days) and memory (GB) limits, used when dispatching through Slurm. |
 | `jax_cache` | Share a JAX compilation cache across Slurm array tasks (see below). Default `false`; only affects Slurm dispatch. |
 | `config_version` | Config format version, for example `"3.0"`. Accepted so that a grid file can state it; the grid manager does not read it. |
 
-Each parameter axis is a TOML table whose **name is the dotted path of the config field to vary**. For example, `["planet.mass_tot"]` sweeps `config.planet.mass_tot`, and `["outgas.fO2_shift_IW"]` sweeps the mantle redox offset. Any field documented in `input/all_options.toml` (or the [configuration reference](config.md)) can serve as an axis. Every top-level key must be accounted for: it is either one of the settings above or the path of one configuration field, given as a table with one of the methods below and the keys that method requires. Any other key, a path that names a whole section, an unquoted dotted header such as `[planet.mass_tot]` (TOML reads it as the section `planet`), or an axis table with an unknown method or a missing required key stops the grid at load, before the output directory is touched, with an error that names the key and the grid file.
+`use_slurm` and `jax_cache` take only a TOML `true` or `false`; a quoted `"false"`, a `0` or a `1` stops the grid at load with an error that names the setting and the grid file.
+
+Each parameter axis is a TOML table whose **name is the dotted path of the config field to vary**. For example, `["planet.mass_tot"]` sweeps `config.planet.mass_tot`, and `["outgas.fO2_shift_IW"]` sweeps the mantle redox offset. Any field documented in `input/all_options.toml` (or the [configuration reference](config.md)) can serve as an axis. Every top-level key must be accounted for: it is either one of the settings above or the path of one configuration field, given as a table with one of the methods below and the keys that method requires. Any other key, a path that names a whole section, an unquoted dotted header such as `[planet.mass_tot]` (TOML reads it as the section `planet`), an axis table with an unknown method or a missing required key, or a `direct` axis whose `values` is not a non-empty list of numbers and booleans or of strings (an empty list, a NaN, a single value without brackets, a nested array or table) stops the grid at load, before an earlier output folder is removed, with an error that names the key and the grid file. The grid manager then builds every case config and reads it back with the config loader before it removes an earlier output folder of the same name; a value the configuration refuses (an unknown module, a value out of its range, a quoted boolean) stops the grid there with the case index, the key and the value. This check runs in a hidden folder `output/.grid-check-*` that the grid removes when the check ends; a check that is killed (for example at a time limit) can leave that folder behind, and it is safe to remove.
 
 Each axis declares a `method` that controls how its values are generated:
 
 | `method` | Required keys | Values produced |
 |---|---|---|
-| `direct` | `values = [...]` | Exactly the listed values. Duplicates are removed at their first occurrence. Lists of numbers or booleans are then sorted; string lists keep their written order. |
+| `direct` | `values = [...]` | Exactly the listed values, all of one type (the TOML parser refuses an array that mixes types, so write `[1.0, 2.5]`, not `[1, 2.5]`). Duplicates are removed at their first occurrence. Lists of numbers or booleans are then sorted; string lists keep their written order. |
 | `arange` | `start`, `stop`, `step` | Evenly stepped values from `start` to `stop`, **including** the `stop` endpoint. |
 | `linspace` | `start`, `stop`, `count` | `count` values evenly spaced between `start` and `stop` (both endpoints included). |
 | `logspace` | `start`, `stop`, `count` | `count` values logarithmically spaced between `start` and `stop`. Here `start` and `stop` are the actual endpoint values, not their base-10 exponents. |
@@ -126,7 +128,7 @@ output/<grid name>/
 └── ...
 ```
 
-Each `case_NNNNNN/` folder is a complete PROTEUS run directory, numbered in the same order as the grid points listed in `manager.log`. Because the reference config and grid definition are copied into the output folder, an ensemble can be regenerated or extended from its output directory alone. The per-case output files are described on the [Running and output](usage_running.md#output-and-results) page.
+Each `case_NNNNNN/` folder is a complete PROTEUS run directory, numbered in the same order as the grid points listed in `manager.log`. Because the reference config and grid definition are copied into the output folder, an ensemble can be regenerated or extended from its output directory alone. To run a grid again from these copies, copy them out of the output folder first: a grid whose output folder or symlink folder holds its grid file or base config, also through a link, stops before anything is removed. The per-case output files are described on the [Running and output](usage_running.md#output-and-results) page.
 
 ## Viewing grid status
 

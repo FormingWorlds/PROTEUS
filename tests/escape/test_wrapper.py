@@ -469,6 +469,39 @@ def test_calc_new_elements_debits_only_the_element_total():
     assert quiet['H'] == pytest.approx(1.0e20, rel=1e-12)
 
 
+@pytest.mark.physics_invariant
+def test_escape_cannot_reach_a_graphite_layer_kept_from_re_vapourising():
+    """A layer held by prevent_desaturation is outside the mass escape draws on.
+
+    Physical scenario: a carbon inventory mostly locked in a graphite crust while
+    hydrogen escapes. With the flag the loss is shared over the reachable carbon
+    only, so the carbon total never drops below the layer; without it the same
+    step takes carbon in proportion to the whole total and eats into the layer.
+    """
+    from proteus.escape.wrapper import calc_new_elements, escapable_mass
+    from proteus.utils.constants import element_list, secs_per_year
+
+    layer = 9.0e19
+    hf = {f'{e}_kg_total': 0.0 for e in element_list}
+    hf.update(H_kg_total=1.0e20, C_kg_total=1.0e20, C_kg_condensed=layer)
+    hf['esc_rate_total'] = 1.0e10  # kg/s
+    dt = 5.0e19 / (1.0e10 * secs_per_year)  # one step removes 5e19 kg in all
+    held = SimpleNamespace(outgas=SimpleNamespace(prevent_desaturation=True))
+    free = SimpleNamespace(outgas=SimpleNamespace(prevent_desaturation=False))
+
+    assert escapable_mass(hf, 'bulk', held) == pytest.approx(2.0e20 - layer, rel=1e-12)
+    assert escapable_mass(hf, 'bulk', free) == pytest.approx(2.0e20, rel=1e-12)
+
+    kept = calc_new_elements(hf, dt, 'bulk', min_thresh=1.0e16, config=held)
+    lost = calc_new_elements(hf, dt, 'bulk', min_thresh=1.0e16, config=free)
+
+    assert kept['C'] >= layer
+    # The reachable carbon carries its share of the loss, 1e19 of the 1.1e20 reachable.
+    assert kept['C'] == pytest.approx(1.0e20 - 5.0e19 * 1.0e19 / 1.1e20, rel=1e-9)
+    # Discrimination: without the flag the same step cuts into the layer.
+    assert lost['C'] < layer
+
+
 @pytest.mark.unit
 def test_run_escape_baseline_persists_across_calls():
     """Test that subsequent run_escape calls do NOT overwrite M_vol_initial.

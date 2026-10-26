@@ -37,6 +37,7 @@ from proteus.outgas.wrapper import (
     calc_target_elemental_inventories,
     check_desiccation,
     check_ic_oxygen_budget,
+    condensed_mass_withheld,
     desiccated_after_trapping,
     run_desiccated,
     run_outgassing,
@@ -658,6 +659,155 @@ def test_run_desiccated_keeps_the_solid_share_and_books_the_rest():
     removed = 2 * fluid * len(element_list)
     assert hf_row['M_desiccated'] == pytest.approx(1.0e15 + removed, rel=1e-12)
     assert hf_row['M_volatile_change'] == pytest.approx(-3.0e15 - removed, rel=1e-12)
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize(
+    ('total', 'kept'),
+    [
+        pytest.param(5.0e15, 4.0e15, id='total-holds-solid-and-graphite'),
+        pytest.param(2.0e15, 2.0e15, id='escape-took-part-of-the-held-mass'),
+    ],
+)
+def test_desiccation_keeps_condensed_graphite_with_the_solid_mantle(total, kept):
+    """Graphite in C_kg_condensed stays when the atmosphere goes, alongside the solid.
+
+    Physical scenario: a desiccating Mercury-like planet with a graphite crust and
+    a little carbon in the frozen mantle. Edge case: an escape-debited total below
+    the held mass, which scales solid and condensed by the same share.
+    """
+    config = MagicMock()
+    config.outgas.vapourise = False
+    config.interior_struct.module = 'dummy'
+    solid, condensed = 1.0e15, 3.0e15
+    hf_row = {
+        f'{e}_kg_{r}': 0.0 for e in element_list for r in ('atm', 'liquid', 'solid', 'total')
+    }
+    hf_row.update(C_kg_atm=1.0e15, C_kg_solid=solid, C_kg_condensed=condensed, C_kg_total=total)
+    hf_row.update(M_desiccated=0.0, atm_kg_per_mol=0.01, Phi_global=0.2)
+
+    run_desiccated({}, config, hf_row, False)
+
+    share = kept / (solid + condensed)
+    assert hf_row['C_kg_atm'] == 0.0
+    assert hf_row['C_kg_total'] == pytest.approx(kept, rel=1e-12)
+    assert hf_row['C_kg_condensed'] == pytest.approx(condensed * share, rel=1e-12)
+    assert hf_row['C_kg_solid'] == pytest.approx(solid * share, rel=1e-12)
+    # Closure: what is kept is exactly the solid plus the condensed reservoir.
+    assert hf_row['C_kg_solid'] + hf_row['C_kg_condensed'] == pytest.approx(kept, rel=1e-12)
+
+
+def _condensate_config(prevent: bool):
+    """Config with only the switch the condensed reservoir reads."""
+    config = MagicMock()
+    config.outgas.prevent_desaturation = prevent
+    return config
+
+
+def _graphite_row(total: float = 1.0e20, layer: float = 4.0e19) -> dict:
+    """A row whose carbon holds a graphite layer from earlier steps."""
+    from proteus.utils.constants import condensate_list, vol_element_list
+
+    hf_row = {f'{e}_kg_{r}': 0.0 for e in vol_element_list for r in ('total', 'condensed')}
+    hf_row.update({f'{c}_cd_kg': 0.0 for c in condensate_list})
+    hf_row.update(C_kg_total=total, C_kg_condensed=layer, C_cd_kg=layer)
+    return hf_row
+
+
+@pytest.mark.physics_invariant
+def test_condensates_re_vapourise_by_default():
+    """Without prevent_desaturation the solve sees the whole inventory and owns the layer.
+
+    The solve starts from empty condensed columns and the full carbon total, and the
+    layer it reports replaces the earlier one, so a shrinking layer stays shrunk.
+    """
+    hf_row = _graphite_row()
+    with condensed_mass_withheld(_condensate_config(False), hf_row, initial=False):
+        seen = (hf_row['C_kg_total'], hf_row['C_kg_condensed'], hf_row['C_cd_kg'])
+        hf_row['C_kg_condensed'] = hf_row['C_cd_kg'] = 1.0e19  # the solve re-vapourised most
+
+    assert seen == (1.0e20, 0.0, 0.0)
+    assert hf_row['C_kg_total'] == pytest.approx(1.0e20, rel=1e-12)
+    assert hf_row['C_kg_condensed'] == pytest.approx(1.0e19, rel=1e-12)
+    assert hf_row['C_cd_kg'] == pytest.approx(1.0e19, rel=1e-12)
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize('new', [0.0, 5.0e18], ids=['nothing-new', 'more-condenses'])
+def test_held_layer_is_hidden_from_the_solve_and_only_grows(new):
+    """With prevent_desaturation the earlier layer is out of the solve and comes back on top.
+
+    The solve sees the carbon total less the layer, so it cannot re-vapourise it; on
+    exit the layer is added to the totals and reservoirs, so it never shrinks.
+    Edge case: a solve that condenses nothing leaves the layer as it was.
+    """
+    layer = 4.0e19
+    hf_row = _graphite_row(layer=layer)
+    with condensed_mass_withheld(_condensate_config(True), hf_row, initial=False):
+        seen = (hf_row['C_kg_total'], hf_row['C_kg_condensed'], hf_row['C_cd_kg'])
+        hf_row['C_kg_condensed'] = hf_row['C_cd_kg'] = new  # what this solve condensed
+
+    assert seen == (pytest.approx(1.0e20 - layer, rel=1e-12), 0.0, 0.0)
+    assert hf_row['C_kg_total'] == pytest.approx(1.0e20, rel=1e-12)
+    assert hf_row['C_kg_condensed'] == pytest.approx(layer + new, rel=1e-12)
+    assert hf_row['C_cd_kg'] == pytest.approx(layer + new, rel=1e-12)
+    assert hf_row['C_kg_condensed'] >= layer
+
+
+def test_held_layer_is_restored_when_the_solve_raises():
+    """A failing solve leaves the carbon total and the layer as they were.
+
+    Edge case: the solve raises before it writes the condensate columns, so the
+    graphite mass is exactly the held layer, not the layer counted twice.
+    """
+    hf_row = _graphite_row()
+    with (
+        pytest.raises(RuntimeError, match='solve failed'),
+        condensed_mass_withheld(_condensate_config(True), hf_row, initial=False),
+    ):
+        raise RuntimeError('solve failed')
+
+    assert hf_row['C_kg_total'] == pytest.approx(1.0e20, rel=1e-12)
+    assert hf_row['C_kg_condensed'] == pytest.approx(4.0e19, rel=1e-12)
+    assert hf_row['C_cd_kg'] == pytest.approx(4.0e19, rel=1e-12)
+
+
+@pytest.mark.physics_invariant
+def test_init_stage_solves_keep_no_earlier_condensate():
+    """In the init stage the solve sees the whole budget and its layer replaces the old one.
+
+    Each init iteration solves the same starting state again, so condensate left by
+    an earlier trial solve is not withheld or added on top, even with
+    prevent_desaturation on.
+    """
+    hf_row = _graphite_row(layer=4.0e19)
+    with condensed_mass_withheld(_condensate_config(True), hf_row, initial=True):
+        seen = (hf_row['C_kg_total'], hf_row['C_kg_condensed'], hf_row['C_cd_kg'])
+        hf_row['C_kg_condensed'] = hf_row['C_cd_kg'] = 3.0e19  # this trial's equilibrium
+
+    assert seen == (1.0e20, 0.0, 0.0)
+    assert hf_row['C_kg_total'] == pytest.approx(1.0e20, rel=1e-12)
+    # Discrimination: holding the old layer back would give 4e19 + 3e19 here.
+    assert hf_row['C_kg_condensed'] == pytest.approx(3.0e19, rel=1e-12)
+    assert hf_row['C_cd_kg'] == pytest.approx(3.0e19, rel=1e-12)
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize(('prevent', 'desiccated'), [(True, True), (False, False)])
+def test_a_held_graphite_layer_does_not_block_desiccation(prevent, desiccated):
+    """Carbon held in a layer that cannot re-vapourise is not reachable inventory.
+
+    Physical scenario: every volatile has escaped except a thick graphite crust.
+    With prevent_desaturation the crust cannot outgas, so the planet is desiccated;
+    without it the crust could re-vapourise and the planet is not.
+    """
+    config = _condensate_config(prevent)
+    config.outgas.mass_thresh = 1.0e16
+    hf_row = {e + '_kg_total': 0.0 for e in element_list}
+    hf_row.update(C_kg_total=3.0e19, C_kg_condensed=3.0e19)
+
+    assert check_desiccation(config, hf_row) is desiccated
+    assert hf_row['C_kg_total'] == pytest.approx(3.0e19, rel=1e-12)  # the gate only reads
 
 
 @pytest.mark.physics_invariant
