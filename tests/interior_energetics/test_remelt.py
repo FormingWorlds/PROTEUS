@@ -140,8 +140,10 @@ def test_partial_weight_blends_by_mass_share_and_never_cools(validation_plot):
     by 0.7 moves 0.7 of the way; w = 0 keeps S_end."""
     S_end = np.array([2400.0, 2400.0, 3950.0, 2400.0])
     S_ic = np.array([3000.0, 3000.0, 3000.0, 3000.0])
-    S_new = remelt_entropy(S_end, S_ic, np.array([0.0, 1.0 / 3.0, 0.5, 0.7]))
-    np.testing.assert_allclose(S_new, [2400.0, 2600.0, 3950.0, 2820.0], rtol=1e-15)
+    w_case = np.array([0.0, 1.0 / 3.0, 0.5, 0.7])
+    expected = np.array([2400.0, 2600.0, 3950.0, 2820.0])
+    S_new = remelt_entropy(S_end, S_ic, w_case)
+    np.testing.assert_allclose(S_new, expected, rtol=1e-15)
     assert S_new[0] == S_end[0]
     assert np.all(S_new >= S_end)
 
@@ -152,25 +154,25 @@ def test_partial_weight_blends_by_mass_share_and_never_cools(validation_plot):
         fig, ax = plt.subplots(figsize=(8, 4))
         ax.plot(
             w,
-            remelt_entropy(np.full(w.size, 2400.0), np.full(w.size, 3000.0), w),
+            remelt_entropy(np.full(w.size, S_end[0]), np.full(w.size, S_ic[0]), w),
             label='remelt_entropy, $S_\\mathrm{end}$ = 2400',
         )
-        ax.axhline(3000.0, ls='--', label='$S_\\mathrm{ic}$ = 3000')
+        ax.axhline(S_ic[0], ls='--', label='$S_\\mathrm{ic}$ = 3000')
         ax.plot(
             w,
-            remelt_entropy(np.full(w.size, 3950.0), np.full(w.size, 3000.0), w),
+            remelt_entropy(np.full(w.size, S_end[2]), np.full(w.size, S_ic[2]), w),
             ':',
             label='remelt_entropy, $S_\\mathrm{end}$ = 3950',
         )
         ax.plot(
-            [0.0, 1.0 / 3.0, 0.5, 0.7],
-            [2400.0, 2600.0, 3950.0, 2820.0],
+            w_case,
+            expected,
             's',
             mfc='none',
             ms=10,
             label='Hand-computed',
         )
-        ax.plot([0.0, 1.0 / 3.0, 0.5, 0.7], S_new, 'o', zorder=3, label='Asserted values')
+        ax.plot(w_case, S_new, 'o', zorder=3, label='Asserted values')
         ax.set_xlabel('Melted share of the cell $w$')
         ax.set_ylabel('Entropy [J kg$^{-1}$ K$^{-1}$]')
         ax.legend(fontsize=8, loc='center left', bbox_to_anchor=(1.0, 0.5))
@@ -258,9 +260,16 @@ def test_the_melt_front_of_a_uniform_mantle_matches_the_closed_form(validation_p
         k = int(np.flatnonzero((w > 0.0) & (w < 1.0))[0])
         front.append(np.cbrt(r_out[k] ** 3 - w[k] * (r_out[k] ** 3 - r_in[k] ** 3)))
     front = np.array(front)
-    closed = np.cbrt(R**3 - f_values * (R**3 - r_c**3))
+
+    def closed_form(f):
+        return np.cbrt(R**3 - f * (R**3 - r_c**3))
+
+    def linear_fill(f):
+        return R - f * (R - r_c)
+
+    closed = closed_form(f_values)
     np.testing.assert_allclose(front, closed, rtol=1e-12)
-    linear = R - f_values * (R - r_c)
+    linear = linear_fill(f_values)
     from_base = np.cbrt(r_c**3 + f_values * (R**3 - r_c**3))
     assert abs(front[2] - linear[2]) > 2.8e5
     # Base-up and top-down fills meet at f = 0.5 only; the nearest others are 1040.55 km apart.
@@ -271,8 +280,8 @@ def test_the_melt_front_of_a_uniform_mantle_matches_the_closed_form(validation_p
 
         f_line = np.linspace(0.0, 1.0, 51)
         fig, ax = plt.subplots(figsize=(6, 4))
-        ax.plot(f_line, np.cbrt(R**3 - f_line * (R**3 - r_c**3)) / 1e3, label='Closed form')
-        ax.plot(f_line, (R - f_line * (R - r_c)) / 1e3, '--', label='Linear in r')
+        ax.plot(f_line, closed_form(f_line) / 1e3, label='Closed form')
+        ax.plot(f_line, linear_fill(f_line) / 1e3, '--', label='Linear in r')
         ax.plot(f_values, front / 1e3, 'o', label='Weights')
         ax.set_xticks([0.0, 0.5, 1.0])
         ax.set_yticks([3500, 5000, 6500])

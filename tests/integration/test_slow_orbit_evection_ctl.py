@@ -279,16 +279,17 @@ def test_resonance_capture_occurs_within_expected_time_window(
     immediately (which would indicate the CTL spectrum or Hansen table
     is wrong) and not never (which would indicate no capture at all).
     """
-    crossing = next((row for row in _ctl_reference_trajectory if row['ecc'] > 0.1), None)
+    e_capture, t_lo, t_hi = 0.1, 2.0e4, 4.0e4
+    crossing = next((row for row in _ctl_reference_trajectory if row['ecc'] > e_capture), None)
     assert crossing is not None, 'eccentricity never exceeded 0.1 -- no resonance capture'
-    assert 2.0e4 <= crossing['Time'] <= 4.0e4
+    assert t_lo <= crossing['Time'] <= t_hi
 
     def figure():
         import matplotlib.pyplot as plt
 
         fig, ax = plt.subplots(figsize=(6, 4))
-        ax.axvspan(2.0e4, 4.0e4, alpha=0.15, label='Asserted window, 2e4 to 4e4 yr')
-        ax.axhline(0.1, ls='--', label='$e$ = 0.1')
+        ax.axvspan(t_lo, t_hi, alpha=0.15, label='Asserted window, 2e4 to 4e4 yr')
+        ax.axhline(e_capture, ls='--', label='$e$ = 0.1')
         ax.plot(
             [crossing['Time']],
             [crossing['ecc']],
@@ -324,14 +325,15 @@ def test_peak_eccentricity_matches_reference_location(
     ecc_values = [row['ecc'] for row in _ctl_reference_trajectory]
     i_peak = int(np.argmax(ecc_values))
     peak = _ctl_reference_trajectory[i_peak]
-    assert peak['ecc'] >= 0.6
-    assert 10.0 <= peak['a_prime'] <= 13.0
+    e_min, a_lo, a_hi = 0.6, 10.0, 13.0
+    assert peak['ecc'] >= e_min
+    assert a_lo <= peak['a_prime'] <= a_hi
 
     def figure():
         import matplotlib.pyplot as plt
 
         fig, ax = plt.subplots(figsize=(6, 4))
-        ax.fill_between([10.0, 13.0], 0.6, 1.0, alpha=0.15, label='Asserted region')
+        ax.fill_between([a_lo, a_hi], e_min, 1.0, alpha=0.15, label='Asserted region')
         ax.plot([11.89], [0.72], 's', mfc='none', ms=10, label='Reference peak (notebook run)')
         ax.plot([peak['a_prime']], [peak['ecc']], 'o', zorder=3, label='Peak of this run')
         ax.set_xlim(6.0, 16.0)

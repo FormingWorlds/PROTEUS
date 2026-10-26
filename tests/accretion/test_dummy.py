@@ -162,7 +162,8 @@ def test_collision_velocity_never_falls_below_the_mutual_escape_velocity(validat
     assert first.v_esc == pytest.approx(expected, rel=1e-12)
     # Discrimination: dropping the factor of two, the single most plausible
     # slip, changes the value by 29%, far outside the tolerance.
-    assert abs(expected / math.sqrt(2.0) - expected) > 0.2 * expected
+    no_factor_two = 1.0 / math.sqrt(2.0)
+    assert abs(expected * no_factor_two - expected) > 0.2 * expected
 
     def figure():
         import matplotlib.pyplot as plt
@@ -174,7 +175,7 @@ def test_collision_velocity_never_falls_below_the_mutual_escape_velocity(validat
         ax.plot(line, line, label='$v_\\mathrm{impact} = v_\\mathrm{esc}$')
         ax.plot(
             line,
-            [v / math.sqrt(2.0) for v in line],
+            [v * no_factor_two for v in line],
             '--',
             label='Escape speed without the factor 2',
         )
@@ -222,10 +223,11 @@ def test_a_circular_encounter_leaves_the_orbit_untouched(validation_plot):
     way round, both of which move the orbit even here.
     """
     events = get_timeline(_config(eccentricity=0.0, semimajoraxis=1.0))
+    unchanged_ratio, circular_e = 1.0, 0.0
 
     for event in events:
-        assert event.semimajoraxis_ratio == pytest.approx(1.0, rel=1e-12)
-        assert event.e_after == pytest.approx(0.0, abs=1e-12)
+        assert event.semimajoraxis_ratio == pytest.approx(unchanged_ratio, rel=1e-12)
+        assert event.e_after == pytest.approx(circular_e, abs=1e-12)
         assert event.a_before == pytest.approx(1.0 * AU, rel=1e-12)
 
     def figure():
@@ -233,8 +235,8 @@ def test_a_circular_encounter_leaves_the_orbit_untouched(validation_plot):
 
         ratio = [e.M_impactor / e.M_target_before for e in events]
         fig, ax = plt.subplots(figsize=(6, 4))
-        ax.axhline(1.0, label='Unchanged orbit, $a/a_0$ = 1')
-        ax.axhline(0.0, ls='--', label='Circular orbit, $e$ = 0')
+        ax.axhline(unchanged_ratio, label='Unchanged orbit, $a/a_0$ = 1')
+        ax.axhline(circular_e, ls='--', label='Circular orbit, $e$ = 0')
         ax.plot(ratio, [e.semimajoraxis_ratio for e in events], 'o', label='Merged $a/a_0$')
         ax.plot(ratio, [e.e_after for e in events], 's', mfc='none', ms=9, label='Merged $e$')
         ax.set_ylim(-0.2, 1.4)
@@ -386,9 +388,11 @@ def test_merged_orbit_conserves_angular_momentum_of_the_merged_body(validation_p
 
     v_kep = math.sqrt(mu / a_target)
     m_merged = m_target + m_impactor
-    v_theta = (
-        m_target * v_kep + m_impactor * v_kep * math.sqrt(1.0 - eccentricity**2)
-    ) / m_merged
+
+    def v_theta_of(e):
+        return (m_target * v_kep + m_impactor * v_kep * math.sqrt(1.0 - e**2)) / m_merged
+
+    v_theta = v_theta_of(eccentricity)
 
     h_from_orbit = math.sqrt(mu * a_after * (1.0 - e_after**2))
     assert h_from_orbit == pytest.approx(a_target * v_theta, rel=1e-9)
@@ -408,7 +412,7 @@ def test_merged_orbit_conserves_angular_momentum_of_the_merged_body(validation_p
         for e in ecc:
             a, ea, _ = _merged_orbit(m_target, m_impactor, a_target, 0.0, e, m_star)
             h_code.append(math.sqrt(mu * a * (1.0 - ea**2)) / (a_target * v_kep))
-            h_closed.append((m_target + m_impactor * math.sqrt(1.0 - e**2)) / m_merged)
+            h_closed.append(v_theta_of(e) / v_kep)
         fig, ax = plt.subplots(figsize=(6, 4))
         ax.plot(ecc, h_code, label='$\\sqrt{\\mu a (1 - e^2)}$ of the merged orbit')
         ax.plot(

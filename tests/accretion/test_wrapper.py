@@ -1804,8 +1804,9 @@ def test_zephyrus_loss_module_evaluates_the_kegerreis_law(validation_plot):
     )
     hf_row = {'M_planet': 6.3e24, 'H_kg_atm': 1.0e22}
 
+    pin_twins, pin_asym, pin_swapped = 0.510911, 0.2675, 0.5258
     f = _impact_loss_fraction(cfg, hf_row, twins)
-    assert f == pytest.approx(0.510911, rel=1e-4)
+    assert f == pytest.approx(pin_twins, rel=1e-4)
     assert 0.0 < f < 1.0
 
     # Bit-identity anchor against direct mass_loss evaluation.
@@ -1852,8 +1853,8 @@ def test_zephyrus_loss_module_evaluates_the_kegerreis_law(validation_plot):
     f_swapped = _impact_loss_fraction(cfg, hf_row, swapped)
     # Absolute pins detect parameter swapping between target and impactor.
     # An interchanged dispatch permutes the values and fails both checks.
-    assert f_asym == pytest.approx(0.2675, rel=2e-3)
-    assert f_swapped == pytest.approx(0.5258, rel=2e-3)
+    assert f_asym == pytest.approx(pin_asym, rel=2e-3)
+    assert f_swapped == pytest.approx(pin_swapped, rel=2e-3)
     assert f_asym < f_swapped  # the lighter impactor erodes less
 
     def figure():
@@ -1881,7 +1882,7 @@ def test_zephyrus_loss_module_evaluates_the_kegerreis_law(validation_plot):
         q_asym = m_i / m_e
         ax.plot(
             [1.0, q_asym, q_asym],
-            [0.510911, 0.2675, 0.5258],
+            [pin_twins, pin_asym, pin_swapped],
             's',
             mfc='none',
             ms=10,
@@ -2227,7 +2228,8 @@ def test_roche2026_oracle_row_through_impact_loss_fraction(validation_plot):
     )
 
     f_loss = _impact_loss_fraction(cfg, hf_row, event)
-    assert f_loss == pytest.approx(expected_x, abs=5e-5)
+    tol, margin = 5e-5, 0.10
+    assert f_loss == pytest.approx(expected_x, abs=tol)
     assert 0.0 <= f_loss <= 1.0
 
     # Discrimination guard (a): kegerreis2020 yields f_keg = 0.693102, diverging by 0.1309 (> 0.10).
@@ -2235,7 +2237,7 @@ def test_roche2026_oracle_row_through_impact_loss_fraction(validation_plot):
         accretion=_impact_accretion(atmloss_module='zephyrus', atmloss_law='kegerreis2020')
     )
     f_keg = _impact_loss_fraction(cfg_keg, hf_row, event)
-    assert abs(f_keg - expected_x) > 0.10
+    assert abs(f_keg - expected_x) > margin
 
     # Discrimination guard (b): swapping masses and radii diverges by > 0.10.
     event_swapped = _impact_event(
@@ -2250,7 +2252,7 @@ def test_roche2026_oracle_row_through_impact_loss_fraction(validation_plot):
     )
     hf_row_swapped = {'M_planet': m_i, 'H_kg_atm': f_atm * m_i}
     f_swapped = _impact_loss_fraction(cfg, hf_row_swapped, event_swapped)
-    assert abs(f_swapped - expected_x) > 0.10
+    assert abs(f_swapped - expected_x) > margin
 
     def figure():
         import matplotlib.pyplot as plt
@@ -2258,13 +2260,16 @@ def test_roche2026_oracle_row_through_impact_loss_fraction(validation_plot):
         names = ['Roche law, code', 'Kegerreis law', 'Roles interchanged']
         fig, ax = plt.subplots(figsize=(6, 4))
         ax.axhspan(
-            expected_x - 0.10, expected_x + 0.10, alpha=0.15, label='Within 0.10 of the oracle'
+            expected_x - margin,
+            expected_x + margin,
+            alpha=0.15,
+            label='Within 0.10 of the oracle',
         )
         ax.axhline(expected_x, ls='--', label='Oracle $X$ = 0.562213')
         ax.errorbar(
             [0],
             [expected_x],
-            yerr=[[5e-5], [5e-5]],
+            yerr=[[tol], [tol]],
             fmt='s',
             mfc='none',
             ms=10,

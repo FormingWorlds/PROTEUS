@@ -212,15 +212,20 @@ def test_sp0d_de_dt_matches_driscoll_barnes_2015_eq16(validation_plot):
     See ``docs/Validation/orbit/orbit.md`` for the validation registry
     entry.
     """
-    _, val = _sp0d_instantaneous_rates(sma=2.0, ecc=0.5, **_UNIT_SYS)
-    expected = (21.0 / 2.0) * const_G**0.5 * 0.5 / (2.0**6.5)
+    a_case, e_case = 2.0, 0.5
+
+    def eq16(a, power=6.5):
+        return (21.0 / 2.0) * const_G**0.5 * e_case / a**power
+
+    _, val = _sp0d_instantaneous_rates(sma=a_case, ecc=e_case, **_UNIT_SYS)
+    expected = eq16(a_case)
     assert val == pytest.approx(expected, rel=1e-3)
     # Exponent-error guard: an off-by-one in the semi-major-axis
     # exponent puts the result far outside the finite-difference noise
     # floor. Check a**5 (way too big) AND a**7 (too small), the two
     # closest neighbouring exponents.
-    wrong_a5 = (21.0 / 2.0) * const_G**0.5 * 0.5 / (2.0**5)
-    wrong_a7 = (21.0 / 2.0) * const_G**0.5 * 0.5 / (2.0**7)
+    wrong_a5 = eq16(a_case, 5)
+    wrong_a7 = eq16(a_case, 7)
     assert abs(val - wrong_a5) / expected > 1.0
     assert abs(val - wrong_a7) / expected > 0.1
     # Sign guard: under the PROTEUS calling convention (positive Imk2)
@@ -233,16 +238,13 @@ def test_sp0d_de_dt_matches_driscoll_barnes_2015_eq16(validation_plot):
         import matplotlib.pyplot as plt
 
         sma = np.linspace(1.0, 4.0, 13)
-        code = [_sp0d_instantaneous_rates(sma=a, ecc=0.5, **_UNIT_SYS)[1] for a in sma]
-        pre = (21.0 / 2.0) * const_G**0.5 * 0.5
+        code = [_sp0d_instantaneous_rates(sma=a, ecc=e_case, **_UNIT_SYS)[1] for a in sma]
         fig, ax = plt.subplots(figsize=(6, 4))
         ax.plot(sma, code, label='sp0d, finite difference')
-        ax.plot(
-            sma[::3], pre / sma[::3] ** 6.5, 's', mfc='none', ms=9, label='Eq. 16, $a^{-13/2}$'
-        )
-        ax.plot(sma, pre / sma**5, '--', label='$a^{-5}$')
-        ax.plot(sma, pre / sma**7, ':', label='$a^{-7}$')
-        ax.plot([2.0], [val], 'o', zorder=3, label='Asserted value at $a$ = 2')
+        ax.plot(sma[::3], eq16(sma[::3]), 's', mfc='none', ms=9, label='Eq. 16, $a^{-13/2}$')
+        ax.plot(sma, eq16(sma, 5), '--', label='$a^{-5}$')
+        ax.plot(sma, eq16(sma, 7), ':', label='$a^{-7}$')
+        ax.plot([a_case], [val], 'o', zorder=3, label='Asserted value at $a$ = 2')
         ax.set_xscale('log')
         ax.set_yscale('log')
         ax.set_xlabel('$a$ [m], unit system of the test')
@@ -773,7 +775,8 @@ def test_sp1d_spin_am_gain_matches_orbital_am_loss(_fast_hansen_table, validatio
     # (a near-zero step would make the ratio numerically meaningless).
     assert abs(d_spin) > 1e30
     assert abs(d_orb) > 1e30
-    assert d_spin == pytest.approx(-d_orb, rel=5e-2)
+    rtol = 5e-2
+    assert d_spin == pytest.approx(-d_orb, rel=rtol)
     # Sign guard: spin gains AM (planet spins up) exactly as the
     # orbit loses it during circularization.
     assert d_spin > 0.0
@@ -785,7 +788,12 @@ def test_sp1d_spin_am_gain_matches_orbital_am_loss(_fast_hansen_table, validatio
         # The orbital loss is not drawn: it is 1.7e-7 of the orbital AM, so the
         # solver tolerance moves it by about 0.4 %, above the stale-check limit.
         fig, ax = plt.subplots(figsize=(6, 4))
-        ax.axhspan(0.95 * d_spin, 1.05 * d_spin, alpha=0.15, label='window for the orbital loss')
+        ax.axhspan(
+            (1.0 - rtol) * d_spin,
+            (1.0 + rtol) * d_spin,
+            alpha=0.15,
+            label='window for the orbital loss',
+        )
         ax.bar(['Spin gain'], [d_spin], width=0.4)
         ax.set_ylim(0.0, 1.4 * d_spin)
         ax.set_ylabel('$\\Delta L$ [kg m$^2$ s$^{-1}$]')

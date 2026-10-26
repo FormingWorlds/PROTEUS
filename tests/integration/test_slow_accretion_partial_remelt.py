@@ -192,22 +192,18 @@ def test_the_melted_mass_closes_on_the_pre_impact_cell_masses(partial_remelt, va
     d = partial_remelt
     w = (d['S_new'] - d['S_end']) / (d['S_molten'] - d['S_end'])
     m, V = d['mass'], d['V']
-    assert float(np.sum(w * m)) == pytest.approx(F_MELT * float(np.sum(m)), rel=1e-9)
-    # A volume basis puts the melt in other cells: the density rises with depth.
-    assert abs(float(np.sum(w * V)) / float(np.sum(V)) - F_MELT) > 1e-3
     m_eos = d['mass_eos']
-    assert abs(float(np.sum(w * m_eos)) / float(np.sum(m_eos)) - F_MELT) > 1e-3
+    shares = [float(np.sum(w * x)) / float(np.sum(x)) for x in (m, V, m_eos)]
+    assert shares[0] == pytest.approx(F_MELT, rel=1e-9)
+    # A volume basis puts the melt in other cells: the density rises with depth.
+    assert abs(shares[1] - F_MELT) > 1e-3
+    assert abs(shares[2] - F_MELT) > 1e-3
     assert float(np.sum(m)) == pytest.approx(float(d['hf_row']['M_mantle']), rel=1e-9)
     assert 0.0 < float(d['hf_row']['f_remelt']) == F_MELT
 
     def figure():
         import matplotlib.pyplot as plt
 
-        shares = [
-            float(np.sum(w * m)) / float(np.sum(m)),
-            float(np.sum(w * V)) / float(np.sum(V)),
-            float(np.sum(w * m_eos)) / float(np.sum(m_eos)),
-        ]
         fig, ax = plt.subplots(figsize=(6, 4))
         ax.bar(
             ['Structural mass', 'Cell volume', r'EOS mass $\rho(P, S_\mathrm{end})V$'],

@@ -122,12 +122,15 @@ def test_the_ledger_matches_a_fine_grid_over_a_random_history(validation_plot):
     assert np.diff(phi).max() > 0.0  # the history does remelt
 
     # Discretisation error of the grid: at most one bin of the densest layer.
+    def held_below(cut):
+        below = np.clip(np.minimum(edges[1:], cut) - edges[:-1], 0.0, None) / np.diff(edges)
+        return float(np.sum(held * below))
+
     cuts, ledger_vals = (phi[-1] + 0.01, 0.3, 0.6, 1.0), []
     for cut in cuts:
         copy = [Layer(layer.lo, layer.hi, layer.mass.copy()) for layer in layers]
         from_ledger = remelt_to(copy, cut)[0] if copy else 0.0
-        below = np.clip(np.minimum(edges[1:], cut) - edges[:-1], 0.0, None) / np.diff(edges)
-        assert from_ledger == pytest.approx(float(np.sum(held * below)), rel=1e-3)
+        assert from_ledger == pytest.approx(held_below(cut), rel=1e-3)
         ledger_vals.append(from_ledger)
     assert ledger_total(layers, 1)[0] == pytest.approx(held.sum(), rel=1e-9)
     # Discrimination: the history buried more than the ledger still holds,
@@ -138,14 +141,7 @@ def test_the_ledger_matches_a_fine_grid_over_a_random_history(validation_plot):
         import matplotlib.pyplot as plt
 
         x = np.linspace(0.0, 1.0, 101)
-        grid = [
-            np.sum(
-                held
-                * np.clip(np.minimum(edges[1:], c) - edges[:-1], 0.0, None)
-                / np.diff(edges)
-            )
-            for c in x
-        ]
+        grid = [held_below(c) for c in x]
         fig, ax = plt.subplots(figsize=(6, 4))
         ax.plot(x, np.array(grid) / 1e18, label='Fine-grid ledger, 2e5 bins')
         ax.axhline(buried.sum() / 1e18, ls='--', label='Total buried over the history')

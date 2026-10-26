@@ -256,18 +256,19 @@ def test_h2_mole_total_uses_h2_molecular_mass_per_rogers2025(validation_plot):
     import scipy.constants as const
 
     cfg = _make_config()
-    hf_row = _make_hf_row(H2_kg_total=5e17)
+    budget = 5e17
+    hf_row = _make_hf_row(H2_kg_total=budget)
     with patch('zalmoxis.binodal.rogers2025_suppression_weight', return_value=0.4):
         apply_binodal_h2(hf_row, cfg)
 
     # kg closure (still required, but it's a sanity rail not a discrimination guard).
     assert hf_row['H2_kg_atm'] + hf_row['H2_kg_liquid'] + hf_row[
         'H2_kg_solid'
-    ] == pytest.approx(5e17, rel=1e-12)
+    ] == pytest.approx(budget, rel=1e-12)
 
     # Molar-mass pin: H2 molecular mass 2.016 g/mol, NOT H atomic mass 1.008 g/mol.
     M_H2 = 2.016e-3
-    expected_mol_total = 5e17 / M_H2 / const.Avogadro
+    expected_mol_total = budget / M_H2 / const.Avogadro
     assert hf_row['H2_mol_total'] == pytest.approx(expected_mol_total, rel=1e-12)
 
     # Mole closure across reservoirs.
@@ -278,7 +279,8 @@ def test_h2_mole_total_uses_h2_molecular_mass_per_rogers2025(validation_plot):
     # Discrimination guard: with M(H2)=2.016e-3 the mol_total lands at
     # ~4.12e-4; a regression to M(H)=1.008e-3 would land at ~8.24e-4
     # (factor of 2). The bracket [3e-4, 5e-4] catches the latter.
-    assert 3e-4 < hf_row['H2_mol_total'] < 5e-4
+    lo, hi = 3e-4, 5e-4
+    assert lo < hf_row['H2_mol_total'] < hi
     # Sign guards on reservoirs.
     assert hf_row['H2_kg_atm'] >= 0.0
     assert hf_row['H2_kg_liquid'] >= 0.0
@@ -298,15 +300,15 @@ def test_h2_mole_total_uses_h2_molecular_mass_per_rogers2025(validation_plot):
         ):
             left.bar(['Reservoirs'], [hf_row[key]], bottom=bottom, width=0.5, label=name)
             bottom += hf_row[key]
-        left.axhline(5e17, ls='--', label='Budget 5e17 kg')
+        left.axhline(budget, ls='--', label='Budget 5e17 kg')
         left.set_ylabel('H$_2$ mass [kg]')
         left.set_ylim(0.0, 8e17)
         left.legend(fontsize=8, ncol=2, loc='upper center')
-        right.axhspan(3e-4, 5e-4, alpha=0.15, label='Asserted bracket')
+        right.axhspan(lo, hi, alpha=0.15, label='Asserted bracket')
         right.plot(
             [0], [expected_mol_total], 's', mfc='none', ms=12, label='Mass / M(H$_2$) / $N_A$'
         )
-        right.plot([0], [5e17 / 1.008e-3 / const.Avogadro], 'x', ms=10, label='With M(H)')
+        right.plot([0], [budget / 1.008e-3 / const.Avogadro], 'x', ms=10, label='With M(H)')
         right.plot([0], [hf_row['H2_mol_total']], 'o', zorder=3, label='Code mole total')
         right.set_xticks([])
         right.set_ylabel('H$_2$ mole total [mol]')

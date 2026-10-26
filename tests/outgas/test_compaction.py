@@ -292,21 +292,23 @@ def test_the_lever_rule_porosity_is_the_solvers_where_the_melt_is_lighter(valida
     np.testing.assert_allclose(mine, phi, rtol=1e-12)
     # Held to 2e-5: the solver's soft clip moves phi by 2.5e-7 / phi at each edge,
     # 1.2e-5 at phi = 0.02 and at 0.98.
-    np.testing.assert_allclose(solver_porosity(rho, rho_s, rho_l), mine, rtol=0.0, atol=2e-5)
+    solver_light = solver_porosity(rho, rho_s, rho_l)
+    np.testing.assert_allclose(solver_light, mine, rtol=0.0, atol=2e-5)
 
     # The melt the denser phase, 3456 against 3084 kg/m3: the solver's porosity
     # is near 0, the lever rule the melt volume itself.
     dense_l, dense_s = np.full(phi.size, 3456.0), np.full(phi.size, 3084.0)
     dense = dense_s - phi * (dense_s - dense_l)
     np.testing.assert_allclose(porosity_from_densities(dense, dense_s, dense_l, phi), phi)
-    assert np.all(solver_porosity(dense, dense_s, dense_l) < 1e-3)
+    solver_dense = solver_porosity(dense, dense_s, dense_l)
+    assert np.all(solver_dense < 1e-3)
     # Edge case: a fully molten node at a single-phase density 20 kg/m3 above
     # the phase-boundary melt reads 0.95 by the lever rule, 1 by its melt fraction.
-    molten = porosity_from_densities(np.array([3620.0]), 4000.0, 3600.0, np.array([1.0]))
+    node = (np.array([3620.0]), 4000.0, 3600.0)
+    molten = porosity_from_densities(*node, np.array([1.0]))
+    molten_solver = solver_porosity(*node)[0]
     assert molten[0] == pytest.approx(1.0, abs=0.0)
-    assert solver_porosity(np.array([3620.0]), 4000.0, 3600.0)[0] == pytest.approx(
-        0.95, abs=1e-5
-    )
+    assert molten_solver == pytest.approx(0.95, abs=1e-5)
 
     def figure():
         import matplotlib.pyplot as plt
@@ -316,17 +318,17 @@ def test_the_lever_rule_porosity_is_the_solvers_where_the_melt_is_lighter(valida
         ax.plot(phi, mine, 'o', label='Lever rule, melt lighter')
         ax.plot(
             phi,
-            solver_porosity(rho, rho_s, rho_l),
+            solver_light,
             's',
             mfc='none',
             ms=10,
             label='Solver, melt lighter',
         )
-        ax.plot(phi, solver_porosity(dense, dense_s, dense_l), '^', label='Solver, melt denser')
+        ax.plot(phi, solver_dense, '^', label='Solver, melt denser')
         ax.plot([1.0], [molten[0]], '*', ms=12, label='Lever rule, molten node')
         ax.plot(
             [1.0],
-            [solver_porosity(np.array([3620.0]), 4000.0, 3600.0)[0]],
+            [molten_solver],
             'x',
             ms=10,
             label='Solver, molten node',

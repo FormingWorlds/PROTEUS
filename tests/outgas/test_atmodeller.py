@@ -100,17 +100,18 @@ def test_water_split_matches_closed_form_mass_fractions(validation_plot):
     h_total = _element_total(hf_row, 'H')
 
     # Pinned closed-form fractions (hand-computed from IUPAC atomic masses).
-    assert o_total == pytest.approx(m_h2o * 0.88809, rel=1e-4)
-    assert h_total == pytest.approx(m_h2o * 0.11191, rel=1e-4)
+    frac_o, frac_h, equal = 0.88809, 0.11191, 0.5
+    assert o_total == pytest.approx(m_h2o * frac_o, rel=1e-4)
+    assert h_total == pytest.approx(m_h2o * frac_h, rel=1e-4)
 
     # Discrimination guard: an equal-split (0.5 each) would place H at 2.0e21 kg,
     # differing from the correct 4.47e20 kg by >> tol.
-    assert abs(h_total - m_h2o * 0.5) > 0.3 * m_h2o
+    assert abs(h_total - m_h2o * equal) > 0.3 * m_h2o
 
     # Mass conservation: the split conserves the water mass exactly.
     assert h_total + o_total == pytest.approx(m_h2o, rel=1e-12)
     # The atmospheric reservoir (the field escape reads) carries its share.
-    assert hf_row['H_kg_atm'] == pytest.approx(2.5e21 * 0.11191, rel=1e-4)
+    assert hf_row['H_kg_atm'] == pytest.approx(2.5e21 * frac_h, rel=1e-4)
     # Crucially the total slot is NOT written by the helper (escape owns it).
     assert 'H_kg_total' not in hf_row
 
@@ -119,8 +120,8 @@ def test_water_split_matches_closed_form_mass_fractions(validation_plot):
 
         fig, ax = plt.subplots(figsize=(6, 4))
         ax.bar(['O', 'H'], [o_total / m_h2o, h_total / m_h2o], width=0.5, label='Helper split')
-        ax.plot(['O', 'H'], [0.88809, 0.11191], 's', mfc='none', ms=12, label='Closed form')
-        ax.axhline(0.5, ls='--', label='Equal split')
+        ax.plot(['O', 'H'], [frac_o, frac_h], 's', mfc='none', ms=12, label='Closed form')
+        ax.axhline(equal, ls='--', label='Equal split')
         ax.set_ylabel('Mass fraction of the water')
         ax.set_ylim(0.0, 1.0)
         ax.legend()

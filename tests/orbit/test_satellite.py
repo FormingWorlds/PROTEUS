@@ -579,13 +579,14 @@ def test_ps0d_bootstrap_am_uses_satellite_mass_not_planet_mass(validation_plot):
     # Scale guard: Eq. 60 for Earth-Moon lands at ~3.6e34 kg m^2/s
     # (spin ~7e33 + orbital ~2.9e34); the M_planet substitution would
     # land at ~2.4e36, two orders of magnitude above this bracket.
-    assert 1e34 < hf_row['plan_sat_am'] < 1e35
+    lo, hi = 1e34, 1e35
+    assert lo < hf_row['plan_sat_am'] < hi
 
     def figure():
         import matplotlib.pyplot as plt
 
         fig, ax = plt.subplots(figsize=(6, 4))
-        ax.axhspan(1e34, 1e35, alpha=0.15, label='Asserted range')
+        ax.axhspan(lo, hi, alpha=0.15, label='Asserted range')
         ax.plot([0], [expected], 's', mfc='none', ms=12, label='Korenaga (2023) Eq. 60')
         ax.plot([0], [hf_row['plan_sat_am']], 'o', zorder=3, label='ps0d bootstrap')
         ax.plot([1], [wrong_L], 'x', ms=10, label='Planet mass in the orbital term')

@@ -6,7 +6,7 @@
   <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
    <cc:Work>
     <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
-    <dc:description>test: tests/orbit/test_wrapper.py::test_period_matches_keplers_third_law_for_earth_around_sun; command: pytest tests/orbit/test_wrapper.py::test_period_matches_keplers_third_law_for_earth_around_sun --validation-plots; summary: {"v": 1, "axes": [{"scales": ["log", "log"], "categories": [null, null], "lines": [[31, -0.5228787452803376, 0.47712125471966244, -0.02287874528033762, 0.17777777777777776, 1.7782796381791106, 3.2782796381791104, 2.5282796381791104, 0.2666666666666666], [7, -0.5228787452803376, 0.47712125471966244, -0.022878745280337627, 0.2222222222222222, 1.7782796381791106, 3.2782796381791104, 2.528279638179111, 0.3333333333333333], [1, 0.0, 0.0, 0.0, 0.0, 2.560415994112933, 2.560415994112933, 2.560415994112933, 0.0], [1, 0.0, 0.0, 0.0, 0.0, 2.564767821609169, 2.564767821609169, 2.564767821609169, 0.0], [1, 0.0, 0.0, 0.0, 0.0, 2.562597756099617, 2.562597756099617, 2.562597756099617, 0.0]], "collections": [[2, 0.0, 0.0, 0.0, 0.0, 2.560415994112933, 2.564767821609169, 2.562591907861051, 0.002175913748117812]], "values": [], "value_scales": [], "patches": [], "images": [], "image_scales": [], "extents": []}]}</dc:description>
+    <dc:description>test: tests/orbit/test_wrapper.py::test_period_matches_keplers_third_law_for_earth_around_sun; command: pytest tests/orbit/test_wrapper.py::test_period_matches_keplers_third_law_for_earth_around_sun --validation-plots; summary: {"v": 1, "axes": [{"scales": ["log", "log"], "categories": [null, null], "lines": [[31, -0.5228787452803376, 0.47712125471966244, -0.02287874528033762, 0.17777777777777776, 1.7782796381791106, 3.2782796381791104, 2.5282796381791104, 0.2666666666666666], [7, -0.5228787452803376, 0.47712125471966244, -0.022878745280337627, 0.2222222222222222, 1.7782796381791106, 3.2782796381791104, 2.528279638179111, 0.3333333333333333], [1, 0.0, 0.0, 0.0, 0.0, 2.560420439494398, 2.560420439494398, 2.560420439494398, 0.0], [1, 0.0, 0.0, 0.0, 0.0, 2.56476342050518, 2.56476342050518, 2.56476342050518, 0.0], [1, 0.0, 0.0, 0.0, 0.0, 2.562597756099617, 2.562597756099617, 2.562597756099617, 0.0]], "collections": [[2, 0.0, 0.0, 0.0, 0.0, 2.560420439494398, 2.56476342050518, 2.562591929999789, 0.0021714905053910566]], "values": [], "value_scales": [], "patches": [], "images": [], "image_scales": [], "extents": []}]}</dc:description>
     <dc:format>image/svg+xml</dc:format>
     <dc:creator>
      <cc:Agent>
@@ -999,8 +999,8 @@ z
     </g>
    </g>
    <g id="LineCollection_1">
-    <path d="M 239.674316 109.434416 
-L 239.674316 108.873277 
+    <path d="M 239.674316 109.433842 
+L 239.674316 108.873844 
 " clip-path="url(#pe18784f574)" style="fill: none; stroke: #10151b; stroke-width: 2.2"/>
    </g>
    <g id="line2d_31">
@@ -1010,12 +1010,12 @@ L -4 -0
 " style="stroke: #10151b"/>
     </defs>
     <g clip-path="url(#pe18784f574)">
-     <use xlink:href="#m175dd498aa" x="239.674316" y="109.434416" style="fill: #10151b; stroke: #10151b"/>
+     <use xlink:href="#m175dd498aa" x="239.674316" y="109.433842" style="fill: #10151b; stroke: #10151b"/>
     </g>
    </g>
    <g id="line2d_32">
     <g clip-path="url(#pe18784f574)">
-     <use xlink:href="#m175dd498aa" x="239.674316" y="108.873277" style="fill: #10151b; stroke: #10151b"/>
+     <use xlink:href="#m175dd498aa" x="239.674316" y="108.873844" style="fill: #10151b; stroke: #10151b"/>
     </g>
    </g>
    <g id="patch_3">

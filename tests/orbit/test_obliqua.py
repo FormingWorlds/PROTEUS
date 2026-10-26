@@ -1444,7 +1444,8 @@ def test_ln_from_lookup_enforces_love_number_reality_symmetry(validation_plot):
     obliqua_mod.LN_from_lookup(hf_row, dirs={}, tides_o=tides_o, config=cfg)
 
     storage = tides_o.get(primary='satellite', perturber='planet')
-    expected = np.conj(0.02 - 0.03j)
+    node = lnk_lookup[1]
+    expected = np.conj(node)
     assert storage.LNk[0] == pytest.approx(expected, rel=1e-9)
     # Discrimination: not the un-conjugated value (sign of imaginary
     # part flipped relative to a same-sigma, no-symmetry bug).
@@ -1456,7 +1457,13 @@ def test_ln_from_lookup_enforces_love_number_reality_symmetry(validation_plot):
         got = complex(storage.LNk[0])
         fig, ax = plt.subplots(figsize=(5, 4))
         ax.axhline(0.0, ls='--', label='Real axis, the mirror line')
-        ax.plot([0.02], [-0.03], 'x', ms=10, label='Table node, $\\sigma = +2\\times10^{-6}$')
+        ax.plot(
+            [node.real],
+            [node.imag],
+            'x',
+            ms=10,
+            label='Table node, $\\sigma = +2\\times10^{-6}$',
+        )
         ax.plot(
             [expected.real],
             [expected.imag],

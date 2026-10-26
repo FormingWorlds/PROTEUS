@@ -57,6 +57,12 @@ RUN_NIGHTLY_SMOKE = os.environ.get('PROTEUS_CI_NIGHTLY', '0') == '1'
 # rather than against a repeat of the model's own arithmetic.
 SIGMA_SB = 5.670374419e-8
 
+
+def _grey_law(t, emissivity=1.0, power=4):
+    """Grey-body emission ``emissivity * SIGMA_SB * t**power``; the asserts and the plots share it."""
+    return emissivity * SIGMA_SB * t**power
+
+
 # Surface temperatures spanning magma-ocean conditions. The 3x span gives a
 # factor 81 in T**4 against 27 in T**3, which resolves the exponent far
 # above any tolerance used here.
@@ -240,7 +246,7 @@ def _assert_blackbody_limit(results, *, rtol: float):
             Relative tolerance on the pinned flux.
     """
     for t_surf, output, state in results:
-        expected = SIGMA_SB * t_surf**4
+        expected = _grey_law(t_surf)
         assert output['F_olr'] == pytest.approx(expected, rel=rtol), (
             f'transparent OLR at T_surf={t_surf} K must equal the black-body '
             f'emission {expected:.6e} W m-2'
@@ -250,7 +256,7 @@ def _assert_blackbody_limit(results, *, rtol: float):
         assert output['F_olr'] > 0.0
 
         # Exponent guard: a T**3 law sits a factor T below the pinned value.
-        assert abs(output['F_olr'] - SIGMA_SB * t_surf**3) > rtol * expected
+        assert abs(output['F_olr'] - _grey_law(t_surf, power=3)) > rtol * expected
 
         # An isothermal column re-emits what it absorbs, so above a black
         # surface the upward longwave flux does not change with height.
@@ -288,12 +294,12 @@ def _plot_olr(validation_plot, results, name, *, albedo=0.0):
         t_s = [r[0] for r in results]
         fig, ax = plt.subplots(figsize=(6, 4))
         law = f'$(1 - {albedo})\\,\\sigma T_s^4$' if albedo else '$\\sigma T_s^4$'
-        ax.plot(t, (1.0 - albedo) * SIGMA_SB * t**4, label=law)
+        ax.plot(t, _grey_law(t, 1.0 - albedo), label=law)
         if albedo:
-            ax.plot(t, SIGMA_SB * t**4, '--', label='$\\sigma T_s^4$, emissivity dropped')
+            ax.plot(t, _grey_law(t), '--', label='$\\sigma T_s^4$, emissivity dropped')
             ax.plot(
                 t,
-                albedo * SIGMA_SB * t**4,
+                _grey_law(t, albedo),
                 ':',
                 label=f'${albedo}\\,\\sigma T_s^4$, albedo as emissivity',
             )
@@ -306,7 +312,7 @@ def _plot_olr(validation_plot, results, name, *, albedo=0.0):
                 label='Upward flux at the surface',
             )
         else:
-            ax.plot(t, SIGMA_SB * t**3, '--', label='$\\sigma T_s^3$')
+            ax.plot(t, _grey_law(t, power=3), '--', label='$\\sigma T_s^3$')
         ax.plot(t_s, [r[1]['F_olr'] for r in results], 'o', zorder=3, label='$F_\\mathrm{olr}$')
         ax.set_xscale('log')
         ax.set_yscale('log')
@@ -344,10 +350,10 @@ def test_transparent_greygas_olr_equals_blackbody_emission(validation_plot):
         # Headline pin at both ends of the sweep, 5.67e4 W m-2 at 1000 K and
         # 4.59e6 W m-2 at 3000 K.
         assert results[0][1]['F_olr'] == pytest.approx(
-            SIGMA_SB * T_SURF_GRID[0] ** 4, rel=RTOL_GREYGAS
+            _grey_law(T_SURF_GRID[0]), rel=RTOL_GREYGAS
         )
         assert results[-1][1]['F_olr'] == pytest.approx(
-            SIGMA_SB * T_SURF_GRID[-1] ** 4, rel=RTOL_GREYGAS
+            _grey_law(T_SURF_GRID[-1]), rel=RTOL_GREYGAS
         )
 
         _assert_blackbody_limit(results, rtol=RTOL_GREYGAS)
@@ -383,8 +389,8 @@ def test_transparent_greygas_olr_scales_with_surface_emissivity(validation_plot)
         results = _sweep_transparent(runner)
 
         for t_surf, output, state in results:
-            blackbody = SIGMA_SB * t_surf**4
-            greybody = (1.0 - albedo) * blackbody
+            blackbody = _grey_law(t_surf)
+            greybody = _grey_law(t_surf, 1.0 - albedo)
 
             # Column optical depth accumulated down to the surface: a
             # transparent atmosphere is opacity-free by construction, not
@@ -415,7 +421,7 @@ def test_transparent_greygas_olr_scales_with_surface_emissivity(validation_plot)
             # Guard against a sign-flipped emissivity (using `albedo` in place
             # of `1 - albedo`): that wrong formula gives ~30% of black-body,
             # far outside tolerance of the correct ~70%.
-            assert output['F_olr'] != pytest.approx(albedo * blackbody, rel=1.0e-2)
+            assert output['F_olr'] != pytest.approx(_grey_law(t_surf, albedo), rel=1.0e-2)
 
             # Sign and ordering: emission leaves the planet, strictly below
             # the unit-emissivity black-body limit.
@@ -471,6 +477,6 @@ def test_transparent_banded_olr_recovers_blackbody_emission(validation_plot):
         # The band discretisation is a deficit, never a surplus: truncation
         # and midpoint evaluation only lose flux against the exact integral.
         for t_surf, output, _ in results:
-            assert output['F_olr'] < SIGMA_SB * t_surf**4
+            assert output['F_olr'] < _grey_law(t_surf)
 
         _plot_olr(validation_plot, results, 'atmos_clim_agni_banded_blackbody')
