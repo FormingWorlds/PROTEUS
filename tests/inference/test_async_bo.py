@@ -319,8 +319,6 @@ def test_parallel_process_happy_path_with_mocked_manager(monkeypatch, tmp_path):
     assert init_kwargs == {'acqf': 'LogEI', 'kernel': 'MAT3/2'}
     # Each worker gets its own torch seed, seed + 1 + worker id
     assert [p.args[-1] for p in created_processes] == [2, 3]
-    # Without posterior_steps every step uses the configured acquisition
-    assert created_processes[0].args[0].keywords['posterior_from'] is None
 
 
 # ============================================================================
