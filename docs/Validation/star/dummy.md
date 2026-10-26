@@ -24,7 +24,7 @@ This page checks the luminosity of the star and the stellar flux at the planet i
 ![Stellar luminosity against effective temperature at the solar radius](../../assets/validation/star_dummy_luminosity.svg#only-light){ width="80%" }
 ![Stellar luminosity against effective temperature at the solar radius](../../assets/validation/star_dummy_luminosity_dark.svg#only-dark){ width="80%" }
 
-**How to read the plot.** The x-axis is the effective temperature and the y-axis the luminosity on a log scale, at the solar radius. The line is `calc_star_luminosity` (context). The filled circle is the asserted code value at the solar temperature and radius, and the hollow square is the IAU 2015 nominal value with its 1 % tolerance as a bar. The grey band is the asserted range check, $10^{26}$ to $10^{27}$ W. A pass means that the circle sits inside the square and the band.
+**How to read the plot.** The x-axis is the effective temperature and the y-axis the luminosity on a log scale, at the solar radius. The line is `calc_star_luminosity` (context). The filled circle is the asserted code value at the solar temperature and radius. The hollow square is the nominal solar luminosity of the International Astronomical Union (IAU 2015); the test allows 1 %, too little to see. The grey band is the asserted range check, $10^{26}$ to $10^{27}$ W. A pass means that the circle sits in the square and in the band.
 
 ??? info "Test details"
     - Reference: IAU 2015 Resolution B3, nominal solar luminosity L_sun = 3.828e26 W.
@@ -45,7 +45,7 @@ This page checks the luminosity of the star and the stellar flux at the planet i
 ![Stellar flux against distance from a Sun-like star](../../assets/validation/star_dummy_instellation.svg#only-light){ width="80%" }
 ![Stellar flux against distance from a Sun-like star](../../assets/validation/star_dummy_instellation_dark.svg#only-dark){ width="80%" }
 
-**How to read the plot.** The x-axis is the distance from the star and the y-axis the stellar flux, both on log scales. The line is `calc_instellation` for the solar temperature and radius (context). The filled circle is the asserted code value at 1 AU, and the hollow square is the IAU 2015 nominal total solar irradiance with its 1 % tolerance as a bar. The grey band is the asserted range check, 1000 to 2000 W/m$^2$. A pass means that the circle sits inside the square and the band.
+**How to read the plot.** The x-axis is the distance from the star and the y-axis the stellar flux, both on log scales. The line is `calc_instellation` for the solar temperature and radius (context). The filled circle is the asserted code value at 1 AU, the astronomical unit. The hollow square is the nominal total solar irradiance of the International Astronomical Union (IAU 2015); the test allows 1 %. The grey band is the asserted range check, 1000 to 2000 W/m$^2$. A pass means that the circle sits in the square and in the band.
 
 ??? info "Test details"
     - Reference: IAU 2015 Resolution B3, nominal total solar irradiance S_0 = 1361 W/m^2.

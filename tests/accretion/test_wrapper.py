@@ -2266,16 +2266,7 @@ def test_roche2026_oracle_row_through_impact_loss_fraction(validation_plot):
             label='Within 0.10 of the oracle',
         )
         ax.axhline(expected_x, ls='--', label='Oracle $X$ = 0.562213')
-        ax.errorbar(
-            [0],
-            [expected_x],
-            yerr=[[tol], [tol]],
-            fmt='s',
-            mfc='none',
-            ms=10,
-            capsize=4,
-            label='Oracle, 5e-5',
-        )
+        ax.plot([0], [expected_x], 's', mfc='none', ms=10, label='Oracle')
         ax.plot([0, 1, 2], [f_loss, f_keg, f_swapped], 'o', zorder=3, label='Asserted values')
         ax.set_xticks([0, 1, 2], names)
         ax.set_ylabel('Atmospheric loss fraction $X$')

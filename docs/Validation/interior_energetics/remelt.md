@@ -39,7 +39,7 @@ The table lists the `@pytest.mark.reference_pinned` test and the slow-tier test 
 ![Melt front radius against the melted mass fraction](../../assets/validation/interior_energetics_remelt_front.svg#only-light){ width="80%" }
 ![Melt front radius against the melted mass fraction](../../assets/validation/interior_energetics_remelt_front_dark.svg#only-dark){ width="80%" }
 
-**How to read the plot.** The x-axis is the melted mass fraction $f$ and the y-axis is the radius of the melt front in km, for a mantle of uniform density between 3500 and 6400 km. The line is the closed form, the dashed line is a fill linear in radius, and the circles are the front of the weights from `remelt_weights` at the 7 fractions of the test. The front sits above the linear fill because the outer shells hold more mass per unit radius. A pass means that the circles lie on the line.
+**How to read the plot.** The x-axis is the melted mass fraction $f$, and the y-axis the radius of the melt front in km. The mantle has a uniform density between 3500 and 6400 km radius. The line is the closed form, and the dashed line a fill linear in radius. The circles are the fronts of the weights from `remelt_weights` at the 7 fractions of the test. The front sits above the linear fill, because the outer shells hold more mass per unit radius. A pass means that the circles lie on the line.
 
 ??? info "Test details"
     - Reference: the closed form above, from the shell mass $\frac{4}{3}\pi\rho(R^3 - r_f^3) = f\,\frac{4}{3}\pi\rho(R^3 - r_c^3)$.
@@ -62,7 +62,7 @@ The table lists the `@pytest.mark.reference_pinned` test and the slow-tier test 
 ![Melted share of the mantle by structural mass, cell volume and EOS mass, core_module core](../../assets/validation/interior_energetics_remelt_melted_mass_core_module.svg#only-light){ width="80%" }
 ![Melted share of the mantle by structural mass, cell volume and EOS mass, core_module core](../../assets/validation/interior_energetics_remelt_melted_mass_core_module_dark.svg#only-dark){ width="80%" }
 
-**How to read the plot.** 1 plot per core boundary, `energy_balance` (first) and `core_module` (second). The bars are the melted share of the mantle that the recovered weights give at $f = 0.3$: by the structural cell mass of the pre-impact mesh (asserted equal to $f$, relative 1e-9), by the cell volume and by the EOS mass $\rho(P, S_\mathrm{end})V$ (both asserted more than 1e-3 away from $f$). The dashed line is $f$ = 0.3. A pass means that the first bar ends on the line and the other 2 do not.
+**How to read the plot.** There is 1 plot per core boundary condition of the interior solver: `energy_balance` (first) and `core_module` (second). Each bar is the melted share of the mantle at the melted fraction $f$ = 0.3 (dashed line). The 3 bars weight the melt of each cell in 3 ways. The first uses the cell mass of the pre-impact mesh, the second the cell volume. The third uses the equation-of-state (EOS) mass $\rho(P, S_\mathrm{end})V$, with $S_\mathrm{end}$ the cell entropy before the re-melt. A pass means that the first bar ends on the line (relative 1e-9) and the other 2 miss it by more than 1e-3.
 
 ??? info "Test details"
     - Reference: wiring check against the interior solver: the staggered mesh and its structural density in the Aragog solver PROTEUS builds (fwl-aragog 26.10.22), after a short cooled run.
@@ -85,7 +85,7 @@ The table lists the `@pytest.mark.reference_pinned` test and the slow-tier test 
 ![Entropy of a re-melted cell against its melted share](../../assets/validation/interior_energetics_remelt_blend.svg#only-light){ width="80%" }
 ![Entropy of a re-melted cell against its melted share](../../assets/validation/interior_energetics_remelt_blend_dark.svg#only-dark){ width="80%" }
 
-**How to read the plot.** The x-axis is the melted share $w$ of a cell and the y-axis its entropy after the re-melt. The solid line is `remelt_entropy` for a cell at $S_\mathrm{end}$ = 2400 moving towards $S_\mathrm{ic}$ = 3000 J kg$^{-1}$ K$^{-1}$ (dashed), and the dotted line the same for a cell at 3950, hotter than the initial condition (context). The hollow squares are the hand-computed values and the filled circles the asserted values of the blend test: 2400 at $w = 0$, 2600 at $w = 1/3$, 2820 at $w = 0.7$, and 3950 for the hotter cell at $w = 0.5$. A pass means that every circle sits in its square: the cold cell moves its share of the way, and the hotter cell does not cool.
+**How to read the plot.** The x-axis is the melted share $w$ of a cell, and the y-axis its entropy after the re-melt in J kg$^{-1}$ K$^{-1}$. $S_\mathrm{end}$ is the cell entropy before the re-melt, and $S_\mathrm{ic}$ = 3000 the entropy of the initial condition (dashed line). The solid line is `remelt_entropy` for a cell at $S_\mathrm{end}$ = 2400, and the dotted line for a hotter cell at 3950 (context). The hollow squares are the hand-computed values, and the filled circles the asserted values of the blend test. These are 2400 at $w = 0$, 2600 at $w = 1/3$, 2820 at $w = 0.7$, and 3950 for the hotter cell at $w = 0.5$. A pass means that each circle sits in its square: the cold cell moves its share, and the hot cell does not cool.
 
 ??? info "Test details"
     - Reference: the limits $f = 0$ and $f = 1$ of the rule, and the hand-computed blends above.

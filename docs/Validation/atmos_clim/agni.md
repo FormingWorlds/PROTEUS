@@ -28,7 +28,7 @@ This page checks the transparent limit of the AGNI atmosphere in PROTEUS, the br
 ![Outgoing longwave flux of the transparent grey-gas column against surface temperature](../../assets/validation/atmos_clim_agni_greygas_blackbody.svg#only-light){ width="80%" }
 ![Outgoing longwave flux of the transparent grey-gas column against surface temperature](../../assets/validation/atmos_clim_agni_greygas_blackbody_dark.svg#only-dark){ width="80%" }
 
-**How to read the plot.** The x-axis is the surface temperature and the y-axis the flux, both on log scales. The line is $\sigma T_s^4$ and the dashed line $\sigma T_s^3$, which the test rejects (context). The circles are the asserted $F_\mathrm{olr}$ of the transparent grey-gas solve above a black surface at 1000, 1500, 2000 and 3000 K. A pass means that the circles lie on the line (relative 1e-5).
+**How to read the plot.** The x-axis is the surface temperature $T_s$ and the y-axis the flux, both on log scales. The line is the black-body law $\sigma T_s^4$, with $\sigma$ the Stefan-Boltzmann constant, and the dashed line the $\sigma T_s^3$ form that the test rejects. The atmosphere is a transparent grey gas, with one absorption coefficient for all wavelengths, above a black surface. The circles are the asserted outgoing longwave radiation $F_\mathrm{olr}$ at 1000, 1500, 2000 and 3000 K. A pass means that the circles lie on the line (relative 1e-5).
 
 ??? info "Test details"
     - Reference: Stefan-Boltzmann law, CODATA 2018 constant 5.670374419e-8 W m-2 K-4.
@@ -49,7 +49,7 @@ This page checks the transparent limit of the AGNI atmosphere in PROTEUS, the br
 ![Outgoing longwave flux and surface upward flux of the transparent column above a grey surface](../../assets/validation/atmos_clim_agni_greygas_grey_surface.svg#only-light){ width="80%" }
 ![Outgoing longwave flux and surface upward flux of the transparent column above a grey surface](../../assets/validation/atmos_clim_agni_greygas_grey_surface_dark.svg#only-dark){ width="80%" }
 
-**How to read the plot.** The x-axis is the surface temperature and the y-axis the flux, both on log scales, for a surface albedo of 0.3. The solid line is $0.7\,\sigma T_s^4$. The dashed line is $\sigma T_s^4$ (a dropped emissivity) and the dotted line $0.3\,\sigma T_s^4$ (the albedo used as the emissivity), both rejected by the test. The circles are the asserted $F_\mathrm{olr}$ and the hollow squares the asserted upward longwave flux at the surface, at the 4 temperatures. A pass means that circles and squares lie on the solid line (relative 1e-9).
+**How to read the plot.** The x-axis is the surface temperature $T_s$ and the y-axis the flux, both on log scales, for a surface albedo of 0.3. The solid line is $0.7\,\sigma T_s^4$, the emission of a surface with emissivity 1 minus the albedo. The dashed line is $\sigma T_s^4$ (emissivity dropped), and the dotted line $0.3\,\sigma T_s^4$ (albedo used as emissivity); the test rejects both. The circles are the asserted outgoing longwave radiation $F_\mathrm{olr}$, and the hollow squares the asserted upward longwave flux at the surface. A pass means that circles and squares lie on the solid line (relative 1e-9).
 
 ??? info "Test details"
     - Reference: Kirchhoff's law, emissivity 1 minus the albedo, with zero optical depth (analytical limit).
@@ -72,7 +72,7 @@ This page checks the transparent limit of the AGNI atmosphere in PROTEUS, the br
 ![Outgoing longwave flux of the transparent banded solve against surface temperature](../../assets/validation/atmos_clim_agni_banded_blackbody.svg#only-light){ width="80%" }
 ![Outgoing longwave flux of the transparent banded solve against surface temperature](../../assets/validation/atmos_clim_agni_banded_blackbody_dark.svg#only-dark){ width="80%" }
 
-**How to read the plot.** As in the grey-gas case, for the banded solve with the spectral file and the SOCRATES two-stream solver. The line is $\sigma T_s^4$, the dashed line $\sigma T_s^3$ (context), and the circles the asserted $F_\mathrm{olr}$ at the 4 temperatures. The banded flux lies a little below $\sigma T_s^4$, too little to see at this scale. A pass means that the circles lie on the line (relative 5e-4).
+**How to read the plot.** The axes and lines are those of the grey-gas case: $\sigma T_s^4$ (line) and $\sigma T_s^3$ (dashed, context). Here the solve uses the banded spectral file and the SOCRATES two-stream radiative transfer solver. The circles are the asserted outgoing longwave radiation $F_\mathrm{olr}$ at the 4 temperatures. The banded flux lies below $\sigma T_s^4$ by less than the tolerance, too little to see at this scale. A pass means that the circles lie on the line (relative 5e-4).
 
 ??? info "Test details"
     - Reference: Stefan-Boltzmann law, through the spectral file and the SOCRATES two-stream solver.

@@ -30,7 +30,7 @@ mathematics the laws are defined by.
 ![Semi-major axis of sigmoid migration against the window fraction](../../assets/validation/orbit_sigmoid_migration.svg#only-light){ width="80%" }
 ![Semi-major axis of sigmoid migration against the window fraction](../../assets/validation/orbit_sigmoid_migration_dark.svg#only-dark){ width="80%" }
 
-**How to read the plot.** The x-axis is the fraction $u$ of the migration window and the y-axis the semi-major axis, from 2.0 to 0.8 AU. The line is `sigmoid_migration` (context), the dashed line a linear ramp and the dotted line the quintic smootherstep, which the test rejects. The hollow squares are the cubic $3u^2 - 2u^3$ at $u$ = 1/4, 1/2 and 3/4, and the filled circles the asserted code values there (1.8125, 1.4 and 0.9875 AU). A pass means that the circles sit in the squares, away from the dashed and dotted lines at $u$ = 1/4.
+**How to read the plot.** The x-axis is the fraction $u$ of the migration window and the y-axis the semi-major axis, from 2.0 to 0.8 AU. The line is `sigmoid_migration` (context); the dashed line is a linear ramp and the dotted line the quintic smootherstep. The test rejects both of these forms. The hollow squares are the cubic $3u^2 - 2u^3$ at $u$ = 1/4, 1/2 and 3/4. The filled circles are the asserted code values there: 1.8125, 1.4 and 0.9875 AU. A pass means that the circles sit in the squares, away from the dashed and dotted lines at $u$ = 1/4.
 
 ??? info "Test details"
     - Reference: the cubic Hermite interpolant with zero slope at both ends, `S(u) = 3u^2 - 2u^3` (analytical limit).
@@ -51,7 +51,7 @@ mathematics the laws are defined by.
 ![Orbital energy rate of high-eccentricity migration against time for TOI-561 b](../../assets/validation/orbit_high_ecc_energy_rate.svg#only-light){ width="80%" }
 ![Orbital energy rate of high-eccentricity migration against time for TOI-561 b](../../assets/validation/orbit_high_ecc_energy_rate_dark.svg#only-dark){ width="80%" }
 
-**How to read the plot.** The x-axis is the time since the migration epoch in units of $\tau$ and the y-axis the orbital energy rate in $10^{21}$ W, for the TOI-561 b setup. The line is `orbital_energy_rate` (context). The filled circle is the asserted rate at the epoch and the hollow square is $2\,\Delta E / \tau$; the dashed line is $\Delta E / \tau$, the form without the factor 2 that the test rejects. A pass means that the circle sits in the square, below the dashed line, between $-1$ and $-3 \times 10^{21}$ W.
+**How to read the plot.** The x-axis is the time since the migration start $t_\mathrm{mig}$ in units of the decay time $\tau$, for the TOI-561 b setup. The y-axis is the orbital energy rate in $10^{21}$ W, and the line is `orbital_energy_rate` (context). $\Delta E$ is the orbital energy change of the whole migration. The filled circle is the asserted rate at $t_\mathrm{mig}$, and the hollow square is $2\,\Delta E / \tau$. The dashed line is $\Delta E / \tau$, the form without the factor 2 that the test rejects. A pass means that the circle sits in the square, below the dashed line, between $-1$ and $-3 \times 10^{21}$ W.
 
 ??? info "Test details"
     - Reference: analytical limit, `dE/dt` of `E = -G M m (1 - e_mig^2 x) / (2 a_f)` at `x = 1` equals `2 dE / tau`.
@@ -72,7 +72,7 @@ mathematics the laws are defined by.
 ![Eccentricity decay of high-eccentricity migration](../../assets/validation/orbit_high_ecc_eccentricity.svg#only-light){ width="80%" }
 ![Eccentricity decay of high-eccentricity migration](../../assets/validation/orbit_high_ecc_eccentricity_dark.svg#only-dark){ width="80%" }
 
-**How to read the plot.** The x-axis is the time since the migration epoch in units of $\tau$, $x = (t - t_\mathrm{mig})/\tau$, and the y-axis the eccentricity, for $a_0$ = 2.0 AU, $a_f$ = 0.8 AU, $e_\mathrm{mig} = \sqrt{0.6}$, $t_\mathrm{mig}$ = 1e5 yr and $\tau$ = 1e4 yr, over the first 5 migration widths. The markers are the asserted eccentricities of `high_eccentricity_migration` (every 25th of the 500 tested points) and the solid line is the closed form $e_\mathrm{mig} \exp(-x)$. The dashed curve is the law with half the decay rate, $e_\mathrm{mig} \exp(-x/2)$, which the test rejects. A pass means that the markers lie on the solid line.
+**How to read the plot.** The x-axis is $x = (t - t_\mathrm{mig})/\tau$, the time since the migration start $t_\mathrm{mig}$ in units of the decay time $\tau$. The y-axis is the eccentricity, for $a_0 = 2.0$ AU, $a_f = 0.8$ AU, $e_\mathrm{mig} = \sqrt{0.6}$, $t_\mathrm{mig} = 10^5$ yr and $\tau = 10^4$ yr. Here $a_0$ and $a_f$ are the initial and final semi-major axes, and $e_\mathrm{mig}$ the eccentricity at the start. The markers are the asserted eccentricities of `high_eccentricity_migration`, every 25th of the 500 tested points over 5 $\tau$. The solid line is the closed form $e_\mathrm{mig} \exp(-x)$, and the dashed curve the law with half the decay rate, which the test rejects. A pass means that the markers lie on the solid line.
 
 ??? info "Test details"
     - Reference: Postolec et al. (2026), submitted to ApJ, arXiv:2609.03144, Sect. 2.2, Eqs. 1-4.

@@ -1037,16 +1037,7 @@ class TestPaleosLiquidusSourceOfTruth:
                 p_gpa, [float(paleos_liquidus(p * 1e9)) for p in p_gpa], label='paleos_liquidus'
             )
             ax.plot(p_gpa, wrong_law(p_gpa), '--', label='Exponent 0.5')
-            ax.errorbar(
-                [p_case],
-                [pin],
-                yerr=[[tol], [tol]],
-                fmt='s',
-                mfc='none',
-                ms=9,
-                capsize=4,
-                label='5943.53 K, 1 K',
-            )
+            ax.plot([p_case], [pin], 's', mfc='none', ms=9, label='5943.53 K')
             ax.plot([p_case], [T], 'o', zorder=3, label='Code at 135 GPa')
             ax.set_xlabel('Pressure [GPa]')
             ax.set_ylabel('Liquidus temperature [K]')

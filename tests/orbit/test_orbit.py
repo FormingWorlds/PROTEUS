@@ -789,8 +789,8 @@ def test_sp1d_spin_am_gain_matches_orbital_am_loss(_fast_hansen_table, validatio
         # solver tolerance moves it by about 0.4 %, above the stale-check limit.
         fig, ax = plt.subplots(figsize=(6, 4))
         ax.axhspan(
-            (1.0 - rtol) * d_spin,
-            (1.0 + rtol) * d_spin,
+            d_spin / (1.0 + rtol),
+            d_spin / (1.0 - rtol),
             alpha=0.15,
             label='window for the orbital loss',
         )

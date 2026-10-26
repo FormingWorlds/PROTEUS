@@ -23,7 +23,7 @@ This page checks the molar masses of the species in the LavAtmos rock-vapour cou
 ![Molar masses in species_lib against sums over the element table](../../assets/validation/outgas_lavatmos_molar_masses.svg#only-light){ width="80%" }
 ![Molar masses in species_lib against sums over the element table](../../assets/validation/outgas_lavatmos_molar_masses_dark.svg#only-dark){ width="80%" }
 
-**How to read the plot.** The x-axis is the molar mass summed from the element table and the y-axis the molar mass in `species_lib`, both on log scales. The filled circles are the 4 asserted species (the electron, H$_2$O, Fe and SiO$_2$) and the line is 1:1. The hollow square is SiO$_2$ read as SiO, 44.084 g/mol, which the test requires to be more than 1 g/mol away. A pass means that the 4 circles lie on the line.
+**How to read the plot.** The x-axis is the molar mass summed from the element table, and the y-axis the molar mass in `species_lib`, both on log scales. For the electron, the x value is the code constant `electron_molar_mass`. The filled circles are the 4 asserted species (the electron, H$_2$O, Fe and SiO$_2$), and the line is 1:1. The hollow square is SiO$_2$ read as SiO, 44.084 g/mol; the test requires it to lie more than 1 g/mol from the SiO$_2$ value. A pass means that the 4 circles lie on the line.
 
 ??? info "Test details"
     - Reference: IUPAC atomic weights, as tabulated in `proteus.utils.constants.element_mmw` (source: https://iupac.qmul.ac.uk/AtWt/).

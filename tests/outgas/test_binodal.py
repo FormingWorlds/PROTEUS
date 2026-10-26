@@ -311,7 +311,7 @@ def test_h2_mole_total_uses_h2_molecular_mass_per_rogers2025(validation_plot):
         right.plot([0], [budget / 1.008e-3 / const.Avogadro], 'x', ms=10, label='With M(H)')
         right.plot([0], [hf_row['H2_mol_total']], 'o', zorder=3, label='Code mole total')
         right.set_xticks([])
-        right.set_ylabel('H$_2$ mole total [mol]')
+        right.set_ylabel('H2_mol_total')
         right.set_ylim(2e-4, 1.2e-3)
         right.legend(fontsize=8, loc='upper left')
         fig.tight_layout()

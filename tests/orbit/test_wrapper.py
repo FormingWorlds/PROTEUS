@@ -177,14 +177,7 @@ def test_period_matches_keplers_third_law_for_earth_around_sun(validation_plot):
             ms=9,
             label="Kepler's third law",
         )
-        ax.errorbar(
-            [1.0],
-            [year_days],
-            yerr=rtol_year * year_days,
-            fmt='none',
-            capsize=4,
-            label='Sidereal year, 0.5 %',
-        )
+        ax.plot([1.0], [year_days], 's', mfc='none', ms=10, label='Sidereal year')
         ax.plot([1.0], [hf_row['orbital_period'] / 86400], 'o', zorder=3, label='Code at 1 AU')
         ax.set_xscale('log')
         ax.set_yscale('log')

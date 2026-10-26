@@ -6,7 +6,7 @@
   <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
    <cc:Work>
     <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
-    <dc:description>test: tests/orbit/test_orbit.py::test_sp1d_spin_am_gain_matches_orbital_am_loss; command: pytest tests/orbit/test_orbit.py::test_sp1d_spin_am_gain_matches_orbital_am_loss --validation-plots; summary: {"v": 1, "axes": [{"scales": ["linear", "linear"], "categories": [["Spin gain"], null], "lines": [], "collections": [], "values": [], "value_scales": [], "patches": [[10, -0.2, 1.0, 0.18, -0.15333333333333335, 0.0, 6.331164679444278e+32, 4.1906280497274024e+32, -8.408054680108536e+31]], "images": [], "image_scales": [], "extents": []}]}</dc:description>
+    <dc:description>test: tests/orbit/test_orbit.py::test_sp1d_spin_am_gain_matches_orbital_am_loss; command: pytest tests/orbit/test_orbit.py::test_sp1d_spin_am_gain_matches_orbital_am_loss --validation-plots; summary: {"v": 1, "axes": [{"scales": ["linear", "linear"], "categories": [["Spin gain"], null], "lines": [], "collections": [], "values": [], "value_scales": [], "patches": [[10, -0.2, 1.0, 0.18, -0.15333333333333335, 0.0, 6.347032260094514e+32, 4.1981084806053716e+32, -8.449276807617886e+31]], "images": [], "image_scales": [], "extents": []}]}</dc:description>
     <dc:format>image/svg+xml</dc:format>
     <dc:creator>
      <cc:Agent>
@@ -802,10 +802,10 @@ z
     </g>
    </g>
    <g id="patch_3">
-    <path d="M 48.196094 91.724805 
-L 404.723366 91.724805 
-L 404.723366 75.928182 
-L 48.196094 75.928182 
+    <path d="M 48.196094 91.348695 
+L 404.723366 91.348695 
+L 404.723366 75.512481 
+L 48.196094 75.512481 
 z
 " clip-path="url(#pb9d8592885)" style="fill: #f2f5f7; opacity: 0.15"/>
    </g>

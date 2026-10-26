@@ -21,7 +21,7 @@ This page checks how `proteus.orbit.obliqua` looks up the tidal Love number of a
 ![Love number of the table node and of the query at the negative frequency in the complex plane](../../assets/validation/orbit_obliqua_love_number_symmetry.svg#only-light){ width="80%" }
 ![Love number of the table node and of the query at the negative frequency in the complex plane](../../assets/validation/orbit_obliqua_love_number_symmetry_dark.svg#only-dark){ width="80%" }
 
-**How to read the plot.** The plot is the complex plane of the Love number $k$. The cross is the table node $0.02 - 0.03i$ at $\sigma = +2\times10^{-6}$ (context) and the hollow square its complex conjugate, the asserted expected value. The filled circle is the asserted code value at $\sigma = -2\times10^{-6}$. The dashed line is the real axis, about which the conjugate mirrors the node. A pass means that the circle sits in the square, above the axis.
+**How to read the plot.** The x-axis is the real part and the y-axis the imaginary part of the Love number $k$, which describes the tidal response. The cross is the table node $0.02 - 0.03i$ at the tidal forcing frequency $\sigma = +2\times10^{-6}$ (context). The hollow square is its complex conjugate, the asserted expected value. The filled circle is the asserted code value at $\sigma = -2\times10^{-6}$, and the dashed line is the real axis. A pass means that the circle sits in the square, above the axis.
 
 ??? info "Test details"
     - Reference: reality condition of a causal linear system, $k(-\sigma) = k^*(\sigma)$ (analytical limit).

@@ -24,7 +24,7 @@ This page checks 2 steps of the star wrapper, `src/proteus/star/wrapper.py`: the
 ![Equilibrium temperature against stellar flux for albedo 0.3](../../assets/validation/star_wrapper_equilibrium_temperature.svg#only-light){ width="80%" }
 ![Equilibrium temperature against stellar flux for albedo 0.3](../../assets/validation/star_wrapper_equilibrium_temperature_dark.svg#only-dark){ width="80%" }
 
-**How to read the plot.** The x-axis is the stellar flux at the planet and the y-axis the equilibrium temperature on a log scale, for an albedo of 0.3 and $f$ = 0.25. The line is `update_equilibrium_temperature` and the squares the closed form with the 1/4 power (context). The dashed and dotted lines are the cube-root and fifth-root forms that the test rejects. The filled circle is the asserted code value at 1361 W/m$^2$, with the 254 K pin and its 2 K tolerance as a bar. A pass means that the circle sits on the line inside the bar, far from the 2 rejected forms.
+**How to read the plot.** The x-axis is the stellar flux at the planet and the y-axis the equilibrium temperature on a log scale. The planet has an albedo of 0.3 and the disk-averaging factor `s0_factor` = 0.25. The line is `update_equilibrium_temperature`, and the squares are the closed form with the 1/4 power (context). The dashed and dotted lines are the cube-root and fifth-root forms that the test rejects. The filled circle is the asserted code value at 1361 W/m$^2$, and the hollow square the 254 K pin; the test allows 2 K. A pass means that the circle sits on the line and in the square, far from the 2 rejected forms.
 
 ??? info "Test details"
     - Reference: Stefan-Boltzmann law, T_eqm = ((1 - A) * S * s0_factor / sigma)^0.25 (analytical limit).
@@ -45,7 +45,7 @@ This page checks 2 steps of the star wrapper, `src/proteus/star/wrapper.py`: the
 ![Flux-weighted distance over the semi-major axis against eccentricity](../../assets/validation/star_wrapper_flux_weighted_distance.svg#only-light){ width="80%" }
 ![Flux-weighted distance over the semi-major axis against eccentricity](../../assets/validation/star_wrapper_flux_weighted_distance_dark.svg#only-dark){ width="80%" }
 
-**How to read the plot.** The x-axis is the eccentricity and the y-axis the distance over the semi-major axis. The line is `flux_weighted_distance` and the squares are $(1 - e^2)^{1/4}$ (context). The dashed line is the time-averaged separation $1 + e^2/2$ that the test rejects. The filled circle is the asserted code value at $e$ = 0.8, 0.774597. A pass means that the circle sits on the line, below 1 and far from the dashed line.
+**How to read the plot.** The x-axis is the eccentricity $e$ and the y-axis the distance over the semi-major axis. The line is `flux_weighted_distance`, and the squares are $(1 - e^2)^{1/4}$ (context). The dashed line is the time-averaged separation $1 + e^2/2$, which the test rejects. The filled circle is the asserted code value at $e$ = 0.8, 0.774597. A pass means that the circle sits on the line, below 1 and far from the dashed line.
 
 ??? info "Test details"
     - Reference: orbital average of the inverse-square law, <1/r^2> = 1 / (a^2 sqrt(1 - e^2)) (analytical limit).

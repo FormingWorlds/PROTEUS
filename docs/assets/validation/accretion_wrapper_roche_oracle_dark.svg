@@ -6,7 +6,7 @@
   <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
    <cc:Work>
     <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
-    <dc:description>test: tests/accretion/test_wrapper.py::test_roche2026_oracle_row_through_impact_loss_fraction; command: pytest tests/accretion/test_wrapper.py::test_roche2026_oracle_row_through_impact_loss_fraction --validation-plots; summary: {"v": 1, "axes": [{"scales": ["linear", "linear"], "categories": [null, null], "lines": [[2, 0.0, 1.0, 0.5, 0.5, 0.562213400392702, 0.562213400392702, 0.562213400392702, 0.0], [1, 0.0, 0.0, 0.0, 0.0, 0.562213400392702, 0.562213400392702, 0.562213400392702, 0.0], [1, 0.0, 0.0, 0.0, 0.0, 0.562163400392702, 0.562163400392702, 0.562163400392702, 0.0], [1, 0.0, 0.0, 0.0, 0.0, 0.562263400392702, 0.562263400392702, 0.562263400392702, 0.0], [3, 0.0, 2.0, 1.0, 0.6666666666666666, 0.5621986630020774, 1.0, 0.7517667816872825, 0.1459337789993075]], "collections": [[2, 0.0, 0.0, 0.0, 0.0, 0.562163400392702, 0.562263400392702, 0.562213400392702, 4.999999999998546e-05]], "values": [], "value_scales": [], "patches": [[5, 0.0, 1.0, 0.4, -0.1, 0.462213400392702, 0.6622134003927019, 0.5422134003927019, 0.019999999999999997]], "images": [], "image_scales": [], "extents": []}]}</dc:description>
+    <dc:description>test: tests/accretion/test_wrapper.py::test_roche2026_oracle_row_through_impact_loss_fraction; command: pytest tests/accretion/test_wrapper.py::test_roche2026_oracle_row_through_impact_loss_fraction --validation-plots; summary: {"v": 1, "axes": [{"scales": ["linear", "linear"], "categories": [null, null], "lines": [[2, 0.0, 1.0, 0.5, 0.5, 0.562213400392702, 0.562213400392702, 0.562213400392702, 0.0], [1, 0.0, 0.0, 0.0, 0.0, 0.562213400392702, 0.562213400392702, 0.562213400392702, 0.0], [3, 0.0, 2.0, 1.0, 0.6666666666666666, 0.5621986630020774, 1.0, 0.7517667816872825, 0.1459337789993075]], "collections": [], "values": [], "value_scales": [], "patches": [[5, 0.0, 1.0, 0.4, -0.1, 0.462213400392702, 0.6622134003927019, 0.5422134003927019, 0.019999999999999997]], "images": [], "image_scales": [], "extents": []}]}</dc:description>
     <dc:format>image/svg+xml</dc:format>
     <dc:creator>
      <cc:Agent>
@@ -1042,27 +1042,7 @@ z
 L 355.314233 120.00077 
 " clip-path="url(#p74e200c1d0)" style="fill: none; stroke-dasharray: 8.14,3.52; stroke-dashoffset: 0; stroke: #f2f5f7; stroke-width: 2.2"/>
    </g>
-   <g id="LineCollection_1">
-    <path d="M 71.638076 120.011662 
-L 71.638076 119.989877 
-" clip-path="url(#p74e200c1d0)" style="fill: none; stroke: #f2f5f7; stroke-width: 2.2"/>
-   </g>
    <g id="line2d_20">
-    <defs>
-     <path id="m0921b7affd" d="M 4 0 
-L -4 -0 
-" style="stroke: #f2f5f7"/>
-    </defs>
-    <g clip-path="url(#p74e200c1d0)">
-     <use xlink:href="#m0921b7affd" x="71.638076" y="120.011662" style="fill: #f2f5f7; stroke: #f2f5f7"/>
-    </g>
-   </g>
-   <g id="line2d_21">
-    <g clip-path="url(#p74e200c1d0)">
-     <use xlink:href="#m0921b7affd" x="71.638076" y="119.989877" style="fill: #f2f5f7; stroke: #f2f5f7"/>
-    </g>
-   </g>
-   <g id="line2d_22">
     <defs>
      <path id="m68c8079365" d="M -5 5 
 L 5 5 
@@ -1085,7 +1065,7 @@ L 58.129688 7.2
 L 355.314233 242.48 
 " style="fill: none; stroke: #e9eef2; stroke-width: 1.1; stroke-linejoin: miter; stroke-linecap: square"/>
    </g>
-   <g id="line2d_23">
+   <g id="line2d_21">
     <defs>
      <path id="m21a0762dc7" d="M 0 3.5 
 C 0.928211 3.5 1.81853 3.131218 2.474874 2.474874 
@@ -1165,7 +1145,7 @@ z
       <use xlink:href="#InstrumentSans-Regular-65" transform="translate(1066.499756 0)"/>
      </g>
     </g>
-    <g id="line2d_24">
+    <g id="line2d_22">
      <path d="M 65.329688 28.76 
 L 73.329688 28.76 
 L 81.329688 28.76 
@@ -1310,14 +1290,30 @@ z
       <use xlink:href="#InstrumentSans-Regular-33" transform="translate(842.205658 0)"/>
      </g>
     </g>
-    <g id="line2d_25">
+    <g id="line2d_23">
      <g>
-      <use xlink:href="#m21a0762dc7" x="73.329688" y="40.16" style="fill: #e23d28; stroke: #e23d28"/>
+      <use xlink:href="#m68c8079365" x="73.329688" y="40.16" style="fill-opacity: 0; stroke: #f2f5f7; stroke-linejoin: miter"/>
      </g>
     </g>
     <g id="text_13">
-     <!-- Asserted values -->
+     <!-- Oracle -->
      <g style="fill: #e9eef2" transform="translate(87.729688 42.96) scale(0.08 -0.08)">
+      <use xlink:href="#InstrumentSans-Regular-4f"/>
+      <use xlink:href="#InstrumentSans-Regular-72" transform="translate(78.599991 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-61" transform="translate(116.099976 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-63" transform="translate(169.399963 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-6c" transform="translate(222.699951 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-65" transform="translate(246.699936 0)"/>
+     </g>
+    </g>
+    <g id="line2d_24">
+     <g>
+      <use xlink:href="#m21a0762dc7" x="73.329688" y="51.56" style="fill: #e23d28; stroke: #e23d28"/>
+     </g>
+    </g>
+    <g id="text_14">
+     <!-- Asserted values -->
+     <g style="fill: #e9eef2" transform="translate(87.729688 54.36) scale(0.08 -0.08)">
       <defs>
        <path id="InstrumentSans-Regular-76" d="M 1466 0 
 L 115 3264 
@@ -1371,53 +1367,6 @@ z
       <use xlink:href="#InstrumentSans-Regular-75" transform="translate(565.599869 0)"/>
       <use xlink:href="#InstrumentSans-Regular-65" transform="translate(624.499863 0)"/>
       <use xlink:href="#InstrumentSans-Regular-73" transform="translate(680.899857 0)"/>
-     </g>
-    </g>
-    <g id="LineCollection_2">
-     <path d="M 73.329688 55.56 
-L 73.329688 47.56 
-" style="fill: none; stroke: #f2f5f7; stroke-width: 2.2"/>
-    </g>
-    <g id="line2d_26">
-     <g>
-      <use xlink:href="#m0921b7affd" x="73.329688" y="55.56" style="fill: #f2f5f7; stroke: #f2f5f7"/>
-     </g>
-    </g>
-    <g id="line2d_27">
-     <g>
-      <use xlink:href="#m0921b7affd" x="73.329688" y="47.56" style="fill: #f2f5f7; stroke: #f2f5f7"/>
-     </g>
-    </g>
-    <g id="line2d_28"/>
-    <g id="line2d_29">
-     <g>
-      <use xlink:href="#m68c8079365" x="73.329688" y="51.56" style="fill-opacity: 0; stroke: #f2f5f7; stroke-linejoin: miter"/>
-     </g>
-    </g>
-    <g id="text_14">
-     <!-- Oracle, 5e-5 -->
-     <g style="fill: #e9eef2" transform="translate(87.729688 54.36) scale(0.08 -0.08)">
-      <defs>
-       <path id="InstrumentSans-Regular-2d" d="M 512 1498 
-L 512 1984 
-L 2726 1984 
-L 2726 1498 
-L 512 1498 
-z
-" transform="scale(0.015625)"/>
-      </defs>
-      <use xlink:href="#InstrumentSans-Regular-4f"/>
-      <use xlink:href="#InstrumentSans-Regular-72" transform="translate(78.599991 0)"/>
-      <use xlink:href="#InstrumentSans-Regular-61" transform="translate(116.099976 0)"/>
-      <use xlink:href="#InstrumentSans-Regular-63" transform="translate(169.399963 0)"/>
-      <use xlink:href="#InstrumentSans-Regular-6c" transform="translate(222.699951 0)"/>
-      <use xlink:href="#InstrumentSans-Regular-65" transform="translate(246.699936 0)"/>
-      <use xlink:href="#InstrumentSans-Regular-2c" transform="translate(303.09993 0)"/>
-      <use xlink:href="#InstrumentSans-Regular-20" transform="translate(328.599915 0)"/>
-      <use xlink:href="#InstrumentSans-Regular-35" transform="translate(348.599899 0)"/>
-      <use xlink:href="#InstrumentSans-Regular-65" transform="translate(405.999893 0)"/>
-      <use xlink:href="#InstrumentSans-Regular-2d" transform="translate(462.399887 0)"/>
-      <use xlink:href="#InstrumentSans-Regular-35" transform="translate(512.999878 0)"/>
      </g>
     </g>
    </g>

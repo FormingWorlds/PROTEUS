@@ -161,16 +161,7 @@ def test_calc_star_luminosity_solar(validation_plot):
             [star.calc_star_luminosity(t, R_sun) for t in teff],
             label='calc_star_luminosity',
         )
-        ax.errorbar(
-            [Teff_sun],
-            [l_sun],
-            yerr=rtol * l_sun,
-            fmt='s',
-            mfc='none',
-            ms=10,
-            capsize=4,
-            label='IAU 2015 $L_\\odot$, 1 %',
-        )
+        ax.plot([Teff_sun], [l_sun], 's', mfc='none', ms=10, label='IAU 2015 $L_\\odot$')
         ax.plot([Teff_sun], [l], 'o', zorder=3, label='Code at $T_\\odot$, $R_\\odot$')
         ax.set_yscale('log')
         ax.set_ylim(3e25, 3e27)
@@ -269,16 +260,7 @@ def test_calc_instellation_earth_like(validation_plot):
             [star.calc_instellation(Teff_sun, R_sun, d * AU) for d in d_au],
             label='calc_instellation',
         )
-        ax.errorbar(
-            [d_case],
-            [s0],
-            yerr=rtol * s0,
-            fmt='s',
-            mfc='none',
-            ms=10,
-            capsize=4,
-            label='IAU 2015 $S_0$, 1 %',
-        )
+        ax.plot([d_case], [s0], 's', mfc='none', ms=10, label='IAU 2015 $S_0$')
         ax.plot([d_case], [s], 'o', zorder=3, label='Code at 1 AU')
         ax.set_xscale('log')
         ax.set_yscale('log')

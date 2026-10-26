@@ -420,7 +420,7 @@ def test_update_equilibrium_temperature_pins_stefan_boltzmann_closed_form(valida
     s_case, albedo, pin, tol = 1361.0, 0.3, 254.0, 2.0
 
     def closed_form(flux, power=0.25):
-        return (flux * 0.25 * (1 - albedo) / const_sigma) ** power
+        return (flux * config.orbit.s0_factor * (1 - albedo) / const_sigma) ** power
 
     hf_row = {
         'F_ins': s_case,
@@ -459,7 +459,7 @@ def test_update_equilibrium_temperature_pins_stefan_boltzmann_closed_form(valida
         )
         ax.plot(flux, closed_form(flux, 1.0 / 3.0), '--', label='Cube root')
         ax.plot(flux, closed_form(flux, 1.0 / 5.0), ':', label='Fifth root')
-        ax.errorbar([s_case], [pin], yerr=tol, fmt='none', capsize=4, label='254 K, 2 K')
+        ax.plot([s_case], [pin], 's', mfc='none', ms=10, label='254 K pin')
         ax.plot([s_case], [hf_row['T_eqm']], 'o', zorder=3, label='Code at 1361 W m$^{-2}$')
         ax.set_yscale('log')
         ax.set_xlabel('Stellar flux at the planet [W m$^{-2}$]')

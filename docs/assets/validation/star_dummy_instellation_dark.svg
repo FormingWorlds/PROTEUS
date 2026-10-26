@@ -6,7 +6,7 @@
   <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
    <cc:Work>
     <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
-    <dc:description>test: tests/star/test_star.py::test_calc_instellation_earth_like; command: pytest tests/star/test_star.py::test_calc_instellation_earth_like --validation-plots; summary: {"v": 1, "axes": [{"scales": ["log", "log"], "categories": [null, null], "lines": [[41, -0.3010299956639812, 0.3010299956639812, 1.630294791653478e-17, 0.10536049848239343, 2.534266815752069, 3.7383867984079937, 3.1363268070800316, -0.2107209969647867], [1, 0.0, 0.0, 0.0, 0.0, 3.133858125203335, 3.133858125203335, 3.133858125203335, 0.0], [1, 0.0, 0.0, 0.0, 0.0, 3.1294933198008845, 3.1294933198008845, 3.1294933198008845, 0.0], [1, 0.0, 0.0, 0.0, 0.0, 3.138179498985977, 3.138179498985977, 3.138179498985977, 0.0], [1, 0.0, 0.0, 0.0, 0.0, 3.136326807080031, 3.136326807080031, 3.136326807080031, 0.0]], "collections": [[2, 0.0, 0.0, 0.0, 0.0, 3.1294933198008845, 3.138179498985977, 3.1338364093934308, 0.004343089592546235]], "values": [], "value_scales": [], "patches": [[2, 0.0, 0.0, 0.0, 0.0, 3.0, 3.3010299956639813, 3.15051499783199, 0.1505149978319907]], "images": [], "image_scales": [], "extents": []}]}</dc:description>
+    <dc:description>test: tests/star/test_star.py::test_calc_instellation_earth_like; command: pytest tests/star/test_star.py::test_calc_instellation_earth_like --validation-plots; summary: {"v": 1, "axes": [{"scales": ["log", "log"], "categories": [null, null], "lines": [[41, -0.3010299956639812, 0.3010299956639812, 1.630294791653478e-17, 0.10536049848239343, 2.534266815752069, 3.7383867984079937, 3.1363268070800316, -0.2107209969647867], [1, 0.0, 0.0, 0.0, 0.0, 3.133858125203335, 3.133858125203335, 3.133858125203335, 0.0], [1, 0.0, 0.0, 0.0, 0.0, 3.136326807080031, 3.136326807080031, 3.136326807080031, 0.0]], "collections": [], "values": [], "value_scales": [], "patches": [[2, 0.0, 0.0, 0.0, 0.0, 3.0, 3.3010299956639813, 3.15051499783199, 0.1505149978319907]], "images": [], "image_scales": [], "extents": []}]}</dc:description>
     <dc:format>image/svg+xml</dc:format>
     <dc:creator>
      <cc:Agent>
@@ -1004,27 +1004,7 @@ L 374.264573 206.299329
 L 381.970782 211.237193 
 " clip-path="url(#pc65377a355)" style="fill: none; stroke: #f2f5f7; stroke-width: 2.2; stroke-linecap: square"/>
    </g>
-   <g id="LineCollection_1">
-    <path d="M 227.8466 113.600836 
-L 227.8466 112.176022 
-" clip-path="url(#pc65377a355)" style="fill: none; stroke: #e23d28; stroke-width: 2.2"/>
-   </g>
    <g id="line2d_24">
-    <defs>
-     <path id="mc740741774" d="M 4 0 
-L -4 -0 
-" style="stroke: #e23d28"/>
-    </defs>
-    <g clip-path="url(#pc65377a355)">
-     <use xlink:href="#mc740741774" x="227.8466" y="113.600836" style="fill: #e23d28; stroke: #e23d28"/>
-    </g>
-   </g>
-   <g id="line2d_25">
-    <g clip-path="url(#pc65377a355)">
-     <use xlink:href="#mc740741774" x="227.8466" y="112.176022" style="fill: #e23d28; stroke: #e23d28"/>
-    </g>
-   </g>
-   <g id="line2d_26">
     <defs>
      <path id="mfd532c41c6" d="M -5 5 
 L 5 5 
@@ -1047,7 +1027,7 @@ L 58.31 7.2
 L 397.3832 220.610909 
 " style="fill: none; stroke: #e9eef2; stroke-width: 1.1; stroke-linejoin: miter; stroke-linecap: square"/>
    </g>
-   <g id="line2d_27">
+   <g id="line2d_25">
     <defs>
      <path id="m2d13be8a0a" d="M 0 3.5 
 C 0.928211 3.5 1.81853 3.131218 2.474874 2.474874 
@@ -1195,7 +1175,7 @@ z
       <use xlink:href="#InstrumentSans-Regular-6b" transform="translate(538.699905 0)"/>
      </g>
     </g>
-    <g id="line2d_28">
+    <g id="line2d_26">
      <path d="M 237.432341 46.7125 
 L 251.932341 46.7125 
 L 266.432341 46.7125 
@@ -1259,113 +1239,14 @@ z
       <use xlink:href="#InstrumentSans-Regular-6e" transform="translate(673.199829 0)"/>
      </g>
     </g>
-    <g id="line2d_29">
+    <g id="line2d_27">
      <g>
-      <use xlink:href="#m2d13be8a0a" x="251.932341" y="67.375" style="fill: #e0a32e; stroke: #e0a32e"/>
+      <use xlink:href="#mfd532c41c6" x="251.932341" y="67.4475" style="fill-opacity: 0; stroke: #e23d28; stroke-linejoin: miter"/>
      </g>
     </g>
     <g id="text_9">
-     <!-- Code at 1 AU -->
-     <g style="fill: #e9eef2" transform="translate(278.032341 72.45) scale(0.145 -0.145)">
-      <defs>
-       <path id="InstrumentSans-Regular-43" d="M 2502 -64 
-Q 2029 -64 1629 112 
-Q 1229 288 934 605 
-Q 640 922 480 1354 
-Q 320 1786 320 2304 
-Q 320 2822 480 3254 
-Q 640 3686 931 4003 
-Q 1222 4320 1622 4496 
-Q 2022 4672 2496 4672 
-Q 3014 4672 3427 4461 
-Q 3840 4250 4105 3866 
-Q 4371 3482 4435 2970 
-L 3910 2970 
-Q 3834 3539 3459 3868 
-Q 3085 4198 2502 4198 
-Q 2010 4198 1638 3958 
-Q 1267 3718 1062 3292 
-Q 858 2867 858 2304 
-Q 858 1741 1062 1315 
-Q 1267 890 1638 650 
-Q 2010 410 2496 410 
-Q 3091 410 3472 742 
-Q 3853 1075 3923 1638 
-L 4448 1638 
-Q 4384 1126 4118 742 
-Q 3853 358 3440 147 
-Q 3027 -64 2502 -64 
-z
-" transform="scale(0.015625)"/>
-       <path id="InstrumentSans-Regular-64" d="M 2886 0 
-L 2886 762 
-L 2950 742 
-Q 2829 371 2505 153 
-Q 2182 -64 1734 -64 
-Q 1293 -64 963 147 
-Q 634 358 451 736 
-Q 269 1114 269 1619 
-Q 269 2131 454 2515 
-Q 640 2899 973 3110 
-Q 1306 3322 1754 3322 
-Q 2214 3322 2528 3098 
-Q 2842 2874 2957 2464 
-L 2854 2451 
-L 2854 4608 
-L 3366 4608 
-L 3366 0 
-L 2886 0 
-z
-M 1830 384 
-Q 2323 384 2601 720 
-Q 2880 1056 2880 1638 
-Q 2880 2208 2598 2541 
-Q 2317 2874 1830 2874 
-Q 1344 2874 1069 2541 
-Q 794 2208 794 1619 
-Q 794 1043 1069 713 
-Q 1344 384 1830 384 
-z
-" transform="scale(0.015625)"/>
-      </defs>
-      <use xlink:href="#InstrumentSans-Regular-43"/>
-      <use xlink:href="#InstrumentSans-Regular-6f" transform="translate(74.099991 0)"/>
-      <use xlink:href="#InstrumentSans-Regular-64" transform="translate(132.499985 0)"/>
-      <use xlink:href="#InstrumentSans-Regular-65" transform="translate(193.099976 0)"/>
-      <use xlink:href="#InstrumentSans-Regular-20" transform="translate(249.499969 0)"/>
-      <use xlink:href="#InstrumentSans-Regular-61" transform="translate(269.499954 0)"/>
-      <use xlink:href="#InstrumentSans-Regular-74" transform="translate(322.799942 0)"/>
-      <use xlink:href="#InstrumentSans-Regular-20" transform="translate(360.499939 0)"/>
-      <use xlink:href="#InstrumentSans-Regular-31" transform="translate(380.499924 0)"/>
-      <use xlink:href="#InstrumentSans-Regular-20" transform="translate(419.599915 0)"/>
-      <use xlink:href="#InstrumentSans-Regular-41" transform="translate(439.599899 0)"/>
-      <use xlink:href="#InstrumentSans-Regular-55" transform="translate(512.399887 0)"/>
-     </g>
-    </g>
-    <g id="LineCollection_2">
-     <path d="M 251.932341 95.36 
-L 251.932341 80.86 
-" style="fill: none; stroke: #e23d28; stroke-width: 2.2"/>
-    </g>
-    <g id="line2d_30">
-     <g>
-      <use xlink:href="#mc740741774" x="251.932341" y="95.36" style="fill: #e23d28; stroke: #e23d28"/>
-     </g>
-    </g>
-    <g id="line2d_31">
-     <g>
-      <use xlink:href="#mc740741774" x="251.932341" y="80.86" style="fill: #e23d28; stroke: #e23d28"/>
-     </g>
-    </g>
-    <g id="line2d_32"/>
-    <g id="line2d_33">
-     <g>
-      <use xlink:href="#mfd532c41c6" x="251.932341" y="88.11" style="fill-opacity: 0; stroke: #e23d28; stroke-linejoin: miter"/>
-     </g>
-    </g>
-    <g id="text_10">
-     <!-- IAU 2015 $S_0$, 1 % -->
-     <g style="fill: #e9eef2" transform="translate(278.032341 93.185) scale(0.145 -0.145)">
+     <!-- IAU 2015 $S_0$ -->
+     <g style="fill: #e9eef2" transform="translate(278.032341 72.5225) scale(0.145 -0.145)">
       <defs>
        <path id="InstrumentSans-Regular-49" d="M 550 0 
 L 550 4608 
@@ -1456,74 +1337,6 @@ Q 422 3509 836 4129
 Q 1250 4750 2034 4750 
 z
 " transform="scale(0.015625)"/>
-       <path id="InstrumentSans-Regular-2c" d="M 493 -922 
-L 493 -659 
-Q 678 -589 761 -438 
-Q 845 -288 845 19 
-L 1043 0 
-L 493 0 
-L 493 653 
-L 1139 653 
-L 1139 134 
-Q 1139 -275 985 -544 
-Q 832 -813 493 -922 
-z
-" transform="scale(0.015625)"/>
-       <path id="InstrumentSans-Regular-25" d="M 544 0 
-L 3987 4608 
-L 4518 4608 
-L 1075 0 
-L 544 0 
-z
-M 3757 -64 
-Q 3488 -64 3251 64 
-Q 3014 192 2867 454 
-Q 2720 717 2720 1120 
-Q 2720 1523 2864 1782 
-Q 3008 2042 3245 2170 
-Q 3482 2298 3757 2298 
-Q 4045 2298 4285 2170 
-Q 4525 2042 4665 1782 
-Q 4806 1523 4806 1120 
-Q 4806 717 4659 454 
-Q 4512 192 4272 64 
-Q 4032 -64 3757 -64 
-z
-M 3757 288 
-Q 4019 288 4188 505 
-Q 4358 723 4358 1126 
-Q 4358 1523 4188 1734 
-Q 4019 1946 3757 1946 
-Q 3494 1946 3334 1738 
-Q 3174 1530 3174 1126 
-Q 3174 717 3334 502 
-Q 3494 288 3757 288 
-z
-M 1261 2310 
-Q 986 2310 749 2438 
-Q 512 2566 368 2828 
-Q 224 3091 224 3494 
-Q 224 3898 368 4157 
-Q 512 4416 749 4544 
-Q 986 4672 1261 4672 
-Q 1549 4672 1785 4544 
-Q 2022 4416 2163 4157 
-Q 2304 3898 2304 3494 
-Q 2304 3091 2157 2828 
-Q 2010 2566 1773 2438 
-Q 1536 2310 1261 2310 
-z
-M 1261 2662 
-Q 1517 2662 1686 2876 
-Q 1856 3091 1856 3501 
-Q 1856 3898 1689 4109 
-Q 1523 4320 1261 4320 
-Q 998 4320 835 4112 
-Q 672 3904 672 3501 
-Q 672 3091 835 2876 
-Q 998 2662 1261 2662 
-z
-" transform="scale(0.015625)"/>
       </defs>
       <use xlink:href="#InstrumentSans-Regular-49" transform="translate(0 0.78125)"/>
       <use xlink:href="#InstrumentSans-Regular-41" transform="translate(25.399994 0.78125)"/>
@@ -1536,11 +1349,89 @@ z
       <use xlink:href="#InstrumentSans-Regular-20" transform="translate(406.999908 0.78125)"/>
       <use xlink:href="#DejaVuSans-Oblique-53" transform="translate(426.999893 0.78125)"/>
       <use xlink:href="#DejaVuSans-30" transform="translate(490.476456 -15.625) scale(0.7)"/>
-      <use xlink:href="#InstrumentSans-Regular-2c" transform="translate(537.746964 0.78125)"/>
-      <use xlink:href="#InstrumentSans-Regular-20" transform="translate(563.246948 0.78125)"/>
-      <use xlink:href="#InstrumentSans-Regular-31" transform="translate(583.246933 0.78125)"/>
-      <use xlink:href="#InstrumentSans-Regular-20" transform="translate(622.346924 0.78125)"/>
-      <use xlink:href="#InstrumentSans-Regular-25" transform="translate(642.346909 0.78125)"/>
+     </g>
+    </g>
+    <g id="line2d_28">
+     <g>
+      <use xlink:href="#m2d13be8a0a" x="251.932341" y="88.11" style="fill: #e0a32e; stroke: #e0a32e"/>
+     </g>
+    </g>
+    <g id="text_10">
+     <!-- Code at 1 AU -->
+     <g style="fill: #e9eef2" transform="translate(278.032341 93.185) scale(0.145 -0.145)">
+      <defs>
+       <path id="InstrumentSans-Regular-43" d="M 2502 -64 
+Q 2029 -64 1629 112 
+Q 1229 288 934 605 
+Q 640 922 480 1354 
+Q 320 1786 320 2304 
+Q 320 2822 480 3254 
+Q 640 3686 931 4003 
+Q 1222 4320 1622 4496 
+Q 2022 4672 2496 4672 
+Q 3014 4672 3427 4461 
+Q 3840 4250 4105 3866 
+Q 4371 3482 4435 2970 
+L 3910 2970 
+Q 3834 3539 3459 3868 
+Q 3085 4198 2502 4198 
+Q 2010 4198 1638 3958 
+Q 1267 3718 1062 3292 
+Q 858 2867 858 2304 
+Q 858 1741 1062 1315 
+Q 1267 890 1638 650 
+Q 2010 410 2496 410 
+Q 3091 410 3472 742 
+Q 3853 1075 3923 1638 
+L 4448 1638 
+Q 4384 1126 4118 742 
+Q 3853 358 3440 147 
+Q 3027 -64 2502 -64 
+z
+" transform="scale(0.015625)"/>
+       <path id="InstrumentSans-Regular-64" d="M 2886 0 
+L 2886 762 
+L 2950 742 
+Q 2829 371 2505 153 
+Q 2182 -64 1734 -64 
+Q 1293 -64 963 147 
+Q 634 358 451 736 
+Q 269 1114 269 1619 
+Q 269 2131 454 2515 
+Q 640 2899 973 3110 
+Q 1306 3322 1754 3322 
+Q 2214 3322 2528 3098 
+Q 2842 2874 2957 2464 
+L 2854 2451 
+L 2854 4608 
+L 3366 4608 
+L 3366 0 
+L 2886 0 
+z
+M 1830 384 
+Q 2323 384 2601 720 
+Q 2880 1056 2880 1638 
+Q 2880 2208 2598 2541 
+Q 2317 2874 1830 2874 
+Q 1344 2874 1069 2541 
+Q 794 2208 794 1619 
+Q 794 1043 1069 713 
+Q 1344 384 1830 384 
+z
+" transform="scale(0.015625)"/>
+      </defs>
+      <use xlink:href="#InstrumentSans-Regular-43"/>
+      <use xlink:href="#InstrumentSans-Regular-6f" transform="translate(74.099991 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-64" transform="translate(132.499985 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-65" transform="translate(193.099976 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-20" transform="translate(249.499969 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-61" transform="translate(269.499954 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-74" transform="translate(322.799942 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-20" transform="translate(360.499939 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-31" transform="translate(380.499924 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-20" transform="translate(419.599915 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-41" transform="translate(439.599899 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-55" transform="translate(512.399887 0)"/>
      </g>
     </g>
    </g>

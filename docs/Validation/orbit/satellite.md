@@ -23,7 +23,7 @@ This page checks the planet-satellite tides of `proteus.orbit.satellite`: the an
 ![Angular momentum of the Earth-Moon system from the ps0d bootstrap and from Eq. 60](../../assets/validation/orbit_satellite_earth_moon_am.svg#only-light){ width="80%" }
 ![Angular momentum of the Earth-Moon system from the ps0d bootstrap and from Eq. 60](../../assets/validation/orbit_satellite_earth_moon_am_dark.svg#only-dark){ width="80%" }
 
-**How to read the plot.** The y-axis is the total angular momentum of the present Earth-Moon system on a log scale. The filled circle is the asserted `ps0d` bootstrap value and the hollow square Eq. 60 of Korenaga (2023) with the satellite mass in the orbital term. The cross is the same sum with the planet mass in the orbital term, which the test rejects, and the dashed line the spin term $I\Omega$ alone (context). The grey band is the asserted range $10^{34}$ to $10^{35}$ kg m$^2$/s. A pass means that the circle sits in the square inside the band, and the cross far above it.
+**How to read the plot.** The y-axis is the total angular momentum of the present Earth-Moon system, on a log scale. The filled circle is the asserted `ps0d` bootstrap value. The hollow square is Eq. 60 of Korenaga (2023), with the satellite mass in the orbital term. The cross is the same sum with the planet mass in the orbital term, which the test rejects. The dashed line is the spin term $I\Omega$ alone, with $I$ the moment of inertia and $\Omega$ the spin rate of the Earth (context). The grey band is the asserted range $10^{34}$ to $10^{35}$ kg m$^2$/s. A pass means that the circle sits in the square inside the band, and the cross far above it.
 
 ??? info "Test details"
     - Reference: Korenaga (2023) Icarus 400, 115564, Eq. 60 (orbital component cross-checked against Touma and Wisdom 1994).
@@ -46,7 +46,7 @@ This page checks the planet-satellite tides of `proteus.orbit.satellite`: the an
 ![First step with eccentricity above 0.1 against the asserted time window](../../assets/validation/orbit_evection_capture_time.svg#only-light){ width="80%" }
 ![First step with eccentricity above 0.1 against the asserted time window](../../assets/validation/orbit_evection_capture_time_dark.svg#only-dark){ width="80%" }
 
-**How to read the plot.** The x-axis is the time and the y-axis the eccentricity. The circle is the first step of the run with $e > 0.1$, the asserted capture; the dashed line is $e$ = 0.1 and the grey band the asserted window from 2e4 to 4e4 yr. The plot shows only this asserted step, not the whole trajectory, because the trajectory changes between machines with the Radau solver. A pass means that the circle lies in the band.
+**How to read the plot.** The x-axis is the time and the y-axis the eccentricity $e$. The circle is the first step of the run with $e > 0.1$, the asserted capture into the resonance. The dashed line is $e$ = 0.1, and the grey band the asserted window from 2e4 to 4e4 yr. The plot shows only this step, because the trajectory of the Radau solver changes between machines. A pass means that the circle lies in the band.
 
 ??? info "Test details"
     - Reference: Rufu and Canup (2020), Figure 3 evection-resonance capture case.
@@ -69,7 +69,7 @@ This page checks the planet-satellite tides of `proteus.orbit.satellite`: the an
 ![Peak eccentricity and its satellite distance against the asserted region](../../assets/validation/orbit_evection_peak_eccentricity.svg#only-light){ width="80%" }
 ![Peak eccentricity and its satellite distance against the asserted region](../../assets/validation/orbit_evection_peak_eccentricity_dark.svg#only-dark){ width="80%" }
 
-**How to read the plot.** The x-axis is the satellite distance $a'$ in Earth radii and the y-axis the eccentricity. The circle is the asserted peak of the run and the grey region the asserted condition, $e \ge 0.6$ at $a'$ between 10 and 13 $R_\oplus$. The hollow square is the peak of the reference notebook run ($e \approx 0.72$ at $a' \approx 11.89\,R_\oplus$, context). As above, only the asserted peak is drawn. A pass means that the circle lies in the grey region.
+**How to read the plot.** The x-axis is the satellite distance $a'$ in Earth radii $R_\oplus$, and the y-axis the eccentricity $e$. The circle is the asserted peak of the run. The grey region is the asserted condition: $e \ge 0.6$ at $a'$ between 10 and 13 $R_\oplus$. The hollow square is the peak of the reference notebook run, $e \approx 0.72$ at $a' \approx 11.89\,R_\oplus$ (context). As in the case above, only the asserted peak is drawn. A pass means that the circle lies in the grey region.
 
 ??? info "Test details"
     - Reference: Rufu and Canup (2020), Figure 3 (peak e about 0.72 to 0.724 at a' about 11.89 R_earth, t about 5.2e4 yr).

@@ -33,10 +33,10 @@ Terms used below:
 ![Drainage velocity against the closed-form mobility](../../assets/validation/compaction_drainage_velocity.svg#only-light){ width="95%" }
 ![Drainage velocity against the closed-form mobility](../../assets/validation/compaction_drainage_velocity_dark.svg#only-dark){ width="95%" }
 
-**How to read the plot.** Panel (a): the asserted deviation of `darcy_velocity` from the closed form of its regime, divided by the tolerance at each point, for a grain size of 1 mm under `separation_buoyancy = 'mixture'` (circles) and `'solid'` (squares), at the 9 porosities of the test; the green band is $\pm 1$, the tolerance. Panel (b): the velocity ratio `'mixture'` / `'solid'` of the drainage (line, context) and of the closed forms (circles), against $1 - \phi$ (dashed). The ratio follows $1 - \phi$ on the Blake-Kozeny-Carman and Rumpf-Gupte regimes, falls to 0.35 at a porosity of 0.68, and returns to 1 in the Stokes regime, where a grain settles alone in the melt. A pass means that every point of (a) lies inside the band and the circles of (b) lie on the line.
+**How to read the plot.** Panel (a) shows, at the 9 porosities $\phi$ of the test, the asserted deviation of `darcy_velocity` from the closed form of its regime. The deviation is divided by the tolerance at each point, for a grain size of 1 mm. Circles are `separation_buoyancy = 'mixture'`, squares `'solid'`, and the shaded band is $\pm 1$, the tolerance. Panel (b) shows the velocity ratio `'mixture'` / `'solid'` of the drainage (line, context) and of the closed forms (circles), against $1 - \phi$ (dashed). The ratio follows $1 - \phi$ in the Blake-Kozeny-Carman and Rumpf-Gupte regimes, falls to 0.35 at $\phi$ = 0.68, and returns to 1 in the Stokes regime. A pass means that every point of (a) lies inside the band, and the circles of (b) on the line.
 
 ??? info "Test details"
-    - Reference: Bower, Sanan & Wolf (2018), Eqs. 12 and 13a-c, with the melt mass fraction converted to the volume fraction, which gives the mobility `F = k / phi` of each regime: `a^2 phi^2 / (1000 (1 - phi)^2)`, `(5/7) a^2 phi^4.5` and `2 a^2 / 9`, with the regime bounds at `phi = 1 / 12.993` and `1 / 1.29624`; against the mixture, McKenzie (1984), Eq. 3.7, p. 721, puts `1 - phi` on the two porous-flow regimes.
+    - Reference: Bower, Sanan & Wolf (2018), Eqs. 12 and 13a-c, with the melt mass fraction converted to the volume fraction, which gives the mobility `F = k / phi` of each regime: `a^2 phi^2 / (1000 (1 - phi)^2)`, `(5/7) a^2 phi^4.5` and `2 a^2 / 9`, with the regime bounds at `phi = 1 / 12.993` and `1 / 1.29624`. For the `'mixture'` buoyancy, McKenzie (1984), Eq. 3.7, p. 721, puts `1 - phi` on the two porous-flow regimes.
     - Tolerance: at each point twice the weight that the blends of the solver law give the other branches, from 7.5e-4 at 0.005 to 5e-7 at 0.3; relative 1e-3 on the factor $1 - \phi$; relative 3e-3 in the Stokes regime.
     - Test id: `tests/outgas/test_compaction.py::test_darcy_velocity_follows_the_closed_form_mobility_in_every_regime`
     - Command: `pytest -m reference_pinned tests/outgas/test_compaction.py --validation-plots`
@@ -54,7 +54,7 @@ Terms used below:
 ![darcy_velocity against the separation velocity of the built Aragog solver at the mush nodes](../../assets/validation/compaction_solver_mobility.svg#only-light){ width="80%" }
 ![darcy_velocity against the separation velocity of the built Aragog solver at the mush nodes](../../assets/validation/compaction_solver_mobility_dark.svg#only-dark){ width="80%" }
 
-**How to read the plot.** The x-axis is the separation velocity of the Aragog solver that PROTEUS builds, times its drag, and the y-axis `darcy_velocity` at 1 Pa s, both on log scales, at every mush node with a positive density contrast of a short run. Circles are the `'mixture'` buoyancy and squares the `'solid'` buoyancy, the asserted pairs (relative 1e-12); the line is 1:1. A pass means that every point lies on the line.
+**How to read the plot.** The x-axis is the separation velocity of the Aragog solver that PROTEUS builds, times its drag (the viscosity), on a log scale. The y-axis is `darcy_velocity` for a viscosity of 1 Pa s, also on a log scale. Each point is a mush node (a node with both melt and solid) of a short run with a positive density contrast. Circles are the `'mixture'` buoyancy and squares the `'solid'` buoyancy; these are the asserted pairs (relative 1e-12). The line is 1:1, and a pass means that every point lies on it.
 
 ??? info "Test details"
     - Reference: `relative_velocity` of the evaluator of the aragog solver PROTEUS builds (fwl-aragog 26.10.22), on the tables of a short run.
@@ -75,7 +75,7 @@ Terms used below:
 ![Porosity from the lever rule and from the interior solver against melt fraction](../../assets/validation/compaction_lever_rule_porosity.svg#only-light){ width="80%" }
 ![Porosity from the lever rule and from the interior solver against melt fraction](../../assets/validation/compaction_lever_rule_porosity_dark.svg#only-dark){ width="80%" }
 
-**How to read the plot.** The x-axis is the melt fraction and the y-axis the porosity. The line is the melt volume fraction (context). The filled circles are the asserted lever-rule porosities and the hollow squares the asserted solver porosities where the melt is the lighter phase; they must agree to 2e-5. The triangles are the asserted solver porosities where the melt is the denser phase, below 1e-3. At the molten node, the star is the lever rule (1, its melt fraction) and the cross the solver value 0.95. A pass means that circles and squares lie on the line and the triangles at 0.
+**How to read the plot.** The x-axis is the melt volume fraction $\phi$ and the y-axis the porosity. The line is porosity equal to $\phi$ (context). Where the melt is the lighter phase, the filled circles are the asserted lever-rule porosities. The hollow squares are the asserted solver porosities there; they agree with the circles to 2e-5. Where the melt is the denser phase, the triangles are the asserted solver porosities, all below 1e-3. At the fully molten node, the star is the lever rule (1, its melt fraction) and the cross the solver value 0.95. A pass means that circles and squares lie on the line, and the triangles at 0.
 
 ??? info "Test details"
     - Reference: `aragog.eos.entropy_phase.EntropyPhaseEvaluator._porosity_from` (fwl-aragog 26.10.03), written as `porosity_b`.
@@ -96,7 +96,7 @@ Terms used below:
 ![Retained melt fraction of the model against the quadrature and the series solution](../../assets/validation/compaction_martian_fronts.svg#only-light){ width="80%" }
 ![Retained melt fraction of the model against the quadrature and the series solution](../../assets/validation/compaction_martian_fronts_dark.svg#only-dark){ width="80%" }
 
-**How to read the plot.** The x-axis is the reference value and the y-axis the retained melt fraction of the model, both on log scales. The filled circles are the asserted 10 pairs of model and quadrature (5 fronts at 70 and at 5 cm/yr, relative 1e-6) and the hollow squares the 3 pairs of model and series solution in the Rumpf-Gupte cases (relative 1e-5). The line is 1:1. A pass means that every point lies on the line.
+**How to read the plot.** The x-axis is the reference value and the y-axis the retained melt fraction of the model, both on log scales. The filled circles are the 10 asserted pairs of model and quadrature (relative 1e-6). They are 5 fronts crossed at 70 and at 5 cm/yr. The hollow squares are the 3 pairs of model and series solution in the Rumpf-Gupte cases (relative 1e-5). The line is 1:1, and a pass means that every point lies on it.
 
 ??? info "Test details"
     - Reference: closed-form timescales, the quadrature of the drainage equation and its Rumpf-Gupte series solution.
@@ -104,9 +104,7 @@ Terms used below:
     - Test id: `tests/outgas/test_compaction.py::test_drainage_matches_an_independent_quadrature_over_five_martian_fronts`
     - Command: `pytest -m reference_pinned tests/outgas/test_compaction.py --validation-plots`
 
-## Drainage velocity against the closed forms
-
-### Scope of the buoyancy law in a run
+## Scope of the buoyancy law in a run
 
 A front is entered at a porosity near `interior_energetics.rfront_loc`. Up to a porosity of 0.4 (the default `rfront_loc`), the velocity under `'mixture'` equals `(1 - phi)` times the velocity under `'solid'` within 1e-5 (`test_mixture_drainage_leaves_the_uniform_factor_only_near_the_stokes_regime`), so there the law changes the drainage by 1e-5 at most against that uniform factor. Near the Stokes regime the two depart: at a porosity of 0.9 the `'mixture'` velocity is 9.9 times the uniform factor, and the percolation time of a front entered there is about a tenth of that under the uniform factor.
 

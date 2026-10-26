@@ -30,7 +30,7 @@ This page checks the liquidus that the `liquidus_super` initial condition of the
 ![MgSiO3 liquidus temperature against pressure from 10 to 200 GPa](../../assets/validation/interior_struct_paleos_liquidus.svg#only-light){ width="80%" }
 ![MgSiO3 liquidus temperature against pressure from 10 to 200 GPa](../../assets/validation/interior_struct_paleos_liquidus_dark.svg#only-dark){ width="80%" }
 
-**How to read the plot.** The x-axis is the pressure and the y-axis the liquidus temperature. The line is `paleos_liquidus` (context). The dashed line is the same law with an exponent of 0.5, which the test rejects. The filled circle is the asserted code value at 135 GPa, and the hollow square with its bar is the reference value of 5943.53 K with the tolerance of 1 K on each side. A pass means that the circle sits in the square, more than 30 K from the dashed line.
+**How to read the plot.** The x-axis is the pressure and the y-axis the liquidus temperature of MgSiO$_3$. The line is `paleos_liquidus` (context), and the dashed line the same law with an exponent of 0.5, which the test rejects. The filled circle is the asserted code value at 135 GPa, and the hollow square the reference value of 5943.53 K. The test allows 1 K. That is too little to see at this scale. A pass means that the circle sits in the square, more than 30 K from the dashed line.
 
 ??? info "Test details"
     - Reference: Fei et al. (2021), Nature Communications, 12, 876 (doi:10.1038/s41467-021-21170-y).

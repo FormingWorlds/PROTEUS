@@ -21,7 +21,7 @@ This page checks the burial ledger, `proteus.outgas.burial_ledger`. When the mag
 ![Mass held below a remelt melt fraction from the layer ledger and from a fine-grid ledger](../../assets/validation/outgas_burial_ledger_fine_grid.svg#only-light){ width="80%" }
 ![Mass held below a remelt melt fraction from the layer ledger and from a fine-grid ledger](../../assets/validation/outgas_burial_ledger_fine_grid_dark.svg#only-dark){ width="80%" }
 
-**How to read the plot.** The x-axis is the melt fraction of a later remelt and the y-axis the mass that the ledger holds below it, after the seeded history of 400 steps. The line is the independent fine-grid ledger with 2e5 bins and the filled circles are the asserted values of the layer ledger at the 4 cuts. The dashed line is the total mass buried over the history; the ledger holds less because the history remelts. A pass means that the circles lie on the line (asserted to relative 1e-3).
+**How to read the plot.** The x-axis is the melt fraction of a later remelt, and the y-axis the mass that the ledger holds below it. The history is a seeded random sequence of 400 steps. The line is an independent fine-grid ledger with 2e5 bins. The filled circles are the asserted values of the layer ledger at 4 remelt melt fractions. The dashed line is the total mass buried over the history; the ledger holds less, because the history remelts. A pass means that the circles lie on the line (relative 1e-3).
 
 ??? info "Test details"
     - Reference: cross-implementation check against an independent ledger on a grid of 2e5 melt-fraction bins.
