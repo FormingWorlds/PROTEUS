@@ -94,15 +94,15 @@ planetary surface conditions.
 |---|---|---|---|
 | `module` | str | `"calliope"` | Outgassing module to be used. Choices: `"calliope"`, `"atmodeller"`, `"dummy"`. |
 | `fO2_shift_IW` | float | `2.0` | Oxygen fugacity relative to Iron-Wustite \[log10 units\]. Must be >= -12.0 and <= 12.0. |
-| `mass_thresh` | float | `1e+16` | Minimum threshold for element mass \[kg\]. Outgassing treats H, C, N or S below it as absent; escape empties a non-noble element whose reachable mass (its total less the mass trapped in the solid) is below it, down to the trapped mass, except on a mantle frozen with params.stop.solid.freeze_volatiles. Noble gases are exempt. Must be > 0.0. |
-| `h2_binodal` | bool | `false` | Enable binodal-controlled H2 partitioning between atmosphere and magma ocean using the Rogers+2025 H2-MgSiO3 miscibility model. |
+| `mass_thresh` | float | `1e+16` | Minimum threshold for element mass \[kg\]. Outgassing treats H, C, N or S below it as absent; escape empties a non-noble element whose reachable mass (its total less the mass trapped in the solid) is below it, down to the trapped mass, except on a mantle frozen with params.stop.solid.freeze_volatiles. Noble gases are exempt. CALLIOPE also uses it as the absolute mass tolerance \[kg\] of its equilibrium solve. Must be > 0.0. |
+| `h2_binodal` | bool | `false` | Enable binodal-controlled H2 partitioning between atmosphere and magma ocean using the Rogers+2025 H2-MgSiO3 miscibility model. Not available yet: `true` is rejected when the config loads. |
 | `T_floor` | float | `700.0` | Temperature floor \[K\]. The outgassing temperature is clamped to this value from below for the chemistry solve and the target masses. Must be > 0.0. |
-| `solver_rtol` | float | `0.0001` | Relative tolerance for the volatile equilibrium solver. Must be > 0.0. |
-| `solver_atol` | float | `1e-06` | Absolute tolerance for the volatile equilibrium solver. Must be > 0.0. |
+| `solver_rtol` | float | `0.0001` | Relative tolerance \[1\] of the CALLIOPE and atmodeller equilibrium solvers. It is also the relative tolerance of the per-element mass closure check that runs after each outgassing step while trapping is on. Must be > 0.0. |
+| `solver_atol` | float | `1e-06` | Absolute tolerance of the equilibrium solvers: CALLIOPE takes it as `xtol` of its root solve, atmodeller as `atol`. Unused by the dummy module. Must be > 0.0. |
 | `prevent_desaturation` | bool | `false` | Whether condensed mass leaves the outgassing system for good. With `false`, each solve re-equilibrates the whole inventory, so a condensate can re-vapourise as conditions change. With `true`, the mass held in each `{e}_kg_condensed` reservoir is withheld from the chemistry, from escape and from the desiccation gate, and the reservoir can only grow: a condensed layer can only get thicker. Each condensate's `{X}_cd_activity` is then the saturation of the inventory left in the solve, so it can fall below 1 while its layer is held. Only atmodeller with `outgas.atmodeller.include_condensates` forms condensates: with another backend, or with atmodeller and its condensates off, the flag holds nothing, and a warning at config load says so. |
 | `trap_mode` | str | `"none"` | Solid-phase volatile trapping during mantle crystallisation. Choices: 'none' (off) and 'front' (F_tl from the drainage of melt across the freezing front the interior solver resolves; needs `interior_energetics.module = 'aragog'`). The disaggregation melt fraction that tops the front is `interior_energetics.rfront_loc`, the melt fraction of the solver's own rheological transition, not a separate field. Choices: `"none"`, `"front"`. |
 | `trap_phi_min` | float | `0.01` | Porosity below which a node counts as solid \[1\]. Needed because the density-derived porosity never reaches exactly zero. Must be > 0.0 and < 1.0. |
-| `trap_mush_log10visc` | float | `-1.0` | Log10 viscosity of the mush near the solidus \[log10(Pa s)\], entering the matrix deformation time. Negative selects the default of 20, mid-range of the 18 to 22 the literature allows. |
+| `trap_mush_log10visc` | float | `-1.0` | Log10 viscosity of the mush near the solidus \[log10(Pa s)\], entering the matrix deformation time. A value of zero or below selects the default of 20, mid-range of the 18 to 22 the literature allows. |
 | `trap_n_front_min` | int | `3` | Fewest nodes a freezing front must span before its drainage is integrated rather than bounded above. Must be >= 2. |
 | `trap_max_front_fraction` | float | `1.0` | Largest fraction of the mantle thickness the front may occupy before its drainage is bounded above instead of integrated \[1\]. The default of 1 sets no limit: where percolation controls the drainage, the retained fraction depends on the ratio of drainage speed to front speed and not on the front thickness, and a thicker front only lengthens the residence time. Must be > 0.0 and <= 1.0. |
 | `D_const_H2O` | float | `0.0017` | Crystal/melt partition coefficient of H2O \[1\], D = w_solid / w_liquid. Must be >= 0.0. |
@@ -217,10 +217,10 @@ Rock vapourisation parameters, used when `outgas.vapourise = true`. Requires
 <!-- Generated by tools/generate_config_reference.py; edit src/proteus/config/, not this table -->
 | Parameter | Type | Default | Description |
 |---|---|---|---|
-| `T_min` | float | `1500.0` | Minimum surface temperature \[K\] used by LavAtmos. Must be > 0.0. |
-| `melt_comp_name` | str | `"BSE_palm"` | Name of the melt composition file (without extension). |
+| `T_min` | float | `1500.0` | Lower bound \[K\] on the surface temperature that LavAtmos uses: the vapourisation runs at max(T_min, T_magma). Must be > 0.0. |
+| `melt_comp_name` | str | `"BSE_palm"` | Name of the melt composition file, a CSV file without its extension in the `input/lava_compositions` folder of `LAVA_DIR`. |
 | `P_melt` | float | `0.01` | Pressure used for melt activities \[bar\]. Must be > 0.0. |
-| `xatol` | float | `1e-05` | Absolute tolerance for LavAtmos fO2 solve. Must be > 0.0. |
+| `xatol` | float | `1e-05` | Absolute tolerance of the LavAtmos fO2 solve, passed to LavAtmos as its `xatol` argument. Must be > 0.0. |
 | `fO2_buffer_model` | str | `"oneill"` | IW buffer model used for LavAtmos fO2 solve. One of 'oneill', 'fischer'. Choices: `"oneill"`, `"fischer"`. |
 <!-- END GENERATED: config-table [outgas.lavatmos] -->
 

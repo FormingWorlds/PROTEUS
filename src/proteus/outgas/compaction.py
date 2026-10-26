@@ -161,6 +161,21 @@ def darcy_velocity(
     ``w_D = |delta_rho| g F(phi) / eta_melt``, the solver's separation velocity
     under ``buoyancy`` with the melt viscosity as drag. See the module docstring.
 
+    Parameters
+    ----------
+    porosity : float or ndarray
+        Volume fraction of melt [1].
+    grain_size : float
+        Crystal grain size [m], positive.
+    delta_rho : float
+        Solid minus melt density [kg m-3]; its magnitude is used.
+    gravity : float
+        Gravitational acceleration [m s-2].
+    melt_visc : float
+        Melt viscosity [Pa s], positive.
+    buoyancy : str
+        The solver's ``separation_buoyancy``, ``'mixture'`` or ``'solid'``.
+
     Raises
     ------
     ValueError
@@ -188,6 +203,23 @@ def matrix_time(mush_visc: float, delta_rho: float, gravity: float, thickness: f
     drives a volumetric strain rate against the bulk viscosity ``zeta = mu_s/phi``,
     and closing a porosity ``phi`` takes ``phi zeta / (delta_rho g L)``, which is
     independent of porosity.
+
+    Parameters
+    ----------
+    mush_visc : float
+        Shear viscosity of the mush [Pa s].
+    delta_rho : float
+        Solid minus melt density [kg m-3]; its magnitude is used.
+    gravity : float
+        Gravitational acceleration [m s-2].
+    thickness : float
+        Front thickness [m].
+
+    Returns
+    -------
+    float
+        Deformation time [s]; infinite when ``|delta_rho| g L`` is not positive
+        or not finite.
     """
     denom = abs(delta_rho) * gravity * thickness
     if denom <= 0.0 or not np.isfinite(denom):
@@ -218,6 +250,28 @@ def drainage_integral(
     an end below 0 by more than the allowance 10 atol, or above ``porosity_top`` by more
     than 10 atol + rtol ``porosity_top``, raises ``RuntimeError``, as does a non-positive
     percolation time.
+
+    Parameters
+    ----------
+    porosity_top : float
+        Melt volume fraction where the parcel enters the front [1].
+    t_res : float
+        Residence time of the parcel in the front [s]. A non-positive or
+        non-finite value returns ``porosity_top`` without integrating.
+    thickness : float
+        Front thickness [m].
+    grain_size : float
+        Crystal grain size [m].
+    delta_rho : float
+        Solid minus melt density across the front [kg m-3].
+    gravity : float
+        Gravitational acceleration [m s-2].
+    melt_visc : float
+        Melt viscosity [Pa s].
+    mush_visc : float
+        Shear viscosity of the mush [Pa s].
+    buoyancy : str
+        The solver's ``separation_buoyancy``, ``'mixture'`` or ``'solid'``.
 
     Returns
     -------
@@ -303,6 +357,15 @@ def porosity_from_densities(
     two phase-boundary densities are equal the rule is 0/0, and mass and volume
     fractions coincide, so the melt fraction is used there too. The result is
     clipped to [0, 1].
+
+    Parameters
+    ----------
+    rho : ndarray
+        Mixture density [kg m-3].
+    rho_solid, rho_melt : ndarray
+        Solid and melt densities at the phase boundary [kg m-3].
+    melt_fraction : ndarray
+        Melt mass fraction of the interior solver [1].
     """
     rho_s, rho_l, rho_mix, phi_s = np.broadcast_arrays(
         np.asarray(rho_solid, dtype=float),
@@ -455,6 +518,19 @@ def volume_to_mass_fraction(f_vol: float, rho_melt: float, rho_solid: float) -> 
     about 0.93 at a ten percent density contrast and a porosity of 0.3. The
     conversion is applied once, here, to every fraction the front scheme hands
     to the budget.
+
+    Parameters
+    ----------
+    f_vol : float
+        Melt volume fraction [1]; clipped to [0, 1].
+    rho_melt, rho_solid : float
+        Melt and solid densities [kg m-3].
+
+    Returns
+    -------
+    float
+        Melt mass fraction [1]. Where the mixture density is not positive or not
+        finite, the clipped volume fraction is returned unchanged.
     """
     f = float(np.clip(f_vol, 0.0, 1.0))
     denom = f * rho_melt + (1.0 - f) * rho_solid

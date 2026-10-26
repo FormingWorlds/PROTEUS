@@ -71,6 +71,13 @@ def element_masses_from_species(species_kg: dict[str, float]) -> dict[str, float
 
 
 def expected_keys():
+    """Helpfile keys that an outgassing module writes on every call.
+
+    The pressures [bar], mixing ratios, masses [kg] and moles of each gas per
+    reservoir, the element reservoirs, the atmospheric element mass ratios and
+    the bulk columns. ``{e}_kg_total`` is left out for every element except O,
+    since escape owns those totals.
+    """
     copy_keys = [
         'P_surf',
         'P_vol',

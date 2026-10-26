@@ -42,7 +42,10 @@ def apply_binodal_h2(hf_row: dict, config: Config) -> None:
     """Apply Rogers+2025 binodal to partition H2 between atm and mantle.
 
     Modifies hf_row in place: redistributes H2_kg_atm, H2_kg_liquid,
-    and updates H2_bar and H2_vmr accordingly.
+    and updates H2_bar and H2_vmr accordingly. Reads ``T_magma`` [K],
+    ``P_surf`` [bar], ``M_mantle`` [kg], ``R_int`` [m] and ``gravity``
+    [m s-2] from the row, and skips the step when ``T_magma``, ``M_mantle``,
+    ``R_int`` or ``gravity`` is not positive.
 
     Does nothing if H2 is not included, has zero total mass, or if
     the binodal config flag is disabled.
