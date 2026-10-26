@@ -403,14 +403,14 @@ def boreas_requires_atmosphere(instance, attribute, value):
 
 
 def front_trapping_requires_aragog(instance, attribute, value):
-    """Front trapping reads the freezing front the Aragog interior resolves."""
+    """The front and layer trapping schemes read the profiles the Aragog interior exports."""
     trap_mode = getattr(instance.outgas, 'trap_mode', 'none')
     interior = instance.interior_energetics.module
-    if trap_mode == 'front' and interior != 'aragog':
+    if trap_mode in ('front', 'layers') and interior != 'aragog':
         raise ValueError(
-            'outgas.trap_mode = "front" requires interior_energetics.module = "aragog", '
-            f'not "{interior}". The front scheme reads the melt fraction, density and '
-            'pressure profiles that only the Aragog interior exports.'
+            f'outgas.trap_mode = "{trap_mode}" requires interior_energetics.module = '
+            f'"aragog", not "{interior}". The {trap_mode} scheme reads the melt fraction, '
+            'density and gravity profiles that only the Aragog interior exports.'
         )
 
 

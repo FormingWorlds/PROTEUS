@@ -1229,11 +1229,14 @@ def GetHelpfileKeys():
         'trap_tau_D',       # percolation time at the top of the front [yr]
         'trap_tau_s',       # matrix deformation time [yr]
         'trap_t_res',       # parcel residence time in the front [yr]
-        'trap_n_front',     # nodes spanned by the freezing front [1]
+        'trap_n_front',     # nodes spanned by the freezing front, or mush nodes of the layer scheme [1]
         'trap_L_front',     # freezing-front thickness [m]
         'trap_v_front',     # freezing-front speed [m s-1]
         'trap_front_courant',  # front advance over one step, in front thicknesses [1]
         'trap_w_matrix_over_vf',  # matrix speed over front speed [1]
+        'trap_n_exited',    # mush nodes that reached the porosity floor this step, layer scheme [1]
+        'trap_frac_bound',  # mass share of those nodes held at the no-drainage bound [1]
+        'trap_n_substeps',  # drainage sub-steps of the layer scheme this step [1]
 
         # Giant-impact accretion ledger: cumulative rock mass added to interior
         # mass anchor to enable reconstruction on resume.

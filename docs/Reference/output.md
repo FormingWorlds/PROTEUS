@@ -297,11 +297,14 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | `trap_tau_D` | `yr` | percolation time at the top of the front | `outgas/trapping.py` | always |   |
 | `trap_tau_s` | `yr` | matrix deformation time | `outgas/trapping.py` | always |   |
 | `trap_t_res` | `yr` | parcel residence time in the front | `outgas/trapping.py` | always |   |
-| `trap_n_front` | `1` | nodes spanned by the freezing front | `outgas/trapping.py` | always |   |
+| `trap_n_front` | `1` | nodes spanned by the freezing front, or mush nodes of the layer scheme | `outgas/trapping.py` | always |   |
 | `trap_L_front` | `m` | freezing-front thickness | `outgas/trapping.py` | always |   |
 | `trap_v_front` | `m s-1` | freezing-front speed | `outgas/trapping.py` | always |   |
 | `trap_front_courant` | `1` | front advance over one step, in front thicknesses | `outgas/trapping.py` | always |   |
 | `trap_w_matrix_over_vf` | `1` | matrix speed over front speed | `outgas/trapping.py` | always |   |
+| `trap_n_exited` | `1` | mush nodes that reached the porosity floor this step, layer scheme | `outgas/trapping.py` | always |   |
+| `trap_frac_bound` | `1` | mass share of those nodes held at the no-drainage bound | `outgas/trapping.py` | always |   |
+| `trap_n_substeps` | `1` | drainage sub-steps of the layer scheme this step | `outgas/trapping.py` | always |   |
 
 ### Giant-impact accretion ledger
 
@@ -1132,6 +1135,7 @@ A computed key is a helpfile column name constructed dynamically at runtime thro
 - `src/proteus/observe/petitRADTRANS.py::_get_mix`: `dynamic key key` (touches <gas>_vmr)
 - `src/proteus/outgas/atmodeller.py::_populate_volatile_element_reservoirs`: `dynamic key f'{sp}_kg_{r}'` (touches <species>_kg_<reservoir>)
 - `src/proteus/outgas/atmodeller.py::calc_surface_pressures_atmodeller`: `dynamic key key` (touches <element>_kg_total)
+- `src/proteus/outgas/layer_trapping.py::run_layer_trapping`: `template <sp>_kg_liquid`
 - `src/proteus/plot/cpl_global.py::plot_global`: `dynamic key k` (touches F_int, F_atm, F_olr, F_tidal, F_radio)
 - `src/proteus/plot/cpl_orbit.py::_plot_orbit_snapshot`: `dynamic key sma_col` (touches semimajorax, semimajorax_sat, eccentricity, eccentricity_sat)
 - `src/proteus/plot/cpl_orbit.py::_plot_orbit_snapshot`: `dynamic key ecc_col` (touches semimajorax, semimajorax_sat, eccentricity, eccentricity_sat)

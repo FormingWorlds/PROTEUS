@@ -264,9 +264,12 @@ class Outgas:
         module.
     trap_mode: str
         Solid-phase volatile trapping during mantle crystallisation.
-        Choices: 'none' (off) and 'front' (F_tl from the drainage of melt
-        across the freezing front the interior solver resolves; needs
-        `interior_energetics.module = 'aragog'`). The disaggregation melt
+        Choices: 'none' (off), 'front' (F_tl from the drainage of melt
+        across the freezing front the interior solver resolves) and 'layers'
+        (the pore melt of every mush node drains through the nodes above it
+        and locks its volatiles when the node reaches `trap_phi_min`; a node
+        that remelts returns them). Both schemes need
+        `interior_energetics.module = 'aragog'`. The disaggregation melt
         fraction that tops the front is `interior_energetics.rfront_loc`,
         the melt fraction of the solver's own rheological transition, not a
         separate field.
@@ -350,7 +353,9 @@ class Outgas:
     # Solid-phase volatile trapping, run before and apart from the chemistry solve,
     # so it sits beside T_floor rather than under [outgas.calliope]. The default
     # 'none' leaves a run as it was without trapping.
-    trap_mode: str = field(default='none', validator=validators.in_(('none', 'front')))
+    trap_mode: str = field(
+        default='none', validator=validators.in_(('none', 'front', 'layers'))
+    )
 
     # Drainage-integral parameters of the front scheme, which computes the
     # trapped melt fraction from the front the interior solver resolves.

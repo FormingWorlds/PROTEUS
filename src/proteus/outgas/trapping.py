@@ -49,10 +49,20 @@ Trapped-melt fraction
     no-drainage bound, the entry porosity capped at ``phi_c``. A step on which
     the interior state is unavailable buries at ``D_Z`` alone (``F_tl = 0``)
     and says so.
+``layers``
+    The mush drains node by node on the Aragog mesh instead of as one front:
+    each node keeps its own pore melt, which drains through the nodes above it
+    and locks its volatiles when the node reaches the porosity floor
+    (:mod:`proteus.outgas.layer_state`, :mod:`proteus.outgas.layer_trapping`).
+    ``F_tl`` is then the mass-weighted trapped fraction of the nodes that
+    reached the floor over the step. Remelting is decided per node as well: a
+    node that turns liquid again returns what it locked and what its crystals
+    buried, so the burial ledger below is not used. A step on which the
+    interior state is unavailable buries at ``D_Z`` alone, as in ``front``.
 
 Remelting
 ---------
-A step on which the global melt fraction rises remelts part of the solid
+In the ``front`` mode, a step on which the global melt fraction rises remelts part of the solid
 mantle and releases what trapping buried in it. The solid that remelts first is
 the solid that froze last, so the step returns the mass buried while the melt
 fraction fell through the interval it now rises back through, read from the
@@ -121,7 +131,7 @@ if TYPE_CHECKING:
 log = logging.getLogger('fwl.' + __name__)
 
 # Whether trapping runs. Kept in the order the config validator reports them.
-TRAPPING_MODES = ('none', 'front')
+TRAPPING_MODES = ('none', 'front', 'layers')
 
 # Dissolved species the step can bury: the volatiles and the noble gases.
 TRAPPED_SPECIES = tuple(vol_list) + tuple(noble_gases)
@@ -167,6 +177,13 @@ class TrappingStep:
         Matrix speed at the top of the front over the front speed [1].
     guard_reason : str
         Why the front could not be integrated; empty when it could.
+    n_exited : int
+        Mush nodes that reached the porosity floor over the step (``layers``).
+    frac_bound : float
+        Mass share of those nodes held at the no-drainage bound [1]; NaN when
+        none reached the floor.
+    n_substeps : int
+        Drainage sub-steps the layer scheme took over the step.
     """
 
     mode: str
@@ -186,6 +203,9 @@ class TrappingStep:
     front_courant: float = float('nan')
     w_matrix_over_vf: float = float('nan')
     guard_reason: str = ''
+    n_exited: int = 0
+    frac_bound: float = float('nan')
+    n_substeps: int = 0
 
     @property
     def total_trapped(self) -> float:
@@ -766,6 +786,9 @@ def _record(hf_row: dict, step: TrappingStep) -> None:
     hf_row['trap_v_front'] = step.v_front
     hf_row['trap_front_courant'] = step.front_courant
     hf_row['trap_w_matrix_over_vf'] = step.w_matrix_over_vf
+    hf_row['trap_n_exited'] = float(step.n_exited)
+    hf_row['trap_frac_bound'] = step.frac_bound
+    hf_row['trap_n_substeps'] = float(step.n_substeps)
     hf_row['trap_kg_cumulative'] = (
         float(hf_row.get('trap_kg_cumulative', 0.0)) + step.total_trapped
     )
@@ -799,6 +822,7 @@ def run_trapping(
     interior_o=None,
     *,
     init_stage: bool = False,
+    dirs: dict | None = None,
 ) -> TrappingStep | None:
     """Bury volatiles into the solid mantle over this crystallisation step.
 
@@ -824,6 +848,9 @@ def run_trapping(
         pressure profiles to locate the freezing front.
     init_stage : bool
         True during the initialisation stage, which traps nothing.
+    dirs : dict or None
+        Run directories. The ``layers`` mode keeps its per-node state in the
+        interior snapshots under them, for a resumed run to read back.
     """
     mode = getattr(config.outgas, 'trap_mode', 'none')
     # A config that never declared a mode traps nothing: the schema restricts the
@@ -854,6 +881,13 @@ def run_trapping(
     # by it recovers the concentration the solver computed.
     m_mantle_prev = float(prev.get('M_mantle', m_mantle))
     melt_mass = m_mantle_prev * max(0.0, min(1.0, phi_prev)) if np.isfinite(phi_prev) else 0.0
+    if mode == 'layers':
+        # Imported here: layer_trapping builds on this module.
+        from proteus.outgas.layer_trapping import run_layer_trapping
+
+        step = run_layer_trapping(config, hf_row, prev, interior_o, dirs, dm_rm, melt_mass)
+        if step is not None:
+            return step
     if dm_rm < 0.0:
         released = released_mass(hf_row, hf_all, phi_prev, phi_now)
         return _release(hf_row, mode, dm_rm, melt_mass, released)
@@ -862,7 +896,12 @@ def run_trapping(
         _record(hf_row, step)
         return step
 
-    step = _drainage_fraction(config, hf_row, prev, interior_o, dm_rm)
+    # A layers step that reaches here had no usable profiles, so no front either.
+    step = (
+        None
+        if mode == 'layers'
+        else _drainage_fraction(config, hf_row, prev, interior_o, dm_rm)
+    )
     if step is None:
         # Without the interior profiles there is no front; the crystals still
         # take up D_Z, so the step buries at that alone, on a branch of its own.

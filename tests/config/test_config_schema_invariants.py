@@ -1416,6 +1416,38 @@ def test_front_trapping_requires_the_aragog_interior():
     assert front_trapping_requires_aragog(undeclared, None, None) is None
 
 
+@pytest.mark.unit
+def test_layer_trapping_requires_the_aragog_interior():
+    """The layer scheme drains the pore melt of every node on the Aragog mesh,
+    so it is refused with any other interior, with a message naming the layer
+    mode rather than the front one, and accepted with Aragog."""
+    boundary = _make_config_instance(
+        **{'outgas.trap_mode': 'layers', 'interior_energetics.module': 'boundary'}
+    )
+    with pytest.raises(ValueError, match=r'trap_mode = "layers"') as excinfo:
+        front_trapping_requires_aragog(boundary, None, None)
+    assert '"boundary"' in str(excinfo.value)
+    assert 'front' not in str(excinfo.value)
+    aragog = _make_config_instance(
+        **{'outgas.trap_mode': 'layers', 'interior_energetics.module': 'aragog'}
+    )
+    assert front_trapping_requires_aragog(aragog, None, None) is None
+
+
+@pytest.mark.unit
+def test_trap_mode_accepts_the_three_schemes_and_rejects_others():
+    """trap_mode takes 'none', 'front' and 'layers'; a mode of an earlier
+    trapping design, such as 'dynamic', is refused when the section loads."""
+    from proteus.config._outgas import Outgas
+
+    for mode in ('none', 'front', 'layers'):
+        assert Outgas(trap_mode=mode).trap_mode == mode
+    with pytest.raises(ValueError, match='trap_mode'):
+        Outgas(trap_mode='dynamic')
+    with pytest.raises(ValueError, match='trap_mode'):
+        Outgas(trap_mode='Layers')
+
+
 def _desaturation_config(module: str, include_condensates: bool, prevent: bool):
     """Stand-in config carrying the outgassing settings the condensate rule reads."""
     instance = _make_config_instance(

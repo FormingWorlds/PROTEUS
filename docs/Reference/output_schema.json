@@ -3468,7 +3468,7 @@
     {
       "name": "trap_n_front",
       "unit": "1",
-      "description": "nodes spanned by the freezing front",
+      "description": "nodes spanned by the freezing front, or mush nodes of the layer scheme",
       "group": "Solid-phase volatile trapping",
       "origin": "literal",
       "producers": [
@@ -3529,6 +3529,51 @@
       "name": "trap_w_matrix_over_vf",
       "unit": "1",
       "description": "matrix speed over front speed",
+      "group": "Solid-phase volatile trapping",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/trapping.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [],
+      "consumers_possible": []
+    },
+    {
+      "name": "trap_n_exited",
+      "unit": "1",
+      "description": "mush nodes that reached the porosity floor this step, layer scheme",
+      "group": "Solid-phase volatile trapping",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/trapping.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [],
+      "consumers_possible": []
+    },
+    {
+      "name": "trap_frac_bound",
+      "unit": "1",
+      "description": "mass share of those nodes held at the no-drainage bound",
+      "group": "Solid-phase volatile trapping",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/trapping.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [],
+      "consumers_possible": []
+    },
+    {
+      "name": "trap_n_substeps",
+      "unit": "1",
+      "description": "drainage sub-steps of the layer scheme this step",
       "group": "Solid-phase volatile trapping",
       "origin": "literal",
       "producers": [
@@ -26494,6 +26539,12 @@
       "kind": "read",
       "reason": "dynamic key key",
       "function": "calc_surface_pressures_atmodeller"
+    },
+    {
+      "file": "src/proteus/outgas/layer_trapping.py",
+      "kind": "read",
+      "reason": "template <sp>_kg_liquid",
+      "function": "run_layer_trapping"
     },
     {
       "file": "src/proteus/plot/cpl_global.py",
