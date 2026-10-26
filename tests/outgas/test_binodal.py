@@ -234,7 +234,7 @@ def test_solid_h2_reservoir_is_always_zero():
 
 @pytest.mark.physics_invariant
 @pytest.mark.reference_pinned
-def test_h2_mole_total_uses_h2_molecular_mass_per_rogers2025():
+def test_h2_mole_total_uses_h2_molecular_mass_per_rogers2025(validation_plot):
     """Pin the molar-mass conversion the binodal partition applies to
     every H2 reservoir, against an independent computation that uses
     scipy.constants.Avogadro and ``M(H2) = 2.016e-3 kg/mol`` (Rogers et
@@ -285,6 +285,37 @@ def test_h2_mole_total_uses_h2_molecular_mass_per_rogers2025():
     assert hf_row['H2_kg_solid'] == pytest.approx(
         0.0, abs=1e-12
     )  # H2 has no solid silicate sink
+
+    def figure():
+        import matplotlib.pyplot as plt
+
+        fig, (left, right) = plt.subplots(1, 2, figsize=(9, 4))
+        bottom = 0.0
+        for key, name in (
+            ('H2_kg_atm', 'Gas'),
+            ('H2_kg_liquid', 'Melt'),
+            ('H2_kg_solid', 'Solid'),
+        ):
+            left.bar(['Reservoirs'], [hf_row[key]], bottom=bottom, width=0.5, label=name)
+            bottom += hf_row[key]
+        left.axhline(5e17, ls='--', label='Budget 5e17 kg')
+        left.set_ylabel('H$_2$ mass [kg]')
+        left.set_ylim(0.0, 8e17)
+        left.legend(fontsize=8, ncol=2, loc='upper center')
+        right.axhspan(3e-4, 5e-4, alpha=0.15, label='Asserted bracket')
+        right.plot(
+            [0], [expected_mol_total], 's', mfc='none', ms=12, label='Mass / M(H$_2$) / $N_A$'
+        )
+        right.plot([0], [5e17 / 1.008e-3 / const.Avogadro], 'x', ms=10, label='With M(H)')
+        right.plot([0], [hf_row['H2_mol_total']], 'o', zorder=3, label='Code mole total')
+        right.set_xticks([])
+        right.set_ylabel('H$_2$ mole total [mol]')
+        right.set_ylim(2e-4, 1.2e-3)
+        right.legend(fontsize=8, loc='upper left')
+        fig.tight_layout()
+        return fig
+
+    validation_plot(figure, 'outgas_binodal_h2_moles')
 
 
 # ---------------------------------------------------------------------------

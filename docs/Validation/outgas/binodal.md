@@ -20,11 +20,16 @@ This page checks how `proteus.outgas.binodal` splits H$_2$ between the atmospher
 
 **Known limit.** The config refuses `outgas.h2_binodal = true` (`_reject_enabled_binodal` in `src/proteus/config/_outgas.py`), so no run reaches this code now. The stored mole values are the mass over $M(\mathrm{H_2})$ and the Avogadro constant, so they are moles divided by 6.022e23. The kg closure, atmosphere + liquid + solid = total, holds by construction for any $\sigma$ between 0 and 1, so only the mole conversion tests something; this test has no assert on the split itself; the unit test `test_sigma_partitions_h2_linearly` checks it. The weight $\sigma$ itself comes from `zalmoxis.binodal` and is replaced by 0.4 here. No test compares this partition with the binodal handling of atmodeller.
 
+![H2 mass in the 3 reservoirs and the H2 mole total after the binodal partition](../../assets/validation/outgas_binodal_h2_moles.svg#only-light){ width="80%" }
+![H2 mass in the 3 reservoirs and the H2 mole total after the binodal partition](../../assets/validation/outgas_binodal_h2_moles_dark.svg#only-dark){ width="80%" }
+
+**How to read the plot.** The left panel stacks the asserted H$_2$ masses of the gas, the melt and the solid (0) against the budget of 5e17 kg (dashed). The right panel shows the asserted mole total of the code (circle) and the mass over $M(\mathrm{H_2})$ and the Avogadro constant (hollow square), with the asserted bracket $3\times10^{-4}$ to $5\times10^{-4}$ as a grey band. The cross is the value with the H atomic mass, which the test rejects. A pass means that the stack reaches the budget line and the circle sits in the square inside the band.
+
 ??? info "Test details"
     - Reference: Rogers, Young & Schlichting (2025), MNRAS, 544, 3496 (doi:10.1093/mnras/staf1940); mole conversion with `scipy.constants.Avogadro` and M(H2) = 2.016e-3 kg/mol.
     - Tolerance: relative 1e-12 on the mole total and on both closures.
     - Test id: `tests/outgas/test_binodal.py::test_h2_mole_total_uses_h2_molecular_mass_per_rogers2025`
-    - Command: `pytest tests/outgas/test_binodal.py::test_h2_mole_total_uses_h2_molecular_mass_per_rogers2025`
+    - Command: `pytest -m reference_pinned tests/outgas/test_binodal.py --validation-plots`
 
 ## Re-derivation note
 

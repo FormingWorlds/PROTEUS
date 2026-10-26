@@ -78,7 +78,7 @@ def test_stoich_table_covers_exactly_the_volatile_species():
 
 @pytest.mark.reference_pinned
 @pytest.mark.physics_invariant
-def test_water_split_matches_closed_form_mass_fractions():
+def test_water_split_matches_closed_form_mass_fractions(validation_plot):
     """A pure-water inventory splits into H and O by the closed-form fractions.
 
     For H2O the atomic-O mass fraction is m_O / (2 m_H + m_O) = 0.88809 and the
@@ -113,6 +113,21 @@ def test_water_split_matches_closed_form_mass_fractions():
     assert hf_row['H_kg_atm'] == pytest.approx(2.5e21 * 0.11191, rel=1e-4)
     # Crucially the total slot is NOT written by the helper (escape owns it).
     assert 'H_kg_total' not in hf_row
+
+    def figure():
+        import matplotlib.pyplot as plt
+
+        fig, ax = plt.subplots(figsize=(6, 4))
+        ax.bar(['O', 'H'], [o_total / m_h2o, h_total / m_h2o], width=0.5, label='Helper split')
+        ax.plot(['O', 'H'], [0.88809, 0.11191], 's', mfc='none', ms=12, label='Closed form')
+        ax.axhline(0.5, ls='--', label='Equal split')
+        ax.set_ylabel('Mass fraction of the water')
+        ax.set_ylim(0.0, 1.0)
+        ax.legend()
+        fig.tight_layout()
+        return fig
+
+    validation_plot(figure, 'outgas_atmodeller_water_split')
 
 
 @pytest.mark.physics_invariant

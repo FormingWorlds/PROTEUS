@@ -23,11 +23,16 @@ This page checks how the atmodeller wrapper, `proteus.outgas.atmodeller`, splits
 
 **Why it matters.** The atmodeller wrapper calls `_populate_volatile_element_reservoirs` after each solve to fill the element reservoirs.
 
+![Mass fractions of O and H after the split of a water inventory](../../assets/validation/outgas_atmodeller_water_split.svg#only-light){ width="80%" }
+![Mass fractions of O and H after the split of a water inventory](../../assets/validation/outgas_atmodeller_water_split_dark.svg#only-dark){ width="80%" }
+
+**How to read the plot.** The bars are the asserted O and H masses that `_populate_volatile_element_reservoirs` gives, divided by the 4e21 kg of water. The hollow squares are the closed-form fractions 0.88809 and 0.11191 (the asserted values, tolerance relative 1e-4), and the dashed line is the equal split that the test rejects. A pass means that each square sits on the top of its bar.
+
 ??? info "Test details"
     - Reference: IUPAC atomic masses (https://iupac.qmul.ac.uk/AtWt/); the per-element mass fraction of a molecule (closed form).
     - Tolerance: relative 1e-4 on the fractions 0.88809 and 0.11191; relative 1e-12 on the sum.
     - Test id: `tests/outgas/test_atmodeller.py::test_water_split_matches_closed_form_mass_fractions`
-    - Command: `pytest tests/outgas/test_atmodeller.py::test_water_split_matches_closed_form_mass_fractions`
+    - Command: `pytest -m reference_pinned tests/outgas/test_atmodeller.py --validation-plots`
 
 ## Re-derivation note
 
