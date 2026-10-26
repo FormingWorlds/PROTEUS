@@ -1920,20 +1920,16 @@ def _remelt_scalar_backend(
     temperature when it is higher), and rewrites every melt quantity derived
     from it together with the melt fraction and temperature on the interior
     arrays the same-iteration tidal call reads, so the impact iteration stays
-    self-consistent. A row without a finite ``T_magma`` writes interior status 21
-    and raises.
+    self-consistent. A row without a finite ``T_magma`` raises; ``remelt_mantle``
+    writes interior status 21 for every error of these backends.
     """
     import numpy as np
 
     from proteus.interior_energetics.dummy import melt_state_from_temperature
     from proteus.interior_energetics.remelt import remelt_temperature
 
-    try:
-        t_end = float(hf_row['T_magma'])
-        t_reset = remelt_temperature(t_end, config.planet.tsurf_init, f)
-    except Exception:
-        UpdateStatusfile(dirs, 21)
-        raise
+    t_end = float(hf_row['T_magma'])
+    t_reset = remelt_temperature(t_end, config.planet.tsurf_init, f)
     state = melt_state_from_temperature(config, hf_row, t_reset)
     hf_row.update(state)
     # The boundary backend starts with the surface at the magma temperature.
@@ -2121,28 +2117,22 @@ def _remelt_aragog(
         unbooked = 'the end-of-step entropy profile is non-finite or not on the re-melt mesh'
     else:
         unbooked = None
-    # A partial re-melt writes interior status 21 on any error; f = 1 keeps the caller's handling.
-    try:
-        if unbooked is not None and f < 1.0:
-            raise RuntimeError(
-                f'Cannot apply a partial re-melt with f = {f:g}: {unbooked}. A full re-melt '
-                "in its place would apply f = 1; set accretion.remelt = 'full' to accept that."
-            )
-        if unbooked is None:
-            # An impact cannot cool the mantle: cells above the molten profile keep their entropy.
-            if f == 1.0:
-                S_new = np.maximum(S_end, S_molten)
-            else:
-                S_new = _partial_remelt_profile(solver, S_end, S_molten, f)
-            # _set_entropy_ic left S_molten in the solver; at f = 1 this differs only when
-            # a cell is above it.
-            if np.any(S_new != S_molten):
-                solver.set_initial_entropy(S_new)
-            dE_impact = float(solver._step_heat_content(S_end, S_new))
-    except Exception:
-        if f < 1.0:
-            UpdateStatusfile(dirs, 21)
-        raise
+    if unbooked is not None and f < 1.0:
+        raise RuntimeError(
+            f'Cannot apply a partial re-melt with f = {f:g}: {unbooked}. A full re-melt '
+            "in its place would apply f = 1; set accretion.remelt = 'full' to accept that."
+        )
+    if unbooked is None:
+        # An impact cannot cool the mantle: cells above the molten profile keep their entropy.
+        if f == 1.0:
+            S_new = np.maximum(S_end, S_molten)
+        else:
+            S_new = _partial_remelt_profile(solver, S_end, S_molten, f)
+        # _set_entropy_ic left S_molten in the solver; at f = 1 this differs only when
+        # a cell is above it.
+        if np.any(S_new != S_molten):
+            solver.set_initial_entropy(S_new)
+        dE_impact = float(solver._step_heat_content(S_end, S_new))
     if unbooked is None:
         n_hot = np.count_nonzero(S_new > S_molten)
         if n_hot:
@@ -2174,7 +2164,8 @@ def _remelt_aragog(
                 hf_row, interior_o, solver, T_core_pre, float(S_ic[0])
             )
         except ValueError:
-            UpdateStatusfile(dirs, 21)
+            if f == 1.0:  # remelt_mantle writes the status of a partial re-melt
+                UpdateStatusfile(dirs, 21)
             raise
         solver.set_initial_core_temperature(T_core_new)
         solver.set_initial_entropy(S_ic)
@@ -2250,6 +2241,10 @@ def remelt_mantle(
     has no validated re-melt path; an accretion run on SPIDER is refused at
     configuration load, and this backstop refuses it at the first impact.
 
+    Every error of a partial re-melt (f < 1, or an f that is not a valid fraction) and
+    every error of a scalar backend writes interior status 21 before it reaches the
+    caller; a full Aragog re-melt writes it only for a core_module ValueError.
+
     Parameters
     ----------
     dirs : dict
@@ -2281,7 +2276,11 @@ def remelt_mantle(
     """
     from proteus.interior_energetics.remelt import check_melt_fraction
 
-    f = check_melt_fraction(f)
+    try:
+        f = check_melt_fraction(f)
+    except ValueError:
+        UpdateStatusfile(dirs, 21)
+        raise
     module = config.interior_energetics.module
 
     # The column accumulates over a step, so a second impact inside one
@@ -2290,10 +2289,16 @@ def remelt_mantle(
     booked_before = float(hf_row.get('step_dE_impact_J') or 0.0)
 
     match module:
-        case 'dummy' | 'boundary':
-            _remelt_scalar_backend(config, dirs, hf_row, interior_o, f)
-        case 'aragog':
-            _remelt_aragog(config, dirs, hf_row, interior_o, f)
+        case 'dummy' | 'boundary' | 'aragog':
+            scalar = module != 'aragog'
+            try:
+                (_remelt_scalar_backend if scalar else _remelt_aragog)(
+                    config, dirs, hf_row, interior_o, f
+                )
+            except Exception:
+                if scalar or f < 1.0:
+                    UpdateStatusfile(dirs, 21)
+                raise
         case 'spider':
             UpdateStatusfile(dirs, 20)
             raise NotImplementedError(
