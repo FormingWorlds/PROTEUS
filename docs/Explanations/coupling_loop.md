@@ -72,36 +72,44 @@ upstream modules.
    change, or temperature change exceeding configured thresholds), recomputes
    the hydrostatic density profile and planet radius.
 
-4. **Orbit and tides** (`run_orbit`): Updates orbital elements (semi-major
+4. **Volatile trapping** (`run_trapping`): With `outgas.trap_mode = "front"`,
+   buries part of the dissolved volatiles in the mantle that froze over the
+   step, or returns buried mass to the melt when the mantle remelts. Runs
+   before escape and outgassing, so both see the updated inventories. See
+   [Volatile trapping](outgas.md#volatile-trapping-in-the-freezing-mantle).
+
+5. **Orbit and tides** (`run_orbit`): Updates orbital elements (semi-major
    axis, eccentricity) and computes tidal heating rates. Tidal power is
    distributed radially and passed to the interior module for the next
    iteration.
 
-5. **Stellar evolution** (`update_stellar_quantities`): Interpolates the
+6. **Stellar evolution** (`update_stellar_quantities`): Interpolates the
    stellar mass, radius, effective temperature, and luminosity from
    pre-computed evolutionary tracks at the current stellar age. Recomputes
    the instellation flux and XUV flux. The stellar spectrum is updated on a
    separate, longer cadence controlled by `params.dt.starspec`.
 
-6. **Atmospheric escape** (`run_escape`): Computes mass loss rates for each
+7. **Atmospheric escape** (`run_escape`): Computes mass loss rates for each
    element (H, C, N, S, O) based on the XUV flux, planet mass, and current
    atmospheric composition. Updates element inventories by debiting the
    escaped mass. Only active after the initialisation stage.
 
-7. **Outgassing** (`run_outgassing`): Given the updated element inventories,
-   mantle temperature, and melt fraction, computes the thermodynamic
+8. **Outgassing** (`run_outgassing_and_vapourisation`): Given the updated
+   element inventories, mantle temperature, and melt fraction, computes the thermodynamic
    equilibrium partitioning of volatiles between atmosphere, melt, and solid.
    Writes partial pressures, mixing ratios, and atmospheric mass to `hf_row`.
-   Also calls `update_planet_mass` and `assert_mass_conservation` to verify
-   the whole-planet mass budget.
+   After this step, on each of the 3 outgassing paths (see
+   [the order of the volatile steps](outgas.md#the-order-of-the-volatile-steps)),
+   the loop calls `update_planet_mass` and `assert_mass_conservation` to
+   check the whole-planet mass budget.
 
-8. **Atmosphere climate** (`run_atmosphere`): Solves the radiative-convective
+9. **Atmosphere climate** (`run_atmosphere`): Solves the radiative-convective
    structure of the atmosphere using the chosen backend (AGNI, JANUS, or
    dummy). Takes the interior heat flux and atmospheric composition as input;
    returns the surface temperature, outgoing longwave radiation, and Bond
    albedo.
 
-9. **Housekeeping**: Updates iteration counters, checks convergence criteria,
+10. **Housekeeping**: Updates iteration counters, checks convergence criteria,
    writes the helpfile row to `hf_all`, generates plots and archives if
    scheduled.
 
@@ -112,11 +120,12 @@ post-processes atmosphere snapshots after the simulation ends, with
 
 ## Initialisation stage
 
-The first three iterations (iterations 0, 1, 2) are the **initialisation
+The first four iterations (iterations 0 to 3) are the **initialisation
 stage**. During this stage:
 
-- **Time is held at zero.** The simulation clock does not advance. This
-  allows modules to exchange boundary conditions and reach a mutually
+- **Time is reset to zero.** The time is set back to zero after iterations
+  0, 1 and 2. Iteration 3 ends the stage and keeps its time. This allows
+  modules to exchange boundary conditions and reach a mutually
   consistent state before dynamic evolution begins.
 
 - **Element inventories are recalculated** each iteration based on the
@@ -129,7 +138,7 @@ stage**. During this stage:
 - **The interior solver runs in IC mode**, setting up the initial entropy
   profile and thermal state rather than time-stepping forward.
 
-After iteration 2, the simulation enters the **science stage**: time advances
+After iteration 3, the simulation enters the **science stage**: time advances
 normally, escape becomes active, and the deadlock detector is armed.
 
 ## Time-stepping
