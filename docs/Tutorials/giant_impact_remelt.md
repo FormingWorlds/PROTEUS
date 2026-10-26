@@ -22,7 +22,7 @@ The setting `accretion.remelt` chooses $f$:
 Run the Python blocks from the PROTEUS folder in one Python session, in the order of the steps.
 Steps 4 and 6 use `out`, `runs` and `write_config` from Steps 1 and 2, and Steps 5 and 6 use `tables` from Step 4, so keep the session open during Step 3.
 Run the commands of Step 3 in a shell.
-The 4 runs took about 23 minutes in total on a workstation.
+The 4 runs took 23 to 25 minutes in total on a workstation.
 
 ## Step 1: write an impact timeline with a melt fraction
 
@@ -161,7 +161,7 @@ Download the interior data once; the command reads `f03.toml` from Step 2:
 proteus get interiordata --config-path output/tutorial_remelt/f03.toml
 ```
 
-Then run the 4 configurations one after the other; together they take about 23 minutes.
+Then run the 4 configurations one after the other; together they take 23 to 25 minutes.
 Each run writes one row per time step to `runtime_helpfile.csv` (the helpfile) in its output folder.
 
 ```console
