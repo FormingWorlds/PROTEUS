@@ -44,7 +44,7 @@ The outgassing step takes 1 of 3 paths:
     - The melt is emptied, except with `outgas.trap_mode = "front"`. Then the melt keeps its mass, so that mass a remelt returns stays in the planet.
     - The solid mantle and the condensates keep their mass.
     - Rock vapour can still enter the atmosphere (see [Rock vapour](#rock-vapour-from-the-melt-surface)).
-- **Crystallised** (`run_crystallized`). This path needs `params.stop.solid.freeze_volatiles = true`. It starts when $\Phi$ falls to `params.stop.solid.phi_crit` or below, and it stays on after that; only a giant impact (see [Accretion](model.md#accretion-morrigan)) turns it off. The melt and the atmosphere then exchange no volatiles. Escape still removes gas, so the code scales every atmospheric reservoir down by the same fraction, and the composition does not change.
+- **Crystallised** (`run_crystallized`). This path needs `params.stop.solid.freeze_volatiles = true`. It starts when $\Phi$ falls to `params.stop.solid.phi_crit` or below, and it stays on after that (the desiccated path still takes precedence); only a giant impact (see [Accretion](model.md#accretion-morrigan)) turns it off. The melt and the atmosphere then exchange no volatiles. Escape still removes gas, so the code scales every atmospheric reservoir down by the same fraction, and the composition does not change.
 - **Normal** (`run_outgassing`). The chemistry solver runs. This is the usual path while a magma ocean exists.
 
 On the normal path, the step does 3 things:
@@ -75,7 +75,7 @@ where $m_i$ is the molar mass of element $i$ \[kg mol$^{-1}$\] and the sum runs 
 
 **Example.** For water, $f_\mathrm{O} = 0.88809$ and $f_\mathrm{H} = 0.11191$. So 1 kg of dissolved water adds 0.888 kg to `O_kg_liquid` and 0.112 kg to `H_kg_liquid`.
 
-The shares of one molecule always add up to 1, so the split conserves mass, whatever the table of molar masses says. The atmodeller module writes this split for the atmosphere, melt and solid reservoirs. It does not write `{e}_kg_total`, because the escape step owns that total. Trapping uses the same rule (`element_masses_from_species`) to move element masses with the species it buries.
+The shares of one molecule always add up to 1, so the split conserves mass, whatever the table of molar masses says. The atmodeller module writes this split for the atmosphere, melt and solid reservoirs. It does not write `{e}_kg_total` for H, C, N or S, because the escape step owns those totals. Oxygen is the exception described above. Trapping uses the same rule (`element_masses_from_species`) to move element masses with the species it buries.
 
 **Where this is checked.** [Species-to-element mass split](../Validation/outgas/atmodeller.md).
 
@@ -142,7 +142,7 @@ Trapping does nothing in the initialisation stage and in the first step of a run
 
 - `trap_kg_step` \[kg\]: the volatile mass buried in this step; negative when a remelt returned mass.
 - `trap_kg_cumulative` \[kg\]: the net mass buried since the start of the run.
-- `{sp}_kg_trapped` \[kg\]: the mass of each species, and of each element, that is trapped at the end of the step.
+- `{sp}_kg_trapped` and `{e}_kg_trapped` \[kg\]: the mass of each species and of each element that is trapped at the end of the step.
 - `trap_F_tl` \[1\]: the trapped melt fraction of the step, $F_\mathrm{tl}$ below.
 - `trap_branch`: which path the step took (see [When the front cannot be integrated](#when-the-front-cannot-be-integrated)).
 - `trap_tau_D`, `trap_tau_s`, `trap_t_res` \[yr\] and `trap_L_front` \[m\]: the 2 timescales, the residence time and the front thickness of the drainage section; they show why a step took branch 1, 2 or 3.
@@ -161,7 +161,7 @@ The symbols are:
 
 - $C_Z$: the mass fraction of $Z$ in the melt \[1\], from the last chemistry solve.
 - $D_Z$: the crystal/melt partition coefficient \[1\]. It is the mass fraction of $Z$ in the crystals divided by that in the melt, set by `outgas.D_const_<species>`.
-- $F_\mathrm{tl}$: the trapped liquid fraction \[1\]. It is the mass fraction of the new solid that is pore melt.
+- $F_\mathrm{tl}$: the trapped melt fraction \[1\]. It is the mass fraction of the new solid that is pore melt.
 
 The bracket is the effective partition coefficient. If $F_\mathrm{tl} = 0$, it is $D_Z$: only the crystals take up the volatile. If $F_\mathrm{tl} = 1$, it is 1: the frozen mass takes the volatile at the melt concentration, as if it were all melt.
 
