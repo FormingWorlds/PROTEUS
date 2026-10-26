@@ -4,7 +4,14 @@
 
 This page checks the melt drainage of the front scheme, `proteus.outgas.compaction`. As the freezing front passes through the mush, melt drains out of it before the solid closes; the melt that stays behind traps volatiles. Validation means that a test runs the code on a case with a known right answer and checks the result within a stated tolerance. If this part of the code is wrong, the trapped melt fraction, and with it the volatiles held in the solid, is wrong. Each case below says why the check exists, what it tests, how we know the right answer and why it matters. A box "Test details" ends each case.
 
-Terms used below: the mush is the partly molten layer behind the front; the porosity $\phi$ is its melt volume fraction; the lever rule gives $\phi$ from the densities of the mixture, the solid and the melt; a quadrature is a numerical integration. Blake-Kozeny-Carman, Rumpf-Gupte and Stokes name the 3 regimes of the drainage law, from low to high porosity. `separation_buoyancy` sets the density contrast of the drainage: `'mixture'` against the mixture, `'solid'` against the solid.
+Terms used below:
+
+- the mush is the partly molten layer behind the front;
+- the porosity $\phi$ is its melt volume fraction;
+- the lever rule gives $\phi$ from the densities of the mixture, the solid and the melt;
+- a quadrature is a numerical integration;
+- Blake-Kozeny-Carman, Rumpf-Gupte and Stokes name the 3 regimes of the drainage law, from low to high porosity;
+- `separation_buoyancy` sets the density contrast of the drainage: `'mixture'` against the mixture, `'solid'` against the solid.
 
 | Test id | Reference | Scope | Last compared |
 |---|---|---|---|

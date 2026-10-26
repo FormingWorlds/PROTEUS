@@ -12,7 +12,7 @@ This page checks the tidal evolution of the orbit in `proteus.orbit.orbit`. Tide
 
 ## Eccentricity rate of sp0d
 
-**Why this check exists.** The eccentricity rate has a steep power of the semi-major axis and of the planet radius. A wrong exponent or prefactor changes the rate by large factors without an error message.
+**Why this check exists.** The eccentricity rate has a steep power of the semi-major axis. A wrong exponent of $a$ or a wrong prefactor changes the rate by large factors without an error message; with the masses and the radius set to 1, a wrong exponent of those does not show.
 
 **What it tests.** Driscoll and Barnes (2015), Eq. 16, give $de/dt = (21/2)\, \mathrm{Im}(k_2)\, M_\star^{3/2} G^{1/2} R_p^5 / (M_p\, a^{13/2})\; e$, with $k_2$ the Love number, $M_\star$ and $M_p$ the masses of the star and the planet, $R_p$ the planet radius and $a$ the semi-major axis. The test sets $\mathrm{Im}(k_2) = M_\star = R_p = M_p = 1$, $a = 2$ and $e = 0.5$, with the real gravitational constant $G$, and compares the rate with the closed form. With $a^5$ in place of $a^{6.5}$ the rate would be more than 100 % off, and with $a^7$ more than 10 %; the test checks both, and that the rate is positive.
 
@@ -30,7 +30,7 @@ This page checks the tidal evolution of the orbit in `proteus.orbit.orbit`. Tide
 
 ## Angular momentum of sp1d
 
-**Why this check exists.** Tides move angular momentum between the orbit and the spin of the planet. A wrong coefficient in only one of the equations makes the total change, which no other output shows.
+**Why this check exists.** Tides move angular momentum between the orbit and the spin of the planet. A wrong coefficient in the orbital equations makes the total change, which no other output shows.
 
 **What it tests.** The test takes one `sp1d` step of 1e5 yr in which the eccentricity falls from 0.3 to below 0.2. The sum of the spin angular momentum of the planet and the orbital angular momentum must stay the same.
 

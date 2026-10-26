@@ -19,7 +19,7 @@ This page checks the liquidus that the `liquidus_super` initial condition of the
 
 **Why this check exists.** The high-pressure liquidus is a power law with 3 fit constants. A drift in any of them, or a wrong exponent, moves the liquidus and with it the initial temperature profile, without an error message.
 
-**What it tests.** The Fei et al. (2021) branch of the MgSiO$_3$ liquidus is $T_\mathrm{liq} = 6000\,(P / 140\ \mathrm{GPa})^{0.26}$ K. At 135 GPa, the 1 M$_\oplus$ reference pressure of the test, this gives about 5943.5 K. The test evaluates `zalmoxis.melting_curves.paleos_liquidus` at 135 GPa and checks this value. It also checks that the result is positive, and that an exponent of 0.5 in place of 0.26, which gives about 5892 K, is more than 30 K away.
+**What it tests.** The Fei et al. (2021) branch of the MgSiO$_3$ liquidus is $T_\mathrm{liq} = 6000\,(P / 140\ \mathrm{GPa})^{0.26}$ K. At 135 GPa this gives about 5943.5 K. The test evaluates `zalmoxis.melting_curves.paleos_liquidus` at 135 GPa and checks this value. It also checks that the result is positive, and that an exponent of 0.5 in place of 0.26, which gives about 5892 K, is more than 30 K away.
 
 **How we know the right answer.** Fei et al. (2021), Nature Communications, 12, 876, give the fit and its constants; the value at 135 GPa follows by hand.
 

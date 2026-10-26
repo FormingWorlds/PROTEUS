@@ -18,7 +18,7 @@ This page checks the planet-satellite tides of `proteus.orbit.satellite`: the an
 
 **How we know the right answer.** Eq. 60 of Korenaga (2023); its orbital term agrees with the present Earth-Moon value of Touma and Wisdom (1994), about 2.85e34 kg m$^2$/s (see the derivation below).
 
-**Why it matters.** `plan_sat_am` is the conserved angular momentum that the satellite model keeps through the run.
+**Why it matters.** `plan_sat_am` is the total angular momentum from which the satellite model starts.
 
 ??? info "Test details"
     - Reference: Korenaga (2023) Icarus 400, 115564, Eq. 60 (orbital component cross-checked against Touma and Wisdom 1994).
@@ -48,7 +48,7 @@ This page checks the planet-satellite tides of `proteus.orbit.satellite`: the an
 
 **Why this check exists.** The resonance drives the eccentricity to a peak at a given distance of the satellite. A wrong resonance term moves the peak or lowers it without an error message.
 
-**What it tests.** With the same run as above, the peak eccentricity must reach at least 0.6, at a scaled distance $a'$ between 10 and 13 Earth radii.
+**What it tests.** With the same run as above, which stops at 5.2e4 yr, the highest eccentricity up to that time must reach at least 0.6, at a satellite distance $a'$ between 10 and 13 Earth radii.
 
 **How we know the right answer.** The reference case peaks at e of about 0.72 to 0.724 at $a'$ of about 11.89 Earth radii, at about 5.2e4 yr. The run recorded in the test file peaked at e = 0.744 at $a'$ = 12.33 Earth radii and 5.18e4 yr, about 4 % above the reference in $a'$.
 

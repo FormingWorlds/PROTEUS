@@ -17,7 +17,7 @@ This page checks 2 steps of the star wrapper, `src/proteus/star/wrapper.py`: the
 
 **What it tests.** `update_equilibrium_temperature` computes $T_\mathrm{eqm} = ((1 - A)\, S\, f / \sigma)^{1/4}$, with $S$ the stellar flux at the planet, $A$ the albedo of the planet, $f$ the absorption factor `s0_factor` and $\sigma$ the Stefan-Boltzmann constant. At $S$ = 1361 W/m$^2$, $A$ = 0.3 and $f$ = 0.25 (the disk-averaged factor), the test expects about 254 K. A cube root would give about 1613 K and a fifth root about 84 K; the test checks that the result is more than 50 K away from both.
 
-**How we know the right answer.** The value follows from the Stefan-Boltzmann law for a planet in radiative balance. The test checks the closed form to relative 1e-12, with $\sigma$ from the code, and the value 254 K to within 2 K, which catches a wrong $\sigma$ above about 3 %.
+**How we know the right answer.** The value follows from the Stefan-Boltzmann law for a planet in radiative balance. The test checks the closed form to relative 1e-12, with $\sigma$ from the code, and the value 254 K to within 2 K, which catches a $\sigma$ about 2.2 % too small or 4.2 % too large.
 
 **Why it matters.** `update_stellar_quantities` calls it in the stellar step of the main loop and writes `T_eqm` to the helpfile.
 

@@ -68,10 +68,9 @@ This page checks the transparent limit of the AGNI atmosphere in PROTEUS, the br
 ## Coverage
 
 The three tests pin the analytical limit of radiative transfer. Transparent
-mode holds the column isothermal at the surface temperature, so above a
-black surface the column re-emits exactly what it absorbs and the outgoing
-longwave radiation is the black-body flux `sigma * T_surf^4`, independent of
-any residual opacity. The limit is exact for the grey-gas scheme and is
+mode gives the column zero opacity, so above a black surface the surface
+emission reaches the top unchanged and the outgoing longwave radiation is the
+black-body flux `sigma * T_surf^4`. The limit is exact for the grey-gas scheme and is
 recovered to a few times 1e-5 relative by the banded scheme, where the
 Planck function is evaluated at band centres and truncated outside the
 spectral range.
