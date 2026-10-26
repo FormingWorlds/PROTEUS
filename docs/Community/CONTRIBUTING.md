@@ -223,11 +223,14 @@ Use this order for every case. The bold lead-ins are always the same, so that a 
 
 - The box "Test details" holds the Reference, Tolerance, Test id and Command lines.
 - The image path is relative to the page. A page in `docs/Validation/<module>/` uses `../../assets/validation/`.
-- `??? info` makes a collapsed box. It needs `pymdownx.details` in the `markdown_extensions` of `mkdocs.yml`. If a repository does not have it, add the extension directly after `admonition` in the same pull request.
-- Every case has the plot pair and **How to read the plot.** A case that pins a single value draws it in its context: the curve it sits on, the values it is compared with, or the residual against its tolerance band. A case goes without a plot only where nothing in it can be drawn, for example a refusal or an exact identity of the code; the page then says in one line why the case has no plot.
+- `??? info` makes a collapsed box. It needs `pymdownx.details` in the `markdown_extensions` of `mkdocs.yml`, which PROTEUS has. In a repository that does not have it, add the extension directly after `admonition` in the same pull request.
+- Every case has the plot pair and **How to read the plot.** A case that pins a single value draws it in its context: the curve it sits on or the values it is compared with. Draw a residual against its tolerance band only when the residual is a real, repeatable difference well above round-off. A residual near round-off changes from one platform to the next and fails the plot check, so draw the values themselves. A case goes without a plot only where nothing in it can be drawn, for example a refusal or an exact identity of the code; the page then says in one line why the case has no plot.
+- The test writes the plot pair with the `validation_plot` fixture of proteus-mpl. Compute each asserted value once, assert on it, and pass the same variable to the plot code. A number typed again in the plot code is compared only with itself, so the plot check cannot see a change of the assert.
+- Without `--validation-plots` the fixture compares a summary of the plotted data (the minimum, maximum, mean and ramp of each coordinate) with the committed pair, and a missing or stale file fails the test. A statistic may differ by at most 1e-6 of the larger of its range and a tenth of its largest value.
+- After a change, run `pytest <test id> --validation-plots`, look at the plot, and commit both files of the pair; each file must stay at or below 60 kB. Commit only the pair of the case you changed, because other library versions rewrite the other files.
 - A case that fails, or that has a known limit, says so in plain words in its own line **Known limit.**, before the box.
 - **Why this check exists.** names only failures that the test can catch. A fault that moves both sides of the comparison, for example a constant that the test takes from the code under test, is not caught; say so in **Known limit.** instead.
-- Where a page has a table of its cases with a `Last compared` date (as in PROTEUS), keep the table and its dates.
+- Where a page already has a `Last compared` column, as several PROTEUS Validation pages do, keep it and its dates. The person who runs a case again updates its date.
 
 ### New Explanation sections
 
@@ -252,6 +255,6 @@ Use this order for every case. The bold lead-ins are always the same, so that a 
 
 - Headings say what is checked or explained, not code names. Put the code name in the text.
 - A change of a heading changes its anchor. A link can point at a heading from the Validation index table (for example its `#plot-<name>` links), another page or a pull-request text. Keep the heading text, or change every link and search the docs for the old anchor.
-- Keep text that a test or a tool reads, for example the aragog number tags `<!--k:...-->` and the test ids in backticks. Where the repository has tests that read its docs pages, run them after a change.
+- Keep text that a test or a tool reads, for example the number tags `<!--k:...-->` in the aragog docs pages and the test ids in backticks. Where the repository has tests that read its docs pages, run them after a change.
 - Use lists for 3 or more parallel items, and tables only when the reader compares values.
 - Give every plot alt text that names what it shows, and explain the plot in **How to read the plot.**
