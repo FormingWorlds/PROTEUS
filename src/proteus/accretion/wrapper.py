@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from proteus.accretion.atmloss import _as_float, _zephyrus_loss_fraction
 from proteus.utils.constants import AU, M_earth, element_list, noble_gases, vol_element_list
 from proteus.utils.coupler import helpfile_path
+from proteus.utils.helper import UpdateStatusfile
 
 if TYPE_CHECKING:
     from proteus.accretion.common import ImpactEvent
@@ -593,7 +594,11 @@ def apply_impact(handler: Proteus, event: ImpactEvent) -> None:
             f'Impact event at t = {event.time:.4e} yr has non-positive or non-finite '
             f'semimajoraxis_ratio = {ratio!r}'
         )
-    f_remelt = remelt_fraction(config, event)
+    try:
+        f_remelt = remelt_fraction(config, event)
+    except RuntimeError:
+        UpdateStatusfile(handler.directories, 21)
+        raise
 
     log.info(
         'Giant impact at t = %.4e yr: target %d struck by %d, adding %.4f M_earth',
