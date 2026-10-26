@@ -25,11 +25,16 @@ This page checks the dispatch of the atmospheric loss of a giant impact in `src/
 
 **Why it matters.** The wrapper calls `_impact_loss_fraction` for every impact with `accretion.atmloss_module = "zephyrus"`.
 
+![Atmospheric loss fraction against the impactor to target mass ratio](../../assets/validation/accretion_wrapper_kegerreis.svg#only-light){ width="80%" }
+![Atmospheric loss fraction against the impactor to target mass ratio](../../assets/validation/accretion_wrapper_kegerreis_dark.svg#only-dark){ width="80%" }
+
+**How to read the plot.** The x-axis is the mass ratio of impactor and target, at equal density and at the mutual escape speed of 2 Earth twins. The solid and dashed lines are `_impact_loss_fraction` with the Kegerreis law at impact parameter 0 and 0.3 (context). The filled circles are the asserted code values for the twins (ratio 1, $b$ = 0) and the half-radius impactor (ratio 1/8, $b$ = 0.3), and the diamond is the same impact with the bodies in interchanged roles. The hollow squares are the pinned values 0.510911, 0.2675 and 0.5258, and the cross the direct `zephyrus.collision.mass_loss` value for the twins. A pass means that each circle and the diamond sit in their squares, and the cross on the twin circle.
+
 ??? info "Test details"
     - Reference: Kegerreis et al. (2020), ApJL 901, L31 (doi:10.3847/2041-8213/abb5fb), Eqn. 1.
     - Tolerance: relative 1e-4 on 0.510911; relative 2e-3 on 0.2675 and 0.5258.
     - Test id: `tests/accretion/test_wrapper.py::test_zephyrus_loss_module_evaluates_the_kegerreis_law`
-    - Command: `pytest tests/accretion/test_wrapper.py::test_zephyrus_loss_module_evaluates_the_kegerreis_law` (needs ZEPHYRUS)
+    - Command: `pytest -m reference_pinned tests/accretion/test_wrapper.py --validation-plots`
 
 ## Roche et al. (2026) oracle row
 
@@ -41,11 +46,16 @@ This page checks the dispatch of the atmospheric loss of a giant impact in `src/
 
 **Why it matters.** It checks the second law the dispatch offers, `atmloss_law = 'roche2026'`.
 
+![Atmospheric loss fraction of the Roche oracle row for 3 dispatches](../../assets/validation/accretion_wrapper_roche_oracle.svg#only-light){ width="80%" }
+![Atmospheric loss fraction of the Roche oracle row for 3 dispatches](../../assets/validation/accretion_wrapper_roche_oracle_dark.svg#only-dark){ width="80%" }
+
+**How to read the plot.** The dashed line is the authors' value $X$ = 0.562213, the hollow square marks it with the asserted 5e-5 tolerance, and the grey band is 0.10 on each side of it. The circles are the asserted values: the Roche law through `_impact_loss_fraction`, the Kegerreis law, and the dispatch with the bodies interchanged. A pass means that the first circle sits in the square and the other 2 lie outside the band.
+
 ??? info "Test details"
     - Reference: Roche et al. (2026), arXiv:2610.06077 (doi:10.5281/zenodo.23192423), Set A oracle row 1.
     - Tolerance: absolute 5e-5 on 0.562213; the Kegerreis law and the interchanged dispatch more than 0.10 away.
     - Test id: `tests/accretion/test_wrapper.py::test_roche2026_oracle_row_through_impact_loss_fraction`
-    - Command: `pytest tests/accretion/test_wrapper.py::test_roche2026_oracle_row_through_impact_loss_fraction` (needs ZEPHYRUS)
+    - Command: `pytest -m reference_pinned tests/accretion/test_wrapper.py --validation-plots`
 
 ## Dispatch contract tests
 

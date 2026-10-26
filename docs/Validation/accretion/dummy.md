@@ -29,11 +29,16 @@ gravitationally focused collision speed, and the momentum-conserving merger).
 
 **Known limit.** The code computes the collision speed as the root of the sum of the squared approach and escape speeds, so it can never fall below the escape speed; that check, and the 29 % change from dropping the factor of 2, cannot fail through a code fault. Only the hand-computed escape speed of the first event tests the formula.
 
+![Collision speed against mutual escape speed for the impacts of 2 timelines](../../assets/validation/accretion_dummy_collision_speed.svg#only-light){ width="80%" }
+![Collision speed against mutual escape speed for the impacts of 2 timelines](../../assets/validation/accretion_dummy_collision_speed_dark.svg#only-dark){ width="80%" }
+
+**How to read the plot.** The x-axis is the mutual escape speed and the y-axis the collision speed of each impact. The circles are the asserted impacts of the timeline at encounter eccentricity 0.05, which must lie above the line $v_\mathrm{impact} = v_\mathrm{esc}$. The hollow squares are the asserted impacts at eccentricity 0, which must lie on it. The star is the escape speed of the first pair from its masses and radii, against the code value. The dashed line is the escape speed without the factor 2, which the test rejects. A pass means that the squares and the star lie on the line and the circles just above it.
+
 ??? info "Test details"
     - Reference: two-body mutual escape speed (analytical limit).
     - Tolerance: relative 1e-12; the factor-of-2 error must miss by more than 20 %.
     - Test id: `tests/accretion/test_dummy.py::test_collision_velocity_never_falls_below_the_mutual_escape_velocity`
-    - Command: `pytest tests/accretion/test_dummy.py::test_collision_velocity_never_falls_below_the_mutual_escape_velocity`
+    - Command: `pytest -m reference_pinned tests/accretion/test_dummy.py --validation-plots`
 
 ## A circular merger keeps the orbit
 
@@ -47,11 +52,16 @@ gravitationally focused collision speed, and the momentum-conserving merger).
 
 **Known limit.** At $e = 0$ both bodies have the same velocity, so an inverted mass weighting, or a sign error in the radial velocity of the impactor, gives the same orbit and passes this case; the angular-momentum case below catches it.
 
+![Semi-major axis ratio and eccentricity of merged orbits against the mass ratio of each impact](../../assets/validation/accretion_dummy_circular_merger.svg#only-light){ width="80%" }
+![Semi-major axis ratio and eccentricity of merged orbits against the mass ratio of each impact](../../assets/validation/accretion_dummy_circular_merger_dark.svg#only-dark){ width="80%" }
+
+**How to read the plot.** The x-axis is the mass ratio of impactor and target of each impact of a circular timeline at 1 AU. The circles are the asserted semi-major axis ratios $a/a_0$ of the merged orbits and the hollow squares their asserted eccentricities. The solid line is $a/a_0$ = 1 and the dashed line $e$ = 0. A pass means that the circles lie on the solid line and the squares on the dashed line.
+
 ??? info "Test details"
     - Reference: perfect merger of 2 bodies on one circular orbit (analytical limit).
     - Tolerance: relative 1e-12 on the semi-major-axis ratio; absolute 1e-12 on the eccentricity.
     - Test id: `tests/accretion/test_dummy.py::test_a_circular_encounter_leaves_the_orbit_untouched`
-    - Command: `pytest tests/accretion/test_dummy.py::test_a_circular_encounter_leaves_the_orbit_untouched`
+    - Command: `pytest -m reference_pinned tests/accretion/test_dummy.py --validation-plots`
 
 ## Angular momentum of the merged orbit
 
@@ -65,11 +75,16 @@ gravitationally focused collision speed, and the momentum-conserving merger).
 
 **Known limit.** The eccentricity is derived from the semi-major axis, so a wrong semi-major axis gives a consistent orbit and passes this case.
 
+![Specific angular momentum of the merged orbit against encounter eccentricity](../../assets/validation/accretion_dummy_angular_momentum.svg#only-light){ width="80%" }
+![Specific angular momentum of the merged orbit against encounter eccentricity](../../assets/validation/accretion_dummy_angular_momentum_dark.svg#only-dark){ width="80%" }
+
+**How to read the plot.** The x-axis is the encounter eccentricity and the y-axis the specific angular momentum over $a\,v_\mathrm{K}$, for a 1.0 and a 0.4 Earth-mass body at 1 AU. The line is $\sqrt{\mu a (1 - e^2)}$ of the orbit that `_merged_orbit` returns and the squares $r\,v_\theta$ of the merged body (context). The filled circle is the asserted case at $e$ = 0.2. A pass means that the squares and the circle lie on the line.
+
 ??? info "Test details"
     - Reference: Keplerian identity $h = \sqrt{\mu a (1 - e^2)} = r v_\theta$ (analytical identity).
     - Tolerance: relative 1e-9.
     - Test id: `tests/accretion/test_dummy.py::test_merged_orbit_conserves_angular_momentum_of_the_merged_body`
-    - Command: `pytest tests/accretion/test_dummy.py::test_merged_orbit_conserves_angular_momentum_of_the_merged_body`
+    - Command: `pytest -m reference_pinned tests/accretion/test_dummy.py --validation-plots`
 
 ## Coverage
 

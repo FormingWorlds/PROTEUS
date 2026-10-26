@@ -1762,7 +1762,7 @@ def test_impact_loss_composes_with_delivery_and_a_broken_provider_raises(monkeyp
 @pytest.mark.unit
 @pytest.mark.physics_invariant
 @pytest.mark.reference_pinned
-def test_zephyrus_loss_module_evaluates_the_kegerreis_law():
+def test_zephyrus_loss_module_evaluates_the_kegerreis_law(validation_plot):
     """The zephyrus module turns the impact record into the erosion fraction.
 
     For two identical Earth-like bodies colliding head-on at their mutual
@@ -1855,6 +1855,48 @@ def test_zephyrus_loss_module_evaluates_the_kegerreis_law():
     assert f_asym == pytest.approx(0.2675, rel=2e-3)
     assert f_swapped == pytest.approx(0.5258, rel=2e-3)
     assert f_asym < f_swapped  # the lighter impactor erodes less
+
+    def figure():
+        import matplotlib.pyplot as plt
+
+        q = np.linspace(0.05, 1.0, 39)
+        fig, ax = plt.subplots(figsize=(6, 4))
+        for b, style in ((0.0, '-'), (0.3, '--')):
+            curve = []
+            for qi in q:
+                ri = r_e * qi ** (1.0 / 3.0)
+                ev = _impact_event(
+                    M_target_before=m_e,
+                    M_impactor=qi * m_e,
+                    M_merged_after=(1.0 + qi) * m_e,
+                    v_impact=v_esc,
+                    impact_parameter=b,
+                    R_target_before=r_e,
+                    R_impactor=ri,
+                    rho_target=rho_e,
+                    rho_impactor=rho_e,
+                )
+                curve.append(_impact_loss_fraction(cfg, hf_row, ev))
+            ax.plot(q, curve, style, label=f'Kegerreis law, $b$ = {b}')
+        q_asym = m_i / m_e
+        ax.plot(
+            [1.0, q_asym, q_asym],
+            [0.510911, 0.2675, 0.5258],
+            's',
+            mfc='none',
+            ms=10,
+            label='Pinned values',
+        )
+        ax.plot([1.0], [f_direct], 'x', ms=10, label='zephyrus mass_loss, twins')
+        ax.plot([1.0, q_asym], [f, f_asym], 'o', zorder=3, label='Code')
+        ax.plot([q_asym], [f_swapped], 'D', zorder=3, label='Code, roles interchanged')
+        ax.set_xlabel('Impactor mass / target mass')
+        ax.set_ylabel('Atmospheric loss fraction $X$')
+        ax.legend(fontsize=8)
+        fig.tight_layout()
+        return fig
+
+    validation_plot(figure, 'accretion_wrapper_kegerreis')
 
 
 @pytest.mark.unit
@@ -2138,7 +2180,7 @@ def test_roche2026_loss_module_evaluates_real_zephyrus():
 @pytest.mark.unit
 @pytest.mark.physics_invariant
 @pytest.mark.reference_pinned
-def test_roche2026_oracle_row_through_impact_loss_fraction():
+def test_roche2026_oracle_row_through_impact_loss_fraction(validation_plot):
     """Verify one Roche et al. (2026) Set A oracle row through _impact_loss_fraction.
 
     Pins the eroded fraction obtained through the full PROTEUS loss dispatch
@@ -2209,6 +2251,35 @@ def test_roche2026_oracle_row_through_impact_loss_fraction():
     hf_row_swapped = {'M_planet': m_i, 'H_kg_atm': f_atm * m_i}
     f_swapped = _impact_loss_fraction(cfg, hf_row_swapped, event_swapped)
     assert abs(f_swapped - expected_x) > 0.10
+
+    def figure():
+        import matplotlib.pyplot as plt
+
+        names = ['Roche law, code', 'Kegerreis law', 'Roles interchanged']
+        fig, ax = plt.subplots(figsize=(6, 4))
+        ax.axhspan(
+            expected_x - 0.10, expected_x + 0.10, alpha=0.15, label='Within 0.10 of the oracle'
+        )
+        ax.axhline(expected_x, ls='--', label='Oracle $X$ = 0.562213')
+        ax.errorbar(
+            [0],
+            [expected_x],
+            yerr=[[5e-5], [5e-5]],
+            fmt='s',
+            mfc='none',
+            ms=10,
+            capsize=4,
+            label='Oracle, 5e-5',
+        )
+        ax.plot([0, 1, 2], [f_loss, f_keg, f_swapped], 'o', zorder=3, label='Asserted values')
+        ax.set_xticks([0, 1, 2], names)
+        ax.set_ylabel('Atmospheric loss fraction $X$')
+        ax.set_ylim(0.0, 1.08)
+        ax.legend(fontsize=8)
+        fig.tight_layout()
+        return fig
+
+    validation_plot(figure, 'accretion_wrapper_roche_oracle')
 
 
 @pytest.mark.unit
