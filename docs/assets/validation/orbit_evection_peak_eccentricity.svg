@@ -6,7 +6,7 @@
   <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
    <cc:Work>
     <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
-    <dc:description>test: tests/integration/test_slow_orbit_evection_ctl.py::test_peak_eccentricity_matches_reference_location; command: pytest tests/integration/test_slow_orbit_evection_ctl.py::test_peak_eccentricity_matches_reference_location --validation-plots; summary: {"v": 1, "axes": [{"scales": ["linear", "linear"], "categories": [null, null], "lines": [[1, 11.89, 11.89, 11.89, 0.0, 0.72, 0.72, 0.72, 0.0], [1, 12.326554441108202, 12.326554441108202, 12.326554441108202, 0.0, 0.7444191403631262, 0.7444191403631262, 0.7444191403631262, 0.0]], "collections": [[7, 10.0, 13.0, 11.285714285714285, -2.0618427600181477e-16, 0.6, 1.0, 0.8857142857142858, 0.05714285714285713]], "values": [], "value_scales": [], "patches": [], "images": [], "image_scales": [], "extents": []}]}</dc:description>
+    <dc:description>test: tests/integration/test_slow_orbit_evection_ctl.py::test_peak_eccentricity_matches_reference_location; command: pytest tests/integration/test_slow_orbit_evection_ctl.py::test_peak_eccentricity_matches_reference_location --validation-plots; summary: {"v": 1, "axes": [{"scales": ["linear", "linear"], "categories": [null, null], "lines": [[1, 11.89, 11.89, 11.89, 0.0, 0.72, 0.72, 0.72, 0.0], [1, 12.3, 12.3, 12.3, 0.0, 0.74, 0.74, 0.74, 0.0]], "collections": [[7, 10.0, 13.0, 11.285714285714285, -2.0618427600181477e-16, 0.6, 1.0, 0.8857142857142858, 0.05714285714285713]], "values": [], "value_scales": [], "patches": [], "images": [], "image_scales": [], "extents": []}]}</dc:description>
     <dc:format>image/svg+xml</dc:format>
     <dc:creator>
      <cc:Agent>
@@ -1073,7 +1073,7 @@ z
 " style="stroke: #e23d28"/>
     </defs>
     <g clip-path="url(#p89ac922eac)">
-     <use xlink:href="#m21a0762dc7" x="273.42523" y="64.8674" style="fill: #e23d28; stroke: #e23d28"/>
+     <use xlink:href="#m21a0762dc7" x="272.520815" y="65.774245" style="fill: #e23d28; stroke: #e23d28"/>
     </g>
    </g>
    <g id="legend_1">

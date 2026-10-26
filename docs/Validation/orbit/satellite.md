@@ -69,7 +69,7 @@ This page checks the planet-satellite tides of `proteus.orbit.satellite`: the an
 ![Peak eccentricity and its satellite distance against the asserted region](../../assets/validation/orbit_evection_peak_eccentricity.svg#only-light){ width="80%" }
 ![Peak eccentricity and its satellite distance against the asserted region](../../assets/validation/orbit_evection_peak_eccentricity_dark.svg#only-dark){ width="80%" }
 
-**How to read the plot.** The x-axis is the satellite distance $a'$ in Earth radii $R_\oplus$, and the y-axis the eccentricity $e$. The circle is the asserted peak of the run. The grey region is the asserted condition: $e \ge 0.6$ at $a'$ between 10 and 13 $R_\oplus$. The hollow square is the peak of the reference notebook run, $e \approx 0.72$ at $a' \approx 11.89\,R_\oplus$ (context). As in the case above, only the asserted peak is drawn. A pass means that the circle lies in the grey region.
+**How to read the plot.** The x-axis is the satellite distance $a'$ in Earth radii $R_\oplus$, and the y-axis the eccentricity $e$. The circle is the asserted peak of the run, shown to 3 significant digits in $a'$ and 2 in $e$ against round-off between platforms. The grey region is the asserted condition: $e \ge 0.6$ at $a'$ between 10 and 13 $R_\oplus$. The hollow square is the peak of the reference notebook run, $e \approx 0.72$ at $a' \approx 11.89\,R_\oplus$ (context). As in the case above, only the asserted peak is drawn. A pass means that the circle lies in the grey region.
 
 ??? info "Test details"
     - Reference: Rufu and Canup (2020), Figure 3 (peak e about 0.72 to 0.724 at a' about 11.89 R_earth, t about 5.2e4 yr).
