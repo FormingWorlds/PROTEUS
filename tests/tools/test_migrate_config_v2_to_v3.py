@@ -437,12 +437,14 @@ _REVIEWED_NEUTRAL = frozenset(
         'planet.fO2_source',
         # Default 0.1 is the value previously hard-coded in the redox
         # tracker, so a migrated 2.0 config keeps its existing behaviour.
-        'planet.ferric_fraction_initial',
+        'planet.interior_chem.ferric_fraction_initial',
         # Read only under from_mantle_redox, which no 2.0 config can select,
         # and its default True is the tracker's previous unconditional step.
-        'planet.metal_saturation',
+        'planet.interior_chem.metal_saturation',
         # Read only under from_mantle_redox, which no 2.0 config can select.
-        'planet.partition_coefficients',
+        'planet.interior_chem.partition_coefficients',
+        # Read only under from_mantle_redox, which no 2.0 config can select.
+        'planet.interior_chem.redox_dV_eos',
         # Acts only when a_fe_max_mantle > 0, i.e. under from_mantle_redox,
         # which no 2.0 config can select; a migrated config is unaffected.
         'params.dt.afe_max_rel_change',

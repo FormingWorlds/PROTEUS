@@ -11,7 +11,7 @@ is registered in `pyproject.toml`. Last comparison: 2026-10-22.
 | `tests/interior_chem/test_redox.py::test_crystallisation_step_replays_the_schaefer_2024_run` | Schaefer et al. (2024) archived Earth code, `output.mat` of the 1000 km model, initial Fe3+/FeT = 0.1, run 570 | Section 2.5, Table 3, Table S2; fixture `tests/interior_chem/fixtures/schaefer2024_1000km_replay.csv` | Feeds the bulk solid/melt D of FeO and FeO1.5 and the solid fraction of each of the 96 steps of that run to `_fe_into_new_solid` and checks that the liquid Fe3+/FeT matches at every step to 1e-10 (8e-14 observed), and that the fixture is Schaefer's equilibrium mass balance (to 1e-10). Guards: D times the melt concentration before the step misses by 1.7e-3, Rayleigh within each step by 8e-4, and a constant D(Fe2+) = 0.85, or the two D swapped, by more than 0.05. |
 | `tests/interior_chem/test_redox.py::test_bridgmanite_coefficients_follow_schaefer_2024_in_the_lower_mantle` | Same run | Section 3.1, p. 11 (Fe3+/FeT flat to decreasing across the lower mantle and transition zone) | The tracker's own bridgmanite coefficients on Schaefer's crystallisation sequence: at P >= 22 GPa Fe3+/FeT falls monotonically, by 60-100 % of the drop in their run (74 %), within 5e-3 of it. Guard: D(Fe2+) = 0.85 makes it rise instead. |
 | `tests/interior_chem/test_redox.py::test_pyroxene_coefficients_give_the_shallow_rise_of_schaefer_2024` | Same run | Section 3.1, p. 11 (Fe3+/FeT increases below 15 GPa) | The tracker's pyroxene coefficients make Fe3+/FeT rise monotonically from 15 to 2.5 GPa, by 1-3 times the rise in their run (2.3 times); the minimum lies between their 15 GPa and the 22 GPa cutoff. Guard: the pyroxene D(FeO) of their model run (0.345) gives a fall. |
-| `tests/interior_chem/test_redox.py::test_bulk_prescription_follows_the_schaefer_2024_run` | Same run | Fig. S3 (bulk D(Fe3+) per layer); Section 3.1 | With `planet.partition_coefficients = "bulk_BSE"` the tracker follows run 570 within 0.01 at every step (their 1000-draw mean within 0.005) and turns at 12-18 GPa as their run does. Guard: the `mgsio3` coefficients miss by more than 0.02 and turn at 22 GPa. |
+| `tests/interior_chem/test_redox.py::test_bulk_prescription_follows_the_schaefer_2024_run` | Same run | Fig. S3 (bulk D(Fe3+) per layer); Section 3.1 | With `planet.interior_chem.partition_coefficients = "bulk_BSE"` the tracker follows run 570 within 0.01 at every step (their 1000-draw mean within 0.005) and turns at 12-18 GPa as their run does. Guard: the `mgsio3` coefficients miss by more than 0.02 and turn at 22 GPa. |
 | `tests/interior_chem/test_redox.py::test_the_pressure_term_moves_metal_formation_away_from_the_coolest_cell` | Schaefer et al. (2024) | Section 3.1.1 | Metal forms at depth, not in the shallow cool melt, once the reaction volume change is included. |
 | `tests/interior_chem/test_redox.py::test_hirschmann_iw_buffer_matches_oneill_eggins_at_one_bar_and_the_solid_volume_slope` | Hirschmann (2021) against O'Neill and Eggins (2002) | Eq 11 of O'Neill and Eggins (2002) | The IW buffer at 1 bar and its pressure slope from the solid molar volumes. |
 
@@ -49,7 +49,7 @@ peridotite, not for any of these minerals.
 
 ## The `bulk_BSE` prescription
 
-`planet.partition_coefficients = "bulk_BSE"` gives each cell the bulk D of
+`planet.interior_chem.partition_coefficients = "bulk_BSE"` gives each cell the bulk D of
 the full mineral assemblage of its Schaefer et al. (2024) layer, the medians
 over all 1000 draws of their archived 1000 km run:
 

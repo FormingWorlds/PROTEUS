@@ -146,10 +146,6 @@ config_version = "3.0"
 
     # Redox and oxygen budget
     fO2_source                = "user_constant"  # user_constant | from_O_budget (authoritative O accounting) | from_mantle_redox (tracked Fe3+/Fe2+, requires interior_energetics.module = spider | aragog)
-    ferric_fraction_initial   = 0.1          # initial melt Fe3+/FeT seeding the redox tracker, in (0,1); only read when fO2_source = "from_mantle_redox"
-    metal_saturation          = false        # react a supersaturated melt to Fe-metal equilibrium (redox Step 9); false (default): crystallisation partitioning only, a_Fe not evaluated, no metal. Only read when fO2_source = "from_mantle_redox"
-    partition_coefficients    = "mgsio3"     # redox-tracker Fe2+/Fe3+ solid/melt D: mgsio3 (bridgmanite, Cpx/Opx; Schaefer+2024 Tables S1, 3) | bulk_BSE (bulk D of the Schaefer+2024 layers). Only read when fO2_source = "from_mantle_redox"
-    redox_dV_eos              = "deng2020"   # melt EOS of the FeO -> FeO1.5 volume change in the redox pressure term: deng2020 (Deng+2020 BM4, to 6500 K and 136 GPa) | keane_table (Keane + Deng thermal table, 1 bar - 4 TPa, 1000 - 20000 K; extrapolated beyond the Deng FPMD). Only read when fO2_source = "from_mantle_redox" and metal_saturation = true
 
     # Initial volatile inventory
     volatile_mode             = 'elements'   # set volatile inventory by: 'elements' | 'gas_prs'
@@ -157,6 +153,13 @@ config_version = "3.0"
 
     # Cooling constraint
     prevent_warming           = false        # require monotonic cooling
+
+    # Melt-redox tracker (only read when fO2_source = "from_mantle_redox")
+    [planet.interior_chem]
+        ferric_fraction_initial = 0.1        # initial melt Fe3+/FeT seeding the redox tracker, in (0,1)
+        metal_saturation      = false        # react a supersaturated melt to Fe-metal equilibrium (redox Step 9); false (default): crystallisation partitioning only, a_Fe not evaluated, no metal
+        partition_coefficients = "mgsio3"    # redox-tracker Fe2+/Fe3+ solid/melt D: mgsio3 (bridgmanite, Cpx/Opx; Schaefer+2024 Tables S1, 3) | bulk_BSE (bulk D of the Schaefer+2024 layers)
+        redox_dV_eos          = "deng2020"   # melt EOS of the FeO -> FeO1.5 volume change in the redox pressure term: deng2020 (Deng+2020 BM4, to 6500 K and 136 GPa) | keane_table (Keane + Deng thermal table, 1 bar - 4 TPa, 1000 - 20000 K; extrapolated beyond the Deng FPMD). Only read when metal_saturation = true
 
     # Element abundances (used when volatile_mode = 'elements')
     [planet.elements]

@@ -1,7 +1,7 @@
 """Melt Fe3+/Fe2+ redox tracking (``src/proteus/interior_chem/redox.py``).
 
 Covers the initial ferric fraction ``f_0`` now that it is a user-settable
-config field (``planet.ferric_fraction_initial``) rather than a module
+config field (``planet.interior_chem.ferric_fraction_initial``) rather than a module
 constant. Contract clauses exercised here:
 
 * Step 1-2 (Eq 1-3): Fe2+ is seeded from the ferrous FeO fraction,
@@ -94,10 +94,10 @@ def _make_config(
     """Minimal config exposing only the fields the tracker reads."""
     config = MagicMock()
     config.planet.fO2_source = source
-    config.planet.ferric_fraction_initial = f_0
-    config.planet.metal_saturation = metal_saturation
-    config.planet.partition_coefficients = 'mgsio3'
-    config.planet.redox_dV_eos = redox_dV_eos
+    config.planet.interior_chem.ferric_fraction_initial = f_0
+    config.planet.interior_chem.metal_saturation = metal_saturation
+    config.planet.interior_chem.partition_coefficients = 'mgsio3'
+    config.planet.interior_chem.redox_dV_eos = redox_dV_eos
     config.outgas.T_floor = 700.0  # the outgassing temperature floor default
     return config
 
@@ -239,7 +239,7 @@ def test_partition_coefficients_switch_at_the_bridgmanite_pressure_cutoff():
 
 @pytest.mark.parametrize('f_0', [0.02, 0.1, 0.45])
 def test_configured_ferric_fraction_reaches_the_helpfile_on_the_first_step(f_0):
-    """End-to-end: planet.ferric_fraction_initial is what the tracker seeds and
+    """End-to-end: planet.interior_chem.ferric_fraction_initial is what the tracker seeds and
     reports, so a parameter sweep over it actually varies the model.
 
     Sweeps a reducing, the default, and a strongly oxidised melt. Before this
@@ -342,7 +342,7 @@ def test_reduced_melt_saturates_in_metal_and_becomes_more_oxidised():
 
 @pytest.mark.physics_invariant
 def test_disabled_metal_saturation_skips_the_metal_check(monkeypatch):
-    """planet.metal_saturation = False: the same reduced melt that exsolves
+    """planet.interior_chem.metal_saturation = False: the same reduced melt that exsolves
     metal above forms none, a_Fe is never evaluated (the activity function
     is not called, the columns hold 0 and -1), and the melt ends below f_0.
     Without metal only partitioning acts: each step the 30 GPa bridgmanite
@@ -1644,7 +1644,7 @@ def test_melt_iron_oxide_stays_below_the_melt_mass_as_the_mantle_freezes(
 
     def freeze(steps):
         config = _make_config(0.1, metal_saturation=False)
-        config.planet.partition_coefficients = coefficients
+        config.planet.interior_chem.partition_coefficients = coefficients
         interior = _make_interior()
         ratios = []
         for F in steps:
@@ -1820,7 +1820,7 @@ def test_an_unknown_prescription_is_refused_before_the_tracker_starts():
         _init_state(_PHI, _MASS, _PRES, 0.1, 'bulk_bse')
     interior = _make_interior()
     config = _make_config(0.1)
-    config.planet.partition_coefficients = 'schaefer'
+    config.planet.interior_chem.partition_coefficients = 'schaefer'
     with pytest.raises(ValueError, match="'schaefer'"):
         update_melt_redox(interior, {'T_magma': 2200.0}, config)
     assert interior.redox_state is None
@@ -1828,11 +1828,11 @@ def test_an_unknown_prescription_is_refused_before_the_tracker_starts():
 
 @pytest.mark.physics_invariant
 def test_configured_prescription_sets_the_coefficients_of_the_run():
-    """planet.partition_coefficients = 'bulk_BSE' reaches the tracker state:
+    """planet.interior_chem.partition_coefficients = 'bulk_BSE' reaches the tracker state:
     the 10 GPa cell takes the 2.5-15 GPa bulk values and the 30 and 50 GPa
     cells the lower-mantle ones, and the first crystallisation step uses them."""
     config = _make_config(0.1, metal_saturation=False)
-    config.planet.partition_coefficients = 'bulk_BSE'
+    config.planet.interior_chem.partition_coefficients = 'bulk_BSE'
     interior = _make_interior()
     update_melt_redox(interior, {'T_magma': 2200.0}, config)
     st = interior.redox_state
@@ -1878,7 +1878,7 @@ def test_bulk_prescription_follows_the_schaefer_2024_run():
 @pytest.mark.usefixtures('keane_table')
 @pytest.mark.physics_invariant
 def test_fo2_profile_uses_the_configured_melt_eos():
-    """planet.redox_dV_eos reaches the Step 10 profile: with 'keane_table' the
+    """planet.interior_chem.redox_dV_eos reaches the Step 10 profile: with 'keane_table' the
     stored profile is the one computed with that model, and it differs from
     the deng2020 profile by the difference of the two pressure terms. A
     super-Earth cell (10000 K, 1 TPa) outside the deng2020 envelope is NaN

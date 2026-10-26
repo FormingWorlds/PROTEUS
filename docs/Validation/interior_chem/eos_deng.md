@@ -3,7 +3,7 @@
 This page tracks the `@pytest.mark.reference_pinned` tests of the pressure term of the Fe3+/Fe2+ equilibria:
 the integral of the FeO -> FeO1.5 volume change of the melt, for the Deng et al. (2020) fourth-order
 Birch-Murnaghan model (`model = 'deng2020'`, the default) and for the Keane + Deng-thermal lookup table
-(`model = 'keane_table'`, `planet.redox_dV_eos`). The marker is registered in `pyproject.toml`. Last
+(`model = 'keane_table'`, `planet.interior_chem.redox_dV_eos`). The marker is registered in `pyproject.toml`. Last
 comparison of the `keane_table` and Komabayashi tests: 2026-10-23; the comparison dates of the two `deng2020` tests were not
 recorded when they were added.
 

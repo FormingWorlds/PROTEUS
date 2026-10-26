@@ -14,7 +14,7 @@ Physics summary (docs/Explanations/redox.md gives the full derivation):
             fraction (delta_phi), using the mass-invariant _s grid. A cell
             with phi < PHI_SOLID (0.15) counts as solid throughout (phi set
             to 0 on entry), so its last trace of melt crystallises when it
-            crosses the threshold. With config.planet.metal_saturation False
+            crosses the threshold. With config.planet.interior_chem.metal_saturation False
             there is no threshold: the solver's phi is used as is
   Step 3b   a cell whose phi rises remelts first the solid the tracker
             formed in it, the most recent, taken as homogeneous, and returns
@@ -42,7 +42,7 @@ Physics summary (docs/Explanations/redox.md gives the full derivation):
   Step 7-9  update the global reservoirs and the resulting ferric
             fraction / Fe3+/Fe2+ redox ratio
   Step 9a-9h  Fe metal saturation, run between every pair of
-            crystallization steps when config.planet.metal_saturation is
+            crystallization steps when config.planet.interior_chem.metal_saturation is
             True (default False). With the option False the step is
             skipped entirely: a_Fe is not evaluated, no metal forms, and
             the a_Fe helpfile columns hold 0 and -1.
@@ -115,7 +115,7 @@ is for fertile upper-mantle peridotite (olivine, Opx, Cpx, spinel), not
 for any of these minerals. docs/Validation/interior_chem/redox.md gives
 the benchmark against their run.
 
-config.planet.partition_coefficients = 'bulk_BSE' replaces the MgSiO3
+config.planet.interior_chem.partition_coefficients = 'bulk_BSE' replaces the MgSiO3
 values with the bulk D of the full mineral assemblage of each Schaefer et
 al. (2024) layer (their P_layers: 1, 2.5, 15, 18, 22 GPa; mineral fractions
 from their planetparams files). Both bulk D are medians over all 1000 draws
@@ -130,9 +130,9 @@ their runs never reach, takes the 1-2.5 GPa values. On their
 crystallisation sequence these follow their mean Fe3+/FeT within 0.005.
 
 Two choices are config fields: the initial ferric fraction f_0
-(``planet.ferric_fraction_initial``, default 0.1), the least well
+(``planet.interior_chem.ferric_fraction_initial``, default 0.1), the least well
 constrained of these numbers, and which set of partition coefficients is
-used (``planet.partition_coefficients``, 'mgsio3' or 'bulk_BSE'). The
+used (``planet.interior_chem.partition_coefficients``, 'mgsio3' or 'bulk_BSE'). The
 coefficient values themselves stay fixed.
 """
 
@@ -162,12 +162,12 @@ W_FET = 0.08  # ferrous FeO mass fraction in the melt (dimensionless)
 MU_FEO = 0.07184  # molar mass of FeO in kg/mol (= 71.84 g/mol)
 MU_FEO15 = 0.07984  # molar mass of FeO1.5 in kg/mol (= 79.84 g/mol)
 MU_MGSIO3 = 0.100389  # molar mass of MgSiO3 in kg/mol (= 100.389 g/mol)
-# Published default of config.planet.ferric_fraction_initial; the dataclass
+# Published default of config.planet.interior_chem.ferric_fraction_initial; the dataclass
 # placeholder until _init_state sets the configured value.
 F_0 = 0.10  # initial ferric fraction Fe3+/FeT (Schaefer et al. 2024)
 
 # Below this melt fraction a cell counts as solid throughout the tracker (Step 3
-# in the module docstring); applied only with planet.metal_saturation True.
+# in the module docstring); applied only with planet.interior_chem.metal_saturation True.
 PHI_SOLID = 0.15
 
 # Below this global melt mass fraction the tracker holds its last state (Step 3c).
@@ -526,7 +526,7 @@ def _init_state(
 ) -> MeltRedoxState:
     """Step 1-2 (Eq 1-3): seed the global Fe3+/Fe2+ reservoirs from the
     interior state at the first call, and the per-cell partition
-    coefficients of ``coefficient_set`` (config.planet.partition_coefficients)
+    coefficients of ``coefficient_set`` (config.planet.interior_chem.partition_coefficients)
     from the (time-invariant) pressure profile.
 
     W_FET is the ferrous FeO fraction, so it fixes n_Fe2 directly. Fe3+ is
@@ -534,7 +534,7 @@ def _init_state(
     n_Fe3 = n_Fe2 * f_0 / (1 - f_0). Total iron is n_Fe2 + n_Fe3.
 
     ``f_0`` is the initial ferric fraction Fe3+/FeT, from
-    config.planet.ferric_fraction_initial. The config validator confines
+    config.planet.interior_chem.ferric_fraction_initial. The config validator confines
     it to the open interval (0, 1); it is re-checked here because this
     function is also called directly by tests and callers that bypass
     the config layer, and f_0 in {0, 1} silently produces a degenerate
@@ -582,7 +582,7 @@ def _metal_saturation_step(
     Schaefer et al. (2024) Section 2.7 "add an additional step in between
     each crystallization step to check for metal saturation". The melt
     either is or is not supersaturated. Called only with
-    config.planet.metal_saturation True; with it False (the default) the
+    config.planet.interior_chem.metal_saturation True; with it False (the default) the
     caller skips this step, so a_Fe is never evaluated.
 
     Runs between crystallization (Steps 3-9) and the surface fO2 (Step 10),
@@ -668,7 +668,7 @@ def write_fO2_profile_ncdf(fpath: str, state: MeltRedoxState | None) -> bool:
     cell's (T, P) as Schaefer et al. (2024) report Delta-IW, and the scalar
     ``fO2_top_index``, the staggered index of the uppermost melt cell
     (diagnostic: ``fO2_shift_IW_mantle`` is evaluated at 1 bar). With
-    ``planet.metal_saturation = false`` both profiles are pressure-free (no
+    ``planet.interior_chem.metal_saturation = false`` both profiles are pressure-free (no
     int(dV dP), IW_H21 at 1 bar); the ``pressure_term`` attribute (0 or 1)
     of each variable records which. Returns True if written.
 
@@ -799,7 +799,7 @@ def _put_fO2_profile(ds, state: MeltRedoxState) -> None:
         'outside the EOS envelope'
         if with_p
         else 'Evaluated at each cell T and 1 bar, without int(dV dP) '
-        '(planet.metal_saturation = false); NaN in solid cells'
+        '(planet.interior_chem.metal_saturation = false); NaN in solid cells'
     )
     if state.dIW_H21_cell is not None:
         if 'dIW_H21_s' in ds.variables:
@@ -926,7 +926,7 @@ def restore_tracker_state(
     resume row at ``time`` [yr] into ``interior_o.redox_state``.
 
     Without it the first resumed step would reseed the reservoirs from
-    ``planet.ferric_fraction_initial`` and drop the metal inventory. A
+    ``planet.interior_chem.ferric_fraction_initial`` and drop the metal inventory. A
     snapshot without stored state (written before it was stored) is logged
     as a warning and the tracker restarts. Returns True if restored.
     """
@@ -937,11 +937,11 @@ def restore_tracker_state(
     if state is None:
         log.warning(
             'Resume: no melt-redox tracker state at t = %.3f yr (%s); the tracker '
-            'restarts from planet.ferric_fraction_initial = %.4g, so Fe3+/FeT and '
+            'restarts from planet.interior_chem.ferric_fraction_initial = %.4g, so Fe3+/FeT and '
             'the metal inventory are reset at this step',
             float(time),
             path,
-            float(config.planet.ferric_fraction_initial),
+            float(config.planet.interior_chem.ferric_fraction_initial),
         )
         return False
     interior_o.redox_state = state
@@ -1059,8 +1059,8 @@ def update_melt_redox(interior_o: Interior_t, hf_row: dict, config: Config) -> N
 
     # Effective melt fraction for every step below: phi < PHI_SOLID is solid,
     # unless metal saturation is off, where the solver's phi is used as is.
-    react = bool(config.planet.metal_saturation)
-    eos_model = str(config.planet.redox_dV_eos)
+    react = bool(config.planet.interior_chem.metal_saturation)
+    eos_model = str(config.planet.interior_chem.redox_dV_eos)
     phi = effective_melt_fraction(interior_o.phi, PHI_SOLID if react else 0.0)
     mass = np.asarray(interior_o.mass, dtype=float)
     pres = np.asarray(interior_o.pres, dtype=float)
@@ -1068,8 +1068,8 @@ def update_melt_redox(interior_o: Interior_t, hf_row: dict, config: Config) -> N
     first_call = interior_o.redox_state is None
 
     if first_call:
-        f_0 = float(config.planet.ferric_fraction_initial)
-        coefficient_set = str(config.planet.partition_coefficients)
+        f_0 = float(config.planet.interior_chem.ferric_fraction_initial)
+        coefficient_set = str(config.planet.interior_chem.partition_coefficients)
         interior_o.redox_state = _init_state(phi, mass, pres, f_0, coefficient_set)
         interior_o.redox_state.melt_exhausted = (
             global_melt_fraction(phi, mass) < MELT_FRACTION_MIN
@@ -1092,7 +1092,7 @@ def update_melt_redox(interior_o: Interior_t, hf_row: dict, config: Config) -> N
 
     state = interior_o.redox_state
 
-    # Step 9a-9h: Fe metal saturation, only with planet.metal_saturation True (a_Fe
+    # Step 9a-9h: Fe metal saturation, only with planet.interior_chem.metal_saturation True (a_Fe
     # is not evaluated otherwise); skipped on the first call, before any solid forms.
     xi = 0.0
     checked = react and not first_call and not state.melt_exhausted

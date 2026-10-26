@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import pytest
 
-from proteus.config._planet import Planet
+from proteus.config._planet import InteriorChem, Planet
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -62,8 +62,8 @@ def test_non_finite_ini_dsdr_is_rejected_in_every_mode(mode, dsdr):
 @pytest.mark.parametrize('choice', ['mgsio3', 'bulk_BSE'])
 def test_partition_coefficient_prescriptions_are_accepted(choice):
     """Both redox-tracker prescriptions are valid, and mgsio3 is the default."""
-    assert Planet(partition_coefficients=choice).partition_coefficients == choice
-    assert Planet().partition_coefficients == 'mgsio3'
+    assert InteriorChem(partition_coefficients=choice).partition_coefficients == choice
+    assert InteriorChem().partition_coefficients == 'mgsio3'
 
 
 @pytest.mark.parametrize('bad', ['bulk_bse', 'MgSiO3', 'schaefer', ''])
@@ -73,24 +73,24 @@ def test_unknown_partition_coefficient_prescription_is_rejected(bad):
     from proteus.interior_chem.redox import PARTITION_PRESCRIPTIONS
 
     with pytest.raises(ValueError) as exc:
-        Planet(partition_coefficients=bad)
+        InteriorChem(partition_coefficients=bad)
     assert 'partition_coefficients' in str(exc.value)
     assert f"(got '{bad}')" in str(exc.value)
     # The config accepts exactly the sets the tracker implements.
     assert tuple(exc.value.args[2]) == PARTITION_PRESCRIPTIONS
     # Assignment after construction is validated too.
-    planet = Planet()
+    chem = InteriorChem()
     with pytest.raises(ValueError):
-        planet.partition_coefficients = bad
-    assert planet.partition_coefficients == 'mgsio3'
+        chem.partition_coefficients = bad
+    assert chem.partition_coefficients == 'mgsio3'
 
 
 @pytest.mark.parametrize('choice', ['deng2020', 'keane_table'])
 def test_redox_melt_eos_choices_are_accepted(choice):
     """Both melt EOS of the redox pressure term are valid, and deng2020 is the
     default, so existing configurations keep their results."""
-    assert Planet(redox_dV_eos=choice).redox_dV_eos == choice
-    assert Planet().redox_dV_eos == 'deng2020'
+    assert InteriorChem(redox_dV_eos=choice).redox_dV_eos == choice
+    assert InteriorChem().redox_dV_eos == 'deng2020'
 
 
 @pytest.mark.parametrize('bad', ['Deng2020', 'keane', 'keane_deng', ''])
@@ -100,10 +100,42 @@ def test_unknown_redox_melt_eos_is_rejected(bad):
     from proteus.interior_chem.eos_deng import MODELS
 
     with pytest.raises(ValueError) as exc:
-        Planet(redox_dV_eos=bad)
+        InteriorChem(redox_dV_eos=bad)
     assert 'redox_dV_eos' in str(exc.value)
     assert tuple(exc.value.args[2]) == MODELS
-    planet = Planet()
+    chem = InteriorChem()
     with pytest.raises(ValueError):
-        planet.redox_dV_eos = bad
-    assert planet.redox_dV_eos == 'deng2020'
+        chem.redox_dV_eos = bad
+    assert chem.redox_dV_eos == 'deng2020'
+
+
+def test_redox_options_sit_in_the_interior_chem_section():
+    """The tracker options are read from [planet.interior_chem], which a Planet
+    builds with its defaults when the TOML omits the section."""
+    planet = Planet(
+        interior_chem=InteriorChem(metal_saturation=True, redox_dV_eos='keane_table')
+    )
+    assert planet.interior_chem.metal_saturation is True
+    assert planet.interior_chem.redox_dV_eos == 'keane_table'
+    default = Planet().interior_chem
+    assert default == InteriorChem()
+    assert default.ferric_fraction_initial == pytest.approx(0.1, abs=0.0)
+    assert default.metal_saturation is False
+    for key in ('ferric_fraction_initial', 'metal_saturation', 'partition_coefficients'):
+        assert not hasattr(Planet(), key)
+
+
+def test_redox_keys_left_directly_under_planet_are_unknown():
+    """A config written before the [planet.interior_chem] section keeps the
+    tracker options under [planet]; they are reported as unknown keys rather
+    than silently replaced by the defaults, and the new location is accepted."""
+    from proteus.config.orphans import find_key_problems
+
+    old = {'planet': {'metal_saturation': True, 'redox_dV_eos': 'keane_table'}}
+    orphans, mistyped = find_key_problems(old)
+    assert orphans == ['planet.metal_saturation', 'planet.redox_dV_eos']
+    assert mistyped == []
+    new = {
+        'planet': {'interior_chem': {'metal_saturation': True, 'redox_dV_eos': 'keane_table'}}
+    }
+    assert find_key_problems(new) == ([], [])

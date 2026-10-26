@@ -782,7 +782,7 @@ def next_step(
     afe_target = float(config.params.dt.afe_max_rel_change)
     if (
         afe_target > 0.0
-        and config.planet.metal_saturation
+        and config.planet.interior_chem.metal_saturation
         and hf_all is not None
         and 'a_fe_max_mantle' in hf_all.columns
         and len(hf_all['Time']) >= 2

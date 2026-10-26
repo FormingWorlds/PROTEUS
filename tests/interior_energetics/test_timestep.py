@@ -91,7 +91,7 @@ def _make_config(
         bol_scale_duration=bol_scale_duration,
     )
     escape = SimpleNamespace(step_dt_floor_frac=escape_dt_floor_frac)
-    planet = SimpleNamespace(metal_saturation=metal_saturation)
+    planet = SimpleNamespace(interior_chem=SimpleNamespace(metal_saturation=metal_saturation))
     return SimpleNamespace(params=params, star=star, escape=escape, planet=planet)
 
 
