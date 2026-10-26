@@ -27,11 +27,16 @@ mathematics the laws are defined by.
 
 **Why it matters.** The sigmoid law gives the orbit of a run that uses it, and so the stellar flux at the planet over time.
 
+![Semi-major axis of sigmoid migration against the window fraction](../../assets/validation/orbit_sigmoid_migration.svg#only-light){ width="80%" }
+![Semi-major axis of sigmoid migration against the window fraction](../../assets/validation/orbit_sigmoid_migration_dark.svg#only-dark){ width="80%" }
+
+**How to read the plot.** The x-axis is the fraction $u$ of the migration window and the y-axis the semi-major axis, from 2.0 to 0.8 AU. The line is `sigmoid_migration` (context), the dashed line a linear ramp and the dotted line the quintic smootherstep, which the test rejects. The hollow squares are the cubic $3u^2 - 2u^3$ at $u$ = 1/4, 1/2 and 3/4, and the filled circles the asserted code values there (1.8125, 1.4 and 0.9875 AU). A pass means that the circles sit in the squares, away from the dashed and dotted lines at $u$ = 1/4.
+
 ??? info "Test details"
     - Reference: the cubic Hermite interpolant with zero slope at both ends, `S(u) = 3u^2 - 2u^3` (analytical limit).
     - Tolerance: relative 1e-12 at u = 1/4, 1/2 and 3/4; the linear ramp more than 0.05 AU and the quintic more than 0.02 AU away.
     - Test id: `tests/orbit/test_parameterized.py::test_sigmoid_matches_the_cubic_smoothstep_across_the_window`
-    - Command: `pytest tests/orbit/test_parameterized.py::test_sigmoid_matches_the_cubic_smoothstep_across_the_window`
+    - Command: `pytest -m reference_pinned tests/orbit/test_parameterized.py --validation-plots`
 
 ## Orbital energy rate at the start of circularisation
 
@@ -43,11 +48,16 @@ mathematics the laws are defined by.
 
 **Why it matters.** The energy rate is the power that the orbit loses as it circularises.
 
+![Orbital energy rate of high-eccentricity migration against time for TOI-561 b](../../assets/validation/orbit_high_ecc_energy_rate.svg#only-light){ width="80%" }
+![Orbital energy rate of high-eccentricity migration against time for TOI-561 b](../../assets/validation/orbit_high_ecc_energy_rate_dark.svg#only-dark){ width="80%" }
+
+**How to read the plot.** The x-axis is the time since the migration epoch in units of $\tau$ and the y-axis the orbital energy rate in $10^{21}$ W, for the TOI-561 b setup. The line is `orbital_energy_rate` (context). The filled circle is the asserted rate at the epoch and the hollow square is $2\,\Delta E / \tau$; the dashed line is $\Delta E / \tau$, the form without the factor 2 that the test rejects. A pass means that the circle sits in the square, below the dashed line, between $-1$ and $-3 \times 10^{21}$ W.
+
 ??? info "Test details"
     - Reference: analytical limit, `dE/dt` of `E = -G M m (1 - e_mig^2 x) / (2 a_f)` at `x = 1` equals `2 dE / tau`.
     - Tolerance: relative 1e-10 against the closed form; relative 0.01 on dE = -2.86e35 J; size 1e21 to 3e21 W.
     - Test id: `tests/orbit/test_parameterized.py::test_high_ecc_energy_rate_at_the_epoch_is_twice_the_energy_change_over_tau`
-    - Command: `pytest tests/orbit/test_parameterized.py::test_high_ecc_energy_rate_at_the_epoch_is_twice_the_energy_change_over_tau`
+    - Command: `pytest -m reference_pinned tests/orbit/test_parameterized.py --validation-plots`
 
 ## Eccentricity decay of high-eccentricity migration
 
@@ -55,9 +65,14 @@ mathematics the laws are defined by.
 
 **What it tests.** The test compares the eccentricity of `high_eccentricity_migration` at 500 times with $e(t) = e_\mathrm{mig} \exp(-(t - t_\mathrm{mig}) / \tau)$, a form the source never evaluates. After one $\tau$ the eccentricity must have fallen by $e^{-1}$, not $e^{-1/2}$. It also checks that the eccentricity stays finite and not negative and ends at exactly zero, that the semi-latus rectum $a (1 - e^2)$ equals the final distance (an identity of the implementation, a sanity check only), and that the pericentre $a (1 - e)$ is not conserved.
 
-**How we know the right answer.** Postolec et al. (2026), Sect. 2.2, Eqs. 1-4 (see the derivation and the plot below).
+**How we know the right answer.** Postolec et al. (2026), Sect. 2.2, Eqs. 1-4 (see the derivation below).
 
 **Why it matters.** The eccentricity and the semi-major axis of a run with this law come from these equations.
+
+![Eccentricity decay of high-eccentricity migration](../../assets/validation/orbit_high_ecc_eccentricity.svg#only-light){ width="80%" }
+![Eccentricity decay of high-eccentricity migration](../../assets/validation/orbit_high_ecc_eccentricity_dark.svg#only-dark){ width="80%" }
+
+**How to read the plot.** The x-axis is the time since the migration epoch in units of $\tau$, $x = (t - t_\mathrm{mig})/\tau$, and the y-axis the eccentricity, for $a_0$ = 2.0 AU, $a_f$ = 0.8 AU, $e_\mathrm{mig} = \sqrt{0.6}$, $t_\mathrm{mig}$ = 1e5 yr and $\tau$ = 1e4 yr, over the first 5 migration widths. The markers are the asserted eccentricities of `high_eccentricity_migration` (every 25th of the 500 tested points) and the solid line is the closed form $e_\mathrm{mig} \exp(-x)$. The dashed curve is the law with half the decay rate, $e_\mathrm{mig} \exp(-x/2)$, which the test rejects. A pass means that the markers lie on the solid line.
 
 ??? info "Test details"
     - Reference: Postolec et al. (2026), submitted to ApJ, arXiv:2609.03144, Sect. 2.2, Eqs. 1-4.
@@ -172,18 +187,6 @@ difference.
 
 The `rtol=1e-10` tolerance on the invariant absorbs the round-off of the
 `sqrt` round trip through `e` and back.
-
-#### Plot: eccentricity decay
-
-![Eccentricity decay of high-eccentricity migration](../../assets/validation/orbit_high_ecc_eccentricity.svg#only-light){ width="80%" }
-![Eccentricity decay of high-eccentricity migration](../../assets/validation/orbit_high_ecc_eccentricity_dark.svg#only-dark){ width="80%" }
-
-Eccentricity returned by `high_eccentricity_migration` (markers, every 25th of the 500 tested points) against the closed form `e_mig exp(-x)` (solid) for `a_0 = 2.0 AU`, `a_f = 0.8 AU`, `e_mig = sqrt(0.6)`, `t_mig = 1e5 yr` and `tau = 1e4 yr`, over the first five migration widths. The dashed curve is the law with half the decay rate, `e_mig exp(-x/2)`, which the test rejects.
-
-- Reference: analytical limit, the closed form above derived from Postolec et al. (2026), Sect. 2.2, Eqs. 1-4.
-- Tolerance: `rtol=1e-9` on all 500 points.
-- Test id: `tests/orbit/test_parameterized.py::test_high_ecc_circularises_as_a_pure_exponential_in_eccentricity`
-- Command: `pytest -m reference_pinned tests/orbit/test_parameterized.py --validation-plots`
 
 ### Orbital energy rate
 

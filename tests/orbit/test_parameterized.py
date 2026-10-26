@@ -177,7 +177,7 @@ def test_instant_migration_is_a_step_with_an_inclusive_switch():
 
 @pytest.mark.reference_pinned
 @pytest.mark.physics_invariant
-def test_sigmoid_matches_the_cubic_smoothstep_across_the_window():
+def test_sigmoid_matches_the_cubic_smoothstep_across_the_window(validation_plot):
     """Analytical limit: the cubic Hermite interpolant that carries a
     value between two endpoints with zero slope at both is
     ``S(u) = 3u^2 - 2u^3``, evaluated on the window fraction
@@ -214,6 +214,43 @@ def test_sigmoid_matches_the_cubic_smoothstep_across_the_window():
     # interval the endpoints span, not the dimensionless S curve itself.
     assert quarter > 0.0
     assert SMA_F < quarter < SMA_I
+
+    def figure():
+        import matplotlib.pyplot as plt
+
+        u = np.linspace(0.0, 1.0, 41)
+        code = [sigmoid_migration(T_MIG + ui * TAU, SMA_I, SMA_F, T_MIG, TAU) for ui in u]
+        fig, ax = plt.subplots(figsize=(6, 4))
+        ax.plot(u, code, label='sigmoid_migration')
+        ax.plot(u, SMA_I + (SMA_F - SMA_I) * u, '--', label='Linear ramp')
+        ax.plot(
+            u,
+            SMA_I + (SMA_F - SMA_I) * (6 * u**5 - 15 * u**4 + 10 * u**3),
+            ':',
+            label='Quintic smootherstep',
+        )
+        ax.plot(
+            [0.25, 0.5, 0.75],
+            [1.8125, 1.4, 0.9875],
+            's',
+            mfc='none',
+            ms=10,
+            label='Cubic $3u^2 - 2u^3$',
+        )
+        ax.plot(
+            [0.25, 0.5, 0.75],
+            [quarter, middle, three_q],
+            'o',
+            zorder=3,
+            label='Asserted values',
+        )
+        ax.set_xlabel('Window fraction $u = (t - t_\\mathrm{mig}) / \\tau$')
+        ax.set_ylabel('Semi-major axis [AU]')
+        ax.legend(fontsize=8)
+        fig.tight_layout()
+        return fig
+
+    validation_plot(figure, 'orbit_sigmoid_migration')
 
 
 @pytest.mark.physics_invariant
@@ -965,7 +1002,7 @@ def _rate(t, migration, sma_init=A0_TOI, sma_final=AF_TOI, tau=TAU_TOI):
 
 @pytest.mark.physics_invariant
 @pytest.mark.reference_pinned
-def test_high_ecc_energy_rate_at_the_epoch_is_twice_the_energy_change_over_tau():
+def test_high_ecc_energy_rate_at_the_epoch_is_twice_the_energy_change_over_tau(validation_plot):
     """At the epoch the high-eccentricity track removes orbital energy at
     2 dE / tau, where dE = E(sma_final) - E(sma_init) is the whole energy
     change of circularisation. Analytic limit of d/dt of
@@ -982,6 +1019,28 @@ def test_high_ecc_energy_rate_at_the_epoch_is_twice_the_energy_change_over_tau()
     assert abs(rate - delta_e / (TAU_TOI * secs_per_year)) > 0.4 * abs(expected)
     assert rate < 0.0  # the orbit loses energy while it shrinks
     assert 1.0e21 < abs(rate) < 3.0e21  # W, not J/yr or erg/s
+
+    def figure():
+        import matplotlib.pyplot as plt
+
+        x = np.linspace(0.0, 3.0, 31)
+        curve = [_rate(TMIG_TOI + xi * TAU_TOI, 'high_ecc') / 1e21 for xi in x]
+        fig, ax = plt.subplots(figsize=(6, 4))
+        ax.plot(x, curve, label='orbital_energy_rate')
+        ax.axhline(
+            delta_e / (TAU_TOI * secs_per_year) / 1e21, ls='--', label='$\\Delta E / \\tau$'
+        )
+        ax.plot(
+            [0.0], [expected / 1e21], 's', mfc='none', ms=10, label='$2\\,\\Delta E / \\tau$'
+        )
+        ax.plot([0.0], [rate / 1e21], 'o', zorder=3, label='Asserted rate at the epoch')
+        ax.set_xlabel('$(t - t_\\mathrm{mig}) / \\tau$')
+        ax.set_ylabel('$dE/dt$ [10$^{21}$ W]')
+        ax.legend(fontsize=8)
+        fig.tight_layout()
+        return fig
+
+    validation_plot(figure, 'orbit_high_ecc_energy_rate')
 
 
 @pytest.mark.physics_invariant
