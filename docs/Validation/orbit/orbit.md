@@ -22,11 +22,16 @@ This page checks the tidal evolution of the orbit in `proteus.orbit.orbit`. Tide
 
 **Known limit.** The test checks the algebra under the sign convention of the source, not that the convention matches the paper (see the note below).
 
+![Eccentricity rate of sp0d against semi-major axis](../../assets/validation/orbit_sp0d_de_dt.svg#only-light){ width="80%" }
+![Eccentricity rate of sp0d against semi-major axis](../../assets/validation/orbit_sp0d_de_dt_dark.svg#only-dark){ width="80%" }
+
+**How to read the plot.** The x-axis is the semi-major axis and the y-axis $de/dt$, both on log scales, in the unit system of the test ($\mathrm{Im}(k_2) = M_\star = R_p = M_p = 1$, $e$ = 0.5). The line is the finite-difference rate of `sp0d` and the squares are Eq. 16 with $a^{-13/2}$ (context). The dashed and dotted lines are the $a^{-5}$ and $a^{-7}$ forms that the test rejects. The filled circle is the asserted value at $a$ = 2, with the asserted tolerance of relative 1e-3. A pass means that the circle and the squares lie on the line, between the 2 rejected forms.
+
 ??? info "Test details"
     - Reference: Driscoll and Barnes (2015), Astrobiology 15, 739, Eq. 16 (closed form).
     - Tolerance: relative 1e-3; the $a^5$ form must miss by more than 100 % and the $a^7$ form by more than 10 %.
     - Test id: `tests/orbit/test_orbit.py::test_sp0d_de_dt_matches_driscoll_barnes_2015_eq16`
-    - Command: `pytest tests/orbit/test_orbit.py::test_sp0d_de_dt_matches_driscoll_barnes_2015_eq16`
+    - Command: `pytest -m reference_pinned tests/orbit/test_orbit.py --validation-plots`
 
 ## Angular momentum of sp1d
 
@@ -40,11 +45,16 @@ This page checks the tidal evolution of the orbit in `proteus.orbit.orbit`. Tide
 
 **Known limit.** A common factor on all 3 rate equations, for example a scaled Love number, keeps the angular momentum conserved and passes both sp1d cases. The spin angular momentum is about 1e-6 of the total, so this check cannot see an error in the spin equation alone; the next case covers it.
 
+![Spin, orbital and total angular momentum before and after one sp1d step](../../assets/validation/orbit_sp1d_total_angular_momentum.svg#only-light){ width="80%" }
+![Spin, orbital and total angular momentum before and after one sp1d step](../../assets/validation/orbit_sp1d_total_angular_momentum_dark.svg#only-dark){ width="80%" }
+
+**How to read the plot.** The bars are the spin, orbital and total angular momentum, on a log scale, before and after one `sp1d` step of 1e5 yr. The 2 total bars are the asserted values: they must agree to relative 1e-6. The spin and orbit bars are context: the spin term is about $10^{-6}$ of the total, so the total follows the orbit. A pass means that the 2 total bars have the same height; the spin bar grows a little and the orbit bar falls by the same amount (the next case checks that exchange).
+
 ??? info "Test details"
     - Reference: angular-momentum conservation of an isolated 2-body system (analytical limit).
     - Tolerance: relative 1e-6 on the total.
     - Test id: `tests/orbit/test_orbit.py::test_sp1d_conserves_total_angular_momentum`
-    - Command: `pytest tests/orbit/test_orbit.py::test_sp1d_conserves_total_angular_momentum`
+    - Command: `pytest -m reference_pinned tests/orbit/test_orbit.py --validation-plots`
 
 ## Spin gain equals orbital loss in sp1d
 
@@ -56,11 +66,16 @@ This page checks the tidal evolution of the orbit in `proteus.orbit.orbit`. Tide
 
 **Why it matters.** It checks the spin equation of `sp1d` on its own.
 
+![Spin angular momentum gained and orbital angular momentum lost in one sp1d step](../../assets/validation/orbit_sp1d_spin_orbit_exchange.svg#only-light){ width="80%" }
+![Spin angular momentum gained and orbital angular momentum lost in one sp1d step](../../assets/validation/orbit_sp1d_spin_orbit_exchange_dark.svg#only-dark){ width="80%" }
+
+**How to read the plot.** The 2 bars are the asserted spin gain and orbital loss of angular momentum over the same `sp1d` step. The grey band is 5 % on each side of the spin gain, the asserted tolerance. A pass means that both bars end inside the band; both are also above 1e30 in size.
+
 ??? info "Test details"
     - Reference: angular-momentum conservation, applied to the exchange between spin and orbit (analytical limit).
     - Tolerance: relative 5e-2 between the spin gain and the orbital loss.
     - Test id: `tests/orbit/test_orbit.py::test_sp1d_spin_am_gain_matches_orbital_am_loss`
-    - Command: `pytest tests/orbit/test_orbit.py::test_sp1d_spin_am_gain_matches_orbital_am_loss`
+    - Command: `pytest -m reference_pinned tests/orbit/test_orbit.py --validation-plots`
 
 ## Sign convention note
 
