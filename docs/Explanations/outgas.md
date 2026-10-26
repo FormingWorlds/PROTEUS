@@ -17,8 +17,8 @@ The first section gives the order of the steps. The later sections explain the s
 - **Interior solver**: the module that evolves the mantle temperature and melt fraction, set by `interior_energetics.module` (for example Aragog or SPIDER).
 - **Melt fraction** $\Phi$: the mass fraction of the mantle that is liquid \[1\], `Phi_global` in the output. Do not confuse it with the porosity $\phi$ (lower case) below, which is a volume fraction.
 - **Oxygen fugacity** (fO$_2$): a measure of how oxidising the melt is, in the form of an effective O$_2$ pressure. PROTEUS gives it relative to the iron-wustite (IW) buffer, the fO$_2$ at which iron metal and FeO are in equilibrium. `outgas.fO2_shift_IW` is that shift in log10 units, so a value of 2 is 100 times the IW fO$_2$.
-- **Mass threshold**: `outgas.mass_thresh` \[kg\]. The chemistry solve treats H, C, N or S with less mass than this as absent. Escape and the desiccation check also use it (see [the config reference](../Reference/config/escape_outgas.md#outgassing-outgas)).
-- **Desiccated**: the state of a planet that has lost its volatiles. Every volatile and noble gas that escape can still reach is below the mass threshold.
+- **Mass threshold**: `outgas.mass_thresh` \[kg\]. The chemistry solve treats H, C, N or S with less mass than this as absent. Escape also uses it (see [the config reference](../Reference/config/escape_outgas.md#outgassing-outgas)).
+- **Desiccated**: the state of a planet that has lost its volatiles. For each volatile and noble gas, the mass that can still escape or outgas is below the mass threshold. Trapped mass, and condensed mass kept with `outgas.prevent_desaturation = true`, do not count.
 - **Initialisation stage**: the first iterations of a run. They set up the starting state. The mantle does not evolve in them, and the time returns to zero after each.
 - **`M_atm`**: the total mass of the atmosphere \[kg\].
 
@@ -44,8 +44,13 @@ The outgassing step takes 1 of 3 paths:
     - The melt is emptied, except with `outgas.trap_mode = "front"`. Then the melt keeps its mass, so that mass a remelt returns stays in the planet.
     - The solid mantle and the condensates keep their mass.
     - Rock vapour can still enter the atmosphere (see [Rock vapour](#rock-vapour-from-the-melt-surface)).
-- **Crystallised** (`run_crystallized`). This path needs `params.stop.solid.freeze_volatiles = true`. It starts when $\Phi$ falls to `params.stop.solid.phi_crit` or below, and it stays on after that (the desiccated path still takes precedence); only a giant impact (see [Accretion](model.md#accretion-morrigan)) turns it off. The melt and the atmosphere then exchange no volatiles. Escape still removes gas, so the code scales every atmospheric reservoir down by the same fraction, and the composition does not change.
+- **Crystallised** (`run_crystallized`). This path needs `params.stop.solid.freeze_volatiles = true`.
+    - It starts when $\Phi$ falls to `params.stop.solid.phi_crit` or below. It stays on after that; only a giant impact turns it off.
+    - The melt and the atmosphere exchange no volatiles.
+    - Escape still removes gas, so the code scales every atmospheric reservoir down by the same fraction. The composition does not change.
 - **Normal** (`run_outgassing`). The chemistry solver runs. This is the usual path while a magma ocean exists.
+
+If the planet is desiccated, the desiccated path runs, also when the crystallised path is on.
 
 On the normal path, the step does 3 things:
 
@@ -55,7 +60,7 @@ On the normal path, the step does 3 things:
 
 **Oxygen.** With CALLIOPE or atmodeller and `planet.fO2_source = "user_constant"`, the solver holds the fO$_2$ at the set value. To do that, it adds or removes oxygen, so `O_kg_total` is a result of each solve and not a fixed budget. With `"from_O_budget"`, the O budget is the input, and the solver finds the fO$_2$ that matches it. The dummy module computes an O total only in the initialisation stage and only when the O total is empty. Otherwise it keeps the O total.
 
-**Initialisation check.** In the initialisation stage, the code writes the element budgets from `planet.elements` to `{e}_kg_total`. You can also set an O budget, with `planet.elements.O_mode` set to `"kg"`, `"ppmw"` or `"FeO_mantle_wt_pct"`. With such an O budget and `planet.fO2_source = "user_constant"`, the code compares your budget with the oxygen of the first solve. It stops the run if the two differ by more than 50 % of the solve value. The default, `O_mode = "ic_chemistry"`, skips this check.
+**Initialisation check.** In the initialisation stage, the code writes the element budgets to `{e}_kg_total`. They come from `planet.elements` with the default `planet.volatile_mode = "elements"`, or from the initial partial pressures with `"gas_prs"`. You can also set an O budget, with `planet.elements.O_mode` set to `"kg"`, `"ppmw"` or `"FeO_mantle_wt_pct"`. With such an O budget and `planet.fO2_source = "user_constant"`, the code compares your budget with the oxygen of the first solve. It stops the run if the two differ by more than 50 % of the solve value. The default, `O_mode = "ic_chemistry"`, skips this check.
 
 **Where this is checked.** No Validation case covers the order of the steps. After each outgassing step, a runtime check tests the mass budget; see [Mass conservation](coupling_loop.md#mass-conservation).
 
@@ -114,7 +119,7 @@ The inputs are:
 
 To turn masses into number fractions, the code needs the molar mass of each species. It sums the atomic masses of the formula and gives the result in g mol$^{-1}$, the unit that FastChem and LavAtmos use. For SiO$_2$ this is 60.083 g mol$^{-1}$.
 
-The vapour step runs after the chemistry solve on the normal path and on the desiccated path. It is skipped when $\Phi$ is at `params.stop.solid.phi_crit` or below. Rock vapour enters the atmosphere without being taken from the mantle, so with `outgas.vapourise = true` whole-planet mass is not conserved; see [Model description](model.md#whole-planet-mass-is-not-conserved-when-vapourisation-is-enabled).
+The vapour step runs on the normal path, after the chemistry solve, and on the desiccated path. It is skipped when $\Phi$ is at `params.stop.solid.phi_crit` or below. Rock vapour enters the atmosphere without being taken from the mantle, so with `outgas.vapourise = true` whole-planet mass is not conserved; see [Model description](model.md#whole-planet-mass-is-not-conserved-when-vapourisation-is-enabled).
 
 **Where this is checked.** [Rock-vapour molar masses](../Validation/outgas/lavatmos.md).
 
@@ -145,13 +150,14 @@ Trapping does nothing in the initialisation stage and in the first step of a run
 - `{sp}_kg_trapped` and `{e}_kg_trapped` \[kg\]: the mass of each species and of each element that is trapped at the end of the step.
 - `trap_F_tl` \[1\]: the trapped melt fraction of the step, $F_\mathrm{tl}$ below.
 - `trap_branch`: which path the step took (see [When the front cannot be integrated](#when-the-front-cannot-be-integrated)).
-- `trap_tau_D`, `trap_tau_s`, `trap_t_res` \[yr\] and `trap_L_front` \[m\]: the 2 timescales, the residence time and the front thickness of the drainage section; they show why a step took branch 1, 2 or 3.
+- `trap_tau_D`, `trap_tau_s` and `trap_t_res` \[yr\]: the 2 timescales and the residence time of the drainage section. They show why a step took branch 1 or 2. On branch 3 they are not computed (NaN).
+- `trap_L_front` \[m\]: the front thickness.
 
 The other trapping inputs, such as `outgas.D_const_<species>` and `outgas.trap_phi_min`, are in the [config reference](../Reference/config/escape_outgas.md#outgassing-outgas).
 
 ### The burial rule
 
-In one step, the mantle mass $\Delta M$ \[kg\] freezes. The code gets it from the drop of the melt fraction: $\Delta M = M_\mathrm{mantle}\,(\Phi_{t-1} - \Phi_t)$, where $M_\mathrm{mantle}$ is the mantle mass \[kg\] and $t$ counts the steps. Each volatile species $Z$ then moves this mass from the melt to the solid [^cite-sim2024]:
+In one step, the mantle mass $\Delta M$ \[kg\] freezes. The code gets it from the drop of the melt fraction: $\Delta M = M_\mathrm{mantle}\,(\Phi_{t-1} - \Phi_t)$, where $M_\mathrm{mantle}$ is the mantle mass \[kg\] and the index $t$ counts the steps. Each volatile species $Z$ then moves this mass from the melt to the solid [^cite-sim2024]:
 
 $$
 \Delta m_Z = \left[(1 - F_\mathrm{tl})\, D_Z + F_\mathrm{tl}\right] C_Z\, \Delta M.
@@ -188,7 +194,7 @@ The buried mass moves from `{sp}_kg_liquid` to `{sp}_kg_solid`, and `{sp}_kg_tra
 - **Permeability**: how easily melt flows through the pores \[m$^2$\].
 - **Parcel**: a small piece of mush. As the front moves up, a parcel enters the front at the top and leaves it at the base.
 - **Mesh and nodes**: the radial grid of the interior solver, and its grid points.
-- **Critical melt fraction** $\Phi_c$: `interior_energetics.rfront_loc` (default 0.4), the melt fraction at which the interior solver switches the mantle from melt-like to solid-like flow.
+- **Critical melt fraction** $\Phi_c$: `interior_energetics.rfront_loc` (default 0.4), the melt fraction at the centre of the transition where the interior solver changes the mantle from melt-like to solid-like flow. It is not `params.stop.solid.phi_crit`.
 
 ### Where the front is
 
@@ -197,19 +203,19 @@ The code finds the front on the interior mesh (`locate_front`):
 - **Top**: where the melt fraction of the interior solver falls below $\Phi_c$. So trapping and the interior use the same transition.
 - **Base**: where the porosity falls below `outgas.trap_phi_min` (default 0.01). If the lowest node is still porous, the core-mantle boundary is the base.
 
-The interior solver gives a melt fraction for each node, so the top uses it directly. For the base, the code turns the densities of the mush $\rho$, the solid $\rho_s$ and the melt $\rho_l$ into a porosity: $\phi = (\rho_s - \rho)/(\rho_s - \rho_l)$.
+The interior solver gives a melt fraction for each node, and the top uses it directly. The code also computes a porosity for each node from the densities of the mush $\rho$, the solid $\rho_s$ and the melt $\rho_l$: $\phi = (\rho_s - \rho)/(\rho_s - \rho_l)$. The base uses this porosity, and the porosity of the top node is where the drainage equation starts.
 
 ### The 2 timescales
 
 The **percolation time** $\tau_D$ is how long melt takes to flow through a front of thickness $L$ \[m\]:
 
 $$
-\tau_D = \frac{L}{w_D}, \qquad w_D = \frac{|\Delta\rho|\, g\, k(\phi)}{\eta_\mathrm{melt}}.
+\tau_D = \frac{L}{w_D}, \qquad w_D = \frac{|\Delta\rho|\, g\, F(\phi)}{\eta_\mathrm{melt}}.
 $$
 
-Here $w_D$ is the percolation speed \[m s$^{-1}$\] and $\Delta\rho$ is the solid density minus the melt density \[kg m$^{-3}$\]. $g$ is the gravity \[m s$^{-2}$\] and $\eta_\mathrm{melt}$ is the melt viscosity \[Pa s\]. $k(\phi)$ \[m$^2$\] is the permeability divided by the porosity, called the mobility.
+Here $w_D$ is the percolation speed \[m s$^{-1}$\] and $\Delta\rho$ is the solid density minus the melt density \[kg m$^{-3}$\]. $g$ is the gravity \[m s$^{-2}$\] and $\eta_\mathrm{melt}$ is the melt viscosity \[Pa s\]. $F(\phi)$ \[m$^2$\] is the mobility: the permeability $k$ divided by the porosity, as on the [drainage Validation page](../Validation/outgas/compaction.md).
 
-$k(\phi)$ is the same law that Aragog uses for the separation of melt and solid [^cite-bower2018]. It has 3 regimes: Blake-Kozeny-Carman flow at low porosity, Rumpf-Gupte flow at middle porosity and Stokes settling of single grains at high porosity. The [drainage Validation page](../Validation/outgas/compaction.md) gives the formula of each. $k$ grows with the grain size, `interior_energetics.grain_size` \[m\], and with $\phi$. With the default `interior_energetics.aragog.separation_buoyancy = "mixture"`, the 2 porous-flow regimes include a factor $1 - \phi$.
+$F(\phi)$ is the same law that Aragog uses for the separation of melt and solid [^cite-bower2018]. It has 3 regimes: Blake-Kozeny-Carman flow at low porosity, Rumpf-Gupte flow at middle porosity and Stokes settling of single grains at high porosity. The [drainage Validation page](../Validation/outgas/compaction.md) gives the formula of each. $F$ grows with the grain size, `interior_energetics.grain_size` \[m\], and with $\phi$. With the default `interior_energetics.aragog.separation_buoyancy = "mixture"`, the 2 porous-flow regimes include a factor $1 - \phi$.
 
 The **matrix time** $\tau_s$ is how long the matrix takes to deform and close the pores:
 
@@ -221,7 +227,7 @@ where $\mu_s$ is the mush viscosity \[Pa s\], $10^{20}$ Pa s by default.
 
 ### The drainage equation
 
-A parcel takes the **residence time** $t_\mathrm{res} = L / v_f$ to cross the front. Here $v_f$ is the front speed \[m s$^{-1}$\], from the mass that froze in the step. While the parcel crosses the front, its porosity falls as
+A parcel takes the **residence time** $t_\mathrm{res} = L / v_f$ to cross the front. Here $v_f$ is the front speed \[m s$^{-1}$\], from the mass that froze in the step. While the parcel crosses the front, its porosity falls with the time $t$ \[s\] as
 
 $$
 \frac{d\phi}{dt} = -\frac{\phi}{\max(\tau_D(\phi),\ \tau_s)}.
@@ -236,7 +242,7 @@ The code integrates this from the porosity at the top of the front, over the tim
 | 70 cm yr$^{-1}$ | $8.6\times10^4$ yr | $7.0\times10^4$ yr | $4.3\times10^4$ yr | 0.194 | 0.177 |
 | 5 cm yr$^{-1}$ | $1.2\times10^6$ yr | $7.0\times10^4$ yr | $4.3\times10^4$ yr | 0.109 | 0.099 |
 
-A slower front gives the melt more time to drain, so it traps less. $\tau_D$ grows as $\phi$ falls, so here $\tau_D$ is longer than $\tau_s$ during the whole crossing. Percolation therefore limits the drainage, and the code records `trap_branch` = 1. Because this case is limited by percolation, the mush viscosity does not change the result.
+A slower front gives the melt more time to drain, so it traps less. $\tau_D$ grows as $\phi$ falls, so here $\tau_D$ is longer than $\tau_s$ during the whole crossing. Percolation therefore limits the drainage, and the code records `trap_branch` = 1. A lower mush viscosity gives the same result. A mush viscosity above about $1.6\times10^{20}$ Pa s makes $\tau_s$ longer than $\tau_D$ at entry, and then the matrix limits the drainage: at $10^{21}$ Pa s the fast front keeps 0.246 instead of 0.194.
 
 ### When the front cannot be integrated
 
@@ -277,7 +283,7 @@ The **burial ledger** stores the mass buried in each step as a layer. Each layer
 
 At each remelt, the code builds the ledger from the output columns `Phi_global` and `{sp}_kg_trapped`, so a resumed run has the same ledger.
 
-If the history does not account for all of the trapped mass, the rest returns in proportion to the share of the solid that remelted, $(\Phi_t - \Phi_{t-1})/(1 - \Phi_{t-1})$.
+If the history does not account for all of the trapped mass, the rest returns in proportion to the share of the solid that remelted. With the step index $t$, that share is $(\Phi_t - \Phi_{t-1})/(1 - \Phi_{t-1})$.
 
 **Where this is checked.** [Burial ledger for remelting](../Validation/outgas/burial_ledger.md).
 
