@@ -31,7 +31,23 @@ REMELT_CLOSURE_RTOL = 1e-10
 
 
 def check_melt_fraction(f) -> float:
-    """Return f as a float, or raise if it is not a finite real number in [0, 1]."""
+    """Return a melt fraction as a float after checking its type and range.
+
+    Parameters
+    ----------
+    f : float
+        Melted mass fraction of the mantle [1]; a real number in [0, 1], not a bool.
+
+    Returns
+    -------
+    float
+        ``f`` as a Python float.
+
+    Raises
+    ------
+    ValueError
+        If ``f`` is a bool, not a real number, NaN, or outside [0, 1].
+    """
     if isinstance(f, bool) or not isinstance(f, numbers.Real) or not 0.0 <= f <= 1.0:
         raise ValueError(f'melt fraction must be a finite real number in [0, 1], got {f!r}')
     return float(f)

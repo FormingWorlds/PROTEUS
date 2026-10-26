@@ -2226,7 +2226,8 @@ def remelt_mantle(
     The backends carry their state differently, so each is reset in its own
     terms: the dummy and boundary backends cool a surface temperature, which is
     raised to the configured initial value (or kept when higher) together with
-    every quantity derived from it; Aragog raises each cell to its entropy
+    every quantity derived from it (an accretion run on the boundary interior is
+    refused at configuration load, so its branch serves only direct calls); Aragog raises each cell to its entropy
     initial condition (or keeps a higher entropy) and carries that profile
     through the reset the coupling performs on the next step. The re-melt
     never cools the mantle.
