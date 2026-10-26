@@ -6915,9 +6915,10 @@ def test_a_non_finite_core_temperature_at_the_remelt_writes_the_interior_status(
 
 
 @pytest.mark.unit
-def test_an_energy_balance_remelt_error_writes_no_status():
-    """A ValueError of a re-melt without the core module reaches the caller and leaves
-    the status file as it is: only the core module re-melt writes status 21."""
+def test_an_energy_balance_remelt_error_writes_the_interior_status():
+    """A ValueError of a full re-melt without the core module writes interior status 21
+    and reaches the caller: no caller of the impact writes a status, so a run that stops
+    here would read as still running."""
     interior_o = SimpleNamespace(
         aragog_solver=_FakeAragogSolver(cooled_profile=np.full(6, 2400.0)),
         _last_entropy=np.full(6, 2400.0),
@@ -6934,7 +6935,7 @@ def test_an_energy_balance_remelt_error_writes_no_status():
         remelt_mantle(
             {'output': '/tmp/out'}, _remelt_config('aragog'), hf_row={}, interior_o=interior_o
         )
-    status_mock.assert_not_called()
+    assert [c.args[1] for c in status_mock.call_args_list] == [21]
 
 
 @pytest.mark.unit
@@ -8172,7 +8173,8 @@ def test_the_booked_remelt_heat_rises_with_the_melt_fraction():
 @pytest.mark.unit
 def test_the_solver_restarts_from_the_partial_profile_and_keeps_the_full_call_pattern():
     """At f = 1 with every cell below the molten profile no extra restart is set;
-    at f < 1 the solver gets the partial profile once, since _set_entropy_ic left S_molten in it."""
+    at f < 1 the solver gets the partial profile once, since _set_entropy_ic left S_molten
+    in it."""
     solver_full, _, _ = _partial_aragog_remelt(1.0)
     solver_part, interior_o, _ = _partial_aragog_remelt(0.5)
     assert solver_full.set_calls == []
@@ -8183,7 +8185,8 @@ def test_the_solver_restarts_from_the_partial_profile_and_keeps_the_full_call_pa
 
 @pytest.mark.unit
 def test_a_partial_remelt_without_an_end_state_is_refused():
-    """With no end-of-step profile, f < 1 has nothing to keep: it raises, naming f and the reason.
+    """With no end-of-step profile, f < 1 has nothing to keep: it raises, naming f and the
+    reason.
     At f = 1 the run keeps the full re-melt with a warning."""
     with pytest.raises(
         RuntimeError, match=r'partial re-melt .*f = 0\.3.*no pre-impact entropy'
@@ -8197,13 +8200,19 @@ def test_a_partial_remelt_without_an_end_state_is_refused():
 @pytest.mark.unit
 @pytest.mark.parametrize('bad', [np.nan, -0.1, 1.1, np.inf], ids=repr)
 def test_remelt_refuses_a_fraction_outside_the_unit_interval(bad):
-    """remelt_mantle refuses f outside [0, 1] before the interior changes."""
+    """remelt_mantle refuses f outside [0, 1] before the interior changes, and writes
+    interior status 21."""
     hf_row = _remelt_hf_row()
     interior_o = SimpleNamespace(impact_reset=False)
-    with pytest.raises(ValueError, match='melt fraction'):
+    status = MagicMock()
+    with (
+        patch('proteus.interior_energetics.wrapper.UpdateStatusfile', new=status),
+        pytest.raises(ValueError, match='melt fraction'),
+    ):
         remelt_mantle(
             {'output': '/tmp/out'}, _remelt_config('dummy'), hf_row, interior_o, f=bad
         )
+    assert [c.args[1] for c in status.call_args_list] == [21]
     np.testing.assert_equal(hf_row['T_magma'], 2100.0)
     assert interior_o.impact_reset is False
 
@@ -8383,10 +8392,13 @@ def test_any_error_of_the_partial_profile_writes_the_interior_status(monkeypatch
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize('method', ['set_initial_entropy', '_step_heat_content'])
-def test_an_error_after_the_partial_profile_writes_the_interior_status(monkeypatch, method):
-    """Setting the re-melted profile and booking its heat are part of the partial re-melt:
-    an error in either writes interior status 21 before it reaches the caller."""
+@pytest.mark.parametrize(
+    'method, f',
+    [('set_initial_entropy', 0.3), ('_step_heat_content', 0.3), ('_step_heat_content', 1.0)],
+)
+def test_an_error_after_the_partial_profile_writes_the_interior_status(monkeypatch, method, f):
+    """Setting the re-melted profile and booking its heat are part of the re-melt: an error
+    in either writes interior status 21 before it reaches the caller, also at f = 1."""
 
     def fail(self, *args):
         raise RuntimeError(f'{method} failed')
@@ -8394,7 +8406,7 @@ def test_an_error_after_the_partial_profile_writes_the_interior_status(monkeypat
     monkeypatch.setattr(_FakeMeshAragogSolver, method, fail)
     status = MagicMock()
     with pytest.raises(RuntimeError) as err:
-        _partial_aragog_remelt(0.3, status=status)
+        _partial_aragog_remelt(f, status=status)
     assert str(err.value) == f'{method} failed'
     assert [c.args[1] for c in status.call_args_list] == [21]
 
@@ -8482,7 +8494,12 @@ def test_every_error_of_a_partial_remelt_writes_the_interior_status_once(path):
     ):
         remelt_mantle({'output': '/tmp/out'}, config, row, interior_o, f=f)
     assert [c.args[1] for c in status.call_args_list] == [21]
-    assert err.value is boom or path not in raising
+    detail = {
+        'no_solver': 'not yet initialised',
+        'melt_state': "'M_int'",
+        'nan_f': 'melt fraction',
+    }
+    assert err.value is boom if path in raising else detail[path] in str(err.value)
 
 
 @pytest.mark.unit
@@ -8498,32 +8515,22 @@ def test_a_partial_core_module_remelt_error_writes_the_interior_status_once():
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize('module, status', [('aragog', []), ('dummy', [21])])
-def test_a_full_remelt_error_writes_the_status_for_a_scalar_backend_alone(module, status):
-    """At f = 1 an error after the set-up leaves the status file to the caller on an
-    energy-balance Aragog run (only a core_module ValueError writes 21 there), while a
-    scalar backend writes 21 on any error; the error reaches the caller in both."""
-    w = 'proteus.interior_energetics.wrapper.'
+@pytest.mark.parametrize('module', ['dummy', 'boundary'])
+def test_a_full_scalar_remelt_error_writes_the_interior_status(module):
+    """At f = 1 an error of a scalar backend after its temperature lift (a row without the
+    planet mass) writes interior status 21 and reaches the caller unchanged."""
     row = _remelt_hf_row()
     del row['M_int']
-    interior_o = SimpleNamespace(
-        aragog_solver=_FakeMeshAragogSolver(cooled_profile=np.full(6, 2400.0)),
-        _last_entropy=np.full(6, 2400.0),
-        impact_reset=False,
-    )
-    calls = MagicMock()
+    status = MagicMock()
     with (
-        patch(
-            'proteus.interior_energetics.aragog.AragogRunner._set_entropy_ic',
-            return_value=np.full(6, 3900.0),
-        ),
-        patch('proteus.interior_energetics.aragog.AragogRunner._refresh_entropy_eos'),
-        patch(w + 'evaluate_molten_state', side_effect=RuntimeError('boom')),
-        patch(w + 'UpdateStatusfile', new=calls),
-        pytest.raises((RuntimeError, KeyError)),
+        patch('proteus.interior_energetics.wrapper.UpdateStatusfile', new=status),
+        pytest.raises(KeyError) as err,
     ):
-        remelt_mantle({'output': '/tmp/out'}, _remelt_config(module), row, interior_o, f=1.0)
-    assert [c.args[1] for c in calls.call_args_list] == status
+        remelt_mantle(
+            {'output': '/tmp/out'}, _remelt_config(module), row, SimpleNamespace(), f=1.0
+        )
+    assert err.value.args == ('M_int',)
+    assert [c.args[1] for c in status.call_args_list] == [21]
 
 
 class _FakeRisingTSolver(_FakeMeshAragogSolver):
