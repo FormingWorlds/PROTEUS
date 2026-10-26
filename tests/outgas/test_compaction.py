@@ -137,19 +137,19 @@ def test_darcy_velocity_follows_the_closed_form_mobility_in_every_regime(validat
     95 percent at 0.95."""
     drho, gravity, eta = 400.0, 9.8, 100.0
     phi = np.array([0.005, 0.01, 0.02, 0.2, 0.3, 0.4, 0.5, 0.95, 0.99])
-    plotted = {}
+    plotted, grain_plot = {}, 1.0e-3
     for buoyancy in ('mixture', 'solid'):
-        for k, grain in enumerate((1.0e-4, 1.0e-3, 1.0e-2)):
+        for grain in (1.0e-4, grain_plot, 1.0e-2):
             want, branches = _closed_forms(phi, grain, buoyancy)
             w = darcy_velocity(phi, grain, drho, gravity, eta, buoyancy=buoyancy)
             dev = w * eta / (drho * gravity) / want - 1.0
             tol = 2.0 * _blend_bound(phi, branches)
             assert np.all(np.abs(dev) <= tol), (buoyancy, grain, dev, tol)
-            if k == 1:
+            if grain == grain_plot:
                 plotted[buoyancy] = dev / tol
     # The modes differ by 1 - phi on the porous-flow branches and agree on Stokes.
     wm, ws = (
-        darcy_velocity(phi, 1.0e-3, drho, gravity, eta, buoyancy=m)
+        darcy_velocity(phi, grain_plot, drho, gravity, eta, buoyancy=m)
         for m in ('mixture', 'solid')
     )
     np.testing.assert_allclose((wm / ws)[3:7], 1.0 - phi[3:7], rtol=1e-3)
@@ -168,10 +168,10 @@ def test_darcy_velocity_follows_the_closed_form_mobility_in_every_regime(validat
         ax1.legend(fontsize=8)
         grid = np.linspace(0.005, 0.99, 100)
         wm_g, ws_g = (
-            darcy_velocity(grid, 1.0e-3, drho, gravity, eta, buoyancy=m)
+            darcy_velocity(grid, grain_plot, drho, gravity, eta, buoyancy=m)
             for m in ('mixture', 'solid')
         )
-        cm, cs = (_closed_forms(phi, 1.0e-3, m)[0] for m in ('mixture', 'solid'))
+        cm, cs = (_closed_forms(phi, grain_plot, m)[0] for m in ('mixture', 'solid'))
         ax2.plot(grid, wm_g / ws_g, label='drainage')
         ax2.plot(phi, cm / cs, 'o', mfc='none', label='closed forms')
         ax2.plot(grid, 1.0 - grid, '--', label='1 - porosity')

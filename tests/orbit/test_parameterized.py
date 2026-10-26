@@ -457,7 +457,8 @@ def test_high_ecc_circularises_as_a_pure_exponential_in_eccentricity(validation_
     # would land at 0.6065 of its initial value rather than 0.3679.
     one_tau = high_eccentricity_migration(T_MIG + TAU, 0.0, SMA_I, SMA_F, T_MIG, TAU)[1]
     assert one_tau / e_mig == pytest.approx(np.exp(-1.0), rel=1e-10)
-    assert abs(one_tau - decay(1.0, rate=0.5)) / e_mig > 0.2
+    half = 0.5
+    assert abs(one_tau - decay(1.0, rate=half)) / e_mig > 0.2
 
     # Boundedness once the cancellation has eaten the last digits: the
     # eccentricity settles on exactly zero and never turns negative or
@@ -479,7 +480,7 @@ def test_high_ecc_circularises_as_a_pure_exponential_in_eccentricity(validation_
         x = (t_early - T_MIG) / TAU
         fig, ax = plt.subplots(figsize=(6, 4))
         ax.plot(x, e_expected, label=r'Closed form $e_\mathrm{mig}\,e^{-x}$')
-        half_rate = decay(x, rate=0.5)
+        half_rate = decay(x, rate=half)
         ax.plot(x, half_rate, '--', label=r'Half rate $e_\mathrm{mig}\,e^{-x/2}$')
         ax.plot(x[::25], e_early[::25], 'o', label='high_eccentricity_migration')
         ax.set_xlabel(r'$x = (t - t_\mathrm{mig})/\tau$')
