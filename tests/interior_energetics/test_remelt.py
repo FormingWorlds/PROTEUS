@@ -146,18 +146,19 @@ def test_partial_weight_blends_by_mass_share_and_never_cools():
 
 
 def test_weights_that_miss_the_melted_mass_are_refused(monkeypatch):
-    """A cumulative mass off by 1 ppm moves the front: the 1 kg above the front cell grows
-    by 1e-6 kg, and the closure check refuses the weights with that miss instead of
-    returning them. The off cumsum replaces numpy only inside the remelt module."""
+    """A cumulative mass off by 1e-9 moves the front: the 1 kg above the front cell grows
+    by 1e-9 kg, 5.6 times the tolerance of 1e-10 f M = 1.8e-10 kg, and the closure check
+    refuses the weights with that miss. The off cumsum replaces numpy only inside the
+    remelt module."""
     from types import SimpleNamespace
 
     import proteus.interior_energetics.remelt as remelt
 
-    off = SimpleNamespace(**{**vars(np), 'cumsum': lambda a: np.cumsum(a) * (1.0 + 1e-6)})
+    off = SimpleNamespace(**{**vars(np), 'cumsum': lambda a: np.cumsum(a) * (1.0 + 1e-9)})
     monkeypatch.setattr(remelt, 'np', off)
     with pytest.raises(RuntimeError) as err:
         remelt_weights(0.3, np.ones(6), np.arange(6.0))
-    assert str(err.value).startswith('melted mass misses f M by 1.000e-06 kg')
+    assert str(err.value) == 'melted mass misses f M by 1.000e-09 kg (tolerance 1.800e-10 kg)'
 
 
 @pytest.mark.physics_invariant
