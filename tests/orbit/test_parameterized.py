@@ -190,7 +190,7 @@ def test_sigmoid_matches_the_cubic_smoothstep_across_the_window(validation_plot)
 
     The quarter point is what separates the cubic from its neighbours: a
     linear ramp would put it at 1.7 AU and the quintic smootherstep
-    ``6u^5 - 15u^4 + 10u^3`` at 1.8757 AU, both outside the tolerance.
+    ``6u^5 - 15u^4 + 10u^3`` at 1.8758 AU, both outside the tolerance.
     See ``docs/Validation/orbit/parameterized.md``.
     """
     u_case = [0.25, 0.50, 0.75]
@@ -210,7 +210,7 @@ def test_sigmoid_matches_the_cubic_smoothstep_across_the_window(validation_plot)
     assert three_q == pytest.approx(cubic[2], rel=RTOL)
 
     # Shape guard: a linear ramp lands at 1.7 AU here, the quintic
-    # smootherstep at 1.8757 AU. Both are further off than the tolerance.
+    # smootherstep at 1.8758 AU. Both are further off than the tolerance.
     wrong_linear = linear(u_case[0])
     wrong_quintic = quintic(u_case[0])
     assert abs(quarter - wrong_linear) > 0.05

@@ -2,7 +2,13 @@
 
 ## What this page checks
 
-This page checks the transparent limit of the AGNI atmosphere in PROTEUS, the branch of `run_agni` for an atmosphere with no opacity. In that limit the outgoing longwave radiation (OLR) is the thermal emission of the surface alone, which the Stefan-Boltzmann law gives in closed form. Validation means that a test runs the code on a case with a known right answer and checks the result within a stated tolerance. If this part of the code is wrong, the surface boundary condition, the band integration or the mapping of the AGNI fluxes onto the helpfile is wrong. Each case below says why the check exists, what it tests, how we know the right answer and why it matters. A box "Test details" ends each case. The grey-gas scheme treats the opacity as one value for all wavelengths; the banded scheme splits the spectrum into bands from a SOCRATES spectral file. The helpfile is the table of output values that PROTEUS writes at each step. These are integration tests that need the Julia AGNI installation; they skip unless `PROTEUS_CI_NIGHTLY=1` is set, as in the nightly workflow.
+This page checks the transparent limit of the AGNI atmosphere in PROTEUS, the branch of `run_agni` for an atmosphere with no opacity. In that limit the outgoing longwave radiation (OLR) is the thermal emission of the surface alone, which the Stefan-Boltzmann law gives in closed form.
+
+AGNI has 2 radiation schemes. The grey-gas scheme treats the opacity as one value for all wavelengths; the banded scheme splits the spectrum into bands from a SOCRATES spectral file. PROTEUS maps the AGNI fluxes onto the helpfile, the table of output values that PROTEUS writes at each step.
+
+Validation means that a test runs the code on a case with a known right answer and checks the result within a stated tolerance. If this part of the code is wrong, the surface boundary condition, the band integration or the mapping of the AGNI fluxes onto the helpfile is wrong. Each case below says why the check exists, what it tests, how we know the right answer and why it matters. A box "Test details" ends each case.
+
+These are integration tests that need the Julia AGNI installation; they skip unless `PROTEUS_CI_NIGHTLY=1` is set, as in the nightly workflow.
 
 ## Source under test
 `src/proteus/atmos_clim/agni.py` (transparent-atmosphere branch of `run_agni`)
@@ -23,7 +29,7 @@ This page checks the transparent limit of the AGNI atmosphere in PROTEUS, the br
 
 **How we know the right answer.** With no opacity, the surface emission reaches the top unchanged, so the OLR is the black-body flux of the surface, with the CODATA 2018 constant 5.670374419e-8 W m$^{-2}$ K$^{-4}$.
 
-**Why it matters.** PROTEUS uses this branch when the surface pressure is below `agni.psurf_thresh`, and the test drives it as the coupling loop does (`init_agni_atmos`, `update_agni_atmos`, `run_agni`).
+**Why it matters.** `F_olr` is the energy flux that the planet loses to space. PROTEUS uses this branch when the surface pressure is below `agni.psurf_thresh`, and the test drives it as the coupling loop does (`init_agni_atmos`, `update_agni_atmos`, `run_agni`).
 
 ![Outgoing longwave flux of the transparent grey-gas column against surface temperature](../../assets/validation/atmos_clim_agni_greygas_blackbody.svg#only-light){ width="80%" }
 ![Outgoing longwave flux of the transparent grey-gas column against surface temperature](../../assets/validation/atmos_clim_agni_greygas_blackbody_dark.svg#only-dark){ width="80%" }
@@ -44,7 +50,7 @@ This page checks the transparent limit of the AGNI atmosphere in PROTEUS, the br
 
 **How we know the right answer.** Kirchhoff's law sets the emissivity of the surface to 1 minus its albedo, and with zero optical depth that emission reaches the top unchanged.
 
-**Why it matters.** It checks the surface boundary condition of AGNI as PROTEUS sets it.
+**Why it matters.** The surface emissivity sets `F_olr`: a wrong emissivity scales it by the wrong factor, here $1 - a$ = 0.7.
 
 ![Outgoing longwave flux and surface upward flux of the transparent column above a grey surface](../../assets/validation/atmos_clim_agni_greygas_grey_surface.svg#only-light){ width="80%" }
 ![Outgoing longwave flux and surface upward flux of the transparent column above a grey surface](../../assets/validation/atmos_clim_agni_greygas_grey_surface_dark.svg#only-dark){ width="80%" }
@@ -65,7 +71,7 @@ This page checks the transparent limit of the AGNI atmosphere in PROTEUS, the br
 
 **How we know the right answer.** The same Stefan-Boltzmann limit. The banded scheme falls slightly below it, because it evaluates the Planck function at band centres and truncates it outside the spectral range.
 
-**Why it matters.** Runs with a SOCRATES spectral file use this band integration.
+**Why it matters.** Runs with a SOCRATES spectral file take `F_olr` from this band integration.
 
 **Known limit.** The test needs the spectral file in `FWL_DATA` and skips without it.
 
@@ -82,30 +88,7 @@ This page checks the transparent limit of the AGNI atmosphere in PROTEUS, the br
 
 ## Coverage
 
-The three tests pin the analytical limit of radiative transfer. Transparent
-mode gives the column zero opacity, so above a black surface the surface
-emission reaches the top unchanged and the outgoing longwave radiation is the
-black-body flux `sigma * T_surf^4`. The limit is exact for the grey-gas scheme and is
-recovered to a few times 1e-5 relative by the banded scheme, where the
-Planck function is evaluated at band centres and truncated outside the
-spectral range.
-
-A reflective surface tests the emissivity: transparent mode sets the optical
-depth of the column to zero, so a surface of albedo `a` emits
-`(1 - a) sigma T_surf^4` and that flux reaches the top of the atmosphere unchanged.
-
-The comparison runs at four surface temperatures spanning a factor of three.
-That span separates the T^4 law from a T^3 law by a factor of 81 against 27
-in the flux ratio, which is the exponent guard. The remaining guards pin the
-sign of the emitted flux, its absolute scale in W m-2, the constancy of the
-upward longwave flux through a transparent column, and the equality of the
-net flux with the emitted flux at zero instellation.
-
-The tests drive the wrapper the same way the coupling loop does, through
-`init_agni_atmos`, `update_agni_atmos` and `run_agni`, so they also pin the
-selection of the transparent branch at `P_surf` below `agni.psurf_thresh`
-and the mapping of the AGNI flux arrays onto the helpfile fields `F_olr`,
-`F_atm` and `F_sct`.
+Besides the values in the cases, the grey-gas test asserts that `F_olr` is positive, between 1e4 and 1e5 W m$^{-2}$ at 1000 K, and rises with the surface temperature. It also asserts that the upward longwave flux is the same at the top and at the bottom of the column, that the net upward flux `F_atm` equals `F_olr`, and that the reflected flux `F_sct` is 0, as there is no stellar flux.
 
 ## Scope and limits
 

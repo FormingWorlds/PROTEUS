@@ -14,12 +14,12 @@ gravitationally focused collision speed, and the momentum-conserving merger).
 | Test ID | Reference | What is pinned |
 |---|---|---|
 | `test_dummy::test_collision_velocity_never_falls_below_the_mutual_escape_velocity` | Analytical limit: the two-body mutual escape speed, $v_\mathrm{esc} = \sqrt{2G(M_1+M_2)/(R_1+R_2)}$ | The collision speed for a circular encounter, where the approach velocity vanishes and the focused speed collapses exactly onto the mutual escape speed. Pinned to `rel=1e-12` against the value computed from the masses and radii the record itself holds, with a check that dropping the factor of two moves the result by 29% (arithmetic on the test's own numbers). |
-| `test_dummy::test_a_circular_encounter_leaves_the_orbit_untouched` | Analytical limit: a perfect merger of two bodies sharing one circular orbit | The merged orbit for $e = 0$, where both bodies have identical velocities and the mass-weighted mean is that velocity, so the semi-major-axis ratio is exactly one and the eccentricity exactly zero. This is the limit that a sign error cannot reproduce. |
+| `test_dummy::test_a_circular_encounter_leaves_the_orbit_untouched` | Analytical limit: a perfect merger of two bodies sharing one circular orbit | The merged orbit for $e = 0$, where both bodies have identical velocities and the mass-weighted mean is that velocity, so the semi-major-axis ratio is exactly one and the eccentricity exactly zero. A sign error in the tangential velocity of the impactor fails it; an inverted mass weighting and a sign error in the radial velocity of the impactor pass it. |
 | `test_dummy::test_merged_orbit_conserves_angular_momentum_of_the_merged_body` | Analytical identity: $h = \sqrt{\mu a (1 - e^2)} = r v_\theta$ | Internal consistency of the returned orbit. The semi-major axis and eccentricity are two numbers derived from one velocity vector, so they are only consistent if the angular momentum they imply equals the radius times the tangential velocity that produced them, pinned to `rel=1e-9`. |
 
 ## Collision speed and the mutual escape speed
 
-**Why this check exists.** Gravitational focusing makes 2 bodies collide at least at their mutual escape speed. A missing factor of 2 under the square root, or a wrong sum of masses or radii, gives a collision speed below that floor without an error message.
+**Why this check exists.** Gravitational focusing makes 2 bodies collide at least at their mutual escape speed. A missing factor of 2 under the square root, or a wrong sum of masses or radii, gives a wrong collision speed without an error message.
 
 **What it tests.** For a circular encounter the approach speed is zero, so the focused collision speed must equal the mutual escape speed $v_\mathrm{esc} = \sqrt{2G(M_1+M_2)/(R_1+R_2)}$, with $M_1, M_2$ the masses and $R_1, R_2$ the radii of the 2 bodies. The test computes $v_\mathrm{esc}$ from the masses and radii that the impact record holds. It also checks that the collision speed is never below the escape speed.
 
@@ -50,7 +50,7 @@ gravitationally focused collision speed, and the momentum-conserving merger).
 
 **Why it matters.** `accretion/wrapper.py` applies the eccentricity change and the semi-major-axis ratio of each impact to the orbit of the planet.
 
-**Known limit.** At $e = 0$ both bodies have the same velocity, so an inverted mass weighting, or a sign error in the radial velocity of the impactor, gives the same orbit and passes this case; the angular-momentum case below catches it.
+**Known limit.** At $e = 0$ both bodies have the same velocity, so an inverted mass weighting gives the same orbit and passes this case; the angular-momentum case below catches it. A sign error in the radial velocity of the impactor passes this case and the angular-momentum case, because the reference $r v_\theta$ uses only the tangential velocity. No assert in `tests/accretion/` catches it; only the stale check of the collision-speed plot does, because the collision speeds at eccentricity 0.05 change.
 
 ![Semi-major axis ratio and eccentricity of merged orbits against the mass ratio of each impact](../../assets/validation/accretion_dummy_circular_merger.svg#only-light){ width="80%" }
 ![Semi-major axis ratio and eccentricity of merged orbits against the mass ratio of each impact](../../assets/validation/accretion_dummy_circular_merger_dark.svg#only-dark){ width="80%" }
@@ -71,7 +71,7 @@ gravitationally focused collision speed, and the momentum-conserving merger).
 
 **How we know the right answer.** For a Keplerian orbit, $h = \sqrt{\mu a (1 - e^2)} = r v_\theta$ is an identity.
 
-**Why it matters.** It checks that a merged orbit is consistent with the velocity that produced it.
+**Why it matters.** The merged orbit sets the semi-major axis and the eccentricity from which the next impact of the timeline starts.
 
 **Known limit.** The eccentricity is derived from the semi-major axis, so a wrong semi-major axis gives a consistent orbit and passes this case.
 

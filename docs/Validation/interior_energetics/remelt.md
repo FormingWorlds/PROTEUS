@@ -16,7 +16,7 @@ The box "Test details" at the end of each case gives the reference, the toleranc
 
 - Cell: the interior solver divides the mantle into cells, thin spherical shells; Aragog places them on a staggered mesh, with the cell centres between the mesh nodes.
 - $r_c$, $R$ and $r_f$: the radius of the core-mantle boundary, of the surface and of the melt front.
-- $S_\mathrm{end}$ and $S_\mathrm{ic}$: the specific entropy of a cell at the end of the step before the impact, and at the initial condition of the run.
+- $S_\mathrm{end}$ and $S_\mathrm{ic}$: the specific entropy of a cell, in J kg$^{-1}$ K$^{-1}$, at the end of the step before the impact, and at the initial condition of the run.
 - Weight $w$: the melted share of the mass of a cell, from 0 (not melted) to 1 (melted in full).
 
 The table lists the `@pytest.mark.reference_pinned` test and the slow-tier test that anchor the re-melt in `proteus.interior_energetics.remelt`, with the reference and the date of the last comparison.
@@ -55,7 +55,7 @@ The table lists the `@pytest.mark.reference_pinned` test and the slow-tier test 
 
 **How we know the right answer.** Mass balance gives it. The melted mass is $f$ times the mantle mass before the impact. The reference uses the same mesh and density as the weights, so the case checks the wiring and the mass closure, not the density itself. Against the cell volumes and against the EOS masses $\rho(P, S_\mathrm{end}) V$, the weights miss by more than 1e-3, so the test tells the right masses from the wrong ones.
 
-**Why it matters.** This case checks the rule on the solver that a coupled run uses, with its real mesh and density.
+**Why it matters.** The melted mass sets the heat that the impact puts into the mantle of a coupled run, `step_dE_impact_J`.
 
 ![Melted share of the mantle by structural mass, cell volume and EOS mass, energy_balance core](../../assets/validation/interior_energetics_remelt_melted_mass_energy_balance.svg#only-light){ width="80%" }
 ![Melted share of the mantle by structural mass, cell volume and EOS mass, energy_balance core](../../assets/validation/interior_energetics_remelt_melted_mass_energy_balance_dark.svg#only-dark){ width="80%" }
@@ -90,5 +90,6 @@ The table lists the `@pytest.mark.reference_pinned` test and the slow-tier test 
 ??? info "Test details"
     - Reference: the limits $f = 0$ and $f = 1$ of the rule, and the hand-computed blends above.
     - Tolerance: bit for bit at $f = 0$ and $f = 1$; relative 1e-15 for the blends and the scalar mantle.
-    - Test ids: `tests/interior_energetics/test_remelt.py::test_weights_at_the_ends_are_exact`, `::test_full_weight_is_the_maximum_bit_for_bit`, `::test_partial_weight_blends_by_mass_share_and_never_cools`, `::test_scalar_mantle_moves_by_the_melted_share`
-    - Command: `pytest tests/interior_energetics/test_remelt.py`
+    - Test id: `tests/interior_energetics/test_remelt.py::test_partial_weight_blends_by_mass_share_and_never_cools` (writes the plot)
+    - Supporting tests: `tests/interior_energetics/test_remelt.py::test_weights_at_the_ends_are_exact`, `::test_full_weight_is_the_maximum_bit_for_bit`, `::test_scalar_mantle_moves_by_the_melted_share`
+    - Command: `pytest -m reference_pinned tests/interior_energetics/test_remelt.py --validation-plots`

@@ -22,6 +22,8 @@ This page checks the trapping step, `proteus.outgas.trapping`. As the magma ocea
 
 **How we know the right answer.** The values follow by hand from Eq. 6 of Sim et al. (2024).
 
+**Known limit.** The case tests the mass balance for given $F_\mathrm{tl}$ and $C_Z$. $F_\mathrm{tl}$ comes from the front scheme in `proteus.outgas.compaction`, which [its own page](compaction.md) validates; this case does not test it.
+
 **Why it matters.** The main loop calls `run_trapping`, which buries each species with this mass balance (`trapped_mass`).
 
 ![Buried mass in one step against the trapped melt fraction for CO2 and H2O](../../assets/validation/outgas_trapping_interstitial_melt.svg#only-light){ width="80%" }
@@ -37,49 +39,12 @@ This page checks the trapping step, `proteus.outgas.trapping`. As the magma ocea
 
 ## Invariants checked alongside
 
-The trapping tests also assert, without a published reference:
+The trapping tests in `tests/outgas/test_trapping.py` also assert, without a published reference:
 
-- per-element closure `total = atm + liquid + solid` after every step,
-  including a remelting step;
-- remelting returning the most recently buried mass first, from the burial
-  ledger, so that freezing and remelting the same interval cancel: a closed
-  melt cycled a hundred times between `Phi = 0.41` and 0.40 keeps its
-  trapped water (see `burial_ledger.md`);
-- a mantle frozen from `Phi = 1` to 0.5, degassed a hundredfold and remelted
-  to `Phi = 1` getting back every buried kilogram, helium included, and the
-  history-free fallback releasing `(Phi(t) - Phi(t-1)) / (1 - Phi(t-1))` of
-  each trapped reservoir;
-- dissolved noble gases buried with the interstitial melt at `F_tl C_Z dM_RM`,
-  with their moles following the masses after the chemistry solve;
-- no burial of a species whose element the run does not track, and a
-  per-element closure refusing any break above 1 kg;
-- a remelt after desiccation keeping what it releases however many steps it
-  takes: a desiccated planet with 3.6e19 kg of water trapped, remelting from
-  `Phi = 0.30` to 0.50 in 1000 steps that each release less than
-  `mass_thresh`, ends with every total and the trapped 5/7 that 4 steps
-  reach. Through the main loop in 16 such steps the H and O totals end the
-  same way, and the released N (2/7 of 1.5e18 kg, below `mass_thresh`) is
-  emptied by the escape floor once the remelt stops, down to the locked 5/7;
-- the escape floor reading the reachable mass, as the desiccation gate does:
-  two runs that differ only in how much N is trapped, 5e14 or 1.1e16 kg, both
-  empty a reachable 9e15 kg below `mass_thresh` to the locked mass, and on a
-  step on which a remelt returned buried mass the floor is off;
-- the drained fraction set by the front speed alone, the same for a step five
-  times longer that moves the front beyond its own thickness;
-- the trapped share of the solid reservoirs surviving a chemistry solve that
-  rewrites them, adding to condensed graphite rather than competing with it;
-- species totals rebuilt from each fresh partition rather than frozen;
-- desiccation emptying the atmosphere into `M_desiccated` and keeping the
-  solid, and with trapping on the melt as well, so the closure holds and a
-  remelt's release stays in the planet.
-- a mantle frozen with `freeze_volatiles` escaping a quarter of its atmosphere
-  a step for 20 steps through the main loop, with the species masses at
-  CALLIOPE's 1.0000177 times the element masses, every element closing to
-  `1e-10` on every row: the frozen step removes from each element's
-  atmosphere what escape took from its total.
-
-## Scope
-
-The trapped melt fraction `F_tl` comes from the front scheme in
-`proteus.outgas.compaction`, validated on its own page. The pinned test above
-covers the mass balance the fraction enters.
+- the mass of each element equals the sum of its atmosphere, melt and solid parts after every step, also after a re-melt;
+- a re-melt returns the most recently buried mass first, so freezing and re-melting the same layer cancel (see the [burial ledger](burial_ledger.md));
+- a mantle that freezes and then melts again gets back every buried kilogram;
+- dissolved noble gases are buried only with the trapped melt;
+- nothing is buried for an element that the run does not track;
+- the drained fraction depends on the speed of the front, not on the length of the step;
+- desiccation and escape keep each element mass closed while volatiles are trapped.

@@ -15,11 +15,11 @@ This page checks 2 steps of the star wrapper, `src/proteus/star/wrapper.py`: the
 
 **Why this check exists.** The equilibrium temperature is the fourth root of an energy balance. A wrong root, for example a cube root or a fifth root, gives a wrong temperature without an error message.
 
-**What it tests.** `update_equilibrium_temperature` computes $T_\mathrm{eqm} = ((1 - A)\, S\, f / \sigma)^{1/4}$, with $S$ the stellar flux at the planet, $A$ the albedo of the planet, $f$ the absorption factor `s0_factor` and $\sigma$ the Stefan-Boltzmann constant. At $S$ = 1361 W/m$^2$, $A$ = 0.3 and $f$ = 0.25 (the disk-averaged factor), the test expects about 254 K. A cube root would give about 1613 K and a fifth root about 84 K; the test checks that the result is more than 50 K away from both.
+**What it tests.** `update_equilibrium_temperature` computes $T_\mathrm{eqm} = ((1 - A)\, S\, f / \sigma)^{1/4}$, with $S$ the stellar flux at the planet, $A$ the albedo of the planet, $f$ the factor `s0_factor` and $\sigma$ the Stefan-Boltzmann constant. At $S$ = 1361 W/m$^2$, $A$ = 0.3 and $f$ = 0.25, the area ratio of the disk that catches the starlight, $\pi R^2$, to the sphere that emits, $4 \pi R^2$, the test expects about 254 K. A cube root would give about 1613 K and a fifth root about 84 K; the test checks that the result is more than 50 K away from both.
 
 **How we know the right answer.** The value follows from the Stefan-Boltzmann law for a planet in radiative balance. The test checks the closed form to relative 1e-12, with $\sigma$ from the code, and the value 254 K to within 2 K, which catches a $\sigma$ about 2.2 % too small or 4.2 % too large.
 
-**Why it matters.** `update_stellar_quantities` calls it in the stellar step of the main loop and writes `T_eqm` to the helpfile.
+**Why it matters.** `update_stellar_quantities` calls it in the stellar step of the main loop and writes `T_eqm` to the helpfile, the table `runtime_helpfile.csv` with one row of model quantities per time step.
 
 ![Equilibrium temperature against stellar flux for albedo 0.3](../../assets/validation/star_wrapper_equilibrium_temperature.svg#only-light){ width="80%" }
 ![Equilibrium temperature against stellar flux for albedo 0.3](../../assets/validation/star_wrapper_equilibrium_temperature_dark.svg#only-dark){ width="80%" }
@@ -40,7 +40,7 @@ This page checks 2 steps of the star wrapper, `src/proteus/star/wrapper.py`: the
 
 **How we know the right answer.** The orbit average of the inverse-square law is an analytical result. The time-averaged separation $a (1 + e^2 / 2)$, which `hf_row['separation']` holds, gives $1.32\, a$ at $e = 0.8$ instead. The 2 distances give fluxes that differ by a factor of 2.904, which the test checks.
 
-**Why it matters.** `update_instellation` uses this distance for the bolometric flux, and with the Spada tracks for the XUV flux too. The source docstring notes that the time-averaged separation remains the right quantity for the Roche-limit checks and the orbit plots, so both distances are in use.
+**Why it matters.** `update_instellation` uses this distance for the bolometric flux, and, with the stellar tracks of Spada et al. (2013) in MORS, for the XUV (X-ray and extreme-ultraviolet) flux too. The source docstring notes that the time-averaged separation remains the right quantity for the orbit plots and the Roche-limit checks, so both distances are in use. The Roche limit is the distance inside which the tides of one body pull apart a second body held together only by its own gravity.
 
 ![Flux-weighted distance over the semi-major axis against eccentricity](../../assets/validation/star_wrapper_flux_weighted_distance.svg#only-light){ width="80%" }
 ![Flux-weighted distance over the semi-major axis against eccentricity](../../assets/validation/star_wrapper_flux_weighted_distance_dark.svg#only-dark){ width="80%" }
@@ -52,12 +52,6 @@ This page checks 2 steps of the star wrapper, `src/proteus/star/wrapper.py`: the
     - Tolerance: relative 1e-12 on a (1 - e^2)^(1/4); relative 1e-3 on the flux ratio 2.904; more than 0.3 a from 1.32 a.
     - Test id: `tests/star/test_wrapper.py::test_flux_weighted_distance_pins_the_orbit_averaged_inverse_square_law`
     - Command: `pytest -m reference_pinned tests/star/test_wrapper.py --validation-plots`
-
-## Coverage
-
-The Stefan-Boltzmann test verifies the closed-form equilibrium temperature calculation against the analytical relation. Discrimination guards assert that a wrong exponent (cube root or fifth root instead of fourth root) would land at ~1613 K or ~84 K, both well outside the tolerance band around the correct ~254 K value.
-
-The orbital-average test anchors the distance that `update_instellation` uses for both the bolometric and the XUV flux. Averaging `1/r^2` over one orbit gives `1 / (a^2 sqrt(1 - e^2))`, so the equivalent distance is `a (1 - e^2)^(1/4)`. The competing convention, the time-averaged separation `a (1 + e^2 / 2)` that `hf_row['separation']` carries, gives `1.32 a` at `e = 0.8` instead; the two disagree in the resulting flux by a factor of 2.904, which is what the discrimination guard pins. That separation remains the right quantity for the Roche-limit checks and the orbit plots, so both distances are live and the test records which belongs where.
 
 ## Last verified
 2026-09-29

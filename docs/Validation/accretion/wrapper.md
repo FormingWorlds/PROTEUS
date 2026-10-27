@@ -21,14 +21,16 @@ This page checks the dispatch of the atmospheric loss of a giant impact in `src/
 
 **What it tests.** For 2 identical Earth-like bodies colliding head-on at their mutual escape speed, the law collapses to $X = 0.64 \times 0.5^{0.325} = 0.510911$. The test checks this value, that it equals a direct call of `zephyrus.collision.mass_loss`, and 2 asymmetric events (a half-radius impactor at one eighth the target mass, impact parameter $b$ = 0.3) with the bodies in both roles: 0.2675 and 0.5258.
 
-**How we know the right answer.** Eq. 1 of Kegerreis et al. (2020) gives the symmetric value in closed form. The asymmetric values differ, so a dispatch that interchanged the target and the impactor fails both.
+**How we know the right answer.** Eq. 1 of Kegerreis et al. (2020) gives the symmetric value in closed form. The 2 asymmetric values are the output of `zephyrus.collision.mass_loss` (ZEPHYRUS 26.10.10) for these events, 0.267520 and 0.525849, rounded to 4 digits. They differ, so a dispatch that interchanged the target and the impactor fails both.
 
-**Why it matters.** The wrapper calls `_impact_loss_fraction` for every impact with `accretion.atmloss_module = "zephyrus"`.
+**Known limit.** The asymmetric values come from ZEPHYRUS itself, not from a published table, so they check the dispatch, not the law at $b > 0$.
+
+**Why it matters.** The wrapper calls `_impact_loss_fraction` for every impact with `accretion.atmloss_module = "zephyrus"`; the eroded fraction sets the atmospheric mass that each impact removes.
 
 ![Atmospheric loss fraction against the impactor to target mass ratio](../../assets/validation/accretion_wrapper_kegerreis.svg#only-light){ width="80%" }
 ![Atmospheric loss fraction against the impactor to target mass ratio](../../assets/validation/accretion_wrapper_kegerreis_dark.svg#only-dark){ width="80%" }
 
-**How to read the plot.** The x-axis is the impactor over target mass, for 2 bodies of equal density that collide at the mutual escape speed of 2 Earth twins. The y-axis is the atmospheric loss fraction $X$. The lines are `_impact_loss_fraction` with the Kegerreis law for impact parameter $b$ = 0 (solid) and 0.3 (dashed), as context. The filled circles are the asserted values for 2 Earth twins (ratio 1, $b$ = 0) and a half-radius impactor (ratio 1/8, $b$ = 0.3). The diamond is the same impact with the 2 masses exchanged and the radii kept; it is drawn at ratio 1/8. The hollow squares are the pinned values 0.510911, 0.2675 and 0.5258, and the cross is the direct `zephyrus.collision.mass_loss` value for the twins. A pass means that each circle and the diamond sit in their squares, and the cross on the twin circle. The test allows relative 1e-4 for the twins and 2e-3 for the others.
+**How to read the plot.** The x-axis is the impactor over target mass, for 2 bodies of equal density that collide at the mutual escape speed of 2 Earth twins. The y-axis is the atmospheric loss fraction $X$. The lines are `_impact_loss_fraction` with the Kegerreis law for impact parameter $b$ = 0 (solid) and 0.3 (dashed), as context. The filled circles are the asserted values for 2 Earth twins (ratio 1, $b$ = 0) and a half-radius impactor (ratio 1/8, $b$ = 0.3). The diamond is this impact with exchanged masses and the same radii, at ratio 1/8; the cross is the direct `zephyrus.collision.mass_loss` value for the twins. The hollow squares are the pinned values 0.510911, 0.2675 and 0.5258, with relative tolerances of 1e-4 for the twins and 2e-3 for the others. A pass means that each circle and the diamond sit in their squares, and the cross on the twin circle.
 
 ??? info "Test details"
     - Reference: Kegerreis et al. (2020), ApJL 901, L31 (doi:10.3847/2041-8213/abb5fb), Eqn. 1.
@@ -44,7 +46,7 @@ This page checks the dispatch of the atmospheric loss of a giant impact in `src/
 
 **How we know the right answer.** The authors' scaling-law calculation of that row. It uses the nominal grid values $\gamma$ = 0.2 and $v/v_\mathrm{esc}$ = 2.0, while the dispatch derives them from the masses and the contact speed ($\gamma$ = 0.200014 and $v/v_\mathrm{esc}$ = 2.000434); this leaves a residual of -1.47e-5, inside the tolerance.
 
-**Why it matters.** It checks the second law the dispatch offers, `atmloss_law = 'roche2026'`.
+**Why it matters.** It checks the default law of the dispatch, `atmloss_law = 'roche2026'`, whose eroded fraction sets the atmospheric mass that each impact removes.
 
 ![Atmospheric loss fraction of the Roche oracle row for 3 dispatches](../../assets/validation/accretion_wrapper_roche_oracle.svg#only-light){ width="80%" }
 ![Atmospheric loss fraction of the Roche oracle row for 3 dispatches](../../assets/validation/accretion_wrapper_roche_oracle_dark.svg#only-dark){ width="80%" }

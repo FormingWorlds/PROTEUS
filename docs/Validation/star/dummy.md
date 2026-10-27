@@ -53,9 +53,5 @@ This page checks the luminosity of the star and the stellar flux at the planet i
     - Test id: `tests/star/test_star.py::test_calc_instellation_earth_like`
     - Command: `pytest -m reference_pinned tests/star/test_star.py --validation-plots`
 
-## Coverage
-
-Both tests verify the Stefan-Boltzmann radiative transfer chain from stellar parameters to planetary irradiation. Discrimination guards pin the exponent (T^4, not T^3 or T^5) and the unit system (SI: metres, watts) against plausible unit-conversion regressions.
-
 ## Last verified
 2026-05-24

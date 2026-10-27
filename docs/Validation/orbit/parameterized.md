@@ -21,9 +21,11 @@ mathematics the laws are defined by.
 
 **Why this check exists.** The sigmoid law must follow a cubic S curve with zero slope at both ends of its window. A linear ramp, a different smooth curve, or interchanged start and end distances gives a wrong orbit without an error message.
 
-**What it tests.** `sigmoid_migration` with a start distance of 2.0 AU and an end distance of 0.8 AU must give 1.8125, 1.4 and 0.9875 AU at a quarter, a half and three quarters of the window. The test checks that a linear ramp (1.7 AU at the quarter point) and the quintic smootherstep (1.8757 AU) are clearly away, that the curve is symmetric about the centre of the window, and that the quarter point lies between the 2 distances.
+**What it tests.** The sigmoid law holds the orbit until the migration time $t_\mathrm{mig}$ = 1e5 yr and crosses over the next window width $\tau$ = 1e4 yr; $u = (t - t_\mathrm{mig})/\tau$ is the fraction of the window that has passed. `sigmoid_migration` with a start distance of 2.0 AU and an end distance of 0.8 AU must give 1.8125, 1.4 and 0.9875 AU at a quarter, a half and three quarters of the window. The test checks that a linear ramp (1.7 AU at the quarter point) and the quintic smootherstep (1.8758 AU) are clearly away, that the curve is symmetric about the centre of the window, and that the quarter point lies between the 2 distances.
 
 **How we know the right answer.** The cubic $S(u) = 3u^2 - 2u^3$ is the unique cubic with $S(0) = 0$, $S(1) = 1$ and zero slope at both ends (see the derivation below).
+
+**Known limit.** The test checks 3 points of 1 window. The tests call the laws as functions of time; no test asserts them in a complete PROTEUS run (see the last section).
 
 **Why it matters.** The sigmoid law gives the orbit of a run that uses it, and so the stellar flux at the planet over time.
 
@@ -42,7 +44,7 @@ mathematics the laws are defined by.
 
 **Why this check exists.** The rate of orbital energy change follows from the migration law. A missing factor of 2, a wrong sign or a wrong time unit gives a wrong energy rate without an error message.
 
-**What it tests.** For the TOI-561 b setup, the test checks that `orbital_energy_rate` at the start of the high-eccentricity migration equals $2\, \Delta E / \tau$, with $\Delta E$ the energy change of the whole circularisation (about -2.86e35 J) and $\tau$ = 1e7 yr. It also checks that the rate without the factor 2 is clearly away, that the rate is negative (the orbit loses energy as it shrinks), and that its size lies between 1e21 and 3e21 W.
+**What it tests.** The TOI-561 b setup has a star of 0.806 solar masses and a planet of 2.24 Earth masses, which migrates from 0.029 AU to 0.0106 AU, with $t_\mathrm{mig}$ = 1e6 yr and decay time $\tau$ = 1e7 yr. For this setup, the test checks that `orbital_energy_rate` at the start of the high-eccentricity migration equals $2\, \Delta E / \tau$, with $\Delta E$ the energy change of the whole circularisation (about -2.86e35 J) and $\tau$ = 1e7 yr. It also checks that the rate without the factor 2 is clearly away, that the rate is negative (the orbit loses energy as it shrinks), and that its size lies between 1e21 and 3e21 W.
 
 **How we know the right answer.** The closed form of the energy rate at the epoch (see "Orbital energy rate" below).
 
@@ -63,7 +65,7 @@ mathematics the laws are defined by.
 
 **Why this check exists.** The eccentricity must decay as a pure exponential with time constant $\tau$. A wrong exponent or a wrong time constant changes the circularisation without an error message.
 
-**What it tests.** The test compares the eccentricity of `high_eccentricity_migration` at 500 times with $e(t) = e_\mathrm{mig} \exp(-(t - t_\mathrm{mig}) / \tau)$, a form the source never evaluates. After one $\tau$ the eccentricity must have fallen by $e^{-1}$, not $e^{-1/2}$. It also checks that the eccentricity stays finite and not negative and ends at exactly zero, that the semi-latus rectum $a (1 - e^2)$ equals the final distance (an identity of the implementation, a sanity check only), and that the pericentre $a (1 - e)$ is not conserved.
+**What it tests.** The inputs are $a_0$ = 2.0 AU, $a_f$ = 0.8 AU, $e_\mathrm{mig} = \sqrt{0.6}$, $t_\mathrm{mig}$ = 1e5 yr and decay time $\tau$ = 1e4 yr, with $a_0$ and $a_f$ the initial and final semi-major axes and $e_\mathrm{mig}$ the eccentricity at $t_\mathrm{mig}$. The test compares the eccentricity of `high_eccentricity_migration` at 500 times with $e(t) = e_\mathrm{mig} \exp(-(t - t_\mathrm{mig}) / \tau)$, a form the source never evaluates. After one $\tau$ the eccentricity must have fallen by $e^{-1}$, not $e^{-1/2}$. It also checks that the eccentricity stays finite and not negative and ends at exactly zero, that the semi-latus rectum $a (1 - e^2)$ equals the final distance (an identity of the implementation, a sanity check only), and that the pericentre $a (1 - e)$ is not conserved.
 
 **How we know the right answer.** Postolec et al. (2026), Sect. 2.2, Eqs. 1-4 (see the derivation below).
 
@@ -72,7 +74,7 @@ mathematics the laws are defined by.
 ![Eccentricity decay of high-eccentricity migration](../../assets/validation/orbit_high_ecc_eccentricity.svg#only-light){ width="80%" }
 ![Eccentricity decay of high-eccentricity migration](../../assets/validation/orbit_high_ecc_eccentricity_dark.svg#only-dark){ width="80%" }
 
-**How to read the plot.** The x-axis is $x = (t - t_\mathrm{mig})/\tau$, the time since the migration start $t_\mathrm{mig}$ in units of the decay time $\tau$. The y-axis is the eccentricity, for $a_0 = 2.0$ AU, $a_f = 0.8$ AU, $e_\mathrm{mig} = \sqrt{0.6}$, $t_\mathrm{mig} = 10^5$ yr and $\tau = 10^4$ yr. Here $a_0$ and $a_f$ are the initial and final semi-major axes, and $e_\mathrm{mig}$ the eccentricity at the start. The markers are the asserted eccentricities of `high_eccentricity_migration`, every 25th of the 500 tested points over 5 $\tau$. The solid line is the closed form $e_\mathrm{mig} \exp(-x)$, and the dashed curve the law with half the decay rate, which the test rejects. A pass means that the markers lie on the solid line.
+**How to read the plot.** The x-axis is $x = (t - t_\mathrm{mig})/\tau$, the time since the migration start $t_\mathrm{mig}$ in units of the decay time $\tau$. The y-axis is the eccentricity, for the inputs above. The markers are the asserted eccentricities of `high_eccentricity_migration`, every 25th of the 500 tested points over 5 $\tau$. The solid line is the closed form $e_\mathrm{mig} \exp(-x)$, and the dashed curve the law with half the decay rate, which the test rejects. A pass means that the markers lie on the solid line.
 
 ??? info "Test details"
     - Reference: Postolec et al. (2026), submitted to ApJ, arXiv:2609.03144, Sect. 2.2, Eqs. 1-4.
@@ -99,15 +101,6 @@ conditions make `a(t)` continuous at the window edges, and the slope
 conditions make `da/dt` continuous there too. A discontinuous orbit
 would hand the atmosphere a discontinuous instellation, and a kinked
 one would hand it a discontinuous heating rate.
-
-With the test endpoints `a_0 = 2.0 AU` and `a_f = 0.8 AU`,
-`S(1/4) = 5/32` gives 1.8125 AU, `S(1/2) = 1/2` gives 1.4 AU and
-`S(3/4) = 27/32` gives 0.9875 AU. The quarter point is the
-discriminating one: a linear ramp puts it at 1.7 AU and the quintic
-smootherstep `6u^5 - 15u^4 + 10u^3` at 1.8757 AU, both far outside the
-tolerance. The cubic is symmetric about the window centre,
-`S(u) + S(1 - u) = 1`, which the test also asserts and which holds
-whatever the endpoints are.
 
 The clamp is not cosmetic. Continued past its window the cubic runs
 away: `S(2) = -4` puts the orbit at 6.8 AU and `S(-1) = 5` puts it at
@@ -211,18 +204,4 @@ left per year instead of per second would miss by a factor of 2 or 3.2e7.
 
 ## Check against complete dummy runs
 
-The pinned tests above exercise the three laws as pure functions. A
-complementary check runs each regime as a dummy PROTEUS simulation and
-compares the recorded `semimajorax` and `eccentricity` against the same
-closed forms, so the config plumbing, the AU-to-metre conversion and the
-dispatch in `evolve_orbit_star` are covered as well as the algebra.
-
-| Regime | max abs da \[au\] | max abs de |
-|---|---|---|
-| `none` | 0 | 0 |
-| `instant` | 0 | 0 |
-| `sigmoid` | 3.6e-11 | 0 |
-| `high_ecc` | 4.3e-11 | 2.8e-09 |
-
-The figure and the run settings are in
-[Star-planet models](../../Explanations/orbit.md#visualizing-the-four-parameterized-regimes).
+[Star-planet models](../../Explanations/orbit.md#visualizing-the-four-parameterized-regimes) shows the 4 regimes of a dummy PROTEUS run against the closed forms. No test asserts that comparison.

@@ -16,7 +16,7 @@ This page checks the burial ledger, `proteus.outgas.burial_ledger`. When the mag
 
 **How we know the right answer.** The second ledger uses a grid of 2e5 melt-fraction bins. It deposits each freeze uniformly over its bins and empties every bin below the melt fraction after each remelt. It uses no function of `burial_ledger`, and its discretisation error is about one grid bin.
 
-**Why it matters.** `proteus.outgas.trapping` uses the ledger (`build_ledger`, `ledger_total`, `remelt_to`) for the volatiles held in the solid.
+**Why it matters.** `proteus.outgas.trapping` uses the ledger (`build_ledger`, `ledger_total`, `remelt_to`) for the volatiles held in the solid; it sets the trapped mass of each species that a re-melt returns to the melt.
 
 ![Mass held below a remelt melt fraction from the layer ledger and from a fine-grid ledger](../../assets/validation/outgas_burial_ledger_fine_grid.svg#only-light){ width="80%" }
 ![Mass held below a remelt melt fraction from the layer ledger and from a fine-grid ledger](../../assets/validation/outgas_burial_ledger_fine_grid_dark.svg#only-dark){ width="80%" }
