@@ -87,6 +87,9 @@ nav:
               - Impact atmosphere-loss dispatch (wrapper.py): Validation/accretion/wrapper.md
           - Atmosphere climate:
               - Transparent black-body limit (agni.py): Validation/atmos_clim/agni.md
+          - Interior energetics:
+              - Mush end members (rheology_endmembers.py): Validation/interior_energetics/rheology_endmembers.md
+              - Elastic-moduli profiles (rheology_prf.py): Validation/interior_energetics/rheology_prf.md
           - Interior structure:
               - Liquidus-super IC anchor (zalmoxis.py): Validation/interior_struct/zalmoxis.md
           - Orbit:
