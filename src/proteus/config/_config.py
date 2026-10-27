@@ -413,6 +413,43 @@ def front_trapping_requires_aragog(instance, attribute, value):
         )
 
 
+def nur_rheology_requires_aragog_paleos(instance, attribute, value):
+    """The Nur elastic profile needs v_c, the Aragog interior and a PALEOS mantle EOS.
+
+    The Nur profile also needs its critical melt volume fraction. The self-consistent scheme reads the per-layer pressure and temperature that only the
+    Aragog interior resolves, and takes its solid and melt end members from the PALEOS
+    MgSiO3 unified table, so the mantle EOS must have a PALEOS energetics key
+    (:func:`proteus.utils.helper.energetics_eos_key`) for the moduli to follow the same
+    thermodynamics as the interior.
+    """
+    from proteus.utils.constants import PALEOS_REGISTRY_KEYS
+    from proteus.utils.helper import energetics_eos_key
+
+    prf = getattr(value, 'rheology_elastic_prf', 'none')
+    if prf != 'nur':
+        return
+    if value.rheology.nur_critical_melt_volume_fraction is None:
+        raise ValueError(
+            'interior_energetics.rheology_elastic_prf = "nur" needs '
+            'interior_energetics.rheology.nur_critical_melt_volume_fraction (melt volume '
+            'fraction in (0, 1)); a sandstone value is not assumed for the crystal-melt mush'
+        )
+    if value.module != 'aragog':
+        raise ValueError(
+            f'interior_energetics.rheology_elastic_prf = "{prf}" requires '
+            f'interior_energetics.module = "aragog", not "{value.module}". The scheme reads '
+            'the per-layer pressure and temperature that only the Aragog interior resolves.'
+        )
+    mantle = getattr(getattr(instance.interior_struct, 'zalmoxis', None), 'mantle_eos', None)
+    key = energetics_eos_key(mantle or '')
+    if key not in PALEOS_REGISTRY_KEYS:
+        raise ValueError(
+            f'interior_energetics.rheology_elastic_prf = "{prf}" requires a PALEOS mantle EOS, '
+            f'not interior_struct.zalmoxis.mantle_eos = "{mantle}" (energetics key: {key}). '
+            'The end members come from the PALEOS MgSiO3 unified table.'
+        )
+
+
 def observe_resolved_atmosphere(instance, attribute, value):
     """Synthetic observations require a spatially resolved atmosphere (not dummy)."""
     if (instance.observe.module is not None) and (instance.atmos_clim.module == 'dummy'):
@@ -731,6 +768,7 @@ class Config:
             energetics_needs_a_thermal_mantle_eos,
             aragog_needs_melting_curves,
             dummy_struct_mantle_eos,
+            nur_rheology_requires_aragog_paleos,
         ),
     )
     outgas: Outgas = field(factory=Outgas, validator=(front_trapping_requires_aragog,))

@@ -44,6 +44,7 @@ from proteus.config._config import (
     check_module_dependencies,
     front_trapping_requires_aragog,
     instmethod_evolve,
+    nur_rheology_requires_aragog_paleos,
     orbit_requires_tides,
     parameterized_excludes_accretion,
     parameterized_excludes_tides,
@@ -1548,3 +1549,121 @@ def test_parameterized_high_ecc_direction_is_enforced_on_config_load(tmp_path):
     assert cfg.orbit.star_planet_model == 'parameterized'
     assert cfg.orbit.parameterized.sma_final == pytest.approx(0.5, rel=1e-12)
     assert cfg.orbit.parameterized.sma_final < cfg.orbit.semimajoraxis
+
+
+# ---------------------------------------------------------------------------
+# nur_rheology_requires_aragog_paleos: Aragog interior and a PALEOS mantle EOS
+# ---------------------------------------------------------------------------
+
+
+def _nur_instance(prf, module, mantle_eos, v_crit=0.6):
+    """Validator input with the elastic profile, the interior, the mantle EOS and v_c set."""
+    from proteus.config._interior import Rheology
+
+    instance = _make_config_instance(**{'interior_energetics.module': module})
+    instance.interior_energetics.rheology_elastic_prf = prf
+    instance.interior_energetics.rheology = Rheology(nur_critical_melt_volume_fraction=v_crit)
+    instance.interior_struct.zalmoxis = SimpleNamespace(mantle_eos=mantle_eos)
+    return instance
+
+
+@pytest.mark.parametrize('mantle_eos', ['PALEOS:MgSiO3', 'PALEOS-2phase:MgSiO3', 'PALEOS:iron'])
+def test_nur_rheology_accepts_aragog_with_a_paleos_mantle(mantle_eos):
+    """The Nur profile loads with Aragog and any mantle EOS whose energetics key is PALEOS.
+
+    An iron or H2O PALEOS mantle follows the PALEOS MgSiO3 2-phase key, so it passes too.
+    """
+    instance = _nur_instance('nur', 'aragog', mantle_eos)
+    assert (
+        nur_rheology_requires_aragog_paleos(instance, None, instance.interior_energetics)
+        is None
+    )
+    assert instance.interior_energetics.rheology_elastic_prf == 'nur'
+
+
+def test_nur_rheology_needs_the_critical_fraction():
+    """Without v_c the Nur profile is refused before the interior checks run."""
+    instance = _nur_instance('nur', 'aragog', 'PALEOS:MgSiO3', v_crit=None)
+    with pytest.raises(ValueError, match='nur_critical_melt_volume_fraction') as exc:
+        nur_rheology_requires_aragog_paleos(instance, None, instance.interior_energetics)
+    assert 'module = "aragog"' not in str(exc.value)
+
+
+@pytest.mark.parametrize('module', ['spider', 'dummy', 'boundary'])
+def test_nur_rheology_rejects_interiors_without_layer_temperatures(module):
+    """Any interior but Aragog is refused, with both settings named in the message.
+
+    The 'kervazo' and 'none' profiles stay accepted for the same interior, so the check
+    fires on the profile and not on the interior alone.
+    """
+    instance = _nur_instance('nur', module, 'PALEOS:MgSiO3')
+    with pytest.raises(
+        ValueError, match=r'requires interior_energetics.module = "aragog"'
+    ) as exc:
+        nur_rheology_requires_aragog_paleos(instance, None, instance.interior_energetics)
+    assert f'"{module}"' in str(exc.value)
+    for prf in ('kervazo', 'none'):
+        other = _nur_instance(prf, module, 'Seager2007:MgSiO3')
+        assert (
+            nur_rheology_requires_aragog_paleos(other, None, other.interior_energetics) is None
+        )
+
+
+@pytest.mark.parametrize(
+    'mantle_eos', ['WolfBower2018:MgSiO3', 'RTPress100TPa:MgSiO3', 'Seager2007:MgSiO3', None]
+)
+def test_nur_rheology_rejects_a_mantle_eos_without_paleos(mantle_eos):
+    """A non-PALEOS or missing mantle EOS is refused even with Aragog.
+
+    The end members come from the PALEOS MgSiO3 table, so a WolfBower2018 or RTPress
+    interior would pair the moduli with another thermodynamic state.
+    """
+    instance = _nur_instance('nur', 'aragog', mantle_eos)
+    with pytest.raises(ValueError, match='requires a PALEOS mantle EOS') as exc:
+        nur_rheology_requires_aragog_paleos(instance, None, instance.interior_energetics)
+    assert f'"{mantle_eos}"' in str(exc.value)
+    assert 'module = "aragog"' not in str(exc.value)  # the interior check passed
+
+
+def test_nur_rheology_rule_is_enforced_on_config_load(tmp_path):
+    """The rule is registered on the Config: minimal.toml (Aragog, PALEOS:MgSiO3) loads with
+    'nur' and v_c = 0.6, the same file is refused with SPIDER or a WolfBower2018 mantle, and
+    'scs' is no longer an option."""
+    from pathlib import Path
+
+    base = (Path(__file__).resolve().parents[2] / 'input' / 'minimal.toml').read_text()
+
+    def _write(name, interior_lines, zalmoxis_lines='', struct_lines=''):
+        text = base.replace(
+            '[interior_struct.zalmoxis]\n', '[interior_struct.zalmoxis]\n' + zalmoxis_lines, 1
+        )
+        if struct_lines:
+            text += '\n[interior_struct]\n' + struct_lines
+        path = tmp_path / f'{name}.toml'
+        path.write_text(text + '\n[interior_energetics]\n' + interior_lines)
+        return path
+
+    nur = (
+        '    rheology_elastic_prf = "nur"\n'
+        '    [interior_energetics.rheology]\n'
+        '    nur_critical_melt_volume_fraction = 0.6\n'
+    )
+    cfg = read_config_object(_write('ok', nur))
+    assert cfg.interior_energetics.rheology_elastic_prf == 'nur'
+    assert cfg.interior_energetics.rheology.nur_critical_melt_volume_fraction == pytest.approx(
+        0.6
+    )
+    assert cfg.interior_energetics.module == 'aragog'
+    with pytest.raises(ValueError, match='"spider"'):
+        read_config_object(_write('spider', '    module = "spider"\n' + nur))
+    with pytest.raises(ValueError):
+        read_config_object(_write('scs', '    rheology_elastic_prf = "scs"\n'))
+    # a WolfBower2018 mantle needs melting curves for Aragog; with them, only this rule fires
+    wolf = '    mantle_eos = "WolfBower2018:MgSiO3"\n'
+    curves = '    melting_dir = "Monteux-600"\n'
+    with pytest.raises(ValueError, match='requires a PALEOS mantle EOS'):
+        read_config_object(_write('wolf', nur, wolf, curves))
+    kervazo = read_config_object(
+        _write('wolf_kervazo', '    rheology_elastic_prf = "kervazo"\n', wolf, curves)
+    )
+    assert kervazo.interior_struct.zalmoxis.mantle_eos == 'WolfBower2018:MgSiO3'

@@ -4,7 +4,9 @@ import math
 import warnings
 
 from attrs import define, field
-from attrs.validators import ge, gt, in_, le, lt
+from attrs.validators import ge, gt, in_, le, lt, optional
+
+from ._converters import none_if_none
 
 _TOL_UNSET = -1.0
 
@@ -574,44 +576,25 @@ class InteriorDummy:
     heat_internal: float = field(default=0.0, validator=ge(0))
 
 
-def _spherical_only(instance, attribute, value):
-    """The SCS tables use spherical grains and inclusions, i.e. a crystal aspect ratio of 1."""
-    if value != 1.0:
-        raise ValueError(
-            f'{attribute.name} = {value}: the elastic moduli use the self-consistent scheme '
-            'for spherical grains, so only an aspect ratio of 1 is supported'
-        )
-
-
 @define
 class Rheology:
-    """Crystal-melt mush rheology of the mantle.
+    """Crystal-melt mush rheology of the mantle (elastic moduli of ``rheology_elastic_prf = 'nur'``).
 
     Attributes
     ----------
-    aspect_ratio: float
-        Crystal aspect ratio r_p [-] (only 1 (equant crystals) is supported for now).
-    framework_fraction: float
-        Crystal fraction at which the crystal framework becomes connected [-].
-    gompertz_width: float
-        Width w of the Gompertz shear-viscosity transition, in melt volume fraction [-].
     melt_shear_modulus: float
         Unrelaxed shear modulus of the melt, G_inf [Pa].
-    melt_weakening: float
-        Exponent alpha of the melt-weakened creep eta_sol exp(-alpha v) [-].
-    packing_fraction: float
-        Maximum packing fraction of equant crystals, phi_m1 [-].
-    packing_width: float
-        Width b of the aspect-ratio dependence of the maximum packing fraction [-].
+    nur_critical_melt_volume_fraction: float or None
+        Critical melt volume fraction v_c of the Nur et al. (1998) model [-], above which
+        the crystals no longer support the load.
     """
 
-    aspect_ratio: float = field(default=1.0, validator=_spherical_only)
-    framework_fraction: float = field(default=0.8, validator=(gt(0), le(1)))
-    gompertz_width: float = field(default=0.076, validator=(gt(0), lt(1)))
     melt_shear_modulus: float = field(default=1.0e10, validator=gt(0))
-    melt_weakening: float = field(default=26.0, validator=ge(0))
-    packing_fraction: float = field(default=0.55, validator=(gt(0), lt(1)))
-    packing_width: float = field(default=1.0, validator=gt(0))
+    # `str` in the type lets cattrs structure the TOML literal "none" before none_if_none
+    # maps it to None (pure `float | None` would try float('none')).
+    nur_critical_melt_volume_fraction: float | str | None = field(
+        default=None, converter=none_if_none, validator=optional((gt(0), lt(1)))
+    )
 
 
 @define
@@ -692,6 +675,13 @@ class Interior:
         Enable constant-properties mode: bypass the EOS tables and use the
         analytical T(S) = T_ref * exp((S - S_ref) / Cp) relationship, for
         controlled parity tests.
+    rheology_elastic_prf: str
+        Elastic rheology model for the tidal interior profiles: 'none' (no
+        elastic moduli), 'kervazo' (Kervazo et al. 2021), 'nur' (critical-porosity
+        modified Voigt model of Nur et al. 1998. 'nur' requires the Aragog
+        interior and a PALEOS mantle EOS.
+    rheology: Rheology
+        Crystal-melt mush rheology profiles for the elastic moduli.
 
     module: str
         Module for simulating the magma ocean. Choices: 'spider', 'aragog', 'dummy'.
@@ -701,8 +691,6 @@ class Interior:
         Parameters for running the aragog module.
     dummy: Dummy
         Parameters for running the dummy module.
-    rheology: Rheology
-        Crystal-melt mush rheology for the tidal interior profiles.
 
     Notes
     -----
@@ -753,6 +741,7 @@ class Interior:
     boundary: InteriorBoundary = field(
         factory=InteriorBoundary, validator=valid_interiorboundary
     )
+    rheology_elastic_prf: str = field(default='none', validator=in_(('none', 'kervazo', 'nur')))
     rheology: Rheology = field(factory=Rheology)
 
     mixing_length: str = field(default='nearest', validator=in_(('nearest', 'constant')))
@@ -1048,6 +1037,7 @@ DOC_GROUPS = {
                 'rfront_loc',
                 'rfront_wid',
                 'grain_size',
+                'rheology_elastic_prf',
                 'mixing_length',
                 'kappah_floor',
             ),
