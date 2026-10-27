@@ -7,9 +7,9 @@ mesh that lies in the mush keeps its own pore melt in its record from one
 coupling step to the next. It drains that melt into the node above at the rate
 its own porosity, density contrast and gravity allow, and keeps what it still
 holds when it reaches the porosity floor. This is the per-node drainage of
-Miyazaki and Korenaga (2019) on the interior solver's mesh. It needs no single
-front, no front speed and no residence time; melt expelled from one node passes
-through the nodes above it. This module holds the drainage physics;
+Miyazaki and Korenaga (2019, JGR Solid Earth 124, 3399, section 2.4) on the
+interior solver's mesh. It needs no single front, no front speed and no
+residence time; melt expelled from one node passes through the nodes above it. This module holds the drainage physics;
 :mod:`proteus.outgas.node_record` carries the per-node record and the volatiles.
 
 Phase states
@@ -51,12 +51,20 @@ passes; the second is the melt that compaction of the node and of the nodes
 beneath it supplies; the smaller controls, as in the front integral. A single
 node with ``L = V / A`` and the same matrix time obeys the front integral's
 equation exactly. The contrast enters as its magnitude, as in the solver's
-separation velocity, so a node whose tables put the melt above the solid
-density drains like any other and is counted.
+separation velocity. The flowing pore melt is ``psi`` capped at the solver's
+own melt volume fraction, the mean of its values at the start and the end of
+the step: pore melt the record holds beyond it has crystallised in place,
+keeps its volatiles and no longer flows.
+
+A node whose tables put the melt at or above the solid density cannot drive
+its melt upward; the solver's separation velocity sinks it. Such a node takes
+the front scheme's no-drainage bound: it keeps its pore melt, and so do the
+mush nodes below it in the same mush layer, whose melt it would have to pass.
 
 Melt that leaves the top of a mush layer rejoins the magma ocean, or leaves
 through the surface when the layer reaches the top of the mesh. A mush layer
-capped by a solid node is sealed: nothing leaves it. The fluxes are integrated
+capped by a solid node is sealed: nothing leaves it. :func:`split_at_dense`
+seals the part of a mush layer at and below its uppermost dense-melt node. The fluxes are integrated
 with a second-order Runge-Kutta scheme, on sub-steps short enough that no node
 passes on more than :data:`SUBSTEP_FRACTION` of what it holds in one of them.
 """
@@ -77,9 +85,8 @@ PHASE_LIQUID = 0  # above the rheological transition, part of the magma ocean
 PHASE_MUSH = 1  # connected crystal framework, pore melt drains
 PHASE_SOLID = 2  # at or below the porosity floor, pore melt locked
 
-# Largest part of a node's turnover time one sub-step may span. The flux of a
-# percolating node rises as up to the 5.5th power of its porosity, so a tenth
-# keeps the upwind scheme stable and positive in every regime.
+# Largest share of a node's turnover time one sub-step may span; a tenth keeps
+# the upwind scheme positive for fluxes up to the 5.5th power of the porosity.
 SUBSTEP_FRACTION = 0.1
 
 # Sub-steps allowed in one coupling step before the rest of the step is left
@@ -258,12 +265,13 @@ def mush_layer_fluxes(
     return flux, capacity <= inflow + supply
 
 
-def _rates(psi, tracer, layers, volume, area_top, speed_of, tau_s):
+def _rates(psi, tracer, layers, volume, area_top, speed_of, tau_s, cap):
     """Rates of change of the pore melt and what it carries, and the step limit.
 
-    The limit is the shortest time any node takes to pass on what it holds,
-    ``psi V / q``, which keeps every node's melt and carried mass positive and
-    the upwind transport monotone.
+    The fluxes see the pore melt capped at ``cap``, the solver porosity; the
+    rate applies to ``psi`` itself. The limit is the shortest time any node
+    takes to pass on what it holds, ``psi V / q``, which keeps every node's
+    melt and carried mass positive and the upwind transport monotone.
     """
     rate = np.zeros_like(psi)
     t_rate = None if tracer is None else np.zeros_like(tracer)
@@ -272,8 +280,9 @@ def _rates(psi, tracer, layers, volume, area_top, speed_of, tau_s):
     span = np.inf
     for layer in layers:
         p = psi[layer]
+        flowing = np.minimum(p, cap[layer])
         q, perc = mush_layer_fluxes(
-            p, volume[layer], area_top[layer], speed_of(p, layer), tau_s[layer]
+            flowing, volume[layer], area_top[layer], speed_of(flowing, layer), tau_s[layer]
         )
         inflow = np.concatenate(([0.0], q[:-1]))
         rate[layer] = (inflow - q) / volume[layer]
@@ -302,11 +311,15 @@ def drain_mush_layers(
     substep_fraction: float = SUBSTEP_FRACTION,
     max_substeps: int = MAX_SUBSTEPS,
     tracer: np.ndarray | None = None,
+    porosity: np.ndarray | None = None,
 ) -> Drainage:
     """Drain the pore melt of every open mush layer over ``duration`` seconds.
 
     ``speed_of(psi, index)`` returns the drainage speed of the nodes ``index``
-    at pore-melt volume fractions ``psi`` [m s-1]. Every flux is counted once
+    at pore-melt volume fractions ``psi`` [m s-1]. ``porosity``, the solver's
+    melt volume fraction of every node over the step [1], caps the pore melt the
+    permeability and the compaction supply see: pore melt the record holds
+    beyond it has crystallised in place and does not flow. Every flux is counted once
     leaving one node and once entering the next, so the melt of the layers plus
     what left through their tops is conserved to rounding. ``tracer``, of shape
     ``(quantities, nodes)``, is anything the melt carries per unit node volume,
@@ -321,6 +334,7 @@ def drain_mush_layers(
     if not 0.0 < substep_fraction <= 1.0:
         raise ValueError(f'substep_fraction must lie in (0, 1], got {substep_fraction!r}')
     psi = np.array(psi, dtype=float, copy=True)
+    cap = np.full(psi.size, np.inf) if porosity is None else np.asarray(porosity, dtype=float)
     if tracer is not None:
         tracer = np.array(tracer, dtype=float, copy=True)
     t_darcy = np.zeros_like(psi)
@@ -341,7 +355,7 @@ def drain_mush_layers(
             )
             break
         rate1, t_rate1, out1, limit1, span = _rates(
-            psi, tracer, layers, volume, area_top, speed_of, tau_s
+            psi, tracer, layers, volume, area_top, speed_of, tau_s, cap
         )
         dt = min(duration - elapsed, substep_fraction * span)
         if not dt > 0.0:
@@ -349,7 +363,7 @@ def drain_mush_layers(
         trial = np.clip(psi + dt * rate1, 0.0, 1.0)
         t_trial = None if tracer is None else np.maximum(tracer + dt * t_rate1, 0.0)
         rate2, t_rate2, out2, _, _ = _rates(
-            trial, t_trial, layers, volume, area_top, speed_of, tau_s
+            trial, t_trial, layers, volume, area_top, speed_of, tau_s, cap
         )
         psi = np.clip(psi + 0.5 * dt * (rate1 + rate2), 0.0, 1.0)
         if tracer is not None:
@@ -362,12 +376,9 @@ def drain_mush_layers(
 
     matrix_speed = 0.0
     for layer in layers:
+        flowing = np.minimum(psi[layer], cap[layer])
         q, _ = mush_layer_fluxes(
-            psi[layer],
-            volume[layer],
-            area_top[layer],
-            speed_of(psi[layer], layer),
-            tau_s[layer],
+            flowing, volume[layer], area_top[layer], speed_of(flowing, layer), tau_s[layer]
         )
         matrix_speed = max(matrix_speed, float(np.max(q / area_top[layer])))
     return Drainage(
@@ -396,6 +407,21 @@ def node_array(values, n: int, name: str) -> np.ndarray:
     if a.size != n or not np.all(np.isfinite(a)):
         raise ValueError(f'{name} must hold {n} finite values, got {a.size}')
     return a
+
+
+def split_at_dense(layer: np.ndarray, delta_rho: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """The sealed and the draining part of one mush layer, bottom up.
+
+    ``delta_rho`` is the solid minus the melt density of every node [kg m-3].
+    The nodes at and below the uppermost node with ``delta_rho <= 0`` are
+    sealed, since melt cannot rise through that node; the nodes above it may
+    drain. Without a dense-melt node the whole layer may drain.
+    """
+    dense = np.flatnonzero(np.asarray(delta_rho, dtype=float)[layer] <= 0.0)
+    if dense.size == 0:
+        return layer[:0], layer
+    cut = int(dense[-1]) + 1
+    return layer[:cut], layer[cut:]
 
 
 def mush_layers(mask: np.ndarray) -> list[np.ndarray]:

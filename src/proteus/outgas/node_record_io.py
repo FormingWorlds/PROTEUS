@@ -68,15 +68,22 @@ def write_record(path: str, record: NodeRecord) -> None:
             var.units = units[name]
 
 
-def read_record(path: str, n: int) -> NodeRecord | None:
+def read_record(path: str, n: int | None = None) -> NodeRecord | None:
     """The per-node record stored in an interior snapshot, or ``None``.
 
-    ``None`` when the snapshot carries no record, as one written before the
-    layer scheme ran does, or a record sized for another mesh.
+    ``n`` is the number of nodes the record must cover; ``None`` takes the
+    snapshot's own ``staggered`` dimension. ``None`` is returned when the
+    snapshot carries no record, as one written before the layer scheme ran
+    does, or a record sized for another mesh.
     """
     import netCDF4 as nc
 
     with nc.Dataset(path) as ds:
+        if n is None:
+            dim = ds.dimensions.get('staggered')
+            if dim is None:
+                return None
+            n = len(dim)
         names = [_snapshot_name(f) for f in _RECORD_FIELDS]
         if any(name not in ds.variables for name in names):
             return None

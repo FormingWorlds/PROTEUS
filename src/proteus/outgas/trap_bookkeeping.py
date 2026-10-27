@@ -59,15 +59,17 @@ class TrappingStep:
         Percolation time at the top of the front, matrix deformation time and
         residence time of a parcel in the front [yr]; NaN when not computed.
     n_front : int
-        Number of nodes the front spans.
+        Number of nodes the front spans; in ``layers``, the nodes of the
+        thickest mush layer, which ``l_front``, ``tau_d`` and ``tau_s`` describe.
     l_front : float
         Front thickness [m].
     v_front : float
-        Front speed [m s-1].
+        Front speed [m s-1], from :func:`front_speed`.
     front_courant : float
         Front advance over the step, in front thicknesses [1].
     w_matrix_over_vf : float
-        Matrix speed at the top of the front over the front speed [1].
+        Matrix speed at the top of the front over the front speed [1]; NaN in
+        ``layers``, which has no single front top.
     guard_reason : str
         Why the front could not be integrated; empty when it could.
     n_exited : int
@@ -77,6 +79,11 @@ class TrappingStep:
         none reached the floor.
     n_substeps : int
         Drainage sub-steps the layer scheme took over the step.
+    n_mush : float
+        Mush nodes of the whole mesh (``layers``); NaN otherwise.
+    phi_ocean : float
+        Melt of the liquid nodes as a fraction of the mantle mass [1], the melt
+        the chemistry dissolves into in ``layers``; NaN otherwise.
     """
 
     mode: str
@@ -99,6 +106,8 @@ class TrappingStep:
     n_exited: int = 0
     frac_bound: float = float('nan')
     n_substeps: int = 0
+    n_mush: float = float('nan')
+    phi_ocean: float = float('nan')
 
     @property
     def total_trapped(self) -> float:
@@ -107,6 +116,15 @@ class TrappingStep:
         Negative on a remelting step, which releases trapped mass to the melt.
         """
         return float(sum(self.trapped_kg.values()))
+
+    @property
+    def returned_kg(self) -> dict[str, float]:
+        """Mass of each species the step returned to the melt [kg], from its net move.
+
+        A species is returned when its net move is negative, by remelting or,
+        in ``layers``, by melt draining back to the ocean.
+        """
+        return {sp: -kg for sp, kg in self.trapped_kg.items() if kg < 0.0}
 
 
 def melt_concentration(
@@ -241,6 +259,9 @@ def record_step(hf_row: dict, step: TrappingStep) -> None:
     hf_row['trap_n_exited'] = float(step.n_exited)
     hf_row['trap_frac_bound'] = step.frac_bound
     hf_row['trap_n_substeps'] = float(step.n_substeps)
+    hf_row['trap_n_mush'] = float(step.n_mush)
+    hf_row['trap_kg_returned'] = float(sum(step.returned_kg.values()))
+    hf_row['trap_Phi_ocean'] = float(step.phi_ocean)
     hf_row['trap_kg_cumulative'] = (
         float(hf_row.get('trap_kg_cumulative', 0.0)) + step.total_trapped
     )
@@ -253,9 +274,8 @@ def record_step(hf_row: dict, step: TrappingStep) -> None:
             step.dm_rm,
         )
     if step.branch == BRANCH_GUARD and step.mode != 'layers':
-        # The guard replaces the drainage integral by its no-drainage limit,
-        # which can bury far more than the integral would, so every step that
-        # takes it is reported with its cause; the layer step reports its own.
+        # The guard's no-drainage limit can trap far more than the integral, so
+        # each such front step reports its cause; the layer step reports its own.
         log.warning(
             'Trapping: the freezing front could not be integrated (%s). F_tl = %.3f '
             'is the no-drainage upper bound, the entry porosity capped at the '
@@ -265,3 +285,17 @@ def record_step(hf_row: dict, step: TrappingStep) -> None:
             abs(step.total_trapped),
             'released' if step.total_trapped < 0.0 else 'buried',
         )
+
+
+def front_speed(dm_rm: float, r_base: float, rho_solid_base: float, dt_s: float) -> float:
+    """Advance speed of a freezing front from the mass crystallised [m s-1].
+
+    ``|dM_RM| / (4 pi r_base^2 rho_s dt)``, the speed at which a front at
+    ``r_base`` [m] with solid density ``rho_solid_base`` [kg m-3] sweeps the
+    mass ``dm_rm`` [kg] in ``dt_s`` [s]. Zero when the area or the step is not
+    positive or not finite.
+    """
+    area = 4.0 * np.pi * float(r_base) ** 2 * float(rho_solid_base)
+    if not (np.isfinite(area) and area > 0.0 and dt_s > 0.0):
+        return 0.0
+    return abs(float(dm_rm)) / (area * float(dt_s))
