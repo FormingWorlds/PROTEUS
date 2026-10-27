@@ -1420,7 +1420,7 @@ def test_ln_from_lookup_interpolates_exact_value_at_lookup_node():
 
 @pytest.mark.reference_pinned
 @pytest.mark.physics_invariant
-def test_ln_from_lookup_enforces_love_number_reality_symmetry():
+def test_ln_from_lookup_enforces_love_number_reality_symmetry(validation_plot):
     """Physical invariant: the tidal Love number is the frequency
     response of a real-valued physical system, so it must satisfy
     the reality/symmetry condition ``LNk(-sigma) == conj(LNk(sigma))``.
@@ -1444,11 +1444,46 @@ def test_ln_from_lookup_enforces_love_number_reality_symmetry():
     obliqua_mod.LN_from_lookup(hf_row, dirs={}, tides_o=tides_o, config=cfg)
 
     storage = tides_o.get(primary='satellite', perturber='planet')
-    expected = np.conj(0.02 - 0.03j)
+    node = lnk_lookup[1]
+    expected = np.conj(node)
     assert storage.LNk[0] == pytest.approx(expected, rel=1e-9)
     # Discrimination: not the un-conjugated value (sign of imaginary
     # part flipped relative to a same-sigma, no-symmetry bug).
     assert storage.LNk[0].imag > 0.0
+
+    def figure():
+        import matplotlib.pyplot as plt
+
+        got = complex(storage.LNk[0])
+        fig, ax = plt.subplots(figsize=(5, 4))
+        ax.axhline(0.0, ls='--', label='Real axis, the mirror line')
+        ax.plot(
+            [node.real],
+            [node.imag],
+            'x',
+            ms=10,
+            label='Table node, $\\sigma = +2\\times10^{-6}$',
+        )
+        ax.plot(
+            [expected.real],
+            [expected.imag],
+            's',
+            mfc='none',
+            ms=12,
+            label='Conjugate of the node',
+        )
+        ax.plot(
+            [got.real], [got.imag], 'o', zorder=3, label='Code at $\\sigma = -2\\times10^{-6}$'
+        )
+        ax.set_xlim(0.0, 0.07)
+        ax.set_ylim(-0.05, 0.05)
+        ax.set_xlabel('Re $k$')
+        ax.set_ylabel('Im $k$')
+        ax.legend(fontsize=8, loc='center right')
+        fig.tight_layout()
+        return fig
+
+    validation_plot(figure, 'orbit_obliqua_love_number_symmetry')
 
 
 def test_ln_from_lookup_raises_for_degree_missing_from_lookup_table(tmp_path):

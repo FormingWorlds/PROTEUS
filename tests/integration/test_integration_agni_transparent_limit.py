@@ -57,6 +57,12 @@ RUN_NIGHTLY_SMOKE = os.environ.get('PROTEUS_CI_NIGHTLY', '0') == '1'
 # rather than against a repeat of the model's own arithmetic.
 SIGMA_SB = 5.670374419e-8
 
+
+def _grey_law(t, emissivity=1.0, power=4):
+    """Grey-body emission ``emissivity * SIGMA_SB * t**power``; the asserts and the plots share it."""
+    return emissivity * SIGMA_SB * t**power
+
+
 # Surface temperatures spanning magma-ocean conditions. The 3x span gives a
 # factor 81 in T**4 against 27 in T**3, which resolves the exponent far
 # above any tolerance used here.
@@ -240,7 +246,7 @@ def _assert_blackbody_limit(results, *, rtol: float):
             Relative tolerance on the pinned flux.
     """
     for t_surf, output, state in results:
-        expected = SIGMA_SB * t_surf**4
+        expected = _grey_law(t_surf)
         assert output['F_olr'] == pytest.approx(expected, rel=rtol), (
             f'transparent OLR at T_surf={t_surf} K must equal the black-body '
             f'emission {expected:.6e} W m-2'
@@ -250,7 +256,7 @@ def _assert_blackbody_limit(results, *, rtol: float):
         assert output['F_olr'] > 0.0
 
         # Exponent guard: a T**3 law sits a factor T below the pinned value.
-        assert abs(output['F_olr'] - SIGMA_SB * t_surf**3) > rtol * expected
+        assert abs(output['F_olr'] - _grey_law(t_surf, power=3)) > rtol * expected
 
         # An isothermal column re-emits what it absorbs, so above a black
         # surface the upward longwave flux does not change with height.
@@ -278,13 +284,54 @@ def _assert_blackbody_limit(results, *, rtol: float):
     assert abs(ratio - t_span**3) > 1.0
 
 
+def _plot_olr(validation_plot, results, name, *, albedo=0.0):
+    """Draw the asserted F_olr of a transparent sweep against the grey-body law."""
+
+    def figure():
+        import matplotlib.pyplot as plt
+
+        t = np.linspace(900.0, 3200.0, 47)
+        t_s = [r[0] for r in results]
+        fig, ax = plt.subplots(figsize=(6, 4))
+        law = f'$(1 - {albedo})\\,\\sigma T_s^4$' if albedo else '$\\sigma T_s^4$'
+        ax.plot(t, _grey_law(t, 1.0 - albedo), label=law)
+        if albedo:
+            ax.plot(t, _grey_law(t), '--', label='$\\sigma T_s^4$, emissivity dropped')
+            ax.plot(
+                t,
+                _grey_law(t, albedo),
+                ':',
+                label=f'${albedo}\\,\\sigma T_s^4$, albedo as emissivity',
+            )
+            ax.plot(
+                t_s,
+                [r[2]['flux_u_lw'][-1] for r in results],
+                's',
+                mfc='none',
+                ms=10,
+                label='Upward flux at the surface',
+            )
+        else:
+            ax.plot(t, _grey_law(t, power=3), '--', label='$\\sigma T_s^3$')
+        ax.plot(t_s, [r[1]['F_olr'] for r in results], 'o', zorder=3, label='$F_\\mathrm{olr}$')
+        ax.set_xscale('log')
+        ax.set_yscale('log')
+        ax.set_xlabel('Surface temperature $T_s$ [K]')
+        ax.set_ylabel('Flux [W m$^{-2}$]')
+        ax.legend(fontsize=8)
+        fig.tight_layout()
+        return fig
+
+    validation_plot(figure, name)
+
+
 @pytest.mark.reference_pinned
 @pytest.mark.physics_invariant
 @pytest.mark.skipif(
     not RUN_NIGHTLY_SMOKE,
     reason='AGNI coupling test requires Julia/AGNI binaries (nightly only)',
 )
-def test_transparent_greygas_olr_equals_blackbody_emission():
+def test_transparent_greygas_olr_equals_blackbody_emission(validation_plot):
     """A transparent grey-gas atmosphere emits the black-body surface flux.
 
     Physical scenario: a bare rocky surface with a negligible atmosphere and
@@ -303,13 +350,14 @@ def test_transparent_greygas_olr_equals_blackbody_emission():
         # Headline pin at both ends of the sweep, 5.67e4 W m-2 at 1000 K and
         # 4.59e6 W m-2 at 3000 K.
         assert results[0][1]['F_olr'] == pytest.approx(
-            SIGMA_SB * T_SURF_GRID[0] ** 4, rel=RTOL_GREYGAS
+            _grey_law(T_SURF_GRID[0]), rel=RTOL_GREYGAS
         )
         assert results[-1][1]['F_olr'] == pytest.approx(
-            SIGMA_SB * T_SURF_GRID[-1] ** 4, rel=RTOL_GREYGAS
+            _grey_law(T_SURF_GRID[-1]), rel=RTOL_GREYGAS
         )
 
         _assert_blackbody_limit(results, rtol=RTOL_GREYGAS)
+        _plot_olr(validation_plot, results, 'atmos_clim_agni_greygas_blackbody')
 
 
 @pytest.mark.reference_pinned
@@ -318,7 +366,7 @@ def test_transparent_greygas_olr_equals_blackbody_emission():
     not RUN_NIGHTLY_SMOKE,
     reason='AGNI coupling test requires Julia/AGNI binaries (nightly only)',
 )
-def test_transparent_greygas_olr_scales_with_surface_emissivity():
+def test_transparent_greygas_olr_scales_with_surface_emissivity(validation_plot):
     """A grey surface emits exactly the black-body flux reduced by its emissivity.
 
     Physical scenario: the same bare surface, now with a grey albedo of 0.3.
@@ -341,8 +389,8 @@ def test_transparent_greygas_olr_scales_with_surface_emissivity():
         results = _sweep_transparent(runner)
 
         for t_surf, output, state in results:
-            blackbody = SIGMA_SB * t_surf**4
-            greybody = (1.0 - albedo) * blackbody
+            blackbody = _grey_law(t_surf)
+            greybody = _grey_law(t_surf, 1.0 - albedo)
 
             # Column optical depth accumulated down to the surface: a
             # transparent atmosphere is opacity-free by construction, not
@@ -373,11 +421,15 @@ def test_transparent_greygas_olr_scales_with_surface_emissivity():
             # Guard against a sign-flipped emissivity (using `albedo` in place
             # of `1 - albedo`): that wrong formula gives ~30% of black-body,
             # far outside tolerance of the correct ~70%.
-            assert output['F_olr'] != pytest.approx(albedo * blackbody, rel=1.0e-2)
+            assert output['F_olr'] != pytest.approx(_grey_law(t_surf, albedo), rel=1.0e-2)
 
             # Sign and ordering: emission leaves the planet, strictly below
             # the unit-emissivity black-body limit.
             assert 0.0 < output['F_olr'] < blackbody
+
+        _plot_olr(
+            validation_plot, results, 'atmos_clim_agni_greygas_grey_surface', albedo=albedo
+        )
 
 
 @pytest.mark.reference_pinned
@@ -386,7 +438,7 @@ def test_transparent_greygas_olr_scales_with_surface_emissivity():
     not RUN_NIGHTLY_SMOKE,
     reason='AGNI coupling test requires Julia/AGNI binaries (nightly only)',
 )
-def test_transparent_banded_olr_recovers_blackbody_emission():
+def test_transparent_banded_olr_recovers_blackbody_emission(validation_plot):
     """The banded radiative transfer chain recovers the black-body limit.
 
     Physical scenario: the same transparent surface, solved with the
@@ -425,4 +477,6 @@ def test_transparent_banded_olr_recovers_blackbody_emission():
         # The band discretisation is a deficit, never a surplus: truncation
         # and midpoint evaluation only lose flux against the exact integral.
         for t_surf, output, _ in results:
-            assert output['F_olr'] < SIGMA_SB * t_surf**4
+            assert output['F_olr'] < _grey_law(t_surf)
+
+        _plot_olr(validation_plot, results, 'atmos_clim_agni_banded_blackbody')

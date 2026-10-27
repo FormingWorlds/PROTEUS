@@ -1762,7 +1762,7 @@ def test_impact_loss_composes_with_delivery_and_a_broken_provider_raises(monkeyp
 @pytest.mark.unit
 @pytest.mark.physics_invariant
 @pytest.mark.reference_pinned
-def test_zephyrus_loss_module_evaluates_the_kegerreis_law():
+def test_zephyrus_loss_module_evaluates_the_kegerreis_law(validation_plot):
     """The zephyrus module turns the impact record into the erosion fraction.
 
     For two identical Earth-like bodies colliding head-on at their mutual
@@ -1804,8 +1804,9 @@ def test_zephyrus_loss_module_evaluates_the_kegerreis_law():
     )
     hf_row = {'M_planet': 6.3e24, 'H_kg_atm': 1.0e22}
 
+    pin_twins, pin_asym, pin_swapped = 0.510911, 0.2675, 0.5258
     f = _impact_loss_fraction(cfg, hf_row, twins)
-    assert f == pytest.approx(0.510911, rel=1e-4)
+    assert f == pytest.approx(pin_twins, rel=1e-4)
     assert 0.0 < f < 1.0
 
     # Bit-identity anchor against direct mass_loss evaluation.
@@ -1852,9 +1853,51 @@ def test_zephyrus_loss_module_evaluates_the_kegerreis_law():
     f_swapped = _impact_loss_fraction(cfg, hf_row, swapped)
     # Absolute pins detect parameter swapping between target and impactor.
     # An interchanged dispatch permutes the values and fails both checks.
-    assert f_asym == pytest.approx(0.2675, rel=2e-3)
-    assert f_swapped == pytest.approx(0.5258, rel=2e-3)
+    assert f_asym == pytest.approx(pin_asym, rel=2e-3)
+    assert f_swapped == pytest.approx(pin_swapped, rel=2e-3)
     assert f_asym < f_swapped  # the lighter impactor erodes less
+
+    def figure():
+        import matplotlib.pyplot as plt
+
+        q = np.linspace(0.05, 1.0, 39)
+        fig, ax = plt.subplots(figsize=(6, 4))
+        for b, style in ((0.0, '-'), (0.3, '--')):
+            curve = []
+            for qi in q:
+                ri = r_e * qi ** (1.0 / 3.0)
+                ev = _impact_event(
+                    M_target_before=m_e,
+                    M_impactor=qi * m_e,
+                    M_merged_after=(1.0 + qi) * m_e,
+                    v_impact=v_esc,
+                    impact_parameter=b,
+                    R_target_before=r_e,
+                    R_impactor=ri,
+                    rho_target=rho_e,
+                    rho_impactor=rho_e,
+                )
+                curve.append(_impact_loss_fraction(cfg, hf_row, ev))
+            ax.plot(q, curve, style, label=f'Kegerreis law, $b$ = {b}')
+        q_asym = m_i / m_e
+        ax.plot(
+            [1.0, q_asym, q_asym],
+            [pin_twins, pin_asym, pin_swapped],
+            's',
+            mfc='none',
+            ms=10,
+            label='Pinned values',
+        )
+        ax.plot([1.0], [f_direct], 'x', ms=10, label='zephyrus mass_loss, twins')
+        ax.plot([1.0, q_asym], [f, f_asym], 'o', zorder=3, label='Code')
+        ax.plot([q_asym], [f_swapped], 'D', zorder=3, label='Code, roles interchanged')
+        ax.set_xlabel('Impactor mass / target mass')
+        ax.set_ylabel('Atmospheric loss fraction $X$')
+        ax.legend(fontsize=8)
+        fig.tight_layout()
+        return fig
+
+    validation_plot(figure, 'accretion_wrapper_kegerreis')
 
 
 @pytest.mark.unit
@@ -2138,7 +2181,7 @@ def test_roche2026_loss_module_evaluates_real_zephyrus():
 @pytest.mark.unit
 @pytest.mark.physics_invariant
 @pytest.mark.reference_pinned
-def test_roche2026_oracle_row_through_impact_loss_fraction():
+def test_roche2026_oracle_row_through_impact_loss_fraction(validation_plot):
     """Verify one Roche et al. (2026) Set A oracle row through _impact_loss_fraction.
 
     Pins the eroded fraction obtained through the full PROTEUS loss dispatch
@@ -2185,7 +2228,8 @@ def test_roche2026_oracle_row_through_impact_loss_fraction():
     )
 
     f_loss = _impact_loss_fraction(cfg, hf_row, event)
-    assert f_loss == pytest.approx(expected_x, abs=5e-5)
+    tol, margin = 5e-5, 0.10
+    assert f_loss == pytest.approx(expected_x, abs=tol)
     assert 0.0 <= f_loss <= 1.0
 
     # Discrimination guard (a): kegerreis2020 yields f_keg = 0.693102, diverging by 0.1309 (> 0.10).
@@ -2193,7 +2237,7 @@ def test_roche2026_oracle_row_through_impact_loss_fraction():
         accretion=_impact_accretion(atmloss_module='zephyrus', atmloss_law='kegerreis2020')
     )
     f_keg = _impact_loss_fraction(cfg_keg, hf_row, event)
-    assert abs(f_keg - expected_x) > 0.10
+    assert abs(f_keg - expected_x) > margin
 
     # Discrimination guard (b): swapping masses and radii diverges by > 0.10.
     event_swapped = _impact_event(
@@ -2208,7 +2252,30 @@ def test_roche2026_oracle_row_through_impact_loss_fraction():
     )
     hf_row_swapped = {'M_planet': m_i, 'H_kg_atm': f_atm * m_i}
     f_swapped = _impact_loss_fraction(cfg, hf_row_swapped, event_swapped)
-    assert abs(f_swapped - expected_x) > 0.10
+    assert abs(f_swapped - expected_x) > margin
+
+    def figure():
+        import matplotlib.pyplot as plt
+
+        names = ['Roche law, code', 'Kegerreis law', 'Roles interchanged']
+        fig, ax = plt.subplots(figsize=(6, 4))
+        ax.axhspan(
+            expected_x - margin,
+            expected_x + margin,
+            alpha=0.15,
+            label='Within 0.10 of the oracle',
+        )
+        ax.axhline(expected_x, ls='--', label='Oracle $X$ = 0.562213')
+        ax.plot([0], [expected_x], 's', mfc='none', ms=10, label='Oracle')
+        ax.plot([0, 1, 2], [f_loss, f_keg, f_swapped], 'o', zorder=3, label='Asserted values')
+        ax.set_xticks([0, 1, 2], names)
+        ax.set_ylabel('Atmospheric loss fraction $X$')
+        ax.set_ylim(0.0, 1.08)
+        ax.legend(fontsize=8)
+        fig.tight_layout()
+        return fig
+
+    validation_plot(figure, 'accretion_wrapper_roche_oracle')
 
 
 @pytest.mark.unit

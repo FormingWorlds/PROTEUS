@@ -44,7 +44,7 @@ on:
 jobs:
   test:
     name: Test (Python ${{ inputs.python-version }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     defaults:
       run:
