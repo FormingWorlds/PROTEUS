@@ -2963,10 +2963,11 @@
       "choices": [
         "none",
         "fluid0d",
-        "fluid1d"
+        "fluid1d",
+        "fluid1d_relax"
       ],
       "bounds": null,
-      "description": "Fluid-tide module to use (\"none\", \"fluid0d\", \"fluid1d\").",
+      "description": "Fluid-tide module to use (\"none\", \"fluid0d\", \"fluid1d\", \"fluid1d_relax\"). \"fluid1d_relax\" solves the whole interior (solid, mush and fluid layers) in one radially resolved column instead of combining segments, and ignores module_solid, module_mushy, visc_lus and visc_sus (PROTEUS passes Obliqua one fluid segment for the whole interior).",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -3096,8 +3097,8 @@
       "path": "orbit.obliqua.solid.bulk_l",
       "toml_section": "orbit.obliqua.solid",
       "class": "ObliquaSolid",
-      "type": "float",
-      "accepts_none": false,
+      "type": "float or none",
+      "accepts_none": true,
       "default": "1000000000.0",
       "choices": null,
       "bounds": [
@@ -3106,7 +3107,7 @@
           "value": 0
         }
       ],
-      "description": "Bulk modulus of the liquid phase [Pa].",
+      "description": "Bulk modulus of the liquid phase [Pa], applied to every layer when the interior gives no melt bulk modulus profile (all interiors but Aragog). With the Aragog interior the mush rheology passes the per-layer PALEOS melt-side adiabatic bulk modulus instead, and this value is only used as the scalar of Obliqua's config; 'none' then sets that scalar to the melt-mass-weighted mean of the profile. 'none' without a profile is an error.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -3298,6 +3299,69 @@
         }
       ],
       "description": "Rayleigh drag efficiency at core interface [dimensionless].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.obliqua.fluid.omega_sw",
+      "toml_section": "orbit.obliqua.fluid",
+      "class": "ObliquaFluid",
+      "type": "float",
+      "accepts_none": false,
+      "default": "1e-05",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Forcing frequency above which fluid1d_relax replaces a static liquid core by the inertial liquid core [rad/s].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.obliqua.fluid.visc_fluid",
+      "toml_section": "orbit.obliqua.fluid",
+      "class": "ObliquaFluid",
+      "type": "float",
+      "accepts_none": false,
+      "default": "100000000.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "In fluid1d_relax, the contiguous layers from the surface down with a viscosity below this value are fluid, the same at every forcing frequency [Pa s]. Fluid layers keep their own shear modulus, take the undrained bulk modulus (``bulk_und`` of the interior rheology where it gives one) and carry the Rayleigh drag sigma_R.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "orbit.obliqua.fluid.n_sub",
+      "toml_section": "orbit.obliqua.fluid",
+      "class": "ObliquaFluid",
+      "type": "int",
+      "accepts_none": false,
+      "default": "10",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">=",
+          "value": 1
+        }
+      ],
+      "description": "In fluid1d_relax, number of sub-layers per interior layer, with the layer values interpolated between the layer centres, so that the fluid interface moves continuously instead of by whole layers [dimensionless].",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -6591,6 +6655,72 @@
       "group_qualifier": null
     },
     {
+      "path": "interior_energetics.rheology_elastic_prf",
+      "toml_section": "interior_energetics",
+      "class": "Interior",
+      "type": "str",
+      "accepts_none": false,
+      "default": "\"none\"",
+      "choices": [
+        "none",
+        "kervazo",
+        "nur"
+      ],
+      "bounds": null,
+      "description": "Elastic rheology model for the tidal interior profiles: 'none' (no elastic moduli), 'kervazo' (Kervazo et al. 2021), 'nur' (critical-porosity modified Voigt model of Nur et al. 1998; needs ``rheology.nur_critical_melt_volume_fraction``). 'nur' requires the Aragog interior and a PALEOS mantle EOS.",
+      "doc_source": "attributes",
+      "group_order": 3,
+      "group_position": 3,
+      "group": "Rheology and convection",
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.rheology.melt_shear_modulus",
+      "toml_section": "interior_energetics.rheology",
+      "class": "Rheology",
+      "type": "float",
+      "accepts_none": false,
+      "default": "10000000000.0",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        }
+      ],
+      "description": "Unrelaxed shear modulus of the melt, G_inf [Pa].",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.rheology.nur_critical_melt_volume_fraction",
+      "toml_section": "interior_energetics.rheology",
+      "class": "Rheology",
+      "type": "float or none",
+      "accepts_none": true,
+      "default": "none",
+      "choices": null,
+      "bounds": [
+        {
+          "op": ">",
+          "value": 0
+        },
+        {
+          "op": "<",
+          "value": 1
+        }
+      ],
+      "description": "Critical melt volume fraction v_c of the Nur et al. (1998) model [-], above which the crystals no longer support the load. Required with ``rheology_elastic_prf = 'nur'``; Nur et al. relate it to the porosity of the random close packing and tabulate 0.05 to 0.8 for rocks. 'none' leaves it unset.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
       "path": "interior_energetics.mixing_length",
       "toml_section": "interior_energetics",
       "class": "Interior",
@@ -6605,7 +6735,7 @@
       "description": "Mixing-length scale: 'nearest' (distance to nearest boundary) or 'constant' (a quarter of the mantle depth).",
       "doc_source": "attributes",
       "group_order": 3,
-      "group_position": 3,
+      "group_position": 4,
       "group": "Rheology and convection",
       "group_qualifier": null
     },
@@ -6902,7 +7032,7 @@
       "description": "Eddy diffusivity floor [m2 s-1]; prevents mixing-length transport from freezing out.",
       "doc_source": "attributes",
       "group_order": 3,
-      "group_position": 4,
+      "group_position": 5,
       "group": "Rheology and convection",
       "group_qualifier": null
     },
@@ -12395,6 +12525,17 @@
         "params.stop.escape.enabled"
       ],
       "doc": "ZEPHYRUS escape with JANUS requires the escape stop criterion to be enabled."
+    },
+    {
+      "validator": "nur_rheology_requires_aragog_paleos",
+      "module": "_config.py",
+      "attached_to": [
+        "interior_energetics"
+      ],
+      "touches": [
+        "interior_struct"
+      ],
+      "doc": "The Nur elastic profile needs v_c, the Aragog interior and a PALEOS mantle EOS."
     },
     {
       "validator": "obliqua_requires_perturber",

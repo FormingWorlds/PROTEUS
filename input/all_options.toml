@@ -329,7 +329,7 @@ config_version = "3.0"
         # tidal models, see Obliqua documentation for details.
         module_solid = "solid1d-relax"       # solid-phase tidal model, options: "none" | "solid0d" | "solid1d" | "solid1d-mush" | "solid1d-relax" | "solid1d-mush-relax" | "solid1d-equil-relax"
         module_mushy = "none"                # mushy-phase tidal model, options: "none" | "interp"
-        module_fluid = "fluid1d"             # fluid-phase tidal model, options: "none" | "fluid0d" | "fluid1d"
+        module_fluid = "fluid1d"             # fluid-phase tidal model, options: "none" | "fluid0d" | "fluid1d" | "fluid1d_relax" (whole column)
 
         [orbit.obliqua.solid]
             ncalc             = 1000         # number of sublayers to use for dim=1 solid tides (for shooting method)
@@ -338,7 +338,7 @@ config_version = "3.0"
             core              = "liquid"     # core solution to use as CMB boundary condition, options: "liquid", "solid", "inertial-liquid", "inertial"
             core_props        = "core"       # Core properties to use for CMB boundary condition, options: "core", "mantle"
             inertial_terms    = true         # Include inertial terms in the solid tidal response equations
-            bulk_l            = 1e9          # liquid bulk modulus [Pa]
+            bulk_l            = 1e9          # liquid bulk modulus [Pa]; "none": PALEOS melt value (aragog)
             dbulk_power       = 1            # drained bulk modulus powerlaw scaling exponent
             porosity_thresh   = 3e-2         # percolation threshold, at which there is a first‐order transition from fully connected to fully isolated pore space [dimensionless]
 
@@ -352,6 +352,9 @@ config_version = "3.0"
             sigma_R_prf       = "dynamic_interp"# heating profile distribution ("uniform", "exp", "linear", "quadratic", "dynamic", "dynamic_interp")
             H_R               = 1e5          # heating profile scale height [m]
             efficiency        = 1e0          # rayleigh drag efficiency at core interface [dimensionless]
+            omega_sw          = 1e-5         # fluid1d_relax: liquid -> inertial liquid core above this frequency [rad/s]
+            visc_fluid        = 1e8          # fluid1d_relax: layers connected to the surface below this viscosity are fluid [Pa s]
+            n_sub             = 10           # fluid1d_relax: interpolated sub-layers per interior layer
 
 # ----------------------------------------------------
 
@@ -469,6 +472,7 @@ config_version = "3.0"
     rfront_loc                = 0.40         # rheological front centre [melt fraction]
     rfront_wid                = 0.20         # rheological front width [melt fraction]
     grain_size                = 1e-3          # crystal grain size [m]
+    rheology_elastic_prf      = "none"       # tidal elastic moduli: none | kervazo | nur (nur: aragog + PALEOS)
     mixing_length             = "nearest"    # MLT length scale: nearest (boundary) | constant (D/4)
     kappah_floor              = 10.0         # eddy diffusivity floor [m2/s]; prevents MLT freeze
 
@@ -589,6 +593,11 @@ config_version = "3.0"
         viscosity_prefactor       = 2.4e-4       # VFT magma-ocean prefactor [Pa s]
         viscosity_activation_temp = 4600.0       # VFT magma-ocean activation temperature [K]
         logging                   = false        # write Boundary diagnostic CSVs
+
+    # Crystal-melt mush rheology for the tidal profiles (moduli used with rheology_elastic_prf = "nur")
+    [interior_energetics.rheology]
+        melt_shear_modulus        = 1.0e10       # unrelaxed melt shear modulus G_inf [Pa]
+        nur_critical_melt_volume_fraction = "none"  # nur: critical melt volume fraction (required with "nur")
 
 # ----------------------------------------------------
 

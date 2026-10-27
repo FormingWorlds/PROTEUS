@@ -78,6 +78,15 @@ _DROP_PREFIXES = (
 # decision: pin it (OVERRIDES) or certify it neutral (add it here).
 _REVIEWED_NEUTRAL = frozenset(
     {
+        # Crystal-melt mush rheology. Inert on a migrated config: only the 'nur'
+        # elastic profile reads it, and migration pins the profile to 'kervazo'.
+        'interior_energetics.rheology.melt_shear_modulus',
+        'interior_energetics.rheology.nur_critical_melt_volume_fraction',
+        # Column fluid solver of Obliqua. Inert on a migrated config: only
+        # orbit.obliqua.module_fluid = 'fluid1d_relax' reads them, a 3.0-only option.
+        'orbit.obliqua.fluid.n_sub',
+        'orbit.obliqua.fluid.omega_sw',
+        'orbit.obliqua.fluid.visc_fluid',
         # Solid-phase volatile trapping. Inert on a migrated config:
         # trap_mode defaults to 'none', so the partition coefficients and
         # the front parameters are never read and behaviour is unchanged.
@@ -551,6 +560,7 @@ def test_new_field_classified():
     assert 'interior_energetics.kappah_floor' in overridden
     assert 'params.dt.maximum_rel' in overridden
     assert 'interior_energetics.tmagma_tides_step' in overridden
+    assert 'interior_energetics.rheology_elastic_prf' in overridden
 
 
 def test_kappah_floor_and_maximum_rel_overrides():
@@ -612,6 +622,21 @@ def test_tmagma_tides_step_override_reproduces_hardcoded_2_0_cap():
         mig.OVERRIDES['interior_energetics.tmagma_tides_step']
         < v3_defaults['interior_energetics.tmagma_tides_step']
     )
+
+
+def test_rheology_elastic_prf_override_keeps_the_2_0_kervazo_moduli():
+    """2.0 always set the tidal shear and bulk moduli from the Kervazo fits; the 3.0
+    default 'none' sets none, so a migrated SPIDER config is pinned to 'kervazo'.
+
+    The pin differs from the live default (a no-op override would pass an equality check
+    alone) and is not 'nur', which the SPIDER interior would refuse at load.
+    """
+    assert mig.OVERRIDES['interior_energetics.rheology_elastic_prf'] == 'kervazo'
+    v3_defaults, _ = _v3()
+    assert v3_defaults['interior_energetics.rheology_elastic_prf'] == 'none'
+    flat, _ = _translate(_minimal_spider_v2())
+    assert flat['interior_energetics.rheology_elastic_prf'] == 'kervazo'
+    assert flat['interior_energetics.module'] == 'spider'
 
 
 def _translate(v2_dict):

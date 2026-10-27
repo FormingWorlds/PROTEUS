@@ -268,6 +268,9 @@ OVERRIDES = {
     # 2.0 always ran VULCAN with vertical advection at updraft_const; the 3.0
     # default turns it off, which would drop a nonzero 2.0 updraft.
     'atmos_chem.vulcan.use_vz': True,
+    # 2.0 always set the tidal shear and bulk moduli from the Kervazo et al. (2021)
+    # fits; the 3.0 default 'none' sets no elastic moduli. Pin 'kervazo'.
+    'interior_energetics.rheology_elastic_prf': 'kervazo',
 }
 
 # Element-budget fields consumed by the element handler (not mapped directly).
