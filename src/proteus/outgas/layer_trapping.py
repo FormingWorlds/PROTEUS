@@ -1,20 +1,21 @@
 """The trapping step of ``outgas.trap_mode = 'layers'``.
 
-Connects the per-node layer drainage of :mod:`proteus.outgas.layer_drainage`
-and :mod:`proteus.outgas.layer_state` to the helpfile row and the interior.
-The scheme runs on the staggered nodes of the Aragog mesh, the shells between
-its basic nodes: the melt fraction and the node masses are the solver's own
-staggered fields, and the phase-boundary densities and the gravity, which the
-solver writes at the basic nodes, are taken as the mean of each shell's two
-boundaries.
+Connects the per-node drainage of :mod:`proteus.outgas.layer_drainage` and the
+record of :mod:`proteus.outgas.node_record` to the helpfile row and the
+interior. The scheme runs on the staggered nodes of the Aragog mesh, the cells
+between its basic nodes: the melt fraction and the node masses are the
+solver's own staggered fields, and the phase-boundary densities and the
+gravity, which the solver writes at the basic nodes, are taken as the mean of
+each node's two boundaries.
 
-Each step moves the net mass of every species the layer state locked minus what
-it returned from the melt into the solid reservoir, through the same
-``_kg_trapped`` bookkeeping as the front scheme, so the chemistry, escape,
-desiccation and the closure check treat the two schemes alike. A return is
-capped at what the trapped reservoir holds. The per-node state lives on the
-interior object between steps and in the interior snapshots on disk, from
-which a resumed run reads it back.
+Each step moves the net mass of every species the record trapped minus what it
+returned from the melt into the solid reservoir. The move goes through the
+``_kg_trapped`` bookkeeping of :mod:`proteus.outgas.trap_bookkeeping`, shared
+with the front scheme, so the chemistry, escape, desiccation and the closure
+check treat the two schemes alike. A return is capped at what the trapped
+reservoir holds. The per-node record lives on the interior object between
+steps and in the interior snapshots on disk, from which a resumed run reads it
+back.
 """
 
 from __future__ import annotations
@@ -30,31 +31,26 @@ from proteus.outgas.compaction import (
     BRANCH_REMELT,
     DEFAULT_MUSH_LOG10VISC,
 )
-from proteus.outgas.layer_drainage import shell_geometry
-from proteus.outgas.layer_state import (
-    LAYER_SPECIES,
-    adopt_unrecorded,
-    advance_layers,
-    read_state,
-    write_state,
-)
-from proteus.outgas.trapping import (
+from proteus.outgas.layer_drainage import node_geometry
+from proteus.outgas.node_record import RECORD_SPECIES, adopt_unrecorded, advance_record
+from proteus.outgas.node_record_io import read_record, write_record
+from proteus.outgas.trap_bookkeeping import (
     TrappingStep,
-    _apply_to_reservoirs,
-    _carried,
-    _record,
-    _trapped,
+    apply_to_reservoirs,
     critical_melt_fraction,
     melt_concentration,
     partition_coefficients,
+    record_step,
+    species_carried,
+    trapped_kg,
 )
 from proteus.utils.constants import secs_per_year
 
 log = logging.getLogger('fwl.' + __name__)
 
 
-def _shell_mean(values, n: int) -> np.ndarray | None:
-    """Mean of each shell's two boundary values, from ``n + 1`` basic-node values."""
+def _node_mean(values, n: int) -> np.ndarray | None:
+    """Mean of each node's two boundary values, from ``n + 1`` basic-node values."""
     if values is None:
         return None
     a = np.asarray(values, dtype=float).ravel()
@@ -67,7 +63,7 @@ def layer_profiles(hf_row: dict, interior_o) -> dict | None:
     """Interior profiles the layer drainage reads on the staggered nodes, or ``None``.
 
     Returns the melt fraction [1], the solid and melt phase-boundary densities
-    [kg m-3], the gravity [m s-2], the shell boundaries [m] and the node masses
+    [kg m-3], the gravity [m s-2], the node boundaries [m] and the node masses
     [kg]. ``None`` when a profile is absent, mis-sized or not finite, which no
     interior but Aragog avoids; the gravity falls back to the surface value.
     """
@@ -75,12 +71,12 @@ def layer_profiles(hf_row: dict, interior_o) -> dict | None:
     r_basic = np.asarray(getattr(interior_o, 'radius', None), dtype=float).ravel()
     n = x.size
     usable = n >= 2 and r_basic.size == n + 1 and np.all(np.diff(r_basic) > 0.0)
-    rho_s = _shell_mean(getattr(interior_o, 'rho_solid_b', None), n) if usable else None
-    rho_l = _shell_mean(getattr(interior_o, 'rho_melt_b', None), n) if usable else None
+    rho_s = _node_mean(getattr(interior_o, 'rho_solid_b', None), n) if usable else None
+    rho_l = _node_mean(getattr(interior_o, 'rho_melt_b', None), n) if usable else None
     if not usable or rho_s is None or rho_l is None or not np.all(np.isfinite(x)):
         log.warning(
             'Trapping: the interior profiles the layer drainage needs are unavailable '
-            '(melt fraction %d nodes, shell boundaries %d, phase-boundary densities %s); '
+            '(melt fraction %d nodes, node boundaries %d, phase-boundary densities %s); '
             'the step buries at the crystal partition coefficients alone. The layer '
             'drainage needs an aragog interior.',
             n,
@@ -88,7 +84,7 @@ def layer_profiles(hf_row: dict, interior_o) -> dict | None:
             'present' if rho_s is not None and rho_l is not None else 'absent',
         )
         return None
-    gravity = _shell_mean(getattr(interior_o, 'g_b', None), n)
+    gravity = _node_mean(getattr(interior_o, 'g_b', None), n)
     if gravity is None or np.any(gravity <= 0.0):
         g_surf = float(hf_row.get('gravity', 0.0))
         log.warning(
@@ -100,7 +96,7 @@ def layer_profiles(hf_row: dict, interior_o) -> dict | None:
     mass = np.asarray(getattr(interior_o, 'mass', None), dtype=float).ravel()
     if mass.size != n or not np.all(np.isfinite(mass)) or np.any(mass <= 0.0):
         # Shell volume times density is the mass the solver integrates.
-        volume, _, _ = shell_geometry(r_basic)
+        volume, _, _ = node_geometry(r_basic)
         density = np.asarray(getattr(interior_o, 'density', None), dtype=float).ravel()
         mass = volume * density if density.size == n else np.full(n, np.nan)
         if not np.all(np.isfinite(mass)) or np.any(mass <= 0.0):
@@ -134,58 +130,58 @@ def _snapshot_for(dirs: dict | None, time: float) -> str | None:
     return path
 
 
-def _restore_state(dirs: dict | None, prev: dict, n: int):
-    """The per-node state a resumed run left in its last snapshot, or ``None``."""
+def _restore_record(dirs: dict | None, prev: dict, n: int):
+    """The per-node record a resumed run left in its last snapshot, or ``None``."""
     time = float(prev.get('Time', 0.0))
     path = _snapshot_for(dirs, time)
-    state = None
+    record = None
     if path is not None:
         try:
-            state = read_state(path, n)
+            record = read_record(path, n)
         except (OSError, RuntimeError, ValueError) as exc:
-            log.warning('Trapping: could not read the per-node state from %s (%s).', path, exc)
-    if state is None:
+            log.warning('Trapping: could not read the per-node record from %s (%s).', path, exc)
+    if record is None:
         log.warning(
-            'Trapping: no per-node state for t = %.6g yr to resume from; the layer '
+            'Trapping: no per-node record for t = %.6g yr to resume from; the layer '
             'drainage restarts from the current mush, and the trapped mass on the '
             'helpfile is assigned to the nodes that are not liquid.',
             time,
         )
         return None
-    log.info('Trapping: resumed the per-node state of %d nodes from %s', state.size, path)
-    return state
+    log.info('Trapping: resumed the per-node record of %d nodes from %s', record.size, path)
+    return record
 
 
-def _persist_state(dirs: dict | None, hf_row: dict, state) -> None:
-    """Write the per-node state into this step's interior snapshot, if there is one.
+def _persist_record(dirs: dict | None, hf_row: dict, record) -> None:
+    """Write the per-node record into this step's interior snapshot, if there is one.
 
     Steps without a snapshot are skipped: a resume only lands on a step that
-    wrote one, and that snapshot carries the state of its own step.
+    wrote one, and that snapshot carries the record of its own step.
     """
     path = _snapshot_for(dirs, float(hf_row.get('Time', 0.0)))
     if path is None:
         return
     try:
-        write_state(path, state)
+        write_record(path, record)
     except (OSError, RuntimeError, ValueError) as exc:
         log.warning(
-            'Trapping: could not write the per-node state to %s (%s); a resume from '
+            'Trapping: could not write the per-node record to %s (%s); a resume from '
             'this step restarts the layer drainage.',
             path,
             exc,
         )
 
 
-def persist_layer_state(dirs: dict | None, hf_row: dict, interior_o) -> None:
-    """Write the layer drainage state into the snapshot for ``hf_row['Time']``.
+def persist_node_record(dirs: dict | None, hf_row: dict, interior_o) -> None:
+    """Write the per-node record into the snapshot for ``hf_row['Time']``.
 
     For callers outside the trapping step that rewrite that snapshot from the
     interior solver alone, as the end-of-run write does, which would otherwise
-    drop the state a resume from the last step needs. No-op without a state.
+    drop the record a resume from the last step needs. No-op without a record.
     """
-    state = getattr(interior_o, 'trap_state', None)
-    if state is not None:
-        _persist_state(dirs, hf_row, state)
+    record = getattr(interior_o, 'trap_record', None)
+    if record is not None:
+        _persist_record(dirs, hf_row, record)
 
 
 def _majority(branches: np.ndarray, weights: np.ndarray) -> int:
@@ -200,8 +196,8 @@ def _describe(step: TrappingStep, layers, hf_row: dict, prev: dict, mass) -> Non
 
     ``F_tl``, the residence time and the branch describe the nodes that reached
     the floor, weighted by their mass; with none, the branch is that of the
-    nodes that drained. The timescales, thickness and speed describe the thickest mush run, for
-    comparison with the front scheme.
+    nodes that drained. The timescales, thickness and speed describe the
+    thickest mush layer, for comparison with the front scheme.
     """
     exited = layers.exited
     m_exit = mass[exited]
@@ -241,13 +237,13 @@ def _log(step: TrappingStep, layers) -> None:
     """Report one layer step, and every node it could not drain."""
     log.info(
         '    layers     = %d mush nodes, %d entered, %d at the floor, %d remelted, '
-        '%d sub-steps; locked %.3e kg, returned %.3e kg, net %.3e kg',
+        '%d sub-steps; buried %.3e kg, returned %.3e kg, net %.3e kg',
         layers.n_mush,
         layers.n_entered,
         step.n_exited,
         layers.n_remelted,
         step.n_substeps,
-        sum(layers.locked_kg.values()),
+        sum(layers.buried_kg.values()),
         sum(layers.released_kg.values()),
         step.total_trapped,
     )
@@ -258,7 +254,7 @@ def _log(step: TrappingStep, layers) -> None:
             layers.n_dense,
         )
     if layers.held and np.isfinite(step.frac_bound) and step.frac_bound > 0.0:
-        # Nodes on the bound keep their entry pore melt, which can lock far more
+        # Nodes on the bound keep their entry pore melt, which can trap far more
         # than draining would, so each such step is reported with its causes.
         log.warning(
             'Trapping: mush nodes could not drain (%s); %.0f%% of the mass that '
@@ -276,7 +272,7 @@ def _capped_moves(hf_row: dict, moved: dict[str, float]) -> dict[str, float]:
     out = {}
     for species, mass in moved.items():
         if mass < 0.0:
-            mass = -min(-mass, _trapped(hf_row, species))
+            mass = -min(-mass, trapped_kg(hf_row, species))
         if mass != 0.0:
             out[species] = mass
     return out
@@ -302,9 +298,9 @@ def run_layer_trapping(
     prev : dict
         Previous helpfile row.
     interior_o : Interior_t
-        Interior state; carries the per-node state as ``trap_state``.
+        Interior state; carries the per-node record as ``trap_record``.
     dirs : dict or None
-        Run directories; the state is written into the interior snapshot of each
+        Run directories; the record is written into the interior snapshot of each
         step that has one, and a resumed run reads it back from there.
     dm_rm : float
         Mantle mass crystallised over the step [kg], negative when it remelted.
@@ -315,23 +311,23 @@ def run_layer_trapping(
     if profiles is None:
         return None
     tr = config.outgas
-    state = getattr(interior_o, 'trap_state', None)
-    if state is None and bool(getattr(getattr(config, 'params', None), 'resume', False)):
-        state = _restore_state(dirs, prev, profiles['n'])
-    trapped = {sp: _trapped(hf_row, sp) for sp in LAYER_SPECIES}
-    if state is not None and state.size == profiles['n']:
-        adopt_unrecorded(state, profiles['mass'], trapped)
+    record = getattr(interior_o, 'trap_record', None)
+    if record is None and bool(getattr(getattr(config, 'params', None), 'resume', False)):
+        record = _restore_record(dirs, prev, profiles['n'])
+    trapped = {sp: trapped_kg(hf_row, sp) for sp in RECORD_SPECIES}
+    if record is not None and record.size == profiles['n']:
+        adopt_unrecorded(record, profiles['mass'], trapped)
     # The melt concentrations of the previous chemistry solve, on the melt it
-    # dissolved into; a species whose elements the run does not carry locks nothing.
-    liquid = {sp: float(hf_row.get(f'{sp}_kg_liquid', 0.0)) for sp in LAYER_SPECIES}
+    # dissolved into; a species whose elements the run does not carry is not buried.
+    liquid = {sp: float(hf_row.get(f'{sp}_kg_liquid', 0.0)) for sp in RECORD_SPECIES}
     concentration = {
         sp: melt_concentration(kg, melt_mass)
         for sp, kg in liquid.items()
-        if kg > 0.0 and _carried(hf_row, sp)
+        if kg > 0.0 and species_carried(hf_row, sp)
     }
     mush_log10 = float(tr.trap_mush_log10visc)
-    new_state, layers = advance_layers(
-        state,
+    new_record, layers = advance_record(
+        record,
         time_prev=float(prev['Time']),
         time_now=float(hf_row['Time']),
         melt_fraction=profiles['melt_fraction'],
@@ -359,15 +355,15 @@ def run_layer_trapping(
         # A net return by remelting nodes is a remelting step for escape and desiccation.
         step.remelted = True
         step.branch = BRANCH_REMELT
-    _apply_to_reservoirs(hf_row, step.trapped_kg)
-    if state is None:
-        # A record started this step holds only this step's locks; trapped mass
+    apply_to_reservoirs(hf_row, step.trapped_kg)
+    if record is None:
+        # A record started this step holds only this step's burials; trapped mass
         # from before it is assigned now, so it remelts with its nodes.
         adopt_unrecorded(
-            new_state, profiles['mass'], {sp: _trapped(hf_row, sp) for sp in LAYER_SPECIES}
+            new_record, profiles['mass'], {sp: trapped_kg(hf_row, sp) for sp in RECORD_SPECIES}
         )
-    interior_o.trap_state = new_state
-    _record(hf_row, step)
+    interior_o.trap_record = new_record
+    record_step(hf_row, step)
     _log(step, layers)
-    _persist_state(dirs, hf_row, new_state)
+    _persist_record(dirs, hf_row, new_record)
     return step

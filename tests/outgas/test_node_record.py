@@ -1,6 +1,6 @@
-"""Unit tests for ``proteus.outgas.layer_state``.
+"""Unit tests for ``proteus.outgas.node_record``.
 
-The layer state carries the retained pore melt of every mush node and the
+The layer record carries the retained pore melt of every mush node and the
 volatile mass locked at every node from one step to the next. These tests
 exercise:
 
@@ -14,7 +14,7 @@ exercise:
   its buried mass, species by species, noble gases included, while a solid node
   flickering across the floor locks nothing new,
 * the assignment of trapped mass the record does not hold,
-* the per-element view of the record, and the round trip of the state through
+* the per-element view of the record, and the round trip of the record through
   an interior snapshot.
 
 See ``docs/How-to/testing.md`` and ``docs/Explanations/test_framework.md``
@@ -27,27 +27,24 @@ import netCDF4 as nc
 import numpy as np
 import pytest
 
-from proteus.outgas.common import element_masses_from_species
 from proteus.outgas.compaction import BRANCH_DARCY, BRANCH_GUARD, BRANCH_MATRIX
 from proteus.outgas.layer_drainage import (
-    STATUS_LIQUID,
-    STATUS_MUSH,
-    STATUS_SOLID,
+    PHASE_LIQUID,
+    PHASE_MUSH,
+    PHASE_SOLID,
     compaction_times,
-    drain_runs,
+    drain_mush_layers,
     mass_fraction_of_volume,
     melt_volume_fraction,
-    shell_geometry,
+    node_geometry,
 )
-from proteus.outgas.layer_state import (
-    LAYER_SPECIES,
-    LayerState,
+from proteus.outgas.node_record import (
+    RECORD_SPECIES,
+    NodeRecord,
     adopt_unrecorded,
-    advance_layers,
-    read_state,
-    species_elements,
-    write_state,
+    advance_record,
 )
+from proteus.outgas.node_record_io import read_record, write_record
 from proteus.utils.constants import secs_per_year
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
@@ -105,7 +102,7 @@ def test_node_enters_drains_and_traps_less_than_the_transition():
 
     The node enters with the pore melt of the transition, whose mass fraction
     is exactly ``rfront_loc``; it drains over the steps it spends in the mush
-    and is trapped with less. The state passed in is left untouched.
+    and is trapped with less. The record passed in is left untouched.
     """
     n = 6
     kw = _mesh_kwargs(n, melt_visc=1.0)
@@ -113,23 +110,23 @@ def test_node_enters_drains_and_traps_less_than_the_transition():
     x[1][0] = 0.4  # node 0 enters the mush
     x[2][0] = 0.2  # and stays in it
     x[3][0] = 0.0  # then reaches the floor
-    state, _ = advance_layers(None, time_prev=0.0, time_now=1.0, melt_fraction=x[0], **kw)
-    state, entry = advance_layers(
-        state, time_prev=1.0, time_now=1.0e4, melt_fraction=x[1], **kw
+    record, _ = advance_record(None, time_prev=0.0, time_now=1.0, melt_fraction=x[0], **kw)
+    record, entry = advance_record(
+        record, time_prev=1.0, time_now=1.0e4, melt_fraction=x[1], **kw
     )
     assert entry.n_entered == 1
-    assert state.status[0] == STATUS_MUSH
-    at_transition = mass_fraction_of_volume(state.psi[:1], _RHO_L, _RHO_S)[0]
+    assert record.phase[0] == PHASE_MUSH
+    at_transition = mass_fraction_of_volume(record.psi[:1], _RHO_L, _RHO_S)[0]
     assert at_transition == pytest.approx(0.5, rel=1e-12)
-    kept = state.copy()
-    drained, _ = advance_layers(
-        state, time_prev=1.0e4, time_now=2.0e4, melt_fraction=x[2], **kw
+    kept = record.copy()
+    drained, _ = advance_record(
+        record, time_prev=1.0e4, time_now=2.0e4, melt_fraction=x[2], **kw
     )
-    # The step returns a new state and leaves the one it was given as it was.
-    np.testing.assert_array_equal(state.psi, kept.psi)
+    # The step returns a new record and leaves the one it was given as it was.
+    np.testing.assert_array_equal(record.psi, kept.psi)
     assert drained.psi_entry[0] == pytest.approx(kept.psi[0], rel=1e-12)
     assert drained.psi[0] < kept.psi[0]
-    state, floor = advance_layers(
+    record, floor = advance_record(
         drained, time_prev=2.0e4, time_now=3.0e4, melt_fraction=x[3], **kw
     )
     assert floor.exited.tolist() == [0]
@@ -138,8 +135,8 @@ def test_node_enters_drains_and_traps_less_than_the_transition():
     # Entered 5/6 of the way through the first step: (1 - 0.5) / (1 - 0.4).
     entry_time = 1.0 + (5.0 / 6.0) * (1.0e4 - 1.0)
     assert floor.residence[0] == pytest.approx(3.0e4 - entry_time, rel=1e-9)
-    assert state.status[0] == STATUS_SOLID
-    assert np.isnan(state.psi[0])
+    assert record.phase[0] == PHASE_SOLID
+    assert np.isnan(record.psi[0])
 
 
 @pytest.mark.physics_invariant
@@ -152,10 +149,12 @@ def test_node_crossing_the_whole_mush_in_one_step_keeps_the_bound():
     """
     n = 4
     kw = _mesh_kwargs(n, melt_visc=1.0)
-    state, _ = advance_layers(None, time_prev=0.0, time_now=1.0, melt_fraction=np.ones(n), **kw)
+    record, _ = advance_record(
+        None, time_prev=0.0, time_now=1.0, melt_fraction=np.ones(n), **kw
+    )
     x = np.ones(n)
     x[0] = 0.0
-    state, step = advance_layers(state, time_prev=1.0, time_now=1.0e6, melt_fraction=x, **kw)
+    record, step = advance_record(record, time_prev=1.0, time_now=1.0e6, melt_fraction=x, **kw)
     assert step.exited.tolist() == [0]
     assert step.trapped[0] == pytest.approx(0.5, rel=1e-12)
     assert step.branch.tolist() == [BRANCH_GUARD]
@@ -177,15 +176,15 @@ def test_a_sealed_run_retains_its_melt_and_dense_melt_drains():
     rho_l[4] = 4200.0
     kw = _mesh_kwargs(n, rho_melt=rho_l, melt_visc=1.0)
     x = np.array([0.0, 0.3, 0.0, 1.0, 0.3, 1.0])
-    state, _ = advance_layers(None, time_prev=0.0, time_now=1.0, melt_fraction=x, **kw)
-    psi_before = state.psi.copy()
-    state, step = advance_layers(state, time_prev=1.0, time_now=1.0e5, melt_fraction=x, **kw)
-    assert state.psi[1] == pytest.approx(psi_before[1], rel=1e-15)
-    assert state.t_held[1] == pytest.approx(1.0e5 - 1.0, rel=1e-12)
+    record, _ = advance_record(None, time_prev=0.0, time_now=1.0, melt_fraction=x, **kw)
+    psi_before = record.psi.copy()
+    record, step = advance_record(record, time_prev=1.0, time_now=1.0e5, melt_fraction=x, **kw)
+    assert record.psi[1] == pytest.approx(psi_before[1], rel=1e-15)
+    assert record.t_held[1] == pytest.approx(1.0e5 - 1.0, rel=1e-12)
     assert step.node_branch[1] == BRANCH_GUARD
     assert any('sealed' in reason for reason in step.held)
     # The dense node drained on |drho| = 200 kg/m3 like any other.
-    assert state.psi[4] < 0.5 * psi_before[4]
+    assert record.psi[4] < 0.5 * psi_before[4]
     assert step.node_branch[4] == BRANCH_DARCY
     assert step.n_dense == 1
 
@@ -201,7 +200,7 @@ def test_a_remelted_mush_node_returns_its_locked_volatiles_to_the_ocean():
     n = 3
     kw = _mesh_kwargs(n)
     liquid = {'CO2': 3.6e21}
-    state, first = advance_layers(
+    record, first = advance_record(
         None,
         time_prev=0.0,
         time_now=1.0,
@@ -212,8 +211,8 @@ def test_a_remelted_mush_node_returns_its_locked_volatiles_to_the_ocean():
     locked = first.moved_kg['CO2']
     assert locked == pytest.approx(0.3 * 1.0e23 * 3.6e21 / 1.8e24, rel=1e-12)
     liquid['CO2'] -= locked
-    state, back = advance_layers(
-        state,
+    record, back = advance_record(
+        record,
         time_prev=1.0,
         time_now=2.0,
         melt_fraction=np.ones(n),
@@ -228,9 +227,9 @@ def test_a_remelted_mush_node_returns_its_locked_volatiles_to_the_ocean():
     assert back.released_kg['CO2'] == pytest.approx(locked, rel=1e-12)
     assert back.remelt_kg['CO2'] == pytest.approx(locked, rel=1e-4)
     assert back.remelt_kg['CO2'] < back.released_kg['CO2']
-    assert state.status[0] == STATUS_LIQUID
-    assert np.isnan(state.psi[0])
-    assert state.locked('CO2') == pytest.approx(0.0, abs=0.0)
+    assert record.phase[0] == PHASE_LIQUID
+    assert np.isnan(record.psi[0])
+    assert record.trapped('CO2') == pytest.approx(0.0, abs=0.0)
 
 
 @pytest.mark.physics_invariant
@@ -246,7 +245,7 @@ def test_a_solid_node_remelting_to_liquid_returns_its_buried_mass():
     n = 3
     kw = _stiff_kwargs(n)
     liquid = {'H2O': 1.8e21, 'Ar': 3.6e17}
-    state, first = advance_layers(
+    record, first = advance_record(
         None,
         time_prev=0.0,
         time_now=1.0,
@@ -254,8 +253,8 @@ def test_a_solid_node_remelting_to_liquid_returns_its_buried_mass():
         **_volatile_kwargs(liquid, 1.8e24, partition={}),
         **kw,
     )
-    state, frozen = advance_layers(
-        state,
+    record, frozen = advance_record(
+        record,
         time_prev=1.0,
         time_now=2.0,
         melt_fraction=np.array([0.0, 0.0, 1.0]),
@@ -263,11 +262,11 @@ def test_a_solid_node_remelting_to_liquid_returns_its_buried_mass():
         **kw,
     )
     assert frozen.exited.tolist() == [0, 1]
-    buried = {sp: state.buried[sp].copy() for sp in liquid}
+    buried = {sp: record.crystal[sp].copy() for sp in liquid}
     # Each node buried its pore melt, 0.3 of 1e23 kg at the melt concentration.
     assert buried['Ar'][0] == pytest.approx(0.3 * 1.0e23 * 3.6e17 / 1.8e24, rel=1e-9)
-    state, back = advance_layers(
-        state,
+    record, back = advance_record(
+        record,
         time_prev=2.0,
         time_now=3.0,
         melt_fraction=np.array([1.0, 0.0, 1.0]),
@@ -278,11 +277,11 @@ def test_a_solid_node_remelting_to_liquid_returns_its_buried_mass():
     for sp in liquid:
         assert back.remelt_kg[sp] == pytest.approx(buried[sp][0], rel=1e-12)
         assert back.moved_kg[sp] == pytest.approx(-buried[sp][0], rel=1e-12)
-        assert state.buried[sp][0] == pytest.approx(0.0, abs=0.0)
-        assert state.buried[sp][1] == pytest.approx(buried[sp][1], rel=1e-15)
+        assert record.crystal[sp][0] == pytest.approx(0.0, abs=0.0)
+        assert record.crystal[sp][1] == pytest.approx(buried[sp][1], rel=1e-15)
     # Remelting the rest returns the whole record and leaves nothing locked.
-    state, last = advance_layers(
-        state,
+    record, last = advance_record(
+        record,
         time_prev=3.0,
         time_now=4.0,
         melt_fraction=np.ones(n),
@@ -290,12 +289,12 @@ def test_a_solid_node_remelting_to_liquid_returns_its_buried_mass():
         **kw,
     )
     assert last.remelt_kg['H2O'] == pytest.approx(buried['H2O'][1], rel=1e-12)
-    assert all(state.locked(sp) == pytest.approx(0.0, abs=0.0) for sp in LAYER_SPECIES)
+    assert all(record.trapped(sp) == pytest.approx(0.0, abs=0.0) for sp in RECORD_SPECIES)
 
 
 @pytest.mark.physics_invariant
 def test_first_sight_locks_the_mush_it_finds_and_nothing_else():
-    """With no state, the mush found locks its pore melt at the current concentration.
+    """With no record, the mush found locks its pore melt at the current concentration.
 
     Solid nodes have no pore melt on record and liquid nodes are ocean. Without
     concentrations nothing is locked. Invalid mesh inputs are rejected.
@@ -303,13 +302,13 @@ def test_first_sight_locks_the_mush_it_finds_and_nothing_else():
     n = 4
     kw = _mesh_kwargs(n)
     x = np.array([0.0, 0.2, 0.7, 1.0])
-    state, step = advance_layers(None, time_prev=0.0, time_now=5.0, melt_fraction=x, **kw)
+    record, step = advance_record(None, time_prev=0.0, time_now=5.0, melt_fraction=x, **kw)
     assert step.exited.size == 0
-    assert state.status.tolist() == [STATUS_SOLID, STATUS_MUSH, STATUS_LIQUID, STATUS_LIQUID]
+    assert record.phase.tolist() == [PHASE_SOLID, PHASE_MUSH, PHASE_LIQUID, PHASE_LIQUID]
     phi = melt_volume_fraction(np.array([0.2]), _RHO_S, _RHO_L)[0]
-    assert state.psi[1] == pytest.approx(phi, rel=1e-12)
-    assert all(state.locked(sp) == pytest.approx(0.0, abs=0.0) for sp in LAYER_SPECIES)
-    locking, first = advance_layers(
+    assert record.psi[1] == pytest.approx(phi, rel=1e-12)
+    assert all(record.trapped(sp) == pytest.approx(0.0, abs=0.0) for sp in RECORD_SPECIES)
+    locking, first = advance_record(
         None,
         time_prev=0.0,
         time_now=5.0,
@@ -319,9 +318,9 @@ def test_first_sight_locks_the_mush_it_finds_and_nothing_else():
     )
     # The mush node's pore melt is 0.2 of its mass, at 2e-3.
     assert first.moved_kg['CO2'] == pytest.approx(0.2 * 1.0e23 * 2.0e-3, rel=1e-12)
-    assert locking.retained['CO2'][0] == pytest.approx(0.0, abs=0.0)
-    with pytest.raises(ValueError, match='shell boundaries'):
-        advance_layers(
+    assert locking.pore['CO2'][0] == pytest.approx(0.0, abs=0.0)
+    with pytest.raises(ValueError, match='node boundaries'):
+        advance_record(
             None,
             time_prev=0.0,
             time_now=1.0,
@@ -329,38 +328,13 @@ def test_first_sight_locks_the_mush_it_finds_and_nothing_else():
             **_mesh_kwargs(n, r_basic=np.arange(3.0)),
         )
     with pytest.raises(ValueError, match='rfront_loc'):
-        advance_layers(
+        advance_record(
             None,
             time_prev=0.0,
             time_now=1.0,
             melt_fraction=x,
             **_mesh_kwargs(n, rfront_loc=0.0),
         )
-
-
-@pytest.mark.physics_invariant
-def test_element_profile_splits_species_by_stoichiometry():
-    """Water locked at a node adds its hydrogen and oxygen to that node's elements.
-
-    The per-element sums equal the whole-planet split of the same species mass,
-    with 7.94 kg of oxygen for every kilogram of hydrogen in water; water still
-    in pore melt counts toward its node, and a noble gas is its own element.
-    """
-    state = LayerState.initial(np.full(3, STATUS_SOLID), np.zeros(3), np.zeros(3), 0.0)
-    state.buried['H2O'] = np.array([0.0, 2.0e18, 1.0e18])
-    state.buried['CO2'] = np.array([5.0e17, 0.0, 0.0])
-    whole = element_masses_from_species({'H2O': 3.0e18, 'CO2': 5.0e17})
-    for element, mass in whole.items():
-        assert float(np.sum(state.element_profile(element))) == pytest.approx(mass, rel=1e-12)
-    profile_o, profile_h = state.element_profile('O'), state.element_profile('H')
-    assert profile_o[1] / profile_h[1] == pytest.approx(7.94, rel=2e-3)
-    assert profile_h[0] == pytest.approx(0.0, abs=0.0)
-    state.retained['H2O'] = np.array([1.0e18, 0.0, 0.0])
-    extra = element_masses_from_species({'H2O': 1.0e18})['H']
-    assert state.element_profile('H')[0] == pytest.approx(extra, rel=1e-12)
-    assert species_elements('Ar') == {'Ar': 1.0}
-    state.buried['Ar'] = np.array([0.0, 0.0, 4.0e15])
-    assert state.element_profile('Ar')[2] == pytest.approx(4.0e15, rel=1e-15)
 
 
 @pytest.mark.physics_invariant
@@ -372,26 +346,26 @@ def test_unrecorded_trapped_mass_is_adopted_by_the_nodes_that_are_not_liquid():
     on the liquid node 2. A record that already holds the trapped mass adopts
     nothing, and nothing is adopted while every node is liquid.
     """
-    status = np.array([STATUS_SOLID, STATUS_MUSH, STATUS_LIQUID])
-    state = LayerState.initial(status, np.array([0.0, 0.2, 1.0]), np.zeros(3), 0.0)
-    state.buried['H2O'] = np.array([1.0e18, 0.0, 0.0])
+    status = np.array([PHASE_SOLID, PHASE_MUSH, PHASE_LIQUID])
+    record = NodeRecord.initial(status, np.array([0.0, 0.2, 1.0]), np.zeros(3), 0.0)
+    record.crystal['H2O'] = np.array([1.0e18, 0.0, 0.0])
     mass = np.array([1.0e23, 2.0e23, 5.0e23])
-    adopted = adopt_unrecorded(state, mass, {'H2O': 4.0e18, 'CO2': 0.0})
+    adopted = adopt_unrecorded(record, mass, {'H2O': 4.0e18, 'CO2': 0.0})
     assert adopted == pytest.approx({'H2O': 3.0e18}, rel=1e-12)
-    np.testing.assert_allclose(state.buried['H2O'], [2.0e18, 2.0e18, 0.0], rtol=1e-12)
-    assert state.locked('H2O') == pytest.approx(4.0e18, rel=1e-12)
-    assert adopt_unrecorded(state, mass, {'H2O': 4.0e18}) == {}
-    molten = LayerState.initial(np.full(3, STATUS_LIQUID), np.ones(3), np.ones(3), 0.0)
+    np.testing.assert_allclose(record.crystal['H2O'], [2.0e18, 2.0e18, 0.0], rtol=1e-12)
+    assert record.trapped('H2O') == pytest.approx(4.0e18, rel=1e-12)
+    assert adopt_unrecorded(record, mass, {'H2O': 4.0e18}) == {}
+    molten = NodeRecord.initial(np.full(3, PHASE_LIQUID), np.ones(3), np.ones(3), 0.0)
     assert adopt_unrecorded(molten, mass, {'H2O': 4.0e18}) == {}
-    assert molten.locked('H2O') == pytest.approx(0.0, abs=0.0)
+    assert molten.trapped('H2O') == pytest.approx(0.0, abs=0.0)
 
 
 @pytest.mark.physics_invariant
 def test_state_round_trips_through_an_interior_snapshot(tmp_path):
-    """The per-node state written beside the solver fields reads back unchanged.
+    """The per-node record written beside the solver fields reads back unchanged.
 
     The locked mass on record, buried and in pore melt, is conserved through
-    the round trip. A snapshot without the state, or sized for another mesh,
+    the round trip. A snapshot without the record, or sized for another mesh,
     reads as ``None``; a file without the solver's staggered dimension is
     refused.
     """
@@ -401,32 +375,32 @@ def test_state_round_trips_through_an_interior_snapshot(tmp_path):
         ds.createDimension('staggered', n)
         ds.createVariable('time', np.float64)
         ds['time'][0] = 100.0
-    assert read_state(path, n) is None
-    state = LayerState.initial(
+    assert read_record(path, n) is None
+    record = NodeRecord.initial(
         np.array([2, 2, 1, 0, 0]),
         np.array([0.0, 0.0, 0.2, 1.0, 1.0]),
         np.zeros(n),
         50.0,
     )
-    state.buried['H2O'] = np.array([1.0e18, 3.0e18, 0.0, 0.0, 0.0])
-    state.retained['CO2'][2] = 4.0e17
-    write_state(path, state)
-    write_state(path, state)  # a second write of the same step overwrites
-    back = read_state(path, n)
-    assert back.status.tolist() == state.status.tolist()
-    np.testing.assert_array_equal(np.isnan(back.psi), np.isnan(state.psi))
-    np.testing.assert_allclose(back.psi[2], state.psi[2], rtol=0.0)
-    for sp in LAYER_SPECIES:
-        np.testing.assert_allclose(back.buried[sp], state.buried[sp], rtol=0.0)
-        np.testing.assert_allclose(back.retained[sp], state.retained[sp], rtol=0.0)
-    assert back.locked('CO2') == pytest.approx(4.0e17, rel=1e-15)
-    assert back.locked('H2O') == pytest.approx(4.0e18, rel=1e-15)
-    assert read_state(path, n + 1) is None
+    record.crystal['H2O'] = np.array([1.0e18, 3.0e18, 0.0, 0.0, 0.0])
+    record.pore['CO2'][2] = 4.0e17
+    write_record(path, record)
+    write_record(path, record)  # a second write of the same step overwrites
+    back = read_record(path, n)
+    assert back.phase.tolist() == record.phase.tolist()
+    np.testing.assert_array_equal(np.isnan(back.psi), np.isnan(record.psi))
+    np.testing.assert_allclose(back.psi[2], record.psi[2], rtol=0.0)
+    for sp in RECORD_SPECIES:
+        np.testing.assert_allclose(back.crystal[sp], record.crystal[sp], rtol=0.0)
+        np.testing.assert_allclose(back.pore[sp], record.pore[sp], rtol=0.0)
+    assert back.trapped('CO2') == pytest.approx(4.0e17, rel=1e-15)
+    assert back.trapped('H2O') == pytest.approx(4.0e18, rel=1e-15)
+    assert read_record(path, n + 1) is None
     other = str(tmp_path / 'bare.nc')
     with nc.Dataset(other, mode='w') as ds:
         ds.createDimension('basic', n + 1)
     with pytest.raises(ValueError, match='staggered'):
-        write_state(other, state)
+        write_record(other, record)
 
 
 @pytest.mark.physics_invariant
@@ -441,7 +415,7 @@ def test_melt_formed_from_a_solid_node_locks_nothing_new():
     n = 3
     kw = _stiff_kwargs(n)
     liquid = {'CO2': 3.6e21}
-    state, first = advance_layers(
+    record, first = advance_record(
         None,
         time_prev=0.0,
         time_now=1.0,
@@ -450,8 +424,8 @@ def test_melt_formed_from_a_solid_node_locks_nothing_new():
         **kw,
     )
     frozen = np.array([0.0, 1.0, 1.0])
-    state, floor = advance_layers(
-        state,
+    record, floor = advance_record(
+        record,
         time_prev=1.0,
         time_now=2.0,
         melt_fraction=frozen,
@@ -459,13 +433,13 @@ def test_melt_formed_from_a_solid_node_locks_nothing_new():
         **kw,
     )
     assert floor.trapped[0] == pytest.approx(0.3, rel=1e-9)
-    buried = state.locked('CO2')
+    buried = record.trapped('CO2')
     assert buried == pytest.approx(first.moved_kg['CO2'], rel=1e-12)
     t = 2.0
     for _ in range(10):
         for melt in (np.array([0.02, 1.0, 1.0]), frozen):
-            state, again = advance_layers(
-                state,
+            record, again = advance_record(
+                record,
                 time_prev=t,
                 time_now=t + 1.0,
                 melt_fraction=melt,
@@ -474,9 +448,9 @@ def test_melt_formed_from_a_solid_node_locks_nothing_new():
             )
             assert again.moved_kg['CO2'] == pytest.approx(0.0, abs=1.0)
             t += 1.0
-    assert state.locked('CO2') == pytest.approx(buried, rel=1e-12)
-    state, molten = advance_layers(
-        state,
+    assert record.trapped('CO2') == pytest.approx(buried, rel=1e-12)
+    record, molten = advance_record(
+        record,
         time_prev=t,
         time_now=t + 1.0,
         melt_fraction=np.ones(n),
@@ -484,8 +458,8 @@ def test_melt_formed_from_a_solid_node_locks_nothing_new():
         **kw,
     )
     assert molten.moved_kg['CO2'] == pytest.approx(-buried, rel=1e-12)
-    state, entry = advance_layers(
-        state,
+    record, entry = advance_record(
+        record,
         time_prev=t + 1.0,
         time_now=t + 2.0,
         melt_fraction=np.array([0.4, 1.0, 1.0]),
@@ -507,13 +481,13 @@ def test_locked_volatiles_move_with_the_melt_and_keep_their_entry_concentration(
     n = 3
     kw = _mesh_kwargs(n, melt_visc=1.0, mush_visc=1.0e14)
 
-    def conc_of(state, k):
-        f_entry = mass_fraction_of_volume(state.psi_entry[k], _RHO_L, _RHO_S)
-        melt = f_entry * state.psi[k] / state.psi_entry[k] * 1.0e23
-        return state.retained['H2O'][k] / melt
+    def conc_of(record, k):
+        f_entry = mass_fraction_of_volume(record.psi_entry[k], _RHO_L, _RHO_S)
+        melt = f_entry * record.psi[k] / record.psi_entry[k] * 1.0e23
+        return record.pore['H2O'][k] / melt
 
     step_kw = dict(partition={}, liquid={'H2O': 1.0e30})
-    state, _ = advance_layers(
+    record, _ = advance_record(
         None,
         time_prev=0.0,
         time_now=1.0,
@@ -522,8 +496,8 @@ def test_locked_volatiles_move_with_the_melt_and_keep_their_entry_concentration(
         **step_kw,
         **kw,
     )
-    state, _ = advance_layers(
-        state,
+    record, _ = advance_record(
+        record,
         time_prev=1.0,
         time_now=2.0,
         melt_fraction=np.array([0.4, 1.0, 1.0]),
@@ -531,8 +505,8 @@ def test_locked_volatiles_move_with_the_melt_and_keep_their_entry_concentration(
         **step_kw,
         **kw,
     )
-    state, _ = advance_layers(
-        state,
+    record, _ = advance_record(
+        record,
         time_prev=2.0,
         time_now=3.0,
         melt_fraction=np.array([0.3, 0.4, 1.0]),
@@ -540,11 +514,11 @@ def test_locked_volatiles_move_with_the_melt_and_keep_their_entry_concentration(
         **step_kw,
         **kw,
     )
-    assert conc_of(state, 0) == pytest.approx(1e-3, rel=1e-9)
-    assert conc_of(state, 1) == pytest.approx(3e-3, rel=1e-9)
-    before = float(np.sum(state.retained['H2O']))
-    state, drained = advance_layers(
-        state,
+    assert conc_of(record, 0) == pytest.approx(1e-3, rel=1e-9)
+    assert conc_of(record, 1) == pytest.approx(3e-3, rel=1e-9)
+    before = float(np.sum(record.pore['H2O']))
+    record, drained = advance_record(
+        record,
         time_prev=3.0,
         time_now=1.0e3,
         melt_fraction=np.array([0.2, 0.3, 1.0]),
@@ -552,16 +526,16 @@ def test_locked_volatiles_move_with_the_melt_and_keep_their_entry_concentration(
         **step_kw,
         **kw,
     )
-    assert conc_of(state, 0) == pytest.approx(1e-3, rel=1e-9)
-    assert 1e-3 < conc_of(state, 1) < 3e-3
+    assert conc_of(record, 0) == pytest.approx(1e-3, rel=1e-9)
+    assert 1e-3 < conc_of(record, 1) < 3e-3
     # What left the run is exactly what the pore melt lost.
     assert drained.released_kg['H2O'] == pytest.approx(
-        before - float(np.sum(state.retained['H2O'])), rel=1e-9
+        before - float(np.sum(record.pore['H2O'])), rel=1e-9
     )
     assert drained.released_kg['H2O'] > 0.0
     assert drained.remelt_kg['H2O'] == pytest.approx(0.0, abs=0.0)
-    state, floor = advance_layers(
-        state,
+    record, floor = advance_record(
+        record,
         time_prev=1.0e3,
         time_now=2.0e3,
         melt_fraction=np.array([0.2, 0.3, 0.0]),
@@ -570,7 +544,7 @@ def test_locked_volatiles_move_with_the_melt_and_keep_their_entry_concentration(
         **kw,
     )
     assert floor.exited.tolist() == [2]
-    assert floor.locked_kg['H2O'] == pytest.approx(0.5 * 1.0e23 * 5e-3, rel=1e-12)
+    assert floor.buried_kg['H2O'] == pytest.approx(0.5 * 1.0e23 * 5e-3, rel=1e-12)
 
 
 @pytest.mark.physics_invariant
@@ -595,10 +569,10 @@ def test_volatiles_are_conserved_between_melt_pore_melt_and_record():
 
     liquid = {'H2O': 1.8e21, 'CO2': 3.6e21}
     total = dict(liquid)
-    state, t = None, 0.0
+    record, t = None, 0.0
     for k in range(1, 12):
-        state, step = advance_layers(
-            state,
+        record, step = advance_record(
+            record,
             time_prev=t,
             time_now=t + 5.0e4,
             melt_fraction=profile(k),
@@ -607,15 +581,15 @@ def test_volatiles_are_conserved_between_melt_pore_melt_and_record():
         )
         for sp in liquid:
             assert step.moved_kg[sp] == pytest.approx(
-                step.locked_kg[sp] - step.released_kg[sp], rel=1e-12, abs=1.0
+                step.buried_kg[sp] - step.released_kg[sp], rel=1e-12, abs=1.0
             )
             liquid[sp] -= step.moved_kg[sp]
             assert liquid[sp] >= -1.0
         t += 5.0e4
     for sp in total:
-        assert state.locked(sp) + liquid[sp] == pytest.approx(total[sp], rel=1e-12)
+        assert record.trapped(sp) + liquid[sp] == pytest.approx(total[sp], rel=1e-12)
     # Edge case: a melt too small for the front caps every lock at what it holds.
-    capped_state, capped = advance_layers(
+    capped_state, capped = advance_record(
         None,
         time_prev=0.0,
         time_now=1.0,
@@ -626,15 +600,15 @@ def test_volatiles_are_conserved_between_melt_pore_melt_and_record():
     )
     assert 'CO2' in capped.capped
     assert capped.moved_kg['CO2'] == pytest.approx(1.0e18, rel=1e-12)
-    assert capped_state.locked('CO2') == pytest.approx(1.0e18, rel=1e-12)
+    assert capped_state.trapped('CO2') == pytest.approx(1.0e18, rel=1e-12)
 
 
 def test_a_step_leaves_every_array_of_its_input_state_untouched():
-    """The state passed in is not modified, in any of its arrays or records."""
+    """The record passed in is not modified, in any of its arrays or records."""
     n = 6
     kw = _mesh_kwargs(n, melt_visc=1.0)
     x = np.array([0.3, 0.2, 0.0, 0.3, 0.45, 1.0])
-    state, _ = advance_layers(
+    record, _ = advance_record(
         None,
         time_prev=0.0,
         time_now=1.0,
@@ -642,24 +616,24 @@ def test_a_step_leaves_every_array_of_its_input_state_untouched():
         **_volatile_kwargs({'CO2': 2e21}, 1e24),
         **kw,
     )
-    state.buried['H2O'][:] = 1.0e17
-    kept = state.copy()
+    record.crystal['H2O'][:] = 1.0e17
+    kept = record.copy()
     x2 = np.array([0.0, 0.1, 0.0, 0.0, 0.3, 1.0])
-    advance_layers(
-        state,
+    advance_record(
+        record,
         time_prev=1.0,
         time_now=1.0e4,
         melt_fraction=x2,
         **_volatile_kwargs({'CO2': 1e21}, 1e24),
         **kw,
     )
-    names = ('status', 'psi', 'psi_entry', 't_entry', 'melt_fraction', 't_darcy', 't_matrix')
+    names = ('phase', 'psi', 'psi_entry', 't_entry', 'melt_fraction', 't_darcy', 't_matrix')
     for name in names:
-        np.testing.assert_array_equal(getattr(state, name), getattr(kept, name))
-    np.testing.assert_array_equal(state.t_held, kept.t_held)
-    for sp in LAYER_SPECIES:
-        np.testing.assert_array_equal(state.buried[sp], kept.buried[sp])
-        np.testing.assert_array_equal(state.retained[sp], kept.retained[sp])
+        np.testing.assert_array_equal(getattr(record, name), getattr(kept, name))
+    np.testing.assert_array_equal(record.t_held, kept.t_held)
+    for sp in RECORD_SPECIES:
+        np.testing.assert_array_equal(record.crystal[sp], kept.crystal[sp])
+        np.testing.assert_array_equal(record.pore[sp], kept.pore[sp])
 
 
 @pytest.mark.physics_invariant
@@ -672,9 +646,13 @@ def test_a_sealed_node_reaching_the_floor_keeps_all_its_melt():
     n = 4
     kw = _mesh_kwargs(n, melt_visc=1.0)
     x = np.array([0.3, 0.0, 1.0, 1.0])
-    state, _ = advance_layers(None, time_prev=0.0, time_now=1.0, melt_fraction=x, **kw)
-    state, floor = advance_layers(
-        state, time_prev=1.0, time_now=1.0e4, melt_fraction=np.array([0.0, 0.0, 1.0, 1.0]), **kw
+    record, _ = advance_record(None, time_prev=0.0, time_now=1.0, melt_fraction=x, **kw)
+    record, floor = advance_record(
+        record,
+        time_prev=1.0,
+        time_now=1.0e4,
+        melt_fraction=np.array([0.0, 0.0, 1.0, 1.0]),
+        **kw,
     )
     assert floor.exited.tolist() == [0]
     assert floor.trapped[0] == pytest.approx(0.3, rel=1e-9)
@@ -683,15 +661,15 @@ def test_a_sealed_node_reaching_the_floor_keeps_all_its_melt():
     from proteus.outgas.compaction import darcy_velocity
 
     r = np.linspace(4.0e6, 4.5e6, 3)
-    volume, area, centre = shell_geometry(r)
+    volume, area, centre = node_geometry(r)
     tau = compaction_times([np.arange(2)], r, centre, _uniform(2, _DRHO), _uniform(2, _G), 1e19)
 
     def speed_of(p, idx):
         return darcy_velocity(p, _GRAIN, _DRHO, _G, 1.0, buoyancy='mixture')
 
     args = (np.array([0.4, 0.4]), [np.arange(2)], volume, area, speed_of, tau)
-    full = drain_runs(*args, 1.0e4 * secs_per_year)
-    capped = drain_runs(*args, 1.0e4 * secs_per_year, max_substeps=1)
+    full = drain_mush_layers(*args, 1.0e4 * secs_per_year)
+    capped = drain_mush_layers(*args, 1.0e4 * secs_per_year, max_substeps=1)
     assert capped.n_substeps == 1
     assert capped.elapsed < full.elapsed
     assert np.sum(capped.psi * volume) > np.sum(full.psi * volume)
@@ -717,12 +695,12 @@ def test_a_matrix_limited_node_traps_the_closed_form_share_of_its_melt(validatio
     r = kw['r_basic']
     tau = mush_visc / (_DRHO * _G * 0.5 * (r[-1] - r[-2])) / secs_per_year
     x = np.ones(n)
-    state, _ = advance_layers(None, time_prev=0.0, time_now=0.0, melt_fraction=x, **kw)
+    record, _ = advance_record(None, time_prev=0.0, time_now=0.0, melt_fraction=x, **kw)
     x[-1] = 0.3
-    state, entry = advance_layers(
-        state, time_prev=0.0, time_now=100.0, melt_fraction=x, **vol, **kw
+    record, entry = advance_record(
+        record, time_prev=0.0, time_now=100.0, melt_fraction=x, **vol, **kw
     )
-    locked = entry.locked_kg['H2O']
+    locked = entry.buried_kg['H2O']
     assert locked == pytest.approx((1.0 - d_h2o) * 1.0e-3 * 0.5 * 1.0e23, rel=1e-12)
     times, kept, moved = [0.0], [1.0], locked
     t_prev, t_end = 100.0, 100.0 + 3.0 * tau
@@ -730,13 +708,13 @@ def test_a_matrix_limited_node_traps_the_closed_form_share_of_its_melt(validatio
         t_now = min(t_prev + 2.0e4, t_end)
         if t_now >= t_end:
             x[-1] = 0.0
-        state, step = advance_layers(
-            state, time_prev=t_prev, time_now=t_now, melt_fraction=x, **vol, **kw
+        record, step = advance_record(
+            record, time_prev=t_prev, time_now=t_now, melt_fraction=x, **vol, **kw
         )
         moved += step.moved_kg['H2O']
         assert np.all(step.node_branch[step.node_branch > 0] == BRANCH_MATRIX)
         frac = (
-            step.trapped[0] / 0.5 if step.exited.size else state.psi[-1] / state.psi_entry[-1]
+            step.trapped[0] / 0.5 if step.exited.size else record.psi[-1] / record.psi_entry[-1]
         )
         times.append((t_now - 100.0) / tau)
         kept.append(float(frac))
@@ -745,9 +723,9 @@ def test_a_matrix_limited_node_traps_the_closed_form_share_of_its_melt(validatio
     exact = 0.5 * np.exp(-3.0)
     assert step.exited.tolist() == [n - 1]
     assert step.trapped[0] == pytest.approx(exact, rel=5e-3)
-    assert state.buried['H2O'][-1] == pytest.approx(locked * np.exp(-3.0), rel=5e-3)
+    assert record.crystal['H2O'][-1] == pytest.approx(locked * np.exp(-3.0), rel=5e-3)
     # What the record holds is what the steps moved, to rounding.
-    assert moved == pytest.approx(state.buried['H2O'][-1], rel=1e-10)
+    assert moved == pytest.approx(record.crystal['H2O'][-1], rel=1e-10)
     # Discrimination: the depth of the node's base halves tau, and a forward-Euler
     # update at the same steps ends 8 percent low.
     assert abs(0.5 * np.exp(-6.0) - step.trapped[0]) > 0.5 * exact
@@ -763,7 +741,7 @@ def test_a_matrix_limited_node_traps_the_closed_form_share_of_its_melt(validatio
         every = slice(None, None, 3)
         ax1.semilogy(grid, np.exp(-grid), '-', label='exp(-t / tau_s)')
         ax1.semilogy(
-            t[every], np.asarray(kept)[every], 'o', mfc='none', ms=4, label='layer state'
+            t[every], np.asarray(kept)[every], 'o', mfc='none', ms=4, label='layer record'
         )
         ax1.set_xlabel('Time in the mush / tau_s')
         ax1.set_ylabel('Retained melt / entry melt')
