@@ -100,7 +100,7 @@ planetary surface conditions.
 | `solver_rtol` | float | `0.0001` | Relative tolerance \[1\] of the CALLIOPE and atmodeller equilibrium solvers. It is also the relative tolerance of the per-element mass closure check that runs after each outgassing step while trapping is on. Must be > 0.0. |
 | `solver_atol` | float | `1e-06` | Absolute tolerance of the equilibrium solvers: CALLIOPE takes it as `xtol` of its root solve, atmodeller as `atol`. Unused by the dummy module. Must be > 0.0. |
 | `prevent_desaturation` | bool | `false` | Whether condensed mass leaves the outgassing system for good. With `false`, each solve re-equilibrates the whole inventory, so a condensate can re-vapourise as conditions change. With `true`, the mass held in each `{e}_kg_condensed` reservoir is withheld from the chemistry, from escape and from the desiccation gate, and the reservoir can only grow: a condensed layer can only get thicker. Each condensate's `{X}_cd_activity` is then the saturation of the inventory left in the solve, so it can fall below 1 while its layer is held. Only atmodeller with `outgas.atmodeller.include_condensates` forms condensates: with another backend, or with atmodeller and its condensates off, the flag holds nothing, and a warning at config load says so. |
-| `trap_mode` | str | `"none"` | Solid-phase volatile trapping during mantle crystallisation. Choices: 'none' (off), 'front' (F_tl from the drainage of melt across the freezing front the interior solver resolves) and 'layers' (the pore melt of every mush node drains through the nodes above it and locks its volatiles when the node reaches `trap_phi_min`; a node that remelts returns them). Both schemes need `interior_energetics.module = 'aragog'`. The disaggregation melt fraction that tops the front is `interior_energetics.rfront_loc`, the melt fraction of the solver's own rheological transition, not a separate field. Choices: `"none"`, `"front"`, `"layers"`. |
+| `trap_mode` | str | `"none"` | Solid-phase volatile trapping during mantle crystallisation. Choices: 'none' (off), 'front' (F_tl from the drainage of melt across the freezing front the interior solver resolves) and 'layers' (every node buries the volatiles of its pore melt when it enters the mush, drains that melt through the nodes above it, and locks what is left when it reaches `trap_phi_min`; the chemistry then dissolves into the melt of the liquid nodes alone, and a node that melts returns what it holds). Both schemes need `interior_energetics.module = 'aragog'`. The disaggregation melt fraction that tops the front is `interior_energetics.rfront_loc`, the melt fraction of the solver's own rheological transition, not a separate field. Choices: `"none"`, `"front"`, `"layers"`. |
 | `trap_phi_min` | float | `0.01` | Porosity below which a node counts as solid \[1\]. Needed because the density-derived porosity never reaches exactly zero. Must be > 0.0 and < 1.0. |
 | `trap_mush_log10visc` | float | `-1.0` | Log10 viscosity of the mush near the solidus \[log10(Pa s)\], entering the matrix deformation time. A value of zero or below selects the default of 20, mid-range of the 18 to 22 the literature allows. |
 | `trap_n_front_min` | int | `3` | Fewest nodes a freezing front must span before its drainage is integrated rather than bounded above. Must be >= 2. |
@@ -233,10 +233,10 @@ Rock vapourisation parameters, used when `outgas.vapourise = true`. Requires
 Cross-field constraints enforced when the config file loads:
 
 - BOREAS escape requires a radiative atmosphere (not dummy).
-- The front and layer trapping schemes read the profiles the Aragog interior exports.
 - ZEPHYRUS escape with JANUS requires the escape stop criterion to be enabled.
 - prevent_desaturation holds nothing unless atmodeller forms condensates.
 - ZEPHYRUS escape requires the MORS star module with the Spada evolution tracks.
+- The front and layer trapping schemes read the profiles the Aragog interior exports.
 - Dummy escape requires a non-negative escape rate.
 - Escape reservoir must be one of 'bulk', 'outgas', or 'pxuv'.
 - Validate ZEPHYRUS settings: Pxuv within (0, 10\] bar and efficiency within \[0, 1\].

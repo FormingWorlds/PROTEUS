@@ -279,13 +279,13 @@ def run_escape(
             the atmosphere is the only reservoir that can supply escape. The
             element floor of :func:`calc_new_elements` is then off, since no
             outgassing solve follows to repartition a zeroed total. It is also
-            off on a step on which a remelt returned buried mass to the melt.
+            off on a step on which trapping returned mass to the melt.
         interior_o : Interior_t | None
             Interior state. When given, its ``escape_dt_limit`` is set so a
             capped step shortens the next one; see :func:`escape_dt_limit`.
     """
     # Imported here: proteus.outgas imports this module at load.
-    from proteus.outgas.trapping import remelt_returned_mass
+    from proteus.outgas.trapping import trapping_returned_mass
 
     dirs = dirs or {}
 
@@ -387,7 +387,7 @@ def run_escape(
         reservoir,
         min_thresh=config.outgas.mass_thresh,
         esc_mass=esc_step_kg,
-        floor=not (atmosphere_only or remelt_returned_mass(hf_row)),
+        floor=not (atmosphere_only or trapping_returned_mass(hf_row)),
         config=config,
     )
 

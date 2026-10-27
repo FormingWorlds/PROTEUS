@@ -1295,6 +1295,40 @@ def test_finished_run_saves_the_final_copy_after_the_final_snapshot(tmp_path):
 
 
 @pytest.mark.unit
+def test_finished_run_puts_the_trapping_record_back_after_the_final_snapshot(tmp_path):
+    """The final interior snapshot is rewritten from the solver alone, so the
+    per-node trapping record a resume from the last step needs is written into
+    it again, after the rewrite and for the last row's time."""
+    p = _make_resume_main_loop_proteus(tmp_path, interior_module='aragog')
+    p.config.interior_struct.module = 'zalmoxis'
+    p.config.params.out.plot_mod = None
+    p.config.params.out.archive_mod = None
+    hf_df = _make_resume_checkpoint_df()
+    hf_df['R_core'], hf_df['R_int'] = 3.4e6, 6.4e6
+    mesh = tmp_path / 'data' / 'zalmoxis_output.dat'
+    _write_mesh(mesh, 3.4e6, 6.4e6)
+    order = []
+    with (
+        patch(
+            'proteus.interior_energetics.aragog.write_final_snapshot',
+            side_effect=lambda *a, **k: order.append('snapshot'),
+        ),
+        patch(
+            'proteus.outgas.layer_trapping.persist_node_record',
+            side_effect=lambda dirs, hf_row, interior_o: order.append(
+                ('record', hf_row['Time'], interior_o)
+            ),
+        ),
+    ):
+        _run_resumed_loop_until_stop(
+            p, hf_df, _aragog_like_interior(mesh, []), lambda *a, **k: None, terminate_after=2
+        )
+    assert order[0] == 'snapshot'
+    assert order[1] == ('record', p.hf_row['Time'], p.interior_o)
+    assert len(order) == 2
+
+
+@pytest.mark.unit
 def test_impact_on_the_last_step_saves_no_final_copy(tmp_path):
     """Without a final snapshot of its own, the last row gets no copy, even when
     an earlier row's _int.nc carries the same name."""

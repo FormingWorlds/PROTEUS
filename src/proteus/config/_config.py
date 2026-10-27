@@ -402,7 +402,7 @@ def boreas_requires_atmosphere(instance, attribute, value):
         )
 
 
-def front_trapping_requires_aragog(instance, attribute, value):
+def trapping_requires_aragog(instance, attribute, value):
     """The front and layer trapping schemes read the profiles the Aragog interior exports."""
     trap_mode = getattr(instance.outgas, 'trap_mode', 'none')
     interior = instance.interior_energetics.module
@@ -797,7 +797,7 @@ class Config:
     outgas: Outgas = field(
         factory=Outgas,
         validator=(
-            front_trapping_requires_aragog,
+            trapping_requires_aragog,
             prevent_desaturation_warns_without_condensates,
         ),
     )

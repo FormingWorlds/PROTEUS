@@ -190,7 +190,7 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | Column | Unit | Description | Producer | Written when | Read by |
 |---|---|---|---|---|---|
 | `gravity` | `m s-2` | surface gravity | `interior_energetics/wrapper.py`<br>`interior_struct/dummy.py`<br>`interior_struct/zalmoxis.py` | always; interior_struct.module = "dummy"; interior_struct.module = "zalmoxis" | atmos_chem, atmos_clim, interior_energetics, interior_struct, outgas |
-| `Phi_global` | `1` | mantle melt mass-fraction | `interior_energetics/aragog.py`<br>`interior_energetics/aragog_jax.py`<br>`interior_energetics/boundary.py`<br>`interior_energetics/dummy.py`<br>`interior_energetics/spider.py`<br>`interior_energetics/wrapper.py` | always; interior_energetics.module = "aragog"; interior_energetics.module = "boundary"; interior_energetics.module = "dummy"; interior_energetics.module = "spider"; giant impact, interior_energetics.module = "aragog" | interior_energetics, interior_struct, main loop, outgas, plot, utils |
+| `Phi_global` | `1` | mantle melt mass-fraction | `interior_energetics/aragog.py`<br>`interior_energetics/aragog_jax.py`<br>`interior_energetics/boundary.py`<br>`interior_energetics/dummy.py`<br>`interior_energetics/spider.py`<br>`interior_energetics/wrapper.py`<br>`outgas/layer_trapping.py` | always; interior_energetics.module = "aragog"; interior_energetics.module = "boundary"; interior_energetics.module = "dummy"; interior_energetics.module = "spider"; giant impact, interior_energetics.module = "aragog" | interior_energetics, interior_struct, main loop, outgas, plot, utils |
 | `Phi_global_vol` | `1` | mantle melt volume-fraction | `interior_energetics/aragog.py`<br>`interior_energetics/aragog_jax.py`<br>`interior_energetics/boundary.py`<br>`interior_energetics/dummy.py`<br>`interior_energetics/spider.py`<br>`interior_energetics/wrapper.py` | interior_energetics.module = "aragog"; interior_energetics.module = "boundary"; interior_energetics.module = "dummy"; interior_energetics.module = "spider"; giant impact, interior_energetics.module = "aragog" |   |
 | `RF_depth` | `1` | depth of rheological front | `interior_energetics/aragog.py`<br>`interior_energetics/aragog_jax.py`<br>`interior_energetics/boundary.py`<br>`interior_energetics/dummy.py`<br>`interior_energetics/spider.py`<br>`interior_energetics/wrapper.py` | interior_energetics.module = "aragog"; interior_energetics.module = "boundary"; interior_energetics.module = "dummy"; interior_energetics.module = "spider"; giant impact, interior_energetics.module = "aragog" | interior_energetics, plot |
 | `M_core` | `kg` | dry mass of core | `interior_energetics/aragog.py`<br>`interior_energetics/spider.py`<br>`interior_energetics/wrapper.py`<br>`interior_struct/dummy.py`<br>`interior_struct/zalmoxis.py` | always; interior_energetics.module = "aragog"; interior_energetics.module = "spider"; interior_struct.module = "dummy"; interior_struct.module = "zalmoxis" | interior_energetics, interior_struct |
@@ -290,21 +290,24 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | Column | Unit | Description | Producer | Written when | Read by |
 |---|---|---|---|---|---|
 | `trap_dM_RM` | `kg` | mantle mass crystallised this step, negative when it remelted | `outgas/trap_bookkeeping.py` | always |   |
-| `trap_F_tl` | `1` | trapped melt fraction applied this step | `outgas/trap_bookkeeping.py` | always |   |
-| `trap_kg_step` | `kg` | volatile mass buried this step, negative when remelting released it | `outgas/trap_bookkeeping.py` | always | outgas |
-| `trap_kg_cumulative` | `kg` | net volatile mass buried since the run began | `outgas/trap_bookkeeping.py` | always | outgas |
-| `trap_branch` | `1` | drainage regime code: 0 no front (a freezing step still buries by crystal partitioning), 1 Darcy, 2 matrix, 3 guard, 6 no interior state, 7 remelting | `outgas/trap_bookkeeping.py` | always | outgas |
-| `trap_tau_D` | `yr` | percolation time at the top of the front | `outgas/trap_bookkeeping.py` | always |   |
-| `trap_tau_s` | `yr` | matrix deformation time | `outgas/trap_bookkeeping.py` | always |   |
-| `trap_t_res` | `yr` | parcel residence time in the front | `outgas/trap_bookkeeping.py` | always |   |
-| `trap_n_front` | `1` | nodes spanned by the freezing front, or mush nodes of the layer scheme | `outgas/trap_bookkeeping.py` | always |   |
-| `trap_L_front` | `m` | freezing-front thickness | `outgas/trap_bookkeeping.py` | always |   |
-| `trap_v_front` | `m s-1` | freezing-front speed | `outgas/trap_bookkeeping.py` | always |   |
+| `trap_F_tl` | `1` | melt mass fraction the mantle that solidified this step keeps | `outgas/trap_bookkeeping.py` | always |   |
+| `trap_kg_step` | `kg` | net volatile mass moved from the melt into the solid this step, negative when trapping returned more than it took | `outgas/trap_bookkeeping.py` | always |   |
+| `trap_kg_cumulative` | `kg` | net volatile mass trapped since the run began | `outgas/trap_bookkeeping.py` | always | outgas |
+| `trap_branch` | `1` | diagnostic regime code: 0 no front and no node drained (a freezing step still traps by crystal partitioning), 1 Darcy, 2 matrix, 3 no-drainage bound, 6 no interior profiles, 7 return by remelting | `outgas/trap_bookkeeping.py` | always |   |
+| `trap_tau_D` | `yr` | percolation time at the top of the freezing front, the thickest mush layer in the layer scheme | `outgas/trap_bookkeeping.py` | always |   |
+| `trap_tau_s` | `yr` | matrix deformation time of the freezing front, the thickest mush layer in the layer scheme | `outgas/trap_bookkeeping.py` | always |   |
+| `trap_t_res` | `yr` | residence time in the mush of the melt that reached the porosity floor | `outgas/trap_bookkeeping.py` | always |   |
+| `trap_n_front` | `1` | nodes of the freezing front, the thickest mush layer in the layer scheme | `outgas/trap_bookkeeping.py` | always |   |
+| `trap_L_front` | `m` | thickness of the freezing front, the thickest mush layer in the layer scheme | `outgas/trap_bookkeeping.py` | always |   |
+| `trap_v_front` | `m s-1` | front speed from the mass crystallised, at the base of the front or of the thickest mush layer | `outgas/trap_bookkeeping.py` | always |   |
 | `trap_front_courant` | `1` | front advance over one step, in front thicknesses | `outgas/trap_bookkeeping.py` | always |   |
-| `trap_w_matrix_over_vf` | `1` | matrix speed over front speed | `outgas/trap_bookkeeping.py` | always |   |
+| `trap_w_matrix_over_vf` | `1` | matrix speed at the top of the front over the front speed, NaN in the layer scheme | `outgas/trap_bookkeeping.py` | always |   |
 | `trap_n_exited` | `1` | mush nodes that reached the porosity floor this step, layer scheme | `outgas/trap_bookkeeping.py` | always |   |
-| `trap_frac_bound` | `1` | mass share of those nodes held at the no-drainage bound | `outgas/trap_bookkeeping.py` | always |   |
+| `trap_frac_bound` | `1` | mass share of those nodes that reached it on the no-drainage bound, including nodes that drained before they were sealed | `outgas/trap_bookkeeping.py` | always |   |
 | `trap_n_substeps` | `1` | drainage sub-steps of the layer scheme this step | `outgas/trap_bookkeeping.py` | always |   |
+| `trap_n_mush` | `1` | mush nodes of the whole mesh, layer scheme; NaN in the front scheme | `outgas/trap_bookkeeping.py` | always |   |
+| `trap_kg_returned` | `kg` | volatile mass trapping returned to the melt this step, by remelting or by drainage | `outgas/trap_bookkeeping.py` | always | outgas |
+| `trap_Phi_ocean` | `1` | melt of the liquid nodes over the mantle mass, the melt the chemistry dissolves into in the layer scheme; NaN otherwise | `outgas/trap_bookkeeping.py`<br>`outgas/trapping.py` | always | outgas |
 
 ### Giant-impact accretion ledger
 

@@ -42,7 +42,6 @@ from proteus.config._config import (
     boreas_requires_atmosphere,
     boundary_requires_fixed_surface_state,
     check_module_dependencies,
-    front_trapping_requires_aragog,
     instmethod_evolve,
     orbit_requires_tides,
     parameterized_excludes_accretion,
@@ -55,6 +54,7 @@ from proteus.config._config import (
     satellite_evolve,
     sp0d_obliqua_degree_mismatch,
     spinless_orbit_keeps_spin_synchronous,
+    trapping_requires_aragog,
 )
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
@@ -1380,7 +1380,7 @@ def test_module_cross_product_either_validates_or_raises_clearly(tmp_path):
     )
 
 
-# front_trapping_requires_aragog: positive + negative
+# trapping_requires_aragog: positive + negative
 @pytest.mark.unit
 def test_front_trapping_requires_the_aragog_interior():
     """The front scheme locates the freezing front on the melt-fraction,
@@ -1392,7 +1392,7 @@ def test_front_trapping_requires_the_aragog_interior():
         **{'outgas.trap_mode': 'front', 'interior_energetics.module': 'spider'}
     )
     with pytest.raises(ValueError, match=r'interior_energetics.module = "aragog"') as excinfo:
-        front_trapping_requires_aragog(spider, None, None)
+        trapping_requires_aragog(spider, None, None)
     # Discrimination: the message echoes the rejected interior, so a generic
     # failure from another validator could not pass for this one.
     assert '"spider"' in str(excinfo.value)
@@ -1402,7 +1402,7 @@ def test_front_trapping_requires_the_aragog_interior():
     aragog = _make_config_instance(
         **{'outgas.trap_mode': 'front', 'interior_energetics.module': 'aragog'}
     )
-    assert front_trapping_requires_aragog(aragog, None, None) is None
+    assert trapping_requires_aragog(aragog, None, None) is None
     assert aragog.interior_energetics.module == 'aragog'
 
     # Edge case: with trapping off, any interior is fine, including a config
@@ -1410,10 +1410,10 @@ def test_front_trapping_requires_the_aragog_interior():
     off = _make_config_instance(
         **{'outgas.trap_mode': 'none', 'interior_energetics.module': 'dummy'}
     )
-    assert front_trapping_requires_aragog(off, None, None) is None
+    assert trapping_requires_aragog(off, None, None) is None
     undeclared = _make_config_instance(**{'interior_energetics.module': 'dummy'})
     assert not hasattr(undeclared.outgas, 'trap_mode')
-    assert front_trapping_requires_aragog(undeclared, None, None) is None
+    assert trapping_requires_aragog(undeclared, None, None) is None
 
 
 @pytest.mark.unit
@@ -1425,25 +1425,25 @@ def test_layer_trapping_requires_the_aragog_interior():
         **{'outgas.trap_mode': 'layers', 'interior_energetics.module': 'boundary'}
     )
     with pytest.raises(ValueError, match=r'trap_mode = "layers"') as excinfo:
-        front_trapping_requires_aragog(boundary, None, None)
+        trapping_requires_aragog(boundary, None, None)
     assert '"boundary"' in str(excinfo.value)
     assert 'front' not in str(excinfo.value)
     aragog = _make_config_instance(
         **{'outgas.trap_mode': 'layers', 'interior_energetics.module': 'aragog'}
     )
-    assert front_trapping_requires_aragog(aragog, None, None) is None
+    assert trapping_requires_aragog(aragog, None, None) is None
 
 
 @pytest.mark.unit
 def test_trap_mode_accepts_the_three_schemes_and_rejects_others():
-    """trap_mode takes 'none', 'front' and 'layers'; a mode of an earlier
-    trapping design, such as 'dynamic', is refused when the section loads."""
+    """trap_mode takes 'none', 'front' and 'layers'; any other name, and a
+    valid name in the wrong case, is refused when the section loads."""
     from proteus.config._outgas import Outgas
 
     for mode in ('none', 'front', 'layers'):
         assert Outgas(trap_mode=mode).trap_mode == mode
     with pytest.raises(ValueError, match='trap_mode'):
-        Outgas(trap_mode='dynamic')
+        Outgas(trap_mode='nodes')
     with pytest.raises(ValueError, match='trap_mode'):
         Outgas(trap_mode='Layers')
 

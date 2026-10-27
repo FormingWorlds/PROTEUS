@@ -19,11 +19,12 @@ Volatile budget
 ---------------
 A node's pore melt leaves contact with the magma ocean when its crystal
 framework connects: melt drains upward only, so nothing flows back from the
-ocean to renew it. Its volatiles are therefore buried from that moment, at the
-concentration the chemistry solver held then, and carried with the melt as it
-drains. A node entering the mush from above buries
+ocean to renew it, and the chemistry solver dissolves volatiles into the ocean
+melt alone. The pore melt's volatiles are therefore buried from that moment, at
+the concentration the chemistry solver held then, and carried with the melt as
+it drains. A node entering the mush from above buries
 
-    R_Z = (1 - D_Z) C_Z F m
+    R_Z = C_Z F m
 
 of each species, with ``C_Z`` that step's melt concentration, ``m`` the node
 mass and ``F`` the melt mass fraction of its pore melt, exactly ``rfront_loc``
@@ -31,11 +32,12 @@ on entry from above. Drainage removes melt, and the volatiles in it, in
 proportion to the pore melt volume. Melt passing from one node into the next
 takes its share of the buried mass with it; melt that drains out of the top of
 a mush layer rejoins the ocean and its volatiles return to the melt reservoir.
-What a node holds when it reaches the porosity floor is locked. Every step's
-crystals take ``D_Z C_Z dM_RM``, spread over the nodes by the mass each
-crystallised. Over the life of a node the two add up to
-``[(1 - F) D_Z + F] C m``, Sim et al. (2024) Eq. 6 applied to the node's own
-mass. The noble gases follow the same rules at ``D_Z = 0``.
+What a node holds when it reaches the porosity floor is locked. Crystals that
+grow in a liquid node take ``D_Z C_Z`` of their mass from the ocean; crystals
+that grow in the pores of the mush draw on the pore melt the record already
+holds. Over the life of a node the two add up to ``[F + (1 - F) D_Z] C m``,
+Sim et al. (2024) Eq. 6 applied to the node's own mass. The noble gases follow
+the same rules at ``D_Z = 0``.
 
 The record keeps two stores per species: ``pore``, the volatiles dissolved in
 the pore melt, which drain with it, and ``crystal``, the volatiles in the
@@ -49,15 +51,20 @@ Remelting
 ---------
 Remelting is followed node by node. A node that becomes liquid again, from the
 mush or from the solid, returns everything trapped at it to the melt
-reservoir: its solid has rejoined the magma ocean. A solid node that re-enters
-the mush from below makes its new pore melt from its own locked material, so
-it buries nothing new and keeps its crystal store until it becomes liquid. The
-record is kept per species, so a release returns exactly the species that went
-in.
+reservoir: its solid has rejoined the magma ocean. A liquid or mush node whose
+melt fraction rises from ``x0`` to ``x`` melts ``(x - x0) / (1 - x0)`` of its
+crystals, and gives up that share of its crystal store: a liquid node returns
+it to the ocean, so a liquid node that reaches ``x = 1`` holds nothing, and a
+mush node puts it into its pore melt, which drains. A solid node that re-enters
+the mush from below makes its new pore melt from its own locked material, so it
+buries nothing new from the ocean. The record is kept per species, so a release
+returns exactly the species that went in.
 
 Trapped mass that the record does not hold, as after resuming a run whose
 snapshot carries no record, is assigned to the nodes that are not liquid in
 proportion to their mass (:func:`adopt_unrecorded`), so it remelts with them.
+A record started on a run that has trapped mass already buries nothing new at
+first sight, since the mush it finds holds that mass.
 """
 
 from __future__ import annotations
@@ -89,6 +96,7 @@ from proteus.outgas.layer_drainage import (
     mush_layers,
     node_array,
     node_geometry,
+    split_at_dense,
     thickest_mush_layer,
 )
 from proteus.utils.constants import noble_gases, secs_per_year, vol_list
@@ -194,7 +202,7 @@ class LayerStep:
     thickness: float = float('nan')  # radial extent of the thickest mush layer [m]
     r_base: float = float('nan')  # base radius of that layer [m]
     rho_solid_base: float = float('nan')  # solid density at that base [kg m-3]
-    node_thickness: float = float('nan')  # mean node thickness of that layer [m]
+    layer_nodes: int = 0  # nodes of that layer
     tau_d: float = float('nan')  # percolation time of that layer at its top [s]
     tau_s: float = float('nan')  # matrix time of that layer [s]
     matrix_speed: float = float('nan')  # largest melt flux per area [m s-1]
@@ -274,19 +282,24 @@ class _Transitions:
 def _drain(new: NodeRecord, mesh: _Mesh, species, dt_yr, params: DrainageParams) -> tuple:
     """Drain the open mush layers of the previous step and carry their volatiles.
 
-    Returns the drainage outcome, the open and sealed mush layers, and the mass
-    of each species that left through the tops of the open layers.
+    Returns the drainage outcome, the open mush layers, those sealed below a
+    solid layer, those held at and below a dense-melt node, and the mass of
+    each species that left through the tops of the open layers.
     """
     n = mesh.n
     active = (new.phase == PHASE_MUSH) & np.isfinite(new.psi)
-    open_layers, sealed = [], []
+    drho = mesh.rho_s - mesh.rho_l
+    open_layers, sealed, dense = [], [], []
     for layer in mush_layers(active):
         above = int(layer[-1]) + 1
-        if above >= n or new.phase[above] == PHASE_LIQUID:
-            open_layers.append(layer)
-        else:
+        if not (above >= n or new.phase[above] == PHASE_LIQUID):
             sealed.append(layer)
-    drho = mesh.rho_s - mesh.rho_l
+            continue
+        held, draining = split_at_dense(layer, drho)
+        if held.size:
+            dense.append(held)
+        if draining.size:
+            open_layers.append(draining)
 
     def speed_of(p, index):
         return darcy_velocity(
@@ -313,6 +326,8 @@ def _drain(new: NodeRecord, mesh: _Mesh, species, dt_yr, params: DrainageParams)
         substep_fraction=params.substep_fraction,
         max_substeps=params.max_substeps,
         tracer=tracer if species else None,
+        porosity=0.5
+        * (melt_volume_fraction(new.melt_fraction, mesh.rho_s, mesh.rho_l) + mesh.phi),
     )
     moved = np.zeros(n, dtype=bool)
     for layer in open_layers:
@@ -323,7 +338,7 @@ def _drain(new: NodeRecord, mesh: _Mesh, species, dt_yr, params: DrainageParams)
         # Everything that left the open layers went out through their tops.
         release[sp] = max(float(np.sum(new.pore[sp][moved] - after[moved])), 0.0)
         new.pore[sp] = after
-    return drained, open_layers, sealed, release
+    return drained, open_layers, sealed, dense, release
 
 
 def _exits(record, new, mesh, active, time_now):
@@ -355,36 +370,51 @@ def _exits(record, new, mesh, active, time_now):
     return exited, trapped, branch, residence, exit_drained, exit_bound, stray
 
 
-def _branches(new, drained, open_layers, sealed, dt_yr):
+def _branches(new, drained, open_layers, sealed, dense, dt_yr):
     """Branch code of every node that drained or was held, and why nodes were held."""
     node_branch = np.full(new.size, BRANCH_NONE)
     for layer in open_layers:
         node_branch[layer] = np.where(
             drained.t_darcy[layer] >= drained.t_matrix[layer], BRANCH_DARCY, BRANCH_MATRIX
         )
-    for layer in sealed:
+    for layer in (*sealed, *dense):
         new.t_held[layer] += dt_yr
         node_branch[layer] = BRANCH_GUARD
     reasons = []
     if sealed:
         reasons.append(f'{sum(lay.size for lay in sealed)} sealed below a solid layer')
+    if dense:
+        reasons.append(f'{sum(lay.size for lay in dense)} at or below dense melt')
     return node_branch, reasons
 
 
 def _freeze_and_remelt(record, new, mesh, species, exit_drained, release):
-    """Lock the pore melt reaching the floor and free the nodes turning liquid.
+    """Lock the pore melt reaching the floor, and free what melting crystals held.
 
-    Returns the frozen pore-melt volatiles per node, the mass returned by
-    remelting per species, and which nodes remelted.
+    A node turning liquid returns everything trapped at it. A liquid or mush
+    node whose melt fraction rises from ``x0`` to ``x`` melts ``(x - x0) / (1 - x0)``
+    of its crystals, and that share of its crystal store goes with the new
+    melt: to the ocean from a liquid node, into the pore melt of a mush node.
+    Returns the frozen pore-melt volatiles per node, the mass returned to the
+    ocean per species, and which nodes turned liquid.
     """
     remelt = (record.phase != PHASE_LIQUID) & (mesh.phase == PHASE_LIQUID)
+    x0 = record.melt_fraction
+    melting = (mesh.x > x0) & ~remelt & (mesh.phase != PHASE_SOLID)
+    share = np.zeros(mesh.n)
+    np.divide(mesh.x - x0, 1.0 - x0, out=share, where=melting & (x0 < 1.0))
+    share = np.clip(share, 0.0, 1.0)
+    to_ocean = mesh.phase == PHASE_LIQUID
     freeze, remelted = {}, {}
     for sp in species:
+        freed = share * new.crystal[sp]
         freeze[sp] = np.where(exit_drained, new.pore[sp], 0.0)
-        remelted[sp] = float(np.sum(new.pore[sp][remelt] + new.crystal[sp][remelt]))
+        whole = new.pore[sp][remelt] + new.crystal[sp][remelt]
+        remelted[sp] = float(np.sum(whole) + np.sum(freed[to_ocean & ~remelt]))
         release[sp] = release.get(sp, 0.0) + remelted[sp]
         new.pore[sp] = np.where(exit_drained | remelt, 0.0, new.pore[sp])
-        new.crystal[sp] = np.where(remelt, 0.0, new.crystal[sp])
+        new.pore[sp] = new.pore[sp] + np.where(to_ocean, 0.0, freed)
+        new.crystal[sp] = np.where(remelt, 0.0, new.crystal[sp] - freed)
     return freeze, remelted, remelt
 
 
@@ -432,11 +462,11 @@ def _evolve(record: NodeRecord, mesh: _Mesh, species, time_prev, time_now, param
         new.crystal.setdefault(sp, np.zeros(mesh.n))
     dt_yr = max(time_now - time_prev, 0.0)
     active = (record.phase == PHASE_MUSH) & np.isfinite(record.psi)
-    drained, open_layers, sealed, release = _drain(new, mesh, species, dt_yr, params)
+    drained, open_layers, sealed, dense, release = _drain(new, mesh, species, dt_yr, params)
     new.psi = drained.psi
     new.t_darcy = new.t_darcy + drained.t_darcy / secs_per_year
     new.t_matrix = new.t_matrix + drained.t_matrix / secs_per_year
-    node_branch, reasons = _branches(new, drained, open_layers, sealed, dt_yr)
+    node_branch, reasons = _branches(new, drained, open_layers, sealed, dense, dt_yr)
 
     exited, trapped, branch, residence, exit_drained, exit_bound, stray = _exits(
         record, new, mesh, active, time_now
@@ -473,33 +503,30 @@ def _evolve(record: NodeRecord, mesh: _Mesh, species, time_prev, time_now, param
     return new, step, moves
 
 
-def _settle(new, mesh, moves, step, species, conc, part, liquid, crystallised) -> None:
-    """Bury and cap the volatiles of one step, and write them into the record.
+def _settle(new, mesh, moves, step, species, conc, part, liquid) -> None:
+    """Bury, lock and cap the volatiles of one step, and write them into the record.
 
-    Entering nodes bury ``(1 - D) C F m`` in their pore melt, nodes that crossed
-    the whole mush lock the same for the melt of the transition, and the
-    crystals take ``D C dM_RM`` spread by the mass each node crystallised. These
+    Entering nodes bury ``C F m`` in their pore melt, all the volatiles that
+    melt held when it left the ocean. Nodes that crossed the whole mush lock
+    the same for the melt of the transition. Crystals that grew in liquid
+    nodes take ``D C`` of their mass from the ocean, ``m (x0 - max(x, F))``
+    for a node that cooled from ``x0`` to ``x``; crystals growing in the pores
+    of the mush draw on the pore melt, which the record already holds. These
     new burials are scaled together per species so they never exceed what the
-    melt holds after this step's returns. Frozen pore melt was buried already
+    ocean holds after this step's returns. Frozen pore melt was buried already
     and moves to the crystal store unscaled.
     """
     held_melt = mass_fraction_of_volume(np.nan_to_num(new.psi), mesh.rho_l, mesh.rho_s)
     held_melt = held_melt * mesh.mass
     transition_melt = mesh.rfront_loc * mesh.mass
-    weights = mesh.mass * np.maximum(moves.x_prev - mesh.x, 0.0)
-    if not np.sum(weights) > 0.0:
-        # The global melt fraction fell while no node's did; spread the crystals
-        # by solid mass instead.
-        weights = mesh.mass * (1.0 - mesh.x)
-    total_weight = float(np.sum(weights))
+    grown = mesh.mass * np.maximum(
+        np.minimum(moves.x_prev, 1.0) - np.maximum(mesh.x, mesh.rfront_loc), 0.0
+    )
     for sp in species:
         c = conc.get(sp, 0.0)
         d = part.get(sp, 0.0)
-        melt_share = max(1.0 - d, 0.0) * c
-        bury = np.where(moves.burying, melt_share * held_melt, 0.0)
-        into_crystal = np.where(moves.bound, melt_share * transition_melt, 0.0)
-        if crystallised > 0.0 and total_weight > 0.0:
-            into_crystal = into_crystal + d * c * crystallised * weights / total_weight
+        bury = np.where(moves.burying, c * held_melt, 0.0)
+        into_crystal = np.where(moves.bound, c * transition_melt, 0.0) + d * c * grown
         release = float(moves.release.get(sp, 0.0))
         wanted = float(np.sum(bury) + np.sum(into_crystal))
         available = max(float(liquid.get(sp, 0.0)), 0.0) + release
@@ -519,8 +546,8 @@ def _settle(new, mesh, moves, step, species, conc, part, liquid, crystallised) -
         step.moved_kg[sp] = scale * wanted - release
 
 
-def _first_sight(mesh: _Mesh, time_now: float) -> tuple:
-    """A new record on the current profiles, and transitions that bury its mush."""
+def _first_sight(mesh: _Mesh, time_now: float, bury: bool) -> tuple:
+    """A new record on the current profiles, and transitions that bury its mush if ``bury``."""
     n = mesh.n
     new = NodeRecord.initial(mesh.phase, mesh.phi, mesh.x, time_now)
     empty = np.array([], dtype=int)
@@ -532,7 +559,7 @@ def _first_sight(mesh: _Mesh, time_now: float) -> tuple:
         node_branch=np.full(n, BRANCH_NONE),
     )
     moves = _Transitions(
-        burying=mesh.phase == PHASE_MUSH,
+        burying=(mesh.phase == PHASE_MUSH) & bool(bury),
         bound=np.zeros(n, dtype=bool),
         freeze={},
         release={},
@@ -562,9 +589,9 @@ def advance_record(
     concentration: dict[str, float] | None = None,
     partition: dict[str, float] | None = None,
     liquid: dict[str, float] | None = None,
-    crystallised: float = 0.0,
     substep_fraction: float = SUBSTEP_FRACTION,
     max_substeps: int = MAX_SUBSTEPS,
+    bury_found_mush: bool = True,
 ) -> tuple[NodeRecord, LayerStep]:
     """Advance the per-node record and its volatiles over one coupling step.
 
@@ -604,12 +631,11 @@ def advance_record(
         Crystal/melt partition coefficient of each species [1].
     liquid : dict
         Mass of each species in the melt reservoir [kg], the cap on new burials.
-    crystallised : float
-        Mantle mass crystallised over the step [kg], ``dM_RM``.
 
     A ``record`` of ``None``, or one sized for another mesh, starts the record
-    on the current profiles without draining: the mush it finds buries its pore
-    melt at the current concentrations.
+    on the current profiles without draining. With ``bury_found_mush``, the
+    mush it finds buries its pore melt at the current concentrations; without
+    it, as on a run that has trapped mass already, it buries nothing new.
     """
     mesh = _mesh(
         melt_fraction, rho_solid, rho_melt, gravity, r_basic, mass, rfront_loc, phi_min
@@ -634,14 +660,14 @@ def advance_record(
                 mesh.n,
             )
         species = list(RECORD_SPECIES)
-        new, step, moves = _first_sight(mesh, time_now)
+        new, step, moves = _first_sight(mesh, time_now, bury_found_mush)
     else:
         species = sorted(set(RECORD_SPECIES) | set(record.pore) | set(record.crystal))
         new, step, moves = _evolve(
             record, mesh, species, float(time_prev), float(time_now), params
         )
 
-    _settle(new, mesh, moves, step, species, conc, part, liquid or {}, crystallised)
+    _settle(new, mesh, moves, step, species, conc, part, liquid or {})
     mush = new.phase == PHASE_MUSH
     step.n_dense = int(np.sum(mush & (mesh.rho_s - mesh.rho_l <= 0.0)))
     _describe(step, new, mesh, params)
@@ -659,8 +685,9 @@ def _describe(step, record, mesh, params: DrainageParams):
     step.thickness = extent
     step.r_base = float(mesh.r_basic[layer[0]])
     step.rho_solid_base = float(mesh.rho_s[layer[0]])
-    step.node_thickness = extent / layer.size
+    step.layer_nodes = int(layer.size)
     psi_top = float(record.psi[top]) if np.isfinite(record.psi[top]) else 0.0
+    psi_top = min(psi_top, float(mesh.phi[top]))
     w_top = darcy_velocity(
         psi_top,
         params.grain_size,

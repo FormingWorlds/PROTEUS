@@ -1731,6 +1731,66 @@ def test_run_outgassing_tells_the_dummy_whether_it_is_the_init_stage(initial):
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_run_outgassing_dissolves_into_the_ocean_melt_of_the_layer_scheme():
+    """With ``trap_mode = 'layers'`` the backend sees the ocean melt fraction
+    the trapping step wrote in place of ``Phi_global`` for its solve, and the
+    row keeps the global value after it; the front scheme and a row without
+    an ocean melt fraction leave ``Phi_global`` to the backend unchanged."""
+    seen = []
+
+    def dummy(*args, **kwargs):
+        seen.append(args[-1]['Phi_global'] if args else None)
+        raise _StopAfterDispatch
+
+    for mode, ocean, expected in (
+        ('layers', 0.25, 0.25),
+        ('front', 0.25, 0.6),
+        ('layers', float('nan'), 0.6),
+    ):
+        config = MagicMock()
+        config.outgas.module = 'dummy'
+        config.outgas.trap_mode = mode
+        config.planet.fO2_source = 'user_constant'
+        config.outgas.fO2_shift_IW = 2.0
+        row = {'Phi_global': 0.6, 'trap_Phi_ocean': ocean}
+        with patch('proteus.outgas.wrapper._solve_chemistry') as solve:
+            solve.side_effect = lambda dirs, cfg, hf_row, initial: dummy(hf_row)
+            with pytest.raises(_StopAfterDispatch):
+                run_outgassing({'output': '/tmp/test'}, config, row, initial=False)
+        assert seen[-1] == pytest.approx(expected, rel=0.0)
+        assert row['Phi_global'] == pytest.approx(0.6, rel=0.0)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_a_drainage_return_after_desiccation_returns_the_planet_its_volatiles():
+    """In the layer scheme melt draining back to the ocean returns trapped mass
+    on a step that remelts nothing. A desiccated planet whose melt it brings
+    above mass_thresh is desiccated no longer; the same return below the
+    threshold leaves the flag, and a step that only traps never clears it."""
+    from proteus.outgas.trap_bookkeeping import TrappingStep
+
+    config = MagicMock()
+    config.outgas.vapourise = False
+    config.outgas.mass_thresh = 1e16
+    config.outgas.trap_mode = 'layers'
+    config.planet.fO2_source = 'from_O_budget'
+    row = _nearly_dry_row(H_kg_total=4.0e19, H_kg_liquid=4.0e19, H2O_kg_liquid=3.6e20)
+    step = TrappingStep(mode='layers', dm_rm=1.0e21, f_tl=0.0, melt_mass=1.0e23)
+    step.trapped_kg = {'H2O': -3.6e20}
+    assert not step.remelted
+    assert desiccated_after_trapping(config, row, True, step) is False
+    dry = _nearly_dry_row(H_kg_total=4.0e15, H_kg_liquid=4.0e15)
+    small = TrappingStep(mode='layers', dm_rm=1.0e21, f_tl=0.0, melt_mass=1.0e23)
+    small.trapped_kg = {'H2O': -3.6e16}
+    assert desiccated_after_trapping(config, dry, True, small) is True
+    burying = TrappingStep(mode='layers', dm_rm=1.0e21, f_tl=0.0, melt_mass=1.0e23)
+    burying.trapped_kg = {'H2O': 3.6e18}
+    assert desiccated_after_trapping(config, row, True, burying) is True
+
+
+@pytest.mark.unit
 def test_run_outgassing_rejects_unknown_fO2_source():
     """An unrecognised fO2_source must raise NotImplementedError rather
     than silently falling through to legacy chemistry. The Config-level
@@ -2747,7 +2807,10 @@ def test_a_remelt_after_desiccation_returns_the_planet_its_volatiles():
     # trapping step at all leave the flag as it was.
     assert desiccated_after_trapping(config, row, False, step) is False
     assert desiccated_after_trapping(config, row, True, None) is True
-    frozen = MagicMock(remelted=False, total_trapped=1.0e18)
+    from proteus.outgas.trap_bookkeeping import TrappingStep
+
+    frozen = TrappingStep(mode='front', dm_rm=1.0e22, f_tl=0.1, melt_mass=1.0e23)
+    frozen.trapped_kg = {'H2O': 1.0e18}
     assert desiccated_after_trapping(config, row, True, frozen) is True
     # Error contract: a release too small to clear mass_thresh stays desiccated.
     tiny = _nearly_dry_row(H_kg_total=4.0e15, H_kg_solid=4.0e15, H_kg_trapped=4.0e15)

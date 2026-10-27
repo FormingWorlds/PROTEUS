@@ -1673,6 +1673,10 @@
         {
           "file": "src/proteus/interior_energetics/wrapper.py",
           "condition": "giant impact, interior_energetics.module = \"aragog\""
+        },
+        {
+          "file": "src/proteus/outgas/layer_trapping.py",
+          "condition": "always"
         }
       ],
       "consumers": [
@@ -3357,7 +3361,7 @@
     {
       "name": "trap_F_tl",
       "unit": "1",
-      "description": "trapped melt fraction applied this step",
+      "description": "melt mass fraction the mantle that solidified this step keeps",
       "group": "Solid-phase volatile trapping",
       "origin": "literal",
       "producers": [
@@ -3372,7 +3376,7 @@
     {
       "name": "trap_kg_step",
       "unit": "kg",
-      "description": "volatile mass buried this step, negative when remelting released it",
+      "description": "net volatile mass moved from the melt into the solid this step, negative when trapping returned more than it took",
       "group": "Solid-phase volatile trapping",
       "origin": "literal",
       "producers": [
@@ -3381,15 +3385,13 @@
           "condition": "always"
         }
       ],
-      "consumers": [
-        "outgas"
-      ],
+      "consumers": [],
       "consumers_possible": []
     },
     {
       "name": "trap_kg_cumulative",
       "unit": "kg",
-      "description": "net volatile mass buried since the run began",
+      "description": "net volatile mass trapped since the run began",
       "group": "Solid-phase volatile trapping",
       "origin": "literal",
       "producers": [
@@ -3406,7 +3408,7 @@
     {
       "name": "trap_branch",
       "unit": "1",
-      "description": "drainage regime code: 0 no front (a freezing step still buries by crystal partitioning), 1 Darcy, 2 matrix, 3 guard, 6 no interior state, 7 remelting",
+      "description": "diagnostic regime code: 0 no front and no node drained (a freezing step still traps by crystal partitioning), 1 Darcy, 2 matrix, 3 no-drainage bound, 6 no interior profiles, 7 return by remelting",
       "group": "Solid-phase volatile trapping",
       "origin": "literal",
       "producers": [
@@ -3415,15 +3417,13 @@
           "condition": "always"
         }
       ],
-      "consumers": [
-        "outgas"
-      ],
+      "consumers": [],
       "consumers_possible": []
     },
     {
       "name": "trap_tau_D",
       "unit": "yr",
-      "description": "percolation time at the top of the front",
+      "description": "percolation time at the top of the freezing front, the thickest mush layer in the layer scheme",
       "group": "Solid-phase volatile trapping",
       "origin": "literal",
       "producers": [
@@ -3438,7 +3438,7 @@
     {
       "name": "trap_tau_s",
       "unit": "yr",
-      "description": "matrix deformation time",
+      "description": "matrix deformation time of the freezing front, the thickest mush layer in the layer scheme",
       "group": "Solid-phase volatile trapping",
       "origin": "literal",
       "producers": [
@@ -3453,7 +3453,7 @@
     {
       "name": "trap_t_res",
       "unit": "yr",
-      "description": "parcel residence time in the front",
+      "description": "residence time in the mush of the melt that reached the porosity floor",
       "group": "Solid-phase volatile trapping",
       "origin": "literal",
       "producers": [
@@ -3468,7 +3468,7 @@
     {
       "name": "trap_n_front",
       "unit": "1",
-      "description": "nodes spanned by the freezing front, or mush nodes of the layer scheme",
+      "description": "nodes of the freezing front, the thickest mush layer in the layer scheme",
       "group": "Solid-phase volatile trapping",
       "origin": "literal",
       "producers": [
@@ -3483,7 +3483,7 @@
     {
       "name": "trap_L_front",
       "unit": "m",
-      "description": "freezing-front thickness",
+      "description": "thickness of the freezing front, the thickest mush layer in the layer scheme",
       "group": "Solid-phase volatile trapping",
       "origin": "literal",
       "producers": [
@@ -3498,7 +3498,7 @@
     {
       "name": "trap_v_front",
       "unit": "m s-1",
-      "description": "freezing-front speed",
+      "description": "front speed from the mass crystallised, at the base of the front or of the thickest mush layer",
       "group": "Solid-phase volatile trapping",
       "origin": "literal",
       "producers": [
@@ -3528,7 +3528,7 @@
     {
       "name": "trap_w_matrix_over_vf",
       "unit": "1",
-      "description": "matrix speed over front speed",
+      "description": "matrix speed at the top of the front over the front speed, NaN in the layer scheme",
       "group": "Solid-phase volatile trapping",
       "origin": "literal",
       "producers": [
@@ -3558,7 +3558,7 @@
     {
       "name": "trap_frac_bound",
       "unit": "1",
-      "description": "mass share of those nodes held at the no-drainage bound",
+      "description": "mass share of those nodes that reached it on the no-drainage bound, including nodes that drained before they were sealed",
       "group": "Solid-phase volatile trapping",
       "origin": "literal",
       "producers": [
@@ -3583,6 +3583,59 @@
         }
       ],
       "consumers": [],
+      "consumers_possible": []
+    },
+    {
+      "name": "trap_n_mush",
+      "unit": "1",
+      "description": "mush nodes of the whole mesh, layer scheme; NaN in the front scheme",
+      "group": "Solid-phase volatile trapping",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/trap_bookkeeping.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [],
+      "consumers_possible": []
+    },
+    {
+      "name": "trap_kg_returned",
+      "unit": "kg",
+      "description": "volatile mass trapping returned to the melt this step, by remelting or by drainage",
+      "group": "Solid-phase volatile trapping",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/trap_bookkeeping.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "trap_Phi_ocean",
+      "unit": "1",
+      "description": "melt of the liquid nodes over the mantle mass, the melt the chemistry dissolves into in the layer scheme; NaN otherwise",
+      "group": "Solid-phase volatile trapping",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/outgas/trap_bookkeeping.py",
+          "condition": "always"
+        },
+        {
+          "file": "src/proteus/outgas/trapping.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "outgas"
+      ],
       "consumers_possible": []
     },
     {

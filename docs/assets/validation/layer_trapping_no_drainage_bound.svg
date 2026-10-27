@@ -6,7 +6,7 @@
   <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
    <cc:Work>
     <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
-    <dc:description>test: tests/outgas/test_layer_trapping.py::test_undrained_layers_bury_the_front_schemes_no_drainage_bound; command: pytest tests/outgas/test_layer_trapping.py::test_undrained_layers_bury_the_front_schemes_no_drainage_bound --validation-plots; summary: {"v": 1, "axes": [{"scales": ["linear", "linear"], "categories": [null, null], "lines": [[10, 0.0, 1.0, 0.52, 0.21666666666666665, 0.0, 0.50085, 0.260442, 0.10851749999999998], [10, 0.0, 1.0, 0.52, 0.21666666666666665, 0.0, 0.5008499999999998, 0.2754164999999999, 0.10851749999999993], [10, 0.0, 1.0, 0.52, 0.21666666666666665, 0.0, 0.3694880528941212, 0.20764855389216122, 0.0760453709550872], [2, 0.0, 1.0, 0.5, 0.5, 0.0, 0.0017, 0.00085, 0.00085]], "collections": [], "values": [], "value_scales": [], "patches": [], "images": [], "image_scales": [], "extents": []}]}</dc:description>
+    <dc:description>test: tests/outgas/test_layer_trapping.py::test_undrained_mush_traps_the_front_schemes_no_drainage_bound; command: pytest tests/outgas/test_layer_trapping.py::test_undrained_mush_traps_the_front_schemes_no_drainage_bound --validation-plots; summary: {"v": 1, "axes": [{"scales": ["linear", "linear"], "categories": [null, null], "lines": [[10, 0.0, 1.0, 0.52, 0.21666666666666665, 0.0, 0.50085, 0.260442, 0.10851749999999998], [10, 0.0, 1.0, 0.52, 0.21666666666666665, 0.0, 0.50085, 0.27546750000000003, 0.10851749999999998], [10, 0.0, 1.0, 0.52, 0.21666666666666665, 0.0, 0.19902441354742326, 0.11939392387305318, 0.03392083389189125], [2, 0.0, 1.0, 0.5, 0.5, 0.0, 0.0017, 0.00085, 0.00085]], "collections": [], "values": [], "value_scales": [], "patches": [], "images": [], "image_scales": [], "extents": []}]}</dc:description>
     <dc:format>image/svg+xml</dc:format>
     <dc:creator>
      <cc:Agent>
@@ -1189,14 +1189,14 @@ z
     </defs>
     <g clip-path="url(#p398126b0a3)">
      <use xlink:href="#m20087e705f" x="71.752482" y="184.856529" style="fill-opacity: 0; stroke: #e23d28"/>
-     <use xlink:href="#m20087e705f" x="94.991903" y="163.728478" style="fill-opacity: 0; stroke: #e23d28"/>
-     <use xlink:href="#m20087e705f" x="128.191077" y="142.578891" style="fill-opacity: 0; stroke: #e23d28"/>
-     <use xlink:href="#m20087e705f" x="161.390251" y="121.429305" style="fill-opacity: 0; stroke: #e23d28"/>
-     <use xlink:href="#m20087e705f" x="194.589424" y="100.279718" style="fill-opacity: 0; stroke: #e23d28"/>
-     <use xlink:href="#m20087e705f" x="227.788598" y="79.130131" style="fill-opacity: 0; stroke: #e23d28"/>
-     <use xlink:href="#m20087e705f" x="260.987771" y="57.980544" style="fill-opacity: 0; stroke: #e23d28"/>
-     <use xlink:href="#m20087e705f" x="294.186945" y="36.830957" style="fill-opacity: 0; stroke: #e23d28"/>
-     <use xlink:href="#m20087e705f" x="327.386118" y="15.681371" style="fill-opacity: 0; stroke: #e23d28"/>
+     <use xlink:href="#m20087e705f" x="94.991903" y="163.706942" style="fill-opacity: 0; stroke: #e23d28"/>
+     <use xlink:href="#m20087e705f" x="128.191077" y="142.557355" style="fill-opacity: 0; stroke: #e23d28"/>
+     <use xlink:href="#m20087e705f" x="161.390251" y="121.407769" style="fill-opacity: 0; stroke: #e23d28"/>
+     <use xlink:href="#m20087e705f" x="194.589424" y="100.258182" style="fill-opacity: 0; stroke: #e23d28"/>
+     <use xlink:href="#m20087e705f" x="227.788598" y="79.108595" style="fill-opacity: 0; stroke: #e23d28"/>
+     <use xlink:href="#m20087e705f" x="260.987771" y="57.959008" style="fill-opacity: 0; stroke: #e23d28"/>
+     <use xlink:href="#m20087e705f" x="294.186945" y="36.809421" style="fill-opacity: 0; stroke: #e23d28"/>
+     <use xlink:href="#m20087e705f" x="327.386118" y="15.659835" style="fill-opacity: 0; stroke: #e23d28"/>
      <use xlink:href="#m20087e705f" x="337.34587" y="15.659835" style="fill-opacity: 0; stroke: #e23d28"/>
     </g>
    </g>
@@ -1211,15 +1211,15 @@ z
     </defs>
     <g clip-path="url(#p398126b0a3)">
      <use xlink:href="#mc2ce9ab628" x="71.752482" y="184.856529" style="fill-opacity: 0; stroke: #e0a32e; stroke-linejoin: miter"/>
-     <use xlink:href="#mc2ce9ab628" x="94.991903" y="163.728478" style="fill-opacity: 0; stroke: #e0a32e; stroke-linejoin: miter"/>
-     <use xlink:href="#mc2ce9ab628" x="128.191077" y="149.022793" style="fill-opacity: 0; stroke: #e0a32e; stroke-linejoin: miter"/>
-     <use xlink:href="#mc2ce9ab628" x="161.390251" y="134.276591" style="fill-opacity: 0; stroke: #e0a32e; stroke-linejoin: miter"/>
-     <use xlink:href="#mc2ce9ab628" x="194.589424" y="119.493331" style="fill-opacity: 0; stroke: #e0a32e; stroke-linejoin: miter"/>
-     <use xlink:href="#mc2ce9ab628" x="227.788598" y="104.675722" style="fill-opacity: 0; stroke: #e0a32e; stroke-linejoin: miter"/>
-     <use xlink:href="#mc2ce9ab628" x="260.987771" y="89.825919" style="fill-opacity: 0; stroke: #e0a32e; stroke-linejoin: miter"/>
-     <use xlink:href="#mc2ce9ab628" x="294.186945" y="74.94567" style="fill-opacity: 0; stroke: #e0a32e; stroke-linejoin: miter"/>
-     <use xlink:href="#mc2ce9ab628" x="327.386118" y="60.036409" style="fill-opacity: 0; stroke: #e0a32e; stroke-linejoin: miter"/>
-     <use xlink:href="#mc2ce9ab628" x="337.34587" y="66.227381" style="fill-opacity: 0; stroke: #e0a32e; stroke-linejoin: miter"/>
+     <use xlink:href="#mc2ce9ab628" x="94.991903" y="163.706942" style="fill-opacity: 0; stroke: #e0a32e; stroke-linejoin: miter"/>
+     <use xlink:href="#mc2ce9ab628" x="128.191077" y="157.478846" style="fill-opacity: 0; stroke: #e0a32e; stroke-linejoin: miter"/>
+     <use xlink:href="#mc2ce9ab628" x="161.390251" y="151.13529" style="fill-opacity: 0; stroke: #e0a32e; stroke-linejoin: miter"/>
+     <use xlink:href="#mc2ce9ab628" x="194.589424" y="144.674072" style="fill-opacity: 0; stroke: #e0a32e; stroke-linejoin: miter"/>
+     <use xlink:href="#mc2ce9ab628" x="227.788598" y="138.092524" style="fill-opacity: 0; stroke: #e0a32e; stroke-linejoin: miter"/>
+     <use xlink:href="#mc2ce9ab628" x="260.987771" y="131.390015" style="fill-opacity: 0; stroke: #e0a32e; stroke-linejoin: miter"/>
+     <use xlink:href="#mc2ce9ab628" x="294.186945" y="124.566587" style="fill-opacity: 0; stroke: #e0a32e; stroke-linejoin: miter"/>
+     <use xlink:href="#mc2ce9ab628" x="327.386118" y="117.622281" style="fill-opacity: 0; stroke: #e0a32e; stroke-linejoin: miter"/>
+     <use xlink:href="#mc2ce9ab628" x="337.34587" y="131.706729" style="fill-opacity: 0; stroke: #e0a32e; stroke-linejoin: miter"/>
     </g>
    </g>
    <g id="line2d_28">
@@ -1390,7 +1390,7 @@ z
      </g>
     </g>
     <g id="text_17">
-     <!-- layers, melt 100 Pa s -->
+     <!-- layers, melt 0.1 Pa s -->
      <g style="fill: #10151b" transform="translate(88.072812 43.2) scale(0.08 -0.08)">
       <use xlink:href="#InstrumentSans-Regular-6c"/>
       <use xlink:href="#InstrumentSans-Regular-61" transform="translate(23.999985 0)"/>
@@ -1405,14 +1405,14 @@ z
       <use xlink:href="#InstrumentSans-Regular-6c" transform="translate(464.899872 0)"/>
       <use xlink:href="#InstrumentSans-Regular-74" transform="translate(488.899857 0)"/>
       <use xlink:href="#InstrumentSans-Regular-20" transform="translate(526.599854 0)"/>
-      <use xlink:href="#InstrumentSans-Regular-31" transform="translate(546.599838 0)"/>
-      <use xlink:href="#InstrumentSans-Regular-30" transform="translate(585.699829 0)"/>
-      <use xlink:href="#InstrumentSans-Regular-30" transform="translate(652.29982 0)"/>
-      <use xlink:href="#InstrumentSans-Regular-20" transform="translate(718.899811 0)"/>
-      <use xlink:href="#InstrumentSans-Regular-50" transform="translate(738.899796 0)"/>
-      <use xlink:href="#InstrumentSans-Regular-61" transform="translate(804.499786 0)"/>
-      <use xlink:href="#InstrumentSans-Regular-20" transform="translate(857.799774 0)"/>
-      <use xlink:href="#InstrumentSans-Regular-73" transform="translate(877.799759 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-30" transform="translate(546.599838 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-2e" transform="translate(613.199829 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-31" transform="translate(638.699814 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-20" transform="translate(677.799805 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-50" transform="translate(697.799789 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-61" transform="translate(763.39978 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-20" transform="translate(816.699768 0)"/>
+      <use xlink:href="#InstrumentSans-Regular-73" transform="translate(836.699753 0)"/>
      </g>
     </g>
     <g id="line2d_32">

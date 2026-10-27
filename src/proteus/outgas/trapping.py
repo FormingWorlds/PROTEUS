@@ -50,15 +50,16 @@ Trapped-melt fraction
     the interior state is unavailable buries at ``D_Z`` alone (``F_tl = 0``)
     and says so.
 ``layers``
-    The mush drains node by node on the Aragog mesh instead of as one front:
-    each node keeps its own pore melt, which drains through the nodes above it
-    and locks its volatiles when the node reaches the porosity floor
+    The mush drains node by node on the Aragog mesh instead of as one front
     (:mod:`proteus.outgas.node_record`, :mod:`proteus.outgas.layer_trapping`).
-    ``F_tl`` is then the mass-weighted trapped fraction of the nodes that
-    reached the floor over the step. Remelting is decided per node as well: a
-    node that turns liquid again returns what it locked and what its crystals
-    buried, so the burial ledger below is not used. A step on which the
-    interior state is unavailable buries at ``D_Z`` alone, as in ``front``.
+    Each node buries the volatiles of its pore melt when it enters the mush,
+    drains that melt through the nodes above it, and locks what is left when
+    it reaches the porosity floor; the chemistry dissolves into the melt of
+    the liquid nodes alone. ``F_tl`` is the mass-weighted trapped fraction of
+    the nodes that reached the floor over the step. Remelting is decided per
+    node as well, so the burial ledger below is not used, also on a step
+    without interior profiles, which traps at ``D_Z`` alone when the mantle
+    freezes and returns the remelted share when it melts.
 
 Remelting
 ---------
@@ -127,6 +128,7 @@ from proteus.outgas.trap_bookkeeping import (
     TrappingStep,
     apply_to_reservoirs,
     critical_melt_fraction,
+    front_speed,
     melt_concentration,
     move_mass,
     partition_coefficients,
@@ -312,11 +314,15 @@ def escapable_inventory(hf_row: dict, element: str, config: Config | None = None
     return max(0.0, total - unreachable_mass(hf_row, element, config))
 
 
-def remelt_returned_mass(hf_row: dict) -> bool:
-    """Whether this step's trapping released buried mass back to the melt."""
-    branch = float(hf_row.get('trap_branch', 0.0))
-    step = float(hf_row.get('trap_kg_step', 0.0))
-    return bool(np.isfinite(branch) and round(branch) == BRANCH_REMELT and step < 0.0)
+def trapping_returned_mass(hf_row: dict) -> bool:
+    """Whether this step's trapping returned trapped mass to the melt.
+
+    Reads ``trap_kg_returned``, the mass the step's net moves returned, which a
+    remelt in either scheme and melt draining back to the ocean in ``layers``
+    both produce. ``trap_branch`` is a diagnostic and is not read here.
+    """
+    returned = float(hf_row.get('trap_kg_returned', 0.0))
+    return bool(np.isfinite(returned) and returned > 0.0)
 
 
 def trapping_active(config: Config) -> bool:
@@ -513,8 +519,7 @@ def _drainage_fraction(
     # the node-snapped front depth, whose difference is zero on most steps and a
     # spike on the rest.
     dt_s = (float(hf_row['Time']) - float(prev['Time'])) * secs_per_year
-    area = 4.0 * np.pi * geom.r_base**2 * geom.rho_solid_base
-    v_f = abs(float(dm_rm)) / (area * dt_s) if (area > 0.0 and dt_s > 0.0) else 0.0
+    v_f = front_speed(dm_rm, geom.r_base, geom.rho_solid_base, dt_s)
 
     grain = float(config.interior_energetics.grain_size)
     melt_visc = 10.0 ** float(config.interior_energetics.melt_log10visc)
@@ -636,6 +641,9 @@ def run_trapping(
         raise ValueError(f'Unknown trapping mode {mode!r}; expected one of {TRAPPING_MODES}')
     if mode == 'none':
         return None
+    if mode == 'layers':
+        # Only a layer step of this iteration may hand the chemistry an ocean melt.
+        hf_row['trap_Phi_ocean'] = float('nan')
     if init_stage:
         # The initialisation iterations advance the clock but not the mantle,
         # and the time is reset to zero after each, so there is nothing to bury.
@@ -656,9 +664,7 @@ def run_trapping(
     m_mantle_prev = float(prev.get('M_mantle', m_mantle))
     melt_mass = m_mantle_prev * max(0.0, min(1.0, phi_prev)) if np.isfinite(phi_prev) else 0.0
     if mode == 'layers':
-        step = run_layer_trapping(config, hf_row, prev, interior_o, dirs, dm_rm, melt_mass)
-        if step is not None:
-            return step
+        return run_layer_trapping(config, hf_row, prev, interior_o, dirs, dm_rm, melt_mass)
     if dm_rm < 0.0:
         released = released_mass(hf_row, hf_all, phi_prev, phi_now)
         return _release(hf_row, mode, dm_rm, melt_mass, released)
@@ -667,12 +673,7 @@ def run_trapping(
         record_step(hf_row, step)
         return step
 
-    # A layers step that reaches here had no usable profiles, so no front either.
-    step = (
-        None
-        if mode == 'layers'
-        else _drainage_fraction(config, hf_row, prev, interior_o, dm_rm)
-    )
+    step = _drainage_fraction(config, hf_row, prev, interior_o, dm_rm)
     if step is None:
         # Without the interior profiles there is no front; the crystals still
         # take up D_Z, so the step buries at that alone, on a branch of its own.

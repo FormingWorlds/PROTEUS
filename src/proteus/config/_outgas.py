@@ -266,9 +266,11 @@ class Outgas:
         Solid-phase volatile trapping during mantle crystallisation.
         Choices: 'none' (off), 'front' (F_tl from the drainage of melt
         across the freezing front the interior solver resolves) and 'layers'
-        (the pore melt of every mush node drains through the nodes above it
-        and locks its volatiles when the node reaches `trap_phi_min`; a node
-        that remelts returns them). Both schemes need
+        (every node buries the volatiles of its pore melt when it enters the
+        mush, drains that melt through the nodes above it, and locks what is
+        left when it reaches `trap_phi_min`; the chemistry then dissolves into
+        the melt of the liquid nodes alone, and a node that melts returns what
+        it holds). Both schemes need
         `interior_energetics.module = 'aragog'`. The disaggregation melt
         fraction that tops the front is `interior_energetics.rfront_loc`,
         the melt fraction of the solver's own rheological transition, not a

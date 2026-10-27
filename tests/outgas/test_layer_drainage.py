@@ -1,11 +1,11 @@
 """Unit tests for ``proteus.outgas.layer_drainage``.
 
-The layer drainage drains the retained pore melt of every mush node of the
+The layer drainage drains the pore melt of every mush node of the
 interior mesh into the node above. These tests exercise:
 
 * the melt volume fraction of a node and its inverse, the trapped mass fraction,
 * the liquid, mush and solid classification at its two thresholds,
-* the shell geometry of the spherical mesh,
+* the node geometry of the spherical mesh,
 * the face flux as the lesser of the permeability capacity and the melt that
   compaction supplies from below, against a direct evaluation of the recurrence,
 * a single node against the drainage integral of the front scheme, under both
@@ -37,6 +37,7 @@ from proteus.outgas.layer_drainage import (
     mush_layer_fluxes,
     node_array,
     node_geometry,
+    split_at_dense,
     thickest_mush_layer,
 )
 from proteus.utils.constants import secs_per_year
@@ -72,7 +73,7 @@ def _speed(melt_visc: float, buoyancy: str = _BUOYANCY):
 
 
 @pytest.mark.physics_invariant
-def test_volume_fraction_follows_the_lever_rule_and_inverts_exactly():
+def test_volume_fraction_weights_mass_by_the_density_ratio_and_inverts_exactly():
     """The melt volume fraction weights the mass fraction by the density ratio.
 
     At half melt by mass and a lighter melt, the melt takes more than half the
@@ -121,15 +122,15 @@ def test_classification_puts_each_threshold_on_the_documented_side():
 
 
 @pytest.mark.physics_invariant
-def test_shell_geometry_sums_to_the_spherical_shell():
-    """Shell volumes add up to the whole mantle, and faces grow as r squared."""
+def test_node_geometry_sums_to_the_spherical_shell():
+    """Node volumes add up to the whole mantle, and faces grow as r squared."""
     r = np.array([3.5e6, 4.0e6, 5.5e6, 6.3e6])
     volume, area_top, centre = node_geometry(r)
     whole = 4.0 / 3.0 * np.pi * (6.3e6**3 - 3.5e6**3)
     assert np.sum(volume) == pytest.approx(whole, rel=1e-12)
     assert area_top[-1] == pytest.approx(4.0 * np.pi * 6.3e6**2, rel=1e-12)
     # A plane-parallel estimate (area times thickness at the top face) would
-    # overstate the thick middle shell by about 20 percent.
+    # overstate the thick middle node by about 20 percent.
     assert abs(volume[1] - area_top[1] * 1.5e6) / volume[1] > 0.1
     assert centre[0] == pytest.approx(3.75e6, rel=1e-12)
     with pytest.raises(ValueError, match='ascending'):
@@ -140,7 +141,7 @@ def test_shell_geometry_sums_to_the_spherical_shell():
 def test_face_flux_is_the_lesser_of_capacity_and_supply():
     """The closed form agrees with the recurrence it replaces, node by node.
 
-    Five nodes chosen so the limit switches along the run: the second node's
+    Five nodes chosen so the limit switches along the mush layer: the second node's
     capacity is below the supply reaching it, the others pass what they are
     supplied. Without compaction nothing can leave, and instant compaction
     leaves only the permeability as a limit.
@@ -179,7 +180,9 @@ def test_single_node_reproduces_the_front_drainage_integral(validation_plot):
     Cross-check against the front scheme's LSODA integral at rtol 1e-8, at ten
     times over five percolation times of a fluid melt so the drainage is far
     from both limits, under either separation buoyancy. The second-order
-    sub-stepping at a fortieth of the node timescale stays within 1e-3 of it.
+    sub-stepping at the production ``SUBSTEP_FRACTION = 0.1`` stays within
+    3.3e-3 of it; the tolerance is 5e-3. This holds on the percolation branch:
+    the node's matrix time is set to zero, so compaction never limits it.
     """
     r = np.array([5.0e6, 5.06e6])
     volume, area, _ = node_geometry(r)
@@ -199,7 +202,6 @@ def test_single_node_reproduces_the_front_drainage_integral(validation_plot):
                 _speed(melt_visc, buoyancy),
                 np.array([0.0]),
                 t_now - t_prev,
-                substep_fraction=0.025,
             )
             psi, returned = float(out.psi[0]), returned + out.returned
             ref, _, _ = drainage_integral(
@@ -207,7 +209,7 @@ def test_single_node_reproduces_the_front_drainage_integral(validation_plot):
             )
             layer.append(psi)
             front.append(ref)
-        np.testing.assert_allclose(layer, front, rtol=1e-3)
+        np.testing.assert_allclose(layer, front, rtol=5e-3)
         # Drainage happened, and it is self-limiting: far from both no drainage
         # and an emptied node.
         assert 0.3 * psi0 < psi < 0.6 * psi0
@@ -226,7 +228,7 @@ def test_single_node_reproduces_the_front_drainage_integral(validation_plot):
         ax1.set_xlabel('t w_D(psi0) / L')
         ax1.set_ylabel('psi / psi0')
         ax1.legend(fontsize=8)
-        ax2.axhspan(-1e-3, 1e-3, color='C2', alpha=0.25, zorder=0, label='tolerance')
+        ax2.axhspan(-5e-3, 5e-3, color='C2', alpha=0.25, zorder=0, label='tolerance')
         ax2.set_xlabel('t w_D(psi0) / L')
         ax2.set_ylabel('layer / front - 1')
         fig.tight_layout()
@@ -240,9 +242,9 @@ def test_mixture_buoyancy_retains_more_than_the_solid_one():
     """Under ``'mixture'`` the buoyancy carries 1 - phi, so a node drains slower.
 
     Over the same time a node at psi0 = 0.3 keeps more melt under ``'mixture'``
-    than under ``'solid'``. The two differ by about 5 percent, twenty times the
-    1e-3 integration error, so a scheme that ignored the solver's buoyancy
-    setting would show.
+    than under ``'solid'``. The two differ by about 5 percent, more than ten
+    times the 3.3e-3 integration error at the production sub-step, so a scheme
+    that ignored the solver's buoyancy setting would show.
     """
     r = np.array([5.0e6, 5.06e6])
     volume, area, _ = node_geometry(r)
@@ -258,7 +260,6 @@ def test_mixture_buoyancy_retains_more_than_the_solid_one():
             _speed(1.0, b),
             np.array([0.0]),
             duration,
-            substep_fraction=0.025,
         ).psi[0]
         for b in ('mixture', 'solid')
     }
@@ -272,8 +273,9 @@ def test_compaction_limited_node_decays_exponentially():
     """Where the matrix controls, a node loses melt at 1/tau_s: psi0 exp(-t/tau_s).
 
     Analytic limit. The permeability is made so large that it never binds, and
-    three e-folds are integrated. The tolerance of 2e-3 is the Runge-Kutta
-    error at a twentieth of tau_s per sub-step.
+    three e-folds are integrated at the production ``SUBSTEP_FRACTION = 0.1``.
+    The second-order error, 30 sub-steps of ``h^3 / 6`` at ``h = 0.1``, is
+    5.0e-3, and the measured 5.4e-3 sits within the tolerance of 7e-3.
     """
     volume, area = np.array([1.0e15]), np.array([1.0e10])
     psi0, tau = 0.3, 1.0e10
@@ -285,11 +287,11 @@ def test_compaction_limited_node_decays_exponentially():
         lambda p, idx: np.ones(np.size(idx)),
         np.array([tau]),
         3.0 * tau,
-        substep_fraction=0.05,
     )
-    assert decay.psi[0] == pytest.approx(psi0 * np.exp(-3.0), rel=2e-3)
-    # A forward-Euler scheme at the same sub-step would land 7 percent low.
-    assert abs(decay.psi[0] - psi0 * 0.95**60) / decay.psi[0] > 0.05
+    assert decay.n_substeps == 30
+    assert decay.psi[0] == pytest.approx(psi0 * np.exp(-3.0), rel=7e-3)
+    # A forward-Euler scheme at the same sub-step would land 15 percent low.
+    assert abs(decay.psi[0] - psi0 * 0.9**30) / decay.psi[0] > 0.1
     assert decay.t_matrix[0] == pytest.approx(3.0 * tau, rel=1e-12)
     assert decay.t_darcy[0] == pytest.approx(0.0, abs=0.0)
 
@@ -424,7 +426,7 @@ def test_tracer_moves_with_the_melt_and_is_conserved():
 
 
 @pytest.mark.physics_invariant
-def test_compaction_time_grows_toward_the_top_of_a_run():
+def test_compaction_time_grows_with_depth_below_the_top_of_a_mush_layer():
     """The compaction pressure is the matrix load above a node, zero at the top.
 
     ``tau_s = mu_s / (drho g d)`` with ``d`` the depth below the top face of the
@@ -442,10 +444,10 @@ def test_compaction_time_grows_toward_the_top_of_a_run():
 
 
 @pytest.mark.physics_invariant
-def test_thickest_run_and_node_arrays():
+def test_the_thickest_mush_layer_is_found_and_bad_node_arrays_are_refused():
     """The thickest mush run is chosen by radial extent, not by node count.
 
-    Two runs: three thin nodes and one thick node; the thick single node wins.
+    Two mush layers: three thin nodes and one thick node; the thick single node wins.
     A scalar broadcasts to every node, and a mis-sized or non-finite profile
     is refused before any drainage uses it.
     """
@@ -461,3 +463,70 @@ def test_thickest_run_and_node_arrays():
         node_array([9.8, 9.8], 3, 'gravity')
     with pytest.raises(ValueError, match='finite'):
         node_array([9.8, np.nan, 9.8], 3, 'gravity')
+
+
+@pytest.mark.physics_invariant
+def test_pore_melt_beyond_the_solver_porosity_does_not_flow():
+    """A node whose record holds psi = 0.4 while the solver porosity is 0.2
+    passes the flux of psi = 0.2, the melt that is still liquid; the extra pore
+    space has crystallised in place. Uncapped, it would pass 0.4 at a
+    percolation speed that grows with porosity, at least four times more."""
+    r = np.array([5.0e6, 5.06e6])
+    volume, area, _ = node_geometry(r)
+    args = ([np.array([0])], volume, area, _speed(1.0), np.array([0.0]), 1.0)
+    capped = drain_mush_layers(np.array([0.4]), *args, porosity=np.array([0.2]))
+    at_cap = drain_mush_layers(np.array([0.2]), *args)
+    free = drain_mush_layers(np.array([0.4]), *args)
+    assert capped.returned == pytest.approx(at_cap.returned, rel=1e-6)
+    assert free.returned > 4.0 * capped.returned
+    # The record loses what flowed, from its own pore melt.
+    assert capped.psi[0] == pytest.approx(0.4 - capped.returned / volume[0], rel=1e-12)
+    # A cap above the pore melt changes nothing.
+    loose = drain_mush_layers(np.array([0.4]), *args, porosity=np.array([0.9]))
+    assert loose.returned == pytest.approx(free.returned, rel=1e-15)
+
+
+@pytest.mark.physics_invariant
+def test_drained_melt_carries_its_volatiles_at_the_concentration_it_holds():
+    """A column of uniform concentration keeps that concentration in every node
+    as it drains, and what each species lost is the concentration times the
+    melt volume that left. A scheme that dropped part of the carried mass on
+    its way up would lower the concentration of the upper nodes."""
+    n = 6
+    dz = 1.0e3
+    psi0 = np.linspace(0.3, 0.2, n)
+    conc = np.array([2.0e-2, 5.0e-4])  # kg per m3 of pore melt, two species
+    tracer = conc[:, None] * psi0[None, :]
+    out = drain_mush_layers(
+        psi0,
+        [np.arange(n)],
+        _uniform(n, dz),
+        np.ones(n),
+        lambda p, idx: 1.0e-4 * p**2,
+        _uniform(n, 1.0e7),
+        5.0e8,
+        tracer=tracer,
+    )
+    assert out.returned > 0.05 * float(np.sum(psi0) * dz)
+    np.testing.assert_allclose(
+        out.tracer / out.psi[None, :], conc[:, None] * np.ones(n), rtol=1e-12
+    )
+    lost = np.sum(tracer - out.tracer, axis=1) * dz
+    np.testing.assert_allclose(lost, conc * out.returned, rtol=1e-10)
+
+
+def test_a_dense_melt_node_seals_itself_and_the_mush_below_it():
+    """The nodes at and below the uppermost dense-melt node of a mush layer are
+    sealed and the nodes above it drain; with no dense node, or a dense node
+    at the top, one of the two parts is empty."""
+    layer = np.arange(3, 9)
+    drho = np.full(12, 400.0)
+    drho[[4, 6]] = (-50.0, 0.0)
+    held, draining = split_at_dense(layer, drho)
+    assert held.tolist() == [3, 4, 5, 6]
+    assert draining.tolist() == [7, 8]
+    held, draining = split_at_dense(layer, np.full(12, 400.0))
+    assert held.size == 0 and draining.tolist() == layer.tolist()
+    drho[8] = -1.0
+    held, draining = split_at_dense(layer, drho)
+    assert held.tolist() == layer.tolist() and draining.size == 0

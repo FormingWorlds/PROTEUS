@@ -1005,6 +1005,11 @@ class Proteus:
             # Get last row from helpfile dataframe
             self.hf_row = self.hf_all.iloc[-1].to_dict()
 
+            # The layer trapping record of that row, from its interior snapshot.
+            from proteus.outgas.layer_trapping import restore_node_record
+
+            restore_node_record(self.config, self.directories, self.hf_row, self.interior_o)
+
             # Resume banner. The '==== RESUME' prefix is added to output,
             # since this makes log triage (grep, tail -f, cron filters) easy
             log.info(

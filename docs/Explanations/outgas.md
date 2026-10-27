@@ -2,9 +2,9 @@
 
 This page answers one question: **where do the volatiles of a planet go during each step of a PROTEUS run, and which part of the code moves them?**
 
-The short answer: in each step, a chemistry solver splits the volatiles of the planet between the atmosphere and the magma ocean. Before that solve, a trapping step can bury part of the volatiles dissolved in the melt in the mantle that froze since the last step. After the solve, an optional step adds rock vapour from the hot melt surface to the atmosphere.
+The short answer: in each step, a chemistry solver splits the volatiles of the planet between the atmosphere and the magma ocean. Before that solve, a trapping step can trap part of the volatiles dissolved in the melt in the mantle that froze since the last step. After the solve, an optional step adds rock vapour from the hot melt surface to the atmosphere.
 
-The first section gives the order of the steps. The later sections explain the species-to-element split, the H$_2$ binodal, rock vapour, trapping, melt drainage, the burial ledger and the limits of the trapping inputs. A section whose part of the code has a Validation case ends with a link to it. For the config keys, see [Escape and outgassing configuration](../Reference/config/escape_outgas.md#outgassing-outgas). For the output columns, see [Output format](../Reference/output.md).
+The first section gives the order of the steps. The later sections explain the species-to-element split, the H$_2$ binodal, rock vapour, trapping, melt drainage, the layer scheme, the burial ledger and the limits of the trapping inputs. A section whose part of the code has a Validation case ends with a link to it. For the config keys, see [Escape and outgassing configuration](../Reference/config/escape_outgas.md#outgassing-outgas). For the output columns, see [Output format](../Reference/output.md).
 
 ## Terms used on this page
 
@@ -21,7 +21,13 @@ The first section gives the order of the steps. The later sections explain the s
 - **Oxygen fugacity** (fO$_2$): a measure of how oxidising the melt is, in the form of an effective O$_2$ pressure. PROTEUS gives it relative to the iron-wustite (IW) buffer, the fO$_2$ at which iron metal and FeO are in equilibrium. `outgas.fO2_shift_IW` ([config](../Reference/config/escape_outgas.md#outgassing-outgas)) is that shift in log10 units, so a value of 2 is 100 times the IW fO$_2$.
 - **Mass threshold**: `outgas.mass_thresh` \[kg\]. The chemistry solve treats H, C, N or S with less mass than this as absent. Escape and the desiccation check (see **Desiccated** below) also use it (see [the config reference](../Reference/config/escape_outgas.md#outgassing-outgas)).
 - **Trapping**: the step that moves volatiles from the melt into the mantle that froze in the step, set by `outgas.trap_mode`.
-- **Trapped (buried) mass**: volatile mass that moved from the melt to the solid mantle when the mantle froze, recorded in `_kg_trapped`. This page uses "trapped" and "buried" for it. See [Volatile trapping](#volatile-trapping-in-the-freezing-mantle).
+- **Node**: one cell of the 1-D radial mesh of the interior solver (or of the atmosphere), with its mass, melt and volatiles. Aragog calls them staggered cells.
+- **Layer**: a contiguous set of nodes in one phase state: a liquid, mush or solid layer.
+- **Run**: one PROTEUS simulation.
+- **State**: the phase state of a node (liquid, mush or solid), or the state of a run (running, completed, errored).
+- **Trapped mass**: volatile mass that moved from the melt into the mantle that froze, recorded in `_kg_trapped`. It is the sum of the buried and the locked mass. See [Volatile trapping](#volatile-trapping-in-the-freezing-mantle).
+- **Buried**: volatiles held at mush nodes, in the pore melt and crystals of nodes below the rheological transition $\Phi_c$. Only the layer scheme has buried mass.
+- **Locked**: volatiles held at solid nodes, whose porosity is at or below `outgas.trap_phi_min`, including the melt pockets frozen in them. The front scheme puts its trapped mass straight into the frozen mantle, so all of it is locked.
 - **Desiccated**: the state of a planet that has lost its volatiles. For each volatile and noble gas, the mass that can still escape or outgas is below the mass threshold. Trapped mass, and condensed mass kept with `outgas.prevent_desaturation = true`, do not count.
 - **Rock vapour**: gas of rock-forming elements and their compounds, such as SiO, Na, Mg and Fe, above a hot melt surface.
 - **Giant impact**: a collision of the planet with another large body, which adds mass and can melt the mantle again. See [Accretion](model.md#accretion-morrigan).
@@ -32,7 +38,7 @@ The first section gives the order of the steps. The later sections explain the s
 
 **Question.** In what order do the volatile steps run, and what does each step change?
 
-**Short answer.** Trapping runs first, then escape, then outgassing. So escape and outgassing both see the mass that trapping buried in the same step.
+**Short answer.** Trapping runs first, then escape, then outgassing. So escape and outgassing both see the mass that trapping took in the same step.
 
 Each iteration of the [coupling loop](coupling_loop.md#execution-order-per-iteration) runs these steps, in this order:
 
@@ -47,7 +53,7 @@ The outgassing step takes the first of these 3 paths that applies:
 
 - **Desiccated** (`run_desiccated`). This path runs when the planet is desiccated and the escape step has already removed the lost mass.
     - The atmosphere is emptied.
-    - The melt is emptied, except while trapping is on (`outgas.trap_mode` is `"front"` or `"layers"`). Then the melt keeps its mass, so that buried mass can return to the melt if the mantle melts again.
+    - The melt is emptied, except while trapping is on (`outgas.trap_mode` is `"front"` or `"layers"`). Then the melt keeps its mass, so that trapped mass can return to the melt if the mantle melts again.
     - The solid mantle and the condensates keep their mass.
     - Rock vapour can still enter the atmosphere (see [Rock vapour](#rock-vapour-from-the-melt-surface)).
 - **Crystallised** (`run_crystallized`). This path needs `params.stop.solid.freeze_volatiles = true`.
@@ -91,7 +97,7 @@ where $n_i$ is the number of atoms of element $i$ in the molecule, $m_i$ is the 
 
 The shares of one molecule always add up to 1, so the split conserves mass for any table of molar masses.
 
-The atmodeller module writes this split for the atmosphere, melt and solid reservoirs. It does not write `{e}_kg_total` for H, C, N or S: the escape step keeps those totals up to date. Oxygen is the exception described above. Trapping uses the same rule (`element_masses_from_species`) to move element masses with the species it buries.
+The atmodeller module writes this split for the atmosphere, melt and solid reservoirs. It does not write `{e}_kg_total` for H, C, N or S: the escape step keeps those totals up to date. Oxygen is the exception described above. Trapping uses the same rule (`element_masses_from_species`) to move element masses with the species it traps.
 
 **Where this is checked.** [Species-to-element mass split](../Validation/outgas/atmodeller.md).
 
@@ -142,7 +148,7 @@ Rock vapour enters the atmosphere without being taken from the mantle. So with `
 
 **Question.** When the magma ocean freezes, how much of its dissolved water and gas stays in the solid mantle instead of reaching the atmosphere?
 
-**Short answer.** Each kilogram of frozen mantle keeps some volatiles: a little inside the crystals, and all of those in the melt that stays between the crystals (the **pore melt**). With `outgas.trap_mode = "front"`, the code computes the pore melt from how fast melt drains out of the freezing layer, the **freezing front**. With `"layers"`, every shell of the interior mesh drains its own pore melt (see [Layer drainage node by node](#layer-drainage-node-by-node)). With `"none"`, the default, nothing is trapped.
+**Short answer.** Each kilogram of frozen mantle keeps some volatiles: a little inside the crystals, and all of those in the melt that stays between the crystals (the **pore melt**). With `outgas.trap_mode = "front"`, the code computes the pore melt from how fast melt drains out of the freezing mush layer, the **freezing front**. With `"layers"`, every node of the interior mesh drains its own pore melt (see [Layer drainage node by node](#layer-drainage-node-by-node)). With `"none"`, the default, nothing is trapped.
 
 ### How to turn trapping on and read the result
 
@@ -156,12 +162,13 @@ module = "aragog"
 trap_mode = "front"
 ```
 
-Trapping compares each step with the step before it. So it does nothing in the initialisation stage, when the output has no earlier row, or when the time is 0. The first step after the initialisation stage compares with the last initialisation row, and it can trap; nothing is buried when no mass froze.
+Trapping compares each step with the step before it. So it does nothing in the initialisation stage, when the output has no earlier row, or when the time is 0. The first step after the initialisation stage compares with the last initialisation row, and it can trap; nothing is trapped when no mass froze.
 
 These output columns show what trapping did ([full list](../Reference/output.md#solid-phase-volatile-trapping)):
 
-- `trap_kg_step` \[kg\]: the volatile mass buried in this step; negative when a remelt returned mass.
-- `trap_kg_cumulative` \[kg\]: the net mass buried since the start of the run.
+- `trap_kg_step` \[kg\]: the net volatile mass moved from the melt into the solid in this step; negative when trapping returned more than it took.
+- `trap_kg_returned` \[kg\]: the volatile mass trapping returned to the melt in this step, by a remelt or, in `"layers"`, by drainage.
+- `trap_kg_cumulative` \[kg\]: the net mass trapped since the start of the run.
 - `{sp}_kg_trapped` and `{e}_kg_trapped` \[kg\]: the mass of each species and of each element that is trapped at the end of the step.
 - `trap_F_tl` \[1\]: the trapped melt fraction of the step, $F_\mathrm{tl}$ below.
 - `trap_branch`: which path the step took (see [When the front cannot be integrated](#when-the-front-cannot-be-integrated)).
@@ -170,11 +177,11 @@ These output columns show what trapping did ([full list](../Reference/output.md#
 
 The other trapping inputs, such as `outgas.D_const_<species>` and `outgas.trap_phi_min`, are in the [config reference](../Reference/config/escape_outgas.md#outgassing-outgas).
 
-### The burial rule
+### The trapping rule
 
 In one step, the mantle mass $\Delta M$ \[kg\] freezes. The code gets it from the drop of the melt fraction: $\Delta M = M_\mathrm{mantle}\,(\Phi_{n-1} - \Phi_n)$, where $M_\mathrm{mantle}$ is the mantle mass \[kg\] and the index $n$ counts the steps.
 
-Each volatile species $Z$ then buries the mass $\Delta m_Z$ \[kg\] in that frozen mantle [^cite-sim2024]:
+Each volatile species $Z$ then locks the mass $\Delta m_Z$ \[kg\] in that frozen mantle [^cite-sim2024]:
 
 $$
 \Delta m_Z = \left[(1 - F_\mathrm{tl})\, D_Z + F_\mathrm{tl}\right] C_Z\, \Delta M.
@@ -188,13 +195,13 @@ The symbols are:
 
 The bracket is the effective partition coefficient. If $F_\mathrm{tl} = 0$, it is $D_Z$: only the crystals take up the volatile. If $F_\mathrm{tl} = 1$, it is 1: the frozen mass takes the volatile at the melt concentration, as if it were all melt.
 
-The default $D_Z$ is 0.0017 for H$_2$O and 0 for every other species. A species with $D_Z = 0$, such as CO$_2$ or a noble gas, is buried only with the pore melt. For water, the pore melt buries more than the crystals when $F_\mathrm{tl}$ is above about 0.0017.
+The default $D_Z$ is 0.0017 for H$_2$O and 0 for every other species. A species with $D_Z = 0$, such as CO$_2$ or a noble gas, is locked only with the pore melt. For water, the pore melt locks more than the crystals when $F_\mathrm{tl}$ is above about 0.0017.
 
-**Example.** Take water at $C_Z = 10^{-3}$ (1000 ppm by mass), with $D_Z = 0.0017$ and $F_\mathrm{tl} = 0.02$. Let $2\times10^{23}$ kg of mantle freeze. The bracket is 0.021666, so $4.33\times10^{18}$ kg of water is buried. Of this, the pore melt buries $4.0\times10^{18}$ kg and the crystals take up $3.3\times10^{17}$ kg.
+**Example.** Take water at $C_Z = 10^{-3}$ (1000 ppm by mass), with $D_Z = 0.0017$ and $F_\mathrm{tl} = 0.02$. Let $2\times10^{23}$ kg of mantle freeze. The bracket is 0.021666, so $4.33\times10^{18}$ kg of water is locked. Of this, the pore melt locks $4.0\times10^{18}$ kg and the crystals take up $3.3\times10^{17}$ kg.
 
-The buried mass moves from `{sp}_kg_liquid` to `{sp}_kg_solid`, and `{sp}_kg_trapped` records it. The element reservoirs move with it, by the split of the [species-to-element section](#from-species-to-elements). The element totals do not change.
+The trapped mass moves from `{sp}_kg_liquid` to `{sp}_kg_solid`, and `{sp}_kg_trapped` records it. The element reservoirs move with it, by the split of the [species-to-element section](#from-species-to-elements). The element totals do not change.
 
-Buried mass cannot escape or outgas: the escape step and the desiccation check do not count it. The buried mass of a species is never more than the mass that the melt holds.
+Trapped mass cannot escape or outgas: the escape step and the desiccation check do not count it. The mass a step traps of a species is never more than the mass that the melt holds.
 
 **Where this is checked.** [Solid-phase volatile trapping](../Validation/outgas/trapping.md).
 
@@ -213,7 +220,7 @@ Buried mass cannot escape or outgas: the escape step and the desiccation check d
 - **Permeability** $k$: how easily melt flows through the pores \[m$^2$\].
 - **Percolation (Darcy flow)**: the flow of melt through the pores of the matrix. The output reference calls branch 1 "Darcy" after it.
 - **Parcel**: a small piece of mush. As the front moves up, a parcel enters the front at the top and leaves it at the base.
-- **Mesh and nodes**: the radial grid of the interior solver, and its grid points.
+- **Mesh and nodes**: the radial grid of the interior solver, and its cells (see [Terms used on this page](#terms-used-on-this-page)).
 - **Critical melt fraction** $\Phi_c$: `interior_energetics.rfront_loc` (default 0.4), the melt fraction at the centre of the transition where the interior solver changes the mantle from melt-like to solid-like flow. It is not the solid limit `params.stop.solid.phi_crit`.
 
 ### Where the front is
@@ -261,7 +268,7 @@ $$
 \frac{d\phi}{dt} = -\frac{\phi}{\max(\tau_D(\phi),\ \tau_s)}.
 $$
 
-The code integrates this from the porosity at the top of the front, over the time $t_\mathrm{res}$ (`drainage_integral`). The porosity $f$ at the end is the trapped melt as a volume fraction. The code then turns it into the mass fraction that the burial rule uses (`volume_to_mass_fraction`):
+The code integrates this from the porosity at the top of the front, over the time $t_\mathrm{res}$ (`drainage_integral`). The porosity $f$ at the end is the trapped melt as a volume fraction. The code then turns it into the mass fraction that the trapping rule uses (`volume_to_mass_fraction`):
 
 $$
 F_\mathrm{tl} = \frac{\rho_l\, f}{\rho_l\, f + \rho_s\,(1 - f)}.
@@ -296,12 +303,12 @@ Each such step logs a warning with the cause. The column `trap_branch` records t
 
 | `trap_branch` | Name in the output reference | Meaning |
 |---|---|---|
-| 0 | no front | no front this step; a freezing step still buries at $D_Z$ |
+| 0 | no front | no front this step; a freezing step still locks at $D_Z$ |
 | 1 | Darcy | drained, limited by percolation at the top of the front |
 | 2 | matrix | drained, limited by matrix deformation at the top of the front |
 | 3 | guard | upper bound, the front could not be integrated |
-| 6 | no interior state | the interior profiles were missing; the step buries at $D_Z$ alone and logs a warning |
-| 7 | remelting | the step returns trapped mass to the melt |
+| 6 | no interior state | the interior profiles were missing; the step locks at $D_Z$ alone and logs a warning |
+| 7 | remelting | the step returns trapped mass to the melt; a diagnostic, since escape and desiccation read `trap_kg_returned` |
 
 The code does not use the values 4 and 5.
 
@@ -311,64 +318,92 @@ The code does not use the values 4 and 5.
 
 **Question.** Can the pore melt drain through the whole mush, instead of across one front in one step?
 
-**Short answer.** Yes, with `outgas.trap_mode = "layers"`. Every shell of the Aragog mesh that is in the mush keeps its own pore melt from step to step. The melt drains up into the shell above, and a shell keeps what it still holds when it freezes. This follows the per-layer drainage of Miyazaki and Korenaga (2019) on the interior mesh. It needs no front, front speed or residence time.
+**Short answer.** Yes, with `outgas.trap_mode = "layers"`. Every node of the Aragog mesh that is in the mush keeps its own pore melt from step to step. The melt drains up into the node above, and a node keeps what it still holds when it freezes. This is the per-node drainage of Miyazaki and Korenaga (2019, section 2.4) on the interior mesh [^cite-miyazaki2019]. It needs no front, front speed or residence time.
 
-### Shell states
+### Phase states
 
-Each shell (a staggered node of the mesh) is classified at every step from its melt fraction $x$ and the melt volume fraction $\phi = x\rho_s / (x\rho_s + (1 - x)\rho_l)$, with the solid and melt densities $\rho_s$, $\rho_l$ \[kg m$^{-3}$\] at the phase boundaries:
+Each node is classified at every step from its melt fraction $x$ and the melt volume fraction $\phi = x\rho_s / (x\rho_s + (1 - x)\rho_l)$. Here $\rho_s$ and $\rho_l$ \[kg m$^{-3}$\] are the solid and melt densities at the phase boundaries:
 
 - **liquid**: $x \ge \Phi_c$ (`interior_energetics.rfront_loc`), part of the magma ocean;
 - **mush**: $x < \Phi_c$ and $\phi >$ `outgas.trap_phi_min`, so the pore melt leaves only by drainage;
-- **solid**: $\phi \le$ `outgas.trap_phi_min`; the pore melt left in the shell is trapped.
+- **solid**: $\phi \le$ `outgas.trap_phi_min`; the pore melt left in the node is locked.
 
-A shell that enters the mush from above starts with the pore melt of the transition, whose mass fraction is exactly $\Phi_c$.
+A contiguous set of nodes in one phase state is a liquid, mush or solid layer. A node that enters the mush from above starts with the pore melt of the transition, whose mass fraction is exactly $\Phi_c$.
 
 ### Drainage
 
-The retained pore melt $\psi$ of a shell changes only by drainage. The melt volume flux \[m$^3$ s$^{-1}$\] out of the top of shell $k$ of a run of mush shells, counted from the base of the run, is
+The pore melt $\psi$ of a node changes only by drainage. Take the nodes of a mush layer, counted from its base. The melt volume flux \[m$^3$ s$^{-1}$\] out of the top of node $k$ is
 
 $$
 q_k = \min\left(A_k\,\psi_k\,w_D(\psi_k),\; q_{k-1} + \frac{\psi_k V_k}{\tau_{s,k}}\right), \qquad q_\mathrm{base} = 0 .
 $$
 
-$A_k$ \[m$^2$\] is the area of the shell's upper face and $V_k$ \[m$^3$\] its volume. $w_D$ is the percolation speed of the front scheme at the shell's own density contrast and gravity. $\tau_{s,k} = \mu_s / (|\Delta\rho|\,g\,d_k)$ is the matrix time at the depth $d_k$ \[m\] of the shell's centre below the top of its run. The first term is the most the permeability passes; the second is the melt that compaction of the shell and of the shells below it supplies. A single shell with $L = V/A$ follows the front scheme's drainage equation exactly.
+$A_k$ \[m$^2$\] is the area of the node's upper face and $V_k$ \[m$^3$\] its volume. $w_D$ is the percolation speed of the front scheme at the node's own density contrast and gravity. $\tau_{s,k} = \mu_s / (|\Delta\rho|\,g\,d_k)$ is the matrix time at the depth $d_k$ \[m\] of the node's centre below the top of its mush layer. The first term is the most the permeability passes. The second is the melt that compaction of the node and of the nodes below it supplies.
 
-Melt leaving the top of a run rejoins the magma ocean, or leaves through the surface when the run reaches the top of the mesh. A run with a solid shell above it is sealed and keeps its melt. The code integrates the fluxes with a second-order Runge-Kutta scheme, on sub-steps of a tenth of the shortest time any shell takes to pass on what it holds.
+A single node with $L = V/A$ follows the front scheme's drainage equation exactly on the percolation branch. On the matrix branch it does not: its matrix time uses the depth of its centre, $L/2$, so it is twice the front's $\mu_s / (|\Delta\rho|\,g\,L)$.
+
+The flowing melt is $\psi$ capped at the solver's own porosity, the mean of its values at the start and end of the step. Pore melt the record holds beyond it has crystallised in place, keeps its volatiles and does not flow.
+
+Melt leaving the top of a mush layer rejoins the magma ocean, or leaves through the surface when the layer reaches the top of the mesh. A mush layer with a solid node above it is sealed and keeps its melt. A node whose tables put the melt at or above the solid density cannot drive its melt upward. It takes the front scheme's no-drainage bound and keeps its pore melt, and so do the mush nodes below it in the same mush layer. In Miyazaki and Korenaga (2019) such melt sinks instead; the layer scheme does not move melt downward.
+
+The code integrates the fluxes with a second-order Runge-Kutta scheme. Each sub-step is a tenth (`SUBSTEP_FRACTION = 0.1`) of the shortest time any node takes to pass on what it holds.
 
 ### Volatiles
 
-A shell's pore melt leaves contact with the magma ocean when it enters the mush. Its volatiles are locked then, $(1 - D_Z)\,C_Z\,F\,m$ of each species, with $F = \Phi_c$ the melt mass fraction of its pore melt and $m$ \[kg\] the shell mass. They move with the melt as it drains: melt that leaves a run returns its share to the melt reservoir, and what a shell holds when it freezes stays buried. The crystals of each step bury $D_Z\,C_Z\,\Delta M$ as in the [burial rule](#the-burial-rule). Over the life of a shell that does not drain, the two add up to $[(1 - \Phi_c)D_Z + \Phi_c]\,C_Z\,m$, the burial rule at the no-drainage bound $F_\mathrm{tl} = \Phi_c$.
+A node's pore melt leaves contact with the magma ocean when it enters the mush. All the volatiles in it are buried then: $C_Z\,F\,m$ of each species, with $F = \Phi_c$ the melt mass fraction of its pore melt and $m$ \[kg\] the node mass. They move with the melt as it drains. Melt that leaves a mush layer returns its share to the melt reservoir, and what a node holds when it freezes is locked.
 
-Each step moves the net mass, new locks minus returns, between `{sp}_kg_liquid` and `{sp}_kg_solid`, through the same `{sp}_kg_trapped` bookkeeping as the front scheme. A step can therefore return more than it locks.
+Crystals that grow in a liquid node take $D_Z\,C_Z$ of their mass from the ocean. Crystals that grow in the pores of the mush draw on the pore melt, which the record already holds. Over the life of a node that does not drain, the two add up to $[(1 - \Phi_c)D_Z + \Phi_c]\,C_Z\,m$. That is the [trapping rule](#the-trapping-rule) at the no-drainage bound $F_\mathrm{tl} = \Phi_c$.
+
+The node masses are Aragog's cell masses, rescaled so that they sum to $M_\mathrm{mantle}$. Aragog writes each cell mass as its current density times a fixed volume, and that sum grows past the mantle mass as the mantle cools.
+
+Each step moves the net mass, new burials minus returns, between `{sp}_kg_liquid` and `{sp}_kg_solid`. It uses the same `{sp}_kg_trapped` bookkeeping as the front scheme. A step can therefore return more than it buries.
+
+### The chemistry sees the ocean melt
+
+The pore melt of the mush and solid nodes is cut off from the ocean. So with `"layers"` the chemistry solver dissolves volatiles into the melt of the liquid nodes alone. For the length of the solve, `Phi_global` reads `trap_Phi_ocean`: the liquid nodes' share of the melt times the global melt fraction. It is restored after the solve. The next step takes its melt concentration on that same ocean melt.
 
 ### Remelting node by node
 
-A shell that becomes liquid again returns everything locked at it, its pore melt and its buried mass, to the melt. Shells that stay in the mush or solid keep theirs, even when the global melt fraction rises. The burial ledger of the next section is not used in this mode. A step whose net move is a return records `trap_branch = 7`, as a front remelt does.
+A node that becomes liquid again returns everything trapped at it to the melt. A liquid or mush node whose melt fraction rises from $x_0$ to $x$ melts the share $(x - x_0)/(1 - x_0)$ of its crystals. That share of its crystal store goes with the new melt. A liquid node returns it to the ocean, so a liquid node at $x = 1$ holds nothing. A mush node puts it into its pore melt, which drains. Nodes that stay solid keep theirs, even when the global melt fraction rises. The burial ledger of the next section is not used in this mode.
 
-The per-shell record lives on the interior object between steps and is saved in each interior snapshot as `trap_*_s` variables. A resumed run reads it back. Without a saved record, the trapped mass on the helpfile is assigned to the shells that are not liquid, in proportion to their mass, so it remelts with them.
+Every return reaches escape and desiccation through `trap_kg_returned`, whether a node remelted or melt drained back to the ocean. On a step with a return, the escape floor is off and a desiccated planet is checked again. `trap_branch = 7` marks a net return by remelting nodes, as a diagnostic only.
+
+### Resume, mesh changes and missing profiles
+
+The per-node record lives on the interior object between steps. It is saved in each interior snapshot as `trap_*_s` variables, and a resumed run reads it back. Without a saved record, or with one sized for another mesh, the trapped mass on the helpfile is assigned to the nodes that are not liquid, in proportion to their mass. The mush the new record finds then buries nothing new, since it already holds that mass.
+
+A step without the interior profiles traps at $D_Z\,C_Z\,\Delta M$ alone when the mantle freezes. When it remelts, the step returns the remelted share of the solid and takes the same share out of the record. It does not use the burial ledger, so nothing is returned twice.
 
 ### Output
 
-The trapping columns keep their meaning, with these differences for `"layers"`:
+The trapping columns have one meaning in both modes. For `"layers"` they read as follows:
 
-- `trap_F_tl` \[1\]: the mass-weighted trapped fraction of the shells that froze in the step, 0 when none did.
-- `trap_n_front`: the number of mush shells.
-- `trap_tau_D`, `trap_tau_s` \[yr\] and `trap_L_front` \[m\]: the percolation time, matrix time and thickness of the thickest run of mush shells.
-- `trap_n_exited`: shells that froze in the step; `trap_frac_bound` \[1\]: the mass share of them that kept their entry pore melt, because their run was sealed or they crossed the whole mush within one step; `trap_n_substeps`: the drainage sub-steps of the step.
+- `trap_F_tl` \[1\]: the mass-weighted trapped melt fraction of the nodes that froze in the step, 0 when none did.
+- `trap_n_front`, `trap_L_front` \[m\], `trap_tau_D` and `trap_tau_s` \[yr\]: the node count, thickness, percolation time and matrix time of the thickest mush layer, which stands for the front.
+- `trap_v_front` \[m s$^{-1}$\] and `trap_front_courant` \[1\]: the front speed from the mass that froze, at the base of the thickest mush layer, and its advance in that layer's thicknesses. `trap_w_matrix_over_vf` is NaN, since no single front top exists.
+- `trap_t_res` \[yr\]: the mass-weighted time the nodes that froze spent in the mush.
+- `trap_n_mush`: the mush nodes of the whole mesh. `trap_n_exited`: nodes that froze in the step.
+- `trap_frac_bound` \[1\]: the mass share of the nodes that froze on the no-drainage bound. It includes nodes that drained before their mush layer was sealed, so it is not the share that kept their entry pore melt.
+- `trap_kg_returned` \[kg\]: the mass returned to the melt this step. `trap_Phi_ocean` \[1\]: the ocean melt the chemistry dissolves into. `trap_n_substeps`: the drainage sub-steps of the step.
+
+### Limits
+
+- With `params.dt.mushy_maximum` set, the interior time step is capped while `params.stop.solid.phi_crit` < `Phi_global` < `params.dt.mushy_upper`, and not below that band. Many nodes can then cross the floor in one step, which the record follows only at that step's resolution.
+- Before the record starts, the code knows no earlier melt fraction per node. The crystals grown in the step before it are not counted.
 
 **Where this is checked.** [Pore-melt drainage of the layer scheme](../Validation/outgas/layer_drainage.md), [Per-node record of the layer scheme](../Validation/outgas/node_record.md) and [Layer trapping step](../Validation/outgas/layer_trapping.md).
 
 ## Remelting and the burial ledger
 
-**Question.** If the mantle melts again, which buried volatiles come back to the melt?
+**Question.** If the mantle melts again, which locked volatiles come back to the melt?
 
-**Short answer.** In the `"front"` mode, the solid that froze last is the first to melt. So a remelt returns the mass that was buried most recently. The `"layers"` mode decides remelting per shell instead (see [Remelting node by node](#remelting-node-by-node)).
+**Short answer.** In the `"front"` mode, the solid that froze last is the first to melt. So a remelt returns the mass that was locked most recently. The `"layers"` mode decides remelting per node instead (see [Remelting node by node](#remelting-node-by-node)).
 
-The **burial ledger** stores the mass buried in each step as a layer. Each layer has 2 melt fractions: $\Phi$ before the step and $\Phi$ after it.
+The **burial ledger** stores the mass locked in each step as an entry. Each entry has 2 melt fractions: $\Phi$ before the step and $\Phi$ after it.
 
-When $\Phi$ rises to a higher value, the code returns the mass of each layer whose melt fractions are below that value (`remelt_to`). A layer that the higher value cuts in 2 returns the remelted share of its mass.
+When $\Phi$ rises to a higher value, the code returns the mass of each entry whose melt fractions are below that value (`remelt_to`). An entry that the higher value cuts in 2 returns the remelted share of its mass.
 
-**Example.** The mantle freezes from $\Phi = 1$ to 0.7 and buries 3 kg. Then it freezes from 0.7 to 0.5 and buries 2 kg. Then it remelts to $\Phi = 0.6$. That remelts half of the second layer, so 1 kg returns to the melt. The first layer and the other half of the second layer stay buried.
+**Example.** The mantle freezes from $\Phi = 1$ to 0.7 and locks 3 kg. Then it freezes from 0.7 to 0.5 and locks 2 kg. Then it remelts to $\Phi = 0.6$. That remelts half of the second entry, so 1 kg returns to the melt. The first entry and the other half of the second entry stay locked.
 
 At each remelt, the code builds the ledger from the output columns `Phi_global` and `{sp}_kg_trapped`, so a resumed run has the same ledger.
 
@@ -398,4 +433,5 @@ During a run, an $F_\mathrm{tl}$ outside 0 to 1 stops the run with an error. A f
 [^cite-rogers2025]: Rogers, J.G., Young, E.D. and Schlichting, H.E., *[Redefining interiors and envelopes: hydrogen-silicate miscibility and its consequences for the structure and evolution of sub-Neptunes](https://doi.org/10.1093/mnras/staf1940)*, Monthly Notices of the Royal Astronomical Society, 544, 3496, 2025.
 [^cite-sim2024]: Sim, S.J., Hirschmann, M.M. and Hier-Majumder, S., *[Volatile and trace element storage in a crystallizing martian magma ocean](https://doi.org/10.1029/2024JE008346)*, Journal of Geophysical Research: Planets, 129, e2024JE008346, 2024. Eq. 6.
 [^cite-bower2018]: Bower, D.J., Sanan, P. and Wolf, A.S., *[Numerical solution of a non-linear conservation law applicable to the interior dynamics of partially molten planets](https://doi.org/10.1016/j.pepi.2017.11.004)*, Physics of the Earth and Planetary Interiors, 274, 49, 2018.
+[^cite-miyazaki2019]: Miyazaki, Y. and Korenaga, J., *[On the timescale of magma ocean solidification and its chemical consequences: 2. Compositional differentiation under crystal accumulation and matrix compaction](https://doi.org/10.1029/2018JB016928)*, Journal of Geophysical Research: Solid Earth, 124, 3399-3419, 2019. Section 2.4 moves $\phi v_\mathrm{perc} \Delta t$ of melt at each of 200 grid cells per step, in the direction of the density contrast, with a compaction time $\eta_s / ((\rho_s - \rho_l) g L)$.
 [^cite-vanbuchem2023]: van Buchem, C.P.A., Miguel, Y., Zilinskas, M. and van Westrenen, W., *[LavAtmos: An open-source chemical equilibrium vaporization code for lava worlds](https://doi.org/10.1111/maps.13994)*, Meteoritics & Planetary Science, 58, 1149-1161, 2023.

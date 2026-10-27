@@ -11,6 +11,7 @@ from proteus.escape.wrapper import readable_total
 from proteus.interior_struct.common import record_volatile_change
 from proteus.outgas.common import EMPTY_ATMOSPHERE_KEPT_KEYS, expected_keys
 from proteus.outgas.lavatmos import run_vapourisation
+from proteus.outgas.layer_trapping import ocean_melt_for_chemistry
 from proteus.outgas.trapping import (
     escapable_inventory,
     locked_condensed_mass,
@@ -349,10 +350,12 @@ def check_desiccation(config: Config, hf_row: dict) -> bool:
 def desiccated_after_trapping(config: Config, hf_row: dict, desiccated: bool, step) -> bool:
     """Whether a desiccated planet is still desiccated after this step's trapping.
 
-    A remelting step returns buried mass to the melt, where :func:`run_desiccated`
-    keeps it while trapping is on. Once the mass the melt holds brings an element
-    above ``mass_thresh`` the planet holds volatiles again, and the flag clears so
-    that escape and outgassing take that mass from there.
+    A step whose trapping returns mass to the melt, by remelting or, in
+    ``layers``, by melt draining back to the ocean, puts it where
+    :func:`run_desiccated` keeps it while trapping is on. Once the mass the
+    melt holds brings an element above ``mass_thresh`` the planet holds
+    volatiles again, and the flag clears so that escape and outgassing take
+    that mass from there.
 
     Parameters
     ----------
@@ -370,13 +373,12 @@ def desiccated_after_trapping(config: Config, hf_row: dict, desiccated: bool, st
     bool
         Whether the planet is desiccated now.
     """
-    if not desiccated or step is None or not step.remelted or step.total_trapped >= 0.0:
+    returned = 0.0 if step is None else float(sum(step.returned_kg.values()))
+    if not desiccated or not returned > 0.0:
         return desiccated
     still = check_desiccation(config, hf_row)
     if not still:
-        log.info(
-            'Remelting returned %.3e kg to the melt; no longer desiccated', -step.total_trapped
-        )
+        log.info('Trapping returned %.3e kg to the melt; no longer desiccated', returned)
     return still
 
 
@@ -534,10 +536,11 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict, *, initial: bool):
     # `_kg_solid` column (0.0 in CALLIOPE and atmodeller; atmodeller writes its
     # condensates to `_kg_condensed`), so the trapped mass is hidden for the solve
     # and put back after it. Condensed mass is handled the same way when it is kept
-    # from re-vapourising.
+    # from re-vapourising. With the layer scheme the solve sees the ocean melt alone.
     with (
         condensed_mass_withheld(config, hf_row, initial=initial),
         trapped_mass_withheld(hf_row),
+        ocean_melt_for_chemistry(config, hf_row),
     ):
         _solve_chemistry(dirs, config, hf_row, initial=initial)
 
