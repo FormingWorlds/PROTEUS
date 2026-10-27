@@ -66,7 +66,7 @@ Terms used below:
 
 **Why this check exists.** The trapping step computes the porosity from the densities of the solid, the melt and the mixture with the lever rule. A wrong rule gives a porosity that differs from the one the interior solver uses, without an error message.
 
-**What it tests.** On a 2-phase mush with the melt lighter than the solid, the lever-rule porosity must equal the porosity of the interior solver. Where the melt is the denser phase the solver's porosity reads below 1e-3 while the lever rule returns the melt volume, At a fully molten node `porosity_from_densities` takes the melt fraction, 1, while the solver's porosity, the lever rule on the single-phase density, is 0.95.
+**What it tests.** On a 2-phase mush with the melt lighter than the solid, the lever-rule porosity must equal the porosity of the interior solver. Where the melt is the denser phase the solver's porosity reads below 1e-3 while the lever rule returns the melt volume. At a fully molten node `porosity_from_densities` takes the melt fraction, 1, while the solver's porosity, the lever rule on the single-phase density, is 0.95.
 
 **How we know the right answer.** The porosity of the Aragog solver (`EntropyPhaseEvaluator._porosity_from`, fwl-aragog 26.10.03), a second implementation.
 

@@ -88,7 +88,7 @@ These are integration tests that need the Julia AGNI installation; they skip unl
 
 ## Coverage
 
-Besides the values in the cases, the grey-gas test asserts that `F_olr` is positive, between 1e4 and 1e5 W m$^{-2}$ at 1000 K, and rises with the surface temperature. It also asserts that the upward longwave flux is the same at the top and at the bottom of the column, that the net upward flux `F_atm` equals `F_olr`, and that the reflected flux `F_sct` is 0, as there is no stellar flux.
+Besides the values in the cases, the grey-gas test and the banded test both run the shared asserts of `_assert_blackbody_limit`, each at its own tolerance. They assert that `F_olr` is positive, between 1e4 and 1e5 W m$^{-2}$ at 1000 K, and rises with the surface temperature. They also assert that the upward longwave flux is the same at the top and at the bottom of the column, that the net upward flux `F_atm` equals `F_olr`, and that the reflected flux `F_sct` is 0, as there is no stellar flux.
 
 ## Scope and limits
 

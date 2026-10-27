@@ -92,4 +92,5 @@ The table lists the `@pytest.mark.reference_pinned` test and the slow-tier test 
     - Tolerance: bit for bit at $f = 0$ and $f = 1$; relative 1e-15 for the blends and the scalar mantle.
     - Test id: `tests/interior_energetics/test_remelt.py::test_partial_weight_blends_by_mass_share_and_never_cools` (writes the plot)
     - Supporting tests: `tests/interior_energetics/test_remelt.py::test_weights_at_the_ends_are_exact`, `::test_full_weight_is_the_maximum_bit_for_bit`, `::test_scalar_mantle_moves_by_the_melted_share`
-    - Command: `pytest -m reference_pinned tests/interior_energetics/test_remelt.py --validation-plots`
+    - Command for the plot: `pytest -m reference_pinned tests/interior_energetics/test_remelt.py --validation-plots`
+    - Command for the supporting tests: `pytest tests/interior_energetics/test_remelt.py`

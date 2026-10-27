@@ -50,7 +50,7 @@ gravitationally focused collision speed, and the momentum-conserving merger).
 
 **Why it matters.** `accretion/wrapper.py` applies the eccentricity change and the semi-major-axis ratio of each impact to the orbit of the planet.
 
-**Known limit.** At $e = 0$ both bodies have the same velocity, so an inverted mass weighting gives the same orbit and passes this case; the angular-momentum case below catches it. A sign error in the radial velocity of the impactor passes this case and the angular-momentum case, because the reference $r v_\theta$ uses only the tangential velocity. No assert in `tests/accretion/` catches it; only the stale check of the collision-speed plot does, because the collision speeds at eccentricity 0.05 change.
+**Known limit.** At $e = 0$ both bodies have the same velocity, so an inverted mass weighting gives the same orbit and passes this case; the angular-momentum case below catches it. A sign error in the radial velocity of the impactor passes this case and the angular-momentum case. Both use a circular target, so the error only reverses the sign of the merged radial velocity, and the orbit and the encounter speed stay the same. No assert in `tests/accretion/` catches it; only the stale check of the collision-speed plot does. In that timeline the target of each later impact carries the eccentricity of the merger before it, so its collision speed changes.
 
 ![Semi-major axis ratio and eccentricity of merged orbits against the mass ratio of each impact](../../assets/validation/accretion_dummy_circular_merger.svg#only-light){ width="80%" }
 ![Semi-major axis ratio and eccentricity of merged orbits against the mass ratio of each impact](../../assets/validation/accretion_dummy_circular_merger_dark.svg#only-dark){ width="80%" }

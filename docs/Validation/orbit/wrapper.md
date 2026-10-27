@@ -6,7 +6,7 @@ This page checks the orbital period that the orbit wrapper, `proteus.orbit.wrapp
 
 | Test id | Reference | Source page | Scope |
 |---|---|---|---|
-| `tests/orbit/test_wrapper.py::test_period_matches_keplers_third_law_for_earth_around_sun` | Kepler's third law (Kepler 1619, Harmonices Mundi Book V); modern statement in any classical-mechanics textbook | Standard | Pins the orbital period of Earth around the Sun against the observed sidereal year (365.256 days). Asserts sign and 0.5% agreement; catches AU-vs-m and M_sun-vs-kg unit slips. |
+| `tests/orbit/test_wrapper.py::test_period_matches_keplers_third_law_for_earth_around_sun` | Kepler's third law (Kepler 1619, Harmonices Mundi Book V); modern statement in any classical-mechanics textbook | Standard | Pins the orbital period of Earth around the Sun to the closed form at `rel=1e-12`, the exact check. The comparison with the observed sidereal year (365.256 days) to 0.5% is a loose unit check that catches AU-vs-m and M_sun-vs-kg slips; the test also asserts a positive period. |
 
 ## Orbital period of the Earth
 
