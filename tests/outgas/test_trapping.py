@@ -252,7 +252,7 @@ def test_crystallised_mass_follows_melt_fraction_through_a_remesh():
 
 @pytest.mark.reference_pinned
 @pytest.mark.physics_invariant
-def test_incompatible_species_traps_through_the_interstitial_melt_alone():
+def test_incompatible_species_traps_through_the_interstitial_melt_alone(validation_plot):
     """Sim, Hirschmann and Hier-Majumder (2024), JGR Planets 129, e2024JE008346,
     Eq. 6: a species at D_Z = 0 takes no place in the crystal lattice, but the
     melt buried between the crystals carries it down regardless, so it still
@@ -260,7 +260,10 @@ def test_incompatible_species_traps_through_the_interstitial_melt_alone():
     that is 8e18 kg of CO2, while H2O at D_Z = 0.0017 traps 4.3332e18 kg from a
     melt half as concentrated. The bracket's analytic limits, D_Z at F_tl = 0
     and 1 at F_tl = 1, are pinned as well."""
-    carbon, carbon_capped = trapped_mass(0.0, 0.02, 2.0e-3, _DM_RM, 3.6e21)
+    f_case = 0.02
+    co2_case = (0.0, 2.0e-3, 3.6e21, 'CO$_2$, $D_Z$ = 0')
+    h2o_case = (0.0017, 1.0e-3, 1.8e21, 'H$_2$O, $D_Z$ = 0.0017')
+    carbon, carbon_capped = trapped_mass(co2_case[0], f_case, co2_case[1], _DM_RM, co2_case[2])
     assert carbon == pytest.approx(8.0e18, rel=1e-12)
     assert not carbon_capped
     # This is the whole point: a zero partition coefficient is not zero
@@ -269,7 +272,7 @@ def test_incompatible_species_traps_through_the_interstitial_melt_alone():
     # Scale guard: ~1e19 kg, not ~1e22 (melt mass mistaken for concentration).
     assert 1.0e18 < carbon < 1.0e19
 
-    water, _ = trapped_mass(0.0017, 0.02, 1.0e-3, _DM_RM, 1.8e21)
+    water, _ = trapped_mass(h2o_case[0], f_case, h2o_case[1], _DM_RM, h2o_case[2])
     assert water == pytest.approx(4.3332e18, rel=1e-12)
     # Weight guard: dropping the (1 - F_tl) factor lands at 4.34e18 kg.
     assert abs(water - 0.0217 * 1.0e-3 * _DM_RM) > 1.0e15
@@ -291,6 +294,39 @@ def test_incompatible_species_traps_through_the_interstitial_melt_alone():
     # and a fully retained melt buries the species at the melt concentration.
     assert effective_partition(0.0, 0.0017) == pytest.approx(0.0017, rel=1e-12)
     assert effective_partition(1.0, 0.0017) == pytest.approx(1.0, rel=1e-12)
+
+    def figure():
+        import matplotlib.pyplot as plt
+
+        f_tl = np.linspace(0.0, 0.1, 41)
+        fig, ax = plt.subplots(figsize=(6, 4))
+        for d_z, c_z, supply, name in (co2_case, h2o_case):
+            ax.plot(
+                f_tl,
+                [trapped_mass(d_z, f, c_z, _DM_RM, supply)[0] for f in f_tl],
+                label=f'trapped_mass, {name}',
+            )
+            ax.plot(
+                f_tl[::8],
+                ((1 - f_tl[::8]) * d_z + f_tl[::8]) * c_z * _DM_RM,
+                's',
+                mfc='none',
+                ms=9,
+            )
+        ax.plot(
+            [f_case, f_case],
+            [carbon, water],
+            'o',
+            zorder=3,
+            label='Asserted values at $F_\\mathrm{tl}$ = 0.02',
+        )
+        ax.set_xlabel('Trapped melt fraction $F_\\mathrm{tl}$')
+        ax.set_ylabel('Buried mass in the step [kg]')
+        ax.legend(fontsize=8)
+        fig.tight_layout()
+        return fig
+
+    validation_plot(figure, 'outgas_trapping_interstitial_melt')
 
     # Error contract: an unphysical partition coefficient or trapped fraction
     # is refused rather than moving mass on it.

@@ -137,19 +137,19 @@ def test_darcy_velocity_follows_the_closed_form_mobility_in_every_regime(validat
     95 percent at 0.95."""
     drho, gravity, eta = 400.0, 9.8, 100.0
     phi = np.array([0.005, 0.01, 0.02, 0.2, 0.3, 0.4, 0.5, 0.95, 0.99])
-    plotted = {}
+    plotted, grain_plot = {}, 1.0e-3
     for buoyancy in ('mixture', 'solid'):
-        for k, grain in enumerate((1.0e-4, 1.0e-3, 1.0e-2)):
+        for grain in (1.0e-4, grain_plot, 1.0e-2):
             want, branches = _closed_forms(phi, grain, buoyancy)
             w = darcy_velocity(phi, grain, drho, gravity, eta, buoyancy=buoyancy)
             dev = w * eta / (drho * gravity) / want - 1.0
             tol = 2.0 * _blend_bound(phi, branches)
             assert np.all(np.abs(dev) <= tol), (buoyancy, grain, dev, tol)
-            if k == 1:
+            if grain == grain_plot:
                 plotted[buoyancy] = dev / tol
     # The modes differ by 1 - phi on the porous-flow branches and agree on Stokes.
     wm, ws = (
-        darcy_velocity(phi, 1.0e-3, drho, gravity, eta, buoyancy=m)
+        darcy_velocity(phi, grain_plot, drho, gravity, eta, buoyancy=m)
         for m in ('mixture', 'solid')
     )
     np.testing.assert_allclose((wm / ws)[3:7], 1.0 - phi[3:7], rtol=1e-3)
@@ -168,10 +168,10 @@ def test_darcy_velocity_follows_the_closed_form_mobility_in_every_regime(validat
         ax1.legend(fontsize=8)
         grid = np.linspace(0.005, 0.99, 100)
         wm_g, ws_g = (
-            darcy_velocity(grid, 1.0e-3, drho, gravity, eta, buoyancy=m)
+            darcy_velocity(grid, grain_plot, drho, gravity, eta, buoyancy=m)
             for m in ('mixture', 'solid')
         )
-        cm, cs = (_closed_forms(phi, 1.0e-3, m)[0] for m in ('mixture', 'solid'))
+        cm, cs = (_closed_forms(phi, grain_plot, m)[0] for m in ('mixture', 'solid'))
         ax2.plot(grid, wm_g / ws_g, label='drainage')
         ax2.plot(phi, cm / cs, 'o', mfc='none', label='closed forms')
         ax2.plot(grid, 1.0 - grid, '--', label='1 - porosity')
@@ -268,7 +268,7 @@ def test_a_buoyancy_that_names_no_mode_is_refused():
 
 @pytest.mark.reference_pinned
 @pytest.mark.physics_invariant
-def test_the_lever_rule_porosity_is_the_solvers_where_the_melt_is_lighter():
+def test_the_lever_rule_porosity_is_the_solvers_where_the_melt_is_lighter(validation_plot):
     """Cross-implementation check against the interior solver's own porosity,
     ``EntropyPhaseEvaluator._porosity_from``, from which it writes ``porosity_b``.
     On a two-phase mush where the melt is the lighter phase both are the lever
@@ -292,21 +292,54 @@ def test_the_lever_rule_porosity_is_the_solvers_where_the_melt_is_lighter():
     np.testing.assert_allclose(mine, phi, rtol=1e-12)
     # Held to 2e-5: the solver's soft clip moves phi by 2.5e-7 / phi at each edge,
     # 1.2e-5 at phi = 0.02 and at 0.98.
-    np.testing.assert_allclose(solver_porosity(rho, rho_s, rho_l), mine, rtol=0.0, atol=2e-5)
+    solver_light = solver_porosity(rho, rho_s, rho_l)
+    np.testing.assert_allclose(solver_light, mine, rtol=0.0, atol=2e-5)
 
     # The melt the denser phase, 3456 against 3084 kg/m3: the solver's porosity
     # is near 0, the lever rule the melt volume itself.
     dense_l, dense_s = np.full(phi.size, 3456.0), np.full(phi.size, 3084.0)
     dense = dense_s - phi * (dense_s - dense_l)
     np.testing.assert_allclose(porosity_from_densities(dense, dense_s, dense_l, phi), phi)
-    assert np.all(solver_porosity(dense, dense_s, dense_l) < 1e-3)
+    solver_dense = solver_porosity(dense, dense_s, dense_l)
+    assert np.all(solver_dense < 1e-3)
     # Edge case: a fully molten node at a single-phase density 20 kg/m3 above
     # the phase-boundary melt reads 0.95 by the lever rule, 1 by its melt fraction.
-    molten = porosity_from_densities(np.array([3620.0]), 4000.0, 3600.0, np.array([1.0]))
+    node = (np.array([3620.0]), 4000.0, 3600.0)
+    molten = porosity_from_densities(*node, np.array([1.0]))
+    molten_solver = solver_porosity(*node)[0]
     assert molten[0] == pytest.approx(1.0, abs=0.0)
-    assert solver_porosity(np.array([3620.0]), 4000.0, 3600.0)[0] == pytest.approx(
-        0.95, abs=1e-5
-    )
+    assert molten_solver == pytest.approx(0.95, abs=1e-5)
+
+    def figure():
+        import matplotlib.pyplot as plt
+
+        fig, ax = plt.subplots(figsize=(6, 4))
+        ax.plot([0.0, 1.0], [0.0, 1.0], label='Melt volume fraction')
+        ax.plot(phi, mine, 'o', label='Lever rule, melt lighter')
+        ax.plot(
+            phi,
+            solver_light,
+            's',
+            mfc='none',
+            ms=10,
+            label='Solver, melt lighter',
+        )
+        ax.plot(phi, solver_dense, '^', label='Solver, melt denser')
+        ax.plot([1.0], [molten[0]], '*', ms=12, label='porosity_from_densities, molten node')
+        ax.plot(
+            [1.0],
+            [molten_solver],
+            'x',
+            ms=10,
+            label='Solver (lever rule on density), molten node',
+        )
+        ax.set_xlabel('Melt fraction $\\phi$')
+        ax.set_ylabel('Porosity')
+        ax.legend(fontsize=8)
+        fig.tight_layout()
+        return fig
+
+    validation_plot(figure, 'compaction_lever_rule_porosity')
 
 
 @pytest.mark.physics_invariant
@@ -435,7 +468,7 @@ def _retained_by_quadrature(t_res, grain, melt_visc, mush_visc, buoyancy='mixtur
 
 @pytest.mark.reference_pinned
 @pytest.mark.physics_invariant
-def test_drainage_matches_an_independent_quadrature_over_five_martian_fronts():
+def test_drainage_matches_an_independent_quadrature_over_five_martian_fronts(validation_plot):
     """Trapped melt fractions and timescales for a 60 km martian front, entered
     at phi_c = 0.3 under drho = 330 kg/m3 and g = 3.711 m/s2, crossed at 70 and
     5 cm/yr (t_res = L / v_f = 85.7 kyr and 1.2 Myr), for five sets of grain
@@ -468,7 +501,7 @@ def test_drainage_matches_an_independent_quadrature_over_five_martian_fronts():
         (1.0e-3, 1.0, 1.0e18, 0.0081653, 0.0050314, 0.069535, 0.024485),
         (1.0e-2, 1.0, 1.0e18, 8.1653e-5, 0.0050314, 0.0094342, 0.0025379),
     )
-    retained = {}
+    retained, pairs, series_pairs = {}, [], []
     for a, eta_m, eta_s, tau_d_pin, tau_s_pin, fast_pin, slow_pin in cases:
         fast, tau_d, tau_s = _drain(_PHI_C, _T_RES_FAST, _L, a, _DRHO, _G, eta_m, eta_s)
         slow, _, _ = _drain(_PHI_C, _T_RES_SLOW, _L, a, _DRHO, _G, eta_m, eta_s)
@@ -487,6 +520,7 @@ def test_drainage_matches_an_independent_quadrature_over_five_martian_fronts():
         for t_res, value, pin in ((_T_RES_FAST, fast, fast_pin), (_T_RES_SLOW, slow, slow_pin)):
             reference = _retained_by_quadrature(t_res, a, eta_m, eta_s)
             assert value == pytest.approx(reference, rel=1.0e-6)
+            pairs.append((reference, value))
             assert value == pytest.approx(pin, rel=1.0e-4)
         # A slower front always drains further.
         assert slow < fast
@@ -508,6 +542,7 @@ def test_drainage_matches_an_independent_quadrature_over_five_martian_fronts():
         drop = series(_PHI_C) - c * t_res / _L
         closed = brentq(lambda phi, drop=drop: series(phi) - drop, 0.1, _PHI_C, xtol=1e-14)
         assert retained[a, eta_m, eta_s][index] == pytest.approx(closed, rel=1.0e-5)
+        series_pairs.append((closed, retained[a, eta_m, eta_s][index]))
 
     # Discrimination: under the buoyancy against the solid the percolation-limited
     # cases drain further, by 0.008 to 0.0095 at 70 cm/yr, some 50 times the
@@ -526,6 +561,25 @@ def test_drainage_matches_an_independent_quadrature_over_five_martian_fronts():
     # The retained fraction spans a factor of thirty across the cases, so no
     # constant could pass the loop above.
     assert retained[100.0e-6, 10.0, 1.0e20][0] / retained[1.0e-2, 1.0, 1.0e18][0] > 20.0
+
+    def figure():
+        import matplotlib.pyplot as plt
+
+        fig, ax = plt.subplots(figsize=(6, 4))
+        ax.plot([1e-3, 0.4], [1e-3, 0.4], label='1:1')
+        ax.plot(*zip(*pairs), 'o', label='Model against the quadrature (10)')
+        ax.plot(
+            *zip(*series_pairs), 's', mfc='none', ms=10, label='Model against the series (3)'
+        )
+        ax.set_xscale('log')
+        ax.set_yscale('log')
+        ax.set_xlabel('Retained fraction, reference')
+        ax.set_ylabel('Retained fraction, model')
+        ax.legend(fontsize=8)
+        fig.tight_layout()
+        return fig
+
+    validation_plot(figure, 'compaction_martian_fronts')
 
 
 @pytest.mark.physics_invariant

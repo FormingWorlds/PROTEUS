@@ -6,7 +6,7 @@
   <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
    <cc:Work>
     <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
-    <dc:description>test: tests/orbit/test_parameterized.py::test_high_ecc_circularises_as_a_pure_exponential_in_eccentricity; command: pytest tests/orbit/test_parameterized.py::test_high_ecc_circularises_as_a_pure_exponential_in_eccentricity --validation-plots</dc:description>
+    <dc:description>test: tests/orbit/test_parameterized.py::test_high_ecc_circularises_as_a_pure_exponential_in_eccentricity; command: pytest tests/orbit/test_parameterized.py::test_high_ecc_circularises_as_a_pure_exponential_in_eccentricity --validation-plots; summary: {"v": 1, "axes": [{"scales": ["linear", "linear"], "categories": [null, null], "lines": [[500, 0.0, 5.0, 2.5, 0.8366733466933863, 0.005219191303017251, 0.7745966692414834, 0.15434884532043994, -0.0949953416431618], [500, 0.0, 5.0, 2.5, 0.8366733466933863, 0.06358276652876375, 0.7745966692414834, 0.2846755230974231, -0.10824401953278764], [20, 0.0, 4.759519038076152, 2.379759519038076, 0.876753507014028, 0.006638084407518699, 0.7745966692414834, 0.17361612529557888, -0.11187198221338633]], "collections": [], "values": [], "value_scales": [], "patches": [], "images": [], "image_scales": [], "extents": []}]}</dc:description>
     <dc:format>image/svg+xml</dc:format>
     <dc:creator>
      <cc:Agent>

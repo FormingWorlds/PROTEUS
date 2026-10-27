@@ -128,7 +128,7 @@ def test_impactor_masses_decay_and_the_first_impact_is_the_largest():
 @pytest.mark.unit
 @pytest.mark.physics_invariant
 @pytest.mark.reference_pinned
-def test_collision_velocity_never_falls_below_the_mutual_escape_velocity():
+def test_collision_velocity_never_falls_below_the_mutual_escape_velocity(validation_plot):
     """v_impact = sqrt(v_encounter^2 + v_esc^2) holds, including at e = 0.
 
     The timeline validator rejects any impact whose collision velocity is below
@@ -162,13 +162,58 @@ def test_collision_velocity_never_falls_below_the_mutual_escape_velocity():
     assert first.v_esc == pytest.approx(expected, rel=1e-12)
     # Discrimination: dropping the factor of two, the single most plausible
     # slip, changes the value by 29%, far outside the tolerance.
-    assert abs(expected / math.sqrt(2.0) - expected) > 0.2 * expected
+    no_factor_two = 1.0 / math.sqrt(2.0)
+    assert abs(expected * no_factor_two - expected) > 0.2 * expected
+
+    def figure():
+        import matplotlib.pyplot as plt
+
+        lo = min(e.v_esc for e in events + circular) / 1e3
+        hi = max(e.v_impact for e in events + circular) / 1e3
+        line = [0.9 * lo, 1.1 * hi]
+        fig, ax = plt.subplots(figsize=(6, 4))
+        ax.plot(line, line, label='$v_\\mathrm{impact} = v_\\mathrm{esc}$')
+        ax.plot(
+            line,
+            [v * no_factor_two for v in line],
+            '--',
+            label='Escape speed without the factor 2',
+        )
+        ax.plot(
+            [e.v_esc / 1e3 for e in events],
+            [e.v_impact / 1e3 for e in events],
+            'o',
+            label='Impacts, $e$ = 0.05',
+        )
+        ax.plot(
+            [e.v_esc / 1e3 for e in circular],
+            [e.v_impact / 1e3 for e in circular],
+            's',
+            mfc='none',
+            ms=9,
+            label='Impacts, $e$ = 0',
+        )
+        ax.plot(
+            [expected / 1e3],
+            [first.v_esc / 1e3],
+            '*',
+            ms=12,
+            zorder=3,
+            label='Hand-computed $v_\\mathrm{esc}$, first pair',
+        )
+        ax.set_xlabel('Mutual escape speed [km/s]')
+        ax.set_ylabel('Collision speed [km/s]')
+        ax.legend(fontsize=8)
+        fig.tight_layout()
+        return fig
+
+    validation_plot(figure, 'accretion_dummy_collision_speed')
 
 
 @pytest.mark.unit
 @pytest.mark.physics_invariant
 @pytest.mark.reference_pinned
-def test_a_circular_encounter_leaves_the_orbit_untouched():
+def test_a_circular_encounter_leaves_the_orbit_untouched(validation_plot):
     """With no encounter eccentricity the merger cannot move the orbit.
 
     Two bodies on the same circular orbit have identical velocities, so the
@@ -178,11 +223,30 @@ def test_a_circular_encounter_leaves_the_orbit_untouched():
     way round, both of which move the orbit even here.
     """
     events = get_timeline(_config(eccentricity=0.0, semimajoraxis=1.0))
+    unchanged_ratio, circular_e = 1.0, 0.0
 
     for event in events:
-        assert event.semimajoraxis_ratio == pytest.approx(1.0, rel=1e-12)
-        assert event.e_after == pytest.approx(0.0, abs=1e-12)
+        assert event.semimajoraxis_ratio == pytest.approx(unchanged_ratio, rel=1e-12)
+        assert event.e_after == pytest.approx(circular_e, abs=1e-12)
         assert event.a_before == pytest.approx(1.0 * AU, rel=1e-12)
+
+    def figure():
+        import matplotlib.pyplot as plt
+
+        ratio = [e.M_impactor / e.M_target_before for e in events]
+        fig, ax = plt.subplots(figsize=(6, 4))
+        ax.axhline(unchanged_ratio, label='Unchanged orbit, $a/a_0$ = 1')
+        ax.axhline(circular_e, ls='--', label='Circular orbit, $e$ = 0')
+        ax.plot(ratio, [e.semimajoraxis_ratio for e in events], 'o', label='Merged $a/a_0$')
+        ax.plot(ratio, [e.e_after for e in events], 's', mfc='none', ms=9, label='Merged $e$')
+        ax.set_ylim(-0.2, 1.4)
+        ax.set_xlabel('Impactor mass / target mass')
+        ax.set_ylabel('Merged orbit')
+        ax.legend(fontsize=8)
+        fig.tight_layout()
+        return fig
+
+    validation_plot(figure, 'accretion_dummy_circular_merger')
 
 
 @pytest.mark.unit
@@ -302,7 +366,7 @@ def test_an_unusable_timescale_is_refused_with_an_actionable_message():
 @pytest.mark.unit
 @pytest.mark.physics_invariant
 @pytest.mark.reference_pinned
-def test_merged_orbit_conserves_angular_momentum_of_the_merged_body():
+def test_merged_orbit_conserves_angular_momentum_of_the_merged_body(validation_plot):
     """The returned orbit reproduces the angular momentum it was built from.
 
     a_after and e_after are two numbers derived from one velocity vector, so
@@ -324,9 +388,11 @@ def test_merged_orbit_conserves_angular_momentum_of_the_merged_body():
 
     v_kep = math.sqrt(mu / a_target)
     m_merged = m_target + m_impactor
-    v_theta = (
-        m_target * v_kep + m_impactor * v_kep * math.sqrt(1.0 - eccentricity**2)
-    ) / m_merged
+
+    def v_theta_of(e):
+        return (m_target * v_kep + m_impactor * v_kep * math.sqrt(1.0 - e**2)) / m_merged
+
+    v_theta = v_theta_of(eccentricity)
 
     h_from_orbit = math.sqrt(mu * a_after * (1.0 - e_after**2))
     assert h_from_orbit == pytest.approx(a_target * v_theta, rel=1e-9)
@@ -336,6 +402,41 @@ def test_merged_orbit_conserves_angular_momentum_of_the_merged_body():
     # a percent of it, and it must not be zero.
     assert v_encounter == pytest.approx(eccentricity * v_kep, rel=2e-2)
     assert v_encounter > 0.0
+
+    def figure():
+        import matplotlib.pyplot as plt
+        import numpy as np
+
+        ecc = np.linspace(0.0, 0.5, 26)
+        h_code, h_closed = [], []
+        for e in ecc:
+            a, ea, _ = _merged_orbit(m_target, m_impactor, a_target, 0.0, e, m_star)
+            h_code.append(math.sqrt(mu * a * (1.0 - ea**2)) / (a_target * v_kep))
+            h_closed.append(v_theta_of(e) / v_kep)
+        fig, ax = plt.subplots(figsize=(6, 4))
+        ax.plot(ecc, h_code, label='$\\sqrt{\\mu a (1 - e^2)}$ of the merged orbit')
+        ax.plot(
+            ecc[::5],
+            h_closed[::5],
+            's',
+            mfc='none',
+            ms=9,
+            label='$r\\,v_\\theta$ of the merged body',
+        )
+        ax.plot(
+            [eccentricity],
+            [h_from_orbit / (a_target * v_kep)],
+            'o',
+            zorder=3,
+            label='Asserted case, $e$ = 0.2',
+        )
+        ax.set_xlabel('Encounter eccentricity $e$')
+        ax.set_ylabel('$h\\,/\\,(a\\,v_\\mathrm{K})$')
+        ax.legend(fontsize=8)
+        fig.tight_layout()
+        return fig
+
+    validation_plot(figure, 'accretion_dummy_angular_momentum')
 
 
 @pytest.mark.unit

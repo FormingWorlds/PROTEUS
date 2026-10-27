@@ -188,7 +188,7 @@ def test_sp0d_de_dt_is_linear_in_eccentricity():
 
 @pytest.mark.reference_pinned
 @pytest.mark.physics_invariant
-def test_sp0d_de_dt_matches_driscoll_barnes_2015_eq16():
+def test_sp0d_de_dt_matches_driscoll_barnes_2015_eq16(validation_plot):
     """Pin sp0d's de/dt against Driscoll and Barnes (2015)
     Astrobiology 15, 739, DOI 10.1089/ast.2015.1325, Eq. 16.
     (arXiv:1509.07452.)
@@ -212,15 +212,20 @@ def test_sp0d_de_dt_matches_driscoll_barnes_2015_eq16():
     See ``docs/Validation/orbit/orbit.md`` for the validation registry
     entry.
     """
-    _, val = _sp0d_instantaneous_rates(sma=2.0, ecc=0.5, **_UNIT_SYS)
-    expected = (21.0 / 2.0) * const_G**0.5 * 0.5 / (2.0**6.5)
+    a_case, e_case = 2.0, 0.5
+
+    def eq16(a, power=6.5):
+        return (21.0 / 2.0) * const_G**0.5 * e_case / a**power
+
+    _, val = _sp0d_instantaneous_rates(sma=a_case, ecc=e_case, **_UNIT_SYS)
+    expected = eq16(a_case)
     assert val == pytest.approx(expected, rel=1e-3)
     # Exponent-error guard: an off-by-one in the semi-major-axis
     # exponent puts the result far outside the finite-difference noise
     # floor. Check a**5 (way too big) AND a**7 (too small), the two
     # closest neighbouring exponents.
-    wrong_a5 = (21.0 / 2.0) * const_G**0.5 * 0.5 / (2.0**5)
-    wrong_a7 = (21.0 / 2.0) * const_G**0.5 * 0.5 / (2.0**7)
+    wrong_a5 = eq16(a_case, 5)
+    wrong_a7 = eq16(a_case, 7)
     assert abs(val - wrong_a5) / expected > 1.0
     assert abs(val - wrong_a7) / expected > 0.1
     # Sign guard: under the PROTEUS calling convention (positive Imk2)
@@ -228,6 +233,27 @@ def test_sp0d_de_dt_matches_driscoll_barnes_2015_eq16():
     # certify the convention matches Driscoll and Barnes; see source
     # docstring.
     assert val > 0.0
+
+    def figure():
+        import matplotlib.pyplot as plt
+
+        sma = np.linspace(1.0, 4.0, 13)
+        code = [_sp0d_instantaneous_rates(sma=a, ecc=e_case, **_UNIT_SYS)[1] for a in sma]
+        fig, ax = plt.subplots(figsize=(6, 4))
+        ax.plot(sma, code, label='sp0d, finite difference')
+        ax.plot(sma[::3], eq16(sma[::3]), 's', mfc='none', ms=9, label='Eq. 16, $a^{-13/2}$')
+        ax.plot(sma, eq16(sma, 5), '--', label='$a^{-5}$')
+        ax.plot(sma, eq16(sma, 7), ':', label='$a^{-7}$')
+        ax.plot([a_case], [val], 'o', zorder=3, label='Asserted value at $a$ = 2')
+        ax.set_xscale('log')
+        ax.set_yscale('log')
+        ax.set_xlabel('$a$ [m], unit system of the test')
+        ax.set_ylabel('$de/dt$ [s$^{-1}$]')
+        ax.legend(fontsize=8)
+        fig.tight_layout()
+        return fig
+
+    validation_plot(figure, 'orbit_sp0d_de_dt')
 
 
 @pytest.mark.physics_invariant
@@ -662,7 +688,7 @@ def test_sp1d_zero_dissipation_is_an_exact_fixed_point(_fast_hansen_table):
 
 @pytest.mark.reference_pinned
 @pytest.mark.physics_invariant
-def test_sp1d_conserves_total_angular_momentum(_fast_hansen_table):
+def test_sp1d_conserves_total_angular_momentum(_fast_hansen_table, validation_plot):
     """Physical law (not specific to Driscoll & Barnes or any single
     paper): for an isolated two-body system with only internal tidal
     torques, total angular momentum (planet spin + orbital) is
@@ -676,6 +702,7 @@ def test_sp1d_conserves_total_angular_momentum(_fast_hansen_table):
     """
     hf_row = _make_sp1d_hf_row(ecc=0.3)
     am_before = _sp1d_total_am(hf_row)
+    parts_before = _sp1d_spin_and_orbital_am(hf_row)
     tides_o = _make_planet_star_tides(-0.01 - 0.02j)
 
     sp1d(hf_row, tides_o, dt=1e5, config=_SOLVER_CONFIG)
@@ -687,10 +714,35 @@ def test_sp1d_conserves_total_angular_momentum(_fast_hansen_table):
     am_after = _sp1d_total_am(hf_row)
     assert am_after == pytest.approx(am_before, rel=1e-6)
 
+    def figure():
+        import matplotlib.pyplot as plt
+
+        parts_after = _sp1d_spin_and_orbital_am(hf_row)
+        x = np.arange(3)
+        fig, ax = plt.subplots(figsize=(6, 4))
+        ax.bar(
+            x - 0.2,
+            [parts_before[0], parts_before[1], am_before],
+            width=0.4,
+            label='Before the step',
+        )
+        ax.bar(
+            x + 0.2, [parts_after[0], parts_after[1], am_after], width=0.4, label='After 1e5 yr'
+        )
+        ax.set_xticks(x, ['Spin', 'Orbit', 'Total'])
+        ax.set_yscale('log')
+        ax.set_ylim(1e33, 1e42)
+        ax.set_ylabel('$L$ [kg m$^2$ s$^{-1}$]')
+        ax.legend(loc='upper left')
+        fig.tight_layout()
+        return fig
+
+    validation_plot(figure, 'orbit_sp1d_total_angular_momentum')
+
 
 @pytest.mark.reference_pinned
 @pytest.mark.physics_invariant
-def test_sp1d_spin_am_gain_matches_orbital_am_loss(_fast_hansen_table):
+def test_sp1d_spin_am_gain_matches_orbital_am_loss(_fast_hansen_table, validation_plot):
     """A more targeted phrasing of the same conservation law above,
     needed because the planet's spin AM is ~1e-6 of the total system
     AM at these masses (Earth-like planet, Sun-like star): a bug
@@ -723,11 +775,33 @@ def test_sp1d_spin_am_gain_matches_orbital_am_loss(_fast_hansen_table):
     # (a near-zero step would make the ratio numerically meaningless).
     assert abs(d_spin) > 1e30
     assert abs(d_orb) > 1e30
-    assert d_spin == pytest.approx(-d_orb, rel=5e-2)
+    rtol = 5e-2
+    assert d_spin == pytest.approx(-d_orb, rel=rtol)
     # Sign guard: spin gains AM (planet spins up) exactly as the
     # orbit loses it during circularization.
     assert d_spin > 0.0
     assert d_orb < 0.0
+
+    def figure():
+        import matplotlib.pyplot as plt
+
+        # The orbital loss is not drawn: it is 1.7e-7 of the orbital AM, so the
+        # solver tolerance moves it by about 0.4 %, above the stale-check limit.
+        fig, ax = plt.subplots(figsize=(6, 4))
+        ax.axhspan(
+            d_spin / (1.0 + rtol),
+            d_spin / (1.0 - rtol),
+            alpha=0.15,
+            label='window for the orbital loss',
+        )
+        ax.bar(['Spin gain'], [d_spin], width=0.4)
+        ax.set_ylim(0.0, 1.4 * d_spin)
+        ax.set_ylabel('$\\Delta L$ [kg m$^2$ s$^{-1}$]')
+        ax.legend(loc='upper center')
+        fig.tight_layout()
+        return fig
+
+    validation_plot(figure, 'orbit_sp1d_spin_orbit_exchange')
 
 
 @pytest.mark.physics_invariant
