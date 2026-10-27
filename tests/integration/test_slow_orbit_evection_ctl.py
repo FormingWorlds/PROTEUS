@@ -335,7 +335,7 @@ def test_peak_eccentricity_matches_reference_location(
         fig, ax = plt.subplots(figsize=(6, 4))
         ax.fill_between([a_lo, a_hi], e_min, 1.0, alpha=0.15, label='Asserted region')
         ax.plot([11.89], [0.72], 's', mfc='none', ms=10, label='Reference peak (notebook run)')
-        a_shown, e_shown = float(f"{peak['a_prime']:.3g}"), float(f"{peak['ecc']:.2g}")
+        a_shown, e_shown = float(f'{peak["a_prime"]:.3g}'), float(f'{peak["ecc"]:.2g}')
         ax.plot([a_shown], [e_shown], 'o', zorder=3, label='Peak of this run')
         ax.set_xlim(6.0, 16.0)
         ax.set_ylim(0.0, 1.0)
