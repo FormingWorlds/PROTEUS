@@ -3,13 +3,10 @@ from __future__ import annotations
 
 import logging
 import os
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numpy as np
-from scipy.special import erf
 
-from proteus.utils.constants import B_ein
 from proteus.utils.data import find_lookup_table_dir
 from proteus.utils.helper import MissingDataError, generates_paleos_tables
 
@@ -19,65 +16,6 @@ if TYPE_CHECKING:
     from proteus.config import Config
 
 log = logging.getLogger('fwl.' + __name__)
-
-
-@dataclass
-class rheo_t:
-    dotl: float
-    delta: float
-    xi: float
-    gamma: float
-    phist: float
-
-
-# Lookup parameters for rheological properties
-#     Taken from Kervazo+21 (https://doi.org/10.1051/0004-6361/202039433).
-#     Note that the phi_star value of 0.4 differs from their Table 3,
-#     however, this value is required to replicate their Figure 2 with
-#     a rheological transition centred at 30% melt fraction.
-par_visc = rheo_t(1.0, 25.7, 1.17e-9, 5.0, 0.4)
-par_shear = rheo_t(10.0, 2.10, 7.08e-7, 5.0, 0.4)
-par_bulk = rheo_t(1e9, 2.62, 0.102, 5.0, 0.4)
-
-
-# Evaluate big Phi at a given layer
-def _bigphi(phi: float, par: rheo_t):
-    return (1.0 - phi) / (1.0 - par.phist)
-
-
-# Evaluate big F at a given layer
-def _bigf(phi: float, par: rheo_t):
-    numer = np.pi**0.5 * _bigphi(phi, par) * (1.0 + _bigphi(phi, par) ** par.gamma)
-    denom = 2.0 * (1.0 - par.xi)
-    return (1.0 - par.xi) * erf(numer / denom)
-
-
-# Evaluate rheological parameter at a given layer
-def eval_rheoparam(phi: float, which: str):
-    match which:
-        case 'visc':
-            par = par_visc
-        case 'shear':
-            par = par_shear
-        case 'bulk':
-            par = par_bulk
-        case _:
-            raise ValueError(f"Invalid rheological parameter 'f{which}'")
-    # Evaluate parameter
-    numer = 1.0 + _bigphi(phi, par) ** par.delta
-    denom = (1.0 - _bigf(phi, par)) ** (B_ein * (1 - par.phist))
-    return par.dotl * numer / denom
-
-
-def rheology_model(config: Config | None) -> str:
-    """Rheology laws for the tidal profile: ``'mush'`` for Aragog, else ``'kervazo'``.
-
-    The mush construction needs the per-layer pressure and temperature that only the
-    Aragog interior resolves; the other interiors keep the Kervazo et al. (2021) fits.
-    """
-    if config is not None and config.interior_energetics.module == 'aragog':
-        return 'mush'
-    return 'kervazo'
 
 
 def _verify_initial_entropy(
@@ -1289,6 +1227,7 @@ class Interior_t:
         self.perm = np.zeros(self.nlev_s)  # Permeability input of the tidal module [m2]
         self.bulk_visc = np.zeros(self.nlev_s)  # Bulk (compaction) viscosity [Pa s]
         self.bulk_liq = None  # Melt bulk modulus [Pa] per layer; None: not resolved
+        self.bulk_und = None  # Undrained (Gassmann) bulk modulus [Pa]; None: tidal module's own
         self.pres = np.zeros(self.nlev_s)  # Pressure [Pa]
         self.temp = np.zeros(self.nlev_s)  # Temperature [K]
 
@@ -1440,37 +1379,27 @@ class Interior_t:
             self.structure_stale = False
 
     def update_rheology(self, visc: bool = False, config: Config | None = None):
-        """Update the shear, bulk and drained bulk moduli from the layer state.
+        """Update the elastic moduli, bulk viscosity and permeability from the layer state."""
+        from proteus.interior_energetics import rheology_prf
 
-        The laws follow :func:`rheology_model`: the mush construction sets the shear,
-        grain bulk and drained bulk moduli (``bulkd``) and leaves the viscosity to the
-        interior module; the Kervazo fits set shear and bulk from the melt fraction,
-        the viscosity too when ``visc`` is set, and leave ``bulkd`` as None. The bulk
-        viscosity ``bulk_visc`` follows each law from the current ``visc``. With a config,
-        ``perm`` is set for either law from the melt fraction and ``grain_size`` with Aragog's
-        three-regime mobility function, the profile Obliqua takes as its permeability.
-        """
-        if config is not None:
-            from aragog.eos import mobility_function
-
-            # the quantity Obliqua's get_permeability returns: k / phi of Bower et al. (2018)
-            self.perm = mobility_function(
-                np.asarray(self.phi, float), float(config.interior_energetics.grain_size)
-            )
-        if rheology_model(config) == 'mush':
-            from proteus.interior_energetics.rheology_mush import update_mush_rheology
-
-            update_mush_rheology(self, config)
+        if visc:
+            rheology_prf.update_viscosity_kervazo(self)
+        if config is None:
             return
-        self.bulkd = None
-        self.bulk_liq = None
-        for i, p in enumerate(self.phi):
-            self.shear[i] = eval_rheoparam(p, 'shear')
-            self.bulk[i] = eval_rheoparam(p, 'bulk')
-            if visc:
-                self.visc[i] = eval_rheoparam(p, 'visc')
-        # the bulk viscosity Obliqua builds internally, eta / phi
-        self.bulk_visc = np.asarray(self.visc, float) / (np.asarray(self.phi, float) + 1e-15)
+
+        from aragog.eos import mobility_function
+
+        # store the permeability profile in interior_o.perm
+        self.perm = mobility_function(
+            np.asarray(self.phi, float), float(config.interior_energetics.grain_size)
+        )
+
+        # elastic moduli profiles; the config validator rejects any other value
+        prf = config.interior_energetics.rheology_elastic_prf
+        if prf == 'nur':
+            rheology_prf.update_rheology_nur(self, config)
+        elif prf == 'kervazo':
+            rheology_prf.update_rheology_kervazo(self)
 
 
 def get_C_planet(hf_row: dict, config: Config, interior_o: Interior_t):

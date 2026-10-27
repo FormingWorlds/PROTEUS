@@ -13,7 +13,8 @@ Invariants checked:
   polymorph boundary (no difference across the boundary);
 - the shear law returns G0 at the reference state and softens with temperature;
 - the Debye energy follows its high- and low-temperature limits;
-- melting-curve and (P, T) lookups return the solid and melt end members of each side.
+- melting-curve and (P, T) lookups return the solid and melt end members of each side,
+  with the melt shear modulus of the config on the melt side.
 
 See ``docs/How-to/testing.md`` and ``docs/Validation/interior_energetics/rheology_endmembers.md``.
 """
@@ -30,6 +31,7 @@ pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 K_BRG, K_PPV, K_LIQ = 250e9, 400e9, 120e9  # Pa
 P_TR, T_MELT = 3e10, 3000.0  # brg -> ppv transition [Pa], melting temperature [K]
+G_INF = 1e10  # unrelaxed melt shear modulus of the config [Pa]
 BETA, C_S, D_S = 1e-4, 1000.0, 1e-8  # ln rho per entropy unit; s = C ln T - D P
 
 
@@ -87,18 +89,22 @@ def test_adiabatic_bulk_is_phase_k_and_not_isothermal(table):
 @pytest.mark.physics_invariant
 def test_melting_curve_sides_carry_their_phase(table):
     """Solid side: highest solid node below T_melt; melt side: lowest liquid node above it."""
-    em = rem.load_endmembers(table, table.parent)
+    em = rem.load_endmembers(table, G_INF, table.parent)
     m = em.melting(np.array([1e10, 6e10]))
     assert np.all(m['T_melt'] < T_MELT) and np.all(m['T_melt'] > 0.8 * T_MELT)
     np.testing.assert_allclose(m['kappa_sol'], [K_BRG, K_PPV], rtol=1e-6)
     np.testing.assert_allclose(m['kappa_liq'], K_LIQ, rtol=1e-6)
     assert np.all(m['rho_liq'] < m['rho_sol'])  # this synthetic melt is lighter
+    # the melt shear modulus is the config value at every pressure, far below mu_sol
+    assert m['mu_liq'].shape == (2,)
+    np.testing.assert_allclose(m['mu_liq'], G_INF, rtol=1e-12)
+    assert np.all(m['mu_liq'] < 0.5 * m['mu_sol'])
 
 
 @pytest.mark.physics_invariant
 def test_solid_lookup_interpolates_and_falls_back_above_solid_range(table):
     """Bilinear (P, T) lookup inside the solid; melting-curve solid side above T_melt."""
-    em = rem.load_endmembers(table, table.parent)
+    em = rem.load_endmembers(table, G_INF, table.parent)
     inside = em.solid(1e10, 1500.0)
     assert inside['kappa'] == pytest.approx(K_BRG, rel=1e-6)
     assert 3800.0 < inside['rho'] < 4400.0
@@ -106,6 +112,8 @@ def test_solid_lookup_interpolates_and_falls_back_above_solid_range(table):
     side = em.melting(1e10)
     assert hot['rho'] == pytest.approx(side['rho_sol'], rel=1e-12)
     assert hot['mu'] == pytest.approx(side['mu_sol'], rel=1e-12)
+    # not the melt shear modulus stored at the liquid nodes of the same row
+    assert abs(hot['mu'] - G_INF) > 0.5 * side['mu_sol']
 
 
 @pytest.mark.physics_invariant
@@ -169,11 +177,38 @@ def test_cache_built_once_and_missing_table_raises(table, monkeypatch):
     """The first load derives and caches the end members; a later load reads the cache."""
     calls = []
     real = rem.build_endmembers
-    monkeypatch.setattr(rem, 'build_endmembers', lambda g: calls.append(1) or real(g))
-    rem.load_endmembers(table, table.parent)
-    assert rem.endmember_cache_path(table, table.parent).is_file() and len(calls) == 1
+    monkeypatch.setattr(rem, 'build_endmembers', lambda g, m: calls.append(m) or real(g, m))
+    rem.load_endmembers(table, G_INF, table.parent)
+    assert rem.endmember_cache_path(table, G_INF, table.parent).is_file() and len(calls) == 1
     rem.load_endmembers.cache_clear()
-    rem.load_endmembers(table, table.parent)
+    rem.load_endmembers(table, G_INF, table.parent)
     assert len(calls) == 1
+    # another melt shear modulus has its own cache file, so the stored mu_liq is never reused
+    assert rem.endmember_cache_path(table, 3e9, table.parent) != rem.endmember_cache_path(
+        table, G_INF, table.parent
+    )
+    other = rem.load_endmembers(table, 3e9, table.parent)
+    assert calls == [G_INF, 3e9]
+    assert other.melting(1e10)['mu_liq'] == pytest.approx(3e9, rel=1e-12)
+    rem.load_endmembers.cache_clear()
+    again = rem.load_endmembers(table, G_INF, table.parent)
+    assert len(calls) == 2 and again.melting(1e10)['mu_liq'] == pytest.approx(G_INF, rel=1e-12)
     with pytest.raises(FileNotFoundError, match='PALEOS MgSiO3'):
-        rem.load_endmembers(table.parent / 'absent.dat', table.parent)
+        rem.load_endmembers(table.parent / 'absent.dat', G_INF, table.parent)
+
+
+def test_cache_dir_follows_environment_and_atomic_write(tmp_path, monkeypatch):
+    """$PROTEUS_RHEOLOGY_CACHE_DIR sets the cache directory; the npz write leaves no partial file.
+
+    Without the variable the cache lies under FWL_DATA/interior_lookup_tables/rheology.
+    """
+    monkeypatch.setenv(rem.CACHE_ENV, str(tmp_path / 'cache'))
+    assert rem.cache_dir() == tmp_path / 'cache'
+    monkeypatch.delenv(rem.CACHE_ENV)
+    monkeypatch.setattr(rem, 'resolve_fwl_data_dir', lambda: tmp_path / 'fwl')
+    assert rem.cache_dir() == tmp_path / 'fwl' / 'interior_lookup_tables' / 'rheology'
+    path = tmp_path / 'deep' / 'arrays.npz'
+    rem.write_npz_atomic(path, {'a': np.arange(3.0)})
+    with np.load(path) as data:
+        np.testing.assert_array_equal(data['a'], [0.0, 1.0, 2.0])
+    assert sorted(p.name for p in path.parent.iterdir()) == ['arrays.npz']  # no temp file left

@@ -713,7 +713,7 @@ def test_run_dummy_int_rf_depth_scaling():
 
 
 # ============================================================================
-# Test interior.common rheological functions
+# Test the Kervazo rheological functions (interior_energetics.rheology_prf)
 # ============================================================================
 
 
@@ -725,7 +725,7 @@ def test_eval_rheoparam_viscosity_solid():
     without rheological reduction from melting. Expected viscosity = 1.0 Pa·s
     based on par_visc parameters.
     """
-    from proteus.interior_energetics.common import eval_rheoparam
+    from proteus.interior_energetics.rheology_prf import eval_rheoparam
 
     phi = 0.0  # Solid state
     visc = eval_rheoparam(phi, 'visc')
@@ -743,7 +743,7 @@ def test_eval_rheoparam_viscosity_molten():
     viscosity due to melt weakening. Viscosity should be much lower than solid case.
     Venus-like magma ocean scenario: phi ~0.3-0.4.
     """
-    from proteus.interior_energetics.common import eval_rheoparam
+    from proteus.interior_energetics.rheology_prf import eval_rheoparam
 
     phi_solid = 0.0
     phi_molten = 0.35
@@ -763,7 +763,7 @@ def test_eval_rheoparam_shear_modulus():
     Physics: Shear modulus (rigidity) decreases with melt fraction.
     par_shear parameters are from Kervazo+21 for melt weakening behavior.
     """
-    from proteus.interior_energetics.common import eval_rheoparam
+    from proteus.interior_energetics.rheology_prf import eval_rheoparam
 
     phi_low = 0.1
     phi_high = 0.3
@@ -784,7 +784,7 @@ def test_eval_rheoparam_bulk_modulus():
     Physics: Bulk modulus (incompressibility) also affected by melt fraction.
     Represents resistance to compression in melted material.
     """
-    from proteus.interior_energetics.common import eval_rheoparam
+    from proteus.interior_energetics.rheology_prf import eval_rheoparam
 
     phi = 0.2
 
@@ -802,7 +802,7 @@ def test_eval_rheoparam_invalid_parameter():
     Physics: Only 'visc', 'shear', 'bulk' are valid rheological parameters
     in the match statement. Invalid names should fail with clear error.
     """
-    from proteus.interior_energetics.common import eval_rheoparam
+    from proteus.interior_energetics.rheology_prf import eval_rheoparam
 
     with pytest.raises(ValueError, match='Invalid rheological parameter'):
         eval_rheoparam(0.2, 'invalid')
@@ -840,15 +840,21 @@ def test_interior_t_initialization():
 def test_interior_t_update_rheology_solid():
     """Test update_rheology with solid mantle (zero melt fraction).
 
-    Physics: Solid mantle (all phi=0) should compute rheological parameters
-    without melt weakening. Shear and bulk moduli should be positive and stable.
+    Physics: Solid mantle (all phi=0) with the Kervazo profile should compute
+    rheological parameters without melt weakening. Shear and bulk moduli should be
+    positive and stable.
     """
+    from types import SimpleNamespace
+
     from proteus.interior_energetics.common import Interior_t
 
     interior = Interior_t(nlev_b=3)
     interior.phi = np.array([0.0, 0.0])  # Solid mantle
+    cfg = SimpleNamespace(
+        interior_energetics=SimpleNamespace(rheology_elastic_prf='kervazo', grain_size=1e-3)
+    )
 
-    interior.update_rheology(visc=False)
+    interior.update_rheology(visc=False, config=cfg)
 
     # Check that moduli were computed
     assert len(interior.shear) == 2

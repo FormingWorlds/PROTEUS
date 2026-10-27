@@ -312,87 +312,6 @@ def test_interior_t_stale_struct_steps_init():
 
 
 # ============================================================================
-# Rheology lookup (eval_rheoparam): pinned values + invalid-name contract
-# ============================================================================
-
-
-@pytest.mark.physics_invariant
-def test_eval_rheoparam_at_zero_melt_returns_solid_branch_with_three_class_discrimination():
-    """At phi=0 (fully solid) the rheology parameter is strictly above the
-    fully-molten dotl reference for visc and shear, and the bulk modulus
-    is positive and finite. The three rheology channels share the same
-    Kervazo+21 functional form (Bigphi = (1-phi)/(1-phi_star)) so a
-    swap-of-channels regression flips the magnitude ordering.
-    """
-    from proteus.interior_energetics.common import (
-        eval_rheoparam,
-        par_bulk,
-        par_shear,
-        par_visc,
-    )
-
-    eta = eval_rheoparam(0.0, 'visc')
-    mu = eval_rheoparam(0.0, 'shear')
-    K = eval_rheoparam(0.0, 'bulk')
-
-    # All channels must be strictly positive (physical positivity).
-    assert eta > 0.0
-    assert mu > 0.0
-    assert K > 0.0
-    # At phi=0, every channel is well above its own dotl reference
-    # because Bigphi(0) > 1 and the numerator grows with delta.
-    # A regression that mis-keyed the rheo_t lookup table would land
-    # the value at the wrong dotl scale.
-    assert eta > par_visc.dotl  # pure-solid viscosity >> melt reference (1.0 Pa s)
-    assert mu > par_shear.dotl  # pure-solid shear >> melt reference (10 Pa)
-    assert K > par_bulk.dotl  # pure-solid bulk >> melt reference (1e9 Pa)
-    # Scale-discrimination guard: a melt-temperature regression returning
-    # par.dotl would give eta=1 Pa s; the actual solid-branch value at
-    # phi=0 is ~1e22 Pa s, so the order-of-magnitude check fires hard.
-    assert eta > 1e10  # solid mantle viscosity well above 1e10 Pa s
-
-
-@pytest.mark.physics_invariant
-def test_eval_rheoparam_monotonic_decrease_from_solid_to_melt():
-    """Viscosity and shear modulus decrease monotonically as melt fraction
-    rises through the rheological transition (phi_star = 0.4). Symmetry
-    invariant: the same monotonicity must hold for both channels.
-    """
-    from proteus.interior_energetics.common import eval_rheoparam
-
-    phis = np.linspace(0.0, 0.99, 20)
-    etas = np.array([eval_rheoparam(p, 'visc') for p in phis])
-    mus = np.array([eval_rheoparam(p, 'shear') for p in phis])
-    # Both channels strictly decreasing with melt fraction.
-    assert np.all(np.diff(etas) <= 0.0), 'viscosity must be monotonically non-increasing in phi'
-    assert np.all(np.diff(mus) <= 0.0), (
-        'shear modulus must be monotonically non-increasing in phi'
-    )
-    # Discrimination: the ratio eta(0)/eta(0.99) must exceed 1e6 because
-    # the Kervazo+21 rheology spans ~10 orders of magnitude across the
-    # transition. A regression that returned par.dotl regardless of phi
-    # would give a ratio of exactly 1.0.
-    assert etas[0] / etas[-1] > 1e6
-
-
-def test_eval_rheoparam_invalid_name_raises_value_error():
-    """eval_rheoparam('foo') raises ValueError; valid channels do not."""
-    from proteus.interior_energetics.common import eval_rheoparam
-
-    with pytest.raises(ValueError, match='Invalid rheological parameter'):
-        eval_rheoparam(0.3, 'this_is_not_a_channel')
-    # Edge case: empty string also raises (no silent default).
-    with pytest.raises(ValueError):
-        eval_rheoparam(0.3, '')
-    # Side-effect discrimination: the valid channels still produce
-    # finite positive values, so the validator is a fail-fast filter
-    # rather than blocking the whole module.
-    for which in ('visc', 'shear', 'bulk'):
-        val = eval_rheoparam(0.3, which)
-        assert np.isfinite(val) and val > 0.0
-
-
-# ============================================================================
 # get_file_tides / Interior_t.write_tides / Interior_t.resume_tides
 # ============================================================================
 
@@ -639,94 +558,109 @@ def test_resume_tides_length_mismatch_logs_error_but_does_not_raise(tmp_path, ca
 
 
 # ============================================================================
-# Interior_t.update_rheology: shear/bulk + optional viscosity
+# Interior_t.update_rheology: elastic profile dispatch + optional viscosity
 # ============================================================================
 
 
+def _rheology_cfg(prf, grain_size=1e-3):
+    """Minimal config for update_rheology: the elastic profile and the grain size."""
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        interior_energetics=SimpleNamespace(rheology_elastic_prf=prf, grain_size=grain_size)
+    )
+
+
 @pytest.mark.physics_invariant
-def test_update_rheology_fills_shear_and_bulk_arrays_skip_viscosity_by_default():
-    """update_rheology(visc=False) fills shear + bulk arrays from current
-    phi, but leaves the viscosity array untouched. The default skip path is
-    the SPIDER/Aragog steady-state path where viscosity is computed
-    elsewhere; only the dummy backend overrides this with visc=True.
+def test_update_rheology_kervazo_fills_shear_and_bulk_skip_viscosity_by_default():
+    """The 'kervazo' profile fills shear and bulk from phi and leaves the viscosity.
+
+    visc=False is the SPIDER/Aragog path where the viscosity comes from the interior
+    module; the shear modulus falls with melt fraction.
     """
     interior = Interior_t(5)  # nlev_s = 4
     interior.phi = np.array([0.0, 0.3, 0.6, 0.9])
-    interior.shear = np.zeros(4)
-    interior.bulk = np.zeros(4)
-    interior.visc = np.zeros(4)
+    interior.bulkd = np.ones(4)
 
-    interior.update_rheology(visc=False)
+    interior.update_rheology(visc=False, config=_rheology_cfg('kervazo'))
 
-    # Positivity invariant: shear and bulk moduli > 0 everywhere.
     assert np.all(interior.shear > 0.0)
     assert np.all(interior.bulk > 0.0)
-    # Monotonicity: shear modulus decreases as phi increases (rheological
-    # softening with melt fraction). A regression that swapped 'shear' and
-    # 'bulk' channels would lose this monotonicity because the channels
-    # have very different dotl reference scales.
     assert np.all(np.diff(interior.shear) <= 0.0)
-    # Viscosity left untouched (still zeros from constructor).
+    assert interior.bulkd is None  # the fits give no drained modulus
     np.testing.assert_allclose(interior.visc, 0.0, atol=1e-12)
 
 
 @pytest.mark.physics_invariant
-def test_update_rheology_with_visc_true_fills_all_three_channels():
-    """update_rheology(visc=True) is the dummy-backend path: viscosity,
-    shear, and bulk are all recomputed from phi.
+def test_update_rheology_visc_true_sets_viscosity_for_every_profile():
+    """visc=True (dummy interior) sets the viscosity whatever the elastic profile.
+
+    With 'none' and without a config the elastic arrays keep their values, so a dummy run
+    without an elastic profile still has a viscosity spanning many decades.
     """
-    interior = Interior_t(4)  # nlev_s = 3
-    interior.phi = np.array([0.05, 0.5, 0.95])
-
-    interior.update_rheology(visc=True)
-
-    # Positivity invariant for all three channels.
-    assert np.all(interior.shear > 0.0)
-    assert np.all(interior.bulk > 0.0)
-    assert np.all(interior.visc > 0.0)
-    # Discrimination: the viscosity values span many orders of magnitude
-    # across the rheological transition; assert the dynamic range is at
-    # least 1e3 so a regression that flattened the lookup is caught.
-    assert interior.visc[0] / interior.visc[-1] > 1e3
-
-
-@pytest.mark.parametrize(
-    'module, expected',
-    [('aragog', 'mush'), ('spider', 'kervazo'), ('dummy', 'kervazo'), ('boundary', 'kervazo')],
-    ids=['aragog_mush', 'spider_kervazo', 'dummy_kervazo', 'boundary_kervazo'],
-)
-def test_rheology_model_follows_interior_module(module, expected):
-    """Only Aragog, which resolves per-layer P and T, selects the mush construction."""
-    from types import SimpleNamespace
-
-    from proteus.interior_energetics.common import rheology_model
-
-    cfg = SimpleNamespace(interior_energetics=SimpleNamespace(module=module))
-    assert rheology_model(cfg) == expected
-    assert rheology_model(None) == 'kervazo'  # no config: the historical behaviour
+    for cfg in (None, _rheology_cfg('none'), _rheology_cfg('kervazo')):
+        interior = Interior_t(4)  # nlev_s = 3
+        interior.phi = np.array([0.05, 0.5, 0.95])
+        interior.update_rheology(visc=True, config=cfg)
+        assert np.all(interior.visc > 0.0)
+        assert interior.visc[0] / interior.visc[-1] > 1e3
+        if cfg is None or cfg.interior_energetics.rheology_elastic_prf == 'none':
+            np.testing.assert_allclose(interior.shear, 0.0)
+            np.testing.assert_allclose(interior.bulk_visc, 0.0)
+        else:
+            assert np.all(interior.shear > 0.0)
+            np.testing.assert_allclose(
+                interior.bulk_visc, interior.visc / interior.phi, rtol=1e-12
+            )
 
 
-def test_update_rheology_dispatches_on_interior_module(monkeypatch):
-    """Aragog hands the arrays to the mush laws; other modules keep Kervazo and no bulkd."""
-    from types import SimpleNamespace
-
-    from proteus.interior_energetics import rheology_mush
+def test_update_rheology_dispatches_on_elastic_profile(monkeypatch):
+    """'nur' hands the arrays to the Nur model, 'kervazo' to the fits, 'none' to neither."""
+    from proteus.interior_energetics import rheology_prf
 
     calls = []
     monkeypatch.setattr(
-        rheology_mush, 'update_mush_rheology', lambda io, cfg: calls.append(cfg)
+        rheology_prf, 'update_rheology_nur', lambda io, cfg: calls.append(('nur', cfg))
+    )
+    monkeypatch.setattr(
+        rheology_prf, 'update_rheology_kervazo', lambda io: calls.append(('kervazo', None))
     )
     interior = Interior_t(4)
     interior.phi = np.array([0.05, 0.5, 0.95])
-    aragog = SimpleNamespace(interior_energetics=SimpleNamespace(module='aragog'))
-    interior.update_rheology(config=aragog)
-    assert calls == [aragog]
-    np.testing.assert_allclose(interior.shear, 0.0)  # the Kervazo loop did not run
-    dummy = SimpleNamespace(interior_energetics=SimpleNamespace(module='dummy'))
-    interior.bulkd = np.ones(3)
-    interior.update_rheology(visc=True, config=dummy)
-    assert len(calls) == 1 and interior.bulkd is None
-    assert np.all(interior.shear > 0.0) and np.all(interior.visc > 0.0)
+    nur = _rheology_cfg('nur')
+    interior.update_rheology(config=nur)
+    interior.update_rheology(config=_rheology_cfg('kervazo'))
+    interior.update_rheology(config=_rheology_cfg('none'))
+    assert calls == [('nur', nur), ('kervazo', None)]
+    np.testing.assert_allclose(interior.shear, 0.0)  # no real law ran
+    assert np.all(interior.perm > 0.0)  # the permeability is set for every profile
+
+
+@pytest.mark.physics_invariant
+def test_update_rheology_stores_permeability_from_grain_size():
+    """With a config the permeability follows Aragog's three-regime law: d^2 scaling, rising with phi.
+
+    Doubling the grain size multiplies it by 4 (k scales with d^2, not d); without a
+    config the array is left as it was.
+    """
+    from types import SimpleNamespace
+
+    from aragog.eos import mobility_function
+
+    interior = Interior_t(5)
+    interior.phi = np.array([0.01, 0.1, 0.5, 0.9])
+    interior.update_rheology()
+    np.testing.assert_allclose(interior.perm, 0.0)
+    cfg = SimpleNamespace(
+        interior_energetics=SimpleNamespace(rheology_elastic_prf='none', grain_size=1e-3)
+    )
+    interior.update_rheology(config=cfg)
+    np.testing.assert_allclose(interior.perm, mobility_function(interior.phi, 1e-3), rtol=1e-12)
+    assert np.all(np.diff(interior.perm) > 0)
+    small = interior.perm.copy()
+    cfg.interior_energetics.grain_size = 2e-3
+    interior.update_rheology(config=cfg)
+    np.testing.assert_allclose(interior.perm / small, 4.0, rtol=1e-12)
 
 
 # ============================================================================

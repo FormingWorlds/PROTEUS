@@ -13,8 +13,9 @@ For every node of the PALEOS MgSiO3 unified P-T table (Attia et al.) this module
   unrelaxed melt shear modulus there (:func:`melt_shear_modulus`; the constant ``G_inf``
   of the config, ``interior_energetics.rheology.melt_shear_modulus``).
 
-The derived arrays are cached next to the SCS tables (:func:`rheology_tables.cache_dir`),
-keyed by the PALEOS file stamp and the code that builds them.
+The derived arrays are cached under ``FWL_DATA/interior_lookup_tables/rheology`` (or
+``$PROTEUS_RHEOLOGY_CACHE_DIR``, :func:`cache_dir`), keyed by the PALEOS file stamp, the code
+that builds them and the melt shear modulus.
 """
 
 from __future__ import annotations
@@ -28,13 +29,16 @@ from pathlib import Path
 
 import numpy as np
 
-from proteus.interior_energetics.rheology_tables import cache_dir, write_npz_atomic
+from proteus.utils.helper import resolve_fwl_data_dir
 
 log = logging.getLogger('fwl.' + __name__)
 
+CACHE_ENV = 'PROTEUS_RHEOLOGY_CACHE_DIR'
+CACHE_SUBDIR = Path('interior_lookup_tables') / 'rheology'
+
 M_MGSIO3 = 0.100387  # kg/mol per MgSiO3 formula unit
 N_ATOMS = 5  # atoms per MgSiO3 formula unit, for the Debye energy
-R_GAS = 8.314462618 # J/(mol K)
+R_GAS = 8.314462618  # J/(mol K)
 T_REF = 300.0  # K, reference temperature of the SLB thermal term
 PHASES = ('en', 'lpcen', 'hpcen', 'brg', 'ppv', 'liquid')  # codes 0..5; -1 = no data
 LIQUID = PHASES.index('liquid')
@@ -163,20 +167,14 @@ def _dlnrho_dp(p, k, lr0, nb):
     """Estimate (d ln rho / dP)_s at pressure row k."""
     # Get the pressures at the previous row, current row and next row.
     # Clamp indices to the valid range so we do not index outside p.
-    pm, p0, pp = (
-        p[min(max(k + d, 0), p.size - 1)]
-        for d in (-1, 0, 1)
-    )
+    pm, p0, pp = (p[min(max(k + d, 0), p.size - 1)] for d in (-1, 0, 1))
     # Pressure spacing on each side of the current row.
     h1 = p0 - pm
     h2 = pp - p0
     # Central finite difference for nonuniform pressure spacing.
     # nb[-1] is the previous row; nb[1] is the next row.
-    with np.errstate(divide="ignore", invalid="ignore"):
-        central = (
-            (nb[1] - lr0) * h1 / (h2 * (h1 + h2))
-            + (lr0 - nb[-1]) * h2 / (h1 * (h1 + h2))
-        )
+    with np.errstate(divide='ignore', invalid='ignore'):
+        central = (nb[1] - lr0) * h1 / (h2 * (h1 + h2)) + (lr0 - nb[-1]) * h2 / (h1 * (h1 + h2))
     # Accept the central estimate only where both adjacent densities are finite.
     out = np.where(
         np.isfinite(nb[1]) & np.isfinite(nb[-1]),
@@ -192,7 +190,7 @@ def _dlnrho_dp(p, k, lr0, nb):
         x1 = p[k1] - p0
         x2 = p[k2] - p0
         # Compute the one-sided derivative estimates
-        with np.errstate(divide="ignore", invalid="ignore"):
+        with np.errstate(divide='ignore', invalid='ignore'):
             # Second-order one-sided derivative.
             three = (
                 lr0 * (-x1 - x2) / (x1 * x2)
@@ -327,7 +325,8 @@ def build_endmembers(grid, mu_liq) -> dict:
         'log_t': grid['log_t'],
         'rho_solid': np.where(solid, grid['rho'], np.nan),
         'kappa_solid': np.where(solid, kappa, np.nan),
-        'mu_solid': mu,
+        # liquid nodes stay NaN, so a layer above the solid range takes the melting-curve solid side
+        'mu_solid': np.where(solid, mu, np.nan),
     } | {f'melt_{k}': v for k, v in melt.items()}
 
 
@@ -346,10 +345,28 @@ def _file_identity(path: Path) -> str:
     return hashlib.sha1(key.encode()).hexdigest()[:12]
 
 
-def endmember_cache_path(paleos_path: Path, directory: Path | None = None) -> Path:
-    """Cache file of the end members derived from ``paleos_path``."""
+def cache_dir() -> Path:
+    """Cache directory: ``$PROTEUS_RHEOLOGY_CACHE_DIR`` or the FWL_DATA default."""
+    env = os.environ.get(CACHE_ENV)
+    return Path(env).expanduser() if env else resolve_fwl_data_dir() / CACHE_SUBDIR
+
+
+def write_npz_atomic(path: Path, arrays: dict) -> None:
+    """Write ``arrays`` to ``path`` through a temporary file, so readers never see a partial file."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f'.{path.name}.{os.getpid()}.tmp')
+    with open(tmp, 'wb') as fh:
+        np.savez_compressed(fh, **arrays)
+    os.replace(tmp, path)
+
+
+def endmember_cache_path(
+    paleos_path: Path, mu_liq: float, directory: Path | None = None
+) -> Path:
+    """Cache file of the end members derived from ``paleos_path`` with melt shear modulus ``mu_liq`` [Pa]."""
     directory = cache_dir() if directory is None else Path(directory)
-    return directory / f'paleos_endmembers_{_file_identity(paleos_path)}_{code_identity()}.npz'
+    stem = f'paleos_endmembers_{_file_identity(paleos_path)}_{code_identity()}_mu{float(mu_liq):.6e}'
+    return directory / f'{stem}.npz'
 
 
 @functools.lru_cache(maxsize=2)
@@ -358,15 +375,16 @@ def load_endmembers(
 ) -> PaleosEndMembers:
     """End members from the cache, or built from the PALEOS table and cached on a miss.
 
-    ``mu_liq`` is the unrelaxed melt shear modulus [Pa] of the config; it is not part of
-    the npz cache, which holds only what is derived from the PALEOS table.
+    ``mu_liq`` is the unrelaxed melt shear modulus [Pa] of the config. It is stored in the
+    melt-side end members, so it is part of the cache key: a cache built with another value
+    is never read.
     """
     paleos_path = Path(paleos_path)
     if not paleos_path.is_file():
         raise FileNotFoundError(f'PALEOS MgSiO3 unified table not found: {paleos_path}')
 
-    # Cache file path is keyed by the PALEOS file stamp and the code that builds the end members
-    path = endmember_cache_path(paleos_path, directory)
+    # Cache file path is keyed by the PALEOS file stamp, the builder code and mu_liq
+    path = endmember_cache_path(paleos_path, mu_liq, directory)
 
     # Load the cache if it exists, otherwise build the end members and write the cache
     arrays = None
@@ -387,7 +405,14 @@ def load_endmembers(
 
 
 def paleos_mgsio3_path() -> Path:
-    """Path of the PALEOS MgSiO3 unified table in the FWL data tree."""
+    """Path of the PALEOS MgSiO3 unified table in the FWL data tree.
+
+    ``$PROTEUS_PALEOS_MGSIO3_TABLE`` overrides it with another table file.
+    """
+    override = os.environ.get('PROTEUS_PALEOS_MGSIO3_TABLE')
+    if override:
+        return Path(override).expanduser()
+
     from proteus.data import EOS_PALEOS_MGSIO3_UNIFIED, dataset_dir
     from proteus.utils.helper import resolve_fwl_data_dir
 
