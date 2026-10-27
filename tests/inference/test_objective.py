@@ -8,10 +8,12 @@ References:
 
 from __future__ import annotations
 
+import copy
 import csv
 import functools
 import logging
 import math
+import pickle
 import subprocess
 
 import pandas as pd
@@ -694,8 +696,8 @@ def test_validate_sigma_accepts_complete_table_and_rejects_bad_entries():
 
 def test_validate_sigma_takes_dex_strings_for_log_compared_observables():
     """'0.1 dex' is used as exactly 0.1 dex: a simulated C/O 0.1 dex above the
-    target gives chi2 = 1 (J = 0) and 0.2 dex below gives chi2 = 4. Dex on a linearly
-    compared observable, and strings that are not '<number> dex', are refused."""
+    target gives chi2 = 1 (J = 0) and 0.2 dex below gives chi2 = 4. Strings that are
+    not '<number> dex' are refused."""
     obs = {'R_obs': 6.0e6, 'C/O_atm': 0.33}
     out = objective_mod.validate_sigma(obs, {'R_obs': 1.0e5, 'C/O_atm': ' 0.1 dex '})
     assert out['C/O_atm'] == pytest.approx(0.1 * 0.33 * math.log(10.0))
@@ -707,11 +709,42 @@ def test_validate_sigma_takes_dex_strings_for_log_compared_observables():
     J = objective_mod.eval_obj(sim, obs, sigma=out).item()
     assert J == pytest.approx(-math.log10(4.0), abs=1e-9)
 
-    with pytest.raises(ValueError, match="'R_obs' is compared linearly"):
-        objective_mod.validate_sigma(obs, {'R_obs': '0.1 dex', 'C/O_atm': '0.1 dex'})
     for bad in ('abc dex', '0.1 bar', '-0.1 dex', '0 dex', 'nan dex'):
         with pytest.raises(ValueError, match="sigma for 'C/O_atm'"):
             objective_mod.validate_sigma(obs, {'R_obs': 1.0e5, 'C/O_atm': bad})
+
+
+@pytest.mark.physics_invariant
+def test_dex_sigma_puts_a_linear_observable_in_log10():
+    """T_obs with '0.1 dex' is compared in log10: 0.1 dex above the target gives chi2 = 1
+    and 0.2 dex below gives chi2 = 4, where linear residuals with the same sigma give 1.26
+    and 2.57. A plain sigma keeps T_obs linear, and a dex sigma needs a positive target."""
+    obs = {'T_obs': 400.0, 'C/O_atm': 0.33}
+    out = objective_mod.validate_sigma(obs, {'T_obs': '0.1 dex', 'C/O_atm': '0.1 dex'})
+    # Only T_obs is listed: C/O_atm is compared in log10 with any sigma
+    assert out.log == {'T_obs'}
+    assert objective_mod.compared_in_log('T_obs', out)
+    assert not objective_mod.compared_in_log('T_obs', {'T_obs': 1.0})
+    sim = {'T_obs': 400.0 * 10**0.1, 'C/O_atm': 0.33}
+    assert _chi2(sim, obs, out) == pytest.approx(1.0, rel=1e-9)
+    sim['T_obs'] = 400.0 * 10**-0.2
+    chi2 = _chi2(sim, obs, out)
+    assert chi2 == pytest.approx(4.0, rel=1e-9)
+    assert abs(chi2 - ((1 - 10**-0.2) / (0.1 * math.log(10.0))) ** 2) > 1.0  # linear residual
+
+    lin = objective_mod.validate_sigma(obs, {'T_obs': 20.0, 'C/O_atm': '0.1 dex'})
+    assert lin.log == frozenset() and lin['T_obs'] == pytest.approx(20.0)
+    with pytest.raises(ValueError, match='log space'):
+        objective_mod.validate_sigma({'T_obs': -1.0}, {'T_obs': '0.1 dex'})
+
+
+def test_sigma_keeps_its_log_set_through_copies():
+    """The workers get sigma through deepcopy and pickling; both keep which observables a dex
+    sigma put in log10, so the workers score as the main process does."""
+    out = objective_mod.validate_sigma({'g_obs': 9.8}, {'g_obs': '0.05 dex'})
+    for c in (copy.deepcopy(out), pickle.loads(pickle.dumps(out))):
+        assert c.log == {'g_obs'}
+        assert c['g_obs'] == pytest.approx(0.05 * 9.8 * math.log(10.0), rel=1e-12)
 
 
 def test_validate_sigma_warns_when_a_linear_sigma_converts_poorly_to_dex(caplog):

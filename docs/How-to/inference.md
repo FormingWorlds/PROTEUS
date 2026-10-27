@@ -90,7 +90,7 @@ units as the value in `[observables]`. When it is present, each residual is divi
 J = -log10( sum( ((sim - true) / sigma)^2 ) + 1e-10 )
 ```
 
-Observables that span orders of magnitude (e.g. `atm_kg_per_mol`) are compared as `log10` values, and so are element mass ratios such as `C/O_atm` when `[sigma]` is given. Their uncertainty can be given in linear space, e.g. `"C/O_atm" = 0.1`; in this case, it is converted to dex to first order via `sigma / (true * ln 10)`. Optionally, it can be given in dex directly as a string, for example `"C/O_atm" = "0.1 dex"`.
+Observables that span orders of magnitude (e.g. `atm_kg_per_mol`) are compared as `log10` values, and so are element mass ratios such as `C/O_atm` when `[sigma]` is given. Their uncertainty can be given in linear space, e.g. `"C/O_atm" = 0.1`; in this case, it is converted to dex to first order via `sigma / (true * ln 10)`. Optionally, it can be given in dex directly as a string, for example `"C/O_atm" = "0.1 dex"`. Any other positive observable also takes a sigma in dex, for example `"g_obs" = "0.05 dex"`, which makes the study compare it in log10 instead of linearly; this suits large relative errors, where linear noise could make the value negative.
 
 !!! warning "Do not compare `J` when using different objectives"
     The two objectives are on different scales, so compare `J` only between inference runs that use the same one. The objective in use is reported at start-up.
@@ -154,7 +154,7 @@ The table does not change the optimisation; it adds a True column to the results
 
 #### Noisy observables
 
-The observables of a simulation carry no noise, so the truth sits at the peak of the likelihood. With `noise = true` (needs `[sigma]`), the study replaces each observable by one Gaussian draw around it, as a real observation would give: linear noise of `sigma` for observables compared linearly, and noise in log10 for those compared in log10 (element ratios and logarithmic variables), correlated as in `[correlation]` or `correlate_ratios`. The sigma of a log10 observable is rescaled with its value, so its error in dex stays the same. `noise_seed` (default `seed`) picks the draw. `copy.infer.toml` keeps the noise-free values as `observables_true`, and the log lists both. Over many draws, the 90 % posterior intervals should hold the truth in about 90 % of cases.
+The observables of a simulation carry no noise, so the truth sits at the peak of the likelihood. With `noise = true` (needs `[sigma]`), the study replaces each observable by one Gaussian draw around it, as a real observation would give: linear noise of `sigma` for observables compared linearly, and noise in log10 for those compared in log10 (element ratios, logarithmic variables and observables with a sigma in dex), correlated as in `[correlation]` or `correlate_ratios`. The sigma of a log10 observable is rescaled with its value, so its error in dex stays the same. `noise_seed` (default `seed`) picks the draw. `copy.infer.toml` keeps the noise-free values as `observables_true`, and the log lists both. Over many draws, the 90 % posterior intervals should hold the truth in about 90 % of cases.
 
 ### Posterior samples
 

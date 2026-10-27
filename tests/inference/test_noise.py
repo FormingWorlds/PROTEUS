@@ -18,6 +18,7 @@ pytest.importorskip('torch')
 
 import proteus.inference.noise as noise_mod  # noqa: E402
 from proteus.inference.noise import apply_noise, noisy_observables  # noqa: E402
+from proteus.inference.objective import validate_sigma  # noqa: E402
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -63,6 +64,22 @@ def test_rescaled_sigma_keeps_the_dex_error():
         assert sigma[k] / (noisy[k] * math.log(10)) == pytest.approx(DEX, rel=1e-12)
         assert noisy[k] != pytest.approx(OBS[k], rel=1e-3)
     assert sigma['R_obs'] == SIGMA['R_obs']
+
+
+def test_dex_sigma_gives_log_normal_noise_on_a_linear_observable():
+    """g_obs with '0.25 dex' gets noise in log10: every draw stays positive, where linear
+    noise of the same size (58 % of g) would turn about 4 % of them negative, and the
+    rescaled sigma keeps both the 0.25 dex and the log10 comparison."""
+    obs = {'g_obs': 9.8}
+    sigma = validate_sigma(obs, {'g_obs': '0.25 dex'})
+    draws = [noisy_observables(obs, sigma, None, s) for s in range(2000)]
+    g = np.array([d[0]['g_obs'] for d in draws])
+    assert (g > 0).all()
+    assert np.log10(g / 9.8).std() == pytest.approx(0.25, rel=0.07)
+    assert np.median(g) == pytest.approx(9.8, rel=0.05)  # log-normal: median at the truth
+    noisy, rescaled = draws[0]
+    assert rescaled.log == {'g_obs'}
+    assert rescaled['g_obs'] / (noisy['g_obs'] * math.log(10)) == pytest.approx(0.25, rel=1e-12)
 
 
 def _config(**kw):

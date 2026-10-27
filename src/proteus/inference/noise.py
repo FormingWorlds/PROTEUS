@@ -6,7 +6,7 @@ from __future__ import annotations
 import numpy as np
 
 from proteus.inference.correlation import CorrelationWhitener
-from proteus.inference.objective import compared_in_log, observable_space
+from proteus.inference.objective import Sigma, compared_in_log, observable_space
 
 
 def noisy_observables(
@@ -23,7 +23,7 @@ def noisy_observables(
     y = np.asarray(x) + np.asarray(s) * z
     noisy = {k: float(10**v if compared_in_log(k, sigma) else v) for k, v in zip(keys, y)}
     scale = {k: noisy[k] / observables[k] if compared_in_log(k, sigma) else 1.0 for k in keys}
-    return noisy, {k: sigma[k] * scale[k] for k in keys}
+    return noisy, Sigma({k: sigma[k] * scale[k] for k in keys}, getattr(sigma, 'log', ()))
 
 
 def apply_noise(config: dict) -> None:

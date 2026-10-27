@@ -457,9 +457,20 @@ def log_warp(sq_dist):
     return warped_dist
 
 
+class Sigma(dict):
+    """Sigma of each observable in its own units, as `validate_sigma` returns it. `log` names
+    the observables compared in log10 only because their sigma was given in dex."""
+
+    def __init__(self, values=(), log=()):
+        super().__init__(values)
+        self.log = frozenset(log)
+
+
 def compared_in_log(k: str, sigma=None) -> bool:
     """Whether eval_obj compares observable k in log10."""
-    return variable_is_logarithmic(k) or (sigma is not None and is_element_ratio(k))
+    if variable_is_logarithmic(k):
+        return True
+    return sigma is not None and (is_element_ratio(k) or k in getattr(sigma, 'log', ()))
 
 
 def observable_space(sim_dict, tru_dict, sigma=None):
@@ -577,18 +588,18 @@ def validate_sigma(observables: dict, sigma: dict | None) -> dict | None:
     - observables (dict): Target observable values.
     - sigma (dict | None): 1-sigma uncertainty of each observable, in the same
       units as the observable, or None to use the relative-difference objective.
-      An observable compared in log10 also takes a string such as '0.1 dex'.
+      Any observable also takes a string such as '0.1 dex', which makes the
+      objective compare it in log10.
 
     Returns
     ----------
-    - dict | None: The uncertainties in the observables' units, or None. A dex
+    - Sigma | None: The uncertainties in the observables' units, or None. A dex
       entry becomes dex * true * ln 10, which `eval_obj` converts back exactly.
 
     Raises:
         ValueError: If an entry is missing, names no observable, is not a positive
-            finite number or '<number> dex', is in dex for an observable compared
-            linearly, or belongs to a log-compared observable whose value is not
-            positive.
+            finite number or '<number> dex', or belongs to a log-compared
+            observable whose value is not positive.
     """
     if sigma is None:
         return None
@@ -600,7 +611,7 @@ def validate_sigma(observables: dict, sigma: dict | None) -> dict | None:
     if unknown:
         raise ValueError(f'sigma given for names that are not observables: {unknown}')
 
-    out = {}
+    out, dex_log = {}, set()
     for k, given in sigma.items():
         dex = isinstance(given, str) and given.strip().endswith('dex')
         try:
@@ -614,8 +625,8 @@ def validate_sigma(observables: dict, sigma: dict | None) -> dict | None:
             raise ValueError(f"sigma for '{k}' must be a positive finite number, got {given!r}")
         log_space = variable_is_logarithmic(k) or is_element_ratio(k)
         if dex and not log_space:
-            raise ValueError(f"sigma for '{k}' is given in dex, but '{k}' is compared linearly")
-        if log_space:
+            dex_log.add(k)
+        if log_space or dex:
             x = float(observables[k])
             if x <= 0:
                 raise ValueError(
@@ -630,7 +641,7 @@ def validate_sigma(observables: dict, sigma: dict | None) -> dict | None:
                     "is first order, so give it in dex instead (e.g. '0.1 dex')"
                 )
         out[k] = v
-    return out
+    return Sigma(out, dex_log)
 
 
 def J(
