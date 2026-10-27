@@ -1479,15 +1479,15 @@ def test_buried_and_released_mass_keeps_the_mole_columns_in_step_with_the_mass_c
     solid with no chemistry solve after the step. The volatile elements carry no
     mole columns and get none. A move that changes the masses only leaves the solid
     at 0 mol, which the first assertion on the moles refuses."""
-    from proteus.outgas.trapping import _apply_to_reservoirs
+    from proteus.outgas.trap_bookkeeping import apply_to_reservoirs
 
     row = _hf_row(He_kg_liquid=4.0e16, He_kg_solid=0.0, He_kg_atm=0.0, He_kg_total=4.0e16)
     for name in ('H2O', 'CO2', 'He'):
         row[f'{name}_mol_liquid'] = row[f'{name}_kg_liquid'] / eval_gas_mmw(name)
         row[f'{name}_mol_solid'] = 0.0
 
-    _apply_to_reservoirs(row, {'H2O': 3.0e20, 'CO2': 1.0e20, 'He': 1.0e16})
-    _apply_to_reservoirs(row, {'H2O': -1.0e20})
+    apply_to_reservoirs(row, {'H2O': 3.0e20, 'CO2': 1.0e20, 'He': 1.0e16})
+    apply_to_reservoirs(row, {'H2O': -1.0e20})
 
     for name, solid, melt in (
         ('H2O', 2.0e20, 1.6e21),

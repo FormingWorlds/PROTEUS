@@ -356,7 +356,7 @@ The trapping columns keep their meaning, with these differences for `"layers"`:
 - `trap_tau_D`, `trap_tau_s` \[yr\] and `trap_L_front` \[m\]: the percolation time, matrix time and thickness of the thickest run of mush shells.
 - `trap_n_exited`: shells that froze in the step; `trap_frac_bound` \[1\]: the mass share of them that kept their entry pore melt, because their run was sealed or they crossed the whole mush within one step; `trap_n_substeps`: the drainage sub-steps of the step.
 
-**Where this is checked.** [Pore-melt drainage of the layer scheme](../Validation/outgas/layer_drainage.md), [Per-node state of the layer scheme](../Validation/outgas/layer_state.md) and [Layer trapping step](../Validation/outgas/layer_trapping.md).
+**Where this is checked.** [Pore-melt drainage of the layer scheme](../Validation/outgas/layer_drainage.md), [Per-node record of the layer scheme](../Validation/outgas/node_record.md) and [Layer trapping step](../Validation/outgas/layer_trapping.md).
 
 ## Remelting and the burial ledger
 

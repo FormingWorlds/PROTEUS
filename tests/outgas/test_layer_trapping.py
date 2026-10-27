@@ -15,7 +15,7 @@ and the solid reservoirs of the helpfile row. These tests exercise:
   step as a remelting step for escape and desiccation,
 * the fallback to crystal partitioning alone when the profiles are missing,
 * returns capped at the trapped reservoir,
-* the per-node state written into the interior snapshot and read back on a
+* the per-node record written into the interior snapshot and read back on a
   resume, and trapped mass from before the record assigned to the nodes.
 
 See ``docs/How-to/testing.md`` and ``docs/Explanations/test_framework.md``
@@ -34,11 +34,11 @@ import pandas as pd
 import pytest
 
 from proteus.outgas.compaction import BRANCH_FALLBACK, BRANCH_REMELT
-from proteus.outgas.layer_drainage import STATUS_LIQUID, STATUS_MUSH, shell_geometry
+from proteus.outgas.layer_drainage import PHASE_LIQUID, PHASE_MUSH, node_geometry
 from proteus.outgas.layer_trapping import (
     _capped_moves,
     layer_profiles,
-    persist_layer_state,
+    persist_node_record,
 )
 from proteus.outgas.trapping import remelt_returned_mass, run_trapping, trapped_mass
 from proteus.utils.helper import snapshot_path_for_time
@@ -95,7 +95,7 @@ def _interior(x, **overrides):
         rho_solid_b=np.linspace(4200.0, 3800.0, _N + 1),
         rho_melt_b=np.linspace(3800.0, 3400.0, _N + 1),
         g_b=np.linspace(10.5, 9.8, _N + 1),
-        trap_state=None,
+        trap_record=None,
     )
     fields.update(overrides)
     return SimpleNamespace(**fields)
@@ -165,7 +165,7 @@ def test_shell_profiles_are_the_mean_of_their_two_basic_nodes(caplog):
     assert any('surface gravity' in r.getMessage() for r in caplog.records)
 
     no_mass = layer_profiles({'gravity': 9.8}, _interior(_X_FREEZE, mass=None))
-    volume, _, _ = shell_geometry(np.linspace(3.5e6, 6.3e6, _N + 1))
+    volume, _, _ = node_geometry(np.linspace(3.5e6, 6.3e6, _N + 1))
     np.testing.assert_allclose(no_mass['mass'], 4000.0 * volume, rtol=1e-14)
 
     # Error contract: a mesh whose density sits on the wrong nodes is refused.
@@ -207,9 +207,9 @@ def test_a_first_freezing_step_locks_the_pore_melt_and_the_crystal_share():
     assert int(hf_row['trap_n_exited']) == 0
     assert hf_row['trap_kg_step'] == pytest.approx(expected, rel=1e-12)
     assert np.isnan(hf_row['trap_frac_bound'])
-    state = interior.trap_state
-    assert list(np.flatnonzero(state.status == STATUS_MUSH)) == [6, 7]
-    assert state.locked('H2O') == pytest.approx(hf_row['H2O_kg_trapped'], rel=1e-12)
+    record = interior.trap_record
+    assert list(np.flatnonzero(record.phase == PHASE_MUSH)) == [6, 7]
+    assert record.trapped('H2O') == pytest.approx(hf_row['H2O_kg_trapped'], rel=1e-12)
 
 
 @pytest.mark.physics_invariant
@@ -224,7 +224,7 @@ def test_remelting_is_decided_node_by_node():
     interior = _interior(_X_FREEZE)
     hf_row = _hf_row(_X_FREEZE)
     run_trapping(config, hf_row, _hf_all(), interior)
-    held = interior.trap_state.retained['H2O'] + interior.trap_state.buried['H2O']
+    held = interior.trap_record.pore['H2O'] + interior.trap_record.crystal['H2O']
     trapped_before = hf_row['H2O_kg_trapped']
     hf_all = pd.DataFrame([hf_row])
 
@@ -244,7 +244,7 @@ def test_remelting_is_decided_node_by_node():
     # Discrimination: the share of the solid that remelted, applied globally.
     share = (row['Phi_global'] - hf_row['Phi_global']) / (1.0 - hf_row['Phi_global'])
     assert abs(returned - share * trapped_before) > 0.05 * returned
-    assert interior.trap_state.status[6] == STATUS_LIQUID
+    assert interior.trap_record.phase[6] == PHASE_LIQUID
     for name in ('H2O', 'H', 'O'):
         assert row[f'{name}_kg_liquid'] + row[f'{name}_kg_solid'] == pytest.approx(
             row[f'{name}_kg_total'], rel=1e-12
@@ -263,7 +263,7 @@ def test_without_profiles_the_step_buries_at_the_crystal_partitioning_alone():
     assert step.branch == BRANCH_FALLBACK
     assert hf_row['trap_branch'] == float(BRANCH_FALLBACK)
     assert hf_row['H2O_kg_solid'] == pytest.approx(_D_H2O * _C_H2O * dm_rm, rel=1e-12)
-    assert interior.trap_state is None
+    assert interior.trap_record is None
 
 
 def test_a_return_is_capped_at_the_trapped_reservoir():
@@ -290,8 +290,8 @@ def test_the_state_survives_a_resume_through_the_interior_snapshot(tmp_path):
     stiff = _config(melt_log10visc=30.0)
     run_trapping(stiff, hf_row, _hf_all(), _interior(_X_FREEZE), dirs=dirs)
     with nc.Dataset(path) as ds:
-        stored = np.array(ds.variables['trap_retained_H2O_s'][:])
-        stored += np.array(ds.variables['trap_buried_H2O_s'][:])
+        stored = np.array(ds.variables['trap_pore_H2O_s'][:])
+        stored += np.array(ds.variables['trap_crystal_H2O_s'][:])
     assert stored[6] > 0.0
 
     x = _X_FREEZE.copy()
@@ -327,8 +327,8 @@ def test_a_resume_without_a_record_assigns_the_trapped_mass_to_the_nodes(tmp_pat
     run_trapping(
         _config(resume=True), hf_row, _hf_all(), interior, dirs={'output': str(tmp_path)}
     )
-    assert any('no per-node state' in r.getMessage() for r in caplog.records)
-    assert interior.trap_state.locked('H2O') == pytest.approx(
+    assert any('no per-node record' in r.getMessage() for r in caplog.records)
+    assert interior.trap_record.trapped('H2O') == pytest.approx(
         hf_row['H2O_kg_trapped'], rel=1e-9
     )
     assert hf_row['H2O_kg_trapped'] > trapped
@@ -346,18 +346,18 @@ def test_persisting_without_a_state_or_a_snapshot_writes_nothing(tmp_path):
     """The end-of-run write skips a run that kept no record and a time that
     has no snapshot, and creates no file."""
     output = str(tmp_path)
-    persist_layer_state({'output': output}, {'Time': 2.0e4}, SimpleNamespace(trap_state=None))
+    persist_node_record({'output': output}, {'Time': 2.0e4}, SimpleNamespace(trap_record=None))
     assert not os.path.exists(os.path.join(output, 'data'))
 
     interior = _interior(_X_FREEZE)
     run_trapping(_config(), _hf_row(_X_FREEZE), _hf_all(), interior)
-    persist_layer_state({'output': output}, {'Time': 2.0e4}, interior)
+    persist_node_record({'output': output}, {'Time': 2.0e4}, interior)
     assert not os.path.exists(os.path.join(output, 'data'))
     path = _snapshot(output, 2.0e4)
-    persist_layer_state({'output': output}, {'Time': 2.0e4}, interior)
+    persist_node_record({'output': output}, {'Time': 2.0e4}, interior)
     with nc.Dataset(path) as ds:
-        assert 'trap_status_s' in ds.variables
-        assert int(ds.variables['trap_status_s'][7]) == STATUS_MUSH
+        assert 'trap_phase_s' in ds.variables
+        assert int(ds.variables['trap_phase_s'][7]) == PHASE_MUSH
 
 
 def _freeze_bottom_up(config, step_yr: float = 1.0e4):

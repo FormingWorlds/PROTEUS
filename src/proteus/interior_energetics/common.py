@@ -1241,7 +1241,7 @@ class Interior_t:
         self.aragog_solver = None
 
         # Per-node record of outgas.trap_mode = 'layers', carried between steps.
-        self.trap_state = None
+        self.trap_record = None
 
         # Counter for consecutive Aragog steps integrated on a stale
         # Zalmoxis structure (i.e. with self.structure_stale=True

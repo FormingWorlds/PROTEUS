@@ -1,12 +1,12 @@
-# Validation: `src/proteus/outgas/layer_state.py`
+# Validation: `src/proteus/outgas/node_record.py`
 
 This page tracks the `@pytest.mark.reference_pinned` tests that anchor
-`proteus.outgas.layer_state`, the per-node record of the layer drainage: the
+`proteus.outgas.node_record`, the per-node record of the layer drainage: the
 pore melt of every node and the volatiles locked and buried at it.
 
 | Test id | Reference | Scope | Last compared |
 |---|---|---|---|
-| `tests/outgas/test_layer_state.py::test_a_matrix_limited_node_traps_the_closed_form_share_of_its_melt` | Analytic limit of the front scheme's matrix branch, `F = phi_c exp(-t_res / tau_s)`, with `tau_s = mu_s / (drho g d)` | The top shell of a 6-shell mantle enters the mush at `phi_c = 0.5`, spends three matrix times there over 52 coupling steps and freezes. It reaches the floor with `0.5 exp(-3)` of its mass as melt, to `rel=5e-3`, and buries that share of the water it locked; the record equals the sum of the steps' moves to `rel=1e-10`. The tolerance covers the 1.7e-3 bias of the second-order sub-steps. Guards: the depth of the node's base halves `tau_s`, and forward Euler at the same steps ends 8 percent low. | 2026-10-26 |
+| `tests/outgas/test_node_record.py::test_a_matrix_limited_node_traps_the_closed_form_share_of_its_melt` | Analytic limit of the front scheme's matrix branch, `F = phi_c exp(-t_res / tau_s)`, with `tau_s = mu_s / (drho g d)` | The top shell of a 6-shell mantle enters the mush at `phi_c = 0.5`, spends three matrix times there over 52 coupling steps and freezes. It reaches the floor with `0.5 exp(-3)` of its mass as melt, to `rel=5e-3`, and buries that share of the water it locked; the record equals the sum of the steps' moves to `rel=1e-10`. The tolerance covers the 1.7e-3 bias of the second-order sub-steps. Guards: the depth of the node's base halves `tau_s`, and forward Euler at the same steps ends 8 percent low. | 2026-10-26 |
 
 ## A matrix-limited node
 
@@ -19,8 +19,8 @@ pore melt of every node and the volatiles locked and buried at it.
 
 - Reference: the matrix-limited branch of the drainage equation, as the front scheme pins it on [Melt drainage across the freezing front](compaction.md#analytic-limit-checked-alongside).
 - Tolerance: `rel=5e-3`.
-- Test id: `tests/outgas/test_layer_state.py::test_a_matrix_limited_node_traps_the_closed_form_share_of_its_melt`
-- Command: `pytest -m reference_pinned tests/outgas/test_layer_state.py --validation-plots`
+- Test id: `tests/outgas/test_node_record.py::test_a_matrix_limited_node_traps_the_closed_form_share_of_its_melt`
+- Command: `pytest -m reference_pinned tests/outgas/test_node_record.py --validation-plots`
 
 ## Invariants checked alongside
 

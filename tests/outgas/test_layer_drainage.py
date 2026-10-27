@@ -26,18 +26,18 @@ import pytest
 
 from proteus.outgas.compaction import darcy_velocity, drainage_integral
 from proteus.outgas.layer_drainage import (
-    STATUS_LIQUID,
-    STATUS_MUSH,
-    STATUS_SOLID,
+    PHASE_LIQUID,
+    PHASE_MUSH,
+    PHASE_SOLID,
     classify_nodes,
     compaction_times,
-    drain_runs,
+    drain_mush_layers,
     mass_fraction_of_volume,
     melt_volume_fraction,
+    mush_layer_fluxes,
     node_array,
-    run_fluxes,
-    shell_geometry,
-    thickest_run,
+    node_geometry,
+    thickest_mush_layer,
 )
 from proteus.utils.constants import secs_per_year
 
@@ -108,23 +108,23 @@ def test_classification_puts_each_threshold_on_the_documented_side():
     phi = np.array([0.62, 0.52, 0.52, 0.02, 0.01, 0.0])
     status = classify_nodes(x, phi, rfront_loc=0.5, phi_min=0.01)
     expected = [
-        STATUS_LIQUID,
-        STATUS_LIQUID,
-        STATUS_MUSH,
-        STATUS_MUSH,
-        STATUS_SOLID,
-        STATUS_SOLID,
+        PHASE_LIQUID,
+        PHASE_LIQUID,
+        PHASE_MUSH,
+        PHASE_MUSH,
+        PHASE_SOLID,
+        PHASE_SOLID,
     ]
     assert status.tolist() == expected
     # Raising the transition moves the boundary node into the mush.
-    assert classify_nodes(x, phi, rfront_loc=0.55, phi_min=0.01)[1] == STATUS_MUSH
+    assert classify_nodes(x, phi, rfront_loc=0.55, phi_min=0.01)[1] == PHASE_MUSH
 
 
 @pytest.mark.physics_invariant
 def test_shell_geometry_sums_to_the_spherical_shell():
     """Shell volumes add up to the whole mantle, and faces grow as r squared."""
     r = np.array([3.5e6, 4.0e6, 5.5e6, 6.3e6])
-    volume, area_top, centre = shell_geometry(r)
+    volume, area_top, centre = node_geometry(r)
     whole = 4.0 / 3.0 * np.pi * (6.3e6**3 - 3.5e6**3)
     assert np.sum(volume) == pytest.approx(whole, rel=1e-12)
     assert area_top[-1] == pytest.approx(4.0 * np.pi * 6.3e6**2, rel=1e-12)
@@ -133,7 +133,7 @@ def test_shell_geometry_sums_to_the_spherical_shell():
     assert abs(volume[1] - area_top[1] * 1.5e6) / volume[1] > 0.1
     assert centre[0] == pytest.approx(3.75e6, rel=1e-12)
     with pytest.raises(ValueError, match='ascending'):
-        shell_geometry(np.array([4.0e6, 3.5e6]))
+        node_geometry(np.array([4.0e6, 3.5e6]))
 
 
 @pytest.mark.physics_invariant
@@ -152,7 +152,7 @@ def test_face_flux_is_the_lesser_of_capacity_and_supply():
     tau = np.array([1.0, 2.0, 1.0, 4.0, 1.0])
     # Capacities 0.5, 0.01, 0.6, 0.6, 1.6 and supplies 0.2, 0.01, 0.3, 0.15,
     # 0.4 give fluxes 0.2, 0.01, 0.31, 0.46, 0.86.
-    flux, perc = run_fluxes(psi, volume, area, speed, tau)
+    flux, perc = mush_layer_fluxes(psi, volume, area, speed, tau)
     np.testing.assert_allclose(flux, [0.2, 0.01, 0.31, 0.46, 0.86], rtol=1e-12)
     expected, q = [], 0.0
     for k in range(5):
@@ -163,10 +163,10 @@ def test_face_flux_is_the_lesser_of_capacity_and_supply():
     # Fluxes are never negative, whatever the mix of limits.
     assert np.all(flux >= 0.0)
     # An infinitely stiff matrix releases no melt at all.
-    stiff, _ = run_fluxes(psi, volume, area, speed, np.full(5, np.inf))
+    stiff, _ = mush_layer_fluxes(psi, volume, area, speed, np.full(5, np.inf))
     np.testing.assert_allclose(stiff, 0.0, atol=0.0)
     # Instant compaction leaves each face at its own capacity.
-    soft, soft_perc = run_fluxes(psi, volume, area, speed, np.zeros(5))
+    soft, soft_perc = mush_layer_fluxes(psi, volume, area, speed, np.zeros(5))
     np.testing.assert_allclose(soft, area * psi * speed, rtol=1e-12)
     assert np.all(soft_perc)
 
@@ -182,7 +182,7 @@ def test_single_node_reproduces_the_front_drainage_integral(validation_plot):
     sub-stepping at a fortieth of the node timescale stays within 1e-3 of it.
     """
     r = np.array([5.0e6, 5.06e6])
-    volume, area, _ = shell_geometry(r)
+    volume, area, _ = node_geometry(r)
     length = volume[0] / area[0]
     psi0, melt_visc = 0.3, 1.0
     history = {}
@@ -191,7 +191,7 @@ def test_single_node_reproduces_the_front_drainage_integral(validation_plot):
         times = np.linspace(0.5, 5.0, 10) * length / w0
         psi, returned, layer, front = psi0, 0.0, [], []
         for t_prev, t_now in zip(np.concatenate(([0.0], times[:-1])), times):
-            out = drain_runs(
+            out = drain_mush_layers(
                 np.array([psi]),
                 [np.array([0])],
                 volume,
@@ -245,12 +245,12 @@ def test_mixture_buoyancy_retains_more_than_the_solid_one():
     setting would show.
     """
     r = np.array([5.0e6, 5.06e6])
-    volume, area, _ = shell_geometry(r)
+    volume, area, _ = node_geometry(r)
     length = volume[0] / area[0]
     psi0 = 0.3
     duration = 3.0 * length / darcy_velocity(psi0, _GRAIN, _DRHO, _G, 1.0, buoyancy='solid')
     kept = {
-        b: drain_runs(
+        b: drain_mush_layers(
             np.array([psi0]),
             [np.array([0])],
             volume,
@@ -277,7 +277,7 @@ def test_compaction_limited_node_decays_exponentially():
     """
     volume, area = np.array([1.0e15]), np.array([1.0e10])
     psi0, tau = 0.3, 1.0e10
-    decay = drain_runs(
+    decay = drain_mush_layers(
         np.array([psi0]),
         [np.array([0])],
         volume,
@@ -315,7 +315,7 @@ def test_uniform_column_follows_the_kinematic_wave_rarefaction(validation_plot):
         dz = height / n
         psi, out = _uniform(n, psi0), []
         for t_prev, t_now in zip(np.concatenate(([0.0], checkpoints[:-1])), checkpoints):
-            psi = drain_runs(
+            psi = drain_mush_layers(
                 psi,
                 [np.arange(n)],
                 _uniform(n, dz),
@@ -368,22 +368,28 @@ def test_column_conserves_melt_and_keeps_it_bounded():
     largest starting porosity, and a longer drainage returns more.
     """
     r = np.linspace(4.0e6, 4.5e6, 11)
-    volume, area, centre = shell_geometry(r)
+    volume, area, centre = node_geometry(r)
     run = np.arange(10)
     psi0 = np.linspace(0.05, 0.45, 10)
     tau = compaction_times([run], r, centre, _uniform(10, _DRHO), _uniform(10, _G), 1.0e19)
-    short = drain_runs(psi0, [run], volume, area, _speed(10.0), tau, 1.0e4 * secs_per_year)
-    long = drain_runs(psi0, [run], volume, area, _speed(10.0), tau, 1.0e5 * secs_per_year)
+    short = drain_mush_layers(
+        psi0, [run], volume, area, _speed(10.0), tau, 1.0e4 * secs_per_year
+    )
+    long = drain_mush_layers(
+        psi0, [run], volume, area, _speed(10.0), tau, 1.0e5 * secs_per_year
+    )
     before = float(np.sum(psi0 * volume))
     assert float(np.sum(long.psi * volume)) + long.returned == pytest.approx(before, rel=1e-12)
     assert np.all(long.psi >= 0.0)
     assert np.all(long.psi <= psi0.max())
     assert long.returned > short.returned > 0.0
     # Nothing drains over a zero-length step.
-    still = drain_runs(psi0, [run], volume, area, _speed(10.0), tau, 0.0)
+    still = drain_mush_layers(psi0, [run], volume, area, _speed(10.0), tau, 0.0)
     np.testing.assert_allclose(still.psi, psi0, rtol=0.0)
     with pytest.raises(ValueError, match='substep_fraction'):
-        drain_runs(psi0, [run], volume, area, _speed(10.0), tau, 1.0, substep_fraction=0.0)
+        drain_mush_layers(
+            psi0, [run], volume, area, _speed(10.0), tau, 1.0, substep_fraction=0.0
+        )
 
 
 @pytest.mark.physics_invariant
@@ -398,7 +404,7 @@ def test_tracer_moves_with_the_melt_and_is_conserved():
     volume, area = np.array([1.0, 1.0]), np.array([1.0, 1.0])
     psi0 = np.array([0.3, 0.3])
     tracer0 = np.array([[0.3, 0.0]])  # one unit per unit melt volume, lower node only
-    out = drain_runs(
+    out = drain_mush_layers(
         psi0,
         [np.arange(2)],
         volume,
@@ -425,7 +431,7 @@ def test_compaction_time_grows_toward_the_top_of_a_run():
     run, so the base of a run compacts fastest and nodes outside any run never.
     """
     r = np.linspace(0.0, 4.0e5, 5) + 4.0e6
-    _, _, centre = shell_geometry(r)
+    _, _, centre = node_geometry(r)
     tau = compaction_times(
         [np.array([0, 1, 2])], r, centre, _uniform(4, _DRHO), _uniform(4, _G), 1e20
     )
@@ -444,11 +450,11 @@ def test_thickest_run_and_node_arrays():
     is refused before any drainage uses it.
     """
     r = np.array([0.0, 1.0, 2.0, 3.0, 4.0, 14.0])
-    status = np.array([STATUS_MUSH, STATUS_MUSH, STATUS_MUSH, STATUS_SOLID, STATUS_MUSH])
-    run, extent = thickest_run(status, r)
+    status = np.array([PHASE_MUSH, PHASE_MUSH, PHASE_MUSH, PHASE_SOLID, PHASE_MUSH])
+    run, extent = thickest_mush_layer(status, r)
     assert run.tolist() == [4]
     assert extent == pytest.approx(10.0)
-    none, nan = thickest_run(np.full(5, STATUS_SOLID), r)
+    none, nan = thickest_mush_layer(np.full(5, PHASE_SOLID), r)
     assert none is None and np.isnan(nan)
     np.testing.assert_allclose(node_array(9.8, 3, 'gravity'), [9.8, 9.8, 9.8])
     with pytest.raises(ValueError, match='gravity must hold 3'):

@@ -1678,11 +1678,11 @@ class Proteus:
             and self.interior_o.aragog_solver.solution is not None
         ):
             from proteus.interior_energetics.aragog import write_final_snapshot
-            from proteus.outgas.layer_trapping import persist_layer_state
+            from proteus.outgas.layer_trapping import persist_node_record
 
             write_final_snapshot(self.config, self.interior_o, self.directories, self.hf_row)
             # The rewrite holds the solver fields alone; the layer trapping state goes back in.
-            persist_layer_state(self.directories, self.hf_row, self.interior_o)
+            persist_node_record(self.directories, self.hf_row, self.interior_o)
             self._save_zalmoxis_output()
 
         # Ensure the final atmosphere state is on disk, since it won't always happen to

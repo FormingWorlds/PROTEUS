@@ -84,7 +84,7 @@ nav:
           - Burial ledger for remelting (burial_ledger.py): Validation/outgas/burial_ledger.md
           - Solid-phase volatile trapping (trapping.py): Validation/outgas/trapping.md
           - Pore-melt drainage of the layer scheme (layer_drainage.py): Validation/outgas/layer_drainage.md
-          - Per-node state of the layer scheme (layer_state.py): Validation/outgas/layer_state.md
+          - Per-node record of the layer scheme (node_record.py): Validation/outgas/node_record.md
           - Layer trapping step (layer_trapping.py): Validation/outgas/layer_trapping.md
       - Star:
           - Stellar luminosity and instellation (dummy.py): Validation/star/dummy.md
@@ -119,10 +119,12 @@ nav:
               - H2-silicate binodal: Reference/api/outgas_binodal.md
               - LavAtmos rock vapour: Reference/api/outgas_lavatmos.md
               - Volatile trapping: Reference/api/outgas_trapping.md
+              - Trapping bookkeeping: Reference/api/outgas_trap_bookkeeping.md
               - Melt drainage: Reference/api/outgas_compaction.md
               - Burial ledger: Reference/api/outgas_burial_ledger.md
               - Layer drainage: Reference/api/outgas_layer_drainage.md
-              - Layer state: Reference/api/outgas_layer_state.md
+              - Node record: Reference/api/outgas_node_record.md
+              - Node record I/O: Reference/api/outgas_node_record_io.md
               - Layer trapping: Reference/api/outgas_layer_trapping.md
 
   - Community:

@@ -136,9 +136,9 @@ TEMPLATE_OVERRIDES: dict[tuple[str, str, str], TemplateOverride] = {
     ('outgas/lavatmos.py', 'run_vapourisation', '<?>_bar'): _VAPS,
     ('outgas/lavatmos.py', 'run_vapourisation', '<?>_vmr'): _VAPS,
     ('outgas/lavatmos.py', 'run_vapourisation', '<?>_kg_atm'): _ELEMENTS,
-    ('outgas/trapping.py', '_trapped', '<?>_kg_trapped'): _TRAPPED,
+    ('outgas/trap_bookkeeping.py', 'trapped_kg', '<?>_kg_trapped'): _TRAPPED,
     ('outgas/layer_trapping.py', 'run_layer_trapping', '<?>_kg_liquid'): _TRAPPED_SPECIES,
-    ('outgas/trapping.py', '_carried', '<?>_kg_total'): _TRAPPED_ELEMENTS,
+    ('outgas/trap_bookkeeping.py', 'species_carried', '<?>_kg_total'): _TRAPPED_ELEMENTS,
     ('outgas/trapping.py', 'released_mass', '<?>_kg_trapped'): _TRAPPED,
     ('outgas/trapping.py', 'escapable_inventory', '<?>_kg_total'): _ELEMENTS,
     ('outgas/trapping.py', 'locked_condensed_mass', '<?>_kg_condensed'): _VOL_ELEMENTS,
@@ -147,11 +147,11 @@ TEMPLATE_OVERRIDES: dict[tuple[str, str, str], TemplateOverride] = {
     ('outgas/trapping.py', 'restore_trapped_mass', '<?>_kg_total'): _NOBLE,
     ('outgas/trapping.py', 'restore_trapped_mass', '<?>_mol_solid'): _NOBLE,
     ('outgas/trapping.py', 'restore_trapped_mass', '<?>_mol_total'): _NOBLE,
-    ('outgas/trapping.py', '_move', '<?>_kg_liquid'): _TRAPPED,
-    ('outgas/trapping.py', '_move', '<?>_kg_solid'): _TRAPPED,
-    ('outgas/trapping.py', '_move', '<?>_kg_trapped'): _TRAPPED,
-    ('outgas/trapping.py', '_move', '<?>_mol_liquid'): _TRAPPED_SPECIES,
-    ('outgas/trapping.py', '_move', '<?>_mol_solid'): _TRAPPED_SPECIES,
+    ('outgas/trap_bookkeeping.py', 'move_mass', '<?>_kg_liquid'): _TRAPPED,
+    ('outgas/trap_bookkeeping.py', 'move_mass', '<?>_kg_solid'): _TRAPPED,
+    ('outgas/trap_bookkeeping.py', 'move_mass', '<?>_kg_trapped'): _TRAPPED,
+    ('outgas/trap_bookkeeping.py', 'move_mass', '<?>_mol_liquid'): _TRAPPED_SPECIES,
+    ('outgas/trap_bookkeeping.py', 'move_mass', '<?>_mol_solid'): _TRAPPED_SPECIES,
     ('outgas/trapping.py', 'run_trapping', '<?>_kg_liquid'): _TRAPPED_SPECIES,
 }
 
@@ -168,8 +168,8 @@ SUPPRESSED_DYNAMIC_WRITES = {
     ('outgas/wrapper.py', 'run_outgassing'),
     # The trapped mass withheld from, and restored to, reservoirs the
     # chemistry and the trapping step already write, around each solve.
-    ('outgas/trapping.py', '_shift'),
-    ('outgas/trapping.py', '_reservoir_sum'),
+    ('outgas/trap_bookkeeping.py', 'shift_reservoir'),
+    ('outgas/trap_bookkeeping.py', 'reservoir_sum'),
     # hf_row.update(saved) restores of pre-call snapshots.
     ('interior_energetics/wrapper.py', '_solve_structure_with_adiabat_or_rollback'),
     ('interior_energetics/wrapper.py', 'update_structure_from_interior'),
