@@ -244,3 +244,70 @@ def test_summarise_raises_on_empty_status_file(tmp_path):
     with pytest.raises(ValueError, match='Status file is empty') as exc:
         summarise_mod.summarise(str(grid))
     assert 'case_000000' in str(exc.value)
+
+
+# ---------------------------------------------------------------------------
+# status_category
+# ---------------------------------------------------------------------------
+
+
+def test_status_category_bins_codes_by_documented_ranges():
+    """status_category maps codes to Running (0-9), Completed (10-19 and 29) and
+    Error (20-28).
+
+    Uses boundary codes so an off-by-one range bound is caught. Code 29 is
+    'Completed (planet evaporated)', so binning it by its decade as an Error would
+    drop evaporated planets from the completed cases.
+    """
+    from proteus.grid.summarise import status_category
+    from proteus.utils.helper import CommentFromStatus
+
+    assert status_category(0) == 'Running'
+    assert status_category(9) == 'Running'
+    assert status_category(10) == 'Completed'
+    assert status_category(19) == 'Completed'
+    assert status_category(20) == 'Error'
+    assert status_category(28) == 'Error'
+    assert status_category(29) == 'Completed'
+    assert CommentFromStatus(29).startswith('Completed')
+
+
+def test_status_category_agrees_with_every_status_comment():
+    """Every documented code is binned in the category its comment names, so the
+    ranges cannot drift from CommentFromStatus again.
+    """
+    from proteus.grid.summarise import status_category
+    from proteus.utils.helper import CommentFromStatus
+
+    documented = [c for c in range(100) if not CommentFromStatus(c).startswith('UNHANDLED')]
+    assert len(documented) > 20  # the helper documents the 0-29 codes
+    for code in documented:
+        comment = CommentFromStatus(code)
+        expected = 'Running' if comment in ('Started', 'Running') else comment.split(' ')[0]
+        assert status_category(code) == expected, (code, comment)
+
+
+def test_summarise_completed_category_includes_evaporated_planets(tmp_path, caplog):
+    """tgt_status='Completed' lists a code 29 case (planet evaporated) and the
+    'Error' listing does not.
+    """
+    grid = _make_grid(tmp_path, statuses=[10, 29, 22])
+    with caplog.at_level(logging.INFO, logger='fwl'):
+        summarise_mod.summarise(str(grid), tgt_status='Completed')
+    completed = caplog.text.split('Completed cases:')[1]
+    assert 'Code 29 -' in completed
+    assert 'Code 22 -' not in completed
+    caplog.clear()
+    with caplog.at_level(logging.INFO, logger='fwl'):
+        summarise_mod.summarise(str(grid), tgt_status='Error')
+    errors = caplog.text.split('Error cases:')[1]
+    assert 'Code 22 -' in errors
+    assert 'Code 29 -' not in errors
+
+
+def test_status_category_unknown_for_out_of_range_code():
+    """A code outside the documented ranges is 'Unknown', not silently a category."""
+    from proteus.grid.summarise import status_category
+
+    assert status_category(99) == 'Unknown'
+    assert status_category(-1) == 'Unknown'

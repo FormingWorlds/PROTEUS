@@ -16,7 +16,6 @@ import time
 from copy import deepcopy
 from datetime import datetime
 from getpass import getuser
-from numbers import Real
 
 import numpy as np
 import toml
@@ -29,6 +28,15 @@ from proteus.config import (
     read_config_object,
 )
 from proteus.config._interior import _TOL_UNSET, default_rtol, rtol_is_set
+from proteus.grid.analyse_options import check_post_processing_table
+from proteus.grid.dimensions import (
+    DIMENSION_METHODS,
+    dimension_arange,
+    dimension_direct,
+    dimension_linspace,
+    dimension_logspace,
+    direct_values_error,
+)
 from proteus.utils.coupler import get_output_root
 from proteus.utils.helper import get_proteus_dir, recursive_setattr
 from proteus.utils.logs import setup_logger
@@ -341,18 +349,14 @@ class Grid:
 
     # Set a dimension by linspace
     def set_dimension_linspace(self, name: str, start: float, stop: float, count: int):
-        self.dim_avars[name] = list(np.linspace(start, stop, count))
-        self.dim_avars[name] = [float(v) for v in self.dim_avars[name]]
+        self.dim_avars[name] = dimension_linspace(start, stop, count)
         log.debug(
             "Dimension '%s' linspace: %d points in [%.6g, %.6g]", name, count, start, stop
         )
 
     # Set a dimension by arange (inclusive of endpoint)
     def set_dimension_arange(self, name: str, start: float, stop: float, step: float):
-        self.dim_avars[name] = list(np.arange(start, stop, step))
-        if not np.isclose(self.dim_avars[name][-1], stop):
-            self.dim_avars[name].append(stop)
-        self.dim_avars[name] = [float(v) for v in self.dim_avars[name]]
+        self.dim_avars[name] = dimension_arange(start, stop, step)
         log.debug(
             "Dimension '%s' arange: %d points in [%.6g, %.6g] (step=%.6g)",
             name,
@@ -364,8 +368,7 @@ class Grid:
 
     # Set a dimension by logspace
     def set_dimension_logspace(self, name: str, start: float, stop: float, count: int):
-        self.dim_avars[name] = list(np.logspace(np.log10(start), np.log10(stop), count))
-        self.dim_avars[name] = [float(v) for v in self.dim_avars[name]]
+        self.dim_avars[name] = dimension_logspace(start, stop, count)
         log.debug(
             "Dimension '%s' logspace: %d points in [%.6g, %.6g]", name, count, start, stop
         )
@@ -375,15 +378,11 @@ class Grid:
         why = direct_values_error(values)
         if why:
             raise ValueError(f"direct dimension '{name}' {why}")
-        values = [v.item() if isinstance(v, np.generic) else v for v in values]  # array, tuple
-        the_list = list(dict.fromkeys(values))  # written order, duplicates removed
-        if (not isinstance(values[0], str)) and sort:  # sort if numeric
-            the_list = sorted(the_list)
-        self.dim_avars[name] = the_list
+        self.dim_avars[name] = dimension_direct(values, sort)
         log.debug(
             "Dimension '%s' direct: %d values (deduplicated from %d)",
             name,
-            len(the_list),
+            len(self.dim_avars[name]),
             len(values),
         )
 
@@ -810,6 +809,8 @@ done
 
 
 # Top-level keys of a grid file that set up the grid; every other key names a dimension.
+# `post_processing` is the optional table read by `proteus grid-analyse`; `proteus grid`
+# checks it at launch, so a typo stops the grid before any case runs.
 GRID_SETTINGS = frozenset(
     {
         'output',
@@ -821,44 +822,9 @@ GRID_SETTINGS = frozenset(
         'max_mem',
         'jax_cache',
         'config_version',
+        'post_processing',
     }
 )
-
-
-def direct_values_error(values) -> str | None:
-    """Return why a direct grid axis cannot be built from ``values``, or None if it can.
-
-    The axis needs a non-empty list, tuple or 1-D array of numbers and booleans, or of
-    strings: duplicates are removed and numbers sorted, which has no defined result for a
-    NaN (it equals nothing, itself included) or for strings beside other values.
-    """
-    if not (
-        isinstance(values, (list, tuple))
-        or (isinstance(values, np.ndarray) and values.ndim == 1)
-    ):
-        return f'is not a list of values: {values!r}'
-    values = list(values)
-    if not values:
-        return 'has no values'
-    for v in values:
-        if not isinstance(v, (Real, np.bool_, str)):
-            return f'holds {v!r}, which is not a real number, boolean or string'
-    if any(v != v for v in values):
-        return 'holds NaN, which cannot be deduplicated or ordered'
-    first = isinstance(values[0], str)
-    other = next((v for v in values if isinstance(v, str) != first), None)
-    if other is not None:
-        return f'mixes strings with other values ({values[0]!r} and {other!r})'
-    return None
-
-
-# Keys each dimension method reads from its table, in the order of its Grid setter.
-DIMENSION_METHODS = {
-    'direct': ('values',),
-    'linspace': ('start', 'stop', 'count'),
-    'logspace': ('start', 'stop', 'count'),
-    'arange': ('start', 'stop', 'step'),
-}
 
 
 def _dimension_kind(key: str, value) -> str:
@@ -948,6 +914,7 @@ def grid_from_config(config_fpath: str, test_run: bool = False, check_interval: 
         why = config[key]['method'] == 'direct' and direct_values_error(config[key]['values'])
         if why:
             raise ValueError(f'grid file {config_fpath}: the direct axis "{key}" {why}')
+    check_post_processing_table(config.get('post_processing', {}))
 
     # Output folder name, created inside `PROTEUS/output/`
     folder = str(config['output'])
