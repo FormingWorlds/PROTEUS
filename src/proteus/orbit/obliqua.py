@@ -110,7 +110,9 @@ def _obliqua_module_cfg(config: Config) -> dict:
     Excludes PROTEUS-only bookkeeping (``_OBLIQUA_CFG_EXCLUDE``) and patches
     in ``visc_l``/``visc_s`` (from the interior's own log10-viscosity) and
     ``fluid.sigma_R_inf`` (Obliqua's name for ``sigma_R_factor *
-    sigma_R``). Callers still set their own ``s_min``/``s_max`` (or
+    sigma_R``). With ``module_fluid = 'fluid1d_relax'`` it sets ``visc_lus`` and
+    ``visc_sus`` to infinity, so Obliqua's segmentation returns the single fluid segment that
+    model needs. Callers still set their own ``s_min``/``s_max`` (or
     ``k_min``/``k_max``) and any call-specific keys (``spectrum``,
     ``store_3D``, ...).
     """
@@ -123,6 +125,10 @@ def _obliqua_module_cfg(config: Config) -> dict:
 
     fluid = obliqua_cfg['fluid']
     fluid['sigma_R_inf'] = fluid.pop('sigma_R_factor') * fluid['sigma_R']
+
+    # fluid1d_relax solves the whole column and classifies the layers itself: one fluid segment
+    if obliqua_cfg['module_fluid'] == 'fluid1d_relax':
+        obliqua_cfg['visc_lus'] = obliqua_cfg['visc_sus'] = float('inf')
 
     return obliqua_cfg
 
@@ -239,6 +245,8 @@ def run_obliqua(
         arr_keys += ('bulkd',)
     if getattr(interior_o, 'bulk_liq', None) is not None:
         arr_keys += ('bulk_liq',)
+    if getattr(interior_o, 'bulk_und', None) is not None:
+        arr_keys += ('bulk_und',)
     lov = {k: np.array(getattr(interior_o, k), copy=True, dtype=float) for k in arr_keys}
 
     # Reverse arrays if using SPIDER
@@ -335,6 +343,8 @@ def run_obliqua(
             bulk_liq = lov['bulk_liq']
         else:
             bulk_liq = _jlarr(np.full(len(lov['phi']), float(obliqua_cfg['solid']['bulk_l'])))
+        # undrained bulk modulus per layer from the interior rheology; zeros: Obliqua's own Gassmann law
+        bulk_und = lov['bulk_und'] if 'bulk_und' in lov else _jlarr(np.zeros(len(lov['phi'])))
 
         # Run Obliqua to get tidal heating profile and love number
         power_prf, power_blk, nmk, sigma, LNk = jl.Obliqua.run_tides(
@@ -351,6 +361,7 @@ def run_obliqua(
             bulk,
             bulkd,
             bulk_liq,
+            bulk_und,
             phi,
             perm,
             cfg,
@@ -456,6 +467,10 @@ def lookup_from_interior(dirs: dict, config: Config):
     else:
         n_phi = len(np.atleast_1d(d['phi']))
         bulk_liq = _jlarr(np.full(n_phi, float(obliqua_cfg['solid']['bulk_l'])))
+    if 'bulk_und' in d:
+        bulk_und = _jlarr(np.array(d['bulk_und'], copy=True, dtype=float))
+    else:
+        bulk_und = _jlarr(np.zeros(len(np.atleast_1d(d['phi']))))
 
     # Create configuration dictionary for Obliqua
     cfg = {
@@ -522,6 +537,7 @@ def lookup_from_interior(dirs: dict, config: Config):
             bulk,
             bulkd,
             bulk_liq,
+            bulk_und,
             phi,
             perm,
             cfg,

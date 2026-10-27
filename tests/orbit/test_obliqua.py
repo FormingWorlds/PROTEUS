@@ -112,9 +112,11 @@ def _make_interior_t(nlev_s: int):
     interior_o.nlev_s = nlev_s
     interior_o.density = np.linspace(3000.0, 5000.0, nlev_s)
     interior_o.visc = np.full(nlev_s, 1e20)
+    interior_o.bulk_visc = np.full(nlev_s, 3e21)
     interior_o.shear = np.full(nlev_s, 6e10)
     interior_o.bulk = np.full(nlev_s, 2e11)
     interior_o.phi = np.zeros(nlev_s)
+    interior_o.perm = np.full(nlev_s, 1e-12)
     interior_o.mass = np.full(nlev_s, 1e20)
     interior_o.radius = np.linspace(3.0e6, 6.4e6, nlev_s + 1)
     interior_o.tides = np.zeros(nlev_s)
@@ -312,6 +314,130 @@ def test_run_obliqua_spectrum_is_legacy_only_for_sp0d(
 
     cfg_arg = fake_jl.Obliqua.run_tides.call_args[0][-1]
     assert cfg_arg['orbit']['obliqua']['spectrum'] == expected_spectrum
+
+
+@pytest.mark.parametrize('with_bulkd', [True, False], ids=['interior_bulkd', 'obliqua_law'])
+def test_run_obliqua_uses_interior_drained_bulk_when_set(monkeypatch, tmp_path, with_bulkd):
+    """An interior ``bulkd`` profile reaches ``run_tides``; without one Obliqua's own law is used."""
+    from proteus.orbit import obliqua as obliqua_mod
+
+    _patch_identity_conversions(monkeypatch, obliqua_mod)
+    interior_o = _make_interior_t(3)
+    interior_o.bulkd = np.array([2e11, 5e10, 0.0]) if with_bulkd else None
+    cfg = _make_config(module='aragog', perturber='star', star_planet_model='sp1d')
+    hf_row = {
+        'Time': 10.0,
+        'axial_period': 86400.0,
+        'orbital_period': 86400.0 * 365.0,
+        'eccentricity': 0.1,
+        'semimajorax': 1.5e11,
+        'M_star': 2.0e30,
+    }
+    fake_jl = _make_fake_jl(
+        power_prf=np.array([1e-7, 2e-7, 3e-7]), power_blk=1.0, nmk=[(2, 0, 1)], sigma=[1e-6],
+        lnk=[0.01 - 0.02j],
+    )  # fmt: skip
+    monkeypatch.setattr(obliqua_mod, 'jl', fake_jl)
+    obliqua_mod.run_obliqua(
+        hf_row,
+        dirs={'output/data': str(tmp_path), 'output': str(tmp_path)},
+        interior_o=interior_o,
+        tides_o=Tides_t(),
+        config=cfg,
+    )
+    args = fake_jl.Obliqua.run_tides.call_args[0]
+    bulkd_arg = args[11]
+    # bulk viscosity right after the shear viscosity, then shear and grain bulk moduli
+    np.testing.assert_allclose(args[7], 1e20)
+    np.testing.assert_allclose(args[8], 3e21)
+    np.testing.assert_allclose(args[9], 6e10)
+    # the permeability profile is the interior's, passed through Obliqua's porosity limit
+    np.testing.assert_allclose(fake_jl.Obliqua.interior.limit_porosity.call_args[0][0], 1e-12)
+    fake_jl.Obliqua.interior.get_permeability.assert_not_called()
+    if with_bulkd:
+        np.testing.assert_allclose(bulkd_arg, [2e11, 5e10, 0.0])
+        fake_jl.Obliqua.interior.get_drained_bulk.assert_not_called()
+    else:
+        assert bulkd_arg == 'bulkd'
+        fake_jl.Obliqua.interior.get_drained_bulk.assert_called_once()
+
+
+def _run_with_bulk_l(monkeypatch, tmp_path, interior_o, bulk_l='none'):
+    """Run ``run_obliqua`` with the given ``solid.bulk_l``; return the run_tides arguments."""
+    import attrs
+
+    from proteus.config._orbit import ObliquaSolid
+    from proteus.orbit import obliqua as obliqua_mod
+
+    _patch_identity_conversions(monkeypatch, obliqua_mod)
+    cfg = _make_config(module='aragog', perturber='star', star_planet_model='sp1d')
+    cfg.orbit.obliqua = attrs.evolve(cfg.orbit.obliqua, solid=ObliquaSolid(bulk_l=bulk_l))
+    hf_row = {'Time': 10.0, 'axial_period': 86400.0, 'orbital_period': 86400.0 * 365.0,
+              'eccentricity': 0.1, 'semimajorax': 1.5e11, 'M_star': 2.0e30}  # fmt: skip
+    fake_jl = _make_fake_jl(
+        power_prf=np.zeros(3), power_blk=1.0, nmk=[(2, 0, 1)], sigma=[1e-6], lnk=[0.01 - 0.02j]
+    )
+    monkeypatch.setattr(obliqua_mod, 'jl', fake_jl)
+    dirs = {'output/data': str(tmp_path), 'output': str(tmp_path)}
+    obliqua_mod.run_obliqua(
+        hf_row, dirs=dirs, interior_o=interior_o, tides_o=Tides_t(), config=cfg
+    )
+    return fake_jl.Obliqua.run_tides.call_args[0]
+
+
+def test_run_obliqua_bulk_l_none_takes_melt_mass_weighted_paleos_value(monkeypatch, tmp_path):
+    """``bulk_l = 'none'``: the melt bulk modulus is the melt-mass-weighted mean of the profile.
+
+    Melt masses 0 : 1 : 3 (phi 0, 0.1, 0.3 at equal layer mass) give (1 * 100 + 3 * 300) / 4 =
+    250 GPa; a plain mean of the profile would give 200 GPa.
+    """
+    interior_o = _make_interior_t(3)
+    interior_o.phi = np.array([0.0, 0.1, 0.3])
+    interior_o.bulk_liq = np.array([500e9, 100e9, 300e9])
+    args = _run_with_bulk_l(monkeypatch, tmp_path, interior_o)
+    bulk_l = args[-1]['orbit']['obliqua']['solid']['bulk_l']
+    assert bulk_l == pytest.approx(250e9, rel=1e-12)
+    assert abs(bulk_l - 300e9) > 1e10  # plain mean excluded
+    np.testing.assert_allclose(args[12], [500e9, 100e9, 300e9])  # the profile, after bulkd
+
+
+def test_run_obliqua_bulk_l_none_without_profile_raises(monkeypatch, tmp_path):
+    """Without a melt bulk modulus profile (Kervazo interiors) ``bulk_l = 'none'`` fails clearly."""
+    interior_o = _make_interior_t(3)
+    interior_o.bulk_liq = None
+    with pytest.raises(ValueError, match="bulk_l = 'none'"):
+        _run_with_bulk_l(monkeypatch, tmp_path, interior_o)
+    interior_o.bulk_liq = np.full(3, 150e9)  # fully solid: mass-weighted mean
+    args = _run_with_bulk_l(monkeypatch, tmp_path, interior_o)
+    assert args[-1]['orbit']['obliqua']['solid']['bulk_l'] == pytest.approx(150e9)
+
+
+def test_run_obliqua_kervazo_interior_gets_constant_bulk_l_profile(monkeypatch, tmp_path):
+    """Without an interior profile every layer receives the configured scalar bulk_l."""
+    interior_o = _make_interior_t(3)
+    interior_o.bulk_liq = None
+    args = _run_with_bulk_l(monkeypatch, tmp_path, interior_o, bulk_l=2.5e10)
+    np.testing.assert_allclose(args[12], np.full(3, 2.5e10))
+    assert args[-1]['orbit']['obliqua']['solid']['bulk_l'] == pytest.approx(2.5e10)
+
+
+def test_run_obliqua_passes_undrained_bulk_profile_or_zeros(monkeypatch, tmp_path):
+    """The interior's undrained bulk modulus reaches run_tides after bulk_liq; without one, zeros.
+
+    Zeros tell Obliqua to build the undrained modulus itself, so a Kervazo interior (no
+    profile) must not pass bulk_liq or the grain modulus in that slot.
+    """
+    interior_o = _make_interior_t(3)
+    interior_o.bulk_liq = np.full(3, 2e10)
+    interior_o.bulk_und = np.array([2.1e11, 9.0e10, 3.5e10])
+    args = _run_with_bulk_l(monkeypatch, tmp_path, interior_o, bulk_l=2.5e10)
+    assert len(args) == 17
+    np.testing.assert_allclose(args[12], np.full(3, 2e10))  # bulk_liq unchanged
+    np.testing.assert_allclose(args[13], [2.1e11, 9.0e10, 3.5e10])
+    interior_o.bulk_und = None
+    args = _run_with_bulk_l(monkeypatch, tmp_path, interior_o, bulk_l=2.5e10)
+    np.testing.assert_array_equal(args[13], np.zeros(3))
+    assert not np.allclose(args[13], args[12])
 
 
 def test_run_obliqua_stores_lnk_and_sigma_as_real_numpy_arrays(monkeypatch, tmp_path):
@@ -1279,7 +1405,7 @@ def test_lookup_from_interior_splits_core_density_from_mantle_profile(monkeypatc
     obliqua_mod.lookup_from_interior(dirs={'output/data': str(tmp_path)}, config=cfg)
 
     call_args = fake_jl.Obliqua.run_tides.call_args[0]
-    rho_passed, cfg_passed = call_args[5], call_args[13]
+    rho_passed, cfg_passed = call_args[5], call_args[-1]
 
     np.testing.assert_allclose(rho_passed, [4000.0, 4200.0, 4500.0], rtol=1e-12)
     # Discrimination: the core entry must not leak into rho.
@@ -1813,3 +1939,30 @@ def test_sync_log_files_copies_first_line_unchanged_when_no_bracket_present(tmp_
     # Obliqua's own logfile is cleared after the copy, same as the
     # bracket-present case.
     assert obliqua_log.read_text() == ''
+
+
+@pytest.mark.physics_invariant
+def test_module_cfg_gives_fluid1d_relax_one_segment_and_keeps_segments_otherwise():
+    """fluid1d_relax needs one fluid segment: the cfg dict gets infinite visc_lus/visc_sus.
+
+    The segment models keep the configured hand-off viscosities, the Config itself is not
+    changed, and the fluid1d_relax options (n_sub, loss criterion) reach Obliqua unchanged.
+    """
+    from proteus.orbit.obliqua import _obliqua_module_cfg
+
+    cfg = _make_config('dummy', 'none')
+    seg = _obliqua_module_cfg(cfg)
+    assert seg['visc_lus'] == pytest.approx(5e5) and seg['visc_sus'] == pytest.approx(5e5)
+
+    cfg.orbit.obliqua.module_fluid = 'fluid1d_relax'
+    col = _obliqua_module_cfg(cfg)
+    assert col['visc_lus'] == float('inf') and col['visc_sus'] == float('inf')
+    # any finite mantle viscosity lies below the hand-off, so every layer is one fluid segment
+    assert 1e30 < col['visc_lus']
+    assert cfg.orbit.obliqua.visc_lus == pytest.approx(5e5)  # Config untouched
+    assert col['fluid']['n_sub'] == 10
+    assert col['fluid']['visc_fluid'] == pytest.approx(1e8)
+    assert 'loss_tan' not in col['fluid']
+    assert 'mu_reg' not in col['fluid'] and 'K_min' not in col['fluid']
+    # sigma_R_inf is still derived as sigma_R_factor * sigma_R
+    assert col['fluid']['sigma_R_inf'] == pytest.approx(0.5 * 1e-3)

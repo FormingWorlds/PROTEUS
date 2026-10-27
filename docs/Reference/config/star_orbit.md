@@ -200,7 +200,7 @@ for arbitrary eccentricity and tidal mode.
 | `verbosity` | int | `1` | Logging verbosity level (0=silent, 1=info, 2=debug). Choices: `0`, `1`, `2`. |
 | `module_solid` | str | `"solid0d"` | Solid-tide module to use ("none", "solid0d", "solid1d", "solid1d-relax", "solid1d-mush", "solid1d-mush-relax", "solid1d-equil-relax"). Choices: `"none"`, `"solid0d"`, `"solid1d"`, `"solid1d-relax"`, `"solid1d-mush"`, `"solid1d-mush-relax"`, `"solid1d-equil-relax"`. |
 | `module_mushy` | str | `"none"` | Mushy-tide module to use ("none", "interp"). Choices: `"none"`, `"interp"`. |
-| `module_fluid` | str | `"fluid0d"` | Fluid-tide module to use ("none", "fluid0d", "fluid1d"). Choices: `"none"`, `"fluid0d"`, `"fluid1d"`. |
+| `module_fluid` | str | `"fluid0d"` | Fluid-tide module to use ("none", "fluid0d", "fluid1d", "fluid1d_relax"). "fluid1d_relax" solves the whole interior (solid, mush and fluid layers) in one radially resolved column instead of combining segments, and ignores module_solid, module_mushy, visc_lus and visc_sus (PROTEUS passes Obliqua one fluid segment for the whole interior). Choices: `"none"`, `"fluid0d"`, `"fluid1d"`, `"fluid1d_relax"`. |
 <!-- END GENERATED: config-table [orbit.obliqua] -->
 
 #### Solid tides `[orbit.obliqua.solid]`
@@ -215,7 +215,7 @@ for arbitrary eccentricity and tidal mode.
 | `core` | str | `"liquid"` | Core solution vector ("liquid", "solid", "inertial-liquid", or "inertial"). Choices: `"liquid"`, `"solid"`, `"inertial-liquid"`, `"inertial"`. |
 | `core_props` | str | `"core"` | Core properties to use ("core" or "mantle"). Choices: `"core"`, `"mantle"`. |
 | `inertial_terms` | bool | `true` | Whether to include inertial terms in the solid-tide solution. |
-| `bulk_l` | float | `1000000000.0` | Bulk modulus of the liquid phase \[Pa\]. Must be > 0. |
+| `bulk_l` | float or none | `1000000000.0` | Bulk modulus of the liquid phase \[Pa\], applied to every layer when the interior gives no melt bulk modulus profile (all interiors but Aragog). With the Aragog interior the mush rheology passes the per-layer PALEOS melt-side adiabatic bulk modulus instead, and this value is only used as the scalar of Obliqua's config; 'none' then sets that scalar to the melt-mass-weighted mean of the profile. 'none' without a profile is an error. Must be > 0. |
 | `porosity_thresh` | float | `0.03` | Porosity threshold, hard cutoff below which melt fraction is set to zero \[dimensionless\]. Must be > 0. |
 | `dbulk_power` | float | `0.5` | Drained bulk modulus powerlaw scaling exponent \[dimensionless\]. Must be > 0. |
 <!-- END GENERATED: config-table [orbit.obliqua.solid] -->
@@ -241,6 +241,9 @@ for arbitrary eccentricity and tidal mode.
 | `sigma_R_prf` | str | `"exp"` | Radial heating distribution profile \[dimensionless\]. Choices: `"uniform"`, `"exp"`, `"linear"`, `"quadratic"`, `"dynamic"`, `"dynamic_interp"`. |
 | `H_R` | float | `10000.0` | Scale height to be used by heating profile \[m\]. Must be > 0. |
 | `efficiency` | float | `0.3` | Rayleigh drag efficiency at core interface \[dimensionless\]. Must be > 0. |
+| `omega_sw` | float | `1e-05` | Forcing frequency above which fluid1d_relax replaces a static liquid core by the inertial liquid core \[rad/s\]. Must be > 0. |
+| `visc_fluid` | float | `100000000.0` | In fluid1d_relax, the contiguous layers from the surface down with a viscosity below this value are fluid, the same at every forcing frequency \[Pa s\]. Fluid layers keep their own shear modulus, take the undrained bulk modulus (``bulk_und`` of the interior rheology where it gives one) and carry the Rayleigh drag sigma_R. Must be > 0. |
+| `n_sub` | int | `10` | In fluid1d_relax, number of sub-layers per interior layer, with the layer values interpolated between the layer centres, so that the fluid interface moves continuously instead of by whole layers \[dimensionless\]. Must be >= 1. |
 <!-- END GENERATED: config-table [orbit.obliqua.fluid] -->
 
 ## Constraints

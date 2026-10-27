@@ -77,8 +77,8 @@ class ObliquaSolid:
         Core properties to use ("core" or "mantle").
     inertial_terms: bool
         Whether to include inertial terms in the solid-tide solution.
-    bulk_l: float
-        Bulk modulus of the liquid phase [Pa].
+    bulk_l: float or None
+        Bulk modulus of the liquid phase [Pa] instead of PALEOS melt-side adiabatic bulk modulus.
     porosity_thresh: float
         Porosity threshold, hard cutoff below which melt fraction is set to zero [dimensionless].
     dbulk_power: float
@@ -93,7 +93,10 @@ class ObliquaSolid:
     )
     core_props: str = field(default='core', validator=in_(('core', 'mantle')))
     inertial_terms: bool = field(default=True)
-    bulk_l: float = field(default=1e9, validator=gt(0))
+    # `str` in the type lets cattrs structure the TOML literal "none" before none_if_none
+    bulk_l: float | str | None = field(
+        default=1e9, converter=none_if_none, validator=optional(gt(0))
+    )
     porosity_thresh: float = field(default=3e-2, validator=gt(0))
     dbulk_power: float = field(default=0.5, validator=gt(0))
 
@@ -130,6 +133,14 @@ class ObliquaFluid:
         Scale height to be used by heating profile [m].
     efficiency: float
         Rayleigh drag efficiency at core interface [dimensionless].
+    omega_sw: float
+        Forcing frequency above which fluid1d_relax replaces a static liquid core by the
+        inertial liquid core [rad/s].
+    visc_fluid: float
+        Viscosity below this value are fluid.
+    n_sub: int
+        Number of sub-layers per interior layer so that the fluid interface moves
+        continuously instead of by whole layers [dimensionless].
     """
 
     sigma_R: float = field(default=1e-3, validator=gt(0))
@@ -140,6 +151,9 @@ class ObliquaFluid:
     )
     H_R: float = field(default=1e4, validator=gt(0))
     efficiency: float = field(default=0.3, validator=gt(0))
+    omega_sw: float = field(default=1e-5, validator=gt(0))
+    visc_fluid: float = field(default=1e8, validator=gt(0))
+    n_sub: int = field(default=10, validator=ge(1))
 
 
 @define
@@ -189,7 +203,7 @@ class Obliqua:
     module_mushy : str
         Mushy-tide module to use ("none", "interp").
     module_fluid : str
-        Fluid-tide module to use ("none", "fluid0d", "fluid1d").
+        Fluid-tide module to use ("none", "fluid0d", "fluid1d", "fluid1d_relax").
     solid : ObliquaSolid
         Solid-tide configuration.
     mushy : ObliquaMushy
@@ -241,7 +255,9 @@ class Obliqua:
         ),
     )
     module_mushy: str = field(default='none', validator=in_(('none', 'interp')))
-    module_fluid: str = field(default='fluid0d', validator=in_(('none', 'fluid0d', 'fluid1d')))
+    module_fluid: str = field(
+        default='fluid0d', validator=in_(('none', 'fluid0d', 'fluid1d', 'fluid1d_relax'))
+    )
 
     # submodules
     solid: ObliquaSolid = field(factory=ObliquaSolid)
