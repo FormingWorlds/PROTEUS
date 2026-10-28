@@ -1218,7 +1218,9 @@ def test_resumed_loop_reaches_a_second_reset_on_a_stale_mesh(tmp_path, case):
         p, hf_df, _aragog_like_interior(mesh, calls), _stop_on_second_atmosphere_call()
     )
 
-    assert np.asarray(calls) == pytest.approx(np.array([(3.4e6, 6.4e6), (3.4e6, 6.4e6)]))
+    assert np.asarray(calls) == pytest.approx(
+        np.array([(3.4e6, 6.4e6), (3.4e6, 6.4e6)]), rel=1e-12
+    )
     assert _saved_copy(tmp_path, p.hf_all['Time'].iloc[-1]).read_bytes() == mesh.read_bytes()
 
 

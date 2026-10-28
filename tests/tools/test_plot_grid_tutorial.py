@@ -246,7 +246,7 @@ def test_outputs_give_pressure_in_bar_against_the_budget(grid_dir, tmp_path):
         assert ax.get_xlabel() == xlabel
         assert ax.get_ylabel() == ylabel
         pts = sorted(tuple(c.get_offsets()[0]) for c in ax.collections)
-        assert np.asarray(pts) == pytest.approx(np.asarray(exp_pts))
+        assert np.asarray(pts) == pytest.approx(np.asarray(exp_pts), rel=1e-12)
     # Assert point colour of each case against expected mass colour
     for ax in fig.axes:
         for c, coll in zip(cases, ax.collections):
