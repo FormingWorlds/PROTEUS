@@ -430,9 +430,10 @@ def run_layer_trapping(
         return _fallback(config, hf_row, prev, interior_o, dm_rm, melt_mass)
     tr = config.outgas
     rfront_loc = critical_melt_fraction(config)
-    # The previous solve dissolved into the previous step's ocean melt alone.
+    # The previous solve dissolved into the previous step's ocean melt alone. The
+    # helpfile stores an unset value as 0, which then means no layer step wrote it.
     ocean_prev = float(prev.get('trap_Phi_ocean', float('nan')))
-    if np.isfinite(ocean_prev):
+    if np.isfinite(ocean_prev) and ocean_prev > 0.0:
         melt_mass = float(prev.get('M_mantle', hf_row.get('M_mantle', 0.0))) * ocean_prev
     record = _usable_record(interior_o, profiles['n'])
     trapped = {sp: trapped_kg(hf_row, sp) for sp in RECORD_SPECIES}
