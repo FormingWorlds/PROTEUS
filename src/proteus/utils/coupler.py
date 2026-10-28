@@ -1233,13 +1233,13 @@ def GetHelpfileKeys():
         'trap_L_front',     # thickness of the freezing front, the thickest mush layer in the layer scheme [m]
         'trap_v_front',     # front speed from the mass crystallised, at the base of the front or of the thickest mush layer [m s-1]
         'trap_front_courant',  # front advance over one step, in front thicknesses [1]
-        'trap_w_matrix_over_vf',  # matrix speed at the top of the front over the front speed, NaN in the layer scheme [1]
+        'trap_w_matrix_over_vf',  # matrix speed at the top of the front over the front speed, 0 in the layer scheme [1]
         'trap_n_exited',    # mush nodes that reached the porosity floor this step, layer scheme [1]
         'trap_frac_bound',  # mass share of those nodes that reached it on the no-drainage bound, including nodes that drained before they were sealed [1]
         'trap_n_substeps',  # drainage sub-steps of the layer scheme this step [1]
-        'trap_n_mush',      # mush nodes of the whole mesh, layer scheme; NaN in the front scheme [1]
+        'trap_n_mush',      # mush nodes of the whole mesh, layer scheme; 0 in the front scheme [1]
         'trap_kg_returned',  # volatile mass trapping returned to the melt this step, by remelting or by drainage [kg]
-        'trap_Phi_ocean',   # melt of the liquid nodes over the mantle mass, the melt the chemistry dissolves into in the layer scheme; NaN otherwise [1]
+        'trap_Phi_ocean',   # melt of the liquid nodes over the mantle mass, the melt the chemistry dissolves into in the layer scheme; 0 when no layer step set it [1]
 
         # Giant-impact accretion ledger: cumulative rock mass added to interior
         # mass anchor to enable reconstruction on resume.

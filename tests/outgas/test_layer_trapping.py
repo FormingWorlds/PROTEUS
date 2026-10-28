@@ -582,9 +582,21 @@ def test_the_chemistry_dissolves_into_the_ocean_melt_alone():
         c_ocean * 0.5 * _M_NODE, rel=1e-12
     )
     c_global = liquid / (0.825 * _M_MANTLE)
+
     assert abs(interior.trap_record.pore['H2O'][5] - c_global * 0.5 * _M_NODE) > 0.05 * (
         row['H2O_kg_trapped'] - before
     )
+
+    # A previous row whose ocean melt the helpfile stored as 0, because no layer
+    # step set it, takes the concentration on the global melt instead. A new
+    # record buries its mush at first sight, node 5 at its own x = 0.3.
+    unset_prev = dict(_hf_row(_X_FREEZE), trap_Phi_ocean=0.0)
+    fresh = _interior(x)
+    again = _hf_row(x, time=3.0e4, H2O_kg_liquid=liquid)
+    run_trapping(config, again, pd.DataFrame([unset_prev]), fresh)
+    expected = c_global * 0.3 * _M_NODE
+    assert fresh.trap_record.pore['H2O'][5] == pytest.approx(expected, rel=1e-12)
+    assert abs(fresh.trap_record.pore['H2O'][5] - c_ocean * 0.3 * _M_NODE) > 0.05 * expected
 
 
 @pytest.mark.physics_invariant

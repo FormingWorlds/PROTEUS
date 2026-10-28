@@ -360,7 +360,7 @@ Each step moves the net mass, new burials minus returns, between `{sp}_kg_liquid
 
 ### The chemistry sees the ocean melt
 
-The pore melt of the mush and solid nodes is cut off from the ocean. So with `"layers"` the chemistry solver dissolves volatiles into the melt of the liquid nodes alone. For the length of the solve, `Phi_global` reads `trap_Phi_ocean`: the liquid nodes' share of the melt times the global melt fraction. It is restored after the solve. The next step takes its melt concentration on that same ocean melt.
+The pore melt of the mush and solid nodes is cut off from the ocean. So with `"layers"` the chemistry solver dissolves volatiles into the melt of the liquid nodes alone. For the length of the solve, `Phi_global` reads `trap_Phi_ocean`: the liquid nodes' share of the melt times the global melt fraction. A step without a value, which the helpfile stores as 0, leaves `Phi_global` as it is. It is restored after the solve. The next step takes its melt concentration on that same ocean melt.
 
 ### Remelting node by node
 
@@ -380,7 +380,7 @@ The trapping columns have one meaning in both modes. For `"layers"` they read as
 
 - `trap_F_tl` \[1\]: the mass-weighted trapped melt fraction of the nodes that froze in the step, 0 when none did.
 - `trap_n_front`, `trap_L_front` \[m\], `trap_tau_D` and `trap_tau_s` \[yr\]: the node count, thickness, percolation time and matrix time of the thickest mush layer, which stands for the front.
-- `trap_v_front` \[m s$^{-1}$\] and `trap_front_courant` \[1\]: the front speed from the mass that froze, at the base of the thickest mush layer, and its advance in that layer's thicknesses. `trap_w_matrix_over_vf` is NaN, since no single front top exists.
+- `trap_v_front` \[m s$^{-1}$\] and `trap_front_courant` \[1\]: the front speed from the mass that froze, at the base of the thickest mush layer, and its advance in that layer's thicknesses. `trap_w_matrix_over_vf` is not computed, since no single front top exists, and the helpfile stores it as 0.
 - `trap_t_res` \[yr\]: the mass-weighted time the nodes that froze spent in the mush.
 - `trap_n_mush`: the mush nodes of the whole mesh. `trap_n_exited`: nodes that froze in the step.
 - `trap_frac_bound` \[1\]: the mass share of the nodes that froze on the no-drainage bound. It includes nodes that drained before their mush layer was sealed, so it is not the share that kept their entry pore melt.

@@ -3528,7 +3528,7 @@
     {
       "name": "trap_w_matrix_over_vf",
       "unit": "1",
-      "description": "matrix speed at the top of the front over the front speed, NaN in the layer scheme",
+      "description": "matrix speed at the top of the front over the front speed, 0 in the layer scheme",
       "group": "Solid-phase volatile trapping",
       "origin": "literal",
       "producers": [
@@ -3588,7 +3588,7 @@
     {
       "name": "trap_n_mush",
       "unit": "1",
-      "description": "mush nodes of the whole mesh, layer scheme; NaN in the front scheme",
+      "description": "mush nodes of the whole mesh, layer scheme; 0 in the front scheme",
       "group": "Solid-phase volatile trapping",
       "origin": "literal",
       "producers": [
@@ -3620,7 +3620,7 @@
     {
       "name": "trap_Phi_ocean",
       "unit": "1",
-      "description": "melt of the liquid nodes over the mantle mass, the melt the chemistry dissolves into in the layer scheme; NaN otherwise",
+      "description": "melt of the liquid nodes over the mantle mass, the melt the chemistry dissolves into in the layer scheme; 0 when no layer step set it",
       "group": "Solid-phase volatile trapping",
       "origin": "literal",
       "producers": [

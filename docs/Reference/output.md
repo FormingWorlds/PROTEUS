@@ -301,13 +301,13 @@ Each iteration carries the previous row forward and overwrites only the columns 
 | `trap_L_front` | `m` | thickness of the freezing front, the thickest mush layer in the layer scheme | `outgas/trap_bookkeeping.py` | always |   |
 | `trap_v_front` | `m s-1` | front speed from the mass crystallised, at the base of the front or of the thickest mush layer | `outgas/trap_bookkeeping.py` | always |   |
 | `trap_front_courant` | `1` | front advance over one step, in front thicknesses | `outgas/trap_bookkeeping.py` | always |   |
-| `trap_w_matrix_over_vf` | `1` | matrix speed at the top of the front over the front speed, NaN in the layer scheme | `outgas/trap_bookkeeping.py` | always |   |
+| `trap_w_matrix_over_vf` | `1` | matrix speed at the top of the front over the front speed, 0 in the layer scheme | `outgas/trap_bookkeeping.py` | always |   |
 | `trap_n_exited` | `1` | mush nodes that reached the porosity floor this step, layer scheme | `outgas/trap_bookkeeping.py` | always |   |
 | `trap_frac_bound` | `1` | mass share of those nodes that reached it on the no-drainage bound, including nodes that drained before they were sealed | `outgas/trap_bookkeeping.py` | always |   |
 | `trap_n_substeps` | `1` | drainage sub-steps of the layer scheme this step | `outgas/trap_bookkeeping.py` | always |   |
-| `trap_n_mush` | `1` | mush nodes of the whole mesh, layer scheme; NaN in the front scheme | `outgas/trap_bookkeeping.py` | always |   |
+| `trap_n_mush` | `1` | mush nodes of the whole mesh, layer scheme; 0 in the front scheme | `outgas/trap_bookkeeping.py` | always |   |
 | `trap_kg_returned` | `kg` | volatile mass trapping returned to the melt this step, by remelting or by drainage | `outgas/trap_bookkeeping.py` | always | outgas |
-| `trap_Phi_ocean` | `1` | melt of the liquid nodes over the mantle mass, the melt the chemistry dissolves into in the layer scheme; NaN otherwise | `outgas/trap_bookkeeping.py`<br>`outgas/trapping.py` | always | outgas |
+| `trap_Phi_ocean` | `1` | melt of the liquid nodes over the mantle mass, the melt the chemistry dissolves into in the layer scheme; 0 when no layer step set it | `outgas/trap_bookkeeping.py`<br>`outgas/trapping.py` | always | outgas |
 
 ### Giant-impact accretion ledger
 
