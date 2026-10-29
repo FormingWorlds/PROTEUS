@@ -32,6 +32,7 @@ import numpy as np
 import pytest
 from aragog.solver.entropy_solver import EntropySolver
 
+from proteus.config._interior import Spider
 from proteus.interior_energetics.aragog import InteriorStalledError
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
@@ -74,7 +75,7 @@ def _make_aragog_config(*, struct_module='spider', mantle_eos='Seager2007:silica
     config.interior_energetics.aragog.phase_boundary_cap = 'fixed'
     config.interior_energetics.aragog.separation_viscosity = 'mixture'
     config.interior_energetics.aragog.separation_buoyancy = 'mixture'
-    config.interior_energetics.spider.matprop_smooth_width = 1.0e-2
+    config.interior_energetics.spider = Spider()
     config.interior_energetics.const_properties = False
     config.interior_energetics.heat_radiogenic = False
     config.interior_energetics.heat_tidal = False
@@ -98,21 +99,6 @@ def _make_aragog_config(*, struct_module='spider', mantle_eos='Seager2007:silica
     config.interior_struct.eos_dir = 'WolfBower2018_MgSiO3'
     config.interior_struct.melting_dir = 'Wolf_Bower+2018'
     return config
-
-
-@pytest.mark.parametrize(
-    'make',
-    [lambda: _make_aragog_config(), lambda: _jax_factory_config()],
-    ids=['aragog_config', 'jax_factory_config'],
-)
-def test_the_helper_smoothing_width_passes_the_config_validator(make):
-    """The helpers set the width by attribute, which skips the ``Spider`` validator."""
-    from proteus.config._interior import Spider
-
-    try:
-        Spider(matprop_smooth_width=make().interior_energetics.spider.matprop_smooth_width)
-    except ValueError as err:
-        pytest.fail(f'the helper width is refused: {err}')
 
 
 # Entropy EOS stand-in whose P-S tables reach past any P_cmb in these tests.
@@ -2039,7 +2025,7 @@ def _jax_factory_config():
     ie.grain_size = 0.1
     ie.solid_cond = 4.0
     ie.melt_cond = 4.0
-    ie.spider.matprop_smooth_width = 1.0e-2
+    ie.spider = Spider()
     ie.trans_conduction = True
     ie.trans_convection = True
     ie.trans_grav_sep = True
