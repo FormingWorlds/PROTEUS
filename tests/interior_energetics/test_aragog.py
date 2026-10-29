@@ -100,6 +100,18 @@ def _make_aragog_config(*, struct_module='spider', mantle_eos='Seager2007:silica
     return config
 
 
+@pytest.mark.parametrize(
+    'make',
+    [lambda: _make_aragog_config(), lambda: _jax_factory_config()],
+    ids=['aragog_config', 'jax_factory_config'],
+)
+def test_the_helper_smoothing_width_passes_the_config_validator(make):
+    """The helpers set the width by attribute, which skips the ``Spider`` validator."""
+    from proteus.config._interior import Spider
+
+    Spider(matprop_smooth_width=make().interior_energetics.spider.matprop_smooth_width)
+
+
 # Entropy EOS stand-in whose P-S tables reach past any P_cmb in these tests.
 _EOS = MagicMock(P_max=1.0e13)
 
