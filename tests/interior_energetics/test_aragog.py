@@ -109,7 +109,10 @@ def test_the_helper_smoothing_width_passes_the_config_validator(make):
     """The helpers set the width by attribute, which skips the ``Spider`` validator."""
     from proteus.config._interior import Spider
 
-    Spider(matprop_smooth_width=make().interior_energetics.spider.matprop_smooth_width)
+    try:
+        Spider(matprop_smooth_width=make().interior_energetics.spider.matprop_smooth_width)
+    except ValueError as err:
+        pytest.fail(f'the helper width is refused: {err}')
 
 
 # Entropy EOS stand-in whose P-S tables reach past any P_cmb in these tests.
