@@ -32,6 +32,7 @@ import numpy as np
 import pytest
 from aragog.solver.entropy_solver import EntropySolver
 
+from proteus.config._interior import Spider
 from proteus.interior_energetics.aragog import InteriorStalledError
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
@@ -74,7 +75,7 @@ def _make_aragog_config(*, struct_module='spider', mantle_eos='Seager2007:silica
     config.interior_energetics.aragog.phase_boundary_cap = 'fixed'
     config.interior_energetics.aragog.separation_viscosity = 'mixture'
     config.interior_energetics.aragog.separation_buoyancy = 'mixture'
-    config.interior_energetics.spider.matprop_smooth_width = 0.0
+    config.interior_energetics.spider = Spider()
     config.interior_energetics.const_properties = False
     config.interior_energetics.heat_radiogenic = False
     config.interior_energetics.heat_tidal = False
@@ -2024,7 +2025,7 @@ def _jax_factory_config():
     ie.grain_size = 0.1
     ie.solid_cond = 4.0
     ie.melt_cond = 4.0
-    ie.spider.matprop_smooth_width = 0.0
+    ie.spider = Spider()
     ie.trans_conduction = True
     ie.trans_convection = True
     ie.trans_grav_sep = True
