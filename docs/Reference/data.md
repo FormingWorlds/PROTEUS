@@ -215,9 +215,19 @@ species, see `docs/assets/spectral_files.pdf` in the PROTEUS repository.
 | `Dayspring` | 16, 48, 256, 4096 | |
 | `Frostflow` | 16, 48, 256, 4096 | |
 | `Oak` | 318 | |
+| `Snowline` | 32, 64, 128, 256, 2048 | Lines: H2O |
+| `Breezehome` | 32, 64, 128, 256, 2048 | Lines: H2O, CO2, CO, O2, SO2, OCS, S2 |
+| `Cliffshade` | 32, 64, 128, 256, 2048 | Lines: H2, CO, CH4, S2, H2S, N2, NH3 |
+| `Volenfell` | 32, 64, 128, 256, 2048 | Lines: CO, O2, SiO, TiO, MgO, Na, K, Fe |
+| `Skyborn` | 32, 64, 128, 256, 2048 | Lines: H2O, H2, CO2, CO, SiO, TiO, VO, MgO, Na, K, Fe |
+| `Atmora` | 32, 64, 128, 256, 2048 | Lines: H2O, H2, CO2, CO, O2, CH4, SO2, S2, H2S, NH3, SiO, TiO, Na, K |
+| `Proudspire` | 32, 64, 128, 256, 2048 | Lines: H2O, H2, CO2, CO, O2, O3, CH4, SO2, OCS, S2, H2S, N2, NH3, HCN |
+| `Sovngarde` | 32, 64, 128, 256, 2048 | Lines: the Proudspire set plus SiO, TiO, MgO, Na, K, Fe |
 
 The default configuration uses `Honeyside` / `48`. Higher band counts
-increase spectral resolution and runtime cost.
+increase spectral resolution and runtime cost. The line absorbers listed
+for the groups from `Snowline` on come from the descriptions of their
+Zenodo records, which also list the continuum absorbers of each file.
 
 ---
 
