@@ -41,8 +41,6 @@ from pathlib import Path
 
 import pytest
 from helpers import PROTEUS_ROOT, git, install_git_guard, scratch_proteus_root
-from hypothesis import assume, given, settings
-from hypothesis import strategies as st
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -2530,42 +2528,39 @@ class TestJuliaupHasChannel:
     """juliaup_has_channel is true only when the channel of that exact name is listed."""
 
     @staticmethod
-    def _ask(tmp: Path, channel: str, printed: str, rc: int = 0) -> bool:
-        """Run the shipped juliaup_has_channel with a juliaup stub that prints ``printed``."""
-        stubs = tmp / 'stubs'
+    def _ask(tmp: Path, channel: str, printed: str, rc: int = 0) -> subprocess.CompletedProcess:
+        """Run the shipped juliaup_has_channel with a juliaup stub that prints ``printed``.
+
+        The answer is on stdout, Y or N; stderr stays empty, also for text that is no config.
+        """
         (tmp / 'printed.txt').write_text(printed)
+        stubs = tmp / 'stubs'
         _stub(stubs / 'juliaup', f'#!/bin/sh\ncat "{tmp}/printed.txt"\nexit {rc}\n')
         defs = 'set -euo pipefail\n' + ''.join(
             _install_sh_function(f) for f in ('juliaup_config_matches', 'juliaup_has_channel')
         )
-        result = subprocess.run(
-            [
-                'bash',
-                '-c',
-                defs
-                + f'if juliaup_has_channel {shlex.quote(channel)}; then echo Y; else echo N; fi\n',
-            ],
+        ask = f'if juliaup_has_channel {shlex.quote(channel)}; then echo Y; else echo N; fi\n'
+        return subprocess.run(
+            ['bash', '-c', defs + ask],
             capture_output=True,
             text=True,
             env={'PATH': f'{stubs}{os.pathsep}/usr/bin:/bin'},
             timeout=10,
         )
-        assert result.returncode == 0, result.stderr
-        return result.stdout.strip() == 'Y'
 
     @pytest.mark.parametrize(
         ('printed', 'rc', 'expected'),
         [
-            (_juliaup_config('1.13'), 0, True),
-            (_juliaup_config('1.12', 'release', '1.13', '1'), 0, True),
-            (json.dumps(json.loads(_juliaup_config('1.13')), indent=2), 0, True),
-            (_juliaup_config('1.13'), 1, False),
-            (_juliaup_config('1.12', '1.13.1', '1.130', '1x13', '11.13'), 0, False),
-            (_juliaup_config(None), 0, False),
-            ('', 0, False),
-            ('null', 0, False),
-            ('{"OtherChannels":[{"Name":13}]}', 0, False),
-            ('{"Note":"\\"Name\\":\\"1.13\\""}', 0, False),
+            (_juliaup_config('1.13'), 0, 'Y'),
+            (_juliaup_config('1.12', 'release', '1.13', '1'), 0, 'Y'),
+            (json.dumps(json.loads(_juliaup_config('1.13')), indent=2), 0, 'Y'),
+            (_juliaup_config('1.13'), 1, 'N'),
+            (_juliaup_config('1.12', '1.13.1', '1.130', '1x13', '11.13'), 0, 'N'),
+            (_juliaup_config(None), 0, 'N'),
+            ('', 0, 'N'),
+            ('null', 0, 'N'),
+            ('{"OtherChannels":[{"Name":13}]}', 0, 'N'),
+            ('{"Note":"\\"Name\\":\\"1.13\\""}', 0, 'N'),
         ],
         ids=[
             'default',
@@ -2582,33 +2577,52 @@ class TestJuliaupHasChannel:
     )
     def test_answer(self, tmp_path, printed, rc, expected):
         """Near names, a failed call and text that is no config answer no."""
-        assert self._ask(tmp_path, '1.13', printed, rc) is expected
+        result = self._ask(tmp_path, '1.13', printed, rc)
+        assert result.stdout.strip() == expected
+        assert result.stderr == ''
 
-    @settings(max_examples=25, deadline=None)
-    @given(
-        names=st.lists(
-            st.sampled_from(['1.13', '1.13.1', '1.130', '1x13', '11.13', 'release', '1', '']),
-            max_size=4,
-        )
-    )
-    def test_answer_equals_a_json_read_of_the_names(self, names):
+    def test_answer_equals_a_json_read_of_the_names(self):
         """Over lists of near names, the shell answer equals a JSON read of the same output."""
-        printed = _juliaup_config(None, *names)
-        with tempfile.TemporaryDirectory() as td:
-            assert self._ask(Path(td), '1.13', printed) is ('1.13' in names)
+        hypothesis = pytest.importorskip('hypothesis')
+        st = hypothesis.strategies
 
-    @settings(max_examples=25, deadline=None)
-    @given(
-        printed=st.text(
-            alphabet=st.characters(exclude_categories=('Cs',), exclude_characters='\x00'),
-            max_size=200,
+        @hypothesis.settings(max_examples=25, deadline=None)
+        @hypothesis.given(
+            names=st.lists(
+                st.sampled_from(
+                    ['1.13', '1.13.1', '1.130', '1x13', '11.13', 'release', '1', '']
+                ),
+                max_size=4,
+            )
         )
-    )
-    def test_text_that_names_no_channel_answers_no(self, printed):
+        def check(names):
+            with tempfile.TemporaryDirectory() as td:
+                result = self._ask(Path(td), '1.13', _juliaup_config(None, *names))
+            assert result.stdout.strip() == ('Y' if '1.13' in names else 'N')
+            assert result.stderr == ''
+
+        check()
+
+    def test_text_that_names_no_channel_answers_no(self):
         """Arbitrary text with no quoted channel name answers no and never stops the shell."""
-        assume('"1.13"' not in printed)
-        with tempfile.TemporaryDirectory() as td:
-            assert self._ask(Path(td), '1.13', printed) is False
+        hypothesis = pytest.importorskip('hypothesis')
+        st = hypothesis.strategies
+
+        @hypothesis.settings(max_examples=25, deadline=None)
+        @hypothesis.given(
+            printed=st.text(
+                alphabet=st.characters(exclude_categories=('Cs',), exclude_characters='\x00'),
+                max_size=200,
+            )
+        )
+        def check(printed):
+            hypothesis.assume('"1.13"' not in printed)
+            with tempfile.TemporaryDirectory() as td:
+                result = self._ask(Path(td), '1.13', printed)
+            assert result.stdout.strip() == 'N'
+            assert result.stderr == ''
+
+        check()
 
 
 class TestAgniJuliaVersion:
