@@ -2389,18 +2389,27 @@ class TestSetupJuliaWithoutJulia:
         assert 'Installation failed at Phase 2.' in result.stdout
         assert TestSetupJulia._report(result) == []
 
-    def test_juliaup_without_julia_uses_the_113_channel_and_sets_no_default(self, site):
-        """A juliaup on PATH with no julia and an installed 1.13: only a read of its channels.
+    def test_juliaup_without_a_default_uses_the_113_channel(self, site):
+        """juliaup with no default channel and an installed 1.13: `julia +1.13` runs, bare julia never.
 
-        The line names the juliaup default that stays.
+        The launcher sits beside juliaup, as juliaup ships it. The line names the
+        juliaup default that stays.
         """
         jup = site['payload'].parent / 'jup' / 'bin'
         _stub(jup / 'juliaup', _STUB_JULIAUP)
-        env = {'PATH': f'{jup}{os.pathsep}{site["env"]["PATH"]}'}
-        result = TestSetupJulia._call(site, '1.10.4', **env)
+        _stub(jup / 'julia', _STUB_JULIA)
+        result = TestSetupJulia._call(
+            site,
+            '1.10.4',
+            PATH=f'{jup}{os.pathsep}{site["env"]["PATH"]}',
+            STUB_JULIAUP_CONFIG=_juliaup_config(None, '1.13'),
+        )
         assert result.returncode == 0, result.stdout + result.stderr
         calls = site['log'].read_text().splitlines()
         assert {c for c in calls if c.startswith(('juliaup', 'curl'))} == {_JULIAUP_READ}
+        assert [c for c in calls if c.startswith('julia ')] == [
+            'julia +1.13 --startup-file=no -e print(Sys.BINDIR)'
+        ]
         path, exe, channel, bare = TestSetupJulia._report(result)
         assert (exe, channel, bare) == (
             str(site['jl113'] / 'julia'),
@@ -2476,6 +2485,7 @@ class TestSetupJuliaWithoutJulia:
         """
         jup = site['home'] / '.juliaup' / 'bin'
         _stub(jup / 'juliaup', _STUB_JULIAUP)
+        _stub(jup / 'julia', _STUB_JULIA)
         result = TestSetupJulia._call(site, '1.10.4')
         assert result.returncode == 0, result.stdout + result.stderr
         calls = site['log'].read_text().splitlines()
@@ -2485,7 +2495,7 @@ class TestSetupJuliaWithoutJulia:
         assert (exe, channel) == (str(site['jl113'] / 'julia'), '+1.13')
         assert TestSetupJulia._used_lines(result) == [
             f'\x1b[0;32m[INFO]\x1b[0m  PROTEUS uses Julia 1.13.1 at {exe}; '
-            'the default Julia of juliaup stays as it is.'
+            'your default Julia 1.10.4 stays as it is.'
         ]
 
 
@@ -2562,7 +2572,12 @@ class TestJuliaupHasChannel:
             assert self._ask(Path(td), '1.13', printed) is ('1.13' in names)
 
     @settings(max_examples=25, deadline=None)
-    @given(printed=st.text(alphabet=st.characters(exclude_characters='\x00'), max_size=200))
+    @given(
+        printed=st.text(
+            alphabet=st.characters(exclude_categories=('Cs',), exclude_characters='\x00'),
+            max_size=200,
+        )
+    )
     def test_text_that_names_no_channel_answers_no(self, printed):
         """Arbitrary text with no quoted channel name answers no and never stops the shell."""
         assume('"1.13"' not in printed)
@@ -2986,41 +3001,43 @@ class TestSetupCondaEnv:
         ]
 
     def test_made_env_checks_julia_first(self, site):
-        """The Julia check comes before `conda create`, and a missing Julia makes no env.
-
-        The conda log is shared with the setup_julia stand-in, so the order is pinned.
-        """
-        log = str(site['log'])
-        result = self._call(site, STUB_JULIA_LOG=log)
+        """The Julia check comes before `conda create`; the log is shared with the setup_julia stand-in."""
+        result = self._call(site, STUB_JULIA_LOG=str(site['log']))
         assert result.returncode == 0, result.stdout + result.stderr
         calls = _conda_calls(site['log'])
         assert calls.index(['setup_julia']) < calls.index(
             ['create', '-y', '-n', 'proteus', 'python=3.12']
         )
-        site['log'].write_text('')
-        result = self._call(site, STUB_JULIA_LOG=log, STUB_NO_JULIA='1')
+
+    def test_missing_julia_makes_no_env(self, site):
+        """A setup_julia that stops ends the run with no `conda create` and no activation."""
+        result = self._call(site, STUB_JULIA_LOG=str(site['log']), STUB_NO_JULIA='1')
         assert result.returncode == 1
         calls = _conda_calls(site['log'])
         assert ['setup_julia'] in calls
         assert [c for c in calls if c[0] in ('create', 'activate')] == []
 
-    def test_existing_or_active_env_keeps_the_check_for_later(self, site):
-        """An existing or active env can hold PYTHON_JULIAPKG_EXE, so no check runs before it is active."""
-        log = str(site['log'])
+    def test_existing_env_keeps_the_check_for_later(self, site):
+        """An existing env can hold PYTHON_JULIAPKG_EXE, so no check runs before it is active."""
+        (site['base'] / 'envs' / 'proteus' / 'bin').mkdir(parents=True)
+        _stub(site['base'] / 'envs' / 'proteus' / 'bin' / 'python', '#!/bin/sh\nexit 0\n')
         result = self._call(
-            site, STUB_JULIA_LOG=log, STUB_CONDA_ENVS='proteus', STUB_NO_JULIA='1'
+            site, STUB_JULIA_LOG=str(site['log']), STUB_CONDA_ENVS='proteus', STUB_NO_JULIA='1'
         )
         assert result.returncode == 0, result.stdout + result.stderr
         assert ['setup_julia'] not in _conda_calls(site['log'])
+
+    def test_active_env_keeps_the_check_for_later(self, site):
+        """An active env is read in the Julia step, with its variables already set."""
         result = self._call(
             site,
-            STUB_JULIA_LOG=log,
+            STUB_JULIA_LOG=str(site['log']),
             STUB_NO_JULIA='1',
             CONDA_DEFAULT_ENV='mine',
             CONDA_PREFIX='/x',
         )
         assert result.returncode == 0, result.stdout + result.stderr
-        assert ['setup_julia'] not in _conda_calls(site['log'])
+        assert not site['log'].exists() or ['setup_julia'] not in _conda_calls(site['log'])
 
     def test_existing_proteus_is_used_with_a_warning_that_names_the_switch(self, site):
         """Without a terminal an env `proteus` that exists is activated, not made, and named in one warning.
