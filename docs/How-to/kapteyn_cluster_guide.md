@@ -97,6 +97,11 @@ export JULIAUP_HOME=/dataserver/users/formingworlds/<username>/.juliaup
 curl -fsSL https://install.julialang.org | sh
 ```
 
+Then open a new terminal and add Julia 1.13, which the installer checks for and does not install:
+```console
+juliaup add 1.13
+```
+
 To also make sure that the Julia ecosystem, such as Julia packages, are also not installed in `$HOME`, add `JULIA_DEPOT_PATH` to your `~/.shellrc`, e.g. `~/.bashrc`:
 ```console
 export JULIA_DEPOT_PATH=/dataserver/users/formingworlds/<username>/.julia

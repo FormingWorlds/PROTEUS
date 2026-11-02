@@ -48,7 +48,7 @@ collect_env_info() {
     echo "shell:   ${SHELL:-?}"
     echo "conda:   env=${CONDA_DEFAULT_ENV:-(none)} prefix=${CONDA_PREFIX:-?}"
     echo "python:  $(python3 --version 2>&1) ($(command -v python3 2>/dev/null))"
-    echo "julia:   $( { julia_answers_without_download "$(command -v julia)" && julia --version; } 2>/dev/null || echo '(not on PATH)') ($(command -v julia 2>/dev/null))"
+    echo "julia:   $( { julia_answers_without_download "$(command -v julia)" && julia --version; } 2>/dev/null || echo '(not on PATH, or a juliaup launcher with no default channel)') ($(command -v julia 2>/dev/null))"
     local v
     for v in FWL_DATA RAD_DIR FC_DIR PYTHON_JULIAPKG_EXE PYTHON_JULIACALL_BINDIR JULIA_CHANNEL; do
         echo "  ${v}=${!v:-(unset)}"
@@ -251,12 +251,15 @@ juliaup_has_channel() {
     juliaup_config_matches "\"Name\"[[:space:]]*:[[:space:]]*\"${1//./[.]}\""
 }
 
-# Whether the Julia $1 can run with no download: a juliaup launcher with no default channel
-# can set itself up and download.
+# Whether the Julia $1 can run with no download: a juliaup launcher, also through a link, with
+# no default channel can set itself up and download.
 julia_answers_without_download() {
-    local dir
-    [ -n "$1" ] || return 1
-    dir="$(dirname "$1")"
+    local path="$1" link dir
+    [ -n "$path" ] || return 1
+    while link=$(readlink "$path"); do
+        case "$link" in /*) path="$link" ;; *) path="$(dirname "$path")/$link" ;; esac
+    done
+    dir="$(dirname "$path")"
     [ -x "$dir/juliaup" ] || return 0
     juliaup_config_matches '"DefaultChannel"[[:space:]]*:[[:space:]]*[{]' "$dir/juliaup"
 }
@@ -283,6 +286,9 @@ report_proteus_julia() {
 stop_without_julia() {
     local req="$REQUIRED_JULIA_MAJOR.$REQUIRED_JULIA_MINOR"
     [ "$1" = none ] || warn "PROTEUS runs on Julia $req, found $1."
+    if command_exists juliaup && ! juliaup api getconfig1 </dev/null >/dev/null 2>&1; then
+        warn "'juliaup api getconfig1' failed, so install.sh cannot read your juliaup channels; update juliaup first."
+    fi
     echo "PROTEUS needs Julia $req. install.sh checks for Julia and does not install it."
     echo "To install it, run:"
     if ! command_exists juliaup; then
@@ -330,9 +336,7 @@ setup_julia() {
         esac
         default="${julia_version:-(version unknown)}"
     fi
-    if ! command_exists juliaup || ! juliaup_has_channel "$req"; then
-        stop_without_julia "$default"
-    fi
+    command_exists juliaup && juliaup_has_channel "$req" || stop_without_julia "$default"
     use_julia_channel "+$req" || die "Could not locate the Julia $req binary of its juliaup channel."
     PATH="$(dirname "$PYTHON_JULIAPKG_EXE"):$PATH"
     export PATH
@@ -787,8 +791,8 @@ stop_without_conda_env() {
     fail "$1"
     echo ""
     if ! command_exists conda; then
-        echo "Install conda first (Miniforge), as step 2 of the installation page describes:"
-        echo "  https://proteus-framework.org/PROTEUS/How-to/installation.html#2-clone-proteus-and-set-up-python-environment"
+        echo "Install conda first (Miniforge), as step 3 of the installation page describes:"
+        echo "  https://proteus-framework.org/PROTEUS/How-to/installation.html#3-clone-proteus-and-set-up-python-environment"
     elif [ -n "${made:-}" ]; then
         echo "Activate the conda environment first:"
         echo "  conda activate $2"

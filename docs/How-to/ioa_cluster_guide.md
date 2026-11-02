@@ -36,9 +36,15 @@ Then install Julia, making sure to set the path to `/data/<username>/.julia` whe
 curl -fsSL https://install.julialang.org | sh
 ```
 
+Open a new terminal, then add Julia 1.13. The installer checks for it and does not install it:
+
+```bash
+juliaup add 1.13
+```
+
 ## Setup Python
 
-You need not set the variable `PYTHON_JULIAPKG_EXE` yourself: `bash install.sh` sets it to the binary of Julia 1.13 in the conda environment. In the manual steps, set it as they describe, to that binary and not to the juliaup launcher.
+You need not set the variable `PYTHON_JULIAPKG_EXE` yourself: `bash install.sh` sets it to the binary of the Julia 1.13 that you added, in the conda environment. In the manual steps, set it as they describe, to that binary and not to the juliaup launcher.
 
 Then install Python, also making sure to install to `/data/<username>/miniforge3`:
 
