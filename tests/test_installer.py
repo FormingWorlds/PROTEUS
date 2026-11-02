@@ -2933,6 +2933,7 @@ class TestNoJuliaInstall:
             'julialang.org |',
             'juliaup add 1.13',
         ]
+        assert [step for step in steps if step not in text] == []
         places = [text.index(step) for step in steps]
         assert places == sorted(places)
 
@@ -2941,6 +2942,7 @@ class TestNoJuliaInstall:
         text = (PROTEUS_ROOT / 'docs' / 'How-to' / 'kapteyn_cluster_guide.md').read_text()
         item = text[text.index('\n7. ') :]
         item = item[: item.index('\n\n')]
+        assert '(#julia-considerations)' in item
         assert item.index('(#julia-considerations)') < item.index('run the installer')
         assert '\n### Julia considerations\n' in text
 
