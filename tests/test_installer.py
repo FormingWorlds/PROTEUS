@@ -2742,6 +2742,7 @@ class TestAgniJuliaVersion:
         PYTHON_JULIAPKG_EXE stays as it was, so the OpenSSL route of the import check is next.
         """
         log = tmp_path / 'calls.log'
+        log.write_text('')
         jup = tmp_path / 'jup'
         _stub(
             jup / 'juliaup',
@@ -2804,9 +2805,9 @@ class TestNoJuliaInstall:
         """setup_conda_env checks Julia just before `conda create`; the Julia step then skips the check."""
         body = _install_sh_function('setup_conda_env').splitlines()
         create = next(i for i, ln in enumerate(body) if 'if ! conda create' in ln)
+        assert '        setup_julia' in body[:create]
         check = body.index('        setup_julia')
-        assert check < create
-        assert body.index('        JULIA_SELECTED=true') == check + 1
+        assert body[check + 1] == '        JULIA_SELECTED=true'
         lines = INSTALL_SH.read_text().splitlines()
         assert lines.count('[ "$JULIA_SELECTED" = true ] || setup_julia') == 1
 
