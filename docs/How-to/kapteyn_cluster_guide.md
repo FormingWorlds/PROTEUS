@@ -85,34 +85,31 @@ Follow the instructions at [VS Code Instructions Kapteyn Cluster](https://docs.g
     with a compiler that can read its module files, which the system compiler
     cannot always do.
 
-7. You can now run the installer and complete the remaining
+7. Set up Julia as in [Julia considerations](#julia-considerations) below. Then run the installer and complete the remaining
    [installation steps](installation.md).
 
 ### Julia considerations
 If you have already installed Julia in your home folder, you could remove that through `rm -rf ~/.julia`.
 
-If you install Julia through Juliaup this involves:
+If you install Julia through Juliaup, first add these two variables to your `~/.shellrc`, e.g. `~/.bashrc`, so that they are set at each login. `JULIAUP_DEPOT_PATH` places the Julia versions of Juliaup, and `JULIA_DEPOT_PATH` places the Julia ecosystem, such as Julia packages, outside `$HOME`:
 ```console
-export JULIAUP_HOME=/dataserver/users/formingworlds/<username>/.juliaup
+export JULIAUP_DEPOT_PATH=/dataserver/users/formingworlds/<username>/.juliaup
+export JULIA_DEPOT_PATH=/dataserver/users/formingworlds/<username>/.julia
+```
+
+Load them in this terminal and run the official installer, which downloads a first Julia into that folder:
+```console
+source ~/.bashrc
 curl -fsSL https://install.julialang.org | sh
 ```
 
-Then open a new terminal and add Julia 1.13, which the installer checks for and does not install:
+Then open a new terminal and add Julia 1.13, which the PROTEUS installer checks for and does not install:
 ```console
 juliaup add 1.13
 ```
 
-To also make sure that the Julia ecosystem, such as Julia packages, are also not installed in `$HOME`, add `JULIA_DEPOT_PATH` to your `~/.shellrc`, e.g. `~/.bashrc`:
-```console
-export JULIA_DEPOT_PATH=/dataserver/users/formingworlds/<username>/.julia
-```
-Setting only this variable will be sufficient if you have not installed Julia through Juliaup.
-In any case, it is best to have both of these Julia environment variables exported when you log in,
-so please add this to your `~/.shellrc`, e.g. `~/.bashrc`:
-```console
-export JULIAUP_HOME=/dataserver/users/formingworlds/<username>/.juliaup
-export JULIA_DEPOT_PATH="/dataserver/users/formingworlds/<username>/.julia"
-```
+Setting only `JULIA_DEPOT_PATH` will be sufficient if you have not installed Julia through Juliaup.
+
 If you install Julia using `tar`, use the following steps:
 
 ```

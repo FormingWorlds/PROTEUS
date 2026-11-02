@@ -20,7 +20,6 @@ If you have already installed Julia in your home folder, remove it and any bashr
 
 Then set the variables in your bashrc file:
 ```bash
-export JULIAUP_HOME=/data/$USER/.juliaup/
 export JULIAUP_DEPOT_PATH=/data/$USER/.juliaup/
 export JULIA_DEPOT_PATH=/data/$USER/.julia/
 ```
@@ -30,9 +29,10 @@ Set your module config in your bashrc too:
 module load netcdf openmpi mpich cuda
 ```
 
-Then install Julia, making sure to set the path to `/data/<username>/.julia` when prompted
+Then load them in this terminal and install Julia, making sure to set the path to `/data/<username>/.julia` when prompted. The official installer downloads a first Julia into the folder of `JULIAUP_DEPOT_PATH`.
 
 ```bash
+source ~/.bashrc
 curl -fsSL https://install.julialang.org | sh
 ```
 

@@ -69,10 +69,10 @@ Then add Julia 1.13. This keeps any other Julia version that you have, and your 
 juliaup add 1.13
 ```
 
-**Compute clusters**: read the guide of your cluster before this step ([Kapteyn](kapteyn_cluster_guide.md), [Habrok](habrok_cluster_guide.md), [Snellius](snellius_cluster_guide.md), [Cambridge IoA](ioa_cluster_guide.md)). A home folder on a cluster can be too small for Julia; the Kapteyn and Cambridge IoA guides show where to place it.
+**Compute clusters**: a home folder on a cluster can be too small for Julia. On Kapteyn and Cambridge IoA, follow the Julia steps of the [Kapteyn](kapteyn_cluster_guide.md) or [Cambridge IoA](ioa_cluster_guide.md) guide instead of the commands above; they place Julia on the data drive. On another cluster, the steps above apply.
 
 !!! note "A Julia without juliaup"
-    A `julia` of version 1.13 on your `PATH` is enough, wherever it comes from. For a Julia 1.13 that is not on your `PATH`, set `PYTHON_JULIAPKG_EXE` to its binary before you run the installer. A system package manager often installs another version of Julia: then use the steps above.
+    A `julia` of version 1.13 on your `PATH` is enough, wherever it comes from. For a Julia 1.13 that is not on your `PATH`, set `PYTHON_JULIAPKG_EXE` to its binary before you run the installer. A system package manager often installs another version of Julia: then use the steps above. A juliaup depot that you cannot write to reads as no Julia, because juliaup needs its lock file there: set `PYTHON_JULIAPKG_EXE` to the binary of a Julia 1.13 instead.
 
 ## 3. Clone PROTEUS and set up Python environment
 
@@ -166,7 +166,7 @@ PROTEUS runs on Julia 1.13. The installer looks for it in this order, and your d
 
 When it finds none of them, the installer stops with the commands of [step 2](#2-install-julia). With no conda environment to reuse, it stops before it makes one.
 
-When neither `julia` nor juliaup is on your `PATH`, the installer looks for juliaup in `~/.juliaup/bin`. When it finds none there but a juliaup configuration exists (`juliaup/juliaup.json` under `JULIAUP_DEPOT_PATH`, by default `~/.julia`), it asks you to put your juliaup on your `PATH`.
+When juliaup is not on your `PATH`, the installer looks for it in `~/.juliaup/bin`. When it finds none there but a juliaup configuration exists (`juliaup/juliaup.json` under `JULIAUP_DEPOT_PATH`, by default `~/.julia`), it asks you to put your juliaup on your `PATH`.
 
 PROTEUS and the setup scripts in `tools/` find Julia 1.13 through `PYTHON_JULIAPKG_EXE`, so a bare `julia` in your terminal is still your own default.
 

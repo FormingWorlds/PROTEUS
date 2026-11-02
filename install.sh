@@ -282,22 +282,26 @@ report_proteus_julia() {
     esac
 }
 
-# Stop with the commands that give PROTEUS its Julia; $1 is the version of a julia on PATH, or none.
+# Stop with the commands that give PROTEUS its Julia; $1 is the version of a julia on PATH, or
+# none; $2 is the juliaup command that works in the shell of the user.
 stop_without_julia() {
-    local req="$REQUIRED_JULIA_MAJOR.$REQUIRED_JULIA_MINOR"
+    local req="$REQUIRED_JULIA_MAJOR.$REQUIRED_JULIA_MINOR" jup="$2" api_error
     [ "$1" = none ] || warn "PROTEUS runs on Julia $req, found $1."
-    if command_exists juliaup && ! juliaup api getconfig1 </dev/null >/dev/null 2>&1; then
-        warn "'juliaup api getconfig1' failed, so install.sh cannot read your juliaup channels; update juliaup first."
-    fi
     echo "PROTEUS needs Julia $req. install.sh checks for Julia and does not install it."
-    echo "To install it, run:"
-    if ! command_exists juliaup; then
-        echo "  curl -fsSL https://install.julialang.org | sh"
-        echo "  (open a new terminal)"
+    if command_exists juliaup && ! api_error=$(juliaup api getconfig1 </dev/null 2>&1 >/dev/null); then
+        warn "'juliaup api getconfig1' failed, so install.sh cannot read your juliaup channels: $api_error"
+        echo "That command needs a recent juliaup and write access to its lock file in ${JULIAUP_DEPOT_PATH:-$HOME/.julia}/juliaup."
+        echo "If you cannot write to that folder, set PYTHON_JULIAPKG_EXE to the binary of a Julia $req."
+    else
+        echo "To install it, run:"
+        if ! command_exists juliaup; then
+            echo "  curl -fsSL https://install.julialang.org | sh"
+            echo "  (open a new terminal)"
+        fi
+        echo "  $jup add $req"
+        echo "Your default Julia stays as it is. A Julia $req of your own also works: set PYTHON_JULIAPKG_EXE to its binary."
     fi
-    echo "  juliaup add $req"
-    echo "Your default Julia stays as it is. A Julia $req of your own also works: set PYTHON_JULIAPKG_EXE to its binary."
-    echo "On a compute cluster, follow the guide of that cluster: https://proteus-framework.org/PROTEUS/How-to/installation.html"
+    echo "On a compute cluster, read the Julia step of the install page: https://proteus-framework.org/PROTEUS/How-to/installation.html#2-install-julia"
     die "Julia $req not found."
 }
 
@@ -305,7 +309,7 @@ stop_without_julia() {
 # a PYTHON_JULIAPKG_EXE of that version stays, as the real binary of a launcher that it names.
 # Julia is checked and never installed, and a default Julia stays.
 setup_julia() {
-    local req="$REQUIRED_JULIA_MAJOR.$REQUIRED_JULIA_MINOR" julia_version default="none"
+    local req="$REQUIRED_JULIA_MAJOR.$REQUIRED_JULIA_MINOR" julia_version default="none" jup=juliaup
     local exe="${PYTHON_JULIAPKG_EXE:-}" config="${JULIAUP_DEPOT_PATH:-$HOME/.julia}/juliaup/juliaup.json"
     if [ -f "$exe" ] && [ -x "$exe" ] && julia_answers_without_download "$exe"; then
         case "$(julia_version_of "$exe")" in
@@ -318,8 +322,10 @@ setup_julia() {
                 ;;
         esac
     fi
-    if ! command_exists julia && [ -x "$HOME/.juliaup/bin/juliaup" ]; then
-        export PATH="$HOME/.juliaup/bin:$PATH"
+    # Behind any julia on PATH, so that a julia of the user still comes first.
+    if ! command_exists juliaup && [ -x "$HOME/.juliaup/bin/juliaup" ]; then
+        export PATH="$PATH:$HOME/.juliaup/bin"
+        jup="$HOME/.juliaup/bin/juliaup"
     fi
     if ! command_exists julia && ! command_exists juliaup && [ -f "$config" ]; then
         die "A juliaup configuration exists at $config, but no juliaup is on PATH or in ~/.juliaup/bin; put your juliaup on PATH and run bash install.sh again."
@@ -336,7 +342,7 @@ setup_julia() {
         esac
         default="${julia_version:-(version unknown)}"
     fi
-    command_exists juliaup && juliaup_has_channel "$req" || stop_without_julia "$default"
+    command_exists juliaup && juliaup_has_channel "$req" || stop_without_julia "$default" "$jup"
     use_julia_channel "+$req" || die "Could not locate the Julia $req binary of its juliaup channel."
     PATH="$(dirname "$PYTHON_JULIAPKG_EXE"):$PATH"
     export PATH
