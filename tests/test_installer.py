@@ -2086,22 +2086,16 @@ class TestSetupJulia:
         ]
         assert 'deprecated' not in result.stdout + result.stderr
 
-    @pytest.mark.parametrize(
-        'config',
-        [
-            _juliaup_config('1.13'),
-            pytest.param(
-                _juliaup_config('release', '1.11'),
-                id='default-release',
-            ),
-        ],
-        ids=['default-1.13', 'default-release'],
-    )
-    def test_default_113_needs_no_channel_of_that_name(self, site, config):
-        """A default channel that runs 1.13 is enough, whatever its name; nothing is added."""
-        result = self._call(site, '1.13.1', STUB_JULIAUP_CONFIG=config)
+    def test_default_113_needs_no_channel_of_that_name(self, site):
+        """A default channel `release` that runs 1.13 is enough: no channel 1.13, no stop, one read."""
+        result = self._call(
+            site, '1.13.1', STUB_JULIAUP_CONFIG=_juliaup_config('release', '1.11')
+        )
         assert result.returncode == 0, result.stdout + result.stderr
-        assert self._report(result)[2] == ''
+        calls = site['log'].read_text().splitlines()
+        assert {c for c in calls if c.startswith('juliaup')} == {_JULIAUP_READ}
+        assert not [c for c in calls if c.startswith('julia +')]
+        assert self._report(result)[1:3] == [str(site['stubs'] / 'julia'), '']
 
     @pytest.mark.parametrize('version', ['1.13.1', '1.13.0'], ids=['patch-1', 'patch-0'])
     def test_default_113_is_used_and_only_reads_juliaup(self, site, version):
@@ -2209,6 +2203,41 @@ class TestSetupJulia:
         calls = site['log'].read_text().splitlines()
         assert not [c for c in calls if c.startswith('julia ')]
         assert {c for c in calls if c.startswith('juliaup')} == {_JULIAUP_READ}
+
+    def test_link_to_a_launcher_without_a_default_is_never_run(self, site):
+        """A link in another folder to the launcher still counts as that launcher, relative or absolute."""
+        for name, target in (
+            ('abs', site['stubs'] / 'julia'),
+            ('rel', Path('../../stubs/julia')),
+        ):
+            link = site['stubs'].parent / name / 'bin' / 'julia'
+            link.parent.mkdir(parents=True)
+            link.symlink_to(target)
+            result = self._call(
+                site,
+                '1.13.1',
+                PATH=f'{link.parent}{os.pathsep}{site["env"]["PATH"]}',
+                STUB_JULIAUP_CONFIG=_juliaup_config(None),
+            )
+            assert result.returncode == 1, name
+            assert not [
+                c for c in site['log'].read_text().splitlines() if c.startswith('julia ')
+            ]
+
+    def test_juliaup_that_does_not_answer_gets_its_own_line(self, site):
+        """A failed API call names itself, since `juliaup add 1.13` alone cannot cure it."""
+        result = self._call(site, '1.13.1', STUB_JULIAUP_RC='1')
+        assert "'juliaup api getconfig1' failed" in result.stderr
+        ok = self._call(site, '1.10.4', STUB_JULIAUP_CONFIG=_juliaup_config('1.12'))
+        assert ok.returncode == 1
+        assert 'getconfig1' not in ok.stderr
+
+    def test_env_report_names_a_launcher_it_did_not_run(self, site):
+        """The failure report does not call a launcher on PATH absent without saying why."""
+        result = self._call(site, '1.13.1', STUB_JULIAUP_CONFIG=_juliaup_config(None))
+        line = next(ln for ln in result.stdout.splitlines() if ln.startswith('julia:'))
+        assert '(not on PATH, or a juliaup launcher with no default channel)' in line
+        assert str(site['stubs'] / 'julia') in line
 
     def test_julia_apart_from_juliaup_is_asked_whatever_juliaup_says(self, site):
         """A julia in another folder than juliaup is no launcher, so a broken juliaup does not stop it."""
@@ -2343,8 +2372,6 @@ class TestSetupJuliaWithoutJulia:
 
         The 1.13 channel resolves to a folder with a julia that reports 1.13.1.
         """
-        payload = tmp_path / 'payload'
-        _stub(payload / 'julia', _STUB_JULIA)
         stubs = tmp_path / 'stubs'
         _stub(stubs / 'curl', '#!/bin/sh\necho "curl $*" >> "$STUB_LOG"\n')
         _stub(stubs / 'python3', '#!/bin/sh\nexit 0\n')
@@ -2361,7 +2388,7 @@ class TestSetupJuliaWithoutJulia:
             'STUB_BINDIR_113': str(jl113),
             'STUB_JULIAUP_CONFIG': _juliaup_config('1.12', '1.13'),
         }
-        return {'home': home, 'log': log, 'jl113': jl113, 'payload': payload, 'env': env}
+        return {'home': home, 'log': log, 'jl113': jl113, 'tmp': tmp_path, 'env': env}
 
     def test_neither_julia_nor_juliaup_stops_and_installs_nothing(self, site):
         """With no julia and no juliaup, the run stops with the 2 steps and calls nothing.
@@ -2395,7 +2422,7 @@ class TestSetupJuliaWithoutJulia:
         The launcher sits beside juliaup, as juliaup ships it. The line names the
         juliaup default that stays.
         """
-        jup = site['payload'].parent / 'jup' / 'bin'
+        jup = site['tmp'] / 'jup' / 'bin'
         _stub(jup / 'juliaup', _STUB_JULIAUP)
         _stub(jup / 'julia', _STUB_JULIA)
         result = TestSetupJulia._call(
@@ -2423,7 +2450,7 @@ class TestSetupJuliaWithoutJulia:
 
     def test_juliaup_without_julia_or_the_113_channel_stops_with_one_command(self, site):
         """A juliaup on PATH with neither julia nor channel 1.13 gets the one command, and no write."""
-        jup = site['payload'].parent / 'jup' / 'bin'
+        jup = site['tmp'] / 'jup' / 'bin'
         _stub(jup / 'juliaup', _STUB_JULIAUP)
         result = TestSetupJulia._call(
             site,
@@ -2506,7 +2533,6 @@ class TestJuliaupHasChannel:
     def _ask(tmp: Path, channel: str, printed: str, rc: int = 0) -> bool:
         """Run the shipped juliaup_has_channel with a juliaup stub that prints ``printed``."""
         stubs = tmp / 'stubs'
-        (stubs).mkdir(exist_ok=True)
         (tmp / 'printed.txt').write_text(printed)
         _stub(stubs / 'juliaup', f'#!/bin/sh\ncat "{tmp}/printed.txt"\nexit {rc}\n')
         defs = 'set -euo pipefail\n' + ''.join(
@@ -3019,13 +3045,32 @@ class TestSetupCondaEnv:
 
     def test_existing_env_keeps_the_check_for_later(self, site):
         """An existing env can hold PYTHON_JULIAPKG_EXE, so no check runs before it is active."""
-        (site['base'] / 'envs' / 'proteus' / 'bin').mkdir(parents=True)
-        _stub(site['base'] / 'envs' / 'proteus' / 'bin' / 'python', '#!/bin/sh\nexit 0\n')
+        self._existing_env(site, 'proteus')
         result = self._call(
             site, STUB_JULIA_LOG=str(site['log']), STUB_CONDA_ENVS='proteus', STUB_NO_JULIA='1'
         )
         assert result.returncode == 0, result.stdout + result.stderr
         assert ['setup_julia'] not in _conda_calls(site['log'])
+
+    def test_whole_script_with_no_julia_makes_no_env(self, site, tmp_path):
+        """The shipped script, not the stand-in: no Julia on PATH stops it before `conda create`."""
+        root = scratch_proteus_root(tmp_path / 'proteus', [])
+        shutil.copy(INSTALL_SH, root / 'install.sh')
+        home = tmp_path / 'home'
+        home.mkdir()
+        result = subprocess.run(
+            ['bash', 'install.sh', '--no-data'],
+            capture_output=True,
+            text=True,
+            stdin=subprocess.DEVNULL,
+            env={**site['env'], 'HOME': str(home)},
+            cwd=root,
+            timeout=25,
+        )
+        assert result.returncode == 1, result.stdout + result.stderr
+        assert 'PROTEUS needs Julia 1.13.' in result.stdout
+        assert 'Installation failed at Phase 1.' in result.stdout
+        assert 'create' not in [c[0] for c in _conda_calls(site['log'])]
 
     def test_active_env_keeps_the_check_for_later(self, site):
         """An active env is read in the Julia step, with its variables already set."""
@@ -3037,7 +3082,7 @@ class TestSetupCondaEnv:
             CONDA_PREFIX='/x',
         )
         assert result.returncode == 0, result.stdout + result.stderr
-        assert not site['log'].exists() or ['setup_julia'] not in _conda_calls(site['log'])
+        assert not site['log'].exists()
 
     def test_existing_proteus_is_used_with_a_warning_that_names_the_switch(self, site):
         """Without a terminal an env `proteus` that exists is activated, not made, and named in one warning.
@@ -3307,7 +3352,7 @@ class TestSetupCondaEnv:
         assert self._report(result) == []
 
     def test_missing_conda_stops_with_the_page_that_installs_it(self, site):
-        """Without conda on PATH the installer stops with the failed step and step 2 of the page.
+        """Without conda on PATH the installer stops with the failed step and step 3 of the page.
 
         The `conda create` and `conda activate` commands cannot run there, so they
         are not printed; the link names the section that installs Miniforge.
@@ -3319,10 +3364,10 @@ class TestSetupCondaEnv:
         assert not [cmd for cmd in _MANUAL_COMMANDS if cmd in result.stdout.splitlines()]
         assert 'conda create' not in output
         steps = result.stdout.split('Install conda first', 1)[1].splitlines()
-        assert steps[0] == ' (Miniforge), as step 2 of the installation page describes:'
+        assert steps[0] == ' (Miniforge), as step 3 of the installation page describes:'
         assert steps[1] == (
             '  https://proteus-framework.org/PROTEUS/How-to/installation.html'
-            '#2-clone-proteus-and-set-up-python-environment'
+            '#3-clone-proteus-and-set-up-python-environment'
         )
         assert 'conda is not on PATH.' in result.stderr
         assert 'Conda environment required.' in result.stderr
