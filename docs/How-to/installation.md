@@ -158,7 +158,17 @@ The installer and the setup scripts that can clone over SSH (those of the Python
 
 The installer prints one line per build step and writes the full build output to `install_<date>_<time>.log` (for example `install_20261011_142530.log`) in the PROTEUS folder; when a step fails, it also prints the last 40 lines of that step's output.
 
-PROTEUS runs on Julia 1.13. The installer looks for it in this order: `PYTHON_JULIAPKG_EXE`, the `julia` on your `PATH`, and the `1.13` channel of juliaup. When your default Julia is another version and juliaup holds channel `1.13`, the installer uses that channel and does not change your default. When it finds no Julia 1.13, the installer stops with the commands of [step 2](#2-install-julia); with no conda environment active and none to reuse, it stops before it makes one. When neither `julia` nor juliaup is on your `PATH`, the installer takes juliaup from `~/.juliaup/bin`; when there is none either but a juliaup configuration exists (`juliaup/juliaup.json` under `JULIAUP_DEPOT_PATH`, by default `~/.julia`), the installer stops and asks you to put your juliaup on your `PATH`. PROTEUS and the setup scripts in `tools/` find Julia 1.13 through `PYTHON_JULIAPKG_EXE`, so a bare `julia` in your terminal is still your own default.
+PROTEUS runs on Julia 1.13. The installer looks for it in this order, and your default Julia stays as it is:
+
+1. `PYTHON_JULIAPKG_EXE`, when it names a Julia 1.13.
+2. The `julia` on your `PATH`, when it is version 1.13.
+3. The `1.13` channel of juliaup.
+
+When it finds none of them, the installer stops with the commands of [step 2](#2-install-julia). With no conda environment to reuse, it stops before it makes one.
+
+When neither `julia` nor juliaup is on your `PATH`, the installer looks for juliaup in `~/.juliaup/bin`. When it finds none there but a juliaup configuration exists (`juliaup/juliaup.json` under `JULIAUP_DEPOT_PATH`, by default `~/.julia`), it asks you to put your juliaup on your `PATH`.
+
+PROTEUS and the setup scripts in `tools/` find Julia 1.13 through `PYTHON_JULIAPKG_EXE`, so a bare `julia` in your terminal is still your own default.
 
 The installer installs every Python module (MORS, JANUS, CALLIOPE, ZEPHYRUS, Aragog, Zalmoxis, Morrigan, VULCAN and atmodeller) and PROTEUS itself in editable mode, each from a clone in the PROTEUS folder, so a change in a clone takes effect without a new install. fwl-io, which downloads the reference data, is installed from PyPI.
 
