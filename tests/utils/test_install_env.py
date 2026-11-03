@@ -393,8 +393,13 @@ def test_project_without_a_project_file_is_named(tmp_path):
     folder = tmp_path / 'p'
     folder.mkdir()
     (folder / 'Manifest.toml').write_text('manifest_format = "2.0"\n')
-    with pytest.raises(ValueError, match='cannot be read'):
+    try:
         missing_julia_packages(folder, [str(tmp_path)])
+    except Exception as exc:  # noqa: BLE001
+        assert isinstance(exc, ValueError)
+        assert 'cannot be read' in str(exc)
+    else:
+        pytest.fail('no error for a project with no Project.toml')
 
 
 def _versioned_manifest(folder, text):

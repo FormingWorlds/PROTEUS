@@ -2261,7 +2261,7 @@ def test_setup_scripts_use_the_own_depot_and_say_the_shell_stays(
     monkeypatch.delenv('CONDA_DEFAULT_ENV', raising=False)
     monkeypatch.setenv('JULIA_DEPOT_PATH', foreign)
     monkeypatch.delenv('PYTHON_JULIAPKG_EXE', raising=False)
-    assert cli._env_with_proteus_julia(root)['JULIA_DEPOT_PATH'] == own
+    assert cli._env_with_proteus_julia(root).get('JULIA_DEPOT_PATH') == own
     assert os.environ['JULIA_DEPOT_PATH'] == foreign
     lines = [ln for ln in capsys.readouterr().out.splitlines() if foreign in ln]
     assert len(lines) == 1
@@ -2304,7 +2304,7 @@ def test_install_vars_record_the_depot_that_the_julia_steps_used(monkeypatch, tm
     monkeypatch.setenv('JULIA_DEPOT_PATH', foreign)
     monkeypatch.setenv('PATH', str(tmp_path))
     variables = cli._install_vars(tmp_path, tmp_path / 'fwl', None)
-    assert variables['JULIA_DEPOT_PATH'] == own
+    assert variables.get('JULIA_DEPOT_PATH') == own
     assert foreign.rstrip(':') in capsys.readouterr().out
     cli._export_env(tmp_path, variables)
     assert f"export JULIA_DEPOT_PATH='{own}'" in (tmp_path / '.proteus-env.sh').read_text()

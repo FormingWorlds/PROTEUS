@@ -5208,11 +5208,11 @@ class TestJuliaDepot:
         out = result.stdout
         prefix = site['tmp'] / 'prefix'
         unset = f'conda env config vars unset -p {prefix} JULIA_DEPOT_PATH'
-        assert (
-            out.index(unset)
-            < out.index('conda deactivate')
-            < out.index(f'conda activate {prefix}')
-        )
+        order = [
+            out.find(text) for text in (unset, 'conda deactivate', f'conda activate {prefix}')
+        ]
+        assert -1 not in order
+        assert order == sorted(order)
 
     def test_value_kept_on_pixi_names_the_manifest(self, site):
         """A shell value and conda play no part on pixi, so the line names pixi.toml."""
@@ -5382,6 +5382,14 @@ class TestJuliaDepot:
         assert own in warned
         assert not gone.parent.exists()
 
+    def test_folder_in_envs_with_no_env_marker_stays(self, site):
+        """Only a folder that is gone counts: one that exists there is no env without conda-meta."""
+        (site['tmp'] / 'envs' / 'mine').mkdir(parents=True)
+        value = f'{site["tmp"] / "envs" / "mine"}/julia_depot:'
+        result = self._call(site, value)
+        assert self._value(result) == value
+        assert 'another PROTEUS install' not in result.stdout
+
     @pytest.mark.parametrize('folder', ['scratch/me/proteus-a', 'envs/gone', 'envs_old/gone'])
     def test_value_on_a_missing_parent_with_no_envs_folder_stays(self, site, folder):
         """A disk that is not mounted or a folder still to come stays the choice of the user."""
@@ -5459,6 +5467,7 @@ class TestJuliaDepot:
         prefix = site['tmp'] / 'prefix'
         assert f'conda env config vars set -p {prefix} JULIA_DEPOT_PATH={home}/.julia:' in out
         # Conda does not load a changed value when the same env is activated again.
+        assert 'conda deactivate' in out
         assert out.index('conda deactivate') < out.index(f'conda activate {prefix}')
         assert f'JULIA_DEPOT_PATH={home}/.julia: bash install.sh' not in out
         assert 'macOS arm64' in out
