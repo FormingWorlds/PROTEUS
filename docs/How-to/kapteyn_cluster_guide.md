@@ -61,13 +61,16 @@ Follow the instructions at [VS Code Instructions Kapteyn Cluster](https://docs.g
     source "$HOME/.bashrc"
     ```
 
-5. Install conda and create the PROTEUS environment, by following the
-   [installation steps](installation.md) up to and including
-   `conda activate proteus`. Since your home folder is capped at 9GB, install
-   Julia and miniconda or conda-forge in "/dataserver/users/formingworlds/<username>"
-   rather than in the default location. See [Julia considerations](#julia-considerations)
-   and [Miniconda and conda-forge considerations](#miniconda-and-conda-forge-considerations)
-   below.
+5. Install conda, by following step 3 of the [installation steps](installation.md),
+   and stop before you clone PROTEUS. Since your home folder is capped at 9GB, install
+   miniconda or conda-forge in "/dataserver/users/formingworlds/<username>"
+   rather than in the default location. See
+   [Miniconda and conda-forge considerations](#miniconda-and-conda-forge-considerations)
+   below. Then make the PROTEUS environment:
+    ```console
+    conda create -n proteus python=3.12
+    conda activate proteus
+    ```
 
 6. Install NetCDF-Fortran into that environment. The Kapteyn module system
    does not provide it, and SOCRATES needs it both to build and to run:
@@ -85,7 +88,7 @@ Follow the instructions at [VS Code Instructions Kapteyn Cluster](https://docs.g
     with a compiler that can read its module files, which the system compiler
     cannot always do.
 
-7. Set up Julia as in [Julia considerations](#julia-considerations) below. Then run the installer and complete the remaining
+7. Set up Julia as in [Julia considerations](#julia-considerations) below. Then clone PROTEUS, run the installer and complete the remaining
    [installation steps](installation.md).
 
 ### Julia considerations
@@ -97,7 +100,7 @@ export JULIAUP_DEPOT_PATH=/dataserver/users/formingworlds/<username>/.juliaup
 export JULIA_DEPOT_PATH=/dataserver/users/formingworlds/<username>/.julia
 ```
 
-Load them in this terminal and run the official installer, which downloads a first Julia into that folder:
+Load them in this terminal and run the official installer. It places the juliaup program in `~/.juliaup` and downloads a first Julia into the folder of `JULIAUP_DEPOT_PATH`:
 ```console
 source ~/.bashrc
 curl -fsSL https://install.julialang.org | sh

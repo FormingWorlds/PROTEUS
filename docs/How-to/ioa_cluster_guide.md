@@ -29,7 +29,7 @@ Set your module config in your bashrc too:
 module load netcdf openmpi mpich cuda
 ```
 
-Then load them in this terminal and install Julia, making sure to set the path to `/data/<username>/.julia` when prompted. The official installer downloads a first Julia into the folder of `JULIAUP_DEPOT_PATH`.
+Then load them in this terminal and run the official installer. Choose `Customize installation`, and at `Enter the folder where you want to install Juliaup` enter `/data/<username>/.julia`, a folder that does not exist yet. That folder holds the juliaup program. The installer downloads a first Julia into the folder of `JULIAUP_DEPOT_PATH`.
 
 ```bash
 source ~/.bashrc

@@ -166,7 +166,7 @@ PROTEUS runs on Julia 1.13. The installer looks for it in this order, and your d
 
 When it finds none of them, the installer stops with the commands of [step 2](#2-install-julia). With no conda environment to reuse, it stops before it makes one.
 
-When juliaup is not on your `PATH`, the installer looks for it in `~/.juliaup/bin`. When it finds none there but a juliaup configuration exists (`juliaup/juliaup.json` under `JULIAUP_DEPOT_PATH`, by default `~/.julia`), it asks you to put your juliaup on your `PATH`.
+When juliaup is not on your `PATH`, the installer looks for it in `~/.juliaup/bin`. When it finds no Julia 1.13 and no juliaup there, but a juliaup configuration exists (`juliaup/juliaup.json` under `JULIAUP_DEPOT_PATH`, by default `~/.julia`), it names that file and asks you to put your juliaup on your `PATH`.
 
 PROTEUS and the setup scripts in `tools/` find Julia 1.13 through `PYTHON_JULIAPKG_EXE`, so a bare `julia` in your terminal is still your own default.
 
