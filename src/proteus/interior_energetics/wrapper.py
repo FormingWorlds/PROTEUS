@@ -1908,21 +1908,28 @@ def equilibrate_initial_state(dirs: dict, config: Config, hf_row: dict, outdir: 
             dirs['spider_liquidus_ps'] = spider_tables['liquidus_path']
 
 
-def _remelt_scalar_backend(config: Config, hf_row: dict, interior_o) -> None:
+def _remelt_scalar_backend(
+    config: Config, dirs: dict, hf_row: dict, interior_o, f: float = 1.0
+) -> None:
     """Re-melt a temperature-state backend (dummy or boundary) in place.
 
     These backends carry the mantle thermal state as a surface magma
     temperature they cool from the configured initial value. The re-melt raises
-    that temperature to the initial value, or keeps it when it is higher, and
-    rewrites every melt quantity derived from it together with the melt
-    fraction and temperature on the interior arrays the same-iteration tidal
-    call reads, so the impact iteration stays self-consistent.
+    that temperature by the melted share f of the lift to the initial value
+    (``remelt.remelt_temperature``; at f = 1 the initial value, or the current
+    temperature when it is higher), and rewrites every melt quantity derived
+    from it together with the melt fraction and temperature on the interior
+    arrays the same-iteration tidal call reads, so the impact iteration stays
+    self-consistent. A row without a finite ``T_magma`` raises; ``remelt_mantle``
+    writes interior status 21 for every error of these backends.
     """
     import numpy as np
 
     from proteus.interior_energetics.dummy import melt_state_from_temperature
+    from proteus.interior_energetics.remelt import remelt_temperature
 
-    t_reset = max(config.planet.tsurf_init, float(hf_row.get('T_magma', 0.0)))
+    t_end = float(hf_row['T_magma'])
+    t_reset = remelt_temperature(t_end, config.planet.tsurf_init, f)
     state = melt_state_from_temperature(config, hf_row, t_reset)
     hf_row.update(state)
     # The boundary backend starts with the surface at the magma temperature.
@@ -1934,7 +1941,7 @@ def _remelt_scalar_backend(config: Config, hf_row: dict, interior_o) -> None:
     interior_o.phi = np.array([state['Phi_global']])
     interior_o.temp = np.array([t_reset])
 
-    if state['Phi_global'] < 1.0:
+    if f == 1.0 and state['Phi_global'] < 1.0:
         log.warning(
             '    mantle re-melt left it only %.0f%% molten at %.0f K: planet.tsurf_init=%.0f K '
             'is below the liquidus. Raise planet.tsurf_init for a full re-melt.',
@@ -1942,9 +1949,13 @@ def _remelt_scalar_backend(config: Config, hf_row: dict, interior_o) -> None:
             t_reset,
             config.planet.tsurf_init,
         )
+    if f < 1.0:
+        verb = 'raised to' if t_reset > t_end else 'kept at'
+    else:
+        verb = 'reset to' if t_reset == config.planet.tsurf_init else 'kept at'
     log.info(
         '    mantle re-melted: T_magma %s %.0f K (melt fraction %.2f)',
-        'reset to' if t_reset == config.planet.tsurf_init else 'kept at',
+        verb,
         t_reset,
         state['Phi_global'],
     )
@@ -1978,7 +1989,36 @@ def evaluate_molten_state(solver, hf_row: dict):
         solver._solution = prev_solution
 
 
-def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None:
+def _partial_remelt_profile(solver, S_end: np.ndarray, S_molten: np.ndarray, f: float):
+    """Re-melted entropy profile of a partial re-melt on the solver's pre-impact mesh.
+
+    The cell masses are the structural masses of the pre-impact mesh, its staggered
+    effective density times the cell volume: they sum to the mantle mass before the
+    impact (the row's M_mantle has already grown with the impact's structure solve),
+    and the next solve carries the profile to the grown mesh in that frame.
+    The melt fills from the largest staggered radius down (``remelt.remelt_weights``).
+    """
+    from proteus.interior_energetics.remelt import remelt_entropy, remelt_weights
+
+    vol = np.asarray(solver._volume_flat, dtype=float).ravel()
+    radii = np.asarray(solver._r_stag_flat, dtype=float).ravel()
+    rho = np.asarray(solver.evaluator.mesh.staggered_effective_density, dtype=float).ravel()
+    mass = rho * vol
+    w = remelt_weights(f, mass, radii)
+    log.info(
+        '    partial re-melt f = %.4g: %.4e of %.4e kg melted, %d cells in full, %d in part',
+        f,
+        float(np.sum(w * mass)),
+        float(np.sum(mass)),
+        np.count_nonzero(w == 1.0),
+        np.count_nonzero((w > 0.0) & (w < 1.0)),
+    )
+    return remelt_entropy(S_end, S_molten, w)
+
+
+def _remelt_aragog(
+    config: Config, dirs: dict, hf_row: dict, interior_o, f: float = 1.0
+) -> None:
     """Re-melt the Aragog mantle so the reset survives to the next solve.
 
     ``_set_entropy_ic`` alone only rewrites the solver's initial-state vector,
@@ -1987,11 +2027,14 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
     profile carrier ``interior_o._last_entropy`` is set to the re-melted profile,
     the stale trajectory is cleared so the restore path cannot resurrect it,
     and the cached CMB-gradient state is cleared so it is re-derived from the
-    re-melted profile rather than inherited from the cooled one. The re-melted
-    profile is the molten initial condition in each cell, or the end-of-step
-    entropy where that is higher, so the re-melt never cools the mantle. The
-    solver first switches to the P-S tables the structure solve of this step
-    built for the grown planet.
+    re-melted profile rather than inherited from the cooled one. At f = 1 the
+    re-melted profile is the molten initial condition in each cell, or the
+    end-of-step entropy where that is higher; at f < 1 the outermost cells that
+    hold f of the mantle mass take it and the deeper cells keep the end-of-step
+    entropy (``_partial_remelt_profile``), so the re-melt never cools the mantle.
+    A partial re-melt without a usable end-of-step profile raises instead of
+    falling back to the full one. The solver first switches to the P-S tables
+    the structure solve of this step built for the grown planet.
 
     The heat the re-melt injects is booked into ``hf_row['step_dE_impact_J']``
     using the solver's own entropy-transported heat quadrature over the jump
@@ -2074,19 +2117,31 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
         unbooked = 'the end-of-step entropy profile is non-finite or not on the re-melt mesh'
     else:
         unbooked = None
-    # An impact cannot cool the mantle: cells above the molten profile keep their entropy.
+    if unbooked is not None and f < 1.0:
+        raise RuntimeError(
+            f'Cannot apply a partial re-melt with f = {f:g}: {unbooked}. A full re-melt '
+            "in its place would apply f = 1; set accretion.remelt = 'full' to accept that."
+        )
     if unbooked is None:
-        S_new = np.maximum(S_end, S_molten)
+        # An impact cannot cool the mantle: cells above the molten profile keep their entropy.
+        if f == 1.0:
+            S_new = np.maximum(S_end, S_molten)
+        else:
+            S_new = _partial_remelt_profile(solver, S_end, S_molten, f)
+        # _set_entropy_ic left S_molten in the solver; at f = 1 this differs only when
+        # a cell is above it.
+        if np.any(S_new != S_molten):
+            solver.set_initial_entropy(S_new)
+        dE_impact = float(solver._step_heat_content(S_end, S_new))
+    if unbooked is None:
         n_hot = np.count_nonzero(S_new > S_molten)
         if n_hot:
-            solver.set_initial_entropy(S_new)
             log.info(
                 "    re-melt keeps %d of %d cells above the temperature_mode='%s' profile",
                 n_hot,
                 S_new.size,
                 config.planet.temperature_mode,
             )
-        dE_impact = float(solver._step_heat_content(S_end, S_new))
         interior_o._last_entropy = S_new.copy()
 
         # Accumulate heat across multiple impacts within the same timestep
@@ -2102,15 +2157,9 @@ def _remelt_aragog(config: Config, dirs: dict, hf_row: dict, interior_o) -> None
         from proteus.interior_energetics.aragog_core_impact import remelt_core_module
 
         S_ic = np.asarray(interior_o._last_entropy, dtype=float)
-        try:
-            if T_core_pre is None:
-                raise ValueError('core_module: the solver holds no core temperature to re-melt')
-            T_core_new = remelt_core_module(
-                hf_row, interior_o, solver, T_core_pre, float(S_ic[0])
-            )
-        except ValueError:
-            UpdateStatusfile(dirs, 21)
-            raise
+        if T_core_pre is None:
+            raise ValueError('core_module: the solver holds no core temperature to re-melt')
+        T_core_new = remelt_core_module(hf_row, interior_o, solver, T_core_pre, float(S_ic[0]))
         solver.set_initial_core_temperature(T_core_new)
         solver.set_initial_entropy(S_ic)
 
@@ -2159,26 +2208,37 @@ def _skip_aragog_call_energy(hf_row: dict) -> None:
         hf_row[key] = 0.0
 
 
-def remelt_mantle(dirs: dict, config: Config, hf_row: dict, interior_o, event=None) -> None:
-    """Raise the mantle to its initial condition after a giant impact.
+def remelt_mantle(
+    dirs: dict, config: Config, hf_row: dict, interior_o, event=None, f: float = 1.0
+) -> None:
+    """Raise the melted share of the mantle to its initial condition after a giant impact.
 
-    A giant impact re-melts the mantle (no energy threshold), so the interior
-    is raised to the initial condition recomputed for the current, grown
-    planet; parts that are already hotter keep their state. The reset is applied to the running interior state,
-    and an ``impact_reset`` flag is raised on ``interior_o`` so the next
+    The impact melts the mass fraction f of the mantle (1 for a full re-melt),
+    which is raised to the initial condition recomputed for the current, grown
+    planet; parts that are already hotter keep their state, and at f < 1 the
+    deeper mantle keeps its end-of-step state (``interior_energetics.remelt``).
+    The largest f of the row goes to ``hf_row['f_remelt']``. The reset is applied
+    to the running interior state, and an ``impact_reset`` flag is raised on
+    ``interior_o`` so the next
     interior solve does not clip the resulting temperature jump as if it were
     a solver glitch.
 
     The backends carry their state differently, so each is reset in its own
     terms: the dummy and boundary backends cool a surface temperature, which is
     raised to the configured initial value (or kept when higher) together with
-    every quantity derived from it; Aragog raises each cell to its entropy
-    initial condition (or keeps a higher entropy) and carries that profile
-    through the reset the coupling performs on the next step. The re-melt
-    never cools the mantle.
+    every quantity derived from it. An accretion run on the boundary interior is
+    refused at configuration load, so its branch serves only direct calls. Aragog
+    raises the melted cells to their entropy initial condition (or keeps a higher entropy) and
+    carries that profile through the reset the coupling performs on the next step.
+    The re-melt never cools the mantle.
     SPIDER keeps its state in a restart file written by the external binary and
     has no validated re-melt path; an accretion run on SPIDER is refused at
     configuration load, and this backstop refuses it at the first impact.
+
+    Every error of the backend re-melt, at any f, and an f that is not a valid fraction
+    (for any module) write interior status 21 before the error reaches the caller, so a run
+    that stops here does not read as running; SPIDER and an unknown module write status 20.
+    For missing reference data, ``Proteus.start`` writes status 20 over the 21.
 
     Parameters
     ----------
@@ -2193,18 +2253,29 @@ def remelt_mantle(dirs: dict, config: Config, hf_row: dict, interior_o, event=No
     event : ImpactEvent, optional
         The impact being applied, used only to log the impact energy against
         the enthalpy the re-melt injects.
+    f : float
+        Melted mass fraction of the mantle [1], in [0, 1].
 
     Raises
     ------
     NotImplementedError
         If the interior module has no supported re-melt path (SPIDER).
     ValueError
-        If the interior module is unrecognised, or a core_module solver holds no core
-        temperature, or its core or basal temperature is not finite
+        If f is not a finite number in [0, 1], the interior module is unrecognised,
+        or a core_module solver holds no core temperature, or its core or basal
+        temperature is not finite
         (``aragog_core_impact.remelt_core_module``).
     RuntimeError
-        If the Aragog solver has not been initialised.
+        If the Aragog solver has not been initialised, or a partial re-melt has no
+        usable end-of-step entropy profile.
     """
+    from proteus.interior_energetics.remelt import check_melt_fraction
+
+    try:
+        f = check_melt_fraction(f)
+    except ValueError:
+        UpdateStatusfile(dirs, 21)
+        raise
     module = config.interior_energetics.module
 
     # The column accumulates over a step, so a second impact inside one
@@ -2213,10 +2284,13 @@ def remelt_mantle(dirs: dict, config: Config, hf_row: dict, interior_o, event=No
     booked_before = float(hf_row.get('step_dE_impact_J') or 0.0)
 
     match module:
-        case 'dummy' | 'boundary':
-            _remelt_scalar_backend(config, hf_row, interior_o)
-        case 'aragog':
-            _remelt_aragog(config, dirs, hf_row, interior_o)
+        case 'dummy' | 'boundary' | 'aragog':
+            backend = _remelt_aragog if module == 'aragog' else _remelt_scalar_backend
+            try:
+                backend(config, dirs, hf_row, interior_o, f)
+            except Exception:
+                UpdateStatusfile(dirs, 21)
+                raise
         case 'spider':
             UpdateStatusfile(dirs, 20)
             raise NotImplementedError(
@@ -2232,6 +2306,7 @@ def remelt_mantle(dirs: dict, config: Config, hf_row: dict, interior_o, event=No
     # Tell the time-stepper's limiter the coming temperature jump is a
     # deliberate impact re-melt, not a solver anomaly to be clipped away.
     interior_o.impact_reset = True
+    hf_row['f_remelt'] = max(float(hf_row.get('f_remelt') or 0.0), f)
 
     # Compare booked heat injection against impact kinetic energy. The ratio
     # checks physical plausibility since energy residuals cannot detect scaling errors.
@@ -2251,7 +2326,8 @@ def remelt_mantle(dirs: dict, config: Config, hf_row: dict, interior_o, event=No
             if not _REMELT_RETAINED_BAND[0] <= retained <= _REMELT_RETAINED_BAND[1]:
                 log.warning(
                     '    re-melt injection is %.3g of the impact kinetic energy, outside '
-                    'the physically expected band [%.2g, %.2g]. The re-melt raises the mantle '
+                    'the physically expected band [%.2g, %.2g]. The re-melt raises the '
+                    'melted share of the mantle '
                     'to the temperature-mode initial condition (hotter parts keep their '
                     'state), so its cost is set by the mantle rather than by this collision: a cool mantle '
                     'struck by a small impactor absorbs far more than the impact carried, '

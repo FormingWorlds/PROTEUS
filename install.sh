@@ -13,8 +13,8 @@ set -euo pipefail
 # requires-python ceiling once the repo root is known (see below).
 REQUIRED_PYTHON_MAJOR=3
 REQUIRED_PYTHON_MINOR=12
-# Julia: PROTEUS runs on 1.13.x (what CI tests); a default Julia of another
-# version stays, and juliaup adds 1.13 beside it.
+# Julia: PROTEUS runs on 1.13.x (what CI tests). The installer checks for it and
+# does not install it; a default Julia of another version stays.
 REQUIRED_JULIA_MAJOR=1
 REQUIRED_JULIA_MINOR=13
 MIN_DISK_GB=10
@@ -48,7 +48,7 @@ collect_env_info() {
     echo "shell:   ${SHELL:-?}"
     echo "conda:   env=${CONDA_DEFAULT_ENV:-(none)} prefix=${CONDA_PREFIX:-?}"
     echo "python:  $(python3 --version 2>&1) ($(command -v python3 2>/dev/null))"
-    echo "julia:   $(julia --version 2>/dev/null || echo '(not on PATH)') ($(command -v julia 2>/dev/null))"
+    echo "julia:   $( { julia_answers_without_download "$(command -v julia)" && julia --version; } 2>/dev/null || echo '(not on PATH, or a juliaup launcher with no default channel)') ($(command -v julia 2>/dev/null))"
     local v
     for v in FWL_DATA RAD_DIR FC_DIR PYTHON_JULIAPKG_EXE PYTHON_JULIACALL_BINDIR JULIA_CHANNEL; do
         echo "  ${v}=${!v:-(unset)}"
@@ -79,13 +79,6 @@ die() {
     fi
     echo "Fix the issue above, then re-run: bash install.sh"
     exit 1
-}
-
-prompt_yn() {
-    if [ "$INTERACTIVE" != "true" ] || [ ! -t 0 ] || [ ! -t 3 ]; then
-        return 0
-    fi
-    ask_yn "$1" "${2:-y}"
 }
 
 # Ask the question $1 on the terminal of fd 3 and read stdin; after a trim of white space, an empty
@@ -232,6 +225,8 @@ resolve_real_julia_exe() {
 
 # The juliaup channel selector of the Julia PROTEUS uses: empty for the default channel.
 JULIA_CHANNEL=""
+# Whether setup_conda_env selected the Julia, before it made the conda env.
+JULIA_SELECTED=false
 
 # Point PROTEUS at the real binary of channel $1 (JULIA_CHANNEL, PYTHON_JULIAPKG_EXE);
 # returns 1 and changes nothing when the channel has no binary.
@@ -241,6 +236,122 @@ use_julia_channel() {
     [ -n "$exe" ] || return 1
     JULIA_CHANNEL="$1"
     export PYTHON_JULIAPKG_EXE="$exe"
+}
+
+# Whether `juliaup api getconfig1`, which installs nothing, prints a match of the regular
+# expression $1; $2 is the juliaup to ask.
+juliaup_config_matches() {
+    local config
+    config=$("${2:-juliaup}" api getconfig1 </dev/null 2>/dev/null) || return 1
+    [[ "$config" =~ $1 ]]
+}
+
+# Whether juliaup holds the channel $1. Ask this before `julia +<channel>`, which can install.
+juliaup_has_channel() {
+    juliaup_config_matches "\"Name\"[[:space:]]*:[[:space:]]*\"${1//./[.]}\""
+}
+
+# Whether the Julia $1 can run with no download: a juliaup launcher, also through a link, with
+# no default channel can set itself up and download.
+julia_answers_without_download() {
+    local path="$1" link dir
+    [ -n "$path" ] || return 1
+    while link=$(readlink "$path"); do
+        case "$link" in /*) path="$link" ;; *) path="$(dirname "$path")/$link" ;; esac
+    done
+    dir="$(dirname "$path")"
+    [ -x "$dir/juliaup" ] || return 0
+    juliaup_config_matches '"DefaultChannel"[[:space:]]*:[[:space:]]*[{]' "$dir/juliaup"
+}
+
+# Print the version that the Julia binary $1 reports, or nothing when it reports none.
+julia_version_of() {
+    "$1" --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -1 || true
+}
+
+# The one line that names the Julia PROTEUS uses; $1 is the version of a default Julia that
+# differs from it, "none" for a juliaup without julia on PATH, or empty.
+report_proteus_julia() {
+    local version used
+    version=$(julia_version_of "$PYTHON_JULIAPKG_EXE")
+    used="Julia ${version:-(version unknown)} at $PYTHON_JULIAPKG_EXE"
+    case "$1" in
+        "") info "PROTEUS uses $used." ;;
+        none) info "PROTEUS uses $used; the default Julia of juliaup stays as it is." ;;
+        *) info "PROTEUS uses $used; your default Julia $1 stays as it is." ;;
+    esac
+}
+
+# Stop with the commands that give PROTEUS its Julia; $1 is the version of a julia on PATH, or
+# none; $2 is the juliaup command that works in the shell of the user; $3 is the file of a
+# juliaup configuration.
+stop_without_julia() {
+    local req="$REQUIRED_JULIA_MAJOR.$REQUIRED_JULIA_MINOR" jup="$2" api_error
+    [ "$1" = none ] || warn "PROTEUS runs on Julia $req, found $1."
+    if ! command_exists juliaup && [ -f "$3" ]; then
+        die "A juliaup configuration exists at $3, but no juliaup is on PATH or in ~/.juliaup/bin; put your juliaup on PATH and run bash install.sh again."
+    fi
+    echo "PROTEUS needs Julia $req. install.sh checks for Julia and does not install it."
+    if command_exists juliaup && ! api_error=$(juliaup api getconfig1 </dev/null 2>&1 >/dev/null); then
+        warn "'juliaup api getconfig1' failed, so install.sh cannot read your juliaup channels: $api_error"
+        echo "That command needs a recent juliaup and write access to its lock file in ${JULIAUP_DEPOT_PATH:-$HOME/.julia}/juliaup."
+        printf 'A juliaup from the official installer updates with: %q self update\n' "$jup"
+        echo "If you cannot write to that folder, set PYTHON_JULIAPKG_EXE to the binary of a Julia $req."
+    else
+        echo "To install it, run:"
+        if ! command_exists juliaup; then
+            echo "  curl -fsSL https://install.julialang.org | sh"
+            echo "  (open a new terminal)"
+        fi
+        printf '  %q add %s\n' "$jup" "$req"
+        echo "Your default Julia stays as it is. A Julia $req of your own also works: set PYTHON_JULIAPKG_EXE to its binary."
+    fi
+    echo "On a compute cluster, read the Julia step of the install page: https://proteus-framework.org/PROTEUS/How-to/installation.html#2-install-julia"
+    die "Julia $req not found."
+}
+
+# Select the Julia PROTEUS uses, always the required one, and export it as PYTHON_JULIAPKG_EXE;
+# a PYTHON_JULIAPKG_EXE of that version stays, as the real binary of a launcher that it names.
+# Julia is checked and never installed, and a default Julia stays.
+setup_julia() {
+    local req="$REQUIRED_JULIA_MAJOR.$REQUIRED_JULIA_MINOR" julia_version default="none" jup=juliaup
+    local exe="${PYTHON_JULIAPKG_EXE:-}" config="${JULIAUP_DEPOT_PATH:-$HOME/.julia}/juliaup/juliaup.json" own_path=""
+    if [ -f "$exe" ] && [ -x "$exe" ] && julia_answers_without_download "$exe"; then
+        case "$(julia_version_of "$exe")" in
+            "$req" | "$req".*)
+                JULIA_CHANNEL=""
+                PYTHON_JULIAPKG_EXE="$(resolve_real_julia_exe "" "$exe")"
+                export PYTHON_JULIAPKG_EXE
+                report_proteus_julia ""
+                return 0
+                ;;
+        esac
+    fi
+    # Behind any julia on PATH, so that a julia of the user still comes first.
+    if ! command_exists juliaup && [ -x "$HOME/.juliaup/bin/juliaup" ]; then
+        command_exists julia && own_path="$PATH"
+        export PATH="$PATH:$HOME/.juliaup/bin"
+        jup="$HOME/.juliaup/bin/juliaup"
+    fi
+    if command_exists julia && julia_answers_without_download "$(command -v julia)"; then
+        # A version that 'julia --version' does not report counts as another version.
+        julia_version=$(julia_version_of julia)
+        case "$julia_version" in
+            "$req" | "$req".*)
+                # The julia of the user is in use, so later steps must not find that juliaup.
+                [ -z "$own_path" ] || export PATH="$own_path"
+                use_julia_channel ""
+                report_proteus_julia ""
+                return 0
+                ;;
+        esac
+        default="${julia_version:-(version unknown)}"
+    fi
+    command_exists juliaup && juliaup_has_channel "$req" || stop_without_julia "$default" "$jup" "$config"
+    use_julia_channel "+$req" || die "Could not locate the Julia $req binary of its juliaup channel."
+    PATH="$(dirname "$PYTHON_JULIAPKG_EXE"):$PATH"
+    export PATH
+    report_proteus_julia "$default"
 }
 
 # Remove the installer-owned juliacall project so the next import re-resolves
@@ -297,14 +408,13 @@ fix_conda_openssl() {
 }
 
 # With a Python linking OpenSSL < 3.5, juliacall resolves its environment only on
-# Julia <= 1.11 (OpenSSL_jll 3.0 series), so point only PYTHON_JULIAPKG_EXE at a
+# Julia <= 1.11 (OpenSSL_jll 3.0 series), so point only PYTHON_JULIAPKG_EXE at an installed
 # juliaup 1.11 binary; the default Julia and the Julia on PATH stay as they are.
 fix_julia_111_for_openssl() {
-    command_exists juliaup || return 1
+    command_exists juliaup && juliaup_has_channel 1.11 || return 1
     info "Pointing the juliacall Julia at 1.11 (matches OpenSSL < 3.5)..."
-    juliaup add 1.11 </dev/null 2>&1 || return 1
     if ! use_julia_channel '+1.11'; then
-        warn "Could not locate the Julia 1.11 binary after 'juliaup add 1.11'."
+        warn "Could not locate the Julia 1.11 binary of its juliaup channel."
         return 1
     fi
     set_install_var PYTHON_JULIAPKG_EXE "$PYTHON_JULIAPKG_EXE"
@@ -692,8 +802,8 @@ stop_without_conda_env() {
     fail "$1"
     echo ""
     if ! command_exists conda; then
-        echo "Install conda first (Miniforge), as step 2 of the installation page describes:"
-        echo "  https://proteus-framework.org/PROTEUS/How-to/installation.html#2-clone-proteus-and-set-up-python-environment"
+        echo "Install conda first (Miniforge), as step 3 of the installation page describes:"
+        echo "  https://proteus-framework.org/PROTEUS/How-to/installation.html#3-clone-proteus-and-set-up-python-environment"
     elif [ -n "${made:-}" ]; then
         echo "Activate the conda environment first:"
         echo "  conda activate $2"
@@ -766,6 +876,9 @@ setup_conda_env() {
         fi
     else
         stop_on_env_folder "$name" "$envs"
+        # A new env holds no PYTHON_JULIAPKG_EXE, so a missing Julia stops the run here, with no env made.
+        setup_julia
+        JULIA_SELECTED=true
         info "Creating the conda environment $name with Python $pyver..."
         if ! conda create -y -n "$name" "python=$pyver" </dev/null; then
             stop_without_conda_env "'conda create -y -n $name python=$pyver' failed." "$name" \
@@ -905,123 +1018,7 @@ info "Pre-flight checks passed"
 CURRENT_PHASE=2
 phase 2 "Julia"
 
-# Print the version that the Julia binary $1 reports, or nothing when it reports none.
-julia_version_of() {
-    "$1" --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -1 || true
-}
-
-# The one line that names the Julia PROTEUS uses; $1 is the version of a default Julia that
-# differs from it, "none" for a juliaup without julia on PATH, or empty.
-report_proteus_julia() {
-    local version used
-    version=$(julia_version_of "$PYTHON_JULIAPKG_EXE")
-    used="Julia ${version:-(version unknown)} at $PYTHON_JULIAPKG_EXE"
-    case "$1" in
-        "") info "PROTEUS uses $used." ;;
-        none) info "PROTEUS uses $used; the default Julia of juliaup stays as it is." ;;
-        *) info "PROTEUS uses $used; your default Julia $1 stays as it is." ;;
-    esac
-}
-
-# Add the required Julia beside the default ($1, as for report_proteus_julia) without
-# changing the default, and put its binary first on the installer's own PATH.
-add_julia_beside_default() {
-    local req="$REQUIRED_JULIA_MAJOR.$REQUIRED_JULIA_MINOR"
-    info "Adding Julia $req via juliaup, beside the default Julia..."
-    if ! juliaup add "$req" </dev/null; then
-        warn "'juliaup add $req' failed; looking for an installed $req channel."
-    fi
-    if ! use_julia_channel "+$req"; then
-        die "Could not locate the Julia $req binary after 'juliaup add $req'."
-    fi
-    PATH="$(dirname "$PYTHON_JULIAPKG_EXE"):$PATH"
-    export PATH
-    report_proteus_julia "$1"
-}
-
-# Install juliaup with the official installer, which adds nothing to a shell start file with
-# --add-to-path=no. It has no earlier default to protect, so the required Julia becomes its default.
-install_fresh_juliaup() {
-    local req="$REQUIRED_JULIA_MAJOR.$REQUIRED_JULIA_MINOR" julia_installer
-    info "Installing Julia..."
-    julia_installer=$(mktemp "${TMPDIR:-/tmp}/juliaup-install.XXXXXX")
-    if ! curl -fsSL https://install.julialang.org -o "$julia_installer"; then
-        rm -f "$julia_installer"
-        die "Could not download the Julia installer from https://install.julialang.org; check the network connection and run bash install.sh again, or install Julia $req by hand: https://julialang.org/downloads/"
-    fi
-    if ! bash "$julia_installer" --yes --add-to-path=no 2>&1; then
-        rm -f "$julia_installer"
-        die "The Julia installer from https://install.julialang.org failed; see its output above, or install Julia $req by hand: https://julialang.org/downloads/"
-    fi
-    rm -f "$julia_installer"
-    # Source the juliaup env for the current shell
-    if [ -f "$HOME/.juliaup/bin/juliaup" ]; then
-        export PATH="$HOME/.juliaup/bin:$PATH"
-    fi
-    if ! command_exists juliaup; then
-        die "juliaup installation failed. Install Julia manually: https://julialang.org/downloads/"
-    fi
-    juliaup add "$req" || die "'juliaup add $req' failed; see its output above, then run bash install.sh again."
-    juliaup default "$req" || die "'juliaup default $req' failed; see its output above, then run bash install.sh again."
-    info "Julia $req installed"
-}
-
-# Select the Julia PROTEUS uses, always the required one, and export it as PYTHON_JULIAPKG_EXE;
-# a PYTHON_JULIAPKG_EXE of that version stays, as the real binary of a launcher that it names.
-# Only a juliaup that install_fresh_juliaup installed in this run gets a new default.
-setup_julia() {
-    local req="$REQUIRED_JULIA_MAJOR.$REQUIRED_JULIA_MINOR" julia_version
-    local exe="${PYTHON_JULIAPKG_EXE:-}" config="${JULIAUP_DEPOT_PATH:-$HOME/.julia}/juliaup/juliaup.json"
-    if [ -f "$exe" ] && [ -x "$exe" ]; then
-        case "$(julia_version_of "$exe")" in
-            "$req" | "$req".*)
-                JULIA_CHANNEL=""
-                PYTHON_JULIAPKG_EXE="$(resolve_real_julia_exe "" "$exe")"
-                export PYTHON_JULIAPKG_EXE
-                report_proteus_julia ""
-                return 0
-                ;;
-        esac
-    fi
-    if ! command_exists julia && [ -x "$HOME/.juliaup/bin/juliaup" ]; then
-        export PATH="$HOME/.juliaup/bin:$PATH"
-    fi
-    if ! command_exists julia; then
-        info "Julia not found."
-        if command_exists juliaup; then
-            add_julia_beside_default none
-        elif [ -f "$config" ]; then
-            die "A juliaup configuration exists at $config, but no juliaup is on PATH or in ~/.juliaup/bin; put your juliaup on PATH and run bash install.sh again."
-        elif prompt_yn "Install Julia via juliaup (official installer)?"; then
-            install_fresh_juliaup
-            use_julia_channel ""
-            report_proteus_julia ""
-        else
-            die "Julia is required for AGNI. Install it manually: https://julialang.org/downloads/"
-        fi
-        return 0
-    fi
-    # A version that 'julia --version' does not report counts as another version.
-    julia_version=$(julia_version_of julia)
-    case "$julia_version" in
-        "$req" | "$req".*)
-            use_julia_channel ""
-            report_proteus_julia ""
-            return 0
-            ;;
-    esac
-    julia_version="${julia_version:-(version unknown)}"
-    if ! command_exists juliaup; then
-        warn "PROTEUS runs on Julia $req, found $julia_version."
-        warn "juliaup not found. Cannot add Julia $req automatically."
-        echo "  Install juliaup: curl -fsSL https://install.julialang.org | sh"
-        echo "  Then: juliaup add $req"
-        die "Julia version mismatch."
-    fi
-    add_julia_beside_default "$julia_version"
-}
-
-setup_julia
+[ "$JULIA_SELECTED" = true ] || setup_julia
 
 # Verify that the Julia PROTEUS uses works
 if ! "$PYTHON_JULIAPKG_EXE" -e 'println("ok")' &>/dev/null; then

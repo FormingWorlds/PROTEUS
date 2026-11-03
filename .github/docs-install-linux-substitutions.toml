@@ -12,6 +12,11 @@ replace = "bash Miniforge3-$(uname)-$(uname -m).sh -b -p ~/miniforge3 && ~/minif
 reason = "The Miniforge installer is interactive and a runner has no terminal; conda is made available to this shell session, which stands for the new terminal of the page."
 
 [[substitution]]
+match = "curl -fsSL https://install.julialang.org | sh"
+replace = 'curl -fsSL https://install.julialang.org | sh -s -- --yes && export PATH="$HOME/.juliaup/bin:$PATH"'
+reason = "The Julia installer asks its questions on a terminal, which a runner does not have; juliaup is made available to this shell session, which stands for the new terminal of the page."
+
+[[substitution]]
 match = "git clone https://github.com/FormingWorlds/PROTEUS.git"
 replace = 'git clone "$GITHUB_WORKSPACE" PROTEUS'
 reason = "The job tests the checked-out commit, not the default branch."

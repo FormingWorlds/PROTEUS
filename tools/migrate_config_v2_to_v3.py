@@ -268,6 +268,9 @@ OVERRIDES = {
     # 2.0 always ran VULCAN with vertical advection at updraft_const; the 3.0
     # default turns it off, which would drop a nonzero 2.0 updraft.
     'atmos_chem.vulcan.use_vz': True,
+    # 2.0 finite-differenced the AGNI jacobian at every step; the 3.0 default
+    # updates it with Broyden's method in between.
+    'atmos_clim.agni.broyden': False,
 }
 
 # Element-budget fields consumed by the element handler (not mapped directly).
@@ -925,8 +928,7 @@ def _validate(nested_v3):
         ``cattrs`` would otherwise drop it and the field would sit at its default.
     """
     _stub_pipeline()
-    import cattrs
-
+    from proteus.config import converter
     from proteus.config._config import Config
     from proteus.config.orphans import (
         UnknownConfigKeyError,
@@ -939,7 +941,7 @@ def _validate(nested_v3):
         raise UnknownConfigKeyError(
             format_orphan_message(orphans, 'the migrated 3.0 config', mistyped)
         )
-    cattrs.structure(nested_v3, Config)
+    converter.structure(nested_v3, Config)
 
 
 # ----------------------------------------------------------------------------

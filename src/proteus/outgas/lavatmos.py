@@ -43,6 +43,8 @@ SURFACE_MELT_FRAC = 1.0  # melt fraction at the surface (LavAtmos input)
 
 # Custom modules
 class paths_importer:
+    """LavAtmos and FastChem input and output paths, from ``LAVA_DIR`` and ``FC_DIR``."""
+
     def __init__(self, dirs):
         """
 
@@ -107,6 +109,12 @@ class paths_importer:
 
 
 class set_magmaproperties:
+    """Melt state passed to LavAtmos.
+
+    The surface temperature [K] is ``max(outgas.lavatmos.T_min, T_magma)``, the
+    volatile pressure [bar] is ``P_surf`` and the melt fraction is 1.
+    """
+
     def __init__(self, config: Config, hf_row: dict, volatile_comp, dirs: dict):
         """
 
@@ -128,6 +136,8 @@ class set_magmaproperties:
 
 
 class Species_db(object):
+    """A gas species: name, FastChem formula and molar mass [g mol-1]."""
+
     def __init__(self, name, fc_name, weight):
         self.name = name
         self.fc_name = fc_name  # designation in Fastchem

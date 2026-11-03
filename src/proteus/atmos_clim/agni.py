@@ -1258,6 +1258,7 @@ def _solve_energy(atmos, loops_total: int, dirs: dict, config: Config):
         ls_min_scale = 1e-4
         ls_increase = 0.7
         perturb_all = bool(config.atmos_clim.agni.perturb_all)
+        broyden = bool(config.atmos_clim.agni.broyden)
         max_steps = int(config.atmos_clim.agni.max_steps)
         chemistry = bool(config.atmos_clim.agni.chemistry == 'eq')
 
@@ -1280,6 +1281,7 @@ def _solve_energy(atmos, loops_total: int, dirs: dict, config: Config):
             dx_max *= 2.0
             ls_increase = 1.1
             perturb_all = True
+            broyden = False  # AGNI ignores perturb_all when broyden is on
 
             if loops_total == 0:
                 grey_start = True
@@ -1289,6 +1291,7 @@ def _solve_energy(atmos, loops_total: int, dirs: dict, config: Config):
             dx_max *= 2.0
             ls_increase = 1.1
             perturb_all = True
+            broyden = False
             easy_start = True
 
         else:
@@ -1298,8 +1301,8 @@ def _solve_energy(atmos, loops_total: int, dirs: dict, config: Config):
 
         log.debug('Solver parameters:')
         log.debug(
-            '    ls_method=%d, easy_start=%s, dx_max=%.1f, ls_increase=%.2f'
-            % (linesearch, str(easy_start), dx_max, ls_increase)
+            '    ls_method=%d, broyden=%s, easy_start=%s, dx_max=%.1f, ls_increase=%.2f'
+            % (linesearch, str(broyden), str(easy_start), dx_max, ls_increase)
         )
 
         # Try solving temperature profile.
@@ -1325,6 +1328,7 @@ def _solve_energy(atmos, loops_total: int, dirs: dict, config: Config):
                 easy_start=easy_start,
                 grey_start=grey_start,
                 perturb_all=perturb_all,
+                broyden=broyden,
                 save_frames=False,
                 modplot=int(modplot),
                 ls_increase=float(ls_increase),

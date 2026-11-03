@@ -825,8 +825,8 @@ def check_julia() -> CheckResult:
     because juliacall does not fall back to the ``julia`` on ``PATH``. Julia
     1.13.x passes; any other version warns, because PROTEUS is tested on 1.13
     and Obliqua resolves only on 1.11 or 1.13. The advice adds 1.13 beside the
-    default Julia and points ``PYTHON_JULIAPKG_EXE`` at it, as ``install.sh``
-    does.
+    default Julia and points ``PYTHON_JULIAPKG_EXE`` at it; ``install.sh``
+    selects that Julia and does not install it.
     """
     path = '<the path that julia +1.13 -e \'print(joinpath(Sys.BINDIR, "julia"))\' prints>'
     fix = 'juliaup add 1.13, then ' + _set_var_advice('PYTHON_JULIAPKG_EXE', path)

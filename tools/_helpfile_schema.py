@@ -82,6 +82,7 @@ def parse_schema() -> list[dict]:
         'vol_list': (list(constants.vol_list), 'gas'),
         'vol_element_list': (list(constants.vol_element_list), 'element'),
         'noble_gases': (list(constants.noble_gases), 'element'),
+        'condensate_list': (list(constants.condensate_list), 'condensate'),
     }
 
     records: list[dict] = []

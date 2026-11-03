@@ -341,3 +341,37 @@ def test_surf_state_int_maps_skin_and_rejects_unknown():
     # silent default integer.
     with pytest.raises(ValueError, match='surf_state'):
         AtmosClim.surf_state_int.fget(SimpleNamespace(surf_state='mixed_layer'))
+
+
+# ============================================================================
+# Agni: linesearch and Broyden options
+# ============================================================================
+
+
+@pytest.mark.unit
+def test_agni_ls_default_takes_only_agni_linesearch_methods():
+    """`ls_default` takes each of AGNI's linesearch methods, including 3,
+    the non-monotone Armijo linesearch added in AGNI 1.14.0, and refuses a
+    code AGNI does not have. AGNI would otherwise stop the solve with a
+    configuration error on its first linesearch."""
+    from proteus.config._atmos_clim import Agni
+
+    for method in (0, 1, 2, 3):
+        assert Agni(ls_default=method).ls_default == method
+    # Edges: the codes either side of the valid range.
+    for method in (-1, 4):
+        with pytest.raises(ValueError, match='ls_default'):
+            Agni(ls_default=method)
+
+
+@pytest.mark.unit
+def test_agni_defaults_to_broyden_with_the_armijo_linesearch():
+    """PROTEUS defaults to Broyden jacobian updates with the non-monotone
+    Armijo linesearch, the pairing AGNI intends Broyden for, although AGNI
+    itself defaults to neither. Each can still be turned back."""
+    from proteus.config._atmos_clim import Agni
+
+    defaults = Agni()
+    assert defaults.broyden is True
+    assert defaults.ls_default == 3
+    assert Agni(broyden=False).broyden is False

@@ -30,31 +30,32 @@ time.
 
 Relation to the solver's own separation velocity
 ------------------------------------------------
-``w_rel`` here uses the interior solver's own three-regime permeability,
-``aragog.eos.mobility_function`` (Bower et al. 2018 section 2.1), with two
-deliberate differences.
+``w_rel`` here is the interior solver's own separation velocity: its
+three-regime permeability, ``aragog.eos.mobility_function`` (Bower et al. 2018
+section 2.1), under the run's ``separation_buoyancy``. Under ``'mixture'`` the
+buoyancy is taken against the mixture, ``(1 - phi) (rho_s - rho_f) g``
+(McKenzie 1984, Eq. 3.7), on the Blake-Kozeny-Carman and Rumpf-Gupte regimes,
+which slows percolation by 30 percent at ``phi = 0.3``; under ``'solid'``, and
+in the Stokes regime of a grain settling alone, it is taken against the solid,
+``(rho_s - rho_f) g`` (Abe 1995, Eq. 40). McKenzie's solution assumes touching
+grains, so it holds for melt fractions below about 0.2, while the front is
+entered at the rheological transition, ``rfront_loc = 0.4`` by default; above
+about 0.2 the factor is an extrapolation of that solution.
 
-* The drag viscosity is always the melt viscosity. The solver's
-  ``separation_viscosity`` defaults to ``'mixture'``, the
-  rheological-transition-blended value, which exceeds the melt viscosity by ten
-  orders of magnitude at the top of the front and by eighteen to twenty in its
-  lower half. A drainage estimate built on that traps everything by
-  construction. Trapping is a sub-grid process the solver does not resolve, so
-  it uses the melt viscosity regardless of the solver's choice, and the
-  inconsistency is deliberate rather than overlooked.
-* The buoyancy carries a factor ``(1 - phi)`` that the solver's
-  ``relative_velocity`` omits. Both forms give the melt velocity relative to
-  the matrix: McKenzie (1984, Eq. 3.7) takes the buoyancy against the mixture,
-  ``(1 - phi) (rho_s - rho_f) g``, and Abe (1995, Eq. 40) against the solid,
-  ``(rho_s - rho_f) g``. The factor slows percolation by 30 percent at
-  ``phi = 0.3``. McKenzie's solution assumes touching grains, so it holds for
-  melt fractions below about 0.2, while the front is entered at the
-  rheological transition, ``rfront_loc = 0.4`` by default; above about 0.2 the
-  factor is an extrapolation of that solution. FormingWorlds/aragog#67 tracks
-  the same factor for the solver.
+The drainage takes its inputs once per front: the front-mean density
+contrast, the front-mean gravity where the interior gives it (else the surface
+gravity) and the lever-rule porosity of the front top. The matrix
+time keeps the full contrast, ``tau_s = mu_s / (|drho| g L)``, under either
+buoyancy. The drag viscosity is always the melt viscosity. The solver's
+``separation_viscosity`` defaults to ``'mixture'``, the
+rheological-transition-blended value, which exceeds the melt viscosity by ten
+orders of magnitude at the top of the front and by eighteen to twenty in its
+lower half. A drainage estimate built on that traps everything by
+construction. Trapping is a sub-grid process the solver does not resolve, so it
+uses the melt viscosity regardless of the solver's choice.
 
-``test_compaction.py`` checks the mobility against the solver's own
-``relative_velocity``, so the two cannot drift apart.
+``test_compaction.py`` checks the drainage velocity against the solver's own
+``relative_velocity`` under each buoyancy.
 
 A caution on calibration
 ------------------------
@@ -82,6 +83,10 @@ log = logging.getLogger('fwl.' + __name__)
 # mush near the solidus; this is the middle of that range.
 DEFAULT_MUSH_LOG10VISC = 20.0
 
+# Tolerances of the drainage integral. Its end may pass 0 by 10 atol and phi_top by
+# 10 atol + rtol phi_top, an allowance on the integrator's error scale.
+_RTOL, _ATOL = 1.0e-8, 1.0e-12
+
 # Branch codes reported on every step, so a trajectory shows which regime it
 # was in and how often the guards fired.
 BRANCH_NONE = 0  # no front: mode off, warming, or no node at the front; freezing still buries by crystal partitioning
@@ -108,13 +113,15 @@ class FrontGeometry:
     guard_reason: str = ''  # why the front cannot be integrated; empty when it can
 
 
-def mobility_function(porosity: float | np.ndarray, grain_size: float) -> float | np.ndarray:
-    """Permeability over porosity, ``F = K / phi`` [m2], as the interior solver has it.
+def mobility_function(
+    porosity: float | np.ndarray, grain_size: float, *, buoyancy: str
+) -> float | np.ndarray:
+    """Permeability over porosity, ``F = K / phi`` [m2], of the solver's separation law.
 
     ``aragog.eos.mobility_function``: the three regimes of Bower et al. (2018)
     section 2.1, Blake-Kozeny-Carman ``a^2 phi^2 / ((1-phi)^2 * 1000)``,
-    Rumpf-Gupte ``a^2 phi^4.5 * 5/7`` and Stokes ``a^2 * 2/9``, blended with
-    tanh weights.
+    Rumpf-Gupte ``a^2 phi^4.5 * 5/7`` and Stokes ``a^2 * 2/9``, blended with tanh
+    weights; under ``buoyancy = 'mixture'`` the first two carry ``1 - phi``.
 
     Parameters
     ----------
@@ -122,18 +129,21 @@ def mobility_function(porosity: float | np.ndarray, grain_size: float) -> float 
         Volume fraction of melt [1].
     grain_size : float
         Crystal grain size [m].
+    buoyancy : str
+        The solver's ``separation_buoyancy``, ``'mixture'`` or ``'solid'``.
 
     Raises
     ------
     ValueError
-        If ``grain_size`` is not positive, which would give no permeability.
+        If ``grain_size`` is not positive, which would give no permeability, or
+        ``buoyancy`` names no mode.
     """
     # Imported here: the solver package takes seconds to load.
     from aragog.eos import mobility_function as solver_mobility
 
     if grain_size <= 0.0:
         raise ValueError(f'grain_size must be positive, got {grain_size!r}')
-    f = solver_mobility(np.asarray(porosity, dtype=float), float(grain_size))
+    f = solver_mobility(np.asarray(porosity, dtype=float), float(grain_size), buoyancy)
     return float(f) if np.ndim(porosity) == 0 else np.asarray(f, dtype=float)
 
 
@@ -143,19 +153,46 @@ def darcy_velocity(
     delta_rho: float,
     gravity: float,
     melt_visc: float,
+    *,
+    buoyancy: str,
 ) -> float | np.ndarray:
     """Melt percolation speed relative to the matrix [m s-1].
 
-    ``w_D = (1 - phi) |delta_rho| g F(phi) / eta_melt``, with the buoyancy taken
-    against the mixture (McKenzie 1984, Eq. 3.7); the solver's
-    ``relative_velocity`` takes it against the solid. See the module docstring.
+    ``w_D = |delta_rho| g F(phi) / eta_melt``, the solver's separation velocity
+    under ``buoyancy`` with the melt viscosity as drag. See the module docstring.
+
+    Parameters
+    ----------
+    porosity : float or ndarray
+        Volume fraction of melt [1].
+    grain_size : float
+        Crystal grain size [m], positive.
+    delta_rho : float
+        Solid minus melt density [kg m-3]; its magnitude is used.
+    gravity : float
+        Gravitational acceleration [m s-2].
+    melt_visc : float
+        Melt viscosity [Pa s], positive.
+    buoyancy : str
+        The solver's ``separation_buoyancy``, ``'mixture'`` or ``'solid'``.
+
+    Raises
+    ------
+    ValueError
+        If the melt viscosity is not positive, or ``buoyancy`` names no mode.
+    RuntimeError
+        If the speed is negative or not finite.
     """
     if melt_visc <= 0.0:
         raise ValueError(f'melt viscosity must be positive, got {melt_visc!r}')
-    phi = np.asarray(porosity, dtype=float)
-    f = mobility_function(phi, grain_size)
-    w = (1.0 - phi) * abs(delta_rho) * gravity * f / melt_visc
-    w = np.maximum(w, 0.0)
+    f = mobility_function(np.asarray(porosity, dtype=float), grain_size, buoyancy=buoyancy)
+    w = abs(delta_rho) * gravity * f / melt_visc
+    if not np.all(np.isfinite(w) & (w >= 0.0)):
+        raise RuntimeError(
+            f'percolation speed is negative or not finite at porosity {porosity!r}, gravity '
+            f'{gravity!r} m/s2, density contrast {delta_rho!r} kg/m3 and melt viscosity '
+            f'{melt_visc!r} Pa s'
+        )
     return float(w) if np.ndim(porosity) == 0 else w
 
 
@@ -166,6 +203,23 @@ def matrix_time(mush_visc: float, delta_rho: float, gravity: float, thickness: f
     drives a volumetric strain rate against the bulk viscosity ``zeta = mu_s/phi``,
     and closing a porosity ``phi`` takes ``phi zeta / (delta_rho g L)``, which is
     independent of porosity.
+
+    Parameters
+    ----------
+    mush_visc : float
+        Shear viscosity of the mush [Pa s].
+    delta_rho : float
+        Solid minus melt density [kg m-3]; its magnitude is used.
+    gravity : float
+        Gravitational acceleration [m s-2].
+    thickness : float
+        Front thickness [m].
+
+    Returns
+    -------
+    float
+        Deformation time [s]; infinite when ``|delta_rho| g L`` is not positive
+        or not finite.
     """
     denom = abs(delta_rho) * gravity * thickness
     if denom <= 0.0 or not np.isfinite(denom):
@@ -182,13 +236,42 @@ def drainage_integral(
     gravity: float,
     melt_visc: float,
     mush_visc: float,
+    *,
+    buoyancy: str,
 ) -> tuple[float, float, float]:
     """Porosity a parcel retains after crossing the front [1].
 
     Integrates ``dphi/dt = -phi / max(L/w_D(phi), tau_s)`` from ``porosity_top``
-    over the residence time. Bounded in ``[0, porosity_top]`` without a clamp,
-    because the porosity decays but never reaches zero: the drainage is
-    self-limiting, ``w_D`` falling as ``phi^2`` or steeper at low porosity.
+    over the residence time, with ``w_D`` under ``buoyancy``. ``w_D`` falls as
+    ``phi^2`` down to a porosity of about 3e-5. Below about 3e-6 the mobility tends to
+    the Stokes residue of the tanh blend, a numerical floor, so the decay turns
+    exponential, and after a residence far longer than a front's the porosity ends within
+    the integrator's tolerance of zero. The result is clipped to ``[0, porosity_top]``;
+    an end below 0 by more than the allowance 10 atol, or above ``porosity_top`` by more
+    than 10 atol + rtol ``porosity_top``, raises ``RuntimeError``, as does a non-positive
+    percolation time.
+
+    Parameters
+    ----------
+    porosity_top : float
+        Melt volume fraction where the parcel enters the front [1].
+    t_res : float
+        Residence time of the parcel in the front [s]. A non-positive or
+        non-finite value returns ``porosity_top`` without integrating.
+    thickness : float
+        Front thickness [m].
+    grain_size : float
+        Crystal grain size [m].
+    delta_rho : float
+        Solid minus melt density across the front [kg m-3].
+    gravity : float
+        Gravitational acceleration [m s-2].
+    melt_visc : float
+        Melt viscosity [Pa s].
+    mush_visc : float
+        Shear viscosity of the mush [Pa s].
+    buoyancy : str
+        The solver's ``separation_buoyancy``, ``'mixture'`` or ``'solid'``.
 
     Returns
     -------
@@ -199,15 +282,21 @@ def drainage_integral(
     from scipy.integrate import solve_ivp
 
     tau_s = matrix_time(mush_visc, delta_rho, gravity, thickness)
-    w_top = darcy_velocity(porosity_top, grain_size, delta_rho, gravity, melt_visc)
+    w_top = darcy_velocity(
+        porosity_top, grain_size, delta_rho, gravity, melt_visc, buoyancy=buoyancy
+    )
     tau_d_top = thickness / w_top if w_top > 0.0 else float('inf')
+    if not tau_d_top > 0.0:
+        raise RuntimeError(
+            f'percolation time {tau_d_top!r} s is not positive for a front {thickness!r} m thick'
+        )
 
     if not np.isfinite(t_res) or t_res <= 0.0 or porosity_top <= 0.0:
         return float(max(porosity_top, 0.0)), tau_d_top, tau_s
 
     def rhs(_t, y):
         phi = max(float(y[0]), 0.0)
-        w = darcy_velocity(phi, grain_size, delta_rho, gravity, melt_visc)
+        w = darcy_velocity(phi, grain_size, delta_rho, gravity, melt_visc, buoyancy=buoyancy)
         tau_d = thickness / w if w > 0.0 else float('inf')
         # The slower process controls: melt leaves only if it can both
         # percolate through the pores and have the matrix deform to close
@@ -222,8 +311,8 @@ def drainage_integral(
         (0.0, float(t_res)),
         [float(porosity_top)],
         method='LSODA',
-        rtol=1.0e-8,
-        atol=1.0e-12,
+        rtol=_RTOL,
+        atol=_ATOL,
     )
     if not sol.success:
         log.warning(
@@ -233,6 +322,12 @@ def drainage_integral(
         )
         return float(porosity_top), tau_d_top, tau_s
     retained = float(sol.y[0, -1])
+    low, high = 10.0 * _ATOL, 10.0 * _ATOL + _RTOL * porosity_top
+    if not -low <= retained <= porosity_top + high:
+        raise RuntimeError(
+            f'retained porosity {retained!r} lies outside [0, {porosity_top!r}] by more than '
+            f'the allowance ({low!r} below, {high!r} above)'
+        )
     return float(min(max(retained, 0.0), porosity_top)), tau_d_top, tau_s
 
 
@@ -262,6 +357,15 @@ def porosity_from_densities(
     two phase-boundary densities are equal the rule is 0/0, and mass and volume
     fractions coincide, so the melt fraction is used there too. The result is
     clipped to [0, 1].
+
+    Parameters
+    ----------
+    rho : ndarray
+        Mixture density [kg m-3].
+    rho_solid, rho_melt : ndarray
+        Solid and melt densities at the phase boundary [kg m-3].
+    melt_fraction : ndarray
+        Melt mass fraction of the interior solver [1].
     """
     rho_s, rho_l, rho_mix, phi_s = np.broadcast_arrays(
         np.asarray(rho_solid, dtype=float),
@@ -414,6 +518,19 @@ def volume_to_mass_fraction(f_vol: float, rho_melt: float, rho_solid: float) -> 
     about 0.93 at a ten percent density contrast and a porosity of 0.3. The
     conversion is applied once, here, to every fraction the front scheme hands
     to the budget.
+
+    Parameters
+    ----------
+    f_vol : float
+        Melt volume fraction [1]; clipped to [0, 1].
+    rho_melt, rho_solid : float
+        Melt and solid densities [kg m-3].
+
+    Returns
+    -------
+    float
+        Melt mass fraction [1]. Where the mixture density is not positive or not
+        finite, the clipped volume fraction is returned unchanged.
     """
     f = float(np.clip(f_vol, 0.0, 1.0))
     denom = f * rho_melt + (1.0 - f) * rho_solid

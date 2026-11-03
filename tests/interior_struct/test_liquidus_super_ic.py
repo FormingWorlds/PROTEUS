@@ -1000,7 +1000,7 @@ class TestPaleosLiquidusSourceOfTruth:
 
     @pytest.mark.physics_invariant
     @pytest.mark.reference_pinned
-    def test_paleos_liquidus_135gpa(self):
+    def test_paleos_liquidus_135gpa(self, validation_plot):
         """Pin the Fei+2021 value at 135 GPa: T_liq ~ 5944 K.
 
         Hand-derivation: 6000 * (135/140)**0.26 = 6000 * 0.99059 ~ 5943.5.
@@ -1009,18 +1009,43 @@ class TestPaleosLiquidusSourceOfTruth:
         """
         from zalmoxis.melting_curves import paleos_liquidus
 
-        T = float(paleos_liquidus(135e9))
-        assert T == pytest.approx(5943.53, abs=1.0)
+        p_case, pin, tol = 135.0, 5943.53, 1.0
+        T = float(paleos_liquidus(p_case * 1e9))
+        assert T == pytest.approx(pin, abs=tol)
         # Sign guard (positivity, tests/AGENTS.md, Physics modules): liquidus temperature must
         # be positive Kelvin everywhere.
         assert T > 0.0
+
         # Exponent-error guard: a regression that swapped the 0.26
         # exponent for 0.5 would give 6000 * (135/140)**0.5 ~ 5892 K
         # (50 K below the correct 5944 K); the abs=1.0 tolerance
         # discriminates that even before this scale check fires, but
         # the explicit guard keeps the failure message readable.
-        wrong_exp = 6000.0 * (135.0 / 140.0) ** 0.5
+        def wrong_law(p_gpa):
+            return 6000.0 * (p_gpa / 140.0) ** 0.5
+
+        wrong_exp = wrong_law(p_case)
         assert abs(T - wrong_exp) > 30.0
+
+        def figure():
+            import matplotlib.pyplot as plt
+            import numpy as np
+
+            p_gpa = np.linspace(10.0, 200.0, 39)
+            fig, ax = plt.subplots(figsize=(6, 4))
+            ax.plot(
+                p_gpa, [float(paleos_liquidus(p * 1e9)) for p in p_gpa], label='paleos_liquidus'
+            )
+            ax.plot(p_gpa, wrong_law(p_gpa), '--', label='Exponent 0.5')
+            ax.plot([p_case], [pin], 's', mfc='none', ms=9, label='5943.53 K')
+            ax.plot([p_case], [T], 'o', zorder=3, label='Code at 135 GPa')
+            ax.set_xlabel('Pressure [GPa]')
+            ax.set_ylabel('Liquidus temperature [K]')
+            ax.legend()
+            fig.tight_layout()
+            return fig
+
+        validation_plot(figure, 'interior_struct_paleos_liquidus')
 
     @pytest.mark.physics_invariant
     def test_paleos_liquidus_continuous_at_crossover(self):

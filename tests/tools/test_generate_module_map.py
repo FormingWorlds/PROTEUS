@@ -19,6 +19,7 @@ for the test framework.
 
 from __future__ import annotations
 
+import functools
 import importlib.util
 import sys
 from pathlib import Path
@@ -92,6 +93,34 @@ def test_verify_passes_on_committed_tree(schema):
     # The map covers all ten dispatch sites, one per physics area.
     assert len(_gmm.DISPATCH_SITES) == 10
     assert len({site['config_path'] for site in _gmm.DISPATCH_SITES}) == 10
+
+
+def test_verify_parses_each_source_text_once(schema, monkeypatch):
+    """The tree-wide scan reads every source file for each of the ten dispatch sites;
+    it parses each distinct source text once, and each symbol lookup parses its file."""
+    getattr(_gmm._scan_nodes, 'cache_clear', lambda: None)()
+    calls, lookups = [], []
+    parse, symbol = _gmm.ast.parse, _gmm._symbol_defined
+    monkeypatch.setattr(_gmm.ast, 'parse', lambda *a, **k: calls.append(1) or parse(*a, **k))
+    monkeypatch.setattr(_gmm, '_symbol_defined', lambda *a: lookups.append(1) or symbol(*a))
+    assert _gmm.verify(schema) == []
+    texts = {py.read_text() for py in _gmm.SRC.rglob('*.py')}
+    assert lookups and len(calls) == len(texts) + len(lookups), (len(calls), len(texts))
+
+
+def test_the_filtered_scan_equals_a_full_walk_on_the_committed_tree(monkeypatch):
+    """The scan reads only the node kinds it keeps, so on every source file and for
+    every dispatch site it finds what a walk over all nodes finds."""
+    pairs = [
+        (py, tuple(site['config_path'].split('.')))
+        for py in sorted(_gmm.SRC.rglob('*.py'))
+        for site in _gmm.DISPATCH_SITES
+    ]
+    kept = [_gmm.scan_compared_options(py, dotted) for py, dotted in pairs]
+    full = functools.cache(lambda text: tuple(_gmm.ast.walk(_gmm.ast.parse(text))))
+    monkeypatch.setattr(_gmm, '_scan_nodes', full)
+    assert kept == [_gmm.scan_compared_options(py, dotted) for py, dotted in pairs]
+    assert sum(bool(found) for found in kept) >= len(_gmm.DISPATCH_SITES)
 
 
 def test_verify_flags_broken_entry_and_option_drift(schema, monkeypatch):

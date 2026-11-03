@@ -133,7 +133,7 @@ def test_update_separation_sat_perigee_uses_eccentric_periapsis_formula():
 
 @pytest.mark.physics_invariant
 @pytest.mark.reference_pinned
-def test_period_matches_keplers_third_law_for_earth_around_sun():
+def test_period_matches_keplers_third_law_for_earth_around_sun(validation_plot):
     """Kepler's third law (Kepler 1619, Harmonices Mundi Book V):
     ``T = 2 pi sqrt(a**3 / (G (M_star + M_planet)))``. For Earth at
     1 AU around the Sun, the period must come within 0.5% of the
@@ -144,14 +144,50 @@ def test_period_matches_keplers_third_law_for_earth_around_sun():
     """
     hf_row = {'semimajorax': AU, 'M_star': M_sun, 'M_planet': M_earth}
     update_period(hf_row)
-    expected = 2.0 * np.pi * (AU**3 / (const_G * (M_sun + M_earth))) ** 0.5
+
+    def kepler(a):
+        return 2.0 * np.pi * (a**3 / (const_G * (M_sun + M_earth))) ** 0.5
+
+    expected = kepler(AU)
     assert hf_row['orbital_period'] == pytest.approx(expected, rel=1e-12)
     # Sign guard: orbital period is always positive.
     assert hf_row['orbital_period'] > 0.0
     # Scale guard: 1 sidereal year = 3.156e7 s. Bracket the order of
     # magnitude to catch any AU-vs-m or M_sun-in-kg-vs-g unit slip.
-    sidereal_year_s = 365.256 * 86400
-    assert hf_row['orbital_period'] == pytest.approx(sidereal_year_s, rel=5e-3)
+    year_days, rtol_year = 365.256, 5e-3
+    sidereal_year_s = year_days * 86400
+    assert hf_row['orbital_period'] == pytest.approx(sidereal_year_s, rel=rtol_year)
+
+    def figure():
+        import matplotlib.pyplot as plt
+
+        sma = np.geomspace(0.3, 3.0, 31)
+        code = []
+        for a in sma:
+            row = {'semimajorax': a * AU, 'M_star': M_sun, 'M_planet': M_earth}
+            update_period(row)
+            code.append(row['orbital_period'] / 86400)
+        fig, ax = plt.subplots(figsize=(6, 4))
+        ax.plot(sma, code, label='update_period')
+        ax.plot(
+            sma[::5],
+            kepler(sma[::5] * AU) / 86400,
+            's',
+            mfc='none',
+            ms=9,
+            label="Kepler's third law",
+        )
+        ax.plot([1.0], [year_days], 'D', mfc='none', ms=10, label='Sidereal year')
+        ax.plot([1.0], [hf_row['orbital_period'] / 86400], 'o', zorder=3, label='Code at 1 AU')
+        ax.set_xscale('log')
+        ax.set_yscale('log')
+        ax.set_xlabel('Semi-major axis [AU]')
+        ax.set_ylabel('Orbital period [days]')
+        ax.legend()
+        fig.tight_layout()
+        return fig
+
+    validation_plot(figure, 'orbit_wrapper_period')
 
 
 @pytest.mark.physics_invariant

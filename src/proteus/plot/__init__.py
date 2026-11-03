@@ -13,6 +13,7 @@ from proteus.plot.cpl_interior import plot_interior_entry
 from proteus.plot.cpl_interior_cmesh import plot_interior_cmesh_entry
 from proteus.plot.cpl_orbit import plot_orbit_entry
 from proteus.plot.cpl_population import plot_population_entry
+from proteus.plot.cpl_saturated import plot_saturated_entry
 from proteus.plot.cpl_sflux import plot_sflux_entry
 from proteus.plot.cpl_sflux_cross import plot_sflux_cross_entry
 from proteus.plot.cpl_spectra import plot_spectra_entry
@@ -27,6 +28,7 @@ plot_dispatch = {
     'fluxes_atmosphere': plot_fluxes_atmosphere_entry,
     'fluxes_global': plot_fluxes_global_entry,
     'global': plot_global_entry,
+    'saturated': plot_saturated_entry,
     'interior': plot_interior_entry,
     'interior_cmesh': plot_interior_cmesh_entry,
     'orbit': plot_orbit_entry,

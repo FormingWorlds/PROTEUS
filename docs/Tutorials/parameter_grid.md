@@ -64,7 +64,8 @@ max_mem   = 12              # per-CPU memory [GB] (Slurm)
 !!! warning "Required top-level keys"
     `output`, `symlink`, `use_slurm`, `max_jobs`, `max_days`, and `max_mem` are
     all read unconditionally, even for local (non-Slurm) runs. Omitting any of
-    them raises a `KeyError` before the grid starts.
+    them raises a `KeyError` before the grid starts. `use_slurm`, and the optional
+    `jax_cache`, take only `true` or `false`, without quotes.
 
 ### Sweep methods
 

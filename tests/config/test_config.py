@@ -3648,3 +3648,83 @@ def test_aragog_under_the_dummy_structure_needs_melting_dir(mantle):
     instance = SimpleNamespace(interior_struct=struct, interior_energetics=value)
     with pytest.raises(ValueError, match='The dummy structure requires it with any mantle EOS'):
         aragog_needs_melting_curves(instance, None, value)
+
+
+def test_a_write_cut_anywhere_leaves_the_previous_file_whole(tmp_path_factory):
+    """Wherever a write stops and whatever it raises, the file it would replace stays whole,
+    a write with no previous file leaves none, no temporary file remains, and the next write
+    gives the full record."""
+    hypothesis = pytest.importorskip('hypothesis')
+    st = hypothesis.strategies
+    import tomlkit
+
+    cfg = read_config_object(PROTEUS_ROOT / 'input' / 'minimal.toml')
+    ref = tmp_path_factory.mktemp('ref') / 'init_coupler.toml'
+    cfg.write(str(ref))
+    full = ref.read_bytes()
+    errors = [OSError(28, 'No space left on device'), KeyboardInterrupt(), RuntimeError('cut')]
+
+    @hypothesis.settings(max_examples=60, deadline=None, derandomize=True)
+    @hypothesis.given(st.floats(0.0, 1.0), st.sampled_from(errors), st.booleans())
+    def check(frac, err, exists):
+        folder = tmp_path_factory.mktemp('write')
+        out = folder / 'init_coupler.toml'
+        if exists:
+            out.write_bytes(b'previous = 1\n')
+
+        def cut(doc, hdl):
+            text = tomlkit.dumps(doc)
+            hdl.write(text[: int(frac * len(text))])
+            raise err
+
+        with (
+            patch('proteus.config._config.tomlkit.dump', side_effect=cut),
+            pytest.raises(type(err)),
+        ):
+            cfg.write(str(out))
+        names = [f.name for f in folder.iterdir()]
+        assert names == (['init_coupler.toml'] if exists else [])
+        if exists:
+            assert out.read_bytes() == b'previous = 1\n'
+        cfg.write(str(out))
+        assert out.read_bytes() == full
+
+    check()
+
+
+def test_a_write_that_cannot_clean_up_raises_its_own_error(tmp_path):
+    """When the temporary file cannot be written or removed, here a directory of that name,
+    the write raises the original error, not the one of the cleanup, and the record stays."""
+    cfg = read_config_object(PROTEUS_ROOT / 'input' / 'minimal.toml')
+    out = tmp_path / 'init_coupler.toml'
+    out.write_bytes(b'previous = 1\n')
+    (tmp_path / 'init_coupler.toml.tmp').mkdir()
+    with pytest.raises(OSError) as err:
+        cfg.write(str(out))
+    assert isinstance(err.value, IsADirectoryError), repr(err.value)
+    assert err.value.__context__ is None
+    assert out.read_bytes() == b'previous = 1\n'
+    assert (tmp_path / 'init_coupler.toml.tmp').is_dir()
+
+
+def test_an_interrupted_write_leaves_the_previous_file_whole(tmp_path):
+    """A write that stops part-way, as on a full disk, leaves the file it would replace
+    whole and leaves no temporary file next to it."""
+    import tomlkit
+
+    cfg = read_config_object(PROTEUS_ROOT / 'input' / 'minimal.toml')
+    out = tmp_path / 'init_coupler.toml'
+    cfg.write(str(out))
+    before = out.read_bytes()
+
+    def cut(doc, hdl):
+        hdl.write(tomlkit.dumps(doc)[:200])
+        raise OSError(28, 'No space left on device')
+
+    with (
+        patch('proteus.config._config.tomlkit.dump', side_effect=cut),
+        pytest.raises(OSError, match='No space left'),
+    ):
+        cfg.write(str(out))
+    assert out.read_bytes() == before
+    assert [f.name for f in tmp_path.iterdir()] == ['init_coupler.toml']

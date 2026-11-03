@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 
 import tomlkit
 from attrs import asdict, define, field
@@ -299,6 +300,21 @@ def check_accretion_interior_compatibility(instance, attribute, value):
         )
 
 
+def check_accretion_remelt_source(instance, attribute, value):
+    """Reject accretion.remelt = 'computed' without a module that reports a melt fraction.
+
+    Morrigan reports the melt mass fraction of each merger and a timeline file can
+    carry it as a column; the analytical module and no module have none to apply.
+    """
+    acc = instance.accretion
+    if acc.remelt == 'computed' and acc.module not in ('morrigan', 'timeline'):
+        raise ValueError(
+            "accretion.remelt = 'computed' needs an accretion module that reports a melt "
+            "fraction: 'morrigan', or 'timeline' with an f_melt column; got "
+            f'accretion.module = {acc.module!r}'
+        )
+
+
 def check_accretion_vapourise_compatibility(instance, attribute, value):
     """Reject accretion runs that also vapourise rock into the atmosphere.
 
@@ -410,6 +426,24 @@ def front_trapping_requires_aragog(instance, attribute, value):
             'outgas.trap_mode = "front" requires interior_energetics.module = "aragog", '
             f'not "{interior}". The front scheme reads the melt fraction, density and '
             'pressure profiles that only the Aragog interior exports.'
+        )
+
+
+def prevent_desaturation_warns_without_condensates(instance, attribute, value):
+    """prevent_desaturation holds nothing unless atmodeller forms condensates."""
+    outgas = instance.outgas
+    if getattr(outgas, 'prevent_desaturation', False) is not True:
+        return
+    if outgas.module != 'atmodeller':
+        log.warning(
+            'outgas.prevent_desaturation = true has no effect with outgas.module = '
+            '"%s": only atmodeller forms condensates',
+            outgas.module,
+        )
+    elif not outgas.atmodeller.include_condensates:
+        log.warning(
+            'outgas.prevent_desaturation = true has no effect with '
+            'outgas.atmodeller.include_condensates = false'
         )
 
 
@@ -788,7 +822,13 @@ class Config:
             lowt_extension_requires_ps_tables,
         ),
     )
-    outgas: Outgas = field(factory=Outgas, validator=(front_trapping_requires_aragog,))
+    outgas: Outgas = field(
+        factory=Outgas,
+        validator=(
+            front_trapping_requires_aragog,
+            prevent_desaturation_warns_without_condensates,
+        ),
+    )
     atmos_clim: AtmosClim = field(factory=AtmosClim)
     atmos_chem: AtmosChem = field(factory=AtmosChem)
     escape: Escape = field(
@@ -804,6 +844,7 @@ class Config:
             valid_config_version,
             check_module_dependencies,
             check_accretion_interior_compatibility,
+            check_accretion_remelt_source,
             check_accretion_vapourise_compatibility,
             check_accretion_core_stratification_compatibility,
             check_core_module_requirements,
@@ -879,6 +920,16 @@ class Config:
                     if aragog.get(field_name) == 0.0:
                         del aragog[field_name]
 
-        # Write to TOML file
-        with open(out, 'w') as hdl:
-            tomlkit.dump(cfg, hdl)
+        # Write a temporary file next to out and move it into place, so a write that stops
+        # part-way (a full disk) leaves the previous file whole.
+        tmp = f'{out}.tmp'
+        try:
+            with open(tmp, 'w') as hdl:
+                tomlkit.dump(cfg, hdl)
+            os.replace(tmp, out)
+        except BaseException:
+            try:  # the cleanup must not hide the error of the write
+                os.remove(tmp)
+            except OSError:
+                pass
+            raise

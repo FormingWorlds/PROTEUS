@@ -147,7 +147,7 @@ def test_atmodeller_solver_max_steps_and_multistart_gt0_under_zalmoxis():
 
     - ``=0`` rejects (catches a ``ge(0)`` regression).
     - ``=1`` round-trips (catches a ``gt(1)`` regression).
-    - Documented defaults (1024, 10) round-trip.
+    - Documented defaults (1024, 50) round-trip.
     """
     from proteus.config._outgas import Atmodeller
 
@@ -161,7 +161,7 @@ def test_atmodeller_solver_max_steps_and_multistart_gt0_under_zalmoxis():
     assert a_min.solver_multistart == 1
     default = Atmodeller()
     assert default.solver_max_steps == 1024
-    assert default.solver_multistart == 10
+    assert default.solver_multistart == 50
 
 
 def test_atmodeller_include_condensates_default_true_round_trips_off():

@@ -53,6 +53,8 @@ If you instead wish to initialise under case (2), where a pre-computed grid prov
 
 An example configuration file is available at `input/inference/example.infer.toml`.
 
+`spectral_cache`, `abort_on_failure` and `correlate_ratios` take only a TOML `true` or `false`; any other value stops the study at start, before its output folder is emptied.
+
 ## Usage
 
 Execute the main optimisation process by using the PROTEUS command-line interface

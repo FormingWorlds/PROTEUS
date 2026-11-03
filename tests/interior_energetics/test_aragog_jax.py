@@ -61,6 +61,7 @@ def _make_config(*, heat_radiogenic: bool = False, heat_tidal: bool = False):
     config.interior_energetics.spider.matprop_smooth_width = 0.02
     config.interior_energetics.aragog.phase_smoothing = 'tanh'
     config.interior_energetics.aragog.separation_viscosity = 'mixture'
+    config.interior_energetics.aragog.separation_buoyancy = 'mixture'
     config.interior_energetics.aragog.atol_temperature_equivalent = 1.0
     config.interior_energetics.rtol = 1e-4
     config.interior_energetics.heat_radiogenic = heat_radiogenic

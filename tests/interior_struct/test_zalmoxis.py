@@ -2587,6 +2587,28 @@ def test_zalmoxis_solver_withholds_callable_on_jax_viable_eos(
     assert 0.0 < cmb_radius < hf_row['R_int']
 
 
+def test_the_jax_rebuild_looks_up_a_padded_surface_node_at_the_target_pressure(
+    tmp_path, monkeypatch
+):
+    """A padded outer node (P = 0 past a surface stop) is the surface: the post-solve rebuild
+    evaluates its density at the target surface pressure, not at 0 Pa."""
+    model_results = _plausible_model_results()
+    model_results['pressure'][-1] = 0.0
+    r_arr, t_arr = _cooled_mantle_arrays(model_results)
+    _, rho_mock, _, hf_row, _, _, _ = _run_gate_solver(
+        tmp_path,
+        monkeypatch,
+        'PALEOS:MgSiO3',
+        (r_arr, t_arr),
+        lambda r, P: float(np.interp(r, r_arr, t_arr)),
+        main_results=model_results,
+    )
+    pressures = [c.args[0] for c in rho_mock.call_args_list]
+    assert len(pressures) == len(model_results['radii'])
+    assert pressures[-1] == pytest.approx(hf_row['P_surf'] * 1e5, rel=1e-12)
+    assert pressures[:-1] == pytest.approx(list(model_results['pressure'][:-1]), rel=1e-12)
+
+
 @pytest.mark.parametrize('mantle_eos', ['PALEOS-2phase:MgSiO3', 'PALEOS:MgSiO3'])
 def test_zalmoxis_solver_passes_callable_on_jax_viable_eos_without_jax(
     tmp_path, monkeypatch, mantle_eos

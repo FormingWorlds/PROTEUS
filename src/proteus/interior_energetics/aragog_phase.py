@@ -38,6 +38,7 @@ from aragog.parser import _PhaseMixedParameters
 
 if TYPE_CHECKING:
     from aragog.jax.phase import PhaseParams
+    from aragog.solver import EntropySolver
 
     from proteus.config import Config
 
@@ -76,6 +77,10 @@ class _PhaseParamsInputs:
         Gravitational-separation drag viscosity source ('melt' or
         'mixture'). Shared: the numpy type stores the string, the JAX
         type stores it as the ``separation_viscosity_mixture`` flag.
+    separation_buoyancy : str
+        Buoyancy of the gravitational-separation velocity ('mixture' or
+        'solid'). Shared: the numpy type stores the string, the JAX type
+        stores it as the ``separation_buoyancy_mixture`` flag.
     latent_heat_of_fusion, phase_transition_width : float
         Numpy-only mixed-phase quantities.
     const_properties : bool
@@ -103,6 +108,7 @@ class _PhaseParamsInputs:
     grain_size: float
     matprop_smooth_width: float
     separation_viscosity: str
+    separation_buoyancy: str
 
     # Numpy mixed-phase parameters only.
     latent_heat_of_fusion: float
@@ -158,6 +164,7 @@ def _phase_params_from_config(config: Config) -> _PhaseParamsInputs:
         grain_size=ie.grain_size,
         matprop_smooth_width=float(ie.spider.matprop_smooth_width),
         separation_viscosity=ie.aragog.separation_viscosity,
+        separation_buoyancy=ie.aragog.separation_buoyancy,
         latent_heat_of_fusion=float(ie.latent_heat_of_fusion),
         phase_transition_width=float(ie.phase_transition_width),
         const_properties=bool(ie.const_properties),
@@ -218,6 +225,7 @@ def build_mixed_phase_params(
         phase_transition_width=inputs.phase_transition_width,
         grain_size=inputs.grain_size,
         separation_viscosity=inputs.separation_viscosity,
+        separation_buoyancy=inputs.separation_buoyancy,
         matprop_smooth_width=inputs.matprop_smooth_width,
         const_properties=inputs.const_properties,
         const_rho=inputs.const_rho,
@@ -273,4 +281,52 @@ def build_jax_phase_params(config: Config) -> PhaseParams:
         phase_smoothing=inputs.phase_smoothing,
         phase_smoothing_width=_JAX_PHASE_SMOOTHING_WIDTH,
         separation_viscosity=inputs.separation_viscosity,
+        separation_buoyancy=inputs.separation_buoyancy,
     )
+
+
+class BuoyancyMismatchError(RuntimeError):
+    """A built aragog solver uses another separation buoyancy than the config."""
+
+
+def check_solver_buoyancy(
+    config: Config,
+    *,
+    solver: EntropySolver | None = None,
+    jax_params: PhaseParams | None = None,
+) -> None:
+    """Stop the run if a built aragog solver uses another separation buoyancy than the config.
+
+    Parameters
+    ----------
+    config : Config
+        The PROTEUS configuration; ``interior_energetics.aragog.separation_buoyancy`` is
+        the mode the solver must use.
+    solver : EntropySolver or None
+        The numpy entropy solver after ``initialize()``, which builds its phase evaluators.
+    jax_params : PhaseParams or None
+        JAX phase parameters (CVODE factory or diffrax research runner).
+
+    Raises
+    ------
+    BuoyancyMismatchError
+        If any site carries another mode, naming the field, the site and both values.
+    ValueError
+        If neither ``solver`` nor ``jax_params`` is given.
+    """
+    if solver is None and jax_params is None:
+        raise ValueError('check_solver_buoyancy needs a solver or jax_params to check')
+    want = config.interior_energetics.aragog.separation_buoyancy
+    phases = () if solver is None else (solver.state.phase_staggered, solver.state.phase_basic)
+    found = [('numpy', p._separation_buoyancy) for p in phases]
+    if jax_params is not None:
+        # aragog takes a flag above 0.5 as 'mixture'.
+        found.append(
+            ('jax', 'mixture' if jax_params.separation_buoyancy_mixture > 0.5 else 'solid')
+        )
+    for site, mode in found:
+        if mode != want:
+            raise BuoyancyMismatchError(
+                f'interior_energetics.aragog.separation_buoyancy is {want!r}, '
+                f'but the {site} aragog solver uses {mode!r}'
+            )

@@ -105,7 +105,9 @@ structure, whose own core mass can differ from the mass the core keeps; the
 log prints both ratios.
 
 With an accretion module, a giant impact that re-melts the mantle raises the
-core temperature to at least the temperature of the re-melted base, and the
+core temperature to at least the temperature of the re-melted base (a partial
+re-melt never lowers the core temperature and raises it only when the base,
+melted or not, is hotter at the new core-mantle boundary pressure), and the
 core profile is fitted again to the grown core at the next interior solve. The
 heat of that rise is written to `step_dE_impact_core_J`, and the change of the
 heat content by the new profile to `step_dE_impact_core_refit_J`, both on the
