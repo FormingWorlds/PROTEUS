@@ -5253,6 +5253,7 @@ class TestJuliaDepot:
             + _install_sh_blocks("RED='", 'info()')
             + f'SCRIPT_DIR={shlex.quote(str(tmp / "root"))}\n'
             + ''.join(_install_sh_function(f) for f in _DEPOT_FUNCTIONS)
+            + 'collect_env_info() { :; }\n'
         )
         done = subprocess.run(
             ['bash', '-c', defs + 'setup_julia_depot\n'],
