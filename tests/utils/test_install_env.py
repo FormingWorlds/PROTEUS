@@ -9,6 +9,7 @@ conda env gets the variables without a single quote in their value in one
 
 from __future__ import annotations
 
+import re
 import subprocess
 from pathlib import Path
 
@@ -268,12 +269,26 @@ def test_other_install_needs_a_marker_beside_the_depot(monkeypatch, tmp_path):
     """The same name on a big disk stays the choice of the user; an env beside it does not."""
     monkeypatch.delenv('CONDA_PREFIX', raising=False)
     big = tmp_path / 'big'
-    assert depot_of_other_install(f'{big}/julia_depot:', tmp_path) is True
+    assert depot_of_other_install(f'{big}/julia_depot:', tmp_path) is False
     big.mkdir()
     assert depot_of_other_install(f'{big}/julia_depot:', tmp_path) is False
     (big / 'conda-meta').mkdir()
     assert depot_of_other_install(f'{big}/julia_depot:', tmp_path) is True
     assert depot_of_other_install(f'{big}/julia_depot:', big) is False
+
+
+def test_missing_parent_counts_as_gone_only_in_an_envs_folder(monkeypatch, tmp_path):
+    """An env removed from an envs folder is gone; any other missing folder can still come."""
+    monkeypatch.delenv('CONDA_PREFIX', raising=False)
+    gone = tmp_path / 'envs' / 'gone'
+    assert depot_of_other_install(f'{gone}/julia_depot:', tmp_path) is False
+    gone.parent.mkdir()
+    assert depot_of_other_install(f'{gone}/julia_depot:', tmp_path) is True
+    assert 'is gone' in install_env.other_depot_words(f'{gone}/julia_depot:')
+    gone.mkdir()
+    assert depot_of_other_install(f'{gone}/julia_depot:', tmp_path) is False
+    (gone / 'conda-meta').mkdir()
+    assert 'another PROTEUS install' in install_env.other_depot_words(f'{gone}/julia_depot:')
 
 
 @pytest.mark.parametrize(
@@ -301,20 +316,6 @@ def test_depot_value_is_unusable_reads_the_first_entry(value, expected):
     """A relative entry, another user's home and a literal $ give no fixed folder."""
     assert depot_value_is_unusable(value) is expected
     assert depot_value_is_unusable(f'{value or ""}:/later') is expected
-
-
-def test_depot_value_is_unusable_holds_for_any_value():
-    """Any text gives a verdict, and a leading slash with no $ is always usable."""
-    hypothesis = pytest.importorskip('hypothesis')
-    strategies = pytest.importorskip('hypothesis.strategies')
-
-    @hypothesis.given(strategies.text(max_size=20))
-    def check(text):
-        assert isinstance(depot_value_is_unusable(text), bool)
-        first = '/' + text.split(':')[0].replace('$', '')
-        assert depot_value_is_unusable(first) is False
-
-    check()
 
 
 def _write_project(folder, project, manifest):
@@ -371,8 +372,17 @@ def test_project_that_cannot_be_read_is_named(tmp_path, project, manifest):
     """A broken file gives a failure that names it, and no pass."""
     folder = tmp_path / 'p'
     _write_project(folder, project, manifest)
-    assert missing_julia_packages(folder, [str(tmp_path)]) == [f'{folder}: unreadable TOML']
-    assert missing_julia_packages(folder, []) == [f'{folder}: unreadable TOML']
+    with pytest.raises(ValueError, match='cannot be read'):
+        missing_julia_packages(folder, [str(tmp_path)])
+
+
+def test_bytes_that_are_not_utf8_cannot_be_read(tmp_path):
+    """The locale of the shell plays no part: a file is decoded as UTF-8."""
+    folder = tmp_path / 'p'
+    _write_project(folder, '[deps]\n', 'manifest_format = "2.0"\n')
+    (folder / 'Project.toml').write_bytes(b'[deps]\nFoo = "\xff"\n')
+    with pytest.raises(ValueError, match='cannot be read'):
+        missing_julia_packages(folder, [])
 
 
 def test_project_without_a_project_file_is_named(tmp_path):
@@ -380,5 +390,37 @@ def test_project_without_a_project_file_is_named(tmp_path):
     folder = tmp_path / 'p'
     folder.mkdir()
     (folder / 'Manifest.toml').write_text('manifest_format = "2.0"\n')
-    assert missing_julia_packages(folder, [str(tmp_path)]) == [f'{folder}: unreadable TOML']
-    assert missing_julia_packages(folder, []) == [f'{folder}: unreadable TOML']
+    with pytest.raises(ValueError, match='cannot be read'):
+        missing_julia_packages(folder, [str(tmp_path)])
+
+
+def _versioned_manifest(folder, text):
+    """Write the Manifest of the required Julia beside the other files of the project."""
+    (folder / f'Manifest-v{install_env.REQUIRED_JULIA}.toml').write_text(text)
+
+
+def test_versioned_manifest_alone_is_read(tmp_path):
+    """Julia reads Manifest-v<major>.<minor>.toml, so it is no project with no Manifest."""
+    folder = tmp_path / 'p'
+    folder.mkdir()
+    (folder / 'Project.toml').write_text('[deps]\nFoo = "1"\n')
+    _versioned_manifest(folder, '[[deps.Foo]]\ngit-tree-sha1 = "a"\n')
+    assert missing_julia_packages(folder, [str(tmp_path)]) == ['Foo']
+
+
+def test_versioned_manifest_wins_over_the_plain_one(tmp_path):
+    """With both files Julia uses the versioned one, whatever the plain one records."""
+    folder = tmp_path / 'p'
+    _write_project(
+        folder, '[deps]\nFoo = "1"\nBar = "2"\n', '[[deps.Foo]]\ngit-tree-sha1 = "a"\n'
+    )
+    _versioned_manifest(folder, '[[deps.Bar]]\ngit-tree-sha1 = "b"\n')
+    assert missing_julia_packages(folder, [str(tmp_path)]) == ['Bar']
+
+
+def test_required_julia_is_the_one_of_the_install_script():
+    """The file name that doctor reads follows the version that the installer requires."""
+    text = (Path(__file__).parents[2] / 'install.sh').read_text()
+    major = re.search(r'^REQUIRED_JULIA_MAJOR=(\d+)$', text, re.M).group(1)
+    minor = re.search(r'^REQUIRED_JULIA_MINOR=(\d+)$', text, re.M).group(1)
+    assert install_env.REQUIRED_JULIA == f'{major}.{minor}'

@@ -3997,12 +3997,43 @@ class TestJuliaDepot:
         assert value in result.message
         assert 'absolute' in result.message
 
-    def test_value_of_a_removed_env_fails(self, site, monkeypatch):
-        """The folder would grow again in the old prefix."""
+    def test_value_of_a_removed_env_fails_with_its_own_words(self, site, monkeypatch):
+        """The folder would grow again in the old prefix, and no other install holds it."""
+        (site / 'envs').mkdir()
         monkeypatch.setenv('JULIA_DEPOT_PATH', f'{site / "envs" / "gone"}/julia_depot:')
         result = doctor_module.check_julia_depot()
         assert result.status == FAIL
-        assert 'another PROTEUS install' in result.message
+        assert 'is gone' in result.message
+        assert 'another PROTEUS install' not in result.message
+
+    def test_value_on_a_missing_parent_with_no_envs_folder_is_no_other_install(
+        self, site, monkeypatch
+    ):
+        """A folder still to come stays the choice of the user."""
+        value = site / 'scratch' / 'me' / 'julia_depot'
+        monkeypatch.setenv('JULIA_DEPOT_PATH', f'{value}:')
+        result = doctor_module.check_julia_depot()
+        assert result.status == PASS
+        assert str(value) in result.message
+
+    @pytest.mark.parametrize(
+        'broken', ['[deps', b'[deps]\nFoo = "\xff"\n'], ids=['syntax', 'bytes']
+    )
+    def test_project_that_cannot_be_read_has_its_own_words(self, site, monkeypatch, broken):
+        """Pkg.instantiate does not repair a broken file, so the fix is not that command."""
+        agni = site / 'root' / 'AGNI'
+        _julia_project(agni)
+        data = broken if isinstance(broken, bytes) else broken.encode()
+        (agni / 'Project.toml').write_bytes(data)
+        depot = site / 'prefix' / 'julia_depot'
+        depot.mkdir()
+        monkeypatch.setenv('JULIA_DEPOT_PATH', f'{depot}:')
+        result = doctor_module.check_julia_depot()
+        assert result.status == FAIL
+        assert f'{agni}: Project.toml or Manifest file cannot be read' in result.message
+        assert 'does not hold' not in result.message
+        assert 'instantiate' not in result.fix_cmd
+        assert 'bash install.sh' in result.fix_cmd
 
     def test_agni_manifest_with_packages_passes(self, site, monkeypatch):
         """The check passes once the depot holds each direct dependency."""
