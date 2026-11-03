@@ -16,6 +16,7 @@ import tomllib
 from pathlib import Path
 
 ENV_FILE_NAME = '.proteus-env.sh'
+REQUIRED_JULIA = '1.13'
 
 
 def julia_depot_entries(value: str | None) -> list[str]:
@@ -49,8 +50,10 @@ def depot_of_other_install(value: str | None, root: Path) -> bool:
     """Return whether a depot value is the ``julia_depot`` of another PROTEUS install.
 
     That is a first entry named ``julia_depot`` beside ``conda-meta``, in a
-    PROTEUS tree or in a folder that does not exist (a removed env), other than
-    the active env and the tree ``root``. ``install.sh`` applies the same rule.
+    PROTEUS tree or in a folder that is gone from an ``envs`` folder that exists
+    (a removed conda or pixi env), other than the active env and the tree
+    ``root``. ``install.sh`` applies the same rule. Any other missing folder can
+    still come, for example on a disk that is not mounted, and stays.
     Conda keeps the value of the previous env when the next env has none, so
     such a value is inherited and not chosen.
 
@@ -74,10 +77,44 @@ def depot_of_other_install(value: str | None, root: Path) -> bool:
     if parent.resolve() in own:
         return False
     return (
-        not parent.exists()
+        (not parent.exists() and parent.parent.name == 'envs' and parent.parent.is_dir())
         or (parent / 'conda-meta').is_dir()
         or ((parent / 'install.sh').is_file() and (parent / 'src' / 'proteus').is_dir())
     )
+
+
+def other_depot_words(value: str | None) -> str:
+    """Name what the depot of ``depot_of_other_install`` is, for a message.
+
+    Parameters
+    ----------
+    value : str or None
+        Value of ``JULIA_DEPOT_PATH``, with at least one entry.
+
+    Returns
+    -------
+    str
+        The first entry and what it belongs to.
+    """
+    first = Path(julia_depot_entries(value)[0])
+    if first.parent.exists():
+        return f'{first} is the depot of another PROTEUS install'
+    return f'{first} is the depot of an environment that is gone'
+
+
+def own_julia_depot() -> str | None:
+    """Return the depot value of the active env, the one ``install.sh`` gives it.
+
+    Returns
+    -------
+    str or None
+        ``<CONDA_PREFIX>/julia_depot:``, or None with no env or with ``base``,
+        which PROTEUS does not install into.
+    """
+    prefix = os.environ.get('CONDA_PREFIX')
+    if not prefix or os.environ.get('CONDA_DEFAULT_ENV') == 'base':
+        return None
+    return f'{prefix}/julia_depot:'
 
 
 def depot_value_is_unusable(value: str | None) -> bool:
@@ -108,6 +145,8 @@ def missing_julia_packages(project: Path, entries: list[str]) -> list[str]:
     The check is a folder ``packages/<name>`` in any entry, so another version
     of a package passes. A stdlib and a package added with ``Pkg.develop`` have
     no ``git-tree-sha1`` in the Manifest and no such folder, so they do not count.
+    As in Julia, ``Manifest-v<major>.<minor>.toml`` of the required Julia wins
+    over ``Manifest.toml``.
 
     Parameters
     ----------
@@ -119,16 +158,25 @@ def missing_julia_packages(project: Path, entries: list[str]) -> list[str]:
     Returns
     -------
     list of str
-        Package names, empty with no ``Manifest.toml``; one line that names the
-        project when its files cannot be read.
+        Package names, empty with no Manifest.
+
+    Raises
+    ------
+    ValueError
+        When the ``Project.toml`` or the Manifest cannot be read.
     """
-    if not (project / 'Manifest.toml').is_file():
+    path = project / f'Manifest-v{REQUIRED_JULIA}.toml'
+    if not path.is_file():
+        path = project / 'Manifest.toml'
+    if not path.is_file():
         return []
     try:
-        manifest = tomllib.loads((project / 'Manifest.toml').read_text())
-        direct = tomllib.loads((project / 'Project.toml').read_text()).get('deps', {})
-    except (OSError, tomllib.TOMLDecodeError):
-        return [f'{project}: unreadable TOML']
+        manifest = tomllib.loads(path.read_bytes().decode())
+        direct = tomllib.loads((project / 'Project.toml').read_bytes().decode()).get('deps', {})
+    except (OSError, ValueError) as exc:
+        raise ValueError(
+            f'{project}: Project.toml or Manifest file cannot be read: {exc}'
+        ) from exc
     table = manifest.get('deps', manifest)
     return [
         name

@@ -9,7 +9,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from helpers import git
+from helpers import git, julia_problem
 
 from proteus.utils.install_env import julia_depot_entries
 
@@ -19,22 +19,21 @@ _JULIA = os.environ.get('PYTHON_JULIAPKG_EXE') or shutil.which('julia')
 _UUID = '7c1e3a52-4f0b-4d6e-9a11-0f6d2b8c9e01'
 
 
-def _julia_problem(exe: str | None) -> str | None:
-    """Return why ``exe`` cannot run these checks: no binary, a launcher or another version."""
-    if exe is None:
-        return 'no Julia binary found'
-    real = Path(exe).resolve()
-    if real.name == 'julialauncher' or (real.parent / 'juliaup').exists():
-        return f'{exe} is the juliaup launcher, which does not see a scratch HOME'
-    done = subprocess.run([exe, '--version'], capture_output=True, text=True, timeout=30)
-    if not done.stdout.startswith('julia version 1.13'):
-        return f'{exe} is {done.stdout.strip()}; these checks need 1.13'
-    return None
-
-
-_PROBLEM = _julia_problem(_JULIA)
-if _PROBLEM:
+_PROBLEM = julia_problem(_JULIA)
+if _PROBLEM and not os.environ.get('GITHUB_ACTIONS'):
     pytest.skip(_PROBLEM, allow_module_level=True)
+
+
+def _fail_with_no_julia():
+    """Under CI a missing Julia 1.13 fails, since a skip there hides the loss of this tier."""
+    if _PROBLEM:
+        pytest.fail(_PROBLEM)
+
+
+@pytest.fixture(autouse=True)
+def _julia_on_ci():
+    """Run ``_fail_with_no_julia`` before each test of this tier, and not at collection."""
+    _fail_with_no_julia()
 
 
 def _scratch_env(home: Path) -> dict[str, str]:
@@ -182,14 +181,3 @@ def test_parser_of_the_doctor_equals_julia(tmp_path, monkeypatch, value):
     parsed = julia_depot_entries(value)
     assert [e for e in entries if e and not e.endswith('share/julia')] == parsed
     assert (str(tmp_path / '.julia') in parsed) == (value is None or value.startswith(':'))
-
-
-def test_a_launcher_or_another_version_is_named_as_the_reason_to_skip(tmp_path):
-    """The reason of the skip names the binary, so a CI log shows what ran."""
-    stub = tmp_path / 'julia'
-    stub.write_text('#!/bin/sh\necho "julia version 1.12.6"\n')
-    stub.chmod(0o755)
-    assert '1.12.6' in _julia_problem(str(stub))
-    assert _julia_problem(None) == 'no Julia binary found'
-    (tmp_path / 'juliaup').write_text('')
-    assert 'launcher' in _julia_problem(str(stub))

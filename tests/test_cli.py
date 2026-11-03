@@ -2305,7 +2305,7 @@ def test_install_vars_record_the_depot_that_the_julia_steps_used(monkeypatch, tm
     monkeypatch.setenv('PATH', str(tmp_path))
     variables = cli._install_vars(tmp_path, tmp_path / 'fwl', None)
     assert variables['JULIA_DEPOT_PATH'] == own
-    assert foreign in capsys.readouterr().out
+    assert foreign.rstrip(':') in capsys.readouterr().out
     cli._export_env(tmp_path, variables)
     assert f"export JULIA_DEPOT_PATH='{own}'" in (tmp_path / '.proteus-env.sh').read_text()
 
@@ -2334,18 +2334,6 @@ def test_setup_scripts_keep_a_depot_of_the_user(monkeypatch, tmp_path):
     monkeypatch.delenv('PYTHON_JULIAPKG_EXE', raising=False)
     assert cli._env_with_proteus_julia(root).get('JULIA_DEPOT_PATH') == f'{tmp_path}/depot:'
     assert os.environ['JULIA_DEPOT_PATH'] == f'{tmp_path}/depot:'
-
-
-@pytest.mark.unit
-def test_install_vars_do_not_record_the_depot_of_another_install(monkeypatch, tmp_path, capsys):
-    """Conda keeps the value of the previous env, and that value must not bind to this env."""
-    other = tmp_path / 'other'
-    (other / 'conda-meta').mkdir(parents=True)
-    monkeypatch.setenv('CONDA_PREFIX', str(tmp_path / 'this'))
-    monkeypatch.setenv('JULIA_DEPOT_PATH', f'{other}/julia_depot:')
-    variables = cli._install_vars(tmp_path, tmp_path / 'fwl', None)
-    assert 'JULIA_DEPOT_PATH' not in variables
-    assert 'another PROTEUS install' in capsys.readouterr().out
 
 
 @pytest.mark.unit

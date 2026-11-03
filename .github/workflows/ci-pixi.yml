@@ -34,11 +34,11 @@ jobs:
           pixi-version: v0.79.0
           cache: false
 
+      - name: Check that pixi sets the Julia depot of this env
+        run: pixi run python -c "import os, sys; value = os.environ['JULIA_DEPOT_PATH']; print(value); sys.exit(value != os.environ['CONDA_PREFIX'] + '/julia_depot:')"
+
       - name: Run the installer
         run: pixi run bash install.sh --no-data
-
-      - name: Check that pixi expands the Julia depot path
-        run: pixi run python -c "import os, sys; value = os.environ['JULIA_DEPOT_PATH']; print(value); sys.exit(not value.startswith('/'))"
 
       - name: Check the prebuilt CVODE wrapper imports
         run: pixi run python -c "from scikits_odes_sundials.cvode import CVODE, CV_RootFunction, StatusEnum"

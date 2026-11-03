@@ -78,6 +78,8 @@ from proteus.utils.helper import (  # noqa: E402
 from proteus.utils.install_env import (  # noqa: E402
     depot_of_other_install,
     export_install_vars,
+    other_depot_words,
+    own_julia_depot,
     quoted_names,
     reload_instruction,
 )
@@ -984,12 +986,13 @@ def _install_vars(root: Path, fwl_data: Path, rad_dir: Path | None) -> dict[str,
         variables['FC_DIR'] = str(fastchem.resolve())
     depot = os.environ.get('JULIA_DEPOT_PATH')
     if depot_of_other_install(depot, root):
+        depot = own_julia_depot()
+        recorded = f'{depot} is recorded' if depot else 'no depot is recorded'
         click.secho(
-            f'[!] JULIA_DEPOT_PATH={depot} is the Julia depot of another PROTEUS install, so '
-            'it is not recorded.',
+            f'[!] {other_depot_words(os.environ["JULIA_DEPOT_PATH"])}, so {recorded}.',
             fg='yellow',
         )
-    elif depot:
+    if depot:
         variables['JULIA_DEPOT_PATH'] = depot
     return variables
 
@@ -1069,7 +1072,9 @@ def _env_with_proteus_julia(root: Path) -> dict[str, str]:
     Julia of the user, and finds no other program of that binary's folder.
     A link that cannot be written (a read-only root) is a warning that the
     setup script stops on the same link (``use_proteus_julia`` in
-    ``tools/_get_common.sh``), and ``PATH`` stays as it is.
+    ``tools/_get_common.sh``), and ``PATH`` stays as it is. A depot of another
+    install gives way to the depot of the active env for the subprocess, or to
+    ``~/.julia`` with no env, and one line says so.
 
     Parameters
     ----------
@@ -1082,8 +1087,18 @@ def _env_with_proteus_julia(root: Path) -> dict[str, str]:
         Environment for the setup-script subprocess.
     """
     env = os.environ.copy()
-    if depot_of_other_install(env.get('JULIA_DEPOT_PATH'), root):
-        del env['JULIA_DEPOT_PATH']
+    shell_depot = env.get('JULIA_DEPOT_PATH')
+    if depot_of_other_install(shell_depot, root):
+        own = own_julia_depot()
+        if own:
+            env['JULIA_DEPOT_PATH'] = own
+        else:
+            del env['JULIA_DEPOT_PATH']
+        click.secho(
+            f'[!] {other_depot_words(shell_depot)}. The Julia steps use {own or "~/.julia"}; '
+            f'your shell stays at {shell_depot}.',
+            fg='yellow',
+        )
     try:
         folder = link_proteus_julia(root)
     except OSError as exc:

@@ -3448,7 +3448,8 @@ class TestSetupCondaEnv:
         assert 'Installation failed at Phase 1.' in result.stdout
         assert not data.exists()
         assert not (root / '.proteus-env.sh').exists()
-        assert log.read_text() == ''
+        # What is left in the log is the read-only report of the stop itself.
+        assert set(log.read_text().splitlines()) <= {_JULIAUP_READ, 'julia --version'}
         return result
 
     @pytest.mark.parametrize('value', ['rel:', '~nobody/x:', '$CONDA_PREFIX/julia_depot:'])
@@ -3458,7 +3459,8 @@ class TestSetupCondaEnv:
         assert f'JULIA_DEPOT_PATH={value}' in result.stdout
         assert 'conda env config vars unset JULIA_DEPOT_PATH' in result.stdout
         assert 'pixi.toml' not in result.stdout
-        assert _conda_calls(site['log']) == []
+        assert 'create' not in [c[0] for c in _conda_calls(site['log'])]
+        assert 'activate' not in [c[0] for c in _conda_calls(site['log'])]
 
     def test_whole_script_stops_on_a_value_bound_to_the_env(self, site, tmp_path):
         """A bad value that activation brings stops the run before the Julia step."""
@@ -5062,8 +5064,10 @@ _DEPOT_FUNCTIONS = (
     'julia_answers_without_download',
     'set_install_var',
     'is_proteus_install_folder',
+    'is_gone_env_folder',
     'julia_depot_holds_packages',
     'instantiate_julia_project',
+    'stop_on_unusable_depot',
     'setup_julia_depot',
     'reinstall_moved_lovepy',
 )
@@ -5100,6 +5104,7 @@ class TestJuliaDepot:
         defs = (
             'set -euo pipefail\n'
             + _install_sh_blocks("RED='", 'info()')
+            + 'REQUIRED_JULIA_MAJOR=1\nREQUIRED_JULIA_MINOR=13\n'
             + f'SCRIPT_DIR={shlex.quote(str(tmp / "root"))}\n'
             + 'PROTEUS_ENV_FILE="$SCRIPT_DIR/.proteus-env.sh"\nINSTALL_VAR_NAMES=""\n'
             + 'FAILED_MODULES=""\n'
@@ -5108,7 +5113,10 @@ class TestJuliaDepot:
                 _install_sh_function(f) for f in (*_RUN_LOGGED_FUNCTIONS, *_DEPOT_FUNCTIONS)
             )
         )
-        report = 'setup_julia_depot\nprintf "DEPOT=%s\\n" "$JULIA_DEPOT_PATH"\n' + after
+        report = (
+            'stop_on_unusable_depot\nsetup_julia_depot\n'
+            'printf "DEPOT=%s\\n" "$JULIA_DEPOT_PATH"\n' + after
+        )
         full_env = {
             'PATH': _SYSTEM_PATH,
             'HOME': str(tmp / 'home'),
@@ -5240,7 +5248,8 @@ class TestJuliaDepot:
 
     @pytest.mark.parametrize('form', ['abs', 'tilde', 'slash', 'dotdot', 'symlink'])
     @pytest.mark.parametrize(
-        'parent', ['other-env', 'other-tree', 'own-env', 'own-root', 'plain', 'other-gone']
+        'parent',
+        ['other-env', 'other-tree', 'own-env', 'own-root', 'plain', 'other-gone', 'plain-gone'],
     )
     def test_install_script_and_doctor_agree_on_another_install(
         self, site, monkeypatch, parent, form
@@ -5253,10 +5262,12 @@ class TestJuliaDepot:
             'own-env': home / 'prefix',
             'own-root': home / 'root',
             'plain': home / 'plain',
-            'other-gone': home / 'other-gone',
+            'other-gone': home / 'envs' / 'other-gone',
+            'plain-gone': home / 'plain-gone',
         }
         folder = folders[parent]
-        if parent != 'other-gone':
+        (home / 'envs').mkdir()
+        if not parent.endswith('-gone'):
             folder.mkdir(exist_ok=True)
         (home / 'prefix' / 'conda-meta').mkdir(exist_ok=True)
         (folders['own-root'] / 'src' / 'proteus').mkdir(parents=True)
@@ -5269,8 +5280,8 @@ class TestJuliaDepot:
         path = {
             'abs': str(folder),
             'slash': str(folder),
-            'tilde': f'~/{folder.name}',
-            'dotdot': f'{home}/stub/../{folder.name}',
+            'tilde': f'~/{folder.relative_to(home)}',
+            'dotdot': f'{home}/stub/../{folder.relative_to(home)}',
             'symlink': f'{home}/link-{folder.name}',
         }[form]
         if form == 'symlink':
@@ -5283,7 +5294,10 @@ class TestJuliaDepot:
 
         verdict = depot_of_other_install(value, site['tmp'] / 'root')
         assert replaced == verdict
-        assert verdict == parent.startswith('other')
+        # A link to a removed env names no envs folder beside the depot, so that value stays.
+        assert verdict == (
+            parent.startswith('other') and not (parent == 'other-gone' and form == 'symlink')
+        )
 
     @pytest.mark.parametrize(
         'marker', ['conda-meta', 'tree'], ids=['conda-or-pixi-env', 'proteus-tree']

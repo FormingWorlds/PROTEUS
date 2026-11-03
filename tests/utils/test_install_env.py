@@ -10,10 +10,13 @@ conda env gets the variables without a single quote in their value in one
 from __future__ import annotations
 
 import re
+import runpy
 import subprocess
 from pathlib import Path
 
+import helpers
 import pytest
+from helpers import julia_problem
 
 from proteus.utils import install_env
 from proteus.utils.install_env import (
@@ -424,3 +427,46 @@ def test_required_julia_is_the_one_of_the_install_script():
     major = re.search(r'^REQUIRED_JULIA_MAJOR=(\d+)$', text, re.M).group(1)
     minor = re.search(r'^REQUIRED_JULIA_MINOR=(\d+)$', text, re.M).group(1)
     assert install_env.REQUIRED_JULIA == f'{major}.{minor}'
+
+
+def test_a_launcher_or_another_version_is_named_as_the_reason(tmp_path):
+    """The reason names the binary, so a CI log shows what ran, and a dead binary gives a reason."""
+    stub = tmp_path / 'julia'
+    stub.write_text('#!/bin/sh\necho "julia version 1.12.6"\n')
+    stub.chmod(0o755)
+    assert '1.12.6' in julia_problem(str(stub))
+    assert julia_problem(None) == 'no Julia binary found'
+    assert 'did not answer' in julia_problem(str(tmp_path / 'none'))
+    (tmp_path / 'juliaup').write_text('')
+    assert 'launcher' in julia_problem(str(stub))
+
+
+def test_a_julia_that_hangs_gives_a_reason(monkeypatch):
+    """A time limit at collection is a reason, not a collection error."""
+
+    def hang(*_args, **_kwargs):
+        raise subprocess.TimeoutExpired('julia', 30)
+
+    monkeypatch.setattr(subprocess, 'run', hang)
+    assert 'did not answer' in julia_problem('/bin/sh')
+
+
+def _real_tests_with_no_julia(monkeypatch):
+    """Load the module of the real Julia tests on a machine with no Julia 1.13."""
+    monkeypatch.setattr(helpers, 'julia_problem', lambda _exe: 'no Julia binary found')
+    return runpy.run_path(str(Path(__file__).parents[1] / 'test_julia_depot_real.py'))
+
+
+def test_real_tests_fail_under_ci(monkeypatch):
+    """A Julia change on the runner gives a red job and not a tier of skips."""
+    monkeypatch.setenv('GITHUB_ACTIONS', 'true')
+    module = _real_tests_with_no_julia(monkeypatch)
+    with pytest.raises(pytest.fail.Exception, match='no Julia binary found'):
+        module['_fail_with_no_julia']()
+
+
+def test_real_tests_skip_off_ci(monkeypatch):
+    """A machine with another Julia skips the tier, with the reason."""
+    monkeypatch.delenv('GITHUB_ACTIONS', raising=False)
+    with pytest.raises(pytest.skip.Exception, match='no Julia binary found'):
+        _real_tests_with_no_julia(monkeypatch)

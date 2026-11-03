@@ -44,6 +44,7 @@ from proteus.utils.install_env import (
     depot_value_is_unusable,
     julia_depot_entries,
     missing_julia_packages,
+    other_depot_words,
 )
 
 # ─── Check result types ──────────────────────────────────────────────
@@ -934,12 +935,15 @@ def check_julia_depot() -> CheckResult:
         return result(FAIL, f'{first} cannot be written; Pkg writes to the first entry', fix)
     root = _repo_root()
     if depot_of_other_install(raw, root):
-        return result(FAIL, f'{first} is the depot of another PROTEUS install', fix)
+        return result(FAIL, other_depot_words(raw), fix)
     projects = [root / 'AGNI']
     if os.environ.get('CONDA_PREFIX'):
         projects.append(Path(os.environ['CONDA_PREFIX']) / 'julia_env')
     for project in projects:
-        missing = missing_julia_packages(project, entries)
+        try:
+            missing = missing_julia_packages(project, entries)
+        except ValueError as exc:
+            return result(FAIL, f'{exc}; restore the file', 'bash install.sh')
         if missing:
             return result(
                 FAIL,
