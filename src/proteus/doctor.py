@@ -921,7 +921,7 @@ def check_julia_depot() -> CheckResult:
     first = Path(entries[0])
     shown = ', '.join(entries)
     nearest = next(p for p in (first, *first.parents) if p.exists())
-    if not os.access(nearest, os.W_OK):
+    if not nearest.is_dir() or not os.access(nearest, os.W_OK):
         return result(FAIL, f'{first} cannot be written; Pkg writes to the first entry', fix)
     root = _repo_root()
     if depot_of_other_install(raw, root):

@@ -546,22 +546,24 @@ instantiate_julia_project() {
 # colon keeps the stdlib compile files of the Julia binary. A value of the user stays; only a depot
 # inherited from another install does not. An old install hears the cost before the download.
 setup_julia_depot() {
-    local value="${JULIA_DEPOT_PATH:-}" own="$CONDA_PREFIX/julia_depot:" first parent
+    [ -n "${CONDA_PREFIX:-}" ] || die "CONDA_PREFIX is not set, so the Julia depot of this install has no place."
+    local value="${JULIA_DEPOT_PATH:-}" own="$CONDA_PREFIX/julia_depot:" old="$HOME/.julia" first parent
     first="${value%%:*}"
     first="${first/#\~/$HOME}"
-    parent="$(dirname "${first:-.}")"
+    parent="$(dirname -- "${first:-.}")"
     if [ -z "$value" ]; then
         value="$own"
-    elif [ "$(basename "${first:-.}")" = julia_depot ] && [ ! "$parent" -ef "$CONDA_PREFIX" ] \
+    elif [ "$(basename -- "${first:-.}")" = julia_depot ] && [ ! "$parent" -ef "$CONDA_PREFIX" ] \
         && [ ! "$parent" -ef "$SCRIPT_DIR" ] && is_proteus_install_folder "$parent"; then
         warn "JULIA_DEPOT_PATH=$value is the Julia depot of another PROTEUS install; this install uses $own."
         value="$own"
-    elif [ "$value" != "$own" ]; then
+        old="$first"
+    elif [ "$first" != "${own%:}" ]; then
         info "JULIA_DEPOT_PATH stays at $value, so this install shares its Julia packages with anything else that uses that value."
         if [ -n "${PIXI_ENVIRONMENT_NAME:-}" ]; then
             info "For a depot of its own, restore the JULIA_DEPOT_PATH line of pixi.toml and run bash install.sh again."
         else
-            info "For a depot of its own, remove the value from your shell start file, run conda env config vars unset JULIA_DEPOT_PATH, activate the environment again and run bash install.sh."
+            info "For a depot of its own, remove the value from your shell start file and open a new shell. Then activate the environment, run conda env config vars unset JULIA_DEPOT_PATH, activate the environment again and run bash install.sh."
         fi
     fi
     set_install_var JULIA_DEPOT_PATH "$value"
@@ -570,12 +572,14 @@ setup_julia_depot() {
     first="${first/#\~/$HOME}"
     if ! julia_depot_holds_packages "$value" \
         && { [ -f "$CONDA_PREFIX/julia_env/Manifest.toml" ] || [ -f "$SCRIPT_DIR/AGNI/Manifest.toml" ]; }; then
-        { mkdir -p "$first" && printf '%s\n' "$HOME/.julia" > "$first/.proteus-moved-from"; } || true
+        if [ -d "$old/packages" ] && ! { mkdir -p "$first" && printf '%s\n' "$old" > "$first/.proteus-moved-from"; } 2>/dev/null; then
+            warn "Could not write in $first; if $old holds LovePy, run bash $SCRIPT_DIR/tools/get_lovepy.sh after this install."
+        fi
         warn "The Julia packages of this install move to $first: about 940 MiB, 21500 files and at least 220 MB to download (measured on macOS arm64)."
-        warn "$HOME/.julia stays as it is; do not remove its juliaup folder."
+        warn "$old stays as it is; do not remove the juliaup folder of $HOME/.julia."
         if [ -n "${PIXI_ENVIRONMENT_NAME:-}" ]; then
             warn "To stay on the old depot, change JULIA_DEPOT_PATH in pixi.toml and run again."
-        else
+        elif [ -d "$old/packages" ] && [ "$old" = "$HOME/.julia" ]; then
             warn "To stay on the old depot: JULIA_DEPOT_PATH=$HOME/.julia: bash install.sh (for an old depot in another folder, name that folder)"
         fi
     fi
@@ -585,9 +589,9 @@ setup_julia_depot() {
 # LovePy lives in the default environment of the depot, so a move leaves it behind and a tidal run
 # would stop at 'using LovePy'. A note in the depot keeps the move known across a stopped run.
 reinstall_moved_lovepy() {
-    local first="${JULIA_DEPOT_PATH%%:*}" note old
-    first="${first:-$HOME/.julia}"
-    note="${first/#\~/$HOME}/.proteus-moved-from"
+    local note="${JULIA_DEPOT_PATH%%:*}" old
+    note="${note:-$HOME/.julia}"
+    note="${note/#\~/$HOME}/.proteus-moved-from"
     [ -f "$note" ] || return 0
     old="$(cat "$note")"
     if grep -qs '^LovePy = ' "$old"/environments/v*/Project.toml; then
