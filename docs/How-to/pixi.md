@@ -12,8 +12,9 @@ repository, so it replaces only the conda steps of the
 
 1. Install the system packages as in step 1 of the
    [installation guide](installation.md), and install pixi.
-2. Clone PROTEUS as in step 2; you do not need miniconda or miniforge.
-3. Run the installer through pixi instead of `bash install.sh`:
+2. Install Julia as in step 2.
+3. Clone PROTEUS as in step 3; you do not need miniconda or miniforge.
+4. Run the installer through pixi instead of `bash install.sh`:
 
     ```console
     pixi run bash install.sh
