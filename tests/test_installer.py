@@ -5522,6 +5522,37 @@ class TestJuliaDepot:
         assert (f'bash {script}\n' in out and 'FURTHER=' in out) is called
         assert self._marker(site) is None
 
+    @pytest.mark.parametrize(
+        ('text', 'named', 'obliqua'),
+        [
+            (
+                '[deps]\nLovePy = "a"\nDataFrames = "b"\n[sources]\nLovePy = {rev = "main"}\n',
+                'DataFrames',
+                False,
+            ),
+            ('[deps]\nObliqua = "a"\nExample = "b"\n', 'Example Obliqua', True),
+            ('[deps]\nLovePy = "a"\n', None, False),
+            ('name = "x"\n[compat]\nJulia = "1"\n', None, False),
+            (None, None, False),
+        ],
+        ids=['other', 'obliqua', 'lovepy-only', 'no-deps', 'no-environment'],
+    )
+    def test_move_names_the_packages_it_does_not_carry_over(self, site, text, named, obliqua):
+        """Only LovePy comes back, so the run names the rest of the old default environment."""
+        home = site['tmp'] / 'home'
+        (home / '.julia' / 'packages').mkdir(parents=True)
+        if text is not None:
+            (home / '.julia' / 'environments' / 'v1.13').mkdir(parents=True)
+            (home / '.julia' / 'environments' / 'v1.13' / 'Project.toml').write_text(text)
+        self._agni_manifest(site)
+        out = self._call(site, after=_LOVEPY_STEP).stdout
+        lines = [ln for ln in out.splitlines() if 'not carried over' in ln]
+        if named is None:
+            assert lines == []
+        else:
+            assert lines[0].endswith(f': {named}')
+        assert ('get_obliqua.sh --register' in out) == obliqua
+
     def test_failed_lovepy_step_warns_and_goes_on(self, site):
         """A failed LovePy step names its repeat and does not stop the install."""
         self._agni_manifest(site)
