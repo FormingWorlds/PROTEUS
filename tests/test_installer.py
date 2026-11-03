@@ -2680,6 +2680,21 @@ class TestSetupJuliaWithoutJulia:
         assert f'A juliaup configuration exists at {config}' in result.stderr
         assert 'put your juliaup on PATH' in result.stderr
 
+    def test_juliaup_config_with_its_juliaup_found_gets_the_add_command(self, site):
+        """The configuration matters only when no juliaup was found."""
+        config = site['home'] / '.julia' / 'juliaup' / 'juliaup.json'
+        config.parent.mkdir(parents=True)
+        config.write_text('{"Default": "release"}\n')
+        jup = site['home'] / '.juliaup' / 'bin'
+        _stub(jup / 'juliaup', _STUB_JULIAUP)
+        _stub(jup / 'julia', _STUB_JULIA)
+        result = TestSetupJulia._call(
+            site, '1.12.6', STUB_JULIAUP_CONFIG=_juliaup_config('1.12')
+        )
+        assert result.returncode == 1
+        assert f'  {jup}/juliaup add 1.13' in result.stdout.splitlines()
+        assert 'A juliaup configuration exists' not in result.stderr
+
     def test_juliaup_config_with_a_julia_113_on_path_passes(self, site):
         """A plain julia 1.13 on PATH passes before the configuration matters."""
         config = site['home'] / '.julia' / 'juliaup' / 'juliaup.json'
@@ -2706,6 +2721,10 @@ class TestSetupJuliaWithoutJulia:
         lines = [ln for ln in result.stdout.splitlines() if ln.endswith(' add 1.13')]
         assert len(lines) == 1
         assert shlex.split(lines[0]) == [f'{jup}/juliaup', 'add', '1.13']
+        failed = TestSetupJulia._call(site, '1.12.6', HOME=str(home), STUB_JULIAUP_RC='1')
+        lines = [ln for ln in failed.stdout.splitlines() if ln.endswith(' self update')]
+        assert len(lines) == 1
+        assert shlex.split(lines[0].split(': ')[1]) == [f'{jup}/juliaup', 'self', 'update']
 
     def test_off_path_juliaup_too_old_for_the_api_gets_the_command_with_its_path(self, site):
         """The update route names the juliaup that failed, also when it is not on the user's PATH."""
@@ -3033,6 +3052,8 @@ class TestNoJuliaInstall:
         assert [step for step in steps if step not in text] == []
         places = [text.index(step) for step in steps]
         assert places == sorted(places)
+        assert 'the juliaup program' in text
+        assert 'first Julia into the folder of `JULIAUP_DEPOT_PATH`' in text
 
     def test_kapteyn_steps_set_up_julia_before_the_installer(self):
         """Item 7 of the numbered steps sends the reader to the Julia section, and then to the installer."""
