@@ -13,9 +13,6 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from hypothesis import given
-from hypothesis import settings as hyp_settings
-from hypothesis import strategies as st
 
 from proteus.utils import install_env
 from proteus.utils.install_env import (
@@ -234,23 +231,34 @@ class TestReloadInstruction:
 def test_julia_depot_entries_follow_julia(monkeypatch, tmp_path, value, expected):
     """The entries equal what Julia 1.13 reads, the bundled depots left out."""
     monkeypatch.setenv('HOME', str(tmp_path))
-    assert julia_depot_entries(value) == [e.replace('~', str(tmp_path)) for e in expected]
-
-
-@given(st.lists(st.sampled_from(['/a', '/b', ':', ' ', '~', 'é']), max_size=12).map(''.join))
-@hyp_settings(max_examples=200)
-def test_julia_depot_entries_hold_for_any_value(value):
-    """Any value gives distinct non-empty folders, and only the empty value gives none."""
     entries = julia_depot_entries(value)
-    assert all(entries)
-    assert len(entries) == len(set(entries))
-    assert not any(':' in e for e in entries)
-    assert (entries == []) == (value == '')
+    assert entries == [e.replace('~', str(tmp_path)) for e in expected]
+    assert not any('~' in e for e in entries)
+
+
+def test_julia_depot_entries_hold_for_any_value():
+    """Any value gives distinct non-empty folders, and only the empty value gives none."""
+    hypothesis = pytest.importorskip('hypothesis')
+    strategies = pytest.importorskip('hypothesis.strategies')
+    parts = strategies.sampled_from(['/a', '/b', ':', ' ', '~', 'é'])
+
+    @hypothesis.settings(max_examples=200)
+    @hypothesis.given(strategies.lists(parts, max_size=12).map(''.join))
+    def check(value):
+        entries = julia_depot_entries(value)
+        assert all(entries)
+        assert len(entries) == len(set(entries))
+        assert not any(':' in e for e in entries)
+        assert (entries == []) == (value == '')
+
+    check()
 
 
 @pytest.mark.parametrize('value', [None, '', ':', '/x:', '/x/other:'])
 def test_no_depot_named_julia_depot_is_no_other_install(tmp_path, value):
     """Only the name of the installer can mark the depot of an install."""
+    assert depot_of_other_install(value, tmp_path) is False
+    (tmp_path / 'conda-meta').mkdir()
     assert depot_of_other_install(value, tmp_path) is False
 
 

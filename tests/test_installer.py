@@ -5112,6 +5112,7 @@ class TestJuliaDepot:
         (site['tmp'] / 'root' / 'AGNI').mkdir()
         (site['tmp'] / 'root' / 'AGNI' / 'Manifest.toml').write_text('m')
         assert 'MiB' not in self._call(site, ':').stdout
+        assert self._marker(site) is None
 
     @pytest.mark.parametrize('form', ['abs', 'tilde', 'slash'])
     @pytest.mark.parametrize(
@@ -5147,7 +5148,8 @@ class TestJuliaDepot:
         from proteus.utils.install_env import depot_of_other_install
 
         verdict = depot_of_other_install(value, site['tmp'] / 'root')
-        assert replaced == verdict == parent.startswith('other')
+        assert replaced == verdict
+        assert verdict == parent.startswith('other')
 
     @pytest.mark.parametrize(
         'marker', ['conda-meta', 'tree'], ids=['conda-or-pixi-env', 'proteus-tree']
@@ -5173,7 +5175,9 @@ class TestJuliaDepot:
         other = site['tmp'] / 'other'
         other.mkdir()
         (other / 'install.sh').write_text('')
-        assert self._value(self._call(site, f'{other}/julia_depot:')) == f'{other}/julia_depot:'
+        result = self._call(site, f'{other}/julia_depot:')
+        assert self._value(result) == f'{other}/julia_depot:'
+        assert 'another PROTEUS install' not in result.stdout
 
     def test_own_depot_without_the_colon_stays(self, site):
         """The parent is an env, but it is this env: not another install, and not shared."""
@@ -5209,6 +5213,7 @@ class TestJuliaDepot:
         (site['tmp'] / 'home' / '.julia' / 'packages').mkdir(parents=True)
         out = self._call(site, PIXI_ENVIRONMENT_NAME='default').stdout
         assert 'pixi.toml' in out
+        assert 'To stay on the old depot:' not in out
 
     def test_inherited_depot_is_the_old_depot_of_the_move(self, site):
         """LovePy and the text follow the depot left behind, and its value cannot be the stay."""
@@ -5238,6 +5243,7 @@ class TestJuliaDepot:
         (site['tmp'] / 'prefix' / 'julia_depot').write_text('a file')
         out = self._call(site).stdout
         assert 'get_lovepy.sh' in out
+        assert self._marker(site) is None
 
     def test_no_prefix_stops_with_a_message(self, site):
         """An env with no CONDA_PREFIX has no place for the depot."""
@@ -5260,7 +5266,9 @@ class TestJuliaDepot:
 
     def test_relative_value_with_a_leading_dash_does_not_stop_the_run(self, site):
         """dirname and basename must not read the value as an option."""
-        assert self._value(self._call(site, '-x/julia_depot:')) == '-x/julia_depot:'
+        result = self._call(site, '-x/julia_depot:')
+        assert self._value(result) == '-x/julia_depot:'
+        assert 'another PROTEUS install' not in result.stdout
 
     def test_fresh_install_has_no_move_line(self, site):
         """With no Manifest there is nothing to move and no Julia call."""
@@ -5366,6 +5374,7 @@ class TestJuliaDepot:
         (env_dir / 'Project.toml').write_text('LovePy = "abc"\n')
         after = 'run_logged() { printf "FURTHER=%s\\n" "$*"; }\nreinstall_moved_lovepy\n'
         assert 'FURTHER=' not in self._call(site, after=after).stdout
+        assert self._marker(site) is None
 
     def test_order_in_the_script(self):
         """The depot is set before AGNI and the first import, and AGNI keeps its Manifest."""
@@ -5384,9 +5393,10 @@ class TestJuliaDepot:
 
     def test_pixi_manifest_sets_the_depot_with_the_colon(self):
         """pixi run does not source the exports file, so its activation holds the value."""
-        manifest = tomllib.loads((PROTEUS_ROOT / 'pixi.toml').read_text())
-        depot = manifest['activation']['env']['JULIA_DEPOT_PATH']
+        text = (PROTEUS_ROOT / 'pixi.toml').read_text()
+        depot = tomllib.loads(text)['activation']['env']['JULIA_DEPOT_PATH']
         assert depot == '$CONDA_PREFIX/julia_depot:'
+        assert text.count('[activation.env]') == 1
 
     def test_failure_report_names_both_depot_variables(self):
         """The environment block of a failed install prints the depot variables."""

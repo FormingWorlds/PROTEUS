@@ -4823,7 +4823,7 @@ def test_printed_and_documented_conda_var_commands_name_their_env(tmp_path):
         for line in (docs / page).read_text().splitlines()
         if line.startswith('conda env config vars set')
     ]
-    assert len(commands) == 6
+    assert len(commands) == 7
     named = 'conda env config vars set -n proteus '
     assert [c for c in commands if not c[1].startswith(named)] == []
 

@@ -111,6 +111,7 @@ def test_canary_with_no_variable_the_default_depot_changes(stack):
     before = _state(stack['home'])
     _pkg_change(stack['pkg'], None, stack['home'], project_a)
     assert before != _state(stack['home'])
+    assert list((stack['home'] / '.julia' / 'compiled').rglob('Tiny'))
 
 
 def test_a_new_depot_breaks_a_project_until_instantiate_which_keeps_the_manifest(tmp_path):
@@ -157,4 +158,6 @@ def test_parser_of_the_doctor_equals_julia(tmp_path, monkeypatch, value):
     """julia_depot_entries gives the list of Julia, with the bundled depots left out."""
     monkeypatch.setenv('HOME', str(tmp_path))
     entries = _julia('print(join(DEPOT_PATH, "|"))', value, tmp_path).split('|')
-    assert [e for e in entries if not e.endswith('share/julia')] == julia_depot_entries(value)
+    parsed = julia_depot_entries(value)
+    assert [e for e in entries if not e.endswith('share/julia')] == parsed
+    assert str(tmp_path / '.julia') in parsed or value.startswith(':') is False

@@ -2233,6 +2233,7 @@ def test_install_vars_record_a_set_julia_depot_and_invent_none(monkeypatch, tmp_
         monkeypatch.setenv('JULIA_DEPOT_PATH', value)
     variables = cli._install_vars(tmp_path, tmp_path / 'fwl', None)
     assert variables.get('JULIA_DEPOT_PATH') == (value or None)
+    assert variables['FWL_DATA'] == str(tmp_path / 'fwl')
 
 
 @pytest.mark.unit
