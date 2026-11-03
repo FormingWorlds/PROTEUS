@@ -437,7 +437,7 @@ verify_proteus_import() {
     printf '%s\n' "$import_log"
     if printf '%s' "$import_log" | grep -q 'does not seem to be installed'; then
         warn "JULIA_DEPOT_PATH=${JULIA_DEPOT_PATH:-} does not hold the Julia packages of this install. With network, run bash install.sh again."
-        die "See https://proteus-framework.org/PROTEUS/How-to/troubleshooting/#julia-depot-with-no-packages"
+        die "See https://proteus-framework.org/PROTEUS/How-to/troubleshooting.html#julia-depot-with-no-packages"
     fi
     # An architecture mismatch between Python and Julia cannot be self-healed.
     if printf '%s' "$import_log" | grep -qi 'incompatible architecture'; then
@@ -599,7 +599,7 @@ setup_julia_depot() {
                 warn "To stay on the old depot: JULIA_DEPOT_PATH=$HOME/.julia: bash install.sh (for an old depot in another folder, name that folder)"
             fi
         else
-            info "The Julia packages of this install install now, into $first."
+            info "The Julia packages of this install go into $first now."
         fi
     fi
     instantiate_julia_project "$CONDA_PREFIX/julia_env"
