@@ -5194,6 +5194,7 @@ class TestJuliaDepot:
         assert 'MiB' in out
         assert 'JULIA_RAN' in out
         assert out.index('MiB') < out.index('JULIA_RAN')
+        assert (env_project / 'Manifest.toml').is_file()
         assert (env_project / 'Manifest.toml').read_text() == 'm'
         home = site['tmp'] / 'home'
         assert f'JULIA_DEPOT_PATH={home}/.julia: bash install.sh' in out
