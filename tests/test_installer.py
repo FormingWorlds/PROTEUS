@@ -5371,7 +5371,7 @@ class TestJuliaDepot:
         assert 'MiB' not in result.stdout
         assert 'move to' not in result.stdout
         assert 'stays as it is' not in result.stdout
-        assert 'install now' in result.stdout
+        assert 'go into' in result.stdout
 
     def test_depot_that_cannot_hold_the_note_warns(self, site):
         """A note that cannot be written loses the LovePy step, so the user hears it."""
@@ -5491,7 +5491,7 @@ class TestJuliaDepot:
         out = done.stdout + done.stderr
         assert done.returncode == 1
         assert 'bash install.sh' in out
-        assert '#julia-depot-with-no-packages' in out
+        assert 'PROTEUS/How-to/troubleshooting.html#julia-depot-with-no-packages' in out
         assert 'MPI_STEP' not in out
         anchor = (INSTALL_SH.parent / 'docs' / 'How-to' / 'troubleshooting.md').read_text()
         assert '{#julia-depot-with-no-packages}' in anchor
