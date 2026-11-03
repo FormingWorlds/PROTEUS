@@ -30,9 +30,6 @@ from helpers import (
     install_git_guard,
     scratch_proteus_root,
 )
-from hypothesis import HealthCheck, given
-from hypothesis import settings as hyp_settings
-from hypothesis import strategies as st
 
 import proteus.doctor as doctor_module
 from proteus.doctor import (
@@ -3815,40 +3812,6 @@ class TestJuliaDepot:
         monkeypatch.setattr('proteus.doctor._repo_root', lambda: tmp_path / 'root')
         return tmp_path
 
-    @pytest.mark.parametrize(
-        ('value', 'expected'),
-        [
-            (None, ['~/.julia']),
-            ('', []),
-            (':', ['~/.julia']),
-            ('/x', ['/x']),
-            ('/x:', ['/x']),
-            ('/x::', ['/x']),
-            ('/x:/y:', ['/x', '/y']),
-            (':/x', ['~/.julia', '/x']),
-            ('/x:/x', ['/x']),
-            ('~/d:', ['~/d']),
-        ],
-    )
-    def test_entries_follow_julia(self, site, value, expected):
-        """The entries equal what Julia 1.13 reads, the bundled depots left out."""
-        home = str(site / 'home')
-        assert doctor_module.julia_depot_entries(value) == [
-            e.replace('~', home) for e in expected
-        ]
-
-    @given(
-        st.lists(st.sampled_from(['/a', '/b', ':', ' ', '~', 'é']), max_size=12).map(''.join)
-    )
-    @hyp_settings(max_examples=200, suppress_health_check=[HealthCheck.function_scoped_fixture])
-    def test_entries_hold_for_any_value(self, site, value):
-        """Any value gives a list of distinct non-empty folders, none of them a bare colon."""
-        entries = doctor_module.julia_depot_entries(value)
-        assert all(entries)
-        assert len(entries) == len(set(entries))
-        assert not any(':' in e for e in entries)
-        assert (entries == []) == (value == '')
-
     def test_unset_warns_with_the_conda_command(self, site):
         """An install that never set the variable works, and shares the default depot."""
         result = doctor_module.check_julia_depot()
@@ -3879,6 +3842,12 @@ class TestJuliaDepot:
         """A depot that does not exist yet is writable through its parent."""
         monkeypatch.setenv('JULIA_DEPOT_PATH', f'{site / "new" / "deep"}:')
         assert doctor_module.check_julia_depot().status == PASS
+
+    def test_first_entry_that_is_a_file_fails(self, site, monkeypatch):
+        """Julia cannot make a depot in place of a file."""
+        (site / 'afile').write_text('x')
+        monkeypatch.setenv('JULIA_DEPOT_PATH', f'{site / "afile"}:')
+        assert doctor_module.check_julia_depot().status == FAIL
 
     def test_first_entry_that_cannot_be_written_fails(self, site, monkeypatch):
         """Pkg writes to the first entry only, so a read-only one breaks an install."""

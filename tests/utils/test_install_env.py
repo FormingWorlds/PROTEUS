@@ -13,13 +13,18 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from hypothesis import given
+from hypothesis import settings as hyp_settings
+from hypothesis import strategies as st
 
 from proteus.utils import install_env
 from proteus.utils.install_env import (
     ENV_FILE_NAME,
     active_conda_prefix,
     bind_to_conda_env,
+    depot_of_other_install,
     export_install_vars,
+    julia_depot_entries,
     quoted_names,
     reload_instruction,
     write_env_file,
@@ -209,3 +214,52 @@ class TestReloadInstruction:
         assert reload_instruction(True) == 'conda deactivate && conda activate /envs/p'
         monkeypatch.delenv('CONDA_PREFIX')
         assert reload_instruction(True) == 'conda deactivate && conda activate <env>'
+
+
+@pytest.mark.parametrize(
+    ('value', 'expected'),
+    [
+        (None, ['~/.julia']),
+        ('', []),
+        (':', ['~/.julia']),
+        ('/x', ['/x']),
+        ('/x:', ['/x']),
+        ('/x::', ['/x']),
+        ('/x:/y:', ['/x', '/y']),
+        (':/x', ['~/.julia', '/x']),
+        ('/x:/x', ['/x']),
+        ('~/d:', ['~/d']),
+    ],
+)
+def test_julia_depot_entries_follow_julia(monkeypatch, tmp_path, value, expected):
+    """The entries equal what Julia 1.13 reads, the bundled depots left out."""
+    monkeypatch.setenv('HOME', str(tmp_path))
+    assert julia_depot_entries(value) == [e.replace('~', str(tmp_path)) for e in expected]
+
+
+@given(st.lists(st.sampled_from(['/a', '/b', ':', ' ', '~', 'é']), max_size=12).map(''.join))
+@hyp_settings(max_examples=200)
+def test_julia_depot_entries_hold_for_any_value(value):
+    """Any value gives distinct non-empty folders, and only the empty value gives none."""
+    entries = julia_depot_entries(value)
+    assert all(entries)
+    assert len(entries) == len(set(entries))
+    assert not any(':' in e for e in entries)
+    assert (entries == []) == (value == '')
+
+
+@pytest.mark.parametrize('value', [None, '', ':', '/x:', '/x/other:'])
+def test_no_depot_named_julia_depot_is_no_other_install(tmp_path, value):
+    """Only the name of the installer can mark the depot of an install."""
+    assert depot_of_other_install(value, tmp_path) is False
+
+
+def test_other_install_needs_a_marker_beside_the_depot(monkeypatch, tmp_path):
+    """The same name on a big disk stays the choice of the user; an env beside it does not."""
+    monkeypatch.delenv('CONDA_PREFIX', raising=False)
+    big = tmp_path / 'big'
+    big.mkdir()
+    assert depot_of_other_install(f'{big}/julia_depot:', tmp_path) is False
+    (big / 'conda-meta').mkdir()
+    assert depot_of_other_install(f'{big}/julia_depot:', tmp_path) is True
+    assert depot_of_other_install(f'{big}/julia_depot:', big) is False

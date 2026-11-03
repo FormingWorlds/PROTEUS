@@ -17,7 +17,13 @@ pytestmark = [pytest.mark.smoke, pytest.mark.timeout(60)]
 
 _JULIA = os.environ.get('PYTHON_JULIAPKG_EXE') or shutil.which('julia')
 _UUID = '7c1e3a52-4f0b-4d6e-9a11-0f6d2b8c9e01'
-assert _JULIA, 'No Julia found; this tier runs where CI installs Julia.'
+
+
+@pytest.fixture(autouse=True)
+def _julia_is_there():
+    """Fail, not skip: this tier runs where CI installs Julia, and a skip hides its loss."""
+    if _JULIA is None:
+        pytest.fail('No Julia found.')
 
 
 def _julia(code: str, depot: str | None, home: Path, project: Path | None = None) -> str:
@@ -31,7 +37,7 @@ def _julia(code: str, depot: str | None, home: Path, project: Path | None = None
     done = subprocess.run(
         [*args, '-e', code], capture_output=True, text=True, env=env, timeout=50
     )
-    assert done.returncode == 0, done.stderr[-2000:]
+    assert done.returncode == 0, done.stderr[:1000] + '\n...\n' + done.stderr[-1000:]
     return done.stdout
 
 
