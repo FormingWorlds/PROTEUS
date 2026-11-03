@@ -297,7 +297,7 @@ The PHOENIX grid is in the essential set because the default star, which a
 config without a `[star]` section uses, takes its spectrum from it.
 
 Running `proteus get spectral` without arguments downloads every
-spectral file group (~8 GB).
+spectral file group (~7.5 GB).
 
 For additional datasets (MUSCLES spectra, reference data), use:
 

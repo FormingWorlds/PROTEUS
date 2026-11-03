@@ -1316,7 +1316,7 @@ case "$DATA_MODE" in
     essential)
         info "Downloading essential reference data (~3 GB)..."
         # Default-config and tutorial k-tables only; the bare
-        # `proteus get spectral` downloads every group (~8 GB).
+        # `proteus get spectral` downloads every group (~7.5 GB).
         # Honeyside/48 serves the config default (src/proteus/config/_atmos_clim.py),
         # Dayspring/48 serves input/tutorials/*.toml; update here when those change.
         proteus get spectral -n Honeyside -b 48 2>&1 || warn "Spectral data download had issues"

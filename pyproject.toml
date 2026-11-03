@@ -80,7 +80,7 @@ dependencies = [
     "astropy",
     "toml",
     # 26.10.16 pins the RTPress melt tables at Zenodo 18822022 (DataverseNL QLCEBW).
-    "fwl-io>=26.10.16",
+    "fwl-io>=26.11.3",
     "packaging",
 ]
 
