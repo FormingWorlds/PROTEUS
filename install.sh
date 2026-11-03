@@ -608,11 +608,17 @@ setup_julia_depot() {
 # LovePy lives in the default environment of the depot, so a move leaves it behind and a tidal run
 # would stop at 'using LovePy'. A note in the depot keeps the move known across a stopped run.
 reinstall_moved_lovepy() {
-    local note="${JULIA_DEPOT_PATH%%:*}" old
+    local note="${JULIA_DEPOT_PATH%%:*}" old lost
     note="${note:-$HOME/.julia}"
     note="${note/#\~/$HOME}/.proteus-moved-from"
     [ -f "$note" ] || return 0
     old="$(cat "$note")"
+    lost="$({ cat "$old"/environments/v*/Project.toml 2>/dev/null || true; } \
+        | awk '/^\[/ {deps = ($0 == "[deps]")} deps && / = / && $1 != "LovePy" {print $1}' | sort -u | xargs)"
+    [ -z "$lost" ] || warn "Packages of the default Julia environment of $old not carried over: $lost"
+    case " $lost " in
+        *" Obliqua "*) warn "To set up Obliqua in the new depot: bash $SCRIPT_DIR/tools/get_obliqua.sh --register" ;;
+    esac
     if grep -qs '^LovePy = ' "$old"/environments/v*/Project.toml; then
         if ! run_logged "Setting up LovePy in the new Julia depot" bash "$SCRIPT_DIR/tools/get_lovepy.sh"; then
             warn "LovePy is not in the new Julia depot. To repeat the step: bash $SCRIPT_DIR/tools/get_lovepy.sh"
