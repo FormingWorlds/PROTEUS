@@ -12,6 +12,7 @@ from __future__ import annotations
 import re
 import runpy
 import subprocess
+import tomllib
 from pathlib import Path
 
 import helpers
@@ -375,8 +376,10 @@ def test_project_that_cannot_be_read_is_named(tmp_path, project, manifest):
     """A broken file gives a failure that names it, and no pass."""
     folder = tmp_path / 'p'
     _write_project(folder, project, manifest)
-    with pytest.raises(ValueError, match='cannot be read'):
+    with pytest.raises(ValueError, match='cannot be read') as caught:
         missing_julia_packages(folder, [str(tmp_path)])
+    assert str(folder) in str(caught.value)
+    assert isinstance(caught.value.__cause__, tomllib.TOMLDecodeError)
 
 
 def test_bytes_that_are_not_utf8_cannot_be_read(tmp_path):
@@ -384,8 +387,10 @@ def test_bytes_that_are_not_utf8_cannot_be_read(tmp_path):
     folder = tmp_path / 'p'
     _write_project(folder, '[deps]\n', 'manifest_format = "2.0"\n')
     (folder / 'Project.toml').write_bytes(b'[deps]\nFoo = "\xff"\n')
-    with pytest.raises(ValueError, match='cannot be read'):
+    with pytest.raises(ValueError, match='cannot be read') as caught:
         missing_julia_packages(folder, [])
+    assert str(folder) in str(caught.value)
+    assert isinstance(caught.value.__cause__, UnicodeDecodeError)
 
 
 def test_project_without_a_project_file_is_named(tmp_path):
@@ -414,6 +419,8 @@ def test_versioned_manifest_alone_is_read(tmp_path):
     (folder / 'Project.toml').write_text('[deps]\nFoo = "1"\n')
     _versioned_manifest(folder, '[[deps.Foo]]\ngit-tree-sha1 = "a"\n')
     assert missing_julia_packages(folder, [str(tmp_path)]) == ['Foo']
+    (tmp_path / 'packages' / 'Foo').mkdir(parents=True)
+    assert missing_julia_packages(folder, [str(tmp_path)]) == []
 
 
 def test_versioned_manifest_wins_over_the_plain_one(tmp_path):
@@ -424,6 +431,8 @@ def test_versioned_manifest_wins_over_the_plain_one(tmp_path):
     )
     _versioned_manifest(folder, '[[deps.Bar]]\ngit-tree-sha1 = "b"\n')
     assert missing_julia_packages(folder, [str(tmp_path)]) == ['Bar']
+    (tmp_path / 'packages' / 'Bar').mkdir(parents=True)
+    assert missing_julia_packages(folder, [str(tmp_path)]) == []
 
 
 def test_required_julia_is_the_one_of_the_install_script():
@@ -432,6 +441,8 @@ def test_required_julia_is_the_one_of_the_install_script():
     major = re.search(r'^REQUIRED_JULIA_MAJOR=(\d+)$', text, re.M).group(1)
     minor = re.search(r'^REQUIRED_JULIA_MINOR=(\d+)$', text, re.M).group(1)
     assert install_env.REQUIRED_JULIA == f'{major}.{minor}'
+    page = (Path(__file__).parents[2] / 'docs' / 'How-to' / 'doctor.md').read_text()
+    assert f'Manifest-v{major}.{minor}.toml' in page
 
 
 def test_a_launcher_or_another_version_is_named_as_the_reason(tmp_path):
@@ -453,7 +464,9 @@ def test_a_julia_that_hangs_gives_a_reason(monkeypatch):
         raise subprocess.TimeoutExpired('julia', 30)
 
     monkeypatch.setattr(subprocess, 'run', hang)
-    assert 'did not answer' in julia_problem('/bin/sh')
+    reason = julia_problem('/bin/sh')
+    assert 'did not answer' in reason
+    assert '/bin/sh' in reason
 
 
 def _real_tests_with_no_julia(monkeypatch):
@@ -466,12 +479,16 @@ def test_real_tests_fail_under_ci(monkeypatch):
     """A Julia change on the runner gives a red job and not a tier of skips."""
     monkeypatch.setenv('GITHUB_ACTIONS', 'true')
     module = _real_tests_with_no_julia(monkeypatch)
-    with pytest.raises(pytest.fail.Exception, match='no Julia binary found'):
+    assert module['_PROBLEM'] == 'no Julia binary found'
+    with pytest.raises(pytest.fail.Exception, match='no Julia binary found') as caught:
         module['_fail_with_no_julia']()
+    assert 'no Julia binary found' in str(caught.value)
 
 
 def test_real_tests_skip_off_ci(monkeypatch):
     """A machine with another Julia skips the tier, with the reason."""
     monkeypatch.delenv('GITHUB_ACTIONS', raising=False)
-    with pytest.raises(pytest.skip.Exception, match='no Julia binary found'):
+    with pytest.raises(pytest.skip.Exception, match='no Julia binary found') as caught:
         _real_tests_with_no_julia(monkeypatch)
+    assert caught.value.allow_module_level is True
+    assert 'no Julia binary found' in str(caught.value)
