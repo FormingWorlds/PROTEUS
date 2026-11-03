@@ -72,7 +72,7 @@ juliaup add 1.13
 **Compute clusters**: a home folder on a cluster can be too small for Julia. On Kapteyn and Cambridge IoA, follow the Julia steps of the [Kapteyn](kapteyn_cluster_guide.md) or [Cambridge IoA](ioa_cluster_guide.md) guide instead of the commands above; they place Julia on the data drive. On another cluster, the steps above apply.
 
 !!! note "A Julia without juliaup"
-    A `julia` of version 1.13 on your `PATH` is enough, wherever it comes from. For a Julia 1.13 that is not on your `PATH`, set `PYTHON_JULIAPKG_EXE` to its binary before you run the installer. A system package manager often installs another version of Julia: then use the steps above. A juliaup depot that you cannot write to reads as no Julia, because juliaup needs its lock file there: set `PYTHON_JULIAPKG_EXE` to the binary of a Julia 1.13 instead.
+    A `julia` of version 1.13 on your `PATH` is enough, wherever it comes from. For a Julia 1.13 that is not on your `PATH`, set `PYTHON_JULIAPKG_EXE` to its binary before you run the installer. A system package manager often installs another version of Julia: then use the steps above. A juliaup depot that you cannot write to counts as no Julia, because juliaup needs its lock file there: set `PYTHON_JULIAPKG_EXE` to the binary of a Julia 1.13 instead.
 
 ## 3. Clone PROTEUS and set up Python environment
 
