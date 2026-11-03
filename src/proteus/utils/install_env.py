@@ -17,6 +17,62 @@ from pathlib import Path
 ENV_FILE_NAME = '.proteus-env.sh'
 
 
+def julia_depot_entries(value: str | None) -> list[str]:
+    """Return the depot folders that Julia reads from a ``JULIA_DEPOT_PATH`` value.
+
+    Julia 1.13 reads an empty first entry as ``~/.julia`` plus the bundled
+    depots, and a later empty entry as the bundled depots alone, so that
+    ``/x:`` does not read ``~/.julia``. The bundled depots are not listed.
+
+    Parameters
+    ----------
+    value : str or None
+        The value; None when the variable is not set.
+
+    Returns
+    -------
+    list of str
+        The folders in order, without repeats, empty for an empty value.
+    """
+    if value is None:
+        value = ':'
+    if not value:
+        return []
+    parts = value.split(':')
+    if not parts[0]:
+        parts[0] = '~/.julia'
+    return list(dict.fromkeys(os.path.expanduser(part) for part in parts if part))
+
+
+def depot_of_other_install(value: str | None, root: Path) -> bool:
+    """Return whether a depot value is the ``julia_depot`` of another PROTEUS install.
+
+    That is a first entry named ``julia_depot`` beside ``conda-meta`` or in a
+    PROTEUS tree, other than the active env and the tree ``root``. ``install.sh``
+    applies the same rule. Conda keeps the value of the previous env when the
+    next env has none, so such a value is inherited and not chosen.
+
+    Parameters
+    ----------
+    value : str or None
+        Value of ``JULIA_DEPOT_PATH``.
+    root : Path
+        PROTEUS source tree of this install.
+
+    Returns
+    -------
+    bool
+        True for a depot that belongs to another install.
+    """
+    entries = julia_depot_entries(value)
+    if not entries or Path(entries[0]).name != 'julia_depot':
+        return False
+    parent = Path(entries[0]).parent
+    own = {root.resolve(), Path(os.environ.get('CONDA_PREFIX') or root).resolve()}
+    tree = (parent / 'install.sh').is_file() and (parent / 'src' / 'proteus').is_dir()
+    return parent.resolve() not in own and (tree or (parent / 'conda-meta').is_dir())
+
+
 def _sh_quote(value: str) -> str:
     """Quote ``value`` in single quotes for a POSIX shell, as ``install.sh`` does.
 

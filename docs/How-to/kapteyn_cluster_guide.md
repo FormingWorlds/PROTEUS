@@ -99,7 +99,7 @@ If you install Julia through Juliaup, first add this variable to your `~/.shellr
 export JULIAUP_DEPOT_PATH=/dataserver/users/formingworlds/<username>/.juliaup
 ```
 
-Load them in this terminal and run the official installer. It places the juliaup program in `~/.juliaup` and downloads a first Julia into the folder of `JULIAUP_DEPOT_PATH`:
+Load it in this terminal and run the official installer. It places the juliaup program in `~/.juliaup` and downloads a first Julia into the folder of `JULIAUP_DEPOT_PATH`:
 ```console
 source ~/.bashrc
 curl -fsSL https://install.julialang.org | sh

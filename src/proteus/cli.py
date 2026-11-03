@@ -76,6 +76,7 @@ from proteus.utils.helper import (  # noqa: E402
     resolve_fwl_data_dir,
 )
 from proteus.utils.install_env import (  # noqa: E402
+    depot_of_other_install,
     export_install_vars,
     quoted_names,
     reload_instruction,
@@ -942,7 +943,8 @@ def _install_vars(root: Path, fwl_data: Path, rad_dir: Path | None) -> dict[str,
     at the real binary of Julia 1.13; a ``julia`` on ``PATH`` can be another
     version or the juliaup launcher, so it is never taken. ``FC_DIR``
     appears only when the FastChem program is built. ``JULIA_DEPOT_PATH``
-    appears only when it is set; this command never chooses a depot.
+    appears only when it is set and is not the depot of another install; this
+    command never chooses a depot.
 
     Parameters
     ----------
@@ -981,7 +983,13 @@ def _install_vars(root: Path, fwl_data: Path, rad_dir: Path | None) -> dict[str,
     if program.is_file() and os.access(program, os.X_OK):
         variables['FC_DIR'] = str(fastchem.resolve())
     depot = os.environ.get('JULIA_DEPOT_PATH')
-    if depot:
+    if depot_of_other_install(depot, root):
+        click.secho(
+            f'[!] JULIA_DEPOT_PATH={depot} is the Julia depot of another PROTEUS install, so '
+            'it is not recorded.',
+            fg='yellow',
+        )
+    elif depot:
         variables['JULIA_DEPOT_PATH'] = depot
     return variables
 

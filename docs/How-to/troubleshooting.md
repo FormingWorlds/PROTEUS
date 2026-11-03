@@ -237,11 +237,11 @@ This happens when compiling SPIDER within a Python environment that is incompati
 
 ### Julia depot with no packages {#julia-depot-with-no-packages}
 
-`import juliacall` stops with `Package PythonCall ... is required but does not seem to be installed`, or `using AGNI` stops with `failed to find source of parent package`. The project of Julia records its packages, but the folder in `JULIA_DEPOT_PATH` does not hold them. This happens when the value changed by hand, or when a move to a new depot had no network. Run `bash install.sh` again, or install the packages of each project; this changes no `Manifest.toml`:
+`import juliacall` stops with `Package PythonCall ... is required but does not seem to be installed`, or `using AGNI` stops with `failed to find source of parent package`. The project of Julia records its packages, but the folder in `JULIA_DEPOT_PATH` does not hold them. This happens when the value changed by hand, or when a move to a new depot had no network. Run `bash install.sh` again, or install the packages of each project from the PROTEUS folder; this changes no `Manifest.toml`:
 
 ```console
-"$PYTHON_JULIAPKG_EXE" --project="$CONDA_PREFIX/julia_env" -e 'using Pkg; Pkg.instantiate()'
-"$PYTHON_JULIAPKG_EXE" --project=AGNI -e 'using Pkg; Pkg.instantiate()'
+LD_LIBRARY_PATH="" "$PYTHON_JULIAPKG_EXE" --project="$CONDA_PREFIX/julia_env" -e 'using Pkg; Pkg.instantiate()'
+LD_LIBRARY_PATH="" "$PYTHON_JULIAPKG_EXE" --project=AGNI -e 'using Pkg; Pkg.instantiate()'
 ```
 
 A project that you set yourself with `PYTHON_JULIAPKG_PROJECT` needs the same command; the installer leaves it alone.

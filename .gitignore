@@ -10,7 +10,6 @@ prt/
 install_*.log
 proteus_doctor*.log
 .proteus-env.sh
-julia_depot/
 .proteus-julia/
 
 # Model files

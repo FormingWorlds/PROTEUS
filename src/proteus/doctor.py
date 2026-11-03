@@ -39,6 +39,7 @@ from proteus.utils.coupler import (
     get_proteus_directories,
 )
 from proteus.utils.helper import git_env, proteus_julia_exe
+from proteus.utils.install_env import depot_of_other_install, julia_depot_entries
 
 # ─── Check result types ──────────────────────────────────────────────
 
@@ -882,47 +883,6 @@ def check_julia() -> CheckResult:
     )
 
 
-def julia_depot_entries(value: str | None) -> list[str]:
-    """Return the depot folders that Julia reads from a ``JULIA_DEPOT_PATH`` value.
-
-    Julia 1.13 reads an empty first entry as ``~/.julia`` plus the bundled
-    depots, and a later empty entry as the bundled depots alone, so that
-    ``/x:`` does not read ``~/.julia``. The bundled depots are not listed.
-
-    Parameters
-    ----------
-    value : str or None
-        The value; None when the variable is not set.
-
-    Returns
-    -------
-    list of str
-        The folders in order, without repeats, empty for an empty value.
-    """
-    if value is None:
-        value = ':'
-    if not value:
-        return []
-    parts = value.split(':')
-    if not any(parts) or not parts[0]:
-        parts[0] = '~/.julia'
-    entries = [os.path.expanduser(part) for part in parts if part]
-    return list(dict.fromkeys(entries))
-
-
-def _is_install_folder(folder: Path) -> bool:
-    """Return whether ``folder`` is a conda or pixi env or a PROTEUS tree."""
-    tree = (folder / 'install.sh').is_file() and (folder / 'src' / 'proteus').is_dir()
-    return tree or (folder / 'conda-meta').is_dir()
-
-
-def _can_write_below(folder: Path) -> bool:
-    """Return whether ``folder``, or its nearest existing parent, can be written."""
-    while not folder.exists() and folder != folder.parent:
-        folder = folder.parent
-    return os.access(folder, os.W_OK)
-
-
 def check_julia_depot() -> CheckResult:
     """Check the Julia depot of this install and name the one in use.
 
@@ -931,7 +891,7 @@ def check_julia_depot() -> CheckResult:
     An empty value, a first entry that cannot be written, the depot of another
     install, and AGNI packages that the depot does not hold fail, because Pkg
     or a run with AGNI then stops. The last check reads the ``packages`` folder
-    only and does not prove that each package is there.
+    of each entry only and does not prove that each package is there.
 
     Returns
     -------
@@ -939,7 +899,11 @@ def check_julia_depot() -> CheckResult:
         Result named ``julia depot``.
     """
     raw = os.environ.get('JULIA_DEPOT_PATH')
-    fix = _set_var_advice('JULIA_DEPOT_PATH', '"$CONDA_PREFIX/julia_depot:"')
+    active = os.environ.get('CONDA_DEFAULT_ENV') not in (None, '', 'base')
+    prefix = '"$CONDA_PREFIX/julia_depot:"' if active else None
+    fix = _set_var_advice(
+        'JULIA_DEPOT_PATH', prefix or '<path of your PROTEUS environment>/julia_depot:'
+    )
     entries = julia_depot_entries(raw)
 
     def result(status: str, message: str, fix_cmd: str | None = None) -> CheckResult:
@@ -956,23 +920,19 @@ def check_julia_depot() -> CheckResult:
         return result(FAIL, 'JULIA_DEPOT_PATH is empty: no depot, and Pkg stops', fix)
     first = Path(entries[0])
     shown = ', '.join(entries)
-    if not _can_write_below(first):
+    nearest = next(p for p in (first, *first.parents) if p.exists())
+    if not os.access(nearest, os.W_OK):
         return result(FAIL, f'{first} cannot be written; Pkg writes to the first entry', fix)
     root = _repo_root()
-    prefix = os.environ.get('CONDA_PREFIX')
-    own = {root.resolve()} | ({Path(prefix).resolve()} if prefix else set())
-    if (
-        first.name == 'julia_depot'
-        and first.parent.resolve() not in own
-        and _is_install_folder(first.parent)
-    ):
+    if depot_of_other_install(raw, root):
         return result(FAIL, f'{first} is the depot of another PROTEUS install', fix)
-    if (root / 'AGNI' / 'Manifest.toml').is_file() and not (first / 'packages').is_dir():
+    holds = any((Path(entry) / 'packages').is_dir() for entry in entries)
+    if (root / 'AGNI' / 'Manifest.toml').is_file() and not holds:
         return result(
             FAIL,
-            f'{first} holds no packages, so a run with AGNI stops at its first Julia call',
-            f'cd {shlex.quote(str(root / "AGNI"))} && "$PYTHON_JULIAPKG_EXE" --project=. '
-            '-e "using Pkg; Pkg.instantiate()"',
+            f'{shown} holds no packages, so a run with AGNI stops at its first Julia call',
+            f'cd {shlex.quote(str(root / "AGNI"))} && LD_LIBRARY_PATH="" "$PYTHON_JULIAPKG_EXE" '
+            '--project=. -e "using Pkg; Pkg.instantiate()"',
         )
     if raw is None:
         return result(WARN, f'{shown} (default, shared with every install with no depot)', fix)

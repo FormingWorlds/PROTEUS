@@ -97,7 +97,7 @@ because re-cloning the SOCRATES tree removes the wrappers AGNI compiles into
 `socrates/julia`, so it reads
 `bash tools/get_socrates.sh "$RAD_DIR" && RAD_DIR="$RAD_DIR" bash tools/get_agni.sh 0`.
 
-The `julia depot` line names the Julia depot in use. It warns when `JULIA_DEPOT_PATH` is not set, because the install then shares `~/.julia` with every other install that has none; an install in this state works. It fails when the value is empty, when the first folder cannot be written, when the folder is the depot of another PROTEUS install, and when `AGNI/Manifest.toml` exists but the first folder has no `packages` folder. This last check does not prove that each package is there.
+The `julia depot` line names the Julia depot in use. It warns when `JULIA_DEPOT_PATH` is not set, because the install then shares `~/.julia` with every other install that has none; an install in this state works. It fails when the value is empty, when the first folder cannot be written, when the folder is the depot of another PROTEUS install, and when `AGNI/Manifest.toml` exists but none of the folders has a `packages` folder. This last check does not prove that each package is there.
 
 !!! info "pyproject.toml is the version authority"
     The doctor compares against `pyproject.toml`, not against the latest
@@ -192,8 +192,8 @@ This lists the fixable issues and their commands but does not execute anything.
 | Outdated Python package (editable git clone of its own, without a setup script) | `cd <checkout> && git pull && pip install -e .` |
 | Outdated Python package (wheel) | `pip install -U "<name>>=<version>"` |
 | Missing AGNI | `bash tools/get_agni.sh` |
-| No `JULIA_DEPOT_PATH`, an empty one, or the depot of another install | `conda env config vars set JULIA_DEPOT_PATH="$CONDA_PREFIX/julia_depot:"`, then activate the environment again |
-| A Julia depot with no packages for AGNI | `cd AGNI && "$PYTHON_JULIAPKG_EXE" --project=. -e "using Pkg; Pkg.instantiate()"` |
+| No `JULIA_DEPOT_PATH`, an empty one, or the depot of another install | In the active PROTEUS environment: `conda env config vars set JULIA_DEPOT_PATH="$CONDA_PREFIX/julia_depot:"`, then activate the environment again |
+| A Julia depot with no packages for AGNI | `cd AGNI && LD_LIBRARY_PATH="" "$PYTHON_JULIAPKG_EXE" --project=. -e "using Pkg; Pkg.instantiate()"` |
 | AGNI commit drift from pin | `bash tools/get_agni.sh` |
 | Missing SOCRATES | `bash tools/get_socrates.sh` |
 | SOCRATES commit drift from pin | `bash tools/get_socrates.sh "$RAD_DIR" && RAD_DIR="$RAD_DIR" bash tools/get_agni.sh 0` (rebuilds AGNI's wrappers too). To discard local changes in the SOCRATES checkout, pass `--force` to the SOCRATES step only: `bash tools/get_socrates.sh --force "$RAD_DIR" && RAD_DIR="$RAD_DIR" bash tools/get_agni.sh 0` |
