@@ -30,7 +30,11 @@ from helpers import (
     install_git_guard,
     scratch_proteus_root,
 )
+from hypothesis import HealthCheck, given
+from hypothesis import settings as hyp_settings
+from hypothesis import strategies as st
 
+import proteus.doctor as doctor_module
 from proteus.doctor import (
     _GIT_NOTE_TIMEOUT_S,
     _MODULE_FOLDERS,
@@ -3795,3 +3799,160 @@ class TestCheckCvode:
         cvode = [r for r in results if r.name == 'cvode']
         assert len(cvode) == 1, f'expected one cvode check, found {len(cvode)}'
         assert cvode[0].category == 'environment'
+
+
+class TestJuliaDepot:
+    """check_julia_depot prints the depot in use and fails on states that break a run."""
+
+    @pytest.fixture
+    def site(self, tmp_path, monkeypatch):
+        """A scratch HOME, PROTEUS root and conda prefix, with no depot variable."""
+        for name in ('home', 'root', 'prefix'):
+            (tmp_path / name).mkdir()
+        monkeypatch.setenv('HOME', str(tmp_path / 'home'))
+        monkeypatch.setenv('CONDA_PREFIX', str(tmp_path / 'prefix'))
+        monkeypatch.delenv('JULIA_DEPOT_PATH', raising=False)
+        monkeypatch.setattr('proteus.doctor._repo_root', lambda: tmp_path / 'root')
+        return tmp_path
+
+    @pytest.mark.parametrize(
+        ('value', 'expected'),
+        [
+            (None, ['~/.julia']),
+            ('', []),
+            (':', ['~/.julia']),
+            ('/x', ['/x']),
+            ('/x:', ['/x']),
+            ('/x::', ['/x']),
+            ('/x:/y:', ['/x', '/y']),
+            (':/x', ['~/.julia', '/x']),
+            ('/x:/x', ['/x']),
+            ('~/d:', ['~/d']),
+        ],
+    )
+    def test_entries_follow_julia(self, site, value, expected):
+        """The entries equal what Julia 1.13 reads, the bundled depots left out."""
+        home = str(site / 'home')
+        assert doctor_module.julia_depot_entries(value) == [
+            e.replace('~', home) for e in expected
+        ]
+
+    @given(st.text(alphabet=st.sampled_from(['/a', '/b', ':', ' ', '~', 'é']), max_size=12))
+    @hyp_settings(max_examples=200, suppress_health_check=[HealthCheck.function_scoped_fixture])
+    def test_entries_hold_for_any_value(self, site, value):
+        """Any value gives a list of distinct non-empty folders, none of them a bare colon."""
+        entries = doctor_module.julia_depot_entries(value)
+        assert all(entries)
+        assert len(entries) == len(set(entries))
+        assert not any(':' in e for e in entries)
+        assert (entries == []) == (value == '')
+
+    def test_unset_warns_with_the_conda_command(self, site):
+        """An install that never set the variable works, and shares the default depot."""
+        result = doctor_module.check_julia_depot()
+        assert result.status == WARN
+        assert str(site / 'home' / '.julia') in result.message
+        assert 'shared' in result.message
+        assert 'julia_depot:' in result.fix_cmd
+
+    def test_empty_fails(self, site, monkeypatch):
+        """An empty value means no depot, on which Pkg stops."""
+        monkeypatch.setenv('JULIA_DEPOT_PATH', '')
+        result = doctor_module.check_julia_depot()
+        assert result.status == FAIL
+        assert 'no depot' in result.message
+        assert 'julia_depot:' in result.fix_cmd
+
+    def test_own_depot_passes_and_prints_every_entry(self, site, monkeypatch):
+        """A healthy depot passes and the message names what is in use."""
+        depot = site / 'prefix' / 'julia_depot'
+        (depot / 'packages').mkdir(parents=True)
+        monkeypatch.setenv('JULIA_DEPOT_PATH', f'{depot}:/y:')
+        result = doctor_module.check_julia_depot()
+        assert result.status == PASS
+        assert str(depot) in result.message
+        assert '/y' in result.message
+
+    def test_new_folder_under_a_writable_parent_passes(self, site, monkeypatch):
+        """A depot that does not exist yet is writable through its parent."""
+        monkeypatch.setenv('JULIA_DEPOT_PATH', f'{site / "new" / "deep"}:')
+        assert doctor_module.check_julia_depot().status == PASS
+
+    def test_first_entry_that_cannot_be_written_fails(self, site, monkeypatch):
+        """Pkg writes to the first entry only, so a read-only one breaks an install."""
+        monkeypatch.setenv('JULIA_DEPOT_PATH', f'{site / "ro"}:')
+        monkeypatch.setattr('proteus.doctor.os.access', lambda *a, **k: False)
+        result = doctor_module.check_julia_depot()
+        assert result.status == FAIL
+        assert 'cannot be written' in result.message
+
+    @pytest.mark.parametrize('marker', ['conda-meta', 'tree'])
+    def test_depot_of_another_install_fails(self, site, monkeypatch, marker):
+        """The rule of install.sh: the parent is another env or PROTEUS tree."""
+        other = site / 'other'
+        if marker == 'conda-meta':
+            (other / 'conda-meta').mkdir(parents=True)
+        else:
+            (other / 'src' / 'proteus').mkdir(parents=True)
+            (other / 'install.sh').write_text('')
+        monkeypatch.setenv('JULIA_DEPOT_PATH', f'{other}/julia_depot:')
+        result = doctor_module.check_julia_depot()
+        assert result.status == FAIL
+        assert 'another PROTEUS install' in result.message
+
+    def test_same_name_with_no_install_beside_it_passes(self, site, monkeypatch):
+        """A user may name a folder julia_depot on a big disk."""
+        monkeypatch.setenv('JULIA_DEPOT_PATH', f'{site / "big" / "julia_depot"}:')
+        assert doctor_module.check_julia_depot().status == PASS
+
+    @pytest.mark.parametrize('parent', ['prefix', 'root'])
+    def test_depot_of_this_install_is_not_another_install(self, site, monkeypatch, parent):
+        """The env or tree of this install holds its own depot."""
+        (site / 'prefix' / 'conda-meta').mkdir()
+        (site / 'root' / 'src' / 'proteus').mkdir(parents=True)
+        (site / 'root' / 'install.sh').write_text('')
+        monkeypatch.setenv('JULIA_DEPOT_PATH', f'{site / parent}/julia_depot:')
+        assert doctor_module.check_julia_depot().status == PASS
+
+    def test_agni_manifest_with_an_empty_depot_fails_with_the_repair(self, site, monkeypatch):
+        """Packages recorded by AGNI that the depot does not hold stop a run at using AGNI."""
+        (site / 'root' / 'AGNI').mkdir()
+        (site / 'root' / 'AGNI' / 'Manifest.toml').write_text('m')
+        monkeypatch.setenv('JULIA_DEPOT_PATH', f'{site / "prefix" / "julia_depot"}:')
+        result = doctor_module.check_julia_depot()
+        assert result.status == FAIL
+        assert 'holds no packages' in result.message
+        assert 'Pkg.instantiate()' in result.fix_cmd
+
+    def test_agni_manifest_with_packages_passes(self, site, monkeypatch):
+        """The folder check passes once the depot holds packages."""
+        (site / 'root' / 'AGNI').mkdir()
+        (site / 'root' / 'AGNI' / 'Manifest.toml').write_text('m')
+        depot = site / 'prefix' / 'julia_depot'
+        (depot / 'packages').mkdir(parents=True)
+        monkeypatch.setenv('JULIA_DEPOT_PATH', f'{depot}:')
+        assert doctor_module.check_julia_depot().status == PASS
+
+    def test_install_all_route_with_no_variable_warns(self, site):
+        """`proteus install-all` sets no depot, so doctor names the shared default."""
+        (site / 'home' / '.julia' / 'packages').mkdir(parents=True)
+        (site / 'root' / 'AGNI').mkdir()
+        (site / 'root' / 'AGNI' / 'Manifest.toml').write_text('m')
+        assert doctor_module.check_julia_depot().status == WARN
+
+    def test_run_all_checks_holds_the_depot_check(self, site):
+        """The check runs in the doctor, and a raised error becomes a FAIL row."""
+        with (
+            patch('proteus.doctor._dependency_specs', return_value={}),
+            patch('proteus.doctor._module_pins', return_value={}),
+        ):
+            assert 'julia depot' in {r.name for r in run_all_checks()}
+            with patch('proteus.doctor.check_julia_depot', side_effect=OSError('boom')):
+                row = next(r for r in run_all_checks() if r.name == 'julia depot')
+        assert row.status == FAIL
+        assert 'boom' in row.message
+
+    def test_failure_log_names_the_depot_variables(self):
+        """The failure log prints both variables, and neither gets a path check."""
+        assert {'JULIA_DEPOT_PATH', 'JULIAUP_DEPOT_PATH'} <= set(doctor_module._ENV_VARS)
+        assert 'JULIA_DEPOT_PATH' not in doctor_module._ENV_PATH_VARS

@@ -2117,6 +2117,7 @@ def _export_env_site(monkeypatch, tmp_path, conda_prefix):
         monkeypatch.setenv('CONDA_PREFIX', conda_prefix)
         monkeypatch.setenv('CONDA_DEFAULT_ENV', 'proteus')
     (tmp_path / 'fwl data').mkdir()
+    monkeypatch.delenv('JULIA_DEPOT_PATH', raising=False)
     monkeypatch.setenv('FWL_DATA', str(tmp_path / 'fwl data'))
     home = tmp_path / 'home'
     home.mkdir()
@@ -2224,6 +2225,24 @@ def test_export_env_keeps_a_value_with_a_single_quote_out_of_conda(monkeypatch, 
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
+    ('value', 'recorded'),
+    [('/data/depot:', True), ('', False), (None, False)],
+    ids=['set', 'empty', 'unset'],
+)
+def test_install_vars_record_a_set_julia_depot_and_invent_none(
+    monkeypatch, tmp_path, value, recorded
+):
+    """A set depot goes to the record; with none the user stays on the default of Julia."""
+    if value is None:
+        monkeypatch.delenv('JULIA_DEPOT_PATH', raising=False)
+    else:
+        monkeypatch.setenv('JULIA_DEPOT_PATH', value)
+    variables = cli._install_vars(tmp_path, tmp_path / 'fwl', None)
+    assert variables.get('JULIA_DEPOT_PATH') == (value if recorded else None)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
     'bound', ['unset', 'not-executable', 'missing'], ids=['unset', 'not-executable', 'missing']
 )
 def test_install_vars_never_take_the_julia_on_path(monkeypatch, tmp_path, capsys, bound):
@@ -2237,6 +2256,7 @@ def test_install_vars_never_take_the_julia_on_path(monkeypatch, tmp_path, capsys
         'which',
         lambda exe: '/opt/julia-1.10.4/bin/julia' if exe == 'julia' else None,
     )
+    monkeypatch.delenv('JULIA_DEPOT_PATH', raising=False)
     exe = tmp_path / 'julia-1.13.1' / 'bin' / 'julia'
     if bound == 'unset':
         monkeypatch.delenv('PYTHON_JULIAPKG_EXE', raising=False)
