@@ -1082,6 +1082,8 @@ def _env_with_proteus_julia(root: Path) -> dict[str, str]:
         Environment for the setup-script subprocess.
     """
     env = os.environ.copy()
+    if depot_of_other_install(env.get('JULIA_DEPOT_PATH'), root):
+        del env['JULIA_DEPOT_PATH']
     try:
         folder = link_proteus_julia(root)
     except OSError as exc:

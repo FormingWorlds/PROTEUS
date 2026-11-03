@@ -23,7 +23,7 @@ Then set this variable in your bashrc file:
 export JULIAUP_DEPOT_PATH=/data/$USER/.juliaup/
 ```
 
-Do not set `JULIA_DEPOT_PATH` there for PROTEUS: `bash install.sh` keeps the Julia packages of each install in its conda environment, which the steps below place in `/data`. With a value in your bashrc, the installer keeps it and all your installs share that one folder.
+Do not set `JULIA_DEPOT_PATH` there for PROTEUS: `bash install.sh` keeps the Julia packages of each install in its conda environment, which the steps below place in `/data`. With a value in your bashrc, the installer keeps it and all your installs share that one folder. A job must run through an activated environment or `conda run`, or it does not get the depot, as for `FWL_DATA`.
 
 Set your module config in your bashrc too:
 ```bash

@@ -97,7 +97,7 @@ because re-cloning the SOCRATES tree removes the wrappers AGNI compiles into
 `socrates/julia`, so it reads
 `bash tools/get_socrates.sh "$RAD_DIR" && RAD_DIR="$RAD_DIR" bash tools/get_agni.sh 0`.
 
-The `julia depot` line names the Julia depot in use. It warns when `JULIA_DEPOT_PATH` is not set, because the install then shares `~/.julia` with every other install that has none; an install in this state works. It fails when the value is empty, when the first folder cannot be written, when the folder is the depot of another PROTEUS install, and when `AGNI/Manifest.toml` exists but none of the folders has a `packages` folder. This last check does not prove that each package is there.
+The `julia depot` line names the Julia depot in use. It warns when `JULIA_DEPOT_PATH` is not set, because the install then shares `~/.julia` with every other install that has none; an install in this state works. It fails when the value is empty, when the first entry is relative, names another user's home folder or holds a literal `$`, when the first folder cannot be written, when the folder is the depot of another PROTEUS install or of one that is gone, and when a direct dependency of the AGNI or `julia_env` project has no folder under `packages`. This last check does not read the versions or the indirect dependencies.
 
 !!! info "pyproject.toml is the version authority"
     The doctor compares against `pyproject.toml`, not against the latest

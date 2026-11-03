@@ -435,6 +435,10 @@ verify_proteus_import() {
     fi
     fail "PROTEUS failed to import. Error output:"
     printf '%s\n' "$import_log"
+    if printf '%s' "$import_log" | grep -q 'does not seem to be installed'; then
+        warn "JULIA_DEPOT_PATH=${JULIA_DEPOT_PATH:-} does not hold the Julia packages of this install. With network, run bash install.sh again."
+        die "See https://proteus-framework.org/PROTEUS/How-to/troubleshooting/#julia-depot-with-no-packages"
+    fi
     # An architecture mismatch between Python and Julia cannot be self-healed.
     if printf '%s' "$import_log" | grep -qi 'incompatible architecture'; then
         warn "Python and Julia are built for different CPU architectures (see above)."
@@ -530,8 +534,8 @@ julia_depot_holds_packages() {
 }
 
 # Install the packages that the Manifest of the Julia project $1 records into the depot, with no
-# change to that Manifest; juliapkg does not resolve again for a new depot. A failure warns: a
-# later step reports what it stops.
+# change to that Manifest; juliapkg does not resolve again for a new depot. A failure warns and
+# joins the list at the end of the run; a later step reports what it stops.
 instantiate_julia_project() {
     [ -f "$1/Manifest.toml" ] || return 0
     local code='using Pkg; Pkg.instantiate()'
@@ -539,6 +543,7 @@ instantiate_julia_project() {
         env LD_LIBRARY_PATH="" "$PYTHON_JULIAPKG_EXE" --startup-file=no --project="$1" -e "$code"; then
         warn "Could not install the Julia packages of $1 into $JULIA_DEPOT_PATH. To repeat the step:"
         warn "  LD_LIBRARY_PATH=\"\" \"$PYTHON_JULIAPKG_EXE\" --project=\"$1\" -e '$code'"
+        FAILED_MODULES="${FAILED_MODULES:-}${FAILED_MODULES:+; }Julia packages of $1"
     fi
 }
 
@@ -547,18 +552,24 @@ instantiate_julia_project() {
 # inherited from another install does not. An old install hears the cost before the download.
 setup_julia_depot() {
     [ -n "${CONDA_PREFIX:-}" ] || die "CONDA_PREFIX is not set, so the Julia depot of this install has no place."
-    local value="${JULIA_DEPOT_PATH:-}" own="$CONDA_PREFIX/julia_depot:" old="$HOME/.julia" first parent
+    local value="${JULIA_DEPOT_PATH:-}" own="$CONDA_PREFIX/julia_depot:" old="$HOME/.julia" first parent name
     first="${value%%:*}"
+    case "$first" in
+        *'$'* | [!/~]* | '~'[!/]*)
+            die "JULIA_DEPOT_PATH=$value is relative, names the home folder of another user or holds a literal \$; name an absolute folder." ;;
+    esac
     first="${first/#\~/$HOME}"
     parent="$(dirname -- "${first:-.}")"
+    name="$(basename -- "${first:-.}")"
     if [ -z "$value" ]; then
         value="$own"
-    elif [ "$(basename -- "${first:-.}")" = julia_depot ] && [ ! "$parent" -ef "$CONDA_PREFIX" ] \
-        && [ ! "$parent" -ef "$SCRIPT_DIR" ] && is_proteus_install_folder "$parent"; then
-        warn "JULIA_DEPOT_PATH=$value is the Julia depot of another PROTEUS install; this install uses $own."
+    elif [ "$name" = julia_depot ] && [ ! "$parent" -ef "$CONDA_PREFIX" ] \
+        && [ ! "$parent" -ef "$SCRIPT_DIR" ] \
+        && { [ ! -e "$parent" ] || is_proteus_install_folder "$parent"; }; then
+        warn "JULIA_DEPOT_PATH=$value is the Julia depot of another PROTEUS install or of one that is gone; this install uses $own."
         value="$own"
         old="$first"
-    elif [ "$first" != "${own%:}" ]; then
+    elif [ "$name" != julia_depot ] || [ ! "$parent" -ef "$CONDA_PREFIX" ]; then
         info "JULIA_DEPOT_PATH stays at $value, so this install shares its Julia packages with anything else that uses that value."
         if [ -n "${PIXI_ENVIRONMENT_NAME:-}" ]; then
             info "For a depot of its own, restore the JULIA_DEPOT_PATH line of pixi.toml and run bash install.sh again."
@@ -566,21 +577,29 @@ setup_julia_depot() {
             info "For a depot of its own, remove the value from your shell start file and open a new shell. Then activate the environment, run conda env config vars unset JULIA_DEPOT_PATH, activate the environment again and run bash install.sh."
         fi
     fi
+    case "$value" in
+        :* | *: | *::*) ;;
+        *) info "JULIA_DEPOT_PATH=$value has no trailing colon, so Julia compiles its standard library again for this depot: about 1 min and 81 MB (measured on macOS arm64)." ;;
+    esac
     set_install_var JULIA_DEPOT_PATH "$value"
     first="${value%%:*}"
     first="${first:-$HOME/.julia}"
     first="${first/#\~/$HOME}"
     if ! julia_depot_holds_packages "$value" \
         && { [ -f "$CONDA_PREFIX/julia_env/Manifest.toml" ] || [ -f "$SCRIPT_DIR/AGNI/Manifest.toml" ]; }; then
-        if [ -d "$old/packages" ] && ! { mkdir -p "$first" && printf '%s\n' "$old" > "$first/.proteus-moved-from"; } 2>/dev/null; then
-            warn "Could not write in $first; if $old holds LovePy, run bash $SCRIPT_DIR/tools/get_lovepy.sh after this install."
-        fi
-        warn "The Julia packages of this install move to $first: about 940 MiB, 21500 files and at least 220 MB to download (measured on macOS arm64)."
-        warn "$old stays as it is; do not remove the juliaup folder of $HOME/.julia."
-        if [ -n "${PIXI_ENVIRONMENT_NAME:-}" ]; then
-            warn "To stay on the old depot, change JULIA_DEPOT_PATH in pixi.toml and run again."
-        elif [ -d "$old/packages" ] && [ "$old" = "$HOME/.julia" ]; then
-            warn "To stay on the old depot: JULIA_DEPOT_PATH=$HOME/.julia: bash install.sh (for an old depot in another folder, name that folder)"
+        if [ -d "$old/packages" ]; then
+            if ! { mkdir -p "$first" && printf '%s\n' "$old" > "$first/.proteus-moved-from"; } 2>/dev/null; then
+                warn "Could not write in $first; if $old holds LovePy, run bash $SCRIPT_DIR/tools/get_lovepy.sh after this install."
+            fi
+            warn "The Julia packages of this install move to $first: about 940 MiB, 21500 files and at least 220 MB to download (measured on macOS arm64)."
+            warn "$old stays as it is; do not remove the juliaup folder of $HOME/.julia."
+            if [ -n "${PIXI_ENVIRONMENT_NAME:-}" ]; then
+                warn "To stay on the old depot, change JULIA_DEPOT_PATH in pixi.toml and run again."
+            elif [ "$old" = "$HOME/.julia" ]; then
+                warn "To stay on the old depot: JULIA_DEPOT_PATH=$HOME/.julia: bash install.sh (for an old depot in another folder, name that folder)"
+            fi
+        else
+            info "The Julia packages of this install install now, into $first."
         fi
     fi
     instantiate_julia_project "$CONDA_PREFIX/julia_env"
@@ -634,14 +653,14 @@ bind_install_vars() {
     fi
 }
 
-# Read only: name each export line of the 4 install variables that an earlier
+# Read only: name each export line of the 5 install variables that an earlier
 # install left in a shell start file; the installer does not change these files.
 note_old_shell_exports() {
     local f hits hit found=""
     for f in "$HOME/.zshrc" "$HOME/.zshenv" "$HOME/.zprofile" "$HOME/.bashrc" "$HOME/.bash_profile" \
              "$HOME/.bash_login" "$HOME/.profile" "$HOME/.kshrc" "$HOME/.config/fish/config.fish"; do
         [ -f "$f" ] && [ -r "$f" ] || continue
-        hits=$(grep -nE '^export (FWL_DATA|RAD_DIR|PYTHON_JULIAPKG_EXE|FC_DIR)=' "$f" || true)
+        hits=$(grep -nE '^export (FWL_DATA|RAD_DIR|PYTHON_JULIAPKG_EXE|FC_DIR|JULIA_DEPOT_PATH)=' "$f" || true)
         [ -n "$hits" ] || continue
         while IFS= read -r hit; do
             found+="  $f, line ${hit%%:*}: ${hit#*:}"$'\n'
@@ -933,6 +952,7 @@ setup_conda_env() {
     local name="${CONDA_ENV_REQUESTED:-proteus}" active="${CONDA_DEFAULT_ENV:-}"
     local pyver="$REQUIRED_PYTHON_MAJOR.$REQUIRED_PYTHON_MINOR" envs base made step="" py
     local prefix="" asked=false other="bash install.sh --conda-env <other name>"
+    local depot_set="${JULIA_DEPOT_PATH+set}" depot="${JULIA_DEPOT_PATH:-}"
     if [ -n "${PIXI_ENVIRONMENT_NAME:-}" ]; then
         info "Pixi environment: $PIXI_ENVIRONMENT_NAME"
         return 0
@@ -987,6 +1007,8 @@ setup_conda_env() {
     fi
     set -u
     [ -z "$step" ] || stop_without_conda_env "$step" "$name"
+    # Conda writes the value bound to the env over the value of the shell, which is the user's choice.
+    [ -z "$depot_set" ] || export JULIA_DEPOT_PATH="$depot"
     hash -r
     py=$(command -v python || true)
     case "${CONDA_DEFAULT_ENV:-}|$py" in
@@ -1112,7 +1134,7 @@ phase 2 "Julia"
 [ "$JULIA_SELECTED" = true ] || setup_julia
 
 # Verify that the Julia PROTEUS uses works
-if ! "$PYTHON_JULIAPKG_EXE" -e 'println("ok")' &>/dev/null; then
+if ! "$PYTHON_JULIAPKG_EXE" --startup-file=no -e 'println("ok")' &>/dev/null; then
     die "Julia at $PYTHON_JULIAPKG_EXE is installed but not functional."
 fi
 info "Julia: OK"
@@ -1368,7 +1390,8 @@ phase 7 "Further modules"
 
 # Usage: install_further_module <name> <command...>. A module of this phase that fails does not
 # stop the installer: the warning names the command to repeat, and the end of the run lists it.
-FAILED_MODULES=""
+# A failed instantiate of a Julia project in an earlier phase is on the list already.
+FAILED_MODULES="${FAILED_MODULES:-}"
 FURTHER_STAYS=$(mktemp "${TMPDIR:-/tmp}/proteus-clone-stays.XXXXXX") || FURTHER_STAYS=""
 install_further_module() {
     local name="$1"

@@ -110,7 +110,7 @@ Then open a new terminal and add Julia 1.13, which the PROTEUS installer checks 
 juliaup add 1.13
 ```
 
-Do not set `JULIA_DEPOT_PATH` in `~/.bashrc` for PROTEUS: `bash install.sh` keeps the Julia packages of each install in its conda environment, which step 5 places outside `$HOME`. With a value in `~/.bashrc`, the installer keeps it and all your installs share that one folder. A Julia that you use outside PROTEUS then keeps its packages in `~/.julia`, in your capped home folder.
+Do not set `JULIA_DEPOT_PATH` in `~/.bashrc` for PROTEUS: `bash install.sh` keeps the Julia packages of each install in its conda environment, which step 5 places outside `$HOME`. With a value in `~/.bashrc`, the installer keeps it and all your installs share that one folder. A Julia that you use outside PROTEUS then keeps its packages in `~/.julia`, in your capped home folder. A job must run through an activated environment or `conda run`, or it does not get the depot, as for `FWL_DATA`.
 
 If you install Julia using `tar`, use the following steps:
 

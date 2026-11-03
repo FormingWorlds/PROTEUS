@@ -4663,7 +4663,9 @@ class TestFurtherModulesPhase:
     def _phase_block() -> str:
         """The shipped lines of install.sh for the further modules phase."""
         lines = INSTALL_SH.read_text().splitlines()
-        start = next(i for i, ln in enumerate(lines) if ln.startswith('FAILED_MODULES=""'))
+        start = next(
+            i for i, ln in enumerate(lines) if ln == 'FAILED_MODULES="${FAILED_MODULES:-}"'
+        )
         end = (
             next(
                 i
@@ -4983,6 +4985,8 @@ _DEPOT_FUNCTIONS = (
     'reinstall_moved_lovepy',
 )
 
+_LOVEPY_STEP = 'run_logged() { printf "FURTHER=%s\\n" "$*"; }\nreinstall_moved_lovepy\n'
+
 _STUB_DEPOT_JULIA = '#!/bin/sh\necho JULIA_RAN\necho "$PWD|$*|$JULIA_DEPOT_PATH|ld=[$LD_LIBRARY_PATH]" >> "$STUB_LOG"\nexit "${STUB_RC:-0}"\n'
 
 
@@ -5000,6 +5004,12 @@ class TestJuliaDepot:
         log = tmp_path / 'julia.log'
         log.write_text('')
         return {'tmp': tmp_path, 'julia': julia, 'log': log}
+
+    @staticmethod
+    def _agni_manifest(site):
+        """Give the PROTEUS root an AGNI folder with a Manifest."""
+        (site['tmp'] / 'root' / 'AGNI').mkdir()
+        (site['tmp'] / 'root' / 'AGNI' / 'Manifest.toml').write_text('m')
 
     def _run(self, site, value=UNSET, prefix='prefix', after='', **env):
         """Run the shipped setup_julia_depot and print the variable and the old depot it leaves."""
@@ -5132,8 +5142,7 @@ class TestJuliaDepot:
         """Julia reads every entry, so a shared later depot means nothing moves."""
         full = site['tmp'] / 'shared'
         (full / 'packages').mkdir(parents=True)
-        (site['tmp'] / 'root' / 'AGNI').mkdir()
-        (site['tmp'] / 'root' / 'AGNI' / 'Manifest.toml').write_text('m')
+        self._agni_manifest(site)
         value = value_form.format(new=site['tmp'] / 'new', full=full)
         result = self._call(site, value)
         assert 'MiB' not in result.stdout
@@ -5142,8 +5151,7 @@ class TestJuliaDepot:
     def test_leading_colon_reads_the_home_depot(self, site):
         """A leading colon is ~/.julia, so its packages count and no move is announced."""
         (site['tmp'] / 'home' / '.julia' / 'packages').mkdir(parents=True)
-        (site['tmp'] / 'root' / 'AGNI').mkdir()
-        (site['tmp'] / 'root' / 'AGNI' / 'Manifest.toml').write_text('m')
+        self._agni_manifest(site)
         assert 'MiB' not in self._call(site, ':').stdout
         assert self._marker(site) is None
 
@@ -5333,8 +5341,7 @@ class TestJuliaDepot:
 
     def test_move_on_pixi_names_the_manifest_line(self, site):
         """Pixi activation overrides a shell value, so the stay route is pixi.toml."""
-        (site['tmp'] / 'root' / 'AGNI').mkdir()
-        (site['tmp'] / 'root' / 'AGNI' / 'Manifest.toml').write_text('m')
+        self._agni_manifest(site)
         (site['tmp'] / 'home' / '.julia' / 'packages').mkdir(parents=True)
         out = self._call(site, PIXI_ENVIRONMENT_NAME='default').stdout
         assert 'pixi.toml' in out
@@ -5345,8 +5352,7 @@ class TestJuliaDepot:
         other = site['tmp'] / 'other'
         (other / 'conda-meta').mkdir(parents=True)
         (other / 'julia_depot' / 'packages').mkdir(parents=True)
-        (site['tmp'] / 'root' / 'AGNI').mkdir()
-        (site['tmp'] / 'root' / 'AGNI' / 'Manifest.toml').write_text('m')
+        self._agni_manifest(site)
         out = self._call(site, f'{other}/julia_depot:').stdout
         assert self._marker(site) == f'{other}/julia_depot'
         assert f'{other}/julia_depot stays as it is' in out
@@ -5354,8 +5360,7 @@ class TestJuliaDepot:
 
     def test_retry_of_a_fresh_install_writes_no_note(self, site):
         """A clone with a Manifest and an old depot with no packages leaves nothing to carry."""
-        (site['tmp'] / 'root' / 'AGNI').mkdir()
-        (site['tmp'] / 'root' / 'AGNI' / 'Manifest.toml').write_text('m')
+        self._agni_manifest(site)
         result = self._call(site)
         assert self._marker(site) is None
         assert 'To stay on the old depot' not in result.stdout
@@ -5367,8 +5372,7 @@ class TestJuliaDepot:
     def test_depot_that_cannot_hold_the_note_warns(self, site):
         """A note that cannot be written loses the LovePy step, so the user hears it."""
         (site['tmp'] / 'home' / '.julia' / 'packages').mkdir(parents=True)
-        (site['tmp'] / 'root' / 'AGNI').mkdir()
-        (site['tmp'] / 'root' / 'AGNI' / 'Manifest.toml').write_text('m')
+        self._agni_manifest(site)
         (site['tmp'] / 'prefix' / 'julia_depot').write_text('a file')
         out = self._call(site).stdout
         assert 'get_lovepy.sh' in out
@@ -5420,8 +5424,7 @@ class TestJuliaDepot:
     def test_tilde_value_is_read_as_the_home_folder(self, site):
         """Julia expands a leading tilde, so the packages check must too."""
         (site['tmp'] / 'home' / 'd' / 'packages').mkdir(parents=True)
-        (site['tmp'] / 'root' / 'AGNI').mkdir()
-        (site['tmp'] / 'root' / 'AGNI' / 'Manifest.toml').write_text('m')
+        self._agni_manifest(site)
         result = self._call(site, '~/d:')
         assert self._value(result) == '~/d:'
         assert 'MiB' not in result.stdout
@@ -5451,8 +5454,8 @@ class TestJuliaDepot:
         result = self._call(site, after=after, STUB_RC='1')
         assert str(agni) in self._value(result, 'FAILED')
         lines = INSTALL_SH.read_text().splitlines()
-        assert lines.count('FAILED_MODULES=""') == 1
-        assert lines.index('FAILED_MODULES=""') < lines.index('setup_julia_depot')
+        assert 'FAILED_MODULES=""' not in lines
+        assert 'FAILED_MODULES="${FAILED_MODULES:-}"' in lines
 
     def test_import_that_misses_julia_packages_names_the_repeat_and_the_page(self, tmp_path):
         """The import stop after a move with no network says how the next run repairs it."""
@@ -5507,14 +5510,13 @@ class TestJuliaDepot:
 
         The step names the script by its full path, and success removes the note of the move.
         """
-        (site['tmp'] / 'root' / 'AGNI').mkdir()
-        (site['tmp'] / 'root' / 'AGNI' / 'Manifest.toml').write_text('m')
+        self._agni_manifest(site)
         (site['tmp'] / 'home' / '.julia' / 'packages').mkdir(parents=True)
         if text:
             env_dir = site['tmp'] / 'home' / '.julia' / 'environments' / 'v1.13'
             env_dir.mkdir(parents=True)
             (env_dir / 'Project.toml').write_text(text)
-        after = 'run_logged() { printf "FURTHER=%s\\n" "$*"; }\nreinstall_moved_lovepy\n'
+        after = _LOVEPY_STEP
         out = self._call(site, after=after).stdout
         script = f'{site["tmp"] / "root"}/tools/get_lovepy.sh'
         assert (f'bash {script}\n' in out and 'FURTHER=' in out) is called
@@ -5522,8 +5524,7 @@ class TestJuliaDepot:
 
     def test_failed_lovepy_step_warns_and_goes_on(self, site):
         """A failed LovePy step names its repeat and does not stop the install."""
-        (site['tmp'] / 'root' / 'AGNI').mkdir()
-        (site['tmp'] / 'root' / 'AGNI' / 'Manifest.toml').write_text('m')
+        self._agni_manifest(site)
         (site['tmp'] / 'home' / '.julia' / 'packages').mkdir(parents=True)
         env_dir = site['tmp'] / 'home' / '.julia' / 'environments' / 'v1.13'
         env_dir.mkdir(parents=True)
@@ -5545,7 +5546,7 @@ class TestJuliaDepot:
         env_dir = home / '.julia' / 'environments' / 'v1.13'
         env_dir.mkdir(parents=True)
         (env_dir / 'Project.toml').write_text('LovePy = "abc"\n')
-        after = 'run_logged() { printf "FURTHER=%s\\n" "$*"; }\nreinstall_moved_lovepy\n'
+        after = _LOVEPY_STEP
         assert 'tools/get_lovepy.sh' in self._call(site, after=after).stdout
         assert self._marker(site) is None
 
@@ -5554,7 +5555,7 @@ class TestJuliaDepot:
         env_dir = site['tmp'] / 'home' / '.julia' / 'environments' / 'v1.13'
         env_dir.mkdir(parents=True)
         (env_dir / 'Project.toml').write_text('LovePy = "abc"\n')
-        after = 'run_logged() { printf "FURTHER=%s\\n" "$*"; }\nreinstall_moved_lovepy\n'
+        after = _LOVEPY_STEP
         assert 'FURTHER=' not in self._call(site, after=after).stdout
         assert self._marker(site) is None
 

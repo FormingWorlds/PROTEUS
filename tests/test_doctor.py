@@ -4014,9 +4014,8 @@ class TestJuliaDepot:
 
     def test_install_all_route_with_no_variable_warns(self, site):
         """`proteus install-all` sets no depot, so doctor names the shared default."""
-        (site / 'home' / '.julia' / 'packages').mkdir(parents=True)
-        (site / 'root' / 'AGNI').mkdir()
-        (site / 'root' / 'AGNI' / 'Manifest.toml').write_text('m')
+        (site / 'home' / '.julia' / 'packages' / 'Foo').mkdir(parents=True)
+        _julia_project(site / 'root' / 'AGNI')
         result = doctor_module.check_julia_depot()
         assert result.status == WARN
         assert 'shared' in result.message
