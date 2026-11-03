@@ -3373,7 +3373,7 @@ def test_setup_solver_passes_the_rheology_to_the_solid_phase(tmp_path, enabled):
     by_phase = {c.kwargs['melt_fraction']: c.kwargs for c in mock_phase.call_args_list}
     assert 'rheology' not in by_phase[1]
     if enabled:
-        assert by_phase[0]['rheology'] == SolidRheologyParams(enabled=True)
+        assert by_phase[0].get('rheology') == SolidRheologyParams(enabled=True)
     else:
         assert 'rheology' not in by_phase[0]
 
