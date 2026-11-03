@@ -740,29 +740,28 @@ def test_init_agni_atmos_greygas_bypasses_spectral_copy(monkeypatch, tmp_path):
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
-    ('chemistry', 'requested', 'sent', 'warned'),
+    ('chemistry', 'requested'),
     [
-        ('none', True, True, False),
-        ('none', False, False, False),
-        ('eq', False, True, True),
-        ('eq', True, True, False),
+        (None, True),
+        (None, False),
+        ('eq', False),
+        ('eq', True),
     ],
     ids=[
         'all_gases_by_default',
         'modelled_gases_only',
-        'eq_chemistry_loads_every_gas_and_warns',
-        'eq_chemistry_with_all_gases_is_silent',
+        'eq_chemistry_with_modelled_gases_only',
+        'eq_chemistry_with_all_gases',
     ],
 )
 def test_init_agni_atmos_forwards_load_all_opacities(
-    monkeypatch, tmp_path, caplog, chemistry, requested, sent, warned
+    monkeypatch, tmp_path, chemistry, requested
 ):
-    """`agni.load_all_opacities` reaches AGNI's setup! as a bool.
+    """`agni.load_all_opacities` reaches AGNI's setup! unchanged, as a bool.
 
-    Without equilibrium chemistry the configured value is passed unchanged.
-    With `chemistry = "eq"` FastChem can add any gas of the spectral file, so
-    every opacity is loaded, and a configured false is reported as having no
-    effect rather than being dropped silently.
+    With `chemistry = "eq"` AGNI loads every opacity itself, because
+    `use_all_gases` is true, so the configured value is passed as it is. The
+    config holds None, not 'none', when chemistry is off.
     """
     fake_agni = _FakeAGNI()
     fake_jl = SimpleNamespace(
@@ -791,15 +790,13 @@ def test_init_agni_atmos_forwards_load_all_opacities(
     monkeypatch.setattr(agni_mod, '_construct_voldict', lambda *_a, **_k: {'H2O': 1.0})
     monkeypatch.setattr(agni_mod, 'sync_log_files', lambda *_a, **_k: None)
 
-    with caplog.at_level(logging.WARNING):
-        init_agni_atmos(dirs, config, hf_row)
+    init_agni_atmos(dirs, config, hf_row)
 
     kwargs = fake_agni.last_setup_kwargs
     # A Python bool converts to a Julia Bool; a string 'false' would be refused by setup!.
     assert type(kwargs['load_all_opacities']) is bool
-    assert kwargs['load_all_opacities'] is sent
+    assert kwargs['load_all_opacities'] is requested
     assert kwargs['use_all_gases'] is (chemistry == 'eq')
-    assert ('load_all_opacities = false has no effect' in caplog.text) is warned
 
 
 @pytest.mark.unit

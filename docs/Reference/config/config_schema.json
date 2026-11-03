@@ -12350,6 +12350,7 @@
       "touches": [
         "agni.chemistry",
         "agni.latent_heat",
+        "agni.load_all_opacities",
         "agni.psurf_thresh",
         "agni.rainout",
         "agni.solve_energy",

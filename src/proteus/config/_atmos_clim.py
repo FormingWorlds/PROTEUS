@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 from typing import Literal, Union
 
@@ -9,6 +10,8 @@ from attrs.validators import ge, gt, in_, le
 from proteus.utils.constants import R_earth
 
 from ._converters import lowercase, none_if_none
+
+log = logging.getLogger('fwl.' + __name__)
 
 
 def warn_if_dummy(instance, attribute, value):
@@ -114,6 +117,12 @@ def valid_agni(instance, attribute, value):
             raise ValueError('Must set atmos_clim.spectral_group')
         if not instance.spectral_bands:
             raise ValueError('Must set atmos_clim.spectral_bands')
+
+    # AGNI loads every opacity with equilibrium chemistry, which can add any gas
+    if instance.agni.chemistry == 'eq' and not instance.agni.load_all_opacities:
+        log.warning(
+            'atmos_clim.agni.load_all_opacities = false has no effect with chemistry = "eq"'
+        )
 
     # fastchem installed?
     if instance.agni.chemistry == 'eq':

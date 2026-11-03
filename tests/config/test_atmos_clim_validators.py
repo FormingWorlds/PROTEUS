@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -34,6 +35,7 @@ def _make_agni_instance(**kwargs):
         'rainout': True,
         'spectral_file': None,
         'chemistry': 'none',
+        'load_all_opacities': True,
     }
     parent_overrides = {k: kwargs.pop(k) for k in list(kwargs) if k in parent_defaults}
     parent_defaults.update(parent_overrides)
@@ -392,3 +394,31 @@ def test_agni_loads_every_opacity_unless_asked_not_to():
     root = Path(__file__).parents[2]
     cfg = read_config_object(root / 'input' / 'all_options.toml')
     assert cfg.atmos_clim.agni.load_all_opacities is True
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('chemistry', 'load_all', 'warned'),
+    [
+        (None, False, False),
+        ('eq', False, True),
+        ('eq', True, False),
+    ],
+    ids=[
+        'modelled_gases_without_chemistry',
+        'eq_chemistry_with_modelled_gases_only',
+        'eq_chemistry_with_all_gases',
+    ],
+)
+def test_valid_agni_warns_when_eq_chemistry_makes_load_all_opacities_false_moot(
+    monkeypatch, tmp_path, caplog, chemistry, load_all, warned
+):
+    """With `chemistry = "eq"` FastChem can add any gas of the spectral file, so
+    AGNI loads every opacity. A configured `load_all_opacities = false` is then
+    reported once, at config load, and the config value is left unchanged."""
+    monkeypatch.setenv('FC_DIR', str(tmp_path))
+    instance = _make_agni_instance(chemistry=chemistry, load_all_opacities=load_all)
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.config._atmos_clim'):
+        assert valid_agni(instance, attribute=None, value=None) is None
+    assert instance.agni.load_all_opacities is load_all
+    assert ('load_all_opacities = false has no effect' in caplog.text) is warned
