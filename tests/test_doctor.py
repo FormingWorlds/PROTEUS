@@ -3978,7 +3978,9 @@ class TestJuliaDepot:
         """With no env active there is no juliacall project to read."""
         monkeypatch.delenv('CONDA_PREFIX')
         monkeypatch.setenv('JULIA_DEPOT_PATH', f'{site / "new"}:')
-        assert doctor_module.check_julia_depot().status == PASS
+        result = doctor_module.check_julia_depot()
+        assert result.status == PASS
+        assert str(site / 'new') in result.message
 
     @pytest.mark.parametrize(
         'value',

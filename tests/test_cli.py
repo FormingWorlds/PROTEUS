@@ -2260,6 +2260,7 @@ def test_setup_scripts_keep_a_depot_of_the_user(monkeypatch, tmp_path):
     monkeypatch.setenv('JULIA_DEPOT_PATH', f'{tmp_path}/depot:')
     monkeypatch.delenv('PYTHON_JULIAPKG_EXE', raising=False)
     assert cli._env_with_proteus_julia(root).get('JULIA_DEPOT_PATH') == f'{tmp_path}/depot:'
+    assert os.environ['JULIA_DEPOT_PATH'] == f'{tmp_path}/depot:'
 
 
 @pytest.mark.unit

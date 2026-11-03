@@ -745,6 +745,7 @@ class TestInstallVars:
         zshrc = site['home'] / '.zshrc'
         _write_start_file(zshrc, '# zsh\nexport JULIA_DEPOT_PATH=/data/depot\n')
         result = self._call(site, 'note_old_shell_exports\n')
+        assert result.returncode == 0
         assert f'{zshrc}, line 2: export JULIA_DEPOT_PATH=/data/depot' in result.stderr
 
     def test_note_reads_the_fish_ksh_bash_login_and_zshenv_files(self, site):
@@ -5243,7 +5244,9 @@ class TestJuliaDepot:
     @pytest.mark.parametrize('value', ['/big/x:', '/big/x::/y', ':/big/x', ':'])
     def test_value_with_the_bundled_depots_has_no_colon_line(self, site, value):
         """Each of these forms keeps the compile files of Julia."""
-        assert 'no trailing colon' not in self._call(site, value).stdout
+        result = self._call(site, value)
+        assert 'no trailing colon' not in result.stdout
+        assert self._value(result) == value
 
     @pytest.mark.parametrize(
         'form', ['{p}/julia_depot/:', '{p}/../prefix/julia_depot:', '{l}/julia_depot:']
@@ -5321,6 +5324,7 @@ class TestJuliaDepot:
 
         result = self._run(site, value)
         assert (result.returncode != 0) == depot_value_is_unusable(value)
+        assert ('name an absolute folder' in result.stdout) == depot_value_is_unusable(value)
 
     def test_move_names_size_and_stay_command_before_any_julia_runs(self, site):
         """An old install with an empty new depot hears the cost before the download."""

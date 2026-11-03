@@ -300,6 +300,7 @@ def test_other_install_needs_a_marker_beside_the_depot(monkeypatch, tmp_path):
 def test_depot_value_is_unusable_reads_the_first_entry(value, expected):
     """A relative entry, another user's home and a literal $ give no fixed folder."""
     assert depot_value_is_unusable(value) is expected
+    assert depot_value_is_unusable(f'{value or ""}:/later') is expected
 
 
 def test_depot_value_is_unusable_holds_for_any_value():
@@ -349,6 +350,8 @@ def test_missing_packages_read_the_old_manifest_format(tmp_path):
     project = tmp_path / 'p'
     _write_project(project, '[deps]\nFoo = "1"\n', '[[Foo]]\ngit-tree-sha1 = "a"\n')
     assert missing_julia_packages(project, [str(tmp_path)]) == ['Foo']
+    (tmp_path / 'packages' / 'Foo').mkdir(parents=True)
+    assert missing_julia_packages(project, [str(tmp_path)]) == []
 
 
 def test_project_with_no_manifest_needs_nothing(tmp_path):
@@ -369,6 +372,7 @@ def test_project_that_cannot_be_read_is_named(tmp_path, project, manifest):
     folder = tmp_path / 'p'
     _write_project(folder, project, manifest)
     assert missing_julia_packages(folder, [str(tmp_path)]) == [f'{folder}: unreadable TOML']
+    assert missing_julia_packages(folder, []) == [f'{folder}: unreadable TOML']
 
 
 def test_project_without_a_project_file_is_named(tmp_path):
@@ -377,3 +381,4 @@ def test_project_without_a_project_file_is_named(tmp_path):
     folder.mkdir()
     (folder / 'Manifest.toml').write_text('manifest_format = "2.0"\n')
     assert missing_julia_packages(folder, [str(tmp_path)]) == [f'{folder}: unreadable TOML']
+    assert missing_julia_packages(folder, []) == [f'{folder}: unreadable TOML']
