@@ -37,6 +37,7 @@ from proteus.interior_energetics.aragog_phase import (
     BuoyancyMismatchError,
     build_jax_phase_params,
     build_mixed_phase_params,
+    solid_rheology_kwargs,
     check_solver_buoyancy,
 )
 from proteus.interior_energetics.common import Interior_t
@@ -1265,6 +1266,7 @@ class AragogRunner:
             thermal_conductivity=float(config.interior_energetics.solid_cond),
             thermal_expansivity=LOOK_UP_DIR / 'thermal_exp_solid.dat',
             entropy=entropy_solid_arg,
+            **solid_rheology_kwargs(config),
         )
 
         phase_mixed = build_mixed_phase_params(config, solidus_path, liquidus_path)

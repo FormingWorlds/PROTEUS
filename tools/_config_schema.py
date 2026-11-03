@@ -61,6 +61,13 @@ POST_INIT_CHECKS = {
             'interior_energetics.aragog.top_cell_dt_rel_dT_solid',
         ),
     },
+    ('_interior', '_check_aragog_rheology_module'): {
+        'classes': ('Interior',),
+        'paths': (
+            'interior_energetics.module',
+            'interior_energetics.aragog.rheology.enabled',
+        ),
+    },
     ('_interior', '_check_aragog_top_cell_dt_limit_surface_bc'): {
         'classes': ('Interior',),
         'paths': (

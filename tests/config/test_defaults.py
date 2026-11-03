@@ -890,3 +890,13 @@ def test_aragog_top_cell_dt_rel_property():
     assert len(rejected) >= 10
     assert all(0.0 < solid_val <= dt_val <= 0.15 for dt_val, solid_val in seen)
     assert all(solid_val > dt_val for dt_val, solid_val in rejected)
+
+
+def test_aragog_rheology_default_type_and_module_check():
+    """The rheology is off by default and needs the Aragog module."""
+    from proteus.config._interior import Rheology
+
+    assert Aragog().rheology.enabled is False
+    with pytest.raises(ValueError, match='rheology.enabled'):
+        Interior(module='spider', aragog=Aragog(rheology=Rheology(enabled=True)))
+    assert Interior(module='aragog', aragog=Aragog(rheology=Rheology(enabled=True)))

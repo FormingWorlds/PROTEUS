@@ -5593,6 +5593,22 @@
       "group_qualifier": null
     },
     {
+      "path": "interior_energetics.aragog.rheology.enabled",
+      "toml_section": "interior_energetics.aragog.rheology",
+      "class": "Rheology",
+      "type": "bool",
+      "accepts_none": false,
+      "default": "false",
+      "choices": null,
+      "bounds": null,
+      "description": "Use the temperature- and pressure-dependent solid viscosity and the stagnant-lid closure of ``aragog.rheology.SolidRheologyParams``, with its defaults for every other parameter. False uses the constant ``solid_log10visc``.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
       "path": "interior_energetics.aragog.core_module.alpha",
       "toml_section": "interior_energetics.aragog.core_module",
       "class": "AragogCoreModule",
@@ -12847,6 +12863,19 @@
         "zephyrus.efficiency"
       ],
       "doc": "Validate ZEPHYRUS settings: Pxuv within (0, 10] bar and efficiency within [0, 1]."
+    },
+    {
+      "validator": "_check_aragog_rheology_module",
+      "module": "_interior.py",
+      "attached_to": [
+        "interior_energetics.aragog.rheology.enabled",
+        "interior_energetics.module"
+      ],
+      "touches": [
+        "interior_energetics.aragog.rheology.enabled",
+        "interior_energetics.module"
+      ],
+      "doc": "Reject the Aragog solid rheology when another interior module runs."
     },
     {
       "validator": "_check_aragog_top_cell_dt_limit_surface_bc",

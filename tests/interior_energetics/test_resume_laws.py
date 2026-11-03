@@ -376,3 +376,43 @@ def test_any_stored_buoyancy_other_than_the_new_string_refuses(
     else:
         with pytest.raises(ResumeSeparationLawError, match='separation_buoyancy is '):
             check_resume_separation_laws(config, MINIMAL, tmp_path)
+
+
+def _rheology_run(folder, enabled):
+    """A run directory recording the rheology switch, or no rheology table when None."""
+    out = Path(folder) / 'run'
+    out.mkdir()
+    config, _ = _user_config(out)
+    config.write(out / 'init_coupler.toml')
+    doc = tomlkit.parse((out / 'init_coupler.toml').read_text())
+    del doc['interior_energetics']['aragog']['rheology']
+    if enabled is not None:
+        doc['interior_energetics']['aragog']['rheology'] = {'enabled': enabled}
+    (out / 'init_coupler.toml').write_text(tomlkit.dumps(doc))
+    return out
+
+
+@pytest.mark.parametrize('stored', [False, None])
+def test_resume_refuses_to_turn_the_rheology_on(tmp_path, stored):
+    """A record with the rheology off, or with no rheology table, refuses a resume with it on."""
+    out = _rheology_run(tmp_path, stored)
+    text = MINIMAL.read_text() + '\n[interior_energetics.aragog.rheology]\n    enabled = true\n'
+    path = tmp_path / 'user.toml'
+    path.write_text(text)
+    with pytest.raises(ResumeSeparationLawError, match='rheology.enabled'):
+        check_resume_separation_laws(read_config_object(path), path, out)
+
+
+def test_resume_refuses_to_turn_the_rheology_off(tmp_path):
+    """A run written with the rheology on keeps it at a resume."""
+    out = _rheology_run(tmp_path, True)
+    config, path = _user_config(tmp_path)
+    with pytest.raises(ResumeSeparationLawError, match='rheology.enabled'):
+        check_resume_separation_laws(config, path, out)
+
+
+def test_resume_keeps_an_unchanged_rheology(tmp_path):
+    """The same rheology switch on both sides gives no switch."""
+    out = _rheology_run(tmp_path, False)
+    config, path = _user_config(tmp_path)
+    assert check_resume_separation_laws(config, path, out) == []
