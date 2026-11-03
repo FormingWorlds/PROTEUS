@@ -563,7 +563,7 @@ stop_on_unusable_depot() {
     if [ -n "${PIXI_ENVIRONMENT_NAME:-}" ]; then
         remedy="restore the JULIA_DEPOT_PATH line of pixi.toml"
     else
-        remedy="run unset JULIA_DEPOT_PATH; for a value bound to a conda environment, activate it and run conda env config vars unset JULIA_DEPOT_PATH"
+        remedy="run unset JULIA_DEPOT_PATH; for a value bound to a conda environment, activate it, run conda env config vars unset JULIA_DEPOT_PATH and conda deactivate, and activate it again"
     fi
     die "JULIA_DEPOT_PATH=$value is relative, names the home folder of another user or holds a literal \$; name an absolute folder, or $remedy."
 }
@@ -591,7 +591,7 @@ setup_julia_depot() {
         if [ -n "${PIXI_ENVIRONMENT_NAME:-}" ]; then
             info "For a depot of its own, restore the JULIA_DEPOT_PATH line of pixi.toml and run bash install.sh again."
         else
-            info "For a depot of its own, remove the value from your shell start file and open a new shell. Then activate the environment, run conda env config vars unset JULIA_DEPOT_PATH, activate the environment again and run bash install.sh."
+            info "For a depot of its own, remove the value from your shell start file and open a new shell. Then run conda env config vars unset -p $CONDA_PREFIX JULIA_DEPOT_PATH, conda deactivate, conda activate $CONDA_PREFIX and bash install.sh."
         fi
     fi
     case "$value" in
@@ -613,8 +613,9 @@ setup_julia_depot() {
             if [ -n "${PIXI_ENVIRONMENT_NAME:-}" ]; then
                 warn "To stay on the old depot, change JULIA_DEPOT_PATH in pixi.toml and run again."
             elif [ "$old" = "$HOME/.julia" ]; then
-                warn "To stay on the old depot, run these 3 commands (for an old depot in another folder, name that folder):"
+                warn "To stay on the old depot, run these 4 commands (for an old depot in another folder, name that folder):"
                 warn "  conda env config vars set -p $CONDA_PREFIX JULIA_DEPOT_PATH=$HOME/.julia:"
+                warn "  conda deactivate"
                 warn "  conda activate $CONDA_PREFIX"
                 warn "  bash install.sh"
             fi

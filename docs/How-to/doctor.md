@@ -192,7 +192,7 @@ This lists the fixable issues and their commands but does not execute anything.
 | Outdated Python package (editable git clone of its own, without a setup script) | `cd <checkout> && git pull && pip install -e .` |
 | Outdated Python package (wheel) | `pip install -U "<name>>=<version>"` |
 | Missing AGNI | `bash tools/get_agni.sh` |
-| No `JULIA_DEPOT_PATH`, an empty one, or the depot of another install | In the active PROTEUS environment: `conda env config vars set JULIA_DEPOT_PATH="$CONDA_PREFIX/julia_depot:"`, then activate the environment again |
+| No `JULIA_DEPOT_PATH`, an empty one, or the depot of another install | In the active PROTEUS environment: `conda env config vars set JULIA_DEPOT_PATH="$CONDA_PREFIX/julia_depot:"`, then `conda deactivate` and activate the environment again |
 | A Julia depot with no packages for AGNI | `cd AGNI && LD_LIBRARY_PATH="" "$PYTHON_JULIAPKG_EXE" --project=. -e "using Pkg; Pkg.instantiate()"` |
 | AGNI commit drift from pin | `bash tools/get_agni.sh` |
 | Missing SOCRATES | `bash tools/get_socrates.sh` |
