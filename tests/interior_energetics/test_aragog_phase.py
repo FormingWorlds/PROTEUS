@@ -747,3 +747,51 @@ def test_numpy_setup_solver_site_delegates_to_the_shared_builder():
 
     assert 'build_mixed_phase_params' in call_targets
     assert '_PhaseMixedParameters' not in call_targets
+
+
+def _rheology_config(enabled):
+    """A config namespace holding only the rheology switch."""
+    aragog = SimpleNamespace(rheology=SimpleNamespace(enabled=enabled))
+    return SimpleNamespace(interior_energetics=SimpleNamespace(aragog=aragog))
+
+
+def test_solid_rheology_kwargs_empty_when_off():
+    """With the rheology off the aragog constructors get no rheology keyword."""
+    from proteus.interior_energetics.aragog_phase import solid_rheology_kwargs
+
+    assert solid_rheology_kwargs(_rheology_config(False)) == {}
+
+
+def test_solid_rheology_kwargs_on_uses_the_aragog_defaults():
+    """With the rheology on the keyword holds the aragog defaults with enabled true."""
+    from aragog.rheology import SolidRheologyParams
+
+    from proteus.interior_energetics.aragog_phase import solid_rheology_kwargs
+
+    if not hasattr(__import__('aragog.solver').solver.EntropySolver, '_rheology_enabled'):
+        pytest.skip('the installed aragog solver does not read the rheology')
+    assert solid_rheology_kwargs(_rheology_config(True)) == {
+        'rheology': SolidRheologyParams(enabled=True)
+    }
+
+
+def test_solid_rheology_kwargs_refuses_an_aragog_without_the_wiring():
+    """An aragog solver that does not read the rheology stops the run."""
+    from proteus.interior_energetics.aragog_phase import solid_rheology_kwargs
+
+    with patch('aragog.solver.EntropySolver', object):
+        with pytest.raises(RuntimeError, match='does not'):
+            solid_rheology_kwargs(_rheology_config(True))
+
+
+def test_jax_phase_params_carry_the_rheology_switch():
+    """The JAX site passes the switch: on reaches PhaseParams, off leaves the default."""
+    from aragog.rheology import SolidRheologyParams
+
+    if not hasattr(__import__('aragog.solver').solver.EntropySolver, '_rheology_enabled'):
+        pytest.skip('the installed aragog solver does not read the rheology')
+    config = _make_full_config()
+    config.interior_energetics.aragog.rheology = SimpleNamespace(enabled=True)
+    assert build_jax_phase_params(config).rheology == SolidRheologyParams(enabled=True)
+    config.interior_energetics.aragog.rheology = SimpleNamespace(enabled=False)
+    assert build_jax_phase_params(config).rheology.enabled is False

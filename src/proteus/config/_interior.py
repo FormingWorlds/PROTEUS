@@ -162,6 +162,15 @@ class Spider:
     log_output: bool = field(default=True)
 
 
+def _check_aragog_rheology_module(interior) -> None:
+    """Reject the Aragog solid rheology when another interior module runs."""
+    if interior.module != 'aragog' and interior.aragog.rheology.enabled:
+        raise ValueError(
+            'interior_energetics.aragog.rheology.enabled = true needs interior_energetics.'
+            f"module = 'aragog', got {interior.module!r}"
+        )
+
+
 def _check_aragog_top_cell_dt_limit_surface_bc(interior) -> None:
     """Reject Aragog top_cell_dt_limit with grey_body surface boundary conditions."""
     if (
@@ -299,6 +308,21 @@ class AragogCoreModule:
 
 
 @define
+class Rheology:
+    """Solid-state mantle rheology of the Aragog solver.
+
+    Attributes
+    ----------
+    enabled : bool
+        Use the temperature- and pressure-dependent solid viscosity and the stagnant-lid
+        closure of ``aragog.rheology.SolidRheologyParams``, with its defaults for every
+        other parameter. False uses the constant ``solid_log10visc``.
+    """
+
+    enabled: bool = field(default=False, validator=_valid_bool)
+
+
+@define
 class Aragog:
     """Aragog-specific parameters.
 
@@ -424,6 +448,9 @@ class Aragog:
     to enable it; -1.0 is the explicit off spelling. An explicit 0.0 is
     rejected at load, since it cannot be told apart from the unset default;
     any other negative, NaN, or infinity is rejected too."""
+
+    rheology: Rheology = field(factory=Rheology)
+    """Solid-state mantle rheology of the Aragog solver."""
 
     core_module: AragogCoreModule = field(factory=AragogCoreModule)
     """Core evolution module parameters, active when core_bc =
@@ -1068,6 +1095,7 @@ class Interior:
 
         _check_top_cell_dt_rel_dT_pair(self.aragog)
         _check_aragog_top_cell_dt_limit_surface_bc(self)
+        _check_aragog_rheology_module(self)
 
 
 # Thematic grouping for the generated configuration reference. Each entry is
