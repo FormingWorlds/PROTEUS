@@ -2040,6 +2040,7 @@ class TestSetupJulia:
         report = (
             'setup_julia\n'
             'printf "REPORT %s\\n" "$PATH" "$PYTHON_JULIAPKG_EXE" "$JULIA_CHANNEL" "$(julia --version)"\n'
+            'printf "JULIAUP_FOUND %s\\n" "$(command -v juliaup || true)"\n'
         )
         result = subprocess.run(
             ['bash', '-c', defs + report],
@@ -2305,6 +2306,14 @@ class TestSetupJulia:
         assert 'set PYTHON_JULIAPKG_EXE to the binary of a Julia 1.13' in result.stdout
         assert 'juliaup add' not in result.stdout
         assert 'update juliaup first' not in result.stderr
+
+    def test_juliaup_too_old_for_the_api_gets_the_update_route(self, site):
+        """An error that is no lock problem still has a route: the update command of that juliaup."""
+        error = "error: unrecognized subcommand 'api'"
+        result = self._call(site, '1.13.1', STUB_JULIAUP_RC='1', STUB_JULIAUP_ERROR=error)
+        assert result.returncode == 1
+        assert error in result.stderr
+        assert 'official installer updates with: juliaup self update' in result.stdout
 
     def test_juliaup_that_does_not_answer_gets_its_own_line(self, site):
         """A failed API call names itself, since `juliaup add 1.13` alone cannot cure it."""
@@ -2609,15 +2618,103 @@ class TestSetupJuliaWithoutJulia:
 
     def test_off_path_juliaup_with_113_is_used_beside_a_julia_of_another_version(self, site):
         """Another julia on PATH does not hide the 1.13 channel of a juliaup in ~/.juliaup/bin."""
-        _stub(site['home'] / '.juliaup' / 'bin' / 'juliaup', _STUB_JULIAUP)
-        _stub(site['home'] / '.juliaup' / 'bin' / 'julia', _STUB_JULIA)
+        jup = site['home'] / '.juliaup' / 'bin'
+        _stub(jup / 'juliaup', _STUB_JULIAUP)
+        _stub(jup / 'julia', _STUB_JULIA)
         own = site['tmp'] / 'own'
         _stub(own / 'julia', '#!/bin/sh\necho "julia version 1.12.6"\n')
         result = TestSetupJulia._call(
             site, '1.13.1', PATH=f'{own}{os.pathsep}{site["env"]["PATH"]}'
         )
         assert result.returncode == 0, result.stdout + result.stderr
-        assert TestSetupJulia._report(result)[1:3] == [str(site['jl113'] / 'julia'), '+1.13']
+        path, exe, channel, bare = TestSetupJulia._report(result)
+        assert [exe, channel] == [str(site['jl113'] / 'julia'), '+1.13']
+        assert bare == 'julia version 1.13.1'
+        folders = path.split(os.pathsep)
+        assert folders.index(str(own)) < folders.index(str(jup))
+        assert f'JULIAUP_FOUND {jup}/juliaup' in result.stdout.splitlines()
+
+    def test_own_julia_113_keeps_an_off_path_juliaup_off_path(self, site):
+        """With the user's 1.13 chosen, no later step can find the juliaup in ~/.juliaup/bin."""
+        jup = site['home'] / '.juliaup' / 'bin'
+        _stub(jup / 'juliaup', _STUB_JULIAUP)
+        _stub(jup / 'julia', _STUB_JULIA)
+        own = site['tmp'] / 'own'
+        _stub(own / 'julia', '#!/bin/sh\necho "julia version 1.13.2"\n')
+        result = TestSetupJulia._call(
+            site, '1.12.6', PATH=f'{own}{os.pathsep}{site["env"]["PATH"]}'
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        path, exe, channel, bare = TestSetupJulia._report(result)
+        assert [exe, channel, bare] == [str(own / 'julia'), '', 'julia version 1.13.2']
+        assert str(jup) not in path.split(os.pathsep)
+        assert 'JULIAUP_FOUND ' in result.stdout.splitlines()
+
+    def test_off_path_launcher_that_answers_with_no_julia_on_path_stays_on_path(self, site):
+        """With no julia on PATH, the launcher in ~/.juliaup/bin is the Julia in use, so it stays."""
+        jup = site['home'] / '.juliaup' / 'bin'
+        _stub(jup / 'juliaup', _STUB_JULIAUP)
+        _stub(jup / 'julia', _STUB_JULIA)
+        result = TestSetupJulia._call(
+            site, '1.13.1', STUB_JULIAUP_CONFIG=_juliaup_config('1.13')
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        path, _, channel, bare = TestSetupJulia._report(result)
+        assert [channel, bare] == ['', 'julia version 1.13.1']
+        assert str(jup) in path.split(os.pathsep)
+        assert f'JULIAUP_FOUND {jup}/juliaup' in result.stdout.splitlines()
+
+    def test_juliaup_config_with_another_julia_names_the_file_and_no_second_install(self, site):
+        """Another julia on PATH does not turn an existing juliaup configuration into a curl line."""
+        config = site['home'] / '.julia' / 'juliaup' / 'juliaup.json'
+        config.parent.mkdir(parents=True)
+        config.write_text('{"Default": "release"}\n')
+        own = site['tmp'] / 'own'
+        _stub(own / 'julia', '#!/bin/sh\necho "julia version 1.12.6"\n')
+        result = TestSetupJulia._call(
+            site, '1.12.6', PATH=f'{own}{os.pathsep}{site["env"]["PATH"]}'
+        )
+        assert result.returncode == 1
+        assert 'install.julialang.org' not in result.stdout
+        assert 'juliaup add' not in result.stdout
+        assert f'A juliaup configuration exists at {config}' in result.stderr
+        assert 'put your juliaup on PATH' in result.stderr
+
+    def test_juliaup_config_with_a_julia_113_on_path_passes(self, site):
+        """A plain julia 1.13 on PATH passes before the configuration matters."""
+        config = site['home'] / '.julia' / 'juliaup' / 'juliaup.json'
+        config.parent.mkdir(parents=True)
+        config.write_text('{"Default": "release"}\n')
+        own = site['tmp'] / 'own'
+        _stub(own / 'julia', '#!/bin/sh\necho "julia version 1.13.2"\n')
+        result = TestSetupJulia._call(
+            site, '1.12.6', PATH=f'{own}{os.pathsep}{site["env"]["PATH"]}'
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert TestSetupJulia._report(result)[1] == str(own / 'julia')
+
+    def test_stop_prints_a_command_that_survives_a_space_in_home(self, site):
+        """The printed line, split as a shell splits it, is the juliaup and its 2 arguments."""
+        home = site['tmp'] / 'my home'
+        jup = home / '.juliaup' / 'bin'
+        _stub(jup / 'juliaup', _STUB_JULIAUP)
+        _stub(jup / 'julia', _STUB_JULIA)
+        result = TestSetupJulia._call(
+            site, '1.12.6', HOME=str(home), STUB_JULIAUP_CONFIG=_juliaup_config('1.12')
+        )
+        assert result.returncode == 1
+        lines = [ln for ln in result.stdout.splitlines() if ln.endswith(' add 1.13')]
+        assert len(lines) == 1
+        assert shlex.split(lines[0]) == [f'{jup}/juliaup', 'add', '1.13']
+
+    def test_off_path_juliaup_too_old_for_the_api_gets_the_command_with_its_path(self, site):
+        """The update route names the juliaup that failed, also when it is not on the user's PATH."""
+        jup = site['home'] / '.juliaup' / 'bin'
+        _stub(jup / 'juliaup', _STUB_JULIAUP)
+        _stub(jup / 'julia', _STUB_JULIA)
+        result = TestSetupJulia._call(site, '1.12.6', STUB_JULIAUP_RC='1')
+        assert result.returncode == 1
+        assert f'official installer updates with: {jup}/juliaup self update' in result.stdout
 
     @pytest.mark.parametrize('other_julia', [True, False], ids=['other-julia', 'no-julia'])
     def test_off_path_juliaup_without_113_gets_the_command_with_its_path(
@@ -2911,8 +3008,8 @@ class TestNoJuliaInstall:
         gone with its one question.
         """
         lines = INSTALL_SH.read_text().splitlines()
-        prints = ('echo ', 'warn ', 'info ', 'die ', 'fail ', '#')
-        for word in ('juliaup add', '$jup add', 'install.julialang.org'):
+        prints = ('echo ', 'printf ', 'warn ', 'info ', 'die ', 'fail ', '#')
+        for word in ('juliaup add', '%q add', 'install.julialang.org'):
             found = [ln.strip() for ln in lines if word in ln]
             assert found, word
             assert [ln for ln in found if not ln.startswith(prints)] == []
@@ -2945,17 +3042,48 @@ class TestNoJuliaInstall:
         assert '(#julia-considerations)' in item
         assert item.index('(#julia-considerations)') < item.index('run the installer')
         assert '\n### Julia considerations\n' in text
+        assert 'clone PROTEUS' in item
+        assert item.index('(#julia-considerations)') < item.index('clone PROTEUS')
 
-    def test_install_page_step_names_only_guides_with_julia_text(self):
-        """Each guide that the Julia step links holds Julia text; the step names the limit of an unwritable depot."""
-        how_to = PROTEUS_ROOT / 'docs' / 'How-to'
-        page = (how_to / 'installation.md').read_text()
-        step = page[page.index('\n## 2. Install Julia\n') : page.index('\n## 3. ')]
-        guides = re.findall(r'\(([a-z_]+_cluster_guide\.md)\)', step)
-        assert sorted(guides) == ['ioa_cluster_guide.md', 'kapteyn_cluster_guide.md']
-        assert all('juliaup add 1.13' in (how_to / g).read_text() for g in guides)
-        assert 'cannot write to' in step
-        assert 'PYTHON_JULIAPKG_EXE' in step[step.index('cannot write to') :]
+    def test_kapteyn_conda_item_stops_before_the_installer_and_makes_the_env(self):
+        """Item 5 ends before the page's installer, and makes the env that item 6 installs into."""
+        text = (PROTEUS_ROOT / 'docs' / 'How-to' / 'kapteyn_cluster_guide.md').read_text()
+        item = text[text.index('\n5. ') : text.index('\n6. ')]
+        assert 'up to and including' not in item
+        assert 'stop before you clone PROTEUS' in item
+        script = INSTALL_SH.read_text()
+        python = '.'.join(
+            re.search(rf'^REQUIRED_PYTHON_{part}=(\d+)', script, re.M).group(1)
+            for part in ('MAJOR', 'MINOR')
+        )
+        make = f'conda create -n proteus python={python}\n'
+        assert make in re.sub(r'^ +', '', item, flags=re.M)
+        page = (PROTEUS_ROOT / 'docs' / 'How-to' / 'installation.md').read_text()
+        assert (
+            page.index('Miniforge3-')
+            < page.index('Then clone PROTEUS:')
+            < page.index('bash install.sh')
+        )
+
+    def test_ioa_guide_says_which_folder_each_sentence_means(self):
+        """The prompt of the official installer sets the program folder; the Julia versions go to the depot."""
+        text = (PROTEUS_ROOT / 'docs' / 'How-to' / 'ioa_cluster_guide.md').read_text()
+        prompt = '`Enter the folder where you want to install Juliaup`'
+        depot = 'first Julia into the folder of `JULIAUP_DEPOT_PATH`'
+        assert [
+            part for part in ('Customize installation', prompt, depot) if part not in text
+        ] == []
+        assert text.index(prompt) < text.index('the juliaup program') < text.index(depot)
+
+    def test_install_page_says_when_the_installer_asks_for_juliaup_on_path(self):
+        """The request for a juliaup on PATH comes only after no Julia 1.13 was found."""
+        page = (PROTEUS_ROOT / 'docs' / 'How-to' / 'installation.md').read_text()
+        start = 'When it finds no Julia 1.13 and no juliaup there'
+        assert start in page
+        sentence = page[page.index(start) :]
+        sentence = sentence[: sentence.index('\n')]
+        assert 'it names that file' in sentence
+        assert 'asks you to put your juliaup on your `PATH`' in sentence
 
     def test_check_runs_before_the_env_is_made_and_once(self):
         """setup_conda_env checks Julia just before `conda create`; the Julia step then skips the check."""
