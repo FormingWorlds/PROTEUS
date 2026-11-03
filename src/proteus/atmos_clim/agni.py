@@ -681,6 +681,12 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict, use_cache: bool = 
     # Chemistry
     include_all = bool(config.atmos_clim.agni.chemistry == 'eq')
 
+    # Equilibrium chemistry adds gases to the atmosphere, so it needs every opacity
+    load_all = bool(config.atmos_clim.agni.load_all_opacities)
+    if include_all and not load_all:
+        log.warning('load_all_opacities = false has no effect with chemistry = "eq"')
+        load_all = True
+
     # Surface single-scattering albedo
     surface_material = config.atmos_clim.agni.surf_material
     if 'greybody' in str(surface_material).lower():
@@ -775,6 +781,7 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict, use_cache: bool = 
         flag_cloud=config.atmos_clim.cloud_enabled,
         flag_aerosol=config.atmos_clim.aerosols_enabled,
         overlap_method=config.atmos_clim.overlap_method,
+        load_all_opacities=load_all,
         # surface reflectance
         albedo_s=config.atmos_clim.surf_greyalbedo,
         surface_material=surface_material,

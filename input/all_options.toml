@@ -755,6 +755,7 @@ config_version = "3.0"
         broyden               = true         # Broyden jacobian updates between finite-difference evaluations; intended for ls_default = 3
         fdo                   = 2            # finite-difference order for Jacobian: 2 | 4
         check_safe_gas        = true         # require at least one gas with opacity+thermo data
+        load_all_opacities    = true         # load every gas of the spectral file; false loads only the modelled gases
         verbosity             = 1            # AGNI log level: 0 (silent) | 1 (info) | 2 (debug)
 
         # FastChem equilibrium chemistry (only used when chemistry = "eq")

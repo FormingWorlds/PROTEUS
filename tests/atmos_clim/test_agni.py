@@ -659,6 +659,7 @@ def _build_greygas_config():
                 grey_opacity_lw=0.1,
                 grey_opacity_sw=0.2,
                 check_safe_gas=False,
+                load_all_opacities=True,
                 hydrograv_steps=2000,
                 hydrograv_maxdr=1e8,
                 hydrograv_hilldr=1e2,
@@ -735,6 +736,70 @@ def test_init_agni_atmos_greygas_bypasses_spectral_copy(monkeypatch, tmp_path):
     # grey_opacity_lw/sw should be forwarded as the Greek-named AGNI kwargs.
     assert fake_agni.last_setup_kwargs['κ_grey_lw'] == pytest.approx(0.1)
     assert fake_agni.last_setup_kwargs['κ_grey_sw'] == pytest.approx(0.2)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('chemistry', 'requested', 'sent', 'warned'),
+    [
+        ('none', True, True, False),
+        ('none', False, False, False),
+        ('eq', False, True, True),
+        ('eq', True, True, False),
+    ],
+    ids=[
+        'all_gases_by_default',
+        'modelled_gases_only',
+        'eq_chemistry_loads_every_gas_and_warns',
+        'eq_chemistry_with_all_gases_is_silent',
+    ],
+)
+def test_init_agni_atmos_forwards_load_all_opacities(
+    monkeypatch, tmp_path, caplog, chemistry, requested, sent, warned
+):
+    """`agni.load_all_opacities` reaches AGNI's setup! as a bool.
+
+    Without equilibrium chemistry the configured value is passed unchanged.
+    With `chemistry = "eq"` FastChem can add any gas of the spectral file, so
+    every opacity is loaded, and a configured false is reported as having no
+    effect rather than being dropped silently.
+    """
+    fake_agni = _FakeAGNI()
+    fake_jl = SimpleNamespace(
+        AGNI=fake_agni, Dict=dict, Char=str, Array=_FAKE_JL_ARRAY, String=str
+    )
+    output_dir = tmp_path / 'out'
+    (output_dir / 'data').mkdir(parents=True)
+    dirs = {'output': str(output_dir), 'agni': '/fake/agni', 'fwl': str(tmp_path)}
+    config = _build_greygas_config()
+    config.atmos_clim.agni.chemistry = chemistry
+    config.atmos_clim.agni.load_all_opacities = requested
+    hf_row = {
+        'F_ins': 1000.0,
+        'albedo_pl': 0.2,
+        'T_surf': 900.0,
+        'gravity': 9.8,
+        'R_int': 6.4e6,
+        'P_surf': 1.0,
+        'axial_period': 86400.0,
+        'longitude': 0.0,
+        'latitude': 0.0,
+        'hill_radius': 6.4e8,
+    }
+    monkeypatch.setattr(agni_mod, 'jl', fake_jl)
+    monkeypatch.setattr(agni_mod, 'convert', lambda _typ, value: value)
+    monkeypatch.setattr(agni_mod, '_construct_voldict', lambda *_a, **_k: {'H2O': 1.0})
+    monkeypatch.setattr(agni_mod, 'sync_log_files', lambda *_a, **_k: None)
+
+    with caplog.at_level(logging.WARNING):
+        init_agni_atmos(dirs, config, hf_row)
+
+    kwargs = fake_agni.last_setup_kwargs
+    # A Python bool converts to a Julia Bool; a string 'false' would be refused by setup!.
+    assert type(kwargs['load_all_opacities']) is bool
+    assert kwargs['load_all_opacities'] is sent
+    assert kwargs['use_all_gases'] is (chemistry == 'eq')
+    assert ('load_all_opacities = false has no effect' in caplog.text) is warned
 
 
 @pytest.mark.unit

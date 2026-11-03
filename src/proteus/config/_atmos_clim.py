@@ -205,6 +205,8 @@ class Agni:
     spectral_file: str | None
         Path to AGNI spectral file, or 'greygas' to enable the grey-gas RT scheme.
         If None, will use atmos_clim.spectral_group and atmos_clim.spectral_bands.
+    load_all_opacities: bool
+        Load the opacities of every gas in the spectral file into SOCRATES. If false, only the gases that PROTEUS models are loaded, which makes each radiative transfer calculation faster with spectral files that hold other gases. Has no effect with `chemistry = "eq"`, which loads every gas.
     grey_opacity_lw: float
         Grey longwave opacity [m2 kg-1], used when `spectral_file='greygas'`.
     grey_opacity_sw: float
@@ -300,6 +302,7 @@ class Agni:
         },
     )
     spectral_file: str | None = field(default=None, converter=none_if_none)
+    load_all_opacities: bool = field(default=True)
     grey_opacity_lw: float = field(default=1e1, validator=gt(0))
     grey_opacity_sw: float = field(default=1e-4, validator=gt(0))
     hydrograv_steps: int = field(default=2048, validator=gt(0))
@@ -564,7 +567,13 @@ DOC_GROUPS = {
         (
             'Spectral and gas allocation',
             None,
-            ('spectral_file', 'grey_opacity_lw', 'grey_opacity_sw', 'check_safe_gas'),
+            (
+                'spectral_file',
+                'load_all_opacities',
+                'grey_opacity_lw',
+                'grey_opacity_sw',
+                'check_safe_gas',
+            ),
         ),
         (
             'FastChem equilibrium chemistry',

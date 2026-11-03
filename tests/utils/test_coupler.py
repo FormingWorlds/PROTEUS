@@ -3691,14 +3691,18 @@ def test_validate_module_versions_accepts_compatible_versions(tmp_path):
 
 
 @pytest.mark.usefixtures('fwl_io_current')
-@pytest.mark.parametrize(('agni_version', 'accepted'), [('1.13.2', False), ('1.14.0', True)])
-def test_validate_module_versions_requires_agni_with_broyden(tmp_path, agni_version, accepted):
-    """AGNI older than 1.14.0 is refused before the run starts.
+@pytest.mark.parametrize(
+    ('agni_version', 'accepted'), [('1.13.2', False), ('1.14.0', False), ('1.15.0', True)]
+)
+def test_validate_module_versions_requires_agni_with_load_all_opacities(
+    tmp_path, agni_version, accepted
+):
+    """AGNI older than 1.15.0 is refused before the run starts.
 
-    PROTEUS passes the `broyden` keyword to every `solve_energy_b` call, and
-    an older AGNI raises on that keyword, which `_solve_energy` would report
-    as a failed solve on every attempt. Edge: 1.13.2, the release before, is
-    refused, and 1.14.0 itself is accepted.
+    PROTEUS passes the `load_all_opacities` keyword to every `setup_b` call
+    and the `broyden` keyword (AGNI 1.14.0) to every `solve_energy_b` call,
+    and an AGNI without them raises on the keyword. Edge: 1.14.0, the release
+    before, is refused, and 1.15.0 itself is accepted.
     """
     from proteus.utils.coupler import validate_module_versions
 

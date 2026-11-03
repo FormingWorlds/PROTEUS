@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -375,3 +376,19 @@ def test_agni_defaults_to_broyden_with_the_armijo_linesearch():
     assert defaults.broyden is True
     assert defaults.ls_default == 3
     assert Agni(broyden=False).broyden is False
+
+
+@pytest.mark.unit
+def test_agni_loads_every_opacity_unless_asked_not_to():
+    """`load_all_opacities` defaults to true, AGNI's own default, so a config
+    written before the option existed loads every gas of the spectral file as
+    before. A configured false is kept, and `input/all_options.toml` states the
+    default."""
+    from proteus.config import read_config_object
+    from proteus.config._atmos_clim import Agni
+
+    assert Agni().load_all_opacities is True
+    assert Agni(load_all_opacities=False).load_all_opacities is False
+    root = Path(__file__).parents[2]
+    cfg = read_config_object(root / 'input' / 'all_options.toml')
+    assert cfg.atmos_clim.agni.load_all_opacities is True
