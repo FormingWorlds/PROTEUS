@@ -2224,21 +2224,27 @@ def test_export_env_keeps_a_value_with_a_single_quote_out_of_conda(monkeypatch, 
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize(
-    ('value', 'recorded'),
-    [('/data/depot:', True), ('', False), (None, False)],
-    ids=['set', 'empty', 'unset'],
-)
-def test_install_vars_record_a_set_julia_depot_and_invent_none(
-    monkeypatch, tmp_path, value, recorded
-):
+@pytest.mark.parametrize('value', ['/data/depot:', '', None], ids=['set', 'empty', 'unset'])
+def test_install_vars_record_a_set_julia_depot_and_invent_none(monkeypatch, tmp_path, value):
     """A set depot goes to the record; with none the user stays on the default of Julia."""
     if value is None:
         monkeypatch.delenv('JULIA_DEPOT_PATH', raising=False)
     else:
         monkeypatch.setenv('JULIA_DEPOT_PATH', value)
     variables = cli._install_vars(tmp_path, tmp_path / 'fwl', None)
-    assert variables.get('JULIA_DEPOT_PATH') == (value if recorded else None)
+    assert variables.get('JULIA_DEPOT_PATH') == (value or None)
+
+
+@pytest.mark.unit
+def test_install_vars_do_not_record_the_depot_of_another_install(monkeypatch, tmp_path, capsys):
+    """Conda keeps the value of the previous env, and that value must not bind to this env."""
+    other = tmp_path / 'other'
+    (other / 'conda-meta').mkdir(parents=True)
+    monkeypatch.setenv('CONDA_PREFIX', str(tmp_path / 'this'))
+    monkeypatch.setenv('JULIA_DEPOT_PATH', f'{other}/julia_depot:')
+    variables = cli._install_vars(tmp_path, tmp_path / 'fwl', None)
+    assert 'JULIA_DEPOT_PATH' not in variables
+    assert 'another PROTEUS install' in capsys.readouterr().out
 
 
 @pytest.mark.unit

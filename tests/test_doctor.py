@@ -3925,6 +3925,38 @@ class TestJuliaDepot:
         assert result.status == FAIL
         assert 'holds no packages' in result.message
         assert 'Pkg.instantiate()' in result.fix_cmd
+        assert 'LD_LIBRARY_PATH=""' in result.fix_cmd
+
+    def test_packages_in_a_later_entry_pass(self, site, monkeypatch):
+        """Julia reads every entry, so a shared read-only depot behind a new one works."""
+        (site / 'root' / 'AGNI').mkdir()
+        (site / 'root' / 'AGNI' / 'Manifest.toml').write_text('m')
+        (site / 'shared' / 'packages').mkdir(parents=True)
+        monkeypatch.setenv('JULIA_DEPOT_PATH', f'{site / "new"}:{site / "shared"}:')
+        assert doctor_module.check_julia_depot().status == PASS
+
+    @pytest.mark.parametrize('env', [None, 'base'], ids=['no-env', 'base'])
+    def test_advice_outside_the_env_names_no_shell_variable(self, site, monkeypatch, env):
+        """With no PROTEUS env active, $CONDA_PREFIX is another folder or nothing."""
+        if env is None:
+            monkeypatch.delenv('CONDA_DEFAULT_ENV', raising=False)
+        else:
+            monkeypatch.setenv('CONDA_DEFAULT_ENV', env)
+        fix = doctor_module.check_julia_depot().fix_cmd
+        assert '$CONDA_PREFIX' not in fix
+        assert '<path of your PROTEUS environment>/julia_depot:' in fix
+
+    def test_advice_inside_the_env_names_its_prefix(self, site, monkeypatch):
+        """With the env active the shell gives the right prefix."""
+        monkeypatch.setenv('CONDA_DEFAULT_ENV', 'proteus')
+        assert '"$CONDA_PREFIX/julia_depot:"' in doctor_module.check_julia_depot().fix_cmd
+
+    def test_no_prefix_leaves_only_the_tree_as_own(self, site, monkeypatch):
+        """With no conda prefix an env elsewhere is still another install."""
+        monkeypatch.delenv('CONDA_PREFIX')
+        (site / 'prefix' / 'conda-meta').mkdir()
+        monkeypatch.setenv('JULIA_DEPOT_PATH', f'{site / "prefix"}/julia_depot:')
+        assert doctor_module.check_julia_depot().status == FAIL
 
     def test_agni_manifest_with_packages_passes(self, site, monkeypatch):
         """The folder check passes once the depot holds packages."""

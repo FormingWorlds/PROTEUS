@@ -1,4 +1,4 @@
-"""Real Julia checks of the per-install depot; needs no network."""
+"""Real Julia checks of the per-install depot; on Julia 1.13 they need no network."""
 
 from __future__ import annotations
 
@@ -9,13 +9,15 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from helpers import git
 
-from proteus.doctor import julia_depot_entries
+from proteus.utils.install_env import julia_depot_entries
 
 pytestmark = [pytest.mark.smoke, pytest.mark.timeout(60)]
 
 _JULIA = os.environ.get('PYTHON_JULIAPKG_EXE') or shutil.which('julia')
 _UUID = '7c1e3a52-4f0b-4d6e-9a11-0f6d2b8c9e01'
+assert _JULIA, 'No Julia found; this tier runs where CI installs Julia.'
 
 
 def _julia(code: str, depot: str | None, home: Path, project: Path | None = None) -> str:
@@ -61,8 +63,6 @@ def _state(folder: Path) -> str:
 @pytest.fixture
 def stack(tmp_path):
     """Install B with a filled depot, a default depot in HOME, and a package."""
-    if _JULIA is None:
-        pytest.fail('No Julia found; this tier runs where CI installs Julia.')
     home = tmp_path / 'home'
     (home / '.julia' / 'compiled').mkdir(parents=True)
     (home / '.julia' / 'compiled' / 'old').write_text('old')
@@ -107,17 +107,32 @@ def test_canary_with_no_variable_the_default_depot_changes(stack):
     assert before != _state(stack['home'])
 
 
-def test_a_new_depot_needs_instantiate_and_it_keeps_the_manifest(stack):
-    """A new depot breaks a recorded project until an instantiate, which changes no Manifest."""
-    project = stack['project_b']
-    # A depot with no Pkg state: the develop path needs no download, so offline works.
-    new = f'{stack["tmp"] / "new" / "julia_depot"}:'
-    home = stack['home']
+def test_a_new_depot_breaks_a_project_until_instantiate_which_keeps_the_manifest(tmp_path):
+    """The package source lives in the depot: `using` fails, and instantiate repairs it offline."""
+    home = tmp_path / 'home'
+    pkg = _tiny_package(tmp_path)
+    git(pkg, 'init', '-q')
+    git(pkg, 'add', '-A')
+    git(pkg, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'x')
+    project = tmp_path / 'project'
+    project.mkdir()
+    add = f'using Pkg; Pkg.add(url="file://{pkg}"); using Tiny; print(Tiny.f())'
+    assert _julia(add, f'{tmp_path / "old"}:', home, project) == '1'
     manifest = (project / 'Manifest.toml').read_bytes()
-    _julia('using Pkg; Pkg.instantiate(); using Tiny; print(Tiny.f())', new, home, project)
+    new = f'{tmp_path / "new"}:'
+    env = {'HOME': str(home), 'PATH': os.environ['PATH'], 'JULIA_DEPOT_PATH': new}
+    broken = subprocess.run(
+        [_JULIA, '--startup-file=no', f'--project={project}', '-e', 'using Tiny'],
+        capture_output=True,
+        text=True,
+        env={**env, 'JULIA_PKG_OFFLINE': 'true'},
+        timeout=50,
+    )
+    assert broken.returncode != 0
+    assert 'does not seem to be installed' in broken.stderr
+    repair = 'using Pkg; Pkg.instantiate(); using Tiny; print(Tiny.f())'
+    assert _julia(repair, new, home, project) == '1'
     assert (project / 'Manifest.toml').read_bytes() == manifest
-    compiled = stack['tmp'] / 'new' / 'julia_depot' / 'compiled'
-    assert list(compiled.rglob('Tiny'))
 
 
 def test_trailing_colon_adds_the_bundled_depots_and_not_the_home_depot(stack):
@@ -130,15 +145,10 @@ def test_trailing_colon_adds_the_bundled_depots_and_not_the_home_depot(stack):
 
 
 @pytest.mark.parametrize(
-    'value', ['/x', '/x:', '/x::', '/x:/y:', ':/x', ':', '/x:/x'], ids=lambda v: repr(v)
+    'value', ['/x', '/x:', '/x::', '/x:/y:', ':/x', ':', '/x:/x', '~/d:'], ids=lambda v: repr(v)
 )
-def test_parser_of_the_doctor_equals_julia(stack, value):
+def test_parser_of_the_doctor_equals_julia(tmp_path, monkeypatch, value):
     """julia_depot_entries gives the list of Julia, with the bundled depots left out."""
-    home = stack['home']
-    os.environ['HOME'], old = str(home), os.environ['HOME']
-    try:
-        parsed = julia_depot_entries(value)
-    finally:
-        os.environ['HOME'] = old
-    entries = _julia('print(join(DEPOT_PATH, "|"))', value, home).split('|')
-    assert [e for e in entries if not e.endswith(('share/julia',))] == parsed
+    monkeypatch.setenv('HOME', str(tmp_path))
+    entries = _julia('print(join(DEPOT_PATH, "|"))', value, tmp_path).split('|')
+    assert [e for e in entries if not e.endswith('share/julia')] == julia_depot_entries(value)
