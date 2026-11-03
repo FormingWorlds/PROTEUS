@@ -553,7 +553,7 @@ setup_julia_depot() {
     if [ ! -d "$first/packages" ] \
         && { [ -f "$home/julia_env/Manifest.toml" ] || [ -f "$SCRIPT_DIR/AGNI/Manifest.toml" ]; }; then
         JULIA_DEPOT_OLD="$HOME/.julia"
-        warn "The Julia packages of this install move to $first: about 870 MiB, 20000 files and 220 MB to download (measured on macOS arm64)."
+        warn "The Julia packages of this install move to $first: about 940 MiB, 21500 files and at least 220 MB to download (measured on macOS arm64)."
         warn "$HOME/.julia stays as it is; do not remove its juliaup folder."
         if [ -n "${PIXI_ENVIRONMENT_NAME:-}" ]; then
             warn "To stay on the old depot, change JULIA_DEPOT_PATH in pixi.toml and run again."
