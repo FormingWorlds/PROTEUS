@@ -1,4 +1,4 @@
-"""Real Julia checks of the per-install depot; on Julia 1.13 they need no network."""
+"""Real Julia checks of the per-install depot; they need a Julia 1.13 binary and no network."""
 
 from __future__ import annotations
 
@@ -19,16 +19,35 @@ _JULIA = os.environ.get('PYTHON_JULIAPKG_EXE') or shutil.which('julia')
 _UUID = '7c1e3a52-4f0b-4d6e-9a11-0f6d2b8c9e01'
 
 
-@pytest.fixture(autouse=True)
-def _julia_is_there():
-    """Fail, not skip: this tier runs where CI installs Julia, and a skip hides its loss."""
-    if _JULIA is None:
-        pytest.fail('No Julia found.')
+def _julia_problem(exe: str | None) -> str | None:
+    """Return why ``exe`` cannot run these checks: no binary, a launcher or another version."""
+    if exe is None:
+        return 'no Julia binary found'
+    real = Path(exe).resolve()
+    if real.name == 'julialauncher' or (real.parent / 'juliaup').exists():
+        return f'{exe} is the juliaup launcher, which does not see a scratch HOME'
+    done = subprocess.run([exe, '--version'], capture_output=True, text=True, timeout=30)
+    if not done.stdout.startswith('julia version 1.13'):
+        return f'{exe} is {done.stdout.strip()}; these checks need 1.13'
+    return None
+
+
+_PROBLEM = _julia_problem(_JULIA)
+if _PROBLEM:
+    pytest.skip(_PROBLEM, allow_module_level=True)
+
+
+def _scratch_env(home: Path) -> dict[str, str]:
+    """The environment of a Julia call: a scratch HOME, offline, with PATH and TMPDIR kept."""
+    env = {'HOME': str(home), 'PATH': os.environ['PATH'], 'JULIA_PKG_OFFLINE': 'true'}
+    if 'TMPDIR' in os.environ:
+        env['TMPDIR'] = os.environ['TMPDIR']
+    return env
 
 
 def _julia(code: str, depot: str | None, home: Path, project: Path | None = None) -> str:
     """Run Julia offline under a scratch HOME and ``depot``, and return its stdout."""
-    env = {'HOME': str(home), 'PATH': os.environ['PATH'], 'JULIA_PKG_OFFLINE': 'true'}
+    env = _scratch_env(home)
     if depot is not None:
         env['JULIA_DEPOT_PATH'] = depot
     args = [_JULIA, '--startup-file=no', '--color=no']
@@ -127,12 +146,12 @@ def test_a_new_depot_breaks_a_project_until_instantiate_which_keeps_the_manifest
     assert _julia(add, f'{tmp_path / "old"}:', home, project) == '1'
     manifest = (project / 'Manifest.toml').read_bytes()
     new = f'{tmp_path / "new"}:'
-    env = {'HOME': str(home), 'PATH': os.environ['PATH'], 'JULIA_DEPOT_PATH': new}
+    env = {**_scratch_env(home), 'JULIA_DEPOT_PATH': new}
     broken = subprocess.run(
         [_JULIA, '--startup-file=no', f'--project={project}', '-e', 'using Tiny'],
         capture_output=True,
         text=True,
-        env={**env, 'JULIA_PKG_OFFLINE': 'true'},
+        env=env,
         timeout=50,
     )
     assert broken.returncode != 0
@@ -152,12 +171,25 @@ def test_trailing_colon_adds_the_bundled_depots_and_not_the_home_depot(stack):
 
 
 @pytest.mark.parametrize(
-    'value', ['/x', '/x:', '/x::', '/x:/y:', ':/x', ':', '/x:/x', '~/d:'], ids=lambda v: repr(v)
+    'value',
+    ['/x', '/x:', '/x::', '/x:/y:', ':/x', ':', '/x:/x', '~/d:', '', None],
+    ids=lambda v: repr(v),
 )
 def test_parser_of_the_doctor_equals_julia(tmp_path, monkeypatch, value):
     """julia_depot_entries gives the list of Julia, with the bundled depots left out."""
     monkeypatch.setenv('HOME', str(tmp_path))
     entries = _julia('print(join(DEPOT_PATH, "|"))', value, tmp_path).split('|')
     parsed = julia_depot_entries(value)
-    assert [e for e in entries if not e.endswith('share/julia')] == parsed
-    assert str(tmp_path / '.julia') in parsed or value.startswith(':') is False
+    assert [e for e in entries if e and not e.endswith('share/julia')] == parsed
+    assert (str(tmp_path / '.julia') in parsed) == (value is None or value.startswith(':'))
+
+
+def test_a_launcher_or_another_version_is_named_as_the_reason_to_skip(tmp_path):
+    """The reason of the skip names the binary, so a CI log shows what ran."""
+    stub = tmp_path / 'julia'
+    stub.write_text('#!/bin/sh\necho "julia version 1.12.6"\n')
+    stub.chmod(0o755)
+    assert '1.12.6' in _julia_problem(str(stub))
+    assert _julia_problem(None) == 'no Julia binary found'
+    (tmp_path / 'juliaup').write_text('')
+    assert 'launcher' in _julia_problem(str(stub))

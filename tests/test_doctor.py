@@ -3798,6 +3798,18 @@ class TestCheckCvode:
         assert cvode[0].category == 'environment'
 
 
+def _julia_project(folder: Path, deps: tuple[str, ...] = ('Foo',)) -> None:
+    """A Julia project with direct dependencies that a depot holds as packages."""
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / 'Project.toml').write_text(
+        '[deps]\n' + ''.join(f'{name} = "{i}"\n' for i, name in enumerate(deps))
+    )
+    (folder / 'Manifest.toml').write_text(
+        'manifest_format = "2.0"\n'
+        + ''.join(f'[[deps.{name}]]\ngit-tree-sha1 = "abc"\n' for name in deps)
+    )
+
+
 class TestJuliaDepot:
     """check_julia_depot prints the depot in use and fails on states that break a run."""
 
@@ -3877,6 +3889,7 @@ class TestJuliaDepot:
 
     def test_same_name_with_no_install_beside_it_passes(self, site, monkeypatch):
         """A user may name a folder julia_depot on a big disk."""
+        (site / 'big').mkdir()
         monkeypatch.setenv('JULIA_DEPOT_PATH', f'{site / "big" / "julia_depot"}:')
         result = doctor_module.check_julia_depot()
         assert result.status == PASS
@@ -3895,20 +3908,18 @@ class TestJuliaDepot:
 
     def test_agni_manifest_with_an_empty_depot_fails_with_the_repair(self, site, monkeypatch):
         """Packages recorded by AGNI that the depot does not hold stop a run at using AGNI."""
-        (site / 'root' / 'AGNI').mkdir()
-        (site / 'root' / 'AGNI' / 'Manifest.toml').write_text('m')
+        _julia_project(site / 'root' / 'AGNI')
         monkeypatch.setenv('JULIA_DEPOT_PATH', f'{site / "prefix" / "julia_depot"}:')
         result = doctor_module.check_julia_depot()
         assert result.status == FAIL
-        assert 'holds no packages' in result.message
+        assert 'does not hold Foo' in result.message
         assert 'Pkg.instantiate()' in result.fix_cmd
         assert 'LD_LIBRARY_PATH=""' in result.fix_cmd
 
     def test_packages_in_a_later_entry_pass(self, site, monkeypatch):
         """Julia reads every entry, so a shared read-only depot behind a new one works."""
-        (site / 'root' / 'AGNI').mkdir()
-        (site / 'root' / 'AGNI' / 'Manifest.toml').write_text('m')
-        (site / 'shared' / 'packages').mkdir(parents=True)
+        _julia_project(site / 'root' / 'AGNI')
+        (site / 'shared' / 'packages' / 'Foo').mkdir(parents=True)
         monkeypatch.setenv('JULIA_DEPOT_PATH', f'{site / "new"}:{site / "shared"}:')
         result = doctor_module.check_julia_depot()
         assert result.status == PASS
@@ -3941,12 +3952,61 @@ class TestJuliaDepot:
         assert result.status == FAIL
         assert 'another PROTEUS install' in result.message
 
-    def test_agni_manifest_with_packages_passes(self, site, monkeypatch):
-        """The folder check passes once the depot holds packages."""
-        (site / 'root' / 'AGNI').mkdir()
-        (site / 'root' / 'AGNI' / 'Manifest.toml').write_text('m')
+    def test_a_depot_that_misses_one_direct_dependency_fails(self, site, monkeypatch):
+        """A failed instantiate of AGNI leaves a packages folder without the packages of AGNI."""
+        _julia_project(site / 'root' / 'AGNI', ('Foo', 'Bar'))
         depot = site / 'prefix' / 'julia_depot'
-        (depot / 'packages').mkdir(parents=True)
+        (depot / 'packages' / 'Foo').mkdir(parents=True)
+        monkeypatch.setenv('JULIA_DEPOT_PATH', f'{depot}:')
+        result = doctor_module.check_julia_depot()
+        assert result.status == FAIL
+        assert 'Bar' in result.message
+        assert 'Foo' not in result.message
+        assert '--project=' in result.fix_cmd
+        assert 'AGNI' in result.fix_cmd
+
+    def test_the_juliacall_project_counts_too(self, site, monkeypatch):
+        """An empty depot and no AGNI: import proteus stops at juliacall."""
+        _julia_project(site / 'prefix' / 'julia_env', ('PythonCall',))
+        monkeypatch.setenv('JULIA_DEPOT_PATH', f'{site / "prefix" / "julia_depot"}:')
+        result = doctor_module.check_julia_depot()
+        assert result.status == FAIL
+        assert 'PythonCall' in result.message
+        assert 'julia_env' in result.fix_cmd
+
+    def test_no_prefix_skips_the_juliacall_project(self, site, monkeypatch):
+        """With no env active there is no juliacall project to read."""
+        monkeypatch.delenv('CONDA_PREFIX')
+        monkeypatch.setenv('JULIA_DEPOT_PATH', f'{site / "new"}:')
+        assert doctor_module.check_julia_depot().status == PASS
+
+    @pytest.mark.parametrize(
+        'value',
+        ['rel:', '~nobody/x:', '$CONDA_PREFIX/julia_depot:'],
+        ids=['relative', 'user', 'dollar'],
+    )
+    def test_value_that_depends_on_the_folder_or_the_shell_fails(
+        self, site, monkeypatch, value
+    ):
+        """The rule of install.sh: such a depot depends on the folder of each process."""
+        monkeypatch.setenv('JULIA_DEPOT_PATH', value)
+        result = doctor_module.check_julia_depot()
+        assert result.status == FAIL
+        assert value in result.message
+        assert 'absolute' in result.message
+
+    def test_value_of_a_removed_env_fails(self, site, monkeypatch):
+        """The folder would grow again in the old prefix."""
+        monkeypatch.setenv('JULIA_DEPOT_PATH', f'{site / "envs" / "gone"}/julia_depot:')
+        result = doctor_module.check_julia_depot()
+        assert result.status == FAIL
+        assert 'another PROTEUS install' in result.message
+
+    def test_agni_manifest_with_packages_passes(self, site, monkeypatch):
+        """The check passes once the depot holds each direct dependency."""
+        _julia_project(site / 'root' / 'AGNI')
+        depot = site / 'prefix' / 'julia_depot'
+        (depot / 'packages' / 'Foo').mkdir(parents=True)
         monkeypatch.setenv('JULIA_DEPOT_PATH', f'{depot}:')
         result = doctor_module.check_julia_depot()
         assert result.status == PASS

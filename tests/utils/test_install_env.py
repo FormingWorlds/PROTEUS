@@ -20,8 +20,10 @@ from proteus.utils.install_env import (
     active_conda_prefix,
     bind_to_conda_env,
     depot_of_other_install,
+    depot_value_is_unusable,
     export_install_vars,
     julia_depot_entries,
+    missing_julia_packages,
     quoted_names,
     reload_instruction,
     write_env_file,
@@ -266,8 +268,109 @@ def test_other_install_needs_a_marker_beside_the_depot(monkeypatch, tmp_path):
     """The same name on a big disk stays the choice of the user; an env beside it does not."""
     monkeypatch.delenv('CONDA_PREFIX', raising=False)
     big = tmp_path / 'big'
+    assert depot_of_other_install(f'{big}/julia_depot:', tmp_path) is True
     big.mkdir()
     assert depot_of_other_install(f'{big}/julia_depot:', tmp_path) is False
     (big / 'conda-meta').mkdir()
     assert depot_of_other_install(f'{big}/julia_depot:', tmp_path) is True
     assert depot_of_other_install(f'{big}/julia_depot:', big) is False
+
+
+@pytest.mark.parametrize(
+    ('value', 'expected'),
+    [
+        (None, False),
+        ('', False),
+        (':', False),
+        (':rel', False),
+        ('/x', False),
+        ('/x:rel', False),
+        ('~', False),
+        ('~/d:', False),
+        ('rel', True),
+        ('rel:/x', True),
+        ('./x:', True),
+        ('~nobody/x:', True),
+        ('~nobody', True),
+        ('$CONDA_PREFIX/julia_depot:', True),
+        ('/a$b:', True),
+        ('~/a$b:', True),
+    ],
+)
+def test_depot_value_is_unusable_reads_the_first_entry(value, expected):
+    """A relative entry, another user's home and a literal $ give no fixed folder."""
+    assert depot_value_is_unusable(value) is expected
+
+
+def test_depot_value_is_unusable_holds_for_any_value():
+    """Any text gives a verdict, and a leading slash with no $ is always usable."""
+    hypothesis = pytest.importorskip('hypothesis')
+    strategies = pytest.importorskip('hypothesis.strategies')
+
+    @hypothesis.given(strategies.text(max_size=20))
+    def check(text):
+        assert isinstance(depot_value_is_unusable(text), bool)
+        first = '/' + text.split(':')[0].replace('$', '')
+        assert depot_value_is_unusable(first) is False
+
+    check()
+
+
+def _write_project(folder, project, manifest):
+    """Write the Project.toml and Manifest.toml of a Julia project."""
+    folder.mkdir()
+    (folder / 'Project.toml').write_text(project)
+    (folder / 'Manifest.toml').write_text(manifest)
+
+
+def test_missing_packages_are_the_direct_dependencies_with_a_tree_hash(tmp_path):
+    """A stdlib and a dev'd path have no folder under packages and do not count."""
+    project = tmp_path / 'p'
+    _write_project(
+        project,
+        '[deps]\nFoo = "1"\nBar = "2"\nLinearAlgebra = "3"\nDev = "4"\nNotInManifest = "5"\n'
+        '[weakdeps]\nWeak = "6"\n',
+        'manifest_format = "2.0"\n'
+        '[[deps.Foo]]\ngit-tree-sha1 = "a"\n'
+        '[[deps.Bar]]\ngit-tree-sha1 = "b"\n'
+        '[[deps.LinearAlgebra]]\nuuid = "3"\n'
+        '[[deps.Dev]]\npath = "../dev"\n'
+        '[[deps.Weak]]\ngit-tree-sha1 = "w"\n'
+        '[[deps.Indirect]]\ngit-tree-sha1 = "i"\n',
+    )
+    (tmp_path / 'd1' / 'packages' / 'Foo').mkdir(parents=True)
+    assert missing_julia_packages(project, [str(tmp_path / 'd1')]) == ['Bar']
+    (tmp_path / 'd2' / 'packages' / 'Bar').mkdir(parents=True)
+    assert missing_julia_packages(project, [str(tmp_path / 'd1'), str(tmp_path / 'd2')]) == []
+
+
+def test_missing_packages_read_the_old_manifest_format(tmp_path):
+    """Before format 2 the packages are top-level tables."""
+    project = tmp_path / 'p'
+    _write_project(project, '[deps]\nFoo = "1"\n', '[[Foo]]\ngit-tree-sha1 = "a"\n')
+    assert missing_julia_packages(project, [str(tmp_path)]) == ['Foo']
+
+
+def test_project_with_no_manifest_needs_nothing(tmp_path):
+    """No Manifest: the project is not set up, as for an install with no AGNI."""
+    assert missing_julia_packages(tmp_path / 'none', [str(tmp_path)]) == []
+
+
+@pytest.mark.parametrize(
+    ('project', 'manifest'),
+    [('[deps', 'manifest_format = "2.0"\n'), ('[deps]\n', 'not toml [')],
+    ids=['project', 'manifest'],
+)
+def test_project_that_cannot_be_read_is_named(tmp_path, project, manifest):
+    """A broken file gives a failure that names it, and no pass."""
+    folder = tmp_path / 'p'
+    _write_project(folder, project, manifest)
+    assert missing_julia_packages(folder, [str(tmp_path)]) == [f'{folder}: unreadable TOML']
+
+
+def test_project_without_a_project_file_is_named(tmp_path):
+    """A Manifest with no Project.toml has no direct dependencies to read."""
+    folder = tmp_path / 'p'
+    folder.mkdir()
+    (folder / 'Manifest.toml').write_text('manifest_format = "2.0"\n')
+    assert missing_julia_packages(folder, [str(tmp_path)]) == [f'{folder}: unreadable TOML']

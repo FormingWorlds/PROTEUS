@@ -2237,6 +2237,32 @@ def test_install_vars_record_a_set_julia_depot_and_invent_none(monkeypatch, tmp_
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize('kind', ['other', 'gone'])
+def test_setup_scripts_do_not_get_the_depot_of_another_install(monkeypatch, tmp_path, kind):
+    """A Julia step must not fill the depot that _install_vars refuses to record."""
+    root = tmp_path / 'proteus'
+    root.mkdir()
+    other = tmp_path / 'other'
+    if kind == 'other':
+        (other / 'conda-meta').mkdir(parents=True)
+    monkeypatch.setenv('CONDA_PREFIX', str(tmp_path / 'this'))
+    monkeypatch.setenv('JULIA_DEPOT_PATH', f'{other}/julia_depot:')
+    monkeypatch.delenv('PYTHON_JULIAPKG_EXE', raising=False)
+    assert 'JULIA_DEPOT_PATH' not in cli._env_with_proteus_julia(root)
+    assert os.environ['JULIA_DEPOT_PATH'] == f'{other}/julia_depot:'
+
+
+@pytest.mark.unit
+def test_setup_scripts_keep_a_depot_of_the_user(monkeypatch, tmp_path):
+    """Any other value reaches the script unchanged."""
+    root = tmp_path / 'proteus'
+    root.mkdir()
+    monkeypatch.setenv('JULIA_DEPOT_PATH', f'{tmp_path}/depot:')
+    monkeypatch.delenv('PYTHON_JULIAPKG_EXE', raising=False)
+    assert cli._env_with_proteus_julia(root)['JULIA_DEPOT_PATH'] == f'{tmp_path}/depot:'
+
+
+@pytest.mark.unit
 def test_install_vars_do_not_record_the_depot_of_another_install(monkeypatch, tmp_path, capsys):
     """Conda keeps the value of the previous env, and that value must not bind to this env."""
     other = tmp_path / 'other'
