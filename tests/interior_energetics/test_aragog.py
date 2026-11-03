@@ -3319,6 +3319,72 @@ def test_setup_solver_property_tables_follow_the_generated_set(
 
 
 @pytest.mark.unit
+@pytest.mark.unit
+@pytest.mark.parametrize('enabled', [False, True])
+def test_setup_solver_passes_the_rheology_to_the_solid_phase(tmp_path, enabled):
+    """The solid phase gets the rheology switch when it is on and no keyword when it is off;
+    the liquid phase never gets it."""
+    from aragog.rheology import SolidRheologyParams
+
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    if not hasattr(__import__('aragog.solver').solver.EntropySolver, '_rheology_enabled'):
+        pytest.skip('the installed aragog solver does not read the rheology')
+    outdir = tmp_path / 'out'
+    pt_dir = outdir / 'data' / 'aragog_pt'
+    pt_dir.mkdir(parents=True)
+    for name in ('density_melt.dat', 'heat_capacity_melt.dat'):
+        (pt_dir / name).write_text('dummy')
+    config = _make_aragog_config(struct_module='zalmoxis', mantle_eos='PALEOS:MgSiO3')
+    config.interior_struct.eos_dir = None
+    config.planet.mass_tot = 1.0
+    config.interior_energetics.aragog.rheology.enabled = enabled
+    solid, liquid = tmp_path / 'solid.dat', tmp_path / 'liquid.dat'
+    solid.write_text('dummy')
+    liquid.write_text('dummy')
+    registry = {
+        'PALEOS-2phase:MgSiO3': {
+            'solid_mantle': {'eos_file': str(solid)},
+            'melted_mantle': {'eos_file': str(liquid)},
+        }
+    }
+    _seed_lookup_tables(tmp_path)
+    hf_row = {
+        'R_int': 6.371e6,
+        'R_core': 3.48e6,
+        'gravity': 9.81,
+        'T_magma': 3000.0,
+        'T_eqm': 255.0,
+        'F_atm': 100.0,
+    }
+    interior_o = MagicMock()
+    interior_o.tides = np.zeros(20)
+    interior_o._spider_eos_dir = str(tmp_path)
+    with (
+        patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path),
+        patch(
+            'proteus.interior_struct.zalmoxis.load_zalmoxis_material_dictionaries',
+            return_value=registry,
+        ),
+        patch(
+            'proteus.interior_energetics.aragog._melting_curve_files',
+            return_value=(solid, liquid),
+        ),
+        patch('proteus.interior_energetics.aragog._PhaseParameters') as mock_phase,
+        patch('proteus.interior_energetics.aragog.Parameters'),
+        patch('proteus.interior_energetics.aragog.EntropySolver'),
+        patch('proteus.interior_energetics.aragog._cached_entropy_eos', return_value=_EOS),
+    ):
+        AragogRunner.setup_solver(config, hf_row, interior_o, str(outdir))
+
+    by_phase = {c.kwargs['melt_fraction']: c.kwargs for c in mock_phase.call_args_list}
+    assert 'rheology' not in by_phase[1]
+    if enabled:
+        assert by_phase[0]['rheology'] == SolidRheologyParams(enabled=True)
+    else:
+        assert 'rheology' not in by_phase[0]
+
+
 @pytest.mark.parametrize('kept, liquid_path', [(False, True), (True, True), (False, False)])
 def test_setup_solver_stops_without_the_paleos_pair(tmp_path, kept, liquid_path):
     """A PALEOS mantle whose 2-phase liquid table is absent, or has no registry path,
