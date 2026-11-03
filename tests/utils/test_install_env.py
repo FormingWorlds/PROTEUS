@@ -354,6 +354,9 @@ def test_missing_packages_read_the_old_manifest_format(tmp_path):
 def test_project_with_no_manifest_needs_nothing(tmp_path):
     """No Manifest: the project is not set up, as for an install with no AGNI."""
     assert missing_julia_packages(tmp_path / 'none', [str(tmp_path)]) == []
+    (tmp_path / 'none').mkdir()
+    (tmp_path / 'none' / 'Project.toml').write_text('[deps]\nFoo = "1"\n')
+    assert missing_julia_packages(tmp_path / 'none', [str(tmp_path)]) == []
 
 
 @pytest.mark.parametrize(
