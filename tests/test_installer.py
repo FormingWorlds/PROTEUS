@@ -5032,6 +5032,7 @@ class TestJuliaDepot:
         result = self._call(site, value)
         own = f'{site["tmp"] / "prefix"}/julia_depot:'
         assert self._value(result) == own
+        assert (site['tmp'] / 'root' / '.proteus-env.sh').is_file()
         exports = (site['tmp'] / 'root' / '.proteus-env.sh').read_text()
         assert f"export JULIA_DEPOT_PATH='{own}'" in exports
         assert 'shares' not in result.stdout
@@ -5190,7 +5191,10 @@ class TestJuliaDepot:
         (site['tmp'] / 'home' / '.julia' / 'packages').mkdir(parents=True)
         result = self._call(site)
         out = result.stdout
+        assert 'MiB' in out
+        assert 'JULIA_RAN' in out
         assert out.index('MiB') < out.index('JULIA_RAN')
+        assert (env_project / 'Manifest.toml').read_text() == 'm'
         home = site['tmp'] / 'home'
         assert f'JULIA_DEPOT_PATH={home}/.julia: bash install.sh' in out
         assert 'macOS arm64' in out
@@ -5366,6 +5370,8 @@ class TestJuliaDepot:
         """The depot is set before AGNI and the first import, and AGNI keeps its Manifest."""
         text = INSTALL_SH.read_text()
         main = text[text.index('phase 3 "Environment variables"') :]
+        assert main.count('\nsetup_julia_depot\n') == 1
+        assert main.count('\nreinstall_moved_lovepy\n') == 1
         depot = main.index('\nsetup_julia_depot\n')
         assert depot < main.index('tools/get_agni.sh')
         assert depot < main.index('\nverify_proteus_import\n')
