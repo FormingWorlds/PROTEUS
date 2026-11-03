@@ -43,6 +43,7 @@ from proteus.interior_chem.redox import (
     W_FET,
     _fe_into_new_solid,
     _init_state,
+    _kd_cells,
     _metal_saturation_step,
     _partition_coefficients,
     update_melt_redox,
@@ -1507,6 +1508,7 @@ def test_restored_state_matches_every_stored_field(tmp_path):
     _run_steps(interior, _resume_config(), range(4))
     st = interior.redox_state
     st.melt_exhausted, st.eos_coverage_logged = True, True  # non-default flags
+    st.n_sio2_free_melt = 3.0e18  # non-default, as after metal forms under 'mgsio3_kd'
     fpath = str(tmp_path / '1_int.nc')
     _make_int_snapshot(fpath, _PHI.size)
     assert write_fO2_profile_ncdf(fpath, st)
@@ -1524,7 +1526,14 @@ def test_restored_state_matches_every_stored_field(tmp_path):
         'a_fe_cell',
     ):
         np.testing.assert_array_equal(getattr(got, name), getattr(st, name))
-    for name in ('n_fe3_melt', 'n_fe2_melt', 'ferric_frac', 'redox_ratio', 'w_feo15'):
+    for name in (
+        'n_fe3_melt',
+        'n_fe2_melt',
+        'ferric_frac',
+        'redox_ratio',
+        'w_feo15',
+        'n_sio2_free_melt',
+    ):
         assert getattr(got, name) == getattr(st, name), name
     assert (got.a_fe_max_cell, got.fO2_cell) == (st.a_fe_max_cell, st.fO2_cell)
     assert got.melt_exhausted is True and got.eos_coverage_logged is True
@@ -1827,11 +1836,17 @@ def test_melt_iron_oxide_stays_below_the_melt_mass_as_the_mantle_freezes(
     assert np.all(ratios < 1.0)
     assert st.melt_exhausted
     np.testing.assert_array_equal(st.phi_prev, np.full(3, 0.06))
-    # Guard: tracking on to 0.003 without the cutoff, in steps fine enough to
-    # approach the fractional limit, passes the melt mass.
+    # Without the cutoff, in steps fine enough to approach the fractional
+    # limit down to 0.003, Step 3d holds the tracker before the melt iron oxide
+    # passes the melt mass, after enrichment close to it.
     monkeypatch.setattr(redox, 'MELT_FRACTION_MIN', 0.0)
-    _, uncut = freeze(np.geomspace(1.0, 0.003, 40))
-    assert uncut[-1] > 1.0
+    held, uncut = freeze(np.geomspace(1.0, 0.003, 40))
+    assert np.all(uncut <= 1.0) and uncut.max() > 0.8
+    assert held.phi_prev[0] > 0.003
+    # Guard: with Step 3d off as well, the same freeze passes the melt mass.
+    monkeypatch.setattr(redox, '_melt_iron_oxide_exceeds_melt', lambda *a: False)
+    _, unchecked = freeze(np.geomspace(1.0, 0.003, 40))
+    assert unchecked[-1] > 1.0
 
 
 @pytest.mark.physics_invariant
@@ -2072,3 +2087,526 @@ def test_fo2_profile_uses_the_configured_melt_eos():
     )
     assert not ok_d[0] and np.isnan(hot_d[0])
     assert ok_k[0] and np.isfinite(hot_k[0])
+
+
+# Schaefer et al. (2024) archived 1000 km Earth run (output.mat, mean of the
+# Monte Carlo draws) at steps 0, 50 and 90: the adiabat temperature of
+# makefigures_Earth.m [K], the melt X_FeO1.5/X_FeO, the single-cation melt
+# mole fractions, and log10 fO2 and Delta-IW from a numpy port of
+# fO2lowP_H22.m and IW_H21.m (1 bar).
+_SCHAEFER_EQ13 = [
+    (
+        2447.7202,
+        0.1111111111,
+        {
+            'SiO2': 0.3838155551,
+            'TiO2': 0,
+            'MgO': 0.4815314514,
+            'CaO': 0.03240409652,
+            'Na2O': 0,
+            'K2O': 0,
+            'P2O5': 0,
+            'Al2O3': 0.04470815277,
+            'FeO': 0.05178666981,
+            'FeO15': 0.005754074424,
+        },
+        -3.870463898,
+        0.7021200351,
+    ),
+    (
+        1950.7319,
+        0.08067254901,
+        {
+            'SiO2': 0.3823572403,
+            'TiO2': 0,
+            'MgO': 0.4485085519,
+            'CaO': 0.05125271805,
+            'Na2O': 0,
+            'K2O': 0,
+            'P2O5': 0,
+            'Al2O3': 0.0422320932,
+            'FeO': 0.07000214506,
+            'FeO15': 0.005647251478,
+        },
+        -6.376437409,
+        1.021658771,
+    ),
+    (
+        1390.0348,
+        0.08239021931,
+        {
+            'SiO2': 0.3360004098,
+            'TiO2': 0,
+            'MgO': 0.2285510278,
+            'CaO': 0.1533578828,
+            'Na2O': 0,
+            'K2O': 0,
+            'P2O5': 0,
+            'Al2O3': 0.1081062166,
+            'FeO': 0.1607409785,
+            'FeO15': 0.01324348447,
+        },
+        -11.43260114,
+        1.639745524,
+    ),
+]
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.reference_pinned
+@pytest.mark.parametrize(
+    ('T', 'ratio', 'X', 'log10_fo2', 'dIW'),
+    _SCHAEFER_EQ13,
+    ids=['step0_2448K', 'step50_1951K', 'step90_1390K'],
+)
+def test_surface_fo2_reproduces_schaefer_fo2lowp_h22_on_their_melt(T, ratio, X, log10_fo2, dIW):
+    """Eq 13 at 1 bar and the Hirschmann (2021) buffer reproduce Schaefer et
+    al. (2024)'s fO2lowP_H22.m and IW_H21.m on the melt composition, adiabat
+    temperature and Fe3+/Fe2+ of their archived 1000 km run, to 1e-6 (the
+    stored temperatures are rounded to 1e-4 K, and d log fO2/dT is ~4e-3 per
+    K). Guard:
+    the fixed BSE composition the tracker carries misses their evolving melt
+    by more than 0.3 log units late in the freeze (step 90), the composition
+    term of Eq 13 that the tracker does not follow."""
+    from proteus.interior_chem.redox import (
+        P_1BAR_GPA,
+        _compute_mole_fractions,
+        _iw_buffer_hirschmann2021,
+        _log10_fO2_surface,
+    )
+
+    value = _log10_fO2_surface(ratio, T, X)
+    assert value == pytest.approx(log10_fo2, abs=1e-6)
+    assert value - float(_iw_buffer_hirschmann2021(T, P_1BAR_GPA)) == pytest.approx(
+        dIW, abs=1e-6
+    )
+    fixed = _log10_fO2_surface(ratio, T, _compute_mole_fractions())
+    if T < 1500.0:
+        assert abs(fixed - log10_fo2) > 0.3
+
+
+def _overflowing_state():
+    """A tracker started fully molten, with every D set to 0 so all iron stays
+    in the melt: freezing to a global melt fraction of 0.06 (above
+    MELT_FRACTION_MIN) leaves the melt's ~0.09 iron-oxide mass fraction in
+    0.06 of the mass, 1.5 times the melt mass."""
+    phi0 = np.ones(3)
+    state = _init_state(phi0, _MASS, _PRES, 0.1)
+    state.D_fe2_cell = np.zeros(3)
+    state.D_fe3_cell = np.zeros(3)
+    return state, np.full(3, 0.06)
+
+
+def test_a_step_that_overfills_the_melt_with_iron_oxide_is_held(caplog):
+    """Step 3d: a crystallisation step that would leave more FeO + FeO1.5 in
+    the melt than the melt mass is not applied. The reservoirs, the solid
+    record and phi_prev keep their values, a warning gives the mass ratio
+    once per episode, and the step applies once the melt can carry its iron."""
+    from proteus.interior_chem.redox import MU_FEO, MU_FEO15, _advance_or_hold
+
+    state, phi_low = _overflowing_state()
+    n2, n3, phi_prev = state.n_fe2_melt, state.n_fe3_melt, state.phi_prev.copy()
+    oxide_frac = (n2 * MU_FEO + n3 * MU_FEO15) / float(np.sum(_MASS))
+    assert 0.08 < oxide_frac < 0.1  # so 0.06 of the mass cannot hold it
+
+    with caplog.at_level('WARNING'):
+        _advance_or_hold(state, phi_low, _MASS)
+        _advance_or_hold(state, phi_low, _MASS)
+    assert (state.n_fe2_melt, state.n_fe3_melt) == (n2, n3)
+    assert not np.any(state.m_solid_cell) and not np.any(state.n_fe2_solid_cell)
+    np.testing.assert_array_equal(state.phi_prev, phi_prev)
+    assert caplog.text.count('is not applied') == 1
+    assert 'ratio 1.5' in caplog.text
+
+    # A smaller step the melt can carry is applied and ends the episode.
+    _advance_or_hold(state, np.full(3, 0.5), _MASS)
+    assert state.n_fe2_melt == pytest.approx(n2, rel=1e-12)  # D = 0 keeps it
+    np.testing.assert_array_equal(state.phi_prev, np.full(3, 0.5))
+    assert state.iron_overflow_logged is False
+
+
+@pytest.mark.physics_invariant
+def test_the_same_freeze_with_compatible_iron_is_applied_and_conserves_iron():
+    """Guard for Step 3d: with the mgsio3 D the same freeze to 0.06 puts most
+    iron into the solid, the melt stays below its own mass of iron oxide, and
+    the step applies with melt + solid iron conserved."""
+    from proteus.interior_chem.redox import MU_FEO, MU_FEO15, _advance_or_hold
+
+    state = _init_state(np.ones(3), _MASS, _PRES, 0.1)
+    fe_before = state.n_fe2_melt + state.n_fe3_melt
+    _advance_or_hold(state, np.full(3, 0.06), _MASS)
+    oxide = state.n_fe2_melt * MU_FEO + state.n_fe3_melt * MU_FEO15
+    assert 0.0 < oxide < 0.06 * float(np.sum(_MASS))
+    fe_after = (
+        state.n_fe2_melt
+        + state.n_fe3_melt
+        + float(np.sum(state.n_fe2_solid_cell + state.n_fe3_solid_cell))
+    )
+    assert fe_after == pytest.approx(fe_before, rel=1e-12)
+    np.testing.assert_array_equal(state.phi_prev, np.full(3, 0.06))
+
+
+# 'mgsio3_kd': lower-mantle temperatures inside the bridgmanite K_D fit
+# (3000-6500 K), so no cell is clamped and K_D differs between the two deep cells.
+_TEMP_KD = np.array([2200.0, 3600.0, 4800.0])
+
+
+def _kd_expected_d_fe2(state, P_pa, T):
+    """Hand-built D(Fe2+) of an infinitesimal solid from the uniform melt,
+    (Mg,Fe)SiO3 basis, the solid's Fe3+ at the 'mgsio3' bridgmanite D."""
+    from proteus.interior_chem.partitioning import MU_FESIO3
+
+    M = _M_MELT
+    n2, n3 = state.n_fe2_melt, state.n_fe3_melt
+    n_mg = (M - n2 * MU_FESIO3 - n3 * MU_FEO15) / 0.100389
+    x_l = n2 / (n2 + n_mg)
+    kd = np.exp(-(-19.66e3 + P_pa * 0.53e-6) / (8.314462618 * T) - 12.04 / 8.314462618)
+    x_s = kd * x_l / (1 - (1 - kd) * x_l)
+    c3_s = D_FE3_BRG * n3 / M
+    c2_s = x_s * (1 - c3_s * MU_FEO15) / (x_s * MU_FESIO3 + (1 - x_s) * 0.100389)
+    return c2_s / (n2 / M)
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.reference_pinned
+def test_mgsio3_kd_replaces_only_the_lower_mantle_ferrous_coefficient():
+    """'mgsio3_kd' at the first call: below 22 GPa the Cpx/Opx values of
+    'mgsio3' stay, D(Fe3+) is the 'mgsio3' one everywhere, and the
+    bridgmanite D(Fe2+) follows K_D(P, T) of Dragulet & Stixrude (2024,
+    Fig. 4) for the starting melt, rebuilt here by hand."""
+    state = _init_state(_PHI, _MASS, _PRES, 0.1, 'mgsio3_kd', _TEMP_KD)
+    ref = _init_state(_PHI, _MASS, _PRES, 0.1, 'mgsio3')
+
+    np.testing.assert_array_equal(state.D_fe3_cell, ref.D_fe3_cell)
+    assert state.D_fe2_cell[0] == pytest.approx(D_FE2_SHALLOW, rel=1e-12)
+    for i in (1, 2):
+        expected = _kd_expected_d_fe2(state, _PRES[i], _TEMP_KD[i])
+        assert state.D_fe2_cell[i] == pytest.approx(expected, rel=1e-6)
+    # K_D falls with depth faster than it rises with T here: D(50 GPa) < D(30 GPa)
+    assert state.D_fe2_cell[2] < state.D_fe2_cell[1]
+    # Below the constant Schaefer Table S1 value 0.44: ~0.30 at 30 GPa, ~0.23 at 50 GPa
+    assert np.all(state.D_fe2_cell[1:] < 0.75 * D_FE2_BRG)
+    assert state.D_fe2_cell[2] < 0.6 * D_FE2_BRG
+    assert state.kd_clamp_logged is False
+
+
+def test_mgsio3_kd_without_temperatures_is_rejected_before_any_change():
+    """The K_D set needs the cell temperatures: _init_state and
+    _advance_or_hold raise ValueError, and the state is left as it was."""
+    from proteus.interior_chem.redox import _advance_or_hold
+
+    with pytest.raises(ValueError, match='temperatures'):
+        _init_state(_PHI, _MASS, _PRES, 0.1, 'mgsio3_kd')
+    state = _init_state(np.ones(3), _MASS, _PRES, 0.1, 'mgsio3_kd', _TEMP_KD)
+    n2, phi_prev = state.n_fe2_melt, state.phi_prev.copy()
+    with pytest.raises(ValueError, match='temperatures'):
+        _advance_or_hold(state, np.full(3, 0.5), _MASS, _PRES, None, 'mgsio3_kd')
+    assert state.n_fe2_melt == n2
+    np.testing.assert_array_equal(state.phi_prev, phi_prev)
+
+
+@pytest.mark.physics_invariant
+def test_mgsio3_kd_step_conserves_iron_and_keeps_more_fe2_in_the_melt():
+    """One crystallisation step to half melt: Fe2+ and Fe3+ in melt plus
+    solid are conserved, Fe3+ moves exactly as under 'mgsio3', and with the
+    lower K_D-based D(Fe2+) more Fe2+ stays in the melt than under 'mgsio3'."""
+    from proteus.interior_chem.redox import _advance_or_hold
+
+    phi1 = np.full(3, 0.5)
+    kd = _init_state(np.ones(3), _MASS, _PRES, 0.1, 'mgsio3_kd', _TEMP_KD)
+    ref = _init_state(np.ones(3), _MASS, _PRES, 0.1, 'mgsio3')
+    n2_0, n3_0 = kd.n_fe2_melt, kd.n_fe3_melt
+    _advance_or_hold(kd, phi1, _MASS, _PRES, _TEMP_KD, 'mgsio3_kd')
+    _advance_or_hold(ref, phi1, _MASS)
+
+    assert kd.n_fe2_melt + float(np.sum(kd.n_fe2_solid_cell)) == pytest.approx(n2_0, rel=1e-12)
+    assert kd.n_fe3_melt + float(np.sum(kd.n_fe3_solid_cell)) == pytest.approx(n3_0, rel=1e-12)
+    np.testing.assert_allclose(kd.n_fe3_solid_cell, ref.n_fe3_solid_cell, rtol=1e-12)
+    # Shallow cell: same constant Cpx/Opx split in both sets
+    assert kd.n_fe2_solid_cell[0] == pytest.approx(ref.n_fe2_solid_cell[0], rel=1e-12)
+    # Deep cells: less Fe2+ in the solid (D ~ 0.2-0.3 against 0.44 gives a
+    # share s D / (1 - s + s D) about 0.65-0.8 of the 'mgsio3' one at s = 0.5)
+    assert np.all(kd.n_fe2_solid_cell[1:] < 0.85 * ref.n_fe2_solid_cell[1:])
+    assert kd.n_fe2_melt > ref.n_fe2_melt
+    # Less Fe2+ but the same Fe3+ leaves the melt, so its Fe3+/FeT falls further
+    assert kd.ferric_frac < ref.ferric_frac < 0.1
+
+
+@pytest.mark.physics_invariant
+def test_mgsio3_path_is_unchanged_by_the_new_arguments():
+    """'mgsio3' with cell pressures and temperatures passed gives bit-identical
+    reservoirs to the call without them: the new arguments reach only the K_D set."""
+    from proteus.interior_chem.redox import _advance_or_hold
+
+    a = _init_state(np.ones(3), _MASS, _PRES, 0.1)
+    b = _init_state(np.ones(3), _MASS, _PRES, 0.1)
+    for phi in (np.full(3, 0.7), np.array([0.6, 0.3, 0.2])):
+        _advance_or_hold(a, phi, _MASS)
+        _advance_or_hold(b, phi, _MASS, _PRES, _TEMP_KD, 'mgsio3')
+    assert (a.n_fe2_melt, a.n_fe3_melt) == (b.n_fe2_melt, b.n_fe3_melt)
+    np.testing.assert_array_equal(a.D_fe2_cell, b.D_fe2_cell)
+    assert a.n_fe2_melt < float(np.sum(_MASS)) * W_FET / MU_FEO  # iron did crystallise
+
+
+@pytest.mark.physics_invariant
+def test_step_3d_counts_ferrous_iron_as_fesio3_for_the_kd_set():
+    """Step 3d with mu_fe2 = MU_FESIO3: a melt whose FeO fits in its mass but
+    whose FeSiO3 does not is held under 'mgsio3_kd' and passes under the FeO
+    count, the basis-dependent edge of the check."""
+    from proteus.interior_chem.partitioning import MU_FESIO3
+    from proteus.interior_chem.redox import _melt_iron_oxide_exceeds_melt
+
+    state = _init_state(_PHI, _MASS, _PRES, 0.1)
+    M = 1.0
+    n2 = 1.05 / MU_FESIO3  # 1.05 kg as FeSiO3, 0.57 kg as FeO
+    n3 = 0.1 / MU_FEO15
+    assert not _melt_iron_oxide_exceeds_melt(state, n2, n3, M)
+    assert _melt_iron_oxide_exceeds_melt(state, n2, n3, M, MU_FESIO3)
+    assert n2 * MU_FEO + n3 * MU_FEO15 < 0.75 * M  # the FeO count is far from the edge
+
+
+@pytest.mark.physics_invariant
+def test_metal_step_in_the_fesio3_basis_counts_cations_from_the_current_melt():
+    """Step 9b with fesio3_basis: n_sil = FeO + FeO1.5 + MgO + SiO2, where
+    SiO2 is that of MgSiO3 and FeSiO3, from the current reservoirs. a_Fe
+    must match activity_Fe_metal with that n_sil, and differ from the
+    default count, which uses the initial FeO fraction."""
+    from proteus.interior_chem.partitioning import MU_FESIO3
+
+    state = _init_state(_PHI, _MASS, _PRES, 0.01)
+    n2, n3 = state.n_fe2_melt, state.n_fe3_melt
+    n_mg = (_M_MELT - n2 * MU_FESIO3 - n3 * MU_FEO15) / 0.100389
+    n_sil = n2 + n3 + n_mg + (n_mg + n2)
+    _metal_saturation_step(state, _TEMP, _PRES, _PHI, _MASS, fesio3_basis=True)
+    a_kd = state.a_fe_cell.copy()
+    expected, valid = activity_Fe_metal(
+        _TEMP, n2, n3, n_sil, P_gpa=_PRES / 1e9, use_P_term=True
+    )
+    melt = (_PHI > 0) & valid
+    np.testing.assert_allclose(a_kd[melt], expected[melt], rtol=1e-10)
+
+    default = _init_state(_PHI, _MASS, _PRES, 0.01)
+    _metal_saturation_step(default, _TEMP, _PRES, _PHI, _MASS)
+    # At the starting composition the two counts differ by ~1%; a dropped
+    # FeSiO3 SiO2 term (n_sil short by n2) would shift a_Fe by ~6%
+    ratio = a_kd[melt] / default.a_fe_cell[melt]
+    assert np.all(np.abs(ratio - 1.0) > 0.005) and np.all(np.abs(ratio - 1.0) < 0.03)
+
+
+@pytest.mark.physics_invariant
+def test_update_melt_redox_runs_the_kd_set_end_to_end():
+    """partition_coefficients = 'mgsio3_kd' through update_melt_redox: three
+    freezing steps keep Fe3+/FeT in (0, 1) and falling, and the stored deep
+    D(Fe2+) rises as the melt enriches in iron (D_molar = K_D / (1 - (1 - K_D) x))."""
+    config = _make_config(0.1, metal_saturation=False)
+    config.planet.interior_chem.partition_coefficients = 'mgsio3_kd'
+    interior = _make_interior()
+    interior.temp = _TEMP_KD
+    fracs, d_deep = [], []
+    for F in (1.0, 0.6, 0.3):
+        interior.phi = np.full(3, F)
+        hf_row = {'T_magma': 2200.0}
+        update_melt_redox(interior, hf_row, config)
+        fracs.append(hf_row['ferric_frac_mantle'])
+        d_deep.append(interior.redox_state.D_fe2_cell[2])
+    assert all(0.0 < f < 1.0 for f in fracs)
+    assert fracs[0] == pytest.approx(0.1, rel=1e-12)
+    assert fracs[2] < fracs[1] < fracs[0]
+    assert d_deep[2] > d_deep[1] > d_deep[0]
+    assert d_deep[2] < D_FE2_BRG
+
+
+@pytest.mark.physics_invariant
+def test_kd_clamp_warning_counts_only_crystallising_cells(caplog):
+    """A deep cell colder than the bridgmanite fit (2000 K < 3000 K) that forms
+    no solid this step does not use up the once-per-run clamp warning; the
+    first crystallising clamped cell does. The mask changes no K_D value."""
+    import logging
+
+    from proteus.interior_chem.partitioning import kd_fe_mg
+
+    state = _init_state(_PHI, _MASS, _PRES, 0.1, 'mgsio3_kd', _TEMP_KD)
+    assert state.kd_clamp_logged is False
+    temp = np.array([2000.0, 2000.0, 2000.0])
+    logger = 'fwl.proteus.interior_chem.redox'
+    with caplog.at_level(logging.WARNING, logger=logger):
+        kd_idle = _kd_cells(state, _PRES, temp, np.array([True, False, False]))
+    # The shallow cell crystallises but uses the Cpx/Opx D, so it is not counted
+    assert state.kd_clamp_logged is False
+    assert not caplog.records
+    with caplog.at_level(logging.WARNING, logger=logger):
+        kd_used = _kd_cells(state, _PRES, temp, np.array([False, False, True]))
+        _kd_cells(state, _PRES, temp, np.array([False, True, True]))
+    assert state.kd_clamp_logged is True
+    warned = [r.getMessage() for r in caplog.records if 'outside the fitted K_D' in r.message]
+    assert len(warned) == 1
+    assert warned[0].startswith('Melt redox (mgsio3_kd): 1 crystallising cell(s)')
+    np.testing.assert_array_equal(kd_idle, kd_used)
+    assert np.isnan(kd_used[0])
+    # Clamped to 3000 K: K_D at 50 GPa is the 3000 K value, not the 2000 K one
+    kd_3000, _ = kd_fe_mg(50.0, 3000.0)
+    assert kd_used[2] == pytest.approx(float(kd_3000), rel=1e-12)
+
+
+@pytest.mark.physics_invariant
+def test_metal_separation_in_the_fesio3_basis_creates_no_magnesium():
+    """3 FeSiO3 = 2 FeO1.5 + Fe + 3 SiO2 under 'mgsio3_kd': the metal leaves
+    the melt and the 3 SiO2 stay in it, so the Mg implied by the remaining
+    melt mass is unchanged. Without that mass the same melt would gain
+    (3 MU_FESIO3 - 2 MU_FEO15) / MU_MGSIO3 = 2.35 mol of Mg per mole of metal."""
+    from proteus.interior_chem.partitioning import MU_FESIO3, MU_MGSIO3, melt_n_mg
+    from proteus.interior_chem.redox import _free_sio2_mass, _metal_mass
+
+    state = _init_state(_ADIABAT_PHI, _MASS, _ADIABAT_P, 0.005)
+    M = float(np.sum(_ADIABAT_PHI * _MASS))
+    mg_before = float(melt_n_mg(M, state.n_fe2_melt, state.n_fe3_melt))
+
+    xi = _metal_saturation_step(
+        state, _ADIABAT_T, _ADIABAT_P, _ADIABAT_PHI, _MASS, fesio3_basis=True
+    )
+
+    assert xi > 0.0
+    assert state.n_sio2_free_melt == pytest.approx(3.0 * xi, rel=1e-12)
+    m_other = _metal_mass(state) + _free_sio2_mass(state)
+    # Fe metal (55.845 g/mol) plus 3 SiO2 (60.084 g/mol), independent of the code's form
+    assert _metal_mass(state) == pytest.approx(xi * 0.055845, rel=1e-4)
+    assert m_other == pytest.approx(xi * (0.055845 + 3.0 * 0.060084), rel=1e-4)
+    mg_after = float(melt_n_mg(M - m_other, state.n_fe2_melt, state.n_fe3_melt))
+    assert mg_after == pytest.approx(mg_before, rel=1e-12)
+    # The uncorrected count, the bug this guards against
+    phantom = float(melt_n_mg(M, state.n_fe2_melt, state.n_fe3_melt)) - mg_before
+    assert phantom == pytest.approx(xi * (3.0 * MU_FESIO3 - 2.0 * MU_FEO15) / MU_MGSIO3)
+    assert phantom > 2.3 * xi
+
+    default = _init_state(_ADIABAT_PHI, _MASS, _ADIABAT_P, 0.005)
+    xi_default = _metal_saturation_step(default, _ADIABAT_T, _ADIABAT_P, _ADIABAT_PHI, _MASS)
+    assert xi_default > 0.0
+    assert default.n_sio2_free_melt == 0.0  # the FeO basis keeps no free SiO2
+
+
+@pytest.mark.physics_invariant
+def test_metal_step_counts_the_free_silica_and_the_reduced_magnesium():
+    """Step 9b in the (Mg,Fe)SiO3 basis after metal has formed: n_sil adds
+    the free SiO2 and takes the MgSiO3 from the melt mass less the separated
+    metal and SiO2. a_Fe must match activity_Fe_metal with that count."""
+    from proteus.interior_chem.partitioning import MU_FESIO3, MU_MGSIO3
+    from proteus.interior_chem.redox import _free_sio2_mass, _metal_mass
+
+    state = _init_state(_PHI, _MASS, _PRES, 0.01)
+    state.n_sio2_free_melt = 0.05 * state.n_fe2_melt  # as after ~1.7% of Fe2+ reacted
+    state.n_fe_metal_cell[1] = state.n_sio2_free_melt / 3.0
+    n2, n3 = state.n_fe2_melt, state.n_fe3_melt
+    m_other = _metal_mass(state) + _free_sio2_mass(state)
+    n_mg = (_M_MELT - m_other - n2 * MU_FESIO3 - n3 * MU_FEO15) / MU_MGSIO3
+    n_free = state.n_sio2_free_melt
+    n_sil = n2 + n3 + 2.0 * n_mg + n2 + n_free
+    _metal_saturation_step(state, _TEMP, _PRES, _PHI, _MASS, fesio3_basis=True)
+    expected, valid = activity_Fe_metal(
+        _TEMP, n2, n3, n_sil, P_gpa=_PRES / 1e9, use_P_term=True
+    )
+    melt = (_PHI > 0) & valid
+    np.testing.assert_allclose(state.a_fe_cell[melt], expected[melt], rtol=1e-10)
+    # Guard: the count that ignores the separated mass (n_sil larger by
+    # 2 * m_other / MU_MGSIO3 - free SiO2) gives a lower a_Fe
+    wrong, _ = activity_Fe_metal(
+        _TEMP,
+        n2,
+        n3,
+        n_sil + 2.0 * m_other / MU_MGSIO3 - n_free,
+        P_gpa=_PRES / 1e9,
+        use_P_term=True,
+    )
+    assert np.all(state.a_fe_cell[melt] > wrong[melt] * (1.0 + 1e-4))
+
+
+def test_step_3d_counts_the_separated_mass_for_the_kd_set():
+    """Step 3d with m_other: a melt whose FeSiO3 and FeO1.5 fit in its mass
+    is held once the free SiO2 and the separated metal no longer do."""
+    from proteus.interior_chem.partitioning import MU_FESIO3
+    from proteus.interior_chem.redox import _melt_iron_oxide_exceeds_melt
+
+    state = _init_state(_PHI, _MASS, _PRES, 0.1)
+    n2, n3 = 0.8 / MU_FESIO3, 0.1 / MU_FEO15  # 0.9 kg of 1 kg
+    assert not _melt_iron_oxide_exceeds_melt(state, n2, n3, 1.0, MU_FESIO3, 0.05)
+    assert _melt_iron_oxide_exceeds_melt(state, n2, n3, 1.0, MU_FESIO3, 0.15)
+    assert state.iron_overflow_logged is True
+
+
+def test_a_state_stored_before_free_silica_resumes_with_none(tmp_path, monkeypatch):
+    """A snapshot written before n_sio2_free_melt existed resumes with no free
+    SiO2, the value of every run until metal forms under 'mgsio3_kd'."""
+    from proteus.interior_chem import redox
+
+    interior = _make_interior()
+    _run_steps(interior, _resume_config(), range(2))
+    st = interior.redox_state
+    st.n_sio2_free_melt = 1.0e18
+    fpath = str(tmp_path / '1_int.nc')
+    _make_int_snapshot(fpath, _PHI.size)
+    with monkeypatch.context() as m:
+        m.delitem(redox._STATE_FLOAT, 'n_sio2_free_melt')
+        assert redox.write_fO2_profile_ncdf(fpath, st)
+
+    got = redox.read_tracker_state(fpath)
+    assert got.n_sio2_free_melt == 0.0
+    assert got.n_fe2_melt == st.n_fe2_melt
+
+
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize('coefficient_set', ['mgsio3', 'bulk_BSE'])
+def test_metal_leaves_the_melt_for_the_constant_d_sets(coefficient_set):
+    """'mgsio3' and 'bulk_BSE': metal formed by 3 FeO = 2 FeO1.5 + Fe leaves
+    the melt. The next crystallisation step spreads the iron over the melt
+    left after separation, so the same solid takes a larger fraction of it;
+    the metal step keeps its MgSiO3 count, since the metal took none. The
+    iron oxides and the metal keep their total mass exactly."""
+    from proteus.interior_chem.redox import (
+        _advance_or_hold,
+        _fe_into_new_solid_cells,
+        _metal_mass,
+    )
+
+    phi = _ADIABAT_PHI.copy()
+    state = _init_state(phi, _MASS, _ADIABAT_P, 0.005, coefficient_set)
+    ox_before = state.n_fe2_melt * MU_FEO + state.n_fe3_melt * MU_FEO15
+    xi = _metal_saturation_step(state, _ADIABAT_T, _ADIABAT_P, phi, _MASS)
+    assert xi > 0.0
+    ox_after = state.n_fe2_melt * MU_FEO + state.n_fe3_melt * MU_FEO15
+    assert ox_after + _metal_mass(state) == pytest.approx(ox_before, rel=1e-13)
+    assert state.n_sio2_free_melt == 0.0
+
+    # Step 9b after separation: the non-iron count is that of the interior's melt
+    n2_pre, n3_pre = state.n_fe2_melt, state.n_fe3_melt
+    n_sil = 2.0 * float(np.sum(phi * _MASS)) * (1.0 - W_FET - state.w_feo15) / 0.100389
+    n_sil += n2_pre + n3_pre
+    _metal_saturation_step(state, _ADIABAT_T, _ADIABAT_P, phi, _MASS)
+    expected, valid = activity_Fe_metal(
+        _ADIABAT_T,
+        n2_pre,
+        n3_pre,
+        n_sil,
+        P_gpa=_ADIABAT_P / 1e9,
+        use_P_term=True,
+    )
+    melt = (phi > 0) & valid
+    np.testing.assert_allclose(state.a_fe_cell[melt], expected[melt], rtol=1e-10)
+
+    # Crystallisation over the melt left after separation
+    n2, n3 = state.n_fe2_melt, state.n_fe3_melt
+    m_metal = _metal_mass(state)
+    phi_new = phi * 0.7
+    M_cell = phi * _MASS
+    new_solid = _MASS * (phi - phi_new)
+    M_left_cell = M_cell * (1.0 - m_metal / float(np.sum(M_cell)))
+    exp2, exp3 = _fe_into_new_solid_cells(
+        n2, n3, M_left_cell, new_solid, state.D_fe2_cell, state.D_fe3_cell
+    )
+    old2, _ = _fe_into_new_solid_cells(
+        n2, n3, M_cell, new_solid, state.D_fe2_cell, state.D_fe3_cell
+    )
+    _advance_or_hold(state, phi_new, _MASS, coefficient_set=coefficient_set)
+    np.testing.assert_allclose(state.n_fe2_solid_cell, exp2, rtol=1e-12)
+    np.testing.assert_allclose(state.n_fe3_solid_cell, exp3, rtol=1e-12)
+    assert state.n_fe2_melt == pytest.approx(n2 - float(np.sum(exp2)), rel=1e-12)
+    # The interior's melt mass would put less Fe2+ in the solid
+    assert float(np.sum(exp2)) > float(np.sum(old2)) * (1.0 + 1e-6)

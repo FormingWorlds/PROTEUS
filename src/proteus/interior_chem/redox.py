@@ -29,6 +29,9 @@ Physics summary (docs/Explanations/redox.md gives the full derivation):
             MgSiO3 D(Fe2+) of 0.44-0.535 the melt FeO + FeO1.5, 0.09 of
             the melt mass at the start, reaches 0.36-0.48 of it at 0.05 and
             exceeds it below 0.006-0.014
+  Step 3d   a step that would leave more FeO + FeO1.5 in the melt than
+            the melt mass is not applied; the tracker holds as in Step 3c
+            and warns once, until the melt can carry its iron again
   Step 4   redistribute the *previous* step's global Fe3+/Fe2+ reservoirs
             across cells in proportion to local melt mass -- this is what
             makes the Fe3+/Fe2+ ratio spatially uniform: only the absolute
@@ -129,10 +132,26 @@ their median (0.96 in the lower mantle). The layer below 1 GPa, which
 their runs never reach, takes the 1-2.5 GPa values. On their
 crystallisation sequence these follow their mean Fe3+/FeT within 0.005.
 
+config.planet.interior_chem.partition_coefficients = 'mgsio3_kd' keeps the
+'mgsio3' values except D(Fe2+) at P >= P_CUTOFF_GPA, which follows the Fe-Mg
+exchange coefficient K_D(P, T) of bridgmanite (Dragulet & Stixrude 2024) and,
+from 180 GPa, post-perovskite (Dragulet & Stixrude 2026), in
+interior_chem/partitioning.py. Because K_D fixes cation ratios, this set
+counts the melt in the (Mg,Fe)SiO3 basis: Fe2+ as FeSiO3, Fe3+ as FeO1.5 and
+the rest as MgSiO3, so Mg follows from the masses without being tracked. In
+each deep cell the new solid and the residual melt satisfy K_D exactly
+(solved per step, not a D held over the step), the Step 3d bound counts Fe2+
+as FeSiO3 (the melt has no Mg left), and the metal step counts the non-iron
+cations from the current reservoirs. D(Fe2+) is then recomputed every step
+from the cell temperature and the melt, and D_fe2_cell records the value for
+solid forming from the current melt. Fe3+ keeps the 'mgsio3' D: the K_D
+studies treat ferrous iron only.
+
 Two choices are config fields: the initial ferric fraction f_0
 (``planet.interior_chem.ferric_fraction_initial``, default 0.1), the least well
 constrained of these numbers, and which set of partition coefficients is
-used (``planet.interior_chem.partition_coefficients``, 'mgsio3' or 'bulk_BSE'). The
+used (``planet.interior_chem.partition_coefficients``, 'mgsio3', 'bulk_BSE' or
+'mgsio3_kd'). The
 coefficient values themselves stay fixed.
 """
 
@@ -148,6 +167,8 @@ import numpy as np
 
 from proteus.interior_chem import disproportionation as dispro
 from proteus.interior_chem import eos_deng
+from proteus.interior_chem import partitioning as kdp
+from proteus.interior_chem.partitioning import MU_FEO15, MU_FESIO3, MU_MGSIO3
 from proteus.utils.constants import element_mmw
 
 if TYPE_CHECKING:
@@ -160,8 +181,7 @@ log = logging.getLogger('fwl.' + __name__)
 # is Fe2+ only (Table 1 lists FeO and FeO1.5 apart); Fe3+ comes on top from f_0.
 W_FET = 0.08  # ferrous FeO mass fraction in the melt (dimensionless)
 MU_FEO = 0.07184  # molar mass of FeO in kg/mol (= 71.84 g/mol)
-MU_FEO15 = 0.07984  # molar mass of FeO1.5 in kg/mol (= 79.84 g/mol)
-MU_MGSIO3 = 0.100389  # molar mass of MgSiO3 in kg/mol (= 100.389 g/mol)
+# MU_FEO15, MU_MGSIO3 and MU_FESIO3 [kg/mol] come from interior_chem/partitioning.py
 # Published default of config.planet.interior_chem.ferric_fraction_initial; the dataclass
 # placeholder until _init_state sets the configured value.
 F_0 = 0.10  # initial ferric fraction Fe3+/FeT (Schaefer et al. 2024)
@@ -193,7 +213,7 @@ D_FE3_SHALLOW = (D_FE3_CPX + D_FE3_OPX) / 2  # 1:1 Cpx/Opx
 BULK_P_BOUNDS_GPA = (1.0, 2.5, 15.0, 18.0, 22.0)
 BULK_D_FE2 = (0.97, 0.97, 0.39, 0.42, 0.59, 0.45)
 BULK_D_FE3 = (0.76, 0.76, 0.30, 1.14, 1.60, 0.83)
-PARTITION_PRESCRIPTIONS = ('mgsio3', 'bulk_BSE')
+PARTITION_PRESCRIPTIONS = ('mgsio3', 'bulk_BSE', 'mgsio3_kd')
 
 # BSE starting composition (wt%)
 _WT_OXIDES = {
@@ -374,9 +394,11 @@ def _partition_coefficients(
 
     'mgsio3': bridgmanite at and above P_CUTOFF_GPA, the 1:1 Cpx/Opx mix
     below it. 'bulk_BSE': the bulk value of the Schaefer et al. (2024)
-    layer that holds the pressure. Raises ValueError for any other name."""
+    layer that holds the pressure. 'mgsio3_kd': the 'mgsio3' values; its
+    D(Fe2+) at and above P_CUTOFF_GPA is replaced each step from K_D
+    (``_kd_cells``). Raises ValueError for any other name."""
     P_gpa = np.asarray(pres, dtype=float) / 1e9
-    if coefficient_set == 'mgsio3':
+    if coefficient_set in ('mgsio3', 'mgsio3_kd'):
         brg = P_gpa >= P_CUTOFF_GPA
         return (
             np.where(brg, D_FE2_BRG, D_FE2_SHALLOW),
@@ -425,6 +447,116 @@ def _fe_into_new_solid_cells(
         return share * n * np.where(s < 1.0, s * D / denom, 1.0)
 
     return into_solid(n_fe2, D_fe2_cell), into_solid(n_fe3, D_fe3_cell)
+
+
+def _kd_cells(
+    state: MeltRedoxState, pres: np.ndarray, temp: np.ndarray, crystallising: np.ndarray
+) -> np.ndarray:
+    """'mgsio3_kd': Fe-Mg exchange coefficient per cell, NaN below
+    P_CUTOFF_GPA where the constant Cpx/Opx D applies. Cells outside the
+    fitted T (or P) range take the edge value; logged once per run, counting
+    only the ``crystallising`` cells (bool mask), whose K_D sets the split."""
+    P_gpa = np.asarray(pres, dtype=float) / 1e9
+    kd, clamped = kdp.kd_fe_mg(P_gpa, temp)
+    deep = P_gpa >= P_CUTOFF_GPA
+    used = clamped & deep & np.asarray(crystallising, dtype=bool)
+    if np.any(used) and not state.kd_clamp_logged:
+        state.kd_clamp_logged = True
+        log.warning(
+            'Melt redox (mgsio3_kd): %d crystallising cell(s) lie outside the fitted K_D '
+            'range (bridgmanite %s K, post-perovskite %s K, P <= %g GPa) and take its edge value',
+            int(np.sum(used)),
+            kdp.KD_T_RANGE['bdg'],
+            kdp.KD_T_RANGE['ppv'],
+            kdp.P_PPV_MAX_GPA,
+        )
+    return np.where(deep, kd, np.nan)
+
+
+def _metal_mass(state: MeltRedoxState) -> float:
+    """Mass [kg] of the Fe metal formed so far. It has left the melt, so the
+    melt the tracker works with is the interior's melt mass less this
+    (_melt_mass). Per mole it is the mass the FeO units of 3 FeO = 2 FeO1.5 +
+    Fe lose, 3 MU_FEO - 2 MU_FEO15 (MU_Fe to 1e-4), so the iron oxides and
+    the metal keep their total mass exactly."""
+    return float(np.sum(state.n_fe_metal_cell)) * (3.0 * MU_FEO - 2.0 * MU_FEO15)
+
+
+def _melt_mass(state: MeltRedoxState, M_interior) -> float | np.ndarray:
+    """Melt mass [kg] left after metal separation: ``M_interior`` [kg], the
+    interior's melt mass (a total or per cell), less the metal, which is
+    taken from the well-mixed melt in proportion to its mass. Never below 0."""
+    M_interior = np.asarray(M_interior, dtype=float)
+    total = float(np.sum(M_interior))
+    if total <= 0.0:
+        return M_interior if M_interior.ndim else float(M_interior)
+    out = M_interior * max(0.0, 1.0 - _metal_mass(state) / total)
+    return out if out.ndim else float(out)
+
+
+def _free_sio2_mass(state: MeltRedoxState) -> float:
+    """'mgsio3_kd': mass [kg] of the SiO2 that 3 FeSiO3 = 2 FeO1.5 + Fe +
+    3 SiO2 left in the melt. It holds no Mg and is taken as incompatible:
+    it stays in the melt as it crystallises. Per mole MU_FESIO3 - MU_FEO, so
+    with _metal_mass the iron-bearing units keep their mass and the
+    implied melt Mg is unchanged by the reaction."""
+    return state.n_sio2_free_melt * (MU_FESIO3 - MU_FEO)
+
+
+def _set_kd_d_fe2(state: MeltRedoxState, kd_cell: np.ndarray, M_melt: float) -> None:
+    """'mgsio3_kd': store in ``state.D_fe2_cell`` the D(Fe2+) of solid that
+    forms now from the uniform melt of mass ``M_melt`` [kg] (after metal
+    separation) in each K_D
+    cell (diagnostic; the step itself uses ``_fe_into_new_solid_cells_kd``)."""
+    if M_melt <= 0.0 or state.n_fe2_melt <= 0.0:
+        return
+    M_sil = M_melt - _free_sio2_mass(state)
+    n_mg = float(kdp.melt_n_mg(M_sil, state.n_fe2_melt, state.n_fe3_melt))
+    x_liq = state.n_fe2_melt / (state.n_fe2_melt + max(n_mg, 0.0))
+    c_fe3_solid = state.D_fe3_cell * state.n_fe3_melt / M_melt
+    d = kdp.d_fe2_equilibrium(kd_cell, x_liq, state.n_fe2_melt / M_melt, c_fe3_solid)
+    state.D_fe2_cell = np.where(np.isfinite(kd_cell), d, state.D_fe2_cell)
+
+
+def _fe_into_new_solid_cells_kd(
+    n_fe2: float,
+    n_fe3: float,
+    M_melt_cell: np.ndarray,
+    new_solid_mass: np.ndarray,
+    D_fe2_cell: np.ndarray,
+    D_fe3_cell: np.ndarray,
+    kd_cell: np.ndarray,
+    m_other: float = 0.0,
+) -> tuple[np.ndarray, np.ndarray]:
+    """'mgsio3_kd' Step 4-6: ``_fe_into_new_solid_cells``, with the Fe2+ of
+    every cell where ``kd_cell`` is finite instead split so that the new
+    solid and the residual melt of the cell satisfy the exchange
+    coefficient (partitioning.fe2_into_solid_kd, (Mg,Fe)SiO3 basis). Fe3+
+    and the shallow cells keep the constant-D split. ``m_other`` [kg] is the
+    melt mass that holds no Mg (_free_sio2_mass), shared like the iron."""
+    dn2, dn3 = _fe_into_new_solid_cells(
+        n_fe2, n_fe3, M_melt_cell, new_solid_mass, D_fe2_cell, D_fe3_cell
+    )
+    M_melt_all = float(np.sum(M_melt_cell))
+    melt = M_melt_cell > 0
+    share = np.where(melt, M_melt_cell / M_melt_all, 0.0)
+    s = np.where(
+        melt, np.clip(new_solid_mass / np.where(melt, M_melt_cell, 1.0), 0.0, 1.0), 0.0
+    )
+    use = np.isfinite(kd_cell) & (s > 0.0)
+    if np.any(use):
+        dn2_kd = kdp.fe2_into_solid_kd(
+            share[use] * n_fe2,
+            share[use] * n_fe3,
+            dn3[use],
+            M_melt_cell[use],
+            s[use],
+            kd_cell[use],
+            share[use] * m_other,
+        )
+        dn2 = dn2.copy()
+        dn2[use] = dn2_kd
+    return dn2, dn3
 
 
 def _fe_into_new_solid(
@@ -500,6 +632,9 @@ class MeltRedoxState:
     # Initial FeO1.5 mass fraction of the melt, set from f_0 in Step 2 and held
     # fixed; enters the non-iron melt mass in the metal step.
     w_feo15: float = 0.0
+    # 'mgsio3_kd': SiO2 [mol] that disproportionation of FeSiO3 left in the melt,
+    # 3 per mole of metal; it holds no Mg (_free_sio2_mass).
+    n_sio2_free_melt: float = 0.0
     # Per-cell log10(fO2) from Eq 13 with int(dV dP) (Step 10a), NaN outside
     # the melt or the EOS envelope. Overwritten each step. Diagnostic only;
     # fO2_cell is the uppermost melt cell, the shallowest point of it.
@@ -514,6 +649,10 @@ class MeltRedoxState:
     # True while the global melt fraction is below MELT_FRACTION_MIN (Step 3c)
     melt_exhausted: bool = False
     eos_coverage_logged: bool = False
+    # Step 3d warning issued for the current episode; runtime only, not stored.
+    iron_overflow_logged: bool = False
+    # 'mgsio3_kd' warning that a cell lies outside the K_D fit; runtime only.
+    kd_clamp_logged: bool = False
     X: dict = field(default_factory=_compute_mole_fractions)
 
 
@@ -523,6 +662,7 @@ def _init_state(
     pres: np.ndarray,
     f_0: float,
     coefficient_set: str = 'mgsio3',
+    temp: np.ndarray | None = None,
 ) -> MeltRedoxState:
     """Step 1-2 (Eq 1-3): seed the global Fe3+/Fe2+ reservoirs from the
     interior state at the first call, and the per-cell partition
@@ -549,7 +689,7 @@ def _init_state(
 
     D_fe2_cell, D_fe3_cell = _partition_coefficients(pres, coefficient_set)
 
-    return MeltRedoxState(
+    state = MeltRedoxState(
         n_fe3_melt=n_fe3_0,
         n_fe2_melt=n_fe2_0,
         phi_prev=phi.copy(),
@@ -564,6 +704,12 @@ def _init_state(
         redox_ratio=f_0 / (1.0 - f_0),
         w_feo15=w_feo15,
     )
+    if coefficient_set == 'mgsio3_kd':
+        if temp is None:
+            raise ValueError("partition_coefficients 'mgsio3_kd' needs the cell temperatures")
+        no_solid = np.zeros(np.shape(pres), dtype=bool)
+        _set_kd_d_fe2(state, _kd_cells(state, pres, temp, no_solid), M_melt_0)
+    return state
 
 
 def _metal_saturation_step(
@@ -575,6 +721,7 @@ def _metal_saturation_step(
     eos_model: str = 'deng2020',
     location: str = 'base',
     feo_volume: str = 'komabayashi2014',
+    fesio3_basis: bool = False,
 ) -> float:
     """Step 9a-9h: check the melt for Fe-metal saturation and, if it is
     supersaturated, react it to equilibrium. Returns the reaction extent xi
@@ -598,21 +745,33 @@ def _metal_saturation_step(
     ocean; 'max_afe', the melt cell with the largest a_Fe. With 'base' the
     step is skipped when that cell lies outside the EOS envelope.
     ``feo_volume`` (config.planet.interior_chem.feo_volume) is the liquid FeO
-    volume of the pressure term (eos_deng.FEO_VOLUMES).
+    volume of the pressure term (eos_deng.FEO_VOLUMES). ``fesio3_basis``
+    ('mgsio3_kd') counts the non-iron cations from the current reservoirs in
+    the (Mg,Fe)SiO3 basis instead of the initial FeO fraction, and removes the
+    metal from the melt: the residual melt keeps the 3 SiO2 of each reaction
+    (n_sio2_free_melt) and no Mg is created.
 
-    Mutates ``state`` in place: n_fe2_melt, n_fe3_melt, n_fe_metal_cell and
-    a_fe_cell. Does NOT recompute the derived ratios -- the caller does that
+    Mutates ``state`` in place: n_fe2_melt, n_fe3_melt, n_fe_metal_cell,
+    a_fe_cell and, with ``fesio3_basis``, n_sio2_free_melt. Does NOT
+    recompute the derived ratios -- the caller does that
     via _update_ratios, so the update is skipped when nothing happened.
     """
     # Step 9b: the non-Fe melt is MgSiO3, counted as MgO + SiO2 (two single-cation
     # units, the basis of Schaefer's nsil); without the 2, a_Fe rises ~1.9x.
     state.a_fe_max_cell = -1
     M_melt = float(np.sum(phi * mass))
-    if M_melt <= 0.0:
+    if _melt_mass(state, M_melt) <= 0.0:
         return 0.0
-    # Non-iron mass excludes the FeO and the FeO1.5 of Step 2.
-    n_other = 2.0 * M_melt * (1.0 - W_FET - state.w_feo15) / MU_MGSIO3
     n2, n3 = state.n_fe2_melt, state.n_fe3_melt
+    if fesio3_basis:
+        # 'mgsio3_kd': MgO + SiO2 of the MgSiO3, the SiO2 of each FeSiO3 and the free SiO2
+        M_sil = _melt_mass(state, M_melt) - _free_sio2_mass(state)
+        n_mg = float(kdp.melt_n_mg(M_sil, n2, n3))
+        n_other = 2.0 * max(n_mg, 0.0) + n2 + state.n_sio2_free_melt
+    else:
+        # Non-iron mass excludes the FeO and the FeO1.5 of Step 2; the interior's
+        # melt mass, since the metal that left the melt took no MgSiO3 with it.
+        n_other = 2.0 * M_melt * (1.0 - W_FET - state.w_feo15) / MU_MGSIO3
     n_sil = n_other + n2 + n3
 
     # Step 9d: a_Fe per cell. Only K varies with cell (through T and P); the
@@ -684,6 +843,8 @@ def _metal_saturation_step(
     state.n_fe2_melt = n2 - 3.0 * xi
     state.n_fe3_melt = n3 + 2.0 * xi
     state.n_fe_metal_cell[cstar] += xi
+    if fesio3_basis:
+        state.n_sio2_free_melt += 3.0 * xi
     return xi
 
 
@@ -880,7 +1041,10 @@ _STATE_FLOAT = {
     'ferric_frac': '',
     'redox_ratio': '',
     'w_feo15': '',
+    'n_sio2_free_melt': 'mol',
 }
+# Float fields a snapshot written before they existed may lack; they read as 0.
+_STATE_FLOAT_OPTIONAL = ('n_sio2_free_melt',)
 _STATE_INT = ('a_fe_max_cell', 'fO2_cell')
 _STATE_BOOL = ('melt_exhausted', 'eos_coverage_logged', 'profile_pressure_term')
 
@@ -927,7 +1091,13 @@ def read_tracker_state(fpath: str) -> MeltRedoxState | None:
             if n not in _STATE_CELL_OPTIONAL or 'redox_' + n in ds.variables
         ]
         kw = {n: np.array(ds['redox_' + n][:], dtype=float) for n in cell}
-        kw.update({n: float(ds['redox_' + n][...]) for n in _STATE_FLOAT})
+        kw.update(
+            {
+                n: float(ds['redox_' + n][...])
+                for n in _STATE_FLOAT
+                if n not in _STATE_FLOAT_OPTIONAL or 'redox_' + n in ds.variables
+            }
+        )
         kw.update({n: int(ds['redox_' + n][...]) for n in _STATE_INT})
         kw.update({n: bool(int(ds['redox_' + n][...])) for n in _STATE_BOOL})
     if 'D_fe2_cell' not in kw:
@@ -1003,14 +1173,30 @@ def global_melt_fraction(phi, mass) -> float:
     return float(np.sum(np.asarray(phi, dtype=float) * mass)) / total if total > 0 else 0.0
 
 
-def _advance_or_hold(state: MeltRedoxState, phi: np.ndarray, mass: np.ndarray) -> None:
+def _advance_or_hold(
+    state: MeltRedoxState,
+    phi: np.ndarray,
+    mass: np.ndarray,
+    pres: np.ndarray | None = None,
+    temp: np.ndarray | None = None,
+    coefficient_set: str = 'mgsio3',
+) -> None:
     """Step 3-9 for one later call: hold the state while the global melt
     fraction is below MELT_FRACTION_MIN (Step 3c), otherwise move iron
     between melt and solid for the change from ``state.phi_prev`` to ``phi``.
 
     While held, ``phi_prev`` keeps the last tracked profile, so the first call
     back above the threshold applies the whole change since then: the cells
-    that froze crystallise and the cells that remelted return their iron."""
+    that froze crystallise and the cells that remelted return their iron.
+
+    'mgsio3_kd' needs the cell pressures ``pres`` [Pa] and temperatures
+    ``temp`` [K]: its D(Fe2+) follows K_D(P, T) and the melt composition, and
+    its Step 3d counts Fe2+ as FeSiO3."""
+    kd = coefficient_set == 'mgsio3_kd'
+    if kd and (pres is None or temp is None):
+        raise ValueError(
+            "partition_coefficients 'mgsio3_kd' needs cell pressures and temperatures"
+        )
     if global_melt_fraction(phi, mass) < MELT_FRACTION_MIN:
         if not state.melt_exhausted:
             state.melt_exhausted = True
@@ -1035,11 +1221,13 @@ def _advance_or_hold(state: MeltRedoxState, phi: np.ndarray, mass: np.ndarray) -
     # Step 3 (Eq 4-6): new solid from the decrease in melt fraction; Step 4
     # (Eq 9-11): the previous melt mass per cell carries the reservoirs
     new_solid_mass = mass * np.clip(state.phi_prev - phi, 0.0, None)
-    M_melt_cell = state.phi_prev * mass
+    M_melt_cell = _melt_mass(state, state.phi_prev * mass)
     crystallised = float(np.sum(M_melt_cell)) > 0
+    delta_n_fe2 = delta_n_fe3 = np.zeros_like(phi)
+    kd_cell = _kd_cells(state, pres, temp, new_solid_mass > 0) if kd else None
     if crystallised:
         # Step 5-7 (Eq 12-19): Fe2+/Fe3+ into the new solid, out of the melt
-        delta_n_fe2, delta_n_fe3 = _fe_into_new_solid_cells(
+        args = (
             state.n_fe2_melt,
             state.n_fe3_melt,
             M_melt_cell,
@@ -1047,23 +1235,71 @@ def _advance_or_hold(state: MeltRedoxState, phi: np.ndarray, mass: np.ndarray) -
             state.D_fe2_cell,
             state.D_fe3_cell,
         )
-        state.n_fe3_melt -= float(np.sum(delta_n_fe3))
-        state.n_fe2_melt -= float(np.sum(delta_n_fe2))
-        state.m_solid_cell = state.m_solid_cell + new_solid_mass
-        state.n_fe2_solid_cell = state.n_fe2_solid_cell + delta_n_fe2
-        state.n_fe3_solid_cell = state.n_fe3_solid_cell + delta_n_fe3
+        if kd:
+            delta_n_fe2, delta_n_fe3 = _fe_into_new_solid_cells_kd(
+                *args, kd_cell, _free_sio2_mass(state)
+            )
+        else:
+            delta_n_fe2, delta_n_fe3 = _fe_into_new_solid_cells(*args)
+    n_fe2 = state.n_fe2_melt - float(np.sum(delta_n_fe2)) + float(np.sum(back_fe2))
+    n_fe3 = state.n_fe3_melt - float(np.sum(delta_n_fe3)) + float(np.sum(back_fe3))
 
-    if remelted:
-        state.n_fe2_melt += float(np.sum(back_fe2))
-        state.n_fe3_melt += float(np.sum(back_fe3))
-        state.m_solid_cell = state.m_solid_cell - m_back
-        state.n_fe2_solid_cell = state.n_fe2_solid_cell - back_fe2
-        state.n_fe3_solid_cell = state.n_fe3_solid_cell - back_fe3
+    # Step 3d: the melt cannot hold more iron oxide than its own mass; a step that
+    # would make it so is not applied and the tracker holds as in Step 3c.
+    M_melt = _melt_mass(state, float(np.sum(phi * mass)))
+    mu_fe2, m_other = (MU_FESIO3, _free_sio2_mass(state)) if kd else (MU_FEO, 0.0)
+    if _melt_iron_oxide_exceeds_melt(state, n_fe2, n_fe3, M_melt, mu_fe2, m_other):
+        return
+    state.iron_overflow_logged = False
+
+    state.n_fe2_melt, state.n_fe3_melt = n_fe2, n_fe3
+    state.m_solid_cell = state.m_solid_cell + new_solid_mass - m_back
+    state.n_fe2_solid_cell = state.n_fe2_solid_cell + delta_n_fe2 - back_fe2
+    state.n_fe3_solid_cell = state.n_fe3_solid_cell + delta_n_fe3 - back_fe3
 
     if crystallised or remelted:
         # Step 8-9 (Eq 20-24): ferric fraction and redox ratio
         _update_ratios(state)
+    if kd:
+        _set_kd_d_fe2(state, kd_cell, M_melt)
     state.phi_prev = phi.copy()
+
+
+def _melt_iron_oxide_exceeds_melt(
+    state: MeltRedoxState,
+    n_fe2: float,
+    n_fe3: float,
+    M_melt: float,
+    mu_fe2: float = MU_FEO,
+    m_other: float = 0.0,
+) -> bool:
+    """Step 3d: True when the melt FeO + FeO1.5 of the reservoirs ``n_fe2``,
+    ``n_fe3`` [mol] would weigh more than the melt ``M_melt`` [kg] it is
+    dissolved in, which no mass balance allows. Logs a warning with the mass
+    ratio once per episode (``state.iron_overflow_logged``). ``mu_fe2``
+    [kg/mol] is the mass carried per Fe2+: MU_FEO, or MU_FESIO3 for
+    'mgsio3_kd', where the check means the melt has no Mg left; there
+    ``m_other`` [kg] adds the free SiO2 (_free_sio2_mass). ``M_melt`` is the
+    melt left after metal separation (_melt_mass).
+
+    Constant D < 1 enriches the melt in iron without bound as it vanishes
+    (Step 3c); MELT_FRACTION_MIN normally stops the tracker first, and this
+    check holds it wherever that threshold does not."""
+    M_ox = n_fe2 * mu_fe2 + n_fe3 * MU_FEO15 + m_other
+    if M_melt > 0.0 and M_ox <= M_melt:
+        return False
+    if not state.iron_overflow_logged:
+        state.iron_overflow_logged = True
+        log.warning(
+            'Melt redox tracking: this step would leave %.3e kg of FeO + FeO1.5 in '
+            '%.3e kg of melt (ratio %.3g > 1); the step is not applied and '
+            'ferric_frac=%.6f is held until the melt can carry its iron again',
+            M_ox,
+            M_melt,
+            M_ox / M_melt if M_melt > 0.0 else float('inf'),
+            state.ferric_frac,
+        )
+    return True
 
 
 def update_melt_redox(interior_o: Interior_t, hf_row: dict, config: Config) -> None:
@@ -1099,10 +1335,11 @@ def update_melt_redox(interior_o: Interior_t, hf_row: dict, config: Config) -> N
 
     first_call = interior_o.redox_state is None
 
+    coefficient_set = str(config.planet.interior_chem.partition_coefficients)
+    temp = np.asarray(interior_o.temp, dtype=float)
     if first_call:
         f_0 = float(config.planet.interior_chem.ferric_fraction_initial)
-        coefficient_set = str(config.planet.interior_chem.partition_coefficients)
-        interior_o.redox_state = _init_state(phi, mass, pres, f_0, coefficient_set)
+        interior_o.redox_state = _init_state(phi, mass, pres, f_0, coefficient_set, temp)
         interior_o.redox_state.melt_exhausted = (
             global_melt_fraction(phi, mass) < MELT_FRACTION_MIN
         )
@@ -1120,7 +1357,7 @@ def update_melt_redox(interior_o: Interior_t, hf_row: dict, config: Config) -> N
                 f'Melt-redox state has {state.phi_prev.size} cells but the interior '
                 f'grid has {phi.size}; a resumed state must match the run grid'
             )
-        _advance_or_hold(state, phi, mass)
+        _advance_or_hold(state, phi, mass, pres, temp, coefficient_set)
 
     state = interior_o.redox_state
 
@@ -1129,9 +1366,16 @@ def update_melt_redox(interior_o: Interior_t, hf_row: dict, config: Config) -> N
     xi = 0.0
     checked = react and not first_call and not state.melt_exhausted
     if checked:
-        temp = np.asarray(interior_o.temp, dtype=float)
         xi = _metal_saturation_step(
-            state, temp, pres, phi, mass, eos_model, location, feo_volume
+            state,
+            temp,
+            pres,
+            phi,
+            mass,
+            eos_model,
+            location,
+            feo_volume,
+            fesio3_basis=coefficient_set == 'mgsio3_kd',
         )
         if xi != 0.0:
             _update_ratios(state)
@@ -1139,7 +1383,6 @@ def update_melt_redox(interior_o: Interior_t, hf_row: dict, config: Config) -> N
     # Step 10a: diagnostic radial fO2 profile, Eq 13 at each cell's (T, P) with
     # int(dV dP) and IW_H21(T, P); at 1 bar unless metal saturation or fO2_pressure_term.
     with_p = react or bool(config.planet.interior_chem.fO2_pressure_term)
-    temp = np.asarray(interior_o.temp, dtype=float)
     P_gpa = pres / 1e9
     melt = phi > 0.0
     prof, _ = _log10_fO2_profile(

@@ -59,9 +59,9 @@ def test_non_finite_ini_dsdr_is_rejected_in_every_mode(mode, dsdr):
     assert 'planet.ini_dsdr' in str(exc.value)
 
 
-@pytest.mark.parametrize('choice', ['mgsio3', 'bulk_BSE'])
+@pytest.mark.parametrize('choice', ['mgsio3', 'bulk_BSE', 'mgsio3_kd'])
 def test_partition_coefficient_prescriptions_are_accepted(choice):
-    """Both redox-tracker prescriptions are valid, and mgsio3 is the default."""
+    """Every redox-tracker prescription is valid, and mgsio3 is the default."""
     assert InteriorChem(partition_coefficients=choice).partition_coefficients == choice
     assert InteriorChem().partition_coefficients == 'mgsio3'
 

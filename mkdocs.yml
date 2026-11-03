@@ -91,6 +91,7 @@ nav:
           - Interior chemistry:
               - Pressure term of the Fe3+/Fe2+ equilibria (eos_deng.py): Validation/interior_chem/eos_deng.md
               - Melt Fe3+/Fe2+ against Schaefer et al. 2024 (redox.py): Validation/interior_chem/redox.md
+              - Fe-Mg exchange partitioning (partitioning.py): Validation/interior_chem/partitioning.md
           - Interior structure:
               - Liquidus-super IC anchor (zalmoxis.py): Validation/interior_struct/zalmoxis.md
           - Orbit:

@@ -150,7 +150,7 @@ $$
 \frac{\min\left[m_i(\phi_i-\phi_i^{\rm prev}),\,M_{s,i}\right]}{M_{s,i}}\,n_{s,i}^{2+,3+}
 $$
 
-to the melt reservoirs. Solid that was present at the first step holds no tracked iron, so remelting it adds melt mass but no iron. Fe metal is not redissolved.
+to the melt reservoirs. Solid that was present at the first step holds no tracked iron, so remelting it adds melt mass but no iron. Fe metal is not redissolved. Metal that forms leaves the melt: from the next step on, the melt mass over which the reservoirs are spread (Steps 4-6) and against which Step 3d weighs the iron oxides is the interior's melt mass less the metal formed so far, $\left(3\mu_{\rm FeO}-2\mu_{\rm FeO_{1.5}}\right)\sum_i n_{{\rm met},i}$. The metal step's MgSiO$_3$ count is unchanged by this, since the metal takes none with it.
 
 ### 3. Assume a homogeneous melt
 
@@ -196,7 +196,7 @@ $$
 
 Each term lies between 0 and $n_i$ for any $s_i$ and $D_i\geq0$, and a cell whose melt freezes completely ($s_i=1$) moves all of its share into the solid. The same step is Schaefer et al.'s mass balance, so fed their coefficients and solid fractions the tracker reproduces their run to round-off.
 
-Both coefficients depend on the mineral assemblage, selected from the cell pressure at the first step. `planet.interior_chem.partition_coefficients` chooses between two prescriptions.
+Both coefficients depend on the mineral assemblage, selected from the cell pressure at the first step. `planet.interior_chem.partition_coefficients` chooses between three prescriptions; the third, `"mgsio3_kd"`, recomputes the lower-mantle $D^{2+}$ at every step.
 
 #### `"mgsio3"` (default): bridgmanite and pyroxenes
 
@@ -239,6 +239,42 @@ Each cell takes the bulk coefficient of the full mineral assemblage of the Schae
 
 Their runs never reach $P<1$ GPa, so that layer repeats the 1-2.5 GPa values. On their crystallization sequence this prescription follows their mean Fe$^{3+}$/Fe$_{\rm T}$ within 0.005; the `"mgsio3"` prescription follows its shape but differs by up to 0.04, because it has no transition-zone phases and no olivine. [The validation page](../Validation/interior_chem/redox.md) gives both comparisons.
 
+#### `"mgsio3_kd"`: pressure- and temperature-dependent Fe$^{2+}$ in bridgmanite and post-perovskite
+
+Below 22 GPa and for Fe$^{3+}$ everywhere this prescription keeps the `"mgsio3"` values. At $P\geq22$ GPa the Fe$^{2+}$ split follows the Fe-Mg exchange coefficient
+
+$$
+K_D=\frac{X^{s}_{\rm Fe}\,X^{l}_{\rm Mg}}{X^{l}_{\rm Fe}\,X^{s}_{\rm Mg}}
+=\exp\!\left[-\frac{\Delta H-T\Delta S+P\Delta V}{RT}\right],
+\qquad X_{\rm Fe}=\frac{\rm Fe^{2+}}{\rm Fe^{2+}+Mg},
+$$
+
+with the exchange parameters of first-principles molecular dynamics and thermodynamic integration:
+
+| Phase | Pressure | $\Delta H$ (kJ/mol) | $\Delta S$ (J/mol/K) | $\Delta V$ (cm$^3$/mol) | Fitted range | Source |
+|---|---:|---:|---:|---:|---|---|
+| Bridgmanite | $22\leq P<180$ GPa | $-19.66\pm10.90$ | $-12.04\pm3.28$ | $0.53\pm0.05$ | 23-140 GPa, 3000-6000 K | Dragulet & Stixrude (2024)[^cite-dragulet2024], Fig. 4 |
+| Post-perovskite | $P\geq180$ GPa | $122\pm64$ | $12.9\pm11.2$ | $0.52\pm0.09$ | 156-603 GPa, 6000-10000 K | Dragulet & Stixrude (2026)[^cite-dragulet2026], Eq. 8 |
+
+The phase changes at the 180 GPa bridgmanite-post-perovskite-melt triple point that the 2026 study takes from Deng et al. (2023). Both studies find $K_D$ independent of $X_{\rm Fe}$, so one value serves the whole MgSiO$_3$-FeSiO$_3$ join. The cell temperature is clamped into the fitted range, for bridgmanite extended to 6500 K because the 2026 study evaluates the 2024 fit at the triple point and quotes $K_D=0.057$ there; the fit gives that value at about 6430 K, a temperature inferred here, not stated in the study. Post-perovskite above 603 GPa takes the 603 GPa value. A run that clamps a crystallising cell logs a warning once. At 4000 K bridgmanite gives $K_D\approx0.29$ at 25 GPa and 0.049 at 136 GPa.
+
+Because $K_D$ fixes cation ratios, this prescription counts the melt in the (Mg,Fe)SiO$_3$ basis: Fe$^{2+}$ as FeSiO$_3$, Fe$^{3+}$ as FeO$_{1.5}$, and the rest of the melt mass as MgSiO$_3$. Mg is not tracked; a phase of mass $m$ holds
+
+$$
+n_{\rm Mg}=\frac{m-n^{2+}\mu_{\rm FeSiO_3}-n^{3+}\mu_{\rm FeO_{1.5}}}{\mu_{\rm MgSiO_3}},
+$$
+
+so Mg is conserved whenever the cell mass is. When metal forms, $3\,{\rm FeSiO_3}=2\,{\rm FeO_{1.5}}+{\rm Fe}+3\,{\rm SiO_2}$: the metal leaves the melt and the three SiO$_2$ stay in it, so the melt mass entering $n_{\rm Mg}$ is the melt left after metal separation (as for every prescription) less the free SiO$_2$, in all $\xi(\mu_{\rm Fe}+3\mu_{\rm SiO_2})$ summed over the metal formed. This keeps the reaction from adding MgSiO$_3$ (2.35 mol of Mg per mole of metal otherwise). The free SiO$_2$ is taken as incompatible: it stays in the melt as it crystallizes, and adds to the iron-oxide mass of Step 3d. In each deep cell the Fe$^{3+}$ split is the constant-$D$ one above, and the Fe$^{2+}$ entering the solid, $\Delta n_i^{2+}$, is the root of
+
+$$
+X_{\rm Fe}\big(\text{solid}\big)-\frac{K_D\,X}{1-(1-K_D)\,X}=0,
+\qquad X=X_{\rm Fe}\big(\text{residual melt of the cell}\big),
+$$
+
+so the solid formed in a step is in exchange equilibrium with the melt it leaves; the left side rises monotonically with $\Delta n_i^{2+}$ and the root is found by bisection. Many small steps converge to fractional crystallization. Under this basis a melt and solid of the same composition have $D^{2+}=1$, so the melt approaches pure FeSiO$_3$ instead of passing it; with Fe$^{2+}$ counted as FeO, the two phases would differ in concentration even then. Step 3d of the tracker (melt iron heavier than the melt) counts Fe$^{2+}$ as FeSiO$_3$, so it means the melt has no Mg left, and the metal step counts its non-iron cations (MgO, SiO$_2$ of MgSiO$_3$ and FeSiO$_3$, and the free SiO$_2$) from the current reservoirs.
+
+The stored `D_fe2_cell` is the concentration ratio of solid that would form from the current melt. It is lower than the 0.44 of `"mgsio3"` throughout the lower mantle and falls with depth: in a melt with the starting composition about 0.30 at 30 GPa and 3600 K, 0.23 at 50 GPa and 4800 K. It rises as the melt enriches in iron. Fe$^{3+}$ keeps $D^{3+}=0.75$ in bridgmanite and post-perovskite alike; the $K_D$ studies treat ferrous iron only, and no post-perovskite $D^{3+}$ is constrained, so the ratio $D^{3+}/D^{2+}$, which drives the change of Fe$^{3+}$/Fe$_{\rm T}$, is the least constrained part of this prescription.
+
 ### 5. Update the reservoirs and redox ratio
 
 The iron removed into the new solid is subtracted from the melt reservoirs:
@@ -271,7 +307,7 @@ $$
 
 Iron that entered the solid returns to the melt when its cell remelts (Section 2), which changes $R$ towards the ratio of the remelted solid.
 
-When the global melt fraction $\sum_i\phi_i m_i/\sum_i m_i$ falls below 0.05 (`MELT_FRACTION_MIN`), the tracker holds its state: the reservoirs, $f$ and the last tracked melt fractions $\phi_i^{\rm prev}$. With constant $D<1$, fractional crystallization enriches the melt in iron as $C\propto F^{D-1}$, which has no bound as the melt fraction $F$ goes to zero; with the `"mgsio3"` $D^{2+}$ of 0.44-0.535, the melt FeO + FeO$_{1.5}$, 0.09 of the melt mass at the start, reaches 0.36-0.48 of it at $F=0.05$ and would exceed the melt mass below $F=0.006$-0.014. Surface $\Delta$IW is still evaluated on every step from the held $f$. If the melt fraction rises above 0.05 again, for example after a giant impact, the next call applies the whole change since the last tracked profile: cells that froze further crystallize and cells that remelted return their iron.
+When the global melt fraction $\sum_i\phi_i m_i/\sum_i m_i$ falls below 0.05 (`MELT_FRACTION_MIN`), the tracker holds its state: the reservoirs, $f$ and the last tracked melt fractions $\phi_i^{\rm prev}$. With constant $D<1$, fractional crystallization enriches the melt in iron as $C\propto F^{D-1}$, which has no bound as the melt fraction $F$ goes to zero; with the `"mgsio3"` $D^{2+}$ of 0.44-0.535, the melt FeO + FeO$_{1.5}$, 0.09 of the melt mass at the start, reaches 0.36-0.48 of it at $F=0.05$ and would exceed the melt mass below $F=0.006$-0.014. As a mass-balance check on every tracked step, a step that would leave more FeO + FeO$_{1.5}$ in the melt than the melt mass is not applied: the tracker holds in the same way and logs a warning with the mass ratio, which covers any case the 0.05 threshold misses. Surface $\Delta$IW is still evaluated on every step from the held $f$. If the melt fraction rises above 0.05 again, for example after a giant impact, the next call applies the whole change since the last tracked profile: cells that froze further crystallize and cells that remelted return their iron.
 
 ## From melt redox to surface $f_{\rm O_2}$
 
@@ -469,5 +505,9 @@ This figure uses $D^{2+}=0.85$ at all depths and the earlier first-order crystal
 [^cite-hirschmann2022]: Hirschmann, M.M., *Magma oceans, iron and chromium redox, and the origin of comparatively oxidized planetary mantles*, Geochimica et Cosmochimica Acta, 328, 221-241, 2022.
 
 [^cite-hirschmann2021]: Hirschmann, M.M., *Iron-wüstite revisited: A revised calibration accounting for variable stoichiometry and the effects of pressure*, Geochimica et Cosmochimica Acta, 313, 74-84, 2021.
+
+[^cite-dragulet2024]: Dragulet, F. & Stixrude, L., *Partitioning of Iron Between (Mg,Fe)SiO3 Liquid and Bridgmanite*, Geophysical Research Letters, 51, e2023GL107979, 2024.
+
+[^cite-dragulet2026]: Dragulet, F. & Stixrude, L., *Incompatibility of iron in post-perovskite and the stability of basal magma oceans in super-Earths*, arXiv:2609.13527 (preprint), 2026.
 
 [^cite-mallmann2009]: Mallmann, G. & O'Neill, H.St.C., *The crystal/melt partitioning of V during mantle melting as a function of oxygen fugacity compared with some other elements (Al, P, Ca, Sc, Ti, Cr, Fe, Ga, Y, Zr and Nb)*, Journal of Petrology, 50, 1765-1794, 2009.

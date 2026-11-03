@@ -223,8 +223,16 @@ class InteriorChem:
         each Schaefer et al. (2024) layer (boundaries 1, 2.5, 15, 18,
         22 GPa) for their bulk-silicate-Earth magma ocean, the medians over
         all draws of their archived 1000 km run; this follows their mean
-        Fe3+/FeT. Read only when ``planet.fO2_source = 'from_mantle_redox'``; a
-        resumed run keeps the coefficients it started with.
+        Fe3+/FeT.
+        'mgsio3_kd': 'mgsio3', but at P >= 22 GPa the Fe2+ split follows the
+        Fe-Mg exchange coefficient K_D(P, T) of bridgmanite (Dragulet &
+        Stixrude 2024) and, at P >= 180 GPa, post-perovskite (Dragulet &
+        Stixrude 2026), recomputed every step from the cell temperature and
+        the melt composition in the (Mg,Fe)SiO3 basis
+        (``interior_chem/partitioning.py``); Fe3+ keeps the 'mgsio3' values.
+        Read only when ``planet.fO2_source = 'from_mantle_redox'``; a
+        resumed run keeps the coefficients it started with, except that
+        'mgsio3_kd' recomputes D(Fe2+) each step.
     redox_dV_eos: str
         Melt equation of state for the volume change of FeO -> FeO1.5 in the
         pressure term int(dV dP) of the melt-redox tracker
@@ -276,13 +284,15 @@ class InteriorChem:
     ferric_fraction_initial: float = field(default=0.1, validator=(gt(0), lt(1)))
 
     # Fe-metal saturation step of the redox tracker (redox.py Step 9). False
-    # keeps the a_Fe diagnostic but forms no metal. Only read under
+    # skips the step: a_Fe is not evaluated and no metal forms. Only read under
     # planet.fO2_source = 'from_mantle_redox'.
     metal_saturation: bool = field(default=False)
 
     # Partition-coefficient prescription of the redox tracker
     # (redox.py Step 5-6). Only read under planet.fO2_source = 'from_mantle_redox'.
-    partition_coefficients: str = field(default='mgsio3', validator=in_(('mgsio3', 'bulk_BSE')))
+    partition_coefficients: str = field(
+        default='mgsio3', validator=in_(('mgsio3', 'bulk_BSE', 'mgsio3_kd'))
+    )
 
     # Melt EOS of the redox pressure term (eos_deng.MODELS). Only read under
     # planet.fO2_source = 'from_mantle_redox' with metal_saturation or
