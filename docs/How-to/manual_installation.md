@@ -123,6 +123,13 @@ conda env config vars set -n proteus PYTHON_JULIAPKG_EXE="$(julia +1.13 --startu
 conda deactivate && conda activate proteus
 ```
 
+Give this install its own Julia packages and compile files, so that it shares them with no other install and leaves `~/.julia` as it is. Keep the colon at the end: it keeps the compile files that come with Julia and does not add `~/.julia`. If you skip this step, the packages go to `~/.julia`, shared, and `proteus doctor` warns:
+
+```console
+conda env config vars set -n proteus JULIA_DEPOT_PATH="$CONDA_PREFIX/julia_depot:"
+conda deactivate && conda activate proteus
+```
+
 ## 4. Create environment variables and clone PROTEUS
 
 The `FWL_DATA` environment variable points to the folder where PROTEUS stores

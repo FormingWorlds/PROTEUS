@@ -18,11 +18,12 @@ The VSCode server takes up a lot of space.
 
 If you have already installed Julia in your home folder, remove it and any bashrc entries.
 
-Then set the variables in your bashrc file:
+Then set this variable in your bashrc file:
 ```bash
 export JULIAUP_DEPOT_PATH=/data/$USER/.juliaup/
-export JULIA_DEPOT_PATH=/data/$USER/.julia/
 ```
+
+Do not set `JULIA_DEPOT_PATH` there for PROTEUS: `bash install.sh` keeps the Julia packages of each install in its conda environment, which the steps below place in `/data`. With a value in your bashrc, the installer keeps it and all your installs share that one folder.
 
 Set your module config in your bashrc too:
 ```bash

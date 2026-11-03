@@ -3014,7 +3014,8 @@ class TestAgniJuliaVersion:
         lines = INSTALL_SH.read_text().splitlines()
         start = lines.index('    info "AGNI already installed at $SCRIPT_DIR/AGNI"')
         assert lines[start + 1] == '    note_agni_julia_version "$SCRIPT_DIR/AGNI"'
-        assert lines[start + 2] == 'else'
+        assert lines[start + 2] == '    instantiate_julia_project "$SCRIPT_DIR/AGNI"'
+        assert lines[start + 3] == 'else'
 
 
 class TestNoJuliaInstall:
@@ -4419,11 +4420,11 @@ class TestFailedStepsEndInDie:
     def test_every_logged_step_ends_in_die_warn_or_true(self):
         """Each run_logged statement is in an `if !`, or ends in `|| die`, `|| warn` or `|| true`.
 
-        Under set -e a bare failing step ends the run with no failure block. The 9
+        Under set -e a bare failing step ends the run with no failure block. The 11
         statements are counted, so a scan that finds none fails.
         """
         statements = _run_logged_statements()
-        assert len(statements) == 9
+        assert len(statements) == 11
         bare = [
             s
             for s in statements
@@ -4976,7 +4977,10 @@ class TestJuliaDepot:
             + f'SCRIPT_DIR={shlex.quote(str(tmp / "root"))}\n'
             + 'PROTEUS_ENV_FILE="$SCRIPT_DIR/.proteus-env.sh"\nINSTALL_VAR_NAMES=""\n'
             + 'JULIA_DEPOT_OLD=""\nFAILED_MODULES=""\n'
-            + ''.join(_install_sh_function(f) for f in _DEPOT_FUNCTIONS)
+            + 'LOGFILE=""\n'
+            + ''.join(
+                _install_sh_function(f) for f in (*_RUN_LOGGED_FUNCTIONS, *_DEPOT_FUNCTIONS)
+            )
         )
         report = (
             'setup_julia_depot\nprintf "DEPOT=%s\\n" "$JULIA_DEPOT_PATH"\n'
@@ -4995,12 +4999,13 @@ class TestJuliaDepot:
             full_env['JULIA_DEPOT_PATH'] = value
         result = subprocess.run(
             ['bash', '-c', defs + report],
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
             text=True,
             env=full_env,
             timeout=25,
         )
-        assert result.returncode == 0, result.stdout + result.stderr
+        assert result.returncode == 0, result.stdout
         return result
 
     @staticmethod
@@ -5043,7 +5048,7 @@ class TestJuliaDepot:
         result = self._call(site, own)
         assert self._value(result) == own
         assert 'shares' not in result.stdout
-        assert 'WARN' not in result.stdout + result.stderr
+        assert 'WARN' not in result.stdout
 
     @pytest.mark.parametrize(
         'value',
@@ -5076,8 +5081,8 @@ class TestJuliaDepot:
             (other / 'install.sh').write_text('')
         result = self._call(site, f'{other}/julia_depot:')
         assert self._value(result) == f'{site["tmp"] / "prefix"}/julia_depot:'
-        assert str(other) in result.stdout + result.stderr
-        assert 'another PROTEUS install' in result.stdout + result.stderr
+        assert str(other) in result.stdout
+        assert 'another PROTEUS install' in result.stdout
 
     def test_tree_marker_needs_both_files(self, site):
         """A folder with install.sh alone is no PROTEUS tree, so its depot stays."""
@@ -5151,7 +5156,7 @@ class TestJuliaDepot:
         env_project.mkdir()
         (env_project / 'Manifest.toml').write_text('m')
         result = self._call(site, STUB_RC='1')
-        both = result.stdout + result.stderr
+        both = result.stdout
         assert 'Could not install the Julia packages' in both
         assert 'Pkg.instantiate()' in both
         assert self._value(result, 'OLD') != ''
@@ -5162,23 +5167,38 @@ class TestJuliaDepot:
         ids=['has-lovepy', 'other-package', 'no-environment'],
     )
     def test_lovepy_of_the_old_default_environment_comes_along(self, site, text, called):
-        """LovePy lives in the default environment of the depot, so a move leaves it behind."""
+        """LovePy lives in the default environment of the depot, so a move leaves it behind.
+
+        The step runs from the root, and its failure warns with the command to repeat.
+        """
         (site['tmp'] / 'root' / 'AGNI').mkdir()
         (site['tmp'] / 'root' / 'AGNI' / 'Manifest.toml').write_text('m')
         if text:
             env_dir = site['tmp'] / 'home' / '.julia' / 'environments' / 'v1.13'
             env_dir.mkdir(parents=True)
             (env_dir / 'Project.toml').write_text(text)
-        after = 'install_further_module() { printf "FURTHER=%s\\n" "$*"; }\nreinstall_moved_lovepy\n'
+        after = 'run_logged() { printf "FURTHER=%s\\n" "$*"; }\nreinstall_moved_lovepy\n'
         out = self._call(site, after=after).stdout
-        assert ('FURTHER=LovePy bash tools/get_lovepy.sh' in out) is called
+        assert ('bash tools/get_lovepy.sh\n' in out and 'FURTHER=' in out) is called
+
+    def test_failed_lovepy_step_warns_and_goes_on(self, site):
+        """A failed LovePy step names its repeat and does not stop the install."""
+        (site['tmp'] / 'root' / 'AGNI').mkdir()
+        (site['tmp'] / 'root' / 'AGNI' / 'Manifest.toml').write_text('m')
+        env_dir = site['tmp'] / 'home' / '.julia' / 'environments' / 'v1.13'
+        env_dir.mkdir(parents=True)
+        (env_dir / 'Project.toml').write_text('LovePy = "abc"\n')
+        after = 'run_logged() { return 3; }\nreinstall_moved_lovepy\necho WENT_ON\n'
+        out = self._call(site, after=after).stdout
+        assert 'To repeat the step: bash tools/get_lovepy.sh' in out
+        assert 'WENT_ON' in out
 
     def test_no_move_keeps_lovepy_alone(self, site):
         """With no move the old depot is not read, and LovePy needs no step."""
         env_dir = site['tmp'] / 'home' / '.julia' / 'environments' / 'v1.13'
         env_dir.mkdir(parents=True)
         (env_dir / 'Project.toml').write_text('LovePy = "abc"\n')
-        after = 'install_further_module() { printf "FURTHER=%s\\n" "$*"; }\nreinstall_moved_lovepy\n'
+        after = 'run_logged() { printf "FURTHER=%s\\n" "$*"; }\nreinstall_moved_lovepy\n'
         assert 'FURTHER=' not in self._call(site, after=after).stdout
 
     def test_order_in_the_script(self):

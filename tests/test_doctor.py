@@ -3837,7 +3837,9 @@ class TestJuliaDepot:
             e.replace('~', home) for e in expected
         ]
 
-    @given(st.text(alphabet=st.sampled_from(['/a', '/b', ':', ' ', '~', 'é']), max_size=12))
+    @given(
+        st.lists(st.sampled_from(['/a', '/b', ':', ' ', '~', 'é']), max_size=12).map(''.join)
+    )
     @hyp_settings(max_examples=200, suppress_health_check=[HealthCheck.function_scoped_fixture])
     def test_entries_hold_for_any_value(self, site, value):
         """Any value gives a list of distinct non-empty folders, none of them a bare colon."""

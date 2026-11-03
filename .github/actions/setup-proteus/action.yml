@@ -3,8 +3,8 @@ description: >
   Cross-platform PROTEUS environment setup. Installs Python + Julia, the
   system packages SOCRATES needs, the editable Python submodules, the
   AGNI clone (at the pinned ref), and primes the SOCRATES build + Julia
-  depot + FWL_DATA caches. Exports RAD_DIR, FWL_DATA, AGNI_DIR,
-  JULIA_DEPOT_PATH as workflow env vars.
+  depot (the default ~/.julia) + FWL_DATA caches. Exports RAD_DIR, FWL_DATA and
+  AGNI_DIR as workflow env vars.
 
 inputs:
   python-version:

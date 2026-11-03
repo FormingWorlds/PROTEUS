@@ -941,7 +941,8 @@ def _install_vars(root: Path, fwl_data: Path, rad_dir: Path | None) -> dict[str,
     executable file (``proteus_julia_exe``), because ``install.sh`` points it
     at the real binary of Julia 1.13; a ``julia`` on ``PATH`` can be another
     version or the juliaup launcher, so it is never taken. ``FC_DIR``
-    appears only when the FastChem program is built.
+    appears only when the FastChem program is built. ``JULIA_DEPOT_PATH``
+    appears only when it is set; this command never chooses a depot.
 
     Parameters
     ----------
@@ -979,6 +980,9 @@ def _install_vars(root: Path, fwl_data: Path, rad_dir: Path | None) -> dict[str,
     program = fastchem / 'fastchem'
     if program.is_file() and os.access(program, os.X_OK):
         variables['FC_DIR'] = str(fastchem.resolve())
+    depot = os.environ.get('JULIA_DEPOT_PATH')
+    if depot:
+        variables['JULIA_DEPOT_PATH'] = depot
     return variables
 
 
