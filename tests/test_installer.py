@@ -3467,7 +3467,10 @@ class TestSetupCondaEnv:
         self._existing_env(site, 'proteus')
         result = self._whole_script_stop(site, tmp_path, STUB_BOUND_DEPOT='rel:')
         assert 'JULIA_DEPOT_PATH=rel:' in result.stdout
-        assert 'conda env config vars unset JULIA_DEPOT_PATH' in result.stdout
+        out = result.stdout
+        assert out.index('conda env config vars unset JULIA_DEPOT_PATH') < out.index(
+            'conda deactivate'
+        )
         assert ['activate', 'proteus'] in _conda_calls(site['log'])
 
     def test_whole_script_on_pixi_names_the_manifest_in_the_stop(self, site, tmp_path):
@@ -5201,8 +5204,15 @@ class TestJuliaDepot:
             in (site['tmp'] / 'root' / '.proteus-env.sh').read_text()
         )
         assert 'shares' in result.stdout
-        assert 'conda env config vars unset' in result.stdout
         assert 'new shell' in result.stdout
+        out = result.stdout
+        prefix = site['tmp'] / 'prefix'
+        unset = f'conda env config vars unset -p {prefix} JULIA_DEPOT_PATH'
+        assert (
+            out.index(unset)
+            < out.index('conda deactivate')
+            < out.index(f'conda activate {prefix}')
+        )
 
     def test_value_kept_on_pixi_names_the_manifest(self, site):
         """A shell value and conda play no part on pixi, so the line names pixi.toml."""
@@ -5448,7 +5458,8 @@ class TestJuliaDepot:
         home = site['tmp'] / 'home'
         prefix = site['tmp'] / 'prefix'
         assert f'conda env config vars set -p {prefix} JULIA_DEPOT_PATH={home}/.julia:' in out
-        assert f'conda activate {prefix}' in out
+        # Conda does not load a changed value when the same env is activated again.
+        assert out.index('conda deactivate') < out.index(f'conda activate {prefix}')
         assert f'JULIA_DEPOT_PATH={home}/.julia: bash install.sh' not in out
         assert 'macOS arm64' in out
         assert self._marker(site) == f'{home}/.julia'
