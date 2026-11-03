@@ -206,8 +206,11 @@ Correlated-k opacity tables used by the atmosphere climate modules
 (AGNI, JANUS). Selected via `atmos_clim.spectral_group` and
 `atmos_clim.spectral_bands` in the config. Stored under
 `$FWL_DATA/atmos_clim/spectral_files/<group>/<bands>/r<record-id>/`, with the group name in lower case.
-For a full description of each group's spectral coverage and gas
-species, see `docs/assets/spectral_files.pdf` in the PROTEUS repository.
+For the spectral coverage and gas species of Honeyside, Dayspring,
+Frostflow and Oak, see `docs/assets/spectral_files.pdf` in the PROTEUS
+repository. For the other groups, the Zenodo record of each file lists
+its line and continuum absorbers and the sources of their data; the
+record id is the `r<record-id>` folder name.
 
 | Group | Available band counts | Notes |
 |---|---|---|
