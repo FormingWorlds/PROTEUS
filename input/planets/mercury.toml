@@ -32,9 +32,9 @@ config_version = "3.0"
         starinst              = 1e2          # recalculate instellation interval [yr]
         method                = "adaptive"   # proportional | adaptive | maximum
         propconst             = 52.0         # proportionality constant (proportional method)
-        atol                  = 0.03         # step size absolute tolerance (adaptive method)
-        rtol                  = 0.25         # step size relative tolerance (adaptive method)
-        scale_incr            = 1.6          # growth factor on successful adaptive step
+        atol                  = 0.02         # step size absolute tolerance (adaptive method)
+        rtol                  = 0.24         # step size relative tolerance (adaptive method)
+        scale_incr            = 1.5          # growth factor on successful adaptive step
         scale_decr            = 0.8          # shrink factor on rejected adaptive step
         window                = 3            # lookback window for adaptive comparison [steps]
         max_growth_factor     = 0.0          # cap on dt growth ratio between consecutive steps; 0 = disabled
@@ -445,10 +445,10 @@ config_version = "3.0"
     module                    = "agni"       # agni | janus | dummy
 
     # Grid and spectral setup (shared by agni + janus)
-    spectral_group            = "Proudspire"  # opacity k-table set; see docs/assets/spectral_files.pdf
+    spectral_group            = "Proudspire"  # opacity k-table set
     spectral_bands            = "32"         # wavenumber bands in k-table
-    num_levels                = 35           # vertical atmosphere levels (min 15)
-    p_top                     = 1.0e-3       # top-of-atmosphere pressure [bar]
+    num_levels                = 40           # vertical atmosphere levels (min 15)
+    p_top                     = 1.0e-4       # top-of-atmosphere pressure [bar]
     p_obs                     = 'none'       # observation pressure level [bar] (transit radius)
     overlap_method            = "ee"         # gas overlap: ro | rorr | ee (equivalent extinction)
 
@@ -531,14 +531,14 @@ config_version = "3.0"
 [escape]
     module                    = "zephyrus"   # zephyrus | dummy
     reservoir                 = "outgas"     # reservoir setting escaping composition
-    step_max_frac             = 0.95         # max timestep fraction of PROTEUS step
+    step_max_frac             = 0.90         # max timestep fraction of PROTEUS step
     step_dt_floor_frac        = 0.50         # min timestep fraction of PROTEUS step
 
 
     [escape.zephyrus]
         Pxuv                  = 5e-5         # XUV opacity pressure level [bar]
         efficiency            = 0.1          # escape efficiency
-        tidal                 = false        # tidal contribution
+        tidal                 = true        # tidal contribution
 
     [escape.dummy]
         rate                  = 0.0          # bulk escape rate [kg s-1]
