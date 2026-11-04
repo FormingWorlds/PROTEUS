@@ -806,7 +806,7 @@ done
         user = getuser()
         log.info('')
         log.info('Submit to Slurm using:')
-        log.info('    `sbatch %s`', slurm_path)
+        log.info('    `sbatch --export=ALL %s`', slurm_path)
         log.info('')
         log.info('To look at the Slurm queue:')
         log.info('    `squeue` or `squeue -u %s`', user)
