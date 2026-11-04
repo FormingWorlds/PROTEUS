@@ -42,6 +42,7 @@ from proteus.interior_energetics.aragog_phase import (
 )
 from proteus.interior_energetics.common import Interior_t
 from proteus.utils.constants import FEI2021_LIQUIDUS_P_CALIB_PA, TDEP_EOS_PREFIXES
+from proteus.utils.constants import secs_per_year
 from proteus.interior_energetics.timestep import next_step
 from proteus.interior_energetics.wrapper import get_core_density, get_core_heatcap
 from proteus.utils.constants import radnuc_data
@@ -514,6 +515,59 @@ def resolve_core_density(
         return rho_core_mesh
 
     return rho_core
+
+
+def _lid_surface_of_row(hf_row: dict, surface_bc_mode: str, lid_on: bool) -> float | None:
+    """Surface temperature [K] that the Aragog lid takes from the atmosphere, or None.
+
+    Parameters
+    ----------
+    hf_row : dict
+        Current helpfile row, with ``T_surf`` from the atmosphere.
+    surface_bc_mode : str
+        Interior surface boundary condition; only ``'flux'`` has a surface to take.
+    lid_on : bool
+        Whether the lid runs with its base at the solidus.
+
+    Returns
+    -------
+    float or None
+        ``T_surf``, or None when the lid takes the flux value or no lid runs.
+    """
+    T_surf = float(hf_row.get('T_surf', 0.0))
+    return T_surf if lid_on and surface_bc_mode == 'flux' and T_surf > 0.0 else None
+
+
+def _surface_flux_of_step(
+    out, hf_row: dict, surface_bc_mode: str, t_end: float | None
+) -> float:
+    """Surface flux [W/m^2] of a step that the row books as ``F_int``.
+
+    Parameters
+    ----------
+    out : SolverOutput
+        Aragog output of the step.
+    hf_row : dict
+        Row at the start of the step, with ``F_atm`` and ``Time`` [yr].
+    surface_bc_mode : str
+        ``'grey_body'`` books the surface node; ``'flux'`` books ``F_atm``, unless a lid acts.
+    t_end : float or None
+        End of the step [yr]; None for a state with no step.
+
+    Returns
+    -------
+    float
+        With a live lid in flux mode, the flux of the step integral
+        ``-step_dE_F_int_J / (A dt)``: the lid sets its own surface flux from the temperature
+        of the atmosphere, and it differs from ``F_atm`` inside the step.
+    """
+    if surface_bc_mode == 'grey_body':
+        return float(out.heat_flux[-1])
+    dt_yr = 0.0 if t_end is None else float(t_end) - float(hf_row['Time'])
+    if not float(np.nan_to_num(out.lid_weight)) > 0.0 or dt_yr <= 0.0:
+        return float(hf_row['F_atm'])
+    area = 4.0 * np.pi * float(out.r_basic[-1]) ** 2
+    return -float(out.step_dE_F_int_J) / (area * dt_yr * secs_per_year)
 
 
 def _estimate_T_pot(out) -> float:
@@ -2075,6 +2129,12 @@ class AragogRunner:
 
         # Update boundary conditions (F_atm from atmosphere module)
         solver.parameters.boundary_conditions.outer_boundary_value = hf_row['F_atm']
+        bc_now = solver.parameters.boundary_conditions
+        bc_now.lid_surface_temperature = _lid_surface_of_row(
+            hf_row,
+            'flux' if bc_now.outer_boundary_condition == 4 else 'grey_body',
+            bc_now.lid_mush_base,
+        )
 
         # Update equilibrium temperature (tracks stellar luminosity evolution).
         # SPIDER receives fresh T_eqm at every call via -teqm (spider.py:748).
@@ -2852,6 +2912,12 @@ class AragogRunner:
             'M_mantle': out.M_mantle,
             'M_core': hf_row.get('M_core', 0.0),
             'T_magma': out.T_magma,
+            'lid_weight': float(np.nan_to_num(out.lid_weight)),
+            'lid_conductance': float(np.nan_to_num(out.lid_conductance)),
+            'lid_T_surface': float(np.nan_to_num(out.lid_T_surface)),
+            'lid_F_diff': (
+                _surface_flux_of_step(out, hf_row, surface_bc_mode, t_end) - hf_row['F_atm']
+            ),
             'Phi_global': out.Phi_global,
             'RF_depth': out.RF_depth,
             # In flux mode Aragog is driven by F_atm, so its integrated
@@ -2861,9 +2927,7 @@ class AragogRunner:
             # so this column reflects the interior solver rather than the
             # atmosphere. out.heat_flux is positive-outward (W/m^2), the same
             # sign convention as F_atm.
-            'F_int': (
-                float(out.heat_flux[-1]) if surface_bc_mode == 'grey_body' else hf_row['F_atm']
-            ),
+            'F_int': _surface_flux_of_step(out, hf_row, surface_bc_mode, t_end),
             'M_mantle_liquid': out.M_mantle_liquid,
             'M_mantle_solid': out.M_mantle_solid,
             'Phi_global_vol': out.Phi_global_vol,
