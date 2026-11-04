@@ -121,6 +121,7 @@ interior heat flux. The `fastchem_*` parameters apply when
 | Parameter | Type | Default | Description |
 |---|---|---|---|
 | `spectral_file` | str or none | `none` | Path to AGNI spectral file, or 'greygas' to enable the grey-gas RT scheme. If None, will use atmos_clim.spectral_group and atmos_clim.spectral_bands. |
+| `load_all_opacities` | bool | `true` | Load the opacities of every gas in the spectral file into SOCRATES. If false, only the gases that PROTEUS models are loaded, which makes each radiative transfer calculation faster with spectral files that hold other gases. Has no effect with `chemistry = "eq"`, which loads every gas. |
 | `grey_opacity_lw` | float | `10.0` | Grey longwave opacity \[m2 kg-1\], used when `spectral_file='greygas'`. Must be > 0. |
 | `grey_opacity_sw` | float | `0.0001` | Grey shortwave opacity \[m2 kg-1\], used when `spectral_file='greygas'`. Must be > 0. |
 | `check_safe_gas` | bool | `true` | Require at least one "safe" gas (dry, has opacity, has thermo) when allocating AGNI atmosphere. Set False to allow compositions that AGNI would otherwise reject (e.g. for tests or exotic setups). |

@@ -79,8 +79,9 @@ dependencies = [
     "sympy",
     "astropy",
     "toml",
-    # 26.10.16 pins the RTPress melt tables at Zenodo 18822022 (DataverseNL QLCEBW).
-    "fwl-io>=26.10.16",
+    # 26.11.3 declares the 40 spectral files of #1063 (Snowline to Sovngarde).
+    # 26.10.16 pinned the RTPress melt tables at Zenodo 18822022 (DataverseNL QLCEBW).
+    "fwl-io>=26.11.3",
     "packaging",
 ]
 
@@ -264,7 +265,7 @@ directory = "htmlcov"
 # Tracks nichollsh/AGNI main. Bump after every AGNI release that
 # PROTEUS depends on.
 url = "https://github.com/nichollsh/AGNI.git"
-ref = "34e47301a6957ba99726f8df0514c08a44c8d534"
+ref = "f4a16a8691a662dd2dd6011ce11218448ff05ce3"
 
 [tool.proteus.modules.socrates]
 # Spectral radiative transfer library (Fortran). Compiled in-place

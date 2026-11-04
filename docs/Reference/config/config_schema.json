@@ -9350,7 +9350,7 @@
       "description": "Require at least one \"safe\" gas (dry, has opacity, has thermo) when allocating AGNI atmosphere. Set False to allow compositions that AGNI would otherwise reject (e.g. for tests or exotic setups).",
       "doc_source": "metadata",
       "group_order": 4,
-      "group_position": 3,
+      "group_position": 4,
       "group": "Spectral and gas allocation",
       "group_qualifier": null
     },
@@ -9371,6 +9371,22 @@
       "group_qualifier": null
     },
     {
+      "path": "atmos_clim.agni.load_all_opacities",
+      "toml_section": "atmos_clim.agni",
+      "class": "Agni",
+      "type": "bool",
+      "accepts_none": false,
+      "default": "true",
+      "choices": null,
+      "bounds": null,
+      "description": "Load the opacities of every gas in the spectral file into SOCRATES. If false, only the gases that PROTEUS models are loaded, which makes each radiative transfer calculation faster with spectral files that hold other gases. Has no effect with `chemistry = \"eq\"`, which loads every gas.",
+      "doc_source": "attributes",
+      "group_order": 4,
+      "group_position": 1,
+      "group": "Spectral and gas allocation",
+      "group_qualifier": null
+    },
+    {
       "path": "atmos_clim.agni.grey_opacity_lw",
       "toml_section": "atmos_clim.agni",
       "class": "Agni",
@@ -9387,7 +9403,7 @@
       "description": "Grey longwave opacity [m2 kg-1], used when `spectral_file='greygas'`.",
       "doc_source": "attributes",
       "group_order": 4,
-      "group_position": 1,
+      "group_position": 2,
       "group": "Spectral and gas allocation",
       "group_qualifier": null
     },
@@ -9408,7 +9424,7 @@
       "description": "Grey shortwave opacity [m2 kg-1], used when `spectral_file='greygas'`.",
       "doc_source": "attributes",
       "group_order": 4,
-      "group_position": 2,
+      "group_position": 3,
       "group": "Spectral and gas allocation",
       "group_qualifier": null
     },
@@ -12334,6 +12350,7 @@
       "touches": [
         "agni.chemistry",
         "agni.latent_heat",
+        "agni.load_all_opacities",
         "agni.psurf_thresh",
         "agni.rainout",
         "agni.solve_energy",

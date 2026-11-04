@@ -775,6 +775,8 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict, use_cache: bool = 
         flag_cloud=config.atmos_clim.cloud_enabled,
         flag_aerosol=config.atmos_clim.aerosols_enabled,
         overlap_method=config.atmos_clim.overlap_method,
+        # AGNI also loads every opacity when use_all_gases is true
+        load_all_opacities=bool(config.atmos_clim.agni.load_all_opacities),
         # surface reflectance
         albedo_s=config.atmos_clim.surf_greyalbedo,
         surface_material=surface_material,

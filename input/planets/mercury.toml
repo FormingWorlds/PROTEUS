@@ -54,7 +54,7 @@ config_version = "3.0"
 
         [params.stop.time]                   # simulation time limits
             enabled           = true
-            minimum           = 1.0e3        # run at least this long [yr]
+            minimum           = 3.0        # run at least this long [yr]
             maximum           = 4.5e9        # stop after this time [yr]; ~Mercury age
 
         [params.stop.solid]                  # solidification criterion
@@ -181,7 +181,7 @@ config_version = "3.0"
 
 # Interior structure (hydrostatic equilibrium & composition)
 [interior_struct]
-    module                    = "spider"      # zalmoxis | dummy | spider
+    module                    = "dummy"      # zalmoxis | dummy | spider
     core_frac_mode            = "radius"     # radius | mass
     core_frac                 = 0.828        # core radius fraction; Mercury ~2020 km / 2440 km
     core_density              = 6980         # core density [kg m-3]; Mercury core
@@ -253,7 +253,7 @@ config_version = "3.0"
 
 # Interior energy transport (mantle & core thermal evolution)
 [interior_energetics]
-    module                    = "spider"     # aragog | spider | dummy | boundary
+    module                    = "aragog"     # aragog | spider | dummy | boundary
 
     # Grid and solver tolerances (shared by Aragog + SPIDER; ignored for dummy)
     num_levels                = 50           # radial grid levels (energetics domain only); minimum allowed
@@ -329,7 +329,7 @@ config_version = "3.0"
     [interior_energetics.aragog]
         mass_coordinates              = true     # mass coordinate mesh spacing
         backend                       = "jax"    # jax (CVODE + analytic Jacobian) | numpy (CVODE + FD Jacobian)
-        solver_method                 = "cvode"  # cvode (SUNDIALS) | radau (scipy) | bdf (scipy)
+        solver_method                 = "radau"  # cvode (SUNDIALS) | radau (scipy) | bdf (scipy)
         atol_temperature_equivalent   = 1.0e-6   # CVODE atol [K]
         phase_smoothing               = "tanh"   # phase-boundary smoothing: tanh | cubic_hermite
         # Proximity band [J/kg/K] within which a cell counts as near a solidus/liquidus
@@ -387,7 +387,7 @@ config_version = "3.0"
     vapourise                 = false        # include rock vapour species
 
     # Shared solver parameters (calliope + atmodeller)
-    T_floor                   = 700.0        # outgassing temperature floor [K]; clamped from below
+    T_floor                   = 1000.0        # outgassing temperature floor [K]; clamped from below
     solver_rtol               = 1e-4         # relative mass/equilibrium tolerance
     solver_atol               = 1e-6         # absolute mass/equilibrium tolerance
     prevent_desaturation      = true         # condensates never re-vapourise, so each condensed layer only grows (its activity can fall below 1)
@@ -502,6 +502,7 @@ config_version = "3.0"
         ls_default            = 2            # linesearch method: 0 (none) | 1 (golden section) | 2 (backtracking)
         fdo                   = 2            # finite-difference order for Jacobian: 2 | 4
         check_safe_gas        = true         # require at least one gas with opacity+thermo data
+        load_all_opacities    = false
         verbosity             = 1            # AGNI log level: 0 (silent) | 1 (info) | 2 (debug)
 
         # FastChem equilibrium chemistry (only used when chemistry = "eq")
@@ -534,7 +535,7 @@ config_version = "3.0"
     [escape.zephyrus]
         Pxuv                  = 5e-5         # XUV opacity pressure level [bar]
         efficiency            = 0.1          # escape efficiency
-        tidal                 = true        # tidal contribution
+        tidal                 = false        # tidal contribution
 
     [escape.dummy]
         rate                  = 0.0          # bulk escape rate [kg s-1]

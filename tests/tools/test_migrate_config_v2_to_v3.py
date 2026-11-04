@@ -146,6 +146,8 @@ _REVIEWED_NEUTRAL = frozenset(
         'atmos_clim.agni.hydrograv_ming',
         'atmos_clim.agni.hydrograv_selfg',
         'atmos_clim.agni.hydrograv_steps',
+        # The default loads every gas of the spectral file, as 2.0 did.
+        'atmos_clim.agni.load_all_opacities',
         'atmos_clim.agni.spectral_file',
         'atmos_clim.agni.tau_obs',
         'atmos_clim.agni.wl_obs',
