@@ -933,6 +933,8 @@ class AragogRunner:
             param_utbl_const=config.interior_energetics.param_utbl_const,
             # core BC mode (the 'energy_balance' option is available)
             core_bc=core_bc_str,
+            subgrid_lid=config.interior_energetics.aragog.lid_mush_base,
+            lid_mush_base=config.interior_energetics.aragog.lid_mush_base,
             core_module_params=core_module_params,
         )
 
@@ -1594,6 +1596,7 @@ class AragogRunner:
                     # source and CMB boundary-layer Ra_crit; None/0 in every other mode.
                     core_module_budget=getattr(solver, '_core_module_budget', None),
                     core_module_q_radio=float(getattr(solver, '_core_module_q_radio', 0.0)),
+                    lid_params=solver.jax_lid_params() if solver._lid_on else None,
                     core_module_ra_crit_cmb=getattr(solver, '_core_module_ra_crit_cmb', None),
                 )
                 return rhs_fn, jac_fn

@@ -452,6 +452,9 @@ class Aragog:
     rheology: Rheology = field(factory=Rheology)
     """Solid-state mantle rheology of the Aragog solver."""
 
+    lid_mush_base: bool = field(default=False, validator=_valid_bool)
+    """Run the sub-grid lid with its base at the solidus (needs the rheology on)."""
+
     core_module: AragogCoreModule = field(factory=AragogCoreModule)
     """Core evolution module parameters, active when core_bc =
     'core_module': the core evolves its own energy budget (inner-core
