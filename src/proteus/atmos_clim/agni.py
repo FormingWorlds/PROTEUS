@@ -16,6 +16,7 @@ from proteus.atmos_clim.common import (
     clip_radius_to_hill,
     get_oarr_from_parr,
     require_spfile_path,
+    skin_conductance,
 )
 from proteus.atmos_clim.spectral_cache import cache_key, seed_from_cache, store_in_cache
 from proteus.atmos_clim.surface_skin import (
@@ -1167,6 +1168,7 @@ def update_agni_atmos(atmos, hf_row: dict, dirs: dict, config: Config):
     _validate_surface_state(hf_row, dirs)
     atmos.tmp_surf = float(hf_row['T_surf'])
     atmos.tmp_magma = float(hf_row['T_magma'])
+    atmos.skin_d = config.atmos_clim.surface_k / skin_conductance(config, hf_row)
 
     # Surface CBL
     atmos.skin_d = float(hf_row['boundary_layer_thickness'])

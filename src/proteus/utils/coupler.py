@@ -1073,6 +1073,10 @@ def GetHelpfileKeys():
         # Temperatures
         'T_surf',           # global surface temperature [K]
         'T_magma',          # global outgassing temperature [K]
+        'lid_weight',       # weight of the Aragog sub-grid lid [1]
+        'lid_conductance',  # conductance of the Aragog sub-grid lid [W m-2 K-1]
+        'lid_T_surface',    # surface temperature of the Aragog sub-grid lid [K]
+        'lid_F_diff',       # F_int of the step minus the F_atm it started from [W m-2]
         'T_cmb',           # core temperature: the bottom mantle cell, or the core state with core_bc = core_module or bower2018 [K]
         'T_cmb_node',      # mantle temperature at the core-mantle boundary basic node; with core_bc = core_module the temperature of the bottom-cell entropy at P_cmb, so the CMB contrast is T_cmb - T_cmb_node, or core_T_top - T_cmb_node with stratification [K]
         'T_eqm',            # grey radiative equilibrium temperature [K]

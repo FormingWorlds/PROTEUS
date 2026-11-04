@@ -389,6 +389,26 @@ def require_spfile_path(dirs: dict, config: Config) -> str:
     return path
 
 
+def skin_conductance(config: Config, hf_row: dict) -> float:
+    """Conductance [W m-2 K-1] between the melt and the surface: the skin and a lid in series.
+
+    Parameters
+    ----------
+    config : Config
+        Model configuration.
+    hf_row : dict
+        Current helpfile row, with ``lid_weight`` and ``lid_conductance`` when a lid acts.
+
+    Returns
+    -------
+    float
+        ``1 / (w / G_lid + (1 - w) d_skin / k_skin)``.
+    """
+    G_skin = config.atmos_clim.surface_k / config.atmos_clim.surface_d
+    w, G_lid = float(hf_row.get('lid_weight', 0.0)), float(hf_row.get('lid_conductance', 0.0))
+    return 1.0 / (w / G_lid + (1.0 - w) / G_skin) if w > 0.0 and G_lid > 0.0 else G_skin
+
+
 def clip_radius_to_hill(config: Config, hf_row: dict, radius: float) -> float:
     """Limit a level radius to the Hill radius, never below the solid body.
 
