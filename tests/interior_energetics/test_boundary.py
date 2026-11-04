@@ -42,6 +42,7 @@ from proteus.config import read_config_object
 from proteus.interior_energetics.boundary import BoundaryRunner
 from proteus.utils.constants import (
     M_earth,
+    const_G,
     secs_per_year,
 )
 
@@ -90,7 +91,6 @@ def mock_config():
         silicate_heat_capacity=1.2e3,  # J/kg/K
         atm_heat_capacity_const=False,
         atm_heat_capacity=1.7e4,  # J/kg/K
-        silicate_density=4500.0,  # kg/m^3
         thermal_conductivity=4.2,  # W/m/K
         thermal_diffusivity=1e-6,  # m^2/s
         thermal_expansivity=2e-5,  # 1/K
@@ -123,12 +123,8 @@ def mock_config():
         radio_Th=0.124,  # ppm (BSE abundance)
         radio_K=310,  # ppm (BSE abundance)
     )
-    interior_struct = SimpleNamespace(
-        core_frac=0.55,  # Core radius fraction
-        core_frac_mode='radius',
-        core_density=11000.0,  # kg/m^3
-        module='self',
-    )
+    # BoundaryRunner reads no structure settings: masses and radii come from hf_row.
+    interior_struct = SimpleNamespace()
     planet = SimpleNamespace(mass_tot=1.0, tsurf_init=3500.0)  # Earth masses, K
     star = SimpleNamespace(age_ini=0.1)  # Gyr
     return SimpleNamespace(
@@ -199,16 +195,20 @@ def mock_hf_row():
     **Physical Basis**: History file entry for Earth-like planet after 10 Myr
     of cooling from initial magma ocean (T_p = 3500 K → 2500 K).
     """
+    R_int, R_core, M_core = 6.371e6, 0.55 * 6.371e6, 0.55 * M_earth
+    # M_int gives a 4500 kg/m^3 mantle, the density the earlier fixture configured.
+    M_int = M_core + 4.0 / 3.0 * np.pi * (R_int**3 - R_core**3) * 4500.0
     return {
         'Time': 0.01,  # Myr (convert to seconds via secs_per_year)
-        'R_int': 6.371e6,  # m (Earth radius)
-        'M_core': 0.55 * M_earth,  # kg (Earth-mass core)
+        'R_int': R_int,  # m (Earth radius)
+        'M_int': M_int,  # kg (interior mass from the structure)
+        'M_core': M_core,  # kg (Earth-mass core)
         'M_atm': 1e18,  # kg (thin H2 atmosphere)
         'F_atm': 100.0,  # W/m² (atmospheric heat loss)
         'T_magma': 3500.0,  # K (mantle potential temperature)
         'T_surf': 1600.0,  # K (surface temperature)
         'P_surf': 1e8,  # Pa (surface pressure)
-        'R_core': 0.55 * 6.371e6,  # m (core radius from corefrac)
+        'R_core': R_core,  # m (CMB radius from the structure)
     }
 
 
@@ -1382,7 +1382,6 @@ def test_boundary_runner_init_uses_history_temperatures_for_ic2(
     directly, so the test should pin that contract instead of the
     removed constructor clamp.
     """
-    mock_config.interior_struct.module = 'self'
     mock_interior.ic = 2
     mock_hf_row['T_magma'] = 3495.0
     mock_hf_row['T_surf'] = 3500.0
@@ -1688,211 +1687,84 @@ def test_tsurf_change_event_returns_zero_at_threshold(
 
 
 # =============================================================================
-# Tests: core_frac_mode dispatch in BoundaryRunner.__init__
-# (boundary.py lines 93-110 – the three branches reached only when
-# hf_row does not contain 'R_core')
+# Tests: masses and radii taken from the structure in BoundaryRunner.__init__
 # =============================================================================
 
 
-def test_boundary_runner_init_core_frac_mode_radius_computes_from_config(
-    mock_config, mock_dirs, mock_hf_row, mock_hf_all, mock_interior, mock_atmos
-):
-    """When hf_row lacks R_core and core_frac_mode='radius', the core radius
-    equals core_frac * planet_radius.
-
-    Physical scenario: rocky planet with a prescribed core-radius fraction
-    (0.55 × R_earth) and no Zalmoxis CMB radius in the history row yet.
-    The formula is purely geometric: R_core = f * R_planet.
-
-    Discriminating: the mass-based formula at the same M_core and rho_core
-    produces ~4.15 Mm, whereas the radius-fraction formula gives
-    0.55 * 6.371 Mm = 3.504 Mm. The two differ by ~640 km, well outside
-    the 1e-6 relative tolerance of the primary pin.
-    """
-    hf_row_no_r_core = {k: v for k, v in mock_hf_row.items() if k != 'R_core'}
-    mock_config.interior_struct.core_frac_mode = 'radius'
-    mock_config.interior_struct.core_frac = 0.55
-
-    with patch('proteus.interior_energetics.boundary.next_step', return_value=1.0e3):
-        runner = BoundaryRunner(
-            mock_config, mock_dirs, hf_row_no_r_core, mock_hf_all, mock_interior, mock_atmos
-        )
-
-    expected = 0.55 * 6.371e6  # 3.50405e6 m
-    assert runner.core_radius == pytest.approx(expected, rel=1e-6)
-    # Boundedness: core must sit strictly inside the planet.
-    assert 0.0 < runner.core_radius < runner.planet_radius
-    # core_frac must equal the configured fraction exactly (no mass rescaling).
-    assert runner.core_frac == pytest.approx(0.55, rel=1e-10)
-    # Exponent-error / formula-swap guard: the mass-based formula gives ~4.15 Mm;
-    # the separation from the radius-fraction result (~3.50 Mm) is > 600 km.
-    r_mass_based = (3.0 * 0.55 * M_earth / (4.0 * np.pi * 11000.0)) ** (1.0 / 3.0)
-    assert abs(runner.core_radius - r_mass_based) > 5e5
-
-
 @pytest.mark.physics_invariant
-def test_boundary_runner_init_core_frac_mode_mass_computes_from_sphere_volume(
-    mock_config, mock_dirs, mock_hf_row, mock_hf_all, mock_interior, mock_atmos
+@pytest.mark.parametrize(
+    'core_radius_frac',
+    [
+        pytest.param(0.55, id='fixture_core_radius'),
+        pytest.param(0.42, id='smaller_zalmoxis_core'),
+    ],
+)
+def test_boundary_runner_mantle_mass_closes_structure_budget(
+    core_radius_frac,
+    mock_config,
+    mock_dirs,
+    mock_hf_row,
+    mock_hf_all,
+    mock_interior,
+    mock_atmos,
 ):
-    """When hf_row lacks R_core and core_frac_mode='mass', the core radius
-    is derived from the sphere-volume formula: r = (3M / (4 pi rho))^(1/3).
+    """The mantle mass and bulk density follow from the structure's M_int, M_core and R_core.
 
-    Physical scenario: iron-core planet where the CMB radius follows from
-    core mass (0.55 M_earth) and a fixed core density (11 000 kg/m^3).
-
-    Discriminating: the expected value is pinned to the closed-form result.
-    A regression that dropped the cube-root (wrong exponent = 1 instead of 1/3)
-    would return ~7e19 m; a unit-conversion bug (kg vs g) would shift by 1000^(1/3)
-    ≈ 10x. Both land > 1e10 m from the correct answer.
+    Physical scenario: the structure module sets the interior and core masses and the CMB
+    radius, and the boundary model takes the mantle as the rest. At 0.55 R_int the fixture
+    mantle density is 4500 kg m-3; at 0.42 R_int the same mantle mass fills a larger shell
+    (about 4050 kg m-3), so a fixed configured density fails the mass closure in one case.
     """
-    hf_row_no_r_core = {k: v for k, v in mock_hf_row.items() if k != 'R_core'}
-    mock_config.interior_struct.core_frac_mode = 'mass'
-    mock_config.interior_struct.core_density = 11000.0  # kg/m^3
-
+    hf_row = {**mock_hf_row, 'R_core': core_radius_frac * mock_hf_row['R_int']}
     with patch('proteus.interior_energetics.boundary.next_step', return_value=1.0e3):
         runner = BoundaryRunner(
-            mock_config, mock_dirs, hf_row_no_r_core, mock_hf_all, mock_interior, mock_atmos
+            mock_config, mock_dirs, hf_row, mock_hf_all, mock_interior, mock_atmos
         )
 
-    M_core_val = 0.55 * M_earth
-    rho = 11000.0
-    expected = (3.0 * M_core_val / (4.0 * np.pi * rho)) ** (1.0 / 3.0)
-
-    assert runner.core_radius == pytest.approx(expected, rel=1e-10)
-    # Sign guard: radius is always positive.
-    assert runner.core_radius > 0.0
-    # Scale guard: iron-core radius for ~0.55 M_earth should be 3.5–5 Mm.
-    assert 3e6 < runner.core_radius < 5e6
-    # Exponent-error guard: missing the cube-root exponent would give ~7e19 m.
-    wrong_no_exponent = 3.0 * M_core_val / (4.0 * np.pi * rho)
-    assert abs(runner.core_radius - wrong_no_exponent) > 1e10
-    # Boundedness invariant: core radius must be < planet radius.
-    assert runner.core_radius < runner.planet_radius
+    R_int, R_core, M_int = hf_row['R_int'], hf_row['R_core'], hf_row['M_int']
+    shell = 4.0 / 3.0 * np.pi * (R_int**3 - R_core**3)
+    # The CMB radius comes from the row, not from a configured core fraction.
+    assert runner.core_radius == pytest.approx(R_core, rel=1e-12)
+    assert runner.core_frac == pytest.approx(core_radius_frac, rel=1e-12)
+    # Mass closure: core plus mantle is the structure's interior mass.
+    assert runner.core_mass + runner.mantle_mass == pytest.approx(M_int, rel=1e-12)
+    assert runner.mantle_bulk_density == pytest.approx(runner.mantle_mass / shell, rel=1e-12)
+    # Bound: a silicate mantle density between 2000 and 6000 kg m-3.
+    assert 2.0e3 < runner.mantle_bulk_density < 6.0e3
+    # Surface gravity uses the structure's interior mass.
+    assert runner.surface_gravity == pytest.approx(const_G * M_int / R_int**2, rel=1e-12)
 
 
-@pytest.mark.physics_invariant
-def test_boundary_runner_init_core_frac_mode_mass_self_density_uses_boundary_config(
+def test_boundary_runner_rejects_a_row_without_mantle_mass(
     mock_config, mock_dirs, mock_hf_row, mock_hf_all, mock_interior, mock_atmos
 ):
-    """When core_frac_mode='mass' and core_density='self', the code falls back to
-    config.interior_energetics.boundary.core_density instead of the
-    interior_struct density.
+    """A row with M_int <= M_core leaves no mantle, so the constructor raises ValueError.
 
-    Physical scenario: the interior-struct module owns its own EOS density; the
-    boundary module uses a separately configured reference iron density (8000 kg/m^3
-    here) to compute the CMB radius.
-
-    Discriminating: rho=8000 gives r≈4.61 Mm, rho=11000 gives r≈4.15 Mm.
-    The separation is ~460 km — any regression that read the wrong density
-    source fails the primary pin at rel=1e-10.
+    Edge cases: M_int equal to M_core (zero mantle), below it (negative mantle) and NaN.
+    The removed fallback read a missing M_int as zero; a row without M_int raises KeyError.
     """
-    hf_row_no_r_core = {k: v for k, v in mock_hf_row.items() if k != 'R_core'}
-    mock_config.interior_struct.core_frac_mode = 'mass'
-    mock_config.interior_struct.core_density = 'self'  # triggers the self-density branch
-    mock_config.interior_energetics.boundary.core_density = 8000.0  # kg/m^3
-
+    M_core = mock_hf_row['M_core']
     with patch('proteus.interior_energetics.boundary.next_step', return_value=1.0e3):
-        runner = BoundaryRunner(
-            mock_config, mock_dirs, hf_row_no_r_core, mock_hf_all, mock_interior, mock_atmos
-        )
-
-    M_core_val = 0.55 * M_earth
-    rho_boundary = 8000.0
-    expected = (3.0 * M_core_val / (4.0 * np.pi * rho_boundary)) ** (1.0 / 3.0)
-
-    assert runner.core_radius == pytest.approx(expected, rel=1e-10)
-    # Sign guard: physical radius must be strictly positive.
-    assert runner.core_radius > 0.0
-    # Discrimination: rho=8000 vs rho=11000 shifts the radius by ~460 km.
-    # A regression that used interior_struct.core_density (the string 'self')
-    # would fail to parse and crash, while one using the 11000 fallback would
-    # produce a radius that differs by > 4e5 m from the expected value.
-    r_wrong_density = (3.0 * M_core_val / (4.0 * np.pi * 11000.0)) ** (1.0 / 3.0)
-    assert abs(runner.core_radius - r_wrong_density) > 4e5
-    # Boundedness invariant: CMB must be inside the planet.
-    assert runner.core_radius < runner.planet_radius
-
-
-def test_boundary_runner_init_invalid_core_frac_mode_raises_value_error(
-    mock_config, mock_dirs, mock_hf_row, mock_hf_all, mock_interior, mock_atmos
-):
-    """BoundaryRunner.__init__ raises ValueError when core_frac_mode is neither
-    'radius' nor 'mass' and hf_row contains no R_core key.
-
-    Error contract: the message must name both valid modes and reproduce the
-    offending value so users can diagnose config mistakes without reading source.
-
-    Edge: the error branch is only reachable when R_core is absent from hf_row.
-    A supplied CMB radius short-circuits the mode check, so the same invalid
-    mode must construct in that case; this pairs the raise with the condition
-    that makes it reachable.
-    """
-    hf_row_no_r_core = {k: v for k, v in mock_hf_row.items() if k != 'R_core'}
-    mock_config.interior_struct.core_frac_mode = 'volume'  # neither 'radius' nor 'mass'
-
-    with pytest.raises(ValueError, match=r"core_frac_mode must be 'mass' or 'radius'"):
-        with patch('proteus.interior_energetics.boundary.next_step', return_value=1.0e3):
+        for M_int in (M_core, 0.5 * M_core, float('nan')):
+            with pytest.raises(ValueError, match=r'needs M_int > M_core'):
+                BoundaryRunner(
+                    mock_config,
+                    mock_dirs,
+                    {**mock_hf_row, 'M_int': M_int},
+                    mock_hf_all,
+                    mock_interior,
+                    mock_atmos,
+                )
+        row_without_m_int = {k: v for k, v in mock_hf_row.items() if k != 'M_int'}
+        with pytest.raises(KeyError, match='M_int'):
             BoundaryRunner(
                 mock_config,
                 mock_dirs,
-                hf_row_no_r_core,
+                row_without_m_int,
                 mock_hf_all,
                 mock_interior,
                 mock_atmos,
             )
-
-    # With R_core present the mode is never consulted: the same invalid 'volume'
-    # constructs and the CMB radius is taken from the row. This is what makes
-    # the raise above attributable to the missing R_core rather than to the
-    # config value alone. The row carries a Zalmoxis-style CMB radius at 0.42
-    # R_int, away from the config's core_frac of 0.55, so the radius pins that
-    # the value came from the row and not from the core_frac * R_int formula;
-    # at 0.55 the two paths would agree bit-for-bit and prove nothing. This
-    # path never consults M_core, so the row's core mass and this radius are
-    # not meant to imply a core density.
-    hf_row_zalmoxis_core = {**mock_hf_row, 'R_core': 0.42 * mock_hf_row['R_int']}
-    with patch('proteus.interior_energetics.boundary.next_step', return_value=1.0e3):
-        runner = BoundaryRunner(
-            mock_config, mock_dirs, hf_row_zalmoxis_core, mock_hf_all, mock_interior, mock_atmos
-        )
-    assert runner.core_radius == pytest.approx(0.42 * mock_hf_row['R_int'])
-    assert runner.core_frac == pytest.approx(0.42)
-
-
-def test_boundary_runner_init_invalid_core_frac_mode_message_includes_bad_value(
-    mock_config, mock_dirs, mock_hf_row, mock_hf_all, mock_interior, mock_atmos
-):
-    """The ValueError raised for an invalid core_frac_mode must include the
-    offending value so the user can identify the misconfigured field.
-
-    The message is built from the config value rather than hard-coded: two
-    different invalid values each quote themselves. A message that quoted one
-    fixed example value would satisfy only one of the two matches, and would
-    send the other user looking for a field they never set.
-    """
-    hf_row_no_r_core = {k: v for k, v in mock_hf_row.items() if k != 'R_core'}
-    mock_config.interior_struct.core_frac_mode = 'fraction'
-
-    with pytest.raises(ValueError, match=r"got 'fraction'"):
-        with patch('proteus.interior_energetics.boundary.next_step', return_value=1.0e3):
-            BoundaryRunner(
-                mock_config,
-                mock_dirs,
-                hf_row_no_r_core,
-                mock_hf_all,
-                mock_interior,
-                mock_atmos,
-            )
-
-    # A different invalid value quotes itself, so the message tracks the config.
-    mock_config.interior_struct.core_frac_mode = 'volume'
-    with pytest.raises(ValueError, match=r"got 'volume'"):
-        with patch('proteus.interior_energetics.boundary.next_step', return_value=1.0e3):
-            BoundaryRunner(
-                mock_config,
-                mock_dirs,
-                hf_row_no_r_core,
-                mock_hf_all,
-                mock_interior,
-                mock_atmos,
-            )
+    # No interior arrays were written before the raise.
+    assert mock_interior.density is None
+    assert mock_interior.mass is None

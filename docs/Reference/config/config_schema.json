@@ -6215,27 +6215,6 @@
       "group_qualifier": null
     },
     {
-      "path": "interior_energetics.dummy.mantle_rho",
-      "toml_section": "interior_energetics.dummy",
-      "class": "InteriorDummy",
-      "type": "float",
-      "accepts_none": false,
-      "default": "4550.0",
-      "choices": null,
-      "bounds": [
-        {
-          "op": ">",
-          "value": 0
-        }
-      ],
-      "description": "Mantle density [kg m-3] for the dummy density profile and the fallback mantle-mass estimate. When the interior structure provides the masses, the mantle mass is taken as ``M_int - M_core`` instead.",
-      "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
-      "group_qualifier": null
-    },
-    {
       "path": "interior_energetics.dummy.mantle_cp",
       "toml_section": "interior_energetics.dummy",
       "class": "InteriorDummy",
@@ -6383,27 +6362,6 @@
       "group_qualifier": null
     },
     {
-      "path": "interior_energetics.boundary.core_density",
-      "toml_section": "interior_energetics.boundary",
-      "class": "InteriorBoundary",
-      "type": "float",
-      "accepts_none": false,
-      "default": "10738.0",
-      "choices": null,
-      "bounds": [
-        {
-          "op": ">",
-          "value": 0
-        }
-      ],
-      "description": "Core density [kg/m^3].",
-      "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
-      "group_qualifier": null
-    },
-    {
       "path": "interior_energetics.boundary.core_shear",
       "toml_section": "interior_energetics.boundary",
       "class": "InteriorBoundary",
@@ -6476,27 +6434,6 @@
         }
       ],
       "description": "Used as fallback for atmosphere heat capacity when layer-specific value is not available [J/kg/K].",
-      "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
-      "group_qualifier": null
-    },
-    {
-      "path": "interior_energetics.boundary.silicate_density",
-      "toml_section": "interior_energetics.boundary",
-      "class": "InteriorBoundary",
-      "type": "float",
-      "accepts_none": false,
-      "default": "4103.0",
-      "choices": null,
-      "bounds": [
-        {
-          "op": ">",
-          "value": 0
-        }
-      ],
-      "description": "Silicate density [kg/m^3]. Default taken from Fei et. al. 2021 (https://ui.adsabs.harvard.edu/abs/2021NatCo..12..876F).",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -7259,7 +7196,7 @@
       "bounds": null,
       "description": "Enable constant-properties mode: bypass the EOS tables and use the analytical T(S) = T_ref * exp((S - S_ref) / Cp) relationship, for controlled parity tests.",
       "doc_source": "attributes",
-      "group_order": 10,
+      "group_order": 11,
       "group_position": 0,
       "group": "Constant-properties mode",
       "group_qualifier": null
@@ -7278,11 +7215,11 @@
           "value": 0
         }
       ],
-      "description": "Constant density [kg/m3].",
+      "description": "Mantle density [kg/m3]. The dummy module uses it as the density of its one-layer interior (read by the tides modules) and for the mantle mass when the structure gives no M_int and M_core. SPIDER and Aragog read it only when const_properties = true.",
       "doc_source": "field_docstring",
       "group_order": 10,
-      "group_position": 1,
-      "group": "Constant-properties mode",
+      "group_position": 0,
+      "group": "Mantle density",
       "group_qualifier": null
     },
     {
@@ -7301,8 +7238,8 @@
       ],
       "description": "Constant heat capacity [J/kg/K].",
       "doc_source": "field_docstring",
-      "group_order": 10,
-      "group_position": 2,
+      "group_order": 11,
+      "group_position": 1,
       "group": "Constant-properties mode",
       "group_qualifier": null
     },
@@ -7322,8 +7259,8 @@
       ],
       "description": "Constant thermal expansivity [1/K].",
       "doc_source": "field_docstring",
-      "group_order": 10,
-      "group_position": 3,
+      "group_order": 11,
+      "group_position": 2,
       "group": "Constant-properties mode",
       "group_qualifier": null
     },
@@ -7343,8 +7280,8 @@
       ],
       "description": "Constant thermal conductivity [W/m/K].",
       "doc_source": "field_docstring",
-      "group_order": 10,
-      "group_position": 4,
+      "group_order": 11,
+      "group_position": 3,
       "group": "Constant-properties mode",
       "group_qualifier": null
     },
@@ -7359,8 +7296,8 @@
       "bounds": null,
       "description": "Constant log10 dynamic viscosity [Pa.s].",
       "doc_source": "field_docstring",
-      "group_order": 10,
-      "group_position": 5,
+      "group_order": 11,
+      "group_position": 4,
       "group": "Constant-properties mode",
       "group_qualifier": null
     },
@@ -7380,8 +7317,8 @@
       ],
       "description": "Reference temperature for T(S) = T_ref * exp((S-S_ref)/Cp) [K].",
       "doc_source": "field_docstring",
-      "group_order": 10,
-      "group_position": 6,
+      "group_order": 11,
+      "group_position": 5,
       "group": "Constant-properties mode",
       "group_qualifier": null
     },
@@ -7396,8 +7333,8 @@
       "bounds": null,
       "description": "Reference entropy for T(S) [J/kg/K]. No positivity constraint since entropy reference states can be zero or negative.",
       "doc_source": "field_docstring",
-      "group_order": 10,
-      "group_position": 7,
+      "group_order": 11,
+      "group_position": 6,
       "group": "Constant-properties mode",
       "group_qualifier": null
     },

@@ -142,7 +142,7 @@ def test_verify_flags_broken_entry_and_option_drift(schema, monkeypatch):
 def test_known_dead_arms_allowlist_is_current():
     """Every allowlisted dead arm still exists in the source; a stale entry
     would quietly re-open the door it documents."""
-    assert len(_gmm.KNOWN_DEAD_ARMS) == 1  # grows only with a documented reason
+    assert len(_gmm.KNOWN_DEAD_ARMS) == 0  # grows only with a documented reason
     for rel_file, dotted, value in _gmm.KNOWN_DEAD_ARMS:
         path = _REPO_ROOT / rel_file
         assert path.is_file(), f'{rel_file} vanished; prune KNOWN_DEAD_ARMS'

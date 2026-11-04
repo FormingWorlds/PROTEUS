@@ -214,7 +214,7 @@ INTERIOR_RENAMES = {
     },
     'dummy': {
         'interior.dummy.mantle_cp': 'interior_energetics.dummy.mantle_cp',
-        'interior.dummy.mantle_rho': 'interior_energetics.dummy.mantle_rho',
+        'interior.dummy.mantle_rho': 'interior_energetics.const_rho',
         'interior.dummy.mantle_tliq': 'interior_energetics.dummy.mantle_tliq',
         'interior.dummy.mantle_tsol': 'interior_energetics.dummy.mantle_tsol',
         'interior.dummy.H_radio': 'interior_energetics.dummy.heat_internal',

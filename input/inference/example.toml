@@ -333,7 +333,7 @@ config_version = "3.0"
 
     # Constant-properties mode: bypass EOS tables, use analytical T(S) = T_ref * exp((S - S_ref) / Cp)
     const_properties          = false
-    const_rho                 = 4000.0       # constant density [kg/m3]
+    const_rho                 = 4000.0       # mantle density [kg/m3]; dummy module and const_properties mode
     const_Cp                  = 1000.0       # constant heat capacity [J/kg/K]
     const_alpha               = 1.0e-5       # constant thermal expansivity [1/K]
     const_cond                = 4.0          # constant thermal conductivity [W/m/K]
@@ -412,7 +412,6 @@ config_version = "3.0"
     [interior_energetics.dummy]
         mantle_tliq           = 2700.0       # liquidus [K]
         mantle_tsol           = 1700.0       # solidus [K]
-        mantle_rho            = 4550.0       # mantle density [kg m-3]
         mantle_cp             = 1792.0       # mantle heat capacity [J K-1 kg-1]
         heat_internal         = 0.0          # internal heating rate [W kg-1]
 
@@ -425,7 +424,6 @@ config_version = "3.0"
         silicate_heat_capacity    = 1200.0       # silicate heat capacity [J/kg/K]
         atm_heat_capacity_const   = true        #  always use fallback heat capacity?
         atm_heat_capacity         = 1.7e4        # fallback atmosphere heat capacity [J/kg/K]
-        silicate_density          = 4103.0       # silicate density [kg/m^3]
         thermal_conductivity      = 4.2          # thermal conductivity [W/m/K]
         thermal_diffusivity       = 1.0e-6       # thermal diffusivity [m^2/s]
         thermal_expansivity       = 2.0e-5       # thermal expansivity [1/K]

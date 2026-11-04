@@ -578,6 +578,9 @@ def valid_interiordummy(instance, attribute, value):
 class InteriorBoundary:
     """Parameters for Boundary interior module. Default values taken from Schaefer et al. 2016 (https://iopscience.iop.org/article/10.3847/0004-637X/829/2/63/pdf).
 
+    The mantle and core masses and radii come from the interior structure
+    module, so the mantle and core densities are not set here.
+
     Attributes
     ----------
     T_solidus: float
@@ -594,10 +597,6 @@ class InteriorBoundary:
         Always use fallback atmosphere heat capacity?
     atm_heat_capacity: float
         Used as fallback for atmosphere heat capacity when layer-specific value is not available [J/kg/K].
-    silicate_density: float
-        Silicate density [kg/m^3]. Default taken from Fei et. al. 2021 (https://ui.adsabs.harvard.edu/abs/2021NatCo..12..876F).
-    core_density: float
-        Core density [kg/m^3].
     core_shear: float
         Core shear modulus [Pa].
     core_bulk: float
@@ -630,12 +629,10 @@ class InteriorBoundary:
     critical_rayleigh_number: float = field(default=1.1e3, validator=gt(0))  # -
     nusselt_exponent: float = field(default=0.33, validator=gt(0))  # -
     silicate_heat_capacity: float = field(default=1.2e3, validator=gt(0))  # J/kg/K
-    core_density: float = field(default=10738.0, validator=gt(0))  # kg/m^3
     core_shear: float = field(default=1.0e-1, validator=gt(0))  # Pa
     core_bulk: float = field(default=5e11, validator=gt(0))  # Pa
     atm_heat_capacity_const: bool = field(default=True)
     atm_heat_capacity: float = field(default=1.7e4, validator=gt(0))  # J/kg/K
-    silicate_density: float = field(default=4103.0, validator=gt(0))  # kg/m^3
     thermal_conductivity: float = field(default=4.2, validator=gt(0))  # W/m/K
     thermal_diffusivity: float = field(default=1e-6, validator=gt(0))  # m^2/s
     thermal_expansivity: float = field(default=2e-5, validator=gt(0))  # 1/K
@@ -661,12 +658,10 @@ class InteriorBoundary:
 class InteriorDummy:
     """Parameters for Dummy interior module.
 
+    The mantle density is ``interior_energetics.const_rho``.
+
     Attributes
     ----------
-    mantle_rho: float
-        Mantle density [kg m-3] for the dummy density profile and the
-        fallback mantle-mass estimate. When the interior structure provides
-        the masses, the mantle mass is taken as ``M_int - M_core`` instead.
     mantle_cp: float
         Mantle specific heat capacity [J kg-1 K-1]
     mantle_tliq: float
@@ -681,7 +676,6 @@ class InteriorDummy:
 
     mantle_tliq: float = field(default=2700.0, validator=ge(0))
     mantle_tsol: float = field(default=1700.0, validator=ge(0))
-    mantle_rho: float = field(default=4.55e3, validator=gt(0))
     mantle_cp: float = field(default=1792.0, validator=ge(0))
     heat_internal: float = field(default=0.0, validator=ge(0))
 
@@ -938,7 +932,10 @@ class Interior:
     # For controlled parity comparisons with dummy structure + atmosphere.
     const_properties: bool = field(default=False)
     const_rho: float = field(default=4000.0, validator=gt(0))
-    """Constant density [kg/m3]."""
+    """Mantle density [kg/m3]. The dummy module uses it as the density of its
+    one-layer interior (read by the tides modules) and for the mantle mass when
+    the structure gives no M_int and M_core. SPIDER and Aragog read it only when
+    const_properties = true."""
     const_Cp: float = field(default=1000.0, validator=gt(0))
     """Constant heat capacity [J/kg/K]."""
     const_alpha: float = field(default=1e-5, validator=gt(0))
@@ -1175,11 +1172,15 @@ DOC_GROUPS = {
             ('write_flux_diagnostics',),
         ),
         (
+            'Mantle density',
+            None,
+            ('const_rho',),
+        ),
+        (
             'Constant-properties mode',
             None,
             (
                 'const_properties',
-                'const_rho',
                 'const_Cp',
                 'const_alpha',
                 'const_cond',

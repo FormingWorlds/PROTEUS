@@ -144,7 +144,7 @@ def run_dummy_int(
         output['M_mantle'] = calculate_simple_mantle_mass(
             hf_row['R_int'],
             core_radius_frac,
-            config.interior_energetics.dummy.mantle_rho,
+            config.interior_energetics.const_rho,
         )
 
     # Physical parameters
@@ -206,7 +206,7 @@ def run_dummy_int(
     interior_o.phi = np.array([output['Phi_global']])
     interior_o.mass = np.array([output['M_mantle']])
     interior_o.visc = np.array([1.0])  # placeholder to be updated elsewhere
-    interior_o.density = np.array([config.interior_energetics.dummy.mantle_rho])
+    interior_o.density = np.array([config.interior_energetics.const_rho])
     interior_o.temp = np.array([output['T_magma']])
     interior_o.pres = np.array([hf_row['P_surf']])
     interior_o.radius = np.array([R_core, hf_row['R_int']])

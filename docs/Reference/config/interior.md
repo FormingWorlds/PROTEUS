@@ -309,12 +309,17 @@ controlled parity tests.
 |---|---|---|---|
 | `write_flux_diagnostics` | bool | `false` | When True, Aragog's NetCDF output includes per-component flux decomposition (Jcond_b, Jconv_b, Jgrav_b, Jmix_b) and basic-node state variables (dSdr_b, eddy_diff_b, phi_basic_b, T/cp/rho_basic_b). Adds ~10 fields per snapshot; default False keeps output compact. Useful for diagnosing T_core and CMB-closure behaviour near phi=0. SPIDER path ignores this flag (uses SPIDER's own JSON output which already includes Jcond_b, Jconv_b, Jgrav_b, Jmix_b). |
 
+**Mantle density**
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `const_rho` | float | `4000.0` | Mantle density \[kg/m3\]. The dummy module uses it as the density of its one-layer interior (read by the tides modules) and for the mantle mass when the structure gives no M_int and M_core. SPIDER and Aragog read it only when const_properties = true. Must be > 0. |
+
 **Constant-properties mode**
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
 | `const_properties` | bool | `false` | Enable constant-properties mode: bypass the EOS tables and use the analytical T(S) = T_ref * exp((S - S_ref) / Cp) relationship, for controlled parity tests. |
-| `const_rho` | float | `4000.0` | Constant density \[kg/m3\]. Must be > 0. |
 | `const_Cp` | float | `1000.0` | Constant heat capacity \[J/kg/K\]. Must be > 0. |
 | `const_alpha` | float | `1e-05` | Constant thermal expansivity \[1/K\]. Must be > 0. |
 | `const_cond` | float | `4.0` | Constant thermal conductivity \[W/m/K\]. Must be > 0. |
@@ -432,7 +437,6 @@ A parameterised cooling model with prescribed solidus and liquidus.
 |---|---|---|---|
 | `mantle_tliq` | float | `2700.0` | Mantle liquidus temperature \[K\]. Must be >= 0. |
 | `mantle_tsol` | float | `1700.0` | Mantle solidus temperature \[K\]. Must be >= 0. |
-| `mantle_rho` | float | `4550.0` | Mantle density \[kg m-3\] for the dummy density profile and the fallback mantle-mass estimate. When the interior structure provides the masses, the mantle mass is taken as ``M_int - M_core`` instead. Must be > 0. |
 | `mantle_cp` | float | `1792.0` | Mantle specific heat capacity \[J kg-1 K-1\]. Must be >= 0. |
 | `heat_internal` | float | `0.0` | Fixed internal heating rate (e.g. radiogenic) \[W kg-1\]. Tidal heating is handled separately via `heat_tidal` and is added on top of this value. Must be >= 0. |
 <!-- END GENERATED: config-table [interior_energetics.dummy] -->
@@ -451,12 +455,10 @@ with prescribed solidus and liquidus and parameterised convective heat transport
 | `critical_rayleigh_number` | float | `1100.0` | Critical Rayleigh number for onset of convection \[-\]. Must be > 0. |
 | `nusselt_exponent` | float | `0.33` | Nusselt-Rayleigh scaling exponent \[-\]. Must be > 0. |
 | `silicate_heat_capacity` | float | `1200.0` | Silicate heat capacity \[J/kg/K\]. Must be > 0. |
-| `core_density` | float | `10738.0` | Core density \[kg/m^3\]. Must be > 0. |
 | `core_shear` | float | `0.1` | Core shear modulus \[Pa\]. Must be > 0. |
 | `core_bulk` | float | `500000000000.0` | Core bulk modulus \[Pa\]. Must be > 0. |
 | `atm_heat_capacity_const` | bool | `true` | Always use fallback atmosphere heat capacity?. |
 | `atm_heat_capacity` | float | `17000.0` | Used as fallback for atmosphere heat capacity when layer-specific value is not available \[J/kg/K\]. Must be > 0. |
-| `silicate_density` | float | `4103.0` | Silicate density \[kg/m^3\]. Default taken from Fei et. al. 2021 (https://ui.adsabs.harvard.edu/abs/2021NatCo..12..876F). Must be > 0. |
 | `thermal_conductivity` | float | `4.2` | Thermal conductivity \[W/m/K\]. Must be > 0. |
 | `thermal_diffusivity` | float | `1e-06` | Thermal diffusivity \[m^2/s\]. Must be > 0. |
 | `thermal_expansivity` | float | `2e-05` | Thermal expansivity \[1/K\]. Must be > 0. |

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import copy
 import os
+import re
 from contextlib import ExitStack
 from itertools import chain
 from types import SimpleNamespace
@@ -32,7 +33,7 @@ from proteus.config._config import (
     tides_enabled_orbit,
 )
 from proteus.config._converters import none_if_none
-from proteus.config._interior import valid_aragog, valid_interiordummy, valid_spider
+from proteus.config._interior import Interior, valid_aragog, valid_interiordummy, valid_spider
 from proteus.config._outgas import Calliope
 from proteus.config._params import max_bigger_than_min, valid_mod, valid_path
 from proteus.config._planet import GasPrs, Planet
@@ -121,6 +122,41 @@ def test_read_config_object_rejects_a_misspelled_field(tmp_path):
     assert read_config(PROTEUS_ROOT / 'input' / 'dummy.toml')['planet'][
         'mass_tot'
     ] != pytest.approx(2.5)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'section,key',
+    [
+        pytest.param('dummy', 'mantle_rho', id='dummy_mantle_rho'),
+        pytest.param('boundary', 'silicate_density', id='boundary_silicate_density'),
+        pytest.param('boundary', 'core_density', id='boundary_core_density'),
+    ],
+)
+def test_read_config_object_rejects_a_removed_density_key(tmp_path, section, key):
+    """A removed duplicate density key is refused, so it cannot disagree with const_rho unseen.
+
+    The mantle density is set only by interior_energetics.const_rho and the core density
+    by interior_struct.core_density. The old keys are named in the error, while the same
+    value written to const_rho loads and reaches the Config.
+    """
+    from proteus.config.orphans import UnknownConfigKeyError
+
+    def _old_key(raw):
+        raw['interior_energetics'].setdefault(section, {})[key] = 3300.0
+
+    def _const_rho(raw):
+        raw['interior_energetics']['const_rho'] = 3300.0
+
+    with pytest.raises(
+        UnknownConfigKeyError, match=re.escape(f'interior_energetics.{section}.{key}')
+    ):
+        read_config_object(_write_variant(tmp_path, 'old_key.toml', _old_key))
+
+    cfg = read_config_object(_write_variant(tmp_path, 'const_rho.toml', _const_rho))
+    assert cfg.interior_energetics.const_rho == pytest.approx(3300.0)
+    # Unset, const_rho keeps its 4000 kg m-3 default.
+    assert Interior().const_rho == pytest.approx(4000.0)
 
 
 @pytest.mark.unit
