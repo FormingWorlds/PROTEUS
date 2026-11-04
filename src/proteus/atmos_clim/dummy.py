@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from proteus.atmos_clim.common import clip_radius_to_hill, skin_conductance
+from proteus.atmos_clim.common import clip_radius_to_hill, lid_boundary
 from proteus.utils.constants import const_R, const_sigma, gas_list
 from proteus.utils.helper import UpdateStatusfile
 
@@ -64,7 +64,7 @@ def RunDummyAtm(dirs: dict, config: Config, hf_row: dict):
     albedo_pl = float(hf_row['albedo_pl'])
     inst_sf = config.orbit.s0_factor
     albedo_s = config.atmos_clim.surf_greyalbedo
-    skin_G = skin_conductance(config, hf_row)
+    skin_G, T_melt = lid_boundary(config, hf_row)
 
     # Copy variables
     T_magma = float(hf_row['T_magma'])
@@ -103,7 +103,7 @@ def RunDummyAtm(dirs: dict, config: Config, hf_row: dict):
         # We need to solve for the state where fl_N = f_skn
         # This function takes T_surf_atm as the input value, and returns fl_N - f_skn
         def _resid(x):
-            F_skn = skin_G * (hf_row['T_magma'] - x)
+            F_skn = skin_G * (T_melt - x)
             _f = _calc_fluxes(x)
             return _f['fl_N'] - F_skn
 

@@ -2128,7 +2128,11 @@ class AragogRunner:
             interior_o._last_entropy = S_field
 
         # Update boundary conditions (F_atm from atmosphere module)
-        solver.parameters.boundary_conditions.outer_boundary_value = hf_row['F_atm']
+        solver.parameters.boundary_conditions.outer_boundary_value = (
+            hf_row['lid_F_open']
+            if float(hf_row.get('lid_weight', 0.0)) > 0.0
+            else hf_row['F_atm']
+        )
         bc_now = solver.parameters.boundary_conditions
         bc_now.lid_surface_temperature = _lid_surface_of_row(
             hf_row,
@@ -2915,6 +2919,8 @@ class AragogRunner:
             'lid_weight': float(np.nan_to_num(out.lid_weight)),
             'lid_conductance': float(np.nan_to_num(out.lid_conductance)),
             'lid_T_surface': float(np.nan_to_num(out.lid_T_surface)),
+            'lid_T_base': float(np.nan_to_num(out.lid_T_base)),
+            'lid_T_node': float(out.T_basic[-1]),
             'lid_F_diff': (
                 _surface_flux_of_step(out, hf_row, surface_bc_mode, t_end) - hf_row['F_atm']
             ),

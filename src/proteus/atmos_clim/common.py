@@ -389,24 +389,55 @@ def require_spfile_path(dirs: dict, config: Config) -> str:
     return path
 
 
-def skin_conductance(config: Config, hf_row: dict) -> float:
-    """Conductance [W m-2 K-1] between the melt and the surface: the skin and a lid in series.
+def lid_boundary(config: Config, hf_row: dict) -> tuple[float, float]:
+    """Conductance and temperature of the melt side for the surface balance of the atmosphere.
+
+    The lid and the open surface act in parallel on one surface temperature:
+    ``F = w G_lid (T_b - T) + (1 - w) G_skin (T_node - T) = G (T_melt - T)``.
 
     Parameters
     ----------
     config : Config
         Model configuration.
     hf_row : dict
-        Current helpfile row, with ``lid_weight`` and ``lid_conductance`` when a lid acts.
+        Current helpfile row. A lid acts with ``lid_weight``, ``lid_conductance``,
+        ``lid_T_base`` and ``lid_T_node``.
+
+    Returns
+    -------
+    tuple of float
+        ``G`` [W m-2 K-1] and ``T_melt`` [K]; the skin and ``T_magma`` without a lid.
+    """
+    G_skin = config.atmos_clim.surface_k / config.atmos_clim.surface_d
+    w, G_lid = float(hf_row.get('lid_weight', 0.0)), float(hf_row.get('lid_conductance', 0.0))
+    if not (w > 0.0 and G_lid > 0.0):
+        return G_skin, float(hf_row['T_magma'])
+    G = w * G_lid + (1.0 - w) * G_skin
+    T_melt = w * G_lid * float(hf_row['lid_T_base']) + (1.0 - w) * G_skin * float(
+        hf_row['lid_T_node']
+    )
+    return G, T_melt / G
+
+
+def lid_open_flux(config: Config, hf_row: dict) -> float:
+    """Flux [W m-2] of the surface without a lid, the boundary value of the interior.
+
+    Parameters
+    ----------
+    config : Config
+        Model configuration.
+    hf_row : dict
+        Current helpfile row after the atmosphere step, with ``T_surf`` and ``F_atm``.
 
     Returns
     -------
     float
-        ``1 / (w / G_lid + (1 - w) d_skin / k_skin)``.
+        ``G_skin (T_node - T_surf)`` where a lid acts, otherwise ``F_atm``.
     """
+    if not (float(hf_row.get('lid_weight', 0.0)) > 0.0):
+        return float(hf_row['F_atm'])
     G_skin = config.atmos_clim.surface_k / config.atmos_clim.surface_d
-    w, G_lid = float(hf_row.get('lid_weight', 0.0)), float(hf_row.get('lid_conductance', 0.0))
-    return 1.0 / (w / G_lid + (1.0 - w) / G_skin) if w > 0.0 and G_lid > 0.0 else G_skin
+    return G_skin * (float(hf_row['lid_T_node']) - float(hf_row['T_surf']))
 
 
 def clip_radius_to_hill(config: Config, hf_row: dict, radius: float) -> float:
