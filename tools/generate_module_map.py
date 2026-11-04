@@ -214,12 +214,8 @@ DISPATCH_SITES = [
 
 # Comparisons against values outside the validator option set that the
 # tree-wide validity check must tolerate, keyed by (file, dotted path, value).
-# interior_energetics/boundary.py:118 guards mantle-mass derivation on
-# interior_struct.module == 'self', which no validator accepts, so the branch
-# cannot fire; it is kept as-is pending a decision on the intended condition.
-KNOWN_DEAD_ARMS = {
-    ('src/proteus/interior_energetics/boundary.py', 'interior_struct.module', 'self'),
-}
+# Add an entry only with a documented reason.
+KNOWN_DEAD_ARMS: set[tuple[str, str, str]] = set()
 
 # Secondary switches that route work within an area. Each symbol is verified
 # to exist at top level of its file.

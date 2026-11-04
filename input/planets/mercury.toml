@@ -350,7 +350,6 @@ config_version = "3.0"
     [interior_energetics.dummy]
         mantle_tliq           = 2020.0       # liquidus [K]; low-pressure peridotite (Mercury CMB ~5 GPa)
         mantle_tsol           = 1420.0       # solidus [K]; low-pressure peridotite
-        mantle_rho            = 3200.0       # mantle density [kg m-3]; Mercury mantle
         mantle_cp             = 1792.0       # mantle heat capacity [J K-1 kg-1]
         heat_internal         = 0.0          # internal heating rate [W kg-1]
 
@@ -363,8 +362,6 @@ config_version = "3.0"
         silicate_heat_capacity    = 1200.0       # silicate heat capacity [J/kg/K]
         atm_heat_capacity_const   = true         # always use the fallback atmosphere heat capacity
         atm_heat_capacity         = 1.7e4        # fallback atmosphere heat capacity [J/kg/K]
-        silicate_density          = 3200.0       # silicate density [kg/m^3]; Mercury mantle. Boundary backend only, which takes the mantle density from the structure instead
-        core_density              = 6980         # core density [kg/m^3]; Mercury core. Only read with core_frac_mode = "mass" and no structure R_core
         thermal_conductivity      = 4.2          # thermal conductivity [W/m/K]
         thermal_diffusivity       = 1.0e-6       # thermal diffusivity [m^2/s]
         thermal_expansivity       = 2.0e-5       # thermal expansivity [1/K]

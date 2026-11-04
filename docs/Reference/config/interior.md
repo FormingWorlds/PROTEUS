@@ -314,7 +314,7 @@ controlled parity tests.
 | Parameter | Type | Default | Description |
 |---|---|---|---|
 | `const_properties` | bool | `false` | Enable constant-properties mode: bypass the EOS tables and use the analytical T(S) = T_ref * exp((S - S_ref) / Cp) relationship, for controlled parity tests. |
-| `const_rho` | float | `4000.0` | Constant density \[kg/m3\]. Must be > 0. |
+| `const_rho` | float | `4000.0` | Constant density \[kg/m3\]. SPIDER and Aragog read it only when const_properties = true. The dummy interior also uses it for its mantle mass when the helpfile row has no M_int or M_core. Must be > 0. |
 | `const_Cp` | float | `1000.0` | Constant heat capacity \[J/kg/K\]. Must be > 0. |
 | `const_alpha` | float | `1e-05` | Constant thermal expansivity \[1/K\]. Must be > 0. |
 | `const_cond` | float | `4.0` | Constant thermal conductivity \[W/m/K\]. Must be > 0. |
@@ -432,9 +432,9 @@ A parameterised cooling model with prescribed solidus and liquidus.
 |---|---|---|---|
 | `mantle_tliq` | float | `2700.0` | Mantle liquidus temperature \[K\]. Must be >= 0. |
 | `mantle_tsol` | float | `1700.0` | Mantle solidus temperature \[K\]. Must be >= 0. |
-| `mantle_rho` | float | `4550.0` | Mantle density \[kg m-3\] for the dummy density profile and the fallback mantle-mass estimate. When the interior structure provides the masses, the mantle mass is taken as ``M_int - M_core`` instead. Must be > 0. |
 | `mantle_cp` | float | `1792.0` | Mantle specific heat capacity \[J kg-1 K-1\]. Must be >= 0. |
 | `heat_internal` | float | `0.0` | Fixed internal heating rate (e.g. radiogenic) \[W kg-1\]. Tidal heating is handled separately via `heat_tidal` and is added on top of this value. Must be >= 0. |
+| `mantle_rho` | float or none | `none` | Deprecated and ignored: the dummy interior reports its mantle mass over the mantle shell volume as its density. |
 <!-- END GENERATED: config-table [interior_energetics.dummy] -->
 
 ### Boundary `[interior_energetics.boundary]`
@@ -451,12 +451,10 @@ with prescribed solidus and liquidus and parameterised convective heat transport
 | `critical_rayleigh_number` | float | `1100.0` | Critical Rayleigh number for onset of convection \[-\]. Must be > 0. |
 | `nusselt_exponent` | float | `0.33` | Nusselt-Rayleigh scaling exponent \[-\]. Must be > 0. |
 | `silicate_heat_capacity` | float | `1200.0` | Silicate heat capacity \[J/kg/K\]. Must be > 0. |
-| `core_density` | float | `10738.0` | Core density \[kg/m^3\]. Must be > 0. |
 | `core_shear` | float | `0.1` | Core shear modulus \[Pa\]. Must be > 0. |
 | `core_bulk` | float | `500000000000.0` | Core bulk modulus \[Pa\]. Must be > 0. |
 | `atm_heat_capacity_const` | bool | `true` | Always use fallback atmosphere heat capacity?. |
 | `atm_heat_capacity` | float | `17000.0` | Used as fallback for atmosphere heat capacity when layer-specific value is not available \[J/kg/K\]. Must be > 0. |
-| `silicate_density` | float | `4103.0` | Silicate density \[kg/m^3\]. Default taken from Fei et. al. 2021 (https://ui.adsabs.harvard.edu/abs/2021NatCo..12..876F). Must be > 0. |
 | `thermal_conductivity` | float | `4.2` | Thermal conductivity \[W/m/K\]. Must be > 0. |
 | `thermal_diffusivity` | float | `1e-06` | Thermal diffusivity \[m^2/s\]. Must be > 0. |
 | `thermal_expansivity` | float | `2e-05` | Thermal expansivity \[1/K\]. Must be > 0. |
@@ -467,6 +465,8 @@ with prescribed solidus and liquidus and parameterised convective heat transport
 | `viscosity_prefactor` | float | `0.00024` | Viscosity prefactor \[Pa s\] for Vogel-Fulcher-Tammann magma ocean model. Must be > 0. |
 | `viscosity_activation_temp` | float | `4600` | Activation temperature \[K\] for Vogel-Fulcher-Tammann magma ocean model. Must be > 0. |
 | `logging` | bool | `false` | Whether to create diagnostic CSV data files from boundary interior module. |
+| `silicate_density` | float or none | `none` | Deprecated and ignored: the boundary interior takes its mantle mass and radius from the structure. |
+| `core_density` | float or none | `none` | Deprecated and ignored: the boundary interior takes its core mass and radius from the structure. |
 <!-- END GENERATED: config-table [interior_energetics.boundary] -->
 
 ## Constraints
@@ -483,6 +483,7 @@ Cross-field constraints enforced when the config file loads:
 - Require a PALEOS or temperature-dependent energetics key for SPIDER or Aragog.
 - The low-temperature solid extension is run only with the Aragog interior.
 - The low-temperature solid extension acts on the P-S tables that the zalmoxis and dummy structures build from the standard PALEOS solid table.
+- Refuse the SPIDER structure with an interior that takes its mass from the structure.
 - Interior tidal heating requires an tides module to be enabled.
 - Aragog requires at least one energy transport term to be enabled.
 - Validate Boundary backend's solidus/liquidus ordering.
