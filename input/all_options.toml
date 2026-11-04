@@ -437,7 +437,6 @@ config_version = "3.0"
     rtol                      = -1.0         # relative ODE solver tolerance; unset: 1e-8 Aragog, 1e-10 SPIDER
     atol                      = 1.0e-10      # absolute ODE solver tolerance
     flux_guess                = -1           # initial F_atm guess [W/m2]; <0 = sigma*T_magma^4
-    num_tolerance             = -1           # deprecated alias for rtol; leave at -1 (unset)
     surface_bc_mode           = "flux"       # flux (F_atm from the atmosphere) | grey_body (native BC)
 
     # Constant-properties mode: bypass EOS tables, use analytical T(S) = T_ref * exp((S - S_ref) / Cp)
@@ -560,7 +559,6 @@ config_version = "3.0"
     [interior_energetics.spider]
         solver_type           = "bdf"        # SUNDIALS method: adams | bdf
         matprop_smooth_width  = 1.0e-2       # melt-fraction smoothing window across solidus/liquidus
-        tolerance_rel         = -1           # deprecated alias for interior_energetics.rtol; leave at -1 (unset)
         tolerance_struct      = 100          # absolute mass tolerance [kg] for the radius secant solver
         log_output            = true         # write SPIDER solver log output
 
@@ -570,7 +568,6 @@ config_version = "3.0"
         mantle_tsol           = 1700.0       # solidus [K]
         mantle_cp             = 1792.0       # mantle heat capacity [J K-1 kg-1]
         heat_internal         = 0.0          # internal heating rate [W kg-1]
-        mantle_rho            = "none"       # deprecated and ignored; the density follows from the structure
 
     # Boundary backend (Schaefer+2016 0-D box model with prescribed solidus/liquidus)
     [interior_energetics.boundary]
@@ -593,8 +590,6 @@ config_version = "3.0"
         viscosity_prefactor       = 2.4e-4       # VFT magma-ocean prefactor [Pa s]
         viscosity_activation_temp = 4600.0       # VFT magma-ocean activation temperature [K]
         logging                   = false        # write Boundary diagnostic CSVs
-        silicate_density          = "none"       # deprecated and ignored; the mantle comes from the structure
-        core_density              = "none"       # deprecated and ignored; the core comes from the structure
 
 # ----------------------------------------------------
 

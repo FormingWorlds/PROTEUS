@@ -583,8 +583,7 @@ def _warn_ignored_key(path: str, reason: str) -> None:
     user loading an older configuration or run record sees it.
     """
     warnings.warn(
-        f'{path} is deprecated and ignored: {reason}. Remove it from the '
-        'configuration; a future release will refuse it.',
+        f'{path} is deprecated and ignored: {reason}.',
         FutureWarning,
         stacklevel=4,
     )

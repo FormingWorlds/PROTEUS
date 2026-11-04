@@ -70,6 +70,21 @@ ALL_OPTIONS_EXCEPTIONS: dict[str, str] = {
         'omitted so it resolves to the schema default, which the Aragog '
         'wrapper promotes to a positive cap for the zalmoxis+aragog stack'
     ),
+    'interior_energetics.boundary.core_density': (
+        'deprecated and ignored; the boundary interior takes its core from the structure'
+    ),
+    'interior_energetics.boundary.silicate_density': (
+        'deprecated and ignored; the boundary interior takes its mantle from the structure'
+    ),
+    'interior_energetics.dummy.mantle_rho': (
+        'deprecated and ignored; the dummy interior derives its density from the structure'
+    ),
+    'interior_energetics.num_tolerance': (
+        'deprecated alias for interior_energetics.rtol, which the reference sets'
+    ),
+    'interior_energetics.spider.tolerance_rel': (
+        'deprecated alias for interior_energetics.rtol, which the reference sets'
+    ),
 }
 
 GENERATED_NOTE = (

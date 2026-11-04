@@ -32,6 +32,7 @@ validator had ZERO test coverage at the time.
 from __future__ import annotations
 
 import importlib
+import re
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -786,13 +787,13 @@ def test_spider_struct_rejects_an_interior_that_takes_its_mass_from_the_structur
         **{'interior_struct.module': 'spider', 'interior_energetics.module': energetics}
     )
     expected = (
-        rf"interior_struct.module = 'spider' cannot run with "
-        rf"interior_energetics.module = '{energetics}'"
+        "interior_struct.module = 'spider' is incompatible with "
+        f"interior_energetics.module = '{energetics}'."
     )
-    with pytest.raises(ValueError, match=expected) as excinfo:
+    with pytest.raises(ValueError, match=re.escape(expected)) as excinfo:
         spider_struct_needs_mass_from_interior(instance, None, None)
-    # The message names a structure that works with this interior.
-    assert "interior_struct.module = 'dummy' or 'zalmoxis'" in str(excinfo.value)
+    # The whole message names both modules, so the user sees which pair was refused.
+    assert str(excinfo.value) == expected
 
 
 @pytest.mark.unit

@@ -196,7 +196,6 @@ def mock_hf_row():
     of cooling from initial magma ocean (T_p = 3500 K → 2500 K).
     """
     R_int, R_core, M_core = 6.371e6, 0.55 * 6.371e6, 0.55 * M_earth
-    # M_int gives a 4500 kg/m^3 mantle, the density the earlier fixture configured.
     M_int = M_core + 4.0 / 3.0 * np.pi * (R_int**3 - R_core**3) * 4500.0
     return {
         'Time': 0.01,  # Myr (convert to seconds via secs_per_year)

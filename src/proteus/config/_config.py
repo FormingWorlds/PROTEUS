@@ -749,11 +749,8 @@ def spider_struct_needs_mass_from_interior(instance, attribute, value):
     energetics = instance.interior_energetics.module
     if struct_module == 'spider' and energetics in ('dummy', 'boundary'):
         raise ValueError(
-            f"interior_struct.module = 'spider' cannot run with interior_energetics.module = "
-            f"'{energetics}': the SPIDER structure takes the mantle mass from the energetics "
-            f'module, and the {energetics} interior takes it from the structure. Use '
-            "interior_struct.module = 'dummy' or 'zalmoxis', or interior_energetics.module = "
-            "'spider' or 'aragog'."
+            "interior_struct.module = 'spider' is incompatible with "
+            f"interior_energetics.module = '{energetics}'."
         )
 
 
