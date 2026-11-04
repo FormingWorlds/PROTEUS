@@ -5569,6 +5569,32 @@ def test_select_profile_plot_times_intersects_for_snapshot_interiors():
     assert 10 in result  # shared time included
 
 
+def test_select_profile_plot_times_matches_spider_snapshots_named_by_the_rounded_year():
+    """SPIDER names a snapshot by the time rounded to a year (309.json for 309.47 yr),
+    so with interior_rounds_to_year the sub-year atmosphere times of a long run match
+    and the run is plotted to its end; exact matching keeps only whole-year times."""
+    interior = [0, 1, 31, 61, 309, 644, 1110]
+    nc = [1.0, 2.0, 31.0, 61.0, 309.47, 643.733, 1110.493]
+    rounded = select_profile_plot_times(
+        interior, nc, no_int_snapshots=False, interior_rounds_to_year=True
+    )
+    assert rounded == [1.0, 31.0, 61.0, 309.47, 643.733, 1110.493]
+    exact = select_profile_plot_times(interior, nc, no_int_snapshots=False)
+    assert exact == [1.0, 31.0, 61.0]  # the earlier behaviour for SPIDER
+    assert max(rounded) > 10 * max(exact)
+
+
+def test_select_profile_plot_times_keeps_one_time_per_rounded_snapshot():
+    """Of several atmosphere times that round to one SPIDER snapshot the nearest is kept,
+    and a time exactly half a year away, which the two roundings may name differently,
+    is left out."""
+    result = select_profile_plot_times(
+        [10, 20], [9.7, 10.2, 19.5, 20.4], no_int_snapshots=False, interior_rounds_to_year=True
+    )
+    assert result == [10.2, 20.4]
+    assert 19.5 not in result and 9.7 not in result
+
+
 def test_select_profile_plot_times_empty_atmosphere_returns_empty():
     """With no atmosphere NetCDF times, no profiles can be plotted regardless
     of interior module.

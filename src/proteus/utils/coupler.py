@@ -41,7 +41,7 @@ from proteus.utils.helper import (
     parse_subyear_time,
     safe_rm,
 )
-from proteus.utils.plot import sample_times
+from proteus.utils.plot import profile_sample_tmin, sample_times
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -2384,27 +2384,48 @@ def variable_is_logarithmic(varname: str) -> bool:
 
 
 def select_profile_plot_times(
-    interior_times: list, nc_times: list, no_int_snapshots: bool
+    interior_times: list,
+    nc_times: list,
+    no_int_snapshots: bool,
+    interior_rounds_to_year: bool = False,
 ) -> list:
     """Select the times at which to plot atmosphere/interior profiles.
+
+    SPIDER names its JSON snapshots by the time rounded to a whole year, while the
+    atmosphere snapshots keep the sub-year time. With `interior_rounds_to_year`, an
+    atmosphere time t matches the interior snapshot that `read_jsons` opens for it,
+    ``'%.0f' % t``, when it lies within half a year of it; of several atmosphere times
+    that round to one interior snapshot, the nearest is kept. Otherwise the times must
+    match exactly.
 
     Parameters
     ----------
     interior_times : list
-        Interior snapshot times (empty for dummy/boundary interiors).
+        Interior snapshot times [yr] (empty for dummy/boundary interiors).
     nc_times : list
-        Atmosphere ``*_atm.nc`` snapshot times.
+        Atmosphere ``*_atm.nc`` snapshot times [yr].
     no_int_snapshots : bool
         True when the interior module writes no per-time snapshot.
+    interior_rounds_to_year : bool
+        True when the interior snapshots are named by the time rounded to a year.
 
     Returns
     -------
     list
-        Sorted list of times at which profiles can be plotted.
+        Sorted list of atmosphere times [yr] at which profiles can be plotted.
     """
     if no_int_snapshots:
         return sorted(nc_times)
-    return sorted(set(interior_times) & set(nc_times))
+    if not interior_rounds_to_year:
+        return sorted(set(interior_times) & set(nc_times))
+    interior = {float(t) for t in interior_times}
+    nearest = {}
+    for t in set(nc_times):
+        year = float('%.0f' % t)
+        if year in interior and abs(t - year) < 0.5:
+            if year not in nearest or abs(t - year) < abs(nearest[year] - year):
+                nearest[year] = t
+    return sorted(nearest.values())
 
 
 def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num_snapshots=7):
@@ -2517,13 +2538,13 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
     if not dummy_atm:
         ncs = glob.glob(os.path.join(output_dir, 'data', '*_atm.nc'))
         nc_times = [parse_subyear_time(f.split('/')[-1].split('_atm')[0]) for f in ncs]
-        output_times = select_profile_plot_times(output_times, nc_times, no_int_snapshots)
+        output_times = select_profile_plot_times(
+            output_times, nc_times, no_int_snapshots, interior_rounds_to_year=spider
+        )
 
     # Samples for plotting profiles
     if len(output_times) > 0:
-        tmin = 1.0
-        if np.amax(output_times) > 1e3:
-            tmin = 1e3
+        tmin = profile_sample_tmin(output_times)
         plot_times, _ = sample_times(output_times, num_snapshots, tmin=tmin)
         log.debug('Snapshots to plot:' + str(plot_times))
 

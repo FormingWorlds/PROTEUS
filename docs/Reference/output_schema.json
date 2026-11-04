@@ -2019,7 +2019,8 @@
         }
       ],
       "consumers": [
-        "atmos_clim"
+        "atmos_clim",
+        "plot"
       ],
       "consumers_possible": []
     },
