@@ -287,3 +287,17 @@ def test_combined_skin_conducts_the_flux_of_a_layered_conduction_solve():
     k_parallel = sum(thickness[c] * condensate_conductivity[c] for c in order) / d
     assert k_parallel * (T_bottom - T_top) / d > 10 * q_bottom
     assert 0.0 < q_bottom < (T_bottom - T_top) * condensate_conductivity['C'] / d
+
+
+def test_numeric_skin_leaves_the_interior_thickness_and_records_the_conductivity():
+    """With numeric values the skin step writes only boundary_layer_conductivity
+    (3.0 W/m/K); boundary_layer_thickness stays what the interior wrote, here the
+    boundary interior's own thermal boundary layer (40 m), not surface_d (0.05 m)."""
+    config = _numeric_config(surf_state='fixed', d=0.05, k=3.0)
+    row = _hf_row(C=(1.0e18, 1.0))
+    row['boundary_layer_thickness'] = 40.0  # m
+    assert update_surface_skin(config, row) == 'fixed'
+    assert row['boundary_layer_thickness'] == pytest.approx(40.0, rel=1e-12)
+    assert row['boundary_layer_conductivity'] == pytest.approx(3.0, rel=1e-12)
+    # The atmosphere still reads the configured skin, not the interior column
+    assert skin_values(config, row) == (0.05, 3.0)

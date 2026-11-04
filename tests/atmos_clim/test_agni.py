@@ -3980,25 +3980,28 @@ def test_update_agni_atmos_pushes_the_saturation_skin_of_each_iteration(monkeypa
 
 
 @pytest.mark.parametrize(
+    'transparent', [True, False], ids=['transparent-solve', 'energy-solve']
+)
+@pytest.mark.parametrize(
     ('thickness', 'sol_type'),
     [(0.0, 1), (5.9, 2)],
     ids=['no-layer-fixed-surface', 'graphite-layer-skin'],
 )
 def test_run_agni_solves_with_the_surface_state_of_the_iteration(
-    monkeypatch, thickness, sol_type
+    monkeypatch, thickness, sol_type, transparent
 ):
-    """With a skin from saturation, the transparent solve gets AGNI's 'fixed' code 1
-    while no layer has formed and the 'skin' code 2 once one has, although the
-    configured surf_state is 'skin' in both cases."""
+    """With a skin from saturation, both the transparent and the energy-conserving
+    solve get AGNI's 'fixed' code 1 while no layer has formed and the 'skin' code 2
+    once one has, although the configured surf_state is 'skin' (code 2) in both cases."""
     captured = {}
-    atmos = _make_run_agni_atmos(transparent=True)
+    atmos = _make_run_agni_atmos(transparent=transparent)
     config = _make_run_agni_config(solve_energy=True)
     config.atmos_clim.surface_d = 'saturation'
     config.atmos_clim.surface_k = 'saturation'
     config.atmos_clim.surf_state = 'skin'
     config.atmos_clim.surf_state_int = 2
     hf_row = {
-        'P_surf': 1e-5,
+        'P_surf': 1e-5 if transparent else 100.0,  # bar
         'R_int': 2.4397e6,
         'R_xuv': 2.5e6,
         'p_xuv': 1e-3,
@@ -4021,9 +4024,100 @@ def test_run_agni_solves_with_the_surface_state_of_the_iteration(
     monkeypatch.setattr(agni_mod, 'sync_log_files', lambda *a: [])
     monkeypatch.setattr(agni_mod, 'get_oarr_from_parr', lambda p_arr, r_arr, val: (0, val))
 
+    def _fake_solve_energy(atmos_in, loops_total, dirs, config_in, sol_type=None):
+        captured['sol_type'] = sol_type
+        return atmos_in, True
+
+    monkeypatch.setattr(agni_mod, '_solve_energy', _fake_solve_energy)
+
     agni_mod.run_agni(
         atmos, 1, {'output': '/tmp/fake_output', 'output/plots': '/tmp/p'}, config, hf_row
     )
 
     assert captured['sol_type'] == sol_type
-    assert captured['sol_type'] in (1, 2)
+    # The configured code would be 2 in both cases; the fixed case must not get it
+    assert (captured['sol_type'] == config.atmos_clim.surf_state_int) is (thickness > 0)
+
+
+def test_solve_energy_passes_the_surface_state_of_the_iteration_to_agni(monkeypatch):
+    """An explicit sol_type reaches AGNI's solve_energy_b in place of the configured
+    surface state, and None keeps the configured one."""
+    captured = {}
+
+    def _fake_solve_energy_b(_atmos, **kwargs):
+        captured.update(kwargs)
+        return True
+
+    fake_jl = SimpleNamespace(
+        AGNI=SimpleNamespace(solver=SimpleNamespace(solve_energy_b=_fake_solve_energy_b))
+    )
+    monkeypatch.setattr(agni_mod, 'jl', fake_jl)
+    monkeypatch.setattr(agni_mod, 'sync_log_files', lambda *_a, **_k: [])
+    config = _make_solve_energy_config()
+    config.atmos_clim.surf_state_int = 2
+
+    _, success = agni_mod._solve_energy(
+        _make_run_agni_atmos(), 5, {'output': '/tmp'}, config, 1
+    )
+    assert success is True
+    assert captured['sol_type'] == 1
+
+    captured.clear()
+    agni_mod._solve_energy(_make_run_agni_atmos(), 5, {'output': '/tmp'}, config)
+    assert captured['sol_type'] == 2
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('surface_d', 'surface_k', 'row_skin', 'expected'),
+    [
+        (0.05, 3.0, (0.0, 0.0), (0.05, 3.0)),
+        ('saturation', 'saturation', (5.9, 2.89), (5.9, 2.89)),
+        ('saturation', 'saturation', (0.0, 0.0), None),
+    ],
+    ids=['numeric-skin-from-config', 'saturation-layer-from-row', 'saturation-no-layer'],
+)
+def test_init_agni_atmos_sets_up_the_skin_in_effect(
+    monkeypatch, tmp_path, surface_d, surface_k, row_skin, expected
+):
+    """AGNI's setup! receives the configured skin, or under 'saturation' the skin of
+    the row [m, W m-1 K-1]; with no layer yet it receives none and keeps its own
+    defaults, which the fixed state never reads, so no zero thickness reaches setup!."""
+    fake_agni = _FakeAGNI()
+    fake_jl = SimpleNamespace(
+        AGNI=fake_agni, Dict=dict, Char=str, Array=_FAKE_JL_ARRAY, String=str
+    )
+    output_dir = tmp_path / 'out'
+    (output_dir / 'data').mkdir(parents=True)
+    dirs = {'output': str(output_dir), 'agni': '/fake/agni', 'fwl': str(tmp_path)}
+    config = _build_greygas_config()
+    config.atmos_clim.surface_d = surface_d
+    config.atmos_clim.surface_k = surface_k
+    hf_row = {
+        'F_ins': 1000.0,
+        'albedo_pl': 0.2,
+        'T_surf': 900.0,
+        'gravity': 3.7,
+        'R_int': 2.4397e6,
+        'P_surf': 1.0,
+        'axial_period': 5.07e6,
+        'longitude': 0.0,
+        'latitude': 0.0,
+        'hill_radius': 2.0e8,
+        'boundary_layer_thickness': row_skin[0],
+        'boundary_layer_conductivity': row_skin[1],
+    }
+    monkeypatch.setattr(agni_mod, 'jl', fake_jl)
+    monkeypatch.setattr(agni_mod, 'convert', lambda _typ, value: value)
+    monkeypatch.setattr(agni_mod, '_construct_voldict', lambda *_a, **_k: {'H2O': 1.0})
+    monkeypatch.setattr(agni_mod, 'sync_log_files', lambda *_a, **_k: None)
+
+    init_agni_atmos(dirs, config, hf_row)
+
+    kwargs = fake_agni.last_setup_kwargs
+    if expected is None:
+        assert 'skin_d' not in kwargs and 'skin_k' not in kwargs
+    else:
+        assert kwargs['skin_d'] == pytest.approx(expected[0], rel=1e-12)
+        assert kwargs['skin_k'] == pytest.approx(expected[1], rel=1e-12)
+        assert kwargs['skin_d'] > 0 and kwargs['skin_k'] > 0

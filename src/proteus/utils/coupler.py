@@ -1115,7 +1115,7 @@ def GetHelpfileKeys():
         'M_mantle_solid',   # dry mass of solid-phase mantle [kg]
         'M_mantle_liquid',  # dry mass of liquid-phase mantle [kg]
         'T_pot',            # characteristic mantle potential temperature [K]
-        'boundary_layer_thickness',  # thermal boundary layer thickness; the conductive skin given to the atmosphere, 0 for a fixed surface under 'saturation' [m]
+        'boundary_layer_thickness',  # thermal boundary layer thickness; under 'saturation' the skin step overwrites the interior value with the skin given to the atmosphere, 0 for a fixed surface [m]
         'boundary_layer_conductivity',  # conductive skin conductivity given to the atmosphere, 0 for a fixed surface under 'saturation' [W m-1 K-1]
 
         # Core evolution diagnostic keys for core_module mode
@@ -1823,8 +1823,8 @@ _DIAGNOSTIC_KEYS = (
     'step_dE_core_J',
     'E_core_residual_J',
     'E_core_residual_frac',
-    # Condensate activity from atmodeller, written each solve and never read back. The
-    # condensed mass is not here: prevent_desaturation reads it back to hold the layer.
+    # Condensate activity from atmodeller; the saturation skin reads it, and a zero-filled
+    # value is still safe there. The mass is state: prevent_desaturation holds the layer.
     *(f'{c}_cd_activity' for c in condensate_list),
 )
 

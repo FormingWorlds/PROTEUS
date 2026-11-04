@@ -1976,7 +1976,7 @@
     {
       "name": "boundary_layer_thickness",
       "unit": "m",
-      "description": "thermal boundary layer thickness; the conductive skin given to the atmosphere, 0 for a fixed surface under 'saturation'",
+      "description": "thermal boundary layer thickness; under 'saturation' the skin step overwrites the interior value with the skin given to the atmosphere, 0 for a fixed surface",
       "group": "Planet interior properties",
       "origin": "literal",
       "producers": [

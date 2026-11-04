@@ -4279,6 +4279,51 @@ def test_a_resumed_run_outgasses_with_first_iter_false(tmp_path):
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_saturation_skin_is_set_from_this_iterations_condensates_before_the_atmosphere(
+    tmp_path,
+):
+    """With surface_d = surface_k = 'saturation', the skin the atmosphere step reads
+    comes from the condensate the outgassing step of the same iteration formed
+    (1e18 kg of graphite over R_int = 6.371e6 m is 0.8675 m), and it overwrites the
+    boundary_layer_thickness the interior step wrote earlier in the iteration."""
+    import math
+
+    p = _make_resume_main_loop_proteus(tmp_path, interior_module='aragog')
+    p.config.atmos_clim.surface_d = 'saturation'
+    p.config.atmos_clim.surface_k = 'saturation'
+    p.config.atmos_clim.surf_state = 'skin'
+    seen = {}
+
+    def _fake_interior(*args, **kwargs):
+        args[3]['boundary_layer_thickness'] = 123.0  # m, a stale interior value
+
+    def _fake_outgas(_dirs, _config, hf_row, first_iter):
+        hf_row['C_cd_kg'] = 1.0e18
+        hf_row['C_cd_activity'] = 1.0
+
+    def _fake_atmosphere(*args, **kwargs):
+        row = args[8]
+        seen['d'] = row['boundary_layer_thickness']
+        seen['k'] = row['boundary_layer_conductivity']
+        raise _StopAfterAtmosphereCall
+
+    _run_resumed_loop_until_stop(
+        p,
+        _make_resume_checkpoint_df(),
+        _fake_interior,
+        _fake_atmosphere,
+        fake_outgas=_fake_outgas,
+    )
+
+    d_expected = 1.0e18 / (2260.0 * 4.0 * math.pi * 6.371e6**2)  # m
+    assert seen['d'] == pytest.approx(d_expected, rel=1e-12)
+    assert seen['d'] == pytest.approx(0.8675, rel=1e-3)
+    assert seen['k'] == pytest.approx(100.0, rel=1e-12)  # one graphite layer
+    assert abs(seen['d'] - 123.0) > 100.0  # the interior value did not survive
+
+
+@pytest.mark.unit
 def test_solvus_override_restores_the_magma_ocean_state(tmp_path):
     """With global miscibility the loop hands the atmosphere the solvus as its
     lower boundary (T_solvus, P_solvus in bar, R_solvus) and afterwards

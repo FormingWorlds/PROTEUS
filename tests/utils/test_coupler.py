@@ -5151,6 +5151,30 @@ def test_a_helpfile_without_m_desiccated_resumes_with_nothing_booked(tmp_path):
 
 
 @pytest.mark.unit
+def test_a_helpfile_without_the_skin_conductivity_resumes_with_zero(tmp_path):
+    """boundary_layer_conductivity is zero-filled for a helpfile that predates it, so an
+    older run resumes; boundary_layer_thickness is kept, and the skin step writes both
+    again after the first outgassing step."""
+    from proteus.utils.coupler import (
+        RESUMABLE_ZERO_FILL_KEYS,
+        GetHelpfileKeys,
+        ReadHelpfileFromCSV,
+    )
+
+    assert 'boundary_layer_conductivity' in RESUMABLE_ZERO_FILL_KEYS
+    assert 'boundary_layer_thickness' not in RESUMABLE_ZERO_FILL_KEYS
+    row = ZeroHelpfileRow()
+    row['boundary_layer_thickness'] = 0.01  # m
+    del row['boundary_layer_conductivity']
+    pd.DataFrame([row, row]).to_csv(tmp_path / 'runtime_helpfile.csv', sep='\t', index=False)
+
+    loaded = ReadHelpfileFromCSV(str(tmp_path))
+    assert loaded['boundary_layer_conductivity'].tolist() == [0.0, 0.0]
+    assert loaded['boundary_layer_thickness'].tolist() == pytest.approx([0.01, 0.01])
+    assert set(loaded.columns) == set(GetHelpfileKeys())
+
+
+@pytest.mark.unit
 def test_a_helpfile_without_f_remelt_resumes_with_no_remelt_recorded(tmp_path):
     """f_remelt is in the schema and zero-filled: an older helpfile resumes with 0 on every row."""
     from proteus.utils.coupler import (

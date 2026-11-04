@@ -7642,19 +7642,25 @@ def test_evaluate_molten_state_restores_solution_and_writes_keys(monkeypatch, tm
         'proteus.interior_energetics.aragog.AragogRunner._set_entropy_ic',
         lambda *a, **k: np.full(len(solver._S0), 4000.0),
     )
+    helpfile_kwargs = {}
     monkeypatch.setattr(
         'proteus.interior_energetics.aragog.AragogRunner._build_helpfile_output',
-        lambda *a, **k: {
-            'T_magma': 3850.0,
-            'T_cmb': 5200.0,
-            'T_cmb_node': 5150.0,
-            'Phi_global': 0.73,
-            'Phi_global_vol': 0.73,
-            'T_pot': 3750.0,
-            'RF_depth': 0.05,
-        },
+        lambda *a, **k: (
+            helpfile_kwargs.update(k)
+            or {
+                'T_magma': 3850.0,
+                'T_cmb': 5200.0,
+                'T_cmb_node': 5150.0,
+                'Phi_global': 0.73,
+                'Phi_global_vol': 0.73,
+                'T_pot': 3750.0,
+                'RF_depth': 0.05,
+            }
+        ),
     )
     _remelt_aragog(config, {'output': str(tmp_path), 'spider_eos_dir': ''}, hf_row, interior_o)
+    # The numeric skin thickness [m] is what the re-melt output is built with
+    assert helpfile_kwargs['surface_d'] == pytest.approx(config.atmos_clim.surface_d, rel=1e-12)
 
     assert hf_row['T_magma'] == pytest.approx(3850.0, rel=1e-12)
     # The impact row carries the re-melted CMB temperatures.
@@ -7693,6 +7699,23 @@ def test_evaluate_molten_state_restores_solution_and_writes_keys(monkeypatch, tm
     _remelt_aragog(config, {'output': str(tmp_path), 'spider_eos_dir': ''}, row, interior_o)
     assert row['core_T_top'] == pytest.approx(5200.0, rel=1e-12)
     config.interior_energetics.aragog.core_bc = 'energy_balance'
+
+    # A skin from saturation passes the thickness of the row (5.9 m), not the string
+    import attrs
+
+    config.atmos_clim = attrs.evolve(
+        config.atmos_clim, surf_state='skin', surface_d='saturation', surface_k='saturation'
+    )
+    sat_solver = FakeSolver(n_nodes=80)
+    sat_row = {'Time': 250.0, 'M_mantle': 4.2e24, 'F_atm': 100.0, 'T_cmb': 5000.0}
+    sat_row.update(boundary_layer_thickness=5.9, boundary_layer_conductivity=2.89)
+    _remelt_aragog(
+        config,
+        {'output': str(tmp_path), 'spider_eos_dir': ''},
+        sat_row,
+        SimpleNamespace(aragog_solver=sat_solver, impact_reset=False),
+    )
+    assert helpfile_kwargs['surface_d'] == pytest.approx(5.9, rel=1e-12)
 
     # 3. Solver without get_state returns None; liquid/solid split runs from Phi_global with clamping
     class NoGetStateSolver:

@@ -2658,3 +2658,36 @@ def test_try_spider_heat_radiogen(tmp_path):
     assert '-k40_t0' in call_args
     assert '-th232_t0' in call_args
     assert '-u235_t0' in call_args
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_read_spider_records_the_skin_thickness_in_effect(tmp_path):
+    """boundary_layer_thickness is the skin thickness passed in (5.9 m of graphite
+    under 'saturation'), and without one it falls back to the numeric config value;
+    the config string 'saturation' never reaches the numeric column."""
+    from proteus.interior_energetics.common import Interior_t
+    from proteus.interior_energetics.spider import ReadSPIDER
+
+    data_dir = tmp_path / 'data'
+    data_dir.mkdir()
+    _make_spider_json(str(data_dir / '0.json'), step=0, num_stag=10, num_basic=11)
+    lookup = np.zeros((4, 3, 3))
+    lookup[:, :, 0] = np.linspace(0, 135e9, 3)[None, :]
+    lookup[:, :, 1] = np.linspace(2000, 3200, 4)[:, None]
+    lookup[:, :, 2] = 4000.0
+    dirs = {'output': str(tmp_path), 'output/data': str(data_dir)}
+
+    def _read(surface_d_config, **kwargs):
+        interior_o = Interior_t(11)
+        interior_o.lookup_rho_melt = lookup
+        config = MagicMock()
+        config.planet.prevent_warming = False
+        config.atmos_clim.surface_d = surface_d_config
+        return ReadSPIDER(dirs, config, R_int=6.371e6, interior_o=interior_o, **kwargs)[1]
+
+    passed = _read('saturation', surface_d=5.9)
+    assert passed['boundary_layer_thickness'] == pytest.approx(5.9, rel=1e-12)
+    fallback = _read(0.01)
+    assert fallback['boundary_layer_thickness'] == pytest.approx(0.01, rel=1e-12)
+    assert isinstance(passed['boundary_layer_thickness'], float)

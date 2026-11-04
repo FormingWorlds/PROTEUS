@@ -647,3 +647,49 @@ def test_update_state_atm_pushes_the_saturation_skin_only_once_a_layer_forms():
     assert atm.skin_k == pytest.approx(2.89, rel=1e-12)
     # The flux the column would conduct follows the new skin, not the default
     assert atm.skin_k / atm.skin_d * 100.0 == pytest.approx(48.983, rel=1e-4)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+@pytest.mark.parametrize(
+    ('thickness', 'solver'),
+    [(0.0, 'MCPA'), (5.9, 'MCPA_CBL')],
+    ids=['no-layer-fixed-surface', 'graphite-layer-conductive-lid'],
+)
+def test_run_janus_picks_the_solver_from_the_saturation_skin(
+    monkeypatch, tmp_path, thickness, solver
+):
+    """With surface_d = surface_k = 'saturation' and surf_state = 'skin', RunJANUS
+    solves the fixed-surface column (MCPA) while no layer has formed and the
+    conductive-lid column (MCPA_CBL) once the skin step has written a thickness."""
+    calls = []
+    solved_atm = _build_run_atm(g_surf=3.7, z_obs_height=5.0e4, stale_grav=3.7)
+    monkeypatch.setattr(
+        'janus.modules.MCPA', lambda *a, **kw: calls.append('MCPA') or solved_atm
+    )
+    monkeypatch.setattr(
+        'janus.modules.MCPA_CBL', lambda *a, **kw: calls.append('MCPA_CBL') or solved_atm
+    )
+    monkeypatch.setattr(janus_mod, 'UpdateStateAtm', lambda *a, **kw: None)
+    monkeypatch.setattr(
+        janus_mod, 'get_oarr_from_parr', lambda p_arr, o_arr, val: (0, o_arr[-1])
+    )
+    config = _build_run_config()
+    config.atmos_clim.surf_state = 'skin'
+    config.atmos_clim.surface_d = 'saturation'
+    config.atmos_clim.surface_k = 'saturation'
+    hf_row = {
+        'Time': 0.0,
+        'R_int': 2.4397e6,
+        'gravity': 3.7,
+        'p_xuv': 1e-3,  # bar
+        'T_surf': 1400.0,
+        'boundary_layer_thickness': thickness,  # m
+        'boundary_layer_conductivity': 2.89 if thickness > 0 else 0.0,  # W m-1 K-1
+    }
+
+    RunJANUS(SimpleNamespace(), {'output': str(tmp_path)}, config, hf_row, None, False)
+
+    assert calls == [solver]
+    # The configured surf_state alone would pick the conductive lid in both cases
+    assert (solver == 'MCPA_CBL') is (thickness > 0)

@@ -5595,3 +5595,41 @@ def test_aragog_runner_resume_top_cell_dt_limit_off_no_recompute():
 
     assert mock_dt.call_count == 1
     assert populated_solver.parameters.solver.end_time == pytest.approx(3202.5, rel=1e-12)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('surface_d', 'expected'),
+    [(0.01, 0.01), ('saturation', 5.9)],
+    ids=['numeric-skin-from-config', 'saturation-skin-from-row'],
+)
+def test_run_solver_builds_the_row_with_the_skin_thickness_in_effect(
+    tmp_path, surface_d, expected
+):
+    """``run_solver`` builds the helpfile output with the numeric surface_d [m], or under
+    'saturation' with the boundary_layer_thickness of the row (5.9 m), never the string."""
+    from types import SimpleNamespace
+
+    from proteus.interior_energetics.aragog import AragogRunner
+
+    (tmp_path / 'data').mkdir()
+    runner = AragogRunner.__new__(AragogRunner)
+    runner._use_jax = False
+    runner._config = MagicMock()
+    runner._config.interior_energetics.aragog.core_bc = 'bower2018'
+    runner._config.interior_energetics.write_flux_diagnostics = False
+    runner._config.atmos_clim.surface_d = surface_d
+    runner._config.atmos_clim.surface_k = 'saturation' if surface_d == 'saturation' else 2.0
+    out = _snapshot_output()
+    out.dt_actual = 80.0
+    runner._solve_with_retry = lambda hf_row, interior_o, S0_entry: out
+    captured = {}
+    runner._build_helpfile_output = lambda *a, **k: captured.update(k) or {}
+    interior_o = SimpleNamespace(aragog_solver=_StateSolver(4100.0))
+    hf_row = {'Time': 202.0, 'T_surf': 3000.0}
+    hf_row.update(boundary_layer_thickness=5.9, boundary_layer_conductivity=2.89)
+
+    runner.run_solver(hf_row, interior_o, {'output': str(tmp_path)}, write_data=False)
+
+    assert captured['surface_d'] == pytest.approx(expected, rel=1e-12)
+    assert isinstance(captured['surface_d'], float)

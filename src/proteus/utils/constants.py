@@ -186,11 +186,13 @@ condensate_names = {'C': 'Graphite', 'S': 'Sulfur', 'H2O': 'Water', 'H2O4S': 'Su
 # liquid sulfuric acid ~1830.
 condensate_density = {'C': 2260.0, 'S': 2070.0, 'H2O': 1000.0, 'H2O4S': 1830.0}
 
-# Approximate condensate thermal conductivities [W m-1 K-1], constant in T, for the
-# conductive skin of a saturated layer. Graphite is anisotropic; 100 is polycrystalline
-# graphite, 80-120 at https://www.eastcarb.com/graphite-thermal-conductivity/ (no T given).
-# Sulfur 0.269 from https://material-properties.org/Sulfur-thermal-properties-melting-point-thermal-conductivity-expansion/
-condensate_conductivity = {'C': 100.0, 'S': 0.269, 'H2O': 0.6, 'H2O4S': 0.3}
+# Condensate thermal conductivities [W m-1 K-1] for the saturation skin, constant in T
+condensate_conductivity = {
+    'C': 100.0,  # polycrystalline graphite, https://www.eastcarb.com/graphite-thermal-conductivity/
+    'S': 0.269,  # https://material-properties.org/Sulfur-thermal-properties-melting-point-thermal-conductivity-expansion/
+    'H2O': 0.6,  # liquid water, unsourced estimate
+    'H2O4S': 0.3,  # liquid sulfuric acid, unsourced estimate
+}
 
 # Activity at and above which a condensate counts as saturated (stable) [1]
 CONDENSATE_SATURATED_ACTIVITY = 0.999
