@@ -988,6 +988,7 @@ def CreateLockFile(output_dir: str):
 # Other columns carry physical state, where zero is invalid; see ReadHelpfileFromCSV.
 RESUMABLE_ZERO_FILL_KEYS = frozenset(
     {
+        'boundary_layer_conductivity',
         'esc_kg_cumulative',
         'f_remelt',
         'M_accreted_rock',
@@ -1114,7 +1115,8 @@ def GetHelpfileKeys():
         'M_mantle_solid',   # dry mass of solid-phase mantle [kg]
         'M_mantle_liquid',  # dry mass of liquid-phase mantle [kg]
         'T_pot',            # characteristic mantle potential temperature [K]
-        'boundary_layer_thickness',  # thermal boundary layer thickness [m]
+        'boundary_layer_thickness',  # thermal boundary layer thickness; the conductive skin given to the atmosphere, 0 for a fixed surface under 'saturation' [m]
+        'boundary_layer_conductivity',  # conductive skin conductivity given to the atmosphere, 0 for a fixed surface under 'saturation' [W m-1 K-1]
 
         # Core evolution diagnostic keys for core_module mode
         'core_r_icb',           # inner-core boundary radius; computed only with core_bc = core_module, 0 otherwise [m]

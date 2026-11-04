@@ -31,6 +31,7 @@ from aragog.parser import (
     _SolverParameters,
 )
 from proteus.accretion.common import snap_to_impact
+from proteus.atmos_clim.surface_skin import skin_values
 from proteus.interior_energetics import aragog_core, aragog_resume
 from proteus.interior_energetics.aragog_core_impact import refit_core_at_reset
 from proteus.interior_energetics.aragog_phase import (
@@ -2248,7 +2249,7 @@ class AragogRunner:
                 out,
                 hf_row,
                 interior_o=interior_o,
-                surface_d=self._config.atmos_clim.surface_d,
+                surface_d=skin_values(self._config, hf_row)[0],
                 surface_bc_mode=self._config.interior_energetics.surface_bc_mode,
                 t_end=sim_time,
             )

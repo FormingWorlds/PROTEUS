@@ -68,7 +68,7 @@ def test_column_and_thickness_follow_mass_area_and_density(draw_real, tmp_path):
 
     crop = hf.iloc[2:]
     area = 4.0 * np.pi * R_INT**2
-    saturated = crop['C_cd_activity'].to_numpy() >= sat_mod.SATURATED
+    saturated = crop['C_cd_activity'].to_numpy() >= sat_mod.CONDENSATE_SATURATED_ACTIVITY
     mass = np.where(saturated, crop['C_cd_kg'].to_numpy(), 0.0)
 
     graphite_col, sulfur_col = ax_col.lines[0].get_ydata(), ax_col.lines[1].get_ydata()

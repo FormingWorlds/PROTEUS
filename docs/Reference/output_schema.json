@@ -1976,10 +1976,14 @@
     {
       "name": "boundary_layer_thickness",
       "unit": "m",
-      "description": "thermal boundary layer thickness",
+      "description": "thermal boundary layer thickness; the conductive skin given to the atmosphere, 0 for a fixed surface under 'saturation'",
       "group": "Planet interior properties",
       "origin": "literal",
       "producers": [
+        {
+          "file": "src/proteus/atmos_clim/surface_skin.py",
+          "condition": "always"
+        },
         {
           "file": "src/proteus/interior_energetics/aragog.py",
           "condition": "interior_energetics.module = \"aragog\""
@@ -1997,7 +2001,26 @@
           "condition": "interior_energetics.module = \"spider\""
         }
       ],
-      "consumers": [],
+      "consumers": [
+        "atmos_clim"
+      ],
+      "consumers_possible": []
+    },
+    {
+      "name": "boundary_layer_conductivity",
+      "unit": "W m-1 K-1",
+      "description": "conductive skin conductivity given to the atmosphere, 0 for a fixed surface under 'saturation'",
+      "group": "Planet interior properties",
+      "origin": "literal",
+      "producers": [
+        {
+          "file": "src/proteus/atmos_clim/surface_skin.py",
+          "condition": "always"
+        }
+      ],
+      "consumers": [
+        "atmos_clim"
+      ],
       "consumers_possible": []
     },
     {
@@ -3629,6 +3652,7 @@
         }
       ],
       "consumers": [
+        "atmos_clim",
         "plot"
       ],
       "consumers_possible": []
@@ -3650,6 +3674,7 @@
         }
       ],
       "consumers": [
+        "atmos_clim",
         "outgas",
         "plot"
       ],
@@ -3668,6 +3693,7 @@
         }
       ],
       "consumers": [
+        "atmos_clim",
         "plot"
       ],
       "consumers_possible": []
@@ -3689,6 +3715,7 @@
         }
       ],
       "consumers": [
+        "atmos_clim",
         "outgas",
         "plot"
       ],
@@ -3707,6 +3734,7 @@
         }
       ],
       "consumers": [
+        "atmos_clim",
         "plot"
       ],
       "consumers_possible": []
@@ -3728,6 +3756,7 @@
         }
       ],
       "consumers": [
+        "atmos_clim",
         "outgas",
         "plot"
       ],
@@ -3746,6 +3775,7 @@
         }
       ],
       "consumers": [
+        "atmos_clim",
         "plot"
       ],
       "consumers_possible": []
@@ -3767,6 +3797,7 @@
         }
       ],
       "consumers": [
+        "atmos_clim",
         "outgas",
         "plot"
       ],

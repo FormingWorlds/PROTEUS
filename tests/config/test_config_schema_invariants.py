@@ -54,6 +54,7 @@ from proteus.config._config import (
     planet_oxygen_mode_explicit,
     prevent_desaturation_warns_without_condensates,
     satellite_evolve,
+    saturation_skin_warns_without_condensates,
     sp0d_obliqua_degree_mismatch,
     spider_struct_needs_mass_from_interior,
     spinless_orbit_keeps_spin_synchronous,
@@ -1907,3 +1908,46 @@ def test_lowt_extension_check_runs_when_a_config_file_is_read(tmp_path, module, 
     else:
         with pytest.raises(ValueError, match='lowt_extension = true requires'):
             read_config_object(path)
+
+
+# saturation_skin_warns_without_condensates: accepted, warned when no layer can form
+def _saturation_skin_config(module, include_condensates, surface_d='saturation'):
+    """Config stand-in with the skin from saturation and the given outgassing backend."""
+    instance = _make_config_instance(**{'outgas.module': module})
+    instance.outgas.atmodeller = SimpleNamespace(include_condensates=include_condensates)
+    instance.atmos_clim.surface_d = surface_d
+    return instance
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('module', 'include_condensates', 'reason'),
+    [
+        ('calliope', True, 'outgas.module = "calliope"'),
+        ('atmodeller', False, 'include_condensates = false'),
+    ],
+    ids=['calliope-forms-no-condensate', 'atmodeller-condensates-off'],
+)
+def test_saturation_skin_warns_when_no_condensate_can_form(
+    module, include_condensates, reason, caplog
+):
+    """A skin from saturation is accepted without condensates, with one warning that
+    the surface then stays fixed, naming the reason."""
+    instance = _saturation_skin_config(module, include_condensates)
+    with caplog.at_level('WARNING', logger='fwl.proteus.config._config'):
+        assert saturation_skin_warns_without_condensates(instance, None, None) is None
+    warnings = [r.getMessage() for r in caplog.records if 'saturation' in r.getMessage()]
+    assert len(warnings) == 1
+    assert reason in warnings[0]
+    assert 'fixed' in warnings[0]
+
+
+@pytest.mark.unit
+def test_saturation_skin_is_silent_with_atmodeller_condensates_or_a_numeric_skin(caplog):
+    """No warning with atmodeller condensates on, or with a numeric skin thickness."""
+    on = _saturation_skin_config('atmodeller', True)
+    numeric = _saturation_skin_config('calliope', False, surface_d=0.01)
+    with caplog.at_level('WARNING', logger='fwl.proteus.config._config'):
+        assert saturation_skin_warns_without_condensates(on, None, None) is None
+        assert saturation_skin_warns_without_condensates(numeric, None, None) is None
+    assert not any('saturation' in r.getMessage() for r in caplog.records)

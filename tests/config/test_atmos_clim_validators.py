@@ -8,7 +8,13 @@ from types import SimpleNamespace
 
 import pytest
 
-from proteus.config._atmos_clim import valid_agni, valid_p_obs, valid_rayleigh
+from proteus.config._atmos_clim import (
+    surf_state_to_int,
+    valid_agni,
+    valid_p_obs,
+    valid_rayleigh,
+    valid_surface_skin,
+)
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -422,3 +428,91 @@ def test_valid_agni_warns_when_eq_chemistry_makes_load_all_opacities_false_moot(
         assert valid_agni(instance, attribute=None, value=None) is None
     assert instance.agni.load_all_opacities is load_all
     assert ('load_all_opacities = false has no effect' in caplog.text) is warned
+
+
+# ============================================================================
+# valid_surface_skin: a positive number, or 'saturation' for both with a skin
+# ============================================================================
+
+
+def _skin_instance(surface_d=0.01, surface_k=2.0, surf_state='skin'):
+    """Stand-in for the AtmosClim fields that valid_surface_skin reads."""
+    return SimpleNamespace(surface_d=surface_d, surface_k=surface_k, surf_state=surf_state)
+
+
+@pytest.mark.unit
+def test_valid_surface_skin_accepts_numbers_and_a_saturation_pair():
+    """A positive float or int is accepted for each field, and 'saturation' when both
+    fields hold it with surf_state='skin'."""
+    for name in ('surface_d', 'surface_k'):
+        attribute = SimpleNamespace(name=name)
+        assert valid_surface_skin(_skin_instance(), attribute, 0.01) is None
+        assert valid_surface_skin(_skin_instance(), attribute, 3) is None
+        pair = _skin_instance('saturation', 'saturation')
+        assert valid_surface_skin(pair, attribute, 'saturation') is None
+    # A numeric skin is allowed with any surface state
+    fixed = _skin_instance(surf_state='fixed')
+    assert valid_surface_skin(fixed, SimpleNamespace(name='surface_d'), 1.0e-4) is None
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('value', 'match'),
+    [(0.0, 'positive'), (-0.01, 'positive'), (True, 'positive'), ('bogus', 'positive')],
+    ids=['zero-thickness', 'negative-thickness', 'boolean', 'unknown-string'],
+)
+def test_valid_surface_skin_rejects_a_non_positive_or_non_numeric_value(value, match):
+    """Zero, a negative value, a boolean (which would pass `> 0`) and any other string
+    are refused for the skin thickness."""
+    attribute = SimpleNamespace(name='surface_d')
+    with pytest.raises(ValueError, match=match):
+        valid_surface_skin(_skin_instance(), attribute, value)
+    # Discrimination: the smallest positive value on the same instance passes
+    assert valid_surface_skin(_skin_instance(), attribute, 1.0e-12) is None
+
+
+@pytest.mark.unit
+def test_valid_surface_skin_requires_both_fields_and_the_skin_state():
+    """'saturation' on one field alone, or with surf_state other than 'skin', raises;
+    the error names the field that is missing."""
+    attribute_d = SimpleNamespace(name='surface_d')
+    attribute_k = SimpleNamespace(name='surface_k')
+    with pytest.raises(ValueError, match='surface_k'):
+        valid_surface_skin(_skin_instance('saturation', 2.0), attribute_d, 'saturation')
+    with pytest.raises(ValueError, match='surface_d'):
+        valid_surface_skin(_skin_instance(0.01, 'saturation'), attribute_k, 'saturation')
+    fixed_pair = _skin_instance('saturation', 'saturation', surf_state='fixed')
+    with pytest.raises(ValueError, match="surf_state='skin'"):
+        valid_surface_skin(fixed_pair, attribute_d, 'saturation')
+
+
+@pytest.mark.unit
+def test_saturation_skin_loads_from_toml_and_a_half_pair_is_refused(tmp_path):
+    """The TOML string 'saturation' reaches both fields through the config loader, and
+    a file that sets it for surface_d alone fails to load."""
+    import re
+
+    from proteus.config import read_config_object
+
+    root = Path(__file__).resolve().parents[2]
+    text = (root / 'input' / 'all_options.toml').read_text()
+    text = re.sub(r'surface_d\s*=\s*0\.01', "surface_d = 'saturation'", text)
+    both = re.sub(r'surface_k\s*=\s*2\.0', "surface_k = 'saturation'", text)
+    (tmp_path / 'both.toml').write_text(both)
+    cfg = read_config_object(tmp_path / 'both.toml')
+    assert (cfg.atmos_clim.surface_d, cfg.atmos_clim.surface_k) == ('saturation', 'saturation')
+    assert cfg.atmos_clim.surf_state == 'skin'
+
+    (tmp_path / 'half.toml').write_text(text)
+    with pytest.raises(ValueError, match="surface_k='saturation'"):
+        read_config_object(tmp_path / 'half.toml')
+
+
+@pytest.mark.unit
+def test_surf_state_to_int_maps_the_effective_state():
+    """The module-level mapping gives AGNI 1 for 'fixed' and 2 for 'skin', which the
+    coupler uses for the state of each iteration, and raises for 'mixed_layer'."""
+    assert surf_state_to_int('fixed') == 1
+    assert surf_state_to_int('skin') == 2
+    with pytest.raises(ValueError, match='mixed_layer'):
+        surf_state_to_int('mixed_layer')

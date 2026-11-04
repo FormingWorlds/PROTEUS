@@ -34,6 +34,8 @@ CONFIG_DIR = REPO_ROOT / 'src' / 'proteus' / 'config'
 # Fields with no source annotation (attrs reports type=None for them); their
 # display types are declared here, taken from the class Attributes docstrings.
 ANNOTATION_OVERRIDES = {
+    'atmos_clim.surface_d': 'float | str',
+    'atmos_clim.surface_k': 'float | str',
     'planet.R_int_override': 'float',
     'orbit.axial_period': 'float',
     'orbit.parameterized.sma_final': 'float',

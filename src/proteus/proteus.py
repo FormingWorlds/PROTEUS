@@ -626,6 +626,7 @@ class Proteus:
         #    atmosphere solver
         from proteus.atmos_clim import run_atmosphere
         from proteus.atmos_clim.common import Atmos_t
+        from proteus.atmos_clim.surface_skin import update_surface_skin
         from proteus.atmos_clim.wrapper import write_atmosphere_snapshot
 
         #    interior
@@ -1507,6 +1508,9 @@ class Proteus:
             # a code path updating P_surf without keeping the partial
             # pressures in sync.
             assert_surface_pressure_consistency(self.config, self.hf_row)
+
+            # Conductive skin for the atmosphere step, from the condensates just solved for
+            update_surface_skin(self.config, self.hf_row)
 
             if _IT_TIMING_ENABLED:
                 _t_mod['outgas'] = time.perf_counter() - _t0_outgas

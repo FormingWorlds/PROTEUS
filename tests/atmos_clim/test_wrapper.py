@@ -454,6 +454,8 @@ def test_run_atmosphere_keeps_the_column_janus_solved():
             rayleigh=False,
             cloud_enabled=False,
             surf_state='fixed',
+            surface_d=0.01,  # m
+            surface_k=2.0,  # W m-1 K-1
         ),
         interior_energetics=SimpleNamespace(module='aragog'),
     )
@@ -510,6 +512,8 @@ def test_run_atmosphere_janus_stops_with_status_20_on_a_missing_spectral_file(tm
         atmos_clim=SimpleNamespace(
             module='janus',
             surf_state='fixed',
+            surface_d=0.01,  # m
+            surface_k=2.0,  # W m-1 K-1
             albedo_pl=0.0,
             spectral_group='Dayspring',
             spectral_bands='48',
@@ -563,6 +567,8 @@ def test_run_atmosphere_uses_the_spectral_cache_only_for_the_first_agni_build(
             rayleigh=False,
             cloud_enabled=False,
             surf_state='fixed',
+            surface_d=0.01,  # m
+            surface_k=2.0,  # W m-1 K-1
             agni=SimpleNamespace(verbosity=0),
         ),
         interior_energetics=SimpleNamespace(module='aragog'),
@@ -853,6 +859,8 @@ def test_run_atmosphere_carries_levels_into_the_row_escape_reads():
             rayleigh=False,
             cloud_enabled=False,
             surf_state='fixed',
+            surface_d=0.01,  # m
+            surface_k=2.0,  # W m-1 K-1
         ),
         interior_energetics=SimpleNamespace(module='aragog'),
     )
@@ -957,6 +965,8 @@ def test_run_atmosphere_takes_the_resume_fallback_from_the_last_committed_row():
             rayleigh=False,
             cloud_enabled=False,
             surf_state='fixed',
+            surface_d=0.01,  # m
+            surface_k=2.0,  # W m-1 K-1
         ),
         interior_energetics=SimpleNamespace(module='aragog'),
     )
@@ -1145,6 +1155,8 @@ def test_run_atmosphere_clips_a_carried_radius_from_an_unclipped_row():
             rayleigh=False,
             cloud_enabled=False,
             surf_state='fixed',
+            surface_d=0.01,  # m
+            surface_k=2.0,  # W m-1 K-1
         ),
         interior_energetics=SimpleNamespace(module='aragog'),
         escape=SimpleNamespace(hill_clamp=True, hill_clamp_frac=1.0),
@@ -1249,6 +1261,8 @@ def test_run_atmosphere_does_not_place_gravity_from_a_radius_that_is_not_a_numbe
             rayleigh=False,
             cloud_enabled=False,
             surf_state='fixed',
+            surface_d=0.01,  # m
+            surface_k=2.0,  # W m-1 K-1
         ),
         interior_energetics=SimpleNamespace(module='aragog'),
         escape=SimpleNamespace(hill_clamp=hill_clamp, hill_clamp_frac=1.0),
@@ -1349,6 +1363,8 @@ def test_run_atmosphere_keeps_a_level_the_bound_does_not_move():
             rayleigh=False,
             cloud_enabled=False,
             surf_state='fixed',
+            surface_d=0.01,  # m
+            surface_k=2.0,  # W m-1 K-1
         ),
         interior_energetics=SimpleNamespace(module='aragog'),
         escape=SimpleNamespace(hill_clamp=True, hill_clamp_frac=1.0),

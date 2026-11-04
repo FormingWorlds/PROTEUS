@@ -9943,17 +9943,12 @@
       "path": "atmos_clim.surface_d",
       "toml_section": "atmos_clim",
       "class": "AtmosClim",
-      "type": "float",
+      "type": "float or str",
       "accepts_none": false,
       "default": "0.01",
       "choices": null,
-      "bounds": [
-        {
-          "op": ">",
-          "value": 0
-        }
-      ],
-      "description": "Conductive skin thickness [m].",
+      "bounds": null,
+      "description": "Conductive skin thickness [m], or 'saturation' (together with `surface_k`) to use the total thickness of the saturated condensate layers, such as graphite, that float on the surface. 'saturation' needs `surf_state='skin'`; while the layers are negligible the surface is fixed (T_surf = T_magma).",
       "doc_source": "attributes",
       "group_order": 2,
       "group_position": 1,
@@ -9964,17 +9959,12 @@
       "path": "atmos_clim.surface_k",
       "toml_section": "atmos_clim",
       "class": "AtmosClim",
-      "type": "float",
+      "type": "float or str",
       "accepts_none": false,
       "default": "2.0",
       "choices": null,
-      "bounds": [
-        {
-          "op": ">",
-          "value": 0
-        }
-      ],
-      "description": "Conductive skin thermal conductivity [W m-1 K-1].",
+      "bounds": null,
+      "description": "Conductive skin thermal conductivity [W m-1 K-1], or 'saturation' to combine the conductivities of the stacked condensate layers in series, k = d / sum(d_i / k_i).",
       "doc_source": "attributes",
       "group_order": 2,
       "group_position": 2,
@@ -12388,6 +12378,18 @@
       "doc": "Reject Rayleigh scattering with the dummy module or AGNI in grey-gas mode."
     },
     {
+      "validator": "valid_surface_skin",
+      "module": "_atmos_clim.py",
+      "attached_to": [
+        "atmos_clim.surface_d",
+        "atmos_clim.surface_k"
+      ],
+      "touches": [
+        "surf_state"
+      ],
+      "doc": "surface_d and surface_k are each a positive number, or both 'saturation'."
+    },
+    {
       "validator": "warn_if_dummy",
       "module": "_atmos_clim.py",
       "attached_to": [
@@ -12735,6 +12737,18 @@
         "orbit.star_planet_model"
       ],
       "doc": "Star-planet orbital evolution and the planet-satellite model are mutually exclusive."
+    },
+    {
+      "validator": "saturation_skin_warns_without_condensates",
+      "module": "_config.py",
+      "attached_to": [
+        "atmos_clim"
+      ],
+      "touches": [
+        "atmos_clim.surface_d",
+        "outgas"
+      ],
+      "doc": "A skin from saturation stays fixed unless atmodeller forms condensates."
     },
     {
       "validator": "sp0d_obliqua_degree_mismatch",

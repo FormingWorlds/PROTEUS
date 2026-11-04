@@ -2140,6 +2140,8 @@ def _make_run_agni_config(
                 verbosity=0,
             ),
             surf_state_int=1,
+            surface_d=0.01,  # m
+            surface_k=2.0,  # W m-1 K-1
         ),
         planet=SimpleNamespace(prevent_warming=prevent_warming),
         escape=SimpleNamespace(
@@ -3166,6 +3168,8 @@ def _build_profile_config(ini_profile='isothermal'):
     return SimpleNamespace(
         atmos_clim=SimpleNamespace(
             agni=SimpleNamespace(psurf_thresh=1.0e-3, ini_profile=ini_profile),
+            surface_d=0.01,  # m
+            surface_k=2.0,  # W m-1 K-1
         ),
     )
 
@@ -3903,3 +3907,123 @@ def test_refractive_env_checks_the_folder_agni_takes_first(refractive_env, tmp_p
     with caplog.at_level(logging.WARNING):
         agni_mod._point_agni_at_refractive(str(tmp_path), True)
     assert 'holds no refractive index file' not in caplog.text
+
+
+# =======================================================================================
+# Conductive skin from saturated condensate layers
+# =======================================================================================
+
+
+def _saturation_profile_config():
+    """Profile config with surface_d = surface_k = 'saturation' and the skin state."""
+    config = _build_profile_config()
+    config.atmos_clim.surface_d = 'saturation'
+    config.atmos_clim.surface_k = 'saturation'
+    config.atmos_clim.surf_state = 'skin'
+    return config
+
+
+def _saturation_update_row(thickness, conductivity):
+    """Row for update_agni_atmos with the skin [m, W m-1 K-1] from update_surface_skin."""
+    return {
+        'F_ins': 1361.0,
+        'albedo_pl': 0.1,
+        'T_surf': 1900.0,
+        'T_magma': 2000.0,
+        'P_surf': 200.0,  # bar
+        'gravity': 3.7,
+        'R_int': 2.4397e6,
+        'M_int': 3.3e23,
+        'axial_period': 5.07e6,
+        'longitude': 0.0,
+        'latitude': 0.0,
+        'hill_radius': 2.0e8,
+        'boundary_layer_thickness': thickness,
+        'boundary_layer_conductivity': conductivity,
+    }
+
+
+@pytest.mark.physics_invariant
+def test_update_agni_atmos_pushes_the_saturation_skin_of_each_iteration(monkeypatch):
+    """A graphite skin found this iteration (5.9 m, 2.89 W/m/K) replaces the struct's
+    skin; while the surface is fixed (zero thickness) the struct keeps its last skin,
+    which AGNI's 'fixed' state never reads, so no zero thickness reaches the struct."""
+    _install_profile_fakes(monkeypatch, _ProfileAGNI())
+    atmos = _ProfileAtmosphere([1.0e1, 1.0e3, 1.0e5, 1.0e7], [200.0, 500.0, 1100.0, 1900.0])
+    atmos.skin_d, atmos.skin_k = 0.05, 2.0  # AGNI setup defaults [m, W m-1 K-1]
+
+    agni_mod.update_agni_atmos(
+        atmos,
+        _saturation_update_row(0.0, 0.0),
+        {'output': '/tmp/run'},
+        _saturation_profile_config(),
+    )
+    assert (atmos.skin_d, atmos.skin_k) == (0.05, 2.0)
+
+    agni_mod.update_agni_atmos(
+        atmos,
+        _saturation_update_row(5.9, 2.89),
+        {'output': '/tmp/run'},
+        _saturation_profile_config(),
+    )
+    assert atmos.skin_d == pytest.approx(5.9, rel=1e-12)
+    assert atmos.skin_k == pytest.approx(2.89, rel=1e-12)
+    # A numeric config leaves the skin set at setup untouched by the update
+    atmos.skin_d, atmos.skin_k = 0.01, 2.0
+    agni_mod.update_agni_atmos(
+        atmos,
+        _saturation_update_row(5.9, 2.89),
+        {'output': '/tmp/run'},
+        _build_profile_config(),
+    )
+    assert (atmos.skin_d, atmos.skin_k) == (0.01, 2.0)
+
+
+@pytest.mark.parametrize(
+    ('thickness', 'sol_type'),
+    [(0.0, 1), (5.9, 2)],
+    ids=['no-layer-fixed-surface', 'graphite-layer-skin'],
+)
+def test_run_agni_solves_with_the_surface_state_of_the_iteration(
+    monkeypatch, thickness, sol_type
+):
+    """With a skin from saturation, the transparent solve gets AGNI's 'fixed' code 1
+    while no layer has formed and the 'skin' code 2 once one has, although the
+    configured surf_state is 'skin' in both cases."""
+    captured = {}
+    atmos = _make_run_agni_atmos(transparent=True)
+    config = _make_run_agni_config(solve_energy=True)
+    config.atmos_clim.surface_d = 'saturation'
+    config.atmos_clim.surface_k = 'saturation'
+    config.atmos_clim.surf_state = 'skin'
+    config.atmos_clim.surf_state_int = 2
+    hf_row = {
+        'P_surf': 1e-5,
+        'R_int': 2.4397e6,
+        'R_xuv': 2.5e6,
+        'p_xuv': 1e-3,
+        'gravity': 3.7,
+        'Time': 0.0,
+        'boundary_layer_thickness': thickness,
+        'boundary_layer_conductivity': 2.89 if thickness > 0 else 0.0,
+        'H2O_vmr': 0.5,
+        'CO2_vmr': 0.5,
+    }
+    fake_jl = SimpleNamespace(
+        AGNI=SimpleNamespace(
+            atmosphere=SimpleNamespace(estimate_photosphere_b=lambda *a, **kw: None),
+            save=SimpleNamespace(write_ncdf=lambda a, p: None),
+            plotting=SimpleNamespace(plot_contfunc1=lambda a, p: None),
+            solver=SimpleNamespace(solve_transparent_b=lambda *a, **kw: captured.update(kw)),
+        ),
+    )
+    monkeypatch.setattr(agni_mod, 'jl', fake_jl)
+    monkeypatch.setattr(agni_mod, 'sync_log_files', lambda *a: [])
+    monkeypatch.setattr(agni_mod, 'get_oarr_from_parr', lambda p_arr, r_arr, val: (0, val))
+
+    agni_mod.run_agni(
+        atmos, 1, {'output': '/tmp/fake_output', 'output/plots': '/tmp/p'}, config, hf_row
+    )
+
+    assert captured['sol_type'] == sol_type
+    assert captured['sol_type'] in (1, 2)

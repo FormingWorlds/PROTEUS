@@ -11,6 +11,11 @@ import numpy as np
 import pandas as pd
 
 from proteus.atmos_clim.common import clip_radius_to_hill, get_oarr_from_parr
+from proteus.atmos_clim.surface_skin import (
+    effective_surf_state,
+    skin_from_saturation,
+    skin_values,
+)
 from proteus.utils.constants import vap_list, vol_list, gas_list
 from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, format_subyear_time
 
@@ -78,8 +83,10 @@ def InitAtm(dirs: dict, config: Config):
     )
 
     atm.inst_sf = config.orbit.s0_factor
-    atm.skin_d = config.atmos_clim.surface_d
-    atm.skin_k = config.atmos_clim.surface_k
+    # A skin from saturation is set by UpdateStateAtm at each call instead
+    if not skin_from_saturation(config):
+        atm.skin_d = config.atmos_clim.surface_d
+        atm.skin_k = config.atmos_clim.surface_k
 
     match config.atmos_clim.overlap_method:
         case 'ro':
@@ -131,6 +138,8 @@ def UpdateStateAtm(atm, config: Config, hf_row: dict, tropopause):
     atm.instellation = hf_row['F_ins']
     atm.albedo_pl = hf_row['albedo_pl']
     atm.tmp_magma = hf_row['T_magma']
+    if skin_from_saturation(config) and effective_surf_state(config, hf_row) == 'skin':
+        atm.skin_d, atm.skin_k = skin_values(config, hf_row)
     if tropopause == 'skin':
         atm.trppT = hf_row['T_skin']
     else:
@@ -230,12 +239,13 @@ def RunJANUS(
     rscatter = config.atmos_clim.rayleigh
 
     # Run JANUS
-    if config.atmos_clim.surf_state == 'fixed':  # fixed T_Surf
+    surf_state = effective_surf_state(config, hf_row)
+    if surf_state == 'fixed':  # fixed T_Surf
         from janus.modules import MCPA
 
         atm = MCPA(dirs, atm, False, trppD, rscatter)
 
-    elif config.atmos_clim.surf_state == 'skin':  # conductive lid
+    elif surf_state == 'skin':  # conductive lid
         from janus.modules import MCPA_CBL
 
         T_surf_max = -1

@@ -87,7 +87,7 @@ def _build_overlap_config(overlap_method: str) -> SimpleNamespace:
 def _build_update_config() -> SimpleNamespace:
     """Build a Config object for ``UpdateStateAtm``."""
     return SimpleNamespace(
-        atmos_clim=SimpleNamespace(p_top=1e-5),
+        atmos_clim=SimpleNamespace(p_top=1e-5, surface_d=0.01, surface_k=2.0),
     )
 
 
@@ -344,6 +344,8 @@ def _build_run_config(*, hill_clamp=False):
             p_obs=1e-3,  # bar
             rayleigh=False,
             surf_state='fixed',
+            surface_d=0.01,  # m
+            surface_k=2.0,  # W m-1 K-1
             janus=SimpleNamespace(tropopause=None, F_atm_bc=0),
         ),
         planet=SimpleNamespace(prevent_warming=False),
@@ -611,3 +613,37 @@ def test_run_janus_clips_the_xuv_radius_to_the_hill_radius(monkeypatch, tmp_path
     assert output['g_xuv'] == pytest.approx(expected_g, rel=1e-10)
     # Discrimination: the unclipped column top gives a discriminably weaker g.
     assert output['g_xuv'] != pytest.approx(g_surf * (R_int / 6.451e6) ** 2, rel=1e-3)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_update_state_atm_pushes_the_saturation_skin_only_once_a_layer_forms():
+    """With surface_d = surface_k = 'saturation', each call copies the skin of the
+    iteration onto the JANUS column once a layer has formed (5.9 m, 2.89 W/m/K); while
+    the surface is fixed (zero thickness) the column keeps the skin it holds."""
+    from types import SimpleNamespace
+
+    cfg = SimpleNamespace(
+        atmos_clim=SimpleNamespace(
+            p_top=1e-5, surface_d='saturation', surface_k='saturation', surf_state='skin'
+        )
+    )
+    atm = SimpleNamespace(
+        skin_d=0.01,  # JANUS default [m]
+        skin_k=2.0,  # JANUS default [W m-1 K-1]
+        setSurfaceTemperature=lambda T: None,
+        setSurfacePressure=lambda P: None,
+        setPlanetProperties=lambda R, M: None,
+        setVolatiles=lambda v: None,
+    )
+    hf_row = _build_update_hf_row()
+    hf_row.update(boundary_layer_thickness=0.0, boundary_layer_conductivity=0.0)
+    UpdateStateAtm(atm, cfg, hf_row, tropopause=None)
+    assert (atm.skin_d, atm.skin_k) == (0.01, 2.0)
+
+    hf_row.update(boundary_layer_thickness=5.9, boundary_layer_conductivity=2.89)
+    UpdateStateAtm(atm, cfg, hf_row, tropopause=None)
+    assert atm.skin_d == pytest.approx(5.9, rel=1e-12)
+    assert atm.skin_k == pytest.approx(2.89, rel=1e-12)
+    # The flux the column would conduct follows the new skin, not the default
+    assert atm.skin_k / atm.skin_d * 100.0 == pytest.approx(48.983, rel=1e-4)

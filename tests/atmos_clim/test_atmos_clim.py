@@ -908,3 +908,76 @@ def test_rundummyatm_boundary_module_keeps_existing_t_surf():
     # Discrimination guard: a regression that always reads T_magma
     # would land at 2000 K, 550 K above the boundary-advanced value.
     assert output['T_surf'] < 1800.0
+
+
+# =======================================================================================
+# SECTION: RunDummyAtm(), skin from saturated condensate layers
+# =======================================================================================
+
+
+def _saturation_dummy_config():
+    """Dummy-atmosphere config with surface_d = surface_k = 'saturation'."""
+    config = MagicMock()
+    config.atmos_clim.dummy.gamma = 0.5
+    config.atmos_clim.dummy.height_factor = 1.0
+    config.atmos_clim.dummy.fixed_flux = -1.0
+    config.orbit.zenith_angle = 0.0
+    config.orbit.s0_factor = 1.0
+    config.atmos_clim.surf_greyalbedo = 0.1
+    config.atmos_clim.surf_state = 'skin'
+    config.atmos_clim.surface_d = 'saturation'
+    config.atmos_clim.surface_k = 'saturation'
+    config.planet.prevent_warming = False
+    config.interior_energetics.module = 'dummy'
+    return config
+
+
+def _saturation_dummy_row(thickness, conductivity):
+    """Mercury-like row with the skin [m, W m-1 K-1] written by update_surface_skin."""
+    return {
+        'T_magma': 1800.0,  # K
+        'albedo_pl': 0.0,
+        'F_ins': 9000.0,  # W m-2
+        'atm_kg_per_mol': 0.044,
+        'gravity': 3.7,
+        'R_int': 2.4397e6,
+        'P_surf': 10.0,
+        'boundary_layer_thickness': thickness,
+        'boundary_layer_conductivity': conductivity,
+    }
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_rundummyatm_saturation_skin_is_fixed_until_a_layer_forms():
+    """With no saturated layer (zero thickness) the surface sits at T_magma, as in the
+    fixed state; a graphite layer then lowers T_surf, and its conductive flux
+    k (T_magma - T_surf) / d balances the net radiative flux F_atm."""
+    from proteus.atmos_clim.dummy import RunDummyAtm
+
+    config = _saturation_dummy_config()
+    fixed = RunDummyAtm({}, config, _saturation_dummy_row(0.0, 0.0))
+    assert fixed['T_surf'] == pytest.approx(1800.0, rel=1e-12)
+
+    d, k = 5.9, 100.0  # m, W m-1 K-1: 1e18 kg of graphite on Mercury
+    skin = RunDummyAtm({}, config, _saturation_dummy_row(d, k))
+    assert 0.0 < skin['T_surf'] < 1800.0
+    F_cond = k * (1800.0 - skin['T_surf']) / d  # W m-2
+    assert skin['F_atm'] == pytest.approx(F_cond, rel=1e-6)
+    # The skin carries less heat than the bare surface radiates
+    assert skin['F_atm'] < fixed['F_atm']
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_rundummyatm_saturation_skin_cools_the_surface_as_it_thickens():
+    """A thicker layer of the same conductivity insulates more: T_surf and the flux
+    both fall monotonically with the skin thickness read from the helpfile row."""
+    from proteus.atmos_clim.dummy import RunDummyAtm
+
+    config = _saturation_dummy_config()
+    results = [RunDummyAtm({}, config, _saturation_dummy_row(d, 2.9)) for d in (0.1, 1.0, 10.0)]
+    T_surf = [r['T_surf'] for r in results]
+    F_atm = [r['F_atm'] for r in results]
+    assert T_surf[0] > T_surf[1] > T_surf[2] > 0.0
+    assert F_atm[0] > F_atm[1] > F_atm[2] > 0.0

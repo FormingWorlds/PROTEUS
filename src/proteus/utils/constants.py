@@ -186,6 +186,24 @@ condensate_names = {'C': 'Graphite', 'S': 'Sulfur', 'H2O': 'Water', 'H2O4S': 'Su
 # liquid sulfuric acid ~1830.
 condensate_density = {'C': 2260.0, 'S': 2070.0, 'H2O': 1000.0, 'H2O4S': 1830.0}
 
+# Approximate condensate thermal conductivities [W m-1 K-1], constant in T, for the
+# conductive skin of a saturated layer. Graphite is anisotropic; 100 is polycrystalline
+# graphite, 80-120 at https://www.eastcarb.com/graphite-thermal-conductivity/ (no T given).
+# Sulfur 0.269 from https://material-properties.org/Sulfur-thermal-properties-melting-point-thermal-conductivity-expansion/
+condensate_conductivity = {'C': 100.0, 'S': 0.269, 'H2O': 0.6, 'H2O4S': 0.3}
+
+# Activity at and above which a condensate counts as saturated (stable) [1]
+CONDENSATE_SATURATED_ACTIVITY = 0.999
+
+# Condensed mass above which a condensate carries a real layer [kg]. Below saturation the
+# solver reports only a floor of order 1e-6 kg; a larger mass at lower activity is a layer
+# held by outgas.prevent_desaturation.
+CONDENSATE_HELD_MASS_KG = 1.0
+
+# Thermal resistance of the condensed stack below which it is negligible and the surface
+# stays fixed [m2 K W-1]; the skin then lowers T_surf by F * 1e-5 K, about 1 K at 1e5 W m-2.
+SKIN_RESISTANCE_MIN = 1.0e-5
+
 # Molar masses of elements [kg mol-1], from https://iupac.qmul.ac.uk/AtWt/
 element_mmw = {
     'H': 1.008000000e-03,
