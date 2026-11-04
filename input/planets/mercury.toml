@@ -59,8 +59,8 @@ config_version = "3.0"
 
         [params.stop.solid]                  # solidification criterion
             enabled           = true
-            phi_crit          = 0.01         # stop when global melt fraction < phi_crit
-            freeze_volatiles  = false        # freeze mantle volatiles at solidification
+            phi_crit          = 0.02         # stop when global melt fraction < phi_crit
+            freeze_volatiles  = true        # freeze mantle volatiles at solidification
 
         [params.stop.radeqm]                 # radiative equilibrium criterion
             enabled           = true
@@ -85,12 +85,12 @@ config_version = "3.0"
     mass_tot                  = 0.0553       # total initial planet mass [M_earth]; Mercury 3.30e23 kg
 
     # Initial temperature profile
-    temperature_mode          = "adiabatic" # liquidus_super | isothermal | linear | adiabatic | adiabatic_from_cmb | accretion | isentropic
-    tsurf_init                = 3500         # surface temperature [K]; above the Wolf & Bower (2018) liquidus throughout the mantle (~1980-2270 K at 0-5 GPa)
+    temperature_mode          = "isentropic" # liquidus_super | isothermal | linear | adiabatic | adiabatic_from_cmb | accretion | isentropic
+    tsurf_init                = 3500         # surface temperature [K]
     tcmb_init                 = 6000         # CMB temperature [K] (adiabatic_from_cmb)
     tcenter_init              = 6000         # center temperature [K] (linear only)
     delta_T_super             = 100.0        # min superheat above the liquidus [K] (liquidus_super); small value starts the interior near the liquidus for a stable default run
-    ini_entropy               = 3400.0       # initial specific entropy [J/kg/K] (isentropic only)
+    ini_entropy               = 4200.0       # initial specific entropy [J/kg/K] (isentropic only)
     ini_dsdr                  = -4.698e-6    # initial entropy gradient [J/kg/K/m] (isentropic only)
     f_accretion               = 0.04         # accretion heat retention [0-1] (accretion only)
     f_differentiation         = 0.50         # differentiation heat retention [0-1] (accretion only)
@@ -112,7 +112,7 @@ config_version = "3.0"
         H_mode                = "ppmw"       # oceans | ppmw | kg
         H_budget              = 630          # unit defined by H_mode; illustrative, Mercury's bulk H is poorly constrained
         C_mode                = "ppmw"       # C/H mass ratio | ppmw | kg
-        C_budget              = 3800         # unit defined by C_mode; set per case by the grid
+        C_budget              = 10000         # unit defined by C_mode; set per case by the grid
         N_mode                = "ppmw"       # N/H mass ratio | ppmw | kg
         N_budget              = 424          # unit defined by N_mode; illustrative
         S_mode                = "ppmw"       # S/H mass ratio | ppmw | kg
@@ -445,7 +445,7 @@ config_version = "3.0"
     spectral_group            = "Proudspire"  # opacity k-table set
     spectral_bands            = "32"         # wavenumber bands in k-table
     num_levels                = 40           # vertical atmosphere levels (min 15)
-    p_top                     = 1.0e-4       # top-of-atmosphere pressure [bar]
+    p_top                     = 1.0e-3       # top-of-atmosphere pressure [bar]
     p_obs                     = 'none'       # observation pressure level [bar] (transit radius)
     overlap_method            = "ee"         # gas overlap: ro | rorr | ee (equivalent extinction)
 
