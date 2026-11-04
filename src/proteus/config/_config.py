@@ -737,6 +737,23 @@ def boundary_requires_fixed_surface_state(instance, attribute, value):
         )
 
 
+def spider_struct_needs_mass_from_interior(instance, attribute, value):
+    """Refuse the SPIDER structure with an interior that takes its mass from the structure.
+
+    The SPIDER structure finds the interior radius from the mantle mass that the
+    energetics module returns for each trial radius. The dummy and boundary
+    interiors take their mantle mass from the structure (M_int - M_core), so the
+    radius solve would have no mantle mass to work with.
+    """
+    struct_module = instance.interior_struct.module
+    energetics = instance.interior_energetics.module
+    if struct_module == 'spider' and energetics in ('dummy', 'boundary'):
+        raise ValueError(
+            "interior_struct.module = 'spider' is incompatible with "
+            f"interior_energetics.module = '{energetics}'."
+        )
+
+
 @define
 class Config:
     """Root config parameters.
@@ -807,6 +824,7 @@ class Config:
             dummy_struct_mantle_eos,
             lowt_extension_requires_aragog,
             lowt_extension_requires_ps_tables,
+            spider_struct_needs_mass_from_interior,
         ),
     )
     outgas: Outgas = field(

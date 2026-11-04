@@ -6215,27 +6215,6 @@
       "group_qualifier": null
     },
     {
-      "path": "interior_energetics.dummy.mantle_rho",
-      "toml_section": "interior_energetics.dummy",
-      "class": "InteriorDummy",
-      "type": "float",
-      "accepts_none": false,
-      "default": "4550.0",
-      "choices": null,
-      "bounds": [
-        {
-          "op": ">",
-          "value": 0
-        }
-      ],
-      "description": "Mantle density [kg m-3] for the dummy density profile and the fallback mantle-mass estimate. When the interior structure provides the masses, the mantle mass is taken as ``M_int - M_core`` instead.",
-      "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
-      "group_qualifier": null
-    },
-    {
       "path": "interior_energetics.dummy.mantle_cp",
       "toml_section": "interior_energetics.dummy",
       "class": "InteriorDummy",
@@ -6271,6 +6250,22 @@
         }
       ],
       "description": "Fixed internal heating rate (e.g. radiogenic) [W kg-1]. Tidal heating is handled separately via `heat_tidal` and is added on top of this value.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.dummy.mantle_rho",
+      "toml_section": "interior_energetics.dummy",
+      "class": "InteriorDummy",
+      "type": "float or none",
+      "accepts_none": true,
+      "default": "none",
+      "choices": null,
+      "bounds": null,
+      "description": "Deprecated and ignored: the dummy interior reports its mantle mass over the mantle shell volume as its density.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -6383,27 +6378,6 @@
       "group_qualifier": null
     },
     {
-      "path": "interior_energetics.boundary.core_density",
-      "toml_section": "interior_energetics.boundary",
-      "class": "InteriorBoundary",
-      "type": "float",
-      "accepts_none": false,
-      "default": "10738.0",
-      "choices": null,
-      "bounds": [
-        {
-          "op": ">",
-          "value": 0
-        }
-      ],
-      "description": "Core density [kg/m^3].",
-      "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
-      "group_qualifier": null
-    },
-    {
       "path": "interior_energetics.boundary.core_shear",
       "toml_section": "interior_energetics.boundary",
       "class": "InteriorBoundary",
@@ -6476,27 +6450,6 @@
         }
       ],
       "description": "Used as fallback for atmosphere heat capacity when layer-specific value is not available [J/kg/K].",
-      "doc_source": "attributes",
-      "group_order": 0,
-      "group_position": 0,
-      "group": null,
-      "group_qualifier": null
-    },
-    {
-      "path": "interior_energetics.boundary.silicate_density",
-      "toml_section": "interior_energetics.boundary",
-      "class": "InteriorBoundary",
-      "type": "float",
-      "accepts_none": false,
-      "default": "4103.0",
-      "choices": null,
-      "bounds": [
-        {
-          "op": ">",
-          "value": 0
-        }
-      ],
-      "description": "Silicate density [kg/m^3]. Default taken from Fei et. al. 2021 (https://ui.adsabs.harvard.edu/abs/2021NatCo..12..876F).",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -6701,6 +6654,38 @@
       "choices": null,
       "bounds": null,
       "description": "Whether to create diagnostic CSV data files from boundary interior module.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.boundary.silicate_density",
+      "toml_section": "interior_energetics.boundary",
+      "class": "InteriorBoundary",
+      "type": "float or none",
+      "accepts_none": true,
+      "default": "none",
+      "choices": null,
+      "bounds": null,
+      "description": "Deprecated and ignored: the boundary interior takes its mantle mass and radius from the structure.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
+      "path": "interior_energetics.boundary.core_density",
+      "toml_section": "interior_energetics.boundary",
+      "class": "InteriorBoundary",
+      "type": "float or none",
+      "accepts_none": true,
+      "default": "none",
+      "choices": null,
+      "bounds": null,
+      "description": "Deprecated and ignored: the boundary interior takes its core mass and radius from the structure.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,
@@ -7278,7 +7263,7 @@
           "value": 0
         }
       ],
-      "description": "Constant density [kg/m3].",
+      "description": "Constant density [kg/m3]. SPIDER and Aragog read it only when const_properties = true. The dummy interior also uses it for its mantle mass when the helpfile row has no M_int or M_core.",
       "doc_source": "field_docstring",
       "group_order": 10,
       "group_position": 1,
@@ -12776,6 +12761,18 @@
         "star.mors.tracks"
       ],
       "doc": "ZEPHYRUS escape requires the MORS star module with the Spada evolution tracks."
+    },
+    {
+      "validator": "spider_struct_needs_mass_from_interior",
+      "module": "_config.py",
+      "attached_to": [
+        "interior_energetics"
+      ],
+      "touches": [
+        "interior_energetics.module",
+        "interior_struct.module"
+      ],
+      "doc": "Refuse the SPIDER structure with an interior that takes its mass from the structure."
     },
     {
       "validator": "spinless_orbit_keeps_spin_synchronous",

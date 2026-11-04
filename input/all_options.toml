@@ -437,7 +437,6 @@ config_version = "3.0"
     rtol                      = -1.0         # relative ODE solver tolerance; unset: 1e-8 Aragog, 1e-10 SPIDER
     atol                      = 1.0e-10      # absolute ODE solver tolerance
     flux_guess                = -1           # initial F_atm guess [W/m2]; <0 = sigma*T_magma^4
-    num_tolerance             = -1           # deprecated alias for rtol; leave at -1 (unset)
     surface_bc_mode           = "flux"       # flux (F_atm from the atmosphere) | grey_body (native BC)
 
     # Constant-properties mode: bypass EOS tables, use analytical T(S) = T_ref * exp((S - S_ref) / Cp)
@@ -560,7 +559,6 @@ config_version = "3.0"
     [interior_energetics.spider]
         solver_type           = "bdf"        # SUNDIALS method: adams | bdf
         matprop_smooth_width  = 1.0e-2       # melt-fraction smoothing window across solidus/liquidus
-        tolerance_rel         = -1           # deprecated alias for interior_energetics.rtol; leave at -1 (unset)
         tolerance_struct      = 100          # absolute mass tolerance [kg] for the radius secant solver
         log_output            = true         # write SPIDER solver log output
 
@@ -568,7 +566,6 @@ config_version = "3.0"
     [interior_energetics.dummy]
         mantle_tliq           = 2700.0       # liquidus [K]
         mantle_tsol           = 1700.0       # solidus [K]
-        mantle_rho            = 4550.0       # mantle density [kg m-3]; mantle mass uses M_int-M_core when the structure provides it
         mantle_cp             = 1792.0       # mantle heat capacity [J K-1 kg-1]
         heat_internal         = 0.0          # internal heating rate [W kg-1]
 
@@ -581,8 +578,6 @@ config_version = "3.0"
         silicate_heat_capacity    = 1200.0       # silicate heat capacity [J/kg/K]
         atm_heat_capacity         = 1.7e4        # fallback atmosphere heat capacity [J/kg/K]
         atm_heat_capacity_const   = true         # use the constant fallback heat capacity above
-        silicate_density          = 4103.0       # silicate density [kg/m^3]
-        core_density              = 10738        # core density if not defined by structure module [kg/m^3]
         core_shear                = 1.0e9        # core shear modulus [Pa]
         core_bulk                 = 1.0e12       # core bulk modulus [Pa]
         thermal_conductivity      = 4.2          # thermal conductivity [W/m/K]
