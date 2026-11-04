@@ -1012,11 +1012,10 @@ def test_interior_t_single_layer_dummy_interior():
 
 
 @pytest.mark.unit
-@pytest.mark.physics_invariant
-def test_run_dummy_int_records_the_skin_thickness_in_effect():
-    """boundary_layer_thickness is the conductive skin the atmosphere used: the
-    numeric surface_d, or under 'saturation' the thickness the skin step left in the
-    row (5.9 m of graphite here, 0 while the surface is fixed); never the config string."""
+def test_run_dummy_int_leaves_the_skin_thickness_to_the_skin_step():
+    """The dummy interior writes no boundary_layer_thickness, so the skin step that
+    runs after outgassing is the only writer of the skin columns; this holds for a
+    numeric and for a saturation skin."""
     hf_row = {
         'F_atm': 100.0,
         'R_int': 6e6,
@@ -1027,28 +1026,12 @@ def test_run_dummy_int_records_the_skin_thickness_in_effect():
         'boundary_layer_thickness': 5.9,  # m
         'boundary_layer_conductivity': 2.89,  # W m-1 K-1
     }
-    results = {}
-    for label, surface_d in (('saturation', 'saturation'), ('numeric', 0.01)):
+    for surface_d in ('saturation', 0.01):
         config = _create_mock_config(tsurf_init=3000.0)
         config.atmos_clim.surface_d = surface_d
         interior_o = Interior_t(nlev_b=2)
         interior_o.ic = 1
         interior_o.tides = [0.0]
         _, output = run_dummy_int(config, {}, dict(hf_row), pd.DataFrame(), interior_o)
-        results[label] = output['boundary_layer_thickness']
-    assert results['saturation'] == pytest.approx(5.9, rel=1e-12)
-    assert results['numeric'] == pytest.approx(0.01, rel=1e-12)
-
-    config = _create_mock_config(tsurf_init=3000.0)
-    config.atmos_clim.surface_d = 'saturation'
-    interior_o = Interior_t(nlev_b=2)
-    interior_o.ic = 1
-    interior_o.tides = [0.0]
-    _, fixed = run_dummy_int(
-        config,
-        {},
-        dict(hf_row, boundary_layer_thickness=0.0, boundary_layer_conductivity=0.0),
-        pd.DataFrame(),
-        interior_o,
-    )
-    assert fixed['boundary_layer_thickness'] == pytest.approx(0.0, abs=0.0)
+        assert 'boundary_layer_thickness' not in output
+        assert output['T_magma'] == pytest.approx(3000.0)

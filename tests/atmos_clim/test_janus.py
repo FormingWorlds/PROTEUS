@@ -106,6 +106,8 @@ def _build_update_hf_row(*, T_surf=1500.0, P_surf=10.0, vap_vmr=0.0):
         'albedo_pl': 0.3,
         'T_magma': 2000.0,
         'T_skin': 250.0,
+        'boundary_layer_thickness': 0.01,  # m, written by the skin step
+        'boundary_layer_conductivity': 2.0,  # W m-1 K-1
     }
     for gas in vol_list:
         hf_row[gas + '_vmr'] = 1.0 / len(vol_list)
@@ -618,9 +620,9 @@ def test_run_janus_clips_the_xuv_radius_to_the_hill_radius(monkeypatch, tmp_path
 @pytest.mark.unit
 @pytest.mark.physics_invariant
 def test_update_state_atm_pushes_the_saturation_skin_only_once_a_layer_forms():
-    """With surface_d = surface_k = 'saturation', each call copies the skin of the
-    iteration onto the JANUS column once a layer has formed (5.9 m, 2.89 W/m/K); while
-    the surface is fixed (zero thickness) the column keeps the skin it holds."""
+    """With surface_d = surface_k = 'saturation', each call copies the skin the skin
+    step wrote into the row onto the JANUS column: zeros while the surface is fixed,
+    and the graphite skin (5.9 m, 2.89 W/m/K) once a layer has formed."""
     from types import SimpleNamespace
 
     cfg = SimpleNamespace(
@@ -639,7 +641,8 @@ def test_update_state_atm_pushes_the_saturation_skin_only_once_a_layer_forms():
     hf_row = _build_update_hf_row()
     hf_row.update(boundary_layer_thickness=0.0, boundary_layer_conductivity=0.0)
     UpdateStateAtm(atm, cfg, hf_row, tropopause=None)
-    assert (atm.skin_d, atm.skin_k) == (0.01, 2.0)
+    # Zeros while the surface is fixed; the fixed-surface solver never reads them
+    assert (atm.skin_d, atm.skin_k) == (0.0, 0.0)
 
     hf_row.update(boundary_layer_thickness=5.9, boundary_layer_conductivity=2.89)
     UpdateStateAtm(atm, cfg, hf_row, tropopause=None)

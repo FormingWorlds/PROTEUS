@@ -82,7 +82,7 @@ def parse_schema() -> list[dict]:
         'vol_list': (list(constants.vol_list), 'gas'),
         'vol_element_list': (list(constants.vol_element_list), 'element'),
         'noble_gases': (list(constants.noble_gases), 'element'),
-        'condensate_list': (list(constants.condensate_list), 'condensate'),
+        'condensate_density': (list(constants.condensate_density), 'condensate'),
     }
 
     records: list[dict] = []
@@ -209,7 +209,16 @@ def _template_parts(arg) -> tuple[str, str, str] | None:
 
 def _expand_loop(node: ast.For, add, gas_list: list, element_list: list, domains: dict) -> None:
     """Expand a registry append block that loops over one of ``domains``."""
-    iter_name = node.iter.id if isinstance(node.iter, ast.Name) else None
+    iter_node = node.iter
+    # ``name.keys()`` iterates the keys of a dict domain, as ``name`` does
+    if (
+        isinstance(iter_node, ast.Call)
+        and isinstance(iter_node.func, ast.Attribute)
+        and iter_node.func.attr == 'keys'
+        and not iter_node.args
+    ):
+        iter_node = iter_node.func.value
+    iter_name = iter_node.id if isinstance(iter_node, ast.Name) else None
     if iter_name not in domains:
         raise _docgen.DocgenError(f'coupler.py:{node.lineno}: loop over unrecognised iterable')
     domain, label = list(domains[iter_name][0]), domains[iter_name][1]

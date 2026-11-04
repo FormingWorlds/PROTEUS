@@ -83,6 +83,11 @@ def condensate_layer_thickness(hf_row: dict) -> dict[str, float]:
 def update_surface_skin(config: Config, hf_row: dict) -> str:
     """Write the skin thickness and conductivity for this iteration into `hf_row`.
 
+    This is the only writer of the two columns, which every atmosphere module reads.
+    Numeric config values are written as they are. With 'saturation' the condensate
+    layers are stacked in series, d = sum(d_i) and k = d / sum(d_i / k_i), and a stack
+    with a resistance d / k below SKIN_RESISTANCE_MIN writes zeros (a fixed surface).
+
     Sets:
      - ``hf_row['boundary_layer_conductivity']`` [W m-1 K-1]
      - ``hf_row['boundary_layer_thickness']`` [m]
@@ -96,38 +101,28 @@ def update_surface_skin(config: Config, hf_row: dict) -> str:
     # is surface set by saturation?
     atm = config.atmos_clim
     if not atm.surface_d == 'saturation':
-        return atm.surf_state, float(atm.surface_d), float(atm.surface_k)
+        state, d_tot, k_tot = atm.surf_state, float(atm.surface_d), float(atm.surface_k)
 
-    # compute the effective skin from the condensate stack
-    thickness = condensate_layer_thickness(hf_row)
+    else:
+        # sum thickness and thermal resistance over the condensate stack
+        thickness = condensate_layer_thickness(hf_row)
+        d_sum = sum(thickness.values())
+        resistance = sum(d_c / condensate_conductivity[c] for c, d_c in thickness.items())
 
-    # if have some thickness, compute the effective conductivity of the stack
-    d_tot = 0.0
-    k_tot = 0.0
-    resistance = 0.0
-    if thickness:
-        # loop through the layers, summing thickness and resistance
-        for c, d_c in thickness.items():
-            d_tot += d_c
-            resistance += d_c / condensate_conductivity[c]
-
-        # if the total resistance is above the minimum, return the skin state
+        # a negligible stack (or none) leaves the surface fixed
+        state, d_tot, k_tot = 'fixed', 0.0, 0.0
         if resistance >= SKIN_RESISTANCE_MIN:
-            k_tot = d_tot / resistance
-        else:
-            return 'fixed', 0.0, 0.0
+            state, d_tot, k_tot = 'skin', d_sum, d_sum / resistance
 
-    # inform
-    log.info(
-        'Surface skin from sat: d = %.3e m, k = %.3e W m-1 K-1',
-        d_tot,
-        k_tot,
-    )
+        # inform
+        log.info(
+            'Surface skin from sat: %s, d = %.3e m, k = %.3e W m-1 K-1', state, d_tot, k_tot
+        )
 
     # set values and return the skin state
     hf_row['boundary_layer_conductivity'] = k_tot
     hf_row['boundary_layer_thickness'] = d_tot
-    return 'skin'
+    return state
 
 
 def effective_surf_state(config: Config, hf_row: dict) -> str:

@@ -20,7 +20,7 @@ import pandas as pd
 import pytest
 
 import proteus.plot.cpl_saturated as sat_mod
-from proteus.utils.constants import condensate_density, condensate_list
+from proteus.utils.constants import condensate_density
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -43,7 +43,7 @@ def _make_hf_all(n: int = 8) -> pd.DataFrame:
             'R_int': np.full(n, R_INT),
         }
     )
-    for c in condensate_list:
+    for c in condensate_density:
         df[f'{c}_cd_activity'] = 0.0
         df[f'{c}_cd_kg'] = 0.0
     half = n // 2
@@ -149,7 +149,7 @@ def test_skipped_without_any_solved_condensate(tmp_path, monkeypatch):
     legacy = base.drop(columns=[c for c in base.columns if '_cd_' in c])
     sat_mod.plot_saturated(legacy, str(tmp_path))
     disabled = base.copy()
-    for c in condensate_list:
+    for c in condensate_density:
         disabled[f'{c}_cd_activity'] = 0.0
         disabled[f'{c}_cd_kg'] = 0.0
     sat_mod.plot_saturated(disabled, str(tmp_path))

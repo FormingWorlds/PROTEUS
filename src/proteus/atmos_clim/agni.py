@@ -827,9 +827,10 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict, use_cache: bool = 
     )
     setup_kwargs['aerosol_species'] = convert(jl.Dict, aerosol_species)
 
-    # Surface CBL
-    setup_kwargs['skin_d'] = float(hf_row['boundary_layer_thickness'])
-    setup_kwargs['skin_k'] = float(hf_row['boundary_layer_conductivity'])
+    # Surface CBL; setup! refuses a zero skin, so a fixed surface keeps AGNI's defaults
+    if hf_row['boundary_layer_thickness'] > 0:
+        setup_kwargs['skin_d'] = float(hf_row['boundary_layer_thickness'])
+        setup_kwargs['skin_k'] = float(hf_row['boundary_layer_conductivity'])
 
     succ = jl.AGNI.atmosphere.setup_b(
         atmos,

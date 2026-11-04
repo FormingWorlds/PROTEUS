@@ -7620,6 +7620,7 @@ def test_evaluate_molten_state_restores_solution_and_writes_keys(monkeypatch, tm
 
     solver = FakeSolver(n_nodes=80)
     hf_row = {'Time': 250.0, 'M_mantle': 4.2e24, 'F_atm': 100.0}
+    hf_row['boundary_layer_thickness'] = 0.01  # m, written by the skin step
 
     # 1. evaluate_molten_state direct evaluation
     out = evaluate_molten_state(solver, hf_row)
@@ -7659,8 +7660,8 @@ def test_evaluate_molten_state_restores_solution_and_writes_keys(monkeypatch, tm
         ),
     )
     _remelt_aragog(config, {'output': str(tmp_path), 'spider_eos_dir': ''}, hf_row, interior_o)
-    # The numeric skin thickness [m] is what the re-melt output is built with
-    assert helpfile_kwargs['surface_d'] == pytest.approx(config.atmos_clim.surface_d, rel=1e-12)
+    # The skin thickness of the row [m] is what the re-melt output is built with
+    assert helpfile_kwargs['surface_d'] == pytest.approx(0.01, rel=1e-12)
 
     assert hf_row['T_magma'] == pytest.approx(3850.0, rel=1e-12)
     # The impact row carries the re-melted CMB temperatures.
@@ -7696,6 +7697,7 @@ def test_evaluate_molten_state_restores_solution_and_writes_keys(monkeypatch, tm
         'proteus.interior_energetics.aragog_core_impact.remelt_core_module', lambda *a: 5300.0
     )
     row = {'Time': 250.0, 'M_mantle': 4.2e24, 'F_atm': 100.0, 'T_cmb': 5000.0}
+    row['boundary_layer_thickness'] = 0.01  # m
     _remelt_aragog(config, {'output': str(tmp_path), 'spider_eos_dir': ''}, row, interior_o)
     assert row['core_T_top'] == pytest.approx(5200.0, rel=1e-12)
     config.interior_energetics.aragog.core_bc = 'energy_balance'
@@ -8089,6 +8091,7 @@ def test_run_interior_top_cell_dt_limit_on_applies_tmagma_clip_when_tau_drain_in
     config_spider.interior_energetics.aragog = Aragog(top_cell_dt_limit=True)
     hf_all_sp, hf_row_sp = _make_run_interior_state(prev_f_int=0.2)
     hf_row_sp['R_int'] = 6.371e6
+    hf_row_sp['boundary_layer_thickness'] = 0.01  # m, written by the skin step
     interior_sp = MagicMock(spec=Interior_t)
     interior_sp.ic = 2
     interior_sp.dt = 10.0

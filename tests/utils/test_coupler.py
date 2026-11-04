@@ -1054,12 +1054,12 @@ def test_condensate_mass_is_resumable_state_and_its_activity_a_diagnostic():
     zeroed together with ``{e}_kg_condensed``, so no layer is held, and every
     other column keeps its value.
     """
-    from proteus.utils.constants import condensate_list, vol_element_list
+    from proteus.utils.constants import condensate_density, vol_element_list
 
     assert 'C_cd_activity' in GetHelpfileDiagnosticKeys()
     assert 'C_cd_kg' not in GetHelpfileDiagnosticKeys()
     assert 'C_cd_kg' in GetHelpfileCoreKeys()
-    dropped = [f'{c}_cd_{q}' for c in condensate_list for q in ('activity', 'kg')]
+    dropped = [f'{c}_cd_{q}' for c in condensate_density for q in ('activity', 'kg')]
     dropped += [f'{e}_kg_condensed' for e in vol_element_list]
     with tempfile.TemporaryDirectory() as tmpdir:
         _write_drifted_helpfile(tmpdir, dropped, n_rows=2)

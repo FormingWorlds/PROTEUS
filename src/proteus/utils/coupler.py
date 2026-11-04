@@ -1115,7 +1115,7 @@ def GetHelpfileKeys():
         'M_mantle_solid',   # dry mass of solid-phase mantle [kg]
         'M_mantle_liquid',  # dry mass of liquid-phase mantle [kg]
         'T_pot',            # characteristic mantle potential temperature [K]
-        'boundary_layer_thickness',  # thermal boundary layer thickness; under 'saturation' the skin step overwrites the interior value with the skin given to the atmosphere, 0 for a fixed surface [m]
+        'boundary_layer_thickness',  # conductive skin thickness given to the atmosphere, written by the skin step over any interior value; 0 for a fixed surface under 'saturation' [m]
         'boundary_layer_conductivity',  # conductive skin conductivity given to the atmosphere, 0 for a fixed surface under 'saturation' [W m-1 K-1]
 
         # Core evolution diagnostic keys for core_module mode

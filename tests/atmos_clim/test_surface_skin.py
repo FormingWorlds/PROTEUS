@@ -3,17 +3,16 @@
 Source under test: ``src/proteus/atmos_clim/surface_skin.py``. Invariants checked:
 
 - a stack of layers conducts the series flux ``dT / sum(d_i / k_i)``: the closed form, a
-  finite-volume steady conduction solve, a conductivity bounded by the layer values and
-  independent of the stacking order;
+  finite-volume steady conduction solve, and a conductivity bounded by the layer values;
 - a layer is its condensed mass spread over ``4 pi R_int**2`` at its density;
 - only a saturated or held condensate forms a layer, and a stack with a thermal
   resistance below ``SKIN_RESISTANCE_MIN`` leaves the surface fixed;
-- numeric config values pass through unchanged.
+- the skin step is the only writer of the skin columns, in every mode, and a skin that
+  becomes negligible is cleared rather than left over from the previous iteration.
 """
 
 from __future__ import annotations
 
-import itertools
 import logging
 from types import SimpleNamespace
 
@@ -22,19 +21,15 @@ import pytest
 
 from proteus.atmos_clim.surface_skin import (
     agni_sol_type,
-    combine_layers,
     condensate_layer_thickness,
     effective_surf_state,
-    resolve_surface_skin,
     saturated_condensate_mass,
-    skin_values,
     update_surface_skin,
 )
 from proteus.utils.constants import (
     SKIN_RESISTANCE_MIN,
     condensate_conductivity,
     condensate_density,
-    condensate_list,
 )
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
@@ -63,8 +58,8 @@ def _numeric_config(surf_state='skin', d=0.01, k=2.0):
 
 def _hf_row(R_int=R_MERCURY, **condensates):
     """Helpfile row with no condensate except those given as c=(mass kg, activity)."""
-    row = {'R_int': R_int}
-    for c in condensate_list:
+    row = {'R_int': R_int, 'boundary_layer_thickness': 0.0, 'boundary_layer_conductivity': 0.0}
+    for c in condensate_density:
         mass, activity = condensates.get(c, (0.0, 0.0))
         row[f'{c}_cd_kg'] = mass
         row[f'{c}_cd_activity'] = activity
@@ -76,52 +71,42 @@ def _mass_for_thickness(c, d, R_int=R_MERCURY):
     return d * condensate_density[c] * 4.0 * np.pi * R_int**2
 
 
+def _skin_of(**layers):
+    """Run the skin step on layers given as c=thickness [m]; return the state and row."""
+    row = _hf_row(**{c: (_mass_for_thickness(c, d), 1.0) for c, d in layers.items()})
+    state = update_surface_skin(_saturation_config(), row)
+    return state, row['boundary_layer_thickness'], row['boundary_layer_conductivity']
+
+
 @pytest.mark.physics_invariant
 def test_combined_conductivity_is_series_mean_of_graphite_over_sulfur():
-    """1 m of graphite (100 W/m/K) under 0.1 m of sulfur (0.27 W/m/K) acts as one
-    1.1 m skin of k = 1.1 / (1/100 + 0.1/0.27) = 2.8919 W/m/K, the series value."""
-    d, k = combine_layers({'C': 1.0, 'S': 0.1}, {'C': 100.0, 'S': 0.27})
+    """1 m of graphite (100 W/m/K) under 0.1 m of sulfur (0.269 W/m/K) acts as one
+    1.1 m skin of k = 1.1 / (1/100 + 0.1/0.269) = 2.8815 W/m/K, the series value."""
+    state, d, k = _skin_of(C=1.0, S=0.1)
+    assert state == 'skin'
     assert d == pytest.approx(1.1, rel=1e-12)
-    assert k == pytest.approx(2.891918208373905, rel=1e-12)
+    assert k == pytest.approx(2.8814879735125136, rel=1e-12)
     # The skin flux k dT / d equals the series flux dT / R for any dT
-    resistance = 1.0 / 100.0 + 0.1 / 0.27  # m2 K W-1
+    resistance = 1.0 / 100.0 + 0.1 / 0.269  # m2 K W-1
     assert k * 700.0 / d == pytest.approx(700.0 / resistance, rel=1e-12)
     # Plausible wrong means: thickness-weighted arithmetic (parallel layers) 90.93,
-    # unweighted harmonic 0.539, thickness-weighted geometric 58.4
-    for wrong in (90.93363636363635, 0.5385459259998007, 58.41005496554968):
+    # unweighted harmonic 0.537, thickness-weighted geometric 58.4
+    for wrong in (90.93354545454544, 0.5365566625776661, 58.39035509323326):
         assert abs(k - wrong) > 0.3 * k
-    # Scale: the thin insulating sulfur sets k, far below graphite
-    assert 0.27 < k < 10.0
+    assert 0.269 < k < 10.0
 
 
 @pytest.mark.physics_invariant
-def test_stack_conductivity_is_bounded_and_independent_of_order():
-    """Stacked in any order, 3 layers give the same d and k, with
-    min(k_i) <= k <= max(k_i); one layer gives back its own conductivity."""
-    thickness = {'C': 2.0, 'S': 0.05, 'H2O4S': 0.2}  # m
-    results = set()
-    for order in itertools.permutations(thickness):
-        d, k = combine_layers({c: thickness[c] for c in order}, condensate_conductivity)
-        results.add((round(d, 12), round(k, 12)))
-        assert min(condensate_conductivity[c] for c in thickness) <= k
-        assert k <= max(condensate_conductivity[c] for c in thickness)
-    assert len(results) == 1
-    d_one, k_one = combine_layers({'S': 0.3}, condensate_conductivity)
+def test_stack_conductivity_is_bounded_by_its_layers():
+    """3 layers give a conductivity between the smallest and largest layer value, and
+    one layer gives back its own conductivity."""
+    _, d, k = _skin_of(C=2.0, S=0.05, H2O4S=0.2)
+    assert d == pytest.approx(2.25, rel=1e-12)
+    assert condensate_conductivity['S'] <= k <= condensate_conductivity['C']
+    assert k == pytest.approx(2.578677535717329, rel=1e-12)
+    _, d_one, k_one = _skin_of(S=0.3)
     assert d_one == pytest.approx(0.3, rel=1e-12)
     assert k_one == pytest.approx(condensate_conductivity['S'], rel=1e-12)
-
-
-def test_combine_layers_rejects_an_empty_or_unphysical_stack():
-    """An empty stack, a zero thickness or a non-positive conductivity is refused."""
-    with pytest.raises(ValueError, match='empty'):
-        combine_layers({}, condensate_conductivity)
-    with pytest.raises(ValueError, match='positive'):
-        combine_layers({'C': 0.0}, condensate_conductivity)
-    with pytest.raises(ValueError, match='positive'):
-        combine_layers({'C': 1.0}, {'C': -100.0})
-    # A valid neighbour does not mask the bad layer
-    with pytest.raises(ValueError, match='S'):
-        combine_layers({'C': 1.0, 'S': -0.1}, condensate_conductivity)
 
 
 @pytest.mark.physics_invariant
@@ -135,16 +120,17 @@ def test_layer_thickness_spreads_mass_over_the_whole_surface():
     # The thickness falls with the square of the radius
     doubled = condensate_layer_thickness(_hf_row(R_int=2 * R_MERCURY, C=(1.0e18, 1.0)))
     assert doubled['C'] == pytest.approx(layers['C'] / 4.0, rel=1e-12)
-
-
-def test_layer_thickness_refuses_a_bad_radius_or_condensate_state():
-    """A non-positive radius or a non-finite condensate mass raises."""
-    with pytest.raises(ValueError, match='radius'):
-        condensate_layer_thickness(_hf_row(R_int=0.0, C=(1.0e18, 1.0)))
-    with pytest.raises(ValueError, match='Non-finite'):
-        saturated_condensate_mass(_hf_row(C=(float('nan'), 1.0)))
-    # An empty surface is valid and has no layer
     assert condensate_layer_thickness(_hf_row()) == {}
+
+
+def test_a_non_finite_condensate_state_is_reported_and_counted_as_no_layer(caplog):
+    """A NaN mass or activity logs a warning and forms no layer, while a valid
+    neighbour in the same row still does."""
+    row = _hf_row(C=(float('nan'), 1.0), S=(1.0e3, float('inf')), H2O=(1.0e10, 0.0))
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.atmos_clim.surface_skin'):
+        masses = saturated_condensate_mass(row)
+    assert masses == {'H2O': pytest.approx(1.0e10)}
+    assert 'Non-finite' in caplog.text and 'C' in caplog.text
 
 
 @pytest.mark.physics_invariant
@@ -168,40 +154,52 @@ def test_only_saturated_or_held_condensates_form_layers():
 def test_a_negligible_stack_leaves_the_surface_fixed():
     """A graphite layer with d/k just below SKIN_RESISTANCE_MIN (1e-5 m2 K/W, so
     d = 1 mm) keeps the surface fixed; just above it gives a skin with k = 100."""
-    config = _saturation_config()
     d_min = SKIN_RESISTANCE_MIN * condensate_conductivity['C']  # m
     assert d_min == pytest.approx(1.0e-3, rel=1e-12)
-
-    below = _hf_row(C=(_mass_for_thickness('C', 0.9 * d_min), 1.0))
-    assert resolve_surface_skin(config, below) == ('fixed', 0.0, 0.0)
-
-    state, d, k = resolve_surface_skin(
-        config, _hf_row(C=(_mass_for_thickness('C', 1.1 * d_min), 1.0))
-    )
+    assert _skin_of(C=0.9 * d_min) == ('fixed', 0.0, 0.0)
+    state, d, k = _skin_of(C=1.1 * d_min)
     assert state == 'skin'
     assert d == pytest.approx(1.1e-3, rel=1e-10)
     assert k == pytest.approx(100.0, rel=1e-12)
     # No condensate at all is the fixed state too
-    assert resolve_surface_skin(config, _hf_row()) == ('fixed', 0.0, 0.0)
+    assert _skin_of() == ('fixed', 0.0, 0.0)
 
 
-def test_numeric_config_values_pass_through_unchanged():
-    """With numeric surface_d and surface_k the condensates are ignored."""
-    config = _numeric_config(surf_state='skin', d=0.05, k=3.0)
+@pytest.mark.physics_invariant
+def test_a_skin_that_becomes_negligible_is_cleared_from_the_row():
+    """When the layer shrinks below the threshold, the skin step writes zeros over the
+    previous iteration's skin, so the atmosphere does not keep solving with it."""
+    config = _saturation_config()
     row = _hf_row(C=(1.0e18, 1.0))
-    assert resolve_surface_skin(config, row) == ('skin', 0.05, 3.0)
-    assert skin_values(
-        config, {'boundary_layer_thickness': 7.0, 'boundary_layer_conductivity': 9.0}
-    ) == (0.05, 3.0)
-    assert agni_sol_type(_numeric_config(surf_state='fixed'), row) == 1
-    assert effective_surf_state(_numeric_config(surf_state='fixed'), row) == 'fixed'
+    assert update_surface_skin(config, row) == 'skin'
+    assert row['boundary_layer_thickness'] == pytest.approx(5.915736815008217, rel=1e-12)
+    # The graphite re-vapourises: the row carries the old skin until the step runs
+    row['C_cd_kg'], row['C_cd_activity'] = 1.0e-6, 0.2
+    assert update_surface_skin(config, row) == 'fixed'
+    assert (row['boundary_layer_thickness'], row['boundary_layer_conductivity']) == (0.0, 0.0)
+    assert effective_surf_state(config, row) == 'fixed'
+    assert agni_sol_type(config, row) == 1
+
+
+def test_numeric_config_values_are_written_over_any_interior_value():
+    """With numeric values the skin step writes the configured skin (0.05 m, 3 W/m/K)
+    into both columns, over a value an interior wrote (40 m), whatever the condensates,
+    and the state and the AGNI code are the configured ones."""
+    config = _numeric_config(surf_state='fixed', d=0.05, k=3.0)
+    row = _hf_row(C=(1.0e18, 1.0))
+    row['boundary_layer_thickness'] = 40.0  # m, e.g. a thermal boundary layer
+    assert update_surface_skin(config, row) == 'fixed'
+    assert row['boundary_layer_thickness'] == pytest.approx(0.05, rel=1e-12)
+    assert row['boundary_layer_conductivity'] == pytest.approx(3.0, rel=1e-12)
+    assert effective_surf_state(config, row) == 'fixed'
+    assert agni_sol_type(config, row) == 1
+    assert agni_sol_type(_numeric_config(surf_state='skin'), row) == 2
 
 
 @pytest.mark.physics_invariant
 def test_update_surface_skin_records_the_skin_the_consumers_read(caplog):
     """The written boundary_layer_thickness and boundary_layer_conductivity set the
-    state, the skin values and the AGNI code that the atmosphere modules then read;
-    a fixed state writes zeros."""
+    state and the AGNI code that the atmosphere modules then read."""
     config = _saturation_config()
     row = _hf_row(C=(1.0e18, 1.0), S=(_mass_for_thickness('S', 0.1), 1.0))
     with caplog.at_level(logging.INFO, logger='fwl.proteus.atmos_clim.surface_skin'):
@@ -210,19 +208,9 @@ def test_update_surface_skin_records_the_skin_the_consumers_read(caplog):
     assert d_row == pytest.approx(5.915736815008217 + 0.1, rel=1e-12)
     resistance = 5.915736815008217 / 100.0 + 0.1 / 0.269  # m2 K W-1
     assert k_row == pytest.approx(d_row / resistance, rel=1e-12)
-    assert skin_values(config, row) == (d_row, k_row)
     assert effective_surf_state(config, row) == 'skin'
     assert agni_sol_type(config, row) == 2
-    assert 'Graphite' in caplog.text and 'Sulfur' in caplog.text
-
-    empty = _hf_row()
-    assert update_surface_skin(config, empty) == 'fixed'
-    assert (empty['boundary_layer_thickness'], empty['boundary_layer_conductivity']) == (
-        0.0,
-        0.0,
-    )
-    assert effective_surf_state(config, empty) == 'fixed'
-    assert agni_sol_type(config, empty) == 1
+    assert 'skin' in caplog.text
 
 
 def _finite_volume_stack(thickness, conductivity, order, T_bottom, T_top, cells=16):
@@ -262,8 +250,7 @@ def test_combined_skin_conducts_the_flux_of_a_layered_conduction_solve():
     of the combined skin, dT k / d, and the piecewise-linear analytic profile."""
     order = ('C', 'S', 'H2O4S')  # bottom to top, densest first
     thickness = {'C': 2.0, 'S': 0.05, 'H2O4S': 0.2}  # m
-    row = _hf_row(**{c: (_mass_for_thickness(c, thickness[c]), 1.0) for c in order})
-    state, d, k = resolve_surface_skin(_saturation_config(), row)
+    state, d, k = _skin_of(**thickness)
     assert state == 'skin'
     assert d == pytest.approx(2.25, rel=1e-12)
 
@@ -287,17 +274,3 @@ def test_combined_skin_conducts_the_flux_of_a_layered_conduction_solve():
     k_parallel = sum(thickness[c] * condensate_conductivity[c] for c in order) / d
     assert k_parallel * (T_bottom - T_top) / d > 10 * q_bottom
     assert 0.0 < q_bottom < (T_bottom - T_top) * condensate_conductivity['C'] / d
-
-
-def test_numeric_skin_leaves_the_interior_thickness_and_records_the_conductivity():
-    """With numeric values the skin step writes only boundary_layer_conductivity
-    (3.0 W/m/K); boundary_layer_thickness stays what the interior wrote, here the
-    boundary interior's own thermal boundary layer (40 m), not surface_d (0.05 m)."""
-    config = _numeric_config(surf_state='fixed', d=0.05, k=3.0)
-    row = _hf_row(C=(1.0e18, 1.0))
-    row['boundary_layer_thickness'] = 40.0  # m
-    assert update_surface_skin(config, row) == 'fixed'
-    assert row['boundary_layer_thickness'] == pytest.approx(40.0, rel=1e-12)
-    assert row['boundary_layer_conductivity'] == pytest.approx(3.0, rel=1e-12)
-    # The atmosphere still reads the configured skin, not the interior column
-    assert skin_values(config, row) == (0.05, 3.0)

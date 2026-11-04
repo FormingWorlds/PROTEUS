@@ -1976,7 +1976,7 @@
     {
       "name": "boundary_layer_thickness",
       "unit": "m",
-      "description": "thermal boundary layer thickness; under 'saturation' the skin step overwrites the interior value with the skin given to the atmosphere, 0 for a fixed surface",
+      "description": "conductive skin thickness given to the atmosphere, written by the skin step over any interior value; 0 for a fixed surface under 'saturation'",
       "group": "Planet interior properties",
       "origin": "literal",
       "producers": [
@@ -1993,16 +1993,13 @@
           "condition": "interior_energetics.module = \"boundary\""
         },
         {
-          "file": "src/proteus/interior_energetics/dummy.py",
-          "condition": "interior_energetics.module = \"dummy\""
-        },
-        {
           "file": "src/proteus/interior_energetics/spider.py",
           "condition": "interior_energetics.module = \"spider\""
         }
       ],
       "consumers": [
-        "atmos_clim"
+        "atmos_clim",
+        "interior_energetics"
       ],
       "consumers_possible": []
     },
