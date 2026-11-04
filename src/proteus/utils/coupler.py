@@ -1202,6 +1202,7 @@ def GetHelpfileKeys():
         'ferric_frac_mantle',  # global melt Fe3+/FeT from the tracker [1]
         'n_fe_metal_mantle',  # cumulative Fe metal formed in the mantle [mol]
         'n_fe_metal_step_mantle',  # Fe metal formed on this step [mol]
+        'tau_metal_mantle',  # convective delivery time to the metal cell (-1: not evaluated) [yr]
 
         # Desiccation escape-balance baseline (M_vol_initial) and cumulative
         # loss ledger (esc_kg_cumulative) across escape and impact stripping.
@@ -1827,6 +1828,7 @@ _DIAGNOSTIC_KEYS = (
     'ferric_frac_mantle',
     'n_fe_metal_mantle',
     'n_fe_metal_step_mantle',
+    'tau_metal_mantle',
 )
 
 

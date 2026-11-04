@@ -161,15 +161,16 @@ import logging
 import math
 import os
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 import numpy as np
 
 from proteus.interior_chem import disproportionation as dispro
 from proteus.interior_chem import eos_deng
+from proteus.interior_chem import metal_relaxation as mrel
 from proteus.interior_chem import partitioning as kdp
 from proteus.interior_chem.partitioning import MU_FEO15, MU_FESIO3, MU_MGSIO3
-from proteus.utils.constants import element_mmw
+from proteus.utils.constants import element_mmw, secs_per_year
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -653,6 +654,9 @@ class MeltRedoxState:
     iron_overflow_logged: bool = False
     # 'mgsio3_kd' warning that a cell lies outside the K_D fit; runtime only.
     kd_clamp_logged: bool = False
+    # Convective delivery time [s] to the tested cell this step (metal_relaxation.py);
+    # NaN when not evaluated. Runtime only, not stored.
+    tau_metal_s: float = float('nan')
     X: dict = field(default_factory=_compute_mole_fractions)
 
 
@@ -722,9 +726,11 @@ def _metal_saturation_step(
     location: str = 'base',
     feo_volume: str = 'komabayashi2014',
     fesio3_basis: bool = False,
+    transit: Callable[[int], float] | None = None,
+    dt_s: float = 0.0,
 ) -> float:
     """Step 9a-9h: check the melt for Fe-metal saturation and, if it is
-    supersaturated, react it to equilibrium. Returns the reaction extent xi
+    supersaturated, react it towards equilibrium. Returns the reaction extent xi
     [mol], which because the Fe stoichiometric coefficient is 1 is also the
     moles of metal formed. Always >= 0: the back-reaction is disabled.
 
@@ -751,6 +757,12 @@ def _metal_saturation_step(
     metal from the melt: the residual melt keeps the 3 SiO2 of each reaction
     (n_sio2_free_melt) and no Mg is created.
 
+    ``transit`` (None: equilibrium within the step) maps the tested cell to
+    the convective delivery time tau [s] to it (metal_relaxation.py); only
+    the fraction 1 - exp(-dt_s / tau) of the equilibrium extent is then
+    applied over the step of ``dt_s`` [s], and tau is kept in
+    ``state.tau_metal_s``.
+
     Mutates ``state`` in place: n_fe2_melt, n_fe3_melt, n_fe_metal_cell,
     a_fe_cell and, with ``fesio3_basis``, n_sio2_free_melt. Does NOT
     recompute the derived ratios -- the caller does that
@@ -759,6 +771,7 @@ def _metal_saturation_step(
     # Step 9b: the non-Fe melt is MgSiO3, counted as MgO + SiO2 (two single-cation
     # units, the basis of Schaefer's nsil); without the 2, a_Fe rises ~1.9x.
     state.a_fe_max_cell = -1
+    state.tau_metal_s = float('nan')
     M_melt = float(np.sum(phi * mass))
     if _melt_mass(state, M_melt) <= 0.0:
         return 0.0
@@ -821,6 +834,8 @@ def _metal_saturation_step(
         return 0.0
     cstar = int(np.argmax(np.where(usable, a_fe, -np.inf)))
     state.a_fe_max_cell = cstar
+    if transit is not None:
+        state.tau_metal_s = transit(cstar)
 
     # Forward reaction only: metal that has formed is never redissolved, so an
     # undersaturated melt is left untouched even if metal is present.
@@ -834,6 +849,8 @@ def _metal_saturation_step(
         temp[cstar], P_gpa[cstar], use_P_term=True, eos_model=eos_model, feo_volume=feo_volume
     )
     xi = dispro.solve_extent(float(K), n2, n3, n_sil, n_metal_avail=0.0)
+    if transit is not None:
+        xi *= mrel.relaxed_fraction(dt_s, state.tau_metal_s)
     if xi <= 0.0:
         return 0.0
 
@@ -1302,10 +1319,49 @@ def _melt_iron_oxide_exceeds_melt(
     return True
 
 
-def update_melt_redox(interior_o: Interior_t, hf_row: dict, config: Config) -> None:
+def _relaxation_mode(interior_o: Interior_t, config: Config, dt: float | None) -> str:
+    """config.planet.interior_chem.metal_saturation_relaxation, checked before
+    the tracker changes any state: 'convective_transit' needs the step ``dt``
+    [yr] and the eddy diffusivity of the interior solver (only Aragog has it)."""
+    mode = str(config.planet.interior_chem.metal_saturation_relaxation)
+    if mode not in mrel.RELAXATION_MODES:
+        raise ValueError(
+            f'unknown metal_saturation_relaxation {mode!r}; expected one of '
+            f'{mrel.RELAXATION_MODES}'
+        )
+    if mode == 'convective_transit':
+        if dt is None:
+            raise ValueError("metal_saturation_relaxation 'convective_transit' needs dt")
+        if getattr(interior_o, 'eddy_diff_b', None) is None:
+            raise ValueError(
+                "metal_saturation_relaxation 'convective_transit' needs the eddy "
+                'diffusivity of the interior solver, which only the Aragog '
+                "interior provides (interior_energetics.module = 'aragog')"
+            )
+    return mode
+
+
+def _convective_transit(
+    interior_o: Interior_t, phi: np.ndarray, pres: np.ndarray, config: Config
+) -> Callable[[int], float]:
+    """Delivery time [s] from the top of the melt column (the shallowest cell
+    with ``phi`` > 0) to a given cell, at the mixing-length velocity of the
+    interior solver (metal_relaxation.py). Raises when the interior provides
+    no eddy diffusivity (only Aragog does)."""
+    radius = np.asarray(interior_o.radius, dtype=float)
+    profile = str(config.interior_energetics.mixing_length)
+    v_cell = mrel.cell_velocity(radius, interior_o.eddy_diff_b, profile)
+    i_top = int(np.argmin(np.where(phi > 0.0, pres, np.inf)))
+    return lambda i: mrel.transit_time(radius, v_cell, i, i_top)
+
+
+def update_melt_redox(
+    interior_o: Interior_t, hf_row: dict, config: Config, dt: float | None = None
+) -> None:
     """Advance the melt Fe3+/Fe2+ tracking by one coupling-loop timestep,
     compute the radial Eq 13 fO2 profile (diagnostic), and write the
-    surface (1 bar) Delta-IW into hf_row.
+    surface (1 bar) Delta-IW into hf_row. ``dt`` [yr] is the interior step
+    just taken; only the 'convective_transit' metal relaxation reads it.
 
     No-op unless config.planet.fO2_source == 'from_mantle_redox'. Call
     once per run_interior invocation, after interior_o.phi/mass/pres/temp
@@ -1334,6 +1390,7 @@ def update_melt_redox(interior_o: Interior_t, hf_row: dict, config: Config) -> N
     pres = np.asarray(interior_o.pres, dtype=float)
 
     first_call = interior_o.redox_state is None
+    relaxation = _relaxation_mode(interior_o, config, dt) if react else 'none'
 
     coefficient_set = str(config.planet.interior_chem.partition_coefficients)
     temp = np.asarray(interior_o.temp, dtype=float)
@@ -1365,7 +1422,10 @@ def update_melt_redox(interior_o: Interior_t, hf_row: dict, config: Config) -> N
     # is not evaluated otherwise); skipped on the first call, before any solid forms.
     xi = 0.0
     checked = react and not first_call and not state.melt_exhausted
+    transit = None
     if checked:
+        if relaxation == 'convective_transit':
+            transit = _convective_transit(interior_o, phi, pres, config)
         xi = _metal_saturation_step(
             state,
             temp,
@@ -1376,6 +1436,8 @@ def update_melt_redox(interior_o: Interior_t, hf_row: dict, config: Config) -> N
             location,
             feo_volume,
             fesio3_basis=coefficient_set == 'mgsio3_kd',
+            transit=transit,
+            dt_s=float(dt or 0.0) * secs_per_year,
         )
         if xi != 0.0:
             _update_ratios(state)
@@ -1428,6 +1490,9 @@ def update_melt_redox(interior_o: Interior_t, hf_row: dict, config: Config) -> N
         metal_msg = 'metal formed (%.3e mol this step)' % xi
     else:
         metal_msg = 'no metal formed'
+    tau_yr = state.tau_metal_s / secs_per_year if transit is not None else float('nan')
+    if not math.isnan(tau_yr):
+        metal_msg += '; convective delivery time %.3e yr (dt = %.3e yr)' % (tau_yr, dt)
     log.info(
         'Metal redox state: %s; cumulative metal=%.3e mol, '
         'Fe3+/FeT=%.4f, surface dIW=%+.3f (1 bar, T=%.0f K)',
@@ -1451,3 +1516,6 @@ def update_melt_redox(interior_o: Interior_t, hf_row: dict, config: Config) -> N
     # Reaction extent this step: moles of metal formed (>= 0; no
     # redissolution).
     hf_row['n_fe_metal_step_mantle'] = xi
+    # Convective delivery time to the tested cell [yr]; -1 when not evaluated
+    # (relaxation 'none' or no cell tested), inf when convection does not reach it.
+    hf_row['tau_metal_mantle'] = -1.0 if math.isnan(tau_yr) else tau_yr

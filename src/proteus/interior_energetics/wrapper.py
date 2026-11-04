@@ -2709,7 +2709,7 @@ def run_interior(
     # the T_magma clamping so its fO2 uses the T_magma the outgassing uses.
     from proteus.interior_chem.redox import store_profile_snapshot, update_melt_redox
 
-    update_melt_redox(interior_o, hf_row, config)
+    update_melt_redox(interior_o, hf_row, config, dt=float(sim_time) - float(hf_row['Time']))
 
     # Store the fO2 profile and tracker state with this step's output (Aragog: in
     # its _int.nc; SPIDER: a _redox.nc every step, as resume can land on any JSON).

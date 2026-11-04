@@ -268,6 +268,15 @@ class InteriorChem:
         Section 2.7 evaluate it; the step is skipped while that cell lies
         outside the ``redox_dV_eos`` envelope. 'max_afe': the melt cell with
         the largest a_Fe. Read only with ``metal_saturation`` True.
+    metal_saturation_relaxation: str
+        How fast a supersaturated melt reaches Fe-metal equilibrium
+        (``interior_chem/metal_relaxation.py``). 'none' (default): within the
+        step, as Schaefer et al. (2024). 'convective_transit': each step applies
+        the fraction 1 - exp(-dt / tau) of the equilibrium reaction extent,
+        where tau is the time a melt parcel takes to travel from the top of the
+        melt column to the reacting cell at the mixing-length velocity
+        kappa_h / l of the interior solver. Needs the Aragog interior, the only
+        one that provides kappa_h. Read only with ``metal_saturation`` True.
     fO2_pressure_term: bool
         Whether the radial fO2 profile (Schaefer et al. 2024 Eq 13 at each melt
         cell's T and P, ``interior_chem/redox.py`` Step 10a) carries the
@@ -307,6 +316,12 @@ class InteriorChem:
     # Cell of the metal-saturation step (redox.py Step 9e): magma-ocean base
     # as Schaefer et al. (2024), or the largest a_Fe.
     metal_saturation_cell: str = field(default='base', validator=in_(('base', 'max_afe')))
+
+    # Rate of the metal step (metal_relaxation.py): within the step, or limited
+    # by the convective transit time to the reacting cell.
+    metal_saturation_relaxation: str = field(
+        default='none', validator=in_(('none', 'convective_transit'))
+    )
 
     # int(dV dP) in the radial fO2 profile without the metal step (redox.py
     # Step 10a); always on with metal_saturation True.

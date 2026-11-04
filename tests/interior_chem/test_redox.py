@@ -94,6 +94,8 @@ def _make_config(
     fO2_pressure_term: bool = False,
     metal_saturation_cell: str = 'base',
     feo_volume: str = 'komabayashi2014',
+    metal_saturation_relaxation: str = 'none',
+    mixing_length: str = 'constant',
 ) -> MagicMock:
     """Minimal config exposing only the fields the tracker reads."""
     config = MagicMock()
@@ -105,6 +107,8 @@ def _make_config(
     config.planet.interior_chem.fO2_pressure_term = fO2_pressure_term
     config.planet.interior_chem.metal_saturation_cell = metal_saturation_cell
     config.planet.interior_chem.feo_volume = feo_volume
+    config.planet.interior_chem.metal_saturation_relaxation = metal_saturation_relaxation
+    config.interior_energetics.mixing_length = mixing_length
     config.outgas.T_floor = 700.0  # the outgassing temperature floor default
     return config
 
@@ -2610,3 +2614,117 @@ def test_metal_leaves_the_melt_for_the_constant_d_sets(coefficient_set):
     assert state.n_fe2_melt == pytest.approx(n2 - float(np.sum(exp2)), rel=1e-12)
     # The interior's melt mass would put less Fe2+ in the solid
     assert float(np.sum(exp2)) > float(np.sum(old2)) * (1.0 + 1e-6)
+
+
+# Convective delivery time of the metal step (metal_relaxation.py). The test
+# mesh runs from the surface down; radii with unequal shells (0.5, 0.3, 0.2 Mm).
+_RADIUS_B = np.array([6.0e6, 5.5e6, 5.2e6, 5.0e6])
+
+
+def _kappa_for_tau(tau_s: float) -> np.ndarray:
+    """Uniform kappa_h [m2 s-1] giving delivery time ``tau_s`` from cell 0 (top
+    of the melt) to cell 1 (base): constant l = 0.25 * 1 Mm, v = kappa / l,
+    tau = (0.5 + 0.3) Mm / v."""
+    ell = 0.25 * 1.0e6
+    return np.full(_RADIUS_B.size, 0.8e6 * ell / tau_s)
+
+
+@pytest.mark.physics_invariant
+def test_relaxed_metal_step_applies_one_minus_exp_of_the_equilibrium_extent():
+    """With dt = tau the step forms 1 - 1/e of the metal the instantaneous
+    step forms from the same supersaturated melt, and iron and oxygen are
+    still conserved. A linear dt/tau would form all of it."""
+    import copy
+
+    base = _init_state(_PHI, _MASS, _PRES, 0.005)  # an order of magnitude supersaturated
+    eq, relaxed = copy.deepcopy(base), copy.deepcopy(base)
+    xi_eq = _metal_saturation_step(eq, _TEMP, _PRES, _PHI, _MASS)
+    fe0 = relaxed.n_fe2_melt + relaxed.n_fe3_melt
+    o0 = relaxed.n_fe2_melt + 1.5 * relaxed.n_fe3_melt
+    xi = _metal_saturation_step(
+        relaxed, _TEMP, _PRES, _PHI, _MASS, transit=lambda i: 3.0e7, dt_s=3.0e7
+    )
+    assert xi_eq > 0.0
+    assert xi == pytest.approx((1.0 - np.exp(-1.0)) * xi_eq, rel=1e-12)
+    assert xi < 0.7 * xi_eq  # linear relaxation would give xi_eq
+    assert relaxed.tau_metal_s == pytest.approx(3.0e7, rel=1e-14)
+    fe1 = relaxed.n_fe2_melt + relaxed.n_fe3_melt + float(np.sum(relaxed.n_fe_metal_cell))
+    assert fe1 == pytest.approx(fe0, rel=1e-12)
+    assert relaxed.n_fe2_melt + 1.5 * relaxed.n_fe3_melt == pytest.approx(o0, rel=1e-12)
+    # 2 Fe3+ per metal Fe, from the scaled extent, not the equilibrium one
+    assert relaxed.n_fe3_melt == pytest.approx(base.n_fe3_melt + 2.0 * xi, rel=1e-12)
+
+
+def _two_steps(relaxation: str, kappa=None, dt=1.0):
+    """Seed the tracker, then take one crystallisation step with the metal
+    check; returns the hf_row of the second step and the interior."""
+    config = _make_config(0.005, metal_saturation_relaxation=relaxation)
+    interior = _make_interior()
+    interior.radius = _RADIUS_B
+    interior.eddy_diff_b = kappa
+    update_melt_redox(interior, {'T_magma': 2200.0}, config, dt=dt)
+    interior.phi = np.clip(_PHI - np.array([0.12, 0.07, 0.0]), 0.0, None)
+    hf_row = {'T_magma': 2200.0}
+    update_melt_redox(interior, hf_row, config, dt=dt)
+    return hf_row, interior
+
+
+@pytest.mark.physics_invariant
+def test_convective_transit_slows_the_metal_step_by_the_delivery_time():
+    """Through update_melt_redox: with kappa_h set for tau = dt = 1 yr the
+    metal formed is 1 - 1/e of the instantaneous run's, the helpfile carries
+    tau in years, and 'none' reports -1."""
+    from proteus.utils.constants import secs_per_year
+
+    row_eq, _ = _two_steps('none')
+    row, _ = _two_steps('convective_transit', _kappa_for_tau(secs_per_year), dt=1.0)
+    assert row_eq['n_fe_metal_step_mantle'] > 0.0
+    assert row['n_fe_metal_step_mantle'] == pytest.approx(
+        (1.0 - np.exp(-1.0)) * row_eq['n_fe_metal_step_mantle'], rel=1e-10
+    )
+    assert row['tau_metal_mantle'] == pytest.approx(1.0, rel=1e-12)
+    assert row_eq['tau_metal_mantle'] == pytest.approx(-1.0, abs=0.0)
+
+
+@pytest.mark.physics_invariant
+def test_convective_transit_forms_no_metal_without_convection_or_time():
+    """Limit inputs: kappa_h = 0 (no convection) gives an infinite delivery
+    time and no metal; dt = 0 forms none either, while a fast flow
+    (tau = 1e-6 dt) recovers the instantaneous result."""
+    from proteus.utils.constants import secs_per_year
+
+    row_eq, _ = _two_steps('none')
+    still, _ = _two_steps('convective_transit', np.zeros(_RADIUS_B.size))
+    assert still['n_fe_metal_step_mantle'] == pytest.approx(0.0, abs=0.0)
+    assert still['tau_metal_mantle'] == float('inf')
+    frozen, _ = _two_steps('convective_transit', _kappa_for_tau(secs_per_year), dt=0.0)
+    assert frozen['n_fe_metal_step_mantle'] == pytest.approx(0.0, abs=0.0)
+    fast, _ = _two_steps('convective_transit', _kappa_for_tau(1e-6 * secs_per_year))
+    assert fast['n_fe_metal_step_mantle'] == pytest.approx(
+        row_eq['n_fe_metal_step_mantle'], rel=1e-12
+    )
+
+
+def test_convective_transit_without_eddy_diffusivity_raises_before_any_change():
+    """An interior without kappa_h (SPIDER, JAX Aragog) or a call without dt is
+    refused before the tracker seeds or advances its state."""
+    config = _make_config(0.005, metal_saturation_relaxation='convective_transit')
+    interior = _make_interior()
+    interior.eddy_diff_b = None
+    with pytest.raises(ValueError, match='Aragog'):
+        update_melt_redox(interior, {'T_magma': 2200.0}, config, dt=1.0)
+    assert interior.redox_state is None
+    interior.eddy_diff_b = np.ones(_RADIUS_B.size)
+    with pytest.raises(ValueError, match='needs dt'):
+        update_melt_redox(interior, {'T_magma': 2200.0}, config)
+    assert interior.redox_state is None
+
+
+def test_unknown_metal_saturation_relaxation_raises():
+    """A relaxation mode the tracker does not implement is refused, not run
+    as the instantaneous step."""
+    config = _make_config(0.005, metal_saturation_relaxation='nucleation')
+    interior = _make_interior()
+    with pytest.raises(ValueError, match='metal_saturation_relaxation'):
+        update_melt_redox(interior, {'T_magma': 2200.0}, config, dt=1.0)
+    assert interior.redox_state is None

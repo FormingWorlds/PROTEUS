@@ -1290,6 +1290,7 @@ class Interior_t:
         self.rho_solid_b = None  # Solid density at the phase boundary [kg m-3]
         self.rho_melt_b = None  # Melt density at the phase boundary [kg m-3]
         self.g_b = None  # Gravitational acceleration [m s-2]
+        self.eddy_diff_b = None  # Mixing-length eddy diffusivity [m2 s-1]
 
     def _load_ps_table(self, spider_dir: str, eos_dir: str, filename: str) -> np.ndarray | None:
         """Load a SPIDER-format P-S lookup table.

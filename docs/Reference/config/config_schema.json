@@ -4368,6 +4368,25 @@
       "group_qualifier": null
     },
     {
+      "path": "planet.interior_chem.metal_saturation_relaxation",
+      "toml_section": "planet.interior_chem",
+      "class": "InteriorChem",
+      "type": "str",
+      "accepts_none": false,
+      "default": "\"none\"",
+      "choices": [
+        "none",
+        "convective_transit"
+      ],
+      "bounds": null,
+      "description": "How fast a supersaturated melt reaches Fe-metal equilibrium (``interior_chem/metal_relaxation.py``). 'none' (default): within the step, as Schaefer et al. (2024). 'convective_transit': each step applies the fraction 1 - exp(-dt / tau) of the equilibrium reaction extent, where tau is the time a melt parcel takes to travel from the top of the melt column to the reacting cell at the mixing-length velocity kappa_h / l of the interior solver. Needs the Aragog interior, the only one that provides kappa_h. Read only with ``metal_saturation`` True.",
+      "doc_source": "attributes",
+      "group_order": 0,
+      "group_position": 0,
+      "group": null,
+      "group_qualifier": null
+    },
+    {
       "path": "planet.interior_chem.fO2_pressure_term",
       "toml_section": "planet.interior_chem",
       "class": "InteriorChem",

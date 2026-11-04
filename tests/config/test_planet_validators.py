@@ -182,3 +182,28 @@ def test_unknown_feo_volume_is_rejected(bad):
     with pytest.raises(ValueError):
         chem.feo_volume = bad
     assert chem.feo_volume == 'komabayashi2014'
+
+
+@pytest.mark.parametrize('choice', ['none', 'convective_transit'])
+def test_metal_saturation_relaxation_choices_are_accepted(choice):
+    """Both relaxation modes are valid, and Schaefer et al.'s (2024) reaction
+    within the step is the default."""
+    from proteus.interior_chem.metal_relaxation import RELAXATION_MODES
+
+    assert (
+        InteriorChem(metal_saturation_relaxation=choice).metal_saturation_relaxation == choice
+    )
+    assert InteriorChem().metal_saturation_relaxation == 'none'
+    assert choice in RELAXATION_MODES
+
+
+@pytest.mark.parametrize('bad', ['None', 'convective', 'tau', ''])
+def test_unknown_metal_saturation_relaxation_is_rejected(bad):
+    """A misspelt relaxation mode fails at config load, and the config accepts
+    exactly the modes metal_relaxation implements."""
+    from proteus.interior_chem.metal_relaxation import RELAXATION_MODES
+
+    with pytest.raises(ValueError) as exc:
+        InteriorChem(metal_saturation_relaxation=bad)
+    assert 'metal_saturation_relaxation' in str(exc.value)
+    assert tuple(exc.value.args[2]) == RELAXATION_MODES

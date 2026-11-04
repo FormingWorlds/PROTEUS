@@ -1380,6 +1380,8 @@ class AragogRunner:
         interior_o.rho_b = getattr(out, 'rho_basic', None)
         for name in ('rho_solid_b', 'rho_melt_b', 'g_b'):
             setattr(interior_o, name, getattr(out, name, None))
+        # The metal-saturation relaxation reads it (interior_chem/metal_relaxation.py).
+        interior_o.eddy_diff_b = getattr(out, 'eddy_diff', None)
         interior_o.phi = out.phi_stag
         interior_o.visc = out.visc_stag
         interior_o.density = out.rho_stag
