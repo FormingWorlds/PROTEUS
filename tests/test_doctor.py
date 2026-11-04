@@ -31,8 +31,9 @@ from helpers import (
     scratch_proteus_root,
 )
 
-import proteus.doctor as doctor_module
 from proteus.doctor import (
+    _ENV_PATH_VARS,
+    _ENV_VARS,
     _GIT_NOTE_TIMEOUT_S,
     _MODULE_FOLDERS,
     _PAIRED_MODULES,
@@ -76,6 +77,7 @@ from proteus.doctor import (
     check_fwl_data,
     check_git_module,
     check_julia,
+    check_julia_depot,
     check_python_package,
     doctor_entry,
     is_standard_module_installed,
@@ -3826,7 +3828,7 @@ class TestJuliaDepot:
 
     def test_unset_warns_with_the_conda_command(self, site):
         """An install that never set the variable works, and shares the default depot."""
-        result = doctor_module.check_julia_depot()
+        result = check_julia_depot()
         assert result.status == WARN
         assert str(site / 'home' / '.julia') in result.message
         assert 'shared' in result.message
@@ -3835,7 +3837,7 @@ class TestJuliaDepot:
     def test_empty_fails(self, site, monkeypatch):
         """An empty value means no depot, on which Pkg stops."""
         monkeypatch.setenv('JULIA_DEPOT_PATH', '')
-        result = doctor_module.check_julia_depot()
+        result = check_julia_depot()
         assert result.status == FAIL
         assert 'no depot' in result.message
         assert 'julia_depot:' in result.fix_cmd
@@ -3845,7 +3847,7 @@ class TestJuliaDepot:
         depot = site / 'prefix' / 'julia_depot'
         (depot / 'packages').mkdir(parents=True)
         monkeypatch.setenv('JULIA_DEPOT_PATH', f'{depot}:/y:')
-        result = doctor_module.check_julia_depot()
+        result = check_julia_depot()
         assert result.status == PASS
         assert str(depot) in result.message
         assert '/y' in result.message
@@ -3853,7 +3855,7 @@ class TestJuliaDepot:
     def test_new_folder_under_a_writable_parent_passes(self, site, monkeypatch):
         """A depot that does not exist yet is writable through its parent."""
         monkeypatch.setenv('JULIA_DEPOT_PATH', f'{site / "new" / "deep"}:')
-        result = doctor_module.check_julia_depot()
+        result = check_julia_depot()
         assert result.status == PASS
         assert str(site / 'new' / 'deep') in result.message
 
@@ -3861,7 +3863,7 @@ class TestJuliaDepot:
         """Julia cannot make a depot in place of a file."""
         (site / 'afile').write_text('x')
         monkeypatch.setenv('JULIA_DEPOT_PATH', f'{site / "afile"}:')
-        result = doctor_module.check_julia_depot()
+        result = check_julia_depot()
         assert result.status == FAIL
         assert 'cannot be written' in result.message
 
@@ -3869,7 +3871,7 @@ class TestJuliaDepot:
         """Pkg writes to the first entry only, so a read-only one breaks an install."""
         monkeypatch.setenv('JULIA_DEPOT_PATH', f'{site / "ro"}:')
         monkeypatch.setattr('proteus.doctor.os.access', lambda *a, **k: False)
-        result = doctor_module.check_julia_depot()
+        result = check_julia_depot()
         assert result.status == FAIL
         assert 'cannot be written' in result.message
 
@@ -3883,7 +3885,7 @@ class TestJuliaDepot:
             (other / 'src' / 'proteus').mkdir(parents=True)
             (other / 'install.sh').write_text('')
         monkeypatch.setenv('JULIA_DEPOT_PATH', f'{other}/julia_depot:')
-        result = doctor_module.check_julia_depot()
+        result = check_julia_depot()
         assert result.status == FAIL
         assert 'another PROTEUS install' in result.message
 
@@ -3891,7 +3893,7 @@ class TestJuliaDepot:
         """A user may name a folder julia_depot on a big disk."""
         (site / 'big').mkdir()
         monkeypatch.setenv('JULIA_DEPOT_PATH', f'{site / "big" / "julia_depot"}:')
-        result = doctor_module.check_julia_depot()
+        result = check_julia_depot()
         assert result.status == PASS
         assert str(site / 'big' / 'julia_depot') in result.message
 
@@ -3902,7 +3904,7 @@ class TestJuliaDepot:
         (site / 'root' / 'src' / 'proteus').mkdir(parents=True)
         (site / 'root' / 'install.sh').write_text('')
         monkeypatch.setenv('JULIA_DEPOT_PATH', f'{site / parent}/julia_depot:')
-        result = doctor_module.check_julia_depot()
+        result = check_julia_depot()
         assert result.status == PASS
         assert f'{site / parent}/julia_depot' in result.message
 
@@ -3910,7 +3912,7 @@ class TestJuliaDepot:
         """Packages recorded by AGNI that the depot does not hold stop a run at using AGNI."""
         _julia_project(site / 'root' / 'AGNI')
         monkeypatch.setenv('JULIA_DEPOT_PATH', f'{site / "prefix" / "julia_depot"}:')
-        result = doctor_module.check_julia_depot()
+        result = check_julia_depot()
         assert result.status == FAIL
         assert 'does not hold Foo' in result.message
         assert 'Pkg.instantiate()' in result.fix_cmd
@@ -3921,7 +3923,7 @@ class TestJuliaDepot:
         _julia_project(site / 'root' / 'AGNI')
         (site / 'shared' / 'packages' / 'Foo').mkdir(parents=True)
         monkeypatch.setenv('JULIA_DEPOT_PATH', f'{site / "new"}:{site / "shared"}:')
-        result = doctor_module.check_julia_depot()
+        result = check_julia_depot()
         assert result.status == PASS
         assert str(site / 'shared') in result.message
 
@@ -3932,14 +3934,14 @@ class TestJuliaDepot:
             monkeypatch.delenv('CONDA_DEFAULT_ENV', raising=False)
         else:
             monkeypatch.setenv('CONDA_DEFAULT_ENV', env)
-        fix = doctor_module.check_julia_depot().fix_cmd
+        fix = check_julia_depot().fix_cmd
         assert '$CONDA_PREFIX' not in fix
         assert '<path of your PROTEUS environment>/julia_depot:' in fix
 
     def test_advice_inside_the_env_names_its_prefix(self, site, monkeypatch):
         """With the env active the shell gives the right prefix."""
         monkeypatch.setenv('CONDA_DEFAULT_ENV', 'proteus')
-        fix = doctor_module.check_julia_depot().fix_cmd
+        fix = check_julia_depot().fix_cmd
         assert '"$CONDA_PREFIX/julia_depot:"' in fix
         assert '<path of your' not in fix
 
@@ -3948,7 +3950,7 @@ class TestJuliaDepot:
         monkeypatch.delenv('CONDA_PREFIX')
         (site / 'prefix' / 'conda-meta').mkdir()
         monkeypatch.setenv('JULIA_DEPOT_PATH', f'{site / "prefix"}/julia_depot:')
-        result = doctor_module.check_julia_depot()
+        result = check_julia_depot()
         assert result.status == FAIL
         assert 'another PROTEUS install' in result.message
 
@@ -3958,7 +3960,7 @@ class TestJuliaDepot:
         depot = site / 'prefix' / 'julia_depot'
         (depot / 'packages' / 'Foo').mkdir(parents=True)
         monkeypatch.setenv('JULIA_DEPOT_PATH', f'{depot}:')
-        result = doctor_module.check_julia_depot()
+        result = check_julia_depot()
         assert result.status == FAIL
         assert 'Bar' in result.message
         assert 'Foo' not in result.message
@@ -3969,7 +3971,7 @@ class TestJuliaDepot:
         """An empty depot and no AGNI: import proteus stops at juliacall."""
         _julia_project(site / 'prefix' / 'julia_env', ('PythonCall',))
         monkeypatch.setenv('JULIA_DEPOT_PATH', f'{site / "prefix" / "julia_depot"}:')
-        result = doctor_module.check_julia_depot()
+        result = check_julia_depot()
         assert result.status == FAIL
         assert 'PythonCall' in result.message
         assert 'julia_env' in result.fix_cmd
@@ -3978,7 +3980,7 @@ class TestJuliaDepot:
         """With no env active there is no juliacall project to read."""
         monkeypatch.delenv('CONDA_PREFIX')
         monkeypatch.setenv('JULIA_DEPOT_PATH', f'{site / "new"}:')
-        result = doctor_module.check_julia_depot()
+        result = check_julia_depot()
         assert result.status == PASS
         assert str(site / 'new') in result.message
 
@@ -3992,7 +3994,7 @@ class TestJuliaDepot:
     ):
         """The rule of install.sh: such a depot depends on the folder of each process."""
         monkeypatch.setenv('JULIA_DEPOT_PATH', value)
-        result = doctor_module.check_julia_depot()
+        result = check_julia_depot()
         assert result.status == FAIL
         assert value in result.message
         assert 'absolute' in result.message
@@ -4001,7 +4003,7 @@ class TestJuliaDepot:
         """The folder would grow again in the old prefix, and no other install holds it."""
         (site / 'envs').mkdir()
         monkeypatch.setenv('JULIA_DEPOT_PATH', f'{site / "envs" / "gone"}/julia_depot:')
-        result = doctor_module.check_julia_depot()
+        result = check_julia_depot()
         assert result.status == FAIL
         assert 'is gone' in result.message
         assert 'another PROTEUS install' not in result.message
@@ -4012,7 +4014,7 @@ class TestJuliaDepot:
         """A folder still to come stays the choice of the user."""
         value = site / 'scratch' / 'me' / 'julia_depot'
         monkeypatch.setenv('JULIA_DEPOT_PATH', f'{value}:')
-        result = doctor_module.check_julia_depot()
+        result = check_julia_depot()
         assert result.status == PASS
         assert str(value) in result.message
 
@@ -4028,7 +4030,7 @@ class TestJuliaDepot:
         depot = site / 'prefix' / 'julia_depot'
         depot.mkdir()
         monkeypatch.setenv('JULIA_DEPOT_PATH', f'{depot}:')
-        result = doctor_module.check_julia_depot()
+        result = check_julia_depot()
         assert result.status == FAIL
         assert f'{agni}: Project.toml or Manifest file cannot be read' in result.message
         assert 'does not hold' not in result.message
@@ -4041,7 +4043,7 @@ class TestJuliaDepot:
         depot = site / 'prefix' / 'julia_depot'
         (depot / 'packages' / 'Foo').mkdir(parents=True)
         monkeypatch.setenv('JULIA_DEPOT_PATH', f'{depot}:')
-        result = doctor_module.check_julia_depot()
+        result = check_julia_depot()
         assert result.status == PASS
         assert str(depot) in result.message
 
@@ -4049,7 +4051,7 @@ class TestJuliaDepot:
         """`proteus install-all` sets no depot, so doctor names the shared default."""
         (site / 'home' / '.julia' / 'packages' / 'Foo').mkdir(parents=True)
         _julia_project(site / 'root' / 'AGNI')
-        result = doctor_module.check_julia_depot()
+        result = check_julia_depot()
         assert result.status == WARN
         assert 'shared' in result.message
 
@@ -4067,5 +4069,5 @@ class TestJuliaDepot:
 
     def test_failure_log_names_the_depot_variables(self):
         """The failure log prints both variables, and neither gets a path check."""
-        assert {'JULIA_DEPOT_PATH', 'JULIAUP_DEPOT_PATH'} <= set(doctor_module._ENV_VARS)
-        assert 'JULIA_DEPOT_PATH' not in doctor_module._ENV_PATH_VARS
+        assert {'JULIA_DEPOT_PATH', 'JULIAUP_DEPOT_PATH'} <= set(_ENV_VARS)
+        assert 'JULIA_DEPOT_PATH' not in _ENV_PATH_VARS

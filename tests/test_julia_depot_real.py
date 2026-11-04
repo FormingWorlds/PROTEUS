@@ -172,7 +172,7 @@ def test_trailing_colon_adds_the_bundled_depots_and_not_the_home_depot(stack):
 @pytest.mark.parametrize(
     'value',
     ['/x', '/x:', '/x::', '/x:/y:', ':/x', ':', '/x:/x', '~/d:', '', None],
-    ids=lambda v: repr(v),
+    ids=repr,
 )
 def test_parser_of_the_doctor_equals_julia(tmp_path, monkeypatch, value):
     """julia_depot_entries gives the list of Julia, with the bundled depots left out."""
