@@ -758,7 +758,7 @@ class Grid:
         time_d = int(np.floor(max_days))
         time_h = int(np.floor((max_days - time_d) * 24))
         time_m = int(np.floor(((max_days - time_d) * 24 - time_h) * 60))
-        time_s = f"{time_d}-{time_h:02d}:{time_m:02d}:00"
+        time_s = f'{time_d}-{time_h:02d}:{time_m:02d}:00'
 
         # Convert GB into MB for Slurm memory format
         max_mem_m = int(max_mem * 1024)
@@ -954,7 +954,7 @@ def grid_from_config(config_fpath: str, test_run: bool = False, check_interval: 
     # Execution limits
     max_jobs = int(config['max_jobs'])  # maximum number of concurrent tasks (e.g. 300)
     max_days = float(config['max_days'])  # maximum number of days to run (e.g. 1.0)
-    max_mem  = float(config['max_mem'])  # maximum memory per CPU in GB (e.g. 3)
+    max_mem = float(config['max_mem'])  # maximum memory per CPU in GB (e.g. 3)
 
     # Optional bounded JAX persistent compilation cache (Slurm runs only).
     # Absent or false leaves the generated script cache-free.

@@ -378,7 +378,7 @@ config_version = "3.0"
 # Outgassing (volatile partitioning between interior and atmosphere)
 [outgas]
     module                    = "atmodeller" # calliope | atmodeller | dummy
-    fO2_shift_IW              = -6           # redox state [log10(delta_IW)]
+    fO2_shift_IW              = -5           # redox state [log10(delta_IW)]
     mass_thresh               = 1e16         # minimum volatile mass threshold [kg]
     h2_binodal                = false        # H2 binodal partitioning; true is rejected at config load (not production ready)
     vapourise                 = false        # include rock vapour species
@@ -458,9 +458,9 @@ config_version = "3.0"
     surf_greyalbedo           = 0.1          # grey surface albedo (used when agni.surf_material = "greybody")
 
     # Surface boundary condition
-    surf_state                = "fixed"       # energy balance: mixed_layer | fixed | skin
-    surface_d                 = 0.01         # conductive skin thickness [m]
-    surface_k                 = 2.0          # conductive skin conductivity [W/m/K]
+    surf_state                = "skin"       # energy balance: mixed_layer | fixed | skin
+    surface_d                 = 'saturation' # conductive skin thickness [m]
+    surface_k                 = 'saturation' # conductive skin conductivity [W/m/K]
 
     # Solver limits (agni, janus only)
     tmp_minimum               = 0.5          # temperature floor [K]

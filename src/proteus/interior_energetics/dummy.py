@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pandas as pd
 
-from proteus.atmos_clim.surface_skin import skin_values
 from proteus.interior_energetics.common import Interior_t
 from proteus.interior_energetics.timestep import next_step
 from proteus.interior_energetics.wrapper import get_core_heatcap
@@ -201,7 +200,6 @@ def run_dummy_int(
     output['M_mantle_liquid'] = output['M_mantle'] * output['Phi_global']
     output['M_mantle_solid'] = output['M_mantle'] - output['M_mantle_liquid']
     output['RF_depth'] = output['Phi_global'] * (1 - core_radius_frac)
-    output['boundary_layer_thickness'] = skin_values(config, hf_row)[0]
 
     # Store arrays
     interior_o.phi = np.array([output['Phi_global']])

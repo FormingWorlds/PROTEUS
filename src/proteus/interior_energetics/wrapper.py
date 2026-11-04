@@ -12,7 +12,6 @@ import numpy as np
 import pandas as pd
 import scipy.optimize as optimise
 
-from proteus.atmos_clim.surface_skin import skin_values
 from proteus.interior_energetics.common import (
     _SPIDER_EOS_MELTING_CURVES,
     _SPIDER_EOS_PHASE_FILES,
@@ -2173,7 +2172,7 @@ def _remelt_aragog(
             molten_out,
             hf_row,
             interior_o=interior_o,
-            surface_d=skin_values(config, hf_row)[0],
+            surface_d=hf_row['boundary_layer_thickness'],
             surface_bc_mode=config.interior_energetics.surface_bc_mode,
         )
         # T_cmb and T_cmb_node keep the impact row consistent; the T_core jump guard
@@ -2533,7 +2532,11 @@ def run_interior(
             interior_o.dt = dtswitch
             return
         sim_time, output = ReadSPIDER(
-            dirs, config, hf_row['R_int'], interior_o, surface_d=skin_values(config, hf_row)[0]
+            dirs,
+            config,
+            hf_row['R_int'],
+            interior_o,
+            surface_d=hf_row['boundary_layer_thickness'],
         )
 
     elif config.interior_energetics.module == 'aragog':

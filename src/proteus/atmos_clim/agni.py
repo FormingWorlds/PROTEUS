@@ -20,9 +20,6 @@ from proteus.atmos_clim.common import (
 from proteus.atmos_clim.spectral_cache import cache_key, seed_from_cache, store_in_cache
 from proteus.atmos_clim.surface_skin import (
     agni_sol_type,
-    effective_surf_state,
-    skin_from_saturation,
-    skin_values,
 )
 from proteus.data import (
     REFRACTIVE,
@@ -830,11 +827,9 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict, use_cache: bool = 
     )
     setup_kwargs['aerosol_species'] = convert(jl.Dict, aerosol_species)
 
-    # Surface CBL; with no skin formed yet from saturation, AGNI keeps its defaults
-    skin_d, skin_k = skin_values(config, hf_row)
-    if skin_d > 0:
-        setup_kwargs['skin_d'] = skin_d
-        setup_kwargs['skin_k'] = skin_k
+    # Surface CBL
+    setup_kwargs['skin_d'] = float(hf_row['boundary_layer_thickness'])
+    setup_kwargs['skin_k'] = float(hf_row['boundary_layer_conductivity'])
 
     succ = jl.AGNI.atmosphere.setup_b(
         atmos,
@@ -1172,9 +1167,9 @@ def update_agni_atmos(atmos, hf_row: dict, dirs: dict, config: Config):
     atmos.tmp_surf = float(hf_row['T_surf'])
     atmos.tmp_magma = float(hf_row['T_magma'])
 
-    # A skin from saturation changes between iterations; AGNI skips its range check here
-    if skin_from_saturation(config) and effective_surf_state(config, hf_row) == 'skin':
-        atmos.skin_d, atmos.skin_k = skin_values(config, hf_row)
+    # Surface CBL
+    atmos.skin_d = float(hf_row['boundary_layer_thickness'])
+    atmos.skin_k = float(hf_row['boundary_layer_conductivity'])
 
     # ---------------------
     # Transparent mode?

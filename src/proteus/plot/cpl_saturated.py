@@ -12,7 +12,6 @@ from proteus.utils.constants import (
     CONDENSATE_HELD_MASS_KG,
     CONDENSATE_SATURATED_ACTIVITY,
     condensate_density,
-    condensate_list,
     condensate_names,
 )
 from proteus.utils.plot import get_colour
@@ -43,7 +42,7 @@ def plot_saturated(hf_all: pd.DataFrame, output_dir: str, plot_format='pdf'):
 
     # Condensates with at least two points solved for or holding a layer
     solved = {}
-    for c in condensate_list:
+    for c in condensate_density.keys():
         if f'{c}_cd_activity' not in hf_crop.columns or f'{c}_cd_kg' not in hf_crop.columns:
             continue
         activity = np.array(hf_crop[f'{c}_cd_activity'], dtype=float)

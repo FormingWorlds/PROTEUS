@@ -23,7 +23,7 @@ import numpy as np
 import pandas as pd
 
 from proteus.utils.constants import (
-    condensate_list,
+    condensate_density,
     element_list,
     gas_list,
     noble_gases,
@@ -1249,7 +1249,7 @@ def GetHelpfileKeys():
     ]
 
     # Condensates from atmodeller; zero when a condensate was not solved for
-    for c in condensate_list:
+    for c in condensate_density.keys():
         keys.append(c + '_cd_activity')  # activity of the condensate in the solved inventory; 1 = saturated, and below 1 beside a layer held by prevent_desaturation [1]
         keys.append(c + '_cd_kg')        # condensed mass [kg]
 
@@ -1825,7 +1825,7 @@ _DIAGNOSTIC_KEYS = (
     'E_core_residual_frac',
     # Condensate activity from atmodeller; the saturation skin reads it, and a zero-filled
     # value is still safe there. The mass is state: prevent_desaturation holds the layer.
-    *(f'{c}_cd_activity' for c in condensate_list),
+    *(f'{c}_cd_activity' for c in condensate_density.keys()),
 )
 
 
@@ -1977,7 +1977,7 @@ def ReadHelpfileFromCSV(output_dir: str, *, required_columns: list[str] | None =
     # `_kg_solid`, so reading the new columns as zero keeps its totals; the
     # per-condensate mass is zero with them, so no layer is held on resume.
     condensed_keys = {e + '_kg_condensed' for e in vol_element_list}
-    condensed_keys |= {c + '_cd_kg' for c in condensate_list}
+    condensed_keys |= {c + '_cd_kg' for c in condensate_density.keys()}
     zero_fill = RESUMABLE_ZERO_FILL_KEYS | set(GetHelpfileTrappingKeys()) | condensed_keys
     fillable = [key for key in missing if key in zero_fill]
     unfillable = sorted(set(missing) - set(fillable))

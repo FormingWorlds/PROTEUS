@@ -217,6 +217,7 @@ See [`all_options.toml`](https://github.com/FormingWorlds/PROTEUS/blob/main/inpu
         my_star_var: float
             Star variable, must be 10 or lower!
         """
+
         my_star_var: float = field(validator=attrs.validators.le(10))
     ```
 

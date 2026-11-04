@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from proteus.atmos_clim.common import clip_radius_to_hill
-from proteus.atmos_clim.surface_skin import effective_surf_state, skin_values
+from proteus.atmos_clim.surface_skin import effective_surf_state
 from proteus.utils.constants import const_R, const_sigma, gas_list
 from proteus.utils.helper import UpdateStatusfile
 
@@ -65,7 +65,8 @@ def RunDummyAtm(dirs: dict, config: Config, hf_row: dict):
     albedo_pl = float(hf_row['albedo_pl'])
     inst_sf = config.orbit.s0_factor
     albedo_s = config.atmos_clim.surf_greyalbedo
-    skin_d, skin_k = skin_values(config, hf_row)
+    skin_d = float(hf_row['boundary_layer_thickness'])
+    skin_k = float(hf_row['boundary_layer_conductivity'])
     surf_state = effective_surf_state(config, hf_row)
 
     # Copy variables

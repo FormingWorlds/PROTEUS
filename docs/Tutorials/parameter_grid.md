@@ -197,19 +197,21 @@ grid = Path('output/tutorial_grid')
 rows = []
 for case in sorted(grid.glob('case_*')):
     code = int((case / 'status').read_text().splitlines()[0])
-    if not (10 <= code <= 19):        # keep only completed cases
+    if not (10 <= code <= 19):  # keep only completed cases
         continue
     cfg = toml.load(case / 'init_coupler.toml')
     df = pd.read_csv(case / 'runtime_helpfile.csv', sep='\t')
     last = df.iloc[-1]
-    rows.append({
-        'mass': cfg['planet']['mass_tot'],
-        'sma': cfg['orbit']['semimajoraxis'],
-        'H_ppmw': cfg['planet']['elements']['H_budget'],
-        't_stop': last['Time'],
-        'Phi_final': last['Phi_global'],
-        'P_surf': last['P_surf'],
-    })
+    rows.append(
+        {
+            'mass': cfg['planet']['mass_tot'],
+            'sma': cfg['orbit']['semimajoraxis'],
+            'H_ppmw': cfg['planet']['elements']['H_budget'],
+            't_stop': last['Time'],
+            'Phi_final': last['Phi_global'],
+            'P_surf': last['P_surf'],
+        }
+    )
 summary = pd.DataFrame(rows)
 print(summary)
 ```
