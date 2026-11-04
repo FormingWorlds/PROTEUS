@@ -33,7 +33,7 @@ from proteus.config._config import (
     tides_enabled_orbit,
 )
 from proteus.config._converters import none_if_none
-from proteus.config._interior import Interior, valid_aragog, valid_interiordummy, valid_spider
+from proteus.config._interior import valid_aragog, valid_interiordummy, valid_spider
 from proteus.config._outgas import Calliope
 from proteus.config._params import max_bigger_than_min, valid_mod, valid_path
 from proteus.config._planet import GasPrs, Planet
@@ -133,30 +133,31 @@ def test_read_config_object_rejects_a_misspelled_field(tmp_path):
         pytest.param('boundary', 'core_density', id='boundary_core_density'),
     ],
 )
-def test_read_config_object_rejects_a_removed_density_key(tmp_path, section, key):
-    """A removed duplicate density key is refused, so it cannot disagree with const_rho unseen.
+def test_read_config_object_warns_on_a_deprecated_density_key(tmp_path, section, key):
+    """A deprecated density key still loads, so older run records stay readable, but warns.
 
-    The mantle density is set only by interior_energetics.const_rho and the core density
-    by interior_struct.core_density. The old keys are named in the error, while the same
-    value written to const_rho loads and reaches the Config.
+    The value is ignored: it does not reach const_rho or any other field. A configuration
+    written by Config.write records the key as "none" and reloads without the warning.
     """
-    from proteus.config.orphans import UnknownConfigKeyError
+    import warnings
 
     def _old_key(raw):
         raw['interior_energetics'].setdefault(section, {})[key] = 3300.0
 
-    def _const_rho(raw):
-        raw['interior_energetics']['const_rho'] = 3300.0
+    message = re.escape(f'interior_energetics.{section}.{key} is deprecated and ignored')
+    with pytest.warns(FutureWarning, match=message):
+        cfg = read_config_object(_write_variant(tmp_path, 'old_key.toml', _old_key))
+    # Ignored: 3300 does not replace the const_rho default of 4000 kg m-3.
+    assert cfg.interior_energetics.const_rho == pytest.approx(4000.0)
 
-    with pytest.raises(
-        UnknownConfigKeyError, match=re.escape(f'interior_energetics.{section}.{key}')
-    ):
-        read_config_object(_write_variant(tmp_path, 'old_key.toml', _old_key))
-
-    cfg = read_config_object(_write_variant(tmp_path, 'const_rho.toml', _const_rho))
-    assert cfg.interior_energetics.const_rho == pytest.approx(3300.0)
-    # Unset, const_rho keeps its 4000 kg m-3 default.
-    assert Interior().const_rho == pytest.approx(4000.0)
+    # A record written now carries the key as "none" and reloads without the warning.
+    record = tmp_path / 'init_coupler.toml'
+    read_config_object(PROTEUS_ROOT / 'input' / 'dummy.toml').write(str(record))
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter('always')
+        reloaded = read_config_object(record)
+    assert getattr(getattr(reloaded.interior_energetics, section), key) is None
+    assert not [w for w in caught if re.search(message, str(w.message))]
 
 
 @pytest.mark.unit

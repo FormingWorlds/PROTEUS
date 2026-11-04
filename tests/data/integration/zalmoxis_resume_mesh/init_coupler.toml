@@ -297,6 +297,7 @@ tolerance_struct = 100.0
 [interior_energetics.dummy]
 mantle_tliq = 2700.0
 mantle_tsol = 1700.0
+mantle_rho = 4550.0
 mantle_cp = 1792.0
 heat_internal = 0.0
 
@@ -306,8 +307,10 @@ T_liquidus = 2020.0
 critical_rayleigh_number = 1100.0
 nusselt_exponent = 0.33
 silicate_heat_capacity = 1200.0
+core_density = 10738.0
 atm_heat_capacity_const = true
 atm_heat_capacity = 17000.0
+silicate_density = 4103.0
 thermal_conductivity = 4.2
 thermal_diffusivity = 1e-06
 thermal_expansivity = 2e-05

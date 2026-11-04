@@ -54,6 +54,7 @@ from proteus.config._config import (
     prevent_desaturation_warns_without_condensates,
     satellite_evolve,
     sp0d_obliqua_degree_mismatch,
+    spider_struct_needs_mass_from_interior,
     spinless_orbit_keeps_spin_synchronous,
 )
 
@@ -773,6 +774,48 @@ def test_boundary_requires_fixed_surface_state_passes_with_fixed():
     # boundary; only the 'fixed' branch can produce a silent pass here.
     assert instance.interior_energetics.module == 'boundary'
     assert instance.atmos_clim.surf_state == 'fixed'
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('energetics', ['dummy', 'boundary'])
+def test_spider_struct_rejects_an_interior_that_takes_its_mass_from_the_structure(energetics):
+    """The SPIDER structure solves for the radius from the energetics module's mantle mass;
+    the dummy and boundary interiors take that mass from the structure, so the pair is refused.
+    """
+    instance = _make_config_instance(
+        **{'interior_struct.module': 'spider', 'interior_energetics.module': energetics}
+    )
+    expected = (
+        rf"interior_struct.module = 'spider' cannot run with "
+        rf"interior_energetics.module = '{energetics}'"
+    )
+    with pytest.raises(ValueError, match=expected) as excinfo:
+        spider_struct_needs_mass_from_interior(instance, None, None)
+    # The message names a structure that works with this interior.
+    assert "interior_struct.module = 'dummy' or 'zalmoxis'" in str(excinfo.value)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'struct,energetics',
+    [
+        pytest.param('spider', 'spider', id='spider_struct_spider_interior'),
+        pytest.param('spider', 'aragog', id='spider_struct_aragog_interior'),
+        pytest.param('dummy', 'dummy', id='dummy_struct_dummy_interior'),
+        pytest.param('zalmoxis', 'boundary', id='zalmoxis_struct_boundary_interior'),
+    ],
+)
+def test_spider_struct_check_accepts_pairs_with_a_mantle_mass(struct, energetics):
+    """Each pair where one side supplies the mantle mass passes the check silently."""
+    instance = _make_config_instance(
+        **{'interior_struct.module': struct, 'interior_energetics.module': energetics}
+    )
+    assert spider_struct_needs_mass_from_interior(instance, None, None) is None
+    # The instance still holds the pair under test, so the pass is not vacuous.
+    assert (instance.interior_struct.module, instance.interior_energetics.module) == (
+        struct,
+        energetics,
+    )
 
 
 # ---------------------------------------------------------------------------

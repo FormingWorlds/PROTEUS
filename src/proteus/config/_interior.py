@@ -6,6 +6,8 @@ import warnings
 from attrs import define, field
 from attrs.validators import ge, gt, in_, le, lt
 
+from ._converters import none_if_none
+
 _TOL_UNSET = -1.0
 
 
@@ -574,6 +576,20 @@ def valid_interiordummy(instance, attribute, value):
         raise ValueError(f'Dummy liquidus ({tliq}K) must be greater than solidus ({tsol}K)')
 
 
+def _warn_ignored_key(path: str, reason: str) -> None:
+    """Warn that a deprecated configuration key is set and ignored.
+
+    FutureWarning, not DeprecationWarning: Python shows it by default, so a
+    user loading an older configuration or run record sees it.
+    """
+    warnings.warn(
+        f'{path} is deprecated and ignored: {reason}. Remove it from the '
+        'configuration; a future release will refuse it.',
+        FutureWarning,
+        stacklevel=4,
+    )
+
+
 @define
 class InteriorBoundary:
     """Parameters for Boundary interior module. Default values taken from Schaefer et al. 2016 (https://iopscience.iop.org/article/10.3847/0004-637X/829/2/63/pdf).
@@ -597,6 +613,10 @@ class InteriorBoundary:
         Always use fallback atmosphere heat capacity?
     atm_heat_capacity: float
         Used as fallback for atmosphere heat capacity when layer-specific value is not available [J/kg/K].
+    silicate_density: float or None
+        Deprecated and ignored: the boundary interior takes its mantle mass and radius from the structure.
+    core_density: float or None
+        Deprecated and ignored: the boundary interior takes its core mass and radius from the structure.
     core_shear: float
         Core shear modulus [Pa].
     core_bulk: float
@@ -653,15 +673,35 @@ class InteriorBoundary:
 
     logging: bool = field(default=False)
 
+    # Deprecated and ignored; kept so that older configurations and run records load.
+    silicate_density: float | str | None = field(default=None, converter=none_if_none)
+    core_density: float | str | None = field(default=None, converter=none_if_none)
+
+    def __attrs_post_init__(self):
+        if self.silicate_density is not None:
+            _warn_ignored_key(
+                'interior_energetics.boundary.silicate_density',
+                'the boundary interior takes its mantle mass and radius from the structure',
+            )
+        if self.core_density is not None:
+            _warn_ignored_key(
+                'interior_energetics.boundary.core_density',
+                'the boundary interior takes its core mass and radius from the structure',
+            )
+
 
 @define
 class InteriorDummy:
     """Parameters for Dummy interior module.
 
-    The mantle density is ``interior_energetics.const_rho``.
+    The mantle density the dummy interior reports is its mantle mass over the
+    mantle shell volume.
 
     Attributes
     ----------
+    mantle_rho: float or None
+        Deprecated and ignored: the dummy interior reports its mantle mass over
+        the mantle shell volume as its density.
     mantle_cp: float
         Mantle specific heat capacity [J kg-1 K-1]
     mantle_tliq: float
@@ -678,6 +718,17 @@ class InteriorDummy:
     mantle_tsol: float = field(default=1700.0, validator=ge(0))
     mantle_cp: float = field(default=1792.0, validator=ge(0))
     heat_internal: float = field(default=0.0, validator=ge(0))
+
+    # Deprecated and ignored; kept so that older configurations and run records load.
+    mantle_rho: float | str | None = field(default=None, converter=none_if_none)
+
+    def __attrs_post_init__(self):
+        if self.mantle_rho is not None:
+            _warn_ignored_key(
+                'interior_energetics.dummy.mantle_rho',
+                'the dummy interior reports its mantle mass over the mantle shell volume '
+                'as its density',
+            )
 
 
 @define
@@ -932,10 +983,9 @@ class Interior:
     # For controlled parity comparisons with dummy structure + atmosphere.
     const_properties: bool = field(default=False)
     const_rho: float = field(default=4000.0, validator=gt(0))
-    """Mantle density [kg/m3]. The dummy module uses it as the density of its
-    one-layer interior (read by the tides modules) and for the mantle mass when
-    the structure gives no M_int and M_core. SPIDER and Aragog read it only when
-    const_properties = true."""
+    """Constant density [kg/m3]. SPIDER and Aragog read it only when
+    const_properties = true. The dummy interior also uses it for its mantle mass
+    when the helpfile row has no M_int or M_core."""
     const_Cp: float = field(default=1000.0, validator=gt(0))
     """Constant heat capacity [J/kg/K]."""
     const_alpha: float = field(default=1e-5, validator=gt(0))
@@ -1172,15 +1222,11 @@ DOC_GROUPS = {
             ('write_flux_diagnostics',),
         ),
         (
-            'Mantle density',
-            None,
-            ('const_rho',),
-        ),
-        (
             'Constant-properties mode',
             None,
             (
                 'const_properties',
+                'const_rho',
                 'const_Cp',
                 'const_alpha',
                 'const_cond',

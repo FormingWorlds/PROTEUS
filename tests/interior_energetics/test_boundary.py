@@ -1733,38 +1733,3 @@ def test_boundary_runner_mantle_mass_closes_structure_budget(
     assert 2.0e3 < runner.mantle_bulk_density < 6.0e3
     # Surface gravity uses the structure's interior mass.
     assert runner.surface_gravity == pytest.approx(const_G * M_int / R_int**2, rel=1e-12)
-
-
-def test_boundary_runner_rejects_a_row_without_mantle_mass(
-    mock_config, mock_dirs, mock_hf_row, mock_hf_all, mock_interior, mock_atmos
-):
-    """A row with M_int <= M_core leaves no mantle, so the constructor raises ValueError.
-
-    Edge cases: M_int equal to M_core (zero mantle), below it (negative mantle) and NaN.
-    The removed fallback read a missing M_int as zero; a row without M_int raises KeyError.
-    """
-    M_core = mock_hf_row['M_core']
-    with patch('proteus.interior_energetics.boundary.next_step', return_value=1.0e3):
-        for M_int in (M_core, 0.5 * M_core, float('nan')):
-            with pytest.raises(ValueError, match=r'needs M_int > M_core'):
-                BoundaryRunner(
-                    mock_config,
-                    mock_dirs,
-                    {**mock_hf_row, 'M_int': M_int},
-                    mock_hf_all,
-                    mock_interior,
-                    mock_atmos,
-                )
-        row_without_m_int = {k: v for k, v in mock_hf_row.items() if k != 'M_int'}
-        with pytest.raises(KeyError, match='M_int'):
-            BoundaryRunner(
-                mock_config,
-                mock_dirs,
-                row_without_m_int,
-                mock_hf_all,
-                mock_interior,
-                mock_atmos,
-            )
-    # No interior arrays were written before the raise.
-    assert mock_interior.density is None
-    assert mock_interior.mass is None

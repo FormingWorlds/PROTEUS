@@ -214,7 +214,6 @@ INTERIOR_RENAMES = {
     },
     'dummy': {
         'interior.dummy.mantle_cp': 'interior_energetics.dummy.mantle_cp',
-        'interior.dummy.mantle_rho': 'interior_energetics.const_rho',
         'interior.dummy.mantle_tliq': 'interior_energetics.dummy.mantle_tliq',
         'interior.dummy.mantle_tsol': 'interior_energetics.dummy.mantle_tsol',
         'interior.dummy.H_radio': 'interior_energetics.dummy.heat_internal',
@@ -242,6 +241,7 @@ TRANSFORMS = {
 # silent.
 REMOVED = {
     'outgas.atmodeller.some_parameter',  # 2.0 placeholder, no 3.0 analogue
+    'interior.dummy.mantle_rho',  # 3.0 derives the density from the structure
 }
 
 # New-in-3.0 fields whose 3.0 default changes behaviour relative to a 2.0 run

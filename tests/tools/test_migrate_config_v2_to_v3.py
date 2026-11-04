@@ -231,7 +231,9 @@ _REVIEWED_NEUTRAL = frozenset(
         'interior_energetics.boundary.dynamic_viscosity',
         'interior_energetics.boundary.logging',
         'interior_energetics.boundary.nusselt_exponent',
+        'interior_energetics.boundary.silicate_density',
         'interior_energetics.boundary.core_bulk',
+        'interior_energetics.boundary.core_density',
         'interior_energetics.boundary.core_shear',
         'interior_energetics.boundary.silicate_heat_capacity',
         'interior_energetics.boundary.thermal_conductivity',
@@ -247,7 +249,10 @@ _REVIEWED_NEUTRAL = frozenset(
         'interior_energetics.const_cond',
         'interior_energetics.const_log10visc',
         'interior_energetics.const_properties',
+        'interior_energetics.const_rho',
         'interior_energetics.core_tfac_avg',
+        # Deprecated and ignored; the dummy interior derives its density.
+        'interior_energetics.dummy.mantle_rho',
         'interior_energetics.eddy_diffusivity_chemical',
         'interior_energetics.eddy_diffusivity_thermal',
         'interior_energetics.latent_heat_of_fusion',
@@ -728,23 +733,22 @@ def test_spider_interior_split_and_renames():
     assert flat['interior_energetics.flux_guess'] == pytest.approx(1000.0)
 
 
-def test_dummy_mantle_rho_maps_to_const_rho():
-    """A 2.0 dummy interior's mantle_rho becomes interior_energetics.const_rho.
+def test_dummy_mantle_rho_is_dropped():
+    """A 2.0 dummy interior's mantle_rho is dropped, because 3.0 derives the density.
 
-    3300 differs from the 2.0 dummy default (4550) and the 3.0 const_rho default
-    (4000), so a dropped value or a default fill fails; an unset value keeps 4550.
+    An explicit value is reported as dropped and reaches no 3.0 field: const_rho keeps
+    its 3.0 default (4000), not the 2.0 value (3300) or the 2.0 default (4550).
     """
     v2 = _minimal_spider_v2()
+    # The SPIDER structure needs a mantle mass from the interior, which the dummy lacks.
+    v2['struct']['module'] = 'dummy'
     v2['interior']['module'] = 'dummy'
     v2['interior']['dummy'] = {'mantle_rho': 3300.0}
-    flat, _ = _translate(v2)
+    flat, report = _translate(v2)
     assert flat['interior_energetics.module'] == 'dummy'
-    assert flat['interior_energetics.const_rho'] == pytest.approx(3300.0)
     assert not any(key.endswith('mantle_rho') for key in flat)
-
-    v2['interior']['dummy'] = {}
-    flat_default, _ = _translate(v2)
-    assert flat_default['interior_energetics.const_rho'] == pytest.approx(4550.0)
+    assert 'interior.dummy.mantle_rho' in report.dropped_removed
+    assert flat.get('interior_energetics.const_rho', 4000.0) == pytest.approx(4000.0)
 
 
 def test_tolerance_atol_rtol_not_swapped():

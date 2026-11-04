@@ -411,7 +411,8 @@ def test_run_dummy_int_rf_depth_uses_structure_core_radius():
 def test_run_dummy_int_mantle_mass_from_structure_budget():
     """The dummy energetics mantle mass equals the structure's M_int - M_core
     (consistent with the boundary backend and the planet mass budget), not the
-    density times shell-volume estimate, so M_core + M_mantle <= M_planet.
+    density times shell-volume estimate, so M_core + M_mantle <= M_planet. The
+    density it reports is that mass over the mantle shell volume.
     """
     config = _create_mock_config(tsurf_init=2000.0, const_rho=3300.0)
     dirs = {}
@@ -441,6 +442,10 @@ def test_run_dummy_int_mantle_mass_from_structure_budget():
     # separated from the structure budget (4.0e24).
     fallback = calculate_simple_mantle_mass(6e6, 0.5, 3300.0)
     assert abs(output['M_mantle'] - fallback) > 1e23
+    # Density: 4.0e24 kg over the 7.92e20 m3 shell is 5052 kg m-3, not const_rho (3300).
+    shell = 4.0 / 3.0 * np.pi * (6e6**3 - 3e6**3)
+    assert interior_o.density[0] == pytest.approx((M_int - M_core) / shell, rel=1e-12)
+    assert abs(interior_o.density[0] - 3300.0) > 1.0e3
 
 
 @pytest.mark.unit
@@ -448,7 +453,7 @@ def test_run_dummy_int_mantle_mass_from_structure_budget():
 def test_run_dummy_int_fallback_mantle_mass_uses_const_rho():
     """Without M_int in hf_row, the dummy mantle mass is const_rho times the shell volume.
 
-    const_rho = 3300 kg m-3 differs from the removed dummy.mantle_rho default (4550)
+    const_rho = 3300 kg m-3 differs from the old dummy.mantle_rho default (4550)
     and from the const_rho default (4000), so reading either default fails the pin.
     """
     R_int, R_core, rho = 6.0e6, 3.0e6, 3300.0
@@ -693,8 +698,9 @@ def test_run_dummy_int_interior_arrays():
     # Check values
     assert interior_o.phi[0] == pytest.approx(output['Phi_global'])
     assert interior_o.mass[0] == pytest.approx(output['M_mantle'])
-    # 3300 is neither the const_rho default (4000) nor the old mantle_rho default (4550).
-    assert interior_o.density[0] == pytest.approx(3300.0)
+    # The one-layer density times the shell volume gives back the mantle mass.
+    shell = 4.0 / 3.0 * np.pi * (R_int**3 - R_core**3)
+    assert interior_o.density[0] * shell == pytest.approx(output['M_mantle'], rel=1e-12)
     assert interior_o.temp[0] == pytest.approx(output['T_magma'])
     assert interior_o.pres[0] == pytest.approx(P_surf)
     # radius[0] is the structure-derived core radius, not config.core_frac*R_int.

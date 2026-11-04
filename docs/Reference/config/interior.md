@@ -309,17 +309,12 @@ controlled parity tests.
 |---|---|---|---|
 | `write_flux_diagnostics` | bool | `false` | When True, Aragog's NetCDF output includes per-component flux decomposition (Jcond_b, Jconv_b, Jgrav_b, Jmix_b) and basic-node state variables (dSdr_b, eddy_diff_b, phi_basic_b, T/cp/rho_basic_b). Adds ~10 fields per snapshot; default False keeps output compact. Useful for diagnosing T_core and CMB-closure behaviour near phi=0. SPIDER path ignores this flag (uses SPIDER's own JSON output which already includes Jcond_b, Jconv_b, Jgrav_b, Jmix_b). |
 
-**Mantle density**
-
-| Parameter | Type | Default | Description |
-|---|---|---|---|
-| `const_rho` | float | `4000.0` | Mantle density \[kg/m3\]. The dummy module uses it as the density of its one-layer interior (read by the tides modules) and for the mantle mass when the structure gives no M_int and M_core. SPIDER and Aragog read it only when const_properties = true. Must be > 0. |
-
 **Constant-properties mode**
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
 | `const_properties` | bool | `false` | Enable constant-properties mode: bypass the EOS tables and use the analytical T(S) = T_ref * exp((S - S_ref) / Cp) relationship, for controlled parity tests. |
+| `const_rho` | float | `4000.0` | Constant density \[kg/m3\]. SPIDER and Aragog read it only when const_properties = true. The dummy interior also uses it for its mantle mass when the helpfile row has no M_int or M_core. Must be > 0. |
 | `const_Cp` | float | `1000.0` | Constant heat capacity \[J/kg/K\]. Must be > 0. |
 | `const_alpha` | float | `1e-05` | Constant thermal expansivity \[1/K\]. Must be > 0. |
 | `const_cond` | float | `4.0` | Constant thermal conductivity \[W/m/K\]. Must be > 0. |
@@ -439,6 +434,7 @@ A parameterised cooling model with prescribed solidus and liquidus.
 | `mantle_tsol` | float | `1700.0` | Mantle solidus temperature \[K\]. Must be >= 0. |
 | `mantle_cp` | float | `1792.0` | Mantle specific heat capacity \[J kg-1 K-1\]. Must be >= 0. |
 | `heat_internal` | float | `0.0` | Fixed internal heating rate (e.g. radiogenic) \[W kg-1\]. Tidal heating is handled separately via `heat_tidal` and is added on top of this value. Must be >= 0. |
+| `mantle_rho` | float or none | `none` | Deprecated and ignored: the dummy interior reports its mantle mass over the mantle shell volume as its density. |
 <!-- END GENERATED: config-table [interior_energetics.dummy] -->
 
 ### Boundary `[interior_energetics.boundary]`
@@ -469,6 +465,8 @@ with prescribed solidus and liquidus and parameterised convective heat transport
 | `viscosity_prefactor` | float | `0.00024` | Viscosity prefactor \[Pa s\] for Vogel-Fulcher-Tammann magma ocean model. Must be > 0. |
 | `viscosity_activation_temp` | float | `4600` | Activation temperature \[K\] for Vogel-Fulcher-Tammann magma ocean model. Must be > 0. |
 | `logging` | bool | `false` | Whether to create diagnostic CSV data files from boundary interior module. |
+| `silicate_density` | float or none | `none` | Deprecated and ignored: the boundary interior takes its mantle mass and radius from the structure. |
+| `core_density` | float or none | `none` | Deprecated and ignored: the boundary interior takes its core mass and radius from the structure. |
 <!-- END GENERATED: config-table [interior_energetics.boundary] -->
 
 ## Constraints
@@ -485,6 +483,7 @@ Cross-field constraints enforced when the config file loads:
 - Require a PALEOS or temperature-dependent energetics key for SPIDER or Aragog.
 - The low-temperature solid extension is run only with the Aragog interior.
 - The low-temperature solid extension acts on the P-S tables that the zalmoxis and dummy structures build from the standard PALEOS solid table.
+- Refuse the SPIDER structure with an interior that takes its mass from the structure.
 - Interior tidal heating requires an tides module to be enabled.
 - Aragog requires at least one energy transport term to be enabled.
 - Validate Boundary backend's solidus/liquidus ordering.
