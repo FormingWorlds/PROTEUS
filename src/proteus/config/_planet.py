@@ -249,6 +249,15 @@ class InteriorChem:
         tabulated over 1 bar - 4 TPa and 1000 - 20000 K for super-Earth
         mantles. It agrees with 'deng2020' inside the FPMD coverage
         (2000-4000 K, up to about 74-94 GPa) and is an extrapolation beyond.
+        'keane_table_flat': test variant of 'keane_table' with int dV dP held
+        at its value at 90 GPa (deepest Deng FPMD point of both melts), i.e.
+        dV = 0 beyond (FWL_DATA/interior_chem/keane_deng_table_flat.npz);
+        the Komabayashi (2014) FeO and Fe integrals are likewise held at
+        their 350 GPa values beyond that pressure.
+        'keane_table_constdV': test variant of 'keane_table' with dV held at
+        its value at 90 GPa (deepest Deng FPMD point of both melts) instead of
+        extrapolated, so int dV dP is linear in P beyond it
+        (FWL_DATA/interior_chem/keane_deng_table_constdV.npz).
         Read only when ``planet.fO2_source = 'from_mantle_redox'`` and
         ``metal_saturation`` or ``fO2_pressure_term`` is True.
     feo_volume: str
@@ -306,7 +315,10 @@ class InteriorChem:
     # Melt EOS of the redox pressure term (eos_deng.MODELS). Only read under
     # planet.fO2_source = 'from_mantle_redox' with metal_saturation or
     # fO2_pressure_term True.
-    redox_dV_eos: str = field(default='deng2020', validator=in_(('deng2020', 'keane_table')))
+    redox_dV_eos: str = field(
+        default='deng2020',
+        validator=in_(('deng2020', 'keane_table', 'keane_table_flat', 'keane_table_constdV')),
+    )
 
     # Liquid FeO volume of the disproportionation pressure term (eos_deng.FEO_VOLUMES).
     feo_volume: str = field(

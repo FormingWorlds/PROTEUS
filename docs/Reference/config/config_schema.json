@@ -4319,10 +4319,12 @@
       "default": "\"deng2020\"",
       "choices": [
         "deng2020",
-        "keane_table"
+        "keane_table",
+        "keane_table_flat",
+        "keane_table_constdV"
       ],
       "bounds": null,
-      "description": "Melt equation of state for the volume change of FeO -> FeO1.5 in the pressure term int(dV dP) of the melt-redox tracker (``interior_chem/eos_deng.py``): the radial fO2 profile and the Fe-disproportionation equilibrium. The profile carries the pressure term with ``metal_saturation`` or ``fO2_pressure_term`` True, the equilibrium only with ``metal_saturation`` True; otherwise the choice has no effect. 'deng2020' (default): the Deng et al. (2020) fourth-order Birch-Murnaghan fit as constructed by Schaefer et al. (2024), valid to 6500 K and 136 GPa. 'keane_table': a Keane cold curve with the Deng et al. (2020) thermal term, fitted to the Deng FPMD points of the 12.5 mol% Fe melts and tabulated over 1 bar - 4 TPa and 1000 - 20000 K for super-Earth mantles. It agrees with 'deng2020' inside the FPMD coverage (2000-4000 K, up to about 74-94 GPa) and is an extrapolation beyond. Read only when ``planet.fO2_source = 'from_mantle_redox'`` and ``metal_saturation`` or ``fO2_pressure_term`` is True.",
+      "description": "Melt equation of state for the volume change of FeO -> FeO1.5 in the pressure term int(dV dP) of the melt-redox tracker (``interior_chem/eos_deng.py``): the radial fO2 profile and the Fe-disproportionation equilibrium. The profile carries the pressure term with ``metal_saturation`` or ``fO2_pressure_term`` True, the equilibrium only with ``metal_saturation`` True; otherwise the choice has no effect. 'deng2020' (default): the Deng et al. (2020) fourth-order Birch-Murnaghan fit as constructed by Schaefer et al. (2024), valid to 6500 K and 136 GPa. 'keane_table': a Keane cold curve with the Deng et al. (2020) thermal term, fitted to the Deng FPMD points of the 12.5 mol% Fe melts and tabulated over 1 bar - 4 TPa and 1000 - 20000 K for super-Earth mantles. It agrees with 'deng2020' inside the FPMD coverage (2000-4000 K, up to about 74-94 GPa) and is an extrapolation beyond. 'keane_table_flat': test variant of 'keane_table' with int dV dP held at its value at 90 GPa (deepest Deng FPMD point of both melts), i.e. dV = 0 beyond (FWL_DATA/interior_chem/keane_deng_table_flat.npz); the Komabayashi (2014) FeO and Fe integrals are likewise held at their 350 GPa values beyond that pressure. 'keane_table_constdV': test variant of 'keane_table' with dV held at its value at 90 GPa (deepest Deng FPMD point of both melts) instead of extrapolated, so int dV dP is linear in P beyond it (FWL_DATA/interior_chem/keane_deng_table_constdV.npz). Read only when ``planet.fO2_source = 'from_mantle_redox'`` and ``metal_saturation`` or ``fO2_pressure_term`` is True.",
       "doc_source": "attributes",
       "group_order": 0,
       "group_position": 0,

@@ -514,7 +514,12 @@ def test_unknown_melt_eos_model_is_rejected(bad):
         int_dV_dP(3000.0, 50.0, model=bad)
     with pytest.raises(ValueError, match='Unknown melt EOS model'):
         int_dV_dP_oxidation(3000.0, 50.0, model=bad)
-    assert eos_deng.MODELS == ('deng2020', 'keane_table')
+    assert eos_deng.MODELS == (
+        'deng2020',
+        'keane_table',
+        'keane_table_flat',
+        'keane_table_constdV',
+    )
 
 
 def test_missing_keane_table_raises_with_the_expected_location(monkeypatch, tmp_path):
@@ -585,3 +590,62 @@ def test_unknown_feo_volume_is_rejected(bad):
     with pytest.raises(ValueError, match='Unknown FeO volume'):
         int_dV_dP(3000.0, 50.0, model='keane_table', feo_volume=bad)
     assert eos_deng.FEO_VOLUMES == ('komabayashi2014', 'lange_carmichael')
+
+
+@pytest.mark.usefixtures('keane_tables')
+@pytest.mark.physics_invariant
+def test_constant_dv_table_matches_keane_table_below_the_cap_and_is_linear_beyond():
+    """keane_table_constdV equals keane_table up to the deepest Deng FPMD pressure
+    (about 90 GPa) and holds dV fixed beyond, so the oxidation integral rises
+    linearly there with the slope it had at the cap; the extrapolated table
+    bends away from that line."""
+    T = 3000.0
+    below = np.array([1.0, 30.0, 80.0])
+    ref, _ = int_dV_dP_oxidation(T, below, model='keane_table')
+    var, _ = int_dV_dP_oxidation(T, below, model='keane_table_constdV')
+    np.testing.assert_allclose(var, ref, rtol=1e-12)
+
+    beyond = np.array([200.0, 500.0, 1000.0, 2000.0])
+    I, ok = int_dV_dP_oxidation(T, beyond, model='keane_table_constdV')
+    assert np.all(ok)
+    slopes = np.diff(I) / np.diff(beyond)  # J/GPa/mol
+    np.testing.assert_allclose(slopes, slopes[0], rtol=2e-3)
+    I_ext, _ = int_dV_dP_oxidation(T, beyond, model='keane_table')
+    assert abs(I_ext[-1] - I[-1]) > 0.1 * abs(I[-1])
+
+
+@pytest.mark.usefixtures('keane_tables')
+@pytest.mark.physics_invariant
+def test_flat_table_holds_the_integral_beyond_the_cap():
+    """keane_table_flat equals keane_table up to the deepest Deng FPMD pressure
+    and keeps the oxidation integral at that value beyond, on each isotherm."""
+    for T in (3000.0, 6000.0):
+        below = np.array([1.0, 30.0, 80.0])
+        ref, _ = int_dV_dP_oxidation(T, below, model='keane_table')
+        var, _ = int_dV_dP_oxidation(T, below, model='keane_table_flat')
+        np.testing.assert_allclose(var, ref, rtol=1e-12)
+        beyond = np.array([90.0, 136.0, 500.0, 3000.0])
+        I, ok = int_dV_dP_oxidation(T, beyond, model='keane_table_flat')
+        assert np.all(ok)
+        np.testing.assert_allclose(I, I[0], rtol=1e-9)
+        I_ext, _ = int_dV_dP_oxidation(T, beyond, model='keane_table')
+        assert I_ext[1] - I[1] > 1.0e4  # extrapolated keeps rising: > 10 kJ/mol by 136 GPa
+
+
+@pytest.mark.usefixtures('keane_tables')
+@pytest.mark.physics_invariant
+def test_flat_model_holds_the_komabayashi_terms_beyond_350_gpa():
+    """With keane_table_flat the full term 2 I_Deng - I_FeO + I_Fe is constant
+    beyond 350 GPa (all three integrals held), equals keane_table where every
+    term is inside its range, and differs from it beyond 350 GPa only through
+    the held integrals."""
+    T = 4000.0
+    beyond = np.array([350.0, 500.0, 2000.0])
+    full, ok = int_dV_dP(T, beyond, model='keane_table_flat')
+    assert np.all(ok)
+    np.testing.assert_allclose(full, full[0], rtol=1e-9)
+    ref, _ = int_dV_dP(T, 50.0, model='keane_table')
+    var, _ = int_dV_dP(T, 50.0, model='keane_table_flat')
+    assert float(var) == pytest.approx(float(ref), rel=1e-12)
+    ext, _ = int_dV_dP(T, 2000.0, model='keane_table')
+    assert abs(float(ext) - full[-1]) > 1.0e5

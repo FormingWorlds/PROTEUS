@@ -106,14 +106,23 @@ from scipy.interpolate import RegularGridInterpolator
 
 log = logging.getLogger('fwl.' + __name__)
 
-MODELS = ('deng2020', 'keane_table')  # melt EOS of the FeO -> FeO1.5 volume change
+# Melt EOS of the FeO -> FeO1.5 volume change. Test variants beyond the deepest Deng FPMD
+# pressure: '_flat' holds the integral there (and the Komabayashi FeO and Fe integrals
+# beyond P_KOMA_MAX), '_constdV' holds dV.
+MODELS = ('deng2020', 'keane_table', 'keane_table_flat', 'keane_table_constdV')
 # Liquid FeO volume of the disproportionation -V_FeO term (Schaefer et al. 2024 Eq 11-12)
 FEO_VOLUMES = ('komabayashi2014', 'lange_carmichael')
 _K0_FEO_LC, _KP_FEO_LC = 30.33, 4.0  # GPa, -: Murnaghan constants of deltaGFeOFeO15_Deng.m
 TABLE_RELPATH = (
     Path('interior_chem') / 'keane_deng_table.npz'
 )  # below FWL_DATA, not in the repository
-_TABLE = None
+TABLE_FILES = {
+    'keane_table': 'keane_deng_table.npz',
+    'keane_table_flat': 'keane_deng_table_flat.npz',
+    'keane_table_constdV': 'keane_deng_table_constdV.npz',
+}
+_TABLE = None  # the 'keane_table' table
+_TABLES = {}  # the other table models
 _TABLE_EXTRAPOLATION_WARNED = False
 
 # Deng et al. (2020) BM4 + thermal pressure; rows: reduced Mg14Fe2Si16O48,
@@ -139,6 +148,8 @@ P_EXERCISED = 136.0  # GPa, deepest pressure Schaefer et al. (2024) ran
 ENVELOPE = {
     'deng2020': f'T <= {T_CEILING:.0f} K, P <= {P_EXERCISED:.0f} GPa',
     'keane_table': '1000 K <= T <= 20000 K, P <= 4000 GPa',
+    'keane_table_flat': '1000 K <= T <= 20000 K, P <= 4000 GPa',
+    'keane_table_constdV': '1000 K <= T <= 20000 K, P <= 4000 GPa',
 }
 
 # ── Komabayashi (2014) liquids: Vinet at 298 K + Anderson-Gruneisen expansion ──
@@ -390,42 +401,55 @@ def _integrals(T, P, deng_only=False, feo_volume='komabayashi2014'):
     return (I_deng, *_fe_feo_terms(T, P, feo_volume))
 
 
-def table_path() -> Path:
-    """Location of the Keane + Deng-thermal table: FWL_DATA/interior_chem/."""
+def table_path(model: str = 'keane_table') -> Path:
+    """Location of the table of a table model: FWL_DATA/interior_chem/."""
     from proteus.utils.helper import resolve_fwl_data_dir
 
-    return resolve_fwl_data_dir() / TABLE_RELPATH
+    return resolve_fwl_data_dir() / TABLE_RELPATH.parent / TABLE_FILES[model]
+
+
+def _load_table(path: Path) -> dict:
+    """Read a melt-EOS lookup table (make_keane_deng_table*.py) into interpolators."""
+    if not path.is_file():
+        raise FileNotFoundError(
+            f'Keane + Deng-thermal table not found at {path}. Copy {path.name} '
+            '(written by make_keane_deng_table*.py) there, or set FWL_DATA.'
+        )
+    t = np.load(path)
+    lt, lp = t['log10_T_K'], t['log10_P_Pa']
+    return {
+        'interp': RegularGridInterpolator((lt, lp), t['int_dV_dP_ox']),
+        'in_fpmd': RegularGridInterpolator(
+            (lt, lp), t['in_fpmd'].astype(float), method='nearest'
+        ),
+        'T_range': (10 ** lt[0], 10 ** lt[-1]),
+        'P_range': (10 ** lp[0] / 1e9, 10 ** lp[-1] / 1e9),
+    }
 
 
 def _keane_table():
     """Load the Keane + Deng-thermal lookup table once per process."""
     global _TABLE
     if _TABLE is None:
-        path = table_path()
-        if not path.is_file():
-            raise FileNotFoundError(
-                f'Keane + Deng-thermal table not found at {path}. Copy keane_deng_table.npz '
-                '(written by make_keane_deng_table.py) there, or set FWL_DATA.'
-            )
-        t = np.load(path)
-        lt, lp = t['log10_T_K'], t['log10_P_Pa']
-        _TABLE = {
-            'interp': RegularGridInterpolator((lt, lp), t['int_dV_dP_ox']),
-            'in_fpmd': RegularGridInterpolator(
-                (lt, lp), t['in_fpmd'].astype(float), method='nearest'
-            ),
-            'T_range': (10 ** lt[0], 10 ** lt[-1]),
-            'P_range': (10 ** lp[0] / 1e9, 10 ** lp[-1] / 1e9),
-        }
+        _TABLE = _load_table(table_path())
     return _TABLE
 
 
-def _evaluate_table(T, P, oxidation_only, feo_volume='komabayashi2014'):
+def _table(model: str) -> dict:
+    """The lookup table of a table model, loaded once per process."""
+    if model == 'keane_table':
+        return _keane_table()
+    if model not in _TABLES:
+        _TABLES[model] = _load_table(table_path(model))
+    return _TABLES[model]
+
+
+def _evaluate_table(T, P, oxidation_only, feo_volume='komabayashi2014', model='keane_table'):
     """Keane + Deng-thermal model: the table for the oxidation integral, the
     FeO and Fe terms as in the deng2020 model. Valid inside the table range;
     points below 1 bar take the 1-bar value (0 for the oxidation integral)."""
     global _TABLE_EXTRAPOLATION_WARNED
-    tab = _keane_table()
+    tab = _table(model)
     T, P = np.broadcast_arrays(np.asarray(T, dtype=float), np.asarray(P, dtype=float))
     shape = T.shape
     T, P = T.ravel(), P.ravel()
@@ -445,7 +469,14 @@ def _evaluate_table(T, P, oxidation_only, feo_volume='komabayashi2014'):
         if oxidation_only:
             out[valid] = I_ox
         else:
-            I_feo, I_fe = _fe_feo_terms(Tv, Pv, feo_volume)
+            if model == 'keane_table_flat':  # test: Komabayashi integrals held beyond 350 GPa
+                Pk = np.minimum(Pv, P_KOMA_MAX)
+                I_feo = _fe_feo_terms(
+                    Tv, Pv if feo_volume == 'lange_carmichael' else Pk, feo_volume
+                )[0]
+                I_fe = _int_V_Fe(Tv, Pk)
+            else:
+                I_feo, I_fe = _fe_feo_terms(Tv, Pv, feo_volume)
             out[valid] = 2.0 * I_ox - I_feo + I_fe
     return out.reshape(shape), valid.reshape(shape)
 
@@ -506,8 +537,8 @@ def int_dV_dP(T, P, model='deng2020', feo_volume='komabayashi2014'):
     """
     _check_model(model)
     _check_feo_volume(feo_volume)
-    if model == 'keane_table':
-        return _evaluate_table(T, P, oxidation_only=False, feo_volume=feo_volume)
+    if model in TABLE_FILES:
+        return _evaluate_table(T, P, oxidation_only=False, feo_volume=feo_volume, model=model)
     return _evaluate(T, P, lambda deng, feo, fe: 2.0 * deng - feo + fe, feo_volume=feo_volume)
 
 
@@ -532,6 +563,6 @@ def int_dV_dP_oxidation(T, P, model='deng2020'):
     (I, valid) : as for ``int_dV_dP``.
     """
     _check_model(model)
-    if model == 'keane_table':
-        return _evaluate_table(T, P, oxidation_only=True)
+    if model in TABLE_FILES:
+        return _evaluate_table(T, P, oxidation_only=True, model=model)
     return _evaluate(T, P, lambda deng, feo, fe: deng, deng_only=True)
